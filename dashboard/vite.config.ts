@@ -18,18 +18,18 @@ export default defineConfig({
   server: {
     proxy: {
       '/terminal': {
-        target: 'http://localhost:7681',
+        target: 'http://localhost:7691',
         changeOrigin: true,
         ws: true,
         rewrite: (path) => path.replace(/^\/terminal/, ''),
       },
       '/bv-terminal': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8090',
         changeOrigin: true,
         ws: true,
       },
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8090',
         changeOrigin: true,
       },
     },
