@@ -8,7 +8,7 @@ Feature: Build, evolve, and retire agents
   So that the organization can expand and improve without Perttu hand-editing config
 
   Background:
-    Given a workspace at "/home/alice/chrote"
+    Given a workspace at "/workspace/chrote"
     And the central persona home "~/agents/"
     And the harnesses available are "claude-code", "openai-codex", and "hermes"
 
@@ -40,8 +40,8 @@ Feature: Build, evolve, and retire agents
 
   @cli @file
   Scenario: Bootstrap a card by introspecting an existing harness config
-    Given an existing config at "/home/alice/.codex/config.toml"
-    When I run "archon agent new codex --from /home/alice/.codex/config.toml"
+    Given an existing config at "~/.codex/config.toml"
+    When I run "archon agent new codex --from ~/.codex/config.toml"
     Then the card records a source pointer to that path
     And it does NOT inline the config contents
     And the introspected harness is detected as "openai-codex"

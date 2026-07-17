@@ -97,7 +97,7 @@ Codex (JSON, colocated):
   "focus_tags": ["frontend", "prototyping"],
   "default_harness": "openai-codex",
   "session_match": "codex-*",
-  "source_files": ["/home/alice/.codex/config.toml"],
+  "source_files": ["~/.codex/config.toml"],
   "notes": "..."
 }
 ```
@@ -124,7 +124,7 @@ kind        = "specialist"
 
 [[source]]
   type = "config"
-  path = "/home/alice/.codex/config.toml"
+  path = "~/.codex/config.toml"
 
 [notes]
   """..."""
