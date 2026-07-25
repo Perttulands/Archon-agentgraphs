@@ -43,7 +43,7 @@ func TestCategorizeSession(t *testing.T) {
 		{"gastown worker", "gt-gastown-jack", "gt-gastown"},
 		{"gastown simple", "gt-gastown", "gt-gastown"},
 		{"gt-only", "gt-", "gt-"},
-		{"dynamic dashed prefix", "perttu-shell", "perttu"},
+		{"dynamic dashed prefix", "alice-shell", "alice"},
 		{"dynamic multi dash prefix", "worker-agent-1", "worker"},
 		{"dynamic numeric suffix prefix", "forge1", "forge"},
 		{"random session", "random", "other"},
