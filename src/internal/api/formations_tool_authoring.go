@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/chrote/server/internal/core"
-	"github.com/chrote/server/internal/formations"
-	"github.com/chrote/server/internal/jsonstrict"
+	"github.com/Perttulands/chrote-agent-formations/internal/core"
+	"github.com/Perttulands/chrote-agent-formations/internal/formations"
+	"github.com/Perttulands/chrote-agent-formations/internal/jsonstrict"
 )
 
 type formationsToolParameters struct {

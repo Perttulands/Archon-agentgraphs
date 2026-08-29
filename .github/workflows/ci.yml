@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - name: Go tests and build
+        working-directory: src
+        run: |
+          go test ./...
+          go build ./cmd/archon
+      - name: Dashboard tests and build
+        working-directory: dashboard
+        run: |
+          npm ci
+          npm run test:unit
+          npm run build
+          npm run lint

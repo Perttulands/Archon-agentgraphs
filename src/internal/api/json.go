@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/chrote/server/internal/core"
+	"github.com/Perttulands/chrote-agent-formations/internal/core"
 )
 
 const maxJSONRequestBytes int64 = 1 << 20

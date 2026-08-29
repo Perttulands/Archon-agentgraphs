@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/chrote/server/internal/formations"
+	"github.com/Perttulands/chrote-agent-formations/internal/formations"
 )
 
 func TestFormationsHandlerUsesExistingBoardWireAndArrangeSurfacesForTools(t *testing.T) {

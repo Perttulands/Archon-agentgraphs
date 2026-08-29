@@ -213,7 +213,7 @@ func TestIsAgentSession(t *testing.T) {
 
 func TestOracleHandlerLiveAgentSessionsUsesUnfilteredSessionNames(t *testing.T) {
 	argsPath := installLiveAgentSessionsTmux(t)
-	handler := NewOracleHandler(NewTmuxHandler(), NewBeadsHandler())
+	handler := NewOracleHandler()
 	defer handler.Stop()
 
 	live, err := handler.LiveAgentSessions()
@@ -241,19 +241,14 @@ func TestOracleHandlerLiveAgentSessionsUsesUnfilteredSessionNames(t *testing.T) 
 }
 
 func TestOracleHandler_New(t *testing.T) {
-	tmux := NewTmuxHandler()
-	beads := NewBeadsHandler()
-	handler := NewOracleHandler(tmux, beads)
+	handler := NewOracleHandler()
 	defer handler.Stop()
 
 	if handler == nil {
 		t.Fatal("NewOracleHandler() returned nil")
 	}
-	if handler.tmuxHandler == nil {
-		t.Error("tmuxHandler is nil")
-	}
-	if handler.beadsHandler == nil {
-		t.Error("beadsHandler is nil")
+	if handler.tmuxRunner == nil {
+		t.Error("tmuxRunner is nil")
 	}
 	if handler.contextRegex == nil {
 		t.Error("contextRegex is nil")
@@ -311,9 +306,7 @@ func readLines(t *testing.T, path string) []string {
 }
 
 func TestOracleHandler_RegisterRoutes(t *testing.T) {
-	tmux := NewTmuxHandler()
-	beads := NewBeadsHandler()
-	handler := NewOracleHandler(tmux, beads)
+	handler := NewOracleHandler()
 	defer handler.Stop()
 
 	mux := http.NewServeMux()
@@ -322,9 +315,7 @@ func TestOracleHandler_RegisterRoutes(t *testing.T) {
 }
 
 func TestOracleHandler_GetStatus_ReturnsValidJSON(t *testing.T) {
-	tmux := NewTmuxHandler()
-	beads := NewBeadsHandler()
-	handler := NewOracleHandler(tmux, beads)
+	handler := NewOracleHandler()
 	defer handler.Stop()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/oracle/status", nil)
@@ -347,9 +338,7 @@ func TestOracleHandler_GetStatus_ReturnsValidJSON(t *testing.T) {
 }
 
 func TestOracleHandler_GetAgents_ReturnsValidJSON(t *testing.T) {
-	tmux := NewTmuxHandler()
-	beads := NewBeadsHandler()
-	handler := NewOracleHandler(tmux, beads)
+	handler := NewOracleHandler()
 	defer handler.Stop()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/oracle/agents", nil)
@@ -372,9 +361,7 @@ func TestOracleHandler_GetAgents_ReturnsValidJSON(t *testing.T) {
 }
 
 func TestOracleHandler_GetRalph_ReturnsValidJSON(t *testing.T) {
-	tmux := NewTmuxHandler()
-	beads := NewBeadsHandler()
-	handler := NewOracleHandler(tmux, beads)
+	handler := NewOracleHandler()
 	defer handler.Stop()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/oracle/ralph", nil)
@@ -397,9 +384,7 @@ func TestOracleHandler_GetRalph_ReturnsValidJSON(t *testing.T) {
 }
 
 func TestSSEBroadcaster_SubscribeUnsubscribe(t *testing.T) {
-	tmux := NewTmuxHandler()
-	beads := NewBeadsHandler()
-	handler := NewOracleHandler(tmux, beads)
+	handler := NewOracleHandler()
 	defer handler.Stop()
 
 	ch := make(chan OracleEvent, 10)
@@ -422,9 +407,7 @@ func TestSSEBroadcaster_SubscribeUnsubscribe(t *testing.T) {
 }
 
 func TestSSEBroadcaster_Broadcast(t *testing.T) {
-	tmux := NewTmuxHandler()
-	beads := NewBeadsHandler()
-	handler := NewOracleHandler(tmux, beads)
+	handler := NewOracleHandler()
 	defer handler.Stop()
 
 	ch := make(chan OracleEvent, 10)
@@ -450,9 +433,7 @@ func TestSSEBroadcaster_Broadcast(t *testing.T) {
 }
 
 func TestSSEBroadcaster_SlowClientDropped(t *testing.T) {
-	tmux := NewTmuxHandler()
-	beads := NewBeadsHandler()
-	handler := NewOracleHandler(tmux, beads)
+	handler := NewOracleHandler()
 	defer handler.Stop()
 
 	// Channel with buffer of 1

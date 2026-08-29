@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chrote/server/internal/core"
-	"github.com/chrote/server/internal/formations"
+	"github.com/Perttulands/chrote-agent-formations/internal/core"
+	"github.com/Perttulands/chrote-agent-formations/internal/formations"
 )
 
 // Agent status constants
@@ -80,8 +80,7 @@ type agentSnapshot struct {
 // OracleHandler handles agent-observability API endpoints. The route name is
 // kept as /api/oracle for compatibility with the existing dashboard code.
 type OracleHandler struct {
-	tmuxHandler  *TmuxHandler
-	beadsHandler *BeadsHandler
+	tmuxRunner oracleTmuxRunner
 
 	// SSE broadcaster
 	mu          sync.RWMutex
@@ -96,10 +95,9 @@ type OracleHandler struct {
 }
 
 // NewOracleHandler creates a new OracleHandler
-func NewOracleHandler(tmux *TmuxHandler, beads *BeadsHandler) *OracleHandler {
+func NewOracleHandler() *OracleHandler {
 	h := &OracleHandler{
-		tmuxHandler:  tmux,
-		beadsHandler: beads,
+		tmuxRunner:   realOracleTmuxRunner{},
 		clients:      make(map[chan OracleEvent]struct{}),
 		lastSnap:     make(map[string]agentSnapshot),
 		stopPoller:   make(chan struct{}),
@@ -118,9 +116,9 @@ func (h *OracleHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/oracle/ralph", h.GetRalph)
 }
 
-// runTmux delegates to the TmuxHandler's tmux execution
+// runTmux delegates to the extracted tmux adapter.
 func (h *OracleHandler) runTmux(args ...string) (string, error) {
-	return h.tmuxHandler.runTmux(args...)
+	return h.tmuxRunner.Run(args...)
 }
 
 // isAgentSession checks if a session name matches agent prefixes

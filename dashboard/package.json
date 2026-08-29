@@ -1,6 +1,6 @@
 {
-  "name": "chrote-dashboard",
-  "version": "2.0.0-alpha.2-dev",
+  "name": "chrote-agent-formations-dashboard",
+  "version": "0.1.0",
   "private": true,
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

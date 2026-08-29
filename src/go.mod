@@ -1,4 +1,4 @@
-module github.com/chrote/server
+module github.com/Perttulands/chrote-agent-formations
 
 go 1.26.6
 

@@ -11,8 +11,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/chrote/server/internal/core"
-	"github.com/chrote/server/internal/formations"
+	"github.com/Perttulands/chrote-agent-formations/internal/core"
+	"github.com/Perttulands/chrote-agent-formations/internal/formations"
 )
 
 type FormationsHandler struct {

@@ -1,101 +1,17 @@
-# Environment files with secrets
 .env
-.env.local
-.env.*.local
-
-# Tailscale state (contains machine keys)
-tailscale_state/
-
-# Filebrowser database (contains user sessions)
-filebrowser_data/
-
-# Build artifacts
+.env.*
 *.log
-
-# Temporary files
-tmpclaude-*
 *.tmp
-*:Zone.Identifier
-
-# Node modules (rebuild from package.json)
-dashboard/node_modules/
-
-# IDE files
+*.tsbuildinfo
 .vscode/
 .idea/
-api/node_modules/
+.DS_Store
 
-# Go binaries (build with: cd src && go build -o chrote-server ./cmd/server)
-src/chrote-server
-src/server.exe
-src/arena-server
-src/server
-chrote-server
-chrote-server-integ
-chrote-server.*
-*.exe
-
-# Vite / TypeScript incremental build caches
-*.tsbuildinfo
-dashboard/.vite/
+dashboard/node_modules/
 dashboard/dist/
 dashboard/coverage/
+dashboard/test-results/
 dashboard/playwright-report/
-dashboard/public/music/*.mp3
 
-README.md.backup
-
-# Nested repo clones (reference only, not part of chrote)
-/components/
-/integrations/
-
-# Instance-specific state (Polis or any deployment)
-# Systemd units live outside the repo (~/.config/systemd/user/)
-# Beads state is private and must use an operator-configured sidecar, never this public origin.
-# The following are created at runtime, not tracked:
-*.sqlite
-*.db
-*.db-wal
-*.db-shm
-.beads/
-src/internal/dashboard/dist/
-src/internal/dashboard/assets/
-src/internal/dashboard/music/
-src/internal/dashboard/*.html
-src/internal/dashboard/*.png
-
-# Agent-local planning/context artifacts
-.hermes/
-
-# Claude Code config
-.claude/
-
-# Test results (generated)
-**/test-results/
-
-# Playwright report data (generated)
-dashboard/playwright-report/data/
-
-# Beads / Dolt files (added by bd init)
-.dolt/
-.beads-credential-key
-
-# Beads / Dolt files (added by bd init)
-.beads/proxieddb/
-
-# Python bytecode
-__pycache__/
-*.pyc
-
-# provenance stamp for the embedded dashboard bundle (build artifact)
-src/internal/dashboard/dist.stamp
-
-# Archon CLI binaries (build with: cd src && go build -o ../archon ./cmd/archon)
 /archon
 /src/archon
-
-# root-level tool droppings (a vite cache appeared here 2026-07-26)
-/node_modules/
-prototype-output/
-.superpowers/
-.codex/

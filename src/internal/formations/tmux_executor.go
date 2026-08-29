@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chrote/server/internal/core"
+	"github.com/Perttulands/chrote-agent-formations/internal/core"
 )
 
 const (

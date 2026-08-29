@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/chrote/server/internal/formations"
+	"github.com/Perttulands/chrote-agent-formations/internal/formations"
 )
 
 func TestFormationsRunProjectionParity(t *testing.T) {

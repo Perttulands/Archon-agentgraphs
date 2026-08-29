@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chrote/server/internal/formations"
+	"github.com/Perttulands/chrote-agent-formations/internal/formations"
 )
 
 func TestArchonToolCreatePublishesCanonicalPairWithoutReflowOrImplicitWiring(t *testing.T) {
