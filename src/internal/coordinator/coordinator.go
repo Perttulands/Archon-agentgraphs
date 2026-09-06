@@ -1,0 +1,432 @@
+// Package coordinator owns the standalone trusted local runtime.
+package coordinator
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+
+	"github.com/Perttulands/chrote-agent-formations/internal/formations"
+)
+
+type GateRequest struct {
+	GateID       string `json:"gateId"`
+	RequestedSeq int    `json:"requestedSeq"`
+}
+type Event struct {
+	Seq         int    `json:"seq"`
+	Type        string `json:"type"`
+	NodeID      string `json:"nodeId,omitempty"`
+	SlotID      string `json:"slotId,omitempty"`
+	GateID      string `json:"gateId,omitempty"`
+	Status      string `json:"status,omitempty"`
+	Verdict     string `json:"verdict,omitempty"`
+	SessionName string `json:"sessionName,omitempty"`
+	Outcome     string `json:"outcome,omitempty"`
+}
+type Projection struct {
+	*formations.RunStatusProjection
+	ProjectionVersion string        `json:"projectionVersion"`
+	WaitingGates      []GateRequest `json:"waitingGates"`
+	Events            []Event       `json:"events"`
+}
+type Coordinator struct {
+	personas *formations.PersonaStore
+	store    *formations.Store
+	engine   *formations.RunEngine
+	lock     *os.File
+	mu       sync.Mutex
+	busy     bool
+	closed   bool
+	changed  chan struct{}
+	workers  sync.WaitGroup
+}
+
+// Open takes one kernel lock for the lifetime of the coordinator. StateDir is
+// private runtime storage and also the offline Archon definition workspace.
+func Open(stateDir string, personas *formations.PersonaStore, makeExecutor func(*formations.Store) formations.FormationExecutor) (*Coordinator, error) {
+	if !filepath.IsAbs(stateDir) {
+		return nil, errors.New("state directory must be absolute")
+	}
+	if err := os.MkdirAll(stateDir, 0700); err != nil {
+		return nil, err
+	}
+	lock, err := os.OpenFile(filepath.Join(stateDir, "coordinator.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		lock.Close()
+		return nil, errors.New("another coordinator owns this state directory")
+	}
+	store := formations.NewStore(stateDir)
+	c := &Coordinator{store: store, personas: personas, lock: lock, changed: make(chan struct{})}
+	store.OnRunEvent = func(formations.RunEvent) {
+		c.mu.Lock()
+		close(c.changed)
+		c.changed = make(chan struct{})
+		c.mu.Unlock()
+	}
+	c.engine = formations.NewRunEngine(store, personas, makeExecutor(store))
+	c.engine.SetGateEvaluator(formations.NewCodeGateEvaluator())
+	return c, nil
+}
+
+// Close waits for owned execution to settle before releasing the writer lock.
+func (c *Coordinator) Close() error {
+	c.mu.Lock()
+	c.closed = true
+	c.mu.Unlock()
+	c.workers.Wait()
+	return c.lock.Close()
+}
+func (c *Coordinator) Store() *formations.Store { return c.store }
+
+func Listen(address string) (net.Listener, error) {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return nil, errors.New("listen address must use a literal loopback IP")
+	}
+	return net.Listen("tcp", address)
+}
+
+func (c *Coordinator) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, 200, map[string]string{"status": "ok", "runtime": "standalone-trusted-v1"})
+	})
+	mux.HandleFunc("GET /api/formations/boards", func(w http.ResponseWriter, r *http.Request) {
+		boards, err := c.store.ListBoards()
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		reply(w, 200, boards)
+	})
+	mux.HandleFunc("GET /api/formations/boards/{board}", func(w http.ResponseWriter, r *http.Request) {
+		board, err := c.store.ReadBoard(r.PathValue("board"))
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		reply(w, 200, board)
+	})
+	mux.HandleFunc("POST /api/formations/runs", c.start)
+	mux.HandleFunc("GET /api/formations/runs", func(w http.ResponseWriter, r *http.Request) {
+		runs, err := c.store.ListRuns(formations.RunListFilter{})
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		projections := make([]*Projection, 0, len(runs))
+		for _, run := range runs {
+			p, err := c.Project(run.RunID)
+			if err != nil {
+				failure(w, err)
+				return
+			}
+			projections = append(projections, p)
+		}
+		reply(w, 200, projections)
+	})
+	mux.HandleFunc("GET /api/formations/runs/{runId}", c.get)
+	mux.HandleFunc("GET /api/formations/runs/{runId}/stream", c.stream)
+	mux.HandleFunc("POST /api/formations/runs/{runId}/gates/{gateId}/verdict", c.verdict)
+	return mux
+}
+
+func (c *Coordinator) acquire() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.busy || c.closed {
+		return false
+	}
+	c.busy = true
+	c.workers.Add(1)
+	return true
+}
+func (c *Coordinator) release() {
+	c.mu.Lock()
+	c.busy = false
+	close(c.changed)
+	c.changed = make(chan struct{})
+	c.mu.Unlock()
+	c.workers.Done()
+}
+func (c *Coordinator) nextChange() <-chan struct{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.changed
+}
+
+func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Board       string               `json:"board"`
+		MissionID   string               `json:"missionId"`
+		ExpectedRev int                  `json:"expectedRev"`
+		Limits      formations.RunLimits `json:"limits"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if req.Board == "" || req.MissionID == "" || req.ExpectedRev <= 0 || req.Limits.MaxDispatch <= 0 || req.Limits.MaxAttempts <= 0 || req.Limits.WallClockSeconds <= 0 || req.Limits.Redact {
+		reply(w, 400, map[string]string{"error": "board, missionId, expectedRev and positive limits required; redacted execution is not supported"})
+		return
+	}
+	if !c.acquire() {
+		reply(w, 409, map[string]string{"error": "coordinator is executing"})
+		return
+	}
+	startedWorker := false
+	defer func() {
+		if !startedWorker {
+			c.release()
+		}
+	}()
+	runs, err := c.store.ListRuns(formations.RunListFilter{})
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	for _, run := range runs {
+		if !run.Final {
+			reply(w, 409, map[string]string{"error": "a non-final run already owns this coordinator", "runId": run.RunID})
+			return
+		}
+	}
+	board, err := c.store.ReadBoard(req.Board)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	// The first service deliberately admits only the schedule its adapter proves.
+	for _, node := range board.Formations {
+		if node.Type != formations.FormationTypeSolo || len(node.Slots) != 1 {
+			reply(w, 422, map[string]string{"error": "standalone runtime requires one-slot solo formations"})
+			return
+		}
+	}
+	connected := false
+	for _, edge := range board.Connections {
+		if strings.HasPrefix(edge.From, req.MissionID+":") {
+			connected = true
+		}
+	}
+	if !connected {
+		reply(w, 422, map[string]string{"error": "wire the mission to a formation"})
+		return
+	}
+	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: "operator:standalone", Personas: c.personas, Limits: req.Limits})
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	startedWorker = true
+	go func() {
+		defer c.release()
+		_, err := c.engine.ExecuteStartedMission(started.RunID)
+		c.recordFailure(started.RunID, err)
+	}()
+	reply(w, http.StatusAccepted, map[string]string{"runId": started.RunID})
+}
+
+func (c *Coordinator) recordFailure(runID string, err error) {
+	if err == nil {
+		return
+	}
+	status, readErr := c.store.ProjectRun(runID)
+	if readErr == nil && !status.Final && status.Status != formations.RunStatusBlocked {
+		// Private ledger keeps the diagnostic. Public projection exposes no raw errors.
+		_ = c.store.AppendRunEvent(runID, formations.RunEvent{Type: formations.RunEventFailed, Data: map[string]any{"reason": "coordinator_execution_failed", "detail": err.Error(), "final": true}})
+	}
+}
+
+// Project is the only service run read model. Raw prompts, captures, refs,
+// paths, native session ids and arbitrary event data cannot enter this DTO.
+func (c *Coordinator) Project(runID string) (*Projection, error) {
+	events, err := c.store.ReadRunEvents(runID)
+	if err != nil {
+		return nil, err
+	}
+	status, err := formations.ProjectRunEvents(runID, events)
+	if err != nil {
+		return nil, err
+	}
+	return project(status, events), nil
+}
+func project(status *formations.RunStatusProjection, events []formations.RunEvent) *Projection {
+	p := &Projection{RunStatusProjection: status, ProjectionVersion: "standalone-trusted-v1", WaitingGates: []GateRequest{}, Events: []Event{}}
+	waiting := map[string]int{}
+	for _, raw := range events {
+		if raw.Type == formations.RunEventHumanInputRequested {
+			waiting[raw.GateID] = raw.Seq
+		}
+		if raw.Type == formations.RunEventHumanVerdictRecorded {
+			delete(waiting, raw.GateID)
+		}
+		e := Event{Seq: raw.Seq, Type: raw.Type, NodeID: raw.NodeID, SlotID: raw.SlotID, GateID: raw.GateID}
+		e.Status, _ = raw.Data["status"].(string)
+		e.Verdict, _ = raw.Data["verdict"].(string)
+		e.SessionName, _ = raw.Data["sessionName"].(string)
+		e.Outcome, _ = raw.Data["outcome"].(string)
+		p.Events = append(p.Events, e)
+	}
+	if !status.Final {
+		for _, event := range events {
+			if waiting[event.GateID] == event.Seq {
+				p.WaitingGates = append(p.WaitingGates, GateRequest{event.GateID, event.Seq})
+			}
+		}
+	}
+	if len(p.WaitingGates) > 0 {
+		p.Status = "waiting_human"
+	}
+	return p
+}
+
+func (c *Coordinator) get(w http.ResponseWriter, r *http.Request) {
+	p, err := c.Project(r.PathValue("runId"))
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	reply(w, 200, p)
+}
+func (c *Coordinator) verdict(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		RequestedSeq int    `json:"requestedSeq"`
+		Verdict      string `json:"verdict"`
+		Reason       string `json:"reason"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if req.RequestedSeq <= 0 || req.Verdict != "pass" && req.Verdict != "fail" {
+		reply(w, 400, map[string]string{"error": "requestedSeq and pass or fail verdict required"})
+		return
+	}
+	if !c.acquire() {
+		reply(w, 409, map[string]string{"error": "coordinator is executing"})
+		return
+	}
+	startedWorker := false
+	defer func() {
+		if !startedWorker {
+			c.release()
+		}
+	}()
+	runID, gateID := r.PathValue("runId"), r.PathValue("gateId")
+	p, err := c.Project(runID)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	match := false
+	for _, gate := range p.WaitingGates {
+		if gate.GateID == gateID && gate.RequestedSeq == req.RequestedSeq {
+			match = true
+		}
+	}
+	if !match {
+		reply(w, 409, map[string]string{"error": "human gate request is no longer pending"})
+		return
+	}
+	status, err := c.engine.RecordHumanGateVerdict(runID, formations.HumanGateVerdictRequest{GateID: gateID, Verdict: req.Verdict, Reason: req.Reason, Actor: "human:operator"})
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	if status.ResumeAllowed {
+		// Verdict and continuation are one operator action. Execution outlives HTTP.
+		startedWorker = true
+		go func() {
+			defer c.release()
+			_, err := c.engine.ResumeRun(runID, formations.RunResumeRequest{Actor: "coordinator", Mode: "reattach", Reason: "human verdict recorded"})
+			c.recordFailure(runID, err)
+		}()
+	}
+	reply(w, 202, map[string]string{"runId": runID})
+}
+
+func (c *Coordinator) stream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		reply(w, 500, map[string]string{"error": "streaming unavailable"})
+		return
+	}
+	since := 0
+	if raw := r.Header.Get("Last-Event-ID"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			reply(w, 400, map[string]string{"error": "invalid Last-Event-ID"})
+			return
+		}
+		since = n
+	}
+	for {
+		changed := c.nextChange() // subscribe before reading, so no append is missed
+		p, err := c.Project(r.PathValue("runId"))
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		if p.EventCount > since {
+			raw, _ := json.Marshal(p)
+			fmt.Fprintf(w, "id: %d\nevent: projection\ndata: %s\n\n", p.EventCount, raw)
+			flusher.Flush()
+			since = p.EventCount
+		}
+		flusher.Flush()
+		if p.Final {
+			return
+		}
+		select {
+		case <-r.Context().Done():
+			return
+		case <-changed:
+		}
+	}
+}
+func decode(w http.ResponseWriter, r *http.Request, target any) bool {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		reply(w, 400, map[string]string{"error": "invalid JSON request"})
+		return false
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		reply(w, 400, map[string]string{"error": "expected one JSON object"})
+		return false
+	}
+	return true
+}
+func failure(w http.ResponseWriter, err error) {
+	code := 422
+	if errors.Is(err, formations.ErrConflict) || errors.Is(err, formations.ErrRunFinal) {
+		code = 409
+	}
+	if errors.Is(err, formations.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
+		code = 404
+	}
+	reply(w, code, map[string]string{"error": http.StatusText(code)})
+}
+func reply(w http.ResponseWriter, code int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(value)
+}

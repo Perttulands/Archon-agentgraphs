@@ -21,6 +21,10 @@ type FormationExecutor interface {
 	ExecuteFormation(FormationExecution) (FormationExecutionResult, error)
 }
 
+type ContextFormationExecutor interface {
+	ExecuteFormationContext(context.Context, FormationExecution) (FormationExecutionResult, error)
+}
+
 type FormationReattachExecutor interface {
 	ReattachFormationDispatch(FormationReattachRequest) (FormationExecutionResult, error)
 }
@@ -227,18 +231,32 @@ func (e *RunEngine) RunMission(slug string, req RunStartRequest) (*RunStatusProj
 	if err != nil {
 		return nil, err
 	}
-	runBoard, err := e.readRunBoard(started.RunID)
+	return e.ExecuteStartedMission(started.RunID)
+}
+
+// ExecuteStartedMission continues a newly admitted mission in its coordinator.
+// The caller owns exclusive execution; a prior execution is never replayed here.
+func (e *RunEngine) ExecuteStartedMission(runID string) (*RunStatusProjection, error) {
+	events, err := e.store.ReadRunEvents(runID)
 	if err != nil {
 		return nil, err
 	}
-	mission, ok = findMission(runBoard, req.MissionID)
-	if !ok {
-		return nil, fmt.Errorf("%w: mission %q", ErrNotFound, req.MissionID)
+	if len(events) != 1 || events[0].Type != RunEventStarted {
+		return nil, ErrConflict
 	}
-	if err := e.executeSnapshot(started.RunID, runBoard, mission, req.Limits); err != nil {
+	runBoard, err := e.readRunBoard(runID)
+	if err != nil {
 		return nil, err
 	}
-	return e.projectAndNotify(started.RunID)
+	mission, ok := findMission(runBoard, events[0].MissionID)
+	if !ok {
+		return nil, fmt.Errorf("%w: mission %q", ErrNotFound, events[0].MissionID)
+	}
+	limits := runLimitsFromEvent(events[0])
+	if err := e.executeSnapshot(runID, runBoard, mission, limits); err != nil {
+		return nil, err
+	}
+	return e.projectAndNotify(runID)
 }
 
 func (e *RunEngine) RunFormation(slug, formationID string, req FormationRunRequest) (*RunStatusProjection, error) {
@@ -1526,6 +1544,30 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (FormationExecutionResult, error) {
 	if e.executor == nil {
 		return FormationExecutionResult{}, ErrRunExecutorUnavailable
+	}
+	if executor, ok := e.executor.(ContextFormationExecutor); ok {
+		ctx := context.Background()
+		if limits.WallClockSeconds > 0 {
+			events, err := e.store.ReadRunEvents(req.RunID)
+			if err != nil {
+				return FormationExecutionResult{}, err
+			}
+			if len(events) == 0 {
+				return FormationExecutionResult{}, ErrRunLedgerInvalid
+			}
+			started, err := time.Parse(time.RFC3339Nano, events[0].Timestamp)
+			if err != nil {
+				return FormationExecutionResult{}, err
+			}
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithDeadline(ctx, started.Add(time.Duration(limits.WallClockSeconds)*time.Second))
+			defer cancel()
+		}
+		result, err := executor.ExecuteFormationContext(ctx, req)
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return FormationExecutionResult{}, ErrRunWallClockExceeded
+		}
+		return result, err
 	}
 	if limits.WallClockSeconds <= 0 {
 		return e.executor.ExecuteFormation(req)

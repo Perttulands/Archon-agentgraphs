@@ -256,6 +256,9 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 	if err := writeInitialRunEventAt(runDirectory, runID, event); err != nil {
 		return nil, err
 	}
+	if s.OnRunEvent != nil {
+		s.OnRunEvent(event)
+	}
 	return result, nil
 }
 
@@ -355,6 +358,9 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 	})
 	if err != nil {
 		return nil, err
+	}
+	if s.OnRunEvent != nil {
+		s.OnRunEvent(event)
 	}
 	return snapshot, nil
 }
@@ -491,6 +497,11 @@ func (s *Store) ProjectRun(runID string) (*RunStatusProjection, error) {
 	if err != nil {
 		return nil, err
 	}
+	return ProjectRunEvents(runID, events)
+}
+
+// ProjectRunEvents projects one validated durable event slice for all surfaces.
+func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, error) {
 	if len(events) == 0 || events[0].Seq != 1 || events[0].Type != RunEventStarted {
 		return nil, ErrRunLedgerInvalid
 	}

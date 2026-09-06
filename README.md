@@ -1,13 +1,14 @@
 # CHROTE Agent Formations
 
 This repository is a history-preserving extraction of CHROTE's unreleased
-Formations, Archon, Agents, and Oracle experiments. It is **experimental and
-frozen**: the code is retained for research and possible future work, not as a
-supported CHROTE feature or production service.
+Formations, Archon, Agents, and Oracle experiments. Formations now has an
+experimental standalone coordinator for trusted local missions. It is not a
+supported CHROTE feature or deployed production service.
 
-The extraction deliberately has no runtime integration with CHROTE. Designing
-a future HTTP contract, deployment model, or supported release belongs to new
-work in this repository.
+The coordinator exposes a loopback HTTP contract. See
+[ADR-0015](docs/adr/0015-standalone-trusted-coordinator.md) and the
+[OpenAPI sketch](docs/openapi/formations.yaml). Deployment and CHROTE integration
+belong to separately authorized work.
 
 ## Contents
 

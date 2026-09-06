@@ -25,6 +25,7 @@ type realTmuxRunner struct{}
 
 type archonConfig struct {
 	Workspace string
+	Server    string
 }
 
 type archonBoardIdentity struct {
@@ -132,6 +133,9 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 	if len(args) < 2 {
 		fmt.Fprintln(stderr, "usage: archon <agent|board|formation|gate|mission|tool|run> <command>")
 		return 2
+	}
+	if config.Server != "" {
+		return runRemote(config.Server, args, stdout, stderr)
 	}
 	switch args[0] {
 	case "agent":
@@ -299,6 +303,13 @@ func parseGlobalArgs(args []string, stderr io.Writer) (archonConfig, []string, b
 				return config, args, false
 			}
 			config.Workspace = args[1]
+			args = args[2:]
+		case "--server":
+			if len(args) < 2 {
+				fmt.Fprintln(stderr, "--server requires a loopback URL")
+				return config, args, false
+			}
+			config.Server = args[1]
 			args = args[2:]
 		default:
 			return config, args, true

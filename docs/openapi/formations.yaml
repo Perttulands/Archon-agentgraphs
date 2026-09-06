@@ -1,0 +1,161 @@
+openapi: 3.1.0
+info:
+  title: Standalone Formations
+  version: standalone-trusted-v1
+  description: Trusted loopback coordinator. This sketch covers the proving subset, not authoritySchema 2.
+servers:
+  - url: http://127.0.0.1:8091
+paths:
+  /healthz:
+    get:
+      responses:
+        '200': {description: Coordinator is serving}
+  /api/formations/boards:
+    get:
+      responses:
+        '200': {description: Shared-package definition summaries}
+  /api/formations/boards/{board}:
+    parameters:
+      - {in: path, name: board, required: true, schema: {type: string}}
+    get:
+      responses:
+        '200': {description: Authored definition including rev and etag}
+        '404': {description: No such board}
+  /api/formations/runs:
+    get:
+      responses:
+        '200':
+          description: Canonical run projections
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Projection'}}
+    post:
+      parameters:
+        - {in: header, name: If-Match, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [board, missionId, expectedRev, limits]
+              properties:
+                board: {type: string}
+                missionId: {type: string}
+                expectedRev: {type: integer, minimum: 1}
+                limits:
+                  type: object
+                  additionalProperties: false
+                  required: [maxDispatch, maxAttempts, wallClockSeconds]
+                  properties:
+                    maxDispatch: {type: integer, minimum: 1}
+                    maxAttempts: {type: integer, minimum: 1}
+                    wallClockSeconds: {type: integer, minimum: 1}
+                    redact: {type: boolean, const: false, default: false}
+      responses:
+        '202':
+          description: Admitted and durable; execution continues independently of HTTP
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Receipt'}
+        '400': {description: Invalid request or unsupported redacted execution}
+        '409': {description: Writer busy, non-final run exists, or stale board revision}
+        '422': {description: Definition rejected or unsupported schedule}
+  /api/formations/runs/{runId}:
+    parameters:
+      - {$ref: '#/components/parameters/RunID'}
+    get:
+      responses:
+        '200':
+          description: Sanitized canonical projection
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Projection'}
+        '404': {description: No such run}
+  /api/formations/runs/{runId}/stream:
+    parameters:
+      - {$ref: '#/components/parameters/RunID'}
+      - {in: header, name: Last-Event-ID, schema: {type: integer, minimum: 0}}
+    get:
+      responses:
+        '200':
+          description: SSE event projection, id equals eventCount, data is the canonical Projection; closes at finality
+          content: {text/event-stream: {schema: {type: string}}}
+  /api/formations/runs/{runId}/gates/{gateId}/verdict:
+    parameters:
+      - {$ref: '#/components/parameters/RunID'}
+      - {in: path, name: gateId, required: true, schema: {type: string}}
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [requestedSeq, verdict]
+              properties:
+                requestedSeq: {type: integer, minimum: 1}
+                verdict: {enum: [pass, fail]}
+                reason: {type: string}
+      responses:
+        '202':
+          description: Verdict recorded; any authorized continuation runs in the coordinator
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Receipt'}
+        '400': {description: Invalid verdict}
+        '409': {description: Busy, final, duplicate or stale human request}
+components:
+  parameters:
+    RunID: {in: path, name: runId, required: true, schema: {type: string}}
+  schemas:
+    Receipt:
+      type: object
+      additionalProperties: false
+      required: [runId]
+      properties:
+        runId: {type: string}
+    Projection:
+      type: object
+      additionalProperties: false
+      required: [runId, status, final, boardSlug, boardId, boardRev, missionId, beadId, epoch, eventCount, resumeAllowed, projectionVersion, waitingGates, events]
+      properties:
+        runId: {type: string}
+        status: {enum: [running, waiting_human, blocked, succeeded, failed, canceled]}
+        final: {type: boolean}
+        boardSlug: {type: string}
+        boardId: {type: string}
+        boardRev: {type: integer}
+        missionId: {type: string}
+        beadId: {type: string}
+        epoch: {type: integer}
+        eventCount: {type: integer}
+        resumeAllowed: {type: boolean}
+        projectionVersion: {const: standalone-trusted-v1}
+        waitingGates:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [gateId, requestedSeq]
+            properties:
+              gateId: {type: string}
+              requestedSeq: {type: integer}
+        events:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [seq, type]
+            properties:
+              seq: {type: integer}
+              type: {type: string}
+              nodeId: {type: string}
+              slotId: {type: string}
+              gateId: {type: string}
+              status: {type: string}
+              verdict: {type: string}
+              sessionName: {type: string}
+              outcome: {type: string}

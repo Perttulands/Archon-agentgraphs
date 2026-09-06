@@ -35,6 +35,8 @@ var (
 type Store struct {
 	Workspace string
 	Now       func() time.Time
+	// OnRunEvent is called after a durable append. It must not block or read the store.
+	OnRunEvent func(RunEvent)
 
 	runtimeAuthority                     *runtimeAuthorityBoundary
 	newToolDefinitionID                  func(string) string
