@@ -91,6 +91,36 @@ func (c *Coordinator) Close() error {
 }
 func (c *Coordinator) Store() *formations.Store { return c.store }
 
+// ResumeCompletedRun is an explicit startup operation under the coordinator's
+// writer lock. The executor must validate the selected completed-turn evidence.
+// It is intentionally not a general HTTP resume or live-session recovery API.
+func (c *Coordinator) ResumeCompletedRun(runID string) error {
+	if !c.acquire() {
+		return errors.New("coordinator is executing or closed")
+	}
+	p, err := c.Project(runID)
+	if err != nil {
+		c.release()
+		return err
+	}
+	if p.Status != "blocked" || !p.ResumeAllowed || p.Final {
+		c.release()
+		return errors.New("completed-turn recovery requires a resumable blocked run")
+	}
+	if err := c.engine.ValidateCompletedRecovery(runID); err != nil {
+		c.release()
+		return err
+	}
+	go func() {
+		defer c.release()
+		_, err := c.engine.ResumeRun(runID, formations.RunResumeRequest{Actor: "operator:standalone", Mode: "completed-native-turn", Reason: "explicitly selected completed Codex turn"})
+		if err != nil {
+			c.recordFailure(runID, err)
+		}
+	}()
+	return nil
+}
+
 func Listen(address string) (net.Listener, error) {
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {

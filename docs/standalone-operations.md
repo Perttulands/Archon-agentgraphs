@@ -8,9 +8,13 @@ authentication beyond requiring a literal loopback IP. Seats run Codex with
 approvals and sandboxing bypassed, so use only trusted missions and operators.
 
 Use Linux, the Go toolchain required by `src/go.mod`, Bash, `curl`, and `jq`.
-The existing tmux server must have access to an installed, authenticated `codex`
-and the requested model. Set these shell variables from host configuration in
-each terminal used below. Keep their actual values out of source documents.
+The daemon's launch environment must resolve `codex` on `PATH`. Check with
+`command -v codex` in that terminal before launch. Each new tmux seat needs usable
+Codex authentication and access to the requested model. Configure its native
+session destination to match `FORM_TRANSCRIPTS`; `--transcripts` tells the
+coordinator where to watch, not where Codex should write. Set these shell
+variables from host configuration in each terminal used below. Keep their actual
+values out of source documents.
 
 | Variable | Required value |
 | --- | --- |
@@ -58,8 +62,12 @@ snapshots.
 
 Launch the coordinator in a terminal kept open for its lifetime. The configured
 socket must already exist and have the expected operator ownership. The adapter
-will not start a tmux server. This configuration selects Astra at xhigh for
-every seat, with a 30-minute limit per seat.
+will not start a tmux server. If the guarded wrapper requires cleanup approval,
+supply the host-approved cleanup environment to the daemon process before
+launch. Choosing `FORM_TMUX_BIN` alone does not authorize cleanup. Keep the
+required environment names and values in host configuration; there is no
+portable approval variable. This configuration selects Astra at xhigh for every
+seat, with a 30-minute limit per seat.
 
 ```bash
 "$FORM_BIN/formationsd" \
@@ -166,10 +174,13 @@ response followed by native `task_complete` evidence. A completion marker alone
 is insufficient. Control events and filesystem notifications drive observation.
 
 Cleanup targets only the immutable session ID returned by creation. Inspect
-`seat_created` and `seat_cleanup` events for every seat. Cleanup reports `ended`,
-`left_socket_changed`, or `left_cleanup_failed`; a leftover requires operator
-inspection. Never kill another session or use `kill-server`. If creation did
-not return a usable identity, inspect the reported session before cleanup.
+`seat_created` and `seat_cleanup` events for every seat, even when the run
+succeeds. Cleanup reports `ended`, `left_socket_changed`, or
+`left_cleanup_failed`; a leftover requires operator inspection. A wrapper that
+rejects cleanup produces `left_cleanup_failed` without changing a successful
+formation result to failure. Never kill another session or use `kill-server`.
+If creation did not return a usable identity, inspect the reported session
+before cleanup.
 
 SIGINT or SIGTERM stops HTTP admission; coordinator shutdown waits for admitted
 execution and its cleanup before releasing the state lock. The HTTP shutdown
@@ -181,6 +192,48 @@ After a restart, the same state directory preserves inspectable history and
 pending gates can still receive an exact verdict. The coordinator never
 automatically resends an unresolved dispatch or reattaches an old seat. There
 is no remote `run resume`, `run abort`, or general recovery API, even when a
-projection says `resumeAllowed`. A blocked or interrupted non-final run needs
-owner-directed recovery and continues to prevent new admission. Preserve its
-state and evidence; do not bypass the coordinator with local runtime commands.
+projection says `resumeAllowed`. A blocked or interrupted non-final run continues
+to prevent new admission. Preserve its state and evidence; do not bypass the
+coordinator with local runtime commands.
+
+For one already completed native turn, the operator can explicitly select
+startup recovery. The run must have `status: blocked`, `final: false`, and
+`resumeAllowed: true`, with exactly one unresolved dispatch in its private
+ledger. Set `FORM_RUN_ID` to that run. Select the evidence from private mission
+files and set `FORM_COMPLETED_TRANSCRIPT` to the absolute path of its native
+transcript and `FORM_COMPLETED_BRIEF` to the absolute original brief path. Keep
+both files intact and any referenced output artifacts available.
+
+After the previous coordinator releases its state lock, start its replacement
+with the same `FORM_STATE` and matching workspace, model, and effort. Reuse the
+normal launch configuration and prerequisites, including any host-approved
+cleanup environment, with the three recovery flags below. This example assumes
+the original launch used Astra at xhigh. Do not repeat the build/import steps or
+start another mission.
+
+```bash
+"$FORM_BIN/formationsd" \
+  --listen "$FORM_LISTEN" \
+  --state-dir "$FORM_STATE" \
+  --cwd "$FORM_SOURCE" \
+  --socket "$FORM_SOCKET" \
+  --tmux-bin "$FORM_TMUX_BIN" \
+  --transcripts "$FORM_TRANSCRIPTS" \
+  --mission-label "$FORM_MISSION_LABEL" \
+  --model gpt-6-astra --effort xhigh --seat-timeout 30m \
+  --resume-run "$FORM_RUN_ID" \
+  --completed-transcript "$FORM_COMPLETED_TRANSCRIPT" \
+  --completed-brief "$FORM_COMPLETED_BRIEF"
+```
+
+Recovery checks the original brief digest and exact pointer, the previously
+recorded native session, the matching workspace, model and effort, and that
+exact turn's final response and native completion. It also requires valid routed
+output and a matching completion sentinel. Rejected evidence leaves the blocked
+ledger unchanged. Successful recovery routes the completed result and continues
+the remaining graph; use the HTTP status/follow and gate procedure above.
+
+Recovery does not recreate, adopt, or clean up the old seat. The operator must
+account for that recorded session separately. This startup option does not
+provide automatic recovery, live reattachment, HTTP resume, or active
+cancellation. Other blocked runs still need owner-directed recovery.

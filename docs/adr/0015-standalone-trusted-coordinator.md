@@ -30,14 +30,23 @@ one new Codex session named `form-<mission-label>-<slot-id>` on the explicitly
 configured existing socket. A collision fails; it never adopts another session.
 The wrapper path, socket, cwd, transcript directory, model, effort, and limits
 are host configuration. Creation returns immutable session and pane IDs. A
+real terminal type is set for the daemon's tmux client environment and the new
+session. The daemon resolves Codex to an absolute executable before launch. A
 control client sizes the new session once with `refresh-client -C 160,48` and
 supplies output events for readiness and prompt staging. A short file pointer is
 pasted, inspected, and submitted once. Native transcript evidence must contain
 that exact user message in the exact workspace, the configured model and effort,
-and the same turn's final response followed by `task_complete`. Filesystem
+and the same turn's final response followed by `task_complete`. Native
+`phase: final_answer` and legacy `channel: final` both identify final responses;
+native turn IDs must match completion. Filesystem
 notifications drive observation. The admission deadline cancels the executor;
 session cleanup finishes before the worker returns. Cleanup targets only the
 immutable ID returned by creation and records its result.
+The configured wrapper must authorize that cleanup. Supply the host's explicit
+cleanup approval environment when launching the daemon if its wrapper requires
+it; the service never changes the wrapper's allowlist or bypasses it. A failed
+cleanup preserves diagnostic detail in the private ledger and exposes the
+failure outcome in the public projection.
 
 HTTP binds a literal loopback address and has no additional authentication.
 This is a trusted local tool. Every runtime read, including run list and SSE,
@@ -53,7 +62,17 @@ HTTP for the whole selected command and has no local fallback.
 A human verdict must name the exact pending gate and requested sequence. The
 coordinator records the choice and continues the existing run. There is no
 default verdict. An unwired FAIL remains a visible blocked run. A restart keeps
-history inspectable but never resends an unresolved dispatch; generalized
+history inspectable. An operator may explicitly start the replacement daemon
+with `--resume-run`, `--completed-transcript`, and `--completed-brief` to recover
+one already completed unresolved dispatch. This requires the original brief
+digest, exact native session previously recorded as consumed, matching workspace,
+model, effort, final answer and completed turn. Evidence is validated before
+resumption; rejected evidence leaves the blocked ledger unchanged. Recovery
+derives the unresolved dispatch from the complete ledger, even if a legacy
+timeout omitted it from the blocked event. It routes the recovered result and
+continues the remaining graph without recreating that seat. It neither adopts
+nor cleans up the old session; the operator must account for that recorded
+session separately. No HTTP resume or live reattachment is exposed. Generalized
 recovery and active cancellation are later work. Existing peer and leader
 experiments remain research code outside this adapter's admission contract.
 

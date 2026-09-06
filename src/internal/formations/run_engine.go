@@ -361,6 +361,18 @@ func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusPro
 	if err := e.validateDurableCodeGateState(runID, beforeBoard, beforeEvents); err != nil {
 		return nil, err
 	}
+	var recovered *FormationExecutionResult
+	var recoveredRef openDispatchRef
+	if req.Mode == "completed-native-turn" {
+		ref, result, err := e.prepareCompletedRecovery(runID, beforeBoard, beforeEvents)
+		if err != nil {
+			return nil, err
+		}
+		recoveredRef, recovered = ref, &result
+		req.CompletedDispatchID = ref.DispatchID
+	} else if req.CompletedDispatchID != "" {
+		return nil, errors.New("completed dispatch identity requires explicit completed-native-turn mode")
+	}
 	_, board, err := e.store.resumeRunWithSnapshot(runID, req)
 	if err != nil {
 		return nil, err
@@ -373,7 +385,21 @@ func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusPro
 		return nil, ErrRunLedgerInvalid
 	}
 	resumeEvent := events[len(events)-1]
-	if openDispatches := openDispatchRefsFromEvent(resumeEvent); len(openDispatches) > 0 {
+	if recovered != nil {
+		if err := NewSlotDispatcher(e.store, nil).CompleteFromCapture(runID, recoveredRef.DispatchID, recovered.Text); err != nil {
+			return nil, err
+		}
+		if err := e.store.AppendRunEvent(runID, RunEvent{Type: "seat_result_recovered", NodeID: recoveredRef.NodeID, SlotID: recoveredRef.SlotID, Data: map[string]any{"dispatchId": recoveredRef.DispatchID}}); err != nil {
+			return nil, err
+		}
+		if err := e.store.AppendRunEvent(runID, RunEvent{Type: RunEventNodeOutput, NodeID: recoveredRef.NodeID, Data: formationOutputEventData(*recovered)}); err != nil {
+			return nil, err
+		}
+		events, err = e.store.ReadRunEvents(runID)
+		if err != nil {
+			return nil, err
+		}
+	} else if openDispatches := openDispatchRefsFromEvent(resumeEvent); len(openDispatches) > 0 {
 		openDispatches = enrichOpenDispatchRefs(events, openDispatches)
 		handled, err := e.reattachOpenDispatches(runID, board, openDispatches)
 		if err != nil {

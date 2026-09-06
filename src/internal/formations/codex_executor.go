@@ -20,6 +20,8 @@ import (
 type CodexSeatConfig struct {
 	Socket, Cwd, StateDir, TranscriptRoot, Model, Effort, Mission string
 	Timeout                                                       time.Duration
+	// Explicit completed-turn recovery never reattaches or resends live work.
+	RecoveryTranscript, RecoveryBrief string
 }
 
 type CodexSeatExecutor struct {
@@ -75,8 +77,16 @@ func (e *CodexSeatExecutor) ExecuteFormationContext(parent context.Context, req 
 	if !safeTmuxSessionName(name) {
 		return FormationExecutionResult{}, errors.New("invalid mission or slot session name")
 	}
-	launch := "exec env TERM=xterm-256color codex --model " + shellQuote(c.Model) + " -c " + shellQuote("model_reasoning_effort=\""+c.Effort+"\"") + " -c check_for_update_on_startup=false --dangerously-bypass-approvals-and-sandbox -C " + shellQuote(c.Cwd)
-	created, err := runTmuxCommand(ctx, c.Socket, nil, "new-session", "-d", "-P", "-F", "#{session_id} #{pane_id}", "-s", name, "-c", c.Cwd, launch)
+	codex, err := exec.LookPath("codex")
+	if err != nil {
+		return FormationExecutionResult{}, err
+	}
+	codex, err = filepath.Abs(codex)
+	if err != nil {
+		return FormationExecutionResult{}, err
+	}
+	launch := "exec " + shellQuote(codex) + " --model " + shellQuote(c.Model) + " -c " + shellQuote("model_reasoning_effort=\""+c.Effort+"\"") + " -c check_for_update_on_startup=false --dangerously-bypass-approvals-and-sandbox -C " + shellQuote(c.Cwd)
+	created, err := runTmuxCommand(ctx, c.Socket, nil, "new-session", "-d", "-P", "-F", "#{session_id} #{pane_id}", "-e", "TERM=xterm-256color", "-s", name, "-c", c.Cwd, launch)
 	if err != nil {
 		return FormationExecutionResult{}, err
 	}
@@ -90,14 +100,16 @@ func (e *CodexSeatExecutor) ExecuteFormationContext(parent context.Context, req 
 		cleanupCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
 		defer stop()
 		outcome := "left_socket_changed"
+		detail := ""
 		if legacy.validatePinnedTmuxSocket() == nil {
 			_, err := runTmuxCommand(cleanupCtx, c.Socket, nil, "kill-session", "-t", session)
 			outcome = "ended"
 			if err != nil {
 				outcome = "left_cleanup_failed"
+				detail = err.Error()
 			}
 		}
-		_ = e.store.AppendRunEvent(req.RunID, RunEvent{Type: "seat_cleanup", NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": name, "outcome": outcome}})
+		_ = e.store.AppendRunEvent(req.RunID, RunEvent{Type: "seat_cleanup", NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": name, "outcome": outcome, "detail": detail}})
 	}()
 	if err := e.store.AppendRunEvent(req.RunID, RunEvent{Type: "seat_created", NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": name, "sessionId": session, "paneId": pane, "model": c.Model, "effort": c.Effort}}); err != nil {
 		return FormationExecutionResult{}, err

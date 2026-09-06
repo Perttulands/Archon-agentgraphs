@@ -43,3 +43,35 @@ func TestCodexTurnUsesExactUserPointerAndNativeCompletion(t *testing.T) {
 		})
 	}
 }
+
+func TestCodexNativeFinalAnswerPhaseMatchesCompletedTurn(t *testing.T) {
+	for _, tt := range []struct {
+		name, phase, completedTurn string
+		complete                   bool
+	}{
+		{"native final answer", "final_answer", "turn-one", true},
+		{"commentary is not final", "commentary", "turn-one", false},
+		{"different completed turn", "final_answer", "turn-two", false},
+		{"missing completed turn", "final_answer", "", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			data := `{"type":"session_meta","payload":{"id":"native-one","cwd":"/workspace"}}
+{"type":"turn_context","payload":{"turn_id":"turn-one","model":"gpt-6-astra","effort":"xhigh"}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":"pointer"}]}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","phase":"` + tt.phase + `","content":[{"text":"native result"}]}}
+{"type":"event_msg","payload":{"type":"task_complete","turn_id":"` + tt.completedTurn + `"}}
+`
+			path := filepath.Join(t.TempDir(), "rollout.jsonl")
+			if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+				t.Fatal(err)
+			}
+			turn, err := readCodexTurn(path, "/workspace", "pointer")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !turn.Consumed || turn.Complete != tt.complete {
+				t.Fatalf("turn = %+v", turn)
+			}
+		})
+	}
+}

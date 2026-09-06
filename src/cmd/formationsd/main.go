@@ -32,7 +32,17 @@ func serve() error {
 	model := flag.String("model", "gpt-6-astra", "Codex model")
 	effort := flag.String("effort", "xhigh", "Codex reasoning effort")
 	timeout := flag.Duration("seat-timeout", 30*time.Minute, "maximum duration of each seat")
+	resume := flag.String("resume-run", "", "explicitly resume this blocked run from a completed native turn")
+	recoveryTranscript := flag.String("completed-transcript", "", "absolute native transcript for the unresolved completed dispatch")
+	recoveryBrief := flag.String("completed-brief", "", "absolute original brief file for that dispatch")
 	flag.Parse()
+	if *resume != "" {
+		if !filepath.IsAbs(*recoveryTranscript) || !filepath.IsAbs(*recoveryBrief) {
+			return fmt.Errorf("--resume-run requires absolute --completed-transcript and --completed-brief")
+		}
+	} else if *recoveryTranscript != "" || *recoveryBrief != "" {
+		return fmt.Errorf("completed-turn evidence requires --resume-run")
+	}
 	for name, value := range map[string]string{"state-dir": *state, "cwd": *cwd, "socket": *socket, "tmux-bin": *tmux, "transcripts": *transcripts} {
 		if !filepath.IsAbs(value) {
 			return fmt.Errorf("--%s requires an absolute path", name)
@@ -41,10 +51,12 @@ func serve() error {
 	for _, key := range []string{"TMUX", "TMUX_PANE", "TMUX_TMPDIR"} {
 		os.Unsetenv(key)
 	}
+	// The guarded tmux client and Codex bootstrap both need a real terminal type.
+	os.Setenv("TERM", "xterm-256color")
 	os.Setenv("CHROTE_TMUX_BIN", *tmux)
 	personas := formations.NewPersonaStore(filepath.Join(*state, "agents"))
 	c, err := coordinator.Open(*state, personas, func(store *formations.Store) formations.FormationExecutor {
-		return formations.NewCodexSeatExecutor(store, personas, formations.CodexSeatConfig{Socket: *socket, Cwd: *cwd, StateDir: *state, TranscriptRoot: *transcripts, Model: *model, Effort: *effort, Mission: *mission, Timeout: *timeout})
+		return formations.NewCodexSeatExecutor(store, personas, formations.CodexSeatConfig{Socket: *socket, Cwd: *cwd, StateDir: *state, TranscriptRoot: *transcripts, Model: *model, Effort: *effort, Mission: *mission, Timeout: *timeout, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief})
 	})
 	if err != nil {
 		return err
@@ -53,6 +65,12 @@ func serve() error {
 	listener, err := coordinator.Listen(*address)
 	if err != nil {
 		return err
+	}
+	defer listener.Close()
+	if *resume != "" {
+		if err := c.ResumeCompletedRun(*resume); err != nil {
+			return err
+		}
 	}
 	server := &http.Server{Handler: c.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	fmt.Printf("Formations coordinator http://%s\n", listener.Addr())

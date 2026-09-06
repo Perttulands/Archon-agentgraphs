@@ -64,6 +64,8 @@ type RunResumeRequest struct {
 	Actor  string
 	Mode   string
 	Reason string
+	// Set only after explicit completed-turn evidence validation by the engine.
+	CompletedDispatchID string
 }
 
 type RunLimits struct {
@@ -424,6 +426,14 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		}
 		if openDispatches, ok := last.Data["openDispatches"]; ok {
 			data["openDispatches"] = openDispatches
+		}
+		if req.CompletedDispatchID != "" {
+			refs := unresolvedDispatches(events)
+			if len(refs) != 1 || refs[0].DispatchID != req.CompletedDispatchID {
+				return ErrRunResumeNotAllowed
+			}
+			ref := refs[0]
+			data["openDispatches"] = openDispatchesForBlock(ref.NodeID, ref.SlotID, ref.DispatchID)
 		}
 		event := RunEvent{
 			Timestamp: s.now().Format(time.RFC3339Nano),

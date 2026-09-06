@@ -14,6 +14,7 @@ type codexTranscriptTurn struct {
 	Text      string
 	Model     string
 	Effort    string
+	TurnID    string
 }
 
 // Read only the exact workspace and dispatched user message. A final assistant
@@ -37,6 +38,8 @@ func readCodexTurn(path, cwd, pointer string) (codexTranscriptTurn, error) {
 				Type    string `json:"type"`
 				Role    string `json:"role"`
 				Channel string `json:"channel"`
+				Phase   string `json:"phase"`
+				TurnID  string `json:"turn_id"`
 				Model   string `json:"model"`
 				Effort  string `json:"effort"`
 				Message string `json:"message"`
@@ -57,10 +60,11 @@ func readCodexTurn(path, cwd, pointer string) (codexTranscriptTurn, error) {
 			turn.SessionID = p.ID
 		}
 		if record.Type == "turn_context" {
-			if turn.Complete {
-				return turn, nil
+			if turn.Consumed && turn.TurnID != "" && p.TurnID != turn.TurnID {
+				return turn, errors.New("another native turn interrupted the dispatched Codex turn")
 			}
 			turn.Model, turn.Effort = p.Model, p.Effort
+			turn.TurnID = p.TurnID
 		}
 		if record.Type == "response_item" && p.Type == "message" {
 			text := ""
@@ -78,11 +82,11 @@ func readCodexTurn(path, cwd, pointer string) (codexTranscriptTurn, error) {
 				}
 				return turn, nil
 			}
-			if p.Role == "assistant" && p.Channel == "final" && turn.Consumed {
+			if p.Role == "assistant" && (p.Channel == "final" || p.Phase == "final_answer") && turn.Consumed {
 				turn.Text = text
 			}
 		}
-		if record.Type == "event_msg" && p.Type == "task_complete" && turn.Consumed && turn.Text != "" {
+		if record.Type == "event_msg" && p.Type == "task_complete" && turn.Consumed && turn.Text != "" && p.TurnID == turn.TurnID {
 			turn.Complete = true
 			return turn, nil
 		}
