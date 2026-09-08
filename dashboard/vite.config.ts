@@ -2,7 +2,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-const mockedPlaywright = process.env.CHROTE_PLAYWRIGHT_MOCKED === '1'
+const apiTarget = process.env.FORMATIONS_API_URL
 
 export default defineConfig({
   plugins: [react()],
@@ -30,22 +30,6 @@ export default defineConfig({
   },
   server: {
     forwardConsole: false,
-    proxy: mockedPlaywright ? undefined : {
-      '/terminal': {
-        target: 'http://localhost:7691',
-        changeOrigin: true,
-        ws: true,
-        rewrite: (path) => path.replace(/^\/terminal/, ''),
-      },
-      '/bv-terminal': {
-        target: 'http://localhost:8090',
-        changeOrigin: true,
-        ws: true,
-      },
-      '/api': {
-        target: 'http://localhost:8090',
-        changeOrigin: true,
-      },
-    },
+    proxy: apiTarget ? { '/api': { target: apiTarget, changeOrigin: true } } : undefined,
   },
 })
