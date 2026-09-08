@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -15,11 +16,14 @@ func TestCodexPersonaPresetsAreAvailableWithoutPersistedCards(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list presets: %v", err)
 	}
-	if len(cards) != 7 {
-		t.Fatalf("preset count = %d, want 7", len(cards))
+	if len(cards) != 13 {
+		t.Fatalf("preset count = %d, want 13", len(cards))
 	}
 	gotIDs := make([]string, 0, len(cards))
 	for _, card := range cards {
+		if !strings.HasPrefix(card.ID, "codex-") {
+			continue
+		}
 		gotIDs = append(gotIDs, card.ID)
 		if !card.Preset || card.Customized || card.HarnessDefault != "openai-codex" {
 			t.Fatalf("preset projection = %+v", card)
@@ -32,6 +36,35 @@ func TestCodexPersonaPresetsAreAvailableWithoutPersistedCards(t *testing.T) {
 	wantIDs := []string{"codex-builder", "codex-debugger", "codex-judge", "codex-orchestrator", "codex-planner", "codex-reviewer", "codex-scout"}
 	if !reflect.DeepEqual(gotIDs, wantIDs) {
 		t.Fatalf("preset ids = %v, want %v", gotIDs, wantIDs)
+	}
+}
+
+func TestDeliveryPresetsResolveHarnessSettingsAndLocalOverrides(t *testing.T) {
+	store := NewPersonaStore(t.TempDir())
+	for _, id := range []string{"delivery-planner", "delivery-beads-drafter", "delivery-beads-reviewer", "delivery-lead", "delivery-worker", "delivery-final-reviewer"} {
+		card, err := store.ReadPersona(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		harness, model := "claude-code", ""
+		if id == "delivery-worker" || id == "delivery-final-reviewer" {
+			harness = "openai-codex"
+		}
+		if id == "delivery-final-reviewer" {
+			model = "gpt-6-astra"
+		}
+		variant, err := card.SelectHarnessVariant(harness)
+		if err != nil || !card.Preset || card.Summary == "" || card.HarnessDefault != harness || variant.Model != model || variant.Effort != "medium" {
+			t.Fatalf("delivery preset %s: card=%+v variant=%+v err=%v", id, card, variant, err)
+		}
+		name := "Local " + card.DisplayName
+		if _, err := store.EditPersona(id, EditPersonaRequest{SetDisplayName: &name, ExpectedETag: card.ETag}); err != nil {
+			t.Fatal(err)
+		}
+		local, err := store.ReadPersona(id)
+		if err != nil || !local.Customized || !local.Preset || local.DisplayName != name || local.DefaultVariant() != variant {
+			t.Fatalf("local override lost preset settings: %+v, %v", local, err)
+		}
 	}
 }
 
