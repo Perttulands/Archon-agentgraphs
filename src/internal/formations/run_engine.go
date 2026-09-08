@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -70,13 +71,14 @@ type FormationRunRequest struct {
 }
 
 type FormationExecution struct {
-	RunID     string
-	NodeID    string
-	Title     string
-	Formation FormationNode
-	Brief     FormationBrief
-	Inputs    []RunInputRef
-	Attempt   int
+	MissionBeadID string
+	RunID         string
+	NodeID        string
+	Title         string
+	Formation     FormationNode
+	Brief         FormationBrief
+	Inputs        []RunInputRef
+	Attempt       int
 }
 
 type FormationExecutionResult struct {
@@ -133,15 +135,16 @@ type HumanGateVerdictRequest struct {
 }
 
 type RunInputRef struct {
-	EdgeID      string `json:"edgeId,omitempty"`
-	FromNodeID  string `json:"fromNodeId,omitempty"`
-	FromPortID  string `json:"fromPortId,omitempty"`
-	ToPortID    string `json:"toPortId,omitempty"`
-	OutputSeq   int    `json:"outputSeq,omitempty"`
-	Ref         string `json:"ref,omitempty"`
-	Text        string `json:"text,omitempty"`
-	ReportRef   string `json:"reportRef,omitempty"`
-	ArtifactRef string `json:"artifactRef,omitempty"`
+	Feedback    *GateFeedback `json:"feedback,omitempty"`
+	EdgeID      string        `json:"edgeId,omitempty"`
+	FromNodeID  string        `json:"fromNodeId,omitempty"`
+	FromPortID  string        `json:"fromPortId,omitempty"`
+	ToPortID    string        `json:"toPortId,omitempty"`
+	OutputSeq   int           `json:"outputSeq,omitempty"`
+	Ref         string        `json:"ref,omitempty"`
+	Text        string        `json:"text,omitempty"`
+	ReportRef   string        `json:"reportRef,omitempty"`
+	ArtifactRef string        `json:"artifactRef,omitempty"`
 }
 
 func NewRunEngine(store *Store, personas *PersonaStore, executor FormationExecutor) *RunEngine {
@@ -496,6 +499,7 @@ func (e *RunEngine) validateGateVerdictKindResults(runID string, gate GateNode, 
 	seqs := intMapFromRunEventData(rawSeqs)
 	perKind := stringMapFromRunEventData(verdictEvent.Data["perKind"])
 	input := runInputRefFromAny(verdictEvent.Data["inputRef"])
+	evidenceByKind := map[string][]GateEvidenceRef{}
 	for kind, seq := range seqs {
 		if kind != "code" && kind != "formation" {
 			return fmt.Errorf("%w: Gate %q aggregate result names unknown kind %q", ErrRunLedgerInvalid, gate.ID, kind)
@@ -512,13 +516,14 @@ func (e *RunEngine) validateGateVerdictKindResults(runID string, gate GateNode, 
 			event.Type != RunEventGateKindResult ||
 			eventGateID != gate.ID ||
 			stringFromAny(event.Data["kind"]) != kind ||
-			runInputRefFromAny(event.Data["inputRef"]) != input {
+			!reflect.DeepEqual(runInputRefFromAny(event.Data["inputRef"]), input) {
 			return fmt.Errorf("%w: Gate %q aggregate %s result identity mismatch", ErrRunLedgerInvalid, gate.ID, kind)
 		}
 		result, err := e.gateKindResultFromEvent(runID, gate, input, event)
 		if err != nil {
 			return err
 		}
+		evidenceByKind[kind] = result.Evidence
 		if perKind[kind] != result.Verdict {
 			return fmt.Errorf("%w: Gate %q aggregate %s verdict mismatch", ErrRunLedgerInvalid, gate.ID, kind)
 		}
@@ -527,8 +532,7 @@ func (e *RunEngine) validateGateVerdictKindResults(runID string, gate GateNode, 
 				stringFromAny(verdictEvent.Data["codeReason"]) != result.Reason ||
 				stringFromAny(verdictEvent.Data["resultEncoding"]) != result.ResultEncoding ||
 				stringFromAny(verdictEvent.Data["resultSha256"]) != result.ResultSHA256 ||
-				stringFromAny(verdictEvent.Data["gateBindingId"]) != result.GateBindingID ||
-				!gateEvidenceRefsEqual(gateEvidenceRefsFromRunEventData(verdictEvent.Data["evidence"]), result.Evidence)) {
+				stringFromAny(verdictEvent.Data["gateBindingId"]) != result.GateBindingID) {
 			return fmt.Errorf("%w: Gate %q aggregate code result mismatch", ErrRunLedgerInvalid, gate.ID)
 		}
 	}
@@ -537,6 +541,10 @@ func (e *RunEngine) validateGateVerdictKindResults(runID string, gate GateNode, 
 		if hasGateKind(gate.Kinds, kind) && state != "" && state != "not_run" && seqs[kind] == 0 {
 			return fmt.Errorf("%w: Gate %q aggregate %s result sequence is missing", ErrRunLedgerInvalid, gate.ID, kind)
 		}
+	}
+	wantEvidence := append(evidenceByKind["code"], evidenceByKind["formation"]...)
+	if !gateEvidenceRefsEqual(gateEvidenceRefsFromRunEventData(verdictEvent.Data["evidence"]), wantEvidence) {
+		return fmt.Errorf("%w: Gate %q aggregate evidence mismatch", ErrRunLedgerInvalid, gate.ID)
 	}
 	return nil
 }
@@ -599,7 +607,7 @@ func (e *RunEngine) RecordHumanGateVerdict(runID string, req HumanGateVerdictReq
 		return nil, ErrRunLedgerInvalid
 	}
 	input := runInputRefFromAny(requestEvent.Data["inputRef"])
-	status, err := e.routeGateVerdict(runID, validatedBoard, gate, input, verdict, "human verdict", runLimitsFromEvent(events[0]), requestEvent)
+	status, err := e.routeGateVerdict(runID, validatedBoard, gate, input, verdict, strings.TrimSpace(req.Reason), runLimitsFromEvent(events[0]), requestEvent)
 	if err != nil {
 		return nil, err
 	}
@@ -620,6 +628,7 @@ func (e *RunEngine) validateHumanRequestKindResults(runID string, gate GateNode,
 	if len(seqs) != len(requiredKinds) {
 		return fmt.Errorf("%w: Gate %q human request kind result set mismatch", ErrRunLedgerInvalid, gate.ID)
 	}
+	var wantEvidence []GateEvidenceRef
 	for _, kind := range requiredKinds {
 		seq := seqs[kind]
 		if seq <= 0 || seq >= request.Seq || seq > len(events) {
@@ -634,13 +643,14 @@ func (e *RunEngine) validateHumanRequestKindResults(runID string, gate GateNode,
 			event.Type != RunEventGateKindResult ||
 			eventGateID != gate.ID ||
 			stringFromAny(event.Data["kind"]) != kind ||
-			runInputRefFromAny(event.Data["inputRef"]) != input {
+			!reflect.DeepEqual(runInputRefFromAny(event.Data["inputRef"]), input) {
 			return fmt.Errorf("%w: Gate %q human request %s result identity mismatch", ErrRunLedgerInvalid, gate.ID, kind)
 		}
 		result, err := e.gateKindResultFromEvent(runID, gate, input, event)
 		if err != nil {
 			return err
 		}
+		wantEvidence = append(wantEvidence, result.Evidence...)
 		if perKind[kind] != result.Verdict {
 			return fmt.Errorf("%w: Gate %q human request %s verdict mismatch", ErrRunLedgerInvalid, gate.ID, kind)
 		}
@@ -649,10 +659,12 @@ func (e *RunEngine) validateHumanRequestKindResults(runID string, gate GateNode,
 				stringFromAny(request.Data["codeReason"]) != result.Reason ||
 				stringFromAny(request.Data["resultEncoding"]) != result.ResultEncoding ||
 				stringFromAny(request.Data["resultSha256"]) != result.ResultSHA256 ||
-				stringFromAny(request.Data["gateBindingId"]) != result.GateBindingID ||
-				!gateEvidenceRefsEqual(gateEvidenceRefsFromRunEventData(request.Data["evidence"]), result.Evidence)) {
+				stringFromAny(request.Data["gateBindingId"]) != result.GateBindingID) {
 			return fmt.Errorf("%w: Gate %q human request code result mismatch", ErrRunLedgerInvalid, gate.ID)
 		}
+	}
+	if !gateEvidenceRefsEqual(gateEvidenceRefsFromRunEventData(request.Data["evidence"]), wantEvidence) {
+		return fmt.Errorf("%w: Gate %q human request evidence mismatch", ErrRunLedgerInvalid, gate.ID)
 	}
 	return nil
 }
@@ -1119,7 +1131,7 @@ func (e *RunEngine) durableGateKindResultsForEvaluation(runID string, gate GateN
 		if !ok || kindIndex <= lastKindIndex {
 			return nil, fmt.Errorf("%w: Gate %q has duplicate or out-of-order kind result %q", ErrRunLedgerInvalid, gate.ID, kind)
 		}
-		if runInputRefFromAny(event.Data["inputRef"]) != input {
+		if !reflect.DeepEqual(runInputRefFromAny(event.Data["inputRef"]), input) {
 			return nil, fmt.Errorf("%w: Gate %q kind result input mismatch", ErrRunLedgerInvalid, gate.ID)
 		}
 		result, err := e.gateKindResultFromEvent(runID, gate, input, event)
@@ -1402,10 +1414,7 @@ func (e *RunEngine) replayGateVerdictsToReady(runID string, board *BoardDocument
 			}
 			nextInput := input
 			if routePort == "fail" {
-				nextInput.EdgeID = route.ID
-				nextInput.FromNodeID = gateID
-				nextInput.FromPortID = routePort
-				nextInput.Ref = fmt.Sprintf("ledger://%s/%s", runID, route.ID)
+				nextInput = gateFailInput(runID, route, gateID, event.Attempt, input, stringFromEventData(event, "reason"), gateEvidenceRefsFromRunEventData(event.Data["evidence"]))
 			}
 			if err := e.deliverConnection(runID, board, gates, route, nextInput, limits, ready, queued, queue); err != nil {
 				return err
@@ -1596,6 +1605,14 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 	if e.executor == nil {
 		return FormationExecutionResult{}, ErrRunExecutorUnavailable
 	}
+	events, err := e.store.ReadRunEvents(req.RunID)
+	if err != nil {
+		return FormationExecutionResult{}, err
+	}
+	if len(events) == 0 {
+		return FormationExecutionResult{}, ErrRunLedgerInvalid
+	}
+	req.MissionBeadID = events[0].BeadID
 	if executor, ok := e.executor.(ContextFormationExecutor); ok {
 		ctx := context.Background()
 		if e.executionContext != nil {
@@ -1605,13 +1622,6 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 			return FormationExecutionResult{}, err
 		}
 		if limits.WallClockSeconds > 0 {
-			events, err := e.store.ReadRunEvents(req.RunID)
-			if err != nil {
-				return FormationExecutionResult{}, err
-			}
-			if len(events) == 0 {
-				return FormationExecutionResult{}, ErrRunLedgerInvalid
-			}
 			started, err := time.Parse(time.RFC3339Nano, events[0].Timestamp)
 			if err != nil {
 				return FormationExecutionResult{}, err
@@ -1880,10 +1890,9 @@ func (e *RunEngine) evaluateGateKinds(runID string, board *BoardDocument, gates 
 			if err != nil {
 				return err
 			}
-			formationResult = GateEvaluationResult{
-				Verdict: normalizeGateVerdict(strings.TrimSpace(text)),
-				Reason:  "judge chain",
-				PerKind: map[string]string{},
+			formationResult, err = parseJudgeVerdict(text)
+			if err != nil {
+				return e.blockInvalidJudge(runID, gate.ID, err)
 			}
 			formationResultSeq, err = e.appendGateKindResult(runID, gate, "formation", input, formationResult)
 			if err != nil {
@@ -1893,6 +1902,7 @@ func (e *RunEngine) evaluateGateKinds(runID string, board *BoardDocument, gates 
 		formationResult.PerKind["formation"] = formationResult.Verdict
 		result.Verdict = formationResult.Verdict
 		result.Reason = formationResult.Reason
+		result.Evidence = append(result.Evidence, formationResult.Evidence...)
 		result.PerKind["formation"] = formationResult.Verdict
 		result.KindResultSeqs["formation"] = formationResultSeq
 		if formationResult.Verdict == "fail" {
@@ -1991,15 +2001,20 @@ func markLaterGateKindsNotRun(kinds []string, perKind map[string]string, failedK
 }
 
 func (e *RunEngine) routeGateEvaluation(runID string, board *BoardDocument, gates map[string]GateNode, gate GateNode, input RunInputRef, verdict string, result GateEvaluationResult, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+	attempt, err := e.gateAttempt(runID, gate.ID)
+	if err != nil {
+		return err
+	}
 	routePort := verdict
 	routes := outgoingConnectionsFromPort(board.Connections, gate.ID, routePort)
 	if verdict == "fail" && len(routes) == 0 {
 		routePort = "none"
 	}
 	if err := e.store.AppendRunEvent(runID, RunEvent{
-		Type:   RunEventGateVerdict,
-		GateID: gate.ID,
-		NodeID: gate.ID,
+		Type:    RunEventGateVerdict,
+		Attempt: attempt,
+		GateID:  gate.ID,
+		NodeID:  gate.ID,
 		Data: map[string]any{
 			"verdict":        verdict,
 			"perKind":        result.PerKind,
@@ -2028,10 +2043,7 @@ func (e *RunEngine) routeGateEvaluation(runID string, board *BoardDocument, gate
 	for _, route := range routes {
 		nextInput := input
 		if verdict == "fail" {
-			nextInput.EdgeID = route.ID
-			nextInput.FromNodeID = gate.ID
-			nextInput.FromPortID = routePort
-			nextInput.Ref = fmt.Sprintf("ledger://%s/%s", runID, route.ID)
+			nextInput = gateFailInput(runID, route, gate.ID, attempt, input, result.Reason, result.Evidence)
 		}
 		if err := e.deliverConnection(runID, board, gates, route, nextInput, limits, ready, queued, queue); err != nil {
 			return err
@@ -2041,6 +2053,10 @@ func (e *RunEngine) routeGateEvaluation(runID string, board *BoardDocument, gate
 }
 
 func (e *RunEngine) routeGateVerdict(runID string, board *BoardDocument, gate GateNode, input RunInputRef, verdict, reason string, limits RunLimits, requestEvent RunEvent) (*RunStatusProjection, error) {
+	attempt, err := e.gateAttempt(runID, gate.ID)
+	if err != nil {
+		return nil, err
+	}
 	routes := outgoingConnectionsFromPort(board.Connections, gate.ID, verdict)
 	routePort := verdict
 	if verdict == "fail" && len(routes) == 0 {
@@ -2048,9 +2064,10 @@ func (e *RunEngine) routeGateVerdict(runID string, board *BoardDocument, gate Ga
 	}
 	result := gateResultFromHumanRequest(requestEvent, verdict, reason)
 	if err := e.store.AppendRunEvent(runID, RunEvent{
-		Type:   RunEventGateVerdict,
-		GateID: gate.ID,
-		NodeID: gate.ID,
+		Type:    RunEventGateVerdict,
+		Attempt: attempt,
+		GateID:  gate.ID,
+		NodeID:  gate.ID,
 		Data: map[string]any{
 			"verdict":        verdict,
 			"perKind":        result.PerKind,
@@ -2221,13 +2238,17 @@ func callGateEvaluator(evaluator GateEvaluator, req GateEvaluation) (result Gate
 }
 
 func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chain []FormationNode, limits RunLimits) (string, error) {
+	attempt, err := e.gateAttempt(req.RunID, req.GateID)
+	if err != nil {
+		return "", err
+	}
 	input := req.Input
 	var finalText string
 	for _, formation := range chain {
 		if err := e.store.AppendRunEvent(req.RunID, RunEvent{
 			Type:    RunEventNodeStarted,
 			NodeID:  formation.ID,
-			Attempt: 1,
+			Attempt: attempt,
 			Data: map[string]any{
 				"nodeKind":  "formation",
 				"inputRefs": []RunInputRef{input},
@@ -2244,7 +2265,7 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 			Formation: formation,
 			Brief:     formationBriefValue(formation),
 			Inputs:    []RunInputRef{input},
-			Attempt:   1,
+			Attempt:   attempt,
 		}, limits)
 		if err != nil {
 			if blockErr := e.appendExecutionFailureAndBlock(req.RunID, formation.ID, err); blockErr != nil {
@@ -2555,7 +2576,17 @@ func runInputRefFromAny(value any) RunInputRef {
 	if !ok {
 		return RunInputRef{}
 	}
+	var feedback *GateFeedback
+	if fields, ok := raw["feedback"].(map[string]any); ok {
+		feedback = &GateFeedback{
+			GateID: stringFromAny(fields["gateId"]), GateAttempt: intFromRunEventData(fields["gateAttempt"]),
+			Verdict: stringFromAny(fields["verdict"]), Reason: stringFromAny(fields["reason"]),
+			Evidence:    gateEvidenceRefsFromRunEventData(fields["evidence"]),
+			OriginalRef: stringFromAny(fields["originalRef"]), OriginalText: stringFromAny(fields["originalText"]),
+		}
+	}
 	return RunInputRef{
+		Feedback:    feedback,
 		EdgeID:      stringFromAny(raw["edgeId"]),
 		FromNodeID:  stringFromAny(raw["fromNodeId"]),
 		FromPortID:  stringFromAny(raw["fromPortId"]),

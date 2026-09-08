@@ -32,6 +32,7 @@ const (
 	RunEventSlotResult           = "slot_result"
 	RunEventNodeOutput           = "node_output"
 	RunEventGateEvaluating       = "gate_evaluating"
+	RunEventJudgeAttemptFailed   = "judge_attempt_failed"
 	RunEventGateKindResult       = "gate_kind_result"
 	RunEventGateVerdict          = "gate_verdict"
 	RunEventVerificationVerdict  = "verification_verdict"

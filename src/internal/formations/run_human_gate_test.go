@@ -431,6 +431,11 @@ func TestS5HumanGateFailPushbackResumeReDispatchesWork(t *testing.T) {
 		t.Fatalf("executor nodes after fail-pushback resume = %v, want work re-dispatched", got)
 	}
 
+	feedback := executor.calls[0].Inputs[0].Feedback
+	if feedback == nil || feedback.GateID != "gate_review" || feedback.GateAttempt != 1 || feedback.Verdict != "fail" || feedback.Reason != "revise the draft" || feedback.OriginalText != "output from fmn_work" || feedback.OriginalRef == "" {
+		t.Fatalf("human pushback feedback = %+v", feedback)
+	}
+
 	status, err = engine.RecordHumanGateVerdict(status.RunID, HumanGateVerdictRequest{
 		GateID:  "gate_review",
 		Verdict: "pass",
