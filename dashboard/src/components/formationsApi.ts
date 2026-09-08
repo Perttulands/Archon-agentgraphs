@@ -1,3 +1,4 @@
+import type { RunInputs } from "./StartMissionDialog"
 import { runStatusFromResponse } from './formationsRunState'
 import type {
   AgentProjection,
@@ -233,11 +234,11 @@ export async function patchBoardLayout(slug: string, etag: string, patch: { node
   return normalizeLayout(result.data.layout, result.etag)
 }
 
-export async function startRun(etag: string, body: { board: string; missionId?: string; formationId?: string; expectedRev: number; actor: string }): Promise<RunStartResult> {
+export async function startRun(etag: string, body: { board: string; missionId?: string; formationId?: string; expectedRev: number; actor: string } & Partial<RunInputs>): Promise<RunStartResult> {
   const result = await fetchApi<{ runId: string }>('/api/formations/runs', {
     method: 'POST',
     headers: { 'If-Match': etag },
-    body: JSON.stringify({ ...body, limits: { maxDispatch: 20, maxAttempts: 3, wallClockSeconds: 1800, redact: false } }),
+    body: JSON.stringify({ ...body, limits: body.limits ?? { maxDispatch: 20, maxAttempts: 3, wallClockSeconds: 1800, redact: false } }),
   })
   return { runId: result.data.runId, status: runStatusFromResponse(await fetchRunStatus(result.data.runId)) }
 }

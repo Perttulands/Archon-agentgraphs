@@ -39,10 +39,13 @@ paths:
               additionalProperties: false
               required: [board, expectedRev, limits]
               oneOf:
-                - required: [missionId]
+                - required: [missionId, cwd, brief]
                 - required: [formationId]
               properties:
                 board: {type: string}
+                cwd: {type: string, description: Absolute existing seat working directory}
+                brief: {type: string, minLength: 1, description: Mission output text}
+                beadId: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"}
                 missionId: {type: string}
                 formationId: {type: string}
                 actor: {type: string}
@@ -63,7 +66,7 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ReceiptEnvelope'}
         '400': {description: Invalid request or unsupported redacted execution}
-        '409': {description: Writer busy, non-final run exists, or stale board revision}
+        '409': {description: Coordinator closing or stale board revision}
         '422': {description: Definition rejected or unsupported schedule}
   /api/formations/runs/{runId}:
     parameters:
@@ -85,6 +88,45 @@ paths:
         '200':
           description: SSE event projection, id equals eventCount, data is the success/timestamp/data envelope containing the canonical Projection; closes at finality
           content: {text/event-stream: {schema: {type: string}}}
+  /api/formations/runs/{runId}/abort:
+    parameters:
+      - {$ref: '#/components/parameters/RunID'}
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reason: {type: string}
+                requestedBy: {type: string}
+      responses:
+        '200':
+          description: Run canceled after owned-seat cleanup
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ProjectionEnvelope'}
+        '409': {description: Run final or another command for this run is settling}
+  /api/formations/runs/{runId}/resume:
+    parameters:
+      - {$ref: '#/components/parameters/RunID'}
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                actor: {type: string}
+                mode: {type: string}
+                reason: {type: string}
+      responses:
+        '202': {description: Continuation admitted for this run}
+        '409': {description: Run executing, final, or not resumable}
   /api/formations/runs/{runId}/gates/{gateId}/verdict:
     parameters:
       - {$ref: '#/components/parameters/RunID'}
@@ -148,6 +190,7 @@ components:
         boardRev: {type: integer}
         missionId: {type: string}
         beadId: {type: string}
+        cwd: {type: string}
         epoch: {type: integer}
         eventCount: {type: integer}
         resumeAllowed: {type: boolean}

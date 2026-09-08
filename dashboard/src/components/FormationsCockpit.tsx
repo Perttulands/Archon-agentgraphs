@@ -1,3 +1,4 @@
+import { StartMissionDialog, type RunInputs } from "./StartMissionDialog"
 /* FormationsCockpit — reference-faithful spatial cockpit for CHROTE Formations.
  *
  * Ported from the D7 prototype (Perttus_vision_for_agent_orchestration/03-formations.{html,js}):
@@ -1245,11 +1246,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (added) undoStack.current.push({ kind: 'rewireSource', previousFrom: connection.from, from: newFrom, to: connection.to })
   }, [patchBoard])
 
-  const runMission = useCallback(async (mission: MissionNode) => {
+  const [startMission, setStartMission] = useState<MissionNode | null>(null)
+
+  const runMission = useCallback(async (mission: MissionNode, inputs: RunInputs) => {
     const current = boardRef.current
     if (!current) return
-    try {
-      const result = await startRun(current.etag, { board: current.slug, missionId: mission.id, expectedRev: current.rev, actor: 'agent:ui' })
+      const result = await startRun(current.etag, { ...inputs, board: current.slug, missionId: mission.id, expectedRev: current.rev, actor: 'agent:ui' })
       const status = { ...result.status, runId: result.status.runId || result.runId }
       const events = await fetchRunEvents(status.runId)
       setRunEvents(events)
@@ -1258,9 +1260,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
       else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
       setError('')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start run')
-    }
   }, [])
 
   const runFormation = useCallback(async (formation: FormationNode) => {
@@ -1846,7 +1845,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const missionMenu = useCallback((event: ReactMouseEvent<HTMLElement>, mission: MissionNode) => {
     openMenu(event, 'Mission actions', [
-      { label: 'Start mission', action: () => void runMission(mission) },
+      { label: 'Start mission', action: () => setStartMission(mission) },
       { label: 'Delete mission', destructive: true, action: () => deleteMissionOp(mission) },
     ])
   }, [deleteMissionOp, openMenu, runMission])
@@ -2331,7 +2330,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   {renderNotePin(mission.id, mission.title)}
                   <div className="mhd">
                     <span className="meyebrow">◆ Mission</span>
-                    <button className="mrun" title="Start mission" onClick={() => void runMission(mission)} data-testid={`run-mission-${mission.id}`}>{PLAY_SVG}</button>
+                    <button className="mrun" title="Start mission" onClick={() => setStartMission(mission)} data-testid={`run-mission-${mission.id}`}>{PLAY_SVG}</button>
                   </div>
                   <div className="mtitle">{mission.title}</div>
                   <div className={`mgoal${mission.goal ? '' : ' placeholder'}`}>{mission.goal || 'set the mission objective…'}</div>
@@ -2572,6 +2571,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             <div className="run-banner" data-testid="run-banner">
               <span>run</span>
               <span className={`badge ${runBadgeClass}`}>{activeRun.status}</span>
+              {activeRun.cwd && <span>{activeRun.cwd}</span>}
+              {activeRun.beadId && <span>{activeRun.beadId}</span>}
               {!activeRun.final && pendingHumanGateId ? (
                 <>
                   <button type="button" aria-label={`Approve gate ${pendingHumanGateId}`} onClick={() => void recordHumanGateVerdict(pendingHumanGateId, 'pass')}>approve</button>
@@ -2757,6 +2758,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           </form>
         </div>
       ) : null}
+
+      {startMission && <StartMissionDialog title={startMission.title} beadId={startMission.beadId} onStart={inputs => runMission(startMission, inputs)} onClose={() => setStartMission(null)} />}
 
       {boardDialog ? (
         <div

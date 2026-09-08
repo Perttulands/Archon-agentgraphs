@@ -137,6 +137,8 @@ export interface CodeGateProfileDescriptor {
 }
 
 export interface RunStatusProjection {
+  cwd?: string
+  beadId?: string
   runId: string
   status: string
   final: boolean

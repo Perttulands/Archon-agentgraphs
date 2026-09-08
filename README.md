@@ -47,8 +47,10 @@ The state and UI directories are supplied by the operator. Repeat `--listen`
 for each trusted interface. An empty `--ui-dir` disables static serving.
 For Vite development, set `FORMATIONS_API_URL` to this daemon's HTTP URL.
 
-The default executor is `codex`; it also requires `--cwd`, `--socket`,
-`--tmux-bin`, and `--transcripts`. Lab execution uses no terminal sessions.
+The default executor is `tmux`; it also requires `--socket`, `--tmux-bin`,
+`--codex-transcripts`, and `--claude-transcripts`. Lab execution uses no terminal
+sessions. Mission runs supply their own working directory. `--cwd` on the daemon
+is an optional fallback for isolated formation runs.
 This service has no authentication; each configured listener must be inside the
 operator's trusted network boundary.
 
@@ -57,3 +59,23 @@ Runtime HTTP commands use `archon --server "$FORMATIONS_URL"`. Both HTTP clients
 consume `{success,timestamp,data}` responses. Mission and isolated formation
 starts require explicit positive limits and return a durable HTTP 202 receipt.
 The coordinator owns dispatch, continuation, cancellation and the run projection.
+
+Many runs can execute concurrently in one daemon. Start a mission with:
+
+```sh
+archon --server "$FORMATIONS_URL" mission run "$BOARD" --mission "$MISSION_ID" \
+  --cwd "$TARGET_DIRECTORY" --brief "$BRIEF_FILE_OR_TEXT" --bead "$BEAD_ID"
+```
+
+The cwd must be an absolute existing directory. The brief supplies the mission
+output; the board's goal remains context. Bead is optional. The cockpit collects
+these inputs and execution limits in its Start mission dialog. Each seat name
+includes its run ID; `--mission-label` adds an optional prefix.
+
+`archon --server "$FORMATIONS_URL" run abort "$RUN_ID" --reason "$REASON"`
+cancels only that run and waits for owned-seat cleanup before reporting canceled.
+A new daemon inspects non-final ledgers before listening. It recovers a completed
+single-slot dispatch only when its private brief and recorded native session
+match; otherwise it leaves a visible resumable block naming open dispatches in
+the private ledger. Existing non-resumable blocks stay blocked. Recovery never
+adopts or cleans up sessions created by the previous daemon.
