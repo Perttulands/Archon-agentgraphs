@@ -3,11 +3,11 @@ package coordinator
 
 import (
 	"context"
-	"log"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"

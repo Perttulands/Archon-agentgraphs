@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/Perttulands/chrote-agent-formations/internal/formations"
@@ -164,8 +165,9 @@ func (c *Coordinator) RecoverInterruptedRuns() error {
 			}
 		}
 		if err := c.engine.ValidateCompletedRecovery(run.RunID); err != nil {
-			// The blocking event already names all unresolved dispatches. Preserve
-			// the evidence rejection privately without changing resumability.
+			// The blocking event already names all unresolved dispatches. The
+			// journal carries the evidence rejection; resumability is unchanged.
+			log.Printf("run %s: not recovered at startup: %v", run.RunID, err)
 			continue
 		}
 		if err := c.ResumeCompletedRun(run.RunID); err != nil {

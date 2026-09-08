@@ -29,6 +29,7 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer string) (codexTranscrip
 	for scanner.Scan() {
 		var r struct {
 			Type      string `json:"type"`
+			IsMeta    bool   `json:"isMeta"`
 			Cwd       string `json:"cwd"`
 			SessionID string `json:"sessionId"`
 			UUID      string `json:"uuid"`
@@ -51,7 +52,9 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer string) (codexTranscrip
 			continue
 		}
 		text := strings.Join(assistantContentText(r.Message.Content), "")
-		if r.Type == "user" && text != "" {
+		// Claude Code injects skill and system content as user records flagged
+		// isMeta; only a human message starts a new turn.
+		if r.Type == "user" && text != "" && !r.IsMeta {
 			if turn.Consumed {
 				return turn, errors.New("another user message interrupted the dispatched Claude turn")
 			}
