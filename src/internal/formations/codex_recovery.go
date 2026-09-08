@@ -3,9 +3,11 @@ package formations
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ReattachFormationDispatch implements the engine's recovery seam using an
@@ -96,7 +98,23 @@ func (e *TmuxFormationExecutor) readCompletedFormationDispatch(req FormationReat
 		if !filepath.IsAbs(root) {
 			return FormationExecutionResult{}, errors.New("absolute transcript root required")
 		}
-		turn, _, err = findSeatTurn(seat, c.Cwd, pointer)
+		// The consumed event recorded the native session; read that transcript
+		// directly instead of parsing every transcript under the root. The
+		// dispatch time bounds any fallback walk.
+		nativeID := ""
+		for _, event := range events {
+			if event.Type == "seat_prompt_consumed" && stringFromEventData(event, "dispatchId") == req.DispatchID {
+				nativeID = stringFromEventData(event, "nativeSessionId")
+			}
+		}
+		if created, parseErr := time.Parse(time.RFC3339Nano, dispatch.Timestamp); parseErr == nil {
+			seat.created = created
+		}
+		if path := findTranscriptBySessionID(root, nativeID); path != "" {
+			turn, err = readSeatTurn(seat, path, c.Cwd, pointer)
+		} else {
+			turn, _, err = findSeatTurn(seat, c.Cwd, pointer)
+		}
 	}
 	if err != nil {
 		return FormationExecutionResult{}, err
@@ -192,4 +210,28 @@ func (e *RunEngine) BlockInterruptedRun(runID string) error {
 	return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventBlocked, Data: map[string]any{
 		"reason": "coordinator restarted; completed-turn evidence required", "openDispatches": refs, "resumeAllowed": true,
 	}})
+}
+
+// findTranscriptBySessionID returns the one native transcript whose file name
+// carries the recorded session id, or "" when none or several exist.
+func findTranscriptBySessionID(root, sessionID string) string {
+	if sessionID == "" {
+		return ""
+	}
+	found := ""
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Ext(path) != ".jsonl" || !strings.Contains(filepath.Base(path), sessionID) {
+			return nil
+		}
+		if found != "" {
+			found = "\x00"
+			return fs.SkipAll
+		}
+		found = path
+		return nil
+	})
+	if found == "\x00" {
+		return ""
+	}
+	return found
 }

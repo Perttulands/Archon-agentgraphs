@@ -3,6 +3,7 @@ package coordinator
 
 import (
 	"context"
+	"log"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -335,6 +336,9 @@ func (c *Coordinator) recordFailure(runID string, err error) {
 	if err == nil {
 		return
 	}
+	// The operator's journal always sees the reason, even when the ledger
+	// cannot take another event because the run is already blocked or final.
+	log.Printf("run %s: %v", runID, err)
 	status, readErr := c.store.ProjectRun(runID)
 	if readErr == nil && !status.Final && status.Status != formations.RunStatusBlocked {
 		// Private ledger keeps the diagnostic. Public projection exposes no raw errors.
