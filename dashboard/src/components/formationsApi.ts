@@ -1,3 +1,4 @@
+import { runStatusFromResponse } from './formationsRunState'
 import type {
   AgentProjection,
   BoardDeletion,
@@ -232,13 +233,13 @@ export async function patchBoardLayout(slug: string, etag: string, patch: { node
   return normalizeLayout(result.data.layout, result.etag)
 }
 
-export async function startRun(etag: string, body: { board: string; missionId?: string; formationId?: string; actor: string }): Promise<RunStartResult> {
-  const result = await fetchApi<RunStartResult>('/api/formations/runs', {
+export async function startRun(etag: string, body: { board: string; missionId?: string; formationId?: string; expectedRev: number; actor: string }): Promise<RunStartResult> {
+  const result = await fetchApi<{ runId: string }>('/api/formations/runs', {
     method: 'POST',
     headers: { 'If-Match': etag },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, limits: { maxDispatch: 20, maxAttempts: 3, wallClockSeconds: 1800, redact: false } }),
   })
-  return result.data
+  return { runId: result.data.runId, status: runStatusFromResponse(await fetchRunStatus(result.data.runId)) }
 }
 
 export async function fetchRunStatus(runId: string): Promise<RunStatusProjection | RunStatusResult> {
@@ -247,8 +248,11 @@ export async function fetchRunStatus(runId: string): Promise<RunStatusProjection
 }
 
 export async function fetchRunEvents(runId: string): Promise<RunEvent[]> {
-  const result = await fetchApi<{ events: RunEvent[] }>(`/api/formations/runs/${encodeURIComponent(runId)}/events`)
-  return (result.data.events || []).sort((a, b) => a.seq - b.seq)
+  const result = await fetchApi<{ events: Array<{ seq: number; type: string; nodeId?: string; slotId?: string; gateId?: string; status?: string; verdict?: string; sessionName?: string; outcome?: string }> }>(`/api/formations/runs/${encodeURIComponent(runId)}/events`)
+  return (result.data.events || []).map(event => ({
+    seq: event.seq, type: event.type, runId, nodeId: event.nodeId, gateId: event.gateId,
+    data: { slotId: event.slotId, status: event.status, verdict: event.verdict, sessionRef: event.sessionName, reason: event.outcome },
+  })).sort((a, b) => a.seq - b.seq)
 }
 
 export async function fetchRunEscalations(runId: string): Promise<OpenEscalation[]> {
@@ -278,15 +282,15 @@ export async function resumeRunRequest(runId: string, body: { actor: string; mod
   return result.data
 }
 
-export async function recordGateVerdict(runId: string, gateId: string, body: { actor: string; verdict: 'pass' | 'fail'; reason: string }): Promise<RunStatusProjection | RunStatusResult> {
-  const result = await fetchApi<RunStatusProjection | RunStatusResult>(
+export async function recordGateVerdict(runId: string, gateId: string, body: { actor: string; verdict: 'pass' | 'fail'; reason: string; requestedSeq: number }): Promise<RunStatusProjection | RunStatusResult> {
+  await fetchApi<{ runId: string }>(
     `/api/formations/runs/${encodeURIComponent(runId)}/gates/${encodeURIComponent(gateId)}/verdict`,
     {
       method: 'POST',
       body: JSON.stringify(body),
     }
   )
-  return result.data
+  return fetchRunStatus(runId)
 }
 
 export type PatchCreateFormationResult = {

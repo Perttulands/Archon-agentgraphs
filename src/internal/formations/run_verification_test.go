@@ -23,7 +23,7 @@ func TestS4JudgeChainVerdictRoutesGate(t *testing.T) {
 	}
 	executor := &fakeRunExecutor{outputs: map[string]string{
 		"fmn_j1": "review notes",
-		"fmn_j2": "pass",
+		"fmn_j2": "```chrote-verdict\n{\"verdict\":\"pass\",\"reason\":\"reviewed\",\"evidence\":[]}\n```",
 	}}
 	engine := NewRunEngine(store, personas, executor)
 	engine.SetGateEvaluator(NewCodeGateEvaluator())

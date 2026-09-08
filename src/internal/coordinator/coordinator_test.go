@@ -62,12 +62,14 @@ func startRun(t *testing.T, c *Coordinator) string {
 		t.Fatalf("start %d %s", w.Code, w.Body.String())
 	}
 	var receipt struct {
-		RunID string `json:"runId"`
+		Data struct {
+			RunID string `json:"runId"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &receipt); err != nil {
 		t.Fatal(err)
 	}
-	return receipt.RunID
+	return receipt.Data.RunID
 }
 func awaitState(t *testing.T, c *Coordinator, id, state string) *Projection {
 	t.Helper()
@@ -158,14 +160,13 @@ func TestAdmissionSurvivesDisconnectAndHumanGateRequiresExactRequest(t *testing.
 		t.Fatal("duplicate verdict accepted")
 	}
 }
-func TestLoopbackOnly(t *testing.T) {
-	for _, address := range []string{"0.0.0.0:0", "[::]:0", "localhost:0"} {
-		if l, err := Listen(address); err == nil {
-			l.Close()
-			t.Fatalf("accepted %s", address)
-		}
-	}
+func TestConfiguredListenAddress(t *testing.T) {
 	l, err := Listen("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.Close()
+	l, err = Listen("0.0.0.0:0")
 	if err != nil {
 		t.Fatal(err)
 	}

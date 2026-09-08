@@ -112,3 +112,17 @@ describe('formations run-state helpers', () => {
     expect(activeRunStorageKey('session-search')).toBe('chrote-formations-active-run-session-search')
   })
 })
+
+
+it('retains projected seat identities, results, and cleanup failures for inspection', () => {
+  const evidence = projectNodeEvidence([
+    {runId:'run',seq:1,type:'seat_created',nodeId:'work',data:{slotId:'builder',sessionRef:'form-proof-builder'}},
+    {runId:'run',seq:2,type:'slot_result',nodeId:'work',data:{slotId:'builder',status:'done'}},
+    {runId:'run',seq:3,type:'seat_cleanup',nodeId:'work',data:{reason:'left_cleanup_failed'}},
+  ], 'work')
+  expect(evidence.runtimeEvents).toEqual([
+    {seq:1,type:'seat_created',slotId:'builder',sessionName:'form-proof-builder',status:'',outcome:''},
+    {seq:2,type:'slot_result',slotId:'builder',sessionName:'',status:'done',outcome:''},
+    {seq:3,type:'seat_cleanup',slotId:'',sessionName:'',status:'',outcome:'left_cleanup_failed'},
+  ])
+})

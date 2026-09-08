@@ -19,8 +19,8 @@ import (
 // through to an offline engine or a local ledger.
 func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	u, err := url.Parse(server)
-	if err != nil || u.Scheme != "http" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" || net.ParseIP(u.Hostname()) == nil || !net.ParseIP(u.Hostname()).IsLoopback() {
-		fmt.Fprintln(stderr, "--server must be an http URL with a literal loopback IP")
+	if err != nil || u.Scheme != "http" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" || net.ParseIP(u.Hostname()) == nil {
+		fmt.Fprintln(stderr, "--server must be an http URL with a literal IP")
 		return 2
 	}
 	client := &http.Client{Transport: &http.Transport{Proxy: nil, ResponseHeaderTimeout: 10 * time.Second}, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("coordinator redirects are not allowed") }}
@@ -59,7 +59,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	reason := fs.String("reason", "", "operator verdict reason")
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
 	maxDispatch := fs.Int("max-dispatch", 3, "maximum dispatch count")
-	maxAttempts := fs.Int("max-attempts", 1, "maximum node attempts")
+	maxAttempts := fs.Int("max-attempts", 3, "maximum node attempts")
 	wall := fs.Int("wall-clock-seconds", 7200, "run wall clock limit")
 	if err := fs.Parse(reorderFlags(args[2:], map[string]bool{"json": true})); err != nil {
 		return 2
@@ -85,14 +85,18 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 			return fail(stderr, err)
 		}
 		var board struct {
-			Rev int `json:"rev"`
+			Data struct {
+				Board struct {
+					Rev int `json:"rev"`
+				} `json:"board"`
+			} `json:"data"`
 		}
 		if err := json.Unmarshal(raw, &board); err != nil {
 			return fail(stderr, err)
 		}
 		path += "/runs"
 		method = "POST"
-		body = map[string]any{"board": pos[0], "missionId": *mission, "expectedRev": board.Rev, "limits": map[string]any{"maxDispatch": *maxDispatch, "maxAttempts": *maxAttempts, "wallClockSeconds": *wall, "redact": false}}
+		body = map[string]any{"board": pos[0], "missionId": *mission, "expectedRev": board.Data.Board.Rev, "limits": map[string]any{"maxDispatch": *maxDispatch, "maxAttempts": *maxAttempts, "wallClockSeconds": *wall, "redact": false}}
 	case "run list":
 		path += "/runs"
 	case "run status", "run logs":

@@ -34,3 +34,26 @@ npm run lint
 
 The transcript files under `src/internal/formations/testdata` are synthetic
 fixtures. The public history was filtered and scanned before publication.
+
+## Serve the cockpit
+
+Build the dashboard, then start the lab daemon:
+
+```sh
+formationsd --state-dir "$FORMATIONS_STATE_DIR" \
+  --listen "$FORMATIONS_LISTEN" --ui-dir "$FORMATIONS_UI_DIR" --executor lab
+```
+The state and UI directories are supplied by the operator. Repeat `--listen`
+for each trusted interface. An empty `--ui-dir` disables static serving.
+For Vite development, set `FORMATIONS_API_URL` to this daemon's HTTP URL.
+
+The default executor is `codex`; it also requires `--cwd`, `--socket`,
+`--tmux-bin`, and `--transcripts`. Lab execution uses no terminal sessions.
+This service has no authentication; each configured listener must be inside the
+operator's trusted network boundary.
+
+The cockpit and `archon --workspace "$FORMATIONS_STATE_DIR"` share definitions.
+Runtime HTTP commands use `archon --server "$FORMATIONS_URL"`. Both HTTP clients
+consume `{success,timestamp,data}` responses. Mission and isolated formation
+starts require explicit positive limits and return a durable HTTP 202 receipt.
+The coordinator owns dispatch, continuation, cancellation and the run projection.

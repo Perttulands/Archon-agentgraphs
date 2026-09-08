@@ -204,12 +204,7 @@ func (e *LabFormationExecutor) renderPrompt(req FormationExecution, slot Formati
 	b.WriteString("agent: " + card.ID + "\n")
 	b.WriteString("harness: " + variant.ID + "\n")
 	b.WriteString("cwd: " + e.config.Cwd + "\n")
-	b.WriteString("brief: " + req.Brief.Goal + "\n")
-	for _, input := range req.Inputs {
-		if input.Text != "" {
-			b.WriteString("input: " + input.Text + "\n")
-		}
-	}
+	renderBriefAndInputs(&b, req, card)
 	return b.String()
 }
 

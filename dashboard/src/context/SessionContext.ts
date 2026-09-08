@@ -6,8 +6,6 @@ interface FormationsSessionSettings {
 
 interface FormationsSession {
   settings: FormationsSessionSettings
-  sessions: Array<{ name: string }>
-  openFloatingModal: (sessionName: string) => void
 }
 
 // The extracted cockpit no longer depends on CHROTE's dashboard session

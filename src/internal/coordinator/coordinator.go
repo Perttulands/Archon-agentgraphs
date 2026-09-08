@@ -2,6 +2,7 @@
 package coordinator
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,8 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/Perttulands/chrote-agent-formations/internal/api"
+	"github.com/Perttulands/chrote-agent-formations/internal/core"
 	"github.com/Perttulands/chrote-agent-formations/internal/formations"
 )
 
@@ -32,6 +35,7 @@ type Event struct {
 	Verdict     string `json:"verdict,omitempty"`
 	SessionName string `json:"sessionName,omitempty"`
 	Outcome     string `json:"outcome,omitempty"`
+	Blocks      bool   `json:"blocks,omitempty"`
 }
 type Projection struct {
 	*formations.RunStatusProjection
@@ -40,15 +44,19 @@ type Projection struct {
 	Events            []Event       `json:"events"`
 }
 type Coordinator struct {
-	personas *formations.PersonaStore
-	store    *formations.Store
-	engine   *formations.RunEngine
-	lock     *os.File
-	mu       sync.Mutex
-	busy     bool
-	closed   bool
-	changed  chan struct{}
-	workers  sync.WaitGroup
+	personas     *formations.PersonaStore
+	store        *formations.Store
+	engine       *formations.RunEngine
+	lock         *os.File
+	mu           sync.Mutex
+	busy         bool
+	closed       bool
+	changed      chan struct{}
+	workers      sync.WaitGroup
+	cancels      map[string]context.CancelFunc
+	activeRun    string
+	workerDone   chan struct{}
+	abortRequest *formations.RunEvent
 }
 
 // Open takes one kernel lock for the lifetime of the coordinator. StateDir is
@@ -76,7 +84,22 @@ func Open(stateDir string, personas *formations.PersonaStore, makeExecutor func(
 		c.changed = make(chan struct{})
 		c.mu.Unlock()
 	}
+	c.cancels = make(map[string]context.CancelFunc)
 	c.engine = formations.NewRunEngine(store, personas, makeExecutor(store))
+	c.engine.SetExecutionContext(func(runID string) context.Context {
+		ctx, cancel := context.WithCancel(context.Background())
+		c.mu.Lock()
+		if previous := c.cancels[runID]; previous != nil {
+			previous()
+		}
+		c.cancels[runID] = cancel
+		aborting := c.abortRequest != nil && c.activeRun == runID
+		c.mu.Unlock()
+		if p, err := c.Project(runID); err != nil || p.Final || aborting {
+			cancel()
+		}
+		return ctx
+	})
 	c.engine.SetGateEvaluator(formations.NewCodeGateEvaluator())
 	return c, nil
 }
@@ -111,13 +134,10 @@ func (c *Coordinator) ResumeCompletedRun(runID string) error {
 		c.release()
 		return err
 	}
-	go func() {
-		defer c.release()
+	c.launch(runID, func() error {
 		_, err := c.engine.ResumeRun(runID, formations.RunResumeRequest{Actor: "operator:standalone", Mode: "completed-native-turn", Reason: "explicitly selected completed Codex turn"})
-		if err != nil {
-			c.recordFailure(runID, err)
-		}
-	}()
+		return err
+	})
 	return nil
 }
 
@@ -127,8 +147,8 @@ func Listen(address string) (net.Listener, error) {
 		return nil, err
 	}
 	ip := net.ParseIP(host)
-	if ip == nil || !ip.IsLoopback() {
-		return nil, errors.New("listen address must use a literal loopback IP")
+	if ip == nil {
+		return nil, errors.New("listen address must use a literal IP")
 	}
 	return net.Listen("tcp", address)
 }
@@ -138,23 +158,15 @@ func (c *Coordinator) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, 200, map[string]string{"status": "ok", "runtime": "standalone-trusted-v1"})
 	})
-	mux.HandleFunc("GET /api/formations/boards", func(w http.ResponseWriter, r *http.Request) {
-		boards, err := c.store.ListBoards()
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		reply(w, 200, boards)
-	})
-	mux.HandleFunc("GET /api/formations/boards/{board}", func(w http.ResponseWriter, r *http.Request) {
-		board, err := c.store.ReadBoard(r.PathValue("board"))
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		reply(w, 200, board)
-	})
-	mux.HandleFunc("POST /api/formations/runs", c.start)
+	// Route ownership: internal/api wins both board reads and all authoring routes.
+	// Its injected runtime delegates POST runs to coordinator admission (limits,
+	// durable 202), GET run to the closed projection, GET stream to live SSE,
+	// and verdict to the exact-request coordinator guard. No duplicate patterns
+	// or request-local engines are mounted. Resume and abort share this owner.
+	h := api.NewFormationsHandlerWithStores(c.store, c.personas)
+	h.SetRuntime(api.RuntimeHandlers{Start: c.start, Get: c.get, Events: c.events, Stream: c.stream, Resume: c.resume, Abort: c.abort, Verdict: c.verdict, Escalations: c.escalations})
+	h.RegisterRoutes(mux)
+	api.NewAgentsHandlerWithStore(c.personas).RegisterRoutes(mux)
 	mux.HandleFunc("GET /api/formations/runs", func(w http.ResponseWriter, r *http.Request) {
 		runs, err := c.store.ListRuns(formations.RunListFilter{})
 		if err != nil {
@@ -172,9 +184,6 @@ func (c *Coordinator) Handler() http.Handler {
 		}
 		reply(w, 200, projections)
 	})
-	mux.HandleFunc("GET /api/formations/runs/{runId}", c.get)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/stream", c.stream)
-	mux.HandleFunc("POST /api/formations/runs/{runId}/gates/{gateId}/verdict", c.verdict)
 	return mux
 }
 
@@ -190,6 +199,16 @@ func (c *Coordinator) acquire() bool {
 }
 func (c *Coordinator) release() {
 	c.mu.Lock()
+	for id, cancel := range c.cancels {
+		cancel()
+		delete(c.cancels, id)
+	}
+	c.activeRun = ""
+	c.abortRequest = nil
+	if c.workerDone != nil {
+		close(c.workerDone)
+		c.workerDone = nil
+	}
 	c.busy = false
 	close(c.changed)
 	c.changed = make(chan struct{})
@@ -204,6 +223,8 @@ func (c *Coordinator) nextChange() <-chan struct{} {
 
 func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 	var req struct {
+		Actor       string               `json:"actor"`
+		FormationID string               `json:"formationId"`
 		Board       string               `json:"board"`
 		MissionID   string               `json:"missionId"`
 		ExpectedRev int                  `json:"expectedRev"`
@@ -212,7 +233,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	if req.Board == "" || req.MissionID == "" || req.ExpectedRev <= 0 || req.Limits.MaxDispatch <= 0 || req.Limits.MaxAttempts <= 0 || req.Limits.WallClockSeconds <= 0 || req.Limits.Redact {
+	if req.Board == "" || (req.MissionID == "") == (req.FormationID == "") || req.ExpectedRev <= 0 || req.Limits.MaxDispatch <= 0 || req.Limits.MaxAttempts <= 0 || req.Limits.WallClockSeconds <= 0 || req.Limits.Redact {
 		reply(w, 400, map[string]string{"error": "board, missionId, expectedRev and positive limits required; redacted execution is not supported"})
 		return
 	}
@@ -249,6 +270,17 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.FormationID != "" {
+		started, execute, err := c.engine.PrepareFormationRun(req.Board, req.FormationID, formations.FormationRunRequest{Actor: req.Actor, Personas: c.personas, Limits: req.Limits, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match")})
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		startedWorker = true
+		c.launch(started.RunID, func() error { _, err := execute(); return err })
+		reply(w, 202, map[string]string{"runId": started.RunID})
+		return
+	}
 	connected := false
 	for _, edge := range board.Connections {
 		if strings.HasPrefix(edge.From, req.MissionID+":") {
@@ -265,11 +297,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	startedWorker = true
-	go func() {
-		defer c.release()
-		_, err := c.engine.ExecuteStartedMission(started.RunID)
-		c.recordFailure(started.RunID, err)
-	}()
+	c.launch(started.RunID, func() error { _, err := c.engine.ExecuteStartedMission(started.RunID); return err })
 	reply(w, http.StatusAccepted, map[string]string{"runId": started.RunID})
 }
 
@@ -312,6 +340,7 @@ func project(status *formations.RunStatusProjection, events []formations.RunEven
 		e.Verdict, _ = raw.Data["verdict"].(string)
 		e.SessionName, _ = raw.Data["sessionName"].(string)
 		e.Outcome, _ = raw.Data["outcome"].(string)
+		e.Blocks, _ = raw.Data["blocks"].(bool)
 		p.Events = append(p.Events, e)
 	}
 	if !status.Final {
@@ -337,6 +366,7 @@ func (c *Coordinator) get(w http.ResponseWriter, r *http.Request) {
 }
 func (c *Coordinator) verdict(w http.ResponseWriter, r *http.Request) {
 	var req struct {
+		Actor        string `json:"actor"`
 		RequestedSeq int    `json:"requestedSeq"`
 		Verdict      string `json:"verdict"`
 		Reason       string `json:"reason"`
@@ -382,11 +412,10 @@ func (c *Coordinator) verdict(w http.ResponseWriter, r *http.Request) {
 	if status.ResumeAllowed {
 		// Verdict and continuation are one operator action. Execution outlives HTTP.
 		startedWorker = true
-		go func() {
-			defer c.release()
+		c.launch(runID, func() error {
 			_, err := c.engine.ResumeRun(runID, formations.RunResumeRequest{Actor: "coordinator", Mode: "reattach", Reason: "human verdict recorded"})
-			c.recordFailure(runID, err)
-		}()
+			return err
+		})
 	}
 	reply(w, 202, map[string]string{"runId": runID})
 }
@@ -416,7 +445,7 @@ func (c *Coordinator) stream(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		if p.EventCount > since {
-			raw, _ := json.Marshal(p)
+			raw, _ := json.Marshal(core.NewSuccessResponse(p))
 			fmt.Fprintf(w, "id: %d\nevent: projection\ndata: %s\n\n", p.EventCount, raw)
 			flusher.Flush()
 			since = p.EventCount
@@ -456,7 +485,13 @@ func failure(w http.ResponseWriter, err error) {
 	reply(w, code, map[string]string{"error": http.StatusText(code)})
 }
 func reply(w http.ResponseWriter, code int, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(value)
+	if code >= 400 {
+		message := http.StatusText(code)
+		if detail, ok := value.(map[string]string); ok && detail["error"] != "" {
+			message = detail["error"]
+		}
+		core.WriteError(w, code, http.StatusText(code), message)
+		return
+	}
+	core.WriteJSON(w, code, core.NewSuccessResponse(value))
 }

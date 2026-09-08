@@ -1695,12 +1695,7 @@ func (e *TmuxFormationExecutor) renderPromptWithContext(req FormationExecution, 
 	if phase != "" {
 		b.WriteString("orchestration phase: " + phase + "\n")
 	}
-	b.WriteString("brief: " + req.Brief.Goal + "\n")
-	for _, input := range req.Inputs {
-		if input.Text != "" {
-			b.WriteString("input: " + input.Text + "\n")
-		}
-	}
+	renderBriefAndInputs(&b, req, card)
 	for _, line := range extraLines {
 		if strings.TrimSpace(line) != "" {
 			b.WriteString(line + "\n")

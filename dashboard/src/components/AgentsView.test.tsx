@@ -250,6 +250,7 @@ describe('AgentsView', () => {
         posts.push({ headers: init.headers, body: JSON.parse(String(init.body)) })
         return Promise.resolve(jsonResponse({ success: true, data: { runId: 'run-started', status: runStatus('run-started', 'mission-alpha') } }))
       }
+      if (url === '/api/formations/runs/run-started') { return Promise.resolve(jsonResponse({ success: true, data: runStatus('run-started', 'mission-alpha') })) }
       if (url === '/api/formations/runs/run-started/events') {
         return Promise.resolve(jsonResponse({ success: true, data: { events: [] } }))
       }
@@ -263,7 +264,7 @@ describe('AgentsView', () => {
     await waitFor(() => expect(posts).toHaveLength(1))
     expect(headerValue(posts[0].headers, 'If-Match')).toBe('board-etag')
     expect(posts[0].body).toMatchObject({ board: 'mission-board', missionId: 'mission-alpha', actor: 'agent:ui' })
-    expect(window.localStorage.getItem(activeRunStorageKey('mission-board'))).toBe('run-started')
+    await waitFor(() => expect(window.localStorage.getItem(activeRunStorageKey('mission-board'))).toBe('run-started'))
   })
 
   it('renders textual liveness and binding labels instead of oracle idle or complete classes', async () => {

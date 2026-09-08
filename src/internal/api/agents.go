@@ -24,6 +24,10 @@ func NewAgentsHandler(agentsDir string, liveness AgentLivenessProvider) *AgentsH
 	}
 }
 
+func NewAgentsHandlerWithStore(store *formations.PersonaStore) *AgentsHandler {
+	return &AgentsHandler{store: store}
+}
+
 func (h *AgentsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/agents", h.ListAgents)
 	mux.HandleFunc("POST /api/agents", h.CreateAgent)
