@@ -59,7 +59,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	reason := fs.String("reason", "", "operator verdict reason")
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
 	maxDispatch := fs.Int("max-dispatch", 3, "maximum dispatch count")
-	maxAttempts := fs.Int("max-attempts", 1, "maximum node attempts")
+	maxAttempts := fs.Int("max-attempts", 3, "maximum node attempts")
 	wall := fs.Int("wall-clock-seconds", 7200, "run wall clock limit")
 	if err := fs.Parse(reorderFlags(args[2:], map[string]bool{"json": true})); err != nil {
 		return 2

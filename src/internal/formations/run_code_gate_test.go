@@ -294,7 +294,7 @@ func TestMixedCodeFormationGateRunsCodeFirstAndRecordsBothKindResults(t *testing
 	executor := &fakeRunExecutor{outputs: map[string]string{
 		"fmn_work": "LINT OK",
 		"fmn_j1":   "review notes",
-		"fmn_j2":   "pass",
+		"fmn_j2":   "```chrote-verdict\n{\"verdict\":\"pass\",\"reason\":\"reviewed\",\"evidence\":[]}\n```",
 	}}
 	evaluator := &countingCodeGateEvaluator{}
 	engine := NewRunEngine(store, personas, executor)
@@ -427,7 +427,7 @@ func TestMixedCodeFormationHumanGateFreezesBothPriorKindResultSequences(t *testi
 	executor := &fakeRunExecutor{outputs: map[string]string{
 		"fmn_work": "LINT OK",
 		"fmn_j1":   "review notes",
-		"fmn_j2":   "pass",
+		"fmn_j2":   judgeBlock("pass", "reviewed", "review report"),
 	}}
 	engine := NewRunEngine(store, personas, executor)
 	engine.SetGateEvaluator(NewCodeGateEvaluator())
@@ -461,6 +461,31 @@ func TestMixedCodeFormationHumanGateFreezesBothPriorKindResultSequences(t *testi
 		intFromRunEventData(seqs["formation"]) != kindResults[1].Seq {
 		t.Fatalf("human request kindResultSeqs = %#v, want code:%d formation:%d", request.Data["kindResultSeqs"], kindResults[0].Seq, kindResults[1].Seq)
 	}
+	wantEvidence := append(gateEvidenceRefsFromRunEventData(kindResults[0].Data["evidence"]), GateEvidenceRef{Kind: "formation", Text: "review report"})
+	if !gateEvidenceRefsEqual(gateEvidenceRefsFromRunEventData(request.Data["evidence"]), wantEvidence) {
+		t.Fatalf("human request lost combined evidence: %+v", request)
+	}
+	status, err = engine.RecordHumanGateVerdict(status.RunID, HumanGateVerdictRequest{GateID: "gate_review", Verdict: "pass", Reason: "approved review"})
+	if err != nil {
+		t.Fatalf("submit human verdict with combined evidence: %v", err)
+	}
+	events, err = store.ReadRunEvents(status.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verdict := eventOfType(t, events, RunEventGateVerdict)
+	gate, ok := findGate(board.Gates, "gate_review")
+	if !ok {
+		t.Fatal("missing review gate")
+	}
+	if err := engine.validateGateVerdictKindResults(status.RunID, gate, verdict, events); err != nil {
+		t.Fatalf("validate aggregate for replay with combined evidence: %v", err)
+	}
+
+	if !gateEvidenceRefsEqual(gateEvidenceRefsFromRunEventData(verdict.Data["evidence"]), wantEvidence) {
+		t.Fatalf("aggregate lost combined evidence: %+v", verdict)
+	}
+
 }
 
 func TestResumeReusesDurableCodeKindResultAfterCrashWindow(t *testing.T) {
