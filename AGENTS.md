@@ -1,32 +1,36 @@
-# CHROTE Agent Formations
+# Formations
 
-This repository preserves the extracted Formations, ARCHON, Agents, and Oracle
-experiments. Formations now has an experimental standalone coordinator for trusted local
-missions, described in docs/adr/0015-standalone-trusted-coordinator.md. It is not a
-supported CHROTE feature or deployed production service. New product or
-integration work requires an explicit Bead here; do not silently wire it back
-into CHROTE.
+Formations builds and runs agent work graphs through the standalone formationsd
+coordinator and ARCHON. Read [docs/CONTRACT.md](docs/CONTRACT.md) before changing
+runtime semantics, authoring, gates or operator instructions. Read
+[ADR-0016](docs/adr/0016-daily-capability.md) for daily-capability decisions;
+`docs/adr/` holds earlier decisions and `examples/` holds runnable templates.
+`docs/archive/` preserves historical targets, not the running contract.
 
 ## Project map
 
-- `src/internal/formations/` owns the model, persistence, and run engine.
-- `src/internal/api/` owns the extracted HTTP surface and local adapters.
-- `src/cmd/archon/` owns the ARCHON CLI.
-- `dashboard/` owns the experimental Formations and Agents cockpit.
-- `Perttus_vision_for_agent_orchestration/` is the durable vision and design packet.
+- `src/internal/formations/` owns the model, persistence and run engine.
+- `src/internal/coordinator/` owns admission, runtime commands and projections.
+- `src/internal/api/` owns authoring HTTP and local adapters.
+- `src/cmd/archon/` and `src/cmd/formationsd/` own the CLI and daemon.
+- `dashboard/` owns the Formations and Agents cockpit.
+- `Perttus_vision_for_agent_orchestration/` retains vision and canvas references.
 
 ## Work state
 
-This project owns the `form-` Beads store. Use it for Formations and ARCHON
-work. CHROTE integration work belongs to CHROTE; SRV deployment work belongs to
-SRV. Execute only the active Bead and record unrelated findings separately.
+Use this repository's `form-` Beads store. Execute the active Bead and record
+unrelated findings separately. Host deployment and forwarding live outside this
+repository; CHROTE integration and SRV deployment require Beads in their owning
+stores. Keep tracked files host-neutral. Supply host paths, sockets, users and
+listen addresses through flags or environment, with placeholders in examples.
 
 ## Validation
 
 ```bash
-cd src && go test ./... && go build ./cmd/archon
+cd src && go test ./... && go build ./cmd/archon && go build ./cmd/formationsd
 cd ../dashboard && npm ci && npm run test:unit && npm run build && npm run lint
 ```
 
-Keep `main` clean and current. Do ordinary verified work directly there; use a
-branch only when isolation materially helps, then merge it back and remove it.
+Keep main clean and current. Do ordinary verified work directly there with small
+commits. Use a branch when isolation helps, then merge and remove it within the
+assigned integration authority. Lane briefs may reserve integration to an owner.

@@ -1,5 +1,11 @@
 # Standalone trusted coordinator
 
+Status: superseded in part by [ADR-0016](0016-daily-capability.md).
+The single-run, solo/Codex-only, loopback-only and deferred abort/recovery
+statements below describe the original proving mission. Read
+[the current contract](../CONTRACT.md) for current behavior. Service ownership,
+trusted authority, private evidence and immutable cleanup principles remain.
+
 Accepted for the form-2fb proving mission on 2026-09-06. Formations now runs in
 its own process, `formationsd`, with Archon as its authoring and command client.
 CHROTE can consume this HTTP boundary in separately authorized integration work.

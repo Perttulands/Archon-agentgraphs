@@ -2,23 +2,97 @@ openapi: 3.1.0
 info:
   title: Standalone Formations
   version: standalone-trusted-v1
-  description: Trusted-network coordinator. All JSON responses use the success/timestamp/data envelope. This sketch covers runtime admission, not the full authoring API.
+  description: Trusted-network coordinator and authoring API. JSON uses the success/timestamp/data envelope,
+    with error details on failure. No authentication. Static cockpit serving is optional. Authoring request
+    details follow internal/api/formations.go and agents.go; runtime reads are sanitized.
 paths:
   /healthz:
     get:
       responses:
-        '200': {description: Coordinator is serving}
+        '200':
+          description: Coordinator is serving
   /api/formations/boards:
     get:
       responses:
-        '200': {description: Shared-package definition summaries}
+        '200':
+          description: Shared-package definition summaries
+    post:
+      responses:
+        '201':
+          description: Created board in data.board; returns ETag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                slug:
+                  type: string
+              required:
+              - title
   /api/formations/boards/{board}:
     parameters:
-      - {in: path, name: board, required: true, schema: {type: string}}
+    - in: path
+      name: board
+      required: true
+      schema:
+        type: string
     get:
       responses:
-        '200': {description: Authored definition including rev and etag}
-        '404': {description: No such board}
+        '200':
+          description: Authored definition including rev and etag
+        '404':
+          description: No such board
+    patch:
+      responses:
+        '200':
+          description: Updated board or compound authoring result; returns ETag
+        '428':
+          description: Missing preconditions
+        '409':
+          description: Stale revision or ETag
+        '400':
+          description: Invalid mutation or retired inline verification/script gate
+      parameters:
+      - in: header
+        name: If-Match
+        required: true
+        schema:
+          type: string
+        description: Current ETag of the resource being edited
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BoardPatch'
+    delete:
+      responses:
+        '200':
+          description: Deletion receipt in data.deletion
+      parameters:
+      - in: header
+        name: If-Match
+        required: true
+        schema:
+          type: string
+        description: Current ETag of the resource being edited
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expectedRev:
+                  type: integer
+                  minimum: 1
+              required:
+              - expectedRev
   /api/formations/runs:
     get:
       responses:
@@ -26,10 +100,23 @@ paths:
           description: Canonical run projections
           content:
             application/json:
-              schema: {type: object, properties: {success: {const: true}, timestamp: {type: string}, data: {type: array, items: {$ref: '#/components/schemas/Projection'}}}}
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  timestamp:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Projection'
     post:
       parameters:
-        - {in: header, name: If-Match, schema: {type: string}}
+      - in: header
+        name: If-Match
+        schema:
+          type: string
       requestBody:
         required: true
         content:
@@ -37,60 +124,107 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [board, expectedRev, limits]
+              required:
+              - board
+              - expectedRev
+              - limits
               oneOf:
-                - required: [missionId, cwd, brief]
-                - required: [formationId]
+              - required:
+                - missionId
+                - cwd
+                - brief
+              - required:
+                - formationId
               properties:
-                board: {type: string}
-                cwd: {type: string, description: Absolute existing seat working directory}
-                brief: {type: string, minLength: 1, description: Mission output text}
-                beadId: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"}
-                missionId: {type: string}
-                formationId: {type: string}
-                actor: {type: string}
-                expectedRev: {type: integer, minimum: 1}
+                board:
+                  type: string
+                cwd:
+                  type: string
+                  description: Absolute existing seat working directory
+                brief:
+                  type: string
+                  minLength: 1
+                  description: Mission output text
+                beadId:
+                  type: string
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9._-]*$
+                missionId:
+                  type: string
+                formationId:
+                  type: string
+                actor:
+                  type: string
+                expectedRev:
+                  type: integer
+                  minimum: 1
                 limits:
                   type: object
                   additionalProperties: false
-                  required: [maxDispatch, maxAttempts, wallClockSeconds]
+                  required:
+                  - maxDispatch
+                  - maxAttempts
+                  - wallClockSeconds
                   properties:
-                    maxDispatch: {type: integer, minimum: 1}
-                    maxAttempts: {type: integer, minimum: 1}
-                    wallClockSeconds: {type: integer, minimum: 1}
-                    redact: {type: boolean, const: false, default: false}
+                    maxDispatch:
+                      type: integer
+                      minimum: 1
+                    maxAttempts:
+                      type: integer
+                      minimum: 1
+                    wallClockSeconds:
+                      type: integer
+                      minimum: 1
+                    redact:
+                      type: boolean
+                      const: false
+                      default: false
       responses:
         '202':
           description: Admitted and durable; execution continues independently of HTTP
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/ReceiptEnvelope'}
-        '400': {description: Invalid request or unsupported redacted execution}
-        '409': {description: Coordinator closing or stale board revision}
-        '422': {description: Definition rejected or unsupported schedule}
+              schema:
+                $ref: '#/components/schemas/ReceiptEnvelope'
+        '400':
+          description: Invalid request or unsupported redacted execution
+        '409':
+          description: Coordinator closing or stale board revision
+        '422':
+          description: Definition rejected or unsupported schedule
   /api/formations/runs/{runId}:
     parameters:
-      - {$ref: '#/components/parameters/RunID'}
+    - $ref: '#/components/parameters/RunID'
     get:
       responses:
         '200':
           description: Sanitized canonical projection
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/ProjectionEnvelope'}
-        '404': {description: No such run}
+              schema:
+                $ref: '#/components/schemas/ProjectionEnvelope'
+        '404':
+          description: No such run
   /api/formations/runs/{runId}/stream:
     parameters:
-      - {$ref: '#/components/parameters/RunID'}
-      - {in: header, name: Last-Event-ID, schema: {type: integer, minimum: 0}}
+    - $ref: '#/components/parameters/RunID'
+    - in: header
+      name: Last-Event-ID
+      schema:
+        type: integer
+        minimum: 0
     get:
       responses:
         '200':
-          description: SSE event projection, id equals eventCount, data is the success/timestamp/data envelope containing the canonical Projection; closes at finality
-          content: {text/event-stream: {schema: {type: string}}}
+          description: SSE event projection, id equals eventCount, data is the success/timestamp/data
+            envelope containing the canonical Projection; closes at finality; a midstream failure emits
+            an SSE error event
+          content:
+            text/event-stream:
+              schema:
+                type: string
   /api/formations/runs/{runId}/abort:
     parameters:
-      - {$ref: '#/components/parameters/RunID'}
+    - $ref: '#/components/parameters/RunID'
     post:
       requestBody:
         required: true
@@ -100,18 +234,22 @@ paths:
               type: object
               additionalProperties: false
               properties:
-                reason: {type: string}
-                requestedBy: {type: string}
+                reason:
+                  type: string
+                requestedBy:
+                  type: string
       responses:
         '200':
           description: Run canceled after owned-seat cleanup
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/ProjectionEnvelope'}
-        '409': {description: Run final or another command for this run is settling}
+              schema:
+                $ref: '#/components/schemas/ProjectionEnvelope'
+        '409':
+          description: Run final or another command for this run is settling
   /api/formations/runs/{runId}/resume:
     parameters:
-      - {$ref: '#/components/parameters/RunID'}
+    - $ref: '#/components/parameters/RunID'
     post:
       requestBody:
         required: true
@@ -121,16 +259,31 @@ paths:
               type: object
               additionalProperties: false
               properties:
-                actor: {type: string}
-                mode: {type: string}
-                reason: {type: string}
+                actor:
+                  type: string
+                mode:
+                  type: string
+                reason:
+                  type: string
       responses:
-        '202': {description: Continuation admitted for this run}
-        '409': {description: Run executing, final, or not resumable}
+        '202':
+          description: Continuation admitted for this run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectionEnvelope'
+        '409':
+          description: Run executing
+          final: null
+          or not resumable: null
   /api/formations/runs/{runId}/gates/{gateId}/verdict:
     parameters:
-      - {$ref: '#/components/parameters/RunID'}
-      - {in: path, name: gateId, required: true, schema: {type: string}}
+    - $ref: '#/components/parameters/RunID'
+    - in: path
+      name: gateId
+      required: true
+      schema:
+        type: string
     post:
       requestBody:
         required: true
@@ -139,85 +292,663 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [requestedSeq, verdict]
+              required:
+              - requestedSeq
+              - verdict
               properties:
-                requestedSeq: {type: integer, minimum: 1}
-                actor: {type: string}
-                verdict: {enum: [pass, fail]}
-                reason: {type: string}
+                requestedSeq:
+                  type: integer
+                  minimum: 1
+                actor:
+                  type: string
+                verdict:
+                  enum:
+                  - pass
+                  - fail
+                reason:
+                  type: string
       responses:
         '202':
           description: Verdict recorded; any authorized continuation runs in the coordinator
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/ReceiptEnvelope'}
-        '400': {description: Invalid verdict}
-        '409': {description: Busy, final, duplicate or stale human request}
+              schema:
+                $ref: '#/components/schemas/ReceiptEnvelope'
+        '400':
+          description: Invalid verdict
+        '409':
+          description: Busy
+          final: null
+          duplicate or stale human request: null
+        '422':
+          description: Engine rejected the verdict, including the pending-human restart limitation form-do9
+  /api/formations/boards/{board}/changes:
+    parameters:
+    - in: path
+      name: board
+      required: true
+      schema:
+        type: string
+    get:
+      responses:
+        '200':
+          description: Board change signal in data.signal
+      parameters:
+      - in: query
+        name: etag
+        schema:
+          type: string
+        description: Previously observed board ETag
+  /api/formations/boards/{board}/notes:
+    parameters:
+    - in: path
+      name: board
+      required: true
+      schema:
+        type: string
+    get:
+      responses:
+        '200':
+          description: Notes document in data.notes; returns ETag
+    patch:
+      responses:
+        '200':
+          description: Updated data.notes; returns ETag
+      parameters:
+      - in: header
+        name: If-Match
+        required: true
+        schema:
+          type: string
+        description: Current ETag of the resource being edited
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target:
+                  type: string
+                text:
+                  type: string
+                updatedBy:
+                  type: string
+      description: BoardNotePatch. Target defaults to board or can select an element ID. Empty text clears
+        the selected note.
+  /api/formations/boards/{board}/layout:
+    parameters:
+    - in: path
+      name: board
+      required: true
+      schema:
+        type: string
+    get:
+      responses:
+        '200':
+          description: Layout document in data.layout; absent sidecar returns an empty layout with ETag
+            *
+    patch:
+      responses:
+        '200':
+          description: Updated data.layout; returns ETag
+      parameters:
+      - in: header
+        name: If-Match
+        required: true
+        schema:
+          type: string
+        description: Current ETag of the resource being edited
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                arrange:
+                  type: boolean
+                nodes:
+                  type: array
+                  items:
+                    type: object
+                edges:
+                  type: array
+                  items:
+                    type: object
+                updatedAt:
+                  type: string
+                  format: date-time
+      description: Arrange alone, update node positions, update edge routing, or update timestamp metadata.
+        See formationsLayoutPatchRequest for node/edge fields. Arrange cannot combine with other mutations.
+  /api/formations/gate-profiles:
+    get:
+      responses:
+        '200':
+          description: 'Code profiles in data.profiles: output_contains@1 and output_absent@1 only'
+  /api/formations/runs/{runId}/events:
+    parameters:
+    - in: path
+      name: runId
+      required: true
+      schema:
+        type: string
+    get:
+      responses:
+        '200':
+          description: Sanitized event identities in data.events, not raw ledger payloads
+  /api/formations/runs/{runId}/escalations:
+    parameters:
+    - in: path
+      name: runId
+      required: true
+      schema:
+        type: string
+    get:
+      responses:
+        '200':
+          description: Sanitized attention requests in data.escalations; final runs return an empty list
+  /api/agents:
+    get:
+      responses:
+        '200':
+          description: Roster in data.agents and data.count, including presets and overrides. No live-session
+            provider is wired by the daemon.
+      parameters:
+      - in: query
+        name: capable
+        schema:
+          type: string
+      - in: query
+        name: assignable
+        schema:
+          type: boolean
+    post:
+      responses:
+        '201':
+          description: Created persona card in data; returns ETag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentCreate'
+  /api/agents/{agentId}:
+    parameters:
+    - in: path
+      name: agentId
+      required: true
+      schema:
+        type: string
+    get:
+      responses:
+        '200':
+          description: Persona card in data, including harnessVariants model/effort; returns ETag
+    patch:
+      responses:
+        '200':
+          description: Updated persona card in data; returns ETag
+        '428':
+          description: Missing If-Match
+        '409':
+          description: Stale ETag
+      parameters:
+      - in: header
+        name: If-Match
+        required: true
+        schema:
+          type: string
+        description: Current ETag of the resource being edited
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentPatch'
 components:
   parameters:
-    RunID: {in: path, name: runId, required: true, schema: {type: string}}
+    RunID:
+      in: path
+      name: runId
+      required: true
+      schema:
+        type: string
   schemas:
     ReceiptEnvelope:
       type: object
-      required: [success, timestamp, data]
+      required:
+      - success
+      - timestamp
+      - data
       properties:
-        success: {const: true}
-        timestamp: {type: string}
-        data: {$ref: '#/components/schemas/Receipt'}
+        success:
+          const: true
+        timestamp:
+          type: string
+        data:
+          $ref: '#/components/schemas/Receipt'
     ProjectionEnvelope:
       type: object
-      required: [success, timestamp, data]
+      required:
+      - success
+      - timestamp
+      - data
       properties:
-        success: {const: true}
-        timestamp: {type: string}
-        data: {$ref: '#/components/schemas/Projection'}
+        success:
+          const: true
+        timestamp:
+          type: string
+        data:
+          $ref: '#/components/schemas/Projection'
     Receipt:
       type: object
       additionalProperties: false
-      required: [runId]
+      required:
+      - runId
       properties:
-        runId: {type: string}
+        runId:
+          type: string
     Projection:
       type: object
       additionalProperties: false
-      required: [runId, status, final, boardSlug, boardId, boardRev, missionId, beadId, epoch, eventCount, resumeAllowed, projectionVersion, waitingGates, events]
+      required:
+      - runId
+      - status
+      - final
+      - boardSlug
+      - boardId
+      - boardRev
+      - missionId
+      - beadId
+      - epoch
+      - eventCount
+      - resumeAllowed
+      - projectionVersion
+      - waitingGates
+      - events
       properties:
-        runId: {type: string}
-        status: {enum: [running, waiting_human, blocked, succeeded, failed, canceled]}
-        final: {type: boolean}
-        boardSlug: {type: string}
-        boardId: {type: string}
-        boardRev: {type: integer}
-        missionId: {type: string}
-        beadId: {type: string}
-        cwd: {type: string}
-        epoch: {type: integer}
-        eventCount: {type: integer}
-        resumeAllowed: {type: boolean}
-        projectionVersion: {const: standalone-trusted-v1}
+        runId:
+          type: string
+        status:
+          enum:
+          - running
+          - waiting_human
+          - blocked
+          - succeeded
+          - failed
+          - canceled
+        final:
+          type: boolean
+        boardSlug:
+          type: string
+        boardId:
+          type: string
+        boardRev:
+          type: integer
+        missionId:
+          type: string
+        beadId:
+          type: string
+        cwd:
+          type: string
+        epoch:
+          type: integer
+        eventCount:
+          type: integer
+        resumeAllowed:
+          type: boolean
+        projectionVersion:
+          const: standalone-trusted-v1
         waitingGates:
           type: array
           items:
             type: object
             additionalProperties: false
-            required: [gateId, requestedSeq]
+            required:
+            - gateId
+            - requestedSeq
             properties:
-              gateId: {type: string}
-              requestedSeq: {type: integer}
+              gateId:
+                type: string
+              requestedSeq:
+                type: integer
         events:
           type: array
           items:
             type: object
             additionalProperties: false
-            required: [seq, type]
+            required:
+            - seq
+            - type
             properties:
-              seq: {type: integer}
-              type: {type: string}
-              nodeId: {type: string}
-              slotId: {type: string}
-              gateId: {type: string}
-              status: {type: string}
-              verdict: {type: string}
-              sessionName: {type: string}
-              outcome: {type: string}
-              blocks: {type: boolean}
+              seq:
+                type: integer
+              type:
+                type: string
+              nodeId:
+                type: string
+              slotId:
+                type: string
+              gateId:
+                type: string
+              status:
+                type: string
+              verdict:
+                type: string
+              sessionName:
+                type: string
+              outcome:
+                type: string
+              blocks:
+                type: boolean
+    BoardPatch:
+      type: object
+      properties:
+        title:
+          type: string
+        createTool:
+          type: object
+        updateTool:
+          type: object
+        deleteTool:
+          type: object
+        createFormation:
+          type: object
+          properties:
+            type:
+              type: string
+            title:
+              type: string
+            x:
+              type: integer
+            y:
+              type: integer
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        deleteFormation:
+          type: object
+          properties:
+            id:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        deleteGate:
+          type: object
+          properties:
+            id:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        deleteMission:
+          type: object
+          properties:
+            id:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        assignSlot:
+          type: object
+          properties:
+            formationId:
+              type: string
+            slotId:
+              type: string
+            agentId:
+              type: string
+            harness:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        makeController:
+          type: object
+          properties:
+            formationId:
+              type: string
+            slotId:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        setBrief:
+          type: object
+          properties:
+            formationId:
+              type: string
+            goal:
+              type: string
+            beadId:
+              type: string
+            files:
+              type: array
+              items:
+                type: string
+            links:
+              type: array
+              items:
+                type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        clearBrief:
+          type: object
+          properties:
+            formationId:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        removeVerification:
+          type: object
+          properties:
+            formationId:
+              type: string
+            replacementGateId:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        addPort:
+          type: object
+          properties:
+            formationId:
+              type: string
+            direction:
+              type: string
+            label:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        removePort:
+          type: object
+          properties:
+            formationId:
+              type: string
+            portId:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        wireConnection:
+          type: object
+          properties:
+            from:
+              type: string
+            to:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        unwireConnection:
+          type: object
+          properties:
+            from:
+              type: string
+            to:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        rewireConnection:
+          type: object
+          properties:
+            from:
+              type: string
+            previousTo:
+              type: string
+            to:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        createGate:
+          type: object
+          properties:
+            title:
+              type: string
+            kinds:
+              type: array
+              items:
+                type: string
+            criterion:
+              type: string
+            check:
+              type: string
+            checkVersion:
+              type: string
+            checkValue:
+              type: string
+            x:
+              type: integer
+            y:
+              type: integer
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        setGateJudge:
+          type: object
+          properties:
+            gateId:
+              type: string
+            chain:
+              type: array
+              items:
+                type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        detachGateJudge:
+          type: object
+          properties:
+            gateId:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        createMission:
+          type: object
+          properties:
+            title:
+              type: string
+            goal:
+              type: string
+            beadId:
+              type: string
+            x:
+              type: integer
+            y:
+              type: integer
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        expectedRev:
+          type: integer
+        layoutExpectation:
+          type: object
+        updatedBy:
+          type: string
+      description: Select one authoring mutation and supply expectedRev plus If-Match. Nested expectedRev/updatedBy
+        fields are accepted for several operations. Tool operations require the exact top-level frame
+        and layoutExpectation; see formations_tools.go. setVerification and legacy gate command fields
+        are retired and rejected. removeVerification requires a replacement gate. No updateGate operation
+        is served; use offline ARCHON gate update.
+    AgentCreate:
+      type: object
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        kind:
+          type: string
+        summary:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        personality:
+          type: string
+        harness:
+          type: string
+        sessionStem:
+          type: string
+        launch:
+          type: string
+        source:
+          type: string
+    AgentPatch:
+      type: object
+      properties:
+        addCapability:
+          type: string
+        removeCapability:
+          type: string
+        addHarness:
+          type: string
+        sessionStem:
+          type: string
+        launch:
+          type: string
+        source:
+          type: string
+        note:
+          type: string
+        retire:
+          type: boolean
+        displayName:
+          type: string
+        kind:
+          type: string
+        summary:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+      description: Persona editor fields. Model/effort are read from harness variants in TOML cards; this
+        editor exposes no dedicated model or effort fields. Source is harness provenance/launch inference,
+        not replacement card content.
