@@ -63,7 +63,7 @@ source = "/tmp/CLAUDE.md"
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if !body.Success || body.Data.Count != 9 {
+	if !body.Success || body.Data.Count != 15 {
 		t.Fatalf("response = %#v", body)
 	}
 	var susie, scratch *formations.AgentProjection

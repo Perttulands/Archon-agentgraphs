@@ -164,8 +164,8 @@ func (s *PersonaStore) PersonaPath(id string) string {
 }
 
 func (s *PersonaStore) ListPersonas() ([]PersonaCard, error) {
-	cardsByID := make(map[string]PersonaCard, len(codexPersonaPresetCatalog))
-	for _, card := range codexPresetPersonas() {
+	cardsByID := make(map[string]PersonaCard, len(personaPresetCatalog))
+	for _, card := range builtinPresetPersonas() {
 		cardsByID[card.ID] = card
 	}
 	entries, err := s.listPersonaEntries()
@@ -200,7 +200,7 @@ func (s *PersonaStore) ReadPersona(id string) (*PersonaCard, error) {
 	raw, err := s.readPersonaRaw(id)
 	if err != nil {
 		if os.IsNotExist(err) {
-			if preset, ok := codexPresetPersona(id); ok {
+			if preset, ok := builtinPresetPersona(id); ok {
 				return preset, nil
 			}
 			return nil, ErrNotFound
@@ -211,7 +211,7 @@ func (s *PersonaStore) ReadPersona(id string) (*PersonaCard, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := codexPresetPersona(id); ok {
+	if _, ok := builtinPresetPersona(id); ok {
 		card.Preset = true
 		card.Customized = true
 	}
@@ -222,7 +222,7 @@ func (s *PersonaStore) CreatePersona(req CreatePersonaRequest) (*PersonaCard, er
 	if err := validatePersonaID(req.ID); err != nil {
 		return nil, err
 	}
-	if _, ok := codexPresetPersona(req.ID); ok {
+	if _, ok := builtinPresetPersona(req.ID); ok {
 		return nil, ErrAlreadyExists
 	}
 	var created *PersonaCard
@@ -284,7 +284,7 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 		raw, err := s.readPersonaRaw(id)
 		if err != nil {
 			if os.IsNotExist(err) {
-				builtin, ok := codexPresetPersona(id)
+				builtin, ok := builtinPresetPersona(id)
 				if !ok {
 					return ErrNotFound
 				}
@@ -395,7 +395,7 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 		}
 		updated, err = parsePersonaCard(id, []byte(next))
 		if err == nil {
-			if _, ok := codexPresetPersona(id); ok || preset {
+			if _, ok := builtinPresetPersona(id); ok || preset {
 				updated.Preset = true
 				updated.Customized = true
 			}

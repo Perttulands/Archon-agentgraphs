@@ -1,0 +1,34 @@
+schema = 1
+boardId = "brd_delivery"
+rev = 1
+updatedAt = "2026-09-09T00:00:00Z"
+updatedBy = "agent:archon"
+board = "Delivery template: Plan -> Beads -> Beads review -> Execution -> Final review. The review gate sends failed drafts back to Beads with actionable feedback. The run supplies cwd, brief and mission Bead; the plan and report live in the run artifact directory. Before starting, inspect personas, briefs and limits. The execution controller steers only its three bound workers. The final report is the endpoint; review it before accepting the mission."
+
+[[element]]
+nodeId = "mis_delivery"
+text = "Run this template with a target repository, brief and mission Bead. The workflow ends with a report, not another gate. Change the mission intent and run limits for the task; allow at least two attempts for pushback."
+
+[[element]]
+nodeId = "fmn_plan"
+text = "Claude writes the plan in the run artifact directory. Change the planner persona or brief to match the target work; preserve the plan path in its output."
+
+[[element]]
+nodeId = "fmn_beads"
+text = "Claude drafts Beads in the target repository store and revises the same graph on gate feedback. Change the drafter persona and brief scope; preserve parent links and verifiable goals."
+
+[[element]]
+nodeId = "gate_beads_review"
+text = "The judge checks the graph. Fail returns its reason and evidence to Beads; pass sends the approved graph to Execution. Change the criterion or judge persona, and set run attempt limits to bound revisions."
+
+[[element]]
+nodeId = "fmn_beads_reviewer"
+text = "Read-only Claude judge uses review-beads and bd lint. Change its persona or review brief, preserving the structured chrote-verdict contract and judge connections."
+
+[[element]]
+nodeId = "fmn_execution"
+text = "Claude leads three Codex workers through the approved Beads using only their bound tmux sessions. Change the controller or worker personas and brief scopes; size run limits for the work. Keep exactly one controller."
+
+[[element]]
+nodeId = "fmn_final_review"
+text = "Astra independently reviews the diff, closures and plan, then writes the final report. Change the reviewer persona or review brief. No gate follows; inspect this report before accepting delivery."

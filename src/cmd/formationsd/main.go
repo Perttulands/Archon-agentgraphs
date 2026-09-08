@@ -28,6 +28,7 @@ func serve() error {
 	uiDir := flag.String("ui-dir", "", "built dashboard directory; empty disables UI")
 	executor := flag.String("executor", "tmux", "seat executor: tmux (real seats) or lab (deterministic)")
 	state := flag.String("state-dir", "", "private absolute runtime and definition workspace")
+	agentsDir := flag.String("agents-dir", "", "absolute persona card directory; defaults to <state-dir>/agents")
 	cwd := flag.String("cwd", "", "absolute agent work directory")
 	socket := flag.String("socket", "", "existing absolute tmux socket")
 	tmux := flag.String("tmux-bin", "", "absolute guarded tmux wrapper")
@@ -50,6 +51,9 @@ func serve() error {
 		return fmt.Errorf("--executor must be tmux or lab")
 	}
 	paths := map[string]string{"state-dir": *state}
+	if *agentsDir != "" {
+		paths["agents-dir"] = *agentsDir
+	}
 	if *executor == "tmux" {
 		if *cwd != "" {
 			paths["cwd"] = *cwd
@@ -74,7 +78,10 @@ func serve() error {
 	if *cwd != "" {
 		roots = append(roots, *cwd)
 	}
-	personas := formations.NewPersonaStore(filepath.Join(*state, "agents"))
+	if *agentsDir == "" {
+		*agentsDir = filepath.Join(*state, "agents")
+	}
+	personas := formations.NewPersonaStore(*agentsDir)
 	c, err := coordinator.Open(*state, personas, func(store *formations.Store) formations.FormationExecutor {
 		if *executor == "lab" {
 			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex", "claude-code"}, Cwd: *state, Roots: []string{*state}})
