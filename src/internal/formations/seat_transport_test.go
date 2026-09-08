@@ -117,7 +117,7 @@ func TestSeatAdaptersReadinessStagingCompletionAndImmutableCleanup(t *testing.T)
 }
 
 func TestClaudeNativeTurnIdentityAndEndTurn(t *testing.T) {
-	for _, kind := range []string{"complete", "wrong cwd", "cwd moves after pointer", "meta record after pointer", "wrong pointer", "tool use", "partial", "no stop reason", "wrong session"} {
+	for _, kind := range []string{"complete", "wrong cwd", "cwd moves after pointer", "meta record after pointer", "task notification after pointer", "wrong pointer", "tool use", "partial", "no stop reason", "wrong session"} {
 		t.Run(kind, func(t *testing.T) {
 			root := t.TempDir()
 			pointer := seatPointer(filepath.Join(root, "brief.md"))
@@ -131,6 +131,11 @@ func TestClaudeNativeTurnIdentityAndEndTurn(t *testing.T) {
 				meta := "{\"type\":\"user\",\"isMeta\":true,\"cwd\":\"" + root + "\",\"sessionId\":\"native\",\"message\":{\"content\":\"Base directory for this skill: skills/brainstorm\"}}\n"
 				i := strings.Index(raw, "{\"type\":\"assistant\"")
 				raw = raw[:i] + meta + raw[i:]
+			case "task notification after pointer":
+				// A Monitor set by the seat delivers events as system-origin user records.
+				note := "{\"type\":\"user\",\"origin\":{\"kind\":\"task-notification\"},\"promptSource\":\"system\",\"cwd\":\"" + root + "\",\"sessionId\":\"native\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"<task-notification>worker done</task-notification>\"}]}}\n"
+				i := strings.Index(raw, "{\"type\":\"assistant\"")
+				raw = raw[:i] + note + raw[i:]
 			case "cwd moves after pointer":
 				// The seat changed directory while working; later records carry the new cwd.
 				i := strings.LastIndex(raw, "\"cwd\":\""+root+"\"")
@@ -152,7 +157,7 @@ func TestClaudeNativeTurnIdentityAndEndTurn(t *testing.T) {
 				t.Fatal(err)
 			}
 			turn, err := readClaudeTurn(path, root, pointer)
-			want := kind == "complete" || kind == "no stop reason" || kind == "cwd moves after pointer" || kind == "meta record after pointer"
+			want := kind == "complete" || kind == "no stop reason" || kind == "cwd moves after pointer" || kind == "meta record after pointer" || kind == "task notification after pointer"
 			if turn.Complete != want {
 				t.Fatalf("turn=%+v err=%v", turn, err)
 			}

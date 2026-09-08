@@ -28,13 +28,17 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer string) (codexTranscrip
 	scanner.Buffer(make([]byte, 65536), 16<<20)
 	for scanner.Scan() {
 		var r struct {
-			Type      string `json:"type"`
-			IsMeta    bool   `json:"isMeta"`
-			Cwd       string `json:"cwd"`
-			SessionID string `json:"sessionId"`
-			UUID      string `json:"uuid"`
-			Effort    string `json:"effort"`
-			Message   struct {
+			Type   string `json:"type"`
+			IsMeta bool   `json:"isMeta"`
+			Origin struct {
+				Kind string `json:"kind"`
+			} `json:"origin"`
+			PromptSource string `json:"promptSource"`
+			Cwd          string `json:"cwd"`
+			SessionID    string `json:"sessionId"`
+			UUID         string `json:"uuid"`
+			Effort       string `json:"effort"`
+			Message      struct {
 				Content    json.RawMessage `json:"content"`
 				Model      string          `json:"model"`
 				StopReason *string         `json:"stop_reason"`
@@ -52,9 +56,14 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer string) (codexTranscrip
 			continue
 		}
 		text := strings.Join(assistantContentText(r.Message.Content), "")
-		// Claude Code injects skill and system content as user records flagged
-		// isMeta; only a human message starts a new turn.
-		if r.Type == "user" && text != "" && !r.IsMeta {
+		// Claude Code also writes skill content (isMeta), task notifications and
+		// other system prompts as user records. Only a human message starts a
+		// new turn; when the record names its origin, trust that over heuristics.
+		human := r.Type == "user" && text != "" && !r.IsMeta
+		if human && (r.Origin.Kind != "" || r.PromptSource != "") {
+			human = r.Origin.Kind == "human" || (r.Origin.Kind == "" && r.PromptSource == "typed")
+		}
+		if human {
 			if turn.Consumed {
 				return turn, errors.New("another user message interrupted the dispatched Claude turn")
 			}
