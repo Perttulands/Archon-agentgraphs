@@ -146,7 +146,7 @@ func TestValidateProjectPath_RootAllowedRootCoversFilesystemChildren(t *testing.
 	os.Setenv("CHROTE_ROOTS", "/")
 	ResetConfigForTesting()
 
-	for _, path := range []string{"/home", "/srv"} {
+	for _, path := range []string{"/workspace", "/projects"} {
 		t.Run(path, func(t *testing.T) {
 			_, code, msg := ValidateProjectPath(path)
 			if code == "FORBIDDEN" {
@@ -161,7 +161,7 @@ func TestGetAllowedRoots_RootDominatesOtherRoots(t *testing.T) {
 		os.Unsetenv("CHROTE_ROOTS")
 		ResetConfigForTesting()
 	}()
-	os.Setenv("CHROTE_ROOTS", "/, /srv, /home/operator")
+	os.Setenv("CHROTE_ROOTS", "/, /projects, /workspace/operator")
 	ResetConfigForTesting()
 
 	got := GetAllowedRoots()

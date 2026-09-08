@@ -11,9 +11,6 @@ import (
 // defaultAllowedRoots derives from HOME rather than hardcoding a user path.
 var defaultAllowedRoots = func() []string {
 	home := os.Getenv("HOME")
-	if home == "" {
-		home = "/home/chrote"
-	}
 	return []string{home, "/code", "/vault"}
 }()
 

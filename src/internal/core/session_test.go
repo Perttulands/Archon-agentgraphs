@@ -142,9 +142,9 @@ func TestGetTmuxTmpdir(t *testing.T) {
 
 	// Test XDG_RUNTIME_DIR fallback
 	os.Unsetenv("TMUX_TMPDIR")
-	os.Setenv("XDG_RUNTIME_DIR", "/run/user/<uid>")
-	if result := GetTmuxTmpdir(); result != "/run/user/<uid>/tmux" {
-		t.Errorf("GetTmuxTmpdir() with XDG_RUNTIME_DIR = %q, expected /run/user/<uid>/tmux", result)
+	os.Setenv("XDG_RUNTIME_DIR", "/runtime/test-user")
+	if result := GetTmuxTmpdir(); result != "/runtime/test-user/tmux" {
+		t.Errorf("GetTmuxTmpdir() with XDG_RUNTIME_DIR = %q, expected /runtime/test-user/tmux", result)
 	}
 
 	// Test uid fallback when no XDG_RUNTIME_DIR

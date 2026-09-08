@@ -89,14 +89,14 @@ func TestTmuxExecutorNonTempWorkspaceUsesOrdinaryValidationCodes(t *testing.T) {
 	// now an ordinary configuration error, not session_target_attachment_audit_unavailable.
 	t.Run("missing cwd", func(t *testing.T) {
 		cfg := tmuxTestConfig(t)
-		cfg.Cwd = "/srv/path-that-does-not-exist"
+		cfg.Cwd = "/nonexistent-test-root/path-that-does-not-exist"
 		cfg.Roots = []string{cfg.Cwd}
 		assertBoundaryCode(t, cfg, "unavailable_cwd")
 	})
 
 	t.Run("missing root", func(t *testing.T) {
 		cfg := tmuxTestConfig(t)
-		cfg.Roots = []string{cfg.Cwd, "/srv/path-that-does-not-exist"}
+		cfg.Roots = []string{cfg.Cwd, "/nonexistent-test-root/path-that-does-not-exist"}
 		assertBoundaryCode(t, cfg, "unavailable_root")
 	})
 }

@@ -155,7 +155,7 @@ the narrower input-plane contract either.
 
 ## Disposable evidence
 
-No prototype used `/run/user/<uid>/chrote-tmux` or a live session. Each tmux
+No prototype used `<cockpit-socket-directory>` or a live session. Each tmux
 server used a fresh `/tmp/chrote-tmux.*` `TMUX_TMPDIR` or a fresh equivalent
 inside a disposable container, explicit sockets, and exact-session cleanup. No
 prototype used `kill-server`.

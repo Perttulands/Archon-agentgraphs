@@ -3,8 +3,8 @@ package core
 import "testing"
 
 func TestTmuxBin_PrefersPinnedBinary(t *testing.T) {
-	t.Setenv("CHROTE_TMUX_BIN", " /home/linuxbrew/.linuxbrew/bin/tmux ")
-	if got := TmuxBin(); got != "/home/linuxbrew/.linuxbrew/bin/tmux" {
+	t.Setenv("CHROTE_TMUX_BIN", " /opt/test-tools/bin/tmux ")
+	if got := TmuxBin(); got != "/opt/test-tools/bin/tmux" {
 		t.Fatalf("TmuxBin() = %q, want the pinned CHROTE_TMUX_BIN path", got)
 	}
 }
