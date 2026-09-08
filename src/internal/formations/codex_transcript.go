@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 )
 
@@ -26,9 +27,16 @@ func readCodexTurn(path, cwd, pointer string) (codexTranscriptTurn, error) {
 		return turn, err
 	}
 	defer f.Close()
-	scanner := bufio.NewScanner(f)
+
+	return readCodexTurnReader(f, cwd, pointer)
+}
+
+func readCodexTurnReader(reader io.Reader, cwd, pointer string) (codexTranscriptTurn, error) {
+	var turn codexTranscriptTurn
+	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
 	first := true
+	pendingContextID := ""
 	for scanner.Scan() {
 		var record struct {
 			Type    string `json:"type"`
@@ -60,6 +68,7 @@ func readCodexTurn(path, cwd, pointer string) (codexTranscriptTurn, error) {
 			turn.SessionID = p.ID
 		}
 		if record.Type == "turn_context" {
+			pendingContextID = p.TurnID
 			if turn.Consumed && turn.TurnID != "" && p.TurnID != turn.TurnID {
 				return turn, errors.New("another native turn interrupted the dispatched Codex turn")
 			}
@@ -73,6 +82,7 @@ func readCodexTurn(path, cwd, pointer string) (codexTranscriptTurn, error) {
 			}
 			if p.Role == "user" && text == pointer {
 				turn.Consumed = true
+				turn.TurnID = ""
 				turn.Complete = false
 				turn.Text = ""
 			}
@@ -86,7 +96,13 @@ func readCodexTurn(path, cwd, pointer string) (codexTranscriptTurn, error) {
 				turn.Text = text
 			}
 		}
-		if record.Type == "event_msg" && p.Type == "task_complete" && turn.Consumed && turn.Text != "" && p.TurnID == turn.TurnID {
+		if record.Type == "event_msg" && p.Type == "task_complete" && turn.Consumed && turn.Text != "" {
+			if turn.TurnID == "" {
+				turn.TurnID = pendingContextID
+			}
+			if p.TurnID != turn.TurnID {
+				continue
+			}
 			turn.Complete = true
 			return turn, nil
 		}

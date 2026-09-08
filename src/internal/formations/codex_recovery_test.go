@@ -67,7 +67,11 @@ func TestCompletedNativeRecoveryValidatesBeforeResumeAndNeverRedispatches(t *tes
 			if err != nil {
 				t.Fatal(err)
 			}
-			executor := NewCodexSeatExecutor(store, nil, CodexSeatConfig{Cwd: store.Workspace, StateDir: store.Workspace, Model: "gpt-6-astra", Effort: "xhigh", RecoveryBrief: brief, RecoveryTranscript: transcriptPath})
+			personas := NewPersonaStore(t.TempDir())
+			if _, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "builder", Harness: "openai-codex", Model: "gpt-6-astra", Effort: "xhigh"}); err != nil {
+				t.Fatal(err)
+			}
+			executor := NewTmuxFormationExecutor(store, personas, TmuxExecutorConfig{Cwd: store.Workspace, StateDir: store.Workspace, Roots: []string{store.Workspace}, OutputCapBytes: 1 << 20, RecoveryBrief: brief, RecoveryTranscript: transcriptPath})
 			engine := NewRunEngine(store, nil, executor)
 			status, err := engine.ResumeRun(started.RunID, RunResumeRequest{Mode: "completed-native-turn"})
 			if kind != "valid file output" {

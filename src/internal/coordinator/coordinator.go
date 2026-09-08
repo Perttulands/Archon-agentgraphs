@@ -242,10 +242,10 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	// The first service deliberately admits only the schedule its adapter proves.
+	// Admit the schedules supported by the shared seat executor.
 	for _, node := range board.Formations {
-		if node.Type != formations.FormationTypeSolo || len(node.Slots) != 1 {
-			reply(w, 422, map[string]string{"error": "standalone runtime requires one-slot solo formations"})
+		if node.Type != formations.FormationTypeSolo && node.Type != formations.FormationTypePeer && node.Type != formations.FormationTypeOrchestrated || len(node.Slots) == 0 {
+			reply(w, 422, map[string]string{"error": "standalone runtime requires a supported formation with staffed slots"})
 			return
 		}
 	}

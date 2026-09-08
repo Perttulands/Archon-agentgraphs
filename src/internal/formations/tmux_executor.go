@@ -3,8 +3,6 @@ package formations
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,12 +23,6 @@ const (
 	defaultTmuxOutputCapBytes = 8192
 	defaultTmuxTimeoutSeconds = 30
 	peerPlaneMaxBytes         = 1 << 20
-	// ownedSessionNameAttempts bounds how many times the executor regenerates a
-	// unique owned session name when the candidate collides with a session
-	// already present on the shared socket (a pre-existing / foreign session).
-	// Collision is astronomically unlikely with a random nonce, so a small bound
-	// is plenty; exhausting it fails closed rather than reusing a foreign name.
-	ownedSessionNameAttempts = 8
 	// tmuxKeeperSuffix names the executor's own lazy-start "keeper" session,
 	// appended to the configured SessionPrefix. The keeper's only job is to hold
 	// a freshly lazy-started tmux server alive; it is infrastructure, never an
@@ -49,18 +41,7 @@ var (
 	// tmuxPasteSettleDelay lets a large bracketed paste finish rendering in the
 	// agent TUI before the single submit key. An Enter sent too soon can be absorbed
 	// into the still-settling input instead of submitting the turn.
-	tmuxPasteSettleDelay         = 1200 * time.Millisecond
-	tmuxSessionReadyPollInterval = 100 * time.Millisecond
-	tmuxSleep                    = time.Sleep
-	// newSessionNonce returns a collision-proof suffix for an owned session name.
-	// It is a package var so tests can make owned names deterministic.
-	newSessionNonce = func() string {
-		var buf [6]byte
-		if _, err := rand.Read(buf[:]); err != nil {
-			return strconv.FormatInt(time.Now().UnixNano(), 36)
-		}
-		return hex.EncodeToString(buf[:])
-	}
+	tmuxPasteSettleDelay = 1200 * time.Millisecond
 	// formationServiceUID returns the numeric uid the CHROTE service process runs
 	// as. This is the default expected agent-user, so single-user installs work
 	// with zero configuration. Package var for test injection; never hardcoded.
@@ -144,10 +125,12 @@ func (e *TmuxFormationExecutor) verifyServerOwner(expected expectedAgentUser) er
 }
 
 type TmuxExecutorConfig struct {
-	Harnesses []string
-	Socket    string
-	Cwd       string
-	Roots     []string
+	StateDir, CodexTranscriptRoot, ClaudeTranscriptRoot, Mission string
+	RecoveryTranscript, RecoveryBrief                            string
+	Harnesses                                                    []string
+	Socket                                                       string
+	Cwd                                                          string
+	Roots                                                        []string
 	// AgentUser is the Unix user the executor expects to own the tmux server it
 	// drives (and therefore the user agents run as). Empty defaults to the service
 	// user the CHROTE process runs as, so single-user installs need zero config.
@@ -165,26 +148,20 @@ type TmuxFormationExecutor struct {
 	config         TmuxExecutorConfig
 	client         tmuxHarnessClient
 	socketIdentity os.FileInfo
+	seatClient     seatTransport
 }
 
-// tmuxHarnessClient is the executor's entire surface onto tmux. It is
-// deliberately narrow: it can probe whether a server is running (read-only),
-// lazy-START a server via a keeper session, enumerate sessions (read-only),
-// CREATE a session, KILL a named session, describe/capture a pane (read-only)
-// and send a prompt. There is intentionally NO kill-server, rename, resize,
-// respawn, or attach operation, so the shared-socket safety invariant — never
-// disrupt a session the executor did not itself create — cannot be violated by
-// construction. HasServer/StartKeeper only ever ADD infrastructure (a server and
-// its keeper); they never touch or tear down anything, owned or foreign.
+// tmuxHarnessClient supplies server discovery and optional keeper creation.
+// Owned seats use seatTransport, which retains immutable session identities.
+type tmuxPaneState struct {
+	Dead        bool
+	CurrentPath string
+}
+
 type tmuxHarnessClient interface {
 	HasServer(ctx context.Context, socket string) (bool, error)
 	StartKeeper(ctx context.Context, socket, keeper string) error
 	ListSessions(ctx context.Context, socket string) ([]string, error)
-	CreateSession(ctx context.Context, socket, name, cwd, launch string) error
-	KillSession(ctx context.Context, socket, name string) error
-	DescribeActivePane(ctx context.Context, socket, target string) (tmuxPaneState, error)
-	SendPrompt(ctx context.Context, socket, target, dispatchID, prompt string) error
-	CapturePane(ctx context.Context, socket, target string, maxBytes int) (string, error)
 }
 
 // ownedSessions tracks the non-persistent tmux sessions a single formation
@@ -194,13 +171,14 @@ type tmuxHarnessClient interface {
 // also takes the facilitator turn) reuses its own session instead of spawning a
 // second one.
 type ownedSessions struct {
-	bySlot  map[string]string
-	startAt map[string]time.Time
-	order   []string
+	bySlot map[string]string
+	seats  map[string]*nativeSeat
+	ctx    context.Context
+	req    FormationExecution
 }
 
 func newOwnedSessions() *ownedSessions {
-	return &ownedSessions{bySlot: map[string]string{}, startAt: map[string]time.Time{}}
+	return &ownedSessions{bySlot: map[string]string{}, seats: map[string]*nativeSeat{}, ctx: context.Background()}
 }
 
 func (o *ownedSessions) name(slotID string) (string, bool) {
@@ -219,44 +197,7 @@ func (o *ownedSessions) record(slotID, name string) {
 		return
 	}
 	o.bySlot[slotID] = name
-	o.order = append(o.order, name)
-	// Record the session's dispatch-start once, when it is first created. Reused
-	// dispatches on the same session (e.g. a peer that also takes the facilitator
-	// turn) keep this earliest start so the transcript-capture mtime guard still
-	// includes the same, growing transcript file and previousSentinels can tell a
-	// prior turn's sentinel from this turn's.
-	if o.startAt != nil {
-		if _, ok := o.startAt[slotID]; !ok {
-			o.startAt[slotID] = time.Now()
-		}
-	}
-}
 
-// startedAt reports when the slot's owned session was first created. The zero
-// value / false is returned for an unknown slot; callers fall back to now.
-func (o *ownedSessions) startedAt(slotID string) (time.Time, bool) {
-	if o == nil || o.startAt == nil {
-		return time.Time{}, false
-	}
-	at, ok := o.startAt[slotID]
-	return at, ok
-}
-
-func (o *ownedSessions) owns(name string) bool {
-	if o == nil {
-		return false
-	}
-	for _, owned := range o.order {
-		if owned == name {
-			return true
-		}
-	}
-	return false
-}
-
-type tmuxPaneState struct {
-	Dead        bool
-	CurrentPath string
 }
 
 func TmuxExecutorConfigFromEnv() TmuxExecutorConfig {
@@ -273,18 +214,25 @@ func TmuxExecutorConfigFromEnv() TmuxExecutorConfig {
 		}
 	}
 	return TmuxExecutorConfig{
-		Harnesses:      splitLabCSV(os.Getenv("CHROTE_FORMATIONS_TMUX_HARNESSES")),
-		Socket:         strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_SOCKET")),
-		Cwd:            strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_CWD")),
-		Roots:          splitLabCSV(os.Getenv("CHROTE_FORMATIONS_TMUX_ROOTS")),
-		AgentUser:      strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_AGENT_USER")),
-		SessionPrefix:  strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_SESSION_PREFIX")),
-		OutputCapBytes: capBytes,
-		TimeoutSeconds: timeoutSeconds,
+		Harnesses:            splitLabCSV(os.Getenv("CHROTE_FORMATIONS_TMUX_HARNESSES")),
+		StateDir:             strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_STATE_DIR")),
+		Mission:              strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_MISSION_LABEL")),
+		CodexTranscriptRoot:  strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_CODEX_TRANSCRIPTS")),
+		ClaudeTranscriptRoot: strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_CLAUDE_TRANSCRIPTS")),
+		Socket:               strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_SOCKET")),
+		Cwd:                  strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_CWD")),
+		Roots:                splitLabCSV(os.Getenv("CHROTE_FORMATIONS_TMUX_ROOTS")),
+		AgentUser:            strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_AGENT_USER")),
+		SessionPrefix:        strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_SESSION_PREFIX")),
+		OutputCapBytes:       capBytes,
+		TimeoutSeconds:       timeoutSeconds,
 	}
 }
 
 func NewTmuxFormationExecutor(store *Store, personas *PersonaStore, config TmuxExecutorConfig) *TmuxFormationExecutor {
+	if config.StateDir != "" {
+		return newTmuxFormationExecutorWithClient(store, personas, config, existingServerClient{})
+	}
 	return newTmuxFormationExecutorWithClient(store, personas, config, realTmuxHarnessClient{})
 }
 
@@ -298,7 +246,13 @@ func newTmuxFormationExecutorWithClient(store *Store, personas *PersonaStore, co
 	if client == nil {
 		client = realTmuxHarnessClient{}
 	}
-	return &TmuxFormationExecutor{store: store, personas: personas, config: config, client: client}
+	e := &TmuxFormationExecutor{store: store, personas: personas, config: config, client: client}
+	if transport, ok := client.(seatTransport); ok {
+		e.seatClient = transport
+	} else {
+		e.seatClient = realSeatTransport{}
+	}
+	return e
 }
 
 type tmuxSlotOutput struct {
@@ -335,6 +289,18 @@ func (o tmuxSlotOutput) summary() string {
 }
 
 func (e *TmuxFormationExecutor) ExecuteFormation(req FormationExecution) (FormationExecutionResult, error) {
+	return e.ExecuteFormationContext(context.Background(), req)
+}
+
+func (e *TmuxFormationExecutor) ExecuteFormationContext(parent context.Context, req FormationExecution) (FormationExecutionResult, error) {
+	// Boundary pinning and per-run state belong to this execution, not the shared factory.
+	copy := *e
+	return copy.executeFormationContext(parent, req)
+}
+
+func (e *TmuxFormationExecutor) executeFormationContext(parent context.Context, req FormationExecution) (FormationExecutionResult, error) {
+	ctx, cancel := context.WithTimeout(parent, time.Duration(e.config.TimeoutSeconds)*time.Second)
+	defer cancel()
 	if e == nil || e.store == nil {
 		return FormationExecutionResult{}, runExecutionError("missing_executor", "tmux executor store is not configured", "executor", ErrRunExecutorUnavailable)
 	}
@@ -348,15 +314,16 @@ func (e *TmuxFormationExecutor) ExecuteFormation(req FormationExecution) (Format
 		return FormationExecutionResult{}, runExecutionError("missing_slot", fmt.Sprintf("formation %q has no slots to dispatch", req.NodeID), "executor", nil)
 	}
 	if req.Formation.Type == FormationTypeOrchestrated {
-		return e.executeOrchestratedFormation(req)
+		return e.executeOrchestratedFormation(ctx, req)
 	}
 	if req.Formation.Type == FormationTypePeer {
-		return e.executePeerFormation(req)
+		return e.executePeerFormation(ctx, req)
 	}
 
 	allowed := e.allowedHarnesses()
 	dispatcher := NewSlotDispatcher(e.store, nil)
 	owned := newOwnedSessions()
+	owned.ctx, owned.req = ctx, req
 	defer e.teardownOwnedSessions(owned)
 	outputs := make([]string, 0, len(req.Formation.Slots))
 	for _, slot := range req.Formation.Slots {
@@ -374,156 +341,7 @@ func (e *TmuxFormationExecutor) ExecuteFormation(req FormationExecution) (Format
 	return e.formationResultFromText(req, fmt.Sprintf("tmux://%s/%s/report", req.RunID, req.NodeID), text)
 }
 
-func (e *TmuxFormationExecutor) ReattachFormationDispatch(req FormationReattachRequest) (FormationExecutionResult, error) {
-	if e == nil || e.store == nil {
-		return FormationExecutionResult{}, runExecutionError("missing_executor", "tmux executor store is not configured", "executor", ErrRunExecutorUnavailable)
-	}
-	if err := e.store.RequireRuntimeAuthority(); err != nil {
-		return FormationExecutionResult{}, err
-	}
-	if err := e.validateConfiguredBoundary(); err != nil {
-		return FormationExecutionResult{}, err
-	}
-	if req.DispatchID == "" || req.NodeID == "" || req.SlotID == "" {
-		return FormationExecutionResult{}, runExecutionError("invalid_reattach", "reattach requires dispatch, node, and slot identifiers", "recovery", nil)
-	}
-	dispatcher := NewSlotDispatcher(e.store, nil)
-	dispatch := dispatcher.dispatchEvent(req.RunID, req.DispatchID)
-	if dispatch.Type == "" {
-		return FormationExecutionResult{}, runExecutionError("unknown_dispatch", fmt.Sprintf("dispatch %q was not found", req.DispatchID), "recovery", nil)
-	}
-	sessionRef := stringFromEventData(dispatch, "sessionRef")
-	sessionName, ok := strings.CutPrefix(sessionRef, "tmux:")
-	if !ok || !safeTmuxSessionName(sessionName) {
-		return FormationExecutionResult{}, runExecutionError("invalid_session", fmt.Sprintf("dispatch %q has invalid sessionRef %q", req.DispatchID, sessionRef), "recovery", nil)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(e.config.TimeoutSeconds)*time.Second)
-	defer cancel()
-	if err := e.validatePinnedTmuxSocket(); err != nil {
-		return FormationExecutionResult{}, withSlot(err, req.NodeID, req.SlotID, req.DispatchID)
-	}
-	captured, err := e.client.CapturePane(ctx, e.config.Socket, sessionName, e.config.OutputCapBytes+1)
-	if err != nil {
-		return FormationExecutionResult{}, runSlotExecutionError("reattach_capture_failed", redactLedgerText(err.Error()), "adapter", err, req.NodeID, req.SlotID, req.DispatchID)
-	}
-	capBytes := e.config.OutputCapBytes
-	if capBytes <= 0 {
-		capBytes = defaultTmuxOutputCapBytes
-	}
-	if len(captured) > capBytes {
-		return FormationExecutionResult{}, runSlotExecutionError("oversized_output", "tmux captured output exceeds configured cap", "adapter", nil, req.NodeID, req.SlotID, req.DispatchID)
-	}
-	sentinel, _ := ParseCompletionSentinel(captured, req.RunID)
-	artifact := redactLedgerText(sentinel.Artifact)
-	if artifact == "" {
-		artifact = "tmux://" + req.RunID + "/" + req.NodeID + "/" + req.SlotID
-	}
-	text := extractCapturedSlotText(captured, "", req.RunID)
-	if strings.TrimSpace(text) == "" {
-		text = fmt.Sprintf("tmux harness completed for sessionRef %s artifact %s", sessionRef, artifact)
-	}
-	result, err := e.formationResultFromText(FormationExecution{
-		RunID:     req.RunID,
-		NodeID:    req.NodeID,
-		Formation: req.Formation,
-	}, artifact, text)
-	if err != nil {
-		return FormationExecutionResult{}, err
-	}
-	if err := dispatcher.CompleteFromCapture(req.RunID, req.DispatchID, captured); err != nil {
-		return FormationExecutionResult{}, err
-	}
-	if err := e.appendReattachEvidenceGaps(req, dispatch.Attempt); err != nil {
-		return FormationExecutionResult{}, err
-	}
-	return result, nil
-}
-
-// appendReattachEvidenceGaps records one explicit evidence-gap observation per
-// bound worker when a resumed orchestrated leader dispatch completes. Bind-time
-// pane baselines do not survive a process restart, so a resumed run can never
-// carry capture-derived worker outcomes; ADR-0011 defines fail-loud as distinct
-// visible events, so the gap is recorded rather than silent. Worker identity
-// comes from the run's orchestration_team event — the only durable record of
-// which sessions were bound. Emission happens only after the leader completion
-// succeeded, which CompleteFromCapture allows once, so the gaps cannot
-// duplicate across retries.
-func (e *TmuxFormationExecutor) appendReattachEvidenceGaps(req FormationReattachRequest, attempt int) error {
-	if req.Formation.Type != FormationTypeOrchestrated {
-		return nil
-	}
-	events, err := e.store.ReadRunEvents(req.RunID)
-	if err != nil {
-		return err
-	}
-	var team RunEvent
-	for i := len(events) - 1; i >= 0; i-- {
-		if events[i].Type == RunEventOrchestrationTeam {
-			team = events[i]
-			break
-		}
-	}
-	if team.Data == nil {
-		return nil
-	}
-	controllerSlot := ""
-	if controller, ok := team.Data["controller"].(map[string]any); ok {
-		controllerSlot = stringFromAny(controller["slotId"])
-	}
-	for _, worker := range teamWorkerMaps(team.Data) {
-		slotID := stringFromAny(worker["slotId"])
-		data := map[string]any{
-			"mode":           "agentic-leader",
-			"observer":       "archon-capture",
-			"slotId":         slotID,
-			"label":          stringFromAny(worker["label"]),
-			"agentId":        stringFromAny(worker["agentId"]),
-			"harness":        stringFromAny(worker["harness"]),
-			"controllerSlot": controllerSlot,
-			"phase":          workerObservationPhaseReattach,
-			"outcome":        workerOutcomeEvidenceGap,
-			"anomaly":        true,
-			"message":        "leader dispatch was resumed after a restart; the bind-time baseline did not survive, so no capture-derived outcome exists for this worker",
-		}
-		if stem := stringFromAny(worker["sessionStem"]); stem != "" {
-			data["sessionStem"] = stem
-		}
-		if ref := stringFromAny(worker["sessionRef"]); ref != "" {
-			data["sessionRef"] = ref
-		}
-		if err := e.store.AppendRunEvent(req.RunID, RunEvent{
-			Type:    RunEventWorkerObservation,
-			NodeID:  req.NodeID,
-			SlotID:  slotID,
-			Attempt: attempt,
-			Data:    data,
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// teamWorkerMaps decodes the workers list of an orchestration_team event,
-// which is []map[string]any when appended in-process and []any of maps after a
-// ledger round-trip.
-func teamWorkerMaps(data map[string]any) []map[string]any {
-	switch workers := data["workers"].(type) {
-	case []map[string]any:
-		return workers
-	case []any:
-		out := make([]map[string]any, 0, len(workers))
-		for _, raw := range workers {
-			if m, ok := raw.(map[string]any); ok {
-				out = append(out, m)
-			}
-		}
-		return out
-	}
-	return nil
-}
-
-func (e *TmuxFormationExecutor) executeOrchestratedFormation(req FormationExecution) (FormationExecutionResult, error) {
+func (e *TmuxFormationExecutor) executeOrchestratedFormation(ctx context.Context, req FormationExecution) (FormationExecutionResult, error) {
 	controller, workers, err := splitOrchestratedSlots(req.Formation)
 	if err != nil {
 		return FormationExecutionResult{}, err
@@ -531,10 +349,8 @@ func (e *TmuxFormationExecutor) executeOrchestratedFormation(req FormationExecut
 	allowed := e.allowedHarnesses()
 	dispatcher := NewSlotDispatcher(e.store, nil)
 	owned := newOwnedSessions()
+	owned.ctx, owned.req = ctx, req
 	defer e.teardownOwnedSessions(owned)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(e.config.TimeoutSeconds)*time.Second)
-	defer cancel()
-
 	controllerBinding, err := e.resolveSlotBinding(ctx, req, controller, allowed, owned)
 	if err != nil {
 		return FormationExecutionResult{}, withSlot(err, req.NodeID, controller.ID, "")
@@ -550,12 +366,18 @@ func (e *TmuxFormationExecutor) executeOrchestratedFormation(req FormationExecut
 	if err := e.appendOrchestrationTeamEvent(req, controllerBinding, workerBindings); err != nil {
 		return FormationExecutionResult{}, err
 	}
-	baselines, err := e.captureWorkerBaselines(req, controllerBinding, workerBindings)
+	baselines, err := e.reserveWorkerBriefs(workerBindings, owned)
 	if err != nil {
 		return FormationExecutionResult{}, err
 	}
 
-	leaderExtra := append(e.leaderAgenticExtraLines(controllerBinding, workerBindings), outputContractExtraLines(req.Formation)...)
+	leaderExtra := e.leaderAgenticExtraLines(controllerBinding, workerBindings)
+	for _, baseline := range baselines {
+		seat := baseline.seat
+		leaderExtra = append(leaderExtra, fmt.Sprintf("Worker slot %s: write its complete task to %s, then paste ONLY this exact pointer into its existing owned pane %s: %s", baseline.binding.Slot.ID, seat.brief, seat.paneID, seat.pointer))
+	}
+	leaderExtra = append(leaderExtra, "For every worker task include the run id and require the CHROTE-DONE sentinel in its final answer. Use load-buffer/paste-buffer with bracketed paste, wait for staging, then send Enter once. Never create, adopt, or kill any sessions. Finish after all worker turns complete. Worker completion is independently read from native transcripts.")
+	leaderExtra = append(leaderExtra, outputContractExtraLines(req.Formation)...)
 	leader, leaderErr := e.executeSlot(req, controller, allowed, dispatcher, "leader-agentic", leaderExtra, owned)
 	// Observe the workers whether or not the leader finished: a leader that timed
 	// out is exactly when a hung or never-touched worker most needs evidence. The
@@ -574,7 +396,7 @@ func (e *TmuxFormationExecutor) executeOrchestratedFormation(req FormationExecut
 	return e.formationResultFromText(req, leader.Artifact, text)
 }
 
-func (e *TmuxFormationExecutor) executePeerFormation(req FormationExecution) (FormationExecutionResult, error) {
+func (e *TmuxFormationExecutor) executePeerFormation(ctx context.Context, req FormationExecution) (FormationExecutionResult, error) {
 	peers, err := peerFormationSlots(req.Formation)
 	if err != nil {
 		return FormationExecutionResult{}, err
@@ -582,10 +404,8 @@ func (e *TmuxFormationExecutor) executePeerFormation(req FormationExecution) (Fo
 	allowed := e.allowedHarnesses()
 	dispatcher := NewSlotDispatcher(e.store, nil)
 	owned := newOwnedSessions()
+	owned.ctx, owned.req = ctx, req
 	defer e.teardownOwnedSessions(owned)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(e.config.TimeoutSeconds)*time.Second)
-	defer cancel()
-
 	bindings := make([]tmuxSlotBinding, 0, len(peers))
 	for _, peer := range peers {
 		binding, err := e.resolveSlotBinding(ctx, req, peer, allowed, owned)
@@ -927,76 +747,47 @@ func hasOutputPortKey(raw map[string]any) bool {
 }
 
 func (e *TmuxFormationExecutor) executeSlot(req FormationExecution, slot FormationSlot, allowed map[string]bool, dispatcher *SlotDispatcher, phase string, extraLines []string, owned *ownedSessions) (tmuxSlotOutput, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(e.config.TimeoutSeconds)*time.Second)
-	defer cancel()
-	binding, err := e.resolveSlotBinding(ctx, req, slot, allowed, owned)
+	binding, err := e.resolveSlotBinding(owned.ctx, req, slot, allowed, owned)
 	if err != nil {
 		return tmuxSlotOutput{}, withSlot(err, req.NodeID, slot.ID, "")
 	}
-	card := binding.Card
-	variant := binding.Variant
-	sessionName := binding.SessionName
-
-	// dispatchStart bounds the transcript-capture mtime guard (claude-code). It is
-	// the session's creation time so a reused session (facilitator turn) keeps its
-	// growing transcript in scope; it falls back to now for a session not tracked
-	// as owned. Non-transcript harnesses ignore it.
-	dispatchStart, ok := owned.startedAt(slot.ID)
-	if !ok {
-		dispatchStart = time.Now()
-	}
-	turnMarker := "turn marker: " + newPrefixedID("turn")
-	promptExtra := append(append([]string{}, extraLines...), turnMarker)
-	prompt := e.renderPromptWithContext(req, slot, *card, variant, phase, promptExtra)
-	existingSentinels, err := e.countExistingCompletionSentinels(ctx, sessionName, req.RunID, variant.ID, dispatchStart)
+	seat := owned.seats[slot.ID]
+	prompt := e.renderPromptWithContext(req, slot, *binding.Card, binding.Variant, phase, extraLines)
+	brief, pointer, err := e.writeSeatBrief(prompt)
 	if err != nil {
-		return tmuxSlotOutput{}, withSlot(err, req.NodeID, slot.ID, "")
+		return tmuxSlotOutput{}, err
 	}
-	lease, err := dispatcher.DispatchSlot(req.RunID, SlotDispatchRequest{
-		NodeID:      req.NodeID,
-		SlotID:      slot.ID,
-		AgentID:     card.ID,
-		Harness:     variant.ID,
-		SessionStem: variant.SessionStem,
-		SessionRef:  "tmux:" + sessionName,
-		Prompt:      prompt,
-		Phase:       phase,
-		Attempt:     req.Attempt,
-	})
+	seat.brief, seat.pointer = brief, pointer
+	lease, err := dispatcher.DispatchSlot(req.RunID, SlotDispatchRequest{NodeID: req.NodeID, SlotID: slot.ID, AgentID: slot.AgentID, Harness: binding.Variant.ID, SessionStem: binding.Variant.SessionStem, SessionRef: "tmux:" + binding.SessionName, Prompt: prompt, Phase: phase, Attempt: req.Attempt})
 	if err != nil {
 		return tmuxSlotOutput{}, err
 	}
 	if err := e.validatePinnedTmuxSocket(); err != nil {
 		return tmuxSlotOutput{}, withSlot(err, req.NodeID, slot.ID, lease.DispatchID)
 	}
-	if err := e.client.SendPrompt(ctx, e.config.Socket, sessionName, lease.DispatchID, prompt); err != nil {
+	if err := e.seatClient.Stage(owned.ctx, e.config.Socket, seat, lease.DispatchID, pointer); err != nil {
 		return tmuxSlotOutput{}, runSlotExecutionError("dispatch_failed", redactPromptFromLedgerText(err.Error(), prompt), "adapter", err, req.NodeID, slot.ID, lease.DispatchID)
 	}
-	if err := e.appendAdapterSend(req.RunID, req.NodeID, slot.ID, lease.DispatchID, sessionName, prompt, phase); err != nil {
+	if err := e.appendAdapterSend(req.RunID, req.NodeID, slot.ID, lease.DispatchID, binding.SessionName, prompt, phase); err != nil {
 		return tmuxSlotOutput{}, err
 	}
-
-	captured, err := e.waitForCompletion(ctx, sessionName, req.RunID, prompt, existingSentinels, variant.ID, dispatchStart)
+	turn, err := e.seatClient.WaitTurn(owned.ctx, seat, e.config.Cwd, pointer, func(turn codexTranscriptTurn) error {
+		return e.store.AppendRunEvent(req.RunID, RunEvent{Type: "seat_prompt_consumed", NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": binding.SessionName, "nativeSessionId": turn.SessionID, "dispatchId": lease.DispatchID}})
+	})
 	if err != nil {
-		return tmuxSlotOutput{}, withSlot(err, req.NodeID, slot.ID, lease.DispatchID)
+		return tmuxSlotOutput{}, runSlotExecutionError("native_turn_failed", redactPromptFromLedgerText(err.Error(), prompt), "adapter", err, req.NodeID, slot.ID, lease.DispatchID)
 	}
-	if err := dispatcher.CompleteFromCapture(req.RunID, lease.DispatchID, captured); err != nil {
+	if err := binding.Variant.verifyTurnSettings(turn); err != nil {
+		return tmuxSlotOutput{}, runSlotExecutionError("seat_settings_mismatch", err.Error(), "adapter", err, req.NodeID, slot.ID, lease.DispatchID)
+	}
+	if len(turn.Text) > e.config.OutputCapBytes {
+		return tmuxSlotOutput{}, runSlotExecutionError("oversized_output", "native seat output exceeds configured cap", "adapter", nil, req.NodeID, slot.ID, lease.DispatchID)
+	}
+	if err := dispatcher.CompleteFromCapture(req.RunID, lease.DispatchID, turn.Text); err != nil {
 		return tmuxSlotOutput{}, err
 	}
-	sentinel, _ := ParseCompletionSentinel(captured, req.RunID)
-	artifact := redactLedgerText(sentinel.Artifact)
-	if artifact == "" {
-		artifact = "tmux://" + req.RunID + "/" + req.NodeID + "/" + slot.ID
-	}
-	return tmuxSlotOutput{
-		SlotID:     slot.ID,
-		AgentID:    card.ID,
-		Harness:    variant.ID,
-		SessionRef: "tmux:" + sessionName,
-		Artifact:   artifact,
-		Phase:      phase,
-		Text:       extractCapturedSlotText(captured, prompt, req.RunID),
-	}, nil
+	sentinel, _ := ParseCompletionSentinel(turn.Text, req.RunID)
+	return tmuxSlotOutput{SlotID: slot.ID, AgentID: slot.AgentID, Harness: binding.Variant.ID, SessionRef: "tmux:" + binding.SessionName, Artifact: sentinel.Artifact, Phase: phase, Text: extractCapturedSlotText(turn.Text, "", req.RunID)}, nil
 }
 
 func (e *TmuxFormationExecutor) resolveSlotBinding(ctx context.Context, req FormationExecution, slot FormationSlot, allowed map[string]bool, owned *ownedSessions) (tmuxSlotBinding, error) {
@@ -1043,38 +834,40 @@ func (e *TmuxFormationExecutor) resolveSlotBinding(ctx context.Context, req Form
 // A slot already provisioned in this execution reuses its own session.
 func (e *TmuxFormationExecutor) provisionOwnedSession(ctx context.Context, owned *ownedSessions, runID string, slot FormationSlot, variant HarnessVariant) (string, error) {
 	if name, ok := owned.name(slot.ID); ok {
-		if err := e.ensureOwnedSessionReady(ctx, name, variant.ID); err != nil {
+		if err := e.seatClient.Ready(ctx, e.config.Socket, owned.seats[slot.ID], variant.ID); err != nil {
 			return "", err
 		}
 		return name, nil
-	}
-	launch := strings.TrimSpace(variant.Launch)
-	if launch == "" {
-		return "", runExecutionError("missing_launch", fmt.Sprintf("agent %q harness %q has no launch command to spawn an on-demand session", slot.AgentID, variant.ID), "executor", nil)
 	}
 	name, err := e.pickOwnedSessionName(ctx, runID, slot.ID)
 	if err != nil {
 		return "", err
 	}
-	if err := e.validatePinnedTmuxSocket(); err != nil {
-		return "", err
+	root := e.config.CodexTranscriptRoot
+	if variant.ID == "claude-code" {
+		root = e.config.ClaudeTranscriptRoot
 	}
-	if err := e.client.CreateSession(ctx, e.config.Socket, name, e.config.Cwd, launch); err != nil {
-		return "", runExecutionError("session_spawn_failed", redactLedgerText(err.Error()), "adapter", err)
+	seat, err := e.seatClient.Create(ctx, e.config.Socket, name, e.config.Cwd, root, variant)
+	if err != nil {
+		return "", runExecutionError("session_spawn_failed", err.Error(), "adapter", err)
 	}
-	// Record ownership immediately after a successful create so teardown reclaims
-	// the session even if the readiness check below fails.
 	owned.record(slot.ID, name)
-	if err := e.ensureOwnedSessionReady(ctx, name, variant.ID); err != nil {
+	owned.seats[slot.ID] = seat
+	if err := e.store.AppendRunEvent(runID, RunEvent{Type: "seat_created", NodeID: owned.req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": name, "sessionId": seat.sessionID, "paneId": seat.paneID, "model": variant.Model, "effort": variant.effectiveEffort()}}); err != nil {
 		return "", err
+	}
+	if err := e.seatClient.Ready(ctx, e.config.Socket, seat, variant.ID); err != nil {
+		var executionErr *RunExecutionError
+		if errors.As(err, &executionErr) {
+			return "", err
+		}
+		return "", runExecutionError("session_startup_timeout", err.Error(), "adapter", err)
 	}
 	return name, nil
 }
 
 // pickOwnedSessionName derives a collision-proof, executor-owned tmux session
-// name (run + slot scoped, random-nonce suffixed). It refuses any candidate that
-// already exists on the socket, so it can never reuse or alias a pre-existing /
-// foreign session; if it cannot find a free name it fails closed.
+// name from mission and slot. A collision fails without adopting a session.
 func (e *TmuxFormationExecutor) pickOwnedSessionName(ctx context.Context, runID, slotID string) (string, error) {
 	if err := e.validatePinnedTmuxSocket(); err != nil {
 		return "", err
@@ -1087,77 +880,21 @@ func (e *TmuxFormationExecutor) pickOwnedSessionName(ctx context.Context, runID,
 	for _, name := range existing {
 		taken[name] = true
 	}
-	for attempt := 0; attempt < ownedSessionNameAttempts; attempt++ {
-		candidate := e.config.SessionPrefix + sanitizeSessionComponent(runID) + "-" + sanitizeSessionComponent(slotID) + "-" + newSessionNonce()
-		if !safeTmuxSessionName(candidate) {
-			continue
-		}
-		if taken[candidate] {
-			// Fail-closed on collision: never reuse or touch a session we did
-			// not create; regenerate with fresh entropy instead.
-			continue
-		}
-		return candidate, nil
+	mission := e.config.Mission
+	if mission == "" {
+		mission = runID
 	}
-	return "", runExecutionError("session_name_collision", "could not derive a collision-free owned tmux session name", "executor", nil)
+	candidate := "form-" + sanitizeSessionComponent(mission) + "-" + sanitizeSessionComponent(slotID)
+	if !safeTmuxSessionName(candidate) || taken[candidate] {
+		return "", runExecutionError("session_name_collision", "owned tmux session name is already present or invalid", "executor", nil)
+	}
+	return candidate, nil
 }
 
 // ensureOwnedSessionReady confirms an owned session is live, rooted in the
 // workspace, and showing the selected harness's initialized input before
 // dispatch. It targets only the exact owned name, so it never enumerates or
 // inspects foreign sessions.
-func (e *TmuxFormationExecutor) ensureOwnedSessionReady(ctx context.Context, sessionName, harnessID string) error {
-	if err := e.validatePinnedTmuxSocket(); err != nil {
-		return err
-	}
-	pane, err := e.client.DescribeActivePane(ctx, e.config.Socket, sessionName)
-	if err != nil {
-		code := "pane_unavailable"
-		if errors.Is(err, errTmuxTargetMissing) {
-			code = "missing_session"
-		}
-		return runExecutionError(code, redactLedgerText(err.Error()), "adapter", err)
-	}
-	if pane.Dead {
-		return runExecutionError("dead_pane", fmt.Sprintf("tmux session %q active pane is dead", sessionName), "adapter", ErrDispatchDeadPane)
-	}
-	if pane.CurrentPath != "" {
-		paneCwd, err := filepath.Abs(pane.CurrentPath)
-		if err != nil {
-			return runExecutionError("invalid_cwd", "tmux pane cwd is invalid", "adapter", err)
-		}
-		if !e.pathWithinRoots(paneCwd) {
-			return runExecutionError("cwd_outside_root", "tmux pane cwd is outside configured roots", "adapter", nil)
-		}
-	}
-
-	deadline := time.Now().Add(time.Duration(e.config.TimeoutSeconds) * time.Second)
-	for {
-		if err := e.validatePinnedTmuxSocket(); err != nil {
-			return err
-		}
-		captured, err := e.client.CapturePane(ctx, e.config.Socket, sessionName, e.config.OutputCapBytes)
-		if err != nil {
-			code := "session_startup_capture_failed"
-			if errors.Is(err, errTmuxTargetMissing) {
-				code = "missing_session"
-			}
-			return runExecutionError(code, redactLedgerText(err.Error()), "adapter", err)
-		}
-		if tmuxPaneShowsHarnessReady(harnessID, captured) {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return runExecutionError("session_startup_timeout", "agent TUI did not become ready before startup timeout", "adapter", ErrDispatchTimeout)
-		}
-		select {
-		case <-ctx.Done():
-			return runExecutionError("session_startup_timeout", "agent TUI did not become ready before startup timeout", "adapter", ctx.Err())
-		case <-time.After(tmuxSessionReadyPollInterval):
-		}
-	}
-}
-
 func tmuxPaneShowsHarnessReady(harnessID, captured string) bool {
 	captured = strings.TrimRight(captured, " 	\r\n")
 	lines := strings.Split(captured, "\n")
@@ -1172,6 +909,9 @@ func tmuxPaneShowsHarnessReady(harnessID, captured string) bool {
 		line = strings.TrimSpace(line)
 		switch harnessID {
 		case "openai-codex":
+			if strings.Contains(tail, "Do you trust") || strings.Contains(tail, "Yes, continue") || strings.Contains(tail, "loading") {
+				return false
+			}
 			if strings.Contains(captured, "OpenAI Codex") && strings.HasPrefix(line, "›") {
 				return true
 			}
@@ -1192,16 +932,20 @@ func tmuxPaneShowsHarnessReady(harnessID, captured string) bool {
 // that was swapped mid-run cannot cause a kill on a different tmux server; it
 // never issues kill-server and never targets a name it did not create.
 func (e *TmuxFormationExecutor) teardownOwnedSessions(owned *ownedSessions) {
-	if owned == nil || len(owned.order) == 0 {
-		return
-	}
-	if err := e.validatePinnedTmuxSocket(); err != nil {
-		return
-	}
-	for _, name := range owned.order {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(e.config.TimeoutSeconds)*time.Second)
-		_ = e.client.KillSession(ctx, e.config.Socket, name)
+	for slot, seat := range owned.seats {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		outcome, detail := "left_socket_changed", ""
+		if err := e.validatePinnedTmuxSocket(); err == nil {
+			outcome = "ended"
+			if err := e.seatClient.End(ctx, e.config.Socket, seat); err != nil {
+				outcome, detail = "left_cleanup_failed", err.Error()
+			}
+		} else {
+			detail = err.Error()
+			seat.close()
+		}
 		cancel()
+		_ = e.store.AppendRunEvent(owned.req.RunID, RunEvent{Type: "seat_cleanup", NodeID: owned.req.NodeID, SlotID: slot, Data: map[string]any{"sessionName": seat.name, "outcome": outcome, "detail": detail}})
 	}
 }
 
@@ -1419,11 +1163,7 @@ func (e *TmuxFormationExecutor) appendOrchestrationTeamEvent(req FormationExecut
 	})
 }
 
-// Worker observation outcomes. ADR-0011 makes the leader agentic — Archon never
-// mediates its commands — so the ledger's only independent account of what each
-// worker did is Archon's own pane observation. These are the outcomes that
-// account can reach; every one but workerOutcomeOutputCaptured is an anomaly a
-// reviewer should see without reading the leader's self-report.
+// Worker outcomes come from native transcript evidence, independent of the leader.
 const (
 	// workerOutcomeMissingSession: the worker's tmux session was not there when
 	// Archon looked (at bind time, or gone again by completion).
@@ -1433,26 +1173,17 @@ const (
 	workerOutcomeBindFailed = "bind_failed"
 	// workerOutcomeCaptureFailed: the session exists but Archon could not read it.
 	workerOutcomeCaptureFailed = "capture_failed"
-	// workerOutcomeNeverTouched: the pane was byte-identical to its bind-time
-	// baseline at completion, so the leader never used this worker.
+	// No native user message consumed the reserved worker pointer.
 	workerOutcomeNeverTouched = "never_touched"
-	// workerOutcomeHangTimeout: the pane changed but the harness was still
-	// mid-turn when the run finished — the worker hung or ran past the deadline.
+	// The dispatched worker turn has no native completion yet.
 	workerOutcomeHangTimeout = "hang_timeout"
-	// workerOutcomeOutputCaptured: the pane changed and settled; the recorded
-	// excerpt is what the worker produced.
+	// The dispatched worker turn completed and its final text was recorded.
 	workerOutcomeOutputCaptured = "output_captured"
-	// workerOutcomeEvidenceGap: the leader dispatch was resumed after a process
-	// restart. Bind-time baselines do not survive a restart, so no
-	// capture-derived outcome can exist for this worker; the gap is recorded as
-	// a distinct visible event instead of silence.
-	workerOutcomeEvidenceGap = "evidence_gap"
 )
 
 const (
 	workerObservationPhaseBind       = "bind"
 	workerObservationPhaseCompletion = "completion"
-	workerObservationPhaseReattach   = "reattach"
 	// workerObservationExcerptBytes caps the pane excerpt carried by one
 	// observation event. Observation is evidence, not formation output, so an
 	// oversized worker pane is truncated (and marked) rather than failing the run
@@ -1460,102 +1191,64 @@ const (
 	workerObservationExcerptBytes = 4096
 )
 
-// workerBaseline is Archon's bind-time observation of one bound worker session:
-// the pane as it stood before the leader could touch it. Diffing the completion
-// capture against it is what separates a worker the leader never used from one
-// that actually did work.
+// workerBaseline binds each worker to its reserved brief pointer before delegation.
 type workerBaseline struct {
 	binding tmuxSlotBinding
-	capture string
+	seat    *nativeSeat
 }
 
-// captureWorkerBaselines records the pre-leader pane of every bound worker. It
-// fails closed: a worker Archon cannot observe now can never be covered by the
-// per-worker evidence contract, so the run stops loudly here instead of
-// dispatching a leader whose worker would be invisible. Deliberate semantics:
-// a mid-loop failure discards the earlier workers' baselines and they get no
-// observation event — the run never reaches the leader, so there is nothing
-// those workers produced to evidence. One event per bound worker is only
-// guaranteed for runs that reach the completion observation.
-func (e *TmuxFormationExecutor) captureWorkerBaselines(req FormationExecution, controller tmuxSlotBinding, workers []tmuxSlotBinding) ([]workerBaseline, error) {
+// Reserve unique brief paths. The leader writes and dispatches each task.
+func (e *TmuxFormationExecutor) reserveWorkerBriefs(workers []tmuxSlotBinding, owned *ownedSessions) ([]workerBaseline, error) {
 	baselines := make([]workerBaseline, 0, len(workers))
 	for _, worker := range workers {
-		captured, err := e.captureWorkerPane(worker.SessionName)
+		seat := owned.seats[worker.Slot.ID]
+		brief, pointer, err := e.writeSeatBrief("")
 		if err != nil {
-			data := e.workerObservationIdentity(worker.Slot, &worker, controller, worker.SessionName)
-			data["phase"] = workerObservationPhaseBind
-			data["outcome"] = workerCaptureOutcome(err)
-			data["anomaly"] = true
-			data["code"] = executionFailureEvent(err).Code
-			data["message"] = redactLedgerText(err.Error())
-			if appendErr := e.appendWorkerObservation(req, worker.Slot.ID, data); appendErr != nil {
-				return nil, appendErr
-			}
-			return nil, withSlot(err, req.NodeID, worker.Slot.ID, "")
+			return nil, err
 		}
-		baselines = append(baselines, workerBaseline{binding: worker, capture: captured})
+		seat.brief, seat.pointer = brief, pointer
+		baselines = append(baselines, workerBaseline{binding: worker, seat: seat})
 	}
 	return baselines, nil
 }
 
-// observeWorkerOutcomes appends one capture-derived outcome event per bound
-// worker after the leader's turn. It never prompts a worker and never trusts the
-// leader's account: the outcome comes from comparing Archon's own completion
-// capture with the bind-time baseline. An anomaly is recorded, not raised — the
-// leader owns delegation strategy under ADR-0011, so an unused or still-running
-// worker is evidence for the reviewer rather than a run failure. Only a ledger
-// append failure is returned.
+// Record each worker independently, including unused, missing and incomplete seats.
+// Settings mismatches also fail the formation.
 func (e *TmuxFormationExecutor) observeWorkerOutcomes(req FormationExecution, controller tmuxSlotBinding, baselines []workerBaseline) error {
+	var settingsErr error
 	for _, baseline := range baselines {
 		worker := baseline.binding
 		data := e.workerObservationIdentity(worker.Slot, &worker, controller, worker.SessionName)
-		data["phase"] = workerObservationPhaseCompletion
-		data["baselineSha256"] = etag([]byte(baseline.capture))
-		data["baselineBytes"] = len(baseline.capture)
-		captured, err := e.captureWorkerPane(worker.SessionName)
-		if err != nil {
-			data["outcome"] = workerCaptureOutcome(err)
-			data["anomaly"] = true
-			data["code"] = executionFailureEvent(err).Code
-			data["message"] = redactLedgerText(err.Error())
-			if appendErr := e.appendWorkerObservation(req, worker.Slot.ID, data); appendErr != nil {
-				return appendErr
-			}
-			continue
-		}
-		changed := captured != baseline.capture
-		working := tmuxPaneShowsAgentWorking(captured)
+		data["phase"], data["observer"] = workerObservationPhaseCompletion, "archon-native-transcript"
+		turn, err := e.seatClient.Snapshot(baseline.seat, e.config.Cwd, baseline.seat.pointer)
 		outcome := workerOutcomeOutputCaptured
-		message := ""
 		switch {
-		case !changed:
+		case err != nil:
+			outcome = workerCaptureOutcome(err)
+			data["message"] = err.Error()
+		case !turn.Consumed:
 			outcome = workerOutcomeNeverTouched
-			message = "worker pane is unchanged from its bind-time baseline; the leader never touched this worker"
-		case working:
+		case !turn.Complete:
 			outcome = workerOutcomeHangTimeout
-			message = "worker harness was still processing a turn when the run completed"
+		default:
+			if err := worker.Variant.verifyTurnSettings(turn); err != nil {
+				outcome = "settings_mismatch"
+				data["message"] = err.Error()
+				settingsErr = err
+			}
+			if _, ok := ParseCompletionSentinel(turn.Text, req.RunID); !ok {
+				outcome = "invalid_completion"
+			}
 		}
-		excerpt, truncated := workerObservationExcerpt(baseline.capture, captured, e.workerExcerptCap())
-		data["captureSha256"] = etag([]byte(captured))
-		data["captureBytes"] = len(captured)
-		data["changed"] = changed
-		data["agentWorking"] = working
-		data["outcome"] = outcome
-		data["anomaly"] = outcome != workerOutcomeOutputCaptured
-		if message != "" {
-			data["message"] = message
-		}
-		if excerpt != "" {
-			data["text"] = excerpt
-		}
-		if truncated {
-			data["truncated"] = true
-		}
+		text, truncated := workerObservationExcerpt("", turn.Text, e.workerExcerptCap())
+		data["outcome"], data["anomaly"], data["text"], data["truncated"] = outcome, outcome != workerOutcomeOutputCaptured, text, truncated
+		data["promptConsumed"], data["nativeSessionId"], data["turnId"] = turn.Consumed, turn.SessionID, turn.TurnID
+		data["pointer"], data["captureSha256"] = baseline.seat.pointer, etag([]byte(turn.Text))
 		if err := e.appendWorkerObservation(req, worker.Slot.ID, data); err != nil {
 			return err
 		}
 	}
-	return nil
+	return settingsErr
 }
 
 // failWorkerBind records per-worker evidence for a bind-time failure before the
@@ -1598,7 +1291,7 @@ func (e *TmuxFormationExecutor) workerObservationIdentity(slot FormationSlot, bi
 		"mode": "agentic-leader",
 		// observer names the provenance this whole event exists for: Archon's own
 		// read-only capture, never the leader's self-report.
-		"observer":       "archon-capture",
+		"observer":       "archon-native-transcript",
 		"slotId":         slot.ID,
 		"label":          slot.Label,
 		"agentId":        agentID,
@@ -1622,26 +1315,6 @@ func (e *TmuxFormationExecutor) appendWorkerObservation(req FormationExecution, 
 		Attempt: req.Attempt,
 		Data:    data,
 	})
-}
-
-// captureWorkerPane is Archon's read-only look at a worker session. It runs on
-// its own deadline because completion-time observation happens after the
-// leader's dispatch has already consumed the execution context.
-func (e *TmuxFormationExecutor) captureWorkerPane(sessionName string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(e.config.TimeoutSeconds)*time.Second)
-	defer cancel()
-	if err := e.validatePinnedTmuxSocket(); err != nil {
-		return "", err
-	}
-	captured, err := e.client.CapturePane(ctx, e.config.Socket, sessionName, e.config.OutputCapBytes+1)
-	if err != nil {
-		code := "capture_failed"
-		if errors.Is(err, errTmuxTargetMissing) {
-			code = "missing_session"
-		}
-		return "", runExecutionError(code, redactLedgerText(err.Error()), "adapter", err)
-	}
-	return captured, nil
 }
 
 func workerCaptureOutcome(err error) string {
@@ -1707,7 +1380,6 @@ func (e *TmuxFormationExecutor) leaderAgenticExtraLines(controller tmuxSlotBindi
 		for _, worker := range workers {
 			lines = append(lines,
 				fmt.Sprintf("tmux -S %s capture-pane -t %s -p -S -120", e.config.Socket, worker.SessionName),
-				fmt.Sprintf("tmux -S %s send-keys -t %s C-u '<worker prompt>' ENTER", e.config.Socket, worker.SessionName),
 			)
 		}
 	}
@@ -1979,81 +1651,6 @@ func (e *TmuxFormationExecutor) validatePinnedTmuxSocket() error {
 	return nil
 }
 
-func (e *TmuxFormationExecutor) countExistingCompletionSentinels(ctx context.Context, sessionName, runID, harnessID string, dispatchStart time.Time) (int, error) {
-	if err := e.validatePinnedTmuxSocket(); err != nil {
-		return 0, err
-	}
-	captured, err := e.captureCompletionText(ctx, harnessID, sessionName, runID, dispatchStart)
-	if err != nil {
-		code := "capture_failed"
-		if errors.Is(err, errTmuxTargetMissing) {
-			code = "missing_session"
-		}
-		return 0, runExecutionError(code, redactLedgerText(err.Error()), "adapter", err)
-	}
-	if len(captured) > e.config.OutputCapBytes {
-		return 0, runExecutionError("oversized_output", "tmux captured output exceeds configured cap", "adapter", nil)
-	}
-	return countCompletionSentinels(captured, runID), nil
-}
-
-func (e *TmuxFormationExecutor) waitForCompletion(ctx context.Context, sessionName, runID, prompt string, previousSentinels int, harnessID string, dispatchStart time.Time) (string, error) {
-	deadline := time.Now().Add(time.Duration(e.config.TimeoutSeconds) * time.Second)
-	for {
-		if err := e.validatePinnedTmuxSocket(); err != nil {
-			return "", err
-		}
-		captured, err := e.captureCompletionText(ctx, harnessID, sessionName, runID, dispatchStart)
-		if err != nil {
-			code := "capture_failed"
-			if errors.Is(err, errTmuxTargetMissing) {
-				code = "missing_session"
-			}
-			return "", runExecutionError(code, redactPromptFromLedgerText(err.Error(), prompt), "adapter", err)
-		}
-		if len(captured) > e.config.OutputCapBytes {
-			return "", runExecutionError("oversized_output", "tmux captured output exceeds configured cap", "adapter", nil)
-		}
-		if hasNewCompletionSentinel(captured, prompt, runID, previousSentinels) {
-			return captured, nil
-		}
-		if time.Now().After(deadline) {
-			return "", runExecutionError("completion_sentinel_timeout", "completion sentinel timeout", "adapter", ErrDispatchTimeout)
-		}
-		select {
-		case <-ctx.Done():
-			return "", runExecutionError("completion_sentinel_timeout", "completion sentinel timeout", "adapter", ctx.Err())
-		case <-time.After(100 * time.Millisecond):
-		}
-	}
-}
-
-func hasNewCompletionSentinel(captured, prompt, runID string, previousSentinels int) bool {
-	if countCompletionSentinels(captured, runID) > previousSentinels {
-		return true
-	}
-	marker := promptTurnMarker(prompt)
-	if marker == "" {
-		return false
-	}
-	markerAt := strings.LastIndex(captured, marker)
-	if markerAt < 0 {
-		return false
-	}
-	sentinelAt := lastMatchingCompletionSentinelStart(captured, runID)
-	return sentinelAt > markerAt
-}
-
-func promptTurnMarker(prompt string) string {
-	for _, line := range strings.Split(prompt, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "turn marker: ") {
-			return line
-		}
-	}
-	return ""
-}
-
 func (e *TmuxFormationExecutor) appendAdapterSend(runID, nodeID, slotID, dispatchID, sessionName, prompt, phase string) error {
 	return e.store.AppendRunEvent(runID, RunEvent{
 		Type:   RunEventAdapterSend,
@@ -2221,29 +1818,6 @@ func (realTmuxHarnessClient) ListSessions(ctx context.Context, socket string) ([
 	return sessions, nil
 }
 
-// CreateSession spawns a detached, non-persistent session running launch in cwd.
-// It uses new-session -d WITHOUT -A, so tmux fails closed on a name collision
-// (it never attaches to or reuses a pre-existing session); the executor only
-// ever passes a collision-checked, uniquely-owned name here.
-func (realTmuxHarnessClient) CreateSession(ctx context.Context, socket, name, cwd, launch string) error {
-	args := []string{"new-session", "-d", "-s", name}
-	if strings.TrimSpace(cwd) != "" {
-		args = append(args, "-c", cwd)
-	}
-	if strings.TrimSpace(launch) != "" {
-		args = append(args, launch)
-	}
-	_, err := runTmuxCommand(ctx, socket, nil, args...)
-	return err
-}
-
-// KillSession kills exactly one named session. It is only ever called by the
-// executor with a name it created; it never runs kill-server.
-func (realTmuxHarnessClient) KillSession(ctx context.Context, socket, name string) error {
-	_, err := runTmuxCommand(ctx, socket, nil, "kill-session", "-t", name)
-	return err
-}
-
 func (realTmuxHarnessClient) DescribeActivePane(ctx context.Context, socket, target string) (tmuxPaneState, error) {
 	output, err := runTmuxCommand(ctx, socket, nil, "display-message", "-p", "-t", target, "#{pane_dead}	#{pane_current_path}")
 	if err != nil {
@@ -2263,50 +1837,8 @@ func (realTmuxHarnessClient) DescribeActivePane(ctx context.Context, socket, tar
 	return state, nil
 }
 
-func (realTmuxHarnessClient) SendPrompt(ctx context.Context, socket, target, dispatchID, prompt string) error {
-	bufferName := safeTmuxBufferName(dispatchID)
-	if _, err := runTmuxCommand(ctx, socket, strings.NewReader(prompt), "load-buffer", "-b", bufferName, "-"); err != nil {
-		return err
-	}
-	defer func() {
-		if _, err := runTmuxCommand(context.Background(), socket, nil, "delete-buffer", "-b", bufferName); err != nil {
-			return
-		}
-	}()
-	if _, err := runTmuxCommand(ctx, socket, nil, "send-keys", "-t", target, "C-u"); err != nil {
-		return err
-	}
-	if _, err := runTmuxCommand(ctx, socket, nil, "paste-buffer", "-p", "-t", target, "-b", bufferName); err != nil {
-		return err
-	}
-	// Let the (possibly large, multi-line) bracketed paste finish rendering before
-	// the single Enter — a too-early Enter can be swallowed by the settling input.
-	tmuxSleep(tmuxPasteSettleDelay)
-	// Delivery is at-most-once: once the prompt has been pasted, submit exactly
-	// once. Pane state can lag behind the keypress, so using observation as
-	// permission to press Enter again can queue duplicate copies of the prompt.
-	// Completion monitoring owns the post-submit outcome.
-	if _, err := runTmuxCommand(ctx, socket, nil, "send-keys", "-t", target, "Enter"); err != nil {
-		return err
-	}
-	return nil
-}
-
 func tmuxPaneShowsAgentWorking(captured string) bool {
 	return strings.Contains(captured, "esc to interrupt")
-}
-
-func (realTmuxHarnessClient) CapturePane(ctx context.Context, socket, target string, _ int) (string, error) {
-	// -J joins tmux's soft-wrapped lines so long single-line chrote-outputs JSON
-	// payloads survive capture intact at normal terminal widths.
-	output, err := runTmuxCommand(ctx, socket, nil, "capture-pane", "-p", "-J", "-t", target, "-S", "-2000")
-	if err != nil {
-		if strings.Contains(err.Error(), "can't find") || strings.Contains(err.Error(), "not found") {
-			return "", fmt.Errorf("%w: %s", errTmuxTargetMissing, err.Error())
-		}
-		return "", err
-	}
-	return output, nil
 }
 
 func runTmuxCommand(ctx context.Context, socket string, stdin *strings.Reader, args ...string) (string, error) {

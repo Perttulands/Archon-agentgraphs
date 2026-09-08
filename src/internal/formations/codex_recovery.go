@@ -9,7 +9,7 @@ import (
 // ReattachFormationDispatch implements the engine's recovery seam using an
 // explicitly selected, already completed native turn. It never sends input,
 // adopts a live session, or creates a replacement for the unresolved dispatch.
-func (e *CodexSeatExecutor) ReattachFormationDispatch(req FormationReattachRequest) (FormationExecutionResult, error) {
+func (e *TmuxFormationExecutor) ReattachFormationDispatch(req FormationReattachRequest) (FormationExecutionResult, error) {
 	result, err := e.readCompletedFormationDispatch(req)
 	if err != nil {
 		return FormationExecutionResult{}, err
@@ -21,7 +21,7 @@ func (e *CodexSeatExecutor) ReattachFormationDispatch(req FormationReattachReque
 }
 
 // Validate and copy the completed result before the run ledger is changed.
-func (e *CodexSeatExecutor) readCompletedFormationDispatch(req FormationReattachRequest) (FormationExecutionResult, error) {
+func (e *TmuxFormationExecutor) readCompletedFormationDispatch(req FormationReattachRequest) (FormationExecutionResult, error) {
 	c := e.config
 	if !filepath.IsAbs(c.RecoveryTranscript) || !filepath.IsAbs(c.RecoveryBrief) {
 		return FormationExecutionResult{}, errors.New("completed-turn recovery requires explicit absolute transcript and brief paths")
@@ -43,7 +43,15 @@ func (e *CodexSeatExecutor) readCompletedFormationDispatch(req FormationReattach
 	if err != nil {
 		return FormationExecutionResult{}, err
 	}
-	if !turn.Complete || turn.Model != c.Model || turn.Effort != c.Effort {
+	card, err := e.personas.ReadPersona(stringFromEventData(dispatch, "agentId"))
+	if err != nil {
+		return FormationExecutionResult{}, err
+	}
+	variant, err := card.SelectHarnessVariant(stringFromEventData(dispatch, "harness"))
+	if err != nil {
+		return FormationExecutionResult{}, err
+	}
+	if !turn.Complete || variant.verifyTurnSettings(turn) != nil {
 		return FormationExecutionResult{}, errors.New("recovery requires a completed exact turn with the configured model and effort")
 	}
 	events, err := e.store.ReadRunEvents(req.RunID)
@@ -59,8 +67,7 @@ func (e *CodexSeatExecutor) readCompletedFormationDispatch(req FormationReattach
 	if !matched {
 		return FormationExecutionResult{}, errors.New("recovery transcript is not the native session recorded for this dispatch")
 	}
-	legacy := NewTmuxFormationExecutor(e.store, e.personas, TmuxExecutorConfig{Cwd: c.Cwd, Roots: []string{c.Cwd, c.StateDir}, OutputCapBytes: 1 << 20})
-	result, err := legacy.formationResultFromText(FormationExecution{RunID: req.RunID, NodeID: req.NodeID, Formation: req.Formation}, "", turn.Text)
+	result, err := e.formationResultFromText(FormationExecution{RunID: req.RunID, NodeID: req.NodeID, Formation: req.Formation}, "", turn.Text)
 	if err != nil {
 		return FormationExecutionResult{}, err
 	}

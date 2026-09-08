@@ -27,10 +27,9 @@ func serve() error {
 	cwd := flag.String("cwd", "", "absolute agent work directory")
 	socket := flag.String("socket", "", "existing absolute tmux socket")
 	tmux := flag.String("tmux-bin", "", "absolute guarded tmux wrapper")
-	transcripts := flag.String("transcripts", "", "Codex native sessions directory")
+	codexTranscripts := flag.String("codex-transcripts", "", "Codex native sessions directory")
+	claudeTranscripts := flag.String("claude-transcripts", "", "Claude native projects directory")
 	mission := flag.String("mission-label", "proof", "owned session name component")
-	model := flag.String("model", "gpt-6-astra", "Codex model")
-	effort := flag.String("effort", "xhigh", "Codex reasoning effort")
 	timeout := flag.Duration("seat-timeout", 30*time.Minute, "maximum duration of each seat")
 	resume := flag.String("resume-run", "", "explicitly resume this blocked run from a completed native turn")
 	recoveryTranscript := flag.String("completed-transcript", "", "absolute native transcript for the unresolved completed dispatch")
@@ -43,7 +42,7 @@ func serve() error {
 	} else if *recoveryTranscript != "" || *recoveryBrief != "" {
 		return fmt.Errorf("completed-turn evidence requires --resume-run")
 	}
-	for name, value := range map[string]string{"state-dir": *state, "cwd": *cwd, "socket": *socket, "tmux-bin": *tmux, "transcripts": *transcripts} {
+	for name, value := range map[string]string{"state-dir": *state, "cwd": *cwd, "socket": *socket, "tmux-bin": *tmux, "codex-transcripts": *codexTranscripts, "claude-transcripts": *claudeTranscripts} {
 		if !filepath.IsAbs(value) {
 			return fmt.Errorf("--%s requires an absolute path", name)
 		}
@@ -56,7 +55,7 @@ func serve() error {
 	os.Setenv("CHROTE_TMUX_BIN", *tmux)
 	personas := formations.NewPersonaStore(filepath.Join(*state, "agents"))
 	c, err := coordinator.Open(*state, personas, func(store *formations.Store) formations.FormationExecutor {
-		return formations.NewCodexSeatExecutor(store, personas, formations.CodexSeatConfig{Socket: *socket, Cwd: *cwd, StateDir: *state, TranscriptRoot: *transcripts, Model: *model, Effort: *effort, Mission: *mission, Timeout: *timeout, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief})
+		return formations.NewTmuxFormationExecutor(store, personas, formations.TmuxExecutorConfig{Socket: *socket, Cwd: *cwd, Roots: []string{*cwd, *state}, StateDir: *state, CodexTranscriptRoot: *codexTranscripts, ClaudeTranscriptRoot: *claudeTranscripts, Mission: *mission, SessionPrefix: "form-", Harnesses: []string{"openai-codex", "claude-code"}, TimeoutSeconds: int(timeout.Seconds()), OutputCapBytes: 1 << 20, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief})
 	})
 	if err != nil {
 		return err
