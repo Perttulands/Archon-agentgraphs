@@ -1344,6 +1344,15 @@ func gateInputReplayKey(edgeID string, outputSeq int) string {
 }
 
 func (e *RunEngine) replayNodeOutputToReady(runID string, board *BoardDocument, gates map[string]GateNode, event RunEvent, limits RunLimits, processedGateInputs map[string]bool, outputOrdinals map[string]int, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+	// Judge chains are evaluated by their owning gate. Their outputs are
+	// durable evidence, never workflow inputs, including links between judges.
+	for _, gate := range board.Gates {
+		for _, judge := range judgeChainForGate(board, gate.ID) {
+			if judge.ID == event.NodeID {
+				return nil
+			}
+		}
+	}
 	for _, connection := range outgoingConnections(board.Connections, event.NodeID) {
 		_, fromPort := endpointParts(connection.From)
 		payload, ok := outputPayloadForPortFromEvent(event, fromPort)

@@ -485,7 +485,10 @@ func TestMixedCodeFormationHumanGateFreezesBothPriorKindResultSequences(t *testi
 	if !gateEvidenceRefsEqual(gateEvidenceRefsFromRunEventData(verdict.Data["evidence"]), wantEvidence) {
 		t.Fatalf("aggregate lost combined evidence: %+v", verdict)
 	}
-
+	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach", Reason: "human approved"})
+	if err != nil || status.Status != RunStatusSucceeded {
+		t.Fatalf("resume approved mixed gate: status=%+v err=%v", status, err)
+	}
 }
 
 func TestResumeReusesDurableCodeKindResultAfterCrashWindow(t *testing.T) {
