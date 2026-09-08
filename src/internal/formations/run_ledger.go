@@ -498,12 +498,7 @@ func (s *Store) readRunSnapshot(started RunEvent, expectedRunID string, ledger *
 }
 
 func (s *Store) ProjectRun(runID string) (*RunStatusProjection, error) {
-	ledger, err := s.openRunLedger(runID, false)
-	if err != nil {
-		return nil, err
-	}
-	defer ledger.close()
-	events, err := classifyAndReadRunEvents(ledger.file, runID)
+	events, err := s.ReadRunEvents(runID)
 	if err != nil {
 		return nil, err
 	}
@@ -598,7 +593,13 @@ func (s *Store) ReadRunEvents(runID string) ([]RunEvent, error) {
 		return nil, err
 	}
 	defer ledger.close()
-	return classifyAndReadRunEvents(ledger.file, runID)
+	var events []RunEvent
+	err = ledger.withLock(func() error {
+		var readErr error
+		events, readErr = classifyAndReadRunEvents(ledger.file, runID)
+		return readErr
+	})
+	return events, err
 }
 
 func (s *Store) ListRuns(filter RunListFilter) ([]RunStatusProjection, error) {
