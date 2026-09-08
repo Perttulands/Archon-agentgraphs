@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,7 +23,10 @@ func main() {
 	}
 }
 func serve() error {
-	address := flag.String("listen", "127.0.0.1:8091", "literal loopback listen address")
+	var addresses []string
+	flag.Func("listen", "listen address; repeat for each trusted interface", func(value string) error { addresses = append(addresses, value); return nil })
+	uiDir := flag.String("ui-dir", "", "built dashboard directory; empty disables UI")
+	executor := flag.String("executor", "codex", "seat executor: codex or lab")
 	state := flag.String("state-dir", "", "private absolute runtime and definition workspace")
 	cwd := flag.String("cwd", "", "absolute agent work directory")
 	socket := flag.String("socket", "", "existing absolute tmux socket")
@@ -43,7 +47,17 @@ func serve() error {
 	} else if *recoveryTranscript != "" || *recoveryBrief != "" {
 		return fmt.Errorf("completed-turn evidence requires --resume-run")
 	}
-	for name, value := range map[string]string{"state-dir": *state, "cwd": *cwd, "socket": *socket, "tmux-bin": *tmux, "transcripts": *transcripts} {
+	if *executor != "codex" && *executor != "lab" {
+		return fmt.Errorf("--executor must be codex or lab")
+	}
+	paths := map[string]string{"state-dir": *state}
+	if *executor == "codex" {
+		paths["cwd"] = *cwd
+		paths["socket"] = *socket
+		paths["tmux-bin"] = *tmux
+		paths["transcripts"] = *transcripts
+	}
+	for name, value := range paths {
 		if !filepath.IsAbs(value) {
 			return fmt.Errorf("--%s requires an absolute path", name)
 		}
@@ -56,24 +70,44 @@ func serve() error {
 	os.Setenv("CHROTE_TMUX_BIN", *tmux)
 	personas := formations.NewPersonaStore(filepath.Join(*state, "agents"))
 	c, err := coordinator.Open(*state, personas, func(store *formations.Store) formations.FormationExecutor {
+		if *executor == "lab" {
+			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex", "claude-code"}, Cwd: *state, Roots: []string{*state}})
+		}
 		return formations.NewCodexSeatExecutor(store, personas, formations.CodexSeatConfig{Socket: *socket, Cwd: *cwd, StateDir: *state, TranscriptRoot: *transcripts, Model: *model, Effort: *effort, Mission: *mission, Timeout: *timeout, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief})
 	})
 	if err != nil {
 		return err
 	}
 	defer c.Close()
-	listener, err := coordinator.Listen(*address)
+	var listeners []net.Listener
+	defer func() {
+		for _, listener := range listeners {
+			listener.Close()
+		}
+	}()
+	if len(addresses) == 0 {
+		return fmt.Errorf("at least one --listen address is required")
+	}
+	for _, address := range addresses {
+		listener, err := coordinator.Listen(address)
+		if err != nil {
+			return err
+		}
+		listeners = append(listeners, listener)
+	}
+	handler, err := coordinator.WithUI(c.Handler(), *uiDir)
 	if err != nil {
 		return err
 	}
-	defer listener.Close()
 	if *resume != "" {
 		if err := c.ResumeCompletedRun(*resume); err != nil {
 			return err
 		}
 	}
-	server := &http.Server{Handler: c.Handler(), ReadHeaderTimeout: 5 * time.Second}
-	fmt.Printf("Formations coordinator http://%s\n", listener.Addr())
+	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
+	for _, listener := range listeners {
+		fmt.Printf("Formations coordinator http://%s\n", listener.Addr())
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	shutdownDone := make(chan struct{})
@@ -84,7 +118,12 @@ func serve() error {
 		defer cancel()
 		server.Shutdown(shutdown)
 	}()
-	err = server.Serve(listener)
+	results := make(chan error, len(listeners))
+	for _, listener := range listeners {
+		go func() { results <- server.Serve(listener) }()
+	}
+	err = <-results
+	stop()
 	if err == http.ErrServerClosed {
 		<-shutdownDone
 		return nil

@@ -2,9 +2,7 @@ openapi: 3.1.0
 info:
   title: Standalone Formations
   version: standalone-trusted-v1
-  description: Trusted loopback coordinator. This sketch covers the proving subset, not authoritySchema 2.
-servers:
-  - url: http://127.0.0.1:8091
+  description: Trusted-network coordinator. All JSON responses use the success/timestamp/data envelope. This sketch covers runtime admission, not the full authoring API.
 paths:
   /healthz:
     get:
@@ -28,7 +26,7 @@ paths:
           description: Canonical run projections
           content:
             application/json:
-              schema: {type: array, items: {$ref: '#/components/schemas/Projection'}}
+              schema: {type: object, properties: {success: {const: true}, timestamp: {type: string}, data: {type: array, items: {$ref: '#/components/schemas/Projection'}}}}
     post:
       parameters:
         - {in: header, name: If-Match, schema: {type: string}}
@@ -39,10 +37,15 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [board, missionId, expectedRev, limits]
+              required: [board, expectedRev, limits]
+              oneOf:
+                - required: [missionId]
+                - required: [formationId]
               properties:
                 board: {type: string}
                 missionId: {type: string}
+                formationId: {type: string}
+                actor: {type: string}
                 expectedRev: {type: integer, minimum: 1}
                 limits:
                   type: object
@@ -58,7 +61,7 @@ paths:
           description: Admitted and durable; execution continues independently of HTTP
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Receipt'}
+              schema: {$ref: '#/components/schemas/ReceiptEnvelope'}
         '400': {description: Invalid request or unsupported redacted execution}
         '409': {description: Writer busy, non-final run exists, or stale board revision}
         '422': {description: Definition rejected or unsupported schedule}
@@ -71,7 +74,7 @@ paths:
           description: Sanitized canonical projection
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Projection'}
+              schema: {$ref: '#/components/schemas/ProjectionEnvelope'}
         '404': {description: No such run}
   /api/formations/runs/{runId}/stream:
     parameters:
@@ -80,7 +83,7 @@ paths:
     get:
       responses:
         '200':
-          description: SSE event projection, id equals eventCount, data is the canonical Projection; closes at finality
+          description: SSE event projection, id equals eventCount, data is the success/timestamp/data envelope containing the canonical Projection; closes at finality
           content: {text/event-stream: {schema: {type: string}}}
   /api/formations/runs/{runId}/gates/{gateId}/verdict:
     parameters:
@@ -97,6 +100,7 @@ paths:
               required: [requestedSeq, verdict]
               properties:
                 requestedSeq: {type: integer, minimum: 1}
+                actor: {type: string}
                 verdict: {enum: [pass, fail]}
                 reason: {type: string}
       responses:
@@ -104,13 +108,27 @@ paths:
           description: Verdict recorded; any authorized continuation runs in the coordinator
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Receipt'}
+              schema: {$ref: '#/components/schemas/ReceiptEnvelope'}
         '400': {description: Invalid verdict}
         '409': {description: Busy, final, duplicate or stale human request}
 components:
   parameters:
     RunID: {in: path, name: runId, required: true, schema: {type: string}}
   schemas:
+    ReceiptEnvelope:
+      type: object
+      required: [success, timestamp, data]
+      properties:
+        success: {const: true}
+        timestamp: {type: string}
+        data: {$ref: '#/components/schemas/Receipt'}
+    ProjectionEnvelope:
+      type: object
+      required: [success, timestamp, data]
+      properties:
+        success: {const: true}
+        timestamp: {type: string}
+        data: {$ref: '#/components/schemas/Projection'}
     Receipt:
       type: object
       additionalProperties: false
@@ -159,3 +177,4 @@ components:
               verdict: {type: string}
               sessionName: {type: string}
               outcome: {type: string}
+              blocks: {type: boolean}

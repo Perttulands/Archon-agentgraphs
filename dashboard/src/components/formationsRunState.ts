@@ -35,6 +35,8 @@ export function statusFromRunEvent(event: RunEvent): string {
     case 'run_started':
     case 'run_resumed':
       return 'running'
+    case 'human_input_requested':
+      return 'waiting_human'
     case 'run_blocked':
       return 'blocked'
     case 'run_canceled':
@@ -92,6 +94,7 @@ export function projectNodeStates(events: RunEvent[], activeRun: RunStatusProjec
       case 'gate_evaluating':
         map.set(nodeId, 'running')
         break
+      case 'human_input_requested':
       case 'node_waiting':
         map.set(nodeId, 'waiting')
         break
@@ -174,6 +177,7 @@ export interface NodeEvidence {
   output: NodeEvidenceOutput | null
   gateVerdict: NodeEvidenceGateVerdict | null
   eventCount: number
+  runtimeEvents: Array<{ seq: number; type: string; slotId: string; sessionName: string; outcome: string; status: string }>
 }
 
 /**
@@ -200,10 +204,16 @@ export function projectNodeEvidence(events: RunEvent[], nodeId: string): NodeEvi
   let output: NodeEvidenceOutput | null = null
   let gateVerdict: NodeEvidenceGateVerdict | null = null
   let eventCount = 0
+  const runtimeEvents: NodeEvidence["runtimeEvents"] = []
   for (const event of sorted) {
     if ((event.nodeId || event.gateId) !== nodeId) continue
     eventCount++
     switch (event.type) {
+      case 'seat_created':
+      case 'seat_cleanup':
+      case 'slot_result':
+        runtimeEvents.push({seq:event.seq,type:event.type,slotId:evidenceString(event.data,'slotId'),sessionName:evidenceString(event.data,'sessionRef'),outcome:evidenceString(event.data,'reason'),status:evidenceString(event.data,'status')})
+        break
       case 'node_started': {
         const entry = ensureAttempt(event.attempt || 1)
         entry.startedSeq = event.seq
@@ -276,43 +286,8 @@ export function projectNodeEvidence(events: RunEvent[], nodeId: string): NodeEvi
     output,
     gateVerdict,
     eventCount,
+    runtimeEvents,
   }
-}
-
-export interface PeekTarget {
-  sessionName: string
-  sessionRef: string
-}
-
-/**
- * Decide whether a node's live agent tmux session is attachable right now.
- * Peek is honest: the node must be running AND its latest dispatch must name a
- * tmux session that is still present in the live terminal registry. Formations
- * sessions are ephemeral — spawned per step and torn down after — so "ran once"
- * is never enough; the session name has to still be live to attach. Non-tmux
- * refs (e.g. lab runs, "lab:...") have no attachable tmux session and are
- * refused. Returns the session to attach, or null when peek is not available.
- */
-export function peekTargetForEvidence(
-  evidence: NodeEvidence | null,
-  liveSessionNames: ReadonlySet<string>,
-): PeekTarget | null {
-  if (!evidence || evidence.state !== 'running') return null
-  const tmuxPrefix = 'tmux:'
-  for (let a = evidence.attempts.length - 1; a >= 0; a--) {
-    const dispatches = evidence.attempts[a].dispatches
-    for (let d = dispatches.length - 1; d >= 0; d--) {
-      const sessionRef = dispatches[d].sessionRef
-      if (!sessionRef.startsWith(tmuxPrefix)) continue
-      const sessionName = sessionRef.slice(tmuxPrefix.length)
-      if (!sessionName) continue
-      // The latest dispatched session is the only one that can still be live;
-      // if it is gone from the registry, the step has been torn down — do not
-      // fall back to an older attempt's (already dead) session.
-      return liveSessionNames.has(sessionName) ? { sessionName, sessionRef } : null
-    }
-  }
-  return null
 }
 
 export function openHumanGateId(events: RunEvent[]): string {

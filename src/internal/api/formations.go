@@ -15,7 +15,16 @@ import (
 	"github.com/Perttulands/chrote-agent-formations/internal/formations"
 )
 
+// RuntimeHandlers delegates every runtime route to the owning coordinator.
+// Authoring continues to use the same injected definition and persona stores.
+type RuntimeHandlers struct {
+	Start, Get, Events, Stream, Resume, Abort, Verdict, Escalations http.HandlerFunc
+}
+
+func (h *FormationsHandler) SetRuntime(runtime RuntimeHandlers) { h.runtime = &runtime }
+
 type FormationsHandler struct {
+	runtime          *RuntimeHandlers
 	store            *formations.Store
 	personas         *formations.PersonaStore
 	needsYouNotifier formations.NeedsYouNotifier
@@ -528,6 +537,10 @@ func (h *FormationsHandler) ListGateProfiles(w http.ResponseWriter, _ *http.Requ
 }
 
 func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
+	if h.runtime != nil {
+		h.runtime.Start(w, r)
+		return
+	}
 	var request formationsRunStartRequest
 	if !decodeJSONBody(w, r, &request) {
 		return
@@ -592,6 +605,10 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FormationsHandler) GetRun(w http.ResponseWriter, r *http.Request) {
+	if h.runtime != nil {
+		h.runtime.Get(w, r)
+		return
+	}
 	status, err := h.store.ProjectRun(r.PathValue("runId"))
 	if err != nil {
 		writeFormationsError(w, err)
@@ -601,6 +618,10 @@ func (h *FormationsHandler) GetRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FormationsHandler) GetRunEvents(w http.ResponseWriter, r *http.Request) {
+	if h.runtime != nil {
+		h.runtime.Events(w, r)
+		return
+	}
 	events, err := h.store.ReadRunEvents(r.PathValue("runId"))
 	if err != nil {
 		writeFormationsError(w, err)
@@ -610,6 +631,10 @@ func (h *FormationsHandler) GetRunEvents(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *FormationsHandler) StreamRunEvents(w http.ResponseWriter, r *http.Request) {
+	if h.runtime != nil {
+		h.runtime.Stream(w, r)
+		return
+	}
 	events, err := h.store.ReadRunEvents(r.PathValue("runId"))
 	if err != nil {
 		writeFormationsError(w, err)
@@ -650,6 +675,10 @@ func (h *FormationsHandler) StreamRunEvents(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *FormationsHandler) AbortRun(w http.ResponseWriter, r *http.Request) {
+	if h.runtime != nil {
+		h.runtime.Abort(w, r)
+		return
+	}
 	var request formationsRunAbortRequest
 	if !decodeJSONBody(w, r, &request) {
 		return
@@ -683,6 +712,10 @@ func (h *FormationsHandler) AbortRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FormationsHandler) ResumeRun(w http.ResponseWriter, r *http.Request) {
+	if h.runtime != nil {
+		h.runtime.Resume(w, r)
+		return
+	}
 	var request formationsRunResumeRequest
 	if !decodeJSONBody(w, r, &request) {
 		return
@@ -701,6 +734,10 @@ func (h *FormationsHandler) ResumeRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FormationsHandler) RecordHumanGateVerdict(w http.ResponseWriter, r *http.Request) {
+	if h.runtime != nil {
+		h.runtime.Verdict(w, r)
+		return
+	}
 	var request formationsHumanGateVerdictRequest
 	if !decodeJSONBody(w, r, &request) {
 		return
@@ -720,6 +757,10 @@ func (h *FormationsHandler) RecordHumanGateVerdict(w http.ResponseWriter, r *htt
 }
 
 func (h *FormationsHandler) GetRunEscalations(w http.ResponseWriter, r *http.Request) {
+	if h.runtime != nil {
+		h.runtime.Escalations(w, r)
+		return
+	}
 	escalations, err := h.store.ProjectOpenEscalations(r.PathValue("runId"))
 	if err != nil {
 		writeFormationsError(w, err)

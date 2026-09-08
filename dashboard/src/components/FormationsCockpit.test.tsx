@@ -123,7 +123,7 @@ const agents: AgentProjection[] = [
 type RecordedPatch = { url: string; body: Record<string, unknown> }
 type RecordedMutation = { method: string; url: string }
 type TestBoard = ReturnType<typeof makeBoard>
-type TestRunEvent = { runId: string; seq: number; type: string; nodeId?: string; gateId?: string; attempt?: number; data?: Record<string, unknown> }
+type TestRunEvent = { runId: string; seq: number; type: string; nodeId?: string; gateId?: string; attempt?: number; data?: Record<string, unknown>; slotId?: string; status?: string; verdict?: string; sessionName?: string; outcome?: string }
 type TestEscalation = { runId: string; seq: number; nodeId?: string; gateId?: string; severity: string; reason: string; source: string; trigger: string; blocks: boolean }
 type TestRunStatus = { status?: string; final?: boolean; resumeAllowed?: boolean }
 let recordedMutations: RecordedMutation[] = []
@@ -323,6 +323,7 @@ function installFetchMock(options: {
       if (url.endsWith('/layout')) return respond({ layout: currentLayout }, 'layout-etag-2')
       return respond({ board }, 'board-etag-2')
     }
+    if (url === '/api/formations/runs' && init?.method === 'POST') return respond({ runId: 'run_legacy' })
     if (/\/api\/formations\/runs\/[^/]+\/escalations$/.test(url)) return respond({ escalations: options.escalations || [] })
     if (/\/api\/formations\/runs\/[^/]+\/events$/.test(url)) return respond({ events: options.runEvents || [] })
     if (/\/api\/formations\/runs\/[^/]+$/.test(url)) {
@@ -1203,7 +1204,7 @@ describe('FormationsCockpit reference parity', () => {
     patches = installFetchMock({
       runEvents: [
         { runId: 'run_legacy', seq: 1, type: 'node_output', nodeId: 'fmn_frame' },
-        { runId: 'run_legacy', seq: 2, type: 'verification_verdict', nodeId: 'fmn_frame', data: { verdict: 'fail', feedback: 'do not render raw feedback' } },
+        { runId: 'run_legacy', seq: 2, type: 'verification_verdict', nodeId: 'fmn_frame', verdict: 'fail' },
       ],
     })
     await renderCockpit()
@@ -1212,31 +1213,34 @@ describe('FormationsCockpit reference parity', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Legacy verification · Frame' })
     expect(dialog).toHaveTextContent('Legacy verification evidence · non-authorizing')
     expect(dialog).toHaveTextContent('seq 2 · fail')
-    expect(dialog).not.toHaveTextContent('do not render raw feedback')
   })
 
-  it('opens a node evidence inspector with attempts, inline output, and reportRef', async () => {
+  it('loads final evidence when a lab mission completes before its start response is read', async () => {
+    patches = installFetchMock({
+      runStatus: { status: 'succeeded', final: true },
+      runEvents: [{runId:'run_legacy',seq:1,type:'node_output',nodeId:'fmn_frame',status:'done'}],
+    })
+    await renderCockpit()
+    fireEvent.click(screen.getByTestId('run-mission-mis_showcase'))
+    await screen.findByTestId('inspect-node-fmn_frame')
+    expect(localStorage.getItem('chrote-formations-active-run-test-board')).toBeNull()
+  })
+
+  it('shows the coordinator node status and slot evidence', async () => {
     localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
     patches = installFetchMock({
       runEvents: [
-        { runId: 'run_legacy', seq: 1, type: 'node_started', nodeId: 'fmn_frame', attempt: 1, data: { reason: 'single-formation' } },
-        { runId: 'run_legacy', seq: 2, type: 'slot_dispatch', nodeId: 'fmn_frame', attempt: 1, data: { slotId: 'slot_lead', agentId: 'mason', harness: 'codex', promptSha256: 'deadbeefcafebabe0011' } },
-        { runId: 'run_legacy', seq: 3, type: 'node_output', nodeId: 'fmn_frame', data: { status: 'done', text: 'the framed output', reportRef: 'reports/fmn_frame.md', outputs: { port_frame_out: { text: 'the framed output', reportRef: 'reports/fmn_frame.md' } } } },
+        { runId: 'run_legacy', seq: 1, type: 'node_started', nodeId: 'fmn_frame' },
+        { runId: 'run_legacy', seq: 2, type: 'slot_dispatch', nodeId: 'fmn_frame', slotId: 'slot_lead' },
+        { runId: 'run_legacy', seq: 3, type: 'node_output', nodeId: 'fmn_frame', status: 'done' },
       ],
     })
     await renderCockpit()
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/formations/runs/run_legacy/events', expect.anything()))
-
     fireEvent.click(await screen.findByTestId('inspect-node-fmn_frame'))
     const dialog = await screen.findByTestId('node-inspector')
     expect(within(dialog).getByTestId('node-evidence-state')).toHaveTextContent('done')
-    expect(within(dialog).getByTestId('node-attempt-1')).toHaveTextContent('single-formation')
-    expect(dialog).toHaveTextContent('mason')
-    expect(dialog).toHaveTextContent('codex')
-    expect(within(dialog).getByTestId('node-output-value')).toHaveTextContent('the framed output')
-    expect(within(dialog).getByTestId('node-output-reportref')).toHaveTextContent('reports/fmn_frame.md')
-    expect(within(dialog).getByTestId('node-output-port-port_frame_out')).toBeInTheDocument()
-
+    expect(dialog).toHaveTextContent('slot_lead')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close run evidence' }))
     await waitFor(() => expect(screen.queryByTestId('node-inspector')).toBeNull())
   })

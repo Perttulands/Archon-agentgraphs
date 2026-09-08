@@ -143,6 +143,7 @@ export interface RunStatusProjection {
   boardSlug: string
   missionId: string
   eventCount: number
+  waitingGates?: Array<{ gateId: string; requestedSeq: number }>
   resumeAllowed?: boolean
 }
 

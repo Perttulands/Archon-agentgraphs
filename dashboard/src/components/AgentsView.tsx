@@ -612,6 +612,7 @@ export default function AgentsView() {
     try {
       const result = await startRun(board.etag, {
         board: board.slug,
+        expectedRev: board.rev,
         missionId: selectedMissionId,
         actor: 'agent:ui',
       })
@@ -652,6 +653,7 @@ export default function AgentsView() {
       const status = runStatusFromResponse(await recordGateVerdict(activeRun.runId, openGateId, {
         actor: 'agent:ui',
         verdict,
+        requestedSeq: activeRun.waitingGates?.find(gate => gate.gateId === openGateId)?.requestedSeq || 0,
         reason: `Recorded from Agents tab: ${verdict}`,
       }))
       setActiveRun(status)
@@ -661,7 +663,7 @@ export default function AgentsView() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gate verdict request failed')
     }
-  }, [activeRun?.runId, openGateId, selectedSlug])
+  }, [activeRun, openGateId, selectedSlug])
 
   const handleResume = useCallback(async () => {
     if (!activeRun?.runId || !selectedSlug) return

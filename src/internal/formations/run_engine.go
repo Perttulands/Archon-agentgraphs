@@ -45,7 +45,14 @@ type GateEvaluator interface {
 	EvaluateGate(GateEvaluation) (GateEvaluationResult, error)
 }
 
+// SetExecutionContext supplies the owner's cancellation context for each seat.
+// Configure it before executing runs; the executor retains its recovery methods.
+func (e *RunEngine) SetExecutionContext(provider func(string) context.Context) {
+	e.executionContext = provider
+}
+
 type RunEngine struct {
+	executionContext func(string) context.Context
 	store            *Store
 	personas         *PersonaStore
 	executor         FormationExecutor
@@ -55,9 +62,11 @@ type RunEngine struct {
 }
 
 type FormationRunRequest struct {
-	Actor    string
-	Personas *PersonaStore
-	Limits   RunLimits
+	ExpectedBoardRev  int
+	ExpectedBoardETag string
+	Actor             string
+	Personas          *PersonaStore
+	Limits            RunLimits
 }
 
 type FormationExecution struct {
@@ -260,19 +269,33 @@ func (e *RunEngine) ExecuteStartedMission(runID string) (*RunStatusProjection, e
 }
 
 func (e *RunEngine) RunFormation(slug, formationID string, req FormationRunRequest) (*RunStatusProjection, error) {
-	if e == nil || e.store == nil {
-		return nil, fmt.Errorf("%w: run engine store required", ErrNotFound)
-	}
-	board, err := e.store.ReadBoard(slug)
+	_, execute, err := e.PrepareFormationRun(slug, formationID, req)
 	if err != nil {
 		return nil, err
 	}
+	return execute()
+}
+
+// PrepareFormationRun durably admits an isolated formation without dispatching.
+// The owner must invoke the returned continuation once under its worker guard.
+func (e *RunEngine) PrepareFormationRun(slug, formationID string, req FormationRunRequest) (*RunStartResult, func() (*RunStatusProjection, error), error) {
+	if e == nil || e.store == nil {
+		return nil, nil, fmt.Errorf("%w: run engine store required", ErrNotFound)
+	}
+	board, err := e.store.ReadBoard(slug)
+	if err != nil {
+		return nil, nil, err
+	}
+	if (req.ExpectedBoardRev != 0 && board.Rev != req.ExpectedBoardRev) || (req.ExpectedBoardETag != "" && board.ETag != req.ExpectedBoardETag) {
+		return nil, nil, ErrConflict
+	}
+
 	formation, ok := findFormation(board.Formations, formationID)
 	if !ok {
-		return nil, fmt.Errorf("%w: formation %q", ErrNotFound, formationID)
+		return nil, nil, fmt.Errorf("%w: formation %q", ErrNotFound, formationID)
 	}
 	if err := preflightIsolatedFormationDefinition(board, formation.ID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	personas := req.Personas
 	if personas == nil {
@@ -280,67 +303,69 @@ func (e *RunEngine) RunFormation(slug, formationID string, req FormationRunReque
 	}
 	started, mission, seedInput, err := e.startFormationRun(slug, board, formation, req.Actor, personas, req.Limits)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if err := e.store.AppendRunEvent(started.RunID, RunEvent{
-		Type:    RunEventNodeStarted,
-		NodeID:  formation.ID,
-		Attempt: 1,
-		Data: map[string]any{
-			"nodeKind":  "formation",
-			"inputRefs": []RunInputRef{seedInput},
-			"reason":    "single-formation",
-			"brief":     formationBriefEventData(formationBriefValue(formation)),
-		},
-	}); err != nil {
-		return nil, err
-	}
-	result, err := e.executeFormation(FormationExecution{
-		RunID:     started.RunID,
-		NodeID:    formation.ID,
-		Title:     formation.Title,
-		Formation: formation,
-		Brief:     formationBriefValue(formation),
-		Inputs:    []RunInputRef{seedInput},
-		Attempt:   1,
-	}, req.Limits)
-	if err != nil {
-		if blockErr := e.appendExecutionFailureAndBlock(started.RunID, formation.ID, err); blockErr != nil {
-			return nil, blockErr
+	return started, func() (*RunStatusProjection, error) {
+		if err := e.store.AppendRunEvent(started.RunID, RunEvent{
+			Type:    RunEventNodeStarted,
+			NodeID:  formation.ID,
+			Attempt: 1,
+			Data: map[string]any{
+				"nodeKind":  "formation",
+				"inputRefs": []RunInputRef{seedInput},
+				"reason":    "single-formation",
+				"brief":     formationBriefEventData(formationBriefValue(formation)),
+			},
+		}); err != nil {
+			return nil, err
 		}
-		return e.projectAndNotify(started.RunID)
-	}
-	if result.Status == "" {
-		result.Status = "done"
-	}
-	if err := e.ensureFormationOutputPayloads(started.RunID, formation, result); err != nil {
-		if errors.Is(err, errRunStopped) {
+		result, err := e.executeFormation(FormationExecution{
+			RunID:     started.RunID,
+			NodeID:    formation.ID,
+			Title:     formation.Title,
+			Formation: formation,
+			Brief:     formationBriefValue(formation),
+			Inputs:    []RunInputRef{seedInput},
+			Attempt:   1,
+		}, req.Limits)
+		if err != nil {
+			if blockErr := e.appendExecutionFailureAndBlock(started.RunID, formation.ID, err); blockErr != nil {
+				return nil, blockErr
+			}
 			return e.projectAndNotify(started.RunID)
 		}
-		return nil, err
-	}
-	if err := e.store.AppendRunEvent(started.RunID, RunEvent{
-		Type:   RunEventNodeOutput,
-		NodeID: formation.ID,
-		Data:   formationOutputEventData(result),
-	}); err != nil {
-		return nil, err
-	}
-	if err := e.store.AppendRunEvent(started.RunID, RunEvent{
-		Type: RunEventSucceeded,
-		Data: map[string]any{
-			"summaryRef":   "",
-			"outputRefs":   []string{},
-			"artifactRefs": []string{},
-			"final":        true,
-			"mode":         "formation",
-			"formationId":  formation.ID,
-			"missionId":    mission.ID,
-		},
-	}); err != nil {
-		return nil, err
-	}
-	return e.projectAndNotify(started.RunID)
+		if result.Status == "" {
+			result.Status = "done"
+		}
+		if err := e.ensureFormationOutputPayloads(started.RunID, formation, result); err != nil {
+			if errors.Is(err, errRunStopped) {
+				return e.projectAndNotify(started.RunID)
+			}
+			return nil, err
+		}
+		if err := e.store.AppendRunEvent(started.RunID, RunEvent{
+			Type:   RunEventNodeOutput,
+			NodeID: formation.ID,
+			Data:   formationOutputEventData(result),
+		}); err != nil {
+			return nil, err
+		}
+		if err := e.store.AppendRunEvent(started.RunID, RunEvent{
+			Type: RunEventSucceeded,
+			Data: map[string]any{
+				"summaryRef":   "",
+				"outputRefs":   []string{},
+				"artifactRefs": []string{},
+				"final":        true,
+				"mode":         "formation",
+				"formationId":  formation.ID,
+				"missionId":    mission.ID,
+			},
+		}); err != nil {
+			return nil, err
+		}
+		return e.projectAndNotify(started.RunID)
+	}, nil
 }
 
 func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusProjection, error) {
@@ -1573,6 +1598,12 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 	}
 	if executor, ok := e.executor.(ContextFormationExecutor); ok {
 		ctx := context.Background()
+		if e.executionContext != nil {
+			ctx = e.executionContext(req.RunID)
+		}
+		if err := ctx.Err(); err != nil {
+			return FormationExecutionResult{}, err
+		}
 		if limits.WallClockSeconds > 0 {
 			events, err := e.store.ReadRunEvents(req.RunID)
 			if err != nil {

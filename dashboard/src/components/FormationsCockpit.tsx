@@ -40,7 +40,6 @@ import {
 import {
   activeRunStorageKey,
   openHumanGateId,
-  peekTargetForEvidence,
   projectNodeEvidence,
   projectNodeStates,
   runStatusFromResponse,
@@ -469,10 +468,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       try {
         const status = runStatusFromResponse(await fetchRunStatus(activeRun.runId))
         if (cancelled) return
-        setActiveRun(status)
         const events = await fetchRunEvents(activeRun.runId)
         if (cancelled) return
         setRunEvents(prev => events.reduce((acc, event) => upsertRunEvent(acc, event), prev))
+        setActiveRun(status)
         try {
           const open = await fetchRunEscalations(activeRun.runId)
           if (!cancelled) setEscalations(open)
@@ -1250,12 +1249,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const current = boardRef.current
     if (!current) return
     try {
-      const result = await startRun(current.etag, { board: current.slug, missionId: mission.id, actor: 'agent:ui' })
+      const result = await startRun(current.etag, { board: current.slug, missionId: mission.id, expectedRev: current.rev, actor: 'agent:ui' })
       const status = { ...result.status, runId: result.status.runId || result.runId }
+      const events = await fetchRunEvents(status.runId)
+      setRunEvents(events)
       setActiveRun(status)
-      setRunEvents([])
       setEscalations([])
-      window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
+      if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
+      else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
       setError('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start run')
@@ -1266,12 +1267,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const current = boardRef.current
     if (!current) return
     try {
-      const result = await startRun(current.etag, { board: current.slug, formationId: formation.id, actor: 'agent:ui' })
+      const result = await startRun(current.etag, { board: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'agent:ui' })
       const status = { ...result.status, runId: result.status.runId || result.runId }
+      const events = await fetchRunEvents(status.runId)
+      setRunEvents(events)
       setActiveRun(status)
-      setRunEvents([])
       setEscalations([])
-      window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
+      if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
+      else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
       setError('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start run')
@@ -1322,6 +1325,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       const status = runStatusFromResponse(await recordGateVerdict(activeRun.runId, gateId, {
         actor: 'agent:ui',
         verdict,
+        requestedSeq: activeRun.waitingGates?.find(gate => gate.gateId === gateId)?.requestedSeq || 0,
         reason: verdict === 'pass' ? 'operator approved' : 'operator rejected',
       }))
       setActiveRun(status)
@@ -2184,14 +2188,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     () => (inspectedNodeId ? projectNodeEvidence(runEvents, inspectedNodeId) : null),
     [inspectedNodeId, runEvents],
   )
-  const liveSessionNames = useMemo(
-    () => new Set((session?.sessions ?? []).map(item => item.name)),
-    [session?.sessions],
-  )
-  const peekTarget = useMemo(
-    () => peekTargetForEvidence(inspectedEvidence, liveSessionNames),
-    [inspectedEvidence, liveSessionNames],
-  )
   const inspectableNodeId = useCallback((escalation: OpenEscalation): string => {
     const candidate = escalation.gateId || escalation.nodeId || ''
     if (!candidate || !board) return ''
@@ -2921,21 +2917,18 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               <div><dt>State</dt><dd data-testid="node-evidence-state">{inspectedEvidence.state || 'not started'}</dd></div>
             </dl>
 
-            {inspectedEvidence.state === 'running' && inspectedEvidence.attempts.some(attempt => attempt.dispatches.some(dispatch => dispatch.sessionRef.startsWith('tmux:'))) ? (
-              <section className="node-evidence-section node-peek">
-                <h3>Live session</h3>
-                <button
-                  type="button"
-                  className="node-peek-btn"
-                  data-testid={`peek-node-${inspectedNode.id}`}
-                  disabled={!peekTarget || !session}
-                  onClick={() => { if (peekTarget && session) session.openFloatingModal(peekTarget.sessionName) }}
-                >Peek · grab the wheel</button>
-                <p className="node-peek-note">
-                  {peekTarget
-                    ? 'Attaches to the live agent session. Type to steer; close the window to hand back. It ends when the step finishes.'
-                    : 'No live agent session to attach to right now. Peek is only available while the step is running.'}
-                </p>
+            {inspectedEvidence.runtimeEvents.length ? (
+              <section className="node-evidence-section">
+                <h3>Seat activity</h3>
+                {inspectedEvidence.runtimeEvents.map(event => (
+                  <div key={event.seq} className="node-dispatch">
+                    <span>#{event.seq} {event.type}</span>
+                    {event.slotId ? <span>{event.slotId}</span> : null}
+                    {event.sessionName ? <span>{event.sessionName}</span> : null}
+                    {event.status ? <span>{event.status}</span> : null}
+                    {event.outcome ? <span>{event.outcome}</span> : null}
+                  </div>
+                ))}
               </section>
             ) : null}
 

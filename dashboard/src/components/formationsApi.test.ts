@@ -339,7 +339,7 @@ describe('formations API helpers', () => {
       }))
     }) as unknown as typeof fetch)
 
-    await startRun('board-etag', { board: 'session-search', missionId: 'mis_showcase', actor: 'agent:ui' })
+    await startRun('board-etag', { board: 'session-search', missionId: 'mis_showcase', expectedRev: 1, actor: 'agent:ui' })
 
     expect(calls[0].url).toBe('/api/formations/runs')
     expect(calls[0].init?.method).toBe('POST')

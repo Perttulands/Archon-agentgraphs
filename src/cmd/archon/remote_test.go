@@ -13,13 +13,13 @@ func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/formations/boards/proof":
-			w.Write([]byte(`{"rev":9}`))
+			w.Write([]byte(`{"success":true,"timestamp":"test","data":{"board":{"rev":9}}}`))
 		case "/api/formations/runs":
 			buf := new(bytes.Buffer)
 			buf.ReadFrom(r.Body)
 			received = buf.String()
 			w.WriteHeader(202)
-			w.Write([]byte(`{"runId":"run_proof"}`))
+			w.Write([]byte(`{"success":true,"timestamp":"test","data":{"runId":"run_proof"}}`))
 		default:
 			t.Errorf("unexpected path %s", r.URL.Path)
 			w.WriteHeader(404)
@@ -41,7 +41,7 @@ func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
 }
 
 func TestRemoteRejectsNonloopbackAndRedirects(t *testing.T) {
-	for _, url := range []string{"http://example.com", "http://0.0.0.0:8080", "https://127.0.0.1", "http://127.0.0.1/private"} {
+	for _, url := range []string{"http://example.com", "https://127.0.0.1", "http://127.0.0.1/private"} {
 		var out, err bytes.Buffer
 		if code := runRemote(url, []string{"run", "list"}, &out, &err); code != 2 {
 			t.Fatalf("accepted %s", url)
