@@ -21,6 +21,7 @@ type SlotDispatcher struct {
 }
 
 type SlotDispatchRequest struct {
+	BriefPath   string
 	NodeID      string
 	SlotID      string
 	AgentID     string
@@ -89,6 +90,7 @@ func (d *SlotDispatcher) DispatchSlot(runID string, req SlotDispatchRequest) (Sl
 			"phase":              req.Phase,
 			"promptSha256":       etag([]byte(req.Prompt)),
 			"promptRef":          "",
+			"briefPath":          req.BriefPath,
 			"nativeAck":          false,
 			"recordedBeforeSend": true,
 		},

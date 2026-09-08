@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,19 +45,26 @@ type Projection struct {
 	Events            []Event       `json:"events"`
 }
 type Coordinator struct {
-	personas     *formations.PersonaStore
-	store        *formations.Store
-	engine       *formations.RunEngine
-	lock         *os.File
-	mu           sync.Mutex
-	busy         bool
-	closed       bool
-	changed      chan struct{}
-	workers      sync.WaitGroup
-	cancels      map[string]context.CancelFunc
-	activeRun    string
-	workerDone   chan struct{}
-	abortRequest *formations.RunEvent
+	admissions sync.Mutex
+	personas   *formations.PersonaStore
+	store      *formations.Store
+	engine     *formations.RunEngine
+	lock       *os.File
+	mu         sync.Mutex
+	closed     bool
+	workers    sync.WaitGroup
+	runs       map[string]*executionState
+}
+
+type executionState struct {
+	executing bool
+	busy      bool
+	settling  bool
+	ctx       context.Context
+	cancel    context.CancelFunc
+	done      chan struct{}
+	changed   chan struct{}
+	abort     *formations.RunEvent
 }
 
 // Open takes one kernel lock for the lifetime of the coordinator. StateDir is
@@ -77,28 +85,25 @@ func Open(stateDir string, personas *formations.PersonaStore, makeExecutor func(
 		return nil, errors.New("another coordinator owns this state directory")
 	}
 	store := formations.NewStore(stateDir)
-	c := &Coordinator{store: store, personas: personas, lock: lock, changed: make(chan struct{})}
-	store.OnRunEvent = func(formations.RunEvent) {
+	c := &Coordinator{store: store, personas: personas, lock: lock, runs: make(map[string]*executionState)}
+	store.OnRunEvent = func(event formations.RunEvent) {
 		c.mu.Lock()
-		close(c.changed)
-		c.changed = make(chan struct{})
+		state := c.state(event.RunID)
+		close(state.changed)
+		state.changed = make(chan struct{})
 		c.mu.Unlock()
 	}
-	c.cancels = make(map[string]context.CancelFunc)
 	c.engine = formations.NewRunEngine(store, personas, makeExecutor(store))
 	c.engine.SetExecutionContext(func(runID string) context.Context {
-		ctx, cancel := context.WithCancel(context.Background())
 		c.mu.Lock()
-		if previous := c.cancels[runID]; previous != nil {
-			previous()
-		}
-		c.cancels[runID] = cancel
-		aborting := c.abortRequest != nil && c.activeRun == runID
-		c.mu.Unlock()
-		if p, err := c.Project(runID); err != nil || p.Final || aborting {
+		defer c.mu.Unlock()
+		state := c.state(runID)
+		if state.ctx == nil {
+			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
+			return ctx
 		}
-		return ctx
+		return state.ctx
 	})
 	c.engine.SetGateEvaluator(formations.NewCodeGateEvaluator())
 	return c, nil
@@ -118,20 +123,20 @@ func (c *Coordinator) Store() *formations.Store { return c.store }
 // writer lock. The executor must validate the selected completed-turn evidence.
 // It is intentionally not a general HTTP resume or live-session recovery API.
 func (c *Coordinator) ResumeCompletedRun(runID string) error {
-	if !c.acquire() {
+	if !c.acquire(runID) {
 		return errors.New("coordinator is executing or closed")
 	}
 	p, err := c.Project(runID)
 	if err != nil {
-		c.release()
+		c.release(runID)
 		return err
 	}
 	if p.Status != "blocked" || !p.ResumeAllowed || p.Final {
-		c.release()
+		c.release(runID)
 		return errors.New("completed-turn recovery requires a resumable blocked run")
 	}
 	if err := c.engine.ValidateCompletedRecovery(runID); err != nil {
-		c.release()
+		c.release(runID)
 		return err
 	}
 	c.launch(runID, func() error {
@@ -187,42 +192,63 @@ func (c *Coordinator) Handler() http.Handler {
 	return mux
 }
 
-func (c *Coordinator) acquire() bool {
+// state is accessed only with mu held. Signals outlive each execution so a
+// subscriber can follow a waiting run through verdict and continuation.
+func (c *Coordinator) state(id string) *executionState {
+	state := c.runs[id]
+	if state == nil {
+		state = &executionState{changed: make(chan struct{})}
+		c.runs[id] = state
+	}
+	return state
+}
+func (c *Coordinator) reserve(id string) {
+	state := c.state(id)
+	state.busy, state.settling, state.executing = true, false, false
+	state.abort = nil
+	state.ctx, state.cancel = context.WithCancel(context.Background())
+	state.done = make(chan struct{})
+}
+func (c *Coordinator) acquire(id string) bool {
+	if id != "" {
+		c.admissions.Lock()
+		defer c.admissions.Unlock()
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.busy || c.closed {
+	if c.closed || id != "" && c.state(id).busy {
 		return false
 	}
-	c.busy = true
+	if id != "" {
+		c.reserve(id)
+	}
 	c.workers.Add(1)
 	return true
 }
-func (c *Coordinator) release() {
+func (c *Coordinator) release(id string) {
 	c.mu.Lock()
-	for id, cancel := range c.cancels {
-		cancel()
-		delete(c.cancels, id)
+	if id != "" {
+		state := c.state(id)
+		state.cancel()
+		state.busy = false
+		close(state.done)
+		close(state.changed)
+		state.changed = make(chan struct{})
 	}
-	c.activeRun = ""
-	c.abortRequest = nil
-	if c.workerDone != nil {
-		close(c.workerDone)
-		c.workerDone = nil
-	}
-	c.busy = false
-	close(c.changed)
-	c.changed = make(chan struct{})
 	c.mu.Unlock()
 	c.workers.Done()
 }
-func (c *Coordinator) nextChange() <-chan struct{} {
+func (c *Coordinator) nextChange(id string) <-chan struct{} {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.changed
+	return c.state(id).changed
 }
 
 func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 	var req struct {
+		Cwd         string               `json:"cwd"`
+		Brief       string               `json:"brief"`
+		BeadID      string               `json:"beadId"`
 		Actor       string               `json:"actor"`
 		FormationID string               `json:"formationId"`
 		Board       string               `json:"board"`
@@ -237,27 +263,25 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		reply(w, 400, map[string]string{"error": "board, missionId, expectedRev and positive limits required; redacted execution is not supported"})
 		return
 	}
-	if !c.acquire() {
+	if req.MissionID != "" {
+		info, err := os.Stat(req.Cwd)
+		if !filepath.IsAbs(req.Cwd) || err != nil || !info.IsDir() || strings.TrimSpace(req.Brief) == "" || req.BeadID != "" && !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`).MatchString(req.BeadID) {
+			reply(w, 400, map[string]string{"error": "absolute existing cwd, nonempty brief and safe beadId required"})
+			return
+		}
+	}
+	c.admissions.Lock()
+	defer c.admissions.Unlock()
+	if !c.acquire("") {
 		reply(w, 409, map[string]string{"error": "coordinator is executing"})
 		return
 	}
 	startedWorker := false
 	defer func() {
 		if !startedWorker {
-			c.release()
+			c.release("")
 		}
 	}()
-	runs, err := c.store.ListRuns(formations.RunListFilter{})
-	if err != nil {
-		failure(w, err)
-		return
-	}
-	for _, run := range runs {
-		if !run.Final {
-			reply(w, 409, map[string]string{"error": "a non-final run already owns this coordinator", "runId": run.RunID})
-			return
-		}
-	}
 	board, err := c.store.ReadBoard(req.Board)
 	if err != nil {
 		failure(w, err)
@@ -276,6 +300,9 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 			failure(w, err)
 			return
 		}
+		c.mu.Lock()
+		c.reserve(started.RunID)
+		c.mu.Unlock()
 		startedWorker = true
 		c.launch(started.RunID, func() error { _, err := execute(); return err })
 		reply(w, 202, map[string]string{"runId": started.RunID})
@@ -291,11 +318,14 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		reply(w, 422, map[string]string{"error": "wire the mission to a formation"})
 		return
 	}
-	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: "operator:standalone", Personas: c.personas, Limits: req.Limits})
+	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, Brief: req.Brief, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: "operator:standalone", Personas: c.personas, Limits: req.Limits})
 	if err != nil {
 		failure(w, err)
 		return
 	}
+	c.mu.Lock()
+	c.reserve(started.RunID)
+	c.mu.Unlock()
 	startedWorker = true
 	c.launch(started.RunID, func() error { _, err := c.engine.ExecuteStartedMission(started.RunID); return err })
 	reply(w, http.StatusAccepted, map[string]string{"runId": started.RunID})
@@ -378,17 +408,17 @@ func (c *Coordinator) verdict(w http.ResponseWriter, r *http.Request) {
 		reply(w, 400, map[string]string{"error": "requestedSeq and pass or fail verdict required"})
 		return
 	}
-	if !c.acquire() {
+	runID, gateID := r.PathValue("runId"), r.PathValue("gateId")
+	if !c.acquire(runID) {
 		reply(w, 409, map[string]string{"error": "coordinator is executing"})
 		return
 	}
 	startedWorker := false
 	defer func() {
 		if !startedWorker {
-			c.release()
+			c.release(runID)
 		}
 	}()
-	runID, gateID := r.PathValue("runId"), r.PathValue("gateId")
 	p, err := c.Project(runID)
 	if err != nil {
 		failure(w, err)
@@ -435,11 +465,17 @@ func (c *Coordinator) stream(w http.ResponseWriter, r *http.Request) {
 		}
 		since = n
 	}
+	sent := false
 	for {
-		changed := c.nextChange() // subscribe before reading, so no append is missed
+		changed := c.nextChange(r.PathValue("runId")) // subscribe before reading, so no append is missed
 		p, err := c.Project(r.PathValue("runId"))
 		if err != nil {
-			failure(w, err)
+			if sent {
+				fmt.Fprint(w, "event: error\ndata: {\"error\":\"run projection unavailable\"}\n\n")
+				flusher.Flush()
+			} else {
+				failure(w, err)
+			}
 			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -451,6 +487,7 @@ func (c *Coordinator) stream(w http.ResponseWriter, r *http.Request) {
 			since = p.EventCount
 		}
 		flusher.Flush()
+		sent = true
 		if p.Final {
 			return
 		}

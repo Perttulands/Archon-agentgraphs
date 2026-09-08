@@ -316,3 +316,30 @@ func TestSeatTrustBootstrapFinishesBeforeReadiness(t *testing.T) {
 		})
 	}
 }
+
+func TestCodexReadinessWaitsForCurrentModelPanel(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	events := make(chan struct{}, 2)
+	events <- struct{}{}
+	captures := 0
+	loading := "OpenAI Codex\nmodel: loading /model to change\n" + strings.Repeat("startup line\n", 9) + "›"
+	ready := "OpenAI Codex\nmodel: test-model medium /model to change\n›"
+	transport := realSeatTransport{command: func(_ context.Context, _ string, _ *strings.Reader, args ...string) (string, error) {
+		if args[0] == "display-message" {
+			return "0", nil
+		}
+		captures++
+		if captures == 1 {
+			return loading, nil
+		}
+		return loading + "\n" + ready, nil
+	}}
+	seat := &nativeSeat{control: &seatControl{events: events}}
+	if err := transport.Ready(ctx, "socket", seat, "openai-codex"); err != nil {
+		t.Fatal(err)
+	}
+	if captures != 2 {
+		t.Fatalf("readiness accepted loading panel after %d captures", captures)
+	}
+}

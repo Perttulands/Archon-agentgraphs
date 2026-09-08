@@ -36,15 +36,15 @@ func (c *Coordinator) escalations(w http.ResponseWriter, r *http.Request) {
 // cleanup. A requested cancellation becomes final only after those events exist.
 func (c *Coordinator) launch(id string, execute func() error) {
 	c.mu.Lock()
-	c.activeRun = id
-	c.workerDone = make(chan struct{})
+	state := c.state(id)
+	state.executing = true
 	c.mu.Unlock()
 	go func() {
-		defer c.release()
+		defer c.release(id)
 		err := execute()
 		c.mu.Lock()
-		abort := c.abortRequest
-		c.activeRun = "" // execution has settled; reject late cancellation commands
+		abort := state.abort
+		state.settling = true // reject late cancellation commands
 		c.mu.Unlock()
 		if abort != nil {
 			_ = c.store.AppendRunEvent(id, *abort)
@@ -62,6 +62,13 @@ func (c *Coordinator) abort(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
+	c.admissions.Lock()
+	admitting := true
+	defer func() {
+		if admitting {
+			c.admissions.Unlock()
+		}
+	}()
 	id := r.PathValue("runId")
 	p, err := c.Project(id)
 	if err != nil {
@@ -74,18 +81,19 @@ func (c *Coordinator) abort(w http.ResponseWriter, r *http.Request) {
 	}
 	event := formations.RunEvent{Type: formations.RunEventCanceled, Actor: req.RequestedBy, Data: map[string]any{"reason": req.Reason, "final": true}}
 	c.mu.Lock()
-	if c.closed || (c.busy && c.activeRun != id) {
+	state := c.state(id)
+	if c.closed || state.busy && (!state.executing || state.settling) {
 		c.mu.Unlock()
 		reply(w, 409, map[string]string{"error": "coordinator is executing another command"})
 		return
 	}
-	if c.busy {
-		c.abortRequest = &event
-		done := c.workerDone
-		if cancel := c.cancels[id]; cancel != nil {
-			cancel()
-		}
+	if state.busy {
+		state.abort = &event
+		done := state.done
+		state.cancel()
 		c.mu.Unlock()
+		c.admissions.Unlock()
+		admitting = false
 		select {
 		case <-done:
 			c.get(w, r)
@@ -94,10 +102,12 @@ func (c *Coordinator) abort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Reserve the same admission guard while finalizing an idle/waiting run.
-	c.busy = true
+	c.reserve(id)
 	c.workers.Add(1)
 	c.mu.Unlock()
-	defer c.release()
+	c.admissions.Unlock()
+	admitting = false
+	defer c.release(id)
 	if err := c.store.AppendRunEvent(id, event); err != nil {
 		failure(w, err)
 		return
@@ -114,19 +124,19 @@ func (c *Coordinator) resume(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	if !c.acquire() {
+	id := r.PathValue("runId")
+	if !c.acquire(id) {
 		reply(w, 409, map[string]string{"error": "coordinator is executing"})
 		return
 	}
-	id := r.PathValue("runId")
 	p, err := c.Project(id)
 	if err != nil {
-		c.release()
+		c.release(id)
 		failure(w, err)
 		return
 	}
 	if p.Final || !p.ResumeAllowed || len(p.WaitingGates) > 0 {
-		c.release()
+		c.release(id)
 		reply(w, 409, map[string]string{"error": "run is not resumable"})
 		return
 	}
@@ -135,4 +145,32 @@ func (c *Coordinator) resume(w http.ResponseWriter, r *http.Request) {
 		return err
 	})
 	reply(w, 202, p)
+}
+
+// RecoverInterruptedRuns is called before listening, under the directory lock.
+// It never adopts old seats. Only completed native evidence can continue a run.
+func (c *Coordinator) RecoverInterruptedRuns() error {
+	runs, err := c.store.ListRuns(formations.RunListFilter{})
+	if err != nil {
+		return err
+	}
+	for _, run := range runs {
+		if run.Final || run.Status == formations.RunStatusBlocked && !run.ResumeAllowed {
+			continue
+		}
+		if run.Status != formations.RunStatusBlocked {
+			if err := c.engine.BlockInterruptedRun(run.RunID); err != nil {
+				return err
+			}
+		}
+		if err := c.engine.ValidateCompletedRecovery(run.RunID); err != nil {
+			// The blocking event already names all unresolved dispatches. Preserve
+			// the evidence rejection privately without changing resumability.
+			continue
+		}
+		if err := c.ResumeCompletedRun(run.RunID); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -2,8 +2,12 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -52,5 +56,39 @@ func TestRemoteRejectsNonloopbackAndRedirects(t *testing.T) {
 	var out, err bytes.Buffer
 	if code := runRemote(server.URL, []string{"run", "list"}, &out, &err); code == 0 {
 		t.Fatal("redirect accepted")
+	}
+}
+
+func TestRemoteRunInputsReadFilesAndLongLiteralBriefs(t *testing.T) {
+	cwd := t.TempDir()
+	brief := strings.Repeat("A concrete task with several words. ", 40)
+	file := filepath.Join(cwd, "brief.md")
+	if err := os.WriteFile(file, []byte(brief), 0600); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			fmt.Fprint(w, `{"data":{"board":{"rev":1}}}`)
+			return
+		}
+		var got struct {
+			Cwd    string
+			Brief  string
+			BeadID string
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Error(err)
+		}
+		if got.Cwd != cwd || got.Brief != brief || got.BeadID != "form-proof" {
+			t.Errorf("run inputs: %+v", got)
+		}
+		fmt.Fprint(w, `{"data":{"runId":"run_proof"}}`)
+	}))
+	defer server.Close()
+	for _, input := range []string{brief, file} {
+		var out, stderr bytes.Buffer
+		if code := runRemote(server.URL, []string{"mission", "run", "proof", "--mission", "mis_proof", "--cwd", cwd, "--brief", input, "--bead", "form-proof"}, &out, &stderr); code != 0 {
+			t.Fatalf("%d %s", code, stderr.String())
+		}
 	}
 }

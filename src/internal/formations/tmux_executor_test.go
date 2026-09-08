@@ -597,7 +597,7 @@ func TestTmuxExecutorReusesExistingServer(t *testing.T) {
 func TestPickOwnedSessionNameFailsClosedOnForeignCollision(t *testing.T) {
 	cfg := tmuxTestConfig(t)
 	cfg.Mission = "proof"
-	client := &fakeTmuxHarnessClient{sessions: []string{"form-proof-slot_y"}}
+	client := &fakeTmuxHarnessClient{sessions: []string{"form-proof-run_x-slot_y"}}
 	e := newTmuxFormationExecutorWithClient(nil, nil, cfg, client)
 	if err := e.validateConfiguredBoundary(); err != nil {
 		t.Fatal(err)

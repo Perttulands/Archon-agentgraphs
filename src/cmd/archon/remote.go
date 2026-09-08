@@ -11,7 +11,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -55,6 +57,10 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(args[0]+" "+args[1], flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Bool("json", false, "write JSON")
+	cwd := fs.String("cwd", "", "absolute run working directory")
+	brief := fs.String("brief", "", "brief file path or literal text")
+	bead := fs.String("bead", "", "run Beads id")
+	mode := fs.String("mode", "reattach", "resume mode")
 	mission := fs.String("mission", "", "mission id")
 	reason := fs.String("reason", "", "operator verdict reason")
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
@@ -80,6 +86,12 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		if len(pos) != 1 || *mission == "" {
 			return remoteUsage(stderr)
 		}
+		briefText := *brief
+		if data, err := os.ReadFile(*brief); err == nil {
+			briefText = string(data)
+		} else if !os.IsNotExist(err) && !errors.Is(err, syscall.ENAMETOOLONG) {
+			return fail(stderr, err)
+		}
 		raw, err := request("GET", path+"/boards/"+url.PathEscape(pos[0]), nil)
 		if err != nil {
 			return fail(stderr, err)
@@ -96,7 +108,18 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		path += "/runs"
 		method = "POST"
-		body = map[string]any{"board": pos[0], "missionId": *mission, "expectedRev": board.Data.Board.Rev, "limits": map[string]any{"maxDispatch": *maxDispatch, "maxAttempts": *maxAttempts, "wallClockSeconds": *wall, "redact": false}}
+		body = map[string]any{"cwd": *cwd, "brief": briefText, "beadId": *bead, "board": pos[0], "missionId": *mission, "expectedRev": board.Data.Board.Rev, "limits": map[string]any{"maxDispatch": *maxDispatch, "maxAttempts": *maxAttempts, "wallClockSeconds": *wall, "redact": false}}
+	case "run abort", "run resume":
+		if len(pos) != 1 {
+			return remoteUsage(stderr)
+		}
+		path += "/runs/" + url.PathEscape(pos[0]) + "/" + args[1]
+		method = "POST"
+		if args[1] == "abort" {
+			body = map[string]any{"reason": *reason, "requestedBy": "operator:archon"}
+		} else {
+			body = map[string]any{"reason": *reason, "actor": "operator:archon", "mode": *mode}
+		}
 	case "run list":
 		path += "/runs"
 	case "run status", "run logs":

@@ -83,6 +83,14 @@ func NewLabFormationExecutor(store *Store, personas *PersonaStore, config LabExe
 }
 
 func (e *LabFormationExecutor) ExecuteFormation(req FormationExecution) (FormationExecutionResult, error) {
+	copy := *e
+	if req.Cwd != "" {
+		copy.config.Cwd = req.Cwd
+		copy.config.Roots = append(append([]string{}, e.config.Roots...), req.Cwd)
+	}
+	return copy.executeFormation(req)
+}
+func (e *LabFormationExecutor) executeFormation(req FormationExecution) (FormationExecutionResult, error) {
 	if e == nil || e.store == nil {
 		return FormationExecutionResult{}, runExecutionError("missing_executor", "lab executor store is not configured", "executor", ErrRunExecutorUnavailable)
 	}

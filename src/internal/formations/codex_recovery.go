@@ -2,8 +2,10 @@ package formations
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // ReattachFormationDispatch implements the engine's recovery seam using an
@@ -22,14 +24,46 @@ func (e *TmuxFormationExecutor) ReattachFormationDispatch(req FormationReattachR
 
 // Validate and copy the completed result before the run ledger is changed.
 func (e *TmuxFormationExecutor) readCompletedFormationDispatch(req FormationReattachRequest) (FormationExecutionResult, error) {
+	copy := *e
+	e = &copy
 	c := e.config
-	if !filepath.IsAbs(c.RecoveryTranscript) || !filepath.IsAbs(c.RecoveryBrief) {
-		return FormationExecutionResult{}, errors.New("completed-turn recovery requires explicit absolute transcript and brief paths")
+	events, err := e.store.ReadRunEvents(req.RunID)
+	if err != nil {
+		return FormationExecutionResult{}, err
 	}
-	dispatcher := NewSlotDispatcher(e.store, nil)
-	dispatch := dispatcher.dispatchEvent(req.RunID, req.DispatchID)
+	if cwd := stringFromEventData(events[0], "cwd"); cwd != "" {
+		c.Cwd = cwd
+		c.Roots = append(append([]string{}, c.Roots...), cwd)
+	}
+	e.config = c
+	dispatch := NewSlotDispatcher(e.store, nil).dispatchEvent(req.RunID, req.DispatchID)
 	if dispatch.Type == "" || dispatch.NodeID != req.NodeID || dispatch.SlotID != req.SlotID {
 		return FormationExecutionResult{}, errors.New("recovery dispatch identity mismatch")
+	}
+	if len(req.Formation.Slots) != 1 {
+		return FormationExecutionResult{}, errors.New("completed recovery requires a single-slot formation")
+	}
+	if c.RecoveryBrief == "" {
+		c.RecoveryBrief = stringFromEventData(dispatch, "briefPath")
+		root := c.StateDir
+		if root == "" {
+			root = e.store.Workspace
+		}
+		resolved, err := filepath.EvalSymlinks(c.RecoveryBrief)
+		if err != nil {
+			return FormationExecutionResult{}, err
+		}
+		briefRoot, err := filepath.EvalSymlinks(filepath.Join(root, "briefs"))
+		if err != nil {
+			return FormationExecutionResult{}, err
+		}
+		rel, err := filepath.Rel(briefRoot, resolved)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+			return FormationExecutionResult{}, errors.New("recovery brief must remain under state briefs")
+		}
+	}
+	if !filepath.IsAbs(c.RecoveryBrief) {
+		return FormationExecutionResult{}, errors.New("completed recovery requires an absolute brief path")
 	}
 	brief, err := os.ReadFile(c.RecoveryBrief)
 	if err != nil {
@@ -39,10 +73,6 @@ func (e *TmuxFormationExecutor) readCompletedFormationDispatch(req FormationReat
 		return FormationExecutionResult{}, errors.New("recovery brief does not match the dispatched prompt digest")
 	}
 	pointer := "Read the file " + c.RecoveryBrief + " and execute it exactly; it is your whole brief."
-	turn, err := readCodexTurn(c.RecoveryTranscript, c.Cwd, pointer)
-	if err != nil {
-		return FormationExecutionResult{}, err
-	}
 	card, err := e.personas.ReadPersona(stringFromEventData(dispatch, "agentId"))
 	if err != nil {
 		return FormationExecutionResult{}, err
@@ -51,12 +81,28 @@ func (e *TmuxFormationExecutor) readCompletedFormationDispatch(req FormationReat
 	if err != nil {
 		return FormationExecutionResult{}, err
 	}
-	if !turn.Complete || variant.verifyTurnSettings(turn) != nil {
-		return FormationExecutionResult{}, errors.New("recovery requires a completed exact turn with the configured model and effort")
+	root := c.CodexTranscriptRoot
+	if variant.ID == "claude-code" {
+		root = c.ClaudeTranscriptRoot
 	}
-	events, err := e.store.ReadRunEvents(req.RunID)
+	seat := &nativeSeat{root: root, variant: variant}
+	var turn codexTranscriptTurn
+	if c.RecoveryTranscript != "" {
+		if !filepath.IsAbs(c.RecoveryTranscript) {
+			return FormationExecutionResult{}, errors.New("absolute transcript path required")
+		}
+		turn, err = readSeatTurn(seat, c.RecoveryTranscript, c.Cwd, pointer)
+	} else {
+		if !filepath.IsAbs(root) {
+			return FormationExecutionResult{}, errors.New("absolute transcript root required")
+		}
+		turn, _, err = findSeatTurn(seat, c.Cwd, pointer)
+	}
 	if err != nil {
 		return FormationExecutionResult{}, err
+	}
+	if !turn.Complete || variant.verifyTurnSettings(turn) != nil {
+		return FormationExecutionResult{}, errors.New("recovery requires a completed exact turn with the configured model and effort")
 	}
 	matched := false
 	for _, event := range events {
@@ -128,4 +174,22 @@ func (e *RunEngine) ValidateCompletedRecovery(runID string) error {
 	}
 	_, _, err = e.prepareCompletedRecovery(runID, board, events)
 	return err
+}
+
+// BlockInterruptedRun records every unresolved dispatch before any restart
+// recovery attempt. A failed recovery therefore remains visible and resumable.
+func (e *RunEngine) BlockInterruptedRun(runID string) error {
+	events, err := e.store.ReadRunEvents(runID)
+	if err != nil {
+		return err
+	}
+	refs := unresolvedDispatches(events)
+	if err := e.store.AppendRunEvent(runID, RunEvent{Type: RunEventError, Data: map[string]any{
+		"code": "coordinator_interrupted", "message": fmt.Sprintf("coordinator restarted with open dispatches: %v", refs), "openDispatches": refs,
+	}}); err != nil {
+		return err
+	}
+	return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventBlocked, Data: map[string]any{
+		"reason": "coordinator restarted; completed-turn evidence required", "openDispatches": refs, "resumeAllowed": true,
+	}})
 }

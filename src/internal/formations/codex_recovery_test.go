@@ -10,13 +10,13 @@ import (
 )
 
 func TestCompletedNativeRecoveryValidatesBeforeResumeAndNeverRedispatches(t *testing.T) {
-	for _, kind := range []string{"valid file output", "wrong native session", "changed brief", "incomplete turn", "no unresolved dispatch", "two unresolved dispatches"} {
+	for _, kind := range []string{"valid file output", "automatic discovery", "wrong native session", "changed brief", "incomplete turn", "no unresolved dispatch", "two unresolved dispatches"} {
 		t.Run(kind, func(t *testing.T) {
 			store, started := startS4DispatchRun(t)
-			brief := filepath.Join(store.Workspace, "brief.md")
+			brief := filepath.Join(store.Workspace, "briefs", "brief.md")
 			writeFixture(t, brief, "Do the work")
 			dispatcher := NewSlotDispatcher(store, nil)
-			lease, err := dispatcher.DispatchSlot(started.RunID, SlotDispatchRequest{NodeID: "fmn_research", SlotID: "slot_research", AgentID: "scout", Harness: "openai-codex", Prompt: "Do the work", Attempt: 1})
+			lease, err := dispatcher.DispatchSlot(started.RunID, SlotDispatchRequest{NodeID: "fmn_research", SlotID: "slot_research", AgentID: "scout", Harness: "openai-codex", Prompt: "Do the work", BriefPath: brief, Attempt: 1})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -72,9 +72,14 @@ func TestCompletedNativeRecoveryValidatesBeforeResumeAndNeverRedispatches(t *tes
 				t.Fatal(err)
 			}
 			executor := NewTmuxFormationExecutor(store, personas, TmuxExecutorConfig{Cwd: store.Workspace, StateDir: store.Workspace, Roots: []string{store.Workspace}, OutputCapBytes: 1 << 20, RecoveryBrief: brief, RecoveryTranscript: transcriptPath})
+			if kind == "automatic discovery" {
+				executor.config.RecoveryBrief = ""
+				executor.config.RecoveryTranscript = ""
+				executor.config.CodexTranscriptRoot = store.Workspace
+			}
 			engine := NewRunEngine(store, nil, executor)
 			status, err := engine.ResumeRun(started.RunID, RunResumeRequest{Mode: "completed-native-turn"})
-			if kind != "valid file output" {
+			if kind != "valid file output" && kind != "automatic discovery" {
 				if err == nil {
 					t.Fatal("invalid recovery accepted")
 				}

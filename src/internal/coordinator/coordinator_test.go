@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -57,7 +58,7 @@ func post(t *testing.T, c *Coordinator, path string, body string) *httptest.Resp
 }
 func startRun(t *testing.T, c *Coordinator) string {
 	t.Helper()
-	w := post(t, c, "/api/formations/runs", `{"board":"proof","missionId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600,"redact":false}}`)
+	w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"run the proof", "board":"proof","missionId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600,"redact":false}}`)
 	if w.Code != 202 {
 		t.Fatalf("start %d %s", w.Code, w.Body.String())
 	}
@@ -76,13 +77,13 @@ func awaitState(t *testing.T, c *Coordinator, id, state string) *Projection {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	for {
-		change := c.nextChange()
+		change := c.nextChange(id)
 		p, err := c.Project(id)
 		if err != nil {
 			t.Fatal(err)
 		}
 		c.mu.Lock()
-		busy := c.busy
+		busy := c.state(id).busy
 		c.mu.Unlock()
 		if p.Status == state && !busy {
 			return p
@@ -109,9 +110,6 @@ func TestAdmissionSurvivesDisconnectAndHumanGateRequiresExactRequest(t *testing.
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("seat not dispatched")
-	}
-	if w := post(t, c, "/api/formations/runs", `{"board":"proof","missionId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600}}`); w.Code != 409 {
-		t.Fatal(w.Code)
 	}
 	e.proceed <- struct{}{}
 	p := awaitState(t, c, id, "waiting_human")

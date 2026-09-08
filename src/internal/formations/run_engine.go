@@ -71,6 +71,8 @@ type FormationRunRequest struct {
 }
 
 type FormationExecution struct {
+	Cwd           string
+	MissionGoal   string
 	MissionBeadID string
 	RunID         string
 	NodeID        string
@@ -1492,8 +1494,16 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 	}); err != nil {
 		return err
 	}
+	missionText := mission.Goal
+	events, err := e.store.ReadRunEvents(runID)
+	if err != nil {
+		return err
+	}
+	if brief := stringFromEventData(events[0], "brief"); brief != "" {
+		missionText = brief
+	}
 	missionOutputs := map[string]FormationOutputPayload{
-		"out": {Text: mission.Goal},
+		"out": {Text: missionText},
 	}
 	if err := e.store.AppendRunEvent(runID, RunEvent{
 		Type:      RunEventNodeOutput,
@@ -1501,7 +1511,7 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 		MissionID: mission.ID,
 		Data: formationOutputEventData(FormationExecutionResult{
 			Status:  "done",
-			Text:    mission.Goal,
+			Text:    missionText,
 			Outputs: missionOutputs,
 		}),
 	}); err != nil {
@@ -1622,6 +1632,8 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 		return FormationExecutionResult{}, ErrRunLedgerInvalid
 	}
 	req.MissionBeadID = events[0].BeadID
+	req.Cwd = stringFromEventData(events[0], "cwd")
+	req.MissionGoal = stringFromEventData(events[0], "objective")
 	if executor, ok := e.executor.(ContextFormationExecutor); ok {
 		ctx := context.Background()
 		if e.executionContext != nil {

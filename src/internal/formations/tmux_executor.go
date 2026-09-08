@@ -295,6 +295,10 @@ func (e *TmuxFormationExecutor) ExecuteFormation(req FormationExecution) (Format
 func (e *TmuxFormationExecutor) ExecuteFormationContext(parent context.Context, req FormationExecution) (FormationExecutionResult, error) {
 	// Boundary pinning and per-run state belong to this execution, not the shared factory.
 	copy := *e
+	if req.Cwd != "" {
+		copy.config.Cwd = req.Cwd
+		copy.config.Roots = append(append([]string{}, e.config.Roots...), req.Cwd)
+	}
 	return copy.executeFormationContext(parent, req)
 }
 
@@ -374,15 +378,18 @@ func (e *TmuxFormationExecutor) executeOrchestratedFormation(ctx context.Context
 	leaderExtra := e.leaderAgenticExtraLines(controllerBinding, workerBindings)
 	for _, baseline := range baselines {
 		seat := baseline.seat
-		leaderExtra = append(leaderExtra, fmt.Sprintf("Worker slot %s: write its complete task to %s, then paste ONLY this exact pointer into its existing owned pane %s: %s", baseline.binding.Slot.ID, seat.brief, seat.paneID, seat.pointer))
+		leaderExtra = append(leaderExtra, fmt.Sprintf("Worker slot %s: append its complete task after the required run context already in %s, then paste ONLY this exact pointer into its existing owned pane %s: %s", baseline.binding.Slot.ID, seat.brief, seat.paneID, seat.pointer))
 	}
-	leaderExtra = append(leaderExtra, "For every worker task include the run id and require the CHROTE-DONE sentinel in its final answer. Use load-buffer/paste-buffer with bracketed paste, wait for staging, then send Enter once. Never create, adopt, or kill any sessions. Finish after all worker turns complete. Worker completion is independently read from native transcripts.")
+	leaderExtra = append(leaderExtra, "Preserve the seeded run cwd, mission goal and Bead context in every worker brief. For every worker task include the run id and require the CHROTE-DONE sentinel in its final answer. Use load-buffer/paste-buffer with bracketed paste, wait for staging, then send Enter once. Never create, adopt, or kill any sessions. Finish after all worker turns complete. Worker completion is independently read from native transcripts.")
 	leaderExtra = append(leaderExtra, outputContractExtraLines(req.Formation)...)
 	leader, leaderErr := e.executeSlot(req, controller, allowed, dispatcher, "leader-agentic", leaderExtra, owned)
 	// Observe the workers whether or not the leader finished: a leader that timed
 	// out is exactly when a hung or never-touched worker most needs evidence. The
 	// leader's own failure still wins as the returned error.
-	observeErr := e.observeWorkerOutcomes(req, controllerBinding, baselines)
+	var observeErr error
+	if ctx.Err() == nil {
+		observeErr = e.observeWorkerOutcomes(req, controllerBinding, baselines)
+	}
 	if leaderErr != nil {
 		return FormationExecutionResult{}, leaderErr
 	}
@@ -758,7 +765,7 @@ func (e *TmuxFormationExecutor) executeSlot(req FormationExecution, slot Formati
 		return tmuxSlotOutput{}, err
 	}
 	seat.brief, seat.pointer = brief, pointer
-	lease, err := dispatcher.DispatchSlot(req.RunID, SlotDispatchRequest{NodeID: req.NodeID, SlotID: slot.ID, AgentID: slot.AgentID, Harness: binding.Variant.ID, SessionStem: binding.Variant.SessionStem, SessionRef: "tmux:" + binding.SessionName, Prompt: prompt, Phase: phase, Attempt: req.Attempt})
+	lease, err := dispatcher.DispatchSlot(req.RunID, SlotDispatchRequest{NodeID: req.NodeID, SlotID: slot.ID, AgentID: slot.AgentID, Harness: binding.Variant.ID, SessionStem: binding.Variant.SessionStem, SessionRef: "tmux:" + binding.SessionName, Prompt: prompt, BriefPath: brief, Phase: phase, Attempt: req.Attempt})
 	if err != nil {
 		return tmuxSlotOutput{}, err
 	}
@@ -883,6 +890,8 @@ func (e *TmuxFormationExecutor) pickOwnedSessionName(ctx context.Context, runID,
 	mission := e.config.Mission
 	if mission == "" {
 		mission = runID
+	} else {
+		mission += "-" + runID
 	}
 	candidate := "form-" + sanitizeSessionComponent(mission) + "-" + sanitizeSessionComponent(slotID)
 	if !safeTmuxSessionName(candidate) || taken[candidate] {
@@ -896,6 +905,14 @@ func (e *TmuxFormationExecutor) pickOwnedSessionName(ctx context.Context, runID,
 // dispatch. It targets only the exact owned name, so it never enumerates or
 // inspects foreign sessions.
 func tmuxPaneShowsHarnessReady(harnessID, captured string) bool {
+	if harnessID == "openai-codex" {
+		if panel := strings.LastIndex(captured, "OpenAI Codex"); panel >= 0 {
+			captured = captured[panel:]
+		}
+		if strings.Contains(captured, "loading") {
+			return false
+		}
+	}
 	captured = strings.TrimRight(captured, " 	\r\n")
 	lines := strings.Split(captured, "\n")
 	if len(lines) > 8 {
@@ -1202,7 +1219,9 @@ func (e *TmuxFormationExecutor) reserveWorkerBriefs(workers []tmuxSlotBinding, o
 	baselines := make([]workerBaseline, 0, len(workers))
 	for _, worker := range workers {
 		seat := owned.seats[worker.Slot.ID]
-		brief, pointer, err := e.writeSeatBrief("")
+		var context strings.Builder
+		renderBriefAndInputs(&context, owned.req, *worker.Card)
+		brief, pointer, err := e.writeSeatBrief(context.String())
 		if err != nil {
 			return nil, err
 		}

@@ -33,7 +33,7 @@ func serve() error {
 	tmux := flag.String("tmux-bin", "", "absolute guarded tmux wrapper")
 	codexTranscripts := flag.String("codex-transcripts", "", "Codex native sessions directory")
 	claudeTranscripts := flag.String("claude-transcripts", "", "Claude native projects directory")
-	mission := flag.String("mission-label", "proof", "owned session name component")
+	mission := flag.String("mission-label", "", "optional prefix before the unique run session name")
 	timeout := flag.Duration("seat-timeout", 30*time.Minute, "maximum duration of each seat")
 	resume := flag.String("resume-run", "", "explicitly resume this blocked run from a completed native turn")
 	recoveryTranscript := flag.String("completed-transcript", "", "absolute native transcript for the unresolved completed dispatch")
@@ -51,7 +51,9 @@ func serve() error {
 	}
 	paths := map[string]string{"state-dir": *state}
 	if *executor == "tmux" {
-		paths["cwd"] = *cwd
+		if *cwd != "" {
+			paths["cwd"] = *cwd
+		}
 		paths["socket"] = *socket
 		paths["tmux-bin"] = *tmux
 		paths["codex-transcripts"] = *codexTranscripts
@@ -68,12 +70,16 @@ func serve() error {
 	// The guarded tmux client and Codex bootstrap both need a real terminal type.
 	os.Setenv("TERM", "xterm-256color")
 	os.Setenv("CHROTE_TMUX_BIN", *tmux)
+	roots := []string{*state}
+	if *cwd != "" {
+		roots = append(roots, *cwd)
+	}
 	personas := formations.NewPersonaStore(filepath.Join(*state, "agents"))
 	c, err := coordinator.Open(*state, personas, func(store *formations.Store) formations.FormationExecutor {
 		if *executor == "lab" {
 			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex", "claude-code"}, Cwd: *state, Roots: []string{*state}})
 		}
-		return formations.NewTmuxFormationExecutor(store, personas, formations.TmuxExecutorConfig{Socket: *socket, Cwd: *cwd, Roots: []string{*cwd, *state}, StateDir: *state, CodexTranscriptRoot: *codexTranscripts, ClaudeTranscriptRoot: *claudeTranscripts, Mission: *mission, SessionPrefix: "form-", Harnesses: []string{"openai-codex", "claude-code"}, TimeoutSeconds: int(timeout.Seconds()), OutputCapBytes: 1 << 20, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief})
+		return formations.NewTmuxFormationExecutor(store, personas, formations.TmuxExecutorConfig{Socket: *socket, Cwd: *cwd, Roots: roots, StateDir: *state, CodexTranscriptRoot: *codexTranscripts, ClaudeTranscriptRoot: *claudeTranscripts, Mission: *mission, SessionPrefix: "form-", Harnesses: []string{"openai-codex", "claude-code"}, TimeoutSeconds: int(timeout.Seconds()), OutputCapBytes: 1 << 20, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief})
 	})
 	if err != nil {
 		return err
@@ -98,6 +104,11 @@ func serve() error {
 	handler, err := coordinator.WithUI(c.Handler(), *uiDir)
 	if err != nil {
 		return err
+	}
+	if *resume == "" {
+		if err := c.RecoverInterruptedRuns(); err != nil {
+			return err
+		}
 	}
 	if *resume != "" {
 		if err := c.ResumeCompletedRun(*resume); err != nil {

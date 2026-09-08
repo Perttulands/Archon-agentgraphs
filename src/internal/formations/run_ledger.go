@@ -53,6 +53,9 @@ const (
 )
 
 type RunStartRequest struct {
+	Cwd               string
+	BeadID            string
+	Brief             string
 	MissionID         string
 	Actor             string
 	ExpectedBoardETag string
@@ -104,6 +107,7 @@ type RunEvent struct {
 }
 
 type RunStatusProjection struct {
+	Cwd           string `json:"cwd,omitempty"`
 	RunID         string `json:"runId"`
 	Status        string `json:"status"`
 	Final         bool   `json:"final"`
@@ -190,6 +194,9 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 	if !ok {
 		return nil, fmt.Errorf("%w: mission %q", ErrNotFound, req.MissionID)
 	}
+	if req.BeadID != "" {
+		mission.BeadID = req.BeadID
+	}
 	if err := preflightMissionDefinition(board, mission.ID); err != nil {
 		return nil, err
 	}
@@ -253,6 +260,9 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 			"missionId":        mission.ID,
 			"beadId":           mission.BeadID,
 			"objective":        mission.Goal,
+			"cwd":              req.Cwd,
+			"brief":            req.Brief,
+			"briefSha256":      etag([]byte(req.Brief)),
 			"limits":           req.Limits,
 		},
 	}
@@ -512,6 +522,7 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 		return nil, ErrRunLedgerInvalid
 	}
 	status := &RunStatusProjection{
+		Cwd:       stringFromEventData(events[0], "cwd"),
 		RunID:     runID,
 		Status:    RunStatusRunning,
 		BoardSlug: stringFromEventData(events[0], "boardSlug"),

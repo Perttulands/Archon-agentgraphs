@@ -137,7 +137,7 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 	}
 	start := func() string {
 		t.Helper()
-		client.request("POST", "/api/formations/runs", etag, map[string]any{"board": board.Slug, "missionId": mission, "expectedRev": board.Rev, "limits": formations.RunLimits{MaxDispatch: 6, MaxAttempts: 2, WallClockSeconds: 30}}, 202, &receipt)
+		client.request("POST", "/api/formations/runs", etag, map[string]any{"cwd": c.store.Workspace, "brief": "run the proof", "board": board.Slug, "missionId": mission, "expectedRev": board.Rev, "limits": formations.RunLimits{MaxDispatch: 6, MaxAttempts: 2, WallClockSeconds: 30}}, 202, &receipt)
 		return receipt.RunID
 	}
 	id := start()
@@ -262,8 +262,8 @@ func TestAbortCancelsOwnedSeatAndHoldsAdmissionUntilCleanup(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("abort did not cancel seat")
 	}
-	if c.acquire() {
-		c.release()
+	if c.acquire(id) {
+		c.release(id)
 		t.Fatal("admission released before cleanup")
 	}
 	finish.Do(func() { close(executor.finish) })

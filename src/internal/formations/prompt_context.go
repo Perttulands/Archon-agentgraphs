@@ -6,6 +6,12 @@ import (
 )
 
 func renderBriefAndInputs(b *strings.Builder, req FormationExecution, card PersonaCard) {
+	if req.Cwd != "" {
+		b.WriteString("run cwd: " + req.Cwd + "\n")
+	}
+	if req.MissionGoal != "" {
+		b.WriteString("mission goal: " + req.MissionGoal + "\n")
+	}
 	if card.Summary != "" {
 		b.WriteString("persona summary: " + card.Summary + "\n")
 	}
