@@ -175,6 +175,25 @@ func TestRestartLabNamesUnresolvedDispatchAndKeepsHistory(t *testing.T) {
 	if !strings.Contains(string(raw), lease.DispatchID) || len(events) != 4 {
 		t.Fatalf("lost open dispatch or history: %s", raw)
 	}
+	response := post(t, c, "/api/formations/runs/"+started.RunID+"/resume", `{"mode":"reattach"}`)
+	if response.Code != 202 {
+		t.Fatal(response.Body.String())
+	}
+	// Lab cannot recover a native seat. Explicit resume must retain the open
+	// dispatch and block, rather than forgetting it and reporting success.
+	awaitState(t, c, started.RunID, "blocked")
+	events, err = c.store.ReadRunEvents(started.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs, ok := events[len(events)-1].Data["openDispatches"].([]any)
+	if !ok || len(refs) != 1 {
+		t.Fatalf("resume lost interrupted dispatch: %+v", events[len(events)-1])
+	}
+	ref := refs[0].(map[string]any)
+	if ref["dispatchId"] != lease.DispatchID {
+		t.Fatalf("unreadable interrupted dispatch: %+v", ref)
+	}
 }
 
 func TestAbortRejectsReservedCommandWithoutAcknowledgingCancellation(t *testing.T) {

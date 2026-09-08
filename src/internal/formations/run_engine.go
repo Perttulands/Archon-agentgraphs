@@ -684,9 +684,9 @@ func gateEvidenceRefsEqual(left, right []GateEvidenceRef) bool {
 }
 
 type openDispatchRef struct {
-	DispatchID string
-	NodeID     string
-	SlotID     string
+	DispatchID string `json:"dispatchId"`
+	NodeID     string `json:"nodeId"`
+	SlotID     string `json:"slotId"`
 }
 
 func openDispatchRefsFromEvent(event RunEvent) []openDispatchRef {
