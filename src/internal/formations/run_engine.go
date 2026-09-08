@@ -431,15 +431,31 @@ func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusPro
 		}
 	} else if openDispatches := openDispatchRefsFromEvent(resumeEvent); len(openDispatches) > 0 {
 		openDispatches = enrichOpenDispatchRefs(events, openDispatches)
-		handled, err := e.reattachOpenDispatches(runID, board, openDispatches)
-		if err != nil {
-			return nil, err
-		}
-		if !handled {
-			if err := e.appendOpenDispatchReattachFailure(runID, openDispatches); err != nil {
-				return nil, err
+		if req.Mode == "redispatch" {
+			// The operator gave up on the open dispatches; record each as
+			// abandoned so the node runs again as a fresh bounded attempt.
+			for _, ref := range openDispatches {
+				if err := e.store.AppendRunEvent(runID, RunEvent{Type: RunEventSlotResult, NodeID: ref.NodeID, SlotID: ref.SlotID, Data: map[string]any{
+					"dispatchId": ref.DispatchID, "nodeId": ref.NodeID, "slotId": ref.SlotID, "status": "abandoned", "reason": redactLedgerText(req.Reason),
+				}}); err != nil {
+					return nil, err
+				}
 			}
-			return e.projectAndNotify(runID)
+		} else {
+			handled, err := e.reattachOpenDispatches(runID, board, openDispatches)
+			if err != nil {
+				// A failed reattach keeps the run resumable; the reason is durable.
+				if blockErr := e.appendOpenDispatchReattachFailure(runID, openDispatches, err.Error()); blockErr != nil {
+					return nil, blockErr
+				}
+				return e.projectAndNotify(runID)
+			}
+			if !handled {
+				if err := e.appendOpenDispatchReattachFailure(runID, openDispatches, "could not reattach open dispatch without live capture"); err != nil {
+					return nil, err
+				}
+				return e.projectAndNotify(runID)
+			}
 		}
 		events, err = e.store.ReadRunEvents(runID)
 		if err != nil {
@@ -787,7 +803,8 @@ func (e *RunEngine) reattachOpenDispatches(runID string, board *BoardDocument, r
 	return true, nil
 }
 
-func (e *RunEngine) appendOpenDispatchReattachFailure(runID string, refs []openDispatchRef) error {
+func (e *RunEngine) appendOpenDispatchReattachFailure(runID string, refs []openDispatchRef, reason string) error {
+	reason = redactLedgerText(reason)
 	openDispatches := make([]map[string]any, 0, len(refs))
 	for _, ref := range refs {
 		openDispatches = append(openDispatches, map[string]any{
@@ -801,8 +818,8 @@ func (e *RunEngine) appendOpenDispatchReattachFailure(runID string, refs []openD
 			SlotID: ref.SlotID,
 			Data: map[string]any{
 				"code":        "dispatch_reattach_failed",
-				"message":     "could not reattach open dispatch without live capture",
-				"reason":      "could not reattach open dispatch without live capture",
+				"message":     reason,
+				"reason":      reason,
 				"boundary":    "recovery",
 				"nodeId":      ref.NodeID,
 				"slotId":      ref.SlotID,
@@ -824,7 +841,7 @@ func (e *RunEngine) appendOpenDispatchReattachFailure(runID string, refs []openD
 		NodeID: blockedNodeID,
 		SlotID: blockedSlotID,
 		Data: map[string]any{
-			"reason":         "dispatch reattach failed",
+			"reason":         "dispatch reattach failed: " + reason,
 			"blockedNodeId":  blockedNodeID,
 			"resumeAllowed":  true,
 			"resumePolicy":   "explicit",

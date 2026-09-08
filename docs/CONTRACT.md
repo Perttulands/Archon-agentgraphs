@@ -305,6 +305,18 @@ and report this condition; the current commands cannot continue that run.
 Resolve human decisions before a planned restart. The delivery graph has no
 human gate and does not enter this case.
 
+When a seat died mid-turn and its completed evidence cannot be found, abandon
+the open dispatch and run the node again as a fresh bounded attempt:
+
+```bash
+archon --server "$FORM_SERVER" run resume "$FORM_RUN_ID" --mode redispatch --reason "Seat lost; run the node again" --json
+```
+
+The abandoned dispatch is recorded as a `slot_result` with status `abandoned`;
+the node's next attempt counts against `maxAttempts`. A failed reattach never
+finishes the run: it records `dispatch_reattach_failed` with the reason and
+leaves the run blocked and resumable.
+
 Resume does not manufacture missing completion or resend an uncertain task.
 An unresolved dispatch can block again. For explicitly selected completed native
 evidence, restart with `--resume-run`, `--completed-transcript` and
