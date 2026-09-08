@@ -117,7 +117,7 @@ func TestSeatAdaptersReadinessStagingCompletionAndImmutableCleanup(t *testing.T)
 }
 
 func TestClaudeNativeTurnIdentityAndEndTurn(t *testing.T) {
-	for _, kind := range []string{"complete", "wrong cwd", "wrong pointer", "tool use", "partial", "no stop reason", "wrong session"} {
+	for _, kind := range []string{"complete", "wrong cwd", "cwd moves after pointer", "wrong pointer", "tool use", "partial", "no stop reason", "wrong session"} {
 		t.Run(kind, func(t *testing.T) {
 			root := t.TempDir()
 			pointer := seatPointer(filepath.Join(root, "brief.md"))
@@ -126,6 +126,10 @@ func TestClaudeNativeTurnIdentityAndEndTurn(t *testing.T) {
 			switch kind {
 			case "wrong cwd":
 				raw = strings.ReplaceAll(raw, root, root+"-other")
+			case "cwd moves after pointer":
+				// The seat changed directory while working; later records carry the new cwd.
+				i := strings.LastIndex(raw, "\"cwd\":\""+root+"\"")
+				raw = raw[:i] + strings.Replace(raw[i:], "\""+root+"\"", "\""+root+"/src\"", 1)
 			case "wrong pointer":
 				raw = strings.Replace(raw, "whole brief", "other brief", 1)
 			case "tool use":
@@ -143,7 +147,7 @@ func TestClaudeNativeTurnIdentityAndEndTurn(t *testing.T) {
 				t.Fatal(err)
 			}
 			turn, err := readClaudeTurn(path, root, pointer)
-			want := kind == "complete" || kind == "no stop reason"
+			want := kind == "complete" || kind == "no stop reason" || kind == "cwd moves after pointer"
 			if turn.Complete != want {
 				t.Fatalf("turn=%+v err=%v", turn, err)
 			}

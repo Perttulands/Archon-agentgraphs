@@ -43,8 +43,12 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer string) (codexTranscrip
 		if json.Unmarshal(scanner.Bytes(), &r) != nil {
 			break
 		}
-		if r.Cwd != "" && r.Cwd != cwd {
-			return codexTranscriptTurn{}, nil
+		// The dispatched session is identified by its pointer record, which must
+		// carry the run cwd. A seat may change directory while it works, and
+		// Claude then records the new cwd on every later line; those records
+		// still belong to the same native session.
+		if !turn.Consumed && r.Cwd != "" && r.Cwd != cwd {
+			continue
 		}
 		text := strings.Join(assistantContentText(r.Message.Content), "")
 		if r.Type == "user" && text != "" {
