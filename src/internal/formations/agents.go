@@ -49,6 +49,8 @@ type HarnessVariant struct {
 	ID          string `json:"id"`
 	SessionStem string `json:"sessionStem,omitempty"`
 	Launch      string `json:"launch,omitempty"`
+	Model       string `json:"model,omitempty"`
+	Effort      string `json:"effort,omitempty"`
 	Source      string `json:"source,omitempty"`
 }
 
@@ -68,6 +70,8 @@ type CreatePersonaRequest struct {
 	Harness      string
 	SessionStem  string
 	Launch       string
+	Model        string
+	Effort       string
 	Source       string
 }
 
@@ -77,6 +81,8 @@ type EditPersonaRequest struct {
 	AddHarness       string
 	SessionStem      string
 	Launch           string
+	Model            string
+	Effort           string
 	Source           string
 	Note             string
 	Retire           bool
@@ -87,6 +93,8 @@ type EditPersonaRequest struct {
 	SetCapabilities  *[]string
 	SetSessionStem   *string
 	SetLaunch        *string
+	SetModel         *string
+	SetEffort        *string
 }
 
 type AgentRosterFilter struct {
@@ -336,6 +344,14 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 				return err
 			}
 		}
+		for key, value := range map[string]*string{"model": req.SetModel, "effort": req.SetEffort} {
+			if value != nil {
+				next, err = setHarnessVariantScalar(next, card.HarnessDefault, key, strings.TrimSpace(*value))
+				if err != nil {
+					return err
+				}
+			}
+		}
 		if req.AddCapability != "" || req.RemoveCapability != "" {
 			tags := append([]string{}, card.Tags...)
 			if req.AddCapability != "" && isBareCapability(req.AddCapability) {
@@ -362,6 +378,8 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 				ID:          req.AddHarness,
 				SessionStem: stem,
 				Launch:      launch,
+				Model:       req.Model,
+				Effort:      req.Effort,
 				Source:      req.Source,
 			})
 		}
@@ -667,6 +685,10 @@ func setVariantField(v *HarnessVariant, key, value string) {
 		v.SessionStem = value
 	case "launch":
 		v.Launch = value
+	case "model":
+		v.Model = value
+	case "effort":
+		v.Effort = value
 	case "source":
 		v.Source = value
 	}
@@ -707,6 +729,12 @@ func renderPersona(req CreatePersonaRequest, harness, sessionStem string, tags [
 	if req.Launch != "" {
 		b.WriteString("launch = " + renderString(req.Launch) + "\n")
 	}
+	if req.Model != "" {
+		b.WriteString("model = " + renderString(req.Model) + "\n")
+	}
+	if req.Effort != "" {
+		b.WriteString("effort = " + renderString(req.Effort) + "\n")
+	}
 	if req.Source != "" {
 		b.WriteString("source = " + renderString(req.Source) + "\n")
 	}
@@ -721,6 +749,12 @@ func appendHarnessVariant(raw string, variant HarnessVariant) string {
 	b.WriteString("session_stem = " + renderString(variant.SessionStem) + "\n")
 	if variant.Launch != "" {
 		b.WriteString("launch = " + renderString(variant.Launch) + "\n")
+	}
+	if variant.Model != "" {
+		b.WriteString("model = " + renderString(variant.Model) + "\n")
+	}
+	if variant.Effort != "" {
+		b.WriteString("effort = " + renderString(variant.Effort) + "\n")
 	}
 	if variant.Source != "" {
 		b.WriteString("source = " + renderString(variant.Source) + "\n")
