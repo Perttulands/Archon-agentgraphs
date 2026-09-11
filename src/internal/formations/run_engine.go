@@ -1468,7 +1468,12 @@ func gateVerdictRoutes(board *BoardDocument, event RunEvent, gateID, routePort s
 }
 
 func (e *RunEngine) readRunBoard(runID string) (*BoardDocument, error) {
-	ledger, err := e.store.openRunLedger(runID, false)
+	return e.store.ReadRunBoard(runID)
+}
+
+// ReadRunBoard returns the validated frozen definition, not the current draft.
+func (s *Store) ReadRunBoard(runID string) (*BoardDocument, error) {
+	ledger, err := s.openRunLedger(runID, false)
 	if err != nil {
 		return nil, fmt.Errorf("%w: open run ledger: %v", ErrRunLedgerInvalid, err)
 	}
@@ -1480,7 +1485,7 @@ func (e *RunEngine) readRunBoard(runID string) (*BoardDocument, error) {
 	if len(events) == 0 {
 		return nil, ErrRunLedgerInvalid
 	}
-	return e.store.readRunSnapshot(events[0], runID, ledger)
+	return s.readRunSnapshot(events[0], runID, ledger)
 }
 
 func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission MissionNode, limits RunLimits) error {

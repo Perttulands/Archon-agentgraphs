@@ -149,6 +149,24 @@ uses its completed assistant turn and sentinel. A marker alone is insufficient.
 The `lab` executor creates no tmux sessions and echoes deterministic inputs.
 It proves routing, not agent work or the truth of a review.
 
+The cockpit's floating Peek observes an owned live seat. It does not send input,
+enter tmux copy mode, claim pane size, or end sessions. Switching seats and
+closing Peek disconnect only the observer client. Labels and controller/worker
+roles come from the run's frozen graph; a new attempt has a new terminal URL.
+The native grid includes tmux status rows, so an observer also preserves size
+when no other client is attached. Scroll and selection happen in the browser;
+the stream shows the native current screen and subsequent output, without an
+API for reading old transcripts or entering historical tmux copy mode.
+
+Each new `seat_created` records its immutable tmux session/pane IDs and a private
+socket/server identity. Linux socket peer credentials, process start time and
+boot identity distinguish the original server from a replacement, even when
+session IDs are reused. A legacy seat without that proof is unavailable for
+Peek. A renamed session is still identified by its recorded immutable ID.
+Missing, ended and unavailable seats remain visible with their actual state.
+Terminal support uses the daemon's existing `--socket` and `--tmux-bin`; the lab
+executor exposes no live terminals. No generic session browser is provided.
+
 ## Gates and output contracts
 
 Kinds run in order: code, formation, human, stopping on failure. Code supports
@@ -360,3 +378,23 @@ returns HTTP 500 `THEME_UNREADABLE`; malformed JSON or schema returns HTTP 500
 execution. The dashboard keeps its complete default palette and reports a failed
 theme request; it applies the theme once per page load. No theme-art routes,
 picker or polling are provided. Host paths and deployment belong to the host.
+
+`GET /api/formations/runs/{runId}/seats` returns an enveloped
+`{runId,available,reason?,seats}`. Each latest seat per node/slot includes
+`runId`, `nodeId`, `nodeTitle`, `slotId`, `slotLabel`, `harness`, `controller`,
+`createdSeq`, `sessionName` and `state` (`live`, `ended`, `missing`, `unavailable`).
+A live seat also includes native `columns`, `rows` and a relative `terminalUrl`;
+other states include a reason and no terminal URL. No private session IDs,
+socket paths or socket identities are exposed in this projection.
+
+`GET /api/formations/runs/{runId}/seats/{createdSeq}/terminal` upgrades to a
+WebSocket with subprotocol `tty`, after resolving that exact run and attempt.
+Unknown seats return 404, replaced attempts or non-live seats 409, and unavailable
+configuration or shutdown 503. The opening JSON frame accepts `columns` and
+`rows` for CHROTE protocol compatibility; the observer retains the native grid.
+Output frames are binary ASCII `0` followed by terminal bytes. Only one-byte
+ASCII `2` (pause output) and `3` (resume) are accepted afterward. Input `0`, resize
+`1`, claim `4` and other client frames close with 1008. A terminal ending closes
+with 1000; daemon shutdown closes observers with 1001. WebSocket origins must
+match the request host. Terminal bytes are the actual seat display, not the
+sanitized ledger projection. The same trusted-network access boundary applies.

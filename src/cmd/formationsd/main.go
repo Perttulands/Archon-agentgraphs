@@ -98,6 +98,11 @@ func serve() error {
 		return err
 	}
 	defer c.Close()
+	if *executor == "tmux" {
+		if err := c.ConfigureTerminals(*socket, *tmux); err != nil {
+			return err
+		}
+	}
 	var listeners []net.Listener
 	defer func() {
 		for _, listener := range listeners {

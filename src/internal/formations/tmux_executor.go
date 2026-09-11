@@ -869,13 +869,24 @@ func (e *TmuxFormationExecutor) provisionOwnedSession(ctx context.Context, owned
 	if err := dispatchContextError(ctx); err != nil {
 		return "", err
 	}
+	socketIdentity := ""
+	if e.socketIdentity != nil && e.socketIdentity.Mode()&os.ModeSocket != 0 {
+		var err error
+		socketIdentity, err = core.SocketIdentity(e.config.Socket)
+		if err != nil {
+			return "", err
+		}
+	}
+	if err := dispatchContextError(ctx); err != nil {
+		return "", err
+	}
 	seat, err := e.seatClient.Create(ctx, e.config.Socket, name, e.config.Cwd, root, variant)
 	if err != nil {
 		return "", runExecutionError("session_spawn_failed", err.Error(), "adapter", err)
 	}
 	owned.record(slot.ID, name)
 	owned.seats[slot.ID] = seat
-	if err := e.store.AppendRunEvent(runID, RunEvent{Type: "seat_created", NodeID: owned.req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": name, "sessionId": seat.sessionID, "paneId": seat.paneID, "model": variant.Model, "effort": variant.effectiveEffort()}}); err != nil {
+	if err := e.store.AppendRunEvent(runID, RunEvent{Type: "seat_created", NodeID: owned.req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": name, "sessionId": seat.sessionID, "paneId": seat.paneID, "socketIdentity": socketIdentity, "harness": variant.ID, "model": variant.Model, "effort": variant.effectiveEffort()}}); err != nil {
 		return "", err
 	}
 	if err := e.seatClient.Ready(ctx, e.config.Socket, seat, variant.ID); err != nil {

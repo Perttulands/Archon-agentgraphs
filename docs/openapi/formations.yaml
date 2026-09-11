@@ -6,6 +6,49 @@ info:
     with error details on failure. No authentication. Static cockpit serving is optional. Authoring request
     details follow internal/api/formations.go and agents.go; runtime reads are sanitized.
 paths:
+  /api/formations/runs/{runId}/seats:
+    parameters:
+    - in: path
+      name: runId
+      required: true
+      schema:
+        type: string
+    get:
+      summary: List latest owned seats from the frozen run
+      responses:
+        '200':
+          description: Enveloped data contains runId, available, optional reason, and seats. Each seat has runId, nodeId, nodeTitle, slotId, slotLabel, harness, controller, createdSeq, sessionName and state (live, ended, missing, unavailable). Live seats include native columns/rows and terminalUrl; others include a reason. Private session/socket identities are omitted.
+        '404':
+          description: No such run
+  /api/formations/runs/{runId}/seats/{createdSeq}/terminal:
+    parameters:
+    - in: path
+      name: runId
+      required: true
+      schema:
+        type: string
+    - in: path
+      name: createdSeq
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    get:
+      summary: Observe one immutable run seat through a read-only tty WebSocket
+      description: Opening JSON columns/rows handshake; binary ASCII 0 output frames. Client may send only ASCII 2/3 output pause/resume. Input, resize and claim frames close 1008. Native grid is preserved, including tmux status rows. Normal terminal end closes 1000; daemon shutdown closes 1001. No session input, sizing ownership, transcript reading or session cleanup.
+      responses:
+        '101':
+          description: Upgraded with tty subprotocol; same-origin WebSocket required
+        '400':
+          description: Invalid createdSeq or missing tty subprotocol
+        '403':
+          description: Cross-origin WebSocket refused
+        '404':
+          description: No such run or seat
+        '409':
+          description: Replaced attempt, ended seat or missing session
+        '503':
+          description: Terminal unavailable or coordinator shutting down
   /api/theme:
     get:
       summary: Read the configured host theme or bundled chrote-dark default

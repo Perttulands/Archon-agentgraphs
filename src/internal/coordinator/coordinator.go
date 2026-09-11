@@ -22,6 +22,7 @@ import (
 	"github.com/Perttulands/chrote-agent-formations/internal/api"
 	"github.com/Perttulands/chrote-agent-formations/internal/core"
 	"github.com/Perttulands/chrote-agent-formations/internal/formations"
+	"github.com/Perttulands/chrote-agent-formations/internal/terminal"
 )
 
 type GateRequest struct {
@@ -47,24 +48,25 @@ type Projection struct {
 	Events            []Event       `json:"events"`
 }
 type Coordinator struct {
-	admissions      sync.Mutex
-	personas        *formations.PersonaStore
-	store           *formations.Store
-	engine          *formations.RunEngine
-	lock            *os.File
-	mu              sync.Mutex
-	closed          bool
-	workers         sync.WaitGroup
-	runs            map[string]*executionState
-	executionBase   context.Context
-	detach          context.CancelCauseFunc
-	stopping        chan struct{}
-	shutdownDone    chan struct{}
-	shutdownExpired chan struct{}
-	shutdownOnce    sync.Once
-	shutdownGrace   time.Duration
-	shutdownTimeout time.Duration
-	closeErr        error
+	admissions       sync.Mutex
+	personas         *formations.PersonaStore
+	store            *formations.Store
+	engine           *formations.RunEngine
+	lock             *os.File
+	mu               sync.Mutex
+	closed           bool
+	workers          sync.WaitGroup
+	runs             map[string]*executionState
+	executionBase    context.Context
+	detach           context.CancelCauseFunc
+	stopping         chan struct{}
+	shutdownDone     chan struct{}
+	shutdownExpired  chan struct{}
+	shutdownOnce     sync.Once
+	shutdownGrace    time.Duration
+	shutdownTimeout  time.Duration
+	closeErr         error
+	terminalObserver *terminal.Observer
 }
 
 type executionState struct {
@@ -205,6 +207,8 @@ func Listen(address string) (net.Listener, error) {
 
 func (c *Coordinator) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/formations/runs/{runId}/seats", c.seats)
+	mux.HandleFunc("GET /api/formations/runs/{runId}/seats/{createdSeq}/terminal", c.viewTerminal)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, 200, map[string]string{"status": "ok", "runtime": "standalone-trusted-v1"})
 	})
