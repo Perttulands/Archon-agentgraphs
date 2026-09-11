@@ -37,7 +37,7 @@ type seatTransport interface {
 	Ready(context.Context, string, *nativeSeat, string) error
 	Stage(context.Context, string, *nativeSeat, string, string) error
 	WaitTurn(context.Context, *nativeSeat, string, string, func(codexTranscriptTurn) error) (codexTranscriptTurn, error)
-	Snapshot(*nativeSeat, string, string) (codexTranscriptTurn, error)
+	Snapshot(context.Context, *nativeSeat, string, string) (codexTranscriptTurn, error)
 	End(context.Context, string, *nativeSeat) error
 }
 
@@ -59,8 +59,8 @@ func (t realSeatTransport) openControl(ctx context.Context, socket, session stri
 	return openSeatControl(ctx, socket, session)
 }
 
-func (realSeatTransport) Snapshot(s *nativeSeat, cwd, pointer string) (codexTranscriptTurn, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func (realSeatTransport) Snapshot(parent context.Context, s *nativeSeat, cwd, pointer string) (codexTranscriptTurn, error) {
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 	if _, err := (realTmuxHarnessClient{}).DescribeActivePane(ctx, s.socket, s.paneID); err != nil {
 		return codexTranscriptTurn{}, err

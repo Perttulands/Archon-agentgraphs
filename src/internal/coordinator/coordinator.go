@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/Perttulands/chrote-agent-formations/internal/api"
 	"github.com/Perttulands/chrote-agent-formations/internal/core"
@@ -46,15 +47,24 @@ type Projection struct {
 	Events            []Event       `json:"events"`
 }
 type Coordinator struct {
-	admissions sync.Mutex
-	personas   *formations.PersonaStore
-	store      *formations.Store
-	engine     *formations.RunEngine
-	lock       *os.File
-	mu         sync.Mutex
-	closed     bool
-	workers    sync.WaitGroup
-	runs       map[string]*executionState
+	admissions      sync.Mutex
+	personas        *formations.PersonaStore
+	store           *formations.Store
+	engine          *formations.RunEngine
+	lock            *os.File
+	mu              sync.Mutex
+	closed          bool
+	workers         sync.WaitGroup
+	runs            map[string]*executionState
+	executionBase   context.Context
+	detach          context.CancelCauseFunc
+	stopping        chan struct{}
+	shutdownDone    chan struct{}
+	shutdownExpired chan struct{}
+	shutdownOnce    sync.Once
+	shutdownGrace   time.Duration
+	shutdownTimeout time.Duration
+	closeErr        error
 }
 
 type executionState struct {
@@ -86,7 +96,10 @@ func Open(stateDir string, personas *formations.PersonaStore, makeExecutor func(
 		return nil, errors.New("another coordinator owns this state directory")
 	}
 	store := formations.NewStore(stateDir)
-	c := &Coordinator{store: store, personas: personas, lock: lock, runs: make(map[string]*executionState)}
+	base, detach := context.WithCancelCause(context.Background())
+	c := &Coordinator{store: store, personas: personas, lock: lock, runs: make(map[string]*executionState),
+		executionBase: base, detach: detach, stopping: make(chan struct{}), shutdownDone: make(chan struct{}), shutdownExpired: make(chan struct{}),
+		shutdownGrace: 5 * time.Second, shutdownTimeout: 10 * time.Second}
 	store.OnRunEvent = func(event formations.RunEvent) {
 		c.mu.Lock()
 		state := c.state(event.RunID)
@@ -110,13 +123,44 @@ func Open(stateDir string, personas *formations.PersonaStore, makeExecutor func(
 	return c, nil
 }
 
-// Close waits for owned execution to settle before releasing the writer lock.
+// BeginShutdown fences admission and further dispatch immediately. Existing
+// turns get five seconds to finish, then observation is canceled without abort.
+func (c *Coordinator) BeginShutdown() {
+	c.shutdownOnce.Do(func() {
+		c.mu.Lock()
+		c.closed = true
+		close(c.stopping)
+		c.mu.Unlock()
+		deadline := time.AfterFunc(c.shutdownTimeout, func() { close(c.shutdownExpired) })
+		done := make(chan struct{})
+		go func() { c.workers.Wait(); close(done) }()
+		go func() {
+			grace := time.NewTimer(c.shutdownGrace)
+			defer grace.Stop()
+			select {
+			case <-done:
+			case <-grace.C:
+			}
+			c.detach(formations.ErrCoordinatorShutdown)
+			<-done
+			c.closeErr = c.lock.Close()
+			deadline.Stop()
+			close(c.shutdownDone)
+		}()
+	})
+}
+
+// Close is bounded and idempotent. If an executor fails to stop, the writer
+// lock stays owned until its worker exits (or the process exits). A timed return
+// never permits a second coordinator to overlap an old writer.
 func (c *Coordinator) Close() error {
-	c.mu.Lock()
-	c.closed = true
-	c.mu.Unlock()
-	c.workers.Wait()
-	return c.lock.Close()
+	c.BeginShutdown()
+	select {
+	case <-c.shutdownDone:
+		return c.closeErr
+	case <-c.shutdownExpired:
+		return errors.New("coordinator shutdown exceeded ten-second budget; writer lock retained until workers exit")
+	}
 }
 func (c *Coordinator) Store() *formations.Store { return c.store }
 
@@ -190,7 +234,18 @@ func (c *Coordinator) Handler() http.Handler {
 		}
 		reply(w, 200, projections)
 	})
-	return mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			// Authoring handlers write definitions too. Retain writer ownership
+			// through every admitted mutation, including HTTP body decoding.
+			if !c.acquire("") {
+				reply(w, http.StatusServiceUnavailable, map[string]string{"error": "coordinator shutting down"})
+				return
+			}
+			defer c.release("")
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 // state is accessed only with mu held. Signals outlive each execution so a
@@ -207,7 +262,7 @@ func (c *Coordinator) reserve(id string) {
 	state := c.state(id)
 	state.busy, state.settling, state.executing = true, false, false
 	state.abort = nil
-	state.ctx, state.cancel = context.WithCancel(context.Background())
+	state.ctx, state.cancel = context.WithCancel(formations.WithShutdownFence(c.executionBase, c.stopping))
 	state.done = make(chan struct{})
 }
 func (c *Coordinator) acquire(id string) bool {
@@ -497,6 +552,8 @@ func (c *Coordinator) stream(w http.ResponseWriter, r *http.Request) {
 		}
 		select {
 		case <-r.Context().Done():
+			return
+		case <-c.stopping:
 			return
 		case <-changed:
 		}

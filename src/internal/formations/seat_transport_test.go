@@ -174,7 +174,7 @@ type observationTransport struct {
 	errs  map[string]error
 }
 
-func (t observationTransport) Snapshot(s *nativeSeat, _, _ string) (codexTranscriptTurn, error) {
+func (t observationTransport) Snapshot(_ context.Context, s *nativeSeat, _, _ string) (codexTranscriptTurn, error) {
 	return t.turns[s.name], t.errs[s.name]
 }
 
@@ -207,7 +207,7 @@ func TestWorkerObservationsUseNativeTurnsAndFailSettingsMismatch(t *testing.T) {
 				v := HarnessVariant{ID: "openai-codex", Model: "test-model"}
 				baselines = append(baselines, workerBaseline{binding: tmuxSlotBinding{Slot: FormationSlot{ID: name}, Variant: v, SessionName: name}, seat: &nativeSeat{name: name, pointer: seatPointer(name)}})
 			}
-			err := e.observeWorkerOutcomes(FormationExecution{RunID: started.RunID, NodeID: "fmn_research"}, tmuxSlotBinding{}, baselines)
+			err := e.observeWorkerOutcomes(context.Background(), FormationExecution{RunID: started.RunID, NodeID: "fmn_research"}, tmuxSlotBinding{}, baselines)
 			if (err != nil) != (kind == "mismatch") {
 				t.Fatalf("err=%v", err)
 			}

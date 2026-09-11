@@ -3,6 +3,7 @@ package formations
 import (
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // A seat can die mid-turn (or its transcript can be unreadable) after the
@@ -13,8 +14,10 @@ func TestResumeRedispatchAbandonsOpenDispatchAndReattachFailureBlocks(t *testing
 	for _, kind := range []string{"redispatch", "reattach failure"} {
 		t.Run(kind, func(t *testing.T) {
 			store, personas := s4RunFixture(t)
-			store.Now = fixedClock()
-			personas.Now = fixedClock()
+			// Lab now honors the same execution deadline as real seats. Keep
+			// this recovery fixture within its wall-clock budget.
+			store.Now = time.Now
+			personas.Now = time.Now
 			createS4Persona(t, personas, "scout")
 			writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
 			board, err := store.ReadBoard("session-search")

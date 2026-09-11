@@ -1641,6 +1641,13 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 	if e.executor == nil {
 		return FormationExecutionResult{}, ErrRunExecutorUnavailable
 	}
+	ctx := context.Background()
+	if e.executionContext != nil {
+		ctx = e.executionContext(req.RunID)
+	}
+	if err := dispatchContextError(ctx); err != nil {
+		return FormationExecutionResult{}, err
+	}
 	events, err := e.store.ReadRunEvents(req.RunID)
 	if err != nil {
 		return FormationExecutionResult{}, err
@@ -1652,10 +1659,6 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 	req.Cwd = stringFromEventData(events[0], "cwd")
 	req.MissionGoal = stringFromEventData(events[0], "objective")
 	if executor, ok := e.executor.(ContextFormationExecutor); ok {
-		ctx := context.Background()
-		if e.executionContext != nil {
-			ctx = e.executionContext(req.RunID)
-		}
 		if err := ctx.Err(); err != nil {
 			return FormationExecutionResult{}, err
 		}
@@ -1669,10 +1672,18 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 			defer cancel()
 		}
 		result, err := executor.ExecuteFormationContext(ctx, req)
+		if errors.Is(context.Cause(ctx), ErrCoordinatorShutdown) {
+			return FormationExecutionResult{}, ErrCoordinatorShutdown
+		}
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return FormationExecutionResult{}, ErrRunWallClockExceeded
 		}
 		return result, err
+	}
+	// Coordinator-owned legacy executors run synchronously so a timeout cannot
+	// leave a hidden writer behind after the coordinator releases its lock.
+	if e.executionContext != nil {
+		return e.executor.ExecuteFormation(req)
 	}
 	if limits.WallClockSeconds <= 0 {
 		return e.executor.ExecuteFormation(req)
@@ -2410,6 +2421,15 @@ type executionFailureDetails struct {
 }
 
 func (e *RunEngine) appendExecutionFailureAndBlock(runID, nodeID string, err error) error {
+	if errors.Is(err, ErrCoordinatorShutdown) {
+		events, readErr := e.store.ReadRunEvents(runID)
+		if readErr != nil {
+			return readErr
+		}
+		return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventBlocked, NodeID: nodeID, Data: map[string]any{
+			"reason": "coordinator shutdown; inspect dispatch evidence before resume", "resumeAllowed": true, "openDispatches": unresolvedDispatches(events),
+		}})
+	}
 	failure := executionFailureEvent(err)
 	if failure.NodeID != "" {
 		nodeID = failure.NodeID

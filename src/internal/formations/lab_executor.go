@@ -1,6 +1,7 @@
 package formations
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -83,14 +84,18 @@ func NewLabFormationExecutor(store *Store, personas *PersonaStore, config LabExe
 }
 
 func (e *LabFormationExecutor) ExecuteFormation(req FormationExecution) (FormationExecutionResult, error) {
+	return e.ExecuteFormationContext(context.Background(), req)
+}
+
+func (e *LabFormationExecutor) ExecuteFormationContext(ctx context.Context, req FormationExecution) (FormationExecutionResult, error) {
 	copy := *e
 	if req.Cwd != "" {
 		copy.config.Cwd = req.Cwd
 		copy.config.Roots = append(append([]string{}, e.config.Roots...), req.Cwd)
 	}
-	return copy.executeFormation(req)
+	return copy.executeFormation(ctx, req)
 }
-func (e *LabFormationExecutor) executeFormation(req FormationExecution) (FormationExecutionResult, error) {
+func (e *LabFormationExecutor) executeFormation(ctx context.Context, req FormationExecution) (FormationExecutionResult, error) {
 	if e == nil || e.store == nil {
 		return FormationExecutionResult{}, runExecutionError("missing_executor", "lab executor store is not configured", "executor", ErrRunExecutorUnavailable)
 	}
@@ -134,6 +139,9 @@ func (e *LabFormationExecutor) executeFormation(req FormationExecution) (Formati
 		}
 
 		prompt := e.renderPrompt(req, slot, *card, variant)
+		if err := dispatchContextError(ctx); err != nil {
+			return FormationExecutionResult{}, err
+		}
 		lease, err := dispatcher.DispatchSlot(req.RunID, SlotDispatchRequest{
 			NodeID:      req.NodeID,
 			SlotID:      slot.ID,

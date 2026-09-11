@@ -311,7 +311,7 @@ func (e *TmuxFormationExecutor) executeFormationContext(parent context.Context, 
 	if err := e.store.RequireRuntimeAuthority(); err != nil {
 		return FormationExecutionResult{}, err
 	}
-	if err := e.validateConfiguredBoundary(); err != nil {
+	if err := e.validateConfiguredBoundaryContext(ctx); err != nil {
 		return FormationExecutionResult{}, err
 	}
 	if len(req.Formation.Slots) == 0 {
@@ -388,7 +388,7 @@ func (e *TmuxFormationExecutor) executeOrchestratedFormation(ctx context.Context
 	// leader's own failure still wins as the returned error.
 	var observeErr error
 	if ctx.Err() == nil {
-		observeErr = e.observeWorkerOutcomes(req, controllerBinding, baselines)
+		observeErr = e.observeWorkerOutcomes(ctx, req, controllerBinding, baselines)
 	}
 	if leaderErr != nil {
 		return FormationExecutionResult{}, leaderErr
@@ -754,6 +754,9 @@ func hasOutputPortKey(raw map[string]any) bool {
 }
 
 func (e *TmuxFormationExecutor) executeSlot(req FormationExecution, slot FormationSlot, allowed map[string]bool, dispatcher *SlotDispatcher, phase string, extraLines []string, owned *ownedSessions) (tmuxSlotOutput, error) {
+	if err := dispatchContextError(owned.ctx); err != nil {
+		return tmuxSlotOutput{}, err
+	}
 	binding, err := e.resolveSlotBinding(owned.ctx, req, slot, allowed, owned)
 	if err != nil {
 		return tmuxSlotOutput{}, withSlot(err, req.NodeID, slot.ID, "")
@@ -765,12 +768,18 @@ func (e *TmuxFormationExecutor) executeSlot(req FormationExecution, slot Formati
 		return tmuxSlotOutput{}, err
 	}
 	seat.brief, seat.pointer = brief, pointer
+	if err := dispatchContextError(owned.ctx); err != nil {
+		return tmuxSlotOutput{}, err
+	}
 	lease, err := dispatcher.DispatchSlot(req.RunID, SlotDispatchRequest{NodeID: req.NodeID, SlotID: slot.ID, AgentID: slot.AgentID, Harness: binding.Variant.ID, SessionStem: binding.Variant.SessionStem, SessionRef: "tmux:" + binding.SessionName, Prompt: prompt, BriefPath: brief, Phase: phase, Attempt: req.Attempt})
 	if err != nil {
 		return tmuxSlotOutput{}, err
 	}
 	if err := e.validatePinnedTmuxSocket(); err != nil {
 		return tmuxSlotOutput{}, withSlot(err, req.NodeID, slot.ID, lease.DispatchID)
+	}
+	if err := dispatchContextError(owned.ctx); err != nil {
+		return tmuxSlotOutput{}, err
 	}
 	if err := e.seatClient.Stage(owned.ctx, e.config.Socket, seat, lease.DispatchID, pointer); err != nil {
 		return tmuxSlotOutput{}, runSlotExecutionError("dispatch_failed", redactPromptFromLedgerText(err.Error(), prompt), "adapter", err, req.NodeID, slot.ID, lease.DispatchID)
@@ -798,6 +807,9 @@ func (e *TmuxFormationExecutor) executeSlot(req FormationExecution, slot Formati
 }
 
 func (e *TmuxFormationExecutor) resolveSlotBinding(ctx context.Context, req FormationExecution, slot FormationSlot, allowed map[string]bool, owned *ownedSessions) (tmuxSlotBinding, error) {
+	if err := dispatchContextError(ctx); err != nil {
+		return tmuxSlotBinding{}, err
+	}
 	if slot.AgentID == "" {
 		return tmuxSlotBinding{}, runExecutionError("missing_agent", fmt.Sprintf("slot %q is not staffed", slot.ID), "executor", nil)
 	}
@@ -853,6 +865,9 @@ func (e *TmuxFormationExecutor) provisionOwnedSession(ctx context.Context, owned
 	root := e.config.CodexTranscriptRoot
 	if variant.ID == "claude-code" {
 		root = e.config.ClaudeTranscriptRoot
+	}
+	if err := dispatchContextError(ctx); err != nil {
+		return "", err
 	}
 	seat, err := e.seatClient.Create(ctx, e.config.Socket, name, e.config.Cwd, root, variant)
 	if err != nil {
@@ -950,6 +965,11 @@ func tmuxPaneShowsHarnessReady(harnessID, captured string) bool {
 // never issues kill-server and never targets a name it did not create.
 func (e *TmuxFormationExecutor) teardownOwnedSessions(owned *ownedSessions) {
 	for slot, seat := range owned.seats {
+		if shutdownRequested(owned.ctx) && !errors.Is(context.Cause(owned.ctx), context.Canceled) {
+			seat.close()
+			_ = e.store.AppendRunEvent(owned.req.RunID, RunEvent{Type: "seat_cleanup", NodeID: owned.req.NodeID, SlotID: slot, Data: map[string]any{"sessionName": seat.name, "outcome": "left_shutdown"}})
+			continue
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		outcome, detail := "left_socket_changed", ""
 		if err := e.validatePinnedTmuxSocket(); err == nil {
@@ -1233,13 +1253,19 @@ func (e *TmuxFormationExecutor) reserveWorkerBriefs(workers []tmuxSlotBinding, o
 
 // Record each worker independently, including unused, missing and incomplete seats.
 // Settings mismatches also fail the formation.
-func (e *TmuxFormationExecutor) observeWorkerOutcomes(req FormationExecution, controller tmuxSlotBinding, baselines []workerBaseline) error {
+func (e *TmuxFormationExecutor) observeWorkerOutcomes(ctx context.Context, req FormationExecution, controller tmuxSlotBinding, baselines []workerBaseline) error {
 	var settingsErr error
 	for _, baseline := range baselines {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		worker := baseline.binding
 		data := e.workerObservationIdentity(worker.Slot, &worker, controller, worker.SessionName)
 		data["phase"], data["observer"] = workerObservationPhaseCompletion, "archon-native-transcript"
-		turn, err := e.seatClient.Snapshot(baseline.seat, e.config.Cwd, baseline.seat.pointer)
+		turn, err := e.seatClient.Snapshot(ctx, baseline.seat, e.config.Cwd, baseline.seat.pointer)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		outcome := workerOutcomeOutputCaptured
 		switch {
 		case err != nil:
@@ -1518,6 +1544,10 @@ func lastMatchingCompletionSentinelBounds(captured, runID string) (int, int) {
 }
 
 func (e *TmuxFormationExecutor) validateConfiguredBoundary() error {
+	return e.validateConfiguredBoundaryContext(context.Background())
+}
+
+func (e *TmuxFormationExecutor) validateConfiguredBoundaryContext(ctx context.Context) error {
 	e.socketIdentity = nil
 	if strings.TrimSpace(e.config.Socket) == "" {
 		return runExecutionError("missing_socket", "tmux executor socket is not configured", "executor", nil)
@@ -1552,7 +1582,7 @@ func (e *TmuxFormationExecutor) validateConfiguredBoundary() error {
 	if err != nil {
 		return err
 	}
-	if err := e.ensureServer(expected); err != nil {
+	if err := e.ensureServer(ctx, expected); err != nil {
 		return err
 	}
 	if err := e.pinTmuxSocketIdentity(); err != nil {
@@ -1619,8 +1649,8 @@ func (e *TmuxFormationExecutor) validateConfiguredBoundary() error {
 // so teardownOwnedSessions never reclaims it. ensureServer only ever ADDS a
 // server + keeper — it never issues kill-server, kill-session, attach, rename, or
 // resize — so the only-own-sessions safety invariant holds by construction.
-func (e *TmuxFormationExecutor) ensureServer(expected expectedAgentUser) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(e.config.TimeoutSeconds)*time.Second)
+func (e *TmuxFormationExecutor) ensureServer(parent context.Context, expected expectedAgentUser) error {
+	ctx, cancel := context.WithTimeout(parent, time.Duration(e.config.TimeoutSeconds)*time.Second)
 	defer cancel()
 	running, err := e.client.HasServer(ctx, e.config.Socket)
 	if err != nil {

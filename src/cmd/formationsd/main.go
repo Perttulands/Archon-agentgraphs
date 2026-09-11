@@ -141,9 +141,12 @@ func serve() error {
 	go func() {
 		defer close(shutdownDone)
 		<-ctx.Done()
-		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		c.BeginShutdown()
+		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		server.Shutdown(shutdown)
+		if err := server.Shutdown(shutdown); err != nil {
+			server.Close()
+		}
 	}()
 	results := make(chan error, len(listeners))
 	for _, listener := range listeners {
@@ -153,7 +156,8 @@ func serve() error {
 	stop()
 	if err == http.ErrServerClosed {
 		<-shutdownDone
-		return nil
+		return c.Close()
 	}
+	<-shutdownDone
 	return err
 }

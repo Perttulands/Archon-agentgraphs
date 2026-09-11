@@ -140,7 +140,8 @@ The runtime creates and cleans up seats by immutable session ID through the
 configured guarded wrapper. The daemon's launch environment must include any
 host-required cleanup override and reason. Wrapper path alone is insufficient.
 Check every `seat_cleanup` outcome: `ended`, `left_socket_changed` or
-`left_cleanup_failed`. Success does not erase a cleanup failure.
+`left_cleanup_failed`. Shutdown records `left_shutdown` when it detaches from
+an owned seat without ending it. Success does not erase a cleanup failure.
 
 Native completion must match the exact pointer, cwd, persona model/effort,
 native session and completed turn. Codex uses native task completion; Claude
@@ -289,8 +290,19 @@ archon --server "$FORM_SERVER" gate reject "$FORM_RUN_ID" "$FORM_GATE_ID" \
 Restart the daemon with the same state directory and configuration. Before
 listening it scans non-final ledgers, recovers eligible completed native evidence
 or records a block naming unresolved dispatches. It never adopts or cleans up
-old seats. Preserve those identities for host-owner inspection. Graceful shutdown
-waits for execution; abort runs explicitly when cancellation is intended.
+old seats. Preserve those identities for host-owner inspection. SIGTERM fences
+new commands and downstream dispatch immediately. Active turns have five
+seconds to finish, then the daemon cancels observation and detaches from its
+seats without ending them. HTTP draining and execution share a ten-second total
+shutdown budget. Open dispatch identities remain in a resumable block for
+startup recovery; an idle human request remains answerable. Abort runs explicitly
+when seat cancellation is intended.
+
+The writer lock is retained until all admitted execution and authoring writes
+settle. If a worker ignores cancellation, shutdown returns an error at the
+deadline and retains that lock until the worker or process exits. The host's
+service watchdog is an outer limit, not the normal shutdown mechanism; keep
+deployment and live restart verification in the owning host repository.
 
 Inspect list/status after restart. For a resumable block whose cause is resolved:
 
