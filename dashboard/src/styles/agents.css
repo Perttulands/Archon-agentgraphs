@@ -746,6 +746,16 @@
 }
 
 .agx .run-banner {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px 12px;
+  padding:9px 14px;
+  background:var(--card);
+  color:var(--ink2);
+  border:1px solid var(--line);
+  border-radius:4px;
+  font:11px/1.5 var(--font-mono);
   position:sticky;
   top:0;
   z-index:20;
@@ -755,6 +765,9 @@
   max-width:none;
   overflow-x:auto;
 }
+.agx .run-banner button { padding:5px 9px; border:1px solid var(--line); border-radius:3px; background:var(--paper2); color:var(--ink); font:inherit; cursor:pointer; }
+.agx .run-banner button:hover { border-color:var(--terra); }
+.agx .run-banner .badge { padding:2px 6px; border-radius:3px; color:var(--gold); background:var(--paper2); font-size:10px; text-transform:uppercase; }
 
 @media (max-width:1023px) and (min-width:640px) {
   .agx-controlbar {

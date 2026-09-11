@@ -36,6 +36,12 @@ for (const width of [1440, 390]) test(`floating Peek observes native output and 
   await expect.poll(() => host.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThan(2)
   await page.getByRole('button', { name: 'Older output', exact: true }).click()
   expect(await host.evaluate(el => el.scrollTop)).toBe(0)
+  const grid = (await page.locator('.xterm-screen').boundingBox())!
+  await page.mouse.move(grid.x + 4, grid.y + 20)
+  await page.mouse.down()
+  await page.mouse.move(grid.x + 120, grid.y + 20, { steps: 8 })
+  await page.mouse.up()
+  await expect(page.locator('.xterm-selection div').first()).toBeVisible()
   await page.getByRole('button', { name: 'Latest output', exact: true }).click()
   await expect.poll(() => host.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThan(2)
   expect(await world.getAttribute('style')).toBe(transform)

@@ -6,7 +6,7 @@ import canonicalDefault from '../../../src/internal/api/theme_default.json'
 // GET /api/theme. The dashboard never picks one: there is no theme setting and
 // no picker, so everything below is a read of what the server says, applied
 // once. DEFAULT_THEME is the same JSON the server embeds, so first paint from
-// theme-colors.css and a failed fetch both land on exactly these values.
+// the generated first-paint style and a failed fetch both land on exactly these values.
 
 /** Chrome colours. Every entry maps to one CSS custom property on :root. */
 export interface ThemeUi {
@@ -43,7 +43,7 @@ export interface Theme {
   shelves: string[]
   /** Per-Unix-user colours, indexed by the server's terminalUsers order. */
   identity: string[]
-  /** Art file names served by GET /api/theme/art/{name}. */
+  /** Art file names retained from the host schema. */
   art: string[]
 }
 
@@ -156,8 +156,8 @@ function rgbChannels(color: string): string {
 
 /**
  * Write the theme onto :root. These property names are the contract every
- * stylesheet in the dashboard is written against; theme-colors.css holds the
- * same set at DEFAULT_THEME's values so first paint matches.
+ * stylesheet in the dashboard is written against. Vite generates first-paint
+ * CSS from this same mapping and DEFAULT_THEME.
  */
 export function themeProperties(theme: Theme): Record<string, string> {
   const { ui, terminal } = theme

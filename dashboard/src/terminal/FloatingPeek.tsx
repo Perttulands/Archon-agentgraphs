@@ -138,6 +138,6 @@ export default function FloatingPeek({ runId, initialNodeId, onClose }: {
         ? `${selected.state === 'live' ? 'Observation unavailable' : `Seat ${selected.state}`}. ${selected.reason || ''}`
         : projection?.reason || 'No terminal seats have been created for this formation.'}</p>}
     <footer className="peek-foot"><span role="status">{terminalAvailable ? connectionText[connectionState] : 'View only'}</span>
-      <span>Shift-drag to select · scroll for output</span></footer>
+      <span title="Drag to select text; hold Shift if the terminal uses mouse tracking.">Select and scroll output</span></footer>
   </section>
 }
