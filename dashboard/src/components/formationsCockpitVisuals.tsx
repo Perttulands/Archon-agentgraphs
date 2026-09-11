@@ -4,11 +4,8 @@
 import type { AgentProjection, FormationNode } from './formationsTypes'
 import { harnessIcon } from './harnessIcons'
 
-export const TYPE_TAG: Record<FormationNode['type'], string> = {
-  solo: 'Do the thing.',
-  peer: 'Work together · challenge · synthesize.',
-  flow: 'A, then B, then C.',
-  orchestrated: 'One controller decides what happens next.',
+export function formationSummary(formation: FormationNode): string {
+  return formation.brief?.goal?.replace(/\s+/g, ' ').trim() || 'Set a brief to describe this work.'
 }
 
 /* Castle wall with an opening: gates are checkpoints work must pass through. */

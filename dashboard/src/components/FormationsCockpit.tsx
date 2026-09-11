@@ -47,7 +47,7 @@ import {
   upsertRunEvent,
 } from './formationsRunState'
 import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
-import { GATE_SVG, PLAY_SVG, TYPE_TAG, agentRole, agentState, harnessGlyph, initials } from './formationsCockpitVisuals'
+import { GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, harnessGlyph, initials } from './formationsCockpitVisuals'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
 import DismissiblePanel from './DismissiblePanel'
 import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom, splitList } from './formationsCockpitDom'
@@ -2378,7 +2378,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                     )
                   })}
                   <div className="fhead" onPointerDown={event => beginNodeDrag(event, formation.id, index)}>
-                    <div className="ft"><div className="tt">{formation.title}</div><div className="tg">{TYPE_TAG[formation.type]}</div></div>
+                    <div className="ft"><div className="tt">{formation.title}</div><div className="tg" title={formationSummary(formation)}>{formationSummary(formation)}</div></div>
                     {activeRun ? <button type="button" className="fpeek" aria-label={`Peek at ${formation.title}`}
                       onPointerDown={event => event.stopPropagation()}
                       onClick={() => setPeek({ nodeId: formation.id })}>Peek</button> : null}

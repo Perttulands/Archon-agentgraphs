@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { TYPE_TAG, agentRole, agentState, initials } from './formationsCockpitVisuals'
-import type { AgentProjection } from './formationsTypes'
+import { formationSummary, agentRole, agentState, initials } from './formationsCockpitVisuals'
+import type { AgentProjection, FormationNode } from './formationsTypes'
 
 const agent = (over: Partial<AgentProjection> & { assignable: boolean }): AgentProjection => ({ id: 'a', ...over })
 
@@ -28,8 +28,14 @@ describe('agentState', () => {
   })
 })
 
-describe('TYPE_TAG', () => {
-  it('has a tagline for every formation type', () => {
-    expect(Object.keys(TYPE_TAG).sort()).toEqual(['flow', 'orchestrated', 'peer', 'solo'])
+describe('formationSummary', () => {
+  const formation: FormationNode = { id: 'work', type: 'solo', title: 'Work', inputs: [], outputs: [], slots: [] }
+  it('shows the authored brief as a single line', () => {
+    expect(formationSummary({ ...formation, brief: { goal: '  Review the plan.\n Check evidence.  ' } }))
+      .toBe('Review the plan. Check evidence.')
+  })
+  it('asks for a brief when none is supplied', () => {
+    expect(formationSummary(formation)).toBe('Set a brief to describe this work.')
+    expect(formationSummary({ ...formation, brief: { goal: '  ' } })).toBe('Set a brief to describe this work.')
   })
 })
