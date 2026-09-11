@@ -16,7 +16,10 @@ export default function TerminalSurface({ seat, onStateChange }: {
     if (!url || !host.current) return
     const created = createTerminalSession({
       url, columns: seat.columns!, rows: seat.rows!, theme: latest.current.theme.terminal,
-      onStateChange: state => latest.current.onStateChange(state),
+      onStateChange: state => {
+        if (state === 'open' && host.current) host.current.scrollTop = host.current.scrollHeight
+        latest.current.onStateChange(state)
+      },
     })
     session.current = created
     created.attach(host.current)
@@ -25,8 +28,8 @@ export default function TerminalSurface({ seat, onStateChange }: {
   useEffect(() => { session.current?.applyTheme(theme.terminal) }, [theme])
   return <div className="peek-terminal">
     <div className="peek-scroll-controls" aria-label="Terminal scrolling">
-      <button onClick={() => session.current?.scrollLines(-10)}>Older output</button>
-      <button onClick={() => session.current?.scrollToBottom()}>Latest output</button>
+      <button onClick={() => { session.current?.scrollLines(-10); if (host.current) host.current.scrollTop = 0 }}>Older output</button>
+      <button onClick={() => { session.current?.scrollToBottom(); if (host.current) host.current.scrollTop = host.current.scrollHeight }}>Latest output</button>
     </div>
     <div ref={host} className="terminal-surface-host" data-testid="terminal-surface" />
   </div>

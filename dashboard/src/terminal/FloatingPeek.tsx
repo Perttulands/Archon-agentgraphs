@@ -17,7 +17,7 @@ export default function FloatingPeek({ runId, initialNodeId, onClose }: {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [selectedNode, setSelectedNode] = useState(initialNodeId || '')
-  const [selectedSeq, setSelectedSeq] = useState<number | null>(null)
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
   const [generation, setGeneration] = useState(0)
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
@@ -25,8 +25,8 @@ export default function FloatingPeek({ runId, initialNodeId, onClose }: {
   const closeButton = useRef<HTMLButtonElement>(null)
   const request = useRef(0)
   const drag = useRef<{ pointer: number; x: number; y: number; left: number; top: number } | null>(null)
-  const selection = useRef({ node: selectedNode, seq: selectedSeq })
-  selection.current = { node: selectedNode, seq: selectedSeq }
+  const selection = useRef({ node: selectedNode, slot: selectedSlot })
+  selection.current = { node: selectedNode, slot: selectedSlot }
 
   const refresh = useCallback(async () => {
     const version = ++request.current
@@ -39,14 +39,13 @@ export default function FloatingPeek({ runId, initialNodeId, onClose }: {
       const result = await fetchRunSeats(runId)
       if (version !== request.current) return
       const previous = selection.current
-      const node = result.seats.find(s => s.nodeId === previous.node)?.nodeId
-        || result.seats.find(s => s.state === 'live')?.nodeId || result.seats[0]?.nodeId || previous.node
+      const node = previous.node || result.seats.find(s => s.state === 'live')?.nodeId || result.seats[0]?.nodeId || ''
       const seats = result.seats.filter(s => s.nodeId === node)
-      const seat = seats.find(s => s.createdSeq === previous.seq)
+      const seat = seats.find(s => s.slotId === previous.slot)
         || seats.find(s => s.controller && s.state === 'live') || seats.find(s => s.state === 'live') || seats[0]
       setProjection(result)
       setSelectedNode(node)
-      setSelectedSeq(seat?.createdSeq ?? null)
+      setSelectedSlot(seat?.slotId ?? null)
       setConnectionState('connecting')
       setGeneration(value => value + 1)
     } catch (err) {
@@ -88,8 +87,10 @@ export default function FloatingPeek({ runId, initialNodeId, onClose }: {
     event.currentTarget.setPointerCapture(event.pointerId)
   }
   const seats = projection?.seats.filter(s => s.nodeId === selectedNode) || []
-  const selected = seats.find(s => s.createdSeq === selectedSeq)
-  const nodes = [...new Map(projection?.seats.map(s => [s.nodeId, s.nodeTitle])).entries()]
+  const selected = seats.find(s => s.slotId === selectedSlot)
+  const nodeNames = new Map(projection?.seats.map(s => [s.nodeId, s.nodeTitle]))
+  if (selectedNode && !nodeNames.has(selectedNode)) nodeNames.set(selectedNode, 'Selected formation · no seats')
+  const nodes = [...nodeNames.entries()]
   const terminalAvailable = selected && seatSocketUrl(selected)
   return <section ref={panel} className="floating-peek" role="dialog" aria-label="Formation terminal Peek"
     style={position ? { left: position.x, top: position.y } : undefined}
@@ -113,21 +114,21 @@ export default function FloatingPeek({ runId, initialNodeId, onClose }: {
     </header>
     <div className="peek-picker">
       {nodes.length > 1 ? <select aria-label="Terminal formation" value={selectedNode} onChange={event => {
-        selection.current = { node: event.target.value, seq: null }
+        selection.current = { node: event.target.value, slot: null }
         setSelectedNode(event.target.value)
-        setSelectedSeq(null)
+        setSelectedSlot(null)
         void refresh()
       }}>{nodes.map(([id, title]) => <option key={id} value={id}>{title}</option>)}</select> : null}
       <button onClick={() => void refresh()} disabled={loading}>Refresh seats</button>
     </div>
     <nav className="peek-seats" aria-label="Run seats">
-      {seats.map(seat => <button key={seat.createdSeq} aria-pressed={selectedSeq === seat.createdSeq}
+      {seats.map(seat => <button key={seat.createdSeq} aria-pressed={selectedSlot === seat.slotId}
         title={`${seat.harness} · ${seat.state}`} onClick={() => {
-          selection.current = { node: seat.nodeId, seq: seat.createdSeq }
-          setSelectedSeq(seat.createdSeq)
+          selection.current = { node: seat.nodeId, slot: seat.slotId }
+          setSelectedSlot(seat.slotId)
           void refresh()
         }}>
-        {harnessIcon(seat.harness)}{seat.slotLabel}{seat.controller ? ' · controller' : ''}
+        {harnessIcon(seat.harness)}{seat.slotLabel}{seat.controller && !/controller/i.test(seat.slotLabel) ? ' · controller' : ''}
       </button>)}
     </nav>
     {loading ? <p className="peek-message" role="status">Loading run seats…</p>
@@ -135,7 +136,7 @@ export default function FloatingPeek({ runId, initialNodeId, onClose }: {
       : terminalAvailable && selected ? <TerminalSurface key={`${selected.createdSeq}-${generation}`} seat={selected} onStateChange={setConnectionState} />
       : <p className="peek-message" role="status">{selected
         ? `${selected.state === 'live' ? 'Observation unavailable' : `Seat ${selected.state}`}. ${selected.reason || ''}`
-        : projection?.reason || 'No terminal seats have been created for this run.'}</p>}
+        : projection?.reason || 'No terminal seats have been created for this formation.'}</p>}
     <footer className="peek-foot"><span role="status">{terminalAvailable ? connectionText[connectionState] : 'View only'}</span>
       <span>Shift-drag to select · scroll for output</span></footer>
   </section>
