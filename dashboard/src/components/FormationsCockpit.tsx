@@ -13,7 +13,7 @@ import { StartMissionDialog, type RunInputs } from "./StartMissionDialog"
  * context menus, on-canvas editors/terminals, and undo are tracked for follow passes
  * (bead home-f7as).
  */
-import { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiRequestError,
   abortRunRequest,
@@ -48,6 +48,7 @@ import {
 } from './formationsRunState'
 import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
 import { GATE_SVG, PLAY_SVG, TYPE_TAG, agentRole, agentState, harnessGlyph, initials } from './formationsCockpitVisuals'
+const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
 import DismissiblePanel from './DismissiblePanel'
 import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom, splitList } from './formationsCockpitDom'
 import { routeJudgeWire, routeOrthoWire } from './formationsRouting'
@@ -176,6 +177,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [runEvents, setRunEvents] = useState<RunEvent[]>([])
   const [escalations, setEscalations] = useState<OpenEscalation[]>([])
   const [inspectedNodeId, setInspectedNodeId] = useState<string | null>(null)
+  const [peek, setPeek] = useState<{ nodeId?: string } | null>(null)
   const [ghost, setGhost] = useState<{ x: number; y: number; agentId: string; harness?: string } | null>(null)
   const [hoverSlot, setHoverSlot] = useState<string | null>(null)
   const [dragPos, setDragPos] = useState<{ id: string; x: number; y: number } | null>(null)
@@ -2219,6 +2221,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           Gate
         </div>
         <div className="spacer" />
+        <button type="button" className="newbtn" disabled={!activeRun}
+          title={activeRun ? 'Observe run seats' : 'Start a run to observe its seats'}
+          onClick={() => setPeek({})}>Open terminal</button>
       </div>
 
       <div className="main">
@@ -2374,6 +2379,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   })}
                   <div className="fhead" onPointerDown={event => beginNodeDrag(event, formation.id, index)}>
                     <div className="ft"><div className="tt">{formation.title}</div><div className="tg">{TYPE_TAG[formation.type]}</div></div>
+                    {activeRun ? <button type="button" className="fpeek" aria-label={`Peek at ${formation.title}`}
+                      onPointerDown={event => event.stopPropagation()}
+                      onClick={() => setPeek({ nodeId: formation.id })}>Peek</button> : null}
                     {nodeStates.has(formation.id) ? (
                       <button
                         type="button"
@@ -2702,6 +2710,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           ) : null}
         </aside>
       </div>
+
+      {peek && activeRun ? <Suspense fallback={<div role="status">Loading terminal…</div>}><FloatingPeek key={`${activeRun.runId}-${peek.nodeId || ''}`} runId={activeRun.runId}
+        initialNodeId={peek.nodeId} onClose={() => setPeek(null)} /></Suspense> : null}
 
       {agentEditor ? (
         <div

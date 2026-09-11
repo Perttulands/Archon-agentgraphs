@@ -1,0 +1,45 @@
+.floating-peek {
+  position: fixed; z-index: 180; left: clamp(8px, calc(50% - 290px), calc(100vw - 768px));
+  top: clamp(44px, calc(50% - 100px), calc(100dvh - 438px));
+  width: min(760px, calc(100vw - 16px)); height: min(430px, calc(100dvh - 60px));
+  display: flex; flex-direction: column; overflow: hidden; user-select: text;
+  background: var(--terminal-background); color: var(--text-primary); border: 1px solid var(--divider);
+  border-radius: 5px; box-shadow: 0 18px 55px #0009; font: 12px var(--font-mono);
+}
+.peek-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; min-height: 42px;
+  flex-shrink: 0; background: var(--surface-secondary); border-bottom: 1px solid var(--divider); cursor: move; touch-action: none; }
+.peek-icon { display: flex; flex-shrink: 0; }
+.peek-icon svg { width: 20px; height: 20px; }
+.peek-title { font-weight: 700; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.peek-observer { font-size: 10px; color: var(--text-secondary); white-space: nowrap; }
+.floating-peek button, .floating-peek select { font: 11px var(--font-mono); color: var(--text-secondary);
+  background: var(--surface-primary); border: 1px solid var(--divider); border-radius: 3px; padding: 6px 9px; cursor: pointer; }
+.floating-peek button:hover { color: var(--text-primary); border-color: var(--accent); }
+.floating-peek button:disabled { opacity: .5; cursor: default; }
+.peek-head button { border: 0; background: transparent; flex-shrink: 0; }
+.peek-picker { display: flex; justify-content: space-between; gap: 8px; padding: 6px 12px; flex-shrink: 0; }
+.peek-picker select { min-width: 0; max-width: 65%; }
+.peek-picker button { margin-left: auto; flex-shrink: 0; }
+.peek-seats { display: flex; gap: 16px; padding: 0 12px; overflow-x: auto; flex-shrink: 0; min-height: 36px; border-bottom: 1px solid var(--divider); }
+.peek-seats button { display: flex; align-items: center; gap: 6px; flex-shrink: 0; border: 0; background: transparent; border-radius: 0; border-bottom: 2px solid transparent; }
+.peek-seats button[aria-pressed="true"] { color: var(--text-primary); border-bottom-color: var(--accent); }
+.peek-seats svg { width: 14px; height: 14px; }
+.peek-message { padding: 16px; flex: 1; overflow: auto; line-height: 1.6; }
+.peek-terminal { min-height: 0; flex: 1; display: flex; flex-direction: column; }
+.peek-scroll-controls { display: flex; gap: 8px; padding: 4px 12px; flex-shrink: 0; }
+.peek-scroll-controls button { padding: 2px 6px; font-size: 10px; }
+.terminal-surface-host { min-height: 0; flex: 1; overflow: auto; padding: 8px 12px; background: var(--terminal-background); }
+.terminal-surface { min-width: 100%; }
+.peek-foot { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; flex-shrink: 0;
+  border-top: 1px solid var(--divider); font-size: 10px; color: var(--text-secondary); }
+.fmx .fpeek { border: 1px solid var(--line); background: var(--paper2); color: var(--ink2); padding: 5px; border-radius: 4px; cursor: pointer; font: 10px var(--font-mono); }
+.fmx .fpeek:hover { color: var(--terra); border-color: var(--terra); }
+@media (max-width: 800px) {
+  .floating-peek { left: 8px !important; right: 8px; top: min(190px, 28dvh) !important; bottom: 16px;
+    width: auto; height: auto; max-height: calc(100dvh - 60px); }
+  .peek-head { cursor: default; gap: 6px; padding: 8px; }
+  .peek-title { font-size: 11px; }
+  .peek-observer { display: none; }
+  .peek-seats { gap: 10px; }
+  .peek-foot { flex-wrap: wrap; gap: 4px; padding: 6px 8px; }
+}
