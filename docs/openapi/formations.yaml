@@ -348,7 +348,7 @@ paths:
           final: null
           duplicate or stale human request: null
         '422':
-          description: Engine rejected the verdict, including the pending-human restart limitation form-do9
+          description: Run state does not permit a verdict, or the frozen gate definition or prerequisite evidence failed validation
   /api/formations/boards/{board}/changes:
     parameters:
     - in: path
