@@ -49,8 +49,6 @@ import {
 import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
 import { GATE_SVG, PLAY_SVG, TYPE_TAG, agentRole, agentState, harnessGlyph, initials } from './formationsCockpitVisuals'
 import DismissiblePanel from './DismissiblePanel'
-import { useSessionOptional } from '../context/SessionContext'
-import { resolveFormationsTextSize } from '../types'
 import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom, splitList } from './formationsCockpitDom'
 import { routeJudgeWire, routeOrthoWire } from './formationsRouting'
 import type { ObstacleRect } from './formationsRouting'
@@ -167,8 +165,6 @@ type CockpitUndo =
   | { kind: 'makeController'; formationId: string; slotId: string }
 
 export default function FormationsCockpit({ active = true }: { active?: boolean } = {}) {
-  const session = useSessionOptional()
-  const textSize = resolveFormationsTextSize(session?.settings.formationsTextSize)
   const [boards, setBoards] = useState<BoardSummary[]>([])
   const [selectedSlug, setSelectedSlug] = useState('')
   const [board, setBoard] = useState<BoardDocument | null>(null)
@@ -2197,7 +2193,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [board])
 
   return (
-    <div className="fmx" data-testid="formations-view" data-cockpit="d7" data-textsize={textSize}>
+    <div className="fmx" data-testid="formations-view" data-cockpit="d7">
       <div className="topbar">
         <div className="boardpick">
           board

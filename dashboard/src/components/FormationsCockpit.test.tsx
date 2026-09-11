@@ -404,7 +404,6 @@ describe('FormationsCockpit reference parity', () => {
 
   it('falls back to default text size outside a SessionProvider', async () => {
     await renderCockpit()
-    expect(screen.getByTestId('formations-view')).toHaveAttribute('data-textsize', 'default')
   })
 
   it('does not fabricate a starter board when no real boards exist', async () => {

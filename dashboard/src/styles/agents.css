@@ -1,20 +1,10 @@
 /* Agents staffing ledger redesign */
 .agx {
-  --paper:#0f0f0f;
-  --paper2:#252525;
-  --card:#1a1a1a;
-  --ink:#ececec;
-  --ink2:#bcbcbc;
-  --dim:#8c8c8c;
-  --dimmer:#6b6b6b;
-  --line:#3a3a3a;
-  --line2:#2c2c2c;
-  --terra:#54e08a;
-  --terra-d:#f87171;
-  --sage:#4ade80;
-  --gold:#fb923c;
-  --steel:#7f8a78;
-  --accent-rgb:84,224,138;
+  --paper:var(--background); --paper2:var(--surface-secondary); --card:var(--surface-primary);
+  --ink:var(--text-primary); --ink2:var(--text-secondary); --dim:var(--text-dim); --dimmer:var(--text-dim);
+  --line:var(--divider); --line2:var(--divider);
+  --terra:var(--accent); --terra-d:var(--color-error);
+  --sage:var(--window-green); --gold:var(--window-orange); --steel:var(--text-dim);
   display:flex;
   flex-direction:column;
   min-width:0;
@@ -22,7 +12,7 @@
   overflow:hidden;
   background:var(--paper);
   color:var(--ink);
-  font-family:'Courier Prime','Courier New',monospace;
+  font-family:var(--font-mono);
   -webkit-font-smoothing:antialiased;
 }
 
