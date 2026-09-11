@@ -298,12 +298,11 @@ Inspect list/status after restart. For a resumable block whose cause is resolved
 archon --server "$FORM_SERVER" run resume "$FORM_RUN_ID" --reason "Recovery evidence inspected" --json
 ```
 
-Current limitation, form-do9: restarting while a human gate is pending appends
-a block even with no open dispatch. Its projection still says `waiting_human`,
-but an exact verdict returns 422 and resume returns 409. Preserve the ledger
-and report this condition; the current commands cannot continue that run.
-Resolve human decisions before a planned restart. The delivery graph has no
-human gate and does not enter this case.
+An idle human request with no unresolved dispatch survives restart with its
+original `requestedSeq`. Startup also repairs the older interruption block
+immediately following that request, by appending an audited resume event;
+it retains the original request and evidence. Other blocks are not repaired.
+Approve or reject using the same exact request sequence after restart.
 
 When a seat died mid-turn and its completed evidence cannot be found, abandon
 the open dispatch and run the node again as a fresh bounded attempt:
@@ -327,7 +326,8 @@ artifacts intact. Do not run offline runtime mutations alongside the daemon.
 
 ## HTTP contract
 
-[OpenAPI](openapi/formations.yaml) lists the served routes. JSON responses use
+[OpenAPI](openapi/formations.yaml) lists the served routes. Except for the raw
+theme document described below, JSON responses use
 `{success,timestamp,data}`; errors carry an error object. Board authoring includes
 list/create/read/patch/delete, notes, layout and change polling. Agent routes
 list/create/read/patch persona cards; gate profiles expose the two code checks.
@@ -337,3 +337,14 @@ human verdicts. They all use the coordinator; no request-local executor exists.
 There is no generic file reader, transcript endpoint, board import endpoint or
 authentication layer. Remote ARCHON supports board list/inspect and runtime
 commands; author definitions with `--workspace` or the cockpit.
+
+`GET /api/theme` returns the raw CHROTE schema-1 theme document with no response
+envelope. Optional `--theme-file <absolute-path>` selects a host-owned file,
+read and validated on each request. With no flag the daemon serves bundled
+`chrote-dark`; `src/internal/api/theme_default.json` is the canonical default
+for the server and dashboard first paint. A configured missing/unreadable file
+returns HTTP 500 `THEME_UNREADABLE`; malformed JSON or schema returns HTTP 500
+`INVALID_THEME` naming the offending field. These errors do not disable mission
+execution. The dashboard keeps its complete default palette and reports a failed
+theme request; it applies the theme once per page load. No theme-art routes,
+picker or polling are provided. Host paths and deployment belong to the host.

@@ -194,6 +194,62 @@ func (e *RunEngine) ValidateCompletedRecovery(runID string) error {
 	return err
 }
 
+// PreservePendingHumanGate recognizes an idle human decision at startup. Older
+// coordinators added an interruption block even with no dispatch; repair only
+// that exact suffix, retaining the original request and all audit evidence.
+func (e *RunEngine) PreservePendingHumanGate(runID string) (bool, error) {
+	events, err := e.store.ReadRunEvents(runID)
+	if err != nil {
+		return false, err
+	}
+	if len(events) == 0 || len(unresolvedDispatches(events)) != 0 {
+		return false, nil
+	}
+	last := events[len(events)-1]
+	if isFinalRunEvent(last.Type) {
+		return false, nil
+	}
+	var request RunEvent
+	for _, event := range events {
+		if event.Type == RunEventHumanInputRequested {
+			if pending, ok := latestHumanRequest(events, event.GateID); ok {
+				request = pending
+			}
+		}
+	}
+	if request.Type == "" {
+		return false, nil
+	}
+	board, err := e.readRunBoard(runID)
+	if err != nil {
+		return false, err
+	}
+	gate, ok := findGate(board.Gates, request.GateID)
+	if !ok || !hasGateKind(gate.Kinds, "human") {
+		return false, nil
+	}
+	if err := e.validateHumanRequestKindResults(runID, gate, request, events); err != nil {
+		return false, err
+	}
+	if last.Type != RunEventBlocked {
+		return true, nil
+	}
+	if len(events) < 3 || !boolFromEventData(last, "resumeAllowed") ||
+		stringFromEventData(last, "reason") != "coordinator restarted; completed-turn evidence required" {
+		return false, nil
+	}
+	previous := events[len(events)-2]
+	if previous.Type != RunEventError || stringFromEventData(previous, "code") != "coordinator_interrupted" ||
+		events[len(events)-3].Seq != request.Seq {
+		return false, nil
+	}
+	err = e.store.AppendRunEvent(runID, RunEvent{Type: RunEventResumed, Actor: "coordinator", Data: map[string]any{
+		"resumeMode": "pending-human-repair", "resumedFromSeq": last.Seq,
+		"requestedSeq": request.Seq, "reason": "preserve pending human decision after legacy restart block",
+	}})
+	return err == nil, err
+}
+
 // BlockInterruptedRun records every unresolved dispatch before any restart
 // recovery attempt. A failed recovery therefore remains visible and resumable.
 func (e *RunEngine) BlockInterruptedRun(runID string) error {

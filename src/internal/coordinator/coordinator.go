@@ -384,7 +384,7 @@ func project(status *formations.RunStatusProjection, events []formations.RunEven
 			}
 		}
 	}
-	if len(p.WaitingGates) > 0 {
+	if len(p.WaitingGates) > 0 && status.Status != formations.RunStatusBlocked {
 		p.Status = "waiting_human"
 	}
 	return p

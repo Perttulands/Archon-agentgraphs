@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Perttulands/chrote-agent-formations/internal/api"
 	"github.com/Perttulands/chrote-agent-formations/internal/coordinator"
 	"github.com/Perttulands/chrote-agent-formations/internal/formations"
 )
@@ -26,6 +27,7 @@ func serve() error {
 	var addresses []string
 	flag.Func("listen", "listen address; repeat for each trusted interface", func(value string) error { addresses = append(addresses, value); return nil })
 	uiDir := flag.String("ui-dir", "", "built dashboard directory; empty disables UI")
+	themeFile := flag.String("theme-file", "", "absolute schema-1 theme file; empty uses bundled chrote-dark")
 	executor := flag.String("executor", "tmux", "seat executor: tmux (real seats) or lab (deterministic)")
 	state := flag.String("state-dir", "", "private absolute runtime and definition workspace")
 	agentsDir := flag.String("agents-dir", "", "absolute persona card directory; defaults to <state-dir>/agents")
@@ -40,6 +42,10 @@ func serve() error {
 	recoveryTranscript := flag.String("completed-transcript", "", "absolute native transcript for the unresolved completed dispatch")
 	recoveryBrief := flag.String("completed-brief", "", "absolute original brief file for that dispatch")
 	flag.Parse()
+	themeHandler, err := api.NewThemeHandler(*themeFile)
+	if err != nil {
+		return err
+	}
 	if *resume != "" {
 		if !filepath.IsAbs(*recoveryTranscript) || !filepath.IsAbs(*recoveryBrief) {
 			return fmt.Errorf("--resume-run requires absolute --completed-transcript and --completed-brief")
@@ -108,7 +114,10 @@ func serve() error {
 		}
 		listeners = append(listeners, listener)
 	}
-	handler, err := coordinator.WithUI(c.Handler(), *uiDir)
+	mux := http.NewServeMux()
+	mux.Handle("GET /api/theme", themeHandler)
+	mux.Handle("/", c.Handler())
+	handler, err := coordinator.WithUI(mux, *uiDir)
 	if err != nil {
 		return err
 	}

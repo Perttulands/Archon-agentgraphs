@@ -159,6 +159,13 @@ func (c *Coordinator) RecoverInterruptedRuns() error {
 		if run.Final || run.Status == formations.RunStatusBlocked && !run.ResumeAllowed {
 			continue
 		}
+		waiting, err := c.engine.PreservePendingHumanGate(run.RunID)
+		if err != nil {
+			return err
+		}
+		if waiting {
+			continue
+		}
 		if run.Status != formations.RunStatusBlocked {
 			if err := c.engine.BlockInterruptedRun(run.RunID); err != nil {
 				return err

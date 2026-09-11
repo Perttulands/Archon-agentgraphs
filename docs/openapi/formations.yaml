@@ -2,10 +2,37 @@ openapi: 3.1.0
 info:
   title: Standalone Formations
   version: standalone-trusted-v1
-  description: Trusted-network coordinator and authoring API. JSON uses the success/timestamp/data envelope,
+  description: Trusted-network coordinator and authoring API. JSON uses the success/timestamp/data envelope except for the raw theme document,
     with error details on failure. No authentication. Static cockpit serving is optional. Authoring request
     details follow internal/api/formations.go and agents.go; runtime reads are sanitized.
 paths:
+  /api/theme:
+    get:
+      summary: Read the configured host theme or bundled chrote-dark default
+      description: Raw CHROTE schema-1 JSON without the success envelope. Read on each request from optional absolute --theme-file. No art service.
+      responses:
+        '200':
+          description: Complete theme document with schema, name, ui, terminal and identity; optional shelves and art
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schema, name, ui, terminal, identity]
+                properties:
+                  schema:
+                    const: 1
+                  name:
+                    type: string
+                  ui:
+                    type: object
+                  terminal:
+                    type: object
+                  identity:
+                    type: array
+                    items:
+                      type: string
+        '500':
+          description: Enveloped THEME_UNREADABLE or INVALID_THEME error; execution remains available
   /healthz:
     get:
       responses:
