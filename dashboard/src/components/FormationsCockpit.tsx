@@ -1402,15 +1402,15 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!currentBoard || !rect || !world) return
     const cards = Array.from(world.querySelectorAll<HTMLElement>('.formation,.gatecard,.missioncard,.toolcard'))
     if (!cards.length) { setView({ x: 40, y: 40, scale: 1 }); return }
-    const worldRect = world.getBoundingClientRect()
-    const scale = viewRef.current.scale || 1
     let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9
     cards.forEach(card => {
-      const r = card.getBoundingClientRect()
-      const x = (r.left - worldRect.left) / scale
-      const y = (r.top - worldRect.top) / scale
+      // Arrange animates left/top, and a previous Fit may still be zooming.
+      // Inline positions are the authored destinations, while bounding rects
+      // describe an intermediate frame at an intermediate camera scale.
+      const x = Number.parseFloat(card.style.left)
+      const y = Number.parseFloat(card.style.top)
       minX = Math.min(minX, x); minY = Math.min(minY, y)
-      maxX = Math.max(maxX, x + r.width / scale); maxY = Math.max(maxY, y + r.height / scale)
+      maxX = Math.max(maxX, x + card.offsetWidth); maxY = Math.max(maxY, y + card.offsetHeight)
     })
     const narrow = window.innerWidth <= 768
     const pad = narrow ? 24 : 64
