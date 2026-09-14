@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - name: Verify tag and source
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            test "$RELEASE_TAG" = "v$(cat VERSION)"
+          fi
+          cd src
+          go test ./...
+      - name: Build release bundles
+        run: scripts/build-release.sh
+      - name: Verify UI and checksums
+        run: |
+          (cd dashboard && npm run test:unit && npm run lint)
+          (cd dist && sha256sum -c SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archon-linux
+          path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+  install:
+    needs: linux
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: archon-linux
+          path: dist
+      - name: Verify native installation and runtime
+        env:
+          RELEASE_ARCH: ${{ matrix.arch }}
+        run: |
+          (cd dist && sha256sum -c SHA256SUMS)
+          python3 scripts/test-release.py "dist/archon-$(cat VERSION)-linux-$RELEASE_ARCH.tar.gz"
+
+  publish:
+    needs: install
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: archon-linux
+          path: dist
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" dist/*.tar.gz dist/SHA256SUMS --verify-tag --title "Archon $RELEASE_TAG" --notes-file docs/release-notes.md

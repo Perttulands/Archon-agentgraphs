@@ -102,5 +102,5 @@ on the existing
 [GitHub repository](https://github.com/Perttulands/chrote-agent-formations/releases).
 Download the published archive, check its checksum, and verify installation,
 version identity, UI serving and lab execution in a disposable state directory.
-Cross-compilation proves the ARM64 artifact builds; it does not replace a
-native ARM64 runtime check.
+The release workflow runs the install, upgrade, UI and persisted-run checks on
+native x86-64 and ARM64 runners before publishing either archive.

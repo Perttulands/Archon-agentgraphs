@@ -15,6 +15,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -25,6 +26,7 @@ jobs:
         run: |
           go test ./...
           go build ./cmd/archon
+          go build ./cmd/archond
           go build ./cmd/formationsd
       - name: Dashboard tests and build
         working-directory: dashboard

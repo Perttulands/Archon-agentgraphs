@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Perttulands/chrote-agent-formations/internal/buildinfo"
 	"github.com/Perttulands/chrote-agent-formations/internal/core"
 	"github.com/Perttulands/chrote-agent-formations/internal/formations"
 )
@@ -126,6 +127,10 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 }
 
 func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner tmuxRunner, runtimeStore func(string) *formations.Store) int {
+	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
+		fmt.Fprintln(stdout, buildinfo.String())
+		return 0
+	}
 	config, args, ok := parseGlobalArgs(args, stderr)
 	if !ok {
 		return 2
