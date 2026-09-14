@@ -1,75 +1,148 @@
-# Formations
+![Archon](docs/images/archon-header.png)
 
-Formations builds and runs work graphs with agents and gates. Operators draft
-boards in the cockpit, agents author them with ARCHON, and `formationsd` runs
-missions through Claude Code and OpenAI Codex seats. Many missions can run
-concurrently with separate inputs, cancellation and durable recovery evidence.
+# Archon
 
-Read the [current contract](docs/CONTRACT.md) for definitions, output formats,
-operator commands and recovery. [ADR-0016](docs/adr/0016-daily-capability.md)
-records the daily-capability decisions. [OpenAPI](docs/openapi/formations.yaml)
-lists the HTTP routes. Historical target specs live in [docs/archive](docs/archive/).
-The vision interview, locked decisions and canvas prototypes remain in
-`Perttus_vision_for_agent_orchestration/`.
+A workbench for teams of coding agents. Draw the work, assign Claude Code and
+Codex agents, and decide where a review or human approval must happen before
+the next step runs.
 
-## Build and verify
+Archon combines a visual board editor, a CLI and a local coordinator. Agents
+work in tmux sessions on your machine. The UI shows their assignments and
+terminal output; the coordinator routes results through the graph and keeps
+the run history on disk.
+
+![Delivery board with agent assignments, a review gate and attached notes](docs/images/workflow.png)
+
+The included delivery board plans a change, drafts Beads, reviews the proposed
+work, then hands execution to a Claude controller with three Codex workers.
+A final reviewer checks the result. A failed Beads review sends feedback back
+to the drafting step.
+
+## Work you can inspect
+
+- Use a solo agent, peer agents, or a controller with assigned workers.
+- Give each step its own brief, input and output ports, and agent settings.
+- Add code checks, agent reviews and human approval gates. Route failures back
+  for another attempt, within the run's limits.
+- Keep several missions running with separate briefs, working directories,
+  cancellation and histories.
+- Open a floating terminal Peek to select, copy and scroll a seat's output.
+  Peek is view-only and preserves the agent's terminal size.
+
+![Floating terminal Peek with controller and worker tabs](docs/images/terminal-peek.png)
+
+This capture uses a real tmux shell running CLI help. It is labelled as a demo;
+no model is running in it.
+
+The Agents view keeps reusable personas beside the mission's staffing. Inspect
+a persona's settings and see which slots use it before starting work.
+
+![Agents view with delivery personas, staffed execution slots and the controller inspector](docs/images/agents.png)
+
+## What ships together
+
+The CLI, backend and UI live in this repository. The current build produces
+two Go binaries and a static UI directory. The daemon serves the UI directly,
+so production use does not need a Node server. CHROTE is not required.
+
+| Part | Role |
+| --- | --- |
+| `archon` | Author boards locally and send runtime commands to the daemon. |
+| `formationsd` | Run missions, manage agent seats, persist events and serve HTTP. |
+| `dashboard/dist/` | The browser UI served by the daemon. |
+
+Archon was previously called Formations. The daemon name, some UI labels,
+storage paths and API names still use that name. This is currently a source
+build, with no unified release installer.
+
+## Try the UI
+
+Build on Linux with Go 1.26.6 or newer and Node 20.19+ in the 20.x line, or
+Node 22.12+. The lab executor lets you explore boards without launching agents.
 
 ```bash
-cd src
-go test ./...
-go build ./cmd/archon
-go build ./cmd/formationsd
-cd ../dashboard
-npm ci
-npm run test:unit
-npm run build
-npm run lint
+git clone https://github.com/Perttulands/chrote-agent-formations.git archon
+cd archon
+
+export ARCHON_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/archon"
+umask 077
+mkdir -p "$ARCHON_HOME/bin"
+(cd src && go build -o "$ARCHON_HOME/bin/archon" ./cmd/archon \
+  && go build -o "$ARCHON_HOME/bin/formationsd" ./cmd/formationsd)
+(cd dashboard && npm ci && npm run build)
+
+mkdir -p "$ARCHON_HOME/state/.formations/boards" \
+  "$ARCHON_HOME/state/.formations/notes"
+cp examples/delivery.formation.toml "$ARCHON_HOME/state/.formations/boards/"
+cp examples/delivery.notes.toml "$ARCHON_HOME/state/.formations/notes/"
+"$ARCHON_HOME/bin/archon" --workspace "$ARCHON_HOME/state" board validate delivery --json
+"$ARCHON_HOME/bin/archon" --workspace "$ARCHON_HOME/state" board arrange delivery --json
+
+"$ARCHON_HOME/bin/formationsd" --executor lab \
+  --state-dir "$ARCHON_HOME/state" --ui-dir "$PWD/dashboard/dist" \
+  --listen 127.0.0.1:8091
 ```
 
-## Run the cockpit
+Open **http://127.0.0.1:8091**. Leave the daemon running in this terminal and
+stop it with Ctrl+C when finished. Lab simulates execution; it does not perform
+the work in a brief. The service has no authentication, so keep its listeners
+on trusted interfaces.
 
-Set host values from the operator runbook and use the built daemon:
+## Run real agents
+
+Install tmux and the Claude Code or Codex CLI required by your chosen personas,
+and authenticate those CLIs. Start the daemon with `--executor tmux` and your
+absolute paths for `--socket`, `--tmux-bin`, `--codex-transcripts` and
+`--claude-transcripts`. The daemon creates seats on demand when a formation
+runs. See the [operator procedure](docs/CONTRACT.md#operator-procedure) for
+configuration, execution limits, approvals and recovery.
+
+The delivery example also expects Beads and the shared skills named in its
+briefs. Those tools and skills are not bundled here. Read and adapt the
+[board](examples/delivery.formation.toml) and its
+[notes](examples/delivery.notes.toml) before running it against a repository.
+The [minimal board](docs/CONTRACT.md#definitions-and-storage) is a smaller
+starting point for your own workflow.
+
+With a configured daemon and a prepared delivery board, submit a mission from
+another terminal. Replace the working directory, brief and Bead below with
+your task's values.
 
 ```bash
-formationsd --executor lab --state-dir "$FORM_STATE" \
-  --listen "$FORM_LISTEN" --ui-dir "$FORM_UI_DIR"
+"$ARCHON_HOME/bin/archon" --server http://127.0.0.1:8091 mission run delivery \
+  --mission mis_delivery --cwd /absolute/path/to/your/repository \
+  --brief /absolute/path/to/your/brief.md --bead your-project-123 \
+  --max-dispatch 30 --max-attempts 3 --wall-clock-seconds 7200 --json
 ```
 
-Repeat `--listen` for each trusted interface. Omit `--ui-dir` to disable static
-serving. The default executor is `tmux`, with required `--socket`, `--tmux-bin`,
-`--codex-transcripts` and `--claude-transcripts`. `--cwd` is an optional daemon
-default; missions supply their own cwd. `--agents-dir` selects an absolute persona
-directory, defaulting to `<state-dir>/agents`, while retaining built-in presets.
-Set model and effort on persona variants, not daemon flags. Lab creates no real
-seats and does not perform agent work.
+Use the returned run ID with `run status`, `run logs`, `run follow` or
+`run abort`. Runtime commands always use `--server`; local authoring uses
+`--workspace`. A run keeps a snapshot of its board and personas, so later
+edits apply to later runs. Recovery records unresolved work explicitly;
+inspect a blocked run before deciding how to continue it.
 
-The service has no authentication. Host deployment, guarded cleanup environment,
-network forwarding and CHROTE integration live outside this repository. Configure
-trusted listeners. For Vite development, set `FORMATIONS_API_URL` to the daemon.
+## Develop
 
-## Author and deliver
+```bash
+(cd src && go test ./...)
+(cd dashboard && npm run test:unit && npm run build && npm run lint)
+```
 
-The cockpit and `archon --workspace "$FORM_STATE"` share definitions. Runtime
-commands use `archon --server "$FORM_SERVER"`; they do not fall back locally.
-See the [operator procedure](docs/CONTRACT.md#operator-procedure) to import, inspect,
-validate and arrange a board, run with cwd/brief/Bead and limits, follow progress,
-answer a human gate, abort or recover.
+For Vite development, set `FORMATIONS_API_URL` to the daemon URL and run
+`npm run dev` in `dashboard/`.
 
-[delivery.formation.toml](examples/delivery.formation.toml) and its
-[notes](examples/delivery.notes.toml) define Plan -> Beads -> Beads review gate ->
-orchestrated Execution -> Final review. Six delivery presets staff the graph.
-The review gate pushes failed drafts back to Beads. Execution uses a Claude
-controller with three Codex workers, and Astra writes the final review report.
-There is no human gate in this template. Inspect its briefs and owning task
-before running it; lab acceptance is simulated routing evidence.
+| Source | Owns |
+| --- | --- |
+| `src/internal/formations/` | Model, persistence, gates and execution. |
+| `src/internal/coordinator/` | Admission, runtime commands and projections. |
+| `src/internal/api/` | Authoring HTTP and local adapters. |
+| `src/cmd/archon/`, `src/cmd/formationsd/` | CLI and daemon entrypoints. |
+| `dashboard/` | Board editor, agent staffing and terminal Peek. |
 
-## Source map
+Read the [runtime contract](docs/CONTRACT.md),
+[daily-capability decisions](docs/adr/0016-daily-capability.md) and
+[OpenAPI specification](docs/openapi/formations.yaml) before changing runtime
+behavior. Host deployment and CHROTE integration live outside this repository.
+Historical designs remain in [the archive](docs/archive/).
 
-- `src/internal/formations/`: model, persistence, gates and execution.
-- `src/internal/coordinator/`: service ownership, admission and projection.
-- `src/internal/api/`: authoring handlers and local adapters.
-- `src/cmd/archon/` and `src/cmd/formationsd/`: command entrypoints.
-- `dashboard/`: Formations and Agents cockpit.
-
-The transcript files under `src/internal/formations/testdata` are synthetic
-fixtures. The repository preserves the history of the extracted experiments.
+[MIT license](LICENSE). [Image sources and capture notes](docs/images/README.md).
