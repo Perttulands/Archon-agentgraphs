@@ -11,9 +11,10 @@ export default function App() {
 
   return (
     <main className="formations-app">
-      <nav className="formations-app-nav" aria-label="Formations views">
+      <nav className="formations-app-nav" aria-label="Archon views">
+        <span className="archon-brand">ARCHON</span>
         <button type="button" onClick={() => setView('formations')} aria-pressed={view === 'formations'}>
-          Formations
+          Boards
         </button>
         <button type="button" onClick={() => setView('agents')} aria-pressed={view === 'agents'}>
           Agents

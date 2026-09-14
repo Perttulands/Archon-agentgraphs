@@ -1,7 +1,6 @@
 # README images
 
-The README introduces the product as Archon. The captures show the existing
-software, including UI labels that still say Formations.
+The README and captures show the Archon product and its Boards and Agents views.
 
 ## Header
 
@@ -13,8 +12,9 @@ or a diagram of the runtime. The original generated PNG is stored unchanged.
 
 ## Screenshots
 
-All captures use Chromium and the real UI built from commit
-`bf08d55bed424079a9bfe5e06ee9c8ee1bfdf21b`, with the bundled dark theme.
+All captures use Chromium and the real branded UI introduced in `form-pvl.1`,
+with the bundled dark theme. The frozen capture build contains
+`index-CP2HVN87.js` and `index-B3tsUi9f.css`.
 They were captured on 2026-09-14 in an isolated local workspace using the
 repository's delivery board, companion notes and built-in personas.
 

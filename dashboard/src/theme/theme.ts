@@ -2,7 +2,7 @@ import canonicalDefault from '../../../src/internal/api/theme_default.json'
 
 // The interface's one theme, served by the host.
 //
-// CHROTE keeps a single active theme, authored on the host and served by
+// Archon uses a single active theme, authored on the host and served by
 // GET /api/theme. The dashboard never picks one: there is no theme setting and
 // no picker, so everything below is a read of what the server says, applied
 // once. DEFAULT_THEME is the same JSON the server embeds, so first paint from

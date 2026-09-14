@@ -1,12 +1,22 @@
-# Formations contract
+# Archon contract
 
-Formations builds and runs work graphs with agents and gates. `formationsd` owns
-execution and serves the Formations and Agents cockpit. ARCHON authors the same
+Archon builds and runs work graphs with agents and gates. `archond` owns
+execution and serves the Archon UI. The `archon` CLI authors the same
 definitions and sends runtime commands to the daemon. This is a trusted-operator
 service with concurrent missions, two native harness adapters and durable run
 history. Host deployment, forwarding and CHROTE integration live outside this
 repository. [ADR-0016](adr/0016-daily-capability.md) records the daily-capability
 decisions; [examples](../examples/) provide reusable boards.
+
+## Names and compatibility
+
+Archon ships the `archon` CLI, `archond` daemon and browser UI together.
+`formationsd` remains a compatibility entrypoint for the same daemon. Existing
+`.formations` storage, `/api/formations` routes, `form-` session names, browser
+preferences and `CHROTE_*` configuration/protocol identifiers retain their exact
+spelling. Existing boards and run history need no migration. A formation remains
+the domain name for an execution node. Historical designs use the earlier
+product names; they do not define current behavior.
 
 ## Definitions and storage
 
@@ -24,9 +34,9 @@ decisions; [examples](../examples/) provide reusable boards.
 | Pushback edge | A gate's `fail` connection back to work, delivering feedback and starting a bounded next attempt. There is no `retry_control` port. |
 | Run | One admitted mission or isolated formation, with definition and persona snapshots, inputs and limits. Later edits affect later runs. |
 | Ledger | Private append-only NDJSON events, ordered by sequence. It records dispatch, results, routing and recovery evidence. |
-| Projection | A sanitized view derived from the ledger, shared by HTTP, ARCHON and the cockpit. |
+| Projection | A sanitized view derived from the ledger, shared by HTTP, Archon and the cockpit. |
 
-The private `<state-dir>` is also ARCHON's `--workspace`. It contains
+The private `<state-dir>` is also Archon's `--workspace`. It contains
 `.formations/boards/*.formation.toml`, `.formations/notes/*.notes.toml`, layouts,
 `.formations/runs` ledgers and snapshots, `.formations/artifacts`, and `briefs`.
 Persona cards default to `<state-dir>/agents`; daemon `--agents-dir` can select
@@ -95,12 +105,12 @@ it. Admission validates the graph and inputs, snapshots definitions, durably
 appends `run_started`, then returns HTTP 202. The worker continues after the
 client disconnects. A missing receipt requires checking the run list before
 starting again. `cwd` must be an absolute existing directory and `brief` must be
-nonempty. ARCHON reads an existing brief file or sends the argument as literal
+nonempty. Archon reads an existing brief file or sends the argument as literal
 text. The brief becomes mission output; the board goal remains prompt context.
 `beadId` is optional in the API but should identify the owning task.
 
 HTTP admission requires positive `maxDispatch`, `maxAttempts` and
-`wallClockSeconds`, with `redact` false. Remote ARCHON defaults to 3 dispatches,
+`wallClockSeconds`, with `redact` false. Remote Archon defaults to 3 dispatches,
 3 attempts and 7200 seconds. Set limits explicitly for larger graphs. Dispatch
 limits bound formation execution steps, including judge steps; attempts bound
 revisits to a node. Seat timeout separately bounds real agent execution.
@@ -133,7 +143,7 @@ contains run/node/slot identity, cwd, mission goal, Bead, persona summary,
 formation brief, file/link references, routed inputs, gate feedback, output
 ports, artifact directory and completion instructions. Orchestrated controllers
 also get their bound workers and may direct only those workers. External
-operators and ARCHON agents must not type into seats or manage their sessions.
+operators and Archon agents must not type into seats or manage their sessions.
 
 Sessions are named `form-<run>-<slot>`, optionally prefixed by `--mission-label`.
 The runtime creates and cleans up seats by immutable session ID through the
@@ -227,11 +237,11 @@ umask 077
 mkdir -p "$FORM_BIN"
 cd "$FORM_SOURCE/src"
 go build -o "$FORM_BIN/archon" ./cmd/archon
-go build -o "$FORM_BIN/formationsd" ./cmd/formationsd
+go build -o "$FORM_BIN/archond" ./cmd/archond
 cd "$FORM_SOURCE/dashboard"
 npm ci
 npm run build
-"$FORM_BIN/formationsd" --executor lab --state-dir "$FORM_STATE" \
+"$FORM_BIN/archond" --executor lab --state-dir "$FORM_STATE" \
   --listen "$FORM_LISTEN" --ui-dir "$FORM_SOURCE/dashboard/dist"
 ```
 
@@ -240,10 +250,11 @@ For real seats select `--executor tmux` and supply `--socket`, `--tmux-bin`,
 `--cwd` is an optional daemon default; missions supply their own cwd.
 `--mission-label` is optional and `--seat-timeout` defaults to `30m`.
 Repeat `--listen` for each trusted interface. `--agents-dir` overrides cards;
-omitting `--ui-dir` disables the cockpit. These are daemon flags, not model
-settings. Set model and effort on persona harness variants.
+installed daemons find `../share/archon/ui` beside their `bin` directory.
+Set `--ui-dir ''` to disable the cockpit, or an absolute path to select another
+build. These are daemon flags, not model settings. Set model and effort on persona harness variants.
 
-In another terminal use the compiled ARCHON. Import means copying board and
+In another terminal use the compiled Archon. Import means copying board and
 notes TOML; there is no import command:
 
 ```bash
@@ -259,7 +270,7 @@ archon --workspace "$FORM_STATE" board validate delivery --json
 archon --workspace "$FORM_STATE" board arrange delivery --json
 ```
 
-Author through the cockpit or offline ARCHON's board, mission, formation,
+Author through the cockpit or offline Archon's board, mission, formation,
 gate, tool and agent nouns. Read command-specific help with `-h`; for runtime
 flags include `--server` in the help invocation. Preserve an operator's draft
 and notes, staff its slots, write executable briefs, wire exact port IDs, then
@@ -365,7 +376,7 @@ Revision and ETag checks protect edits. Runtime routes start/list/read runs,
 read projected events/escalations, stream SSE, abort, resume and record exact
 human verdicts. They all use the coordinator; no request-local executor exists.
 There is no generic file reader, transcript endpoint, board import endpoint or
-authentication layer. Remote ARCHON supports board list/inspect and runtime
+authentication layer. Remote Archon supports board list/inspect and runtime
 commands; author definitions with `--workspace` or the cockpit.
 
 `GET /api/theme` returns the raw CHROTE schema-1 theme document with no response

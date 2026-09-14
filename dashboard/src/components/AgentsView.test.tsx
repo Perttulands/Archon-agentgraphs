@@ -267,7 +267,7 @@ describe('AgentsView', () => {
     await waitFor(() => expect(window.localStorage.getItem(activeRunStorageKey('mission-board'))).toBe('run-started'))
   })
 
-  it('renders textual liveness and binding labels instead of oracle idle or complete classes', async () => {
+  it('renders textual liveness and binding labels for each persona', async () => {
     const board = emptyBoard()
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
@@ -301,7 +301,7 @@ describe('AgentsView', () => {
       return Promise.reject(new Error(`unexpected fetch ${url}`))
     })
 
-    const { container } = render(<AgentsView />)
+    render(<AgentsView />)
 
     expect(await screen.findByText('Attached Live')).toBeInTheDocument()
     expect(screen.getAllByText('live').length).toBeGreaterThan(0)
@@ -310,9 +310,6 @@ describe('AgentsView', () => {
     expect(screen.getByText('attached')).toBeInTheDocument()
     expect(screen.getByText('not assignable')).toBeInTheDocument()
     expect(screen.getByText('no persona')).toBeInTheDocument()
-    expect(container.querySelector('.oracle-status-complete')).toBeNull()
-    expect(container.querySelector('.oracle-status-idle')).toBeNull()
-    expect(container.querySelector('.oracle-badge-idle')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: /inspect Retired One/i }))
     await waitFor(() => expect(screen.getAllByText('retired').length).toBeGreaterThan(0))

@@ -5,7 +5,6 @@ import { ThemeProvider } from './theme/ThemeContext'
 import { fontsReady } from './theme/fonts'
 import './styles/formations-d7.css'
 import './styles/agents.css'
-import './styles/oracle.css'
 import './styles/standalone.css'
 
 void fontsReady().then(() => {

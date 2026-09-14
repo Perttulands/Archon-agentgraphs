@@ -1,5 +1,5 @@
-/* Harness icon library: product marks for the agent harnesses CHROTE can drive.
-   Rendered wherever an agent coin/face appears (Formations roster, slot faces,
+/* Harness icon library: product marks for the agent harnesses Archon can drive.
+   Rendered wherever an agent coin/face appears (Archon roster, slot faces,
    drag ghosts). Marks inherit currentColor so callers control the tint — except
    Claude Code, which keeps its native terracotta so the critter is recognisable
    (explicit product direction, 2026-07-17).

@@ -1,11 +1,11 @@
 /* Formations cockpit — ported from the D7 reference prototype
    (Perttus_vision_for_agent_orchestration/03-formations.html/js).
    Everything is scoped under .fmx so the reference's generic class names
-   (.formation/.slot/.port/.world/...) cannot collide with other CHROTE views. */
+   (.formation/.slot/.port/.world/...) cannot collide with the Agents view. */
 
 .fmx {
   /* Local aliases mapped onto the cockpit theme tokens (theme-colors.css) so
-     Formations follows matrix/dark/gastown instead of shipping its own palette.
+     Archon follows the configured theme.
      --accent-rgb deliberately not redefined: the theme's value cascades in. */
   --paper:var(--background); --paper2:var(--surface-secondary); --card:var(--surface-primary);
   --ink:var(--text-primary); --ink2:var(--text-secondary); --dim:var(--text-dim); --dimmer:var(--text-dim);
@@ -373,7 +373,7 @@
 .fmx .run-banner button:hover{border-color:var(--terra);color:var(--terra);}
 .fmx .errbar{position:absolute;bottom:18px;left:252px;z-index:80;background:var(--color-error-light);border:1px solid color-mix(in srgb,var(--color-error) 40%,transparent);color:var(--color-error);border-radius:4px;padding:8px 13px;font-size:11px;max-width:60ch;line-height:1.5;}
 
-/* ===== TEXT SIZE PRESETS (Settings → Formations text size) ===== */
+/* ===== TEXT SIZE PRESETS (Board text size) ===== */
 /* Scale only reading text; chrome labels and layout metrics stay fixed. */
 
 @media (max-width: 768px) {

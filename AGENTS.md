@@ -1,7 +1,7 @@
-# Formations
+# Archon
 
-Formations builds and runs agent work graphs through the standalone formationsd
-coordinator and ARCHON. Read [docs/CONTRACT.md](docs/CONTRACT.md) before changing
+Archon builds and runs agent work graphs through the `archond` coordinator,
+`archon` CLI and Archon UI. Read [docs/CONTRACT.md](docs/CONTRACT.md) before changing
 runtime semantics, authoring, gates or operator instructions. Read
 [ADR-0016](docs/adr/0016-daily-capability.md) for daily-capability decisions;
 `docs/adr/` holds earlier decisions and `examples/` holds runnable templates.
@@ -12,8 +12,9 @@ runtime semantics, authoring, gates or operator instructions. Read
 - `src/internal/formations/` owns the model, persistence and run engine.
 - `src/internal/coordinator/` owns admission, runtime commands and projections.
 - `src/internal/api/` owns authoring HTTP and local adapters.
-- `src/cmd/archon/` and `src/cmd/formationsd/` own the CLI and daemon.
-- `dashboard/` owns the Formations and Agents cockpit.
+- `src/cmd/archon/` and `src/cmd/archond/` own the CLI and daemon.
+  `src/cmd/formationsd/` preserves the daemon compatibility entrypoint.
+- `dashboard/` owns the Archon board editor and Agents view.
 - `Perttus_vision_for_agent_orchestration/` retains vision and canvas references.
 
 ## Work state
@@ -27,7 +28,7 @@ listen addresses through flags or environment, with placeholders in examples.
 ## Validation
 
 ```bash
-cd src && go test ./... && go build ./cmd/archon && go build ./cmd/formationsd
+cd src && go test ./... && go build ./cmd/archon && go build ./cmd/archond && go build ./cmd/formationsd
 cd ../dashboard && npm ci && npm run test:unit && npm run build && npm run lint
 ```
 

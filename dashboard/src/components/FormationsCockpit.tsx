@@ -1,5 +1,5 @@
 import { StartMissionDialog, type RunInputs } from "./StartMissionDialog"
-/* FormationsCockpit — reference-faithful spatial cockpit for CHROTE Formations.
+/* FormationsCockpit — spatial board editor for Archon.
  *
  * Ported from the D7 prototype (Perttus_vision_for_agent_orchestration/03-formations.{html,js}):
  * left Agent Roster (drag an agent into a slot to staff it), an infinite pan/zoom

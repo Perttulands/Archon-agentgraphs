@@ -39,49 +39,63 @@ a persona's settings and see which slots use it before starting work.
 
 ![Agents view with delivery personas, staffed execution slots and the controller inspector](docs/images/agents.png)
 
-## What ships together
+## Install
 
-The CLI, backend and UI live in this repository. The current build produces
-two Go binaries and a static UI directory. The daemon serves the UI directly,
-so production use does not need a Node server. CHROTE is not required.
+The Linux release includes the CLI, daemon, UI, examples and documentation in
+one archive. Choose `amd64` for x86-64 machines or `arm64` for ARM64, then
+download the archive and `SHA256SUMS` from the
+[latest release](https://github.com/Perttulands/chrote-agent-formations/releases/latest).
+No Go, Node or frontend server is needed to use the release.
+
+For the x86-64 release:
+
+```bash
+sha256sum --ignore-missing --check SHA256SUMS
+tar -xzf archon-0.1.0-linux-amd64.tar.gz
+cd archon-0.1.0-linux-amd64
+./install.sh --prefix "$HOME/.local"
+export PATH="$HOME/.local/bin:$PATH"
+archon --version
+archond --version
+```
+
+The installer defaults to `$HOME/.local`. Use `--prefix /absolute/path` to
+choose another location. It installs `bin/archon`, `bin/archond` and the
+`formationsd` compatibility command, with complete releases under
+`lib/archon/releases/` and a `lib/archon/current` link.
+The daemon finds the installed UI automatically. Keep runtime state in a
+separate directory so replacing a release leaves boards and history intact.
 
 | Part | Role |
 | --- | --- |
 | `archon` | Author boards locally and send runtime commands to the daemon. |
-| `formationsd` | Run missions, manage agent seats, persist events and serve HTTP. |
-| `dashboard/dist/` | The browser UI served by the daemon. |
+| `archond` | Run missions, manage agent seats, persist events and serve the UI. |
+| `share/archon/ui/` | Browser UI included in the release. |
 
-Archon was previously called Formations. The daemon name, some UI labels,
-storage paths and API names still use that name. This is currently a source
-build, with no unified release installer.
+Archon was previously called Formations. Existing `formationsd` commands,
+`.formations` storage and `/api/formations` routes still work. A formation is
+also the name of an execution node. CHROTE is not required.
 
 ## Try the UI
 
-Build on Linux with Go 1.26.6 or newer and Node 20.19+ in the 20.x line, or
-Node 22.12+. The lab executor lets you explore boards without launching agents.
+After installing to `$HOME/.local`, import the delivery example and start a
+lab daemon. Lab lets you explore boards without launching agents.
 
 ```bash
-git clone https://github.com/Perttulands/chrote-agent-formations.git archon
-cd archon
-
-export ARCHON_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/archon"
+export ARCHON_STATE="${XDG_DATA_HOME:-$HOME/.local/share}/archon/state"
+export ARCHON_SHARE="$HOME/.local/lib/archon/current/share/archon"
 umask 077
-mkdir -p "$ARCHON_HOME/bin"
-(cd src && go build -o "$ARCHON_HOME/bin/archon" ./cmd/archon \
-  && go build -o "$ARCHON_HOME/bin/formationsd" ./cmd/formationsd)
-(cd dashboard && npm ci && npm run build)
-
-mkdir -p "$ARCHON_HOME/state/.formations/boards" \
-  "$ARCHON_HOME/state/.formations/notes"
-cp examples/delivery.formation.toml "$ARCHON_HOME/state/.formations/boards/"
-cp examples/delivery.notes.toml "$ARCHON_HOME/state/.formations/notes/"
-"$ARCHON_HOME/bin/archon" --workspace "$ARCHON_HOME/state" board validate delivery --json
-"$ARCHON_HOME/bin/archon" --workspace "$ARCHON_HOME/state" board arrange delivery --json
-
-"$ARCHON_HOME/bin/formationsd" --executor lab \
-  --state-dir "$ARCHON_HOME/state" --ui-dir "$PWD/dashboard/dist" \
-  --listen 127.0.0.1:8091
+mkdir -p "$ARCHON_STATE/.formations/boards" "$ARCHON_STATE/.formations/notes"
+cp "$ARCHON_SHARE/examples/delivery.formation.toml" "$ARCHON_STATE/.formations/boards/"
+cp "$ARCHON_SHARE/examples/delivery.notes.toml" "$ARCHON_STATE/.formations/notes/"
+archon --workspace "$ARCHON_STATE" board validate delivery --json
+archon --workspace "$ARCHON_STATE" board arrange delivery --json
+archond --executor lab --state-dir "$ARCHON_STATE" --listen 127.0.0.1:8091
 ```
+
+For a custom install prefix, set `ARCHON_SHARE` to its
+`lib/archon/current/share/archon` directory
+and add its `bin` directory to `PATH`.
 
 Open **http://127.0.0.1:8091**. Leave the daemon running in this terminal and
 stop it with Ctrl+C when finished. Lab simulates execution; it does not perform
@@ -109,7 +123,7 @@ another terminal. Replace the working directory, brief and Bead below with
 your task's values.
 
 ```bash
-"$ARCHON_HOME/bin/archon" --server http://127.0.0.1:8091 mission run delivery \
+archon --server http://127.0.0.1:8091 mission run delivery \
   --mission mis_delivery --cwd /absolute/path/to/your/repository \
   --brief /absolute/path/to/your/brief.md --bead your-project-123 \
   --max-dispatch 30 --max-attempts 3 --wall-clock-seconds 7200 --json
@@ -120,6 +134,21 @@ Use the returned run ID with `run status`, `run logs`, `run follow` or
 `--workspace`. A run keeps a snapshot of its board and personas, so later
 edits apply to later runs. Recovery records unresolved work explicitly;
 inspect a blocked run before deciding how to continue it.
+
+## Build from source
+
+Build on Linux with Go 1.26.6 or newer and Node 20.19+ in the 20.x line, or
+Node 22.12+. The build script creates both Linux architectures by default;
+select one with `--arch amd64` or `--arch arm64`.
+
+```bash
+git clone https://github.com/Perttulands/chrote-agent-formations.git archon
+cd archon
+./scripts/build-release.sh --out "$PWD/release" --arch amd64
+```
+
+Install the resulting archive as above. See [release packaging](docs/releasing.md)
+for the archive layout, checks and publication procedure.
 
 ## Develop
 
@@ -136,7 +165,7 @@ For Vite development, set `FORMATIONS_API_URL` to the daemon URL and run
 | `src/internal/formations/` | Model, persistence, gates and execution. |
 | `src/internal/coordinator/` | Admission, runtime commands and projections. |
 | `src/internal/api/` | Authoring HTTP and local adapters. |
-| `src/cmd/archon/`, `src/cmd/formationsd/` | CLI and daemon entrypoints. |
+| `src/cmd/archon/`, `src/cmd/archond/`, `src/cmd/formationsd/` | CLI and daemon entrypoints. |
 | `dashboard/` | Board editor, agent staffing and terminal Peek. |
 
 Read the [runtime contract](docs/CONTRACT.md),
