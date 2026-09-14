@@ -2236,7 +2236,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           </div>
           <div className="roster-list">
             {rosterAgents.length === 0
-              ? <div className="roster-empty">No assignable catalog agents. Add persona cards in ~/agents to staff formations.</div>
+              ? <div className="roster-empty">No assignable catalog agents. Create a persona in the Agents view to staff formations.</div>
               : rosterSections.map(section => (
                 <section className="roster-group" key={section.id} data-provider={section.id}>
                   <div className="roster-group-label">{section.label}</div>
