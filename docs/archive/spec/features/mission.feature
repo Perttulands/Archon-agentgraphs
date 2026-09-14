@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Captures the mission entry point (03-formations.js: makeMission, renderMissions, runMission,
 # missionChain, openMissionPanel). A mission is the entry point that starts a run; it "wraps" the
 # reachable chain and is bead-backed work (missions/runs keyed by Beads IDs, per DECISIONS-LOCKED).

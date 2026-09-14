@@ -1,3 +1,5 @@
+# Historical form-2fb proving mission from 2026-09-06. Its briefs target that task.
+# For current Archon operation use docs/CONTRACT.md; adapt before running.
 schema = 1
 id = "brd_operations_proof"
 slug = "operations-proof"

@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Schema-1 compatibility reference only. ADR-0008 retires inline verification
 # in favor of explicit Gate nodes and rejects it from every new execution path
 # with legacy_inline_verification_requires_migration.

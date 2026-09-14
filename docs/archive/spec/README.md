@@ -1,3 +1,8 @@
+> Historical design record, reviewed 2026-09-14. Earlier product names and host assumptions
+> below record their original context. Archon is the standalone product;
+> [the current contract](../../CONTRACT.md) defines its implemented behavior.
+> References to Oracle describe historical CHROTE work, not an Archon capability.
+
 # CHROTE Formations — Behavioral Spec (S0)
 
 This `spec/` is the supporting **S0 behavioral baseline** for the agent-orchestration system. It

@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Captures the RUN MODEL (03-formations.js header + runMission/flowFrom/followBranch/evalGate/
 # runFormation/inputsReady). The prototype mocks execution with setTimeout; this spec defines the
 # real engine behavior: cascade along wires, JOIN readiness, gate routing, judge execution,

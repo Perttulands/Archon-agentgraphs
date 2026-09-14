@@ -1,3 +1,7 @@
+> Decision record, reviewed 2026-09-14. Earlier product names and host assumptions
+> below record their original context. Archon is the standalone product;
+> [the current contract](../CONTRACT.md) defines its implemented behavior.
+
 # Daily Formations capability
 
 Accepted 2026-09-08. Implements the decisions in form-bxm. Supersedes

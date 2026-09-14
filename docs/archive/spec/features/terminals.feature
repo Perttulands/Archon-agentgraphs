@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Captures the on-board live terminals (03-formations.js: openTerm, feed, MOCK #2 → real
 # ttyd/websocket stream). The 2026-07-17 owner decision supersedes the old
 # watch/focus-only S0 boundary: authorized Peek is a full interactive attach. The

@@ -1,3 +1,7 @@
+> Decision record, reviewed 2026-09-14. Earlier product names and host assumptions
+> below record their original context. Archon is the standalone product;
+> [the current contract](../CONTRACT.md) defines its implemented behavior.
+
 # ADR-0011: Leader-Agentic Orchestration with Per-Worker Ledger Evidence
 
 ## Status

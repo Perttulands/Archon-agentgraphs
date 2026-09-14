@@ -1,10 +1,15 @@
+> Historical design record, reviewed 2026-09-14. Earlier product names and host assumptions
+> below record their original context. Archon is the standalone product;
+> [the current contract](../docs/CONTRACT.md) defines its implemented behavior.
+> References to Oracle describe historical CHROTE work, not an Archon capability.
+
 # Historical Locked Decisions — CHROTE Formations / Agent Orchestration
 
 > **Historical decision packet.** Recorded 2026-06-03 with Perttu. It resolves the genuine
 > contradictions that had accumulated in that design session (engine location, CLI name,
 > first-slice definition, build order) and records the reasoning behind its methodology pivot.
 > It no longer overrides current root specs, current code, the
-> [source-truth index](../docs/source-truth-index.md), or later accepted ADRs. Where behavior has
+> [current contract](../docs/CONTRACT.md), or later accepted ADRs. Where behavior has
 > changed, those newer sources win; this packet remains the rationale for the decisions below.
 >
 > Superseded framings are listed in §4. The vision interview

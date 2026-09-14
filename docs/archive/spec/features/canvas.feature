@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Captures the infinite-canvas behaviors (03-formations.js: pan/zoom/fitView, dragCard/dragGate/
 # dragMission, obstacle-aware wire routing, undo stack, on-board terminals). Node positions and
 # wire lanes are LAYOUT (sidecar), never structure — deleting layout loses positions, never the graph.

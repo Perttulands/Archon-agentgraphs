@@ -1,3 +1,7 @@
+> Historical design record, reviewed 2026-09-14. Earlier product names and host assumptions
+> below record their original context. Archon is the standalone product;
+> [the current contract](../../../../CONTRACT.md) defines its implemented behavior.
+
 # CHROTE Formations — design dossier
 
 This folder is the synthesized design for the agent-orchestration capability Perttu

@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Captures the prototype's gate + judge model (03-formations.js: makeGateNode, GATE_KINDS,
 # attachJudge / setJudgeReturn / judgeEntry / syncJudgeKind, startJudgeWire, openJudgePicker,
 # evalGate, followBranch). The headline (D7): a judge can be ONE formation (a loop) or SEVERAL

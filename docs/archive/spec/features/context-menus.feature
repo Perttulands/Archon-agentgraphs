@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Captures the prototype's right-click model (03-formations.js: menuAgent, menuFormation,
 # menuInputRow, menuOutputRow, menuVerification, menuSlot, menuGate, menuWire, menuMission, the
 # board contextmenu, showAssignMenu, openJudgePicker). Principle (D7): EVERY element is

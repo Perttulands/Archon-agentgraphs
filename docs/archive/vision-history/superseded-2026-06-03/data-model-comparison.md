@@ -1,3 +1,7 @@
+> Historical design record, reviewed 2026-09-14. Earlier product names and host assumptions
+> below record their original context. Archon is the standalone product;
+> [the current contract](../../../CONTRACT.md) defines its implemented behavior.
+
 # Data Model Comparison
 
 > Side-by-side comparison of the two proposed on-disk formats. Both agree on the primitives (mission, formation, slot, gate, connection, run). They disagree on serialization, layout, and identity binding.

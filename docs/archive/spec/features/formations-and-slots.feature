@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Captures formations + slots (03-formations.js: TYPES, makeFormation, bodyHTML per type,
 # beginPointer agent drag-to-slot, assignDirect, addSlot, Make controller, dupFormation,
 # briefs/input). A slot reference is NOT ownership — one agent may fill many slots/formations.

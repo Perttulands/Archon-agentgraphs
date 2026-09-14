@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Deepens what agents.feature introduces. Covers the agent LIFECYCLE: create variants, evolve,
 # harness variants, live-session spawn/attach, retirement, and the forward-compatible hooks for
 # evaluation-informed tuning. See ../../DECISIONS-LOCKED.md (D3: factory is first-class and early).

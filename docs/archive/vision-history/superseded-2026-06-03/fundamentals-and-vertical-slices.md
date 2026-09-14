@@ -1,3 +1,7 @@
+> Historical design record, reviewed 2026-09-14. Earlier product names and host assumptions
+> below record their original context. Archon is the standalone product;
+> [the current contract](../../../CONTRACT.md) defines its implemented behavior.
+
 # Fundamentals and Vertical Slices
 
 > The prior design packets assumed horizontal layers: data model → CLI → registry → engine → adapter → UI. That is wrong. The right approach is to identify the hard fundamental parts, prove each one in isolation with simple code, then build end-to-end vertical slices on top of proven fundamentals. Each slice must be small, working, test-covered, and documented.

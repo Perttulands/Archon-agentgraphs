@@ -1,10 +1,14 @@
 ---
 type: spec
-status: active
-authority: source-of-truth
+status: archived
+authority: historical-reference
 workspace: chrote
 enforced_by: scripts/doc-lint.py
 ---
+
+> Historical design record, reviewed 2026-09-14. Earlier product names and host assumptions
+> below record their original context. Archon is the standalone product;
+> [the current contract](../CONTRACT.md) defines its implemented behavior.
 
 # Archon CLI Spec
 

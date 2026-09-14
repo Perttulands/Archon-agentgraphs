@@ -1,3 +1,8 @@
+> Historical design record, reviewed 2026-09-14. Earlier product names and host assumptions
+> below record their original context. Archon is the standalone product;
+> [the current contract](../../../CONTRACT.md) defines its implemented behavior.
+> References to Oracle describe historical CHROTE work, not an Archon capability.
+
 # Synthesis: Codex vs Claude Design Packets
 
 Both packets read the same sources — the vision interview, the `03-formations` prototype, the existing CHROTE codebase, and the prior meta-harness/Gas City research — and converged on the same core principles. The disagreements are structural, not philosophical. This doc surfaces only the forks that change what gets built.

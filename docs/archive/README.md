@@ -1,7 +1,10 @@
 # Historical design
 
 These documents describe the pre-2026-09 target, not the running contract.
-They were moved unchanged, including their historical links and claims.
+Their original prose, links and claims are preserved beneath dated historical
+notices. Frontmatter marks archived authority; these are not current operator
+instructions. Earlier CHROTE, Formations and Oracle references describe that
+history. Archon is the standalone product and has no Oracle component.
 Read [the current contract](../CONTRACT.md) for implemented behavior.
 
 The former root specs are here alongside `spec/`, formerly the vision packet's

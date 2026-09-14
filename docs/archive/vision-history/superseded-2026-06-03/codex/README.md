@@ -1,3 +1,7 @@
+> Historical design record, reviewed 2026-09-14. Earlier product names and host assumptions
+> below record their original context. Archon is the standalone product;
+> [the current contract](../../../../CONTRACT.md) defines its implemented behavior.
+
 # Codex Planning Notes
 
 These docs turn `Perttus_vision_for_agent_orchestration` into an implementation-ready planning packet.

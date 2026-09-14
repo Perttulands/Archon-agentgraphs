@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Captures escalation + human decision channels. Per DECISIONS-LOCKED: stage-1 escalation is
 # ledger + the Archon surfacing it conversationally (notice board and TTS interrupt are deferred).
 # Human gates are the deliberate "needs Perttu's judgment" routing point.

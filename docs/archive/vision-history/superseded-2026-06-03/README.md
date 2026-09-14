@@ -1,3 +1,7 @@
+> Historical design record, reviewed 2026-09-14. Earlier product names and host assumptions
+> below record their original context. Archon is the standalone product;
+> [the current contract](../../../CONTRACT.md) defines its implemented behavior.
+
 # Superseded Planning Docs
 
 Archived on 2026-06-03 after Perttu pivoted this work to a UI-first approach.

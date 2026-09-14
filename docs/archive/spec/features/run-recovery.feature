@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Captures recovery + fail-loud behaviors implied by the run model and DECISIONS-LOCKED (ledger is
 # canonical; status is projected; recovery replays; binding/sentinel failures are loud, never silent).
 # The prototype mocks runs, so these are real-engine requirements the spec must pin.

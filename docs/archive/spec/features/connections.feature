@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Captures the prototype's connection model (03-formations.js: startWire / startReconnect /
 # startWireDrag / drawWires). Governing principle (D7): compatible connections just work.
 # Connections are STRUCTURE (round-trip files↔CLI↔UI); a hand-routed lane is LAYOUT only.

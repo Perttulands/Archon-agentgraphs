@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 Feature: Agents exist, are discoverable, and can be live-bound
   As the Archon (or a team leader)
   I need to find the right agent for a job and create new agents when none fit

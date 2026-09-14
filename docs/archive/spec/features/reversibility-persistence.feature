@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Captures the file contract (F1) + reversibility acceptance (DECISIONS-LOCKED §2, master-plan §10).
 # Definitions are TOML and runtime ledgers are NDJSON; the shared formations package serializes
 # definitions while one fenced coordinator writes runtime authority; rollback preserves evidence.

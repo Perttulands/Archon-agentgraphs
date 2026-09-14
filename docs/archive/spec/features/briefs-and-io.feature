@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Captures the brief/input editor and the output report viewer (03-formations.js: openInputEditor,
 # fileChip/bindChips, briefLabelHTML, openReport, diffHTML, mockReport, inputArrived). Briefs are
 # authored (definition); outputs are produced by runs (run state). Bead resolution is a backend point.

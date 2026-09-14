@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Accepted-target illustrative whole-system scenario, with executable acceptance owned by
 # ctx-rul and ctx-ug7.14. It describes the intended file-backed Formations experience rather
 # than claiming that the current runtime already provides it.

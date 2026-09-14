@@ -1,3 +1,7 @@
+> Decision record, reviewed 2026-09-14. Earlier product names and host assumptions
+> below record their original context. Archon is the standalone product;
+> [the current contract](../CONTRACT.md) defines its implemented behavior.
+
 # Standalone trusted coordinator
 
 Status: superseded in part by [ADR-0016](0016-daily-capability.md).

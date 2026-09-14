@@ -1,3 +1,5 @@
+# Historical scenario target, reviewed 2026-09-14. Not the running Archon contract.
+# Current behavior: ../../../CONTRACT.md
 # Captures the "conversational visibility first" principle (vision §7/§15; DECISIONS-LOCKED). The
 # system must be EXPLAINABLE ON REQUEST (ask the agents; they read the ledger), with the tab as an
 # optional inspection surface — not a dashboard you must watch.
