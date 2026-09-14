@@ -106,7 +106,7 @@ therefore receives no raw socket access, including read-only access.
 | Operator grant helper | `scripts/chrote-tmux-grants.sh` | filesystem ACLs and writable `server-access -a` grant |
 
 The former Persistent Agents route was retired by
-[ADR-0015](0015-access-first-non-interference.md) and is not part of the current
+[ADR-0015](https://github.com/Perttulands/CHROTE/blob/main/docs/adr/0015-access-first-non-interference.md) and is not part of the current
 tmux command surface.
 
 The current raw Terminal attach and broad writable grant helper cannot be used

@@ -249,7 +249,7 @@ it, and Tool update/delete remain board schema 2. Fixed Mission `out` accepts on
 `text/markdown`;
 Gate `in`/`pass` work ports use the full set. Gate `fail` is `gate_feedback` and has no media set. A
 Gate fail edge into a work input is the typed pushback route
-([ADR-0012](docs/adr/0012-gate-fail-pushback-edge.md)); it always delivers the
+([ADR-0012](../adr/0012-gate-fail-pushback-edge.md)); it always delivers the
 typed `gate_feedback` object — annotated-work pushback is never inferred and a
 feedback payload never masquerades as work. Old ledgers project with their
 recorded schema-1 semantics and are never reinterpreted as typed feedback. A
@@ -322,7 +322,7 @@ ledgers.
 11. **One input, one producer.** Every input port accepts at most one incoming
     non-pushback edge. Joins declare multiple distinct required ports and start
     only when all are satisfied. The one sanctioned exception
-    ([ADR-0012](docs/adr/0012-gate-fail-pushback-edge.md)): a Gate `fail` edge
+    ([ADR-0012](../adr/0012-gate-fail-pushback-edge.md)): a Gate `fail` edge
     may additionally target an already-produced work input as the typed
     pushback route; it delivers `gate_feedback` that triggers a bounded next
     attempt, never a second concurrent work producer.
@@ -838,7 +838,7 @@ safe evidence, gate sequence, and Gate attempt. It embeds no work ref, payload
 projection, payload, or artifact, so it cannot replace or silently copy work.
 
 `pushback` is a deliberately narrow fail-route action
-([ADR-0012](docs/adr/0012-gate-fail-pushback-edge.md)): the Gate's fail edge
+([ADR-0012](../adr/0012-gate-fail-pushback-edge.md)): the Gate's fail edge
 returns its typed feedback to the work input of the Formation whose output the
 Gate evaluated, creating the bounded next attempt under invariant 12. The
 evaluated input must come directly from the receiving Formation. The earlier
@@ -998,7 +998,7 @@ client or another run's lease. Formation attachment ownership begins only after
 the exact target-registry occupancy is fsynced; the final atomic acquisition
 repeats the check and never steals, creates, or selects an alternate target.
 Stock tmux on an owner-accessible raw socket is not certified merely by a
-CHROTE mutex. [ADR-0009](docs/adr/0009-same-pool-tmux-input-fence.md) records
+CHROTE mutex. [ADR-0009](../adr/0009-same-pool-tmux-input-fence.md) records
 `ctx-ug7.21` as infeasible under the accepted stock topology because pre-opened
 slave-PTY references can survive a userspace drain. The adapter cannot dispatch;
 `.22`/`.23` stay blocked on the separately proven operation-time kernel-boundary
@@ -1181,7 +1181,7 @@ step up is an explicit configuration decision, never a silent fallback.
 2. **Isolated tmux dogfood.** `CHROTE_FORMATIONS_TMUX_*` dispatches to real agent
    sessions on a throwaway socket and temporary workspace with its own
    sessions, through the same agent-user-verified executor path as production
-   ([ADR-0010](docs/adr/0010-formations-agent-user-socket-ownership.md); the
+   ([ADR-0010](../adr/0010-formations-agent-user-socket-ownership.md); the
    earlier fixed-`/tmp` socket/cwd/roots restriction is superseded). Socket
    identity is pinned and revalidated per operation, so known live socket
    identities and observed between-call retargets fail closed — but same-UID
@@ -1198,7 +1198,7 @@ step up is an explicit configuration decision, never a silent fallback.
 4. **Production execution on an agent-user-owned socket (accepted contract,
    deployed).** The executor runs on any configured socket whose backing tmux
    server is owned by the configured agent-user
-   ([ADR-0010](docs/adr/0010-formations-agent-user-socket-ownership.md)).
+   ([ADR-0010](../adr/0010-formations-agent-user-socket-ownership.md)).
    `CHROTE_FORMATIONS_AGENT_USER` names that user; empty defaults to the
    service user, so a single-user install needs zero configuration and a split
    install points at the operator who owns agent credentials. Ownership is
@@ -1214,7 +1214,7 @@ step up is an explicit configuration decision, never a silent fallback.
    input, pane-history, and closure journal required by ADR-0007, and no
    executor path exists that can attach a slot to a pre-existing session —
    the executor only creates and tears down its own uniquely-named sessions.
-   [ADR-0009](docs/adr/0009-same-pool-tmux-input-fence.md) records
+   [ADR-0009](../adr/0009-same-pool-tmux-input-fence.md) records
    `ctx-ug7.21` as infeasible under the accepted stock topology; `ctx-ug7.22`
    and `ctx-ug7.23` stay blocked on the separately proven operation-time
    kernel-boundary decision `ctx-ug7.37`. Socket identity is recorded and

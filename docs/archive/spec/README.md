@@ -6,9 +6,9 @@
 # CHROTE Formations — Behavioral Spec (S0)
 
 This `spec/` is the supporting **S0 behavioral baseline** for the agent-orchestration system. It
-preserves the Gherkin-first intent recorded in [DECISIONS-LOCKED.md](../DECISIONS-LOCKED.md), but it
+preserves the Gherkin-first intent recorded in [DECISIONS-LOCKED.md](../../../Perttus_vision_for_agent_orchestration/DECISIONS-LOCKED.md), but it
 does not override current root specs, current code, the
-[source-truth index](../../docs/source-truth-index.md), or later accepted ADRs. Scenarios that
+[CHROTE source-truth index](https://github.com/Perttulands/CHROTE/blob/main/docs/source-truth-index.md), or later accepted ADRs. Scenarios that
 conflict with ADR-0005, ADR-0006, or ADR-0007 must be updated before they can serve as implementation
 acceptance.
 
@@ -70,7 +70,7 @@ projected.
 ## Historical/projected `archon` CLI surface
 
 Read out of the scenarios; this is not an inventory of the current binary. See
-the current command list in [`../../ARCHON.md`](../../ARCHON.md). Global flags:
+the current command list in [`ARCHON.md`](../ARCHON.md). Global flags:
 `--json`, `--workspace`; fail-loud non-zero exits; idempotent where noted. Commands marked
 `[projected]` are intentionally not executable acceptance yet; the scenario lands with the owning slice
 before implementation.

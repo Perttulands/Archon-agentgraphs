@@ -5,8 +5,8 @@
 # CHROTE Formations — design dossier
 
 This folder is the synthesized design for the agent-orchestration capability Perttu
-described in [`../perttus_vision_for_agent_teams_and_orchestration.md`](../perttus_vision_for_agent_teams_and_orchestration.md)
-and prototyped in [`../03-formations.html`](../03-formations.html) / `../03-formations.js`.
+described in [`perttus_vision_for_agent_teams_and_orchestration.md`](../../../../../Perttus_vision_for_agent_orchestration/perttus_vision_for_agent_teams_and_orchestration.md)
+and prototyped in [`03-formations.html`](../../../../../Perttus_vision_for_agent_orchestration/03-formations.html) / `../03-formations.js`.
 
 It was produced by an architect pass over the vision + prototype + the existing CHROTE
 codebase + the prior meta-harness / Gas City research, then fanned out to seven parallel

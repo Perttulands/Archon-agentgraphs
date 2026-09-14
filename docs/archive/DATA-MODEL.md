@@ -75,7 +75,7 @@ Generic cockpit sessions remain name/user projections. Formations execution
 needs a stricter server-owned binding over the same Terminal-session resolver
 and configured inventory. That inventory is the union of explicitly configured
 user/socket sources, which since
-[ADR-0010](docs/adr/0010-formations-agent-user-socket-ownership.md) may include
+[ADR-0010](../adr/0010-formations-agent-user-socket-ownership.md) may include
 a dedicated Formations socket whose backing server the configured agent-user
 owns; every source is still explicit configuration, never an ambient default.
 Disposable inventories are test, certification, and dogfood fixtures only; a
@@ -506,7 +506,7 @@ readiness, while `session_target_attachment_audit_unavailable` means complete
 client/input monitoring cannot be armed. A process-local CHROTE mutex is not
 complete monitoring: stock tmux on an owner-accessible raw socket admits
 independent attach, select, resize, control, paste, and `send-keys` routes.
-[ADR-0009](docs/adr/0009-same-pool-tmux-input-fence.md) records that complete
+[ADR-0009](../adr/0009-same-pool-tmux-input-fence.md) records that complete
 mediation is infeasible under the accepted stock topology because pre-opened
 slave-PTY references can survive a userspace drain. The adapter returns
 `session_target_attachment_audit_unavailable` and sends nothing; this does not

@@ -7,7 +7,7 @@
 
 This file preserves the S0 implementation baseline. It is supporting material,
 not the current source of truth. Current root specs, current code, the
-[source-truth index](../../docs/source-truth-index.md), and later accepted ADRs
+[CHROTE source-truth index](https://github.com/Perttulands/CHROTE/blob/main/docs/source-truth-index.md), and later accepted ADRs
 win when this packet conflicts with them. Accepted-target additions below
 constrain future slices; they do not claim the current binary implements them.
 
