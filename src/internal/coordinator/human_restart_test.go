@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/Perttulands/chrote-agent-formations/internal/formations"
+	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
 func TestPendingHumanGateSurvivesRestart(t *testing.T) {

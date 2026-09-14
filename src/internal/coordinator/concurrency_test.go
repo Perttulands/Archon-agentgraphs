@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Perttulands/chrote-agent-formations/internal/formations"
+	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
 // Pause at the real lab executor boundary so both admissions are demonstrably

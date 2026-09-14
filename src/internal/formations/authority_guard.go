@@ -21,7 +21,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Perttulands/chrote-agent-formations/internal/jsonstrict"
+	"github.com/Perttulands/Archon-agentgraphs/internal/jsonstrict"
 )
 
 const RuntimeAuthorityGuardCapabilityV1 = "formations.runtime-authority-read-guard.v1"

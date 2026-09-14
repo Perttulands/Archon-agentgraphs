@@ -1,4 +1,4 @@
-module github.com/Perttulands/chrote-agent-formations
+module github.com/Perttulands/Archon-agentgraphs
 
 go 1.26.6
 

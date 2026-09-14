@@ -1,5 +1,5 @@
 package main
 
-import "github.com/Perttulands/chrote-agent-formations/internal/daemon"
+import "github.com/Perttulands/Archon-agentgraphs/internal/daemon"
 
 func main() { daemon.Main() }

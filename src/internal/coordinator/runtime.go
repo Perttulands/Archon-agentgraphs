@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/Perttulands/chrote-agent-formations/internal/formations"
+	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
 func (c *Coordinator) events(w http.ResponseWriter, r *http.Request) {

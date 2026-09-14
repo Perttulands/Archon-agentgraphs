@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/Perttulands/chrote-agent-formations/internal/formations"
+	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
 type archonToolStore interface {

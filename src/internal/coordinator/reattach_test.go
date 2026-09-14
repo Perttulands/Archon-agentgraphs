@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Perttulands/chrote-agent-formations/internal/formations"
+	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
 // Use the production multi-slot reattach rejection, and lab seats only for

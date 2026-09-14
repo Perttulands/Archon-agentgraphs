@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Perttulands/chrote-agent-formations/internal/filewatch"
+	"github.com/Perttulands/Archon-agentgraphs/internal/filewatch"
 )
 
 type nativeSeat struct {

@@ -33,7 +33,7 @@ trap 'rm -rf -- "$stage"' EXIT
 
 # Build the UI for every release so an ignored dist directory cannot go stale.
 (cd "$root/dashboard" && npm ci && npm run build)
-ldflags="-s -w -X github.com/Perttulands/chrote-agent-formations/internal/buildinfo.Version=$version -X github.com/Perttulands/chrote-agent-formations/internal/buildinfo.Commit=$commit"
+ldflags="-s -w -X github.com/Perttulands/Archon-agentgraphs/internal/buildinfo.Version=$version -X github.com/Perttulands/Archon-agentgraphs/internal/buildinfo.Commit=$commit"
 archives=()
 for arch in "${arches[@]}"; do
   name="archon-$version-linux-$arch"

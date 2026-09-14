@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Perttulands/chrote-agent-formations/internal/core"
-	"github.com/Perttulands/chrote-agent-formations/internal/formations"
+	"github.com/Perttulands/Archon-agentgraphs/internal/core"
+	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
 // Agent status constants

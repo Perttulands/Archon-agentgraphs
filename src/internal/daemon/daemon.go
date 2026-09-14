@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Perttulands/chrote-agent-formations/internal/api"
-	"github.com/Perttulands/chrote-agent-formations/internal/buildinfo"
-	"github.com/Perttulands/chrote-agent-formations/internal/coordinator"
-	"github.com/Perttulands/chrote-agent-formations/internal/formations"
+	"github.com/Perttulands/Archon-agentgraphs/internal/api"
+	"github.com/Perttulands/Archon-agentgraphs/internal/buildinfo"
+	"github.com/Perttulands/Archon-agentgraphs/internal/coordinator"
+	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
 // Main is shared by archond and its formationsd compatibility command.

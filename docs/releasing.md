@@ -55,7 +55,7 @@ The root `docs/` and `examples/` copies keep the bundled README links usable.
 `SHA256SUMS` verifies downloaded archives. `MANIFEST.sha256` verifies the files
 inside each archive. `archon --version` and `archond --version` report the
 release version and source commit. Run the source validation in
-[AGENTS.md](https://github.com/Perttulands/chrote-agent-formations/blob/main/AGENTS.md) and the release smoke checks before publication:
+[AGENTS.md](https://github.com/Perttulands/Archon-agentgraphs/blob/main/AGENTS.md) and the release smoke checks before publication:
 
 ```bash
 python3 scripts/test-release.py "dist/archon-$(cat VERSION)-linux-amd64.tar.gz"
@@ -99,7 +99,7 @@ before restarting a daemon that has active work.
 The release workflow builds version tags. The tag must match `v` followed by
 `VERSION`, for example `v0.1.0`. Publish both archives and `SHA256SUMS` together
 on the existing
-[GitHub repository](https://github.com/Perttulands/chrote-agent-formations/releases).
+[GitHub repository](https://github.com/Perttulands/Archon-agentgraphs/releases).
 Download the published archive, check its checksum, and verify installation,
 version identity, UI serving and lab execution in a disposable state directory.
 The release workflow runs the install, upgrade, UI and persisted-run checks on

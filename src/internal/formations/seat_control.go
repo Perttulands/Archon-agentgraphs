@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"github.com/Perttulands/chrote-agent-formations/internal/core"
+	"github.com/Perttulands/Archon-agentgraphs/internal/core"
 	"io"
 	"os/exec"
 )

@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	chroteapi "github.com/Perttulands/chrote-agent-formations/internal/api"
-	"github.com/Perttulands/chrote-agent-formations/internal/formations"
+	chroteapi "github.com/Perttulands/Archon-agentgraphs/internal/api"
+	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
 type fakeTmux struct {

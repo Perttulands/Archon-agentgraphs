@@ -44,7 +44,7 @@ a persona's settings and see which slots use it before starting work.
 The Linux release includes the CLI, daemon, UI, examples and documentation in
 one archive. Choose `amd64` for x86-64 machines or `arm64` for ARM64, then
 download the archive and `SHA256SUMS` from the
-[latest release](https://github.com/Perttulands/chrote-agent-formations/releases/latest).
+[latest release](https://github.com/Perttulands/Archon-agentgraphs/releases/latest).
 No Go, Node or frontend server is needed to use the release.
 
 For the x86-64 release:
@@ -142,7 +142,7 @@ Node 22.12+. The build script creates both Linux architectures by default;
 select one with `--arch amd64` or `--arch arm64`.
 
 ```bash
-git clone https://github.com/Perttulands/chrote-agent-formations.git archon
+git clone https://github.com/Perttulands/Archon-agentgraphs.git archon
 cd archon
 ./scripts/build-release.sh --out "$PWD/release" --arch amd64
 ```

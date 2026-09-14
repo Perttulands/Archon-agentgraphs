@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Perttulands/chrote-agent-formations/internal/core"
+	"github.com/Perttulands/Archon-agentgraphs/internal/core"
 	"github.com/gorilla/websocket"
 )
 

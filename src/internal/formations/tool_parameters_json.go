@@ -7,7 +7,7 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/Perttulands/chrote-agent-formations/internal/jsonstrict"
+	"github.com/Perttulands/Archon-agentgraphs/internal/jsonstrict"
 )
 
 // ParseToolParametersJSON decodes the closed scalar-object grammar shared by

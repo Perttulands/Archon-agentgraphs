@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/Perttulands/chrote-agent-formations/internal/jsonstrict"
+	"github.com/Perttulands/Archon-agentgraphs/internal/jsonstrict"
 )
 
 // parseJudgeVerdict accepts one explicitly fenced result, never prose as a verdict.

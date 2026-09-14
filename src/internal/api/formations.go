@@ -11,8 +11,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Perttulands/chrote-agent-formations/internal/core"
-	"github.com/Perttulands/chrote-agent-formations/internal/formations"
+	"github.com/Perttulands/Archon-agentgraphs/internal/core"
+	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
 // RuntimeHandlers delegates every runtime route to the owning coordinator.

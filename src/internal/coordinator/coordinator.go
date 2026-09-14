@@ -19,10 +19,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Perttulands/chrote-agent-formations/internal/api"
-	"github.com/Perttulands/chrote-agent-formations/internal/core"
-	"github.com/Perttulands/chrote-agent-formations/internal/formations"
-	"github.com/Perttulands/chrote-agent-formations/internal/terminal"
+	"github.com/Perttulands/Archon-agentgraphs/internal/api"
+	"github.com/Perttulands/Archon-agentgraphs/internal/core"
+	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
+	"github.com/Perttulands/Archon-agentgraphs/internal/terminal"
 )
 
 type GateRequest struct {
