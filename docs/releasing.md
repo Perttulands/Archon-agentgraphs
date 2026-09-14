@@ -55,7 +55,7 @@ The root `docs/` and `examples/` copies keep the bundled README links usable.
 `SHA256SUMS` verifies downloaded archives. `MANIFEST.sha256` verifies the files
 inside each archive. `archon --version` and `archond --version` report the
 release version and source commit. Run the source validation in
-[AGENTS.md](../AGENTS.md) and the release smoke checks before publication:
+[AGENTS.md](https://github.com/Perttulands/chrote-agent-formations/blob/main/AGENTS.md) and the release smoke checks before publication:
 
 ```bash
 python3 scripts/test-release.py "dist/archon-$(cat VERSION)-linux-amd64.tar.gz"
