@@ -24,8 +24,10 @@ import (
 // docs/superpowers/specs/2026-07-24-formations-needs-you-channel.md.
 
 const (
-	needsYouKindHumanGate  = "human_gate"
-	needsYouKindEscalation = "escalation"
+	NeedsYouKindHumanGate  = "human_gate"
+	NeedsYouKindEscalation = "escalation"
+	NeedsYouKindBlocked    = "blocked"
+	NeedsYouKindFinal      = "final"
 
 	needsYouNotifiedArtifactSuffix = ".needs-you.json"
 )
@@ -36,27 +38,36 @@ const (
 type NeedsYouAsk struct {
 	RunID    string
 	Seq      int
-	Kind     string // needsYouKindHumanGate | needsYouKindEscalation
+	Kind     string // human_gate | escalation | blocked | final
 	NodeID   string
 	GateID   string
-	Ask      string // gate prompt or escalation reason
+	Ask      string // gate prompt, escalation or block reason, or final reason
 	Severity string // escalation severity, or "verdict" for a human gate
 	Blocks   bool
+	// Status is the run status a blocked or final ask reports.
+	Status        string
+	ResumeAllowed bool
 }
 
-// NeedsYouNotification is the message contract handed to a notifier.
+// NeedsYouNotification is the message contract handed to a notifier. Subject
+// and Body are a complete plain-text message; Text is the one-line summary.
 type NeedsYouNotification struct {
-	RunID     string `json:"runId"`
-	BoardSlug string `json:"boardSlug,omitempty"`
-	Seq       int    `json:"seq"`
-	Kind      string `json:"kind"`
-	NodeID    string `json:"nodeId,omitempty"`
-	GateID    string `json:"gateId,omitempty"`
-	Ask       string `json:"ask"`
-	Severity  string `json:"severity,omitempty"`
-	Blocks    bool   `json:"blocks"`
-	BoardURL  string `json:"boardUrl,omitempty"`
-	Text      string `json:"text"`
+	RunID      string `json:"runId"`
+	BoardSlug  string `json:"boardSlug,omitempty"`
+	BoardTitle string `json:"boardTitle,omitempty"`
+	Seq        int    `json:"seq"`
+	Kind       string `json:"kind"`
+	RunStatus  string `json:"runStatus,omitempty"`
+	NodeID     string `json:"nodeId,omitempty"`
+	GateID     string `json:"gateId,omitempty"`
+	GateTitle  string `json:"gateTitle,omitempty"`
+	Ask        string `json:"ask"`
+	Severity   string `json:"severity,omitempty"`
+	Blocks     bool   `json:"blocks"`
+	BoardURL   string `json:"boardUrl,omitempty"`
+	Text       string `json:"text"`
+	Subject    string `json:"subject,omitempty"`
+	Body       string `json:"body,omitempty"`
 }
 
 // NeedsYouNotifier delivers a needs-you ask to the owner's channel. The real
@@ -99,7 +110,7 @@ func projectOpenNeedsYouAsks(events []RunEvent) []NeedsYouAsk {
 			openHuman[event.GateID] = NeedsYouAsk{
 				RunID:    event.RunID,
 				Seq:      event.Seq,
-				Kind:     needsYouKindHumanGate,
+				Kind:     NeedsYouKindHumanGate,
 				GateID:   event.GateID,
 				NodeID:   needsYouNodeID(event),
 				Ask:      stringFromEventData(event, "prompt"),
@@ -125,7 +136,7 @@ func projectOpenNeedsYouAsks(events []RunEvent) []NeedsYouAsk {
 		asks = append(asks, NeedsYouAsk{
 			RunID:    event.RunID,
 			Seq:      event.Seq,
-			Kind:     needsYouKindEscalation,
+			Kind:     NeedsYouKindEscalation,
 			GateID:   event.GateID,
 			NodeID:   needsYouNodeID(event),
 			Ask:      stringFromEventData(event, "reason"),
@@ -136,6 +147,42 @@ func projectOpenNeedsYouAsks(events []RunEvent) []NeedsYouAsk {
 
 	sort.Slice(asks, func(i, j int) bool { return asks[i].Seq < asks[j].Seq })
 	return asks
+}
+
+// ProjectSettledNeedsYouAsks adds blocked and final asks to the open asks.
+// Call it only for a settled run: a block recorded inside a command, such as a
+// human verdict awaiting its automatic resume, is not yet an ask. A blocked ask
+// is keyed by its run_blocked seq and a final ask by its terminal event seq. A
+// block that an open human gate or escalation already explains adds no ask.
+func ProjectSettledNeedsYouAsks(events []RunEvent) ([]NeedsYouAsk, error) {
+	if len(events) == 0 {
+		return nil, ErrRunLedgerInvalid
+	}
+	status, err := ProjectRunEvents(events[0].RunID, events)
+	if err != nil {
+		return nil, err
+	}
+	var last RunEvent
+	for _, event := range events {
+		switch event.Type {
+		case RunEventBlocked, RunEventResumed, RunEventSucceeded, RunEventFailed, RunEventCanceled:
+			last = event
+		}
+	}
+	if status.Final {
+		return []NeedsYouAsk{{
+			RunID: status.RunID, Seq: last.Seq, Kind: NeedsYouKindFinal, NodeID: last.NodeID,
+			Ask: stringFromEventData(last, "reason"), Status: status.Status,
+		}}, nil
+	}
+	asks := projectOpenNeedsYouAsks(events)
+	if status.Status == RunStatusBlocked && len(asks) == 0 && last.Seq > 0 && last.Type != RunEventResumed {
+		asks = append(asks, NeedsYouAsk{
+			RunID: status.RunID, Seq: last.Seq, Kind: NeedsYouKindBlocked, NodeID: needsYouNodeID(last), GateID: last.GateID,
+			Ask: stringFromEventData(last, "reason"), Blocks: true, Status: status.Status, ResumeAllowed: status.ResumeAllowed,
+		})
+	}
+	return asks, nil
 }
 
 func needsYouNodeID(event RunEvent) string {

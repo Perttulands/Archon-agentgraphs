@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -46,12 +47,17 @@ func Run(args []string) error {
 	resume := flags.String("resume-run", "", "explicitly resume this blocked run from a completed native turn")
 	recoveryTranscript := flags.String("completed-transcript", "", "absolute native transcript for the unresolved completed dispatch")
 	recoveryBrief := flags.String("completed-brief", "", "absolute original brief file for that dispatch")
+	notifyCommand := flags.String("notify-command", "", "absolute executable run with each needs-you notification as JSON on stdin; empty disables notifications")
+	cockpitURL := flags.String("cockpit-url", "", "cockpit URL for links in notifications")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if *version {
 		fmt.Println(buildinfo.String())
 		return nil
+	}
+	if err := validateNotifyFlags(*notifyCommand, *cockpitURL); err != nil {
+		return err
 	}
 	themeHandler, err := api.NewThemeHandler(*themeFile)
 	if err != nil {
@@ -147,6 +153,13 @@ func Run(args []string) error {
 			return err
 		}
 	}
+	if *notifyCommand != "" {
+		c.EnableNeedsYou(coordinator.NeedsYouConfig{
+			Notifier:   coordinator.CommandNotifier{Path: *notifyCommand},
+			CockpitURL: *cockpitURL,
+			ServerURL:  "http://" + listeners[0].Addr().String(),
+		})
+	}
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	for _, listener := range listeners {
 		fmt.Printf("Archon coordinator http://%s\n", listener.Addr())
@@ -176,6 +189,23 @@ func Run(args []string) error {
 	}
 	<-shutdownDone
 	return err
+}
+
+// validateNotifyFlags checks the optional notification command and link base.
+func validateNotifyFlags(command, cockpitURL string) error {
+	if command != "" {
+		info, err := os.Stat(command)
+		if !filepath.IsAbs(command) || err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+			return fmt.Errorf("--notify-command requires an absolute path to an executable file")
+		}
+	}
+	if cockpitURL != "" {
+		u, err := url.Parse(cockpitURL)
+		if err != nil || u.Scheme != "http" && u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			return fmt.Errorf("--cockpit-url must be an http or https URL without credentials, query or fragment")
+		}
+	}
+	return nil
 }
 
 // bundledUI resolves the installation target so prefix/bin symlinks work from

@@ -67,6 +67,7 @@ type Coordinator struct {
 	shutdownTimeout  time.Duration
 	closeErr         error
 	terminalObserver *terminal.Observer
+	needsYou         *needsYouDispatcher
 }
 
 type executionState struct {
@@ -288,6 +289,7 @@ func (c *Coordinator) acquire(id string) bool {
 }
 func (c *Coordinator) release(id string) {
 	c.mu.Lock()
+	notify := c.needsYou
 	if id != "" {
 		state := c.state(id)
 		state.cancel()
@@ -297,6 +299,10 @@ func (c *Coordinator) release(id string) {
 		state.changed = make(chan struct{})
 	}
 	c.mu.Unlock()
+	if id != "" && notify != nil {
+		// The run's command has settled; only now may it announce a block.
+		notify.settled(id)
+	}
 	c.workers.Done()
 }
 func (c *Coordinator) nextChange(id string) <-chan struct{} {

@@ -284,3 +284,46 @@ func TestWebhookNeedsYouNotifierNon2xxIsError(t *testing.T) {
 		t.Fatal("notify returned nil error for a 500 response, want an error")
 	}
 }
+
+func TestSettledNeedsYouAsksAddBlockedAndFinal(t *testing.T) {
+	started := RunEvent{Seq: 1, RunID: "run_x", Type: RunEventStarted}
+	blocked := RunEvent{Seq: 2, RunID: "run_x", Type: RunEventBlocked, NodeID: "fmn_work", Data: map[string]any{"reason": "seat died", "resumeAllowed": true}}
+	cases := map[string]struct {
+		events []RunEvent
+		want   []NeedsYouAsk
+	}{
+		"running": {events: []RunEvent{started}},
+		"blocked": {
+			events: []RunEvent{started, blocked},
+			want:   []NeedsYouAsk{{RunID: "run_x", Seq: 2, Kind: NeedsYouKindBlocked, NodeID: "fmn_work", Ask: "seat died", Blocks: true, Status: RunStatusBlocked, ResumeAllowed: true}},
+		},
+		"resumed": {events: []RunEvent{started, blocked, {Seq: 3, RunID: "run_x", Type: RunEventResumed}}},
+		"blocked by an escalation": {
+			events: []RunEvent{started, escalationEvent(2, "fmn_work", "need a call", "stop", true), {Seq: 3, RunID: "run_x", Type: RunEventBlocked, NodeID: "fmn_work"}},
+			want:   []NeedsYouAsk{{Seq: 2, Kind: NeedsYouKindEscalation, NodeID: "fmn_work", Ask: "need a call", Severity: "stop", Blocks: true}},
+		},
+		"final": {
+			events: []RunEvent{started, blocked, humanRequestEvent(3, "gate_review", "Ship?"), {Seq: 4, RunID: "run_x", Type: RunEventCanceled, Data: map[string]any{"reason": "operator stopped"}}},
+			want:   []NeedsYouAsk{{RunID: "run_x", Seq: 4, Kind: NeedsYouKindFinal, Ask: "operator stopped", Status: RunStatusCanceled}},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, err := ProjectSettledNeedsYouAsks(tc.events)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("asks = %+v, want %+v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("ask = %+v, want %+v", got[i], tc.want[i])
+				}
+			}
+		})
+	}
+	if _, err := ProjectSettledNeedsYouAsks(nil); !errors.Is(err, ErrRunLedgerInvalid) {
+		t.Fatalf("empty ledger error = %v", err)
+	}
+}

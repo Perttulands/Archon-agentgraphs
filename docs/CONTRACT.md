@@ -294,6 +294,8 @@ Repeat `--listen` for each trusted interface. `--agents-dir` overrides cards;
 installed daemons find `../share/archon/ui` beside their `bin` directory.
 Set `--ui-dir ''` to disable the cockpit, or an absolute path to select another
 build. These are daemon flags, not model settings. Set model and effort on persona harness variants.
+`--notify-command` and `--cockpit-url` configure needs-you notifications,
+described at the end of this section.
 
 In another terminal use the compiled Archon. Import means copying board and
 notes TOML; there is no import command:
@@ -411,6 +413,55 @@ evidence, restart with `--resume-run`, `--completed-transcript` and
 transcript and original brief. Validation checks the original digest, pointer,
 cwd, session, model/effort and completed turn before continuation. Keep original
 artifacts intact. Do not run offline runtime mutations alongside the daemon.
+
+### Needs-you notifications
+
+`--notify-command <absolute-executable>` turns on operator notifications; empty
+leaves them off. `--cockpit-url` supplies the base for links in messages. The
+daemon runs the command directly, with no shell or arguments, writes one
+notification as JSON on stdin, and treats exit status 0 as delivered. Each send
+has a 30-second timeout. A timed-out command's process group is killed, and the
+first 4 KiB of its stderr go to the daemon log. The command owns the channel,
+recipient and credentials; none of them are daemon flags.
+
+A notification carries `runId`, `boardSlug`, `boardTitle`, `seq`, `kind`,
+`runStatus`, `nodeId`, `gateId`, `gateTitle`, `ask`, `severity`, `blocks`,
+`boardUrl`, a one-line `text`, and a complete plain-text `subject` and `body`.
+The kinds are:
+
+- `human_gate`, keyed by the request sequence. The body carries the criterion,
+  the gate's input text capped at 64 KiB, the cockpit link, and exact
+  `gate approve` and `gate reject` commands with `--requested-seq`.
+- `escalation`, keyed by a blocking escalation's sequence.
+- `blocked`, keyed by the `run_blocked` sequence when no open gate or escalation
+  already explains the block. The body gives the reason and, when resumable,
+  the `run resume` command.
+- `final`, keyed by the terminal event sequence.
+
+Only settled runs are announced: the run's command worker has exited. A block
+recorded inside a command, such as a human verdict awaiting its automatic
+resume, is never sent. Each ask is sent once and recorded in the run's
+`.needs-you.json` artifact, so restarts send no duplicates. A failed send stays
+unrecorded and is retried at the run's next settle, at startup and every five
+minutes. Sends never delay runs or shutdown. At startup the daemon reconciles
+only non-final runs. A final outcome is sent only for a run that finished while
+this daemon process was running, so enabling notifications never mails old
+results.
+
+A placeholder host command that reads the JSON and hands the message to a
+host sender:
+
+```sh
+#!/bin/sh
+set -eu
+notification=$(cat)
+subject=$(printf '%s' "$notification" | jq -r '.subject')
+printf '%s' "$notification" | jq -r '.body' |
+  "$NOTIFY_SENDER" --to "$NOTIFY_TO" --subject "$subject"
+```
+
+`NOTIFY_SENDER` and `NOTIFY_TO` stand for host configuration. Keep the real
+script, sender and address with the host deployment.
 
 ## HTTP contract
 
