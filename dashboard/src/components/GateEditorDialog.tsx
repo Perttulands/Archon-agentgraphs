@@ -51,7 +51,7 @@ export function draftFromGate(gate: GateNode): GateDraft {
 }
 
 export function newGateDraft(profiles: CodeGateProfileDescriptor[]): GateDraft {
-  return { title: 'Review gate', kinds: ['code'], criterion: '', profileKey: profiles[0] ? profileKeyOf(profiles[0]) : '', checkValue: '' }
+  return { title: 'Review gate', kinds: ['human'], criterion: '', profileKey: profiles[0] ? profileKeyOf(profiles[0]) : '', checkValue: '' }
 }
 
 /** Explicit fields for a draft: code fields are blank unless code is chosen. */

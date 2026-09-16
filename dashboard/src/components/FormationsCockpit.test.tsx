@@ -1109,7 +1109,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Gate' }))
     const dialog = await screen.findByRole('dialog', { name: 'Create gate' })
-    fireEvent.change(within(dialog).getByLabelText('Forbidden text'), { target: { value: 'error' } })
+    fireEvent.change(within(dialog).getByLabelText('Gate criterion'), { target: { value: 'Looks right' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create gate' }))
 
     const created = await screen.findByTestId('gate-node-gate_created')
@@ -1127,6 +1127,8 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Gate' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Create gate' })
+    fireEvent.click(within(dialog).getByLabelText('Code kind'))
+    fireEvent.click(within(dialog).getByLabelText('Human kind'))
     fireEvent.change(within(dialog).getByLabelText('Evaluator profile'), { target: { value: 'output_contains@1' } })
     fireEvent.change(within(dialog).getByLabelText('Required text'), { target: { value: 'LINT OK' } })
     fireEvent.change(within(dialog).getByLabelText('Gate criterion'), { target: { value: 'Lint passes clean' } })
@@ -1144,22 +1146,26 @@ describe('FormationsCockpit reference parity', () => {
     })
   })
 
-  it('creates a code Gate with no optional input and reloads it intact', async () => {
+  it('starts a new Gate as a human gate and saves it with no other input', async () => {
     patches = installFetchMock({ freshCreateLayout: true })
     const { container, unmount } = await renderCockpit()
     const viewport = container.querySelector('.viewport') as HTMLElement
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Gate' }))
     const dialog = await screen.findByRole('dialog', { name: 'Create gate' })
+    expect(within(dialog).getByLabelText('Human kind')).toBeChecked()
+    expect(within(dialog).getByLabelText('Judge kind')).not.toBeChecked()
+    expect(within(dialog).getByLabelText('Code kind')).not.toBeChecked()
+    expect(within(dialog).queryByLabelText('Evaluator profile')).toBeNull()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create gate' }))
 
     await waitFor(() => {
       expect(patches.find(patch => patch.body.createGate)?.body.createGate).toMatchObject({
         title: 'Review gate',
-        kinds: ['code'],
+        kinds: ['human'],
         criterion: '',
-        check: 'output_absent',
-        checkVersion: '1',
+        check: '',
+        checkVersion: '',
         checkValue: '',
       })
     })
@@ -1177,6 +1183,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Gate' }))
     const dialog = await screen.findByRole('dialog', { name: 'Create gate' })
+    fireEvent.click(within(dialog).getByLabelText('Code kind'))
     fireEvent.change(within(dialog).getByLabelText('Evaluator profile'), { target: { value: '' } })
     expect(within(dialog).getByLabelText('Value')).toBeDisabled()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create gate' }))
@@ -1257,12 +1264,13 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Gate' }))
     const dialog = await screen.findByRole('dialog', { name: 'Create gate' })
-    expect(within(dialog).getByLabelText('Code kind')).toBeChecked()
-    expect(within(dialog).getByLabelText('Code kind')).toBeDisabled()
+    expect(within(dialog).getByLabelText('Human kind')).toBeChecked()
+    expect(within(dialog).getByLabelText('Human kind')).toBeDisabled()
 
-    fireEvent.click(within(dialog).getByLabelText('Human kind'))
     fireEvent.click(within(dialog).getByLabelText('Judge kind'))
     expect(within(dialog).getByText("Attach a judge formation from the gate's judge socket. A run needs one.")).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByLabelText('Code kind'))
+    expect(within(dialog).getByLabelText('Evaluator profile')).toBeInTheDocument()
     fireEvent.click(within(dialog).getByLabelText('Code kind'))
     expect(within(dialog).queryByLabelText('Evaluator profile')).toBeNull()
     fireEvent.change(within(dialog).getByLabelText('Gate title'), { target: { value: 'Framing review' } })

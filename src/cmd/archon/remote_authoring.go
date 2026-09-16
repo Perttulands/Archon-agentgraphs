@@ -868,7 +868,7 @@ func legacyGateCommandFields(fs *flag.FlagSet, fields map[string]any, command, a
 func remoteGateCreate(c *remoteClient, args []string, stdout, stderr io.Writer) int {
 	fs := remoteFlags("gate create", stderr)
 	title := fs.String("title", "Review gate", "gate title")
-	kinds := fs.String("kinds", "code", "comma-separated gate kinds")
+	kinds := fs.String("kinds", "", "comma-separated gate kinds: code, formation, human (default human)")
 	criterion := fs.String("criterion", "", "gate criterion")
 	check := fs.String("check", "", "registered code Gate profile id")
 	checkVersion := fs.String("check-version", "", "exact code Gate profile version")

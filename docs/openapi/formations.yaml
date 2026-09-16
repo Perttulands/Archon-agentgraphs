@@ -1132,6 +1132,8 @@ components:
               type: string
             kinds:
               type: array
+              description: Any of code, formation and human. Omitted or empty creates a human gate; check fields
+                then return 422 invalid_code_gate_profile until kinds include code.
               items:
                 type: string
             criterion:

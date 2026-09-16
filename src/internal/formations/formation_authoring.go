@@ -944,7 +944,11 @@ func (s *Store) createGate(slug string, req GateCreateRequest, opts WriteOptions
 		return nil, err
 	}
 	if len(kinds) == 0 {
-		kinds = []string{"code"}
+		// A new gate is a human gate, which runs as soon as it is wired.
+		kinds = []string{"human"}
+	}
+	if !hasGateKind(kinds, "code") && strings.TrimSpace(req.Check+req.CheckVersion+req.CheckValue) != "" {
+		return nil, fmt.Errorf("%w: a new gate sets a code check without the code kind; include code in its kinds", ErrInvalidCodeGateProfile)
 	}
 	title := req.Title
 	if title == "" {

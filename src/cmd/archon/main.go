@@ -987,7 +987,7 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 	fs := flag.NewFlagSet("gate create", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	title := fs.String("title", "Review gate", "gate title")
-	kinds := fs.String("kinds", "code", "comma-separated gate kinds")
+	kinds := fs.String("kinds", "", "comma-separated gate kinds: code, formation, human (default human)")
 	criterion := fs.String("criterion", "", "gate criterion")
 	check := fs.String("check", "", "registered code Gate profile id")
 	checkVersion := fs.String("check-version", "", "exact code Gate profile version")

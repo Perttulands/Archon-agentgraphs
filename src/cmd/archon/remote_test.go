@@ -314,6 +314,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("gate", "create", "demo", "--kinds", "human", "--title", "Signoff", "--criterion", "Operator signs off")), creates: "gate"},
 		{args: with(fixed("gate", "update", "demo", "Signoff", "--title", "Sign-off", "--kinds", "human,code", "--check", "output_contains", "--check-version", "1", "--check-value", "done"))},
 		{args: with(fixed("gate", "update", "demo", "Sign-off", "--clear-check", "--kinds", "human"))},
+		{args: with(fixed("gate", "create", "demo", "--title", "Default")), creates: "gate"},
 		{args: with(fixed("mission", "update", "demo", "Work", "--goal", "Do it well"))},
 		{args: with(fixed("board", "note", "demo", "--text", "Board intent"))},
 		{args: with(func(board *formations.BoardDocument) []string {
@@ -352,6 +353,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("mission", "create", "demo", "--bead", "Home-123")), errorOnly: true},
 		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--bead", "chlab/123")), errorOnly: true},
 		{args: with(fixed("gate", "create", "demo", "--command", "make test")), errorOnly: true},
+		{args: with(fixed("gate", "create", "demo", "--check", "output_contains", "--check-version", "1", "--check-value", "done")), errorOnly: true},
 		{args: with(fixed("formation", "create", "missing-board")), errorOnly: true},
 		{args: with(fixed("board", "inspect", "missing-board")), errorOnly: true},
 		{args: with(fixed("mission", "list", "missing-board")), errorOnly: true},
@@ -429,8 +431,11 @@ func TestRemoteAuthoringMatchesOfflineCommands(t *testing.T) {
 			}
 			board, err := remote.store.ReadBoard("demo")
 			// Mission to Worker, Worker to Review, and the Critic judge loop.
-			if err != nil || len(board.Missions) != 1 || len(board.Formations) != 2 || len(board.Gates) != 2 || len(board.Connections) != 4 || board.UpdatedBy != "agent:archon" {
+			if err != nil || len(board.Missions) != 1 || len(board.Formations) != 2 || len(board.Gates) != 3 || len(board.Connections) != 4 || board.UpdatedBy != "agent:archon" {
 				t.Fatalf("remote board: %v missions %d formations %d gates %d connections %d by %s", err, len(board.Missions), len(board.Formations), len(board.Gates), len(board.Connections), board.UpdatedBy)
+			}
+			if gate := gateTitled(t, board, "Default"); strings.Join(gate.Kinds, ",") != "human" {
+				t.Fatalf("remote gate created without --kinds = %+v, want kinds [human]", gate)
 			}
 			if notes, err := remote.store.ReadBoardNotes("demo"); err != nil || len(notes.Board) != 1 || notes.Board[0].Text != "Board intent" || len(notes.Elements) != 1 || len(notes.Elements[0].Entries) != 2 || notes.Elements[0].Entries[1].Text != "Edited reply" {
 				t.Fatalf("remote notes = %+v, %v", notes, err)

@@ -230,7 +230,10 @@ only `output_contains@1` and `output_absent@1`, configured through `check`,
 reports the gap.
 
 A gate's kinds are any non-empty combination of `code`, `formation` and
-`human`. The cockpit editor, the `updateGate` board patch and `archon gate
+`human`. A new gate is `human` unless kinds are given: the cockpit editor
+preselects Human, and `createGate` or `archon gate create` without kinds saves
+`["human"]`, which runs as soon as it is wired. A code check on a new gate needs
+the `code` kind. The cockpit editor, the `updateGate` board patch and `archon gate
 update` change a gate through one store path. They set only the fields given,
 and an empty value clears one. A gate keeps only the configuration its kinds
 use: dropping `formation` detaches the judge chain, as detaching the judge does,

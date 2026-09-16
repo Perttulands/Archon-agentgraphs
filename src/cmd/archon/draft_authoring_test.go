@@ -82,6 +82,58 @@ func TestArchonDraftAuthoringSavesAndAdmissionListsEveryProblem(t *testing.T) {
 	}
 }
 
+func TestArchonGateCreateWithoutKindsIsARoutableHumanGate(t *testing.T) {
+	workspace := t.TempDir()
+	t.Setenv("CHROTE_AGENTS_DIR", filepath.Join(t.TempDir(), "agents"))
+	runner := &fakeTmux{live: map[string]bool{}}
+	archon := func(args ...string) string {
+		t.Helper()
+		stdout, stderr, code := runArchon(t, runner, append([]string{"--workspace", workspace}, args...)...)
+		if code != 0 {
+			t.Fatalf("%v: %d %s", args, code, stderr)
+		}
+		return stdout
+	}
+	archon("board", "new", "review")
+	archon("mission", "create", "review", "--title", "Work", "--goal", "Do it", "--bead", "form-demo")
+	var created struct {
+		Formation formations.FormationNode `json:"formation"`
+		Gate      formations.GateNode      `json:"gate"`
+	}
+	if err := json.Unmarshal([]byte(archon("formation", "create", "review", "solo", "--title", "Worker", "--json")), &created); err != nil {
+		t.Fatal(err)
+	}
+	worker := created.Formation
+	if err := json.Unmarshal([]byte(archon("gate", "create", "review", "--title", "Signoff", "--json")), &created); err != nil {
+		t.Fatal(err)
+	}
+	if gate := created.Gate; strings.Join(gate.Kinds, ",") != "human" {
+		t.Fatalf("gate create without --kinds = %+v, want kinds [human]", gate)
+	}
+	if err := json.Unmarshal([]byte(archon("gate", "create", "review", "--title", "Lint", "--kinds", "code", "--json")), &created); err != nil || strings.Join(created.Gate.Kinds, ",") != "code" {
+		t.Fatalf("gate create --kinds code = %+v (%v), want kinds unchanged", created.Gate, err)
+	}
+	_, stderr, code := runArchon(t, runner, "--workspace", workspace, "gate", "create", "review", "--check", "output_contains", "--check-version", "1", "--check-value", "OK", "--json")
+	if code == 0 || !strings.Contains(stderr, "invalid_code_gate_profile") || !strings.Contains(stderr, "without the code kind") {
+		t.Fatalf("gate create with a check and no --kinds = %d %s, want the code kind required", code, stderr)
+	}
+	archon("gate", "update", "review", "Lint", "--kinds", "human")
+
+	store := formations.NewStore(workspace)
+	board, err := store.ReadBoard("review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := board.Gates[0]
+	archon("formation", "assign", "review", worker.ID, "--slot", worker.Slots[0].ID, "--agent", "codex-builder", "--harness", "openai-codex")
+	archon("formation", "set-brief", "review", worker.ID, "--goal", "Produce the result")
+	archon("mission", "wire", "review", "Work", worker.ID+":"+worker.Inputs[0].ID)
+	archon("formation", "wire", "review", worker.ID+":"+worker.Outputs[0].ID, gate.ID+":in")
+	if stdout := archon("board", "validate", "review"); stdout != "review\t0 errors\t0 warnings\n" {
+		t.Fatalf("board validate with a wired human gate:\n%s", stdout)
+	}
+}
+
 func TestRemoteAdmissionFindingsAndBoardValidation(t *testing.T) {
 	findings := `[{"code":"unstaffed_slot","nodeId":"fmn_plan","message":"formation \"fmn_plan\" slot \"Planner\" (slot_plan) needs an agent"},{"code":"gate_not_routable","nodeId":"gate_lint","message":"gate \"gate_lint\" needs forbidden text for code check output_absent@1"}]`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

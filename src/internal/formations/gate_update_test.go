@@ -182,6 +182,10 @@ func TestGateAuthoringRejectsMalformedKindsAndChecksWithoutMutation(t *testing.T
 			_, err := store.UpdateGate("session-search", GateUpdateRequest{GateID: "gate_review", Kinds: []string{"human"}, Check: &check}, current())
 			return err
 		}, ErrInvalidCodeGateProfile},
+		"check on a new gate without kinds": {func() error {
+			_, err := store.CreateGate("session-search", GateCreateRequest{Check: check, CheckVersion: "1", CheckValue: "OK"}, current())
+			return err
+		}, ErrInvalidCodeGateProfile},
 		"unknown check version": {func() error {
 			_, err := store.UpdateGate("session-search", GateUpdateRequest{GateID: "gate_review", CheckVersion: &unknownVersion}, current())
 			return err
@@ -196,6 +200,27 @@ func TestGateAuthoringRejectsMalformedKindsAndChecksWithoutMutation(t *testing.T
 		}
 		if after := readFile(t, store.BoardPath("session-search")); after != before {
 			t.Fatalf("%s changed the board:\n%s", name, after)
+		}
+	}
+}
+
+func TestCreateGateWithoutKindsStartsAsHuman(t *testing.T) {
+	store, current := updateGateFixture(t)
+	blank, err := store.CreateGate("session-search", GateCreateRequest{}, current())
+	if err != nil {
+		t.Fatalf("create gate without kinds: %v", err)
+	}
+	explicit, err := store.CreateGate("session-search", GateCreateRequest{Kinds: []string{"code"}}, current())
+	if err != nil {
+		t.Fatalf("create code gate: %v", err)
+	}
+	board, err := store.ReadBoard("session-search")
+	if err != nil {
+		t.Fatalf("read board: %v", err)
+	}
+	for id, want := range map[string]string{blank.Gate.ID: "human", explicit.Gate.ID: "code"} {
+		if gate, ok := findGate(board.Gates, id); !ok || strings.Join(gate.Kinds, ",") != want {
+			t.Errorf("reloaded gate %s = %+v, want kinds [%s]", id, gate, want)
 		}
 	}
 }
