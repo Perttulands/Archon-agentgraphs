@@ -353,6 +353,18 @@ function installFetchMock(options: {
         board = { ...board, rev: board.rev + 1, gates, connections }
         return respond({ board }, 'board-etag-2')
       }
+      if (!url.endsWith('/layout') && body.detachGateJudge) {
+        // Mirrors the store: drop formation, and a judge-only gate becomes human.
+        const { gateId } = body.detachGateJudge as { gateId: string }
+        const gates = board.gates.map(item => {
+          if (item.id !== gateId) return item
+          const kinds = item.kinds.filter(kind => kind !== 'formation')
+          return { ...item, kinds: kinds.length ? kinds : ['human'] }
+        })
+        const connections = board.connections.filter(connection => connection.from !== `${gateId}:judge` && connection.to !== `${gateId}:judge`)
+        board = { ...board, rev: board.rev + 1, gates, connections }
+        return respond({ board }, 'board-etag-2')
+      }
       if (!url.endsWith('/layout') && body.createFormation) {
         const requested = body.createFormation as { type: string; title: string; x: number; y: number }
         const created = {
@@ -2059,6 +2071,28 @@ describe('FormationsCockpit reference parity', () => {
       const detach = patches.map(patch => patch.body.detachGateJudge as { gateId?: string } | undefined).find(Boolean)
       expect(detach).toEqual(expect.objectContaining({ gateId: 'gate_review' }))
     })
+  })
+
+  it('leaves a human gate when detaching the judge from a judge-only gate, and undo restores kinds and chain', async () => {
+    const judgeOnly = makeBoard()
+    judgeOnly.gates = [{ ...gate, kinds: ['formation'] }]
+    patches = installFetchMock({ boards: [judgeOnly] })
+    await renderCockpit()
+    expect(screen.getByTestId('gate-kinds-gate_review')).toHaveTextContent(/^judge$/)
+
+    fireEvent.contextMenu(screen.getByTestId('gate-node-gate_review'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Detach judge' }))
+    await waitFor(() => expect(screen.getByTestId('gate-kinds-gate_review')).toHaveTextContent(/^human$/))
+    expect(screen.queryByTestId('formation-wire-edge_judge_send')).toBeNull()
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.setGateJudge)?.body.setGateJudge).toEqual({ gateId: 'gate_review', chain: ['fmn_judge'] })
+    })
+    const restore = patches.findIndex(patch => patch.body.updateGate)
+    expect(patches[restore]?.body.updateGate).toEqual({ id: 'gate_review', title: 'Review', kinds: ['formation'], criterion: 'Review the frame', check: '', checkVersion: '', checkValue: '' })
+    expect(restore).toBeLessThan(patches.findIndex(patch => patch.body.setGateJudge))
+    expect(patches.findIndex(patch => patch.body.detachGateJudge)).toBeLessThan(restore)
   })
 
   it('deletes a mission from its context menu', async () => {

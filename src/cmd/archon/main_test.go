@@ -2006,8 +2006,22 @@ label = "Output"
 		t.Fatalf("gate judge detach code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
 	raw = readArchonFile(t, store.BoardPath("session-search"))
-	if strings.Contains(raw, `gate_review:judge`) || strings.Contains(raw, `formation"]`) {
+	if strings.Contains(raw, `gate_review:judge`) || !strings.Contains(raw, `kinds = ["code"]`) {
 		t.Fatalf("gate judge detach left judge connection or kind:\n%s", raw)
+	}
+
+	for _, command := range [][]string{
+		{"gate", "update", "session-search", "gate_review", "--kinds", "formation"},
+		{"gate", "judge", "session-search", "gate_review", "--chain", "fmn_j1"},
+		{"gate", "judge", "session-search", "gate_review", "--detach"},
+	} {
+		if stdout, stderr, code := runArchon(t, runner, append([]string{"--workspace", workspace}, command...)...); code != 0 {
+			t.Fatalf("%v code=%d stderr=%s stdout=%s", command, code, stderr, stdout)
+		}
+	}
+	raw = readArchonFile(t, store.BoardPath("session-search"))
+	if strings.Contains(raw, `gate_review:judge`) || !strings.Contains(raw, `kinds = ["human"]`) {
+		t.Fatalf("detaching the judge from a judge-only gate did not leave a human gate:\n%s", raw)
 	}
 }
 

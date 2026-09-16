@@ -1306,9 +1306,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     void patchBoard({ setGateJudge: { gateId: gate.id, chain } })
   }, [judgeChainOf, patchBoard])
 
+  // Detaching may change the kinds (a judge-only gate becomes human), so undo
+  // restores the gate's fields before its chain.
   const detachJudge = useCallback((gate: GateNode) => {
-    const previous = judgeChainOf(gate.id)
-    if (previous.length) undoStack.current.push({ kind: 'setGateJudge', gateId: gate.id, chain: previous })
+    undoStack.current.push({ kind: 'updateGate', gateId: gate.id, fields: gateFieldsFromGate(gate), chain: judgeChainOf(gate.id) })
     void patchBoard({ detachGateJudge: { gateId: gate.id } })
   }, [judgeChainOf, patchBoard])
 

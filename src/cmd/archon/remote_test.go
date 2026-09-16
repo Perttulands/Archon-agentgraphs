@@ -437,6 +437,10 @@ func TestRemoteAuthoringMatchesOfflineCommands(t *testing.T) {
 			if gate := gateTitled(t, board, "Default"); strings.Join(gate.Kinds, ",") != "human" {
 				t.Fatalf("remote gate created without --kinds = %+v, want kinds [human]", gate)
 			}
+			// Review started judge-only; detaching left it human before the judge returned.
+			if gate := gateTitled(t, board, "Review"); strings.Join(gate.Kinds, ",") != "human,formation" {
+				t.Fatalf("remote Review gate = %+v, want kinds [human formation]", gate)
+			}
 			if notes, err := remote.store.ReadBoardNotes("demo"); err != nil || len(notes.Board) != 1 || notes.Board[0].Text != "Board intent" || len(notes.Elements) != 1 || len(notes.Elements[0].Entries) != 2 || notes.Elements[0].Entries[1].Text != "Edited reply" {
 				t.Fatalf("remote notes = %+v, %v", notes, err)
 			}

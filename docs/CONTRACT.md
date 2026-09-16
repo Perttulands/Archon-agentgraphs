@@ -237,8 +237,9 @@ the `code` kind. The cockpit editor, the `updateGate` board patch and `archon ga
 update` change a gate through one store path. They set only the fields given,
 and an empty value clears one. A gate keeps only the configuration its kinds
 use: dropping `formation` detaches the judge chain, as detaching the judge does,
-and dropping `code` clears the check. Adding `formation` without a chain leaves
-a draft finding until a judge is attached. Converting a code gate to a human
+and dropping `code` clears the check. Detaching the judge from a gate whose only
+kind is `formation` leaves a `human` gate. Adding `formation` without a chain
+leaves a draft finding until a judge is attached. Converting a code gate to a human
 gate is `archon gate update <board> <gate> --kinds human`; `--clear-check`
 clears the check while keeping the code kind. It does not run arbitrary shell commands.
 Use a judge formation to execute checks such as Beads lint or code review.

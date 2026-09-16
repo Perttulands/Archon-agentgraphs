@@ -224,3 +224,45 @@ func TestCreateGateWithoutKindsStartsAsHuman(t *testing.T) {
 		}
 	}
 }
+
+func TestDetachGateJudgeLeavesJudgeOnlyGateHuman(t *testing.T) {
+	store, current := updateGateFixture(t)
+	judgeEdges := func(board *BoardDocument) int {
+		count := 0
+		for _, connection := range board.Connections {
+			if strings.HasSuffix(connection.From, ":judge") || strings.HasSuffix(connection.To, ":judge") {
+				count++
+			}
+		}
+		return count
+	}
+
+	mixed, err := store.DetachGateJudge("session-search", GateJudgeRequest{GateID: "gate_review"}, current())
+	if err != nil {
+		t.Fatalf("detach from a code and judge gate: %v", err)
+	}
+	if gate, _ := findGate(mixed.Gates, "gate_review"); !equalStrings(gate.Kinds, []string{"code"}) || judgeEdges(mixed) != 0 {
+		t.Fatalf("mixed gate after detach = %+v with %d judge edges, want kinds [code] and no chain", gate, judgeEdges(mixed))
+	}
+
+	if _, err := store.UpdateGate("session-search", GateUpdateRequest{GateID: "gate_review", Kinds: []string{"formation"}}, current()); err != nil {
+		t.Fatalf("make the gate judge-only: %v", err)
+	}
+	judged, err := store.SetGateJudgeChain("session-search", GateJudgeRequest{GateID: "gate_review", Chain: []string{"fmn_j1"}}, current())
+	if err != nil {
+		t.Fatalf("attach judge: %v", err)
+	}
+	if gate, _ := findGate(judged.Gates, "gate_review"); !equalStrings(gate.Kinds, []string{"formation"}) || judgeEdges(judged) != 2 {
+		t.Fatalf("judge-only gate = %+v with %d judge edges, want kinds [formation] and a chain", gate, judgeEdges(judged))
+	}
+	detached, err := store.DetachGateJudge("session-search", GateJudgeRequest{GateID: "gate_review"}, current())
+	if err != nil {
+		t.Fatalf("detach from a judge-only gate: %v", err)
+	}
+	if gate, _ := findGate(detached.Gates, "gate_review"); !equalStrings(gate.Kinds, []string{"human"}) || judgeEdges(detached) != 0 {
+		t.Fatalf("judge-only gate after detach = %+v with %d judge edges, want kinds [human] and no chain", gate, judgeEdges(detached))
+	}
+	if findings := ValidateBoard(detached).Errors; hasBoardFinding(findings, "gate_review", "") {
+		t.Fatalf("detached human gate has findings: %+v", findings)
+	}
+}

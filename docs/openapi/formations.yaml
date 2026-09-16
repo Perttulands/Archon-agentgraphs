@@ -1275,6 +1275,7 @@ components:
               type: string
         detachGateJudge:
           type: object
+          description: Removes the gate's judge chain and its formation kind; a gate left with no kind becomes human.
           properties:
             gateId:
               type: string

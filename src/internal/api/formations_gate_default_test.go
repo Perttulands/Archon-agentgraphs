@@ -100,3 +100,58 @@ func TestFormationsAPICreateGateWithoutKindsStartsAsRoutableHumanGate(t *testing
 		}
 	}
 }
+
+func TestFormationsAPIDetachGateJudgeLeavesJudgeOnlyGateHuman(t *testing.T) {
+	store := formations.NewStore(t.TempDir())
+	mux := http.NewServeMux()
+	NewFormationsHandlerWithStores(store, formations.NewPersonaStore(filepath.Join(t.TempDir(), "agents"))).RegisterRoutes(mux)
+	created := httptest.NewRecorder()
+	mux.ServeHTTP(created, httptest.NewRequest(http.MethodPost, "/api/formations/boards", bytes.NewBufferString(`{"title":"Judges","slug":"judges"}`)))
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create board = %d %s", created.Code, created.Body.String())
+	}
+	patch := func(body string) *formations.BoardDocument {
+		t.Helper()
+		board, err := store.ReadBoard("judges")
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/judges", bytes.NewBufferString(`{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{")))
+		req.Header.Set("If-Match", board.ETag)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		var response struct {
+			Data struct {
+				Board *formations.BoardDocument `json:"board"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil || rec.Code != http.StatusOK || response.Data.Board == nil {
+			t.Fatalf("%s = %d %s (%v)", body, rec.Code, rec.Body.String(), err)
+		}
+		return response.Data.Board
+	}
+	patch(`{"createFormation":{"type":"solo","title":"Judge"}}`)
+	patch(`{"createGate":{"title":"Judged","kinds":["formation"]}}`)
+	patch(`{"createGate":{"title":"Signoff","kinds":["human","formation"]}}`)
+	board, err := store.ReadBoard("judges")
+	if err != nil {
+		t.Fatal(err)
+	}
+	judge := board.Formations[0].ID
+	// A judge-only gate becomes human; a human and judge gate keeps human.
+	for index, want := range []string{"human", "human"} {
+		gateID := board.Gates[index].ID
+		patch(`{"setGateJudge":{"gateId":"` + gateID + `","chain":["` + judge + `"]}}`)
+		detached := patch(`{"detachGateJudge":{"gateId":"` + gateID + `"}}`)
+		for _, gate := range detached.Gates {
+			if gate.ID == gateID && strings.Join(gate.Kinds, ",") != want {
+				t.Errorf("gate %s kinds after detach = %v, want [%s]", board.Gates[index].Title, gate.Kinds, want)
+			}
+		}
+		for _, connection := range detached.Connections {
+			if connection.From == gateID+":judge" || connection.To == gateID+":judge" {
+				t.Errorf("judge connection %+v survived detach", connection)
+			}
+		}
+	}
+}

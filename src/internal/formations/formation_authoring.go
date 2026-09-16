@@ -2196,7 +2196,8 @@ func setGateFormationKind(lines []tomlLine, gateStart, gateEnd int, present bool
 		filtered = append(filtered, "formation")
 	}
 	if len(filtered) == 0 {
-		filtered = []string{"code"}
+		// A judge-only gate without its judge becomes a human gate, as a new gate starts.
+		filtered = []string{"human"}
 	}
 	return setScalarInLineRange(lines, gateStart+1, gateEnd, "kinds", renderStringArray(filtered))
 }
