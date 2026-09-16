@@ -15,7 +15,8 @@
   --sage:var(--window-green); --gold:var(--window-orange); --steel:var(--text-dim);
   position:absolute; inset:0; display:flex; flex-direction:column;
   font-family:var(--font-mono); background:var(--paper); color:var(--ink);
-  overflow:hidden; user-select:none; -webkit-font-smoothing:antialiased;
+  /* clip, not hidden: nothing in the cockpit scrolls natively; see .viewport. */
+  overflow:hidden; overflow:clip; user-select:none; -webkit-font-smoothing:antialiased;
 }
 .fmx *{box-sizing:border-box;}
 
@@ -42,7 +43,7 @@
 .fmx .board-action.danger:hover:not(:disabled){color:var(--terra-d);}
 .fmx .board-action:disabled{opacity:.35;cursor:not-allowed;}
 
-.fmx .main{flex:1;display:flex;overflow:hidden;min-height:0;}
+.fmx .main{flex:1;display:flex;overflow:hidden;overflow:clip;min-height:0;}
 
 .fmx .board-notes{width:300px;flex:0 0 auto;border-left:1px solid var(--line);background:color-mix(in srgb,var(--bg1) 94%,#d8ae43 6%);display:flex;flex-direction:column;min-height:0;transition:width .18s ease;}
 .fmx .board-notes.collapsed{width:38px;}
@@ -104,7 +105,10 @@
 
 /* ===== BOARD (infinite canvas) ===== */
 .fmx .canvas-column{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;}
-.fmx .viewport{flex:1;min-height:0;position:relative;overflow:hidden;cursor:grab;background:var(--paper);}
+/* The canvas pans by transform only. overflow:clip makes the viewport no scroll
+   container, so focusing a card control off screen cannot scroll it natively and
+   strand the zoom column; hidden would still scroll. */
+.fmx .viewport{flex:1;min-height:0;position:relative;overflow:hidden;overflow:clip;cursor:grab;background:var(--paper);}
 .fmx .viewport.panning{cursor:grabbing;}
 .fmx .world{position:absolute;top:0;left:0;width:3400px;height:2300px;transform-origin:0 0;
   background-image:
