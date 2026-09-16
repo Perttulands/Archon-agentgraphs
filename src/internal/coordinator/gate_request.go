@@ -2,18 +2,17 @@ package coordinator
 
 import (
 	"net/http"
-	"unicode/utf8"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
 // The pending-gate read route shows the operator what a human gate is waiting
-// on. The run evidence API (form-3rq) will absorb it, so the
-// handler and its response type stay together in this file.
+// on. It is the run evidence API's view of an unanswered request (ADR-0017);
+// after the verdict, the gate's node evidence carries the same input.
 
 // pendingGateInputMaxBytes bounds the served input text; the cockpit reads it
 // in a panel, and the full output stays in the private run evidence.
-const pendingGateInputMaxBytes = 64 << 10
+const pendingGateInputMaxBytes = formations.EvidenceTextMaxBytes
 
 type PendingGateInput struct {
 	FromNodeID string `json:"fromNodeId,omitempty"`
@@ -75,12 +74,5 @@ func (c *Coordinator) pendingGateRequest(w http.ResponseWriter, r *http.Request)
 
 // capPendingGateText cuts at a rune boundary so truncated text stays valid UTF-8.
 func capPendingGateText(text string) (string, bool) {
-	if len(text) <= pendingGateInputMaxBytes {
-		return text, false
-	}
-	cut := pendingGateInputMaxBytes
-	for cut > 0 && !utf8.RuneStart(text[cut]) {
-		cut--
-	}
-	return text[:cut], true
+	return formations.CapEvidenceText(text, pendingGateInputMaxBytes)
 }

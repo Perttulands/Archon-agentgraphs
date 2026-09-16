@@ -150,16 +150,9 @@ Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
 
 The public projection includes cwd and Bead ID but excludes prompt text,
 artifact contents, brief paths, native session IDs and arbitrary private event
-data. Read detailed reasons and artifacts locally in the private evidence.
-The pending-gate read route
-`GET /api/formations/runs/{runId}/gates/{gateId}/request` lets the operator
-read what a human gate received before answering it, because the projection
-carries no content. For the gate's latest request, while it is pending, the
-route returns `gateId`, `requestedSeq`, the frozen `criterion` and the routed
-input: `fromNodeId`, `fromPortId`, `text` capped at 64 KiB, and `truncated`.
-It never returns refs, paths, prompts or session identities. An unknown run or
-gate returns 404; a decided request returns 409. The operator-approved run
-evidence API (form-3rq) will absorb this route.
+data. Projections and SSE stay sanitized; the run evidence routes under
+[HTTP contract](#http-contract) serve a run's outputs, gate results, human
+responses, briefs and artifacts to the operator.
 `run logs` is the same sanitized projection as `run status`. `run follow` prints
 complete enveloped projections from SSE after durable changes, waits through
 human gates and closes only at finality. Interrupting that client stops viewing,
@@ -481,11 +474,12 @@ theme document described below, JSON responses use
 list/create/read/patch/delete, notes, layout and change polling. Agent routes
 list/create/read/patch persona cards; gate profiles expose the two code checks.
 Revision and ETag checks protect edits. Runtime routes start/list/read runs,
-read projected events/escalations, stream SSE, abort, resume, read a pending
-human gate's input and record exact human verdicts. They all use the
-coordinator; no request-local executor exists.
+read projected events/escalations, stream SSE, abort, resume, read run evidence
+and record exact human verdicts. They all use the coordinator; no request-local
+executor exists.
 There is no generic file reader, transcript endpoint, board import endpoint or
-authentication layer. Remote Archon supports board list/inspect/validate and
+authentication layer. Run evidence reads only one run's ledger, its artifact
+directory and the briefs its own dispatches recorded. Remote Archon supports board list/inspect/validate and
 runtime commands; author definitions with `--workspace` or the cockpit.
 `GET /api/formations/boards/{board}/validation` returns
 `{boardRev,boardEtag,errors,warnings}` for the whole board, the same report as
@@ -521,3 +515,58 @@ ASCII `2` (pause output) and `3` (resume) are accepted afterward. Input `0`, res
 with 1000; daemon shutdown closes observers with 1001. WebSocket origins must
 match the request host. Terminal bytes are the actual seat display, not the
 sanitized ledger projection. The same trusted-network access boundary applies.
+
+### Run evidence
+
+[ADR-0017](adr/0017-run-evidence-api.md) records this API. Every route is a
+`GET` for one run; an unknown run returns 404. Served text is an object
+`{text,bytes,truncated}`: `bytes` is the full size, `truncated` marks a cut on
+a UTF-8 boundary, and the ledger's secret patterns are redacted.
+
+- `/api/formations/runs/{runId}/evidence/nodes/{nodeId}` returns
+  `data.evidence` for a node of the run's frozen board, with `kind` `mission`,
+  `formation`, `gate` or `tool`. Missions and formations list `attempts` with
+  routed `inputs`, `dispatches` (`seq`, slot, agent, harness, result status and
+  whether a brief exists) and `output` (text, status, reason and sorted `ports`).
+  Gates list `evaluations` with the criterion, input, `kindResults` with judge
+  `evidence`, `judgeFailures`, `humanRequests` with each decision's `response`,
+  and the final `verdict` with `perKind` and `routePort`. `problems` lists the
+  blocks and errors recorded against the node. Each text is capped at 64 KiB;
+  a kind result or verdict lists at most 100 evidence items and counts the rest
+  in `evidenceOmitted`; one response carries at most 2 MiB of text, after which
+  texts are empty and truncated. An unknown node returns 404.
+- `/api/formations/runs/{runId}/evidence/briefs/{dispatchSeq}` returns
+  `data.brief` (`dispatchSeq`, `nodeId`, `slotId`, `attempt`, `text` capped at
+  256 KiB): the brief that this run's `slot_dispatch` at that sequence sent to
+  its seat. Only a path recorded by that event, naming a direct child of
+  `<state-dir>/briefs`, is read. Any other sequence returns 404.
+- `/api/formations/runs/{runId}/evidence/artifacts` returns `data.artifacts`
+  (`name`, `size`, `modifiedAt`), sorted by name relative to
+  `<state-dir>/.formations/artifacts/<runId>`, and `data.truncated` past 500
+  entries or 8 directory levels. A run without artifacts lists none.
+- `/api/formations/runs/{runId}/evidence/artifacts/{name...}` returns
+  `data.artifact` (`name`, `size`, `modifiedAt`, `kind` `markdown`, `json`,
+  `text`, `image` or `binary`), with `text` capped at 256 KiB for textual kinds.
+- `/api/formations/runs/{runId}/artifacts/{name...}` returns the artifact's bytes
+  up to 16 MiB; larger files return 413. Text is `text/plain; charset=utf-8`
+  and redacted, PNG, JPEG, GIF and WebP keep their image type, and anything else
+  is an `application/octet-stream` attachment. Responses carry
+  `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox` and
+  `Cache-Control: no-store`, and support ranges.
+- `/api/formations/runs/{runId}/gates/{gateId}/request` is the evidence API's
+  view of a human request still waiting for an answer. For the gate's latest
+  request, while it is pending, it returns `gateId`, `requestedSeq`, the frozen
+  `criterion` and the routed input: `fromNodeId`, `fromPortId`, `text` capped at
+  64 KiB, and `truncated`. An unknown run or gate returns 404; a decided request
+  returns 409. After the verdict, the gate's node evidence holds the same input
+  with the response.
+
+Artifact names are relative; every component is opened from the state
+directory without following symlinks, and only regular files with one link are
+read, so names with `..`, symlinks and hard links cannot leave the run's
+directory. Output and input references appear as `ref.artifact` inside that
+directory or `ref.external` (a base name only) elsewhere. Structured fields
+never carry native session IDs, tmux session or pane IDs, `sessionRef`, socket or
+prompt digests, brief or prompt paths, seat report pointers or absolute
+artifact paths, and worker pane captures are not served. Text is served as
+recorded apart from redaction, so it can mention host paths such as the cwd.

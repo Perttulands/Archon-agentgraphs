@@ -4,7 +4,8 @@ info:
   version: standalone-trusted-v1
   description: Trusted-network coordinator and authoring API. JSON uses the success/timestamp/data envelope except for the raw theme document,
     with error details on failure. No authentication. Static cockpit serving is optional. Authoring request
-    details follow internal/api/formations.go and agents.go; runtime reads are sanitized.
+    details follow internal/api/formations.go and agents.go; run projections are sanitized, and run evidence routes serve
+    capped, confined content (ADR-0017).
 paths:
   /api/formations/runs/{runId}/seats:
     parameters:
@@ -359,8 +360,8 @@ paths:
       schema:
         type: string
     get:
-      summary: Pending-gate read route; read what a pending human gate received
-      description: The operator-approved run evidence API (form-3rq) will absorb this route.
+      summary: Run evidence view of a human request still waiting for an answer
+      description: Part of the run evidence API (ADR-0017). After the verdict, the gate's node evidence holds the same input with the response.
       responses:
         '200':
           description: Enveloped data.request contains gateId, requestedSeq, the frozen criterion and input (fromNodeId, fromPortId, text capped at 64 KiB, truncated) for the gate's pending request. Refs, paths, prompts and session identities are omitted.
@@ -368,6 +369,83 @@ paths:
           description: No such run, or no human request for this gate
         '409':
           description: The gate's latest human request is no longer pending
+  /api/formations/runs/{runId}/evidence/nodes/{nodeId}:
+    parameters:
+    - $ref: '#/components/parameters/RunID'
+    - in: path
+      name: nodeId
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Read one node's recorded content (ADR-0017)
+      description: Texts are {text,bytes,truncated}, capped at 64 KiB each and 2 MiB per response, with secret patterns redacted. Kind results and verdicts list at most 100 evidence items and count the rest in evidenceOmitted. Structured fields omit native session, tmux session and pane IDs, sessionRef, digests, brief and prompt paths, report pointers and absolute artifact paths.
+      responses:
+        '200':
+          description: Enveloped data.evidence contains runId, nodeId, kind (mission, formation, gate, tool), attempts (inputs, dispatches, output with sorted ports), evaluations (criterion, input, kindResults, judgeFailures, humanRequests with decision response, verdict with perKind and routePort) and problems (blocks and errors).
+        '404':
+          description: No such run, or the node is not on the run's frozen board
+  /api/formations/runs/{runId}/evidence/briefs/{dispatchSeq}:
+    parameters:
+    - $ref: '#/components/parameters/RunID'
+    - in: path
+      name: dispatchSeq
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    get:
+      summary: Read the brief a run's dispatch sent to its seat
+      responses:
+        '200':
+          description: Enveloped data.brief contains dispatchSeq, nodeId, slotId, attempt and text capped at 256 KiB. Only the path recorded by this run's slot_dispatch at that sequence, naming a direct child of the state directory's briefs, is read.
+        '404':
+          description: No such run, no slot_dispatch at that sequence, or no readable brief
+  /api/formations/runs/{runId}/evidence/artifacts:
+    parameters:
+    - $ref: '#/components/parameters/RunID'
+    get:
+      summary: List the run's artifact directory
+      responses:
+        '200':
+          description: Enveloped data.artifacts lists name (relative), size and modifiedAt, sorted by name; data.truncated is true past 500 entries or 8 levels. Symlinks, special files and hard-linked files are omitted.
+        '404':
+          description: No such run
+  /api/formations/runs/{runId}/evidence/artifacts/{name}:
+    parameters:
+    - $ref: '#/components/parameters/RunID'
+    - in: path
+      name: name
+      required: true
+      description: Relative artifact name; slashes separate directories.
+      schema:
+        type: string
+    get:
+      summary: Preview one artifact
+      responses:
+        '200':
+          description: Enveloped data.artifact contains name, size, modifiedAt, kind (markdown, json, text, image, binary) and, for textual kinds, text capped at 256 KiB.
+        '404':
+          description: No such run or artifact, or a name that leaves the run's artifact directory through .., a symlink or a hard link
+  /api/formations/runs/{runId}/artifacts/{name}:
+    parameters:
+    - $ref: '#/components/parameters/RunID'
+    - in: path
+      name: name
+      required: true
+      description: Relative artifact name; slashes separate directories.
+      schema:
+        type: string
+    get:
+      summary: Serve one artifact's bytes for a browser tab
+      description: Text is text/plain; charset=utf-8 with secret patterns redacted; PNG, JPEG, GIF and WebP keep their type; anything else is an application/octet-stream attachment. Every response has X-Content-Type-Options nosniff, Content-Security-Policy sandbox and Cache-Control no-store. Ranges are supported.
+      responses:
+        '200':
+          description: Artifact bytes
+        '404':
+          description: No such run or artifact, or a name that leaves the run's artifact directory
+        '413':
+          description: Artifact exceeds 16 MiB
   /api/formations/runs/{runId}/gates/{gateId}/verdict:
     parameters:
     - $ref: '#/components/parameters/RunID'
