@@ -30,6 +30,7 @@ var (
 	ErrUnsupportedSchema       = errors.New("unsupported formations schema")
 	ErrInvalidToolMutation     = errors.New("invalid_tool_mutation")
 	ErrInvalidDefinitionSource = errors.New(InvalidDefinitionSourceCode)
+	ErrInvalidGateKind         = errors.New("invalid_gate_kind")
 )
 
 type Store struct {

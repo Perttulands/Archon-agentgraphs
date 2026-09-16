@@ -36,7 +36,7 @@ func TestDraftAuthoringSavesBlankAndPartialFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("formation with no type or title: %v", err)
 	}
-	if _, err := store.UpdateGate("sketch", GateUpdateRequest{GateID: blankGate.Gate.ID, Check: "output_contains"}, current()); err != nil {
+	if _, err := store.UpdateGate("sketch", GateUpdateRequest{GateID: blankGate.Gate.ID, Check: stringPtr("output_contains")}, current()); err != nil {
 		t.Fatalf("gate update naming a profile without version or value: %v", err)
 	}
 

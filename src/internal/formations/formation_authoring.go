@@ -162,14 +162,17 @@ type GateCreateRequest struct {
 	UpdatedBy                  string
 }
 
+// GateUpdateRequest changes only the fields it sets. A nil field or nil Kinds
+// keeps the stored value; an empty string clears it. Kinds, when set, must name
+// at least one of code, formation and human.
 type GateUpdateRequest struct {
 	GateID                     string
-	Title                      string
+	Title                      *string
 	Kinds                      []string
-	Criterion                  string
-	Check                      string
-	CheckVersion               string
-	CheckValue                 string
+	Criterion                  *string
+	Check                      *string
+	CheckVersion               *string
+	CheckValue                 *string
 	Command                    string // legacy inspection-only compatibility input
 	CommandArgv                []string
 	CommandCWD                 string
@@ -907,7 +910,10 @@ func (s *Store) createGate(slug string, req GateCreateRequest, opts WriteOptions
 	if opts.ExpectedETag == "" || opts.ExpectedRev == 0 {
 		return nil, ErrPreconditionRequired
 	}
-	kinds := req.Kinds
+	kinds, err := normalizeGateKinds(req.Kinds)
+	if err != nil {
+		return nil, err
+	}
 	if len(kinds) == 0 {
 		kinds = []string{"code"}
 	}
@@ -940,6 +946,9 @@ func (s *Store) createGate(slug string, req GateCreateRequest, opts WriteOptions
 	}, nil
 }
 
+// UpdateGate keeps a gate's configuration consistent with its kinds. Dropping
+// the formation kind detaches the judge chain, as DetachGateJudge does, and
+// dropping the code kind clears the code check.
 func (s *Store) UpdateGate(slug string, req GateUpdateRequest, opts WriteOptions) (*BoardDocument, error) {
 	if req.GateID == "" {
 		return nil, ErrNotFound
@@ -947,31 +956,109 @@ func (s *Store) UpdateGate(slug string, req GateUpdateRequest, opts WriteOptions
 	if err := rejectLegacyScriptGateWrite(req.LegacyCommandFieldsPresent, req.Command, req.CommandArgv, req.CommandCWD, req.CommandShell); err != nil {
 		return nil, err
 	}
-	if err := validateCodeGateAuthoring(req.Check, req.CheckVersion); err != nil {
-		return nil, err
+	var kinds []string
+	if req.Kinds != nil {
+		normalized, err := normalizeGateKinds(req.Kinds)
+		if err != nil {
+			return nil, err
+		}
+		if len(normalized) == 0 {
+			return nil, fmt.Errorf("%w: a gate needs at least one kind: code, formation or human", ErrInvalidGateKind)
+		}
+		kinds = normalized
 	}
-	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, _ *BoardDocument) ([]byte, error) {
-		lines := splitLines(raw)
-		gateStart, gateEnd, ok := findGateBlockByID(lines, req.GateID)
+	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, board *BoardDocument) ([]byte, error) {
+		current, ok := findGate(board.Gates, req.GateID)
 		if !ok {
 			return nil, ErrNotFound
 		}
-		if req.Title != "" {
-			lines = setScalarInLineRange(lines, gateStart+1, gateEnd, "title", renderString(req.Title))
+		next := current
+		if kinds != nil {
+			next.Kinds = kinds
 		}
-		if len(req.Kinds) > 0 {
-			lines = setScalarInLineRange(lines, gateStart+1, gateEnd, "kinds", renderStringArray(req.Kinds))
+		setsCheck := req.Check != nil || req.CheckVersion != nil || req.CheckValue != nil
+		for _, field := range []struct {
+			value  *string
+			target *string
+		}{{req.Check, &next.Check}, {req.CheckVersion, &next.CheckVersion}, {req.CheckValue, &next.CheckValue}} {
+			if field.value != nil {
+				*field.target = strings.TrimSpace(*field.value)
+			}
 		}
-		if req.Criterion != "" {
-			lines = setScalarInLineRange(lines, gateStart+1, gateEnd, "criterion", renderString(req.Criterion))
+		if !hasGateKind(next.Kinds, "code") {
+			if setsCheck && (next.Check != "" || next.CheckVersion != "" || next.CheckValue != "") {
+				return nil, fmt.Errorf("%w: gate %q sets a code check without the code kind", ErrInvalidCodeGateProfile, req.GateID)
+			}
+			next.Check, next.CheckVersion, next.CheckValue = "", "", ""
 		}
-		if req.Check != "" {
-			lines = setScalarInLineRange(lines, gateStart+1, gateEnd, "check", renderString(req.Check))
-			lines = setScalarInLineRange(lines, gateStart+1, gateEnd, "checkVersion", renderString(req.CheckVersion))
-			lines = setScalarInLineRange(lines, gateStart+1, gateEnd, "checkValue", renderString(req.CheckValue))
+		if setsCheck {
+			if err := validateCodeGateAuthoring(next.Check, next.CheckVersion); err != nil {
+				return nil, err
+			}
 		}
-		return renderTOMLLines(lines), nil
+
+		// An empty rendering removes the key; check keys are omitted when blank.
+		type change struct{ key, rendered string }
+		var changes []change
+		if req.Title != nil {
+			changes = append(changes, change{"title", renderString(*req.Title)})
+		}
+		if kinds != nil {
+			changes = append(changes, change{"kinds", renderStringArray(next.Kinds)})
+		}
+		if req.Criterion != nil {
+			changes = append(changes, change{"criterion", renderString(*req.Criterion)})
+		}
+		for _, check := range []struct{ key, value, stored string }{
+			{"check", next.Check, current.Check},
+			{"checkVersion", next.CheckVersion, current.CheckVersion},
+			{"checkValue", next.CheckValue, current.CheckValue},
+		} {
+			if check.value == check.stored && (check.value != "" || !setsCheck) {
+				continue
+			}
+			rendered := ""
+			if check.value != "" {
+				rendered = renderString(check.value)
+			}
+			changes = append(changes, change{check.key, rendered})
+		}
+		lines := splitLines(raw)
+		for _, change := range changes {
+			start, end, ok := findGateBlockByID(lines, req.GateID)
+			if !ok {
+				return nil, ErrNotFound
+			}
+			if change.rendered == "" {
+				lines = removeScalarInLineRange(lines, start+1, end, change.key)
+			} else {
+				lines = setScalarInLineRange(lines, start+1, end, change.key, change.rendered)
+			}
+		}
+		raw = renderTOMLLines(lines)
+		if hasGateKind(current.Kinds, "formation") && !hasGateKind(next.Kinds, "formation") {
+			raw = deleteGateJudgeConnections(raw, req.GateID)
+		}
+		return raw, nil
 	})
+}
+
+// normalizeGateKinds trims and de-duplicates kinds, keeping their order, and
+// rejects any kind other than code, formation and human.
+func normalizeGateKinds(kinds []string) ([]string, error) {
+	normalized := make([]string, 0, len(kinds))
+	for _, kind := range kinds {
+		kind = strings.TrimSpace(kind)
+		switch kind {
+		case "code", "formation", "human":
+		default:
+			return nil, fmt.Errorf("%w: unknown gate kind %q; use code, formation or human", ErrInvalidGateKind, kind)
+		}
+		if !hasGateKind(normalized, kind) {
+			normalized = append(normalized, kind)
+		}
+	}
+	return normalized, nil
 }
 
 // validateCodeGateAuthoring accepts drafts: the profile, its version and its

@@ -898,7 +898,7 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon gate create <board> [--kinds code,human] [--criterion text] [--check id --check-version version --check-value value] [--x n] [--y n] [--json]")
+		fmt.Fprintln(stderr, "usage: archon gate create <board> [--kinds code,formation,human] [--title text] [--criterion text] [--check id --check-version version --check-value value] [--x n] [--y n] [--json]")
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -953,13 +953,18 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	commandArgv := fs.String("command-argv", "", "retired legacy Gate argv; new writes fail with a migration error")
 	commandCWD := fs.String("command-cwd", "", "retired legacy Gate cwd; new writes fail with a migration error")
 	commandShell := fs.String("command-shell", "", "retired legacy Gate shell command; new writes fail with a migration error")
+	clearCheck := fs.Bool("clear-check", false, "clear the code check profile, version and value")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
-	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true, "clear-check": true})); err != nil {
 		return 2
 	}
-	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon gate update <board> <gate> [--title text] [--kinds code,human] [--criterion text] [--check id --check-version version --check-value value] [--json]")
+	// Only flags given on the command line change the gate; an empty value clears.
+	given := map[string]bool{}
+	fs.Visit(func(current *flag.Flag) { given[current.Name] = true })
+	if fs.NArg() != 2 || *clearCheck && (given["check"] || given["check-version"] || given["check-value"]) {
+		fmt.Fprintln(stderr, "usage: archon gate update <board> <gate> [--title text] [--kinds code,formation,human] [--criterion text] [--check id] [--check-version version] [--check-value value | --clear-check] [--json]")
+		fmt.Fprintln(stderr, "Only the flags you give change the gate; an empty value clears that field. Dropping formation detaches the judge chain and dropping code clears the check.")
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -974,25 +979,37 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	if err != nil {
 		return failSelector(stderr, err, *jsonOut, "gate", fs.Arg(1))
 	}
-	var updateKinds []string
-	if strings.TrimSpace(*kinds) != "" {
-		updateKinds = splitCSV(*kinds)
-	}
-	result, err := store.UpdateGate(slug, formations.GateUpdateRequest{
+	update := formations.GateUpdateRequest{
 		GateID:                     gateID,
-		Title:                      *title,
-		Kinds:                      updateKinds,
-		Criterion:                  *criterion,
-		Check:                      *check,
-		CheckVersion:               *checkVersion,
-		CheckValue:                 *checkValue,
 		Command:                    *command,
 		CommandArgv:                splitCSV(*commandArgv),
 		CommandCWD:                 *commandCWD,
 		CommandShell:               *commandShell,
 		LegacyCommandFieldsPresent: legacyGateCommandFlagPresent(fs),
 		UpdatedBy:                  *updatedBy,
-	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
+	}
+	if given["kinds"] {
+		update.Kinds = append([]string{}, splitCSV(*kinds)...)
+	}
+	for name, field := range map[string]struct {
+		value  *string
+		target **string
+	}{
+		"title":         {title, &update.Title},
+		"criterion":     {criterion, &update.Criterion},
+		"check":         {check, &update.Check},
+		"check-version": {checkVersion, &update.CheckVersion},
+		"check-value":   {checkValue, &update.CheckValue},
+	} {
+		if given[name] {
+			*field.target = field.value
+		}
+	}
+	if *clearCheck {
+		blank := ""
+		update.Check, update.CheckVersion, update.CheckValue = &blank, &blank, &blank
+	}
+	result, err := store.UpdateGate(slug, update, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
 		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
 	}
@@ -2375,6 +2392,8 @@ func archonErrorCode(err error) string {
 	switch {
 	case errors.Is(err, formations.ErrRunAdmission):
 		return "run_admission_failed"
+	case errors.Is(err, formations.ErrInvalidGateKind):
+		return "invalid_gate_kind"
 	case errors.Is(err, formations.ErrDefinitionPublicationUncertain):
 		return "definition_publication_uncertain"
 	case errors.Is(err, formations.ErrInvalidToolMutation):

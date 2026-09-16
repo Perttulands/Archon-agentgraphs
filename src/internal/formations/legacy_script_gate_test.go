@@ -246,7 +246,7 @@ func TestLegacyScriptGateNonCommandUpdatePreservesLegacySourceFields(t *testing.
 	}
 	updated, err := store.UpdateGate("session-search", GateUpdateRequest{
 		GateID:    "gate_review",
-		Title:     "Renamed legacy review",
+		Title:     stringPtr("Renamed legacy review"),
 		Kinds:     []string{"human"},
 		UpdatedBy: "agent:test",
 	}, WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})

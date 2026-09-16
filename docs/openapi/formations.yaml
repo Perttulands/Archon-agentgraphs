@@ -1027,6 +1027,38 @@ components:
               type: integer
             updatedBy:
               type: string
+        updateGate:
+          type: object
+          required:
+          - id
+          description: Sets only the fields present. An empty string clears title, criterion or a check field.
+            kinds, when present, must be a non-empty set of code, formation and human. Dropping formation detaches
+            the judge chain; dropping code clears the check. Unknown kinds return 400 INVALID_GATE_KIND.
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+            kinds:
+              type: array
+              minItems: 1
+              items:
+                enum:
+                - code
+                - formation
+                - human
+            criterion:
+              type: string
+            check:
+              type: string
+            checkVersion:
+              type: string
+            checkValue:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
         setGateJudge:
           type: object
           properties:
@@ -1075,8 +1107,8 @@ components:
       description: Select one authoring mutation and supply expectedRev plus If-Match. Nested expectedRev/updatedBy
         fields are accepted for several operations. Tool operations require the exact top-level frame
         and layoutExpectation; see formations_tools.go. setVerification and legacy gate command fields
-        are retired and rejected. removeVerification requires a replacement gate. No updateGate operation
-        is served; use offline ARCHON gate update.
+        are retired and rejected. removeVerification requires a replacement gate. updateGate and offline
+        archon gate update share the same store path.
     AgentCreate:
       type: object
       properties:

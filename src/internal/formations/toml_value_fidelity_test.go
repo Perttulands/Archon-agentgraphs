@@ -250,7 +250,7 @@ OLD_CRITERION_CONTINUATION_SHOULD_GO
 	board, err = store.UpdateGate("value-write", GateUpdateRequest{
 		GateID:    "gate_review",
 		Kinds:     []string{"human"},
-		Criterion: "Replacement # criterion",
+		Criterion: stringPtr("Replacement # criterion"),
 		UpdatedBy: "agent:test",
 	}, WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {

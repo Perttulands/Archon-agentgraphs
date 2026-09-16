@@ -85,6 +85,7 @@ type formationsBoardPatchRequest struct {
 	UnwireConnection              *formationsWireConnectionRequest        `json:"unwireConnection"`
 	RewireConnection              *formationsRewireConnectionRequest      `json:"rewireConnection"`
 	CreateGate                    *formationsCreateGateRequest            `json:"createGate"`
+	UpdateGate                    *formationsUpdateGateRequest            `json:"updateGate"`
 	SetGateJudge                  *formationsSetGateJudgeRequest          `json:"setGateJudge"`
 	DetachGateJudge               *formationsDetachGateJudgeRequest       `json:"detachGateJudge"`
 	CreateMission                 *formationsCreateMissionRequest         `json:"createMission"`
@@ -293,6 +294,7 @@ var boardPatchMutationKeys = []string{
 	"unwireConnection",
 	"rewireConnection",
 	"createGate",
+	"updateGate",
 	"setGateJudge",
 	"detachGateJudge",
 	"createMission",
@@ -329,7 +331,7 @@ func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
 		if !isExactToolFrameKey(key) {
 			presence.ToolFrameInvalid = true
 		}
-		if strings.EqualFold(key, "createGate") {
+		if strings.EqualFold(key, "createGate") || strings.EqualFold(key, "updateGate") {
 			legacyFieldsPresent, err := scanLegacyGateCommandFields(decoder)
 			if err != nil {
 				return boardPatchPresence{}, err
@@ -445,6 +447,20 @@ func skipJSONContainer(decoder *json.Decoder, opening json.Delim) error {
 	}
 	_, err := decoder.Token()
 	return err
+}
+
+// formationsUpdateGateRequest sets only the fields present in the JSON object.
+// An empty string clears a field; kinds, when present, must be non-empty.
+type formationsUpdateGateRequest struct {
+	ID           string   `json:"id"`
+	Title        *string  `json:"title"`
+	Kinds        []string `json:"kinds"`
+	Criterion    *string  `json:"criterion"`
+	Check        *string  `json:"check"`
+	CheckVersion *string  `json:"checkVersion"`
+	CheckValue   *string  `json:"checkValue"`
+	ExpectedRev  int      `json:"expectedRev"`
+	UpdatedBy    string   `json:"updatedBy"`
 }
 
 type formationsSetGateJudgeRequest struct {
@@ -1289,6 +1305,30 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		core.WriteSuccess(w, result)
 		return
 	}
+	if request.UpdateGate != nil {
+		update := request.UpdateGate
+		board, err := h.store.UpdateGate(slug, formations.GateUpdateRequest{
+			GateID:                     update.ID,
+			Title:                      update.Title,
+			Kinds:                      update.Kinds,
+			Criterion:                  update.Criterion,
+			Check:                      update.Check,
+			CheckVersion:               update.CheckVersion,
+			CheckValue:                 update.CheckValue,
+			LegacyCommandFieldsPresent: request.LegacyCommandFieldsPresent,
+			UpdatedBy:                  patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, update.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", board.ETag)
+		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		return
+	}
 	if request.SetGateJudge != nil {
 		judge := request.SetGateJudge
 		board, err := h.store.SetGateJudgeChain(slug, formations.GateJudgeRequest{
@@ -1522,6 +1562,8 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusServiceUnavailable, "DEFINITION_PUBLICATION_UNCERTAIN", "Reload both board and layout before any explicit retry")
 	case errors.Is(err, formations.ErrInvalidToolMutation):
 		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_TOOL_MUTATION", "Tool mutation is invalid")
+	case errors.Is(err, formations.ErrInvalidGateKind):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_GATE_KIND", err.Error())
 	case errors.Is(err, formations.ErrInvalidCodeGateProfile):
 		core.WriteError(w, http.StatusUnprocessableEntity, formations.FindingInvalidCodeGateProfile, err.Error())
 	case errors.Is(err, formations.ErrInvalidDefinitionSource):

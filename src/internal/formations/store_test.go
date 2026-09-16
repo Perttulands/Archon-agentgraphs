@@ -1105,7 +1105,7 @@ y = 300
 	}
 	boardAfter, err := store.UpdateGate("arrange-stale", GateUpdateRequest{
 		GateID: "gate_check",
-		Title:  "Check updated",
+		Title:  stringPtr("Check updated"),
 	}, WriteOptions{ExpectedETag: boardBefore.ETag, ExpectedRev: boardBefore.Rev})
 	if err != nil {
 		t.Fatalf("update gate definition: %v", err)
