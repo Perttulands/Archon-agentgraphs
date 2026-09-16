@@ -200,7 +200,9 @@ receive it. It proves routing, not agent work or the truth of a review.
 The cockpit lists a board's runs from the daemon, so runs started by the CLI,
 an agent or another browser appear. It shows the open run that most needs the
 operator: waiting for a human, then running, then blocked, newest first. A
-picker switches between open runs. `/?board=<slug>&run=<runId>`, the link that
+picker switches between open runs and the board's ten most recent finished
+runs; when no run is open, the run bar still offers the finished ones, and a
+reopened finished run can be put away again. `/?board=<slug>&run=<runId>`, the link that
 notifications carry, opens that board and keeps that run shown. The address bar
 keeps a chosen run across reloads, and an unknown linked board or run is
 reported rather than silently replaced.

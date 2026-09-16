@@ -16,3 +16,5 @@
 .fmx .run-banner button.run-point:disabled{cursor:default;}
 .fmx .run-banner button.run-point.waiting{color:var(--gold);}
 .fmx .run-banner button.run-point.blocked,.fmx .run-banner button.run-point.failed{color:var(--terra-d);}
+
+.fmx .run-banner .run-none{color:var(--dim);}

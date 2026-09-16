@@ -2295,7 +2295,10 @@ describe('FormationsCockpit reference parity', () => {
 
     const picker = await screen.findByRole('combobox', { name: 'Choose run' })
     expect(picker).toHaveValue('run_01A')
-    expect(within(picker).getAllByRole('option').map(option => option.getAttribute('value'))).toEqual(['run_01A', 'run_01B'])
+    expect(within(picker).getAllByRole('group').map(group => [group.getAttribute('label'), within(group).getAllByRole('option').map(option => option.getAttribute('value'))])).toEqual([
+      ['Open', ['run_01A', 'run_01B']],
+      ['Finished', ['run_01C']],
+    ])
     expect(await screen.findByRole('dialog', { name: 'Answer gate Review' })).toBeInTheDocument()
 
     fireEvent.change(picker, { target: { value: 'run_01B' } })
@@ -2466,6 +2469,50 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(within(judgeFiles).getByRole('button', { name: 'Open file /elsewhere/judge.md' }))
     expect(await screen.findByRole('dialog', { name: 'file judge.md' })).toHaveTextContent('Judge (judge) · /elsewhere/judge.md')
     expect(recordedMutations).toEqual([])
+  })
+
+  it('reopens a finished run from the run bar and puts it away again', async () => {
+    installRunsMock([
+      { runId: 'run_01M2A0OLDER', status: 'failed', final: true, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 3 },
+      { runId: 'run_01M2B0NEWER', status: 'succeeded', final: true, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 2 },
+    ], {
+      run_01M2B0NEWER: [
+        { runId: 'run_01M2B0NEWER', seq: 1, type: 'node_output', nodeId: 'fmn_frame', status: 'done' },
+        { runId: 'run_01M2B0NEWER', seq: 2, type: 'run_succeeded' },
+      ],
+    })
+    const projection = globalThis.fetch
+    const text = (value: string) => ({ text: value, bytes: value.length })
+    const evidence: Record<string, unknown> = {
+      '/api/formations/runs/run_01M2B0NEWER/evidence/nodes/fmn_frame': { evidence: { runId: 'run_01M2B0NEWER', nodeId: 'fmn_frame', kind: 'formation', attempts: [
+        { attempt: 1, inputs: [], dispatches: [], output: { seq: 1, text: text('# Frame'), ports: [{ portId: 'port_frame_out', text: text('# Frame'), ref: { artifact: 'frame.md' } }] } },
+      ] } },
+      '/api/formations/runs/run_01M2B0NEWER/evidence/artifacts': { artifacts: [{ name: 'frame.md', size: 7, modifiedAt: '' }], truncated: false },
+    }
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) in evidence
+      ? Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data: evidence[String(input)] }) } as unknown as Response)
+      : projection(input, init)) as typeof fetch
+    await renderCockpit()
+
+    const idle = await screen.findByTestId('run-banner-idle')
+    expect(idle).toHaveTextContent('no open run')
+    expect(screen.queryByTestId('run-banner')).toBeNull()
+    const picker = within(idle).getByRole('combobox', { name: 'Choose run' })
+    expect(picker).toHaveValue('')
+    expect(within(picker).getAllByRole('option').map(option => option.textContent)).toEqual(['Recent runs…', 'succeeded · …0NEWER', 'failed · …0OLDER'])
+
+    fireEvent.change(picker, { target: { value: 'run_01M2B0NEWER' } })
+    const banner = await screen.findByTestId('run-banner')
+    expect(banner).toHaveTextContent('succeeded')
+    expect(window.location.search).toBe('?board=test-board&run=run_01M2B0NEWER')
+    await waitFor(() => expect(within(banner).getByRole('button', { name: 'frame.md' })).toBeInTheDocument())
+    const shown = within(banner).getByRole('combobox', { name: 'Choose run' })
+    expect(shown).toHaveValue('run_01M2B0NEWER')
+
+    fireEvent.change(shown, { target: { value: '' } })
+    expect(await screen.findByTestId('run-banner-idle')).toBeInTheDocument()
+    expect(screen.queryByTestId('run-banner')).toBeNull()
+    expect(window.location.search).toBe('?board=test-board')
   })
 
   it('answers a pending human gate from its upstream output', async () => {

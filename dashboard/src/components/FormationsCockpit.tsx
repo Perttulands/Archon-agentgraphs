@@ -46,7 +46,7 @@ import {
   runStatusFromResponse,
   upsertRunEvent,
 } from './formationsRunState'
-import { chooseBoardRun, openRunsByAttention, readRunLink, runChoiceLabel, runLinkSearch } from './formationsRunDiscovery'
+import { chooseBoardRun, readRunLink, runChoiceLabel, runChoices, runLinkSearch } from './formationsRunDiscovery'
 import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
 import { FormationSeats, GATE_SVG, PLAY_SVG, slotTooltip, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
 import { useEscapeKey } from './useEscapeKey'
@@ -2273,10 +2273,29 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     [board?.formations],
   )
   const runBadgeClass = activeRun ? activeRun.status : ''
-  const runChoices = useMemo(() => {
-    const open = openRunsByAttention(boardRuns)
-    return activeRun && !open.some(run => run.runId === activeRun.runId) ? [activeRun, ...open] : open
-  }, [activeRun, boardRuns])
+  const choices = useMemo(() => runChoices(boardRuns, activeRun), [activeRun, boardRuns])
+  // Choosing a run pins it to the board; choosing none puts a finished run away.
+  const chooseRun = (runId: string) => {
+    setLinkError('')
+    if (runId) {
+      setPinnedRun({ slug: selectedSlug, runId })
+      return
+    }
+    setPinnedRun({ slug: '', runId: '' })
+    setActiveRun(null)
+    setRunEvents([])
+  }
+  const runPicker = (shownRunId: string) => (
+    <select className="run-picker" aria-label="Choose run" value={shownRunId} onChange={event => chooseRun(event.target.value)}>
+      {!shownRunId ? <option value="">Recent runs…</option> : activeRun?.final ? <option value="">No run shown</option> : null}
+      {choices.open.length ? (
+        <optgroup label="Open">{choices.open.map(run => <option key={run.runId} value={run.runId}>{runChoiceLabel(run)}</option>)}</optgroup>
+      ) : null}
+      {choices.finished.length ? (
+        <optgroup label="Finished">{choices.finished.map(run => <option key={run.runId} value={run.runId}>{runChoiceLabel(run)}</option>)}</optgroup>
+      ) : null}
+    </select>
+  )
   const pendingHumanGateId = useMemo(() => openHumanGateId(runEvents), [runEvents])
   const pendingHumanGate = useMemo(() => {
     if (!pendingHumanGateId) return null
@@ -2479,23 +2498,18 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 <span className={`badge ${runBadgeClass}`}>{activeRun.status}</span>
                 <RunPoint runId={activeRun.runId} point={runPoint} title={runPointTitle} onLocate={locateAndOpenNode} />
                 <RunProduced />
-                {runChoices.length > 1 ? (
-                  <select
-                    className="run-picker"
-                    aria-label="Choose run"
-                    value={activeRun.runId}
-                    onChange={event => {
-                      setLinkError('')
-                      setPinnedRun({ slug: selectedSlug, runId: event.target.value })
-                    }}
-                  >
-                    {runChoices.map(run => <option key={run.runId} value={run.runId}>{runChoiceLabel(run)}</option>)}
-                  </select>
-                ) : null}
+                {activeRun.final || choices.open.length + choices.finished.length > 1 ? runPicker(activeRun.runId) : null}
                 {activeRun.cwd && <span className="run-cwd" title={activeRun.cwd}>{activeRun.cwd}</span>}
                 {activeRun.beadId && <span>{activeRun.beadId}</span>}
                 {!activeRun.final && activeRun.resumeAllowed ? <button type="button" onClick={() => void resumeActiveRun()}>Resume run</button> : null}
                 {!activeRun.final ? <button type="button" onClick={() => void abortActiveRun()}>stop</button> : null}
+              </div>
+            ) : choices.finished.length ? (
+              // No run is shown, but finished runs can be reopened to read what they produced.
+              <div className="run-banner idle" data-testid="run-banner-idle">
+                <span>run</span>
+                <span className="run-none">no open run</span>
+                {runPicker('')}
               </div>
             ) : null}
         <div className="viewport" data-testid="formations-canvas" ref={viewportRef} onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
