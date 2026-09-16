@@ -121,13 +121,6 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	method := "GET"
 	var body any
 	switch args[0] + " " + args[1] {
-	case "board list":
-		path += "/boards"
-	case "board inspect":
-		if len(pos) != 1 {
-			return remoteUsage(stderr)
-		}
-		path += "/boards/" + url.PathEscape(pos[0])
 	case "mission run":
 		if len(pos) != 1 || *mission == "" {
 			return remoteUsage(stderr)
@@ -219,6 +212,6 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 func remoteUsage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "use board, mission, formation, gate and agent authoring commands, mission run <board> --mission <id>, run status|logs|follow <run>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text]")
+	fmt.Fprintln(stderr, "use board, mission, formation, gate and agent authoring and read commands, mission run <board> --mission <id>, run status|logs|follow <run>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text]")
 	return 2
 }

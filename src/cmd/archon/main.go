@@ -355,7 +355,12 @@ func runAgentList(store *formations.PersonaStore, args []string, stdout, stderr 
 		return fail(stderr, err)
 	}
 	archonExposeTmuxTargetSessions(&roster)
-	if *jsonOut {
+	return writeAgentList(stdout, roster, *jsonOut)
+}
+
+// writeAgentList prints an agent roster for agent list, offline and remote.
+func writeAgentList(stdout io.Writer, roster formations.AgentRoster, jsonOut bool) int {
+	if jsonOut {
 		return writeJSON(stdout, roster)
 	}
 	for _, agent := range roster.Agents {
@@ -379,8 +384,13 @@ func runAgentInspect(store *formations.PersonaStore, args []string, stdout, stde
 	if err != nil {
 		return fail(stderr, err)
 	}
+	return writeAgentInspect(stdout, card, *jsonOut)
+}
+
+// writeAgentInspect prints one agent card for agent inspect, offline and remote.
+func writeAgentInspect(stdout io.Writer, card *formations.PersonaCard, jsonOut bool) int {
 	card.TOML = ""
-	if *jsonOut {
+	if jsonOut {
 		return writeJSON(stdout, card)
 	}
 	fmt.Fprintf(stdout, "%s\t%s\t%s\n", card.ID, card.Kind, strings.Join(card.Tags, ","))
@@ -1272,11 +1282,16 @@ func runMissionList(store *formations.Store, args []string, stdout, stderr io.Wr
 	if err != nil {
 		return fail(stderr, err)
 	}
+	return writeMissionList(stdout, board, *jsonOut)
+}
+
+// writeMissionList prints a board's missions for mission list, offline and remote.
+func writeMissionList(stdout io.Writer, board *formations.BoardDocument, jsonOut bool) int {
 	response := archonMissionListResponse{
 		Board:    identityFromBoard(board),
 		Missions: board.Missions,
 	}
-	if *jsonOut {
+	if jsonOut {
 		return writeJSON(stdout, response)
 	}
 	for _, mission := range response.Missions {
@@ -1304,13 +1319,19 @@ func runMissionInspect(store *formations.Store, args []string, stdout, stderr io
 	if err != nil {
 		return fail(stderr, err)
 	}
-	missionID, err := resolveMissionSelector(board, fs.Arg(1))
+	return writeMissionInspect(stdout, stderr, board, fs.Arg(1), *jsonOut)
+}
+
+// writeMissionInspect resolves a mission on a read board and prints it with its
+// reachable chain, for mission inspect offline and remote.
+func writeMissionInspect(stdout, stderr io.Writer, board *formations.BoardDocument, selector string, jsonOut bool) int {
+	missionID, err := resolveMissionSelector(board, selector)
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(1))
+		return failSelector(stderr, err, jsonOut, "mission", selector)
 	}
 	mission, ok := missionByID(board, missionID)
 	if !ok {
-		return failSelector(stderr, fmt.Errorf("%w: mission %q", formations.ErrNotFound, missionID), *jsonOut, "mission", missionID)
+		return failSelector(stderr, fmt.Errorf("%w: mission %q", formations.ErrNotFound, missionID), jsonOut, "mission", missionID)
 	}
 	chain, connections, err := missionReachableChain(board, missionID)
 	if err != nil {
@@ -1322,7 +1343,7 @@ func runMissionInspect(store *formations.Store, args []string, stdout, stderr io
 		Chain:       chain,
 		Connections: connections,
 	}
-	if *jsonOut {
+	if jsonOut {
 		return writeJSON(stdout, response)
 	}
 	fmt.Fprintf(stdout, "%s\t%s\t%d reachable nodes\n", mission.ID, mission.Title, len(chain))
@@ -2047,7 +2068,13 @@ func runBoardList(store *formations.Store, args []string, stdout, stderr io.Writ
 	if err != nil {
 		return fail(stderr, err)
 	}
-	if *jsonOut {
+	return writeBoardList(stdout, boards, *jsonOut)
+}
+
+// writeBoardList prints board summaries for board list and formation list,
+// offline and remote.
+func writeBoardList(stdout io.Writer, boards []formations.BoardSummary, jsonOut bool) int {
+	if jsonOut {
 		return writeJSON(stdout, map[string]interface{}{"boards": boards})
 	}
 	for _, board := range boards {
@@ -2075,11 +2102,17 @@ func runBoardInspect(store *formations.Store, args []string, stdout, stderr io.W
 	if err != nil {
 		return fail(stderr, err)
 	}
+	return writeBoardInspect(stdout, board, *jsonOut)
+}
+
+// writeBoardInspect prints one board for board inspect and formation inspect,
+// offline and remote.
+func writeBoardInspect(stdout io.Writer, board *formations.BoardDocument, jsonOut bool) int {
 	board.TOML = ""
-	if *jsonOut {
+	if jsonOut {
 		return writeJSON(stdout, board)
 	}
-	fmt.Fprintf(stdout, "%s	%s	%d	%d formations\n", board.Slug, board.Title, board.Rev, len(board.Formations))
+	fmt.Fprintf(stdout, "%s\t%s\t%d\t%d formations\n", board.Slug, board.Title, board.Rev, len(board.Formations))
 	return 0
 }
 
@@ -2318,13 +2351,7 @@ func runFormationList(store *formations.Store, args []string, stdout, stderr io.
 	if err != nil {
 		return fail(stderr, err)
 	}
-	if *jsonOut {
-		return writeJSON(stdout, map[string]interface{}{"boards": boards})
-	}
-	for _, board := range boards {
-		fmt.Fprintf(stdout, "%s\t%s\t%d\n", board.Slug, board.Title, board.Rev)
-	}
-	return 0
+	return writeBoardList(stdout, boards, *jsonOut)
 }
 
 func runFormationInspect(store *formations.Store, args []string, stdout, stderr io.Writer) int {
@@ -2346,12 +2373,7 @@ func runFormationInspect(store *formations.Store, args []string, stdout, stderr 
 	if err != nil {
 		return fail(stderr, err)
 	}
-	board.TOML = ""
-	if *jsonOut {
-		return writeJSON(stdout, board)
-	}
-	fmt.Fprintf(stdout, "%s\t%s\t%d\t%d formations\n", board.Slug, board.Title, board.Rev, len(board.Formations))
-	return 0
+	return writeBoardInspect(stdout, board, *jsonOut)
 }
 
 func liveFromRunner(runner tmuxRunner) ([]formations.LiveAgentSession, error) {

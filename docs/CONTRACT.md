@@ -530,25 +530,28 @@ There is no generic file reader, transcript endpoint, board import endpoint or
 authentication layer. Run evidence reads only one run's ledger, its artifact
 directory and the briefs its own dispatches recorded.
 
-With `--server`, Archon runs these authoring commands through the daemon, so an
-open cockpit sees the edits through its change polling: `board
-new|notes|note|validate|arrange`, `mission create|update|wire`, `formation
-create|rename|set-type|assign|unassign|set-brief|add-input|add-output|wire|unwire`,
-`gate create|update|judge` and `agent new|edit`. They take the offline flags and
-print the offline output: unwrapped JSON without TOML, or the same text. Each
-command reads the document it changes, resolves formation, gate and mission
-selectors from that read, and writes with its ETag and board revision. A write
-that loses to another editor is read and retried up to three times. Differences
-from offline use:
+With `--server`, Archon runs these authoring and read commands through the
+daemon, so an open cockpit sees the edits through its change polling: `board
+list|inspect|new|notes|note|validate|arrange`, `mission
+list|inspect|create|update|wire`, `formation
+list|inspect|create|rename|set-type|assign|unassign|set-brief|add-input|add-output|wire|unwire`,
+`gate create|update|judge` and `agent list|inspect|new|edit`. They take the
+offline flags and print the offline output: unwrapped JSON without TOML, or the
+same text. Each command reads the document it changes, resolves formation, gate
+and mission selectors from that read, and writes with its ETag and board
+revision. A write that loses to another editor is read and retried up to three
+times. Differences from offline use:
 
 - Error messages come from the daemon (`coordinator HTTP <status>: ...`). JSON
   error codes, boundaries and selectors match.
-- Agent cards are the daemon's `--agents-dir`, and `agent new --from` names a
-  path on the daemon host. `board note --file` reads locally.
-- `board list`, `board inspect` and runtime commands keep printing the daemon's
-  `{success,timestamp,data}` envelope. `tool`, `mission list|inspect`,
-  `formation list|inspect|remove-verification|run`, `run ask` and `agent
-  list|inspect|spawn|attach|retire` remain offline only.
+- Agent cards are the daemon's `--agents-dir`, with the liveness the daemon
+  reports, and `agent new --from` names a path on the daemon host. `board note
+  --file` reads locally.
+- Runtime commands (`mission run`, `run`, `gate approve|reject`) print the
+  daemon's `{success,timestamp,data}` envelope; `board list` and `board
+  inspect` print offline JSON like the other reads. `tool`, `formation
+  remove-verification|run`, `run ask` and `agent spawn|attach|retire` remain
+  offline only.
 
 `GET /api/formations/boards/{board}/validation` returns
 `{boardRev,boardEtag,errors,warnings}` for the whole board, the same report as

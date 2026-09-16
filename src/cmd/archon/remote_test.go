@@ -336,6 +336,15 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("board", "notes", "demo"))},
 		{args: with(fixed("board", "arrange", "demo"))},
 		{args: with(fixed("board", "validate", "demo"))},
+		{args: with(fixed("board", "list"))},
+		{args: with(fixed("board", "inspect", "demo"))},
+		{args: with(fixed("formation", "list"))},
+		{args: with(fixed("formation", "inspect", "demo"))},
+		{args: with(fixed("mission", "list", "demo"))},
+		{args: with(fixed("mission", "inspect", "demo", "Work"))},
+		{args: with(fixed("agent", "list"))},
+		{args: with(fixed("agent", "list", "--capable", "research", "--assignable"))},
+		{args: with(fixed("agent", "inspect", "scout-x"))},
 		{args: with(fixed("formation", "rename", "demo", "Nobody", "Ghost")), errorOnly: true},
 		{args: with(fixed("gate", "update", "demo", "Nobody", "--title", "Ghost")), errorOnly: true},
 		{args: with(fixed("mission", "wire", "demo", "Nobody", "x:y")), errorOnly: true},
@@ -344,6 +353,10 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--bead", "chlab/123")), errorOnly: true},
 		{args: with(fixed("gate", "create", "demo", "--command", "make test")), errorOnly: true},
 		{args: with(fixed("formation", "create", "missing-board")), errorOnly: true},
+		{args: with(fixed("board", "inspect", "missing-board")), errorOnly: true},
+		{args: with(fixed("mission", "list", "missing-board")), errorOnly: true},
+		{args: with(fixed("mission", "inspect", "demo", "Nobody")), errorOnly: true},
+		{args: with(fixed("agent", "inspect", "nobody-here")), errorOnly: true},
 	}
 	return steps
 }

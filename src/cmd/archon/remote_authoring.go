@@ -12,13 +12,13 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// Authoring through --server translates each offline authoring command into the
-// daemon's board, notes, layout and agent routes, so an agent's edits reach an
-// open cockpit through its change polling. A command reads the document it
-// changes, resolves selectors as the offline command does, and writes with that
-// document's ETag (and board revision). When another editor wrote first, it
+// Authoring through --server translates each offline authoring and read command
+// into the daemon's board, notes, layout and agent routes, so an agent's edits
+// reach an open cockpit through its change polling. A command reads the document
+// it changes, resolves selectors as the offline command does, and writes with
+// that document's ETag (and board revision). When another editor wrote first, it
 // reads again and retries. Output matches the offline command: unwrapped JSON
-// without TOML, or the same line of text.
+// without TOML, or the same text, printed by the writer both paths share.
 //
 // A new board operation is one entry here: parse its flags, then patchBoard
 // with a builder that resolves selectors and returns the operation.
@@ -26,14 +26,20 @@ import (
 type remoteAuthoringCommand func(c *remoteClient, args []string, stdout, stderr io.Writer) int
 
 var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
+	"board list":           remoteBoardList("board"),
+	"board inspect":        remoteBoardInspect("board"),
 	"board new":            remoteBoardNew,
 	"board notes":          remoteBoardNotes,
 	"board note":           remoteBoardNote,
 	"board validate":       remoteBoardValidate,
 	"board arrange":        remoteBoardArrange,
+	"mission list":         remoteMissionList,
+	"mission inspect":      remoteMissionInspect,
 	"mission create":       remoteMissionCreate,
 	"mission update":       remoteMissionUpdate,
 	"mission wire":         remoteMissionWire,
+	"formation list":       remoteBoardList("formation"),
+	"formation inspect":    remoteBoardInspect("formation"),
 	"formation create":     remoteFormationCreate,
 	"formation rename":     remoteFormationRename,
 	"formation set-type":   remoteFormationSetType,
@@ -47,6 +53,8 @@ var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
 	"gate create":          remoteGateCreate,
 	"gate update":          remoteGateUpdate,
 	"gate judge":           remoteGateJudge,
+	"agent list":           remoteAgentList,
+	"agent inspect":        remoteAgentInspect,
 	"agent new":            remoteAgentNew,
 	"agent edit":           remoteAgentEdit,
 }
@@ -289,6 +297,46 @@ func remoteBoardNew(c *remoteClient, args []string, stdout, stderr io.Writer) in
 	return 0
 }
 
+// remoteBoardList serves board list and its older name, formation list.
+func remoteBoardList(noun string) remoteAuthoringCommand {
+	return func(c *remoteClient, args []string, stdout, stderr io.Writer) int {
+		fs := remoteFlags(noun+" list", stderr)
+		jsonOut := fs.Bool("json", false, "write JSON")
+		if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+			return 2
+		}
+		data, _, err := c.call("GET", "/api/formations/boards", nil, "")
+		if err != nil {
+			return fail(stderr, err)
+		}
+		boards, err := decodeRemote[[]formations.BoardSummary](data, "boards")
+		if err != nil {
+			return fail(stderr, err)
+		}
+		return writeBoardList(stdout, *boards, *jsonOut)
+	}
+}
+
+// remoteBoardInspect serves board inspect and its older name, formation inspect.
+func remoteBoardInspect(noun string) remoteAuthoringCommand {
+	return func(c *remoteClient, args []string, stdout, stderr io.Writer) int {
+		fs := remoteFlags(noun+" inspect", stderr)
+		jsonOut := fs.Bool("json", false, "write JSON")
+		if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+			return 2
+		}
+		if fs.NArg() != 1 {
+			fmt.Fprintf(stderr, "usage: archon %s inspect <board> [--json]\n", noun)
+			return 2
+		}
+		board, err := c.readBoard(fs.Arg(0))
+		if err != nil {
+			return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		}
+		return writeBoardInspect(stdout, board, *jsonOut)
+	}
+}
+
 func remoteBoardNotes(c *remoteClient, args []string, stdout, stderr io.Writer) int {
 	fs := remoteFlags("board notes", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
@@ -434,6 +482,40 @@ func remoteBoardArrange(c *remoteClient, args []string, stdout, stderr io.Writer
 	}
 	fmt.Fprintf(stdout, "arranged %s\n", board.Slug)
 	return 0
+}
+
+func remoteMissionList(c *remoteClient, args []string, stdout, stderr io.Writer) int {
+	fs := remoteFlags("mission list", stderr)
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(stderr, "usage: archon mission list <board> [--json]")
+		return 2
+	}
+	board, err := c.readBoard(fs.Arg(0))
+	if err != nil {
+		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+	}
+	return writeMissionList(stdout, board, *jsonOut)
+}
+
+func remoteMissionInspect(c *remoteClient, args []string, stdout, stderr io.Writer) int {
+	fs := remoteFlags("mission inspect", stderr)
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
+	}
+	if fs.NArg() != 2 {
+		fmt.Fprintln(stderr, "usage: archon mission inspect <board> <mission> [--json]")
+		return 2
+	}
+	board, err := c.readBoard(fs.Arg(0))
+	if err != nil {
+		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+	}
+	return writeMissionInspect(stdout, stderr, board, fs.Arg(1), *jsonOut)
 }
 
 func remoteMissionCreate(c *remoteClient, args []string, stdout, stderr io.Writer) int {
@@ -909,6 +991,58 @@ func writeRemoteAgent(stdout, stderr io.Writer, data json.RawMessage, jsonOut bo
 	}
 	fmt.Fprintf(stdout, "%s %s\n", verb, card.ID)
 	return 0
+}
+
+// agent list reports the liveness the daemon sees, not the local tmux server.
+func remoteAgentList(c *remoteClient, args []string, stdout, stderr io.Writer) int {
+	fs := remoteFlags("agent list", stderr)
+	jsonOut := fs.Bool("json", false, "write JSON")
+	capable := fs.String("capable", "", "filter by bare capability")
+	assignable := fs.Bool("assignable", false, "show assignable agents only")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true, "assignable": true})); err != nil {
+		return 2
+	}
+	query := url.Values{}
+	if *capable != "" {
+		query.Set("capable", *capable)
+	}
+	if *assignable {
+		query.Set("assignable", "true")
+	}
+	path := "/api/agents"
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+	data, _, err := c.call("GET", path, nil, "")
+	if err != nil {
+		return fail(stderr, err)
+	}
+	agents, err := decodeRemote[[]formations.AgentProjection](data, "agents")
+	if err != nil {
+		return fail(stderr, err)
+	}
+	return writeAgentList(stdout, formations.AgentRoster{Agents: *agents}, *jsonOut)
+}
+
+func remoteAgentInspect(c *remoteClient, args []string, stdout, stderr io.Writer) int {
+	fs := remoteFlags("agent inspect", stderr)
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(stderr, "usage: archon agent inspect <id> [--json]")
+		return 2
+	}
+	data, _, err := c.call("GET", "/api/agents/"+url.PathEscape(fs.Arg(0)), nil, "")
+	if err != nil {
+		return fail(stderr, err)
+	}
+	card, err := decodeRemote[formations.PersonaCard](data, "")
+	if err != nil {
+		return fail(stderr, err)
+	}
+	return writeAgentInspect(stdout, card, *jsonOut)
 }
 
 // Agent cards are the daemon's (its --agents-dir), and --from names a path on
