@@ -16,6 +16,9 @@ import type {
   MissionNode,
   PersonaCard,
 } from '../components/formationsTypes'
+import { useFileWindows } from '../files/FileWindows'
+import { ProducedFiles } from '../files/ProducedFiles'
+import { referencedFileRequest } from '../files/fileWindowModel'
 import FloatingWindow from '../windows/FloatingWindow'
 import { EditableField } from './EditableField'
 import { judgeChain, nodeRoutes, stepNumbers } from './boardRoutes'
@@ -40,6 +43,8 @@ export interface NodeWindowOps {
   attachJudge: (gate: GateNode, chain: string[]) => void
   detachJudge: (gate: GateNode) => void
   openNode: (nodeId: string) => void
+  /** Opens the node's note thread in its own note window. */
+  openNotes: (nodeId: string) => void
   inspectEvidence: (nodeId: string) => void
 }
 
@@ -86,11 +91,13 @@ export function nodeWindowLabel(located: Located): string {
   return `${KIND_WORD[located.kind]} · ${located.node.title || UNTITLED[located.kind]}`
 }
 
-export default function NodeWindow({ nodeId, board, agents, profiles, runState, onClose, ops }: {
+export default function NodeWindow({ nodeId, board, agents, profiles, noteCount, runState, onClose, ops }: {
   nodeId: string
   board: BoardDocument
   agents: AgentProjection[]
   profiles: CodeGateProfileDescriptor[]
+  /** Entries in the node's note thread. */
+  noteCount: number
   /** The node's state in the run on the canvas; undefined when the run has not reached it. */
   runState: NodeRunState | undefined
   onClose: () => void
@@ -119,6 +126,13 @@ export default function NodeWindow({ nodeId, board, agents, profiles, runState, 
         {located.kind === 'mission' ? <MissionFields mission={located.node} ops={ops} /> : null}
         {located.kind === 'formation' ? <FormationFields formation={located.node} agents={agents} ops={ops} /> : null}
         {located.kind === 'gate' ? <GateFields gate={located.node} board={board} profiles={profiles} ops={ops} /> : null}
+        <section className="nwin-section" aria-label="Notes">
+          <h3>Notes</h3>
+          <div className="nwin-run">
+            <span className="nwin-notes">{noteCount ? `${noteCount} ${noteCount === 1 ? 'entry' : 'entries'} in the thread` : 'No notes yet'}</span>
+            <button type="button" className="nwin-action" onClick={() => ops.openNotes(nodeId)}>{noteCount ? 'Open notes' : 'Add a note'}</button>
+          </div>
+        </section>
         <section className="nwin-section" aria-label="Connections">
           <h3>Connections</h3>
           <ul className="nwin-routes">
@@ -138,6 +152,7 @@ export default function NodeWindow({ nodeId, board, agents, profiles, runState, 
               <span className={`nwin-state state-${runState || 'idle'}`}>{RUN_STATE_WORDS[runState]}</span>
               <button type="button" className="nwin-action" onClick={() => ops.inspectEvidence(nodeId)}>Open run evidence</button>
             </div>
+            <ProducedFiles nodeId={nodeId} className="nwin-produced" />
           </section>
         ) : null}
       </div>
@@ -156,7 +171,7 @@ function MissionFields({ mission, ops }: { mission: MissionNode; ops: NodeWindow
         onSave={inputHint => ops.updateMission(mission.id, { inputHint })} />
       <EditableField label="Bead" value={mission.beadId} placeholder="No Bead" hint={BEAD_HINT} validate={beadProblem}
         onSave={beadId => ops.updateMission(mission.id, { beadId })} />
-      <FilesField files={mission.files} onSave={files => ops.updateMission(mission.id, { files })} />
+      <FilesField files={mission.files} context={mission.title} onSave={files => ops.updateMission(mission.id, { files })} />
     </>
   )
 }
@@ -185,7 +200,7 @@ function FormationFields({ formation, agents, ops }: { formation: FormationNode;
         onSave={goal => saveBrief({ goal })} />
       <EditableField label="Bead" value={brief.beadId || ''} placeholder="No Bead" hint={BEAD_HINT} validate={beadProblem}
         onSave={beadId => saveBrief({ beadId })} />
-      <FilesField files={brief.files} onSave={files => saveBrief({ files })} />
+      <FilesField files={brief.files} context={formation.title} onSave={files => saveBrief({ files })} />
       <EditableField label="Links" value={(brief.links || []).join(', ')} placeholder="No links" hint="Separate links with commas."
         onSave={links => saveBrief({ links: splitList(links) })}>
         {brief.links?.length ? <ul className="nwin-list">{brief.links.map(link => <li key={link}>{link}</li>)}</ul> : null}
@@ -200,11 +215,28 @@ function FormationFields({ formation, agents, ops }: { formation: FormationNode;
   )
 }
 
-/** Reference files, one per line when read, comma-separated when edited. */
-function FilesField({ files, hint = 'Separate files with commas.', onSave }: { files: string[] | undefined; hint?: string; onSave: (files: string[]) => Promise<boolean> }) {
+/** Reference files, one per line when read and each opened in a file window, comma-separated when edited. */
+function FilesField({ files, context, hint = 'Separate files with commas.', onSave }: {
+  files: string[] | undefined
+  /** The node the files belong to, named in each file window. */
+  context: string
+  hint?: string
+  onSave: (files: string[]) => Promise<boolean>
+}) {
+  const fileWindows = useFileWindows()
   return (
     <EditableField label="Files" value={(files || []).join(', ')} placeholder="No files" hint={hint} onSave={value => onSave(splitList(value))}>
-      {files?.length ? <ul className="nwin-list">{files.map(file => <li key={file}>{file}</li>)}</ul> : null}
+      {files?.length ? (
+        <ul className="nwin-list">
+          {files.map(file => (
+            <li key={file}>
+              {fileWindows
+                ? <button type="button" className="nwin-route" aria-label={`Open file ${file}`} onClick={() => fileWindows.open(referencedFileRequest(file, context))}>{file}</button>
+                : file}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </EditableField>
   )
 }
@@ -269,7 +301,7 @@ function GateFields({ gate, board, profiles, ops }: { gate: GateNode; board: Boa
       <GateKindsEditor gate={gate} profiles={profiles} hasJudgeChain={chain.length > 0} ops={ops} />
       <EditableField label="Criterion" value={gate.criterion} multiline markdown placeholder="No criterion yet. Say what passes."
         onSave={criterion => ops.updateGate(gate, { ...draftFromGate(gate), criterion })} />
-      <FilesField files={gate.files} hint="Separate files with commas. A rubric belongs here." onSave={files => ops.setGateFiles(gate, files)} />
+      <FilesField files={gate.files} context={gate.title} hint="Separate files with commas. A rubric belongs here." onSave={files => ops.setGateFiles(gate, files)} />
       {judged ? (
         <div className="nfield">
           <div className="nfield-head"><label className="nfield-label" htmlFor={`judge-${gate.id}`}>Judge</label></div>

@@ -1620,7 +1620,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.change(within(mission).getByRole('textbox', { name: 'Files' }), { target: { value: 'docs/sketch.md, docs/copy.md' } })
     fireEvent.click(within(mission).getByRole('button', { name: 'Save files' }))
     await waitFor(() => expect(patches.find(patch => patch.body.updateMission)?.body.updateMission).toEqual({ id: 'mis_showcase', files: ['docs/sketch.md', 'docs/copy.md'] }))
-    expect((await within(mission).findByText('docs/copy.md')).tagName).toBe('LI')
+    expect(await within(mission).findByRole('button', { name: 'Open file docs/copy.md' })).toBeInTheDocument()
 
     const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
     fireEvent.click(within(review).getByRole('button', { name: 'Edit files' }))
@@ -1632,6 +1632,32 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => expect(patches.filter(patch => patch.body.updateGate).slice(-1)[0]?.body.updateGate).toEqual({ id: 'gate_review', files: [] }))
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', files: [] }))
+  })
+
+  it('opens the node thread and referenced files from a node window without copying them', async () => {
+    const referenced = makeBoard()
+    referenced.formations = [{ ...formation, brief: { goal: 'Frame it', files: ['docs/sketch.md'] } }, judgeFormation] as TestBoard['formations']
+    patches = installFetchMock({
+      boards: [referenced],
+      boardNotes: { elements: [{ nodeId: 'fmn_frame', entries: [noteEntry('nte_1', 'human:operator', 'Keep the frame narrow')] }] },
+    })
+    await renderCockpit()
+    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
+    const notes = within(frame).getByRole('region', { name: 'Notes' })
+    expect(notes).toHaveTextContent('1 entry in the thread')
+    expect(within(frame).queryByText('Keep the frame narrow')).toBeNull()
+    fireEvent.click(within(notes).getByRole('button', { name: 'Open notes' }))
+    const thread = await screen.findByRole('dialog', { name: 'notes for Frame' })
+    expect(thread).toHaveTextContent('Keep the frame narrow')
+
+    fireEvent.click(within(frame).getByRole('button', { name: 'Open file docs/sketch.md' }))
+    const file = await screen.findByRole('dialog', { name: 'file sketch.md' })
+    expect(file).toHaveTextContent('Frame · docs/sketch.md')
+
+    const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
+    fireEvent.click(within(within(review).getByRole('region', { name: 'Notes' })).getByRole('button', { name: 'Add a note' }))
+    expect(await screen.findByRole('dialog', { name: 'notes for Review' })).toBeInTheDocument()
+    expect(patches).toEqual([])
   })
 
   it('edits a formation brief in its window with undo', async () => {
@@ -2332,6 +2358,10 @@ describe('FormationsCockpit reference parity', () => {
     const file = await screen.findByRole('dialog', { name: 'file frame.md' })
     expect(await within(file).findByRole('heading', { name: 'Frame' })).toBeInTheDocument()
     expect(file).toHaveTextContent('Frame · frame.md')
+
+    // The step's node window carries the same chips.
+    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
+    expect(within(within(frame).getByRole('region', { name: 'Run' })).getByRole('button', { name: 'frame.md' })).toBeInTheDocument()
   })
 
   it('answers a pending human gate from its upstream output', async () => {

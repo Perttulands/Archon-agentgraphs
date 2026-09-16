@@ -52,6 +52,8 @@ button.nwin-route:hover { color: var(--accent); text-decoration-color: var(--acc
 .route-pass .nwin-route { color: var(--window-green); }
 
 .nwin-run { display: flex; align-items: center; gap: 10px; }
+.nwin-notes { flex: 1; color: var(--text-secondary); }
+.nwin-produced { margin-top: 4px; }
 .nwin-state { font-weight: 700; }
 .nwin-state.state-blocked, .nwin-state.state-waiting { color: var(--window-orange); }
 .nwin-state.state-failed { color: var(--color-error); }

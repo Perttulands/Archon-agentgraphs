@@ -2316,12 +2316,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     attachJudge,
     detachJudge,
     openNode: openNodeWindow,
+    openNotes: openNoteWindow,
     inspectEvidence: nodeId => {
       // The evidence dialog sits above the window; keyboard focus leaves the window so Escape closes the dialog first.
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
       setInspectedNodeId(nodeId)
     },
-  }), [assignSlot, attachJudge, changeFormationType, detachJudge, openNodeWindow, renameNode, saveBrief, setGateFiles, updateGateFields, updateMissionFields])
+  }), [assignSlot, attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, renameNode, saveBrief, setGateFiles, updateGateFields, updateMissionFields])
 
   const cockpit = (
     <div className="fmx" data-testid="formations-view" data-cockpit="d7">
@@ -2862,7 +2863,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         )) : null}
         {board ? nodeWindows.map(nodeId => (
           <Suspense key={`node-${nodeId}`} fallback={null}>
-            <NodeWindow nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps}
+            <NodeWindow nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps} noteCount={noteByNode.get(nodeId)?.length || 0}
               runState={nodeStates.has(nodeId) ? nodeStates.get(nodeId) || '' : undefined}
               onClose={() => setNodeWindows(current => current.filter(open => open !== nodeId))} />
           </Suspense>

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { authoredBoard as wayfindingBoard, authoredText, nodeWindowsFixture } from './node-windows-fixture'
+import { wayfinding } from './wayfinding-fixture'
 
 test('every Wayfinding node reads in full in its window, with no edit dialog and no board write', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
@@ -37,6 +38,16 @@ test('every Wayfinding node reads in full in its window, with no edit dialog and
   const review = page.getByRole('dialog', { name: 'Gate · Adversarial review' })
   await expect(review.getByRole('button', { name: 'Judged by 8 Brief critic' })).toBeVisible()
   await expect(review.getByRole('button', { name: 'Fail ↺ back to 6 Draft the brief' })).toBeVisible()
+
+  // The node's notes open in its note window rather than being copied into the node window.
+  const reviewId = wayfindingBoard.gates[2].id
+  const thread: { entries: { text: string }[] } = wayfinding.notes.elements.find((note: { nodeId: string }) => note.nodeId === reviewId)
+  await expect(review.getByRole('region', { name: 'Notes' })).toContainText(`${thread.entries.length} entries in the thread`)
+  await review.getByRole('button', { name: 'Open notes' }).click()
+  const notes = page.getByRole('dialog', { name: 'notes for Adversarial review' })
+  await expect(notes).toContainText(thread.entries[0].text.slice(0, 40))
+  await expect(review.getByText(thread.entries[0].text.slice(0, 40))).toHaveCount(0)
+
   await review.getByRole('button', { name: 'Judged by 8 Brief critic' }).click()
   const critic = page.getByRole('dialog', { name: 'Formation · Brief critic' })
   await expect(critic.getByText('Agent is Codex Judge (codex-judge) on openai-codex, model gpt-5.5, medium effort.')).toBeVisible()

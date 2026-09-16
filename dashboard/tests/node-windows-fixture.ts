@@ -1,9 +1,9 @@
 import { type Page } from '@playwright/test'
 import { wayfinding, wayfindingFixture } from './wayfinding-fixture'
 
-/* The Wayfinding fixture with long authored text in place of its briefs, goal
- * and criteria, and persona cards for its staffing, so a spec can tell whether
- * every word of a node can be read in its window. */
+/* The Wayfinding fixture with long authored text in place of its trimmed briefs,
+ * goal and criteria, and persona cards for its staffing, so a spec can tell
+ * whether every word of a node can be read in its window. */
 
 type Node = { id: string; title: string }
 
@@ -35,13 +35,12 @@ const agents = ['codex-scout', 'delivery-planner', 'codex-planner', 'codex-judge
   kind: 'specialist',
 }))
 
-/** Serves the authored Wayfinding board, without notes, and records every write. */
+/** Serves the authored Wayfinding board with its notes, and records every write. */
 export async function nodeWindowsFixture(page: Page) {
-  // Routes added later answer first, so these replace the board, notes and agents of the Wayfinding fixture.
+  // Routes added later answer first, so these replace the board and agents of the Wayfinding fixture.
   const fixture = await wayfindingFixture(page)
   const respond = (data: unknown) => ({ json: { success: true, data }, headers: { ETag: 'fixture-etag' } })
   await page.route('**/api/formations/boards/wayfinding', route => route.fulfill(respond({ board: authoredBoard })))
-  await page.route('**/api/formations/boards/wayfinding/notes', route => route.fulfill(respond({ notes: { ...wayfinding.notes, board: [], elements: [] } })))
   await page.route('**/api/agents', route => route.fulfill(respond({ agents, count: agents.length })))
   for (const agent of agents) {
     const model = agent.harnessDefault === 'openai-codex' ? 'gpt-5.5' : 'opus'
