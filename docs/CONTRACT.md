@@ -321,6 +321,12 @@ gate, tool and agent nouns. Read command-specific help with `-h`; for runtime
 flags include `--server` in the help invocation. Preserve an operator's draft
 and notes, staff its slots, write executable briefs, wire exact port IDs, then
 validate and arrange. The shared `archon` skill gives an authoring recipe.
+Nodes keep their IDs when edited: `archon formation rename <board> <formation>
+<title>`, `archon mission update <board> <mission>` with `--title`, `--goal` or
+`--bead`, and `archon gate update --title` change only what they name, and an
+empty value clears a field. The cockpit renames a mission, formation or gate
+from its title (double-click or Rename) and edits a mission's goal and Bead ID
+from Edit mission, each with undo. Ports, edges, layout and notes are unchanged.
 `board validate` lists every finding for the whole board, admission checks
 included, as `ERROR`/`WARN` lines or `--json`, and exits 1 on any error.
 `mission run` and `formation run` print every admission finding when a start is

@@ -302,6 +302,16 @@ function installFetchMock(options: {
         }
         return respond({ board, layout: currentLayout }, 'board-etag-2')
       }
+      if (!url.endsWith('/layout') && body.updateFormation) {
+        const { id, title } = body.updateFormation as { id: string; title: string }
+        board = { ...board, rev: board.rev + 1, formations: board.formations.map(item => item.id === id ? { ...item, title } : item) }
+        return respond({ board }, 'board-etag-2')
+      }
+      if (!url.endsWith('/layout') && body.updateMission) {
+        const { id, ...fields } = body.updateMission as { id: string; title?: string; goal?: string; beadId?: string }
+        board = { ...board, rev: board.rev + 1, missions: board.missions.map(item => item.id === id ? { ...item, ...fields } : item) }
+        return respond({ board }, 'board-etag-2')
+      }
       if (!url.endsWith('/layout') && body.updateGate) {
         const requested = body.updateGate as Partial<TestGate> & { id: string }
         const { id, ...fields } = requested
@@ -1297,6 +1307,106 @@ describe('FormationsCockpit reference parity', () => {
     const restore = patches.findIndex(patch => (patch.body.updateGate as { kinds?: string[] } | undefined)?.kinds?.includes('formation'))
     expect(restore).toBeGreaterThan(-1)
     expect(restore).toBeLessThan(patches.findIndex(patch => patch.body.setGateJudge))
+  })
+
+  it('renames a formation inline, undoes it, and the title survives reload', async () => {
+    const { unmount } = await renderCockpit()
+    const card = screen.getByTestId('formation-node-fmn_frame')
+    fireEvent.doubleClick(within(card).getByText('Frame'))
+    const input = within(card).getByRole('textbox', { name: 'Rename Frame' })
+    expect(input).toHaveValue('Frame')
+    fireEvent.change(input, { target: { value: '  Map the territory ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.updateFormation)?.body.updateFormation).toEqual({ id: 'fmn_frame', title: 'Map the territory' })
+    })
+    expect(await within(card).findByText('Map the territory')).toBeInTheDocument()
+    expect(patches.filter(patch => patch.url.endsWith('/layout'))).toEqual([])
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => {
+      expect(patches.filter(patch => patch.body.updateFormation).map(patch => patch.body.updateFormation)).toEqual([
+        { id: 'fmn_frame', title: 'Map the territory' },
+        { id: 'fmn_frame', title: 'Frame' },
+      ])
+    })
+
+    const renamed = within(screen.getByTestId('formation-node-fmn_frame'))
+    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'), { clientX: 420, clientY: 120 })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename' }))
+    const again = renamed.getByRole('textbox', { name: 'Rename Frame' })
+    fireEvent.change(again, { target: { value: 'Question peers' } })
+    fireEvent.blur(again)
+    await waitFor(() => expect(renamed.getByText('Question peers')).toBeInTheDocument())
+
+    unmount()
+    await renderCockpit()
+    expect(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Question peers')).toBeInTheDocument()
+  })
+
+  it('cancels an inline rename with Escape and skips unchanged titles', async () => {
+    await renderCockpit()
+    const gateCard = screen.getByTestId('gate-node-gate_review')
+    fireEvent.doubleClick(within(gateCard).getByText('Review'))
+    expect(screen.queryByRole('dialog', { name: 'Edit gate' })).toBeNull()
+    const input = within(gateCard).getByRole('textbox', { name: 'Rename Review' })
+    fireEvent.change(input, { target: { value: 'Discard me' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(within(gateCard).queryByRole('textbox')).toBeNull()
+    expect(within(gateCard).getByText('Review')).toBeInTheDocument()
+
+    fireEvent.doubleClick(within(gateCard).getByText('Review'))
+    fireEvent.keyDown(within(gateCard).getByRole('textbox', { name: 'Rename Review' }), { key: 'Enter' })
+    fireEvent.doubleClick(within(gateCard).getByText('Review'))
+    fireEvent.change(within(gateCard).getByRole('textbox', { name: 'Rename Review' }), { target: { value: 'Framing review' } })
+    fireEvent.keyDown(within(gateCard).getByRole('textbox', { name: 'Rename Review' }), { key: 'Enter' })
+    await waitFor(() => {
+      expect(patches.filter(patch => patch.body.updateGate).map(patch => patch.body.updateGate)).toEqual([{ id: 'gate_review', title: 'Framing review' }])
+    })
+  })
+
+  it('edits a mission goal and Bead ID, undoes it, and the change survives reload', async () => {
+    const { unmount } = await renderCockpit()
+    fireEvent.doubleClick(screen.getByTestId('mission-node-mis_showcase'))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit mission' })
+    expect(within(dialog).getByLabelText('Mission title')).toHaveValue('Showcase')
+    expect(within(dialog).getByLabelText('Mission goal')).toHaveValue('Build the page')
+    expect(within(dialog).getByLabelText('Mission Bead ID')).toHaveValue('home-7kc4.5')
+
+    fireEvent.change(within(dialog).getByLabelText('Mission Bead ID'), { target: { value: 'Not A Bead' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save mission' }))
+    expect(await within(dialog).findByText('Enter a Beads issue ID such as ctx-ug7.25, or leave it blank.')).toBeInTheDocument()
+    expect(patches.filter(patch => patch.body.updateMission)).toEqual([])
+
+    fireEvent.change(within(dialog).getByLabelText('Mission goal'), { target: { value: 'Draft a framing for review' } })
+    fireEvent.change(within(dialog).getByLabelText('Mission Bead ID'), { target: { value: '' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save mission' }))
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.updateMission)?.body.updateMission).toEqual({
+        id: 'mis_showcase', title: 'Showcase', goal: 'Draft a framing for review', beadId: '',
+      })
+    })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit mission' })).toBeNull())
+    expect(screen.getByTestId('mission-node-mis_showcase')).toHaveTextContent('Draft a framing for review')
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => {
+      expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({
+        id: 'mis_showcase', title: 'Showcase', goal: 'Build the page', beadId: 'home-7kc4.5',
+      })
+    })
+
+    fireEvent.contextMenu(screen.getByTestId('mission-node-mis_showcase'), { clientX: 120, clientY: 120 })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit mission' }))
+    const second = await screen.findByRole('dialog', { name: 'Edit mission' })
+    fireEvent.change(within(second).getByLabelText('Mission goal'), { target: { value: 'Map the territory first' } })
+    fireEvent.click(within(second).getByRole('button', { name: 'Save mission' }))
+    await waitFor(() => expect(screen.getByTestId('mission-node-mis_showcase')).toHaveTextContent('Map the territory first'))
+
+    unmount()
+    await renderCockpit()
+    expect(screen.getByTestId('mission-node-mis_showcase')).toHaveTextContent('Map the territory first')
   })
 
   it('dismisses context menus on Escape and outside pointerdown', async () => {

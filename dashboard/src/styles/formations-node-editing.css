@@ -1,0 +1,3 @@
+/* Inline node title editing on the Formations canvas. */
+.fmx input.inline-title{display:block;width:100%;min-width:0;max-width:none;margin:0;padding:1px 4px;border:1px solid var(--terra);border-radius:3px;background:var(--paper2);color:var(--ink);font:inherit;letter-spacing:inherit;text-transform:inherit;outline:none;user-select:text;cursor:text;}
+.fmx .untitled{color:var(--dim);font-style:italic;}
