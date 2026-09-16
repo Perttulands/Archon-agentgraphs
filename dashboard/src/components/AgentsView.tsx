@@ -717,7 +717,7 @@ export default function AgentsView() {
   const rosterSummary = [
     loading ? '…' : String(rosterCounts.total),
     rosterCounts.live ? `${rosterCounts.live} live` : '',
-    rosterCounts.deployed ? `${rosterCounts.deployed} deployed` : '',
+    rosterCounts.deployed ? `${rosterCounts.deployed} staffed` : '',
   ].filter(Boolean).join(' · ')
 
   return (
@@ -766,7 +766,7 @@ export default function AgentsView() {
             <div className="t">Agents</div>
             <span
               className="s"
-              title={`${rosterCounts.total} agents · ${rosterCounts.live} live · ${rosterCounts.assignable} assignable · ${rosterCounts.deployed} deployed on this mission`}
+              title={`${rosterCounts.total} agents · ${rosterCounts.live} live · ${rosterCounts.assignable} assignable · ${rosterCounts.deployed} staffed on this mission`}
             >
               {rosterSummary}
             </span>
