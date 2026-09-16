@@ -1,0 +1,24 @@
+/* Produced chips: on a step's card, in its window and in the run bar. */
+.produced { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 15px 10px; }
+.produced-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%; min-width: 0;
+  border: 1px solid var(--divider); border-radius: 4px; background: var(--surface-secondary); color: var(--text-primary);
+  padding: 3px 8px; font: 11px/1.3 var(--font-mono); letter-spacing: .01em; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none;
+}
+.produced-chip:hover, .produced-chip:focus-visible { border-color: var(--accent); color: var(--accent); }
+.produced-chip.output { color: var(--text-secondary); }
+.produced-glyph { flex-shrink: 0; color: var(--text-dim); }
+
+.fmx .run-banner .run-produced { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.fmx .run-banner .run-produced-label { color: var(--dim); letter-spacing: .08em; text-transform: uppercase; font-size: 10px; }
+.fmx .run-banner .run-produced .produced-chip { max-width: 220px; padding: 3px 8px; font-size: 11px; text-transform: none; letter-spacing: .01em; background: var(--paper2); }
+.fmx .run-banner .run-produced-more { padding: 3px 8px; }
+
+.run-produced-menu {
+  position: fixed; z-index: 400; display: flex; flex-direction: column; gap: 10px; min-width: 240px; max-width: min(420px, calc(100vw - 20px));
+  max-height: min(60vh, 520px); overflow: auto; padding: 10px 12px; border: 1px solid var(--divider); border-radius: 5px;
+  background: var(--surface-primary); box-shadow: 0 12px 36px #0009; font: 11px var(--font-mono);
+}
+.run-produced-group { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.run-produced-group-title { font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }

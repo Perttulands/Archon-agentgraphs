@@ -146,6 +146,7 @@ func TestEvidenceRoutesCapBriefsArtifactsAndNodeText(t *testing.T) {
 	write(filepath.Join(artifacts, "report.md"), "# Report\nsecret: sk-abcdefghijklmnop\n")
 	write(filepath.Join(artifacts, "page.html"), "<script>alert(1)</script>")
 	write(filepath.Join(artifacts, "blob.bin"), "\x00\x01")
+	write(filepath.Join(artifacts, "paper.pdf"), "%PDF-1.7\n")
 	write(filepath.Join(artifacts, "big.log"), strings.Repeat("z", formations.EvidenceArtifactPreviewMaxBytes+1))
 	write(filepath.Join(outside, "secret.txt"), "OUTSIDE-SECRET")
 	if err := os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(artifacts, "escape.txt")); err != nil {
@@ -197,6 +198,9 @@ func TestEvidenceRoutesCapBriefsArtifactsAndNodeText(t *testing.T) {
 	}
 	if blob := getEvidence(c, runPath+"/artifacts/blob.bin"); blob.Header().Get("Content-Type") != "application/octet-stream" || !strings.HasPrefix(blob.Header().Get("Content-Disposition"), "attachment") {
 		t.Fatalf("binary artifact headers = %v", blob.Header())
+	}
+	if pdf := getEvidence(c, runPath+"/artifacts/paper.pdf"); pdf.Header().Get("Content-Type") != "application/pdf" || pdf.Header().Get("Content-Disposition") != "inline; filename=paper.pdf" || !strings.HasPrefix(pdf.Header().Get("Content-Security-Policy"), "sandbox") {
+		t.Fatalf("pdf artifact headers = %v", pdf.Header())
 	}
 	if huge := getEvidence(c, runPath+"/artifacts/huge.log"); huge.Code != 413 {
 		t.Fatalf("huge raw artifact: %d", huge.Code)

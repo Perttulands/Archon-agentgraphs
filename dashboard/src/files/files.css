@@ -1,0 +1,24 @@
+/* File windows. The chrome is the shared floating window's; these rules draw
+   the title, the actions beside it and the file itself. */
+
+.file-window-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.file-window-name { flex-shrink: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+.file-window-context { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 400; font-size: 10.5px; color: var(--text-dim); }
+
+.file-actions { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; cursor: default; }
+.file-action {
+  border: 1px solid var(--divider); border-radius: 4px; background: var(--surface-primary); color: var(--text-secondary);
+  padding: 3px 8px; font: inherit; font-size: 10px; letter-spacing: .04em; text-decoration: none; cursor: pointer; white-space: nowrap;
+}
+.file-action:hover { border-color: var(--accent); color: var(--text-primary); }
+.file-action[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }
+
+.file-window .fwin-body { display: flex; flex-direction: column; }
+.file-text { padding: 12px 16px 16px; min-width: 0; }
+.file-text .evidence-lines { max-height: none; }
+.file-markdown { --archon-markdown-font-size: 13px; line-height: 1.55; color: var(--text-primary); overflow-wrap: anywhere; }
+.file-note { margin: 12px 16px; font-size: 11px; line-height: 1.5; color: var(--text-dim); }
+.file-note a { color: var(--text-primary); }
+.file-image { padding: 12px; overflow: auto; }
+.file-image img { display: block; max-width: 100%; height: auto; margin: 0 auto; border: 1px solid var(--divider); }
+.file-pdf { flex: 1; width: 100%; min-height: 0; border: 0; background: #fff; }

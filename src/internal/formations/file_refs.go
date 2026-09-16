@@ -86,7 +86,7 @@ func (r *FileRoots) Preview(ref string) (*ReferencedFilePreview, error) {
 	}
 	partial := int64(len(head)) < info.Size()
 	preview := &ReferencedFilePreview{Path: resolved, Name: path.Base(resolved), Size: info.Size(), ModifiedAt: info.ModTime().UTC().Format(time.RFC3339), Kind: evidenceArtifactKind(resolved, head, partial)}
-	if preview.Kind != "image" && preview.Kind != "binary" {
+	if evidenceTextKind(preview.Kind) {
 		redacted := redactEvidenceText(string(head))
 		text, cut := CapEvidenceText(redacted, EvidenceArtifactPreviewMaxBytes)
 		size := int(info.Size())
@@ -115,17 +115,7 @@ func (r *FileRoots) Read(ref string) (*RunArtifactContent, error) {
 	if len(body) > EvidenceArtifactRawMaxBytes {
 		return nil, ErrEvidenceTooLarge
 	}
-	content := &RunArtifactContent{Name: path.Base(resolved), ModifiedAt: info.ModTime(), Body: body}
-	switch kind := evidenceArtifactKind(resolved, body, false); kind {
-	case "image":
-		content.ContentType = evidenceImageTypes[strings.ToLower(path.Ext(resolved))]
-	case "binary":
-		content.ContentType = "application/octet-stream"
-	default:
-		content.ContentType = "text/plain; charset=utf-8"
-		content.Body = []byte(redactEvidenceText(string(body)))
-	}
-	return content, nil
+	return evidenceRawContent(resolved, info.ModTime(), body), nil
 }
 
 // open resolves a reference. An absolute path is read under the deepest root

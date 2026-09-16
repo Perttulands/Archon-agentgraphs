@@ -23,7 +23,7 @@ All routes are `GET`, read one run and return 404 for an unknown run.
 | `/api/formations/runs/{runId}/evidence/nodes/{nodeId}` | `data.evidence` for one node of the run's frozen board. Missions and formations list attempts: routed inputs, dispatches, seat cleanup outcomes, the output text and per-port outputs. Gates list evaluations: criterion, input, per-kind results with judge evidence, judge failures, the human request with its verdict and response, and the final verdict with its route. Blocks and errors recorded against the node are included. An unknown node is 404. |
 | `/api/formations/runs/{runId}/evidence/briefs/{dispatchSeq}` | `data.brief`, the brief file the dispatch at that ledger sequence sent to its seat. A sequence that is not this run's `slot_dispatch` is 404. |
 | `/api/formations/runs/{runId}/evidence/artifacts` | `data.artifacts`, the files in the run's artifact directory by relative name, size and modification time. |
-| `/api/formations/runs/{runId}/evidence/artifacts/{name...}` | `data.artifact`, a preview: name, size, kind (`markdown`, `json`, `text`, `image` or `binary`) and text for textual kinds. |
+| `/api/formations/runs/{runId}/evidence/artifacts/{name...}` | `data.artifact`, a preview: name, size, kind (`markdown`, `json`, `text`, `image`, `pdf` or `binary`) and text for textual kinds. |
 | `/api/formations/runs/{runId}/artifacts/{name...}` | The artifact's bytes, for opening in a browser tab. |
 | `/api/formations/runs/{runId}/gates/{gateId}/request` | The pending human request added by form-3yd.4, unchanged. It is the evidence API's view of a request still waiting for an answer; after the verdict, the gate's node evidence holds the same input with the response. |
 
@@ -75,8 +75,10 @@ run's cwd, and briefs already tell agents not to reference secrets.
 
 The raw artifact route never serves active content. UTF-8 text, including
 HTML and SVG source, is sent as `text/plain; charset=utf-8`; PNG, JPEG, GIF and
-WebP keep their image types; any other file is sent as an
-`application/octet-stream` attachment. Every raw response carries
+WebP keep their image types; a PDF (named `.pdf` and starting `%PDF-`) is sent
+inline as `application/pdf`, which the browser's viewer draws inside the sandbox
+(form-ged.4); any other file is sent as an `application/octet-stream`
+attachment. Every raw response carries
 `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox` and
 `Cache-Control: no-store`.
 
@@ -94,11 +96,16 @@ files name their CHROTE source in a header comment, as the seat terminal port
   instead of host paths.
 - Logs, code and JSON use CHROTE's `TextLines` line view and `prettyJson` from
   `FilePanelViewer.tsx`.
-- Not ported: `FileViewer`, the `FilePanelViewer` shell, `FilePopout`,
+- Not ported at first: `FileViewer`, the `FilePanelViewer` shell, `FilePopout`,
   `ImageGlance` and `Peek`. They depend on CHROTE's files API, status context,
   floating frames, dismiss registry or tmux sessions. Archon already has its own
   seat Peek. A full artifact opens through the raw route in a tab, and images
   render from the same route.
+- Later ported (form-ged.4): the reading side of `FileViewer` and
+  `FilePanelViewer` as Archon's file window (`dashboard/src/files/FileView.tsx`),
+  on the floating windows of form-ged.1 and these routes: Markdown with a source
+  view, pretty JSON, numbered text, images and PDFs. Editing, diffs and sending
+  to a terminal stay CHROTE's.
 - Go file serving is not ported. CHROTE's `files.go` checks a canonical root
   and then walks with openat and `O_NOFOLLOW`. Archon's run artifact helpers
   already do the same walk, and CHROTE's raw route has no size cap or

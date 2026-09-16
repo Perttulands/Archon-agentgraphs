@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BoardDocument } from '../components/formationsTypes'
 import RunEvidence from './RunEvidence'
+import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
+import { WindowManagerProvider, useWindowManager } from '../windows/WindowManager'
 import { artifactRawUrl } from './runEvidenceApi'
 
 function respond(data: unknown, status = 200) {
@@ -201,6 +203,24 @@ describe('RunEvidence', () => {
     expect(onClose).not.toHaveBeenCalled()
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens an artifact in a file window when the cockpit has them', async () => {
+    function WithWindows() {
+      const stack = useWindowManager()
+      return (
+        <FileWindowsProvider stack={stack}>
+          <RunEvidence runId="run_1" nodeId="fmn_plan" title="Plan" state="done" onClose={() => {}} />
+          <WindowManagerProvider stack={stack}><FileWindowsLayer /></WindowManagerProvider>
+        </FileWindowsProvider>
+      )
+    }
+    render(<WithWindows />)
+    fireEvent.click(within(await screen.findByTestId('run-artifacts')).getByRole('button', { name: 'plan.md' }))
+    const file = await screen.findByRole('dialog', { name: 'file plan.md' })
+    expect(await within(file).findByRole('heading', { name: 'Plan: stamp the build' })).toBeInTheDocument()
+    expect(file).toHaveTextContent('Plan · plan.md')
+    expect(screen.queryByTestId('evidence-document')).toBeNull()
   })
 
   it('says when evidence is unavailable', async () => {

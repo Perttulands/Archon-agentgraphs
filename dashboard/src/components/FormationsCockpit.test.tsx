@@ -2132,6 +2132,45 @@ describe('FormationsCockpit reference parity', () => {
     expect(gate).toHaveClass('located')
   })
 
+  it('shows what a finished run produced and opens it in a file window', async () => {
+    window.history.replaceState(null, '', '/?board=test-board&run=run_01DONE')
+    installRunsMock([{ runId: 'run_01DONE', status: 'succeeded', final: true, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 6 }], {
+      run_01DONE: [
+        { runId: 'run_01DONE', seq: 1, type: 'node_started', nodeId: 'fmn_frame', attempt: 1 },
+        { runId: 'run_01DONE', seq: 2, type: 'node_output', nodeId: 'fmn_frame', status: 'done' },
+        { runId: 'run_01DONE', seq: 3, type: 'gate_evaluating', nodeId: 'gate_review', gateId: 'gate_review' },
+        { runId: 'run_01DONE', seq: 4, type: 'node_output', nodeId: 'fmn_judge', status: 'done' },
+        { runId: 'run_01DONE', seq: 5, type: 'gate_verdict', nodeId: 'gate_review', gateId: 'gate_review', verdict: 'pass' },
+        { runId: 'run_01DONE', seq: 6, type: 'run_succeeded' },
+      ],
+    })
+    const projection = globalThis.fetch
+    const text = (value: string) => ({ text: value, bytes: value.length })
+    const output = (nodeId: string, seq: number, port: string, body: string, artifact?: string) => ({ evidence: { runId: 'run_01DONE', nodeId, kind: 'formation', attempts: [
+      { attempt: 1, inputs: [], dispatches: [], output: { seq, text: text(body), ports: [{ portId: port, text: text(body), ref: artifact ? { artifact } : undefined }] } },
+    ] } })
+    const evidence: Record<string, unknown> = {
+      '/api/formations/runs/run_01DONE/evidence/nodes/fmn_frame': output('fmn_frame', 2, 'port_frame_out', '# Frame\n\nThe **problem**', 'frame.md'),
+      '/api/formations/runs/run_01DONE/evidence/nodes/fmn_judge': output('fmn_judge', 4, 'port_judge_out', 'verdict pass'),
+      '/api/formations/runs/run_01DONE/evidence/artifacts': { artifacts: [{ name: 'frame.md', size: 24, modifiedAt: '' }], truncated: false },
+      '/api/formations/runs/run_01DONE/evidence/artifacts/frame.md': { artifact: { name: 'frame.md', size: 24, modifiedAt: '', kind: 'markdown', text: text('# Frame\n\nThe **problem**') } },
+    }
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) in evidence
+      ? Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data: evidence[String(input)] }) } as unknown as Response)
+      : projection(input, init)) as typeof fetch
+    await renderCockpit()
+
+    const produced = await screen.findByTestId('run-produced')
+    await waitFor(() => expect(within(produced).getAllByRole('button').map(button => button.textContent)).toEqual(['▤frame.md', '+1']))
+    expect(within(screen.getByTestId('produced-fmn_frame')).getByRole('button', { name: 'frame.md' })).toBeInTheDocument()
+    expect(within(screen.getByTestId('produced-fmn_judge')).getByRole('button', { name: 'Output' })).toBeInTheDocument()
+
+    fireEvent.click(within(produced).getByRole('button', { name: 'frame.md' }))
+    const file = await screen.findByRole('dialog', { name: 'file frame.md' })
+    expect(await within(file).findByRole('heading', { name: 'Frame' })).toBeInTheDocument()
+    expect(file).toHaveTextContent('Frame · frame.md')
+  })
+
   it('answers a pending human gate from its upstream output', async () => {
     localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
     installFetchMock({

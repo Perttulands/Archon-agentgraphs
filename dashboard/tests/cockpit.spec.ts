@@ -131,6 +131,55 @@ test('two floating windows open, resize, stack and stay off the zoom column', as
   await expect(run).toBeVisible()
 })
 
+test('a finished run opens what it produced from the run bar and cards in file windows side by side', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await cockpitFixture(page, { succeeded: true })
+  await page.goto('/?board=browser&run=run_browser')
+
+  const produced = page.getByTestId('run-produced')
+  await expect(produced.getByRole('button')).toHaveText(['▤review.md', '+3'])
+  // A step's chips sit on its card; the run's final file is in the run bar.
+  await page.getByTestId('produced-execution').getByRole('button', { name: 'Result' }).click()
+  const result = page.getByRole('dialog', { name: 'file Result' })
+  await expect(result).toContainText('All tests pass.')
+
+  await produced.getByRole('button', { name: 'review.md' }).click()
+  const review = page.getByRole('dialog', { name: 'file review.md' })
+  await expect(review.getByRole('heading', { name: 'Peer review' })).toBeVisible()
+  await expect(review.locator('strong', { hasText: 'revise' })).toBeVisible()
+  await expect(review.getByRole('link', { name: 'Open raw' })).toHaveAttribute('href', '/api/formations/runs/run_browser/artifacts/review.md')
+
+  // Drag the review to the right of the canvas and the result to the left, so the two sit side by side.
+  // The review, on top, moves right by its title; the result then moves left by the start of its own title.
+  const drag = async (win: typeof review, grip: 'start' | 'end', x: number) => {
+    const head = (await win.locator('.fwin-title').boundingBox())!
+    await page.mouse.move(grip === 'start' ? head.x + 6 : head.x + head.width - 6, head.y + head.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(x, head.y + head.height / 2, { steps: 8 })
+    await page.mouse.up()
+  }
+  await drag(review, 'end', 1900)
+  await drag(result, 'start', 0)
+  const left = (await result.boundingBox())!
+  const right = (await review.boundingBox())!
+  expect(left.x + left.width).toBeLessThanOrEqual(right.x)
+  await expect(review.getByRole('heading', { name: 'Peer review' })).toBeVisible()
+  await expect(result).toContainText('All tests pass.')
+  for (const zone of [page.locator('.zoomctl'), page.locator('.zoomlevel')]) {
+    const box = (await zone.boundingBox())!
+    for (const rect of [left, right]) {
+      expect(rect.x < box.x + box.width && rect.x + rect.width > box.x && rect.y < box.y + box.height && rect.y + rect.height > box.y).toBe(false)
+    }
+  }
+  await page.screenshot({ path: test.info().outputPath('produced-file-windows.png') })
+
+  // The rest of what the run produced is one menu away.
+  await produced.getByRole('button', { name: '3 more produced files' }).click()
+  await page.getByRole('menuitem', { name: 'worker.log' }).click()
+  await expect(page.getByRole('dialog', { name: 'file worker.log' })).toContainText('worker finished')
+  await expect(page.getByRole('dialog')).toHaveCount(3)
+})
+
 test('formation titles stay readable beside the type chip and run controls', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 850 })
   await cockpitFixture(page, { run: true })

@@ -57,6 +57,10 @@ import DismissiblePanel from './DismissiblePanel'
 import PersonaEditorDialog from './PersonaEditorDialog'
 import HumanGateAnswerPanel, { type GateDecision } from './HumanGateAnswerPanel'
 import RunPoint from './RunPoint'
+import { evidenceNamesForBoard } from '../evidence/evidenceNames'
+import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
+import { ProducedFiles, RunProduced, RunProducedProvider } from '../files/ProducedFiles'
+import { summarizeProduced, useRunProduced } from '../files/produced'
 import { useHumanGateUpstream } from './useHumanGateUpstream'
 import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom, splitList } from './formationsCockpitDom'
 import { routeJudgeWire, routeOrthoWire } from './formationsRouting'
@@ -587,6 +591,15 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const nodeStates = useMemo(() => projectNodeStates(runEvents, activeRun), [runEvents, activeRun])
   const runPoint = useMemo(() => runCurrentPoint(runEvents, activeRun), [runEvents, activeRun])
   const outputNodeIds = useMemo(() => new Set(runEvents.filter(event => event.type === 'node_output' && event.nodeId).map(event => event.nodeId)), [runEvents])
+  // What the run's steps produced, for their cards, node windows and the run bar.
+  const stepIds = useMemo(() => new Set((board?.formations || []).map(formation => formation.id)), [board?.formations])
+  const runProduced = useRunProduced(activeRun?.runId || '', runEvents, stepIds, Boolean(activeRun?.final))
+  const producedValue = useMemo(() => activeRun ? {
+    runId: activeRun.runId,
+    byNode: new Map(runProduced.produced.map(step => [step.nodeId, step])),
+    summary: summarizeProduced(board, runProduced.produced, runProduced.artifacts, activeRun.final),
+    names: evidenceNamesForBoard(board),
+  } : null, [activeRun, board, runProduced])
   const inspectedTool = useMemo(
     () => (board?.tools || []).find(tool => tool.id === inspectedToolId) || null,
     [board?.tools, inspectedToolId],
@@ -2328,7 +2341,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return known ? candidate : ''
   }, [board])
 
-  return (
+  const cockpit = (
     <div className="fmx" data-testid="formations-view" data-cockpit="d7">
       <div className="topbar">
         <div className="boardpick">
@@ -2440,6 +2453,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 <span>run</span>
                 <span className={`badge ${runBadgeClass}`}>{activeRun.status}</span>
                 <RunPoint runId={activeRun.runId} point={runPoint} title={runPointTitle} onLocate={locateNode} />
+                <RunProduced />
                 {runChoices.length > 1 ? (
                   <select
                     className="run-picker"
@@ -2633,6 +2647,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                       ].join(' · ')}</span>
                     </button>
                   ) : null}
+                  <ProducedFiles nodeId={formation.id} />
                   {formation.outputs.map((port, portIndex) => {
                     const endpoint = `${formation.id}:${port.id}`
                     return (
@@ -2876,6 +2891,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               onClose={() => setPeeks(current => current.filter(open => open !== nodeId))} />
           </Suspense>
         )) : null}
+        <FileWindowsLayer />
       </WindowManagerProvider>
 
       {agentEditor ? (
@@ -3221,5 +3237,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         <div className="gateghost" style={{ left: gateGhost.x, top: gateGhost.y }}>{GATE_SVG}</div>
       ) : null}
     </div>
+  )
+  return (
+    <FileWindowsProvider stack={windows}>
+      <RunProducedProvider value={producedValue}>{cockpit}</RunProducedProvider>
+    </FileWindowsProvider>
   )
 }

@@ -25,6 +25,7 @@ func TestFileRootsServeReferencesOnlyUnderTheirRoots(t *testing.T) {
 	outside := filepath.Join(base, "outside")
 	writeFileRef(t, filepath.Join(project, "docs", "rubric.md"), "# Rubric\n\napi_key = hunter2\n")
 	writeFileRef(t, filepath.Join(project, "logo.png"), "\x89PNG\r\n")
+	writeFileRef(t, filepath.Join(project, "design.pdf"), "%PDF-1.7\n%\xe2\xe3\xcf\xd3\n")
 	writeFileRef(t, filepath.Join(notes, "context.txt"), "notes root\n")
 	writeFileRef(t, filepath.Join(outside, "secret.md"), "outside\n")
 	if err := os.Symlink(filepath.Join(outside, "secret.md"), filepath.Join(project, "docs", "link.md")); err != nil {
@@ -54,6 +55,12 @@ func TestFileRootsServeReferencesOnlyUnderTheirRoots(t *testing.T) {
 	}
 	if image, err := roots.Read(filepath.Join(project, "logo.png")); err != nil || image.ContentType != "image/png" {
 		t.Fatalf("image read = %+v, %v", image, err)
+	}
+	if pdf, err := roots.Preview("design.pdf"); err != nil || pdf.Kind != "pdf" || pdf.Text != nil {
+		t.Fatalf("pdf preview = %+v, %v", pdf, err)
+	}
+	if pdf, err := roots.Read("design.pdf"); err != nil || pdf.ContentType != "application/pdf" || string(pdf.Body) != "%PDF-1.7\n%\xe2\xe3\xcf\xd3\n" {
+		t.Fatalf("pdf read = %+v, %v", pdf, err)
 	}
 	if raw, err := roots.Read("docs/rubric.md"); err != nil || raw.ContentType != "text/plain; charset=utf-8" || strings.Contains(string(raw.Body), "hunter2") {
 		t.Fatalf("raw rubric = %+v, %v", raw, err)

@@ -205,6 +205,15 @@ notifications carry, opens that board and keeps that run shown. The address bar
 keeps a chosen run across reloads, and an unknown linked board or run is
 reported rather than silently replaced.
 
+The cockpit shows what a run produced, read from the evidence routes. Each step's
+card lists its latest output as chips: artifact files its ports name, the text
+of ports that name no file, and the seat's report when it adds something. The
+run bar's Produced list leads with a finished run's final steps (those whose
+outputs feed nothing), or a running run's latest step, and a menu holds the
+rest, including artifact files no output names. A chip opens the file in a
+floating file window, rendered by kind, with Open raw and Copy path (relative to
+the state directory) for artifacts; several can be open side by side.
+
 The cockpit's floating Peek observes an owned live seat. It does not send input,
 enter tmux copy mode, claim pane size, or end sessions. Switching seats and
 closing Peek disconnect only the observer client. Labels and controller/worker
@@ -656,11 +665,13 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   entries or 8 directory levels. A run without artifacts lists none.
 - `/api/formations/runs/{runId}/evidence/artifacts/{name...}` returns
   `data.artifact` (`name`, `size`, `modifiedAt`, `kind` `markdown`, `json`,
-  `text`, `image` or `binary`), with `text` capped at 256 KiB for textual kinds.
+  `text`, `image`, `pdf` or `binary`), with `text` capped at 256 KiB for textual
+  kinds. A `.pdf` file that starts with `%PDF-` is `pdf`.
 - `/api/formations/runs/{runId}/artifacts/{name...}` returns the artifact's bytes
   up to 16 MiB; larger files return 413. Text is `text/plain; charset=utf-8`
-  and redacted, PNG, JPEG, GIF and WebP keep their image type, and anything else
-  is an `application/octet-stream` attachment. Responses carry
+  and redacted, PNG, JPEG, GIF and WebP keep their image type, a `pdf` is an
+  inline `application/pdf`, and anything else is an `application/octet-stream`
+  attachment. Responses carry
   `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox` and
   `Cache-Control: no-store`, and support ranges.
 - `/api/formations/runs/{runId}/gates/{gateId}/request` is the evidence API's

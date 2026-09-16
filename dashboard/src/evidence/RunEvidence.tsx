@@ -3,6 +3,8 @@ import { gateKindLabel } from '../components/GateEditorDialog'
 import { useEscapeKey } from '../components/useEscapeKey'
 import type { BoardDocument } from '../components/formationsTypes'
 import { evidenceNamesForBoard, type EvidenceNames } from './evidenceNames'
+import { useFileWindows } from '../files/FileWindows'
+import { artifactFileRequest } from '../files/fileWindowModel'
 import Markdown from './Markdown'
 import TextLines, { prettyJson } from './TextLines'
 import {
@@ -66,10 +68,16 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
     return () => { current = false }
   }, [runId, nodeId, state])
 
+  // In the cockpit an artifact opens in its own file window; elsewhere it opens in place.
+  const files = useFileWindows()
   const openArtifact = useCallback((name: string) => {
     setDocumentError('')
+    if (files) {
+      files.open(artifactFileRequest(runId, name, title))
+      return
+    }
     fetchArtifactPreview(runId, name).then(preview => setOpenDocument({ kind: 'artifact', preview }), reason => setDocumentError(`${name}: ${errorText(reason)}`))
-  }, [runId])
+  }, [files, runId, title])
 
   const pauses = (evidence?.problems || []).filter(isHumanVerdictPause)
   const failures = (evidence?.problems || []).filter(problem => !isHumanVerdictPause(problem))
@@ -446,6 +454,7 @@ function DocumentView({ runId, document, onOpenArtifact, onClose }: {
 
 function ArtifactBody({ runId, preview, onOpenArtifact }: { runId: string; preview: RunArtifactPreview; onOpenArtifact: (name: string) => void }) {
   if (preview.kind === 'image') return <img className="evidence-image" src={artifactRawUrl(runId, preview.name)} alt={preview.name} />
+  if (preview.kind === 'pdf') return <p className="evidence-note">PDF. Open it raw to read it.</p>
   if (preview.kind === 'binary' || !preview.text) return <p className="evidence-note">Binary file. Open it raw to download.</p>
   if (preview.kind === 'markdown') {
     return <EvidenceTextView value={preview.text} label={preview.name} basePath={preview.name} runId={runId} onOpenArtifact={onOpenArtifact} />

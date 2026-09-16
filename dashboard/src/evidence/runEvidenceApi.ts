@@ -138,7 +138,7 @@ export interface RunArtifactEntry {
   modifiedAt: string
 }
 
-export type ArtifactKind = 'markdown' | 'json' | 'text' | 'image' | 'binary'
+export type ArtifactKind = 'markdown' | 'json' | 'text' | 'image' | 'pdf' | 'binary'
 
 export interface RunArtifactPreview extends RunArtifactEntry {
   kind: ArtifactKind

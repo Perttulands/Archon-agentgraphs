@@ -195,6 +195,8 @@ func TestRunEvidenceReadsNodesArtifactsAndBriefsInsideTheRun(t *testing.T) {
 	mustWrite(filepath.Join(root, "data.json"), `{"a":1}`)
 	mustWrite(filepath.Join(root, "blob.bin"), "a\x00b")
 	mustWrite(filepath.Join(root, "shot.png"), "\x89PNG")
+	mustWrite(filepath.Join(root, "paper.pdf"), "%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+	mustWrite(filepath.Join(root, "fake.pdf"), "plain text named pdf")
 	mustWrite(filepath.Join(root, "big.txt"), strings.Repeat("x", EvidenceArtifactPreviewMaxBytes+10))
 	mustWrite(filepath.Join(outside, "secret.txt"), "outside secret")
 	mustWrite(filepath.Join(outside, "dir", "inner.txt"), "outside dir")
@@ -222,14 +224,14 @@ func TestRunEvidenceReadsNodesArtifactsAndBriefsInsideTheRun(t *testing.T) {
 	for _, artifact := range artifacts {
 		names = append(names, artifact.Name)
 	}
-	if got := strings.Join(names, ","); got != "big.txt,blob.bin,data.json,huge.log,logs/run.log,plan.md,shot.png" {
+	if got := strings.Join(names, ","); got != "big.txt,blob.bin,data.json,fake.pdf,huge.log,logs/run.log,paper.pdf,plan.md,shot.png" {
 		t.Fatalf("listed %s", got)
 	}
 
-	kinds := map[string]string{"plan.md": "markdown", "logs/run.log": "text", "data.json": "json", "blob.bin": "binary", "shot.png": "image"}
+	kinds := map[string]string{"plan.md": "markdown", "logs/run.log": "text", "data.json": "json", "blob.bin": "binary", "shot.png": "image", "paper.pdf": "pdf", "fake.pdf": "text"}
 	for name, kind := range kinds {
 		preview, err := store.PreviewRunArtifact(runID, name)
-		if err != nil || preview.Kind != kind || (preview.Text != nil) != (kind != "binary" && kind != "image") {
+		if err != nil || preview.Kind != kind || (preview.Text != nil) != (kind != "binary" && kind != "image" && kind != "pdf") {
 			t.Fatalf("%s preview = %+v, %v; want kind %s", name, preview, err, kind)
 		}
 	}
@@ -244,6 +246,12 @@ func TestRunEvidenceReadsNodesArtifactsAndBriefsInsideTheRun(t *testing.T) {
 	content, err := store.ReadRunArtifact(runID, "plan.md")
 	if err != nil || content.ContentType != "text/plain; charset=utf-8" || string(content.Body) != "# Plan\napi_key=[REDACTED]\n" {
 		t.Fatalf("raw plan = %+v, %v", content, err)
+	}
+	if paper, err := store.ReadRunArtifact(runID, "paper.pdf"); err != nil || paper.ContentType != "application/pdf" {
+		t.Fatalf("raw pdf = %+v, %v", paper, err)
+	}
+	if fake, err := store.ReadRunArtifact(runID, "fake.pdf"); err != nil || fake.ContentType != "text/plain; charset=utf-8" {
+		t.Fatalf("raw text named pdf = %+v, %v", fake, err)
 	}
 	if _, err := store.ReadRunArtifact(runID, "huge.log"); !errors.Is(err, ErrEvidenceTooLarge) {
 		t.Fatalf("huge raw read err = %v", err)

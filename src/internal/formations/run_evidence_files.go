@@ -137,7 +137,7 @@ func (s *Store) PreviewRunArtifact(runID, name string) (*RunArtifactPreview, err
 	}
 	partial := int64(len(head)) < info.Size()
 	preview := &RunArtifactPreview{Name: name, Size: info.Size(), ModifiedAt: info.ModTime().UTC().Format(time.RFC3339), Kind: evidenceArtifactKind(name, head, partial)}
-	if preview.Kind != "image" && preview.Kind != "binary" {
+	if evidenceTextKind(preview.Kind) {
 		redacted := redactEvidenceText(string(head))
 		text, cut := CapEvidenceText(redacted, EvidenceArtifactPreviewMaxBytes)
 		size := int(info.Size())
@@ -166,17 +166,30 @@ func (s *Store) ReadRunArtifact(runID, name string) (*RunArtifactContent, error)
 	if len(body) > EvidenceArtifactRawMaxBytes {
 		return nil, ErrEvidenceTooLarge
 	}
-	content := &RunArtifactContent{Name: path.Base(name), ModifiedAt: info.ModTime(), Body: body}
-	switch kind := evidenceArtifactKind(name, body, false); kind {
+	return evidenceRawContent(name, info.ModTime(), body), nil
+}
+
+// evidenceTextKind reports whether a preview of this kind carries text.
+func evidenceTextKind(kind string) bool {
+	return kind != "image" && kind != "pdf" && kind != "binary"
+}
+
+// evidenceRawContent types a whole file for a raw route: known images and PDFs
+// keep their types, other binaries download, and text is plain and redacted.
+func evidenceRawContent(name string, modifiedAt time.Time, body []byte) *RunArtifactContent {
+	content := &RunArtifactContent{Name: path.Base(name), ModifiedAt: modifiedAt, Body: body}
+	switch evidenceArtifactKind(name, body, false) {
 	case "image":
 		content.ContentType = evidenceImageTypes[strings.ToLower(path.Ext(name))]
+	case "pdf":
+		content.ContentType = "application/pdf"
 	case "binary":
 		content.ContentType = "application/octet-stream"
 	default:
 		content.ContentType = "text/plain; charset=utf-8"
 		content.Body = []byte(redactEvidenceText(string(body)))
 	}
-	return content, nil
+	return content
 }
 
 // ReadRunBrief reads the brief a run's own dispatch recorded. The path comes
@@ -346,6 +359,10 @@ func evidenceArtifactKind(name string, head []byte, partial bool) string {
 	extension := strings.ToLower(path.Ext(name))
 	if _, ok := evidenceImageTypes[extension]; ok {
 		return "image"
+	}
+	// A PDF is named and starts like one; the browser's viewer draws it.
+	if extension == ".pdf" && bytes.HasPrefix(head, []byte("%PDF-")) {
+		return "pdf"
 	}
 	if !evidenceTextual(head, partial) {
 		return "binary"
