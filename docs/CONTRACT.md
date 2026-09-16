@@ -353,6 +353,11 @@ Read command-specific help with `-h`, including `--server` when using the
 daemon. Preserve an operator's draft
 and notes, staff its slots, write executable briefs, wire exact port IDs, then
 validate and arrange. The shared `archon` skill gives an authoring recipe.
+Arrange (`board arrange`, the cockpit's Arrange) rewrites only the layout. It
+lays columns along the run from each mission (mission out, formation and Tool
+outputs, gate pass), ignores fail edges back to earlier steps and judge wiring,
+places judge formations below their gate, and puts nodes no mission reaches
+after the main path. The same board always arranges the same way.
 `mission create`, `formation create` and `gate create` print `created <id>`, or
 with `--json` `{board, layout, mission|formation|gate}` naming the new node.
 `board list` lists boards; `mission list <board>` and `formation list <board>`

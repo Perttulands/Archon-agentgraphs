@@ -1,0 +1,185 @@
+# The Wayfinding board structure (form-3yd.10, rev 37) without its briefs and
+# criteria, for arrangement tests.
+schema = 1
+id = "brd_01M2N3A879JPHQFNRXH3K5CQGM"
+slug = "wayfinding"
+title = "Wayfinding"
+rev = 37
+updatedBy = "agent:claude-wayfinding"
+updatedAt = "2026-09-16T14:24:24Z"
+
+[[formation]]
+id = "fmn_01M2N3G4PQCK21EXT7NC5CC3R9"
+type = "solo"
+title = "Map the territory"
+
+[[formation.input]]
+id = "port_01M2N3G4PQC13TSXZWZFWPTY5R"
+label = "Input"
+
+[[formation.output]]
+id = "port_01M2N3G4PQHGGZ2DA1CYW6H3AP"
+label = "Output"
+
+[[formation.slot]]
+id = "slot_01M2N3G4PQ6SY4NKE2YA3SB3S8"
+label = "Agent"
+controller = false
+
+harness = "openai-codex"
+agentId = "codex-scout"
+[[formation]]
+id = "fmn_01M2N3HQ5A5W4CAD3VFN86MC31"
+type = "peer"
+title = "Question peers"
+
+[[formation.input]]
+id = "port_01M2N3HQ5ACKAX7SMG5MFENGD9"
+label = "Input"
+
+[[formation.output]]
+id = "port_01M2N3HQ5A7YXMB2SSAB9Y4PYV"
+label = "Output"
+
+[[formation.slot]]
+id = "slot_01M2N3HQ5AJ0RNG5S3VK7J8B8T"
+label = "Peer"
+controller = false
+
+harness = "claude-code"
+agentId = "delivery-planner"
+[[formation.slot]]
+id = "slot_01M2N3HQ5A9NRD9ZP0A16TKAP4"
+label = "Peer"
+controller = false
+
+harness = "openai-codex"
+agentId = "codex-planner"
+[[gate]]
+id = "gate_01M2N3KMP5CYV3BHBRNJSAGN9Q"
+title = "Framing review"
+kinds = ["human"]
+
+[[connection]]
+id = "edge_01M2N3KSVZ2T9H2Y33XGH1M376"
+from = "fmn_01M2N3G4PQCK21EXT7NC5CC3R9:port_01M2N3G4PQHGGZ2DA1CYW6H3AP"
+to = "gate_01M2N3KMP5CYV3BHBRNJSAGN9Q:in"
+
+[[connection]]
+id = "edge_01M2N3KW7ADSYSFP2GDKDJA009"
+from = "gate_01M2N3KMP5CYV3BHBRNJSAGN9Q:pass"
+to = "fmn_01M2N3HQ5A5W4CAD3VFN86MC31:port_01M2N3HQ5ACKAX7SMG5MFENGD9"
+
+[[connection]]
+id = "edge_01M2N3KY7G7ZV6DFYYWRXTG6K3"
+from = "gate_01M2N3KMP5CYV3BHBRNJSAGN9Q:fail"
+to = "fmn_01M2N3G4PQCK21EXT7NC5CC3R9:port_01M2N3G4PQC13TSXZWZFWPTY5R"
+
+[[gate]]
+id = "gate_01M2N9N1MQDE88MWF3C1E6GJTG"
+title = "Answer questions"
+kinds = ["human"]
+
+[[formation]]
+id = "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD"
+type = "solo"
+title = "Draft the brief"
+
+[[formation.input]]
+id = "port_01M2N9N1N6NQ2XGB78NEGTSPJR"
+label = "Input"
+
+[[formation.output]]
+id = "port_01M2N9N1N6BFGAXWZQVNN5JN69"
+label = "Output"
+
+[[formation.slot]]
+id = "slot_01M2N9N1N60FY5JJ84B9A9DNJQ"
+label = "Agent"
+controller = false
+harness = "claude-code"
+agentId = "delivery-planner"
+
+[[gate]]
+id = "gate_01M2N9N1PEPTXX7XV5QW96681W"
+title = "Adversarial review"
+kinds = ["formation"]
+
+[[formation]]
+id = "fmn_01M2N9N1PXQ39NHQY46F0J0V63"
+type = "solo"
+title = "Brief critic"
+
+[[formation.input]]
+id = "port_01M2N9N1PX7KP3C2K4GS7Z3H03"
+label = "Input"
+
+[[formation.output]]
+id = "port_01M2N9N1PX2QV9W6YP31GZ7TV9"
+label = "Output"
+
+[[formation.slot]]
+id = "slot_01M2N9N1PXGBQ8HRV7QSS2MD0W"
+label = "Agent"
+controller = false
+harness = "openai-codex"
+agentId = "codex-judge"
+
+[[gate]]
+id = "gate_01M2N9N1R4R184Y5G3R45BB5G1"
+title = "Brief sign-off"
+kinds = ["human"]
+
+[[mission]]
+id = "mis_01M2N9N1SG7J0D3YVRZY3V8TNT"
+title = "Wayfinding"
+
+[[connection]]
+id = "edge_01M2N9N1T1EVD80G1CNG34ZG3J"
+from = "mis_01M2N9N1SG7J0D3YVRZY3V8TNT:out"
+to = "fmn_01M2N3G4PQCK21EXT7NC5CC3R9:port_01M2N3G4PQC13TSXZWZFWPTY5R"
+
+[[connection]]
+id = "edge_01M2N9NGST1PNGXVVCBCERPPYN"
+from = "gate_01M2N9N1PEPTXX7XV5QW96681W:judge"
+to = "fmn_01M2N9N1PXQ39NHQY46F0J0V63:port_01M2N9N1PX7KP3C2K4GS7Z3H03"
+
+[[connection]]
+id = "edge_01M2N9NGSTJS3FQ642HY4WST8T"
+from = "fmn_01M2N9N1PXQ39NHQY46F0J0V63:port_01M2N9N1PX2QV9W6YP31GZ7TV9"
+to = "gate_01M2N9N1PEPTXX7XV5QW96681W:judge"
+
+[[connection]]
+id = "edge_01M2N9NGT372CHJ7VMN16QPKM9"
+from = "fmn_01M2N3HQ5A5W4CAD3VFN86MC31:port_01M2N3HQ5A7YXMB2SSAB9Y4PYV"
+to = "gate_01M2N9N1MQDE88MWF3C1E6GJTG:in"
+
+[[connection]]
+id = "edge_01M2N9NGTCQ09DFB8FF07FEC64"
+from = "gate_01M2N9N1MQDE88MWF3C1E6GJTG:pass"
+to = "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD:port_01M2N9N1N6NQ2XGB78NEGTSPJR"
+
+[[connection]]
+id = "edge_01M2N9NGTM50EEWY3WZ702MBVT"
+from = "gate_01M2N9N1MQDE88MWF3C1E6GJTG:fail"
+to = "fmn_01M2N3HQ5A5W4CAD3VFN86MC31:port_01M2N3HQ5ACKAX7SMG5MFENGD9"
+
+[[connection]]
+id = "edge_01M2N9NGTW0XGRGGERC0ZMWSCK"
+from = "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD:port_01M2N9N1N6BFGAXWZQVNN5JN69"
+to = "gate_01M2N9N1PEPTXX7XV5QW96681W:in"
+
+[[connection]]
+id = "edge_01M2N9NGV4P75PNT50A931STBW"
+from = "gate_01M2N9N1PEPTXX7XV5QW96681W:pass"
+to = "gate_01M2N9N1R4R184Y5G3R45BB5G1:in"
+
+[[connection]]
+id = "edge_01M2N9NGVCEWCFESD07KPT5M5F"
+from = "gate_01M2N9N1PEPTXX7XV5QW96681W:fail"
+to = "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD:port_01M2N9N1N6NQ2XGB78NEGTSPJR"
+
+[[connection]]
+id = "edge_01M2N9NGVNSHE0R1Q9V7M7VQGZ"
+from = "gate_01M2N9N1R4R184Y5G3R45BB5G1:fail"
+to = "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD:port_01M2N9N1N6NQ2XGB78NEGTSPJR"
