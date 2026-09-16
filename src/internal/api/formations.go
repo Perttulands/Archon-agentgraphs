@@ -71,6 +71,8 @@ type formationsBoardPatchRequest struct {
 	DeleteTool                    *formationsToolDeleteRequest            `json:"deleteTool"`
 	CreateFormation               *formationsCreateFormationRequest       `json:"createFormation"`
 	DeleteFormation               *formationsDeleteFormationRequest       `json:"deleteFormation"`
+	UpdateFormation               *formationsUpdateFormationRequest       `json:"updateFormation"`
+	UpdateMission                 *formationsUpdateMissionRequest         `json:"updateMission"`
 	DeleteGate                    *formationsDeleteGateRequest            `json:"deleteGate"`
 	DeleteMission                 *formationsDeleteMissionRequest         `json:"deleteMission"`
 	AssignSlot                    *formationsAssignSlotRequest            `json:"assignSlot"`
@@ -280,6 +282,8 @@ var boardPatchMutationKeys = []string{
 	"deleteTool",
 	"createFormation",
 	"deleteFormation",
+	"updateFormation",
+	"updateMission",
 	"deleteGate",
 	"deleteMission",
 	"assignSlot",
@@ -447,6 +451,24 @@ func skipJSONContainer(decoder *json.Decoder, opening json.Delim) error {
 	}
 	_, err := decoder.Token()
 	return err
+}
+
+// formationsUpdateFormationRequest and formationsUpdateMissionRequest set only
+// the fields present in the JSON object; an empty string clears a field.
+type formationsUpdateFormationRequest struct {
+	ID          string  `json:"id"`
+	Title       *string `json:"title"`
+	ExpectedRev int     `json:"expectedRev"`
+	UpdatedBy   string  `json:"updatedBy"`
+}
+
+type formationsUpdateMissionRequest struct {
+	ID          string  `json:"id"`
+	Title       *string `json:"title"`
+	Goal        *string `json:"goal"`
+	BeadID      *string `json:"beadId"`
+	ExpectedRev int     `json:"expectedRev"`
+	UpdatedBy   string  `json:"updatedBy"`
 }
 
 // formationsUpdateGateRequest sets only the fields present in the JSON object.
@@ -1303,6 +1325,44 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("ETag", result.Board.ETag)
 		core.WriteSuccess(w, result)
+		return
+	}
+	if request.UpdateFormation != nil {
+		update := request.UpdateFormation
+		board, err := h.store.UpdateFormation(slug, formations.FormationUpdateRequest{
+			FormationID: update.ID,
+			Title:       update.Title,
+			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, update.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", board.ETag)
+		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		return
+	}
+	if request.UpdateMission != nil {
+		update := request.UpdateMission
+		board, err := h.store.UpdateMission(slug, formations.MissionUpdateRequest{
+			MissionID: update.ID,
+			Title:     update.Title,
+			Goal:      update.Goal,
+			BeadID:    update.BeadID,
+			UpdatedBy: patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, update.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", board.ETag)
+		core.WriteSuccess(w, map[string]interface{}{"board": board})
 		return
 	}
 	if request.UpdateGate != nil {

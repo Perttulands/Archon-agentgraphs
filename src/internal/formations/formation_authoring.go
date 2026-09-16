@@ -181,6 +181,23 @@ type GateUpdateRequest struct {
 	UpdatedBy                  string
 }
 
+// FormationUpdateRequest changes only the fields it sets. An empty title clears it.
+type FormationUpdateRequest struct {
+	FormationID string
+	Title       *string
+	UpdatedBy   string
+}
+
+// MissionUpdateRequest changes only the fields it sets. An empty value clears
+// it; a Bead ID that is given must be a safe Beads issue ID.
+type MissionUpdateRequest struct {
+	MissionID string
+	Title     *string
+	Goal      *string
+	BeadID    *string
+	UpdatedBy string
+}
+
 type GateJudgeRequest struct {
 	GateID    string
 	Chain     []string
@@ -1040,6 +1057,56 @@ func (s *Store) UpdateGate(slug string, req GateUpdateRequest, opts WriteOptions
 			raw = deleteGateJudgeConnections(raw, req.GateID)
 		}
 		return raw, nil
+	})
+}
+
+// UpdateFormation edits a formation's own fields in its header. The ID, ports,
+// slots, brief, edges, layout and notes stay as they are.
+func (s *Store) UpdateFormation(slug string, req FormationUpdateRequest, opts WriteOptions) (*BoardDocument, error) {
+	if req.FormationID == "" {
+		return nil, ErrNotFound
+	}
+	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, _ *BoardDocument) ([]byte, error) {
+		lines := splitLines(raw)
+		start, end, ok := findFormationBlockByID(lines, req.FormationID)
+		if !ok {
+			return nil, ErrNotFound
+		}
+		if req.Title != nil {
+			lines = setScalarInLineRange(lines, start+1, formationHeaderEnd(lines, start, end), "title", renderString(*req.Title))
+		}
+		return renderTOMLLines(lines), nil
+	})
+}
+
+// UpdateMission edits a mission's title, goal and Bead ID. Its ID, out port,
+// edges, layout and notes stay as they are.
+func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteOptions) (*BoardDocument, error) {
+	if req.MissionID == "" {
+		return nil, ErrNotFound
+	}
+	if req.BeadID != nil && *req.BeadID != "" && !isSafeBeadsIssueID(*req.BeadID) {
+		return nil, fmt.Errorf("%w: mission beadId must be a safe Beads issue id", ErrInvalidSlug)
+	}
+	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, _ *BoardDocument) ([]byte, error) {
+		lines := splitLines(raw)
+		for _, field := range []struct {
+			key   string
+			value *string
+		}{{"title", req.Title}, {"goal", req.Goal}, {"beadId", req.BeadID}} {
+			if field.value == nil {
+				continue
+			}
+			start, end, ok := findMissionBlockByID(lines, req.MissionID)
+			if !ok {
+				return nil, ErrNotFound
+			}
+			lines = setScalarInLineRange(lines, start+1, end, field.key, renderString(*field.value))
+		}
+		if _, _, ok := findMissionBlockByID(lines, req.MissionID); !ok {
+			return nil, ErrNotFound
+		}
+		return renderTOMLLines(lines), nil
 	})
 }
 

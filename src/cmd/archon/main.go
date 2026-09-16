@@ -201,6 +201,8 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 			return runFormationUnassign(store, args[2:], stdout, stderr)
 		case "set-brief":
 			return runFormationSetBrief(store, args[2:], stdout, stderr)
+		case "rename":
+			return runFormationRename(store, args[2:], stdout, stderr)
 		case "remove-verification":
 			return runFormationRemoveVerification(store, args[2:], stdout, stderr)
 		case "add-input":
@@ -245,6 +247,8 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 			return runMissionInspect(store, args[2:], stdout, stderr)
 		case "wire":
 			return runMissionWire(store, args[2:], stdout, stderr)
+		case "update":
+			return runMissionUpdate(store, args[2:], stdout, stderr)
 		case "run":
 			return runMissionRun(runtimeStore(config.Workspace), args[2:], stdout, stderr)
 		default:
@@ -712,6 +716,40 @@ func runFormationUnassign(store *formations.Store, args []string, stdout, stderr
 		return writeJSON(stdout, result)
 	}
 	fmt.Fprintf(stdout, "unassigned %s from %s\n", *slotID, formationID)
+	return 0
+}
+
+func runFormationRename(store *formations.Store, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("formation rename", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
+	}
+	if fs.NArg() != 3 {
+		fmt.Fprintln(stderr, "usage: archon formation rename <board> <formation> <title> [--json]")
+		fmt.Fprintln(stderr, "An empty title clears it. The ID, ports, slots, brief, edges, layout and notes stay unchanged.")
+		return 2
+	}
+	slug, board, formationID, err := resolveFormationCommandTarget(store, fs.Arg(0), fs.Arg(1))
+	if err != nil {
+		return failSelector(stderr, err, *jsonOut, "formation", fs.Arg(1))
+	}
+	title := fs.Arg(2)
+	result, err := store.UpdateFormation(slug, formations.FormationUpdateRequest{
+		FormationID: formationID,
+		Title:       &title,
+		UpdatedBy:   *updatedBy,
+	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
+	if err != nil {
+		return failDefinitionWrite(stderr, err, *jsonOut, "formation", fs.Arg(1))
+	}
+	result.TOML = ""
+	if *jsonOut {
+		return writeJSON(stdout, result)
+	}
+	fmt.Fprintf(stdout, "renamed %s\n", formationID)
 	return 0
 }
 
@@ -1280,6 +1318,58 @@ func runMissionWire(store *formations.Store, args []string, stdout, stderr io.Wr
 		return writeJSON(stdout, result)
 	}
 	fmt.Fprintf(stdout, "wired mission %s -> %s\n", missionID, fs.Arg(2))
+	return 0
+}
+
+func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("mission update", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	title := fs.String("title", "", "mission title")
+	goal := fs.String("goal", "", "mission goal")
+	beadID := fs.String("bead", "", "project Beads id")
+	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
+	}
+	given := map[string]bool{}
+	fs.Visit(func(current *flag.Flag) { given[current.Name] = true })
+	if fs.NArg() != 2 || !given["title"] && !given["goal"] && !given["bead"] {
+		fmt.Fprintln(stderr, "usage: archon mission update <board> <mission> [--title text] [--goal text] [--bead beads-id] [--json]")
+		fmt.Fprintln(stderr, "Only the flags you give change the mission; an empty value clears that field.")
+		return 2
+	}
+	slug, err := store.ResolveBoardSelector(fs.Arg(0))
+	if err != nil {
+		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+	}
+	board, err := store.ReadBoard(slug)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	missionID, err := resolveMissionSelector(board, fs.Arg(1))
+	if err != nil {
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(1))
+	}
+	update := formations.MissionUpdateRequest{MissionID: missionID, UpdatedBy: *updatedBy}
+	if given["title"] {
+		update.Title = title
+	}
+	if given["goal"] {
+		update.Goal = goal
+	}
+	if given["bead"] {
+		update.BeadID = beadID
+	}
+	result, err := store.UpdateMission(slug, update, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
+	if err != nil {
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(1))
+	}
+	result.TOML = ""
+	if *jsonOut {
+		return writeJSON(stdout, result)
+	}
+	fmt.Fprintf(stdout, "updated mission %s\n", missionID)
 	return 0
 }
 

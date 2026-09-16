@@ -1105,6 +1105,40 @@ components:
               type: integer
             updatedBy:
               type: string
+        updateFormation:
+          type: object
+          required:
+          - id
+          description: Sets the formation title when present; an empty string clears it. ID, ports, slots,
+            brief, edges, layout and notes are unchanged.
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        updateMission:
+          type: object
+          required:
+          - id
+          description: Sets only the fields present; an empty string clears one. A non-empty beadId must be
+            a safe Beads issue ID. ID, edges, layout and notes are unchanged.
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+            goal:
+              type: string
+            beadId:
+              type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
         updateGate:
           type: object
           required:
@@ -1185,8 +1219,8 @@ components:
       description: Select one authoring mutation and supply expectedRev plus If-Match. Nested expectedRev/updatedBy
         fields are accepted for several operations. Tool operations require the exact top-level frame
         and layoutExpectation; see formations_tools.go. setVerification and legacy gate command fields
-        are retired and rejected. removeVerification requires a replacement gate. updateGate and offline
-        archon gate update share the same store path.
+        are retired and rejected. removeVerification requires a replacement gate. updateGate, updateFormation
+        and updateMission share their store paths with archon gate update, formation rename and mission update.
     AgentCreate:
       type: object
       properties:
