@@ -21,6 +21,7 @@ All routes are `GET`, read one run and return 404 for an unknown run.
 | Route | Returns |
 | --- | --- |
 | `/api/formations/runs/{runId}/evidence/nodes/{nodeId}` | `data.evidence` for one node of the run's frozen board. Missions and formations list attempts: routed inputs, dispatches, seat cleanup outcomes, the output text and per-port outputs. Gates list evaluations: criterion, input, per-kind results with judge evidence, judge failures, the human request with its verdict and response, and the final verdict with its route. Blocks and errors recorded against the node are included. An unknown node is 404. |
+| `/api/formations/runs/{runId}/evidence/problems` | `data.problems`, every block and error of the run with the nodes it names, so a block that names no node still has its reason (form-1d5). |
 | `/api/formations/runs/{runId}/evidence/briefs/{dispatchSeq}` | `data.brief`, the brief file the dispatch at that ledger sequence sent to its seat. A sequence that is not this run's `slot_dispatch` is 404. |
 | `/api/formations/runs/{runId}/evidence/artifacts` | `data.artifacts`, the files in the run's artifact directory by relative name, size and modification time. |
 | `/api/formations/runs/{runId}/evidence/artifacts/{name...}` | `data.artifact`, a preview: name, size, kind (`markdown`, `json`, `text`, `image`, `pdf` or `binary`) and text for textual kinds. |

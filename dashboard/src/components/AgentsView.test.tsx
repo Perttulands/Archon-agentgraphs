@@ -207,8 +207,8 @@ describe('AgentsView', () => {
       if (url === '/api/formations/runs/run_01D_blocked/events') {
         return Promise.resolve(jsonResponse({ success: true, data: { events: [{ seq: 7, type: 'run_blocked', nodeId: 'human-review', gateId: 'human-review' }] } }))
       }
-      if (url === '/api/formations/runs/run_01D_blocked/evidence/nodes/human-review') {
-        return Promise.resolve(jsonResponse({ success: true, data: { evidence: { runId: 'run_01D_blocked', nodeId: 'human-review', kind: 'gate', problems: [{ seq: 7, type: 'run_blocked', reason: { text: 'invalid judge result: expected exactly one chrote-verdict block', bytes: 64 }, resumeAllowed: false }] } } }))
+      if (url === '/api/formations/runs/run_01D_blocked/evidence/problems') {
+        return Promise.resolve(jsonResponse({ success: true, data: { problems: [{ seq: 7, type: 'run_blocked', nodeIds: ['human-review'], reason: { text: 'invalid judge result: expected exactly one chrote-verdict block', bytes: 64 }, resumeAllowed: false }] } }))
       }
       if (url === '/api/formations/runs?board=empty') return Promise.resolve(jsonResponse({ success: true, data: [] }))
       return Promise.reject(new Error(`unexpected fetch ${url}`))

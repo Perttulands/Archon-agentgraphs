@@ -85,6 +85,35 @@ func TestEvidenceRoutesServeNodeOutputsAndGateResponses(t *testing.T) {
 	}
 }
 
+func TestEvidenceRouteServesBlocksThatNameNoNode(t *testing.T) {
+	c, executor, _ := fixture(t)
+	id := startRun(t, c)
+	<-executor.entered
+	executor.proceed <- struct{}{}
+	awaitState(t, c, id, "waiting_human")
+	for _, event := range []formations.RunEvent{
+		{Type: formations.RunEventError, Data: map[string]any{"code": "wall_clock_exceeded", "message": "wall clock limit exceeded"}},
+		{Type: formations.RunEventBlocked, Data: map[string]any{"reason": "wall clock limit exceeded", "resumeAllowed": true}},
+	} {
+		if err := c.store.AppendRunEvent(id, event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w := getEvidence(c, "/api/formations/runs/"+id+"/evidence/problems")
+	problems := decodeEvidence[[]formations.RunProblem](t, w, "problems")
+	if len(problems) != 2 {
+		t.Fatalf("problems = %s", w.Body.String())
+	}
+	if block := problems[1]; block.Type != formations.RunEventBlocked || block.Reason.Text != "wall clock limit exceeded" || len(block.NodeIDs) != 0 || block.ResumeAllowed == nil || !*block.ResumeAllowed {
+		t.Fatalf("block = %s", w.Body.String())
+	}
+	for _, missing := range []string{"/api/formations/runs/run_missing/evidence/problems", "/api/formations/runs/not-a-run/evidence/problems"} {
+		if w := getEvidence(c, missing); w.Code != 404 {
+			t.Fatalf("%s: %d %s", missing, w.Code, w.Body.String())
+		}
+	}
+}
+
 func TestEvidenceRoutesCapBriefsArtifactsAndNodeText(t *testing.T) {
 	c, executor, root := fixture(t)
 	id := startRun(t, c)

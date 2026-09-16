@@ -18,6 +18,7 @@ import (
 // request still waiting for an answer.
 func (c *Coordinator) registerEvidenceRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/formations/runs/{runId}/evidence/nodes/{nodeId}", c.nodeEvidence)
+	mux.HandleFunc("GET /api/formations/runs/{runId}/evidence/problems", c.runProblems)
 	mux.HandleFunc("GET /api/formations/runs/{runId}/evidence/briefs/{dispatchSeq}", c.briefEvidence)
 	mux.HandleFunc("GET /api/formations/runs/{runId}/evidence/artifacts", c.artifactList)
 	mux.HandleFunc("GET /api/formations/runs/{runId}/evidence/artifacts/{name...}", c.artifactPreview)
@@ -31,6 +32,17 @@ func (c *Coordinator) nodeEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, http.StatusOK, map[string]any{"evidence": evidence})
+}
+
+// runProblems serves every block and error of the run, including those that
+// name no node, so the run bar can say why any block stopped the run.
+func (c *Coordinator) runProblems(w http.ResponseWriter, r *http.Request) {
+	problems, err := c.store.ProjectRunProblems(r.PathValue("runId"))
+	if err != nil {
+		evidenceFailure(w, err)
+		return
+	}
+	reply(w, http.StatusOK, map[string]any{"problems": problems})
 }
 
 func (c *Coordinator) briefEvidence(w http.ResponseWriter, r *http.Request) {

@@ -115,6 +115,11 @@ export interface EvidenceProblem {
   resumeAllowed?: boolean
 }
 
+/** A block or error from anywhere in a run, with the nodes it names (none for, say, an exceeded wall clock). */
+export interface RunProblem extends EvidenceProblem {
+  nodeIds: string[]
+}
+
 export interface NodeEvidence {
   runId: string
   nodeId: string
@@ -161,6 +166,12 @@ export async function fetchNodeEvidence(runId: string, nodeId: string): Promise<
   const { data } = await fetchApi<{ evidence?: NodeEvidence }>(`${runPath(runId)}/evidence/nodes/${encodeURIComponent(nodeId)}`)
   if (!data.evidence) throw new Error('the daemon returned no node evidence')
   return data.evidence
+}
+
+/** Every block and error the run recorded, oldest first, including those that name no node. */
+export async function fetchRunProblems(runId: string): Promise<RunProblem[]> {
+  const { data } = await fetchApi<{ problems?: RunProblem[] }>(`${runPath(runId)}/evidence/problems`)
+  return data.problems || []
 }
 
 export async function fetchRunBrief(runId: string, dispatchSeq: number): Promise<RunBrief> {

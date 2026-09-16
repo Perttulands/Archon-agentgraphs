@@ -2351,11 +2351,11 @@ describe('FormationsCockpit reference parity', () => {
       ],
     })
     const projection = globalThis.fetch
-    const evidence = { runId: 'run_01BLOCK', nodeId: 'gate_review', kind: 'gate', problems: [
-      { seq: 3, type: 'run_blocked', reason: { text: 'invalid judge result: missing verdict block', bytes: 42 }, resumeAllowed: false },
-    ] }
-    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) === '/api/formations/runs/run_01BLOCK/evidence/nodes/gate_review'
-      ? Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data: { evidence } }) } as unknown as Response)
+    const problems = [
+      { seq: 3, type: 'run_blocked', nodeIds: ['gate_review'], reason: { text: 'invalid judge result: missing verdict block', bytes: 42 }, resumeAllowed: false },
+    ]
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) === '/api/formations/runs/run_01BLOCK/evidence/problems'
+      ? Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data: { problems } }) } as unknown as Response)
       : projection(input, init)) as typeof fetch
     await renderCockpit()
 

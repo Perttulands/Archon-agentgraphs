@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -408,19 +409,10 @@ func projectNodeEvidence(runID, nodeID, kind string, events []RunEvent, final bo
 			verdict.Evidence, verdict.EvidenceOmitted = evidenceItems(event.Data["evidence"], capper)
 			evaluation.Verdict = verdict
 		case RunEventBlocked, RunEventError:
-			if !evidenceProblemFor(event, nodeID) {
+			if !slices.Contains(evidenceProblemNodes(event), nodeID) {
 				continue
 			}
-			problem := EvidenceProblem{Seq: event.Seq, Type: event.Type, Code: stringFromEventData(event, "code")}
-			reason := stringFromEventData(event, "reason")
-			if reason == "" {
-				reason = stringFromEventData(event, "message")
-			}
-			problem.Reason = capper.text(reason)
-			if allowed, ok := event.Data["resumeAllowed"].(bool); ok {
-				problem.ResumeAllowed = &allowed
-			}
-			evidence.Problems = append(evidence.Problems, problem)
+			evidence.Problems = append(evidence.Problems, evidenceProblem(event, capper))
 		}
 	}
 	return evidence
@@ -442,16 +434,79 @@ func currentEvidenceEvaluation(evidence *NodeEvidence, event RunEvent) *Evidence
 	return &evidence.Evaluations[len(evidence.Evaluations)-1]
 }
 
-func evidenceProblemFor(event RunEvent, nodeID string) bool {
-	if event.NodeID == nodeID || event.GateID == nodeID {
-		return true
+func evidenceProblem(event RunEvent, capper *evidenceCapper) EvidenceProblem {
+	problem := EvidenceProblem{Seq: event.Seq, Type: event.Type, Code: stringFromEventData(event, "code")}
+	reason := stringFromEventData(event, "reason")
+	if reason == "" {
+		reason = stringFromEventData(event, "message")
 	}
-	for _, key := range []string{"blockedNodeId", "blockedGateId", "nodeId"} {
-		if stringFromEventData(event, key) == nodeID {
-			return true
+	problem.Reason = capper.text(reason)
+	if allowed, ok := event.Data["resumeAllowed"].(bool); ok {
+		problem.ResumeAllowed = &allowed
+	}
+	return problem
+}
+
+// evidenceProblemNodes are the nodes a block or error names: its own node and
+// gate, the blocked node and gate, and every node with an open dispatch, such
+// as those a coordinator restart left unresolved.
+func evidenceProblemNodes(event RunEvent) []string {
+	nodes := []string{}
+	add := func(nodeID string) {
+		if nodeID != "" && !slices.Contains(nodes, nodeID) {
+			nodes = append(nodes, nodeID)
 		}
 	}
-	return false
+	add(event.NodeID)
+	add(event.GateID)
+	for _, key := range []string{"blockedNodeId", "blockedGateId", "nodeId"} {
+		add(stringFromEventData(event, key))
+	}
+	switch dispatches := event.Data["openDispatches"].(type) {
+	case []any:
+		for _, dispatch := range dispatches {
+			if entry, ok := dispatch.(map[string]any); ok {
+				nodeID, _ := entry["nodeId"].(string)
+				add(nodeID)
+			}
+		}
+	case []map[string]any:
+		for _, dispatch := range dispatches {
+			nodeID, _ := dispatch["nodeId"].(string)
+			add(nodeID)
+		}
+	}
+	return nodes
+}
+
+// RunProblem is a block or error from anywhere in a run, with the nodes it
+// names; a block that names none, such as an exceeded wall clock, has none.
+type RunProblem struct {
+	EvidenceProblem
+	NodeIDs []string `json:"nodeIds"`
+}
+
+// ProjectRunProblems reads every block and error a run recorded, oldest first.
+// The response budget is spent on the latest first, so the current block's
+// reason is served even when earlier ones filled the budget.
+func (s *Store) ProjectRunProblems(runID string) ([]RunProblem, error) {
+	events, err := s.ReadRunEvents(runID)
+	if err != nil {
+		return nil, evidenceNotFound(err)
+	}
+	return projectRunProblems(events), nil
+}
+
+func projectRunProblems(events []RunEvent) []RunProblem {
+	capper := &evidenceCapper{remaining: EvidenceNodeBudgetBytes}
+	problems := []RunProblem{}
+	for i := len(events) - 1; i >= 0; i-- {
+		if event := events[i]; event.Type == RunEventBlocked || event.Type == RunEventError {
+			problems = append(problems, RunProblem{EvidenceProblem: evidenceProblem(event, capper), NodeIDs: evidenceProblemNodes(event)})
+		}
+	}
+	slices.Reverse(problems)
+	return problems
 }
 
 func evidenceInput(raw any, capper *evidenceCapper, artifactRoots []string) *EvidenceInput {

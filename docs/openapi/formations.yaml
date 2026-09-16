@@ -396,6 +396,17 @@ paths:
           description: Enveloped data.evidence contains runId, nodeId, kind (mission, formation, gate, tool), attempts (inputs, dispatches, seatCleanups with slot and outcome, output with sorted ports), evaluations (criterion, input, kindResults, judgeFailures, humanRequests with decision response, verdict with perKind and routePort) and problems (blocks and errors).
         '404':
           description: No such run, or the node is not on the run's frozen board
+  /api/formations/runs/{runId}/evidence/problems:
+    parameters:
+    - $ref: '#/components/parameters/RunID'
+    get:
+      summary: Read every block and error the run recorded (ADR-0017)
+      description: Oldest first, with texts capped at 64 KiB each and 2 MiB per response, spent on the latest first, and secret patterns redacted.
+      responses:
+        '200':
+          description: Enveloped data.problems lists seq, type, code, reason, resumeAllowed and nodeIds (the node or gate, blocked node or gate and open dispatch nodes it names; empty for a block that names none, such as an exceeded wall clock).
+        '404':
+          description: No such run
   /api/formations/runs/{runId}/evidence/briefs/{dispatchSeq}:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -435,7 +446,7 @@ paths:
       summary: Preview one artifact
       responses:
         '200':
-          description: Enveloped data.artifact contains name, size, modifiedAt, kind (markdown, json, text, image, binary) and, for textual kinds, text capped at 256 KiB.
+          description: Enveloped data.artifact contains name, size, modifiedAt, kind (markdown, json, text, image, pdf, binary) and, for textual kinds, text capped at 256 KiB.
         '404':
           description: No such run or artifact, or a name that leaves the run's artifact directory through .., a symlink or a hard link
   /api/formations/runs/{runId}/artifacts/{name}:

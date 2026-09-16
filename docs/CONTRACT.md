@@ -656,10 +656,17 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   Gates list `evaluations` with the criterion, input, `kindResults` with judge
   `evidence`, `judgeFailures`, `humanRequests` with each decision's `response`,
   and the final `verdict` with `perKind` and `routePort`. `problems` lists the
-  blocks and errors recorded against the node. Each text is capped at 64 KiB;
+  blocks and errors recorded against the node, including a block whose open
+  dispatches name it. Each text is capped at 64 KiB;
   a kind result or verdict lists at most 100 evidence items and counts the rest
   in `evidenceOmitted`; one response carries at most 2 MiB of text, after which
   texts are empty and truncated. An unknown node returns 404.
+- `/api/formations/runs/{runId}/evidence/problems` returns `data.problems`,
+  every block and error of the run oldest first: `seq`, `type`, `code`,
+  `reason`, `resumeAllowed` and `nodeIds`, the nodes it names (its node or
+  gate, the blocked node or gate, and nodes with open dispatches). A block that
+  names no node, such as an exceeded wall clock, has empty `nodeIds` and its
+  reason. The 2 MiB budget is spent on the latest first.
 - `/api/formations/runs/{runId}/evidence/briefs/{dispatchSeq}` returns
   `data.brief` (`dispatchSeq`, `nodeId`, `slotId`, `attempt`, `text` capped at
   256 KiB): the brief that this run's `slot_dispatch` at that sequence sent to

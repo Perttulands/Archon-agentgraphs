@@ -111,6 +111,59 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 	}
 }
 
+func TestRunProblemsServeBlocksThatNameNoNode(t *testing.T) {
+	events := []RunEvent{
+		evidenceEvent(1, RunEventNodeStarted, "fmn_map", nil),
+		{Seq: 2, Type: RunEventError, Data: map[string]any{"code": "coordinator_interrupted", "message": "coordinator restarted with open dispatches", "openDispatches": []any{map[string]any{"dispatchId": "dsp_1", "nodeId": "fmn_map", "slotId": "slot_scout"}}}},
+		{Seq: 3, Type: RunEventBlocked, Data: map[string]any{"reason": "coordinator restarted; completed-turn evidence required", "openDispatches": []any{map[string]any{"nodeId": "fmn_map"}}, "resumeAllowed": true}},
+		{Seq: 4, Type: RunEventResumed},
+		{Seq: 5, Type: RunEventError, Data: map[string]any{"code": "wall_clock_exceeded", "message": "wall clock limit exceeded", "nodeId": ""}},
+		{Seq: 6, Type: RunEventBlocked, Data: map[string]any{"reason": "wall clock limit exceeded", "openDispatches": []map[string]any{}, "resumeAllowed": true}},
+	}
+
+	// A restart block names its nodes only through their open dispatches.
+	mapped := projectNodeEvidence("run_1", "fmn_map", "formation", events, false, nil)
+	if len(mapped.Problems) != 2 || mapped.Problems[1].Seq != 3 || mapped.Problems[1].Reason.Text != "coordinator restarted; completed-turn evidence required" {
+		t.Fatalf("map problems = %+v", mapped.Problems)
+	}
+
+	problems := projectRunProblems(events)
+	if len(problems) != 4 {
+		t.Fatalf("run problems = %+v", problems)
+	}
+	restart, clock := problems[1], problems[3]
+	if restart.Seq != 3 || strings.Join(restart.NodeIDs, ",") != "fmn_map" || restart.ResumeAllowed == nil || !*restart.ResumeAllowed {
+		t.Fatalf("restart block = %+v", restart)
+	}
+	if clock.Seq != 6 || clock.Type != RunEventBlocked || clock.Reason.Text != "wall clock limit exceeded" || len(clock.NodeIDs) != 0 {
+		t.Fatalf("wall clock block = %+v", clock)
+	}
+	if problems[2].Code != "wall_clock_exceeded" || problems[2].Reason.Text != "wall clock limit exceeded" {
+		t.Fatalf("wall clock error = %+v", problems[2])
+	}
+	raw, err := json.Marshal(clock)
+	if err != nil || !strings.Contains(string(raw), `"nodeIds":[]`) || strings.Contains(string(raw), "dsp_1") {
+		t.Fatalf("wall clock block JSON = %s, %v", raw, err)
+	}
+}
+
+// The newest problems are served first when the response budget runs out.
+func TestRunProblemsSpendTheBudgetOnTheLatest(t *testing.T) {
+	long := strings.Repeat("x", EvidenceTextMaxBytes)
+	events := []RunEvent{}
+	for seq := 1; seq <= EvidenceNodeBudgetBytes/EvidenceTextMaxBytes+2; seq++ {
+		events = append(events, RunEvent{Seq: seq, Type: RunEventError, Data: map[string]any{"message": long}})
+	}
+	events = append(events, RunEvent{Seq: len(events) + 1, Type: RunEventBlocked, Data: map[string]any{"reason": "the latest block"}})
+	problems := projectRunProblems(events)
+	if last := problems[len(problems)-1]; last.Reason.Text != "the latest block" || last.Reason.Truncated {
+		t.Fatalf("latest block = %+v", last.EvidenceProblem)
+	}
+	if first := problems[0]; first.Reason.Text != "" || !first.Reason.Truncated {
+		t.Fatalf("oldest error kept %d bytes", len(first.Reason.Text))
+	}
+}
+
 func TestNodeEvidenceMarksAnUnansweredRequestPendingUntilTheRunEnds(t *testing.T) {
 	events := []RunEvent{
 		evidenceEvent(1, RunEventGateEvaluating, "gate_review", map[string]any{"kinds": []any{"human"}}),

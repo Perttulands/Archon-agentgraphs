@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchNodeEvidence } from '../evidence/runEvidenceApi'
+import { fetchRunProblems } from '../evidence/runEvidenceApi'
 import { fetchBoardRuns, fetchRunEvents } from './formationsApi'
 import { openRunsByAttention } from './formationsRunDiscovery'
 import type { RunEvent, RunStatusProjection } from './formationsTypes'
@@ -13,7 +13,7 @@ export interface MissionRunState {
   /** Open runs of this mission; more than one means Boards offers a picker. */
   openCount: number
   events: RunEvent[]
-  /** The recorded reason for the latest block, when the ledger names its node. */
+  /** The recorded reason for the latest block. */
   blockReason: string
 }
 
@@ -37,11 +37,9 @@ export function boardsRunHref(board: string, runId: string): string {
 
 async function latestBlockReason(run: RunStatusProjection, events: RunEvent[]): Promise<string> {
   const block = [...events].reverse().find(event => event.type === 'run_blocked')
-  const nodeId = block?.gateId || block?.nodeId
-  if (!block || !nodeId) return ''
+  if (!block) return ''
   try {
-    const evidence = await fetchNodeEvidence(run.runId, nodeId)
-    return evidence.problems?.find(problem => problem.seq === block.seq)?.reason.text || ''
+    return (await fetchRunProblems(run.runId)).find(problem => problem.seq === block.seq)?.reason.text || ''
   } catch {
     return ''
   }
