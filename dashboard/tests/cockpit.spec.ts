@@ -106,6 +106,20 @@ test('the run banner docks above the canvas and never covers a card', async ({ p
   expect(await cwd.evaluate(el => el.scrollWidth > el.clientWidth && el.clientWidth <= 260)).toBe(true)
 })
 
+test('the phone roster count stays inside its header column', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await cockpitFixture(page, { run: true })
+  await page.goto('/')
+  const count = page.getByTestId('roster-count')
+  await expect(count).toHaveText(/on board/)
+  const header = (await page.locator('.roster-hd').boundingBox())!
+  const pill = (await count.boundingBox())!
+  const label = (await page.locator('.roster-group-label').first().boundingBox())!
+  expect(pill.x + pill.width).toBeLessThanOrEqual(header.x + header.width)
+  expect(pill.x + pill.width).toBeLessThanOrEqual(label.x)
+  expect(await count.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+})
+
 test('a formation without seats never opens a different formation', async ({ page }) => {
   await cockpitFixture(page, { run: true })
   const sockets: string[] = []
