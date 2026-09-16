@@ -324,9 +324,10 @@ archon --workspace "$FORM_STATE" board validate delivery --json
 archon --workspace "$FORM_STATE" board arrange delivery --json
 ```
 
-Author through the cockpit or offline Archon's board, mission, formation,
-gate, tool and agent nouns. Read command-specific help with `-h`; for runtime
-flags include `--server` in the help invocation. Preserve an operator's draft
+Author through the cockpit, or with Archon's board, mission, formation, gate,
+tool and agent nouns offline (`--workspace`) or through the daemon (`--server`).
+Read command-specific help with `-h`, including `--server` when using the
+daemon. Preserve an operator's draft
 and notes, staff its slots, write executable briefs, wire exact port IDs, then
 validate and arrange. The shared `archon` skill gives an authoring recipe.
 Nodes keep their IDs when edited: `archon formation rename <board> <formation>
@@ -509,8 +510,27 @@ exact human verdicts. They all use the coordinator; no request-local executor
 exists.
 There is no generic file reader, transcript endpoint, board import endpoint or
 authentication layer. Run evidence reads only one run's ledger, its artifact
-directory and the briefs its own dispatches recorded. Remote Archon supports board list/inspect/validate and
-runtime commands; author definitions with `--workspace` or the cockpit.
+directory and the briefs its own dispatches recorded.
+
+With `--server`, Archon runs these authoring commands through the daemon, so an
+open cockpit sees the edits through its change polling: `board
+new|notes|note|validate|arrange`, `mission create|update|wire`, `formation
+create|rename|assign|unassign|set-brief|add-input|add-output|wire|unwire`,
+`gate create|update|judge` and `agent new|edit`. They take the offline flags and
+print the offline output: unwrapped JSON without TOML, or the same text. Each
+command reads the document it changes, resolves formation, gate and mission
+selectors from that read, and writes with its ETag and board revision. A write
+that loses to another editor is read and retried up to three times. Differences
+from offline use:
+
+- Error messages come from the daemon (`coordinator HTTP <status>: ...`). JSON
+  error codes, boundaries and selectors match.
+- Agent cards are the daemon's `--agents-dir`, and `agent new --from` names a
+  path on the daemon host. `board note --file` reads locally.
+- `board list`, `board inspect` and runtime commands keep printing the daemon's
+  `{success,timestamp,data}` envelope. `tool`, `mission list|inspect`,
+  `formation list|inspect|remove-verification|run`, `run ask` and `agent
+  list|inspect|spawn|attach|retire` remain offline only.
 `GET /api/formations/boards/{board}/validation` returns
 `{boardRev,boardEtag,errors,warnings}` for the whole board, the same report as
 `board validate`.

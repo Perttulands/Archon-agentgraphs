@@ -6,10 +6,17 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Perttulands/Archon-agentgraphs/internal/coordinator"
+	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
 func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
@@ -125,5 +132,295 @@ func TestRemoteGateVerdictSendsResponseText(t *testing.T) {
 		if body["reason"] != answer || body["requestedSeq"] != float64(7) {
 			t.Fatalf("verdict body = %+v, want response text as reason", body)
 		}
+	}
+}
+
+// authoringSides runs the same authoring commands offline and through a real
+// coordinator, so remote output can be compared with offline output.
+type authoringSide struct {
+	name  string
+	store *formations.Store
+	run   func(args ...string) (string, string, int)
+}
+
+func newAuthoringSides(t *testing.T) (offline, remote authoringSide, server *httptest.Server) {
+	t.Helper()
+	runner := &fakeTmux{live: map[string]bool{}}
+	offlineRoot := t.TempDir()
+	t.Setenv("CHROTE_AGENTS_DIR", filepath.Join(offlineRoot, "agents"))
+	offline = authoringSide{name: "offline", store: formations.NewStore(offlineRoot), run: func(args ...string) (string, string, int) {
+		return runArchon(t, runner, append([]string{"--workspace", offlineRoot}, args...)...)
+	}}
+	remoteRoot := t.TempDir()
+	c, err := coordinator.Open(remoteRoot, formations.NewPersonaStore(filepath.Join(remoteRoot, "agents")), func(*formations.Store) formations.FormationExecutor {
+		return formations.NewUnavailableFormationExecutor("test")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server = httptest.NewServer(c.Handler())
+	t.Cleanup(func() { server.Close(); c.Close() })
+	remote = authoringSide{name: "remote", store: formations.NewStore(remoteRoot), run: func(args ...string) (string, string, int) {
+		return runArchon(t, runner, append([]string{"--server", server.URL}, args...)...)
+	}}
+	return offline, remote, server
+}
+
+var (
+	authoringIDPattern       = regexp.MustCompile(`\b([a-z]+)_[0-9A-HJKMNP-TV-Z]{26}\b`)
+	authoringVolatilePattern = regexp.MustCompile(`"(etag|updatedAt|createdAt)": "[^"]*"`)
+)
+
+// normalizeAuthoring numbers IDs by first appearance and hides ETags and times.
+func normalizeAuthoring(text string) string {
+	ids := map[string]string{}
+	text = authoringIDPattern.ReplaceAllStringFunc(text, func(id string) string {
+		if _, ok := ids[id]; !ok {
+			ids[id] = fmt.Sprintf("%s#%d", id[:strings.Index(id, "_")], len(ids)+1)
+		}
+		return ids[id]
+	})
+	return authoringVolatilePattern.ReplaceAllString(text, `"$1": "-"`)
+}
+
+type authoringStep struct {
+	args func(board *formations.BoardDocument) []string
+	// errorOnly compares only the JSON error code, boundary and selector.
+	errorOnly bool
+}
+
+func fixed(args ...string) func(*formations.BoardDocument) []string {
+	return func(*formations.BoardDocument) []string { return args }
+}
+
+func formationTitled(t *testing.T, board *formations.BoardDocument, title string) formations.FormationNode {
+	t.Helper()
+	for _, formation := range board.Formations {
+		if formation.Title == title {
+			return formation
+		}
+	}
+	t.Fatalf("no formation %q in %+v", title, board.Formations)
+	return formations.FormationNode{}
+}
+
+func gateTitled(t *testing.T, board *formations.BoardDocument, title string) formations.GateNode {
+	t.Helper()
+	for _, gate := range board.Gates {
+		if gate.Title == title {
+			return gate
+		}
+	}
+	t.Fatalf("no gate %q in %+v", title, board.Gates)
+	return formations.GateNode{}
+}
+
+// authoringScript uses every remote authoring command, including failures.
+func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
+	worker := func(board *formations.BoardDocument) formations.FormationNode {
+		return formationTitled(t, board, "Worker")
+	}
+	with := func(build func(*formations.BoardDocument) []string) func(*formations.BoardDocument) []string {
+		return func(board *formations.BoardDocument) []string {
+			args := build(board)
+			if jsonOut {
+				args = append(args, "--json")
+			}
+			return args
+		}
+	}
+	steps := []authoringStep{
+		{args: with(fixed("board", "new", "demo", "--title", "Demo"))},
+		{args: with(fixed("agent", "new", "scout-x", "--kind", "scout", "--harness", "openai-codex", "--capable", "research"))},
+		{args: with(fixed("agent", "edit", "scout-x", "--summary", "Finds things", "--add-capability", "inspect", "--display-name", "Scout X"))},
+		{args: with(fixed("mission", "create", "demo", "--title", "Work", "--goal", "Do it", "--bead", "form-demo"))},
+		{args: with(fixed("formation", "create", "demo", "solo", "--title", "Worker"))},
+		{args: with(fixed("formation", "create", "demo", "--title", "Judge"))},
+		{args: with(fixed("formation", "rename", "demo", "Judge", "Critic"))},
+		{args: with(fixed("formation", "add-input", "demo", "Worker", "--label", "Extra"))},
+		{args: with(fixed("formation", "add-output", "demo", "Worker", "--label", "Report"))},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--agent", "scout-x", "--harness", "openai-codex"}
+		})},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"formation", "unassign", "demo", "Worker", "--slot", worker(board).Slots[0].ID}
+		})},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--agent", "codex-builder", "--harness", "openai-codex"}
+		})},
+		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--goal", "Produce the result", "--bead", "form-demo", "--file", "src/a.go", "--link", "https://example.com/spec"))},
+		{args: with(fixed("formation", "set-brief", "demo", "Critic", "--goal", "Judge the result"))},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"formation", "assign", "demo", "Critic", "--slot", formationTitled(t, board, "Critic").Slots[0].ID, "--agent", "codex-judge", "--harness", "openai-codex"}
+		})},
+		{args: with(fixed("gate", "create", "demo", "--kinds", "formation", "--title", "Review", "--criterion", "The result satisfies the brief"))},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"gate", "judge", "demo", "Review", "--chain", formationTitled(t, board, "Critic").ID}
+		})},
+		{args: with(fixed("gate", "update", "demo", "Review", "--criterion", "Good enough"))},
+		{args: with(fixed("gate", "judge", "demo", "Review", "--detach"))},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"gate", "judge", "demo", "Review", "--chain", formationTitled(t, board, "Critic").ID}
+		})},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"mission", "wire", "demo", "Work", worker(board).ID + ":" + worker(board).Inputs[0].ID}
+		})},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"formation", "wire", "demo", worker(board).ID + ":" + worker(board).Outputs[0].ID, gateTitled(t, board, "Review").ID + ":in"}
+		})},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"formation", "unwire", "demo", worker(board).ID + ":" + worker(board).Outputs[0].ID, gateTitled(t, board, "Review").ID + ":in"}
+		})},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"formation", "wire", "demo", worker(board).ID + ":" + worker(board).Outputs[0].ID, gateTitled(t, board, "Review").ID + ":in"}
+		})},
+		{args: with(fixed("gate", "create", "demo", "--kinds", "human", "--title", "Signoff", "--criterion", "Operator signs off"))},
+		{args: with(fixed("gate", "update", "demo", "Signoff", "--title", "Sign-off", "--kinds", "human,code", "--check", "output_contains", "--check-version", "1", "--check-value", "done"))},
+		{args: with(fixed("gate", "update", "demo", "Sign-off", "--clear-check", "--kinds", "human"))},
+		{args: with(fixed("mission", "update", "demo", "Work", "--goal", "Do it well"))},
+		{args: with(fixed("board", "note", "demo", "--text", "Board intent"))},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"board", "note", "demo", "--node", worker(board).ID, "--text", "Worker intent"}
+		})},
+		{args: with(fixed("board", "notes", "demo"))},
+		{args: with(fixed("board", "arrange", "demo"))},
+		{args: with(fixed("board", "validate", "demo"))},
+		{args: with(fixed("formation", "rename", "demo", "Nobody", "Ghost")), errorOnly: true},
+		{args: with(fixed("gate", "update", "demo", "Nobody", "--title", "Ghost")), errorOnly: true},
+		{args: with(fixed("mission", "wire", "demo", "Nobody", "x:y")), errorOnly: true},
+		{args: with(fixed("board", "new", "demo")), errorOnly: true},
+		{args: with(fixed("gate", "create", "demo", "--command", "make test")), errorOnly: true},
+		{args: with(fixed("formation", "create", "missing-board")), errorOnly: true},
+	}
+	return steps
+}
+
+func errorIdentity(t *testing.T, stderr string) string {
+	t.Helper()
+	var response archonErrorResponse
+	if err := json.Unmarshal([]byte(stderr), &response); err != nil {
+		return "text error"
+	}
+	return response.Code + "|" + response.Boundary + "|" + response.Selector
+}
+
+func TestRemoteAuthoringMatchesOfflineCommands(t *testing.T) {
+	for _, jsonOut := range []bool{true, false} {
+		t.Run(fmt.Sprintf("json=%t", jsonOut), func(t *testing.T) {
+			offline, remote, _ := newAuthoringSides(t)
+			for index, step := range authoringScript(t, jsonOut) {
+				results := map[string][3]string{}
+				var args []string
+				for _, side := range []authoringSide{offline, remote} {
+					board, _ := side.store.ReadBoard("demo")
+					args = step.args(board)
+					stdout, stderr, code := side.run(args...)
+					results[side.name] = [3]string{normalizeAuthoring(stdout), stderr, strconv.Itoa(code)}
+				}
+				off, rem := results["offline"], results["remote"]
+				if off[2] != rem[2] {
+					t.Fatalf("step %d %v exit offline %s remote %s\noffline stderr: %s\nremote stderr: %s", index, args, off[2], rem[2], off[1], rem[1])
+				}
+				if step.errorOnly {
+					if off[2] == "0" {
+						t.Fatalf("step %d %v unexpectedly succeeded", index, args)
+					}
+					if jsonOut && errorIdentity(t, off[1]) != errorIdentity(t, rem[1]) {
+						t.Fatalf("step %d %v error offline %s remote %s", index, args, off[1], rem[1])
+					}
+					continue
+				}
+				if off[2] != "0" && !(args[0] == "board" && args[1] == "validate") {
+					t.Fatalf("step %d %v failed on both sides: %s", index, args, off[1])
+				}
+				if off[0] != rem[0] {
+					t.Fatalf("step %d %v output differs\noffline:\n%s\nremote:\n%s", index, args, off[0], rem[0])
+				}
+			}
+			board, err := remote.store.ReadBoard("demo")
+			// Mission to Worker, Worker to Review, and the Critic judge loop.
+			if err != nil || len(board.Missions) != 1 || len(board.Formations) != 2 || len(board.Gates) != 2 || len(board.Connections) != 4 || board.UpdatedBy != "agent:archon" {
+				t.Fatalf("remote board: %v missions %d formations %d gates %d connections %d by %s", err, len(board.Missions), len(board.Formations), len(board.Gates), len(board.Connections), board.UpdatedBy)
+			}
+			if notes, err := remote.store.ReadBoardNotes("demo"); err != nil || notes.Board != "Board intent" || len(notes.Elements) != 1 {
+				t.Fatalf("remote notes = %+v, %v", notes, err)
+			}
+			if card, err := formations.NewPersonaStore(filepath.Join(filepath.Dir(remote.store.BoardPath("demo")), "..", "..", "agents")).ReadPersona("scout-x"); err != nil || card.DisplayName != "Scout X" || card.Summary != "Finds things" {
+				t.Fatalf("remote agent card = %+v, %v", card, err)
+			}
+		})
+	}
+}
+
+func flagNames(help string) []string {
+	names := regexp.MustCompile(`(?m)^\s+-([a-z][a-z-]*)`).FindAllStringSubmatch(help, -1)
+	result := make([]string, 0, len(names))
+	for _, name := range names {
+		result = append(result, name[1])
+	}
+	return result
+}
+
+func TestRemoteAuthoringCoversEveryCommandWithOfflineFlags(t *testing.T) {
+	offline, remote, _ := newAuthoringSides(t)
+	scripted := map[string]bool{}
+	for _, step := range authoringScript(t, false) {
+		args := step.args(&formations.BoardDocument{Formations: []formations.FormationNode{
+			{ID: "fmn_x", Title: "Worker", Inputs: []formations.FormationPort{{ID: "port_in"}}, Outputs: []formations.FormationPort{{ID: "port_out"}}, Slots: []formations.FormationSlot{{ID: "slot_x"}}},
+			{ID: "fmn_y", Title: "Critic", Slots: []formations.FormationSlot{{ID: "slot_y"}}},
+		}, Gates: []formations.GateNode{{ID: "gate_x", Title: "Review"}}})
+		scripted[args[0]+" "+args[1]] = true
+	}
+	for command := range remoteAuthoringCommands {
+		if !scripted[command] {
+			t.Errorf("remote %q has no step in authoringScript", command)
+		}
+		words := strings.Fields(command)
+		_, offlineHelp, _ := offline.run(words[0], words[1], "-h")
+		_, remoteHelp, _ := remote.run(words[0], words[1], "-h")
+		if got, want := flagNames(remoteHelp), flagNames(offlineHelp); len(want) == 0 || strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("%s flags: remote %v, offline %v", command, got, want)
+		}
+	}
+}
+
+func TestRemoteAuthoringRetriesAWriteRaceThenGivesUp(t *testing.T) {
+	_, remote, daemon := newAuthoringSides(t)
+	if _, stderr, code := remote.run("board", "new", "race"); code != 0 {
+		t.Fatal(stderr)
+	}
+	target, err := url.Parse(daemon.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	for _, losses := range []int{remoteWriteAttempts - 1, remoteWriteAttempts} {
+		patches := 0
+		// The first writes lose to another editor, as if the cockpit wrote first.
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPatch {
+				patches++
+				if patches <= losses {
+					w.WriteHeader(http.StatusConflict)
+					w.Write([]byte(`{"success":false,"error":{"code":"CONFLICT","message":"Formation definition changed; reload and retry"}}`))
+					return
+				}
+			}
+			proxy.ServeHTTP(w, r)
+		}))
+		var out, stderr bytes.Buffer
+		code := runRemote(server.URL, []string{"formation", "create", "race", "--title", fmt.Sprintf("Worker %d", losses)}, &out, &stderr)
+		server.Close()
+		if losses < remoteWriteAttempts {
+			if code != 0 || patches != losses+1 || !strings.HasPrefix(out.String(), "created fmn_") {
+				t.Fatalf("losses %d: code %d patches %d out %q err %q", losses, code, patches, out.String(), stderr.String())
+			}
+		} else if code == 0 || patches != remoteWriteAttempts || !strings.Contains(stderr.String(), "coordinator HTTP 409") {
+			t.Fatalf("losses %d: code %d patches %d err %q", losses, code, patches, stderr.String())
+		}
+	}
+	board, err := remote.store.ReadBoard("race")
+	if err != nil || len(board.Formations) != 1 {
+		t.Fatalf("race board %+v, %v; want exactly one formation from the retried write", board, err)
 	}
 }

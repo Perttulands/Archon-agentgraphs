@@ -103,6 +103,9 @@ paths:
                   minLength: 1
                 slug:
                   type: string
+                updatedBy:
+                  type: string
+                  description: Actor recorded on the new board; defaults to agent:ui
               required:
               - title
   /api/formations/boards/{board}:

@@ -23,20 +23,28 @@ func (s *Store) FindFreeLayoutPosition(slug string, desiredX, desiredY int) (Lay
 	if err != nil {
 		return LayoutNode{}, err
 	}
-
-	persisted := map[string]LayoutNode{}
 	layout, err := s.readLayoutDefinitionForWrite(slug)
 	switch {
 	case err == nil:
 		if layout.BoardID != board.ID {
 			return LayoutNode{}, fmt.Errorf("%w: layout board %q does not match %q", ErrConflict, layout.BoardID, board.ID)
 		}
+	case errors.Is(err, ErrNotFound):
+		layout = nil
+	default:
+		return LayoutNode{}, err
+	}
+	return FreeLayoutPosition(board, layout, desiredX, desiredY)
+}
+
+// FreeLayoutPosition is FindFreeLayoutPosition for a board and layout already
+// read, such as from the daemon's HTTP routes. A nil layout has no nodes.
+func FreeLayoutPosition(board *BoardDocument, layout *LayoutDocument, desiredX, desiredY int) (LayoutNode, error) {
+	persisted := map[string]LayoutNode{}
+	if layout != nil {
 		for _, node := range layout.Nodes {
 			persisted[node.ID] = node
 		}
-	case errors.Is(err, ErrNotFound):
-	default:
-		return LayoutNode{}, err
 	}
 
 	occupied := make([]LayoutNode, 0, len(board.Missions)+len(board.Formations)+len(board.Gates)+len(board.Tools))

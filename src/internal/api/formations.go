@@ -841,11 +841,16 @@ func (h *FormationsHandler) ListBoards(w http.ResponseWriter, r *http.Request) {
 
 func (h *FormationsHandler) CreateBoard(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Title string `json:"title"`
-		Slug  string `json:"slug"`
+		Title     string `json:"title"`
+		Slug      string `json:"slug"`
+		UpdatedBy string `json:"updatedBy"`
 	}
 	if !decodeJSONBody(w, r, &request) {
 		return
+	}
+	updatedBy := strings.TrimSpace(request.UpdatedBy)
+	if updatedBy == "" {
+		updatedBy = "agent:ui"
 	}
 	title := strings.TrimSpace(request.Title)
 	slug := strings.TrimSpace(request.Slug)
@@ -863,14 +868,14 @@ func (h *FormationsHandler) CreateBoard(w http.ResponseWriter, r *http.Request) 
 	board, err := h.store.CreateBoard(formations.BoardCreateRequest{
 		Slug:      slug,
 		Title:     title,
-		UpdatedBy: "agent:ui",
+		UpdatedBy: updatedBy,
 	})
 	// An unnamed sketch takes the next free untitled slug instead of failing.
 	for suffix := 2; untitled && errors.Is(err, formations.ErrAlreadyExists) && suffix <= maxUntitledBoards; suffix++ {
 		board, err = h.store.CreateBoard(formations.BoardCreateRequest{
 			Slug:      fmt.Sprintf("%s-%d", slug, suffix),
 			Title:     fmt.Sprintf("%s %d", untitledBoardTitle, suffix),
-			UpdatedBy: "agent:ui",
+			UpdatedBy: updatedBy,
 		})
 	}
 	if err != nil {
