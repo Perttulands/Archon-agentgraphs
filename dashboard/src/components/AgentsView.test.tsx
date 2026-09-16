@@ -142,6 +142,51 @@ describe('AgentsView', () => {
     expect(screen.getByLabelText('Mission')).toHaveValue('mission-beta')
   })
 
+  it('records a gate verdict without inventing an operator response', async () => {
+    const board = fullyStaffedMissionBoard()
+    const verdicts: unknown[] = []
+    window.localStorage.setItem(activeRunStorageKey('mission-board'), 'run-gate')
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/agents') {
+        return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0 } }))
+      }
+      if (url === '/api/formations/boards') {
+        return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' }] } }))
+      }
+      if (url === '/api/formations/boards/mission-board/layout') {
+        return Promise.resolve(jsonResponse({ success: true, data: { layout: missionLayout() } }, 200, { ETag: 'layout-etag' }))
+      }
+      if (url === '/api/formations/boards/mission-board') {
+        return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'board-etag' }))
+      }
+      if (url === '/api/formations/runs/run-gate/gates/human-review/verdict' && init?.method === 'POST') {
+        verdicts.push(JSON.parse(String(init.body)))
+        return Promise.resolve(jsonResponse({ success: true, data: { runId: 'run-gate' } }))
+      }
+      if (url === '/api/formations/runs/run-gate') {
+        return Promise.resolve(jsonResponse({
+          success: true,
+          data: { ...runStatus('run-gate', 'mission-alpha'), status: 'blocked', waitingGates: [{ gateId: 'human-review', requestedSeq: 4 }] },
+        }))
+      }
+      if (url === '/api/formations/runs/run-gate/events') {
+        return Promise.resolve(jsonResponse({
+          success: true,
+          data: { events: [{ runId: 'run-gate', seq: 4, type: 'human_input_requested', gateId: 'human-review', actor: 'agent:archon', ts: '2026-09-16T12:00:00Z' }] },
+        }))
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`))
+    })
+
+    render(<AgentsView />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /^pass$/i }))
+
+    await waitFor(() => expect(verdicts).toHaveLength(1))
+    expect(verdicts[0]).toEqual({ actor: 'agent:ui', verdict: 'pass', requestedSeq: 4, reason: '' })
+  })
+
   it('offers a board retry when the selected board fails to load', async () => {
     const board = emptyBoard()
     let failBoard = true

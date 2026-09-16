@@ -667,7 +667,9 @@ export default function AgentsView() {
         actor: 'agent:ui',
         verdict,
         requestedSeq: activeRun.waitingGates?.find(gate => gate.gateId === openGateId)?.requestedSeq || 0,
-        reason: `Recorded from Agents tab: ${verdict}`,
+        // A pass reason reaches the next formation as the operator's response.
+        // This tab has no answer field, so it sends none.
+        reason: '',
       }))
       setActiveRun(status)
       const events = await fetchRunEvents(activeRun.runId)
