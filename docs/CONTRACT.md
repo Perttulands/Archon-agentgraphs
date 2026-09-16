@@ -254,6 +254,10 @@ output block, without embedding a second verdict block in it.
 A fail edge delivers typed feedback containing gate ID, gate attempt, verdict,
 reason, evidence and original input text/reference. The next prompt renders
 this as a gate-feedback section. An unwired fail leaves a visible block.
+A pushback also holds when the failing gate was fed by another gate's pass:
+resume never re-delivers an input a gate has already evaluated, so the pushback
+target runs first. A pass cannot finish a run while a fail verdict's target has
+not yet acted on its feedback.
 A human kind waits for an explicit verdict naming the exact pending sequence;
 stale or duplicate decisions return HTTP 409. There is no default verdict.
 The verdict's `reason` is the operator's response. On pass, a nonempty response

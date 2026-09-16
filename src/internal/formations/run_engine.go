@@ -1074,7 +1074,7 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 			completionEvents = refreshed
 			completed = completedFormationsFromEvents(refreshed)
 		}
-		if terminalPassReachedOnBoard(board, completionEvents) || (latestGateVerdictAllowsGraphCompletion(completionEvents) && runGraphComplete(board, mission.ID, completed)) {
+		if terminalPassReachedOnBoard(board, completionEvents) || (latestGateVerdictAllowsGraphCompletion(completionEvents) && runGraphComplete(board, mission.ID, completed) && !pendingPushback(board, completionEvents)) {
 			return e.appendResumeSucceeded(runID)
 		}
 		return e.appendErrorAndBlock(runID, "resume_no_work", "no resumable work found", "engine", "", "no resumable work found")
@@ -1262,7 +1262,7 @@ func terminalPassReachedOnBoard(board *BoardDocument, events []RunEvent) bool {
 			gateID = event.NodeID
 		}
 		if board != nil {
-			return len(gateVerdictRoutes(board, event, gateID, "pass")) == 0
+			return len(gateVerdictRoutes(board, event, gateID, "pass")) == 0 && !pendingPushback(board, events)
 		}
 		return len(stringSliceFromAny(event.Data["routedEdges"])) == 0
 	}
@@ -1418,7 +1418,13 @@ func (e *RunEngine) replayNodeOutputToReady(runID string, board *BoardDocument, 
 }
 
 func (e *RunEngine) replayGateVerdictsToReady(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string, completed map[string]bool, lastOutputIdx map[string]int) error {
+	evaluations := gateEvaluationKeys(board, events)
+	outputOrdinals := map[string]int{}
 	for i, event := range events {
+		if event.Type == RunEventNodeOutput {
+			advanceOutputOrdinals(board, outputOrdinals, event)
+			continue
+		}
 		if event.Type != RunEventGateVerdict {
 			continue
 		}
@@ -1450,12 +1456,90 @@ func (e *RunEngine) replayGateVerdictsToReady(runID string, board *BoardDocument
 					return err
 				}
 			}
+			// A gate that already began evaluating this delivery has consumed it.
+			// Replaying it would re-run that gate on stale input ahead of any
+			// pushback that followed its verdict.
+			toNode, _ := endpointParts(route.To)
+			if _, isGate := gates[toNode]; isGate && evaluations.consumedAfter(i, toNode, gateInputReplayKey(nextInput.EdgeID, gateInputOutputSeq(nextInput, outputOrdinals))) {
+				continue
+			}
 			if err := e.deliverConnection(runID, board, gates, route, nextInput, limits, ready, queued, queue); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+type gateEvaluationKey struct {
+	index  int
+	gateID string
+	input  string
+}
+
+type gateEvaluationIndex []gateEvaluationKey
+
+// gateEvaluationKeys lists each gate evaluation with the input it took, keyed
+// the way node outputs number their deliveries at that point in the ledger.
+func gateEvaluationKeys(board *BoardDocument, events []RunEvent) gateEvaluationIndex {
+	outputOrdinals := map[string]int{}
+	var keys gateEvaluationIndex
+	for i, event := range events {
+		switch event.Type {
+		case RunEventNodeOutput:
+			advanceOutputOrdinals(board, outputOrdinals, event)
+		case RunEventGateEvaluating:
+			gateID := event.GateID
+			if gateID == "" {
+				gateID = event.NodeID
+			}
+			input := runInputRefFromAny(event.Data["inputRef"])
+			keys = append(keys, gateEvaluationKey{index: i, gateID: gateID, input: gateInputReplayKey(input.EdgeID, gateInputOutputSeq(input, outputOrdinals))})
+		}
+	}
+	return keys
+}
+
+func (keys gateEvaluationIndex) consumedAfter(index int, gateID, input string) bool {
+	for _, key := range keys {
+		if key.index > index && key.gateID == gateID && key.input == input {
+			return true
+		}
+	}
+	return false
+}
+
+// pendingPushback reports a fail verdict whose routed target has not acted on
+// it yet: a formation without a later output or a gate without a later
+// evaluation. A pass must not finish the run past such a delivery.
+func pendingPushback(board *BoardDocument, events []RunEvent) bool {
+	for i, event := range events {
+		if event.Type != RunEventGateVerdict || stringFromEventData(event, "routePort") != "fail" {
+			continue
+		}
+		gateID := event.GateID
+		if gateID == "" {
+			gateID = event.NodeID
+		}
+		for _, route := range gateVerdictRoutes(board, event, gateID, "fail") {
+			target, _ := endpointParts(route.To)
+			serviced := false
+			for _, later := range events[i+1:] {
+				laterGate := later.GateID
+				if laterGate == "" {
+					laterGate = later.NodeID
+				}
+				if later.Type == RunEventNodeOutput && later.NodeID == target || later.Type == RunEventGateEvaluating && laterGate == target {
+					serviced = true
+					break
+				}
+			}
+			if !serviced {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func gateVerdictRoutes(board *BoardDocument, event RunEvent, gateID, routePort string) []BoardConnection {
