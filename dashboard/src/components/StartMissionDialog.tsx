@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { Suspense, lazy, useState } from 'react'
 import { useEscapeKey } from './useEscapeKey'
 import '../styles/formations-start-mission.css'
+
+// The Markdown renderer is its own chunk; the hint reads as its source until it loads.
+const Markdown = lazy(() => import('../evidence/Markdown'))
 
 export interface RunInputs {
   cwd: string
@@ -20,6 +23,7 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', onStart
   const [error, setError] = useState('')
   useEscapeKey(!saving, onClose)
   const limits = [['maxDispatch', 'Maximum dispatches'], ['maxAttempts', 'Maximum attempts'], ['wallClockSeconds', 'Time limit in seconds']] as const
+  const hint = inputHint.trim()
   return <div className="pop board-dialog start-mission" role="dialog" aria-modal="true" aria-label="Start mission" onPointerDown={event => event.stopPropagation()}>
     <div className="pop-head">
       <span className="pt">Start {title}</span>
@@ -38,7 +42,11 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', onStart
       <label htmlFor="start-mission-brief">Brief</label>
       <textarea id="start-mission-brief" required value={inputs.brief} aria-describedby="start-mission-brief-help"
         onChange={event => setInputs({ ...inputs, brief: event.target.value })} />
-      <p id="start-mission-brief-help" className="field-note">{inputHint.trim() || DEFAULT_BRIEF_HINT}</p>
+      {hint ? (
+        <div id="start-mission-brief-help" className="field-note">
+          <Suspense fallback={hint}><Markdown content={hint} className="start-mission-hint" /></Suspense>
+        </div>
+      ) : <p id="start-mission-brief-help" className="field-note">{DEFAULT_BRIEF_HINT}</p>}
       <label htmlFor="start-mission-bead">Bead</label>
       <input id="start-mission-bead" className="f" value={inputs.beadId} pattern="[A-Za-z0-9][A-Za-z0-9._-]*" aria-describedby="start-mission-bead-help"
         onChange={event => setInputs({ ...inputs, beadId: event.target.value })} />

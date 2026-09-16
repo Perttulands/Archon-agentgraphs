@@ -5,3 +5,6 @@
 .fmx .pop.start-mission .field-note{color:var(--ink2);font-size:11px;}
 .fmx .start-mission-limits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
 .fmx .pop-body .start-mission-limits label:first-child{margin-top:14px;}
+.fmx .pop.start-mission .field-note .start-mission-hint{--archon-markdown-font-size:11px;color:var(--ink2);}
+.fmx .pop.start-mission .field-note .start-mission-hint>*{margin:4px 0 0;}
+.fmx .pop.start-mission .field-note .start-mission-hint>:first-child{margin-top:0;}
