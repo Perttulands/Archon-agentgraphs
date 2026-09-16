@@ -1532,15 +1532,17 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const rect = viewportRef.current?.getBoundingClientRect()
     const world = worldRef.current
     if (!currentBoard || !rect || !world) return
-    const cards = Array.from(world.querySelectorAll<HTMLElement>('.formation,.gatecard,.missioncard,.toolcard'))
+    // Cards carry data-node; class selectors also match chips inside cards,
+    // such as a gate's "formation" kind, which have no position of their own.
+    const cards = Array.from(world.querySelectorAll<HTMLElement>('[data-node]'))
+      .map(card => ({ card, x: Number.parseFloat(card.style.left), y: Number.parseFloat(card.style.top) }))
+      .filter(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))
     if (!cards.length) { setView({ x: 40, y: 40, scale: 1 }); return }
     let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9
-    cards.forEach(card => {
+    cards.forEach(({ card, x, y }) => {
       // Arrange animates left/top, and a previous Fit may still be zooming.
       // Inline positions are the authored destinations, while bounding rects
       // describe an intermediate frame at an intermediate camera scale.
-      const x = Number.parseFloat(card.style.left)
-      const y = Number.parseFloat(card.style.top)
       minX = Math.min(minX, x); minY = Math.min(minY, y)
       maxX = Math.max(maxX, x + card.offsetWidth); maxY = Math.max(maxY, y + card.offsetHeight)
     })

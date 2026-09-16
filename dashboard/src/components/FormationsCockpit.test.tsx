@@ -1754,6 +1754,18 @@ describe('FormationsCockpit reference parity', () => {
     expect(localStorage.getItem('chrote-formations-active-run-test-board')).toBeNull()
   })
 
+  it('fits the canvas to its cards and keeps the zoom level numeric beside a formation-kind gate', async () => {
+    const board = makeBoard()
+    patches = installFetchMock({ boards: [{ ...board, gates: [{ ...gate, kinds: ['formation'] }] }] })
+    await renderCockpit()
+    const world = screen.getByTestId('formations-world')
+    const scaleOf = () => Number(/scale\(([^)]*)\)/.exec(world.style.transform)?.[1])
+    await waitFor(() => expect(Number.isFinite(scaleOf())).toBe(true))
+    await waitFor(() => expect(document.querySelector('.zoomlevel')).toHaveTextContent(`${Math.round(scaleOf() * 100)}%`))
+    fireEvent.click(screen.getByRole('button', { name: 'FIT' }))
+    await waitFor(() => expect(document.querySelector('.zoomlevel')).toHaveTextContent(/^\d+%$/))
+  })
+
   it('says in each formation card what the selected run did with the node', async () => {
     patches = installFetchMock()
     await renderCockpit()
