@@ -178,7 +178,8 @@ Native completion must match the exact pointer, cwd, persona model/effort,
 native session and completed turn. Codex uses native task completion; Claude
 uses its completed assistant turn and sentinel. A marker alone is insufficient.
 The `lab` executor creates no tmux sessions and echoes deterministic inputs.
-It proves routing, not agent work or the truth of a review.
+It writes each rendered brief to `<state-dir>/briefs/lab-*.md`, as a seat would
+receive it. It proves routing, not agent work or the truth of a review.
 
 The cockpit's floating Peek observes an owned live seat. It does not send input,
 enter tmux copy mode, claim pane size, or end sessions. Switching seats and

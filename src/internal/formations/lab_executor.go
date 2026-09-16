@@ -142,7 +142,13 @@ func (e *LabFormationExecutor) executeFormation(ctx context.Context, req Formati
 		if err := dispatchContextError(ctx); err != nil {
 			return FormationExecutionResult{}, err
 		}
+		// Keep the brief a real seat would read, so lab runs show routed context.
+		briefPath, err := writeBriefFile(e.store.Workspace, "lab-*.md", prompt)
+		if err != nil {
+			return FormationExecutionResult{}, runExecutionError("brief_write_failed", "lab executor could not write the brief", "executor", err)
+		}
 		lease, err := dispatcher.DispatchSlot(req.RunID, SlotDispatchRequest{
+			BriefPath:   briefPath,
 			NodeID:      req.NodeID,
 			SlotID:      slot.ID,
 			AgentID:     card.ID,

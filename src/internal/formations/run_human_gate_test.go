@@ -2,6 +2,8 @@ package formations
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -689,4 +691,38 @@ func cloneEventData(data map[string]any) map[string]any {
 		clone[key] = value
 	}
 	return clone
+}
+
+func TestLabBriefCarriesHumanGateResponse(t *testing.T) {
+	store, personas, runID := startHumanGateRun(t)
+	answer := "Q1: keep the CLI.\nQ2: email on every block."
+	if _, err := NewRunEngine(store, personas, &fakeRunExecutor{}).RecordHumanGateVerdict(runID, HumanGateVerdictRequest{
+		GateID: "gate_review", Verdict: "pass", Reason: answer, Actor: "human:operator",
+	}); err != nil {
+		t.Fatalf("record pass verdict: %v", err)
+	}
+	lab := NewLabFormationExecutor(store, personas, LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: store.Workspace, Roots: []string{store.Workspace}})
+	status, err := NewRunEngine(store, personas, lab).ResumeRun(runID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "approved"})
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if status.Status != RunStatusSucceeded {
+		t.Fatalf("status = %+v, want succeeded", status)
+	}
+	events, err := store.ReadRunEvents(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dispatch := lastEventOfType(t, events, RunEventSlotDispatch)
+	path := stringFromEventData(dispatch, "briefPath")
+	if dispatch.NodeID != "fmn_ship" || filepath.Dir(path) != filepath.Join(store.Workspace, "briefs") {
+		t.Fatalf("Ship dispatch = %+v, want a brief under the workspace", dispatch)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if brief := string(raw); !strings.Contains(brief, "input: output from fmn_work\n") || !strings.Contains(brief, "response:\n"+answer+"\n") || stringFromEventData(dispatch, "promptSha256") != etag(raw) {
+		t.Fatalf("Ship brief lacks the routed response:\n%s", brief)
+	}
 }

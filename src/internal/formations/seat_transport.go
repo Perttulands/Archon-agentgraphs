@@ -304,22 +304,31 @@ func (e *TmuxFormationExecutor) writeSeatBrief(prompt string) (string, string, e
 	if root == "" {
 		root = e.store.Workspace
 	}
-	dir := filepath.Join(root, "briefs")
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return "", "", err
-	}
-	f, err := os.CreateTemp(dir, "seat-*.md")
+	path, err := writeBriefFile(root, "seat-*.md", prompt)
 	if err != nil {
 		return "", "", err
 	}
+	return path, seatPointer(path), nil
+}
+
+// writeBriefFile stores a rendered prompt under <root>/briefs.
+func writeBriefFile(root, pattern, prompt string) (string, error) {
+	dir := filepath.Join(root, "briefs")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", err
+	}
+	f, err := os.CreateTemp(dir, pattern)
+	if err != nil {
+		return "", err
+	}
 	if _, err := f.WriteString(prompt); err != nil {
 		f.Close()
-		return "", "", err
+		return "", err
 	}
 	if err := f.Close(); err != nil {
-		return "", "", err
+		return "", err
 	}
-	return f.Name(), seatPointer(f.Name()), nil
+	return f.Name(), nil
 }
 
 func seatPointer(path string) string {
