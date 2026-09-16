@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import AgentsView, { reachableMissionItems } from './AgentsView'
+import AgentsView, { orderReachableItems, reachableMissionItems } from './AgentsView'
 import { activeRunStorageKey } from './formationsRunState'
 import type { BoardDocument, LayoutDocument } from './formationsTypes'
 
@@ -30,6 +30,23 @@ describe('AgentsView', () => {
       'formation:fix-pass:human-review/pass',
       'formation:escalate-fail:human-review/fail',
     ])
+  })
+
+  it('orders staffing by the wiring from the mission, using the canvas only between parallel branches', () => {
+    const board = missionBoard()
+    const layout: LayoutDocument = {
+      boardId: 'board-1', boardRev: 7, etag: 'layout-etag',
+      nodes: [
+        { id: 'escalate-fail', x: 900, y: 100 },
+        { id: 'human-review', x: 600, y: 100 },
+        { id: 'fix-pass', x: 900, y: 400 },
+        { id: 'authoring', x: 100, y: 700 },
+      ],
+    }
+    expect(orderReachableItems(reachableMissionItems(board, 'mission-alpha'), layout).map(item => item.id))
+      .toEqual(['authoring', 'human-review', 'escalate-fail', 'fix-pass'])
+    expect(orderReachableItems(reachableMissionItems(board, 'mission-alpha'), null).map(item => item.id))
+      .toEqual(['authoring', 'human-review', 'fix-pass', 'escalate-fail'])
   })
 
   it('loads mission staffing and preserves the board patch contract for assign and unassign', async () => {

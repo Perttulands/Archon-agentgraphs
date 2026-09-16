@@ -108,6 +108,8 @@ type Selection =
 export type ReachableMissionItem = {
   kind: 'formation' | 'gate'
   id: string
+  /** Steps from the mission along the wiring, counted at first discovery. */
+  depth: number
   via?: BranchProvenance
 }
 
@@ -157,16 +159,16 @@ export function reachableMissionItems(board: BoardDocument, missionId: string): 
     outgoing.set(connection.from, list)
   }
 
-  const queue: Array<{ endpoint: string; via?: BranchProvenance }> = [{ endpoint: `${missionId}:out` }]
+  const queue: Array<{ endpoint: string; depth: number; via?: BranchProvenance }> = [{ endpoint: `${missionId}:out`, depth: 0 }]
   const seenEndpoints = new Set<string>()
   const result: ReachableMissionItem[] = []
   const seenNodes = new Map<string, ReachableMissionItem>()
 
-  const recordNode = (kind: ReachableMissionItem['kind'], id: string, via?: BranchProvenance) => {
+  const recordNode = (kind: ReachableMissionItem['kind'], id: string, depth: number, via?: BranchProvenance) => {
     const key = `${kind}:${id}`
     const existing = seenNodes.get(key)
     if (!existing) {
-      const item = via ? { kind, id, via } : { kind, id }
+      const item = via ? { kind, id, depth, via } : { kind, id, depth }
       seenNodes.set(key, item)
       result.push(item)
       return
@@ -185,18 +187,19 @@ export function reachableMissionItems(board: BoardDocument, missionId: string): 
 
     for (const next of outgoing.get(nextEndpoint.endpoint) || []) {
       const nodeId = endpointNode(next)
+      const depth = nextEndpoint.depth + 1
       if (formationIds.has(nodeId)) {
-        recordNode('formation', nodeId, nextEndpoint.via)
+        recordNode('formation', nodeId, depth, nextEndpoint.via)
         const formation = formationById.get(nodeId)
         const outputs = formation?.outputs?.length ? formation.outputs : [{ id: 'out' }]
-        outputs.forEach(output => queue.push({ endpoint: `${nodeId}:${output.id}`, via: nextEndpoint.via }))
+        outputs.forEach(output => queue.push({ endpoint: `${nodeId}:${output.id}`, depth, via: nextEndpoint.via }))
         continue
       }
       if (gateIds.has(nodeId)) {
-        recordNode('gate', nodeId, nextEndpoint.via)
+        recordNode('gate', nodeId, depth, nextEndpoint.via)
         queue.push(
-          { endpoint: `${nodeId}:pass`, via: { gateId: nodeId, branch: 'pass' } },
-          { endpoint: `${nodeId}:fail`, via: { gateId: nodeId, branch: 'fail' } },
+          { endpoint: `${nodeId}:pass`, depth, via: { gateId: nodeId, branch: 'pass' } },
+          { endpoint: `${nodeId}:fail`, depth, via: { gateId: nodeId, branch: 'fail' } },
         )
       }
     }
@@ -913,16 +916,17 @@ export default function AgentsView() {
   )
 }
 
-function orderReachableItems(items: ReachableMissionItem[], layout: LayoutDocument | null): ReachableMissionItem[] {
-  if (!layout?.nodes?.length) return items
-  const position = new Map(layout.nodes.map(node => [node.id, node]))
+/** Wiring order from the mission; canvas position only orders parallel branches at the same depth. */
+export function orderReachableItems(items: ReachableMissionItem[], layout: LayoutDocument | null): ReachableMissionItem[] {
+  const position = new Map((layout?.nodes || []).map(node => [node.id, node]))
   return [...items].sort((a, b) => {
+    if (a.depth !== b.depth) return a.depth - b.depth
     const ap = position.get(a.id)
     const bp = position.get(b.id)
-    if (!ap && !bp) return items.indexOf(a) - items.indexOf(b)
-    if (!ap) return 1
-    if (!bp) return -1
-    return ap.y === bp.y ? ap.x - bp.x : ap.y - bp.y
+    if (ap && bp && (ap.y !== bp.y || ap.x !== bp.x)) return ap.y === bp.y ? ap.x - bp.x : ap.y - bp.y
+    if (ap && !bp) return -1
+    if (!ap && bp) return 1
+    return items.indexOf(a) - items.indexOf(b)
   })
 }
 
