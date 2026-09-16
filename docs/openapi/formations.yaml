@@ -124,7 +124,7 @@ paths:
     patch:
       responses:
         '200':
-          description: Updated board or compound authoring result; createFormation, createGate and createMission return {board, layout, formation|gate|mission}. Returns ETag.
+          description: Updated board or compound authoring result; createFormation, createGate and createMission return {board, layout, formation|gate|mission}. Returns ETag. An edit that changes nothing returns the current board with its revision and ETag unchanged.
         '428':
           description: Missing preconditions
         '409':

@@ -640,3 +640,36 @@ func TestRemoteToolErrorsCarryTheOfflineReason(t *testing.T) {
 		}
 	}
 }
+
+func TestRepeatedAuthoringEditsKeepTheRevisionOfflineAndRemote(t *testing.T) {
+	offline, remote, _ := newAuthoringSides(t)
+	for _, side := range []authoringSide{offline, remote} {
+		for _, args := range [][]string{{"board", "new", "same"}, {"formation", "create", "same", "solo", "--title", "Worker"}} {
+			if _, stderr, code := side.run(args...); code != 0 {
+				t.Fatalf("%s %v: %s", side.name, args, stderr)
+			}
+		}
+		board, err := side.store.ReadBoard("same")
+		if err != nil {
+			t.Fatal(err)
+		}
+		slot := board.Formations[0].Slots[0].ID
+		for _, args := range [][]string{
+			{"formation", "assign", "same", "Worker", "--slot", slot, "--agent", "codex-builder", "--harness", "openai-codex"},
+			{"formation", "rename", "same", "Worker", "Worker"},
+			{"formation", "set-brief", "same", "Worker", "--goal", "Produce the result"},
+			{"formation", "set-type", "same", "Worker", "solo"},
+		} {
+			first, stderr, code := side.run(args...)
+			if code != 0 {
+				t.Fatalf("%s %v: %s", side.name, args, stderr)
+			}
+			before, _ := side.store.ReadBoard("same")
+			again, stderr, code := side.run(args...)
+			after, _ := side.store.ReadBoard("same")
+			if code != 0 || again != first || after.Rev != before.Rev || after.ETag != before.ETag {
+				t.Fatalf("%s repeated %v: code %d stdout %q (first %q) %s, rev %d -> %d", side.name, args, code, again, first, stderr, before.Rev, after.Rev)
+			}
+		}
+	}
+}

@@ -537,7 +537,11 @@ list/create/read/patch persona cards; gate profiles expose the two code checks.
 With the tmux executor the agent roster marks a persona live when a session named
 by its default session stem runs on `--socket`, and lists the socket's other
 sessions as unbound. The lab executor reports every agent offline.
-Revision and ETag checks protect edits. Runtime routes start/list/read runs
+Revision and ETag checks protect edits. A board edit that leaves the board as
+it was (the same slot assignment, title, brief, type, controller, gate or
+mission fields, or judge chain) saves nothing: it answers 200 with the current
+board, its revision and ETag unchanged, and a stale ETag still conflicts. Tool
+and note edits still save a revision. Runtime routes start/list/read runs
 (`GET /api/formations/runs?board=<slug>` lists one board's runs), read projected
 events/escalations, stream SSE, abort, resume, read run evidence and record
 exact human verdicts. They all use the coordinator; no request-local executor

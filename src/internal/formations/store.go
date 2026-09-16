@@ -2,6 +2,7 @@
 package formations
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -341,6 +342,11 @@ func (s *Store) UpdateBoardMetadata(slug string, patch BoardMetadataPatch, opts 
 		doc := parseTOMLDocument(raw)
 		if patch.Title != nil {
 			doc.setScalar("title", renderString(*patch.Title))
+		}
+		if bytes.Equal(doc.bytes(), raw) {
+			// The same title saves nothing; revision and ETag stay put.
+			next = current
+			return nil
 		}
 		if patch.UpdatedBy != "" {
 			doc.setScalar("updatedBy", renderString(patch.UpdatedBy))

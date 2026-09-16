@@ -1,6 +1,7 @@
 package formations
 
 import (
+	"bytes"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -1391,17 +1392,54 @@ func (s *Store) SetGateJudgeChain(slug string, req GateJudgeRequest, opts WriteO
 			return nil, ErrNotFound
 		}
 		lines = setGateFormationKind(lines, gateStart, gateEnd, true)
-		raw = renderTOMLLines(lines)
-		raw = deleteGateJudgeConnections(raw, req.GateID)
-		connections, err := judgeChainConnections(raw, req)
+		withKind := renderTOMLLines(lines)
+		detached := deleteGateJudgeConnections(withKind, req.GateID)
+		connections, err := judgeChainConnections(detached, req)
 		if err != nil {
 			return nil, err
 		}
-		for _, connection := range connections {
-			raw = appendConnectionBlock(raw, connection)
+		// Re-attaching the chain already attached keeps its connections and
+		// their IDs, so the board is unchanged.
+		if bytes.Equal(withKind, raw) && sameGateJudgeEndpoints(raw, req.GateID, connections) {
+			return raw, nil
 		}
-		return raw, nil
+		for _, connection := range connections {
+			detached = appendConnectionBlock(detached, connection)
+		}
+		return detached, nil
 	})
+}
+
+// sameGateJudgeEndpoints reports whether the connections at a gate's judge
+// socket are exactly the from/to pairs of the chain about to replace them.
+func sameGateJudgeEndpoints(raw []byte, gateID string, replacement []BoardConnection) bool {
+	board, err := parseBoard(raw)
+	if err != nil {
+		return false
+	}
+	endpoint := gateID + ":judge"
+	pairs := map[string]int{}
+	for _, connection := range board.Connections {
+		if connection.From == endpoint || connection.To == endpoint {
+			pairs[connection.From+">"+connection.To]++
+		}
+	}
+	for _, connection := range replacement {
+		pair := connection.From + ">" + connection.To
+		if connection.From != endpoint && connection.To != endpoint {
+			return false
+		}
+		if pairs[pair] == 0 {
+			return false
+		}
+		pairs[pair]--
+	}
+	for _, count := range pairs {
+		if count != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Store) DetachGateJudge(slug string, req GateJudgeRequest, opts WriteOptions) (*BoardDocument, error) {
@@ -1747,12 +1785,20 @@ func (s *Store) updateBoardDefinition(slug, updatedBy string, opts WriteOptions,
 		}
 		doc.setScalar("rev", renderInt(current.Rev+1))
 		doc.setScalar("updatedAt", renderString(s.now().Format(time.RFC3339)))
-		nextRaw, err := mutate(doc.bytes(), current)
+		headerRaw := doc.bytes()
+		nextRaw, err := mutate(headerRaw, current)
 		if err != nil {
 			return err
 		}
-		if _, err := parseBoardForWrite(raw); err != nil {
+		unchanged, err := parseBoardForWrite(raw)
+		if err != nil {
 			return err
+		}
+		// An edit that leaves the definition as it was saves nothing, so the
+		// revision and ETag stay put and no other editor's write is raced.
+		if bytes.Equal(nextRaw, headerRaw) {
+			next = unchanged
+			return nil
 		}
 		if _, err := parseBoardForWrite(nextRaw); err != nil {
 			return err
