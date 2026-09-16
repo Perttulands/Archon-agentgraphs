@@ -317,6 +317,9 @@ func arrangementDiscoveryOrder(roots []string, forward map[string][]string, dept
 	return order
 }
 
+// arrangementItemSize is the room a card takes on the canvas. Heights are the
+// cockpit's rendered heights (form-ged.10 card text, measured on Wayfinding and
+// Delivery) plus a run-tools row, so stacked cards never overlap.
 func arrangementItemSize(item arrangementItem) (int, int) {
 	switch item.kind {
 	case "mission":
@@ -324,11 +327,11 @@ func arrangementItemSize(item arrangementItem) (int, int) {
 	case "gate":
 		return 300, 124
 	case FormationTypePeer:
-		return 330, 286
+		return 330, 340
 	case FormationTypeOrchestrated:
-		return 320, 372
+		return 320, 440
 	default:
-		return 300, 270
+		return 300, 310
 	}
 }
 
