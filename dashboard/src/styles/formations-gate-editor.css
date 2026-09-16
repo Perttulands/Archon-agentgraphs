@@ -1,0 +1,13 @@
+/* Gate kinds on the canvas card and in the gate editor. */
+.fmx .gkinds{display:flex;flex-wrap:wrap;gap:4px;}
+.fmx .gkind{border:1px solid var(--line);border-radius:3px;padding:0 5px;font-size:8.5px;line-height:1.6;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);}
+.fmx .gkind.human{border-color:color-mix(in srgb,var(--gold) 55%,var(--line));}
+.fmx .gkind.formation{border-color:color-mix(in srgb,var(--terra) 55%,var(--line));}
+.fmx .gkind.none{border-style:dashed;color:var(--dim);}
+
+.fmx .gate-editor .gate-kinds{display:flex;gap:6px;margin:12px 0 0;padding:0;border:0;}
+.fmx .gate-editor .gate-kinds legend{display:block;width:100%;margin:0 0 6px;padding:0;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);}
+.fmx .gate-editor label.gate-kind{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;margin:0;padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:var(--paper2);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);cursor:pointer;}
+.fmx .gate-editor label.gate-kind.on{border-color:var(--terra);color:var(--ink);}
+.fmx .gate-editor label.gate-kind input{margin:0;accent-color:var(--terra);}
+.fmx .gate-editor .field-note.warn{color:var(--gold);}

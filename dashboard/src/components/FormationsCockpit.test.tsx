@@ -30,7 +30,8 @@ const formation = {
   verification: { id: 'ver_frame', kinds: ['code'], criterion: 'Tests pass', onFail: 'block' },
 }
 
-const gate = { id: 'gate_review', title: 'Review', kinds: ['code'], criterion: 'Review the frame' }
+type TestGate = { id: string; title: string; kinds: string[]; criterion: string; check?: string; checkVersion?: string; checkValue?: string }
+const gate: TestGate = { id: 'gate_review', title: 'Review', kinds: ['code'], criterion: 'Review the frame' }
 const mission = { id: 'mis_showcase', title: 'Showcase', goal: 'Build the page', beadId: 'home-7kc4.5' }
 const tool = {
   id: 'tool_normalize',
@@ -300,6 +301,22 @@ function installFetchMock(options: {
           nodes: [...currentLayout.nodes, { id: created.id, x: requested.x, y: requested.y }],
         }
         return respond({ board, layout: currentLayout }, 'board-etag-2')
+      }
+      if (!url.endsWith('/layout') && body.updateGate) {
+        const requested = body.updateGate as Partial<TestGate> & { id: string }
+        const { id, ...fields } = requested
+        let dropsJudge = false
+        const gates = board.gates.map(item => {
+          if (item.id !== id) return item
+          const next = { ...item, ...fields }
+          dropsJudge = item.kinds.includes('formation') && !next.kinds.includes('formation')
+          return next
+        })
+        const connections = dropsJudge
+          ? board.connections.filter(connection => connection.from !== `${id}:judge` && connection.to !== `${id}:judge`)
+          : board.connections
+        board = { ...board, rev: board.rev + 1, gates, connections }
+        return respond({ board }, 'board-etag-2')
       }
       if (!url.endsWith('/layout') && body.createFormation) {
         const requested = body.createFormation as { type: string; title: string; x: number; y: number }
@@ -1022,9 +1039,9 @@ describe('FormationsCockpit reference parity', () => {
     const viewport = container.querySelector('.viewport') as HTMLElement
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Gate' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Create code Gate' })
+    const dialog = await screen.findByRole('dialog', { name: 'Create gate' })
     fireEvent.change(within(dialog).getByLabelText('Forbidden text'), { target: { value: 'error' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Gate' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create gate' }))
 
     const created = await screen.findByTestId('gate-node-gate_created')
     await waitFor(() => {
@@ -1040,11 +1057,11 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Gate' }))
 
-    const dialog = await screen.findByRole('dialog', { name: 'Create code Gate' })
+    const dialog = await screen.findByRole('dialog', { name: 'Create gate' })
     fireEvent.change(within(dialog).getByLabelText('Evaluator profile'), { target: { value: 'output_contains@1' } })
     fireEvent.change(within(dialog).getByLabelText('Required text'), { target: { value: 'LINT OK' } })
     fireEvent.change(within(dialog).getByLabelText('Gate criterion'), { target: { value: 'Lint passes clean' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Gate' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create gate' }))
 
     await waitFor(() => {
       const create = patches.find(patch => patch.body.createGate)?.body.createGate
@@ -1064,8 +1081,8 @@ describe('FormationsCockpit reference parity', () => {
     const viewport = container.querySelector('.viewport') as HTMLElement
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Gate' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Create code Gate' })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Gate' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Create gate' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create gate' }))
 
     await waitFor(() => {
       expect(patches.find(patch => patch.body.createGate)?.body.createGate).toMatchObject({
@@ -1077,7 +1094,7 @@ describe('FormationsCockpit reference parity', () => {
         checkValue: '',
       })
     })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Create code Gate' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Create gate' })).toBeNull())
 
     unmount()
     await renderCockpit()
@@ -1090,10 +1107,10 @@ describe('FormationsCockpit reference parity', () => {
     const viewport = container.querySelector('.viewport') as HTMLElement
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Gate' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Create code Gate' })
+    const dialog = await screen.findByRole('dialog', { name: 'Create gate' })
     fireEvent.change(within(dialog).getByLabelText('Evaluator profile'), { target: { value: '' } })
     expect(within(dialog).getByLabelText('Value')).toBeDisabled()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Gate' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create gate' }))
     await waitFor(() => {
       expect(patches.find(patch => patch.body.createGate)?.body.createGate).toMatchObject({ check: '', checkVersion: '', checkValue: '' })
     })
@@ -1162,6 +1179,124 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.queryByTestId('admission-findings')).toBeNull()
     expect(screen.getByTestId('formation-node-fmn_frame')).not.toHaveClass('admission-blocked')
     expect(screen.getByTestId('draft-marker-gate_review')).toHaveTextContent('draft')
+  })
+
+  it('creates human and judge gates from the gate editor and reloads their kinds', async () => {
+    patches = installFetchMock({ freshCreateLayout: true })
+    const { container, unmount } = await renderCockpit()
+    const viewport = container.querySelector('.viewport') as HTMLElement
+    fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Gate' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Create gate' })
+    expect(within(dialog).getByLabelText('Code kind')).toBeChecked()
+    expect(within(dialog).getByLabelText('Code kind')).toBeDisabled()
+
+    fireEvent.click(within(dialog).getByLabelText('Human kind'))
+    fireEvent.click(within(dialog).getByLabelText('Judge kind'))
+    expect(within(dialog).getByText("Attach a judge formation from the gate's judge socket. A run needs one.")).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByLabelText('Code kind'))
+    expect(within(dialog).queryByLabelText('Evaluator profile')).toBeNull()
+    fireEvent.change(within(dialog).getByLabelText('Gate title'), { target: { value: 'Framing review' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create gate' }))
+
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.createGate)?.body.createGate).toMatchObject({
+        title: 'Framing review',
+        kinds: ['human', 'formation'],
+        check: '',
+        checkVersion: '',
+        checkValue: '',
+      })
+    })
+    expect(await screen.findByTestId('gate-kinds-gate_created')).toHaveTextContent('humanjudge')
+
+    unmount()
+    await renderCockpit()
+    expect(await screen.findByTestId('gate-kinds-gate_created')).toHaveTextContent('humanjudge')
+  })
+
+  it('converts a code gate to a human gate from Edit gate and undoes it', async () => {
+    const codeBoard = makeBoard()
+    codeBoard.gates = [{ ...gate, check: 'output_absent', checkVersion: '1', checkValue: 'complaint text' }]
+    patches = installFetchMock({ boards: [codeBoard] })
+    const { unmount } = await renderCockpit()
+    expect(screen.getByTestId('gate-kinds-gate_review')).toHaveTextContent('code')
+
+    fireEvent.contextMenu(screen.getByTestId('gate-node-gate_review'), { clientX: 400, clientY: 200 })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit gate' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit gate' })
+    expect(within(dialog).getByLabelText('Evaluator profile')).toHaveValue('output_absent@1')
+    expect(within(dialog).getByLabelText('Forbidden text')).toHaveValue('complaint text')
+
+    fireEvent.click(within(dialog).getByLabelText('Human kind'))
+    fireEvent.click(within(dialog).getByLabelText('Code kind'))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save gate' }))
+
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.updateGate)?.body.updateGate).toEqual({
+        id: 'gate_review',
+        title: 'Review',
+        kinds: ['human'],
+        criterion: 'Review the frame',
+        check: '',
+        checkVersion: '',
+        checkValue: '',
+      })
+    })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit gate' })).toBeNull())
+    expect(screen.getByTestId('gate-kinds-gate_review')).toHaveTextContent('human')
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => {
+      expect(patches.filter(patch => patch.body.updateGate).slice(-1)[0]?.body.updateGate).toEqual({
+        id: 'gate_review',
+        title: 'Review',
+        kinds: ['code'],
+        criterion: 'Review the frame',
+        check: 'output_absent',
+        checkVersion: '1',
+        checkValue: 'complaint text',
+      })
+    })
+
+    fireEvent.contextMenu(screen.getByTestId('gate-node-gate_review'), { clientX: 400, clientY: 200 })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit gate' }))
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Edit gate' })).getByLabelText('Human kind'))
+    fireEvent.click(screen.getByLabelText('Code kind'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save gate' }))
+    await waitFor(() => expect(screen.getByTestId('gate-kinds-gate_review')).toHaveTextContent('human'))
+    unmount()
+    await renderCockpit()
+    expect(await screen.findByTestId('gate-kinds-gate_review')).toHaveTextContent('human')
+  })
+
+  it('opens Edit gate on double-click and restores a detached judge chain on undo', async () => {
+    const judgedBoard = makeBoard()
+    judgedBoard.gates = [{ ...gate, kinds: ['code', 'formation'] }]
+    patches = installFetchMock({ boards: [judgedBoard] })
+    await renderCockpit()
+    expect(screen.getByTestId('gate-kinds-gate_review')).toHaveTextContent('codejudge')
+    expect(await screen.findByTestId('formation-wire-edge_judge_send')).toBeInTheDocument()
+
+    fireEvent.doubleClick(screen.getByTestId('gate-node-gate_review'))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit gate' })
+    expect(within(dialog).getByLabelText('Judge kind')).toBeChecked()
+    fireEvent.click(within(dialog).getByLabelText('Judge kind'))
+    expect(within(dialog).getByRole('note')).toHaveTextContent('Saving detaches the current judge chain.')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save gate' }))
+
+    await waitFor(() => expect(patches.find(patch => patch.body.updateGate)?.body.updateGate).toMatchObject({ kinds: ['code'] }))
+    await waitFor(() => expect(screen.queryByTestId('formation-wire-edge_judge_send')).toBeNull())
+    expect(screen.getByTestId('gate-node-gate_review')).not.toHaveClass('hasjudge')
+    expect(screen.getByTestId('gate-kinds-gate_review')).toHaveTextContent(/^code$/)
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.setGateJudge)?.body.setGateJudge).toEqual({ gateId: 'gate_review', chain: ['fmn_judge'] })
+    })
+    const restore = patches.findIndex(patch => (patch.body.updateGate as { kinds?: string[] } | undefined)?.kinds?.includes('formation'))
+    expect(restore).toBeGreaterThan(-1)
+    expect(restore).toBeLessThan(patches.findIndex(patch => patch.body.setGateJudge))
   })
 
   it('dismisses context menus on Escape and outside pointerdown', async () => {
