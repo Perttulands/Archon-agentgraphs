@@ -85,7 +85,15 @@ export type NodeRunState = '' | 'running' | 'done' | 'blocked' | 'waiting' | 'fa
 /** Project honest per-node run state from the ledger events (mirrors the engine vocabulary). */
 export function projectNodeStates(events: RunEvent[], activeRun: RunStatusProjection | null): Map<string, NodeRunState> {
   const map = new Map<string, NodeRunState>()
+  // A block holds the node only until the run resumes. Recording a human verdict
+  // blocks on its gate and resumes at once, so the gate returns to its verdict.
+  const beforeBlock = new Map<string, NodeRunState>()
   for (const event of events) {
+    if (event.type === 'run_resumed') {
+      for (const [blockedId, prior] of beforeBlock) map.set(blockedId, prior)
+      beforeBlock.clear()
+      continue
+    }
     const nodeId = event.nodeId || event.gateId
     if (!nodeId) continue
     switch (event.type) {
@@ -109,6 +117,7 @@ export function projectNodeStates(events: RunEvent[], activeRun: RunStatusProjec
         break
       }
       case 'run_blocked':
+        if (!beforeBlock.has(nodeId)) beforeBlock.set(nodeId, map.get(nodeId) || '')
         map.set(nodeId, 'blocked')
         break
       case 'run_failed':

@@ -42,6 +42,33 @@ describe('formations run-state helpers', () => {
     expect(states.get('fmn_work')).toBe('done')
   })
 
+  it('returns a blocked node to its prior state once the run resumes', () => {
+    const answered: RunEvent[] = [
+      { runId: 'run_1', seq: 1, type: 'human_input_requested', gateId: 'gate_review', nodeId: 'gate_review' },
+      { runId: 'run_1', seq: 2, type: 'human_verdict_recorded', gateId: 'gate_review', nodeId: 'gate_review' },
+      { runId: 'run_1', seq: 3, type: 'gate_verdict', gateId: 'gate_review', nodeId: 'gate_review', data: { verdict: 'pass' } },
+      { runId: 'run_1', seq: 4, type: 'run_blocked', gateId: 'gate_review', data: { reason: 'human gate verdict recorded; resume required' } },
+    ]
+    expect(projectNodeStates(answered, null).get('gate_review')).toBe('blocked')
+
+    const resumed = projectNodeStates([
+      ...answered,
+      { runId: 'run_1', seq: 5, type: 'run_resumed', data: { resumeMode: 'reattach' } },
+      { runId: 'run_1', seq: 6, type: 'node_started', nodeId: 'fmn_next' },
+      { runId: 'run_1', seq: 7, type: 'node_started', nodeId: 'fmn_lost' },
+      { runId: 'run_1', seq: 8, type: 'run_blocked', nodeId: 'fmn_lost', data: { reason: 'seat lost' } },
+    ], null)
+    expect(resumed.get('gate_review')).toBe('done')
+    expect(resumed.get('fmn_next')).toBe('running')
+    expect(resumed.get('fmn_lost')).toBe('blocked')
+
+    const judged = projectNodeStates([
+      { runId: 'run_1', seq: 1, type: 'run_blocked', gateId: 'gate_judge', nodeId: 'gate_judge' },
+      { runId: 'run_1', seq: 2, type: 'run_resumed' },
+    ], null)
+    expect(judged.get('gate_judge')).toBe('')
+  })
+
   it('extracts run text, report references, and resume affordance from events', () => {
     expect(runEventText({ runId: 'run_1', seq: 1, type: 'run_blocked', data: { reason: 'needs human' } })).toBe('needs human')
     expect(runEventText({ runId: 'run_1', seq: 2, type: 'node_output', data: { text: 'report body' } })).toBe('report body')
