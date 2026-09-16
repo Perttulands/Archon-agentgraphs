@@ -1,0 +1,180 @@
+import { fetchApi } from '../components/formationsApi'
+
+// Read models for the run evidence routes (ADR-0017). They mirror the Go
+// response types in internal/formations/run_evidence*.go.
+
+export interface EvidenceText {
+  text: string
+  bytes: number
+  truncated?: boolean
+}
+
+export interface EvidenceRef {
+  artifact?: string
+  external?: string
+}
+
+export interface EvidenceInput {
+  edgeId?: string
+  fromNodeId?: string
+  fromPortId?: string
+  toPortId?: string
+  text: EvidenceText
+  ref?: EvidenceRef
+}
+
+export interface EvidencePort {
+  portId: string
+  text: EvidenceText
+  ref?: EvidenceRef
+}
+
+export interface EvidenceOutput {
+  seq: number
+  status?: string
+  reason?: EvidenceText
+  text: EvidenceText
+  ports: EvidencePort[]
+}
+
+export interface EvidenceDispatch {
+  seq: number
+  slotId?: string
+  agentId?: string
+  harness?: string
+  phase?: string
+  brief: boolean
+  resultSeq?: number
+  status?: string
+}
+
+export interface EvidenceAttempt {
+  attempt: number
+  startedSeq?: number
+  reason?: string
+  inputs: EvidenceInput[]
+  dispatches: EvidenceDispatch[]
+  seatCleanups?: Array<{ seq: number; slotId?: string; outcome: string }>
+  output?: EvidenceOutput
+}
+
+export interface EvidenceItem {
+  kind?: string
+  text: EvidenceText
+}
+
+export interface EvidenceKindResult {
+  seq: number
+  kind: string
+  verdict: string
+  reason: EvidenceText
+  evidence: EvidenceItem[]
+  evidenceOmitted?: number
+}
+
+export interface EvidenceJudgeFailure {
+  seq: number
+  code?: string
+  reason: EvidenceText
+}
+
+export interface EvidenceHumanRequest {
+  seq: number
+  pending: boolean
+  decision?: { seq: number; verdict: string; response: EvidenceText; decidedBy?: string }
+}
+
+export interface EvidenceGateVerdict {
+  seq: number
+  verdict: string
+  reason: EvidenceText
+  perKind?: Record<string, string>
+  routePort?: string
+  evidence: EvidenceItem[]
+  evidenceOmitted?: number
+}
+
+export interface EvidenceEvaluation {
+  seq: number
+  attempt?: number
+  kinds: string[]
+  criterion: EvidenceText
+  judgeChain?: string[]
+  input?: EvidenceInput
+  kindResults: EvidenceKindResult[]
+  judgeFailures?: EvidenceJudgeFailure[]
+  humanRequests?: EvidenceHumanRequest[]
+  verdict?: EvidenceGateVerdict
+}
+
+export interface EvidenceProblem {
+  seq: number
+  type: string
+  code?: string
+  reason: EvidenceText
+  resumeAllowed?: boolean
+}
+
+export interface NodeEvidence {
+  runId: string
+  nodeId: string
+  kind: 'mission' | 'formation' | 'gate' | 'tool'
+  attempts?: EvidenceAttempt[]
+  evaluations?: EvidenceEvaluation[]
+  problems?: EvidenceProblem[]
+}
+
+export interface RunBrief {
+  dispatchSeq: number
+  nodeId: string
+  slotId?: string
+  attempt?: number
+  text: EvidenceText
+}
+
+export interface RunArtifactEntry {
+  name: string
+  size: number
+  modifiedAt: string
+}
+
+export type ArtifactKind = 'markdown' | 'json' | 'text' | 'image' | 'binary'
+
+export interface RunArtifactPreview extends RunArtifactEntry {
+  kind: ArtifactKind
+  text?: EvidenceText
+}
+
+const runPath = (runId: string) => `/api/formations/runs/${encodeURIComponent(runId)}`
+const artifactPath = (name: string) => name.split('/').map(encodeURIComponent).join('/')
+
+export async function fetchNodeEvidence(runId: string, nodeId: string): Promise<NodeEvidence> {
+  const { data } = await fetchApi<{ evidence: NodeEvidence }>(`${runPath(runId)}/evidence/nodes/${encodeURIComponent(nodeId)}`)
+  return data.evidence
+}
+
+export async function fetchRunBrief(runId: string, dispatchSeq: number): Promise<RunBrief> {
+  const { data } = await fetchApi<{ brief: RunBrief }>(`${runPath(runId)}/evidence/briefs/${dispatchSeq}`)
+  return data.brief
+}
+
+export async function fetchRunArtifacts(runId: string): Promise<{ artifacts: RunArtifactEntry[]; truncated: boolean }> {
+  const { data } = await fetchApi<{ artifacts: RunArtifactEntry[]; truncated: boolean }>(`${runPath(runId)}/evidence/artifacts`)
+  return data
+}
+
+export async function fetchArtifactPreview(runId: string, name: string): Promise<RunArtifactPreview> {
+  const { data } = await fetchApi<{ artifact: RunArtifactPreview }>(`${runPath(runId)}/evidence/artifacts/${artifactPath(name)}`)
+  return data.artifact
+}
+
+/** The raw artifact URL, for a new tab or an image source. */
+export function artifactRawUrl(runId: string, name: string): string {
+  return `${runPath(runId)}/artifacts/${artifactPath(name)}`
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KiB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+}

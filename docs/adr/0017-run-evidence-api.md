@@ -20,7 +20,7 @@ All routes are `GET`, read one run and return 404 for an unknown run.
 
 | Route | Returns |
 | --- | --- |
-| `/api/formations/runs/{runId}/evidence/nodes/{nodeId}` | `data.evidence` for one node of the run's frozen board. Missions and formations list attempts: routed inputs, dispatches, the output text and per-port outputs. Gates list evaluations: criterion, input, per-kind results with judge evidence, judge failures, the human request with its verdict and response, and the final verdict with its route. Blocks and errors recorded against the node are included. An unknown node is 404. |
+| `/api/formations/runs/{runId}/evidence/nodes/{nodeId}` | `data.evidence` for one node of the run's frozen board. Missions and formations list attempts: routed inputs, dispatches, seat cleanup outcomes, the output text and per-port outputs. Gates list evaluations: criterion, input, per-kind results with judge evidence, judge failures, the human request with its verdict and response, and the final verdict with its route. Blocks and errors recorded against the node are included. An unknown node is 404. |
 | `/api/formations/runs/{runId}/evidence/briefs/{dispatchSeq}` | `data.brief`, the brief file the dispatch at that ledger sequence sent to its seat. A sequence that is not this run's `slot_dispatch` is 404. |
 | `/api/formations/runs/{runId}/evidence/artifacts` | `data.artifacts`, the files in the run's artifact directory by relative name, size and modification time. |
 | `/api/formations/runs/{runId}/evidence/artifacts/{name...}` | `data.artifact`, a preview: name, size, kind (`markdown`, `json`, `text`, `image` or `binary`) and text for textual kinds. |
@@ -87,8 +87,8 @@ files name their CHROTE source in a header comment, as the seat terminal port
 (form-7n0) did.
 
 - The cockpit renders Markdown with CHROTE's `Markdown.tsx` and `Markdown.css`
-  (react-markdown 10 and remark-gfm 4, MIT; about 99 packages and 8 MB in
-  `node_modules`). The inspector loads them lazily, so the first paint does
+  (react-markdown 10 and remark-gfm 4; 96 added packages, 95 MIT and one
+  ISC). The inspector loads them lazily, so the first paint does
   not grow. Raw HTML stays text and links are limited to http, https and
   mailto, as in CHROTE. Relative links resolve to the run's artifact names
   instead of host paths.

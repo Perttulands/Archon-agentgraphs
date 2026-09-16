@@ -550,7 +550,8 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `data.evidence` for a node of the run's frozen board, with `kind` `mission`,
   `formation`, `gate` or `tool`. Missions and formations list `attempts` with
   routed `inputs`, `dispatches` (`seq`, slot, agent, harness, result status and
-  whether a brief exists) and `output` (text, status, reason and sorted `ports`).
+  whether a brief exists), `seatCleanups` (slot and outcome) and `output` (text,
+  status, reason and sorted `ports`).
   Gates list `evaluations` with the criterion, input, `kindResults` with judge
   `evidence`, `judgeFailures`, `humanRequests` with each decision's `response`,
   and the final `verdict` with `perKind` and `routePort`. `problems` lists the

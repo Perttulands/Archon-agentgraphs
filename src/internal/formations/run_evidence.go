@@ -80,13 +80,22 @@ type EvidenceDispatch struct {
 	Status    string `json:"status,omitempty"`
 }
 
+// EvidenceSeatCleanup is how the runtime left a seat: ended, or one of the
+// left_* outcomes an operator must check. Session names and details stay out.
+type EvidenceSeatCleanup struct {
+	Seq     int    `json:"seq"`
+	SlotID  string `json:"slotId,omitempty"`
+	Outcome string `json:"outcome"`
+}
+
 type EvidenceAttempt struct {
-	Attempt    int                `json:"attempt"`
-	StartedSeq int                `json:"startedSeq,omitempty"`
-	Reason     string             `json:"reason,omitempty"`
-	Inputs     []EvidenceInput    `json:"inputs"`
-	Dispatches []EvidenceDispatch `json:"dispatches"`
-	Output     *EvidenceOutput    `json:"output,omitempty"`
+	Attempt      int                   `json:"attempt"`
+	StartedSeq   int                   `json:"startedSeq,omitempty"`
+	Reason       string                `json:"reason,omitempty"`
+	Inputs       []EvidenceInput       `json:"inputs"`
+	Dispatches   []EvidenceDispatch    `json:"dispatches"`
+	SeatCleanups []EvidenceSeatCleanup `json:"seatCleanups,omitempty"`
+	Output       *EvidenceOutput       `json:"output,omitempty"`
 }
 
 type EvidenceItem struct {
@@ -304,6 +313,12 @@ func projectNodeEvidence(runID, nodeID, kind string, events []RunEvent, final bo
 				dispatch.ResultSeq = event.Seq
 				dispatch.Status = stringFromEventData(event, "status")
 			}
+		case "seat_cleanup":
+			if event.NodeID != nodeID {
+				continue
+			}
+			attempt := currentEvidenceAttempt(evidence, event)
+			attempt.SeatCleanups = append(attempt.SeatCleanups, EvidenceSeatCleanup{Seq: event.Seq, SlotID: event.SlotID, Outcome: stringFromEventData(event, "outcome")})
 		case RunEventNodeOutput:
 			if event.NodeID != nodeID {
 				continue

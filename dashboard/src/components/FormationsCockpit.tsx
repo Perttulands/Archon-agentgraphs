@@ -43,7 +43,6 @@ import {
 import {
   activeRunStorageKey,
   openHumanGateId,
-  projectNodeEvidence,
   projectNodeStates,
   runStatusFromResponse,
   upsertRunEvent,
@@ -52,6 +51,7 @@ import { chooseBoardRun, openRunsByAttention, readRunLink, runChoiceLabel, runLi
 import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
 import { FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials } from './formationsCockpitVisuals'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
+const RunEvidence = lazy(() => import('../evidence/RunEvidence'))
 import DismissiblePanel from './DismissiblePanel'
 import HumanGateAnswerPanel, { type GateDecision } from './HumanGateAnswerPanel'
 import { useHumanGateUpstream } from './useHumanGateUpstream'
@@ -2313,10 +2313,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (mission) return { kind: 'mission' as const, id: mission.id, title: mission.title }
     return null
   }, [inspectedNodeId, board])
-  const inspectedEvidence = useMemo(
-    () => (inspectedNodeId ? projectNodeEvidence(runEvents, inspectedNodeId) : null),
-    [inspectedNodeId, runEvents],
-  )
   const inspectableNodeId = useCallback((escalation: OpenEscalation): string => {
     const candidate = escalation.gateId || escalation.nodeId || ''
     if (!candidate || !board) return ''
@@ -3083,108 +3079,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         </div>
       ) : null}
 
-      {inspectedNode && inspectedEvidence ? (
-        <div
-          className="pop node-inspector"
-          role="dialog"
-          aria-label={`Run evidence · ${inspectedNode.title}`}
-          data-testid="node-inspector"
-          onPointerDown={event => event.stopPropagation()}
-        >
-          <div className="pop-head">
-            <span className="pt">Run evidence · {inspectedNode.title}</span>
-            <button className="x" type="button" aria-label="Close run evidence" onClick={() => setInspectedNodeId(null)}>x</button>
-          </div>
-          <div className="pop-body node-evidence">
-            <dl className="node-evidence-identity">
-              <div><dt>Node</dt><dd>{inspectedNode.id}</dd></div>
-              <div><dt>State</dt><dd data-testid="node-evidence-state">{inspectedEvidence.state || 'not started'}</dd></div>
-            </dl>
-
-            {inspectedEvidence.runtimeEvents.length ? (
-              <section className="node-evidence-section">
-                <h3>Seat activity</h3>
-                {inspectedEvidence.runtimeEvents.map(event => (
-                  <div key={event.seq} className="node-dispatch">
-                    <span>#{event.seq} {event.type}</span>
-                    {event.slotId ? <span>{event.slotId}</span> : null}
-                    {event.sessionName ? <span>{event.sessionName}</span> : null}
-                    {event.status ? <span>{event.status}</span> : null}
-                    {event.outcome ? <span>{event.outcome}</span> : null}
-                  </div>
-                ))}
-              </section>
-            ) : null}
-
-            <section className="node-evidence-section">
-              <h3>Attempts</h3>
-              {inspectedEvidence.attempts.length === 0 ? (
-                <div className="node-evidence-empty">No dispatch attempts recorded yet.</div>
-              ) : inspectedEvidence.attempts.map(attempt => (
-                <div className="node-evidence-attempt" data-testid={`node-attempt-${attempt.attempt}`} key={attempt.attempt}>
-                  <div className="node-attempt-head">Attempt {attempt.attempt}{attempt.reason ? ` · ${attempt.reason}` : ''}</div>
-                  {attempt.dispatches.length === 0 ? (
-                    <div className="node-evidence-empty">Started — no slot dispatch recorded.</div>
-                  ) : attempt.dispatches.map(dispatch => (
-                    <div className="node-dispatch" key={dispatch.seq}>
-                      <span className="node-dispatch-slot">{dispatch.slotId || 'slot'}</span>
-                      <span className="node-dispatch-agent">{[dispatch.agentId, dispatch.harness].filter(Boolean).join(' · ') || 'agent not recorded'}</span>
-                      {dispatch.phase ? <span className="node-dispatch-phase">{dispatch.phase}</span> : null}
-                      {dispatch.promptSha256 ? <span className="node-dispatch-hash" title={`prompt sha256 ${dispatch.promptSha256}`}>prompt {dispatch.promptSha256.slice(0, 12)}</span> : null}
-                      {dispatch.sessionRef ? <span className="node-dispatch-session">{dispatch.sessionRef}</span> : null}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </section>
-
-            <section className="node-evidence-section">
-              <h3>Output</h3>
-              {inspectedEvidence.output ? (
-                <div className="node-evidence-output" data-testid="node-output">
-                  <div className="node-output-status">status · {inspectedEvidence.output.status}</div>
-                  {inspectedEvidence.output.text ? (
-                    <pre className="node-output-value" data-testid="node-output-value">{inspectedEvidence.output.text}</pre>
-                  ) : <div className="node-evidence-empty">No inline output value.</div>}
-                  {inspectedEvidence.output.reportRef ? (
-                    <div className="node-output-ref" data-testid="node-output-reportref">report · {inspectedEvidence.output.reportRef}</div>
-                  ) : null}
-                  {inspectedEvidence.output.ports.length ? (
-                    <div className="node-output-ports">
-                      {inspectedEvidence.output.ports.map(port => (
-                        <div className="node-output-port" data-testid={`node-output-port-${port.port}`} key={port.port}>
-                          <span className="node-output-port-id">{port.port}</span>
-                          {port.value ? <span className="node-output-port-value">{port.value}</span> : null}
-                          {port.reportRef ? <span className="node-output-port-ref">report {port.reportRef}</span> : null}
-                          {port.ref ? <span className="node-output-port-ref">ref {port.ref}</span> : null}
-                          {port.artifactRef ? <span className="node-output-port-ref">artifact {port.artifactRef}</span> : null}
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : <div className="node-evidence-empty">No output recorded yet.</div>}
-            </section>
-
-            {inspectedEvidence.gateVerdict ? (
-              <section className="node-evidence-section">
-                <h3>Gate verdict</h3>
-                <div className={`node-evidence-verdict ${inspectedEvidence.gateVerdict.verdict === 'fail' ? 'fail' : 'pass'}`} data-testid="node-gate-verdict">
-                  <div className="node-verdict-line">verdict · {inspectedEvidence.gateVerdict.verdict || 'not recorded'}</div>
-                  {inspectedEvidence.gateVerdict.routePort ? <div className="node-verdict-line">route · {inspectedEvidence.gateVerdict.routePort}</div> : null}
-                  {inspectedEvidence.gateVerdict.reason ? <div className="node-verdict-line">reason · {inspectedEvidence.gateVerdict.reason}</div> : null}
-                  {inspectedEvidence.gateVerdict.perKind.length ? (
-                    <div className="node-verdict-evidence">
-                      {inspectedEvidence.gateVerdict.perKind.map(([kind, result]) => (
-                        <div className="node-verdict-kind" key={kind}><span>{kind}</span><strong>{result}</strong></div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              </section>
-            ) : null}
-          </div>
-        </div>
+      {inspectedNode && activeRun ? (
+        <Suspense fallback={<div role="status">Loading run evidence…</div>}>
+          <RunEvidence runId={activeRun.runId} nodeId={inspectedNode.id} title={inspectedNode.title}
+            state={nodeStates.get(inspectedNode.id) || ''} onClose={() => setInspectedNodeId(null)} />
+        </Suspense>
       ) : null}
 
       {gateEditor ? (

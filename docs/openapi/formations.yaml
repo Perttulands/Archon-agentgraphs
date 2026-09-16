@@ -388,7 +388,7 @@ paths:
       description: Texts are {text,bytes,truncated}, capped at 64 KiB each and 2 MiB per response, with secret patterns redacted. Kind results and verdicts list at most 100 evidence items and count the rest in evidenceOmitted. Structured fields omit native session, tmux session and pane IDs, sessionRef, digests, brief and prompt paths, report pointers and absolute artifact paths.
       responses:
         '200':
-          description: Enveloped data.evidence contains runId, nodeId, kind (mission, formation, gate, tool), attempts (inputs, dispatches, output with sorted ports), evaluations (criterion, input, kindResults, judgeFailures, humanRequests with decision response, verdict with perKind and routePort) and problems (blocks and errors).
+          description: Enveloped data.evidence contains runId, nodeId, kind (mission, formation, gate, tool), attempts (inputs, dispatches, seatCleanups with slot and outcome, output with sorted ports), evaluations (criterion, input, kindResults, judgeFailures, humanRequests with decision response, verdict with perKind and routePort) and problems (blocks and errors).
         '404':
           description: No such run, or the node is not on the run's frozen board
   /api/formations/runs/{runId}/evidence/briefs/{dispatchSeq}:

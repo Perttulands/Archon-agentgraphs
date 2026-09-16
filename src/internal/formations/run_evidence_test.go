@@ -31,6 +31,7 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 		{Seq: 3, Type: "seat_created", NodeID: "fmn_work", SlotID: "slot_work", Data: map[string]any{"sessionId": "$TMUX-SESSION", "paneId": "%TMUX-PANE", "sessionName": "form-run_1-slot_work"}},
 		{Seq: 4, Type: "seat_prompt_consumed", NodeID: "fmn_work", SlotID: "slot_work", Data: map[string]any{"nativeSessionId": "NATIVE-SESSION", "dispatchId": "dsp_1"}},
 		{Seq: 5, Type: RunEventSlotResult, NodeID: "fmn_work", SlotID: "slot_work", Data: map[string]any{"dispatchId": "dsp_1", "status": "ok", "sentinel": map[string]any{"artifact": artifacts + "/plan.md"}}},
+		{Seq: 51, Type: "seat_cleanup", NodeID: "fmn_work", SlotID: "slot_work", Data: map[string]any{"sessionName": "form-run_1-slot_work", "outcome": "left_cleanup_failed", "detail": "kill-session $TMUX-SESSION failed"}},
 		evidenceEvent(6, RunEventNodeOutput, "fmn_work", map[string]any{
 			"status": "done", "text": "Summary with token=hunter2", "reportRef": "tmux://run_1/fmn_work/report",
 			"outputs": map[string]any{
@@ -58,6 +59,9 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 	}
 	if len(first.Dispatches) != 1 || first.Dispatches[0] != (EvidenceDispatch{Seq: 2, SlotID: "slot_work", AgentID: "codex-builder", Harness: "openai-codex", Brief: true, ResultSeq: 5, Status: "ok"}) {
 		t.Fatalf("dispatches = %+v", first.Dispatches)
+	}
+	if len(first.SeatCleanups) != 1 || first.SeatCleanups[0] != (EvidenceSeatCleanup{Seq: 51, SlotID: "slot_work", Outcome: "left_cleanup_failed"}) {
+		t.Fatalf("seat cleanups = %+v", first.SeatCleanups)
 	}
 	output := first.Output
 	if output == nil || output.Seq != 6 || output.Text.Text != "Summary with token=[REDACTED]" {
@@ -100,7 +104,7 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, private := range []string{"SESSION-REF", "TMUX-SESSION", "TMUX-PANE", "NATIVE-SESSION", "PROMPT-DIGEST", "PROMPT-REF", "/ws/briefs", "tmux://", artifacts, "/etc/private", "dsp_1", "hunter2"} {
+	for _, private := range []string{"SESSION-REF", "TMUX-SESSION", "TMUX-PANE", "NATIVE-SESSION", "PROMPT-DIGEST", "PROMPT-REF", "/ws/briefs", "tmux://", artifacts, "/etc/private", "dsp_1", "hunter2", "form-run_1-slot_work"} {
 		if strings.Contains(string(raw), private) {
 			t.Fatalf("node evidence leaked %q: %s", private, raw)
 		}

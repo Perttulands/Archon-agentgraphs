@@ -1723,7 +1723,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(localStorage.getItem('chrote-formations-active-run-test-board')).toBeNull()
   })
 
-  it('shows the coordinator node status and slot evidence', async () => {
+  it('shows the node status with its output and slot evidence from the evidence routes', async () => {
     localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
     patches = installFetchMock({
       runEvents: [
@@ -1732,11 +1732,28 @@ describe('FormationsCockpit reference parity', () => {
         { runId: 'run_legacy', seq: 3, type: 'node_output', nodeId: 'fmn_frame', status: 'done' },
       ],
     })
+    const projectionFetch = globalThis.fetch
+    const evidence = {
+      runId: 'run_legacy', nodeId: 'fmn_frame', kind: 'formation',
+      attempts: [{
+        attempt: 1, startedSeq: 1, inputs: [],
+        dispatches: [{ seq: 2, slotId: 'slot_lead', agentId: 'mason', harness: 'openai-codex', brief: false, status: 'ok' }],
+        output: { seq: 3, status: 'done', text: { text: 'Framed the **problem**', bytes: 22 }, ports: [] },
+      }],
+    }
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const data = url === '/api/formations/runs/run_legacy/evidence/nodes/fmn_frame' ? { evidence }
+        : url === '/api/formations/runs/run_legacy/evidence/artifacts' ? { artifacts: [], truncated: false } : null
+      if (!data) return projectionFetch(input, init)
+      return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data }) } as unknown as Response)
+    }) as typeof fetch
     await renderCockpit()
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/formations/runs/run_legacy/events', expect.anything()))
     fireEvent.click(await screen.findByTestId('inspect-node-fmn_frame'))
     const dialog = await screen.findByTestId('node-inspector')
     expect(within(dialog).getByTestId('node-evidence-state')).toHaveTextContent('done')
+    expect(await within(dialog).findByTestId('node-output-value')).toHaveTextContent('Framed the problem')
     expect(dialog).toHaveTextContent('slot_lead')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close run evidence' }))
     await waitFor(() => expect(screen.queryByTestId('node-inspector')).toBeNull())

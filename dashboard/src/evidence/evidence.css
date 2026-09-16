@@ -1,0 +1,49 @@
+/* Run evidence inspector. It opens as a cockpit .pop and reuses the node
+   evidence classes in formations-d7.css; these rules cover the content views. */
+
+.fmx .run-evidence { width: min(660px, calc(100vw - 20px)); left: calc(50% - min(330px, calc(50vw - 10px))); top: 70px; user-select: text; }
+.fmx .run-evidence .pop-body { max-height: calc(100vh - 150px); }
+.fmx .run-evidence .pop-head { cursor: default; }
+
+.evidence-text { min-width: 0; --archon-markdown-font-size: 11.5px; }
+.evidence-text .archon-markdown { color: var(--text-secondary); }
+.evidence-plain { margin: 0; font: 11px/1.5 var(--font-mono); color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.evidence-note { margin: 6px 0 0; font-size: 10px; line-height: 1.45; color: var(--text-dim); }
+.evidence-meta { font-size: 9.5px; color: var(--text-dim); letter-spacing: .03em; }
+a.evidence-meta:hover { color: var(--accent); }
+.evidence-link { border: 0; padding: 0; background: none; font: inherit; font-size: 10.5px; color: var(--text-primary); text-decoration: underline; text-decoration-color: var(--text-dim); text-underline-offset: 2px; cursor: pointer; }
+.evidence-link:hover { text-decoration-color: var(--accent); color: var(--accent); }
+
+.evidence-block { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; margin-top: 8px; border: 1px solid var(--divider); border-radius: 6px; background: var(--surface-secondary); }
+.evidence-label { font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
+.evidence-items { margin: 2px 0 0; padding-left: 16px; font-size: 11px; line-height: 1.45; color: var(--text-secondary); overflow-wrap: anywhere; }
+.evidence-items li + li { margin-top: 3px; }
+
+.evidence-port { display: flex; flex-direction: column; gap: 5px; padding-top: 8px; border-top: 1px solid var(--divider); }
+.evidence-port-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.evidence-ref { display: inline-flex; align-items: baseline; gap: 6px; margin-left: 6px; }
+
+.evidence-cleanup-left .node-dispatch-agent { color: var(--gold, var(--window-orange)); }
+
+.evidence-input { margin: 4px 0; font-size: 10.5px; color: var(--text-secondary); }
+.evidence-input summary { cursor: pointer; }
+.evidence-input > .evidence-text { margin-top: 6px; padding: 8px 10px; border-left: 2px solid var(--divider); }
+
+.evidence-artifacts { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.evidence-artifacts li { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.evidence-artifacts li .evidence-link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.evidence-document { border: 1px solid var(--accent); border-radius: 6px; padding: 10px 12px; }
+.evidence-document-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.evidence-document-head h3 { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.evidence-image { display: block; max-width: 100%; height: auto; border: 1px solid var(--divider); }
+
+/* Numbered lines, from CHROTE's files panel. */
+.evidence-lines { display: flex; max-height: 50vh; min-width: 0; overflow: hidden; background: var(--terminal-background); border: 1px solid var(--divider); border-radius: 4px; font-size: 11px; line-height: 1.45; }
+.evidence-lines-gutter { flex: none; margin: 0; padding: 8px 10px 8px 8px; min-width: 3.4em; overflow: hidden; color: var(--text-dim); font: inherit; text-align: right; white-space: pre; user-select: none; }
+.evidence-lines-text { flex: 1; min-width: 0; margin: 0; padding: 8px 8px 8px 0; overflow: auto; color: var(--text-primary); font: inherit; white-space: pre; }
+
+@media (max-width: 768px) {
+  .fmx .run-evidence { left: 10px; right: 10px; width: auto; top: 10px; }
+  .fmx .run-evidence .pop-body { max-height: calc(100vh - 80px); }
+}
