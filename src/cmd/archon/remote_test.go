@@ -540,3 +540,40 @@ func TestRemoteFieldErrorsKeepOfflineCodes(t *testing.T) {
 		}
 	}
 }
+
+type fixedLiveness []formations.LiveAgentSession
+
+func (f fixedLiveness) LiveAgentSessions() ([]formations.LiveAgentSession, error) { return f, nil }
+
+func TestRemoteAgentListShowsTheDaemonsLiveness(t *testing.T) {
+	sessions := []string{"codex-scout", "operator-notes"}
+	runner := &fakeTmux{live: map[string]bool{}}
+	live := fixedLiveness{}
+	for _, name := range sessions {
+		runner.live[name] = true
+		live = append(live, formations.LiveAgentSession{Name: name, Status: "live"})
+	}
+	offlineRoot := t.TempDir()
+	t.Setenv("CHROTE_AGENTS_DIR", filepath.Join(offlineRoot, "agents"))
+	remoteRoot := t.TempDir()
+	c, err := coordinator.Open(remoteRoot, formations.NewPersonaStore(filepath.Join(remoteRoot, "agents")), func(*formations.Store) formations.FormationExecutor {
+		return formations.NewUnavailableFormationExecutor("test")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.ConfigureAgentLiveness(live)
+	server := httptest.NewServer(c.Handler())
+	t.Cleanup(func() { server.Close(); c.Close() })
+
+	for _, format := range [][]string{{"--json"}, {}} {
+		offline, offlineErr, offlineCode := runArchon(t, runner, append([]string{"--workspace", offlineRoot, "agent", "list"}, format...)...)
+		remote, remoteErr, remoteCode := runArchon(t, runner, append([]string{"--server", server.URL, "agent", "list"}, format...)...)
+		if offlineCode != 0 || remoteCode != 0 || offline != remote {
+			t.Fatalf("agent list %v: offline %d %s%s\nremote %d %s%s", format, offlineCode, offline, offlineErr, remoteCode, remote, remoteErr)
+		}
+		if !strings.Contains(remote, "codex-scout") || !strings.Contains(remote, "live") {
+			t.Fatalf("remote agent list %v shows no live codex-scout:\n%s", format, remote)
+		}
+	}
+}

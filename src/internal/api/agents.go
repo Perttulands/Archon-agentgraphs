@@ -28,6 +28,12 @@ func NewAgentsHandlerWithStore(store *formations.PersonaStore) *AgentsHandler {
 	return &AgentsHandler{store: store}
 }
 
+// NewAgentsHandlerWithStoreAndLiveness serves a persona store whose roster
+// liveness comes from provider; a nil provider reports every agent offline.
+func NewAgentsHandlerWithStoreAndLiveness(store *formations.PersonaStore, liveness AgentLivenessProvider) *AgentsHandler {
+	return &AgentsHandler{store: store, liveness: liveness}
+}
+
 func (h *AgentsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/agents", h.ListAgents)
 	mux.HandleFunc("POST /api/agents", h.CreateAgent)

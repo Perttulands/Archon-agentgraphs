@@ -119,6 +119,7 @@ func Run(args []string) error {
 		if err := c.ConfigureTerminals(*socket, *tmux); err != nil {
 			return err
 		}
+		c.ConfigureAgentLiveness(coordinator.TmuxSessionLiveness{Socket: *socket, TmuxBin: *tmux})
 	}
 	var listeners []net.Listener
 	defer func() {

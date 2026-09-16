@@ -2453,26 +2453,14 @@ func (realTmuxRunner) LiveSessions() ([]formations.LiveAgentSession, error) {
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			stderr := string(exitErr.Stderr)
-			if strings.Contains(stderr, "no server running") || strings.Contains(stderr, "No such file or directory") || strings.Contains(stderr, "server exited unexpectedly") {
+			if formations.TmuxHasNoServer(stderr) {
 				return nil, nil
 			}
 			return nil, fmt.Errorf("%s: %s", err.Error(), stderr)
 		}
 		return nil, err
 	}
-	live := []formations.LiveAgentSession{}
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		parts := strings.SplitN(line, ":", 2)
-		session := formations.LiveAgentSession{Name: parts[0], Status: "live"}
-		if len(parts) == 2 {
-			session.Attached = parts[1] == "1"
-		}
-		live = append(live, session)
-	}
-	return live, nil
+	return formations.ParseTmuxSessionList(string(output)), nil
 }
 
 func (realTmuxRunner) Spawn(name, command string) error {

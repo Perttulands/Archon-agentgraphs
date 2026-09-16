@@ -303,33 +303,12 @@ func (h *OracleHandler) enrichAgent(session core.Session) OracleAgent {
 func (h *OracleHandler) LiveAgentSessions() ([]formations.LiveAgentSession, error) {
 	output, err := h.runTmux("list-sessions", "-F", "#{session_name}:#{session_attached}")
 	if err != nil {
-		diagnostic := tmuxErrorDiagnostic(err)
-		if strings.Contains(diagnostic, "no server running") ||
-			strings.Contains(diagnostic, "No such file or directory") ||
-			strings.Contains(diagnostic, "server exited unexpectedly") {
+		if formations.TmuxHasNoServer(tmuxErrorDiagnostic(err)) {
 			return nil, nil
 		}
 		return nil, err
 	}
-
-	var live []formations.LiveAgentSession
-	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, ":", 2)
-		name := parts[0]
-		if name == "" {
-			continue
-		}
-		live = append(live, formations.LiveAgentSession{
-			Name:     name,
-			Status:   "live",
-			Attached: len(parts) > 1 && parts[1] == "1",
-		})
-	}
-	return live, nil
+	return formations.ParseTmuxSessionList(output), nil
 }
 
 // GetStatus handles GET /api/oracle/status

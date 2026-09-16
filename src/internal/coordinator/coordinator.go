@@ -68,6 +68,7 @@ type Coordinator struct {
 	closeErr         error
 	terminalObserver *terminal.Observer
 	needsYou         *needsYouDispatcher
+	agentLiveness    api.AgentLivenessProvider
 }
 
 type executionState struct {
@@ -223,7 +224,10 @@ func (c *Coordinator) Handler() http.Handler {
 	h := api.NewFormationsHandlerWithStores(c.store, c.personas)
 	h.SetRuntime(api.RuntimeHandlers{Start: c.start, Get: c.get, Events: c.events, Stream: c.stream, Resume: c.resume, Abort: c.abort, Verdict: c.verdict, Escalations: c.escalations})
 	h.RegisterRoutes(mux)
-	api.NewAgentsHandlerWithStore(c.personas).RegisterRoutes(mux)
+	c.mu.Lock()
+	liveness := c.agentLiveness
+	c.mu.Unlock()
+	api.NewAgentsHandlerWithStoreAndLiveness(c.personas, liveness).RegisterRoutes(mux)
 	mux.HandleFunc("GET /api/formations/runs", func(w http.ResponseWriter, r *http.Request) {
 		// An optional board filter lets a cockpit poll only its board's runs.
 		runs, err := c.store.ListRuns(formations.RunListFilter{BoardSlug: r.URL.Query().Get("board")})

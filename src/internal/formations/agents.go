@@ -113,6 +113,28 @@ type LiveAgentSession struct {
 	Attached   bool   `json:"attached"`
 }
 
+// ParseTmuxSessionList reads `list-sessions -F "#{session_name}:#{session_attached}"`
+// output as live agent sessions.
+func ParseTmuxSessionList(output string) []LiveAgentSession {
+	live := []LiveAgentSession{}
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		line = strings.TrimSpace(line)
+		parts := strings.SplitN(line, ":", 2)
+		if parts[0] == "" {
+			continue
+		}
+		live = append(live, LiveAgentSession{Name: parts[0], Status: "live", Attached: len(parts) == 2 && parts[1] == "1"})
+	}
+	return live
+}
+
+// TmuxHasNoServer reports tmux diagnostics that mean no sessions exist.
+func TmuxHasNoServer(diagnostic string) bool {
+	return strings.Contains(diagnostic, "no server running") ||
+		strings.Contains(diagnostic, "No such file or directory") ||
+		strings.Contains(diagnostic, "server exited unexpectedly")
+}
+
 type AgentRoster struct {
 	Agents []AgentProjection `json:"agents"`
 }
