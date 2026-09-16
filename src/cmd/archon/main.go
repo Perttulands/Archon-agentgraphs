@@ -1007,6 +1007,8 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 	commandArgv := fs.String("command-argv", "", "retired legacy Gate argv; new writes fail with a migration error")
 	commandCWD := fs.String("command-cwd", "", "retired legacy Gate cwd; new writes fail with a migration error")
 	commandShell := fs.String("command-shell", "", "retired legacy Gate shell command; new writes fail with a migration error")
+	var files stringList
+	fs.Var(&files, "file", "reference file path; repeat for more")
 	x := fs.Int("x", 0, "layout x coordinate")
 	y := fs.Int("y", 0, "layout y coordinate")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
@@ -1015,7 +1017,7 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon gate create <board> [--kinds code,formation,human] [--title text] [--criterion text] [--check id --check-version version --check-value value] [--x n] [--y n] [--json]")
+		fmt.Fprintln(stderr, "usage: archon gate create <board> [--kinds code,formation,human] [--title text] [--criterion text] [--check id --check-version version --check-value value] [--file path]... [--x n] [--y n] [--json]")
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -1037,6 +1039,7 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 		Check:                      *check,
 		CheckVersion:               *checkVersion,
 		CheckValue:                 *checkValue,
+		Files:                      files,
 		Command:                    *command,
 		CommandArgv:                splitCSV(*commandArgv),
 		CommandCWD:                 *commandCWD,
@@ -1066,6 +1069,8 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	commandCWD := fs.String("command-cwd", "", "retired legacy Gate cwd; new writes fail with a migration error")
 	commandShell := fs.String("command-shell", "", "retired legacy Gate shell command; new writes fail with a migration error")
 	clearCheck := fs.Bool("clear-check", false, "clear the code check profile, version and value")
+	var files stringList
+	fs.Var(&files, "file", "reference file path, replacing the current ones; repeat for more, or give an empty value to clear")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true, "clear-check": true})); err != nil {
@@ -1075,7 +1080,7 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	given := map[string]bool{}
 	fs.Visit(func(current *flag.Flag) { given[current.Name] = true })
 	if fs.NArg() != 2 || *clearCheck && (given["check"] || given["check-version"] || given["check-value"]) {
-		fmt.Fprintln(stderr, "usage: archon gate update <board> <gate> [--title text] [--kinds code,formation,human] [--criterion text] [--check id] [--check-version version] [--check-value value | --clear-check] [--json]")
+		fmt.Fprintln(stderr, "usage: archon gate update <board> <gate> [--title text] [--kinds code,formation,human] [--criterion text] [--check id] [--check-version version] [--check-value value | --clear-check] [--file path]... [--json]")
 		fmt.Fprintln(stderr, "Only the flags you give change the gate; an empty value clears that field. Dropping formation detaches the judge chain and dropping code clears the check.")
 		return 2
 	}
@@ -1120,6 +1125,10 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	if *clearCheck {
 		blank := ""
 		update.Check, update.CheckVersion, update.CheckValue = &blank, &blank, &blank
+	}
+	if given["file"] {
+		refs := []string(files)
+		update.Files = &refs
 	}
 	result, err := store.UpdateGate(slug, update, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
@@ -1237,6 +1246,8 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 	title := fs.String("title", "", "mission title")
 	goal := fs.String("goal", "", "mission goal")
 	beadID := fs.String("bead", "", "project Beads id")
+	var files stringList
+	fs.Var(&files, "file", "reference file path; repeat for more")
 	x := fs.Int("x", 0, "layout x coordinate")
 	y := fs.Int("y", 0, "layout y coordinate")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
@@ -1245,7 +1256,7 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon mission create <board> [--title <title>] [--goal <goal>] [--bead <beads-id>] [--x n] [--y n] [--json]")
+		fmt.Fprintln(stderr, "usage: archon mission create <board> [--title <title>] [--goal <goal>] [--bead <beads-id>] [--file <path>]... [--x n] [--y n] [--json]")
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -1264,6 +1275,7 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 		Title:     *title,
 		Goal:      *goal,
 		BeadID:    *beadID,
+		Files:     files,
 		X:         createX,
 		Y:         createY,
 		UpdatedBy: *updatedBy,
@@ -1407,6 +1419,8 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	title := fs.String("title", "", "mission title")
 	goal := fs.String("goal", "", "mission goal")
 	beadID := fs.String("bead", "", "project Beads id")
+	var files stringList
+	fs.Var(&files, "file", "reference file path, replacing the current ones; repeat for more, or give an empty value to clear")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -1414,8 +1428,8 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	given := map[string]bool{}
 	fs.Visit(func(current *flag.Flag) { given[current.Name] = true })
-	if fs.NArg() != 2 || !given["title"] && !given["goal"] && !given["bead"] {
-		fmt.Fprintln(stderr, "usage: archon mission update <board> <mission> [--title text] [--goal text] [--bead beads-id] [--json]")
+	if fs.NArg() != 2 || !given["title"] && !given["goal"] && !given["bead"] && !given["file"] {
+		fmt.Fprintln(stderr, "usage: archon mission update <board> <mission> [--title text] [--goal text] [--bead beads-id] [--file path]... [--json]")
 		fmt.Fprintln(stderr, "Only the flags you give change the mission; an empty value clears that field.")
 		return 2
 	}
@@ -1440,6 +1454,10 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	if given["bead"] {
 		update.BeadID = beadID
+	}
+	if given["file"] {
+		refs := []string(files)
+		update.Files = &refs
 	}
 	result, err := store.UpdateMission(slug, update, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {

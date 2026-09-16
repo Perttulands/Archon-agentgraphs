@@ -255,6 +255,7 @@ type formationsCreateGateRequest struct {
 	Check        string   `json:"check"`
 	CheckVersion string   `json:"checkVersion"`
 	CheckValue   string   `json:"checkValue"`
+	Files        []string `json:"files"`
 	Command      string   `json:"command"`
 	CommandArgv  []string `json:"commandArgv"`
 	CommandCWD   string   `json:"commandCwd"`
@@ -478,26 +479,28 @@ type formationsSetFormationTypeRequest struct {
 }
 
 type formationsUpdateMissionRequest struct {
-	ID          string  `json:"id"`
-	Title       *string `json:"title"`
-	Goal        *string `json:"goal"`
-	BeadID      *string `json:"beadId"`
-	ExpectedRev int     `json:"expectedRev"`
-	UpdatedBy   string  `json:"updatedBy"`
+	ID          string    `json:"id"`
+	Title       *string   `json:"title"`
+	Goal        *string   `json:"goal"`
+	BeadID      *string   `json:"beadId"`
+	Files       *[]string `json:"files"`
+	ExpectedRev int       `json:"expectedRev"`
+	UpdatedBy   string    `json:"updatedBy"`
 }
 
 // formationsUpdateGateRequest sets only the fields present in the JSON object.
 // An empty string clears a field; kinds, when present, must be non-empty.
 type formationsUpdateGateRequest struct {
-	ID           string   `json:"id"`
-	Title        *string  `json:"title"`
-	Kinds        []string `json:"kinds"`
-	Criterion    *string  `json:"criterion"`
-	Check        *string  `json:"check"`
-	CheckVersion *string  `json:"checkVersion"`
-	CheckValue   *string  `json:"checkValue"`
-	ExpectedRev  int      `json:"expectedRev"`
-	UpdatedBy    string   `json:"updatedBy"`
+	ID           string    `json:"id"`
+	Title        *string   `json:"title"`
+	Kinds        []string  `json:"kinds"`
+	Criterion    *string   `json:"criterion"`
+	Check        *string   `json:"check"`
+	CheckVersion *string   `json:"checkVersion"`
+	CheckValue   *string   `json:"checkValue"`
+	Files        *[]string `json:"files"`
+	ExpectedRev  int       `json:"expectedRev"`
+	UpdatedBy    string    `json:"updatedBy"`
 }
 
 type formationsSetGateJudgeRequest struct {
@@ -522,13 +525,14 @@ type formationsRewireConnectionRequest struct {
 }
 
 type formationsCreateMissionRequest struct {
-	Title       string `json:"title"`
-	Goal        string `json:"goal"`
-	BeadID      string `json:"beadId"`
-	X           int    `json:"x"`
-	Y           int    `json:"y"`
-	ExpectedRev int    `json:"expectedRev"`
-	UpdatedBy   string `json:"updatedBy"`
+	Title       string   `json:"title"`
+	Goal        string   `json:"goal"`
+	BeadID      string   `json:"beadId"`
+	Files       []string `json:"files"`
+	X           int      `json:"x"`
+	Y           int      `json:"y"`
+	ExpectedRev int      `json:"expectedRev"`
+	UpdatedBy   string   `json:"updatedBy"`
 }
 
 type formationsLayoutPatchRequest struct {
@@ -1327,6 +1331,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Check:                      gate.Check,
 			CheckVersion:               gate.CheckVersion,
 			CheckValue:                 gate.CheckValue,
+			Files:                      gate.Files,
 			Command:                    gate.Command,
 			CommandArgv:                gate.CommandArgv,
 			CommandCWD:                 gate.CommandCWD,
@@ -1392,6 +1397,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Title:     update.Title,
 			Goal:      update.Goal,
 			BeadID:    update.BeadID,
+			Files:     update.Files,
 			UpdatedBy: patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
@@ -1415,6 +1421,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Check:                      update.Check,
 			CheckVersion:               update.CheckVersion,
 			CheckValue:                 update.CheckValue,
+			Files:                      update.Files,
 			LegacyCommandFieldsPresent: request.LegacyCommandFieldsPresent,
 			UpdatedBy:                  patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
 		}, formations.WriteOptions{
@@ -1470,6 +1477,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Title:     mission.Title,
 			Goal:      mission.Goal,
 			BeadID:    mission.BeadID,
+			Files:     mission.Files,
 			X:         mission.X,
 			Y:         mission.Y,
 			UpdatedBy: patchUpdatedBy(request.UpdatedBy, mission.UpdatedBy),

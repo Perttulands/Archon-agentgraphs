@@ -332,7 +332,9 @@ installed daemons find `../share/archon/ui` beside their `bin` directory.
 Set `--ui-dir ''` to disable the cockpit, or an absolute path to select another
 build. These are daemon flags, not model settings. Set model and effort on persona harness variants.
 `--notify-command` and `--cockpit-url` configure needs-you notifications,
-described at the end of this section.
+described at the end of this section. Repeat `--file-root <absolute-dir>` for
+each directory whose files missions, briefs and gates may reference; the
+cockpit reads referenced files only under those roots (see Referenced files).
 
 In another terminal use the compiled Archon. Import means copying board and
 notes TOML; there is no import command:
@@ -372,7 +374,11 @@ the whole board.
 Nodes keep their IDs when edited: `archon formation rename <board> <formation>
 <title>`, `archon mission update <board> <mission>` with `--title`, `--goal` or
 `--bead`, and `archon gate update --title` change only what they name, and an
-empty value clears a field. The cockpit renames a mission, formation or gate
+empty value clears a field. Missions and gates carry reference files, such as a
+gate's rubric, the way formation briefs do: `--file <path>` on `mission
+create|update` and `gate create|update` (API `files`), repeated for more. On
+update the given files replace the list, and `--file ''` clears it. A path is
+absolute or relative to a daemon file root. The cockpit renames a mission, formation or gate
 from its title (double-click or Rename) and edits a mission's goal and Bead ID
 from Edit mission, each with undo. Ports, edges, layout and notes are unchanged.
 `archon formation set-type <board> <formation> <solo|peer|orchestrated>` and the
@@ -673,3 +679,23 @@ never carry native session IDs, tmux session or pane IDs, `sessionRef`, socket o
 prompt digests, brief or prompt paths, seat report pointers or absolute
 artifact paths, and worker pane captures are not served. Text is served as
 recorded apart from redaction, so it can mention host paths such as the cwd.
+
+### Referenced files
+
+[ADR-0018](adr/0018-referenced-file-roots.md) records these routes. The daemon
+reads referenced files only under its `--file-root` directories; with none, every
+reference is outside them. The `path` query is a reference as authored: an
+absolute clean path is read under the deepest root containing it, and a relative
+path is tried under each root in order.
+
+- `GET /api/formations/files/preview?path=<ref>` returns `data.file` (`path`
+  read, `name`, `size`, `modifiedAt`, `kind` as for artifacts), with `text`
+  capped at 256 KiB for textual kinds.
+- `GET /api/formations/files/raw?path=<ref>` returns the bytes up to 16 MiB with
+  the raw artifact route's content types and headers; larger files return 413.
+
+A path outside every root, or one the daemon may not read, returns 403 and is
+not readable here. Every component below the root opens without following
+symlinks, and only regular files with one link are read, so `..`, symlinks,
+hard links and non-regular files return 404. Served text is redacted like run
+evidence.

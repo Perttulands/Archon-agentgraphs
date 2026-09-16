@@ -49,6 +49,14 @@ func Run(args []string) error {
 	recoveryBrief := flags.String("completed-brief", "", "absolute original brief file for that dispatch")
 	notifyCommand := flags.String("notify-command", "", "absolute executable run with each needs-you notification as JSON on stdin; empty disables notifications")
 	cockpitURL := flags.String("cockpit-url", "", "cockpit URL for links in notifications")
+	var fileRoots []string
+	flags.Func("file-root", "absolute directory whose files missions, briefs and gates may reference; repeat for each root", func(value string) error {
+		if !filepath.IsAbs(value) {
+			return fmt.Errorf("--file-root requires an absolute path")
+		}
+		fileRoots = append(fileRoots, filepath.Clean(value))
+		return nil
+	})
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -115,6 +123,9 @@ func Run(args []string) error {
 		return err
 	}
 	defer c.Close()
+	if err := c.ConfigureFileRoots(fileRoots); err != nil {
+		return err
+	}
 	if *executor == "tmux" {
 		if err := c.ConfigureTerminals(*socket, *tmux); err != nil {
 			return err

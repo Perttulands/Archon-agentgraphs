@@ -152,6 +152,7 @@ type GateCreateRequest struct {
 	Check                      string
 	CheckVersion               string
 	CheckValue                 string
+	Files                      []string
 	Command                    string // legacy inspection-only compatibility input
 	CommandArgv                []string
 	CommandCWD                 string
@@ -173,7 +174,8 @@ type GateUpdateRequest struct {
 	Check                      *string
 	CheckVersion               *string
 	CheckValue                 *string
-	Command                    string // legacy inspection-only compatibility input
+	Files                      *[]string // replaces the file references; empty clears them
+	Command                    string    // legacy inspection-only compatibility input
 	CommandArgv                []string
 	CommandCWD                 string
 	CommandShell               string
@@ -208,6 +210,7 @@ type MissionUpdateRequest struct {
 	Title     *string
 	Goal      *string
 	BeadID    *string
+	Files     *[]string // replaces the file references; empty clears them
 	UpdatedBy string
 }
 
@@ -221,6 +224,7 @@ type MissionCreateRequest struct {
 	Title     string
 	Goal      string
 	BeadID    string
+	Files     []string
 	X         int
 	Y         int
 	UpdatedBy string
@@ -282,9 +286,11 @@ type GateNode struct {
 	// CheckValue is its validated non-secret parameter.
 	// When set, a machine gate mechanically evaluates the routed output against
 	// this declared check rather than blocking on missing_gate_evaluator.
-	Check                 string                               `json:"check,omitempty"`
-	CheckVersion          string                               `json:"checkVersion,omitempty"`
-	CheckValue            string                               `json:"checkValue,omitempty"`
+	Check        string `json:"check,omitempty"`
+	CheckVersion string `json:"checkVersion,omitempty"`
+	CheckValue   string `json:"checkValue,omitempty"`
+	// Files are reference files, such as the gate's rubric, as paths.
+	Files                 []string                             `json:"files,omitempty"`
 	Command               string                               `json:"command,omitempty"` // legacy inspection-only metadata
 	CommandArgv           []string                             `json:"commandArgv,omitempty"`
 	CommandCWD            string                               `json:"commandCwd,omitempty"`
@@ -298,6 +304,8 @@ type MissionNode struct {
 	Title  string `json:"title"`
 	Goal   string `json:"goal"`
 	BeadID string `json:"beadId"`
+	// Files are reference files for the mission, as paths.
+	Files []string `json:"files,omitempty"`
 }
 
 type LayoutNode struct {
@@ -963,6 +971,7 @@ func (s *Store) createGate(slug string, req GateCreateRequest, opts WriteOptions
 		Check:        req.Check,
 		CheckVersion: req.CheckVersion,
 		CheckValue:   req.CheckValue,
+		Files:        normalizeFileRefs(req.Files),
 	}
 
 	board, layout, err := s.createNode(slug, opts, nodeCreateCandidate{
@@ -1042,6 +1051,9 @@ func (s *Store) UpdateGate(slug string, req GateUpdateRequest, opts WriteOptions
 		}
 		if req.Criterion != nil {
 			changes = append(changes, change{"criterion", renderString(*req.Criterion)})
+		}
+		if req.Files != nil {
+			changes = append(changes, change{"files", renderFileRefs(*req.Files)})
 		}
 		for _, check := range []struct{ key, value, stored string }{
 			{"check", next.Check, current.Check},
@@ -1332,8 +1344,16 @@ func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteO
 			}
 			lines = setScalarInLineRange(lines, start+1, end, field.key, renderString(*field.value))
 		}
-		if _, _, ok := findMissionBlockByID(lines, req.MissionID); !ok {
+		start, end, ok := findMissionBlockByID(lines, req.MissionID)
+		if !ok {
 			return nil, ErrNotFound
+		}
+		if req.Files != nil {
+			if rendered := renderFileRefs(*req.Files); rendered == "" {
+				lines = removeScalarInLineRange(lines, start+1, end, "files")
+			} else {
+				lines = setScalarInLineRange(lines, start+1, end, "files", rendered)
+			}
 		}
 		return renderTOMLLines(lines), nil
 	})
@@ -1481,6 +1501,7 @@ func (s *Store) createMission(slug string, req MissionCreateRequest, opts WriteO
 		Title:  title,
 		Goal:   req.Goal,
 		BeadID: req.BeadID,
+		Files:  normalizeFileRefs(req.Files),
 	}
 
 	board, layout, err := s.createNode(slug, opts, nodeCreateCandidate{
@@ -2085,6 +2106,9 @@ func appendGateBlock(raw []byte, gate GateNode) []byte {
 		b.WriteString("checkVersion = " + renderString(gate.CheckVersion) + "\n")
 		b.WriteString("checkValue = " + renderString(gate.CheckValue) + "\n")
 	}
+	if len(gate.Files) > 0 {
+		b.WriteString("files = " + renderStringArray(gate.Files) + "\n")
+	}
 	return []byte(b.String())
 }
 
@@ -2103,7 +2127,30 @@ func appendMissionBlock(raw []byte, mission MissionNode) []byte {
 	b.WriteString("title = " + renderString(mission.Title) + "\n")
 	b.WriteString("goal = " + renderString(mission.Goal) + "\n")
 	b.WriteString("beadId = " + renderString(mission.BeadID) + "\n")
+	if len(mission.Files) > 0 {
+		b.WriteString("files = " + renderStringArray(mission.Files) + "\n")
+	}
 	return []byte(b.String())
+}
+
+// normalizeFileRefs trims file references and drops blank ones; none is nil.
+func normalizeFileRefs(files []string) []string {
+	var refs []string
+	for _, file := range files {
+		if file = strings.TrimSpace(file); file != "" {
+			refs = append(refs, file)
+		}
+	}
+	return refs
+}
+
+// renderFileRefs is the TOML value for file references; "" removes the key.
+func renderFileRefs(files []string) string {
+	refs := normalizeFileRefs(files)
+	if len(refs) == 0 {
+		return ""
+	}
+	return renderStringArray(refs)
 }
 
 func deleteGateJudgeConnections(raw []byte, gateID string) []byte {
@@ -3163,6 +3210,8 @@ func parseGateNodes(raw []byte) []GateNode {
 			current.CheckVersion = value
 		case "checkValue":
 			current.CheckValue = value
+		case "files":
+			current.Files = parseStringArray(value)
 		case "command":
 			current.legacyCommandFields[key]++
 			current.Command = value
@@ -3217,6 +3266,8 @@ func parseMissionNodes(raw []byte) []MissionNode {
 			current.Goal = value
 		case "beadId":
 			current.BeadID = value
+		case "files":
+			current.Files = parseStringArray(value)
 		}
 	}
 	return missions

@@ -457,6 +457,43 @@ paths:
           description: No such run or artifact, or a name that leaves the run's artifact directory
         '413':
           description: Artifact exceeds 16 MiB
+  /api/formations/files/preview:
+    parameters:
+    - in: query
+      name: path
+      required: true
+      description: A reference file path, absolute or relative to a daemon --file-root. A relative path is tried under each root in order.
+      schema:
+        type: string
+    get:
+      summary: Preview a referenced file under the daemon's file roots
+      responses:
+        '200':
+          description: Enveloped data.file contains path (the absolute path read), name, size, modifiedAt, kind (markdown, json, text, image, binary) and, for textual kinds, text capped at 256 KiB with secret patterns redacted.
+        '403':
+          description: Not readable here; the path is outside every --file-root, or the daemon may not read it
+        '404':
+          description: No such file, or a path that is not clean or reaches it through .., a symlink, a hard link or a non-regular file
+  /api/formations/files/raw:
+    parameters:
+    - in: query
+      name: path
+      required: true
+      description: A reference file path, absolute or relative to a daemon --file-root.
+      schema:
+        type: string
+    get:
+      summary: Serve a referenced file's bytes, like a raw run artifact
+      description: Text is text/plain; charset=utf-8 with secret patterns redacted; PNG, JPEG, GIF and WebP keep their type; anything else is an application/octet-stream attachment. Every response has X-Content-Type-Options nosniff, Content-Security-Policy sandbox and Cache-Control no-store.
+      responses:
+        '200':
+          description: File bytes
+        '403':
+          description: Not readable here; outside every --file-root
+        '404':
+          description: No such file, or a refused path
+        '413':
+          description: File exceeds 16 MiB
   /api/formations/runs/{runId}/gates/{gateId}/verdict:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -1146,6 +1183,11 @@ components:
               type: string
             checkValue:
               type: string
+            files:
+              type: array
+              description: Reference file paths, absolute or relative to a daemon file root; blank entries are dropped.
+              items:
+                type: string
             x:
               type: integer
             y:
@@ -1226,6 +1268,11 @@ components:
               type: string
             beadId:
               type: string
+            files:
+              type: array
+              description: Replaces the reference file paths; an empty array clears them.
+              items:
+                type: string
             expectedRev:
               type: integer
             updatedBy:
@@ -1258,6 +1305,11 @@ components:
               type: string
             checkValue:
               type: string
+            files:
+              type: array
+              description: Replaces the reference file paths; an empty array clears them.
+              items:
+                type: string
             expectedRev:
               type: integer
             updatedBy:
@@ -1294,6 +1346,11 @@ components:
               type: string
             beadId:
               type: string
+            files:
+              type: array
+              description: Reference file paths, absolute or relative to a daemon file root; blank entries are dropped.
+              items:
+                type: string
             x:
               type: integer
             y:

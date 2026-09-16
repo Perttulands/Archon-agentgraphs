@@ -70,6 +70,7 @@ type Coordinator struct {
 	terminalObserver *terminal.Observer
 	needsYou         *needsYouDispatcher
 	agentLiveness    api.AgentLivenessProvider
+	fileRoots        *formations.FileRoots
 }
 
 type executionState struct {
@@ -222,6 +223,7 @@ func (c *Coordinator) Handler() http.Handler {
 	mux.HandleFunc("GET /api/formations/runs/{runId}/seats/{createdSeq}/terminal", c.viewTerminal)
 	mux.HandleFunc("GET /api/formations/runs/{runId}/gates/{gateId}/request", c.pendingGateRequest)
 	c.registerEvidenceRoutes(mux)
+	c.registerFileRoutes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, 200, map[string]string{"status": "ok", "runtime": "standalone-trusted-v1"})
 	})

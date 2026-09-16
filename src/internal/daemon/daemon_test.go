@@ -3,6 +3,7 @@ package daemon
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -44,5 +45,11 @@ func TestNotifyFlagsRequireAnExecutableAndAPlainCockpitURL(t *testing.T) {
 		if err := validateNotifyFlags(invalid[0], invalid[1]); err == nil {
 			t.Fatalf("%q %q accepted", invalid[0], invalid[1])
 		}
+	}
+}
+
+func TestFileRootFlagRequiresAnAbsolutePath(t *testing.T) {
+	if err := Run([]string{"--file-root", "relative/docs"}); err == nil || !strings.Contains(err.Error(), "--file-root requires an absolute path") {
+		t.Fatalf("relative --file-root = %v, want a rejection", err)
 	}
 }

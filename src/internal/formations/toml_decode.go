@@ -240,6 +240,9 @@ func decodeMissionNodes(document map[string]any) ([]MissionNode, error) {
 		if node.BeadID, err = tomlString(table, "beadId"); err != nil {
 			return nil, err
 		}
+		if node.Files, err = tomlStringArray(table, "files"); err != nil {
+			return nil, err
+		}
 		nodes = append(nodes, node)
 	}
 	return nodes, nil
@@ -418,6 +421,9 @@ func decodeGateNodes(document map[string]any) ([]GateNode, error) {
 			return nil, err
 		}
 		if node.CheckValue, err = tomlString(table, "checkValue"); err != nil {
+			return nil, err
+		}
+		if node.Files, err = tomlStringArray(table, "files"); err != nil {
 			return nil, err
 		}
 		if node.Command, err = tomlString(table, "command"); err != nil {
