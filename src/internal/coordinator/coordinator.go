@@ -147,6 +147,14 @@ func (c *Coordinator) BeginShutdown() {
 			}
 			c.detach(formations.ErrCoordinatorShutdown)
 			<-done
+			// Stopping cancels any send; a delivery still recording its mark
+			// finishes before the writer lock is released.
+			c.mu.Lock()
+			notify := c.needsYou
+			c.mu.Unlock()
+			if notify != nil {
+				<-notify.done
+			}
 			c.closeErr = c.lock.Close()
 			deadline.Stop()
 			close(c.shutdownDone)

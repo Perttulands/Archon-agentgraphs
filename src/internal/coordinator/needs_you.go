@@ -41,6 +41,9 @@ type needsYouDispatcher struct {
 	// final outcome, so enabling notifications never mails old finished runs.
 	live map[string]bool
 	wake chan struct{}
+	// done closes when the dispatcher has stopped, before shutdown releases
+	// the writer lock.
+	done chan struct{}
 }
 
 // EnableNeedsYou starts notifications. Call it once, after startup recovery:
@@ -53,7 +56,7 @@ func (c *Coordinator) EnableNeedsYou(config NeedsYouConfig) {
 	if config.RetryInterval <= 0 {
 		config.RetryInterval = defaultNeedsYouRetryInterval
 	}
-	d := &needsYouDispatcher{c: c, config: config, pending: map[string]bool{}, live: map[string]bool{}, wake: make(chan struct{}, 1)}
+	d := &needsYouDispatcher{c: c, config: config, pending: map[string]bool{}, live: map[string]bool{}, wake: make(chan struct{}, 1), done: make(chan struct{})}
 	c.mu.Lock()
 	if c.closed || c.needsYou != nil {
 		c.mu.Unlock()
@@ -77,6 +80,7 @@ func (d *needsYouDispatcher) settled(runID string) {
 }
 
 func (d *needsYouDispatcher) run() {
+	defer close(d.done)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {

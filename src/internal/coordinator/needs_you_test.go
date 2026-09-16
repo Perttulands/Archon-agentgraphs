@@ -322,3 +322,35 @@ func TestCommandNotifierWritesJSONAndReportsFailure(t *testing.T) {
 		t.Fatalf("timeout took %s", elapsed)
 	}
 }
+
+// lateNotifier reports delivery a moment after shutdown cancels its send.
+type lateNotifier struct{ started chan struct{} }
+
+func (n lateNotifier) NotifyNeedsYou(ctx context.Context, _ formations.NeedsYouNotification) error {
+	close(n.started)
+	<-ctx.Done()
+	time.Sleep(150 * time.Millisecond)
+	return nil
+}
+
+func TestNeedsYouWritesNothingAfterClose(t *testing.T) {
+	c, executor, _ := fixture(t)
+	notifier := lateNotifier{started: make(chan struct{})}
+	c.EnableNeedsYou(NeedsYouConfig{Notifier: notifier, RetryInterval: time.Hour})
+	id := startRun(t, c)
+	<-executor.entered
+	executor.proceed <- struct{}{}
+	awaitState(t, c, id, "waiting_human")
+	<-notifier.started
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	marked, err := c.store.NeedsYouNotifiedSeqs(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if later, err := c.store.NeedsYouNotifiedSeqs(id); err != nil || len(later) != len(marked) {
+		t.Fatalf("needs-you marks changed after Close: %v then %v (%v)", marked, later, err)
+	}
+}
