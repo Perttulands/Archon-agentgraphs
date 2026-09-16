@@ -35,6 +35,7 @@ import {
   initials,
   rosterCountLabel,
 } from './formationsCockpitVisuals'
+import { GateKindChips } from './GateEditorDialog'
 import type {
   AgentProjection as FormationAgentProjection,
   BoardDocument,
@@ -1139,15 +1140,15 @@ function GateRow({
   branchLabels?: { pass: string[]; fail: string[] }
 }) {
   if (!gate) return null
-  const kinds = gate.kinds.join(' · ')
-  const title = gate.title || kinds || 'Gate'
-  const summary = [kinds, gate.criterion || 'work is accepted before it proceeds'].filter(Boolean).join(' · ')
+  const title = gate.title || 'Gate'
+  const criterion = gate.criterion || 'work is accepted before it proceeds'
   return (
     <section className={`gatecard${state ? ` state-${state}` : ''}`} data-gate={gate.id}>
       <span className="gico">{GATE_SVG}</span>
       <span className="gmeta">
         <span className="gt">{title}</span>
-        <span className="gs" title={summary}>{summary}</span>
+        <GateKindChips gateId={gate.id} kinds={gate.kinds} />
+        <span className="gs" title={criterion}>{criterion}</span>
         {Boolean(branchLabels?.pass.length || branchLabels?.fail.length) && (
           <span className="agx-branches" aria-label={`${title} branch targets`}>
             {branchLabels?.pass.length ? <span className="pass">pass → {branchLabels.pass.join(', ')}</span> : null}

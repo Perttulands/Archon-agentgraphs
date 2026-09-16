@@ -65,7 +65,7 @@ import { FormationTypeChip, formationTypeChoices } from './FormationTypeChip'
 import { MissionEditorDialog } from './MissionEditorDialog'
 import type { MissionDraft } from './MissionEditorDialog'
 import { AdmissionFindingsPanel, DraftMarker, findingsByNode, unresolvedFindings } from './formationsDrafts'
-import { GateEditorDialog, GateKindChips, draftFromGate, gateFieldsFromDraft, gateFieldsFromGate, newGateDraft } from './GateEditorDialog'
+import { GateEditorDialog, GateKindChips, draftFromGate, gateFieldsFromDraft, gateFieldsFromGate, gateKindLabel, newGateDraft } from './GateEditorDialog'
 import type { GateDraft, GateFields } from './GateEditorDialog'
 import { createFormationsInteractionOwner } from './formationsInteraction'
 import type { FormationsInteractionOwner } from './formationsInteraction'
@@ -2337,7 +2337,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const formation = board.formations?.find(node => node.id === inspectedNodeId)
     if (formation) return { kind: 'formation' as const, id: formation.id, title: formation.title }
     const gate = board.gates?.find(node => node.id === inspectedNodeId)
-    if (gate) return { kind: 'gate' as const, id: gate.id, title: gate.title || gate.kinds.join(' · ') || 'Gate' }
+    if (gate) return { kind: 'gate' as const, id: gate.id, title: gate.title || gate.kinds.map(gateKindLabel).join(' · ') || 'Gate' }
     const mission = board.missions?.find(node => node.id === inspectedNodeId)
     if (mission) return { kind: 'mission' as const, id: mission.id, title: mission.title }
     return null

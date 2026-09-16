@@ -1812,6 +1812,9 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
     const chips = within(screen.getByTestId('gate-kinds-gate_review')).getAllByText(/judge|human/)
     expect(chips.map(chip => chip.className)).toEqual(['gkind gkind-formation', 'gkind gkind-human'])
+    const gateCard = screen.getByTestId('gate-node-gate_review')
+    expect(gateCard.querySelector('.gs')).toHaveTextContent(/^Review the frame$/)
+    expect(gateCard.textContent).not.toMatch(/formation/)
     expect(screen.getByTestId('formations-world').querySelectorAll('.formation')).toHaveLength(board.formations.length)
   })
 

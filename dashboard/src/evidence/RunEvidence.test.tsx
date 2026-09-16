@@ -88,6 +88,9 @@ describe('RunEvidence', () => {
     expect(evaluation).toHaveTextContent('3 more items not shown')
     expect(evaluation).toHaveTextContent('Ship it on Friday')
     expect(evaluation).toHaveTextContent('beads.md · outside the run')
+    expect(evaluation).toHaveTextContent('judge · pass')
+    expect(evaluation).toHaveTextContent('Criterion · judge · human')
+    expect(evaluation.textContent).not.toMatch(/formation/)
   })
 
   it('opens an artifact from the run list and follows its links to other artifacts', async () => {

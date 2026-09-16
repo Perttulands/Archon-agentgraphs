@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { gateKindLabel } from '../components/GateEditorDialog'
 import Markdown from './Markdown'
 import TextLines, { prettyJson } from './TextLines'
 import {
@@ -221,7 +222,7 @@ function GateEvaluations({ runId, evaluations, onOpenArtifact }: {
               {evaluation.verdict.perKind && Object.keys(evaluation.verdict.perKind).length ? (
                 <div className="node-verdict-evidence">
                   {Object.entries(evaluation.verdict.perKind).map(([kind, result]) => (
-                    <div className="node-verdict-kind" key={kind}><span>{kind}</span><strong>{result}</strong></div>
+                    <div className="node-verdict-kind" key={kind}><span>{gateKindLabel(kind)}</span><strong>{result}</strong></div>
                   ))}
                 </div>
               ) : null}
@@ -242,7 +243,7 @@ function GateEvaluations({ runId, evaluations, onOpenArtifact }: {
 
           {evaluation.kindResults.map(result => (
             <div className="evidence-block" key={result.seq}>
-              <div className="evidence-label">{result.kind} · {result.verdict || 'no verdict'}</div>
+              <div className="evidence-label">{gateKindLabel(result.kind)} · {result.verdict || 'no verdict'}</div>
               {result.reason.text !== evaluation.verdict?.reason.text ? <EvidenceTextView value={result.reason} label={`${result.kind} reason`} /> : null}
               <EvidenceItems items={result.evidence} omitted={result.evidenceOmitted} />
             </div>
@@ -259,7 +260,7 @@ function GateEvaluations({ runId, evaluations, onOpenArtifact }: {
           ))}
 
           <div className="evidence-block">
-            <div className="evidence-label">Criterion · {evaluation.kinds.join(' · ') || 'gate'}</div>
+            <div className="evidence-label">Criterion · {evaluation.kinds.map(gateKindLabel).join(' · ') || 'gate'}</div>
             {evaluation.criterion.bytes ? <EvidenceTextView value={evaluation.criterion} label="Criterion" /> : <div className="node-evidence-empty">No criterion recorded.</div>}
           </div>
           {evaluation.input ? <InputView runId={runId} input={evaluation.input} onOpenArtifact={onOpenArtifact} /> : null}

@@ -102,6 +102,32 @@ describe('AgentsView', () => {
     })
   })
 
+  it('names a gate checker in operator words instead of the internal kind', async () => {
+    const board = { ...missionBoard(), gates: [{ id: 'human-review', title: 'Human Review', kinds: ['formation', 'human'], criterion: 'Approve the branch.' }] }
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0 } }))
+      if (url === '/api/formations/boards') {
+        return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' }] } }))
+      }
+      if (url === '/api/formations/boards/mission-board/layout') {
+        return Promise.resolve(jsonResponse({ success: true, data: { layout: missionLayout() } }, 200, { ETag: 'layout-etag' }))
+      }
+      if (url === '/api/formations/boards/mission-board') {
+        return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'board-etag' }))
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`))
+    })
+
+    render(<AgentsView />)
+
+    const kinds = await screen.findByTestId('gate-kinds-human-review')
+    expect(within(kinds).getAllByText(/judge|human/).map(chip => chip.textContent)).toEqual(['judge', 'human'])
+    const gateCard = kinds.closest('.gatecard') as HTMLElement
+    expect(gateCard.querySelector('.gs')).toHaveTextContent(/^Approve the branch\.$/)
+    expect(gateCard.textContent).not.toMatch(/formation/)
+  })
+
   it('labels restored runs by their mission and lets the user jump to mismatched run missions', async () => {
     const board = {
       ...missionBoard(),
