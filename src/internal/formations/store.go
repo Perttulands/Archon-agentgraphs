@@ -31,6 +31,8 @@ var (
 	ErrInvalidToolMutation     = errors.New("invalid_tool_mutation")
 	ErrInvalidDefinitionSource = errors.New(InvalidDefinitionSourceCode)
 	ErrInvalidGateKind         = errors.New("invalid_gate_kind")
+	ErrInvalidTypeChange       = errors.New("invalid_type_change")
+	ErrSlotChoiceRequired      = errors.New("slot_choice_required")
 )
 
 type Store struct {

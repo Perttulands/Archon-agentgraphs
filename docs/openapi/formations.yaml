@@ -1126,6 +1126,47 @@ components:
               type: integer
             updatedBy:
               type: string
+        setFormationType:
+          type: object
+          required:
+          - id
+          - type
+          description: Changes a formation's type in place. solo keeps one slot, peer has at least two
+            uncontrolled slots, orchestrated has one controller (the existing one, else the first slot) and a
+            worker; added slots are empty. A change to solo with more than one staffed slot returns 409
+            SLOT_CHOICE_REQUIRED unless keepSlotId names the slot to keep. slots restores an exact slot list
+            (used by undo). Flow and unknown types return 400 INVALID_TYPE_CHANGE.
+          properties:
+            id:
+              type: string
+            type:
+              enum:
+              - solo
+              - peer
+              - orchestrated
+            keepSlotId:
+              type: string
+            slots:
+              type: array
+              items:
+                type: object
+                required:
+                - id
+                properties:
+                  id:
+                    type: string
+                  label:
+                    type: string
+                  agentId:
+                    type: string
+                  harness:
+                    type: string
+                  controller:
+                    type: boolean
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
         updateMission:
           type: object
           required:
@@ -1225,8 +1266,9 @@ components:
       description: Select one authoring mutation and supply expectedRev plus If-Match. Nested expectedRev/updatedBy
         fields are accepted for several operations. Tool operations require the exact top-level frame
         and layoutExpectation; see formations_tools.go. setVerification and legacy gate command fields
-        are retired and rejected. removeVerification requires a replacement gate. updateGate, updateFormation
-        and updateMission share their store paths with archon gate update, formation rename and mission update.
+        are retired and rejected. removeVerification requires a replacement gate. updateGate, updateFormation,
+        setFormationType and updateMission share their store paths with archon gate update, formation rename,
+        formation set-type and mission update.
     AgentCreate:
       type: object
       properties:

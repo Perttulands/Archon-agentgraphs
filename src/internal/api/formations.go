@@ -72,6 +72,7 @@ type formationsBoardPatchRequest struct {
 	CreateFormation               *formationsCreateFormationRequest       `json:"createFormation"`
 	DeleteFormation               *formationsDeleteFormationRequest       `json:"deleteFormation"`
 	UpdateFormation               *formationsUpdateFormationRequest       `json:"updateFormation"`
+	SetFormationType              *formationsSetFormationTypeRequest      `json:"setFormationType"`
 	UpdateMission                 *formationsUpdateMissionRequest         `json:"updateMission"`
 	DeleteGate                    *formationsDeleteGateRequest            `json:"deleteGate"`
 	DeleteMission                 *formationsDeleteMissionRequest         `json:"deleteMission"`
@@ -283,6 +284,7 @@ var boardPatchMutationKeys = []string{
 	"createFormation",
 	"deleteFormation",
 	"updateFormation",
+	"setFormationType",
 	"updateMission",
 	"deleteGate",
 	"deleteMission",
@@ -460,6 +462,17 @@ type formationsUpdateFormationRequest struct {
 	Title       *string `json:"title"`
 	ExpectedRev int     `json:"expectedRev"`
 	UpdatedBy   string  `json:"updatedBy"`
+}
+
+// formationsSetFormationTypeRequest changes a formation's type. keepSlotId
+// chooses the slot a change to solo keeps; slots restores an exact slot list.
+type formationsSetFormationTypeRequest struct {
+	ID          string                     `json:"id"`
+	Type        string                     `json:"type"`
+	KeepSlotID  string                     `json:"keepSlotId"`
+	Slots       []formations.FormationSlot `json:"slots"`
+	ExpectedRev int                        `json:"expectedRev"`
+	UpdatedBy   string                     `json:"updatedBy"`
 }
 
 type formationsUpdateMissionRequest struct {
@@ -1345,6 +1358,26 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		core.WriteSuccess(w, map[string]interface{}{"board": board})
 		return
 	}
+	if request.SetFormationType != nil {
+		change := request.SetFormationType
+		board, err := h.store.SetFormationType(slug, formations.FormationTypeRequest{
+			FormationID: change.ID,
+			Type:        change.Type,
+			KeepSlotID:  change.KeepSlotID,
+			Slots:       change.Slots,
+			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, change.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, change.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", board.ETag)
+		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		return
+	}
 	if request.UpdateMission != nil {
 		update := request.UpdateMission
 		board, err := h.store.UpdateMission(slug, formations.MissionUpdateRequest{
@@ -1622,6 +1655,10 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusServiceUnavailable, "DEFINITION_PUBLICATION_UNCERTAIN", "Reload both board and layout before any explicit retry")
 	case errors.Is(err, formations.ErrInvalidToolMutation):
 		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_TOOL_MUTATION", "Tool mutation is invalid")
+	case errors.Is(err, formations.ErrInvalidTypeChange):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_TYPE_CHANGE", err.Error())
+	case errors.Is(err, formations.ErrSlotChoiceRequired):
+		core.WriteError(w, http.StatusConflict, "SLOT_CHOICE_REQUIRED", err.Error())
 	case errors.Is(err, formations.ErrInvalidGateKind):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_GATE_KIND", err.Error())
 	case errors.Is(err, formations.ErrInvalidCodeGateProfile):

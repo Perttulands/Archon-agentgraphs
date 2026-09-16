@@ -203,6 +203,8 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 			return runFormationSetBrief(store, args[2:], stdout, stderr)
 		case "rename":
 			return runFormationRename(store, args[2:], stdout, stderr)
+		case "set-type":
+			return runFormationSetType(store, args[2:], stdout, stderr)
 		case "remove-verification":
 			return runFormationRemoveVerification(store, args[2:], stdout, stderr)
 		case "add-input":
@@ -750,6 +752,56 @@ func runFormationRename(store *formations.Store, args []string, stdout, stderr i
 		return writeJSON(stdout, result)
 	}
 	fmt.Fprintf(stdout, "renamed %s\n", formationID)
+	return 0
+}
+
+func runFormationSetType(store *formations.Store, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("formation set-type", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	keepSlot := fs.String("keep-slot", "", "slot id or label to keep when changing to solo")
+	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
+	}
+	if fs.NArg() != 3 {
+		fmt.Fprintln(stderr, "usage: archon formation set-type <board> <formation> <solo|peer|orchestrated> [--keep-slot <slot>] [--json]")
+		fmt.Fprintln(stderr, "solo keeps one slot, peer has at least two, orchestrated has one controller and a worker; added slots are empty. Changing to solo with several staffed slots needs --keep-slot.")
+		return 2
+	}
+	slug, board, formationID, err := resolveFormationCommandTarget(store, fs.Arg(0), fs.Arg(1))
+	if err != nil {
+		return failSelector(stderr, err, *jsonOut, "formation", fs.Arg(1))
+	}
+	keepSlotID := *keepSlot
+	if keepSlotID != "" {
+		var candidates []graphSelectorCandidate
+		for _, formation := range board.Formations {
+			if formation.ID != formationID {
+				continue
+			}
+			for _, slot := range formation.Slots {
+				candidates = append(candidates, graphSelectorCandidate{ID: slot.ID, Title: slot.Label})
+			}
+		}
+		if keepSlotID, err = resolveGraphSelector("slot", keepSlotID, candidates); err != nil {
+			return failSelector(stderr, err, *jsonOut, "slot", *keepSlot)
+		}
+	}
+	result, err := store.SetFormationType(slug, formations.FormationTypeRequest{
+		FormationID: formationID,
+		Type:        fs.Arg(2),
+		KeepSlotID:  keepSlotID,
+		UpdatedBy:   *updatedBy,
+	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "formation", fs.Arg(1))
+	}
+	result.TOML = ""
+	if *jsonOut {
+		return writeJSON(stdout, result)
+	}
+	fmt.Fprintf(stdout, "%s is now %s\n", formationID, fs.Arg(2))
 	return 0
 }
 
@@ -2484,6 +2536,10 @@ func archonErrorCode(err error) string {
 		return "run_admission_failed"
 	case errors.Is(err, formations.ErrInvalidGateKind):
 		return "invalid_gate_kind"
+	case errors.Is(err, formations.ErrInvalidTypeChange):
+		return "invalid_type_change"
+	case errors.Is(err, formations.ErrSlotChoiceRequired):
+		return "slot_choice_required"
 	case errors.Is(err, formations.ErrDefinitionPublicationUncertain):
 		return "definition_publication_uncertain"
 	case errors.Is(err, formations.ErrInvalidToolMutation):

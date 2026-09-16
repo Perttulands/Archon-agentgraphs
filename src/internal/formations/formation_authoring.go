@@ -188,6 +188,19 @@ type FormationUpdateRequest struct {
 	UpdatedBy   string
 }
 
+// FormationTypeRequest changes a formation's type in place.
+type FormationTypeRequest struct {
+	FormationID string
+	Type        string
+	// KeepSlotID names the slot a change to solo keeps. It is required when
+	// more than one slot is staffed, so no bound agent is dropped silently.
+	KeepSlotID string
+	// Slots, when set, is the exact slot list to leave behind, such as the
+	// slots an undo restores. Slot rules for the type are not applied.
+	Slots     []FormationSlot
+	UpdatedBy string
+}
+
 // MissionUpdateRequest changes only the fields it sets. An empty value clears
 // it; a Bead ID that is given must be a safe Beads issue ID.
 type MissionUpdateRequest struct {
@@ -1077,6 +1090,218 @@ func (s *Store) UpdateFormation(slug string, req FormationUpdateRequest, opts Wr
 		}
 		return renderTOMLLines(lines), nil
 	})
+}
+
+// SetFormationType changes a formation's type and adjusts its slots:
+// solo keeps one slot, peer has at least two uncontrolled slots, and
+// orchestrated has one controller (the existing one, else the first slot) and
+// at least one worker. Added slots are empty; removing a staffed slot needs
+// KeepSlotID. The ID, ports, remaining slots and their agents, brief, edges,
+// layout and notes stay as they are.
+func (s *Store) SetFormationType(slug string, req FormationTypeRequest, opts WriteOptions) (*BoardDocument, error) {
+	if req.FormationID == "" {
+		return nil, ErrNotFound
+	}
+	if !runtimeSupportsFormationType(req.Type) {
+		return nil, fmt.Errorf("%w: formation type %q is not supported; use solo, peer or orchestrated", ErrInvalidTypeChange, req.Type)
+	}
+	if req.KeepSlotID != "" && (req.Type != FormationTypeSolo || req.Slots != nil) {
+		return nil, fmt.Errorf("%w: keepSlotId applies only to a change to solo", ErrInvalidTypeChange)
+	}
+	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, board *BoardDocument) ([]byte, error) {
+		formation, ok := findFormation(board.Formations, req.FormationID)
+		if !ok {
+			return nil, ErrNotFound
+		}
+		slots := req.Slots
+		if slots == nil {
+			planned, err := slotsForFormationType(formation, req.Type, req.KeepSlotID)
+			if err != nil {
+				return nil, err
+			}
+			slots = planned
+		} else if err := validateRestoredSlots(slots); err != nil {
+			return nil, err
+		}
+		lines := splitLines(raw)
+		start, end, _ := findFormationBlockByID(lines, req.FormationID)
+		lines = setScalarInLineRange(lines, start+1, formationHeaderEnd(lines, start, end), "type", renderString(req.Type))
+		return renderTOMLLines(rewriteFormationSlots(lines, formation, slots)), nil
+	})
+}
+
+// slotsForFormationType applies the slot rules of a type change.
+func slotsForFormationType(formation FormationNode, target, keepSlotID string) ([]FormationSlot, error) {
+	slots := append([]FormationSlot(nil), formation.Slots...)
+	if keepSlotID != "" {
+		if _, ok := findSlot(slots, keepSlotID); !ok {
+			return nil, fmt.Errorf("%w: formation %q has no slot %q to keep", ErrInvalidTypeChange, formation.ID, keepSlotID)
+		}
+	}
+	switch target {
+	case FormationTypeSolo:
+		if len(slots) == 0 {
+			return defaultFormationSlots(FormationTypeSolo), nil
+		}
+		keep := keepSlotID
+		if keep == "" {
+			var staffed []string
+			for _, slot := range slots {
+				if slot.AgentID != "" {
+					staffed = append(staffed, fmt.Sprintf("%s (%s)", slotName(slot), slot.AgentID))
+				}
+			}
+			switch {
+			case len(staffed) > 1:
+				return nil, fmt.Errorf("%w: changing formation %q to solo would remove staffed slots %s; name the slot to keep", ErrSlotChoiceRequired, formation.ID, strings.Join(staffed, ", "))
+			case len(staffed) == 1:
+				for _, slot := range slots {
+					if slot.AgentID != "" {
+						keep = slot.ID
+					}
+				}
+			default:
+				keep = slots[0].ID
+			}
+		}
+		slot, _ := findSlot(slots, keep)
+		slot.Controller = false
+		return []FormationSlot{slot}, nil
+	case FormationTypePeer:
+		for i := range slots {
+			slots[i].Controller = false
+		}
+		for len(slots) < 2 {
+			slots = append(slots, newFormationSlot("Peer", false))
+		}
+		return slots, nil
+	default:
+		if len(slots) == 0 {
+			return defaultFormationSlots(FormationTypeOrchestrated), nil
+		}
+		controller := slots[0].ID
+		controllers := 0
+		for _, slot := range slots {
+			if slot.Controller {
+				controllers++
+				controller = slot.ID
+			}
+		}
+		if controllers != 1 {
+			controller = slots[0].ID
+		}
+		for i := range slots {
+			slots[i].Controller = slots[i].ID == controller
+		}
+		if len(slots) == 1 {
+			slots = append(slots, newFormationSlot("Agent", false))
+		}
+		return slots, nil
+	}
+}
+
+func validateRestoredSlots(slots []FormationSlot) error {
+	seen := make(map[string]bool, len(slots))
+	for _, slot := range slots {
+		if !validToolDefinitionID(slot.ID) || seen[slot.ID] {
+			return fmt.Errorf("%w: slot id %q is missing, invalid or repeated", ErrInvalidTypeChange, slot.ID)
+		}
+		seen[slot.ID] = true
+	}
+	return nil
+}
+
+func findSlot(slots []FormationSlot, id string) (FormationSlot, bool) {
+	for _, slot := range slots {
+		if slot.ID == id {
+			return slot, true
+		}
+	}
+	return FormationSlot{}, false
+}
+
+// rewriteFormationSlots edits slot blocks in place so unknown keys in kept
+// slots survive: dropped slots are removed, kept slots get their fields, and
+// new slots are inserted before the next kept slot or after the last slot.
+func rewriteFormationSlots(lines []tomlLine, formation FormationNode, target []FormationSlot) []tomlLine {
+	block := func(slotID string) (int, int, bool) {
+		start, end, _ := findFormationBlockByID(lines, formation.ID)
+		return findFormationSlotBlock(lines, start, end, slotID)
+	}
+	wanted := make(map[string]bool, len(target))
+	for _, slot := range target {
+		wanted[slot.ID] = true
+	}
+	for _, slot := range formation.Slots {
+		if wanted[slot.ID] {
+			continue
+		}
+		if start, end, ok := block(slot.ID); ok {
+			lines = append(lines[:start], lines[end:]...)
+		}
+	}
+	current := make(map[string]FormationSlot, len(formation.Slots))
+	for _, slot := range formation.Slots {
+		current[slot.ID] = slot
+	}
+	for i, slot := range target {
+		if existing, ok := current[slot.ID]; ok {
+			start, end, _ := block(slot.ID)
+			if slot.Label != existing.Label {
+				lines = setScalarInLineRange(lines, start+1, end, "label", renderString(slot.Label))
+				start, end, _ = block(slot.ID)
+			}
+			lines = setScalarInLineRange(lines, start+1, end, "controller", strconv.FormatBool(slot.Controller))
+			for _, field := range []struct{ key, value, stored string }{
+				{"agentId", slot.AgentID, existing.AgentID},
+				{"harness", slot.Harness, existing.Harness},
+			} {
+				if field.value == field.stored {
+					continue
+				}
+				start, end, _ = block(slot.ID)
+				if field.value == "" {
+					lines = removeScalarInLineRange(lines, start+1, end, field.key)
+				} else {
+					lines = setScalarInLineRange(lines, start+1, end, field.key, renderString(field.value))
+				}
+			}
+			continue
+		}
+		insertAt := -1
+		for _, next := range target[i+1:] {
+			if _, ok := current[next.ID]; ok {
+				insertAt, _, _ = block(next.ID)
+				break
+			}
+		}
+		if insertAt < 0 {
+			_, insertAt, _ = findFormationBlockByID(lines, formation.ID)
+		}
+		lines = insertTomLLines(lines, insertAt, renderSlotBlock(slot))
+		current[slot.ID] = slot
+	}
+	return lines
+}
+
+func renderSlotBlock(slot FormationSlot) []tomlLine {
+	body := []string{
+		"[[formation.slot]]",
+		"id = " + renderString(slot.ID),
+		"label = " + renderString(slot.Label),
+		"controller = " + strconv.FormatBool(slot.Controller),
+	}
+	if slot.AgentID != "" {
+		body = append(body, "agentId = "+renderString(slot.AgentID))
+	}
+	if slot.Harness != "" {
+		body = append(body, "harness = "+renderString(slot.Harness))
+	}
+	lines := make([]tomlLine, 0, len(body))
+	for _, line := range body {
+		lines = append(lines, tomlLine{body: line, newline: "\n"})
+	}
+	return lines
 }
 
 // UpdateMission edits a mission's title, goal and Bead ID. Its ID, out port,
