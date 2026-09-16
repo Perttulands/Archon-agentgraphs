@@ -84,6 +84,15 @@ from = "mis_hello:out"
 to = "fmn_work:port_in"
 ```
 
+Authoring accepts drafts through the cockpit, HTTP and Archon. Board, mission,
+formation, gate, note and persona fields may be blank or partial: a title, goal,
+mission Bead ID, criterion or code check value can be left out. Blank values
+take defaults where a node needs one: a formation becomes `solo`, a persona kind
+becomes `specialist`, a board named in neither title nor slug becomes
+`Untitled board`. A supplied value must still be well formed, so an unsafe
+Bead ID, an unknown formation type or an unknown code check profile is rejected
+on write. Only run admission and `board validate` reject incomplete work.
+
 The [delivery board](../examples/delivery.formation.toml) and its
 [notes](../examples/delivery.notes.toml) add Plan, Beads, a Beads-review judge,
 orchestrated Execution and Final review. Six `delivery-*` presets staff it.
@@ -102,7 +111,19 @@ only trusted interfaces and the host's network perimeter.
 
 One coordinator locks a state directory. Many runs execute concurrently within
 it. Admission validates the graph and inputs, snapshots definitions, durably
-appends `run_started`, then returns HTTP 202. The worker continues after the
+appends `run_started`, then returns HTTP 202.
+
+Admission first checks that `expectedRev` and any `If-Match` name the current
+board (HTTP 409 otherwise). It then builds one report of every problem the run
+would hit: board validation plus supported formation types, slots with readable
+personas and harness variants, one controller and a worker in each orchestrated
+formation, complete code checks, judge chains, runnable Tools and a wired
+mission. Findings cover the nodes the run reaches from its mission, or the
+selected formation. Formation types, slot counts and persona bindings are
+checked across the whole board, because the run snapshot binds every formation.
+Any finding rejects the start with HTTP 422, error code `RUN_ADMISSION_FAILED`
+and `error.findings` as `{code,nodeId,message}` entries; no run is recorded.
+The engine's own fail-fast checks remain behind this report. The worker continues after the
 client disconnects. A missing receipt requires checking the run list before
 starting again. `cwd` must be an absolute existing directory and `brief` must be
 nonempty. Archon reads an existing brief file or sends the argument as literal
@@ -181,7 +202,8 @@ executor exposes no live terminals. No generic session browser is provided.
 
 Kinds run in order: code, formation, human, stopping on failure. Code supports
 only `output_contains@1` and `output_absent@1`, configured through `check`,
-`checkVersion` and `checkValue`. It does not run arbitrary shell commands.
+`checkVersion` and `checkValue`. A draft gate may leave these blank; admission
+reports the gap. It does not run arbitrary shell commands.
 Use a judge formation to execute checks such as Beads lint or code review.
 
 A judge must emit exactly one fenced block with exactly these keys:
@@ -275,6 +297,11 @@ gate, tool and agent nouns. Read command-specific help with `-h`; for runtime
 flags include `--server` in the help invocation. Preserve an operator's draft
 and notes, staff its slots, write executable briefs, wire exact port IDs, then
 validate and arrange. The shared `archon` skill gives an authoring recipe.
+`board validate` lists every finding for the whole board, admission checks
+included, as `ERROR`/`WARN` lines or `--json`, and exits 1 on any error.
+`mission run` and `formation run` print every admission finding when a start is
+rejected. The cockpit tags incomplete nodes as drafts and highlights the nodes
+a rejected start names.
 
 For the delivery template use the following limits as a bounded smoke example,
 and allow enough wall time for the actual task. Lab briefs need the synthetic
@@ -376,8 +403,11 @@ Revision and ETag checks protect edits. Runtime routes start/list/read runs,
 read projected events/escalations, stream SSE, abort, resume and record exact
 human verdicts. They all use the coordinator; no request-local executor exists.
 There is no generic file reader, transcript endpoint, board import endpoint or
-authentication layer. Remote Archon supports board list/inspect and runtime
-commands; author definitions with `--workspace` or the cockpit.
+authentication layer. Remote Archon supports board list/inspect/validate and
+runtime commands; author definitions with `--workspace` or the cockpit.
+`GET /api/formations/boards/{board}/validation` returns
+`{boardRev,boardEtag,errors,warnings}` for the whole board, the same report as
+`board validate`.
 
 `GET /api/theme` returns the raw CHROTE schema-1 theme document with no response
 envelope. Optional `--theme-file <absolute-path>` selects a host-owned file,

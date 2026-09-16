@@ -4,8 +4,10 @@ import type {
   AgentProjection,
   BoardDeletion,
   BoardDocument,
+  BoardFinding,
   BoardNotesDocument,
   BoardSummary,
+  BoardValidation,
   CodeGateProfileDescriptor,
   FormationNode,
   LayoutDocument,
@@ -22,17 +24,20 @@ import type {
 interface ApiResponse<T> {
   success: boolean
   data?: T
-  error?: { code: string; message: string }
+  error?: { code: string; message: string; findings?: BoardFinding[] }
 }
 
 export class ApiRequestError extends Error {
   status: number
   code: string
+  /** Every located problem, when the request had several (run admission). */
+  findings: BoardFinding[]
 
-  constructor(message: string, status: number, code: string) {
+  constructor(message: string, status: number, code: string, findings: BoardFinding[] = []) {
     super(message)
     this.status = status
     this.code = code
+    this.findings = findings
   }
 }
 
@@ -47,7 +52,7 @@ export async function fetchApi<T>(endpoint: string, init?: RequestInit): Promise
   })
   const result = await response.json() as ApiResponse<T>
   if (!response.ok || !result.success || result.data === undefined || result.data === null) {
-    throw new ApiRequestError(result.error?.message || `Request failed: ${response.status}`, response.status, result.error?.code || '')
+    throw new ApiRequestError(result.error?.message || `Request failed: ${response.status}`, response.status, result.error?.code || '', result.error?.findings || [])
   }
   return { data: result.data, etag: response.headers.get('ETag') || '' }
 }
@@ -96,6 +101,16 @@ export async function fetchCodeGateProfiles(): Promise<CodeGateProfileDescriptor
 export async function fetchBoardDocument(slug: string): Promise<BoardDocument> {
   const result = await fetchApi<{ board: BoardDocument }>(`/api/formations/boards/${encodeURIComponent(slug)}`)
   return normalizeBoard(result.data.board, result.etag)
+}
+
+export async function fetchBoardValidation(slug: string): Promise<BoardValidation> {
+  const result = await fetchApi<Partial<BoardValidation>>(`/api/formations/boards/${encodeURIComponent(slug)}/validation`)
+  return {
+    boardRev: result.data.boardRev ?? 0,
+    boardEtag: result.data.boardEtag || result.etag,
+    errors: result.data.errors || [],
+    warnings: result.data.warnings || [],
+  }
 }
 
 export async function fetchBoardLayout(slug: string): Promise<LayoutDocument> {

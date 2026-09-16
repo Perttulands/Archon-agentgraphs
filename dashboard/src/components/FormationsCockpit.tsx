@@ -24,6 +24,7 @@ import {
   fetchBoardChanged,
   fetchBoardNotes,
   fetchBoardSummaries,
+  fetchBoardValidation,
   fetchBoardWithLayout,
   fetchCodeGateProfiles,
   fetchRunEscalations,
@@ -55,14 +56,17 @@ import { routeJudgeWire, routeOrthoWire } from './formationsRouting'
 import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
 import { isSafeBeadsIssueID } from './formationsBeadId'
+import { AdmissionFindingsPanel, DraftMarker, findingsByNode, unresolvedFindings } from './formationsDrafts'
 import { createFormationsInteractionOwner } from './formationsInteraction'
 import type { FormationsInteractionOwner } from './formationsInteraction'
 import type {
   AgentProjection,
   BoardConnection,
   BoardDocument,
+  BoardFinding,
   BoardNotesDocument,
   BoardSummary,
+  BoardValidation,
   CodeGateProfileDescriptor,
   FormationBrief,
   FormationNode,
@@ -173,6 +177,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [agents, setAgents] = useState<AgentProjection[]>([])
   const [view, setView] = useState<ViewTransform>({ x: 40, y: 40, scale: 1 })
   const [error, setError] = useState('')
+  const [validation, setValidation] = useState<BoardValidation | null>(null)
+  const [admissionFindings, setAdmissionFindings] = useState<BoardFinding[]>([])
   const [activeRun, setActiveRun] = useState<RunStatusProjection | null>(null)
   const [runEvents, setRunEvents] = useState<RunEvent[]>([])
   const [escalations, setEscalations] = useState<OpenEscalation[]>([])
@@ -278,6 +284,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setInspectedToolId(null)
     setInspectedNodeId(null)
     setEscalations([])
+    setValidation(null)
+    setAdmissionFindings([])
   }, [selectedSlug])
 
   useLayoutEffect(() => {
@@ -412,6 +420,21 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const timer = window.setInterval(() => { void checkChanges() }, 600)
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [active, board?.etag, selectedSlug])
+
+  useEffect(() => {
+    // Draft markers follow each board revision. A rejected run keeps its nodes
+    // marked until validation stops reporting them.
+    if (!selectedSlug || !board?.etag) return
+    let cancelled = false
+    fetchBoardValidation(selectedSlug)
+      .then(report => {
+        if (cancelled) return
+        setValidation(report)
+        setAdmissionFindings(current => unresolvedFindings(current, [...report.errors, ...report.warnings]))
+      })
+      .catch(() => { if (!cancelled) setValidation(null) })
+    return () => { cancelled = true }
+  }, [board?.etag, selectedSlug])
 
   useEffect(() => {
     if (!active) return
@@ -664,11 +687,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const saveBoardName = useCallback(async () => {
     if (!boardDialog || boardDialog.mode === 'delete') return
+    // A blank name saves too: the server names new boards "Untitled board".
     const title = boardDialog.title.trim()
-    if (!title) {
-      setBoardDialog(current => current ? { ...current, error: 'Board name is required.' } : current)
-      return
-    }
     if (boardDialog.mode === 'create' && blockBoardExitForDirtyNotes()) {
       closeBoardDialog()
       return
@@ -948,14 +968,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const createGateAt = useCallback((worldX: number, worldY: number) => {
     const profile = gateProfiles[0]
-    if (!profile) {
-      setError('No registered code Gate profiles are available')
-      return
-    }
     setGateEditor({
       title: 'Review gate',
       criterion: '',
-      profileKey: `${profile.profileId}@${profile.profileVersion}`,
+      profileKey: profile ? `${profile.profileId}@${profile.profileVersion}` : '',
       checkValue: '',
       x: worldX,
       y: worldY,
@@ -971,12 +987,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const saveGateEditor = useCallback(async () => {
     if (!gateEditor || gateEditor.saving) return
+    // Drafts save: a missing profile or value becomes a run finding, not an error here.
     const profile = gateProfiles.find(candidate => `${candidate.profileId}@${candidate.profileVersion}` === gateEditor.profileKey)
-    const checkValue = gateEditor.checkValue.trim()
-    if (!profile || !checkValue) {
-      setGateEditor(current => current ? { ...current, error: profile ? `${profile.parameterLabel} is required.` : 'Choose a registered evaluator profile.' } : null)
-      return
-    }
+    const checkValue = profile ? gateEditor.checkValue.trim() : ''
     const placement = placementForNewNode(gateEditor.x, gateEditor.y)
     const before = boardRef.current
     if (!before) return
@@ -986,8 +999,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         title: gateEditor.title.trim() || 'Review gate',
         kinds: ['code'],
         criterion: gateEditor.criterion.trim(),
-        check: profile.profileId,
-        checkVersion: profile.profileVersion,
+        check: profile?.profileId || '',
+        checkVersion: profile?.profileVersion || '',
         checkValue,
         x: placement.x,
         y: placement.y,
@@ -1054,8 +1067,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const saveMissionEditor = useCallback(async () => {
     if (!missionEditor || missionEditorSaving) return
     const beadId = missionEditor.beadId.trim()
-    if (!isSafeBeadsIssueID(beadId)) {
-      setMissionEditorError('Enter a Beads issue ID such as ctx-ug7.25.')
+    if (beadId && !isSafeBeadsIssueID(beadId)) {
+      setMissionEditorError('Enter a Beads issue ID such as ctx-ug7.25, or leave it blank.')
       return
     }
     const placement = placementForNewNode(missionEditor.x, missionEditor.y)
@@ -1250,6 +1263,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const current = boardRef.current
     if (!current) return
       const result = await startRun(current.etag, { ...inputs, board: current.slug, missionId: mission.id, expectedRev: current.rev, actor: 'agent:ui' })
+        .catch(err => {
+          if (err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
+          throw err
+        })
+      setAdmissionFindings([])
       const status = { ...result.status, runId: result.status.runId || result.runId }
       const events = await fetchRunEvents(status.runId)
       setRunEvents(events)
@@ -1265,6 +1283,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!current) return
     try {
       const result = await startRun(current.etag, { board: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'agent:ui' })
+      setAdmissionFindings([])
       const status = { ...result.status, runId: result.status.runId || result.runId }
       const events = await fetchRunEvents(status.runId)
       setRunEvents(events)
@@ -1274,6 +1293,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
       setError('')
     } catch (err) {
+      if (err instanceof ApiRequestError && err.findings.length) {
+        setAdmissionFindings(err.findings)
+        setError('')
+        return
+      }
       setError(err instanceof Error ? err.message : 'Failed to start run')
     }
   }, [])
@@ -2085,10 +2109,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const saveAgentOverride = useCallback(async () => {
     if (!agentEditor || agentEditor.loading || !agentEditor.etag) return
-    if (!agentEditor.displayName.trim() || !agentEditor.kind.trim()) {
-      setAgentEditor(current => current ? { ...current, error: 'Display name and role are required.' } : current)
-      return
-    }
     setAgentEditor(current => current ? { ...current, saving: true, error: '' } : current)
     try {
       await overrideAgentCard(agentEditor.id, agentEditor.etag, {
@@ -2130,6 +2150,15 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     }
     return ids
   }, [openEscalations])
+  const draftFindings = useMemo(
+    () => findingsByNode(board, validation ? [...validation.errors, ...validation.warnings] : []),
+    [board, validation],
+  )
+  const blockedFindings = useMemo(() => findingsByNode(board, admissionFindings), [board, admissionFindings])
+  const draftClass = (nodeId: string) => `${draftFindings.has(nodeId) ? ' is-draft' : ''}${blockedFindings.has(nodeId) ? ' admission-blocked' : ''}`
+  const renderDraftMarker = (nodeId: string) => (
+    <DraftMarker nodeId={nodeId} findings={blockedFindings.get(nodeId) ?? draftFindings.get(nodeId)} blocked={blockedFindings.has(nodeId)} />
+  )
   const inspectedNode = useMemo(() => {
     if (!inspectedNodeId || !board) return null
     const formation = board.formations?.find(node => node.id === inspectedNodeId)
@@ -2280,7 +2309,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               return (
                 <div
                   key={mission.id}
-                  className={`missioncard${noteByNode.has(mission.id) ? ' has-note' : ''}`}
+                  className={`missioncard${noteByNode.has(mission.id) ? ' has-note' : ''}${draftClass(mission.id)}`}
                   data-node={mission.id}
                   data-testid={`mission-node-${mission.id}`}
                   style={{ left: pos.x, top: pos.y }}
@@ -2288,6 +2317,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   onContextMenu={event => missionMenu(event, mission)}
                 >
                   {renderNotePin(mission.id, mission.title)}
+                  {renderDraftMarker(mission.id)}
                   <div className="mhd">
                     <span className="meyebrow">◆ Mission</span>
                     <button className="mrun" title="Start mission" onClick={() => setStartMission(mission)} data-testid={`run-mission-${mission.id}`}>{PLAY_SVG}</button>
@@ -2306,13 +2336,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               return (
                 <div
                   key={formation.id}
-                  className={`formation type-${formation.type}${state === 'running' ? ' running' : ''}${judgeHover === formation.id ? ' judgehover' : ''}${needsYouNodeIds.has(formation.id) ? ' needs-you' : ''}${noteByNode.has(formation.id) ? ' has-note' : ''}`}
+                  className={`formation type-${formation.type}${state === 'running' ? ' running' : ''}${judgeHover === formation.id ? ' judgehover' : ''}${needsYouNodeIds.has(formation.id) ? ' needs-you' : ''}${noteByNode.has(formation.id) ? ' has-note' : ''}${draftClass(formation.id)}`}
                   data-node={formation.id}
                   data-testid={`formation-node-${formation.id}`}
                   style={{ left: pos.x, top: pos.y }}
                   onContextMenu={event => formationMenu(event, formation)}
                 >
                   {renderNotePin(formation.id, formation.title)}
+                  {renderDraftMarker(formation.id)}
                   {formation.inputs.map((port, portIndex) => {
                     const endpoint = `${formation.id}:${port.id}`
                     const incoming = (board?.connections || []).find(connection => connection.to === endpoint)
@@ -2403,7 +2434,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               return (
                 <div
                   key={gate.id}
-                  className={`gatecard${state ? ` ${state}` : ''}${gateHasJudge(gate.id) ? ' hasjudge' : ''}${needsYouNodeIds.has(gate.id) ? ' needs-you' : ''}${noteByNode.has(gate.id) ? ' has-note' : ''}`}
+                  className={`gatecard${state ? ` ${state}` : ''}${gateHasJudge(gate.id) ? ' hasjudge' : ''}${needsYouNodeIds.has(gate.id) ? ' needs-you' : ''}${noteByNode.has(gate.id) ? ' has-note' : ''}${draftClass(gate.id)}`}
                   data-node={gate.id}
                   data-gate={gate.id}
                   data-testid={`gate-node-${gate.id}`}
@@ -2412,6 +2443,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   onContextMenu={event => gateMenu(event, gate)}
                 >
                   {renderNotePin(gate.id, gate.title || 'Gate')}
+                  {renderDraftMarker(gate.id)}
                   <span
                     className={`port pin${hoverPort === inputEndpoint ? ' snaptarget' : ''}${incoming ? ' has' : ''}`}
                     data-port-in={inputEndpoint}
@@ -2459,7 +2491,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               return (
                 <div
                   key={tool.id}
-                  className={`toolcard${noteByNode.has(tool.id) ? ' has-note' : ''}`}
+                  className={`toolcard${noteByNode.has(tool.id) ? ' has-note' : ''}${draftClass(tool.id)}`}
                   data-kind="tool"
                   data-node={tool.id}
                   data-execution-state="unavailable"
@@ -2468,6 +2500,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   onPointerDown={event => beginNodeDrag(event, tool.id, nodeIndex)}
                 >
                   {renderNotePin(tool.id, tool.title)}
+                  {renderDraftMarker(tool.id)}
                   <div className="tool-head">
                     <div className="tool-heading">
                       <span className="tool-kind">Tool</span>
@@ -2578,6 +2611,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             <button onClick={() => fitView({ smooth: true })} title="Fit">FIT</button>
           </div>
           {error ? <div className="errbar" data-testid="formations-error">{error}</div> : null}
+          <AdmissionFindingsPanel
+            findings={admissionFindings}
+            titleOf={nodeId => noteElements.find(element => element.id === nodeId)?.title || nodeId}
+            onDismiss={() => setAdmissionFindings([])}
+          />
         </div>
 
         <aside className={`board-notes${notesOpen ? ' open' : ' collapsed'}`} aria-label="Shared board notepad">
@@ -2774,7 +2812,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               {boardDialog.error ? <p className="field-note error">{boardDialog.error}</p> : null}
               <div className="pop-actions">
                 <button className="cancel" type="button" disabled={boardDialog.saving} onClick={closeBoardDialog}>Cancel</button>
-                <button className="save" type="submit" disabled={boardDialog.saving || !boardDialog.title.trim()}>
+                <button className="save" type="submit" disabled={boardDialog.saving}>
                   {boardDialog.saving ? 'Saving…' : boardDialog.mode === 'create' ? 'Create board' : 'Save board name'}
                 </button>
               </div>
@@ -3008,6 +3046,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               disabled={gateEditor.saving}
               onChange={event => setGateEditor(current => current ? { ...current, profileKey: event.target.value, error: '' } : current)}
             >
+              <option value="">Choose later</option>
               {gateProfiles.map(profile => (
                 <option key={`${profile.profileId}@${profile.profileVersion}`} value={`${profile.profileId}@${profile.profileVersion}`}>
                   {profile.displayName} · {profile.profileId}@{profile.profileVersion}
@@ -3021,7 +3060,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               aria-label={selectedGateProfile?.parameterLabel || 'Value'}
               aria-invalid={gateEditor.error ? true : undefined}
               value={gateEditor.checkValue}
-              disabled={gateEditor.saving}
+              placeholder="Optional while drafting"
+              disabled={gateEditor.saving || !selectedGateProfile}
               onChange={event => setGateEditor(current => current ? { ...current, checkValue: event.target.value, error: '' } : current)}
             />
             <label htmlFor="cockpit-gate-criterion">Criterion</label>
@@ -3094,7 +3134,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               className={`field-note${missionEditorError ? ' error' : ''}`}
               role={missionEditorError ? 'alert' : undefined}
             >
-              {missionEditorError || 'Required. Copy a Bead ID from the Beads tab, for example ctx-ug7.25.'}
+              {missionEditorError || 'Optional. Copy a Bead ID from the Beads tab, for example ctx-ug7.25.'}
             </p>
             <div className="pop-actions">
               <button className="cancel" type="button" aria-label="Cancel mission creation" disabled={missionEditorSaving} onClick={closeMissionEditor}>Cancel</button>

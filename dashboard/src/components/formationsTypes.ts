@@ -111,6 +111,22 @@ export interface BoardDocument {
   connections: BoardConnection[]
 }
 
+/** A located problem a run would hit. Authoring accepts drafts; board
+ * validation and run admission list these instead. nodeId names a node, a
+ * connection, or nothing for board-level findings. */
+export interface BoardFinding {
+  code: string
+  nodeId: string
+  message: string
+}
+
+export interface BoardValidation {
+  boardRev: number
+  boardEtag: string
+  errors: BoardFinding[]
+  warnings: BoardFinding[]
+}
+
 export interface MissionNode {
   id: string
   title: string

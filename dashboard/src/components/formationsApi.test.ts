@@ -7,6 +7,7 @@ import {
   fetchBoardChanged,
   fetchBoardDocument,
   fetchBoardNotes,
+  fetchBoardValidation,
   fetchBoardWithLayout,
   normalizeBoard,
   normalizeLayout,
@@ -30,6 +31,31 @@ function jsonResponse(body: unknown, options: { ok?: boolean; status?: number; e
 describe('formations API helpers', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  it('carries every run admission finding on the request error', async () => {
+    const findings = [
+      { code: 'unstaffed_slot', nodeId: 'fmn_plan', message: 'formation "fmn_plan" slot "Planner" (slot_plan) needs an agent' },
+      { code: 'mission_not_runnable', nodeId: 'mis_main', message: 'mission "mis_main" has no outgoing connection' },
+    ]
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse({
+      success: false,
+      error: { code: 'RUN_ADMISSION_FAILED', message: 'The run needs 2 fixes before it can start', findings },
+    }, { ok: false, status: 422 }))) as unknown as typeof fetch)
+
+    const failure = await startRun('etag', { board: 'draft', missionId: 'mis_main', expectedRev: 2, actor: 'agent:ui' }).catch(err => err)
+
+    expect(failure).toBeInstanceOf(ApiRequestError)
+    expect(failure).toMatchObject({ status: 422, code: 'RUN_ADMISSION_FAILED', message: 'The run needs 2 fixes before it can start', findings })
+  })
+
+  it('reads board validation with empty lists when none are reported', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      expect(String(input)).toBe('/api/formations/boards/draft%20board/validation')
+      return Promise.resolve(jsonResponse({ success: true, data: { boardRev: 3, boardEtag: 'etag-3', errors: null } }))
+    }) as unknown as typeof fetch)
+
+    await expect(fetchBoardValidation('draft board')).resolves.toEqual({ boardRev: 3, boardEtag: 'etag-3', errors: [], warnings: [] })
   })
 
   it('returns response data and the API ETag', async () => {

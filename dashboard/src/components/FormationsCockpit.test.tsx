@@ -126,6 +126,7 @@ type TestBoard = ReturnType<typeof makeBoard>
 type TestRunEvent = { runId: string; seq: number; type: string; nodeId?: string; gateId?: string; attempt?: number; data?: Record<string, unknown>; slotId?: string; status?: string; verdict?: string; sessionName?: string; outcome?: string }
 type TestEscalation = { runId: string; seq: number; nodeId?: string; gateId?: string; severity: string; reason: string; source: string; trigger: string; blocks: boolean }
 type TestRunStatus = { status?: string; final?: boolean; resumeAllowed?: boolean }
+type TestFinding = { code: string; nodeId: string; message: string }
 let recordedMutations: RecordedMutation[] = []
 
 function installFetchMock(options: {
@@ -143,6 +144,8 @@ function installFetchMock(options: {
   notePatchConflict?: boolean
   agents?: typeof agents
   agentDetailGate?: Promise<void>
+  validation?: { errors: TestFinding[]; warnings: TestFinding[] }
+  runStartFindings?: TestFinding[]
 } = {}) {
   const patches: RecordedPatch[] = []
   recordedMutations = []
@@ -298,6 +301,26 @@ function installFetchMock(options: {
         }
         return respond({ board, layout: currentLayout }, 'board-etag-2')
       }
+      if (!url.endsWith('/layout') && body.createFormation) {
+        const requested = body.createFormation as { type: string; title: string; x: number; y: number }
+        const created = {
+          id: 'fmn_created',
+          type: requested.type,
+          title: requested.title,
+          inputs: [{ id: 'port_created_in', label: 'Input' }],
+          outputs: [{ id: 'port_created_out', label: 'Output' }],
+          slots: [{ id: 'slot_created', label: 'Agent' }],
+          verification: undefined,
+        }
+        board = { ...board, rev: board.rev + 1, formations: [...board.formations, created] as TestBoard['formations'] }
+        currentLayout = {
+          ...currentLayout,
+          boardRev: board.rev,
+          etag: 'layout-formation-etag',
+          nodes: [...currentLayout.nodes, { id: created.id, x: requested.x, y: requested.y }],
+        }
+        return respond({ board, layout: currentLayout }, 'board-etag-2')
+      }
       if (!url.endsWith('/layout') && body.removeVerification && options.removalFailure) {
         return reject('Legacy verification migration failed')
       }
@@ -308,8 +331,8 @@ function installFetchMock(options: {
         })
       }
       if (options.freshCreateLayout && !url.endsWith('/layout') && body.createGate) {
-        const requested = body.createGate as { title: string; kinds: string[]; criterion: string }
-        const created = { id: 'gate_created', title: requested.title, kinds: requested.kinds, criterion: requested.criterion }
+        const requested = body.createGate as { title: string; kinds: string[]; criterion: string; check: string; checkVersion: string; checkValue: string }
+        const created = { id: 'gate_created', title: requested.title, kinds: requested.kinds, criterion: requested.criterion, check: requested.check, checkVersion: requested.checkVersion, checkValue: requested.checkValue }
         board = { ...board, rev: board.rev + 1, gates: [...board.gates, created] }
         currentLayout = {
           ...currentLayout,
@@ -322,6 +345,16 @@ function installFetchMock(options: {
       board = { ...board, rev: board.rev + 1 }
       if (url.endsWith('/layout')) return respond({ layout: currentLayout }, 'layout-etag-2')
       return respond({ board }, 'board-etag-2')
+    }
+    if (url === '/api/formations/runs' && init?.method === 'POST' && options.runStartFindings) {
+      const findings = options.runStartFindings
+      return Promise.resolve({
+        ok: false,
+        status: 422,
+        headers: { get: () => null },
+        json: () => Promise.resolve({ success: false, error: { code: 'RUN_ADMISSION_FAILED', message: `The run needs ${findings.length} fixes before it can start`, findings } }),
+        text: () => Promise.resolve(''),
+      })
     }
     if (url === '/api/formations/runs' && init?.method === 'POST') return respond({ runId: 'run_legacy' })
     if (/\/api\/formations\/runs\/[^/]+\/escalations$/.test(url)) return respond({ escalations: options.escalations || [] })
@@ -371,6 +404,9 @@ function installFetchMock(options: {
       })
     }
     if (url.endsWith('/layout')) return respond({ layout: currentLayout }, 'layout-etag')
+    if (url.endsWith('/validation')) {
+      return respond({ boardRev: board.rev, boardEtag: board.etag, errors: options.validation?.errors || [], warnings: options.validation?.warnings || [] })
+    }
     if (url.includes('/api/formations/boards/')) {
       const requested = url.includes(`/boards/${board.slug}`)
         ? board
@@ -877,9 +913,9 @@ describe('FormationsCockpit reference parity', () => {
     expect(recordedMutations).toEqual([])
   })
 
-  it('collects Mission fields and creates only after a safe Bead ID', async () => {
+  it('creates a Mission with no optional input and rejects only an unsafe Bead ID', async () => {
     vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1)
-    const { container } = await renderCockpit()
+    const { container, unmount } = await renderCockpit()
     const viewport = container.querySelector('.viewport') as HTMLElement
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
     const menu = await screen.findByRole('menu', { name: 'New' })
@@ -889,22 +925,21 @@ describe('FormationsCockpit reference parity', () => {
     expect(menu).not.toBeInTheDocument()
     expect(patches.filter(patch => patch.body.createMission)).toEqual([])
 
+    fireEvent.change(screen.getByLabelText('Mission Bead ID'), { target: { value: 'Home-123' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create mission' }))
-    expect(await screen.findByText('Enter a Beads issue ID such as ctx-ug7.25.')).toBeInTheDocument()
+    expect(await screen.findByText('Enter a Beads issue ID such as ctx-ug7.25, or leave it blank.')).toBeInTheDocument()
     expect(screen.getByLabelText('Mission Bead ID')).toHaveAttribute('aria-invalid', 'true')
     expect(patches.filter(patch => patch.body.createMission)).toEqual([])
 
-    fireEvent.change(screen.getByLabelText('Mission title'), { target: { value: '  Plan release  ' } })
-    fireEvent.change(screen.getByLabelText('Mission goal'), { target: { value: '  Ship reduced candidate  ' } })
-    fireEvent.change(screen.getByLabelText('Mission Bead ID'), { target: { value: ' home-vdki.34.1 ' } })
+    fireEvent.change(screen.getByLabelText('Mission Bead ID'), { target: { value: '' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create mission' }))
 
     await waitFor(() => {
       const create = patches.find(patch => patch.body.createMission)
       expect(create?.body.createMission).toEqual({
-        title: 'Plan release',
-        goal: 'Ship reduced candidate',
-        beadId: 'home-vdki.34.1',
+        title: 'New mission',
+        goal: '',
+        beadId: '',
         x: 1260,
         y: 252,
       })
@@ -914,6 +949,29 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => {
       expect(patches.some(patch => (patch.body.deleteMission as { id?: string } | undefined)?.id === 'mis_created')).toBe(true)
+    })
+
+    unmount()
+    await renderCockpit()
+    expect(await screen.findByTestId('mission-node-mis_created')).toHaveTextContent('New mission')
+  })
+
+  it('creates a Mission with a project Bead ID when one is given', async () => {
+    const { container } = await renderCockpit()
+    const viewport = container.querySelector('.viewport') as HTMLElement
+    fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Mission' }))
+    await screen.findByRole('dialog', { name: 'Create mission' })
+    fireEvent.change(screen.getByLabelText('Mission title'), { target: { value: '  Plan release  ' } })
+    fireEvent.change(screen.getByLabelText('Mission goal'), { target: { value: '  Ship reduced candidate  ' } })
+    fireEvent.change(screen.getByLabelText('Mission Bead ID'), { target: { value: ' home-vdki.34.1 ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create mission' }))
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.createMission)?.body.createMission).toMatchObject({
+        title: 'Plan release',
+        goal: 'Ship reduced candidate',
+        beadId: 'home-vdki.34.1',
+      })
     })
   })
 
@@ -998,6 +1056,112 @@ describe('FormationsCockpit reference parity', () => {
         checkValue: 'LINT OK',
       })
     })
+  })
+
+  it('creates a code Gate with no optional input and reloads it intact', async () => {
+    patches = installFetchMock({ freshCreateLayout: true })
+    const { container, unmount } = await renderCockpit()
+    const viewport = container.querySelector('.viewport') as HTMLElement
+    fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Gate' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Create code Gate' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Gate' }))
+
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.createGate)?.body.createGate).toMatchObject({
+        title: 'Review gate',
+        kinds: ['code'],
+        criterion: '',
+        check: 'output_absent',
+        checkVersion: '1',
+        checkValue: '',
+      })
+    })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Create code Gate' })).toBeNull())
+
+    unmount()
+    await renderCockpit()
+    expect(await screen.findByTestId('gate-node-gate_created')).toHaveTextContent('Review gate')
+  })
+
+  it('lets a Gate leave its evaluator profile for later', async () => {
+    patches = installFetchMock({ freshCreateLayout: true })
+    const { container } = await renderCockpit()
+    const viewport = container.querySelector('.viewport') as HTMLElement
+    fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Gate' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Create code Gate' })
+    fireEvent.change(within(dialog).getByLabelText('Evaluator profile'), { target: { value: '' } })
+    expect(within(dialog).getByLabelText('Value')).toBeDisabled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Gate' }))
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.createGate)?.body.createGate).toMatchObject({ check: '', checkVersion: '', checkValue: '' })
+    })
+  })
+
+  it('creates a formation with no optional input and reloads it intact', async () => {
+    const { container, unmount } = await renderCockpit()
+    const viewport = container.querySelector('.viewport') as HTMLElement
+    fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Solo formation' }))
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.createFormation)?.body.createFormation).toMatchObject({ type: 'solo' })
+    })
+    expect(await screen.findByTestId('formation-node-fmn_created')).toBeInTheDocument()
+
+    unmount()
+    await renderCockpit()
+    expect(await screen.findByTestId('formation-node-fmn_created')).toBeInTheDocument()
+  })
+
+  it('marks draft nodes with what a run would still need', async () => {
+    patches = installFetchMock({
+      validation: {
+        errors: [
+          { code: 'unstaffed_slot', nodeId: 'fmn_judge', message: 'formation "fmn_judge" slot "Judge" (slot_judge) needs an agent' },
+          { code: 'dangling_connection', nodeId: 'edge_frame_gate', message: 'connection "edge_frame_gate" has a broken endpoint' },
+        ],
+        warnings: [{ code: 'mission_not_runnable', nodeId: 'mis_showcase', message: 'mission "mis_showcase" has no outgoing connection' }],
+      },
+    })
+    await renderCockpit()
+    const judgeMarker = await screen.findByTestId('draft-marker-fmn_judge')
+    expect(judgeMarker).toHaveTextContent('draft')
+    expect(judgeMarker).toHaveAttribute('title', 'slot "Judge" (slot_judge) needs an agent')
+    expect(screen.getByTestId('formation-node-fmn_judge')).toHaveClass('is-draft')
+    expect(screen.getByTestId('draft-marker-mis_showcase')).toBeInTheDocument()
+    expect(screen.getByTestId('draft-marker-fmn_frame')).toHaveAttribute('title', 'connection "edge_frame_gate" has a broken endpoint')
+    expect(screen.getByTestId('draft-marker-gate_review')).toBeInTheDocument()
+    expect(screen.queryByTestId('admission-findings')).toBeNull()
+  })
+
+  it('highlights every node a rejected run start names', async () => {
+    const findings = [
+      { code: 'unstaffed_slot', nodeId: 'fmn_frame', message: 'formation "fmn_frame" slot "Worker" (slot_worker) needs an agent' },
+      { code: 'gate_not_routable', nodeId: 'gate_review', message: 'gate "gate_review" needs forbidden text for code check output_absent@1' },
+    ]
+    patches = installFetchMock({ runStartFindings: findings, validation: { errors: findings, warnings: [] } })
+    await renderCockpit()
+    fireEvent.click(screen.getByTestId('run-mission-mis_showcase'))
+    const dialog = await screen.findByRole('dialog', { name: 'Start mission' })
+    fireEvent.change(within(dialog).getByLabelText('Working directory'), { target: { value: '/work/project' } })
+    fireEvent.change(within(dialog).getByLabelText('Brief'), { target: { value: 'Implement the requested change' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Start mission' }))
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('The run needs 2 fixes before it can start')
+    const panel = await screen.findByTestId('admission-findings')
+    expect(panel).toHaveTextContent('Run needs 2 fixes')
+    expect(panel).toHaveTextContent('Frame')
+    expect(panel).toHaveTextContent('needs forbidden text')
+    expect(screen.getByTestId('formation-node-fmn_frame')).toHaveClass('admission-blocked')
+    expect(screen.getByTestId('gate-node-gate_review')).toHaveClass('admission-blocked')
+    expect(screen.getByTestId('draft-marker-gate_review')).toHaveTextContent('needs fix')
+    expect(screen.getByTestId('mission-node-mis_showcase')).not.toHaveClass('admission-blocked')
+
+    fireEvent.click(within(panel).getByRole('button', { name: 'Dismiss run findings' }))
+    expect(screen.queryByTestId('admission-findings')).toBeNull()
+    expect(screen.getByTestId('formation-node-fmn_frame')).not.toHaveClass('admission-blocked')
+    expect(screen.getByTestId('draft-marker-gate_review')).toHaveTextContent('draft')
   })
 
   it('dismisses context menus on Escape and outside pointerdown', async () => {

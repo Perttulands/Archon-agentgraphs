@@ -1,0 +1,13 @@
+/* Draft markers and run admission findings on the Formations canvas. */
+.fmx .draft-marker{position:absolute;z-index:12;left:9px;top:-8px;padding:1px 6px;border:1px dashed var(--dim);border-radius:3px;background:var(--card);color:var(--dim);font:700 8.5px/1.5 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;opacity:.75;pointer-events:auto;cursor:help;}
+.fmx .formation:hover>.draft-marker,.fmx .missioncard:hover>.draft-marker,.fmx .gatecard:hover>.draft-marker,.fmx .toolcard:hover>.draft-marker{opacity:1;}
+.fmx .draft-marker.blocked{border-style:solid;border-color:var(--terra-d);color:var(--terra-d);opacity:1;}
+.fmx .formation.admission-blocked,.fmx .missioncard.admission-blocked,.fmx .gatecard.admission-blocked,.fmx .toolcard.admission-blocked{box-shadow:0 0 0 1.5px var(--terra-d),0 0 16px -6px color-mix(in srgb,var(--terra-d) 45%,transparent);}
+
+.fmx .admission-findings{position:absolute;bottom:18px;left:252px;z-index:81;max-width:min(560px,calc(100% - 24px));background:var(--card);border:1px solid var(--terra-d);border-radius:4px;padding:9px 13px;box-shadow:0 4px 16px rgba(0,0,0,.4);font-size:11px;color:var(--ink2);}
+.fmx .admission-findings-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:9.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--terra-d);font-weight:700;}
+.fmx .admission-findings-hd button{border:0;background:transparent;color:var(--dim);font:inherit;cursor:pointer;}
+.fmx .admission-findings ul{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;max-height:40vh;overflow:auto;user-select:text;}
+.fmx .admission-findings li{display:flex;gap:9px;align-items:baseline;line-height:1.4;overflow-wrap:anywhere;}
+.fmx .admission-findings-where{flex-shrink:0;color:var(--ink);font-weight:700;}
+@media (max-width:760px){.fmx .admission-findings{left:10px;right:10px;max-width:none;}}
