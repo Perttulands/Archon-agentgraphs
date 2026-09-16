@@ -2541,26 +2541,34 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                     )
                   })}
                   <div className="fhead" onPointerDown={event => beginNodeDrag(event, formation.id, index)}>
-                    <div className="ft">{renderNodeTitle(formation.id, formation.title, 'tt', 'Untitled formation', 'div')}<div className="tg" title={formationSummary(formation)}>{formationSummary(formation)}</div></div>
+                    <div className="ft">
+                      {renderNodeTitle(formation.id, formation.title, 'tt', 'Untitled formation', 'div')}
+                      <div className="tg" title={formationSummary(formation)}>{formationSummary(formation)}</div>
+                      {/* Run tools get their own row so the title keeps the header's width. */}
+                      {activeRun || nodeStates.has(formation.id) ? (
+                        <div className="fruntools" data-testid={`run-tools-${formation.id}`}>
+                          {activeRun ? <button type="button" className="fpeek" aria-label={`Peek at ${formation.title}`}
+                            onPointerDown={event => event.stopPropagation()}
+                            onClick={() => setPeek({ nodeId: formation.id })}>Peek</button> : null}
+                          {nodeStates.has(formation.id) ? (
+                            <button
+                              type="button"
+                              className="finspect"
+                              title="Inspect run evidence"
+                              aria-label={`Inspect run evidence for ${formation.title}`}
+                              data-testid={`inspect-node-${formation.id}`}
+                              onPointerDown={event => event.stopPropagation()}
+                              onClick={event => { event.stopPropagation(); setInspectedNodeId(formation.id) }}
+                            >evidence</button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
                     <FormationTypeChip formation={formation} onOpen={event => {
                       // Anchor to the chip so keyboard activation opens the menu beside it.
                       const rect = event.currentTarget.getBoundingClientRect()
                       setMenu({ label: 'Formation type', x: rect.left, y: rect.bottom + 4, items: formationTypeMenuItems(formation).slice(1) })
                     }} />
-                    {activeRun ? <button type="button" className="fpeek" aria-label={`Peek at ${formation.title}`}
-                      onPointerDown={event => event.stopPropagation()}
-                      onClick={() => setPeek({ nodeId: formation.id })}>Peek</button> : null}
-                    {nodeStates.has(formation.id) ? (
-                      <button
-                        type="button"
-                        className="finspect"
-                        title="Inspect run evidence"
-                        aria-label={`Inspect run evidence for ${formation.title}`}
-                        data-testid={`inspect-node-${formation.id}`}
-                        onPointerDown={event => event.stopPropagation()}
-                        onClick={event => { event.stopPropagation(); setInspectedNodeId(formation.id) }}
-                      >evidence</button>
-                    ) : null}
                     <button className="frun" title="Run formation" onClick={() => void runFormation(formation)} data-testid={`run-formation-${formation.id}`}>{PLAY_SVG}</button>
                   </div>
                   <div className="fstatus">{state && state !== 'done' ? state : ''}</div>

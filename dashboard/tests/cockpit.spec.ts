@@ -70,6 +70,23 @@ for (const width of [1440, 390]) test(`floating Peek observes native output and 
   await page.screenshot({ path: `/tmp/form-ui-peek-${width}.png` })
 })
 
+test('formation titles stay readable beside the type chip and run controls', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 850 })
+  await cockpitFixture(page, { run: true })
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Open terminal' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Peek at Peer review' })).toBeVisible()
+  const titles = page.locator('.formation .fhead .tt')
+  await expect(titles).toHaveCount(3)
+  for (const title of await titles.all()) {
+    expect(await title.evaluate(el => el.scrollWidth <= el.clientWidth), await title.innerText()).toBe(true)
+  }
+  const card = page.getByTestId('formation-node-peer')
+  for (const control of [card.locator('.ftype'), card.getByRole('button', { name: 'Peek at Peer review' }), card.getByRole('button', { name: 'Run formation' })]) {
+    await expect(control).toBeVisible()
+  }
+})
+
 test('a formation without seats never opens a different formation', async ({ page }) => {
   await cockpitFixture(page, { run: true })
   const sockets: string[] = []

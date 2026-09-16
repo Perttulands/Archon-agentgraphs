@@ -133,6 +133,7 @@
 .fmx .fhead .ft{flex:1;min-width:0;}
 .fmx .fhead .ft .tt{font-weight:700;font-size:14px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .fmx .fhead .ft .tg{font-size:9.5px;color:var(--dim);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fmx .fhead .fruntools{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;}
 .fmx .frun{width:30px;height:30px;border-radius:6px;border:1px solid var(--line);background:var(--paper2);color:var(--terra);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .14s;}
 .fmx .frun:hover{background:var(--terra);color:var(--background);border-color:var(--terra);box-shadow:0 0 14px rgba(var(--accent-rgb),.45);}
 .fmx .frun svg{width:12px;height:12px;}
