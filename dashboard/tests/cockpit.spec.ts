@@ -10,7 +10,10 @@ test('theme fallback, local font, notes and harness icons survive', async ({ pag
   expect(await page.locator('.world').evaluate(el => getComputedStyle(el).backgroundImage)).not.toBe('none')
   expect(await page.evaluate(() => document.fonts.check('13px "JetBrains Mono"'))).toBe(true)
   await expect(page.locator('.slot svg')).toHaveCount(4)
-  await expect(page.locator('.note-preview')).toHaveText('Controller directs the assigned worker.')
+  const note = page.getByRole('note', { name: 'Notes for Execution' })
+  await expect(note.locator('.note-author')).toHaveText('archon')
+  await expect(note.locator('.note-count')).toHaveText('+1 earlier')
+  await expect(note.locator('.note-preview-text')).toHaveText('Controller directs the assigned worker.')
   expect(fixture.themeFetches()).toBe(1)
 })
 

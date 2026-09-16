@@ -58,8 +58,12 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
       return route.fulfill(options.themeFailure ? { status: 500, json: { error: 'Unavailable' } } : { json: defaultTheme })
     }
     if (path === '/api/formations/boards') return respond({ boards: [board] })
-    if (path.endsWith('/notes')) return respond({ notes: { schema: 1, boardId: board.id, rev: 1, board: 'Keep the current graph and harness identities.',
-      elements: [{ nodeId: 'execution', text: 'Controller directs the assigned worker.' }], updatedAt: '2026-09-12T00:00:00Z', etag: 'notes-1' } })
+    if (path.endsWith('/notes')) return respond({ notes: { schema: 2, boardId: board.id, rev: 1,
+      board: [{ id: 'nte_board', author: 'human:ui', createdAt: '2026-09-12T00:00:00Z', text: 'Keep the current graph and harness identities.' }],
+      elements: [{ nodeId: 'execution', entries: [
+        { id: 'nte_brief', author: 'human:ui', createdAt: '2026-09-12T00:00:00Z', text: 'Pair the controller with a builder.' },
+        { id: 'nte_reply', author: 'agent:archon', createdAt: '2026-09-12T00:05:00Z', text: 'Controller directs the assigned worker.' },
+      ] }], updatedAt: '2026-09-12T00:05:00Z', etag: 'notes-1' } })
     if (path.endsWith('/layout')) {
       if (method === 'PATCH') nodes = positions.map(p => ({ ...p }))
       return respond({ layout: { boardId: board.id, boardRev: 1, etag: 'layout-1', nodes, edges: [] } })
