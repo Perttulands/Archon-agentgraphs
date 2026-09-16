@@ -1,9 +1,10 @@
 import { type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
-/* The Wayfinding board as the daemon serves it: its structure, Arrange layout
- * and note threads (tests/fixtures/wayfinding.json). Reads only; any write is
- * recorded and refused. */
+/* The Wayfinding board as the daemon serves it (tests/fixtures/wayfinding.json):
+ * the arrange testdata's structure and Arrange layout, trimmed briefs and
+ * criteria, and note threads where several nodes carry both operator and agent
+ * entries. Reads only; any write is recorded and refused. */
 
 const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/theme_default.json', import.meta.url), 'utf8'))
 export const wayfinding = JSON.parse(readFileSync(new URL('./fixtures/wayfinding.json', import.meta.url), 'utf8'))

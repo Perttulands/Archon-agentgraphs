@@ -1,5 +1,5 @@
 {
-  "_source": "The Wayfinding board (form-3yd.10): structure from src/internal/formations/testdata/arrange/wayfinding.formation.toml, its Arrange layout, and its notes at rev 11. Briefs and criteria are not included.",
+  "_source": "The Wayfinding board (form-3yd.10): structure from src/internal/formations/testdata/arrange/wayfinding.formation.toml with its Arrange layout. Briefs, criteria and the mission goal are trimmed from the live board at rev 37. Notes are the live threads at rev 11 plus two operator replies added so several nodes carry both human:ui and agent entries.",
   "board": {
     "schema": 1,
     "id": "brd_01M2N3A879JPHQFNRXH3K5CQGM",
@@ -12,7 +12,7 @@
       {
         "id": "mis_01M2N9N1SG7J0D3YVRZY3V8TNT",
         "title": "Wayfinding",
-        "goal": "",
+        "goal": "Turn the operator's raw sketch of an outcome into a brief they sign off. Guard against solving the wrong problem, unverified claims and generic output.",
         "beadId": ""
       }
     ],
@@ -41,7 +41,10 @@
             "harness": "openai-codex",
             "controller": false
           }
-        ]
+        ],
+        "brief": {
+          "goal": "Map the territory before anyone proposes a solution. Write territory-map.md with the sketch quoted verbatim, evidenced facts, constraints, unknowns and two to four candidate framings. Recommend no framing."
+        }
       },
       {
         "id": "fmn_01M2N3HQ5A5W4CAD3VFN86MC31",
@@ -74,7 +77,10 @@
             "harness": "openai-codex",
             "controller": false
           }
-        ]
+        ],
+        "brief": {
+          "goal": "Surface the questions the operator must answer before a brief can be written. Draft independently, then reconcile into at most 10 questions ranked by impact, each with the decision it unlocks and its default."
+        }
       },
       {
         "id": "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD",
@@ -100,7 +106,10 @@
             "harness": "claude-code",
             "controller": false
           }
-        ]
+        ],
+        "brief": {
+          "goal": "Write the brief the operator will sign off: the goal in their words, checkable success criteria, non-goals, options with trade-offs, a recommendation tied to evidence, risks and open assumptions."
+        }
       },
       {
         "id": "fmn_01M2N9N1PXQ39NHQY46F0J0V63",
@@ -126,7 +135,10 @@
             "harness": "openai-codex",
             "controller": false
           }
-        ]
+        ],
+        "brief": {
+          "goal": "Review the draft brief adversarially on the other harness. Spot-check at least three claims against their evidence and return exactly one chrote-verdict block."
+        }
       }
     ],
     "gates": [
@@ -136,7 +148,7 @@
         "kinds": [
           "human"
         ],
-        "criterion": ""
+        "criterion": "Read the candidate framings from the territory map. Approve with the framing you choose, and any corrections, as your response. Send back with what the map got wrong."
       },
       {
         "id": "gate_01M2N9N1MQDE88MWF3C1E6GJTG",
@@ -144,7 +156,7 @@
         "kinds": [
           "human"
         ],
-        "criterion": ""
+        "criterion": "Answer the questions you can, by number. Unanswered questions take their stated default. Approve with your answers as your response."
       },
       {
         "id": "gate_01M2N9N1PEPTXX7XV5QW96681W",
@@ -152,7 +164,7 @@
         "kinds": [
           "formation"
         ],
-        "criterion": ""
+        "criterion": "The brief restates the operator's goal faithfully, supports every factual claim with evidence or labels it an assumption, and makes recommendations specific to this territory."
       },
       {
         "id": "gate_01M2N9N1R4R184Y5G3R45BB5G1",
@@ -160,7 +172,7 @@
         "kinds": [
           "human"
         ],
-        "criterion": ""
+        "criterion": "Sign off the brief. Approve to end the run with this brief as the result. Send back with what to change."
       }
     ],
     "connections": [
@@ -289,9 +301,9 @@
   "notes": {
     "schema": 2,
     "boardId": "brd_01M2N3A879JPHQFNRXH3K5CQGM",
-    "rev": 11,
-    "updatedAt": "2026-09-16T14:29:44.076656682Z",
-    "updatedBy": "agent:claude-wayfinding",
+    "rev": 13,
+    "updatedAt": "2026-09-16T15:04:30Z",
+    "updatedBy": "human:ui",
     "board": [
       {
         "id": "migrated-board",
@@ -303,7 +315,7 @@
         "id": "nte_01M2N9Z90CZY6FVP2SG0EFAN9Q",
         "author": "agent:claude-wayfinding",
         "createdAt": "2026-09-16T14:29:44.076656682Z",
-        "text": "Wayfinding v1 is wired from your sketch (Claude coordinator). Route: Map the territory \u2192 Framing review (you) \u2192 Question peers \u2192 Answer questions (you) \u2192 Draft the brief \u2192 Adversarial review (Codex judge) \u2192 Brief sign-off (you). Guards: map before solutions, evidence or labelled assumptions, peers draft independently, at most 10 ranked questions each tied to a decision, a cross-harness judge that fails generic advice, and your final sign-off. Every human pause emails you. Each node has a note explaining its design. Please review the board and reply here before the first run. For that run I need your raw sketch (the mission input) and the directory the agents should work in."
+        "text": "Wayfinding v1 is wired from your sketch (Claude coordinator). Route: Map the territory → Framing review (you) → Question peers → Answer questions (you) → Draft the brief → Adversarial review (Codex judge) → Brief sign-off (you). Guards: map before solutions, evidence or labelled assumptions, peers draft independently, at most 10 ranked questions each tied to a decision, a cross-harness judge that fails generic advice, and your final sign-off. Every human pause emails you. Each node has a note explaining its design. Please review the board and reply here before the first run. For that run I need your raw sketch (the mission input) and the directory the agents should work in."
       }
     ],
     "elements": [
@@ -382,6 +394,12 @@
             "author": "agent:claude-wayfinding",
             "createdAt": "2026-09-16T14:29:44.056907405Z",
             "text": "New judge gate. Its judge, Brief critic, runs on Codex (codex-judge), the harness that did not write the draft. It spot-checks at least three claims against their evidence and fails unsupported claims, generic recommendations, goal drift, ignored answers, or missing criteria, non-goals or risks. Fail returns to Draft the brief with evidence."
+          },
+          {
+            "id": "nte_fixture_operator_review",
+            "author": "human:ui",
+            "createdAt": "2026-09-16T15:02:10Z",
+            "text": "Good. Have the critic quote each claim it checked, so I can see the spot-checks happened."
           }
         ]
       },
@@ -393,6 +411,12 @@
             "author": "agent:claude-wayfinding",
             "createdAt": "2026-09-16T14:29:44.065539726Z",
             "text": "New human gate: the final sign-off. The panel and the email show the full brief. Approve ends the run with this brief as the result. Send back with what to change, and the draft is revised and reviewed again. Note: send-back here currently hits engine bug form-epa, which is being fixed before your first real run."
+          },
+          {
+            "id": "nte_fixture_operator_signoff",
+            "author": "human:ui",
+            "createdAt": "2026-09-16T15:04:30Z",
+            "text": "When I sign off I read the risks first, so put them near the top of the brief."
           }
         ]
       }
