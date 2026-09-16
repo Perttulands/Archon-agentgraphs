@@ -166,6 +166,12 @@ paths:
               - expectedRev
   /api/formations/runs:
     get:
+      parameters:
+      - in: query
+        name: board
+        schema:
+          type: string
+        description: Only runs of this board slug
       responses:
         '200':
           description: Canonical run projections

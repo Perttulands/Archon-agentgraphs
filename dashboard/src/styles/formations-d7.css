@@ -372,6 +372,9 @@
 .fmx .run-banner .badge.failed,.fmx .run-banner .badge.canceled{color:var(--terra-d);background:var(--color-error-light);}
 .fmx .run-banner button{background:var(--paper2);border:1px solid var(--line);color:var(--ink2);border-radius:5px;padding:5px 10px;font-family:inherit;font-size:10px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;}
 .fmx .run-banner button:hover{border-color:var(--terra);color:var(--terra);}
+.fmx .run-banner > span{white-space:nowrap;}
+.fmx .run-banner .run-cwd{max-width:260px;overflow:hidden;text-overflow:ellipsis;}
+.fmx .run-banner .run-picker{background:var(--paper2);border:1px solid var(--line);color:var(--ink2);border-radius:5px;padding:4px 8px;font-family:inherit;font-size:10px;letter-spacing:.04em;max-width:260px;}
 .fmx .errbar{position:absolute;bottom:18px;left:252px;z-index:80;background:var(--color-error-light);border:1px solid color-mix(in srgb,var(--color-error) 40%,transparent);color:var(--color-error);border-radius:4px;padding:8px 13px;font-size:11px;max-width:60ch;line-height:1.5;}
 
 /* ===== TEXT SIZE PRESETS (Board text size) ===== */

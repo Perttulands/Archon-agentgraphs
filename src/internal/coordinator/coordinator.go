@@ -225,7 +225,8 @@ func (c *Coordinator) Handler() http.Handler {
 	h.RegisterRoutes(mux)
 	api.NewAgentsHandlerWithStore(c.personas).RegisterRoutes(mux)
 	mux.HandleFunc("GET /api/formations/runs", func(w http.ResponseWriter, r *http.Request) {
-		runs, err := c.store.ListRuns(formations.RunListFilter{})
+		// An optional board filter lets a cockpit poll only its board's runs.
+		runs, err := c.store.ListRuns(formations.RunListFilter{BoardSlug: r.URL.Query().Get("board")})
 		if err != nil {
 			failure(w, err)
 			return

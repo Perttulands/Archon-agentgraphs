@@ -184,6 +184,14 @@ The `lab` executor creates no tmux sessions and echoes deterministic inputs.
 It writes each rendered brief to `<state-dir>/briefs/lab-*.md`, as a seat would
 receive it. It proves routing, not agent work or the truth of a review.
 
+The cockpit lists a board's runs from the daemon, so runs started by the CLI,
+an agent or another browser appear. It shows the open run that most needs the
+operator: waiting for a human, then running, then blocked, newest first. A
+picker switches between open runs. `/?board=<slug>&run=<runId>`, the link that
+notifications carry, opens that board and keeps that run shown. The address bar
+keeps a chosen run across reloads, and an unknown linked board or run is
+reported rather than silently replaced.
+
 The cockpit's floating Peek observes an owned live seat. It does not send input,
 enter tmux copy mode, claim pane size, or end sessions. Switching seats and
 closing Peek disconnect only the observer client. Labels and controller/worker
@@ -479,10 +487,11 @@ theme document described below, JSON responses use
 `{success,timestamp,data}`; errors carry an error object. Board authoring includes
 list/create/read/patch/delete, notes, layout and change polling. Agent routes
 list/create/read/patch persona cards; gate profiles expose the two code checks.
-Revision and ETag checks protect edits. Runtime routes start/list/read runs,
-read projected events/escalations, stream SSE, abort, resume, read run evidence
-and record exact human verdicts. They all use the coordinator; no request-local
-executor exists.
+Revision and ETag checks protect edits. Runtime routes start/list/read runs
+(`GET /api/formations/runs?board=<slug>` lists one board's runs), read projected
+events/escalations, stream SSE, abort, resume, read run evidence and record
+exact human verdicts. They all use the coordinator; no request-local executor
+exists.
 There is no generic file reader, transcript endpoint, board import endpoint or
 authentication layer. Run evidence reads only one run's ledger, its artifact
 directory and the briefs its own dispatches recorded. Remote Archon supports board list/inspect/validate and

@@ -29,6 +29,7 @@ import {
   fetchCodeGateProfiles,
   fetchRunEscalations,
   fetchRunEvents,
+  fetchBoardRuns,
   fetchRunStatus,
   missingLayoutForBoard,
   overrideAgentCard,
@@ -47,6 +48,7 @@ import {
   runStatusFromResponse,
   upsertRunEvent,
 } from './formationsRunState'
+import { chooseBoardRun, openRunsByAttention, readRunLink, runChoiceLabel, runLinkSearch } from './formationsRunDiscovery'
 import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
 import { FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials } from './formationsCockpitVisuals'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
@@ -187,6 +189,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [validation, setValidation] = useState<BoardValidation | null>(null)
   const [admissionFindings, setAdmissionFindings] = useState<BoardFinding[]>([])
   const [activeRun, setActiveRun] = useState<RunStatusProjection | null>(null)
+  // A link's ?board=&run= and the run picker pin a run to its board.
+  const initialRunLink = useRef(readRunLink(window.location.search)).current
+  const [pinnedRun, setPinnedRun] = useState({ slug: initialRunLink.board, runId: initialRunLink.run })
+  const [boardRuns, setBoardRuns] = useState<RunStatusProjection[]>([])
+  // Link problems outlive the board loads that clear ordinary errors.
+  const [linkError, setLinkError] = useState('')
+  const activeRunRef = useRef<RunStatusProjection | null>(null)
+  activeRunRef.current = activeRun
   const [runEvents, setRunEvents] = useState<RunEvent[]>([])
   const [escalations, setEscalations] = useState<OpenEscalation[]>([])
   const [inspectedNodeId, setInspectedNodeId] = useState<string | null>(null)
@@ -316,7 +326,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         if (cancelled) return
         setBoards(list)
         if (list[0]) {
-          setSelectedSlug(current => current || list[0].slug)
+          const linked = list.some(item => item.slug === initialRunLink.board) ? initialRunLink.board : ''
+          if (initialRunLink.board && !linked) {
+            setLinkError(`Board "${initialRunLink.board}" from the link was not found`)
+            setPinnedRun({ slug: '', runId: '' })
+          }
+          setSelectedSlug(current => current || linked || list[0].slug)
           return
         }
         boardRef.current = null
@@ -452,15 +467,41 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [active])
 
+  // ----- run discovery -----
+  // The daemon lists every run of the board, so runs started outside this
+  // browser appear. A run this browser started earlier is the last fallback.
   useEffect(() => {
     if (!selectedSlug) return
-    const runId = window.localStorage.getItem(activeRunStorageKey(selectedSlug))
-    if (!runId || activeRun?.runId === runId) return
+    if (activeRunRef.current?.boardSlug && activeRunRef.current.boardSlug !== selectedSlug) {
+      setActiveRun(null)
+      setRunEvents([])
+    }
+    setBoardRuns(runs => (runs.some(run => run.boardSlug !== selectedSlug) ? [] : runs))
+    const pinnedRunId = pinnedRun.slug === selectedSlug ? pinnedRun.runId : ''
     let cancelled = false
-    const restoreRun = async () => {
+    const discover = async () => {
+      let runs: RunStatusProjection[] = []
+      try {
+        runs = await fetchBoardRuns(selectedSlug)
+      } catch {
+        /* keep the shown run; the next poll retries */
+      }
+      if (cancelled) return
+      setBoardRuns(runs)
+      const stored = window.localStorage.getItem(activeRunStorageKey(selectedSlug)) || ''
+      const runId = chooseBoardRun({ slug: selectedSlug, runs, pinnedRunId, current: activeRunRef.current }) || stored
+      if (!runId || runId === activeRunRef.current?.runId) return
+      const dropPin = (message: string) => {
+        setPinnedRun({ slug: '', runId: '' })
+        setLinkError(message)
+      }
       try {
         const status = runStatusFromResponse(await fetchRunStatus(runId))
         if (cancelled) return
+        if (status.boardSlug && status.boardSlug !== selectedSlug) {
+          if (runId === pinnedRunId) dropPin(`Run ${runId} belongs to board "${status.boardSlug}", not "${selectedSlug}"`)
+          return
+        }
         try {
           const events = await fetchRunEvents(runId)
           if (!cancelled) {
@@ -471,23 +512,33 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           if (!cancelled) {
             setRunEvents([])
             setActiveRun(status)
-            setError(err instanceof Error ? err.message : 'Failed to restore run events')
+            setError(err instanceof Error ? err.message : 'Failed to load run events')
           }
         }
         try {
           const open = await fetchRunEscalations(runId)
           if (!cancelled) setEscalations(open)
         } catch {
-          /* escalations are best-effort; never block run restore */
+          /* escalations are best-effort; never block showing a run */
         }
-        if (status.final) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
+        if (status.final && runId === stored) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to restore active run')
+        if (cancelled) return
+        if (runId === pinnedRunId) dropPin(`Run ${runId} from the link was not found`)
+        else setError(err instanceof Error ? err.message : 'Failed to load run')
       }
     }
-    void restoreRun()
-    return () => { cancelled = true }
-  }, [activeRun?.runId, selectedSlug])
+    void discover()
+    const timer = active ? window.setInterval(discover, 5000) : undefined
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [active, pinnedRun, selectedSlug])
+
+  // The address bar names the board and a pinned run, so a reload keeps them.
+  useEffect(() => {
+    if (!selectedSlug) return
+    const search = runLinkSearch(window.location.search, { board: selectedSlug, run: pinnedRun.slug === selectedSlug ? pinnedRun.runId : '' })
+    if (search !== window.location.search) window.history.replaceState(window.history.state, '', `${window.location.pathname}${search}${window.location.hash}`)
+  }, [pinnedRun, selectedSlug])
 
   // ----- run polling -----
   useEffect(() => {
@@ -664,6 +715,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const selectBoard = useCallback((slug: string) => {
     if (boardDialog || slug === boardRef.current?.slug || blockBoardExitForDirtyNotes()) return
+    setLinkError('')
     setSelectedSlug(slug)
   }, [blockBoardExitForDirtyNotes, boardDialog])
 
@@ -1316,6 +1368,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       setRunEvents(events)
       setActiveRun(status)
       setEscalations([])
+      setPinnedRun({ slug: current.slug, runId: status.runId })
       if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
       else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
       setError('')
@@ -1332,6 +1385,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       setRunEvents(events)
       setActiveRun(status)
       setEscalations([])
+      setPinnedRun({ slug: current.slug, runId: status.runId })
       if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
       else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
       setError('')
@@ -2189,6 +2243,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     [board?.formations],
   )
   const runBadgeClass = activeRun ? activeRun.status : ''
+  const runChoices = useMemo(() => {
+    const open = openRunsByAttention(boardRuns)
+    return activeRun && !open.some(run => run.runId === activeRun.runId) ? [activeRun, ...open] : open
+  }, [activeRun, boardRuns])
   const pendingHumanGateId = useMemo(() => openHumanGateId(runEvents), [runEvents])
   const pendingHumanGate = useMemo(() => {
     if (!pendingHumanGateId) return null
@@ -2642,7 +2700,20 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             <div className="run-banner" data-testid="run-banner">
               <span>run</span>
               <span className={`badge ${runBadgeClass}`}>{activeRun.status}</span>
-              {activeRun.cwd && <span>{activeRun.cwd}</span>}
+              {runChoices.length > 1 ? (
+                <select
+                  className="run-picker"
+                  aria-label="Choose run"
+                  value={activeRun.runId}
+                  onChange={event => {
+                    setLinkError('')
+                    setPinnedRun({ slug: selectedSlug, runId: event.target.value })
+                  }}
+                >
+                  {runChoices.map(run => <option key={run.runId} value={run.runId}>{runChoiceLabel(run)}</option>)}
+                </select>
+              ) : null}
+              {activeRun.cwd && <span className="run-cwd" title={activeRun.cwd}>{activeRun.cwd}</span>}
               {activeRun.beadId && <span>{activeRun.beadId}</span>}
               {!activeRun.final && activeRun.resumeAllowed ? <button type="button" onClick={() => void resumeActiveRun()}>Resume run</button> : null}
               {!activeRun.final ? <button type="button" onClick={() => void abortActiveRun()}>stop</button> : null}
@@ -2692,7 +2763,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             <button onClick={() => void arrangeBoard()} title="Arrange cards by graph flow (persists layout, Ctrl+Z to undo)" data-testid="arrange-layout">ARRANGE</button>
             <button onClick={() => fitView({ smooth: true })} title="Fit">FIT</button>
           </div>
-          {error ? <div className="errbar" data-testid="formations-error">{error}</div> : null}
+          {error || linkError ? <div className="errbar" data-testid="formations-error">{error || linkError}</div> : null}
           <AdmissionFindingsPanel
             findings={admissionFindings}
             titleOf={nodeId => noteElements.find(element => element.id === nodeId)?.title || nodeId}

@@ -463,6 +463,7 @@ describe('FormationsCockpit reference parity', () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    window.history.replaceState(null, '', '/')
   })
 
   it('falls back to default text size outside a SessionProvider', async () => {
@@ -1686,6 +1687,111 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.click(item)
     expect(await screen.findByTestId('node-inspector')).toHaveTextContent('Run evidence · Review')
+  })
+
+  type ListedRun = { runId: string; status: string; final: boolean; boardSlug: string; missionId: string; eventCount: number; waitingGates?: Array<{ gateId: string; requestedSeq: number }> }
+  function installRunsMock(runs: ListedRun[], events: Record<string, TestRunEvent[]> = {}) {
+    const verdicts: Array<{ url: string; body: Record<string, unknown> }> = []
+    const base = globalThis.fetch
+    ;(globalThis as Record<string, unknown>).fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const reply = (data: unknown, status = 200) => Promise.resolve({
+        ok: status < 300,
+        status,
+        headers: { get: () => null },
+        json: () => Promise.resolve(status < 300 ? { success: true, data } : { success: false, error: { code: 'NOT_FOUND', message: 'Not Found' } }),
+        text: () => Promise.resolve(''),
+      })
+      const listed = url.match(/^\/api\/formations\/runs\?board=([^&]+)$/)
+      if (listed) return reply(runs.filter(run => run.boardSlug === decodeURIComponent(listed[1])))
+      const runURL = url.match(/^\/api\/formations\/runs\/([^/?]+)(\/.*)?$/)
+      if (runURL) {
+        const run = runs.find(item => item.runId === runURL[1])
+        if (!run) return reply(null, 404)
+        if (!runURL[2]) return reply({ status: run })
+        if (runURL[2] === '/events') return reply({ events: events[run.runId] || [] })
+        if (runURL[2] === '/escalations') return reply({ escalations: [] })
+        if (runURL[2].endsWith('/request')) return reply({ request: { gateId: 'gate_review', requestedSeq: 4, criterion: 'Review the frame', input: { fromNodeId: 'fmn_frame', text: 'Question for ' + run.runId, truncated: false } } })
+        if (runURL[2].endsWith('/verdict')) {
+          verdicts.push({ url, body: JSON.parse(String(init?.body)) })
+          return reply({ runId: run.runId })
+        }
+      }
+      return base(input, init)
+    }) as unknown as typeof fetch
+    return verdicts
+  }
+  const waitingEvents = (runId: string): TestRunEvent[] => [{ runId, seq: 4, type: 'human_input_requested', nodeId: 'gate_review', gateId: 'gate_review' }]
+
+  it('finds a run started outside this browser and answers its gate', async () => {
+    const runs = [{ runId: 'run_01CLI', status: 'waiting_human', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] }]
+    const verdicts = installRunsMock(runs, { run_01CLI: waitingEvents('run_01CLI') })
+    expect(localStorage.length).toBe(0)
+    await renderCockpit()
+
+    expect(await screen.findByTestId('run-banner')).toHaveTextContent('waiting_human')
+    const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
+    await waitFor(() => expect(within(panel).getByText('Question for run_01CLI')).toBeInTheDocument())
+    expect(fetch).toHaveBeenCalledWith('/api/formations/runs?board=test-board', expect.anything())
+    expect(screen.queryByRole('combobox', { name: 'Choose run' })).toBeNull()
+
+    fireEvent.change(within(panel).getByLabelText('Your response'), { target: { value: 'Postgres' } })
+    await act(async () => { fireEvent.click(within(panel).getByRole('button', { name: 'Approve' })) })
+    await waitFor(() => expect(verdicts).toEqual([{ url: '/api/formations/runs/run_01CLI/gates/gate_review/verdict', body: { actor: 'agent:ui', verdict: 'pass', requestedSeq: 4, reason: 'Postgres' } }]))
+  })
+
+  it('shows the open run that needs the operator and offers a run picker', async () => {
+    installRunsMock([
+      { runId: 'run_01A', status: 'waiting_human', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] },
+      { runId: 'run_01B', status: 'running', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 2 },
+      { runId: 'run_01C', status: 'succeeded', final: true, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 9 },
+    ], { run_01A: waitingEvents('run_01A') })
+    await renderCockpit()
+
+    const picker = await screen.findByRole('combobox', { name: 'Choose run' })
+    expect(picker).toHaveValue('run_01A')
+    expect(within(picker).getAllByRole('option').map(option => option.getAttribute('value'))).toEqual(['run_01A', 'run_01B'])
+    expect(await screen.findByRole('dialog', { name: 'Answer gate Review' })).toBeInTheDocument()
+
+    fireEvent.change(picker, { target: { value: 'run_01B' } })
+    await waitFor(() => expect(screen.getByTestId('run-banner')).toHaveTextContent('running'))
+    expect(screen.queryByRole('dialog', { name: 'Answer gate Review' })).toBeNull()
+    expect(window.location.search).toBe('?board=test-board&run=run_01B')
+  })
+
+  it('opens a board and run from a link and keeps them on reload', async () => {
+    window.history.replaceState(null, '', '/?board=second-board&run=run_01LINK')
+    const second = { ...makeBoard(), id: 'brd_second', slug: 'second-board', title: 'Second board', etag: 'second-etag' }
+    patches = installFetchMock({ boards: [makeBoard(), second] })
+    installRunsMock([
+      { runId: 'run_01LINK', status: 'waiting_human', final: false, boardSlug: 'second-board', missionId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] },
+      { runId: 'run_01NEWER', status: 'waiting_human', final: false, boardSlug: 'second-board', missionId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] },
+    ], { run_01LINK: waitingEvents('run_01LINK'), run_01NEWER: waitingEvents('run_01NEWER') })
+
+    for (let load = 0; load < 2; load++) {
+      const { unmount } = await renderCockpit()
+      await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveValue('second-board'))
+      expect(await screen.findByRole('combobox', { name: 'Choose run' })).toHaveValue('run_01LINK')
+      const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
+      await waitFor(() => expect(within(panel).getByText('Question for run_01LINK')).toBeInTheDocument())
+      expect(window.location.search).toBe('?board=second-board&run=run_01LINK')
+      unmount()
+    }
+  })
+
+  it('says when a linked run or board does not exist', async () => {
+    window.history.replaceState(null, '', '/?board=test-board&run=run_01GONE')
+    installRunsMock([{ runId: 'run_01OPEN', status: 'running', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 2 }])
+    const { unmount } = await renderCockpit()
+    expect(await screen.findByTestId('formations-error')).toHaveTextContent('Run run_01GONE from the link was not found')
+    await waitFor(() => expect(screen.getByTestId('run-banner')).toHaveTextContent('running'))
+    expect(window.location.search).toBe('?board=test-board')
+    unmount()
+
+    window.history.replaceState(null, '', '/?board=no-such-board&run=run_01OPEN')
+    await renderCockpit()
+    expect(await screen.findByTestId('formations-error')).toHaveTextContent('Board "no-such-board" from the link was not found')
+    expect(screen.getByTestId('board-picker')).toHaveValue('test-board')
   })
 
   it('answers a pending human gate from its upstream output', async () => {

@@ -258,6 +258,12 @@ export async function startRun(etag: string, body: { board: string; missionId?: 
   return { runId: result.data.runId, status: runStatusFromResponse(await fetchRunStatus(result.data.runId)) }
 }
 
+/** Lists a board's runs from the daemon; a response without a run list yields none. */
+export async function fetchBoardRuns(slug: string): Promise<RunStatusProjection[]> {
+  const result = await fetchApi<RunStatusProjection[]>(`/api/formations/runs?board=${encodeURIComponent(slug)}`)
+  return Array.isArray(result.data) ? result.data.filter(run => !run.boardSlug || run.boardSlug === slug) : []
+}
+
 export async function fetchRunStatus(runId: string): Promise<RunStatusProjection | RunStatusResult> {
   const result = await fetchApi<RunStatusProjection | RunStatusResult>(`/api/formations/runs/${encodeURIComponent(runId)}`)
   return result.data
