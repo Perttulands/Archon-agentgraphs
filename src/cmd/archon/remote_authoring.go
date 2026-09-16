@@ -37,6 +37,7 @@ var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
 	"mission wire":         remoteMissionWire,
 	"formation create":     remoteFormationCreate,
 	"formation rename":     remoteFormationRename,
+	"formation set-type":   remoteFormationSetType,
 	"formation assign":     remoteFormationAssign,
 	"formation unassign":   remoteFormationUnassign,
 	"formation set-brief":  remoteFormationSetBrief,
@@ -620,6 +621,52 @@ func remoteFormationRename(c *remoteClient, args []string, stdout, stderr io.Wri
 		return remoteFail(stderr, err, *jsonOut, "formation", fs.Arg(1))
 	}
 	return writeRemoteBoard(stdout, stderr, data, *jsonOut, fmt.Sprintf("renamed %s", formationID))
+}
+
+func remoteFormationSetType(c *remoteClient, args []string, stdout, stderr io.Writer) int {
+	fs := remoteFlags("formation set-type", stderr)
+	keepSlot := fs.String("keep-slot", "", "slot id or label to keep when changing to solo")
+	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
+	}
+	if fs.NArg() != 3 {
+		fmt.Fprintln(stderr, "usage: archon formation set-type <board> <formation> <solo|peer|orchestrated> [--keep-slot <slot>] [--json]")
+		fmt.Fprintln(stderr, "solo keeps one slot, peer has at least two, orchestrated has one controller and a worker; added slots are empty. Changing to solo with several staffed slots needs --keep-slot.")
+		return 2
+	}
+	formationID := ""
+	data, _, err := c.patchBoard(fs.Arg(0), *updatedBy, func(board *formations.BoardDocument) (string, map[string]any, error) {
+		id, err := remoteSelect("formation", fs.Arg(1), resolveFormationSelector, board)
+		if err != nil {
+			return "", nil, err
+		}
+		formationID = id
+		keepSlotID := *keepSlot
+		if keepSlotID != "" {
+			var candidates []graphSelectorCandidate
+			for _, formation := range board.Formations {
+				if formation.ID == id {
+					for _, slot := range formation.Slots {
+						candidates = append(candidates, graphSelectorCandidate{ID: slot.ID, Title: slot.Label})
+					}
+				}
+			}
+			if keepSlotID, err = resolveGraphSelector("slot", keepSlotID, candidates); err != nil {
+				return "", nil, &remoteSelectorError{boundary: "slot", selector: *keepSlot, err: err}
+			}
+		}
+		return "setFormationType", map[string]any{"id": id, "type": fs.Arg(2), "keepSlotId": keepSlotID}, nil
+	})
+	var selectorErr *remoteSelectorError
+	if errors.As(err, &selectorErr) {
+		return failSelector(stderr, selectorErr.err, *jsonOut, selectorErr.boundary, selectorErr.selector)
+	}
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "formation", fs.Arg(1))
+	}
+	return writeRemoteBoard(stdout, stderr, data, *jsonOut, fmt.Sprintf("%s is now %s", formationID, fs.Arg(2)))
 }
 
 func remoteFormationAssign(c *remoteClient, args []string, stdout, stderr io.Writer) int {

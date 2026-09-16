@@ -253,6 +253,11 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"formation", "assign", "demo", "Critic", "--slot", formationTitled(t, board, "Critic").Slots[0].ID, "--agent", "codex-judge", "--harness", "openai-codex"}
 		})},
+		{args: with(fixed("formation", "set-type", "demo", "Critic", "peer"))},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"formation", "set-type", "demo", "Critic", "solo", "--keep-slot", formationTitled(t, board, "Critic").Slots[0].ID}
+		})},
+		{args: with(fixed("formation", "set-type", "demo", "Critic", "solo", "--keep-slot", "Nobody")), errorOnly: true},
 		{args: with(fixed("gate", "create", "demo", "--kinds", "formation", "--title", "Review", "--criterion", "The result satisfies the brief"))},
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"gate", "judge", "demo", "Review", "--chain", formationTitled(t, board, "Critic").ID}

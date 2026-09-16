@@ -515,7 +515,7 @@ directory and the briefs its own dispatches recorded.
 With `--server`, Archon runs these authoring commands through the daemon, so an
 open cockpit sees the edits through its change polling: `board
 new|notes|note|validate|arrange`, `mission create|update|wire`, `formation
-create|rename|assign|unassign|set-brief|add-input|add-output|wire|unwire`,
+create|rename|set-type|assign|unassign|set-brief|add-input|add-output|wire|unwire`,
 `gate create|update|judge` and `agent new|edit`. They take the offline flags and
 print the offline output: unwrapped JSON without TOML, or the same text. Each
 command reads the document it changes, resolves formation, gate and mission
@@ -531,6 +531,7 @@ from offline use:
   `{success,timestamp,data}` envelope. `tool`, `mission list|inspect`,
   `formation list|inspect|remove-verification|run`, `run ask` and `agent
   list|inspect|spawn|attach|retire` remain offline only.
+
 `GET /api/formations/boards/{board}/validation` returns
 `{boardRev,boardEtag,errors,warnings}` for the whole board, the same report as
 `board validate`.
