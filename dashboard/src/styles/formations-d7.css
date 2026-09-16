@@ -80,7 +80,7 @@
 /* ===== ROSTER ===== */
 /* Leans on the Terminal tab's session panel: flat full-bleed rows, divider
    header with a count pill, quiet monochrome identity tiles, liveness as text. */
-.fmx .roster{width:236px;background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;flex-shrink:0;}
+.fmx .roster{width:var(--roster-width,236px);position:relative;background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;flex-shrink:0;}
 .fmx .roster-hd{min-height:45px;display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);}
 .fmx .roster-hd .t{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink);}
 .fmx .roster-hd .s{margin-left:auto;font-size:11px;color:var(--dim);background:var(--paper2);padding:2px 7px;border-radius:8px;white-space:nowrap;}
@@ -133,7 +133,8 @@
 .fmx .fhead:active{cursor:grabbing;}
 .fmx .fhead .ft{flex:1;min-width:0;}
 .fmx .fhead .ft .tt{font-weight:700;font-size:14px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.fmx .fhead .ft .tg{font-size:9.5px;color:var(--dim);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fmx .fhead .ft .tg{font-size:11px;color:var(--ink2);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fmx .fhead .ft .tg.placeholder{color:var(--dimmer);font-style:italic;}
 .fmx .fhead .fruntools{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;}
 .fmx .frun{width:30px;height:30px;border-radius:6px;border:1px solid var(--line);background:var(--paper2);color:var(--terra);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .14s;}
 .fmx .frun:hover{background:var(--terra);color:var(--background);border-color:var(--terra);box-shadow:0 0 14px rgba(var(--accent-rgb),.45);}
@@ -184,7 +185,7 @@
 .fmx .fio.out{border-top:1px solid var(--line2);}
 .fmx .fio .glyph{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);flex-shrink:0;}
 .fmx .fio.in:hover,.fmx .fio.out:hover{background:rgba(var(--accent-rgb),.08);}
-.fmx .io-text{flex:1;min-width:0;max-width:240px;font-size:11.5px;color:var(--ink2);line-height:1.32;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.fmx .io-text{flex:1;min-width:0;max-width:240px;font-size:11px;color:var(--ink2);line-height:1.32;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .fmx .io-text.placeholder{color:var(--dimmer);font-style:italic;}
 .fmx .io-bead{font-size:10px;color:var(--steel);background:color-mix(in srgb,var(--steel) 16%,transparent);border:1px solid color-mix(in srgb,var(--steel) 40%,transparent);border-radius:4px;padding:1px 7px;flex-shrink:0;}
 .fmx .io-status{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 9px;border-radius:4px;flex-shrink:0;}
@@ -279,7 +280,8 @@
 .fmx .gatecard:hover .gico{border-color:var(--terra);color:var(--terra);}
 .fmx .gmeta{min-width:0;display:flex;flex-direction:column;gap:2px;}
 .fmx .gmeta .gt{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;}
-.fmx .gmeta .gs{font-size:10.5px;color:var(--dim);line-height:1.32;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;max-width:150px;}
+.fmx .gmeta .gs{font-size:11px;color:var(--ink2);line-height:1.32;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;max-width:150px;}
+.fmx .gmeta .gs.placeholder{color:var(--dimmer);font-style:italic;}
 .fmx .gatecard .port.pass{right:-9px;top:50%;margin-top:-21px;border-color:var(--sage);background:var(--card);}
 .fmx .gatecard .port.fail{right:-9px;top:50%;margin-top:5px;border-color:var(--terra-d);background:var(--card);}
 .fmx .gatecard .port.pass:hover{background:var(--sage);transform:scale(1.3);}

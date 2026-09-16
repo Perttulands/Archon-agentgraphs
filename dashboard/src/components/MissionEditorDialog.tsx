@@ -61,7 +61,7 @@ export function MissionEditorDialog({ mode, initial, saving, onSave, onClose }: 
           }}
         />
         <p id="cockpit-mission-bead-help" className={`field-note${error ? ' error' : ''}`} role={error ? 'alert' : undefined}>
-          {error || 'Optional. Copy a Bead ID from the Beads tab, for example ctx-ug7.25.'}
+          {error || 'Optional. The Beads issue that owns this mission, for example ctx-ug7.25.'}
         </p>
         <div className="pop-actions">
           <button className="cancel" type="button" aria-label={create ? 'Cancel mission creation' : 'Cancel mission editing'} disabled={saving} onClick={onClose}>Cancel</button>

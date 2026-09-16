@@ -1,5 +1,7 @@
 /* Pending human gate: what the gate received, the operator's answer, the decision. */
-.fmx .gate-answer{position:absolute;top:12px;right:12px;z-index:65;width:min(460px,calc(100% - 24px));max-height:calc(100% - 24px);display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--gold);border-radius:4px;padding:11px 13px;box-shadow:0 4px 16px rgba(0,0,0,.4);overflow:auto;}
+/* The panel ends above the zoom column (bottom 18px, about 157px tall), so its
+   actions are never under the zoom buttons or the zoom level. */
+.fmx .gate-answer{position:absolute;top:12px;right:12px;z-index:65;width:min(460px,calc(100% - 24px));max-height:calc(100% - 199px);display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--gold);border-radius:4px;padding:11px 13px;box-shadow:0 4px 16px rgba(0,0,0,.4);overflow:auto;}
 .fmx .gate-answer-hd{display:flex;flex-direction:column;gap:2px;}
 .fmx .gate-answer-kicker{font-size:9.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--gold);font-weight:700;}
 .fmx .gate-answer-title{font-size:13px;font-weight:700;color:var(--ink);}
@@ -7,12 +9,12 @@
 .fmx .gate-answer-criterion{margin:0;font-size:12px;line-height:1.45;color:var(--ink2);}
 .fmx .gate-answer-upstream{display:flex;flex-direction:column;gap:4px;}
 .fmx .gate-answer-from{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);}
-.fmx .gate-answer-text{margin:0;background:var(--paper2);border:1px solid var(--line);border-radius:6px;padding:9px 11px;font-family:inherit;font-size:12px;line-height:1.55;color:var(--ink2);white-space:pre-wrap;overflow-wrap:anywhere;max-height:min(360px,40vh);overflow:auto;}
+.fmx .gate-answer-text{margin:0;background:var(--paper2);border:1px solid var(--line);border-radius:6px;padding:9px 11px;font-family:inherit;font-size:12px;line-height:1.55;color:var(--ink2);white-space:pre-wrap;overflow-wrap:anywhere;max-height:min(360px,30vh);overflow:auto;}
 .fmx .gate-answer-empty{font-size:11px;color:var(--dim);}
 .fmx .gate-answer-label{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);}
 .fmx .gate-answer-input{width:100%;min-height:120px;resize:vertical;border:1px solid var(--line);border-radius:6px;background:var(--paper2);color:var(--ink);padding:9px 11px;font:12px/1.5 var(--font-mono);outline:none;box-sizing:border-box;}
 .fmx .gate-answer-input:focus{border-color:var(--gold);}
-.fmx .gate-answer-actions{display:flex;justify-content:flex-end;gap:8px;}
+.fmx .gate-answer-actions{position:sticky;bottom:-11px;display:flex;justify-content:flex-end;gap:8px;margin:0 -13px -11px;padding:8px 13px 11px;background:var(--card);border-top:1px solid var(--line2);}
 .fmx .gate-answer-actions button{border-radius:5px;padding:6px 12px;font-family:inherit;font-size:10px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;}
 .fmx .gate-answer-back{background:var(--paper2);border:1px solid var(--line);color:var(--ink2);}
 .fmx .gate-answer-back:hover:not(:disabled){border-color:var(--terra);color:var(--terra);}

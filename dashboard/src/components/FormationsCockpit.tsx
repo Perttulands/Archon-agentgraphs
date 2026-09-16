@@ -13,7 +13,7 @@ import { StartMissionDialog, type RunInputs } from "./StartMissionDialog"
  * context menus, on-canvas editors/terminals, and undo are tracked for follow passes
  * (bead home-f7as).
  */
-import { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiRequestError,
   abortRunRequest,
@@ -47,7 +47,9 @@ import {
 } from './formationsRunState'
 import { chooseBoardRun, openRunsByAttention, readRunLink, runChoiceLabel, runLinkSearch } from './formationsRunDiscovery'
 import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
-import { FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
+import { FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
+import { useEscapeKey } from './useEscapeKey'
+import { ROSTER_MAX_WIDTH, ROSTER_MIN_WIDTH, useRosterPanel } from './useRosterPanel'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
 const RunEvidence = lazy(() => import('../evidence/RunEvidence'))
 import DismissiblePanel from './DismissiblePanel'
@@ -208,6 +210,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [gateProfiles, setGateProfiles] = useState<CodeGateProfileDescriptor[]>([])
   const [gateEditor, setGateEditor] = useState<GateEditorState | null>(null)
   const [briefEditor, setBriefEditor] = useState<BriefEditorState | null>(null)
+  const roster = useRosterPanel()
   const [boardDialog, setBoardDialog] = useState<BoardDialogState | null>(null)
   const [agentEditor, setAgentEditor] = useState<{ agent: AgentProjection; trigger: HTMLElement | null } | null>(null)
   const [notesOpen, setNotesOpen] = useState(false)
@@ -225,6 +228,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [legacyVerification, setLegacyVerification] = useState<LegacyVerificationState | null>(null)
   const legacyVerificationOpen = legacyVerification !== null
   const [inspectedToolId, setInspectedToolId] = useState<string | null>(null)
+  useEscapeKey(active && briefEditor !== null, () => setBriefEditor(null))
+  useEscapeKey(active && inspectedToolId !== null, () => setInspectedToolId(null))
   const [hiddenWireId, setHiddenWireId] = useState<string | null>(null)
   const [judgeHover, setJudgeHover] = useState<string | null>(null)
   const [laneDraft, setLaneDraft] = useState<{ connectionId: string; y: number } | null>(null)
@@ -2298,13 +2303,34 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       </div>
 
       <div className="main">
-        <aside className="roster" data-testid="agent-roster" aria-label="Agent roster">
+        <aside
+          className={`roster${roster.collapsed ? ' collapsed' : ''}`}
+          data-testid="agent-roster"
+          aria-label="Agent roster"
+          style={{ '--roster-width': `${roster.width}px` } as CSSProperties}
+        >
           <div className="roster-hd">
             <div className="t">Agents</div>
             <span className="s" data-testid="roster-count" title={`${rosterAgents.length} catalog agents · ${deployedAgentCount} placed on this board`}>
               {rosterCountLabel(rosterAgents.length, { placed: deployedAgentCount, scope: 'board' })}
             </span>
+            <button type="button" className="roster-toggle" aria-expanded={!roster.collapsed}
+              aria-label={roster.collapsed ? 'Expand agent roster' : 'Collapse agent roster'} onClick={roster.toggle}>
+              {roster.collapsed ? '›' : '‹'}
+            </button>
           </div>
+          <div
+            className="roster-resize"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize agent roster"
+            aria-valuemin={ROSTER_MIN_WIDTH}
+            aria-valuemax={ROSTER_MAX_WIDTH}
+            aria-valuenow={roster.width}
+            tabIndex={0}
+            onPointerDown={roster.beginResize}
+            onKeyDown={roster.resizeByKey}
+          />
           <div className="roster-list">
             {rosterAgents.length === 0
               ? <div className="roster-empty">No assignable catalog agents. Create a persona in the Agents view to staff formations.</div>
@@ -2458,7 +2484,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   {renderDraftMarker(formation.id)}
                   {formation.inputs.map((port, portIndex) => {
                     const endpoint = `${formation.id}:${port.id}`
-                    const incoming = (board?.connections || []).find(connection => connection.to === endpoint)
+                    const feeds = (board?.connections || []).filter(connection => connection.to === endpoint)
+                    const incoming = feeds[0]
+                    const feed = inputFeedLabel(feeds, nodeId => noteElements.find(element => element.id === nodeId)?.title || nodeId)
                     return (
                       <div
                         className={`fio in${portIndex === 0 ? ' brief' : ''}`}
@@ -2475,14 +2503,15 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                           onMouseDown={incoming ? event => beginReconnect(event, incoming) : undefined}
                         />
                         <span className="glyph">in</span>
-                        <span className="io-text placeholder">{portIndex === 0 ? (formation.brief?.goal || 'set a goal or input…') : `${port.label} — wire an input…`}</span>
+                        {/* The brief reads once, under the title; this row names what feeds the input. */}
+                        <span className={`io-text${feed ? '' : ' placeholder'}`} title={feed || undefined}>{feed || (portIndex === 0 ? 'wire an input…' : `${port.label} — wire an input…`)}</span>
                       </div>
                     )
                   })}
                   <div className="fhead" onPointerDown={event => beginNodeDrag(event, formation.id, index)}>
                     <div className="ft">
                       {renderNodeTitle(formation.id, formation.title, 'tt', 'Untitled formation', 'div')}
-                      <div className="tg" title={formationSummary(formation)}>{formationSummary(formation)}</div>
+                      <div className={`tg${formation.brief?.goal?.trim() ? '' : ' placeholder'}`} title={formationSummary(formation)}>{formationSummary(formation)}</div>
                       {/* Run tools get their own row so the title keeps the header's width. */}
                       {activeRun || nodeStates.has(formation.id) ? (
                         <div className="fruntools" data-testid={`run-tools-${formation.id}`}>
@@ -2594,7 +2623,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                     onPointerDown={event => beginJudgeDrag(event, gate)}
                   />
                   <span className="gico" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{GATE_SVG}</span>
-                  <span className="gmeta" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{renderNodeTitle(gate.id, gate.title, 'gt', 'Gate', 'span')}<GateKindChips gateId={gate.id} kinds={gate.kinds} /><span className="gs">{gate.criterion || 'work is accepted before it proceeds'}</span></span>
+                  <span className="gmeta" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{renderNodeTitle(gate.id, gate.title, 'gt', 'Gate', 'span')}<GateKindChips gateId={gate.id} kinds={gate.kinds} /><span className={`gs${gate.criterion ? '' : ' placeholder'}`}>{gate.criterion || 'work is accepted before it proceeds'}</span></span>
                   {nodeStates.has(gate.id) ? (
                     <button
                       type="button"
@@ -2863,7 +2892,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         />
       ) : null}
 
-      {startMission && <StartMissionDialog title={startMission.title} beadId={startMission.beadId} onStart={inputs => runMission(startMission, inputs)} onClose={() => setStartMission(null)} />}
+      {startMission && <StartMissionDialog title={startMission.title} beadId={startMission.beadId} inputHint={startMission.inputHint} onStart={inputs => runMission(startMission, inputs)} onClose={() => setStartMission(null)} />}
 
       {boardDialog ? (
         <div

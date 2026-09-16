@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { gateKindLabel } from '../components/GateEditorDialog'
+import { useEscapeKey } from '../components/useEscapeKey'
 import Markdown from './Markdown'
 import TextLines, { prettyJson } from './TextLines'
 import {
@@ -47,6 +48,8 @@ export default function RunEvidence({ runId, nodeId, title, state, onClose }: Ru
   const [error, setError] = useState('')
   const [artifacts, setArtifacts] = useState<{ artifacts: RunArtifactEntry[]; truncated: boolean } | null>(null)
   const [openDocument, setOpenDocument] = useState<OpenDocument | null>(null)
+  // Escape closes an open document first, then the evidence dialog.
+  useEscapeKey(true, () => (openDocument ? setOpenDocument(null) : onClose()))
   const [documentError, setDocumentError] = useState('')
 
   useEffect(() => {

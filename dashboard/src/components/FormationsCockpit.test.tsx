@@ -2147,6 +2147,75 @@ describe('FormationsCockpit reference parity', () => {
     })
   })
 
+  it('names what feeds each input and shows a brief once, under the title', async () => {
+    const briefed = makeBoard()
+    briefed.formations = [{ ...formation, brief: { goal: 'Frame the page' } } as typeof formation, judgeFormation]
+    briefed.connections = [...briefed.connections, { id: 'edge_gate_retry', from: 'gate_review:fail', to: 'fmn_frame:port_frame_in' }]
+    patches = installFetchMock({ boards: [briefed] })
+    await renderCockpit()
+
+    const frame = screen.getByTestId('formation-node-fmn_frame')
+    const feed = frame.querySelector('.fio.in .io-text') as HTMLElement
+    expect(feed).toHaveTextContent(/^from Showcase, Review \(fail\)$/)
+    expect(feed).not.toHaveClass('placeholder')
+    const summary = frame.querySelector('.tg') as HTMLElement
+    expect(summary).toHaveTextContent(/^Frame the page$/)
+    expect(summary).not.toHaveClass('placeholder')
+    expect(frame.textContent?.split('Frame the page')).toHaveLength(2)
+
+    const judge = screen.getByTestId('formation-node-fmn_judge')
+    expect(judge.querySelector('.fio.in .io-text')).toHaveTextContent(/^from Review \(judge\)$/)
+    expect(judge.querySelector('.tg')).toHaveClass('placeholder')
+    expect(screen.getByTestId('gate-node-gate_review').querySelector('.gs')).not.toHaveClass('placeholder')
+  })
+
+  it('collapses the roster and remembers the width it was resized to', async () => {
+    const { unmount } = await renderCockpit()
+    let roster = screen.getByTestId('agent-roster')
+    const handle = screen.getByRole('separator', { name: 'Resize agent roster' })
+    expect(roster.style.getPropertyValue('--roster-width')).toBe('236px')
+
+    fireEvent.pointerDown(handle, { button: 0, clientX: 236 })
+    fireEvent.pointerMove(window, { clientX: 336 })
+    expect(roster.style.getPropertyValue('--roster-width')).toBe('336px')
+    fireEvent.pointerUp(window, { clientX: 336 })
+    expect(localStorage.getItem('chrote-formations-roster-width')).toBe('336')
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+    expect(handle).toHaveAttribute('aria-valuenow', '320')
+    fireEvent.pointerDown(handle, { button: 0, clientX: 320 })
+    fireEvent.pointerUp(window, { clientX: 2000 })
+    expect(roster.style.getPropertyValue('--roster-width')).toBe('480px')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse agent roster' }))
+    expect(roster).toHaveClass('collapsed')
+    expect(screen.getByRole('button', { name: 'Expand agent roster' })).toHaveAttribute('aria-expanded', 'false')
+    expect(localStorage.getItem('chrote-formations-roster-collapsed')).toBe('true')
+
+    unmount()
+    await renderCockpit()
+    roster = screen.getByTestId('agent-roster')
+    expect(roster).toHaveClass('collapsed')
+    expect(roster.style.getPropertyValue('--roster-width')).toBe('480px')
+    fireEvent.click(screen.getByRole('button', { name: 'Expand agent roster' }))
+    expect(roster).not.toHaveClass('collapsed')
+    expect(localStorage.getItem('chrote-formations-roster-collapsed')).toBe('false')
+  })
+
+  it('closes the input and Tool dialogs on Escape', async () => {
+    patches = installFetchMock({ boards: [makeToolBoard()] })
+    await renderCockpit()
+    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Set input' }))
+    expect(await screen.findByRole('dialog', { name: 'Input · Frame' })).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Input · Frame' })).toBeNull())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Tool Normalize report' }))
+    expect(await screen.findByRole('dialog', { name: 'Tool details: Normalize report' })).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Tool details: Normalize report' })).toBeNull())
+  })
+
   it('cancels the active interaction when the cockpit unmounts', async () => {
     const { container, unmount } = await renderCockpit()
     const viewport = container.querySelector('.viewport') as HTMLElement

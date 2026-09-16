@@ -40,12 +40,12 @@ export const seats = [
     columns: 96, rows: 30, terminalUrl: '/api/formations/runs/run_browser/seats/8/terminal' },
 ]
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; themeFailure?: boolean } = {}) {
+export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; themeFailure?: boolean; waitingHuman?: boolean } = {}) {
   let nodes = positions.map(p => ({ ...p, x: p.x + (options.far ? 1800 : 0) }))
   let seatsFetches = 0
   let themeFetches = 0
   const writes: string[] = []
-  if (options.run) await page.addInitScript(() => localStorage.setItem('chrote-formations-active-run-browser', 'run_browser'))
+  if (options.run || options.waitingHuman) await page.addInitScript(() => localStorage.setItem('chrote-formations-active-run-browser', 'run_browser'))
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url())
     const path = url.pathname
@@ -77,8 +77,13 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     ] })
     if (path === '/api/agents/codex') return respond({ id: 'codex', displayName: 'Codex builder', kind: 'builder', summary: 'Builds the change.', tags: [],
       harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'codex', launch: 'codex' }], etag: 'codex-card' })
+    if (path === '/api/formations/runs/run_browser' && options.waitingHuman) return respond({ runId: 'run_browser', status: 'waiting_human', final: false, boardSlug: 'browser', missionId: 'mission', eventCount: 3, cwd: runCwd, waitingGates: [{ gateId: 'loose', requestedSeq: 3 }] })
     if (path === '/api/formations/runs/run_browser') return respond({ runId: 'run_browser', status: 'running', final: false, boardSlug: 'browser', missionId: 'mission', eventCount: 2, cwd: runCwd })
+    if (path.endsWith('/events') && options.waitingHuman) return respond({ events: [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' },
+      { seq: 3, type: 'human_input_requested', nodeId: 'loose', gateId: 'loose' }] })
     if (path.endsWith('/events')) return respond({ events: [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' }] })
+    if (path === '/api/formations/runs/run_browser/gates/loose/request') return respond({ request: { gateId: 'loose', requestedSeq: 3, criterion: board.gates[1].criterion,
+      input: { fromNodeId: 'execution', fromPortId: 'out', truncated: false, text: Array.from({ length: 60 }, (_, i) => `${i + 1}. A question the operator should answer before the brief is written.`).join('\n') } } })
     if (path.endsWith('/escalations')) return respond({ escalations: [] })
     if (path.endsWith('/seats')) { seatsFetches++; return respond({ runId: 'run_browser', available: true, seats }) }
     return route.fulfill({ status: 404, json: { success: false, error: { message: `Fixture has no ${path}` } } })

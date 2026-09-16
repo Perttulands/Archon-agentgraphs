@@ -106,6 +106,19 @@ describe('RunEvidence', () => {
     expect(screen.getByLabelText('logs/run.json', { selector: 'pre' })).toHaveTextContent('"ok": true')
   })
 
+  it('closes an open document on Escape, then the evidence dialog', async () => {
+    const onClose = vi.fn()
+    render(<RunEvidence runId="run_1" nodeId="fmn_plan" title="Plan" state="done" onClose={onClose} />)
+    fireEvent.click(within(await screen.findByTestId('run-artifacts')).getByRole('button', { name: 'plan.md' }))
+    await screen.findByTestId('evidence-document')
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByTestId('evidence-document')).toBeNull())
+    expect(onClose).not.toHaveBeenCalled()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('says when evidence is unavailable', async () => {
     render(<RunEvidence runId="run_1" nodeId="fmn_missing" title="Missing" state="" onClose={() => {}} />)
     expect(await screen.findByRole('alert')).toHaveTextContent('Evidence unavailable: run evidence not found')

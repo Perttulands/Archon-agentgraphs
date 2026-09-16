@@ -152,6 +152,8 @@ export interface MissionNode {
   title: string
   goal: string
   beadId: string
+  /** What a run's brief should contain; Start mission shows it when set. */
+  inputHint?: string
 }
 
 export interface GateNode {

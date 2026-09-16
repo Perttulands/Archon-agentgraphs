@@ -5,11 +5,20 @@
 import { Fragment } from 'react'
 import type { ReactNode } from 'react'
 import type { NodeRunState } from './formationsRunState'
-import type { AgentProjection, FormationNode, FormationSlot } from './formationsTypes'
+import type { AgentProjection, BoardConnection, FormationNode, FormationSlot } from './formationsTypes'
 import { harnessIcon } from './harnessIcons'
 
 export function formationSummary(formation: FormationNode): string {
   return formation.brief?.goal?.replace(/\s+/g, ' ').trim() || 'Set a brief to describe this work.'
+}
+
+/** What feeds an input, in words: "from Map the territory, Framing review (fail)". */
+export function inputFeedLabel(incoming: BoardConnection[], titleOf: (nodeId: string) => string): string {
+  if (!incoming.length) return ''
+  return `from ${incoming.map(connection => {
+    const [nodeId, port] = connection.from.split(':')
+    return port === 'fail' || port === 'judge' ? `${titleOf(nodeId)} (${port})` : titleOf(nodeId)
+  }).join(', ')}`
 }
 
 /* Castle wall with an opening: gates are checkpoints work must pass through. */

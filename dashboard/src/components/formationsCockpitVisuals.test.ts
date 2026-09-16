@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formationSummary, agentRole, agentState, groupRosterByHarness, initials, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
+import { formationSummary, inputFeedLabel, agentRole, agentState, groupRosterByHarness, initials, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
 import type { AgentProjection, FormationNode } from './formationsTypes'
 
 const agent = (over: Partial<AgentProjection> & { assignable: boolean }): AgentProjection => ({ id: 'a', ...over })
@@ -37,6 +37,22 @@ describe('formationSummary', () => {
   it('asks for a brief when none is supplied', () => {
     expect(formationSummary(formation)).toBe('Set a brief to describe this work.')
     expect(formationSummary({ ...formation, brief: { goal: '  ' } })).toBe('Set a brief to describe this work.')
+  })
+})
+
+describe('inputFeedLabel', () => {
+  const titles: Record<string, string> = { mis_start: 'Start', gate_review: 'Review', fmn_draft: 'Draft' }
+  const titleOf = (nodeId: string) => titles[nodeId] || nodeId
+  it('names every source of an input and marks fail and judge routes', () => {
+    expect(inputFeedLabel([
+      { id: 'a', from: 'mis_start:out', to: 'fmn_draft:in' },
+      { id: 'b', from: 'gate_review:fail', to: 'fmn_draft:in' },
+    ], titleOf)).toBe('from Start, Review (fail)')
+    expect(inputFeedLabel([{ id: 'c', from: 'gate_review:judge', to: 'fmn_judge:in' }], titleOf)).toBe('from Review (judge)')
+    expect(inputFeedLabel([{ id: 'd', from: 'gate_review:pass', to: 'fmn_next:in' }], titleOf)).toBe('from Review')
+  })
+  it('is empty for an unwired input', () => {
+    expect(inputFeedLabel([], titleOf)).toBe('')
   })
 })
 

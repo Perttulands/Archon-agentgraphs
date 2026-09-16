@@ -1,0 +1,18 @@
+/* Collapsible, resizable agent roster (useRosterPanel). */
+/* formations-d7.css sizes .roster from --roster-width, which the cockpit sets. */
+.fmx .roster-toggle{flex:0 0 auto;width:24px;height:24px;border:1px solid var(--line);border-radius:4px;background:var(--paper2);color:var(--ink2);font:700 13px/1 var(--font-mono);cursor:pointer;}
+.fmx .roster-toggle:hover{border-color:var(--terra);color:var(--terra);}
+.fmx .roster-resize{position:absolute;top:0;right:-4px;bottom:0;width:8px;z-index:5;cursor:col-resize;}
+.fmx .roster-resize:hover,.fmx .roster-resize:focus-visible{background:color-mix(in srgb,var(--terra) 45%,transparent);outline:none;}
+.fmx .roster.collapsed{width:40px;}
+.fmx .roster.collapsed .roster-hd{flex-direction:column;align-items:center;padding:8px 0;gap:10px;border-bottom:0;}
+.fmx .roster.collapsed .roster-hd .t{writing-mode:vertical-rl;}
+.fmx .roster.collapsed .roster-hd .s,.fmx .roster.collapsed .roster-list,.fmx .roster.collapsed .roster-resize{display:none;}
+/* Phones keep the horizontal roster strip; big screens only collapse and resize. */
+@media (max-width: 768px){
+  .fmx .roster,.fmx .roster.collapsed{width:100%;}
+  .fmx .roster-toggle,.fmx .roster-resize{display:none;}
+  .fmx .roster.collapsed .roster-hd .t{writing-mode:horizontal-tb;}
+  .fmx .roster.collapsed .roster-list{display:flex;}
+  .fmx .roster.collapsed .roster-hd .s{display:inline;}
+}
