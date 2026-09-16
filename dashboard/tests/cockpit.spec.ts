@@ -13,7 +13,7 @@ test('theme fallback, local font, notes and harness icons survive', async ({ pag
   const note = page.getByRole('note', { name: 'Notes for Execution' })
   await expect(note.locator('.note-author')).toHaveText('archon')
   await expect(note.locator('.note-count')).toHaveText('+1 earlier')
-  await expect(note.locator('.note-preview-text')).toHaveText('Controller directs the assigned worker.')
+  await expect(note.locator('.note-sticky-text')).toHaveText('Controller directs the assigned worker.')
   expect(fixture.themeFetches()).toBe(1)
 })
 

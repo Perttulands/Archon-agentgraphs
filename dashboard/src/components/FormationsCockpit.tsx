@@ -63,7 +63,8 @@ import { routeJudgeWire, routeOrthoWire } from './formationsRouting'
 import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
 import { InlineTitleEditor } from './InlineTitleEditor'
-import { NotePreview, NoteThread } from './NoteThread'
+import { NoteLayer, NOTES_MODES, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
+import NoteWindow, { BOARD_NOTE_TARGET, noteWindowId } from './NoteWindow'
 import { FormationTypeChip, formationTypeChoices } from './FormationTypeChip'
 import { MissionEditorDialog } from './MissionEditorDialog'
 import type { MissionDraft } from './MissionEditorDialog'
@@ -101,7 +102,6 @@ import type {
 
 
 
-const BOARD_NOTE_TARGET = 'board'
 
 type DragStaff = { agentId: string; harness: string; fromSlot?: { formationId: string; slotId: string }; startX: number; startY: number; moved: boolean }
 type DragNode = { id: string; pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean }
@@ -220,18 +220,19 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const roster = useRosterPanel()
   const [boardDialog, setBoardDialog] = useState<BoardDialogState | null>(null)
   const [agentEditor, setAgentEditor] = useState<{ agent: AgentProjection; trigger: HTMLElement | null } | null>(null)
-  const [notesOpen, setNotesOpen] = useState(false)
+  const [notesMode, setNotesMode] = useState<NotesMode>(() => readNotesMode())
   const [notes, setNotes] = useState<BoardNotesDocument | null>(null)
-  const [boardNoteDraft, setBoardNoteDraft] = useState('')
-  const [elementNoteTarget, setElementNoteTarget] = useState('')
-  const [elementNoteDraft, setElementNoteDraft] = useState('')
-  const [boardNoteDirty, setBoardNoteDirty] = useState(false)
-  const [elementNoteDirty, setElementNoteDirty] = useState(false)
-  const [noteSaving, setNoteSaving] = useState<'board' | 'element' | ''>('')
-  const [noteError, setNoteError] = useState('')
+  // Open note windows by thread target (a node ID or the board), in opening order.
+  const [noteWindows, setNoteWindows] = useState<string[]>([])
+  // Unsaved text per thread; closing a note window keeps its draft.
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
+  const [noteSaving, setNoteSaving] = useState('')
+  const [noteErrors, setNoteErrors] = useState<Record<string, string>>({})
   const [notesConflict, setNotesConflict] = useState(false)
-  // The entry being edited; its text is in that thread's draft box.
-  const [noteEditing, setNoteEditing] = useState<{ target: string; entryId: string } | null>(null)
+  // The entry being edited per thread; its text is in that thread's draft.
+  const [noteEditing, setNoteEditing] = useState<Record<string, string>>({})
+  const [noteAnchors, setNoteAnchors] = useState<ReadonlyMap<string, NoteAnchor>>(() => new Map())
+  const noteAnchorsRef = useRef(noteAnchors)
   const [legacyVerification, setLegacyVerification] = useState<LegacyVerificationState | null>(null)
   const legacyVerificationOpen = legacyVerification !== null
   const [inspectedToolId, setInspectedToolId] = useState<string | null>(null)
@@ -244,9 +245,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const boardRef = useRef<BoardDocument | null>(null)
   const layoutRef = useRef<LayoutDocument | null>(null)
   const notesRef = useRef<BoardNotesDocument | null>(null)
-  const boardNoteDirtyRef = useRef(false)
-  const elementNoteDirtyRef = useRef(false)
-  const elementNoteTargetRef = useRef('')
+  const noteDraftsRef = useRef<Record<string, string>>({})
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const windows = useWindowManager(() => cockpitWorkspace(viewportRef.current))
   const { focus: focusWindow } = windows
@@ -254,6 +253,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const openPeek = useCallback((nodeId: string) => {
     setPeeks(current => current.includes(nodeId) ? current : [...current, nodeId])
     focusWindow(`peek:${nodeId}`)
+  }, [focusWindow])
+  // Each note thread opens in its own window; opening one already open raises it.
+  const openNoteWindow = useCallback((target: string) => {
+    setNoteWindows(current => current.includes(target) ? current : [...current, target])
+    focusWindow(noteWindowId(target))
   }, [focusWindow])
   const worldRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<ViewTransform>(view)
@@ -282,9 +286,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   useEffect(() => { boardRef.current = board }, [board])
   useEffect(() => { layoutRef.current = layout }, [layout])
   useEffect(() => { notesRef.current = notes }, [notes])
-  useEffect(() => { boardNoteDirtyRef.current = boardNoteDirty }, [boardNoteDirty])
-  useEffect(() => { elementNoteDirtyRef.current = elementNoteDirty }, [elementNoteDirty])
-  useEffect(() => { elementNoteTargetRef.current = elementNoteTarget }, [elementNoteTarget])
   useEffect(() => { judgeHoverRef.current = judgeHover }, [judgeHover])
 
   useEffect(() => {
@@ -378,20 +379,16 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   useEffect(() => {
     notesRef.current = null
-    boardNoteDirtyRef.current = false
-    elementNoteDirtyRef.current = false
-    elementNoteTargetRef.current = ''
+    noteDraftsRef.current = {}
     setNotes(null)
-    setBoardNoteDraft('')
-    setElementNoteTarget('')
-    setElementNoteDraft('')
-    setBoardNoteDirty(false)
-    setElementNoteDirty(false)
-    setNoteError('')
+    setNoteWindows([])
+    setNoteDrafts({})
+    setNoteErrors({})
     setNotesConflict(false)
-    setNoteEditing(null)
+    setNoteEditing({})
   }, [selectedSlug])
 
+  const noteWindowsOpen = noteWindows.length > 0
   useEffect(() => {
     if (!selectedSlug) return
     let cancelled = false
@@ -403,16 +400,18 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         notesRef.current = next
         setNotes(next)
       } catch (err) {
-        if (!cancelled) setNoteError(err instanceof Error ? err.message : 'Failed to load board notes')
+        if (!cancelled) setNoteErrors(current => ({ ...current, [BOARD_NOTE_TARGET]: err instanceof Error ? err.message : 'Failed to load board notes' }))
       }
     }
     if (!notesRef.current) void loadNotes()
-    const timer = active && notesOpen ? window.setInterval(() => { void loadNotes() }, 3000) : 0
+    // Open note windows follow replies closely; stickies on the canvas refresh slowly.
+    const interval = noteWindowsOpen ? 3000 : notesMode !== 'hidden' ? 15000 : 0
+    const timer = active && interval ? window.setInterval(() => { void loadNotes() }, interval) : 0
     return () => {
       cancelled = true
       if (timer) window.clearInterval(timer)
     }
-  }, [active, notesOpen, selectedSlug])
+  }, [active, noteWindowsOpen, notesMode, selectedSlug])
 
   useEffect(() => {
     // Paused while the tab is hidden (keep-alive); reactivation re-runs this
@@ -703,11 +702,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [])
 
   const blockBoardExitForDirtyNotes = useCallback(() => {
-    if (!boardNoteDirtyRef.current && !elementNoteDirtyRef.current) return false
-    setNotesOpen(true)
-    setNoteError('Save the current notes before leaving this board.')
+    const dirty = Object.keys(noteDraftsRef.current).find(target => noteDraftsRef.current[target])
+    if (!dirty) return false
+    openNoteWindow(dirty)
+    setNoteErrors(current => ({ ...current, [dirty]: 'Save the current notes before leaving this board.' }))
     return true
-  }, [])
+  }, [openNoteWindow])
 
   const selectBoard = useCallback((slug: string) => {
     if (boardDialog || slug === boardRef.current?.slug || blockBoardExitForDirtyNotes()) return
@@ -2104,23 +2104,17 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     ]
   }, [board])
 
-  const selectElementNote = useCallback((target: string) => {
-    if (elementNoteDirtyRef.current) {
-      if (target === elementNoteTargetRef.current) {
-        setNotesOpen(true)
-        return
-      }
-      setNoteError('Save or revert the current element note before switching.')
-      return
-    }
-    elementNoteTargetRef.current = target
-    elementNoteDirtyRef.current = false
-    setElementNoteTarget(target)
-    setElementNoteDraft('')
-    setElementNoteDirty(false)
-    setNoteEditing(current => current?.target === BOARD_NOTE_TARGET ? current : null)
-    setNoteError('')
-    setNotesOpen(true)
+  const nodeNotes = useMemo(
+    () => noteElements.filter(element => noteByNode.has(element.id)).map(element => ({ nodeId: element.id, title: element.title, entries: noteByNode.get(element.id) || [] })),
+    [noteByNode, noteElements],
+  )
+  const noteTitleOf = (target: string) => target === BOARD_NOTE_TARGET
+    ? board?.title || 'Board'
+    : noteElements.find(element => element.id === target)?.title || target
+
+  const changeNotesMode = useCallback((mode: NotesMode) => {
+    writeNotesMode(mode)
+    setNotesMode(mode)
   }, [])
 
   // A write that races another author reloads the notes and tries once more:
@@ -2140,22 +2134,22 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     }
   }, [])
 
-  const setNoteDraft = useCallback((scope: 'board' | 'element', text: string) => {
-    const dirty = text !== ''
-    if (scope === 'board') {
-      boardNoteDirtyRef.current = dirty
-      setBoardNoteDirty(dirty)
-      setBoardNoteDraft(text)
-    } else {
-      elementNoteDirtyRef.current = dirty
-      setElementNoteDirty(dirty)
-      setElementNoteDraft(text)
-    }
+  const setNoteDraft = useCallback((target: string, text: string) => {
+    noteDraftsRef.current = { ...noteDraftsRef.current, [target]: text }
+    setNoteDrafts(noteDraftsRef.current)
   }, [])
 
-  const runNotePatch = useCallback(async (scope: 'board' | 'element', patch: NotePatch, onSaved?: () => void) => {
-    setNoteSaving(scope)
-    setNoteError('')
+  const stopNoteEdit = useCallback((target: string) => {
+    setNoteEditing(current => {
+      const next = { ...current }
+      delete next[target]
+      return next
+    })
+  }, [])
+
+  const runNotePatch = useCallback(async (target: string, patch: NotePatch, onSaved?: () => void) => {
+    setNoteSaving(target)
+    setNoteErrors(current => ({ ...current, [target]: '' }))
     try {
       const updated = await submitNotePatch(patch)
       if (!updated) return
@@ -2165,81 +2159,92 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       onSaved?.()
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 409) setNotesConflict(true)
-      setNoteError(err instanceof Error ? err.message : 'Failed to save the note')
+      setNoteErrors(current => ({ ...current, [target]: err instanceof Error ? err.message : 'Failed to save the note' }))
     } finally {
       setNoteSaving('')
     }
   }, [submitNotePatch])
 
-  const saveNote = useCallback((scope: 'board' | 'element') => {
-    const target = scope === 'board' ? BOARD_NOTE_TARGET : elementNoteTargetRef.current
-    const text = scope === 'board' ? boardNoteDraft : elementNoteDraft
-    if (!target || !text.trim()) return
-    const editing = noteEditing?.target === target ? noteEditing : null
-    const patch: NotePatch = editing
-      ? { target, action: 'edit', entryId: editing.entryId, text }
+  const saveNote = useCallback((target: string) => {
+    const text = noteDraftsRef.current[target] || ''
+    if (!text.trim()) return
+    const entryId = noteEditing[target]
+    const patch: NotePatch = entryId
+      ? { target, action: 'edit', entryId, text }
       : { target, action: 'append', text }
-    void runNotePatch(scope, patch, () => {
-      setNoteDraft(scope, '')
-      if (editing) setNoteEditing(null)
+    void runNotePatch(target, patch, () => {
+      setNoteDraft(target, '')
+      if (entryId) stopNoteEdit(target)
     })
-  }, [boardNoteDraft, elementNoteDraft, noteEditing, runNotePatch, setNoteDraft])
+  }, [noteEditing, runNotePatch, setNoteDraft, stopNoteEdit])
 
-  const startNoteEdit = useCallback((scope: 'board' | 'element', entry: NoteEntry) => {
-    const target = scope === 'board' ? BOARD_NOTE_TARGET : elementNoteTargetRef.current
-    setNoteEditing({ target, entryId: entry.id })
-    setNoteDraft(scope, entry.text)
+  const startNoteEdit = useCallback((target: string, entry: NoteEntry) => {
+    setNoteEditing(current => ({ ...current, [target]: entry.id }))
+    setNoteDraft(target, entry.text)
   }, [setNoteDraft])
 
-  const cancelNoteEdit = useCallback((scope: 'board' | 'element') => {
-    setNoteEditing(null)
-    setNoteDraft(scope, '')
-  }, [setNoteDraft])
+  const cancelNoteEdit = useCallback((target: string) => {
+    stopNoteEdit(target)
+    setNoteDraft(target, '')
+  }, [setNoteDraft, stopNoteEdit])
 
-  const deleteNote = useCallback((scope: 'board' | 'element', entry: NoteEntry) => {
-    const target = scope === 'board' ? BOARD_NOTE_TARGET : elementNoteTargetRef.current
-    void runNotePatch(scope, { target, action: 'delete', entryId: entry.id }, () => {
-      if (noteEditing?.entryId === entry.id) cancelNoteEdit(scope)
+  const deleteNote = useCallback((target: string, entry: NoteEntry) => {
+    void runNotePatch(target, { target, action: 'delete', entryId: entry.id }, () => {
+      if (noteEditing[target] === entry.id) cancelNoteEdit(target)
     })
   }, [cancelNoteEdit, noteEditing, runNotePatch])
 
   const reloadSharedNotes = useCallback(async () => {
     const currentBoard = boardRef.current
     if (!currentBoard) return
-    setNoteSaving('board')
+    setNoteSaving(BOARD_NOTE_TARGET)
     try {
       const fresh = await fetchBoardNotes(currentBoard.slug)
       notesRef.current = fresh
       setNotes(fresh)
-      setNoteDraft('board', '')
-      setNoteDraft('element', '')
-      setNoteEditing(null)
+      noteDraftsRef.current = {}
+      setNoteDrafts({})
+      setNoteEditing({})
       setNotesConflict(false)
-      setNoteError('')
+      setNoteErrors({})
     } catch (err) {
-      setNoteError(err instanceof Error ? err.message : 'Failed to reload shared notes')
+      setNoteErrors(current => ({ ...current, [BOARD_NOTE_TARGET]: err instanceof Error ? err.message : 'Failed to reload shared notes' }))
     } finally {
       setNoteSaving('')
     }
-  }, [setNoteDraft])
+  }, [])
+
+  // Stickies sit in their own layer, so they follow each noted card's box.
+  useLayoutEffect(() => {
+    const world = worldRef.current
+    const next = new Map<string, NoteAnchor>()
+    if (world && notesMode !== 'hidden') {
+      for (const card of world.querySelectorAll<HTMLElement>('.formation[data-node],.gatecard[data-node],.missioncard[data-node],.toolcard[data-node]')) {
+        const nodeId = card.dataset.node || ''
+        if (!noteByNode.has(nodeId)) continue
+        next.set(nodeId, { x: parseFloat(card.style.left) || 0, y: parseFloat(card.style.top) || 0, width: card.offsetWidth, height: card.offsetHeight })
+      }
+    }
+    // Compared with a ref, not a state updater: this effect runs after every
+    // render, and an updater would schedule a render even when nothing moved.
+    if (sameNoteAnchors(noteAnchorsRef.current, next)) return
+    noteAnchorsRef.current = next
+    setNoteAnchors(next)
+  })
 
   const renderNotePin = (nodeID: string, title: string) => {
-    const entries = noteByNode.get(nodeID) || []
-    const hasNote = entries.length > 0
+    const hasNote = noteByNode.has(nodeID)
     return (
-      <>
-        <button
-          type="button"
-          className={`note-pin${hasNote ? ' filled' : ''}`}
-          aria-label={`${hasNote ? 'Open notes' : 'Add note'} for ${title}`}
-          title={hasNote ? 'Open the note thread' : 'Add shared note'}
-          onPointerDown={event => event.stopPropagation()}
-          onClick={event => { event.stopPropagation(); selectElementNote(nodeID) }}
-        >
-          <span aria-hidden="true">{hasNote ? '▰' : '+'}</span>
-        </button>
-        <NotePreview title={title} entries={entries} />
-      </>
+      <button
+        type="button"
+        className={`note-pin${hasNote ? ' filled' : ''}`}
+        aria-label={`${hasNote ? 'Open notes' : 'Add note'} for ${title}`}
+        title={hasNote ? 'Open the note thread' : 'Add a note'}
+        onPointerDown={event => event.stopPropagation()}
+        onClick={event => { event.stopPropagation(); openNoteWindow(nodeID) }}
+      >
+        <span aria-hidden="true">{hasNote ? '▰' : '+'}</span>
+      </button>
     )
   }
 
@@ -2350,6 +2355,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           Gate
         </div>
         <div className="spacer" />
+        <div className="notes-switch" role="radiogroup" aria-label="Notes on the canvas">
+          {NOTES_MODES.map(mode => (
+            <button key={mode} type="button" role="radio" aria-checked={notesMode === mode} className={notesMode === mode ? 'on' : ''}
+              onClick={() => changeNotesMode(mode)}>{mode === 'hidden' ? 'Hide notes' : mode === 'preview' ? 'Preview' : 'Full notes'}</button>
+          ))}
+        </div>
+        <button type="button" className="newbtn board-notes-button" disabled={!board} onClick={() => openNoteWindow(BOARD_NOTE_TARGET)}>Board notes</button>
         <button type="button" className="newbtn" disabled={!activeRun}
           title={activeRun ? 'Observe run seats' : 'Start a run to observe its seats'}
           onClick={() => openPeek('')}>Open terminal</button>
@@ -2779,6 +2791,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 </div>
               )
             })}
+            <NoteLayer mode={notesMode} anchors={noteAnchors} notes={nodeNotes} onOpen={openNoteWindow} />
           </div>
 
 
@@ -2834,109 +2847,29 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         </div>
         </div>
 
-        <aside className={`board-notes${notesOpen ? ' open' : ' collapsed'}`} aria-label="Shared board notepad">
-          <div className="board-notes-head">
-            {notesOpen ? (
-              <div>
-                <div className="board-notes-title">Shared notepad</div>
-                <div className="board-notes-meta">human + agent · {notes?.rev ? `rev ${notes.rev}` : 'not saved'}</div>
-              </div>
-            ) : <span className="board-notes-rail">notes</span>}
-            <button
-              type="button"
-              className="board-notes-toggle"
-              aria-label={notesOpen ? 'Collapse shared notepad' : 'Expand shared notepad'}
-              onClick={() => setNotesOpen(open => !open)}
-            >{notesOpen ? '›' : '‹'}</button>
-          </div>
-          {notesOpen ? (
-            board ? (
-              <div className="board-notes-body">
-                <section className="note-section">
-                  <div className="note-section-head"><label htmlFor="formations-board-note">Board note</label></div>
-                  <NoteThread
-                    label="Board note thread"
-                    entries={notes?.board || []}
-                    editingEntryId={noteEditing?.target === BOARD_NOTE_TARGET ? noteEditing.entryId : undefined}
-                    busy={noteSaving !== ''}
-                    onEdit={entry => startNoteEdit('board', entry)}
-                    onDelete={entry => deleteNote('board', entry)}
-                  />
-                  <textarea
-                    id="formations-board-note"
-                    className="note-reply"
-                    value={boardNoteDraft}
-                    placeholder={notes?.board.length ? 'Reply on the board thread…' : 'Shared mission context, constraints, implementation notes…'}
-                    onChange={event => setNoteDraft('board', event.target.value)}
-                  />
-                  <div className="note-reply-actions">
-                    {noteEditing?.target === BOARD_NOTE_TARGET ? <button type="button" className="cancel" disabled={noteSaving !== ''} onClick={() => cancelNoteEdit('board')}>cancel edit</button> : null}
-                    <button
-                      type="button"
-                      aria-label={noteEditing?.target === BOARD_NOTE_TARGET ? 'Save edited board note' : 'Add board note'}
-                      disabled={!boardNoteDraft.trim() || noteSaving !== '' || !notes}
-                      onClick={() => saveNote('board')}
-                    >{noteSaving === 'board' ? 'saving…' : noteEditing?.target === BOARD_NOTE_TARGET ? 'save edit' : 'add note'}</button>
-                  </div>
-                </section>
-
-                <section className="note-section element-note-section">
-                  <div className="note-section-head"><label htmlFor="formations-element-note-target">Element</label></div>
-                  <select
-                    id="formations-element-note-target"
-                    value={elementNoteTarget}
-                    disabled={elementNoteDirty}
-                    onChange={event => selectElementNote(event.target.value)}
-                  >
-                    <option value="">Select an element…</option>
-                    {noteElements.map(element => (
-                      <option key={element.id} value={element.id}>{element.kind} · {element.title}</option>
-                    ))}
-                  </select>
-                  {elementNoteTarget ? (
-                    <>
-                      <NoteThread
-                        label="Element note thread"
-                        entries={noteByNode.get(elementNoteTarget) || []}
-                        editingEntryId={noteEditing?.target === elementNoteTarget ? noteEditing.entryId : undefined}
-                        busy={noteSaving !== ''}
-                        onEdit={entry => startNoteEdit('element', entry)}
-                        onDelete={entry => deleteNote('element', entry)}
-                      />
-                      <div className="note-section-head element-editor-head"><label htmlFor="formations-element-note">Element note</label></div>
-                      <textarea
-                        id="formations-element-note"
-                        className="note-reply"
-                        value={elementNoteDraft}
-                        placeholder={noteByNode.get(elementNoteTarget)?.length ? 'Reply to this element’s thread…' : 'What should the implementer know about this element?'}
-                        onChange={event => setNoteDraft('element', event.target.value)}
-                      />
-                      <div className="note-reply-actions">
-                        {noteEditing?.target === elementNoteTarget ? <button type="button" className="cancel" disabled={noteSaving !== ''} onClick={() => cancelNoteEdit('element')}>cancel edit</button> : null}
-                        <button
-                          type="button"
-                          aria-label={noteEditing?.target === elementNoteTarget ? 'Save edited element note' : 'Add element note'}
-                          disabled={!elementNoteDraft.trim() || noteSaving !== '' || !notes}
-                          onClick={() => saveNote('element')}
-                        >{noteSaving === 'element' ? 'saving…' : noteEditing?.target === elementNoteTarget ? 'save edit' : 'add note'}</button>
-                      </div>
-                      {elementNoteDirty ? <div className="note-dirty">add or clear this note before switching elements</div> : null}
-                    </>
-                  ) : <div className="note-empty">Use a card's post-it button or choose an element.</div>}
-                </section>
-                {noteError ? <div className="note-error" role="alert">{noteError}</div> : null}
-                {notesConflict ? (
-                  <button type="button" className="note-reload" disabled={noteSaving !== ''} onClick={() => void reloadSharedNotes()}>
-                    Reload shared notes (discard local draft)
-                  </button>
-                ) : null}
-              </div>
-            ) : <div className="note-empty boardless">Create or select a board to use the shared notepad.</div>
-          ) : null}
-        </aside>
       </div>
 
       <WindowManagerProvider stack={windows}>
+        {board ? noteWindows.map(target => (
+          <NoteWindow
+            key={target}
+            target={target}
+            title={noteTitleOf(target)}
+            entries={(target === BOARD_NOTE_TARGET ? notes?.board : noteByNode.get(target)) || []}
+            draft={noteDrafts[target] || ''}
+            editingEntryId={noteEditing[target]}
+            saving={noteSaving !== ''}
+            error={noteErrors[target] || ''}
+            conflict={notesConflict}
+            onDraft={text => setNoteDraft(target, text)}
+            onSave={() => saveNote(target)}
+            onCancelEdit={() => cancelNoteEdit(target)}
+            onEdit={entry => startNoteEdit(target, entry)}
+            onDelete={entry => deleteNote(target, entry)}
+            onReload={() => void reloadSharedNotes()}
+            onClose={() => setNoteWindows(current => current.filter(open => open !== target))}
+          />
+        )) : null}
         {activeRun ? peeks.map(nodeId => (
           <Suspense key={`${activeRun.runId}-${nodeId}`} fallback={<div role="status">Loading terminal…</div>}>
             <FloatingPeek windowId={`peek:${nodeId}`} runId={activeRun.runId} initialNodeId={nodeId || undefined}

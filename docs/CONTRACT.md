@@ -50,9 +50,11 @@ ID, an author (`human:<name>` or `agent:<name>`), a creation time, an optional
 edit time and text. `archon board note` appends an entry, by default as
 `agent:archon` (`--author` names another). Only an entry's author can change it:
 `--entry <id> --text` edits it and `--entry <id> --clear` deletes it. Reply
-rather than rewriting someone else's note. The cockpit writes as `human:ui`,
-styles agent entries apart from the operator's, and replies, edits and deletes
-inline. Notes files written before threads (schema 1) still load, each text as
+rather than rewriting someone else's note. The cockpit writes as `human:ui`. It
+shows notes on the canvas in their own layer above the cards, as a preview of
+each thread's latest entry, the full thread, or hidden, with the operator's and
+agents' entries styled apart. A card's note pin or sticky, or Board notes, opens
+a thread in a floating window to reply, and to edit or delete your own entries. Notes files written before threads (schema 1) still load, each text as
 one human entry, and are saved as schema 2 on the next write.
 
 A minimal board file, `hello.formation.toml`, has one staffed formation:

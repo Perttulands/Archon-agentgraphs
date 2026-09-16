@@ -1,0 +1,402 @@
+{
+  "_source": "The Wayfinding board (form-3yd.10): structure from src/internal/formations/testdata/arrange/wayfinding.formation.toml, its Arrange layout, and its notes at rev 11. Briefs and criteria are not included.",
+  "board": {
+    "schema": 1,
+    "id": "brd_01M2N3A879JPHQFNRXH3K5CQGM",
+    "slug": "wayfinding",
+    "title": "Wayfinding",
+    "rev": 37,
+    "updatedBy": "agent:claude-wayfinding",
+    "updatedAt": "2026-09-16T14:24:24Z",
+    "missions": [
+      {
+        "id": "mis_01M2N9N1SG7J0D3YVRZY3V8TNT",
+        "title": "Wayfinding",
+        "goal": "",
+        "beadId": ""
+      }
+    ],
+    "formations": [
+      {
+        "id": "fmn_01M2N3G4PQCK21EXT7NC5CC3R9",
+        "type": "solo",
+        "title": "Map the territory",
+        "inputs": [
+          {
+            "id": "port_01M2N3G4PQC13TSXZWZFWPTY5R",
+            "label": "Input"
+          }
+        ],
+        "outputs": [
+          {
+            "id": "port_01M2N3G4PQHGGZ2DA1CYW6H3AP",
+            "label": "Output"
+          }
+        ],
+        "slots": [
+          {
+            "id": "slot_01M2N3G4PQ6SY4NKE2YA3SB3S8",
+            "label": "Agent",
+            "agentId": "codex-scout",
+            "harness": "openai-codex",
+            "controller": false
+          }
+        ]
+      },
+      {
+        "id": "fmn_01M2N3HQ5A5W4CAD3VFN86MC31",
+        "type": "peer",
+        "title": "Question peers",
+        "inputs": [
+          {
+            "id": "port_01M2N3HQ5ACKAX7SMG5MFENGD9",
+            "label": "Input"
+          }
+        ],
+        "outputs": [
+          {
+            "id": "port_01M2N3HQ5A7YXMB2SSAB9Y4PYV",
+            "label": "Output"
+          }
+        ],
+        "slots": [
+          {
+            "id": "slot_01M2N3HQ5AJ0RNG5S3VK7J8B8T",
+            "label": "Peer",
+            "agentId": "delivery-planner",
+            "harness": "claude-code",
+            "controller": false
+          },
+          {
+            "id": "slot_01M2N3HQ5A9NRD9ZP0A16TKAP4",
+            "label": "Peer",
+            "agentId": "codex-planner",
+            "harness": "openai-codex",
+            "controller": false
+          }
+        ]
+      },
+      {
+        "id": "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD",
+        "type": "solo",
+        "title": "Draft the brief",
+        "inputs": [
+          {
+            "id": "port_01M2N9N1N6NQ2XGB78NEGTSPJR",
+            "label": "Input"
+          }
+        ],
+        "outputs": [
+          {
+            "id": "port_01M2N9N1N6BFGAXWZQVNN5JN69",
+            "label": "Output"
+          }
+        ],
+        "slots": [
+          {
+            "id": "slot_01M2N9N1N60FY5JJ84B9A9DNJQ",
+            "label": "Agent",
+            "agentId": "delivery-planner",
+            "harness": "claude-code",
+            "controller": false
+          }
+        ]
+      },
+      {
+        "id": "fmn_01M2N9N1PXQ39NHQY46F0J0V63",
+        "type": "solo",
+        "title": "Brief critic",
+        "inputs": [
+          {
+            "id": "port_01M2N9N1PX7KP3C2K4GS7Z3H03",
+            "label": "Input"
+          }
+        ],
+        "outputs": [
+          {
+            "id": "port_01M2N9N1PX2QV9W6YP31GZ7TV9",
+            "label": "Output"
+          }
+        ],
+        "slots": [
+          {
+            "id": "slot_01M2N9N1PXGBQ8HRV7QSS2MD0W",
+            "label": "Agent",
+            "agentId": "codex-judge",
+            "harness": "openai-codex",
+            "controller": false
+          }
+        ]
+      }
+    ],
+    "gates": [
+      {
+        "id": "gate_01M2N3KMP5CYV3BHBRNJSAGN9Q",
+        "title": "Framing review",
+        "kinds": [
+          "human"
+        ],
+        "criterion": ""
+      },
+      {
+        "id": "gate_01M2N9N1MQDE88MWF3C1E6GJTG",
+        "title": "Answer questions",
+        "kinds": [
+          "human"
+        ],
+        "criterion": ""
+      },
+      {
+        "id": "gate_01M2N9N1PEPTXX7XV5QW96681W",
+        "title": "Adversarial review",
+        "kinds": [
+          "formation"
+        ],
+        "criterion": ""
+      },
+      {
+        "id": "gate_01M2N9N1R4R184Y5G3R45BB5G1",
+        "title": "Brief sign-off",
+        "kinds": [
+          "human"
+        ],
+        "criterion": ""
+      }
+    ],
+    "connections": [
+      {
+        "id": "edge_01M2N3KSVZ2T9H2Y33XGH1M376",
+        "from": "fmn_01M2N3G4PQCK21EXT7NC5CC3R9:port_01M2N3G4PQHGGZ2DA1CYW6H3AP",
+        "to": "gate_01M2N3KMP5CYV3BHBRNJSAGN9Q:in"
+      },
+      {
+        "id": "edge_01M2N3KW7ADSYSFP2GDKDJA009",
+        "from": "gate_01M2N3KMP5CYV3BHBRNJSAGN9Q:pass",
+        "to": "fmn_01M2N3HQ5A5W4CAD3VFN86MC31:port_01M2N3HQ5ACKAX7SMG5MFENGD9"
+      },
+      {
+        "id": "edge_01M2N3KY7G7ZV6DFYYWRXTG6K3",
+        "from": "gate_01M2N3KMP5CYV3BHBRNJSAGN9Q:fail",
+        "to": "fmn_01M2N3G4PQCK21EXT7NC5CC3R9:port_01M2N3G4PQC13TSXZWZFWPTY5R"
+      },
+      {
+        "id": "edge_01M2N9N1T1EVD80G1CNG34ZG3J",
+        "from": "mis_01M2N9N1SG7J0D3YVRZY3V8TNT:out",
+        "to": "fmn_01M2N3G4PQCK21EXT7NC5CC3R9:port_01M2N3G4PQC13TSXZWZFWPTY5R"
+      },
+      {
+        "id": "edge_01M2N9NGST1PNGXVVCBCERPPYN",
+        "from": "gate_01M2N9N1PEPTXX7XV5QW96681W:judge",
+        "to": "fmn_01M2N9N1PXQ39NHQY46F0J0V63:port_01M2N9N1PX7KP3C2K4GS7Z3H03"
+      },
+      {
+        "id": "edge_01M2N9NGSTJS3FQ642HY4WST8T",
+        "from": "fmn_01M2N9N1PXQ39NHQY46F0J0V63:port_01M2N9N1PX2QV9W6YP31GZ7TV9",
+        "to": "gate_01M2N9N1PEPTXX7XV5QW96681W:judge"
+      },
+      {
+        "id": "edge_01M2N9NGT372CHJ7VMN16QPKM9",
+        "from": "fmn_01M2N3HQ5A5W4CAD3VFN86MC31:port_01M2N3HQ5A7YXMB2SSAB9Y4PYV",
+        "to": "gate_01M2N9N1MQDE88MWF3C1E6GJTG:in"
+      },
+      {
+        "id": "edge_01M2N9NGTCQ09DFB8FF07FEC64",
+        "from": "gate_01M2N9N1MQDE88MWF3C1E6GJTG:pass",
+        "to": "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD:port_01M2N9N1N6NQ2XGB78NEGTSPJR"
+      },
+      {
+        "id": "edge_01M2N9NGTM50EEWY3WZ702MBVT",
+        "from": "gate_01M2N9N1MQDE88MWF3C1E6GJTG:fail",
+        "to": "fmn_01M2N3HQ5A5W4CAD3VFN86MC31:port_01M2N3HQ5ACKAX7SMG5MFENGD9"
+      },
+      {
+        "id": "edge_01M2N9NGTW0XGRGGERC0ZMWSCK",
+        "from": "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD:port_01M2N9N1N6BFGAXWZQVNN5JN69",
+        "to": "gate_01M2N9N1PEPTXX7XV5QW96681W:in"
+      },
+      {
+        "id": "edge_01M2N9NGV4P75PNT50A931STBW",
+        "from": "gate_01M2N9N1PEPTXX7XV5QW96681W:pass",
+        "to": "gate_01M2N9N1R4R184Y5G3R45BB5G1:in"
+      },
+      {
+        "id": "edge_01M2N9NGVCEWCFESD07KPT5M5F",
+        "from": "gate_01M2N9N1PEPTXX7XV5QW96681W:fail",
+        "to": "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD:port_01M2N9N1N6NQ2XGB78NEGTSPJR"
+      },
+      {
+        "id": "edge_01M2N9NGVNSHE0R1Q9V7M7VQGZ",
+        "from": "gate_01M2N9N1R4R184Y5G3R45BB5G1:fail",
+        "to": "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD:port_01M2N9N1N6NQ2XGB78NEGTSPJR"
+      }
+    ],
+    "etag": "wayfinding-board"
+  },
+  "layout": {
+    "schema": 1,
+    "boardId": "brd_01M2N3A879JPHQFNRXH3K5CQGM",
+    "boardRev": 37,
+    "etag": "wayfinding-layout",
+    "nodes": [
+      {
+        "id": "mis_01M2N9N1SG7J0D3YVRZY3V8TNT",
+        "x": 112,
+        "y": 112
+      },
+      {
+        "id": "fmn_01M2N3G4PQCK21EXT7NC5CC3R9",
+        "x": 448,
+        "y": 112
+      },
+      {
+        "id": "gate_01M2N3KMP5CYV3BHBRNJSAGN9Q",
+        "x": 840,
+        "y": 112
+      },
+      {
+        "id": "fmn_01M2N3HQ5A5W4CAD3VFN86MC31",
+        "x": 1232,
+        "y": 112
+      },
+      {
+        "id": "gate_01M2N9N1MQDE88MWF3C1E6GJTG",
+        "x": 1652,
+        "y": 112
+      },
+      {
+        "id": "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD",
+        "x": 2044,
+        "y": 112
+      },
+      {
+        "id": "gate_01M2N9N1PEPTXX7XV5QW96681W",
+        "x": 2436,
+        "y": 112
+      },
+      {
+        "id": "fmn_01M2N9N1PXQ39NHQY46F0J0V63",
+        "x": 2436,
+        "y": 364
+      },
+      {
+        "id": "gate_01M2N9N1R4R184Y5G3R45BB5G1",
+        "x": 2828,
+        "y": 112
+      }
+    ],
+    "edges": []
+  },
+  "notes": {
+    "schema": 2,
+    "boardId": "brd_01M2N3A879JPHQFNRXH3K5CQGM",
+    "rev": 11,
+    "updatedAt": "2026-09-16T14:29:44.076656682Z",
+    "updatedBy": "agent:claude-wayfinding",
+    "board": [
+      {
+        "id": "migrated-board",
+        "author": "human:ui",
+        "createdAt": "2026-09-16T12:39:30.091445373Z",
+        "text": "The purpose of this is to create a workflow to clarify and build toward a great output while avoiding typical AI shortcomings. The mission should deploy codex and claude code agents throughout the journey and include some key moments for including the user"
+      },
+      {
+        "id": "nte_01M2N9Z90CZY6FVP2SG0EFAN9Q",
+        "author": "agent:claude-wayfinding",
+        "createdAt": "2026-09-16T14:29:44.076656682Z",
+        "text": "Wayfinding v1 is wired from your sketch (Claude coordinator). Route: Map the territory \u2192 Framing review (you) \u2192 Question peers \u2192 Answer questions (you) \u2192 Draft the brief \u2192 Adversarial review (Codex judge) \u2192 Brief sign-off (you). Guards: map before solutions, evidence or labelled assumptions, peers draft independently, at most 10 ranked questions each tied to a decision, a cross-harness judge that fails generic advice, and your final sign-off. Every human pause emails you. Each node has a note explaining its design. Please review the board and reply here before the first run. For that run I need your raw sketch (the mission input) and the directory the agents should work in."
+      }
+    ],
+    "elements": [
+      {
+        "nodeId": "fmn_01M2N3G4PQCK21EXT7NC5CC3R9",
+        "entries": [
+          {
+            "id": "migrated-fmn_01M2N3G4PQCK21EXT7NC5CC3R9",
+            "author": "human:ui",
+            "createdAt": "2026-09-16T12:39:30.091445373Z",
+            "text": "The first step would be to start mapping out the territory"
+          },
+          {
+            "id": "nte_01M2N9Z8YC9CVGNCY5Q3NX1EMJ",
+            "author": "agent:claude-wayfinding",
+            "createdAt": "2026-09-16T14:29:44.012601978Z",
+            "text": "Built from your note: this is step 1, mapping the territory before anyone proposes a solution. codex-scout writes territory-map.md with the sketch quoted verbatim, facts that each cite evidence (file, command output or URL), constraints, prior art, stakeholders, unknowns, and 2-4 candidate framings. It must not recommend a framing; you choose at Framing review. A send-back returns here with your corrections."
+          }
+        ]
+      },
+      {
+        "nodeId": "fmn_01M2N3HQ5A5W4CAD3VFN86MC31",
+        "entries": [
+          {
+            "id": "migrated-fmn_01M2N3HQ5A5W4CAD3VFN86MC31",
+            "author": "human:ui",
+            "createdAt": "2026-09-16T12:39:30.091445373Z",
+            "text": "This next is a peer formation with 2 agents, one claude and one codex that would work together to reason about what this goal is and surface AMAZING questions for the human to answer, max 10 questions that must be super high impact"
+          },
+          {
+            "id": "nte_01M2N9Z8YYX60BVB7DF5JP5R3F",
+            "author": "agent:claude-wayfinding",
+            "createdAt": "2026-09-16T14:29:44.030671034Z",
+            "text": "Built from your note: one Claude (delivery-planner) and one Codex (codex-planner). Each drafts questions independently before they compare, to avoid echo. They reconcile into at most 10 questions ranked by impact. Every question names the decision it unlocks and the default assumed if you skip it. Disagreements between the two, and any conflict between your framing and the map's evidence, are recorded, not smoothed over."
+          }
+        ]
+      },
+      {
+        "nodeId": "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD",
+        "entries": [
+          {
+            "id": "nte_01M2N9Z8ZGWE5P2P57999GVWG8",
+            "author": "agent:claude-wayfinding",
+            "createdAt": "2026-09-16T14:29:44.048264409Z",
+            "text": "New. Claude (delivery-planner) writes brief.md from the map, your framing decision and your answers: goal in your words, checkable success criteria, non-goals, constraints, options with trade-offs (including rejected framings), a recommendation tied to evidence, risks, and open assumptions, with your answers verbatim in an appendix. Contradictions between your answers and the map are called out. Review and sign-off send-backs return here."
+          }
+        ]
+      },
+      {
+        "nodeId": "gate_01M2N3KMP5CYV3BHBRNJSAGN9Q",
+        "entries": [
+          {
+            "id": "nte_01M2N9Z8YP13109HPAXQXSHM6N",
+            "author": "agent:claude-wayfinding",
+            "createdAt": "2026-09-16T14:29:44.022346819Z",
+            "text": "Converted from the code gate to a human gate, as your criterion asked, and the check value was cleared. You read the candidate framings and approve with the framing you choose, typed in the response box. That response travels to the question peers. Send back if the map got something wrong. Each pause emails you."
+          }
+        ]
+      },
+      {
+        "nodeId": "gate_01M2N9N1MQDE88MWF3C1E6GJTG",
+        "entries": [
+          {
+            "id": "nte_01M2N9Z8Z7B24NQQ4PJMYS1VEC",
+            "author": "agent:claude-wayfinding",
+            "createdAt": "2026-09-16T14:29:44.039696086Z",
+            "text": "New human gate. The panel and the email show the ranked questions. Answer by number in the response box; anything unanswered takes its stated default. Approve sends your answers to the brief writer. Send back if the questions miss what matters."
+          }
+        ]
+      },
+      {
+        "nodeId": "gate_01M2N9N1PEPTXX7XV5QW96681W",
+        "entries": [
+          {
+            "id": "nte_01M2N9Z8ZRWKPGX9KN0X5N5P93",
+            "author": "agent:claude-wayfinding",
+            "createdAt": "2026-09-16T14:29:44.056907405Z",
+            "text": "New judge gate. Its judge, Brief critic, runs on Codex (codex-judge), the harness that did not write the draft. It spot-checks at least three claims against their evidence and fails unsupported claims, generic recommendations, goal drift, ignored answers, or missing criteria, non-goals or risks. Fail returns to Draft the brief with evidence."
+          }
+        ]
+      },
+      {
+        "nodeId": "gate_01M2N9N1R4R184Y5G3R45BB5G1",
+        "entries": [
+          {
+            "id": "nte_01M2N9Z901PSEWK95H7ER289F3",
+            "author": "agent:claude-wayfinding",
+            "createdAt": "2026-09-16T14:29:44.065539726Z",
+            "text": "New human gate: the final sign-off. The panel and the email show the full brief. Approve ends the run with this brief as the result. Send back with what to change, and the draft is revised and reviewed again. Note: send-back here currently hits engine bug form-epa, which is being fixed before your first real run."
+          }
+        ]
+      }
+    ],
+    "etag": "wayfinding-notes"
+  }
+}

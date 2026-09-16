@@ -574,8 +574,8 @@ describe('FormationsCockpit reference parity', () => {
 
   it('rechecks note drafts before creating a board from an open dialog', async () => {
     await renderCockpit()
-    fireEvent.click(screen.getByRole('button', { name: 'Expand shared notepad' }))
-    const boardNote = await screen.findByRole('textbox', { name: 'Board note' })
+    fireEvent.click(screen.getByRole('button', { name: 'Board notes' }))
+    const boardNote = await screen.findByRole('textbox', { name: 'Note for the board' })
     fireEvent.click(screen.getByTestId('new-board'))
     const dialog = await screen.findByRole('dialog', { name: 'Create board' })
     fireEvent.change(within(dialog).getByLabelText('Board name'), { target: { value: 'Should not create' } })
@@ -589,8 +589,8 @@ describe('FormationsCockpit reference parity', () => {
 
   it('rechecks note drafts before archiving from an open dialog', async () => {
     await renderCockpit()
-    fireEvent.click(screen.getByRole('button', { name: 'Expand shared notepad' }))
-    const boardNote = await screen.findByRole('textbox', { name: 'Board note' })
+    fireEvent.click(screen.getByRole('button', { name: 'Board notes' }))
+    const boardNote = await screen.findByRole('textbox', { name: 'Note for the board' })
     fireEvent.click(screen.getByRole('button', { name: 'Delete board' }))
     const dialog = await screen.findByRole('dialog', { name: 'Delete board' })
     fireEvent.change(boardNote, { target: { value: 'Draft made after delete opened' } })
@@ -601,7 +601,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(recordedMutations.some(mutation => mutation.method === 'DELETE')).toBe(false)
   })
 
-  it('shows mixed-author note threads and replies without overwriting', async () => {
+  it('shows mixed-author note threads in note windows and replies without overwriting', async () => {
     patches = installFetchMock({
       boardNotes: {
         board: [noteEntry('nte_board', 'human:ui', 'Preserve the API contract.')],
@@ -617,15 +617,17 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
 
     const preview = screen.getByRole('note', { name: 'Notes for Frame' })
-    expect(preview).toHaveTextContent('archon')
+    expect(preview.closest('[data-testid="note-layer"]')).not.toBeNull()
+    expect(screen.getByTestId('formation-node-fmn_frame')).not.toContainElement(preview)
+    expect(preview).toHaveClass('note-sticky-agent')
+    expect(within(preview).getByText('archon')).toHaveClass('note-author', 'note-author-agent')
     expect(preview).toHaveTextContent('+1 earlier')
     expect(preview).toHaveTextContent('Staffed Mason as the lead.')
     expect(screen.getByTestId('formation-node-fmn_frame')).toHaveClass('has-note')
 
-    const notepad = await screen.findByRole('complementary', { name: 'Shared board notepad' })
-    fireEvent.click(within(screen.getByTestId('formation-node-fmn_frame')).getByRole('button', { name: 'Open notes for Frame' }))
-    expect(within(notepad).getByLabelText('Element')).toHaveValue('fmn_frame')
-    const thread = within(notepad).getByRole('list', { name: 'Element note thread' })
+    fireEvent.click(within(preview).getByRole('button', { name: 'Open the note thread for Frame' }))
+    const noteWindow = await screen.findByRole('dialog', { name: 'notes for Frame' })
+    const thread = within(noteWindow).getByRole('list', { name: 'Note thread for Frame' })
     expect(within(thread).getAllByRole('listitem').map(item => item.textContent)).toEqual([
       expect.stringContaining('Builder owns this element.'),
       expect.stringContaining('Staffed Mason as the lead.'),
@@ -636,10 +638,10 @@ describe('FormationsCockpit reference parity', () => {
     expect(within(screen.getByTestId('note-entry-nte_agent')).getByText('archon')).toHaveClass('note-author', 'note-author-agent')
     expect(within(screen.getByTestId('note-entry-nte_agent')).queryByRole('button')).toBeNull()
 
-    const reply = within(notepad).getByLabelText('Element note')
-    expect(reply).toHaveValue('')
+    const reply = within(noteWindow).getByRole('textbox', { name: 'Note for Frame' })
+    await waitFor(() => expect(reply).toHaveFocus())
     fireEvent.change(reply, { target: { value: 'Add a reviewer too.' } })
-    fireEvent.click(within(notepad).getByRole('button', { name: 'Add element note' }))
+    fireEvent.click(within(noteWindow).getByRole('button', { name: 'Reply' }))
     await waitFor(() => expect(within(thread).getAllByRole('listitem')).toHaveLength(3))
     expect(reply).toHaveValue('')
     const noteCall = vi.mocked(fetch).mock.calls.find(([url, init]) => String(url).endsWith('/notes') && init?.method === 'PATCH')
@@ -648,50 +650,93 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(within(screen.getByTestId('note-entry-nte_operator')).getByRole('button', { name: /^Edit your note/ }))
     expect(reply).toHaveValue('Builder owns this element.')
     fireEvent.change(reply, { target: { value: 'Builder and reviewer own this element.' } })
-    fireEvent.click(within(notepad).getByRole('button', { name: 'Save edited element note' }))
+    fireEvent.click(within(noteWindow).getByRole('button', { name: 'Save edit' }))
     await waitFor(() => expect(screen.getByTestId('note-entry-nte_operator')).toHaveTextContent('Builder and reviewer own this element.'))
     expect(screen.getByTestId('note-entry-nte_operator')).toHaveTextContent('edited')
     expect(screen.getByTestId('note-entry-nte_agent')).toHaveTextContent('Staffed Mason as the lead.')
 
-    const boardThread = within(notepad).getByRole('list', { name: 'Board note thread' })
+    fireEvent.click(screen.getByRole('button', { name: 'Board notes' }))
+    const boardWindow = await screen.findByRole('dialog', { name: 'board notes' })
+    expect(noteWindow).toBeInTheDocument()
+    const boardThread = within(boardWindow).getByRole('list', { name: 'Board note thread' })
     fireEvent.click(within(boardThread).getByRole('button', { name: /^Delete your note/ }))
-    await waitFor(() => expect(within(notepad).queryByRole('list', { name: 'Board note thread' })).toBeNull())
+    await waitFor(() => expect(within(boardWindow).queryByRole('list', { name: 'Board note thread' })).toBeNull())
+    expect(boardWindow).toHaveTextContent('No notes yet')
 
-    fireEvent.click(within(notepad).getByRole('button', { name: 'Collapse shared notepad' }))
-    expect(screen.queryByLabelText('Board note')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Expand shared notepad' })).toBeInTheDocument()
+    fireEvent.click(within(noteWindow).getByRole('button', { name: 'Close notes for Frame' }))
+    expect(screen.queryByRole('dialog', { name: 'notes for Frame' })).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'board notes' })).toBeInTheDocument()
   })
 
-  it('adds a new element note from the sticky-note affordance', async () => {
+  it('adds a note to a node in one action from its note pin', async () => {
     await renderCockpit()
     const judge = screen.getByTestId('formation-node-fmn_judge')
     expect(judge).not.toHaveClass('has-note')
 
     fireEvent.click(within(judge).getByRole('button', { name: 'Add note for Judge' }))
-    const elementNote = screen.getByLabelText('Element note')
-    fireEvent.change(elementNote, { target: { value: 'Use this as the release judge.' } })
+    const noteWindow = await screen.findByRole('dialog', { name: 'notes for Judge' })
+    const note = within(noteWindow).getByRole('textbox', { name: 'Note for Judge' })
+    await waitFor(() => expect(note).toHaveFocus())
+    fireEvent.change(note, { target: { value: 'In this step a judge checks the release evidence.' } })
     fireEvent.click(within(judge).getByRole('button', { name: 'Add note for Judge' }))
-    expect(elementNote).toHaveValue('Use this as the release judge.')
-    const addElementNote = screen.getByRole('button', { name: 'Add element note' })
-    await waitFor(() => expect(addElementNote).toBeEnabled())
-    fireEvent.click(addElementNote)
+    expect(note).toHaveValue('In this step a judge checks the release evidence.')
+    expect(screen.getAllByRole('dialog', { name: 'notes for Judge' })).toHaveLength(1)
+    const add = within(noteWindow).getByRole('button', { name: 'Add note' })
+    await waitFor(() => expect(add).toBeEnabled())
+    fireEvent.click(add)
 
     await waitFor(() => expect(judge).toHaveClass('has-note'))
-    expect(screen.getByRole('note', { name: 'Notes for Judge' })).toHaveTextContent('Use this as the release judge.')
+    expect(screen.getByRole('note', { name: 'Notes for Judge' })).toHaveTextContent('In this step a judge checks the release evidence.')
+    expect(screen.getByRole('note', { name: 'Notes for Judge' })).toHaveClass('note-sticky-human')
+  })
+
+  it('switches canvas notes between hidden, preview and full, and remembers the choice', async () => {
+    patches = installFetchMock({
+      boardNotes: {
+        elements: [{
+          nodeId: 'fmn_frame',
+          entries: [
+            noteEntry('nte_operator', 'human:ui', 'In this step a single agent composes a research report.'),
+            noteEntry('nte_agent', 'agent:archon', 'Staffed Mason as the lead.'),
+          ],
+        }],
+      },
+    })
+    const { unmount } = await renderCockpit()
+    const switcher = screen.getByRole('radiogroup', { name: 'Notes on the canvas' })
+    expect(within(switcher).getByRole('radio', { name: 'Preview' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('note', { name: 'Notes for Frame' })).not.toHaveTextContent('composes a research report')
+
+    fireEvent.click(within(switcher).getByRole('radio', { name: 'Full notes' }))
+    const full = screen.getByRole('note', { name: 'Notes for Frame' })
+    expect(full).toHaveTextContent('In this step a single agent composes a research report.')
+    expect(full).toHaveTextContent('Staffed Mason as the lead.')
+    expect(within(full).getAllByRole('listitem')).toHaveLength(2)
+    expect(localStorage.getItem('chrote-formations-notes-mode')).toBe('full')
+
+    fireEvent.click(within(switcher).getByRole('radio', { name: 'Hide notes' }))
+    expect(screen.queryByRole('note', { name: 'Notes for Frame' })).toBeNull()
+    expect(within(screen.getByTestId('formation-node-fmn_frame')).getByRole('button', { name: 'Open notes for Frame' })).toBeInTheDocument()
+
+    unmount()
+    await renderCockpit()
+    expect(screen.getByRole('radio', { name: 'Hide notes' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.queryByRole('note', { name: 'Notes for Frame' })).toBeNull()
   })
 
   it('preserves a local note draft and offers an explicit reload after a repeated conflict', async () => {
     patches = installFetchMock({ boardNotes: { board: [noteEntry('nte_server', 'agent:archon', 'Server version')] }, notePatchConflict: true })
     await renderCockpit()
-    fireEvent.click(screen.getByRole('button', { name: 'Expand shared notepad' }))
-    const boardNote = await screen.findByRole('textbox', { name: 'Board note' })
+    fireEvent.click(screen.getByRole('button', { name: 'Board notes' }))
+    const boardWindow = await screen.findByRole('dialog', { name: 'board notes' })
+    const boardNote = within(boardWindow).getByRole('textbox', { name: 'Note for the board' })
     fireEvent.change(boardNote, { target: { value: 'Local draft' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add board note' }))
+    fireEvent.click(within(boardWindow).getByRole('button', { name: 'Reply' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Shared notes changed')
+    expect(await within(boardWindow).findByRole('alert')).toHaveTextContent('Shared notes changed')
     expect(boardNote).toHaveValue('Local draft')
     expect(vi.mocked(fetch).mock.calls.filter(([url, init]) => String(url).endsWith('/notes') && init?.method === 'PATCH')).toHaveLength(2)
-    expect(screen.getByRole('button', { name: 'Reload shared notes (discard local draft)' })).toBeEnabled()
+    expect(within(boardWindow).getByRole('button', { name: 'Reload shared notes (discard local draft)' })).toBeEnabled()
   })
 
   it('protects unsaved notes from board switches, creation, and deletion', async () => {
@@ -699,13 +744,17 @@ describe('FormationsCockpit reference parity', () => {
     patches = installFetchMock({ boards: [makeBoard(), second] })
     await renderCockpit()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Expand shared notepad' }))
-    const boardNote = await screen.findByRole('textbox', { name: 'Board note' })
+    fireEvent.click(screen.getByRole('button', { name: 'Board notes' }))
+    const boardNote = await screen.findByRole('textbox', { name: 'Note for the board' })
     fireEvent.change(boardNote, { target: { value: 'Unsaved local context' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Close board notes' }))
+    expect(screen.queryByRole('dialog', { name: 'board notes' })).toBeNull()
     fireEvent.change(screen.getByTestId('board-picker'), { target: { value: 'second-board' } })
 
     expect(screen.getByTestId('board-picker')).toHaveValue('test-board')
-    expect(screen.getByRole('alert')).toHaveTextContent('Save the current notes before leaving this board')
+    const reopened = await screen.findByRole('dialog', { name: 'board notes' })
+    expect(within(reopened).getByRole('alert')).toHaveTextContent('Save the current notes before leaving this board')
+    expect(within(reopened).getByRole('textbox', { name: 'Note for the board' })).toHaveValue('Unsaved local context')
     fireEvent.click(screen.getByRole('button', { name: 'Delete board' }))
     expect(screen.queryByRole('dialog', { name: 'Delete board' })).toBeNull()
     fireEvent.click(screen.getByTestId('new-board'))

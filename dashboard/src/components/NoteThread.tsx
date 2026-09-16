@@ -53,17 +53,3 @@ export function NoteThread({ label, entries, editingEntryId, busy, onEdit, onDel
     </ol>
   )
 }
-
-/** The card sticky: the latest entry with its author, and how many came before. */
-export function NotePreview({ title, entries }: { title: string; entries: NoteEntry[] }) {
-  const latest = entries[entries.length - 1]
-  if (!latest) return null
-  const author = noteAuthor(latest.author)
-  return (
-    <div className="note-preview" role="note" aria-label={`Notes for ${title}`}>
-      <span className={`note-author note-author-${author.kind}`} title={latest.author}>{author.name}</span>
-      {entries.length > 1 ? <span className="note-count">+{entries.length - 1} earlier</span> : null}
-      <span className="note-preview-text">{latest.text}</span>
-    </div>
-  )
-}

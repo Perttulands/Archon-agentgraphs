@@ -7,18 +7,55 @@
 .fmx .note-entry.note-entry-human{border-left-color:#d2a927;}
 .fmx .note-entry.editing{outline:1px dashed var(--gold);}
 .fmx .note-entry-head{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
-.fmx .note-author{border-radius:3px;padding:0 5px;font:700 8.5px/1.6 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;}
-.fmx .note-author.note-author-human{background:color-mix(in srgb,#d2a927 30%,transparent);color:var(--ink);}
-.fmx .note-author.note-author-agent{background:color-mix(in srgb,var(--terra) 28%,transparent);color:var(--ink);}
-.fmx .note-time{font:9px var(--font-mono);color:var(--dim);flex:1;min-width:0;}
+.fmx .note-author{border-radius:3px;padding:0 6px;font:700 11px/1.6 var(--font-mono);letter-spacing:.06em;text-transform:uppercase;}
+.fmx .note-author.note-author-human{background:#6b5412;color:#fff3cc;}
+.fmx .note-author.note-author-agent{background:#244a6e;color:#e6f2fc;}
+.fmx .note-time{font:10.5px var(--font-mono);color:var(--ink2);flex:1;min-width:0;}
 .fmx .note-entry-actions{display:flex;gap:4px;}
-.fmx .note-entry-actions button{border:0;background:transparent;color:var(--dim);padding:0 2px;font:9px var(--font-mono);cursor:pointer;}
+.fmx .note-entry-actions button{border:0;background:transparent;color:var(--ink2);padding:0 3px;font:11px var(--font-mono);cursor:pointer;}
 .fmx .note-entry-actions button:hover:not(:disabled){color:var(--terra);}
-.fmx .note-entry-text{font:11px/1.45 var(--font-mono);color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;}
-.fmx .note-section textarea.note-reply{min-height:72px;}
+.fmx .note-entry-text{font:12px/1.5 var(--font-mono);color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;}
 .fmx .note-reply-actions{display:flex;justify-content:flex-end;gap:6px;}
-.fmx .note-reply-actions button{border:1px solid var(--line);background:var(--bg2);color:var(--terra);padding:4px 8px;font:700 9px var(--font-mono);text-transform:uppercase;letter-spacing:.06em;cursor:pointer;}
+.fmx .note-reply-actions button{border:1px solid var(--line);background:var(--bg2);color:var(--terra);padding:5px 10px;font:700 11px var(--font-mono);text-transform:uppercase;letter-spacing:.06em;cursor:pointer;}
 .fmx .note-reply-actions button.cancel{color:var(--dim);}
 .fmx .note-reply-actions button:disabled{opacity:.35;cursor:not-allowed;}
-.fmx .note-preview .note-author{margin-right:5px;}
-.fmx .note-preview .note-count{font-size:9px;color:var(--dim);margin-right:5px;}
+
+/* Note windows: the whole thread, a reply box and the actions. */
+.fmx .note-window-body{display:flex;flex-direction:column;gap:10px;padding:12px;min-height:100%;box-sizing:border-box;}
+.fmx .note-window .note-thread{max-height:none;overflow:visible;}
+.fmx .note-window .note-empty{margin:0;font:12px/1.5 var(--font-mono);color:var(--ink2);}
+.fmx .note-window textarea.note-reply{width:100%;min-height:96px;resize:vertical;box-sizing:border-box;border:1px solid color-mix(in srgb,var(--line) 75%,#d6af47 25%);background:color-mix(in srgb,var(--bg2) 88%,#f1cf70 12%);color:var(--ink);padding:10px;font:12px/1.5 var(--font-mono);outline:none;}
+.fmx .note-window textarea.note-reply:focus{border-color:#d2a927;box-shadow:0 0 0 1px rgba(210,169,39,.18);}
+.fmx .note-window .note-error{font:12px/1.45 var(--font-mono);color:var(--terra-d);border-left:2px solid var(--terra-d);padding-left:8px;}
+.fmx .note-window .note-reload{border:1px solid var(--gold);background:color-mix(in srgb,var(--bg2) 82%,var(--gold) 18%);color:var(--ink);padding:7px 9px;font:700 11px/1.35 var(--font-mono);text-transform:uppercase;cursor:pointer;}
+
+/* Stickies on the canvas: their own layer above the cards. The operator's
+   notes are paper yellow, agents' are pale blue, and each names its author. */
+.fmx .note-layer{position:absolute;left:0;top:0;width:0;height:0;overflow:visible;z-index:15;pointer-events:none;}
+.fmx .note-sticky{position:absolute;box-sizing:border-box;pointer-events:auto;padding:7px 10px 8px;border:1px solid rgba(90,70,20,.45);border-left-width:4px;box-shadow:2px 3px 8px rgba(0,0,0,.28);font:12px/1.4 var(--font-mono);overflow-wrap:anywhere;cursor:pointer;}
+.fmx .note-sticky.note-sticky-human{background:#efd683;color:#2e240b;border-left-color:#8a6a10;}
+.fmx .note-sticky.note-sticky-agent{background:#d3e4f4;color:#12202d;border-left-color:#2f5f8c;}
+.fmx .note-sticky-head{display:flex;align-items:center;gap:6px;margin-bottom:4px;min-width:0;}
+.fmx .note-sticky-head .note-author{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.fmx .note-sticky-head .note-count,.fmx .note-sticky-open{flex-shrink:0;white-space:nowrap;}
+.fmx .note-sticky .note-count{font:11px var(--font-mono);color:inherit;opacity:.8;}
+.fmx .note-sticky-title{font:700 11px/1.6 var(--font-mono);letter-spacing:.06em;text-transform:uppercase;}
+.fmx .note-sticky-open{margin-left:auto;border:1px solid currentColor;border-radius:3px;background:transparent;color:inherit;padding:0 6px;font:700 11px/1.5 var(--font-mono);text-transform:uppercase;cursor:pointer;opacity:.85;}
+.fmx .note-sticky-open:hover,.fmx .note-sticky-open:focus-visible{opacity:1;}
+.fmx .note-sticky-text{white-space:pre-wrap;}
+.fmx .note-layer.preview .note-sticky-text{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;}
+.fmx .note-layer.full .note-sticky{max-height:320px;overflow:auto;cursor:auto;user-select:text;}
+.fmx .note-sticky-thread{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
+.fmx .note-sticky-entry{padding:5px 7px;border-left:3px solid;background:rgba(255,255,255,.35);}
+.fmx .note-sticky-entry.note-entry-human{border-left-color:#8a6a10;}
+.fmx .note-sticky-entry.note-entry-agent{border-left-color:#2f5f8c;background:rgba(211,228,244,.75);color:#12202d;}
+.fmx .note-sticky-entry-head{display:flex;align-items:center;gap:6px;margin-bottom:3px;min-width:0;}
+.fmx .note-sticky-entry-head .note-author{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.fmx .note-sticky-entry-head .note-time{flex-shrink:0;white-space:nowrap;}
+.fmx .note-sticky .note-time{color:inherit;opacity:.8;flex:1;}
+
+/* The notes switch and the board notes button in the top bar. */
+.fmx .notes-switch{display:flex;border:1px solid var(--line);border-radius:3px;overflow:hidden;}
+.fmx .notes-switch button{border:0;border-right:1px solid var(--line);background:transparent;color:var(--ink2);padding:6px 9px;font:700 10px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;cursor:pointer;}
+.fmx .notes-switch button:last-child{border-right:0;}
+.fmx .notes-switch button.on{background:color-mix(in srgb,#d2a927 28%,transparent);color:var(--ink);}
