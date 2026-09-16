@@ -186,7 +186,7 @@ func TestNodeUpdatesRejectMalformedOrMissingTargetsWithoutMutation(t *testing.T)
 		"unsafe Bead ID": {func() error {
 			_, err := store.UpdateMission("rename", MissionUpdateRequest{MissionID: "mis_frame", BeadID: stringPtr("../escape")}, current())
 			return err
-		}, ErrInvalidSlug},
+		}, ErrInvalidBeadID},
 		"missing mission": {func() error {
 			_, err := store.UpdateMission("rename", MissionUpdateRequest{MissionID: "mis_missing", Title: &title}, current())
 			return err

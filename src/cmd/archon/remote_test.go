@@ -312,6 +312,8 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("gate", "update", "demo", "Nobody", "--title", "Ghost")), errorOnly: true},
 		{args: with(fixed("mission", "wire", "demo", "Nobody", "x:y")), errorOnly: true},
 		{args: with(fixed("board", "new", "demo")), errorOnly: true},
+		{args: with(fixed("mission", "create", "demo", "--bead", "Home-123")), errorOnly: true},
+		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--bead", "chlab/123")), errorOnly: true},
 		{args: with(fixed("gate", "create", "demo", "--command", "make test")), errorOnly: true},
 		{args: with(fixed("formation", "create", "missing-board")), errorOnly: true},
 	}

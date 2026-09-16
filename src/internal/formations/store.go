@@ -31,6 +31,7 @@ var (
 	ErrInvalidToolMutation      = errors.New("invalid_tool_mutation")
 	ErrInvalidDefinitionSource  = errors.New(InvalidDefinitionSourceCode)
 	ErrInvalidGateKind          = errors.New("invalid_gate_kind")
+	ErrInvalidBeadID            = errors.New("invalid_bead_id")
 	ErrInvalidTypeChange        = errors.New("invalid_type_change")
 	ErrUnsupportedFormationType = errors.New("unsupported_formation_type")
 	ErrSlotChoiceRequired       = errors.New("slot_choice_required")

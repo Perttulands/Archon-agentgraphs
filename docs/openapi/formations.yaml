@@ -130,7 +130,7 @@ paths:
         '409':
           description: Stale revision or ETag
         '400':
-          description: Invalid mutation or retired inline verification/script gate
+          description: Invalid mutation or retired inline verification/script gate. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (mission beadId or brief beadId).
       parameters:
       - in: header
         name: If-Match

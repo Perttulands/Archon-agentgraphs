@@ -84,6 +84,8 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrNoteEntryNotFound
 	case "NOTE_AUTHOR_MISMATCH":
 		return formations.ErrNoteAuthorMismatch
+	case "INVALID_BEAD_ID":
+		return formations.ErrInvalidBeadID
 	case formations.FindingInvalidCodeGateProfile:
 		return formations.ErrInvalidCodeGateProfile
 	case "INVALID_DEFINITION_SOURCE":

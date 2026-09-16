@@ -1989,8 +1989,8 @@ title = "Ship"
 				Goal:        "Ship the change",
 				BeadID:      beadID,
 				UpdatedBy:   "agent:test",
-			}, WriteOptions{ExpectedETag: before.ETag, ExpectedRev: before.Rev}); !errors.Is(err, ErrInvalidSlug) {
-				t.Fatalf("set brief beadId %q error = %v, want ErrInvalidSlug", beadID, err)
+			}, WriteOptions{ExpectedETag: before.ETag, ExpectedRev: before.Rev}); !errors.Is(err, ErrInvalidBeadID) {
+				t.Fatalf("set brief beadId %q error = %v, want ErrInvalidBeadID", beadID, err)
 			}
 		})
 	}
@@ -2523,8 +2523,8 @@ func TestS3MissionCreateRejectsUnsafeBeadID(t *testing.T) {
 				Goal:      "Build the showcase",
 				BeadID:    beadID,
 				UpdatedBy: "agent:test",
-			}, WriteOptions{ExpectedETag: before.ETag, ExpectedRev: before.Rev}); !errors.Is(err, ErrInvalidSlug) {
-				t.Fatalf("create mission beadId %q error = %v, want ErrInvalidSlug", beadID, err)
+			}, WriteOptions{ExpectedETag: before.ETag, ExpectedRev: before.Rev}); !errors.Is(err, ErrInvalidBeadID) {
+				t.Fatalf("create mission beadId %q error = %v, want ErrInvalidBeadID", beadID, err)
 			}
 		})
 	}

@@ -1694,6 +1694,8 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusRequestEntityTooLarge, "NOTE_TOO_LARGE", "Formation note is too large")
 	case errors.Is(err, formations.ErrPreconditionRequired):
 		core.WriteError(w, http.StatusPreconditionRequired, "PRECONDITION_REQUIRED", "If-Match and revision preconditions are required")
+	case errors.Is(err, formations.ErrInvalidBeadID):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_BEAD_ID", strings.TrimPrefix(err.Error(), formations.ErrInvalidBeadID.Error()+": "))
 	case errors.Is(err, formations.ErrInvalidSlug):
 		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid formation slug")
 	case errors.Is(err, formations.ErrUnsupportedSchema):

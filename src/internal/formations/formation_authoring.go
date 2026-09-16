@@ -773,7 +773,7 @@ func (s *Store) SetFormationBrief(slug string, req FormationBriefRequest, opts W
 		return nil, ErrNotFound
 	}
 	if req.BeadID != "" && !isSafeBeadsIssueID(req.BeadID) {
-		return nil, fmt.Errorf("%w: beadId must be a safe Beads issue id", ErrInvalidSlug)
+		return nil, invalidBeadID("brief beadId", req.BeadID)
 	}
 	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, _ *BoardDocument) ([]byte, error) {
 		lines := splitLines(raw)
@@ -1310,7 +1310,7 @@ func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteO
 		return nil, ErrNotFound
 	}
 	if req.BeadID != nil && *req.BeadID != "" && !isSafeBeadsIssueID(*req.BeadID) {
-		return nil, fmt.Errorf("%w: mission beadId must be a safe Beads issue id", ErrInvalidSlug)
+		return nil, invalidBeadID("mission beadId", *req.BeadID)
 	}
 	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, _ *BoardDocument) ([]byte, error) {
 		lines := splitLines(raw)
@@ -1422,7 +1422,7 @@ func (s *Store) CreateMission(slug string, req MissionCreateRequest, opts WriteO
 
 func (s *Store) createMission(slug string, req MissionCreateRequest, opts WriteOptions, fault func(string) error) (*MissionCreateResult, error) {
 	if req.BeadID != "" && !isSafeBeadsIssueID(req.BeadID) {
-		return nil, fmt.Errorf("%w: mission beadId must be a safe Beads issue id", ErrInvalidSlug)
+		return nil, invalidBeadID("mission beadId", req.BeadID)
 	}
 	if err := validateSlug(slug); err != nil {
 		return nil, err
