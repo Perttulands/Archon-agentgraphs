@@ -47,7 +47,7 @@ import {
   upsertRunEvent,
 } from './formationsRunState'
 import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
-import { GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, harnessGlyph, initials } from './formationsCockpitVisuals'
+import { FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials } from './formationsCockpitVisuals'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
 import DismissiblePanel from './DismissiblePanel'
 import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom, splitList } from './formationsCockpitDom'
@@ -1913,41 +1913,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     )
   }
 
-  const renderBody = (formation: FormationNode) => {
-    const slots = formation.slots
-    if (formation.type === 'peer') {
-      return (
-        <div className="huddle"><span className="hl">peers · no hierarchy</span>
-          <div className="peers-row">{slots.map(slot => renderSlot(formation, slot))}</div>
-        </div>
-      )
-    }
-    if (formation.type === 'flow') {
-      return (
-        <div className="flow-row">
-          {slots.map((slot, index) => (
-            <div key={slot.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-              {renderSlot(formation, slot, index + 1)}
-              {index < slots.length - 1 ? (
-                <div className="flow-arrow"><svg viewBox="0 0 26 12" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M0 6h22" /><path d="M19 2l4 4-4 4" /></svg></div>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      )
-    }
-    if (formation.type === 'orchestrated') {
-      const ctrl = slots.find(slot => slot.controller) || slots[0]
-      const workers = slots.filter(slot => slot !== ctrl)
-      return (
-        <div className="orch">
-          <div className="ctrl-wrap">{ctrl ? renderSlot(formation, ctrl) : null}</div>
-          <div className="pool"><span className="pl">open slots</span>{workers.map(slot => renderSlot(formation, slot))}</div>
-        </div>
-      )
-    }
-    return <div className="solo-body">{slots[0] ? renderSlot(formation, slots[0]) : null}</div>
-  }
+  const renderBody = (formation: FormationNode) => (
+    <FormationSeats formation={formation} renderSlot={(slot, badge) => renderSlot(formation, slot, badge)} />
+  )
 
   const noteByNode = useMemo(
     () => new Map((notes?.elements || []).filter(note => note.text).map(note => [note.nodeId, note.text])),
@@ -2143,16 +2111,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [agentEditor, closeAgentEditor])
 
   const rosterAgents = useMemo(() => agents.filter(agent => agent.assignable && !agent.unbound), [agents])
-  const rosterSections = useMemo(() => {
-    const codex = rosterAgents.filter(agent => (agent.harnessDefault || '').toLowerCase().includes('codex'))
-    const claude = rosterAgents.filter(agent => (agent.harnessDefault || '').toLowerCase().includes('claude'))
-    const other = rosterAgents.filter(agent => !codex.includes(agent) && !claude.includes(agent))
-    return [
-      { id: 'codex', label: 'Codex', agents: codex },
-      { id: 'claude', label: 'Claude', agents: claude },
-      { id: 'other', label: 'Other', agents: other },
-    ].filter(section => section.agents.length > 0)
-  }, [rosterAgents])
+  const rosterSections = useMemo(() => groupRosterByHarness(rosterAgents), [rosterAgents])
   const deployedAgentCount = useMemo(
     () => new Set((board?.formations || []).flatMap(f => f.slots.map(s => s.agentId).filter(Boolean))).size,
     [board?.formations],

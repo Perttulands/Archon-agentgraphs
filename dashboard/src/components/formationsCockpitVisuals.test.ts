@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formationSummary, agentRole, agentState, initials } from './formationsCockpitVisuals'
+import { formationSummary, agentRole, agentState, groupRosterByHarness, initials } from './formationsCockpitVisuals'
 import type { AgentProjection, FormationNode } from './formationsTypes'
 
 const agent = (over: Partial<AgentProjection> & { assignable: boolean }): AgentProjection => ({ id: 'a', ...over })
@@ -37,5 +37,22 @@ describe('formationSummary', () => {
   it('asks for a brief when none is supplied', () => {
     expect(formationSummary(formation)).toBe('Set a brief to describe this work.')
     expect(formationSummary({ ...formation, brief: { goal: '  ' } })).toBe('Set a brief to describe this work.')
+  })
+})
+
+describe('groupRosterByHarness', () => {
+  it('lists Codex, then Claude, then other harnesses, and omits empty groups', () => {
+    const roster = [
+      agent({ id: 'claude-one', assignable: true, harnessDefault: 'claude-code' }),
+      agent({ id: 'hermes-one', assignable: true, harnessDefault: 'hermes' }),
+      agent({ id: 'codex-one', assignable: true, harnessDefault: 'openai-codex' }),
+      agent({ id: 'bare', assignable: true }),
+    ]
+    expect(groupRosterByHarness(roster).map(section => [section.id, section.agents.map(next => next.id)])).toEqual([
+      ['codex', ['codex-one']],
+      ['claude', ['claude-one']],
+      ['other', ['hermes-one', 'bare']],
+    ])
+    expect(groupRosterByHarness(roster.slice(0, 1)).map(section => section.label)).toEqual(['Claude'])
   })
 })

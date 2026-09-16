@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, RefreshCw, X } from 'lucide-react'
+import type { ReactNode } from 'react'
 import {
   ApiRequestError,
   abortRunRequest,
@@ -24,7 +24,16 @@ import {
   runStatusFromResponse,
   upsertRunEvent,
 } from './formationsRunState'
-import { agentRole, initials } from './formationsCockpitVisuals'
+import {
+  FormationSeats,
+  GATE_SVG,
+  PLAY_SVG,
+  agentRole,
+  formationSummary,
+  groupRosterByHarness,
+  harnessGlyph,
+  initials,
+} from './formationsCockpitVisuals'
 import type {
   AgentProjection as FormationAgentProjection,
   BoardDocument,
@@ -33,6 +42,7 @@ import type {
   FormationSlot,
   GateNode,
   LayoutDocument,
+  MissionNode,
   RunEvent,
   RunStatusProjection,
 } from './formationsTypes'
@@ -64,6 +74,8 @@ interface RosterAgent {
   attached?: boolean
   assignable: boolean
   unbound?: boolean
+  preset?: boolean
+  customized?: boolean
 }
 
 interface PersonaCard {
@@ -232,11 +244,9 @@ export default function AgentsView() {
   const [createOpen, setCreateOpen] = useState(false)
   const [createDraft, setCreateDraft] = useState<CreateDraft>(EMPTY_CREATE)
   const [noteDraft, setNoteDraft] = useState('')
-  const [drawer, setDrawer] = useState<'roster' | 'details' | ''>('')
   const [activeRun, setActiveRun] = useState<RunStatusProjection | null>(null)
   const [runEvents, setRunEvents] = useState<RunEvent[]>([])
 
-  const selectedBoardSummary = boards.find(next => next.slug === selectedSlug)
   const selectedMission = board?.missions?.find(mission => mission.id === selectedMissionId) || null
   const nodeStates = useMemo(() => projectNodeStates(runEvents, activeRun), [activeRun, runEvents])
   const openGateId = useMemo(() => openHumanGateId(runEvents), [runEvents])
@@ -317,7 +327,8 @@ export default function AgentsView() {
     total: agents.length,
     live: agents.filter(agent => agent.liveness === 'live').length,
     assignable: agents.filter(agent => !agent.unbound && agent.assignable).length,
-  }), [agents])
+    deployed: assignmentsByAgent.size,
+  }), [agents, assignmentsByAgent])
 
   const filteredAgents = useMemo(() => {
     const needle = search.trim().toLowerCase()
@@ -326,11 +337,13 @@ export default function AgentsView() {
       agent.id,
       agent.displayName || '',
       agent.kind || '',
+      agent.harnessDefault || '',
       ...(agent.tags || []),
     ].some(value => value.toLowerCase().includes(needle)))
   }, [agents, search])
 
   const personas = filteredAgents.filter(agent => !agent.unbound)
+  const personaSections = groupRosterByHarness(personas)
   const unbound = filteredAgents.filter(agent => agent.unbound)
 
   const selectedSlot = useMemo(() => {
@@ -698,21 +711,31 @@ export default function AgentsView() {
     }
   }, [activeRun?.runId, selectedSlug])
 
+  const selectedAgentId = selection?.kind === 'agent' || selection?.kind === 'unbound' ? selection.agentId : ''
+  const rosterSummary = [
+    loading ? '…' : String(rosterCounts.total),
+    rosterCounts.live ? `${rosterCounts.live} live` : '',
+    rosterCounts.deployed ? `${rosterCounts.deployed} deployed` : '',
+  ].filter(Boolean).join(' · ')
+
   return (
-    <div className="agents-view agx" data-testid="agents-view">
-      <header className="agx-controlbar">
-        <label className="agx-control">
-          <span>Board</span>
-          <select value={selectedSlug} onChange={event => setSelectedSlug(event.target.value)} disabled={loading || boards.length === 0}>
+    <div className="fmx agx" data-testid="agents-view">
+      <div className="topbar">
+        <div className="boardpick">
+          board
+          <select aria-label="Board" value={selectedSlug} onChange={event => setSelectedSlug(event.target.value)} disabled={loading || boards.length === 0}>
             {boards.length === 0 && <option value="">No boards</option>}
             {boards.map(next => (
               <option key={next.slug} value={next.slug}>{next.title || next.slug}</option>
             ))}
           </select>
-        </label>
-        <label className="agx-control agx-control-wide">
-          <span>Mission</span>
+          {board ? <span className="rev">rev {board.rev}</span> : null}
+        </div>
+        <div className="sep" />
+        <div className="boardpick">
+          mission
           <select
+            aria-label="Mission"
             value={selectedMissionId}
             onChange={event => setSelectedMissionId(event.target.value)}
             disabled={boardLoading || !board?.missions?.length}
@@ -722,66 +745,74 @@ export default function AgentsView() {
               <option key={mission.id} value={mission.id}>{mission.title}</option>
             ))}
           </select>
-        </label>
-        <div className="agx-counts" aria-label="Roster and slot counts">
-          <span>Roster {loading ? '--' : rosterCounts.total}</span>
-          <span>{rosterCounts.live} live</span>
-          <span>{rosterCounts.assignable} assignable</span>
-          <span>Slots {slotCounts.staffed}/{slotCounts.total || 0} staffed</span>
-          <span>{slotCounts.open} open</span>
         </div>
-        <button className="agx-drawer-toggle" type="button" onClick={() => setDrawer(current => current === 'roster' ? '' : 'roster')}>
-          Roster
-        </button>
-        <button className="agx-drawer-toggle" type="button" onClick={() => setDrawer(current => current === 'details' ? '' : 'details')}>
-          Details
-        </button>
-        <button className="agx-icon-button" type="button" onClick={refresh} disabled={loading || boardLoading}>
-          <RefreshCw size={14} aria-hidden="true" />
+        <div className="spacer" />
+        <button className="board-action" type="button" onClick={refresh} disabled={loading || boardLoading}>
           Refresh
         </button>
-        <button className="agx-primary-button" type="button" onClick={() => setCreateOpen(true)}>
-          <Plus size={14} aria-hidden="true" />
-          Add Agent
+        <button className="newbtn" type="button" onClick={() => setCreateOpen(true)}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          New agent
         </button>
-      </header>
+      </div>
 
       {error && <div className="agx-alert" role="alert">{error}</div>}
 
-      <div className="agx-shell">
-        <aside className={`agx-roster ${drawer === 'roster' ? 'is-open' : ''}`} aria-label="Agent roster">
-          <div className="agx-panel-head">
-            <h2>Roster</h2>
-            <span>{personas.length} personas</span>
+      <div className="main">
+        <aside className="roster" aria-label="Agent roster">
+          <div className="roster-hd">
+            <div className="t">Agents</div>
+            <span
+              className="s"
+              title={`${rosterCounts.total} agents · ${rosterCounts.live} live · ${rosterCounts.assignable} assignable · ${rosterCounts.deployed} deployed on this mission`}
+            >
+              {rosterSummary}
+            </span>
           </div>
           <input
-            className="agx-search"
+            className="agx-filter"
             aria-label="Filter agents"
             value={search}
             onChange={event => setSearch(event.target.value)}
             placeholder="filter agents"
           />
-          <RosterGroup
-            title="Personas"
-            agents={personas}
-            details={details}
-            assignmentsByAgent={assignmentsByAgent}
-            onInspect={inspectAgent}
-          />
-          <RosterGroup
-            title="Unbound"
-            agents={unbound}
-            details={details}
-            assignmentsByAgent={assignmentsByAgent}
-            onInspect={inspectAgent}
-          />
+          <div className="roster-list">
+            {!loading && personas.length === 0 && (
+              <div className="roster-empty">
+                {search.trim() ? 'No personas match this filter.' : 'No personas yet. Use New agent to create one.'}
+              </div>
+            )}
+            {personaSections.map(section => (
+              <RosterGroup
+                key={section.id}
+                id={section.id}
+                label={section.label}
+                agents={section.agents}
+                details={details}
+                assignmentsByAgent={assignmentsByAgent}
+                selectedAgentId={selectedAgentId}
+                onInspect={inspectAgent}
+              />
+            ))}
+            {unbound.length > 0 && (
+              <RosterGroup
+                id="unbound"
+                label="Unbound"
+                agents={unbound}
+                details={details}
+                assignmentsByAgent={assignmentsByAgent}
+                selectedAgentId={selectedAgentId}
+                onInspect={inspectAgent}
+              />
+            )}
+          </div>
         </aside>
 
         <main className="agx-staffing" aria-label="Mission staffing">
           {boardError && (
             <div className="agx-alert agx-board-alert" role="alert">
               <span>Board load failed: {boardError}</span>
-              <button className="agx-icon-button" type="button" onClick={() => selectedSlug && loadBoard(selectedSlug)}>
+              <button className="board-action" type="button" onClick={() => selectedSlug && loadBoard(selectedSlug)}>
                 Retry board
               </button>
             </div>
@@ -801,74 +832,73 @@ export default function AgentsView() {
               onAbort={handleAbort}
             />
           )}
-          <div className="agx-mission-head">
-            <div>
-              <p className="agx-eyebrow">Mission staffing</p>
-              <h1>{selectedMission?.title || selectedBoardSummary?.title || 'No mission selected'}</h1>
-            </div>
-            <div className="agx-mission-actions">
-              <span className={slotCounts.open > 0 ? 'agx-status agx-status-open' : 'agx-status agx-status-ready'}>
-                {slotCounts.total === 0 ? 'no slots' : slotCounts.open > 0 ? `${slotCounts.open} slots open` : 'ready'}
-              </span>
-              <button
-                className="agx-primary-button"
-                type="button"
-                onClick={handleStartMission}
-                disabled={Boolean(startDisabledReason)}
-                title={startDisabledReason || 'Start mission'}
-              >
-                Start mission
-              </button>
-              {startDisabledReason && <span className="agx-muted">{startDisabledReason}</span>}
-            </div>
+          <div className="agx-cards">
+            {!loading && !boardLoading && !selectedMission && (
+              <StaffingEmpty
+                title={boards.length === 0 ? 'No boards' : 'No mission on this board'}
+                copy={boards.length === 0
+                  ? 'Create a board on the Boards tab to staff a mission.'
+                  : 'Add a Mission card on the Boards tab and wire it to a formation.'}
+              />
+            )}
+            {selectedMission && (
+              <MissionCard
+                mission={selectedMission}
+                slotCounts={slotCounts}
+                startDisabledReason={startDisabledReason}
+                onStart={handleStartMission}
+              />
+            )}
+            {selectedMission && reachableItems.length === 0 && (
+              <StaffingEmpty
+                title="Nothing wired to this mission"
+                copy="Wire the mission's output to a formation on the Boards tab to staff it here."
+              />
+            )}
+            {selectedMission && reachableItems.map(item => (
+              item.kind === 'gate'
+                ? (
+                  <GateRow
+                    key={item.id}
+                    gate={(board?.gates || []).find(gate => gate.id === item.id) || null}
+                    state={nodeStates.get(item.id) || ''}
+                    branchLabels={gateBranchLabels.get(item.id)}
+                  />
+                )
+                : (
+                  <FormationStaffingCard
+                    key={item.id}
+                    formation={board?.formations.find(formation => formation.id === item.id) || null}
+                    via={reachableViaByFormation.get(item.id)}
+                    viaGateTitle={(board?.gates || []).find(gate => gate.id === item.via?.gateId)?.title || item.via?.gateId || ''}
+                    agents={agents}
+                    nodeState={nodeStates.get(item.id) || ''}
+                    selectedSlot={selectedSlot}
+                    onSlotClick={inspectSlot}
+                  />
+                )
+            ))}
           </div>
-
-          {!selectedMission && (
-            <div className="agx-empty">Select a mission to inspect staffing readiness.</div>
-          )}
-          {selectedMission && reachableItems.length === 0 && (
-            <div className="agx-empty">No reachable formations from this mission.</div>
-          )}
-          {selectedMission && reachableItems.map(item => (
-            item.kind === 'gate'
-              ? (
-                <GateRow
-                  key={item.id}
-                  gate={(board?.gates || []).find(gate => gate.id === item.id) || null}
-                  state={nodeStates.get(item.id) || ''}
-                  branchLabels={gateBranchLabels.get(item.id)}
-                />
-              )
-              : (
-                <FormationStaffingCard
-                  key={item.id}
-                  formation={board?.formations.find(formation => formation.id === item.id) || null}
-                  via={reachableViaByFormation.get(item.id)}
-                  viaGateTitle={(board?.gates || []).find(gate => gate.id === item.via?.gateId)?.title || item.via?.gateId || ''}
-                  agents={agents}
-                  nodeState={nodeStates.get(item.id) || ''}
-                  selectedSlot={selectedSlot}
-                  onSlotClick={inspectSlot}
-                />
-              )
-          ))}
         </main>
 
-        <aside className={`agx-inspector ${drawer === 'details' ? 'is-open' : ''}`} aria-label="Inspector">
-          <Inspector
-            selection={selection}
-            agents={agents}
-            details={details}
-            assignmentsByAgent={assignmentsByAgent}
-            selectedSlot={selectedSlot}
-            noteDraft={noteDraft}
-            onNoteDraft={setNoteDraft}
-            onSaveNote={saveNote}
-            onAssign={assignSlot}
-            onUnassign={unassignSlot}
-            onCreateFromUnbound={createFromUnbound}
-          />
-        </aside>
+        {selection && (
+          <aside className="agx-inspector" aria-label="Inspector">
+            <Inspector
+              selection={selection}
+              agents={agents}
+              details={details}
+              assignmentsByAgent={assignmentsByAgent}
+              selectedSlot={selectedSlot}
+              noteDraft={noteDraft}
+              onNoteDraft={setNoteDraft}
+              onSaveNote={saveNote}
+              onAssign={assignSlot}
+              onUnassign={unassignSlot}
+              onCreateFromUnbound={createFromUnbound}
+              onClose={() => setSelection(null)}
+            />
+          </aside>
+        )}
       </div>
 
       {createOpen && (
@@ -897,46 +927,107 @@ function orderReachableItems(items: ReachableMissionItem[], layout: LayoutDocume
 }
 
 function RosterGroup({
-  title,
+  id,
+  label,
   agents,
   details,
   assignmentsByAgent,
+  selectedAgentId,
   onInspect,
 }: {
-  title: string
+  id: string
+  label: string
   agents: RosterAgent[]
   details: Record<string, CachedPersona>
   assignmentsByAgent: Map<string, Array<{ formation: FormationNode; slot: FormationSlot }>>
+  selectedAgentId: string
   onInspect: (agent: RosterAgent) => void
 }) {
   return (
-    <section className="agx-roster-group">
-      <div className="agx-group-title">{title}</div>
-      {agents.length === 0 && <div className="agx-muted">{title === 'Unbound' ? 'No unbound sessions' : 'No personas'}</div>}
+    <section className="roster-group" data-provider={id}>
+      <div className="roster-group-label">{label}</div>
       {agents.map(agent => {
         const status = agentStatus(agent, assignmentsByAgent.get(agent.id)?.length || 0, details[agent.id])
         const name = agent.displayName || agent.id
+        const selected = selectedAgentId === agent.id
         return (
           <button
             key={agent.id}
             type="button"
-            className={`ragent ${agent.unbound ? 'unbound' : ''} ${status.deployedSlots > 0 ? 'deployed' : ''}`}
+            className={`ragent${status.deployedSlots > 0 ? ' deployed' : ''}${agent.unbound ? ' unbound' : ''}${selected ? ' selected' : ''}`}
             aria-label={`Inspect ${name}`}
+            aria-pressed={selected}
             onClick={() => onInspect(agent)}
           >
-            <span className="av">{initials(name)}</span>
+            <span className="av">{harnessGlyph(agent.harnessDefault) ?? initials(name)}</span>
             <span className="ri">
               <span className="n">{name}</span>
-              <span className="r">{agentRole(agent as FormationAgentProjection)}</span>
-            </span>
-            <span className="agx-chip-row">
-              <span className={`agx-chip agx-chip-${status.liveness}`}>{status.liveness}</span>
-              {status.chips.map(chip => <span className="agx-chip" key={chip}>{chip}</span>)}
+              <StatusWords agent={agent} status={status} />
             </span>
           </button>
         )
       })}
     </section>
+  )
+}
+
+/* Offline is the resting state, so it is not repeated on every row. */
+function StatusWords({ agent, status }: { agent: RosterAgent; status: AgentStatus }) {
+  const words = [
+    ...(agent.unbound ? [] : [agentRole(agent as FormationAgentProjection)]),
+    ...(agent.preset ? [agent.customized ? 'custom' : 'preset'] : []),
+    ...(status.liveness === 'offline' ? [] : [status.liveness]),
+    ...status.chips,
+  ]
+  return (
+    <span className="r">
+      {words.map(word => <span key={word} className={word === status.liveness ? `is-${word}` : undefined}>{word}</span>)}
+    </span>
+  )
+}
+
+function MissionCard({
+  mission,
+  slotCounts,
+  startDisabledReason,
+  onStart,
+}: {
+  mission: MissionNode
+  slotCounts: { total: number; staffed: number; open: number }
+  startDisabledReason: string
+  onStart: () => void
+}) {
+  const staffing = slotCounts.total === 0 ? '' : `${slotCounts.staffed}/${slotCounts.total} slots staffed`
+  return (
+    <section className="missioncard">
+      <div className="mhd">
+        <span className="meyebrow">◆ Mission</span>
+        <button
+          className="mrun"
+          type="button"
+          aria-label="Start mission"
+          title={startDisabledReason || 'Start mission'}
+          onClick={onStart}
+          disabled={Boolean(startDisabledReason)}
+        >
+          {PLAY_SVG}
+        </button>
+      </div>
+      <div className="mtitle">{mission.title}</div>
+      <div className={`mgoal${mission.goal ? '' : ' placeholder'}`}>{mission.goal || 'set the mission objective…'}</div>
+      <div className={`mstatus${slotCounts.open > 0 ? ' is-open' : ''}`}>
+        {[staffing, startDisabledReason || 'ready to start'].filter(Boolean).join(' · ')}
+      </div>
+    </section>
+  )
+}
+
+function StaffingEmpty({ title, copy }: { title: string; copy: string }) {
+  return (
+    <div className="empty-board">
+      <div className="empty-title">{title}</div>
+      <div className="empty-copy">{copy}</div>
+    </div>
   )
 }
 
@@ -960,42 +1051,82 @@ function FormationStaffingCard({
   if (!formation) return null
   const open = formation.slots.filter(slot => !slot.agentId).length
   const fallbackLabel = via?.branch === 'fail' ? `fallback on ${viaGateTitle || via.gateId} fail` : ''
+  const summary = formationSummary(formation)
   return (
-    <section className={`agx-staff-card ${nodeState ? `is-${nodeState}` : ''}`}>
-      <header className="agx-staff-card-head">
-        <div>
-          <p className="agx-eyebrow">{formation.type}</p>
-          <h2>{formation.title}</h2>
-          {fallbackLabel && <span className="agx-branch-badge">{fallbackLabel}</span>}
+    <section className={`formation type-${formation.type}${nodeState === 'running' ? ' running' : ''}${nodeState ? ` state-${nodeState}` : ''}`}>
+      <div className="fhead">
+        <div className="ft">
+          <div className="tool-kind">{formation.type}</div>
+          <div className="tt">{formation.title}</div>
+          <div className="tg" title={summary}>{summary}</div>
         </div>
-        <span className={open > 0 ? 'agx-status agx-status-open' : 'agx-status agx-status-ready'}>
-          {open > 0 ? `${open} open` : 'staffed'}
-        </span>
-      </header>
-      <div className="agx-slot-row">
-        {formation.slots.map(slot => {
-          const assigned = slot.agentId ? agents.find(agent => agent.id === slot.agentId) : null
-          const assignedName = assigned?.displayName || slot.agentId || ''
-          const active = selectedSlot?.formation.id === formation.id && selectedSlot.slot.id === slot.id
-          return (
-            <button
-              key={slot.id}
-              type="button"
-              className={`slot ${slot.agentId ? 'filled' : 'empty'} ${slot.controller ? 'ctrl' : ''} ${active ? 'active' : ''}`}
-              aria-label={slot.agentId ? `Inspect ${slot.label} slot assigned to ${assignedName}` : `Assign ${slot.label} slot`}
-              onClick={() => onSlotClick(formation, slot)}
-            >
-              <span className="slot-ring">
-                {slot.controller && <span className="badge">C</span>}
-                {slot.agentId ? <span className="face">{initials(assignedName || slot.agentId)}</span> : <span className="plus">+</span>}
-              </span>
-              <span className="slot-label">{slot.label}</span>
-              <span className="who">{slot.agentId ? assignedName : 'open'}</span>
-            </button>
-          )
-        })}
+        <span className={`io-status ${open > 0 ? 'review' : 'done'}`}>{open > 0 ? `${open} open` : 'staffed'}</span>
+      </div>
+      {fallbackLabel && <div className="fstatus agx-fallback">{fallbackLabel}</div>}
+      <div className="fbody">
+        <FormationSeats
+          formation={formation}
+          renderSlot={(slot, badge) => (
+            <StaffingSeat
+              formation={formation}
+              slot={slot}
+              badge={badge}
+              agents={agents}
+              nodeState={nodeState}
+              selected={selectedSlot?.formation.id === formation.id && selectedSlot.slot.id === slot.id}
+              onClick={onSlotClick}
+            />
+          )}
+        />
       </div>
     </section>
+  )
+}
+
+function StaffingSeat({
+  formation,
+  slot,
+  badge,
+  agents,
+  nodeState,
+  selected,
+  onClick,
+}: {
+  formation: FormationNode
+  slot: FormationSlot
+  badge?: number
+  agents: RosterAgent[]
+  nodeState: string
+  selected: boolean
+  onClick: (formation: FormationNode, slot: FormationSlot) => void
+}) {
+  const assigned = slot.agentId ? agents.find(agent => agent.id === slot.agentId) : null
+  const assignedName = assigned?.displayName || slot.agentId || ''
+  const classes = [
+    'slot',
+    slot.agentId ? 'filled' : 'empty',
+    slot.controller ? 'ctrl' : '',
+    nodeState === 'running' ? 'active' : '',
+    nodeState === 'done' ? 'active done' : '',
+    selected ? 'selected' : '',
+  ]
+  return (
+    <button
+      type="button"
+      className={classes.filter(Boolean).join(' ')}
+      aria-label={slot.agentId ? `Inspect ${slot.label} slot assigned to ${assignedName}` : `Assign ${slot.label} slot`}
+      aria-pressed={selected}
+      onClick={() => onClick(formation, slot)}
+    >
+      <span className="slot-ring">
+        {badge ? <span className="badge">{badge}</span> : null}
+        {slot.agentId
+          ? <span className="face">{harnessGlyph(slot.harness || assigned?.harnessDefault) ?? initials(slot.agentId)}</span>
+          : <span className="plus">+</span>}
+      </span>
+      <span className="slot-label">{slot.label}</span>
+      {slot.agentId ? <span className="who">{slot.agentId}</span> : null}
+    </button>
   )
 }
 
@@ -1009,21 +1140,38 @@ function GateRow({
   branchLabels?: { pass: string[]; fail: string[] }
 }) {
   if (!gate) return null
+  const kinds = gate.kinds.join(' · ')
+  const title = gate.title || kinds || 'Gate'
+  const summary = [kinds, gate.criterion || 'work is accepted before it proceeds'].filter(Boolean).join(' · ')
   return (
-    <section className={`agx-gate-row ${state ? `is-${state}` : ''}`}>
-      <div className="agx-gate-icon">G</div>
-      <div>
-        <p className="agx-eyebrow">Read-only gate</p>
-        <h2>{gate.title}</h2>
-        <p>{gate.kinds.join(', ') || 'gate'} - {gate.criterion}</p>
+    <section className={`gatecard${state ? ` state-${state}` : ''}`} data-gate={gate.id}>
+      <span className="gico">{GATE_SVG}</span>
+      <span className="gmeta">
+        <span className="gt">{title}</span>
+        <span className="gs" title={summary}>{summary}</span>
         {Boolean(branchLabels?.pass.length || branchLabels?.fail.length) && (
-          <div className="agx-branch-row" aria-label={`${gate.title} branch targets`}>
-            {branchLabels?.pass.length ? <span>pass: {branchLabels.pass.join(', ')}</span> : null}
-            {branchLabels?.fail.length ? <span>fail: {branchLabels.fail.join(', ')}</span> : null}
-          </div>
+          <span className="agx-branches" aria-label={`${title} branch targets`}>
+            {branchLabels?.pass.length ? <span className="pass">pass → {branchLabels.pass.join(', ')}</span> : null}
+            {branchLabels?.fail.length ? <span className="fail">fail → {branchLabels.fail.join(', ')}</span> : null}
+          </span>
         )}
-      </div>
+      </span>
     </section>
+  )
+}
+
+function InspectorPanel({ title, meta, onClose, children }: { title: string; meta: string; onClose: () => void; children: ReactNode }) {
+  return (
+    <>
+      <div className="board-notes-head">
+        <div className="agx-inspector-heading">
+          <div className="board-notes-title">{title}</div>
+          <div className="board-notes-meta">{meta}</div>
+        </div>
+        <button className="board-notes-toggle" type="button" aria-label="Close inspector" onClick={onClose}>×</button>
+      </div>
+      <div className="board-notes-body">{children}</div>
+    </>
   )
 }
 
@@ -1039,8 +1187,9 @@ function Inspector({
   onAssign,
   onUnassign,
   onCreateFromUnbound,
+  onClose,
 }: {
-  selection: Selection | null
+  selection: Selection
   agents: RosterAgent[]
   details: Record<string, CachedPersona>
   assignmentsByAgent: Map<string, Array<{ formation: FormationNode; slot: FormationSlot }>>
@@ -1051,26 +1200,27 @@ function Inspector({
   onAssign: (formation: FormationNode, slot: FormationSlot, agent: RosterAgent, harness: string) => void
   onUnassign: (formation: FormationNode, slot: FormationSlot) => void
   onCreateFromUnbound: (agent: RosterAgent) => void
+  onClose: () => void
 }) {
-  if (!selection) {
-    return <div className="agx-empty">Select an agent or slot.</div>
-  }
-
   if (selection.kind === 'unbound') {
     const agent = agents.find(next => next.id === selection.agentId)
     return (
-      <section className="agx-inspector-section">
-        <p className="agx-eyebrow">Unbound session</p>
-        <h2>{agent?.displayName || selection.agentId}</h2>
-        <p className="agx-muted">This live session has no persona card. It cannot be assigned until a persona exists.</p>
-        <KeyValue label="Liveness" value={agent?.liveness || 'live'} />
-        <KeyValue label="Session" value={agent?.sessionId || agent?.id || selection.agentId} />
-        {agent && (
-          <button className="agx-primary-button" type="button" onClick={() => onCreateFromUnbound(agent)}>
-            Create persona from this session
-          </button>
-        )}
-      </section>
+      <InspectorPanel title={agent?.displayName || selection.agentId} meta="unbound session" onClose={onClose}>
+        <section className="note-section">
+          <p className="note-empty">This live session has no persona card. It cannot be assigned until a persona exists.</p>
+          <KeyValues rows={[
+            ['Liveness', agent?.liveness || 'live'],
+            ['Session', agent?.sessionId || agent?.id || selection.agentId],
+          ]} />
+          {agent && (
+            <div className="board-dialog-actions">
+              <button className="primary" type="button" onClick={() => onCreateFromUnbound(agent)}>
+                Create persona from this session
+              </button>
+            </div>
+          )}
+        </section>
+      </InspectorPanel>
     )
   }
 
@@ -1079,43 +1229,59 @@ function Inspector({
     const detail = details[selection.agentId]
     const card = detail?.card
     const assignments = assignmentsByAgent.get(selection.agentId) || []
+    const harness = card?.harnessDefault || agent?.harnessDefault || ''
+    const states = [
+      agent?.liveness || 'offline',
+      card?.status || '',
+      agent?.attached ? 'attached' : '',
+      !agent?.assignable && !card?.status ? 'not assignable' : '',
+    ].filter(Boolean)
     return (
-      <section className="agx-inspector-section">
-        <p className="agx-eyebrow">Agent inspector</p>
-        <h2>{card?.displayName || agent?.displayName || selection.agentId}</h2>
-        <div className="agx-inspector-chips">
-          <span className="agx-chip">{agent?.liveness || 'offline'}</span>
-          {card?.status && <span className="agx-chip">{card.status}</span>}
-          {agent?.attached && <span className="agx-chip">attached</span>}
-          {!agent?.assignable && !card?.status && <span className="agx-chip">not assignable</span>}
-        </div>
-        <KeyValue label="Kind" value={card?.kind || agent?.kind || 'agent'} />
-        <KeyValue label="Default harness" value={card?.harnessDefault || agent?.harnessDefault || ''} />
-        <KeyValue label="Session" value={agent?.sessionId || ''} />
-        <KeyValue label="Context" value={typeof agent?.contextPct === 'number' ? `${agent.contextPct}%` : ''} />
-        <KeyValue label="Bead" value={agent?.beadId || ''} />
-        {card?.summary && <p className="agx-muted">{card.summary}</p>}
-        <TagList tags={card?.tags || agent?.tags || []} />
-        <section className="agx-detail-block">
-          <h3>Harness variants</h3>
-          {(card?.harnessVariants || []).map(variant => (
-            <div className="agx-line" key={variant.id}>
-              <span>{variant.id}</span>
-              <span>{variant.sessionStem || card?.id}</span>
-              {variant.launch && <span>{variant.launch}</span>}
-              {variant.source && <span>{variant.source}</span>}
-            </div>
-          ))}
+      <InspectorPanel title={card?.displayName || agent?.displayName || selection.agentId} meta={card?.kind || agent?.kind || 'agent'} onClose={onClose}>
+        <section className="note-section">
+          <div className="agx-identity">
+            <span className="av">{harnessGlyph(harness) ?? initials(selection.agentId)}</span>
+            <span className="ri">
+              <span className="n">{harness || 'no default harness'}</span>
+              <span className="r">{states.map(state => <span key={state} className={`is-${state}`}>{state}</span>)}</span>
+            </span>
+          </div>
+          {card?.summary && <p className="agx-summary">{card.summary}</p>}
+          <KeyValues rows={[
+            ['Session', agent?.sessionId || ''],
+            ['Context', typeof agent?.contextPct === 'number' ? `${agent.contextPct}%` : ''],
+            ['Bead', agent?.beadId || ''],
+          ]} />
+          <TagList tags={card?.tags || agent?.tags || []} />
         </section>
-        <section className="agx-detail-block">
-          <h3>Current slots</h3>
-          {assignments.length === 0 && <p className="agx-muted">No slots on this mission.</p>}
-          {assignments.map(({ formation, slot }) => (
-            <div className="agx-line" key={`${formation.id}:${slot.id}`}>{formation.title} / {slot.label}{slot.controller ? ' / controller' : ''}</div>
-          ))}
+        <section className="note-section">
+          <h3>Harness variants</h3>
+          {(card?.harnessVariants || []).length === 0 && <p className="note-empty">No harness variants recorded.</p>}
+          <div className="tool-detail-list">
+            {(card?.harnessVariants || []).map(variant => (
+              <div className="tool-detail-port" key={variant.id}>
+                <strong>{variant.id}</strong>
+                <span>{variant.sessionStem || card?.id}</span>
+                {variant.launch && <code>{variant.launch}</code>}
+                {variant.source && <code>{variant.source}</code>}
+              </div>
+            ))}
+          </div>
+        </section>
+        <section className="note-section">
+          <h3>Slots on this mission</h3>
+          {assignments.length === 0 && <p className="note-empty">No slots on this mission.</p>}
+          <div className="tool-detail-list">
+            {assignments.map(({ formation, slot }) => (
+              <div className="tool-detail-row" key={`${formation.id}:${slot.id}`}>
+                <span>{formation.title}</span>
+                <strong>{slot.label}{slot.controller && slot.label.toLowerCase() !== 'controller' ? ' · controller' : ''}</strong>
+              </div>
+            ))}
+          </div>
         </section>
         <form
-          className="agx-note-form"
+          className="note-section"
           onSubmit={event => {
             event.preventDefault()
             onSaveNote(selection.agentId)
@@ -1123,13 +1289,15 @@ function Inspector({
         >
           <label htmlFor="agx-note">Add note</label>
           <textarea id="agx-note" value={noteDraft} onChange={event => onNoteDraft(event.target.value)} />
-          <button className="agx-primary-button" type="submit">Save note</button>
+          <div className="board-dialog-actions">
+            <button className="primary" type="submit">Save note</button>
+          </div>
         </form>
-      </section>
+      </InspectorPanel>
     )
   }
 
-  if (selection.kind === 'slot' && selectedSlot) {
+  if (selectedSlot) {
     return (
       <SlotInspector
         agents={agents}
@@ -1138,11 +1306,16 @@ function Inspector({
         slot={selectedSlot.slot}
         onAssign={onAssign}
         onUnassign={onUnassign}
+        onClose={onClose}
       />
     )
   }
 
-  return <div className="agx-empty">Select an agent or slot.</div>
+  return (
+    <InspectorPanel title="Slot" meta="no longer on this board" onClose={onClose}>
+      <p className="note-empty">This slot was removed from the board.</p>
+    </InspectorPanel>
+  )
 }
 
 function SlotInspector({
@@ -1152,6 +1325,7 @@ function SlotInspector({
   slot,
   onAssign,
   onUnassign,
+  onClose,
 }: {
   agents: RosterAgent[]
   details: Record<string, CachedPersona>
@@ -1159,41 +1333,51 @@ function SlotInspector({
   slot: FormationSlot
   onAssign: (formation: FormationNode, slot: FormationSlot, agent: RosterAgent, harness: string) => void
   onUnassign: (formation: FormationNode, slot: FormationSlot) => void
+  onClose: () => void
 }) {
   const assigned = slot.agentId ? agents.find(agent => agent.id === slot.agentId) : null
   return (
-    <section className="agx-inspector-section">
-      <p className="agx-eyebrow">Slot inspector</p>
-      <h2>{formation.title} / {slot.label}</h2>
-      <KeyValue label="Controller" value={slot.controller ? 'yes' : 'no'} />
-      <KeyValue label="Harness" value={slot.harness || 'default'} />
-      <KeyValue label="Current" value={assigned?.displayName || slot.agentId || 'open'} />
-      {slot.agentId && (
-        <button className="agx-danger-button" type="button" onClick={() => onUnassign(formation, slot)}>
-          Unassign {assigned?.displayName || slot.agentId}
-        </button>
-      )}
-      <section className="agx-detail-block">
+    <InspectorPanel title={slot.label} meta={`slot · ${formation.title}`} onClose={onClose}>
+      <section className="note-section">
+        <KeyValues rows={[
+          ['Controller', slot.controller ? 'yes' : 'no'],
+          ['Harness', slot.harness || 'default'],
+          ['Current', assigned?.displayName || slot.agentId || 'open'],
+        ]} />
+        {slot.agentId && (
+          <div className="pop-actions">
+            <button className="retire" type="button" onClick={() => onUnassign(formation, slot)}>
+              Unassign {assigned?.displayName || slot.agentId}
+            </button>
+          </div>
+        )}
+      </section>
+      <section className="note-section">
         <h3>Eligible agents</h3>
-        {agents.map(agent => {
-          const eligibility = slotEligibility(agent, slot, details[agent.id])
-          const name = agent.displayName || agent.id
-          return (
-            <div className="agx-candidate" key={agent.id}>
+        <div className="agx-candidates">
+          {agents.map(agent => {
+            const eligibility = slotEligibility(agent, slot, details[agent.id])
+            const name = agent.displayName || agent.id
+            return (
               <button
+                key={agent.id}
                 type="button"
+                className="agx-candidate"
                 disabled={!eligibility.eligible}
                 aria-label={`Assign ${name}`}
                 onClick={() => eligibility.eligible && onAssign(formation, slot, agent, eligibility.harness)}
               >
-                {name}
+                <span className="av">{harnessGlyph(eligibility.eligible ? eligibility.harness : agent.harnessDefault) ?? initials(name)}</span>
+                <span className="ri">
+                  <span className="n">{name}</span>
+                  <span className="r">{eligibility.eligible ? eligibility.harness : eligibility.reason}</span>
+                </span>
               </button>
-              <span>{eligibility.eligible ? eligibility.harness : eligibility.reason}</span>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </section>
-    </section>
+    </InspectorPanel>
   )
 }
 
@@ -1279,9 +1463,7 @@ function CreatePersonaPopover({
     <div className="pop agx-pop" role="dialog" aria-label="Create persona">
       <div className="pop-head">
         <span className="pt">Create persona</span>
-        <button className="x" type="button" onClick={onClose} aria-label="Close">
-          <X size={16} aria-hidden="true" />
-        </button>
+        <button className="x" type="button" onClick={onClose} aria-label="Close">×</button>
       </div>
       <form className="pop-body" onSubmit={onSubmit}>
         <label htmlFor="agx-create-id">Agent id</label>
@@ -1312,21 +1494,26 @@ function CreatePersonaPopover({
   )
 }
 
-function KeyValue({ label, value }: { label: string; value: string }) {
-  if (!value) return null
+function KeyValues({ rows }: { rows: Array<[string, string]> }) {
+  const shown = rows.filter(([, value]) => value)
+  if (shown.length === 0) return null
   return (
-    <div className="agx-kv">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
+    <dl className="tool-detail-identity">
+      {shown.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
   )
 }
 
 function TagList({ tags }: { tags: string[] }) {
   if (tags.length === 0) return null
   return (
-    <div className="agx-chip-row">
-      {tags.map(tag => <span className="agx-chip" key={tag}>{tag}</span>)}
+    <div className="agx-tags">
+      {tags.map(tag => <span key={tag}>{tag}</span>)}
     </div>
   )
 }

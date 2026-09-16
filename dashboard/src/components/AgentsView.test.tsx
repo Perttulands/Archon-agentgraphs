@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AgentsView, { reachableMissionItems } from './AgentsView'
 import { activeRunStorageKey } from './formationsRunState'
@@ -170,7 +170,7 @@ describe('AgentsView', () => {
     failBoard = false
     fireEvent.click(screen.getByRole('button', { name: /retry board/i }))
 
-    expect(await screen.findByText('No personas')).toBeInTheDocument()
+    expect(await screen.findByText(/No personas yet/)).toBeInTheDocument()
     expect(screen.queryByText(/Board load failed:/)).not.toBeInTheDocument()
   })
 
@@ -267,7 +267,7 @@ describe('AgentsView', () => {
     await waitFor(() => expect(window.localStorage.getItem(activeRunStorageKey('mission-board'))).toBe('run-started'))
   })
 
-  it('renders textual liveness and binding labels for each persona', async () => {
+  it('groups personas by harness with harness marks and states only what differs from offline', async () => {
     const board = emptyBoard()
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
@@ -276,8 +276,8 @@ describe('AgentsView', () => {
           success: true,
           data: {
             agents: [
-              agent('attached-live', { displayName: 'Attached Live', liveness: 'live', attached: true }),
-              agent('ambiguous-one', { displayName: 'Ambiguous One', liveness: 'ambiguous' }),
+              agent('attached-live', { displayName: 'Attached Live', liveness: 'live', attached: true, harnessDefault: 'openai-codex' }),
+              agent('ambiguous-one', { displayName: 'Ambiguous One', liveness: 'ambiguous', harnessDefault: 'claude-code' }),
               agent('offline-one', { displayName: 'Offline One', liveness: 'offline' }),
               agent('retired-one', { displayName: 'Retired One', liveness: 'offline', assignable: false }),
               agent('floating-session', { displayName: 'floating-session', liveness: 'live', unbound: true, assignable: false }),
@@ -304,15 +304,26 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     expect(await screen.findByText('Attached Live')).toBeInTheDocument()
-    expect(screen.getAllByText('live').length).toBeGreaterThan(0)
-    expect(screen.getByText('ambiguous')).toBeInTheDocument()
-    expect(screen.getAllByText('offline').length).toBeGreaterThan(0)
-    expect(screen.getByText('attached')).toBeInTheDocument()
-    expect(screen.getByText('not assignable')).toBeInTheDocument()
-    expect(screen.getByText('no persona')).toBeInTheDocument()
+    const roster = screen.getByRole('complementary', { name: 'Agent roster' })
+    expect(Array.from(roster.querySelectorAll('.roster-group-label')).map(label => label.textContent)).toEqual(['Codex', 'Claude', 'Other', 'Unbound'])
+
+    const codexRow = within(roster).getByRole('button', { name: /inspect Attached Live/i })
+    expect(codexRow.querySelector('.av svg')).not.toBeNull()
+    expect(within(codexRow).queryByText('AT')).not.toBeInTheDocument()
+    expect(within(roster).getByRole('button', { name: /inspect Ambiguous One/i }).querySelector('.av svg')).not.toBeNull()
+
+    expect(within(roster).getAllByText('live')).toHaveLength(2)
+    expect(within(roster).getByText('ambiguous')).toBeInTheDocument()
+    expect(within(roster).queryByText('offline')).not.toBeInTheDocument()
+    expect(within(roster).getByText('attached')).toBeInTheDocument()
+    expect(within(roster).getByText('not assignable')).toBeInTheDocument()
+    expect(within(roster).getByText('no persona')).toBeInTheDocument()
+    expect(screen.queryByRole('complementary', { name: 'Inspector' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /inspect Retired One/i }))
-    await waitFor(() => expect(screen.getAllByText('retired').length).toBeGreaterThan(0))
+    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    await waitFor(() => expect(within(inspector).getByText('retired')).toBeInTheDocument())
+    expect(within(inspector).getByText('offline')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /inspect floating-session/i }))
     fireEvent.click(screen.getByRole('button', { name: /create persona from this session/i }))
@@ -346,7 +357,7 @@ describe('AgentsView', () => {
 
     render(<AgentsView />)
 
-    fireEvent.click(await screen.findByRole('button', { name: /add agent/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /new agent/i }))
     expect(screen.queryByRole('option', { name: 'codex' })).toBeNull()
     fireEvent.change(screen.getByLabelText('Agent id'), { target: { value: 'writer' } })
     fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Writer' } })

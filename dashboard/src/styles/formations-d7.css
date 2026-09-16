@@ -1,7 +1,8 @@
 /* Formations cockpit — ported from the D7 reference prototype
    (Perttus_vision_for_agent_orchestration/03-formations.html/js).
    Everything is scoped under .fmx so the reference's generic class names
-   (.formation/.slot/.port/.world/...) cannot collide with the Agents view. */
+   (.formation/.slot/.port/.world/...) stay inside Archon views. The Agents
+   view carries .fmx on its root to share this chrome; see agents.css. */
 
 .fmx {
   /* Local aliases mapped onto the cockpit theme tokens (theme-colors.css) so
