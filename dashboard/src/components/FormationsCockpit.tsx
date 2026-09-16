@@ -48,7 +48,7 @@ import {
 } from './formationsRunState'
 import { chooseBoardRun, openRunsByAttention, readRunLink, runChoiceLabel, runLinkSearch } from './formationsRunDiscovery'
 import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
-import { FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
+import { FormationSeats, GATE_SVG, PLAY_SVG, slotTooltip, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
 import { useEscapeKey } from './useEscapeKey'
 import { ROSTER_MAX_WIDTH, ROSTER_MIN_WIDTH, useRosterPanel } from './useRosterPanel'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
@@ -58,6 +58,7 @@ import DismissiblePanel from './DismissiblePanel'
 import PersonaEditorDialog from './PersonaEditorDialog'
 import HumanGateAnswerPanel, { type GateDecision } from './HumanGateAnswerPanel'
 import RunPoint from './RunPoint'
+import CanvasLegend from './CanvasLegend'
 import { evidenceNamesForBoard } from '../evidence/evidenceNames'
 import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
 import { ProducedFiles, RunProduced, RunProducedProvider } from '../files/ProducedFiles'
@@ -66,7 +67,7 @@ import { nodeFileRefs } from '../files/referencedFiles'
 import { summarizeProduced, useRunProduced } from '../files/produced'
 import { useHumanGateUpstream } from './useHumanGateUpstream'
 import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom } from './formationsCockpitDom'
-import { routeJudgeWire, routeOrthoWire } from './formationsRouting'
+import { gateWireNeedsLabel, loopConnectionIds, routeJudgeWire, routeLoopWires, routeOrthoWire, type LoopWire } from './formationsRouting'
 import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
 import { NOTE_CARDS, NoteLayer, NOTES_MODES, noteWindowAnchor, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
@@ -112,7 +113,9 @@ import type {
 
 type DragStaff = { agentId: string; harness: string; fromSlot?: { formationId: string; slotId: string }; startX: number; startY: number; moved: boolean }
 type DragNode = { id: string; pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean }
-type WirePath = { id: string; d: string; kind: 'wire' | 'pass' | 'fail' | 'judge'; flowing: boolean }
+type WireLabel = { x: number; y: number; text: string; anchor: 'start' | 'end' }
+/** A loop is a fail wire back to an earlier step, drawn dashed in its own channel. */
+type WirePath = { id: string; d: string; kind: 'wire' | 'pass' | 'fail' | 'judge'; flowing: boolean; loop?: boolean; label?: WireLabel }
 type WireDrag =
   | { kind: 'new'; from: string; wireKind: WirePath['kind'] }
   | { kind: 'reconnect-target'; connection: BoardConnection }
@@ -642,6 +645,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       if (laneDraft && laneDraft.connectionId === connectionId) return laneDraft.y
       return laneYFrom(layoutEdges.find(edge => edge.id === connectionId)?.lane)
     }
+    const titleOf = (nodeId: string) => [...(board.missions || []), ...board.formations, ...(board.gates || []), ...(board.tools || [])]
+      .find(node => node.id === nodeId)?.title || nodeId
+    const loopIds = loopConnectionIds(board.connections || [])
+    const loops: LoopWire[] = []
     const paths: WirePath[] = []
     for (const conn of board.connections || []) {
       if (conn.id === hiddenWireId) continue // being reconnected — drawn as the temp wire instead
@@ -657,9 +664,19 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         const direction = fromPort === 'judge' ? 'send' : 'return'
         const gateId = fromPort === 'judge' ? fromNode : toNode
         const judgeId = fromPort === 'judge' ? toNode : fromNode
-        d = routeJudgeWire(a, b, { direction, nodeRect: cardRect(judgeId) })
+        const judgeRect = cardRect(judgeId)
+        d = routeJudgeWire(a, b, { direction, nodeRect: judgeRect })
         // Judge wires pulse only while their gate evaluates (reference drawWires).
         flowing = nodeStates.get(gateId) === 'running'
+        if (direction === 'send' && judgeRect) {
+          paths.push({ id: conn.id, d, kind, flowing, label: { x: judgeRect.x + 4, y: judgeRect.y - 9, text: `judges ${titleOf(gateId)}`, anchor: 'start' } })
+          continue
+        }
+      } else if (loopIds.has(conn.id) && laneFor(conn.id) === null) {
+        // Routed with the other loops below, so parallel loops take separate channels.
+        loops.push({ id: conn.id, source: a, target: b })
+        paths.push({ id: conn.id, d: '', kind, loop: true, flowing: nodeStates.get(toNode) === 'running', label: { x: 0, y: 0, text: `↺ ${titleOf(toNode)}`, anchor: 'end' } })
+        continue
       } else {
         d = routeOrthoWire(a, b, {
           fromId: fromNode,
@@ -670,9 +687,17 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         })
         flowing = nodeStates.get(fromNode) === 'running' || nodeStates.get(toNode) === 'running'
       }
-      paths.push({ id: conn.id, d, kind, flowing })
+      // A gate's pass and fail wires name where they go, beside the gate, unless they run into the next card.
+      const label = (kind === 'pass' || kind === 'fail') && (loopIds.has(conn.id) || gateWireNeedsLabel(a, b))
+        ? { x: a.x + 12, y: a.y - 7, text: `${loopIds.has(conn.id) ? '↺' : '→'} ${titleOf(toNode)}`, anchor: 'start' as const }
+        : undefined
+      paths.push({ id: conn.id, d, kind, flowing, loop: loopIds.has(conn.id), label })
     }
-    setWires(paths)
+    const loopRoutes = routeLoopWires(loops, obstacles, { frozen: !!dragPos })
+    setWires(paths.map(path => {
+      const route = path.loop ? loopRoutes.get(path.id) : undefined
+      return route && path.label ? { ...path, d: route.d, label: { ...path.label, x: route.label.x, y: route.label.y } } : path
+    }))
   }, [board, layout, view, dragPos, agents, nodeStates, hiddenWireId, laneDraft, geometryTick])
 
   // Cards ease into place (left/top transitions) and FIT glides the world
@@ -2063,6 +2088,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         data-fid={formation.id}
         data-sid={slot.id}
         data-testid={`slot-${formation.id}-${slot.id}`}
+        title={slotTooltip(slot)}
         onPointerDown={filled ? event => beginStaff(event, slot.agentId as string, slot.harness || '', { formationId: formation.id, slotId: slot.id }) : undefined}
         onContextMenu={event => slotMenu(event, formation, slot)}
       >
@@ -2366,6 +2392,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           Gate
         </div>
         <div className="spacer" />
+        <CanvasLegend />
         <div className="notes-switch" role="radiogroup" aria-label="Notes on the canvas">
           {NOTES_MODES.map(mode => (
             <button key={mode} type="button" role="radio" aria-checked={notesMode === mode} className={notesMode === mode ? 'on' : ''}
@@ -2486,7 +2513,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                       onContextMenu={event => wireMenu(event, connection)}
                     />
                     <path
-                      className={`wire ${path.kind}${path.flowing ? ' flowing' : ''}`}
+                      className={`wire ${path.kind}${path.loop ? ' loop' : ''}${path.flowing ? ' flowing' : ''}`}
                       data-testid={`formation-wire-${path.id}`}
                       d={path.d}
                       onPointerDown={event => beginWireDrag(event, connection)}
@@ -2495,6 +2522,16 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   </g>
                 )
               })}
+              {wires.map(path => path.label ? (
+                <text
+                  key={`label-${path.id}`}
+                  className={`wire-label ${path.kind}${path.loop ? ' loop' : ''}`}
+                  data-testid={`wire-label-${path.id}`}
+                  x={path.label.x}
+                  y={path.label.y}
+                  textAnchor={path.label.anchor}
+                >{path.label.text}</text>
+              ) : null)}
               {tempWire ? (
                 <path
                   className={`wire temp${tempWire.kind !== 'wire' ? ` ${tempWire.kind}` : ''}`}

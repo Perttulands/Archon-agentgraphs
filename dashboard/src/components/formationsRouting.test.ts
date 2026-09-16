@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
+  LOOP_CHANNEL_GAP,
   clearLaneY,
+  gateWireNeedsLabel,
+  loopChannelSegments,
+  loopConnectionIds,
   pathIntersectsRect,
   roundedOrthoPath,
   routeFormationWire,
   routeJudgeWire,
+  routeLoopWires,
   routeOrthoWire,
   segmentHitsRect,
+  segmentsShareChannel,
 } from './formationsRouting'
 
 describe('formationsRouting', () => {
@@ -141,5 +147,85 @@ describe('routeJudgeWire (reference routeJudge brackets)', () => {
     expect(d.startsWith('M330,140')).toBe(true)
     expect(d).toContain('360') // Rx = 130 + 200 + 30
     expect(d).toContain('174') // riseY = 200 - 26
+  })
+})
+
+describe('loop wires', () => {
+  // Wayfinding after Arrange: one row of cards, two gates failing back to Draft the brief.
+  const connections = [
+    { id: 'start', from: 'mis:out', to: 'map:in' },
+    { id: 'map-framing', from: 'map:out', to: 'framing:in' },
+    { id: 'framing-pass', from: 'framing:pass', to: 'peers:in' },
+    { id: 'framing-fail', from: 'framing:fail', to: 'map:in' },
+    { id: 'peers-answer', from: 'peers:out', to: 'answer:in' },
+    { id: 'answer-pass', from: 'answer:pass', to: 'draft:in' },
+    { id: 'answer-fail', from: 'answer:fail', to: 'peers:in' },
+    { id: 'draft-adversarial', from: 'draft:out', to: 'adversarial:in' },
+    { id: 'judge-send', from: 'adversarial:judge', to: 'critic:in' },
+    { id: 'judge-return', from: 'critic:out', to: 'adversarial:judge' },
+    { id: 'adversarial-pass', from: 'adversarial:pass', to: 'signoff:in' },
+    { id: 'adversarial-fail', from: 'adversarial:fail', to: 'draft:in' },
+    { id: 'signoff-fail', from: 'signoff:fail', to: 'draft:in' },
+    { id: 'fallback', from: 'signoff:fail', to: 'rescue:in' },
+  ]
+
+  it('calls a fail edge a loop only when its target leads back to the gate', () => {
+    expect([...loopConnectionIds(connections)].sort()).toEqual(['adversarial-fail', 'answer-fail', 'framing-fail', 'signoff-fail'])
+  })
+
+  const card = (id: string, x: number) => ({ id, x, y: 112, width: 300, height: 180 })
+  const obstacles = [card('draft', 2044), card('adversarial', 2436), card('signoff', 2828)]
+  const draftIn = { x: 2044, y: 150 }
+
+  it('gives parallel loops into one step separate channels, the wider loop outside', () => {
+    const routes = routeLoopWires([
+      { id: 'signoff-fail', source: { x: 3128, y: 176 }, target: draftIn },
+      { id: 'adversarial-fail', source: { x: 2736, y: 176 }, target: draftIn },
+    ], obstacles)
+    const inner = routes.get('adversarial-fail')!
+    const outer = routes.get('signoff-fail')!
+    expect(inner.channel).toBe(0)
+    expect(outer.channel).toBe(1)
+    // Lanes clear the cards they span, and the outer lane sits one channel higher.
+    expect(inner.points[2].y).toBe(112 - 32)
+    expect(outer.points[2].y).toBe(112 - 32 - LOOP_CHANNEL_GAP)
+    // They drop into the shared input on separate legs.
+    expect(inner.points[4].x).toBe(2044 - 24)
+    expect(outer.points[4].x).toBe(2044 - 24 - LOOP_CHANNEL_GAP)
+    for (const a of loopChannelSegments(inner.points)) {
+      for (const b of loopChannelSegments(outer.points)) expect(segmentsShareChannel(a, b)).toBe(false)
+    }
+    expect(inner.d).toMatch(/^M2736,176 /)
+    expect(inner.label).toEqual({ x: 2736 + 24 - 8, y: 112 - 32 - 6 })
+  })
+
+  it('moves a loop out a channel when two loops leave one gate', () => {
+    const routes = routeLoopWires([
+      { id: 'a', source: { x: 700, y: 176 }, target: { x: 100, y: 150 } },
+      { id: 'b', source: { x: 700, y: 176 }, target: { x: 300, y: 150 } },
+    ], [card('one', 100), card('two', 400)])
+    expect(routes.get('b')!.channel).toBe(0)
+    expect(routes.get('a')!.channel).toBe(1)
+    expect(routes.get('a')!.points[1].x).toBe(700 + 24 + LOOP_CHANNEL_GAP)
+  })
+
+  it('runs a loop below its cards when the world has no room above them', () => {
+    const route = routeLoopWires([{ id: 'top', source: { x: 700, y: 60 }, target: { x: 100, y: 40 } }], [{ id: 'row', x: 100, y: 20, width: 600, height: 100 }]).get('top')!
+    expect(route.points[2].y).toBe(20 + 100 + 32)
+  })
+
+  it('labels a gate wire unless it runs into the card just right of the gate', () => {
+    const port = { x: 1140, y: 176 }
+    expect(gateWireNeedsLabel(port, { x: 1232, y: 150 })).toBe(false)
+    expect(gateWireNeedsLabel(port, { x: 1700, y: 176 })).toBe(true)
+    expect(gateWireNeedsLabel(port, { x: 1232, y: 500 })).toBe(true)
+    expect(gateWireNeedsLabel(port, { x: 900, y: 176 })).toBe(true)
+  })
+
+  it('detects shared channel segments only on one line with a real overlap', () => {
+    expect(segmentsShareChannel([{ x: 10, y: 0 }, { x: 10, y: 50 }], [{ x: 10, y: 40 }, { x: 10, y: 90 }])).toBe(true)
+    expect(segmentsShareChannel([{ x: 10, y: 0 }, { x: 10, y: 50 }], [{ x: 10, y: 50 }, { x: 10, y: 90 }])).toBe(false)
+    expect(segmentsShareChannel([{ x: 0, y: 5 }, { x: 50, y: 5 }], [{ x: 20, y: 5 }, { x: 80, y: 5 }])).toBe(true)
+    expect(segmentsShareChannel([{ x: 0, y: 5 }, { x: 50, y: 5 }], [{ x: 20, y: 19 }, { x: 80, y: 19 }])).toBe(false)
   })
 })

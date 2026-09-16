@@ -255,3 +255,138 @@ export function routeJudgeWire(a: Point, b: Point, options: JudgeRouteOptions): 
   const laneX = options.nodeRect ? options.nodeRect.x + options.nodeRect.width + JUDGE_SIDE : a.x + 40
   return roundedOrthoPath([a, { x: laneX, y: a.y }, { x: laneX, y: riseY }, { x: b.x, y: riseY }, b], CORNER_RADIUS)
 }
+
+/* ---------------------------------------------------------------------------
+ * Loops: a gate's fail edge back to an earlier step. They are drawn as dashed
+ * back-references, each in its own channel: nested loops stack outward, so no
+ * two loops share a lane or a vertical leg.
+ * ------------------------------------------------------------------------- */
+
+export interface ConnectionLike {
+  id: string
+  from: string
+  to: string
+}
+
+/**
+ * The fail edges that send work back: the target reaches the failing gate
+ * again through forward edges (outputs and passes, not fails or judge chains).
+ */
+export function loopConnectionIds(connections: readonly ConnectionLike[]): Set<string> {
+  const port = (endpoint: string) => endpoint.split(':')[1]
+  const node = (endpoint: string) => endpoint.split(':')[0]
+  const forward = new Map<string, string[]>()
+  for (const connection of connections) {
+    if (port(connection.from) === 'fail' || port(connection.from) === 'judge' || port(connection.to) === 'judge') continue
+    forward.set(node(connection.from), [...(forward.get(node(connection.from)) || []), node(connection.to)])
+  }
+  const reaches = (start: string, goal: string) => {
+    const seen = new Set([start])
+    const queue = [start]
+    while (queue.length) {
+      const current = queue.shift() as string
+      if (current === goal) return true
+      for (const next of forward.get(current) || []) {
+        if (!seen.has(next)) {
+          seen.add(next)
+          queue.push(next)
+        }
+      }
+    }
+    return false
+  }
+  return new Set(connections
+    .filter(connection => port(connection.from) === 'fail' && reaches(node(connection.to), node(connection.from)))
+    .map(connection => connection.id))
+}
+
+export interface LoopWire {
+  id: string
+  /** The gate's fail port. */
+  source: Point
+  /** The earlier step's input port. */
+  target: Point
+}
+
+export interface LoopRoute {
+  points: Point[]
+  d: string
+  /** 0 for the innermost loop over its span; each loop around it adds one. */
+  channel: number
+  /** Where the loop's label sits: on its lane, just before it drops back to the gate. */
+  label: Point
+}
+
+export const LOOP_CHANNEL_GAP = 14
+const LOOP_LANE_FLOOR = 12
+const LOOP_LABEL_OFFSET = 8
+
+type Segment = [Point, Point]
+
+/** The channel segments of a loop: everything but the stubs at its two ports. */
+export function loopChannelSegments(points: readonly Point[]): Segment[] {
+  const segments: Segment[] = []
+  for (let i = 1; i < points.length - 2; i += 1) segments.push([points[i], points[i + 1]])
+  return segments
+}
+
+/** Two orthogonal segments on one line that overlap for more than a point. */
+export function segmentsShareChannel([a1, a2]: Segment, [b1, b2]: Segment): boolean {
+  const overlap = (p1: number, p2: number, q1: number, q2: number) =>
+    Math.min(Math.max(p1, p2), Math.max(q1, q2)) - Math.max(Math.min(p1, p2), Math.min(q1, q2)) > 1
+  const vertical = (p: Point, q: Point) => Math.abs(p.x - q.x) < 1
+  const horizontal = (p: Point, q: Point) => Math.abs(p.y - q.y) < 1
+  if (vertical(a1, a2) && vertical(b1, b2) && Math.abs(a1.x - b1.x) < 1) return overlap(a1.y, a2.y, b1.y, b2.y)
+  if (horizontal(a1, a2) && horizontal(b1, b2) && Math.abs(a1.y - b1.y) < 1) return overlap(a1.x, a2.x, b1.x, b2.x)
+  return false
+}
+
+/**
+ * Route loops together. Each leaves its gate to the right, climbs to a lane
+ * above every card it spans, runs back and drops into its target from the
+ * left. The narrowest loop takes the lowest channel; a loop that would share
+ * a lane or leg with one already placed moves out a channel.
+ */
+export function routeLoopWires(loops: readonly LoopWire[], obstacles: readonly ObstacleRect[], options: { frozen?: boolean } = {}): Map<string, LoopRoute> {
+  const routes = new Map<string, LoopRoute>()
+  const span = (loop: LoopWire) => Math.abs(loop.source.x - loop.target.x)
+  const ordered = [...loops].sort((a, b) => span(a) - span(b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  for (const loop of ordered) {
+    const sourceLeg = loop.source.x + STUB
+    const targetLeg = loop.target.x - STUB
+    const left = Math.min(sourceLeg, targetLeg)
+    const right = Math.max(sourceLeg, targetLeg)
+    const spanned = obstacles.filter(rect => rect.x < right + LANE_SPAN_PAD && rect.x + rect.width > left - LANE_SPAN_PAD)
+    const top = Math.min(loop.source.y, loop.target.y, ...(options.frozen ? [] : spanned.map(rect => rect.y)))
+    const base = top - LANE_CLEARANCE
+    const bottom = Math.max(loop.source.y, loop.target.y, ...spanned.map(rect => rect.y + rect.height)) + LANE_CLEARANCE
+    const placed = [...routes.values()].flatMap(route => loopChannelSegments(route.points))
+    let chosen: LoopRoute | null = null
+    for (let channel = 0; !chosen; channel += 1) {
+      const above = base - channel * LOOP_CHANNEL_GAP
+      // Cards at the top of the world leave no room above: those loops run below.
+      const laneY = above >= LOOP_LANE_FLOOR ? above : bottom + channel * LOOP_CHANNEL_GAP
+      const out = sourceLeg + channel * LOOP_CHANNEL_GAP
+      const back = targetLeg - channel * LOOP_CHANNEL_GAP
+      const points = [loop.source, { x: out, y: loop.source.y }, { x: out, y: laneY }, { x: back, y: laneY }, { x: back, y: loop.target.y }, loop.target]
+      const clash = loopChannelSegments(points).some(segment => placed.some(other => segmentsShareChannel(segment, other)))
+      if (!clash || channel > 24) {
+        chosen = { points, d: roundedOrthoPath(points, CORNER_RADIUS), channel, label: { x: out - LOOP_LABEL_OFFSET, y: laneY - 6 } }
+      }
+    }
+    routes.set(loop.id, chosen)
+  }
+  return routes
+}
+
+/** How far a gate wire may run into the card beside it before it is labelled. */
+export const ADJACENT_WIRE_SPAN = { x: 240, y: 160 }
+
+/**
+ * A gate's pass or fail wire names its target unless it runs into the card
+ * just right of the gate, where the target is plain to see.
+ */
+export function gateWireNeedsLabel(source: Point, target: Point): boolean {
+  const dx = target.x - source.x
+  return dx < 0 || dx > ADJACENT_WIRE_SPAN.x || Math.abs(target.y - source.y) > ADJACENT_WIRE_SPAN.y
+}

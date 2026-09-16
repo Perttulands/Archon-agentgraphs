@@ -1,0 +1,26 @@
+/* Loops and wire labels on the canvas, and the legend that explains them. */
+.fmx .wires path.wire.loop{stroke-dasharray:9 6;}
+.fmx .wires text.wire-label{font:600 11px var(--font-mono);letter-spacing:.02em;fill:var(--ink2);paint-order:stroke;stroke:var(--paper);stroke-width:4px;stroke-linejoin:round;pointer-events:none;user-select:none;}
+.fmx .wires text.wire-label.pass{fill:var(--sage);}
+.fmx .wires text.wire-label.fail,.fmx .wires text.wire-label.loop{fill:var(--terra-d);}
+.fmx .wires text.wire-label.judge{fill:var(--gold);}
+
+.fmx .canvas-legend-anchor{position:relative;display:flex;}
+.fmx .canvas-legend{position:absolute;top:calc(100% + 6px);right:0;z-index:120;width:420px;max-height:min(70vh,640px);overflow:auto;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:4px;box-shadow:0 12px 36px rgba(0,0,0,.45);color:var(--ink);font-size:11.5px;text-transform:none;letter-spacing:normal;}
+.fmx .canvas-legend h3{margin:10px 0 6px;font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);}
+.fmx .canvas-legend h3:first-child{margin-top:0;}
+.fmx .canvas-legend ul{margin:0;padding:0;list-style:none;display:grid;gap:5px;}
+.fmx .canvas-legend li{display:grid;grid-template-columns:124px 1fr;align-items:center;gap:10px;line-height:1.35;}
+.fmx .canvas-legend .legend-wire{position:static;width:118px;height:22px;pointer-events:none;overflow:visible;}
+.fmx .canvas-legend .legend-wire path.wire{pointer-events:none;}
+.fmx .canvas-legend .legend-mark{display:flex;align-items:center;min-height:22px;}
+.fmx .canvas-legend .legend-ring{position:relative;display:block;width:44px;height:18px;border:1px solid var(--line);border-radius:3px;background:var(--paper2);}
+.fmx .canvas-legend .legend-ring.running{box-shadow:0 0 0 1.5px var(--terra);}
+.fmx .canvas-legend .legend-ring.waiting{box-shadow:0 0 0 1.5px var(--gold);}
+.fmx .canvas-legend .legend-ring.blocked{border-color:var(--terra-d);box-shadow:0 0 0 1.5px var(--terra-d);}
+.fmx .canvas-legend .legend-ring .run-chip{right:auto;left:52px;top:1px;}
+.fmx .canvas-legend .legend-pause{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);}
+.fmx .canvas-legend .legend-harnesses{grid-template-columns:repeat(2,1fr);}
+.fmx .canvas-legend .legend-harnesses li{grid-template-columns:24px 1fr;}
+.fmx .canvas-legend .legend-glyph{display:flex;width:20px;height:20px;color:var(--ink2);}
+.fmx .canvas-legend .legend-glyph svg{width:20px;height:20px;}

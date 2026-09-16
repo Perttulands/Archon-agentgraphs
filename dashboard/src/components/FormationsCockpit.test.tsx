@@ -539,6 +539,50 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
   })
 
+  it('labels gate wires beside the gate, draws a loop as a dashed back-reference and names the judge chain', async () => {
+    const base = makeBoard()
+    const ship = { ...judgeFormation, id: 'fmn_ship', title: 'Ship', inputs: [{ id: 'port_ship_in', label: 'Input' }], outputs: [{ id: 'port_ship_out', label: 'Output' }], slots: [] }
+    patches = installFetchMock({ boards: [{
+      ...base,
+      formations: [...base.formations, ship],
+      connections: [
+        ...base.connections,
+        { id: 'edge_review_pass', from: 'gate_review:pass', to: 'fmn_ship:port_ship_in' },
+        { id: 'edge_review_fail', from: 'gate_review:fail', to: 'fmn_frame:port_frame_in' },
+      ],
+    }] })
+    await renderCockpit()
+
+    await waitFor(() => expect(screen.getByTestId('wire-label-edge_review_fail')).toHaveTextContent('↺ Frame'))
+    expect(screen.getByTestId('formation-wire-edge_review_fail')).toHaveClass('wire', 'fail', 'loop')
+    expect(screen.getByTestId('wire-label-edge_review_fail')).toHaveClass('loop')
+    // jsdom lays nothing out, so Ship sits beside the gate and its pass wire needs no label.
+    expect(screen.queryByTestId('wire-label-edge_review_pass')).toBeNull()
+    expect(screen.getByTestId('formation-wire-edge_review_pass')).not.toHaveClass('loop')
+    expect(screen.getByTestId('wire-label-edge_judge_send')).toHaveTextContent('judges Review')
+    expect(screen.queryByTestId('wire-label-edge_judge_return')).toBeNull()
+    expect(screen.queryByTestId('wire-label-edge_frame_gate')).toBeNull()
+  })
+
+  it('explains the canvas notation in a legend and staffing in slot tooltips', async () => {
+    await renderCockpit()
+    expect(screen.getByTestId('slot-fmn_frame-slot_lead')).toHaveAttribute('title', 'mason · Codex')
+    expect(screen.getByTestId('slot-fmn_frame-slot_worker')).toHaveAttribute('title', 'Worker: open slot. Drag a persona here to staff it.')
+
+    const toggle = screen.getByRole('button', { name: 'Legend' })
+    fireEvent.click(toggle)
+    const legend = screen.getByRole('dialog', { name: 'Canvas legend' })
+    for (const words of ['A gate sends work back to an earlier step', 'A judge chain: the gate asks a formation to decide', 'You decide', 'Waiting for your answer', 'Blocked or failed; the run bar says why', 'A pause after your answer', 'Claude Code', 'Codex', 'Hermes']) {
+      expect(legend).toHaveTextContent(words)
+    }
+    expect(legend.querySelector('path.wire.fail.loop')).not.toBeNull()
+    expect(within(legend).getByText('↺ Earlier step')).toBeInTheDocument()
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Canvas legend' })).toBeNull()
+    expect(patches).toEqual([])
+  })
+
   it('does not fabricate a starter board when no real boards exist', async () => {
     patches = installFetchMock({ emptyBoards: true })
     render(<FormationsCockpit />)

@@ -6,7 +6,7 @@ import { Fragment } from 'react'
 import type { ReactNode } from 'react'
 import type { NodeRunState } from './formationsRunState'
 import type { AgentProjection, BoardConnection, FormationNode, FormationSlot } from './formationsTypes'
-import { harnessIcon } from './harnessIcons'
+import { harnessIcon, harnessIdFor, type HarnessId } from './harnessIcons'
 
 export function formationSummary(formation: FormationNode): string {
   return formation.brief?.goal?.replace(/\s+/g, ' ').trim() || 'Set a brief to describe this work.'
@@ -33,6 +33,22 @@ export const GATE_SVG = (
    cockpit's call sites stable. */
 export function harnessGlyph(harness: string | undefined | null): JSX.Element | null {
   return harnessIcon(harness)
+}
+
+const HARNESS_NAMES: Record<HarnessId, string> = {
+  'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi', hermes: 'Hermes', terminal: '',
+}
+
+/** A harness in words: "Claude Code" for claude-code; one without a glyph keeps its own name. */
+export function harnessName(harness: string | undefined | null): string {
+  const id = harnessIdFor(harness)
+  return id ? HARNESS_NAMES[id] || harness || '' : ''
+}
+
+/** A slot in words, for its tooltip: "delivery-planner · Claude Code", or how to staff an open slot. */
+export function slotTooltip(slot: FormationSlot): string {
+  if (!slot.agentId) return `${slot.label}: open slot. Drag a persona here to staff it.`
+  return [slot.agentId, harnessName(slot.harness) || 'no harness set'].join(' · ')
 }
 export const PLAY_SVG = (
   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z" /></svg>
