@@ -35,9 +35,9 @@ func scratchSeat(t *testing.T) (*Observer, Target, func(...string) string) {
 		}
 		return strings.TrimSpace(string(out))
 	}
-	identity := strings.Fields(run("new-session", "-d", "-P", "-F", "#{session_id} #{pane_id}", "-s", "owned-proof", "-x", "120", "-y", "40", "sh", "-c", "printf 'NATIVE_TERMINAL_PROOF\\n'; exec cat"))
 	// Ending every session ends the scratch server. Host tmux guards may refuse
-	// kill-server, which would otherwise leave the server running.
+	// kill-server, which would otherwise leave the server running. Registered
+	// before the server starts, so a failed setup cannot leak it either.
 	t.Cleanup(func() {
 		tmux := func(args ...string) string {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -48,7 +48,22 @@ func scratchSeat(t *testing.T) (*Observer, Target, func(...string) string) {
 		for _, session := range strings.Fields(tmux("list-sessions", "-F", "#{session_id}")) {
 			tmux("kill-session", "-t", session)
 		}
+		// No scratch server may outlive its test.
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			conn, err := net.Dial("unix", socket)
+			if err != nil {
+				return
+			}
+			conn.Close()
+			if time.Now().After(deadline) {
+				t.Errorf("scratch tmux server on %s outlived its test", socket)
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
 	})
+	identity := strings.Fields(run("new-session", "-d", "-P", "-F", "#{session_id} #{pane_id}", "-s", "owned-proof", "-x", "120", "-y", "40", "sh", "-c", "printf 'NATIVE_TERMINAL_PROOF\\n'; exec cat"))
 	socketIdentity, err := core.SocketIdentity(socket)
 	if err != nil {
 		t.Fatal(err)
