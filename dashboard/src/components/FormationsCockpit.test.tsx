@@ -30,7 +30,7 @@ const formation = {
   verification: { id: 'ver_frame', kinds: ['code'], criterion: 'Tests pass', onFail: 'block' },
 }
 
-type TestGate = { id: string; title: string; kinds: string[]; criterion: string; check?: string; checkVersion?: string; checkValue?: string }
+type TestGate = { id: string; title: string; kinds: string[]; criterion: string; check?: string; checkVersion?: string; checkValue?: string; files?: string[] }
 const gate: TestGate = { id: 'gate_review', title: 'Review', kinds: ['code'], criterion: 'Review the frame' }
 const mission = { id: 'mis_showcase', title: 'Showcase', goal: 'Build the page', beadId: 'home-7kc4.5' }
 const tool = {
@@ -2364,6 +2364,64 @@ describe('FormationsCockpit reference parity', () => {
     // The step's node window carries the same chips.
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
     expect(within(within(frame).getByRole('region', { name: 'Run' })).getByRole('button', { name: 'frame.md' })).toBeInTheDocument()
+  })
+
+  it('shows referenced files on cards, with a judge\'s brief files on its gate, and opens a rubric in a file window', async () => {
+    const withFiles = makeBoard()
+    const rubricGate = { ...gate, files: ['rubrics/review.md', 'rubrics/scale.md'] }
+    const briefedJudge = { ...judgeFormation, brief: { goal: 'Judge the frame', files: ['rubrics/review.md', '/elsewhere/judge.md'] } }
+    const missionWithFiles = { ...mission, files: ['docs/sketch.md'] }
+    withFiles.gates = [rubricGate]
+    withFiles.missions = [missionWithFiles]
+    withFiles.formations = [formation, briefedJudge]
+    patches = installFetchMock({ boards: [withFiles] })
+    const coordinator = globalThis.fetch
+    const previews: string[] = []
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (!url.startsWith('/api/formations/files/preview')) return coordinator(input, init)
+      previews.push(url)
+      const outside = url.endsWith(encodeURIComponent('/elsewhere/judge.md'))
+      return Promise.resolve({
+        ok: !outside,
+        status: outside ? 403 : 200,
+        headers: { get: () => null },
+        json: () => Promise.resolve(outside
+          ? { success: false, error: { code: 'Forbidden', message: "file is not readable here: it is outside the daemon's file roots" } }
+          : { success: true, data: { file: { path: 'rubrics/review.md', name: 'review.md', size: 16, modifiedAt: '', kind: 'markdown', text: { text: '# Review rubric', bytes: 15 } } } }),
+      } as unknown as Response)
+    }) as typeof fetch
+    await renderCockpit()
+
+    const gateCard = screen.getByTestId('gate-node-gate_review')
+    const gateRefs = within(gateCard).getByRole('group', { name: 'Referenced files' })
+    expect(within(gateRefs).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['Open rubrics/review.md', '2 more referenced files'])
+    expect(within(screen.getByTestId('mission-node-mis_showcase')).getByRole('button', { name: 'Open docs/sketch.md' })).toHaveTextContent('sketch.md')
+    expect(within(screen.getByTestId('refs-fmn_judge')).getAllByRole('button').map(button => button.textContent)).toEqual(['▤review.md', '▤judge.md'])
+    expect(screen.queryByTestId('refs-fmn_frame')).toBeNull()
+
+    fireEvent.click(within(gateRefs).getByRole('button', { name: 'Open rubrics/review.md' }))
+    const rubric = await screen.findByRole('dialog', { name: 'file review.md' })
+    expect(await within(rubric).findByRole('heading', { name: 'Review rubric' })).toBeInTheDocument()
+    expect(rubric).toHaveTextContent('Review · rubrics/review.md')
+
+    fireEvent.click(within(gateRefs).getByRole('button', { name: '2 more referenced files' }))
+    const more = await screen.findByRole('menu', { name: 'Referenced files' })
+    expect(within(more).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['rubrics/scale.md', '/elsewhere/judge.md · judge Judge'])
+    fireEvent.click(within(more).getByRole('menuitem', { name: '/elsewhere/judge.md · judge Judge' }))
+    const outside = await screen.findByRole('dialog', { name: 'file judge.md' })
+    expect(await within(outside).findByRole('alert')).toHaveTextContent('Cannot read judge.md: file is not readable here')
+    expect(outside).toHaveTextContent('Judge (judge) · /elsewhere/judge.md')
+    expect(previews).toEqual(['/api/formations/files/preview?path=rubrics%2Freview.md', '/api/formations/files/preview?path=%2Felsewhere%2Fjudge.md'])
+
+    // The gate's window lists its own files, then the judge's brief files the gate does not already name.
+    const review = await openNodeWindow(within(gateCard).getByText('Review the frame'), 'Gate · Review')
+    expect(within(review).getAllByRole('button', { name: /^Open file / }).map(button => button.getAttribute('aria-label')))
+      .toEqual(['Open file rubrics/review.md', 'Open file rubrics/scale.md', 'Open file /elsewhere/judge.md'])
+    const judgeFiles = within(review).getByRole('list', { name: "Judge Judge's brief files" })
+    fireEvent.click(within(judgeFiles).getByRole('button', { name: 'Open file /elsewhere/judge.md' }))
+    expect(await screen.findByRole('dialog', { name: 'file judge.md' })).toHaveTextContent('Judge (judge) · /elsewhere/judge.md')
+    expect(recordedMutations).toEqual([])
   })
 
   it('answers a pending human gate from its upstream output', async () => {

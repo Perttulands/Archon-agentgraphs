@@ -1,0 +1,20 @@
+/* Referenced file chips on a node's card. */
+.refs { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+.ref-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%; min-width: 0;
+  border: 1px solid var(--divider); border-radius: 4px; background: var(--surface-secondary); color: var(--text-primary);
+  padding: 2px 7px; font: 11px/1.3 var(--font-mono); letter-spacing: .01em; cursor: pointer; text-transform: none;
+}
+.ref-chip:hover, .ref-chip:focus-visible { border-color: var(--accent); color: var(--accent); }
+.ref-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-glyph { flex-shrink: 0; color: var(--text-dim); }
+.ref-chip.judge .ref-glyph { color: var(--accent); }
+.ref-chip.more { flex-shrink: 0; color: var(--text-secondary); }
+
+/* On a card the chips keep to one row, so the card's height stays what Arrange reserves. */
+.fmx .card-refs { flex-wrap: nowrap; overflow: hidden; }
+.fmx .card-refs .ref-chip { flex: 0 1 auto; }
+.fmx .card-refs .ref-chip.more { flex: 0 0 auto; }
+.fmx .formation > .card-refs { padding: 0 15px 8px; }
+.fmx .missioncard > .card-refs { padding: 6px 14px 0; }
+.fmx .gmeta .card-refs { margin-top: 3px; max-width: 170px; }

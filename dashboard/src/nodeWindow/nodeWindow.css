@@ -29,6 +29,7 @@
 .nfield-actions { display: flex; justify-content: flex-end; gap: 6px; }
 
 .nwin-list { margin: 0; padding-left: 18px; }
+.nwin-judge-files { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .nwin-check { margin-top: 5px; color: var(--text-secondary); }
 .nwin .gkinds { margin-top: 2px; }
 

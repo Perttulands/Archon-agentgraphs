@@ -716,3 +716,10 @@ not readable here. Every component below the root opens without following
 symlinks, and only regular files with one link are read, so `..`, symlinks,
 hard links and non-regular files return 404. Served text is redacted like run
 evidence.
+
+The cockpit shows each referenced file as a chip on its card: a mission's and a
+gate's files and a formation's brief files. A gate's card also shows the brief
+files of the formations judging it. A card shows the first few chips and lists
+the rest under +N. A chip opens the file in a floating file window, and a file
+the daemon will not read opens as not readable here, with its path. Arrange
+reserves a chip row under a card that has referenced files.

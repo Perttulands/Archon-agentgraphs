@@ -3,6 +3,7 @@ package formations
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -97,6 +98,33 @@ type = "solo"
 title = "Unwired draft"
 `)
 		assertRunOrder(t, withDraft, []string{mission, mapStep, framing, questions, answers, draft, adversarial, signoff, "fmn_00_draft"})
+	})
+
+	t.Run("a gate showing file chips keeps its judge clear of them", func(t *testing.T) {
+		raw, err := os.ReadFile(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		withFiles := func(name, old, replacement string) map[string]LayoutNode {
+			if !strings.Contains(string(raw), old) {
+				t.Fatalf("fixture has no %q", old)
+			}
+			path := filepath.Join(t.TempDir(), name)
+			writeFixture(t, path, strings.Replace(string(raw), old, replacement, 1))
+			_, _, byID := arrangeFixture(t, path, "")
+			return byID
+		}
+		const adversarialGate = "title = \"Adversarial review\"\nkinds = [\"formation\"]\n"
+		const criticTitle = "title = \"Brief critic\"\n"
+		for label, arranged := range map[string]map[string]LayoutNode{
+			"the gate's rubric":       withFiles("gate.formation.toml", adversarialGate, adversarialGate+"files = [\"rubrics/review.md\"]\n"),
+			"the judge's brief files": withFiles("judge.formation.toml", criticTitle, criticTitle+"[formation.brief]\nfiles = [\"rubrics/review.md\"]\n"),
+		} {
+			// The gate's card, its chip row and the note gap all fit above the judge.
+			if want := arranged[adversarial].Y + 124 + arrangementFileRow + arrangementRowGap; arranged[critic].X != arranged[adversarial].X || arranged[critic].Y < want {
+				t.Errorf("with %s the judge sits at %+v, want below the gate at y>=%d", label, arranged[critic], want)
+			}
+		}
 	})
 
 	t.Run("a step reached only by a fail edge follows its gate", func(t *testing.T) {

@@ -9,7 +9,9 @@ import { readFileSync } from 'node:fs'
 const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/theme_default.json', import.meta.url), 'utf8'))
 export const wayfinding = JSON.parse(readFileSync(new URL('./fixtures/wayfinding.json', import.meta.url), 'utf8'))
 
-export async function wayfindingFixture(page: Page) {
+/** `board` replaces the served board, for a test that needs a variation of it. */
+export async function wayfindingFixture(page: Page, options: { board?: typeof wayfinding.board } = {}) {
+  const board = options.board || wayfinding.board
   const writes: string[] = []
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url())
@@ -22,12 +24,12 @@ export async function wayfindingFixture(page: Page) {
       return route.fulfill({ status: 409, json: { success: false, error: { code: 'CONFLICT', message: 'The Wayfinding fixture is read-only' } } })
     }
     if (path === '/api/theme') return route.fulfill({ json: defaultTheme })
-    if (path === '/api/formations/boards') return respond({ boards: [{ id: wayfinding.board.id, slug: 'wayfinding', title: 'Wayfinding', rev: wayfinding.board.rev, etag: wayfinding.board.etag }] })
-    if (path === '/api/formations/boards/wayfinding') return respond({ board: wayfinding.board }, wayfinding.board.etag)
+    if (path === '/api/formations/boards') return respond({ boards: [{ id: board.id, slug: 'wayfinding', title: 'Wayfinding', rev: board.rev, etag: board.etag }] })
+    if (path === '/api/formations/boards/wayfinding') return respond({ board }, board.etag)
     if (path === '/api/formations/boards/wayfinding/layout') return respond({ layout: wayfinding.layout }, wayfinding.layout.etag)
     if (path === '/api/formations/boards/wayfinding/notes') return respond({ notes: wayfinding.notes }, wayfinding.notes.etag)
     if (path === '/api/formations/boards/wayfinding/changes') return respond({ signal: { changed: false } })
-    if (path === '/api/formations/boards/wayfinding/validation') return respond({ boardRev: wayfinding.board.rev, boardEtag: wayfinding.board.etag, errors: [], warnings: [] })
+    if (path === '/api/formations/boards/wayfinding/validation') return respond({ boardRev: board.rev, boardEtag: board.etag, errors: [], warnings: [] })
     if (path === '/api/formations/gate-profiles') return respond({ profiles: [] })
     if (path === '/api/formations/runs') return respond([])
     if (path === '/api/agents') return respond({ agents: [], count: 0 })

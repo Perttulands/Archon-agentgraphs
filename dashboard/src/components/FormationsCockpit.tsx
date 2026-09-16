@@ -61,6 +61,8 @@ import RunPoint from './RunPoint'
 import { evidenceNamesForBoard } from '../evidence/evidenceNames'
 import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
 import { ProducedFiles, RunProduced, RunProducedProvider } from '../files/ProducedFiles'
+import { ReferencedFiles, type HiddenReferencedFile } from '../files/ReferencedFiles'
+import { nodeFileRefs } from '../files/referencedFiles'
 import { summarizeProduced, useRunProduced } from '../files/produced'
 import { useHumanGateUpstream } from './useHumanGateUpstream'
 import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom } from './formationsCockpitDom'
@@ -865,6 +867,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     event.preventDefault()
     event.stopPropagation()
     setMenu({ label, x: event.clientX, y: event.clientY, items })
+  }, [])
+
+  // A card's +N file chip lists the files that did not fit, beside the chip.
+  const openReferencedFilesMenu = useCallback((hidden: HiddenReferencedFile[], anchor: DOMRect) => {
+    setMenu({ label: 'Referenced files', x: anchor.left, y: anchor.bottom + 4, items: hidden.map(file => ({ label: file.label, action: file.open })) })
   }, [])
 
   // Node windows save one field at a time; each save is one undo entry.
@@ -2530,6 +2537,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   </div>
                   {renderNodeTitle(mission.title, 'mtitle', 'Untitled mission', 'div')}
                   <div className={`mgoal${mission.goal ? '' : ' placeholder'}`}>{mission.goal || 'set the mission objective…'}</div>
+                  <ReferencedFiles nodeId={mission.id} files={nodeFileRefs(board, mission.id)} max={2} onMore={openReferencedFilesMenu} className="card-refs" />
                   <div className="mstatus">{state ? state : ''}</div>
                   <span className={`port pout ready${hoverPort === `${mission.id}:out` ? ' snaptarget' : ''}`} data-port-out={`${mission.id}:out`} title="Starts the chain — drag to a step" onPointerDown={event => beginWire(event, `${mission.id}:out`, 'wire')} />
                 </div>
@@ -2608,6 +2616,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                     }} />
                     <button className="frun" title="Run formation" onClick={() => void runFormation(formation)} data-testid={`run-formation-${formation.id}`}>{PLAY_SVG}</button>
                   </div>
+                  <ReferencedFiles nodeId={formation.id} files={nodeFileRefs(board, formation.id)} max={2} onMore={openReferencedFilesMenu} className="card-refs" />
                   <div className="fstatus">{state === 'running' || state === 'waiting' ? state : ''}</div>
                   <div className="fbody" onPointerDown={event => beginNodeDrag(event, formation.id, index)}>{renderBody(formation)}</div>
                   {formation.verification ? (
@@ -2690,7 +2699,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                     onPointerDown={event => beginJudgeDrag(event, gate)}
                   />
                   <span className="gico" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{GATE_SVG}</span>
-                  <span className="gmeta" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{renderNodeTitle(gate.title, 'gt', 'Gate', 'span')}<GateKindChips gateId={gate.id} kinds={gate.kinds} /><span className={`gs${gate.criterion ? '' : ' placeholder'}`}>{gate.criterion || 'work is accepted before it proceeds'}</span></span>
+                  <span className="gmeta" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{renderNodeTitle(gate.title, 'gt', 'Gate', 'span')}<GateKindChips gateId={gate.id} kinds={gate.kinds} /><span className={`gs${gate.criterion ? '' : ' placeholder'}`}>{gate.criterion || 'work is accepted before it proceeds'}</span><ReferencedFiles nodeId={gate.id} files={nodeFileRefs(board, gate.id)} max={1} onMore={openReferencedFilesMenu} className="card-refs" /></span>
                   {nodeStates.has(gate.id) ? (
                     <button
                       type="button"

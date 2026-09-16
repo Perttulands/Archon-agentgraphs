@@ -19,6 +19,7 @@ import type {
 import { useFileWindows } from '../files/FileWindows'
 import { ProducedFiles } from '../files/ProducedFiles'
 import { referencedFileRequest } from '../files/fileWindowModel'
+import { nodeFileRefs } from '../files/referencedFiles'
 import FloatingWindow from '../windows/FloatingWindow'
 import { EditableField } from './EditableField'
 import { judgeChain, nodeRoutes, stepNumbers } from './boardRoutes'
@@ -223,21 +224,25 @@ function FilesField({ files, context, hint = 'Separate files with commas.', onSa
   hint?: string
   onSave: (files: string[]) => Promise<boolean>
 }) {
-  const fileWindows = useFileWindows()
   return (
     <EditableField label="Files" value={(files || []).join(', ')} placeholder="No files" hint={hint} onSave={value => onSave(splitList(value))}>
-      {files?.length ? (
-        <ul className="nwin-list">
-          {files.map(file => (
-            <li key={file}>
-              {fileWindows
-                ? <button type="button" className="nwin-route" aria-label={`Open file ${file}`} onClick={() => fileWindows.open(referencedFileRequest(file, context))}>{file}</button>
-                : file}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {files?.length ? <FileList files={files} context={context} /> : null}
     </EditableField>
+  )
+}
+
+function FileList({ files, context, label }: { files: string[]; context: string; label?: string }) {
+  const fileWindows = useFileWindows()
+  return (
+    <ul className="nwin-list" aria-label={label}>
+      {files.map(file => (
+        <li key={file}>
+          {fileWindows
+            ? <button type="button" className="nwin-route" aria-label={`Open file ${file}`} onClick={() => fileWindows.open(referencedFileRequest(file, context))}>{file}</button>
+            : file}
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -296,6 +301,9 @@ function SlotStaffing({ formation, slot, agents, card, ops }: {
 function GateFields({ gate, board, profiles, ops }: { gate: GateNode; board: BoardDocument; profiles: CodeGateProfileDescriptor[]; ops: NodeWindowOps }) {
   const chain = judgeChain(board, gate.id)
   const judged = gate.kinds.includes('formation') || chain.length > 0
+  // A judge's brief files show on the gate too, unless the gate names them itself.
+  const judgeFiles = nodeFileRefs(board, gate.id).filter(file => file.judge)
+  const judges = [...new Set(judgeFiles.map(file => file.owner))]
   return (
     <>
       <GateKindsEditor gate={gate} profiles={profiles} hasJudgeChain={chain.length > 0} ops={ops} />
@@ -313,6 +321,12 @@ function GateFields({ gate, board, profiles, ops }: { gate: GateNode; board: Boa
             </select>
             {chain.length ? <button type="button" className="nwin-action" onClick={() => ops.detachJudge(gate)}>Detach judge</button> : null}
           </div>
+          {judges.map(judge => (
+            <div key={judge} className="nwin-judge-files">
+              <span className="nfield-note">From {judge}'s brief</span>
+              <FileList files={judgeFiles.filter(file => file.owner === judge).map(file => file.ref)} context={`${judge} (judge)`} label={`Judge ${judge}'s brief files`} />
+            </div>
+          ))}
         </div>
       ) : null}
     </>

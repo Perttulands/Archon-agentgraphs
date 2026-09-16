@@ -12,6 +12,8 @@ type arrangementItem struct {
 	id    string
 	kind  string
 	slots int
+	// files is set when the card shows a row of referenced file chips.
+	files bool
 }
 
 // ArrangeLayout is the one explicit whole-board layout operation used by both
@@ -61,15 +63,20 @@ func arrangedLayoutNodes(board *BoardDocument) []LayoutNode {
 	items := make(map[string]arrangementItem, len(board.Missions)+len(board.Formations)+len(board.Gates)+len(board.Tools))
 	missions := []string{}
 	for _, mission := range board.Missions {
-		items[mission.ID] = arrangementItem{id: mission.ID, kind: "mission"}
+		items[mission.ID] = arrangementItem{id: mission.ID, kind: "mission", files: len(mission.Files) > 0}
 		missions = append(missions, mission.ID)
 	}
 	for _, formation := range board.Formations {
-		items[formation.ID] = arrangementItem{id: formation.ID, kind: formation.Type, slots: len(formation.Slots)}
+		items[formation.ID] = arrangementItem{id: formation.ID, kind: formation.Type, slots: len(formation.Slots), files: formation.Brief != nil && len(formation.Brief.Files) > 0}
 	}
 	gates := []string{}
 	for _, gate := range board.Gates {
-		items[gate.ID] = arrangementItem{id: gate.ID, kind: "gate"}
+		// A gate's card also shows the brief files of the formations judging it.
+		files := len(gate.Files) > 0
+		for _, judge := range judgeChainForGate(board, gate.ID) {
+			files = files || (judge.Brief != nil && len(judge.Brief.Files) > 0)
+		}
+		items[gate.ID] = arrangementItem{id: gate.ID, kind: "gate", files: files}
 		gates = append(gates, gate.ID)
 	}
 	for _, tool := range board.Tools {
@@ -319,21 +326,28 @@ func arrangementDiscoveryOrder(roots []string, forward map[string][]string, dept
 
 // arrangementItemSize is the room a card takes on the canvas. Heights are the
 // cockpit's rendered heights (form-ged.10 card text, measured on Wayfinding and
-// Delivery) plus a run-tools row, so stacked cards never overlap.
+// Delivery) plus a run-tools row and, when the card has referenced files, their
+// chip row, so stacked cards never overlap.
 func arrangementItemSize(item arrangementItem) (int, int) {
+	width, height := 300, 310
 	switch item.kind {
 	case "mission":
-		return 236, 144
+		width, height = 236, 144
 	case "gate":
-		return 300, 124
+		width, height = 300, 124
 	case FormationTypePeer:
-		return 330, 340
+		width, height = 330, 340
 	case FormationTypeOrchestrated:
-		return 320, 440
-	default:
-		return 300, 310
+		width, height = 320, 440
 	}
+	if item.files {
+		height += arrangementFileRow
+	}
+	return width, height
 }
+
+// arrangementFileRow is the height of a card's referenced file chips.
+const arrangementFileRow = 30
 
 func snapLayoutUp(value int) int {
 	return ((value + formationLayoutGrid - 1) / formationLayoutGrid) * formationLayoutGrid
