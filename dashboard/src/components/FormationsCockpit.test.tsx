@@ -1766,6 +1766,15 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => expect(document.querySelector('.zoomlevel')).toHaveTextContent(/^\d+%$/))
   })
 
+  it('keeps gate kind chips out of the canvas card classes', async () => {
+    const board = makeBoard()
+    patches = installFetchMock({ boards: [{ ...board, gates: [{ ...gate, kinds: ['formation', 'human'] }] }] })
+    await renderCockpit()
+    const chips = within(screen.getByTestId('gate-kinds-gate_review')).getAllByText(/judge|human/)
+    expect(chips.map(chip => chip.className)).toEqual(['gkind gkind-formation', 'gkind gkind-human'])
+    expect(screen.getByTestId('formations-world').querySelectorAll('.formation')).toHaveLength(board.formations.length)
+  })
+
   it('says in each formation card what the selected run did with the node', async () => {
     patches = installFetchMock()
     await renderCockpit()

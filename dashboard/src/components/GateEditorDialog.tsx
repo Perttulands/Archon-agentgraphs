@@ -84,7 +84,7 @@ export function gateFieldsFromGate(gate: GateNode): GateFields {
 export function GateKindChips({ gateId, kinds }: { gateId: string; kinds: string[] }) {
   return (
     <span className="gkinds" data-testid={`gate-kinds-${gateId}`}>
-      {kinds.length ? kinds.map(kind => <span key={kind} className={`gkind ${kind}`}>{gateKindLabel(kind)}</span>) : <span className="gkind none">no kind</span>}
+      {kinds.length ? kinds.map(kind => <span key={kind} className={`gkind gkind-${kind}`}>{gateKindLabel(kind)}</span>) : <span className="gkind gkind-none">no kind</span>}
     </span>
   )
 }
