@@ -577,11 +577,21 @@ paths:
     get:
       responses:
         '200':
-          description: Notes document in data.notes; returns ETag
+          description: Notes document in data.notes (schema 2) with board as an ordered entry list and elements
+            as nodeId plus entries. Each entry has id, author (human:<name> or agent:<name>), createdAt, optional
+            editedAt and text. Schema 1 files load as one human entry per text. Returns ETag.
     patch:
       responses:
         '200':
           description: Updated data.notes; returns ETag
+        '400':
+          description: INVALID_NOTE_PATCH (bad author, action or text)
+        '403':
+          description: NOTE_AUTHOR_MISMATCH; only the entry's author can edit or delete it
+        '404':
+          description: Unknown target or NOTE_ENTRY_NOT_FOUND
+        '409':
+          description: Stale If-Match; reload the notes and retry
       parameters:
       - in: header
         name: If-Match
@@ -595,15 +605,31 @@ paths:
           application/json:
             schema:
               type: object
+              required:
+              - author
               properties:
                 target:
                   type: string
+                  description: board (default) or an element ID
+                action:
+                  enum:
+                  - append
+                  - edit
+                  - delete
+                  default: append
+                entryId:
+                  type: string
+                  description: The author's own entry, for edit and delete
                 text:
                   type: string
+                author:
+                  type: string
+                  pattern: ^(human|agent):[A-Za-z0-9][A-Za-z0-9._@-]*$
                 updatedBy:
                   type: string
-      description: BoardNotePatch. Target defaults to board or can select an element ID. Empty text clears
-        the selected note.
+                  description: Older name for author
+      description: BoardNotePatch. Appends a new entry by default; edit and delete change only the author's own
+        entry, so a reply never erases another author's words.
   /api/formations/boards/{board}/layout:
     parameters:
     - in: path

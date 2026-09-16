@@ -967,7 +967,7 @@ label = "Builder"
 	if err := json.Unmarshal([]byte(stdout), &boardNote); err != nil {
 		t.Fatalf("decode board note: %v\n%s", err, stdout)
 	}
-	if boardNote.Board != "Shared plan\nShip tests" || boardNote.Rev != 1 || boardNote.ETag == "*" {
+	if len(boardNote.Board) != 1 || boardNote.Board[0].Text != "Shared plan\nShip tests" || boardNote.Board[0].Author != "agent:archon" || boardNote.Rev != 1 || boardNote.ETag == "*" {
 		t.Fatalf("board note = %+v", boardNote)
 	}
 
@@ -983,14 +983,14 @@ label = "Builder"
 	if err := json.Unmarshal([]byte(stdout), &notes); err != nil {
 		t.Fatalf("decode board notes: %v\n%s", err, stdout)
 	}
-	if notes.Board != "Shared plan\nShip tests" || len(notes.Elements) != 1 || notes.Elements[0].NodeID != "fmn_frame" || notes.Elements[0].Text != "Builder owns this" {
+	if len(notes.Board) != 1 || len(notes.Elements) != 1 || notes.Elements[0].NodeID != "fmn_frame" || notes.Elements[0].Entries[0].Text != "Builder owns this" {
 		t.Fatalf("board notes = %+v", notes)
 	}
 	if strings.Contains(stdout, "toml") {
 		t.Fatalf("board notes leaked raw TOML: %s", stdout)
 	}
 
-	_, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "note", "session-search", "--node", "fmn_frame", "--clear")
+	_, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "note", "session-search", "--node", "fmn_frame", "--clear", "--entry", notes.Elements[0].Entries[0].ID)
 	if code != 0 {
 		t.Fatalf("clear element note code=%d stderr=%s", code, stderr)
 	}

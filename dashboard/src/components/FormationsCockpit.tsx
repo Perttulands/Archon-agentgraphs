@@ -60,6 +60,7 @@ import { routeJudgeWire, routeOrthoWire } from './formationsRouting'
 import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
 import { InlineTitleEditor } from './InlineTitleEditor'
+import { NotePreview, NoteThread } from './NoteThread'
 import { FormationTypeChip, formationTypeChoices } from './FormationTypeChip'
 import { MissionEditorDialog } from './MissionEditorDialog'
 import type { MissionDraft } from './MissionEditorDialog'
@@ -85,6 +86,8 @@ import type {
   LayoutDocument,
   LayoutNode,
   MissionNode,
+  NoteEntry,
+  NotePatch,
   OpenEscalation,
   RunEvent,
   RunStatusProjection,
@@ -92,6 +95,8 @@ import type {
 } from './formationsTypes'
 
 
+
+const BOARD_NOTE_TARGET = 'board'
 
 type DragStaff = { agentId: string; harness: string; fromSlot?: { formationId: string; slotId: string }; startX: number; startY: number; moved: boolean }
 type DragNode = { id: string; pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean }
@@ -231,6 +236,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [noteSaving, setNoteSaving] = useState<'board' | 'element' | ''>('')
   const [noteError, setNoteError] = useState('')
   const [notesConflict, setNotesConflict] = useState(false)
+  // The entry being edited; its text is in that thread's draft box.
+  const [noteEditing, setNoteEditing] = useState<{ target: string; entryId: string } | null>(null)
   const [legacyVerification, setLegacyVerification] = useState<LegacyVerificationState | null>(null)
   const legacyVerificationOpen = legacyVerification !== null
   const [inspectedToolId, setInspectedToolId] = useState<string | null>(null)
@@ -388,6 +395,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setElementNoteDirty(false)
     setNoteError('')
     setNotesConflict(false)
+    setNoteEditing(null)
   }, [selectedSlug])
 
   useEffect(() => {
@@ -397,20 +405,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       try {
         const next = await fetchBoardNotes(selectedSlug)
         if (cancelled) return
-        const current = notesRef.current
-        const dirty = boardNoteDirtyRef.current || elementNoteDirtyRef.current
-        if (dirty && current && current.etag !== next.etag) {
-          setNotesConflict(true)
-          setNoteError('Shared notes changed elsewhere. Your draft is preserved; reload notes or copy it before retrying.')
-          return
-        }
+        // Replies are separate entries, so new entries from others never touch a draft.
         notesRef.current = next
         setNotes(next)
-        if (!boardNoteDirtyRef.current) setBoardNoteDraft(next.board)
-        const target = elementNoteTargetRef.current
-        if (target && !elementNoteDirtyRef.current) {
-          setElementNoteDraft(next.elements.find(note => note.nodeId === target)?.text || '')
-        }
       } catch (err) {
         if (!cancelled) setNoteError(err instanceof Error ? err.message : 'Failed to load board notes')
       }
@@ -2070,7 +2067,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   )
 
   const noteByNode = useMemo(
-    () => new Map((notes?.elements || []).filter(note => note.text).map(note => [note.nodeId, note.text])),
+    () => new Map((notes?.elements || []).filter(note => note.entries.length).map(note => [note.nodeId, note.entries])),
     [notes?.elements],
   )
   const noteElements = useMemo(() => {
@@ -2095,60 +2092,92 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     elementNoteTargetRef.current = target
     elementNoteDirtyRef.current = false
     setElementNoteTarget(target)
-    setElementNoteDraft(notesRef.current?.elements.find(note => note.nodeId === target)?.text || '')
+    setElementNoteDraft('')
     setElementNoteDirty(false)
+    setNoteEditing(current => current?.target === BOARD_NOTE_TARGET ? current : null)
     setNoteError('')
     setNotesOpen(true)
   }, [])
 
-  const saveBoardNote = useCallback(async () => {
+  // A write that races another author reloads the notes and tries once more:
+  // appends and entry-addressed edits are safe to repeat on the new revision.
+  const submitNotePatch = useCallback(async (patch: NotePatch) => {
     const currentBoard = boardRef.current
     const currentNotes = notesRef.current
-    if (!currentBoard || !currentNotes) return
-    setNoteSaving('board')
-    setNoteError('')
+    if (!currentBoard || !currentNotes) return null
     try {
-      const updated = await patchBoardNote(currentBoard.slug, currentNotes.etag, 'board', boardNoteDraft)
-      notesRef.current = updated
-      boardNoteDirtyRef.current = false
-      setNotes(updated)
-      setBoardNoteDraft(updated.board)
-      setBoardNoteDirty(false)
-      setNotesConflict(false)
-      if (!elementNoteDirtyRef.current && elementNoteTargetRef.current) {
-        setElementNoteDraft(updated.elements.find(note => note.nodeId === elementNoteTargetRef.current)?.text || '')
-      }
+      return await patchBoardNote(currentBoard.slug, currentNotes.etag, patch)
     } catch (err) {
-      if (err instanceof ApiRequestError && err.status === 409) setNotesConflict(true)
-      setNoteError(err instanceof Error ? err.message : 'Failed to save board note')
-    } finally {
-      setNoteSaving('')
+      if (!(err instanceof ApiRequestError && err.status === 409)) throw err
+      const fresh = await fetchBoardNotes(currentBoard.slug)
+      notesRef.current = fresh
+      setNotes(fresh)
+      return patchBoardNote(currentBoard.slug, fresh.etag, patch)
     }
-  }, [boardNoteDraft])
+  }, [])
 
-  const saveElementNote = useCallback(async () => {
-    const currentBoard = boardRef.current
-    const currentNotes = notesRef.current
-    const target = elementNoteTargetRef.current
-    if (!currentBoard || !currentNotes || !target) return
-    setNoteSaving('element')
+  const setNoteDraft = useCallback((scope: 'board' | 'element', text: string) => {
+    const dirty = text !== ''
+    if (scope === 'board') {
+      boardNoteDirtyRef.current = dirty
+      setBoardNoteDirty(dirty)
+      setBoardNoteDraft(text)
+    } else {
+      elementNoteDirtyRef.current = dirty
+      setElementNoteDirty(dirty)
+      setElementNoteDraft(text)
+    }
+  }, [])
+
+  const runNotePatch = useCallback(async (scope: 'board' | 'element', patch: NotePatch, onSaved?: () => void) => {
+    setNoteSaving(scope)
     setNoteError('')
     try {
-      const updated = await patchBoardNote(currentBoard.slug, currentNotes.etag, target, elementNoteDraft)
+      const updated = await submitNotePatch(patch)
+      if (!updated) return
       notesRef.current = updated
-      elementNoteDirtyRef.current = false
       setNotes(updated)
-      setElementNoteDraft(updated.elements.find(note => note.nodeId === target)?.text || '')
-      setElementNoteDirty(false)
       setNotesConflict(false)
-      if (!boardNoteDirtyRef.current) setBoardNoteDraft(updated.board)
+      onSaved?.()
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 409) setNotesConflict(true)
-      setNoteError(err instanceof Error ? err.message : 'Failed to save element note')
+      setNoteError(err instanceof Error ? err.message : 'Failed to save the note')
     } finally {
       setNoteSaving('')
     }
-  }, [elementNoteDraft])
+  }, [submitNotePatch])
+
+  const saveNote = useCallback((scope: 'board' | 'element') => {
+    const target = scope === 'board' ? BOARD_NOTE_TARGET : elementNoteTargetRef.current
+    const text = scope === 'board' ? boardNoteDraft : elementNoteDraft
+    if (!target || !text.trim()) return
+    const editing = noteEditing?.target === target ? noteEditing : null
+    const patch: NotePatch = editing
+      ? { target, action: 'edit', entryId: editing.entryId, text }
+      : { target, action: 'append', text }
+    void runNotePatch(scope, patch, () => {
+      setNoteDraft(scope, '')
+      if (editing) setNoteEditing(null)
+    })
+  }, [boardNoteDraft, elementNoteDraft, noteEditing, runNotePatch, setNoteDraft])
+
+  const startNoteEdit = useCallback((scope: 'board' | 'element', entry: NoteEntry) => {
+    const target = scope === 'board' ? BOARD_NOTE_TARGET : elementNoteTargetRef.current
+    setNoteEditing({ target, entryId: entry.id })
+    setNoteDraft(scope, entry.text)
+  }, [setNoteDraft])
+
+  const cancelNoteEdit = useCallback((scope: 'board' | 'element') => {
+    setNoteEditing(null)
+    setNoteDraft(scope, '')
+  }, [setNoteDraft])
+
+  const deleteNote = useCallback((scope: 'board' | 'element', entry: NoteEntry) => {
+    const target = scope === 'board' ? BOARD_NOTE_TARGET : elementNoteTargetRef.current
+    void runNotePatch(scope, { target, action: 'delete', entryId: entry.id }, () => {
+      if (noteEditing?.entryId === entry.id) cancelNoteEdit(scope)
+    })
+  }, [cancelNoteEdit, noteEditing, runNotePatch])
 
   const reloadSharedNotes = useCallback(async () => {
     const currentBoard = boardRef.current
@@ -2157,13 +2186,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     try {
       const fresh = await fetchBoardNotes(currentBoard.slug)
       notesRef.current = fresh
-      boardNoteDirtyRef.current = false
-      elementNoteDirtyRef.current = false
       setNotes(fresh)
-      setBoardNoteDraft(fresh.board)
-      setBoardNoteDirty(false)
-      setElementNoteDraft(fresh.elements.find(note => note.nodeId === elementNoteTargetRef.current)?.text || '')
-      setElementNoteDirty(false)
+      setNoteDraft('board', '')
+      setNoteDraft('element', '')
+      setNoteEditing(null)
       setNotesConflict(false)
       setNoteError('')
     } catch (err) {
@@ -2171,24 +2197,24 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     } finally {
       setNoteSaving('')
     }
-  }, [])
+  }, [setNoteDraft])
 
   const renderNotePin = (nodeID: string, title: string) => {
-    const noteText = noteByNode.get(nodeID) || ''
-    const hasNote = noteText !== ''
+    const entries = noteByNode.get(nodeID) || []
+    const hasNote = entries.length > 0
     return (
       <>
         <button
           type="button"
           className={`note-pin${hasNote ? ' filled' : ''}`}
-          aria-label={`${hasNote ? 'Edit' : 'Add'} note for ${title}`}
-          title={`${hasNote ? 'Edit' : 'Add'} shared note`}
+          aria-label={`${hasNote ? 'Open notes' : 'Add note'} for ${title}`}
+          title={hasNote ? 'Open the note thread' : 'Add shared note'}
           onPointerDown={event => event.stopPropagation()}
           onClick={event => { event.stopPropagation(); selectElementNote(nodeID) }}
         >
           <span aria-hidden="true">{hasNote ? '▰' : '+'}</span>
         </button>
-        {hasNote ? <div className="note-preview" role="note" aria-label={`Note for ${title}`}>{noteText}</div> : null}
+        <NotePreview title={title} entries={entries} />
       </>
     )
   }
@@ -2816,25 +2842,31 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             board ? (
               <div className="board-notes-body">
                 <section className="note-section">
-                  <div className="note-section-head">
-                    <label htmlFor="formations-board-note">Board note</label>
-                    <button
-                      type="button"
-                      aria-label="Save board note"
-                      disabled={!boardNoteDirty || noteSaving !== '' || !notes}
-                      onClick={() => void saveBoardNote()}
-                    >{noteSaving === 'board' ? 'saving…' : 'save'}</button>
-                  </div>
+                  <div className="note-section-head"><label htmlFor="formations-board-note">Board note</label></div>
+                  <NoteThread
+                    label="Board note thread"
+                    entries={notes?.board || []}
+                    editingEntryId={noteEditing?.target === BOARD_NOTE_TARGET ? noteEditing.entryId : undefined}
+                    busy={noteSaving !== ''}
+                    onEdit={entry => startNoteEdit('board', entry)}
+                    onDelete={entry => deleteNote('board', entry)}
+                  />
                   <textarea
                     id="formations-board-note"
+                    className="note-reply"
                     value={boardNoteDraft}
-                    placeholder="Shared mission context, constraints, implementation notes…"
-                    onChange={event => {
-                      boardNoteDirtyRef.current = true
-                      setBoardNoteDirty(true)
-                      setBoardNoteDraft(event.target.value)
-                    }}
+                    placeholder={notes?.board.length ? 'Reply on the board thread…' : 'Shared mission context, constraints, implementation notes…'}
+                    onChange={event => setNoteDraft('board', event.target.value)}
                   />
+                  <div className="note-reply-actions">
+                    {noteEditing?.target === BOARD_NOTE_TARGET ? <button type="button" className="cancel" disabled={noteSaving !== ''} onClick={() => cancelNoteEdit('board')}>cancel edit</button> : null}
+                    <button
+                      type="button"
+                      aria-label={noteEditing?.target === BOARD_NOTE_TARGET ? 'Save edited board note' : 'Add board note'}
+                      disabled={!boardNoteDraft.trim() || noteSaving !== '' || !notes}
+                      onClick={() => saveNote('board')}
+                    >{noteSaving === 'board' ? 'saving…' : noteEditing?.target === BOARD_NOTE_TARGET ? 'save edit' : 'add note'}</button>
+                  </div>
                 </section>
 
                 <section className="note-section element-note-section">
@@ -2852,26 +2884,32 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   </select>
                   {elementNoteTarget ? (
                     <>
-                      <div className="note-section-head element-editor-head">
-                        <label htmlFor="formations-element-note">Element note</label>
-                        <button
-                          type="button"
-                          aria-label="Save element note"
-                          disabled={!elementNoteDirty || noteSaving !== '' || !notes}
-                          onClick={() => void saveElementNote()}
-                        >{noteSaving === 'element' ? 'saving…' : 'save'}</button>
-                      </div>
+                      <NoteThread
+                        label="Element note thread"
+                        entries={noteByNode.get(elementNoteTarget) || []}
+                        editingEntryId={noteEditing?.target === elementNoteTarget ? noteEditing.entryId : undefined}
+                        busy={noteSaving !== ''}
+                        onEdit={entry => startNoteEdit('element', entry)}
+                        onDelete={entry => deleteNote('element', entry)}
+                      />
+                      <div className="note-section-head element-editor-head"><label htmlFor="formations-element-note">Element note</label></div>
                       <textarea
                         id="formations-element-note"
+                        className="note-reply"
                         value={elementNoteDraft}
-                        placeholder="What should the implementer know about this element?"
-                        onChange={event => {
-                          elementNoteDirtyRef.current = true
-                          setElementNoteDirty(true)
-                          setElementNoteDraft(event.target.value)
-                        }}
+                        placeholder={noteByNode.get(elementNoteTarget)?.length ? 'Reply to this element’s thread…' : 'What should the implementer know about this element?'}
+                        onChange={event => setNoteDraft('element', event.target.value)}
                       />
-                      {elementNoteDirty ? <div className="note-dirty">save before switching elements</div> : null}
+                      <div className="note-reply-actions">
+                        {noteEditing?.target === elementNoteTarget ? <button type="button" className="cancel" disabled={noteSaving !== ''} onClick={() => cancelNoteEdit('element')}>cancel edit</button> : null}
+                        <button
+                          type="button"
+                          aria-label={noteEditing?.target === elementNoteTarget ? 'Save edited element note' : 'Add element note'}
+                          disabled={!elementNoteDraft.trim() || noteSaving !== '' || !notes}
+                          onClick={() => saveNote('element')}
+                        >{noteSaving === 'element' ? 'saving…' : noteEditing?.target === elementNoteTarget ? 'save edit' : 'add note'}</button>
+                      </div>
+                      {elementNoteDirty ? <div className="note-dirty">add or clear this note before switching elements</div> : null}
                     </>
                   ) : <div className="note-empty">Use a card's post-it button or choose an element.</div>}
                 </section>

@@ -112,8 +112,8 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 		Notes *formations.BoardNotesDocument `json:"notes"`
 	}
 	notesETag := client.request("GET", base+"/notes", "", nil, 200, &notes)
-	notesETag = client.request("PATCH", base+"/notes", notesETag, map[string]string{"target": "board", "text": "Operator brief"}, 200, &notes)
-	client.request("PATCH", base+"/notes", notesETag, map[string]string{"target": work.ID, "text": "Work note"}, 200, &notes)
+	notesETag = client.request("PATCH", base+"/notes", notesETag, map[string]string{"target": "board", "text": "Operator brief", "author": "human:ui"}, 200, &notes)
+	client.request("PATCH", base+"/notes", notesETag, map[string]string{"target": work.ID, "text": "Work note", "author": "agent:archon"}, 200, &notes)
 	// Offline Archon's shared package sees HTTP edits, and HTTP sees its writes.
 	offline := formations.NewStore(root)
 	board, err := offline.ReadBoard(doc.Board.Slug)

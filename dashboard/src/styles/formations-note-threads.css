@@ -1,0 +1,23 @@
+/* Note threads in the shared notepad and on card stickies. Agent entries use
+   the accent colour; the operator's keep the notepad's paper tone. */
+.fmx .note-thread{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto;}
+.fmx .note-entry{border:1px solid color-mix(in srgb,var(--line) 75%,#d6af47 25%);border-left-width:3px;border-radius:3px;padding:6px 8px;background:color-mix(in srgb,var(--bg2) 88%,#d8ae43 12%);}
+.fmx .note-entry.agent{border-color:color-mix(in srgb,var(--line) 60%,var(--terra) 40%);border-left-color:var(--terra);background:color-mix(in srgb,var(--bg2) 90%,var(--terra) 10%);}
+.fmx .note-entry.human{border-left-color:#d2a927;}
+.fmx .note-entry.editing{outline:1px dashed var(--gold);}
+.fmx .note-entry-head{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
+.fmx .note-author{border-radius:3px;padding:0 5px;font:700 8.5px/1.6 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;}
+.fmx .note-author.human{background:color-mix(in srgb,#d2a927 30%,transparent);color:var(--ink);}
+.fmx .note-author.agent{background:color-mix(in srgb,var(--terra) 28%,transparent);color:var(--ink);}
+.fmx .note-time{font:9px var(--font-mono);color:var(--dim);flex:1;min-width:0;}
+.fmx .note-entry-actions{display:flex;gap:4px;}
+.fmx .note-entry-actions button{border:0;background:transparent;color:var(--dim);padding:0 2px;font:9px var(--font-mono);cursor:pointer;}
+.fmx .note-entry-actions button:hover:not(:disabled){color:var(--terra);}
+.fmx .note-entry-text{font:11px/1.45 var(--font-mono);color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;}
+.fmx .note-section textarea.note-reply{min-height:72px;}
+.fmx .note-reply-actions{display:flex;justify-content:flex-end;gap:6px;}
+.fmx .note-reply-actions button{border:1px solid var(--line);background:var(--bg2);color:var(--terra);padding:4px 8px;font:700 9px var(--font-mono);text-transform:uppercase;letter-spacing:.06em;cursor:pointer;}
+.fmx .note-reply-actions button.cancel{color:var(--dim);}
+.fmx .note-reply-actions button:disabled{opacity:.35;cursor:not-allowed;}
+.fmx .note-preview .note-author{margin-right:5px;}
+.fmx .note-preview .note-count{font-size:9px;color:var(--dim);margin-right:5px;}

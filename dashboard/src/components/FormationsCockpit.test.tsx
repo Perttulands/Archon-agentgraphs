@@ -128,6 +128,8 @@ type TestRunEvent = { runId: string; seq: number; type: string; nodeId?: string;
 type TestEscalation = { runId: string; seq: number; nodeId?: string; gateId?: string; severity: string; reason: string; source: string; trigger: string; blocks: boolean }
 type TestRunStatus = { status?: string; final?: boolean; resumeAllowed?: boolean }
 type TestFinding = { code: string; nodeId: string; message: string }
+type TestNoteEntry = { id: string; author: string; createdAt: string; editedAt?: string; text: string }
+const noteEntry = (id: string, author: string, text: string): TestNoteEntry => ({ id, author, createdAt: '2026-09-16T12:00:00Z', text })
 let recordedMutations: RecordedMutation[] = []
 
 function installFetchMock(options: {
@@ -141,7 +143,7 @@ function installFetchMock(options: {
   runEvents?: TestRunEvent[]
   escalations?: TestEscalation[]
   runStatus?: TestRunStatus
-  boardNotes?: { board?: string; elements?: Array<{ nodeId: string; text: string }> }
+  boardNotes?: { board?: TestNoteEntry[]; elements?: Array<{ nodeId: string; entries: TestNoteEntry[] }> }
   notePatchConflict?: boolean
   agents?: typeof agents
   agentDetailGate?: Promise<void>
@@ -155,15 +157,16 @@ function installFetchMock(options: {
   let availableAgents = options.agents || agents
   let currentLayout = layout
   let boardNotes = {
-    schema: 1,
+    schema: 2,
     boardId: board.id,
     rev: options.boardNotes ? 1 : 0,
     updatedAt: '2026-08-18T13:00:00Z',
     updatedBy: 'human:test',
-    board: options.boardNotes?.board || '',
-    elements: options.boardNotes?.elements || [],
+    board: options.boardNotes?.board || [] as TestNoteEntry[],
+    elements: options.boardNotes?.elements || [] as Array<{ nodeId: string; entries: TestNoteEntry[] }>,
     etag: options.boardNotes ? 'notes-etag' : '*',
   }
+  let nextNoteID = 1
   ;(globalThis as Record<string, unknown>).fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     const method = (init?.method || 'GET').toUpperCase()
@@ -205,7 +208,7 @@ function installFetchMock(options: {
       availableBoards = [...availableBoards, created]
       board = created
       currentLayout = { schema: 1, boardId: created.id, boardRev: created.rev, etag: '*', nodes: [], edges: [] }
-      boardNotes = { ...boardNotes, boardId: created.id, rev: 0, board: '', elements: [], etag: '*' }
+      boardNotes = { ...boardNotes, boardId: created.id, rev: 0, board: [], elements: [], etag: '*' }
       return respond({ board: created }, created.etag)
     }
     if (method === 'DELETE' && url.includes('/api/formations/boards/')) {
@@ -217,18 +220,22 @@ function installFetchMock(options: {
     }
     if (method === 'PATCH' && /^\/api\/formations\/boards\/[^/]+\/notes$/.test(url)) {
       if (options.notePatchConflict) return conflict('Shared notes changed; reload and retry')
-      const body = JSON.parse(String(init?.body)) as { target: string; text: string }
+      const body = JSON.parse(String(init?.body)) as { target: string; action: string; entryId?: string; text?: string; author: string }
+      const thread = body.target === 'board' ? boardNotes.board : boardNotes.elements.find(note => note.nodeId === body.target)?.entries || []
+      const nextThread = body.action === 'append'
+        ? [...thread, noteEntry(`nte_new_${nextNoteID++}`, body.author, body.text || '')]
+        : body.action === 'edit'
+          ? thread.map(entry => entry.id === body.entryId ? { ...entry, text: body.text || '', editedAt: '2026-09-16T13:00:00Z' } : entry)
+          : thread.filter(entry => entry.id !== body.entryId)
       boardNotes = {
         ...boardNotes,
         rev: boardNotes.rev + 1,
-        updatedBy: 'human:ui',
+        updatedBy: body.author,
         etag: `notes-etag-${boardNotes.rev + 1}`,
-        board: body.target === 'board' ? body.text : boardNotes.board,
+        board: body.target === 'board' ? nextThread : boardNotes.board,
         elements: body.target === 'board'
           ? boardNotes.elements
-          : body.text
-            ? [...boardNotes.elements.filter(note => note.nodeId !== body.target), { nodeId: body.target, text: body.text }]
-            : boardNotes.elements.filter(note => note.nodeId !== body.target),
+          : [...boardNotes.elements.filter(note => note.nodeId !== body.target), ...(nextThread.length ? [{ nodeId: body.target, entries: nextThread }] : [])],
       }
       return respond({ notes: boardNotes }, boardNotes.etag)
     }
@@ -582,30 +589,61 @@ describe('FormationsCockpit reference parity', () => {
     expect(recordedMutations.some(mutation => mutation.method === 'DELETE')).toBe(false)
   })
 
-  it('shares board and element notes through a collapsible right-side notepad', async () => {
+  it('shows mixed-author note threads and replies without overwriting', async () => {
     patches = installFetchMock({
       boardNotes: {
-        board: 'Preserve the API contract.',
-        elements: [{ nodeId: 'fmn_frame', text: 'Builder owns this element.' }],
+        board: [noteEntry('nte_board', 'human:ui', 'Preserve the API contract.')],
+        elements: [{
+          nodeId: 'fmn_frame',
+          entries: [
+            noteEntry('nte_operator', 'human:ui', 'Builder owns this element.'),
+            noteEntry('nte_agent', 'agent:archon', 'Staffed Mason as the lead.'),
+          ],
+        }],
       },
     })
     await renderCockpit()
 
+    const preview = screen.getByRole('note', { name: 'Notes for Frame' })
+    expect(preview).toHaveTextContent('archon')
+    expect(preview).toHaveTextContent('+1 earlier')
+    expect(preview).toHaveTextContent('Staffed Mason as the lead.')
+    expect(screen.getByTestId('formation-node-fmn_frame')).toHaveClass('has-note')
+
     const notepad = await screen.findByRole('complementary', { name: 'Shared board notepad' })
-    fireEvent.click(within(notepad).getByRole('button', { name: 'Expand shared notepad' }))
-    expect(await within(notepad).findByLabelText('Board note')).toHaveValue('Preserve the API contract.')
-    expect(screen.getByTestId('formation-node-fmn_frame')).toHaveClass('has-note')
-    expect(screen.getByRole('note', { name: 'Note for Frame' })).toHaveTextContent('Builder owns this element.')
-
-    fireEvent.click(within(screen.getByTestId('formation-node-fmn_frame')).getByRole('button', { name: 'Edit note for Frame' }))
+    fireEvent.click(within(screen.getByTestId('formation-node-fmn_frame')).getByRole('button', { name: 'Open notes for Frame' }))
     expect(within(notepad).getByLabelText('Element')).toHaveValue('fmn_frame')
-    const elementNote = within(notepad).getByLabelText('Element note')
-    expect(elementNote).toHaveValue('Builder owns this element.')
-    fireEvent.change(elementNote, { target: { value: 'Builder and reviewer own this.' } })
-    fireEvent.click(within(notepad).getByRole('button', { name: 'Save element note' }))
+    const thread = within(notepad).getByRole('list', { name: 'Element note thread' })
+    expect(within(thread).getAllByRole('listitem').map(item => item.textContent)).toEqual([
+      expect.stringContaining('Builder owns this element.'),
+      expect.stringContaining('Staffed Mason as the lead.'),
+    ])
+    expect(screen.getByTestId('note-entry-nte_operator')).toHaveClass('human')
+    expect(screen.getByTestId('note-entry-nte_agent')).toHaveClass('agent')
+    expect(within(screen.getByTestId('note-entry-nte_operator')).getByText('operator')).toHaveClass('note-author', 'human')
+    expect(within(screen.getByTestId('note-entry-nte_agent')).getByText('archon')).toHaveClass('note-author', 'agent')
+    expect(within(screen.getByTestId('note-entry-nte_agent')).queryByRole('button')).toBeNull()
 
-    await waitFor(() => expect(recordedMutations).toContainEqual({ method: 'PATCH', url: '/api/formations/boards/test-board/notes' }))
-    expect(screen.getByTestId('formation-node-fmn_frame')).toHaveClass('has-note')
+    const reply = within(notepad).getByLabelText('Element note')
+    expect(reply).toHaveValue('')
+    fireEvent.change(reply, { target: { value: 'Add a reviewer too.' } })
+    fireEvent.click(within(notepad).getByRole('button', { name: 'Add element note' }))
+    await waitFor(() => expect(within(thread).getAllByRole('listitem')).toHaveLength(3))
+    expect(reply).toHaveValue('')
+    const noteCall = vi.mocked(fetch).mock.calls.find(([url, init]) => String(url).endsWith('/notes') && init?.method === 'PATCH')
+    expect(JSON.parse(String(noteCall?.[1]?.body))).toEqual({ target: 'fmn_frame', action: 'append', text: 'Add a reviewer too.', author: 'human:ui' })
+
+    fireEvent.click(within(screen.getByTestId('note-entry-nte_operator')).getByRole('button', { name: /^Edit your note/ }))
+    expect(reply).toHaveValue('Builder owns this element.')
+    fireEvent.change(reply, { target: { value: 'Builder and reviewer own this element.' } })
+    fireEvent.click(within(notepad).getByRole('button', { name: 'Save edited element note' }))
+    await waitFor(() => expect(screen.getByTestId('note-entry-nte_operator')).toHaveTextContent('Builder and reviewer own this element.'))
+    expect(screen.getByTestId('note-entry-nte_operator')).toHaveTextContent('edited')
+    expect(screen.getByTestId('note-entry-nte_agent')).toHaveTextContent('Staffed Mason as the lead.')
+
+    const boardThread = within(notepad).getByRole('list', { name: 'Board note thread' })
+    fireEvent.click(within(boardThread).getByRole('button', { name: /^Delete your note/ }))
+    await waitFor(() => expect(within(notepad).queryByRole('list', { name: 'Board note thread' })).toBeNull())
 
     fireEvent.click(within(notepad).getByRole('button', { name: 'Collapse shared notepad' }))
     expect(screen.queryByLabelText('Board note')).toBeNull()
@@ -622,23 +660,25 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.change(elementNote, { target: { value: 'Use this as the release judge.' } })
     fireEvent.click(within(judge).getByRole('button', { name: 'Add note for Judge' }))
     expect(elementNote).toHaveValue('Use this as the release judge.')
-    const saveElementNote = screen.getByRole('button', { name: 'Save element note' })
-    await waitFor(() => expect(saveElementNote).toBeEnabled())
-    fireEvent.click(saveElementNote)
+    const addElementNote = screen.getByRole('button', { name: 'Add element note' })
+    await waitFor(() => expect(addElementNote).toBeEnabled())
+    fireEvent.click(addElementNote)
 
     await waitFor(() => expect(judge).toHaveClass('has-note'))
+    expect(screen.getByRole('note', { name: 'Notes for Judge' })).toHaveTextContent('Use this as the release judge.')
   })
 
-  it('preserves a stale local note draft and offers an explicit reload after conflict', async () => {
-    patches = installFetchMock({ boardNotes: { board: 'Server version' }, notePatchConflict: true })
+  it('preserves a local note draft and offers an explicit reload after a repeated conflict', async () => {
+    patches = installFetchMock({ boardNotes: { board: [noteEntry('nte_server', 'agent:archon', 'Server version')] }, notePatchConflict: true })
     await renderCockpit()
     fireEvent.click(screen.getByRole('button', { name: 'Expand shared notepad' }))
     const boardNote = await screen.findByRole('textbox', { name: 'Board note' })
     fireEvent.change(boardNote, { target: { value: 'Local draft' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save board note' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add board note' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Shared notes changed')
     expect(boardNote).toHaveValue('Local draft')
+    expect(vi.mocked(fetch).mock.calls.filter(([url, init]) => String(url).endsWith('/notes') && init?.method === 'PATCH')).toHaveLength(2)
     expect(screen.getByRole('button', { name: 'Reload shared notes (discard local draft)' })).toBeEnabled()
   })
 

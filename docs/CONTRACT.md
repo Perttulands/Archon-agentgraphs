@@ -45,6 +45,16 @@ with `CHROTE_AGENTS_DIR` when using an override. Notes are operator intent, not
 automatically executable briefs. Read board and element notes, then translate
 them into formation briefs, staffing and edges.
 
+Each board or element note is a thread of entries, oldest first. An entry has an
+ID, an author (`human:<name>` or `agent:<name>`), a creation time, an optional
+edit time and text. `archon board note` appends an entry, by default as
+`agent:archon` (`--author` names another). Only an entry's author can change it:
+`--entry <id> --text` edits it and `--entry <id> --clear` deletes it. Reply
+rather than rewriting someone else's note. The cockpit writes as `human:ui`,
+styles agent entries apart from the operator's, and replies, edits and deletes
+inline. Notes files written before threads (schema 1) still load, each text as
+one human entry, and are saved as schema 2 on the next write.
+
 A minimal board file, `hello.formation.toml`, has one staffed formation:
 
 ```toml

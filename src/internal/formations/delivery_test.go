@@ -29,12 +29,12 @@ func TestDeliveryMissionLabPushback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if notes.Board == "" || len(notes.Elements) != 7 {
+	if len(notes.Board) != 1 || len(notes.Elements) != 7 {
 		t.Fatalf("imported notes: %+v", notes)
 	}
 	for _, note := range notes.Elements {
-		if !boardHasNoteTarget(board, note.NodeID) || note.Text == "" {
-			t.Fatalf("unusable operator note: %+v", note)
+		if !boardHasNoteTarget(board, note.NodeID) || len(note.Entries) != 1 || note.Entries[0].Text == "" || note.Entries[0].Author != "agent:archon" {
+			t.Fatalf("unusable template note: %+v", note)
 		}
 	}
 	cwd := t.TempDir()

@@ -1660,6 +1660,12 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusServiceUnavailable, "DEFINITION_PUBLICATION_UNCERTAIN", "Reload both board and layout before any explicit retry")
 	case errors.Is(err, formations.ErrInvalidToolMutation):
 		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_TOOL_MUTATION", "Tool mutation is invalid")
+	case errors.Is(err, formations.ErrInvalidNotePatch):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_NOTE_PATCH", err.Error())
+	case errors.Is(err, formations.ErrNoteEntryNotFound):
+		core.WriteError(w, http.StatusNotFound, "NOTE_ENTRY_NOT_FOUND", err.Error())
+	case errors.Is(err, formations.ErrNoteAuthorMismatch):
+		core.WriteError(w, http.StatusForbidden, "NOTE_AUTHOR_MISMATCH", err.Error())
 	case errors.Is(err, formations.ErrUnsupportedFormationType):
 		core.WriteError(w, http.StatusBadRequest, "UNSUPPORTED_FORMATION_TYPE", err.Error())
 	case errors.Is(err, formations.ErrInvalidTypeChange):

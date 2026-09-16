@@ -33,7 +33,7 @@ func TestFormationsHandlerReadsAndWritesBoardNotesWithETagFences(t *testing.T) {
 	if err := json.Unmarshal(get.Body.Bytes(), &empty); err != nil {
 		t.Fatalf("decode empty notes: %v", err)
 	}
-	if empty.Data.Notes.ETag != "*" || empty.Data.Notes.Board != "" {
+	if empty.Data.Notes.ETag != "*" || len(empty.Data.Notes.Board) != 0 {
 		t.Fatalf("empty notes = %+v", empty.Data.Notes)
 	}
 
@@ -58,11 +58,11 @@ func TestFormationsHandlerReadsAndWritesBoardNotesWithETagFences(t *testing.T) {
 	if err := json.Unmarshal(patched.Body.Bytes(), &current); err != nil {
 		t.Fatalf("decode patched notes: %v", err)
 	}
-	if current.Data.Notes.Board != "shared\nplan" || current.Data.Notes.ETag == "*" || current.Data.Notes.UpdatedBy != "human:operator" {
+	if len(current.Data.Notes.Board) != 1 || current.Data.Notes.Board[0].Text != "shared\nplan" || current.Data.Notes.Board[0].Author != "human:operator" || current.Data.Notes.ETag == "*" || current.Data.Notes.UpdatedBy != "human:operator" {
 		t.Fatalf("patched notes = %+v", current.Data.Notes)
 	}
 
-	stale := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(`{"target":"board","text":"stale"}`))
+	stale := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(`{"target":"board","text":"stale","author":"human:operator"}`))
 	stale.Header.Set("If-Match", "*")
 	staleResponse := httptest.NewRecorder()
 	mux.ServeHTTP(staleResponse, stale)
@@ -70,12 +70,41 @@ func TestFormationsHandlerReadsAndWritesBoardNotesWithETagFences(t *testing.T) {
 		t.Fatalf("stale PATCH status = %d, body=%s", staleResponse.Code, staleResponse.Body.String())
 	}
 
-	element := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(`{"target":"fmn_frame","text":"keep this narrow"}`))
+	element := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(`{"target":"fmn_frame","text":"keep this narrow","author":"agent:archon"}`))
 	element.Header.Set("If-Match", current.Data.Notes.ETag)
 	elementResponse := httptest.NewRecorder()
 	mux.ServeHTTP(elementResponse, element)
 	if elementResponse.Code != http.StatusOK {
 		t.Fatalf("element PATCH status = %d, body=%s", elementResponse.Code, elementResponse.Body.String())
+	}
+	var withReply struct {
+		Data struct {
+			Notes formations.BoardNotesDocument `json:"notes"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(elementResponse.Body.Bytes(), &withReply); err != nil || len(withReply.Data.Notes.Elements) != 1 {
+		t.Fatalf("element notes = %s (%v)", elementResponse.Body.String(), err)
+	}
+	agentEntry := withReply.Data.Notes.Elements[0].Entries[0].ID
+	for body, want := range map[string]int{
+		`{"target":"fmn_frame","action":"edit","entryId":"` + agentEntry + `","text":"overwrite","author":"human:operator"}`: http.StatusForbidden,
+		`{"target":"fmn_frame","action":"delete","entryId":"nte_missing","author":"agent:archon"}`:                           http.StatusNotFound,
+		`{"target":"fmn_frame","text":"no author"}`:                                                                          http.StatusBadRequest,
+	} {
+		request := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(body))
+		request.Header.Set("If-Match", withReply.Data.Notes.ETag)
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, request)
+		if response.Code != want {
+			t.Errorf("%s = %d %s, want %d", body, response.Code, response.Body.String(), want)
+		}
+	}
+	edit := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(`{"target":"fmn_frame","action":"edit","entryId":"`+agentEntry+`","text":"keep it narrower","author":"agent:archon"}`))
+	edit.Header.Set("If-Match", withReply.Data.Notes.ETag)
+	edited := httptest.NewRecorder()
+	mux.ServeHTTP(edited, edit)
+	if edited.Code != http.StatusOK {
+		t.Fatalf("own edit = %d %s", edited.Code, edited.Body.String())
 	}
 }
 
@@ -86,7 +115,7 @@ func TestFormationsHandlerRejectsUnknownBoardNoteTarget(t *testing.T) {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	request := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(`{"target":"fmn_missing","text":"nope"}`))
+	request := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(`{"target":"fmn_missing","text":"nope","author":"human:ui"}`))
 	request.Header.Set("If-Match", "*")
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, request)

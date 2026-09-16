@@ -13,9 +13,19 @@ export interface BoardDeletion {
   archiveId: string
 }
 
+/** One authored message in a board or element note thread. */
+export interface NoteEntry {
+  id: string
+  /** human:<name> or agent:<name> */
+  author: string
+  createdAt: string
+  editedAt?: string
+  text: string
+}
+
 export interface ElementNote {
   nodeId: string
-  text: string
+  entries: NoteEntry[]
 }
 
 export interface BoardNotesDocument {
@@ -24,10 +34,16 @@ export interface BoardNotesDocument {
   rev: number
   updatedAt: string
   updatedBy?: string
-  board: string
+  board: NoteEntry[]
   elements: ElementNote[]
   etag: string
 }
+
+/** Appends by default; edit and delete name one of the caller's own entries. */
+export type NotePatch =
+  | { target: string; action: 'append'; text: string }
+  | { target: string; action: 'edit'; entryId: string; text: string }
+  | { target: string; action: 'delete'; entryId: string }
 
 export interface FormationPort {
   id: string

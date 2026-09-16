@@ -13,6 +13,7 @@ import type {
   LayoutDocument,
   LayoutEdge,
   LayoutNode,
+  NotePatch,
   OpenEscalation,
   PersonaCard,
   RunEvent,
@@ -150,28 +151,28 @@ export async function deleteBoard(slug: string, etag: string, rev: number): Prom
   return result.data.deletion
 }
 
-export async function fetchBoardNotes(slug: string): Promise<BoardNotesDocument> {
-  const result = await fetchApi<{ notes: BoardNotesDocument }>(`/api/formations/boards/${encodeURIComponent(slug)}/notes`)
+function normalizeNotes(notes: BoardNotesDocument, etag: string): BoardNotesDocument {
   return {
-    ...result.data.notes,
-    board: result.data.notes.board || '',
-    elements: result.data.notes.elements || [],
-    etag: result.etag || result.data.notes.etag,
+    ...notes,
+    board: notes.board || [],
+    elements: (notes.elements || []).map(element => ({ ...element, entries: element.entries || [] })),
+    etag: etag || notes.etag,
   }
 }
 
-export async function patchBoardNote(slug: string, etag: string, target: string, text: string): Promise<BoardNotesDocument> {
+export async function fetchBoardNotes(slug: string): Promise<BoardNotesDocument> {
+  const result = await fetchApi<{ notes: BoardNotesDocument }>(`/api/formations/boards/${encodeURIComponent(slug)}/notes`)
+  return normalizeNotes(result.data.notes, result.etag)
+}
+
+/** The cockpit writes notes as the operator, human:ui. */
+export async function patchBoardNote(slug: string, etag: string, patch: NotePatch): Promise<BoardNotesDocument> {
   const result = await fetchApi<{ notes: BoardNotesDocument }>(`/api/formations/boards/${encodeURIComponent(slug)}/notes`, {
     method: 'PATCH',
     headers: { 'If-Match': etag },
-    body: JSON.stringify({ target, text, updatedBy: 'human:ui' }),
+    body: JSON.stringify({ ...patch, author: 'human:ui' }),
   })
-  return {
-    ...result.data.notes,
-    board: result.data.notes.board || '',
-    elements: result.data.notes.elements || [],
-    etag: result.etag || result.data.notes.etag,
-  }
+  return normalizeNotes(result.data.notes, result.etag)
 }
 
 export async function fetchAgents(): Promise<AgentProjection[]> {

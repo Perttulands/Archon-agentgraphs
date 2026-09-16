@@ -2109,15 +2109,25 @@ func runBoardNotes(store *formations.Store, args []string, stdout, stderr io.Wri
 	if *jsonOut {
 		return writeJSON(stdout, notes)
 	}
-	if notes.Board == "" && len(notes.Elements) == 0 {
+	if len(notes.Board) == 0 && len(notes.Elements) == 0 {
 		fmt.Fprintf(stdout, "%s\tno notes\n", slug)
 		return 0
 	}
-	if notes.Board != "" {
-		fmt.Fprintf(stdout, "[board]\n%s\n", notes.Board)
+	writeThread := func(target string, entries []formations.NoteEntry) {
+		fmt.Fprintf(stdout, "[%s]\n", target)
+		for _, entry := range entries {
+			edited := ""
+			if entry.EditedAt != nil {
+				edited = "\tedited"
+			}
+			fmt.Fprintf(stdout, "%s\t%s\t%s%s\n%s\n\n", entry.ID, entry.Author, entry.CreatedAt.Format(time.RFC3339), edited, entry.Text)
+		}
 	}
-	for _, note := range notes.Elements {
-		fmt.Fprintf(stdout, "\n[%s]\n%s\n", note.NodeID, note.Text)
+	if len(notes.Board) > 0 {
+		writeThread(formations.BoardNoteTarget, notes.Board)
+	}
+	for _, element := range notes.Elements {
+		writeThread(element.NodeID, element.Entries)
 	}
 	return 0
 }
@@ -2127,21 +2137,21 @@ func runBoardNote(store *formations.Store, args []string, stdout, stderr io.Writ
 	fs.SetOutput(stderr)
 	text := fs.String("text", "", "note text")
 	file := fs.String("file", "", "read note text from file")
-	node := fs.String("node", "", "element id; omit for the board note")
-	clear := fs.Bool("clear", false, "clear the selected note")
-	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
+	node := fs.String("node", "", "element id; omit for the board thread")
+	entry := fs.String("entry", "", "your own entry to edit (with --text or --file) or delete (with --clear)")
+	clear := fs.Bool("clear", false, "delete the entry named by --entry")
+	author := fs.String("author", "agent:archon", "note author, human:<name> or agent:<name>")
+	updatedBy := fs.String("updated-by", "", "older name for --author")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"clear": true, "json": true})); err != nil {
 		return 2
 	}
-	textSet := false
-	fs.Visit(func(flagValue *flag.Flag) {
-		if flagValue.Name == "text" {
-			textSet = true
-		}
-	})
-	if fs.NArg() != 1 || boolCount(textSet, *file != "", *clear) != 1 {
-		fmt.Fprintln(stderr, "usage: archon board note <board> (--text <text> | --file <path> | --clear) [--node <element-id>] [--json]")
+	given := map[string]bool{}
+	fs.Visit(func(flagValue *flag.Flag) { given[flagValue.Name] = true })
+	if fs.NArg() != 1 || boolCount(given["text"], *file != "", *clear) != 1 || *clear && *entry == "" {
+		fmt.Fprintln(stderr, "usage: archon board note <board> [--node <element-id>] (--text <text> | --file <path>) [--entry <id>] [--author <human|agent>:<name>] [--json]")
+		fmt.Fprintln(stderr, "       archon board note <board> [--node <element-id>] --clear --entry <id>")
+		fmt.Fprintln(stderr, "A note appends to the thread. --entry edits or, with --clear, deletes one of your own entries; others' entries cannot be changed.")
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -2156,29 +2166,46 @@ func runBoardNote(store *formations.Store, args []string, stdout, stderr io.Writ
 		}
 		value = string(raw)
 	}
-	if *clear {
-		value = ""
+	patch := formations.BoardNotePatch{Target: strings.TrimSpace(*node), Text: value, Author: *author}
+	if given["updated-by"] && !given["author"] {
+		patch.Author = *updatedBy
 	}
-	target := strings.TrimSpace(*node)
-	if target == "" {
-		target = formations.BoardNoteTarget
+	switch {
+	case *clear:
+		patch.Action, patch.EntryID, patch.Text = formations.NoteActionDelete, *entry, ""
+	case *entry != "":
+		patch.Action, patch.EntryID = formations.NoteActionEdit, *entry
+	default:
+		patch.Action = formations.NoteActionAppend
+	}
+	if patch.Target == "" {
+		patch.Target = formations.BoardNoteTarget
 	}
 	current, err := store.ReadBoardNotes(slug)
 	if err != nil {
 		return fail(stderr, err)
 	}
-	updated, err := store.UpdateBoardNote(slug, formations.BoardNotePatch{
-		Target:    target,
-		Text:      value,
-		UpdatedBy: *updatedBy,
-	}, formations.NoteWriteOptions{ExpectedETag: current.ETag})
+	updated, err := store.UpdateBoardNote(slug, patch, formations.NoteWriteOptions{ExpectedETag: current.ETag})
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failJSON(stderr, err, *jsonOut, "board", fs.Arg(0))
 	}
 	if *jsonOut {
 		return writeJSON(stdout, updated)
 	}
-	fmt.Fprintf(stdout, "updated %s note on %s (notes rev %d)\n", target, slug, updated.Rev)
+	switch patch.Action {
+	case formations.NoteActionAppend:
+		thread := updated.Board
+		for _, element := range updated.Elements {
+			if element.NodeID == patch.Target {
+				thread = element.Entries
+			}
+		}
+		fmt.Fprintf(stdout, "added note %s on %s (notes rev %d)\n", thread[len(thread)-1].ID, patch.Target, updated.Rev)
+	case formations.NoteActionEdit:
+		fmt.Fprintf(stdout, "edited note %s on %s (notes rev %d)\n", patch.EntryID, patch.Target, updated.Rev)
+	default:
+		fmt.Fprintf(stdout, "deleted note %s on %s (notes rev %d)\n", patch.EntryID, patch.Target, updated.Rev)
+	}
 	return 0
 }
 
@@ -2538,6 +2565,12 @@ func archonErrorCode(err error) string {
 		return "invalid_gate_kind"
 	case errors.Is(err, formations.ErrUnsupportedFormationType):
 		return "unsupported_formation_type"
+	case errors.Is(err, formations.ErrInvalidNotePatch):
+		return "invalid_note_patch"
+	case errors.Is(err, formations.ErrNoteEntryNotFound):
+		return "note_entry_not_found"
+	case errors.Is(err, formations.ErrNoteAuthorMismatch):
+		return "note_author_mismatch"
 	case errors.Is(err, formations.ErrInvalidTypeChange):
 		return "invalid_type_change"
 	case errors.Is(err, formations.ErrSlotChoiceRequired):

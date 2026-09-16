@@ -253,44 +253,44 @@ describe('formations API helpers', () => {
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({ expectedRev: 7 })
   })
 
-  it('reads and updates board notes through the shared ETag-fenced sidecar', async () => {
+  it('reads and appends to board note threads through the shared ETag-fenced sidecar', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = []
+    const entry = { id: 'nte_1', author: 'human:ui', createdAt: '2026-08-18T13:00:00Z', text: 'shared plan' }
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       calls.push({ url, init })
-      const text = init?.method === 'PATCH' ? 'shared plan' : ''
+      const patched = init?.method === 'PATCH'
       return Promise.resolve(new Response(JSON.stringify({
         success: true,
         data: {
           notes: {
-            schema: 1,
+            schema: 2,
             boardId: 'brd_1',
-            rev: text ? 1 : 0,
+            rev: patched ? 1 : 0,
             updatedAt: '2026-08-18T13:00:00Z',
-            board: text,
-            elements: null,
-            etag: text ? 'body-etag' : '*',
+            board: patched ? [entry] : null,
+            elements: patched ? [{ nodeId: 'fmn_a', entries: null }] : null,
+            etag: patched ? 'body-etag' : '*',
           },
         },
       }), {
         status: 200,
-        headers: { 'Content-Type': 'application/json', ETag: text ? 'header-etag' : '*' },
+        headers: { 'Content-Type': 'application/json', ETag: patched ? 'header-etag' : '*' },
       }))
     }))
 
     const empty = await fetchBoardNotes('board one')
+    expect(empty.board).toEqual([])
     expect(empty.elements).toEqual([])
     expect(empty.etag).toBe('*')
 
-    const updated = await patchBoardNote('board one', empty.etag, 'board', 'shared plan')
-    expect(updated.board).toBe('shared plan')
+    const updated = await patchBoardNote('board one', empty.etag, { target: 'board', action: 'append', text: 'shared plan' })
+    expect(updated.board).toEqual([entry])
+    expect(updated.elements).toEqual([{ nodeId: 'fmn_a', entries: [] }])
     expect(updated.etag).toBe('header-etag')
     expect(calls[1]).toMatchObject({ url: '/api/formations/boards/board%20one/notes' })
-    expect(calls[1].init).toMatchObject({
-      method: 'PATCH',
-      headers: { 'If-Match': '*' },
-      body: JSON.stringify({ target: 'board', text: 'shared plan', updatedBy: 'human:ui' }),
-    })
+    expect(calls[1].init).toMatchObject({ method: 'PATCH', headers: { 'If-Match': '*' } })
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({ target: 'board', action: 'append', text: 'shared plan', author: 'human:ui' })
   })
 
   it('checks board changes against the current ETag', async () => {
