@@ -1,3 +1,7 @@
 /* Inline node title editing on the Formations canvas. */
 .fmx input.inline-title{display:block;width:100%;min-width:0;max-width:none;margin:0;padding:1px 4px;border:1px solid var(--terra);border-radius:3px;background:var(--paper2);color:var(--ink);font:inherit;letter-spacing:inherit;text-transform:inherit;outline:none;user-select:text;cursor:text;}
 .fmx .untitled{color:var(--dim);font-style:italic;}
+.fmx .fhead .ftype{flex-shrink:0;border:1px solid var(--line);border-radius:4px;background:var(--paper2);color:var(--ink2);padding:3px 7px;font:700 9px/1.2 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;cursor:pointer;}
+.fmx .fhead .ftype:hover{border-color:var(--terra);color:var(--terra);}
+/* Section heads inside canvas context menus (type choices, judge picker). */
+.fmx .formations-context-menu .msection{margin-top:4px;padding:7px 10px 4px;border-top:1px solid var(--line);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);}

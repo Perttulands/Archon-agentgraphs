@@ -60,6 +60,8 @@ import { routeJudgeWire, routeOrthoWire } from './formationsRouting'
 import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
 import { InlineTitleEditor } from './InlineTitleEditor'
+import { FormationTypeChip, formationTypeChoices } from './FormationTypeChip'
+import type { FormationTypeName } from './FormationTypeChip'
 import { MissionEditorDialog } from './MissionEditorDialog'
 import type { MissionDraft } from './MissionEditorDialog'
 import { AdmissionFindingsPanel, DraftMarker, findingsByNode, unresolvedFindings } from './formationsDrafts'
@@ -167,6 +169,7 @@ type CockpitUndo =
   | { kind: 'deleteGate'; id: string }
   | { kind: 'updateGate'; gateId: string; fields: GateFields; chain: string[] }
   | { kind: 'updateFormation'; id: string; title: string }
+  | { kind: 'setFormationType'; id: string; type: FormationNode['type']; slots: FormationSlot[] }
   | { kind: 'updateMission'; id: string; fields: Partial<MissionDraft> }
   | { kind: 'deleteMission'; id: string }
   | { kind: 'assignSlot'; formationId: string; slotId: string; agentId: string; harness: string }
@@ -961,6 +964,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         break
       case 'updateFormation':
         patch = { updateFormation: { id: action.id, title: action.title } }
+        break
+      case 'setFormationType':
+        patch = { setFormationType: { id: action.id, type: action.type, slots: action.slots } }
         break
       case 'updateMission':
         patch = { updateMission: { id: action.id, ...action.fields } }
@@ -1894,6 +1900,19 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       connection.from === `${gateId}:judge` || connection.to === `${gateId}:judge`)
   }, [])
 
+  // Undo restores the exact previous slots, including any a change to solo removed.
+  const changeFormationType = useCallback((formation: FormationNode, type: FormationTypeName, keepSlotId?: string) => {
+    undoStack.current.push({ kind: 'setFormationType', id: formation.id, type: formation.type, slots: formation.slots })
+    void patchBoard({ setFormationType: { id: formation.id, type, ...(keepSlotId ? { keepSlotId } : {}) } }).then(result => {
+      if (!result) undoStack.current.pop()
+    })
+  }, [patchBoard])
+
+  const formationTypeMenuItems = useCallback((formation: FormationNode): MenuItem[] => [
+    { label: 'Change type', head: true },
+    ...formationTypeChoices(formation).map(choice => ({ label: choice.label, action: () => changeFormationType(formation, choice.type, choice.keepSlotId) })),
+  ], [changeFormationType])
+
   const formationMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode) => {
     openMenu(event, 'Formation actions', [
       { label: 'Run formation', action: () => void runFormation(formation) },
@@ -1904,9 +1923,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       ...(formation.verification ? [
         { label: 'Migrate legacy verification', action: () => openLegacyVerification(formation) },
       ] : []),
+      ...formationTypeMenuItems(formation),
       { label: 'Delete formation', destructive: true, action: () => deleteFormationOp(formation) },
     ])
-  }, [addPortOp, deleteFormationOp, openBriefEditor, openLegacyVerification, openMenu, runFormation])
+  }, [addPortOp, deleteFormationOp, formationTypeMenuItems, openBriefEditor, openLegacyVerification, openMenu, runFormation])
 
   const slotMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode, slot: FormationSlot) => {
     const items: MenuItem[] = []
@@ -2008,7 +2028,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         { label: 'Mission', action: () => createMissionAt(w.x, w.y) },
         { label: 'Solo formation', action: () => void createFormationAt('solo', 'New formation', w.x, w.y) },
         { label: 'Peer formation', action: () => void createFormationAt('peer', 'New peers', w.x, w.y) },
-        { label: 'Flow formation', action: () => void createFormationAt('flow', 'New flow', w.x, w.y) },
         { label: 'Orchestrated formation', action: () => void createFormationAt('orchestrated', 'New desk', w.x, w.y) },
         { label: 'Gate', action: () => void createGateAt(w.x, w.y) },
       ],
@@ -2498,6 +2517,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   })}
                   <div className="fhead" onPointerDown={event => beginNodeDrag(event, formation.id, index)}>
                     <div className="ft">{renderNodeTitle(formation.id, formation.title, 'tt', 'Untitled formation', 'div')}<div className="tg" title={formationSummary(formation)}>{formationSummary(formation)}</div></div>
+                    <FormationTypeChip formation={formation} onOpen={event => {
+                      // Anchor to the chip so keyboard activation opens the menu beside it.
+                      const rect = event.currentTarget.getBoundingClientRect()
+                      setMenu({ label: 'Formation type', x: rect.left, y: rect.bottom + 4, items: formationTypeMenuItems(formation).slice(1) })
+                    }} />
                     {activeRun ? <button type="button" className="fpeek" aria-label={`Peek at ${formation.title}`}
                       onPointerDown={event => event.stopPropagation()}
                       onClick={() => setPeek({ nodeId: formation.id })}>Peek</button> : null}

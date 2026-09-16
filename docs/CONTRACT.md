@@ -335,6 +335,14 @@ Nodes keep their IDs when edited: `archon formation rename <board> <formation>
 empty value clears a field. The cockpit renames a mission, formation or gate
 from its title (double-click or Rename) and edits a mission's goal and Bead ID
 from Edit mission, each with undo. Ports, edges, layout and notes are unchanged.
+`archon formation set-type <board> <formation> <solo|peer|orchestrated>` and the
+type chip on a formation card change its type in place. Solo keeps one slot,
+peer has at least two slots with no controller, and orchestrated has one
+controller (the existing one, else the first slot) and a worker. Added slots
+are empty and bound agents stay on the slots that remain. Changing to solo with
+more than one staffed slot is refused until `--keep-slot` (API `keepSlotId`)
+names the slot to keep; the cockpit offers one choice per staffed slot. Undo
+restores the previous slots exactly. Flow is not offered as a type.
 `board validate` lists every finding for the whole board, admission checks
 included, as `ERROR`/`WARN` lines or `--json`, and exits 1 on any error.
 `mission run` and `formation run` print every admission finding when a start is

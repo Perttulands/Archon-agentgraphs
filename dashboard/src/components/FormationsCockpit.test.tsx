@@ -302,6 +302,24 @@ function installFetchMock(options: {
         }
         return respond({ board, layout: currentLayout }, 'board-etag-2')
       }
+      if (!url.endsWith('/layout') && body.setFormationType) {
+        type Slot = { id: string; label: string; controller?: boolean; agentId?: string; harness?: string }
+        const { id, type, keepSlotId, slots } = body.setFormationType as { id: string; type: string; keepSlotId?: string; slots?: Slot[] }
+        board = {
+          ...board,
+          rev: board.rev + 1,
+          formations: board.formations.map(item => {
+            if (item.id !== id) return item
+            const current = item.slots as Slot[]
+            let next = slots
+            if (!next && type === 'solo') next = [{ ...(current.find(slot => slot.id === keepSlotId) || current.find(slot => slot.agentId) || current[0]), controller: false }]
+            if (!next && type === 'peer') next = current.map(slot => ({ ...slot, controller: false }))
+            if (!next) next = current.map((slot, index) => ({ ...slot, controller: index === 0 }))
+            return { ...item, type, slots: next }
+          }) as TestBoard['formations'],
+        }
+        return respond({ board }, 'board-etag-2')
+      }
       if (!url.endsWith('/layout') && body.updateFormation) {
         const { id, title } = body.updateFormation as { id: string; title: string }
         board = { ...board, rev: board.rev + 1, formations: board.formations.map(item => item.id === id ? { ...item, title } : item) }
@@ -1408,6 +1426,67 @@ describe('FormationsCockpit reference parity', () => {
     unmount()
     await renderCockpit()
     expect(screen.getByTestId('mission-node-mis_showcase')).toHaveTextContent('Map the territory first')
+  })
+
+  it('changes a formation type from its header chip, undoes it exactly, and survives reload', async () => {
+    const { unmount } = await renderCockpit()
+    const chip = screen.getByTestId('formation-type-fmn_frame')
+    expect(chip).toHaveTextContent('orchestrated')
+    fireEvent.click(chip)
+    const menu = await screen.findByRole('menu', { name: 'Formation type' })
+    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Solo', 'Peer'])
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Peer' }))
+
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.setFormationType)?.body.setFormationType).toEqual({ id: 'fmn_frame', type: 'peer' })
+    })
+    await waitFor(() => expect(screen.getByTestId('formation-type-fmn_frame')).toHaveTextContent('peer'))
+    expect(screen.getByTestId('formation-node-fmn_frame')).toHaveClass('type-peer')
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => {
+      expect(patches.filter(patch => patch.body.setFormationType).slice(-1)[0]?.body.setFormationType).toEqual({
+        id: 'fmn_frame',
+        type: 'orchestrated',
+        slots: formation.slots,
+      })
+    })
+    await waitFor(() => expect(screen.getByTestId('formation-type-fmn_frame')).toHaveTextContent('orchestrated'))
+
+    fireEvent.click(screen.getByTestId('formation-type-fmn_frame'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Solo' }))
+    await waitFor(() => expect(screen.getByTestId('formation-type-fmn_frame')).toHaveTextContent('solo'))
+
+    unmount()
+    const { container } = await renderCockpit()
+    expect(screen.getByTestId('formation-type-fmn_frame')).toHaveTextContent('solo')
+    expect(screen.getByTestId('formation-node-fmn_frame')).toHaveClass('type-solo')
+
+    fireEvent.contextMenu(container.querySelector('.viewport') as HTMLElement, { clientX: 300, clientY: 300 })
+    const create = await screen.findByRole('menu', { name: 'New' })
+    expect(within(create).queryByRole('menuitem', { name: 'Flow formation' })).toBeNull()
+  })
+
+  it('offers one solo choice per staffed slot so no agent is dropped silently', async () => {
+    const staffedBoard = makeBoard()
+    staffedBoard.formations = [{
+      ...formation,
+      slots: [
+        { id: 'slot_lead', label: 'Lead', controller: true, agentId: 'mason', harness: 'codex' },
+        { id: 'slot_worker', label: 'Worker', controller: false, agentId: 'hazel', harness: 'claude' },
+      ],
+    }, judgeFormation] as TestBoard['formations']
+    patches = installFetchMock({ boards: [staffedBoard] })
+    await renderCockpit()
+    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'), { clientX: 420, clientY: 120 })
+    const menu = await screen.findByRole('menu', { name: 'Formation actions' })
+    expect(within(menu).queryByRole('menuitem', { name: 'Solo' })).toBeNull()
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Solo, keeping Worker (hazel)' }))
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.setFormationType)?.body.setFormationType).toEqual({ id: 'fmn_frame', type: 'solo', keepSlotId: 'slot_worker' })
+    })
+    await waitFor(() => expect(screen.getByTestId('slot-fmn_frame-slot_worker')).toBeInTheDocument())
+    expect(screen.queryByTestId('slot-fmn_frame-slot_lead')).toBeNull()
   })
 
   it('dismisses context menus on Escape and outside pointerdown', async () => {
