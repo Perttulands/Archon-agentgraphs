@@ -37,6 +37,14 @@ describe('RunPoint', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
+  it('says in its tooltip what a click does', () => {
+    const { unmount } = render(<RunPoint runId="run_1" point={{ kind: 'waiting', nodeId: 'gate_framing', gate: true }} title="Framing review" onLocate={() => {}} />)
+    expect(screen.getByTestId('run-point')).toHaveAttribute('title', 'waiting for you at Framing review. Show it on the canvas.')
+    unmount()
+    render(<RunPoint runId="run_1" point={{ kind: 'waiting', nodeId: 'gate_framing', gate: true }} title="Framing review" onLocate={() => {}} action="Open the step" />)
+    expect(screen.getByTestId('run-point')).toHaveAttribute('title', 'waiting for you at Framing review. Open the step.')
+  })
+
   it('names the running node with its attempt', () => {
     render(<RunPoint runId="run_1" point={{ kind: 'running', nodeId: 'fmn_draft', gate: false, attempt: 2 }} title="Draft the brief" onLocate={() => {}} />)
     expect(screen.getByTestId('run-point')).toHaveTextContent('running Draft the brief (attempt 2)')

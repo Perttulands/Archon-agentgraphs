@@ -87,6 +87,7 @@ import type { NodeWindowOps } from '../nodeWindow/NodeWindow'
 import { readBoardView, writeBoardView, type BoardView } from '../flow/boardView'
 import type { FlowRun } from '../flow/FlowView'
 import { cockpitWorkspace } from '../windows/cockpitWorkspace'
+import type { WindowRect } from '../windows/windowGeometry'
 import type {
   AgentProjection,
   BoardConnection,
@@ -269,7 +270,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setNoteWindows(current => current.includes(target) ? current : [...current, target])
     focusWindow(noteWindowId(target))
   }, [focusWindow])
-  const openNodeWindow = useCallback((nodeId: string) => {
+  // Where a node window opens beside, when the control that opened it says: a Flow title or route link.
+  const nodeWindowAnchors = useRef(new Map<string, WindowRect>())
+  const openNodeWindow = useCallback((nodeId: string, anchor?: WindowRect) => {
+    if (anchor) nodeWindowAnchors.current.set(nodeId, anchor)
+    else nodeWindowAnchors.current.delete(nodeId)
     setNodeWindows(current => current.includes(nodeId) ? current : [...current, nodeId])
     focusWindow(`node:${nodeId}`)
   }, [focusWindow])
@@ -1608,11 +1613,23 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   // The run bar's phrase centres its node, then opens the node's window beside the centred card.
   const locateAndOpenNode = useCallback((nodeId: string) => {
-    locateNode(nodeId)
     const current = boardRef.current
-    if (!current || ![...(current.missions || []), ...current.formations, ...(current.gates || [])].some(node => node.id === nodeId)) return
-    window.setTimeout(() => openNodeWindow(nodeId), 450)
-  }, [locateNode, openNodeWindow])
+    const openable = Boolean(current && [...(current.missions || []), ...current.formations, ...(current.gates || [])].some(node => node.id === nodeId))
+    // In Flow, bring the step's row into view and open its window beside the row's title.
+    const title = boardView === 'flow'
+      ? document.querySelector<HTMLElement>(`[data-flow-node="${nodeId.replace(/["\\]/g, '\\$&')}"] .flow-title`)
+      : null
+    if (title) {
+      title.scrollIntoView?.({ block: 'center' })
+      if (openable) {
+        const { left, top, width, height } = title.getBoundingClientRect()
+        openNodeWindow(nodeId, { left, top, width, height })
+      }
+      return
+    }
+    locateNode(nodeId)
+    if (openable) window.setTimeout(() => openNodeWindow(nodeId), 450)
+  }, [boardView, locateNode, openNodeWindow])
 
   useLayoutEffect(() => {
     if (!board || !layout || fittedBoardRef.current === board.slug) return
@@ -2531,7 +2548,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               <div className="run-banner" data-testid="run-banner">
                 <span>run</span>
                 <span className={`badge ${runBadgeClass}`}>{activeRun.status}</span>
-                <RunPoint runId={activeRun.runId} point={runPoint} title={runPointTitle} onLocate={locateAndOpenNode} />
+                <RunPoint runId={activeRun.runId} point={runPoint} title={runPointTitle} onLocate={locateAndOpenNode}
+                  action={showFlow ? 'Open the step' : 'Show it on the canvas and open it'} />
                 <RunProduced />
                 {activeRun.final || choices.open.length + choices.finished.length > 1 ? runPicker(activeRun.runId) : null}
                 {activeRun.cwd && <span className="run-cwd" title={activeRun.cwd}>{activeRun.cwd}</span>}
@@ -2963,6 +2981,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         {board ? nodeWindows.map(nodeId => (
           <Suspense key={`node-${nodeId}`} fallback={null}>
             <NodeWindow nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps} noteCount={noteByNode.get(nodeId)?.length || 0}
+              anchor={nodeWindowAnchors.current.get(nodeId)}
               runState={nodeStates.has(nodeId) ? nodeStates.get(nodeId) || '' : undefined}
               onClose={() => setNodeWindows(current => current.filter(open => open !== nodeId))} />
           </Suspense>

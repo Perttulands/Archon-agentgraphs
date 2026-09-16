@@ -21,6 +21,7 @@ import { ProducedFiles } from '../files/ProducedFiles'
 import { referencedFileRequest } from '../files/fileWindowModel'
 import { nodeFileRefs } from '../files/referencedFiles'
 import FloatingWindow from '../windows/FloatingWindow'
+import type { WindowRect } from '../windows/windowGeometry'
 import { EditableField } from './EditableField'
 import { buildFlow } from '../flow/flowModel'
 import { judgeChain, nodeRoutes, nodeTitle } from './boardRoutes'
@@ -95,8 +96,10 @@ export function nodeWindowLabel(located: Located): string {
   return `${KIND_WORD[located.kind]} · ${located.node.title || UNTITLED[located.kind]}`
 }
 
-export default function NodeWindow({ nodeId, board, agents, profiles, noteCount, runState, onClose, ops }: {
+export default function NodeWindow({ nodeId, board, agents, profiles, noteCount, anchor, runState, onClose, ops }: {
   nodeId: string
+  /** What the window opens beside; without it, the node's Flow row or card. */
+  anchor?: WindowRect
   board: BoardDocument
   agents: AgentProjection[]
   profiles: CodeGateProfileDescriptor[]
@@ -127,7 +130,7 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
       label={label}
       title={<><span className="nwin-kind">{KIND_WORD[located.kind]}</span> {located.node.title || UNTITLED[located.kind]}</>}
       defaultSize={{ width: 540, height: 620 }}
-      anchor={() => cardRect(nodeId)}
+      anchor={() => anchor || cardRect(nodeId)}
       onClose={onClose}
     >
       <div className="nwin" data-testid={`node-window-${nodeId}`}>

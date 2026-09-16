@@ -14,11 +14,13 @@ interface BlockExplanation {
   pause: boolean
 }
 
-export default function RunPoint({ runId, point, title, onLocate }: {
+export default function RunPoint({ runId, point, title, onLocate, action = 'Show it on the canvas' }: {
   runId: string
   point: RunPointModel | null
   title: string
   onLocate: (nodeId: string) => void
+  /** What a click does, for the tooltip. */
+  action?: string
 }) {
   const [explanation, setExplanation] = useState<BlockExplanation | null>(null)
   const blockSeq = point?.kind === 'blocked' ? point.blockSeq || 0 : 0
@@ -46,7 +48,7 @@ export default function RunPoint({ runId, point, title, onLocate }: {
       type="button"
       className={`run-point ${known?.pause ? 'paused' : point.kind}`}
       data-testid="run-point"
-      title={point.nodeId ? `${phrase}. Show it on the canvas.` : phrase}
+      title={point.nodeId ? `${phrase}. ${action}.` : phrase}
       disabled={!point.nodeId}
       onClick={() => onLocate(point.nodeId)}
     >{phrase}</button>

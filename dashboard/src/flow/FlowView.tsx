@@ -8,6 +8,7 @@ import { ProducedFiles } from '../files/ProducedFiles'
 import { referencedFileRequest } from '../files/fileWindowModel'
 import { staffingSentence } from '../nodeWindow/staffing'
 import { usePersonaCards } from '../nodeWindow/usePersonaCards'
+import type { WindowRect } from '../windows/windowGeometry'
 import { buildFlow, type FlowStep, type FlowTarget, type GateDecider } from './flowModel'
 import './flow.css'
 
@@ -51,6 +52,12 @@ export function summary(text: string, limit = 220): string {
   return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), limit - 30)).trim()}…`
 }
 
+/** Where a window opened from a Flow control opens beside: the control itself, so it never covers the row's title. */
+export function controlAnchor(control: Element): WindowRect {
+  const { left, top, width, height } = control.getBoundingClientRect()
+  return { left, top, width, height }
+}
+
 export default function FlowView({ board, agents, notes, run, answerPanel, onOpenNode, onOpenNotes, onStartMission }: {
   board: BoardDocument
   agents: AgentProjection[]
@@ -59,7 +66,7 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
   run: FlowRun | null
   /** The pending human gate's answer panel, shown in that gate's row. */
   answerPanel: { gateId: string; panel: ReactNode } | null
-  onOpenNode: (nodeId: string) => void
+  onOpenNode: (nodeId: string, anchor?: WindowRect) => void
   onOpenNotes: (nodeId: string) => void
   onStartMission: (mission: MissionNode) => void
 }) {
@@ -95,7 +102,7 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
           {section.mission ? (
             <header className="flow-mission" data-flow-node={section.mission.id}>
               <div className="flow-mission-head">
-                <button type="button" className="flow-title" onClick={() => onOpenNode(section.mission!.id)}>
+                <button type="button" className="flow-title" onClick={event => onOpenNode(section.mission!.id, controlAnchor(event.currentTarget))}>
                   <span className="flow-kicker">◆ Mission</span> {section.mission.title || 'Untitled mission'}
                 </button>
                 <button type="button" className="flow-action" onClick={() => onStartMission(section.mission!)}>Start mission</button>
@@ -124,7 +131,7 @@ function FlowRow({ step, run, notes, answerPanel, staffing, onOpenNode, onOpenNo
   notes: ReadonlyMap<string, NoteEntry[]>
   answerPanel: { gateId: string; panel: ReactNode } | null
   staffing: (formation: FormationNode) => string
-  onOpenNode: (nodeId: string) => void
+  onOpenNode: (nodeId: string, anchor?: WindowRect) => void
   onOpenNotes: (nodeId: string) => void
 }) {
   const state = run ? run.states.get(step.id) ?? '' : undefined
@@ -134,7 +141,7 @@ function FlowRow({ step, run, notes, answerPanel, staffing, onOpenNode, onOpenNo
       <div className="flow-body">
         <div className="flow-step-head">
           <span className="flow-number" aria-hidden="true">{step.number}</span>
-          <button type="button" className="flow-title" aria-label={`${step.number} ${title}`} onClick={() => onOpenNode(step.id)}>{title}</button>
+          <button type="button" className="flow-title" aria-label={`${step.number} ${title}`} onClick={event => onOpenNode(step.id, controlAnchor(event.currentTarget))}>{title}</button>
           <span className="flow-kind">{step.kind === 'formation' ? step.node.type : step.kind === 'gate' ? 'gate' : 'tool'}</span>
         </div>
         {step.kind === 'formation' ? (
@@ -156,7 +163,7 @@ function FlowRow({ step, run, notes, answerPanel, staffing, onOpenNode, onOpenNo
               <ul className="flow-judges" aria-label={`Judges of ${title}`}>
                 {step.judges.map(judge => (
                   <li key={judge.id} className="flow-judge" data-flow-node={judge.id}>
-                    <button type="button" className="flow-title" aria-label={`Judge ${judge.title}`} onClick={() => onOpenNode(judge.id)}>
+                    <button type="button" className="flow-title" aria-label={`Judge ${judge.title}`} onClick={event => onOpenNode(judge.id, controlAnchor(event.currentTarget))}>
                       <span className="flow-kicker">Judge</span> {judge.title || 'Untitled judge'}
                     </button>
                     <p className="flow-line">{staffing(judge)}</p>
@@ -180,7 +187,8 @@ function FlowRow({ step, run, notes, answerPanel, staffing, onOpenNode, onOpenNo
           <span className={`flow-state state-${state || 'idle'}`}>{STATE_WORDS[state || '']}</span>
           {(run.attempts.get(step.id) || 0) > 1 ? <span className="flow-attempt">attempt {run.attempts.get(step.id)}</span> : null}
           {run.point && run.point.nodeId === step.id && run.point.kind !== 'running'
-            ? <RunPoint runId={run.runId} point={run.point} title={run.pointTitle} onLocate={onOpenNode} />
+            ? <RunPoint runId={run.runId} point={run.point} title={run.pointTitle} action="Open the step"
+              onLocate={nodeId => onOpenNode(nodeId, controlAnchor(document.querySelector(`[data-flow-node="${step.id}"] .flow-status [data-testid="run-point"]`) || document.body))} />
             : null}
           <ProducedFiles nodeId={step.id} className="flow-produced" />
         </div>
@@ -189,7 +197,7 @@ function FlowRow({ step, run, notes, answerPanel, staffing, onOpenNode, onOpenNo
   )
 }
 
-function Routes({ label, targets, onOpenNode }: { label: string; targets: FlowTarget[]; onOpenNode: (nodeId: string) => void }) {
+function Routes({ label, targets, onOpenNode }: { label: string; targets: FlowTarget[]; onOpenNode: (nodeId: string, anchor?: WindowRect) => void }) {
   return (
     <p className={`flow-line flow-routes route-${label.toLowerCase()}`}>
       <span className="flow-label">{label}</span>
@@ -197,7 +205,7 @@ function Routes({ label, targets, onOpenNode }: { label: string; targets: FlowTa
         <span key={target.kind === 'step' ? target.nodeId : target.kind} className="flow-route">
           {index ? ', ' : null}
           {target.kind === 'step' ? (
-            <button type="button" className="flow-link" onClick={() => onOpenNode(target.nodeId)}>
+            <button type="button" className="flow-link" onClick={event => onOpenNode(target.nodeId, controlAnchor(event.currentTarget))}>
               {target.back ? '↺ back to ' : '→ '}{target.number !== null ? `${target.number} ` : ''}{target.title}
             </button>
           ) : target.kind === 'end' ? '→ run ends' : '→ the run blocks'}
