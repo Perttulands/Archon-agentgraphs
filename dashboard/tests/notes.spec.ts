@@ -28,6 +28,8 @@ test('no card covers any note preview on Wayfinding', async ({ page }) => {
       return points.filter(([x, y]) => !element.contains(document.elementFromPoint(x, y))).length
     })
     expect(covered, `${titleOf(nodeId)} sticky is covered`).toBe(0)
+    const latest = elementNotes.find(notes => notes.nodeId === nodeId)!.entries.at(-1)!
+    await expect(sticky).toHaveClass(new RegExp(`note-sticky-${latest.author.startsWith('agent:') ? 'agent' : 'human'}`))
     expect(await sticky.locator('.note-sticky-text').first().evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(12)
   }
   expect(fixture.writes).toEqual([])
@@ -55,4 +57,31 @@ test('full note text on Wayfinding reads on the canvas and in note windows, with
   const boardWindow = page.getByRole('dialog', { name: 'board notes' })
   for (const entry of wayfinding.notes.board as Entry[]) await expect(boardWindow).toContainText(entry.text)
   await expect(noteWindow).toBeVisible()
+})
+
+test('a note window opens beside its node, leaving the card and its note in view', async ({ page }) => {
+  await wayfindingFixture(page)
+  await page.goto('/?board=wayfinding')
+  await expect(page.getByRole('note')).toHaveCount(elementNotes.length)
+  await page.getByTitle('Fit', { exact: true }).click()
+  await page.waitForTimeout(500)
+
+  // The first step has room on its right; the last sits at the board's right edge.
+  for (const { nodeId } of [elementNotes[0], elementNotes[elementNotes.length - 1]]) {
+    const title = titleOf(nodeId)
+    const card = await page.locator(`[data-node="${nodeId}"]`).first().boundingBox()
+    const sticky = await page.getByRole('note', { name: `Notes for ${title}` }).boundingBox()
+    await page.getByRole('button', { name: `Open notes for ${title}` }).click()
+    const noteWindow = page.getByRole('dialog', { name: `notes for ${title}` })
+    await expect(noteWindow).toBeVisible()
+    const win = (await noteWindow.boundingBox())!
+    const idea = {
+      left: Math.min(card!.x, sticky!.x), top: Math.min(card!.y, sticky!.y),
+      right: Math.max(card!.x + card!.width, sticky!.x + sticky!.width), bottom: Math.max(card!.y + card!.height, sticky!.y + sticky!.height),
+    }
+    const gap = Math.max(win.x - idea.right, idea.left - (win.x + win.width), win.y - idea.bottom, idea.top - (win.y + win.height))
+    expect(gap, `${title} window covers its card or note`).toBeGreaterThanOrEqual(0)
+    expect(gap, `${title} window opens away from its node`).toBeLessThanOrEqual(16)
+    await noteWindow.getByRole('button', { name: `Close notes for ${title}` }).click()
+  }
 })

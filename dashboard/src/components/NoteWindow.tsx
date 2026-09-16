@@ -3,6 +3,7 @@
  * lives with the cockpit, so closing the window keeps it. */
 import { useEffect, useRef } from 'react'
 import FloatingWindow from '../windows/FloatingWindow'
+import type { WindowRect } from '../windows/windowGeometry'
 import type { NoteEntry } from './formationsTypes'
 import { NoteThread } from './NoteThread'
 
@@ -12,9 +13,11 @@ export function noteWindowId(target: string): string {
   return `note:${target}`
 }
 
-export default function NoteWindow({ target, title, entries, draft, editingEntryId, saving, error, conflict, onDraft, onSave, onCancelEdit, onEdit, onDelete, onReload, onClose }: {
+export default function NoteWindow({ target, title, anchor, entries, draft, editingEntryId, saving, error, conflict, onDraft, onSave, onCancelEdit, onEdit, onDelete, onReload, onClose }: {
   target: string
   title: string
+  /** What the window opens beside: the node's card and sticky. */
+  anchor?: () => WindowRect | null
   entries: NoteEntry[]
   draft: string
   editingEntryId?: string
@@ -44,6 +47,7 @@ export default function NoteWindow({ target, title, entries, draft, editingEntry
       title={board ? 'Board notes' : `Notes · ${title}`}
       label={board ? 'board notes' : `notes for ${title}`}
       defaultSize={{ width: 400, height: 440 }}
+      anchor={anchor}
       className="note-window"
       onClose={onClose}
     >

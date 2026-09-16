@@ -1,6 +1,7 @@
 /* Notes on the canvas. Each noted node gets a sticky in a layer above the
  * cards, so no card covers it. Preview shows the latest entry and who wrote
  * it; full shows the whole thread. A sticky opens the node's note window. */
+import type { WindowRect } from '../windows/windowGeometry'
 import type { NoteEntry } from './formationsTypes'
 import { noteAuthor, noteTime } from './NoteThread'
 
@@ -37,6 +38,28 @@ export interface NodeNotes {
   nodeId: string
   title: string
   entries: NoteEntry[]
+}
+
+/** The cards a note thread can belong to. */
+export const NOTE_CARDS = '.formation[data-node],.gatecard[data-node],.missioncard[data-node],.toolcard[data-node]'
+
+/**
+ * Where a node's idea sits on screen, in viewport pixels: its card and the
+ * sticky under it. The node's note window opens beside this. Null when the
+ * card is not drawn.
+ */
+export function noteWindowAnchor(world: HTMLElement | null, nodeId: string): WindowRect | null {
+  if (!world) return null
+  const boxes = [...world.querySelectorAll<HTMLElement>(`${NOTE_CARDS},.note-sticky[data-note-node]`)]
+    .filter(element => (element.dataset.node ?? element.dataset.noteNode) === nodeId)
+    .map(element => element.getBoundingClientRect())
+    .filter(box => box.width > 0 && box.height > 0)
+  if (!boxes.length) return null
+  const left = Math.min(...boxes.map(box => box.left))
+  const top = Math.min(...boxes.map(box => box.top))
+  const right = Math.max(...boxes.map(box => box.right))
+  const bottom = Math.max(...boxes.map(box => box.bottom))
+  return { left, top, width: right - left, height: bottom - top }
 }
 
 const STICKY_WIDTH: Record<Exclude<NotesMode, 'hidden'>, number> = { preview: 240, full: 300 }

@@ -67,7 +67,7 @@ import { routeJudgeWire, routeOrthoWire } from './formationsRouting'
 import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
 import { InlineTitleEditor } from './InlineTitleEditor'
-import { NoteLayer, NOTES_MODES, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
+import { NOTE_CARDS, NoteLayer, NOTES_MODES, noteWindowAnchor, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
 import NoteWindow, { BOARD_NOTE_TARGET, noteWindowId } from './NoteWindow'
 import { FormationTypeChip, formationTypeChoices } from './FormationTypeChip'
 import { MissionEditorDialog } from './MissionEditorDialog'
@@ -2232,7 +2232,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const world = worldRef.current
     const next = new Map<string, NoteAnchor>()
     if (world && notesMode !== 'hidden') {
-      for (const card of world.querySelectorAll<HTMLElement>('.formation[data-node],.gatecard[data-node],.missioncard[data-node],.toolcard[data-node]')) {
+      for (const card of world.querySelectorAll<HTMLElement>(NOTE_CARDS)) {
         const nodeId = card.dataset.node || ''
         if (!noteByNode.has(nodeId)) continue
         next.set(nodeId, { x: parseFloat(card.style.left) || 0, y: parseFloat(card.style.top) || 0, width: card.offsetWidth, height: card.offsetHeight })
@@ -2870,6 +2870,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             key={target}
             target={target}
             title={noteTitleOf(target)}
+            anchor={target === BOARD_NOTE_TARGET ? undefined : () => noteWindowAnchor(worldRef.current, target)}
             entries={(target === BOARD_NOTE_TARGET ? notes?.board : noteByNode.get(target)) || []}
             draft={noteDrafts[target] || ''}
             editingEntryId={noteEditing[target]}
