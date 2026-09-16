@@ -73,6 +73,64 @@ for (const width of [1440, 390]) test(`floating Peek observes native output and 
   await page.screenshot({ path: `/tmp/form-ui-peek-${width}.png` })
 })
 
+test('two floating windows open, resize, stack and stay off the zoom column', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await cockpitFixture(page, { run: true })
+  await page.routeWebSocket('**/seats/*/terminal', () => {})
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Peek at Peer review', exact: true }).click()
+  await page.getByRole('button', { name: 'Open terminal' }).click()
+  const peer = page.locator('[data-window-id="peek:peer"]')
+  const run = page.locator('[data-window-id="peek:"]')
+  await expect(peer).toBeVisible()
+  await expect(run).toBeVisible()
+  const z = (win: typeof run) => win.evaluate(el => Number(getComputedStyle(el).zIndex))
+  expect(await z(run)).toBeGreaterThan(await z(peer))
+  const peerBox = (await peer.boundingBox())!
+  const before = (await run.boundingBox())!
+  expect(before.x).toBeGreaterThan(peerBox.x)
+  expect(before.y).toBeGreaterThan(peerBox.y)
+
+  const corner = (await run.locator('[data-handle="se"]').boundingBox())!
+  await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(1600, 1100, { steps: 8 })
+  await page.mouse.up()
+  const after = (await run.boundingBox())!
+  expect(after.x).toBeCloseTo(before.x, 0)
+  expect(after.y).toBeCloseTo(before.y, 0)
+  expect(after.width * after.height).toBeGreaterThan(before.width * before.height)
+
+  // The run window cascaded below and right of the peer window, so the peer's top-left header corner stays uncovered.
+  const head = (await peer.locator('.peek-head').boundingBox())!
+  await page.mouse.move(head.x + 8, head.y + 8)
+  await page.mouse.down()
+  await page.mouse.move(1600, 1100, { steps: 8 })
+  await page.mouse.up()
+  expect(await z(peer)).toBeGreaterThan(await z(run))
+
+  const canvas = (await page.getByTestId('formations-canvas').boundingBox())!
+  for (const zone of [page.locator('.zoomctl'), page.locator('.zoomlevel')]) {
+    const box = (await zone.boundingBox())!
+    for (const win of [run, peer]) {
+      const rect = (await win.boundingBox())!
+      const overlaps = rect.x < box.x + box.width && rect.x + rect.width > box.x && rect.y < box.y + box.height && rect.y + rect.height > box.y
+      expect(overlaps).toBe(false)
+      expect(rect.x).toBeGreaterThanOrEqual(canvas.x)
+      expect(rect.y).toBeGreaterThanOrEqual(canvas.y)
+      expect(rect.x + rect.width).toBeLessThanOrEqual(canvas.x + canvas.width)
+      expect(rect.y + rect.height).toBeLessThanOrEqual(canvas.y + canvas.height)
+    }
+  }
+  // The zoom column stays usable with both windows pressed against it.
+  await page.getByRole('button', { name: 'FIT' }).click()
+
+  await peer.locator('.peek-title').focus()
+  await page.keyboard.press('Escape')
+  await expect(peer).toHaveCount(0)
+  await expect(run).toBeVisible()
+})
+
 test('formation titles stay readable beside the type chip and run controls', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 850 })
   await cockpitFixture(page, { run: true })

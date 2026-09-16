@@ -1,0 +1,55 @@
+/* Floating windows. The handles are CHROTE's (FloatingFrameHandles.css):
+   hairlines on the window's own edges, invisible until one is in hand. Corners
+   are drawn after the edges and sit above them, so a corner takes the corner. */
+
+.floating-frame-handle {
+  position: absolute;
+  z-index: 2;
+  touch-action: none;
+  outline: none;
+}
+
+.floating-frame-handle:hover,
+.floating-frame-handle:focus-visible,
+.floating-frame-handle.dragging {
+  background-color: var(--text-dim);
+}
+
+.floating-frame-handle[data-handle='n'],
+.floating-frame-handle[data-handle='s'] { left: 0; right: 0; height: 4px; cursor: row-resize; }
+.floating-frame-handle[data-handle='n'] { top: 0; }
+.floating-frame-handle[data-handle='s'] { bottom: 0; }
+
+.floating-frame-handle[data-handle='w'],
+.floating-frame-handle[data-handle='e'] { top: 0; bottom: 0; width: 4px; cursor: col-resize; }
+.floating-frame-handle[data-handle='w'] { left: 0; }
+.floating-frame-handle[data-handle='e'] { right: 0; }
+
+.floating-frame-handle[data-handle='nw'],
+.floating-frame-handle[data-handle='ne'],
+.floating-frame-handle[data-handle='sw'],
+.floating-frame-handle[data-handle='se'] { width: 12px; height: 12px; z-index: 3; }
+.floating-frame-handle[data-handle='nw'] { top: 0; left: 0; cursor: nwse-resize; }
+.floating-frame-handle[data-handle='ne'] { top: 0; right: 0; cursor: nesw-resize; }
+.floating-frame-handle[data-handle='sw'] { bottom: 0; left: 0; cursor: nesw-resize; }
+.floating-frame-handle[data-handle='se'] { bottom: 0; right: 0; cursor: nwse-resize; }
+
+/* The standard window chrome. */
+.fwin {
+  display: flex; flex-direction: column; overflow: hidden; outline: none; user-select: text;
+  background: var(--surface-primary); color: var(--text-primary); border: 1px solid var(--divider);
+  border-radius: 5px; box-shadow: 0 18px 55px #0009; font: 12px var(--font-mono);
+}
+.fwin.focused { border-color: color-mix(in srgb, var(--accent) 45%, var(--divider)); }
+.fwin-head {
+  display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 6px 8px 6px 12px; flex-shrink: 0;
+  background: var(--surface-secondary); border-bottom: 1px solid var(--divider); cursor: move; touch-action: none; user-select: none;
+}
+.fwin-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; outline: none; }
+.fwin-title:focus-visible { text-decoration: underline; }
+.fwin-close {
+  flex-shrink: 0; width: 26px; height: 26px; border: 0; border-radius: 3px; background: transparent;
+  color: var(--text-secondary); font-size: 18px; line-height: 1; cursor: pointer;
+}
+.fwin-close:hover { color: var(--text-primary); background: var(--surface-primary); }
+.fwin-body { flex: 1; min-height: 0; overflow: auto; }

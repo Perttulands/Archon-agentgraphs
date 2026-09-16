@@ -70,6 +70,8 @@ import { GateEditorDialog, GateKindChips, draftFromGate, gateFieldsFromDraft, ga
 import type { GateDraft, GateFields } from './GateEditorDialog'
 import { createFormationsInteractionOwner } from './formationsInteraction'
 import type { FormationsInteractionOwner } from './formationsInteraction'
+import { WindowManagerProvider, useWindowManager } from '../windows/WindowManager'
+import { cockpitWorkspace } from '../windows/cockpitWorkspace'
 import type {
   AgentProjection,
   BoardConnection,
@@ -194,7 +196,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [runEvents, setRunEvents] = useState<RunEvent[]>([])
   const [escalations, setEscalations] = useState<OpenEscalation[]>([])
   const [inspectedNodeId, setInspectedNodeId] = useState<string | null>(null)
-  const [peek, setPeek] = useState<{ nodeId?: string } | null>(null)
+  // Formations whose terminal Peek is open; '' is the run-wide Peek.
+  const [peeks, setPeeks] = useState<string[]>([])
   const [ghost, setGhost] = useState<{ x: number; y: number; agentId: string; harness?: string } | null>(null)
   const [hoverSlot, setHoverSlot] = useState<string | null>(null)
   const [dragPos, setDragPos] = useState<{ id: string; x: number; y: number } | null>(null)
@@ -241,6 +244,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const elementNoteDirtyRef = useRef(false)
   const elementNoteTargetRef = useRef('')
   const viewportRef = useRef<HTMLDivElement | null>(null)
+  const windows = useWindowManager(() => cockpitWorkspace(viewportRef.current))
+  const { focus: focusWindow } = windows
+  // Each Peek is its own window; asking for one already open raises it.
+  const openPeek = useCallback((nodeId: string) => {
+    setPeeks(current => current.includes(nodeId) ? current : [...current, nodeId])
+    focusWindow(`peek:${nodeId}`)
+  }, [focusWindow])
   const worldRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<ViewTransform>(view)
   const interactionOwnerRef = useRef<FormationsInteractionOwner | null>(null)
@@ -2299,7 +2309,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         <div className="spacer" />
         <button type="button" className="newbtn" disabled={!activeRun}
           title={activeRun ? 'Observe run seats' : 'Start a run to observe its seats'}
-          onClick={() => setPeek({})}>Open terminal</button>
+          onClick={() => openPeek('')}>Open terminal</button>
       </div>
 
       <div className="main">
@@ -2517,7 +2527,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                         <div className="fruntools" data-testid={`run-tools-${formation.id}`}>
                           {activeRun ? <button type="button" className="fpeek" aria-label={`Peek at ${formation.title}`}
                             onPointerDown={event => event.stopPropagation()}
-                            onClick={() => setPeek({ nodeId: formation.id })}>Peek</button> : null}
+                            onClick={() => openPeek(formation.id)}>Peek</button> : null}
                           {nodeStates.has(formation.id) ? (
                             <button
                               type="button"
@@ -2879,8 +2889,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         </aside>
       </div>
 
-      {peek && activeRun ? <Suspense fallback={<div role="status">Loading terminal…</div>}><FloatingPeek key={`${activeRun.runId}-${peek.nodeId || ''}`} runId={activeRun.runId}
-        initialNodeId={peek.nodeId} onClose={() => setPeek(null)} /></Suspense> : null}
+      <WindowManagerProvider stack={windows}>
+        {activeRun ? peeks.map(nodeId => (
+          <Suspense key={`${activeRun.runId}-${nodeId}`} fallback={<div role="status">Loading terminal…</div>}>
+            <FloatingPeek windowId={`peek:${nodeId}`} runId={activeRun.runId} initialNodeId={nodeId || undefined}
+              onClose={() => setPeeks(current => current.filter(open => open !== nodeId))} />
+          </Suspense>
+        )) : null}
+      </WindowManagerProvider>
 
       {agentEditor ? (
         <PersonaEditorDialog

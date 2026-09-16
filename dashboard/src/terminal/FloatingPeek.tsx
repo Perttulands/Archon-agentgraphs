@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { harnessIcon } from '../components/harnessIcons'
+import FloatingFrameHandles from '../windows/FloatingFrameHandles'
+import { useFloatingWindow } from '../windows/useFloatingWindow'
 import TerminalSurface from './TerminalSurface'
 import { fetchRunSeats, seatSocketUrl, type RunSeats } from './seatApi'
 import type { ConnectionState } from './terminalSession'
@@ -10,8 +12,8 @@ const connectionText: Record<ConnectionState, string> = {
   disconnected: 'Disconnected. Refresh seats to reconnect.', unavailable: 'Observation unavailable. Refresh seats to check again.',
 }
 
-export default function FloatingPeek({ runId, initialNodeId, onClose }: {
-  runId: string; initialNodeId?: string; onClose: () => void
+export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, onClose }: {
+  windowId?: string; runId: string; initialNodeId?: string; onClose: () => void
 }) {
   const [projection, setProjection] = useState<RunSeats | null>(null)
   const [error, setError] = useState('')
@@ -20,11 +22,9 @@ export default function FloatingPeek({ runId, initialNodeId, onClose }: {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
   const [generation, setGeneration] = useState(0)
-  const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
-  const panel = useRef<HTMLElement>(null)
+  const win = useFloatingWindow<HTMLElement>({ id: windowId, kind: 'peek', label: 'terminal Peek', defaultSize: { width: 760, height: 430 }, onClose })
   const closeButton = useRef<HTMLButtonElement>(null)
   const request = useRef(0)
-  const drag = useRef<{ pointer: number; x: number; y: number; left: number; top: number } | null>(null)
   const selection = useRef({ node: selectedNode, slot: selectedSlot })
   selection.current = { node: selectedNode, slot: selectedSlot }
 
@@ -65,50 +65,18 @@ export default function FloatingPeek({ runId, initialNodeId, onClose }: {
     }
   }, [refresh])
 
-  const move = useCallback((x: number, y: number) => {
-    const rect = panel.current?.getBoundingClientRect()
-    if (!rect || window.innerWidth <= 800) { setPosition(null); return }
-    setPosition({ x: Math.max(8, Math.min(window.innerWidth - rect.width - 8, x)),
-      y: Math.max(44, Math.min(window.innerHeight - rect.height - 8, y)) })
-  }, [])
-  useEffect(() => {
-    const resize = () => {
-      const rect = panel.current?.getBoundingClientRect()
-      if (rect) move(rect.x, rect.y)
-    }
-    window.addEventListener('resize', resize)
-    return () => window.removeEventListener('resize', resize)
-  }, [move])
-
-  const beginDrag = (event: PointerEvent<HTMLElement>) => {
-    if (event.button !== 0 || window.innerWidth <= 800 || (event.target as HTMLElement).closest('button,select')) return
-    const rect = panel.current!.getBoundingClientRect()
-    drag.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top }
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
   const seats = projection?.seats.filter(s => s.nodeId === selectedNode) || []
   const selected = seats.find(s => s.slotId === selectedSlot)
   const nodeNames = new Map(projection?.seats.map(s => [s.nodeId, s.nodeTitle]))
   if (selectedNode && !nodeNames.has(selectedNode)) nodeNames.set(selectedNode, 'Selected formation · no seats')
   const nodes = [...nodeNames.entries()]
   const terminalAvailable = selected && seatSocketUrl(selected)
-  return <section ref={panel} className="floating-peek" role="dialog" aria-label="Formation terminal Peek"
-    style={position ? { left: position.x, top: position.y } : undefined}
-    onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape') onClose() }}
-    onPointerDown={event => event.stopPropagation()}>
-    <header className="peek-head" onPointerDown={beginDrag}
-      onPointerMove={event => {
-        const current = drag.current
-        if (current?.pointer === event.pointerId) move(current.left + event.clientX - current.x, current.top + event.clientY - current.y)
-      }} onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }}>
+  return <section {...win.rootProps} className={`floating-peek${win.focused ? ' focused' : ''}`} role="dialog" aria-label="Formation terminal Peek"
+    data-window-id={windowId} data-window-kind="peek">
+    <header className="peek-head" {...win.moveProps}>
       <span className="peek-icon">{harnessIcon(selected?.harness)}</span>
       <span className="peek-title" tabIndex={0} aria-label="Move terminal with arrow keys"
-        onKeyDown={event => {
-          const rect = panel.current!.getBoundingClientRect()
-          const deltas: Record<string, [number, number]> = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] }
-          const delta = deltas[event.key]
-          if (delta) { event.preventDefault(); move(rect.x + delta[0], rect.y + delta[1]) }
-        }}>{selected ? `${selected.nodeTitle} / ${selected.slotLabel}` : 'Terminal Peek'}</span>
+        onKeyDown={win.onMoveKeyDown}>{selected ? `${selected.nodeTitle} / ${selected.slotLabel}` : 'Terminal Peek'}</span>
       <span className="peek-observer">View only</span>
       <button ref={closeButton} onClick={onClose} aria-label="Close terminal Peek">Close ×</button>
     </header>
@@ -139,5 +107,6 @@ export default function FloatingPeek({ runId, initialNodeId, onClose }: {
         : projection?.reason || 'No terminal seats have been created for this formation.'}</p>}
     <footer className="peek-foot"><span role="status">{terminalAvailable ? connectionText[connectionState] : 'View only'}</span>
       <span title="Drag to select text; hold Shift if the terminal uses mouse tracking.">Select and scroll output</span></footer>
+    <FloatingFrameHandles handles={win.handles} activeHandle={win.activeHandle} />
   </section>
 }
