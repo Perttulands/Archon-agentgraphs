@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -35,10 +36,18 @@ func scratchSeat(t *testing.T) (*Observer, Target, func(...string) string) {
 		return strings.TrimSpace(string(out))
 	}
 	identity := strings.Fields(run("new-session", "-d", "-P", "-F", "#{session_id} #{pane_id}", "-s", "owned-proof", "-x", "120", "-y", "40", "sh", "-c", "printf 'NATIVE_TERMINAL_PROOF\\n'; exec cat"))
+	// Ending every session ends the scratch server. Host tmux guards may refuse
+	// kill-server, which would otherwise leave the server running.
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		_ = exec.CommandContext(ctx, bin, "-S", socket, "kill-server").Run()
+		tmux := func(args ...string) string {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			out, _ := exec.CommandContext(ctx, bin, append([]string{"-S", socket}, args...)...).Output()
+			return string(out)
+		}
+		for _, session := range strings.Fields(tmux("list-sessions", "-F", "#{session_id}")) {
+			tmux("kill-session", "-t", session)
+		}
 	})
 	socketIdentity, err := core.SocketIdentity(socket)
 	if err != nil {
@@ -140,8 +149,12 @@ func TestScratchObserverNeverInputsSizesOrEndsSeat(t *testing.T) {
 	}
 }
 
+// Each seat state is reached deterministically. The scratch server holds a
+// keeper session because tmux exits a server whose last session ends, and a
+// probe then correctly reports the unverifiable socket as unavailable.
 func TestSeatProbeRejectsMissingOrReplacedIdentity(t *testing.T) {
 	observer, target, run := scratchSeat(t)
+	run("new-session", "-d", "-s", "keeper", "sh", "-c", "exec cat")
 	original := target
 	target.SocketIdentity = ""
 	if s := observer.Probe(context.Background(), target); s.State != "unavailable" {
@@ -157,9 +170,42 @@ func TestSeatProbeRejectsMissingOrReplacedIdentity(t *testing.T) {
 	if s := observer.Probe(context.Background(), target); s.State != "missing" {
 		t.Fatal(s)
 	}
+
+	// The seat process exits and remain-on-exit keeps its dead pane.
 	run("set-option", "-w", "-t", original.SessionID, "remain-on-exit", "on")
-	run("kill-pane", "-t", original.PaneID)
-	if s := observer.Probe(context.Background(), original); s.State != "ended" && s.State != "missing" {
+	run("send-keys", "-t", original.PaneID, "C-d")
+	waitFor(t, func() bool { return run("display-message", "-p", "-t", original.PaneID, "#{pane_dead}") == "1" })
+	if s := observer.Probe(context.Background(), original); s.State != "ended" {
 		t.Fatal(s)
+	}
+
+	// The pane is gone while the server lives on.
+	run("kill-pane", "-t", original.PaneID)
+	if s := observer.Probe(context.Background(), original); s.State != "missing" {
+		t.Fatal(s)
+	}
+
+	// The server exits with its last session; its identity can no longer be proven.
+	run("kill-session", "-t", "keeper")
+	waitFor(t, func() bool {
+		conn, err := net.Dial("unix", observer.config.Socket)
+		if err == nil {
+			conn.Close()
+		}
+		return err != nil
+	})
+	if s := observer.Probe(context.Background(), original); s.State != "unavailable" {
+		t.Fatal(s)
+	}
+}
+
+func waitFor(t *testing.T, done func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for !done() {
+		if time.Now().After(deadline) {
+			t.Fatal("condition not reached")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

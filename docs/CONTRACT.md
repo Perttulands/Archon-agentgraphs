@@ -217,6 +217,8 @@ boot identity distinguish the original server from a replacement, even when
 session IDs are reused. A legacy seat without that proof is unavailable for
 Peek. A renamed session is still identified by its recorded immutable ID.
 Missing, ended and unavailable seats remain visible with their actual state.
+A seat whose tmux server has exited is unavailable, because the original server
+can no longer be proven.
 Terminal support uses the daemon's existing `--socket` and `--tmux-bin`; the lab
 executor exposes no live terminals. No generic session browser is provided.
 
