@@ -589,14 +589,25 @@ func parsePersonaCard(expectedID string, raw []byte) (*PersonaCard, error) {
 		ETag:           etag(raw),
 		TOML:           string(raw),
 	}
-	if card.Schema == 0 {
-		return nil, fmt.Errorf("%w: schema is required", ErrInvalidSlug)
+	name := expectedID
+	if name == "" {
+		name = card.ID
 	}
-	if card.ID == "" || card.Kind == "" || card.HarnessDefault == "" {
-		return nil, fmt.Errorf("%w: required persona fields missing", ErrInvalidSlug)
+	if card.Schema == 0 {
+		return nil, fmt.Errorf("%w: agent card %q needs schema", ErrInvalidAgentCard, name)
+	}
+	missing := []string{}
+	for field, value := range map[string]string{"card.id": card.ID, "card.kind": card.Kind, "harness.default": card.HarnessDefault} {
+		if value == "" {
+			missing = append(missing, field)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return nil, fmt.Errorf("%w: agent card %q is missing %s", ErrInvalidAgentCard, name, strings.Join(missing, ", "))
 	}
 	if expectedID != "" && card.ID != expectedID {
-		return nil, fmt.Errorf("%w: filename id %q does not match card id %q", ErrInvalidSlug, expectedID, card.ID)
+		return nil, fmt.Errorf("%w: agent card file %q holds card.id %q; they must match", ErrInvalidAgentCard, expectedID, card.ID)
 	}
 	for _, variant := range parser.variants {
 		if variant.ID == card.HarnessDefault && variant.SessionStem == "" {
@@ -605,7 +616,7 @@ func parsePersonaCard(expectedID string, raw []byte) (*PersonaCard, error) {
 		card.HarnessVariants = append(card.HarnessVariants, variant)
 	}
 	if len(card.HarnessVariants) == 0 {
-		return nil, fmt.Errorf("%w: harness variant is required", ErrInvalidSlug)
+		return nil, fmt.Errorf("%w: agent card %q needs a [[harness.variant]]", ErrInvalidAgentCard, name)
 	}
 	return card, nil
 }

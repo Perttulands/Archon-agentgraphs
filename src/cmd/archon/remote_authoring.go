@@ -94,6 +94,12 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrNoteAuthorMismatch
 	case "INVALID_BEAD_ID":
 		return formations.ErrInvalidBeadID
+	case "INVALID_CONTROLLER_ROLE":
+		return formations.ErrInvalidControllerRole
+	case "INVALID_PORT_DIRECTION":
+		return formations.ErrInvalidPortDirection
+	case "INVALID_AGENT_CARD":
+		return formations.ErrInvalidAgentCard
 	case formations.FindingInvalidCodeGateProfile:
 		return formations.ErrInvalidCodeGateProfile
 	case "INVALID_DEFINITION_SOURCE":

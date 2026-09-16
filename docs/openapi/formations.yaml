@@ -130,7 +130,7 @@ paths:
         '409':
           description: Stale revision or ETag
         '400':
-          description: Invalid mutation or retired inline verification/script gate. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (mission beadId or brief beadId).
+          description: Invalid mutation or retired inline verification/script gate. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (mission beadId or brief beadId). makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. An invalid board slug returns BAD_REQUEST 'Invalid formation slug'.
       parameters:
       - in: header
         name: If-Match
@@ -708,6 +708,8 @@ paths:
         '200':
           description: Roster in data.agents and data.count, including presets and overrides. No live-session
             provider is wired by the daemon.
+        '422':
+          description: INVALID_AGENT_CARD when a stored card lacks a required field; the message names the card and field
       parameters:
       - in: query
         name: capable
@@ -738,6 +740,8 @@ paths:
       responses:
         '200':
           description: Persona card in data, including harnessVariants model/effort; returns ETag
+        '422':
+          description: INVALID_AGENT_CARD when the stored card lacks a required field; the message names the card and field
     patch:
       responses:
         '200':

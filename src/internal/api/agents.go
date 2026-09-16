@@ -177,6 +177,8 @@ func writeAgentError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusConflict, "AGENT_EXISTS", "Agent id already exists")
 	case errors.Is(err, formations.ErrNotFound):
 		core.WriteError(w, http.StatusNotFound, "NOT_FOUND", "Agent not found")
+	case errors.Is(err, formations.ErrInvalidAgentCard):
+		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_AGENT_CARD", fieldErrorMessage(err, formations.ErrInvalidAgentCard))
 	case errors.Is(err, formations.ErrInvalidSlug):
 		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 	case errors.Is(err, formations.ErrUnsupportedSchema):

@@ -1651,6 +1651,12 @@ func patchUpdatedBy(parent, child string) string {
 	return child
 }
 
+// fieldErrorMessage drops the sentinel prefix, leaving the message that names
+// the field.
+func fieldErrorMessage(err, sentinel error) string {
+	return strings.TrimPrefix(err.Error(), sentinel.Error()+": ")
+}
+
 func writeFormationsError(w http.ResponseWriter, err error) {
 	var admission *formations.RunAdmissionError
 	switch {
@@ -1695,7 +1701,13 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	case errors.Is(err, formations.ErrPreconditionRequired):
 		core.WriteError(w, http.StatusPreconditionRequired, "PRECONDITION_REQUIRED", "If-Match and revision preconditions are required")
 	case errors.Is(err, formations.ErrInvalidBeadID):
-		core.WriteError(w, http.StatusBadRequest, "INVALID_BEAD_ID", strings.TrimPrefix(err.Error(), formations.ErrInvalidBeadID.Error()+": "))
+		core.WriteError(w, http.StatusBadRequest, "INVALID_BEAD_ID", fieldErrorMessage(err, formations.ErrInvalidBeadID))
+	case errors.Is(err, formations.ErrInvalidControllerRole):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_CONTROLLER_ROLE", fieldErrorMessage(err, formations.ErrInvalidControllerRole))
+	case errors.Is(err, formations.ErrInvalidPortDirection):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_PORT_DIRECTION", fieldErrorMessage(err, formations.ErrInvalidPortDirection))
+	case errors.Is(err, formations.ErrInvalidAgentCard):
+		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_AGENT_CARD", fieldErrorMessage(err, formations.ErrInvalidAgentCard))
 	case errors.Is(err, formations.ErrInvalidSlug):
 		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid formation slug")
 	case errors.Is(err, formations.ErrUnsupportedSchema):

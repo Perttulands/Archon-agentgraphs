@@ -744,8 +744,8 @@ func (s *Store) SetFormationController(slug string, req FormationControllerReque
 		if !ok {
 			return nil, ErrNotFound
 		}
-		if formationHeaderScalar(lines, formationStart, formationEnd, "type") != FormationTypeOrchestrated {
-			return nil, fmt.Errorf("%w: controller role is only valid for orchestrated formations", ErrInvalidSlug)
+		if formationType := formationHeaderScalar(lines, formationStart, formationEnd, "type"); formationType != FormationTypeOrchestrated {
+			return nil, fmt.Errorf("%w: formation %q is type %q; the controller role needs type %q", ErrInvalidControllerRole, req.FormationID, formationType, FormationTypeOrchestrated)
 		}
 		found := false
 		for i := formationStart + 1; i < formationEnd; i++ {
@@ -1461,7 +1461,7 @@ func (s *Store) AddFormationPort(slug string, req FormationPortRequest, opts Wri
 		return nil, ErrNotFound
 	}
 	if req.Direction != FormationPortInput && req.Direction != FormationPortOutput {
-		return nil, fmt.Errorf("%w: formation port direction must be input or output", ErrInvalidSlug)
+		return nil, fmt.Errorf("%w: port direction %q must be input or output", ErrInvalidPortDirection, req.Direction)
 	}
 	label := req.Label
 	if label == "" {

@@ -520,3 +520,18 @@ func TestRemoteAuthoringRetriesAWriteRaceThenGivesUp(t *testing.T) {
 		t.Fatalf("race board %+v, %v; want exactly one formation from the retried write", board, err)
 	}
 }
+
+func TestRemoteFieldErrorsKeepOfflineCodes(t *testing.T) {
+	for code, sentinel := range map[string]error{
+		"INVALID_BEAD_ID":         formations.ErrInvalidBeadID,
+		"INVALID_CONTROLLER_ROLE": formations.ErrInvalidControllerRole,
+		"INVALID_PORT_DIRECTION":  formations.ErrInvalidPortDirection,
+		"INVALID_AGENT_CARD":      formations.ErrInvalidAgentCard,
+	} {
+		offline := archonErrorCode(fmt.Errorf("%w: field", sentinel))
+		remote := archonErrorCode(&remoteHTTPError{Status: 400, Code: code, Message: "field"})
+		if offline != strings.ToLower(code) || remote != offline {
+			t.Errorf("%s: offline code %q, remote code %q", code, offline, remote)
+		}
+	}
+}

@@ -2632,6 +2632,12 @@ func archonErrorCode(err error) string {
 		return "conflict"
 	case errors.Is(err, formations.ErrInvalidBeadID):
 		return "invalid_bead_id"
+	case errors.Is(err, formations.ErrInvalidControllerRole):
+		return "invalid_controller_role"
+	case errors.Is(err, formations.ErrInvalidPortDirection):
+		return "invalid_port_direction"
+	case errors.Is(err, formations.ErrInvalidAgentCard):
+		return "invalid_agent_card"
 	case errors.Is(err, formations.ErrInvalidSlug):
 		return "invalid_selector"
 	case errors.Is(err, formations.ErrPreconditionRequired):
