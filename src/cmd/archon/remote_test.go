@@ -619,3 +619,24 @@ func TestRemoteAgentListShowsTheDaemonsLiveness(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoteToolErrorsCarryTheOfflineReason(t *testing.T) {
+	offline, remote, _ := newAuthoringSides(t)
+	for _, side := range []authoringSide{offline, remote} {
+		if _, stderr, code := side.run("board", "new", "tools"); code != 0 {
+			t.Fatalf("%s board new: %s", side.name, stderr)
+		}
+		for reason, args := range map[string][]string{
+			"Tool exact placement requires both x and y":        {"--params-json", `{"mode":"strict"}`, "--x", "10"},
+			`unknown Tool profile tuple "no.such"@"1"`:          {"--params-json", `{}`, "--profile-id", "no.such"},
+			`unknown Tool placement predecessor "node_missing"`: {"--params-json", `{"mode":"strict"}`, "--predecessor-node-id", "node_missing"},
+		} {
+			command := append([]string{"tool", "create", "tools", "--profile-id", "json.normalize", "--profile-version", "1", "--title", "Rejected", "--json"}, args...)
+			_, stderr, code := side.run(command...)
+			var failure archonErrorResponse
+			if err := json.Unmarshal([]byte(stderr), &failure); err != nil || code != 1 || failure.Code != "invalid_tool_mutation" || !strings.Contains(failure.Message, reason) {
+				t.Errorf("%s %v = %d %s, want invalid_tool_mutation naming %q", side.name, args, code, stderr, reason)
+			}
+		}
+	}
+}

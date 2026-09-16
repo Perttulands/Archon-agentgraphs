@@ -65,20 +65,28 @@ func (request *formationsToolPlacementRequest) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
-func (request *formationsToolPlacementRequest) invalid() bool {
+// Each problem method names what is wrong with its part of a Tool request, or
+// returns "" when that part is well formed.
+
+func (request *formationsToolPlacementRequest) problem() string {
 	if request == nil || request.presence.Invalid {
-		return true
+		return "createTool placement accepts x, y, predecessorNodeId and successorNodeId, each at most once"
 	}
 	for _, name := range []string{"x", "y", "predecessorNodeId", "successorNodeId"} {
 		if request.presence.Null[name] {
-			return true
+			return "createTool placement " + name + " must not be null"
 		}
 	}
 	if request.presence.Occurrences["predecessorNodeId"] == 1 && request.PredecessorNodeID == "" {
-		return true
+		return "createTool placement predecessorNodeId must not be empty"
 	}
-	return request.presence.Occurrences["successorNodeId"] == 1 && request.SuccessorNodeID == ""
+	if request.presence.Occurrences["successorNodeId"] == 1 && request.SuccessorNodeID == "" {
+		return "createTool placement successorNodeId must not be empty"
+	}
+	return ""
 }
+
+const toolParamsProblem = "params must be one duplicate-free JSON object of string, boolean, or signed 64-bit integer values"
 
 type formationsToolCreateRequest struct {
 	ProfileID      string                          `json:"profileId"`
@@ -104,16 +112,19 @@ func (request *formationsToolCreateRequest) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
-func (request *formationsToolCreateRequest) invalid() bool {
+func (request *formationsToolCreateRequest) problem() string {
 	if request == nil || request.presence.Invalid {
-		return true
+		return "createTool accepts profileId, profileVersion, title, params and placement, each once"
 	}
 	for _, name := range []string{"profileId", "profileVersion", "title", "params", "placement"} {
 		if request.presence.Occurrences[name] != 1 || request.presence.Null[name] {
-			return true
+			return "createTool needs " + name
 		}
 	}
-	return request.Params == nil || request.Params.Invalid || request.Placement.invalid()
+	if request.Params == nil || request.Params.Invalid {
+		return "createTool " + toolParamsProblem
+	}
+	return request.Placement.problem()
 }
 
 type formationsToolUpdateRequest struct {
@@ -138,16 +149,25 @@ func (request *formationsToolUpdateRequest) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
-func (request *formationsToolUpdateRequest) invalid() bool {
-	if request == nil || request.presence.Invalid || request.presence.Occurrences["id"] != 1 || request.presence.Null["id"] || request.ID == "" {
-		return true
+func (request *formationsToolUpdateRequest) problem() string {
+	if request == nil || request.presence.Invalid {
+		return "updateTool accepts id, title and params, each at most once"
 	}
-	titleCount := request.presence.Occurrences["title"]
-	paramsCount := request.presence.Occurrences["params"]
-	if titleCount+paramsCount == 0 || request.presence.Null["title"] || request.presence.Null["params"] {
-		return true
+	if request.presence.Occurrences["id"] != 1 || request.presence.Null["id"] || request.ID == "" {
+		return "updateTool needs id"
 	}
-	return request.Params != nil && request.Params.Invalid
+	if request.presence.Occurrences["title"]+request.presence.Occurrences["params"] == 0 {
+		return "updateTool needs title or params"
+	}
+	for _, name := range []string{"title", "params"} {
+		if request.presence.Null[name] {
+			return "updateTool " + name + " must not be null"
+		}
+	}
+	if request.Params != nil && request.Params.Invalid {
+		return "updateTool " + toolParamsProblem
+	}
+	return ""
 }
 
 type formationsToolDeleteRequest struct {
@@ -170,8 +190,14 @@ func (request *formationsToolDeleteRequest) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
-func (request *formationsToolDeleteRequest) invalid() bool {
-	return request == nil || request.presence.Invalid || request.presence.Occurrences["id"] != 1 || request.presence.Null["id"] || request.ID == ""
+func (request *formationsToolDeleteRequest) problem() string {
+	if request == nil || request.presence.Invalid {
+		return "deleteTool accepts only id, once"
+	}
+	if request.presence.Occurrences["id"] != 1 || request.presence.Null["id"] || request.ID == "" {
+		return "deleteTool needs id"
+	}
+	return ""
 }
 
 type formationsToolLayoutExpectationRequest struct {
@@ -195,19 +221,25 @@ func (request *formationsToolLayoutExpectationRequest) UnmarshalJSON(raw []byte)
 	return nil
 }
 
-func (request *formationsToolLayoutExpectationRequest) invalid() bool {
-	if request == nil || request.presence.Invalid || request.presence.Null["state"] || request.presence.Null["etag"] {
-		return true
+func (request *formationsToolLayoutExpectationRequest) problem() string {
+	if request == nil || request.presence.Invalid {
+		return "layoutExpectation accepts state and etag, each at most once"
+	}
+	for _, name := range []string{"state", "etag"} {
+		if request.presence.Null[name] {
+			return "layoutExpectation " + name + " must not be null"
+		}
 	}
 	switch request.State {
-	case "":
-		return false
+	case "", formations.LayoutWritePresent:
+		return ""
 	case formations.LayoutWriteAbsent:
-		return request.presence.Occurrences["etag"] != 0
-	case formations.LayoutWritePresent:
-		return false
+		if request.presence.Occurrences["etag"] != 0 {
+			return "layoutExpectation etag must be omitted when state is absent"
+		}
+		return ""
 	default:
-		return true
+		return "layoutExpectation state must be absent or present"
 	}
 }
 
@@ -290,6 +322,46 @@ func inspectToolJSONObject(raw []byte, allowed []string, allowUnknown bool) (too
 	return presence, nil
 }
 
+// toolFrameProblem names the first way a Tool request breaks its frame: one
+// Tool operation with only expectedRev, layoutExpectation and updatedBy beside it.
+func toolFrameProblem(request *formationsBoardPatchRequest, operationCount int) string {
+	switch {
+	case request.ToolFrameUnicodeInvalid:
+		return "Tool request is not valid Unicode JSON"
+	case request.ToolFrameInvalid:
+		return "a Tool request carries only createTool, updateTool or deleteTool with expectedRev, layoutExpectation and updatedBy"
+	case request.ToolOperationOccurrences != 1, request.MutationOccurrences != 1, operationCount != 1:
+		return "a Tool request needs exactly one createTool, updateTool or deleteTool"
+	case request.ExpectedRevOccurrences > 1:
+		return "a Tool request carries expectedRev once"
+	case request.LayoutExpectationOccurrences > 1:
+		return "a Tool request carries layoutExpectation once"
+	case request.UpdatedByOccurrences > 1:
+		return "a Tool request carries updatedBy once"
+	case request.UpdatedByNull:
+		return "a Tool request's updatedBy must not be null"
+	}
+	if request.CreateTool != nil {
+		if problem := request.CreateTool.problem(); problem != "" {
+			return problem
+		}
+	}
+	if request.UpdateTool != nil {
+		if problem := request.UpdateTool.problem(); problem != "" {
+			return problem
+		}
+	}
+	if request.DeleteTool != nil {
+		if problem := request.DeleteTool.problem(); problem != "" {
+			return problem
+		}
+	}
+	if request.LayoutExpectation != nil {
+		return request.LayoutExpectation.problem()
+	}
+	return ""
+}
+
 func isToolOperationKey(key string) bool {
 	for _, name := range []string{"createTool", "updateTool", "deleteTool"} {
 		if strings.EqualFold(key, name) {
@@ -322,20 +394,8 @@ func (h *FormationsHandler) patchToolBoard(w http.ResponseWriter, r *http.Reques
 	if request.DeleteTool != nil {
 		operationCount++
 	}
-	invalid := request.ToolFrameInvalid ||
-		request.ToolOperationOccurrences != 1 ||
-		request.MutationOccurrences != 1 ||
-		request.ExpectedRevOccurrences > 1 ||
-		request.LayoutExpectationOccurrences > 1 ||
-		request.UpdatedByOccurrences > 1 ||
-		request.UpdatedByNull ||
-		operationCount != 1 ||
-		(request.CreateTool != nil && request.CreateTool.invalid()) ||
-		(request.UpdateTool != nil && request.UpdateTool.invalid()) ||
-		(request.DeleteTool != nil && request.DeleteTool.invalid()) ||
-		(request.LayoutExpectation != nil && request.LayoutExpectation.invalid())
-	if invalid {
-		writeFormationsError(w, formations.ErrInvalidToolMutation)
+	if problem := toolFrameProblem(request, operationCount); problem != "" {
+		writeFormationsError(w, fmt.Errorf("%w: %s", formations.ErrInvalidToolMutation, problem))
 		return true
 	}
 	if r.Header.Get("If-Match") == "" ||

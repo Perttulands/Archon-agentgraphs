@@ -129,6 +129,8 @@ paths:
           description: Missing preconditions
         '409':
           description: Stale revision or ETag
+        '422':
+          description: Unprocessable write, such as a code check naming no registered profile. A Tool write returns INVALID_TOOL_MUTATION with a message naming the invalid field or reason.
         '400':
           description: Invalid mutation or retired inline verification/script gate. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (mission beadId or brief beadId). makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. An invalid board slug returns BAD_REQUEST 'Invalid formation slug'.
       parameters:

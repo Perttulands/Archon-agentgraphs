@@ -101,6 +101,7 @@ type formationsBoardPatchRequest struct {
 	UpdatedBy                     string                                  `json:"updatedBy"`
 	ToolOperationOccurrences      int                                     `json:"-"`
 	ToolFrameInvalid              bool                                    `json:"-"`
+	ToolFrameUnicodeInvalid       bool                                    `json:"-"`
 	ExpectedRevOccurrences        int                                     `json:"-"`
 	LayoutExpectationOccurrences  int                                     `json:"-"`
 	UpdatedByOccurrences          int                                     `json:"-"`
@@ -141,7 +142,8 @@ func (request *formationsBoardPatchRequest) UnmarshalJSON(raw []byte) error {
 	request.RemoveVerificationOccurrences = presence.RemoveVerificationOccurrences
 	request.MutationOccurrences = presence.MutationOccurrences
 	request.ToolOperationOccurrences = presence.ToolOperationOccurrences
-	request.ToolFrameInvalid = presence.ToolFrameInvalid || invalidToolSurrogate
+	request.ToolFrameInvalid = presence.ToolFrameInvalid
+	request.ToolFrameUnicodeInvalid = invalidToolSurrogate
 	request.ExpectedRevOccurrences = presence.ExpectedRevOccurrences
 	request.LayoutExpectationOccurrences = presence.LayoutExpectationOccurrences
 	request.UpdatedByOccurrences = presence.UpdatedByOccurrences
@@ -1665,7 +1667,11 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	case errors.Is(err, formations.ErrDefinitionPublicationUncertain):
 		core.WriteError(w, http.StatusServiceUnavailable, "DEFINITION_PUBLICATION_UNCERTAIN", "Reload both board and layout before any explicit retry")
 	case errors.Is(err, formations.ErrInvalidToolMutation):
-		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_TOOL_MUTATION", "Tool mutation is invalid")
+		message := "Tool mutation is invalid"
+		if err.Error() != formations.ErrInvalidToolMutation.Error() {
+			message = fieldErrorMessage(err, formations.ErrInvalidToolMutation)
+		}
+		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_TOOL_MUTATION", message)
 	case errors.Is(err, formations.ErrInvalidNotePatch):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_NOTE_PATCH", err.Error())
 	case errors.Is(err, formations.ErrNoteEntryNotFound):
