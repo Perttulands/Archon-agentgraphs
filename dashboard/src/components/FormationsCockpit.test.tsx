@@ -2057,6 +2057,32 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.getByTestId('board-picker')).toHaveValue('test-board')
   })
 
+  it('names where a blocked run stopped, rings that gate and locates it from the run bar', async () => {
+    installRunsMock([{ runId: 'run_01BLOCK', status: 'blocked', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 3 }], {
+      run_01BLOCK: [
+        { runId: 'run_01BLOCK', seq: 1, type: 'gate_evaluating', nodeId: 'gate_review', gateId: 'gate_review' },
+        { runId: 'run_01BLOCK', seq: 2, type: 'judge_attempt_failed', nodeId: 'gate_review', gateId: 'gate_review' },
+        { runId: 'run_01BLOCK', seq: 3, type: 'run_blocked', nodeId: 'gate_review', gateId: 'gate_review' },
+      ],
+    })
+    const projection = globalThis.fetch
+    const evidence = { runId: 'run_01BLOCK', nodeId: 'gate_review', kind: 'gate', problems: [
+      { seq: 3, type: 'run_blocked', reason: { text: 'invalid judge result: missing verdict block', bytes: 42 }, resumeAllowed: false },
+    ] }
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) === '/api/formations/runs/run_01BLOCK/evidence/nodes/gate_review'
+      ? Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data: { evidence } }) } as unknown as Response)
+      : projection(input, init)) as typeof fetch
+    await renderCockpit()
+
+    const point = await screen.findByTestId('run-point')
+    await waitFor(() => expect(point).toHaveTextContent('blocked at Review: invalid judge result: missing verdict block'))
+    const gate = screen.getByTestId('gate-node-gate_review')
+    expect(gate).toHaveClass('blocked')
+    expect(within(gate).getByTestId('run-chip-gate_review')).toHaveTextContent('blocked')
+    fireEvent.click(point)
+    expect(gate).toHaveClass('located')
+  })
+
   it('answers a pending human gate from its upstream output', async () => {
     localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
     installFetchMock({

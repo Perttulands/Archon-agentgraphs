@@ -1,0 +1,18 @@
+/* Run state on the canvas and the run bar's current point. Running is the
+   accent, waiting for the operator gold, blocked and failed red with a chip. */
+.fmx .gatecard.running:not(.needs-you){box-shadow:0 0 0 1.5px var(--terra),0 2px 8px rgba(0,0,0,.35);}
+.fmx .gatecard.waiting:not(.needs-you){box-shadow:0 0 0 1.5px var(--gold),0 2px 8px rgba(0,0,0,.35);}
+.fmx .formation.blocked:not(.needs-you),.fmx .formation.failed:not(.needs-you),
+.fmx .gatecard.blocked:not(.needs-you),.fmx .gatecard.failed:not(.needs-you),
+.fmx .missioncard.blocked,.fmx .missioncard.failed{border-color:var(--terra-d);box-shadow:0 0 0 1.5px var(--terra-d),0 0 16px -6px color-mix(in srgb,var(--terra-d) 55%,transparent);}
+.fmx .run-chip{position:absolute;z-index:12;right:38px;top:-9px;padding:1px 7px;border:1px solid var(--terra-d);border-radius:3px;background:var(--card);color:var(--terra-d);font:700 8.5px/1.5 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;pointer-events:none;}
+
+.fmx .formation.located,.fmx .missioncard.located,.fmx .gatecard.located{animation:run-located 1.6s ease-out;}
+@keyframes run-located{0%,45%{outline:2px solid var(--terra);outline-offset:7px;}100%{outline:2px solid transparent;outline-offset:2px;}}
+@media (prefers-reduced-motion:reduce){.fmx .formation.located,.fmx .missioncard.located,.fmx .gatecard.located{animation:none;outline:2px solid var(--terra);outline-offset:7px;}}
+
+.fmx .run-banner button.run-point{flex:0 1 auto;min-width:0;max-width:min(640px,50vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;text-transform:none;letter-spacing:.02em;font-size:11px;color:var(--ink);background:transparent;border-color:transparent;padding:4px 8px;}
+.fmx .run-banner button.run-point:hover:not(:disabled){border-color:var(--terra);}
+.fmx .run-banner button.run-point:disabled{cursor:default;}
+.fmx .run-banner button.run-point.waiting{color:var(--gold);}
+.fmx .run-banner button.run-point.blocked,.fmx .run-banner button.run-point.failed{color:var(--terra-d);}

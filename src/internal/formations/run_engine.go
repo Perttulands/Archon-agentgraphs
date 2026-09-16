@@ -2239,7 +2239,9 @@ func (e *RunEngine) routeGateVerdict(runID string, board *BoardDocument, gate Ga
 		return e.store.ProjectRun(runID)
 	}
 
-	if err := e.appendRunBlocked(runID, "human gate verdict recorded; resume required", "", gate.ID); err != nil {
+	pause := runBlockedEvent("human gate verdict recorded; resume required", "", gate.ID, "", nil)
+	pause.Data["code"] = RunBlockResumeAfterVerdict
+	if err := e.store.AppendRunEvent(runID, pause); err != nil {
 		return nil, err
 	}
 	return e.store.ProjectRun(runID)
@@ -2567,10 +2569,18 @@ func (e *RunEngine) appendRunBlocked(runID, reason, nodeID, gateID string) error
 }
 
 func (e *RunEngine) appendRunBlockedWithDispatches(runID, reason, nodeID, gateID, slotID string, openDispatches []map[string]any) error {
+	return e.store.AppendRunEvent(runID, runBlockedEvent(reason, nodeID, gateID, slotID, openDispatches))
+}
+
+// RunBlockResumeAfterVerdict marks the block that follows a recorded human
+// verdict until the run resumes: a pause, not a failure.
+const RunBlockResumeAfterVerdict = "resume_after_verdict"
+
+func runBlockedEvent(reason, nodeID, gateID, slotID string, openDispatches []map[string]any) RunEvent {
 	if openDispatches == nil {
 		openDispatches = []map[string]any{}
 	}
-	return e.store.AppendRunEvent(runID, RunEvent{
+	return RunEvent{
 		Type:   RunEventBlocked,
 		NodeID: nodeID,
 		SlotID: slotID,
@@ -2584,7 +2594,7 @@ func (e *RunEngine) appendRunBlockedWithDispatches(runID, reason, nodeID, gateID
 			"openDispatches": openDispatches,
 			"nextEpoch":      1,
 		},
-	})
+	}
 }
 
 func openDispatchesForBlock(nodeID, slotID, dispatchID string) []map[string]any {

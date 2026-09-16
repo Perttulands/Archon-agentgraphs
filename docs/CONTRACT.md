@@ -151,7 +151,8 @@ claiming success.
 The projection reports `running`, `waiting_human`, `blocked`, `succeeded`,
 `failed` or `canceled`. Always check `final` and `resumeAllowed`; a blocked run
 is not a completed delivery. Events expose node, slot and gate identities,
-status/verdict, session display name and cleanup outcome where applicable.
+attempt, status/verdict, session display name and cleanup outcome where
+applicable.
 Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
 `seat_created`, `seat_prompt_consumed`, `slot_result`, `seat_cleanup`,
 `gate_kind_result`, `gate_verdict`, and a run outcome. Malformed judges emit
@@ -270,8 +271,10 @@ with gate ID, gate attempt, requested sequence, deciding actor and text, and
 the next prompt renders it as a human-response section after that input. An
 empty response routes the input unchanged. On fail the response becomes the
 feedback reason. Resume rebuilds the response from the verdict recorded for
-that exact request, so it survives restart. The cockpit shows a pending human
-gate's input with a response box, Approve and Send back.
+that exact request, so it survives restart. Recording the verdict blocks the run
+with code `resume_after_verdict` until the coordinator resumes it; that block is
+a pause, not a failure. The cockpit shows a pending human gate's input with a
+response box, Approve and Send back.
 
 Real formations must emit all and only their declared output IDs in one block:
 
@@ -664,7 +667,8 @@ Artifact names are relative; every component is opened from the state
 directory without following symlinks, and only regular files with one link are
 read, so names with `..`, symlinks and hard links cannot leave the run's
 directory. Output and input references appear as `ref.artifact` inside that
-directory or `ref.external` (a base name only) elsewhere. Structured fields
+directory or `ref.external` (a base name only) elsewhere; engine references
+such as `ledger://` name no file and are omitted. Structured fields
 never carry native session IDs, tmux session or pane IDs, `sessionRef`, socket or
 prompt digests, brief or prompt paths, seat report pointers or absolute
 artifact paths, and worker pane captures are not served. Text is served as

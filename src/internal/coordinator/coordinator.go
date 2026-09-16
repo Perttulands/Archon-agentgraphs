@@ -35,6 +35,7 @@ type Event struct {
 	NodeID      string `json:"nodeId,omitempty"`
 	SlotID      string `json:"slotId,omitempty"`
 	GateID      string `json:"gateId,omitempty"`
+	Attempt     int    `json:"attempt,omitempty"`
 	Status      string `json:"status,omitempty"`
 	Verdict     string `json:"verdict,omitempty"`
 	SessionName string `json:"sessionName,omitempty"`
@@ -464,7 +465,7 @@ func project(status *formations.RunStatusProjection, events []formations.RunEven
 		if raw.Type == formations.RunEventHumanVerdictRecorded {
 			delete(waiting, raw.GateID)
 		}
-		e := Event{Seq: raw.Seq, Type: raw.Type, NodeID: raw.NodeID, SlotID: raw.SlotID, GateID: raw.GateID}
+		e := Event{Seq: raw.Seq, Type: raw.Type, NodeID: raw.NodeID, SlotID: raw.SlotID, GateID: raw.GateID, Attempt: raw.Attempt}
 		e.Status, _ = raw.Data["status"].(string)
 		e.Verdict, _ = raw.Data["verdict"].(string)
 		e.SessionName, _ = raw.Data["sessionName"].(string)

@@ -23,6 +23,14 @@ a.evidence-meta:hover { color: var(--accent); }
 .evidence-port-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
 .evidence-ref { display: inline-flex; align-items: baseline; gap: 6px; margin-left: 6px; }
 
+.evidence-ids { font-size: 10px; color: var(--text-dim); }
+.evidence-ids summary { cursor: pointer; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; }
+.evidence-ids dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 12px; margin: 6px 0 0; }
+.evidence-ids dl > div { display: contents; }
+.evidence-ids dt { color: var(--text-secondary); }
+.evidence-ids dd { margin: 0; overflow-wrap: anywhere; user-select: all; }
+.evidence-pause .node-verdict-line { color: var(--text-secondary); }
+
 .evidence-cleanup-left .node-dispatch-agent { color: var(--gold, var(--window-orange)); }
 
 .evidence-input { margin: 4px 0; font-size: 10.5px; color: var(--text-secondary); }

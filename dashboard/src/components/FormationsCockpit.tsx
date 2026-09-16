@@ -42,6 +42,7 @@ import {
   activeRunStorageKey,
   openHumanGateId,
   projectNodeStates,
+  runCurrentPoint,
   runStatusFromResponse,
   upsertRunEvent,
 } from './formationsRunState'
@@ -55,6 +56,7 @@ const RunEvidence = lazy(() => import('../evidence/RunEvidence'))
 import DismissiblePanel from './DismissiblePanel'
 import PersonaEditorDialog from './PersonaEditorDialog'
 import HumanGateAnswerPanel, { type GateDecision } from './HumanGateAnswerPanel'
+import RunPoint from './RunPoint'
 import { useHumanGateUpstream } from './useHumanGateUpstream'
 import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom, splitList } from './formationsCockpitDom'
 import { routeJudgeWire, routeOrthoWire } from './formationsRouting'
@@ -198,6 +200,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [inspectedNodeId, setInspectedNodeId] = useState<string | null>(null)
   // Formations whose terminal Peek is open; '' is the run-wide Peek.
   const [peeks, setPeeks] = useState<string[]>([])
+  // The card the run bar's phrase last located, marked briefly on the canvas.
+  const [locatedNodeId, setLocatedNodeId] = useState('')
   const [ghost, setGhost] = useState<{ x: number; y: number; agentId: string; harness?: string } | null>(null)
   const [hoverSlot, setHoverSlot] = useState<string | null>(null)
   const [dragPos, setDragPos] = useState<{ id: string; x: number; y: number } | null>(null)
@@ -582,6 +586,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   ), [displayLayoutByNode])
 
   const nodeStates = useMemo(() => projectNodeStates(runEvents, activeRun), [runEvents, activeRun])
+  const runPoint = useMemo(() => runCurrentPoint(runEvents, activeRun), [runEvents, activeRun])
   const outputNodeIds = useMemo(() => new Set(runEvents.filter(event => event.type === 'node_output' && event.nodeId).map(event => event.nodeId)), [runEvents])
   const inspectedTool = useMemo(
     () => (board?.tools || []).find(tool => tool.id === inspectedToolId) || null,
@@ -1555,6 +1560,31 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     })
   }, [])
 
+  // Centre a card in the viewport at the current zoom and mark it briefly.
+  const locateNode = useCallback((nodeId: string) => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    const world = worldRef.current
+    const card = Array.from(world?.querySelectorAll<HTMLElement>('[data-node]') || []).find(el => el.dataset.node === nodeId)
+    if (!rect || !world || !card) return
+    const x = Number.parseFloat(card.style.left)
+    const y = Number.parseFloat(card.style.top)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return
+    world.classList.add('smooth')
+    window.setTimeout(() => world.classList.remove('smooth'), 420)
+    setView(current => ({
+      ...current,
+      x: rect.width / 2 - (x + card.offsetWidth / 2) * current.scale,
+      y: rect.height / 2 - (y + card.offsetHeight / 2) * current.scale,
+    }))
+    setLocatedNodeId(nodeId)
+  }, [])
+
+  useEffect(() => {
+    if (!locatedNodeId) return
+    const timer = window.setTimeout(() => setLocatedNodeId(''), 1600)
+    return () => window.clearTimeout(timer)
+  }, [locatedNodeId])
+
   useLayoutEffect(() => {
     if (!board || !layout || fittedBoardRef.current === board.slug) return
     const frame = window.requestAnimationFrame(() => {
@@ -2261,6 +2291,19 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const renderDraftMarker = (nodeId: string) => (
     <DraftMarker nodeId={nodeId} findings={blockedFindings.get(nodeId) ?? draftFindings.get(nodeId)} blocked={blockedFindings.has(nodeId)} />
   )
+  const renderRunChip = (nodeId: string) => {
+    const state = nodeStates.get(nodeId)
+    return state === 'blocked' || state === 'failed' ? <span className={`run-chip ${state}`} data-testid={`run-chip-${nodeId}`}>{state}</span> : null
+  }
+  const runPointTitle = (() => {
+    const nodeId = runPoint?.nodeId
+    if (!nodeId || !board) return ''
+    const gate = board.gates?.find(node => node.id === nodeId)
+    return board.formations?.find(node => node.id === nodeId)?.title
+      || (gate ? gate.title || gate.kinds.map(gateKindLabel).join(' · ') || 'Gate' : '')
+      || board.missions?.find(node => node.id === nodeId)?.title
+      || ''
+  })()
   const inspectedNode = useMemo(() => {
     if (!inspectedNodeId || !board) return null
     const formation = board.formations?.find(node => node.id === inspectedNodeId)
@@ -2384,6 +2427,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               <div className="run-banner" data-testid="run-banner">
                 <span>run</span>
                 <span className={`badge ${runBadgeClass}`}>{activeRun.status}</span>
+                <RunPoint runId={activeRun.runId} point={runPoint} title={runPointTitle} onLocate={locateNode} />
                 {runChoices.length > 1 ? (
                   <select
                     className="run-picker"
@@ -2453,7 +2497,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               return (
                 <div
                   key={mission.id}
-                  className={`missioncard${noteByNode.has(mission.id) ? ' has-note' : ''}${draftClass(mission.id)}`}
+                  className={`missioncard${state === 'blocked' || state === 'failed' ? ` ${state}` : ''}${locatedNodeId === mission.id ? ' located' : ''}${noteByNode.has(mission.id) ? ' has-note' : ''}${draftClass(mission.id)}`}
                   data-node={mission.id}
                   data-testid={`mission-node-${mission.id}`}
                   style={{ left: pos.x, top: pos.y }}
@@ -2466,6 +2510,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 >
                   {renderNotePin(mission.id, mission.title)}
                   {renderDraftMarker(mission.id)}
+                  {renderRunChip(mission.id)}
                   <div className="mhd">
                     <span className="meyebrow">◆ Mission</span>
                     <button className="mrun" title="Start mission" onClick={() => setStartMission(mission)} data-testid={`run-mission-${mission.id}`}>{PLAY_SVG}</button>
@@ -2484,7 +2529,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               return (
                 <div
                   key={formation.id}
-                  className={`formation type-${formation.type}${state === 'running' ? ' running' : ''}${judgeHover === formation.id ? ' judgehover' : ''}${needsYouNodeIds.has(formation.id) ? ' needs-you' : ''}${noteByNode.has(formation.id) ? ' has-note' : ''}${draftClass(formation.id)}`}
+                  className={`formation type-${formation.type}${state === 'running' || state === 'blocked' || state === 'failed' ? ` ${state}` : ''}${locatedNodeId === formation.id ? ' located' : ''}${judgeHover === formation.id ? ' judgehover' : ''}${needsYouNodeIds.has(formation.id) ? ' needs-you' : ''}${noteByNode.has(formation.id) ? ' has-note' : ''}${draftClass(formation.id)}`}
                   data-node={formation.id}
                   data-testid={`formation-node-${formation.id}`}
                   style={{ left: pos.x, top: pos.y }}
@@ -2492,6 +2537,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 >
                   {renderNotePin(formation.id, formation.title)}
                   {renderDraftMarker(formation.id)}
+                  {renderRunChip(formation.id)}
                   {formation.inputs.map((port, portIndex) => {
                     const endpoint = `${formation.id}:${port.id}`
                     const feeds = (board?.connections || []).filter(connection => connection.to === endpoint)
@@ -2549,7 +2595,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                     }} />
                     <button className="frun" title="Run formation" onClick={() => void runFormation(formation)} data-testid={`run-formation-${formation.id}`}>{PLAY_SVG}</button>
                   </div>
-                  <div className="fstatus">{state && state !== 'done' ? state : ''}</div>
+                  <div className="fstatus">{state === 'running' || state === 'waiting' ? state : ''}</div>
                   <div className="fbody" onPointerDown={event => beginNodeDrag(event, formation.id, index)}>{renderBody(formation)}</div>
                   {formation.verification ? (
                     <button
@@ -2601,7 +2647,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               return (
                 <div
                   key={gate.id}
-                  className={`gatecard${state ? ` ${state}` : ''}${gateHasJudge(gate.id) ? ' hasjudge' : ''}${needsYouNodeIds.has(gate.id) ? ' needs-you' : ''}${noteByNode.has(gate.id) ? ' has-note' : ''}${draftClass(gate.id)}`}
+                  className={`gatecard${state ? ` ${state}` : ''}${locatedNodeId === gate.id ? ' located' : ''}${gateHasJudge(gate.id) ? ' hasjudge' : ''}${needsYouNodeIds.has(gate.id) ? ' needs-you' : ''}${noteByNode.has(gate.id) ? ' has-note' : ''}${draftClass(gate.id)}`}
                   data-node={gate.id}
                   data-gate={gate.id}
                   data-testid={`gate-node-${gate.id}`}
@@ -2615,6 +2661,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 >
                   {renderNotePin(gate.id, gate.title || 'Gate')}
                   {renderDraftMarker(gate.id)}
+                  {renderRunChip(gate.id)}
                   <span
                     className={`port pin${hoverPort === inputEndpoint ? ' snaptarget' : ''}${incoming ? ' has' : ''}`}
                     data-port-in={inputEndpoint}
@@ -3054,7 +3101,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       {inspectedNode && activeRun ? (
         <Suspense fallback={<div role="status">Loading run evidence…</div>}>
           <RunEvidence runId={activeRun.runId} nodeId={inspectedNode.id} title={inspectedNode.title}
-            state={nodeStates.get(inspectedNode.id) || ''} onClose={() => setInspectedNodeId(null)} />
+            state={nodeStates.get(inspectedNode.id) || ''} board={board} onClose={() => setInspectedNodeId(null)} />
         </Suspense>
       ) : null}
 

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { cockpitFixture, runCwd, seats } from './cockpit-fixture'
+import { cockpitFixture, judgeBlockReason, runCwd, seats } from './cockpit-fixture'
 
 test('theme fallback, local font, notes and harness icons survive', async ({ page }) => {
   const fixture = await cockpitFixture(page, { themeFailure: true })
@@ -165,6 +165,38 @@ test('the run banner docks above the canvas and never covers a card', async ({ p
   const cwd = banner.locator('.run-cwd')
   await expect(cwd).toHaveAttribute('title', runCwd)
   expect(await cwd.evaluate(el => el.scrollWidth > el.clientWidth && el.clientWidth <= 260)).toBe(true)
+})
+
+test('a run blocked at its judge rings the gate and names it with the reason in the run bar', async ({ page }) => {
+  await cockpitFixture(page, { run: true, blockedAtJudge: true })
+  await page.goto('/')
+  const point = page.getByTestId('run-point')
+  await expect(point).toHaveText(`blocked at Review gate: ${judgeBlockReason}`)
+  await expect(page.getByTestId('run-banner').locator('.badge')).toHaveText('blocked')
+
+  const gate = page.getByTestId('gate-node-gate')
+  await expect(gate).toHaveClass(/\bblocked\b/)
+  await expect(gate.getByTestId('run-chip-gate')).toHaveText('blocked')
+  await expect(gate.getByTestId('run-chip-gate')).toBeVisible()
+  const error = await gate.evaluate(el => getComputedStyle(el.querySelector('.run-chip')!).color)
+  // The card's box-shadow transitions in; read the settled ring.
+  await expect.poll(() => gate.evaluate(el => getComputedStyle(el).boxShadow)).toContain(`${error} 0px 0px 0px 1.5px`)
+  expect(await page.getByTestId('gate-node-loose').evaluate(el => getComputedStyle(el).boxShadow)).not.toContain(error)
+  // Finished steps keep no ring or chip.
+  await expect(page.getByTestId('formation-node-execution')).not.toHaveClass(/\b(blocked|failed|running)\b/)
+  await expect(page.locator('.run-chip')).toHaveCount(1)
+  await page.screenshot({ path: test.info().outputPath('blocked-at-judge.png') })
+
+  // The phrase centres the gate in the canvas.
+  const canvas = (await page.getByTestId('formations-canvas').boundingBox())!
+  const offCentre = async () => {
+    const box = (await gate.boundingBox())!
+    return Math.max(Math.abs(box.x + box.width / 2 - (canvas.x + canvas.width / 2)), Math.abs(box.y + box.height / 2 - (canvas.y + canvas.height / 2)))
+  }
+  expect(await offCentre()).toBeGreaterThan(40)
+  await point.click()
+  await expect(gate).toHaveClass(/\blocated\b/)
+  await expect.poll(offCentre).toBeLessThan(3)
 })
 
 test('the phone roster count stays inside its header column', async ({ page }) => {

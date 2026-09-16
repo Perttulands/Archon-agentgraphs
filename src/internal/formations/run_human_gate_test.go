@@ -94,6 +94,10 @@ func TestS5HumanGateVerdictRequiresResumeToDispatchPassWire(t *testing.T) {
 	if got := executor.nodeIDs(); len(got) != 0 {
 		t.Fatalf("executor nodes after verdict = %v, want no downstream dispatch before resume", got)
 	}
+	pause := lastEventOfType(t, readRunEvents(t, findOnlyRunLedger(t, store, "session-search")), RunEventBlocked)
+	if pause.GateID != "gate_review" || pause.Data["code"] != RunBlockResumeAfterVerdict {
+		t.Fatalf("block after verdict = %+v, want the %s pause at gate_review", pause, RunBlockResumeAfterVerdict)
+	}
 	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{
 		Actor:  "agent:test",
 		Mode:   "reattach",

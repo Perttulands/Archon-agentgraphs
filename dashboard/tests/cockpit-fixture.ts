@@ -40,7 +40,20 @@ export const seats = [
     columns: 96, rows: 30, terminalUrl: '/api/formations/runs/run_browser/seats/8/terminal' },
 ]
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; themeFailure?: boolean; waitingHuman?: boolean } = {}) {
+export const judgeBlockReason = 'invalid judge result: missing or unterminated chrote-verdict block'
+// The run is blocked at the review gate after its judge returned no verdict block.
+const blockedAtJudgeEvents = [
+  { seq: 1, type: 'run_started' },
+  { seq: 2, type: 'node_started', nodeId: 'execution', attempt: 1 },
+  { seq: 3, type: 'node_output', nodeId: 'execution', status: 'done' },
+  { seq: 4, type: 'gate_evaluating', nodeId: 'gate', gateId: 'gate' },
+  { seq: 5, type: 'node_started', nodeId: 'judge', attempt: 1 },
+  { seq: 6, type: 'node_output', nodeId: 'judge', status: 'done' },
+  { seq: 7, type: 'judge_attempt_failed', nodeId: 'gate', gateId: 'gate' },
+  { seq: 8, type: 'run_blocked', nodeId: 'gate', gateId: 'gate' },
+]
+
+export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; themeFailure?: boolean; waitingHuman?: boolean } = {}) {
   let nodes = positions.map(p => ({ ...p, x: p.x + (options.far ? 1800 : 0) }))
   let seatsFetches = 0
   let themeFetches = 0
@@ -78,12 +91,18 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path === '/api/agents/codex') return respond({ id: 'codex', displayName: 'Codex builder', kind: 'builder', summary: 'Builds the change.', tags: [],
       harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'codex', launch: 'codex' }], etag: 'codex-card' })
     if (path === '/api/formations/runs/run_browser' && options.waitingHuman) return respond({ runId: 'run_browser', status: 'waiting_human', final: false, boardSlug: 'browser', missionId: 'mission', eventCount: 3, cwd: runCwd, waitingGates: [{ gateId: 'loose', requestedSeq: 3 }] })
+    if (path === '/api/formations/runs/run_browser' && options.blockedAtJudge) return respond({ runId: 'run_browser', status: 'blocked', final: false, resumeAllowed: false, boardSlug: 'browser', missionId: 'mission', eventCount: 8, cwd: runCwd })
     if (path === '/api/formations/runs/run_browser') return respond({ runId: 'run_browser', status: 'running', final: false, boardSlug: 'browser', missionId: 'mission', eventCount: 2, cwd: runCwd })
     if (path.endsWith('/events') && options.waitingHuman) return respond({ events: [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' },
       { seq: 3, type: 'human_input_requested', nodeId: 'loose', gateId: 'loose' }] })
+    if (path.endsWith('/events') && options.blockedAtJudge) return respond({ events: blockedAtJudgeEvents })
     if (path.endsWith('/events')) return respond({ events: [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' }] })
     if (path === '/api/formations/runs/run_browser/gates/loose/request') return respond({ request: { gateId: 'loose', requestedSeq: 3, criterion: board.gates[1].criterion,
       input: { fromNodeId: 'execution', fromPortId: 'out', truncated: false, text: Array.from({ length: 60 }, (_, i) => `${i + 1}. A question the operator should answer before the brief is written.`).join('\n') } } })
+    if (options.blockedAtJudge && path === '/api/formations/runs/run_browser/evidence/nodes/gate') return respond({ evidence: { runId: 'run_browser', nodeId: 'gate', kind: 'gate', evaluations: [], problems: [
+      { seq: 7, type: 'error', code: 'invalid_judge_result', reason: { text: 'missing or unterminated chrote-verdict block', bytes: 44 } },
+      { seq: 8, type: 'run_blocked', reason: { text: judgeBlockReason, bytes: judgeBlockReason.length }, resumeAllowed: false },
+    ] } })
     if (path.endsWith('/escalations')) return respond({ escalations: [] })
     if (path.endsWith('/seats')) { seatsFetches++; return respond({ runId: 'run_browser', available: true, seats }) }
     return route.fulfill({ status: 404, json: { success: false, error: { message: `Fixture has no ${path}` } } })

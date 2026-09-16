@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { gateKindLabel } from '../components/GateEditorDialog'
 import { useEscapeKey } from '../components/useEscapeKey'
+import type { BoardDocument } from '../components/formationsTypes'
+import { evidenceNamesForBoard, type EvidenceNames } from './evidenceNames'
 import Markdown from './Markdown'
 import TextLines, { prettyJson } from './TextLines'
 import {
@@ -10,6 +12,7 @@ import {
   fetchRunArtifacts,
   fetchRunBrief,
   formatBytes,
+  isHumanVerdictPause,
   type EvidenceAttempt,
   type EvidenceEvaluation,
   type EvidenceInput,
@@ -37,13 +40,16 @@ interface RunEvidenceProps {
   title: string
   /** The node's run state from the live projection; a change refetches. */
   state: string
+  /** Names the evidence's node, port and slot IDs; without it they show as IDs. */
+  board?: BoardDocument | null
   onClose: () => void
 }
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
 const byteLength = (text: string) => new TextEncoder().encode(text).length
 
-export default function RunEvidence({ runId, nodeId, title, state, onClose }: RunEvidenceProps) {
+export default function RunEvidence({ runId, nodeId, title, state, board, onClose }: RunEvidenceProps) {
+  const names = useMemo(() => evidenceNamesForBoard(board), [board])
   const [evidence, setEvidence] = useState<NodeEvidence | null>(null)
   const [error, setError] = useState('')
   const [artifacts, setArtifacts] = useState<{ artifacts: RunArtifactEntry[]; truncated: boolean } | null>(null)
@@ -65,6 +71,9 @@ export default function RunEvidence({ runId, nodeId, title, state, onClose }: Ru
     fetchArtifactPreview(runId, name).then(preview => setOpenDocument({ kind: 'artifact', preview }), reason => setDocumentError(`${name}: ${errorText(reason)}`))
   }, [runId])
 
+  const pauses = (evidence?.problems || []).filter(isHumanVerdictPause)
+  const failures = (evidence?.problems || []).filter(problem => !isHumanVerdictPause(problem))
+
   const openBrief = useCallback((seq: number, label: string) => {
     setDocumentError('')
     fetchRunBrief(runId, seq).then(brief => setOpenDocument({ kind: 'brief', title: `Brief · ${label}`, text: brief.text }), reason => setDocumentError(`Brief: ${errorText(reason)}`))
@@ -84,9 +93,9 @@ export default function RunEvidence({ runId, nodeId, title, state, onClose }: Ru
       </div>
       <div className="pop-body node-evidence">
         <dl className="node-evidence-identity">
-          <div><dt>Node</dt><dd>{nodeId}</dd></div>
           <div><dt>State</dt><dd data-testid="node-evidence-state">{state || 'not started'}</dd></div>
         </dl>
+        <EvidenceIds runId={runId} nodeId={nodeId} evidence={evidence} names={names} />
 
         {error ? <div className="note-error" role="alert">Evidence unavailable: {error}</div> : null}
         {!evidence && !error ? <div className="node-evidence-empty" role="status">Loading evidence…</div> : null}
@@ -97,18 +106,28 @@ export default function RunEvidence({ runId, nodeId, title, state, onClose }: Ru
         {documentError ? <div className="note-error" role="alert">{documentError}</div> : null}
 
         {evidence && evidence.kind === 'gate' ? (
-          <GateEvaluations runId={runId} evaluations={evidence.evaluations || []} onOpenArtifact={openArtifact} />
+          <GateEvaluations runId={runId} evaluations={evidence.evaluations || []} names={names} onOpenArtifact={openArtifact} />
         ) : null}
         {evidence && evidence.kind !== 'gate' ? (
-          <Attempts runId={runId} attempts={evidence.attempts || []} onOpenArtifact={openArtifact} onOpenBrief={openBrief} />
+          <Attempts runId={runId} nodeId={nodeId} attempts={evidence.attempts || []} names={names} onOpenArtifact={openArtifact} onOpenBrief={openBrief} />
         ) : null}
 
-        {evidence?.problems?.length ? (
-          <section className="node-evidence-section">
+        {pauses.length ? (
+          <section className="node-evidence-section" data-testid="evidence-pauses">
+            <h3>Pauses</h3>
+            {pauses.map(problem => (
+              <div className="evidence-block evidence-pause" key={problem.seq}>
+                <div className="node-verdict-line">#{problem.seq} · paused after the operator's answer until the run resumes</div>
+              </div>
+            ))}
+          </section>
+        ) : null}
+        {failures.length ? (
+          <section className="node-evidence-section" data-testid="evidence-failures">
             <h3>Blocks and errors</h3>
-            {evidence.problems.map(problem => (
+            {failures.map(problem => (
               <div className="node-evidence-verdict fail" key={problem.seq}>
-                <div className="node-verdict-line">#{problem.seq} {problem.type}{problem.code ? ` · ${problem.code}` : ''}{problem.resumeAllowed === undefined ? '' : problem.resumeAllowed ? ' · resumable' : ' · not resumable'}</div>
+                <div className="node-verdict-line">#{problem.seq} · {problem.type === 'run_blocked' ? 'blocked' : problem.type}{problem.code ? ` · ${problem.code}` : ''}{problem.resumeAllowed === undefined ? '' : problem.resumeAllowed ? ' · resumable' : ' · not resumable'}</div>
                 <EvidenceTextView value={problem.reason} format="text" label="Block reason" />
               </div>
             ))}
@@ -137,13 +156,19 @@ export default function RunEvidence({ runId, nodeId, title, state, onClose }: Ru
   )
 }
 
-function Attempts({ runId, attempts, onOpenArtifact, onOpenBrief }: {
+const sameText = (a: EvidenceText, b: EvidenceText) => a.bytes > 0 && a.bytes === b.bytes && a.text === b.text
+
+function Attempts({ runId, nodeId, attempts, names, onOpenArtifact, onOpenBrief }: {
   runId: string
+  nodeId: string
   attempts: EvidenceAttempt[]
+  names: EvidenceNames
   onOpenArtifact: (name: string) => void
   onOpenBrief: (seq: number, label: string) => void
 }) {
   const latestOutput = [...attempts].reverse().find(attempt => attempt.output)?.output
+  // Seats usually return the same text as the whole output and as its port: print it once.
+  const outputInPort = latestOutput ? latestOutput.ports.some(port => sameText(port.text, latestOutput.text)) : false
   return (
     <>
       <section className="node-evidence-section">
@@ -152,18 +177,24 @@ function Attempts({ runId, attempts, onOpenArtifact, onOpenBrief }: {
           <div className="node-evidence-output" data-testid="node-output">
             <div className="node-output-status">#{latestOutput.seq} · status · {latestOutput.status || 'done'}</div>
             {latestOutput.reason ? <EvidenceTextView value={latestOutput.reason} format="text" label="Output reason" /> : null}
-            {latestOutput.text.bytes ? (
+            {latestOutput.text.bytes && !outputInPort ? (
               <div data-testid="node-output-value"><EvidenceTextView value={latestOutput.text} label="Output" /></div>
             ) : null}
-            {latestOutput.ports.map(port => (
-              <div className="evidence-port" data-testid={`node-output-port-${port.portId}`} key={port.portId}>
-                <div className="evidence-port-head">
-                  <span className="node-output-port-id">{port.portId}</span>
-                  <RefLink runId={runId} value={port.ref} onOpenArtifact={onOpenArtifact} />
+            {latestOutput.ports.map((port, index) => {
+              const label = names.port(nodeId, port.portId)
+              const earlier = latestOutput.ports.slice(0, index).find(other => sameText(other.text, port.text))
+              return (
+                <div className="evidence-port" data-testid={`node-output-port-${port.portId}`} key={port.portId}>
+                  <div className="evidence-port-head">
+                    <span className="node-output-port-id">{label}</span>
+                    <RefLink runId={runId} value={port.ref} onOpenArtifact={onOpenArtifact} />
+                  </div>
+                  {!port.text.bytes ? <div className="node-evidence-empty">No inline text.</div>
+                    : earlier ? <div className="node-evidence-empty">Same text as {names.port(nodeId, earlier.portId)}.</div>
+                      : <EvidenceTextView value={port.text} label={`Port ${label}`} />}
                 </div>
-                {port.text.bytes ? <EvidenceTextView value={port.text} label={`Port ${port.portId}`} /> : <div className="node-evidence-empty">No inline text.</div>}
-              </div>
-            ))}
+              )
+            })}
           </div>
         ) : <div className="node-evidence-empty">No output recorded yet.</div>}
       </section>
@@ -174,22 +205,25 @@ function Attempts({ runId, attempts, onOpenArtifact, onOpenBrief }: {
           <div className="node-evidence-attempt" data-testid={`node-attempt-${attempt.attempt}`} key={`${attempt.attempt}-${attempt.startedSeq || 0}`}>
             <div className="node-attempt-head">Attempt {attempt.attempt}{attempt.reason ? ` · ${attempt.reason}` : ''}</div>
             {attempt.inputs.map((input, index) => (
-              <InputView key={`${input.edgeId || index}`} runId={runId} input={input} onOpenArtifact={onOpenArtifact} />
+              <InputView key={`${input.edgeId || index}`} runId={runId} input={input} names={names} onOpenArtifact={onOpenArtifact} />
             ))}
-            {attempt.dispatches.length === 0 ? <div className="node-evidence-empty">No slot dispatch recorded.</div> : attempt.dispatches.map(dispatch => (
-              <div className="node-dispatch" key={dispatch.seq}>
-                <span className="node-dispatch-slot">{dispatch.slotId || 'slot'}</span>
-                <span className="node-dispatch-agent">{[dispatch.agentId, dispatch.harness].filter(Boolean).join(' · ') || 'agent not recorded'}</span>
-                {dispatch.phase ? <span className="node-dispatch-phase">{dispatch.phase}</span> : null}
-                <span className="node-dispatch-phase">{dispatch.status || 'no result yet'}</span>
-                {dispatch.brief ? (
-                  <button type="button" className="evidence-link" onClick={() => onOpenBrief(dispatch.seq, `${dispatch.slotId || 'slot'} attempt ${attempt.attempt}`)}>brief</button>
-                ) : null}
-              </div>
-            ))}
+            {attempt.dispatches.length === 0 ? <div className="node-evidence-empty">No slot dispatch recorded.</div> : attempt.dispatches.map(dispatch => {
+              const slot = dispatch.slotId ? names.slot(nodeId, dispatch.slotId) : 'slot'
+              return (
+                <div className="node-dispatch" key={dispatch.seq}>
+                  <span className="node-dispatch-slot">{slot}</span>
+                  <span className="node-dispatch-agent">{[dispatch.agentId, dispatch.harness].filter(Boolean).join(' · ') || 'agent not recorded'}</span>
+                  {dispatch.phase ? <span className="node-dispatch-phase">{dispatch.phase}</span> : null}
+                  <span className="node-dispatch-phase">{dispatch.status || 'no result yet'}</span>
+                  {dispatch.brief ? (
+                    <button type="button" className="evidence-link" onClick={() => onOpenBrief(dispatch.seq, `${slot} attempt ${attempt.attempt}`)}>brief</button>
+                  ) : null}
+                </div>
+              )
+            })}
             {attempt.seatCleanups?.map(cleanup => (
               <div className={`node-dispatch${cleanup.outcome === 'ended' ? '' : ' evidence-cleanup-left'}`} key={cleanup.seq}>
-                <span className="node-dispatch-slot">{cleanup.slotId || 'seat'}</span>
+                <span className="node-dispatch-slot">{cleanup.slotId ? names.slot(nodeId, cleanup.slotId) : 'seat'}</span>
                 <span className="node-dispatch-agent">seat cleanup · {cleanup.outcome || 'not recorded'}</span>
               </div>
             ))}
@@ -200,9 +234,10 @@ function Attempts({ runId, attempts, onOpenArtifact, onOpenBrief }: {
   )
 }
 
-function GateEvaluations({ runId, evaluations, onOpenArtifact }: {
+function GateEvaluations({ runId, evaluations, names, onOpenArtifact }: {
   runId: string
   evaluations: EvidenceEvaluation[]
+  names: EvidenceNames
   onOpenArtifact: (name: string) => void
 }) {
   if (evaluations.length === 0) {
@@ -266,15 +301,15 @@ function GateEvaluations({ runId, evaluations, onOpenArtifact }: {
             <div className="evidence-label">Criterion · {evaluation.kinds.map(gateKindLabel).join(' · ') || 'gate'}</div>
             {evaluation.criterion.bytes ? <EvidenceTextView value={evaluation.criterion} label="Criterion" /> : <div className="node-evidence-empty">No criterion recorded.</div>}
           </div>
-          {evaluation.input ? <InputView runId={runId} input={evaluation.input} onOpenArtifact={onOpenArtifact} /> : null}
+          {evaluation.input ? <InputView runId={runId} input={evaluation.input} names={names} onOpenArtifact={onOpenArtifact} /> : null}
         </section>
       ))}
     </>
   )
 }
 
-function InputView({ runId, input, onOpenArtifact }: { runId: string; input: EvidenceInput; onOpenArtifact: (name: string) => void }) {
-  const source = [input.fromNodeId, input.fromPortId].filter(Boolean).join(':') || 'mission'
+function InputView({ runId, input, names, onOpenArtifact }: { runId: string; input: EvidenceInput; names: EvidenceNames; onOpenArtifact: (name: string) => void }) {
+  const source = names.source(input.fromNodeId, input.fromPortId)
   return (
     <details className="evidence-input">
       <summary>
@@ -282,6 +317,39 @@ function InputView({ runId, input, onOpenArtifact }: { runId: string; input: Evi
         <RefLink runId={runId} value={input.ref} onOpenArtifact={onOpenArtifact} />
       </summary>
       <EvidenceTextView value={input.text} label={`Input from ${source}`} />
+    </details>
+  )
+}
+
+/** The ledger IDs behind the names, for the CLI and the ledger. */
+function EvidenceIds({ runId, nodeId, evidence, names }: { runId: string; nodeId: string; evidence: NodeEvidence | null; names: EvidenceNames }) {
+  const rows = new Map<string, string>([[runId, 'Run'], [nodeId, names.node(nodeId)]])
+  // A name that is its own ID, such as a gate's "pass" port, has nothing to disclose.
+  const add = (id: string | undefined, name: string) => { if (id && name !== id && !rows.has(id)) rows.set(id, name) }
+  const addInput = (input?: EvidenceInput) => {
+    if (!input) return
+    add(input.fromNodeId, names.node(input.fromNodeId || ''))
+    if (input.fromNodeId) add(input.fromPortId, names.port(input.fromNodeId, input.fromPortId || ''))
+    add(input.toPortId, names.port(nodeId, input.toPortId || ''))
+    add(input.edgeId, `Connection from ${names.source(input.fromNodeId, input.fromPortId)}`)
+  }
+  for (const attempt of evidence?.attempts || []) {
+    attempt.inputs.forEach(addInput)
+    for (const dispatch of attempt.dispatches) add(dispatch.slotId, names.slot(nodeId, dispatch.slotId || ''))
+    for (const port of attempt.output?.ports || []) add(port.portId, names.port(nodeId, port.portId))
+  }
+  for (const evaluation of evidence?.evaluations || []) {
+    addInput(evaluation.input)
+    for (const judge of evaluation.judgeChain || []) add(judge, names.node(judge))
+  }
+  return (
+    <details className="evidence-ids" data-testid="evidence-ids">
+      <summary>IDs</summary>
+      <dl>
+        {[...rows].map(([id, name]) => (
+          <div key={id}><dt>{name === id ? 'ID' : name}</dt><dd>{id}</dd></div>
+        ))}
+      </dl>
     </details>
   )
 }
@@ -314,7 +382,7 @@ function RefLink({ runId, value, onOpenArtifact }: { runId: string; value?: Evid
   }
   return (
     <span className="evidence-ref">
-      <span className="evidence-meta" title="Outside the run's artifact directory; read it on the host">{value.external} · outside the run</span>
+      <span className="evidence-meta" title="Outside the run's artifact directory; read it on the host">{value.external} · file on the host</span>
     </span>
   )
 }

@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { BoardDocument } from '../components/formationsTypes'
 import RunEvidence from './RunEvidence'
 import { artifactRawUrl } from './runEvidenceApi'
 
@@ -39,6 +40,37 @@ const routes: Record<string, unknown> = {
         humanRequests: [{ seq: 23, pending: false, decision: { seq: 24, verdict: 'pass', response: text('Ship it on Friday'), decidedBy: 'human:operator' } }],
         verdict: { seq: 25, verdict: 'pass', reason: text('Judge and operator agree'), perKind: { formation: 'pass', human: 'pass' }, routePort: 'pass', evidence: [] },
       }],
+    },
+  },
+  '/api/formations/runs/run_1/evidence/nodes/fmn_map': {
+    evidence: {
+      runId: 'run_1', nodeId: 'fmn_map', kind: 'formation',
+      attempts: [{
+        attempt: 1, startedSeq: 3, reason: 'initial',
+        inputs: [{ edgeId: 'edge_start', fromNodeId: 'mis_way', fromPortId: 'out', toPortId: 'port_map_in', text: text('Weekly digest') }],
+        dispatches: [{ seq: 5, slotId: 'slot_scout', agentId: 'codex-scout', harness: 'openai-codex', brief: true, status: 'ok' }],
+        output: {
+          seq: 7, status: 'done', text: text('The territory, mapped once'),
+          ports: [{ portId: 'port_map_out', text: text('The territory, mapped once') }, { portId: 'port_map_copy', text: text('The territory, mapped once') }],
+        },
+      }],
+    },
+  },
+  '/api/formations/runs/run_1/evidence/nodes/gate_framing': {
+    evidence: {
+      runId: 'run_1', nodeId: 'gate_framing', kind: 'gate',
+      evaluations: [{
+        seq: 8, kinds: ['human'], criterion: text('Pick a framing'),
+        input: { edgeId: 'edge_frame', fromNodeId: 'fmn_map', fromPortId: 'port_map_out', text: text('The territory, mapped once') },
+        kindResults: [], humanRequests: [{ seq: 9, pending: false, decision: { seq: 10, verdict: 'pass', response: text('Framing 2') } }],
+        verdict: { seq: 11, verdict: 'pass', reason: text('Framing 2'), routePort: 'pass', evidence: [] },
+      }],
+      problems: [
+        { seq: 12, type: 'run_blocked', code: 'resume_after_verdict', reason: text('human gate verdict recorded; resume required'), resumeAllowed: true },
+        { seq: 30, type: 'run_blocked', reason: text('human gate verdict recorded; resume required'), resumeAllowed: true },
+        { seq: 40, type: 'error', code: 'invalid_judge_result', reason: text('missing or unterminated chrote-verdict block') },
+        { seq: 41, type: 'run_blocked', reason: text('invalid judge result: missing or unterminated chrote-verdict block'), resumeAllowed: false },
+      ],
     },
   },
   '/api/formations/runs/run_1/evidence/artifacts': { artifacts: [{ name: 'plan.md', size: 4606, modifiedAt: '2026-09-09T01:21:00Z' }, { name: 'logs/run.json', size: 9, modifiedAt: '2026-09-09T01:22:00Z' }], truncated: false },
@@ -87,10 +119,62 @@ describe('RunEvidence', () => {
     expect(evaluation).toHaveTextContent('bd lint: no warnings')
     expect(evaluation).toHaveTextContent('3 more items not shown')
     expect(evaluation).toHaveTextContent('Ship it on Friday')
-    expect(evaluation).toHaveTextContent('beads.md · outside the run')
+    expect(evaluation).toHaveTextContent('beads.md · file on the host')
     expect(evaluation).toHaveTextContent('judge · pass')
     expect(evaluation).toHaveTextContent('Criterion · judge · human')
     expect(evaluation.textContent).not.toMatch(/formation/)
+  })
+
+  it('names steps, ports and slots, keeps the IDs behind a disclosure and prints an output once', async () => {
+    const board = {
+      id: 'brd_way', slug: 'wayfinding', title: 'Wayfinding', rev: 1, etag: 'e', connections: [],
+      missions: [{ id: 'mis_way', title: 'Wayfinding', goal: 'Digest', beadId: '' }],
+      formations: [{ id: 'fmn_map', type: 'solo', title: 'Map the territory', slots: [{ id: 'slot_scout', label: 'Scout', controller: true }],
+        inputs: [{ id: 'port_map_in', label: 'Brief' }], outputs: [{ id: 'port_map_out', label: 'Map' }, { id: 'port_map_copy', label: 'Copy' }] }],
+      gates: [{ id: 'gate_framing', title: 'Framing review', kinds: ['human'], criterion: 'Pick a framing' }],
+    } as BoardDocument
+    render(<RunEvidence runId="run_1" nodeId="fmn_map" title="Map the territory" state="done" board={board} onClose={() => {}} />)
+
+    const output = await screen.findByTestId('node-output')
+    expect(within(output).getAllByText('The territory, mapped once')).toHaveLength(1)
+    expect(within(output).queryByTestId('node-output-value')).toBeNull()
+    expect(within(output).getByTestId('node-output-port-port_map_out')).toHaveTextContent(/^Map/)
+    expect(within(output).getByTestId('node-output-port-port_map_copy')).toHaveTextContent('Same text as Map.')
+    const attempt = screen.getByTestId('node-attempt-1')
+    expect(attempt).toHaveTextContent('Input from Wayfinding')
+    expect(attempt).toHaveTextContent('Scout')
+    expect(within(attempt).getByRole('button', { name: 'brief' })).toBeInTheDocument()
+    for (const id of ['fmn_map', 'port_map_out', 'slot_scout', 'mis_way', 'edge_start']) {
+      expect(output.textContent + attempt.textContent).not.toContain(id)
+    }
+    const ids = screen.getByTestId('evidence-ids')
+    expect(ids).not.toHaveAttribute('open')
+    expect(within(ids).getByText('Map the territory').nextSibling).toHaveTextContent('fmn_map')
+    expect(within(ids).getByText('Scout').nextSibling).toHaveTextContent('slot_scout')
+    expect(within(ids).getByText('Map').nextSibling).toHaveTextContent('port_map_out')
+    expect(within(ids).getByText('Connection from Wayfinding').nextSibling).toHaveTextContent('edge_start')
+
+    cleanup()
+    render(<RunEvidence runId="run_1" nodeId="gate_framing" title="Framing review" state="done" board={board} onClose={() => {}} />)
+    expect(await screen.findByTestId('gate-evaluation-8')).toHaveTextContent('Input from Map the territory · Map')
+    expect(screen.getByTestId('gate-evaluation-8')).not.toHaveTextContent('port_map_out')
+  })
+
+  it('lists a human pause apart from blocks and errors', async () => {
+    render(<RunEvidence runId="run_1" nodeId="gate_framing" title="Framing review" state="blocked" onClose={() => {}} />)
+
+    const pauses = await screen.findByTestId('evidence-pauses')
+    expect(within(pauses).getByRole('heading', { name: 'Pauses' })).toBeInTheDocument()
+    expect(pauses).toHaveTextContent("#12 · paused after the operator's answer")
+    expect(pauses).toHaveTextContent("#30 · paused after the operator's answer")
+    expect(pauses.querySelector('.fail')).toBeNull()
+    const failures = screen.getByTestId('evidence-failures')
+    expect(within(failures).getByRole('heading', { name: 'Blocks and errors' })).toBeInTheDocument()
+    expect(failures.querySelectorAll('.node-evidence-verdict.fail')).toHaveLength(2)
+    expect(failures).toHaveTextContent('#40 · error · invalid_judge_result')
+    expect(failures).toHaveTextContent('#41 · blocked · not resumable')
+    expect(failures).toHaveTextContent('invalid judge result: missing or unterminated chrote-verdict block')
+    expect(failures).not.toHaveTextContent('resume required')
   })
 
   it('opens an artifact from the run list and follows its links to other artifacts', async () => {

@@ -40,7 +40,7 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 				"port_x": map[string]any{"text": "outside", "ref": "/etc/private/notes.txt"},
 			},
 		}),
-		evidenceEvent(7, RunEventGateEvaluating, "gate_review", map[string]any{"criterion": "Beads pass lint", "kinds": []any{"formation", "human"}, "judgeChain": []any{"fmn_judge"}, "inputRef": map[string]any{"fromNodeId": "fmn_work", "fromPortId": "port_a", "text": "# Plan"}}),
+		evidenceEvent(7, RunEventGateEvaluating, "gate_review", map[string]any{"criterion": "Beads pass lint", "kinds": []any{"formation", "human"}, "judgeChain": []any{"fmn_judge"}, "inputRef": map[string]any{"edgeId": "edge_review", "fromNodeId": "fmn_work", "fromPortId": "port_a", "text": "# Plan", "ref": "ledger://run_1/edge_review"}}),
 		evidenceEvent(8, RunEventJudgeAttemptFailed, "gate_review", map[string]any{"code": "invalid_judge_result", "reason": "missing verdict block"}),
 		evidenceEvent(9, RunEventGateKindResult, "gate_review", map[string]any{"kind": "formation", "verdict": "pass", "reason": "Lint is clean", "evidence": []any{map[string]any{"kind": "formation", "text": "bd lint: no warnings"}, "plain evidence"}}),
 		evidenceEvent(10, RunEventHumanInputRequested, "gate_review", map[string]any{"prompt": "Beads pass lint"}),
@@ -83,7 +83,7 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 		t.Fatalf("evaluations = %+v", gate.Evaluations)
 	}
 	evaluation := gate.Evaluations[0]
-	if evaluation.Criterion.Text != "Beads pass lint" || strings.Join(evaluation.Kinds, ",") != "formation,human" || evaluation.JudgeChain[0] != "fmn_judge" || evaluation.Input.FromPortID != "port_a" {
+	if evaluation.Criterion.Text != "Beads pass lint" || strings.Join(evaluation.Kinds, ",") != "formation,human" || evaluation.JudgeChain[0] != "fmn_judge" || evaluation.Input.FromPortID != "port_a" || evaluation.Input.Ref != nil {
 		t.Fatalf("evaluation = %+v", evaluation)
 	}
 	if len(evaluation.JudgeFailures) != 1 || evaluation.JudgeFailures[0].Reason.Text != "missing verdict block" {

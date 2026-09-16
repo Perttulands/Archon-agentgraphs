@@ -7,6 +7,8 @@ import {
   runStatusFromResponse,
   statusFromRunEvent,
   projectNodeStates,
+  runCurrentPoint,
+  runPointPhrase,
   upsertRunEvent,
 } from './formationsRunState'
 import type { RunEvent, RunStatusProjection } from './formationsTypes'
@@ -67,6 +69,82 @@ describe('formations run-state helpers', () => {
       { runId: 'run_1', seq: 2, type: 'run_resumed' },
     ], null)
     expect(judged.get('gate_judge')).toBe('')
+  })
+
+  const run = (status: string, extra: Partial<RunStatusProjection> = {}): RunStatusProjection => ({
+    runId: 'run_1', status, final: status === 'failed', boardSlug: 'wayfinding', missionId: 'mis_a', eventCount: 9, ...extra,
+  })
+
+  it('names the gate a run waits at for the operator', () => {
+    const events: RunEvent[] = [
+      { runId: 'run_1', seq: 1, type: 'node_started', nodeId: 'fmn_map', attempt: 1 },
+      { runId: 'run_1', seq: 2, type: 'node_output', nodeId: 'fmn_map', data: { status: 'done' } },
+      { runId: 'run_1', seq: 3, type: 'gate_evaluating', nodeId: 'gate_framing', gateId: 'gate_framing' },
+      { runId: 'run_1', seq: 4, type: 'human_input_requested', nodeId: 'gate_framing', gateId: 'gate_framing' },
+    ]
+    const point = runCurrentPoint(events, run('waiting_human', { waitingGates: [{ gateId: 'gate_framing', requestedSeq: 4 }] }))
+    expect(point).toEqual({ kind: 'waiting', nodeId: 'gate_framing', gate: true })
+    expect(runPointPhrase(point!, 'Framing review')).toBe('waiting for you at Framing review')
+    expect(projectNodeStates(events).get('gate_framing')).toBe('waiting')
+  })
+
+  it('names the running node with its attempt', () => {
+    const events: RunEvent[] = [
+      { runId: 'run_1', seq: 1, type: 'node_started', nodeId: 'fmn_draft', attempt: 1 },
+      { runId: 'run_1', seq: 2, type: 'node_output', nodeId: 'fmn_draft', data: { status: 'done' } },
+      { runId: 'run_1', seq: 3, type: 'gate_evaluating', nodeId: 'gate_critic', gateId: 'gate_critic' },
+      { runId: 'run_1', seq: 4, type: 'gate_verdict', nodeId: 'gate_critic', gateId: 'gate_critic', data: { verdict: 'fail' } },
+      { runId: 'run_1', seq: 5, type: 'node_started', nodeId: 'fmn_draft', attempt: 2 },
+      { runId: 'run_1', seq: 6, type: 'slot_dispatch', nodeId: 'fmn_draft', attempt: 2, data: { slotId: 'slot_writer' } },
+    ]
+    const point = runCurrentPoint(events, run('running'))
+    expect(point).toEqual({ kind: 'running', nodeId: 'fmn_draft', gate: false, attempt: 2 })
+    expect(runPointPhrase(point!, 'Draft the brief')).toBe('running Draft the brief (attempt 2)')
+    expect(runPointPhrase({ kind: 'running', nodeId: 'fmn_draft', gate: false, attempt: 1 }, 'Draft the brief')).toBe('running Draft the brief')
+    expect(runPointPhrase({ kind: 'running', nodeId: 'gate_critic', gate: true }, 'Adversarial review')).toBe('evaluating Adversarial review')
+    expect(runCurrentPoint(events.slice(0, 2), run('running'))).toBeNull()
+  })
+
+  it('names the blocked node and the block whose reason explains it', () => {
+    const events: RunEvent[] = [
+      { runId: 'run_1', seq: 7, type: 'gate_evaluating', nodeId: 'gate_adversarial', gateId: 'gate_adversarial' },
+      { runId: 'run_1', seq: 8, type: 'node_started', nodeId: 'fmn_critic', attempt: 1 },
+      { runId: 'run_1', seq: 9, type: 'node_output', nodeId: 'fmn_critic', data: { status: 'done' } },
+      { runId: 'run_1', seq: 10, type: 'judge_attempt_failed', nodeId: 'gate_adversarial', gateId: 'gate_adversarial' },
+      { runId: 'run_1', seq: 11, type: 'run_blocked', nodeId: 'gate_adversarial', gateId: 'gate_adversarial' },
+    ]
+    const point = runCurrentPoint(events, run('blocked', { resumeAllowed: false }))
+    expect(point).toEqual({ kind: 'blocked', nodeId: 'gate_adversarial', gate: true, blockSeq: 11 })
+    expect(projectNodeStates(events).get('gate_adversarial')).toBe('blocked')
+    expect(runPointPhrase(point!, 'Adversarial review', 'invalid judge result')).toBe('blocked at Adversarial review: invalid judge result')
+    expect(runPointPhrase(point!, 'Adversarial review')).toBe('blocked at Adversarial review')
+    expect(runPointPhrase(point!, 'Framing review', 'human gate verdict recorded; resume required', true)).toBe('paused at Framing review after your answer')
+
+    // A restart block names no node: the node in flight is where the run stopped.
+    const restarted: RunEvent[] = [
+      { runId: 'run_1', seq: 1, type: 'node_started', nodeId: 'fmn_map', attempt: 1 },
+      { runId: 'run_1', seq: 2, type: 'error' },
+      { runId: 'run_1', seq: 3, type: 'run_blocked' },
+    ]
+    expect(runCurrentPoint(restarted, run('blocked'))).toEqual({ kind: 'blocked', nodeId: 'fmn_map', gate: false, blockSeq: 3 })
+    expect(projectNodeStates(restarted).get('fmn_map')).toBe('blocked')
+    expect(projectNodeStates([...restarted, { runId: 'run_1', seq: 4, type: 'run_resumed' }]).get('fmn_map')).toBe('running')
+    expect(runPointPhrase({ kind: 'blocked', nodeId: '', gate: false, blockSeq: 3 }, '')).toBe('blocked')
+  })
+
+  it('names the node a failed run stopped on', () => {
+    const events: RunEvent[] = [
+      { runId: 'run_1', seq: 1, type: 'node_started', nodeId: 'fmn_exec', attempt: 3 },
+      { runId: 'run_1', seq: 2, type: 'gate_verdict', nodeId: 'gate_old', gateId: 'gate_old', data: { verdict: 'fail' } },
+      { runId: 'run_1', seq: 3, type: 'run_failed' },
+    ]
+    const point = runCurrentPoint(events, run('failed'))
+    expect(point).toEqual({ kind: 'failed', nodeId: 'fmn_exec', gate: false })
+    expect(projectNodeStates(events).get('fmn_exec')).toBe('failed')
+    expect(runPointPhrase(point!, 'Execution')).toBe('failed at Execution')
+    expect(runPointPhrase({ kind: 'failed', nodeId: '', gate: false }, '')).toBe('')
+    expect(runCurrentPoint(events, run('succeeded'))).toBeNull()
+    expect(runCurrentPoint(events, null)).toBeNull()
   })
 
   it('extracts run text, report references, and resume affordance from events', () => {

@@ -493,9 +493,10 @@ func evidenceItems(raw any, capper *evidenceCapper) ([]EvidenceItem, int) {
 }
 
 // evidenceRef reports a recorded ref by artifact name when it lies in the
-// run's artifact directory, otherwise by base name only.
+// run's artifact directory, otherwise by base name only. A reference with a
+// scheme, such as the engine's ledger:// and brief://, names no file.
 func evidenceRef(ref string, artifactRoots []string) *EvidenceRef {
-	if strings.TrimSpace(ref) == "" {
+	if strings.TrimSpace(ref) == "" || strings.Contains(ref, "://") {
 		return nil
 	}
 	clean := filepath.Clean(ref)

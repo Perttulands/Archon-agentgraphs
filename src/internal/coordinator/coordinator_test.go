@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -115,6 +116,9 @@ func TestAdmissionSurvivesDisconnectAndHumanGateRequiresExactRequest(t *testing.
 	p := awaitState(t, c, id, "waiting_human")
 	if len(p.WaitingGates) != 1 || p.Final {
 		t.Fatalf("human request missing: %+v", p)
+	}
+	if i := slices.IndexFunc(p.Events, func(e Event) bool { return e.Type == formations.RunEventNodeStarted && e.NodeID == "fmn_work" }); i < 0 || p.Events[i].Attempt != 1 {
+		t.Fatalf("node start without its attempt: %+v", p.Events)
 	}
 	select {
 	case node := <-e.entered:

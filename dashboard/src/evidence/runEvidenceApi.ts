@@ -148,6 +148,15 @@ export interface RunArtifactPreview extends RunArtifactEntry {
 const runPath = (runId: string) => `/api/formations/runs/${encodeURIComponent(runId)}`
 const artifactPath = (name: string) => name.split('/').map(encodeURIComponent).join('/')
 
+/**
+ * Whether a problem is the pause the engine records after a human verdict until
+ * the run resumes. Ledgers before its code carry only the fixed reason.
+ */
+export function isHumanVerdictPause(problem: EvidenceProblem): boolean {
+  return problem.type === 'run_blocked'
+    && (problem.code === 'resume_after_verdict' || problem.reason.text === 'human gate verdict recorded; resume required')
+}
+
 export async function fetchNodeEvidence(runId: string, nodeId: string): Promise<NodeEvidence> {
   const { data } = await fetchApi<{ evidence?: NodeEvidence }>(`${runPath(runId)}/evidence/nodes/${encodeURIComponent(nodeId)}`)
   if (!data.evidence) throw new Error('the daemon returned no node evidence')
