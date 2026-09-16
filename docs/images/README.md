@@ -17,11 +17,15 @@ with the bundled dark theme. The frozen capture build contains
 `index-CP2HVN87.js` and `index-B3tsUi9f.css`.
 They were captured on 2026-09-14 in an isolated local workspace using the
 repository's delivery board, companion notes and built-in personas.
+`agents.png` was recaptured on 2026-09-16 after the Agents view adopted the
+Boards chrome. It comes from the deployed cockpit (build `index-xpevjQdj.js`
+and `index-BgU8gjJ1.css`), in a fresh browser profile with no run selected.
+It shows the delivery board and delivery presets, not an operator run.
 
 | File | Capture |
 | --- | --- |
 | `workflow.png` | The delivery board after Arrange and Fit, at 1440 × 850. |
-| `agents.png` | The Agents view filtered to delivery personas, with Delivery Lead selected and the execution slots visible, at 1440 × 850. |
+| `agents.png` | The Agents view filtered to delivery personas, with Delivery Lead selected and every staffing card, including the execution slots, visible, at 1440 × 900. |
 | `terminal-peek.png` | The floating Peek panel, captured directly from the browser after scrolling to earlier output, at 760 × 430. |
 
 The terminal capture uses a seeded run with four bound demo shell sessions on
