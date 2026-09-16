@@ -1421,6 +1421,7 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	beadID := fs.String("bead", "", "project Beads id")
 	var files stringList
 	fs.Var(&files, "file", "reference file path, replacing the current ones; repeat for more, or give an empty value to clear")
+	inputHint := fs.String("input-hint", "", "what a run brief for this mission should contain")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -1428,8 +1429,8 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	given := map[string]bool{}
 	fs.Visit(func(current *flag.Flag) { given[current.Name] = true })
-	if fs.NArg() != 2 || !given["title"] && !given["goal"] && !given["bead"] && !given["file"] {
-		fmt.Fprintln(stderr, "usage: archon mission update <board> <mission> [--title text] [--goal text] [--bead beads-id] [--file path]... [--json]")
+	if fs.NArg() != 2 || !given["title"] && !given["goal"] && !given["bead"] && !given["file"] && !given["input-hint"] {
+		fmt.Fprintln(stderr, "usage: archon mission update <board> <mission> [--title text] [--goal text] [--bead beads-id] [--file path]... [--input-hint text] [--json]")
 		fmt.Fprintln(stderr, "Only the flags you give change the mission; an empty value clears that field.")
 		return 2
 	}
@@ -1458,6 +1459,9 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	if given["file"] {
 		refs := []string(files)
 		update.Files = &refs
+	}
+	if given["input-hint"] {
+		update.InputHint = inputHint
 	}
 	result, err := store.UpdateMission(slug, update, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {

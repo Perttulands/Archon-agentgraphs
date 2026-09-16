@@ -3,6 +3,7 @@ package formations
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -172,6 +173,35 @@ func TestUpdateMissionSetsAndClearsEachField(t *testing.T) {
 	got = mission(MissionUpdateRequest{Title: stringPtr(""), Goal: stringPtr(""), BeadID: stringPtr("")})
 	if got.Title != "" || got.Goal != "" || got.BeadID != "" {
 		t.Fatalf("clear all = %+v", got)
+	}
+}
+
+func TestUpdateMissionSetsAndRemovesTheInputHint(t *testing.T) {
+	store, current := nodeUpdateFixture(t)
+	hint := "Paste the operator's sketch and link every source it names.\nSay what done looks like."
+	if _, err := store.UpdateMission("rename", MissionUpdateRequest{MissionID: "mis_frame", InputHint: &hint}, current()); err != nil {
+		t.Fatalf("set input hint: %v", err)
+	}
+	got, _ := findMission(mustReadBoard(t, store, "rename"), "mis_frame")
+	if got.InputHint != hint || got.Title != "New mission" {
+		t.Fatalf("set input hint = %+v", got)
+	}
+	if _, err := store.UpdateMission("rename", MissionUpdateRequest{MissionID: "mis_frame", InputHint: stringPtr("")}, current()); err != nil {
+		t.Fatalf("clear input hint: %v", err)
+	}
+	board := mustReadBoard(t, store, "rename")
+	if got, _ := findMission(board, "mis_frame"); got.InputHint != "" {
+		t.Fatalf("cleared input hint = %q", got.InputHint)
+	}
+	if strings.Contains(readFile(t, store.BoardPath("rename")), "inputHint") {
+		t.Fatalf("a cleared input hint left its key behind")
+	}
+	rev := board.Rev
+	if _, err := store.UpdateMission("rename", MissionUpdateRequest{MissionID: "mis_frame", InputHint: stringPtr("")}, current()); err != nil {
+		t.Fatalf("clear absent input hint: %v", err)
+	}
+	if after := mustReadBoard(t, store, "rename"); after.Rev != rev {
+		t.Fatalf("clearing an absent hint wrote revision %d, want %d", after.Rev, rev)
 	}
 }
 

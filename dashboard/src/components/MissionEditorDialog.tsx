@@ -1,4 +1,4 @@
-/* Mission editor — one dialog creates a mission and edits an existing one.
+/* Mission creator. An existing mission is read and edited in its node window.
  * Every field is optional; a Bead ID that is given must be a safe issue ID. */
 import { useState } from 'react'
 import { isSafeBeadsIssueID } from './formationsBeadId'
@@ -9,8 +9,7 @@ export interface MissionDraft {
   beadId: string
 }
 
-export function MissionEditorDialog({ mode, initial, saving, onSave, onClose }: {
-  mode: 'create' | 'edit'
+export function MissionEditorDialog({ initial, saving, onSave, onClose }: {
   initial: MissionDraft
   saving: boolean
   onSave: (draft: MissionDraft) => void
@@ -18,13 +17,12 @@ export function MissionEditorDialog({ mode, initial, saving, onSave, onClose }: 
 }) {
   const [draft, setDraft] = useState<MissionDraft>(initial)
   const [error, setError] = useState('')
-  const create = mode === 'create'
-  const heading = create ? 'Create mission' : 'Edit mission'
+  const heading = 'Create mission'
   return (
     <div className="pop" role="dialog" aria-label={heading} onPointerDown={event => event.stopPropagation()}>
       <div className="pop-head">
         <span className="pt">{heading}</span>
-        <button className="x" type="button" aria-label={create ? 'Close mission creator' : 'Close mission editor'} disabled={saving} onClick={onClose}>x</button>
+        <button className="x" type="button" aria-label="Close mission creator" disabled={saving} onClick={onClose}>x</button>
       </div>
       <form
         className="pop-body"
@@ -64,9 +62,9 @@ export function MissionEditorDialog({ mode, initial, saving, onSave, onClose }: 
           {error || 'Optional. The Beads issue that owns this mission, for example ctx-ug7.25.'}
         </p>
         <div className="pop-actions">
-          <button className="cancel" type="button" aria-label={create ? 'Cancel mission creation' : 'Cancel mission editing'} disabled={saving} onClick={onClose}>Cancel</button>
+          <button className="cancel" type="button" aria-label="Cancel mission creation" disabled={saving} onClick={onClose}>Cancel</button>
           <button className="save" type="submit" disabled={saving}>
-            {saving ? 'Saving…' : create ? 'Create mission' : 'Save mission'}
+            {saving ? 'Saving…' : 'Create mission'}
           </button>
         </div>
       </form>

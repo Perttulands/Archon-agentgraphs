@@ -258,7 +258,9 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
       onPointerDown: event => event.stopPropagation(),
       onFocusCapture: () => focus(id),
       onKeyDown: event => {
-        // Keys typed in a window belong to it, not to the cockpit's shortcuts.
+        // Keys typed in a window belong to it, not to the view's shortcuts. Undo
+        // still reaches the view, so an edit made in a window can be undone from it.
+        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'z') return
         event.stopPropagation()
         if (event.key !== 'Escape' || event.defaultPrevented) return
         event.preventDefault()

@@ -126,16 +126,21 @@ describe('floating windows', () => {
     expect(rectOf('w1')).toEqual({ left: 280, top: 160, width: 640, height: 480 })
   })
 
-  it('closes the focused window on Escape without the key reaching the view', () => {
+  it('closes the focused window on Escape, and keeps keys other than undo from the view', () => {
     const viewKeys = vi.fn()
     window.addEventListener('keydown', viewKeys)
     try {
       render(<Harness initial={['w1', 'w2']} />)
       fireEvent.pointerDown(screen.getByText('Body of w1'), { button: 0, pointerId: 4 })
+      fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Delete' })
+      expect(viewKeys).not.toHaveBeenCalled()
+      // Undo is the one shortcut that still reaches the view.
+      fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'z', ctrlKey: true })
+      expect(viewKeys).toHaveBeenCalledTimes(1)
       fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' })
       expect(screen.queryByRole('dialog', { name: 'window w1' })).toBeNull()
       expect(windowOf('w2')).toBeInTheDocument()
-      expect(viewKeys).not.toHaveBeenCalled()
+      expect(viewKeys).toHaveBeenCalledTimes(1)
     } finally {
       window.removeEventListener('keydown', viewKeys)
     }

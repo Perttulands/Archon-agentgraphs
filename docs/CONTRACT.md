@@ -383,15 +383,19 @@ reachable chain, and `formation inspect <board> <formation>` one formation with
 its slots, ports, brief and the connections at its ports; `board inspect` prints
 the whole board.
 Nodes keep their IDs when edited: `archon formation rename <board> <formation>
-<title>`, `archon mission update <board> <mission>` with `--title`, `--goal` or
-`--bead`, and `archon gate update --title` change only what they name, and an
-empty value clears a field. Missions and gates carry reference files, such as a
-gate's rubric, the way formation briefs do: `--file <path>` on `mission
-create|update` and `gate create|update` (API `files`), repeated for more. On
-update the given files replace the list, and `--file ''` clears it. A path is
-absolute or relative to a daemon file root. The cockpit renames a mission, formation or gate
-from its title (double-click or Rename) and edits a mission's goal and Bead ID
-from Edit mission, each with undo. Ports, edges, layout and notes are unchanged.
+<title>`, `archon mission update <board> <mission>` with `--title`, `--goal`,
+`--bead` or `--input-hint`, and `archon gate update --title` change only what
+they name, and an empty value clears a field. A mission's input hint says what a
+run brief should contain; Start mission shows it. Missions and gates carry
+reference files, such as a gate's rubric, the way formation briefs do: `--file
+<path>` on `mission create|update` and `gate create|update` (API `files`),
+repeated for more. On update the given files replace the list, and `--file ''`
+clears it. A path is absolute or relative to a daemon file root. Clicking a
+mission, formation or gate card opens its node window, where every field is read
+in full and edited in place: titles, a mission's goal, input hint, Bead ID and
+files, a formation's type, brief and staffing, and a gate's kinds, check,
+criterion, judge and files. Each save is one board edit with undo. Ports, edges, layout and notes are
+unchanged.
 `archon formation set-type <board> <formation> <solo|peer|orchestrated>` and the
 type chip on a formation card change its type in place. Solo keeps one slot,
 peer has at least two slots with no controller, and orchestrated has one

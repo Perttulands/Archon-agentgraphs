@@ -154,6 +154,8 @@ export interface MissionNode {
   beadId: string
   /** What a run's brief should contain; Start mission shows it when set. */
   inputHint?: string
+  /** Reference file paths, absolute or relative to a daemon file root. */
+  files?: string[]
 }
 
 export interface GateNode {
@@ -164,6 +166,8 @@ export interface GateNode {
   check?: string
   checkVersion?: string
   checkValue?: string
+  /** Reference file paths, such as the gate's rubric. */
+  files?: string[]
 }
 
 export interface CodeGateProfileDescriptor {
@@ -274,6 +278,8 @@ export interface PersonaHarnessVariant {
   id: string
   sessionStem?: string
   launch?: string
+  model?: string
+  effort?: string
   source?: string
 }
 

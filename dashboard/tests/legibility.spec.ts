@@ -66,11 +66,10 @@ test('Escape closes the cockpit dialogs', async ({ page }) => {
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog', { name: 'Start mission' })).toHaveCount(0)
 
-  await page.getByTestId('formation-node-execution').click({ button: 'right', position: { x: 150, y: 60 } })
-  await page.getByRole('menuitem', { name: 'Set input' }).click()
-  await expect(page.getByRole('dialog', { name: 'Input · Execution' })).toBeVisible()
+  await page.getByTestId('formation-node-execution').locator('.fhead .tt').click()
+  await expect(page.getByRole('dialog', { name: 'Formation · Execution' })).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog', { name: 'Input · Execution' })).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: 'Formation · Execution' })).toHaveCount(0)
 
   await page.getByTestId('inspect-node-execution').click()
   await expect(page.getByRole('dialog', { name: 'Run evidence · Execution' })).toBeVisible()

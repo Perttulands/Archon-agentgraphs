@@ -1258,7 +1258,8 @@ components:
           required:
           - id
           description: Sets only the fields present; an empty string clears one. A non-empty beadId must be
-            a safe Beads issue ID. ID, edges, layout and notes are unchanged.
+            a safe Beads issue ID. inputHint says what a run brief should contain. ID, edges, layout and notes
+            are unchanged.
           properties:
             id:
               type: string
@@ -1273,6 +1274,8 @@ components:
               description: Replaces the reference file paths; an empty array clears them.
               items:
                 type: string
+            inputHint:
+              type: string
             expectedRev:
               type: integer
             updatedBy:

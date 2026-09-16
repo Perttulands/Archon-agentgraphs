@@ -247,6 +247,8 @@ function installFetchMock(options: {
       const harness = agent.harnessDefault || 'claude-code'
       const defaultVariant = {
         id: harness,
+        model: `${agent.id}-model`,
+        effort: 'medium',
         sessionStem: agent.id,
         launch: harness === 'openai-codex'
           ? 'codex --yolo -c check_for_update_on_startup=false'
@@ -323,6 +325,23 @@ function installFetchMock(options: {
             if (!next && type === 'peer') next = current.map(slot => ({ ...slot, controller: false }))
             if (!next) next = current.map((slot, index) => ({ ...slot, controller: index === 0 }))
             return { ...item, type, slots: next }
+          }) as TestBoard['formations'],
+        }
+        return respond({ board }, 'board-etag-2')
+      }
+      if (!url.endsWith('/layout') && body.setBrief) {
+        const { formationId, ...brief } = body.setBrief as { formationId: string; goal: string; beadId: string; files: string[]; links: string[] }
+        board = { ...board, rev: board.rev + 1, formations: board.formations.map(item => item.id === formationId ? { ...item, brief } : item) as TestBoard['formations'] }
+        return respond({ board }, 'board-etag-2')
+      }
+      if (!url.endsWith('/layout') && body.assignSlot) {
+        const { formationId, slotId, agentId, harness } = body.assignSlot as { formationId: string; slotId: string; agentId: string; harness: string }
+        board = {
+          ...board,
+          rev: board.rev + 1,
+          formations: board.formations.map(item => item.id !== formationId ? item : {
+            ...item,
+            slots: item.slots.map(slot => slot.id === slotId ? { ...slot, agentId: agentId || undefined, harness: harness || undefined } : slot),
           }) as TestBoard['formations'],
         }
         return respond({ board }, 'board-etag-2')
@@ -487,6 +506,19 @@ async function renderCockpit() {
   const utils = render(<FormationsCockpit />)
   await screen.findByTestId('formation-node-fmn_frame')
   return utils
+}
+
+let clickPointer = 40
+/** Press and release a card without moving: a click, as the canvas sees one. */
+function clickCard(target: HTMLElement) {
+  const pointerId = clickPointer++
+  fireEvent.pointerDown(target, { button: 0, pointerId, clientX: 300, clientY: 200 })
+  fireEvent.pointerUp(window, { pointerId, clientX: 300, clientY: 200 })
+}
+
+async function openNodeWindow(target: HTMLElement, name: string) {
+  clickCard(target)
+  return screen.findByRole('dialog', { name })
 }
 
 describe('FormationsCockpit reference parity', () => {
@@ -1354,103 +1386,136 @@ describe('FormationsCockpit reference parity', () => {
     expect(await screen.findByTestId('gate-kinds-gate_created')).toHaveTextContent('humanjudge')
   })
 
-  it('converts a code gate to a human gate from Edit gate and undoes it', async () => {
+  it('opens each node kind in a window by click, and a drag moves a card without opening it', async () => {
+    await renderCockpit()
+    const mission = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Mission · Showcase')
+    expect(within(mission).getByText('Build the page')).toBeInTheDocument()
+    expect(within(mission).getByText('home-7kc4.5')).toBeInTheDocument()
+    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
+    expect(within(frame).getByText('Step 2 · Formation · orchestrated')).toBeInTheDocument()
+    const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
+    expect(within(review).getByText('Review the frame')).toBeInTheDocument()
+    expect(Number(review.style.zIndex)).toBeGreaterThan(Number(mission.style.zIndex))
+
+    // Clicking the mission card again raises its open window instead of opening another.
+    clickCard(screen.getByTestId('mission-node-mis_showcase'))
+    await waitFor(() => expect(Number(mission.style.zIndex)).toBeGreaterThan(Number(review.style.zIndex)))
+    expect(screen.getAllByRole('dialog', { name: 'Mission · Showcase' })).toHaveLength(1)
+    expect(patches).toEqual([])
+
+    fireEvent.keyDown(review, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Gate · Review' })).toBeNull())
+    const gateCard = screen.getByTestId('gate-node-gate_review')
+    fireEvent.pointerDown(gateCard, { button: 0, pointerId: 9, clientX: 300, clientY: 200 })
+    fireEvent.pointerMove(window, { pointerId: 9, clientX: 360, clientY: 240 })
+    fireEvent.pointerUp(window, { pointerId: 9, clientX: 360, clientY: 240 })
+    await waitFor(() => expect(patches.some(patch => patch.url.endsWith('/layout'))).toBe(true))
+    expect(screen.queryByRole('dialog', { name: 'Gate · Review' })).toBeNull()
+    expect(patches.filter(patch => !patch.url.endsWith('/layout'))).toEqual([])
+  })
+
+  it('states routes in words, follows them to other windows, and says where an unwired pass ends the run', async () => {
+    await renderCockpit()
+    const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
+    const routes = within(within(review).getByRole('region', { name: 'Connections' })).getAllByRole('listitem').map(item => item.textContent)
+    expect(routes).toEqual(['Fed by 2 Frame', 'Judged by 4 Judge', 'Pass → run ends here', 'Fail → the run blocks here'])
+    fireEvent.click(within(review).getByRole('button', { name: 'Judged by 4 Judge' }))
+    const judge = await screen.findByRole('dialog', { name: 'Formation · Judge' })
+    expect(within(judge).getByRole('button', { name: 'Judges 3 Review' })).toBeInTheDocument()
+    fireEvent.click(within(review).getByRole('button', { name: 'Fed by 2 Frame' }))
+    const frame = await screen.findByRole('dialog', { name: 'Formation · Frame' })
+    expect(within(frame).getByRole('button', { name: 'Fed by 1 Showcase' })).toBeInTheDocument()
+    expect(within(frame).getByRole('button', { name: 'Feeds → 3 Review' })).toBeInTheDocument()
+  })
+
+  it('converts a code gate to a human gate in its window and undoes it', async () => {
     const codeBoard = makeBoard()
     codeBoard.gates = [{ ...gate, check: 'output_absent', checkVersion: '1', checkValue: 'complaint text' }]
     patches = installFetchMock({ boards: [codeBoard] })
     const { unmount } = await renderCockpit()
     expect(screen.getByTestId('gate-kinds-gate_review')).toHaveTextContent('code')
 
-    fireEvent.contextMenu(screen.getByTestId('gate-node-gate_review'), { clientX: 400, clientY: 200 })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit gate' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Edit gate' })
-    expect(within(dialog).getByLabelText('Evaluator profile')).toHaveValue('output_absent@1')
-    expect(within(dialog).getByLabelText('Forbidden text')).toHaveValue('complaint text')
-
-    fireEvent.click(within(dialog).getByLabelText('Human kind'))
-    fireEvent.click(within(dialog).getByLabelText('Code kind'))
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save gate' }))
+    const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
+    expect(within(review).getByText('Code check: output_absent@1 · complaint text')).toBeInTheDocument()
+    fireEvent.click(within(review).getByRole('button', { name: 'Edit kinds' }))
+    expect(within(review).getByLabelText('Evaluator profile')).toHaveValue('output_absent@1')
+    expect(within(review).getByLabelText('Forbidden text')).toHaveValue('complaint text')
+    fireEvent.click(within(review).getByLabelText('Human kind'))
+    fireEvent.click(within(review).getByLabelText('Code kind'))
+    fireEvent.click(within(review).getByRole('button', { name: 'Save kinds' }))
 
     await waitFor(() => {
       expect(patches.find(patch => patch.body.updateGate)?.body.updateGate).toEqual({
-        id: 'gate_review',
-        title: 'Review',
-        kinds: ['human'],
-        criterion: 'Review the frame',
-        check: '',
-        checkVersion: '',
-        checkValue: '',
+        id: 'gate_review', title: 'Review', kinds: ['human'], criterion: 'Review the frame', check: '', checkVersion: '', checkValue: '',
       })
     })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit gate' })).toBeNull())
+    await waitFor(() => expect(within(review).queryByRole('button', { name: 'Save kinds' })).toBeNull())
     expect(screen.getByTestId('gate-kinds-gate_review')).toHaveTextContent('human')
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => {
       expect(patches.filter(patch => patch.body.updateGate).slice(-1)[0]?.body.updateGate).toEqual({
-        id: 'gate_review',
-        title: 'Review',
-        kinds: ['code'],
-        criterion: 'Review the frame',
-        check: 'output_absent',
-        checkVersion: '1',
-        checkValue: 'complaint text',
+        id: 'gate_review', title: 'Review', kinds: ['code'], criterion: 'Review the frame', check: 'output_absent', checkVersion: '1', checkValue: 'complaint text',
       })
     })
 
-    fireEvent.contextMenu(screen.getByTestId('gate-node-gate_review'), { clientX: 400, clientY: 200 })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit gate' }))
-    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Edit gate' })).getByLabelText('Human kind'))
-    fireEvent.click(screen.getByLabelText('Code kind'))
-    fireEvent.click(screen.getByRole('button', { name: 'Save gate' }))
+    fireEvent.click(within(review).getByRole('button', { name: 'Edit kinds' }))
+    fireEvent.click(within(review).getByLabelText('Human kind'))
+    fireEvent.click(within(review).getByLabelText('Code kind'))
+    fireEvent.click(within(review).getByRole('button', { name: 'Save kinds' }))
     await waitFor(() => expect(screen.getByTestId('gate-kinds-gate_review')).toHaveTextContent('human'))
     unmount()
     await renderCockpit()
     expect(await screen.findByTestId('gate-kinds-gate_review')).toHaveTextContent('human')
   })
 
-  it('opens Edit gate on double-click and restores a detached judge chain on undo', async () => {
+  it('edits a gate criterion in its window and restores a detached judge chain on undo', async () => {
     const judgedBoard = makeBoard()
     judgedBoard.gates = [{ ...gate, kinds: ['code', 'formation'] }]
     patches = installFetchMock({ boards: [judgedBoard] })
     await renderCockpit()
-    expect(screen.getByTestId('gate-kinds-gate_review')).toHaveTextContent('codejudge')
     expect(await screen.findByTestId('formation-wire-edge_judge_send')).toBeInTheDocument()
+    const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
 
-    fireEvent.doubleClick(screen.getByTestId('gate-node-gate_review'))
-    const dialog = await screen.findByRole('dialog', { name: 'Edit gate' })
-    expect(within(dialog).getByLabelText('Judge kind')).toBeChecked()
-    fireEvent.click(within(dialog).getByLabelText('Judge kind'))
-    expect(within(dialog).getByRole('note')).toHaveTextContent('Saving detaches the current judge chain.')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save gate' }))
+    fireEvent.click(within(review).getByRole('button', { name: 'Edit criterion' }))
+    fireEvent.change(within(review).getByRole('textbox', { name: 'Criterion' }), { target: { value: 'The frame names **three** risks' } })
+    fireEvent.click(within(review).getByRole('button', { name: 'Save criterion' }))
+    await waitFor(() => expect(patches.find(patch => patch.body.updateGate)?.body.updateGate).toMatchObject({ id: 'gate_review', criterion: 'The frame names **three** risks', kinds: ['formation', 'code'] }))
+    expect((await within(review).findByText('three')).tagName).toBe('STRONG')
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateGate).slice(-1)[0]?.body.updateGate).toMatchObject({ criterion: 'Review the frame' }))
 
-    await waitFor(() => expect(patches.find(patch => patch.body.updateGate)?.body.updateGate).toMatchObject({ kinds: ['code'] }))
+    fireEvent.click(within(review).getByRole('button', { name: 'Edit kinds' }))
+    fireEvent.click(within(review).getByLabelText('Judge kind'))
+    expect(within(review).getByRole('note')).toHaveTextContent('Saving detaches the current judge chain.')
+    fireEvent.click(within(review).getByRole('button', { name: 'Save kinds' }))
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateGate).slice(-1)[0]?.body.updateGate).toMatchObject({ kinds: ['code'] }))
     await waitFor(() => expect(screen.queryByTestId('formation-wire-edge_judge_send')).toBeNull())
     expect(screen.getByTestId('gate-node-gate_review')).not.toHaveClass('hasjudge')
-    expect(screen.getByTestId('gate-kinds-gate_review')).toHaveTextContent(/^code$/)
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => {
       expect(patches.find(patch => patch.body.setGateJudge)?.body.setGateJudge).toEqual({ gateId: 'gate_review', chain: ['fmn_judge'] })
     })
-    const restore = patches.findIndex(patch => (patch.body.updateGate as { kinds?: string[] } | undefined)?.kinds?.includes('formation'))
-    expect(restore).toBeGreaterThan(-1)
-    expect(restore).toBeLessThan(patches.findIndex(patch => patch.body.setGateJudge))
+    // The fields, with the judge kind, are restored just before the chain.
+    const chainRestore = patches.findIndex(patch => patch.body.setGateJudge)
+    expect((patches[chainRestore - 1].body.updateGate as { kinds?: string[] }).kinds).toContain('formation')
   })
 
-  it('renames a formation inline, undoes it, and the title survives reload', async () => {
+  it('renames a formation in its window, undoes it, and the title survives reload', async () => {
     const { unmount } = await renderCockpit()
-    const card = screen.getByTestId('formation-node-fmn_frame')
-    fireEvent.doubleClick(within(card).getByText('Frame'))
-    const input = within(card).getByRole('textbox', { name: 'Rename Frame' })
+    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
+    fireEvent.click(within(frame).getByRole('button', { name: 'Edit title' }))
+    const input = within(frame).getByRole('textbox', { name: 'Title' })
     expect(input).toHaveValue('Frame')
     fireEvent.change(input, { target: { value: '  Map the territory ' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.submit(input)
 
     await waitFor(() => {
       expect(patches.find(patch => patch.body.updateFormation)?.body.updateFormation).toEqual({ id: 'fmn_frame', title: 'Map the territory' })
     })
-    expect(await within(card).findByText('Map the territory')).toBeInTheDocument()
+    expect(await within(screen.getByTestId('formation-node-fmn_frame')).findByText('Map the territory')).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Formation · Map the territory' })).toBe(frame)
     expect(patches.filter(patch => patch.url.endsWith('/layout'))).toEqual([])
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
@@ -1461,81 +1526,155 @@ describe('FormationsCockpit reference parity', () => {
       ])
     })
 
-    const renamed = within(screen.getByTestId('formation-node-fmn_frame'))
-    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'), { clientX: 420, clientY: 120 })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename' }))
-    const again = renamed.getByRole('textbox', { name: 'Rename Frame' })
-    fireEvent.change(again, { target: { value: 'Question peers' } })
-    fireEvent.blur(again)
-    await waitFor(() => expect(renamed.getByText('Question peers')).toBeInTheDocument())
+    fireEvent.click(within(frame).getByRole('button', { name: 'Edit title' }))
+    fireEvent.change(within(frame).getByRole('textbox', { name: 'Title' }), { target: { value: 'Question peers' } })
+    fireEvent.click(within(frame).getByRole('button', { name: 'Save title' }))
+    await waitFor(() => expect(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Question peers')).toBeInTheDocument())
 
     unmount()
     await renderCockpit()
     expect(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Question peers')).toBeInTheDocument()
   })
 
-  it('cancels an inline rename with Escape and skips unchanged titles', async () => {
+  it('cancels a field edit with Escape without closing the window, and skips unchanged titles', async () => {
     await renderCockpit()
-    const gateCard = screen.getByTestId('gate-node-gate_review')
-    fireEvent.doubleClick(within(gateCard).getByText('Review'))
-    expect(screen.queryByRole('dialog', { name: 'Edit gate' })).toBeNull()
-    const input = within(gateCard).getByRole('textbox', { name: 'Rename Review' })
-    fireEvent.change(input, { target: { value: 'Discard me' } })
-    fireEvent.keyDown(input, { key: 'Escape' })
-    expect(within(gateCard).queryByRole('textbox')).toBeNull()
-    expect(within(gateCard).getByText('Review')).toBeInTheDocument()
+    const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
+    fireEvent.click(within(review).getByRole('button', { name: 'Edit title' }))
+    fireEvent.change(within(review).getByRole('textbox', { name: 'Title' }), { target: { value: 'Discard me' } })
+    fireEvent.keyDown(within(review).getByRole('textbox', { name: 'Title' }), { key: 'Escape' })
+    expect(within(review).queryByRole('textbox', { name: 'Title' })).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Gate · Review' })).toBe(review)
 
-    fireEvent.doubleClick(within(gateCard).getByText('Review'))
-    fireEvent.keyDown(within(gateCard).getByRole('textbox', { name: 'Rename Review' }), { key: 'Enter' })
-    fireEvent.doubleClick(within(gateCard).getByText('Review'))
-    fireEvent.change(within(gateCard).getByRole('textbox', { name: 'Rename Review' }), { target: { value: 'Framing review' } })
-    fireEvent.keyDown(within(gateCard).getByRole('textbox', { name: 'Rename Review' }), { key: 'Enter' })
+    fireEvent.click(within(review).getByRole('button', { name: 'Edit title' }))
+    fireEvent.click(within(review).getByRole('button', { name: 'Save title' }))
+    fireEvent.click(within(review).getByRole('button', { name: 'Edit title' }))
+    fireEvent.change(within(review).getByRole('textbox', { name: 'Title' }), { target: { value: 'Framing review' } })
+    fireEvent.click(within(review).getByRole('button', { name: 'Save title' }))
     await waitFor(() => {
       expect(patches.filter(patch => patch.body.updateGate).map(patch => patch.body.updateGate)).toEqual([{ id: 'gate_review', title: 'Framing review' }])
     })
   })
 
-  it('edits a mission goal and Bead ID, undoes it, and the change survives reload', async () => {
+  it('edits a mission goal and Bead ID in its window, undoes it, and the change survives reload', async () => {
     const { unmount } = await renderCockpit()
-    fireEvent.doubleClick(screen.getByTestId('mission-node-mis_showcase'))
-    const dialog = await screen.findByRole('dialog', { name: 'Edit mission' })
-    expect(within(dialog).getByLabelText('Mission title')).toHaveValue('Showcase')
-    expect(within(dialog).getByLabelText('Mission goal')).toHaveValue('Build the page')
-    expect(within(dialog).getByLabelText('Mission Bead ID')).toHaveValue('home-7kc4.5')
+    const win = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Mission · Showcase')
 
-    fireEvent.change(within(dialog).getByLabelText('Mission Bead ID'), { target: { value: 'Not A Bead' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save mission' }))
-    expect(await within(dialog).findByText('Enter a Beads issue ID such as ctx-ug7.25, or leave it blank.')).toBeInTheDocument()
+    fireEvent.click(within(win).getByRole('button', { name: 'Edit bead' }))
+    fireEvent.change(within(win).getByRole('textbox', { name: 'Bead' }), { target: { value: 'Not A Bead' } })
+    fireEvent.click(within(win).getByRole('button', { name: 'Save bead' }))
+    expect(await within(win).findByText('Enter a Beads issue ID such as ctx-ug7.25, or leave it blank.')).toBeInTheDocument()
     expect(patches.filter(patch => patch.body.updateMission)).toEqual([])
+    fireEvent.change(within(win).getByRole('textbox', { name: 'Bead' }), { target: { value: '' } })
+    fireEvent.click(within(win).getByRole('button', { name: 'Save bead' }))
+    await waitFor(() => expect(patches.find(patch => patch.body.updateMission)?.body.updateMission).toEqual({ id: 'mis_showcase', beadId: '' }))
 
-    fireEvent.change(within(dialog).getByLabelText('Mission goal'), { target: { value: 'Draft a framing for review' } })
-    fireEvent.change(within(dialog).getByLabelText('Mission Bead ID'), { target: { value: '' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save mission' }))
+    fireEvent.click(within(win).getByRole('button', { name: 'Edit goal' }))
+    fireEvent.change(within(win).getByRole('textbox', { name: 'Goal' }), { target: { value: 'Draft a framing for review' } })
+    fireEvent.keyDown(within(win).getByRole('textbox', { name: 'Goal' }), { key: 'Enter', ctrlKey: true })
     await waitFor(() => {
-      expect(patches.find(patch => patch.body.updateMission)?.body.updateMission).toEqual({
-        id: 'mis_showcase', title: 'Showcase', goal: 'Draft a framing for review', beadId: '',
-      })
+      expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', goal: 'Draft a framing for review' })
     })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit mission' })).toBeNull())
-    expect(screen.getByTestId('mission-node-mis_showcase')).toHaveTextContent('Draft a framing for review')
+    await waitFor(() => expect(screen.getByTestId('mission-node-mis_showcase')).toHaveTextContent('Draft a framing for review'))
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => {
-      expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({
-        id: 'mis_showcase', title: 'Showcase', goal: 'Build the page', beadId: 'home-7kc4.5',
-      })
+      expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', goal: 'Build the page' })
+    })
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => {
+      expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', beadId: 'home-7kc4.5' })
     })
 
-    fireEvent.contextMenu(screen.getByTestId('mission-node-mis_showcase'), { clientX: 120, clientY: 120 })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit mission' }))
-    const second = await screen.findByRole('dialog', { name: 'Edit mission' })
-    fireEvent.change(within(second).getByLabelText('Mission goal'), { target: { value: 'Map the territory first' } })
-    fireEvent.click(within(second).getByRole('button', { name: 'Save mission' }))
+    fireEvent.click(within(win).getByRole('button', { name: 'Edit goal' }))
+    fireEvent.change(within(win).getByRole('textbox', { name: 'Goal' }), { target: { value: 'Map the territory first' } })
+    fireEvent.click(within(win).getByRole('button', { name: 'Save goal' }))
     await waitFor(() => expect(screen.getByTestId('mission-node-mis_showcase')).toHaveTextContent('Map the territory first'))
 
     unmount()
     await renderCockpit()
     expect(screen.getByTestId('mission-node-mis_showcase')).toHaveTextContent('Map the territory first')
+  })
+
+  it('sets the input hint Start mission shows from the mission window, with undo', async () => {
+    await renderCockpit()
+    const win = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Mission · Showcase')
+    fireEvent.click(within(win).getByRole('button', { name: 'Edit input hint' }))
+    fireEvent.change(within(win).getByRole('textbox', { name: 'Input hint' }), { target: { value: 'Paste the page sketch and its copy deck.' } })
+    fireEvent.click(within(win).getByRole('button', { name: 'Save input hint' }))
+    await waitFor(() => expect(patches.find(patch => patch.body.updateMission)?.body.updateMission).toEqual({ id: 'mis_showcase', inputHint: 'Paste the page sketch and its copy deck.' }))
+    expect(await within(win).findByText('Paste the page sketch and its copy deck.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('run-mission-mis_showcase'))
+    const start = await screen.findByRole('dialog', { name: 'Start mission' })
+    expect(within(start).getByText('Paste the page sketch and its copy deck.')).toBeInTheDocument()
+    fireEvent.click(within(start).getByRole('button', { name: 'Cancel' }))
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', inputHint: '' }))
+  })
+
+  it('edits the reference files of a mission and a gate in their windows, with undo', async () => {
+    await renderCockpit()
+    const mission = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Mission · Showcase')
+    fireEvent.click(within(mission).getByRole('button', { name: 'Edit files' }))
+    fireEvent.change(within(mission).getByRole('textbox', { name: 'Files' }), { target: { value: 'docs/sketch.md, docs/copy.md' } })
+    fireEvent.click(within(mission).getByRole('button', { name: 'Save files' }))
+    await waitFor(() => expect(patches.find(patch => patch.body.updateMission)?.body.updateMission).toEqual({ id: 'mis_showcase', files: ['docs/sketch.md', 'docs/copy.md'] }))
+    expect((await within(mission).findByText('docs/copy.md')).tagName).toBe('LI')
+
+    const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
+    fireEvent.click(within(review).getByRole('button', { name: 'Edit files' }))
+    fireEvent.change(within(review).getByRole('textbox', { name: 'Files' }), { target: { value: 'rubrics/review.md' } })
+    fireEvent.click(within(review).getByRole('button', { name: 'Save files' }))
+    await waitFor(() => expect(patches.find(patch => patch.body.updateGate)?.body.updateGate).toEqual({ id: 'gate_review', files: ['rubrics/review.md'] }))
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateGate).slice(-1)[0]?.body.updateGate).toEqual({ id: 'gate_review', files: [] }))
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', files: [] }))
+  })
+
+  it('edits a formation brief in its window with undo', async () => {
+    await renderCockpit()
+    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
+    fireEvent.click(within(frame).getByRole('button', { name: 'Edit brief' }))
+    fireEvent.change(within(frame).getByRole('textbox', { name: 'Brief' }), { target: { value: 'Map the territory.\n\n- Known facts\n- Unknowns' } })
+    fireEvent.click(within(frame).getByRole('button', { name: 'Save brief' }))
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.setBrief)?.body.setBrief).toEqual({ formationId: 'fmn_frame', goal: 'Map the territory.\n\n- Known facts\n- Unknowns', beadId: '', files: [], links: [] })
+    })
+    expect((await within(frame).findByText('Unknowns')).tagName).toBe('LI')
+
+    fireEvent.click(within(frame).getByRole('button', { name: 'Edit files' }))
+    fireEvent.change(within(frame).getByRole('textbox', { name: 'Files' }), { target: { value: 'docs/a.md, docs/b.md' } })
+    fireEvent.click(within(frame).getByRole('button', { name: 'Save files' }))
+    await waitFor(() => {
+      expect(patches.filter(patch => patch.body.setBrief).slice(-1)[0]?.body.setBrief).toEqual({ formationId: 'fmn_frame', goal: 'Map the territory.\n\n- Known facts\n- Unknowns', beadId: '', files: ['docs/a.md', 'docs/b.md'], links: [] })
+    })
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(patches.filter(patch => patch.body.setBrief).slice(-1)[0]?.body.setBrief).toMatchObject({ files: [] }))
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(patches.filter(patch => patch.body.clearBrief).slice(-1)[0]?.body.clearBrief).toEqual({ formationId: 'fmn_frame' }))
+  })
+
+  it('states staffing in words and restaffs a slot from its window with undo', async () => {
+    await renderCockpit()
+    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
+    const staffing = within(frame).getByRole('region', { name: 'Staffing' })
+    expect(await within(staffing).findByText('Lead (controller) is Mason (mason) on codex, model mason-model, medium effort.')).toBeInTheDocument()
+    expect(within(staffing).getByText('Worker is not staffed.')).toBeInTheDocument()
+
+    fireEvent.change(within(staffing).getByRole('combobox', { name: 'Persona for Lead' }), { target: { value: 'hazel' } })
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.assignSlot)?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: 'hazel', harness: 'claude' })
+    })
+    expect(await within(staffing).findByText('Lead (controller) is Hazel (hazel) on claude, model hazel-model, medium effort.')).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => {
+      expect(patches.filter(patch => patch.body.assignSlot).slice(-1)[0]?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: 'mason', harness: 'codex' })
+    })
   })
 
   it('changes a formation type from its header chip, undoes it exactly, and survives reload', async () => {
@@ -2001,6 +2140,30 @@ describe('FormationsCockpit reference parity', () => {
     expect(await screen.findByTestId('node-inspector')).toHaveTextContent('Run evidence · Review')
   })
 
+  it('shows the run state of a node in its window with a way into its evidence', async () => {
+    localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
+    patches = installFetchMock({
+      runStatus: { status: 'running', final: false },
+      runEvents: [{ runId: 'run_legacy', seq: 1, type: 'gate_evaluating', nodeId: 'gate_review', gateId: 'gate_review' }],
+    })
+    await renderCockpit()
+    await waitFor(() => expect(screen.getByTestId('inspect-node-gate_review')).toBeInTheDocument())
+    const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
+    const run = within(review).getByRole('region', { name: 'Run' })
+    expect(run).toHaveTextContent('Running')
+    const open = within(run).getByRole('button', { name: 'Open run evidence' })
+    open.focus()
+    fireEvent.click(open)
+    expect(await screen.findByTestId('node-inspector')).toHaveTextContent('Run evidence · Review')
+    // Escape closes the evidence above the window before the window itself.
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByTestId('node-inspector')).toBeNull())
+    expect(screen.getByRole('dialog', { name: 'Gate · Review' })).toBe(review)
+
+    const mission = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Mission · Showcase')
+    expect(within(mission).queryByRole('region', { name: 'Run' })).toBeNull()
+  })
+
   type ListedRun = { runId: string; status: string; final: boolean; boardSlug: string; missionId: string; eventCount: number; waitingGates?: Array<{ gateId: string; requestedSeq: number }> }
   function installRunsMock(runs: ListedRun[], events: Record<string, TestRunEvent[]> = {}) {
     const verdicts: Array<{ url: string; body: Record<string, unknown> }> = []
@@ -2315,14 +2478,12 @@ describe('FormationsCockpit reference parity', () => {
     expect(localStorage.getItem('chrote-formations-roster-collapsed')).toBe('false')
   })
 
-  it('closes the input and Tool dialogs on Escape', async () => {
+  it('closes a node window and the Tool dialog on Escape', async () => {
     patches = installFetchMock({ boards: [makeToolBoard()] })
     await renderCockpit()
-    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'))
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Set input' }))
-    expect(await screen.findByRole('dialog', { name: 'Input · Frame' })).toBeInTheDocument()
-    fireEvent.keyDown(window, { key: 'Escape' })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Input · Frame' })).toBeNull())
+    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
+    fireEvent.keyDown(frame, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Formation · Frame' })).toBeNull())
 
     fireEvent.click(screen.getByRole('button', { name: 'Inspect Tool Normalize report' }))
     expect(await screen.findByRole('dialog', { name: 'Tool details: Normalize report' })).toBeInTheDocument()

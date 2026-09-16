@@ -53,6 +53,7 @@ import { useEscapeKey } from './useEscapeKey'
 import { ROSTER_MAX_WIDTH, ROSTER_MIN_WIDTH, useRosterPanel } from './useRosterPanel'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
 const RunEvidence = lazy(() => import('../evidence/RunEvidence'))
+const NodeWindow = lazy(() => import('../nodeWindow/NodeWindow'))
 import DismissiblePanel from './DismissiblePanel'
 import PersonaEditorDialog from './PersonaEditorDialog'
 import HumanGateAnswerPanel, { type GateDecision } from './HumanGateAnswerPanel'
@@ -62,22 +63,22 @@ import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
 import { ProducedFiles, RunProduced, RunProducedProvider } from '../files/ProducedFiles'
 import { summarizeProduced, useRunProduced } from '../files/produced'
 import { useHumanGateUpstream } from './useHumanGateUpstream'
-import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom, splitList } from './formationsCockpitDom'
+import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom } from './formationsCockpitDom'
 import { routeJudgeWire, routeOrthoWire } from './formationsRouting'
 import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
-import { InlineTitleEditor } from './InlineTitleEditor'
 import { NOTE_CARDS, NoteLayer, NOTES_MODES, noteWindowAnchor, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
 import NoteWindow, { BOARD_NOTE_TARGET, noteWindowId } from './NoteWindow'
 import { FormationTypeChip, formationTypeChoices } from './FormationTypeChip'
 import { MissionEditorDialog } from './MissionEditorDialog'
 import type { MissionDraft } from './MissionEditorDialog'
 import { AdmissionFindingsPanel, DraftMarker, findingsByNode, unresolvedFindings } from './formationsDrafts'
-import { GateEditorDialog, GateKindChips, draftFromGate, gateFieldsFromDraft, gateFieldsFromGate, gateKindLabel, newGateDraft } from './GateEditorDialog'
+import { GateEditorDialog, GateKindChips, gateFieldsFromDraft, gateFieldsFromGate, gateKindLabel, newGateDraft } from './GateEditorDialog'
 import type { GateDraft, GateFields } from './GateEditorDialog'
 import { createFormationsInteractionOwner } from './formationsInteraction'
 import type { FormationsInteractionOwner } from './formationsInteraction'
 import { WindowManagerProvider, useWindowManager } from '../windows/WindowManager'
+import type { NodeWindowOps } from '../nodeWindow/NodeWindow'
 import { cockpitWorkspace } from '../windows/cockpitWorkspace'
 import type {
   AgentProjection,
@@ -133,22 +134,12 @@ type LegacyVerificationState = {
   pending: boolean
   error: string
 }
-type MissionEditorState = { mode: 'create' | 'edit'; missionId: string; initial: MissionDraft; x: number; y: number }
+type MissionEditorState = { initial: MissionDraft; x: number; y: number }
 type GateEditorState = {
-  mode: 'create' | 'edit'
-  gateId: string
   initial: GateDraft
   x: number
   y: number
   saving: boolean
-}
-type BriefEditorState = {
-  formationId: string
-  title: string
-  goal: string
-  beadId: string
-  files: string
-  links: string
 }
 type BoardDialogState = {
   mode: 'create' | 'rename' | 'delete'
@@ -166,10 +157,10 @@ type CockpitUndo =
   | { kind: 'rewireSource'; previousFrom: string; from: string; to: string }
   | { kind: 'deleteFormation'; id: string }
   | { kind: 'deleteGate'; id: string }
-  | { kind: 'updateGate'; gateId: string; fields: GateFields; chain: string[] }
+  | { kind: 'updateGate'; gateId: string; fields: Partial<GateFields> & { files?: string[] }; chain: string[] }
   | { kind: 'updateFormation'; id: string; title: string }
   | { kind: 'setFormationType'; id: string; type: FormationNode['type']; slots: FormationSlot[] }
-  | { kind: 'updateMission'; id: string; fields: Partial<MissionDraft> }
+  | { kind: 'updateMission'; id: string; fields: Partial<Pick<MissionNode, 'title' | 'goal' | 'beadId' | 'inputHint' | 'files'>> }
   | { kind: 'deleteMission'; id: string }
   | { kind: 'assignSlot'; formationId: string; slotId: string; agentId: string; harness: string }
   | { kind: 'moveNode'; id: string; x: number; y: number }
@@ -206,6 +197,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [peeks, setPeeks] = useState<string[]>([])
   // The card the run bar's phrase last located, marked briefly on the canvas.
   const [locatedNodeId, setLocatedNodeId] = useState('')
+  // Missions, formations and gates open in node windows, oldest first.
+  const [nodeWindows, setNodeWindows] = useState<string[]>([])
   const [ghost, setGhost] = useState<{ x: number; y: number; agentId: string; harness?: string } | null>(null)
   const [hoverSlot, setHoverSlot] = useState<string | null>(null)
   const [dragPos, setDragPos] = useState<{ id: string; x: number; y: number } | null>(null)
@@ -216,11 +209,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [gateGhost, setGateGhost] = useState<{ x: number; y: number } | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [missionEditor, setMissionEditor] = useState<MissionEditorState | null>(null)
-  const [renamingNodeId, setRenamingNodeId] = useState<string | null>(null)
   const [missionEditorSaving, setMissionEditorSaving] = useState(false)
   const [gateProfiles, setGateProfiles] = useState<CodeGateProfileDescriptor[]>([])
   const [gateEditor, setGateEditor] = useState<GateEditorState | null>(null)
-  const [briefEditor, setBriefEditor] = useState<BriefEditorState | null>(null)
   const roster = useRosterPanel()
   const [boardDialog, setBoardDialog] = useState<BoardDialogState | null>(null)
   const [agentEditor, setAgentEditor] = useState<{ agent: AgentProjection; trigger: HTMLElement | null } | null>(null)
@@ -240,7 +231,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [legacyVerification, setLegacyVerification] = useState<LegacyVerificationState | null>(null)
   const legacyVerificationOpen = legacyVerification !== null
   const [inspectedToolId, setInspectedToolId] = useState<string | null>(null)
-  useEscapeKey(active && briefEditor !== null, () => setBriefEditor(null))
   useEscapeKey(active && inspectedToolId !== null, () => setInspectedToolId(null))
   const [hiddenWireId, setHiddenWireId] = useState<string | null>(null)
   const [judgeHover, setJudgeHover] = useState<string | null>(null)
@@ -262,6 +252,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const openNoteWindow = useCallback((target: string) => {
     setNoteWindows(current => current.includes(target) ? current : [...current, target])
     focusWindow(noteWindowId(target))
+  }, [focusWindow])
+  const openNodeWindow = useCallback((nodeId: string) => {
+    setNodeWindows(current => current.includes(nodeId) ? current : [...current, nodeId])
+    focusWindow(`node:${nodeId}`)
   }, [focusWindow])
   const worldRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<ViewTransform>(view)
@@ -873,35 +867,16 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setMenu({ label, x: event.clientX, y: event.clientY, items })
   }, [])
 
-  const openBriefEditor = useCallback((formation: FormationNode) => {
-    setMenu(null)
-    setBriefEditor({
-      formationId: formation.id,
-      title: formation.title,
-      goal: formation.brief?.goal || '',
-      beadId: formation.brief?.beadId || '',
-      files: (formation.brief?.files || []).join(', '),
-      links: (formation.brief?.links || []).join(', '),
+  // Node windows save one field at a time; each save is one undo entry.
+  const saveBrief = useCallback(async (formationId: string, brief: FormationBrief): Promise<boolean> => {
+    const previous = boardRef.current?.formations.find(formation => formation.id === formationId)?.brief
+    const result = await patchBoard({
+      setBrief: { formationId, goal: brief.goal || '', beadId: brief.beadId || '', files: brief.files || [], links: brief.links || [] },
     })
-  }, [])
-
-  const saveBriefEditor = useCallback(async () => {
-    if (!briefEditor) return
-    const currentFormation = boardRef.current?.formations.find(formation => formation.id === briefEditor.formationId)
-    undoStack.current.push(currentFormation?.brief
-      ? { kind: 'setBrief', formationId: briefEditor.formationId, brief: currentFormation.brief }
-      : { kind: 'clearBrief', formationId: briefEditor.formationId })
-    await patchBoard({
-      setBrief: {
-        formationId: briefEditor.formationId,
-        goal: briefEditor.goal.trim(),
-        beadId: briefEditor.beadId.trim(),
-        files: splitList(briefEditor.files),
-        links: splitList(briefEditor.links),
-      },
-    })
-    setBriefEditor(null)
-  }, [briefEditor, patchBoard])
+    if (!result) return false
+    undoStack.current.push(previous ? { kind: 'setBrief', formationId, brief: previous } : { kind: 'clearBrief', formationId })
+    return true
+  }, [patchBoard])
 
   const performUndo = useCallback(async () => {
     const action = undoStack.current.pop()
@@ -1047,12 +1022,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [patchBoard])
 
   const createGateAt = useCallback((worldX: number, worldY: number) => {
-    setGateEditor({ mode: 'create', gateId: '', initial: newGateDraft(gateProfiles), x: worldX, y: worldY, saving: false })
+    setGateEditor({ initial: newGateDraft(gateProfiles), x: worldX, y: worldY, saving: false })
   }, [gateProfiles])
-
-  const openGateEditor = useCallback((gate: GateNode) => {
-    setGateEditor({ mode: 'edit', gateId: gate.id, initial: draftFromGate(gate), x: 0, y: 0, saving: false })
-  }, [])
 
   const closeGateEditor = useCallback(() => {
     if (gateEditor?.saving) return
@@ -1101,12 +1072,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [patchBoard, placementForNewNode])
 
   const createMissionAt = useCallback((x: number, y: number) => {
-    setMissionEditor({ mode: 'create', missionId: '', initial: { title: 'New mission', goal: '', beadId: '' }, x, y })
-    setMissionEditorSaving(false)
-  }, [])
-
-  const openMissionEditor = useCallback((mission: MissionNode) => {
-    setMissionEditor({ mode: 'edit', missionId: mission.id, initial: { title: mission.title, goal: mission.goal, beadId: mission.beadId }, x: 0, y: 0 })
+    setMissionEditor({ initial: { title: 'New mission', goal: '', beadId: '' }, x, y })
     setMissionEditorSaving(false)
   }, [])
 
@@ -1119,15 +1085,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const before = boardRef.current
     if (!missionEditor || missionEditorSaving || !before) return
     setMissionEditorSaving(true)
-    if (missionEditor.mode === 'edit') {
-      const previous = before.missions?.find(mission => mission.id === missionEditor.missionId)
-      const result = previous ? await patchBoard({ updateMission: { id: previous.id, ...draft } }) : null
-      setMissionEditorSaving(false)
-      if (previous && !result) return
-      if (previous) undoStack.current.push({ kind: 'updateMission', id: previous.id, fields: { title: previous.title, goal: previous.goal, beadId: previous.beadId } })
-      setMissionEditor(null)
-      return
-    }
     const placement = placementForNewNode(missionEditor.x, missionEditor.y)
     const result = await patchBoard({
       createMission: { ...draft, title: draft.title || 'New mission', x: placement.x, y: placement.y },
@@ -1139,36 +1096,40 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setMissionEditor(null)
   }, [missionEditor, missionEditorSaving, patchBoard, placementForNewNode])
 
-  // Inline rename keeps the node's ID, ports, edges, layout and notes.
-  const commitRename = useCallback((nodeId: string, title: string) => {
-    setRenamingNodeId(null)
+  // A rename keeps the node's ID, ports, edges, layout and notes.
+  const renameNode = useCallback(async (nodeId: string, title: string): Promise<boolean> => {
     const current = boardRef.current
-    if (!current) return
+    if (!current) return false
     const formation = current.formations.find(node => node.id === nodeId)
     const mission = current.missions?.find(node => node.id === nodeId)
     const gate = current.gates?.find(node => node.id === nodeId)
     const previous = formation?.title ?? mission?.title ?? gate?.title
-    if (previous === undefined || previous === title) return
+    if (previous === undefined) return false
+    if (previous === title) return true
     if (formation) {
+      if (!await patchBoard({ updateFormation: { id: nodeId, title } })) return false
       undoStack.current.push({ kind: 'updateFormation', id: nodeId, title: previous })
-      void patchBoard({ updateFormation: { id: nodeId, title } })
     } else if (mission) {
+      if (!await patchBoard({ updateMission: { id: nodeId, title } })) return false
       undoStack.current.push({ kind: 'updateMission', id: nodeId, fields: { title: previous } })
-      void patchBoard({ updateMission: { id: nodeId, title } })
     } else if (gate) {
+      if (!await patchBoard({ updateGate: { id: nodeId, title } })) return false
       undoStack.current.push({ kind: 'updateGate', gateId: nodeId, fields: gateFieldsFromGate(gate), chain: [] })
-      void patchBoard({ updateGate: { id: nodeId, title } })
     }
+    return true
   }, [patchBoard])
 
-  const renderNodeTitle = (nodeId: string, title: string, className: string, fallback: string, Tag: 'div' | 'span') => renamingNodeId === nodeId ? (
-    <InlineTitleEditor value={title} label={`Rename ${title || fallback}`} className={className} onCommit={next => commitRename(nodeId, next)} onCancel={() => setRenamingNodeId(null)} />
-  ) : (
-    <Tag
-      className={`${className}${title ? '' : ' untitled'}`}
-      title="Double-click to rename"
-      onDoubleClick={event => { event.stopPropagation(); setRenamingNodeId(nodeId) }}
-    >{title || fallback}</Tag>
+  const updateMissionFields = useCallback(async (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'beadId' | 'inputHint' | 'files'>>): Promise<boolean> => {
+    const previous = boardRef.current?.missions?.find(mission => mission.id === missionId)
+    if (!previous) return false
+    if (!await patchBoard({ updateMission: { id: missionId, ...fields } })) return false
+    // An absent field is restored as empty, which clears it.
+    undoStack.current.push({ kind: 'updateMission', id: missionId, fields: Object.fromEntries(Object.keys(fields).map(key => [key, previous[key as keyof typeof fields] ?? (key === 'files' ? [] : '')])) })
+    return true
+  }, [patchBoard])
+
+  const renderNodeTitle = (title: string, className: string, fallback: string, Tag: 'div' | 'span') => (
+    <Tag className={`${className}${title ? '' : ' untitled'}`}>{title || fallback}</Tag>
   )
 
   useEffect(() => {
@@ -1334,30 +1295,34 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const before = boardRef.current
     if (!gateEditor || gateEditor.saving || !before) return
     const fields = gateFieldsFromDraft(draft)
-    const { kinds, ...rest } = fields
     setGateEditor(current => current ? { ...current, saving: true } : null)
-    if (gateEditor.mode === 'create') {
-      const placement = placementForNewNode(gateEditor.x, gateEditor.y)
-      const result = await patchBoard({ createGate: { ...fields, title: fields.title || 'Review gate', x: placement.x, y: placement.y } })
-      setGateEditor(current => current ? { ...current, saving: false } : null)
-      if (!result) return
-      const gate = findAddedByID(before.gates || [], result.board.gates || [])
-      if (gate) undoStack.current.push({ kind: 'deleteGate', id: gate.id })
-      setGateEditor(null)
-      return
-    }
-    const previous = before.gates?.find(gate => gate.id === gateEditor.gateId)
-    if (!previous) {
-      setGateEditor(null)
-      return
-    }
-    const chain = previous.kinds.includes('formation') && !kinds.includes('formation') ? judgeChainOf(previous.id) : []
-    const result = await patchBoard({ updateGate: { id: previous.id, ...rest, ...(kinds.length ? { kinds } : {}) } })
+    const placement = placementForNewNode(gateEditor.x, gateEditor.y)
+    const result = await patchBoard({ createGate: { ...fields, title: fields.title || 'Review gate', x: placement.x, y: placement.y } })
     setGateEditor(current => current ? { ...current, saving: false } : null)
     if (!result) return
-    undoStack.current.push({ kind: 'updateGate', gateId: previous.id, fields: gateFieldsFromGate(previous), chain })
+    const gate = findAddedByID(before.gates || [], result.board.gates || [])
+    if (gate) undoStack.current.push({ kind: 'deleteGate', id: gate.id })
     setGateEditor(null)
-  }, [gateEditor, judgeChainOf, patchBoard, placementForNewNode])
+  }, [gateEditor, patchBoard, placementForNewNode])
+
+  const setGateFiles = useCallback(async (gateId: string, files: string[]): Promise<boolean> => {
+    const previous = boardRef.current?.gates?.find(gate => gate.id === gateId)
+    if (!previous) return false
+    if (!await patchBoard({ updateGate: { id: gateId, files } })) return false
+    undoStack.current.push({ kind: 'updateGate', gateId, fields: { files: previous.files || [] }, chain: [] })
+    return true
+  }, [patchBoard])
+
+  // Dropping the judge kind detaches the chain, so undo restores the chain after the fields.
+  const updateGateFields = useCallback(async (gateId: string, draft: GateDraft): Promise<boolean> => {
+    const previous = boardRef.current?.gates?.find(gate => gate.id === gateId)
+    if (!previous) return false
+    const { kinds, ...rest } = gateFieldsFromDraft(draft)
+    const chain = previous.kinds.includes('formation') && !kinds.includes('formation') ? judgeChainOf(previous.id) : []
+    if (!await patchBoard({ updateGate: { id: previous.id, ...rest, ...(kinds.length ? { kinds } : {}) } })) return false
+    undoStack.current.push({ kind: 'updateGate', gateId: previous.id, fields: gateFieldsFromGate(previous), chain })
+    return true
+  }, [judgeChainOf, patchBoard])
 
   const rewireSource = useCallback(async (connection: BoardConnection, newFrom: string) => {
     if (!newFrom || newFrom === connection.from || newFrom.split(':')[0] === connection.to.split(':')[0]) return
@@ -1710,7 +1675,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         setDragPos({ id: drag.id, x: Math.round(nx), y: Math.round(ny) })
       },
       finalize: pointer => {
-        if (!drag.moved) return
+        if (!drag.moved) {
+          // A click without a drag opens the node where it can be read and edited.
+          const current = boardRef.current
+          if (current && [...(current.missions || []), ...current.formations, ...(current.gates || [])].some(node => node.id === drag.id)) openNodeWindow(drag.id)
+          return
+        }
         const scale = viewRef.current.scale || 1
         undoStack.current.push({ kind: 'moveNode', id: drag.id, x: drag.originX, y: drag.originY })
         // Release snaps to the visible dot grid so hand-placed cards line up.
@@ -1721,7 +1691,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         setDragPos(null)
       },
     })
-  }, [interactionOwner, persistPosition, positionOf])
+  }, [interactionOwner, openNodeWindow, persistPosition, positionOf])
 
   const endpointWorldCenter = useCallback((endpoint: string, direction: 'out' | 'in') => {
     const world = worldRef.current
@@ -1953,8 +1923,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const formationMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode) => {
     openMenu(event, 'Formation actions', [
       { label: 'Run formation', action: () => void runFormation(formation) },
-      { label: 'Rename', action: () => setRenamingNodeId(formation.id) },
-      { label: 'Set input', action: () => openBriefEditor(formation) },
       { label: 'Add input port', action: () => void addPortOp(formation, 'in') },
       { label: 'Add output port', action: () => void addPortOp(formation, 'out') },
       ...(formation.verification ? [
@@ -1963,7 +1931,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       ...formationTypeMenuItems(formation),
       { label: 'Delete formation', destructive: true, action: () => deleteFormationOp(formation) },
     ])
-  }, [addPortOp, deleteFormationOp, formationTypeMenuItems, openBriefEditor, openLegacyVerification, openMenu, runFormation])
+  }, [addPortOp, deleteFormationOp, formationTypeMenuItems, openLegacyVerification, openMenu, runFormation])
 
   const slotMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode, slot: FormationSlot) => {
     const items: MenuItem[] = []
@@ -2018,22 +1986,18 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const gateMenu = useCallback((event: ReactMouseEvent<HTMLElement>, gate: GateNode) => {
     openMenu(event, 'Gate actions', [
-      { label: 'Edit gate', action: () => openGateEditor(gate) },
-      { label: 'Rename', action: () => setRenamingNodeId(gate.id) },
       { label: gateHasJudge(gate.id) ? 'Change judge…' : 'Attach judge…', action: () => openJudgePicker(gate, event.clientX, event.clientY) },
       ...(gateHasJudge(gate.id) ? [{ label: 'Detach judge', action: () => detachJudge(gate) }] : []),
       { label: 'Delete gate', destructive: true, action: () => deleteGateOp(gate) },
     ])
-  }, [deleteGateOp, detachJudge, gateHasJudge, openGateEditor, openJudgePicker, openMenu])
+  }, [deleteGateOp, detachJudge, gateHasJudge, openJudgePicker, openMenu])
 
   const missionMenu = useCallback((event: ReactMouseEvent<HTMLElement>, mission: MissionNode) => {
     openMenu(event, 'Mission actions', [
       { label: 'Start mission', action: () => setStartMission(mission) },
-      { label: 'Edit mission', action: () => openMissionEditor(mission) },
-      { label: 'Rename', action: () => setRenamingNodeId(mission.id) },
       { label: 'Delete mission', destructive: true, action: () => deleteMissionOp(mission) },
     ])
-  }, [deleteMissionOp, openMenu, openMissionEditor])
+  }, [deleteMissionOp, openMenu])
 
   const inputRowMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode, portId: string, incoming?: BoardConnection) => {
     openMenu(event, 'Input port', [
@@ -2341,6 +2305,24 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return known ? candidate : ''
   }, [board])
 
+  const nodeWindowOps = useMemo<NodeWindowOps>(() => ({
+    rename: renameNode,
+    updateMission: updateMissionFields,
+    setBrief: saveBrief,
+    changeType: changeFormationType,
+    assignSlot,
+    updateGate: (gate, draft) => updateGateFields(gate.id, draft),
+    setGateFiles: (gate, files) => setGateFiles(gate.id, files),
+    attachJudge,
+    detachJudge,
+    openNode: openNodeWindow,
+    inspectEvidence: nodeId => {
+      // The evidence dialog sits above the window; keyboard focus leaves the window so Escape closes the dialog first.
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+      setInspectedNodeId(nodeId)
+    },
+  }), [assignSlot, attachJudge, changeFormationType, detachJudge, openNodeWindow, renameNode, saveBrief, setGateFiles, updateGateFields, updateMissionFields])
+
   const cockpit = (
     <div className="fmx" data-testid="formations-view" data-cockpit="d7">
       <div className="topbar">
@@ -2528,10 +2510,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   data-testid={`mission-node-${mission.id}`}
                   style={{ left: pos.x, top: pos.y }}
                   onPointerDown={event => beginNodeDrag(event, mission.id, index)}
-                  onDoubleClick={event => {
-                    if ((event.target as HTMLElement).closest('.port,.mrun,.note-pin')) return
-                    openMissionEditor(mission)
-                  }}
                   onContextMenu={event => missionMenu(event, mission)}
                 >
                   {renderNotePin(mission.id, mission.title)}
@@ -2541,7 +2519,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                     <span className="meyebrow">◆ Mission</span>
                     <button className="mrun" title="Start mission" onClick={() => setStartMission(mission)} data-testid={`run-mission-${mission.id}`}>{PLAY_SVG}</button>
                   </div>
-                  {renderNodeTitle(mission.id, mission.title, 'mtitle', 'Untitled mission', 'div')}
+                  {renderNodeTitle(mission.title, 'mtitle', 'Untitled mission', 'div')}
                   <div className={`mgoal${mission.goal ? '' : ' placeholder'}`}>{mission.goal || 'set the mission objective…'}</div>
                   <div className="mstatus">{state ? state : ''}</div>
                   <span className={`port pout ready${hoverPort === `${mission.id}:out` ? ' snaptarget' : ''}`} data-port-out={`${mission.id}:out`} title="Starts the chain — drag to a step" onPointerDown={event => beginWire(event, `${mission.id}:out`, 'wire')} />
@@ -2592,7 +2570,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   })}
                   <div className="fhead" onPointerDown={event => beginNodeDrag(event, formation.id, index)}>
                     <div className="ft">
-                      {renderNodeTitle(formation.id, formation.title, 'tt', 'Untitled formation', 'div')}
+                      {renderNodeTitle(formation.title, 'tt', 'Untitled formation', 'div')}
                       <div className={`tg${formation.brief?.goal?.trim() ? '' : ' placeholder'}`} title={formationSummary(formation)}>{formationSummary(formation)}</div>
                       {/* Run tools get their own row so the title keeps the header's width. */}
                       {activeRun || nodeStates.has(formation.id) ? (
@@ -2680,10 +2658,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   data-testid={`gate-node-${gate.id}`}
                   style={{ left: pos.x, top: pos.y }}
                   onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}
-                  onDoubleClick={event => {
-                    if ((event.target as HTMLElement).closest('.port,.pjudge,.note-pin,.ginspect')) return
-                    openGateEditor(gate)
-                  }}
                   onContextMenu={event => gateMenu(event, gate)}
                 >
                   {renderNotePin(gate.id, gate.title || 'Gate')}
@@ -2707,7 +2681,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                     onPointerDown={event => beginJudgeDrag(event, gate)}
                   />
                   <span className="gico" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{GATE_SVG}</span>
-                  <span className="gmeta" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{renderNodeTitle(gate.id, gate.title, 'gt', 'Gate', 'span')}<GateKindChips gateId={gate.id} kinds={gate.kinds} /><span className={`gs${gate.criterion ? '' : ' placeholder'}`}>{gate.criterion || 'work is accepted before it proceeds'}</span></span>
+                  <span className="gmeta" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{renderNodeTitle(gate.title, 'gt', 'Gate', 'span')}<GateKindChips gateId={gate.id} kinds={gate.kinds} /><span className={`gs${gate.criterion ? '' : ' placeholder'}`}>{gate.criterion || 'work is accepted before it proceeds'}</span></span>
                   {nodeStates.has(gate.id) ? (
                     <button
                       type="button"
@@ -2886,6 +2860,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             onClose={() => setNoteWindows(current => current.filter(open => open !== target))}
           />
         )) : null}
+        {board ? nodeWindows.map(nodeId => (
+          <Suspense key={`node-${nodeId}`} fallback={null}>
+            <NodeWindow nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps}
+              runState={nodeStates.has(nodeId) ? nodeStates.get(nodeId) || '' : undefined}
+              onClose={() => setNodeWindows(current => current.filter(open => open !== nodeId))} />
+          </Suspense>
+        )) : null}
         {activeRun ? peeks.map(nodeId => (
           <Suspense key={`${activeRun.runId}-${nodeId}`} fallback={<div role="status">Loading terminal…</div>}>
             <FloatingPeek windowId={`peek:${nodeId}`} runId={activeRun.runId} initialNodeId={nodeId || undefined}
@@ -3057,11 +3038,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
       {gateEditor ? (
         <GateEditorDialog
-          key={`${gateEditor.mode}-${gateEditor.gateId}`}
-          mode={gateEditor.mode}
           initial={gateEditor.initial}
           profiles={gateProfiles}
-          hasJudgeChain={gateEditor.mode === 'edit' && gateHasJudge(gateEditor.gateId)}
           saving={gateEditor.saving}
           onSave={draft => void saveGateEditor(draft)}
           onClose={closeGateEditor}
@@ -3070,61 +3048,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
       {missionEditor ? (
         <MissionEditorDialog
-          key={`${missionEditor.mode}-${missionEditor.missionId}`}
-          mode={missionEditor.mode}
           initial={missionEditor.initial}
           saving={missionEditorSaving}
           onSave={draft => void saveMissionEditor(draft)}
           onClose={closeMissionEditor}
         />
-      ) : null}
-
-      {briefEditor ? (
-        <div
-          className="pop"
-          role="dialog"
-          aria-label={`Input · ${briefEditor.title}`}
-          onPointerDown={event => event.stopPropagation()}
-        >
-          <div className="pop-head">
-            <span className="pt">Input · {briefEditor.title}</span>
-            <button className="x" type="button" aria-label="Close input editor" onClick={() => setBriefEditor(null)}>x</button>
-          </div>
-          <div className="pop-body">
-            <label htmlFor="cockpit-brief-goal">Goal / idea</label>
-            <textarea
-              id="cockpit-brief-goal"
-              aria-label={`Goal for ${briefEditor.title}`}
-              value={briefEditor.goal}
-              onChange={event => setBriefEditor(current => current ? { ...current, goal: event.target.value } : current)}
-            />
-            <label htmlFor="cockpit-brief-bead">Bead</label>
-            <input
-              id="cockpit-brief-bead"
-              className="f"
-              aria-label={`Bead for ${briefEditor.title}`}
-              value={briefEditor.beadId}
-              onChange={event => setBriefEditor(current => current ? { ...current, beadId: event.target.value } : current)}
-            />
-            <label htmlFor="cockpit-brief-files">File links & context</label>
-            <input
-              id="cockpit-brief-files"
-              className="f"
-              aria-label={`Files for ${briefEditor.title}`}
-              value={briefEditor.files}
-              onChange={event => setBriefEditor(current => current ? { ...current, files: event.target.value } : current)}
-            />
-            <label htmlFor="cockpit-brief-links">Links</label>
-            <input
-              id="cockpit-brief-links"
-              className="f"
-              aria-label={`Links for ${briefEditor.title}`}
-              value={briefEditor.links}
-              onChange={event => setBriefEditor(current => current ? { ...current, links: event.target.value } : current)}
-            />
-            <button className="save" type="button" onClick={() => void saveBriefEditor()}>Save input</button>
-          </div>
-        </div>
       ) : null}
 
       {legacyVerification ? (

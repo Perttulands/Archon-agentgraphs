@@ -54,6 +54,12 @@ label = "Input"
 	if board, _ := store.ReadBoard("rename"); board.Missions[0].BeadID != "" {
 		t.Fatalf("bead not cleared: %+v", board.Missions[0])
 	}
+	if _, stderr, code := archon("mission", "update", "rename", "mis_frame", "--input-hint", "Paste the operator's sketch"); code != 0 {
+		t.Fatalf("set input hint: %d %s", code, stderr)
+	}
+	if board, _ := store.ReadBoard("rename"); board.Missions[0].InputHint != "Paste the operator's sketch" || board.Missions[0].Title != "Frame the goal" {
+		t.Fatalf("input hint not set: %+v", board.Missions[0])
+	}
 
 	if _, stderr, code := archon("mission", "update", "rename", "mis_frame"); code != 2 || !strings.Contains(stderr, "Only the flags you give change the mission") {
 		t.Fatalf("update without fields: %d %s", code, stderr)

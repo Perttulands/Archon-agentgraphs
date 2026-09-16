@@ -1,0 +1,58 @@
+/* A node window: fields read in full and edited in place, then routes and run state. */
+
+.nwin { display: flex; flex-direction: column; gap: 14px; padding: 12px 16px 18px; font-size: 12px; line-height: 1.5; }
+.nwin-kind { color: var(--text-dim); font-weight: 400; text-transform: uppercase; letter-spacing: .1em; font-size: 10px; }
+.nwin-eyebrow { color: var(--text-dim); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+
+.nfield { display: flex; flex-direction: column; gap: 5px; }
+.nfield-head { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.nfield-label { flex: 1; color: var(--text-dim); font-size: 9.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.nfield-edit, .nfield-actions button, .nwin-action {
+  border: 1px solid var(--divider); border-radius: 3px; background: var(--surface-secondary); color: var(--text-secondary);
+  padding: 3px 9px; font: 10px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer;
+}
+.nfield-edit:hover, .nfield-actions button:hover, .nwin-action:hover { color: var(--text-primary); border-color: var(--accent); }
+.nfield-actions button.primary { border-color: var(--accent); color: var(--text-primary); }
+.nfield-actions button:disabled { opacity: .55; cursor: default; }
+.nfield-value { color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.nfield-value.placeholder { color: var(--text-dim); font-style: italic; white-space: normal; }
+.nfield-value.nfield-markdown { white-space: normal; --archon-markdown-font-size: 12.5px; color: var(--text-primary); }
+.nfield-form { display: flex; flex-direction: column; gap: 6px; }
+.nfield-form input, .nfield-form textarea, .nwin-select, .nslot-controls select {
+  width: 100%; border: 1px solid var(--divider); border-radius: 4px; background: var(--surface-secondary); color: var(--text-primary);
+  padding: 7px 9px; font: 12px/1.5 var(--font-mono); outline: none;
+}
+.nfield-form textarea { resize: vertical; min-height: 88px; }
+.nfield-form input:focus, .nfield-form textarea:focus, .nwin-select:focus, .nslot-controls select:focus { border-color: var(--accent); }
+.nfield-note { margin: 0; color: var(--text-dim); font-size: 10.5px; }
+.nfield-note.error { color: var(--color-error); }
+.nfield-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+.nwin-list { margin: 0; padding-left: 18px; }
+.nwin-check { margin-top: 5px; color: var(--text-secondary); }
+.nwin .gkinds { margin-top: 2px; }
+
+.nwin-section { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--divider); }
+.nwin-section h3 { margin: 0; color: var(--text-dim); font-size: 9.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.nwin-empty { margin: 0; color: var(--text-dim); }
+
+.nslot { display: flex; flex-direction: column; gap: 5px; padding: 8px 0; }
+.nslot + .nslot { border-top: 1px dashed var(--divider); }
+.nslot-words { margin: 0; color: var(--text-primary); }
+.nslot-controls { display: flex; gap: 6px; align-items: center; }
+.nslot-controls select { flex: 1; min-width: 0; }
+.nslot-controls .nwin-action { flex-shrink: 0; }
+
+.nwin-routes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.nwin-route { display: inline-block; padding: 3px 0; border: 0; background: transparent; color: var(--text-primary); font: 12px/1.45 var(--font-mono); text-align: left; }
+button.nwin-route { cursor: pointer; text-decoration: underline; text-decoration-color: var(--divider); text-underline-offset: 3px; }
+button.nwin-route:hover { color: var(--accent); text-decoration-color: var(--accent); }
+.nwin-route.end { color: var(--text-secondary); }
+.route-fail .nwin-route { color: var(--color-error); }
+.route-pass .nwin-route { color: var(--window-green); }
+
+.nwin-run { display: flex; align-items: center; gap: 10px; }
+.nwin-state { font-weight: 700; }
+.nwin-state.state-blocked, .nwin-state.state-waiting { color: var(--window-orange); }
+.nwin-state.state-failed { color: var(--color-error); }
+.nwin-state.state-done { color: var(--window-green); }

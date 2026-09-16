@@ -484,6 +484,7 @@ type formationsUpdateMissionRequest struct {
 	Goal        *string   `json:"goal"`
 	BeadID      *string   `json:"beadId"`
 	Files       *[]string `json:"files"`
+	InputHint   *string   `json:"inputHint"`
 	ExpectedRev int       `json:"expectedRev"`
 	UpdatedBy   string    `json:"updatedBy"`
 }
@@ -1398,6 +1399,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Goal:      update.Goal,
 			BeadID:    update.BeadID,
 			Files:     update.Files,
+			InputHint: update.InputHint,
 			UpdatedBy: patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),

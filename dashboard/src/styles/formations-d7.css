@@ -306,7 +306,8 @@
 .formations-context-menu button:hover{background:rgba(var(--accent-rgb),.1);}
 .formations-context-menu button.danger{color:var(--color-error);}
 .formations-context-menu button:disabled{opacity:.45;cursor:not-allowed;}
-.fmx .pop{position:fixed;z-index:170;width:360px;left:calc(50% - 180px);top:110px;background:var(--card);border:1px solid var(--line);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.4);overflow:hidden;display:flex;flex-direction:column;}
+/* Dialogs sit above floating windows (z-index 180 and up), so run evidence opened from a window shows in front of it. */
+.fmx .pop{position:fixed;z-index:1000;width:360px;left:calc(50% - 180px);top:110px;background:var(--card);border:1px solid var(--line);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.4);overflow:hidden;display:flex;flex-direction:column;}
 .fmx .pop-head{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line2);cursor:grab;}
 .fmx .pop-head .pt{flex:1;font-weight:700;font-size:16px;letter-spacing:.02em;}
 .fmx .pop-head .x{background:none;border:none;color:var(--dimmer);font-size:19px;cursor:pointer;width:24px;height:24px;border-radius:4px;}

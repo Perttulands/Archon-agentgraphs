@@ -26,6 +26,8 @@ to the drafting step.
   for another attempt, within the run's limits.
 - Keep several missions running with separate briefs, working directories,
   cancellation and histories.
+- Click a mission, formation or gate to open it in a floating window. Read its
+  full text, staffing and routes, and edit any field in place, with undo.
 - Open a floating terminal Peek to select, copy and scroll a seat's output.
   Peek is view-only and preserves the agent's terminal size. Open one per
   formation, then move, resize and stack the windows over the canvas.

@@ -78,6 +78,14 @@ to = "fmn_map:port_map_in"
 	if got.Missions[0].BeadID != "" || got.Missions[0].Goal != "Draft a framing" {
 		t.Fatalf("mission bead clear = %+v", got.Missions)
 	}
+	got = board(patch(`{"updateMission":{"id":"mis_frame","inputHint":"Link the sketch"}}`))
+	if got.Missions[0].InputHint != "Link the sketch" || got.Missions[0].Goal != "Draft a framing" {
+		t.Fatalf("mission input hint = %+v", got.Missions)
+	}
+	got = board(patch(`{"updateMission":{"id":"mis_frame","inputHint":""}}`))
+	if got.Missions[0].InputHint != "" {
+		t.Fatalf("mission input hint clear = %+v", got.Missions)
+	}
 
 	before := readFormationsAPIFile(t, store.BoardPath("rename"))
 	for body, status := range map[string]int{

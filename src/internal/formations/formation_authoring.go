@@ -211,6 +211,7 @@ type MissionUpdateRequest struct {
 	Goal      *string
 	BeadID    *string
 	Files     *[]string // replaces the file references; empty clears them
+	InputHint *string
 	UpdatedBy string
 }
 
@@ -306,6 +307,8 @@ type MissionNode struct {
 	BeadID string `json:"beadId"`
 	// Files are reference files for the mission, as paths.
 	Files []string `json:"files,omitempty"`
+	// InputHint tells whoever starts the mission what its run brief should contain.
+	InputHint string `json:"inputHint,omitempty"`
 }
 
 type LayoutNode struct {
@@ -1320,8 +1323,9 @@ func renderSlotBlock(slot FormationSlot) []tomlLine {
 	return lines
 }
 
-// UpdateMission edits a mission's title, goal and Bead ID. Its ID, out port,
-// edges, layout and notes stay as they are.
+// UpdateMission edits a mission's title, goal, Bead ID and input hint. Its ID,
+// out port, edges, layout and notes stay as they are. An empty input hint
+// removes the key, so clearing an absent hint changes nothing.
 func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteOptions) (*BoardDocument, error) {
 	if req.MissionID == "" {
 		return nil, ErrNotFound
@@ -1353,6 +1357,14 @@ func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteO
 				lines = removeScalarInLineRange(lines, start+1, end, "files")
 			} else {
 				lines = setScalarInLineRange(lines, start+1, end, "files", rendered)
+			}
+		}
+		if req.InputHint != nil {
+			start, end, _ = findMissionBlockByID(lines, req.MissionID)
+			if *req.InputHint == "" {
+				lines = removeScalarInLineRange(lines, start+1, end, "inputHint")
+			} else {
+				lines = setScalarInLineRange(lines, start+1, end, "inputHint", renderString(*req.InputHint))
 			}
 		}
 		return renderTOMLLines(lines), nil

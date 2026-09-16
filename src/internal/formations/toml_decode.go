@@ -243,6 +243,9 @@ func decodeMissionNodes(document map[string]any) ([]MissionNode, error) {
 		if node.Files, err = tomlStringArray(table, "files"); err != nil {
 			return nil, err
 		}
+		if node.InputHint, err = tomlString(table, "inputHint"); err != nil {
+			return nil, err
+		}
 		nodes = append(nodes, node)
 	}
 	return nodes, nil
