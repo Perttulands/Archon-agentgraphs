@@ -1606,6 +1606,36 @@ describe('FormationsCockpit reference parity', () => {
     })
   })
 
+  it('saves nothing when a staffed slot is clicked or dropped back on itself', async () => {
+    await renderCockpit()
+    const lead = screen.getByTestId('slot-fmn_frame-slot_lead')
+    const worker = screen.getByTestId('slot-fmn_frame-slot_worker')
+    let target: HTMLElement = lead
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target })
+    try {
+      fireEvent.pointerDown(lead, { button: 0, pointerId: 7, clientX: 400, clientY: 200 })
+      fireEvent.pointerUp(window, { pointerId: 7, clientX: 401, clientY: 201 })
+      fireEvent.pointerDown(lead, { button: 0, pointerId: 8, clientX: 400, clientY: 200 })
+      fireEvent.pointerMove(window, { pointerId: 8, clientX: 460, clientY: 260 })
+      fireEvent.pointerUp(window, { pointerId: 8, clientX: 400, clientY: 200 })
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(patches.filter(patch => patch.body.assignSlot)).toEqual([])
+
+      target = worker
+      fireEvent.pointerDown(lead, { button: 0, pointerId: 9, clientX: 400, clientY: 200 })
+      fireEvent.pointerMove(window, { pointerId: 9, clientX: 460, clientY: 260 })
+      fireEvent.pointerUp(window, { pointerId: 9, clientX: 460, clientY: 260 })
+      await waitFor(() => {
+        expect(patches.map(patch => patch.body.assignSlot).filter(Boolean)).toEqual([
+          { formationId: 'fmn_frame', slotId: 'slot_worker', agentId: 'mason', harness: 'codex' },
+        ])
+      })
+    } finally {
+      delete (document as { elementFromPoint?: unknown }).elementFromPoint
+    }
+  })
+
   it('adds an input port from the formation context menu', async () => {
     await renderCockpit()
     fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'))

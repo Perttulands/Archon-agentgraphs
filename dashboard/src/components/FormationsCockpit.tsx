@@ -1038,6 +1038,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [active, closeGateEditor, gateEditor])
 
   const assignSlot = useCallback((formation: FormationNode, slot: FormationSlot, agentId: string, harness: string) => {
+    // An unchanged assignment writes nothing, so it cannot churn the board revision.
+    if ((slot.agentId || '') === agentId && (slot.harness || '') === harness) return
     undoStack.current.push({ kind: 'assignSlot', formationId: formation.id, slotId: slot.id, agentId: slot.agentId || '', harness: slot.harness || '' })
     void patchBoard({ assignSlot: { formationId: formation.id, slotId: slot.id, agentId, harness } })
   }, [patchBoard])
@@ -1607,6 +1609,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         setHoverSlot(slotEl ? `${slotEl.dataset.fid}:${slotEl.dataset.sid}` : null)
       },
       finalize: pointer => {
+        if (!staff.moved) return // a click staffs nothing
         const el = document.elementFromPoint(pointer.clientX, pointer.clientY) as HTMLElement | null
         const slotEl = el?.closest<HTMLElement>('.slot')
         if (slotEl && slotEl.dataset.fid && slotEl.dataset.sid) {
