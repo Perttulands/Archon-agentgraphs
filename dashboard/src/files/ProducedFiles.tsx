@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { EvidenceNames } from '../evidence/evidenceNames'
 import { formatBytes } from '../evidence/runEvidenceApi'
-import { useFileWindows } from './FileWindows'
+import { fileAnchor, useFileWindows } from './FileWindows'
 import { artifactFileRequest, outputFileRequest, type FileRequest } from './fileWindowModel'
 import type { NodeProduced, ProducedItem, RunProducedSummary } from './produced'
 import './produced.css'
@@ -55,7 +55,7 @@ function ProducedChip({ item, value, onOpened, role }: {
       onPointerDown={event => event.stopPropagation()}
       onClick={event => {
         event.stopPropagation()
-        files?.open(producedRequest(value.runId, item, value.names))
+        files?.open(producedRequest(value.runId, item, value.names), fileAnchor(event.currentTarget))
         onOpened?.()
       }}
     >
@@ -123,7 +123,7 @@ export function RunProduced() {
   }
 
   return (
-    <span className="run-produced" data-testid="run-produced">
+    <span className="run-produced" data-testid="run-produced" data-file-anchor>
       <span className="run-produced-label">produced</span>
       {shown.map(item => <ProducedChip key={item.key} item={item} value={value} />)}
       {rest.length ? (

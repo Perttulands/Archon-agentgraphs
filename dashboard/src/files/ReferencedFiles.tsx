@@ -1,4 +1,4 @@
-import { useFileWindows } from './FileWindows'
+import { fileAnchor, useFileWindows } from './FileWindows'
 import { referencedFileRequest } from './fileWindowModel'
 import type { ReferencedFile } from './referencedFiles'
 import './referenced.css'
@@ -27,7 +27,7 @@ export function ReferencedFiles({ nodeId, files, max, onMore, className }: {
   const windows = useFileWindows()
   if (!windows || files.length === 0) return null
   const limit = onMore && max !== undefined && files.length > max ? max : files.length
-  const open = (file: ReferencedFile) => windows.open(referencedFileRequest(file.ref, file.judge ? `${file.owner} (judge)` : file.owner))
+  const open = (file: ReferencedFile, control: Element) => windows.open(referencedFileRequest(file.ref, file.judge ? `${file.owner} (judge)` : file.owner), fileAnchor(control))
   const hidden = files.slice(limit)
   return (
     <div className={`refs${className ? ` ${className}` : ''}`} data-testid={`refs-${nodeId}`} role="group" aria-label="Referenced files">
@@ -39,7 +39,7 @@ export function ReferencedFiles({ nodeId, files, max, onMore, className }: {
           title={describe(file)}
           aria-label={describe(file)}
           onPointerDown={event => event.stopPropagation()}
-          onClick={event => { event.stopPropagation(); open(file) }}
+          onClick={event => { event.stopPropagation(); open(file, event.currentTarget) }}
         >
           <span className="ref-glyph" aria-hidden="true">{file.judge ? '⚖' : '▤'}</span>
           <span className="ref-name">{file.ref.split('/').filter(Boolean).pop() || file.ref}</span>
@@ -54,7 +54,8 @@ export function ReferencedFiles({ nodeId, files, max, onMore, className }: {
           onPointerDown={event => event.stopPropagation()}
           onClick={event => {
             event.stopPropagation()
-            onMore?.(hidden.map(file => ({ label: file.judge ? `${file.ref} · judge ${file.owner}` : file.ref, open: () => open(file) })), event.currentTarget.getBoundingClientRect())
+            const more = event.currentTarget
+            onMore?.(hidden.map(file => ({ label: file.judge ? `${file.ref} · judge ${file.owner}` : file.ref, open: () => open(file, more) })), more.getBoundingClientRect())
           }}
         >+{hidden.length}</button>
       ) : null}

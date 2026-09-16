@@ -63,7 +63,7 @@ function Cockpit({ produced, final, artifacts = listed }: { produced: NodeProduc
     <FileWindowsProvider stack={stack}>
       <RunProducedProvider value={value}>
         <div data-testid="run-bar"><RunProduced /></div>
-        <div data-testid="card-plan"><ProducedFiles nodeId="fmn_plan" /></div>
+        <div data-testid="card-plan" data-node="fmn_plan"><ProducedFiles nodeId="fmn_plan" /></div>
         <div data-testid="card-final"><ProducedFiles nodeId="fmn_final" /></div>
         <OpenArtifact name="paper.pdf" />
         <WindowManagerProvider stack={stack}><FileWindowsLayer /></WindowManagerProvider>
@@ -154,6 +154,18 @@ describe('produced files', () => {
 
     fireEvent.click(within(log).getByRole('button', { name: 'Close file worker.log' }))
     expect(screen.getAllByRole('dialog')).toHaveLength(1)
+  })
+
+  it('opens a file window beside the card whose chip opened it, and centred from a control without a place', async () => {
+    render(<Cockpit produced={produced} final />)
+    const card = screen.getByTestId('card-plan')
+    card.getBoundingClientRect = () => ({ left: 100, top: 120, width: 300, height: 200, right: 400, bottom: 320, x: 100, y: 120, toJSON: () => ({}) })
+    fireEvent.click(within(card).getByRole('button', { name: 'report' }))
+    expect(rectOf(await screen.findByRole('dialog', { name: 'file report' }))).toEqual({ left: 412, top: 120, width: 720, height: 560 })
+
+    // A control that passes no anchor opens its window centred, stepped past the open one.
+    fireEvent.click(screen.getByRole('button', { name: 'Open paper.pdf' }))
+    expect(rectOf(await screen.findByRole('dialog', { name: 'file paper.pdf' }))).toMatchObject({ width: 720, height: 560, left: 440 + 28, top: 220 + 28 })
   })
 
   it('shows a PDF in the browser viewer from the raw route', async () => {

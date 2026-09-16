@@ -148,6 +148,14 @@ test('a finished run opens what it produced from the run bar and cards in file w
   await expect(review.getByRole('heading', { name: 'Peer review' })).toBeVisible()
   await expect(review.locator('strong', { hasText: 'revise' })).toBeVisible()
   await expect(review.getByRole('link', { name: 'Open raw' })).toHaveAttribute('href', '/api/formations/runs/run_browser/artifacts/review.md')
+  // Each window opens beside where it was opened: the card's chip beside the card, the run bar's below the bar.
+  const card = (await page.locator('[data-node="execution"]').boundingBox())!
+  const opened = (await result.boundingBox())!
+  expect(opened.x >= card.x + card.width || opened.x + opened.width <= card.x || opened.y >= card.y + card.height || opened.y + opened.height <= card.y).toBe(true)
+  const bar = (await produced.boundingBox())!
+  const below = (await review.boundingBox())!
+  expect(below.y).toBeGreaterThanOrEqual(bar.y + bar.height)
+  expect(Math.abs(below.x - bar.x)).toBeLessThanOrEqual(1)
 
   // Drag the review to the right of the canvas and the result to the left, so the two sit side by side.
   // The review, on top, moves right by its title; the result then moves left by the start of its own title.

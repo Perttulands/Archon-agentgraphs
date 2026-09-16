@@ -16,7 +16,7 @@ import type {
   MissionNode,
   PersonaCard,
 } from '../components/formationsTypes'
-import { useFileWindows } from '../files/FileWindows'
+import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { ProducedFiles } from '../files/ProducedFiles'
 import { referencedFileRequest } from '../files/fileWindowModel'
 import { nodeFileRefs } from '../files/referencedFiles'
@@ -238,7 +238,7 @@ function FileList({ files, context, label }: { files: string[]; context: string;
       {files.map(file => (
         <li key={file}>
           {fileWindows
-            ? <button type="button" className="nwin-route" aria-label={`Open file ${file}`} onClick={() => fileWindows.open(referencedFileRequest(file, context))}>{file}</button>
+            ? <button type="button" className="nwin-route" aria-label={`Open file ${file}`} onClick={event => fileWindows.open(referencedFileRequest(file, context), fileAnchor(event.currentTarget))}>{file}</button>
             : file}
         </li>
       ))}

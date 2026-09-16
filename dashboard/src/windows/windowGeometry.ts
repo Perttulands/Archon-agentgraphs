@@ -100,22 +100,33 @@ export function placeWindow(size: FrameSize, workspace: Workspace, minimum: Fram
 /** Room left between a window and the thing it opened beside. */
 export const ANCHOR_GAP = 12
 
+/** How far outside the workspace an anchor still counts as in view, such as a chip in a bar along its edge. */
+export const ANCHOR_REACH = 48
+
 /**
  * A new window beside what it belongs to: right of it, else left of it, below
  * or above, whichever side first fits the workspace without covering it. The
- * window lines up with the anchor's top or left edge. Null when the anchor is
- * out of view or no side leaves it uncovered, so the window opens centred.
+ * window lines up with the anchor's top or left edge. An anchor just outside
+ * the workspace tries the side facing the workspace first. Null when the anchor
+ * is empty, out of view, or no side leaves it uncovered, so the window opens
+ * centred.
  */
 export function placeBeside(size: FrameSize, anchor: WindowRect, workspace: Workspace, minimum: FrameSize): WindowRect | null {
   const { bounds } = workspace
-  if (!rectsOverlap(anchor, bounds)) return null
+  const reach = { left: bounds.left - ANCHOR_REACH, top: bounds.top - ANCHOR_REACH, width: bounds.width + 2 * ANCHOR_REACH, height: bounds.height + 2 * ANCHOR_REACH }
+  if (anchor.width <= 0 || anchor.height <= 0 || !rectsOverlap(anchor, reach)) return null
   const fitted = clampFrameSize(size, minimum, bounds)
-  const sides: WindowRect[] = [
-    { ...fitted, left: right(anchor) + ANCHOR_GAP, top: anchor.top },
-    { ...fitted, left: anchor.left - ANCHOR_GAP - fitted.width, top: anchor.top },
-    { ...fitted, left: anchor.left, top: bottom(anchor) + ANCHOR_GAP },
-    { ...fitted, left: anchor.left, top: anchor.top - ANCHOR_GAP - fitted.height },
-  ]
+  const rightSide = { ...fitted, left: right(anchor) + ANCHOR_GAP, top: anchor.top }
+  const leftSide = { ...fitted, left: anchor.left - ANCHOR_GAP - fitted.width, top: anchor.top }
+  const below = { ...fitted, left: anchor.left, top: bottom(anchor) + ANCHOR_GAP }
+  const above = { ...fitted, left: anchor.left, top: anchor.top - ANCHOR_GAP - fitted.height }
+  const facing = bottom(anchor) <= bounds.top ? below
+    : anchor.top >= bottom(bounds) ? above
+      : right(anchor) <= bounds.left ? rightSide
+        : anchor.left >= right(bounds) ? leftSide
+          : null
+  const order = [rightSide, leftSide, below, above]
+  const sides = facing ? [facing, ...order.filter(side => side !== facing)] : order
   for (const side of sides) {
     const held = keepInWorkspace(side, workspace, minimum)
     if (!rectsOverlap(held, anchor)) return held

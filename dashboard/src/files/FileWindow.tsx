@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import FloatingWindow from '../windows/FloatingWindow'
 import FileView, { FileActions, useFilePreview } from './FileView'
+import type { WindowRect } from '../windows/windowGeometry'
 import type { FileRequest } from './fileWindowModel'
 
 /** One file in a floating window of the 'file' kind. */
-export default function FileWindow({ request, onOpen, onClose }: {
+export default function FileWindow({ request, anchor, onOpen, onClose }: {
   request: FileRequest
+  /** What the window opens beside, fixed when the file was opened. */
+  anchor?: WindowRect | null
   onOpen: (request: FileRequest) => void
   onClose: () => void
 }) {
@@ -23,6 +26,7 @@ export default function FileWindow({ request, onOpen, onClose }: {
         </span>
       )}
       defaultSize={{ width: 720, height: 560 }}
+      anchor={anchor ? () => anchor : undefined}
       className="file-window"
       actions={<FileActions request={request} preview={preview} mode={mode} onMode={setMode} />}
       onClose={onClose}

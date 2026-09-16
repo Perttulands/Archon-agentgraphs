@@ -32,7 +32,15 @@ describe('window geometry', () => {
     expect(beside).toEqual({ left: 238, top: 500, width: 400, height: 300 })
   })
 
-  it('places nothing beside an anchor out of view or one no side can leave uncovered', () => {
+  it('opens a window below an anchor in a bar along the workspace\'s top edge', () => {
+    const canvas: Workspace = { ...workspace, bounds: { left: 0, top: 60, width: 1200, height: 740 } }
+    // A run bar chip just above the canvas: the side facing the canvas comes first.
+    expect(placeBeside({ width: 400, height: 300 }, { left: 500, top: 20, width: 90, height: 24 }, canvas, minimum)).toEqual({ left: 500, top: 60, width: 400, height: 300 })
+    expect(placeBeside({ width: 400, height: 300 }, { left: 500, top: -200, width: 90, height: 24 }, canvas, minimum)).toBeNull()
+  })
+
+  it('places nothing beside an anchor out of view, an empty one, or one no side can leave uncovered', () => {
+    expect(placeBeside({ width: 400, height: 300 }, { left: 100, top: 120, width: 0, height: 0 }, workspace, minimum)).toBeNull()
     expect(placeBeside({ width: 400, height: 300 }, { left: -500, top: 100, width: 200, height: 100 }, workspace, minimum)).toBeNull()
     expect(placeBeside({ width: 400, height: 300 }, { left: 0, top: 0, width: 1200, height: 800 }, workspace, minimum)).toBeNull()
   })
