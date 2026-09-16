@@ -2319,6 +2319,8 @@ describe('FormationsCockpit reference parity', () => {
     expect(within(gate).getByTestId('run-chip-gate_review')).toHaveTextContent('blocked')
     fireEvent.click(point)
     expect(gate).toHaveClass('located')
+    // Once the card is centred, its node window opens beside it.
+    expect(await screen.findByRole('dialog', { name: 'Gate · Review' })).toBeInTheDocument()
   })
 
   it('shows what a finished run produced and opens it in a file window', async () => {

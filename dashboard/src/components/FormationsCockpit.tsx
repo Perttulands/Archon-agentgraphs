@@ -1563,6 +1563,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return () => window.clearTimeout(timer)
   }, [locatedNodeId])
 
+  // The run bar's phrase centres its node, then opens the node's window beside the centred card.
+  const locateAndOpenNode = useCallback((nodeId: string) => {
+    locateNode(nodeId)
+    const current = boardRef.current
+    if (!current || ![...(current.missions || []), ...current.formations, ...(current.gates || [])].some(node => node.id === nodeId)) return
+    window.setTimeout(() => openNodeWindow(nodeId), 450)
+  }, [locateNode, openNodeWindow])
+
   useLayoutEffect(() => {
     if (!board || !layout || fittedBoardRef.current === board.slug) return
     const frame = window.requestAnimationFrame(() => {
@@ -2435,7 +2443,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               <div className="run-banner" data-testid="run-banner">
                 <span>run</span>
                 <span className={`badge ${runBadgeClass}`}>{activeRun.status}</span>
-                <RunPoint runId={activeRun.runId} point={runPoint} title={runPointTitle} onLocate={locateNode} />
+                <RunPoint runId={activeRun.runId} point={runPoint} title={runPointTitle} onLocate={locateAndOpenNode} />
                 <RunProduced />
                 {runChoices.length > 1 ? (
                   <select
