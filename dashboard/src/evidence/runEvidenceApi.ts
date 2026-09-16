@@ -149,22 +149,25 @@ const runPath = (runId: string) => `/api/formations/runs/${encodeURIComponent(ru
 const artifactPath = (name: string) => name.split('/').map(encodeURIComponent).join('/')
 
 export async function fetchNodeEvidence(runId: string, nodeId: string): Promise<NodeEvidence> {
-  const { data } = await fetchApi<{ evidence: NodeEvidence }>(`${runPath(runId)}/evidence/nodes/${encodeURIComponent(nodeId)}`)
+  const { data } = await fetchApi<{ evidence?: NodeEvidence }>(`${runPath(runId)}/evidence/nodes/${encodeURIComponent(nodeId)}`)
+  if (!data.evidence) throw new Error('the daemon returned no node evidence')
   return data.evidence
 }
 
 export async function fetchRunBrief(runId: string, dispatchSeq: number): Promise<RunBrief> {
-  const { data } = await fetchApi<{ brief: RunBrief }>(`${runPath(runId)}/evidence/briefs/${dispatchSeq}`)
+  const { data } = await fetchApi<{ brief?: RunBrief }>(`${runPath(runId)}/evidence/briefs/${dispatchSeq}`)
+  if (!data.brief) throw new Error('the daemon returned no brief')
   return data.brief
 }
 
 export async function fetchRunArtifacts(runId: string): Promise<{ artifacts: RunArtifactEntry[]; truncated: boolean }> {
-  const { data } = await fetchApi<{ artifacts: RunArtifactEntry[]; truncated: boolean }>(`${runPath(runId)}/evidence/artifacts`)
-  return data
+  const { data } = await fetchApi<{ artifacts?: RunArtifactEntry[]; truncated?: boolean }>(`${runPath(runId)}/evidence/artifacts`)
+  return { artifacts: data.artifacts || [], truncated: Boolean(data.truncated) }
 }
 
 export async function fetchArtifactPreview(runId: string, name: string): Promise<RunArtifactPreview> {
-  const { data } = await fetchApi<{ artifact: RunArtifactPreview }>(`${runPath(runId)}/evidence/artifacts/${artifactPath(name)}`)
+  const { data } = await fetchApi<{ artifact?: RunArtifactPreview }>(`${runPath(runId)}/evidence/artifacts/${artifactPath(name)}`)
+  if (!data.artifact) throw new Error('the daemon returned no artifact')
   return data.artifact
 }
 
