@@ -4,6 +4,7 @@
    roster grouping and seat layout so both tabs draw agents the same way. */
 import { Fragment } from 'react'
 import type { ReactNode } from 'react'
+import type { NodeRunState } from './formationsRunState'
 import type { AgentProjection, FormationNode, FormationSlot } from './formationsTypes'
 import { harnessIcon } from './harnessIcons'
 
@@ -37,6 +38,31 @@ export function agentRole(agent: AgentProjection): string {
 }
 export function agentState(agent: AgentProjection): 'on' | 'idle' {
   return agent.liveness === 'live' || agent.assignable ? 'on' : 'idle'
+}
+
+export interface OutputRowStatus {
+  label: string
+  tone: 'idle' | 'running' | 'review' | 'done' | 'blocked'
+}
+
+/* A formation card's first OUT row says what the selected run has done with
+   the node. Without a run there is nothing to report yet. */
+export function outputRowStatus(runSelected: boolean, state: NodeRunState | undefined, hasOutput: boolean): OutputRowStatus {
+  if (!runSelected) return { label: 'no output yet', tone: 'idle' }
+  switch (state) {
+    case 'running':
+      return { label: 'running', tone: 'running' }
+    case 'waiting':
+      return { label: 'waiting', tone: 'review' }
+    case 'blocked':
+      return { label: 'blocked', tone: 'blocked' }
+    case 'failed':
+      return { label: 'failed', tone: 'blocked' }
+    case 'done':
+      return { label: hasOutput ? 'output ready' : 'done', tone: 'done' }
+    default:
+      return hasOutput ? { label: 'output ready', tone: 'done' } : { label: 'not reached', tone: 'idle' }
+  }
 }
 
 export interface RosterSection<T> {

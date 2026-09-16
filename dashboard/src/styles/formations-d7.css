@@ -190,6 +190,7 @@
 .fmx .io-status.review{color:var(--gold);background:color-mix(in srgb,var(--gold) 16%,transparent);}
 .fmx .io-status.blocked{color:var(--terra-d);background:var(--color-error-light);}
 .fmx .io-status.idle{color:var(--dimmer);background:rgba(255,255,255,.05);}
+.fmx .io-status.running{color:var(--terra);background:rgba(var(--accent-rgb),.14);}
 
 /* verification band */
 .fmx .verify-band{display:flex;align-items:center;gap:9px;width:100%;padding:9px 15px;border:0;border-top:1px dashed var(--line);background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background .12s,opacity .18s;}

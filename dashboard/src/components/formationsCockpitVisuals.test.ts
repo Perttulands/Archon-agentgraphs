@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formationSummary, agentRole, agentState, groupRosterByHarness, initials } from './formationsCockpitVisuals'
+import { formationSummary, agentRole, agentState, groupRosterByHarness, initials, outputRowStatus } from './formationsCockpitVisuals'
 import type { AgentProjection, FormationNode } from './formationsTypes'
 
 const agent = (over: Partial<AgentProjection> & { assignable: boolean }): AgentProjection => ({ id: 'a', ...over })
@@ -54,5 +54,18 @@ describe('groupRosterByHarness', () => {
       ['other', ['hermes-one', 'bare']],
     ])
     expect(groupRosterByHarness(roster.slice(0, 1)).map(section => section.label)).toEqual(['Claude'])
+  })
+})
+
+describe('outputRowStatus', () => {
+  it('reports what the selected run did with the node, and nothing without a run', () => {
+    expect(outputRowStatus(false, 'done', true)).toEqual({ label: 'no output yet', tone: 'idle' })
+    expect(outputRowStatus(true, 'done', true)).toEqual({ label: 'output ready', tone: 'done' })
+    expect(outputRowStatus(true, undefined, true)).toEqual({ label: 'output ready', tone: 'done' })
+    expect(outputRowStatus(true, 'running', true)).toEqual({ label: 'running', tone: 'running' })
+    expect(outputRowStatus(true, 'waiting', false)).toEqual({ label: 'waiting', tone: 'review' })
+    expect(outputRowStatus(true, 'blocked', true)).toEqual({ label: 'blocked', tone: 'blocked' })
+    expect(outputRowStatus(true, 'failed', false)).toEqual({ label: 'failed', tone: 'blocked' })
+    expect(outputRowStatus(true, undefined, false)).toEqual({ label: 'not reached', tone: 'idle' })
   })
 })

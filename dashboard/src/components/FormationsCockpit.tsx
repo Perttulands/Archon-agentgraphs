@@ -49,7 +49,7 @@ import {
 } from './formationsRunState'
 import { chooseBoardRun, openRunsByAttention, readRunLink, runChoiceLabel, runLinkSearch } from './formationsRunDiscovery'
 import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
-import { FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials } from './formationsCockpitVisuals'
+import { FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, outputRowStatus } from './formationsCockpitVisuals'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
 const RunEvidence = lazy(() => import('../evidence/RunEvidence'))
 import DismissiblePanel from './DismissiblePanel'
@@ -595,6 +595,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   ), [displayLayoutByNode])
 
   const nodeStates = useMemo(() => projectNodeStates(runEvents, activeRun), [runEvents, activeRun])
+  const outputNodeIds = useMemo(() => new Set(runEvents.filter(event => event.type === 'node_output' && event.nodeId).map(event => event.nodeId)), [runEvents])
   const inspectedTool = useMemo(
     () => (board?.tools || []).find(tool => tool.id === inspectedToolId) || null,
     [board?.tools, inspectedToolId],
@@ -2565,7 +2566,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                     return (
                       <div className="fio out" key={port.id} onContextMenu={event => outputRowMenu(event, formation, port.id)}>
                         <span className="glyph">out</span>
-                        <span className="io-status idle">{portIndex === 0 ? 'no output yet' : port.label.toLowerCase()}</span>
+                        {portIndex === 0 ? (() => {
+                          const output = outputRowStatus(Boolean(activeRun), nodeStates.get(formation.id), outputNodeIds.has(formation.id))
+                          return <span className={`io-status ${output.tone}`} data-testid={`output-status-${formation.id}`}>{output.label}</span>
+                        })() : <span className="io-status idle">{port.label.toLowerCase()}</span>}
                         <span className={`port pout ready${hoverPort === endpoint ? ' snaptarget' : ''}`} data-port-out={endpoint} title="Drag to a downstream input" onPointerDown={event => beginWire(event, endpoint, 'wire')} />
                       </div>
                     )

@@ -1754,6 +1754,27 @@ describe('FormationsCockpit reference parity', () => {
     expect(localStorage.getItem('chrote-formations-active-run-test-board')).toBeNull()
   })
 
+  it('says in each formation card what the selected run did with the node', async () => {
+    patches = installFetchMock()
+    await renderCockpit()
+    expect(screen.getByTestId('output-status-fmn_frame')).toHaveTextContent('no output yet')
+    cleanup()
+
+    localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
+    patches = installFetchMock({
+      runStatus: { status: 'succeeded', final: true },
+      runEvents: [
+        { runId: 'run_legacy', seq: 1, type: 'node_started', nodeId: 'fmn_frame' },
+        { runId: 'run_legacy', seq: 2, type: 'node_output', nodeId: 'fmn_frame', status: 'done' },
+      ],
+    })
+    await renderCockpit()
+    await waitFor(() => expect(screen.getByTestId('output-status-fmn_frame')).toHaveTextContent('output ready'))
+    expect(screen.getByTestId('output-status-fmn_frame')).toHaveClass('done')
+    expect(screen.getByTestId('output-status-fmn_judge')).toHaveTextContent('not reached')
+    expect(screen.queryByText('no output yet')).toBeNull()
+  })
+
   it('shows the node status with its output and slot evidence from the evidence routes', async () => {
     localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
     patches = installFetchMock({
