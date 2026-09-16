@@ -288,8 +288,11 @@ routed. Finish with the exact run ID substituted in the sentinel:
 ```
 
 For a lab judge smoke test, put one synthetic `chrote-verdict` block in the run
-brief. The lab echo carries it to the judge parser. Label that evidence as
-simulated; a plain brief without a verdict will block at a formation gate.
+brief. The lab echo carries it to the judge parser. Peer and orchestrated
+formations echo it once per seat; the lab keeps one copy of identical blocks,
+so the fixture reaches a judge downstream of them, while differing blocks
+still block. Label that evidence as simulated; a plain brief without a verdict
+will block at a formation gate.
 
 ## Operator procedure
 

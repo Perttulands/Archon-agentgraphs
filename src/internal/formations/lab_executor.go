@@ -167,7 +167,7 @@ func (e *LabFormationExecutor) executeFormation(ctx context.Context, req Formati
 		outputs = append(outputs, e.renderSlotOutput(req, slot, *card, variant))
 	}
 
-	text := strings.Join(outputs, "\n\n")
+	text := collapseRepeatedLabVerdicts(strings.Join(outputs, "\n\n"))
 	if len(text) > e.config.OutputCapBytes {
 		text = text[:e.config.OutputCapBytes]
 	}
@@ -242,6 +242,56 @@ func (e *LabFormationExecutor) renderSlotOutput(req FormationExecution, slot For
 		inputText = req.Brief.Goal
 	}
 	return fmt.Sprintf("lab-fake output from %s using %s for %s\nslot: %s\ninput: %s", card.ID, variant.ID, req.Title, slot.ID, inputText)
+}
+
+// collapseRepeatedLabVerdicts keeps one copy of a lab judge fixture. Lab seats
+// echo their input, so a multi-seat formation repeats a chrote-verdict block
+// from the run brief once per seat, and a formation gate downstream would reject
+// the duplicates. Identical blocks collapse to the first; differing blocks stay,
+// so a real conflict still fails at the judge.
+func collapseRepeatedLabVerdicts(text string) string {
+	lines := strings.Split(text, "\n")
+	type block struct{ start, end int }
+	var blocks []block
+	for i := 0; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) != "```chrote-verdict" {
+			continue
+		}
+		for j := i + 1; j < len(lines); j++ {
+			if strings.TrimSpace(lines[j]) == "```" {
+				blocks = append(blocks, block{i, j})
+				i = j
+				break
+			}
+		}
+	}
+	if len(blocks) < 2 {
+		return text
+	}
+	body := func(b block) string {
+		parts := make([]string, 0, b.end-b.start-1)
+		for _, line := range lines[b.start+1 : b.end] {
+			parts = append(parts, strings.TrimSpace(line))
+		}
+		return strings.Join(parts, "\n")
+	}
+	first := body(blocks[0])
+	for _, b := range blocks[1:] {
+		if body(b) != first {
+			return text
+		}
+	}
+	kept := make([]string, 0, len(lines))
+	next := 1
+	for i := 0; i < len(lines); i++ {
+		if next < len(blocks) && i == blocks[next].start {
+			i = blocks[next].end
+			next++
+			continue
+		}
+		kept = append(kept, lines[i])
+	}
+	return strings.Join(kept, "\n")
 }
 
 func labOutputPayloads(formation FormationNode, text string) map[string]FormationOutputPayload {
