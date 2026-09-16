@@ -161,8 +161,8 @@ The `tmux` executor uses one implementation with Claude Code and OpenAI Codex
 adapters. It resolves authenticated harness executables from its environment.
 Each fresh seat gets a pointer to a file under `<state-dir>/briefs`. The file
 contains run/node/slot identity, cwd, mission goal, Bead, persona summary,
-formation brief, file/link references, routed inputs, gate feedback, output
-ports, artifact directory and completion instructions. Orchestrated controllers
+formation brief, file/link references, routed inputs, gate feedback, human
+responses, output ports, artifact directory and completion instructions. Orchestrated controllers
 also get their bound workers and may direct only those workers. External
 operators and Archon agents must not type into seats or manage their sessions.
 
@@ -222,6 +222,13 @@ reason, evidence and original input text/reference. The next prompt renders
 this as a gate-feedback section. An unwired fail leaves a visible block.
 A human kind waits for an explicit verdict naming the exact pending sequence;
 stale or duplicate decisions return HTTP 409. There is no default verdict.
+The verdict's `reason` is the operator's response. On pass, a nonempty response
+travels on every pass route together with the gate's original input. It is typed
+with gate ID, gate attempt, requested sequence, deciding actor and text, and
+the next prompt renders it as a human-response section after that input. An
+empty response routes the input unchanged. On fail the response becomes the
+feedback reason. Resume rebuilds the response from the verdict recorded for
+that exact request, so it survives restart.
 
 Real formations must emit all and only their declared output IDs in one block:
 
@@ -325,22 +332,23 @@ archon --server "$FORM_SERVER" run abort "$FORM_RUN_ID" --reason "Operator stopp
 ```
 
 For a graph with a human gate, inspect fresh status. Set `FORM_GATE_ID` to the
-pending gate and `FORM_REASON` to the operator's decision. Choose exactly one
-verdict command, only when authorized to decide that gate:
+pending gate and `FORM_RESPONSE` to the operator's answer. `--response` is an
+alias of `--reason`. Choose exactly one verdict command, only when authorized to
+decide that gate:
 
 ```bash
 FORM_STATUS=$(archon --server "$FORM_SERVER" run status "$FORM_RUN_ID" --json)
 FORM_REQUESTED_SEQ=$(printf '%s\n' "$FORM_STATUS" | jq -er --arg gate "$FORM_GATE_ID" \
   '.data.waitingGates[] | select(.gateId == $gate) | .requestedSeq')
 archon --server "$FORM_SERVER" gate approve "$FORM_RUN_ID" "$FORM_GATE_ID" \
-  --requested-seq "$FORM_REQUESTED_SEQ" --reason "$FORM_REASON" --json
+  --requested-seq "$FORM_REQUESTED_SEQ" --response "$FORM_RESPONSE" --json
 ```
 
 For rejection, substitute this command for approval:
 
 ```bash
 archon --server "$FORM_SERVER" gate reject "$FORM_RUN_ID" "$FORM_GATE_ID" \
-  --requested-seq "$FORM_REQUESTED_SEQ" --reason "$FORM_REASON" --json
+  --requested-seq "$FORM_REQUESTED_SEQ" --response "$FORM_RESPONSE" --json
 ```
 
 Restart the daemon with the same state directory and configuration. Before

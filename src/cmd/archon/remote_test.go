@@ -92,3 +92,38 @@ func TestRemoteRunInputsReadFilesAndLongLiteralBriefs(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoteGateVerdictSendsResponseText(t *testing.T) {
+	answer := "1. Use Postgres.\n2. Ship on Friday."
+	var got []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || r.URL.Path != "/api/formations/runs/run_proof/gates/gate_review/verdict" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		got = append(got, body)
+		w.WriteHeader(202)
+		fmt.Fprint(w, `{"data":{"runId":"run_proof"}}`)
+	}))
+	defer server.Close()
+	for _, command := range [][]string{
+		{"gate", "approve", "run_proof", "gate_review", "--requested-seq", "7", "--response", answer, "--json"},
+		{"gate", "reject", "run_proof", "gate_review", "--requested-seq", "7", "--reason", answer},
+	} {
+		var out, stderr bytes.Buffer
+		if code := runRemote(server.URL, command, &out, &stderr); code != 0 {
+			t.Fatalf("%v: %d %s", command, code, stderr.String())
+		}
+	}
+	if len(got) != 2 || got[0]["verdict"] != "pass" || got[1]["verdict"] != "fail" {
+		t.Fatalf("verdict bodies = %+v", got)
+	}
+	for _, body := range got {
+		if body["reason"] != answer || body["requestedSeq"] != float64(7) {
+			t.Fatalf("verdict body = %+v, want response text as reason", body)
+		}
+	}
+}

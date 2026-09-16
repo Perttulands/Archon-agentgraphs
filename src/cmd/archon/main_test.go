@@ -2364,6 +2364,48 @@ func TestArchonS5GateApproveRoutesHumanGate(t *testing.T) {
 	}
 }
 
+func TestArchonGateApproveAcceptsResponseAlias(t *testing.T) {
+	workspace := t.TempDir()
+	agentsDir := t.TempDir()
+	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	personas := formations.NewPersonaStore(agentsDir)
+	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
+		t.Fatalf("create persona: %v", err)
+	}
+	store := formations.NewStore(workspace)
+	writeArchonFile(t, store.BoardPath("session-search"), archonS5HumanGateBoardFixture())
+	board, err := store.ReadBoard("session-search")
+	if err != nil {
+		t.Fatalf("read human gate board: %v", err)
+	}
+	engine := formations.NewRunEngine(store, personas, archonTestRunExecutor{})
+	waiting, err := engine.RunMission("session-search", formations.RunStartRequest{
+		MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev,
+		Personas: personas, Limits: formations.RunLimits{MaxDispatch: 5, MaxAttempts: 2},
+	})
+	if err != nil {
+		t.Fatalf("start human waiting run: %v", err)
+	}
+	answer := "1. Use Postgres.\n2. Ship on Friday."
+	stdout, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "gate", "approve", waiting.RunID, "gate_review", "--response", answer, "--json")
+	if code != 0 {
+		t.Fatalf("gate approve code=%d stderr=%s stdout=%s", code, stderr, stdout)
+	}
+	events, err := store.ReadRunEvents(waiting.RunID)
+	if err != nil {
+		t.Fatalf("read events: %v", err)
+	}
+	var recorded string
+	for _, event := range events {
+		if event.Type == formations.RunEventHumanVerdictRecorded {
+			recorded, _ = event.Data["reason"].(string)
+		}
+	}
+	if recorded != answer {
+		t.Fatalf("recorded response = %q, want %q", recorded, answer)
+	}
+}
+
 func TestArchonS4ConfiguredLabPoemMissionReachesGateAndPolishesAfterApproval(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()

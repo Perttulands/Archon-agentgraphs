@@ -39,5 +39,8 @@ func renderBriefAndInputs(b *strings.Builder, req FormationExecution, card Perso
 		} else if input.Text != "" {
 			b.WriteString("input: " + input.Text + "\n")
 		}
+		if response := input.Response; response != nil {
+			fmt.Fprintf(b, "\nhuman response from %s, attempt %d:\nverdict: pass\ndecided by: %s\nresponse:\n%s\n\n", response.GateID, response.GateAttempt, response.DecidedBy, response.Text)
+		}
 	}
 }

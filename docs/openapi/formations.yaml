@@ -381,6 +381,7 @@ paths:
                   - fail
                 reason:
                   type: string
+                  description: Operator response. On pass a nonempty response reaches the pass routes with the gate input; on fail it is the feedback reason.
       responses:
         '202':
           description: Verdict recorded; any authorized continuation runs in the coordinator

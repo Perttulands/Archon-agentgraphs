@@ -72,7 +72,8 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	bead := fs.String("bead", "", "run Beads id")
 	mode := fs.String("mode", "reattach", "resume mode")
 	mission := fs.String("mission", "", "mission id")
-	reason := fs.String("reason", "", "operator verdict reason")
+	reason := fs.String("reason", "", "operator reason; for gate approve|reject, the response text")
+	fs.StringVar(reason, "response", "", "alias of --reason for gate approve|reject")
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
 	maxDispatch := fs.Int("max-dispatch", 3, "maximum dispatch count")
 	maxAttempts := fs.Int("max-attempts", 3, "maximum node attempts")
@@ -211,6 +212,6 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 func remoteUsage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "use board validate <board>, mission run <board> --mission <id>, run status|logs|follow <run>, or gate approve|reject <run> <gate> --requested-seq <n>")
+	fmt.Fprintln(stderr, "use board validate <board>, mission run <board> --mission <id>, run status|logs|follow <run>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text]")
 	return 2
 }

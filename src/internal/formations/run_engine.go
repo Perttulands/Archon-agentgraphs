@@ -138,6 +138,7 @@ type HumanGateVerdictRequest struct {
 
 type RunInputRef struct {
 	Feedback    *GateFeedback `json:"feedback,omitempty"`
+	Response    *GateResponse `json:"response,omitempty"`
 	EdgeID      string        `json:"edgeId,omitempty"`
 	FromNodeID  string        `json:"fromNodeId,omitempty"`
 	FromPortID  string        `json:"fromPortId,omitempty"`
@@ -1443,6 +1444,11 @@ func (e *RunEngine) replayGateVerdictsToReady(runID string, board *BoardDocument
 			nextInput := input
 			if routePort == "fail" {
 				nextInput = gateFailInput(runID, route, gateID, event.Attempt, input, stringFromEventData(event, "reason"), gateEvidenceRefsFromRunEventData(event.Data["evidence"]))
+			} else if routePort == "pass" {
+				var err error
+				if nextInput, err = gatePassInput(events, event, gateID, input); err != nil {
+					return err
+				}
 			}
 			if err := e.deliverConnection(runID, board, gates, route, nextInput, limits, ready, queued, queue); err != nil {
 				return err
@@ -2137,6 +2143,7 @@ func (e *RunEngine) routeGateVerdict(runID string, board *BoardDocument, gate Ga
 			"resultSha256":   result.ResultSHA256,
 			"gateBindingId":  result.GateBindingID,
 			"inputRef":       input,
+			"requestedSeq":   requestEvent.Seq,
 		},
 	}); err != nil {
 		return nil, err
@@ -2648,8 +2655,17 @@ func runInputRefFromAny(value any) RunInputRef {
 			OriginalRef: stringFromAny(fields["originalRef"]), OriginalText: stringFromAny(fields["originalText"]),
 		}
 	}
+	var response *GateResponse
+	if fields, ok := raw["response"].(map[string]any); ok {
+		response = &GateResponse{
+			GateID: stringFromAny(fields["gateId"]), GateAttempt: intFromRunEventData(fields["gateAttempt"]),
+			RequestedSeq: intFromRunEventData(fields["requestedSeq"]),
+			DecidedBy:    stringFromAny(fields["decidedBy"]), Text: stringFromAny(fields["text"]),
+		}
+	}
 	return RunInputRef{
 		Feedback:    feedback,
+		Response:    response,
 		EdgeID:      stringFromAny(raw["edgeId"]),
 		FromNodeID:  stringFromAny(raw["fromNodeId"]),
 		FromPortID:  stringFromAny(raw["fromPortId"]),

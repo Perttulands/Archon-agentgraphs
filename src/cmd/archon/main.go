@@ -1070,14 +1070,15 @@ func runGateJudge(store *formations.Store, args []string, stdout, stderr io.Writ
 func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Writer, verdict string) int {
 	fs := flag.NewFlagSet("gate verdict", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	reason := fs.String("reason", "", "verdict reason")
+	reason := fs.String("reason", "", "operator response; approve delivers it downstream with the gate input, reject sends it back as feedback")
+	fs.StringVar(reason, "response", "", "alias of --reason")
 	actor := fs.String("actor", "human:operator", "deciding actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon gate approve|reject <runId> <gateId> [--reason text] [--json]")
+		fmt.Fprintln(stderr, "usage: archon gate approve|reject <runId> <gateId> [--reason|--response text] [--json]")
 		return 2
 	}
 	if err := store.RequireRuntimeAuthority(); err != nil {

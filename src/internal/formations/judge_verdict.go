@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/jsonstrict"
@@ -93,6 +94,54 @@ type GateFeedback struct {
 	Evidence     []GateEvidenceRef `json:"evidence"`
 	OriginalRef  string            `json:"originalRef"`
 	OriginalText string            `json:"originalText"`
+}
+
+// GateResponse is the operator's text on a passed human gate. It travels with
+// the gate's original input and names the exact request it answered.
+type GateResponse struct {
+	GateID       string `json:"gateId"`
+	GateAttempt  int    `json:"gateAttempt"`
+	RequestedSeq int    `json:"requestedSeq"`
+	DecidedBy    string `json:"decidedBy"`
+	Text         string `json:"text"`
+}
+
+// gatePassInput rebuilds a human pass route from the ledger. The gate verdict
+// names its request sequence; the recorded verdict for that exact request
+// supplies the response. Verdicts without a request, or with an empty
+// response, route the gate input unchanged.
+func gatePassInput(events []RunEvent, verdictEvent RunEvent, gateID string, input RunInputRef) (RunInputRef, error) {
+	requestedSeq := intFromRunEventData(verdictEvent.Data["requestedSeq"])
+	if requestedSeq == 0 {
+		return input, nil
+	}
+	if requestedSeq < 0 || requestedSeq >= verdictEvent.Seq || verdictEvent.Seq > len(events) {
+		return RunInputRef{}, fmt.Errorf("%w: Gate %q pass names invalid human request %d", ErrRunLedgerInvalid, gateID, requestedSeq)
+	}
+	request := events[requestedSeq-1]
+	if request.Seq != requestedSeq || request.Type != RunEventHumanInputRequested || request.GateID != gateID ||
+		!reflect.DeepEqual(runInputRefFromAny(request.Data["inputRef"]), input) {
+		return RunInputRef{}, fmt.Errorf("%w: Gate %q pass request %d identity mismatch", ErrRunLedgerInvalid, gateID, requestedSeq)
+	}
+	for _, event := range events[requestedSeq:verdictEvent.Seq] {
+		if event.Type != RunEventHumanVerdictRecorded || event.GateID != gateID || intFromRunEventData(event.Data["requestedSeq"]) != requestedSeq {
+			continue
+		}
+		if stringFromEventData(event, "verdict") != "pass" {
+			return RunInputRef{}, fmt.Errorf("%w: Gate %q pass contradicts recorded human verdict", ErrRunLedgerInvalid, gateID)
+		}
+		text := stringFromEventData(event, "reason")
+		if text == "" {
+			return input, nil
+		}
+		next := input
+		next.Response = &GateResponse{
+			GateID: gateID, GateAttempt: verdictEvent.Attempt, RequestedSeq: requestedSeq,
+			DecidedBy: stringFromEventData(event, "decidedBy"), Text: text,
+		}
+		return next, nil
+	}
+	return RunInputRef{}, fmt.Errorf("%w: Gate %q pass has no recorded human verdict for request %d", ErrRunLedgerInvalid, gateID, requestedSeq)
 }
 
 func gateFailInput(runID string, route BoardConnection, gateID string, attempt int, input RunInputRef, reason string, evidence []GateEvidenceRef) RunInputRef {
