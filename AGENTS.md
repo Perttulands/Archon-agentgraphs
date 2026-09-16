@@ -12,8 +12,10 @@ runtime semantics, authoring, gates or operator instructions. Read
 - `src/internal/formations/` owns the model, persistence and run engine.
 - `src/internal/coordinator/` owns admission, runtime commands and projections.
 - `src/internal/api/` owns authoring HTTP and local adapters.
-- `src/cmd/archon/` and `src/cmd/archond/` own the CLI and daemon.
-  `src/cmd/formationsd/` preserves the daemon compatibility entrypoint.
+- `src/internal/daemon/` owns `archond` flags, executor wiring and startup.
+  `src/cmd/archond/` and the compatibility entrypoint `src/cmd/formationsd/`
+  only call it.
+- `src/cmd/archon/` owns the CLI.
 - `dashboard/` owns the Archon board editor and Agents view.
 - `Perttus_vision_for_agent_orchestration/` retains vision and canvas references.
 

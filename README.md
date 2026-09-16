@@ -165,6 +165,7 @@ For Vite development, set `FORMATIONS_API_URL` to the daemon URL and run
 | `src/internal/formations/` | Model, persistence, gates and execution. |
 | `src/internal/coordinator/` | Admission, runtime commands and projections. |
 | `src/internal/api/` | Authoring HTTP and local adapters. |
+| `src/internal/daemon/` | `archond` flags, executor wiring and startup. |
 | `src/cmd/archon/`, `src/cmd/archond/`, `src/cmd/formationsd/` | CLI and daemon entrypoints. |
 | `dashboard/` | Board editor, agent staffing and terminal Peek. |
 
