@@ -53,6 +53,10 @@ var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
 	"gate create":          remoteGateCreate,
 	"gate update":          remoteGateUpdate,
 	"gate judge":           remoteGateJudge,
+	"tool create":          remoteToolCreate,
+	"tool update":          remoteToolUpdate,
+	"tool delete":          remoteToolDelete,
+	"tool inspect":         remoteToolInspect,
 	"agent list":           remoteAgentList,
 	"agent inspect":        remoteAgentInspect,
 	"agent new":            remoteAgentNew,
@@ -94,6 +98,12 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrNoteAuthorMismatch
 	case "INVALID_BEAD_ID":
 		return formations.ErrInvalidBeadID
+	case "INVALID_TOOL_MUTATION":
+		return formations.ErrInvalidToolMutation
+	case "DEFINITION_PUBLICATION_UNCERTAIN":
+		return formations.ErrDefinitionPublicationUncertain
+	case formations.ToolExecutionUnavailableCode:
+		return formations.ErrToolExecutionUnavailable
 	case "INVALID_CONTROLLER_ROLE":
 		return formations.ErrInvalidControllerRole
 	case "INVALID_PORT_DIRECTION":

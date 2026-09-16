@@ -207,6 +207,8 @@ func assertCreatedOutput(t *testing.T, side string, kind string, stdout string, 
 		id = board.Formations[len(board.Formations)-1].ID
 	case "gate":
 		id = board.Gates[len(board.Gates)-1].ID
+	case "tool":
+		id = board.Tools[len(board.Tools)-1].ID
 	}
 	if !jsonOut {
 		if stdout != "created "+id+"\n" {
@@ -316,6 +318,13 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("gate", "update", "demo", "Sign-off", "--clear-check", "--kinds", "human"))},
 		{args: with(fixed("gate", "create", "demo", "--title", "Default")), creates: "gate"},
 		{args: with(fixed("mission", "update", "demo", "Work", "--goal", "Do it well"))},
+		{args: with(fixed("tool", "create", "demo", "--profile-id", "json.normalize", "--profile-version", "1", "--title", "Normalize", "--params-json", `{"mode":"strict"}`)), creates: "tool"},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"tool", "create", "demo", "--profile-id", "json.normalize", "--profile-version", "1", "--title", "Scratch", "--params-json", `{"mode":"strict"}`, "--predecessor-node-id", worker(board).ID}
+		}), creates: "tool"},
+		{args: with(fixed("tool", "update", "demo", "Normalize", "--title", "Normalize report", "--params-json", `{"mode":"strict"}`))},
+		{args: with(fixed("tool", "inspect", "demo", "Normalize report"))},
+		{args: with(fixed("tool", "delete", "demo", "Scratch"))},
 		{args: with(fixed("board", "note", "demo", "--text", "Board intent"))},
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"board", "note", "demo", "--node", worker(board).ID, "--text", "Worker intent"}
@@ -358,6 +367,16 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("board", "inspect", "missing-board")), errorOnly: true},
 		{args: with(fixed("mission", "list", "missing-board")), errorOnly: true},
 		{args: with(fixed("formation", "list", "missing-board")), errorOnly: true},
+		{args: with(fixed("tool", "create", "demo", "--profile-id", "json.normalize", "--profile-version", "1", "--title", "Bad", "--params-json", `{"mode":`)), errorOnly: true},
+		{args: with(fixed("tool", "create", "demo", "--profile-id", "json.normalize", "--profile-version", "1", "--title", "No params")), errorOnly: true},
+		{args: with(fixed("tool", "create", "demo", "--profile-id", "json.normalize", "--profile-version", "1", "--title", "Half", "--params-json", `{"mode":"strict"}`, "--x", "10")), errorOnly: true},
+		{args: with(fixed("tool", "create", "demo", "--profile-id", "no.such", "--profile-version", "1", "--title", "Unknown", "--params-json", `{}`)), errorOnly: true},
+		{args: with(fixed("tool", "create", "missing-board", "--profile-id", "json.normalize", "--profile-version", "1", "--title", "Nowhere", "--params-json", `{"mode":"strict"}`)), errorOnly: true},
+		{args: with(fixed("tool", "update", "demo", "Nobody", "--title", "Ghost")), errorOnly: true},
+		{args: with(fixed("tool", "update", "demo", "Normalize report")), errorOnly: true},
+		{args: with(fixed("tool", "delete", "demo", "Nobody")), errorOnly: true},
+		{args: with(fixed("tool", "inspect", "demo", "Nobody")), errorOnly: true},
+		{args: with(fixed("tool", "inspect", "missing-board", "Normalize report")), errorOnly: true},
 		{args: with(fixed("mission", "inspect", "demo", "Nobody")), errorOnly: true},
 		{args: with(fixed("agent", "inspect", "nobody-here")), errorOnly: true},
 	}
@@ -435,6 +454,9 @@ func TestRemoteAuthoringMatchesOfflineCommands(t *testing.T) {
 			if err != nil || len(board.Missions) != 1 || len(board.Formations) != 2 || len(board.Gates) != 3 || len(board.Connections) != 4 || board.UpdatedBy != "agent:archon" {
 				t.Fatalf("remote board: %v missions %d formations %d gates %d connections %d by %s", err, len(board.Missions), len(board.Formations), len(board.Gates), len(board.Connections), board.UpdatedBy)
 			}
+			if len(board.Tools) != 1 || board.Tools[0].Title != "Normalize report" {
+				t.Fatalf("remote tools = %+v, want only Normalize report", board.Tools)
+			}
 			if gate := gateTitled(t, board, "Default"); strings.Join(gate.Kinds, ",") != "human" {
 				t.Fatalf("remote gate created without --kinds = %+v, want kinds [human]", gate)
 			}
@@ -500,34 +522,47 @@ func TestRemoteAuthoringRetriesAWriteRaceThenGivesUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	proxy := httputil.NewSingleHostReverseProxy(target)
-	for _, losses := range []int{remoteWriteAttempts - 1, remoteWriteAttempts} {
-		patches := 0
-		// The first writes lose to another editor, as if the cockpit wrote first.
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodPatch {
-				patches++
-				if patches <= losses {
-					w.WriteHeader(http.StatusConflict)
-					w.Write([]byte(`{"success":false,"error":{"code":"CONFLICT","message":"Formation definition changed; reload and retry"}}`))
-					return
+	// Board writes and Tool writes, which also fence the layout, retry alike.
+	for _, command := range []struct {
+		args    func(losses int) []string
+		created string
+	}{
+		{func(losses int) []string {
+			return []string{"formation", "create", "race", "--title", fmt.Sprintf("Worker %d", losses)}
+		}, "created fmn_"},
+		{func(losses int) []string {
+			return []string{"tool", "create", "race", "--profile-id", "json.normalize", "--profile-version", "1", "--title", fmt.Sprintf("Tool %d", losses), "--params-json", `{"mode":"strict"}`}
+		}, "created tool_"},
+	} {
+		for _, losses := range []int{remoteWriteAttempts - 1, remoteWriteAttempts} {
+			patches := 0
+			// The first writes lose to another editor, as if the cockpit wrote first.
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPatch {
+					patches++
+					if patches <= losses {
+						w.WriteHeader(http.StatusConflict)
+						w.Write([]byte(`{"success":false,"error":{"code":"CONFLICT","message":"Formation definition changed; reload and retry"}}`))
+						return
+					}
 				}
+				proxy.ServeHTTP(w, r)
+			}))
+			var out, stderr bytes.Buffer
+			code := runRemote(server.URL, command.args(losses), &out, &stderr)
+			server.Close()
+			if losses < remoteWriteAttempts {
+				if code != 0 || patches != losses+1 || !strings.HasPrefix(out.String(), command.created) {
+					t.Fatalf("%v losses %d: code %d patches %d out %q err %q", command.args(losses), losses, code, patches, out.String(), stderr.String())
+				}
+			} else if code == 0 || patches != remoteWriteAttempts || !strings.Contains(stderr.String(), "coordinator HTTP 409") {
+				t.Fatalf("%v losses %d: code %d patches %d err %q", command.args(losses), losses, code, patches, stderr.String())
 			}
-			proxy.ServeHTTP(w, r)
-		}))
-		var out, stderr bytes.Buffer
-		code := runRemote(server.URL, []string{"formation", "create", "race", "--title", fmt.Sprintf("Worker %d", losses)}, &out, &stderr)
-		server.Close()
-		if losses < remoteWriteAttempts {
-			if code != 0 || patches != losses+1 || !strings.HasPrefix(out.String(), "created fmn_") {
-				t.Fatalf("losses %d: code %d patches %d out %q err %q", losses, code, patches, out.String(), stderr.String())
-			}
-		} else if code == 0 || patches != remoteWriteAttempts || !strings.Contains(stderr.String(), "coordinator HTTP 409") {
-			t.Fatalf("losses %d: code %d patches %d err %q", losses, code, patches, stderr.String())
 		}
 	}
 	board, err := remote.store.ReadBoard("race")
-	if err != nil || len(board.Formations) != 1 {
-		t.Fatalf("race board %+v, %v; want exactly one formation from the retried write", board, err)
+	if err != nil || len(board.Formations) != 1 || len(board.Tools) != 1 {
+		t.Fatalf("race board %+v, %v; want exactly one formation and one Tool from the retried writes", board, err)
 	}
 }
 

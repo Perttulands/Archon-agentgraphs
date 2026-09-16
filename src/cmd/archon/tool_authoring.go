@@ -78,12 +78,7 @@ func runToolCreate(store archonToolStore, args []string, stdout, stderr io.Write
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "tool", selector)
 	}
-	clearArchonToolResultSource(result.Board, result.Layout)
-	if *jsonOut {
-		return writeJSON(stdout, result)
-	}
-	fmt.Fprintf(stdout, "created %s\n", result.Tool.ID)
-	return 0
+	return writeToolResult(stdout, *jsonOut, result, result.Board, result.Layout, "created", result.Tool.ID)
 }
 
 func runToolUpdate(store archonToolStore, args []string, stdout, stderr io.Writer) int {
@@ -130,12 +125,7 @@ func runToolUpdate(store archonToolStore, args []string, stdout, stderr io.Write
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "tool", fs.Arg(1))
 	}
-	clearArchonToolResultSource(result.Board, result.Layout)
-	if *jsonOut {
-		return writeJSON(stdout, result)
-	}
-	fmt.Fprintf(stdout, "updated %s\n", result.Tool.ID)
-	return 0
+	return writeToolResult(stdout, *jsonOut, result, result.Board, result.Layout, "updated", result.Tool.ID)
 }
 
 func runToolDelete(store archonToolStore, args []string, stdout, stderr io.Writer) int {
@@ -165,11 +155,17 @@ func runToolDelete(store archonToolStore, args []string, stdout, stderr io.Write
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "tool", fs.Arg(1))
 	}
-	clearArchonToolResultSource(result.Board, result.Layout)
-	if *jsonOut {
+	return writeToolResult(stdout, *jsonOut, result, result.Board, result.Layout, "deleted", result.ToolID)
+}
+
+// writeToolResult prints a Tool write, offline and remote: the result without
+// TOML, or "<verb> <tool id>".
+func writeToolResult(stdout io.Writer, jsonOut bool, result any, board *formations.BoardDocument, layout *formations.LayoutDocument, verb, toolID string) int {
+	clearArchonToolResultSource(board, layout)
+	if jsonOut {
 		return writeJSON(stdout, result)
 	}
-	fmt.Fprintf(stdout, "deleted %s\n", result.ToolID)
+	fmt.Fprintf(stdout, "%s %s\n", verb, toolID)
 	return 0
 }
 
@@ -192,15 +188,21 @@ func runToolInspect(store archonToolStore, args []string, stdout, stderr io.Writ
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "board", fs.Arg(0))
 	}
-	toolID, err := resolveToolSelector(board, fs.Arg(1))
+	return writeToolInspect(stdout, stderr, board, fs.Arg(1), *jsonOut)
+}
+
+// writeToolInspect resolves a Tool on a read board and prints it, for tool
+// inspect offline and remote.
+func writeToolInspect(stdout, stderr io.Writer, board *formations.BoardDocument, selector string, jsonOut bool) int {
+	toolID, err := resolveToolSelector(board, selector)
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "tool", fs.Arg(1))
+		return failSelector(stderr, err, jsonOut, "tool", selector)
 	}
 	tool, ok := toolByID(board, toolID)
 	if !ok {
-		return failSelector(stderr, fmt.Errorf("%w: tool %q", formations.ErrNotFound, fs.Arg(1)), *jsonOut, "tool", fs.Arg(1))
+		return failSelector(stderr, fmt.Errorf("%w: tool %q", formations.ErrNotFound, selector), jsonOut, "tool", selector)
 	}
-	if *jsonOut {
+	if jsonOut {
 		return writeJSON(stdout, archonToolInspectResponse{Board: identityFromBoard(board), Tool: tool})
 	}
 	fmt.Fprintf(stdout, "%s\t%s\t%s@%s\n", tool.ID, tool.Title, tool.ProfileID, tool.ProfileVersion)

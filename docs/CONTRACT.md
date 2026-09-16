@@ -548,12 +548,13 @@ daemon, so an open cockpit sees the edits through its change polling: `board
 list|inspect|new|notes|note|validate|arrange`, `mission
 list|inspect|create|update|wire`, `formation
 list|inspect|create|rename|set-type|assign|unassign|set-brief|add-input|add-output|wire|unwire`,
-`gate create|update|judge` and `agent list|inspect|new|edit`. They take the
-offline flags and print the offline output: unwrapped JSON without TOML, or the
-same text. Each command reads the document it changes, resolves formation, gate
-and mission selectors from that read, and writes with its ETag and board
-revision. A write that loses to another editor is read and retried up to three
-times. Differences from offline use:
+`gate create|update|judge`, `tool create|update|delete|inspect` and `agent
+list|inspect|new|edit`. They take the offline flags and print the offline
+output: unwrapped JSON without TOML, or the same text. Each command reads the
+document it changes, resolves formation, gate, mission and Tool selectors from
+that read, and writes with its ETag and board revision; Tool writes also carry
+the layout's state and ETag. A write that loses to another editor is read and
+retried up to three times. Differences from offline use:
 
 - Error messages come from the daemon (`coordinator HTTP <status>: ...`). JSON
   error codes, boundaries and selectors match.
@@ -562,7 +563,7 @@ times. Differences from offline use:
   --file` reads locally.
 - Runtime commands (`mission run`, `run`, `gate approve|reject`) print the
   daemon's `{success,timestamp,data}` envelope; `board list` and `board
-  inspect` print offline JSON like the other reads. `tool`, `formation
+  inspect` print offline JSON like the other reads. `formation
   remove-verification|run`, `run ask` and `agent spawn|attach|retire` remain
   offline only.
 
