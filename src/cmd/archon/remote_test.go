@@ -191,6 +191,34 @@ type authoringStep struct {
 	noteArgs func(board *formations.BoardDocument, notes *formations.BoardNotesDocument) []string
 	// errorOnly compares only the JSON error code, boundary and selector.
 	errorOnly bool
+	// creates names the node kind the step adds; both sides must report its ID.
+	creates string
+}
+
+// assertCreatedOutput checks that a create step printed {board, layout, <kind>}
+// or "created <id>" for the node it added last.
+func assertCreatedOutput(t *testing.T, side string, kind string, stdout string, board *formations.BoardDocument, jsonOut bool) {
+	t.Helper()
+	var id string
+	switch kind {
+	case "mission":
+		id = board.Missions[len(board.Missions)-1].ID
+	case "formation":
+		id = board.Formations[len(board.Formations)-1].ID
+	case "gate":
+		id = board.Gates[len(board.Gates)-1].ID
+	}
+	if !jsonOut {
+		if stdout != "created "+id+"\n" {
+			t.Fatalf("%s %s create stdout = %q, want created %s", side, kind, stdout, id)
+		}
+		return
+	}
+	var result map[string]json.RawMessage
+	var node struct{ ID string }
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil || result["board"] == nil || result["layout"] == nil || json.Unmarshal(result[kind], &node) != nil || node.ID != id {
+		t.Fatalf("%s %s create JSON has no board, layout and %s %s:\n%s", side, kind, kind, id, stdout)
+	}
 }
 
 func fixed(args ...string) func(*formations.BoardDocument) []string {
@@ -237,9 +265,9 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("board", "new", "demo", "--title", "Demo"))},
 		{args: with(fixed("agent", "new", "scout-x", "--kind", "scout", "--harness", "openai-codex", "--capable", "research"))},
 		{args: with(fixed("agent", "edit", "scout-x", "--summary", "Finds things", "--add-capability", "inspect", "--display-name", "Scout X"))},
-		{args: with(fixed("mission", "create", "demo", "--title", "Work", "--goal", "Do it", "--bead", "form-demo"))},
-		{args: with(fixed("formation", "create", "demo", "solo", "--title", "Worker"))},
-		{args: with(fixed("formation", "create", "demo", "--title", "Judge"))},
+		{args: with(fixed("mission", "create", "demo", "--title", "Work", "--goal", "Do it", "--bead", "form-demo")), creates: "mission"},
+		{args: with(fixed("formation", "create", "demo", "solo", "--title", "Worker")), creates: "formation"},
+		{args: with(fixed("formation", "create", "demo", "--title", "Judge")), creates: "formation"},
 		{args: with(fixed("formation", "rename", "demo", "Judge", "Critic"))},
 		{args: with(fixed("formation", "add-input", "demo", "Worker", "--label", "Extra"))},
 		{args: with(fixed("formation", "add-output", "demo", "Worker", "--label", "Report"))},
@@ -262,7 +290,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 			return []string{"formation", "set-type", "demo", "Critic", "solo", "--keep-slot", formationTitled(t, board, "Critic").Slots[0].ID}
 		})},
 		{args: with(fixed("formation", "set-type", "demo", "Critic", "solo", "--keep-slot", "Nobody")), errorOnly: true},
-		{args: with(fixed("gate", "create", "demo", "--kinds", "formation", "--title", "Review", "--criterion", "The result satisfies the brief"))},
+		{args: with(fixed("gate", "create", "demo", "--kinds", "formation", "--title", "Review", "--criterion", "The result satisfies the brief")), creates: "gate"},
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"gate", "judge", "demo", "Review", "--chain", formationTitled(t, board, "Critic").ID}
 		})},
@@ -283,7 +311,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"formation", "wire", "demo", worker(board).ID + ":" + worker(board).Outputs[0].ID, gateTitled(t, board, "Review").ID + ":in"}
 		})},
-		{args: with(fixed("gate", "create", "demo", "--kinds", "human", "--title", "Signoff", "--criterion", "Operator signs off"))},
+		{args: with(fixed("gate", "create", "demo", "--kinds", "human", "--title", "Signoff", "--criterion", "Operator signs off")), creates: "gate"},
 		{args: with(fixed("gate", "update", "demo", "Signoff", "--title", "Sign-off", "--kinds", "human,code", "--check", "output_contains", "--check-version", "1", "--check-value", "done"))},
 		{args: with(fixed("gate", "update", "demo", "Sign-off", "--clear-check", "--kinds", "human"))},
 		{args: with(fixed("mission", "update", "demo", "Work", "--goal", "Do it well"))},
@@ -357,6 +385,13 @@ func TestRemoteAuthoringMatchesOfflineCommands(t *testing.T) {
 						args = step.args(board)
 					}
 					stdout, stderr, code := side.run(args...)
+					if step.creates != "" && code == 0 {
+						after, err := side.store.ReadBoard("demo")
+						if err != nil {
+							t.Fatalf("step %d %v read %s board: %v", index, args, side.name, err)
+						}
+						assertCreatedOutput(t, side.name, step.creates, stdout, after, jsonOut)
+					}
 					results[side.name] = [3]string{normalizeAuthoring(stdout), stderr, strconv.Itoa(code)}
 				}
 				off, rem := results["offline"], results["remote"]

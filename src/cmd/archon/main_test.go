@@ -610,14 +610,14 @@ updatedAt = "2026-06-03T16:00:00Z"
 	if code != 0 {
 		t.Fatalf("pure gate create code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
-	var created formations.BoardDocument
+	var created formations.GateCreateResult
 	if err := json.Unmarshal([]byte(stdout), &created); err != nil {
 		t.Fatalf("decode pure gate create JSON: %v\n%s", err, stdout)
 	}
-	if len(created.Gates) != 1 {
-		t.Fatalf("pure gate create = %+v, want one gate", created.Gates)
+	if created.Board == nil || len(created.Board.Gates) != 1 || created.Gate.ID != created.Board.Gates[0].ID {
+		t.Fatalf("pure gate create = %+v, want one created gate", created)
 	}
-	gateID := created.Gates[0].ID
+	gateID := created.Gate.ID
 	before = readArchonFile(t, store.BoardPath("session-search"))
 	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "gate", "update", "session-search", gateID, "--command-shell", "printf ok", "--command-cwd", "dashboard", "--json")
 	if code == 0 || !strings.Contains(stderr, formations.LegacyScriptGateMigrationCode) {
@@ -1872,12 +1872,18 @@ updatedAt = "2026-06-03T16:00:00Z"
 	if code != 0 {
 		t.Fatalf("gate create code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
-	var jsonBoard formations.BoardDocument
-	if err := json.Unmarshal([]byte(stdout), &jsonBoard); err != nil {
-		t.Fatalf("gate create JSON did not decode as board document: %v\n%s", err, stdout)
+	var created formations.GateCreateResult
+	if err := json.Unmarshal([]byte(stdout), &created); err != nil {
+		t.Fatalf("gate create JSON did not decode as create result: %v\n%s", err, stdout)
 	}
-	if jsonBoard.ID != "brd_01J9_sesssearch" || len(jsonBoard.Gates) != 1 {
-		t.Fatalf("gate create JSON = %+v, want board document with one gate", jsonBoard)
+	if strings.Contains(stdout, `"toml"`) {
+		t.Fatalf("gate create JSON leaked TOML:\n%s", stdout)
+	}
+	if created.Board == nil || created.Board.ID != "brd_01J9_sesssearch" || len(created.Board.Gates) != 1 || created.Gate.ID != created.Board.Gates[0].ID {
+		t.Fatalf("gate create JSON = %+v, want board, layout and the created gate", created)
+	}
+	if created.Layout == nil || len(created.Layout.Nodes) != 1 || created.Layout.Nodes[0].ID != created.Gate.ID {
+		t.Fatalf("gate create JSON layout = %+v, want the created gate's node", created.Layout)
 	}
 	raw := readArchonFile(t, store.BoardPath("session-search"))
 	if !strings.Contains(raw, `[[gate]]`) || !strings.Contains(raw, `kinds = ["code", "human"]`) || strings.Contains(raw, "verdict") || strings.Contains(raw, "onFail") {
@@ -1890,8 +1896,20 @@ updatedAt = "2026-06-03T16:00:00Z"
 	if err != nil {
 		t.Fatalf("read gate layout: %v", err)
 	}
-	if len(layout.Nodes) != 1 || layout.Nodes[0].ID != jsonBoard.Gates[0].ID || layout.Nodes[0].X != 420 || layout.Nodes[0].Y != 260 {
+	if len(layout.Nodes) != 1 || layout.Nodes[0].ID != created.Gate.ID || layout.Nodes[0].X != 420 || layout.Nodes[0].Y != 260 {
 		t.Fatalf("gate layout nodes = %+v, want CLI-created gate at 420,260", layout.Nodes)
+	}
+
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "gate", "create", "session-search", "--kinds", "human")
+	if code != 0 {
+		t.Fatalf("text gate create code=%d stderr=%s stdout=%s", code, stderr, stdout)
+	}
+	board, err := store.ReadBoard("session-search")
+	if err != nil {
+		t.Fatalf("read gate board: %v", err)
+	}
+	if len(board.Gates) != 2 || stdout != "created "+board.Gates[1].ID+"\n" {
+		t.Fatalf("text gate create stdout = %q, want the created gate's ID; gates = %+v", stdout, board.Gates)
 	}
 }
 
@@ -1921,15 +1939,14 @@ rev = 7
 	if code != 0 {
 		t.Fatalf("gate create code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
-	var board formations.BoardDocument
-	if err := json.Unmarshal([]byte(stdout), &board); err != nil {
+	var created formations.GateCreateResult
+	if err := json.Unmarshal([]byte(stdout), &created); err != nil {
 		t.Fatalf("decode gate create: %v\n%s", err, stdout)
 	}
-	if len(board.Gates) != 1 ||
-		board.Gates[0].Check != "output_contains" ||
-		board.Gates[0].CheckVersion != "1" ||
-		board.Gates[0].CheckValue != "LINT OK" {
-		t.Fatalf("created Gates = %+v, want exact output_contains@1 parameter", board.Gates)
+	if created.Gate.Check != "output_contains" ||
+		created.Gate.CheckVersion != "1" ||
+		created.Gate.CheckValue != "LINT OK" {
+		t.Fatalf("created gate = %+v, want exact output_contains@1 parameter", created.Gate)
 	}
 }
 
@@ -2022,12 +2039,18 @@ label = "Input"
 	if code != 0 {
 		t.Fatalf("mission create code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
-	var jsonBoard formations.BoardDocument
-	if err := json.Unmarshal([]byte(stdout), &jsonBoard); err != nil {
-		t.Fatalf("mission create JSON did not decode as board document: %v\n%s", err, stdout)
+	var created formations.MissionCreateResult
+	if err := json.Unmarshal([]byte(stdout), &created); err != nil {
+		t.Fatalf("mission create JSON did not decode as create result: %v\n%s", err, stdout)
 	}
-	if jsonBoard.ID != "brd_01J9_sesssearch" || len(jsonBoard.Missions) != 1 {
-		t.Fatalf("mission create JSON = %+v, want board document with one mission", jsonBoard)
+	if strings.Contains(stdout, `"toml"`) {
+		t.Fatalf("mission create JSON leaked TOML:\n%s", stdout)
+	}
+	if created.Board == nil || created.Board.ID != "brd_01J9_sesssearch" || len(created.Board.Missions) != 1 || created.Mission.ID != created.Board.Missions[0].ID || created.Mission.BeadID != "bd-204" {
+		t.Fatalf("mission create JSON = %+v, want board, layout and the created mission", created)
+	}
+	if created.Layout == nil || len(created.Layout.Nodes) != 1 || created.Layout.Nodes[0].ID != created.Mission.ID {
+		t.Fatalf("mission create JSON layout = %+v, want the created mission's node", created.Layout)
 	}
 	raw := readArchonFile(t, store.BoardPath("session-search"))
 	if !strings.Contains(raw, `[[mission]]`) || !strings.Contains(raw, `beadId = "bd-204"`) || strings.Contains(raw, "chain") {
@@ -2047,11 +2070,23 @@ label = "Input"
 	if err != nil {
 		t.Fatalf("read mission layout: %v", err)
 	}
-	if len(layout.Nodes) != 1 || layout.Nodes[0].ID != board.Missions[0].ID || layout.Nodes[0].X != 180 || layout.Nodes[0].Y != 95 {
+	if len(layout.Nodes) != 1 || layout.Nodes[0].ID != created.Mission.ID || layout.Nodes[0].X != 180 || layout.Nodes[0].Y != 95 {
 		t.Fatalf("mission layout nodes = %+v, want CLI-created mission at 180,95", layout.Nodes)
 	}
-	if stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "wire", "session-search", board.Missions[0].ID, "fmn_frame:port_frame_in", "--json"); code != 0 {
+	if stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "wire", "session-search", created.Mission.ID, "fmn_frame:port_frame_in", "--json"); code != 0 {
 		t.Fatalf("mission wire code=%d stderr=%s stdout=%s", code, stderr, stdout)
+	}
+
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "create", "session-search", "--title", "Follow-up")
+	if code != 0 {
+		t.Fatalf("text mission create code=%d stderr=%s stdout=%s", code, stderr, stdout)
+	}
+	board, err = store.ReadBoard("session-search")
+	if err != nil {
+		t.Fatalf("read mission board: %v", err)
+	}
+	if len(board.Missions) != 2 || stdout != "created "+board.Missions[1].ID+"\n" {
+		t.Fatalf("text mission create stdout = %q, want the created mission's ID; missions = %+v", stdout, board.Missions)
 	}
 }
 

@@ -346,6 +346,8 @@ Read command-specific help with `-h`, including `--server` when using the
 daemon. Preserve an operator's draft
 and notes, staff its slots, write executable briefs, wire exact port IDs, then
 validate and arrange. The shared `archon` skill gives an authoring recipe.
+`mission create`, `formation create` and `gate create` print `created <id>`, or
+with `--json` `{board, layout, mission|formation|gate}` naming the new node.
 Nodes keep their IDs when edited: `archon formation rename <board> <formation>
 <title>`, `archon mission update <board> <mission>` with `--title`, `--goal` or
 `--bead`, and `archon gate update --title` change only what they name, and an

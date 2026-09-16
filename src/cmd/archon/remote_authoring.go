@@ -459,7 +459,11 @@ func remoteMissionCreate(c *remoteClient, args []string, stdout, stderr io.Write
 	if err != nil {
 		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
 	}
-	return writeRemoteBoard(stdout, stderr, data, *jsonOut, "created mission")
+	result, err := decodeRemote[formations.MissionCreateResult](data, "")
+	if err != nil || result.Board == nil || result.Layout == nil {
+		return fail(stderr, fmt.Errorf("coordinator response has no created mission"))
+	}
+	return writeCreated(stdout, *jsonOut, result, result.Board, result.Layout, result.Mission.ID)
 }
 
 func remoteMissionUpdate(c *remoteClient, args []string, stdout, stderr io.Writer) int {
@@ -547,13 +551,7 @@ func remoteFormationCreate(c *remoteClient, args []string, stdout, stderr io.Wri
 	if err != nil || result.Board == nil || result.Layout == nil {
 		return fail(stderr, fmt.Errorf("coordinator response has no created formation"))
 	}
-	result.Board.TOML = ""
-	result.Layout.TOML = ""
-	if *jsonOut {
-		return writeJSON(stdout, result)
-	}
-	fmt.Fprintf(stdout, "created %s\n", result.Formation.ID)
-	return 0
+	return writeCreated(stdout, *jsonOut, result, result.Board, result.Layout, result.Formation.ID)
 }
 
 // patchFormation applies an operation to one formation selected by title or ID.
@@ -811,7 +809,11 @@ func remoteGateCreate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 	if err != nil {
 		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
 	}
-	return writeRemoteBoard(stdout, stderr, data, *jsonOut, "created gate")
+	result, err := decodeRemote[formations.GateCreateResult](data, "")
+	if err != nil || result.Board == nil || result.Layout == nil {
+		return fail(stderr, fmt.Errorf("coordinator response has no created gate"))
+	}
+	return writeCreated(stdout, *jsonOut, result, result.Board, result.Layout, result.Gate.ID)
 }
 
 func remoteGateUpdate(c *remoteClient, args []string, stdout, stderr io.Writer) int {

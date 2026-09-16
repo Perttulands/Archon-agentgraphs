@@ -625,12 +625,18 @@ func runFormationCreate(store *formations.Store, args []string, stdout, stderr i
 	if err != nil {
 		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
 	}
-	result.Board.TOML = ""
-	result.Layout.TOML = ""
-	if *jsonOut {
+	return writeCreated(stdout, *jsonOut, result, result.Board, result.Layout, result.Formation.ID)
+}
+
+// writeCreated prints a create result: {board, layout, <node>} without TOML, or
+// the created node's ID.
+func writeCreated(stdout io.Writer, jsonOut bool, result any, board *formations.BoardDocument, layout *formations.LayoutDocument, id string) int {
+	board.TOML = ""
+	layout.TOML = ""
+	if jsonOut {
 		return writeJSON(stdout, result)
 	}
-	fmt.Fprintf(stdout, "created %s\n", result.Formation.ID)
+	fmt.Fprintf(stdout, "created %s\n", id)
 	return 0
 }
 
@@ -1022,12 +1028,7 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 	if err != nil {
 		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
 	}
-	result.Board.TOML = ""
-	if *jsonOut {
-		return writeJSON(stdout, result.Board)
-	}
-	fmt.Fprintln(stdout, "created gate")
-	return 0
+	return writeCreated(stdout, *jsonOut, result, result.Board, result.Layout, result.Gate.ID)
 }
 
 func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Writer) int {
@@ -1249,12 +1250,7 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 	if err != nil {
 		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
 	}
-	result.Board.TOML = ""
-	if *jsonOut {
-		return writeJSON(stdout, result.Board)
-	}
-	fmt.Fprintln(stdout, "created mission")
-	return 0
+	return writeCreated(stdout, *jsonOut, result, result.Board, result.Layout, result.Mission.ID)
 }
 
 func runMissionList(store *formations.Store, args []string, stdout, stderr io.Writer) int {
