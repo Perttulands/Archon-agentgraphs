@@ -1655,6 +1655,8 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusServiceUnavailable, "DEFINITION_PUBLICATION_UNCERTAIN", "Reload both board and layout before any explicit retry")
 	case errors.Is(err, formations.ErrInvalidToolMutation):
 		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_TOOL_MUTATION", "Tool mutation is invalid")
+	case errors.Is(err, formations.ErrUnsupportedFormationType):
+		core.WriteError(w, http.StatusBadRequest, "UNSUPPORTED_FORMATION_TYPE", err.Error())
 	case errors.Is(err, formations.ErrInvalidTypeChange):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_TYPE_CHANGE", err.Error())
 	case errors.Is(err, formations.ErrSlotChoiceRequired):

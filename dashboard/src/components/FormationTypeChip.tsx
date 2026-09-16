@@ -2,22 +2,20 @@
  * with more than one staffed slot offers one choice per staffed slot, because
  * the server never drops a bound agent without being told which slot stays. */
 import type { MouseEvent as ReactMouseEvent } from 'react'
-import type { FormationNode } from './formationsTypes'
+import type { FormationNode, FormationType } from './formationsTypes'
 import '../styles/formations-node-editing.css'
-
-export type FormationTypeName = 'solo' | 'peer' | 'orchestrated'
 
 export interface FormationTypeChoice {
   label: string
-  type: FormationTypeName
+  type: FormationType
   keepSlotId?: string
 }
 
-const TYPE_LABELS: Record<FormationTypeName, string> = { solo: 'Solo', peer: 'Peer', orchestrated: 'Orchestrated' }
+const TYPE_LABELS: Record<FormationType, string> = { solo: 'Solo', peer: 'Peer', orchestrated: 'Orchestrated' }
 
 export function formationTypeChoices(formation: FormationNode): FormationTypeChoice[] {
   const choices: FormationTypeChoice[] = []
-  for (const type of Object.keys(TYPE_LABELS) as FormationTypeName[]) {
+  for (const type of Object.keys(TYPE_LABELS) as FormationType[]) {
     if (type === formation.type) continue
     const staffed = formation.slots.filter(slot => slot.agentId)
     if (type === 'solo' && staffed.length > 1) {

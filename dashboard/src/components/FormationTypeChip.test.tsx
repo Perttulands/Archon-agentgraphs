@@ -5,9 +5,9 @@ import type { FormationNode } from './formationsTypes'
 const base: FormationNode = { id: 'fmn_x', type: 'peer', title: 'X', inputs: [], outputs: [], slots: [] }
 
 describe('formation type choices', () => {
-  it('never offers the current type or flow', () => {
+  it('offers only the other supported types, including for a retired type', () => {
     expect(formationTypeChoices(base).map(choice => choice.type)).toEqual(['solo', 'orchestrated'])
-    expect(formationTypeChoices({ ...base, type: 'flow' }).map(choice => choice.label)).toEqual(['Solo', 'Peer', 'Orchestrated'])
+    expect(formationTypeChoices({ ...base, type: 'retired' }).map(choice => choice.label)).toEqual(['Solo', 'Peer', 'Orchestrated'])
   })
 
   it('asks which staffed slot to keep when solo would drop agents', () => {

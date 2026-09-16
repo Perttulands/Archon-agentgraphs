@@ -752,7 +752,7 @@ customFuture = "keep me"
 	}
 }
 
-func TestCreateFormationProvidesAllFourDefaultShapes(t *testing.T) {
+func TestCreateFormationProvidesTheThreeDefaultShapes(t *testing.T) {
 	tests := []struct {
 		formationType string
 		wantSlots     int
@@ -760,7 +760,6 @@ func TestCreateFormationProvidesAllFourDefaultShapes(t *testing.T) {
 	}{
 		{FormationTypeSolo, 1, 0},
 		{FormationTypePeer, 2, 0},
-		{FormationTypeFlow, 3, 0},
 		{FormationTypeOrchestrated, 3, 1},
 	}
 

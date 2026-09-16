@@ -8,7 +8,6 @@ import (
 
 // Finding codes added by ValidateRunAdmission on top of ValidateBoard.
 const (
-	FindingUnsupportedFormationType = "unsupported_formation_type"
 	FindingFormationWithoutSlots    = "formation_without_slots"
 	FindingUnstaffedSlot            = "unstaffed_slot"
 	FindingUnavailablePersona       = "unavailable_persona"
@@ -43,8 +42,8 @@ type RunAdmissionScope struct {
 
 // ValidateRunAdmission lists every problem that would stop a run, so authoring
 // can accept drafts and admission reports what they still need. It extends
-// ValidateBoard with supported formation types, staffing, readable personas,
-// orchestrated controllers, runnable Tools and a wired mission.
+// ValidateBoard with staffing, readable personas, orchestrated controllers,
+// runnable Tools and a wired mission.
 //
 // Findings are limited to the nodes the run reaches from its mission (or the
 // selected formation). Formation types, slot counts and persona bindings are
@@ -138,10 +137,6 @@ func formationAdmissionFindings(formation FormationNode, personas *PersonaStore,
 	add := func(code, format string, args ...any) {
 		findings = append(findings, BoardFinding{Code: code, NodeID: formation.ID, Message: fmt.Sprintf(format, args...)})
 	}
-	// An invalid type is already reported by ValidateBoard.
-	if validateFormationType(formation.Type) == nil && !runtimeSupportsFormationType(formation.Type) {
-		add(FindingUnsupportedFormationType, "formation %q uses type %q, which the runtime cannot run; change it to solo, peer or orchestrated", formation.ID, formation.Type)
-	}
 	if len(formation.Slots) == 0 {
 		add(FindingFormationWithoutSlots, "formation %q has no slots; add a slot and staff it", formation.ID)
 	}
@@ -181,10 +176,6 @@ func formationAdmissionFindings(formation FormationNode, personas *PersonaStore,
 		}
 	}
 	return findings
-}
-
-func runtimeSupportsFormationType(formationType string) bool {
-	return formationType == FormationTypeSolo || formationType == FormationTypePeer || formationType == FormationTypeOrchestrated
 }
 
 func slotName(slot FormationSlot) string {

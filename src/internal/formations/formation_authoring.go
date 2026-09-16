@@ -12,7 +12,6 @@ import (
 const (
 	FormationTypeSolo         = "solo"
 	FormationTypePeer         = "peer"
-	FormationTypeFlow         = "flow"
 	FormationTypeOrchestrated = "orchestrated"
 	FormationPortInput        = "input"
 	FormationPortOutput       = "output"
@@ -1102,8 +1101,8 @@ func (s *Store) SetFormationType(slug string, req FormationTypeRequest, opts Wri
 	if req.FormationID == "" {
 		return nil, ErrNotFound
 	}
-	if !runtimeSupportsFormationType(req.Type) {
-		return nil, fmt.Errorf("%w: formation type %q is not supported; use solo, peer or orchestrated", ErrInvalidTypeChange, req.Type)
+	if err := validateFormationType(req.Type); err != nil {
+		return nil, err
 	}
 	if req.KeepSlotID != "" && (req.Type != FormationTypeSolo || req.Slots != nil) {
 		return nil, fmt.Errorf("%w: keepSlotId applies only to a change to solo", ErrInvalidTypeChange)
@@ -1795,10 +1794,10 @@ func newFormationNode(req FormationCreateRequest) (FormationNode, error) {
 
 func validateFormationType(formationType string) error {
 	switch formationType {
-	case FormationTypeSolo, FormationTypePeer, FormationTypeFlow, FormationTypeOrchestrated:
+	case FormationTypeSolo, FormationTypePeer, FormationTypeOrchestrated:
 		return nil
 	default:
-		return fmt.Errorf("%w: unsupported formation type %q", ErrInvalidSlug, formationType)
+		return fmt.Errorf("%w: formation type %q is not supported; use solo, peer or orchestrated", ErrUnsupportedFormationType, formationType)
 	}
 }
 
@@ -1808,8 +1807,6 @@ func defaultFormationTitle(formationType string) string {
 		return "Solo task"
 	case FormationTypePeer:
 		return "Peer huddle"
-	case FormationTypeFlow:
-		return "New flow"
 	case FormationTypeOrchestrated:
 		return "Orchestration"
 	default:
@@ -1825,12 +1822,6 @@ func defaultFormationSlots(formationType string) []FormationSlot {
 		return []FormationSlot{
 			newFormationSlot("Peer", false),
 			newFormationSlot("Peer", false),
-		}
-	case FormationTypeFlow:
-		return []FormationSlot{
-			newFormationSlot("Plan", false),
-			newFormationSlot("Execute", false),
-			newFormationSlot("Push", false),
 		}
 	case FormationTypeOrchestrated:
 		return []FormationSlot{

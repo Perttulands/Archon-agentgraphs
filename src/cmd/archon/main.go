@@ -2536,6 +2536,8 @@ func archonErrorCode(err error) string {
 		return "run_admission_failed"
 	case errors.Is(err, formations.ErrInvalidGateKind):
 		return "invalid_gate_kind"
+	case errors.Is(err, formations.ErrUnsupportedFormationType):
+		return "unsupported_formation_type"
 	case errors.Is(err, formations.ErrInvalidTypeChange):
 		return "invalid_type_change"
 	case errors.Is(err, formations.ErrSlotChoiceRequired):

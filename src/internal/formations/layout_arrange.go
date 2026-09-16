@@ -154,15 +154,6 @@ func arrangementItemSize(item arrangementItem) (int, int) {
 		return 236, 144
 	case "gate":
 		return 300, 124
-	case FormationTypeFlow:
-		width := 120 + item.slots*84
-		if width < 300 {
-			width = 300
-		}
-		if width > 560 {
-			width = 560
-		}
-		return width, 300
 	case FormationTypePeer:
 		return 330, 286
 	case FormationTypeOrchestrated:

@@ -80,7 +80,8 @@ to = "fmn_work:port_in"
 	before := readFormationsAPIFile(t, store.BoardPath("types"))
 	for body, want := range map[string]string{
 		`{"setFormationType":{"id":"fmn_work","type":"solo"}}`: `"code":"SLOT_CHOICE_REQUIRED"`,
-		`{"setFormationType":{"id":"fmn_work","type":"flow"}}`: `"code":"INVALID_TYPE_CHANGE"`,
+		`{"setFormationType":{"id":"fmn_work","type":"flow"}}`: `"code":"UNSUPPORTED_FORMATION_TYPE"`,
+		`{"createFormation":{"type":"flow","x":10,"y":10}}`:    `"code":"UNSUPPORTED_FORMATION_TYPE"`,
 	} {
 		if rec := patch(body); rec.Code < 400 || !strings.Contains(rec.Body.String(), want) {
 			t.Errorf("%s = %d %s, want %s", body, rec.Code, rec.Body.String(), want)

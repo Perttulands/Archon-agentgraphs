@@ -61,7 +61,6 @@ import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
 import { InlineTitleEditor } from './InlineTitleEditor'
 import { FormationTypeChip, formationTypeChoices } from './FormationTypeChip'
-import type { FormationTypeName } from './FormationTypeChip'
 import { MissionEditorDialog } from './MissionEditorDialog'
 import type { MissionDraft } from './MissionEditorDialog'
 import { AdmissionFindingsPanel, DraftMarker, findingsByNode, unresolvedFindings } from './formationsDrafts'
@@ -81,6 +80,7 @@ import type {
   FormationBrief,
   FormationNode,
   FormationSlot,
+  FormationType,
   GateNode,
   LayoutDocument,
   LayoutNode,
@@ -1082,7 +1082,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     void patchBoard({ makeController: { formationId: formation.id, slotId: slot.id } })
   }, [patchBoard])
 
-  const createFormationAt = useCallback(async (type: FormationNode['type'], title: string, x: number, y: number): Promise<FormationNode | null> => {
+  const createFormationAt = useCallback(async (type: FormationType, title: string, x: number, y: number): Promise<FormationNode | null> => {
     const placement = placementForNewNode(x, y)
     const before = boardRef.current
     const result = await patchBoard({ createFormation: { type, title, x: placement.x, y: placement.y } })
@@ -1315,7 +1315,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [judgeChainOf, patchBoard])
 
   /** Drop on empty canvas / picker "new judge": create the formation, then wire it as judge. */
-  const createJudgeFor = useCallback(async (gate: GateNode, type: FormationNode['type'], title: string, x: number, y: number) => {
+  const createJudgeFor = useCallback(async (gate: GateNode, type: FormationType, title: string, x: number, y: number) => {
     const created = await createFormationAt(type, title, x, y)
     if (created) attachJudge(gate, [created.id])
   }, [attachJudge, createFormationAt])
@@ -1901,7 +1901,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [])
 
   // Undo restores the exact previous slots, including any a change to solo removed.
-  const changeFormationType = useCallback((formation: FormationNode, type: FormationTypeName, keepSlotId?: string) => {
+  const changeFormationType = useCallback((formation: FormationNode, type: FormationType, keepSlotId?: string) => {
     undoStack.current.push({ kind: 'setFormationType', id: formation.id, type: formation.type, slots: formation.slots })
     void patchBoard({ setFormationType: { id: formation.id, type, ...(keepSlotId ? { keepSlotId } : {}) } }).then(result => {
       if (!result) undoStack.current.pop()

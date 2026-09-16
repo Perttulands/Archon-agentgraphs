@@ -126,7 +126,6 @@
 /* ===== FORMATION CARD ===== */
 .fmx .formation{position:absolute;background:var(--card);border:1px solid var(--line);border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.35);width:300px;min-width:200px;max-width:420px;z-index:1;transition:left .18s cubic-bezier(.2,.7,.3,1),top .18s cubic-bezier(.2,.7,.3,1);}
 .fmx .formation.type-peer{width:330px;}
-.fmx .formation.type-flow{width:max-content;max-width:560px;}
 .fmx .formation.type-orchestrated{width:320px;}
 .fmx .formation.running{box-shadow:0 0 0 1.5px var(--terra),0 0 16px -6px rgba(var(--accent-rgb),.35);}
 .fmx .fhead{display:flex;align-items:center;gap:10px;padding:13px 15px 12px;border-bottom:1px solid var(--line2);cursor:grab;touch-action:none;}
@@ -160,10 +159,7 @@
 .fmx .slot-ring .badge{position:absolute;left:-3px;top:-3px;width:19px;height:19px;border-radius:50%;background:var(--steel);color:var(--background);font-size:10px;display:flex;align-items:center;justify-content:center;border:2px solid var(--card);z-index:2;}
 
 /* type layouts */
-.fmx .solo-body{display:flex;justify-content:center;}
-.fmx .flow-row{display:flex;align-items:flex-start;gap:6px;}
-.fmx .flow-arrow{align-self:center;margin-top:-18px;color:var(--steel);display:flex;align-items:center;}
-.fmx .flow-arrow svg{width:26px;height:12px;}
+.fmx .solo-body{display:flex;flex-wrap:wrap;justify-content:center;gap:14px;}
 .fmx .huddle{border:1.5px dashed var(--sage);border-radius:8px;padding:16px 16px 12px;position:relative;background:color-mix(in srgb,var(--sage) 6%,transparent);}
 .fmx .huddle .hl{position:absolute;top:-9px;left:16px;background:var(--card);padding:0 8px;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--sage);}
 .fmx .peers-row{display:flex;gap:14px;align-items:flex-start;}

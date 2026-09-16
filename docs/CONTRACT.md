@@ -342,7 +342,14 @@ controller (the existing one, else the first slot) and a worker. Added slots
 are empty and bound agents stay on the slots that remain. Changing to solo with
 more than one staffed slot is refused until `--keep-slot` (API `keepSlotId`)
 names the slot to keep; the cockpit offers one choice per staffed slot. Undo
-restores the previous slots exactly. Flow is not offered as a type.
+restores the previous slots exactly.
+
+Solo, peer and orchestrated are the only formation types. Creating or changing
+to any other type fails with `UNSUPPORTED_FORMATION_TYPE`, listing the three.
+A board saved with a retired type, such as the former `flow`, still loads and
+shows every slot. Board validation and run admission report
+`invalid_formation_type` for that node until `formation set-type` converts it
+or it is deleted; nothing rewrites it silently.
 `board validate` lists every finding for the whole board, admission checks
 included, as `ERROR`/`WARN` lines or `--json`, and exits 1 on any error.
 `mission run` and `formation run` print every admission finding when a start is

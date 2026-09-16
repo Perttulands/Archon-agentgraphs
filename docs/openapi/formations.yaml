@@ -920,9 +920,15 @@ components:
           type: object
         createFormation:
           type: object
+          description: A blank type creates solo. Any type other than solo, peer or orchestrated returns
+            400 UNSUPPORTED_FORMATION_TYPE.
           properties:
             type:
-              type: string
+              enum:
+              - ''
+              - solo
+              - peer
+              - orchestrated
             title:
               type: string
             x:
@@ -1135,7 +1141,8 @@ components:
             uncontrolled slots, orchestrated has one controller (the existing one, else the first slot) and a
             worker; added slots are empty. A change to solo with more than one staffed slot returns 409
             SLOT_CHOICE_REQUIRED unless keepSlotId names the slot to keep. slots restores an exact slot list
-            (used by undo). Flow and unknown types return 400 INVALID_TYPE_CHANGE.
+            (used by undo). Any other type returns 400 UNSUPPORTED_FORMATION_TYPE; a misused keepSlotId or slots
+            list returns 400 INVALID_TYPE_CHANGE.
           properties:
             id:
               type: string

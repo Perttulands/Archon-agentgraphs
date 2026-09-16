@@ -111,7 +111,7 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 			report.Errors = append(report.Errors, BoardFinding{
 				Code:    FindingInvalidFormationType,
 				NodeID:  formation.ID,
-				Message: fmt.Sprintf("formation %q has invalid type %q; valid types are %q, %q, %q, %q", formation.ID, formation.Type, FormationTypeSolo, FormationTypePeer, FormationTypeFlow, FormationTypeOrchestrated),
+				Message: fmt.Sprintf("formation %q has unsupported type %q; change it to solo, peer or orchestrated with formation set-type, or delete it", formation.ID, formation.Type),
 			})
 		}
 		if formation.Verification != nil {

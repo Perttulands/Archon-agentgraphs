@@ -208,8 +208,8 @@ func TestSetFormationTypeConvertsLegacyFlowAndRejectsBadRequests(t *testing.T) {
 		req  FormationTypeRequest
 		want error
 	}{
-		"flow target":          {FormationTypeRequest{FormationID: "fmn_work", Type: FormationTypeFlow}, ErrInvalidTypeChange},
-		"unknown target":       {FormationTypeRequest{FormationID: "fmn_work", Type: "swarm"}, ErrInvalidTypeChange},
+		"flow target":          {FormationTypeRequest{FormationID: "fmn_work", Type: "flow"}, ErrUnsupportedFormationType},
+		"unknown target":       {FormationTypeRequest{FormationID: "fmn_work", Type: "swarm"}, ErrUnsupportedFormationType},
 		"keep for peer":        {FormationTypeRequest{FormationID: "fmn_work", Type: FormationTypePeer, KeepSlotID: "slot_lead"}, ErrInvalidTypeChange},
 		"keep unknown slot":    {FormationTypeRequest{FormationID: "fmn_work", Type: FormationTypeSolo, KeepSlotID: "slot_missing"}, ErrInvalidTypeChange},
 		"duplicate restore":    {FormationTypeRequest{FormationID: "fmn_work", Type: FormationTypePeer, Slots: []FormationSlot{{ID: "slot_a"}, {ID: "slot_a"}}}, ErrInvalidTypeChange},

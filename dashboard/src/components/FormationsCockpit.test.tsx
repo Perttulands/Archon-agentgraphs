@@ -1464,7 +1464,38 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.contextMenu(container.querySelector('.viewport') as HTMLElement, { clientX: 300, clientY: 300 })
     const create = await screen.findByRole('menu', { name: 'New' })
-    expect(within(create).queryByRole('menuitem', { name: 'Flow formation' })).toBeNull()
+    expect(within(create).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Mission', 'Solo formation', 'Peer formation', 'Orchestrated formation', 'Gate'])
+  })
+
+  it('shows every slot of a retired formation type and converts it from the type chip', async () => {
+    const legacyBoard = makeBoard()
+    legacyBoard.formations = [{
+      ...formation,
+      type: 'flow',
+      verification: undefined,
+      slots: [
+        { id: 'slot_plan', label: 'Plan', controller: false, agentId: 'mason', harness: 'codex' },
+        { id: 'slot_execute', label: 'Execute', controller: false },
+        { id: 'slot_push', label: 'Push', controller: false },
+      ],
+    }, judgeFormation] as TestBoard['formations']
+    patches = installFetchMock({
+      boards: [legacyBoard],
+      validation: { errors: [{ code: 'invalid_formation_type', nodeId: 'fmn_frame', message: 'formation "fmn_frame" has unsupported type "flow"; change it to solo, peer or orchestrated with formation set-type, or delete it' }], warnings: [] },
+    })
+    await renderCockpit()
+    for (const slot of ['slot_plan', 'slot_execute', 'slot_push']) {
+      expect(screen.getByTestId(`slot-fmn_frame-${slot}`)).toBeInTheDocument()
+    }
+    expect(await screen.findByTestId('draft-marker-fmn_frame')).toHaveAttribute('title', expect.stringContaining('formation set-type'))
+    fireEvent.click(screen.getByTestId('formation-type-fmn_frame'))
+    const menu = await screen.findByRole('menu', { name: 'Formation type' })
+    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Solo', 'Peer', 'Orchestrated'])
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Orchestrated' }))
+    await waitFor(() => {
+      expect(patches.find(patch => patch.body.setFormationType)?.body.setFormationType).toEqual({ id: 'fmn_frame', type: 'orchestrated' })
+    })
+    await waitFor(() => expect(screen.getByTestId('formation-type-fmn_frame')).toHaveTextContent('orchestrated'))
   })
 
   it('offers one solo choice per staffed slot so no agent is dropped silently', async () => {

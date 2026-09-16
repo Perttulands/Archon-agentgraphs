@@ -62,4 +62,7 @@ agentId = "codex-reviewer"
 	if _, stderr, code := archon(); code != 2 || !strings.Contains(stderr, "usage: archon formation set-type") {
 		t.Fatalf("missing type: %d %s", code, stderr)
 	}
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "create", "types", "flow"); code == 0 || !strings.Contains(stderr, "use solo, peer or orchestrated") {
+		t.Fatalf("formation create flow: %d %s", code, stderr)
+	}
 }

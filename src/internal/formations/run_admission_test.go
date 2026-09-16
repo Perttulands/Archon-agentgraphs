@@ -224,12 +224,12 @@ func TestRunAdmissionReportsEveryProblemAtOnce(t *testing.T) {
 
 	report := ValidateRunAdmission(board, personas, RunAdmissionScope{MissionID: "mis_main"})
 	want := map[string]string{
-		FindingUnstaffedSlot + " fmn_plan":              `slot "Planner" (slot_plan) needs an agent`,
-		FindingGateNotRoutable + " gate_lint":           "forbidden text for code check output_absent@1",
-		FindingGateNotRoutable + " gate_review":         "a judge chain",
-		FindingOrchestratedController + " fmn_build":    "exactly one controller slot; it has 0",
-		FindingUnavailablePersona + " fmn_build":        `unknown agent "nobody-here"`,
-		FindingUnsupportedFormationType + " fmn_sketch": `type "flow"`,
+		FindingUnstaffedSlot + " fmn_plan":           `slot "Planner" (slot_plan) needs an agent`,
+		FindingGateNotRoutable + " gate_lint":        "forbidden text for code check output_absent@1",
+		FindingGateNotRoutable + " gate_review":      "a judge chain",
+		FindingOrchestratedController + " fmn_build": "exactly one controller slot; it has 0",
+		FindingUnavailablePersona + " fmn_build":     `unknown agent "nobody-here"`,
+		FindingInvalidFormationType + " fmn_sketch":  `unsupported type "flow"`,
 	}
 	got := map[string]string{}
 	for _, finding := range report.Errors {

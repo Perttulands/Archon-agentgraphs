@@ -73,20 +73,6 @@ export function FormationSeats({ formation, renderSlot }: {
       </div>
     )
   }
-  if (formation.type === 'flow') {
-    return (
-      <div className="flow-row">
-        {slots.map((slot, index) => (
-          <div key={slot.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-            {seat(slot, index + 1)}
-            {index < slots.length - 1 ? (
-              <div className="flow-arrow"><svg viewBox="0 0 26 12" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M0 6h22" /><path d="M19 2l4 4-4 4" /></svg></div>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    )
-  }
   if (formation.type === 'orchestrated') {
     const ctrl = slots.find(slot => slot.controller) || slots[0]
     const workers = slots.filter(slot => slot !== ctrl)
@@ -97,5 +83,6 @@ export function FormationSeats({ formation, renderSlot }: {
       </div>
     )
   }
-  return <div className="solo-body">{slots[0] ? seat(slots[0]) : null}</div>
+  // Solo, and any retired type: every slot stays visible so none is hidden.
+  return <div className="solo-body">{slots.map(slot => seat(slot))}</div>
 }

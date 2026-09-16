@@ -56,9 +56,13 @@ export interface FormationVerification {
   onFail?: string
 }
 
+export type FormationType = 'solo' | 'peer' | 'orchestrated'
+
 export interface FormationNode {
   id: string
-  type: 'solo' | 'peer' | 'flow' | 'orchestrated'
+  /** A board saved before a type was retired can still carry it; the card
+   *  shows it so the operator can change it. */
+  type: FormationType | (string & {})
   title: string
   brief?: FormationBrief
   inputs: FormationPort[]
