@@ -26,7 +26,7 @@ import (
 type remoteAuthoringCommand func(c *remoteClient, args []string, stdout, stderr io.Writer) int
 
 var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
-	"board list":           remoteBoardList("board"),
+	"board list":           remoteBoardList,
 	"board inspect":        remoteBoardInspect("board"),
 	"board new":            remoteBoardNew,
 	"board notes":          remoteBoardNotes,
@@ -38,7 +38,7 @@ var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
 	"mission create":       remoteMissionCreate,
 	"mission update":       remoteMissionUpdate,
 	"mission wire":         remoteMissionWire,
-	"formation list":       remoteBoardList("formation"),
+	"formation list":       remoteFormationList,
 	"formation inspect":    remoteBoardInspect("formation"),
 	"formation create":     remoteFormationCreate,
 	"formation rename":     remoteFormationRename,
@@ -303,24 +303,38 @@ func remoteBoardNew(c *remoteClient, args []string, stdout, stderr io.Writer) in
 	return 0
 }
 
-// remoteBoardList serves board list and its older name, formation list.
-func remoteBoardList(noun string) remoteAuthoringCommand {
-	return func(c *remoteClient, args []string, stdout, stderr io.Writer) int {
-		fs := remoteFlags(noun+" list", stderr)
-		jsonOut := fs.Bool("json", false, "write JSON")
-		if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
-			return 2
-		}
-		data, _, err := c.call("GET", "/api/formations/boards", nil, "")
-		if err != nil {
-			return fail(stderr, err)
-		}
-		boards, err := decodeRemote[[]formations.BoardSummary](data, "boards")
-		if err != nil {
-			return fail(stderr, err)
-		}
-		return writeBoardList(stdout, *boards, *jsonOut)
+func remoteBoardList(c *remoteClient, args []string, stdout, stderr io.Writer) int {
+	fs := remoteFlags("board list", stderr)
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
 	}
+	data, _, err := c.call("GET", "/api/formations/boards", nil, "")
+	if err != nil {
+		return fail(stderr, err)
+	}
+	boards, err := decodeRemote[[]formations.BoardSummary](data, "boards")
+	if err != nil {
+		return fail(stderr, err)
+	}
+	return writeBoardList(stdout, *boards, *jsonOut)
+}
+
+func remoteFormationList(c *remoteClient, args []string, stdout, stderr io.Writer) int {
+	fs := remoteFlags("formation list", stderr)
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(stderr, "usage: archon formation list <board> [--json]")
+		return 2
+	}
+	board, err := c.readBoard(fs.Arg(0))
+	if err != nil {
+		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+	}
+	return writeFormationList(stdout, board, *jsonOut)
 }
 
 // remoteBoardInspect serves board inspect and its older name, formation inspect.

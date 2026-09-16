@@ -487,12 +487,27 @@ customFuture = "keep me"
 		t.Fatalf("formation create did not preserve board structure/layout split:\n%s", boardRaw)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "list", "--json")
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "list"); code != 2 || !strings.Contains(stderr, "usage: archon formation list <board>") {
+		t.Fatalf("formation list without a board code=%d stderr=%s, want usage", code, stderr)
+	}
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "list", "session-search", "--json")
 	if code != 0 {
 		t.Fatalf("formation list code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
-	if !strings.Contains(stdout, `"slug": "session-search"`) || !strings.Contains(stdout, `"rev": 8`) {
-		t.Fatalf("list JSON missing board summary: %s", stdout)
+	var listed archonFormationListResponse
+	if err := json.Unmarshal([]byte(stdout), &listed); err != nil {
+		t.Fatalf("decode formation list: %v\n%s", err, stdout)
+	}
+	if listed.Board.Slug != "session-search" || listed.Board.Rev != 8 || len(listed.Formations) != 1 || listed.Formations[0].Type != "peer" || listed.Formations[0].Title != "Research huddle" || len(listed.Formations[0].Slots) < 2 {
+		t.Fatalf("formation list JSON = %+v, want the board's one peer formation with its slots", listed)
+	}
+	formation := listed.Formations[0]
+	if stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "assign", "session-search", formation.ID, "--slot", formation.Slots[0].ID, "--agent", "codex-builder", "--harness", "openai-codex"); code != 0 {
+		t.Fatalf("formation assign code=%d stderr=%s stdout=%s", code, stderr, stdout)
+	}
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "list", "session-search")
+	if want := formation.ID + "\tpeer\tResearch huddle\t1/" + strconv.Itoa(len(formation.Slots)) + " staffed\n"; code != 0 || stdout != want {
+		t.Fatalf("formation list text code=%d stdout=%q stderr=%s, want %q", code, stdout, stderr, want)
 	}
 
 	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "inspect", "brd_01J9_sesssearch", "--json")

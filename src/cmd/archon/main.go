@@ -42,6 +42,11 @@ type archonMissionListResponse struct {
 	Missions []formations.MissionNode `json:"missions"`
 }
 
+type archonFormationListResponse struct {
+	Board      archonBoardIdentity        `json:"board"`
+	Formations []formations.FormationNode `json:"formations"`
+}
+
 type archonMissionInspectResponse struct {
 	Board       archonBoardIdentity          `json:"board"`
 	Mission     formations.MissionNode       `json:"mission"`
@@ -2071,8 +2076,7 @@ func runBoardList(store *formations.Store, args []string, stdout, stderr io.Writ
 	return writeBoardList(stdout, boards, *jsonOut)
 }
 
-// writeBoardList prints board summaries for board list and formation list,
-// offline and remote.
+// writeBoardList prints board summaries for board list, offline and remote.
 func writeBoardList(stdout io.Writer, boards []formations.BoardSummary, jsonOut bool) int {
 	if jsonOut {
 		return writeJSON(stdout, map[string]interface{}{"boards": boards})
@@ -2347,11 +2351,41 @@ func runFormationList(store *formations.Store, args []string, stdout, stderr io.
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
-	boards, err := store.ListBoards()
+	if fs.NArg() != 1 {
+		fmt.Fprintln(stderr, "usage: archon formation list <board> [--json]")
+		return 2
+	}
+	slug, err := store.ResolveBoardSelector(fs.Arg(0))
+	if err != nil {
+		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+	}
+	board, err := store.ReadBoard(slug)
 	if err != nil {
 		return fail(stderr, err)
 	}
-	return writeBoardList(stdout, boards, *jsonOut)
+	return writeFormationList(stdout, board, *jsonOut)
+}
+
+// writeFormationList prints a board's formations with their slot staffing, for
+// formation list offline and remote.
+func writeFormationList(stdout io.Writer, board *formations.BoardDocument, jsonOut bool) int {
+	response := archonFormationListResponse{
+		Board:      identityFromBoard(board),
+		Formations: append([]formations.FormationNode{}, board.Formations...),
+	}
+	if jsonOut {
+		return writeJSON(stdout, response)
+	}
+	for _, formation := range response.Formations {
+		staffed := 0
+		for _, slot := range formation.Slots {
+			if slot.AgentID != "" {
+				staffed++
+			}
+		}
+		fmt.Fprintf(stdout, "%s\t%s\t%s\t%d/%d staffed\n", formation.ID, formation.Type, formation.Title, staffed, len(formation.Slots))
+	}
+	return 0
 }
 
 func runFormationInspect(store *formations.Store, args []string, stdout, stderr io.Writer) int {
