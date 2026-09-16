@@ -1,9 +1,12 @@
-import type { BoardConnection, BoardDocument } from '../components/formationsTypes'
+import type { BoardDocument } from '../components/formationsTypes'
+import { buildFlow, judgeChain } from '../flow/flowModel'
+
+export { judgeChain }
 
 /**
  * A board's routes in words: which step feeds a node, where its work goes,
- * what judges a gate, and where a run ends. Steps are numbered in the order a
- * run meets them, starting from the missions.
+ * what judges a gate, and where a run ends. Steps carry the Flow view's
+ * numbers; missions and judge formations have none.
  */
 
 export type RouteKind = 'starts' | 'fed-by' | 'feeds' | 'pass' | 'fail' | 'judged-by' | 'judges'
@@ -24,69 +27,20 @@ type Board = Pick<BoardDocument, 'connections' | 'formations'> & Partial<Pick<Bo
 const nodeOf = (endpoint: string) => endpoint.split(':')[0]
 const portOf = (endpoint: string) => endpoint.split(':').slice(1).join(':')
 
-function nodeIds(board: Board): string[] {
-  return [
-    ...(board.missions || []).map(node => node.id),
-    ...board.formations.map(node => node.id),
-    ...(board.gates || []).map(node => node.id),
-    ...(board.tools || []).map(node => node.id),
-  ]
-}
-
 export function nodeTitle(board: Board, nodeId: string): string {
   const node = [...(board.missions || []), ...board.formations, ...(board.gates || []), ...(board.tools || [])].find(item => item.id === nodeId)
   return node?.title || nodeId
 }
 
-// A gate's judge runs before its routes, and its pass before its fail.
-const routeRank = (connection: BoardConnection) => {
-  const port = portOf(connection.from)
-  return port === 'judge' ? 0 : port === 'fail' ? 2 : 1
-}
-
-/** Step numbers in the order a run meets the nodes; unreachable nodes follow in board order. */
-export function stepNumbers(board: Board): Map<string, number> {
-  const steps = new Map<string, number>()
-  const connections = board.connections || []
-  const walk = (start: string) => {
-    const queue = [start]
-    while (queue.length) {
-      const id = queue.shift() as string
-      if (steps.has(id)) continue
-      steps.set(id, steps.size + 1)
-      const next = connections
-        .filter(connection => nodeOf(connection.from) === id)
-        .sort((a, b) => routeRank(a) - routeRank(b))
-      for (const connection of next) queue.push(nodeOf(connection.to))
-    }
-  }
-  for (const mission of board.missions || []) walk(mission.id)
-  for (const id of nodeIds(board)) walk(id)
-  return steps
-}
-
-/** The formations wired from a gate's judge port back to it, in order. */
-export function judgeChain(board: Board, gateId: string): string[] {
-  const connections = board.connections || []
-  const socket = `${gateId}:judge`
-  const send = connections.find(connection => connection.from === socket)
-  if (!send) return []
-  const chain: string[] = []
-  let current = nodeOf(send.to)
-  while (current && !chain.includes(current) && current !== gateId) {
-    chain.push(current)
-    const onward = connections.find(connection => nodeOf(connection.from) === current && connection.to !== socket)
-    const returns = connections.some(connection => nodeOf(connection.from) === current && connection.to === socket)
-    if (returns || !onward) break
-    current = nodeOf(onward.to)
-  }
-  return chain
+/** Step numbers from the flow model, so windows and the Flow view count steps the same way. */
+export function stepNumbers(board: Board): ReadonlyMap<string, number> {
+  return buildFlow(board).numbers
 }
 
 /** Everything a node's routes say, in reading order: what feeds it, then where its work goes. */
 export function nodeRoutes(board: Board, nodeId: string, steps = stepNumbers(board)): Route[] {
   const connections = board.connections || []
-  const named = (id: string) => `${steps.get(id) ?? '?'} ${nodeTitle(board, id)}`
+  const named = (id: string) => (steps.has(id) ? `${steps.get(id)} ${nodeTitle(board, id)}` : nodeTitle(board, id))
   const routes: Route[] = []
   const mission = (board.missions || []).find(node => node.id === nodeId)
   const formation = board.formations.find(node => node.id === nodeId)

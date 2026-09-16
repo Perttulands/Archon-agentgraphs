@@ -36,8 +36,8 @@ test('every Wayfinding node reads in full in its window, with no edit dialog and
   // Staffing and routes read as words, and a route opens the other node's window.
   await page.getByTestId(`gate-node-${wayfindingBoard.gates[2].id}`).locator('.gt').click()
   const review = page.getByRole('dialog', { name: 'Gate · Adversarial review' })
-  await expect(review.getByRole('button', { name: 'Judged by 8 Brief critic' })).toBeVisible()
-  await expect(review.getByRole('button', { name: 'Fail ↺ back to 6 Draft the brief' })).toBeVisible()
+  await expect(review.getByRole('button', { name: 'Judged by Brief critic' })).toBeVisible()
+  await expect(review.getByRole('button', { name: 'Fail ↺ back to 5 Draft the brief' })).toBeVisible()
 
   // The node's notes open in its note window rather than being copied into the node window.
   const reviewId = wayfindingBoard.gates[2].id
@@ -48,12 +48,12 @@ test('every Wayfinding node reads in full in its window, with no edit dialog and
   await expect(notes).toContainText(thread.entries[0].text.slice(0, 40))
   await expect(review.getByText(thread.entries[0].text.slice(0, 40))).toHaveCount(0)
 
-  await review.getByRole('button', { name: 'Judged by 8 Brief critic' }).click()
+  await review.getByRole('button', { name: 'Judged by Brief critic' }).click()
   const critic = page.getByRole('dialog', { name: 'Formation · Brief critic' })
   await expect(critic.getByText('Agent is Codex Judge (codex-judge) on openai-codex, model gpt-5.5, medium effort.')).toBeVisible()
-  await critic.getByRole('button', { name: 'Judges 7 Adversarial review' }).click()
+  await critic.getByRole('button', { name: 'Judges 6 Adversarial review' }).click()
   await expect(review).toHaveClass(/focused/)
-  await review.getByRole('button', { name: 'Pass → 9 Brief sign-off' }).click()
+  await review.getByRole('button', { name: 'Pass → 7 Brief sign-off' }).click()
   await expect(page.getByRole('dialog', { name: 'Gate · Brief sign-off' }).getByText('Pass → run ends here')).toBeVisible()
 
   expect(fixture.writes).toEqual([])

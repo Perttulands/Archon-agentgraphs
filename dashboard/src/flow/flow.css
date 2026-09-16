@@ -1,0 +1,86 @@
+/* The Flow view: a board read top to bottom over the canvas it replaces. */
+
+.fmx .flow {
+  position: absolute; inset: 0; z-index: 50; overflow: auto; overflow-x: hidden;
+  padding: 20px 28px 64px; background: var(--paper); cursor: default; user-select: text;
+  font-size: 12px; line-height: 1.5; color: var(--ink);
+}
+.fmx .viewport.flow-mode .zoomctl, .fmx .viewport.flow-mode .zoomlevel { display: none; }
+
+.fmx .flow-section { max-width: 1120px; margin: 0 auto 28px; display: flex; flex-direction: column; gap: 10px; }
+.fmx .flow-mission {
+  display: flex; flex-direction: column; gap: 6px; padding: 14px 16px;
+  background: var(--card); border: 1px solid color-mix(in srgb, var(--terra) 45%, var(--line)); border-radius: 4px;
+}
+.fmx .flow-mission.unreached { border-style: dashed; border-color: var(--line); }
+.fmx .flow-mission h2 { margin: 0; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+.fmx .flow-mission-head { display: flex; align-items: center; gap: 12px; }
+.fmx .flow-mission-head .flow-title { flex: 1; font-size: 15px; }
+.fmx .flow-action {
+  flex-shrink: 0; border: 1px solid var(--line); border-radius: 3px; background: var(--paper2); color: var(--ink2);
+  padding: 5px 10px; font: 700 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer;
+}
+.fmx .flow-action:hover { border-color: var(--terra); color: var(--ink); }
+
+.fmx .flow-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.fmx .flow-step {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 12px 16px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 4px;
+}
+.fmx .flow.with-run .flow-step { grid-template-columns: minmax(0, 1fr) 240px; }
+.fmx .flow-gate { border-left: 3px solid color-mix(in srgb, var(--gold) 60%, var(--line)); background: color-mix(in srgb, var(--gold) 4%, var(--card)); }
+.fmx .flow-step.state-running { border-color: var(--terra); }
+.fmx .flow-step.state-waiting, .fmx .flow-step.state-blocked { border-color: var(--gold); }
+.fmx .flow-step.state-failed { border-color: var(--terra-d); }
+
+.fmx .flow-body { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.fmx .flow-step-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fmx .flow-number {
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 6px;
+  border: 1px solid var(--line); border-radius: 12px; font-weight: 700; color: var(--ink2);
+}
+.fmx .flow-title {
+  min-width: 0; border: 0; padding: 0; background: transparent; color: var(--ink); text-align: left; cursor: pointer;
+  font: 700 13px/1.35 var(--font-mono); overflow-wrap: anywhere;
+}
+.fmx .flow-title:hover { color: var(--terra); }
+.fmx .flow-kicker { color: var(--dim); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+.fmx .flow-kind { margin-left: auto; flex-shrink: 0; color: var(--dim); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+.fmx .flow-text { margin: 0; color: var(--ink2); overflow-wrap: anywhere; }
+.fmx .flow-text .placeholder { color: var(--dim); font-style: italic; }
+.fmx .flow-line { margin: 0; color: var(--ink2); overflow-wrap: anywhere; }
+.fmx .flow-line.warn { color: var(--gold); }
+.fmx .flow-label {
+  display: inline-block; min-width: 72px; margin-right: 8px; color: var(--dim);
+  font-size: 9.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+}
+.fmx .flow-routes.route-pass .flow-route { color: var(--sage); }
+.fmx .flow-routes.route-fail .flow-route { color: var(--terra-d); }
+.fmx .flow-link, .fmx .flow-note, .fmx .flow-file {
+  border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+  text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px;
+}
+.fmx .flow-link:hover, .fmx .flow-note:hover, .fmx .flow-file:hover { color: var(--terra); text-decoration-color: var(--terra); }
+.fmx .flow-file { margin-right: 10px; }
+.fmx .flow-note-author { font-weight: 700; }
+.fmx .flow-note.note-agent .flow-note-author { color: var(--sage); }
+.fmx .flow-note-more { color: var(--dim); }
+
+.fmx .flow-judges { list-style: none; margin: 6px 0 0; padding: 0 0 0 16px; border-left: 2px dashed var(--line); display: flex; flex-direction: column; gap: 6px; }
+.fmx .flow-judge { display: flex; flex-direction: column; gap: 2px; }
+
+.fmx .flow-status { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; padding-left: 14px; border-left: 1px solid var(--line); }
+.fmx .flow-state { font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: 10.5px; color: var(--dim); }
+.fmx .flow-state.state-running { color: var(--terra); }
+.fmx .flow-state.state-done { color: var(--sage); }
+.fmx .flow-state.state-waiting, .fmx .flow-state.state-blocked { color: var(--gold); }
+.fmx .flow-state.state-failed { color: var(--terra-d); }
+.fmx .flow-attempt { color: var(--ink2); }
+.fmx .flow-status button.run-point {
+  max-width: 100%; border: 0; padding: 0; background: transparent; color: var(--ink); text-align: left; cursor: pointer;
+  font: 11px/1.45 var(--font-mono); white-space: normal; overflow-wrap: anywhere;
+}
+.fmx .flow-status button.run-point.waiting, .fmx .flow-status button.run-point.blocked { color: var(--gold); }
+
+/* The pending human gate's answer panel sits in its row instead of over the canvas. */
+.fmx .flow-answer .gate-answer { position: static; width: auto; max-height: none; margin-top: 8px; box-shadow: none; }

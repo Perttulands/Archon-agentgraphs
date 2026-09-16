@@ -30,10 +30,10 @@ const board = {
 }
 
 describe('board routes', () => {
-  it('numbers steps in the order a run meets them, judge before pass', () => {
+  it('numbers steps as the Flow view does: missions and judges carry no number', () => {
     expect([...stepNumbers(board).entries()]).toEqual([
-      ['mission', 1], ['map', 2], ['framing', 3], ['questions', 4], ['answers', 5],
-      ['draft', 6], ['review', 7], ['critic', 8], ['signoff', 9],
+      ['map', 1], ['framing', 2], ['questions', 3], ['answers', 4],
+      ['draft', 5], ['review', 6], ['signoff', 7],
     ])
     expect(judgeChain(board, 'review')).toEqual(['critic'])
     expect(judgeChain(board, 'framing')).toEqual([])
@@ -41,28 +41,28 @@ describe('board routes', () => {
 
   it('states a gate in words, with a loop back and an unwired pass that ends the run', () => {
     expect(nodeRoutes(board, 'review').map(route => route.text)).toEqual([
-      'Fed by 6 Draft the brief',
-      'Judged by 8 Brief critic',
-      'Pass → 9 Brief sign-off',
-      'Fail ↺ back to 6 Draft the brief',
+      'Fed by 5 Draft the brief',
+      'Judged by Brief critic',
+      'Pass → 7 Brief sign-off',
+      'Fail ↺ back to 5 Draft the brief',
     ])
     expect(nodeRoutes(board, 'signoff').map(route => route.text)).toEqual([
-      'Fed by 7 Adversarial review',
+      'Fed by 6 Adversarial review',
       'Pass → run ends here',
-      'Fail ↺ back to 6 Draft the brief',
+      'Fail ↺ back to 5 Draft the brief',
     ])
     expect(nodeRoutes(board, 'signoff').find(route => route.kind === 'pass')?.nodeId).toBeUndefined()
   })
 
   it('states formations, judges and missions in words', () => {
     expect(nodeRoutes(board, 'draft').map(route => route.text)).toEqual([
-      'Fed by 5 Answer questions',
-      'Sent back by 7 Adversarial review',
-      'Sent back by 9 Brief sign-off',
-      'Feeds → 7 Adversarial review',
+      'Fed by 4 Answer questions',
+      'Sent back by 6 Adversarial review',
+      'Sent back by 7 Brief sign-off',
+      'Feeds → 6 Adversarial review',
     ])
-    expect(nodeRoutes(board, 'critic').map(route => route.text)).toEqual(['Judges 7 Adversarial review'])
-    expect(nodeRoutes(board, 'mission')).toEqual([{ kind: 'starts', nodeId: 'map', text: 'Starts → 2 Map the territory' }])
+    expect(nodeRoutes(board, 'critic').map(route => route.text)).toEqual(['Judges 6 Adversarial review'])
+    expect(nodeRoutes(board, 'mission')).toEqual([{ kind: 'starts', nodeId: 'map', text: 'Starts → 1 Map the territory' }])
     expect(nodeRoutes({ ...board, connections: [] }, 'map').map(route => route.text)).toEqual(['Feeds → run ends here'])
   })
 })

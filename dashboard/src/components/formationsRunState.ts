@@ -162,6 +162,11 @@ export function projectNodeStates(events: RunEvent[], _activeRun?: RunStatusProj
   return projectRun(events).states
 }
 
+/** The latest attempt recorded for each node, for the Flow view's status column. */
+export function projectNodeAttempts(events: RunEvent[]): Map<string, number> {
+  return projectRun(events).attempts
+}
+
 export type RunPointKind = 'waiting' | 'running' | 'blocked' | 'failed'
 
 /** Where a run is now: the node it waits at, runs, or stopped on. */

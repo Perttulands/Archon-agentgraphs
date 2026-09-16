@@ -22,7 +22,9 @@ import { referencedFileRequest } from '../files/fileWindowModel'
 import { nodeFileRefs } from '../files/referencedFiles'
 import FloatingWindow from '../windows/FloatingWindow'
 import { EditableField } from './EditableField'
-import { judgeChain, nodeRoutes, stepNumbers } from './boardRoutes'
+import { buildFlow } from '../flow/flowModel'
+import { judgeChain, nodeRoutes, nodeTitle } from './boardRoutes'
+import { staffingSentence } from './staffing'
 import { usePersonaCards } from './usePersonaCards'
 import './nodeWindow.css'
 
@@ -79,9 +81,10 @@ export function locateNode(board: Pick<BoardDocument, 'formations'> & Partial<Pi
 const KIND_WORD = { mission: 'Mission', formation: 'Formation', gate: 'Gate' } as const
 const UNTITLED = { mission: 'Untitled mission', formation: 'Untitled formation', gate: 'Gate' } as const
 
-/** Where a node's card sits on screen, so its window opens beside it. */
+/** Where a node sits on screen, its Flow row or else its card, so its window opens beside it. */
 function cardRect(nodeId: string) {
-  const card = document.querySelector(`[data-node="${nodeId.replace(/["\\]/g, '\\$&')}"]`)
+  const escaped = nodeId.replace(/["\\]/g, '\\$&')
+  const card = document.querySelector(`[data-flow-node="${escaped}"]`) || document.querySelector(`[data-node="${escaped}"]`)
   if (!card) return null
   const { left, top, width, height } = card.getBoundingClientRect()
   return { left, top, width, height }
@@ -106,11 +109,17 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
 }) {
   const located = locateNode(board, nodeId)
   if (!located) return null
-  const steps = stepNumbers(board)
+  const flow = buildFlow(board)
+  const steps = flow.numbers
   const label = nodeWindowLabel(located)
   const detail = located.kind === 'formation' ? located.node.type
     : located.kind === 'gate' ? located.node.kinds.map(kind => (kind === 'formation' ? 'judge' : kind)).join(', ') || 'no kind'
       : ''
+  const judged = flow.judgeOf.get(nodeId)
+  const eyebrow = located.kind === 'mission' ? 'Mission'
+    : steps.has(nodeId) ? `Step ${steps.get(nodeId)} · ${KIND_WORD[located.kind]}${detail ? ` · ${detail}` : ''}`
+      : judged ? `Judge of ${steps.has(judged) ? `${steps.get(judged)} ` : ''}${nodeTitle(board, judged)} · ${detail}`
+        : `${KIND_WORD[located.kind]}${detail ? ` · ${detail}` : ''}`
   return (
     <FloatingWindow
       id={`node:${nodeId}`}
@@ -122,7 +131,7 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
       onClose={onClose}
     >
       <div className="nwin" data-testid={`node-window-${nodeId}`}>
-        <div className="nwin-eyebrow">Step {steps.get(nodeId) ?? '?'} · {KIND_WORD[located.kind]}{detail ? ` · ${detail}` : ''}</div>
+        <div className="nwin-eyebrow">{eyebrow}</div>
         <EditableField label="Title" value={located.node.title} placeholder={UNTITLED[located.kind]} onSave={title => ops.rename(nodeId, title)} />
         {located.kind === 'mission' ? <MissionFields mission={located.node} ops={ops} /> : null}
         {located.kind === 'formation' ? <FormationFields formation={located.node} agents={agents} ops={ops} /> : null}
@@ -244,23 +253,6 @@ function FileList({ files, context, label }: { files: string[]; context: string;
       ))}
     </ul>
   )
-}
-
-/** "Worker 1 is Codex builder (codex) on openai-codex, model gpt-5, medium effort." A persona that sets neither uses its harness's defaults, and says so. */
-export function staffingSentence(slot: FormationSlot, agent: AgentProjection | undefined, card: PersonaCard | undefined): string {
-  const role = `${slot.label || slot.id}${slot.controller ? ' (controller)' : ''}`
-  if (!slot.agentId) return `${role} is not staffed.`
-  const name = card?.displayName || agent?.displayName || slot.agentId
-  const harness = slot.harness || card?.harnessDefault || agent?.harnessDefault || ''
-  const variant = card?.harnessVariants.find(item => item.id === harness)
-  const parts = [
-    `${role} is ${name}${name === slot.agentId ? '' : ` (${slot.agentId})`}`,
-    harness ? `on ${harness}` : 'with no harness',
-  ]
-  if (!harness) return `${parts.join(' ')}.`
-  const model = variant?.model ? `model ${variant.model}` : 'default model'
-  const effort = variant?.effort ? `${variant.effort} effort` : 'default effort'
-  return `${parts.join(' ')}, ${model}, ${effort}.`
 }
 
 function SlotStaffing({ formation, slot, agents, card, ops }: {

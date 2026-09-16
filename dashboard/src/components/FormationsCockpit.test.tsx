@@ -1436,7 +1436,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(within(mission).getByText('Build the page')).toBeInTheDocument()
     expect(within(mission).getByText('home-7kc4.5')).toBeInTheDocument()
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
-    expect(within(frame).getByText('Step 2 · Formation · orchestrated')).toBeInTheDocument()
+    expect(within(frame).getByText('Step 1 · Formation · orchestrated')).toBeInTheDocument()
     const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
     expect(within(review).getByText('Review the frame')).toBeInTheDocument()
     expect(Number(review.style.zIndex)).toBeGreaterThan(Number(mission.style.zIndex))
@@ -1462,14 +1462,15 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
     const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
     const routes = within(within(review).getByRole('region', { name: 'Connections' })).getAllByRole('listitem').map(item => item.textContent)
-    expect(routes).toEqual(['Fed by 2 Frame', 'Judged by 4 Judge', 'Pass → run ends here', 'Fail → the run blocks here'])
-    fireEvent.click(within(review).getByRole('button', { name: 'Judged by 4 Judge' }))
+    expect(routes).toEqual(['Fed by 1 Frame', 'Judged by Judge', 'Pass → run ends here', 'Fail → the run blocks here'])
+    fireEvent.click(within(review).getByRole('button', { name: 'Judged by Judge' }))
     const judge = await screen.findByRole('dialog', { name: 'Formation · Judge' })
-    expect(within(judge).getByRole('button', { name: 'Judges 3 Review' })).toBeInTheDocument()
-    fireEvent.click(within(review).getByRole('button', { name: 'Fed by 2 Frame' }))
+    expect(within(judge).getByText('Judge of 2 Review · solo')).toBeInTheDocument()
+    expect(within(judge).getByRole('button', { name: 'Judges 2 Review' })).toBeInTheDocument()
+    fireEvent.click(within(review).getByRole('button', { name: 'Fed by 1 Frame' }))
     const frame = await screen.findByRole('dialog', { name: 'Formation · Frame' })
-    expect(within(frame).getByRole('button', { name: 'Fed by 1 Showcase' })).toBeInTheDocument()
-    expect(within(frame).getByRole('button', { name: 'Feeds → 3 Review' })).toBeInTheDocument()
+    expect(within(frame).getByRole('button', { name: 'Fed by Showcase' })).toBeInTheDocument()
+    expect(within(frame).getByRole('button', { name: 'Feeds → 2 Review' })).toBeInTheDocument()
   })
 
   it('converts a code gate to a human gate in its window and undoes it', async () => {
@@ -2513,6 +2514,94 @@ describe('FormationsCockpit reference parity', () => {
     expect(await screen.findByTestId('run-banner-idle')).toBeInTheDocument()
     expect(screen.queryByTestId('run-banner')).toBeNull()
     expect(window.location.search).toBe('?board=test-board')
+  })
+
+  it('switches a board to Flow, remembers it for that board, and opens windows from rows', async () => {
+    patches = installFetchMock({ boardNotes: { elements: [{ nodeId: 'fmn_frame', entries: [noteEntry('nte_1', 'human:operator', 'Keep the frame narrow')] }] } })
+    const { unmount } = await renderCockpit()
+    fireEvent.click(screen.getByRole('radio', { name: 'Flow' }))
+    const flow = await screen.findByTestId('flow-view')
+    expect(screen.getByRole('radio', { name: 'Flow' })).toBeChecked()
+    expect(JSON.parse(localStorage.getItem('archon.boardView.v1') || '{}')).toEqual({ 'test-board': 'flow' })
+
+    const mission = within(flow).getByRole('region', { name: 'Mission Showcase' })
+    expect(mission).toHaveTextContent('Build the page')
+    const frame = within(flow).getByTestId('flow-step-fmn_frame')
+    expect(frame).toHaveTextContent('No brief yet.')
+    expect(frame).toHaveTextContent('Lead (controller) is Mason (mason) on codex')
+    expect(frame).toHaveTextContent('Next→ 2 Review')
+    const review = within(flow).getByTestId('flow-step-gate_review')
+    expect(review).toHaveTextContent('Decided by a code check')
+    expect(review).toHaveTextContent('Pass→ run ends')
+    expect(review).toHaveTextContent('Fail→ the run blocks')
+    expect(within(review).getByRole('list', { name: 'Judges of Review' })).toHaveTextContent('Judge Judge')
+    expect(within(flow).queryByTestId('flow-step-fmn_judge')).toBeNull()
+
+    fireEvent.click(within(frame).getByRole('button', { name: '1 Frame' }))
+    expect(await screen.findByRole('dialog', { name: 'Formation · Frame' })).toBeInTheDocument()
+    fireEvent.click(within(review).getByRole('button', { name: 'Judge Judge' }))
+    expect(await screen.findByRole('dialog', { name: 'Formation · Judge' })).toBeInTheDocument()
+    fireEvent.click(within(frame).getByRole('button', { name: /Keep the frame narrow/ }))
+    expect(await screen.findByRole('dialog', { name: 'notes for Frame' })).toBeInTheDocument()
+    fireEvent.click(within(frame).getByRole('button', { name: '→ 2 Review' }))
+    expect(await screen.findByRole('dialog', { name: 'Gate · Review' })).toBeInTheDocument()
+    expect(patches).toEqual([])
+
+    unmount()
+    await renderCockpit()
+    expect(await screen.findByTestId('flow-view')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: 'Canvas' }))
+    await waitFor(() => expect(screen.queryByTestId('flow-view')).toBeNull())
+    expect(localStorage.getItem('archon.boardView.v1')).toBe('{}')
+  })
+
+  it('shows each step state, attempt and block reason in Flow with a run selected', async () => {
+    window.history.replaceState(null, '', '/?board=test-board&run=run_01BLOCK')
+    installRunsMock([{ runId: 'run_01BLOCK', status: 'blocked', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 5 }], {
+      run_01BLOCK: [
+        { runId: 'run_01BLOCK', seq: 1, type: 'node_started', nodeId: 'fmn_frame', attempt: 1 },
+        { runId: 'run_01BLOCK', seq: 2, type: 'node_started', nodeId: 'fmn_frame', attempt: 2 },
+        { runId: 'run_01BLOCK', seq: 3, type: 'node_output', nodeId: 'fmn_frame', status: 'done' },
+        { runId: 'run_01BLOCK', seq: 4, type: 'gate_evaluating', nodeId: 'gate_review', gateId: 'gate_review' },
+        { runId: 'run_01BLOCK', seq: 5, type: 'run_blocked', nodeId: 'gate_review', gateId: 'gate_review' },
+      ],
+    })
+    const projection = globalThis.fetch
+    const problems = [
+      { seq: 5, type: 'run_blocked', nodeIds: ['gate_review'], reason: { text: 'invalid judge result: missing verdict block', bytes: 42 }, resumeAllowed: false },
+    ]
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) === '/api/formations/runs/run_01BLOCK/evidence/problems'
+      ? Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data: { problems } }) } as unknown as Response)
+      : projection(input, init)) as typeof fetch
+    localStorage.setItem('archon.boardView.v1', JSON.stringify({ 'test-board': 'flow' }))
+    await renderCockpit()
+
+    const flow = await screen.findByTestId('flow-view')
+    const frame = within(await within(flow).findByTestId('flow-step-fmn_frame')).getByLabelText('Run state of Frame')
+    await waitFor(() => expect(frame).toHaveTextContent('done'))
+    expect(frame).toHaveTextContent('attempt 2')
+    const review = within(flow).getByLabelText('Run state of Review')
+    await waitFor(() => expect(review).toHaveTextContent('blocked at Review: invalid judge result: missing verdict block'))
+    fireEvent.click(within(review).getByTestId('run-point'))
+    expect(await screen.findByRole('dialog', { name: 'Gate · Review' })).toBeInTheDocument()
+  })
+
+  it('offers the waiting human gate its answer panel in its Flow row', async () => {
+    localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
+    localStorage.setItem('archon.boardView.v1', JSON.stringify({ 'test-board': 'flow' }))
+    installFetchMock({
+      runStatus: { status: 'waiting_human', final: false },
+      runEvents: [
+        { runId: 'run_legacy', seq: 3, type: 'node_output', nodeId: 'fmn_frame' },
+        { runId: 'run_legacy', seq: 4, type: 'human_input_requested', nodeId: 'gate_review', gateId: 'gate_review' },
+      ],
+    })
+    await renderCockpit()
+    const row = await screen.findByTestId('flow-step-gate_review')
+    const panel = await within(row).findByRole('dialog', { name: 'Answer gate Review' })
+    expect(panel).toBeInTheDocument()
+    expect(within(row).getByLabelText('Run state of Review')).toHaveTextContent('waiting for you')
+    expect(screen.getAllByRole('dialog', { name: 'Answer gate Review' })).toHaveLength(1)
   })
 
   it('answers a pending human gate from its upstream output', async () => {

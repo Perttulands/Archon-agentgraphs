@@ -41,6 +41,7 @@ import {
 import {
   activeRunStorageKey,
   openHumanGateId,
+  projectNodeAttempts,
   projectNodeStates,
   runCurrentPoint,
   runStatusFromResponse,
@@ -54,6 +55,7 @@ import { ROSTER_MAX_WIDTH, ROSTER_MIN_WIDTH, useRosterPanel } from './useRosterP
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
 const RunEvidence = lazy(() => import('../evidence/RunEvidence'))
 const NodeWindow = lazy(() => import('../nodeWindow/NodeWindow'))
+const FlowView = lazy(() => import('../flow/FlowView'))
 import DismissiblePanel from './DismissiblePanel'
 import PersonaEditorDialog from './PersonaEditorDialog'
 import HumanGateAnswerPanel, { type GateDecision } from './HumanGateAnswerPanel'
@@ -82,6 +84,8 @@ import { createFormationsInteractionOwner } from './formationsInteraction'
 import type { FormationsInteractionOwner } from './formationsInteraction'
 import { WindowManagerProvider, useWindowManager } from '../windows/WindowManager'
 import type { NodeWindowOps } from '../nodeWindow/NodeWindow'
+import { readBoardView, writeBoardView, type BoardView } from '../flow/boardView'
+import type { FlowRun } from '../flow/FlowView'
 import { cockpitWorkspace } from '../windows/cockpitWorkspace'
 import type {
   AgentProjection,
@@ -179,6 +183,13 @@ type CockpitUndo =
 export default function FormationsCockpit({ active = true }: { active?: boolean } = {}) {
   const [boards, setBoards] = useState<BoardSummary[]>([])
   const [selectedSlug, setSelectedSlug] = useState('')
+  // Canvas or Flow, remembered per board.
+  const [boardView, setBoardView] = useState<BoardView>('canvas')
+  useEffect(() => setBoardView(readBoardView(selectedSlug)), [selectedSlug])
+  const changeBoardView = useCallback((view: BoardView) => {
+    setBoardView(view)
+    writeBoardView(selectedSlug, view)
+  }, [selectedSlug])
   const [board, setBoard] = useState<BoardDocument | null>(null)
   const [layout, setLayout] = useState<LayoutDocument | null>(null)
   const [agents, setAgents] = useState<AgentProjection[]>([])
@@ -2337,6 +2348,20 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const state = nodeStates.get(nodeId)
     return state === 'blocked' || state === 'failed' ? <span className={`run-chip ${state}`} data-testid={`run-chip-${nodeId}`}>{state}</span> : null
   }
+  // The pending human gate's answer panel: over the canvas, or in the gate's row in Flow.
+  const answerPanel = activeRun && !activeRun.final && pendingHumanGate ? (
+    <HumanGateAnswerPanel
+      key={`${activeRun.runId}:${pendingHumanGate.requestedSeq}`}
+      runId={activeRun.runId}
+      gateId={pendingHumanGate.gateId}
+      requestedSeq={pendingHumanGate.requestedSeq}
+      gateTitle={pendingHumanGate.title}
+      criterion={pendingHumanGate.criterion}
+      upstream={pendingGateUpstream}
+      onDecide={(verdict, response) => recordHumanGateVerdict(pendingHumanGate.gateId, pendingHumanGate.requestedSeq, verdict, response)}
+    />
+  ) : null
+  const showFlow = boardView === 'flow' && Boolean(board)
   const runPointTitle = (() => {
     const nodeId = runPoint?.nodeId
     if (!nodeId || !board) return ''
@@ -2346,6 +2371,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       || board.missions?.find(node => node.id === nodeId)?.title
       || ''
   })()
+  const nodeAttempts = useMemo(() => projectNodeAttempts(runEvents), [runEvents])
+  const flowRun = useMemo<FlowRun | null>(() => (activeRun
+    ? { runId: activeRun.runId, states: nodeStates, attempts: nodeAttempts, point: runPoint, pointTitle: runPointTitle }
+    : null), [activeRun, nodeAttempts, nodeStates, runPoint, runPointTitle])
   const inspectedNode = useMemo(() => {
     if (!inspectedNodeId || !board) return null
     const formation = board.formations?.find(node => node.id === inspectedNodeId)
@@ -2412,6 +2441,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         </div>
         <div className="spacer" />
         <CanvasLegend />
+        <div className="notes-switch view-switch" role="radiogroup" aria-label="Board view">
+          {(['canvas', 'flow'] as const).map(view => (
+            <button key={view} type="button" role="radio" aria-checked={boardView === view} className={boardView === view ? 'on' : ''}
+              disabled={!board} onClick={() => changeBoardView(view)}>{view === 'canvas' ? 'Canvas' : 'Flow'}</button>
+          ))}
+        </div>
         <div className="notes-switch" role="radiogroup" aria-label="Notes on the canvas">
           {NOTES_MODES.map(mode => (
             <button key={mode} type="button" role="radio" aria-checked={notesMode === mode} className={notesMode === mode ? 'on' : ''}
@@ -2512,7 +2547,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 {runPicker('')}
               </div>
             ) : null}
-        <div className="viewport" data-testid="formations-canvas" ref={viewportRef} onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
+        <div className={`viewport${showFlow ? ' flow-mode' : ''}`} data-testid="formations-canvas" ref={viewportRef} onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
+          {showFlow && board ? (
+            <Suspense fallback={null}>
+              <FlowView board={board} agents={agents} notes={noteByNode} run={flowRun}
+                answerPanel={pendingHumanGate && answerPanel ? { gateId: pendingHumanGate.gateId, panel: answerPanel } : null}
+                onOpenNode={openNodeWindow} onOpenNotes={openNoteWindow} onStartMission={setStartMission} />
+            </Suspense>
+          ) : null}
           <div className="world" data-testid="formations-world" ref={worldRef} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
             <svg className="wires" width={3400} height={2300}>
               {wires.map(path => {
@@ -2853,18 +2895,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           </div>
 
 
-          {activeRun && !activeRun.final && pendingHumanGate ? (
-            <HumanGateAnswerPanel
-              key={`${activeRun.runId}:${pendingHumanGate.requestedSeq}`}
-              runId={activeRun.runId}
-              gateId={pendingHumanGate.gateId}
-              requestedSeq={pendingHumanGate.requestedSeq}
-              gateTitle={pendingHumanGate.title}
-              criterion={pendingHumanGate.criterion}
-              upstream={pendingGateUpstream}
-              onDecide={(verdict, response) => recordHumanGateVerdict(pendingHumanGate.gateId, pendingHumanGate.requestedSeq, verdict, response)}
-            />
-          ) : null}
+          {showFlow ? null : answerPanel}
 
           {openEscalations.length ? (
             <div className="needs-you" data-testid="escalations-banner" role="alert">
