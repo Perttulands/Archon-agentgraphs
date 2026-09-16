@@ -49,7 +49,7 @@ import {
 } from './formationsRunState'
 import { chooseBoardRun, openRunsByAttention, readRunLink, runChoiceLabel, runLinkSearch } from './formationsRunDiscovery'
 import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
-import { FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, outputRowStatus } from './formationsCockpitVisuals'
+import { FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
 const RunEvidence = lazy(() => import('../evidence/RunEvidence'))
 import DismissiblePanel from './DismissiblePanel'
@@ -2361,8 +2361,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         <aside className="roster" data-testid="agent-roster" aria-label="Agent roster">
           <div className="roster-hd">
             <div className="t">Agents</div>
-            <span className="s" data-testid="roster-count" title={`${rosterAgents.length} catalog agents · ${deployedAgentCount} deployed on this board`}>
-              {rosterAgents.length}{deployedAgentCount ? ` · ${deployedAgentCount} deployed` : ''}
+            <span className="s" data-testid="roster-count" title={`${rosterAgents.length} catalog agents · ${deployedAgentCount} placed on this board`}>
+              {rosterCountLabel(rosterAgents.length, { placed: deployedAgentCount, scope: 'board' })}
             </span>
           </div>
           <div className="roster-list">

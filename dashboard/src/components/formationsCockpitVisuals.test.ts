@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formationSummary, agentRole, agentState, groupRosterByHarness, initials, outputRowStatus } from './formationsCockpitVisuals'
+import { formationSummary, agentRole, agentState, groupRosterByHarness, initials, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
 import type { AgentProjection, FormationNode } from './formationsTypes'
 
 const agent = (over: Partial<AgentProjection> & { assignable: boolean }): AgentProjection => ({ id: 'a', ...over })
@@ -67,5 +67,13 @@ describe('outputRowStatus', () => {
     expect(outputRowStatus(true, 'blocked', true)).toEqual({ label: 'blocked', tone: 'blocked' })
     expect(outputRowStatus(true, 'failed', false)).toEqual({ label: 'failed', tone: 'blocked' })
     expect(outputRowStatus(true, undefined, false)).toEqual({ label: 'not reached', tone: 'idle' })
+  })
+})
+
+describe('rosterCountLabel', () => {
+  it('names the scope of the placed count so the two tabs never share one word for different facts', () => {
+    expect(rosterCountLabel(25, { placed: 6, scope: 'board' })).toBe('25 · 6 on board')
+    expect(rosterCountLabel(25, { live: 2, placed: 5, scope: 'mission' })).toBe('25 · 2 live · 5 on mission')
+    expect(rosterCountLabel('…', { live: 0, placed: 0, scope: 'mission' })).toBe('…')
   })
 })

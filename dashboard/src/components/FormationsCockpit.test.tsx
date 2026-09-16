@@ -715,7 +715,7 @@ describe('FormationsCockpit reference parity', () => {
   it('shows only assignable persona cards in the formation staffing roster', async () => {
     await renderCockpit()
     const roster = screen.getByTestId('agent-roster')
-    expect(screen.getByTestId('roster-count')).toHaveTextContent('2')
+    expect(screen.getByTestId('roster-count')).toHaveTextContent(/^2 · 1 on board$/)
     expect(roster).toHaveTextContent('Mason')
     expect(roster).toHaveTextContent('Hazel')
     expect(roster).not.toHaveTextContent('scratch')

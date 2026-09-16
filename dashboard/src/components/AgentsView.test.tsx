@@ -76,6 +76,7 @@ describe('AgentsView', () => {
 
     expect(await screen.findByText('Authoring')).toBeInTheDocument()
     expect(screen.getByText('Fix Pass')).toBeInTheDocument()
+    expect(within(screen.getByRole('complementary', { name: 'Agent roster' })).getByText('2 · 1 live · 2 on mission')).toBeInTheDocument()
     expect(screen.getByText('Escalate Fail')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /assign Review slot/i }))

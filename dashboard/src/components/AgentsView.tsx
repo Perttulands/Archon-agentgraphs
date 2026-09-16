@@ -33,6 +33,7 @@ import {
   groupRosterByHarness,
   harnessGlyph,
   initials,
+  rosterCountLabel,
 } from './formationsCockpitVisuals'
 import type {
   AgentProjection as FormationAgentProjection,
@@ -714,11 +715,7 @@ export default function AgentsView() {
   }, [activeRun?.runId, selectedSlug])
 
   const selectedAgentId = selection?.kind === 'agent' || selection?.kind === 'unbound' ? selection.agentId : ''
-  const rosterSummary = [
-    loading ? '…' : String(rosterCounts.total),
-    rosterCounts.live ? `${rosterCounts.live} live` : '',
-    rosterCounts.deployed ? `${rosterCounts.deployed} staffed` : '',
-  ].filter(Boolean).join(' · ')
+  const rosterSummary = rosterCountLabel(loading ? '…' : rosterCounts.total, { live: rosterCounts.live, placed: rosterCounts.deployed, scope: 'mission' })
 
   return (
     <div className="fmx agx" data-testid="agents-view">
