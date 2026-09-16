@@ -1116,7 +1116,7 @@ func TestArchonBoardNewDuplicateFailsWithoutChangingBoard(t *testing.T) {
 	}
 }
 
-func TestArchonBoardNewRequiresSlugAndTitle(t *testing.T) {
+func TestArchonBoardNewRequiresSlugAndDefaultsTitle(t *testing.T) {
 	workspace := t.TempDir()
 	runner := &fakeTmux{live: map[string]bool{}}
 
@@ -1126,8 +1126,12 @@ func TestArchonBoardNewRequiresSlugAndTitle(t *testing.T) {
 	}
 
 	_, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "new", "poems")
-	if code == 0 || !strings.Contains(stderr, "--title") {
-		t.Fatalf("missing title code=%d stderr=%s", code, stderr)
+	if code != 0 {
+		t.Fatalf("draft board without title code=%d stderr=%s", code, stderr)
+	}
+	board, err := formations.NewStore(workspace).ReadBoard("poems")
+	if err != nil || board.Title != "poems" {
+		t.Fatalf("draft board = %+v (%v), want slug as title", board, err)
 	}
 }
 

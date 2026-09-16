@@ -285,14 +285,19 @@ func TestCreateBoardRefusesDuplicateSlugWithoutClobber(t *testing.T) {
 	}
 }
 
-func TestCreateBoardValidatesSlugAndTitle(t *testing.T) {
+func TestCreateBoardValidatesSlugAndDefaultsTitle(t *testing.T) {
 	store := NewStore(t.TempDir())
 
 	if _, err := store.CreateBoard(BoardCreateRequest{Slug: "bad/path", Title: "Bad"}); !errors.Is(err, ErrInvalidSlug) {
 		t.Fatalf("invalid slug error = %v, want ErrInvalidSlug", err)
 	}
-	if _, err := store.CreateBoard(BoardCreateRequest{Slug: "poems"}); !errors.Is(err, ErrInvalidSlug) {
-		t.Fatalf("missing title error = %v, want ErrInvalidSlug", err)
+	board, err := store.CreateBoard(BoardCreateRequest{Slug: "poems"})
+	if err != nil {
+		t.Fatalf("draft board without title error = %v, want saved", err)
+	}
+	reloaded, err := store.ReadBoard("poems")
+	if err != nil || board.Title != "poems" || reloaded.Title != "poems" {
+		t.Fatalf("draft board title = %q, reloaded %+v (%v), want slug as title", board.Title, reloaded, err)
 	}
 }
 
@@ -2505,7 +2510,7 @@ func TestS3MissionCreateAcceptsProjectBeadIDAndSingleOut(t *testing.T) {
 }
 
 func TestS3MissionCreateRejectsUnsafeBeadID(t *testing.T) {
-	for _, beadID := range []string{"", "nohyphen", "Home-123", "chlab/123", "../home-pfyv", "home-pfyv\n"} {
+	for _, beadID := range []string{"nohyphen", "Home-123", "chlab/123", "../home-pfyv", "home-pfyv\n"} {
 		t.Run(beadID, func(t *testing.T) {
 			store := NewStore(t.TempDir())
 			store.Now = fixedClock()

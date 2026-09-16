@@ -11,6 +11,9 @@ import (
 type APIError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// Findings lists every located problem when one request has several,
+	// such as a rejected run admission.
+	Findings interface{} `json:"findings,omitempty"`
 }
 
 // APIResponse is the standard response format
@@ -52,6 +55,13 @@ func WriteJSON(w http.ResponseWriter, status int, data interface{}) {
 // WriteSuccess writes a success JSON response
 func WriteSuccess(w http.ResponseWriter, data interface{}) {
 	WriteJSON(w, http.StatusOK, NewSuccessResponse(data))
+}
+
+// WriteFindingsError writes an error JSON response that lists findings.
+func WriteFindingsError(w http.ResponseWriter, status int, code, message string, findings interface{}) {
+	response := NewErrorResponse(code, message)
+	response.Error.Findings = findings
+	WriteJSON(w, status, response)
 }
 
 // WriteError writes an error JSON response

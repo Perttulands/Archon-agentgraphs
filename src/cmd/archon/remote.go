@@ -15,6 +15,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
 // An explicit server selects HTTP for the entire command. Failure never falls
@@ -50,13 +52,21 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 			return nil, err
 		}
 		if response.StatusCode >= 300 {
+			var envelope struct {
+				Error struct {
+					Findings []formations.BoardFinding `json:"findings"`
+				} `json:"error"`
+			}
+			if json.Unmarshal(raw, &envelope) == nil && len(envelope.Error.Findings) > 0 {
+				return nil, &formations.RunAdmissionError{Findings: envelope.Error.Findings}
+			}
 			return nil, fmt.Errorf("coordinator HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(raw)))
 		}
 		return raw, nil
 	}
 	fs := flag.NewFlagSet(args[0]+" "+args[1], flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.Bool("json", false, "write JSON")
+	jsonOut := fs.Bool("json", false, "write JSON")
 	cwd := fs.String("cwd", "", "absolute run working directory")
 	brief := fs.String("brief", "", "brief file path or literal text")
 	bead := fs.String("bead", "", "run Beads id")
@@ -82,6 +92,34 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 			return remoteUsage(stderr)
 		}
 		path += "/boards/" + url.PathEscape(pos[0])
+	case "board validate":
+		if len(pos) != 1 {
+			return remoteUsage(stderr)
+		}
+		raw, err := request("GET", path+"/boards/"+url.PathEscape(pos[0])+"/validation", nil)
+		if err != nil {
+			return fail(stderr, err)
+		}
+		var report struct {
+			Data struct {
+				Errors   []formations.BoardFinding `json:"errors"`
+				Warnings []formations.BoardFinding `json:"warnings"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(raw, &report); err != nil {
+			return fail(stderr, err)
+		}
+		if *jsonOut {
+			fmt.Fprint(stdout, string(raw))
+		} else {
+			fmt.Fprintf(stdout, "%s\t%d errors\t%d warnings\n", pos[0], len(report.Data.Errors), len(report.Data.Warnings))
+			writeFindingsText(stdout, "ERROR", report.Data.Errors)
+			writeFindingsText(stdout, "WARN", report.Data.Warnings)
+		}
+		if len(report.Data.Errors) > 0 {
+			return 1
+		}
+		return 0
 	case "mission run":
 		if len(pos) != 1 || *mission == "" {
 			return remoteUsage(stderr)
@@ -173,6 +211,6 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 func remoteUsage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "use mission run <board> --mission <id>, run status|logs|follow <run>, or gate approve|reject <run> <gate> --requested-seq <n>")
+	fmt.Fprintln(stderr, "use board validate <board>, mission run <board> --mission <id>, run status|logs|follow <run>, or gate approve|reject <run> <gate> --requested-seq <n>")
 	return 2
 }

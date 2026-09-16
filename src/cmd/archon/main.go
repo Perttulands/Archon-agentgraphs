@@ -58,10 +58,11 @@ type archonMissionChainNode struct {
 }
 
 type archonErrorResponse struct {
-	Code     string `json:"code"`
-	Message  string `json:"message"`
-	Boundary string `json:"boundary"`
-	Selector string `json:"selector"`
+	Code     string                    `json:"code"`
+	Message  string                    `json:"message"`
+	Boundary string                    `json:"boundary"`
+	Selector string                    `json:"selector"`
+	Findings []formations.BoardFinding `json:"findings,omitempty"`
 }
 
 type archonRunAskResponse struct {
@@ -393,7 +394,7 @@ func runAgentNew(store *formations.PersonaStore, args []string, stdout, stderr i
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon agent new <id> --kind <kind> [--harness <h>] [--from <path>]")
+		fmt.Fprintln(stderr, "usage: archon agent new <id> [--kind <kind>] [--harness <h>] [--from <path>]")
 		return 2
 	}
 	card, err := store.CreatePersona(formations.CreatePersonaRequest{
@@ -592,8 +593,8 @@ func runFormationCreate(store *formations.Store, args []string, stdout, stderr i
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
-	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon formation create <board> <type> --title <title> [--json]")
+	if fs.NArg() < 1 || fs.NArg() > 2 {
+		fmt.Fprintln(stderr, "usage: archon formation create <board> [solo|peer|orchestrated] [--title <title>] [--json]")
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -609,7 +610,7 @@ func runFormationCreate(store *formations.Store, args []string, stdout, stderr i
 		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
 	}
 	result, err := store.CreateFormation(slug, formations.FormationCreateRequest{
-		Type:      fs.Arg(1),
+		Type:      fs.Arg(1), // blank creates a solo formation
 		Title:     *title,
 		X:         createX,
 		Y:         createY,
@@ -1114,7 +1115,7 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon mission create <board> --title <title> --goal <goal> --bead <beads-id> [--x n] [--y n] [--json]")
+		fmt.Fprintln(stderr, "usage: archon mission create <board> [--title <title>] [--goal <goal>] [--bead <beads-id>] [--x n] [--y n] [--json]")
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -1304,6 +1305,9 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 		missionID = resolved
 	}
 	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
+	if err := formations.CheckRunAdmission(board, personas, formations.RunAdmissionScope{MissionID: missionID}); err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", missionID)
+	}
 	engine := newArchonRunEngine(store, personas, "archon")
 	status, err := engine.RunMission(slug, formations.RunStartRequest{
 		MissionID:         missionID,
@@ -1338,11 +1342,14 @@ func runFormationRun(store *formations.Store, args []string, stdout, stderr io.W
 		fmt.Fprintln(stderr, "usage: archon formation run <board> <formation> [--json]")
 		return 2
 	}
-	slug, _, formationID, err := resolveFormationCommandTarget(store, fs.Arg(0), fs.Arg(1))
+	slug, board, formationID, err := resolveFormationCommandTarget(store, fs.Arg(0), fs.Arg(1))
 	if err != nil {
 		return failSelector(stderr, err, *jsonOut, "formation", fs.Arg(1))
 	}
 	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
+	if err := formations.CheckRunAdmission(board, personas, formations.RunAdmissionScope{FormationID: formationID}); err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", formationID)
+	}
 	engine := newArchonRunEngine(store, personas, "archon")
 	status, err := engine.RunFormation(slug, formationID, formations.FormationRunRequest{
 		Actor:    *actor,
@@ -1853,8 +1860,8 @@ func runBoardNew(store *formations.Store, args []string, stdout, stderr io.Write
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
-	if fs.NArg() != 1 || strings.TrimSpace(*title) == "" {
-		fmt.Fprintln(stderr, "usage: archon board new <slug> --title <title> [--json]")
+	if fs.NArg() != 1 {
+		fmt.Fprintln(stderr, "usage: archon board new <slug> [--title <title>] [--json]")
 		return 2
 	}
 	board, err := store.CreateBoard(formations.BoardCreateRequest{
@@ -2044,7 +2051,7 @@ func runBoardValidate(store *formations.Store, args []string, stdout, stderr io.
 	if err != nil {
 		return fail(stderr, err)
 	}
-	report := formations.ValidateBoard(board)
+	report := formations.ValidateRunAdmission(board, formations.NewPersonaStore(formations.DefaultAgentsDir()), formations.RunAdmissionScope{})
 	if *jsonOut {
 		code := writeJSON(stdout, map[string]interface{}{
 			"board":    identityFromBoard(board),
@@ -2056,12 +2063,8 @@ func runBoardValidate(store *formations.Store, args []string, stdout, stderr io.
 		}
 	} else {
 		fmt.Fprintf(stdout, "%s	%d errors	%d warnings\n", board.Slug, len(report.Errors), len(report.Warnings))
-		for _, finding := range report.Errors {
-			fmt.Fprintf(stdout, "ERROR	%s	%s	%s\n", finding.Code, finding.NodeID, finding.Message)
-		}
-		for _, finding := range report.Warnings {
-			fmt.Fprintf(stdout, "WARN	%s	%s	%s\n", finding.Code, finding.NodeID, finding.Message)
-		}
+		writeFindingsText(stdout, "ERROR", report.Errors)
+		writeFindingsText(stdout, "WARN", report.Warnings)
 	}
 	if len(report.Errors) > 0 {
 		return 1
@@ -2303,8 +2306,20 @@ func writeNDJSON(w io.Writer, value interface{}) error {
 }
 
 func fail(stderr io.Writer, err error) int {
+	var admission *formations.RunAdmissionError
+	if errors.As(err, &admission) {
+		fmt.Fprintf(stderr, "run admission found %d problem(s)\n", len(admission.Findings))
+		writeFindingsText(stderr, "ERROR", admission.Findings)
+		return 1
+	}
 	fmt.Fprintln(stderr, archonErrorMessage(err))
 	return 1
+}
+
+func writeFindingsText(w io.Writer, level string, findings []formations.BoardFinding) {
+	for _, finding := range findings {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", level, finding.Code, finding.NodeID, finding.Message)
+	}
 }
 
 func failJSON(stderr io.Writer, err error, jsonOut bool, boundary, selector string) int {
@@ -2335,12 +2350,17 @@ func failRunStreamError(stdout, stderr io.Writer, err error, jsonOut bool, bound
 }
 
 func archonErrorFromError(err error, boundary, selector string) archonErrorResponse {
-	return archonErrorResponse{
+	response := archonErrorResponse{
 		Code:     archonErrorCode(err),
 		Message:  archonErrorMessage(err),
 		Boundary: boundary,
 		Selector: selector,
 	}
+	var admission *formations.RunAdmissionError
+	if errors.As(err, &admission) {
+		response.Findings = admission.Findings
+	}
+	return response
 }
 
 func archonErrorMessage(err error) string {
@@ -2352,6 +2372,8 @@ func archonErrorMessage(err error) string {
 
 func archonErrorCode(err error) string {
 	switch {
+	case errors.Is(err, formations.ErrRunAdmission):
+		return "run_admission_failed"
 	case errors.Is(err, formations.ErrDefinitionPublicationUncertain):
 		return "definition_publication_uncertain"
 	case errors.Is(err, formations.ErrInvalidToolMutation):

@@ -17,6 +17,9 @@ var (
 	ErrAmbiguousAgentBinding = errors.New("ambiguous agent binding")
 )
 
+// DefaultPersonaKind fills a blank role so a sketched persona still saves.
+const DefaultPersonaKind = "specialist"
+
 const (
 	AgentLivenessLive      = "live"
 	AgentLivenessOffline   = "offline"
@@ -234,8 +237,8 @@ func (s *PersonaStore) CreatePersona(req CreatePersonaRequest) (*PersonaCard, er
 		if exists {
 			return ErrAlreadyExists
 		}
-		if req.Kind == "" {
-			return fmt.Errorf("%w: kind is required", ErrInvalidSlug)
+		if strings.TrimSpace(req.Kind) == "" {
+			req.Kind = DefaultPersonaKind
 		}
 		harness := req.Harness
 		if harness == "" {
@@ -311,7 +314,7 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 		if req.SetKind != nil {
 			kind := strings.TrimSpace(*req.SetKind)
 			if kind == "" {
-				return fmt.Errorf("%w: kind is required", ErrInvalidSlug)
+				kind = DefaultPersonaKind
 			}
 			next = setSectionScalar(next, "card", "kind", renderString(kind))
 		}

@@ -523,6 +523,7 @@ func (h *FormationsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/formations/runs/{runId}/gates/{gateId}/verdict", h.RecordHumanGateVerdict)
 	mux.HandleFunc("GET /api/formations/runs/{runId}/escalations", h.GetRunEscalations)
 	mux.HandleFunc("GET /api/formations/boards/{board}/changes", h.GetBoardChanges)
+	mux.HandleFunc("GET /api/formations/boards/{board}/validation", h.GetBoardValidation)
 	mux.HandleFunc("GET /api/formations/boards/{board}", h.GetBoard)
 	mux.HandleFunc("PATCH /api/formations/boards/{board}", h.PatchBoard)
 	mux.HandleFunc("DELETE /api/formations/boards/{board}", h.DeleteBoard)
@@ -566,6 +567,15 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 	expectedRev := request.ExpectedRev
 	if expectedRev == 0 {
 		expectedRev = board.Rev
+	}
+	// Report findings only for the revision the caller has seen.
+	if match := r.Header.Get("If-Match"); (match != "" && match != board.ETag) || expectedRev != board.Rev {
+		writeFormationsError(w, formations.ErrConflict)
+		return
+	}
+	if err := formations.CheckRunAdmission(board, h.personas, formations.RunAdmissionScope{MissionID: request.MissionID, FormationID: request.FormationID}); err != nil {
+		writeFormationsError(w, err)
+		return
 	}
 	engine := h.newRunEngine("api")
 	if request.FormationID != "" {
@@ -787,11 +797,11 @@ func (h *FormationsHandler) CreateBoard(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	title := strings.TrimSpace(request.Title)
-	if title == "" {
-		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Board name is required")
-		return
-	}
 	slug := strings.TrimSpace(request.Slug)
+	untitled := title == "" && slug == ""
+	if untitled {
+		title = untitledBoardTitle
+	}
 	if slug == "" {
 		slug = boardSlugFromTitle(title)
 	}
@@ -804,6 +814,14 @@ func (h *FormationsHandler) CreateBoard(w http.ResponseWriter, r *http.Request) 
 		Title:     title,
 		UpdatedBy: "agent:ui",
 	})
+	// An unnamed sketch takes the next free untitled slug instead of failing.
+	for suffix := 2; untitled && errors.Is(err, formations.ErrAlreadyExists) && suffix <= maxUntitledBoards; suffix++ {
+		board, err = h.store.CreateBoard(formations.BoardCreateRequest{
+			Slug:      fmt.Sprintf("%s-%d", slug, suffix),
+			Title:     fmt.Sprintf("%s %d", untitledBoardTitle, suffix),
+			UpdatedBy: "agent:ui",
+		})
+	}
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -885,6 +903,29 @@ func (h *FormationsHandler) GetBoard(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("ETag", board.ETag)
 	core.WriteSuccess(w, map[string]interface{}{"board": board})
+}
+
+// GetBoardValidation reports what the whole board still needs before its runs
+// can start, so the canvas can mark draft nodes.
+func (h *FormationsHandler) GetBoardValidation(w http.ResponseWriter, r *http.Request) {
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	if err != nil {
+		writeFormationsError(w, err)
+		return
+	}
+	board, err := h.store.ReadBoard(slug)
+	if err != nil {
+		writeFormationsError(w, err)
+		return
+	}
+	report := formations.ValidateRunAdmission(board, h.personas, formations.RunAdmissionScope{})
+	w.Header().Set("ETag", board.ETag)
+	core.WriteSuccess(w, map[string]interface{}{
+		"boardRev":  board.Rev,
+		"boardEtag": board.ETag,
+		"errors":    report.Errors,
+		"warnings":  report.Warnings,
+	})
 }
 
 func (h *FormationsHandler) GetBoardChanges(w http.ResponseWriter, r *http.Request) {
@@ -1420,6 +1461,26 @@ func (h *FormationsHandler) PatchLayout(w http.ResponseWriter, r *http.Request) 
 	core.WriteSuccess(w, map[string]interface{}{"layout": layout})
 }
 
+const (
+	untitledBoardTitle = "Untitled board"
+	maxUntitledBoards  = 100
+)
+
+// RunAdmissionErrorCode marks a run start whose error lists every finding.
+const RunAdmissionErrorCode = "RUN_ADMISSION_FAILED"
+
+func admissionMessage(err *formations.RunAdmissionError) string {
+	if len(err.Findings) == 1 {
+		return "The run needs 1 fix before it can start"
+	}
+	return fmt.Sprintf("The run needs %d fixes before it can start", len(err.Findings))
+}
+
+// WriteRunAdmissionError writes a 422 listing every admission finding.
+func WriteRunAdmissionError(w http.ResponseWriter, err *formations.RunAdmissionError) {
+	core.WriteFindingsError(w, http.StatusUnprocessableEntity, RunAdmissionErrorCode, admissionMessage(err), err.Findings)
+}
+
 func patchExpectedRev(parent, child int) int {
 	if parent != 0 {
 		return parent
@@ -1453,7 +1514,10 @@ func patchUpdatedBy(parent, child string) string {
 }
 
 func writeFormationsError(w http.ResponseWriter, err error) {
+	var admission *formations.RunAdmissionError
 	switch {
+	case errors.As(err, &admission):
+		WriteRunAdmissionError(w, admission)
 	case errors.Is(err, formations.ErrDefinitionPublicationUncertain):
 		core.WriteError(w, http.StatusServiceUnavailable, "DEFINITION_PUBLICATION_UNCERTAIN", "Reload both board and layout before any explicit retry")
 	case errors.Is(err, formations.ErrInvalidToolMutation):

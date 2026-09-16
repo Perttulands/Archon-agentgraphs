@@ -184,7 +184,7 @@ func (s *Store) CreateBoard(req BoardCreateRequest) (*BoardDocument, error) {
 	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
-		return nil, fmt.Errorf("%w: board title is required", ErrInvalidSlug)
+		title = req.Slug
 	}
 	var created *BoardDocument
 	err := s.withBoardDefinitionLock(req.Slug, func(definition *definitionFile) error {

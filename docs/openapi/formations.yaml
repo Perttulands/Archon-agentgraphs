@@ -258,9 +258,13 @@ paths:
         '400':
           description: Invalid request or unsupported redacted execution
         '409':
-          description: Coordinator closing or stale board revision
+          description: Coordinator closing or stale board revision; checked before admission findings
         '422':
-          description: Definition rejected or unsupported schedule
+          description: Run admission failed. error.code is RUN_ADMISSION_FAILED and error.findings lists every problem the run would hit; no run is recorded. Other 422 errors reject the definition.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdmissionErrorEnvelope'
   /api/formations/runs/{runId}:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -392,6 +396,54 @@ paths:
           duplicate or stale human request: null
         '422':
           description: Run state does not permit a verdict, or the frozen gate definition or prerequisite evidence failed validation
+  /api/formations/boards/{board}/validation:
+    parameters:
+    - in: path
+      name: board
+      required: true
+      schema:
+        type: string
+    get:
+      summary: List what the whole board still needs before its runs can start
+      description: Structural findings plus run admission checks for every node. The cockpit marks draft nodes from this report.
+      responses:
+        '200':
+          description: Validation report
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - success
+                - timestamp
+                - data
+                properties:
+                  success:
+                    const: true
+                  timestamp:
+                    type: string
+                  data:
+                    type: object
+                    required:
+                    - boardRev
+                    - boardEtag
+                    - errors
+                    - warnings
+                    properties:
+                      boardRev:
+                        type: integer
+                      boardEtag:
+                        type: string
+                      errors:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/BoardFinding'
+                      warnings:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/BoardFinding'
+        '404':
+          description: No such board
   /api/formations/boards/{board}/changes:
     parameters:
     - in: path
@@ -584,6 +636,47 @@ components:
       schema:
         type: string
   schemas:
+    BoardFinding:
+      type: object
+      required:
+      - code
+      - nodeId
+      - message
+      properties:
+        code:
+          type: string
+          description: Stable finding code, such as unstaffed_slot or gate_not_routable
+        nodeId:
+          type: string
+          description: Node or connection ID; empty for a board-level finding
+        message:
+          type: string
+    AdmissionErrorEnvelope:
+      type: object
+      required:
+      - success
+      - timestamp
+      - error
+      properties:
+        success:
+          const: false
+        timestamp:
+          type: string
+        error:
+          type: object
+          required:
+          - code
+          - message
+          - findings
+          properties:
+            code:
+              const: RUN_ADMISSION_FAILED
+            message:
+              type: string
+            findings:
+              type: array
+              items:
+                $ref: '#/components/schemas/BoardFinding'
     ReceiptEnvelope:
       type: object
       required:

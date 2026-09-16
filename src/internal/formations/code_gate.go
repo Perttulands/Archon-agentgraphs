@@ -235,21 +235,6 @@ func knownCodeGateProfiles() []string {
 	return names
 }
 
-func codeGateDefinitionIsRoutable(gate GateNode) bool {
-	if !hasGateKind(gate.Kinds, "code") {
-		return true
-	}
-	key := codeGateProfileKey{
-		id:      strings.TrimSpace(gate.Check),
-		version: strings.TrimSpace(gate.CheckVersion),
-	}
-	profile, ok := codeGateProfiles[key]
-	if !ok || validateCodeGateProfileDescriptor(profile.descriptor) != nil {
-		return false
-	}
-	return strings.TrimSpace(gate.CheckValue) != ""
-}
-
 // BEGIN CODE GATE EVALUATOR BUNDLE
 func evaluateCodeGateOperation(operation codeGateOperation, output, value string) (bool, string, error) {
 	switch operation {

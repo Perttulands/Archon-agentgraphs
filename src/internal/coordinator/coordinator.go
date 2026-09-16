@@ -347,6 +347,21 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
+	// One report lists every problem on the revision the operator has seen.
+	// The fail-fast checks below and in the engine remain as defence in depth.
+	if match := r.Header.Get("If-Match"); req.ExpectedRev != board.Rev || match != "" && match != board.ETag {
+		failure(w, formations.ErrConflict)
+		return
+	}
+	if err := formations.CheckRunAdmission(board, c.personas, formations.RunAdmissionScope{MissionID: req.MissionID, FormationID: req.FormationID}); err != nil {
+		var admission *formations.RunAdmissionError
+		if errors.As(err, &admission) {
+			api.WriteRunAdmissionError(w, admission)
+			return
+		}
+		failure(w, err)
+		return
+	}
 	// Admit the schedules supported by the shared seat executor.
 	for _, node := range board.Formations {
 		if node.Type != formations.FormationTypeSolo && node.Type != formations.FormationTypePeer && node.Type != formations.FormationTypeOrchestrated || len(node.Slots) == 0 {

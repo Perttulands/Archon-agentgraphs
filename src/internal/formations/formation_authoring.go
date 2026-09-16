@@ -901,7 +901,7 @@ func (s *Store) createGate(slug string, req GateCreateRequest, opts WriteOptions
 	if err := validateSlug(slug); err != nil {
 		return nil, err
 	}
-	if err := validateCodeGateAuthoring(req.Check, req.CheckVersion, req.CheckValue); err != nil {
+	if err := validateCodeGateAuthoring(req.Check, req.CheckVersion); err != nil {
 		return nil, err
 	}
 	if opts.ExpectedETag == "" || opts.ExpectedRev == 0 {
@@ -947,7 +947,7 @@ func (s *Store) UpdateGate(slug string, req GateUpdateRequest, opts WriteOptions
 	if err := rejectLegacyScriptGateWrite(req.LegacyCommandFieldsPresent, req.Command, req.CommandArgv, req.CommandCWD, req.CommandShell); err != nil {
 		return nil, err
 	}
-	if err := validateCodeGateAuthoring(req.Check, req.CheckVersion, req.CheckValue); err != nil {
+	if err := validateCodeGateAuthoring(req.Check, req.CheckVersion); err != nil {
 		return nil, err
 	}
 	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, _ *BoardDocument) ([]byte, error) {
@@ -974,30 +974,26 @@ func (s *Store) UpdateGate(slug string, req GateUpdateRequest, opts WriteOptions
 	})
 }
 
-func validateCodeGateAuthoring(check, checkVersion, checkValue string) error {
-	if strings.TrimSpace(check) == "" && strings.TrimSpace(checkVersion) == "" && strings.TrimSpace(checkValue) == "" {
-		return nil
+// validateCodeGateAuthoring accepts drafts: the profile, its version and its
+// value may each be blank, and run admission reports what is still missing. A
+// profile or version that is given must name a registered profile, because an
+// unknown tuple is malformed input rather than missing input.
+func validateCodeGateAuthoring(check, checkVersion string) error {
+	check, checkVersion = strings.TrimSpace(check), strings.TrimSpace(checkVersion)
+	if check == "" || checkVersion == "" {
+		for _, descriptor := range ListCodeGateProfileDescriptors() {
+			if (check == "" || descriptor.ProfileID == check) && (checkVersion == "" || descriptor.ProfileVersion == checkVersion) {
+				return nil
+			}
+		}
+		return fmt.Errorf("%w: unknown profile tuple %q@%q", ErrInvalidCodeGateProfile, check, checkVersion)
 	}
 	descriptor, ok := LookupCodeGateProfileDescriptor(check, checkVersion)
 	if !ok {
-		return fmt.Errorf(
-			"%w: unknown profile tuple %q@%q",
-			ErrInvalidCodeGateProfile,
-			strings.TrimSpace(check),
-			strings.TrimSpace(checkVersion),
-		)
+		return fmt.Errorf("%w: unknown profile tuple %q@%q", ErrInvalidCodeGateProfile, check, checkVersion)
 	}
 	if err := validateCodeGateProfileDescriptor(descriptor); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidCodeGateProfile, err)
-	}
-	if strings.TrimSpace(checkValue) == "" {
-		return fmt.Errorf(
-			"%w: profile %q@%q requires non-empty parameter %q",
-			ErrInvalidCodeGateProfile,
-			descriptor.ProfileID,
-			descriptor.ProfileVersion,
-			descriptor.ParameterName,
-		)
 	}
 	return nil
 }
@@ -1047,7 +1043,7 @@ func (s *Store) CreateMission(slug string, req MissionCreateRequest, opts WriteO
 }
 
 func (s *Store) createMission(slug string, req MissionCreateRequest, opts WriteOptions, fault func(string) error) (*MissionCreateResult, error) {
-	if !isSafeBeadsIssueID(req.BeadID) {
+	if req.BeadID != "" && !isSafeBeadsIssueID(req.BeadID) {
 		return nil, fmt.Errorf("%w: mission beadId must be a safe Beads issue id", ErrInvalidSlug)
 	}
 	if err := validateSlug(slug); err != nil {
@@ -1392,6 +1388,9 @@ func (s *Store) updateBoardDefinition(slug, updatedBy string, opts WriteOptions,
 }
 
 func newFormationNode(req FormationCreateRequest) (FormationNode, error) {
+	if req.Type == "" {
+		req.Type = FormationTypeSolo
+	}
 	if err := validateFormationType(req.Type); err != nil {
 		return FormationNode{}, err
 	}

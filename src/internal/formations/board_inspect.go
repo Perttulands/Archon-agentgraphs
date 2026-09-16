@@ -3,6 +3,7 @@ package formations
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // Finding codes reported by ValidateBoard. They are stable strings so CLI and
@@ -88,21 +89,7 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	}
 
 	for _, gate := range board.Gates {
-		hasJudgeChain := len(judgeChainForGate(board, gate.ID)) > 0
-		hasScriptCommand := gateHasLegacyScriptCommand(gate)
-		hasFormationKind := hasGateKind(gate.Kinds, "formation")
-		hasOnlySupportedKinds := len(gate.Kinds) > 0
-		for _, kind := range gate.Kinds {
-			if kind != "code" && kind != "formation" && kind != "human" {
-				hasOnlySupportedKinds = false
-			}
-		}
-		codeRouteIsExecutable := !hasGateKind(gate.Kinds, "code") ||
-			codeGateDefinitionIsRoutable(gate)
-		isRoutable := hasOnlySupportedKinds &&
-			(!hasFormationKind || hasJudgeChain) &&
-			codeRouteIsExecutable
-		if hasScriptCommand {
+		if gateHasLegacyScriptCommand(gate) {
 			report.Errors = append(report.Errors, BoardFinding{
 				Code:    FindingLegacyScriptGate,
 				NodeID:  gate.ID,
@@ -110,11 +97,11 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 				Details: gate.LegacyScriptMigration,
 			})
 		}
-		if !isRoutable {
+		if gaps := gateRouteGaps(board, gate); len(gaps) > 0 {
 			report.Errors = append(report.Errors, BoardFinding{
 				Code:    FindingGateNotRoutable,
 				NodeID:  gate.ID,
-				Message: fmt.Sprintf("gate %q has no complete executable route; configure a registered code check, attach the declared formation judge chain, or use a human-only gate", gate.ID),
+				Message: fmt.Sprintf("gate %q needs %s", gate.ID, strings.Join(gaps, "; ")),
 			})
 		}
 	}
@@ -201,6 +188,62 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	sortFindings(report.Errors)
 	sortFindings(report.Warnings)
 	return report
+}
+
+// gateRouteGaps names what a gate still needs before a run can route through
+// it. An empty result means every declared kind has an executable route.
+func gateRouteGaps(board *BoardDocument, gate GateNode) []string {
+	if len(gate.Kinds) == 0 {
+		return []string{"a kind: code, formation or human"}
+	}
+	var gaps []string
+	seen := make(map[string]bool, len(gate.Kinds))
+	for _, kind := range gate.Kinds {
+		if seen[kind] {
+			continue
+		}
+		seen[kind] = true
+		switch kind {
+		case "code":
+			if gap := codeGateRouteGap(gate); gap != "" {
+				gaps = append(gaps, gap)
+			}
+		case "formation":
+			if len(judgeChainForGate(board, gate.ID)) == 0 {
+				gaps = append(gaps, "a judge chain wired from its judge port through a formation and back")
+			}
+		case "human":
+		default:
+			gaps = append(gaps, fmt.Sprintf("a supported kind in place of %q (code, formation or human)", kind))
+		}
+	}
+	return gaps
+}
+
+// codeGateRouteGap applies the run preflight's code check rules
+// (preflightSelectedCodeGates) and names the missing or malformed part.
+func codeGateRouteGap(gate GateNode) string {
+	check, version := strings.TrimSpace(gate.Check), strings.TrimSpace(gate.CheckVersion)
+	registered := strings.Join(knownCodeGateProfiles(), " or ")
+	if check == "" && version == "" {
+		return "a code check (" + registered + ")"
+	}
+	descriptor, ok := LookupCodeGateProfileDescriptor(check, version)
+	switch {
+	case !ok && version == "":
+		return fmt.Sprintf("a version for code check %q", check)
+	case !ok && check == "":
+		return fmt.Sprintf("a code check for version %q", version)
+	case !ok:
+		return fmt.Sprintf("a registered code check in place of unknown %s@%s (%s)", check, version, registered)
+	}
+	if err := validateCodeGateProfileDescriptor(descriptor); err != nil {
+		return fmt.Sprintf("an admissible code check: %v", err)
+	}
+	if strings.TrimSpace(gate.CheckValue) == "" {
+		return fmt.Sprintf("%s for code check %s@%s", strings.ToLower(descriptor.ParameterLabel), descriptor.ProfileID, descriptor.ProfileVersion)
+	}
+	return ""
 }
 
 func sortFindings(findings []BoardFinding) {
