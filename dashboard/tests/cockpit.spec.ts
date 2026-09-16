@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { cockpitFixture, seats } from './cockpit-fixture'
+import { cockpitFixture, runCwd, seats } from './cockpit-fixture'
 
 test('theme fallback, local font, notes and harness icons survive', async ({ page }) => {
   const fixture = await cockpitFixture(page, { themeFailure: true })
@@ -85,6 +85,25 @@ test('formation titles stay readable beside the type chip and run controls', asy
   for (const control of [card.locator('.ftype'), card.getByRole('button', { name: 'Peek at Peer review' }), card.getByRole('button', { name: 'Run formation' })]) {
     await expect(control).toBeVisible()
   }
+})
+
+test('the run banner docks above the canvas and never covers a card', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 850 })
+  await cockpitFixture(page, { run: true })
+  await page.goto('/')
+  const banner = page.getByTestId('run-banner')
+  await expect(banner).toBeVisible()
+  await expect(page.locator('.formation .fhead').first()).toBeVisible()
+  const bannerBox = (await banner.boundingBox())!
+  const canvasBox = (await page.getByTestId('formations-canvas').boundingBox())!
+  expect(bannerBox.y + bannerBox.height).toBeLessThanOrEqual(canvasBox.y + 1)
+  for (const head of await page.locator('.formation .fhead, .missioncard .mhd, .gatecard').all()) {
+    const box = (await head.boundingBox())!
+    expect(box.y).toBeGreaterThanOrEqual(bannerBox.y + bannerBox.height)
+  }
+  const cwd = banner.locator('.run-cwd')
+  await expect(cwd).toHaveAttribute('title', runCwd)
+  expect(await cwd.evaluate(el => el.scrollWidth > el.clientWidth && el.clientWidth <= 260)).toBe(true)
 })
 
 test('a formation without seats never opens a different formation', async ({ page }) => {

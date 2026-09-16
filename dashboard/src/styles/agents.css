@@ -96,7 +96,7 @@
 .agx-identity .ri .r,.agx-candidate .ri .r { margin-top:2px; color:var(--dim); font-size:9px; letter-spacing:.08em; text-transform:uppercase; }
 
 /* ===== RUN BANNER + CREATE POPOVER ===== */
-.agx .run-banner { position:sticky; top:0; left:auto; transform:none; flex-wrap:wrap; max-width:none; margin:0 0 14px; overflow-x:auto; }
+.agx .run-banner { position:sticky; top:0; flex-wrap:wrap; margin:0 0 14px; border:1px solid var(--line); border-radius:4px; }
 .agx .pop-head { cursor:default; }
 .agx .pop-body select.f {
   width:100%; background:var(--paper2); border:1px solid var(--line); border-radius:6px; padding:9px 11px;

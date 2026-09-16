@@ -2428,6 +2428,31 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           </div>
         </aside>
 
+        {/* The run banner docks above the canvas so it never covers cards. */}
+        <div className="canvas-column">
+            {activeRun ? (
+              <div className="run-banner" data-testid="run-banner">
+                <span>run</span>
+                <span className={`badge ${runBadgeClass}`}>{activeRun.status}</span>
+                {runChoices.length > 1 ? (
+                  <select
+                    className="run-picker"
+                    aria-label="Choose run"
+                    value={activeRun.runId}
+                    onChange={event => {
+                      setLinkError('')
+                      setPinnedRun({ slug: selectedSlug, runId: event.target.value })
+                    }}
+                  >
+                    {runChoices.map(run => <option key={run.runId} value={run.runId}>{runChoiceLabel(run)}</option>)}
+                  </select>
+                ) : null}
+                {activeRun.cwd && <span className="run-cwd" title={activeRun.cwd}>{activeRun.cwd}</span>}
+                {activeRun.beadId && <span>{activeRun.beadId}</span>}
+                {!activeRun.final && activeRun.resumeAllowed ? <button type="button" onClick={() => void resumeActiveRun()}>Resume run</button> : null}
+                {!activeRun.final ? <button type="button" onClick={() => void abortActiveRun()}>stop</button> : null}
+              </div>
+            ) : null}
         <div className="viewport" data-testid="formations-canvas" ref={viewportRef} onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
           <div className="world" data-testid="formations-world" ref={worldRef} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
             <svg className="wires" width={3400} height={2300}>
@@ -2756,29 +2781,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             })}
           </div>
 
-          {activeRun ? (
-            <div className="run-banner" data-testid="run-banner">
-              <span>run</span>
-              <span className={`badge ${runBadgeClass}`}>{activeRun.status}</span>
-              {runChoices.length > 1 ? (
-                <select
-                  className="run-picker"
-                  aria-label="Choose run"
-                  value={activeRun.runId}
-                  onChange={event => {
-                    setLinkError('')
-                    setPinnedRun({ slug: selectedSlug, runId: event.target.value })
-                  }}
-                >
-                  {runChoices.map(run => <option key={run.runId} value={run.runId}>{runChoiceLabel(run)}</option>)}
-                </select>
-              ) : null}
-              {activeRun.cwd && <span className="run-cwd" title={activeRun.cwd}>{activeRun.cwd}</span>}
-              {activeRun.beadId && <span>{activeRun.beadId}</span>}
-              {!activeRun.final && activeRun.resumeAllowed ? <button type="button" onClick={() => void resumeActiveRun()}>Resume run</button> : null}
-              {!activeRun.final ? <button type="button" onClick={() => void abortActiveRun()}>stop</button> : null}
-            </div>
-          ) : null}
 
           {activeRun && !activeRun.final && pendingHumanGate ? (
             <HumanGateAnswerPanel
@@ -2829,6 +2831,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             titleOf={nodeId => noteElements.find(element => element.id === nodeId)?.title || nodeId}
             onDismiss={() => setAdmissionFindings([])}
           />
+        </div>
         </div>
 
         <aside className={`board-notes${notesOpen ? ' open' : ' collapsed'}`} aria-label="Shared board notepad">

@@ -25,6 +25,7 @@ export const board = {
     { id: 'pass', from: 'gate:pass', to: 'peer:in' },
   ],
 }
+export const runCwd = '/srv/scratch/archon-browser-fixture/a/deliberately/long/working/directory/for/the/run'
 const positions = [
   { id: 'mission', x: 112, y: 112 }, { id: 'execution', x: 448, y: 112 },
   { id: 'peer', x: 1120, y: 112 }, { id: 'judge', x: 784, y: 504 },
@@ -70,7 +71,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
       { id: 'claude', displayName: 'Claude controller', harnessDefault: 'claude-code', assignable: true, liveness: 'live', tags: [], kind: 'controller' },
       { id: 'codex', displayName: 'Codex builder', harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' },
     ] })
-    if (path === '/api/formations/runs/run_browser') return respond({ runId: 'run_browser', status: 'running', final: false, boardSlug: 'browser', missionId: 'mission', eventCount: 2 })
+    if (path === '/api/formations/runs/run_browser') return respond({ runId: 'run_browser', status: 'running', final: false, boardSlug: 'browser', missionId: 'mission', eventCount: 2, cwd: runCwd })
     if (path.endsWith('/events')) return respond({ events: [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' }] })
     if (path.endsWith('/escalations')) return respond({ escalations: [] })
     if (path.endsWith('/seats')) { seatsFetches++; return respond({ runId: 'run_browser', available: true, seats }) }

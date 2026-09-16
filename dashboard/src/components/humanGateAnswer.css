@@ -1,5 +1,5 @@
 /* Pending human gate: what the gate received, the operator's answer, the decision. */
-.fmx .gate-answer{position:absolute;top:66px;right:12px;z-index:65;width:min(460px,calc(100% - 24px));max-height:calc(100% - 80px);display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--gold);border-radius:4px;padding:11px 13px;box-shadow:0 4px 16px rgba(0,0,0,.4);overflow:auto;}
+.fmx .gate-answer{position:absolute;top:12px;right:12px;z-index:65;width:min(460px,calc(100% - 24px));max-height:calc(100% - 24px);display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--gold);border-radius:4px;padding:11px 13px;box-shadow:0 4px 16px rgba(0,0,0,.4);overflow:auto;}
 .fmx .gate-answer-hd{display:flex;flex-direction:column;gap:2px;}
 .fmx .gate-answer-kicker{font-size:9.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--gold);font-weight:700;}
 .fmx .gate-answer-title{font-size:13px;font-weight:700;color:var(--ink);}
