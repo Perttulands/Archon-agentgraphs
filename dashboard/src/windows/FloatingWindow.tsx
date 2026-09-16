@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from 'react'
 import FloatingFrameHandles from './FloatingFrameHandles'
 import type { FloatingWindowKind, FrameSize } from './floatingWindowSize'
+import type { WindowRect } from './windowGeometry'
 import { useFloatingWindow } from './useFloatingWindow'
 import './floatingWindows.css'
 
@@ -8,20 +9,22 @@ import './floatingWindows.css'
  * A floating window with the standard chrome: a title bar to drag, a close
  * button, and handles on every edge and corner. What it holds is the caller's.
  */
-export default function FloatingWindow({ id, kind, title, label, defaultSize, actions, className, onClose, children }: {
+export default function FloatingWindow({ id, kind, title, label, defaultSize, anchor, actions, className, onClose, children }: {
   id: string
   kind: FloatingWindowKind
   title: ReactNode
   /** The window's accessible name, and what its handles and close button call it. */
   label: string
   defaultSize: FrameSize
+  /** What the window opens beside, in viewport pixels; see useFloatingWindow. */
+  anchor?: () => WindowRect | null
   /** Controls drawn in the title bar before the close button. */
   actions?: ReactNode
   className?: string
   onClose: () => void
   children: ReactNode
 }) {
-  const win = useFloatingWindow<HTMLElement>({ id, kind, label, defaultSize, onClose })
+  const win = useFloatingWindow<HTMLElement>({ id, kind, label, defaultSize, anchor, onClose })
   const { ref } = win.rootProps
 
   // Opening a window takes keyboard focus; closing it gives focus back.

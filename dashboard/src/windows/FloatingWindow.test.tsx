@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import FloatingWindow from './FloatingWindow'
 import { WindowManagerProvider, useWindowManager } from './WindowManager'
 import { readFloatingWindowSize } from './floatingWindowSize'
-import type { Workspace } from './windowGeometry'
+import type { WindowRect, Workspace } from './windowGeometry'
 
 // jsdom lays nothing out, so the workspace is given directly: a 1200 x 800
 // canvas with the zoom column in its bottom-right corner.
@@ -12,7 +12,7 @@ const zoom = { left: 1120, top: 560, width: 80, height: 240 }
 let canvas: Workspace = { bounds: { left: 0, top: 0, width: 1200, height: 800 }, avoid: [zoom] }
 const workspace = () => canvas
 
-function Harness({ initial }: { initial: string[] }) {
+function Harness({ initial, anchors = {} }: { initial: string[]; anchors?: Record<string, WindowRect> }) {
   const stack = useWindowManager(workspace)
   const [open, setOpen] = useState(initial)
   return (
@@ -21,7 +21,7 @@ function Harness({ initial }: { initial: string[] }) {
       <WindowManagerProvider stack={stack}>
         {open.map(id => (
           <FloatingWindow key={id} id={id} kind="node" title={`Window ${id}`} label={`window ${id}`}
-            defaultSize={{ width: 400, height: 300 }} onClose={() => setOpen(ids => ids.filter(other => other !== id))}>
+            defaultSize={{ width: 400, height: 300 }} anchor={anchors[id] ? () => anchors[id] : undefined} onClose={() => setOpen(ids => ids.filter(other => other !== id))}>
             <p>Body of {id}</p>
           </FloatingWindow>
         ))}
@@ -71,6 +71,21 @@ describe('floating windows', () => {
     expect(rectOf('w1')).toEqual({ left: 400, top: 250, width: 400, height: 300 })
     expect(rectOf('w2')).toEqual({ left: 428, top: 278, width: 400, height: 300 })
     expect(zOf('w2')).toBeGreaterThan(zOf('w1'))
+  })
+
+  it('opens beside its anchor, and centred when the anchor is out of view', () => {
+    render(<Harness initial={['w1']} anchors={{
+      w1: { left: 100, top: 120, width: 200, height: 100 },
+      w2: { left: 900, top: 100, width: 200, height: 100 },
+      w3: { left: -500, top: 100, width: 200, height: 100 },
+    }} />)
+    expect(rectOf('w1')).toEqual({ left: 312, top: 120, width: 400, height: 300 })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open another' }))
+    expect(rectOf('w2')).toEqual({ left: 488, top: 100, width: 400, height: 300 })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open another' }))
+    expect(rectOf('w3')).toEqual({ left: 456, top: 306, width: 400, height: 300 })
   })
 
   it('moves by its title bar and stays inside the workspace', () => {

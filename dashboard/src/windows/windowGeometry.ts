@@ -97,6 +97,32 @@ export function placeWindow(size: FrameSize, workspace: Workspace, minimum: Fram
   }, workspace, minimum)
 }
 
+/** Room left between a window and the thing it opened beside. */
+export const ANCHOR_GAP = 12
+
+/**
+ * A new window beside what it belongs to: right of it, else left of it, below
+ * or above, whichever side first fits the workspace without covering it. The
+ * window lines up with the anchor's top or left edge. Null when the anchor is
+ * out of view or no side leaves it uncovered, so the window opens centred.
+ */
+export function placeBeside(size: FrameSize, anchor: WindowRect, workspace: Workspace, minimum: FrameSize): WindowRect | null {
+  const { bounds } = workspace
+  if (!rectsOverlap(anchor, bounds)) return null
+  const fitted = clampFrameSize(size, minimum, bounds)
+  const sides: WindowRect[] = [
+    { ...fitted, left: right(anchor) + ANCHOR_GAP, top: anchor.top },
+    { ...fitted, left: anchor.left - ANCHOR_GAP - fitted.width, top: anchor.top },
+    { ...fitted, left: anchor.left, top: bottom(anchor) + ANCHOR_GAP },
+    { ...fitted, left: anchor.left, top: anchor.top - ANCHOR_GAP - fitted.height },
+  ]
+  for (const side of sides) {
+    const held = keepInWorkspace(side, workspace, minimum)
+    if (!rectsOverlap(held, anchor)) return held
+  }
+  return null
+}
+
 /** A window moved by the pointer's travel since the gesture began. */
 export function moveWindowRect(start: WindowRect, dx: number, dy: number, workspace: Workspace, minimum: FrameSize): WindowRect {
   return keepInWorkspace({ ...start, left: start.left + dx, top: start.top + dy }, workspace, minimum)

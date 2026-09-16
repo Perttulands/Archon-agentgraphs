@@ -23,7 +23,7 @@ import {
   type FrameSize,
 } from './floatingWindowSize'
 import { WINDOW_Z_BASE, useWindowStack } from './WindowManager'
-import { keepInWorkspace, moveWindowRect, placeWindow, resizeWindowRect, type HandleAxis, type WindowRect } from './windowGeometry'
+import { keepInWorkspace, moveWindowRect, placeBeside, placeWindow, resizeWindowRect, type HandleAxis, type WindowRect, type Workspace } from './windowGeometry'
 
 export type FrameHandleId = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
@@ -69,6 +69,12 @@ export interface UseFloatingWindowOptions {
   label: string
   defaultSize: FrameSize
   minimum?: FrameSize
+  /**
+   * Where the thing the window belongs to sits, in viewport pixels, read as the
+   * window opens. The window opens beside it; without one, or when it is out of
+   * view, the window opens centred.
+   */
+  anchor?: () => WindowRect | null
   onClose: () => void
 }
 
@@ -96,12 +102,18 @@ export interface FloatingWindow<T extends HTMLElement> {
 // A press on a control in the title bar uses the control, not the window.
 const CONTROL = 'button,select,input,textarea,a,[role="separator"]'
 
+function openingRect(size: FrameSize, workspace: Workspace, minimum: FrameSize, cascade: number, anchor?: () => WindowRect | null): WindowRect {
+  const beside = anchor?.()
+  return (beside && placeBeside(size, beside, workspace, minimum)) || placeWindow(size, workspace, minimum, cascade)
+}
+
 export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   id,
   kind,
   label,
   defaultSize,
   minimum = FLOATING_WINDOW_MINIMUM[kind],
+  anchor,
   onClose,
 }: UseFloatingWindowOptions): FloatingWindow<T> {
   const stack = useWindowStack()
@@ -111,7 +123,7 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   const placedAt = useRef({ cascade: -1, size: defaultSize })
   const [rect, setRect] = useState<WindowRect>(() => {
     placedAt.current = { cascade: openCount(), size: readFloatingWindowSize(kind) ?? defaultSize }
-    return placeWindow(placedAt.current.size, workspace(), minimum, placedAt.current.cascade)
+    return openingRect(placedAt.current.size, workspace(), minimum, placedAt.current.cascade, anchor)
   })
   const rectRef = useRef(rect)
   rectRef.current = rect
@@ -119,8 +131,8 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   const cleanupRef = useRef<(() => void) | null>(null)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
-  const placement = useRef({ kind, minimum })
-  placement.current = { kind, minimum }
+  const placement = useRef({ kind, minimum, anchor })
+  placement.current = { kind, minimum, anchor }
 
   // Windows opened in the same render all counted the same windows before them,
   // so each steps past the ones registered first before it paints.
@@ -128,7 +140,7 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
     const cascade = openCount()
     if (cascade !== placedAt.current.cascade) {
       placedAt.current = { ...placedAt.current, cascade }
-      setRect(placeWindow(placedAt.current.size, workspace(), placement.current.minimum, cascade))
+      setRect(openingRect(placedAt.current.size, workspace(), placement.current.minimum, cascade, placement.current.anchor))
     }
     return register(id)
   }, [id, openCount, register, workspace])
