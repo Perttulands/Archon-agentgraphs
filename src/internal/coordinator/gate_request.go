@@ -8,7 +8,7 @@ import (
 )
 
 // The pending-gate read route shows the operator what a human gate is waiting
-// on. The run evidence API (form-3rq) will absorb or supersede it, so the
+// on. The run evidence API (form-3rq) will absorb it, so the
 // handler and its response type stay together in this file.
 
 // pendingGateInputMaxBytes bounds the served input text; the cockpit reads it

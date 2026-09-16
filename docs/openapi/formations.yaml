@@ -360,7 +360,7 @@ paths:
         type: string
     get:
       summary: Pending-gate read route; read what a pending human gate received
-      description: Provisional; the run evidence API (form-3rq) will absorb or supersede it.
+      description: The operator-approved run evidence API (form-3rq) will absorb this route.
       responses:
         '200':
           description: Enveloped data.request contains gateId, requestedSeq, the frozen criterion and input (fromNodeId, fromPortId, text capped at 64 KiB, truncated) for the gate's pending request. Refs, paths, prompts and session identities are omitted.

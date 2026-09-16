@@ -152,15 +152,14 @@ The public projection includes cwd and Bead ID but excludes prompt text,
 artifact contents, brief paths, native session IDs and arbitrary private event
 data. Read detailed reasons and artifacts locally in the private evidence.
 The pending-gate read route
-`GET /api/formations/runs/{runId}/gates/{gateId}/request` is the one content
-read outside the projection. An operator cannot answer a human gate without
-reading what it received, and the projection carries no content. For the
-gate's latest request, while it is pending, the route returns `gateId`,
-`requestedSeq`, the frozen `criterion` and the routed input: `fromNodeId`,
-`fromPortId`, `text` capped at 64 KiB, and `truncated`. It never returns refs,
-paths, prompts or session identities. An unknown run or gate returns 404; a
-decided request returns 409. The run evidence API (form-3rq) will absorb or
-supersede this route.
+`GET /api/formations/runs/{runId}/gates/{gateId}/request` lets the operator
+read what a human gate received before answering it, because the projection
+carries no content. For the gate's latest request, while it is pending, the
+route returns `gateId`, `requestedSeq`, the frozen `criterion` and the routed
+input: `fromNodeId`, `fromPortId`, `text` capped at 64 KiB, and `truncated`.
+It never returns refs, paths, prompts or session identities. An unknown run or
+gate returns 404; a decided request returns 409. The operator-approved run
+evidence API (form-3rq) will absorb this route.
 `run logs` is the same sanitized projection as `run status`. `run follow` prints
 complete enveloped projections from SSE after durable changes, waits through
 human gates and closes only at finality. Interrupting that client stops viewing,
