@@ -618,10 +618,10 @@ describe('FormationsCockpit reference parity', () => {
       expect.stringContaining('Builder owns this element.'),
       expect.stringContaining('Staffed Mason as the lead.'),
     ])
-    expect(screen.getByTestId('note-entry-nte_operator')).toHaveClass('human')
-    expect(screen.getByTestId('note-entry-nte_agent')).toHaveClass('agent')
-    expect(within(screen.getByTestId('note-entry-nte_operator')).getByText('operator')).toHaveClass('note-author', 'human')
-    expect(within(screen.getByTestId('note-entry-nte_agent')).getByText('archon')).toHaveClass('note-author', 'agent')
+    expect(screen.getByTestId('note-entry-nte_operator')).toHaveClass('note-entry-human')
+    expect(screen.getByTestId('note-entry-nte_agent')).toHaveClass('note-entry-agent')
+    expect(within(screen.getByTestId('note-entry-nte_operator')).getByText('operator')).toHaveClass('note-author', 'note-author-human')
+    expect(within(screen.getByTestId('note-entry-nte_agent')).getByText('archon')).toHaveClass('note-author', 'note-author-agent')
     expect(within(screen.getByTestId('note-entry-nte_agent')).queryByRole('button')).toBeNull()
 
     const reply = within(notepad).getByLabelText('Element note')

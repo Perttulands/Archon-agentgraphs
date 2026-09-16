@@ -35,9 +35,9 @@ export function NoteThread({ label, entries, editingEntryId, busy, onEdit, onDel
         const own = entry.author === COCKPIT_NOTE_AUTHOR
         const when = noteTime(entry.createdAt)
         return (
-          <li key={entry.id} className={`note-entry ${author.kind}${editingEntryId === entry.id ? ' editing' : ''}`} data-testid={`note-entry-${entry.id}`}>
+          <li key={entry.id} className={`note-entry note-entry-${author.kind}${editingEntryId === entry.id ? ' editing' : ''}`} data-testid={`note-entry-${entry.id}`}>
             <div className="note-entry-head">
-              <span className={`note-author ${author.kind}`} title={entry.author}>{author.name}</span>
+              <span className={`note-author note-author-${author.kind}`} title={entry.author}>{author.name}</span>
               <span className="note-time">{when}{entry.editedAt ? ' · edited' : ''}</span>
               {own ? (
                 <span className="note-entry-actions">
@@ -61,7 +61,7 @@ export function NotePreview({ title, entries }: { title: string; entries: NoteEn
   const author = noteAuthor(latest.author)
   return (
     <div className="note-preview" role="note" aria-label={`Notes for ${title}`}>
-      <span className={`note-author ${author.kind}`} title={latest.author}>{author.name}</span>
+      <span className={`note-author note-author-${author.kind}`} title={latest.author}>{author.name}</span>
       {entries.length > 1 ? <span className="note-count">+{entries.length - 1} earlier</span> : null}
       <span className="note-preview-text">{latest.text}</span>
     </div>

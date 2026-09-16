@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"os"
 	"strings"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
@@ -79,6 +78,12 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrAmbiguousSelector
 	case "INVALID_GATE_KIND":
 		return formations.ErrInvalidGateKind
+	case "INVALID_NOTE_PATCH":
+		return formations.ErrInvalidNotePatch
+	case "NOTE_ENTRY_NOT_FOUND":
+		return formations.ErrNoteEntryNotFound
+	case "NOTE_AUTHOR_MISMATCH":
+		return formations.ErrNoteAuthorMismatch
 	case formations.FindingInvalidCodeGateProfile:
 		return formations.ErrInvalidCodeGateProfile
 	case "INVALID_DEFINITION_SOURCE":
@@ -307,52 +312,18 @@ func remoteBoardNotes(c *remoteClient, args []string, stdout, stderr io.Writer) 
 	if *jsonOut {
 		return writeJSON(stdout, notes)
 	}
-	if notes.Board == "" && len(notes.Elements) == 0 {
-		fmt.Fprintf(stdout, "%s\tno notes\n", board.Slug)
-		return 0
-	}
-	if notes.Board != "" {
-		fmt.Fprintf(stdout, "[board]\n%s\n", notes.Board)
-	}
-	for _, note := range notes.Elements {
-		fmt.Fprintf(stdout, "\n[%s]\n%s\n", note.NodeID, note.Text)
-	}
+	writeBoardNotesText(stdout, board.Slug, notes)
 	return 0
 }
 
 func remoteBoardNote(c *remoteClient, args []string, stdout, stderr io.Writer) int {
-	fs := remoteFlags("board note", stderr)
-	text := fs.String("text", "", "note text")
-	file := fs.String("file", "", "read note text from file")
-	node := fs.String("node", "", "element id; omit for the board note")
-	clear := fs.Bool("clear", false, "clear the selected note")
-	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
-	jsonOut := fs.Bool("json", false, "write JSON")
-	if err := fs.Parse(reorderFlags(args, map[string]bool{"clear": true, "json": true})); err != nil {
-		return 2
+	selector, patch, jsonOut, code := parseBoardNote(remoteFlags("board note", stderr), args, stderr)
+	if code != 0 {
+		return code
 	}
-	if fs.NArg() != 1 || boolCount(givenFlags(fs)["text"], *file != "", *clear) != 1 {
-		fmt.Fprintln(stderr, "usage: archon board note <board> (--text <text> | --file <path> | --clear) [--node <element-id>] [--json]")
-		return 2
-	}
-	value := *text
-	if *file != "" {
-		raw, err := os.ReadFile(*file)
-		if err != nil {
-			return fail(stderr, err)
-		}
-		value = string(raw)
-	}
-	if *clear {
-		value = ""
-	}
-	target := strings.TrimSpace(*node)
-	if target == "" {
-		target = formations.BoardNoteTarget
-	}
-	board, err := c.readBoard(fs.Arg(0))
+	board, err := c.readBoard(selector)
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteFail(stderr, err, jsonOut, "board", selector)
 	}
 	var data json.RawMessage
 	for attempt := 1; ; attempt++ {
@@ -360,23 +331,19 @@ func remoteBoardNote(c *remoteClient, args []string, stdout, stderr io.Writer) i
 		if readErr != nil {
 			return fail(stderr, readErr)
 		}
-		data, _, err = c.call("PATCH", boardPath(board.Slug, "notes"), formations.BoardNotePatch{Target: target, Text: value, UpdatedBy: *updatedBy}, etag)
+		data, _, err = c.call("PATCH", boardPath(board.Slug, "notes"), patch, etag)
 		if !isRemoteWriteRace(err) || attempt == remoteWriteAttempts {
 			break
 		}
 	}
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failJSON(stderr, err, jsonOut, "board", selector)
 	}
 	updated, err := decodeRemote[formations.BoardNotesDocument](data, "notes")
 	if err != nil {
 		return fail(stderr, err)
 	}
-	if *jsonOut {
-		return writeJSON(stdout, updated)
-	}
-	fmt.Fprintf(stdout, "updated %s note on %s (notes rev %d)\n", target, board.Slug, updated.Rev)
-	return 0
+	return writeBoardNoteResult(stdout, board.Slug, patch, updated, jsonOut)
 }
 
 func remoteBoardValidate(c *remoteClient, args []string, stdout, stderr io.Writer) int {

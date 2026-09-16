@@ -168,7 +168,8 @@ func newAuthoringSides(t *testing.T) (offline, remote authoringSide, server *htt
 
 var (
 	authoringIDPattern       = regexp.MustCompile(`\b([a-z]+)_[0-9A-HJKMNP-TV-Z]{26}\b`)
-	authoringVolatilePattern = regexp.MustCompile(`"(etag|updatedAt|createdAt)": "[^"]*"`)
+	authoringVolatilePattern = regexp.MustCompile(`"(etag|updatedAt|createdAt|editedAt)": "[^"]*"`)
+	authoringTimePattern     = regexp.MustCompile(`\b\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z\b`)
 )
 
 // normalizeAuthoring numbers IDs by first appearance and hides ETags and times.
@@ -180,11 +181,14 @@ func normalizeAuthoring(text string) string {
 		}
 		return ids[id]
 	})
-	return authoringVolatilePattern.ReplaceAllString(text, `"$1": "-"`)
+	text = authoringVolatilePattern.ReplaceAllString(text, `"$1": "-"`)
+	return authoringTimePattern.ReplaceAllString(text, "-")
 }
 
 type authoringStep struct {
 	args func(board *formations.BoardDocument) []string
+	// noteArgs, when set, builds the step from the side's notes instead.
+	noteArgs func(board *formations.BoardDocument, notes *formations.BoardNotesDocument) []string
 	// errorOnly compares only the JSON error code, boundary and selector.
 	errorOnly bool
 }
@@ -287,6 +291,20 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"board", "note", "demo", "--node", worker(board).ID, "--text", "Worker intent"}
 		})},
+		{noteArgs: func(board *formations.BoardDocument, notes *formations.BoardNotesDocument) []string {
+			return with(fixed("board", "note", "demo", "--node", worker(board).ID, "--text", "Reply"))(board)
+		}},
+		{noteArgs: func(board *formations.BoardDocument, notes *formations.BoardNotesDocument) []string {
+			entries := workerNotes(notes, worker(board).ID)
+			return with(fixed("board", "note", "demo", "--node", worker(board).ID, "--entry", entries[len(entries)-1].ID, "--text", "Edited reply"))(board)
+		}},
+		{noteArgs: func(board *formations.BoardDocument, notes *formations.BoardNotesDocument) []string {
+			return with(fixed("board", "note", "demo", "--node", worker(board).ID, "--entry", workerNotes(notes, worker(board).ID)[0].ID, "--text", "Not mine", "--author", "human:ui"))(board)
+		}, errorOnly: true},
+		{noteArgs: func(board *formations.BoardDocument, notes *formations.BoardNotesDocument) []string {
+			return with(fixed("board", "note", "demo", "--clear", "--entry", notes.Board[0].ID))(board)
+		}},
+		{args: with(fixed("board", "note", "demo", "--text", "Board intent"))},
 		{args: with(fixed("board", "notes", "demo"))},
 		{args: with(fixed("board", "arrange", "demo"))},
 		{args: with(fixed("board", "validate", "demo"))},
@@ -298,6 +316,15 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("formation", "create", "missing-board")), errorOnly: true},
 	}
 	return steps
+}
+
+func workerNotes(notes *formations.BoardNotesDocument, nodeID string) []formations.NoteEntry {
+	for _, element := range notes.Elements {
+		if element.NodeID == nodeID {
+			return element.Entries
+		}
+	}
+	return []formations.NoteEntry{{ID: "nte_missing"}}
 }
 
 func errorIdentity(t *testing.T, stderr string) string {
@@ -318,7 +345,15 @@ func TestRemoteAuthoringMatchesOfflineCommands(t *testing.T) {
 				var args []string
 				for _, side := range []authoringSide{offline, remote} {
 					board, _ := side.store.ReadBoard("demo")
-					args = step.args(board)
+					if step.noteArgs != nil {
+						notes, _ := side.store.ReadBoardNotes("demo")
+						if notes == nil {
+							notes = &formations.BoardNotesDocument{}
+						}
+						args = step.noteArgs(board, notes)
+					} else {
+						args = step.args(board)
+					}
 					stdout, stderr, code := side.run(args...)
 					results[side.name] = [3]string{normalizeAuthoring(stdout), stderr, strconv.Itoa(code)}
 				}
@@ -347,7 +382,7 @@ func TestRemoteAuthoringMatchesOfflineCommands(t *testing.T) {
 			if err != nil || len(board.Missions) != 1 || len(board.Formations) != 2 || len(board.Gates) != 2 || len(board.Connections) != 4 || board.UpdatedBy != "agent:archon" {
 				t.Fatalf("remote board: %v missions %d formations %d gates %d connections %d by %s", err, len(board.Missions), len(board.Formations), len(board.Gates), len(board.Connections), board.UpdatedBy)
 			}
-			if notes, err := remote.store.ReadBoardNotes("demo"); err != nil || notes.Board != "Board intent" || len(notes.Elements) != 1 {
+			if notes, err := remote.store.ReadBoardNotes("demo"); err != nil || len(notes.Board) != 1 || notes.Board[0].Text != "Board intent" || len(notes.Elements) != 1 || len(notes.Elements[0].Entries) != 2 || notes.Elements[0].Entries[1].Text != "Edited reply" {
 				t.Fatalf("remote notes = %+v, %v", notes, err)
 			}
 			if card, err := formations.NewPersonaStore(filepath.Join(filepath.Dir(remote.store.BoardPath("demo")), "..", "..", "agents")).ReadPersona("scout-x"); err != nil || card.DisplayName != "Scout X" || card.Summary != "Finds things" {
@@ -370,10 +405,16 @@ func TestRemoteAuthoringCoversEveryCommandWithOfflineFlags(t *testing.T) {
 	offline, remote, _ := newAuthoringSides(t)
 	scripted := map[string]bool{}
 	for _, step := range authoringScript(t, false) {
-		args := step.args(&formations.BoardDocument{Formations: []formations.FormationNode{
+		board := &formations.BoardDocument{Formations: []formations.FormationNode{
 			{ID: "fmn_x", Title: "Worker", Inputs: []formations.FormationPort{{ID: "port_in"}}, Outputs: []formations.FormationPort{{ID: "port_out"}}, Slots: []formations.FormationSlot{{ID: "slot_x"}}},
 			{ID: "fmn_y", Title: "Critic", Slots: []formations.FormationSlot{{ID: "slot_y"}}},
-		}, Gates: []formations.GateNode{{ID: "gate_x", Title: "Review"}}})
+		}, Gates: []formations.GateNode{{ID: "gate_x", Title: "Review"}}}
+		var args []string
+		if step.noteArgs != nil {
+			args = step.noteArgs(board, &formations.BoardNotesDocument{Board: []formations.NoteEntry{{ID: "nte_x"}}})
+		} else {
+			args = step.args(board)
+		}
 		scripted[args[0]+" "+args[1]] = true
 	}
 	for command := range remoteAuthoringCommands {

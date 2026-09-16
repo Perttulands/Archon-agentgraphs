@@ -2109,9 +2109,16 @@ func runBoardNotes(store *formations.Store, args []string, stdout, stderr io.Wri
 	if *jsonOut {
 		return writeJSON(stdout, notes)
 	}
+	writeBoardNotesText(stdout, slug, notes)
+	return 0
+}
+
+// writeBoardNotesText prints each thread with one header line per entry; the
+// offline and --server commands share it so their output matches.
+func writeBoardNotesText(stdout io.Writer, slug string, notes *formations.BoardNotesDocument) {
 	if len(notes.Board) == 0 && len(notes.Elements) == 0 {
 		fmt.Fprintf(stdout, "%s\tno notes\n", slug)
-		return 0
+		return
 	}
 	writeThread := func(target string, entries []formations.NoteEntry) {
 		fmt.Fprintf(stdout, "[%s]\n", target)
@@ -2129,12 +2136,34 @@ func runBoardNotes(store *formations.Store, args []string, stdout, stderr io.Wri
 	for _, element := range notes.Elements {
 		writeThread(element.NodeID, element.Entries)
 	}
-	return 0
 }
 
 func runBoardNote(store *formations.Store, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("board note", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	selector, patch, jsonOut, code := parseBoardNote(fs, args, stderr)
+	if code != 0 {
+		return code
+	}
+	slug, err := store.ResolveBoardSelector(selector)
+	if err != nil {
+		return failSelector(stderr, err, jsonOut, "board", selector)
+	}
+	current, err := store.ReadBoardNotes(slug)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	updated, err := store.UpdateBoardNote(slug, patch, formations.NoteWriteOptions{ExpectedETag: current.ETag})
+	if err != nil {
+		return failJSON(stderr, err, jsonOut, "board", selector)
+	}
+	return writeBoardNoteResult(stdout, slug, patch, updated, jsonOut)
+}
+
+// parseBoardNote reads the board note flags shared by the offline and --server
+// commands. A note appends; --entry edits or, with --clear, deletes one of the
+// author's own entries.
+func parseBoardNote(fs *flag.FlagSet, args []string, stderr io.Writer) (string, formations.BoardNotePatch, bool, int) {
 	text := fs.String("text", "", "note text")
 	file := fs.String("file", "", "read note text from file")
 	node := fs.String("node", "", "element id; omit for the board thread")
@@ -2144,31 +2173,28 @@ func runBoardNote(store *formations.Store, args []string, stdout, stderr io.Writ
 	updatedBy := fs.String("updated-by", "", "older name for --author")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"clear": true, "json": true})); err != nil {
-		return 2
+		return "", formations.BoardNotePatch{}, false, 2
 	}
-	given := map[string]bool{}
-	fs.Visit(func(flagValue *flag.Flag) { given[flagValue.Name] = true })
+	given := givenFlags(fs)
 	if fs.NArg() != 1 || boolCount(given["text"], *file != "", *clear) != 1 || *clear && *entry == "" {
 		fmt.Fprintln(stderr, "usage: archon board note <board> [--node <element-id>] (--text <text> | --file <path>) [--entry <id>] [--author <human|agent>:<name>] [--json]")
 		fmt.Fprintln(stderr, "       archon board note <board> [--node <element-id>] --clear --entry <id>")
 		fmt.Fprintln(stderr, "A note appends to the thread. --entry edits or, with --clear, deletes one of your own entries; others' entries cannot be changed.")
-		return 2
+		return "", formations.BoardNotePatch{}, *jsonOut, 2
 	}
-	slug, err := store.ResolveBoardSelector(fs.Arg(0))
-	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+	patch := formations.BoardNotePatch{Target: strings.TrimSpace(*node), Text: *text, Author: *author}
+	if patch.Target == "" {
+		patch.Target = formations.BoardNoteTarget
 	}
-	value := *text
+	if given["updated-by"] && !given["author"] {
+		patch.Author = *updatedBy
+	}
 	if *file != "" {
 		raw, err := os.ReadFile(*file)
 		if err != nil {
-			return fail(stderr, err)
+			return "", formations.BoardNotePatch{}, *jsonOut, fail(stderr, err)
 		}
-		value = string(raw)
-	}
-	patch := formations.BoardNotePatch{Target: strings.TrimSpace(*node), Text: value, Author: *author}
-	if given["updated-by"] && !given["author"] {
-		patch.Author = *updatedBy
+		patch.Text = string(raw)
 	}
 	switch {
 	case *clear:
@@ -2178,18 +2204,11 @@ func runBoardNote(store *formations.Store, args []string, stdout, stderr io.Writ
 	default:
 		patch.Action = formations.NoteActionAppend
 	}
-	if patch.Target == "" {
-		patch.Target = formations.BoardNoteTarget
-	}
-	current, err := store.ReadBoardNotes(slug)
-	if err != nil {
-		return fail(stderr, err)
-	}
-	updated, err := store.UpdateBoardNote(slug, patch, formations.NoteWriteOptions{ExpectedETag: current.ETag})
-	if err != nil {
-		return failJSON(stderr, err, *jsonOut, "board", fs.Arg(0))
-	}
-	if *jsonOut {
+	return fs.Arg(0), patch, *jsonOut, 0
+}
+
+func writeBoardNoteResult(stdout io.Writer, slug string, patch formations.BoardNotePatch, updated *formations.BoardNotesDocument, jsonOut bool) int {
+	if jsonOut {
 		return writeJSON(stdout, updated)
 	}
 	switch patch.Action {
