@@ -1,7 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AgentsView, { orderReachableItems, reachableMissionItems } from './AgentsView'
-import { activeRunStorageKey } from './formationsRunState'
 import type { BoardDocument, LayoutDocument } from './formationsTypes'
 
 describe('AgentsView', () => {
@@ -145,20 +144,11 @@ describe('AgentsView', () => {
     expect(gateCard.textContent).not.toMatch(/formation/)
   })
 
-  it('labels restored runs by their mission and lets the user jump to mismatched run missions', async () => {
-    const board = {
-      ...missionBoard(),
-      missions: [
-        { id: 'mission-alpha', title: 'Mission Alpha', goal: 'Ship the redesign', beadId: 'chrt-hgc9' },
-        { id: 'mission-beta', title: 'Mission Beta', goal: 'Review the fallback', beadId: 'chrt-hgc9' },
-      ],
-    }
-    window.localStorage.setItem(activeRunStorageKey('mission-board'), 'run-beta')
+  it('reports the mission run from the daemon read-only and links it to Boards', async () => {
+    const board = missionBoard()
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
-      if (url === '/api/agents') {
-        return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0 } }))
-      }
+      if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0 } }))
       if (url === '/api/formations/boards') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' }] } }))
       }
@@ -168,33 +158,40 @@ describe('AgentsView', () => {
       if (url === '/api/formations/boards/mission-board') {
         return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'board-etag' }))
       }
-      if (url === '/api/formations/runs/run-beta') {
-        return Promise.resolve(jsonResponse({ success: true, data: runStatus('run-beta', 'mission-beta') }))
+      if (url === '/api/formations/runs?board=mission-board') {
+        return Promise.resolve(jsonResponse({
+          success: true,
+          data: [
+            { ...runStatus('run_01A_old', 'mission-alpha'), status: 'succeeded', final: true },
+            { ...runStatus('run_01B_cli', 'mission-alpha'), status: 'waiting_human', waitingGates: [{ gateId: 'human-review', requestedSeq: 4 }] },
+            { ...runStatus('run_01C_other', 'mission-beta'), status: 'running' },
+          ],
+        }))
       }
-      if (url === '/api/formations/runs/run-beta/events') {
-        return Promise.resolve(jsonResponse({ success: true, data: { events: [] } }))
+      if (url === '/api/formations/runs/run_01B_cli/events') {
+        return Promise.resolve(jsonResponse({ success: true, data: { events: [{ seq: 3, type: 'node_output', nodeId: 'authoring', status: 'done' }, { seq: 4, type: 'human_input_requested', nodeId: 'human-review', gateId: 'human-review' }] } }))
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`))
     })
 
     render(<AgentsView />)
 
-    expect(await screen.findByText('Run: Mission Beta')).toBeInTheDocument()
-    expect(screen.getByText('This run belongs to Mission Beta, not Mission Alpha.')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /view run mission/i }))
-
-    expect(screen.getByLabelText('Mission')).toHaveValue('mission-beta')
+    const run = await screen.findByTestId('mission-run')
+    await waitFor(() => expect(run).toHaveTextContent('waiting_human'))
+    expect(run).toHaveTextContent('waiting on Human Review')
+    expect(within(run).getByRole('link', { name: 'Open on Boards' })).toHaveAttribute('href', '?board=mission-board&run=run_01B_cli')
+    for (const action of [/start mission/i, /^pass$/i, /^fail$/i, /^resume/i, /^stop$/i]) {
+      expect(screen.queryByRole('button', { name: action })).toBeNull()
+    }
+    expect(fetchMock.mock.calls.some(([, init]) => init && (init as RequestInit).method && (init as RequestInit).method !== 'GET')).toBe(false)
+    expect(window.localStorage.length).toBe(0)
   })
 
-  it('records a gate verdict without inventing an operator response', async () => {
-    const board = fullyStaffedMissionBoard()
-    const verdicts: unknown[] = []
-    window.localStorage.setItem(activeRunStorageKey('mission-board'), 'run-gate')
-    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+  it('names why the mission run is blocked from its run evidence', async () => {
+    const board = missionBoard()
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
-      if (url === '/api/agents') {
-        return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0 } }))
-      }
+      if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0 } }))
       if (url === '/api/formations/boards') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' }] } }))
       }
@@ -204,31 +201,69 @@ describe('AgentsView', () => {
       if (url === '/api/formations/boards/mission-board') {
         return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'board-etag' }))
       }
-      if (url === '/api/formations/runs/run-gate/gates/human-review/verdict' && init?.method === 'POST') {
-        verdicts.push(JSON.parse(String(init.body)))
-        return Promise.resolve(jsonResponse({ success: true, data: { runId: 'run-gate' } }))
+      if (url === '/api/formations/runs?board=mission-board') {
+        return Promise.resolve(jsonResponse({ success: true, data: [{ ...runStatus('run_01D_blocked', 'mission-alpha'), status: 'blocked', resumeAllowed: false }] }))
       }
-      if (url === '/api/formations/runs/run-gate') {
-        return Promise.resolve(jsonResponse({
-          success: true,
-          data: { ...runStatus('run-gate', 'mission-alpha'), status: 'blocked', waitingGates: [{ gateId: 'human-review', requestedSeq: 4 }] },
-        }))
+      if (url === '/api/formations/runs/run_01D_blocked/events') {
+        return Promise.resolve(jsonResponse({ success: true, data: { events: [{ seq: 7, type: 'run_blocked', nodeId: 'human-review', gateId: 'human-review' }] } }))
       }
-      if (url === '/api/formations/runs/run-gate/events') {
-        return Promise.resolve(jsonResponse({
-          success: true,
-          data: { events: [{ runId: 'run-gate', seq: 4, type: 'human_input_requested', gateId: 'human-review', actor: 'agent:archon', ts: '2026-09-16T12:00:00Z' }] },
-        }))
+      if (url === '/api/formations/runs/run_01D_blocked/evidence/nodes/human-review') {
+        return Promise.resolve(jsonResponse({ success: true, data: { evidence: { runId: 'run_01D_blocked', nodeId: 'human-review', kind: 'gate', problems: [{ seq: 7, type: 'run_blocked', reason: { text: 'invalid judge result: expected exactly one chrote-verdict block', bytes: 64 }, resumeAllowed: false }] } } }))
+      }
+      if (url === '/api/formations/runs?board=empty') return Promise.resolve(jsonResponse({ success: true, data: [] }))
+      return Promise.reject(new Error(`unexpected fetch ${url}`))
+    })
+
+    render(<AgentsView />)
+
+    const run = await screen.findByTestId('mission-run')
+    await waitFor(() => expect(run).toHaveTextContent('blocked: invalid judge result: expected exactly one chrote-verdict block'))
+    expect(within(run).getByRole('link', { name: 'Open on Boards' })).toHaveAttribute('href', '?board=mission-board&run=run_01D_blocked')
+  })
+
+  it('edits a persona from the Agents tab with the shared persona editor', async () => {
+    const board = emptyBoard()
+    const patches: Array<{ headers: HeadersInit | undefined; body: unknown }> = []
+    let displayName = 'Susie'
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('susie', { displayName, harnessDefault: 'claude-code' })], count: 1 } }))
+      if (url === '/api/agents/susie' && init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body))
+        patches.push({ headers: init.headers, body })
+        displayName = body.displayName
+        return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName }) }, 200, { ETag: 'susie-etag-2' }))
+      }
+      if (url === '/api/agents/susie') {
+        return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName, summary: 'Designs things', harnessVariants: [{ id: 'claude-code', sessionStem: 'susie', launch: 'claude' }] }) }, 200, { ETag: 'susie-etag' }))
+      }
+      if (url === '/api/formations/boards') {
+        return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
+      }
+      if (url === '/api/formations/boards/empty/layout') {
+        return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
+      }
+      if (url === '/api/formations/boards/empty') {
+        return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'empty-etag' }))
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`))
     })
 
     render(<AgentsView />)
 
-    fireEvent.click(await screen.findByRole('button', { name: /^pass$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /inspect Susie/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit persona' }))
+    const editor = await screen.findByTestId('persona-editor')
+    const name = await within(editor).findByLabelText('Agent display name')
+    expect(within(editor).getByLabelText('Agent summary')).toHaveValue('Designs things')
+    fireEvent.change(name, { target: { value: 'Susie Designer' } })
+    fireEvent.click(within(editor).getByRole('button', { name: 'Save agent override' }))
 
-    await waitFor(() => expect(verdicts).toHaveLength(1))
-    expect(verdicts[0]).toEqual({ actor: 'agent:ui', verdict: 'pass', requestedSeq: 4, reason: '' })
+    await waitFor(() => expect(patches).toHaveLength(1))
+    expect(headerValue(patches[0].headers, 'If-Match')).toBe('susie-etag')
+    expect(patches[0].body).toMatchObject({ displayName: 'Susie Designer', summary: 'Designs things', launch: 'claude' })
+    await waitFor(() => expect(screen.queryByTestId('persona-editor')).toBeNull())
+    expect(await screen.findByRole('button', { name: /inspect Susie Designer/i })).toBeInTheDocument()
   })
 
   it('offers a board retry when the selected board fails to load', async () => {
@@ -307,53 +342,6 @@ describe('AgentsView', () => {
     expect(await screen.findByRole('button', { name: /assign Good/i })).toBeEnabled()
     expect(screen.getByText('failed detail load')).toBeInTheDocument()
     expect(screen.queryByText('Agent eligibility request failed')).not.toBeInTheDocument()
-  })
-
-  it('starts a fully staffed mission with the board ETag contract', async () => {
-    const board = fullyStaffedMissionBoard()
-    const posts: Array<{ headers: HeadersInit | undefined; body: unknown }> = []
-    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
-      if (url === '/api/agents') {
-        return Promise.resolve(jsonResponse({
-          success: true,
-          data: {
-            agents: [
-              agent('susie', { displayName: 'Susie', harnessDefault: 'claude-code' }),
-              agent('coder', { displayName: 'Coder', harnessDefault: 'openai-codex' }),
-            ],
-            count: 2,
-          },
-        }))
-      }
-      if (url === '/api/formations/boards') {
-        return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' }] } }))
-      }
-      if (url === '/api/formations/boards/mission-board/layout') {
-        return Promise.resolve(jsonResponse({ success: true, data: { layout: missionLayout() } }, 200, { ETag: 'layout-etag' }))
-      }
-      if (url === '/api/formations/boards/mission-board') {
-        return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'board-etag' }))
-      }
-      if (url === '/api/formations/runs' && init?.method === 'POST') {
-        posts.push({ headers: init.headers, body: JSON.parse(String(init.body)) })
-        return Promise.resolve(jsonResponse({ success: true, data: { runId: 'run-started', status: runStatus('run-started', 'mission-alpha') } }))
-      }
-      if (url === '/api/formations/runs/run-started') { return Promise.resolve(jsonResponse({ success: true, data: runStatus('run-started', 'mission-alpha') })) }
-      if (url === '/api/formations/runs/run-started/events') {
-        return Promise.resolve(jsonResponse({ success: true, data: { events: [] } }))
-      }
-      return Promise.reject(new Error(`unexpected fetch ${url}`))
-    })
-
-    render(<AgentsView />)
-
-    fireEvent.click(await screen.findByRole('button', { name: /start mission/i }))
-
-    await waitFor(() => expect(posts).toHaveLength(1))
-    expect(headerValue(posts[0].headers, 'If-Match')).toBe('board-etag')
-    expect(posts[0].body).toMatchObject({ board: 'mission-board', missionId: 'mission-alpha', actor: 'agent:ui' })
-    await waitFor(() => expect(window.localStorage.getItem(activeRunStorageKey('mission-board'))).toBe('run-started'))
   })
 
   it('groups personas by harness with harness marks and states only what differs from offline', async () => {
@@ -573,17 +561,6 @@ function missionBoard(): BoardDocument {
       { id: 'c3', from: 'human-review:pass', to: 'fix-pass:in' },
       { id: 'c4', from: 'human-review:fail', to: 'escalate-fail:in' },
     ],
-  }
-}
-
-function fullyStaffedMissionBoard(): BoardDocument {
-  const board = missionBoard()
-  return {
-    ...board,
-    formations: board.formations.map(formation => ({
-      ...formation,
-      slots: formation.slots.map(slot => ({ ...slot, agentId: slot.agentId || 'coder' })),
-    })),
   }
 }
 

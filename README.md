@@ -35,7 +35,8 @@ This capture uses a real tmux shell running CLI help. It is labelled as a demo;
 no model is running in it.
 
 The Agents view keeps reusable personas beside the mission's staffing. Inspect
-a persona's settings and see which slots use it before starting work.
+and edit a persona and see which slots use it. It shows the mission's current
+run read-only and links to Boards, where runs start and gates are answered.
 
 ![Agents view with delivery personas, staffed execution slots and the controller inspector](docs/images/agents.png)
 

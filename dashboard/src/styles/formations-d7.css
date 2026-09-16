@@ -417,6 +417,7 @@
   .fmx .run-banner{gap:8px;padding:6px 8px;}
   .fmx .errbar{left:10px;right:10px;max-width:none;}
   .fmx .pop{left:10px;right:10px;width:auto;}
+  .fmx .agent-dialog{transform:none;}
 }
 
 /* ----- Run evidence inspector + needs-you escalations ----- */

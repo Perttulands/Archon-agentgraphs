@@ -123,6 +123,18 @@ test('the phone roster count stays inside its header column', async ({ page }) =
   expect(await count.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
 })
 
+for (const width of [1440, 390]) test(`the persona editor stays inside the viewport at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 })
+  await cockpitFixture(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Edit Codex builder' }).click()
+  const editor = page.getByTestId('persona-editor')
+  await expect(editor.getByLabel('Agent display name')).toHaveValue('Codex builder')
+  const box = (await editor.boundingBox())!
+  expect(box.x).toBeGreaterThanOrEqual(0)
+  expect(box.x + box.width).toBeLessThanOrEqual(width)
+})
+
 test('a formation without seats never opens a different formation', async ({ page }) => {
   await cockpitFixture(page, { run: true })
   const sockets: string[] = []

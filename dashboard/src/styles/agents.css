@@ -56,7 +56,6 @@
 .agx .fhead .tool-kind { margin-bottom:5px; }
 .agx .fbody { overflow-x:auto; }
 .agx .fstatus.agx-fallback { padding-top:10px; color:var(--gold); letter-spacing:.08em; text-transform:uppercase; }
-.agx .missioncard .mrun:disabled { opacity:.4; cursor:not-allowed; }
 .agx .missioncard .mstatus.is-open { color:var(--gold); }
 .agx .gatecard { padding-right:14px; }
 .agx .gmeta .gt,.agx .gmeta .gs { max-width:none; }
@@ -97,6 +96,14 @@
 
 /* ===== RUN BANNER + CREATE POPOVER ===== */
 .agx .run-banner { position:sticky; top:0; flex-wrap:wrap; margin:0 0 14px; border:1px solid var(--line); border-radius:4px; }
+/* Read-only run state: the link is the only action and it opens Boards. */
+.agx .run-banner .badge.waiting_human { color:var(--gold); background:color-mix(in srgb,var(--gold) 16%,transparent); }
+.agx .agx-run-label { color:var(--dim); text-transform:uppercase; letter-spacing:.08em; font-size:10px; }
+.agx .agx-run-none, .agx .agx-run-id { color:var(--dim); }
+.agx .agx-run-reason { max-width:min(520px, 100%); overflow:hidden; text-overflow:ellipsis; color:var(--gold); }
+.agx .agx-run-link { margin-left:auto; border:1px solid var(--line); border-radius:5px; padding:5px 10px; background:var(--paper2); color:var(--ink2); font-size:10px; letter-spacing:.06em; text-decoration:none; text-transform:uppercase; }
+.agx .agx-run-link:hover { border-color:var(--terra); color:var(--terra); }
+.agx .agx-identity .board-action { margin-left:auto; flex-shrink:0; }
 .agx .pop-head { cursor:default; }
 .agx .pop-body select.f {
   width:100%; background:var(--paper2); border:1px solid var(--line); border-radius:6px; padding:9px 11px;

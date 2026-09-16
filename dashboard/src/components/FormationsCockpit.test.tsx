@@ -754,6 +754,7 @@ describe('FormationsCockpit reference parity', () => {
     const editTrigger = within(roster).getByRole('button', { name: 'Edit Codex Builder' })
     fireEvent.click(editTrigger)
     const dialog = await screen.findByRole('dialog', { name: 'Edit agent preset' })
+    expect(dialog).toHaveAttribute('data-testid', 'persona-editor')
     expect(await within(dialog).findByLabelText('Agent display name')).toHaveFocus()
     fireEvent.change(within(dialog).getByLabelText('Agent display name'), { target: { value: 'Repository Builder' } })
     fireEvent.change(within(dialog).getByLabelText('Agent capabilities'), { target: { value: 'implement, test, refactor' } })

@@ -20,7 +20,6 @@ import {
   createBoard,
   deleteBoard,
   fetchAgents,
-  fetchAgentCard,
   fetchBoardChanged,
   fetchBoardNotes,
   fetchBoardSummaries,
@@ -32,7 +31,6 @@ import {
   fetchBoardRuns,
   fetchRunStatus,
   missingLayoutForBoard,
-  overrideAgentCard,
   patchBoardNote,
   patchBoardDocument,
   patchBoardLayout,
@@ -53,6 +51,7 @@ import { FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentS
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
 const RunEvidence = lazy(() => import('../evidence/RunEvidence'))
 import DismissiblePanel from './DismissiblePanel'
+import PersonaEditorDialog from './PersonaEditorDialog'
 import HumanGateAnswerPanel, { type GateDecision } from './HumanGateAnswerPanel'
 import { useHumanGateUpstream } from './useHumanGateUpstream'
 import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom, splitList } from './formationsCockpitDom'
@@ -148,21 +147,6 @@ type BoardDialogState = {
   saving: boolean
   error: string
 }
-type AgentEditorState = {
-  id: string
-  preset: boolean
-  customized: boolean
-  displayName: string
-  kind: string
-  summary: string
-  capabilities: string
-  sessionStem: string
-  launch: string
-  etag: string
-  loading: boolean
-  saving: boolean
-  error: string
-}
 type CockpitUndo =
   | { kind: 'clearBrief'; formationId: string }
   | { kind: 'setBrief'; formationId: string; brief: FormationBrief }
@@ -225,7 +209,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [gateEditor, setGateEditor] = useState<GateEditorState | null>(null)
   const [briefEditor, setBriefEditor] = useState<BriefEditorState | null>(null)
   const [boardDialog, setBoardDialog] = useState<BoardDialogState | null>(null)
-  const [agentEditor, setAgentEditor] = useState<AgentEditorState | null>(null)
+  const [agentEditor, setAgentEditor] = useState<{ agent: AgentProjection; trigger: HTMLElement | null } | null>(null)
   const [notesOpen, setNotesOpen] = useState(false)
   const [notes, setNotes] = useState<BoardNotesDocument | null>(null)
   const [boardNoteDraft, setBoardNoteDraft] = useState('')
@@ -267,19 +251,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const legacyVerificationPendingRef = useRef(false)
   const legacyVerificationRequestRef = useRef<symbol | null>(null)
   const boardDialogReturnFocusRef = useRef<HTMLElement | null>(null)
-  const agentEditorReturnFocusRef = useRef<HTMLElement | null>(null)
 
   const closeBoardDialog = useCallback(() => {
     const trigger = boardDialogReturnFocusRef.current
     boardDialogReturnFocusRef.current = null
     setBoardDialog(null)
-    window.setTimeout(() => { if (trigger?.isConnected) trigger.focus() }, 0)
-  }, [])
-
-  const closeAgentEditor = useCallback(() => {
-    const trigger = agentEditorReturnFocusRef.current
-    agentEditorReturnFocusRef.current = null
-    setAgentEditor(null)
     window.setTimeout(() => { if (trigger?.isConnected) trigger.focus() }, 0)
   }, [])
 
@@ -293,16 +269,15 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   useEffect(() => { judgeHoverRef.current = judgeHover }, [judgeHover])
 
   useEffect(() => {
-    if (!boardDialog && !agentEditor) return
+    if (!boardDialog) return
     const closeDialog = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || boardDialog?.saving || agentEditor?.saving) return
+      if (event.key !== 'Escape' || boardDialog.saving) return
       event.preventDefault()
-      if (boardDialog) closeBoardDialog()
-      if (agentEditor) closeAgentEditor()
+      closeBoardDialog()
     }
     window.addEventListener('keydown', closeDialog)
     return () => window.removeEventListener('keydown', closeDialog)
-  }, [agentEditor, boardDialog, closeAgentEditor, closeBoardDialog])
+  }, [boardDialog, closeBoardDialog])
 
   useEffect(() => {
     legacyVerificationRequestRef.current = null
@@ -2220,71 +2195,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     )
   }
 
-  const openAgentEditor = useCallback(async (agent: AgentProjection, trigger?: HTMLElement) => {
-    agentEditorReturnFocusRef.current = trigger || null
-    setAgentEditor({
-      id: agent.id,
-      preset: Boolean(agent.preset),
-      customized: Boolean(agent.customized),
-      displayName: agent.displayName || agent.id,
-      kind: agent.kind || agentRole(agent),
-      summary: '',
-      capabilities: (agent.tags || []).filter(tag => !tag.includes(':')).join(', '),
-      sessionStem: agent.id,
-      launch: '',
-      etag: '',
-      loading: true,
-      saving: false,
-      error: '',
-    })
-    try {
-      const card = await fetchAgentCard(agent.id)
-      const variant = card.harnessVariants.find(candidate => candidate.id === card.harnessDefault) || card.harnessVariants[0]
-      setAgentEditor(current => current?.id === agent.id ? {
-        ...current,
-        preset: Boolean(card.preset),
-        customized: Boolean(card.customized),
-        displayName: card.displayName || card.id,
-        kind: card.kind,
-        summary: card.summary || '',
-        capabilities: (card.tags || []).filter(tag => !tag.includes(':')).join(', '),
-        sessionStem: variant?.sessionStem || card.id,
-        launch: variant?.launch || '',
-        etag: card.etag,
-        loading: false,
-      } : current)
-    } catch (err) {
-      setAgentEditor(current => current?.id === agent.id ? {
-        ...current,
-        loading: false,
-        error: err instanceof Error ? err.message : 'Failed to load agent card',
-      } : current)
-    }
-  }, [])
-
-  const saveAgentOverride = useCallback(async () => {
-    if (!agentEditor || agentEditor.loading || !agentEditor.etag) return
-    setAgentEditor(current => current ? { ...current, saving: true, error: '' } : current)
-    try {
-      await overrideAgentCard(agentEditor.id, agentEditor.etag, {
-        displayName: agentEditor.displayName.trim(),
-        kind: agentEditor.kind.trim(),
-        summary: agentEditor.summary.trim(),
-        capabilities: agentEditor.capabilities.split(',').map(value => value.trim()).filter(Boolean),
-        sessionStem: agentEditor.sessionStem.trim(),
-        launch: agentEditor.launch.trim(),
-      })
-      setAgents(await fetchAgents())
-      closeAgentEditor()
-    } catch (err) {
-      setAgentEditor(current => current ? {
-        ...current,
-        saving: false,
-        error: err instanceof Error ? err.message : 'Failed to save agent override',
-      } : current)
-    }
-  }, [agentEditor, closeAgentEditor])
-
   const rosterAgents = useMemo(() => agents.filter(agent => agent.assignable && !agent.unbound), [agents])
   const rosterSections = useMemo(() => groupRosterByHarness(rosterAgents), [rosterAgents])
   const deployedAgentCount = useMemo(
@@ -2419,7 +2329,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                           aria-label={`Edit ${agent.displayName || agent.id}`}
                           title="Edit persona override"
                           onPointerDown={event => event.stopPropagation()}
-                          onClick={event => { event.stopPropagation(); void openAgentEditor(agent, event.currentTarget) }}
+                          onClick={event => { event.stopPropagation(); setAgentEditor({ agent, trigger: event.currentTarget }) }}
                         >•••</button>
                       </div>
                     )
@@ -2941,55 +2851,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         initialNodeId={peek.nodeId} onClose={() => setPeek(null)} /></Suspense> : null}
 
       {agentEditor ? (
-        <div
-          className="pop agent-dialog"
-          role="dialog"
-          aria-modal="true"
-          aria-label={agentEditor.preset ? 'Edit agent preset' : 'Edit agent'}
-          onPointerDown={event => event.stopPropagation()}
-        >
-          <form onSubmit={event => { event.preventDefault(); void saveAgentOverride() }}>
-            <div className="phd">
-              <span>{agentEditor.preset ? 'Codex preset override' : 'Agent override'}</span>
-              <button autoFocus={agentEditor.loading} type="button" className="x" aria-label="Close agent editor" disabled={agentEditor.saving} onClick={closeAgentEditor}>×</button>
-            </div>
-            <div className="agent-dialog-id">{agentEditor.id}{agentEditor.customized ? ' · customized' : ' · built-in default'}</div>
-            {agentEditor.loading ? <div className="agent-dialog-loading">Loading persona card…</div> : (
-              <div className="agent-dialog-fields">
-                <label>
-                  <span>Display name</span>
-                  <input autoFocus aria-label="Agent display name" value={agentEditor.displayName} onChange={event => setAgentEditor(current => current ? { ...current, displayName: event.target.value } : current)} />
-                </label>
-                <label>
-                  <span>Role</span>
-                  <input aria-label="Agent role" value={agentEditor.kind} onChange={event => setAgentEditor(current => current ? { ...current, kind: event.target.value } : current)} />
-                </label>
-                <label className="wide">
-                  <span>Summary</span>
-                  <textarea aria-label="Agent summary" value={agentEditor.summary} onChange={event => setAgentEditor(current => current ? { ...current, summary: event.target.value } : current)} />
-                </label>
-                <label className="wide">
-                  <span>Capabilities</span>
-                  <input aria-label="Agent capabilities" value={agentEditor.capabilities} placeholder="implement, test, review" onChange={event => setAgentEditor(current => current ? { ...current, capabilities: event.target.value } : current)} />
-                </label>
-                <label>
-                  <span>Session stem</span>
-                  <input aria-label="Agent session stem" value={agentEditor.sessionStem} onChange={event => setAgentEditor(current => current ? { ...current, sessionStem: event.target.value } : current)} />
-                </label>
-                <label className="wide">
-                  <span>Launch command</span>
-                  <input aria-label="Agent launch command" value={agentEditor.launch} onChange={event => setAgentEditor(current => current ? { ...current, launch: event.target.value } : current)} />
-                </label>
-              </div>
-            )}
-            {agentEditor.preset ? <div className="agent-dialog-note">Saving materializes a local persona TOML override; the built-in default remains the fallback.</div> : null}
-            {agentEditor.error ? <div className="dialog-error" role="alert">{agentEditor.error}</div> : null}
-            <div className="board-dialog-actions">
-              <button type="button" disabled={agentEditor.saving} onClick={closeAgentEditor}>Cancel</button>
-              <button className="primary" type="submit" aria-label="Save agent override" disabled={agentEditor.loading || agentEditor.saving || !agentEditor.etag}>{agentEditor.saving ? 'Saving…' : 'Save override'}</button>
-            </div>
-          </form>
-        </div>
+        <PersonaEditorDialog
+          key={agentEditor.agent.id}
+          agent={agentEditor.agent}
+          returnFocus={agentEditor.trigger}
+          onClose={() => setAgentEditor(null)}
+          onSaved={async () => setAgents(await fetchAgents())}
+        />
       ) : null}
 
       {startMission && <StartMissionDialog title={startMission.title} beadId={startMission.beadId} onStart={inputs => runMission(startMission, inputs)} onClose={() => setStartMission(null)} />}

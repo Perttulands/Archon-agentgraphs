@@ -2,32 +2,17 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   ApiRequestError,
-  abortRunRequest,
   fetchAgents,
   fetchApi,
   fetchBoardDocument,
   fetchBoardLayout,
   fetchBoardSummaries,
-  fetchRunEvents,
-  fetchRunStatus,
   patchBoardDocument,
-  recordGateVerdict,
-  resumeRunRequest,
-  startRun,
 } from './formationsApi'
-import {
-  activeRunStorageKey,
-  openHumanGateId,
-  projectNodeStates,
-  runEventResumeAllowed,
-  runEventText,
-  runStatusFromResponse,
-  upsertRunEvent,
-} from './formationsRunState'
+import { projectNodeStates } from './formationsRunState'
 import {
   FormationSeats,
   GATE_SVG,
-  PLAY_SVG,
   agentRole,
   formationSummary,
   groupRosterByHarness,
@@ -36,6 +21,8 @@ import {
   rosterCountLabel,
 } from './formationsCockpitVisuals'
 import { GateKindChips } from './GateEditorDialog'
+import PersonaEditorDialog from './PersonaEditorDialog'
+import { boardsRunHref, useMissionRun, type MissionRunState } from './useMissionRun'
 import type {
   AgentProjection as FormationAgentProjection,
   BoardDocument,
@@ -45,8 +32,6 @@ import type {
   GateNode,
   LayoutDocument,
   MissionNode,
-  RunEvent,
-  RunStatusProjection,
 } from './formationsTypes'
 
 interface HarnessVariant {
@@ -249,14 +234,12 @@ export default function AgentsView() {
   const [createOpen, setCreateOpen] = useState(false)
   const [createDraft, setCreateDraft] = useState<CreateDraft>(EMPTY_CREATE)
   const [noteDraft, setNoteDraft] = useState('')
-  const [activeRun, setActiveRun] = useState<RunStatusProjection | null>(null)
-  const [runEvents, setRunEvents] = useState<RunEvent[]>([])
+  const [editingPersona, setEditingPersona] = useState<{ agent: RosterAgent; trigger: HTMLElement | null } | null>(null)
 
   const selectedMission = board?.missions?.find(mission => mission.id === selectedMissionId) || null
-  const nodeStates = useMemo(() => projectNodeStates(runEvents, activeRun), [activeRun, runEvents])
-  const openGateId = useMemo(() => openHumanGateId(runEvents), [runEvents])
-  const resumeAllowed = Boolean(activeRun?.resumeAllowed || runEvents.some(event => runEventResumeAllowed(event, false)))
-  const activeRunMission = board?.missions?.find(mission => mission.id === activeRun?.missionId) || null
+  // Boards is the run console; this tab only reports the mission's run.
+  const missionRun = useMissionRun(board?.slug || '', selectedMission?.id || '')
+  const nodeStates = useMemo(() => projectNodeStates(missionRun.events, missionRun.run), [missionRun.events, missionRun.run])
 
   const reachableItems = useMemo(() => {
     if (!board || !selectedMissionId) return []
@@ -317,16 +300,6 @@ export default function AgentsView() {
     }
     return { total, staffed, open: Math.max(total - staffed, 0) }
   }, [reachableFormations])
-
-  const startDisabledReason = useMemo(() => {
-    if (!board || !selectedMissionId) return 'Select a mission before starting'
-    if (slotCounts.total === 0) return 'No slots on this mission'
-    if (slotCounts.open > 0) return 'Staff all slots before starting'
-    if (activeRun && !activeRun.final) {
-      return activeRun.missionId === selectedMissionId ? 'Run already active' : 'Another mission is already running'
-    }
-    return ''
-  }, [activeRun, board, selectedMissionId, slotCounts.open, slotCounts.total])
 
   const rosterCounts = useMemo(() => ({
     total: agents.length,
@@ -431,46 +404,6 @@ export default function AgentsView() {
     }
     void loadBoard(selectedSlug)
   }, [loadBoard, selectedSlug])
-
-  useEffect(() => {
-    if (!selectedSlug) return
-    const runId = window.localStorage.getItem(activeRunStorageKey(selectedSlug))
-    if (!runId || activeRun?.runId === runId) return
-    let cancelled = false
-    const restoreRun = async () => {
-      try {
-        const status = runStatusFromResponse(await fetchRunStatus(runId))
-        const events = await fetchRunEvents(runId)
-        if (cancelled) return
-        setActiveRun(status)
-        setRunEvents(events)
-        if (status.final) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to restore active run')
-      }
-    }
-    void restoreRun()
-    return () => { cancelled = true }
-  }, [activeRun?.runId, selectedSlug])
-
-  useEffect(() => {
-    if (!activeRun?.runId || activeRun.final) return
-    let cancelled = false
-    const tick = async () => {
-      try {
-        const status = runStatusFromResponse(await fetchRunStatus(activeRun.runId))
-        const events = await fetchRunEvents(activeRun.runId)
-        if (cancelled) return
-        setActiveRun(status)
-        setRunEvents(prev => events.reduce((acc, event) => upsertRunEvent(acc, event), prev))
-        if (status.final && selectedSlug) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
-      } catch {
-        /* transient run polling failure */
-      }
-    }
-    const timer = window.setInterval(() => { void tick() }, 1200)
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [activeRun?.final, activeRun?.runId, selectedSlug])
 
   const loadAgentDetail = useCallback(async (agentId: string, force = false): Promise<CachedPersona> => {
     if (!force && details[agentId]) return details[agentId]
@@ -625,33 +558,6 @@ export default function AgentsView() {
     }
   }, [details, loadAgentDetail, loadAgents, noteDraft])
 
-  const handleStartMission = useCallback(async () => {
-    if (!board || !selectedMissionId || startDisabledReason) return
-    try {
-      const result = await startRun(board.etag, {
-        board: board.slug,
-        expectedRev: board.rev,
-        missionId: selectedMissionId,
-        actor: 'agent:ui',
-      })
-      const status = runStatusFromResponse(result.status)
-      const runId = result.runId || status.runId
-      setActiveRun(status)
-      if (runId) {
-        window.localStorage.setItem(activeRunStorageKey(board.slug), runId)
-        const events = await fetchRunEvents(runId)
-        setRunEvents(events)
-      }
-      setError('')
-    } catch (err) {
-      if (err instanceof ApiRequestError && (err.status === 409 || err.status === 428)) {
-        setError('Board changed; reload and retry')
-        return
-      }
-      setError(err instanceof Error ? err.message : 'Run start request failed')
-    }
-  }, [board, selectedMissionId, startDisabledReason])
-
   const createFromUnbound = useCallback((agent: RosterAgent) => {
     const sessionStem = agent.sessionId || agent.id
     setCreateDraft({
@@ -664,59 +570,6 @@ export default function AgentsView() {
     })
     setCreateOpen(true)
   }, [])
-
-  const handleGateVerdict = useCallback(async (verdict: 'pass' | 'fail') => {
-    if (!activeRun?.runId || !openGateId || !selectedSlug) return
-    try {
-      const status = runStatusFromResponse(await recordGateVerdict(activeRun.runId, openGateId, {
-        actor: 'agent:ui',
-        verdict,
-        requestedSeq: activeRun.waitingGates?.find(gate => gate.gateId === openGateId)?.requestedSeq || 0,
-        // A pass reason reaches the next formation as the operator's response.
-        // This tab has no answer field, so it sends none.
-        reason: '',
-      }))
-      setActiveRun(status)
-      const events = await fetchRunEvents(activeRun.runId)
-      setRunEvents(events)
-      if (status.final) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gate verdict request failed')
-    }
-  }, [activeRun, openGateId, selectedSlug])
-
-  const handleResume = useCallback(async () => {
-    if (!activeRun?.runId || !selectedSlug) return
-    try {
-      const status = runStatusFromResponse(await resumeRunRequest(activeRun.runId, {
-        actor: 'agent:ui',
-        mode: 'continue',
-        reason: 'Resumed from Agents tab',
-      }))
-      setActiveRun(status)
-      const events = await fetchRunEvents(activeRun.runId)
-      setRunEvents(events)
-      if (!status.final) window.localStorage.setItem(activeRunStorageKey(selectedSlug), status.runId)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Run resume request failed')
-    }
-  }, [activeRun?.runId, selectedSlug])
-
-  const handleAbort = useCallback(async () => {
-    if (!activeRun?.runId || !selectedSlug) return
-    try {
-      const status = runStatusFromResponse(await abortRunRequest(activeRun.runId, {
-        requestedBy: 'agent:ui',
-        reason: 'Stopped from Agents tab',
-      }))
-      setActiveRun(status)
-      const events = await fetchRunEvents(activeRun.runId)
-      setRunEvents(events)
-      window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Run abort request failed')
-    }
-  }, [activeRun?.runId, selectedSlug])
 
   const selectedAgentId = selection?.kind === 'agent' || selection?.kind === 'unbound' ? selection.agentId : ''
   const rosterSummary = rosterCountLabel(loading ? '…' : rosterCounts.total, { live: rosterCounts.live, placed: rosterCounts.deployed, scope: 'mission' })
@@ -820,20 +673,8 @@ export default function AgentsView() {
               </button>
             </div>
           )}
-          {activeRun && (
-            <RunBanner
-              status={activeRun}
-              missionTitle={activeRunMission?.title || activeRun.missionId}
-              selectedMissionTitle={selectedMission?.title || selectedMissionId}
-              missionMismatch={Boolean(activeRun.missionId && activeRun.missionId !== selectedMissionId)}
-              events={runEvents}
-              openGateId={openGateId}
-              resumeAllowed={resumeAllowed}
-              onViewMission={() => setSelectedMissionId(activeRun.missionId)}
-              onVerdict={handleGateVerdict}
-              onResume={handleResume}
-              onAbort={handleAbort}
-            />
+          {board && selectedMission && (
+            <MissionRunState board={board} missionRun={missionRun} />
           )}
           <div className="agx-cards">
             {!loading && !boardLoading && !selectedMission && (
@@ -845,12 +686,7 @@ export default function AgentsView() {
               />
             )}
             {selectedMission && (
-              <MissionCard
-                mission={selectedMission}
-                slotCounts={slotCounts}
-                startDisabledReason={startDisabledReason}
-                onStart={handleStartMission}
-              />
+              <MissionCard mission={selectedMission} slotCounts={slotCounts} />
             )}
             {selectedMission && reachableItems.length === 0 && (
               <StaffingEmpty
@@ -898,11 +734,25 @@ export default function AgentsView() {
               onAssign={assignSlot}
               onUnassign={unassignSlot}
               onCreateFromUnbound={createFromUnbound}
+              onEditPersona={(agent, trigger) => setEditingPersona({ agent, trigger })}
               onClose={() => setSelection(null)}
             />
           </aside>
         )}
       </div>
+
+      {editingPersona && (
+        <PersonaEditorDialog
+          key={editingPersona.agent.id}
+          agent={editingPersona.agent}
+          returnFocus={editingPersona.trigger}
+          onClose={() => setEditingPersona(null)}
+          onSaved={async () => {
+            await loadAgents()
+            await loadAgentDetail(editingPersona.agent.id, true)
+          }}
+        />
+      )}
 
       {createOpen && (
         <CreatePersonaPopover
@@ -990,38 +840,21 @@ function StatusWords({ agent, status }: { agent: RosterAgent; status: AgentStatu
   )
 }
 
-function MissionCard({
-  mission,
-  slotCounts,
-  startDisabledReason,
-  onStart,
-}: {
+function MissionCard({ mission, slotCounts }: {
   mission: MissionNode
   slotCounts: { total: number; staffed: number; open: number }
-  startDisabledReason: string
-  onStart: () => void
 }) {
-  const staffing = slotCounts.total === 0 ? '' : `${slotCounts.staffed}/${slotCounts.total} slots staffed`
+  const readiness = slotCounts.total === 0
+    ? 'no slots on this mission'
+    : `${slotCounts.staffed}/${slotCounts.total} slots staffed · ${slotCounts.open > 0 ? `${slotCounts.open} open` : 'ready'}`
   return (
     <section className="missioncard">
       <div className="mhd">
         <span className="meyebrow">◆ Mission</span>
-        <button
-          className="mrun"
-          type="button"
-          aria-label="Start mission"
-          title={startDisabledReason || 'Start mission'}
-          onClick={onStart}
-          disabled={Boolean(startDisabledReason)}
-        >
-          {PLAY_SVG}
-        </button>
       </div>
       <div className="mtitle">{mission.title}</div>
       <div className={`mgoal${mission.goal ? '' : ' placeholder'}`}>{mission.goal || 'set the mission objective…'}</div>
-      <div className={`mstatus${slotCounts.open > 0 ? ' is-open' : ''}`}>
-        {[staffing, startDisabledReason || 'ready to start'].filter(Boolean).join(' · ')}
-      </div>
+      <div className={`mstatus${slotCounts.open > 0 || slotCounts.total === 0 ? ' is-open' : ''}`}>{readiness}</div>
     </section>
   )
 }
@@ -1191,6 +1024,7 @@ function Inspector({
   onAssign,
   onUnassign,
   onCreateFromUnbound,
+  onEditPersona,
   onClose,
 }: {
   selection: Selection
@@ -1204,6 +1038,7 @@ function Inspector({
   onAssign: (formation: FormationNode, slot: FormationSlot, agent: RosterAgent, harness: string) => void
   onUnassign: (formation: FormationNode, slot: FormationSlot) => void
   onCreateFromUnbound: (agent: RosterAgent) => void
+  onEditPersona: (agent: RosterAgent, trigger: HTMLElement) => void
   onClose: () => void
 }) {
   if (selection.kind === 'unbound') {
@@ -1249,6 +1084,9 @@ function Inspector({
               <span className="n">{harness || 'no default harness'}</span>
               <span className="r">{states.map(state => <span key={state} className={`is-${state}`}>{state}</span>)}</span>
             </span>
+            {agent ? (
+              <button className="board-action" type="button" onClick={event => onEditPersona(agent, event.currentTarget)}>Edit persona</button>
+            ) : null}
           </div>
           {card?.summary && <p className="agx-summary">{card.summary}</p>}
           <KeyValues rows={[
@@ -1401,52 +1239,33 @@ function slotEligibility(agent: RosterAgent, slot: FormationSlot, detail?: Cache
   return { eligible: true, harness: detail?.card?.harnessDefault || agent.harnessDefault || 'claude-code' }
 }
 
-function RunBanner({
-  status,
-  missionTitle,
-  selectedMissionTitle,
-  missionMismatch,
-  events,
-  openGateId,
-  resumeAllowed,
-  onViewMission,
-  onVerdict,
-  onResume,
-  onAbort,
-}: {
-  status: RunStatusProjection
-  missionTitle: string
-  selectedMissionTitle: string
-  missionMismatch: boolean
-  events: RunEvent[]
-  openGateId: string
-  resumeAllowed: boolean
-  onViewMission: () => void
-  onVerdict: (verdict: 'pass' | 'fail') => void
-  onResume: () => void
-  onAbort: () => void
-}) {
-  const recent = [...events].slice(-2)
+/* The mission's run, read-only. Start, answer, resume and stop happen on Boards. */
+function MissionRunState({ board, missionRun }: { board: BoardDocument; missionRun: MissionRunState }) {
+  const { run, openCount, blockReason } = missionRun
+  if (!run) {
+    return (
+      <section className="run-banner agx-run-banner" data-testid="mission-run" aria-label="Mission run">
+        <span className="agx-run-label">run</span>
+        <span className="agx-run-none">No run for this mission yet.</span>
+        <a className="agx-run-link" href={boardsRunHref(board.slug, '')}>Start it on Boards</a>
+      </section>
+    )
+  }
+  const gateTitle = (gateId: string) => (board.gates || []).find(gate => gate.id === gateId)?.title || gateId
+  const waiting = (run.waitingGates || []).map(gate => gateTitle(gate.gateId))
   return (
-    <section className="run-banner agx-run-banner" data-testid="run-banner">
-      <span className={`badge ${status.status}`}>{status.status}</span>
-      <span>Run: {missionTitle}</span>
-      {missionMismatch && (
-        <>
-          <span>This run belongs to {missionTitle}, not {selectedMissionTitle}.</span>
-          <button type="button" onClick={onViewMission}>View run mission</button>
-        </>
-      )}
-      {openGateId && <span>gate {openGateId}</span>}
-      {recent.map(event => <span key={`${event.runId}:${event.seq}`}>{runEventText(event) || event.type}</span>)}
-      {openGateId && (
-        <>
-          <button type="button" onClick={() => onVerdict('pass')}>Pass</button>
-          <button type="button" onClick={() => onVerdict('fail')}>Fail</button>
-        </>
-      )}
-      {resumeAllowed && <button type="button" onClick={onResume}>Resume</button>}
-      {!status.final && <button type="button" onClick={onAbort}>Stop</button>}
+    <section className="run-banner agx-run-banner" data-testid="mission-run" aria-label="Mission run">
+      <span className="agx-run-label">run</span>
+      <span className={`badge ${run.status}`}>{run.status}</span>
+      <span className="agx-run-id" title={run.runId}>…{run.runId.slice(-6)}</span>
+      {waiting.length ? <span>waiting on {waiting.join(', ')}</span> : null}
+      {run.status === 'blocked' ? (
+        <span className="agx-run-reason" title={blockReason || undefined}>
+          {blockReason ? `blocked: ${blockReason}` : 'blocked'}{run.resumeAllowed ? ' · resumable' : ''}
+        </span>
+      ) : null}
+      {openCount > 1 ? <span>{openCount} open runs</span> : null}
+      <a className="agx-run-link" href={boardsRunHref(board.slug, run.runId)}>Open on Boards</a>
     </section>
   )
 }
