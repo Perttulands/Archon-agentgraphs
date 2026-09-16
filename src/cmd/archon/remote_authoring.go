@@ -27,7 +27,7 @@ type remoteAuthoringCommand func(c *remoteClient, args []string, stdout, stderr 
 
 var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
 	"board list":           remoteBoardList,
-	"board inspect":        remoteBoardInspect("board"),
+	"board inspect":        remoteBoardInspect,
 	"board new":            remoteBoardNew,
 	"board notes":          remoteBoardNotes,
 	"board note":           remoteBoardNote,
@@ -39,7 +39,7 @@ var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
 	"mission update":       remoteMissionUpdate,
 	"mission wire":         remoteMissionWire,
 	"formation list":       remoteFormationList,
-	"formation inspect":    remoteBoardInspect("formation"),
+	"formation inspect":    remoteFormationInspect,
 	"formation create":     remoteFormationCreate,
 	"formation rename":     remoteFormationRename,
 	"formation set-type":   remoteFormationSetType,
@@ -347,24 +347,38 @@ func remoteFormationList(c *remoteClient, args []string, stdout, stderr io.Write
 	return writeFormationList(stdout, board, *jsonOut)
 }
 
-// remoteBoardInspect serves board inspect and its older name, formation inspect.
-func remoteBoardInspect(noun string) remoteAuthoringCommand {
-	return func(c *remoteClient, args []string, stdout, stderr io.Writer) int {
-		fs := remoteFlags(noun+" inspect", stderr)
-		jsonOut := fs.Bool("json", false, "write JSON")
-		if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
-			return 2
-		}
-		if fs.NArg() != 1 {
-			fmt.Fprintf(stderr, "usage: archon %s inspect <board> [--json]\n", noun)
-			return 2
-		}
-		board, err := c.readBoard(fs.Arg(0))
-		if err != nil {
-			return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
-		}
-		return writeBoardInspect(stdout, board, *jsonOut)
+func remoteBoardInspect(c *remoteClient, args []string, stdout, stderr io.Writer) int {
+	fs := remoteFlags("board inspect", stderr)
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
 	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(stderr, "usage: archon board inspect <board> [--json]")
+		return 2
+	}
+	board, err := c.readBoard(fs.Arg(0))
+	if err != nil {
+		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+	}
+	return writeBoardInspect(stdout, board, *jsonOut)
+}
+
+func remoteFormationInspect(c *remoteClient, args []string, stdout, stderr io.Writer) int {
+	fs := remoteFlags("formation inspect", stderr)
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
+	}
+	if fs.NArg() != 2 {
+		fmt.Fprintln(stderr, "usage: archon formation inspect <board> <formation> [--json]")
+		return 2
+	}
+	board, err := c.readBoard(fs.Arg(0))
+	if err != nil {
+		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+	}
+	return writeFormationInspect(stdout, stderr, board, fs.Arg(1), *jsonOut)
 }
 
 func remoteBoardNotes(c *remoteClient, args []string, stdout, stderr io.Writer) int {

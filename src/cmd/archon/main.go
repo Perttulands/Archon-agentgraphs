@@ -47,6 +47,12 @@ type archonFormationListResponse struct {
 	Formations []formations.FormationNode `json:"formations"`
 }
 
+type archonFormationInspectResponse struct {
+	Board       archonBoardIdentity          `json:"board"`
+	Formation   formations.FormationNode     `json:"formation"`
+	Connections []formations.BoardConnection `json:"connections"`
+}
+
 type archonMissionInspectResponse struct {
 	Board       archonBoardIdentity          `json:"board"`
 	Mission     formations.MissionNode       `json:"mission"`
@@ -2109,8 +2115,7 @@ func runBoardInspect(store *formations.Store, args []string, stdout, stderr io.W
 	return writeBoardInspect(stdout, board, *jsonOut)
 }
 
-// writeBoardInspect prints one board for board inspect and formation inspect,
-// offline and remote.
+// writeBoardInspect prints one board for board inspect, offline and remote.
 func writeBoardInspect(stdout io.Writer, board *formations.BoardDocument, jsonOut bool) int {
 	board.TOML = ""
 	if jsonOut {
@@ -2377,15 +2382,20 @@ func writeFormationList(stdout io.Writer, board *formations.BoardDocument, jsonO
 		return writeJSON(stdout, response)
 	}
 	for _, formation := range response.Formations {
-		staffed := 0
-		for _, slot := range formation.Slots {
-			if slot.AgentID != "" {
-				staffed++
-			}
-		}
-		fmt.Fprintf(stdout, "%s\t%s\t%s\t%d/%d staffed\n", formation.ID, formation.Type, formation.Title, staffed, len(formation.Slots))
+		fmt.Fprintln(stdout, formationSummary(formation))
 	}
 	return 0
+}
+
+// formationSummary is a formation's text line: id, type, title and staffing.
+func formationSummary(formation formations.FormationNode) string {
+	staffed := 0
+	for _, slot := range formation.Slots {
+		if slot.AgentID != "" {
+			staffed++
+		}
+	}
+	return fmt.Sprintf("%s\t%s\t%s\t%d/%d staffed", formation.ID, formation.Type, formation.Title, staffed, len(formation.Slots))
 }
 
 func runFormationInspect(store *formations.Store, args []string, stdout, stderr io.Writer) int {
@@ -2395,8 +2405,8 @@ func runFormationInspect(store *formations.Store, args []string, stdout, stderr 
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
-	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon formation inspect <board> [--json]")
+	if fs.NArg() != 2 {
+		fmt.Fprintln(stderr, "usage: archon formation inspect <board> <formation> [--json]")
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -2407,7 +2417,32 @@ func runFormationInspect(store *formations.Store, args []string, stdout, stderr 
 	if err != nil {
 		return fail(stderr, err)
 	}
-	return writeBoardInspect(stdout, board, *jsonOut)
+	return writeFormationInspect(stdout, stderr, board, fs.Arg(1), *jsonOut)
+}
+
+// writeFormationInspect resolves a formation on a read board and prints it with
+// the connections at its ports, for formation inspect offline and remote.
+func writeFormationInspect(stdout, stderr io.Writer, board *formations.BoardDocument, selector string, jsonOut bool) int {
+	formationID, err := resolveFormationSelector(board, selector)
+	if err != nil {
+		return failSelector(stderr, err, jsonOut, "formation", selector)
+	}
+	response := archonFormationInspectResponse{Board: identityFromBoard(board), Connections: []formations.BoardConnection{}}
+	for _, formation := range board.Formations {
+		if formation.ID == formationID {
+			response.Formation = formation
+		}
+	}
+	for _, connection := range board.Connections {
+		if strings.SplitN(connection.From, ":", 2)[0] == formationID || strings.SplitN(connection.To, ":", 2)[0] == formationID {
+			response.Connections = append(response.Connections, connection)
+		}
+	}
+	if jsonOut {
+		return writeJSON(stdout, response)
+	}
+	fmt.Fprintf(stdout, "%s\t%d connections\n", formationSummary(response.Formation), len(response.Connections))
+	return 0
 }
 
 func liveFromRunner(runner tmuxRunner) ([]formations.LiveAgentSession, error) {

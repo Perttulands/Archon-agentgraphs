@@ -357,7 +357,10 @@ validate and arrange. The shared `archon` skill gives an authoring recipe.
 with `--json` `{board, layout, mission|formation|gate}` naming the new node.
 `board list` lists boards; `mission list <board>` and `formation list <board>`
 list that board's missions and formations, each formation with its slots and
-staffing.
+staffing. `mission inspect <board> <mission>` prints one mission with its
+reachable chain, and `formation inspect <board> <formation>` one formation with
+its slots, ports, brief and the connections at its ports; `board inspect` prints
+the whole board.
 Nodes keep their IDs when edited: `archon formation rename <board> <formation>
 <title>`, `archon mission update <board> <mission>` with `--title`, `--goal` or
 `--bead`, and `archon gate update --title` change only what they name, and an

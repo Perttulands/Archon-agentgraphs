@@ -510,15 +510,37 @@ customFuture = "keep me"
 		t.Fatalf("formation list text code=%d stdout=%q stderr=%s, want %q", code, stdout, stderr, want)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "inspect", "brd_01J9_sesssearch", "--json")
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "inspect", "brd_01J9_sesssearch", "--json")
 	if code != 0 {
-		t.Fatalf("formation inspect by id code=%d stderr=%s stdout=%s", code, stderr, stdout)
+		t.Fatalf("board inspect by id code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
 	if !strings.Contains(stdout, `"slug": "session-search"`) || !strings.Contains(stdout, `"title": "Research huddle"`) {
 		t.Fatalf("inspect JSON missing structural formation: %s", stdout)
 	}
 	if strings.Contains(stdout, `"x":`) || strings.Contains(stdout, `"y":`) {
 		t.Fatalf("inspect JSON leaked layout coordinates: %s", stdout)
+	}
+
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "inspect", "session-search"); code != 2 || !strings.Contains(stderr, "usage: archon formation inspect <board> <formation>") {
+		t.Fatalf("formation inspect without a formation code=%d stderr=%s, want usage", code, stderr)
+	}
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "inspect", "session-search", "Research huddle", "--json")
+	if code != 0 {
+		t.Fatalf("formation inspect by title code=%d stderr=%s stdout=%s", code, stderr, stdout)
+	}
+	var inspected archonFormationInspectResponse
+	if err := json.Unmarshal([]byte(stdout), &inspected); err != nil {
+		t.Fatalf("decode formation inspect: %v\n%s", err, stdout)
+	}
+	if inspected.Board.Slug != "session-search" || inspected.Formation.ID != formation.ID || inspected.Formation.Slots[0].AgentID != "codex-builder" || len(inspected.Formation.Inputs) == 0 || inspected.Connections == nil {
+		t.Fatalf("formation inspect JSON = %+v, want the formation with its staffing, ports and connections", inspected)
+	}
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "inspect", "session-search", formation.ID)
+	if want := formation.ID + "\tpeer\tResearch huddle\t1/" + strconv.Itoa(len(formation.Slots)) + " staffed\t0 connections\n"; code != 0 || stdout != want {
+		t.Fatalf("formation inspect text code=%d stdout=%q stderr=%s, want %q", code, stdout, stderr, want)
+	}
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "inspect", "session-search", "Nobody", "--json"); code == 0 || !strings.Contains(stderr, `"boundary": "formation"`) {
+		t.Fatalf("formation inspect of a missing formation code=%d stderr=%s, want a formation selector error", code, stderr)
 	}
 }
 
@@ -807,7 +829,7 @@ to = "gate_migrated:in"
 	if len(entries) != 0 {
 		t.Fatalf("run artifacts = %+v, want none before Archon rejection", entries)
 	}
-	inspectOut, inspectErr, inspectCode := runArchon(t, runner, "--workspace", workspace, "formation", "inspect", "legacy-inline", "--json")
+	inspectOut, inspectErr, inspectCode := runArchon(t, runner, "--workspace", workspace, "board", "inspect", "legacy-inline", "--json")
 	if inspectCode != 0 || inspectErr != "" || !strings.Contains(inspectOut, `"verification"`) || !strings.Contains(inspectOut, `"criterion": "Tests pass"`) {
 		t.Fatalf("legacy inspection code=%d stdout=%s stderr=%s, want readable verification", inspectCode, inspectOut, inspectErr)
 	}
