@@ -350,6 +350,24 @@ paths:
           description: Run executing
           final: null
           or not resumable: null
+  /api/formations/runs/{runId}/gates/{gateId}/request:
+    parameters:
+    - $ref: '#/components/parameters/RunID'
+    - in: path
+      name: gateId
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Pending-gate read route; read what a pending human gate received
+      description: Provisional; the run evidence API (form-3rq) will absorb or supersede it.
+      responses:
+        '200':
+          description: Enveloped data.request contains gateId, requestedSeq, the frozen criterion and input (fromNodeId, fromPortId, text capped at 64 KiB, truncated) for the gate's pending request. Refs, paths, prompts and session identities are omitted.
+        '404':
+          description: No such run, or no human request for this gate
+        '409':
+          description: The gate's latest human request is no longer pending
   /api/formations/runs/{runId}/gates/{gateId}/verdict:
     parameters:
     - $ref: '#/components/parameters/RunID'

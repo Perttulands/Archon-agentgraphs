@@ -130,7 +130,7 @@ func gatePassInput(events []RunEvent, verdictEvent RunEvent, gateID string, inpu
 		if stringFromEventData(event, "verdict") != "pass" {
 			return RunInputRef{}, fmt.Errorf("%w: Gate %q pass contradicts recorded human verdict", ErrRunLedgerInvalid, gateID)
 		}
-		text := stringFromEventData(event, "reason")
+		text := strings.TrimSpace(stringFromEventData(event, "reason"))
 		if text == "" {
 			return input, nil
 		}

@@ -51,6 +51,8 @@ import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, s
 import { FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials } from './formationsCockpitVisuals'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
 import DismissiblePanel from './DismissiblePanel'
+import HumanGateAnswerPanel, { type GateDecision } from './HumanGateAnswerPanel'
+import { useHumanGateUpstream } from './useHumanGateUpstream'
 import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom, splitList } from './formationsCockpitDom'
 import { routeJudgeWire, routeOrthoWire } from './formationsRouting'
 import type { ObstacleRect } from './formationsRouting'
@@ -1340,14 +1342,16 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     }
   }, [activeRun, refreshRunEvents, selectedSlug])
 
-  const recordHumanGateVerdict = useCallback(async (gateId: string, verdict: 'pass' | 'fail') => {
-    if (!activeRun?.runId || activeRun.final) return
+  // The response is the verdict reason: approve routes it with the gate input,
+  // send back returns it as feedback.
+  const recordHumanGateVerdict = useCallback(async (gateId: string, requestedSeq: number, verdict: GateDecision, response: string) => {
+    if (!activeRun?.runId || activeRun.final) return false
     try {
       const status = runStatusFromResponse(await recordGateVerdict(activeRun.runId, gateId, {
         actor: 'agent:ui',
         verdict,
-        requestedSeq: activeRun.waitingGates?.find(gate => gate.gateId === gateId)?.requestedSeq || 0,
-        reason: verdict === 'pass' ? 'operator approved' : 'operator rejected',
+        requestedSeq,
+        reason: response,
       }))
       setActiveRun(status)
       await refreshRunEvents(activeRun.runId)
@@ -1356,8 +1360,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         else window.localStorage.setItem(activeRunStorageKey(selectedSlug), status.runId)
       }
       setError('')
+      return true
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record human verdict')
+      return false
     }
   }, [activeRun, refreshRunEvents, selectedSlug])
 
@@ -2138,6 +2144,21 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   )
   const runBadgeClass = activeRun ? activeRun.status : ''
   const pendingHumanGateId = useMemo(() => openHumanGateId(runEvents), [runEvents])
+  const pendingHumanGate = useMemo(() => {
+    if (!pendingHumanGateId) return null
+    const requestedSeq = activeRun?.waitingGates?.find(gate => gate.gateId === pendingHumanGateId)?.requestedSeq
+      || [...runEvents].reverse().find(event => event.type === 'human_input_requested' && event.gateId === pendingHumanGateId)?.seq
+      || 0
+    if (!requestedSeq) return null
+    const gate = board?.gates?.find(node => node.id === pendingHumanGateId)
+    return { gateId: pendingHumanGateId, requestedSeq, title: gate?.title || pendingHumanGateId, criterion: gate?.criterion || '' }
+  }, [activeRun?.waitingGates, board?.gates, pendingHumanGateId, runEvents])
+  const pendingGateInput = useHumanGateUpstream(activeRun?.runId || '', pendingHumanGate)
+  const pendingGateUpstream = useMemo(() => {
+    if (pendingGateInput.state !== 'ready') return pendingGateInput
+    const node = [...(board?.formations || []), ...(board?.gates || []), ...(board?.missions || [])].find(candidate => candidate.id === pendingGateInput.from)
+    return { ...pendingGateInput, from: node?.title || pendingGateInput.from }
+  }, [board?.formations, board?.gates, board?.missions, pendingGateInput])
   const openEscalations = useMemo(
     () => (activeRun && !activeRun.final ? escalations : []),
     [activeRun, escalations],
@@ -2569,15 +2590,22 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               <span className={`badge ${runBadgeClass}`}>{activeRun.status}</span>
               {activeRun.cwd && <span>{activeRun.cwd}</span>}
               {activeRun.beadId && <span>{activeRun.beadId}</span>}
-              {!activeRun.final && pendingHumanGateId ? (
-                <>
-                  <button type="button" aria-label={`Approve gate ${pendingHumanGateId}`} onClick={() => void recordHumanGateVerdict(pendingHumanGateId, 'pass')}>approve</button>
-                  <button type="button" aria-label={`Reject gate ${pendingHumanGateId}`} onClick={() => void recordHumanGateVerdict(pendingHumanGateId, 'fail')}>reject</button>
-                </>
-              ) : null}
               {!activeRun.final && activeRun.resumeAllowed ? <button type="button" onClick={() => void resumeActiveRun()}>Resume run</button> : null}
               {!activeRun.final ? <button type="button" onClick={() => void abortActiveRun()}>stop</button> : null}
             </div>
+          ) : null}
+
+          {activeRun && !activeRun.final && pendingHumanGate ? (
+            <HumanGateAnswerPanel
+              key={`${activeRun.runId}:${pendingHumanGate.requestedSeq}`}
+              runId={activeRun.runId}
+              gateId={pendingHumanGate.gateId}
+              requestedSeq={pendingHumanGate.requestedSeq}
+              gateTitle={pendingHumanGate.title}
+              criterion={pendingHumanGate.criterion}
+              upstream={pendingGateUpstream}
+              onDecide={(verdict, response) => recordHumanGateVerdict(pendingHumanGate.gateId, pendingHumanGate.requestedSeq, verdict, response)}
+            />
           ) : null}
 
           {openEscalations.length ? (

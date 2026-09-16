@@ -718,6 +718,9 @@ func TestLabBriefCarriesHumanGateResponse(t *testing.T) {
 	if dispatch.NodeID != "fmn_ship" || filepath.Dir(path) != filepath.Join(store.Workspace, "briefs") {
 		t.Fatalf("Ship dispatch = %+v, want a brief under the workspace", dispatch)
 	}
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("brief mode = %v, %v; want 0600 like seat briefs", info, err)
+	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

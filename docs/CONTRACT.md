@@ -151,6 +151,16 @@ Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
 The public projection includes cwd and Bead ID but excludes prompt text,
 artifact contents, brief paths, native session IDs and arbitrary private event
 data. Read detailed reasons and artifacts locally in the private evidence.
+The pending-gate read route
+`GET /api/formations/runs/{runId}/gates/{gateId}/request` is the one content
+read outside the projection. An operator cannot answer a human gate without
+reading what it received, and the projection carries no content. For the
+gate's latest request, while it is pending, the route returns `gateId`,
+`requestedSeq`, the frozen `criterion` and the routed input: `fromNodeId`,
+`fromPortId`, `text` capped at 64 KiB, and `truncated`. It never returns refs,
+paths, prompts or session identities. An unknown run or gate returns 404; a
+decided request returns 409. The run evidence API (form-3rq) will absorb or
+supersede this route.
 `run logs` is the same sanitized projection as `run status`. `run follow` prints
 complete enveloped projections from SSE after durable changes, waits through
 human gates and closes only at finality. Interrupting that client stops viewing,
@@ -162,9 +172,10 @@ adapters. It resolves authenticated harness executables from its environment.
 Each fresh seat gets a pointer to a file under `<state-dir>/briefs`. The file
 contains run/node/slot identity, cwd, mission goal, Bead, persona summary,
 formation brief, file/link references, routed inputs, gate feedback, human
-responses, output ports, artifact directory and completion instructions. Orchestrated controllers
-also get their bound workers and may direct only those workers. External
-operators and Archon agents must not type into seats or manage their sessions.
+responses, output ports, artifact directory and completion instructions.
+Orchestrated controllers also get their bound workers and may direct only those
+workers. External operators and Archon agents must not type into seats or
+manage their sessions.
 
 Sessions are named `form-<run>-<slot>`, optionally prefixed by `--mission-label`.
 The runtime creates and cleans up seats by immutable session ID through the
@@ -229,7 +240,8 @@ with gate ID, gate attempt, requested sequence, deciding actor and text, and
 the next prompt renders it as a human-response section after that input. An
 empty response routes the input unchanged. On fail the response becomes the
 feedback reason. Resume rebuilds the response from the verdict recorded for
-that exact request, so it survives restart.
+that exact request, so it survives restart. The cockpit shows a pending human
+gate's input with a response box, Approve and Send back.
 
 Real formations must emit all and only their declared output IDs in one block:
 
@@ -409,8 +421,9 @@ theme document described below, JSON responses use
 list/create/read/patch/delete, notes, layout and change polling. Agent routes
 list/create/read/patch persona cards; gate profiles expose the two code checks.
 Revision and ETag checks protect edits. Runtime routes start/list/read runs,
-read projected events/escalations, stream SSE, abort, resume and record exact
-human verdicts. They all use the coordinator; no request-local executor exists.
+read projected events/escalations, stream SSE, abort, resume, read a pending
+human gate's input and record exact human verdicts. They all use the
+coordinator; no request-local executor exists.
 There is no generic file reader, transcript endpoint, board import endpoint or
 authentication layer. Remote Archon supports board list/inspect/validate and
 runtime commands; author definitions with `--workspace` or the cockpit.

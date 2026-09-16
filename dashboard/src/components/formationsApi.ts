@@ -298,6 +298,20 @@ export async function resumeRunRequest(runId: string, body: { actor: string; mod
   return result.data
 }
 
+export interface HumanGateRequest {
+  gateId: string
+  requestedSeq: number
+  criterion: string
+  input: { fromNodeId?: string; fromPortId?: string; text: string; truncated: boolean }
+}
+
+export async function fetchHumanGateRequest(runId: string, gateId: string): Promise<HumanGateRequest> {
+  const result = await fetchApi<{ request: HumanGateRequest }>(
+    `/api/formations/runs/${encodeURIComponent(runId)}/gates/${encodeURIComponent(gateId)}/request`,
+  )
+  return result.data.request
+}
+
 export async function recordGateVerdict(runId: string, gateId: string, body: { actor: string; verdict: 'pass' | 'fail'; reason: string; requestedSeq: number }): Promise<RunStatusProjection | RunStatusResult> {
   await fetchApi<{ runId: string }>(
     `/api/formations/runs/${encodeURIComponent(runId)}/gates/${encodeURIComponent(gateId)}/verdict`,

@@ -1443,6 +1443,43 @@ describe('FormationsCockpit reference parity', () => {
     expect(await screen.findByTestId('node-inspector')).toHaveTextContent('Run evidence · Review')
   })
 
+  it('answers a pending human gate from its upstream output', async () => {
+    localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
+    installFetchMock({
+      runStatus: { status: 'waiting_human', final: false },
+      runEvents: [
+        { runId: 'run_legacy', seq: 3, type: 'node_output', nodeId: 'fmn_frame' },
+        { runId: 'run_legacy', seq: 4, type: 'human_input_requested', nodeId: 'gate_review', gateId: 'gate_review' },
+      ],
+    })
+    const questions = '1. Which database?\n2. Who signs off the brief?'
+    const verdicts: Array<Record<string, unknown>> = []
+    const coordinator = globalThis.fetch
+    ;(globalThis as Record<string, unknown>).fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const reply = (data: unknown) => Promise.resolve({ ok: true, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data }), text: () => Promise.resolve('') })
+      if (url === '/api/formations/runs/run_legacy/gates/gate_review/request') {
+        return reply({ request: { gateId: 'gate_review', requestedSeq: 4, criterion: 'Review the frame', input: { fromNodeId: 'fmn_frame', fromPortId: 'port_frame_out', text: questions, truncated: false } } })
+      }
+      if (url === '/api/formations/runs/run_legacy/gates/gate_review/verdict') {
+        verdicts.push(JSON.parse(String(init?.body)))
+        return reply({ runId: 'run_legacy' })
+      }
+      return coordinator(input, init)
+    }) as unknown as typeof fetch
+    await renderCockpit()
+
+    const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
+    expect(within(panel).getByText('Review the frame')).toBeInTheDocument()
+    await waitFor(() => expect(within(panel).getByText('From Frame')).toBeInTheDocument())
+    expect(within(panel).getByTestId('gate-answer-upstream').querySelector('pre')?.textContent).toBe(questions)
+    expect(screen.queryByRole('button', { name: 'Approve gate gate_review' })).toBeNull()
+
+    fireEvent.change(within(panel).getByLabelText('Your response'), { target: { value: '1. Postgres.\n2. The operator.' } })
+    await act(async () => { fireEvent.click(within(panel).getByRole('button', { name: 'Approve' })) })
+    await waitFor(() => expect(verdicts).toEqual([{ actor: 'agent:ui', verdict: 'pass', requestedSeq: 4, reason: '1. Postgres.\n2. The operator.' }]))
+  })
+
   it('detaches the judge from the gate context menu', async () => {
     await renderCockpit()
     fireEvent.contextMenu(screen.getByTestId('gate-node-gate_review'))
