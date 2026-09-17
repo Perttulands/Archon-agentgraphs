@@ -558,7 +558,7 @@ var ansiSGR = regexp.MustCompile("\x1b\\[([0-9;]*)m")
 // empty when the cursor sits just after the prompt glyph and the rest of the
 // line holds at most a dimmed placeholder, such as Codex's "Ask Codex to do
 // anything". The harness is busy when a working line sits just above the input
-// box: Codex's "esc to interrupt", or Claude's running spinner.
+// box, as tmuxPaneShowsAgentWorking reads it.
 func seatInputClear(harness, screen string, cursorX, cursorY int) bool {
 	prompt := seatInputPrompt[harness]
 	lines := strings.Split(screen, "\n")

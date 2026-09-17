@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -2120,3 +2121,100 @@ func TestWorkerOutcomeMappersDistinguishMissingSession(t *testing.T) {
 // A completion capture that fails for a reason other than a missing target is
 // the capture_failed defensive outcome: recorded as an anomaly on an otherwise
 // successful run, never silence and never a run failure.
+
+// reusedSeatReadiness runs the real readiness check over captured panes, and
+// the fake client for everything else, so a peer formation exercises Ready the
+// way a live daemon does when its facilitator reuses the first peer's seat.
+type reusedSeatReadiness struct {
+	*fakeTmuxHarnessClient
+	real realSeatTransport
+}
+
+func (r *reusedSeatReadiness) Ready(ctx context.Context, socket string, s *nativeSeat, harness string) error {
+	return r.real.Ready(ctx, socket, s, harness)
+}
+
+func TestPeerFacilitatorReusesTheFirstSeatAfterLongOutput(t *testing.T) {
+	store, personas := s4RunFixture(t)
+	store.Now = fixedClock()
+	personas.Now = fixedClock()
+	for _, id := range []string{"peer-a", "peer-b"} {
+		createS4Persona(t, personas, id)
+	}
+	writeFixture(t, store.BoardPath("session-search"), tmuxPeerBoardFixture())
+	cfg := tmuxTestConfig(t)
+	client := &fakeTmuxHarnessClient{
+		pane: tmuxPaneState{CurrentPath: cfg.Cwd},
+		captures: []string{
+			"PEER-A-BOUNDARY\n" + strings.Repeat("a long first turn\n", 150) + "<<<CHROTE-DONE run-id=run_missing status=ok artifact=peer-a.md>>>",
+			"PEER-B-EVIDENCE\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=peer-b.md>>>",
+			"PEER-COLLABORATED from PEER-A-BOUNDARY and PEER-B-EVIDENCE\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=peer-final.md>>>",
+		},
+	}
+	startup, _, _ := paneFixture(t, "codex-idle-empty")
+	startup = regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(startup, "")
+	history, err := os.ReadFile(filepath.Join("testdata", "panes", "codex-ready-capture-after-long-output.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	idle, x, y := paneFixture(t, "codex-idle-after-long-output")
+	readyChecks := map[string]int{}
+	inputChecks := map[string]int{}
+	target := func(args []string) string {
+		for i, arg := range args {
+			if arg == "-t" && i+1 < len(args) {
+				return args[i+1]
+			}
+		}
+		return ""
+	}
+	events := make(chan struct{}, 64)
+	for i := 0; i < cap(events); i++ {
+		events <- struct{}{}
+	}
+	transport := &reusedSeatReadiness{fakeTmuxHarnessClient: client, real: realSeatTransport{
+		control: func(context.Context, string, string) (*seatControl, error) { return &seatControl{events: events}, nil },
+		command: func(_ context.Context, _ string, _ *strings.Reader, args ...string) (string, error) {
+			switch {
+			case args[0] == "display-message" && strings.Contains(args[len(args)-1], "cursor_x"):
+				return fmt.Sprintf("%d %d 0", x, y), nil
+			case args[0] == "display-message":
+				return "0", nil
+			case args[0] == "capture-pane" && hasString(args, "-e"):
+				inputChecks[target(args)]++
+				return idle, nil
+			case args[0] == "capture-pane":
+				// A fresh seat shows its banner; after its first turn the banner
+				// has scrolled out of the captured history.
+				readyChecks[target(args)]++
+				if !hasString(client.sendTargets, target(args)) {
+					return startup, nil
+				}
+				return string(history), nil
+			}
+			return "", fmt.Errorf("unexpected tmux command %v", args)
+		},
+	}}
+	executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
+	executor.seatClient = transport
+	engine := NewRunEngine(store, personas, executor)
+	status, err := engine.RunFormation("session-search", "fmn_peer", FormationRunRequest{Actor: "agent:test", Limits: RunLimits{MaxDispatch: 5, MaxAttempts: 1}})
+	if err != nil {
+		t.Fatalf("run peer formation: %v", err)
+	}
+	if status.Status != RunStatusSucceeded || !status.Final {
+		t.Fatalf("status = %+v after sends %v; the facilitator did not proceed on the reused seat", status, client.sendTargets)
+	}
+	if len(client.created) != 2 {
+		t.Fatalf("created sessions = %v", client.created)
+	}
+	peerA, peerB := client.created[0], client.created[1]
+	if got, want := client.sendTargets, []string{peerA, peerB, peerA}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("send targets = %v, want the facilitator on peer A's seat", got)
+	}
+	// Before their first turns the seats pass the banner check; the facilitator's
+	// reused seat was found ready by its idle, empty input line instead.
+	if readyChecks[peerA] == 0 || readyChecks[peerB] == 0 || inputChecks[peerA] != 1 || inputChecks[peerB] != 0 {
+		t.Fatalf("banner checks %v, input checks %v", readyChecks, inputChecks)
+	}
+}
