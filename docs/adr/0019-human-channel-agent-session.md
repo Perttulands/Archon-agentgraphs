@@ -5,11 +5,13 @@ form-3yd.10: a mission chooses how its human gates reach the operator, and the
 operator wants to answer the first real Wayfinding run in an agent's tmux
 session instead of by email. The operator chose to talk to the agents that asked
 (form-xex option c), and allowed those agents to record a decision the operator
-has confirmed.
+has confirmed. The operator then ruled that typing into agents must never be
+blocked: "I want to be able to interact with agents normally in tmux even if
+they are working on a mission."
 
 Before this decision one daemon flag, `--notify-command`, sent every run's asks
-the same way. Seats ended when their formation finished, and nobody typed into
-them.
+the same way. Seats ended when their formation finished, the cockpit's seat
+terminal was view-only, and the contract told operators not to type into seats.
 
 ## Decision
 
@@ -66,15 +68,21 @@ them.
 
 ## Typing into a seat
 
-- A seat is on call while an ask delivered to it is still waiting. Its terminal
-  WebSocket, `GET /api/formations/runs/{runId}/seats/{createdSeq}/terminal`,
-  then accepts input and resize frames. At any other time the terminal stays
-  view-only and closes on input with 1008, as before.
-- The seats projection marks a seat `onCall`, and the cockpit learns of changes
-  without a reload.
-- The operator can also type to an on-call seat in CHROTE, which shows the
-  shared tmux pool. Outside an on-call conversation, operators and agents still
-  must not type into seats.
+- The operator may type into any live seat at any time and interact with the
+  agent normally, whether it is working a dispatch, on call, or idle. The seat
+  terminal WebSocket, `GET /api/formations/runs/{runId}/seats/{createdSeq}/terminal`,
+  accepts input and resize frames as CHROTE's terminals do, and CHROTE reaches
+  the same sessions in the shared tmux pool.
+- The runtime tolerates the operator's turns. It pastes a brief or an ask only
+  while the agent is idle and its input line is empty. A turn the operator
+  starts neither completes nor fails a dispatch by itself: completion still
+  needs the exact run's completion evidence, which may arrive on a later turn.
+  What the operator tells a working agent may change its work; that is the
+  operator's call.
+- The seats projection marks a seat `onCall` while an ask delivered to it waits,
+  and the cockpit learns of changes without a reload.
+- Agents still must not type into seats, except an orchestrated controller
+  directing its bound workers.
 
 ## Recording who relayed a decision
 
@@ -92,7 +100,7 @@ which agent typed the command.
   attempt reads only that response.
 - Idle agents stay running while a gate waits, one per slot of the asking
   formation.
-- Anyone who reaches the cockpit can type to an on-call seat, which runs with its
+- Anyone who reaches the cockpit can type to any live seat, which runs with its
   harness's permissions. That is the trust CHROTE's own terminals on the
   tailnet already carry, by the operator's decision that the tailnet needs no
   further authentication.
