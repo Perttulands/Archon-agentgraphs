@@ -123,7 +123,7 @@ terminal was view-only, and the contract told operators not to type into seats.
   the same sessions in the shared tmux pool.
 - The runtime tolerates the operator's turns:
   - It pastes anything into a seat only while the agent is idle and its input
-    line is empty. That covers a formation brief, a peer facilitator's second
+    line is empty. That covers a formation brief, a peer's conversation
     brief and a gate ask, so the operator's unsent text never merges with a
     pointer.
   - A message the operator types during a dispatch neither completes nor fails

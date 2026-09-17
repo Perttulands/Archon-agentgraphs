@@ -136,7 +136,7 @@ func cleanupOutcomes(events []RunEvent) string {
 	return strings.Join(outcomes, " ")
 }
 
-func TestTmuxExecutorKeepsSoloAndPeerSeatsAndOnlyTheOrchestratedController(t *testing.T) {
+func TestTmuxExecutorKeepsSoloSeatAndOnlyTheOrchestratedController(t *testing.T) {
 	t.Run("solo", func(t *testing.T) {
 		client := &fakeTmuxHarnessClient{artifact: "reports/solo.md"}
 		_, events := runKeptFormation(t, s4RunBoardFixture(), "fmn_research", []string{"scout"}, client)
@@ -145,17 +145,6 @@ func TestTmuxExecutorKeepsSoloAndPeerSeatsAndOnlyTheOrchestratedController(t *te
 		}
 		if seats := KeptSeats(events); len(seats) != 1 || seats[0].SessionID != client.created[0] || seats[0].PaneID != client.created[0] {
 			t.Fatalf("kept seats = %+v, created %v", seats, client.created)
-		}
-	})
-	t.Run("peer", func(t *testing.T) {
-		client := &fakeTmuxHarnessClient{captures: []string{
-			"A\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=a.md>>>",
-			"B\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=b.md>>>",
-			"SYNTHESIS\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=final.md>>>",
-		}}
-		_, events := runKeptFormation(t, tmuxPeerBoardFixture(), "fmn_peer", []string{"peer-a", "peer-b"}, client)
-		if got := cleanupOutcomes(events); !strings.Contains(got, "slot_peer_a=kept_on_call") || !strings.Contains(got, "slot_peer_b=kept_on_call") || len(client.killed) != 0 {
-			t.Fatalf("peer cleanups %q, killed %v", got, client.killed)
 		}
 	})
 	t.Run("orchestrated", func(t *testing.T) {

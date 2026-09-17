@@ -2744,6 +2744,8 @@ func archonErrorCode(err error) string {
 		return "invalid_bead_id"
 	case errors.Is(err, formations.ErrInvalidHumanChannel):
 		return "invalid_human_channel"
+	case errors.Is(err, formations.ErrInvalidExecutionPolicy):
+		return "invalid_execution_policy"
 	case errors.Is(err, formations.ErrInvalidRelayedBy):
 		return "invalid_relayed_by"
 	case errors.Is(err, formations.ErrInvalidControllerRole):

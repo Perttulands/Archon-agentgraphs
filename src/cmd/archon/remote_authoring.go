@@ -101,6 +101,8 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrInvalidBeadID
 	case "INVALID_HUMAN_CHANNEL":
 		return formations.ErrInvalidHumanChannel
+	case "INVALID_EXECUTION_POLICY":
+		return formations.ErrInvalidExecutionPolicy
 	case "INVALID_TOOL_MUTATION":
 		return formations.ErrInvalidToolMutation
 	case "DEFINITION_PUBLICATION_UNCERTAIN":

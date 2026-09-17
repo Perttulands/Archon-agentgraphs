@@ -140,6 +140,8 @@ type TmuxExecutorConfig struct {
 	SessionPrefix  string
 	OutputCapBytes int
 	TimeoutSeconds int
+	// PeerCLI is the matching local CLI used by seats to append and wait safely.
+	PeerCLI string
 }
 
 type TmuxFormationExecutor struct {
@@ -168,7 +170,7 @@ type tmuxHarnessClient interface {
 // execution created on the (shared) socket. Only names recorded here may ever be
 // torn down, guaranteeing teardown never touches a foreign session. It is keyed
 // by slot so a slot dispatched more than once in one execution (e.g. a peer that
-// also takes the facilitator turn) reuses its own session instead of spawning a
+// continues from its opening into the conversation) reuses its own session instead of spawning a
 // second one.
 type ownedSessions struct {
 	bySlot map[string]string
@@ -272,18 +274,6 @@ type tmuxSlotBinding struct {
 	Card        *PersonaCard
 	Variant     HarnessVariant
 	SessionName string
-}
-
-type peerPlaneHandle struct {
-	ledger       *runLedgerHandle
-	name         string
-	relativePath string
-}
-
-func (h *peerPlaneHandle) close() {
-	if h != nil && h.ledger != nil {
-		h.ledger.close()
-	}
 }
 
 func (o tmuxSlotOutput) summary() string {
@@ -415,60 +405,6 @@ func (e *TmuxFormationExecutor) executeOrchestratedFormation(ctx context.Context
 		text = leader.summary()
 	}
 	return owned.finish(e.formationResultFromText(req, leader.Artifact, text))
-}
-
-func (e *TmuxFormationExecutor) executePeerFormation(ctx context.Context, req FormationExecution) (FormationExecutionResult, error) {
-	peers, err := peerFormationSlots(req.Formation)
-	if err != nil {
-		return FormationExecutionResult{}, err
-	}
-	allowed := e.allowedHarnesses()
-	dispatcher := NewSlotDispatcher(e.store, nil)
-	owned := newOwnedSessions()
-	owned.ctx, owned.req = ctx, req
-	defer e.teardownOwnedSessions(owned)
-	bindings := make([]tmuxSlotBinding, 0, len(peers))
-	for _, peer := range peers {
-		binding, err := e.resolveSlotBinding(ctx, req, peer, allowed, owned)
-		if err != nil {
-			return FormationExecutionResult{}, withSlot(err, req.NodeID, peer.ID, "")
-		}
-		bindings = append(bindings, binding)
-	}
-	plane, err := e.seedPeerPlane(req, bindings)
-	if err != nil {
-		return FormationExecutionResult{}, err
-	}
-	defer plane.close()
-	if err := e.appendPeerPlaneEvent(req, plane.relativePath, bindings); err != nil {
-		return FormationExecutionResult{}, err
-	}
-
-	for i, peer := range peers {
-		output, err := e.executeSlot(req, peer, allowed, dispatcher, "peer-turn", e.peerTurnExtraLines(plane.relativePath, bindings, bindings[i], false), owned)
-		if err != nil {
-			return FormationExecutionResult{}, err
-		}
-		if err := e.appendPeerPlaneOutput(plane, output); err != nil {
-			return FormationExecutionResult{}, err
-		}
-	}
-
-	facilitator := peers[0]
-	facilitatorBinding := bindings[0]
-	facilitatorExtra := append(e.peerTurnExtraLines(plane.relativePath, bindings, facilitatorBinding, true), outputContractExtraLines(req.Formation)...)
-	final, err := e.executeSlot(req, facilitator, allowed, dispatcher, "peer-facilitator", facilitatorExtra, owned)
-	if err != nil {
-		return FormationExecutionResult{}, err
-	}
-	if err := e.appendPeerPlaneOutput(plane, final); err != nil {
-		return FormationExecutionResult{}, err
-	}
-	text := final.Text
-	if strings.TrimSpace(text) == "" {
-		text = final.summary()
-	}
-	return owned.finish(e.formationResultFromText(req, final.Artifact, text))
 }
 
 func (e *TmuxFormationExecutor) formationResultFromText(req FormationExecution, reportRef, text string) (FormationExecutionResult, error) {
@@ -775,6 +711,13 @@ func (e *TmuxFormationExecutor) executeSlot(req FormationExecution, slot Formati
 	if err != nil {
 		return tmuxSlotOutput{}, withSlot(err, req.NodeID, slot.ID, "")
 	}
+	return e.executeBoundSlot(req, binding, dispatcher, phase, extraLines, owned)
+}
+
+// executeBoundSlot operates only on a previously provisioned seat. Peer phases
+// may call it concurrently for distinct slots; the owned maps remain immutable.
+func (e *TmuxFormationExecutor) executeBoundSlot(req FormationExecution, binding tmuxSlotBinding, dispatcher *SlotDispatcher, phase string, extraLines []string, owned *ownedSessions) (tmuxSlotOutput, error) {
+	slot := binding.Slot
 	seat := owned.seats[slot.ID]
 	prompt := e.renderPromptWithContext(req, slot, *binding.Card, binding.Variant, phase, extraLines)
 	brief, pointer, err := e.writeSeatBrief(prompt)
@@ -1061,51 +1004,6 @@ func peerFormationSlots(formation FormationNode) ([]FormationSlot, error) {
 	return peers, nil
 }
 
-func (e *TmuxFormationExecutor) seedPeerPlane(req FormationExecution, peers []tmuxSlotBinding) (*peerPlaneHandle, error) {
-	ledger, err := e.store.openRunLedger(req.RunID, false)
-	if err != nil {
-		return nil, err
-	}
-	plane := &peerPlaneHandle{
-		ledger:       ledger,
-		name:         req.RunID + ".peer.md",
-		relativePath: runArtifactPath(ledger.directory.slug, req.RunID, ".peer.md"),
-	}
-	complete := false
-	defer func() {
-		if !complete {
-			plane.close()
-		}
-	}()
-	var b strings.Builder
-	b.WriteString("# Peer Plane\n\n")
-	b.WriteString("run: " + req.RunID + "\n")
-	b.WriteString("formation: " + req.NodeID + "\n")
-	b.WriteString("mode: no-hierarchy peer collaboration\n")
-	b.WriteString("brief: " + redactLedgerText(req.Brief.Goal) + "\n")
-	for _, input := range req.Inputs {
-		if strings.TrimSpace(input.Text) != "" {
-			b.WriteString("input: " + redactLedgerText(input.Text) + "\n")
-		}
-	}
-	b.WriteString("\n## Working agreement\n")
-	b.WriteString("- Read this plane before acting.\n")
-	b.WriteString("- Append useful evidence, proposal, critique, question, or synthesis.\n")
-	b.WriteString("- Peers may inspect scoped sibling tmux sessions when useful; no peer is the boss.\n")
-	b.WriteString("- The temporary facilitator turn only nudges/synthesizes; it does not replace peer judgment.\n")
-	b.WriteString("\n## Roster\n")
-	for _, peer := range peers {
-		b.WriteString(fmt.Sprintf("- slot %s label=%q agent=%q harness=%q session=%q\n", peer.Slot.ID, peer.Slot.Label, peer.Card.ID, peer.Variant.ID, peer.SessionName))
-	}
-	b.WriteString("\n## Seed\n")
-	b.WriteString("Start by adding one concrete contribution, then read and respond to what the other peer adds.\n")
-	if err := writeRunArtifactAtomicAt(ledger.directory, plane.name, []byte(b.String()), peerPlaneMaxBytes); err != nil {
-		return nil, err
-	}
-	complete = true
-	return plane, nil
-}
-
 func (e *TmuxFormationExecutor) appendPeerPlaneEvent(req FormationExecution, planeRel string, peers []tmuxSlotBinding) error {
 	peerData := make([]map[string]any, 0, len(peers))
 	for _, peer := range peers {
@@ -1130,60 +1028,6 @@ func (e *TmuxFormationExecutor) appendPeerPlaneEvent(req FormationExecution, pla
 			"peers":  peerData,
 		},
 	})
-}
-
-func (e *TmuxFormationExecutor) appendPeerPlaneOutput(plane *peerPlaneHandle, output tmuxSlotOutput) error {
-	if plane == nil || plane.ledger == nil || plane.ledger.directory == nil {
-		return ErrRunLedgerInvalid
-	}
-	var b strings.Builder
-	b.WriteString("\n## ")
-	if output.Phase == "peer-facilitator" {
-		b.WriteString("Temporary facilitator synthesis")
-	} else {
-		b.WriteString("Peer contribution")
-	}
-	b.WriteString(fmt.Sprintf(" — slot %s agent %s\n", output.SlotID, output.AgentID))
-	b.WriteString("phase: " + output.Phase + "\n")
-	b.WriteString("artifact: " + output.Artifact + "\n\n")
-	b.WriteString(redactLedgerText(strings.TrimSpace(output.Text)))
-	b.WriteString("\n")
-	return appendRunArtifactAt(plane.ledger.directory, plane.name, []byte(b.String()), peerPlaneMaxBytes)
-}
-
-func (e *TmuxFormationExecutor) peerTurnExtraLines(planeRel string, peers []tmuxSlotBinding, self tmuxSlotBinding, facilitator bool) []string {
-	phase := "peer-turn"
-	if facilitator {
-		phase = "facilitator"
-	}
-	lines := []string{
-		"peer phase: " + phase,
-		"shared peer plane: " + planeRel,
-		"Read the shared peer plane before deciding your next move.",
-		"Use it like an append-only team chat/blackboard: add useful evidence, critique, proposal, question, or synthesis.",
-		"You are not in a hierarchy. Coordinate with peers, but keep moving when the next useful action is obvious.",
-		fmt.Sprintf("your peer identity: slot %s agent=%q session=%q", self.Slot.ID, self.Card.ID, self.SessionName),
-		"peer roster:",
-	}
-	for _, peer := range peers {
-		lines = append(lines, fmt.Sprintf("- slot %s label=%q agent=%q harness=%q session=%q", peer.Slot.ID, peer.Slot.Label, peer.Card.ID, peer.Variant.ID, peer.SessionName))
-	}
-	lines = append(lines, "native tmux examples:")
-	for _, peer := range peers {
-		lines = append(lines, fmt.Sprintf("tmux -S %s capture-pane -t %s -p -S -120", e.config.Socket, peer.SessionName))
-	}
-	if facilitator {
-		lines = append(lines,
-			"temporary facilitator task: read the peer plane, detect obvious stalls/contradictions, and synthesize a final answer grounded in at least two peer contributions.",
-			"Do not become a hidden boss; cite what the peers wrote and finish only when the shared plane has enough evidence.",
-		)
-	} else {
-		lines = append(lines,
-			"append or state one useful contribution for the shared plane, then optionally inspect a sibling session or respond to another peer if that is the best next move.",
-			"if you append via shell, append to "+planeRel+"; Archon will also capture your final turn into the plane.",
-		)
-	}
-	return lines
 }
 
 func (e *TmuxFormationExecutor) appendOrchestrationTeamEvent(req FormationExecution, controller tmuxSlotBinding, workers []tmuxSlotBinding) error {

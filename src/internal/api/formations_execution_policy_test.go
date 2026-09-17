@@ -42,4 +42,22 @@ func TestFormationExecutionPolicyHTTP(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid policy status %d: %s", rec.Code, rec.Body.String())
 	}
+	for _, payload := range []string{`{"formationId":"fmn_work"}`, `{"formationId":"fmn_work","timeoutSeconds":null}`} {
+		board, err := store.ReadBoard("budget")
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := fmt.Sprintf(`{"setExecution":%s,"expectedRev":%d}`, payload, board.Rev)
+		req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/budget", strings.NewReader(body))
+		req.Header.Set("If-Match", board.ETag)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("missing duration status %d: %s", rec.Code, rec.Body.String())
+		}
+		after, err := store.ReadBoard("budget")
+		if err != nil || after.ETag != board.ETag {
+			t.Fatalf("missing duration mutated board: %v", err)
+		}
+	}
 }

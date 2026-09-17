@@ -166,7 +166,7 @@ run spent waiting for the operator. A wait runs from a human gate's
 while several requests wait counts once. The waits come from the ledger's
 timestamps, so they survive restarts, and a request still waiting never runs
 the clock out. A dispatch that exceeds it blocks the run with
-`wall_clock_exceeded`. Seat timeout separately bounds real agent execution.
+`wall_clock_exceeded`. Formation allocations also bound real agent execution.
 Limit exhaustion and unresolved execution leave visible blocks rather than
 claiming success.
 
@@ -379,6 +379,28 @@ formations echo it once per seat; the lab keeps one copy of identical blocks,
 so the fixture reaches a judge downstream of them, while differing blocks
 still block. Label that evidence as simulated; a plain brief without a verdict
 will block at a formation gate.
+
+### Peer conversations
+
+A peer formation collects one independent opening from every configured seat
+before sharing them. Those same seats then converse concurrently through an
+append-only journal scoped to the run, formation and attempt. There is no fixed
+turn order, round count or facilitator. The seats use the supplied local
+`archon --workspace <state> peer` commands to read, post, wait, propose and
+acknowledge; direct file writes are outside the protocol.
+
+Any peer can propose the full output. Every peer, including its author, must
+acknowledge that proposal; a contested proposal needs revision and fresh
+acknowledgements. A result may accurately preserve unresolved tensions and ask
+the operator to decide. The acknowledged result still must satisfy the normal
+declared output ports. Acknowledgement of that text does not decide a human gate.
+
+The authored formation duration covers startup, openings, discussion and
+finalization. Participants receive the deadline and must leave time to finish.
+Expiry without a completed valid result blocks visibly and retains the journal
+and completed openings. A restart does not replenish the allocation; unresolved
+multi-seat execution requires inspection. See
+[ADR-0020](adr/0020-peer-conversations.md) for boundaries and lifecycle.
 
 ### Human gates on the session channel
 

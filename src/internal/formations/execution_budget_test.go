@@ -150,6 +150,15 @@ func TestFormationBudgetUsesOriginalStartAfterRestart(t *testing.T) {
 	if len(executor.calls) != 1 {
 		t.Fatal("expired allocation executed again")
 	}
+	legacy := &fakeRunExecutor{}
+	engine = NewRunEngine(store, personas, legacy)
+	engine.SetExecutionContext(func(string) context.Context { return context.Background() })
+	if _, err := engine.executeFormation(req, limits); !errors.Is(err, ErrFormationTimeoutExceeded) {
+		t.Fatalf("expired legacy execution: %v", err)
+	}
+	if len(legacy.calls) != 0 {
+		t.Fatal("expired allocation invoked a coordinator-owned legacy executor")
+	}
 }
 
 func TestFormationBudgetComposesWithRunDeadline(t *testing.T) {

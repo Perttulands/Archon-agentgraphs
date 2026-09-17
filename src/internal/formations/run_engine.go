@@ -1853,6 +1853,9 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 		return FormationExecutionResult{}, err
 	}
 	req.Deadline = budget.deadline
+	if !req.Deadline.IsZero() && !now.Before(req.Deadline) {
+		return FormationExecutionResult{}, budget.cause
+	}
 	if !req.Deadline.IsZero() {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeoutCause(ctx, req.Deadline.Sub(now), budget.cause)
@@ -1876,9 +1879,6 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 			return FormationExecutionResult{}, budget.cause
 		}
 		return result, err
-	}
-	if !now.Before(req.Deadline) {
-		return FormationExecutionResult{}, budget.cause
 	}
 	type executionResult struct {
 		result FormationExecutionResult

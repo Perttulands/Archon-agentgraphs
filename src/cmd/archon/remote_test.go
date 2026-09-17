@@ -286,6 +286,8 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--agent", "codex-builder", "--harness", "openai-codex"}
 		})},
 		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--goal", "Produce the result", "--bead", "form-demo", "--file", "src/a.go", "--link", "https://example.com/spec"))},
+		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "47"))},
+		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "0"))},
 		{args: with(fixed("formation", "set-brief", "demo", "Critic", "--goal", "Judge the result"))},
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"formation", "assign", "demo", "Critic", "--slot", formationTitled(t, board, "Critic").Slots[0].ID, "--agent", "codex-judge", "--harness", "openai-codex"}
@@ -585,11 +587,12 @@ func TestRemoteAuthoringRetriesAWriteRaceThenGivesUp(t *testing.T) {
 
 func TestRemoteFieldErrorsKeepOfflineCodes(t *testing.T) {
 	for code, sentinel := range map[string]error{
-		"INVALID_BEAD_ID":         formations.ErrInvalidBeadID,
-		"INVALID_HUMAN_CHANNEL":   formations.ErrInvalidHumanChannel,
-		"INVALID_CONTROLLER_ROLE": formations.ErrInvalidControllerRole,
-		"INVALID_PORT_DIRECTION":  formations.ErrInvalidPortDirection,
-		"INVALID_AGENT_CARD":      formations.ErrInvalidAgentCard,
+		"INVALID_BEAD_ID":          formations.ErrInvalidBeadID,
+		"INVALID_HUMAN_CHANNEL":    formations.ErrInvalidHumanChannel,
+		"INVALID_EXECUTION_POLICY": formations.ErrInvalidExecutionPolicy,
+		"INVALID_CONTROLLER_ROLE":  formations.ErrInvalidControllerRole,
+		"INVALID_PORT_DIRECTION":   formations.ErrInvalidPortDirection,
+		"INVALID_AGENT_CARD":       formations.ErrInvalidAgentCard,
 	} {
 		offline := archonErrorCode(fmt.Errorf("%w: field", sentinel))
 		remote := archonErrorCode(&remoteHTTPError{Status: 400, Code: code, Message: "field"})

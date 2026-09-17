@@ -197,7 +197,7 @@ type formationsMakeControllerRequest struct {
 
 type formationsSetExecutionRequest struct {
 	FormationID    string `json:"formationId"`
-	TimeoutSeconds int    `json:"timeoutSeconds"`
+	TimeoutSeconds *int   `json:"timeoutSeconds"`
 	ExpectedRev    int    `json:"expectedRev"`
 	UpdatedBy      string `json:"updatedBy"`
 }
@@ -1168,8 +1168,12 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 	}
 	if request.SetExecution != nil {
 		policy := request.SetExecution
+		if policy.TimeoutSeconds == nil {
+			writeFormationsError(w, fmt.Errorf("%w: timeoutSeconds is required", formations.ErrInvalidExecutionPolicy))
+			return
+		}
 		board, err := h.store.SetFormationExecutionPolicy(slug, formations.FormationExecutionPolicyRequest{
-			FormationID: policy.FormationID, TimeoutSeconds: policy.TimeoutSeconds,
+			FormationID: policy.FormationID, TimeoutSeconds: *policy.TimeoutSeconds,
 			UpdatedBy: patchUpdatedBy(request.UpdatedBy, policy.UpdatedBy),
 		}, formations.WriteOptions{ExpectedETag: r.Header.Get("If-Match"), ExpectedRev: patchExpectedRev(request.ExpectedRev, policy.ExpectedRev)})
 		if err != nil {
