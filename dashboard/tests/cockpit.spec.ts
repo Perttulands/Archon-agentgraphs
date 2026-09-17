@@ -17,7 +17,7 @@ test('theme fallback, local font, notes and harness icons survive', async ({ pag
   expect(fixture.themeFetches()).toBe(1)
 })
 
-for (const width of [1440, 390]) test(`floating Peek shows native output, sends typing and resize to the seat, and keeps the graph stable at ${width}px`, async ({ page }) => {
+for (const width of [1440, 390]) test(`floating Peek shows native output, sends typing and resize to a working seat, and keeps the graph stable at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 })
   const fixture = await cockpitFixture(page, { run: true })
   const frames: string[] = []
@@ -36,6 +36,8 @@ for (const width of [1440, 390]) test(`floating Peek shows native output, sends 
   const transform = await world.getAttribute('style')
   await page.getByRole('button', { name: 'Open terminal' }).click()
   await expect(page.getByText('Live · type to talk to the agent', { exact: true })).toBeVisible()
+  // A seat working a dispatch takes typing too; it is not on call.
+  await expect(page.locator('.peek-on-call, .peek-seat-on-call')).toHaveCount(0)
   await expect(page.locator('.xterm-screen')).toBeVisible()
   const rows = page.locator('.xterm-rows')
   await expect(rows).toContainText('line 44')

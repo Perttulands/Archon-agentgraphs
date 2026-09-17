@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { evidenceShot, humanChannelFixture, missionId } from './human-channel-fixture'
+import { answerGate, evidenceShot, humanChannelFixture, missionId, peers, talkRunFixture } from './human-channel-fixture'
 
 test('a mission human channel is chosen in its window and Start mission, saved with undo, and shown on the canvas and in Flow', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -47,4 +47,83 @@ test('a mission human channel is chosen in its window and Start mission, saved w
   await page.getByRole('radio', { name: 'Flow' }).click()
   await expect(page.getByTestId('flow-view').locator('.flow-channel')).toHaveText('Human gatesTalk with the agents')
   expect(fixture.writes).toEqual([])
+})
+
+test('Talk with the asked formation opens each peer seat beside the answer panel, where typing and resizing reach that seat', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  const fixture = await talkRunFixture(page)
+  await page.goto('/?board=wayfinding')
+  const panel = page.getByRole('dialog', { name: 'Answer gate Answer questions' })
+  await expect(panel).toContainText('The 2 agents that did the work are waiting in their terminals.')
+  await panel.getByRole('button', { name: 'Talk with Question peers' }).click()
+
+  const planner = page.getByRole('dialog', { name: 'Talk with Delivery Planner · Claude Code' })
+  const codex = page.getByRole('dialog', { name: 'Talk with Codex Planner · Codex' })
+  await expect(planner).toContainText('Question peers / Peer')
+  await expect(planner).toContainText('On call · waiting for you')
+  await expect(planner.locator('.xterm-rows')).toContainText('seat 21: which questions should we settle first?')
+  await expect(codex.locator('.xterm-rows')).toContainText('seat 22: which questions should we settle first?')
+  await expect(planner).toContainText('Live · type to talk to the agent')
+
+  // Each window opens beside the panel or the window before it, covering neither.
+  const [panelBox, plannerBox, codexBox] = await Promise.all([panel.boundingBox(), planner.boundingBox(), codex.boundingBox()])
+  const overlaps = (a: typeof panelBox, b: typeof panelBox) => a!.x < b!.x + b!.width && b!.x < a!.x + a!.width && a!.y < b!.y + b!.height && b!.y < a!.y + a!.height
+  expect(overlaps(plannerBox, panelBox)).toBe(false)
+  expect(overlaps(codexBox, panelBox)).toBe(false)
+  expect(overlaps(codexBox, plannerBox)).toBe(false)
+  expect(plannerBox!.x + plannerBox!.width).toBeLessThanOrEqual(panelBox!.x)
+
+  // The first seat takes the keyboard as it opens; Escape goes to the agent, not the window.
+  await expect.poll(() => fixture.resizes(21).length).toBeGreaterThan(0)
+  await page.keyboard.type('Settle 1 and 3 first')
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('Escape')
+  await expect.poll(() => fixture.typed(21)).toBe('Settle 1 and 3 first\r\x1b')
+  await expect(planner).toBeVisible()
+  await evidenceShot(page, 'talk-with-question-peers')
+
+  // The other peer is typed into after a click, and its window's size reaches only that seat.
+  await codex.locator('.terminal-surface-host').click()
+  await page.keyboard.type('agreed')
+  await expect.poll(() => fixture.typed(22)).toBe('agreed')
+  expect(fixture.typed(21)).toBe('Settle 1 and 3 first\r\x1b')
+  const before = fixture.resizes(22).at(-1)!
+  const plannerResizes = fixture.resizes(21).length
+  const corner = (await codex.locator('.floating-frame-handle[data-handle="se"]').boundingBox())!
+  await page.mouse.move(corner.x + 6, corner.y + 6)
+  await page.mouse.down()
+  await page.mouse.move(corner.x + 6, corner.y + 186, { steps: 8 })
+  await page.mouse.up()
+  await expect.poll(() => fixture.resizes(22).at(-1)!.rows).toBeGreaterThan(before.rows)
+  expect(fixture.resizes(21)).toHaveLength(plannerResizes)
+
+  // Talk again raises the open windows instead of opening more; the Flow row offers the same.
+  await panel.getByRole('button', { name: 'Talk with Question peers' }).click()
+  await expect(page.locator('[data-window-id^="talk:"]')).toHaveCount(2)
+  await page.getByRole('radio', { name: 'Flow' }).click()
+  const row = page.getByTestId(`flow-step-${answerGate.id}`)
+  await expect(row.getByRole('button', { name: 'Talk with Question peers' })).toBeVisible()
+  await expect(page.locator('[data-window-id^="talk:"]')).toHaveCount(2)
+
+  // Peek marks the kept seats as on call and waiting.
+  await page.getByRole('button', { name: 'Open terminal' }).click()
+  const peek = page.getByRole('dialog', { name: 'Formation terminal Peek' })
+  await expect(peek.getByRole('navigation', { name: 'Run seats' }).getByText('on call')).toHaveCount(peers.slots!.length)
+  await expect(peek.locator('.peek-on-call')).toHaveText('On call · waiting for you')
+  expect(fixture.writes).toEqual([])
+})
+
+test('a gate whose ask fell back says why, and a relayed decision names the seat that recorded it', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await talkRunFixture(page, { fallbackReason: 'every seat that received the ask is gone' })
+  await page.goto('/?board=wayfinding')
+  const panel = page.getByRole('dialog', { name: 'Answer gate Answer questions' })
+  await expect(panel.getByRole('note')).toHaveText('The agents are not available for this gate: every seat that received the ask is gone. Answer here.')
+  await expect(panel.getByRole('button', { name: /Talk with/ })).toHaveCount(0)
+  await expect(panel.getByRole('button', { name: 'Approve' })).toBeEnabled()
+  await evidenceShot(page, 'talk-fallback-reason')
+
+  await page.getByRole('button', { name: 'Inspect gate evidence for Framing review' }).click()
+  await expect(page.getByTestId('gate-evaluation-4')).toContainText('pass · human:operator · via codex-scout')
+  await evidenceShot(page, 'relayed-decision-via')
 })

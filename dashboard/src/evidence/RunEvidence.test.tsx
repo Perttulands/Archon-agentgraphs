@@ -64,7 +64,7 @@ const routes: Record<string, unknown> = {
       evaluations: [{
         seq: 8, kinds: ['human'], criterion: text('Pick a framing'),
         input: { edgeId: 'edge_frame', fromNodeId: 'fmn_map', fromPortId: 'port_map_out', text: text('The territory, mapped once') },
-        kindResults: [], humanRequests: [{ seq: 9, pending: false, decision: { seq: 10, verdict: 'pass', response: text('Framing 2') } }],
+        kindResults: [], humanRequests: [{ seq: 9, pending: false, decision: { seq: 10, verdict: 'pass', response: text('Framing 2'), decidedBy: 'human:operator', relayedBy: 'slot_scout' } }],
         verdict: { seq: 11, verdict: 'pass', reason: text('Framing 2'), routePort: 'pass', evidence: [] },
       }],
       problems: [
@@ -160,6 +160,16 @@ describe('RunEvidence', () => {
     render(<RunEvidence runId="run_1" nodeId="gate_framing" title="Framing review" state="done" board={board} onClose={() => {}} />)
     expect(await screen.findByTestId('gate-evaluation-8')).toHaveTextContent('Input from Map the territory · Map')
     expect(screen.getByTestId('gate-evaluation-8')).not.toHaveTextContent('port_map_out')
+    // A decision a seat recorded for the operator names that seat.
+    expect(screen.getByTestId('gate-evaluation-8')).toHaveTextContent('pass · human:operator · via Scout in Map the territory')
+
+    cleanup()
+    const staffed = { ...board, formations: board.formations.map(formation => ({ ...formation, slots: [{ ...formation.slots[0], agentId: 'codex-scout' }] })) }
+    render(<RunEvidence runId="run_1" nodeId="gate_framing" title="Framing review" state="done" board={staffed} onClose={() => {}} />)
+    expect(await screen.findByTestId('gate-evaluation-8')).toHaveTextContent('pass · human:operator · via codex-scout')
+    cleanup()
+    render(<RunEvidence runId="run_1" nodeId="gate_framing" title="Framing review" state="done" onClose={() => {}} />)
+    expect(await screen.findByTestId('gate-evaluation-8')).toHaveTextContent('pass · human:operator · via slot_scout')
   })
 
   it('lists a human pause apart from blocks and errors', async () => {

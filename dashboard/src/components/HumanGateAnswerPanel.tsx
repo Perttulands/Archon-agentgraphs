@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import type { GateTalkPanel } from '../talk/useGateTalk'
 import './humanGateAnswer.css'
 
 export type GateUpstream =
@@ -15,6 +16,8 @@ interface HumanGateAnswerPanelProps {
   gateTitle: string
   criterion: string
   upstream: GateUpstream
+  /** On a session-channel run: the agents the gate asked, or why it fell back to a notification. */
+  talk?: GateTalkPanel | null
   /** Resolves true once the verdict is recorded. */
   onDecide: (verdict: GateDecision, response: string) => Promise<boolean>
 }
@@ -45,10 +48,11 @@ function writeDraft(key: string, text: string) {
  * Approve delivers the response to the next formation with the gate input;
  * Send back returns it to the pushback route as feedback.
  */
-function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterion, upstream, onDecide }: HumanGateAnswerPanelProps) {
+function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterion, upstream, talk, onDecide }: HumanGateAnswerPanelProps) {
   const key = draftKey(runId, requestedSeq)
   const [response, setResponse] = useState(() => readDraft(key))
   const [submitting, setSubmitting] = useState<GateDecision | ''>('')
+  const panel = useRef<HTMLElement>(null)
   const trimmed = response.trim()
   // The run's frozen criterion wins over the board's current draft.
   const shownCriterion = (upstream.state === 'ready' && upstream.criterion) || criterion
@@ -64,12 +68,26 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
   }
 
   return (
-    <section className="gate-answer" role="dialog" aria-label={`Answer gate ${gateTitle}`} data-testid="gate-answer" onPointerDown={event => event.stopPropagation()}>
+    <section ref={panel} className="gate-answer" role="dialog" aria-label={`Answer gate ${gateTitle}`} data-testid="gate-answer" onPointerDown={event => event.stopPropagation()}>
       <header className="gate-answer-hd">
         <span className="gate-answer-kicker">Needs your answer</span>
         <span className="gate-answer-title">{gateTitle}</span>
         <span className="gate-answer-id">{gateId} · request #{requestedSeq}</span>
       </header>
+      {talk?.fallbackReason ? (
+        <p className="gate-answer-fallback" role="note">The agents are not available for this gate: {talk.fallbackReason}. Answer here.</p>
+      ) : talk ? (
+        <div className="gate-answer-talk">
+          <button type="button" className="gate-answer-talk-button" disabled={!talk.seats.length}
+            // The terminals open beside the whole panel, so answering here stays in view.
+            onClick={event => talk.onTalk(panel.current ?? event.currentTarget)}>Talk with {talk.formationTitle || 'the agents'}</button>
+          <span className="gate-answer-talk-note">{talk.seats.length > 1
+            ? `The ${talk.seats.length} agents that did the work are waiting in their terminals. They record the decision you confirm, or you answer here.`
+            : talk.seats.length
+              ? 'The agent that did the work is waiting in its terminal. It records the decision you confirm, or you answer here.'
+              : 'The question is on its way to the agents. You can answer here meanwhile.'}</span>
+        </div>
+      ) : null}
       {shownCriterion ? <p className="gate-answer-criterion">{shownCriterion}</p> : null}
 
       <div className="gate-answer-upstream" data-testid="gate-answer-upstream">

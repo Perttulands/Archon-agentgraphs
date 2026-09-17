@@ -11,8 +11,8 @@ export interface RunSeat {
   createdSeq: number
   sessionName: string
   state: 'live' | 'ended' | 'missing' | 'unavailable'
-  /** Kept after its formation finished to answer a human gate ask (ADR-0019). */
-  onCall?: boolean
+  /** Kept after its formation finished to answer human gate asks (ADR-0019); waitingOn lists the pending asks it received. */
+  onCall?: { keptSeq: number; waitingOn: Array<{ gateId: string; requestedSeq: number }> }
   reason?: string
   columns?: number
   rows?: number
@@ -24,6 +24,11 @@ export interface RunSeats {
   available: boolean
   reason?: string
   seats: RunSeat[]
+}
+
+/** A kept seat holding an ask the operator has not answered yet. */
+export function seatWaitsForYou(seat: RunSeat | undefined): boolean {
+  return Boolean(seat?.onCall?.waitingOn?.length)
 }
 
 export async function fetchRunSeats(runId: string): Promise<RunSeats> {

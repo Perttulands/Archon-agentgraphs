@@ -3,7 +3,7 @@ import { harnessIcon } from '../components/harnessIcons'
 import FloatingFrameHandles from '../windows/FloatingFrameHandles'
 import { useFloatingWindow } from '../windows/useFloatingWindow'
 import TerminalSurface from './TerminalSurface'
-import { fetchRunSeats, seatSocketUrl, type RunSeats } from './seatApi'
+import { fetchRunSeats, seatSocketUrl, seatWaitsForYou, type RunSeats } from './seatApi'
 import type { ConnectionState } from './terminalSession'
 import './peek.css'
 
@@ -77,7 +77,7 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
       <span className="peek-icon">{harnessIcon(selected?.harness)}</span>
       <span className="peek-title" tabIndex={0} aria-label="Move terminal with arrow keys"
         onKeyDown={win.onMoveKeyDown}>{selected ? `${selected.nodeTitle} / ${selected.slotLabel}` : 'Terminal Peek'}</span>
-      {selected?.onCall ? <span className="peek-on-call">On call · waiting for you</span> : null}
+      {selected?.onCall ? <span className="peek-on-call">{seatWaitsForYou(selected) ? 'On call · waiting for you' : 'On call'}</span> : null}
       <button ref={closeButton} onClick={onClose} aria-label="Close terminal Peek">Close ×</button>
     </header>
     <div className="peek-picker">
@@ -97,7 +97,7 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
           void refresh()
         }}>
         {harnessIcon(seat.harness)}{seat.slotLabel}{seat.controller && !/controller/i.test(seat.slotLabel) ? ' · controller' : ''}
-        {seat.onCall ? <span className="peek-seat-on-call" title="On call: waiting for you">on call</span> : null}
+        {seat.onCall ? <span className="peek-seat-on-call" title={seatWaitsForYou(seat) ? 'On call: waiting for you' : 'On call'}>on call</span> : null}
       </button>)}
     </nav>
     {loading ? <p className="peek-message" role="status">Loading run seats…</p>

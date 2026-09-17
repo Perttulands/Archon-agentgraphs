@@ -81,7 +81,8 @@ export interface EvidenceJudgeFailure {
 export interface EvidenceHumanRequest {
   seq: number
   pending: boolean
-  decision?: { seq: number; verdict: string; response: EvidenceText; decidedBy?: string }
+  /** relayedBy is the slot ID of the seat that recorded the operator's confirmed decision (ADR-0019). */
+  decision?: { seq: number; verdict: string; response: EvidenceText; decidedBy?: string; relayedBy?: string }
 }
 
 export interface EvidenceGateVerdict {

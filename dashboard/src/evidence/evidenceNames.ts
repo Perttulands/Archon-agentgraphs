@@ -7,6 +7,8 @@ export interface EvidenceNames {
   node: (nodeId: string) => string
   port: (nodeId: string, portId: string) => string
   slot: (nodeId: string, slotId: string) => string
+  /** The seat that relayed a decision, by its slot ID alone: the slot's agent, else its label. */
+  relayer: (slotId: string) => string
   /** Where a routed input came from: the step, and its port when it has several. */
   source: (nodeId?: string, portId?: string) => string
 }
@@ -16,6 +18,7 @@ export function evidenceNamesForBoard(board: BoardDocument | null | undefined): 
   const ports = new Map<string, Map<string, string>>()
   const outputCounts = new Map<string, number>()
   const slots = new Map<string, Map<string, string>>()
+  const relayers = new Map<string, string>()
   for (const mission of board?.missions || []) titles.set(mission.id, mission.title)
   for (const gate of board?.gates || []) titles.set(gate.id, gate.title)
   for (const node of [...(board?.formations || []), ...(board?.tools || [])]) {
@@ -25,6 +28,7 @@ export function evidenceNamesForBoard(board: BoardDocument | null | undefined): 
   }
   for (const formation of board?.formations || []) {
     slots.set(formation.id, new Map(formation.slots.map(slot => [slot.id, slot.label])))
+    for (const slot of formation.slots) if (!relayers.has(slot.id)) relayers.set(slot.id, slot.agentId || `${slot.label} in ${formation.title}`)
   }
   const node = (nodeId: string) => titles.get(nodeId) || nodeId
   const port = (nodeId: string, portId: string) => ports.get(nodeId)?.get(portId) || portId
@@ -32,6 +36,7 @@ export function evidenceNamesForBoard(board: BoardDocument | null | undefined): 
     node,
     port,
     slot: (nodeId, slotId) => slots.get(nodeId)?.get(slotId) || slotId,
+    relayer: slotId => relayers.get(slotId) || slotId,
     source: (nodeId, portId) => {
       if (!nodeId) return 'the run brief'
       if (!titles.has(nodeId)) return [nodeId, portId].filter(Boolean).join(':')

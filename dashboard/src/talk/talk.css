@@ -1,0 +1,13 @@
+/* A talk window: the standard window chrome around a seat's terminal. */
+.fwin.talk-window { background: var(--terminal-background); }
+.talk-window .fwin-body { display: flex; flex-direction: column; overflow: hidden; }
+.talk-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.talk-icon { display: flex; flex-shrink: 0; }
+.talk-icon svg { width: 18px; height: 18px; }
+.talk-harness { color: var(--text-secondary); font-weight: 400; }
+.talk-where { overflow: hidden; text-overflow: ellipsis; color: var(--text-dim); font-weight: 400; }
+.talk-window button:not(.fwin-close) {
+  flex-shrink: 0; font: 10px var(--font-mono); color: var(--text-secondary); background: var(--surface-primary);
+  border: 1px solid var(--divider); border-radius: 3px; padding: 3px 8px; cursor: pointer;
+}
+.talk-window button:not(.fwin-close):hover { color: var(--text-primary); border-color: var(--accent); }

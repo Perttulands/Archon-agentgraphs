@@ -280,7 +280,10 @@ function GateEvaluations({ runId, evaluations, names, onOpenArtifact }: {
               <div className="evidence-label">Operator · request #{request.seq}</div>
               {request.decision ? (
                 <>
-                  <div className="node-verdict-line">{request.decision.verdict}{request.decision.decidedBy ? ` · ${request.decision.decidedBy}` : ''}</div>
+                  <div className="node-verdict-line">
+                    {request.decision.verdict}{request.decision.decidedBy ? ` · ${request.decision.decidedBy}` : ''}
+                    {request.decision.relayedBy ? <span className="node-verdict-via" title={`Recorded by seat ${request.decision.relayedBy}`}> · via {names.relayer(request.decision.relayedBy)}</span> : null}
+                  </div>
                   {request.decision.response.bytes ? <EvidenceTextView value={request.decision.response} label="Operator response" /> : <div className="node-evidence-empty">No response text.</div>}
                 </>
               ) : <div className="node-evidence-empty">{request.pending ? 'Waiting for the operator.' : 'Not answered.'}</div>}

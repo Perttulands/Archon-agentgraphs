@@ -189,8 +189,38 @@ export interface RunStatusProjection {
   boardSlug: string
   missionId: string
   eventCount: number
-  waitingGates?: Array<{ gateId: string; requestedSeq: number }>
+  waitingGates?: WaitingGate[]
   resumeAllowed?: boolean
+  /** The channel frozen from the run's mission (ADR-0019); formation-only runs notify. */
+  humanChannel?: 'notify' | 'session'
+  /** Seats kept after their formation finished, to answer human gate asks. */
+  onCallSeats?: OnCallSeat[]
+}
+
+/** A seat that received a human gate's ask on a session-channel run. */
+export interface AskedSeat {
+  nodeId: string
+  slotId: string
+  createdSeq: number
+  deliveredSeq?: number
+}
+
+export interface WaitingGate {
+  gateId: string
+  requestedSeq: number
+  /** Seats the ask was delivered to; empty until one receives it. */
+  askedSeats?: AskedSeat[]
+  /** Why the ask went to the notify command instead of the agents. */
+  fallbackReason?: string
+}
+
+export interface OnCallSeat {
+  nodeId: string
+  slotId: string
+  createdSeq: number
+  keptSeq: number
+  /** Pending asks delivered to this seat. */
+  waitingOn: Array<{ gateId: string; requestedSeq: number }>
 }
 
 export interface RunEvent {

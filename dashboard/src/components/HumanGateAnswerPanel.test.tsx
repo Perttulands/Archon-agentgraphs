@@ -92,4 +92,31 @@ describe('HumanGateAnswerPanel', () => {
     )
     expect(screen.getByText('The gate input could not be read.')).toBeInTheDocument()
   })
+
+  it('offers talking with the asked agents beside answering, and names a fallback instead', () => {
+    const onTalk = vi.fn()
+    const seat = { windowId: 'talk:run_1:5', runId: 'run_1', createdSeq: 5, nodeId: 'fmn_peers', formationTitle: 'Question peers', slotLabel: 'Peer', agent: 'Delivery Planner', harness: 'claude-code', label: 'Delivery Planner · Claude Code' }
+    const panel = (talk: Parameters<typeof HumanGateAnswerPanel>[0]['talk']) => (
+      <HumanGateAnswerPanel runId="run_1" gateId="gate_questions" requestedSeq={9} gateTitle="Operator answers" criterion="" talk={talk}
+        upstream={{ state: 'loading' }} onDecide={vi.fn(async () => true)} />
+    )
+    const { rerender } = render(panel({ formationTitle: 'Question peers', seats: [seat, { ...seat, windowId: 'talk:run_1:6', createdSeq: 6 }], fallbackReason: '', onTalk }))
+    const talk = screen.getByRole('button', { name: 'Talk with Question peers' })
+    fireEvent.click(talk)
+    expect(onTalk).toHaveBeenCalledWith(screen.getByRole('dialog', { name: 'Answer gate Operator answers' }))
+    expect(screen.getByText('The 2 agents that did the work are waiting in their terminals. They record the decision you confirm, or you answer here.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
+
+    rerender(panel({ formationTitle: 'Question peers', seats: [], fallbackReason: '', onTalk }))
+    expect(screen.getByRole('button', { name: 'Talk with Question peers' })).toBeDisabled()
+    expect(screen.getByText('The question is on its way to the agents. You can answer here meanwhile.')).toBeInTheDocument()
+
+    rerender(panel({ formationTitle: 'Question peers', seats: [], fallbackReason: 'the lab executor keeps no seats', onTalk }))
+    expect(screen.getByRole('note')).toHaveTextContent('The agents are not available for this gate: the lab executor keeps no seats. Answer here.')
+    expect(screen.queryByRole('button', { name: /Talk with/ })).toBeNull()
+
+    rerender(panel(null))
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Talk with/ })).toBeNull()
+  })
 })
