@@ -884,7 +884,7 @@ func TestArchonToolMutationCommandsRedactPublicationUncertainty(t *testing.T) {
 func TestArchonToolAppearsInTopLevelUsage(t *testing.T) {
 	harness := newArchonToolAuthoringHarness(t, true, false)
 	stdout, stderr, code := harness.run(t)
-	if code != 2 || stdout != "" || !strings.Contains(stderr, "<agent|board|formation|gate|mission|tool|run>") {
+	if code != 2 || stdout != "" || !strings.Contains(stderr, "<agent|board|formation|gate|mission|tool|run|peer>") {
 		t.Fatalf("top-level usage code=%d stdout=%q stderr=%q, want Tool noun", code, stdout, stderr)
 	}
 }
