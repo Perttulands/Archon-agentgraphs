@@ -67,9 +67,13 @@ const succeededEvents = [
 const evidenceText = (text: string) => ({ text, bytes: text.length })
 export const reviewMarkdown = '# Peer review\n\nVerdict: **revise**. The design and the implementation disagree on retries.\n\n- Keep the retry budget\n- Log the second failure'
 const succeededEvidence: Record<string, unknown> = {
-  '/api/formations/runs/run_browser/evidence/nodes/execution': { evidence: { runId: 'run_browser', nodeId: 'execution', kind: 'formation', attempts: [{ attempt: 1, inputs: [], dispatches: [],
+  '/api/formations/runs/run_browser/evidence/nodes/execution': { evidence: { runId: 'run_browser', nodeId: 'execution', kind: 'formation',
+    definition: { title: 'Execution', outputs: [{ id: 'out', label: 'Result' }], outgoing: [{ id: 'review', from: 'execution:out', to: 'gate:in' }] },
+    attempts: [{ attempt: 1, inputs: [], dispatches: [],
     output: { seq: 3, text: evidenceText('Implemented the reviewed plan.'), ports: [{ portId: 'out', text: evidenceText('Implemented the reviewed plan.\n\nAll tests pass.') }] } }] } },
-  '/api/formations/runs/run_browser/evidence/nodes/peer': { evidence: { runId: 'run_browser', nodeId: 'peer', kind: 'formation', attempts: [{ attempt: 1, inputs: [], dispatches: [],
+  '/api/formations/runs/run_browser/evidence/nodes/peer': { evidence: { runId: 'run_browser', nodeId: 'peer', kind: 'formation',
+    definition: { title: 'Peer review', outputs: [{ id: 'out', label: 'Result' }], outgoing: [] },
+    attempts: [{ attempt: 1, inputs: [], dispatches: [],
     output: { seq: 6, text: evidenceText(''), ports: [{ portId: 'out', text: evidenceText(reviewMarkdown), ref: { artifact: 'review.md' } }] } }] } },
   '/api/formations/runs/run_browser/evidence/artifacts': { artifacts: [{ name: 'review.md', size: reviewMarkdown.length, modifiedAt: '2026-09-16T00:00:00Z' }, { name: 'logs/worker.log', size: 40, modifiedAt: '2026-09-16T00:00:00Z' }], truncated: false },
   '/api/formations/runs/run_browser/evidence/artifacts/review.md': { artifact: { name: 'review.md', size: reviewMarkdown.length, modifiedAt: '2026-09-16T00:00:00Z', kind: 'markdown', text: evidenceText(reviewMarkdown) } },
