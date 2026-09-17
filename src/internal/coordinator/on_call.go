@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"context"
+	"errors"
 	"log"
 	"time"
 
@@ -22,6 +23,11 @@ const (
 	sessionCommandWait          = 5 * time.Second
 	sessionPasteBudget          = 30 * time.Second
 )
+
+type humanAskKey struct {
+	runID string
+	seq   int
+}
 
 // withRunCommand runs fn holding the run's command reservation. It waits
 // briefly for a busy run and reports false if the reservation never came. The
@@ -106,6 +112,19 @@ func (d *needsYouDispatcher) deliverSession(ctx context.Context, runID string) (
 // delivery. It reports whether the seat was reached and recorded.
 func (d *needsYouDispatcher) deliverAsk(ctx context.Context, runID string, plan formations.RunOnCallPlan, delivery formations.HumanAskDelivery) bool {
 	c := d.c
+	key := humanAskKey{runID: runID, seq: delivery.Request.Seq}
+	if d.askFailures[key] {
+		return d.recordAskFailure(ctx, key, delivery.Request)
+	}
+	// An earlier seat in this same plan may already have fallen back. Do not
+	// continue pasting the stale plan into its other seats.
+	events, err := c.store.ReadRunEvents(runID)
+	if err != nil {
+		return false
+	}
+	if humanGateFellBack(events, delivery.Request.Seq) {
+		return true
+	}
 	brief, pointer, err := c.engine.WriteHumanAskBrief(runID, plan.Board, plan.Events, delivery, d.config.ServerURL, d.config.CLI)
 	if err != nil {
 		log.Printf("session channel: run %s ask %d brief for %s: %v", runID, delivery.Request.Seq, delivery.Seat.SlotID, err)
@@ -115,6 +134,14 @@ func (d *needsYouDispatcher) deliverAsk(ctx context.Context, runID string, plan 
 	err = plan.Keeper.PasteAsk(paste, delivery.Seat, pointer)
 	cancel()
 	if err != nil {
+		if errors.Is(err, formations.ErrHumanAskDeliveryUncertain) {
+			log.Printf("session channel: run %s ask %d delivery into %s stopped: %v", runID, delivery.Request.Seq, delivery.Seat.SlotID, err)
+			if d.askFailures == nil {
+				d.askFailures = map[humanAskKey]bool{}
+			}
+			d.askFailures[key] = true
+			return d.recordAskFailure(ctx, key, delivery.Request)
+		}
 		log.Printf("session channel: run %s ask %d not yet pasted into %s: %v", runID, delivery.Request.Seq, delivery.Seat.SlotID, err)
 		return false
 	}
@@ -128,6 +155,20 @@ func (d *needsYouDispatcher) deliverAsk(ctx context.Context, runID string, plan 
 	}) {
 		return false
 	}
+	return recorded
+}
+
+func (d *needsYouDispatcher) recordAskFailure(ctx context.Context, key humanAskKey, request formations.RunEvent) bool {
+	recorded := false
+	d.c.withRunCommand(ctx, key.runID, func() {
+		_, err := d.c.engine.RecordHumanAskFallback(key.runID, formations.HumanAskFallback{Request: request, Code: formations.AskFallbackDeliveryUncertain})
+		if err != nil {
+			log.Printf("session channel: run %s ask %d fallback: %v", key.runID, key.seq, err)
+			return
+		}
+		delete(d.askFailures, key)
+		recorded = true
+	})
 	return recorded
 }
 

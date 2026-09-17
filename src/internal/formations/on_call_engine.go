@@ -277,7 +277,8 @@ func renderHumanAskBrief(runID string, board *BoardDocument, events []RunEvent, 
 	slot := delivery.Seat.SlotID
 	b.WriteString("\n## How to help\n\n")
 	b.WriteString("- Present the gate's question plainly, from your own work, and help the operator think it through. Offer a view only when asked, and label it as yours.\n")
-	b.WriteString("- Only the operator decides. Draft the response in the operator's words, show it with the verdict, and record it only after they confirm.\n")
+	b.WriteString("- Only the operator decides. A complete, unambiguous operator verdict for this pending gate, with the exact response to record, is itself confirmation. Record those exact words immediately, without asking them to confirm again. This applies to both approval and send-back. For example, 'Approve. Response: Keep the scope as written.' or 'Send back. Response: Add the missing constraints.' confirms that verdict and response when addressed to this gate.\n")
+	b.WriteString("- If you draft or paraphrase any response, or the verdict, response, or intended gate is ambiguous, show the proposed verdict and exact response together and wait for the operator's confirmation before recording. Do not infer a verdict from discussion or invent missing response text.\n")
 	b.WriteString("- Record the confirmed decision with exactly one of these commands. Replace RESPONSE with the operator's confirmed words, quoted for the shell:\n\n")
 	fmt.Fprintf(&b, "      %s --server %s gate approve %s %s --requested-seq %d --relayed-by %s --response RESPONSE\n", cli, server, runID, request.GateID, request.Seq, slot)
 	fmt.Fprintf(&b, "      %s --server %s gate reject %s %s --requested-seq %d --relayed-by %s --response RESPONSE\n\n", cli, server, runID, request.GateID, request.Seq, slot)

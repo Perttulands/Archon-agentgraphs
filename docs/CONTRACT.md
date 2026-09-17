@@ -387,9 +387,15 @@ when none is:
 <archon> --server <server> gate reject <run> <gate> --requested-seq <seq> --relayed-by <slot> --response RESPONSE
 ```
 
-It tells the agent that only the operator decides, to record a response only
-after the operator confirms it, to run the same command again a few seconds
-after a 409 `coordinator is executing`, and to tell the operator that another
+It tells the agent that only the operator decides. A complete, unambiguous
+operator verdict for this pending gate, with the exact response to record,
+is itself confirmation. The agent records those words immediately, for either
+approval or send-back. If the agent drafts or paraphrases the response, or the
+verdict, response or intended gate is ambiguous, it shows the proposed verdict
+and exact response together and waits for confirmation. It must not infer a
+verdict from discussion or invent missing response text. The instructions also
+say to run the same command again a few seconds after a 409
+`coordinator is executing`, and to tell the operator that another
 seat or the cockpit decided first after a 409 `human gate request is no longer
 pending`. The formation brief's limits still apply, except for that command.
 
@@ -398,8 +404,14 @@ gate, asking formation, slot, the seat's created sequence, session name and
 brief path. An ask falls back once, recorded as `human_ask_fallback` with a code
 and reason, when no kept seat can receive it (`lab_executor`,
 `no_asking_formation`, `no_receivable_seat`) or when every seat that received it
-is gone while the request waits (`asked_seats_gone`). Only then does the notify
-command, if configured, get its `human_gate` notification. Both events are
+is gone while the request waits (`asked_seats_gone`). If a paste may have
+changed a seat's input but submission fails or cannot be verified, the ask
+falls back with `delivery_uncertain`. Automatic delivery stops for that
+request without clearing the input or pressing Enter again. The operator can
+answer in the cockpit or inspect the seat. An agent that is merely busy, or
+unsent operator text found before a paste, still waits without a fallback.
+Only after a fallback does the notify command, if configured, get its
+`human_gate` notification. Both events are
 appended under the run's command reservation, so a verdict sent in that moment
 gets the busy 409, and replay ignores them.
 
@@ -512,8 +524,10 @@ run brief should contain; Start mission shows it. A mission's `humanChannel`
 reach the operator ([ADR-0019](adr/0019-human-channel-agent-session.md)):
 `notify`, the default, or `session`. `notify` and an empty value store no
 channel, any other value is refused with the allowed values and nothing is
-saved, and a run keeps the channel of its frozen board. Asks still go to
-`--notify-command` for either value until session delivery lands. Missions and gates carry
+saved, and a run keeps the channel of its frozen board. On `session`, human
+asks reach the asking formation's kept seats; only a recorded delivery fallback
+sends them to `--notify-command`. Escalations, blocks and final outcomes use
+the notify command on either channel. Missions and gates carry
 reference files, such as a gate's rubric, the way formation briefs do: `--file
 <path>` on `mission create|update` and `gate create|update` (API `files`),
 repeated for more. On update the given files replace the list, and `--file ''`

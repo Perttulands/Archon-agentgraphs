@@ -2,6 +2,7 @@ package formations
 
 import (
 	"context"
+	"errors"
 	"sort"
 )
 
@@ -36,13 +37,20 @@ const (
 	AskFallbackNoAskingFormation = "no_asking_formation"
 	AskFallbackNoReceivableSeat  = "no_receivable_seat"
 	AskFallbackAskedSeatsGone    = "asked_seats_gone"
+	AskFallbackDeliveryUncertain = "delivery_uncertain"
 )
+
+// ErrHumanAskDeliveryUncertain means a paste may have changed the seat's input
+// but submission could not be confirmed. Never retry the paste or press Enter
+// to recover it: the operator may have edited that input in the meantime.
+var ErrHumanAskDeliveryUncertain = errors.New("human ask delivery is uncertain")
 
 var askFallbackReasons = map[string]string{
 	AskFallbackLabExecutor:       "the lab executor keeps no seats",
 	AskFallbackNoAskingFormation: "no formation lies behind the gate",
 	AskFallbackNoReceivableSeat:  "no kept seat of the asking formation can receive the ask",
 	AskFallbackAskedSeatsGone:    "every seat that received the ask is gone",
+	AskFallbackDeliveryUncertain: "an ask may be left unsent in a seat; automatic delivery stopped to preserve the operator's input. Answer in the cockpit or inspect the seat",
 }
 
 // AskFallbackReason is the operator-facing reason for a fallback code.
@@ -65,7 +73,8 @@ type SeatKeeper interface {
 	// created on, and otherwise the seat_cleanup outcome that records it.
 	ProbeKeptSeat(ctx context.Context, seat KeptSeat) (present bool, outcome string)
 	// PasteAsk pastes a pointer into the seat once its agent is idle with an
-	// empty input line, and submits it.
+	// empty input line, and submits it. ErrHumanAskDeliveryUncertain requires
+	// a recorded fallback; other errors before a paste may be retried.
 	PasteAsk(ctx context.Context, seat KeptSeat, pointer string) error
 }
 

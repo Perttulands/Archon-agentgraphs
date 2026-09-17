@@ -61,6 +61,9 @@ type needsYouDispatcher struct {
 	// with a session retry scheduled.
 	watching map[string]bool
 	retrying map[string]bool
+	// Failed pastes must never be tried again if recording their fallback is
+	// temporarily blocked. Only the dispatcher goroutine accesses this map.
+	askFailures map[humanAskKey]bool
 }
 
 // EnableNeedsYou starts notifications and session-channel delivery. Call it

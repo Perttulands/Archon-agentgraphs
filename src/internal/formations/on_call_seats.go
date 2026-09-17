@@ -57,6 +57,10 @@ func (t realSeatTransport) PasteSeat(ctx context.Context, socket, paneID, buffer
 		return err
 	}
 	_, err := t.run(ctx, socket, nil, "paste-buffer", "-p", "-b", buffer, "-t", paneID, "-d")
+	if err != nil {
+		// The paste command may have reached tmux even when its reply failed.
+		return fmt.Errorf("%w: %w", ErrHumanAskDeliveryUncertain, err)
+	}
 	return err
 }
 
@@ -127,7 +131,9 @@ func (e *TmuxFormationExecutor) EndKeptSeat(ctx context.Context, seat KeptSeat) 
 // PasteAsk pastes the pointer once the agent is idle with an empty input line,
 // waits for it to render and submits it. An operator typing into the seat, or
 // an agent still working, makes it return an error for a retry soon after.
-func (e *TmuxFormationExecutor) PasteAsk(ctx context.Context, seat KeptSeat, pointer string) error {
+// Once a paste starts, any failure is terminal for automatic delivery: even
+// a tmux command error cannot prove it left the input unchanged.
+func (e *TmuxFormationExecutor) PasteAsk(ctx context.Context, seat KeptSeat, pointer string) (err error) {
 	if present, _ := e.ProbeKeptSeat(ctx, seat); !present {
 		return errKeptSeatGone
 	}
@@ -135,7 +141,7 @@ func (e *TmuxFormationExecutor) PasteAsk(ctx context.Context, seat KeptSeat, poi
 	attempt, cancel := context.WithTimeout(ctx, keptSeatPasteWait)
 	defer cancel()
 	native := e.nativeKeptSeat(seat)
-	err := e.seatClient.WaitInputClear(attempt, e.config.Socket, native)
+	err = e.seatClient.WaitInputClear(attempt, e.config.Socket, native)
 	native.close()
 	if err != nil {
 		return fmt.Errorf("seat %s is not ready for an ask: %w", seat.SlotID, err)
@@ -143,6 +149,11 @@ func (e *TmuxFormationExecutor) PasteAsk(ctx context.Context, seat KeptSeat, poi
 	if err := transport.PasteSeat(ctx, e.config.Socket, seat.PaneID, safeTmuxBufferName("ask-"+seat.SlotID), pointer); err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w: seat %s: %w", ErrHumanAskDeliveryUncertain, seat.SlotID, err)
+		}
+	}()
 	// Harnesses wrap a long input line themselves, breaking it with a newline
 	// and indent anywhere, even inside the brief path.
 	rendered := renderedText(pointer)

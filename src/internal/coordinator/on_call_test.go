@@ -25,7 +25,9 @@ type keeperExecutor struct {
 	mu    sync.Mutex
 	// refuse makes a slot's next pastes fail, as for a busy agent.
 	refuse map[string]int
-	gone   map[string]bool
+	// uncertain fails after a paste may have changed the seat's input.
+	uncertain map[string]bool
+	gone      map[string]bool
 	// fail makes a node's next executions fail before any seat is created.
 	fail   map[string]int
 	pastes []string
@@ -92,6 +94,9 @@ func (k *keeperExecutor) PasteAsk(_ context.Context, seat formations.KeptSeat, p
 		return errors.New("agent is busy")
 	}
 	k.pastes = append(k.pastes, seat.SlotID+" "+pointer)
+	if k.uncertain[seat.SlotID] {
+		return fmt.Errorf("%w: Enter failed", formations.ErrHumanAskDeliveryUncertain)
+	}
 	return nil
 }
 
@@ -258,6 +263,12 @@ func TestSessionAskReachesTheKeptWorkSeatWithoutANotifyCommand(t *testing.T) {
 		fmt.Sprintf("'/opt/archon tools/bin/archon' --server http://127.0.0.1:18400 gate approve %s gate_review --requested-seq %d --relayed-by slot_work --response RESPONSE", id, gate.RequestedSeq),
 		fmt.Sprintf("'/opt/archon tools/bin/archon' --server http://127.0.0.1:18400 gate reject %s gate_review --requested-seq %d --relayed-by slot_work --response RESPONSE", id, gate.RequestedSeq),
 		"Only the operator decides",
+		"A complete, unambiguous operator verdict for this pending gate, with the exact response to record, is itself confirmation.",
+		"Record those exact words immediately, without asking them to confirm again.",
+		"'Approve. Response: Keep the scope as written.'",
+		"'Send back. Response: Add the missing constraints.'",
+		"If you draft or paraphrase any response, or the verdict, response, or intended gate is ambiguous, show the proposed verdict and exact response together and wait for the operator's confirmation before recording.",
+		"Do not infer a verdict from discussion or invent missing response text.",
 		"A 409 saying the coordinator is executing means the run is busy for a moment: wait a few seconds and run the same command again.",
 		"A 409 saying the human gate request is no longer pending means another seat or the cockpit decided first",
 	} {
@@ -401,6 +412,48 @@ func TestSessionAskReachesEveryPeerSeatWithARetryAndOnlyTheOrchestratedControlle
 	want := "created peer_a, created peer_b, kept_on_call peer_a, kept_on_call peer_b, ask gate_peers, delivered peer_a, delivered peer_b, run_blocked, run_resumed, ended peer_a ask_answered, ended peer_b ask_answered, created team_lead, created team_worker, kept_on_call team_lead, ended team_worker, ask gate_team, delivered team_lead"
 	if trail != want {
 		t.Fatalf("trail = %s\nwant    %s", trail, want)
+	}
+}
+
+func TestUncertainSessionPasteFallsBackOnceAndSurvivesRestart(t *testing.T) {
+	for _, test := range []struct {
+		name, board, slot string
+	}{
+		{"solo", sessionBoard(testBoard), "slot_work"},
+		{"peer", peerProofBoard, "peer_a"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			notifier := &recordingNotifier{}
+			keeper := &keeperExecutor{uncertain: map[string]bool{test.slot: true}}
+			c, root := onCallFixture(t, test.board, keeper, notifier)
+			id := startProof(t, c)
+			p := awaitProjection(t, c, id, func(p *Projection) bool {
+				return len(p.WaitingGates) == 1 && p.WaitingGates[0].FallbackReason != ""
+			})
+			gate := p.WaitingGates[0]
+			if gate.FallbackReason != formations.AskFallbackReason(formations.AskFallbackDeliveryUncertain) || len(gate.AskedSeats) != 0 {
+				t.Fatalf("waiting gate = %+v", gate)
+			}
+			awaitNotifications(t, notifier, 1)
+			next := reopen(t, c, root, keeper)
+			t.Cleanup(func() { next.Close() })
+			// Reconcile synchronously, including repeated settle/probe work. A
+			// new dispatcher has no in-memory knowledge of the failed paste.
+			d := &needsYouDispatcher{c: next, config: NeedsYouConfig{Notifier: notifier}, watching: map[string]bool{}}
+			for range 3 {
+				d.deliver(context.Background(), id, true)
+			}
+			if pastes, _ := keeper.snapshot(); len(pastes) != 1 || !strings.HasPrefix(pastes[0], test.slot+" ") {
+				t.Fatalf("failed ask was pasted again: %v", pastes)
+			}
+			if sent, _ := notifier.snapshot(); len(sent) != 1 || sent[0].Kind != formations.NeedsYouKindHumanGate || sent[0].Seq != gate.RequestedSeq {
+				t.Fatalf("notifications = %+v", sent)
+			}
+			trail := ledgerTrail(eventsOf(t, next, id))
+			if strings.Count(trail, "fallback delivery_uncertain") != 1 || strings.Contains(trail, "delivered ") {
+				t.Fatalf("trail = %s", trail)
+			}
+		})
 	}
 }
 

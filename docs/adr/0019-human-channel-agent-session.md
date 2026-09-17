@@ -9,6 +9,10 @@ has confirmed. The operator then ruled that typing into agents must never be
 blocked: "I want to be able to interact with agents normally in tmux even if
 they are working on a mission."
 
+Clarified 2026-09-17 in form-epn and form-n64.7: a complete, unambiguous
+operator verdict for the pending gate, with the exact response to record,
+is itself confirmation. The agent need not ask for the same confirmation again.
+
 Before this decision one daemon flag, `--notify-command`, sent every run's asks
 the same way. Seats ended when their formation finished, the cockpit's seat
 terminal was view-only, and the contract told operators not to type into seats.
@@ -59,8 +63,13 @@ terminal was view-only, and the contract told operators not to type into seats.
   - Present the gate's question plainly, from your own work, and help the
     operator think it through. Offer a view only when asked, and label it as
     yours.
-  - Only the operator decides. Draft the response in the operator's words, show
-    it with the verdict, and record it only after they confirm. Use the exact
+  - Only the operator decides. A complete, unambiguous verdict for this pending
+    gate, with the exact response to record, is itself confirmation. Record
+    those words immediately, for either approval or send-back. If the agent
+    drafts or paraphrases the response, or the verdict, response or intended
+    gate is ambiguous, show the proposed verdict and exact response together
+    and wait for the operator's confirmation. Never infer a verdict from
+    discussion or invent missing response text. Use the exact
     `gate approve` or `gate reject` command given, with `--requested-seq` and
     `--relayed-by <slot-id>`. A 409 saying the coordinator is executing means
     the run is busy for a moment: wait a few seconds and run the same command
@@ -92,7 +101,12 @@ terminal was view-only, and the contract told operators not to type into seats.
   reason, in these cases:
   - no kept seat can receive it: every seat has died, the executor is lab, or
     no formation lies behind the gate;
-  - every seat that received it is gone while the request still waits.
+  - every seat that received it is gone while the request still waits;
+  - a paste may have changed a seat's input but its submission failed or could
+    not be verified. Automatic delivery stops for that request, without
+    clearing the input or pressing Enter again. The operator can answer in the
+    cockpit or inspect the seat. An agent that is merely busy, or an operator's
+    unsent text found before a paste, still waits without a fallback.
   With no notify command, the recorded reason is all there is, and the cockpit
   shows it.
 

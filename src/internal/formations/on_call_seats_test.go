@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 	"testing"
@@ -218,6 +219,86 @@ func TestKeptSeatAskIsSubmittedAmongCodexStars(t *testing.T) {
 		if got := slices.Contains(fake.events, "submit"); got != submitted || (err == nil) != submitted {
 			t.Errorf("pointer %q: submitted = %t, err = %v; want submitted %t", pointer, got, err, submitted)
 		}
+	}
+}
+
+func TestKeptSeatAskTransportDistinguishesBusyFromUncertainDelivery(t *testing.T) {
+	for _, failure := range []string{"operator input", "load-buffer", "paste-buffer", "capture-pane", "render", "send-keys"} {
+		t.Run(failure, func(t *testing.T) {
+			quickKeptSeatWaits(t)
+			const pointer = "Read the file /state/briefs/gate-run-9-slot_work.md and follow it."
+			pane := "Claude Code\n❯ "
+			if failure == "operator input" {
+				pane += "my unsent thought"
+			}
+			var loaded string
+			var writes []string
+			pasted := false
+			transport := realSeatTransport{
+				control: func(context.Context, string, string) (*seatControl, error) {
+					return &seatControl{events: make(chan struct{})}, nil
+				},
+				command: func(_ context.Context, _ string, input *strings.Reader, args ...string) (string, error) {
+					switch args[0] {
+					case "display-message":
+						if strings.Contains(args[len(args)-1], "cursor_x") {
+							return "2 1 0", nil
+						}
+						return "$1\t0", nil
+					case "capture-pane":
+						if pasted && failure == "capture-pane" {
+							return "", errors.New("capture failed after paste")
+						}
+						if pasted && failure == "render" {
+							return "unrecognized input rendering", nil
+						}
+						return pane, nil
+					case "load-buffer":
+						writes = append(writes, args[0])
+						raw, _ := io.ReadAll(input)
+						loaded = string(raw)
+					case "paste-buffer":
+						writes = append(writes, args[0])
+						// A tmux error may arrive after the paste changed input.
+						pasted, pane = true, "Claude Code\n❯ "+loaded
+					case "send-keys":
+						writes = append(writes, strings.Join(args, " "))
+					default:
+						t.Fatalf("unexpected tmux command: %v", args)
+					}
+					if args[0] == failure {
+						return "", errors.New("injected tmux failure")
+					}
+					return "", nil
+				},
+			}
+			executor := newTmuxFormationExecutorWithClient(nil, nil, tmuxTestConfig(t), nil)
+			executor.seatClient = transport
+			err := executor.PasteAsk(context.Background(), KeptSeat{SlotID: "slot_work", SessionID: "$1", PaneID: "%1", Harness: "claude-code"}, pointer)
+			uncertain := failure != "operator input" && failure != "load-buffer"
+			if err == nil || errors.Is(err, ErrHumanAskDeliveryUncertain) != uncertain {
+				t.Fatalf("failure %s: err = %v", failure, err)
+			}
+			if failure == "operator input" {
+				if len(writes) != 0 || pane != "Claude Code\n❯ my unsent thought" {
+					t.Fatalf("operator input changed: %q; writes %v", pane, writes)
+				}
+				return
+			}
+			want := []string{"load-buffer"}
+			if failure != "load-buffer" {
+				want = append(want, "paste-buffer")
+				if pane != "Claude Code\n❯ "+pointer {
+					t.Fatalf("failed ask input changed: %q", pane)
+				}
+			}
+			if failure == "send-keys" {
+				want = append(want, "send-keys -t %1 Enter")
+			}
+			if !slices.Equal(writes, want) {
+				t.Fatalf("writes = %v, want %v", writes, want)
+			}
+		})
 	}
 }
 
