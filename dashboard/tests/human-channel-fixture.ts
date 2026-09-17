@@ -118,8 +118,10 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
 
   // Each seat's socket answers the handshake with a prompt, echoes typing as a terminal does, and records every frame it receives.
   const frames = new Map<number, string[]>()
+  const sockets = new Map<number, Array<{ close: (options: { code: number }) => Promise<void> }>>()
   await page.routeWebSocket('**/seats/*/terminal', socket => {
     const createdSeq = Number(socket.url().match(/seats\/(\d+)\/terminal/)![1])
+    sockets.set(createdSeq, [...(sockets.get(createdSeq) || []), socket])
     // A seat's frames from every socket to it, such as a talk window's and a Peek's.
     const received = frames.get(createdSeq) || []
     frames.set(createdSeq, received)
@@ -137,5 +139,7 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
     events = [...events, { seq: 14, type: 'human_verdict_recorded', nodeId: answerGate.id, gateId: answerGate.id }]
     run = { ...run, status: 'running', eventCount: 14, waitingGates: [], onCallSeats: run.onCallSeats.map(seat => ({ ...seat, waitingOn: [] })) }
   }
-  return { ...fixture, typed, resizes, decide }
+  /** The seat's session ends, as a kept seat does once idle after the decision. */
+  const endSeat = async (createdSeq: number) => { for (const socket of sockets.get(createdSeq) || []) await socket.close({ code: 1000 }) }
+  return { ...fixture, typed, resizes, decide, endSeat }
 }

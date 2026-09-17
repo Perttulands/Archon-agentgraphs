@@ -53,6 +53,8 @@ export default function SeatTalkWindow({ seat, status, anchor, focusOnOpen, onCl
   }, [refresh])
 
   const terminal = live && seatSocketUrl(live) ? live : null
+  // The seat has closed once its terminal ends, or the run no longer shows it live.
+  const closed = connection === 'ended' || Boolean(live && live.state !== 'live')
   const title = (
     <span className="talk-title">
       <span className="talk-icon">{harnessIcon(seat.harness)}</span>
@@ -70,7 +72,9 @@ export default function SeatTalkWindow({ seat, status, anchor, focusOnOpen, onCl
   return (
     <FloatingWindow id={seat.windowId} kind="peek" label={`Talk with ${seat.label}`} title={title} actions={actions}
       defaultSize={{ width: 680, height: 420 }} anchor={anchor} className="talk-window" onClose={onClose}>
-      {status === 'decided' ? <p className="talk-decided" role="status">Decision recorded; this agent closes when idle.</p> : null}
+      {status === 'decided'
+        ? <p className="talk-decided" role="status">{closed ? 'Decision recorded; this agent has closed.' : 'Decision recorded; this agent closes when idle.'}</p>
+        : null}
       {terminal
         ? <TerminalSurface key={`${terminal.createdSeq}-${generation}`} seat={terminal} focusOnOpen={focusOnOpen} onStateChange={setConnection} />
         : <p className="peek-message" role="status">{message}</p>}

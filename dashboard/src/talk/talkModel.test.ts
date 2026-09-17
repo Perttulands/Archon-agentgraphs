@@ -56,19 +56,23 @@ describe('talking with the agents a gate asked', () => {
     expect(gateTalk(board, fallback, agents, { gateId: 'answers', requestedSeq: 8 })).toBeNull()
   })
 
-  it('follows an open seat from waiting for the operator to past the decision', () => {
+  it('follows an open seat from waiting for the operator to past the decision, even when the decision ends the run', () => {
     const asked = { nodeId: 'peers', slotId: 'slot_a', createdSeq: 5, deliveredSeq: 12 }
     const waiting = { ...run({ gateId: 'answers', requestedSeq: 9, askedSeats: [asked] }, 'session'),
       onCallSeats: [{ nodeId: 'peers', slotId: 'slot_a', createdSeq: 5, keptSeq: 8, waitingOn: [{ gateId: 'answers', requestedSeq: 9 }] }] }
     const seat = gateTalk(board, waiting, agents, { gateId: 'answers', requestedSeq: 9 })!.seats[0]
-    expect(talkSeatStatus(waiting, seat)).toBe('waiting')
-    const decided = { ...waiting, status: 'running', waitingGates: [], onCallSeats: [{ ...waiting.onCallSeats[0], waitingOn: [] }] }
-    expect(talkSeatStatus(decided, seat)).toBe('decided')
-    // Released seats leave the projection; the decision still reads as recorded.
-    expect(talkSeatStatus({ ...decided, onCallSeats: [] }, seat)).toBe('decided')
-    // Seats lost while the request still waits, a finished run, or a daemon without the projection say nothing.
-    expect(talkSeatStatus({ ...waiting, onCallSeats: [] }, seat)).toBeNull()
-    expect(talkSeatStatus({ ...decided, final: true, status: 'canceled' }, seat)).toBeNull()
-    expect(talkSeatStatus({ ...decided, onCallSeats: undefined }, seat)).toBeNull()
+    const requested = [{ seq: 9, type: 'human_input_requested', runId: 'run_1', gateId: 'answers' }]
+    const recorded = [...requested, { seq: 15, type: 'human_verdict_recorded', runId: 'run_1', gateId: 'answers' }]
+    expect(talkSeatStatus(waiting, requested, seat)).toBe('waiting')
+    const resumed = { ...waiting, status: 'running', waitingGates: [], onCallSeats: [{ ...waiting.onCallSeats[0], waitingOn: [] }] }
+    expect(talkSeatStatus(resumed, recorded, seat)).toBe('decided')
+    // The gate was the last step: the seat ended before the run succeeded.
+    expect(talkSeatStatus({ ...resumed, status: 'succeeded', final: true, onCallSeats: [] }, recorded, seat)).toBe('decided')
+    // An earlier verdict on the same gate is not this request's.
+    expect(talkSeatStatus(waiting, [{ seq: 4, type: 'human_verdict_recorded', runId: 'run_1', gateId: 'answers' }, ...requested], seat)).toBe('waiting')
+    // Canceled while waiting, seats lost while the request waits, or a daemon without the projection say nothing.
+    expect(talkSeatStatus({ ...waiting, status: 'canceled', final: true, waitingGates: [], onCallSeats: [] }, requested, seat)).toBeNull()
+    expect(talkSeatStatus({ ...waiting, onCallSeats: [] }, requested, seat)).toBeNull()
+    expect(talkSeatStatus({ ...waiting, onCallSeats: undefined }, requested, seat)).toBeNull()
   })
 })

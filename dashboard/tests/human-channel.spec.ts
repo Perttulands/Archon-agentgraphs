@@ -125,6 +125,9 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   await page.keyboard.type('thanks')
   await expect.poll(() => fixture.typed(21)).toContain('thanks')
   await evidenceShot(page, 'talk-decision-recorded')
+  await fixture.endSeat(22)
+  await expect(codex.getByText('Decision recorded; this agent has closed.')).toBeVisible()
+  await expect(planner.getByText('Decision recorded; this agent closes when idle.')).toBeVisible()
   expect(fixture.writes).toEqual([])
 })
 

@@ -1,5 +1,5 @@
 import { harnessName } from '../components/formationsCockpitVisuals'
-import type { AgentProjection, AskedSeat, BoardDocument, RunStatusProjection } from '../components/formationsTypes'
+import type { AgentProjection, AskedSeat, BoardDocument, RunEvent, RunStatusProjection } from '../components/formationsTypes'
 
 /**
  * Talking with the agents a human gate asked (ADR-0019): on a session-channel
@@ -78,16 +78,16 @@ function talkSeat(
 }
 
 /**
- * Where an open talk seat stands: still holding an ask for the operator, or
- * past it because the request it was asked is no longer waiting while the run
- * goes on, so the agent closes once idle. Null when the run tells neither, such
- * as a run that ended, or asked seats lost while the request still waits.
+ * Where an open talk seat stands: past its ask once the run records a verdict
+ * on the gate after the request it was asked, even if that verdict ended the
+ * run; or still holding an ask for the operator. Null when neither holds, such
+ * as a run canceled while waiting, or asked seats lost while the request waits.
  */
-export function talkSeatStatus(run: RunStatusProjection | null | undefined, seat: TalkSeat): 'waiting' | 'decided' | null {
-  if (!run || run.final || run.runId !== seat.runId || !run.onCallSeats) return null
-  if (run.onCallSeats.some(kept => kept.createdSeq === seat.createdSeq && kept.waitingOn.length)) return 'waiting'
-  const pending = run.waitingGates?.some(gate => gate.gateId === seat.gateId && gate.requestedSeq === seat.requestedSeq)
-  return pending ? null : 'decided'
+export function talkSeatStatus(run: RunStatusProjection | null | undefined, events: readonly RunEvent[], seat: TalkSeat): 'waiting' | 'decided' | null {
+  if (!run || run.runId !== seat.runId) return null
+  if (events.some(event => event.type === 'human_verdict_recorded' && event.gateId === seat.gateId && event.seq > seat.requestedSeq)) return 'decided'
+  if (run.final) return null
+  return run.onCallSeats?.some(kept => kept.createdSeq === seat.createdSeq && kept.waitingOn.length) ? 'waiting' : null
 }
 
 /** The nearest formation behind a gate's input, following that input back through gates. */

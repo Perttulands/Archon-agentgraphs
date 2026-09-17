@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
-import type { AgentProjection, BoardDocument, RunStatusProjection } from '../components/formationsTypes'
+import type { AgentProjection, BoardDocument, RunEvent, RunStatusProjection } from '../components/formationsTypes'
 import type { WindowRect } from '../windows/windowGeometry'
 import { gateTalk, talkSeatStatus, type GateTalk, type TalkSeat } from './talkModel'
 
@@ -18,9 +18,11 @@ export interface GateTalkPanel extends GateTalk {
  * terminals the operator opened from it. Opened windows stay while the run
  * does, so a conversation outlives the answer that ends it.
  */
-export function useGateTalk({ board, run, agents, gate, focusWindow }: {
+export function useGateTalk({ board, run, events, agents, gate, focusWindow }: {
   board: BoardDocument | null | undefined
   run: RunStatusProjection | null | undefined
+  /** The run's events, where a recorded verdict tells an open window its decision is made. */
+  events: readonly RunEvent[]
   agents: readonly AgentProjection[]
   gate: { gateId: string; requestedSeq: number } | null | undefined
   /** Raises a window already open, when Talk is pressed again. */
@@ -48,7 +50,7 @@ export function useGateTalk({ board, run, agents, gate, focusWindow }: {
   const windows = open.length ? (
     <Suspense fallback={null}>
       {open.map(item => (
-        <SeatTalkWindow key={item.seat.windowId} seat={item.seat} status={talkSeatStatus(run, item.seat)} focusOnOpen={item.takesFocus}
+        <SeatTalkWindow key={item.seat.windowId} seat={item.seat} status={talkSeatStatus(run, events, item.seat)} focusOnOpen={item.takesFocus}
           anchor={() => windowRect(item.after) || item.anchor}
           onClose={() => setOpen(current => current.filter(other => other.seat.windowId !== item.seat.windowId))} />
       ))}

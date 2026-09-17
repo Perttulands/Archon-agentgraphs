@@ -2346,7 +2346,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return { gateId: pendingHumanGateId, requestedSeq, title: gate?.title || pendingHumanGateId, criterion: gate?.criterion || '' }
   }, [activeRun?.waitingGates, board?.gates, pendingHumanGateId, runEvents])
   const pendingGateInput = useHumanGateUpstream(activeRun?.runId || '', pendingHumanGate)
-  const gateTalk = useGateTalk({ board, run: activeRun, agents, gate: pendingHumanGate, focusWindow })
+  const gateTalk = useGateTalk({ board, run: activeRun, events: runEvents, agents, gate: pendingHumanGate, focusWindow })
   const pendingGateUpstream = useMemo(() => {
     if (pendingGateInput.state !== 'ready') return pendingGateInput
     const node = [...(board?.formations || []), ...(board?.gates || []), ...(board?.missions || [])].find(candidate => candidate.id === pendingGateInput.from)
