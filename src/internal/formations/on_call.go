@@ -304,6 +304,23 @@ type HumanAskDelivery struct {
 type HumanAskFallback struct {
 	Request RunEvent
 	Code    string
+	// Seat identifies input an uncertain paste may have changed. Its immutable
+	// CreatedSeq prevents future asks from touching that input, even after restart.
+	Seat KeptSeat
+}
+
+// HumanAskUncertainSeats indexes immutable seat identities whose input may
+// still contain an unsent ask. A replacement seat has a new created sequence.
+func HumanAskUncertainSeats(events []RunEvent) map[int]bool {
+	uncertain := map[int]bool{}
+	for _, event := range events {
+		if event.Type == RunEventHumanAskFallback && stringFromEventData(event, "code") == AskFallbackDeliveryUncertain {
+			if seq := intFromRunEventData(event.Data["seatCreatedSeq"]); seq > 0 {
+				uncertain[seq] = true
+			}
+		}
+	}
+	return uncertain
 }
 
 // OnCallPlan is what a settled session-channel run owes its kept seats.
@@ -355,6 +372,7 @@ func PlanOnCall(board *BoardDocument, events []RunEvent, keeper bool, probe Seat
 	}
 	requests := OpenHumanRequests(events)
 	records := HumanAskRecords(events)
+	uncertain := HumanAskUncertainSeats(events)
 	askers := map[string]bool{}
 	for _, request := range requests {
 		askers[AskingFormation(board, events, request)] = true
@@ -386,12 +404,20 @@ func PlanOnCall(board *BoardDocument, events []RunEvent, keeper bool, probe Seat
 			plan.Fallbacks = append(plan.Fallbacks, HumanAskFallback{Request: request, Code: AskFallbackNoAskingFormation})
 			continue
 		}
-		receivers := askReceivers(board, asker, present)
+		var receivers []KeptSeat
+		var unsafe KeptSeat
+		for _, seat := range askReceivers(board, asker, present) {
+			if uncertain[seat.CreatedSeq] {
+				unsafe = seat
+				continue
+			}
+			receivers = append(receivers, seat)
+		}
 		delivered, reached := 0, 0
 		if record != nil {
 			delivered = len(record.Delivered)
 			for createdSeq := range record.Delivered {
-				if _, ok := present[createdSeq]; ok {
+				if _, ok := present[createdSeq]; ok && !uncertain[createdSeq] {
 					reached++
 				}
 			}
@@ -403,6 +429,8 @@ func PlanOnCall(board *BoardDocument, events []RunEvent, keeper bool, probe Seat
 			}
 		}
 		switch {
+		case reached == 0 && len(receivers) == 0 && unsafe.CreatedSeq > 0:
+			plan.Fallbacks = append(plan.Fallbacks, HumanAskFallback{Request: request, Code: AskFallbackDeliveryUncertain, Seat: unsafe})
 		case delivered == 0 && len(receivers) == 0:
 			plan.Fallbacks = append(plan.Fallbacks, HumanAskFallback{Request: request, Code: AskFallbackNoReceivableSeat})
 		case delivered > 0 && reached == 0 && len(owed) == 0:

@@ -63,7 +63,7 @@ type needsYouDispatcher struct {
 	retrying map[string]bool
 	// Failed pastes must never be tried again if recording their fallback is
 	// temporarily blocked. Only the dispatcher goroutine accesses this map.
-	askFailures map[humanAskKey]bool
+	askFailures map[humanAskKey]formations.HumanAskFallback
 }
 
 // EnableNeedsYou starts notifications and session-channel delivery. Call it

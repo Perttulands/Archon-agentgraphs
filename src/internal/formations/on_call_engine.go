@@ -308,23 +308,31 @@ func (e *RunEngine) RecordHumanAskDelivered(runID string, delivery HumanAskDeliv
 	})
 }
 
-// RecordHumanAskFallback records, once, that a pending ask falls back to the
-// notify command, and why.
+// RecordHumanAskFallback records, once, why an ask falls back. An uncertain
+// paste is also recorded after its request was answered, while its seat is
+// still kept: a verdict must not lose the identity of input we cannot touch.
 func (e *RunEngine) RecordHumanAskFallback(runID string, fallback HumanAskFallback) (bool, error) {
 	events, err := e.store.ReadRunEvents(runID)
 	if err != nil {
 		return false, err
 	}
-	if !requestStillOpen(events, fallback.Request) {
+	uncertainSeat := fallback.Code == AskFallbackDeliveryUncertain && fallback.Seat.CreatedSeq > 0 && seatStillKept(events, fallback.Seat)
+	if !requestStillOpen(events, fallback.Request) && !uncertainSeat {
 		return false, nil
 	}
 	if record := HumanAskRecords(events)[fallback.Request.Seq]; record != nil && record.Fallback != nil {
 		return false, nil
 	}
-	return true, e.store.AppendRunEvent(runID, RunEvent{
+	event := RunEvent{
 		Type: RunEventHumanAskFallback, GateID: fallback.Request.GateID,
 		Data: map[string]any{"requestedSeq": fallback.Request.Seq, "gateId": fallback.Request.GateID, "code": fallback.Code, "reason": AskFallbackReason(fallback.Code)},
-	})
+	}
+	if fallback.Seat.CreatedSeq > 0 {
+		event.NodeID, event.SlotID = fallback.Seat.NodeID, fallback.Seat.SlotID
+		event.Data["seatCreatedSeq"] = fallback.Seat.CreatedSeq
+		event.Data["sessionName"] = fallback.Seat.SessionName
+	}
+	return true, e.store.AppendRunEvent(runID, event)
 }
 
 func requestStillOpen(events []RunEvent, request RunEvent) bool {

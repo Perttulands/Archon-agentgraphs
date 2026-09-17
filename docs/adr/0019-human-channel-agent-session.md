@@ -105,7 +105,11 @@ terminal was view-only, and the contract told operators not to type into seats.
   - a paste may have changed a seat's input but its submission failed or could
     not be verified. Automatic delivery stops for that request, without
     clearing the input or pressing Enter again. The operator can answer in the
-    cockpit or inspect the seat. An agent that is merely busy, or an operator's
+    cockpit or inspect the seat. The fallback records `seatCreatedSeq`, so later
+    requests also skip that exact seat after restart. Healthy peers and new
+    seats remain eligible; when none remain, the later request also falls back.
+    A verdict racing the paste does not discard the affected seat identity.
+    An agent that is merely busy, or an operator's
     unsent text found before a paste, still waits without a fallback.
   With no notify command, the recorded reason is all there is, and the cockpit
   shows it.

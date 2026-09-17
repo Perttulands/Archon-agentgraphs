@@ -435,7 +435,11 @@ is gone while the request waits (`asked_seats_gone`). If a paste may have
 changed a seat's input but submission fails or cannot be verified, the ask
 falls back with `delivery_uncertain`. Automatic delivery stops for that
 request without clearing the input or pressing Enter again. The operator can
-answer in the cockpit or inspect the seat. An agent that is merely busy, or
+answer in the cockpit or inspect the seat. The fallback records the affected
+seat's immutable `seatCreatedSeq`. Later asks also skip that seat, including
+after restart, and fall back if no healthy receiver remains. Other peer seats
+and replacement seats remain eligible. A verdict arriving during the failed
+paste does not discard that seat identity. An agent that is merely busy, or
 unsent operator text found before a paste, still waits without a fallback.
 Only after a fallback does the notify command, if configured, get its
 `human_gate` notification. Both events are

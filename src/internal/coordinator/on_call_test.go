@@ -27,7 +27,10 @@ type keeperExecutor struct {
 	refuse map[string]int
 	// uncertain fails after a paste may have changed the seat's input.
 	uncertain map[string]bool
-	gone      map[string]bool
+	// retained models the input left after an uncertain paste, by seat identity.
+	retained map[int]string
+	askCalls []int
+	gone     map[string]bool
 	// fail makes a node's next executions fail before any seat is created.
 	fail   map[string]int
 	pastes []string
@@ -89,12 +92,20 @@ func (k *keeperExecutor) ProbeKeptSeat(_ context.Context, seat formations.KeptSe
 func (k *keeperExecutor) PasteAsk(_ context.Context, seat formations.KeptSeat, pointer string) error {
 	k.mu.Lock()
 	defer k.mu.Unlock()
+	k.askCalls = append(k.askCalls, seat.CreatedSeq)
+	if k.retained[seat.CreatedSeq] != "" {
+		return errors.New("input still holds the unsent ask pointer")
+	}
 	if k.refuse[seat.SlotID] > 0 {
 		k.refuse[seat.SlotID]--
 		return errors.New("agent is busy")
 	}
 	k.pastes = append(k.pastes, seat.SlotID+" "+pointer)
 	if k.uncertain[seat.SlotID] {
+		if k.retained == nil {
+			k.retained = map[int]string{}
+		}
+		k.retained[seat.CreatedSeq] = pointer
 		return fmt.Errorf("%w: Enter failed", formations.ErrHumanAskDeliveryUncertain)
 	}
 	return nil
@@ -601,6 +612,128 @@ func TestSessionSeatStaysForTheNextHumanGateAndEndsBeforeTheRunSucceeds(t *testi
 	want := "created slot_work, kept_on_call slot_work, ask gate_one, delivered slot_work, run_blocked, run_resumed, ask gate_two, delivered slot_work, run_blocked, run_resumed, ended slot_work run_final, run_succeeded"
 	if got := ledgerTrail(eventsOf(t, c, id)); got != want {
 		t.Fatalf("trail = %s\nwant    %s", got, want)
+	}
+}
+
+func TestUncertainSeatFallsBackForTheNextHumanGateAfterRestart(t *testing.T) {
+	keeper := &keeperExecutor{uncertain: map[string]bool{"slot_work": true}}
+	notifier := &recordingNotifier{}
+	c, root := onCallFixture(t, twoGateBoard, keeper, notifier)
+	id := startProof(t, c)
+	first := awaitProjection(t, c, id, func(p *Projection) bool {
+		return len(p.WaitingGates) == 1 && p.WaitingGates[0].FallbackReason != ""
+	})
+	awaitNotifications(t, notifier, 1)
+	seat := first.OnCallSeats[0]
+	next := reopen(t, c, root, keeper)
+	t.Cleanup(func() { next.Close() })
+	verdict(t, next, id, "gate_one", first.WaitingGates[0].RequestedSeq, true, "")
+	second := awaitProjection(t, next, id, func(p *Projection) bool {
+		return len(p.WaitingGates) == 1 && p.WaitingGates[0].GateID == "gate_two"
+	})
+	d := &needsYouDispatcher{c: next, config: NeedsYouConfig{Notifier: notifier}, watching: map[string]bool{}}
+	for range 3 {
+		if retry := d.deliverSession(context.Background(), id); retry {
+			t.Fatal("the next ask retries against known retained input")
+		}
+		d.deliver(context.Background(), id, true)
+	}
+	p, err := next.Project(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate := p.WaitingGates[0]; gate.FallbackReason != formations.AskFallbackReason(formations.AskFallbackDeliveryUncertain) || len(gate.AskedSeats) != 0 {
+		t.Fatalf("second gate = %+v", gate)
+	}
+	keeper.mu.Lock()
+	calls := append([]int(nil), keeper.askCalls...)
+	retained := keeper.retained[seat.CreatedSeq]
+	keeper.mu.Unlock()
+	if len(calls) != 1 || retained == "" {
+		t.Fatalf("the retained input was touched: calls %v, input %q", calls, retained)
+	}
+	events := eventsOf(t, next, id)
+	for _, request := range []int{first.WaitingGates[0].RequestedSeq, second.WaitingGates[0].RequestedSeq} {
+		fallback := formations.HumanAskRecords(events)[request].Fallback
+		if fallback == nil || fmt.Sprint(fallback.Data["seatCreatedSeq"]) != strconv.Itoa(seat.CreatedSeq) {
+			t.Fatalf("fallback omitted immutable seat identity: %+v", fallback)
+		}
+	}
+	if trail := ledgerTrail(events); strings.Count(trail, "fallback delivery_uncertain") != 2 {
+		t.Fatalf("trail = %s", trail)
+	}
+	if sent, _ := notifier.snapshot(); len(sent) != 2 || sent[1].Seq != second.WaitingGates[0].RequestedSeq {
+		t.Fatalf("notifications = %+v", sent)
+	}
+}
+
+func TestHealthyPeerReceivesTheNextHumanGateAfterUncertainPaste(t *testing.T) {
+	board := strings.Replace(twoGateBoard, `type = "solo"`, `type = "peer"`, 1)
+	board = strings.Replace(board, `controller = true`, `[[formation.slot]]
+id = "slot_other"
+label = "Other peer"
+agentId = "codex-builder"
+harness = "openai-codex"`, 1)
+	keeper := &keeperExecutor{uncertain: map[string]bool{"slot_work": true}}
+	c, root := onCallFixture(t, board, keeper, nil)
+	id := startProof(t, c)
+	first := awaitProjection(t, c, id, func(p *Projection) bool {
+		return len(p.WaitingGates) == 1 && p.WaitingGates[0].FallbackReason != ""
+	})
+	next := reopen(t, c, root, keeper)
+	t.Cleanup(func() { next.Close() })
+	verdict(t, next, id, "gate_one", first.WaitingGates[0].RequestedSeq, true, "")
+	awaitProjection(t, next, id, func(p *Projection) bool {
+		return len(p.WaitingGates) == 1 && p.WaitingGates[0].GateID == "gate_two"
+	})
+	d := &needsYouDispatcher{c: next, watching: map[string]bool{}}
+	if retry := d.deliverSession(context.Background(), id); retry {
+		t.Fatal("healthy peer delivery should settle")
+	}
+	p, err := next.Project(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := p.WaitingGates[0]
+	if gate.FallbackReason != "" || len(gate.AskedSeats) != 1 || gate.AskedSeats[0].SlotID != "slot_other" {
+		t.Fatalf("next gate = %+v", gate)
+	}
+	if pastes, _ := keeper.snapshot(); len(pastes) != 2 || !strings.HasPrefix(pastes[1], "slot_other ") {
+		t.Fatalf("only the healthy peer should receive the next ask: %v", pastes)
+	}
+}
+
+func TestPendingUncertainSeatIsRecordedWhenVerdictAdvancedItsAsk(t *testing.T) {
+	// The dispatcher can lose the run reservation to an operator verdict
+	// between PasteAsk returning an uncertain error and recording its fallback.
+	keeper := &keeperExecutor{refuse: map[string]int{"slot_work": 1000}}
+	c, root := onCallFixture(t, twoGateBoard, keeper, nil)
+	id := startProof(t, c)
+	first := awaitProjection(t, c, id, func(p *Projection) bool { return len(p.WaitingGates) == 1 })
+	next := reopen(t, c, root, keeper)
+	t.Cleanup(func() { next.Close() })
+	plan, err := next.engine.PlanRunOnCall(context.Background(), id)
+	if err != nil || len(plan.Deliveries) != 1 {
+		t.Fatalf("plan = %+v, %v", plan, err)
+	}
+	delivery := plan.Deliveries[0]
+	verdict(t, next, id, "gate_one", first.WaitingGates[0].RequestedSeq, true, "")
+	awaitProjection(t, next, id, func(p *Projection) bool {
+		return len(p.WaitingGates) == 1 && p.WaitingGates[0].GateID == "gate_two"
+	})
+	d := &needsYouDispatcher{c: next, watching: map[string]bool{}, askFailures: map[humanAskKey]formations.HumanAskFallback{
+		{runID: id, seq: delivery.Request.Seq}: {Request: delivery.Request, Code: formations.AskFallbackDeliveryUncertain, Seat: delivery.Seat},
+	}}
+	if retry := d.deliverSession(context.Background(), id); retry || len(d.askFailures) != 0 {
+		t.Fatalf("pending seat identity was not recorded before replanning: retry %v, pending %+v", retry, d.askFailures)
+	}
+	events := eventsOf(t, next, id)
+	if !formations.HumanAskUncertainSeats(events)[delivery.Seat.CreatedSeq] || strings.Count(ledgerTrail(events), "fallback delivery_uncertain") != 2 {
+		t.Fatalf("verdict lost the unsafe seat identity: %s", ledgerTrail(events))
+	}
+	// A delivery from a stale plan must also stop before touching this seat.
+	if d.deliverAsk(context.Background(), id, plan, formations.HumanAskDelivery{Request: formations.RunEvent{Seq: len(events) + 1}, Seat: delivery.Seat}) {
+		t.Fatal("a stale delivery plan must request replanning")
 	}
 }
 

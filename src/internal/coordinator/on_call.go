@@ -65,6 +65,13 @@ func (c *Coordinator) releaseQuietly(id string) {
 // whether some seat was not reached and the run should be tried again soon.
 func (d *needsYouDispatcher) deliverSession(ctx context.Context, runID string) (retry bool) {
 	c := d.c
+	// A verdict can advance to another gate while PasteAsk is outside the run
+	// reservation. Persist the affected seat before planning any later ask.
+	for key, fallback := range d.askFailures {
+		if key.runID == runID && !d.recordAskFailure(ctx, key, fallback) {
+			return true
+		}
+	}
 	plan, err := c.engine.PlanRunOnCall(ctx, runID)
 	if err != nil {
 		log.Printf("session channel: run %s: %v", runID, err)
@@ -103,6 +110,10 @@ func (d *needsYouDispatcher) deliverSession(ctx context.Context, runID string) (
 		}
 		if !d.deliverAsk(ctx, runID, plan, delivery) {
 			retry = true
+			if _, pending := d.askFailures[humanAskKey{runID: runID, seq: delivery.Request.Seq}]; pending {
+				// Persist the affected seat before any other ask can reach it.
+				return true
+			}
 		}
 	}
 	return retry
@@ -113,8 +124,8 @@ func (d *needsYouDispatcher) deliverSession(ctx context.Context, runID string) (
 func (d *needsYouDispatcher) deliverAsk(ctx context.Context, runID string, plan formations.RunOnCallPlan, delivery formations.HumanAskDelivery) bool {
 	c := d.c
 	key := humanAskKey{runID: runID, seq: delivery.Request.Seq}
-	if d.askFailures[key] {
-		return d.recordAskFailure(ctx, key, delivery.Request)
+	if fallback, ok := d.askFailures[key]; ok {
+		return d.recordAskFailure(ctx, key, fallback)
 	}
 	// An earlier seat in this same plan may already have fallen back. Do not
 	// continue pasting the stale plan into its other seats.
@@ -124,6 +135,9 @@ func (d *needsYouDispatcher) deliverAsk(ctx context.Context, runID string, plan 
 	}
 	if humanGateFellBack(events, delivery.Request.Seq) {
 		return true
+	}
+	if formations.HumanAskUncertainSeats(events)[delivery.Seat.CreatedSeq] {
+		return false // a different ask in this plan made the seat unsafe; replan
 	}
 	brief, pointer, err := c.engine.WriteHumanAskBrief(runID, plan.Board, plan.Events, delivery, d.config.ServerURL, d.config.CLI)
 	if err != nil {
@@ -137,10 +151,11 @@ func (d *needsYouDispatcher) deliverAsk(ctx context.Context, runID string, plan 
 		if errors.Is(err, formations.ErrHumanAskDeliveryUncertain) {
 			log.Printf("session channel: run %s ask %d delivery into %s stopped: %v", runID, delivery.Request.Seq, delivery.Seat.SlotID, err)
 			if d.askFailures == nil {
-				d.askFailures = map[humanAskKey]bool{}
+				d.askFailures = map[humanAskKey]formations.HumanAskFallback{}
 			}
-			d.askFailures[key] = true
-			return d.recordAskFailure(ctx, key, delivery.Request)
+			fallback := formations.HumanAskFallback{Request: delivery.Request, Code: formations.AskFallbackDeliveryUncertain, Seat: delivery.Seat}
+			d.askFailures[key] = fallback
+			return d.recordAskFailure(ctx, key, fallback)
 		}
 		log.Printf("session channel: run %s ask %d not yet pasted into %s: %v", runID, delivery.Request.Seq, delivery.Seat.SlotID, err)
 		return false
@@ -158,10 +173,10 @@ func (d *needsYouDispatcher) deliverAsk(ctx context.Context, runID string, plan 
 	return recorded
 }
 
-func (d *needsYouDispatcher) recordAskFailure(ctx context.Context, key humanAskKey, request formations.RunEvent) bool {
+func (d *needsYouDispatcher) recordAskFailure(ctx context.Context, key humanAskKey, fallback formations.HumanAskFallback) bool {
 	recorded := false
 	d.c.withRunCommand(ctx, key.runID, func() {
-		_, err := d.c.engine.RecordHumanAskFallback(key.runID, formations.HumanAskFallback{Request: request, Code: formations.AskFallbackDeliveryUncertain})
+		_, err := d.c.engine.RecordHumanAskFallback(key.runID, fallback)
 		if err != nil {
 			log.Printf("session channel: run %s ask %d fallback: %v", key.runID, key.seq, err)
 			return

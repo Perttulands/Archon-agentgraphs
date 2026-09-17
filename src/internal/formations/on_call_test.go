@@ -221,3 +221,31 @@ func TestPlanOnCallReleasesAnsweredSeatsButKeepsOnesAskedAgain(t *testing.T) {
 		t.Fatalf("unasked seat plan = %+v", plan)
 	}
 }
+
+func TestPlanOnCallUncertainInputBelongsToOneSeatCreation(t *testing.T) {
+	board := onCallBoard(HumanChannelSession, map[string][]string{"g1": {"human"}, "g2": {"human"}}, map[string]string{"peers": FormationTypePeer},
+		"mis:out->peers:in", "peers:out->g1:in", "g1:pass->g2:in")
+	events := []RunEvent{
+		{Seq: 1, Type: RunEventStarted, MissionID: "mis", RunID: "run"},
+		seatEvents(2, "peers", "peers_a", "s-a"), seatEvents(3, "peers", "peers_b", "s-b"),
+		cleanup(4, "peers", "peers_a", "s-a", SeatOutcomeKeptOnCall), cleanup(5, "peers", "peers_b", "s-b", SeatOutcomeKeptOnCall),
+		request(6, "g1", "peers"),
+		{Seq: 7, Type: RunEventHumanAskFallback, GateID: "g1", Data: map[string]any{"requestedSeq": 6, "code": AskFallbackDeliveryUncertain, "seatCreatedSeq": 2}},
+		{Seq: 8, Type: RunEventHumanVerdictRecorded, GateID: "g1"},
+		{Seq: 9, Type: RunEventResumed},
+		request(10, "g2", "peers"),
+	}
+	plan := PlanOnCall(board, events, true, present())
+	if len(plan.Fallbacks) != 0 || len(plan.Deliveries) != 1 || plan.Deliveries[0].Seat.CreatedSeq != 3 {
+		t.Fatalf("the healthy peer must receive the next ask: %+v", plan)
+	}
+	replaced := append(append([]RunEvent{}, events...),
+		cleanup(11, "peers", "peers_a", "s-a", SeatOutcomeEnded),
+		seatEvents(12, "peers", "peers_a", "s-a"),
+		cleanup(13, "peers", "peers_a", "s-a", SeatOutcomeKeptOnCall),
+	)
+	plan = PlanOnCall(board, replaced, true, present())
+	if len(plan.Fallbacks) != 0 || len(plan.Deliveries) != 2 || plan.Deliveries[0].Seat.CreatedSeq != 3 || plan.Deliveries[1].Seat.CreatedSeq != 12 {
+		t.Fatalf("reusing a slot and session name must not poison its new seat: %+v", plan)
+	}
+}
