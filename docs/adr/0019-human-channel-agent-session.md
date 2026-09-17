@@ -46,9 +46,11 @@ terminal was view-only, and the contract told operators not to type into seats.
   the gate, the asking formation, and the seat's slot and created sequence, one
   event per seat. `human_ask_fallback` names the request and the reason. They
   are appended under the run's command lock and do not affect execution replay.
-  The ledger accepts nothing after a final event, and only a resume, cancel or
-  failure after a block. A delivery or fallback due while the run is blocked is
-  recorded after it resumes.
+  The ledger accepts nothing after a final event. After a block it accepts
+  only a resume, cancel or failure, plus the `seat_cleanup` of a kept seat
+  written just before that cancel or failure; readers look past such cleanups,
+  so the run still reads as blocked. A delivery or fallback due while the run
+  is blocked is recorded after it resumes.
   The projection shows them on the waiting gate (`askedSeats`, `fallbackReason`)
   and marks each receiving seat `onCall`, so the event stream updates the
   cockpit.
