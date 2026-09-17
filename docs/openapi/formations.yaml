@@ -18,7 +18,7 @@ paths:
       summary: List latest owned seats from the frozen run
       responses:
         '200':
-          description: Enveloped data contains runId, available, optional reason, and seats. Each seat has runId, nodeId, nodeTitle, slotId, slotLabel, harness, controller, createdSeq, sessionName and state (live, ended, missing, unavailable). Live seats include native columns/rows and terminalUrl; others include a reason. Private session/socket identities are omitted.
+          description: Enveloped data contains runId, available, optional reason, and seats. Each seat has runId, nodeId, nodeTitle, slotId, slotLabel, harness, controller, createdSeq, sessionName and state (live, ended, missing, unavailable). Live seats include native columns/rows and terminalUrl; others include a reason. A seat kept on call for a session-channel human gate (ADR-0019) includes onCall with keptSeq and waitingOn, the pending gateId/requestedSeq asks it received. Private session/socket identities are omitted.
         '404':
           description: No such run
   /api/formations/runs/{runId}/seats/{createdSeq}/terminal:
@@ -919,7 +919,9 @@ components:
       - eventCount
       - resumeAllowed
       - projectionVersion
+      - humanChannel
       - waitingGates
+      - onCallSeats
       - events
       properties:
         runId:
@@ -954,6 +956,11 @@ components:
           type: boolean
         projectionVersion:
           const: standalone-trusted-v1
+        humanChannel:
+          enum:
+          - notify
+          - session
+          description: The run's frozen mission channel for human gates (ADR-0019).
         waitingGates:
           type: array
           items:
@@ -962,11 +969,70 @@ components:
             required:
             - gateId
             - requestedSeq
+            - askedSeats
             properties:
               gateId:
                 type: string
               requestedSeq:
                 type: integer
+              askedSeats:
+                type: array
+                description: Kept seats a session-channel ask was pasted into, in delivery order.
+                items:
+                  type: object
+                  additionalProperties: false
+                  required:
+                  - nodeId
+                  - slotId
+                  - createdSeq
+                  - deliveredSeq
+                  properties:
+                    nodeId:
+                      type: string
+                    slotId:
+                      type: string
+                    createdSeq:
+                      type: integer
+                    deliveredSeq:
+                      type: integer
+              fallbackReason:
+                type: string
+                description: Why a session-channel ask fell back to the notify command.
+        onCallSeats:
+          type: array
+          description: Seats kept on call and not yet ended.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - nodeId
+            - slotId
+            - createdSeq
+            - keptSeq
+            - waitingOn
+            properties:
+              nodeId:
+                type: string
+              slotId:
+                type: string
+              createdSeq:
+                type: integer
+              keptSeq:
+                type: integer
+              waitingOn:
+                type: array
+                description: Pending asks this seat received.
+                items:
+                  type: object
+                  additionalProperties: false
+                  required:
+                  - gateId
+                  - requestedSeq
+                  properties:
+                    gateId:
+                      type: string
+                    requestedSeq:
+                      type: integer
         events:
           type: array
           items:
@@ -986,6 +1052,11 @@ components:
                 type: string
               gateId:
                 type: string
+              attempt:
+                type: integer
+              requestedSeq:
+                type: integer
+                description: The human request a human_ask_delivered or human_ask_fallback event concerns.
               status:
                 type: string
               verdict:
@@ -994,6 +1065,8 @@ components:
                 type: string
               outcome:
                 type: string
+                description: A seat_cleanup outcome, or a human_ask_fallback code (lab_executor, no_asking_formation,
+                  no_receivable_seat, asked_seats_gone).
               blocks:
                 type: boolean
     BoardPatch:

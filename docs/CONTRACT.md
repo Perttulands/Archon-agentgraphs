@@ -158,8 +158,10 @@ applicable.
 Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
 `seat_created`, `seat_prompt_consumed`, `slot_result`, `seat_cleanup`,
 `gate_kind_result`, `gate_verdict`, and a run outcome. Malformed judges emit
-`judge_attempt_failed`. Pending human requests appear in `waitingGates` with
-`gateId` and `requestedSeq`.
+`judge_attempt_failed`. Session-channel runs add `human_ask_delivered` and
+`human_ask_fallback` (see [Human gates on the session
+channel](#human-gates-on-the-session-channel)). Pending human requests appear in
+`waitingGates` with `gateId` and `requestedSeq`.
 
 The public projection includes cwd and Bead ID but excludes prompt text,
 artifact contents, brief paths, native session IDs and arbitrary private event
@@ -170,7 +172,7 @@ responses, briefs and artifacts to the operator.
 complete enveloped projections from SSE after durable changes, waits through
 human gates and closes only at finality. Interrupting that client stops viewing,
 not execution. Abort cancels only the selected run and waits for owned-seat
-cleanup before returning `canceled`.
+cleanup, including seats kept on call, before returning `canceled`.
 
 The `tmux` executor uses one implementation with Claude Code and OpenAI Codex
 adapters. It resolves authenticated harness executables from its environment.
@@ -193,6 +195,10 @@ host-required cleanup override and reason. Wrapper path alone is insufficient.
 Check every `seat_cleanup` outcome: `ended`, `left_socket_changed` or
 `left_cleanup_failed`. Shutdown records `left_shutdown` when it detaches from
 an owned seat without ending it. Success does not erase a cleanup failure.
+On a session-channel run `kept_on_call` leaves a finished formation's seat
+running for its human gate. That seat's later cleanup records `ended`, `gone`,
+`left_socket_changed` or `left_cleanup_failed`, and the ledger keeps the
+`cause` when the runtime ended it.
 
 Native completion must match the exact pointer, cwd, persona model/effort,
 native session, and a natively finished agent turn carrying this run's
@@ -332,6 +338,80 @@ formations echo it once per seat; the lab keeps one copy of identical blocks,
 so the fixture reaches a judge downstream of them, while differing blocks
 still block. Label that evidence as simulated; a plain brief without a verdict
 will block at a formation gate.
+
+### Human gates on the session channel
+
+A run freezes its mission's `humanChannel`
+([ADR-0019](adr/0019-human-channel-agent-session.md)). On `notify` every ask
+goes to the notify command. On `session` a human gate's ask goes to the agents
+whose work the gate judges, while escalations, blocks and final outcomes still
+go to the notify command. Session delivery works with or without
+`--notify-command`.
+
+On a session-channel run, a formation whose output reaches a human gate through
+gates alone (pass and fail routes, never a judge port) keeps its seats when it
+finishes, recorded as `seat_cleanup` outcome `kept_on_call`. Solo and peer
+formations keep every seat; an orchestrated formation keeps its controller and
+ends its workers. Judge chain members, and formations with no such path, end
+their seats as on `notify`.
+
+The asking formation is the nearest formation behind the request's gate input,
+followed back through gates. The kept seats of its latest attempt receive the
+ask: every seat of a solo or peer formation, the controller of an orchestrated
+one. Each receiving seat gets its own brief at
+`<state-dir>/briefs/gate-<run>-<seq>-<slot>.md`, pasted as a one-line pointer
+only while the agent is idle and its input line is empty. A seat not yet
+reached is tried again within seconds. The brief names the run, gate, criterion,
+pending request, asking formation and the decisions already recorded, with
+these commands for the seat's own slot:
+
+```text
+archon --server <server> gate approve <run> <gate> --requested-seq <seq> --relayed-by <slot> --response RESPONSE
+archon --server <server> gate reject <run> <gate> --requested-seq <seq> --relayed-by <slot> --response RESPONSE
+```
+
+It tells the agent that only the operator decides, to record a response only
+after the operator confirms it, to run the same command again a few seconds
+after a 409 `coordinator is executing`, and to tell the operator that another
+seat or the cockpit decided first after a 409 `human gate request is no longer
+pending`. The formation brief's limits still apply, except for that command.
+
+Each pasted ask is recorded as `human_ask_delivered` with the request sequence,
+gate, asking formation, slot, the seat's created sequence, session name and
+brief path. An ask falls back once, recorded as `human_ask_fallback` with a code
+and reason, when no kept seat can receive it (`lab_executor`,
+`no_asking_formation`, `no_receivable_seat`) or when every seat that received it
+is gone while the request waits (`asked_seats_gone`). Only then does the notify
+command, if configured, get its `human_gate` notification. Both events are
+appended under the run's command reservation, so a verdict sent in that moment
+gets the busy 409, and replay ignores them.
+
+Kept seats are reconsidered when the run settles and before a formation is
+dispatched. A kept seat ends when it has received an ask and no open request
+names its formation (cause `ask_answered`), when its formation starts a new
+attempt (`new_attempt`), or when the run is about to succeed, fail or be
+canceled, including an abort of a waiting run (`run_final`). Ending waits up to
+60 seconds for the agent to go idle and kills only that session, by immutable
+ID, through the guarded wrapper. Those cleanups are recorded before the final
+event. After `run_blocked` the ledger accepts `seat_cleanup` as well as a
+resume, cancel or failure, so a blocked run's kept seats end just before the
+cancel or failure that ends it. A blocked run otherwise keeps its seats: a seat
+found gone while it is blocked is recorded after it resumes, and so are asks
+due while it was blocked.
+
+Daemon shutdown leaves kept seats running. At startup, and every 15 seconds
+while a run keeps seats or has open asks, the daemon checks each kept seat's
+recorded pane, session ID and tmux server identity. A seat that is gone, or
+whose server changed, is recorded as `gone` or `left_socket_changed`; a check
+that cannot tell leaves the seat on call.
+
+The projection carries `humanChannel` (`notify` or `session`). Each waiting gate
+lists `askedSeats` (`nodeId`, `slotId`, `createdSeq`, `deliveredSeq`) and, after
+a fallback, `fallbackReason`. `onCallSeats` lists the seats kept on call and not
+yet ended (`nodeId`, `slotId`, `createdSeq`, `keptSeq`, and `waitingOn`, the
+pending `{gateId,requestedSeq}` asks the seat received). Ask events carry
+`requestedSeq`, and a fallback event's `outcome` is its code. The event stream
+sends the same projection.
 
 ## Operator procedure
 
@@ -545,7 +625,11 @@ daemon runs the command directly, with no shell or arguments, writes one
 notification as JSON on stdin, and treats exit status 0 as delivered. Each send
 has a 30-second timeout. A timed-out command's process group is killed, and the
 first 4 KiB of its stderr go to the daemon log. The command owns the channel,
-recipient and credentials; none of them are daemon flags.
+recipient and credentials; none of them are daemon flags. On a session-channel
+run a `human_gate` ask goes to the asking formation's seats instead, and reaches
+the command only after its recorded fallback (see [Human gates on the session
+channel](#human-gates-on-the-session-channel)); the daemon delivers those asks
+with or without a notify command.
 
 A notification carries `runId`, `boardSlug`, `boardTitle`, `seq`, `kind`,
 `runStatus`, `nodeId`, `gateId`, `gateTitle`, `ask`, `severity`, `blocks`,
@@ -653,7 +737,9 @@ picker or polling are provided. Host paths and deployment belong to the host.
 `runId`, `nodeId`, `nodeTitle`, `slotId`, `slotLabel`, `harness`, `controller`,
 `createdSeq`, `sessionName` and `state` (`live`, `ended`, `missing`, `unavailable`).
 A live seat also includes native `columns`, `rows` and a relative `terminalUrl`;
-other states include a reason and no terminal URL. No private session IDs,
+other states include a reason and no terminal URL. A seat kept on call also
+includes `onCall` with `keptSeq` and `waitingOn`, the pending
+`{gateId,requestedSeq}` asks it received. No private session IDs,
 socket paths or socket identities are exposed in this projection.
 
 `GET /api/formations/runs/{runId}/seats/{createdSeq}/terminal` upgrades to a
