@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -117,6 +118,45 @@ func TestEvidenceRouteServesBlocksThatNameNoNode(t *testing.T) {
 		if w := getEvidence(c, missing); w.Code != 404 {
 			t.Fatalf("%s: %d %s", missing, w.Code, w.Body.String())
 		}
+	}
+}
+
+func TestNodeEvidenceKeepsFrozenDefinitionAfterBoardEdits(t *testing.T) {
+	c, executor, _ := fixture(t)
+	id := startRun(t, c)
+	<-executor.entered
+	executor.proceed <- struct{}{}
+	seq := awaitState(t, c, id, "waiting_human").WaitingGates[0].RequestedSeq
+	if w := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass"}`); w.Code != 202 {
+		t.Fatalf("verdict: %d %s", w.Code, w.Body.String())
+	}
+	<-executor.entered
+	executor.proceed <- struct{}{}
+	awaitState(t, c, id, "succeeded")
+
+	path := "/api/formations/runs/" + id + "/evidence/nodes/fmn_work"
+	before := decodeEvidence[formations.NodeEvidence](t, getEvidence(c, path), "evidence")
+	if before.Definition == nil || before.Definition.Title != "Work" || len(before.Definition.Outputs) != 1 || len(before.Definition.Outgoing) != 1 {
+		t.Fatalf("missing frozen definition: %+v", before.Definition)
+	}
+	original, err := os.ReadFile(c.store.BoardPath("proof"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, edited := range map[string]string{
+		"rename":   strings.ReplaceAll(strings.ReplaceAll(string(original), `title = "Work"`, `title = "Renamed work"`), `label = "Output"`, `label = "Renamed output"`),
+		"rewiring": strings.ReplaceAll(string(original), `to = "gate_review:in"`, `to = "fmn_after:port_after_in"`),
+		"deletion": "schema = 1\nid = \"brd_proof\"\nslug = \"proof\"\ntitle = \"Empty now\"\nrev = 2\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(c.store.BoardPath("proof"), []byte(edited), 0600); err != nil {
+				t.Fatal(err)
+			}
+			after := decodeEvidence[formations.NodeEvidence](t, getEvidence(c, path), "evidence")
+			if !reflect.DeepEqual(before.Definition, after.Definition) || !reflect.DeepEqual(before.Attempts, after.Attempts) {
+				t.Fatalf("current-board %s changed historical evidence: before=%+v after=%+v", name, before, after)
+			}
+		})
 	}
 }
 

@@ -61,12 +61,11 @@ import PersonaEditorDialog from './PersonaEditorDialog'
 import HumanGateAnswerPanel, { type GateDecision } from './HumanGateAnswerPanel'
 import RunPoint from './RunPoint'
 import CanvasLegend from './CanvasLegend'
-import { evidenceNamesForBoard } from '../evidence/evidenceNames'
 import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
 import { ProducedFiles, RunProduced, RunProducedProvider } from '../files/ProducedFiles'
 import { ReferencedFiles, type HiddenReferencedFile } from '../files/ReferencedFiles'
 import { nodeFileRefs } from '../files/referencedFiles'
-import { summarizeProduced, useRunProduced } from '../files/produced'
+import { producedNames, summarizeProduced, useRunProduced } from '../files/produced'
 import { useHumanGateUpstream } from './useHumanGateUpstream'
 import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom } from './formationsCockpitDom'
 import { gateWireNeedsLabel, loopConnectionIds, routeJudgeWire, routeLoopWires, routeOrthoWire, type LoopWire } from './formationsRouting'
@@ -609,14 +608,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const runPoint = useMemo(() => runCurrentPoint(runEvents, activeRun), [runEvents, activeRun])
   const outputNodeIds = useMemo(() => new Set(runEvents.filter(event => event.type === 'node_output' && event.nodeId).map(event => event.nodeId)), [runEvents])
   // What the run's steps produced, for their cards, node windows and the run bar.
-  const stepIds = useMemo(() => new Set((board?.formations || []).map(formation => formation.id)), [board?.formations])
-  const runProduced = useRunProduced(activeRun?.runId || '', runEvents, stepIds, Boolean(activeRun?.final))
+  const runProduced = useRunProduced(activeRun?.runId || '', runEvents, Boolean(activeRun?.final))
   const producedValue = useMemo(() => activeRun ? {
     runId: activeRun.runId,
     byNode: new Map(runProduced.produced.map(step => [step.nodeId, step])),
-    summary: summarizeProduced(board, runProduced.produced, runProduced.artifacts, activeRun.final),
-    names: evidenceNamesForBoard(board),
-  } : null, [activeRun, board, runProduced])
+    summary: summarizeProduced(runProduced.produced, runProduced.artifacts, activeRun.final),
+    names: producedNames(runProduced.produced),
+  } : null, [activeRun, runProduced])
   const inspectedTool = useMemo(
     () => (board?.tools || []).find(tool => tool.id === inspectedToolId) || null,
     [board?.tools, inspectedToolId],

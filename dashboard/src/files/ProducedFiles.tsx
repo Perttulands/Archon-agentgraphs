@@ -14,7 +14,7 @@ export interface RunProducedValue {
   runId: string
   byNode: ReadonlyMap<string, NodeProduced>
   summary: RunProducedSummary
-  names: EvidenceNames
+  names: Pick<EvidenceNames, 'node' | 'port'>
 }
 
 const RunProducedContext = createContext<RunProducedValue | null>(null)
@@ -23,13 +23,13 @@ export function RunProducedProvider({ value, children }: { value: RunProducedVal
   return <RunProducedContext.Provider value={value}>{children}</RunProducedContext.Provider>
 }
 
-export function producedLabel(item: ProducedItem, names: EvidenceNames): string {
+export function producedLabel(item: ProducedItem, names: RunProducedValue['names']): string {
   if (item.artifact) return item.artifact.split('/').pop() || item.artifact
   if (item.portId && item.nodeId) return names.port(item.nodeId, item.portId)
   return 'report'
 }
 
-export function producedRequest(runId: string, item: ProducedItem, names: EvidenceNames): FileRequest {
+export function producedRequest(runId: string, item: ProducedItem, names: RunProducedValue['names']): FileRequest {
   const step = item.nodeId ? names.node(item.nodeId) : ''
   if (item.artifact) return artifactFileRequest(runId, item.artifact, step || undefined)
   return outputFileRequest(runId, item.nodeId || '', producedLabel(item, names), step, item.portId)

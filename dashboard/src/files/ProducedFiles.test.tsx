@@ -14,6 +14,7 @@ const text = (value: string, extra: Partial<{ truncated: boolean; bytes: number 
 
 const finalReview: NodeEvidence = {
   runId: 'run_1', nodeId: 'fmn_final', kind: 'formation',
+  definition: { title: 'Final review', outputs: [{ id: 'port_final', label: 'Review' }], outgoing: [] },
   attempts: [{
     attempt: 1, inputs: [], dispatches: [],
     output: { seq: 56, text: text('Verdict: revise. See the review.'), ports: [{ portId: 'port_final', text: text('# Final review\n\nVerdict: **revise**'), ref: { artifact: 'final-review.md' } }] },
@@ -21,6 +22,7 @@ const finalReview: NodeEvidence = {
 }
 const plan: NodeEvidence = {
   runId: 'run_1', nodeId: 'fmn_plan', kind: 'formation',
+  definition: { title: 'Plan', outputs: [], outgoing: [{ id: 'c1', from: 'fmn_plan:port_plan', to: 'fmn_final:in' }] },
   attempts: [{ attempt: 1, inputs: [], dispatches: [], output: { seq: 11, text: text('Plan: three steps\nstep one'), ports: [] } }],
 }
 
@@ -56,7 +58,7 @@ function Cockpit({ produced, final, artifacts = listed }: { produced: NodeProduc
   const value = {
     runId: 'run_1',
     byNode: new Map(produced.map(step => [step.nodeId, step])),
-    summary: summarizeProduced(board, produced, artifacts, final),
+    summary: summarizeProduced(produced, artifacts, final),
     names: evidenceNamesForBoard(board),
   }
   return (

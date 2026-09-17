@@ -2437,7 +2437,9 @@ describe('FormationsCockpit reference parity', () => {
     })
     const projection = globalThis.fetch
     const text = (value: string) => ({ text: value, bytes: value.length })
-    const output = (nodeId: string, seq: number, port: string, body: string, artifact?: string) => ({ evidence: { runId: 'run_01DONE', nodeId, kind: 'formation', attempts: [
+    const output = (nodeId: string, seq: number, port: string, body: string, artifact?: string) => ({ evidence: { runId: 'run_01DONE', nodeId, kind: 'formation', definition: {
+      title: nodeId === 'fmn_frame' ? 'Frame' : 'Judge', outputs: [{ id: port, label: 'Output' }], outgoing: makeBoard().connections.filter(edge => edge.from.startsWith(`${nodeId}:`)),
+    }, attempts: [
       { attempt: 1, inputs: [], dispatches: [], output: { seq, text: text(body), ports: [{ portId: port, text: text(body), ref: artifact ? { artifact } : undefined }] } },
     ] } })
     const evidence: Record<string, unknown> = {
@@ -2464,6 +2466,53 @@ describe('FormationsCockpit reference parity', () => {
     // The step's node window carries the same chips.
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
     expect(within(within(frame).getByRole('region', { name: 'Run' })).getByRole('button', { name: 'frame.md' })).toBeInTheDocument()
+  })
+
+  it.each(['deletion', 'rename', 'rewiring'])('reopens historical produced outputs using frozen names and topology after board %s', async edit => {
+    const currentBoard = makeBoard()
+    if (edit === 'deletion') currentBoard.formations = currentBoard.formations.filter(node => node.id !== 'fmn_frame')
+    if (edit === 'rename') currentBoard.formations = currentBoard.formations.map(node => ({
+      ...node, title: `Edited ${node.title}`, outputs: node.outputs.map(port => ({ ...port, label: 'Edited output' })),
+    }))
+    if (edit === 'rewiring') currentBoard.connections = []
+    patches = installFetchMock({ boards: [currentBoard] })
+    window.history.replaceState(null, '', '/?board=test-board&run=run_01HISTORY')
+    installRunsMock([{ runId: 'run_01HISTORY', status: 'succeeded', final: true, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 5 }], {
+      run_01HISTORY: [
+        { runId: 'run_01HISTORY', seq: 2, type: 'node_output', nodeId: 'fmn_frame' },
+        { runId: 'run_01HISTORY', seq: 4, type: 'node_output', nodeId: 'fmn_judge' },
+        { runId: 'run_01HISTORY', seq: 5, type: 'run_succeeded' },
+      ],
+    })
+    const base = globalThis.fetch
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const nodeId = url.split('/evidence/nodes/')[1]
+      if (!nodeId && !url.endsWith('/evidence/artifacts')) return base(input, init)
+      const original = makeBoard().formations.find(node => node.id === nodeId)
+      const text = { text: nodeId === 'fmn_frame' ? 'The recorded deliverable' : 'Recorded judge verdict', bytes: 24 }
+      const data = original ? { evidence: {
+        runId: 'run_01HISTORY', nodeId, kind: 'formation',
+        definition: { title: original.title, outputs: original.outputs, outgoing: makeBoard().connections.filter(edge => edge.from.startsWith(`${nodeId}:`)) },
+        attempts: [{ attempt: 1, inputs: [], dispatches: [], output: { seq: nodeId === 'fmn_frame' ? 2 : 4, text, ports: [{ portId: original.outputs[0].id, text }] } }],
+      } } : { artifacts: [] }
+      return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ success: true, data }) } as unknown as Response)
+    }) as typeof fetch
+    render(<FormationsCockpit />)
+    await screen.findByTestId('formation-node-fmn_judge')
+
+    const produced = await screen.findByTestId('run-produced')
+    await waitFor(() => expect(within(produced).getAllByRole('button').map(button => button.textContent)).toEqual(['¶Output', '+1']))
+    const chip = within(produced).getByRole('button', { name: 'Output' })
+    expect(chip).toHaveAttribute('title', expect.stringContaining('from Frame'))
+    fireEvent.click(chip)
+    const report = await screen.findByRole('dialog', { name: 'file Output' })
+    expect(await within(report).findByText('The recorded deliverable')).toBeInTheDocument()
+    expect(report).toHaveTextContent('Frame')
+    if (edit === 'deletion') expect(screen.queryByTestId('formation-node-fmn_frame')).toBeNull()
+    if (edit === 'rename') expect(screen.getByTestId('formation-node-fmn_frame')).toHaveTextContent('Edited Frame')
+    // Reading history preserves the editable board and issues no authoring mutation.
+    expect(patches).toEqual([])
   })
 
   it('shows referenced files on cards, with a judge\'s brief files on its gate, and opens a rubric in a file window', async () => {

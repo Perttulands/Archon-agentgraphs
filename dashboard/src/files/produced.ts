@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { BoardDocument, RunEvent } from '../components/formationsTypes'
+import type { RunEvent } from '../components/formationsTypes'
 import { fetchNodeEvidence, fetchRunArtifacts, type NodeEvidence, type RunArtifactEntry } from '../evidence/runEvidenceApi'
 
 // What a run produced, read from the evidence routes (ADR-0017): each step's
@@ -23,6 +23,7 @@ export interface NodeProduced {
   nodeId: string
   /** The sequence of the output this was read from. */
   seq: number
+  definition?: NodeEvidence['definition']
   items: ProducedItem[]
 }
 
@@ -31,6 +32,7 @@ export interface NodeProduced {
  * that name none, and the seat's report when no port already says the same.
  */
 export function producedFromEvidence(evidence: NodeEvidence): NodeProduced | null {
+  if (evidence.kind !== 'formation' && evidence.kind !== 'tool') return null
   const output = [...(evidence.attempts || [])].reverse().find(attempt => attempt.output)?.output
   if (!output) return null
   const nodeId = evidence.nodeId
@@ -49,7 +51,7 @@ export function producedFromEvidence(evidence: NodeEvidence): NodeProduced | nul
   if (report.bytes && !output.ports.some(port => port.text.bytes === report.bytes && port.text.text === report.text)) {
     items.push({ key: `${nodeId}:report`, nodeId, kind: 'output', bytes: report.bytes })
   }
-  return { nodeId, seq: output.seq, items }
+  return { nodeId, seq: output.seq, definition: evidence.definition, items }
 }
 
 /** The latest output sequence of each node, from the run's events. */
@@ -71,18 +73,15 @@ export interface RunProducedSummary {
 const artifactsFirst = (items: ProducedItem[]) => [...items].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'artifact' ? -1 : 1))
 
 export function summarizeProduced(
-  board: BoardDocument | null,
   produced: readonly NodeProduced[],
   artifacts: readonly RunArtifactEntry[],
   final: boolean,
 ): RunProducedSummary {
-  const connections = board?.connections || []
-  const feeds = (nodeId: string) => connections.filter(connection => connection.from.startsWith(`${nodeId}:`))
   // A judge answers its gate; its verdict is not what the run delivers.
-  const judge = (nodeId: string) => feeds(nodeId).some(connection => connection.to.endsWith(':judge'))
+  const judge = (step: NodeProduced) => step.definition?.outgoing.some(connection => connection.to.endsWith(':judge'))
   const steps = [...produced].filter(step => step.items.length).sort((a, b) => b.seq - a.seq)
-  const work = steps.filter(step => !judge(step.nodeId))
-  const sinks = work.filter(step => feeds(step.nodeId).length === 0)
+  const work = steps.filter(step => !judge(step))
+  const sinks = work.filter(step => step.definition?.outgoing.length === 0)
   const lead = final && sinks.length ? sinks : [work[0] || steps[0]].filter(Boolean)
   const primary = artifactsFirst(lead.flatMap(step => step.items))
   const claimed = new Set(steps.flatMap(step => step.items).map(item => item.artifact).filter(Boolean))
@@ -92,6 +91,15 @@ export function summarizeProduced(
       .map((entry): ProducedItem => ({ key: `artifact:${entry.name}`, kind: 'artifact', artifact: entry.name, bytes: entry.size })),
   ]
   return { primary, others }
+}
+
+/** Names are frozen with the run; older evidence falls back to stable IDs. */
+export function producedNames(produced: readonly NodeProduced[]) {
+  const definitions = new Map(produced.map(step => [step.nodeId, step.definition]))
+  return {
+    node: (nodeId: string) => definitions.get(nodeId)?.title || nodeId,
+    port: (nodeId: string, portId: string) => definitions.get(nodeId)?.outputs.find(port => port.id === portId)?.label || portId,
+  }
 }
 
 export interface RunProduced {
@@ -106,10 +114,10 @@ const NOTHING_PRODUCED: RunProduced = { produced: [], artifacts: [] }
  * it records a newer output; the artifact list when any step does, and once
  * more when the run ends.
  */
-export function useRunProduced(runId: string, events: readonly RunEvent[], stepIds: ReadonlySet<string>, final: boolean): RunProduced {
+export function useRunProduced(runId: string, events: readonly RunEvent[], final: boolean): RunProduced {
   const [state, setState] = useState<RunProduced & { runId: string }>({ runId: '', produced: [], artifacts: [] })
   const cache = useRef({ runId: '', nodes: new Map<string, NodeProduced>() })
-  const outputs = [...latestOutputSeqs(events)].filter(([nodeId]) => stepIds.has(nodeId))
+  const outputs = [...latestOutputSeqs(events)]
   const outputKey = outputs.map(([nodeId, seq]) => `${nodeId}@${seq}`).sort().join(',')
 
   useEffect(() => {

@@ -165,13 +165,23 @@ type EvidenceProblem struct {
 	ResumeAllowed *bool        `json:"resumeAllowed,omitempty"`
 }
 
+// EvidenceNodeDefinition carries only display names and outgoing topology from
+// the admitted board. Editing the current board cannot rename or reorder a
+// run's historical outputs. Briefs, file references and seat settings stay out.
+type EvidenceNodeDefinition struct {
+	Title    string            `json:"title"`
+	Outputs  []FormationPort   `json:"outputs"`
+	Outgoing []BoardConnection `json:"outgoing"`
+}
+
 type NodeEvidence struct {
-	RunID       string               `json:"runId"`
-	NodeID      string               `json:"nodeId"`
-	Kind        string               `json:"kind"`
-	Attempts    []EvidenceAttempt    `json:"attempts,omitempty"`
-	Evaluations []EvidenceEvaluation `json:"evaluations,omitempty"`
-	Problems    []EvidenceProblem    `json:"problems,omitempty"`
+	RunID       string                  `json:"runId"`
+	NodeID      string                  `json:"nodeId"`
+	Kind        string                  `json:"kind"`
+	Definition  *EvidenceNodeDefinition `json:"definition,omitempty"`
+	Attempts    []EvidenceAttempt       `json:"attempts,omitempty"`
+	Evaluations []EvidenceEvaluation    `json:"evaluations,omitempty"`
+	Problems    []EvidenceProblem       `json:"problems,omitempty"`
 }
 
 // CapEvidenceText cuts text to at most maxBytes on a rune boundary, so a
@@ -229,7 +239,41 @@ func (s *Store) ProjectNodeEvidence(runID, nodeID string) (*NodeEvidence, error)
 	if err != nil {
 		return nil, err
 	}
-	return projectNodeEvidence(runID, nodeID, kind, events, status.Final, s.runArtifactRoots(runID)), nil
+	return projectNodeEvidence(runID, nodeID, kind, events, status.Final, s.runArtifactRoots(runID), evidenceNodeDefinition(board, nodeID)), nil
+}
+
+func evidenceNodeDefinition(board *BoardDocument, nodeID string) *EvidenceNodeDefinition {
+	definition := &EvidenceNodeDefinition{Outputs: []FormationPort{}, Outgoing: []BoardConnection{}}
+	for _, mission := range board.Missions {
+		if mission.ID == nodeID {
+			definition.Title = mission.Title
+		}
+	}
+	for _, formation := range board.Formations {
+		if formation.ID == nodeID {
+			definition.Title = formation.Title
+			definition.Outputs = append(definition.Outputs, formation.Outputs...)
+		}
+	}
+	for _, gate := range board.Gates {
+		if gate.ID == nodeID {
+			definition.Title = gate.Title
+		}
+	}
+	for _, tool := range board.Tools {
+		if tool.ID == nodeID {
+			definition.Title = tool.Title
+			for _, port := range tool.Outputs {
+				definition.Outputs = append(definition.Outputs, FormationPort{ID: port.ID, Label: port.Label})
+			}
+		}
+	}
+	for _, connection := range board.Connections {
+		if strings.HasPrefix(connection.From, nodeID+":") {
+			definition.Outgoing = append(definition.Outgoing, connection)
+		}
+	}
+	return definition
 }
 
 func evidenceNotFound(err error) error {
@@ -273,9 +317,15 @@ func (s *Store) runArtifactRoots(runID string) []string {
 	return roots
 }
 
-func projectNodeEvidence(runID, nodeID, kind string, events []RunEvent, final bool, artifactRoots []string) *NodeEvidence {
-	evidence := &NodeEvidence{RunID: runID, NodeID: nodeID, Kind: kind}
+func projectNodeEvidence(runID, nodeID, kind string, events []RunEvent, final bool, artifactRoots []string, definition *EvidenceNodeDefinition) *NodeEvidence {
+	evidence := &NodeEvidence{RunID: runID, NodeID: nodeID, Kind: kind, Definition: definition}
 	capper := &evidenceCapper{remaining: EvidenceNodeBudgetBytes}
+	if definition != nil {
+		definition.Title = capper.text(definition.Title).Text
+		for i := range definition.Outputs {
+			definition.Outputs[i].Label = capper.text(definition.Outputs[i].Label).Text
+		}
+	}
 	dispatchByID := map[string][2]int{}
 	for _, event := range events {
 		switch event.Type {

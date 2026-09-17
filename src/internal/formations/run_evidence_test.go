@@ -49,7 +49,7 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 		{Seq: 13, Type: RunEventNodeStarted, NodeID: "fmn_work", Attempt: 2, Data: map[string]any{"reason": "feedback"}},
 		{Seq: 14, Type: RunEventBlocked, NodeID: "fmn_work", Data: map[string]any{"reason": "seat timed out", "blockedNodeId": "fmn_work", "resumeAllowed": true}},
 	}
-	work := projectNodeEvidence("run_1", "fmn_work", "formation", events, false, []string{artifacts})
+	work := projectNodeEvidence("run_1", "fmn_work", "formation", events, false, []string{artifacts}, nil)
 	if len(work.Attempts) != 2 || work.Attempts[1].Attempt != 2 || work.Attempts[1].Output != nil {
 		t.Fatalf("attempts = %+v", work.Attempts)
 	}
@@ -78,7 +78,7 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 		t.Fatalf("problems = %+v", work.Problems)
 	}
 
-	gate := projectNodeEvidence("run_1", "gate_review", "gate", events, false, []string{artifacts})
+	gate := projectNodeEvidence("run_1", "gate_review", "gate", events, false, []string{artifacts}, nil)
 	if len(gate.Evaluations) != 1 {
 		t.Fatalf("evaluations = %+v", gate.Evaluations)
 	}
@@ -122,7 +122,7 @@ func TestRunProblemsServeBlocksThatNameNoNode(t *testing.T) {
 	}
 
 	// A restart block names its nodes only through their open dispatches.
-	mapped := projectNodeEvidence("run_1", "fmn_map", "formation", events, false, nil)
+	mapped := projectNodeEvidence("run_1", "fmn_map", "formation", events, false, nil, nil)
 	if len(mapped.Problems) != 2 || mapped.Problems[1].Seq != 3 || mapped.Problems[1].Reason.Text != "coordinator restarted; completed-turn evidence required" {
 		t.Fatalf("map problems = %+v", mapped.Problems)
 	}
@@ -169,14 +169,14 @@ func TestNodeEvidenceMarksAnUnansweredRequestPendingUntilTheRunEnds(t *testing.T
 		evidenceEvent(1, RunEventGateEvaluating, "gate_review", map[string]any{"kinds": []any{"human"}}),
 		evidenceEvent(2, RunEventHumanInputRequested, "gate_review", nil),
 	}
-	if got := projectNodeEvidence("run_1", "gate_review", "gate", events, false, nil).Evaluations[0].HumanRequests[0]; !got.Pending {
+	if got := projectNodeEvidence("run_1", "gate_review", "gate", events, false, nil, nil).Evaluations[0].HumanRequests[0]; !got.Pending {
 		t.Fatalf("open run request = %+v, want pending", got)
 	}
-	if got := projectNodeEvidence("run_1", "gate_review", "gate", events, true, nil).Evaluations[0].HumanRequests[0]; got.Pending {
+	if got := projectNodeEvidence("run_1", "gate_review", "gate", events, true, nil, nil).Evaluations[0].HumanRequests[0]; got.Pending {
 		t.Fatalf("final run request = %+v, want not pending", got)
 	}
 	events = append(events, evidenceEvent(3, RunEventHumanInputRequested, "gate_review", nil))
-	requests := projectNodeEvidence("run_1", "gate_review", "gate", events, false, nil).Evaluations[0].HumanRequests
+	requests := projectNodeEvidence("run_1", "gate_review", "gate", events, false, nil, nil).Evaluations[0].HumanRequests
 	if len(requests) != 2 || requests[0].Pending || !requests[1].Pending {
 		t.Fatalf("superseded requests = %+v, want only the latest pending", requests)
 	}
@@ -196,7 +196,7 @@ func TestNodeEvidenceCapsEachTextAndTheResponse(t *testing.T) {
 		evidenceEvent(1, RunEventGateKindResult, "gate_review", map[string]any{"kind": "formation", "reason": long + "x", "evidence": items}),
 		evidenceEvent(2, RunEventNodeOutput, "gate_review", map[string]any{"text": "short", "outputs": outputs}),
 	}
-	evidence := projectNodeEvidence("run_1", "gate_review", "gate", events, false, nil)
+	evidence := projectNodeEvidence("run_1", "gate_review", "gate", events, false, nil, nil)
 	result := evidence.Evaluations[0].KindResults[0]
 	if !result.Reason.Truncated || result.Reason.Bytes != len(long)+1 || len(result.Reason.Text) > EvidenceTextMaxBytes || !utf8.ValidString(result.Reason.Text) {
 		t.Fatalf("reason cap: truncated=%v bytes=%d served=%d", result.Reason.Truncated, result.Reason.Bytes, len(result.Reason.Text))
@@ -350,5 +350,17 @@ func TestRunEvidenceReadsNodesArtifactsAndBriefsInsideTheRun(t *testing.T) {
 	}
 	if _, err := store.ReadRunBrief(runID, 1); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("non-dispatch seq err = %v", err)
+	}
+}
+
+func TestNodeEvidenceRedactsAndCapsFrozenDisplayNames(t *testing.T) {
+	definition := &EvidenceNodeDefinition{
+		Title:    "Work api_key: sk-abcdefghijklmnop",
+		Outputs:  []FormationPort{{ID: "out", Label: strings.Repeat("x", EvidenceTextMaxBytes+1)}},
+		Outgoing: []BoardConnection{},
+	}
+	evidence := projectNodeEvidence("run_1", "fmn_work", "formation", nil, true, nil, definition)
+	if strings.Contains(evidence.Definition.Title, "sk-abcdefghijklmnop") || len(evidence.Definition.Outputs[0].Label) != EvidenceTextMaxBytes {
+		t.Fatalf("unbounded or unredacted display metadata: title=%q labelBytes=%d", evidence.Definition.Title, len(evidence.Definition.Outputs[0].Label))
 	}
 }

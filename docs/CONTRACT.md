@@ -815,7 +815,10 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
 
 - `/api/formations/runs/{runId}/evidence/nodes/{nodeId}` returns
   `data.evidence` for a node of the run's frozen board, with `kind` `mission`,
-  `formation`, `gate` or `tool`. Missions and formations list `attempts` with
+  `formation`, `gate` or `tool`. Its `definition` contains the frozen `title`,
+  `outputs` (`id`, `label`) and `outgoing` connections (`id`, `from`, `to`).
+  Produced-output names and ordering use this run metadata even after the
+  editable board changes. Missions and formations list `attempts` with
   routed `inputs`, `dispatches` (`seq`, slot, agent, harness, result status and
   whether a brief exists), `seatCleanups` (slot and outcome) and `output` (text,
   status, reason and sorted `ports`).

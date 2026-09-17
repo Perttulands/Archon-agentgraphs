@@ -125,6 +125,12 @@ export interface NodeEvidence {
   runId: string
   nodeId: string
   kind: 'mission' | 'formation' | 'gate' | 'tool'
+  /** Display identity and topology from the board frozen at admission. */
+  definition?: {
+    title: string
+    outputs: Array<{ id: string; label: string }>
+    outgoing: Array<{ id: string; from: string; to: string }>
+  }
   attempts?: EvidenceAttempt[]
   evaluations?: EvidenceEvaluation[]
   problems?: EvidenceProblem[]

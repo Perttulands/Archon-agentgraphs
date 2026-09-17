@@ -59,7 +59,7 @@ describe('what a run produced', () => {
     ],
   } as BoardDocument
   const step = (nodeId: string, seq: number, artifact: string) => ({
-    nodeId, seq, items: [
+    nodeId, seq, definition: { title: nodeId, outputs: [], outgoing: board.connections.filter(edge => edge.from.startsWith(`${nodeId}:`)) }, items: [
       { key: `${nodeId}:report`, nodeId, kind: 'output' as const, bytes: 10 },
       { key: `${nodeId}:artifact:${artifact}`, nodeId, kind: 'artifact' as const, artifact, portId: 'out', bytes: 20 },
     ],
@@ -68,7 +68,7 @@ describe('what a run produced', () => {
   const artifacts = ['plan.md', 'execution.md', 'final-review.md', 'worker1-health.txt'].map(name => ({ name, size: 100, modifiedAt: '' }))
 
   it('leads a finished run with its final step, artifact first, and lists the rest with unclaimed files', () => {
-    const summary = summarizeProduced(board, produced, artifacts, true)
+    const summary = summarizeProduced(produced, artifacts, true)
     expect(summary.primary.map(item => item.key)).toEqual(['fmn_final:artifact:final-review.md', 'fmn_final:report'])
     expect(summary.others.map(item => item.key)).toEqual([
       'fmn_judge:artifact:verdict.md', 'fmn_judge:report',
@@ -80,9 +80,9 @@ describe('what a run produced', () => {
 
   it('leads a running run with its latest work step, not the judge answering a gate', () => {
     const running = produced.slice(0, 3)
-    expect(summarizeProduced(board, running, artifacts, false).primary.map(item => item.key)).toEqual(['fmn_exec:artifact:execution.md', 'fmn_exec:report'])
+    expect(summarizeProduced(running, artifacts, false).primary.map(item => item.key)).toEqual(['fmn_exec:artifact:execution.md', 'fmn_exec:report'])
     // A finished run whose last step feeds a gate is led by its latest work step.
-    expect(summarizeProduced(board, running, artifacts, true).primary[0].key).toBe('fmn_exec:artifact:execution.md')
-    expect(summarizeProduced(board, [], [], false)).toEqual({ primary: [], others: [] })
+    expect(summarizeProduced(running, artifacts, true).primary[0].key).toBe('fmn_exec:artifact:execution.md')
+    expect(summarizeProduced([], [], false)).toEqual({ primary: [], others: [] })
   })
 })
