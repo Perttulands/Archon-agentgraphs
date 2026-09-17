@@ -1806,12 +1806,14 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 			return FormationExecutionResult{}, err
 		}
 		if limits.WallClockSeconds > 0 {
-			started, err := time.Parse(time.RFC3339Nano, events[0].Timestamp)
+			now := e.store.now()
+			deadline, err := wallClockDeadline(events, limits.WallClockSeconds, now)
 			if err != nil {
 				return FormationExecutionResult{}, err
 			}
+			// The ledger's clock measures what is left, as it stamped the waits.
 			var cancel context.CancelFunc
-			ctx, cancel = context.WithDeadline(ctx, started.Add(time.Duration(limits.WallClockSeconds)*time.Second))
+			ctx, cancel = context.WithTimeout(ctx, deadline.Sub(now))
 			defer cancel()
 		}
 		result, err := executor.ExecuteFormationContext(ctx, req)
@@ -1831,6 +1833,15 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 	if limits.WallClockSeconds <= 0 {
 		return e.executor.ExecuteFormation(req)
 	}
+	now := e.store.now()
+	deadline, err := wallClockDeadline(events, limits.WallClockSeconds, now)
+	if err != nil {
+		return FormationExecutionResult{}, err
+	}
+	remaining := deadline.Sub(now)
+	if remaining <= 0 {
+		return FormationExecutionResult{}, ErrRunWallClockExceeded
+	}
 	type executionResult struct {
 		result FormationExecutionResult
 		err    error
@@ -1843,9 +1854,60 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 	select {
 	case result := <-done:
 		return result.result, result.err
-	case <-time.After(time.Duration(limits.WallClockSeconds) * time.Second):
+	case <-time.After(remaining):
 		return FormationExecutionResult{}, ErrRunWallClockExceeded
 	}
+}
+
+// wallClockDeadline is when a run's wall clock runs out: its start plus the
+// limit, extended by the time the run waited for the operator. A wait runs
+// from a human gate's request to the verdict recorded for that gate, and time
+// while several requests wait counts once. A request still waiting extends the
+// deadline to now, so waiting never runs the clock out. The ledger's
+// timestamps carry every wait across restarts. The limit bounds agent work.
+func wallClockDeadline(events []RunEvent, limitSeconds int, now time.Time) (time.Time, error) {
+	if len(events) == 0 {
+		return time.Time{}, ErrRunLedgerInvalid
+	}
+	started, err := time.Parse(time.RFC3339Nano, events[0].Timestamp)
+	if err != nil {
+		return time.Time{}, err
+	}
+	deadline := started.Add(time.Duration(limitSeconds) * time.Second)
+	waiting := map[string]bool{}
+	var since time.Time
+	extend := func(until time.Time) {
+		if until.After(since) {
+			deadline = deadline.Add(until.Sub(since))
+		}
+	}
+	for _, event := range events {
+		switch event.Type {
+		case RunEventHumanInputRequested:
+			if len(waiting) == 0 {
+				if since, err = time.Parse(time.RFC3339Nano, event.Timestamp); err != nil {
+					return time.Time{}, err
+				}
+			}
+			waiting[event.GateID] = true
+		case RunEventHumanVerdictRecorded:
+			if !waiting[event.GateID] {
+				continue
+			}
+			delete(waiting, event.GateID)
+			if len(waiting) == 0 {
+				answered, err := time.Parse(time.RFC3339Nano, event.Timestamp)
+				if err != nil {
+					return time.Time{}, err
+				}
+				extend(answered)
+			}
+		}
+	}
+	if len(waiting) > 0 {
+		extend(now)
+	}
+	return deadline, nil
 }
 
 func (e *RunEngine) ensureFormationOutputPayloads(runID string, formation FormationNode, result FormationExecutionResult) error {

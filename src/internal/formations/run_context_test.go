@@ -27,6 +27,7 @@ func TestContextExecutorDeadlineJoinsCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	store.Now = nil // the run started two seconds ago
 	executor := &cleanupExecutor{}
 	engine := NewRunEngine(store, personas, executor)
 	_, err = engine.executeFormation(FormationExecution{RunID: started.RunID}, RunLimits{WallClockSeconds: 1})

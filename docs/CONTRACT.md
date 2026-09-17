@@ -146,7 +146,14 @@ HTTP admission requires positive `maxDispatch`, `maxAttempts` and
 `wallClockSeconds`, with `redact` false. Remote Archon defaults to 3 dispatches,
 3 attempts and 7200 seconds. Set limits explicitly for larger graphs. Dispatch
 limits bound formation execution steps, including judge steps; attempts bound
-revisits to a node. Seat timeout separately bounds real agent execution.
+revisits to a node. The wall clock bounds agent work: every formation dispatch
+must finish within `wallClockSeconds` of the run's start, not counting time the
+run spent waiting for the operator. A wait runs from a human gate's
+`human_input_requested` to the `human_verdict_recorded` for that gate, and time
+while several requests wait counts once. The waits come from the ledger's
+timestamps, so they survive restarts, and a request still waiting never runs
+the clock out. A dispatch that exceeds it blocks the run with
+`wall_clock_exceeded`. Seat timeout separately bounds real agent execution.
 Limit exhaustion and unresolved execution leave visible blocks rather than
 claiming success.
 

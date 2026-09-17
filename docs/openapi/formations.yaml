@@ -256,6 +256,8 @@ paths:
                     wallClockSeconds:
                       type: integer
                       minimum: 1
+                      description: Time the run's agent work may take from its start. Waits at human gates, from
+                        each request to its verdict, do not count.
                     redact:
                       type: boolean
                       const: false
