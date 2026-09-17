@@ -23,14 +23,16 @@ func TestCodexTurnUsesExactUserPointerAndNativeCompletion(t *testing.T) {
 		{"closed", complete, "pointer", "/workspace", true, true, false},
 		{"wrong pointer", complete, "different", "/workspace", false, false, false},
 		{"wrong workspace", complete, "pointer", "/elsewhere", false, false, false},
-		{"later user", `{"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":"another task"}]}}` + "\n" + complete, "pointer", "/workspace", true, false, true},
+		// A message someone typed is an operator turn: the answer without the
+		// sentinel may be a reply to them, so the dispatch keeps waiting.
+		{"later user", `{"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":"another task"}]}}` + "\n" + complete, "pointer", "/workspace", true, false, false},
 		{"closed before later turn", complete + `{"type":"turn_context","payload":{"model":"another-model","effort":"low"}}` + "\n", "pointer", "/workspace", true, true, false},
 		{"partial final event", strings.TrimSuffix(complete, "}}\n"), "pointer", "/workspace", true, false, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "rollout.jsonl")
 			os.WriteFile(path, []byte(base+tt.extra), 0600)
-			turn, err := readCodexTurn(path, tt.cwd, tt.pointer)
+			turn, err := readCodexTurn(path, tt.cwd, tt.pointer, "run_test")
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err %v", err)
 			}
@@ -65,7 +67,7 @@ func TestCodexNativeFinalAnswerPhaseMatchesCompletedTurn(t *testing.T) {
 			if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 				t.Fatal(err)
 			}
-			turn, err := readCodexTurn(path, "/workspace", "pointer")
+			turn, err := readCodexTurn(path, "/workspace", "pointer", "run_test")
 			if err != nil {
 				t.Fatal(err)
 			}

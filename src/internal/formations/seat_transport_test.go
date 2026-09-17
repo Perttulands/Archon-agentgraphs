@@ -89,7 +89,7 @@ func TestSeatAdaptersReadinessStagingCompletionAndImmutableCleanup(t *testing.T)
 			if err := transport.Ready(ctx, "socket", seat, h); err != nil {
 				t.Fatal(err)
 			}
-			seat.brief = filepath.Join(root, "brief.md")
+			seat.brief, seat.runID = filepath.Join(root, "brief.md"), "run_test"
 			pointer := seatPointer(seat.brief)
 			if err := transport.Stage(ctx, "socket", seat, "dispatch", pointer); err != nil {
 				t.Fatal(err)
@@ -160,7 +160,7 @@ func TestClaudeNativeTurnIdentityAndEndTurn(t *testing.T) {
 			if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 				t.Fatal(err)
 			}
-			turn, err := readClaudeTurn(path, root, pointer)
+			turn, err := readClaudeTurn(path, root, pointer, "run_test")
 			want := kind == "complete" || kind == "no stop reason" || kind == "cwd moves after pointer" || kind == "meta record after pointer" || kind == "task notification after pointer"
 			if turn.Complete != want {
 				t.Fatalf("turn=%+v err=%v", turn, err)
@@ -264,7 +264,7 @@ func TestLatestWorkerTurnDoesNotReuseEarlierCompletion(t *testing.T) {
 				if err := os.WriteFile(path, append([]byte(first), bytes.Join(tail, []byte("\n"))...), 0600); err != nil {
 					t.Fatal(err)
 				}
-				turn, err := readLatestSeatTurn(&nativeSeat{variant: HarnessVariant{ID: h}}, path, root, pointer)
+				turn, err := readLatestSeatTurn(&nativeSeat{variant: HarnessVariant{ID: h}, runID: "run_test"}, path, root, pointer)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -393,6 +393,10 @@ func TestSeatInputClearReadsCapturedPanes(t *testing.T) {
 				t.Errorf("%s %s: clear = %t, want %t", harness.name, state, got, want)
 			}
 		}
+	}
+	// Claude Code suggests a next prompt in dim text; it is not typed.
+	if screen, x, y := paneFixture(t, "claude-idle-suggestion"); !seatInputClear("claude-code", screen, x, y) {
+		t.Error("claude idle with a suggested prompt: clear = false, want true")
 	}
 	screen, x, y := paneFixture(t, "codex-idle-empty")
 	if seatInputClear("openai-codex", screen, x+1, y) || seatInputClear("openai-codex", screen, x, y-1) || seatInputClear("claude-code", screen, x, y) {

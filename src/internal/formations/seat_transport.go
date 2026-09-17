@@ -1,7 +1,10 @@
 package formations
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -19,10 +22,16 @@ import (
 type nativeSeat struct {
 	name, sessionID, paneID, root, brief, pointer string
 	socket                                        string
-	variant                                       HarnessVariant
-	control                                       *seatControl
-	watch                                         *filewatch.Watcher
-	created                                       time.Time
+	// runID names the run whose completion sentinel ends a dispatch.
+	runID string
+	// pid is the harness process, and threads the Codex conversations it held
+	// open when it took the pointer.
+	pid     int
+	threads map[string]bool
+	variant HarnessVariant
+	control *seatControl
+	watch   *filewatch.Watcher
+	created time.Time
 }
 
 func (s *nativeSeat) close() {
@@ -47,6 +56,8 @@ type seatTransport interface {
 type realSeatTransport struct {
 	command func(context.Context, string, *strings.Reader, ...string) (string, error)
 	control func(context.Context, string, string) (*seatControl, error)
+	// proc is where process file descriptors are read; empty means /proc.
+	proc string
 }
 
 func (t realSeatTransport) run(ctx context.Context, socket string, input *strings.Reader, args ...string) (string, error) {
@@ -313,25 +324,52 @@ func findSeatTurn(s *nativeSeat, cwd, pointer string) (codexTranscriptTurn, stri
 	return found, selected, err
 }
 
-func (realSeatTransport) WaitTurn(ctx context.Context, s *nativeSeat, cwd, pointer string, consumed func(codexTranscriptTurn) error) (codexTranscriptTurn, error) {
+// replacementCheckInterval bounds how long a replaced conversation, such as
+// after /clear or /new, goes unnoticed when no transcript changes.
+const replacementCheckInterval = 5 * time.Second
+
+// WaitTurn waits for the dispatch's native turn to complete. The operator may
+// type into the seat meanwhile; the transcript readers tolerate those turns.
+// It fails when the seat ends, or when the harness moves to another
+// conversation.
+func (t realSeatTransport) WaitTurn(ctx context.Context, s *nativeSeat, cwd, pointer string, consumed func(codexTranscriptTurn) error) (codexTranscriptTurn, error) {
 	turn, selected, err := findSeatTurn(s, cwd, pointer)
 	if err != nil {
 		return turn, err
 	}
-	recorded := false
+	var seatEvents <-chan struct{}
+	if s.control != nil {
+		seatEvents = s.control.events
+	}
+	ticker := time.NewTicker(replacementCheckInterval)
+	defer ticker.Stop()
+	recorded, check := false, false
 	for {
 		if turn.Consumed && !recorded {
 			if err := consumed(turn); err != nil {
 				return turn, err
 			}
 			recorded = true
+			t.recordConversation(ctx, s, selected)
 		}
 		if turn.Complete {
 			return turn, nil
 		}
+		if check && turn.Consumed {
+			if err := t.conversationReplaced(ctx, s, turn); err != nil {
+				return turn, err
+			}
+		}
+		check = false
 		select {
 		case <-ctx.Done():
 			return turn, ctx.Err()
+		case _, ok := <-seatEvents:
+			if !ok {
+				return turn, runExecutionError("dead_pane", "owned seat ended before its turn completed", "adapter", ErrDispatchDeadPane)
+			}
+		case <-ticker.C:
+			check = true
 		case event, ok := <-s.watch.Events:
 			if !ok {
 				return turn, errors.New("transcript watch ended")
@@ -339,7 +377,12 @@ func (realSeatTransport) WaitTurn(ctx context.Context, s *nativeSeat, cwd, point
 			if event.Err != nil {
 				return turn, event.Err
 			}
-			if filepath.Ext(event.Path) != ".jsonl" || selected != "" && event.Path != selected {
+			if filepath.Ext(event.Path) != ".jsonl" {
+				continue
+			}
+			if selected != "" && event.Path != selected {
+				// Another transcript changed; this seat may have started it.
+				check = true
 				continue
 			}
 			candidate, err := readSeatTurn(s, event.Path, cwd, pointer)
@@ -351,6 +394,102 @@ func (realSeatTransport) WaitTurn(ctx context.Context, s *nativeSeat, cwd, point
 			}
 		}
 	}
+}
+
+// recordConversation finds the seat's harness process and notes the
+// conversations it holds open when it takes the pointer, so a conversation it
+// opens later stands out. Without a process, replacement goes unchecked.
+func (t realSeatTransport) recordConversation(ctx context.Context, s *nativeSeat, selected string) {
+	if s.pid == 0 && s.paneID != "" {
+		if out, err := t.run(ctx, s.socket, nil, "display-message", "-p", "-t", s.paneID, "#{pane_pid}"); err == nil {
+			if pid, err := strconv.Atoi(strings.TrimSpace(out)); err == nil && pid > 0 {
+				s.pid = pid
+			}
+		}
+	}
+	if s.variant.ID != "openai-codex" || s.pid == 0 {
+		return
+	}
+	s.threads = map[string]bool{selected: true}
+	for _, path := range t.openCodexThreads(s) {
+		s.threads[path] = true
+	}
+}
+
+// conversationReplaced fails a dispatch whose seat moved to another
+// conversation: Claude Code records its current session for each process, and
+// Codex opens the rollout of a new or resumed thread.
+func (t realSeatTransport) conversationReplaced(ctx context.Context, s *nativeSeat, turn codexTranscriptTurn) error {
+	if s.pid == 0 {
+		return nil
+	}
+	switch s.variant.ID {
+	case "claude-code":
+		raw, err := os.ReadFile(filepath.Join(filepath.Dir(s.root), "sessions", strconv.Itoa(s.pid)+".json"))
+		if err != nil {
+			return nil
+		}
+		var current struct {
+			SessionID string `json:"sessionId"`
+		}
+		if json.Unmarshal(raw, &current) == nil && current.SessionID != "" && turn.SessionID != "" && current.SessionID != turn.SessionID {
+			return runExecutionError("conversation_replaced", "the operator replaced the Claude conversation (/clear or /resume) before the dispatch completed", "adapter", nil)
+		}
+	case "openai-codex":
+		for _, path := range t.openCodexThreads(s) {
+			if !s.threads[path] {
+				return runExecutionError("conversation_replaced", "the operator replaced the Codex conversation (/new or /resume) before the dispatch completed", "adapter", nil)
+			}
+		}
+	}
+	return nil
+}
+
+// openCodexThreads lists the user-thread rollouts under the transcript root
+// that the seat's Codex process holds open. Threads Codex starts for its own
+// subagents are not the operator's conversation.
+func (t realSeatTransport) openCodexThreads(s *nativeSeat) []string {
+	proc := t.proc
+	if proc == "" {
+		proc = "/proc"
+	}
+	fds := filepath.Join(proc, strconv.Itoa(s.pid), "fd")
+	entries, err := os.ReadDir(fds)
+	if err != nil {
+		return nil
+	}
+	var threads []string
+	for _, entry := range entries {
+		path, err := os.Readlink(filepath.Join(fds, entry.Name()))
+		if err != nil || filepath.Ext(path) != ".jsonl" || !strings.HasPrefix(path, s.root+string(filepath.Separator)) {
+			continue
+		}
+		if codexUserThread(path) {
+			threads = append(threads, path)
+		}
+	}
+	return threads
+}
+
+// codexUserThread reports a rollout whose session_meta names a thread the user
+// started, or names no source at all.
+func codexUserThread(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	line, err := bufio.NewReader(f).ReadBytes('\n')
+	if err != nil && len(line) == 0 {
+		return false
+	}
+	var meta struct {
+		Type    string `json:"type"`
+		Payload struct {
+			ThreadSource string `json:"thread_source"`
+		} `json:"payload"`
+	}
+	return json.Unmarshal(bytes.TrimSpace(line), &meta) == nil && meta.Type == "session_meta" && (meta.Payload.ThreadSource == "" || meta.Payload.ThreadSource == "user")
 }
 
 func (t realSeatTransport) End(ctx context.Context, socket string, s *nativeSeat) error {

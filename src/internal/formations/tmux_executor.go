@@ -767,7 +767,7 @@ func (e *TmuxFormationExecutor) executeSlot(req FormationExecution, slot Formati
 	if err != nil {
 		return tmuxSlotOutput{}, err
 	}
-	seat.brief, seat.pointer = brief, pointer
+	seat.brief, seat.pointer, seat.runID = brief, pointer, req.RunID
 	if err := dispatchContextError(owned.ctx); err != nil {
 		return tmuxSlotOutput{}, err
 	}
@@ -1256,7 +1256,7 @@ func (e *TmuxFormationExecutor) reserveWorkerBriefs(workers []tmuxSlotBinding, o
 		if err != nil {
 			return nil, err
 		}
-		seat.brief, seat.pointer = brief, pointer
+		seat.brief, seat.pointer, seat.runID = brief, pointer, owned.req.RunID
 		baselines = append(baselines, workerBaseline{binding: worker, seat: seat})
 	}
 	return baselines, nil

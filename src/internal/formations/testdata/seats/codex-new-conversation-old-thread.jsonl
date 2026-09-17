@@ -1,0 +1,19 @@
+{"timestamp":"2026-09-17T10:06:13.354Z","type":"session_meta","payload":{"id":"01a0aed4-84e0-77c1-aa48-27aaf36e66ca","session_id":"01a0aed4-84e0-77c1-aa48-27aaf36e66ca","cwd":"/work","cli_version":"0.154.0","originator":"codex-tui","source":"cli","thread_source":"user"}}
+{"timestamp":"2026-09-17T10:14:35.739Z","type":"event_msg","payload":{"type":"task_started","turn_id":"01a0aedc-69d5-7773-8644-03568957cd79"}}
+{"timestamp":"2026-09-17T10:14:35.750Z","type":"turn_context","payload":{"turn_id":"01a0aedc-69d5-7773-8644-03568957cd79","cwd":"/work","model":"gpt-5.6-terra","effort":"low"}}
+{"timestamp":"2026-09-17T10:14:35.783Z","type":"response_item","payload":{"type":"message","id":"msg_01a0aedc-6a07-7cd2-8544-770ebffea220","role":"user","content":[{"type":"input_text","text":"Read the file /work/briefs/clear.md and execute it exactly; it is your whole brief."}],"internal_chat_message_metadata_passthrough":{"turn_id":"01a0aedc-69d5-7773-8644-03568957cd79","content_item_kinds":["user.text"]}}}
+{"timestamp":"2026-09-17T10:14:35.784Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"01a0aedc-69d5-7773-8644-03568957cd79","item":{"type":"UserMessage"}}}
+{"timestamp":"2026-09-17T10:14:37.663Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"01a0aedc-69d5-7773-8644-03568957cd79","item":{"type":"AgentMessage"}}}
+{"timestamp":"2026-09-17T10:14:37.666Z","type":"response_item","payload":{"type":"message","id":"msg_0a166059126ecc1a016aabbd8d2b1887d28a034e837f390020","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"I’ll read the brief and follow it exactly."}],"internal_chat_message_metadata_passthrough":{"turn_id":"01a0aedc-69d5-7773-8644-03568957cd79","content_item_kinds":["unknown"]}}}
+{"timestamp":"2026-09-17T10:14:39.030Z","type":"response_item","payload":{"type":"custom_tool_call"}}
+{"timestamp":"2026-09-17T10:14:39.075Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"01a0aedc-69d5-7773-8644-03568957cd79","item":{"type":"CommandExecution"}}}
+{"timestamp":"2026-09-17T10:14:39.083Z","type":"response_item","payload":{"type":"custom_tool_call_output"}}
+{"timestamp":"2026-09-17T10:14:41.549Z","type":"response_item","payload":{"type":"custom_tool_call"}}
+{"timestamp":"2026-09-17T10:14:42.719Z","type":"response_item","payload":{"type":"custom_tool_call_output"}}
+{"timestamp":"2026-09-17T10:14:44.039Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"01a0aedc-69d5-7773-8644-03568957cd79","item":{"type":"Reasoning"}}}
+{"timestamp":"2026-09-17T10:14:44.041Z","type":"response_item","payload":{"type":"reasoning"}}
+{"timestamp":"2026-09-17T10:14:44.640Z","type":"response_item","payload":{"type":"custom_tool_call"}}
+{"timestamp":"2026-09-17T10:14:45.745Z","type":"response_item","payload":{"type":"custom_tool_call_output"}}
+{"timestamp":"2026-09-17T10:14:45.751Z","type":"response_item","payload":{"type":"message","id":"msg_01a0aedc-90f7-7e83-978e-ca366c1c44a6","role":"developer","content":[{"type":"input_text","text":"[generic.turn_aborted omitted]"}],"internal_chat_message_metadata_passthrough":{"turn_id":"01a0aedc-69d5-7773-8644-03568957cd79","content_item_kinds":["generic.turn_aborted"]}}}
+{"timestamp":"2026-09-17T10:14:45.755Z","type":"event_msg","payload":{"type":"turn_aborted","turn_id":"01a0aedc-69d5-7773-8644-03568957cd79","reason":"interrupted"}}
+{"timestamp":"2026-09-17T10:15:11.579Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"01a0aedc-69d5-7773-8644-03568957cd79","item":{"type":"CommandExecution"}}}

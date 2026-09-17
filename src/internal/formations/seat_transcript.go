@@ -62,7 +62,7 @@ func readLatestSeatTurn(s *nativeSeat, path, cwd, pointer string) (codexTranscri
 	}
 	selected := lines[start:]
 	if s.variant.ID == "claude-code" {
-		return readClaudeTurnReader(bytes.NewReader(bytes.Join(selected, []byte("\n"))), cwd, pointer)
+		return readClaudeTurnReader(bytes.NewReader(bytes.Join(selected, []byte("\n"))), cwd, pointer, s.runID)
 	}
 	if len(meta) == 0 {
 		return codexTranscriptTurn{}, nil
@@ -71,5 +71,5 @@ func readLatestSeatTurn(s *nativeSeat, path, cwd, pointer string) (codexTranscri
 	if len(selectedContext) > 0 {
 		prefix = append(prefix, selectedContext)
 	}
-	return readCodexTurnReader(bytes.NewReader(bytes.Join(append(prefix, selected...), []byte("\n"))), cwd, pointer)
+	return readCodexTurnReader(bytes.NewReader(bytes.Join(append(prefix, selected...), []byte("\n"))), cwd, pointer, s.runID)
 }

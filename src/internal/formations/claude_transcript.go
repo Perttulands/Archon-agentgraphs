@@ -4,14 +4,17 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
 )
 
-// Claude tool-result user records belong to the same turn. Only a human text
-// message starts a new turn; a tool-use assistant message cannot complete it.
-func readClaudeTurn(path, cwd, pointer string) (codexTranscriptTurn, error) {
+// readClaudeTurn reads one dispatch from a Claude Code transcript: the exact
+// pointer, then every record after it. Tool results, skill text and task
+// notifications belong to the agent's work. The operator may type or queue
+// messages and interrupt; those turns neither complete nor fail the dispatch.
+func readClaudeTurn(path, cwd, pointer, runID string) (codexTranscriptTurn, error) {
 	var turn codexTranscriptTurn
 	f, err := os.Open(path)
 	if err != nil {
@@ -19,13 +22,16 @@ func readClaudeTurn(path, cwd, pointer string) (codexTranscriptTurn, error) {
 	}
 	defer f.Close()
 
-	return readClaudeTurnReader(f, cwd, pointer)
+	return readClaudeTurnReader(f, cwd, pointer, runID)
 }
 
-func readClaudeTurnReader(reader io.Reader, cwd, pointer string) (codexTranscriptTurn, error) {
+func readClaudeTurnReader(reader io.Reader, cwd, pointer, runID string) (codexTranscriptTurn, error) {
 	var turn codexTranscriptTurn
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 65536), 16<<20)
+	// Work the agent started in the background finishes after its turn ends, and
+	// Claude Code starts a new turn to report it, so such a turn is not final.
+	background := false
 	for scanner.Scan() {
 		var r struct {
 			Type   string `json:"type"`
@@ -34,11 +40,19 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer string) (codexTranscrip
 				Kind string `json:"kind"`
 			} `json:"origin"`
 			PromptSource string `json:"promptSource"`
+			Operation    string `json:"operation"`
+			Content      string `json:"content"`
 			Cwd          string `json:"cwd"`
 			SessionID    string `json:"sessionId"`
 			UUID         string `json:"uuid"`
 			Effort       string `json:"effort"`
-			Message      struct {
+			Attachment   struct {
+				Type   string `json:"type"`
+				Origin struct {
+					Kind string `json:"kind"`
+				} `json:"origin"`
+			} `json:"attachment"`
+			Message struct {
 				Content    json.RawMessage `json:"content"`
 				Model      string          `json:"model"`
 				StopReason *string         `json:"stop_reason"`
@@ -63,15 +77,10 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer string) (codexTranscrip
 		if human && (r.Origin.Kind != "" || r.PromptSource != "") {
 			human = r.Origin.Kind == "human" || (r.Origin.Kind == "" && r.PromptSource == "typed")
 		}
-		if human {
-			if turn.Consumed {
-				return turn, errors.New("another user message interrupted the dispatched Claude turn")
-			}
-			if text == pointer && r.Cwd == cwd && r.SessionID != "" {
-				turn.Consumed = true
-				turn.SessionID = r.SessionID
-				turn.TurnID = r.UUID
-			}
+		if human && text == pointer && r.Cwd == cwd && r.SessionID != "" {
+			turn = codexTranscriptTurn{Consumed: true, SessionID: r.SessionID, TurnID: r.UUID}
+			background = false
+			continue
 		}
 		if !turn.Consumed {
 			continue
@@ -79,25 +88,95 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer string) (codexTranscrip
 		if r.SessionID != "" && r.SessionID != turn.SessionID {
 			return turn, errors.New("Claude native session identity changed")
 		}
+		if command := claudeLocalCommand(text); r.Type == "user" && (command == "/model" || command == "/effort") {
+			return turn, fmt.Errorf("the Claude %s changed during the dispatch (%s)", strings.TrimPrefix(command, "/"), command)
+		}
+		switch {
+		case human, claudeInterrupted(r.Type, text):
+			turn.OperatorTurns++
+		case r.Type == "queue-operation" && r.Operation == "enqueue" && !strings.HasPrefix(strings.TrimSpace(r.Content), "<task-notification>"):
+			// A message the operator queued while the agent worked.
+			turn.OperatorTurns++
+		case r.Type == "attachment" && r.Attachment.Type == "queued_command" && r.Attachment.Origin.Kind == "human":
+			turn.OperatorTurns++
+		}
 		if r.Effort != "" {
 			turn.Effort = r.Effort
 		}
 		if r.Type != "assistant" {
 			continue
 		}
-		turn.Model = r.Message.Model
+		background = background || claudeStartsBackgroundWork(r.Message.Content)
+		// Claude Code writes its own notices as "<synthetic>" assistant records.
+		if model := r.Message.Model; model != "" && model != "<synthetic>" {
+			if turn.Model != "" && model != turn.Model {
+				return turn, fmt.Errorf("the Claude model changed during the dispatch from %s to %s", turn.Model, model)
+			}
+			turn.Model = model
+		}
 		if r.Message.Effort != "" {
 			turn.Effort = r.Message.Effort
+		}
+		if text == "" {
+			continue
 		}
 		turn.Text = text
 		// Some Claude versions omit stop_reason in persisted messages. In that
 		// format the last assistant text plus the exact run sentinel is the end
 		// signal. An explicit tool_use or max_tokens is never completion.
-		hasSentinel := strings.Contains(text, "<<<CHROTE-DONE run-id=")
-		turn.Complete = text != "" && hasSentinel && (r.Message.StopReason == nil || *r.Message.StopReason == "end_turn")
-		if turn.Complete {
+		stop := ""
+		if r.Message.StopReason != nil {
+			stop = *r.Message.StopReason
+		}
+		if _, ok := ParseCompletionSentinel(text, runID); ok && (stop == "" || stop == "end_turn") {
+			turn.Complete = true
+			return turn, nil
+		}
+		// A turn that ends without the sentinel, while nobody else took a turn and
+		// no background work is still due, is the agent's final word: the caller
+		// rejects it at once rather than waiting for the seat timeout.
+		if stop == "end_turn" && turn.OperatorTurns == 0 && !background {
+			turn.Complete = true
 			return turn, nil
 		}
 	}
 	return turn, scanner.Err()
+}
+
+// claudeInterrupted reports the record Claude Code writes when the operator
+// presses Esc during a turn.
+func claudeInterrupted(recordType, text string) bool {
+	return recordType == "user" && strings.HasPrefix(text, "[Request interrupted by user")
+}
+
+// claudeLocalCommand returns the slash command a local command record names,
+// such as /model, or "".
+func claudeLocalCommand(text string) string {
+	_, rest, ok := strings.Cut(text, "<command-name>")
+	if !ok {
+		return ""
+	}
+	name, _, _ := strings.Cut(rest, "</command-name>")
+	return strings.TrimSpace(name)
+}
+
+// claudeStartsBackgroundWork reports a tool call whose result arrives after the
+// turn: a background shell command or a Monitor.
+func claudeStartsBackgroundWork(content json.RawMessage) bool {
+	var blocks []struct {
+		Type  string `json:"type"`
+		Name  string `json:"name"`
+		Input struct {
+			RunInBackground bool `json:"run_in_background"`
+		} `json:"input"`
+	}
+	if json.Unmarshal(content, &blocks) != nil {
+		return false
+	}
+	for _, block := range blocks {
+		if block.Type == "tool_use" && (block.Input.RunInBackground || block.Name == "Monitor") {
+			return true
+		}
+	}
+	return false
 }

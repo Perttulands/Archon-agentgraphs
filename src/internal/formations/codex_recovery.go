@@ -87,7 +87,7 @@ func (e *TmuxFormationExecutor) readCompletedFormationDispatch(req FormationReat
 	if variant.ID == "claude-code" {
 		root = c.ClaudeTranscriptRoot
 	}
-	seat := &nativeSeat{root: root, variant: variant}
+	seat := &nativeSeat{root: root, variant: variant, runID: req.RunID}
 	var turn codexTranscriptTurn
 	if c.RecoveryTranscript != "" {
 		if !filepath.IsAbs(c.RecoveryTranscript) {

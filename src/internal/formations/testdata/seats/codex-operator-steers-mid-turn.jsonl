@@ -1,0 +1,21 @@
+{"timestamp":"2026-09-17T10:06:13.354Z","type":"session_meta","payload":{"id":"01a0aed4-84e0-77c1-aa48-27aaf36e66ca","session_id":"01a0aed4-84e0-77c1-aa48-27aaf36e66ca","cwd":"/work","cli_version":"0.154.0","originator":"codex-tui","source":"cli","thread_source":"user"}}
+{"timestamp":"2026-09-17T10:06:48.921Z","type":"event_msg","payload":{"type":"task_started","turn_id":"01a0aed5-4a52-7181-baa1-13c4dee5303c"}}
+{"timestamp":"2026-09-17T10:06:48.936Z","type":"turn_context","payload":{"turn_id":"01a0aed5-4a52-7181-baa1-13c4dee5303c","cwd":"/work","model":"gpt-6-astra","effort":"low"}}
+{"timestamp":"2026-09-17T10:06:48.967Z","type":"response_item","payload":{"type":"message","id":"msg_01a0aed5-4a87-79c0-b5c7-5923adba0e10","role":"user","content":[{"type":"input_text","text":"Read the file /work/briefs/midturn.md and execute it exactly; it is your whole brief."}],"internal_chat_message_metadata_passthrough":{"turn_id":"01a0aed5-4a52-7181-baa1-13c4dee5303c","content_item_kinds":["user.text"]}}}
+{"timestamp":"2026-09-17T10:06:48.969Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"01a0aed5-4a52-7181-baa1-13c4dee5303c","item":{"type":"UserMessage"}}}
+{"timestamp":"2026-09-17T10:06:52.017Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"01a0aed5-4a52-7181-baa1-13c4dee5303c","item":{"type":"AgentMessage"}}}
+{"timestamp":"2026-09-17T10:06:52.019Z","type":"response_item","payload":{"type":"message","id":"msg_0a166059126ecc1a016aabbbbb5b8887d2a23baec4e40a93dd","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"I’ll read the brief and follow it exactly."}],"internal_chat_message_metadata_passthrough":{"turn_id":"01a0aed5-4a52-7181-baa1-13c4dee5303c","content_item_kinds":["unknown"]}}}
+{"timestamp":"2026-09-17T10:06:54.282Z","type":"response_item","payload":{"type":"custom_tool_call"}}
+{"timestamp":"2026-09-17T10:06:54.325Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"01a0aed5-4a52-7181-baa1-13c4dee5303c","item":{"type":"CommandExecution"}}}
+{"timestamp":"2026-09-17T10:06:54.333Z","type":"response_item","payload":{"type":"custom_tool_call_output"}}
+{"timestamp":"2026-09-17T10:06:59.349Z","type":"response_item","payload":{"type":"custom_tool_call"}}
+{"timestamp":"2026-09-17T10:07:00.523Z","type":"response_item","payload":{"type":"custom_tool_call_output"}}
+{"timestamp":"2026-09-17T10:07:00.531Z","type":"response_item","payload":{"type":"message","id":"msg_01a0aed5-77b3-7fb2-a2fa-36cf75dcea1d","role":"user","content":[{"type":"input_text","text":"Operator question: what is two plus two?"}],"internal_chat_message_metadata_passthrough":{"turn_id":"01a0aed5-4a52-7181-baa1-13c4dee5303c","content_item_kinds":["user.text"]}}}
+{"timestamp":"2026-09-17T10:07:00.533Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"01a0aed5-4a52-7181-baa1-13c4dee5303c","item":{"type":"UserMessage"}}}
+{"timestamp":"2026-09-17T10:07:03.639Z","type":"response_item","payload":{"type":"custom_tool_call"}}
+{"timestamp":"2026-09-17T10:07:24.373Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"01a0aed5-4a52-7181-baa1-13c4dee5303c","item":{"type":"CommandExecution"}}}
+{"timestamp":"2026-09-17T10:07:24.378Z","type":"response_item","payload":{"type":"custom_tool_call_output"}}
+{"timestamp":"2026-09-17T10:07:27.191Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"01a0aed5-4a52-7181-baa1-13c4dee5303c","item":{"type":"AgentMessage"}}}
+{"timestamp":"2026-09-17T10:07:27.194Z","type":"response_item","payload":{"type":"message","id":"msg_0a166059126ecc1a016aabbbde437c87d285c937f08474b370","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Two plus two is four.\n<<<CHROTE-DONE run-id=run_fixture status=ok artifact=none>>>"}],"internal_chat_message_metadata_passthrough":{"turn_id":"01a0aed5-4a52-7181-baa1-13c4dee5303c","content_item_kinds":["unknown"]}}}
+{"timestamp":"2026-09-17T10:07:27.216Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"01a0aed5-4a52-7181-baa1-13c4dee5303c","last_agent_message":"Two plus two is four.\n<<<CHROTE-DONE run-id=run_fixture status=ok artifact=none>>>"}}
+{"timestamp":"2026-09-17T10:12:43.056Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"gpt-6-astra","reasoning_effort":"low"}}}
