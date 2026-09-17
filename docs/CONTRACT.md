@@ -235,16 +235,21 @@ rest, including artifact files no output names. A chip opens the file in a
 floating file window, rendered by kind, with Open raw and Copy path (relative to
 the state directory) for artifacts; several can be open side by side.
 
-The cockpit's floating Peek shows an owned live seat. It does not send input yet;
-the operator types into a seat in CHROTE, which reaches the same sessions, or
-through the seat terminal WebSocket below. Peek does not enter tmux copy mode,
-claim pane size, or end sessions. Switching seats and
-closing Peek disconnect only the observer client. Labels and controller/worker
-roles come from the run's frozen graph; a new attempt has a new terminal URL.
-The native grid includes tmux status rows, so an observer also preserves size
-when no other client is attached. Scroll and selection happen in the browser;
-the stream shows the native current screen and subsequent output, without an
-API for reading old transcripts or entering historical tmux copy mode.
+The cockpit's floating Peek attaches to an owned live seat and sends typing and
+resize as CHROTE's terminals do, through the seat terminal WebSocket below. The
+operator types to the agent whether it is working a dispatch, on call or idle,
+and the terminal fits its window and sends that size, which applies under the
+resize rule below. A seat kept on call for a human gate is marked on call, and
+waiting for you while it holds a pending ask. On a session-channel run the
+waiting gate's answer panel offers Talk with the asking formation, which opens
+each asked seat's terminal in its own window beside the panel; a window says
+when the decision is recorded. Peek does not enter tmux copy mode, resize the
+seat window, or end sessions. Switching seats and closing Peek disconnect only
+its own client. Labels and controller/worker roles come from the run's frozen
+graph; a new attempt has a new terminal URL. Scroll and selection happen in the
+browser; the stream shows the native current screen and subsequent output,
+without an API for reading old transcripts or entering historical tmux copy
+mode.
 
 Each new `seat_created` records its immutable tmux session/pane IDs and a private
 socket/server identity. Linux socket peer credentials, process start time and
@@ -315,7 +320,8 @@ underscores or hyphens): `archon gate approve|reject ... --relayed-by <slot-id>`
 It is stored on `human_verdict_recorded` and served beside `decidedBy` on the
 gate's recorded decision in the run evidence route; `decidedBy` stays
 `human:operator`. Any other value returns HTTP 400 and records nothing, and a
-verdict without it is unchanged.
+verdict without it is unchanged. The cockpit's run evidence shows a relayed
+decision "via" the slot's agent.
 
 Real formations must emit all and only their declared output IDs in one block:
 
