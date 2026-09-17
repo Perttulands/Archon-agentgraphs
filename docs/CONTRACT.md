@@ -192,8 +192,9 @@ workers. The operator may type into any live seat at any time, through the seat
 terminal or in CHROTE, and talk to the agent normally, whether it is working a
 dispatch or idle. The runtime pastes a brief only while the agent is idle and its
 input line is empty, waiting within the seat timeout, so a brief never lands
-mid-turn or on the operator's unsent text. Archon agents must not type into seats
-or manage their sessions.
+mid-turn or on the operator's unsent text. It submits the brief once its pointer
+shows in the input line, however the harness wraps it. Archon agents must not
+type into seats or manage their sessions.
 
 Sessions are named `form-<run>-<slot>`, optionally prefixed by `--mission-label`.
 The runtime creates and cleans up seats by immutable session ID through the

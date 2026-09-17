@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -500,6 +501,64 @@ func TestStageWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 				t.Fatalf("busy pane: %v, pastes %v", err, pasted)
 			}
 		})
+	}
+}
+
+func TestStageFindsThePointerAHarnessWrappedAmongCodexStars(t *testing.T) {
+	// Codex wraps a pointer longer than its input line inside the brief path,
+	// and its animation draws stars between the words.
+	const brief = "/home/operator/archon/state-dirs/a-state-directory-with-a-long-path-so-the-codex-input-line-wraps-inside-the-brief-pat/state/briefs/seat-644037887.md"
+	for _, tc := range []struct {
+		brief string
+		wait  time.Duration
+		want  error
+	}{
+		{brief, 10 * time.Second, nil},
+		{"/state/briefs/other.md", 300 * time.Millisecond, context.DeadlineExceeded},
+	} {
+		ctx, cancel := context.WithTimeout(context.Background(), tc.wait)
+		events := make(chan struct{}, 64)
+		afterPaste, entered := false, false
+		transport := realSeatTransport{
+			control: func(context.Context, string, string) (*seatControl, error) { return &seatControl{events: events}, nil },
+			command: func(_ context.Context, _ string, _ *strings.Reader, args ...string) (string, error) {
+				screen, x, y := paneFixture(t, "codex-idle-animation-1")
+				if afterPaste {
+					screen, x, y = paneFixture(t, "codex-staged-wrapped-pointer")
+				}
+				switch args[0] {
+				case "display-message":
+					return fmt.Sprintf("%d %d 0", x, y), nil
+				case "capture-pane":
+					if afterPaste {
+						select {
+						case events <- struct{}{}:
+						default:
+						}
+					}
+					if !slices.Contains(args, "-e") {
+						// The fixture keeps the styles only -e asks for.
+						screen = ansiSGR.ReplaceAllString(screen, "")
+					}
+					return screen, nil
+				case "load-buffer":
+					return "", nil
+				case "paste-buffer":
+					afterPaste = true
+					return "", nil
+				case "send-keys":
+					entered = true
+					return "", nil
+				}
+				return "", fmt.Errorf("unexpected command %v", args)
+			},
+		}
+		seat := &nativeSeat{name: "form-proof-worker", sessionID: "$42", paneID: "%23", variant: HarnessVariant{ID: "openai-codex"}, brief: tc.brief}
+		err := transport.Stage(ctx, "socket", seat, "first-brief", seatPointer(seat.brief))
+		cancel()
+		if !errors.Is(err, tc.want) || entered != (tc.want == nil) {
+			t.Errorf("brief %s: err = %v, entered = %t; want %v", tc.brief, err, entered, tc.want)
+		}
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/filewatch"
 )
@@ -278,7 +279,10 @@ func (t realSeatTransport) Stage(ctx context.Context, socket string, s *nativeSe
 	if _, err := t.run(ctx, socket, nil, "paste-buffer", "-p", "-b", buffer, "-t", s.paneID, "-d"); err != nil {
 		return err
 	}
-	if err := t.waitSeatPane(ctx, socket, s, func(text string) bool { return strings.Contains(text, s.brief) }); err != nil {
+	// Harnesses wrap a long input line themselves, breaking it with a newline
+	// and indent anywhere, even inside the brief path.
+	rendered := renderedText(pointer)
+	if err := t.waitSeatPane(ctx, socket, s, func(text string) bool { return strings.Contains(renderedText(text), rendered) }); err != nil {
 		return err
 	}
 	settle := time.NewTimer(tmuxPasteSettleDelay)
@@ -639,4 +643,17 @@ func styledCells(line string) []styledCell {
 // or a braille pattern, as Codex's star animation draws in blank cells.
 func blankCell(r rune) bool {
 	return r == ' ' || r == '\u00a0' || r >= 0x2800 && r <= 0x28ff
+}
+
+// renderedText keeps only the characters a harness draws for text in its input
+// box, for finding pasted text on screen. It drops the line breaks and indents
+// where the harness wraps a long line, and blank cells, where Codex's star
+// animation may draw even between words.
+func renderedText(text string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) || blankCell(r) {
+			return -1
+		}
+		return r
+	}, text)
 }
