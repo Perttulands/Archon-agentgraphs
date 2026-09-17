@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,9 @@ type keptSeatFake struct {
 	reads  map[string]int
 	pasted []string
 	events []string
+	// shown, when set, is the pane a paste leaves, in place of Claude Code
+	// wrapping the pasted text.
+	shown string
 }
 
 func (f *keptSeatFake) DescribeSeat(_ context.Context, _, paneID string) (string, bool, error) {
@@ -68,6 +72,9 @@ func (f *keptSeatFake) PasteSeat(_ context.Context, _, paneID, _, text string) e
 		wrapped = wrapped[:40] + "\n  " + wrapped[40:]
 	}
 	f.frames[paneID] = []string{"Claude Code\n❯ " + wrapped}
+	if f.shown != "" {
+		f.frames[paneID] = []string{f.shown}
+	}
 	f.reads[paneID] = 0
 	return nil
 }
@@ -196,6 +203,21 @@ func TestKeptSeatAskWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 	busyFake.killed = append(busyFake.killed, "%gone")
 	if err := busy.PasteAsk(context.Background(), KeptSeat{SessionID: "%gone", PaneID: "%gone"}, "pointer"); !errors.Is(err, errKeptSeatGone) {
 		t.Fatalf("gone seat paste err = %v", err)
+	}
+}
+
+func TestKeptSeatAskIsSubmittedAmongCodexStars(t *testing.T) {
+	// A captured Codex pane wraps the pointer inside its brief path and draws
+	// stars between the words.
+	screen, _, _ := paneFixture(t, "codex-staged-wrapped-pointer")
+	const brief = "/home/operator/archon/state-dirs/a-state-directory-with-a-long-path-so-the-codex-input-line-wraps-inside-the-brief-pat/state/briefs/seat-644037887.md"
+	for pointer, submitted := range map[string]bool{seatPointer(brief): true, seatPointer("/state/briefs/other.md"): false} {
+		executor, fake := keptSeatExecutor(t, map[string][]string{"%1": {"Claude Code\n❯ "}})
+		fake.shown = ansiSGR.ReplaceAllString(screen, "")
+		err := executor.PasteAsk(context.Background(), KeptSeat{SlotID: "slot_work", SessionID: "%1", PaneID: "%1", Harness: "openai-codex"}, pointer)
+		if got := slices.Contains(fake.events, "submit"); got != submitted || (err == nil) != submitted {
+			t.Errorf("pointer %q: submitted = %t, err = %v; want submitted %t", pointer, got, err, submitted)
+		}
 	}
 }
 

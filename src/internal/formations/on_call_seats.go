@@ -145,10 +145,10 @@ func (e *TmuxFormationExecutor) PasteAsk(ctx context.Context, seat KeptSeat, poi
 	}
 	// Harnesses wrap a long input line themselves, breaking it with a newline
 	// and indent anywhere, even inside the brief path.
-	rendered := withoutSpace(pointer)
+	rendered := renderedText(pointer)
 	if err := waitKeptSeat(attempt, func() (bool, error) {
 		text, err := transport.CaptureSeat(attempt, e.config.Socket, seat.PaneID)
-		return err == nil && strings.Contains(withoutSpace(text), rendered), err
+		return err == nil && strings.Contains(renderedText(text), rendered), err
 	}); err != nil {
 		return fmt.Errorf("the ask did not render in seat %s: %w", seat.SlotID, err)
 	}
@@ -165,10 +165,6 @@ func (e *TmuxFormationExecutor) PasteAsk(ctx context.Context, seat KeptSeat, poi
 // nativeKeptSeat addresses a kept seat for the seat transport; close it after.
 func (e *TmuxFormationExecutor) nativeKeptSeat(seat KeptSeat) *nativeSeat {
 	return &nativeSeat{name: seat.SessionName, sessionID: seat.SessionID, paneID: seat.PaneID, socket: e.config.Socket, variant: HarnessVariant{ID: seat.Harness}}
-}
-
-func withoutSpace(text string) string {
-	return strings.Join(strings.Fields(text), "")
 }
 
 // waitKeptSeat polls done until it holds or ctx ends. A transient read error
