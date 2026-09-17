@@ -49,7 +49,10 @@ func openSeatControl(ctx context.Context, socket, session string) (*seatControl,
 		}
 	}()
 	// This is the only sizing operation, once per newly created session.
-	if _, err := io.WriteString(stdin, "refresh-client -C 160,48\n"); err != nil {
+	// resize-window also sets window-size manual, so the seat window keeps
+	// 160x48 whoever attaches: a lone viewer, such as the operator's terminal on
+	// a kept seat, sizes only its own view (form-de9).
+	if _, err := io.WriteString(stdin, "refresh-client -C 160,48\nresize-window -x 160 -y 48\n"); err != nil {
 		c.Close()
 		return nil, err
 	}

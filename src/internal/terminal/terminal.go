@@ -265,11 +265,9 @@ read:
 			if json.Unmarshal(message[1:], &resize) != nil || resize.Columns < 1 || resize.Rows < 1 || resize.Columns > 65535 || resize.Rows > 65535 {
 				continue
 			}
-			// With nobody else sizing the window, tmux would size it to this view
-			// despite ignore-size, so the view stays on the seat's own grid.
-			if o.sizedByAnother(ctx, target) {
-				_ = p.resize(resize.Columns, resize.Rows)
-			}
+			// The executor pins the seat window (window-size manual), so this
+			// resize sizes only the view, even when no other client is attached.
+			_ = p.resize(resize.Columns, resize.Rows)
 		case clientPause:
 			flow.pause()
 		case clientResume:
@@ -281,31 +279,6 @@ read:
 	flow.resume()
 	<-outputDone
 	return nil
-}
-
-// sizedByAnother reports a client that sizes the seat's window, such as the
-// executor's control client or a CHROTE tile, so this view may take its own size.
-func (o *Observer) sizedByAnother(parent context.Context, target Target) bool {
-	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, o.config.TmuxBin, "-S", o.config.Socket, "list-clients", "-t", target.SessionID, "-F", "#{client_flags}")
-	cmd.Env = attachEnv()
-	raw, err := cmd.Output()
-	if err != nil {
-		return false
-	}
-	for _, flags := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
-		sizes := flags != ""
-		for _, flag := range strings.Split(flags, ",") {
-			if flag == "ignore-size" || flag == "read-only" {
-				sizes = false
-			}
-		}
-		if sizes {
-			return true
-		}
-	}
-	return false
 }
 
 // Flow control pauses reading output, so a busy seat cannot outrun the viewer.

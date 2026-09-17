@@ -64,6 +64,8 @@ func scratchSeat(t *testing.T) (*Observer, Target, func(...string) string) {
 		}
 	})
 	identity := strings.Fields(run("new-session", "-d", "-P", "-F", "#{session_id} #{pane_id}", "-s", "owned-proof", "-x", "120", "-y", "40", "sh", "-c", "printf 'NATIVE_TERMINAL_PROOF\\n'; exec cat"))
+	// Pinned as the executor pins a seat window (window-size manual).
+	run("resize-window", "-t", identity[0], "-x", "120", "-y", "40")
 	socketIdentity, err := core.SocketIdentity(socket)
 	if err != nil {
 		t.Fatal(err)
@@ -138,9 +140,12 @@ func TestScratchTerminalForwardsInputAndSizesOnlyItsView(t *testing.T) {
 	waitFor(t, func() bool {
 		return strings.Count(run("capture-pane", "-p", "-t", target.PaneID), "TYPED_BY_THE_OPERATOR") == 2
 	})
-	// With nobody else sizing the window, a resize keeps the view on the seat's
-	// grid, because tmux would otherwise size the window to this client.
+	// With nobody else attached, a resize sizes this view and not the pinned
+	// seat window, as on a seat kept on call.
 	send(conn, `1{"columns":52,"rows":12}`)
+	waitFor(t, func() bool {
+		return strings.Contains(run("list-clients", "-t", target.SessionID, "-F", "#{client_flags} #{client_width}x#{client_height}"), "ignore-size,UTF-8 52x12")
+	})
 	send(conn, "0AFTER_THE_FIRST_RESIZE\r")
 	waitFor(t, func() bool {
 		return strings.Contains(run("capture-pane", "-p", "-t", target.PaneID), "AFTER_THE_FIRST_RESIZE")
@@ -166,9 +171,9 @@ func TestScratchTerminalForwardsInputAndSizesOnlyItsView(t *testing.T) {
 	waitFor(t, func() bool {
 		return strings.Contains(run("list-clients", "-t", target.SessionID, "-F", "#{client_flags}"), "control-mode")
 	})
-	send(conn, `1{"columns":52,"rows":12}`)
+	send(conn, `1{"columns":64,"rows":16}`)
 	waitFor(t, func() bool {
-		return strings.Contains(run("list-clients", "-t", target.SessionID, "-F", "#{client_flags} #{client_width}x#{client_height}"), "ignore-size,UTF-8 52x12")
+		return strings.Contains(run("list-clients", "-t", target.SessionID, "-F", "#{client_flags} #{client_width}x#{client_height}"), "ignore-size,UTF-8 64x16")
 	})
 	if got := run("display-message", "-p", "-t", target.SessionID, "#{window_width}x#{window_height}"); got != initial {
 		t.Fatalf("terminal resized the seat window: before=%s after=%s", initial, got)

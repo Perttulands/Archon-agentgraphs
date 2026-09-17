@@ -245,8 +245,8 @@ the state directory) for artifacts; several can be open side by side.
 The cockpit's floating Peek attaches to an owned live seat and sends typing and
 resize as CHROTE's terminals do, through the seat terminal WebSocket below. The
 operator types to the agent whether it is working a dispatch, on call or idle,
-and the terminal fits its window and sends that size, which applies under the
-resize rule below. A seat kept on call for a human gate is marked on call, and
+and the terminal fits its window and sends that size, which sizes only its own
+view. A seat kept on call for a human gate is marked on call, and
 waiting for you while it holds a pending ask. On a session-channel run the
 waiting gate's answer panel offers Talk with the asking formation, which opens
 each asked seat's terminal in its own window beside the panel; a window says
@@ -781,9 +781,11 @@ configuration or shutdown 503. The frames are CHROTE's. The opening JSON frame
 gives `columns` and `rows`, and the terminal attaches at the seat's native grid.
 Afterwards the client sends binary frames: ASCII `0` followed by input bytes,
 which reach the pane; `1` followed by JSON `columns` and `rows`, which sizes this
-terminal's view while another client sizes the seat window (such as the
-executor's control client) and is ignored otherwise; and `2` and `3` to pause and
-resume output. Other frames are ignored. The seat window keeps its own size.
+terminal's view; and `2` and `3` to pause and resume output. Other frames are
+ignored. The seat window keeps its own size: the executor sizes a new seat's
+window to 160x48 and pins it (tmux `window-size manual`), so no viewer resizes
+it, including the only viewer of a seat kept on call. A CHROTE tile watches
+the pinned window at that size.
 Output frames are binary ASCII `0` followed by terminal bytes. A terminal ending
 closes with 1000; daemon shutdown closes terminals with 1001. WebSocket origins must
 match the request host. Terminal bytes are the actual seat display, not the
