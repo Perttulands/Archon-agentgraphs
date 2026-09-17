@@ -18,9 +18,12 @@ import (
 )
 
 type testExecutor struct {
-	entered chan string
-	proceed chan struct{}
+	formationTimeout int
+	entered          chan string
+	proceed          chan struct{}
 }
+
+func (e *testExecutor) DefaultFormationTimeoutSeconds() int { return e.formationTimeout }
 
 func (e *testExecutor) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
 	e.entered <- req.NodeID
@@ -235,3 +238,54 @@ id = "edge_pass"
 from = "gate_review:pass"
 to = "fmn_after:port_after_in"
 `
+
+func TestAdmissionFreezesExecutorFormationDefault(t *testing.T) {
+	for _, mode := range []string{"mission", "formation"} {
+		t.Run(mode, func(t *testing.T) {
+			c, e, _ := fixture(t)
+			e.formationTimeout = 127
+			selector := `"missionId":"mis_proof",`
+			if mode == "formation" {
+				selector = `"formationId":"fmn_work",`
+			}
+			w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof",`+selector+`"expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":1000,"formationTimeoutSeconds":999}}`)
+			if w.Code != 202 {
+				t.Fatalf("admission %d %s", w.Code, w.Body.String())
+			}
+			var receipt struct {
+				Data struct {
+					RunID string `json:"runId"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &receipt); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-e.entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("execution did not start")
+			}
+			events, err := c.store.ReadRunEvents(receipt.Data.RunID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			limits, ok := events[0].Data["limits"].(map[string]any)
+			if !ok || limits["formationTimeoutSeconds"] != float64(127) {
+				t.Fatalf("limits=%#v", limits)
+			}
+			for _, event := range events {
+				if event.Type != formations.RunEventNodeStarted || event.NodeID != "fmn_work" {
+					continue
+				}
+				started, err := time.Parse(time.RFC3339Nano, event.Timestamp)
+				if err != nil {
+					t.Fatal(err)
+				}
+				deadline, err := time.Parse(time.RFC3339Nano, event.Data["executionDeadline"].(string))
+				if err != nil || deadline.Sub(started) != 127*time.Second {
+					t.Fatalf("deadline=%v %v", deadline, err)
+				}
+			}
+		})
+	}
+}

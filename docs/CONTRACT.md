@@ -170,6 +170,20 @@ the clock out. A dispatch that exceeds it blocks the run with
 Limit exhaustion and unresolved execution leave visible blocks rather than
 claiming success.
 
+A formation may author `[formation.execution]` with a positive
+`timeoutSeconds`. That allocation covers the whole attempt: seat startup,
+preparation, collaboration and finalization. With no override, admission captures
+the executor default, configured by `--seat-timeout` for tmux, in
+`limits.formationTimeoutSeconds`. Later board edits and changes to the daemon's
+default affect later runs. Each `node_started` records the selected duration and
+absolute `executionDeadline`; restarting does not give the same attempt more
+time. Explicit redispatch starts a new counted attempt. The earlier of that
+deadline and the run's remaining wall clock governs execution. Formation expiry
+blocks with `formation_timeout_exceeded`, retaining partial evidence. A downstream
+human gate waits after the formation finishes and spends no formation time.
+Older admissions without a captured default retain the legacy executor-default
+policy; that default was not frozen in their run record.
+
 The projection reports `running`, `waiting_human`, `blocked`, `succeeded`,
 `failed` or `canceled`. Always check `final` and `resumeAllowed`; a blocked run
 is not a completed delivery. Events expose node, slot and gate identities,

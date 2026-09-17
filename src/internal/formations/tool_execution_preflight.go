@@ -12,6 +12,9 @@ var ErrToolExecutionUnavailable = errors.New(ToolExecutionUnavailableCode)
 
 func preflightMissionDefinition(board *BoardDocument, missionID string) error {
 	selected := reachableNodeIDs(board, missionID)
+	if err := preflightExecutionPolicies(board, selected); err != nil {
+		return err
+	}
 	if err := preflightMissionMigrations(board, missionID, selected); err != nil {
 		return err
 	}
@@ -33,6 +36,9 @@ func preflightMissionMigrations(board *BoardDocument, missionID string, selected
 
 func preflightIsolatedFormationDefinition(board *BoardDocument, formationID string) error {
 	selected := map[string]bool{formationID: true}
+	if err := preflightExecutionPolicies(board, selected); err != nil {
+		return err
+	}
 	if err := rejectLegacyInlineVerificationForNodes(board, selected); err != nil {
 		return err
 	}

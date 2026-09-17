@@ -3073,10 +3073,13 @@ func parseFormationNodes(raw []byte) []FormationNode {
 				active = "slot"
 			}
 			continue
-		case isSection && !isArraySection && section == "formation.execution":
+		case isSection && section == "formation.execution":
 			if current != nil {
-				current.Execution = &FormationExecutionPolicy{}
+				current.Execution = &FormationExecutionPolicy{TimeoutSeconds: -1}
 				active = "execution"
+				if isArraySection {
+					active = ""
+				}
 			}
 			continue
 		case isSection && !isArraySection && section == "formation.brief":
@@ -3129,6 +3132,10 @@ func parseFormationNodes(raw []byte) []FormationNode {
 			}
 		case "formation":
 			switch key {
+			case "execution":
+				// A valid inline policy is handled by strict decoding. A malformed
+				// inline policy must remain visibly invalid in compatibility reads.
+				current.Execution = &FormationExecutionPolicy{TimeoutSeconds: -1}
 			case "id":
 				current.ID = value
 			case "type":

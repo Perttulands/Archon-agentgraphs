@@ -275,9 +275,11 @@ func decodeFormationNodes(document map[string]any) ([]FormationNode, error) {
 		if node.Title, err = tomlString(table, "title"); err != nil {
 			return nil, err
 		}
-		if policy, present, err := tomlTable(table, "execution"); err != nil {
-			return nil, err
-		} else if present {
+		if value, present := table["execution"]; present {
+			policy, ok := value.(map[string]any)
+			if !ok {
+				return nil, unsupportedTOMLField("execution", value)
+			}
 			seconds, err := tomlInt(policy, "timeoutSeconds")
 			if err != nil {
 				return nil, err

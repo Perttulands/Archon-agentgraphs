@@ -305,11 +305,14 @@ func (e *TmuxFormationExecutor) ExecuteFormationContext(parent context.Context, 
 }
 
 func (e *TmuxFormationExecutor) executeFormationContext(parent context.Context, req FormationExecution) (FormationExecutionResult, error) {
-	ctx, cancel := context.WithTimeout(parent, time.Duration(e.config.TimeoutSeconds)*time.Second)
-	defer cancel()
 	if e == nil || e.store == nil {
 		return FormationExecutionResult{}, runExecutionError("missing_executor", "tmux executor store is not configured", "executor", ErrRunExecutorUnavailable)
 	}
+	ctx, cancel, err := withFormationDeadline(parent, &req, e.store.now(), e.config.TimeoutSeconds)
+	if err != nil {
+		return FormationExecutionResult{}, err
+	}
+	defer cancel()
 	if err := e.store.RequireRuntimeAuthority(); err != nil {
 		return FormationExecutionResult{}, err
 	}

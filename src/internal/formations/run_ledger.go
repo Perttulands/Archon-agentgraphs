@@ -73,10 +73,11 @@ type RunResumeRequest struct {
 }
 
 type RunLimits struct {
-	MaxDispatch      int  `json:"maxDispatch"`
-	MaxAttempts      int  `json:"maxAttempts,omitempty"`
-	WallClockSeconds int  `json:"wallClockSeconds"`
-	Redact           bool `json:"redact"`
+	FormationTimeoutSeconds int  `json:"formationTimeoutSeconds,omitempty"`
+	MaxDispatch             int  `json:"maxDispatch"`
+	MaxAttempts             int  `json:"maxAttempts,omitempty"`
+	WallClockSeconds        int  `json:"wallClockSeconds"`
+	Redact                  bool `json:"redact"`
 }
 
 type RunStartResult struct {

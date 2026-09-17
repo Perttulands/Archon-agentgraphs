@@ -57,13 +57,50 @@ func (s *Store) SetFormationExecutionPolicy(slug string, req FormationExecutionP
 	})
 }
 
-func executionPolicyFindings(formations []FormationNode) []BoardFinding {
-	var findings []BoardFinding
-	for _, node := range formations {
+func executionPolicyFindings(board *BoardDocument) []BoardFinding {
+	invalid := map[string]bool{}
+	for _, node := range board.Formations {
 		if node.Execution != nil && !validExecutionSeconds(node.Execution.TimeoutSeconds) {
+			invalid[node.ID] = true
+		}
+	}
+	// Compatibility parsing keeps older drafts readable. It must not turn a
+	// mistyped new policy into an inherited default or coerce a quoted number.
+	if source, err := decodeTOMLMap([]byte(board.TOML)); err == nil {
+		if tables, err := tomlTableArray(source, "formation"); err == nil {
+			for _, table := range tables {
+				id, _ := tomlString(table, "id")
+				value, present := table["execution"]
+				if !present {
+					continue
+				}
+				policy, ok := value.(map[string]any)
+				if !ok {
+					invalid[id] = true
+					continue
+				}
+				seconds, err := tomlInt(policy, "timeoutSeconds")
+				if err != nil || !validExecutionSeconds(seconds) {
+					invalid[id] = true
+				}
+			}
+		}
+	}
+	var findings []BoardFinding
+	for _, node := range board.Formations {
+		if invalid[node.ID] {
 			findings = append(findings, BoardFinding{Code: "invalid_execution_policy", NodeID: node.ID,
 				Message: "formation execution.timeoutSeconds must be a positive whole number of seconds; remove the policy to inherit the run default"})
 		}
 	}
 	return findings
+}
+
+func preflightExecutionPolicies(board *BoardDocument, selected map[string]bool) error {
+	for _, finding := range executionPolicyFindings(board) {
+		if selected[finding.NodeID] {
+			return fmt.Errorf("%w: %s: %s", ErrInvalidExecutionPolicy, finding.NodeID, finding.Message)
+		}
+	}
+	return nil
 }

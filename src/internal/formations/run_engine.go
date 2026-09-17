@@ -72,6 +72,8 @@ type FormationRunRequest struct {
 }
 
 type FormationExecution struct {
+	// Deadline uses the ledger clock and covers the entire formation attempt.
+	Deadline      time.Time
 	Cwd           string
 	MissionGoal   string
 	MissionBeadID string
@@ -259,6 +261,7 @@ func (e *RunEngine) RunMission(slug string, req RunStartRequest) (*RunStatusProj
 	if req.Personas == nil {
 		req.Personas = e.personas
 	}
+	req.Limits = e.AdmissionLimits(req.Limits)
 	started, err := e.store.StartRun(slug, req)
 	if err != nil {
 		return nil, err
@@ -324,12 +327,13 @@ func (e *RunEngine) PrepareFormationRun(slug, formationID string, req FormationR
 	if personas == nil {
 		personas = e.personas
 	}
+	req.Limits = e.AdmissionLimits(req.Limits)
 	started, mission, seedInput, err := e.startFormationRun(slug, board, formation, req.Actor, personas, req.Limits)
 	if err != nil {
 		return nil, nil, err
 	}
 	return started, func() (*RunStatusProjection, error) {
-		if err := e.startFormationExecution(started.RunID, req.Limits, RunEvent{
+		if err := e.startFormationExecution(started.RunID, formation, req.Limits, RunEvent{
 			Type:    RunEventNodeStarted,
 			NodeID:  formation.ID,
 			Attempt: 1,
@@ -1051,7 +1055,7 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 			return e.appendErrorAndBlock(runID, "resume_attempts_exhausted", "resume attempts exhausted", "engine", nodeID, "resume attempts exhausted")
 		}
 		attempts[nodeID] = nextAttempt
-		if err := e.startFormationExecution(runID, limits, RunEvent{
+		if err := e.startFormationExecution(runID, formation, limits, RunEvent{
 			Type:    RunEventNodeStarted,
 			NodeID:  nodeID,
 			Attempt: nextAttempt,
@@ -1703,7 +1707,7 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 			return nil
 		}
 		attempts[nodeID] = nextAttempt
-		if err := e.startFormationExecution(runID, limits, RunEvent{
+		if err := e.startFormationExecution(runID, formation, limits, RunEvent{
 			Type:    RunEventNodeStarted,
 			NodeID:  nodeID,
 			Attempt: nextAttempt,
@@ -1780,7 +1784,7 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 // can launch seats. The durable start also counts failed or interrupted work;
 // neither resume nor a new engine instance replenishes the budget. The run's
 // coordinator worker serializes this read and append with other executions.
-func (e *RunEngine) startFormationExecution(runID string, limits RunLimits, event RunEvent) error {
+func (e *RunEngine) startFormationExecution(runID string, formation FormationNode, limits RunLimits, event RunEvent) error {
 	if limits.MaxDispatch > 0 {
 		events, err := e.store.ReadRunEvents(runID)
 		if err != nil {
@@ -1798,6 +1802,16 @@ func (e *RunEngine) startFormationExecution(runID string, limits RunLimits, even
 			}
 			return errRunStopped
 		}
+	}
+	seconds, err := formationExecutionSeconds(formation, limits.FormationTimeoutSeconds)
+	if err != nil {
+		return err
+	}
+	started := e.store.now()
+	event.Timestamp = started.Format(time.RFC3339Nano)
+	if seconds > 0 {
+		event.Data["executionTimeoutSeconds"] = seconds
+		event.Data["executionDeadline"] = started.Add(time.Duration(seconds) * time.Second).Format(time.RFC3339Nano)
 	}
 	return e.store.AppendRunEvent(runID, event)
 }
@@ -1827,46 +1841,44 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 	if err := e.reconsiderKeptSeats(req.RunID, req.NodeID); err != nil {
 		return FormationExecutionResult{}, err
 	}
+	now := e.store.now()
+	// Older admissions did not capture a default. They retain the legacy
+	// executor-default policy; new admissions always carry the frozen value.
+	budgetLimits := limits
+	if budgetLimits.FormationTimeoutSeconds == 0 {
+		budgetLimits = e.AdmissionLimits(budgetLimits)
+	}
+	budget, err := formationExecutionBudget(req, events, budgetLimits, now)
+	if err != nil {
+		return FormationExecutionResult{}, err
+	}
+	req.Deadline = budget.deadline
+	if !req.Deadline.IsZero() {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeoutCause(ctx, req.Deadline.Sub(now), budget.cause)
+		defer cancel()
+	}
 	if executor, ok := e.executor.(ContextFormationExecutor); ok {
-		if err := ctx.Err(); err != nil {
-			return FormationExecutionResult{}, err
-		}
-		if limits.WallClockSeconds > 0 {
-			now := e.store.now()
-			deadline, err := wallClockDeadline(events, limits.WallClockSeconds, now)
-			if err != nil {
-				return FormationExecutionResult{}, err
-			}
-			// The ledger's clock measures what is left, as it stamped the waits.
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, deadline.Sub(now))
-			defer cancel()
-		}
 		result, err := executor.ExecuteFormationContext(ctx, req)
-		if errors.Is(context.Cause(ctx), ErrCoordinatorShutdown) {
-			return FormationExecutionResult{}, ErrCoordinatorShutdown
+		if cause := context.Cause(ctx); cause != nil {
+			return FormationExecutionResult{}, cause
 		}
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return FormationExecutionResult{}, ErrRunWallClockExceeded
+		if !req.Deadline.IsZero() && !e.store.now().Before(req.Deadline) {
+			return FormationExecutionResult{}, budget.cause
 		}
 		return result, err
 	}
 	// Coordinator-owned legacy executors run synchronously so a timeout cannot
 	// leave a hidden writer behind after the coordinator releases its lock.
-	if e.executionContext != nil {
-		return e.executor.ExecuteFormation(req)
+	if e.executionContext != nil || req.Deadline.IsZero() {
+		result, err := e.executor.ExecuteFormation(req)
+		if !req.Deadline.IsZero() && !e.store.now().Before(req.Deadline) {
+			return FormationExecutionResult{}, budget.cause
+		}
+		return result, err
 	}
-	if limits.WallClockSeconds <= 0 {
-		return e.executor.ExecuteFormation(req)
-	}
-	now := e.store.now()
-	deadline, err := wallClockDeadline(events, limits.WallClockSeconds, now)
-	if err != nil {
-		return FormationExecutionResult{}, err
-	}
-	remaining := deadline.Sub(now)
-	if remaining <= 0 {
-		return FormationExecutionResult{}, ErrRunWallClockExceeded
+	if !now.Before(req.Deadline) {
+		return FormationExecutionResult{}, budget.cause
 	}
 	type executionResult struct {
 		result FormationExecutionResult
@@ -1879,9 +1891,12 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 	}()
 	select {
 	case result := <-done:
+		if !e.store.now().Before(req.Deadline) {
+			return FormationExecutionResult{}, budget.cause
+		}
 		return result.result, result.err
-	case <-time.After(remaining):
-		return FormationExecutionResult{}, ErrRunWallClockExceeded
+	case <-ctx.Done():
+		return FormationExecutionResult{}, context.Cause(ctx)
 	}
 }
 
@@ -2528,7 +2543,7 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 	input := req.Input
 	var finalText string
 	for _, formation := range chain {
-		if err := e.startFormationExecution(req.RunID, limits, RunEvent{
+		if err := e.startFormationExecution(req.RunID, formation, limits, RunEvent{
 			Type:    RunEventNodeStarted,
 			NodeID:  formation.ID,
 			Attempt: attempt,
@@ -2688,6 +2703,8 @@ func executionFailureEvent(err error) executionFailureDetails {
 		}
 	}
 	switch {
+	case errors.Is(err, ErrFormationTimeoutExceeded):
+		return executionFailureDetails{Code: "formation_timeout_exceeded", Message: "formation execution time limit exceeded", Boundary: "limits"}
 	case errors.Is(err, ErrRunWallClockExceeded):
 		return executionFailureDetails{Code: "wall_clock_exceeded", Message: "wall clock limit exceeded", Boundary: "limits"}
 	case errors.Is(err, ErrRunExecutorUnavailable):
@@ -2825,10 +2842,11 @@ func runLimitsFromEvent(event RunEvent) RunLimits {
 		return limits
 	case map[string]any:
 		return RunLimits{
-			MaxDispatch:      intFromRunEventData(limits["maxDispatch"]),
-			MaxAttempts:      intFromRunEventData(limits["maxAttempts"]),
-			WallClockSeconds: intFromRunEventData(limits["wallClockSeconds"]),
-			Redact:           boolFromAny(limits["redact"]),
+			FormationTimeoutSeconds: intFromRunEventData(limits["formationTimeoutSeconds"]),
+			MaxDispatch:             intFromRunEventData(limits["maxDispatch"]),
+			MaxAttempts:             intFromRunEventData(limits["maxAttempts"]),
+			WallClockSeconds:        intFromRunEventData(limits["wallClockSeconds"]),
+			Redact:                  boolFromAny(limits["redact"]),
 		}
 	default:
 		return RunLimits{}

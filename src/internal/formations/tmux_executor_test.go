@@ -304,8 +304,8 @@ func TestTmuxExecutorNeverDispatchesWhenClaudeTUIReadinessUnknown(t *testing.T) 
 		t.Fatalf("events = %v, want no slot_dispatch or adapter_send before readiness", eventTypes(events))
 	}
 	errEvent := eventOfType(t, events, RunEventError)
-	if errEvent.Data["code"] != "session_startup_timeout" || errEvent.Data["boundary"] != "adapter" {
-		t.Fatalf("error data = %#v, want session_startup_timeout at adapter boundary", errEvent.Data)
+	if errEvent.Data["code"] != "formation_timeout_exceeded" || errEvent.Data["boundary"] != "limits" {
+		t.Fatalf("error data = %#v, want formation_timeout_exceeded at limits boundary", errEvent.Data)
 	}
 	if len(client.created) != 1 || fmt.Sprint(client.killed) != fmt.Sprint(client.created) {
 		t.Fatalf("created=%v killed=%v, want exact owned-session cleanup", client.created, client.killed)
@@ -325,8 +325,8 @@ func TestTmuxExecutorNeverDispatchesWhenCodexTUIReadinessUnknown(t *testing.T) {
 		t.Fatalf("events = %v, want no slot_dispatch or adapter_send before readiness", eventTypes(events))
 	}
 	errEvent := eventOfType(t, events, RunEventError)
-	if errEvent.Data["code"] != "session_startup_timeout" || errEvent.Data["boundary"] != "adapter" {
-		t.Fatalf("error data = %#v, want session_startup_timeout at adapter boundary", errEvent.Data)
+	if errEvent.Data["code"] != "formation_timeout_exceeded" || errEvent.Data["boundary"] != "limits" {
+		t.Fatalf("error data = %#v, want formation_timeout_exceeded at limits boundary", errEvent.Data)
 	}
 	if len(client.created) != 1 || fmt.Sprint(client.killed) != fmt.Sprint(client.created) {
 		t.Fatalf("created=%v killed=%v, want exact owned-session cleanup", client.created, client.killed)
