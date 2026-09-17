@@ -565,7 +565,7 @@ func outputContractExtraLines(formation FormationNode) []string {
 		if i == len(formation.Outputs)-1 {
 			comma = ""
 		}
-		lines = append(lines, fmt.Sprintf("  %q: {\"text\": \"one-line summary\", \"ref\": \"artifact/path.md\"}%s", output.ID, comma))
+		lines = append(lines, fmt.Sprintf("  %q: {\"text\": \"one-line summary\", \"ref\": \"/absolute/path/to/artifact.md\"}%s", output.ID, comma))
 	}
 	lines = append(lines,
 		"}",
@@ -575,7 +575,7 @@ func outputContractExtraLines(formation FormationNode) []string {
 	lines = append(lines,
 		"Do not rely on free-form answer text for routing; it is display-only. Missing or unknown output ids block the run.",
 		"Use text for a short, non-secret routed payload or summary.",
-		"For longer payloads, create a text artifact under the artifact directory shown below and put its path in ref; CHROTE reads that file for routing.",
+		"For longer payloads, create a text artifact under the artifact directory shown below and put its full absolute filesystem path in ref; CHROTE reads that file for routing. A bare filename does not resolve against the run artifact directory. Omit ref for a text-only payload.",
 		"Do not point ref at arbitrary host files or secrets. Invalid, unreadable, out-of-root, symlink-escaped, non-text, or oversized refs block the run.",
 		"Before the CHROTE-DONE sentinel, you MUST emit a fresh ```chrote-outputs fenced JSON block for this run. Do not omit the fence.",
 	)

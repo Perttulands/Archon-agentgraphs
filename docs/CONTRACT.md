@@ -365,7 +365,9 @@ Real formations must emit all and only their declared output IDs in one block:
 ```
 
 A payload can also include `ref` naming a text artifact created under the
-prompt's artifact directory or another configured root. Invalid, missing,
+prompt's artifact directory or another configured root. Use its full absolute
+filesystem path. A legacy relative `ref` resolves against the state workspace,
+not the run artifact directory. Invalid, missing,
 oversized or escaped references block routing. Free-form answer text is not
 routed. Finish with the exact run ID substituted in the sentinel:
 
