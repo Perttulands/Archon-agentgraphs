@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Archon UX review</title>
+<style>
+  :root{color-scheme:dark;font:16px/1.55 system-ui,sans-serif;color:#e7ecef;background:#111719}
+  *{box-sizing:border-box}body{max-width:1120px;margin:auto;padding:40px 24px 64px}
+  h1{font-size:clamp(28px,4vw,44px);line-height:1.15;margin:12px 0}h2{font-size:23px;margin:36px 0 14px}
+  p{max-width:80ch;color:#b7c5cb}a{color:#b9dbff}small,.eyebrow{color:#a6bfce}.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+  .intro{font-size:19px}.choices{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:28px 0}
+  .choice{display:block;padding:24px;border:1px solid #435666;border-radius:10px;background:#1b252b;text-decoration:none}
+  .choice strong{display:block;font-size:21px;color:#eef5ff}.choice span{display:block;color:#b7c5cb;margin-top:10px}.choice:hover{border-color:#a7cbff}
+  .notice{padding:16px 20px;border-left:3px solid #a7cbff;background:#1b252b;border-radius:4px}
+  ul{padding-left:21px}li{margin:8px 0}.shipped{columns:2;column-gap:48px}.shipped li{break-inside:avoid}
+  .scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;vertical-align:top;padding:15px 12px;border-bottom:1px solid #33424a}th{color:#a6bfce}td:first-child{width:25%;font-weight:600}td:last-child{width:31%;color:#b7c5cb}
+  code{font-size:12px;color:#a6bfce}footer{margin-top:40px;padding-top:16px;border-top:1px solid #33424a;color:#a6bfce;font-size:13px}
+  @media(max-width:700px){body{padding:24px 16px}.choices{grid-template-columns:1fr}.shipped{columns:1}table{min-width:620px}}
+</style>
+<div class="eyebrow">Archon · operator review · form-yjs</div>
+<h1>Start with an idea, keep your place.</h1>
+<p class="intro">Thirteen small usability improvements are implemented. Eight workflow choices are ready to try before we adopt them. Start with the missing workspace step.</p>
+<div class="notice">Workspace creation is a proposal. The live launch still requires an existing server folder. In the proposed default, Archon creates the workspace and keeps its location available to inspect.</div>
+<div class="choices">
+  <a class="choice" href="launch-navigation.prototype.html"><strong>Try starting a mission →</strong><span>Create a workspace, recover a brief, keep launch actions in reach, and move between the board and its agents without losing your place.</span></a>
+  <a class="choice" href="run-decisions.prototype.html"><strong>Try runs and decisions →</strong><span>Find a previous run, see where your decision leads, and choose which peer to talk with.</span></a>
+</div>
+<p>Both demos run entirely in this page's memory. Their controls use example data and simulate actions. Reloading resets them. Each has free play and guided walkthroughs.</p>
+<h2>Recommended choices</h2>
+<p>Each proposal has its own Bead. These recommendations are ready for your decision; their production implementation remains open.</p>
+<div class="scroll"><table>
+  <thead><tr><th>Choice</th><th>Recommendation</th><th>Tradeoff</th></tr></thead>
+  <tbody>
+    <tr><td>Workspace<br><code>form-ls8</code></td><td>Create one for each new mission run by default. Offer an existing project folder as an explicit choice, reusing CHROTE's file browser.</td><td>Creates another folder to retain and manage. Its root belongs in host configuration.</td></tr>
+    <tr><td>Unfinished launch<br><code>form-7mk</code></td><td>Recover the draft for that mission and clearly offer Discard.</td><td>Old text can linger. Browser persistence needs a visible scope and an explicit discard action.</td></tr>
+    <tr><td>Launch actions<br><code>form-5bc</code></td><td>Keep a persistent action footer while the form scrolls.</td><td>Uses some vertical space. A separate review step saves space but adds a click.</td></tr>
+    <tr><td>Board context<br><code>form-16s</code></td><td>Keep the selected board when moving between Boards and Agents.</td><td>The two views would share a board selection.</td></tr>
+    <tr><td>Find a step<br><code>form-7ce</code></td><td>Offer a searchable outline and an explicit action to focus a step at a readable scale.</td><td>Another panel takes space. Keep the existing Fit control.</td></tr>
+    <tr><td>Previous runs<br><code>form-3jz</code></td><td>Offer searchable history with mission context, time and outcome.</td><td>More interface than the current compact selector.</td></tr>
+    <tr><td>Decision destination<br><code>form-xja</code></td><td>Show destinations beside Approve and Send back, using the graph saved for that run.</td><td>Multiple or absent routes need more explanation.</td></tr>
+    <tr><td>Talking with peers<br><code>form-9zp</code></td><td>Offer named recipients while keeping Open both as a quick action.</td><td>Choosing a recipient adds a step before talking.</td></tr>
+  </tbody>
+</table></div>
+<h2>Thirteen small improvements</h2>
+<ul class="shipped">
+  <li>Keyboard focus stays inside Start mission and returns to its opener.</li>
+  <li>Dispatch and attempt limits explain what they count.</li>
+  <li>The time limit also reads in hours and minutes.</li>
+  <li>Numeric limits can be cleared and replaced naturally.</li>
+  <li>Copy path reports success or refusal, with a selectable fallback path.</li>
+  <li>Files have an explicit Download action.</li>
+  <li>The board's agent roster can be searched and cleared.</li>
+  <li>Editors show their existing save and cancel shortcuts.</li>
+  <li>Notes explain how they differ from executable briefs.</li>
+  <li>A successful field save gets a local confirmation.</li>
+  <li>Truncated gate inputs link to their run evidence.</li>
+  <li>Run statuses use readable words.</li>
+  <li>Answer drafts say when they are saved, restored or unavailable.</li>
+</ul>
+<footer>Review artifacts, not new mission behavior. The real Wayfinding board and launch remain operator-owned. Source: dashboard/src/components/prototypes/. Work and decisions: form-yjs and the linked Beads.</footer>
+</html>
