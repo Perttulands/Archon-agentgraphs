@@ -148,13 +148,15 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 		return 2
 	}
 	if len(args) < 2 {
-		fmt.Fprintln(stderr, "usage: archon <agent|board|formation|gate|mission|tool|run> <command>")
+		fmt.Fprintln(stderr, "usage: archon <agent|board|formation|gate|mission|tool|run|peer> <command>")
 		return 2
 	}
 	if config.Server != "" {
 		return runRemote(config.Server, args, stdout, stderr)
 	}
 	switch args[0] {
+	case "peer":
+		return runPeerCommand(formations.NewStore(config.Workspace), args[1:], stdout, stderr)
 	case "agent":
 		store := formations.NewPersonaStore(formations.DefaultAgentsDir())
 		switch args[1] {
