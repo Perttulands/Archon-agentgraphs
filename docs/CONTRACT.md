@@ -125,6 +125,16 @@ One coordinator locks a state directory. Many runs execute concurrently within
 it. Admission validates the graph and inputs, snapshots definitions, durably
 appends `run_started`, then returns HTTP 202.
 
+New runs freeze each complete persona card, its selected model setting and its
+resolved effort in a private schema-2 bindings snapshot. Tmux, lab execution and
+completed-turn recovery use that snapshot after edits, retries and restarts.
+An omitted model freezes the choice to use the harness default, which remains
+unpinned; specify a model in the persona to retain an exact model setting.
+Older schema-1 bindings have only paths and hashes. Their history remains
+readable, but seat execution and recovery block with
+`persona_snapshot_incomplete` instead of substituting today's persona. Start a
+new run to use current personas.
+
 Admission first checks that `expectedRev` and any `If-Match` name the current
 board (HTTP 409 otherwise). It then builds one report of every problem the run
 would hit: board validation plus supported formation types, slots with readable
@@ -149,8 +159,8 @@ limits bound formation execution steps, including judge steps. Each durable
 formation start consumes one dispatch before any seat launches, including failed
 or interrupted execution. Human approval, resume, restart and redispatch do not
 replenish that run-wide allowance; reattaching completed evidence consumes no
-new dispatch. Attempts bound revisits to a node. The wall clock bounds agent work: every formation dispatch
-must finish within `wallClockSeconds` of the run's start, not counting time the
+new dispatch. Attempts bound revisits to a node. The wall clock bounds agent
+work. Every formation dispatch must finish within `wallClockSeconds` of the run's start, not counting time the
 run spent waiting for the operator. A wait runs from a human gate's
 `human_input_requested` to the `human_verdict_recorded` for that gate, and time
 while several requests wait counts once. The waits come from the ledger's

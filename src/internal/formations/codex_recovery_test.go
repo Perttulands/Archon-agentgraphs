@@ -10,9 +10,22 @@ import (
 )
 
 func TestCompletedNativeRecoveryValidatesBeforeResumeAndNeverRedispatches(t *testing.T) {
-	for _, kind := range []string{"valid file output", "automatic discovery", "wrong native session", "changed brief", "incomplete turn", "no unresolved dispatch", "two unresolved dispatches"} {
+	for _, kind := range []string{"valid file output", "automatic discovery", "wrong native session", "changed brief", "incomplete turn", "no unresolved dispatch", "two unresolved dispatches", "wrong model", "wrong effort"} {
 		t.Run(kind, func(t *testing.T) {
-			store, started := startS4DispatchRun(t)
+			store, personas := s4RunFixture(t)
+			card, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "builder", Harness: "openai-codex", Model: "gpt-6-astra", Effort: "xhigh"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
+			started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Personas: personas})
+			if err != nil {
+				t.Fatal(err)
+			}
+			model, effort := "edited-model", "low"
+			if _, err := personas.EditPersona("scout", EditPersonaRequest{ExpectedETag: card.ETag, SetModel: &model, SetEffort: &effort}); err != nil {
+				t.Fatal(err)
+			}
 			brief := filepath.Join(store.Workspace, "briefs", "brief.md")
 			writeFixture(t, brief, "Do the work")
 			dispatcher := NewSlotDispatcher(store, nil)
@@ -43,6 +56,12 @@ func TestCompletedNativeRecoveryValidatesBeforeResumeAndNeverRedispatches(t *tes
 			if kind != "incomplete turn" {
 				transcript += "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"turn-one\"}}\n"
 			}
+			if kind == "wrong model" {
+				transcript = strings.ReplaceAll(transcript, "gpt-6-astra", "edited-model")
+			}
+			if kind == "wrong effort" {
+				transcript = strings.ReplaceAll(transcript, "xhigh", "low")
+			}
 			transcriptPath := filepath.Join(store.Workspace, "native.jsonl")
 			writeFixture(t, transcriptPath, transcript)
 			if kind == "changed brief" {
@@ -67,11 +86,7 @@ func TestCompletedNativeRecoveryValidatesBeforeResumeAndNeverRedispatches(t *tes
 			if err != nil {
 				t.Fatal(err)
 			}
-			personas := NewPersonaStore(t.TempDir())
-			if _, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "builder", Harness: "openai-codex", Model: "gpt-6-astra", Effort: "xhigh"}); err != nil {
-				t.Fatal(err)
-			}
-			executor := NewTmuxFormationExecutor(store, personas, TmuxExecutorConfig{Cwd: store.Workspace, StateDir: store.Workspace, Roots: []string{store.Workspace}, OutputCapBytes: 1 << 20, RecoveryBrief: brief, RecoveryTranscript: transcriptPath})
+			executor := NewTmuxFormationExecutor(store, nil, TmuxExecutorConfig{Cwd: store.Workspace, StateDir: store.Workspace, Roots: []string{store.Workspace}, OutputCapBytes: 1 << 20, RecoveryBrief: brief, RecoveryTranscript: transcriptPath})
 			if kind == "automatic discovery" {
 				executor.config.RecoveryBrief = ""
 				executor.config.RecoveryTranscript = ""

@@ -2,7 +2,6 @@ package formations
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -116,20 +115,9 @@ func (e *LabFormationExecutor) executeFormation(ctx context.Context, req Formati
 		if slot.AgentID == "" {
 			return FormationExecutionResult{}, runExecutionError("missing_agent", fmt.Sprintf("slot %q is not staffed", slot.ID), "executor", nil)
 		}
-		if e.personas == nil {
-			return FormationExecutionResult{}, runExecutionError("missing_persona_store", "persona store is not configured", "executor", nil)
-		}
-		card, err := e.personas.ReadPersona(slot.AgentID)
+		card, variant, err := e.store.readRunPersonaBinding(req.RunID, req.NodeID, slot)
 		if err != nil {
-			return FormationExecutionResult{}, runExecutionError("missing_persona", fmt.Sprintf("persona %q could not be resolved", slot.AgentID), "executor", err)
-		}
-		variant, err := card.SelectHarnessVariant(slot.Harness)
-		if err != nil {
-			code := "missing_harness"
-			if errors.Is(err, ErrAmbiguousAgentBinding) {
-				code = "ambiguous_harness"
-			}
-			return FormationExecutionResult{}, runExecutionError(code, err.Error(), "executor", err)
+			return FormationExecutionResult{}, err
 		}
 		if !allowed[variant.ID] {
 			return FormationExecutionResult{}, runExecutionError("unconfigured_harness", fmt.Sprintf("lab executor is not configured for harness %q", variant.ID), "executor", nil)

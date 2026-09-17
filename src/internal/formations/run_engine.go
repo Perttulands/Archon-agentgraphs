@@ -918,6 +918,10 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 	if int64(len(boardRaw)) > runtimeAuthorityMaxRecordBytes {
 		return nil, MissionNode{}, RunInputRef{}, fmt.Errorf("%w: run snapshot exceeds byte limit", ErrRunLedgerInvalid)
 	}
+	bindingsRaw := []byte(renderRunBindings(runID, board, mission, bindings, nil))
+	if int64(len(bindingsRaw)) > runtimeAuthorityMaxRecordBytes {
+		return nil, MissionNode{}, RunInputRef{}, fmt.Errorf("%w: run persona snapshot exceeds byte limit", ErrRunLedgerInvalid)
+	}
 	runDirectory, err := e.store.openRunArtifactDirectory(slug, true)
 	if err != nil {
 		return nil, MissionNode{}, RunInputRef{}, err
@@ -926,7 +930,7 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 	if err := writeRunArtifactExclusiveAt(runDirectory, runID+".snapshot.toml", boardRaw); err != nil {
 		return nil, MissionNode{}, RunInputRef{}, err
 	}
-	if err := writeRunArtifactExclusiveAt(runDirectory, runID+".bindings.toml", []byte(renderRunBindings(runID, board, mission, bindings, nil))); err != nil {
+	if err := writeRunArtifactExclusiveAt(runDirectory, runID+".bindings.toml", bindingsRaw); err != nil {
 		return nil, MissionNode{}, RunInputRef{}, err
 	}
 	started := &RunStartResult{

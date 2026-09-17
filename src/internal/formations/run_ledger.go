@@ -138,15 +138,18 @@ type RunNodeReport struct {
 }
 
 type runBinding struct {
-	NodeID      string
-	SlotID      string
-	AgentID     string
-	Harness     string
-	SessionStem string
-	CardPath    string
-	CardHash    string
-	Launch      string
-	Source      string
+	NodeID      string `toml:"nodeId"`
+	SlotID      string `toml:"slotId"`
+	AgentID     string `toml:"agentId"`
+	Harness     string `toml:"harness"`
+	SessionStem string `toml:"sessionStem"`
+	CardPath    string `toml:"cardPath"`
+	CardHash    string `toml:"cardSha256"`
+	CardTOML    string `toml:"cardToml"`
+	Model       string `toml:"model"`
+	Effort      string `toml:"effort"`
+	Launch      string `toml:"launch"`
+	Source      string `toml:"source"`
 }
 
 type RunGateBinding struct {
@@ -220,6 +223,10 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 	if int64(len(boardRaw)) > runtimeAuthorityMaxRecordBytes {
 		return nil, fmt.Errorf("%w: run snapshot exceeds byte limit", ErrRunLedgerInvalid)
 	}
+	bindingsRaw := []byte(renderRunBindings(runID, board, mission, bindings, gateBindings))
+	if int64(len(bindingsRaw)) > runtimeAuthorityMaxRecordBytes {
+		return nil, fmt.Errorf("%w: run persona snapshot exceeds byte limit", ErrRunLedgerInvalid)
+	}
 	runDirectory, err := s.openRunArtifactDirectory(slug, true)
 	if err != nil {
 		return nil, err
@@ -228,7 +235,7 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 	if err := writeRunArtifactExclusiveAt(runDirectory, runID+".snapshot.toml", boardRaw); err != nil {
 		return nil, err
 	}
-	if err := writeRunArtifactExclusiveAt(runDirectory, runID+".bindings.toml", []byte(renderRunBindings(runID, board, mission, bindings, gateBindings))); err != nil {
+	if err := writeRunArtifactExclusiveAt(runDirectory, runID+".bindings.toml", bindingsRaw); err != nil {
 		return nil, err
 	}
 
@@ -766,6 +773,9 @@ func resolveRunBindings(board *BoardDocument, personas *PersonaStore) ([]runBind
 				SessionStem: variant.SessionStem,
 				CardPath:    filepath.ToSlash(personas.PersonaPath(card.ID)),
 				CardHash:    etag([]byte(card.TOML)),
+				CardTOML:    card.TOML,
+				Model:       variant.Model,
+				Effort:      variant.effectiveEffort(),
 				Launch:      variant.Launch,
 				Source:      variant.Source,
 			})
@@ -776,7 +786,7 @@ func resolveRunBindings(board *BoardDocument, personas *PersonaStore) ([]runBind
 
 func renderRunBindings(runID string, board *BoardDocument, mission MissionNode, bindings []runBinding, gateBindings []RunGateBinding) string {
 	var b strings.Builder
-	b.WriteString("schema = 1\n")
+	b.WriteString("schema = 2\n")
 	b.WriteString("runId = " + renderString(runID) + "\n")
 	b.WriteString("boardId = " + renderString(board.ID) + "\n")
 	b.WriteString("boardSlug = " + renderString(board.Slug) + "\n")
@@ -792,6 +802,9 @@ func renderRunBindings(runID string, board *BoardDocument, mission MissionNode, 
 		b.WriteString("sessionStem = " + renderString(binding.SessionStem) + "\n")
 		b.WriteString("cardPath = " + renderString(binding.CardPath) + "\n")
 		b.WriteString("cardSha256 = " + renderString(binding.CardHash) + "\n")
+		b.WriteString("cardToml = " + renderString(binding.CardTOML) + "\n")
+		b.WriteString("model = " + renderString(binding.Model) + "\n")
+		b.WriteString("effort = " + renderString(binding.Effort) + "\n")
 		if binding.Launch != "" {
 			b.WriteString("launch = " + renderString(binding.Launch) + "\n")
 		}

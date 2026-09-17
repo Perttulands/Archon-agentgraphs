@@ -75,11 +75,11 @@ func (e *TmuxFormationExecutor) readCompletedFormationDispatch(req FormationReat
 		return FormationExecutionResult{}, errors.New("recovery brief does not match the dispatched prompt digest")
 	}
 	pointer := "Read the file " + c.RecoveryBrief + " and execute it exactly; it is your whole brief."
-	card, err := e.personas.ReadPersona(stringFromEventData(dispatch, "agentId"))
-	if err != nil {
-		return FormationExecutionResult{}, err
+	slot := req.Formation.Slots[0]
+	if slot.ID != req.SlotID || slot.AgentID != stringFromEventData(dispatch, "agentId") || (slot.Harness != "" && slot.Harness != stringFromEventData(dispatch, "harness")) {
+		return FormationExecutionResult{}, errors.New("recovery persona binding identity mismatch")
 	}
-	variant, err := card.SelectHarnessVariant(stringFromEventData(dispatch, "harness"))
+	_, variant, err := e.store.readRunPersonaBinding(req.RunID, req.NodeID, slot)
 	if err != nil {
 		return FormationExecutionResult{}, err
 	}

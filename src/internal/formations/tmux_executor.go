@@ -824,20 +824,9 @@ func (e *TmuxFormationExecutor) resolveSlotBinding(ctx context.Context, req Form
 	if slot.AgentID == "" {
 		return tmuxSlotBinding{}, runExecutionError("missing_agent", fmt.Sprintf("slot %q is not staffed", slot.ID), "executor", nil)
 	}
-	if e.personas == nil {
-		return tmuxSlotBinding{}, runExecutionError("missing_persona_store", "persona store is not configured", "executor", nil)
-	}
-	card, err := e.personas.ReadPersona(slot.AgentID)
+	card, variant, err := e.store.readRunPersonaBinding(req.RunID, req.NodeID, slot)
 	if err != nil {
-		return tmuxSlotBinding{}, runExecutionError("missing_persona", fmt.Sprintf("persona %q could not be resolved", slot.AgentID), "executor", err)
-	}
-	variant, err := card.SelectHarnessVariant(slot.Harness)
-	if err != nil {
-		code := "missing_harness"
-		if errors.Is(err, ErrAmbiguousAgentBinding) {
-			code = "ambiguous_harness"
-		}
-		return tmuxSlotBinding{}, runExecutionError(code, redactLedgerText(err.Error()), "executor", err)
+		return tmuxSlotBinding{}, err
 	}
 	if !allowed[variant.ID] {
 		return tmuxSlotBinding{}, runExecutionError("unconfigured_harness", fmt.Sprintf("tmux executor is not configured for harness %q", variant.ID), "executor", nil)
