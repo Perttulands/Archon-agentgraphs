@@ -49,6 +49,9 @@ func (f *fakeTmuxHarnessClient) Stage(ctx context.Context, socket string, s *nat
 	}
 	return f.SendPrompt(ctx, socket, s.name, dispatch, string(raw))
 }
+func (f *fakeTmuxHarnessClient) WaitInputClear(context.Context, string, *nativeSeat) error {
+	return nil
+}
 func (f *fakeTmuxHarnessClient) WaitTurn(ctx context.Context, s *nativeSeat, cwd, pointer string, consumed func(codexTranscriptTurn) error) (codexTranscriptTurn, error) {
 	turn := codexTranscriptTurn{Consumed: true, SessionID: "native-" + s.name, Model: s.variant.Model, Effort: s.variant.effectiveEffort()}
 	if err := consumed(turn); err != nil {

@@ -1,0 +1,49 @@
+cursor 2 43
+  thirty-one
+  thirty-two
+  thirty-three
+  thirty-four
+  thirty-five
+  thirty-six
+  thirty-seven
+  thirty-eight
+  thirty-nine
+  forty
+  forty-one
+  forty-two
+  forty-three
+  forty-four
+  forty-five
+  forty-six
+  forty-seven
+  forty-eight
+  forty-nine
+  fifty
+  fifty-one
+  fifty-two
+  fifty-three
+  fifty-four
+  fifty-five
+  fifty-six
+  fifty-seven
+  fifty-eight
+  fifty-nine
+  sixty
+
+[37m✻[39m [37mChurned for 2s · done 12:58 PM[39m
+
+[37m[100m❯ [97mRun the shell command: sleep 12 && echo waited. Then reply with the single word done.[39m
+
+[92m[49m●[39m [1mBash[0m(sleep 12 && echo waited)
+[37m  ⎿  [39mwaited
+
+[97m●[39m done
+
+[37m✻[39m [37mCrunched for 14s · done 12:58 PM[39m
+
+[37m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m❯ 
+[37m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [37mOpus[39m [37m5[39m [37m(1M[39m [37mcontext)[39m [37m·[39m [37mlow[39m [37m·[39m [37mctx[39m [37m3%[39m [37m·[39m [37m5h[39m [37m11%[39m                                                                                     [37mCtrl+Y to paste deleted text[39m
+  [91m⏵⏵[39m [91mbypass[39m [91mpermissions[39m [91mon[37m (shift+tab[39m [37mto[39m [37mcycle) · ← for agents[39m
+

@@ -1,0 +1,49 @@
+cursor 23 19
+[2m╭────────────────────────────────────────────────────────╮[0m
+[2m│ >_ [0;1mOpenAI Codex[0;2m (v0.154.0)                             │[0m
+[2m│                                                        │[0m
+[2m│ model:       [0mgpt-6-astra low[2m   [0m[38;5;6m/model[2m[39m to change        │[0m
+[2m│ directory:   [0m/work[2m │[0m
+[2m│ permissions: [0;1m[38;5;5mYOLO mode[0;2m                                 │[0m
+[2m╰────────────────────────────────────────────────────────╯[0m
+
+  [1mTip:[0m [3mNew[0m Use [1m/fast[0m to enable our fastest inference with increased plan usage.
+
+[2m• [0mYou have 2 usage limit resets available. Run /usage to use one.
+
+
+[1;2m› [0mReply with exactly the two words: probe ok. Before replying, count slowly from one to twenty in your head.
+
+
+[2m• [0mprobe ok
+
+
+[1m›[0m unsent operator draft
+
+  [38;2;246;226;183mgpt-6-astra low[2m[39m · [0m[38;2;242;181;144mContext 4% used[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

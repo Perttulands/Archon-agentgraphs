@@ -1,0 +1,49 @@
+cursor 27 43
+  thirty
+  thirty-one
+  thirty-two
+  thirty-three
+  thirty-four
+  thirty-five
+  thirty-six
+  thirty-seven
+  thirty-eight
+  thirty-nine
+  forty
+  forty-one
+  forty-two
+  forty-three
+  forty-four
+  forty-five
+  forty-six
+  forty-seven
+  forty-eight
+  forty-nine
+  fifty
+  fifty-one
+  fifty-two
+  fifty-three
+  fifty-four
+  fifty-five
+  fifty-six
+  fifty-seven
+  fifty-eight
+  fifty-nine
+  sixty
+
+[37m✻[39m [37mChurned for 2s · done 12:58 PM[39m
+
+[37m[100m❯ [97mRun the shell command: sleep 12 && echo waited. Then reply with the single word done.[39m
+
+[37m[49m●[39m [1mBash[0m(sleep 12 && echo waited)
+[37m  ⎿  Running… (4s)[39m
+     [37m(ctrl+b ctrl+b (twice) to run in background)[39m
+
+[91m✢[39m [93mPuzzling…[91m [37m(5s · ↓[39m [37m84 tokens)[39m
+
+[37m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ [39moperator draft while busy
+[37m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [37mOpus 5 (1M context) · low · ctx 3% · 5h 11%[39m
+  [91m⏵⏵[39m [91mbypass[39m [91mpermissions[39m [91mon[37m (shift+tab[39m [37mto[39m [37mcycle)[39m
+

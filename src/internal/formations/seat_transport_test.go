@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -47,6 +48,9 @@ func TestSeatAdaptersReadinessStagingCompletionAndImmutableCleanup(t *testing.T)
 						createdLaunch = args[len(args)-1]
 						return "$42 %23", nil
 					case "display-message":
+						if strings.Contains(args[len(args)-1], "cursor_x") {
+							return "2 1 0", nil
+						}
 						return "0", nil
 					case "capture-pane":
 						if phase == "staged" {
@@ -355,5 +359,126 @@ func TestCodexReadinessWaitsForCurrentModelPanel(t *testing.T) {
 	}
 	if captures != 2 {
 		t.Fatalf("readiness accepted loading panel after %d captures", captures)
+	}
+}
+
+// paneFixture reads a pane captured with capture-pane -p -e from a real seat
+// (Claude Code 2.1.274 and codex-cli 0.154.0 in tmux 3.6a, synthetic prompts,
+// paths redacted). Its first line holds the cursor position.
+func paneFixture(t *testing.T, name string) (string, int, int) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", "panes", name+".txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	header, screen, _ := strings.Cut(string(raw), "\n")
+	var x, y int
+	if _, err := fmt.Sscanf(header, "cursor %d %d", &x, &y); err != nil {
+		t.Fatalf("%s header %q: %v", name, header, err)
+	}
+	return screen, x, y
+}
+
+func TestSeatInputClearReadsCapturedPanes(t *testing.T) {
+	for _, harness := range []struct{ id, name string }{{"claude-code", "claude"}, {"openai-codex", "codex"}} {
+		for state, want := range map[string]bool{
+			"idle-empty":      true,
+			"idle-after-turn": true,
+			"idle-typed":      false,
+			"busy-empty":      false,
+			"busy-typed":      false,
+		} {
+			screen, x, y := paneFixture(t, harness.name+"-"+state)
+			if got := seatInputClear(harness.id, screen, x, y); got != want {
+				t.Errorf("%s %s: clear = %t, want %t", harness.name, state, got, want)
+			}
+		}
+	}
+	screen, x, y := paneFixture(t, "codex-idle-empty")
+	if seatInputClear("openai-codex", screen, x+1, y) || seatInputClear("openai-codex", screen, x, y-1) || seatInputClear("claude-code", screen, x, y) {
+		t.Error("a cursor off the input start, or the other harness's prompt, counted as a clear input line")
+	}
+	// Codex draws its placeholder dim; the same words typed by the operator are not.
+	if !seatInputClear("openai-codex", "\x1b[1m›\x1b[0m \x1b[2mAsk Codex to do anything", 2, 0) ||
+		seatInputClear("openai-codex", "\x1b[1m›\x1b[0m Ask Codex to do anything", 2, 0) ||
+		!seatInputClear("openai-codex", "\x1b[38;2;242;242;242m›\x1b[0m \x1b[2mplaceholder", 2, 0) {
+		t.Error("dim placeholder and typed text were not told apart")
+	}
+}
+
+func TestStageWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
+	for _, harness := range []struct{ id, name string }{{"claude-code", "claude"}, {"openai-codex", "codex"}} {
+		t.Run(harness.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			events := make(chan struct{}, 64)
+			var states []string
+			var shown, pasted []string
+			loaded, afterPaste := "", false
+			transport := realSeatTransport{
+				control: func(context.Context, string, string) (*seatControl, error) { return &seatControl{events: events}, nil },
+				command: func(_ context.Context, _ string, input *strings.Reader, args ...string) (string, error) {
+					state := states[0]
+					screen, x, y := paneFixture(t, harness.name+"-"+state)
+					switch args[0] {
+					case "display-message":
+						return fmt.Sprintf("%d %d 0", x, y), nil
+					case "capture-pane":
+						if afterPaste {
+							return screen + "\n" + loaded, nil
+						}
+						shown = append(shown, state)
+						if len(states) > 1 {
+							// The pane changes after each look, and tmux reports it.
+							states = states[1:]
+							events <- struct{}{}
+						}
+						return screen, nil
+					case "load-buffer":
+						b, _ := io.ReadAll(input)
+						loaded = string(b)
+						return "", nil
+					case "paste-buffer":
+						pasted = append(pasted, state)
+						afterPaste = true
+						return "", nil
+					case "send-keys":
+						afterPaste = false
+						return "", nil
+					}
+					return "", fmt.Errorf("unexpected command %v", args)
+				},
+			}
+			seat := &nativeSeat{name: "form-proof-worker", sessionID: "$42", paneID: "%23", variant: HarnessVariant{ID: harness.id}, brief: "/state/briefs/proof.md"}
+			for _, paste := range []struct {
+				dispatch string
+				states   []string
+			}{
+				{"first-brief", []string{"busy-empty", "idle-typed", "idle-empty"}},
+				{"peer-facilitator", []string{"busy-typed", "idle-typed", "idle-after-turn"}},
+			} {
+				states, shown = paste.states, nil
+				if err := transport.Stage(ctx, "socket", seat, paste.dispatch, seatPointer(seat.brief)); err != nil {
+					t.Fatalf("%s: %v", paste.dispatch, err)
+				}
+				if strings.Join(shown, ",") != strings.Join(paste.states, ",") {
+					t.Fatalf("%s looked at %v, want every state %v before pasting", paste.dispatch, shown, paste.states)
+				}
+				if last := pasted[len(pasted)-1]; last != paste.states[len(paste.states)-1] {
+					t.Fatalf("%s pasted while the pane was %s", paste.dispatch, last)
+				}
+			}
+			if len(pasted) != 2 {
+				t.Fatalf("pastes = %v, want one per staging", pasted)
+			}
+
+			// A pane that stays busy is waited on until the seat timeout.
+			states = []string{"busy-empty"}
+			short, stop := context.WithTimeout(ctx, 100*time.Millisecond)
+			defer stop()
+			if err := transport.Stage(short, "socket", seat, "stuck", seatPointer(seat.brief)); !errors.Is(err, context.DeadlineExceeded) || len(pasted) != 2 {
+				t.Fatalf("busy pane: %v, pastes %v", err, pasted)
+			}
+		})
 	}
 }

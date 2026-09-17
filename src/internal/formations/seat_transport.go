@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +38,7 @@ type seatTransport interface {
 	Create(context.Context, string, string, string, string, HarnessVariant) (*nativeSeat, error)
 	Ready(context.Context, string, *nativeSeat, string) error
 	Stage(context.Context, string, *nativeSeat, string, string) error
+	WaitInputClear(context.Context, string, *nativeSeat) error
 	WaitTurn(context.Context, *nativeSeat, string, string, func(codexTranscriptTurn) error) (codexTranscriptTurn, error)
 	Snapshot(context.Context, *nativeSeat, string, string) (codexTranscriptTurn, error)
 	End(context.Context, string, *nativeSeat) error
@@ -193,7 +196,64 @@ func (t realSeatTransport) waitSeatPane(ctx context.Context, socket string, s *n
 	}
 }
 
+// WaitInputClear waits until the seat's agent is idle and its input line is
+// empty, so a paste never lands mid-turn or merges with text the operator has
+// typed but not sent. It rechecks on every pane change until ctx ends, and
+// fails at once when the pane has died.
+func (t realSeatTransport) WaitInputClear(ctx context.Context, socket string, s *nativeSeat) error {
+	if s.control == nil {
+		control, err := t.openControl(ctx, socket, s.sessionID)
+		if err != nil {
+			return err
+		}
+		s.control = control
+	}
+	for {
+		clear, err := t.inputClear(ctx, socket, s)
+		if err != nil || clear {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case _, ok := <-s.control.events:
+			if !ok {
+				return errors.New("tmux control stream ended while waiting for an idle, empty input line")
+			}
+		}
+	}
+}
+
+// inputClear reads the cursor, the screen with its styles, and the cursor
+// again; a cursor that moved in between means the pane is changing.
+func (t realSeatTransport) inputClear(ctx context.Context, socket string, s *nativeSeat) (bool, error) {
+	const cursor = "#{cursor_x} #{cursor_y} #{pane_dead}"
+	before, err := t.run(ctx, socket, nil, "display-message", "-p", "-t", s.paneID, cursor)
+	if err != nil {
+		return false, err
+	}
+	screen, err := t.run(ctx, socket, nil, "capture-pane", "-p", "-e", "-t", s.paneID)
+	if err != nil {
+		return false, err
+	}
+	after, err := t.run(ctx, socket, nil, "display-message", "-p", "-t", s.paneID, cursor)
+	if err != nil {
+		return false, err
+	}
+	var x, y, dead int
+	if _, err := fmt.Sscanf(after, "%d %d %d", &x, &y, &dead); err != nil {
+		return false, fmt.Errorf("seat cursor unavailable: %q", strings.TrimSpace(after))
+	}
+	if dead == 1 {
+		return false, runExecutionError("dead_pane", "owned seat exited while waiting to paste", "adapter", ErrDispatchDeadPane)
+	}
+	return before == after && seatInputClear(s.variant.ID, screen, x, y), nil
+}
+
 func (t realSeatTransport) Stage(ctx context.Context, socket string, s *nativeSeat, dispatch, pointer string) error {
+	if err := t.WaitInputClear(ctx, socket, s); err != nil {
+		return err
+	}
 	buffer := safeTmuxBufferName(dispatch)
 	if _, err := t.run(ctx, socket, strings.NewReader(pointer), "load-buffer", "-b", buffer, "-"); err != nil {
 		return err
@@ -333,4 +393,88 @@ func writeBriefFile(root, pattern, prompt string) (string, error) {
 
 func seatPointer(path string) string {
 	return "Read the file " + path + " and execute it exactly; it is your whole brief."
+}
+
+// seatInputPrompt is the glyph that starts each harness's input line.
+var seatInputPrompt = map[string]string{
+	"claude-code":  "❯",
+	"openai-codex": "›",
+}
+
+// A Claude Code spinner reads "✶ Puzzling… (4s · ↓ 60 tokens)" while the agent
+// works and "✻ Crunched for 14s" once it is done.
+var claudeWorkingLine = regexp.MustCompile(`…\s*\(\d+[smh]`)
+
+var ansiSGR = regexp.MustCompile("\x1b\\[([0-9;]*)m")
+
+// seatInputClear reports whether a harness waits idle with nothing typed, from
+// a capture of the visible pane with its styles (capture-pane -p -e) and the
+// cursor position. The input line is the prompt line under the cursor. It is
+// empty when the cursor sits just after the prompt glyph and the rest of the
+// line holds at most a dimmed placeholder, such as Codex's "Ask Codex to do
+// anything". The harness is busy when a working line sits just above the input
+// box: Codex's "esc to interrupt", or Claude's running spinner.
+func seatInputClear(harness, screen string, cursorX, cursorY int) bool {
+	prompt := seatInputPrompt[harness]
+	lines := strings.Split(screen, "\n")
+	if prompt == "" || cursorX != 2 || cursorY < 0 || cursorY >= len(lines) {
+		return false
+	}
+	line := lines[cursorY]
+	if !strings.HasPrefix(strings.TrimLeft(ansiSGR.ReplaceAllString(line, ""), " "), prompt) {
+		return false
+	}
+	typed := strings.Replace(undimmedText(line), prompt, "", 1)
+	if strings.TrimSpace(strings.ReplaceAll(typed, "\u00a0", " ")) != "" {
+		return false
+	}
+	seen := 0
+	for index := cursorY - 1; index >= 0 && seen < 2; index-- {
+		above := strings.TrimSpace(ansiSGR.ReplaceAllString(lines[index], ""))
+		if above == "" || strings.Trim(above, "─━") == "" {
+			continue
+		}
+		seen++
+		if strings.Contains(above, "esc to interrupt") || harness == "claude-code" && claudeWorkingLine.MatchString(above) {
+			return false
+		}
+	}
+	return true
+}
+
+// undimmedText returns a styled line's text without its dim (SGR 2) runs.
+func undimmedText(line string) string {
+	var text strings.Builder
+	dim := false
+	rest := line
+	for {
+		match := ansiSGR.FindStringSubmatchIndex(rest)
+		if match == nil {
+			if !dim {
+				text.WriteString(rest)
+			}
+			return text.String()
+		}
+		if !dim {
+			text.WriteString(rest[:match[0]])
+		}
+		params := strings.Split(rest[match[2]:match[3]], ";")
+		for index := 0; index < len(params); index++ {
+			switch code, _ := strconv.Atoi(params[index]); code {
+			case 0, 22:
+				dim = false
+			case 2:
+				dim = true
+			case 38, 48, 58:
+				// An extended colour's own parameters are not attributes:
+				// 5;n for a palette index, 2;r;g;b for RGB.
+				if index+1 < len(params) && params[index+1] == "5" {
+					index += 2
+				} else if index+1 < len(params) && params[index+1] == "2" {
+					index += 4
+				}
+			}
+		}
+		rest = rest[match[1]:]
+	}
 }
