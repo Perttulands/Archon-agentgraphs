@@ -273,8 +273,10 @@ the state directory) for artifacts; several can be open side by side.
 The cockpit's floating Peek attaches to an owned live seat and sends typing and
 resize as CHROTE's terminals do, through the seat terminal WebSocket below. The
 operator types to the agent whether it is working a dispatch, on call or idle,
-and the terminal fits its window and sends that size, which sizes only its own
-view. A seat kept on call for a human gate is marked on call, and
+and the terminal fits its row count to the window while retaining every native
+column. Narrow windows scroll horizontally, with Start of line and End of line
+controls. Resizing changes only that viewer, not the seat. A seat kept on call
+for a human gate is marked on call, and
 waiting for you while it holds a pending ask. On a session-channel run the
 waiting gate's answer panel offers Talk with the asking formation, which opens
 each asked seat's terminal in its own window beside the panel; a window says

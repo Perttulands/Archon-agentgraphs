@@ -145,3 +145,40 @@ test('a gate whose ask fell back says why, and a relayed decision names the seat
   await expect(page.getByTestId('gate-evaluation-4')).toContainText('pass · human:operator · via codex-scout')
   await evidenceShot(page, 'relayed-decision-via')
 })
+
+test('a narrow Talk window exposes the end of a native-width line without resizing another viewer', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  const marker = 'END_OF_LINE'
+  const fixture = await talkRunFixture(page, { columns: 160, terminalText: `\x1b[?1049h${'Question '.repeat(16)}${marker}\r\n> ` })
+  await page.goto('/?board=wayfinding')
+  await page.getByRole('button', { name: 'Talk with Question peers' }).click()
+  const win = page.getByRole('dialog', { name: 'Talk with Delivery Planner · Claude Code' })
+  await expect(win).toContainText('Live · type to talk to the agent')
+  await expect.poll(() => fixture.resizes(21).at(-1)?.columns).toBe(160)
+  const host = win.getByTestId('terminal-surface')
+  await expect.poll(() => host.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
+  await win.getByRole('button', { name: 'End of line' }).click()
+  // Check the actual glyph range is inside the scroll viewport, not merely in the DOM.
+  await expect.poll(() => host.evaluate((el, text) => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+    let node: Node | null
+    while ((node = walker.nextNode())) {
+      const offset = node.textContent?.indexOf(text) ?? -1
+      if (offset < 0) continue
+      const range = document.createRange()
+      range.setStart(node, offset)
+      range.setEnd(node, offset + text.length)
+      const glyphs = range.getBoundingClientRect(), viewport = el.getBoundingClientRect()
+      return glyphs.left >= viewport.left && glyphs.right <= viewport.right
+    }
+    return false
+  }, marker)).toBe(true)
+  const otherSizes = fixture.resizes(22).length
+  await win.getByRole('button', { name: 'Start of line' }).click()
+  await expect.poll(() => host.evaluate(el => el.scrollLeft)).toBe(0)
+  await host.click()
+  await page.keyboard.type('read the complete question')
+  await expect.poll(() => fixture.typed(21)).toBe('read the complete question')
+  expect(fixture.resizes(22)).toHaveLength(otherSizes)
+  await evidenceShot(page, 'talk-native-width-line')
+})

@@ -1,5 +1,6 @@
 // Adapted from CHROTE's terminalSession (dashboard/src/terminal/terminalSession.ts):
-// an xterm grid fitted to its window, whose keystrokes and size go to the seat.
+// xterm input, sizing and grid measurement. Archon keeps the native seat width
+// in a horizontally scrollable view and fits only the rows to its window.
 // The operator may type into any live seat at any time (ADR-0019).
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -56,7 +57,16 @@ export function createTerminalSession(options: {
 
   const fit = () => {
     if (!opened || disposed || element.offsetWidth < MIN_VISIBLE_PX || element.offsetHeight < MIN_VISIBLE_PX) return
-    fitAddon.fit()
+    // CHROTE's grid() reads the public screen element, which xterm sizes to
+    // exactly cols by rows cells, instead of depending on renderer internals.
+    const screen = element.querySelector<HTMLElement>('.xterm-screen')?.getBoundingClientRect()
+    if (!screen || screen.width < MIN_VISIBLE_PX) return
+    const cellWidth = screen.width / terminal.cols
+    // Reserve the same scrollbar gutter as FitAddon next to the complete grid.
+    const gutter = terminal.options.overviewRuler?.width || 14
+    element.style.minWidth = `${Math.ceil(cellWidth * options.columns) + gutter}px`
+    const dimensions = fitAddon.proposeDimensions()
+    if (dimensions) terminal.resize(options.columns, dimensions.rows)
   }
 
   return {
@@ -71,8 +81,8 @@ export function createTerminalSession(options: {
           () => {
             connected = true
             options.onStateChange('open')
-            // The window decides the grid once the seat is attached. The renderer
-            // may measure its cell only on the next frame, so fit again then.
+            // Fit the view's height without cropping the seat's native columns.
+            // The renderer may measure its cell only on the next frame.
             fit()
             sendSize()
             requestAnimationFrame(() => { fit(); sendSize() })
@@ -80,8 +90,10 @@ export function createTerminalSession(options: {
           code => { connected = false; options.onStateChange(code === 1000 ? 'ended' : code === 1008 ? 'unavailable' : 'disconnected') })
       }, () => { if (!disposed) options.onStateChange('unavailable') })
     },
-    /** Fit the grid to the window; the new size goes to the seat. */
+    /** Fit the view's rows; its native columns remain horizontally scrollable. */
     fit,
+    scrollToStart() { element.parentElement?.scrollTo({ left: 0 }) },
+    scrollToEnd() { element.parentElement?.scrollTo({ left: element.parentElement.scrollWidth }) },
     focus() { terminal.focus() },
     applyTheme(theme: TerminalTheme) { terminal.options.theme = xtermTheme(theme) },
     scrollToBottom() { terminal.scrollToBottom() },

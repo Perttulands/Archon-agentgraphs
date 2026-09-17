@@ -60,7 +60,7 @@ export const talkAgents = [
  * ask fell back to a notification instead. Framing review was decided earlier,
  * relayed by the Map the territory seat.
  */
-export async function talkRunFixture(page: Page, options: { fallbackReason?: string } = {}) {
+export async function talkRunFixture(page: Page, options: { fallbackReason?: string; columns?: number; terminalText?: string } = {}) {
   const fixture = await humanChannelFixture(page, { humanChannel: 'session' })
   await page.addInitScript(runId => localStorage.setItem('chrote-formations-active-run-wayfinding', runId), talkRunId)
   const [first, second] = peers.slots!
@@ -89,7 +89,7 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
   ]
   const seat = (slot: typeof first, createdSeq: number) => ({
     runId: talkRunId, nodeId: peers.id, nodeTitle: 'Question peers', slotId: slot.id, slotLabel: slot.label, harness: slot.harness,
-    controller: false, createdSeq, sessionName: `form-${talkRunId}-${slot.id}`, state: 'live', columns: 100, rows: 30,
+    controller: false, createdSeq, sessionName: `form-${talkRunId}-${slot.id}`, state: 'live', columns: options.columns ?? 100, rows: 30,
     terminalUrl: `/api/formations/runs/${talkRunId}/seats/${createdSeq}/terminal`, onCall: { keptSeq: 9, waitingOn },
   })
   const text = (value: string) => ({ text: value, bytes: value.length })
@@ -128,7 +128,7 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
     socket.onMessage(data => {
       const value = Buffer.isBuffer(data) ? data.toString() : data
       received.push(value)
-      if (value.startsWith('{')) socket.send(Buffer.from(`0Question peers, seat ${createdSeq}: which questions should we settle first?\r\n> `))
+      if (value.startsWith('{')) socket.send(Buffer.from(`0${options.terminalText ?? `Question peers, seat ${createdSeq}: which questions should we settle first?\r\n> `}`))
       if (value.startsWith('0')) socket.send(Buffer.from(`0${value.slice(1).replace(/\x1b/g, '').replace(/\r/g, '\r\n> ')}`))
     })
   })

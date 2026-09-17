@@ -3,7 +3,7 @@ import { useTheme } from '../theme/ThemeContext'
 import { createTerminalSession, type ConnectionState, type TerminalSession } from './terminalSession'
 import { seatSocketUrl, type RunSeat } from './seatApi'
 
-/** A seat's live terminal, fitted to its window: typing and the window's size go to the seat. */
+/** A seat's live terminal: native-width lines remain readable in a narrow window. */
 export default function TerminalSurface({ seat, onStateChange, focusOnOpen = false }: {
   seat: RunSeat
   onStateChange: (state: ConnectionState) => void
@@ -31,7 +31,7 @@ export default function TerminalSurface({ seat, onStateChange, focusOnOpen = fal
     })
     session.current = created
     created.attach(element)
-    // Resizing the window resizes the terminal, and the seat with it.
+    // Resize only this viewer's row count; the seat retains its native grid.
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => created.fit())
     observer?.observe(element)
     return () => { observer?.disconnect(); created.dispose(); session.current = null }
@@ -41,6 +41,8 @@ export default function TerminalSurface({ seat, onStateChange, focusOnOpen = fal
     <div className="peek-scroll-controls" aria-label="Terminal scrolling">
       <button onClick={() => session.current?.scrollLines(-10)}>Older output</button>
       <button onClick={() => session.current?.scrollToBottom()}>Latest output</button>
+      <button onClick={() => session.current?.scrollToStart()}>Start of line</button>
+      <button onClick={() => session.current?.scrollToEnd()}>End of line</button>
     </div>
     <div ref={host} className="terminal-surface-host" data-testid="terminal-surface" onClick={() => session.current?.focus()} />
   </div>

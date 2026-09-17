@@ -71,8 +71,8 @@ for (const width of [1440, 390]) test(`floating Peek shows native output, sends 
     await page.mouse.down()
     await page.mouse.move(corner.x + 200, corner.y + 120, { steps: 6 })
     await page.mouse.up()
-    await expect.poll(() => resizes().slice(-1)[0].columns).toBeGreaterThan(before.columns)
-    expect(resizes().slice(-1)[0].rows).toBeGreaterThan(before.rows)
+    await expect.poll(() => resizes().slice(-1)[0].rows).toBeGreaterThan(before.rows)
+    expect(resizes().slice(-1)[0].columns).toBe(before.columns)
   }
 
   const before = fixture.seatsFetches()
