@@ -496,13 +496,13 @@ func TestWorkingCheckReadsClaudesSpinner(t *testing.T) {
 	} {
 		screen, _, _ := paneFixture(t, name)
 		plain := strip.ReplaceAllString(screen, "")
-		if got := tmuxPaneShowsAgentWorking(plain); got != working {
-			t.Errorf("%s: working = %t, want %t", name, got, working)
-		}
 		harness := "claude-code"
 		banner := "Claude Code\n"
 		if strings.HasPrefix(name, "codex") {
 			harness, banner = "openai-codex", "OpenAI Codex\n"
+		}
+		if got := tmuxPaneShowsAgentWorking(harness, plain); got != working {
+			t.Errorf("%s: working = %t, want %t", name, got, working)
 		}
 		if ready := tmuxPaneShowsHarnessReady(harness, banner+plain); ready == working && !strings.Contains(name, "typed") {
 			t.Errorf("%s: ready = %t while working = %t", name, ready, working)

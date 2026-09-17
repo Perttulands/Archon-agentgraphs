@@ -48,7 +48,7 @@ func (f *keptSeatFake) WaitInputClear(ctx context.Context, socket string, s *nat
 	f.events = append(f.events, "wait "+s.sessionID+" "+s.paneID+" "+s.variant.ID)
 	for {
 		text, _ := f.CaptureSeat(ctx, socket, s.paneID)
-		if strings.HasSuffix(text, "❯ ") && !tmuxPaneShowsAgentWorking(text) {
+		if strings.HasSuffix(text, "❯ ") && !tmuxPaneShowsAgentWorking(s.variant.ID, text) {
 			return nil
 		}
 		select {
@@ -172,7 +172,7 @@ func keptSeatExecutor(t *testing.T, frames map[string][]string) (*TmuxFormationE
 
 func TestKeptSeatAskWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 	executor, fake := keptSeatExecutor(t, map[string][]string{"%1": {
-		"Claude Code\n✻ Working… (esc to interrupt)\n❯ ",
+		"Claude Code\n✶ Puzzling… (4s · ↓ 60 tokens)\n❯ ",
 		"Claude Code\n❯ my unsent thought",
 		"Claude Code\n❯ ",
 	}})
@@ -181,7 +181,7 @@ func TestKeptSeatAskWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := strings.Join(fake.events, " | ")
-	want := "wait %1 %1 claude-code | read Claude Code\n✻ Working… (esc to interrupt)\n❯  | read Claude Code\n❯ my unsent thought | read Claude Code\n❯  | paste | read Claude Code\n❯ Read the file /state/briefs/gate-run-9-s\n  lot_work.md and follow it. | submit"
+	want := "wait %1 %1 claude-code | read Claude Code\n✶ Puzzling… (4s · ↓ 60 tokens)\n❯  | read Claude Code\n❯ my unsent thought | read Claude Code\n❯  | paste | read Claude Code\n❯ Read the file /state/briefs/gate-run-9-s\n  lot_work.md and follow it. | submit"
 	if got != want {
 		t.Fatalf("paste events:\n%s\nwant\n%s", got, want)
 	}
@@ -201,11 +201,11 @@ func TestKeptSeatAskWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 
 func TestEndingAKeptSeatWaitsForIdleAndKillsItsImmutableSession(t *testing.T) {
 	executor, fake := keptSeatExecutor(t, map[string][]string{"%3": {
-		"Claude Code\n✻ Replying… (esc to interrupt)",
+		"Claude Code\n✢ Replying… (2s · ↓ 12 tokens)",
 		"Claude Code\n❯ ",
 	}})
 	outcome, detail := executor.EndKeptSeat(context.Background(), KeptSeat{SessionID: "%3", PaneID: "%3", Harness: "claude-code"})
-	if outcome != SeatOutcomeEnded || detail != "" || fmt.Sprint(fake.killed) != "[%3]" || !strings.HasPrefix(strings.Join(fake.events, " | "), "wait %3 %3 claude-code | read Claude Code\n✻ Replying… (esc to interrupt) | read Claude Code\n❯  | kill %3") {
+	if outcome != SeatOutcomeEnded || detail != "" || fmt.Sprint(fake.killed) != "[%3]" || !strings.HasPrefix(strings.Join(fake.events, " | "), "wait %3 %3 claude-code | read Claude Code\n✢ Replying… (2s · ↓ 12 tokens) | read Claude Code\n❯  | kill %3") {
 		t.Fatalf("end = %s %q, killed %v, events %v", outcome, detail, fake.killed, fake.events)
 	}
 	if outcome, _ := executor.EndKeptSeat(context.Background(), KeptSeat{SessionID: "%3", PaneID: "%3"}); outcome != SeatOutcomeGone || len(fake.killed) != 1 {

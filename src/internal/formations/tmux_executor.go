@@ -956,7 +956,7 @@ func tmuxPaneShowsHarnessReady(harnessID, captured string) bool {
 		lines = lines[len(lines)-8:]
 	}
 	tail := strings.Join(lines, "\n")
-	if tmuxPaneShowsAgentWorking(tail) {
+	if tmuxPaneShowsAgentWorking(harnessID, tail) {
 		return false
 	}
 	for _, line := range lines {
@@ -1910,11 +1910,13 @@ func (realTmuxHarnessClient) DescribeActivePane(ctx context.Context, socket, tar
 	return state, nil
 }
 
-// tmuxPaneShowsAgentWorking reports a harness at work: Codex, and older Claude
-// Code, show "esc to interrupt"; Claude Code 2.1 shows a running spinner such
-// as "✶ Puzzling… (4s · ↓ 60 tokens)".
-func tmuxPaneShowsAgentWorking(captured string) bool {
-	return strings.Contains(captured, "esc to interrupt") || claudeWorkingLine.MatchString(captured)
+// tmuxPaneShowsAgentWorking is the one rule for a harness at work in captured
+// pane text: Codex, and older Claude Code, show "esc to interrupt"; Claude Code
+// 2.1 shows a running spinner such as "✶ Puzzling… (4s · ↓ 60 tokens)".
+// Readiness applies it to a pane's tail, seatInputClear to the lines just above
+// the input box.
+func tmuxPaneShowsAgentWorking(harness, captured string) bool {
+	return strings.Contains(captured, "esc to interrupt") || harness == "claude-code" && claudeWorkingLine.MatchString(captured)
 }
 
 func runTmuxCommand(ctx context.Context, socket string, stdin *strings.Reader, args ...string) (string, error) {

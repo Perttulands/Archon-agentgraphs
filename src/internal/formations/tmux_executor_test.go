@@ -1352,11 +1352,21 @@ func TestTmuxRenderedPromptDoesNotContainParseableActualRunSentinel(t *testing.T
 }
 
 func TestTmuxPaneShowsAgentWorking(t *testing.T) {
-	if tmuxPaneShowsAgentWorking("❯ prompt still sitting unsent in the input box") {
-		t.Fatal("idle input box was misread as an actively working turn")
-	}
-	if !tmuxPaneShowsAgentWorking("Working through the brief · esc to interrupt") {
-		t.Fatal("active turn was not detected as working")
+	for _, c := range []struct {
+		harness, captured string
+		working           bool
+	}{
+		{"claude-code", "❯ prompt still sitting unsent in the input box", false},
+		{"openai-codex", "• Working (8s • esc to interrupt)", true},
+		{"claude-code", "✶ Puzzling… (4s · ↓ 60 tokens)", true},
+		{"claude-code", "  ⎿  Running… (3s)", true},
+		{"claude-code", "✻ Crunched for 14s", false},
+		// Claude's spinner rule is Claude's: Codex prose never reads as working.
+		{"openai-codex", "• Summarised the notes… (3s read)", false},
+	} {
+		if got := tmuxPaneShowsAgentWorking(c.harness, c.captured); got != c.working {
+			t.Errorf("%s %q: working = %t, want %t", c.harness, c.captured, got, c.working)
+		}
 	}
 }
 

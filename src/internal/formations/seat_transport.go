@@ -580,7 +580,7 @@ func seatInputClear(harness, screen string, cursorX, cursorY int) bool {
 			continue
 		}
 		seen++
-		if strings.Contains(above, "esc to interrupt") || harness == "claude-code" && claudeWorkingLine.MatchString(above) {
+		if tmuxPaneShowsAgentWorking(harness, above) {
 			return false
 		}
 	}

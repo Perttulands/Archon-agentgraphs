@@ -74,7 +74,7 @@ func (f *fakeTmuxHarnessClient) WaitTurn(ctx context.Context, s *nativeSeat, cwd
 }
 func (f *fakeTmuxHarnessClient) Snapshot(ctx context.Context, s *nativeSeat, cwd, pointer string) (codexTranscriptTurn, error) {
 	text, err := f.CapturePane(ctx, "", s.name, 8192)
-	return codexTranscriptTurn{Consumed: text != "", Complete: !tmuxPaneShowsAgentWorking(text), Text: text, Model: s.variant.Model, Effort: s.variant.effectiveEffort()}, err
+	return codexTranscriptTurn{Consumed: text != "", Complete: !tmuxPaneShowsAgentWorking(s.variant.ID, text), Text: text, Model: s.variant.Model, Effort: s.variant.effectiveEffort()}, err
 }
 func (f *fakeTmuxHarnessClient) End(ctx context.Context, socket string, s *nativeSeat) error {
 	return f.KillSession(ctx, socket, s.sessionID)
