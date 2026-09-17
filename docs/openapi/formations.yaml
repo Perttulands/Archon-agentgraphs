@@ -35,8 +35,8 @@ paths:
         type: integer
         minimum: 1
     get:
-      summary: Observe one immutable run seat through a read-only tty WebSocket
-      description: Opening JSON columns/rows handshake; binary ASCII 0 output frames. Client may send only ASCII 2/3 output pause/resume. Input, resize and claim frames close 1008. Native grid is preserved, including tmux status rows. Normal terminal end closes 1000; daemon shutdown closes 1001. No session input, sizing ownership, transcript reading or session cleanup.
+      summary: Attach to one immutable run seat through a tty WebSocket the operator can type into
+      description: CHROTE's frames. Opening JSON columns/rows handshake, then the terminal attaches at the seat's native grid, including tmux status rows. Client binary frames are ASCII 0 plus input bytes for the pane; 1 plus JSON columns/rows, which sizes this view only while another client sizes the seat window and is otherwise ignored; and 2/3 to pause and resume output. Other frames are ignored. The seat window keeps its size. Server frames are ASCII 0 plus output bytes. Normal terminal end closes 1000; daemon shutdown closes 1001. No sizing ownership, transcript reading or session cleanup; dispatches tolerate the operator's turns (see CONTRACT).
       responses:
         '101':
           description: Upgraded with tty subprotocol; same-origin WebSocket required

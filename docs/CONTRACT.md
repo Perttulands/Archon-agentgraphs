@@ -179,8 +179,12 @@ contains run/node/slot identity, cwd, mission goal, Bead, persona summary,
 formation brief, file/link references, routed inputs, gate feedback, human
 responses, output ports, artifact directory and completion instructions.
 Orchestrated controllers also get their bound workers and may direct only those
-workers. External operators and Archon agents must not type into seats or
-manage their sessions.
+workers. The operator may type into any live seat at any time, through the seat
+terminal or in CHROTE, and talk to the agent normally, whether it is working a
+dispatch or idle. The runtime pastes a brief only while the agent is idle and its
+input line is empty, waiting within the seat timeout, so a brief never lands
+mid-turn or on the operator's unsent text. Archon agents must not type into seats
+or manage their sessions.
 
 Sessions are named `form-<run>-<slot>`, optionally prefixed by `--mission-label`.
 The runtime creates and cleans up seats by immutable session ID through the
@@ -191,8 +195,17 @@ Check every `seat_cleanup` outcome: `ended`, `left_socket_changed` or
 an owned seat without ending it. Success does not erase a cleanup failure.
 
 Native completion must match the exact pointer, cwd, persona model/effort,
-native session and completed turn. Codex uses native task completion; Claude
-uses its completed assistant turn and sentinel. A marker alone is insufficient.
+native session, and a natively finished agent turn carrying this run's
+completion sentinel: Codex task completion, or Claude's end_turn assistant
+message. A marker alone is insufficient, and another run's sentinel never
+completes a dispatch. The operator's turns after the pointer, typed or queued
+messages and interrupts, neither complete nor fail the dispatch, and the
+completing turn may come after them. A turn that finishes without the sentinel
+fails the dispatch at once only when nobody else took a turn during it, and for
+Claude only when the agent left no background work that resumes the
+conversation; otherwise the dispatch waits within the seat timeout. The dispatch
+still fails loudly when the seat ends, when the model or effort changes, or when
+the harness moves to another conversation (`/clear`, `/new` or `/resume`).
 The `lab` executor creates no tmux sessions and echoes deterministic inputs.
 It writes each rendered brief to `<state-dir>/briefs/lab-*.md`, as a seat would
 receive it. It proves routing, not agent work or the truth of a review.
@@ -216,8 +229,10 @@ rest, including artifact files no output names. A chip opens the file in a
 floating file window, rendered by kind, with Open raw and Copy path (relative to
 the state directory) for artifacts; several can be open side by side.
 
-The cockpit's floating Peek observes an owned live seat. It does not send input,
-enter tmux copy mode, claim pane size, or end sessions. Switching seats and
+The cockpit's floating Peek shows an owned live seat. It does not send input yet;
+the operator types into a seat in CHROTE, which reaches the same sessions, or
+through the seat terminal WebSocket below. Peek does not enter tmux copy mode,
+claim pane size, or end sessions. Switching seats and
 closing Peek disconnect only the observer client. Labels and controller/worker
 roles come from the run's frozen graph; a new attempt has a new terminal URL.
 The native grid includes tmux status rows, so an observer also preserves size
@@ -644,12 +659,15 @@ socket paths or socket identities are exposed in this projection.
 `GET /api/formations/runs/{runId}/seats/{createdSeq}/terminal` upgrades to a
 WebSocket with subprotocol `tty`, after resolving that exact run and attempt.
 Unknown seats return 404, replaced attempts or non-live seats 409, and unavailable
-configuration or shutdown 503. The opening JSON frame accepts `columns` and
-`rows` for CHROTE protocol compatibility; the observer retains the native grid.
-Output frames are binary ASCII `0` followed by terminal bytes. Only one-byte
-ASCII `2` (pause output) and `3` (resume) are accepted afterward. Input `0`, resize
-`1`, claim `4` and other client frames close with 1008. A terminal ending closes
-with 1000; daemon shutdown closes observers with 1001. WebSocket origins must
+configuration or shutdown 503. The frames are CHROTE's. The opening JSON frame
+gives `columns` and `rows`, and the terminal attaches at the seat's native grid.
+Afterwards the client sends binary frames: ASCII `0` followed by input bytes,
+which reach the pane; `1` followed by JSON `columns` and `rows`, which sizes this
+terminal's view while another client sizes the seat window (such as the
+executor's control client) and is ignored otherwise; and `2` and `3` to pause and
+resume output. Other frames are ignored. The seat window keeps its own size.
+Output frames are binary ASCII `0` followed by terminal bytes. A terminal ending
+closes with 1000; daemon shutdown closes terminals with 1001. WebSocket origins must
 match the request host. Terminal bytes are the actual seat display, not the
 sanitized ledger projection. The same trusted-network access boundary applies.
 
