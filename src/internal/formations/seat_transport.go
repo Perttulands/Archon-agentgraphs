@@ -554,10 +554,13 @@ var ansiSGR = regexp.MustCompile("\x1b\\[([0-9;]*)m")
 
 // seatInputClear reports whether a harness waits idle with nothing typed, from
 // a capture of the visible pane with its styles (capture-pane -p -e) and the
-// cursor position. The input line is the prompt line under the cursor. It is
-// empty when the cursor sits just after the prompt glyph and the rest of the
-// line holds at most a dimmed placeholder, such as Codex's "Ask Codex to do
-// anything". The harness is busy when a working line sits just above the input
+// cursor position. The input line is the prompt line under the cursor, and
+// typed text starts in the cell after the prompt glyph and its space. The line
+// is empty when the cursor sits in that cell and the cell is blank or dim, as
+// Codex's "Ask Codex to do anything" placeholder is. Text the operator typed
+// before moving the cursor back fills that cell, while decorations further
+// along the line, such as the stars Codex animates in blank cells, do not
+// count. The harness is busy when a working line sits just above the input
 // box, as tmuxPaneShowsAgentWorking reads it.
 func seatInputClear(harness, screen string, cursorX, cursorY int) bool {
 	prompt := seatInputPrompt[harness]
@@ -565,12 +568,11 @@ func seatInputClear(harness, screen string, cursorX, cursorY int) bool {
 	if prompt == "" || cursorX != 2 || cursorY < 0 || cursorY >= len(lines) {
 		return false
 	}
-	line := lines[cursorY]
-	if !strings.HasPrefix(strings.TrimLeft(ansiSGR.ReplaceAllString(line, ""), " "), prompt) {
+	cells := styledCells(lines[cursorY])
+	if len(cells) == 0 || string(cells[0].r) != prompt {
 		return false
 	}
-	typed := strings.Replace(undimmedText(line), prompt, "", 1)
-	if strings.TrimSpace(strings.ReplaceAll(typed, "\u00a0", " ")) != "" {
+	if len(cells) > 2 && !cells[2].dim && !blankCell(cells[2].r) {
 		return false
 	}
 	seen := 0
@@ -587,21 +589,29 @@ func seatInputClear(harness, screen string, cursorX, cursorY int) bool {
 	return true
 }
 
-// undimmedText returns a styled line's text without its dim (SGR 2) runs.
-func undimmedText(line string) string {
-	var text strings.Builder
+// styledCell is one character of a styled pane line and whether it is dim.
+type styledCell struct {
+	r   rune
+	dim bool
+}
+
+// styledCells splits a line captured with its styles into characters, tracking
+// the dim attribute (SGR 2) across the line's escapes.
+func styledCells(line string) []styledCell {
+	var cells []styledCell
 	dim := false
 	rest := line
-	for {
+	for rest != "" {
 		match := ansiSGR.FindStringSubmatchIndex(rest)
-		if match == nil {
-			if !dim {
-				text.WriteString(rest)
-			}
-			return text.String()
+		text := rest
+		if match != nil {
+			text = rest[:match[0]]
 		}
-		if !dim {
-			text.WriteString(rest[:match[0]])
+		for _, r := range text {
+			cells = append(cells, styledCell{r: r, dim: dim})
+		}
+		if match == nil {
+			break
 		}
 		params := strings.Split(rest[match[2]:match[3]], ";")
 		for index := 0; index < len(params); index++ {
@@ -622,4 +632,11 @@ func undimmedText(line string) string {
 		}
 		rest = rest[match[1]:]
 	}
+	return cells
+}
+
+// blankCell reports a cell that holds no typed text: a space, a no-break space,
+// or a braille pattern, as Codex's star animation draws in blank cells.
+func blankCell(r rune) bool {
+	return r == ' ' || r == '\u00a0' || r >= 0x2800 && r <= 0x28ff
 }

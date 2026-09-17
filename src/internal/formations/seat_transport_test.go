@@ -395,6 +395,21 @@ func TestSeatInputClearReadsCapturedPanes(t *testing.T) {
 			}
 		}
 	}
+	// With an Astra model Codex animates faint braille stars in blank cells,
+	// including on the input line around the placeholder; they are not typed.
+	for _, name := range []string{"codex-idle-animation-1", "codex-idle-animation-2"} {
+		if screen, x, y := paneFixture(t, name); !seatInputClear("openai-codex", screen, x, y) {
+			t.Errorf("%s: clear = false, want true", name)
+		}
+	}
+	// Text the operator typed stays unsent even after they move the cursor back
+	// to its start.
+	for _, harness := range []struct{ id, name string }{{"claude-code", "claude"}, {"openai-codex", "codex"}} {
+		screen, _, y := paneFixture(t, harness.name+"-idle-typed")
+		if seatInputClear(harness.id, screen, 2, y) {
+			t.Errorf("%s typed text with the cursor moved back: clear = true, want false", harness.name)
+		}
+	}
 	// Claude Code suggests a next prompt in dim text; it is not typed.
 	if screen, x, y := paneFixture(t, "claude-idle-suggestion"); !seatInputClear("claude-code", screen, x, y) {
 		t.Error("claude idle with a suggested prompt: clear = false, want true")
