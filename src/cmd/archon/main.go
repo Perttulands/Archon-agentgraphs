@@ -1205,18 +1205,22 @@ func runGateJudge(store *formations.Store, args []string, stdout, stderr io.Writ
 	return 0
 }
 
+// relayedByUsage describes gate approve|reject --relayed-by, offline and remote.
+const relayedByUsage = "slot ID of the seat that typed the operator's confirmed decision; the decider stays human:operator"
+
 func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Writer, verdict string) int {
 	fs := flag.NewFlagSet("gate verdict", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	reason := fs.String("reason", "", "operator response; approve delivers it downstream with the gate input, reject sends it back as feedback")
 	fs.StringVar(reason, "response", "", "alias of --reason")
 	actor := fs.String("actor", "human:operator", "deciding actor")
+	relayedBy := fs.String("relayed-by", "", relayedByUsage)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon gate approve|reject <runId> <gateId> [--reason|--response text] [--json]")
+		fmt.Fprintln(stderr, "usage: archon gate approve|reject <runId> <gateId> [--reason|--response text] [--relayed-by slot-id] [--json]")
 		return 2
 	}
 	if err := store.RequireRuntimeAuthority(); err != nil {
@@ -1225,10 +1229,11 @@ func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Wr
 	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
 	engine := newArchonRunEngine(store, personas, "archon")
 	status, err := engine.RecordHumanGateVerdict(fs.Arg(0), formations.HumanGateVerdictRequest{
-		GateID:  fs.Arg(1),
-		Verdict: verdict,
-		Reason:  *reason,
-		Actor:   *actor,
+		GateID:    fs.Arg(1),
+		Verdict:   verdict,
+		Reason:    *reason,
+		Actor:     *actor,
+		RelayedBy: *relayedBy,
 	})
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))
@@ -2735,6 +2740,8 @@ func archonErrorCode(err error) string {
 		return "invalid_bead_id"
 	case errors.Is(err, formations.ErrInvalidHumanChannel):
 		return "invalid_human_channel"
+	case errors.Is(err, formations.ErrInvalidRelayedBy):
+		return "invalid_relayed_by"
 	case errors.Is(err, formations.ErrInvalidControllerRole):
 		return "invalid_controller_role"
 	case errors.Is(err, formations.ErrInvalidPortDirection):

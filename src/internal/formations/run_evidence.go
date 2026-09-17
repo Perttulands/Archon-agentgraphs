@@ -124,6 +124,7 @@ type EvidenceHumanDecision struct {
 	Verdict   string       `json:"verdict"`
 	Response  EvidenceText `json:"response"`
 	DecidedBy string       `json:"decidedBy,omitempty"`
+	RelayedBy string       `json:"relayedBy,omitempty"`
 }
 
 type EvidenceHumanRequest struct {
@@ -394,7 +395,7 @@ func projectNodeEvidence(runID, nodeID, kind string, events []RunEvent, final bo
 						continue
 					}
 					request.Pending = false
-					request.Decision = &EvidenceHumanDecision{Seq: event.Seq, Verdict: stringFromEventData(event, "verdict"), DecidedBy: stringFromEventData(event, "decidedBy")}
+					request.Decision = &EvidenceHumanDecision{Seq: event.Seq, Verdict: stringFromEventData(event, "verdict"), DecidedBy: stringFromEventData(event, "decidedBy"), RelayedBy: stringFromEventData(event, "relayedBy")}
 					request.Decision.Response = capper.text(stringFromEventData(event, "reason"))
 				}
 			}

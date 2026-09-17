@@ -502,12 +502,17 @@ func (c *Coordinator) verdict(w http.ResponseWriter, r *http.Request) {
 		RequestedSeq int    `json:"requestedSeq"`
 		Verdict      string `json:"verdict"`
 		Reason       string `json:"reason"`
+		RelayedBy    string `json:"relayedBy"`
 	}
 	if !decode(w, r, &req) {
 		return
 	}
 	if req.RequestedSeq <= 0 || req.Verdict != "pass" && req.Verdict != "fail" {
 		reply(w, 400, map[string]string{"error": "requestedSeq and pass or fail verdict required"})
+		return
+	}
+	if req.RelayedBy != "" && formations.ValidateRelayedBy(req.RelayedBy) != nil {
+		reply(w, 400, map[string]string{"error": "relayedBy must be a slot ID: a letter or digit, then up to 63 letters, digits, underscores or hyphens"})
 		return
 	}
 	runID, gateID := r.PathValue("runId"), r.PathValue("gateId")
@@ -536,7 +541,7 @@ func (c *Coordinator) verdict(w http.ResponseWriter, r *http.Request) {
 		reply(w, 409, map[string]string{"error": "human gate request is no longer pending"})
 		return
 	}
-	status, err := c.engine.RecordHumanGateVerdict(runID, formations.HumanGateVerdictRequest{GateID: gateID, Verdict: req.Verdict, Reason: req.Reason, Actor: "human:operator"})
+	status, err := c.engine.RecordHumanGateVerdict(runID, formations.HumanGateVerdictRequest{GateID: gateID, Verdict: req.Verdict, Reason: req.Reason, Actor: "human:operator", RelayedBy: req.RelayedBy})
 	if err != nil {
 		failure(w, err)
 		return

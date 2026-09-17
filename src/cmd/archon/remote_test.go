@@ -118,7 +118,7 @@ func TestRemoteGateVerdictSendsResponseText(t *testing.T) {
 	defer server.Close()
 	for _, command := range [][]string{
 		{"gate", "approve", "run_proof", "gate_review", "--requested-seq", "7", "--response", answer, "--json"},
-		{"gate", "reject", "run_proof", "gate_review", "--requested-seq", "7", "--reason", answer},
+		{"gate", "reject", "run_proof", "gate_review", "--requested-seq", "7", "--reason", answer, "--relayed-by", "slot_01M2QBT0QAHHN0T8KFWC9VVNRS"},
 	} {
 		var out, stderr bytes.Buffer
 		if code := runRemote(server.URL, command, &out, &stderr); code != 0 {
@@ -132,6 +132,9 @@ func TestRemoteGateVerdictSendsResponseText(t *testing.T) {
 		if body["reason"] != answer || body["requestedSeq"] != float64(7) {
 			t.Fatalf("verdict body = %+v, want response text as reason", body)
 		}
+	}
+	if _, relayed := got[0]["relayedBy"]; relayed || got[1]["relayedBy"] != "slot_01M2QBT0QAHHN0T8KFWC9VVNRS" {
+		t.Fatalf("relayedBy: approve %+v, reject %+v; want it only when given", got[0], got[1])
 	}
 }
 

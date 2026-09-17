@@ -110,6 +110,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	reason := fs.String("reason", "", "operator reason; for gate approve|reject, the response text")
 	fs.StringVar(reason, "response", "", "alias of --reason for gate approve|reject")
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
+	relayedBy := fs.String("relayed-by", "", relayedByUsage)
 	maxDispatch := fs.Int("max-dispatch", 3, "maximum dispatch count")
 	maxAttempts := fs.Int("max-attempts", 3, "maximum node attempts")
 	wall := fs.Int("wall-clock-seconds", 7200, "run wall clock limit")
@@ -199,7 +200,11 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		path += "/runs/" + url.PathEscape(pos[0]) + "/gates/" + url.PathEscape(pos[1]) + "/verdict"
 		method = "POST"
-		body = map[string]any{"requestedSeq": *seq, "verdict": verdict, "reason": *reason}
+		fields := map[string]any{"requestedSeq": *seq, "verdict": verdict, "reason": *reason}
+		if *relayedBy != "" {
+			fields["relayedBy"] = *relayedBy
+		}
+		body = fields
 	default:
 		fmt.Fprintln(stderr, "command unavailable through the standalone coordinator")
 		return 2
@@ -212,6 +217,6 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 func remoteUsage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "use board, mission, formation, gate and agent authoring and read commands, mission run <board> --mission <id>, run status|logs|follow <run>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text]")
+	fmt.Fprintln(stderr, "use board, mission, formation, gate and agent authoring and read commands, mission run <board> --mission <id>, run status|logs|follow <run>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text] [--relayed-by slot-id]")
 	return 2
 }

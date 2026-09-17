@@ -42,7 +42,12 @@ func TestEvidenceRoutesServeNodeOutputsAndGateResponses(t *testing.T) {
 	<-executor.entered
 	executor.proceed <- struct{}{}
 	seq := awaitState(t, c, id, "waiting_human").WaitingGates[0].RequestedSeq
-	if w := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass","reason":"use Postgres"}`); w.Code != 202 {
+	for _, invalid := range []string{`"-slot"`, `"slot work"`, `"` + strings.Repeat("s", 65) + `"`} {
+		if w := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass","relayedBy":`+invalid+`}`); w.Code != 400 || !strings.Contains(w.Body.String(), "relayedBy") {
+			t.Fatalf("relayedBy %s = %d %s", invalid, w.Code, w.Body.String())
+		}
+	}
+	if w := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass","reason":"use Postgres","relayedBy":"slot_work-1"}`); w.Code != 202 {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 	<-executor.entered
@@ -71,7 +76,8 @@ func TestEvidenceRoutesServeNodeOutputsAndGateResponses(t *testing.T) {
 		t.Fatalf("gate evidence = %s", w.Body.String())
 	}
 	evaluation := gate.Evaluations[0]
-	if len(evaluation.HumanRequests) != 1 || evaluation.HumanRequests[0].Pending || evaluation.HumanRequests[0].Decision.Response.Text != "use Postgres" {
+	if len(evaluation.HumanRequests) != 1 || evaluation.HumanRequests[0].Pending || evaluation.HumanRequests[0].Decision.Response.Text != "use Postgres" ||
+		evaluation.HumanRequests[0].Decision.DecidedBy != "human:operator" || evaluation.HumanRequests[0].Decision.RelayedBy != "slot_work-1" {
 		t.Fatalf("human request = %s", w.Body.String())
 	}
 	if evaluation.Verdict == nil || evaluation.Verdict.Verdict != "pass" || evaluation.Verdict.RoutePort != "pass" {

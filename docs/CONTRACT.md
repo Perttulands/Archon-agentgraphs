@@ -288,6 +288,13 @@ that exact request, so it survives restart. Recording the verdict blocks the run
 with code `resume_after_verdict` until the coordinator resumes it; that block is
 a pause, not a failure. The cockpit shows a pending human gate's input with a
 response box, Approve and Send back.
+A verdict may carry `relayedBy`, the slot ID of the seat that typed the
+operator's confirmed decision (a letter or digit, then up to 63 letters, digits,
+underscores or hyphens): `archon gate approve|reject ... --relayed-by <slot-id>`.
+It is stored on `human_verdict_recorded` and served beside `decidedBy` on the
+gate's recorded decision in the run evidence route; `decidedBy` stays
+`human:operator`. Any other value returns HTTP 400 and records nothing, and a
+verdict without it is unchanged.
 
 Real formations must emit all and only their declared output IDs in one block:
 

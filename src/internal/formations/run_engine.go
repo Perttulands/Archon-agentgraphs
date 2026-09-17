@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -134,6 +135,19 @@ type HumanGateVerdictRequest struct {
 	Verdict string
 	Reason  string
 	Actor   string
+	// RelayedBy is the slot ID of the seat that typed a decision the actor made.
+	RelayedBy string
+}
+
+var relayedByPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+
+// ValidateRelayedBy accepts no relay, or a slot ID: a letter or digit, then up
+// to 63 letters, digits, underscores or hyphens.
+func ValidateRelayedBy(slotID string) error {
+	if slotID == "" || relayedByPattern.MatchString(slotID) {
+		return nil
+	}
+	return fmt.Errorf("%w: relayedBy %q must be a slot ID: a letter or digit, then up to 63 letters, digits, underscores or hyphens", ErrInvalidRelayedBy, slotID)
 }
 
 type RunInputRef struct {
@@ -572,6 +586,9 @@ func (e *RunEngine) RecordHumanGateVerdict(runID string, req HumanGateVerdictReq
 	if e == nil || e.store == nil {
 		return nil, fmt.Errorf("%w: run engine store required", ErrNotFound)
 	}
+	if err := ValidateRelayedBy(req.RelayedBy); err != nil {
+		return nil, err
+	}
 	if err := e.store.RequireRuntimeAuthority(); err != nil {
 		return nil, err
 	}
@@ -605,19 +622,23 @@ func (e *RunEngine) RecordHumanGateVerdict(runID string, req HumanGateVerdictReq
 	}
 	verdict := normalizeGateVerdict(req.Verdict)
 	actor := defaultRunActor(req.Actor)
+	data := map[string]any{
+		"gateId":       req.GateID,
+		"nodeId":       req.GateID,
+		"verdict":      verdict,
+		"reason":       strings.TrimSpace(req.Reason),
+		"requestedSeq": requestEvent.Seq,
+		"decidedBy":    actor,
+	}
+	if req.RelayedBy != "" {
+		data["relayedBy"] = req.RelayedBy
+	}
 	validatedBoard, err := e.store.appendRunEventWithSnapshot(runID, RunEvent{
 		Type:   RunEventHumanVerdictRecorded,
 		Actor:  actor,
 		GateID: req.GateID,
 		NodeID: req.GateID,
-		Data: map[string]any{
-			"gateId":       req.GateID,
-			"nodeId":       req.GateID,
-			"verdict":      verdict,
-			"reason":       strings.TrimSpace(req.Reason),
-			"requestedSeq": requestEvent.Seq,
-			"decidedBy":    actor,
-		},
+		Data:   data,
 	})
 	if err != nil {
 		return nil, err

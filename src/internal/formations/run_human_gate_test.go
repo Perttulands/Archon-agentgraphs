@@ -733,3 +733,54 @@ func TestLabBriefCarriesHumanGateResponse(t *testing.T) {
 		t.Fatalf("Ship brief lacks the routed response:\n%s", brief)
 	}
 }
+
+func TestHumanGateVerdictRecordsWhoRelayedIt(t *testing.T) {
+	store, personas := s4RunFixture(t)
+	store.Now = fixedClock()
+	personas.Now = fixedClock()
+	createS4Persona(t, personas, "scout")
+	writeFixture(t, store.BoardPath("session-search"), s5HumanGateBoardFixture())
+	board, err := store.ReadBoard("session-search")
+	if err != nil {
+		t.Fatalf("read board: %v", err)
+	}
+	engine := NewRunEngine(store, personas, &fakeRunExecutor{})
+	status, err := engine.RunMission("session-search", RunStartRequest{
+		MissionID:         "mis_showcase",
+		Actor:             "agent:test",
+		ExpectedBoardETag: board.ETag,
+		ExpectedBoardRev:  board.Rev,
+		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
+	})
+	if err != nil {
+		t.Fatalf("run mission: %v", err)
+	}
+	ledger := findOnlyRunLedger(t, store, "session-search")
+	before := len(readRunEvents(t, ledger))
+	for _, invalid := range []string{"-slot", "_slot", "slot work", "slot/work", "slot.work", strings.Repeat("s", 65)} {
+		_, err := engine.RecordHumanGateVerdict(status.RunID, HumanGateVerdictRequest{GateID: "gate_review", Verdict: "pass", Actor: "human:operator", RelayedBy: invalid})
+		if !errors.Is(err, ErrInvalidRelayedBy) {
+			t.Fatalf("relayedBy %q: %v, want ErrInvalidRelayedBy", invalid, err)
+		}
+	}
+	if after := len(readRunEvents(t, ledger)); after != before {
+		t.Fatalf("rejected relayedBy appended %d events", after-before)
+	}
+	if _, err := engine.RecordHumanGateVerdict(status.RunID, HumanGateVerdictRequest{
+		GateID: "gate_review", Verdict: "pass", Reason: "Ship it", Actor: "human:operator", RelayedBy: "slot_01M2QBT0QAHHN0T8KFWC9VVNRS",
+	}); err != nil {
+		t.Fatalf("record relayed verdict: %v", err)
+	}
+	verdict := eventOfType(t, readRunEvents(t, ledger), RunEventHumanVerdictRecorded)
+	if verdict.Data["decidedBy"] != "human:operator" || verdict.Data["relayedBy"] != "slot_01M2QBT0QAHHN0T8KFWC9VVNRS" || verdict.Actor != "human:operator" {
+		t.Fatalf("relayed verdict event = %+v", verdict)
+	}
+	evidence, err := store.ProjectNodeEvidence(status.RunID, "gate_review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision := evidence.Evaluations[0].HumanRequests[0].Decision
+	if decision == nil || decision.DecidedBy != "human:operator" || decision.RelayedBy != "slot_01M2QBT0QAHHN0T8KFWC9VVNRS" || decision.Response.Text != "Ship it" {
+		t.Fatalf("evidence decision = %+v", decision)
+	}
+}

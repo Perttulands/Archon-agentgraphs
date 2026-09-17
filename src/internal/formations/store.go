@@ -34,6 +34,7 @@ var (
 	ErrInvalidGateKind          = errors.New("invalid_gate_kind")
 	ErrInvalidBeadID            = errors.New("invalid_bead_id")
 	ErrInvalidHumanChannel      = errors.New("invalid_human_channel")
+	ErrInvalidRelayedBy         = errors.New("invalid_relayed_by")
 	ErrInvalidControllerRole    = errors.New("invalid_controller_role")
 	ErrInvalidPortDirection     = errors.New("invalid_port_direction")
 	ErrInvalidAgentCard         = errors.New("invalid_agent_card")

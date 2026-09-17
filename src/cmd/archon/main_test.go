@@ -2473,7 +2473,10 @@ func TestArchonGateApproveAcceptsResponseAlias(t *testing.T) {
 		t.Fatalf("start human waiting run: %v", err)
 	}
 	answer := "1. Use Postgres.\n2. Ship on Friday."
-	stdout, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "gate", "approve", waiting.RunID, "gate_review", "--response", answer, "--json")
+	if _, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "gate", "approve", waiting.RunID, "gate_review", "--response", answer, "--relayed-by", "slot work", "--json"); code == 0 || !strings.Contains(stderr, `"invalid_relayed_by"`) {
+		t.Fatalf("invalid relayed-by: code=%d stderr=%s", code, stderr)
+	}
+	stdout, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "gate", "approve", waiting.RunID, "gate_review", "--response", answer, "--relayed-by", "slot_work", "--json")
 	if code != 0 {
 		t.Fatalf("gate approve code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -2481,14 +2484,18 @@ func TestArchonGateApproveAcceptsResponseAlias(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read events: %v", err)
 	}
-	var recorded string
+	var recorded, decidedBy, relayedBy string
+	verdicts := 0
 	for _, event := range events {
 		if event.Type == formations.RunEventHumanVerdictRecorded {
+			verdicts++
 			recorded, _ = event.Data["reason"].(string)
+			decidedBy, _ = event.Data["decidedBy"].(string)
+			relayedBy, _ = event.Data["relayedBy"].(string)
 		}
 	}
-	if recorded != answer {
-		t.Fatalf("recorded response = %q, want %q", recorded, answer)
+	if verdicts != 1 || recorded != answer || decidedBy != "human:operator" || relayedBy != "slot_work" {
+		t.Fatalf("%d verdicts, recorded response %q by %q relayed by %q; want one %q by human:operator relayed by slot_work", verdicts, recorded, decidedBy, relayedBy, answer)
 	}
 }
 

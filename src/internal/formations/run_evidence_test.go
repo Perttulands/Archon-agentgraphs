@@ -44,7 +44,7 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 		evidenceEvent(8, RunEventJudgeAttemptFailed, "gate_review", map[string]any{"code": "invalid_judge_result", "reason": "missing verdict block"}),
 		evidenceEvent(9, RunEventGateKindResult, "gate_review", map[string]any{"kind": "formation", "verdict": "pass", "reason": "Lint is clean", "evidence": []any{map[string]any{"kind": "formation", "text": "bd lint: no warnings"}, "plain evidence"}}),
 		evidenceEvent(10, RunEventHumanInputRequested, "gate_review", map[string]any{"prompt": "Beads pass lint"}),
-		evidenceEvent(11, RunEventHumanVerdictRecorded, "gate_review", map[string]any{"requestedSeq": 10, "verdict": "pass", "reason": "Q1: yes", "decidedBy": "human:operator"}),
+		evidenceEvent(11, RunEventHumanVerdictRecorded, "gate_review", map[string]any{"requestedSeq": 10, "verdict": "pass", "reason": "Q1: yes", "decidedBy": "human:operator", "relayedBy": "slot_signoff"}),
 		evidenceEvent(12, RunEventGateVerdict, "gate_review", map[string]any{"verdict": "pass", "reason": "judge and operator agree", "perKind": map[string]any{"formation": "pass", "human": "pass"}, "routePort": "pass", "evidence": []any{"bd lint: no warnings"}}),
 		{Seq: 13, Type: RunEventNodeStarted, NodeID: "fmn_work", Attempt: 2, Data: map[string]any{"reason": "feedback"}},
 		{Seq: 14, Type: RunEventBlocked, NodeID: "fmn_work", Data: map[string]any{"reason": "seat timed out", "blockedNodeId": "fmn_work", "resumeAllowed": true}},
@@ -93,7 +93,7 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 		t.Fatalf("kind results = %+v", evaluation.KindResults)
 	}
 	request := evaluation.HumanRequests[0]
-	if request.Pending || request.Decision == nil || request.Decision.Response.Text != "Q1: yes" || request.Decision.DecidedBy != "human:operator" {
+	if request.Pending || request.Decision == nil || request.Decision.Response.Text != "Q1: yes" || request.Decision.DecidedBy != "human:operator" || request.Decision.RelayedBy != "slot_signoff" {
 		t.Fatalf("human request = %+v", request)
 	}
 	if evaluation.Verdict == nil || evaluation.Verdict.Reason.Text != "judge and operator agree" || evaluation.Verdict.PerKind["human"] != "pass" || evaluation.Verdict.RoutePort != "pass" {
