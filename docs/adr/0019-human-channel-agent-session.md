@@ -38,13 +38,17 @@ terminal was view-only, and the contract told operators not to type into seats.
   its latest attempt receive the ask. For solo and peer formations that is every
   seat, and the operator may talk to any of them. For an orchestrated formation
   it is the controller only.
-- The ask is written to `<state-dir>/briefs/gate-<run>-<seq>.md` and pasted into
-  each receiving seat as a pointer, only while the agent is idle and its input
+- The ask is written per receiving seat to
+  `<state-dir>/briefs/gate-<run>-<seq>-<slot>.md`, because each seat relays under
+  its own slot ID, and pasted into that seat as a pointer, only while the agent is idle and its input
   line is empty. A seat not yet reached is retried within seconds.
 - Delivery is recorded in the ledger. `human_ask_delivered` names the request,
   the gate, the asking formation, and the seat's slot and created sequence, one
   event per seat. `human_ask_fallback` names the request and the reason. They
   are appended under the run's command lock and do not affect execution replay.
+  The ledger accepts nothing after a final event, and only a resume, cancel or
+  failure after a block. A delivery or fallback due while the run is blocked is
+  recorded after it resumes.
   The projection shows them on the waiting gate (`askedSeats`, `fallbackReason`)
   and marks each receiving seat `onCall`, so the event stream updates the
   cockpit.
@@ -56,8 +60,10 @@ terminal was view-only, and the contract told operators not to type into seats.
   - Only the operator decides. Draft the response in the operator's words, show
     it with the verdict, and record it only after they confirm. Use the exact
     `gate approve` or `gate reject` command given, with `--requested-seq` and
-    `--relayed-by <slot-id>`. If another seat or the cockpit decided first, the
-    command returns 409; say so.
+    `--relayed-by <slot-id>`. A 409 saying the coordinator is executing means
+    the run is busy for a moment: wait a few seconds and run the same command
+    again. A 409 saying the request is no longer pending means another seat or
+    the cockpit decided first: say so.
   - The formation brief's limits still apply. Running the given gate command
     is the one exception to its bans.
 - Kept seats are reconsidered only when the run settles or starts dispatching a
@@ -67,10 +73,16 @@ terminal was view-only, and the contract told operators not to type into seats.
     as the asker;
   - its formation starts a new attempt, which gets fresh seats as today (the
     old seats end first, because the names collide);
-  - the run is final or aborted.
+  - the run is about to become final: succeed, fail, or be canceled.
   Before ending a seat that is mid-turn, the runtime waits up to 60 seconds for
   it to go idle, so the agent's closing reply stays readable. Cleanup ends only
   that seat, by immutable ID, and records `seat_cleanup`.
+- Kept seats are ended, and their `seat_cleanup` recorded, before the event that
+  makes a run final (`run_succeeded`, `run_failed` or `run_canceled`, including
+  an abort of a waiting run), since the ledger accepts nothing after it. A
+  blocked run keeps its kept seats. A cleanup decided while it is blocked,
+  including a seat startup finds gone, is recorded after the run resumes, or
+  just before the cancel or failure that ends it.
 - Daemon shutdown leaves kept seats running. Startup verifies them from the
   ledger by recorded identity and keeps managing them. A kept seat that is gone,
   or whose tmux server changed, is recorded as such.
@@ -90,8 +102,10 @@ terminal was view-only, and the contract told operators not to type into seats.
   accepts input and resize frames as CHROTE's terminals do, and CHROTE reaches
   the same sessions in the shared tmux pool.
 - The runtime tolerates the operator's turns:
-  - It pastes a brief or an ask only while the agent is idle and its input line
-    is empty.
+  - It pastes anything into a seat only while the agent is idle and its input
+    line is empty. That covers a formation brief, a peer facilitator's second
+    brief and a gate ask, so the operator's unsent text never merges with a
+    pointer.
   - A message the operator types during a dispatch neither completes nor fails
     it. Completion needs this run's exact completion sentinel on an agent turn
     after the pointer, together with the harness's native turn completion. That
