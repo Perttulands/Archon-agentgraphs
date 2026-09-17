@@ -25,10 +25,6 @@ var (
 	errKeptSeatGone   = errors.New("kept seat is gone")
 	// keptSeatPoll paces pane reads while waiting for a seat. Tests shorten it.
 	keptSeatPoll = 250 * time.Millisecond
-	// seatReadyForPaste reports an idle agent whose input line is empty.
-	seatReadyForPaste = func(harness, captured string) bool {
-		return !tmuxPaneShowsAgentWorking(captured) && seatInputLineEmpty(harness, captured)
-	}
 )
 
 // keptSeatTransport is the pane access a kept seat needs, by immutable target.
@@ -139,10 +135,10 @@ func (e *TmuxFormationExecutor) PasteAsk(ctx context.Context, seat KeptSeat, poi
 	transport := e.keptTransport()
 	attempt, cancel := context.WithTimeout(ctx, keptSeatPasteWait)
 	defer cancel()
-	if err := waitKeptSeat(attempt, func() (bool, error) {
-		text, err := transport.CaptureSeat(attempt, e.config.Socket, seat.PaneID)
-		return err == nil && seatReadyForPaste(seat.Harness, text), err
-	}); err != nil {
+	native := &nativeSeat{name: seat.SessionName, sessionID: seat.SessionID, paneID: seat.PaneID, socket: e.config.Socket, variant: HarnessVariant{ID: seat.Harness}}
+	err := e.seatClient.WaitInputClear(attempt, e.config.Socket, native)
+	native.close()
+	if err != nil {
 		return fmt.Errorf("seat %s is not ready for an ask: %w", seat.SlotID, err)
 	}
 	if err := transport.PasteSeat(ctx, e.config.Socket, seat.PaneID, safeTmuxBufferName("ask-"+seat.SlotID), pointer); err != nil {
@@ -187,34 +183,4 @@ func waitKeptSeat(ctx context.Context, done func() (bool, error)) error {
 		case <-timer.C:
 		}
 	}
-}
-
-// seatInputLineEmpty reports whether the harness's input line holds no
-// operator text: nothing after Claude Code's ❯, or Codex's › showing only its
-// placeholder suggestion.
-func seatInputLineEmpty(harness, captured string) bool {
-	prompt := "❯"
-	if harness == "openai-codex" {
-		prompt = "›"
-	}
-	lines := strings.Split(strings.TrimRight(captured, " \t\r\n"), "\n")
-	for i := len(lines) - 1; i >= 0 && i >= len(lines)-12; i-- {
-		line := strings.TrimSpace(lines[i])
-		if !strings.HasPrefix(line, prompt) {
-			continue
-		}
-		rest := strings.TrimSpace(strings.TrimPrefix(line, prompt))
-		return rest == "" || harness == "openai-codex" && codexPlaceholder(rest)
-	}
-	return false
-}
-
-// Codex fills an empty input line with a dim suggestion.
-func codexPlaceholder(text string) bool {
-	for _, suggestion := range []string{"Explain this codebase", "Summarize recent commits", "Implement {feature}", "Find and fix a bug in @filename", "Write tests for @filename", "Improve documentation in @filename", "Run /review on my current changes", "Use /skills to list available skills"} {
-		if text == suggestion {
-			return true
-		}
-	}
-	return false
 }

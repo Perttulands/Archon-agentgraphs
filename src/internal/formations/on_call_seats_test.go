@@ -42,6 +42,23 @@ func (f *keptSeatFake) CaptureSeat(_ context.Context, _, paneID string) (string,
 	return frames[index], nil
 }
 
+// WaitInputClear reads frames until one shows an idle agent under an empty
+// Claude Code prompt, standing in for the transport's pane check.
+func (f *keptSeatFake) WaitInputClear(ctx context.Context, socket string, s *nativeSeat) error {
+	f.events = append(f.events, "wait "+s.sessionID+" "+s.paneID+" "+s.variant.ID)
+	for {
+		text, _ := f.CaptureSeat(ctx, socket, s.paneID)
+		if strings.HasSuffix(text, "❯ ") && !tmuxPaneShowsAgentWorking(text) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(keptSeatPoll):
+		}
+	}
+}
+
 func (f *keptSeatFake) PasteSeat(_ context.Context, _, paneID, _, text string) error {
 	f.pasted = append(f.pasted, text)
 	f.events = append(f.events, "paste")
@@ -159,7 +176,7 @@ func TestKeptSeatAskWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := strings.Join(fake.events, " | ")
-	want := "read Claude Code\n✻ Working… (esc to interrupt)\n❯  | read Claude Code\n❯ my unsent thought | read Claude Code\n❯  | paste | read Claude Code\n❯ Read the file /state/briefs/gate-run-9-slot_work.md and follow it. | submit"
+	want := "wait %1 %1 claude-code | read Claude Code\n✻ Working… (esc to interrupt)\n❯  | read Claude Code\n❯ my unsent thought | read Claude Code\n❯  | paste | read Claude Code\n❯ Read the file /state/briefs/gate-run-9-slot_work.md and follow it. | submit"
 	if got != want {
 		t.Fatalf("paste events:\n%s\nwant\n%s", got, want)
 	}
@@ -191,23 +208,5 @@ func TestEndingAKeptSeatWaitsForIdleAndKillsItsImmutableSession(t *testing.T) {
 	}
 	if present, outcome := executor.ProbeKeptSeat(context.Background(), KeptSeat{SessionID: "$other", PaneID: "%4"}); present || outcome != SeatOutcomeGone {
 		t.Fatalf("a pane now in another session probed %v %s", present, outcome)
-	}
-}
-
-func TestSeatInputLineEmptyReadsEachHarnessPrompt(t *testing.T) {
-	for _, c := range []struct {
-		harness, captured string
-		want              bool
-	}{
-		{"claude-code", "Claude Code\n❯ \n  ? for shortcuts", true},
-		{"claude-code", "Claude Code\n❯ half a sentence", false},
-		{"openai-codex", "OpenAI Codex\n› Explain this codebase\n\n  ⏎ send", true},
-		{"openai-codex", "OpenAI Codex\n› ", true},
-		{"openai-codex", "OpenAI Codex\n› approve it with Postgres", false},
-		{"claude-code", "no prompt here", false},
-	} {
-		if got := seatInputLineEmpty(c.harness, c.captured); got != c.want {
-			t.Fatalf("%s %q = %v, want %v", c.harness, c.captured, got, c.want)
-		}
 	}
 }
