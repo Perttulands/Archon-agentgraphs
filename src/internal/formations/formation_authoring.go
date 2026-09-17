@@ -235,14 +235,15 @@ type MissionCreateRequest struct {
 }
 
 type FormationNode struct {
-	ID           string                 `json:"id"`
-	Type         string                 `json:"type"`
-	Title        string                 `json:"title"`
-	Brief        *FormationBrief        `json:"brief,omitempty"`
-	Inputs       []FormationPort        `json:"inputs"`
-	Outputs      []FormationPort        `json:"outputs"`
-	Slots        []FormationSlot        `json:"slots"`
-	Verification *FormationVerification `json:"verification,omitempty"`
+	Execution    *FormationExecutionPolicy `json:"execution,omitempty"`
+	ID           string                    `json:"id"`
+	Type         string                    `json:"type"`
+	Title        string                    `json:"title"`
+	Brief        *FormationBrief           `json:"brief,omitempty"`
+	Inputs       []FormationPort           `json:"inputs"`
+	Outputs      []FormationPort           `json:"outputs"`
+	Slots        []FormationSlot           `json:"slots"`
+	Verification *FormationVerification    `json:"verification,omitempty"`
 }
 
 type FormationPort struct {
@@ -3072,6 +3073,12 @@ func parseFormationNodes(raw []byte) []FormationNode {
 				active = "slot"
 			}
 			continue
+		case isSection && !isArraySection && section == "formation.execution":
+			if current != nil {
+				current.Execution = &FormationExecutionPolicy{}
+				active = "execution"
+			}
+			continue
 		case isSection && !isArraySection && section == "formation.brief":
 			if current != nil {
 				current.Brief = &FormationBrief{}
@@ -3112,6 +3119,14 @@ func parseFormationNodes(raw []byte) []FormationNode {
 			continue
 		}
 		switch active {
+		case "execution":
+			if key == "timeoutSeconds" {
+				n, err := strconv.Atoi(value)
+				if err != nil {
+					n = -1
+				}
+				current.Execution.TimeoutSeconds = n
+			}
 		case "formation":
 			switch key {
 			case "id":

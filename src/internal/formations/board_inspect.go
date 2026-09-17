@@ -126,6 +126,7 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	}
 
 	report.Errors = append(report.Errors, duplicateSlotFindings(board.Formations)...)
+	report.Errors = append(report.Errors, executionPolicyFindings(board.Formations)...)
 
 	seenNodeIDs := make(map[string]string, len(board.Missions)+len(board.Formations)+len(board.Gates)+len(board.Tools))
 	for _, mission := range board.Missions {

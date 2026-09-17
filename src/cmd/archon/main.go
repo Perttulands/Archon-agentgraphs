@@ -210,6 +210,8 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 			return runFormationAssign(store, args[2:], stdout, stderr)
 		case "unassign":
 			return runFormationUnassign(store, args[2:], stdout, stderr)
+		case "set-execution":
+			return runFormationSetExecution(store, args[2:], stdout, stderr)
 		case "set-brief":
 			return runFormationSetBrief(store, args[2:], stdout, stderr)
 		case "rename":

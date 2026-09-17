@@ -65,6 +65,7 @@ type formationsHumanGateVerdictRequest struct {
 }
 
 type formationsBoardPatchRequest struct {
+	SetExecution                  *formationsSetExecutionRequest          `json:"setExecution"`
 	Title                         *string                                 `json:"title"`
 	CreateTool                    *formationsToolCreateRequest            `json:"createTool"`
 	UpdateTool                    *formationsToolUpdateRequest            `json:"updateTool"`
@@ -194,6 +195,13 @@ type formationsMakeControllerRequest struct {
 	UpdatedBy   string `json:"updatedBy"`
 }
 
+type formationsSetExecutionRequest struct {
+	FormationID    string `json:"formationId"`
+	TimeoutSeconds int    `json:"timeoutSeconds"`
+	ExpectedRev    int    `json:"expectedRev"`
+	UpdatedBy      string `json:"updatedBy"`
+}
+
 type formationsSetBriefRequest struct {
 	FormationID string   `json:"formationId"`
 	Goal        string   `json:"goal"`
@@ -280,6 +288,7 @@ type boardPatchPresence struct {
 }
 
 var boardPatchMutationKeys = []string{
+	"setExecution",
 	"title",
 	"createTool",
 	"updateTool",
@@ -1157,6 +1166,20 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		core.WriteSuccess(w, map[string]interface{}{"board": board})
 		return
 	}
+	if request.SetExecution != nil {
+		policy := request.SetExecution
+		board, err := h.store.SetFormationExecutionPolicy(slug, formations.FormationExecutionPolicyRequest{
+			FormationID: policy.FormationID, TimeoutSeconds: policy.TimeoutSeconds,
+			UpdatedBy: patchUpdatedBy(request.UpdatedBy, policy.UpdatedBy),
+		}, formations.WriteOptions{ExpectedETag: r.Header.Get("If-Match"), ExpectedRev: patchExpectedRev(request.ExpectedRev, policy.ExpectedRev)})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", board.ETag)
+		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		return
+	}
 	if request.SetBrief != nil {
 		brief := request.SetBrief
 		board, err := h.store.SetFormationBrief(slug, formations.FormationBriefRequest{
@@ -1694,6 +1717,8 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusForbidden, "NOTE_AUTHOR_MISMATCH", err.Error())
 	case errors.Is(err, formations.ErrUnsupportedFormationType):
 		core.WriteError(w, http.StatusBadRequest, "UNSUPPORTED_FORMATION_TYPE", err.Error())
+	case errors.Is(err, formations.ErrInvalidExecutionPolicy):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_EXECUTION_POLICY", err.Error())
 	case errors.Is(err, formations.ErrInvalidTypeChange):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_TYPE_CHANGE", err.Error())
 	case errors.Is(err, formations.ErrSlotChoiceRequired):
