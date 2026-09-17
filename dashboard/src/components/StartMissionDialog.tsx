@@ -1,5 +1,7 @@
 import { Suspense, lazy, useState } from 'react'
 import { useEscapeKey } from './useEscapeKey'
+import { HumanChannelChoice } from '../humanChannel/HumanChannelChoice'
+import { HUMAN_CHANNEL_TIMING, type HumanChannel } from '../humanChannel/humanChannel'
 import '../styles/formations-start-mission.css'
 
 // The Markdown renderer is its own chunk; the hint reads as its source until it loads.
@@ -15,10 +17,14 @@ export interface RunInputs {
 /** What the brief field asks for when the mission gives no input hint of its own. */
 export const DEFAULT_BRIEF_HINT = 'The input this run works on: the request, sketch or task its first step receives. The board stays reusable; each run takes its own brief.'
 
-export function StartMissionDialog({ title, beadId = '', inputHint = '', onStart, onClose }: {
-  title: string; beadId?: string; inputHint?: string; onStart: (inputs: RunInputs) => Promise<void>; onClose: () => void
+export function StartMissionDialog({ title, beadId = '', inputHint = '', humanChannel = 'notify', onStart, onClose }: {
+  title: string; beadId?: string; inputHint?: string
+  /** The mission's human channel; a different choice is saved on the mission before the run starts. */
+  humanChannel?: HumanChannel
+  onStart: (inputs: RunInputs, humanChannel: HumanChannel) => Promise<void>; onClose: () => void
 }) {
   const [inputs, setInputs] = useState<RunInputs>({ cwd: '', brief: '', beadId, limits: { maxDispatch: 20, maxAttempts: 3, wallClockSeconds: 1800, redact: false } })
+  const [channel, setChannel] = useState<HumanChannel>(humanChannel)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   useEscapeKey(!saving, onClose)
@@ -33,7 +39,7 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', onStart
       event.preventDefault()
       setSaving(true)
       setError('')
-      try { await onStart(inputs); onClose() } catch (err) { setError(err instanceof Error ? err.message : 'Failed to start run') } finally { setSaving(false) }
+      try { await onStart(inputs, channel); onClose() } catch (err) { setError(err instanceof Error ? err.message : 'Failed to start run') } finally { setSaving(false) }
     }}>
       <label htmlFor="start-mission-cwd">Working directory</label>
       <input id="start-mission-cwd" className="f" required autoFocus value={inputs.cwd} pattern="/.*" aria-describedby="start-mission-cwd-help"
@@ -51,6 +57,9 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', onStart
       <input id="start-mission-bead" className="f" value={inputs.beadId} pattern="[A-Za-z0-9][A-Za-z0-9._-]*" aria-describedby="start-mission-bead-help"
         onChange={event => setInputs({ ...inputs, beadId: event.target.value })} />
       <p id="start-mission-bead-help" className="field-note">Optional. The Beads issue this run belongs to, for example form-3yd.4.</p>
+      <span className="start-mission-label" aria-hidden="true">Human gates</span>
+      <HumanChannelChoice value={channel} disabled={saving} describedBy="start-mission-channel-help" onChange={setChannel} />
+      <p id="start-mission-channel-help" className="field-note">Saved on the mission when you start. {HUMAN_CHANNEL_TIMING}</p>
       <div className="start-mission-limits">
         {limits.map(([key, label]) => <div key={key}>
           <label htmlFor={`start-mission-${key}`}>{label}</label>

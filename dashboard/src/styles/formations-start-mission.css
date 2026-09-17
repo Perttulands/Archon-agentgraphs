@@ -8,3 +8,5 @@
 .fmx .pop.start-mission .field-note .start-mission-hint{--archon-markdown-font-size:11px;color:var(--ink2);}
 .fmx .pop.start-mission .field-note .start-mission-hint>*{margin:4px 0 0;}
 .fmx .pop.start-mission .field-note .start-mission-hint>:first-child{margin-top:0;}
+.fmx .pop.start-mission .start-mission-label{display:block;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:12px 0 6px;}
+.fmx .pop-body .channel-option{display:flex;margin:0;font-size:inherit;letter-spacing:normal;text-transform:none;color:inherit;}

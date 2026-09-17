@@ -6,6 +6,7 @@ import type { AgentProjection, BoardDocument, FormationNode, MissionNode, NoteEn
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { ProducedFiles } from '../files/ProducedFiles'
 import { referencedFileRequest } from '../files/fileWindowModel'
+import { humanChannelLabel, humanChannelOf } from '../humanChannel/humanChannel'
 import { staffingSentence } from '../nodeWindow/staffing'
 import { usePersonaCards } from '../nodeWindow/usePersonaCards'
 import type { WindowRect } from '../windows/windowGeometry'
@@ -109,6 +110,7 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
               </div>
               <p className="flow-text">{summary(section.mission.goal, 480) || <span className="placeholder">No goal yet.</span>}</p>
               <p className="flow-line"><span className="flow-label">Input</span>{section.mission.inputHint ? summary(section.mission.inputHint, 320) : 'The brief you give when you start the mission.'}</p>
+              <p className="flow-line flow-channel"><span className="flow-label">Human gates</span>{humanChannelLabel(humanChannelOf(section.mission))}</p>
               <FileChips files={section.mission.files} context={section.mission.title} />
               <NoteLine nodeId={section.mission.id} notes={notes} onOpenNotes={onOpenNotes} />
               {section.start.length ? null : <p className="flow-line warn">Wire the mission to its first step.</p>}

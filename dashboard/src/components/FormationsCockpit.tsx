@@ -87,6 +87,7 @@ import type { NodeWindowOps } from '../nodeWindow/NodeWindow'
 import { readBoardView, writeBoardView, type BoardView } from '../flow/boardView'
 import type { FlowRun } from '../flow/FlowView'
 import { cockpitWorkspace } from '../windows/cockpitWorkspace'
+import { humanChannelField, humanChannelLabel, humanChannelOf, type HumanChannel } from '../humanChannel/humanChannel'
 import type { WindowRect } from '../windows/windowGeometry'
 import type {
   AgentProjection,
@@ -170,7 +171,7 @@ type CockpitUndo =
   | { kind: 'updateGate'; gateId: string; fields: Partial<GateFields> & { files?: string[] }; chain: string[] }
   | { kind: 'updateFormation'; id: string; title: string }
   | { kind: 'setFormationType'; id: string; type: FormationNode['type']; slots: FormationSlot[] }
-  | { kind: 'updateMission'; id: string; fields: Partial<Pick<MissionNode, 'title' | 'goal' | 'beadId' | 'inputHint' | 'files'>> }
+  | { kind: 'updateMission'; id: string; fields: Partial<Pick<MissionNode, 'title' | 'goal' | 'beadId' | 'inputHint' | 'files' | 'humanChannel'>> }
   | { kind: 'deleteMission'; id: string }
   | { kind: 'assignSlot'; formationId: string; slotId: string; agentId: string; harness: string }
   | { kind: 'moveNode'; id: string; x: number; y: number }
@@ -1167,7 +1168,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return true
   }, [patchBoard])
 
-  const updateMissionFields = useCallback(async (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'beadId' | 'inputHint' | 'files'>>): Promise<boolean> => {
+  const updateMissionFields = useCallback(async (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'beadId' | 'inputHint' | 'files' | 'humanChannel'>>): Promise<boolean> => {
     const previous = boardRef.current?.missions?.find(mission => mission.id === missionId)
     if (!previous) return false
     if (!await patchBoard({ updateMission: { id: missionId, ...fields } })) return false
@@ -1401,6 +1402,15 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
       setError('')
   }, [])
+
+  // A human channel changed in Start mission is saved first, with undo, so the run's frozen board carries it.
+  const startMissionRun = useCallback(async (mission: MissionNode, inputs: RunInputs, channel: HumanChannel) => {
+    const current = boardRef.current?.missions?.find(item => item.id === mission.id)
+    if (current && humanChannelOf(current) !== channel && !await updateMissionFields(mission.id, { humanChannel: humanChannelField(channel) })) {
+      throw new Error('The human channel was not saved, so the mission did not start.')
+    }
+    await runMission(mission, inputs)
+  }, [runMission, updateMissionFields])
 
   const runFormation = useCallback(async (formation: FormationNode) => {
     const current = boardRef.current
@@ -2648,6 +2658,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   </div>
                   {renderNodeTitle(mission.title, 'mtitle', 'Untitled mission', 'div')}
                   <div className={`mgoal${mission.goal ? '' : ' placeholder'}`}>{mission.goal || 'set the mission objective…'}</div>
+                  <div className={`mchannel ${humanChannelOf(mission)}`} title="How this mission's human gates reach you">Human gates · {humanChannelLabel(humanChannelOf(mission))}</div>
                   <ReferencedFiles nodeId={mission.id} files={nodeFileRefs(board, mission.id)} max={2} onMore={openReferencedFilesMenu} className="card-refs" />
                   <div className="mstatus">{state ? state : ''}</div>
                   <span className={`port pout ready${hoverPort === `${mission.id}:out` ? ' snaptarget' : ''}`} data-port-out={`${mission.id}:out`} title="Starts the chain — drag to a step" onPointerDown={event => beginWire(event, `${mission.id}:out`, 'wire')} />
@@ -3005,7 +3016,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         />
       ) : null}
 
-      {startMission && <StartMissionDialog title={startMission.title} beadId={startMission.beadId} inputHint={startMission.inputHint} onStart={inputs => runMission(startMission, inputs)} onClose={() => setStartMission(null)} />}
+      {startMission && <StartMissionDialog title={startMission.title} beadId={startMission.beadId} inputHint={startMission.inputHint} humanChannel={humanChannelOf(startMission)} onStart={(inputs, channel) => startMissionRun(startMission, inputs, channel)} onClose={() => setStartMission(null)} />}
 
       {boardDialog ? (
         <div

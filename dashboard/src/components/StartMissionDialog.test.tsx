@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_BRIEF_HINT, StartMissionDialog } from './StartMissionDialog'
 
@@ -22,6 +22,19 @@ describe('StartMissionDialog', () => {
     expect(within(help).getAllByRole('listitem').map(item => item.textContent)).toEqual(['the goal', 'who it is for'])
     expect(help).not.toHaveTextContent('**')
     expect(screen.getByLabelText('Brief')).toHaveAccessibleDescription(/Your raw sketch of the outcome\./)
+  })
+
+  it('shows the mission human channel and starts with the chosen one', async () => {
+    const onStart = vi.fn(async () => {})
+    render(<StartMissionDialog title="Wayfinding" humanChannel="session" onStart={onStart} onClose={vi.fn()} />)
+    const channel = screen.getByRole('radiogroup', { name: 'Human gates' })
+    expect(within(channel).getByRole('radio', { name: /Talk with the agents/ })).toBeChecked()
+    expect(channel).toHaveAccessibleDescription('Saved on the mission when you start. A change applies to runs started afterwards; runs already going keep their channel.')
+    fireEvent.change(screen.getByLabelText('Working directory'), { target: { value: '/work' } })
+    fireEvent.change(screen.getByLabelText('Brief'), { target: { value: 'Go' } })
+    fireEvent.click(within(channel).getByRole('radio', { name: /Notify me/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start mission' }))
+    await waitFor(() => expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/work', brief: 'Go' }), 'notify'))
   })
 
   it('closes on Escape', () => {

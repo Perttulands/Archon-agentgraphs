@@ -34,6 +34,9 @@ describe('isTextEditingTarget', () => {
   it('is true for inputs, textareas, and contenteditable; false otherwise', () => {
     expect(isTextEditingTarget(document.createElement('input'))).toBe(true)
     expect(isTextEditingTarget(document.createElement('textarea'))).toBe(true)
+    const radio = document.createElement('input')
+    radio.type = 'radio'
+    expect(isTextEditingTarget(radio)).toBe(false)
     const editable = document.createElement('div')
     Object.defineProperty(editable, 'isContentEditable', { value: true })
     expect(isTextEditingTarget(editable)).toBe(true)

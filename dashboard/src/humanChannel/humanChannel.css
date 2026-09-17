@@ -1,0 +1,13 @@
+/* A mission's human channel: two choices side by side, each with a line saying what it does. */
+.channel-choice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.channel-option {
+  display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--divider); border-radius: 4px;
+  background: var(--surface-secondary); cursor: pointer; text-transform: none; letter-spacing: normal;
+}
+.channel-option.chosen { border-color: var(--accent); }
+.channel-option:has(input:focus-visible) { outline: 1px solid var(--accent); outline-offset: 1px; }
+.channel-option:has(input:disabled) { opacity: .6; cursor: default; }
+.channel-option input { margin: 2px 0 0; accent-color: var(--accent); }
+.channel-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.channel-label { color: var(--text-primary); font-size: 12px; font-weight: 700; }
+.channel-detail { color: var(--text-dim); font-size: 10.5px; line-height: 1.4; }

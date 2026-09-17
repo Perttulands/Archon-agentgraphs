@@ -23,6 +23,8 @@ import { nodeFileRefs } from '../files/referencedFiles'
 import FloatingWindow from '../windows/FloatingWindow'
 import type { WindowRect } from '../windows/windowGeometry'
 import { EditableField } from './EditableField'
+import { HumanChannelField } from '../humanChannel/HumanChannelField'
+import { humanChannelField, humanChannelOf } from '../humanChannel/humanChannel'
 import { buildFlow } from '../flow/flowModel'
 import { judgeChain, nodeRoutes, nodeTitle } from './boardRoutes'
 import { staffingSentence } from './staffing'
@@ -38,7 +40,7 @@ import './nodeWindow.css'
 
 export interface NodeWindowOps {
   rename: (nodeId: string, title: string) => Promise<boolean>
-  updateMission: (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'beadId' | 'inputHint' | 'files'>>) => Promise<boolean>
+  updateMission: (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'beadId' | 'inputHint' | 'files' | 'humanChannel'>>) => Promise<boolean>
   setBrief: (formationId: string, brief: FormationBrief) => Promise<boolean>
   changeType: (formation: FormationNode, type: FormationType, keepSlotId?: string) => void
   assignSlot: (formation: FormationNode, slot: FormationSlot, agentId: string, harness: string) => void
@@ -185,6 +187,8 @@ function MissionFields({ mission, ops }: { mission: MissionNode; ops: NodeWindow
       <EditableField label="Bead" value={mission.beadId} placeholder="No Bead" hint={BEAD_HINT} validate={beadProblem}
         onSave={beadId => ops.updateMission(mission.id, { beadId })} />
       <FilesField files={mission.files} context={mission.title} onSave={files => ops.updateMission(mission.id, { files })} />
+      <HumanChannelField channel={humanChannelOf(mission)}
+        onSave={channel => ops.updateMission(mission.id, { humanChannel: humanChannelField(channel) })} />
     </>
   )
 }

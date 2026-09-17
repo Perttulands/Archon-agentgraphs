@@ -1658,6 +1658,58 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', inputHint: '' }))
   })
 
+  it('switches a mission to talk with the agents from its window, shows it on the card, and undoes it', async () => {
+    await renderCockpit()
+    const card = screen.getByTestId('mission-node-mis_showcase')
+    expect(card).toHaveTextContent('Human gates · Notify me')
+    const win = await openNodeWindow(card, 'Mission · Showcase')
+    const channel = within(win).getByRole('radiogroup', { name: 'Human gates' })
+    expect(within(channel).getByRole('radio', { name: /Notify me/ })).toBeChecked()
+    expect(channel).toHaveAccessibleDescription('A change applies to runs started afterwards; runs already going keep their channel.')
+
+    fireEvent.click(within(channel).getByRole('radio', { name: /Talk with the agents/ }))
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', humanChannel: 'session' }))
+    await waitFor(() => expect(card).toHaveTextContent('Human gates · Talk with the agents'))
+    expect(within(channel).getByRole('radio', { name: /Talk with the agents/ })).toBeChecked()
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', humanChannel: '' }))
+    await waitFor(() => expect(card).toHaveTextContent('Human gates · Notify me'))
+    expect(within(channel).getByRole('radio', { name: /Notify me/ })).toBeChecked()
+  })
+
+  it('saves a human channel changed in Start mission before the run starts, with undo', async () => {
+    patches = installFetchMock({ runStatus: { status: 'succeeded', final: true }, runEvents: [] })
+    await renderCockpit()
+    fireEvent.click(screen.getByTestId('run-mission-mis_showcase'))
+    const dialog = await screen.findByRole('dialog', { name: 'Start mission' })
+    fireEvent.change(within(dialog).getByLabelText('Working directory'), { target: { value: '/work/project' } })
+    fireEvent.change(within(dialog).getByLabelText('Brief'), { target: { value: 'Implement the requested change' } })
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Talk with the agents/ }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Start mission' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Start mission' })).toBeNull())
+    const calls = vi.mocked(fetch).mock.calls
+    const saved = calls.findIndex(([, init]) => typeof init?.body === 'string' && init.body.includes('"humanChannel":"session"'))
+    const started = calls.findIndex(([url, init]) => url === '/api/formations/runs' && init?.method === 'POST')
+    expect(saved).toBeGreaterThanOrEqual(0)
+    expect(started).toBeGreaterThan(saved)
+    expect(screen.getByTestId('mission-node-mis_showcase')).toHaveTextContent('Human gates · Talk with the agents')
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', humanChannel: '' }))
+
+    // An unchanged channel saves nothing before starting.
+    const before = patches.length
+    fireEvent.click(screen.getByTestId('run-mission-mis_showcase'))
+    const again = await screen.findByRole('dialog', { name: 'Start mission' })
+    expect(within(again).getByRole('radio', { name: /Notify me/ })).toBeChecked()
+    fireEvent.change(within(again).getByLabelText('Working directory'), { target: { value: '/work/project' } })
+    fireEvent.change(within(again).getByLabelText('Brief'), { target: { value: 'Again' } })
+    fireEvent.click(within(again).getByRole('button', { name: 'Start mission' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Start mission' })).toBeNull())
+    expect(patches.slice(before).filter(patch => patch.body.updateMission)).toEqual([])
+  })
+
   it('edits the reference files of a mission and a gate in their windows, with undo', async () => {
     await renderCockpit()
     const mission = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Mission · Showcase')

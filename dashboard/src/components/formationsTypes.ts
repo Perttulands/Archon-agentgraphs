@@ -156,6 +156,8 @@ export interface MissionNode {
   inputHint?: string
   /** Reference file paths, absolute or relative to a daemon file root. */
   files?: string[]
+  /** How its human gates reach the operator (ADR-0019): absent or notify notifies, session asks the agents. A patch sends '' to clear it. */
+  humanChannel?: '' | 'notify' | 'session'
 }
 
 export interface GateNode {

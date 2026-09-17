@@ -268,6 +268,8 @@
 .fmx .missioncard .mtitle{font-weight:700;font-size:15px;padding:0 14px;line-height:1.15;}
 .fmx .missioncard .mgoal{font-size:11.5px;color:var(--ink2);padding:6px 14px 0;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .fmx .missioncard .mgoal.placeholder{font-style:italic;color:var(--dimmer);}
+.fmx .missioncard .mchannel{font-size:9.5px;color:var(--dim);padding:6px 14px 0;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fmx .missioncard .mchannel.session{color:var(--ink2);}
 .fmx .missioncard .mstatus{font-size:9.5px;color:var(--terra);padding:8px 14px 12px;letter-spacing:.03em;}
 .fmx .missioncard .mstatus:empty{padding:0 0 14px;}
 .fmx .missioncard .port.pout{right:-9px;top:50%;margin-top:-8px;border-color:var(--terra);}
