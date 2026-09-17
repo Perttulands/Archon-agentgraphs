@@ -19,6 +19,23 @@ runtime semantics, authoring, gates or operator instructions. Read
 - `dashboard/` owns the Archon board editor and Agents view.
 - `Perttus_vision_for_agent_orchestration/` retains vision and canvas references.
 
+## Reuse CHROTE's proven code
+
+CHROTE has working, hard-won implementations for file browsing and viewing,
+browser terminals, and tmux integration. Before implementing or changing these
+areas, inspect the CHROTE repository's code and tests and repurpose them for
+Archon. Prefer adapting that code over building a parallel implementation.
+
+Start with these paths in the CHROTE repository:
+
+- Files: `dashboard/src/components/FilesView/`,
+  `dashboard/src/components/FileViewer.tsx`, and `src/internal/api/files*.go`.
+- Browser terminals and tmux: `dashboard/src/terminal/` and `src/internal/proxy/`.
+
+Preserve the relevant behavior and regression coverage while adapting to
+Archon's contracts. Keep source attribution on ported code and explain any
+necessary departure from the CHROTE implementation.
+
 ## Work state
 
 Use this repository's `form-` Beads store. Execute the active Bead and record
