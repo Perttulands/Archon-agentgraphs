@@ -51,6 +51,7 @@ const routes: Record<string, unknown> = {
         attempt: 1, startedSeq: 3, reason: 'initial',
         inputs: [{ edgeId: 'edge_start', fromNodeId: 'mis_way', fromPortId: 'out', toPortId: 'port_map_in', text: text('Weekly digest') }],
         dispatches: [{ seq: 5, slotId: 'slot_scout', agentId: 'codex-scout', harness: 'openai-codex', brief: true, status: 'ok' }],
+        seatCleanups: [{ seq: 6, slotId: 'slot_scout', outcome: 'kept_on_call' }, { seq: 13, slotId: 'slot_scout', outcome: 'gone' }],
         output: {
           seq: 7, status: 'done', text: text('The territory, mapped once'),
           ports: [{ portId: 'port_map_out', text: text('The territory, mapped once') }, { portId: 'port_map_copy', text: text('The territory, mapped once') }],
@@ -145,6 +146,11 @@ describe('RunEvidence', () => {
     const attempt = screen.getByTestId('node-attempt-1')
     expect(attempt).toHaveTextContent('Input from Wayfinding')
     expect(attempt).toHaveTextContent('Scout')
+    const [kept, gone] = [...attempt.querySelectorAll('.node-dispatch')].filter(row => row.textContent?.includes('seat cleanup'))
+    expect(kept).toHaveTextContent('seat cleanup · kept on call')
+    expect(kept).not.toHaveClass('evidence-cleanup-left')
+    expect(gone).toHaveTextContent('seat cleanup · gone')
+    expect(gone).toHaveClass('evidence-cleanup-left')
     expect(within(attempt).getByRole('button', { name: 'brief' })).toBeInTheDocument()
     for (const id of ['fmn_map', 'port_map_out', 'slot_scout', 'mis_way', 'edge_start']) {
       expect(output.textContent + attempt.textContent).not.toContain(id)

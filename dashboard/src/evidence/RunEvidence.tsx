@@ -47,6 +47,9 @@ interface RunEvidenceProps {
   onClose: () => void
 }
 
+// A seat that ended, or was kept on call for a human gate (ADR-0019), needs nothing; any other outcome left a seat behind or lost it.
+const CLEANUP_SETTLED = new Set(['ended', 'kept_on_call'])
+
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
 const byteLength = (text: string) => new TextEncoder().encode(text).length
 
@@ -230,9 +233,9 @@ function Attempts({ runId, nodeId, attempts, names, onOpenArtifact, onOpenBrief 
               )
             })}
             {attempt.seatCleanups?.map(cleanup => (
-              <div className={`node-dispatch${cleanup.outcome === 'ended' ? '' : ' evidence-cleanup-left'}`} key={cleanup.seq}>
+              <div className={`node-dispatch${CLEANUP_SETTLED.has(cleanup.outcome) ? '' : ' evidence-cleanup-left'}`} key={cleanup.seq}>
                 <span className="node-dispatch-slot">{cleanup.slotId ? names.slot(nodeId, cleanup.slotId) : 'seat'}</span>
-                <span className="node-dispatch-agent">seat cleanup · {cleanup.outcome || 'not recorded'}</span>
+                <span className="node-dispatch-agent">seat cleanup · {cleanup.outcome === 'kept_on_call' ? 'kept on call' : cleanup.outcome || 'not recorded'}</span>
               </div>
             ))}
           </div>
