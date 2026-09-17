@@ -523,7 +523,12 @@ to any other type fails with `UNSUPPORTED_FORMATION_TYPE`, listing the three.
 A board saved with a retired type, such as the former `flow`, still loads and
 shows every slot. Board validation and run admission report
 `invalid_formation_type` for that node until `formation set-type` converts it
-or it is deleted; nothing rewrites it silently.
+or it is deleted; nothing rewrites it silently. Every slot ID on a board is
+unique, because a seat's session is named after its run and slot and a relayed
+verdict names its slot. Authoring generates a fresh ID for each new slot, and
+restoring slots cannot take another formation's ID. A hand-written or imported
+board that repeats one gets `duplicate_slot_id` on each formation holding it,
+from board validation and run admission.
 `board validate` lists every finding for the whole board, admission checks
 included, as `ERROR`/`WARN` lines or `--json`, and exits 1 on any error.
 `mission run` and `formation run` print every admission finding when a start is

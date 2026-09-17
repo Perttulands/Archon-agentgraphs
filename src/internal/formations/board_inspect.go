@@ -20,6 +20,7 @@ const (
 	FindingMissionNotRunnable                        = "mission_not_runnable"
 	FindingInvalidTool                               = "invalid_tool"
 	FindingDuplicateNodeID                           = "duplicate_node_id"
+	FindingDuplicateSlotID                           = "duplicate_slot_id"
 	FindingDuplicateInputProducer                    = "duplicate_input_producer"
 	FindingIncompatibleMedia                         = "incompatible_media"
 	FindingIncompatiblePayloadKind                   = "incompatible_payload_kind"
@@ -124,6 +125,8 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 		}
 	}
 
+	report.Errors = append(report.Errors, duplicateSlotFindings(board.Formations)...)
+
 	seenNodeIDs := make(map[string]string, len(board.Missions)+len(board.Formations)+len(board.Gates)+len(board.Tools))
 	for _, mission := range board.Missions {
 		seenNodeIDs[mission.ID] = "Mission"
@@ -196,6 +199,59 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	sortFindings(report.Errors)
 	sortFindings(report.Warnings)
 	return report
+}
+
+// duplicateSlotFindings reports a slot ID that more than one slot uses. A seat's
+// session is named after its run and slot, so a repeated slot ID gives two
+// seats one name, and a verdict relayed by that slot names neither. Each
+// formation holding the ID gets the finding, so any run reaching one of them
+// is refused.
+func duplicateSlotFindings(formations []FormationNode) []BoardFinding {
+	holders := map[string][]string{}
+	var order []string
+	for _, formation := range formations {
+		for _, slot := range formation.Slots {
+			if slot.ID == "" {
+				continue
+			}
+			if len(holders[slot.ID]) == 0 {
+				order = append(order, slot.ID)
+			}
+			holders[slot.ID] = append(holders[slot.ID], formation.ID)
+		}
+	}
+	var findings []BoardFinding
+	for _, slotID := range order {
+		if len(holders[slotID]) < 2 {
+			continue
+		}
+		var nodes []string
+		for _, node := range holders[slotID] {
+			if !hasString(nodes, node) {
+				nodes = append(nodes, node)
+			}
+		}
+		described := fmt.Sprintf("formations %s", strings.Join(quoteAll(nodes), " and "))
+		if len(nodes) == 1 {
+			described = fmt.Sprintf("%d slots of formation %q", len(holders[slotID]), nodes[0])
+		}
+		for _, node := range nodes {
+			findings = append(findings, BoardFinding{
+				Code:    FindingDuplicateSlotID,
+				NodeID:  node,
+				Message: fmt.Sprintf("slot id %q is used by %s; give every slot on the board its own id", slotID, described),
+			})
+		}
+	}
+	return findings
+}
+
+func quoteAll(values []string) []string {
+	quoted := make([]string, len(values))
+	for i, value := range values {
+		quoted[i] = fmt.Sprintf("%q", value)
+	}
+	return quoted
 }
 
 // gateRouteGaps names what a gate still needs before a run can route through

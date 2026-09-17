@@ -1167,6 +1167,15 @@ func (s *Store) SetFormationType(slug string, req FormationTypeRequest, opts Wri
 			slots = planned
 		} else if err := validateRestoredSlots(slots); err != nil {
 			return nil, err
+		} else {
+			// Restored slots keep their IDs, which no other formation may hold.
+			for _, other := range board.Formations {
+				for _, slot := range slots {
+					if _, taken := findSlot(other.Slots, slot.ID); taken && other.ID != formation.ID {
+						return nil, fmt.Errorf("%w: slot id %q is already used by formation %q", ErrInvalidTypeChange, slot.ID, other.ID)
+					}
+				}
+			}
 		}
 		lines := splitLines(raw)
 		start, end, _ := findFormationBlockByID(lines, req.FormationID)
