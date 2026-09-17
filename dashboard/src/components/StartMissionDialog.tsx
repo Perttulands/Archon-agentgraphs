@@ -14,6 +14,9 @@ export interface RunInputs {
   limits: { maxDispatch: number; maxAttempts: number; wallClockSeconds: number; redact: boolean }
 }
 
+/** The time limit counts agent work only: a run waiting at a human gate does not spend it (form-t5o). */
+export const TIME_LIMIT_HINT = 'The time limit counts how long the agents work, from the start of the run. Time the run waits for you at a gate doesn\u2019t count.'
+
 /** What the brief field asks for when the mission gives no input hint of its own. */
 export const DEFAULT_BRIEF_HINT = 'The input this run works on: the request, sketch or task its first step receives. The board stays reusable; each run takes its own brief.'
 
@@ -64,9 +67,11 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', humanCh
         {limits.map(([key, label]) => <div key={key}>
           <label htmlFor={`start-mission-${key}`}>{label}</label>
           <input id={`start-mission-${key}`} className="f" type="number" min="1" required value={inputs.limits[key]}
+            aria-describedby={key === 'wallClockSeconds' ? 'start-mission-time-limit-help' : undefined}
             onChange={event => setInputs({ ...inputs, limits: { ...inputs.limits, [key]: Number(event.target.value) } })} />
         </div>)}
       </div>
+      <p id="start-mission-time-limit-help" className="field-note">{TIME_LIMIT_HINT}</p>
       {error && <p className="field-note error" role="alert">{error}</p>}
       <div className="pop-actions">
         <button className="cancel" type="button" disabled={saving} onClick={onClose}>Cancel</button>

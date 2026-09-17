@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_BRIEF_HINT, StartMissionDialog } from './StartMissionDialog'
+import { DEFAULT_BRIEF_HINT, StartMissionDialog, TIME_LIMIT_HINT } from './StartMissionDialog'
 
 describe('StartMissionDialog', () => {
   afterEach(cleanup)
@@ -35,6 +35,14 @@ describe('StartMissionDialog', () => {
     fireEvent.click(within(channel).getByRole('radio', { name: /Notify me/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Start mission' }))
     await waitFor(() => expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/work', brief: 'Go' }), 'notify'))
+  })
+
+  it('says the time limit counts agent work, not waiting for the operator at a gate', () => {
+    render(<StartMissionDialog title="Wayfinding" onStart={vi.fn()} onClose={vi.fn()} />)
+    expect(screen.getByLabelText('Time limit in seconds')).toHaveAccessibleDescription(TIME_LIMIT_HINT)
+    expect(TIME_LIMIT_HINT).toMatch(/how long the agents work/)
+    expect(TIME_LIMIT_HINT).toMatch(/waits for you at a gate doesn\u2019t count/)
+    expect(screen.getByLabelText('Maximum dispatches')).not.toHaveAccessibleDescription()
   })
 
   it('closes on Escape', () => {
