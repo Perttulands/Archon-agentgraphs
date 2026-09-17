@@ -360,14 +360,17 @@ followed back through gates. The kept seats of its latest attempt receive the
 ask: every seat of a solo or peer formation, the controller of an orchestrated
 one. Each receiving seat gets its own brief at
 `<state-dir>/briefs/gate-<run>-<seq>-<slot>.md`, pasted as a one-line pointer
-only while the agent is idle and its input line is empty. A seat not yet
+only while the agent is idle and its input line is empty, and submitted once
+it shows in the input line, however the harness wraps it. A seat not yet
 reached is tried again within seconds. The brief names the run, gate, criterion,
 pending request, asking formation and the decisions already recorded, with
-these commands for the seat's own slot:
+these commands for the seat's own slot. `<archon>` is the `archon` installed
+beside the daemon, so the command matches it, or `archon` on the seat's PATH
+when none is:
 
 ```text
-archon --server <server> gate approve <run> <gate> --requested-seq <seq> --relayed-by <slot> --response RESPONSE
-archon --server <server> gate reject <run> <gate> --requested-seq <seq> --relayed-by <slot> --response RESPONSE
+<archon> --server <server> gate approve <run> <gate> --requested-seq <seq> --relayed-by <slot> --response RESPONSE
+<archon> --server <server> gate reject <run> <gate> --requested-seq <seq> --relayed-by <slot> --response RESPONSE
 ```
 
 It tells the agent that only the operator decides, to record a response only
@@ -391,8 +394,9 @@ dispatched. A kept seat ends when it has received an ask and no open request
 names its formation (cause `ask_answered`), when its formation starts a new
 attempt (`new_attempt`), or when the run is about to succeed, fail or be
 canceled, including an abort of a waiting run (`run_final`). Ending waits up to
-60 seconds for the agent to go idle and kills only that session, by immutable
-ID, through the guarded wrapper. Those cleanups are recorded before the final
+60 seconds for the agent to go idle with an empty input line, the check every
+paste waits on, and kills only that session, by immutable ID, through the
+guarded wrapper. Those cleanups are recorded before the final
 event. After `run_blocked` the ledger accepts `seat_cleanup` as well as a
 resume, cancel or failure, so a blocked run's kept seats end just before the
 cancel or failure that ends it. A blocked run otherwise keeps its seats: a seat

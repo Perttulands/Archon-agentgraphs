@@ -166,7 +166,7 @@ func Run(args []string) error {
 		}
 	}
 	// Session-channel asks reach their seats with or without a notify command.
-	needsYou := coordinator.NeedsYouConfig{CockpitURL: *cockpitURL, ServerURL: "http://" + listeners[0].Addr().String()}
+	needsYou := coordinator.NeedsYouConfig{CockpitURL: *cockpitURL, ServerURL: "http://" + listeners[0].Addr().String(), CLI: bundledCLI()}
 	if *notifyCommand != "" {
 		needsYou.Notifier = coordinator.CommandNotifier{Path: *notifyCommand}
 	}
@@ -231,6 +231,28 @@ func bundledUI() string {
 		return ""
 	}
 	return uiBeside(executable)
+}
+
+// bundledCLI names the archon CLI installed beside this daemon, so the gate
+// commands a seat is given match it even when PATH holds another version.
+func bundledCLI() string {
+	executable, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	executable, err = filepath.EvalSymlinks(executable)
+	if err != nil {
+		return ""
+	}
+	return cliBeside(executable)
+}
+
+func cliBeside(executable string) string {
+	path := filepath.Join(filepath.Dir(executable), "archon")
+	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {
+		return path
+	}
+	return ""
 }
 
 func uiBeside(executable string) string {

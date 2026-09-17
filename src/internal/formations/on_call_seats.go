@@ -107,19 +107,18 @@ func (e *TmuxFormationExecutor) ProbeKeptSeat(ctx context.Context, seat KeptSeat
 }
 
 // EndKeptSeat waits up to a minute for the agent to go idle, then kills the
-// seat's session by its immutable ID.
+// seat's session by its immutable ID. Idle is the check every paste waits on,
+// so an agent still replying after its gate command keeps its closing words.
 func (e *TmuxFormationExecutor) EndKeptSeat(ctx context.Context, seat KeptSeat) (string, string) {
 	if present, outcome := e.ProbeKeptSeat(ctx, seat); !present {
 		return outcome, ""
 	}
-	transport := e.keptTransport()
 	idle, cancel := context.WithTimeout(ctx, keptSeatIdleWait)
-	_ = waitKeptSeat(idle, func() (bool, error) {
-		text, err := transport.CaptureSeat(idle, e.config.Socket, seat.PaneID)
-		return err != nil || !tmuxPaneShowsAgentWorking(text), nil
-	})
+	native := e.nativeKeptSeat(seat)
+	_ = e.seatClient.WaitInputClear(idle, e.config.Socket, native)
+	native.close()
 	cancel()
-	if err := transport.KillSeat(ctx, e.config.Socket, seat.SessionID); err != nil {
+	if err := e.keptTransport().KillSeat(ctx, e.config.Socket, seat.SessionID); err != nil {
 		return SeatOutcomeLeftCleanupFailed, redactLedgerText(err.Error())
 	}
 	return SeatOutcomeEnded, ""
@@ -135,7 +134,7 @@ func (e *TmuxFormationExecutor) PasteAsk(ctx context.Context, seat KeptSeat, poi
 	transport := e.keptTransport()
 	attempt, cancel := context.WithTimeout(ctx, keptSeatPasteWait)
 	defer cancel()
-	native := &nativeSeat{name: seat.SessionName, sessionID: seat.SessionID, paneID: seat.PaneID, socket: e.config.Socket, variant: HarnessVariant{ID: seat.Harness}}
+	native := e.nativeKeptSeat(seat)
 	err := e.seatClient.WaitInputClear(attempt, e.config.Socket, native)
 	native.close()
 	if err != nil {
@@ -144,9 +143,12 @@ func (e *TmuxFormationExecutor) PasteAsk(ctx context.Context, seat KeptSeat, poi
 	if err := transport.PasteSeat(ctx, e.config.Socket, seat.PaneID, safeTmuxBufferName("ask-"+seat.SlotID), pointer); err != nil {
 		return err
 	}
+	// Harnesses wrap a long input line themselves, breaking it with a newline
+	// and indent anywhere, even inside the brief path.
+	rendered := withoutSpace(pointer)
 	if err := waitKeptSeat(attempt, func() (bool, error) {
 		text, err := transport.CaptureSeat(attempt, e.config.Socket, seat.PaneID)
-		return err == nil && strings.Contains(strings.ReplaceAll(text, "\n", ""), pointer), err
+		return err == nil && strings.Contains(withoutSpace(text), rendered), err
 	}); err != nil {
 		return fmt.Errorf("the ask did not render in seat %s: %w", seat.SlotID, err)
 	}
@@ -158,6 +160,15 @@ func (e *TmuxFormationExecutor) PasteAsk(ctx context.Context, seat KeptSeat, poi
 	case <-settle.C:
 	}
 	return transport.SubmitSeat(ctx, e.config.Socket, seat.PaneID)
+}
+
+// nativeKeptSeat addresses a kept seat for the seat transport; close it after.
+func (e *TmuxFormationExecutor) nativeKeptSeat(seat KeptSeat) *nativeSeat {
+	return &nativeSeat{name: seat.SessionName, sessionID: seat.SessionID, paneID: seat.PaneID, socket: e.config.Socket, variant: HarnessVariant{ID: seat.Harness}}
+}
+
+func withoutSpace(text string) string {
+	return strings.Join(strings.Fields(text), "")
 }
 
 // waitKeptSeat polls done until it holds or ctx ends. A transient read error

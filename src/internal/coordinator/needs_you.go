@@ -32,6 +32,9 @@ type NeedsYouConfig struct {
 	// ServerURL is the coordinator address used in the CLI commands a message
 	// suggests.
 	ServerURL string
+	// CLI is the archon CLI a session-channel ask's commands run; empty names
+	// archon on PATH.
+	CLI string
 	// RetryInterval paces the periodic retry; it defaults to five minutes.
 	RetryInterval time.Duration
 	// SessionRetryInterval paces another try at a seat an ask did not reach;

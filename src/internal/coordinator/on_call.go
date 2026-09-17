@@ -106,7 +106,7 @@ func (d *needsYouDispatcher) deliverSession(ctx context.Context, runID string) (
 // delivery. It reports whether the seat was reached and recorded.
 func (d *needsYouDispatcher) deliverAsk(ctx context.Context, runID string, plan formations.RunOnCallPlan, delivery formations.HumanAskDelivery) bool {
 	c := d.c
-	brief, pointer, err := c.engine.WriteHumanAskBrief(runID, plan.Board, plan.Events, delivery, d.config.ServerURL)
+	brief, pointer, err := c.engine.WriteHumanAskBrief(runID, plan.Board, plan.Events, delivery, d.config.ServerURL, d.config.CLI)
 	if err != nil {
 		log.Printf("session channel: run %s ask %d brief for %s: %v", runID, delivery.Request.Seq, delivery.Seat.SlotID, err)
 		return false

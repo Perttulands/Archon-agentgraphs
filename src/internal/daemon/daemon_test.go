@@ -27,6 +27,28 @@ func TestBundleDiscoveryDoesNotDependOnWorkingDirectory(t *testing.T) {
 	}
 }
 
+func TestSessionAsksNameTheArchonCLIBesideTheDaemon(t *testing.T) {
+	bin := t.TempDir()
+	if got := cliBeside(filepath.Join(bin, "archond")); got != "" {
+		t.Fatalf("a daemon without a CLI beside it names %q", got)
+	}
+	cli := filepath.Join(bin, "archon")
+	if err := os.WriteFile(cli, []byte("#!/bin/sh\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := cliBeside(filepath.Join(bin, "archond")); got != "" {
+		t.Fatalf("a CLI that cannot run is named %q", got)
+	}
+	if err := os.Chmod(cli, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{"archond", "formationsd"} {
+		if got := cliBeside(filepath.Join(bin, command)); got != cli {
+			t.Fatalf("%s names %q, want %q", command, got, cli)
+		}
+	}
+}
+
 func TestNotifyFlagsRequireAnExecutableAndAPlainCockpitURL(t *testing.T) {
 	dir := t.TempDir()
 	executable := filepath.Join(dir, "notify")

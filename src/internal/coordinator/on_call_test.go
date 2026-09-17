@@ -111,7 +111,7 @@ func onCallFixture(t *testing.T, board string, executor formations.FormationExec
 	if err := os.WriteFile(c.store.BoardPath("proof"), []byte(board), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	c.EnableNeedsYou(NeedsYouConfig{Notifier: notifier, ServerURL: "http://127.0.0.1:18400", RetryInterval: time.Hour, SessionRetryInterval: 20 * time.Millisecond, SessionProbeInterval: 50 * time.Millisecond})
+	c.EnableNeedsYou(NeedsYouConfig{Notifier: notifier, ServerURL: "http://127.0.0.1:18400", CLI: "/opt/archon tools/bin/archon", RetryInterval: time.Hour, SessionRetryInterval: 20 * time.Millisecond, SessionProbeInterval: 50 * time.Millisecond})
 	return c, root
 }
 
@@ -243,8 +243,8 @@ func TestSessionAskReachesTheKeptWorkSeatWithoutANotifyCommand(t *testing.T) {
 		"pending request: " + strconv.Itoa(gate.RequestedSeq),
 		"asking formation: Work (fmn_work)",
 		"PRIVATE-CRITERION",
-		fmt.Sprintf("archon --server http://127.0.0.1:18400 gate approve %s gate_review --requested-seq %d --relayed-by slot_work --response RESPONSE", id, gate.RequestedSeq),
-		fmt.Sprintf("archon --server http://127.0.0.1:18400 gate reject %s gate_review --requested-seq %d --relayed-by slot_work --response RESPONSE", id, gate.RequestedSeq),
+		fmt.Sprintf("'/opt/archon tools/bin/archon' --server http://127.0.0.1:18400 gate approve %s gate_review --requested-seq %d --relayed-by slot_work --response RESPONSE", id, gate.RequestedSeq),
+		fmt.Sprintf("'/opt/archon tools/bin/archon' --server http://127.0.0.1:18400 gate reject %s gate_review --requested-seq %d --relayed-by slot_work --response RESPONSE", id, gate.RequestedSeq),
 		"Only the operator decides",
 		"A 409 saying the coordinator is executing means the run is busy for a moment: wait a few seconds and run the same command again.",
 		"A 409 saying the human gate request is no longer pending means another seat or the cockpit decided first",

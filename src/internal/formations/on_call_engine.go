@@ -204,8 +204,10 @@ func (e *RunEngine) HumanAskBriefPath(runID string, requestedSeq int, slotID str
 }
 
 // WriteHumanAskBrief writes the ask for one receiving seat and returns the
-// pointer to paste. The brief carries that seat's slot in --relayed-by.
-func (e *RunEngine) WriteHumanAskBrief(runID string, board *BoardDocument, events []RunEvent, delivery HumanAskDelivery, serverURL string) (string, string, error) {
+// pointer to paste. The brief carries that seat's slot in --relayed-by, and
+// its commands run cli, the archon CLI matching this daemon ("archon" on PATH
+// when empty).
+func (e *RunEngine) WriteHumanAskBrief(runID string, board *BoardDocument, events []RunEvent, delivery HumanAskDelivery, serverURL, cli string) (string, string, error) {
 	path := e.HumanAskBriefPath(runID, delivery.Request.Seq, delivery.Seat.SlotID)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", "", err
@@ -214,7 +216,7 @@ func (e *RunEngine) WriteHumanAskBrief(runID string, board *BoardDocument, event
 	if err != nil {
 		return "", "", err
 	}
-	if _, err := temp.WriteString(renderHumanAskBrief(runID, board, events, delivery, serverURL)); err != nil {
+	if _, err := temp.WriteString(renderHumanAskBrief(runID, board, events, delivery, serverURL, cli)); err != nil {
 		temp.Close()
 		os.Remove(temp.Name())
 		return "", "", err
@@ -231,12 +233,18 @@ func (e *RunEngine) WriteHumanAskBrief(runID string, board *BoardDocument, event
 	return path, fmt.Sprintf("Read the file %s and follow it: the operator's gate %q is waiting on your work.", path, gateTitle), nil
 }
 
-func renderHumanAskBrief(runID string, board *BoardDocument, events []RunEvent, delivery HumanAskDelivery, serverURL string) string {
+func renderHumanAskBrief(runID string, board *BoardDocument, events []RunEvent, delivery HumanAskDelivery, serverURL, cli string) string {
 	request := delivery.Request
 	gateTitle := nodeTitleOnBoard(board, request.GateID)
 	server := serverURL
 	if server == "" {
 		server = `"$FORM_SERVER"`
+	}
+	switch {
+	case cli == "":
+		cli = "archon"
+	case strings.Trim(cli, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._+-") != "":
+		cli = shellQuote(cli)
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Human gate: %s\n\n", gateTitle)
@@ -271,8 +279,8 @@ func renderHumanAskBrief(runID string, board *BoardDocument, events []RunEvent, 
 	b.WriteString("- Present the gate's question plainly, from your own work, and help the operator think it through. Offer a view only when asked, and label it as yours.\n")
 	b.WriteString("- Only the operator decides. Draft the response in the operator's words, show it with the verdict, and record it only after they confirm.\n")
 	b.WriteString("- Record the confirmed decision with exactly one of these commands. Replace RESPONSE with the operator's confirmed words, quoted for the shell:\n\n")
-	fmt.Fprintf(&b, "      archon --server %s gate approve %s %s --requested-seq %d --relayed-by %s --response RESPONSE\n", server, runID, request.GateID, request.Seq, slot)
-	fmt.Fprintf(&b, "      archon --server %s gate reject %s %s --requested-seq %d --relayed-by %s --response RESPONSE\n\n", server, runID, request.GateID, request.Seq, slot)
+	fmt.Fprintf(&b, "      %s --server %s gate approve %s %s --requested-seq %d --relayed-by %s --response RESPONSE\n", cli, server, runID, request.GateID, request.Seq, slot)
+	fmt.Fprintf(&b, "      %s --server %s gate reject %s %s --requested-seq %d --relayed-by %s --response RESPONSE\n\n", cli, server, runID, request.GateID, request.Seq, slot)
 	b.WriteString("- Approve sends the response to the next step with the gate's input. Reject sends the work back, and the next attempt reads only the response, so it must carry what the conversation settled.\n")
 	b.WriteString("- A 409 saying the coordinator is executing means the run is busy for a moment: wait a few seconds and run the same command again.\n")
 	b.WriteString("- A 409 saying the human gate request is no longer pending means another seat or the cockpit decided first: tell the operator.\n")
