@@ -479,14 +479,15 @@ type formationsSetFormationTypeRequest struct {
 }
 
 type formationsUpdateMissionRequest struct {
-	ID          string    `json:"id"`
-	Title       *string   `json:"title"`
-	Goal        *string   `json:"goal"`
-	BeadID      *string   `json:"beadId"`
-	Files       *[]string `json:"files"`
-	InputHint   *string   `json:"inputHint"`
-	ExpectedRev int       `json:"expectedRev"`
-	UpdatedBy   string    `json:"updatedBy"`
+	ID           string    `json:"id"`
+	Title        *string   `json:"title"`
+	Goal         *string   `json:"goal"`
+	BeadID       *string   `json:"beadId"`
+	Files        *[]string `json:"files"`
+	InputHint    *string   `json:"inputHint"`
+	HumanChannel *string   `json:"humanChannel"`
+	ExpectedRev  int       `json:"expectedRev"`
+	UpdatedBy    string    `json:"updatedBy"`
 }
 
 // formationsUpdateGateRequest sets only the fields present in the JSON object.
@@ -526,14 +527,15 @@ type formationsRewireConnectionRequest struct {
 }
 
 type formationsCreateMissionRequest struct {
-	Title       string   `json:"title"`
-	Goal        string   `json:"goal"`
-	BeadID      string   `json:"beadId"`
-	Files       []string `json:"files"`
-	X           int      `json:"x"`
-	Y           int      `json:"y"`
-	ExpectedRev int      `json:"expectedRev"`
-	UpdatedBy   string   `json:"updatedBy"`
+	Title        string   `json:"title"`
+	Goal         string   `json:"goal"`
+	BeadID       string   `json:"beadId"`
+	Files        []string `json:"files"`
+	HumanChannel string   `json:"humanChannel"`
+	X            int      `json:"x"`
+	Y            int      `json:"y"`
+	ExpectedRev  int      `json:"expectedRev"`
+	UpdatedBy    string   `json:"updatedBy"`
 }
 
 type formationsLayoutPatchRequest struct {
@@ -1394,13 +1396,14 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 	if request.UpdateMission != nil {
 		update := request.UpdateMission
 		board, err := h.store.UpdateMission(slug, formations.MissionUpdateRequest{
-			MissionID: update.ID,
-			Title:     update.Title,
-			Goal:      update.Goal,
-			BeadID:    update.BeadID,
-			Files:     update.Files,
-			InputHint: update.InputHint,
-			UpdatedBy: patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
+			MissionID:    update.ID,
+			Title:        update.Title,
+			Goal:         update.Goal,
+			BeadID:       update.BeadID,
+			Files:        update.Files,
+			InputHint:    update.InputHint,
+			HumanChannel: update.HumanChannel,
+			UpdatedBy:    patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
 			ExpectedRev:  patchExpectedRev(request.ExpectedRev, update.ExpectedRev),
@@ -1476,13 +1479,14 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 	if request.CreateMission != nil {
 		mission := request.CreateMission
 		result, err := h.store.CreateMission(slug, formations.MissionCreateRequest{
-			Title:     mission.Title,
-			Goal:      mission.Goal,
-			BeadID:    mission.BeadID,
-			Files:     mission.Files,
-			X:         mission.X,
-			Y:         mission.Y,
-			UpdatedBy: patchUpdatedBy(request.UpdatedBy, mission.UpdatedBy),
+			Title:        mission.Title,
+			Goal:         mission.Goal,
+			BeadID:       mission.BeadID,
+			Files:        mission.Files,
+			HumanChannel: mission.HumanChannel,
+			X:            mission.X,
+			Y:            mission.Y,
+			UpdatedBy:    patchUpdatedBy(request.UpdatedBy, mission.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
 			ExpectedRev:  patchExpectedRev(request.ExpectedRev, mission.ExpectedRev),
@@ -1718,6 +1722,8 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusPreconditionRequired, "PRECONDITION_REQUIRED", "If-Match and revision preconditions are required")
 	case errors.Is(err, formations.ErrInvalidBeadID):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_BEAD_ID", fieldErrorMessage(err, formations.ErrInvalidBeadID))
+	case errors.Is(err, formations.ErrInvalidHumanChannel):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_HUMAN_CHANNEL", fieldErrorMessage(err, formations.ErrInvalidHumanChannel))
 	case errors.Is(err, formations.ErrInvalidControllerRole):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_CONTROLLER_ROLE", fieldErrorMessage(err, formations.ErrInvalidControllerRole))
 	case errors.Is(err, formations.ErrInvalidPortDirection):

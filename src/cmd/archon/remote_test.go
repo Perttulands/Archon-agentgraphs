@@ -267,7 +267,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("board", "new", "demo", "--title", "Demo"))},
 		{args: with(fixed("agent", "new", "scout-x", "--kind", "scout", "--harness", "openai-codex", "--capable", "research"))},
 		{args: with(fixed("agent", "edit", "scout-x", "--summary", "Finds things", "--add-capability", "inspect", "--display-name", "Scout X"))},
-		{args: with(fixed("mission", "create", "demo", "--title", "Work", "--goal", "Do it", "--bead", "form-demo", "--file", "docs/brief.md")), creates: "mission"},
+		{args: with(fixed("mission", "create", "demo", "--title", "Work", "--goal", "Do it", "--bead", "form-demo", "--file", "docs/brief.md", "--human-channel", "session")), creates: "mission"},
 		{args: with(fixed("formation", "create", "demo", "solo", "--title", "Worker")), creates: "formation"},
 		{args: with(fixed("formation", "create", "demo", "--title", "Judge")), creates: "formation"},
 		{args: with(fixed("formation", "rename", "demo", "Judge", "Critic"))},
@@ -319,6 +319,9 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("gate", "create", "demo", "--title", "Default")), creates: "gate"},
 		{args: with(fixed("mission", "update", "demo", "Work", "--goal", "Do it well"))},
 		{args: with(fixed("mission", "update", "demo", "Work", "--file", "docs/brief.md", "--file", "docs/context.md"))},
+		{args: with(fixed("mission", "update", "demo", "Work", "--human-channel", "notify"))},
+		{args: with(fixed("mission", "update", "demo", "Work", "--human-channel", "session"))},
+		{args: with(fixed("mission", "update", "demo", "Work", "--human-channel", "email")), errorOnly: true},
 		{args: with(fixed("gate", "update", "demo", "Review", "--file", "rubrics/quality.md"))},
 		{args: with(fixed("gate", "update", "demo", "Sign-off", "--file", ""))},
 		{args: with(fixed("tool", "create", "demo", "--profile-id", "json.normalize", "--profile-version", "1", "--title", "Normalize", "--params-json", `{"mode":"strict"}`)), creates: "tool"},
@@ -459,8 +462,8 @@ func TestRemoteAuthoringMatchesOfflineCommands(t *testing.T) {
 			if err != nil || len(board.Missions) != 1 || len(board.Formations) != 2 || len(board.Gates) != 3 || len(board.Connections) != 4 || board.UpdatedBy != "agent:archon" {
 				t.Fatalf("remote board: %v missions %d formations %d gates %d connections %d by %s", err, len(board.Missions), len(board.Formations), len(board.Gates), len(board.Connections), board.UpdatedBy)
 			}
-			if mission := board.Missions[0]; strings.Join(mission.Files, ",") != "docs/brief.md,docs/context.md" {
-				t.Fatalf("remote mission files = %q", mission.Files)
+			if mission := board.Missions[0]; strings.Join(mission.Files, ",") != "docs/brief.md,docs/context.md" || mission.HumanChannel != formations.HumanChannelSession {
+				t.Fatalf("remote mission files = %q, human channel = %q", mission.Files, mission.HumanChannel)
 			}
 			if review, signoff := gateTitled(t, board, "Review"), gateTitled(t, board, "Sign-off"); strings.Join(review.Files, ",") != "rubrics/quality.md" || len(signoff.Files) != 0 {
 				t.Fatalf("remote gate files: Review %q, Sign-off %q", review.Files, signoff.Files)
@@ -580,6 +583,7 @@ func TestRemoteAuthoringRetriesAWriteRaceThenGivesUp(t *testing.T) {
 func TestRemoteFieldErrorsKeepOfflineCodes(t *testing.T) {
 	for code, sentinel := range map[string]error{
 		"INVALID_BEAD_ID":         formations.ErrInvalidBeadID,
+		"INVALID_HUMAN_CHANNEL":   formations.ErrInvalidHumanChannel,
 		"INVALID_CONTROLLER_ROLE": formations.ErrInvalidControllerRole,
 		"INVALID_PORT_DIRECTION":  formations.ErrInvalidPortDirection,
 		"INVALID_AGENT_CARD":      formations.ErrInvalidAgentCard,

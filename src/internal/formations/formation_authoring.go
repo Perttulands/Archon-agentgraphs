@@ -204,15 +204,17 @@ type FormationTypeRequest struct {
 }
 
 // MissionUpdateRequest changes only the fields it sets. An empty value clears
-// it; a Bead ID that is given must be a safe Beads issue ID.
+// it; a Bead ID that is given must be a safe Beads issue ID, and a human
+// channel must be notify or session, with notify stored as the default.
 type MissionUpdateRequest struct {
-	MissionID string
-	Title     *string
-	Goal      *string
-	BeadID    *string
-	Files     *[]string // replaces the file references; empty clears them
-	InputHint *string
-	UpdatedBy string
+	MissionID    string
+	Title        *string
+	Goal         *string
+	BeadID       *string
+	Files        *[]string // replaces the file references; empty clears them
+	InputHint    *string
+	HumanChannel *string
+	UpdatedBy    string
 }
 
 type GateJudgeRequest struct {
@@ -222,13 +224,14 @@ type GateJudgeRequest struct {
 }
 
 type MissionCreateRequest struct {
-	Title     string
-	Goal      string
-	BeadID    string
-	Files     []string
-	X         int
-	Y         int
-	UpdatedBy string
+	Title        string
+	Goal         string
+	BeadID       string
+	Files        []string
+	HumanChannel string
+	X            int
+	Y            int
+	UpdatedBy    string
 }
 
 type FormationNode struct {
@@ -309,6 +312,29 @@ type MissionNode struct {
 	Files []string `json:"files,omitempty"`
 	// InputHint tells whoever starts the mission what its run brief should contain.
 	InputHint string `json:"inputHint,omitempty"`
+	// HumanChannel is how the mission's runs reach the operator: empty for the
+	// default notify channel, or session (ADR-0019).
+	HumanChannel string `json:"humanChannel,omitempty"`
+}
+
+// Mission human channels (ADR-0019). The default, notify, is stored as absent.
+const (
+	HumanChannelNotify  = "notify"
+	HumanChannelSession = "session"
+)
+
+// NormalizeHumanChannel returns the stored form of a mission human channel:
+// empty for notify or no value, session for session. Any other value is an
+// ErrInvalidHumanChannel naming the allowed values.
+func NormalizeHumanChannel(value string) (string, error) {
+	switch channel := strings.TrimSpace(value); channel {
+	case "", HumanChannelNotify:
+		return "", nil
+	case HumanChannelSession:
+		return channel, nil
+	default:
+		return "", fmt.Errorf("%w: mission humanChannel %q must be notify or session", ErrInvalidHumanChannel, value)
+	}
 }
 
 type LayoutNode struct {
@@ -1333,6 +1359,14 @@ func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteO
 	if req.BeadID != nil && *req.BeadID != "" && !isSafeBeadsIssueID(*req.BeadID) {
 		return nil, invalidBeadID("mission beadId", *req.BeadID)
 	}
+	var humanChannel string
+	if req.HumanChannel != nil {
+		channel, err := NormalizeHumanChannel(*req.HumanChannel)
+		if err != nil {
+			return nil, err
+		}
+		humanChannel = channel
+	}
 	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, _ *BoardDocument) ([]byte, error) {
 		lines := splitLines(raw)
 		for _, field := range []struct {
@@ -1365,6 +1399,14 @@ func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteO
 				lines = removeScalarInLineRange(lines, start+1, end, "inputHint")
 			} else {
 				lines = setScalarInLineRange(lines, start+1, end, "inputHint", renderString(*req.InputHint))
+			}
+		}
+		if req.HumanChannel != nil {
+			start, end, _ = findMissionBlockByID(lines, req.MissionID)
+			if humanChannel == "" {
+				lines = removeScalarInLineRange(lines, start+1, end, "humanChannel")
+			} else {
+				lines = setScalarInLineRange(lines, start+1, end, "humanChannel", renderString(humanChannel))
 			}
 		}
 		return renderTOMLLines(lines), nil
@@ -1498,6 +1540,10 @@ func (s *Store) createMission(slug string, req MissionCreateRequest, opts WriteO
 	if req.BeadID != "" && !isSafeBeadsIssueID(req.BeadID) {
 		return nil, invalidBeadID("mission beadId", req.BeadID)
 	}
+	humanChannel, err := NormalizeHumanChannel(req.HumanChannel)
+	if err != nil {
+		return nil, err
+	}
 	if err := validateSlug(slug); err != nil {
 		return nil, err
 	}
@@ -1509,11 +1555,12 @@ func (s *Store) createMission(slug string, req MissionCreateRequest, opts WriteO
 		title = "Mission"
 	}
 	mission := MissionNode{
-		ID:     newPrefixedID("mis"),
-		Title:  title,
-		Goal:   req.Goal,
-		BeadID: req.BeadID,
-		Files:  normalizeFileRefs(req.Files),
+		ID:           newPrefixedID("mis"),
+		Title:        title,
+		Goal:         req.Goal,
+		BeadID:       req.BeadID,
+		Files:        normalizeFileRefs(req.Files),
+		HumanChannel: humanChannel,
 	}
 
 	board, layout, err := s.createNode(slug, opts, nodeCreateCandidate{
@@ -2141,6 +2188,9 @@ func appendMissionBlock(raw []byte, mission MissionNode) []byte {
 	b.WriteString("beadId = " + renderString(mission.BeadID) + "\n")
 	if len(mission.Files) > 0 {
 		b.WriteString("files = " + renderStringArray(mission.Files) + "\n")
+	}
+	if mission.HumanChannel != "" {
+		b.WriteString("humanChannel = " + renderString(mission.HumanChannel) + "\n")
 	}
 	return []byte(b.String())
 }
@@ -3280,9 +3330,20 @@ func parseMissionNodes(raw []byte) []MissionNode {
 			current.BeadID = value
 		case "files":
 			current.Files = parseStringArray(value)
+		case "humanChannel":
+			current.HumanChannel = decodedHumanChannel(value)
 		}
 	}
 	return missions
+}
+
+// decodedHumanChannel normalizes a stored channel. A value authoring would
+// reject is kept as written, so board validation can report it.
+func decodedHumanChannel(value string) string {
+	if channel, err := NormalizeHumanChannel(value); err == nil {
+		return channel
+	}
+	return value
 }
 
 func parseLayoutNodes(raw []byte) []LayoutNode {

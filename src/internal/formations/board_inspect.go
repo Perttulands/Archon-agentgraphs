@@ -13,6 +13,7 @@ const (
 	FindingGateNotRoutable                           = "gate_not_routable"
 	FindingInvalidCodeGateProfile                    = "invalid_code_gate_profile"
 	FindingInvalidFormationType                      = "invalid_formation_type"
+	FindingInvalidHumanChannel                       = "invalid_human_channel"
 	FindingLegacyScriptGate                          = LegacyScriptGateMigrationCode
 	FindingLegacyInlineVerificationRequiresMigration = LegacyInlineVerificationMigrationCode
 	FindingMissionCount                              = "mission_count"
@@ -176,6 +177,13 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 		})
 	}
 	for _, mission := range board.Missions {
+		if _, err := NormalizeHumanChannel(mission.HumanChannel); err != nil {
+			report.Errors = append(report.Errors, BoardFinding{
+				Code:    FindingInvalidHumanChannel,
+				NodeID:  mission.ID,
+				Message: fmt.Sprintf("mission %q has human channel %q; set it to notify or session with mission update --human-channel", mission.ID, mission.HumanChannel),
+			})
+		}
 		if len(outgoingConnections(board.Connections, mission.ID)) == 0 {
 			report.Warnings = append(report.Warnings, BoardFinding{
 				Code:    FindingMissionNotRunnable,

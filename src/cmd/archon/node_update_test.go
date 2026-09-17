@@ -61,6 +61,31 @@ label = "Input"
 		t.Fatalf("input hint not set: %+v", board.Missions[0])
 	}
 
+	if _, stderr, code := archon("mission", "update", "rename", "mis_frame", "--human-channel", "session"); code != 0 {
+		t.Fatalf("set human channel: %d %s", code, stderr)
+	}
+	if stdout, stderr, code := archon("board", "inspect", "rename", "--json"); code != 0 || !strings.Contains(stdout, `"humanChannel": "session"`) {
+		t.Fatalf("board inspect after session: %d %s %s", code, stdout, stderr)
+	}
+	for _, clear := range []string{"notify", ""} {
+		if _, stderr, code := archon("mission", "update", "rename", "mis_frame", "--human-channel", clear); code != 0 {
+			t.Fatalf("human channel %q: %d %s", clear, code, stderr)
+		}
+		if raw := readArchonFile(t, store.BoardPath("rename")); strings.Contains(raw, "humanChannel") {
+			t.Fatalf("human channel %q leaves the key:\n%s", clear, raw)
+		}
+		if _, _, code := archon("mission", "update", "rename", "mis_frame", "--human-channel", "session"); code != 0 {
+			t.Fatal("set session again")
+		}
+	}
+	before := readArchonFile(t, store.BoardPath("rename"))
+	if _, stderr, code := archon("mission", "update", "rename", "mis_frame", "--human-channel", "email"); code == 0 || !strings.Contains(stderr, "must be notify or session") {
+		t.Fatalf("unknown human channel: %d %s", code, stderr)
+	}
+	if after := readArchonFile(t, store.BoardPath("rename")); after != before {
+		t.Fatalf("a rejected human channel saved the board:\n%s", after)
+	}
+
 	if _, stderr, code := archon("mission", "update", "rename", "mis_frame"); code != 2 || !strings.Contains(stderr, "Only the flags you give change the mission") {
 		t.Fatalf("update without fields: %d %s", code, stderr)
 	}

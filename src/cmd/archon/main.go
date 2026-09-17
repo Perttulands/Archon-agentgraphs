@@ -1240,6 +1240,23 @@ func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Wr
 	return 0
 }
 
+const (
+	humanChannelUsage  = "how human gates reach the operator: notify (the default) or session"
+	missionCreateUsage = "usage: archon mission create <board> [--title <title>] [--goal <goal>] [--bead <beads-id>] [--file <path>]... [--human-channel notify|session] [--x n] [--y n] [--json]"
+	missionUpdateUsage = "usage: archon mission update <board> <mission> [--title text] [--goal text] [--bead beads-id] [--file path]... [--input-hint text] [--human-channel notify|session] [--json]\n" +
+		"Only the flags you give change the mission; an empty value clears that field."
+)
+
+// missionUpdateGiven reports whether a mission update names any field to change.
+func missionUpdateGiven(given map[string]bool) bool {
+	for _, name := range []string{"title", "goal", "bead", "file", "input-hint", "human-channel"} {
+		if given[name] {
+			return true
+		}
+	}
+	return false
+}
+
 func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("mission create", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -1248,6 +1265,7 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 	beadID := fs.String("bead", "", "project Beads id")
 	var files stringList
 	fs.Var(&files, "file", "reference file path; repeat for more")
+	humanChannel := fs.String("human-channel", "", humanChannelUsage)
 	x := fs.Int("x", 0, "layout x coordinate")
 	y := fs.Int("y", 0, "layout y coordinate")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
@@ -1256,7 +1274,7 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon mission create <board> [--title <title>] [--goal <goal>] [--bead <beads-id>] [--file <path>]... [--x n] [--y n] [--json]")
+		fmt.Fprintln(stderr, missionCreateUsage)
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -1272,13 +1290,14 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
 	}
 	result, err := store.CreateMission(slug, formations.MissionCreateRequest{
-		Title:     *title,
-		Goal:      *goal,
-		BeadID:    *beadID,
-		Files:     files,
-		X:         createX,
-		Y:         createY,
-		UpdatedBy: *updatedBy,
+		Title:        *title,
+		Goal:         *goal,
+		BeadID:       *beadID,
+		Files:        files,
+		HumanChannel: *humanChannel,
+		X:            createX,
+		Y:            createY,
+		UpdatedBy:    *updatedBy,
 	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
 		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
@@ -1422,6 +1441,7 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	var files stringList
 	fs.Var(&files, "file", "reference file path, replacing the current ones; repeat for more, or give an empty value to clear")
 	inputHint := fs.String("input-hint", "", "what a run brief for this mission should contain")
+	humanChannel := fs.String("human-channel", "", humanChannelUsage)
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -1429,9 +1449,8 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	given := map[string]bool{}
 	fs.Visit(func(current *flag.Flag) { given[current.Name] = true })
-	if fs.NArg() != 2 || !given["title"] && !given["goal"] && !given["bead"] && !given["file"] && !given["input-hint"] {
-		fmt.Fprintln(stderr, "usage: archon mission update <board> <mission> [--title text] [--goal text] [--bead beads-id] [--file path]... [--input-hint text] [--json]")
-		fmt.Fprintln(stderr, "Only the flags you give change the mission; an empty value clears that field.")
+	if fs.NArg() != 2 || !missionUpdateGiven(given) {
+		fmt.Fprintln(stderr, missionUpdateUsage)
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -1462,6 +1481,9 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	if given["input-hint"] {
 		update.InputHint = inputHint
+	}
+	if given["human-channel"] {
+		update.HumanChannel = humanChannel
 	}
 	result, err := store.UpdateMission(slug, update, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
@@ -2711,6 +2733,8 @@ func archonErrorCode(err error) string {
 		return "conflict"
 	case errors.Is(err, formations.ErrInvalidBeadID):
 		return "invalid_bead_id"
+	case errors.Is(err, formations.ErrInvalidHumanChannel):
+		return "invalid_human_channel"
 	case errors.Is(err, formations.ErrInvalidControllerRole):
 		return "invalid_controller_role"
 	case errors.Is(err, formations.ErrInvalidPortDirection):

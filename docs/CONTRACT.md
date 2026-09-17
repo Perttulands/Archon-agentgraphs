@@ -388,7 +388,13 @@ Nodes keep their IDs when edited: `archon formation rename <board> <formation>
 <title>`, `archon mission update <board> <mission>` with `--title`, `--goal`,
 `--bead` or `--input-hint`, and `archon gate update --title` change only what
 they name, and an empty value clears a field. A mission's input hint says what a
-run brief should contain; Start mission shows it. Missions and gates carry
+run brief should contain; Start mission shows it. A mission's `humanChannel`
+(`--human-channel` on `mission create|update`) records how its runs' human gates
+reach the operator ([ADR-0019](adr/0019-human-channel-agent-session.md)):
+`notify`, the default, or `session`. `notify` and an empty value store no
+channel, any other value is refused with the allowed values and nothing is
+saved, and a run keeps the channel of its frozen board. Asks still go to
+`--notify-command` for either value until session delivery lands. Missions and gates carry
 reference files, such as a gate's rubric, the way formation briefs do: `--file
 <path>` on `mission create|update` and `gate create|update` (API `files`),
 repeated for more. On update the given files replace the list, and `--file ''`
