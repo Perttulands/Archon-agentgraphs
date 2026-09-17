@@ -51,16 +51,16 @@ export function FileActions({ request, preview, mode, onMode }: {
 }
 
 export function useFilePreview(request: FileRequest): { preview: FilePreview | null; error: string } {
-  const [state, setState] = useState<{ id: string; preview: FilePreview | null; error: string }>({ id: '', preview: null, error: '' })
+  const [state, setState] = useState<{ request: FileRequest | null; preview: FilePreview | null; error: string }>({ request: null, preview: null, error: '' })
   useEffect(() => {
     let current = true
     request.load().then(
-      preview => { if (current) setState({ id: request.id, preview, error: '' }) },
-      reason => { if (current) setState({ id: request.id, preview: null, error: reason instanceof Error ? reason.message : String(reason) }) },
+      preview => { if (current) setState({ request, preview, error: '' }) },
+      reason => { if (current) setState({ request, preview: null, error: reason instanceof Error ? reason.message : String(reason) }) },
     )
     return () => { current = false }
   }, [request])
-  return state.id === request.id ? state : { preview: null, error: '' }
+  return state.request === request ? state : { preview: null, error: '' }
 }
 
 export default function FileView({ request, preview, error, mode, onOpen }: {

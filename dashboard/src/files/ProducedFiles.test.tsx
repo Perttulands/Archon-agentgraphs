@@ -168,6 +168,65 @@ describe('produced files', () => {
     expect(rectOf(await screen.findByRole('dialog', { name: 'file paper.pdf' }))).toMatchObject({ width: 720, height: 560, left: 440 + 28, top: 220 + 28 })
   })
 
+  it('refreshes a revised output in its existing moved window when the latest chip is opened', async () => {
+    const route = '/api/formations/runs/run_1/evidence/nodes/fmn_plan'
+    const previous = routes[route]
+    try {
+      const { rerender } = render(<Cockpit produced={produced} final />)
+      const chip = () => within(screen.getByTestId('card-plan')).getByRole('button', { name: 'report' })
+      fireEvent.click(chip())
+      const report = await screen.findByRole('dialog', { name: 'file report' })
+      expect(await within(report).findByText(/Plan: three steps/)).toBeInTheDocument()
+
+      const initial = rectOf(report)
+      const title = report.querySelector('.fwin-head')!
+      fireEvent.pointerDown(title, { button: 0, pointerId: 1, clientX: 500, clientY: 230 })
+      fireEvent.pointerMove(title, { pointerId: 1, clientX: 580, clientY: 290 })
+      fireEvent.pointerUp(title, { pointerId: 1, clientX: 580, clientY: 290 })
+      const placed = rectOf(report)
+      expect(placed).not.toEqual(initial)
+
+      const revised: NodeEvidence = { ...plan, attempts: [...plan.attempts!, {
+        attempt: 2, inputs: [], dispatches: [], output: { seq: 80, text: text('Revised plan: two steps'), ports: [] },
+      }] }
+      routes[route] = { evidence: revised }
+      rerender(<Cockpit produced={[producedFromEvidence(revised)!, produced[1]]} final />)
+      fireEvent.click(chip())
+      expect(await within(report).findByText('Revised plan: two steps')).toBeInTheDocument()
+      expect(report).not.toHaveTextContent('Plan: three steps')
+      expect(screen.getAllByRole('dialog')).toEqual([report])
+      expect(rectOf(report)).toEqual(placed)
+
+      fireEvent.click(chip())
+      expect(await within(report).findByText('Revised plan: two steps')).toBeInTheDocument()
+      expect(rectOf(report)).toEqual(placed)
+    } finally {
+      routes[route] = previous
+    }
+  })
+
+  it('refreshes an artifact overwritten at the same path without replacing its window', async () => {
+    const route = '/api/formations/runs/run_1/evidence/artifacts/final-review.md'
+    const previous = routes[route]
+    try {
+      render(<Cockpit produced={produced} final />)
+      const chip = within(screen.getByTestId('run-produced')).getByRole('button', { name: 'final-review.md' })
+      fireEvent.click(chip)
+      const review = await screen.findByRole('dialog', { name: 'file final-review.md' })
+      expect(await within(review).findByText('revise')).toBeInTheDocument()
+      const placed = rectOf(review)
+      routes[route] = { artifact: { name: 'final-review.md', size: 13, modifiedAt: 'later', kind: 'markdown', text: text('Verdict: pass') } }
+
+      fireEvent.click(chip)
+      expect(await within(review).findByText('Verdict: pass')).toBeInTheDocument()
+      expect(review).not.toHaveTextContent('revise')
+      expect(screen.getAllByRole('dialog')).toEqual([review])
+      expect(rectOf(review)).toEqual(placed)
+    } finally {
+      routes[route] = previous
+    }
+  })
+
   it('shows a PDF in the browser viewer from the raw route', async () => {
     render(<Cockpit produced={produced} final />)
     fireEvent.click(screen.getByRole('button', { name: 'Open paper.pdf' }))

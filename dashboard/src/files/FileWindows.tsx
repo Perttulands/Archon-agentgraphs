@@ -12,7 +12,7 @@ const FileWindow = lazy(() => import('./FileWindow'))
 
 export interface FileWindows {
   /**
-   * Open a file in its own window, or bring its open window forward. A new
+   * Open a file in its own window, or refresh and raise its open window. A new
    * window opens beside `anchor`, in viewport pixels, or centred without one.
    */
   open: (request: FileRequest, anchor?: WindowRect | null) => void
@@ -46,7 +46,13 @@ export function FileWindowsProvider({ stack, children }: { stack: WindowStack; c
   const stackRef = useRef(stack)
   stackRef.current = stack
   const open = useCallback((request: FileRequest, anchor?: WindowRect | null) => {
-    setFiles(current => current.some(file => file.request.id === request.id) ? current : [...current, { request, anchor: anchor || null }])
+    // Opening is also a read request, even when the caller reuses the same
+    // object or a later attempt overwrites the same artifact path. Keep the
+    // window identity and its original anchor so its geometry stays put.
+    const fresh = { ...request }
+    setFiles(current => current.some(file => file.request.id === request.id)
+      ? current.map(file => file.request.id === request.id ? { ...file, request: fresh } : file)
+      : [...current, { request: fresh, anchor: anchor || null }])
     stackRef.current.focus(request.id)
   }, [])
   const close = useCallback((id: string) => setFiles(current => current.filter(file => file.request.id !== id)), [])
