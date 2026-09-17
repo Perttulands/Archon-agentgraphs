@@ -3330,6 +3330,8 @@ func parseMissionNodes(raw []byte) []MissionNode {
 			current.BeadID = value
 		case "files":
 			current.Files = parseStringArray(value)
+		case "inputHint":
+			current.InputHint = value
 		case "humanChannel":
 			current.HumanChannel = decodedHumanChannel(value)
 		}

@@ -143,3 +143,21 @@ func TestRunFreezesTheMissionHumanChannel(t *testing.T) {
 		t.Fatalf("frozen channel %q, draft channel %q; want the run to keep session", frozen.Missions[0].HumanChannel, draft.Missions[0].HumanChannel)
 	}
 }
+
+func TestFallbackBoardParserKeepsMissionInputHintAndHumanChannel(t *testing.T) {
+	// A repeated key fails the TOML decoder, so the board is read by the fallback parser.
+	raw := s4MissionOnlyBoardFixture() + `inputHint = "Paste the operator's sketch"
+humanChannel = "session"
+title = "Showcase again"
+`
+	if _, err := decodeBoardTOML([]byte(raw)); err == nil {
+		t.Fatal("fixture decodes cleanly; it must exercise the fallback parser")
+	}
+	board, err := parseBoard([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(board.Missions) != 1 || board.Missions[0].InputHint != "Paste the operator's sketch" || board.Missions[0].HumanChannel != HumanChannelSession {
+		t.Fatalf("fallback missions = %+v, want the input hint and session channel kept", board.Missions)
+	}
+}
