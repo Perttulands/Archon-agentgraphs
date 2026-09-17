@@ -69,12 +69,12 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
     { nodeId: peers.id, slotId: second.id, createdSeq: 22, deliveredSeq: 13 },
   ]
   const waitingOn = [{ gateId: answerGate.id, requestedSeq }]
-  const run = {
+  let run = {
     runId: talkRunId, status: 'waiting_human', final: false, boardSlug: 'wayfinding', missionId, eventCount: 13, humanChannel: 'session',
     waitingGates: [{ gateId: answerGate.id, requestedSeq, askedSeats: asked, ...(options.fallbackReason ? { fallbackReason: options.fallbackReason } : {}) }],
     onCallSeats: asked.map(seat => ({ nodeId: seat.nodeId, slotId: seat.slotId, createdSeq: seat.createdSeq, keptSeq: 9, waitingOn })),
   }
-  const events = [
+  let events = [
     { seq: 1, type: 'run_started' },
     { seq: 2, type: 'node_started', nodeId: territory.id, attempt: 1 },
     { seq: 3, type: 'node_output', nodeId: territory.id, status: 'done' },
@@ -120,7 +120,8 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
   const frames = new Map<number, string[]>()
   await page.routeWebSocket('**/seats/*/terminal', socket => {
     const createdSeq = Number(socket.url().match(/seats\/(\d+)\/terminal/)![1])
-    const received: string[] = []
+    // A seat's frames from every socket to it, such as a talk window's and a Peek's.
+    const received = frames.get(createdSeq) || []
     frames.set(createdSeq, received)
     socket.onMessage(data => {
       const value = Buffer.isBuffer(data) ? data.toString() : data
@@ -131,5 +132,10 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
   })
   const typed = (createdSeq: number) => (frames.get(createdSeq) || []).filter(frame => frame.startsWith('0')).map(frame => frame.slice(1)).join('')
   const resizes = (createdSeq: number) => (frames.get(createdSeq) || []).filter(frame => frame.startsWith('1')).map(frame => JSON.parse(frame.slice(1)) as { columns: number; rows: number })
-  return { ...fixture, typed, resizes }
+  /** The operator's decision is recorded, as a seat's relayed command would: the request stops waiting, and the kept seats hold no ask until they close. */
+  const decide = () => {
+    events = [...events, { seq: 14, type: 'human_verdict_recorded', nodeId: answerGate.id, gateId: answerGate.id }]
+    run = { ...run, status: 'running', eventCount: 14, waitingGates: [], onCallSeats: run.onCallSeats.map(seat => ({ ...seat, waitingOn: [] })) }
+  }
+  return { ...fixture, typed, resizes, decide }
 }

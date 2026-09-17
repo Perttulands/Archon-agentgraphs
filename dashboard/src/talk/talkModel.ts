@@ -12,6 +12,9 @@ export interface TalkSeat {
   windowId: string
   runId: string
   createdSeq: number
+  /** The request the seat was asked, which the window was opened to talk through. */
+  gateId: string
+  requestedSeq: number
   nodeId: string
   formationTitle: string
   slotLabel: string
@@ -45,12 +48,15 @@ export function gateTalk(
   if (!waiting) return null
   const fallbackReason = waiting.fallbackReason || ''
   if (run.humanChannel !== 'session' && !fallbackReason) return null
-  const seats = (waiting.askedSeats || []).map(asked => talkSeat(board, run.runId, agents, asked))
+  const seats = (waiting.askedSeats || []).map(asked => talkSeat(board, run.runId, agents, gate, asked))
   const formationTitle = seats[0]?.formationTitle || askingFormationTitle(board, gate.gateId)
   return { formationTitle, seats, fallbackReason }
 }
 
-function talkSeat(board: BoardDocument | null | undefined, runId: string, agents: readonly AgentProjection[], asked: AskedSeat): TalkSeat {
+function talkSeat(
+  board: BoardDocument | null | undefined, runId: string, agents: readonly AgentProjection[],
+  gate: { gateId: string; requestedSeq: number }, asked: AskedSeat,
+): TalkSeat {
   const formation = board?.formations.find(node => node.id === asked.nodeId)
   const slot = formation?.slots.find(item => item.id === asked.slotId)
   const persona = slot?.agentId ? agents.find(agent => agent.id === slot.agentId) : undefined
@@ -60,6 +66,8 @@ function talkSeat(board: BoardDocument | null | undefined, runId: string, agents
     windowId: talkSeatWindowId(runId, asked.createdSeq),
     runId,
     createdSeq: asked.createdSeq,
+    gateId: gate.gateId,
+    requestedSeq: gate.requestedSeq,
     nodeId: asked.nodeId,
     formationTitle: formation?.title || asked.nodeId,
     slotLabel: slot?.label || asked.slotId,
@@ -67,6 +75,19 @@ function talkSeat(board: BoardDocument | null | undefined, runId: string, agents
     harness,
     label: [agent, harnessName(harness)].filter(Boolean).join(' · '),
   }
+}
+
+/**
+ * Where an open talk seat stands: still holding an ask for the operator, or
+ * past it because the request it was asked is no longer waiting while the run
+ * goes on, so the agent closes once idle. Null when the run tells neither, such
+ * as a run that ended, or asked seats lost while the request still waits.
+ */
+export function talkSeatStatus(run: RunStatusProjection | null | undefined, seat: TalkSeat): 'waiting' | 'decided' | null {
+  if (!run || run.final || run.runId !== seat.runId || !run.onCallSeats) return null
+  if (run.onCallSeats.some(kept => kept.createdSeq === seat.createdSeq && kept.waitingOn.length)) return 'waiting'
+  const pending = run.waitingGates?.some(gate => gate.gateId === seat.gateId && gate.requestedSeq === seat.requestedSeq)
+  return pending ? null : 'decided'
 }
 
 /** The nearest formation behind a gate's input, following that input back through gates. */

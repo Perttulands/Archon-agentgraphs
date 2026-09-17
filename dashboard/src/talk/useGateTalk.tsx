@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
 import type { AgentProjection, BoardDocument, RunStatusProjection } from '../components/formationsTypes'
 import type { WindowRect } from '../windows/windowGeometry'
-import { gateTalk, type GateTalk, type TalkSeat } from './talkModel'
+import { gateTalk, talkSeatStatus, type GateTalk, type TalkSeat } from './talkModel'
 
 // The terminal is its own chunk, loaded when the operator first talks.
 const SeatTalkWindow = lazy(() => import('./SeatTalkWindow'))
@@ -48,7 +48,7 @@ export function useGateTalk({ board, run, agents, gate, focusWindow }: {
   const windows = open.length ? (
     <Suspense fallback={null}>
       {open.map(item => (
-        <SeatTalkWindow key={item.seat.windowId} seat={item.seat} focusOnOpen={item.takesFocus}
+        <SeatTalkWindow key={item.seat.windowId} seat={item.seat} status={talkSeatStatus(run, item.seat)} focusOnOpen={item.takesFocus}
           anchor={() => windowRect(item.after) || item.anchor}
           onClose={() => setOpen(current => current.filter(other => other.seat.windowId !== item.seat.windowId))} />
       ))}

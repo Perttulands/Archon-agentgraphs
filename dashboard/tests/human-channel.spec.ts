@@ -110,6 +110,21 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   const peek = page.getByRole('dialog', { name: 'Formation terminal Peek' })
   await expect(peek.getByRole('navigation', { name: 'Run seats' }).getByText('on call')).toHaveCount(peers.slots!.length)
   await expect(peek.locator('.peek-on-call')).toHaveText('On call · waiting for you')
+  await peek.getByRole('button', { name: 'Close terminal Peek' }).click()
+
+  // Once a seat records the decision, the open windows say so and stay, still taking typing.
+  await expect(planner.getByRole('status').filter({ hasText: 'Decision recorded' })).toHaveCount(0)
+  fixture.decide()
+  await expect(planner.getByText('Decision recorded; this agent closes when idle.')).toBeVisible()
+  await expect(codex.getByText('Decision recorded; this agent closes when idle.')).toBeVisible()
+  await expect(planner.getByText('On call · waiting for you')).toHaveCount(0)
+  await expect(planner.locator('.peek-foot')).toContainText('Type to talk · select to copy')
+  await expect(page.getByRole('button', { name: 'Talk with Question peers' })).toHaveCount(0)
+  await page.getByRole('radio', { name: 'Canvas' }).click()
+  await planner.locator('.terminal-surface-host').click()
+  await page.keyboard.type('thanks')
+  await expect.poll(() => fixture.typed(21)).toContain('thanks')
+  await evidenceShot(page, 'talk-decision-recorded')
   expect(fixture.writes).toEqual([])
 })
 

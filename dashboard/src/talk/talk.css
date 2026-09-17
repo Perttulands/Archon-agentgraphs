@@ -11,3 +11,4 @@
   border: 1px solid var(--divider); border-radius: 3px; padding: 3px 8px; cursor: pointer;
 }
 .talk-window button:not(.fwin-close):hover { color: var(--text-primary); border-color: var(--accent); }
+.talk-decided { margin: 0; padding: 6px 12px; flex-shrink: 0; border-bottom: 1px solid var(--divider); background: var(--surface-secondary); color: var(--text-secondary); font-size: 11px; }

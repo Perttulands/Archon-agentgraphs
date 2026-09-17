@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { harnessName } from '../components/formationsCockpitVisuals'
 import { harnessIcon } from '../components/harnessIcons'
 import TerminalSurface from '../terminal/TerminalSurface'
-import { fetchRunSeats, seatSocketUrl, seatWaitsForYou, type RunSeat } from '../terminal/seatApi'
+import { fetchRunSeats, seatSocketUrl, type RunSeat } from '../terminal/seatApi'
 import type { ConnectionState } from '../terminal/terminalSession'
 import FloatingWindow from '../windows/FloatingWindow'
 import type { WindowRect } from '../windows/windowGeometry'
@@ -16,8 +16,10 @@ const connectionText: Record<ConnectionState, string> = {
 }
 
 /** One asked seat's terminal, opened to talk a human gate through with its agent. Typing goes to the agent. */
-export default function SeatTalkWindow({ seat, anchor, focusOnOpen, onClose }: {
+export default function SeatTalkWindow({ seat, status, anchor, focusOnOpen, onClose }: {
   seat: TalkSeat
+  /** From the run projection, so it follows the decision while the window is open. */
+  status: 'waiting' | 'decided' | null
   /** Take the keyboard once the terminal is live, so typing goes straight to the agent. */
   focusOnOpen: boolean
   anchor: () => WindowRect | null
@@ -61,19 +63,20 @@ export default function SeatTalkWindow({ seat, anchor, focusOnOpen, onClose }: {
   )
   const actions = (
     <>
-      {seatWaitsForYou(live ?? undefined) ? <span className="peek-on-call">On call · waiting for you</span> : null}
+      {status === 'waiting' ? <span className="peek-on-call">On call · waiting for you</span> : null}
       <button type="button" className="talk-refresh" onClick={() => void refresh()}>Refresh</button>
     </>
   )
   return (
     <FloatingWindow id={seat.windowId} kind="peek" label={`Talk with ${seat.label}`} title={title} actions={actions}
       defaultSize={{ width: 680, height: 420 }} anchor={anchor} className="talk-window" onClose={onClose}>
+      {status === 'decided' ? <p className="talk-decided" role="status">Decision recorded; this agent closes when idle.</p> : null}
       {terminal
         ? <TerminalSurface key={`${terminal.createdSeq}-${generation}`} seat={terminal} focusOnOpen={focusOnOpen} onStateChange={setConnection} />
         : <p className="peek-message" role="status">{message}</p>}
       <footer className="peek-foot">
         <span role="status">{terminal ? connectionText[connection] : 'No live terminal'}</span>
-        <span>Talk it through · the agent records the decision you confirm</span>
+        <span>{status === 'decided' ? 'Type to talk · select to copy' : 'Talk it through · the agent records the decision you confirm'}</span>
       </footer>
     </FloatingWindow>
   )

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BoardDocument, RunStatusProjection } from '../components/formationsTypes'
-import { askingFormationTitle, gateTalk } from './talkModel'
+import { askingFormationTitle, gateTalk, talkSeatStatus } from './talkModel'
 
 const ports = { inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Output' }] }
 const board = {
@@ -54,5 +54,21 @@ describe('talking with the agents a gate asked', () => {
     expect(gateTalk(board, run({ gateId: 'answers', requestedSeq: 9 }), agents, { gateId: 'answers', requestedSeq: 9 })).toBeNull()
     expect(gateTalk(board, { ...fallback, final: true }, agents, { gateId: 'answers', requestedSeq: 9 })).toBeNull()
     expect(gateTalk(board, fallback, agents, { gateId: 'answers', requestedSeq: 8 })).toBeNull()
+  })
+
+  it('follows an open seat from waiting for the operator to past the decision', () => {
+    const asked = { nodeId: 'peers', slotId: 'slot_a', createdSeq: 5, deliveredSeq: 12 }
+    const waiting = { ...run({ gateId: 'answers', requestedSeq: 9, askedSeats: [asked] }, 'session'),
+      onCallSeats: [{ nodeId: 'peers', slotId: 'slot_a', createdSeq: 5, keptSeq: 8, waitingOn: [{ gateId: 'answers', requestedSeq: 9 }] }] }
+    const seat = gateTalk(board, waiting, agents, { gateId: 'answers', requestedSeq: 9 })!.seats[0]
+    expect(talkSeatStatus(waiting, seat)).toBe('waiting')
+    const decided = { ...waiting, status: 'running', waitingGates: [], onCallSeats: [{ ...waiting.onCallSeats[0], waitingOn: [] }] }
+    expect(talkSeatStatus(decided, seat)).toBe('decided')
+    // Released seats leave the projection; the decision still reads as recorded.
+    expect(talkSeatStatus({ ...decided, onCallSeats: [] }, seat)).toBe('decided')
+    // Seats lost while the request still waits, a finished run, or a daemon without the projection say nothing.
+    expect(talkSeatStatus({ ...waiting, onCallSeats: [] }, seat)).toBeNull()
+    expect(talkSeatStatus({ ...decided, final: true, status: 'canceled' }, seat)).toBeNull()
+    expect(talkSeatStatus({ ...decided, onCallSeats: undefined }, seat)).toBeNull()
   })
 })

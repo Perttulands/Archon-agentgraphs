@@ -95,7 +95,7 @@ describe('HumanGateAnswerPanel', () => {
 
   it('offers talking with the asked agents beside answering, and names a fallback instead', () => {
     const onTalk = vi.fn()
-    const seat = { windowId: 'talk:run_1:5', runId: 'run_1', createdSeq: 5, nodeId: 'fmn_peers', formationTitle: 'Question peers', slotLabel: 'Peer', agent: 'Delivery Planner', harness: 'claude-code', label: 'Delivery Planner · Claude Code' }
+    const seat = { windowId: 'talk:run_1:5', runId: 'run_1', createdSeq: 5, gateId: 'gate_questions', requestedSeq: 9, nodeId: 'fmn_peers', formationTitle: 'Question peers', slotLabel: 'Peer', agent: 'Delivery Planner', harness: 'claude-code', label: 'Delivery Planner · Claude Code' }
     const panel = (talk: Parameters<typeof HumanGateAnswerPanel>[0]['talk']) => (
       <HumanGateAnswerPanel runId="run_1" gateId="gate_questions" requestedSeq={9} gateTitle="Operator answers" criterion="" talk={talk}
         upstream={{ state: 'loading' }} onDecide={vi.fn(async () => true)} />
