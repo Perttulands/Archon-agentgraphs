@@ -186,69 +186,38 @@ func TestS5BlockedEpochRejectsContinuationUntilResume(t *testing.T) {
 	}
 }
 
-func TestS5EngineResumeSkipsCompletedNodesAndContinuesFromLedger(t *testing.T) {
+func TestEngineResumeDoesNotReplenishDispatchBudget(t *testing.T) {
 	store, personas := s4RunFixture(t)
-	store.Now = fixedClock()
-	personas.Now = fixedClock()
 	createS4Persona(t, personas, "scout")
 	writeFixture(t, store.BoardPath("session-search"), s4CascadeBoardFixture())
-	board, err := store.ReadBoard("session-search")
-	if err != nil {
-		t.Fatalf("read board: %v", err)
-	}
 	executor := &fakeRunExecutor{}
 	engine := NewRunEngine(store, personas, executor)
-
 	status, err := engine.RunMission("session-search", RunStartRequest{
-		MissionID:         "mis_showcase",
-		Actor:             "agent:test",
-		ExpectedBoardETag: board.ETag,
-		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 1, MaxAttempts: 2},
+		MissionID: "mis_showcase", Limits: RunLimits{MaxDispatch: 1, MaxAttempts: 2},
 	})
 	if err != nil {
-		t.Fatalf("run mission: %v", err)
+		t.Fatal(err)
 	}
-	if status.Status != RunStatusBlocked || !status.ResumeAllowed {
-		t.Fatalf("initial status = %+v, want resumable blocked run", status)
+	if status.Status != RunStatusBlocked || len(executor.calls) != 1 {
+		t.Fatalf("initial status/calls = %+v/%d", status, len(executor.calls))
 	}
-	if got, want := executor.nodeIDs(), []string{"fmn_frame"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("initial executor nodes = %v, want only completed first node", got)
+	for epoch := 1; epoch <= 2; epoch++ {
+		// A fresh engine models restarting the daemon. Only ledger state survives.
+		engine = NewRunEngine(store, personas, executor)
+		status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach", Reason: "continue after dispatch limit"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status.Status != RunStatusBlocked || status.Final || status.Epoch != epoch || len(executor.calls) != 1 {
+			t.Fatalf("resumed status/calls = %+v/%d", status, len(executor.calls))
+		}
 	}
-
-	executor.calls = nil
-	resumed, err := engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "continue after dispatch limit"})
-	if err != nil {
-		t.Fatalf("resume run: %v", err)
-	}
-	if resumed.Status != RunStatusBlocked || resumed.Epoch != 1 || !resumed.ResumeAllowed {
-		t.Fatalf("first resume status = %+v, want blocked epoch 1 after one more dispatch", resumed)
-	}
-	if got, want := executor.nodeIDs(), []string{"fmn_research"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("first resume executor nodes = %v, want only next incomplete node", got)
-	}
-
-	executor.calls = nil
-	resumed, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "continue final step"})
-	if err != nil {
-		t.Fatalf("second resume run: %v", err)
-	}
-	if resumed.Status != RunStatusSucceeded || !resumed.Final || resumed.Epoch != 2 {
-		t.Fatalf("second resume status = %+v, want final succeeded epoch 2", resumed)
-	}
-	if got, want := executor.nodeIDs(), []string{"fmn_ship"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("second resume executor nodes = %v, want only final incomplete node", got)
-	}
-
 	events := readRunEvents(t, findOnlyRunLedger(t, store, "session-search"))
-	if got, want := nodeStartedAttempts(events, "fmn_frame"), []int{1}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("frame attempts = %v, want completed node never rerun", got)
+	if got := eventNodeOrder(events, RunEventNodeStarted); !reflect.DeepEqual(got, []string{"mis_showcase", "fmn_frame"}) {
+		t.Fatalf("started nodes = %v", got)
 	}
-	if got, want := nodeStartedAttempts(events, "fmn_research"), []int{1}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("research attempts = %v, want one resumed attempt", got)
-	}
-	if got, want := nodeStartedAttempts(events, "fmn_ship"), []int{1}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("ship attempts = %v, want one resumed attempt", got)
+	if got := lastEventOfType(t, events, RunEventError).Data["code"]; got != "max_dispatch_exceeded" {
+		t.Fatalf("block code = %v", got)
 	}
 }
 

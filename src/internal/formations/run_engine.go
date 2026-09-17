@@ -329,7 +329,7 @@ func (e *RunEngine) PrepareFormationRun(slug, formationID string, req FormationR
 		return nil, nil, err
 	}
 	return started, func() (*RunStatusProjection, error) {
-		if err := e.store.AppendRunEvent(started.RunID, RunEvent{
+		if err := e.startFormationExecution(started.RunID, req.Limits, RunEvent{
 			Type:    RunEventNodeStarted,
 			NodeID:  formation.ID,
 			Attempt: 1,
@@ -340,6 +340,9 @@ func (e *RunEngine) PrepareFormationRun(slug, formationID string, req FormationR
 				"brief":     formationBriefEventData(formationBriefValue(formation)),
 			},
 		}); err != nil {
+			if errors.Is(err, errRunStopped) {
+				return e.projectAndNotify(started.RunID)
+			}
 			return nil, err
 		}
 		result, err := e.executeFormation(FormationExecution{
@@ -1020,7 +1023,6 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		return err
 	}
 
-	dispatches := 0
 	ranAny := false
 	for len(queue) > 0 {
 		nodeID := queue[0]
@@ -1044,11 +1046,8 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		if maxAttempts(limits) > 0 && nextAttempt > maxAttempts(limits) {
 			return e.appendErrorAndBlock(runID, "resume_attempts_exhausted", "resume attempts exhausted", "engine", nodeID, "resume attempts exhausted")
 		}
-		if limits.MaxDispatch > 0 && dispatches >= limits.MaxDispatch {
-			return e.appendErrorAndBlock(runID, "max_dispatch_exceeded", "max dispatch exceeded", "engine", nodeID, "max dispatch exceeded")
-		}
 		attempts[nodeID] = nextAttempt
-		if err := e.store.AppendRunEvent(runID, RunEvent{
+		if err := e.startFormationExecution(runID, limits, RunEvent{
 			Type:    RunEventNodeStarted,
 			NodeID:  nodeID,
 			Attempt: nextAttempt,
@@ -1059,6 +1058,9 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 				"brief":     formationBriefEventData(formationBriefValue(formation)),
 			},
 		}); err != nil {
+			if errors.Is(err, errRunStopped) {
+				return nil
+			}
 			return err
 		}
 		result, err := e.executeFormation(FormationExecution{
@@ -1075,7 +1077,6 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 			return e.appendExecutionFailureAndBlock(runID, nodeID, err)
 		}
 		ranAny = true
-		dispatches++
 		if result.Status == "" {
 			result.Status = "done"
 		}
@@ -1630,7 +1631,6 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 	ready := map[string]map[string]RunInputRef{}
 	queued := map[string]bool{}
 	attempts := map[string]int{}
-	dispatches := 0
 	var queue []string
 
 	if err := e.store.AppendRunEvent(runID, RunEvent{
@@ -1698,14 +1698,8 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 			}
 			return nil
 		}
-		if limits.MaxDispatch > 0 && dispatches >= limits.MaxDispatch {
-			if err := e.appendErrorAndBlock(runID, "max_dispatch_exceeded", "max dispatch exceeded", "engine", nodeID, "max dispatch exceeded"); err != nil {
-				return err
-			}
-			return nil
-		}
 		attempts[nodeID] = nextAttempt
-		if err := e.store.AppendRunEvent(runID, RunEvent{
+		if err := e.startFormationExecution(runID, limits, RunEvent{
 			Type:    RunEventNodeStarted,
 			NodeID:  nodeID,
 			Attempt: nextAttempt,
@@ -1716,6 +1710,9 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 				"brief":     formationBriefEventData(formationBriefValue(formation)),
 			},
 		}); err != nil {
+			if errors.Is(err, errRunStopped) {
+				return nil
+			}
 			return err
 		}
 		result, err := e.executeFormation(FormationExecution{
@@ -1734,7 +1731,6 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 			}
 			return nil
 		}
-		dispatches++
 		if result.Status == "" {
 			result.Status = "done"
 		}
@@ -1774,6 +1770,32 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 			"final":        true,
 		},
 	})
+}
+
+// startFormationExecution reserves one run-wide execution before the executor
+// can launch seats. The durable start also counts failed or interrupted work;
+// neither resume nor a new engine instance replenishes the budget. The run's
+// coordinator worker serializes this read and append with other executions.
+func (e *RunEngine) startFormationExecution(runID string, limits RunLimits, event RunEvent) error {
+	if limits.MaxDispatch > 0 {
+		events, err := e.store.ReadRunEvents(runID)
+		if err != nil {
+			return err
+		}
+		consumed := 0
+		for _, previous := range events {
+			if previous.Type == RunEventNodeStarted && stringFromEventData(previous, "nodeKind") == "formation" {
+				consumed++
+			}
+		}
+		if consumed >= limits.MaxDispatch {
+			if err := e.appendErrorAndBlock(runID, "max_dispatch_exceeded", "max dispatch exceeded", "engine", event.NodeID, "max dispatch exceeded"); err != nil {
+				return err
+			}
+			return errRunStopped
+		}
+	}
+	return e.store.AppendRunEvent(runID, event)
 }
 
 func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (FormationExecutionResult, error) {
@@ -2502,7 +2524,7 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 	input := req.Input
 	var finalText string
 	for _, formation := range chain {
-		if err := e.store.AppendRunEvent(req.RunID, RunEvent{
+		if err := e.startFormationExecution(req.RunID, limits, RunEvent{
 			Type:    RunEventNodeStarted,
 			NodeID:  formation.ID,
 			Attempt: attempt,

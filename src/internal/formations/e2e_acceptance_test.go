@@ -21,8 +21,9 @@ func TestCareerWebAcceptance(t *testing.T) {
 	}
 
 	executor := &careerDispatchExecutor{
-		store:      store,
-		dispatcher: NewSlotDispatcher(store, &fakeDispatchAdapter{}),
+		store:        store,
+		dispatcher:   NewSlotDispatcher(store, &fakeDispatchAdapter{}),
+		failNextNode: "fmn_frontend",
 	}
 	engine := NewRunEngine(store, personas, executor)
 	engine.SetGateEvaluator(&fakeGateEvaluator{verdicts: []string{"pass"}})
@@ -33,13 +34,13 @@ func TestCareerWebAcceptance(t *testing.T) {
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            RunLimits{MaxDispatch: 1, MaxAttempts: 2},
+		Limits:            RunLimits{MaxDispatch: 4, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
 	}
 	if status.Status != RunStatusBlocked || !status.ResumeAllowed {
-		t.Fatalf("initial status = %+v, want resumable blocked after first dispatch slice", status)
+		t.Fatalf("initial status = %+v, want resumable block from interrupted frontend execution", status)
 	}
 	if got, want := executor.nodeIDs(), []string{"fmn_design"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("initial executor nodes = %v, want %v", got, want)
@@ -167,12 +168,17 @@ func TestCareerWebAcceptance(t *testing.T) {
 }
 
 type careerDispatchExecutor struct {
-	store      *Store
-	dispatcher *SlotDispatcher
-	calls      []string
+	failNextNode string
+	store        *Store
+	dispatcher   *SlotDispatcher
+	calls        []string
 }
 
 func (e *careerDispatchExecutor) ExecuteFormation(req FormationExecution) (FormationExecutionResult, error) {
+	if req.NodeID == e.failNextNode {
+		e.failNextNode = ""
+		return FormationExecutionResult{}, fmt.Errorf("seat interrupted before dispatch")
+	}
 	e.calls = append(e.calls, req.NodeID)
 	slot := req.Formation.Slots[0]
 	artifact := "reports/" + req.NodeID + ".md"
