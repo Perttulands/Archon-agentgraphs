@@ -945,7 +945,7 @@ func tmuxPaneShowsHarnessReady(harnessID, captured string) bool {
 		lines = lines[len(lines)-8:]
 	}
 	tail := strings.Join(lines, "\n")
-	if strings.Contains(tail, "esc to interrupt") {
+	if tmuxPaneShowsAgentWorking(tail) {
 		return false
 	}
 	for _, line := range lines {
@@ -1892,8 +1892,11 @@ func (realTmuxHarnessClient) DescribeActivePane(ctx context.Context, socket, tar
 	return state, nil
 }
 
+// tmuxPaneShowsAgentWorking reports a harness at work: Codex, and older Claude
+// Code, show "esc to interrupt"; Claude Code 2.1 shows a running spinner such
+// as "✶ Puzzling… (4s · ↓ 60 tokens)".
 func tmuxPaneShowsAgentWorking(captured string) bool {
-	return strings.Contains(captured, "esc to interrupt")
+	return strings.Contains(captured, "esc to interrupt") || claudeWorkingLine.MatchString(captured)
 }
 
 func runTmuxCommand(ctx context.Context, socket string, stdin *strings.Reader, args ...string) (string, error) {

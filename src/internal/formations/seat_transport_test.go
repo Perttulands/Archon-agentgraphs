@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -482,6 +483,78 @@ func TestStageWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 			defer stop()
 			if err := transport.Stage(short, "socket", seat, "stuck", seatPointer(seat.brief)); !errors.Is(err, context.DeadlineExceeded) || len(pasted) != 2 {
 				t.Fatalf("busy pane: %v, pastes %v", err, pasted)
+			}
+		})
+	}
+}
+
+func TestWorkingCheckReadsClaudesSpinner(t *testing.T) {
+	strip := regexp.MustCompile("\x1b\\[[0-9;]*m")
+	for name, working := range map[string]bool{
+		"claude-busy-empty": true, "claude-busy-typed": true, "codex-busy-empty": true,
+		"claude-idle-empty": false, "claude-idle-after-turn": false, "codex-idle-after-turn": false,
+	} {
+		screen, _, _ := paneFixture(t, name)
+		plain := strip.ReplaceAllString(screen, "")
+		if got := tmuxPaneShowsAgentWorking(plain); got != working {
+			t.Errorf("%s: working = %t, want %t", name, got, working)
+		}
+		harness := "claude-code"
+		banner := "Claude Code\n"
+		if strings.HasPrefix(name, "codex") {
+			harness, banner = "openai-codex", "OpenAI Codex\n"
+		}
+		if ready := tmuxPaneShowsHarnessReady(harness, banner+plain); ready == working && !strings.Contains(name, "typed") {
+			t.Errorf("%s: ready = %t while working = %t", name, ready, working)
+		}
+	}
+}
+
+func TestReadyOnAReusedSeatWaitsForAnIdleEmptyInputNotTheBanner(t *testing.T) {
+	for _, harness := range []struct{ id, name string }{{"claude-code", "claude"}, {"openai-codex", "codex"}} {
+		t.Run(harness.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			// After a long first turn the banner has scrolled out of Ready's capture.
+			history, err := os.ReadFile(filepath.Join("testdata", "panes", harness.name+"-ready-capture-after-long-output.txt"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tmuxPaneShowsHarnessReady(harness.id, string(history)) {
+				t.Fatal("the capture still shows the banner; it does not reproduce the reused seat")
+			}
+			events := make(chan struct{}, 16)
+			states := []string{"busy-empty", "idle-typed", "idle-after-long-output"}
+			var looked []string
+			transport := realSeatTransport{
+				control: func(context.Context, string, string) (*seatControl, error) { return &seatControl{events: events}, nil },
+				command: func(_ context.Context, _ string, _ *strings.Reader, args ...string) (string, error) {
+					screen, x, y := paneFixture(t, harness.name+"-"+states[0])
+					switch {
+					case args[0] == "display-message" && strings.Contains(args[len(args)-1], "cursor_x"):
+						return fmt.Sprintf("%d %d 0", x, y), nil
+					case args[0] == "display-message":
+						return "0", nil
+					case args[0] == "capture-pane" && hasString(args, "-e"):
+						looked = append(looked, states[0])
+						if len(states) > 1 {
+							states = states[1:]
+							events <- struct{}{}
+						}
+						return screen, nil
+					case args[0] == "capture-pane":
+						return string(history), nil
+					}
+					return "", fmt.Errorf("unexpected command %v", args)
+				},
+			}
+			// The seat took its first peer turn; the facilitator dispatch reuses it.
+			seat := &nativeSeat{name: "form-proof-peer", sessionID: "$42", paneID: "%23", variant: HarnessVariant{ID: harness.id}, pointer: seatPointer("/state/briefs/first-turn.md")}
+			if err := transport.Ready(ctx, "socket", seat, harness.id); err != nil {
+				t.Fatalf("reused seat readiness: %v", err)
+			}
+			if strings.Join(looked, ",") != "busy-empty,idle-typed,idle-after-long-output" {
+				t.Fatalf("Ready looked at %v; want it to wait while the seat is busy or holds unsent text", looked)
 			}
 		})
 	}

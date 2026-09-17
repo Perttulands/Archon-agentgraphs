@@ -141,6 +141,12 @@ func (t realSeatTransport) Ready(ctx context.Context, socket string, s *nativeSe
 		}
 		s.control = control
 	}
+	// A seat that has taken a pointer is past its startup screen, and its output
+	// scrolls the harness banner out of the capture. It is ready when its agent
+	// is idle with an empty input line.
+	if s.pointer != "" {
+		return t.WaitInputClear(ctx, socket, s)
+	}
 	trustAnswered := false
 	for {
 		text, err := t.run(ctx, socket, nil, "capture-pane", "-p", "-J", "-t", s.paneID, "-S", "-80")
