@@ -2,7 +2,9 @@ package formations
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -217,23 +219,110 @@ func blockedKeepingRun(t *testing.T) (*RunEngine, *Store, string, *keepingExecut
 	return engine, store, runID, executor
 }
 
-func TestABlockedRunRecordsKeptSeatCleanupJustBeforeItIsCanceled(t *testing.T) {
+// crashedBeforeCancel returns a blocked run whose ledger ends in run_blocked and
+// then its kept seat's cleanup, as a crash between that cleanup and the cancel
+// or failure it precedes leaves it. It checks the cleanup changed nothing a
+// reader of the block sees.
+func crashedBeforeCancel(t *testing.T) (*RunEngine, *Store, string, RunEvent) {
+	t.Helper()
 	engine, store, runID, _ := blockedKeepingRun(t)
+	before := mustEvents(t, store, runID)
+	block := before[len(before)-1]
+	if block.Type != RunEventBlocked {
+		t.Fatalf("fixture ends in %s, want run_blocked", block.Type)
+	}
+	statusBefore, err := store.ProjectRun(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asksBefore, err := ProjectSettledNeedsYouAsks(before)
+	if err != nil || len(asksBefore) != 1 || asksBefore[0].Kind != NeedsYouKindBlocked || asksBefore[0].Seq != block.Seq {
+		t.Fatalf("blocked asks = %+v, %v", asksBefore, err)
+	}
+	preservedBefore, err := engine.PreservePendingHumanGate(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	if err := engine.EndKeptSeats(runID); err != nil {
 		t.Fatal(err)
 	}
-	if status, err := store.ProjectRun(runID); err != nil || status.Status != RunStatusBlocked || !status.ResumeAllowed {
-		t.Fatalf("a cleanup after a block leaves the run blocked: %+v, %v", status, err)
+	after := mustEvents(t, store, runID)
+	if trail := seatTrail(t, store, runID); strings.Join(trail[len(trail)-2:], ", ") != "run_blocked, ended slot_work run_final" {
+		t.Fatalf("crash ledger ends %v", trail)
 	}
-	if err := store.AppendRunEvent(runID, RunEvent{Type: RunEventNodeStarted, NodeID: "fmn_ship"}); err == nil {
-		t.Fatal("a blocked run accepted a node start after a seat cleanup")
-	}
-	if err := store.AppendRunEvent(runID, RunEvent{Type: RunEventCanceled, Data: map[string]any{"final": true}}); err != nil {
+	statusAfter, err := store.ProjectRun(runID)
+	if err != nil {
 		t.Fatal(err)
 	}
-	trail := seatTrail(t, store, runID)
-	if got := strings.Join(trail[len(trail)-3:], ", "); got != "run_blocked, ended slot_work run_final, run_canceled" {
-		t.Fatalf("cancel trail ends %q in %v", got, trail)
+	if statusAfter.Status != RunStatusBlocked || statusAfter.ResumeAllowed != statusBefore.ResumeAllowed || statusAfter.Final || statusAfter.Epoch != statusBefore.Epoch {
+		t.Fatalf("status after the cleanup %+v, before %+v", statusAfter, statusBefore)
+	}
+	if asksAfter, err := ProjectSettledNeedsYouAsks(after); err != nil || !reflect.DeepEqual(asksAfter, asksBefore) {
+		t.Fatalf("asks after the cleanup %+v, before %+v (%v)", asksAfter, asksBefore, err)
+	}
+	if preserved, err := engine.PreservePendingHumanGate(runID); err != nil || preserved != preservedBefore || len(mustEvents(t, store, runID)) != len(after) {
+		t.Fatalf("startup recovery after the cleanup = %v, %v; before %v", preserved, err, preservedBefore)
+	}
+	return engine, store, runID, block
+}
+
+func TestACrashBetweenAKeptSeatCleanupAndTheCancelLeavesTheRunBlocked(t *testing.T) {
+	t.Run("only a cleanup, resume, cancel or failure may follow", func(t *testing.T) {
+		_, store, runID, _ := crashedBeforeCancel(t)
+		for _, event := range []RunEvent{
+			{Type: RunEventNodeStarted, NodeID: "fmn_ship"},
+			{Type: RunEventSeatCreated, NodeID: "fmn_ship", SlotID: "slot_ship"},
+			{Type: RunEventHumanAskDelivered, NodeID: "fmn_work", SlotID: "slot_work"},
+			{Type: RunEventHumanAskFallback, GateID: "gate_review"},
+			{Type: RunEventError, Data: map[string]any{"code": "late"}},
+			{Type: RunEventBlocked, Data: map[string]any{"resumeAllowed": true}},
+			{Type: RunEventSucceeded, Data: map[string]any{"final": true}},
+		} {
+			if err := store.AppendRunEvent(runID, event); !errors.Is(err, ErrRunEpochBlocked) {
+				t.Fatalf("%s after the block and cleanup: %v", event.Type, err)
+			}
+		}
+		if err := store.AppendRunEvent(runID, RunEvent{Type: RunEventSeatCleanup, NodeID: "fmn_other", SlotID: "slot_other", Data: map[string]any{"outcome": SeatOutcomeEnded, "cause": SeatCauseRunFinal}}); err != nil {
+			t.Fatalf("a second cleanup after the block: %v", err)
+		}
+		if status, err := store.ProjectRun(runID); err != nil || status.Status != RunStatusBlocked || !status.ResumeAllowed {
+			t.Fatalf("status = %+v, %v", status, err)
+		}
+	})
+	t.Run("resume", func(t *testing.T) {
+		engine, store, runID, block := crashedBeforeCancel(t)
+		status, err := engine.ResumeRun(runID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "retry ship after restart"})
+		if err != nil || status.Status != RunStatusSucceeded {
+			t.Fatalf("resume = %+v, %v", status, err)
+		}
+		for _, event := range mustEvents(t, store, runID) {
+			if event.Type == RunEventResumed && event.Seq == block.Seq+2 {
+				if event.Epoch != block.Epoch+1 || intFromRunEventData(event.Data["resumedFromSeq"]) != block.Seq {
+					t.Fatalf("resume = epoch %d from %d, block epoch %d seq %d", event.Epoch, intFromRunEventData(event.Data["resumedFromSeq"]), block.Epoch, block.Seq)
+				}
+				return
+			}
+		}
+		t.Fatalf("no resume right after the cleanup: %v", seatTrail(t, store, runID))
+	})
+	for _, final := range []string{RunEventCanceled, RunEventFailed} {
+		t.Run(final, func(t *testing.T) {
+			_, store, runID, _ := crashedBeforeCancel(t)
+			if err := store.AppendRunEvent(runID, RunEvent{Type: final, Data: map[string]any{"final": true}}); err != nil {
+				t.Fatal(err)
+			}
+			if trail := seatTrail(t, store, runID); strings.Join(trail[len(trail)-3:], ", ") != "run_blocked, ended slot_work run_final, "+final {
+				t.Fatalf("trail = %v", trail)
+			}
+			// Nothing at all follows a final event, not even a cleanup.
+			if err := store.AppendRunEvent(runID, RunEvent{Type: RunEventSeatCleanup, NodeID: "fmn_work", SlotID: "slot_work", Data: map[string]any{"outcome": SeatOutcomeEnded}}); !errors.Is(err, ErrRunFinal) {
+				t.Fatalf("cleanup after %s: %v", final, err)
+			}
+			if _, err := store.ResumeRun(runID, RunResumeRequest{Actor: "agent:test"}); !errors.Is(err, ErrRunFinal) {
+				t.Fatalf("resume after %s: %v", final, err)
+			}
+		})
 	}
 }
 

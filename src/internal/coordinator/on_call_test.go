@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,11 +26,22 @@ type keeperExecutor struct {
 	// refuse makes a slot's next pastes fail, as for a busy agent.
 	refuse map[string]int
 	gone   map[string]bool
+	// fail makes a node's next executions fail before any seat is created.
+	fail   map[string]int
 	pastes []string
 	ended  []string
 }
 
 func (k *keeperExecutor) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
+	k.mu.Lock()
+	failing := k.fail[req.NodeID] > 0
+	if failing {
+		k.fail[req.NodeID]--
+	}
+	k.mu.Unlock()
+	if failing {
+		return formations.FormationExecutionResult{}, errors.New("formation crashed")
+	}
 	for _, slot := range req.Formation.Slots {
 		if err := k.store.AppendRunEvent(req.RunID, formations.RunEvent{Type: formations.RunEventSeatCreated, NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{
 			"sessionName": "form-" + slot.ID, "sessionId": fmt.Sprintf("$%s-%d", slot.ID, req.Attempt), "paneId": fmt.Sprintf("%%%s-%d", slot.ID, req.Attempt), "harness": "claude-code",
@@ -609,6 +621,61 @@ func TestKeptSeatsSurviveARestartAndStillEndByTheRules(t *testing.T) {
 			t.Fatalf("projection %+v, trail %s", p, ledgerTrail(eventsOf(t, next, id)))
 		}
 	})
+}
+
+func TestACrashBeforeABlockedRunIsCanceledLeavesItBlockedThroughRestart(t *testing.T) {
+	// The ask never reaches the seat, so the seat is still on call when the
+	// next formation fails and blocks the run.
+	keeper := &keeperExecutor{refuse: map[string]int{"slot_work": 1 << 30}, fail: map[string]int{"fmn_after": 1}}
+	notifier := &recordingNotifier{}
+	c, root := onCallFixture(t, sessionBoard(testBoard), keeper, notifier)
+	id := startProof(t, c)
+	p := awaitProjection(t, c, id, func(p *Projection) bool { return len(p.WaitingGates) == 1 && len(p.OnCallSeats) == 1 })
+	verdict(t, c, id, "gate_review", p.WaitingGates[0].RequestedSeq, true, "slot_work")
+	blocked := awaitState(t, c, id, "blocked")
+	sent := awaitNotifications(t, notifier, 1)
+	if len(blocked.OnCallSeats) != 1 || sent[0].Kind != formations.NeedsYouKindBlocked {
+		t.Fatalf("blocked projection %+v, notifications %+v", blocked, sent)
+	}
+	before := eventsOf(t, c, id)
+	asks, err := formations.ProjectSettledNeedsYouAsks(before)
+	if err != nil || len(asks) != 1 || asks[0].Seq != before[len(before)-1].Seq || sent[0].Seq != asks[0].Seq {
+		t.Fatalf("asks %+v (%v), sent %+v", asks, err, sent)
+	}
+
+	// Abort ends the kept seat, and the daemon dies before run_canceled.
+	if err := c.engine.EndKeptSeatsNow(id, formations.KeptSeats(before), formations.SeatCauseRunFinal, keeper); err != nil {
+		t.Fatal(err)
+	}
+	next := reopen(t, c, root, keeper)
+	t.Cleanup(func() { next.Close() })
+	crashed := eventsOf(t, next, id)
+	if got := ledgerTrail(crashed); !strings.HasSuffix(got, "run_blocked, ended slot_work run_final") {
+		t.Fatalf("crash ledger = %s", got)
+	}
+	restarted := awaitState(t, next, id, "blocked")
+	if restarted.ResumeAllowed != blocked.ResumeAllowed || restarted.Final || len(restarted.OnCallSeats) != 0 || len(eventsOf(t, next, id)) != len(crashed) {
+		t.Fatalf("after restart %+v, before %+v", restarted, blocked)
+	}
+	if again, err := formations.ProjectSettledNeedsYouAsks(crashed); err != nil || !reflect.DeepEqual(again, asks) {
+		t.Fatalf("asks after the cleanup %+v (%v), before %+v", again, err, asks)
+	}
+	renotified := &recordingNotifier{}
+	next.EnableNeedsYou(NeedsYouConfig{Notifier: renotified, ServerURL: "http://127.0.0.1:18400", RetryInterval: time.Hour, SessionRetryInterval: 20 * time.Millisecond, SessionProbeInterval: 50 * time.Millisecond})
+	settleQuietly()
+	if again, _ := renotified.snapshot(); len(again) != 0 {
+		t.Fatalf("restart announced the block again: %+v", again)
+	}
+
+	if w := post(t, next, "/api/formations/runs/"+id+"/abort", `{"reason":"operator stop","requestedBy":"operator"}`); w.Code != 200 {
+		t.Fatalf("abort %d %s", w.Code, w.Body.String())
+	}
+	if got := ledgerTrail(eventsOf(t, next, id)); !strings.HasSuffix(got, "run_blocked, ended slot_work run_final, run_canceled") {
+		t.Fatalf("trail = %s", got)
+	}
+	if _, ended := keeper.snapshot(); fmt.Sprint(ended) != "[$slot_work-1]" {
+		t.Fatalf("ended = %v", ended)
+	}
 }
 
 func TestNotifyChannelAsksStillReachTheNotifyCommand(t *testing.T) {

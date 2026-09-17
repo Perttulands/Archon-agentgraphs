@@ -432,7 +432,11 @@ func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusPro
 	if len(events) == 0 {
 		return nil, ErrRunLedgerInvalid
 	}
-	resumeEvent := events[len(events)-1]
+	lifecycle := lifecycleLedger(events)
+	if len(lifecycle) == 0 {
+		return nil, ErrRunLedgerInvalid
+	}
+	resumeEvent := lifecycle[len(lifecycle)-1]
 	if recovered != nil {
 		if err := NewSlotDispatcher(e.store, nil).CompleteFromCapture(runID, recoveredRef.DispatchID, recovered.Text); err != nil {
 			return nil, err

@@ -396,12 +396,11 @@ attempt (`new_attempt`), or when the run is about to succeed, fail or be
 canceled, including an abort of a waiting run (`run_final`). Ending waits up to
 60 seconds for the agent to go idle with an empty input line, the check every
 paste waits on, and kills only that session, by immutable ID, through the
-guarded wrapper. Those cleanups are recorded before the final
-event. After `run_blocked` the ledger accepts `seat_cleanup` as well as a
-resume, cancel or failure, so a blocked run's kept seats end just before the
-cancel or failure that ends it. A blocked run otherwise keeps its seats: a seat
-found gone while it is blocked is recorded after it resumes, and so are asks
-due while it was blocked.
+guarded wrapper. Those cleanups are recorded before the final event. A blocked
+run's kept seats end just before the cancel or failure that ends it; the ledger
+accepts that `seat_cleanup` after `run_blocked` (see the restart procedure). A
+blocked run otherwise keeps its seats: a seat found gone while it is blocked is
+recorded after it resumes, and so are asks due while it was blocked.
 
 Daemon shutdown leaves kept seats running. At startup, and every 15 seconds
 while a run keeps seats or has open asks, the daemon checks each kept seat's
@@ -575,13 +574,24 @@ archon --server "$FORM_SERVER" gate reject "$FORM_RUN_ID" "$FORM_GATE_ID" \
 Restart the daemon with the same state directory and configuration. Before
 listening it scans non-final ledgers, recovers eligible completed native evidence
 or records a block naming unresolved dispatches. It never adopts or cleans up
-old seats. Preserve those identities for host-owner inspection. SIGTERM fences
-new commands and downstream dispatch immediately. Active turns have five
+old seats, except that it verifies seats kept on call and keeps managing them
+(see [Human gates on the session
+channel](#human-gates-on-the-session-channel)). Preserve those identities for
+host-owner inspection. SIGTERM fences new commands and downstream dispatch
+immediately. Active turns have five
 seconds to finish, then the daemon cancels observation and detaches from its
 seats without ending them. HTTP draining and execution share a ten-second total
 shutdown budget. Open dispatch identities remain in a resumable block for
 startup recovery; an idle human request remains answerable. Abort runs explicitly
 when seat cancellation is intended.
+
+The ledger accepts nothing after a final event. After `run_blocked` it accepts
+only a resume, a cancel, a failure, or the `seat_cleanup` of seats kept on call,
+which the runtime records just before the cancel or failure that ends the run.
+Those cleanups leave the run blocked. A ledger ending in them, as a crash
+between the cleanup and the cancel leaves it, projects the block's status,
+`resumeAllowed` and needs-you asks, is recovered at startup as that block, and
+still accepts a resume, cancel or failure.
 
 The writer lock is retained until all admitted execution and authoring writes
 settle. If a worker ignores cancellation, shutdown returns an error at the

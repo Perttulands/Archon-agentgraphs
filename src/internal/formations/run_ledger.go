@@ -309,7 +309,11 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 		}
 		first := events[0]
 		tail := events[len(events)-1]
-		last := lastLifecycleEvent(events)
+		lifecycle := lifecycleLedger(events)
+		if len(lifecycle) == 0 {
+			return ErrRunLedgerInvalid
+		}
+		last := lifecycle[len(lifecycle)-1]
 		if err := s.validateRunSnapshotIdentity(first, runID, ledger); err != nil {
 			return err
 		}
@@ -327,8 +331,8 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 			}
 		}
 		if last.Type == RunEventBlocked {
-			// A kept seat's cleanup is recorded just before the cancel or failure
-			// that ends a blocked run (ADR-0019); it leaves the run blocked.
+			// After a block only a resume, cancel or failure, or the kept seats'
+			// cleanup recorded just before one (ADR-0019), may follow.
 			if event.Type != RunEventResumed && event.Type != RunEventCanceled && event.Type != RunEventFailed && event.Type != RunEventSeatCleanup {
 				return ErrRunEpochBlocked
 			}
@@ -412,7 +416,11 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		}
 		first := events[0]
 		tail := events[len(events)-1]
-		last := lastLifecycleEvent(events)
+		lifecycle := lifecycleLedger(events)
+		if len(lifecycle) == 0 {
+			return ErrRunLedgerInvalid
+		}
+		last := lifecycle[len(lifecycle)-1]
 		runSnapshot, err := s.readRunSnapshot(first, runID, ledger)
 		if err != nil {
 			return err
@@ -916,27 +924,18 @@ func defaultRunActor(actor string) string {
 	return actor
 }
 
-// lastLifecycleEvent is the latest event that is not a seat cleanup. A cleanup
-// recorded after a block leaves the run blocked, so block checks look past it.
-func lastLifecycleEvent(events []RunEvent) RunEvent {
-	for i := len(events) - 1; i >= 0; i-- {
-		if events[i].Type != RunEventSeatCleanup {
-			return events[i]
-		}
+// lifecycleLedger returns the ledger through its last lifecycle event, without
+// the seat cleanups that follow it. After run_blocked the ledger also accepts a
+// kept seat's seat_cleanup, recorded just before the cancel or failure that
+// ends the run (ADR-0019). A crash can leave such cleanups last, and the run is
+// still blocked, so every check that asks whether the last event is a block,
+// or reads the events just before it, reads through this one helper.
+func lifecycleLedger(events []RunEvent) []RunEvent {
+	end := len(events)
+	for end > 0 && events[end-1].Type == RunEventSeatCleanup {
+		end--
 	}
-	return RunEvent{}
-}
-
-// withoutSeatCleanups drops seat cleanups, for checks that read a run's recent
-// lifecycle by position.
-func withoutSeatCleanups(events []RunEvent) []RunEvent {
-	lifecycle := make([]RunEvent, 0, len(events))
-	for _, event := range events {
-		if event.Type != RunEventSeatCleanup {
-			lifecycle = append(lifecycle, event)
-		}
-	}
-	return lifecycle
+	return events[:end]
 }
 
 func isFinalRunEvent(eventType string) bool {

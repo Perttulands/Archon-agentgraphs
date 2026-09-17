@@ -205,7 +205,10 @@ func (e *RunEngine) PreservePendingHumanGate(runID string) (bool, error) {
 	if len(events) == 0 || len(unresolvedDispatches(events)) != 0 {
 		return false, nil
 	}
-	events = withoutSeatCleanups(events)
+	events = lifecycleLedger(events)
+	if len(events) == 0 {
+		return false, ErrRunLedgerInvalid
+	}
 	last := events[len(events)-1]
 	if isFinalRunEvent(last.Type) {
 		return false, nil
