@@ -22,23 +22,32 @@ terminal was view-only, and the contract told operators not to type into seats.
 - `session` changes human gates only. A human gate's ask goes to the seats of
   the formation whose work the gate is judging, and the operator talks to those
   agents. Escalations, blocks and final outcomes still go to the notify command.
-  The same `.needs-you.json` record keeps each ask delivered once.
+  Session delivery works whenever the tmux executor runs, with or without
+  `--notify-command`.
 
 ## Seats on call
 
 - On a session-channel run, a formation whose output can reach a human gate
-  through gates alone (for example work, then a judge gate, then a sign-off
-  gate) keeps its seats when it finishes instead of ending them. The ledger
-  records `seat_cleanup` with outcome `kept_on_call`. Other formations,
-  including judge chains, end their seats as today.
+  through gates alone (following pass and fail routes, never a judge port) keeps
+  its seats when it finishes instead of ending them. Examples are work, then a
+  human gate; or work, then a judge gate, then a sign-off gate. The ledger
+  records `seat_cleanup` with outcome `kept_on_call`. Judge chain members and
+  formations with no such path end their seats as today.
 - The asking formation of a human gate request is the nearest formation behind
-  the gate's input, following that input back through gates. Its latest
-  attempt's kept seats receive the ask.
+  the gate's input, following that input back through gates. The kept seats of
+  its latest attempt receive the ask. For solo and peer formations that is every
+  seat, and the operator may talk to any of them. For an orchestrated formation
+  it is the controller only.
 - The ask is written to `<state-dir>/briefs/gate-<run>-<seq>.md` and pasted into
-  each of those seats as a pointer, only while the agent is idle and its input
-  line is empty. An undelivered ask stays unrecorded and is retried within
-  seconds, not minutes. Every seat of a peer formation gets it; the operator
-  may talk to any of them.
+  each receiving seat as a pointer, only while the agent is idle and its input
+  line is empty. A seat not yet reached is retried within seconds.
+- Delivery is recorded in the ledger. `human_ask_delivered` names the request,
+  the gate, the asking formation, and the seat's slot and created sequence, one
+  event per seat. `human_ask_fallback` names the request and the reason. They
+  are appended under the run's command lock and do not affect execution replay.
+  The projection shows them on the waiting gate (`askedSeats`, `fallbackReason`)
+  and marks each receiving seat `onCall`, so the event stream updates the
+  cockpit.
 - The brief names the gate, its criterion, the exact pending request and the
   decisions already recorded in the run, and it sets these rules:
   - Present the gate's question plainly, from your own work, and help the
@@ -51,10 +60,13 @@ terminal was view-only, and the contract told operators not to type into seats.
     command returns 409; say so.
   - The formation brief's limits still apply. Running the given gate command
     is the one exception to its bans.
-- A kept seat ends when its turn is over and one of these holds:
-  - it has received at least one ask, and every ask delivered to it has been
-    decided;
-  - its formation starts a new attempt, which gets fresh seats as today;
+- Kept seats are reconsidered only when the run settles or starts dispatching a
+  formation, so no gate evaluation is in flight for their output. A kept seat
+  ends when it is idle and one of these holds:
+  - it has received at least one ask, and no open request names its formation
+    as the asker;
+  - its formation starts a new attempt, which gets fresh seats as today (the
+    old seats end first, because the names collide);
   - the run is final or aborted.
   Before ending a seat that is mid-turn, the runtime waits up to 60 seconds for
   it to go idle, so the agent's closing reply stays readable. Cleanup ends only
@@ -62,9 +74,13 @@ terminal was view-only, and the contract told operators not to type into seats.
 - Daemon shutdown leaves kept seats running. Startup verifies them from the
   ledger by recorded identity and keeps managing them. A kept seat that is gone,
   or whose tmux server changed, is recorded as such.
-- If no kept seat can receive a human gate's ask, the ask goes to the notify
-  command, and the cockpit says why. That happens when every seat has died, on
-  the lab executor, or when no formation lies behind the gate.
+- A human gate's ask falls back to the notify command, once, with a recorded
+  reason, in these cases:
+  - no kept seat can receive it: every seat has died, the executor is lab, or
+    no formation lies behind the gate;
+  - every seat that received it is gone while the request still waits.
+  With no notify command, the recorded reason is all there is, and the cockpit
+  shows it.
 
 ## Typing into a seat
 
@@ -73,14 +89,21 @@ terminal was view-only, and the contract told operators not to type into seats.
   terminal WebSocket, `GET /api/formations/runs/{runId}/seats/{createdSeq}/terminal`,
   accepts input and resize frames as CHROTE's terminals do, and CHROTE reaches
   the same sessions in the shared tmux pool.
-- The runtime tolerates the operator's turns. It pastes a brief or an ask only
-  while the agent is idle and its input line is empty. A turn the operator
-  starts neither completes nor fails a dispatch by itself: completion still
-  needs the exact run's completion evidence, which may arrive on a later turn.
-  What the operator tells a working agent may change its work; that is the
+- The runtime tolerates the operator's turns:
+  - It pastes a brief or an ask only while the agent is idle and its input line
+    is empty.
+  - A message the operator types during a dispatch neither completes nor fails
+    it. Completion needs this run's exact completion sentinel on an agent turn
+    after the pointer, together with the harness's native turn completion. That
+    may come on a later turn than the one the pointer started.
+  - A finished turn without the sentinel fails the dispatch at once only when
+    the operator took no turn during it. Otherwise the dispatch keeps waiting,
+    within the seat timeout.
+  - The dispatch still fails loudly when the harness exits, the conversation
+    is cleared or replaced (`/clear`, `/resume`), the model or effort changes,
+    or the seat timeout expires.
+- What the operator tells a working agent may change its work; that is the
   operator's call.
-- The seats projection marks a seat `onCall` while an ask delivered to it waits,
-  and the cockpit learns of changes without a reload.
 - Agents still must not type into seats, except an orchestrated controller
   directing its bound workers.
 
