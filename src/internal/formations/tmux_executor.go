@@ -175,6 +175,8 @@ type ownedSessions struct {
 	seats  map[string]*nativeSeat
 	ctx    context.Context
 	req    FormationExecution
+	// keepOnCall is set once the formation finished and its seats stay on call.
+	keepOnCall bool
 }
 
 func newOwnedSessions() *ownedSessions {
@@ -342,7 +344,16 @@ func (e *TmuxFormationExecutor) executeFormationContext(parent context.Context, 
 		outputs = append(outputs, text)
 	}
 	text := strings.Join(outputs, "\n\n")
-	return e.formationResultFromText(req, fmt.Sprintf("tmux://%s/%s/report", req.RunID, req.NodeID), text)
+	return owned.finish(e.formationResultFromText(req, fmt.Sprintf("tmux://%s/%s/report", req.RunID, req.NodeID), text))
+}
+
+// finish keeps the seats on call when the formation produced its result and
+// its work reaches a human gate on a session-channel run (ADR-0019).
+func (o *ownedSessions) finish(result FormationExecutionResult, err error) (FormationExecutionResult, error) {
+	if err == nil {
+		o.keepOnCall = o.req.KeepSeatsOnCall
+	}
+	return result, err
 }
 
 func (e *TmuxFormationExecutor) executeOrchestratedFormation(ctx context.Context, req FormationExecution) (FormationExecutionResult, error) {
@@ -400,7 +411,7 @@ func (e *TmuxFormationExecutor) executeOrchestratedFormation(ctx context.Context
 	if strings.TrimSpace(text) == "" {
 		text = leader.summary()
 	}
-	return e.formationResultFromText(req, leader.Artifact, text)
+	return owned.finish(e.formationResultFromText(req, leader.Artifact, text))
 }
 
 func (e *TmuxFormationExecutor) executePeerFormation(ctx context.Context, req FormationExecution) (FormationExecutionResult, error) {
@@ -454,7 +465,7 @@ func (e *TmuxFormationExecutor) executePeerFormation(ctx context.Context, req Fo
 	if strings.TrimSpace(text) == "" {
 		text = final.summary()
 	}
-	return e.formationResultFromText(req, final.Artifact, text)
+	return owned.finish(e.formationResultFromText(req, final.Artifact, text))
 }
 
 func (e *TmuxFormationExecutor) formationResultFromText(req FormationExecution, reportRef, text string) (FormationExecutionResult, error) {
@@ -973,12 +984,19 @@ func tmuxPaneShowsHarnessReady(harnessID, captured string) bool {
 // teardownOwnedSessions kills every session this execution created, and nothing
 // else. It only proceeds while the pinned socket identity is intact, so a socket
 // that was swapped mid-run cannot cause a kill on a different tmux server; it
-// never issues kill-server and never targets a name it did not create.
+// never issues kill-server and never targets a name it did not create. A
+// formation kept on call leaves its seats running instead: every seat of a solo
+// or peer formation, and the controller of an orchestrated one.
 func (e *TmuxFormationExecutor) teardownOwnedSessions(owned *ownedSessions) {
 	for slot, seat := range owned.seats {
 		if shutdownRequested(owned.ctx) && !errors.Is(context.Cause(owned.ctx), context.Canceled) {
 			seat.close()
 			_ = e.store.AppendRunEvent(owned.req.RunID, RunEvent{Type: "seat_cleanup", NodeID: owned.req.NodeID, SlotID: slot, Data: map[string]any{"sessionName": seat.name, "outcome": "left_shutdown"}})
+			continue
+		}
+		if owned.keepOnCall && (owned.req.Formation.Type != FormationTypeOrchestrated || slotIsController(owned.req.Formation, slot)) {
+			seat.close()
+			_ = e.store.AppendRunEvent(owned.req.RunID, RunEvent{Type: RunEventSeatCleanup, NodeID: owned.req.NodeID, SlotID: slot, Data: map[string]any{"sessionName": seat.name, "outcome": SeatOutcomeKeptOnCall}})
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

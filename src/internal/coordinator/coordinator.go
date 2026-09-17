@@ -439,6 +439,10 @@ func (c *Coordinator) recordFailure(runID string, err error) {
 	log.Printf("run %s: %v", runID, err)
 	status, readErr := c.store.ProjectRun(runID)
 	if readErr == nil && !status.Final && status.Status != formations.RunStatusBlocked {
+		// Kept seats end before the failure: nothing follows a final event.
+		if endErr := c.engine.EndKeptSeats(runID); endErr != nil {
+			log.Printf("run %s: kept seats before failure: %v", runID, endErr)
+		}
 		// Private ledger keeps the diagnostic. Public projection exposes no raw errors.
 		_ = c.store.AppendRunEvent(runID, formations.RunEvent{Type: formations.RunEventFailed, Data: map[string]any{"reason": "coordinator_execution_failed", "detail": err.Error(), "final": true}})
 	}

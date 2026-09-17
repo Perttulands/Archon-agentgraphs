@@ -205,6 +205,7 @@ func (e *RunEngine) PreservePendingHumanGate(runID string) (bool, error) {
 	if len(events) == 0 || len(unresolvedDispatches(events)) != 0 {
 		return false, nil
 	}
+	events = withoutSeatCleanups(events)
 	last := events[len(events)-1]
 	if isFinalRunEvent(last.Type) {
 		return false, nil

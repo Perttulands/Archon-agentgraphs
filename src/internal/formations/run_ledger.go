@@ -308,7 +308,8 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 			return ErrRunFinal
 		}
 		first := events[0]
-		last := events[len(events)-1]
+		tail := events[len(events)-1]
+		last := lastLifecycleEvent(events)
 		if err := s.validateRunSnapshotIdentity(first, runID, ledger); err != nil {
 			return err
 		}
@@ -326,7 +327,9 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 			}
 		}
 		if last.Type == RunEventBlocked {
-			if event.Type != RunEventResumed && event.Type != RunEventCanceled && event.Type != RunEventFailed {
+			// A kept seat's cleanup is recorded just before the cancel or failure
+			// that ends a blocked run (ADR-0019); it leaves the run blocked.
+			if event.Type != RunEventResumed && event.Type != RunEventCanceled && event.Type != RunEventFailed && event.Type != RunEventSeatCleanup {
 				return ErrRunEpochBlocked
 			}
 			if event.Type == RunEventResumed {
@@ -341,7 +344,7 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 			return ErrRunResumeNotAllowed
 		}
 		event.RunID = runID
-		event.Seq = last.Seq + 1
+		event.Seq = tail.Seq + 1
 		if event.Timestamp == "" {
 			event.Timestamp = s.now().Format(time.RFC3339Nano)
 		}
@@ -360,8 +363,8 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 		if event.BeadID == "" {
 			event.BeadID = first.BeadID
 		}
-		if event.Epoch == 0 && last.Epoch != 0 {
-			event.Epoch = last.Epoch
+		if event.Epoch == 0 && tail.Epoch != 0 {
+			event.Epoch = tail.Epoch
 		}
 		if err := appendRunEventToFile(ledger.file, ledger.directory.file, event); err != nil {
 			return err
@@ -408,7 +411,8 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 			return ErrRunFinal
 		}
 		first := events[0]
-		last := events[len(events)-1]
+		tail := events[len(events)-1]
+		last := lastLifecycleEvent(events)
 		runSnapshot, err := s.readRunSnapshot(first, runID, ledger)
 		if err != nil {
 			return err
@@ -449,7 +453,7 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		event := RunEvent{
 			Timestamp: s.now().Format(time.RFC3339Nano),
 			RunID:     runID,
-			Seq:       last.Seq + 1,
+			Seq:       tail.Seq + 1,
 			Type:      RunEventResumed,
 			Actor:     actor,
 			BoardID:   first.BoardID,
@@ -910,6 +914,29 @@ func defaultRunActor(actor string) string {
 		return "agent:archon"
 	}
 	return actor
+}
+
+// lastLifecycleEvent is the latest event that is not a seat cleanup. A cleanup
+// recorded after a block leaves the run blocked, so block checks look past it.
+func lastLifecycleEvent(events []RunEvent) RunEvent {
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type != RunEventSeatCleanup {
+			return events[i]
+		}
+	}
+	return RunEvent{}
+}
+
+// withoutSeatCleanups drops seat cleanups, for checks that read a run's recent
+// lifecycle by position.
+func withoutSeatCleanups(events []RunEvent) []RunEvent {
+	lifecycle := make([]RunEvent, 0, len(events))
+	for _, event := range events {
+		if event.Type != RunEventSeatCleanup {
+			lifecycle = append(lifecycle, event)
+		}
+	}
+	return lifecycle
 }
 
 func isFinalRunEvent(eventType string) bool {

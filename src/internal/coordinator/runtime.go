@@ -48,6 +48,7 @@ func (c *Coordinator) launch(id string, execute func() error) {
 		state.settling = true // reject late cancellation commands
 		c.mu.Unlock()
 		if abort != nil {
+			c.endKeptSeatsBeforeCancel(id)
 			_ = c.store.AppendRunEvent(id, *abort)
 		} else {
 			c.recordFailure(id, err)
@@ -109,11 +110,20 @@ func (c *Coordinator) abort(w http.ResponseWriter, r *http.Request) {
 	c.admissions.Unlock()
 	admitting = false
 	defer c.release(id)
+	c.endKeptSeatsBeforeCancel(id)
 	if err := c.store.AppendRunEvent(id, event); err != nil {
 		failure(w, err)
 		return
 	}
 	c.get(w, r)
+}
+
+// endKeptSeatsBeforeCancel ends a run's kept seats and records their cleanup
+// before run_canceled, since the ledger accepts nothing after a final event.
+func (c *Coordinator) endKeptSeatsBeforeCancel(runID string) {
+	if err := c.engine.EndKeptSeats(runID); err != nil {
+		log.Printf("run %s: kept seats before cancel: %v", runID, err)
+	}
 }
 
 func (c *Coordinator) resume(w http.ResponseWriter, r *http.Request) {

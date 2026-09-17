@@ -82,6 +82,9 @@ type FormationExecution struct {
 	Brief         FormationBrief
 	Inputs        []RunInputRef
 	Attempt       int
+	// KeepSeatsOnCall keeps the formation's seats running when it finishes,
+	// because its work reaches a human gate on a session-channel run.
+	KeepSeatsOnCall bool
 }
 
 type FormationExecutionResult struct {
@@ -476,6 +479,13 @@ func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusPro
 		if err != nil {
 			return nil, err
 		}
+	}
+	// Seats found gone while the run was blocked are recorded now it resumed.
+	if err := e.recordGoneKeptSeats(runID); err != nil {
+		return nil, err
+	}
+	if events, err = e.store.ReadRunEvents(runID); err != nil {
+		return nil, err
 	}
 	started := events[0]
 	mission, ok := findMission(board, started.MissionID)
@@ -1048,13 +1058,14 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 			return err
 		}
 		result, err := e.executeFormation(FormationExecution{
-			RunID:     runID,
-			NodeID:    nodeID,
-			Title:     formation.Title,
-			Formation: formation,
-			Brief:     formationBriefValue(formation),
-			Inputs:    inputs,
-			Attempt:   nextAttempt,
+			RunID:           runID,
+			NodeID:          nodeID,
+			Title:           formation.Title,
+			Formation:       formation,
+			Brief:           formationBriefValue(formation),
+			Inputs:          inputs,
+			Attempt:         nextAttempt,
+			KeepSeatsOnCall: RunHumanChannel(board, events) == HumanChannelSession && FormationKeepsSeatsOnCall(board, nodeID),
 		}, limits)
 		if err != nil {
 			return e.appendExecutionFailureAndBlock(runID, nodeID, err)
@@ -1243,6 +1254,9 @@ func (e *RunEngine) gateKindResultFromEvent(runID string, gate GateNode, input R
 }
 
 func (e *RunEngine) appendResumeSucceeded(runID string) error {
+	if err := e.EndKeptSeats(runID); err != nil {
+		return err
+	}
 	return e.store.AppendRunEvent(runID, RunEvent{
 		Type: RunEventSucceeded,
 		Data: map[string]any{
@@ -1632,6 +1646,7 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 	if err != nil {
 		return err
 	}
+	session := RunHumanChannel(board, events) == HumanChannelSession
 	if brief := stringFromEventData(events[0], "brief"); brief != "" {
 		missionText = brief
 	}
@@ -1700,13 +1715,14 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 			return err
 		}
 		result, err := e.executeFormation(FormationExecution{
-			RunID:     runID,
-			NodeID:    nodeID,
-			Title:     formation.Title,
-			Formation: formation,
-			Brief:     formationBriefValue(formation),
-			Inputs:    inputs,
-			Attempt:   nextAttempt,
+			RunID:           runID,
+			NodeID:          nodeID,
+			Title:           formation.Title,
+			Formation:       formation,
+			Brief:           formationBriefValue(formation),
+			Inputs:          inputs,
+			Attempt:         nextAttempt,
+			KeepSeatsOnCall: session && FormationKeepsSeatsOnCall(board, nodeID),
 		}, limits)
 		if err != nil {
 			if blockErr := e.appendExecutionFailureAndBlock(runID, nodeID, err); blockErr != nil {
@@ -1742,6 +1758,9 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 	if starved := starvedFormations(formationByID, ready); len(starved) > 0 {
 		return e.appendStarvedBlock(runID, starved)
 	}
+	if err := e.EndKeptSeats(runID); err != nil {
+		return err
+	}
 	return e.store.AppendRunEvent(runID, RunEvent{
 		Type: RunEventSucceeded,
 		Data: map[string]any{
@@ -1774,6 +1793,10 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 	req.MissionBeadID = events[0].BeadID
 	req.Cwd = stringFromEventData(events[0], "cwd")
 	req.MissionGoal = stringFromEventData(events[0], "objective")
+	// Kept seats are reconsidered as a formation starts dispatching (ADR-0019).
+	if err := e.reconsiderKeptSeats(req.RunID, req.NodeID); err != nil {
+		return FormationExecutionResult{}, err
+	}
 	if executor, ok := e.executor.(ContextFormationExecutor); ok {
 		if err := ctx.Err(); err != nil {
 			return FormationExecutionResult{}, err
