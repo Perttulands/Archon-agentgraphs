@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,25 +29,58 @@ import (
 type GateRequest struct {
 	GateID       string `json:"gateId"`
 	RequestedSeq int    `json:"requestedSeq"`
+	// AskedSeats lists the kept seats a session-channel ask reached.
+	AskedSeats []AskedSeat `json:"askedSeats"`
+	// FallbackReason says why the ask went to the notify command instead.
+	FallbackReason string `json:"fallbackReason,omitempty"`
 }
+
+// AskedSeat is a seat that received a human gate's ask.
+type AskedSeat struct {
+	NodeID       string `json:"nodeId"`
+	SlotID       string `json:"slotId"`
+	CreatedSeq   int    `json:"createdSeq"`
+	DeliveredSeq int    `json:"deliveredSeq"`
+}
+
+// PendingAsk names a waiting human request.
+type PendingAsk struct {
+	GateID       string `json:"gateId"`
+	RequestedSeq int    `json:"requestedSeq"`
+}
+
+// OnCallSeat is a seat kept on call and not yet ended.
+type OnCallSeat struct {
+	NodeID     string `json:"nodeId"`
+	SlotID     string `json:"slotId"`
+	CreatedSeq int    `json:"createdSeq"`
+	KeptSeq    int    `json:"keptSeq"`
+	// WaitingOn lists the pending asks this seat received.
+	WaitingOn []PendingAsk `json:"waitingOn"`
+}
+
 type Event struct {
-	Seq         int    `json:"seq"`
-	Type        string `json:"type"`
-	NodeID      string `json:"nodeId,omitempty"`
-	SlotID      string `json:"slotId,omitempty"`
-	GateID      string `json:"gateId,omitempty"`
-	Attempt     int    `json:"attempt,omitempty"`
-	Status      string `json:"status,omitempty"`
-	Verdict     string `json:"verdict,omitempty"`
-	SessionName string `json:"sessionName,omitempty"`
-	Outcome     string `json:"outcome,omitempty"`
-	Blocks      bool   `json:"blocks,omitempty"`
+	Seq          int    `json:"seq"`
+	Type         string `json:"type"`
+	NodeID       string `json:"nodeId,omitempty"`
+	SlotID       string `json:"slotId,omitempty"`
+	GateID       string `json:"gateId,omitempty"`
+	Attempt      int    `json:"attempt,omitempty"`
+	RequestedSeq int    `json:"requestedSeq,omitempty"`
+	Status       string `json:"status,omitempty"`
+	Verdict      string `json:"verdict,omitempty"`
+	SessionName  string `json:"sessionName,omitempty"`
+	Outcome      string `json:"outcome,omitempty"`
+	Blocks       bool   `json:"blocks,omitempty"`
 }
 type Projection struct {
 	*formations.RunStatusProjection
-	ProjectionVersion string        `json:"projectionVersion"`
-	WaitingGates      []GateRequest `json:"waitingGates"`
-	Events            []Event       `json:"events"`
+	ProjectionVersion string `json:"projectionVersion"`
+	// HumanChannel is the run's frozen mission channel: notify or session.
+	HumanChannel string        `json:"humanChannel"`
+	WaitingGates []GateRequest `json:"waitingGates"`
+	OnCallSeats  []OnCallSeat  `json:"onCallSeats"`
+	Events       []Event       `json:"events"`
 }
 type Coordinator struct {
 	admissions       sync.Mutex
@@ -71,6 +105,8 @@ type Coordinator struct {
 	needsYou         *needsYouDispatcher
 	agentLiveness    api.AgentLivenessProvider
 	fileRoots        *formations.FileRoots
+	// channels caches each run's frozen human channel; guarded by mu.
+	channels map[string]string
 }
 
 type executionState struct {
@@ -459,10 +495,35 @@ func (c *Coordinator) Project(runID string) (*Projection, error) {
 	if err != nil {
 		return nil, err
 	}
-	return project(status, events), nil
+	p := project(status, events)
+	p.HumanChannel = c.runHumanChannel(runID, events)
+	return p, nil
 }
+
+// runHumanChannel reads the run's frozen mission channel once per run.
+func (c *Coordinator) runHumanChannel(runID string, events []formations.RunEvent) string {
+	c.mu.Lock()
+	channel, ok := c.channels[runID]
+	c.mu.Unlock()
+	if ok {
+		return channel
+	}
+	board, err := c.store.ReadRunBoard(runID)
+	if err != nil {
+		return formations.HumanChannelNotify
+	}
+	channel = formations.RunHumanChannel(board, events)
+	c.mu.Lock()
+	if c.channels == nil {
+		c.channels = map[string]string{}
+	}
+	c.channels[runID] = channel
+	c.mu.Unlock()
+	return channel
+}
+
 func project(status *formations.RunStatusProjection, events []formations.RunEvent) *Projection {
-	p := &Projection{RunStatusProjection: status, ProjectionVersion: "standalone-trusted-v1", WaitingGates: []GateRequest{}, Events: []Event{}}
+	p := &Projection{RunStatusProjection: status, ProjectionVersion: "standalone-trusted-v1", HumanChannel: formations.HumanChannelNotify, WaitingGates: []GateRequest{}, OnCallSeats: []OnCallSeat{}, Events: []Event{}}
 	waiting := map[string]int{}
 	for _, raw := range events {
 		if raw.Type == formations.RunEventHumanInputRequested {
@@ -477,19 +538,59 @@ func project(status *formations.RunStatusProjection, events []formations.RunEven
 		e.SessionName, _ = raw.Data["sessionName"].(string)
 		e.Outcome, _ = raw.Data["outcome"].(string)
 		e.Blocks, _ = raw.Data["blocks"].(bool)
+		switch raw.Type {
+		case formations.RunEventHumanAskDelivered:
+			e.RequestedSeq = intFromData(raw.Data["requestedSeq"])
+		case formations.RunEventHumanAskFallback:
+			e.RequestedSeq = intFromData(raw.Data["requestedSeq"])
+			e.Outcome, _ = raw.Data["code"].(string)
+		}
 		p.Events = append(p.Events, e)
 	}
+	asks := formations.HumanAskRecords(events)
 	if !status.Final {
 		for _, event := range events {
-			if waiting[event.GateID] == event.Seq {
-				p.WaitingGates = append(p.WaitingGates, GateRequest{event.GateID, event.Seq})
+			if waiting[event.GateID] != event.Seq {
+				continue
 			}
+			gate := GateRequest{GateID: event.GateID, RequestedSeq: event.Seq, AskedSeats: []AskedSeat{}}
+			if record := asks[event.Seq]; record != nil {
+				for createdSeq, delivered := range record.Delivered {
+					gate.AskedSeats = append(gate.AskedSeats, AskedSeat{NodeID: delivered.NodeID, SlotID: delivered.SlotID, CreatedSeq: createdSeq, DeliveredSeq: delivered.Seq})
+				}
+				sort.Slice(gate.AskedSeats, func(i, j int) bool { return gate.AskedSeats[i].DeliveredSeq < gate.AskedSeats[j].DeliveredSeq })
+				if record.Fallback != nil {
+					gate.FallbackReason, _ = record.Fallback.Data["reason"].(string)
+				}
+			}
+			p.WaitingGates = append(p.WaitingGates, gate)
+		}
+		for _, seat := range formations.KeptSeats(events) {
+			onCall := OnCallSeat{NodeID: seat.NodeID, SlotID: seat.SlotID, CreatedSeq: seat.CreatedSeq, KeptSeq: seat.KeptSeq, WaitingOn: []PendingAsk{}}
+			for _, gate := range p.WaitingGates {
+				for _, asked := range gate.AskedSeats {
+					if asked.CreatedSeq == seat.CreatedSeq {
+						onCall.WaitingOn = append(onCall.WaitingOn, PendingAsk{GateID: gate.GateID, RequestedSeq: gate.RequestedSeq})
+					}
+				}
+			}
+			p.OnCallSeats = append(p.OnCallSeats, onCall)
 		}
 	}
 	if len(p.WaitingGates) > 0 && status.Status != formations.RunStatusBlocked {
 		p.Status = "waiting_human"
 	}
 	return p
+}
+
+func intFromData(value any) int {
+	switch v := value.(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	}
+	return 0
 }
 
 func (c *Coordinator) get(w http.ResponseWriter, r *http.Request) {

@@ -28,6 +28,14 @@ type Seat struct {
 	Columns     int    `json:"columns,omitempty"`
 	Rows        int    `json:"rows,omitempty"`
 	TerminalURL string `json:"terminalUrl,omitempty"`
+	// OnCall is set while the seat is kept on call for a human gate's ask.
+	OnCall *SeatOnCall `json:"onCall,omitempty"`
+}
+
+// SeatOnCall describes a kept seat: when it was kept and the pending asks it received.
+type SeatOnCall struct {
+	KeptSeq   int          `json:"keptSeq"`
+	WaitingOn []PendingAsk `json:"waitingOn"`
 }
 type SeatList struct {
 	RunID     string `json:"runId"`
@@ -94,8 +102,15 @@ func (c *Coordinator) seatRecords(runID string) ([]seatRecord, map[int]bool, err
 			}
 		}
 	}
+	onCall := map[int]*SeatOnCall{}
+	if status, err := formations.ProjectRunEvents(runID, events); err == nil {
+		for _, seat := range project(status, events).OnCallSeats {
+			onCall[seat.CreatedSeq] = &SeatOnCall{KeptSeq: seat.KeptSeq, WaitingOn: seat.WaitingOn}
+		}
+	}
 	records := make([]seatRecord, 0, len(latest))
 	for _, record := range latest {
+		record.seat.OnCall = onCall[record.seat.CreatedSeq]
 		records = append(records, record)
 	}
 	sort.Slice(records, func(i, j int) bool { return records[i].seat.CreatedSeq < records[j].seat.CreatedSeq })

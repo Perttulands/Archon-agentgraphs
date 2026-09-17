@@ -16,12 +16,16 @@ import (
 // coordinator decides when a run has settled: its command worker has exited,
 // so a block recorded mid-command (a human verdict awaiting its automatic
 // resume) is never announced. Each ask is sent once and marked in the run's
-// .needs-you.json artifact; a failed send stays unmarked and is retried.
+// .needs-you.json artifact; a failed send stays unmarked and is retried. On a
+// session-channel run a human gate's ask goes to the seats that asked instead
+// (on_call.go), and reaches the notify command only when it falls back.
 
 const defaultNeedsYouRetryInterval = 5 * time.Minute
 
 // NeedsYouConfig enables notifications for the runs this coordinator owns.
 type NeedsYouConfig struct {
+	// Notifier sends asks to the notify command. Nil sends nothing, while
+	// session-channel asks are still delivered to seats.
 	Notifier formations.NeedsYouNotifier
 	// CockpitURL is the optional base for links back to the cockpit.
 	CockpitURL string
@@ -30,6 +34,12 @@ type NeedsYouConfig struct {
 	ServerURL string
 	// RetryInterval paces the periodic retry; it defaults to five minutes.
 	RetryInterval time.Duration
+	// SessionRetryInterval paces another try at a seat an ask did not reach;
+	// it defaults to three seconds.
+	SessionRetryInterval time.Duration
+	// SessionProbeInterval paces checks that kept seats are still there; it
+	// defaults to fifteen seconds.
+	SessionProbeInterval time.Duration
 }
 
 type needsYouDispatcher struct {
@@ -44,19 +54,27 @@ type needsYouDispatcher struct {
 	// done closes when the dispatcher has stopped, before shutdown releases
 	// the writer lock.
 	done chan struct{}
+	// watching names runs with kept seats or open asks; retrying names runs
+	// with a session retry scheduled.
+	watching map[string]bool
+	retrying map[string]bool
 }
 
-// EnableNeedsYou starts notifications. Call it once, after startup recovery:
-// it first reconciles every non-final run, then follows settled commands and
-// retries undelivered asks periodically. It never blocks runs or shutdown.
+// EnableNeedsYou starts notifications and session-channel delivery. Call it
+// once, after startup recovery, with or without a notifier: it first reconciles
+// every non-final run, then follows settled commands and retries undelivered
+// asks periodically. It never blocks runs or shutdown.
 func (c *Coordinator) EnableNeedsYou(config NeedsYouConfig) {
-	if config.Notifier == nil {
-		return
-	}
 	if config.RetryInterval <= 0 {
 		config.RetryInterval = defaultNeedsYouRetryInterval
 	}
-	d := &needsYouDispatcher{c: c, config: config, pending: map[string]bool{}, live: map[string]bool{}, wake: make(chan struct{}, 1), done: make(chan struct{})}
+	if config.SessionRetryInterval <= 0 {
+		config.SessionRetryInterval = defaultSessionRetryInterval
+	}
+	if config.SessionProbeInterval <= 0 {
+		config.SessionProbeInterval = defaultSessionProbeInterval
+	}
+	d := &needsYouDispatcher{c: c, config: config, pending: map[string]bool{}, live: map[string]bool{}, wake: make(chan struct{}, 1), done: make(chan struct{}), watching: map[string]bool{}, retrying: map[string]bool{}}
 	c.mu.Lock()
 	if c.closed || c.needsYou != nil {
 		c.mu.Unlock()
@@ -93,6 +111,8 @@ func (d *needsYouDispatcher) run() {
 	d.queueNonFinal()
 	ticker := time.NewTicker(d.config.RetryInterval)
 	defer ticker.Stop()
+	probe := time.NewTicker(d.config.SessionProbeInterval)
+	defer probe.Stop()
 	for {
 		d.drain(ctx)
 		select {
@@ -101,6 +121,8 @@ func (d *needsYouDispatcher) run() {
 		case <-d.wake:
 		case <-ticker.C:
 			d.queueNonFinal()
+		case <-probe.C:
+			d.queueWatched()
 		}
 	}
 }
@@ -159,6 +181,9 @@ func (d *needsYouDispatcher) deliver(ctx context.Context, runID string, live boo
 	if busy {
 		return false // the command's release queues the run again
 	}
+	if d.deliverSession(ctx, runID) {
+		d.retrySoon(runID)
+	}
 	events, err := c.store.ReadRunEvents(runID)
 	if err != nil {
 		log.Printf("needs-you: run %s: %v", runID, err)
@@ -184,9 +209,16 @@ func (d *needsYouDispatcher) deliver(ctx context.Context, runID string, live boo
 		board = nil // titles fall back to identifiers
 	}
 	runStatus := project(status, events).Status
+	session := formations.RunHumanChannel(board, events) == formations.HumanChannelSession
 	owing := false
 	for _, ask := range asks {
 		if notified[ask.Seq] || ask.Kind == formations.NeedsYouKindFinal && !live {
+			continue
+		}
+		if session && ask.Kind == formations.NeedsYouKindHumanGate && !humanGateFellBack(events, ask.Seq) {
+			continue // the seats that asked receive it
+		}
+		if d.config.Notifier == nil {
 			continue
 		}
 		select {

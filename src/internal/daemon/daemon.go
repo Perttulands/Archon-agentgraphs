@@ -165,13 +165,12 @@ func Run(args []string) error {
 			return err
 		}
 	}
+	// Session-channel asks reach their seats with or without a notify command.
+	needsYou := coordinator.NeedsYouConfig{CockpitURL: *cockpitURL, ServerURL: "http://" + listeners[0].Addr().String()}
 	if *notifyCommand != "" {
-		c.EnableNeedsYou(coordinator.NeedsYouConfig{
-			Notifier:   coordinator.CommandNotifier{Path: *notifyCommand},
-			CockpitURL: *cockpitURL,
-			ServerURL:  "http://" + listeners[0].Addr().String(),
-		})
+		needsYou.Notifier = coordinator.CommandNotifier{Path: *notifyCommand}
 	}
+	c.EnableNeedsYou(needsYou)
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	for _, listener := range listeners {
 		fmt.Printf("Archon coordinator http://%s\n", listener.Addr())
