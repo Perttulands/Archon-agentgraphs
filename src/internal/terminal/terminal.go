@@ -1,6 +1,7 @@
-// Package terminal observes one durably identified Formations seat. Its PTY
-// relay is adapted from CHROTE's native terminal transport; input and sizing
-// ownership are deliberately absent from this observer.
+// Package terminal attaches to one durably identified Formations seat. Its PTY
+// relay and frames are adapted from CHROTE's native terminal transport
+// (/srv/chrote/src/internal/proxy/terminal.go): the operator types into the seat
+// and sizes their own view, and the seat's window keeps its size.
 package terminal
 
 import (
@@ -22,6 +23,20 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/core"
 	"github.com/gorilla/websocket"
 )
+
+// Client frames, as CHROTE's terminal transport defines them. Any other frame
+// is ignored.
+const (
+	clientInput  = '0'
+	clientResize = '1'
+	clientPause  = '2'
+	clientResume = '3'
+
+	serverOutput = '0'
+)
+
+// inputReadLimit bounds one client frame after the handshake.
+const inputReadLimit = 1 << 16
 
 type Config struct{ Socket, TmuxBin string }
 type Target struct{ SessionID, PaneID, SocketIdentity string }
@@ -113,7 +128,9 @@ func (o *Observer) Probe(parent context.Context, target Target) Status {
 
 // Serve requires the caller to resolve and authorize the exact run seat first.
 // ctx is canceled on daemon shutdown, including hijacked WebSockets that HTTP
-// Server.Shutdown does not manage. No browser frame can write to the PTY.
+// Server.Shutdown does not manage. After a JSON handshake the client sends `0`
+// input, `1` resize as JSON and `2`/`3` flow control; the server sends `0`
+// output.
 func (o *Observer) Serve(ctx context.Context, w http.ResponseWriter, r *http.Request, target Target) {
 	hasTTY := false
 	for _, protocol := range websocket.Subprotocols(r) {
@@ -157,6 +174,8 @@ func (o *Observer) Serve(ctx context.Context, w http.ResponseWriter, r *http.Req
 		return
 	}
 	_ = conn.SetReadDeadline(time.Time{})
+	// Typed input can be a paste.
+	conn.SetReadLimit(inputReadLimit)
 	status := o.Probe(ctx, target)
 	if status.State != "live" {
 		finish(websocket.CloseNormalClosure, status.Reason)
@@ -181,7 +200,8 @@ func (o *Observer) attach(ctx context.Context, conn *websocket.Conn, target Targ
 	if err := o.verifySocket(target); err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, o.config.TmuxBin, "-S", o.config.Socket, "attach-session", "-r", "-f", "ignore-size", "-t", target.SessionID)
+	// ignore-size keeps the seat's window at its own size; the view is this PTY.
+	cmd := exec.CommandContext(ctx, o.config.TmuxBin, "-S", o.config.Socket, "attach-session", "-f", "ignore-size", "-t", target.SessionID)
 	cmd.Env = attachEnv()
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = p.slave, p.slave, p.slave
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}
@@ -210,7 +230,7 @@ func (o *Observer) attach(ctx context.Context, conn *websocket.Conn, target Targ
 			n, err := p.master.Read(buffer)
 			if n > 0 {
 				frame := make([]byte, n+1)
-				frame[0] = '0'
+				frame[0] = serverOutput
 				copy(frame[1:], buffer[:n])
 				_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 				if sendErr := conn.WriteMessage(websocket.BinaryMessage, frame); sendErr != nil {
@@ -223,18 +243,36 @@ func (o *Observer) attach(ctx context.Context, conn *websocket.Conn, target Targ
 		}
 		finish(websocket.CloseNormalClosure, "terminal ended")
 	}()
+read:
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			break
 		}
-		if len(message) != 1 || (message[0] != '2' && message[0] != '3') {
-			finish(websocket.ClosePolicyViolation, "terminal is view-only; input and resize are forbidden")
-			break
+		if len(message) == 0 {
+			continue
 		}
-		if message[0] == '2' {
+		switch message[0] {
+		case clientInput:
+			if _, err := p.master.Write(message[1:]); err != nil {
+				break read
+			}
+		case clientResize:
+			var resize struct {
+				Columns int `json:"columns"`
+				Rows    int `json:"rows"`
+			}
+			if json.Unmarshal(message[1:], &resize) != nil || resize.Columns < 1 || resize.Rows < 1 || resize.Columns > 65535 || resize.Rows > 65535 {
+				continue
+			}
+			// With nobody else sizing the window, tmux would size it to this view
+			// despite ignore-size, so the view stays on the seat's own grid.
+			if o.sizedByAnother(ctx, target) {
+				_ = p.resize(resize.Columns, resize.Rows)
+			}
+		case clientPause:
 			flow.pause()
-		} else {
+		case clientResume:
 			flow.resume()
 		}
 	}
@@ -245,7 +283,32 @@ func (o *Observer) attach(ctx context.Context, conn *websocket.Conn, target Targ
 	return nil
 }
 
-// Flow control applies only to reading output; it cannot send terminal input.
+// sizedByAnother reports a client that sizes the seat's window, such as the
+// executor's control client or a CHROTE tile, so this view may take its own size.
+func (o *Observer) sizedByAnother(parent context.Context, target Target) bool {
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, o.config.TmuxBin, "-S", o.config.Socket, "list-clients", "-t", target.SessionID, "-F", "#{client_flags}")
+	cmd.Env = attachEnv()
+	raw, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	for _, flags := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		sizes := flags != ""
+		for _, flag := range strings.Split(flags, ",") {
+			if flag == "ignore-size" || flag == "read-only" {
+				sizes = false
+			}
+		}
+		if sizes {
+			return true
+		}
+	}
+	return false
+}
+
+// Flow control pauses reading output, so a busy seat cannot outrun the viewer.
 type flowGate struct {
 	mu      sync.Mutex
 	resumed chan struct{}

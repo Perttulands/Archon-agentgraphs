@@ -91,7 +91,7 @@ func readProof(t *testing.T, conn *websocket.Conn) {
 	}
 }
 
-func TestScratchObserverNeverInputsSizesOrEndsSeat(t *testing.T) {
+func TestScratchTerminalForwardsInputAndSizesOnlyItsView(t *testing.T) {
 	observer, target, run := scratchSeat(t)
 	initial := run("display-message", "-p", "-t", target.SessionID, "#{window_width}x#{window_height}")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -110,40 +110,87 @@ func TestScratchObserverNeverInputsSizesOrEndsSeat(t *testing.T) {
 		readProof(t, conn)
 		return conn
 	}
-	for _, frame := range []string{"0FORBIDDEN_INPUT\n", `1{"columns":22,"rows":5}`, "4"} {
-		conn := dial()
-		flags := run("list-clients", "-t", target.SessionID, "-F", "#{client_flags}")
-		if !strings.Contains(flags, "read-only") || !strings.Contains(flags, "ignore-size") {
-			t.Fatalf("observer flags: %s", flags)
-		}
-		if got := run("display-message", "-p", "-t", target.SessionID, "#{window_width}x#{window_height}"); got != initial {
-			t.Fatalf("observer resized native window: before=%s after=%s", initial, got)
-		}
+	send := func(conn *websocket.Conn, frame string) {
+		t.Helper()
 		if err := conn.WriteMessage(websocket.BinaryMessage, []byte(frame)); err != nil {
 			t.Fatal(err)
 		}
-		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				if !websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
-					t.Fatal(err)
-				}
-				break
-			}
-		}
-		conn.Close()
-		if strings.Contains(run("capture-pane", "-p", "-t", target.PaneID), "FORBIDDEN_INPUT") {
-			t.Fatal("browser input reached seat")
-		}
-		if status := observer.Probe(context.Background(), target); status.State != "live" {
-			t.Fatalf("observer changed seat availability: %+v", status)
-		}
 	}
-	// A paused reader must also detach promptly on daemon shutdown.
+	// Output keeps flowing while the test acts on the pane.
+	drain := func(conn *websocket.Conn) {
+		go func() {
+			for {
+				if _, _, err := conn.ReadMessage(); err != nil {
+					return
+				}
+			}
+		}()
+	}
+
 	conn := dial()
-	if err := conn.WriteMessage(websocket.BinaryMessage, []byte("2")); err != nil {
+	drain(conn)
+	flags := run("list-clients", "-t", target.SessionID, "-F", "#{client_flags}")
+	if strings.Contains(flags, "read-only") || !strings.Contains(flags, "ignore-size") {
+		t.Fatalf("terminal client flags: %s", flags)
+	}
+	// The seat runs cat, which echoes what reaches it.
+	send(conn, "0TYPED_BY_THE_OPERATOR\r")
+	waitFor(t, func() bool {
+		return strings.Count(run("capture-pane", "-p", "-t", target.PaneID), "TYPED_BY_THE_OPERATOR") == 2
+	})
+	// With nobody else sizing the window, a resize keeps the view on the seat's
+	// grid, because tmux would otherwise size the window to this client.
+	send(conn, `1{"columns":52,"rows":12}`)
+	send(conn, "0AFTER_THE_FIRST_RESIZE\r")
+	waitFor(t, func() bool {
+		return strings.Contains(run("capture-pane", "-p", "-t", target.PaneID), "AFTER_THE_FIRST_RESIZE")
+	})
+	if got := run("display-message", "-p", "-t", target.SessionID, "#{window_width}x#{window_height}"); got != initial {
+		t.Fatalf("terminal resized the seat window: before=%s after=%s", initial, got)
+	}
+	// While another client sizes the window, as the executor's control client
+	// does, a resize sizes only this view.
+	sizing := exec.Command(observer.config.TmuxBin, "-S", observer.config.Socket, "-C", "attach-session", "-t", target.SessionID)
+	sizing.Env = attachEnv()
+	stdin, err := sizing.StdinPipe()
+	if err != nil {
 		t.Fatal(err)
 	}
+	if err := sizing.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { stdin.Close(); _ = sizing.Wait() }()
+	if _, err := stdin.Write([]byte("refresh-client -C 120,40\n")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool {
+		return strings.Contains(run("list-clients", "-t", target.SessionID, "-F", "#{client_flags}"), "control-mode")
+	})
+	send(conn, `1{"columns":52,"rows":12}`)
+	waitFor(t, func() bool {
+		return strings.Contains(run("list-clients", "-t", target.SessionID, "-F", "#{client_flags} #{client_width}x#{client_height}"), "ignore-size,UTF-8 52x12")
+	})
+	if got := run("display-message", "-p", "-t", target.SessionID, "#{window_width}x#{window_height}"); got != initial {
+		t.Fatalf("terminal resized the seat window: before=%s after=%s", initial, got)
+	}
+	// Unknown and malformed frames are ignored; the connection keeps working.
+	send(conn, "4")
+	send(conn, "1{not json")
+	send(conn, "0STILL_CONNECTED\r")
+	waitFor(t, func() bool {
+		return strings.Contains(run("capture-pane", "-p", "-t", target.PaneID), "STILL_CONNECTED")
+	})
+	conn.Close()
+	waitFor(t, func() bool {
+		return !strings.Contains(run("list-clients", "-t", target.SessionID, "-F", "#{client_flags}"), "ignore-size")
+	})
+	if status := observer.Probe(context.Background(), target); status.State != "live" {
+		t.Fatalf("closing the terminal changed seat availability: %+v", status)
+	}
+
+	// A paused reader must also detach promptly on daemon shutdown.
+	conn = dial()
+	send(conn, "2")
 	started := time.Now()
 	cancel()
 	for {
@@ -157,7 +204,7 @@ func TestScratchObserverNeverInputsSizesOrEndsSeat(t *testing.T) {
 	}
 	conn.Close()
 	if time.Since(started) > 3*time.Second {
-		t.Fatal("shutdown did not close observer promptly")
+		t.Fatal("shutdown did not close the terminal promptly")
 	}
 	if observer.Probe(context.Background(), target).State != "live" {
 		t.Fatal("shutdown ended seat")
