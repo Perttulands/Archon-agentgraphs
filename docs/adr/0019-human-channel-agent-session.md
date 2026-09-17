@@ -1,86 +1,101 @@
 # Human gates reach the operator by mission channel
 
-Proposed 2026-09-17, pending the operator's decision form-xex on which session
-answers, and whether an agent may record a confirmed decision. Operator request
-under form-3yd.10: a mission chooses how its human gates reach the operator, and
-the operator wants to answer the first real Wayfinding run in an agent's tmux
-session instead of by email. Extends the
-needs-you notifications of the contract and the live terminals of
-[ADR-0017](0017-run-evidence-api.md)'s trust boundary.
+Accepted 2026-09-17 by the operator's decision form-xex. Operator request under
+form-3yd.10: a mission chooses how its human gates reach the operator, and the
+operator wants to answer the first real Wayfinding run in an agent's tmux
+session instead of by email. The operator chose to talk to the agents that asked
+(form-xex option c), and allowed those agents to record a decision the operator
+has confirmed.
 
 Before this decision one daemon flag, `--notify-command`, sent every run's asks
-the same way, and every cockpit terminal was view-only.
+the same way. Seats ended when their formation finished, and nobody typed into
+them.
 
 ## Decision
 
 - A mission has `humanChannel`: `notify` (the default, stored as absent) or
   `session`. A run reads it from its frozen board, so a change applies to runs
   started afterwards. The Start mission dialog shows it.
-- `notify` keeps today's behaviour: asks go to `--notify-command`, if set.
-- `session` sends every needs-you ask of the run (human gate, escalation, block
-  and final outcome) to the run's liaison, and never to the notify command. The
-  same `.needs-you.json` record keeps each ask delivered once.
+- `notify` keeps today's behaviour: every ask goes to `--notify-command`, if set.
+- `session` changes human gates only. A human gate's ask goes to the seats of
+  the formation whose work the gate is judging, and the operator talks to those
+  agents. Escalations, blocks and final outcomes still go to the notify command.
+  The same `.needs-you.json` record keeps each ask delivered once.
 
-## The liaison
+## Seats on call
 
-- One liaison per run: an interactive agent session the daemon starts on the
-  first ask and reuses for later ones, so the conversation keeps its context.
-  It runs on the executor's `--socket` as `form-<run>-liaison` (with any
-  `--mission-label` prefix), in the run's cwd, launched and readied the way
-  seats are. It has no turn to complete and no sentinel.
-- Its persona is `operator-liaison`: a built-in Claude Code preset, replaced by
-  a card of that ID in the agents directory.
-- Each ask is written to `<state-dir>/briefs/liaison-<run>-<seq>.md` and pasted
-  as a pointer only while the agent is idle and its input line is empty, so it
-  never lands mid-turn or on top of the operator's unsent text. An undelivered
-  ask stays unrecorded and is retried.
-- The brief carries the ask as a notification would (gate title, criterion,
-  the input capped at 64 KiB, the run artifact directory, the decisions already
-  recorded in the run) and these rules:
-  - Present the ask plainly and help the operator think it through, reading
-    the run's artifacts to answer their questions. Offer a view only when
-    asked, and label it as the liaison's.
+- On a session-channel run, a formation whose output can reach a human gate
+  through gates alone (for example work, then a judge gate, then a sign-off
+  gate) keeps its seats when it finishes instead of ending them. The ledger
+  records `seat_cleanup` with outcome `kept_on_call`. Other formations,
+  including judge chains, end their seats as today.
+- The asking formation of a human gate request is the nearest formation behind
+  the gate's input, following that input back through gates. Its latest
+  attempt's kept seats receive the ask.
+- The ask is written to `<state-dir>/briefs/gate-<run>-<seq>.md` and pasted into
+  each of those seats as a pointer, only while the agent is idle and its input
+  line is empty. An undelivered ask stays unrecorded and is retried within
+  seconds, not minutes. Every seat of a peer formation gets it; the operator
+  may talk to any of them.
+- The brief names the gate, its criterion, the exact pending request and the
+  decisions already recorded in the run, and it sets these rules:
+  - Present the gate's question plainly, from your own work, and help the
+    operator think it through. Offer a view only when asked, and label it as
+    yours.
   - Only the operator decides. Draft the response in the operator's words, show
-    it with the verdict, and record it only after they confirm, with the exact
-    `gate approve` or `gate reject` command given, `--requested-seq` and
-    `--relayed-by liaison`.
-  - Modify no files, and perform no Git, tmux, agent or service operations.
-    Resume or abort the run only when the operator asks, with the command given.
-- The daemon records the session in the run artifact `<runId>.liaison.json`:
-  the immutable session, pane and socket identity, harness, model, effort,
-  creation time, and end time and outcome. It is not a ledger event. The
-  liaison is the operator's channel, not run execution, and replay ignores it.
-- The liaison ends when the operator ends the conversation, or one hour after
-  its run became final. Daemon shutdown leaves it running. Startup verifies
-  the recorded identity; a liaison that is gone, or whose tmux server changed,
-  is replaced at the next ask.
+    it with the verdict, and record it only after they confirm. Use the exact
+    `gate approve` or `gate reject` command given, with `--requested-seq` and
+    `--relayed-by <slot-id>`. If another seat or the cockpit decided first, the
+    command returns 409; say so.
+  - The formation brief's limits still apply. Running the given gate command
+    is the one exception to its bans.
+- A kept seat ends when its turn is over and one of these holds:
+  - it has received at least one ask, and every ask delivered to it has been
+    decided;
+  - its formation starts a new attempt, which gets fresh seats as today;
+  - the run is final or aborted.
+  Before ending a seat that is mid-turn, the runtime waits up to 60 seconds for
+  it to go idle, so the agent's closing reply stays readable. Cleanup ends only
+  that seat, by immutable ID, and records `seat_cleanup`.
+- Daemon shutdown leaves kept seats running. Startup verifies them from the
+  ledger by recorded identity and keeps managing them. A kept seat that is gone,
+  or whose tmux server changed, is recorded as such.
+- If no kept seat can receive a human gate's ask, the ask goes to the notify
+  command, and the cockpit says why. That happens when every seat has died, on
+  the lab executor, or when no formation lies behind the gate.
+
+## Typing into a seat
+
+- A seat is on call while an ask delivered to it is still waiting. Its terminal
+  WebSocket, `GET /api/formations/runs/{runId}/seats/{createdSeq}/terminal`,
+  then accepts input and resize frames. At any other time the terminal stays
+  view-only and closes on input with 1008, as before.
+- The seats projection marks a seat `onCall`, and the cockpit learns of changes
+  without a reload.
+- The operator can also type to an on-call seat in CHROTE, which shows the
+  shared tmux pool. Outside an on-call conversation, operators and agents still
+  must not type into seats.
 
 ## Recording who relayed a decision
 
-A verdict may carry `relayedBy`, a short name such as `liaison`. It is stored on
-`human_verdict_recorded` and shown with the decision. `decidedBy` stays
-`human:operator`: the operator decided, and the record says who typed the
-command.
-
-## Routes
-
-- `GET /api/formations/runs/{runId}/liaison` returns the run's channel and the
-  liaison's state (`none`, `live`, `ended` or `unavailable`), session name, times,
-  end outcome and terminal link. The cockpit learns of changes without a reload.
-- `GET /api/formations/runs/{runId}/liaison/terminal` is a `tty` WebSocket that
-  accepts input and resize as well as pause and resume. It is interactive
-  because the liaison exists to receive the operator's typing.
-- `DELETE /api/formations/runs/{runId}/liaison` ends the conversation.
+A verdict may carry `relayedBy`, the slot ID of the seat that ran the command.
+It is stored on `human_verdict_recorded` and shown with the decision.
+`decidedBy` stays `human:operator`: the operator decided, and the record says
+which agent typed the command.
 
 ## Consequences
 
-- Seats are unchanged: Peek stays view-only, and operators and agents still
-  must not type into seats. The liaison is the one session meant for input.
-- Anyone who reaches the cockpit can type to a run's liaison, which runs with
-  the harness's permissions. That is the trust CHROTE's own terminals on the
+- An operator on the session channel works with the agents that did the work,
+  in their own sessions and with their own context, rather than a relay.
+- A send-back starts a new attempt with fresh seats, as before. The response
+  the agent records must carry what the conversation settled, because the next
+  attempt reads only that response.
+- Idle agents stay running while a gate waits, one per slot of the asking
+  formation.
+- Anyone who reaches the cockpit can type to an on-call seat, which runs with its
+  harness's permissions. That is the trust CHROTE's own terminals on the
   tailnet already carry, by the operator's decision that the tailnet needs no
   further authentication.
-- The liaison sits in the shared tmux pool, so CHROTE shows it too and the
-  operator may talk to it there.
-- Choosing `session` means no email for that run. An operator away from the
-  screen learns of the ask only when they return to the cockpit or CHROTE.
+- Choosing `session` means no email for human gates on that run. An operator
+  away from the screen learns of a gate only when they return to the cockpit or
+  CHROTE.
