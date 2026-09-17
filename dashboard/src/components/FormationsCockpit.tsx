@@ -162,6 +162,7 @@ type BoardDialogState = {
 type CockpitUndo =
   | { kind: 'clearBrief'; formationId: string }
   | { kind: 'setBrief'; formationId: string; brief: FormationBrief }
+  | { kind: 'setExecution'; formationId: string; timeoutSeconds: number }
   | { kind: 'wireConnection'; from: string; to: string }
   | { kind: 'unwireConnection'; from: string; to: string }
   | { kind: 'rewireConnection'; from: string; previousTo: string; to: string }
@@ -926,6 +927,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return true
   }, [patchBoard])
 
+  const saveExecution = useCallback(async (formationId: string, timeoutSeconds: number): Promise<boolean> => {
+    const previous = boardRef.current?.formations.find(formation => formation.id === formationId)?.execution?.timeoutSeconds || 0
+    const result = await patchBoard({ setExecution: { formationId, timeoutSeconds } })
+    if (!result) return false
+    undoStack.current.push({ kind: 'setExecution', formationId, timeoutSeconds: previous })
+    return true
+  }, [patchBoard])
+
   const performUndo = useCallback(async () => {
     const action = undoStack.current.pop()
     if (!action) return
@@ -961,6 +970,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     switch (action.kind) {
       case 'clearBrief':
         patch = { clearBrief: { formationId: action.formationId } }
+        break
+      case 'setExecution':
+        patch = { setExecution: { formationId: action.formationId, timeoutSeconds: action.timeoutSeconds } }
         break
       case 'setBrief':
         patch = {
@@ -2426,6 +2438,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     rename: renameNode,
     updateMission: updateMissionFields,
     setBrief: saveBrief,
+    setExecution: saveExecution,
     changeType: changeFormationType,
     assignSlot,
     updateGate: (gate, draft) => updateGateFields(gate.id, draft),
@@ -2439,7 +2452,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
       setInspectedNodeId(nodeId)
     },
-  }), [assignSlot, attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, renameNode, saveBrief, setGateFiles, updateGateFields, updateMissionFields])
+  }), [assignSlot, attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, renameNode, saveBrief, saveExecution, setGateFiles, updateGateFields, updateMissionFields])
 
   const cockpit = (
     <div className="fmx" data-testid="formations-view" data-cockpit="d7">

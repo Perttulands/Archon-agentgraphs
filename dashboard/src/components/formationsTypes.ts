@@ -74,6 +74,11 @@ export interface FormationVerification {
 
 export type FormationType = 'solo' | 'peer' | 'orchestrated'
 
+export interface FormationExecutionPolicy {
+  /** Positive seconds for the whole formation invocation; omitted policy inherits the run default. */
+  timeoutSeconds: number
+}
+
 export interface FormationNode {
   id: string
   /** A board saved before a type was retired can still carry it; the card
@@ -81,6 +86,7 @@ export interface FormationNode {
   type: FormationType | (string & {})
   title: string
   brief?: FormationBrief
+  execution?: FormationExecutionPolicy
   inputs: FormationPort[]
   outputs: FormationPort[]
   slots: FormationSlot[]
@@ -361,6 +367,7 @@ export type UndoAction =
   | { kind: 'assignSlot'; formationId: string; slotId: string; agentId: string; harness: string }
   | { kind: 'makeController'; formationId: string; slotId: string }
   | { kind: 'setBrief'; formationId: string; brief?: FormationBrief }
+  | { kind: 'setExecution'; formationId: string; timeoutSeconds: number }
   | { kind: 'removePort'; formationId: string; portId: string }
   | { kind: 'unwireConnection'; from: string; to: string }
   | { kind: 'moveNode'; node: LayoutNode }

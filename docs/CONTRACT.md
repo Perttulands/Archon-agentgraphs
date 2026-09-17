@@ -550,6 +550,12 @@ in full and edited in place: titles, a mission's goal, input hint, Bead ID and
 files, a formation's type, brief and staffing, and a gate's kinds, check,
 criterion, judge and files. Each save is one board edit with undo. Ports, edges, layout and notes are
 unchanged.
+The formation window's Execution duration field sets the total seconds for one
+formation invocation, including preparation and finalization. Leave it blank
+to inherit the run's execution default. The authored field is
+`execution.timeoutSeconds`; `setExecution` with zero clears it. The admitted
+run freezes the effective duration, so later edits apply to new runs. Saving or
+clearing a duration has its own undo entry.
 `archon formation set-type <board> <formation> <solo|peer|orchestrated>` and the
 type chip on a formation card change its type in place. Solo keeps one slot,
 peer has at least two slots with no controller, and orchestrated has one

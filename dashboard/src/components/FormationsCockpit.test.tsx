@@ -334,6 +334,12 @@ function installFetchMock(options: {
         board = { ...board, rev: board.rev + 1, formations: board.formations.map(item => item.id === formationId ? { ...item, brief } : item) as TestBoard['formations'] }
         return respond({ board }, 'board-etag-2')
       }
+      if (!url.endsWith('/layout') && body.setExecution) {
+        const { formationId, timeoutSeconds } = body.setExecution as { formationId: string; timeoutSeconds: number }
+        board = { ...board, rev: board.rev + 1, formations: board.formations.map(item => item.id === formationId
+          ? { ...item, execution: timeoutSeconds ? { timeoutSeconds } : undefined } : item) as TestBoard['formations'] }
+        return respond({ board }, 'board-etag-2')
+      }
       if (!url.endsWith('/layout') && body.assignSlot) {
         const { formationId, slotId, agentId, harness } = body.assignSlot as { formationId: string; slotId: string; agentId: string; harness: string }
         board = {
@@ -1779,6 +1785,45 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => expect(patches.filter(patch => patch.body.setBrief).slice(-1)[0]?.body.setBrief).toMatchObject({ files: [] }))
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => expect(patches.filter(patch => patch.body.clearBrief).slice(-1)[0]?.body.clearBrief).toEqual({ formationId: 'fmn_frame' }))
+  })
+
+  it('saves a formation duration, restores inheritance, and undoes both changes', async () => {
+    await renderCockpit()
+    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
+    const duration = () => patches.filter(patch => patch.body.setExecution).map(patch => patch.body.setExecution)
+    expect(within(frame).getByText('Inherit the run default')).toBeInTheDocument()
+
+    fireEvent.click(within(frame).getByRole('button', { name: 'Edit execution duration (seconds)' }))
+    expect(within(frame).getByLabelText('Execution duration (seconds)')).toHaveValue('')
+    fireEvent.change(within(frame).getByLabelText('Execution duration (seconds)'), { target: { value: '125' } })
+    fireEvent.click(within(frame).getByRole('button', { name: 'Save execution duration (seconds)' }))
+    await waitFor(() => expect(within(frame).getByText('125 seconds')).toBeInTheDocument())
+    expect(duration()).toEqual([{ formationId: 'fmn_frame', timeoutSeconds: 125 }])
+
+    fireEvent.click(within(frame).getByRole('button', { name: 'Edit execution duration (seconds)' }))
+    fireEvent.change(within(frame).getByLabelText('Execution duration (seconds)'), { target: { value: '' } })
+    fireEvent.click(within(frame).getByRole('button', { name: 'Save execution duration (seconds)' }))
+    await waitFor(() => expect(within(frame).getByText('Inherit the run default')).toBeInTheDocument())
+    expect(duration().slice(-1)[0]).toEqual({ formationId: 'fmn_frame', timeoutSeconds: 0 })
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(within(frame).getByText('125 seconds')).toBeInTheDocument())
+    expect(duration().slice(-1)[0]).toEqual({ formationId: 'fmn_frame', timeoutSeconds: 125 })
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(within(frame).getByText('Inherit the run default')).toBeInTheDocument())
+    expect(duration().slice(-1)[0]).toEqual({ formationId: 'fmn_frame', timeoutSeconds: 0 })
+  })
+
+  it('rejects invalid formation durations without issuing a board mutation', async () => {
+    await renderCockpit()
+    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
+    fireEvent.click(within(frame).getByRole('button', { name: 'Edit execution duration (seconds)' }))
+    for (const value of ['0', '-1', '1.5', '10 minutes', 'Infinity', '9007199254740992']) {
+      fireEvent.change(within(frame).getByLabelText('Execution duration (seconds)'), { target: { value } })
+      fireEvent.click(within(frame).getByRole('button', { name: 'Save execution duration (seconds)' }))
+      expect(within(frame).getByRole('alert')).toHaveTextContent('Enter a positive whole number of seconds')
+    }
+    expect(patches.filter(patch => patch.body.setExecution)).toEqual([])
   })
 
   it('states staffing in words and restaffs a slot from its window with undo', async () => {

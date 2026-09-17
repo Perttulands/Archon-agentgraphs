@@ -23,6 +23,7 @@ import { nodeFileRefs } from '../files/referencedFiles'
 import FloatingWindow from '../windows/FloatingWindow'
 import type { WindowRect } from '../windows/windowGeometry'
 import { EditableField } from './EditableField'
+import { FormationDurationField } from './FormationDurationField'
 import { HumanChannelField } from '../humanChannel/HumanChannelField'
 import { humanChannelField, humanChannelOf } from '../humanChannel/humanChannel'
 import { buildFlow } from '../flow/flowModel'
@@ -42,6 +43,7 @@ export interface NodeWindowOps {
   rename: (nodeId: string, title: string) => Promise<boolean>
   updateMission: (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'beadId' | 'inputHint' | 'files' | 'humanChannel'>>) => Promise<boolean>
   setBrief: (formationId: string, brief: FormationBrief) => Promise<boolean>
+  setExecution: (formationId: string, timeoutSeconds: number) => Promise<boolean>
   changeType: (formation: FormationNode, type: FormationType, keepSlotId?: string) => void
   assignSlot: (formation: FormationNode, slot: FormationSlot, agentId: string, harness: string) => void
   updateGate: (gate: GateNode, draft: GateDraft) => Promise<boolean>
@@ -215,6 +217,8 @@ function FormationFields({ formation, agents, ops }: { formation: FormationNode;
       </div>
       <EditableField label="Brief" value={brief.goal || ''} multiline markdown placeholder="No brief yet. Say what this step does and what it returns."
         onSave={goal => saveBrief({ goal })} />
+      <FormationDurationField timeoutSeconds={formation.execution?.timeoutSeconds}
+        onSave={timeoutSeconds => ops.setExecution(formation.id, timeoutSeconds)} />
       <EditableField label="Bead" value={brief.beadId || ''} placeholder="No Bead" hint={BEAD_HINT} validate={beadProblem}
         onSave={beadId => saveBrief({ beadId })} />
       <FilesField files={brief.files} context={formation.title} onSave={files => saveBrief({ files })} />

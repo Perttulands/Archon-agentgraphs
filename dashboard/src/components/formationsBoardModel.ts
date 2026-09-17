@@ -50,6 +50,8 @@ export function undoBoardPatch(action: BoardUndoAction): Record<string, unknown>
           links: action.brief.links || [],
         },
       }
+    case 'setExecution':
+      return { setExecution: { formationId: action.formationId, timeoutSeconds: action.timeoutSeconds } }
     case 'removePort':
       return {
         removePort: {
