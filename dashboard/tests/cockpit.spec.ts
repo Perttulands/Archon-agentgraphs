@@ -17,7 +17,7 @@ test('theme fallback, local font, notes and harness icons survive', async ({ pag
   expect(fixture.themeFetches()).toBe(1)
 })
 
-for (const width of [1440, 390]) test(`floating Peek observes native output and keeps graph stable at ${width}px`, async ({ page }) => {
+for (const width of [1440, 390]) test(`floating Peek shows native output, sends typing and resize to the seat, and keeps the graph stable at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 })
   const fixture = await cockpitFixture(page, { run: true })
   const frames: string[] = []
@@ -28,17 +28,21 @@ for (const width of [1440, 390]) test(`floating Peek observes native output and 
       if (value.startsWith('{')) socket.send(Buffer.from('0\x1b[32mSCRATCH OUTPUT\x1b[0m\r\n' + Array.from({ length: 45 }, (_, i) => `line ${i}`).join('\r\n')))
     })
   })
+  const typed = () => frames.filter(frame => frame.startsWith('0')).map(frame => frame.slice(1)).join('')
+  const resizes = () => frames.filter(frame => frame.startsWith('1')).map(frame => JSON.parse(frame.slice(1)) as { columns: number; rows: number })
   await page.goto('/')
   await expect(page.getByRole('button', { name: 'Open terminal' })).toBeEnabled()
   const world = page.locator('.world')
   const transform = await world.getAttribute('style')
   await page.getByRole('button', { name: 'Open terminal' }).click()
-  await expect(page.getByText('Live output', { exact: true })).toBeVisible()
+  await expect(page.getByText('Live · type to talk to the agent', { exact: true })).toBeVisible()
   await expect(page.locator('.xterm-screen')).toBeVisible()
-  const host = page.locator('.terminal-surface-host')
-  await expect.poll(() => host.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThan(2)
+  const rows = page.locator('.xterm-rows')
+  await expect(rows).toContainText('line 44')
+  // The grid fits its window, and the seat is told the fitted size.
+  await expect.poll(() => resizes().length).toBeGreaterThan(0)
   await page.getByRole('button', { name: 'Older output', exact: true }).click()
-  expect(await host.evaluate(el => el.scrollTop)).toBe(0)
+  await expect(rows).not.toContainText('line 44')
   const grid = (await page.locator('.xterm-screen').boundingBox())!
   await page.mouse.move(grid.x + 4, grid.y + 20)
   await page.mouse.down()
@@ -46,14 +50,32 @@ for (const width of [1440, 390]) test(`floating Peek observes native output and 
   await page.mouse.up()
   await expect(page.locator('.xterm-selection div').first()).toBeVisible()
   await page.getByRole('button', { name: 'Latest output', exact: true }).click()
-  await expect.poll(() => host.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThan(2)
+  await expect(rows).toContainText('line 44')
   expect(await world.getAttribute('style')).toBe(transform)
+
+  // Typing reaches the seat; Escape goes to the agent and leaves the window open.
   await page.locator('.terminal-surface-host').click()
-  await page.keyboard.type('MUST NOT REACH THE SEAT')
+  await page.keyboard.type('hello seat')
   await page.keyboard.press('Enter')
+  await page.keyboard.press('Escape')
+  await expect.poll(typed).toBe('hello seat\r\x1b')
+  await expect(page.getByRole('dialog', { name: 'Formation terminal Peek' })).toBeVisible()
+
+  if (width === 1440) {
+    // Resizing the window resizes the terminal and the seat.
+    const before = resizes().slice(-1)[0]
+    const corner = (await page.locator('.floating-peek [data-handle="se"]').boundingBox())!
+    await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(corner.x + 200, corner.y + 120, { steps: 6 })
+    await page.mouse.up()
+    await expect.poll(() => resizes().slice(-1)[0].columns).toBeGreaterThan(before.columns)
+    expect(resizes().slice(-1)[0].rows).toBeGreaterThan(before.rows)
+  }
+
   const before = fixture.seatsFetches()
   await page.getByRole('button', { name: 'Worker 1', exact: true }).click()
-  await expect(page.getByText('Live output', { exact: true })).toBeVisible()
+  await expect(page.getByText('Live · type to talk to the agent', { exact: true })).toBeVisible()
   expect(fixture.seatsFetches()).toBeGreaterThan(before)
   const head = page.locator('.peek-head')
   const rect = (await head.boundingBox())!
@@ -65,12 +87,14 @@ for (const width of [1440, 390]) test(`floating Peek observes native output and 
   await close.click()
   expect(await world.getAttribute('style')).toBe(transform)
   await page.getByRole('button', { name: 'Open terminal' }).click()
-  await expect(page.getByText('Live output', { exact: true })).toBeVisible()
+  await expect(page.getByText('Live · type to talk to the agent', { exact: true })).toBeVisible()
   expect(await world.getAttribute('style')).toBe(transform)
   expect(fixture.writes).toEqual([])
-  expect(frames.length).toBeGreaterThan(1)
-  for (const frame of frames) expect(JSON.parse(frame)).toEqual({ columns: 96, rows: 30 })
-  await page.screenshot({ path: `/tmp/form-ui-peek-${width}.png` })
+  // Each connection opens with the seat's native grid, then speaks only input, resize and flow control.
+  const handshakes = frames.filter(frame => frame.startsWith('{'))
+  expect(handshakes.length).toBeGreaterThan(1)
+  for (const frame of handshakes) expect(JSON.parse(frame)).toEqual({ columns: 96, rows: 30 })
+  for (const frame of frames) expect(frame[0]).toMatch(/[{0123]/)
 })
 
 test('two floating windows open, resize, stack and stay off the zoom column', async ({ page }) => {

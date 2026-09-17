@@ -28,9 +28,10 @@ to the drafting step.
   cancellation and histories.
 - Click a mission, formation or gate to open it in a floating window. Read its
   full text, staffing and routes, and edit any field in place, with undo.
-- Open a floating terminal Peek to select, copy and scroll a seat's output.
-  Peek is view-only and preserves the agent's terminal size. Open one per
-  formation, then move, resize and stack the windows over the canvas.
+- Open a floating terminal Peek to talk with a seat's agent, even while it
+  works, and to select, copy and scroll its output. The terminal follows the
+  window's size. Open one per formation, then move, resize and stack the
+  windows over the canvas.
 
 ![Floating terminal Peek with controller and worker tabs](docs/images/terminal-peek.png)
 

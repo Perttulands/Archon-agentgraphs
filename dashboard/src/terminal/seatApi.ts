@@ -11,6 +11,8 @@ export interface RunSeat {
   createdSeq: number
   sessionName: string
   state: 'live' | 'ended' | 'missing' | 'unavailable'
+  /** Kept after its formation finished to answer a human gate ask (ADR-0019). */
+  onCall?: boolean
   reason?: string
   columns?: number
   rows?: number

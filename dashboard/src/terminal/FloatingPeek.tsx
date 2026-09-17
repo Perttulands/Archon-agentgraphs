@@ -8,8 +8,8 @@ import type { ConnectionState } from './terminalSession'
 import './peek.css'
 
 const connectionText: Record<ConnectionState, string> = {
-  connecting: 'Connecting…', open: 'Live output', ended: 'Seat ended or is no longer present',
-  disconnected: 'Disconnected. Refresh seats to reconnect.', unavailable: 'Observation unavailable. Refresh seats to check again.',
+  connecting: 'Connecting…', open: 'Live · type to talk to the agent', ended: 'Seat ended or is no longer present',
+  disconnected: 'Disconnected. Refresh seats to reconnect.', unavailable: 'Terminal unavailable. Refresh seats to check again.',
 }
 
 export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, onClose }: {
@@ -77,7 +77,7 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
       <span className="peek-icon">{harnessIcon(selected?.harness)}</span>
       <span className="peek-title" tabIndex={0} aria-label="Move terminal with arrow keys"
         onKeyDown={win.onMoveKeyDown}>{selected ? `${selected.nodeTitle} / ${selected.slotLabel}` : 'Terminal Peek'}</span>
-      <span className="peek-observer">View only</span>
+      {selected?.onCall ? <span className="peek-on-call">On call · waiting for you</span> : null}
       <button ref={closeButton} onClick={onClose} aria-label="Close terminal Peek">Close ×</button>
     </header>
     <div className="peek-picker">
@@ -97,16 +97,17 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
           void refresh()
         }}>
         {harnessIcon(seat.harness)}{seat.slotLabel}{seat.controller && !/controller/i.test(seat.slotLabel) ? ' · controller' : ''}
+        {seat.onCall ? <span className="peek-seat-on-call" title="On call: waiting for you">on call</span> : null}
       </button>)}
     </nav>
     {loading ? <p className="peek-message" role="status">Loading run seats…</p>
       : error ? <p className="peek-message" role="alert">{error}</p>
       : terminalAvailable && selected ? <TerminalSurface key={`${selected.createdSeq}-${generation}`} seat={selected} onStateChange={setConnectionState} />
       : <p className="peek-message" role="status">{selected
-        ? `${selected.state === 'live' ? 'Observation unavailable' : `Seat ${selected.state}`}. ${selected.reason || ''}`
+        ? `${selected.state === 'live' ? 'Terminal unavailable' : `Seat ${selected.state}`}. ${selected.reason || ''}`
         : projection?.reason || 'No terminal seats have been created for this formation.'}</p>}
-    <footer className="peek-foot"><span role="status">{terminalAvailable ? connectionText[connectionState] : 'View only'}</span>
-      <span title="Drag to select text; hold Shift if the terminal uses mouse tracking.">Select and scroll output</span></footer>
+    <footer className="peek-foot"><span role="status">{terminalAvailable ? connectionText[connectionState] : 'No live terminal'}</span>
+      <span title="Drag to select text; hold Shift if the terminal uses mouse tracking. Resize the window to resize the terminal.">Type to talk · select to copy</span></footer>
     <FloatingFrameHandles handles={win.handles} activeHandle={win.activeHandle} />
   </section>
 }
