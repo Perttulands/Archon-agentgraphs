@@ -27,3 +27,6 @@
 .fmx .gate-answer-talk-button:disabled{opacity:.55;cursor:not-allowed;}
 .fmx .gate-answer-talk-note{font-size:11px;line-height:1.4;color:var(--ink2);}
 .fmx .gate-answer-fallback{margin:0;font-size:11.5px;line-height:1.45;color:var(--ink2);border-left:2px solid var(--gold);padding-left:8px;}
+
+.fmx .gate-answer-evidence{display:inline-block;margin-left:6px;padding:0;border:0;background:none;color:var(--gold);font:inherit;text-decoration:underline;cursor:pointer;}
+.fmx .gate-answer-draft{margin:0;font-size:11px;line-height:1.4;color:var(--dim);}

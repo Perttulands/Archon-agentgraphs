@@ -25,7 +25,7 @@ describe('run discovery', () => {
     const finished = run('run_01F', 'succeeded', true)
     expect(chooseBoardRun({ slug: 'wayfinding', runs: [finished], pinnedRunId: '', current: finished })).toBe('run_01F')
     expect(chooseBoardRun({ slug: 'other', runs: [], pinnedRunId: '', current: finished })).toBe('')
-    expect(runChoiceLabel({ ...runs[1], runId: 'run_01M2N5GB90F16SY7E54WG39BYE', beadId: 'form-3yd.10' })).toBe('waiting_human · …G39BYE · form-3yd.10')
+    expect(runChoiceLabel({ ...runs[1], runId: 'run_01M2N5GB90F16SY7E54WG39BYE', beadId: 'form-3yd.10' })).toBe('Waiting for your answer · …G39BYE · form-3yd.10')
   })
 
   it('offers recent finished runs after the open ones, and always the run shown', () => {

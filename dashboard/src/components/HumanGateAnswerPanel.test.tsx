@@ -19,7 +19,7 @@ function renderPanel(onDecide = vi.fn(async () => true), upstream: Parameters<ty
 }
 
 describe('HumanGateAnswerPanel', () => {
-  afterEach(() => window.localStorage.clear())
+  afterEach(() => { vi.restoreAllMocks(); window.localStorage.clear() })
 
   it('shows the upstream questions readably and approves with the typed response', async () => {
     const onDecide = vi.fn(async () => true)
@@ -34,10 +34,12 @@ describe('HumanGateAnswerPanel', () => {
     const answer = '1. Postgres.\n2. The operator.'
     fireEvent.change(screen.getByLabelText('Your response'), { target: { value: `  ${answer}\n` } })
     expect(window.localStorage.getItem('archon.gateResponse.run_1.9')).toBe(`  ${answer}\n`)
+    expect(screen.getByRole('status')).toHaveTextContent('Draft saved in this browser. Not submitted.')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Approve' })) })
 
     expect(onDecide).toHaveBeenCalledWith('pass', answer)
     expect(window.localStorage.getItem('archon.gateResponse.run_1.9')).toBeNull()
+    expect(screen.getByRole('status')).toHaveTextContent('Answer submitted.')
   })
 
   it('approves with an empty response and sends back only with text', async () => {
@@ -67,13 +69,46 @@ describe('HumanGateAnswerPanel', () => {
     unmount()
     renderPanel(onDecide)
     expect(screen.getByLabelText('Your response')).toHaveValue('Use Postgres')
+    expect(screen.getByRole('status')).toHaveTextContent('Draft restored from this browser. Not submitted.')
   })
 
   it('prefers the frozen run criterion and marks truncated input', () => {
     renderPanel(undefined, { state: 'ready', from: 'Question round', text: 'first part', truncated: true, criterion: 'Answer every question' })
     expect(screen.getByText('Answer every question')).toBeInTheDocument()
     expect(screen.queryByText('Answer the open questions')).toBeNull()
-    expect(screen.getByText('Showing the start of a long input; the full text is in the run evidence.')).toBeInTheDocument()
+    expect(screen.getByText('Showing the start of a long input.')).toBeInTheDocument()
+  })
+
+
+  it('offers evidence only when an opener is available and preserves the response', () => {
+    const onOpenEvidence = vi.fn()
+    const props = { runId: 'run_1', gateId: 'gate_questions', requestedSeq: 9, gateTitle: 'Questions', criterion: '',
+      upstream: { state: 'ready' as const, from: 'Peers', text: 'Part', truncated: true, criterion: '' }, onDecide: vi.fn(async () => true) }
+    const { rerender } = render(<HumanGateAnswerPanel {...props} onOpenEvidence={onOpenEvidence} />)
+    fireEvent.change(screen.getByLabelText('Your response'), { target: { value: 'Keep my answer' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Open run evidence' }))
+    expect(onOpenEvidence).toHaveBeenCalledOnce()
+    expect(screen.getByLabelText('Your response')).toHaveValue('Keep my answer')
+    expect(props.onDecide).not.toHaveBeenCalled()
+    rerender(<HumanGateAnswerPanel {...props} />)
+    expect(screen.queryByRole('button', { name: 'Open run evidence' })).toBeNull()
+  })
+
+  it('does not claim a saved draft when storage fails and keeps the typed answer', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota') })
+    renderPanel()
+    fireEvent.change(screen.getByLabelText('Your response'), { target: { value: 'Still here' } })
+    expect(screen.getByRole('status')).toHaveTextContent('Draft not saved in this browser. Keep this page open. Not submitted.')
+    expect(screen.getByLabelText('Your response')).toHaveValue('Still here')
+    expect(window.localStorage.getItem('archon.gateResponse.run_1.9')).toBeNull()
+  })
+
+  it('distinguishes a submitted answer from a browser draft that could not be cleared', async () => {
+    renderPanel()
+    fireEvent.change(screen.getByLabelText('Your response'), { target: { value: 'Use Postgres' } })
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('storage unavailable') })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Approve' })) })
+    expect(screen.getByRole('status')).toHaveTextContent('Answer submitted. The browser draft could not be cleared.')
   })
 
   it('says when the gate input is loading or unavailable', () => {

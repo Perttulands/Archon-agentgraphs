@@ -12,6 +12,15 @@
 }
 .file-action:hover { border-color: var(--accent); color: var(--text-primary); }
 .file-action[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }
+.file-action[aria-disabled='true'] { opacity: .65; cursor: wait; }
+.file-copy { position: relative; display: inline-flex; }
+.file-copy-failure {
+  position: absolute; z-index: 2; right: 0; top: calc(100% + 8px); width: min(280px, 65vw);
+  padding: 10px; border: 1px solid var(--divider); border-radius: 6px;
+  background: var(--surface-primary); color: var(--text-primary); font-size: 12px; line-height: 1.5; font-weight: 400;
+  white-space: normal; box-shadow: 0 4px 16px #0004;
+}
+.file-copy-failure input { box-sizing: border-box; display: block; width: 100%; margin-top: 6px; padding: 6px; font: inherit; color: inherit; background: var(--surface-secondary); border: 1px solid var(--divider); }
 
 .file-window .fwin-body { display: flex; flex-direction: column; }
 .file-text { padding: 12px 16px 16px; min-width: 0; }

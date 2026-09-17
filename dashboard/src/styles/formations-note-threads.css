@@ -22,6 +22,7 @@
 
 /* Note windows: the whole thread, a reply box and the actions. */
 .fmx .note-window-body{display:flex;flex-direction:column;gap:10px;padding:12px;min-height:100%;box-sizing:border-box;}
+.fmx .note-purpose{margin:0;color:var(--ink2);font:11px/1.5 var(--font-mono);}
 .fmx .note-window .note-thread{max-height:none;overflow:visible;}
 .fmx .note-window .note-empty{margin:0;font:12px/1.5 var(--font-mono);color:var(--ink2);}
 .fmx .note-window textarea.note-reply{width:100%;min-height:96px;resize:vertical;box-sizing:border-box;border:1px solid color-mix(in srgb,var(--line) 75%,#d6af47 25%);background:color-mix(in srgb,var(--bg2) 88%,#f1cf70 12%);color:var(--ink);padding:10px;font:12px/1.5 var(--font-mono);outline:none;}

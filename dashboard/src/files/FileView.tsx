@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import Markdown from '../evidence/Markdown'
 import TextLines, { prettyJson } from '../evidence/TextLines'
 import { formatBytes } from '../evidence/runEvidenceApi'
+import { copyTextToClipboard } from '../utils/clipboard'
 import type { FilePreview, FileRequest } from './fileWindowModel'
 import '../evidence/evidence.css'
 import './files.css'
@@ -23,16 +24,16 @@ export function FileActions({ request, preview, mode, onMode }: {
   mode: MarkdownMode
   onMode: (mode: MarkdownMode) => void
 }) {
-  const [copied, setCopied] = useState(false)
+  const [copyState, setCopyState] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle')
+  useEffect(() => {
+    if (copyState !== 'copied') return
+    const timer = window.setTimeout(() => setCopyState('idle'), 1500)
+    return () => window.clearTimeout(timer)
+  }, [copyState])
   const copy = async () => {
-    if (!request.path) return
-    try {
-      await navigator.clipboard.writeText(request.path)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } catch {
-      setCopied(false)
-    }
+    if (!request.path || copyState === 'copying') return
+    setCopyState('copying')
+    setCopyState(await copyTextToClipboard(request.path) ? 'copied' : 'failed')
   }
   return (
     <span className="file-actions" onPointerDown={event => event.stopPropagation()}>
@@ -43,8 +44,17 @@ export function FileActions({ request, preview, mode, onMode }: {
         </>
       ) : null}
       {request.rawUrl ? <a className="file-action" href={request.rawUrl} target="_blank" rel="noopener noreferrer">Open raw</a> : null}
+      {request.rawUrl ? <a className="file-action" href={request.rawUrl} download={request.name}>Download</a> : null}
       {request.path ? (
-        <button type="button" className="file-action" title={request.path} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy path'}</button>
+        <span className="file-copy">
+          <button type="button" className="file-action" title={request.path} aria-disabled={copyState === 'copying'} aria-live="polite" onClick={() => void copy()}>{copyState === 'copied' ? 'Copied' : copyState === 'copying' ? 'Copying…' : 'Copy path'}</button>
+          {copyState === 'failed' ? (
+            <span className="file-copy-failure" role="status">
+              The browser refused copying. Select this path and copy it manually.
+              <input aria-label="Path to copy manually" readOnly value={request.path} onFocus={event => event.currentTarget.select()} />
+            </span>
+          ) : null}
+        </span>
       ) : null}
     </span>
   )
@@ -88,7 +98,7 @@ export default function FileView({ request, preview, error, mode, onOpen }: {
     case 'binary':
       return (
         <p className="file-note">
-          No inline view for this file.{request.rawUrl ? <> <a href={request.rawUrl} target="_blank" rel="noopener noreferrer">Download it</a>.</> : null}
+          No inline view for this file.{request.rawUrl ? <> <a href={request.rawUrl} download={request.name}>Download it</a>.</> : null}
         </p>
       )
     case 'markdown':

@@ -47,7 +47,7 @@ import {
   runStatusFromResponse,
   upsertRunEvent,
 } from './formationsRunState'
-import { chooseBoardRun, readRunLink, runChoiceLabel, runChoices, runLinkSearch } from './formationsRunDiscovery'
+import { chooseBoardRun, readRunLink, runChoiceLabel, runChoices, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
 import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
 import { FormationSeats, GATE_SVG, PLAY_SVG, slotTooltip, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
 import { useEscapeKey } from './useEscapeKey'
@@ -196,6 +196,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [board, setBoard] = useState<BoardDocument | null>(null)
   const [layout, setLayout] = useState<LayoutDocument | null>(null)
   const [agents, setAgents] = useState<AgentProjection[]>([])
+  const [rosterSearch, setRosterSearch] = useState('')
   const [view, setView] = useState<ViewTransform>({ x: 40, y: 40, scale: 1 })
   const [error, setError] = useState('')
   const [validation, setValidation] = useState<BoardValidation | null>(null)
@@ -2316,7 +2317,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }
 
   const rosterAgents = useMemo(() => agents.filter(agent => agent.assignable && !agent.unbound), [agents])
-  const rosterSections = useMemo(() => groupRosterByHarness(rosterAgents), [rosterAgents])
+  const filteredRosterAgents = useMemo(() => {
+    const needle = rosterSearch.trim().toLowerCase()
+    if (!needle) return rosterAgents
+    return rosterAgents.filter(agent => [
+      agent.id, agent.displayName || '', agent.kind || '', agent.harnessDefault || '', ...(agent.tags || []),
+    ].some(value => value.toLowerCase().includes(needle)))
+  }, [rosterAgents, rosterSearch])
+  const rosterSections = useMemo(() => groupRosterByHarness(filteredRosterAgents), [filteredRosterAgents])
   const deployedAgentCount = useMemo(
     () => new Set((board?.formations || []).flatMap(f => f.slots.map(s => s.agentId).filter(Boolean))).size,
     [board?.formations],
@@ -2397,6 +2405,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       gateTitle={pendingHumanGate.title}
       criterion={pendingHumanGate.criterion}
       upstream={pendingGateUpstream}
+      onOpenEvidence={board?.gates?.some(gate => gate.id === pendingHumanGate.gateId)
+        ? () => setInspectedNodeId(pendingHumanGate.gateId) : undefined}
       talk={gateTalk.panel}
       onDecide={(verdict, response) => recordHumanGateVerdict(pendingHumanGate.gateId, pendingHumanGate.requestedSeq, verdict, response)}
     />
@@ -2517,6 +2527,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               {roster.collapsed ? '›' : '‹'}
             </button>
           </div>
+          <div className="board-roster-filter">
+            <div className="board-roster-filter-input">
+              <input type="search" aria-label="Filter agents" placeholder="filter agents" value={rosterSearch}
+                onChange={event => setRosterSearch(event.target.value)} />
+              {rosterSearch ? <button type="button" aria-label="Clear agent filter" onClick={() => setRosterSearch('')}>Clear</button> : null}
+            </div>
+            {rosterSearch.trim() ? <p role="status">{filteredRosterAgents.length} of {rosterAgents.length} agents</p> : null}
+          </div>
           <div
             className="roster-resize"
             role="separator"
@@ -2532,6 +2550,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           <div className="roster-list">
             {rosterAgents.length === 0
               ? <div className="roster-empty">No assignable catalog agents. Create a persona in the Agents view to staff formations.</div>
+              : filteredRosterAgents.length === 0 ? <div className="roster-empty" role="status">No agents match this filter.</div>
               : rosterSections.map(section => (
                 <section className="roster-group" key={section.id} data-provider={section.id}>
                   <div className="roster-group-label">{section.label}</div>
@@ -2571,7 +2590,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             {activeRun ? (
               <div className="run-banner" data-testid="run-banner">
                 <span>run</span>
-                <span className={`badge ${runBadgeClass}`}>{activeRun.status}</span>
+                <span className={`badge ${runBadgeClass}`}>{runStatusLabel(activeRun.status)}</span>
                 <RunPoint runId={activeRun.runId} point={runPoint} title={runPointTitle} onLocate={locateAndOpenNode}
                   action={showFlow ? 'Open the step' : 'Show it on the canvas and open it'} />
                 <RunProduced />

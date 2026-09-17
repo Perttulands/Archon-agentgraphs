@@ -16,6 +16,7 @@ interface HumanGateAnswerPanelProps {
   gateTitle: string
   criterion: string
   upstream: GateUpstream
+  onOpenEvidence?: () => void
   /** On a session-channel run: the agents the gate asked, or why it fell back to a notification. */
   talk?: GateTalkPanel | null
   /** Resolves true once the verdict is recorded. */
@@ -28,9 +29,10 @@ function draftKey(runId: string, requestedSeq: number) {
 
 function readDraft(key: string) {
   try {
-    return window.localStorage.getItem(key) || ''
+    const text = window.localStorage.getItem(key) || ''
+    return { text, cue: text ? 'Draft restored from this browser. Not submitted.' : '' }
   } catch {
-    return ''
+    return { text: '', cue: 'Browser draft unavailable. Your response is not submitted.' }
   }
 }
 
@@ -38,8 +40,10 @@ function writeDraft(key: string, text: string) {
   try {
     if (text) window.localStorage.setItem(key, text)
     else window.localStorage.removeItem(key)
+    return true
   } catch {
     // A draft is a convenience; the typed response stays in the textarea.
+    return false
   }
 }
 
@@ -48,9 +52,10 @@ function writeDraft(key: string, text: string) {
  * Approve delivers the response to the next formation with the gate input;
  * Send back returns it to the pushback route as feedback.
  */
-function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterion, upstream, talk, onDecide }: HumanGateAnswerPanelProps) {
+function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterion, upstream, talk, onOpenEvidence, onDecide }: HumanGateAnswerPanelProps) {
   const key = draftKey(runId, requestedSeq)
-  const [response, setResponse] = useState(() => readDraft(key))
+  const [draft, setDraft] = useState(() => readDraft(key))
+  const response = draft.text
   const [submitting, setSubmitting] = useState<GateDecision | ''>('')
   const panel = useRef<HTMLElement>(null)
   const trimmed = response.trim()
@@ -61,7 +66,10 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
     if (submitting) return
     setSubmitting(verdict)
     try {
-      if (await onDecide(verdict, trimmed)) writeDraft(key, '')
+      if (await onDecide(verdict, trimmed)) {
+        const cleared = writeDraft(key, '')
+        setDraft(current => ({ ...current, cue: cleared ? 'Answer submitted.' : 'Answer submitted. The browser draft could not be cleared.' }))
+      }
     } finally {
       setSubmitting('')
     }
@@ -97,7 +105,9 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
           <>
             <div className="gate-answer-from">From {upstream.from}</div>
             <pre className="gate-answer-text">{upstream.text || 'The upstream step sent no text.'}</pre>
-            {upstream.truncated ? <div className="gate-answer-empty">Showing the start of a long input; the full text is in the run evidence.</div> : null}
+            {upstream.truncated ? <div className="gate-answer-empty">Showing the start of a long input.
+              {onOpenEvidence ? <button type="button" className="gate-answer-evidence" onClick={onOpenEvidence}>Open run evidence</button> : null}
+            </div> : null}
           </>
         ) : null}
       </div>
@@ -110,10 +120,14 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
         placeholder="Answer the questions or explain what to change. Approve sends this to the next step."
         disabled={submitting !== ''}
         onChange={event => {
-          setResponse(event.target.value)
-          writeDraft(key, event.target.value)
+          const text = event.target.value
+          const saved = writeDraft(key, text)
+          setDraft({ text, cue: saved
+            ? text ? 'Draft saved in this browser. Not submitted.' : 'Draft cleared. Not submitted.'
+            : 'Draft not saved in this browser. Keep this page open. Not submitted.' })
         }}
       />
+      {draft.cue ? <p className="gate-answer-draft" role="status">{draft.cue}</p> : null}
       <div className="gate-answer-actions">
         <button
           type="button"

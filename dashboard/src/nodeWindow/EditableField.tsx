@@ -23,6 +23,7 @@ export function EditableField({ label, value, multiline = false, markdown = fals
   const [draft, setDraft] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [savedReceipt, setSavedReceipt] = useState(false)
   const name = label.toLowerCase()
 
   const cancel = () => {
@@ -46,7 +47,10 @@ export function EditableField({ label, value, multiline = false, markdown = fals
     setSaving(true)
     const saved = await onSave(next)
     setSaving(false)
-    if (saved) cancel()
+    if (saved) {
+      cancel()
+      setSavedReceipt(true)
+    }
     else setError(`The ${name} was not saved.`)
   }
 
@@ -66,9 +70,10 @@ export function EditableField({ label, value, multiline = false, markdown = fals
       <div className="nfield-head">
         <span className="nfield-label">{label}</span>
         {draft === null ? (
-          <button type="button" className="nfield-edit" aria-label={`Edit ${name}`} onClick={() => setDraft(value)}>Edit</button>
+          <button type="button" className="nfield-edit" aria-label={`Edit ${name}`} onClick={() => { setSavedReceipt(false); setDraft(value) }}>Edit</button>
         ) : null}
       </div>
+      {savedReceipt ? <p className="nfield-note" role="status">{label} saved.</p> : null}
       {draft !== null ? (
         <form className="nfield-form" onSubmit={event => void save(event)}>
           {multiline ? (
@@ -79,6 +84,7 @@ export function EditableField({ label, value, multiline = false, markdown = fals
               onChange={event => { setDraft(event.target.value); setError('') }} onKeyDown={onKeyDown} />
           )}
           {error ? <p className="nfield-note error" role="alert">{error}</p> : hint ? <p className="nfield-note">{hint}</p> : null}
+          <p className="nfield-note">{multiline ? 'Ctrl/Cmd+Enter to save · ' : ''}Esc to cancel</p>
           <div className="nfield-actions">
             <button type="button" onClick={cancel} disabled={saving}>Cancel</button>
             <button type="submit" className="primary" aria-label={`Save ${name}`} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>

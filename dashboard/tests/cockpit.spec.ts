@@ -255,7 +255,7 @@ test('a run blocked at its judge rings the gate and names it with the reason in 
   await page.goto('/')
   const point = page.getByTestId('run-point')
   await expect(point).toHaveText(`blocked at Review gate: ${judgeBlockReason}`)
-  await expect(page.getByTestId('run-banner').locator('.badge')).toHaveText('blocked')
+  await expect(page.getByTestId('run-banner').locator('.badge')).toHaveText('Blocked')
 
   const gate = page.getByTestId('gate-node-gate')
   await expect(gate).toHaveClass(/\bblocked\b/)

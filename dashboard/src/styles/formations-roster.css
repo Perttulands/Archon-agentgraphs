@@ -1,5 +1,12 @@
 /* Collapsible, resizable agent roster (useRosterPanel). */
 /* formations-d7.css sizes .roster from --roster-width, which the cockpit sets. */
+.fmx .board-roster-filter{padding:8px 10px;border-bottom:1px solid var(--line);}
+.fmx .board-roster-filter-input{display:flex;align-items:center;gap:4px;}
+.fmx .board-roster-filter input{width:100%;min-width:0;border:1px solid var(--line);border-radius:4px;background:var(--paper2);color:var(--ink);padding:7px 8px;font:11px var(--font-mono);}
+.fmx .board-roster-filter input:focus{outline:1px solid var(--terra);}
+.fmx .board-roster-filter button{border:0;background:transparent;color:var(--ink2);font:10px var(--font-mono);cursor:pointer;padding:4px;}
+.fmx .board-roster-filter p{margin:6px 0 0;color:var(--ink2);font:10px var(--font-mono);}
+.fmx .roster.collapsed .board-roster-filter{display:none;}
 .fmx .roster-toggle{flex:0 0 auto;width:24px;height:24px;border:1px solid var(--line);border-radius:4px;background:var(--paper2);color:var(--ink2);font:700 13px/1 var(--font-mono);cursor:pointer;}
 .fmx .roster-toggle:hover{border-color:var(--terra);color:var(--terra);}
 .fmx .roster-resize{position:absolute;top:0;right:-4px;bottom:0;width:8px;z-index:5;cursor:col-resize;}
@@ -10,6 +17,11 @@
 .fmx .roster.collapsed .roster-hd .s,.fmx .roster.collapsed .roster-list,.fmx .roster.collapsed .roster-resize{display:none;}
 /* Phones keep the horizontal roster strip; big screens only collapse and resize. */
 @media (max-width: 768px){
+  .fmx aside.roster{display:grid;grid-template-columns:96px minmax(0,1fr);grid-template-rows:auto 84px;height:auto;}
+  .fmx .board-roster-filter{grid-column:1 / -1;grid-row:1;padding:6px 8px;}
+  .fmx .roster-hd{grid-column:1;grid-row:2;}
+  .fmx .roster-list{grid-column:2;grid-row:2;min-width:0;}
+  .fmx .roster.collapsed .board-roster-filter{display:block;}
   .fmx .roster,.fmx .roster.collapsed{width:100%;}
   .fmx .roster-toggle,.fmx .roster-resize{display:none;}
   .fmx .roster.collapsed .roster-hd .t{writing-mode:horizontal-tb;}

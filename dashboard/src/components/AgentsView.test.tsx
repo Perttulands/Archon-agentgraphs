@@ -177,7 +177,7 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     const run = await screen.findByTestId('mission-run')
-    await waitFor(() => expect(run).toHaveTextContent('waiting_human'))
+    await waitFor(() => expect(run).toHaveTextContent('Waiting for your answer'))
     expect(run).toHaveTextContent('waiting on Human Review')
     expect(within(run).getByRole('link', { name: 'Open on Boards' })).toHaveAttribute('href', '?board=mission-board&run=run_01B_cli')
     for (const action of [/start mission/i, /^pass$/i, /^fail$/i, /^resume/i, /^stop$/i]) {

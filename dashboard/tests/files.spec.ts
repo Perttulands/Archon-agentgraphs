@@ -84,3 +84,40 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Wayfind
   expect(besideWindow).toBeLessThanOrEqual(16)
   expect(fixture.writes).toEqual([])
 })
+
+test('refused copying leaves a selectable path beside the file download action', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.clear()
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => new Promise((_resolve, reject) => {
+      Object.defineProperty(window, 'rejectFileCopy', { configurable: true, value: () => reject(new Error('Copy refused')) })
+    }) } })
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false })
+  })
+  const fixture = await wayfindingFixture(page, { board: boardWithFiles() })
+  const text = '# Adversarial review rubric\n\nA complete downloadable document.'
+  await page.route('**/api/formations/files/preview?**', route => route.fulfill({ json: { success: true, data: { file: {
+    path: 'rubrics/adversarial-review.md', name: 'adversarial-review.md', size: text.length, kind: 'markdown', text: { text, bytes: text.length },
+  } } } }))
+  await page.goto('/?board=wayfinding')
+  await page.getByRole('button', { name: 'Open rubrics/adversarial-review.md', exact: true }).click()
+  const file = page.getByRole('dialog', { name: 'file adversarial-review.md' })
+  await expect(file.getByRole('link', { name: 'Download', exact: true })).toHaveAttribute('download', 'adversarial-review.md')
+  await file.getByRole('button', { name: 'Copy path', exact: true }).click()
+  await expect(file.getByRole('button', { name: 'Copying…', exact: true })).toBeFocused()
+  await page.evaluate(() => (window as unknown as { rejectFileCopy: () => void }).rejectFileCopy())
+  await expect(file.getByRole('status')).toContainText('browser refused copying')
+  await expect(file.getByRole('button', { name: 'Copy path', exact: true })).toBeFocused()
+  const manual = file.getByRole('textbox', { name: 'Path to copy manually' })
+  await expect(manual).toBeVisible()
+  await manual.focus()
+  expect(await manual.evaluate(input => (input as HTMLInputElement).selectionEnd! - (input as HTMLInputElement).selectionStart!)).toBe('rubrics/adversarial-review.md'.length)
+  await file.getByRole('button', { name: 'Copy path', exact: true }).click()
+  await expect(file.getByRole('button', { name: 'Copying…', exact: true })).toBeFocused()
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => true })
+    ;(window as unknown as { rejectFileCopy: () => void }).rejectFileCopy()
+  })
+  await expect(file.getByRole('button', { name: 'Copied', exact: true })).toBeFocused()
+  await expect(file.getByRole('textbox', { name: 'Path to copy manually' })).toHaveCount(0)
+  expect(fixture.writes).toEqual([])
+})

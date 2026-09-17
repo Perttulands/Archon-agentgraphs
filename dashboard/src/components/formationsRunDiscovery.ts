@@ -79,6 +79,16 @@ export function chooseBoardRun(input: {
   return ''
 }
 
+const runStatusLabels: Record<string, string> = {
+  waiting_human: 'Waiting for your answer', running: 'Running', blocked: 'Blocked',
+  succeeded: 'Succeeded', failed: 'Failed', canceled: 'Canceled',
+}
+
+/** Display wording only; projection values remain unchanged. */
+export function runStatusLabel(status: string): string {
+  return runStatusLabels[status] || status
+}
+
 export function runChoiceLabel(run: RunStatusProjection): string {
-  return [run.status, `…${run.runId.slice(-6)}`, run.beadId].filter(Boolean).join(' · ')
+  return [runStatusLabel(run.status), `…${run.runId.slice(-6)}`, run.beadId].filter(Boolean).join(' · ')
 }

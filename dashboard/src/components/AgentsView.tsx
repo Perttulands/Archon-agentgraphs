@@ -9,6 +9,7 @@ import {
   fetchBoardSummaries,
   patchBoardDocument,
 } from './formationsApi'
+import { runStatusLabel } from './formationsRunDiscovery'
 import { projectNodeStates } from './formationsRunState'
 import {
   FormationSeats,
@@ -1256,7 +1257,7 @@ function MissionRunState({ board, missionRun }: { board: BoardDocument; missionR
   return (
     <section className="run-banner agx-run-banner" data-testid="mission-run" aria-label="Mission run">
       <span className="agx-run-label">run</span>
-      <span className={`badge ${run.status}`}>{run.status}</span>
+      <span className={`badge ${run.status}`}>{runStatusLabel(run.status)}</span>
       <span className="agx-run-id" title={run.runId}>…{run.runId.slice(-6)}</span>
       {waiting.length ? <span>waiting on {waiting.join(', ')}</span> : null}
       {run.status === 'blocked' ? (

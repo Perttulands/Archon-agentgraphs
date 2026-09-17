@@ -2372,7 +2372,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(localStorage.length).toBe(0)
     await renderCockpit()
 
-    expect(await screen.findByTestId('run-banner')).toHaveTextContent('waiting_human')
+    expect(await screen.findByTestId('run-banner')).toHaveTextContent('Waiting for your answer')
     const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
     await waitFor(() => expect(within(panel).getByText('Question for run_01CLI')).toBeInTheDocument())
     expect(fetch).toHaveBeenCalledWith('/api/formations/runs?board=test-board', expect.anything())
@@ -2381,6 +2381,25 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.change(within(panel).getByLabelText('Your response'), { target: { value: 'Postgres' } })
     await act(async () => { fireEvent.click(within(panel).getByRole('button', { name: 'Approve' })) })
     await waitFor(() => expect(verdicts).toEqual([{ url: '/api/formations/runs/run_01CLI/gates/gate_review/verdict', body: { actor: 'agent:ui', verdict: 'pass', requestedSeq: 4, reason: 'Postgres' } }]))
+  })
+
+  it('opens truncated gate input evidence for the selected run without submitting the draft', async () => {
+    installRunsMock([{ runId: 'run_01EVIDENCE', status: 'waiting_human', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] }], { run_01EVIDENCE: waitingEvents('run_01EVIDENCE') })
+    const fallback = vi.mocked(fetch).getMockImplementation()!
+    const reply = (data: unknown) => new Response(JSON.stringify({ success: true, data }), { status: 200 })
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url === '/api/formations/runs/run_01EVIDENCE/gates/gate_review/request') return reply({ request: { gateId: 'gate_review', requestedSeq: 4, criterion: 'Review', input: { fromNodeId: 'fmn_frame', text: 'Part of the input', truncated: true } } })
+      return fallback(input, init)
+    })
+    await renderCockpit()
+    const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
+    fireEvent.change(within(panel).getByLabelText('Your response'), { target: { value: 'Keep this draft' } })
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Open run evidence' }))
+    expect(await screen.findByRole('dialog', { name: 'Run evidence · Review' })).toBeInTheDocument()
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/formations/runs/run_01EVIDENCE/evidence/nodes/gate_review', expect.anything()))
+    expect(within(panel).getByLabelText('Your response')).toHaveValue('Keep this draft')
+    expect(screen.getByTestId('run-banner').querySelector('.badge')).toHaveClass('waiting_human')
   })
 
   it('shows the open run that needs the operator and offers a run picker', async () => {
@@ -2400,7 +2419,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(await screen.findByRole('dialog', { name: 'Answer gate Review' })).toBeInTheDocument()
 
     fireEvent.change(picker, { target: { value: 'run_01B' } })
-    await waitFor(() => expect(screen.getByTestId('run-banner')).toHaveTextContent('running'))
+    await waitFor(() => expect(screen.getByTestId('run-banner')).toHaveTextContent('Running'))
     expect(screen.queryByRole('dialog', { name: 'Answer gate Review' })).toBeNull()
     expect(window.location.search).toBe('?board=test-board&run=run_01B')
   })
@@ -2430,7 +2449,7 @@ describe('FormationsCockpit reference parity', () => {
     installRunsMock([{ runId: 'run_01OPEN', status: 'running', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 2 }])
     const { unmount } = await renderCockpit()
     expect(await screen.findByTestId('formations-error')).toHaveTextContent('Run run_01GONE from the link was not found')
-    await waitFor(() => expect(screen.getByTestId('run-banner')).toHaveTextContent('running'))
+    await waitFor(() => expect(screen.getByTestId('run-banner')).toHaveTextContent('Running'))
     expect(window.location.search).toBe('?board=test-board')
     unmount()
 
@@ -2646,11 +2665,11 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.queryByTestId('run-banner')).toBeNull()
     const picker = within(idle).getByRole('combobox', { name: 'Choose run' })
     expect(picker).toHaveValue('')
-    expect(within(picker).getAllByRole('option').map(option => option.textContent)).toEqual(['Recent runs…', 'succeeded · …0NEWER', 'failed · …0OLDER'])
+    expect(within(picker).getAllByRole('option').map(option => option.textContent)).toEqual(['Recent runs…', 'Succeeded · …0NEWER', 'Failed · …0OLDER'])
 
     fireEvent.change(picker, { target: { value: 'run_01M2B0NEWER' } })
     const banner = await screen.findByTestId('run-banner')
-    expect(banner).toHaveTextContent('succeeded')
+    expect(banner).toHaveTextContent('Succeeded')
     expect(window.location.search).toBe('?board=test-board&run=run_01M2B0NEWER')
     await waitFor(() => expect(within(banner).getByRole('button', { name: 'frame.md' })).toBeInTheDocument())
     const shown = within(banner).getByRole('combobox', { name: 'Choose run' })

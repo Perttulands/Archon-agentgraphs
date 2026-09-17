@@ -52,6 +52,7 @@ export default function NoteWindow({ target, title, anchor, entries, draft, edit
       onClose={onClose}
     >
       <div className="note-window-body">
+        <p className="note-purpose">Notes record intent. Agents must incorporate them into briefs to change the work.</p>
         {entries.length ? (
           <NoteThread
             label={board ? 'Board note thread' : `Note thread for ${title}`}
