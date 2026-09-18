@@ -101,8 +101,8 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	request := client.raw
 	fs := flag.NewFlagSet(args[0]+" "+args[1], flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.Bool("json", false, "write JSON")
-	cwd := fs.String("cwd", "", "absolute run working directory")
+	jsonOut := fs.Bool("json", false, "write JSON")
+	cwd := fs.String("cwd", "", "absolute existing run directory; omit to create a daemon-managed workspace")
 	brief := fs.String("brief", "", "brief file path or literal text")
 	bead := fs.String("bead", "", "run Beads id")
 	mode := fs.String("mode", "reattach", "resume mode")
@@ -162,11 +162,19 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 	case "run list":
 		path += "/runs"
-	case "run status", "run logs":
+	case "run status", "run logs", "run gates", "run seats":
 		if len(pos) != 1 {
 			return remoteUsage(stderr)
 		}
 		path += "/runs/" + url.PathEscape(pos[0])
+		if args[1] == "seats" {
+			path += "/seats"
+		}
+	case "gate request":
+		if len(pos) != 2 {
+			return remoteUsage(stderr)
+		}
+		path += "/runs/" + url.PathEscape(pos[0]) + "/gates/" + url.PathEscape(pos[1]) + "/request"
 	case "run follow":
 		if len(pos) != 1 {
 			return remoteUsage(stderr)
@@ -213,10 +221,13 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(stderr, err)
 	}
+	if args[0]+" "+args[1] == "run gates" || args[0]+" "+args[1] == "run seats" || args[0]+" "+args[1] == "gate request" {
+		return printRemoteRunRead(args[0]+" "+args[1], raw, *jsonOut, stdout, stderr)
+	}
 	fmt.Fprint(stdout, string(raw))
 	return 0
 }
 func remoteUsage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "use board, mission, formation, gate and agent authoring and read commands, mission run <board> --mission <id>, run status|logs|follow <run>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text] [--relayed-by slot-id]")
+	fmt.Fprintln(stderr, "use board, mission, formation, gate and agent authoring and read commands, mission run <board> --mission <id>, run status|logs|follow|seats|gates <run>, gate request <run> <gate>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text] [--relayed-by slot-id]")
 	return 2
 }
