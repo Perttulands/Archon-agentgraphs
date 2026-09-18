@@ -49,7 +49,7 @@ func TestDeliveryMissionLabPushback(t *testing.T) {
 		},
 	}
 	engine := NewRunEngine(store, personas, executor)
-	status, err := engine.RunMission("delivery", RunStartRequest{MissionID: "mis_delivery", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev, Limits: RunLimits{MaxDispatch: 20, MaxAttempts: 3}})
+	status, err := engine.RunMission("delivery", RunStartRequest{Cwd: cwd, MissionID: "mis_delivery", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev, Limits: RunLimits{MaxDispatch: 20, MaxAttempts: 3}})
 	if err != nil {
 		t.Fatal(err)
 	}

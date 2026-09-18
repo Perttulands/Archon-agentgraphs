@@ -384,9 +384,15 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.MissionID != "" {
-		info, err := os.Stat(req.Cwd)
-		if !filepath.IsAbs(req.Cwd) || err != nil || !info.IsDir() || strings.TrimSpace(req.Brief) == "" || req.BeadID != "" && !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`).MatchString(req.BeadID) {
-			reply(w, 400, map[string]string{"error": "absolute existing cwd, nonempty brief and safe beadId required"})
+		if req.Cwd != "" {
+			info, err := os.Stat(req.Cwd)
+			if !filepath.IsAbs(req.Cwd) || err != nil || !info.IsDir() {
+				reply(w, 400, map[string]string{"error": "cwd must be omitted or an absolute existing directory"})
+				return
+			}
+		}
+		if strings.TrimSpace(req.Brief) == "" || req.BeadID != "" && !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`).MatchString(req.BeadID) {
+			reply(w, 400, map[string]string{"error": "nonempty brief and safe beadId required"})
 			return
 		}
 	}

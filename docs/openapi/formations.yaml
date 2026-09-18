@@ -228,7 +228,6 @@ paths:
               oneOf:
               - required:
                 - missionId
-                - cwd
                 - brief
               - required:
                 - formationId
@@ -237,7 +236,7 @@ paths:
                   type: string
                 cwd:
                   type: string
-                  description: Absolute existing seat working directory
+                  description: Absolute existing seat working directory; omitted or empty creates a private workspace under the configured run workspace root
                 brief:
                   type: string
                   minLength: 1

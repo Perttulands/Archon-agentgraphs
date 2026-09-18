@@ -46,6 +46,8 @@ var (
 type Store struct {
 	Workspace string
 	Now       func() time.Time
+	// RunWorkspaceRoot is configured at startup; empty uses <Workspace>/workspaces.
+	RunWorkspaceRoot string
 	// OnRunEvent is called after a durable append. It must not block or read the store.
 	OnRunEvent func(RunEvent)
 

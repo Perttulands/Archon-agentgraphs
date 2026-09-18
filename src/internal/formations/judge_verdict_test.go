@@ -138,7 +138,7 @@ func TestLabJudgePushbackLoop(t *testing.T) {
 				"fmn_ship": {1: "shipped"},
 			}}
 			engine := NewRunEngine(store, personas, executor)
-			status, err := engine.RunMission("session-search", RunStartRequest{MissionID: "mis_showcase", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev, Limits: RunLimits{MaxDispatch: 8, MaxAttempts: 3}})
+			status, err := engine.RunMission("session-search", RunStartRequest{Cwd: cwd, MissionID: "mis_showcase", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev, Limits: RunLimits{MaxDispatch: 8, MaxAttempts: 3}})
 			if err != nil {
 				t.Fatal(err)
 			}

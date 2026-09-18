@@ -239,6 +239,26 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 	if err := writeRunArtifactExclusiveAt(runDirectory, runID+".bindings.toml", bindingsRaw); err != nil {
 		return nil, err
 	}
+	// Allocate only after admission and snapshot validation. Once admitted, the
+	// workspace belongs to the run and is retained with its output artifacts.
+	automaticWorkspace := req.Cwd == ""
+	if automaticWorkspace {
+		root := s.RunWorkspaceRoot
+		if root == "" {
+			root = filepath.Join(s.workspaceRoot(), "workspaces")
+		}
+		root, err = filepath.Abs(root)
+		if err != nil {
+			return nil, err
+		}
+		if err := os.MkdirAll(root, 0700); err != nil {
+			return nil, fmt.Errorf("create run workspace root: %w", err)
+		}
+		req.Cwd = filepath.Join(root, runID)
+		if err := os.Mkdir(req.Cwd, 0700); err != nil {
+			return nil, fmt.Errorf("create run workspace: %w", err)
+		}
+	}
 
 	result := &RunStartResult{
 		RunID:                runID,
@@ -275,6 +295,10 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 		},
 	}
 	if err := writeInitialRunEventAt(runDirectory, runID, event); err != nil {
+		if automaticWorkspace {
+			// Remove only our newly allocated empty folder, never existing contents.
+			err = errors.Join(err, os.Remove(req.Cwd))
+		}
 		return nil, err
 	}
 	if s.OnRunEvent != nil {

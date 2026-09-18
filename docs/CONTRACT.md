@@ -147,8 +147,14 @@ Any finding rejects the start with HTTP 422, error code `RUN_ADMISSION_FAILED`
 and `error.findings` as `{code,nodeId,message}` entries; no run is recorded.
 The engine's own fail-fast checks remain behind this report. The worker continues after the
 client disconnects. A missing receipt requires checking the run list before
-starting again. `cwd` must be an absolute existing directory and `brief` must be
-nonempty. Archon reads an existing brief file or sends the argument as literal
+starting again. Omit `cwd` (or send an empty string) to create a private workspace
+for this mission under `<state-dir>/workspaces/<runId>`. The daemon's
+`--run-workspace-root` flag can select another absolute root. Admission records
+the resolved directory in `run_started` and run status; every seat uses it.
+Rejected admission removes any newly allocated empty workspace. Admitted runs
+retain their workspace and outputs after completion, cancellation or failure.
+For an existing project, supply `cwd` as an absolute existing directory.
+`brief` must be nonempty. Archon reads an existing brief file or sends the argument as literal
 text. The brief becomes mission output; the board goal remains prompt context.
 `beadId` is optional in the API but should identify the owning task.
 
@@ -526,7 +532,8 @@ npm run build
 
 For real seats select `--executor tmux` and supply `--socket`, `--tmux-bin`,
 `--codex-transcripts`, `--claude-transcripts` from host configuration.
-`--cwd` is an optional daemon default; missions supply their own cwd.
+`--cwd` is an optional daemon default for standalone formations. Missions use
+their explicit cwd or allocate an automatic workspace as described above.
 `--mission-label` is optional and `--seat-timeout` defaults to `30m`.
 Repeat `--listen` for each trusted interface. `--agents-dir` overrides cards;
 installed daemons find `../share/archon/ui` beside their `bin` directory.

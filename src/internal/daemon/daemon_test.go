@@ -75,3 +75,9 @@ func TestFileRootFlagRequiresAnAbsolutePath(t *testing.T) {
 		t.Fatalf("relative --file-root = %v, want a rejection", err)
 	}
 }
+
+func TestRunWorkspaceRootFlagRequiresAnAbsolutePath(t *testing.T) {
+	if err := Run([]string{"--executor", "lab", "--state-dir", t.TempDir(), "--run-workspace-root", "relative/work"}); err == nil || !strings.Contains(err.Error(), "--run-workspace-root requires an absolute path") {
+		t.Fatalf("relative --run-workspace-root = %v, want a rejection", err)
+	}
+}

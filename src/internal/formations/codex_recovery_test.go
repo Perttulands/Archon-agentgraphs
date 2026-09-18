@@ -18,7 +18,7 @@ func TestCompletedNativeRecoveryValidatesBeforeResumeAndNeverRedispatches(t *tes
 				t.Fatal(err)
 			}
 			writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
-			started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Personas: personas})
+			started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Personas: personas, Cwd: store.Workspace})
 			if err != nil {
 				t.Fatal(err)
 			}
