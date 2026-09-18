@@ -3,6 +3,7 @@ package formations
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -224,6 +225,10 @@ func TestAReplacedConversationFailsTheDispatchLoudly(t *testing.T) {
 			case "codex":
 				// Codex keeps the old rollout open and opens the new thread's rollout.
 				fds := filepath.Join(proc, "4242", "fd")
+				fdinfo := filepath.Join(proc, "4242", "fdinfo")
+				if err := os.MkdirAll(fdinfo, 0700); err != nil {
+					t.Fatal(err)
+				}
 				if err := os.MkdirAll(fds, 0700); err != nil {
 					t.Fatal(err)
 				}
@@ -237,6 +242,9 @@ func TestAReplacedConversationFailsTheDispatchLoudly(t *testing.T) {
 						t.Fatal(err)
 					}
 					if err := os.Symlink(path, filepath.Join(fds, fd)); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(fdinfo, fd), []byte("flags:\t02102002\n"), 0600); err != nil {
 						t.Fatal(err)
 					}
 					return path
@@ -286,5 +294,51 @@ func TestWaitTurnFailsWhenTheSeatEnds(t *testing.T) {
 	var executionErr *RunExecutionError
 	if !errors.As(err, &executionErr) || executionErr.Code != "dead_pane" || consumed != 1 {
 		t.Fatalf("WaitTurn after the seat ended: %v (consumed %d)", err, consumed)
+	}
+}
+
+func TestCodexHistoryReadDoesNotReplaceTheDispatchedConversation(t *testing.T) {
+	root := t.TempDir()
+	writeRollout := func(name, id, cwd string) string {
+		path := filepath.Join(root, name+".jsonl")
+		meta := fmt.Sprintf("{\"type\":\"session_meta\",\"payload\":{\"id\":%q,\"cwd\":%q,\"source\":\"cli\",\"thread_source\":\"user\"}}\n", id, cwd)
+		if err := os.WriteFile(path, []byte(meta), 0600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	current := writeRollout("current", "current-session", "/work/mission")
+	history := writeRollout("history", "previous-session", "/work/unrelated")
+	writer, err := os.OpenFile(current, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	seat := &nativeSeat{variant: HarnessVariant{ID: "openai-codex"}, root: root, pid: os.Getpid()}
+	transport := realSeatTransport{}
+	transport.recordConversation(context.Background(), seat, current)
+	// The live smoke showed Codex opening an unrelated historical user rollout
+	// during startup. A read does not move the seat to that conversation.
+	reader, err := os.Open(history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	turn := codexTranscriptTurn{SessionID: "current-session", Consumed: true}
+	if err := transport.conversationReplaced(context.Background(), seat, turn); err != nil {
+		t.Fatalf("read-only history access replaced the dispatched conversation: %v", err)
+	}
+	// Resuming that same history for writing must still fail the dispatch.
+	for _, mode := range []int{os.O_WRONLY, os.O_RDWR} {
+		resumed, err := os.OpenFile(history, mode|os.O_APPEND, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var executionErr *RunExecutionError
+		err = transport.conversationReplaced(context.Background(), seat, turn)
+		resumed.Close()
+		if !errors.As(err, &executionErr) || executionErr.Code != "conversation_replaced" {
+			t.Fatalf("resumed conversation with mode %d was not detected: %v", mode, err)
+		}
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -456,7 +457,8 @@ func (t realSeatTransport) conversationReplaced(ctx context.Context, s *nativeSe
 }
 
 // openCodexThreads lists the user-thread rollouts under the transcript root
-// that the seat's Codex process holds open. Threads Codex starts for its own
+// that the seat's Codex process holds open for writing. Read-only history scans
+// do not change its active conversation. Threads Codex starts for its own
 // subagents are not the operator's conversation.
 func (t realSeatTransport) openCodexThreads(s *nativeSeat) []string {
 	proc := t.proc
@@ -474,11 +476,29 @@ func (t realSeatTransport) openCodexThreads(s *nativeSeat) []string {
 		if err != nil || filepath.Ext(path) != ".jsonl" || !strings.HasPrefix(path, s.root+string(filepath.Separator)) {
 			continue
 		}
-		if codexUserThread(path) {
+		if processFDWritable(filepath.Join(proc, strconv.Itoa(s.pid), "fdinfo", entry.Name())) && codexUserThread(path) {
 			threads = append(threads, path)
 		}
 	}
 	return threads
+}
+
+// Linux fdinfo flags are octal. Only a writable descriptor is evidence of an
+// active rollout; an unreadable or vanished descriptor proves no replacement.
+func processFDWritable(path string) bool {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == "flags:" {
+			flags, err := strconv.ParseUint(fields[1], 8, 64)
+			access := flags & syscall.O_ACCMODE
+			return err == nil && (access == syscall.O_WRONLY || access == syscall.O_RDWR)
+		}
+	}
+	return false
 }
 
 // codexUserThread reports a rollout whose session_meta names a thread the user
