@@ -2900,7 +2900,7 @@ y = 120
 	}
 }
 
-func TestArchonS4ConfiguredLabExecutorMissingRootBlocksWithSpecificReason(t *testing.T) {
+func TestArchonConfiguredLabExecutorUsesAutomaticMissionWorkspace(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
 	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
@@ -2923,8 +2923,15 @@ func TestArchonS4ConfiguredLabExecutorMissingRootBlocksWithSpecificReason(t *tes
 		t.Fatalf("mission run code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
 	started := decodeArchonRunResponse(t, stdout)
-	if started.Status.Status != formations.RunStatusBlocked || !started.Status.ResumeAllowed {
-		t.Fatalf("status = %+v, want resumable block for missing lab root", started.Status)
+	if started.Status.Status != formations.RunStatusSucceeded || !started.Status.Final {
+		t.Fatalf("status = %+v, want success using the automatic workspace", started.Status)
+	}
+	wantCwd := filepath.Join(workspace, "workspaces", started.RunID)
+	if started.Status.Cwd != wantCwd {
+		t.Fatalf("cwd = %q, want %q", started.Status.Cwd, wantCwd)
+	}
+	if info, err := os.Stat(wantCwd); err != nil || !info.IsDir() {
+		t.Fatalf("automatic workspace missing: %v", err)
 	}
 	events, err := store.ReadRunEvents(started.RunID)
 	if err != nil {
@@ -2933,8 +2940,8 @@ func TestArchonS4ConfiguredLabExecutorMissingRootBlocksWithSpecificReason(t *tes
 	if eventsContainErrorCode(events, "missing_executor") || eventsContainReason(events, "formation executor unavailable") {
 		t.Fatalf("configured but incomplete lab executor reported generic missing executor: %+v", events)
 	}
-	if !eventsContainErrorCode(events, "missing_root") || !eventsContainReason(events, "lab executor root is not configured") {
-		t.Fatalf("events = %+v, want missing_root lab configuration block", events)
+	if eventsContainErrorCode(events, "missing_root") {
+		t.Fatalf("automatic workspace did not supply its execution root: %+v", events)
 	}
 }
 
