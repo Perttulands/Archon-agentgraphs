@@ -15,12 +15,13 @@ test('pending launch keeps focus on enabled dialog controls', async ({ page }) =
   await page.goto('/?board=wayfinding')
   await page.getByTitle('Start mission', { exact: true }).first().click()
   const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
+  await dialog.getByLabel('Workspace', { exact: true }).selectOption('existing')
   await dialog.getByLabel('Working directory').fill('/fixture')
   await dialog.getByLabel('Brief', { exact: true }).fill('A fixture-only sketch')
   await dialog.getByRole('button', { name: 'Start mission', exact: true }).click()
   try {
     await expect(dialog.getByRole('button', { name: 'Starting…', exact: true })).toBeDisabled()
-    await expect(dialog.getByLabel('Working directory')).toBeFocused()
+    await expect(dialog.getByLabel('Brief', { exact: true })).toBeFocused()
     for (const key of ['Tab', 'Shift+Tab']) {
       for (let step = 0; step < 16; step++) {
         await page.keyboard.press(key)
@@ -42,7 +43,7 @@ test('launch keeps keyboard focus inside and restores its opener after dismissal
   const opener = page.getByTitle('Start mission', { exact: true }).first()
   await opener.click()
   const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
-  await expect(dialog.getByLabel('Working directory')).toBeFocused()
+  await expect(dialog.getByLabel('Brief', { exact: true })).toBeFocused()
   for (const key of ['Tab', 'Shift+Tab']) {
     for (let step = 0; step < 24; step++) {
       await page.keyboard.press(key)
@@ -77,6 +78,7 @@ test('launch limits allow replacement and explain their units without changing d
   await expect(dispatches).toHaveAccessibleDescription('Formation executions across this run, including judge steps.')
   await expect(attempts).toHaveAccessibleDescription('Maximum visits to each node.')
   await expect(time).toHaveAccessibleDescription(/30 minutes.*waits for you at a gate doesn’t count/)
+  await dialog.getByLabel('Workspace', { exact: true }).selectOption('existing')
   await dialog.getByLabel('Working directory').fill('/fixture')
   await dialog.getByLabel('Brief', { exact: true }).fill('A fixture-only sketch')
   for (const input of [dispatches, attempts, time]) {
@@ -90,3 +92,43 @@ test('launch limits allow replacement and explain their units without changing d
   await expect(time).toHaveAccessibleDescription(/12 seconds/)
   expect(fixture.writes).toEqual([])
 })
+
+for (const switchFromExisting of [false, true]) {
+  test(`automatic workspace submits no path${switchFromExisting ? ' after changing modes' : ' by default'}`, async ({ page }) => {
+    const fixture = await wayfindingFixture(page)
+    const submissions: Record<string, unknown>[] = []
+    await page.route('**/api/formations/runs', async route => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      submissions.push(route.request().postDataJSON())
+      await route.fulfill({ status: 409, json: { success: false, error: { message: 'Fixture-only payload captured' } } })
+    })
+    await page.goto('/?board=wayfinding')
+    await page.getByTitle('Start mission', { exact: true }).first().click()
+    const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
+    const workspace = dialog.getByLabel('Workspace', { exact: true })
+    await expect(workspace).toHaveValue('automatic')
+    await expect(dialog.getByLabel('Working directory')).toHaveCount(0)
+    await dialog.getByLabel('Brief', { exact: true }).fill('A fixture-only sketch')
+    if (switchFromExisting) {
+      await workspace.selectOption('existing')
+      const cwd = dialog.getByLabel('Working directory')
+      for (const invalidPath of ['', 'relative/project']) {
+        await cwd.fill(invalidPath)
+        await dialog.getByRole('button', { name: 'Start mission', exact: true }).click()
+        await expect(cwd).toBeFocused()
+        expect(submissions).toEqual([])
+      }
+      await cwd.fill('/fixture/project')
+      await workspace.selectOption('automatic')
+      await expect(cwd).toHaveCount(0)
+    }
+    await dialog.getByRole('button', { name: 'Start mission', exact: true }).click()
+    await expect(dialog.getByRole('alert')).toContainText('Fixture-only payload captured')
+    expect(submissions).toHaveLength(1)
+    expect(submissions[0]).toMatchObject({
+      cwd: '', brief: 'A fixture-only sketch',
+      limits: { maxDispatch: 20, maxAttempts: 3, wallClockSeconds: 1800, redact: false },
+    })
+    expect(fixture.writes).toEqual([])
+  })
+}
