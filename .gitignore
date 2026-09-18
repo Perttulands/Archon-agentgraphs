@@ -18,3 +18,5 @@ dashboard/playwright-report/
 /src/archond
 /src/formationsd
 /dist/
+
+/.beads/interactions.jsonl
