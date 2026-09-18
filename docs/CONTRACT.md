@@ -214,6 +214,17 @@ human gates and closes only at finality. Interrupting that client stops viewing,
 not execution. Abort cancels only the selected run and waits for owned-seat
 cleanup, including seats kept on call, before returning `canceled`.
 
+`run gates <run>` lists pending gate IDs, request sequences and asking seats.
+`gate request <run> <gate>` reads the question and routed input. `run seats <run>`
+lists the public seat projection, including session names and on-call requests.
+These three commands print readable text by default and the daemon envelope
+with `--json`. Match a gate's `askedSeats[].createdSeq` to a seat's `createdSeq`,
+then match its `sessionName` to `tmux list-panes` on the daemon host's configured
+socket. This locates the asking pane without exposing private terminal IDs in
+the API. In session mode the operator talks to that seat; it records the
+confirmed answer with `gate approve|reject`, the current `--requested-seq`,
+its own `--relayed-by` slot ID and the exact `--response`.
+
 The `tmux` executor uses one implementation with Claude Code and OpenAI Codex
 adapters. It resolves authenticated harness executables from its environment.
 Each fresh seat gets a pointer to a file under `<state-dir>/briefs`. The file
@@ -639,13 +650,23 @@ verdict described above. Real briefs describe the work to deliver.
 
 ```bash
 FORM_START=$(archon --server "$FORM_SERVER" mission run delivery \
-  --mission mis_delivery --cwd "$FORM_CWD" --brief "$FORM_BRIEF" --bead "$FORM_BEAD" \
+  --mission mis_delivery --brief "$FORM_BRIEF" --bead "$FORM_BEAD" \
   --max-dispatch 30 --max-attempts 3 --wall-clock-seconds 7200 --json)
 FORM_RUN_ID=$(printf '%s\n' "$FORM_START" | jq -er '.data.runId')
 archon --server "$FORM_SERVER" run status "$FORM_RUN_ID" --json
 archon --server "$FORM_SERVER" run logs "$FORM_RUN_ID" --json
 archon --server "$FORM_SERVER" run follow "$FORM_RUN_ID" --json
 archon --server "$FORM_SERVER" run list --json
+```
+
+This allocates a workspace automatically. Add `--cwd "$FORM_CWD"` to work in
+an existing project. For a session gate, inspect the asking seats before typing:
+
+```bash
+archon --server "$FORM_SERVER" run gates "$FORM_RUN_ID"
+archon --server "$FORM_SERVER" gate request "$FORM_RUN_ID" "$FORM_GATE_ID"
+archon --server "$FORM_SERVER" run seats "$FORM_RUN_ID"
+tmux -S "$FORM_TMUX_SOCKET" list-panes -a -F '#{session_name} #{pane_id}'
 ```
 
 To stop a selected non-final run, set `FORM_RUN_ID` to its ID:
@@ -829,7 +850,8 @@ retried up to three times. Differences from offline use:
   reports, and `agent new --from` names a path on the daemon host. `board note
   --file` reads locally.
 - Runtime commands (`mission run`, `run`, `gate approve|reject`) print the
-  daemon's `{success,timestamp,data}` envelope; `board list` and `board
+  daemon's `{success,timestamp,data}` envelope, except `run gates`, `run seats`
+  and `gate request`, which require `--json` for that format; `board list` and `board
   inspect` print offline JSON like the other reads. `formation
   remove-verification|run`, `run ask` and `agent spawn|attach|retire` remain
   offline only.
