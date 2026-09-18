@@ -5,9 +5,34 @@ import { DEFAULT_BRIEF_HINT, StartMissionDialog, TIME_LIMIT_HINT } from './Start
 describe('StartMissionDialog', () => {
   afterEach(cleanup)
 
+  it.each([false, true])('submits an automatic workspace, after switching modes: %s', async switchModes => {
+    const onStart = vi.fn(async () => {})
+    render(<StartMissionDialog title="Wayfinding" onStart={onStart} onClose={vi.fn()} />)
+    expect(screen.getByLabelText('Workspace')).toHaveValue('automatic')
+    expect(screen.queryByLabelText('Working directory')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Brief')).toHaveFocus()
+    fireEvent.change(screen.getByLabelText('Brief'), { target: { value: 'Sketch' } })
+    if (switchModes) {
+      fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: 'existing' } })
+      const cwd = screen.getByLabelText('Working directory')
+      for (const value of ['', 'relative/path']) {
+        fireEvent.change(cwd, { target: { value } })
+        fireEvent.click(screen.getByRole('button', { name: 'Start mission' }))
+        expect(onStart).not.toHaveBeenCalled()
+      }
+      fireEvent.change(cwd, { target: { value: '/work/project' } })
+      expect(cwd).toBeValid()
+      fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: 'automatic' } })
+      expect(screen.queryByLabelText('Working directory')).not.toBeInTheDocument()
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Start mission' }))
+    await waitFor(() => expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ cwd: '', brief: 'Sketch' }), 'notify'))
+  })
+
   it('explains the brief, using the mission input hint when one is set', () => {
     const { unmount } = render(<StartMissionDialog title="Wayfinding" onStart={vi.fn()} onClose={vi.fn()} />)
     expect(screen.getByLabelText('Brief')).toHaveAccessibleDescription(DEFAULT_BRIEF_HINT)
+    fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: 'existing' } })
     expect(screen.getByLabelText('Working directory')).toHaveAccessibleDescription('The absolute path of the directory the agents work in.')
     unmount()
 
@@ -30,6 +55,7 @@ describe('StartMissionDialog', () => {
     const channel = screen.getByRole('radiogroup', { name: 'Human gates' })
     expect(within(channel).getByRole('radio', { name: /Talk with the agents/ })).toBeChecked()
     expect(channel).toHaveAccessibleDescription('Saved on the mission when you start. A change applies to runs started afterwards; runs already going keep their channel.')
+    fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: 'existing' } })
     fireEvent.change(screen.getByLabelText('Working directory'), { target: { value: '/work' } })
     fireEvent.change(screen.getByLabelText('Brief'), { target: { value: 'Go' } })
     fireEvent.click(within(channel).getByRole('radio', { name: /Notify me/ }))
@@ -49,6 +75,7 @@ describe('StartMissionDialog', () => {
   it('keeps cleared limits blank and submits replacement values as numbers', async () => {
     const onStart = vi.fn(async () => {})
     render(<StartMissionDialog title="Wayfinding" onStart={onStart} onClose={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: 'existing' } })
     fireEvent.change(screen.getByLabelText('Working directory'), { target: { value: '/work' } })
     fireEvent.change(screen.getByLabelText('Brief'), { target: { value: 'Sketch' } })
     const dispatches = screen.getByLabelText('Maximum dispatches')

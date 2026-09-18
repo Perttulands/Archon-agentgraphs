@@ -40,10 +40,11 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', humanCh
   onStart: (inputs: RunInputs, humanChannel: HumanChannel) => Promise<void>; onClose: () => void
 }) {
   const [inputs, setInputs] = useState({ cwd: '', brief: '', beadId, limits: { maxDispatch: '20', maxAttempts: '3', wallClockSeconds: '1800', redact: false } })
+  const [workspaceMode, setWorkspaceMode] = useState('automatic')
   const dialogRef = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    dialogRef.current?.querySelector<HTMLInputElement>('#start-mission-cwd')?.focus()
+    dialogRef.current?.querySelector<HTMLTextAreaElement>('#start-mission-brief')?.focus()
     return () => { if (opener?.isConnected) opener.focus() }
   }, [])
   const [channel, setChannel] = useState<HumanChannel>(humanChannel)
@@ -55,7 +56,7 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', humanCh
     const focused = document.activeElement
     // Disabling the submit button can move browser focus to the document body.
     if (dialog && (!dialog.contains(focused) || focused?.matches(':disabled'))) {
-      dialog.querySelector<HTMLInputElement>('#start-mission-cwd')?.focus()
+      dialog.querySelector<HTMLTextAreaElement>('#start-mission-brief')?.focus()
     }
   }, [saving])
   useEscapeKey(!saving, onClose)
@@ -84,12 +85,20 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', humanCh
       setSaving(true)
       setError('')
       const limits = { maxDispatch: Number(inputs.limits.maxDispatch), maxAttempts: Number(inputs.limits.maxAttempts), wallClockSeconds: Number(inputs.limits.wallClockSeconds), redact: inputs.limits.redact }
-      try { await onStart({ ...inputs, limits }, channel); onClose() } catch (err) { setError(err instanceof Error ? err.message : 'Failed to start run') } finally { setSaving(false) }
+      try { await onStart({ ...inputs, cwd: workspaceMode === 'existing' ? inputs.cwd : '', limits }, channel); onClose() } catch (err) { setError(err instanceof Error ? err.message : 'Failed to start run') } finally { setSaving(false) }
     }}>
-      <label htmlFor="start-mission-cwd">Working directory</label>
-      <input id="start-mission-cwd" className="f" required value={inputs.cwd} pattern="/.*" aria-describedby="start-mission-cwd-help"
-        placeholder="/path/to/project" onChange={event => setInputs({ ...inputs, cwd: event.target.value })} />
-      <p id="start-mission-cwd-help" className="field-note">The absolute path of the directory the agents work in.</p>
+      <label htmlFor="start-mission-workspace">Workspace</label>
+      <select id="start-mission-workspace" className="f" value={workspaceMode} disabled={saving}
+        onChange={event => setWorkspaceMode(event.target.value)}>
+        <option value="automatic">Create a workspace for this mission</option>
+        <option value="existing">Use an existing project</option>
+      </select>
+      {workspaceMode === 'existing' && <>
+        <label htmlFor="start-mission-cwd">Working directory</label>
+        <input id="start-mission-cwd" className="f" required value={inputs.cwd} pattern="/.*" aria-describedby="start-mission-cwd-help"
+          placeholder="/path/to/project" onChange={event => setInputs({ ...inputs, cwd: event.target.value })} />
+        <p id="start-mission-cwd-help" className="field-note">The absolute path of the directory the agents work in.</p>
+      </>}
       <label htmlFor="start-mission-brief">Brief</label>
       <textarea id="start-mission-brief" required value={inputs.brief} aria-describedby="start-mission-brief-help"
         onChange={event => setInputs({ ...inputs, brief: event.target.value })} />
