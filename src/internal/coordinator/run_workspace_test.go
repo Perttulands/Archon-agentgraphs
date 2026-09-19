@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -29,8 +30,12 @@ func TestMissionAdmissionWithoutCwdExecutesInItsProjectedWorkspace(t *testing.T)
 	if err := os.WriteFile(c.store.BoardPath("proof"), []byte(testBoard), 0600); err != nil {
 		t.Fatal(err)
 	}
+	contextPaths := []string{t.TempDir(), filepath.Join(t.TempDir(), "prior-art.md")}
+	if err := os.WriteFile(contextPaths[1], []byte("existing work"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	for _, cwd := range []any{nil, ""} {
-		body := map[string]any{"board": "proof", "missionId": "mis_proof", "expectedRev": 1, "brief": "work in an automatic workspace", "limits": formations.RunLimits{MaxDispatch: 3, MaxAttempts: 1, WallClockSeconds: 60}}
+		body := map[string]any{"board": "proof", "missionId": "mis_proof", "expectedRev": 1, "brief": "work in an automatic workspace", "contextPaths": contextPaths, "limits": formations.RunLimits{MaxDispatch: 3, MaxAttempts: 1, WallClockSeconds: 60}}
 		if cwd != nil {
 			body["cwd"] = cwd
 		}
@@ -51,6 +56,9 @@ func TestMissionAdmissionWithoutCwdExecutesInItsProjectedWorkspace(t *testing.T)
 		want := filepath.Join(root, "workspaces", id)
 		select {
 		case req := <-e.entered:
+			if !reflect.DeepEqual(req.ContextPaths, contextPaths) {
+				t.Fatalf("seat context paths = %v", req.ContextPaths)
+			}
 			if req.Cwd != want {
 				t.Fatalf("seat cwd = %s, want %s", req.Cwd, want)
 			}
@@ -61,7 +69,7 @@ func TestMissionAdmissionWithoutCwdExecutesInItsProjectedWorkspace(t *testing.T)
 			t.Fatal("seat did not execute")
 		}
 		p, err := c.Project(id)
-		if err != nil || p.Cwd != want {
+		if err != nil || p.Cwd != want || !reflect.DeepEqual(p.ContextPaths, contextPaths) {
 			t.Fatalf("cwd projection: %+v %v", p, err)
 		}
 		e.finish <- struct{}{}

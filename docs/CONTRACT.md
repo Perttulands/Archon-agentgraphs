@@ -151,6 +151,16 @@ starting again. Omit `cwd` (or send an empty string) to create a private workspa
 for this mission under `<state-dir>/workspaces/<runId>`. The daemon's
 `--run-workspace-root` flag can select another absolute root. Admission records
 the resolved directory in `run_started` and run status; every seat uses it.
+Optional `contextPaths` names absolute existing files or directories to inspect as
+mission context, independently of the workspace. The CLI accepts repeated
+`--context-path`; the cockpit accepts one path per line. Admission validates
+these references before allocating a workspace, records their ordered list in
+`run_started`, and projects it in run status. Every seat, including the first
+formation and later attempts, is instructed to inspect this context before
+claiming no prior art. The paths are frozen for the run; their contents are not
+snapshotted. They are reference inputs, not additional file-serving roots or
+permission to modify the referenced projects.
+
 Rejected admission removes any newly allocated empty workspace. Admitted runs
 retain their workspace and outputs after completion, cancellation or failure.
 For an existing project, supply `cwd` as an absolute existing directory.
@@ -203,7 +213,7 @@ Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
 channel](#human-gates-on-the-session-channel)). Pending human requests appear in
 `waitingGates` with `gateId` and `requestedSeq`.
 
-The public projection includes cwd and Bead ID but excludes prompt text,
+The public projection includes cwd, context paths and Bead ID but excludes prompt text,
 artifact contents, brief paths, native session IDs and arbitrary private event
 data. Projections and SSE stay sanitized; the run evidence routes under
 [HTTP contract](#http-contract) serve a run's outputs, gate results, human
@@ -223,7 +233,7 @@ then match its `sessionName` to `tmux list-panes` on the daemon host's configure
 socket. This locates the asking pane without exposing private terminal IDs in
 the API. In session mode the operator talks to that seat; it records the
 confirmed answer with `gate approve|reject`, the current `--requested-seq`,
-its own `--relayed-by` slot ID and the exact `--response`.
+its own `--relayed-by` slot ID and the exact `--response` or `--response-file`.
 
 The `tmux` executor uses one implementation with Claude Code and OpenAI Codex
 adapters. It resolves authenticated harness executables from its environment.
@@ -358,7 +368,8 @@ target runs first. A pass cannot finish a run while a fail verdict's target has
 not yet acted on its feedback.
 A human kind waits for an explicit verdict naming the exact pending sequence;
 stale or duplicate decisions return HTTP 409. There is no default verdict.
-The verdict's `reason` is the operator's response. On pass, a nonempty response
+The verdict's `reason` is the operator's response, preserved verbatim including
+leading/trailing whitespace and newlines. On pass, a nonempty response
 travels on every pass route together with the gate's original input. It is typed
 with gate ID, gate attempt, requested sequence, deciding actor and text, and
 the next prompt renders it as a human-response section after that input. An
@@ -515,6 +526,15 @@ yet ended (`nodeId`, `slotId`, `createdSeq`, `keptSeq`, and `waitingOn`, the
 pending `{gateId,requestedSeq}` asks the seat received). Ask events carry
 `requestedSeq`, and a fallback event's `outcome` is its code. The event stream
 sends the same projection.
+
+For long answers, the operator may give an explicit verdict and name a UTF-8
+file as the exact response. The seat uses `--response-file FILE` instead of
+`--response`, recording the complete file text verbatim and unabridged. A file
+alone does not imply a verdict. The CLI rejects invalid UTF-8, unreadable files
+and combinations with `--response` or its `--reason` alias before any request.
+The cockpit can load a local UTF-8 file into its editable answer box; import
+failures leave the current draft intact. An unedited import retains all file
+text. Editing follows the browser textarea's normal newline behavior.
 
 ## Operator procedure
 

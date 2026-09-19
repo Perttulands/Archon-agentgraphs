@@ -75,6 +75,7 @@ type FormationExecution struct {
 	// Deadline uses the ledger clock and covers the entire formation attempt.
 	Deadline      time.Time
 	Cwd           string
+	ContextPaths  []string
 	MissionGoal   string
 	MissionBeadID string
 	RunID         string
@@ -647,7 +648,7 @@ func (e *RunEngine) RecordHumanGateVerdict(runID string, req HumanGateVerdictReq
 		"gateId":       req.GateID,
 		"nodeId":       req.GateID,
 		"verdict":      verdict,
-		"reason":       strings.TrimSpace(req.Reason),
+		"reason":       req.Reason,
 		"requestedSeq": requestEvent.Seq,
 		"decidedBy":    actor,
 	}
@@ -668,7 +669,7 @@ func (e *RunEngine) RecordHumanGateVerdict(runID string, req HumanGateVerdictReq
 		return nil, ErrRunLedgerInvalid
 	}
 	input := runInputRefFromAny(requestEvent.Data["inputRef"])
-	status, err := e.routeGateVerdict(runID, validatedBoard, gate, input, verdict, strings.TrimSpace(req.Reason), runLimitsFromEvent(events[0]), requestEvent)
+	status, err := e.routeGateVerdict(runID, validatedBoard, gate, input, verdict, req.Reason, runLimitsFromEvent(events[0]), requestEvent)
 	if err != nil {
 		return nil, err
 	}
@@ -1836,6 +1837,7 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 	}
 	req.MissionBeadID = events[0].BeadID
 	req.Cwd = stringFromEventData(events[0], "cwd")
+	req.ContextPaths = stringSliceFromAny(events[0].Data["contextPaths"])
 	req.MissionGoal = stringFromEventData(events[0], "objective")
 	// Kept seats are reconsidered as a formation starts dispatching (ADR-0019).
 	if err := e.reconsiderKeptSeats(req.RunID, req.NodeID); err != nil {

@@ -54,6 +54,7 @@ const (
 
 type RunStartRequest struct {
 	Cwd               string
+	ContextPaths      []string
 	BeadID            string
 	Brief             string
 	MissionID         string
@@ -108,18 +109,19 @@ type RunEvent struct {
 }
 
 type RunStatusProjection struct {
-	Cwd           string `json:"cwd,omitempty"`
-	RunID         string `json:"runId"`
-	Status        string `json:"status"`
-	Final         bool   `json:"final"`
-	BoardSlug     string `json:"boardSlug"`
-	BoardID       string `json:"boardId"`
-	BoardRev      int    `json:"boardRev"`
-	MissionID     string `json:"missionId"`
-	BeadID        string `json:"beadId"`
-	Epoch         int    `json:"epoch"`
-	EventCount    int    `json:"eventCount"`
-	ResumeAllowed bool   `json:"resumeAllowed"`
+	Cwd           string   `json:"cwd,omitempty"`
+	ContextPaths  []string `json:"contextPaths,omitempty"`
+	RunID         string   `json:"runId"`
+	Status        string   `json:"status"`
+	Final         bool     `json:"final"`
+	BoardSlug     string   `json:"boardSlug"`
+	BoardID       string   `json:"boardId"`
+	BoardRev      int      `json:"boardRev"`
+	MissionID     string   `json:"missionId"`
+	BeadID        string   `json:"beadId"`
+	Epoch         int      `json:"epoch"`
+	EventCount    int      `json:"eventCount"`
+	ResumeAllowed bool     `json:"resumeAllowed"`
 }
 
 type RunListFilter struct {
@@ -172,6 +174,9 @@ type RunGateBinding struct {
 
 func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, error) {
 	if err := validateSlug(slug); err != nil {
+		return nil, err
+	}
+	if err := ValidateRunContextPaths(req.ContextPaths); err != nil {
 		return nil, err
 	}
 	boardPath := s.BoardPath(slug)
@@ -289,6 +294,7 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 			"beadId":           mission.BeadID,
 			"objective":        mission.Goal,
 			"cwd":              req.Cwd,
+			"contextPaths":     req.ContextPaths,
 			"brief":            req.Brief,
 			"briefSha256":      etag([]byte(req.Brief)),
 			"limits":           req.Limits,
@@ -566,14 +572,15 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 		return nil, ErrRunLedgerInvalid
 	}
 	status := &RunStatusProjection{
-		Cwd:       stringFromEventData(events[0], "cwd"),
-		RunID:     runID,
-		Status:    RunStatusRunning,
-		BoardSlug: stringFromEventData(events[0], "boardSlug"),
-		BoardID:   events[0].BoardID,
-		BoardRev:  events[0].BoardRev,
-		MissionID: events[0].MissionID,
-		BeadID:    events[0].BeadID,
+		Cwd:          stringFromEventData(events[0], "cwd"),
+		ContextPaths: stringSliceFromAny(events[0].Data["contextPaths"]),
+		RunID:        runID,
+		Status:       RunStatusRunning,
+		BoardSlug:    stringFromEventData(events[0], "boardSlug"),
+		BoardID:      events[0].BoardID,
+		BoardRev:     events[0].BoardRev,
+		MissionID:    events[0].MissionID,
+		BeadID:       events[0].BeadID,
 	}
 	for i, event := range events {
 		if event.Seq != i+1 {
@@ -1029,4 +1036,22 @@ func stringSliceFromAny(value any) []string {
 	default:
 		return nil
 	}
+}
+
+// ValidateRunContextPaths checks explicit mission context before any workspace is
+// allocated. These are prompt references, not additional file-serving roots.
+func ValidateRunContextPaths(paths []string) error {
+	for _, path := range paths {
+		if !filepath.IsAbs(path) {
+			return fmt.Errorf("context path must be absolute: %q", path)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			return fmt.Errorf("context path %q: %w", path, err)
+		}
+		if !info.IsDir() && !info.Mode().IsRegular() {
+			return fmt.Errorf("context path must be a regular file or directory: %q", path)
+		}
+	}
+	return nil
 }

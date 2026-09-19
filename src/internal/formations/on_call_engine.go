@@ -266,7 +266,7 @@ func renderHumanAskBrief(runID string, board *BoardDocument, events []RunEvent, 
 			verdict = "sent back"
 		}
 		fmt.Fprintf(&b, "- %s: %s", nodeTitleOnBoard(board, event.GateID), verdict)
-		if response := strings.TrimSpace(stringFromEventData(event, "reason")); response != "" {
+		if response := stringFromEventData(event, "reason"); response != "" {
 			fmt.Fprintf(&b, ", with the response: %s", response)
 		}
 		b.WriteString("\n")
@@ -282,6 +282,9 @@ func renderHumanAskBrief(runID string, board *BoardDocument, events []RunEvent, 
 	b.WriteString("- Record the confirmed decision with exactly one of these commands. Replace RESPONSE with the operator's confirmed words, quoted for the shell:\n\n")
 	fmt.Fprintf(&b, "      %s --server %s gate approve %s %s --requested-seq %d --relayed-by %s --response RESPONSE\n", cli, server, runID, request.GateID, request.Seq, slot)
 	fmt.Fprintf(&b, "      %s --server %s gate reject %s %s --requested-seq %d --relayed-by %s --response RESPONSE\n\n", cli, server, runID, request.GateID, request.Seq, slot)
+	b.WriteString("- For a long answer, the operator can give an explicit verdict and a UTF-8 response file. That confirms the complete file text as the response: preserve it verbatim and unabridged, including whitespace and final newlines. Use --response-file instead of --response; do not summarize, rewrite, or use shell command substitution to read the text. A file alone is not a verdict. If you cannot read it, tell the operator. Quote FILE for the shell:\n\n")
+	fmt.Fprintf(&b, "      %s --server %s gate approve %s %s --requested-seq %d --relayed-by %s --response-file FILE\n", cli, server, runID, request.GateID, request.Seq, slot)
+	fmt.Fprintf(&b, "      %s --server %s gate reject %s %s --requested-seq %d --relayed-by %s --response-file FILE\n\n", cli, server, runID, request.GateID, request.Seq, slot)
 	b.WriteString("- Approve sends the response to the next step with the gate's input. Reject sends the work back, and the next attempt reads only the response, so it must carry what the conversation settled.\n")
 	b.WriteString("- A 409 saying the coordinator is executing means the run is busy for a moment: wait a few seconds and run the same command again.\n")
 	b.WriteString("- A 409 saying the human gate request is no longer pending means another seat or the cockpit decided first: tell the operator.\n")

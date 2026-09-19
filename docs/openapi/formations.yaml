@@ -237,6 +237,11 @@ paths:
                 cwd:
                   type: string
                   description: Absolute existing seat working directory; omitted or empty creates a private workspace under the configured run workspace root
+                contextPaths:
+                  type: array
+                  items:
+                    type: string
+                  description: Absolute existing file or directory references, independent of cwd; recorded on the run and supplied to every seat for inspection. Contents are not snapshotted.
                 brief:
                   type: string
                   minLength: 1
@@ -559,7 +564,7 @@ paths:
                   - fail
                 reason:
                   type: string
-                  description: Operator response. On pass a nonempty response reaches the pass routes with the gate input; on fail it is the feedback reason.
+                  description: Verbatim operator response, including whitespace and newlines. On pass a nonempty response reaches the pass routes with the gate input; on fail it is the feedback reason.
                 relayedBy:
                   type: string
                   pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$'
@@ -996,6 +1001,10 @@ components:
           type: string
         cwd:
           type: string
+        contextPaths:
+          type: array
+          items:
+            type: string
         epoch:
           type: integer
         eventCount:

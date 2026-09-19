@@ -273,6 +273,9 @@ func TestSessionAskReachesTheKeptWorkSeatWithoutANotifyCommand(t *testing.T) {
 		"PRIVATE-CRITERION",
 		fmt.Sprintf("'/opt/archon tools/bin/archon' --server http://127.0.0.1:18400 gate approve %s gate_review --requested-seq %d --relayed-by slot_work --response RESPONSE", id, gate.RequestedSeq),
 		fmt.Sprintf("'/opt/archon tools/bin/archon' --server http://127.0.0.1:18400 gate reject %s gate_review --requested-seq %d --relayed-by slot_work --response RESPONSE", id, gate.RequestedSeq),
+		fmt.Sprintf("--requested-seq %d --relayed-by slot_work --response-file FILE", gate.RequestedSeq),
+		"preserve it verbatim and unabridged, including whitespace and final newlines",
+		"A file alone is not a verdict",
 		"Only the operator decides",
 		"A complete, unambiguous operator verdict for this pending gate, with the exact response to record, is itself confirmation.",
 		"Record those exact words immediately, without asking them to confirm again.",
@@ -401,7 +404,7 @@ func TestSessionAskReachesEveryPeerSeatWithARetryAndOnlyTheOrchestratedControlle
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(string(raw), "--relayed-by "+seat.SlotID+" --response") || strings.Count(string(raw), "--relayed-by") != 2 {
+			if !strings.Contains(string(raw), "--relayed-by "+seat.SlotID+" --response") || strings.Count(string(raw), "--relayed-by") != 4 {
 				t.Fatalf("%s brief does not relay as its own slot:\n%s", seat.SlotID, raw)
 			}
 		}

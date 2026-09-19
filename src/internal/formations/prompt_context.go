@@ -9,6 +9,13 @@ func renderBriefAndInputs(b *strings.Builder, req FormationExecution, card Perso
 	if req.Cwd != "" {
 		b.WriteString("run cwd: " + req.Cwd + "\n")
 	}
+	if len(req.ContextPaths) > 0 {
+		b.WriteString("\nLaunch context: inspect these files or directories before describing existing work or claiming there is no prior art. Treat them as reference inputs; write outputs in the run workspace unless the mission explicitly authorizes changes elsewhere. Report any unreadable context.\n")
+		for _, path := range req.ContextPaths {
+			fmt.Fprintf(b, "context path: %q\n", path)
+		}
+		b.WriteString("\n")
+	}
 	if req.MissionGoal != "" {
 		b.WriteString("mission goal: " + req.MissionGoal + "\n")
 	}

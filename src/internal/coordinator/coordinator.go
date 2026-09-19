@@ -366,15 +366,16 @@ func (c *Coordinator) nextChange(id string) <-chan struct{} {
 
 func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Cwd         string               `json:"cwd"`
-		Brief       string               `json:"brief"`
-		BeadID      string               `json:"beadId"`
-		Actor       string               `json:"actor"`
-		FormationID string               `json:"formationId"`
-		Board       string               `json:"board"`
-		MissionID   string               `json:"missionId"`
-		ExpectedRev int                  `json:"expectedRev"`
-		Limits      formations.RunLimits `json:"limits"`
+		Cwd          string               `json:"cwd"`
+		ContextPaths []string             `json:"contextPaths"`
+		Brief        string               `json:"brief"`
+		BeadID       string               `json:"beadId"`
+		Actor        string               `json:"actor"`
+		FormationID  string               `json:"formationId"`
+		Board        string               `json:"board"`
+		MissionID    string               `json:"missionId"`
+		ExpectedRev  int                  `json:"expectedRev"`
+		Limits       formations.RunLimits `json:"limits"`
 	}
 	if !decode(w, r, &req) {
 		return
@@ -384,6 +385,10 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.MissionID != "" {
+		if err := formations.ValidateRunContextPaths(req.ContextPaths); err != nil {
+			reply(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
 		if req.Cwd != "" {
 			info, err := os.Stat(req.Cwd)
 			if !filepath.IsAbs(req.Cwd) || err != nil || !info.IsDir() {
@@ -460,7 +465,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Limits = c.engine.AdmissionLimits(req.Limits)
-	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, Brief: req.Brief, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: "operator:standalone", Personas: c.personas, Limits: req.Limits})
+	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, ContextPaths: req.ContextPaths, Brief: req.Brief, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: "operator:standalone", Personas: c.personas, Limits: req.Limits})
 	if err != nil {
 		failure(w, err)
 		return

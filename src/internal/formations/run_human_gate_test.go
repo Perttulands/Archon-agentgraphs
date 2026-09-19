@@ -507,9 +507,9 @@ func startHumanGateRun(t *testing.T) (*Store, *PersonaStore, string) {
 
 func TestHumanGatePassResponseReachesDownstreamPromptAcrossRestarts(t *testing.T) {
 	store, personas, runID := startHumanGateRun(t)
-	answer := "1. Use Postgres.\n2. Ship on Friday."
+	answer := "  " + strings.Repeat("Päätös: inspect the repository before drafting.\r\n", 120) + "\n"
 	if _, err := NewRunEngine(store, personas, &fakeRunExecutor{}).RecordHumanGateVerdict(runID, HumanGateVerdictRequest{
-		GateID: "gate_review", Verdict: "pass", Reason: "  " + answer + "\n", Actor: "human:operator",
+		GateID: "gate_review", Verdict: "pass", Reason: answer, Actor: "human:operator",
 	}); err != nil {
 		t.Fatalf("record pass verdict: %v", err)
 	}
@@ -588,7 +588,7 @@ func TestHumanGatePassResponseReachesDownstreamPromptAcrossRestarts(t *testing.T
 func TestHumanGateEmptyPassResponseRoutesInputUnchanged(t *testing.T) {
 	store, personas, runID := startHumanGateRun(t)
 	if _, err := NewRunEngine(store, personas, &fakeRunExecutor{}).RecordHumanGateVerdict(runID, HumanGateVerdictRequest{
-		GateID: "gate_review", Verdict: "pass", Reason: " \n", Actor: "human:operator",
+		GateID: "gate_review", Verdict: "pass", Reason: "", Actor: "human:operator",
 	}); err != nil {
 		t.Fatalf("record pass verdict: %v", err)
 	}
@@ -612,9 +612,10 @@ func TestHumanGateEmptyPassResponseRoutesInputUnchanged(t *testing.T) {
 }
 
 func TestHumanGateFailResponseStaysFeedback(t *testing.T) {
+	answer := "\n  " + strings.Repeat("Korjaus: answer question 3 first.\r\n", 150) + "\n\n"
 	store, personas, runID := startHumanGateRun(t)
 	if _, err := NewRunEngine(store, personas, &fakeRunExecutor{}).RecordHumanGateVerdict(runID, HumanGateVerdictRequest{
-		GateID: "gate_review", Verdict: "fail", Reason: "Answer question 3 first", Actor: "human:operator",
+		GateID: "gate_review", Verdict: "fail", Reason: answer, Actor: "human:operator",
 	}); err != nil {
 		t.Fatalf("record fail verdict: %v", err)
 	}
@@ -626,7 +627,7 @@ func TestHumanGateFailResponseStaysFeedback(t *testing.T) {
 		t.Fatalf("calls = %+v, want Work pushback", executor.calls)
 	}
 	input := executor.calls[0].Inputs[0]
-	if input.Response != nil || input.Feedback == nil || input.Feedback.Reason != "Answer question 3 first" || input.Feedback.Verdict != "fail" {
+	if input.Response != nil || input.Feedback == nil || input.Feedback.Reason != answer || input.Feedback.Verdict != "fail" {
 		t.Fatalf("pushback input = %+v, want feedback only", input)
 	}
 }
