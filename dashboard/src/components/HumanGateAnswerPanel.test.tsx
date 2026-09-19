@@ -21,6 +21,65 @@ function renderPanel(onDecide = vi.fn(async () => true), upstream: Parameters<ty
 describe('HumanGateAnswerPanel', () => {
   afterEach(() => { vi.restoreAllMocks(); window.localStorage.clear() })
 
+  it.each([['Approve', 'pass'], ['Send back', 'fail']])('loads a long Unicode file into an editable draft and preserves the %s response', async (button, verdict) => {
+    const onDecide = vi.fn(async () => true)
+    renderPanel(onDecide)
+    const answer = `  ${'Vastaus: ääkköset 日本語 🧭\twith space.\n'.repeat(200)}\n`
+    const file = new File([answer], 'answer.txt', { type: 'text/plain' })
+    Object.defineProperty(file, 'arrayBuffer', { value: async () => new TextEncoder().encode(answer).buffer })
+    fireEvent.change(screen.getByLabelText('Response file'), { target: { files: [file] } })
+    await waitFor(() => expect(screen.getByLabelText('Your response')).toHaveValue(answer))
+    expect(onDecide).not.toHaveBeenCalled()
+    const edited = `${answer}An additional answer.  \n`
+    fireEvent.change(screen.getByLabelText('Your response'), { target: { value: edited } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: button })) })
+    expect(onDecide).toHaveBeenCalledWith(verdict, edited)
+  })
+
+  it.each(['read failure', 'invalid UTF-8'])('preserves the current draft on %s', async failure => {
+    const onDecide = vi.fn(async () => true)
+    renderPanel(onDecide)
+    fireEvent.change(screen.getByLabelText('Your response'), { target: { value: 'Keep this answer.  \n' } })
+    const file = new File([], 'broken.txt')
+    Object.defineProperty(file, 'arrayBuffer', { value: async () => {
+      if (failure === 'read failure') throw new Error('Read failed')
+      return new Uint8Array([0xff]).buffer
+    } })
+    fireEvent.change(screen.getByLabelText('Response file'), { target: { files: [file] } })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your response has not changed.')
+    expect(screen.getByLabelText('Your response')).toHaveValue('Keep this answer.  \n')
+    expect(window.localStorage.getItem('archon.gateResponse.run_1.9')).toBe('Keep this answer.  \n')
+    expect(onDecide).not.toHaveBeenCalled()
+  })
+
+  it('preserves the UTF-8 BOM and CRLF bytes as decoded text when an imported answer is not edited', async () => {
+    const onDecide = vi.fn(async () => true)
+    renderPanel(onDecide)
+    const answer = '\uFEFF  First line.\r\nSecond line.  \r\n'
+    const file = new File([], 'answer.txt')
+    Object.defineProperty(file, 'arrayBuffer', { value: async () => new TextEncoder().encode(answer).buffer })
+    fireEvent.change(screen.getByLabelText('Response file'), { target: { files: [file] } })
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Draft saved'))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Approve' })) })
+    expect(onDecide).toHaveBeenCalledWith('pass', answer)
+  })
+
+  it('blocks editing and submission until the file finishes reading', async () => {
+    const onDecide = vi.fn(async () => true)
+    renderPanel(onDecide)
+    let finish!: (value: ArrayBuffer) => void
+    const file = new File([], 'answer.txt')
+    Object.defineProperty(file, 'arrayBuffer', { value: () => new Promise<ArrayBuffer>(resolve => { finish = resolve }) })
+    fireEvent.change(screen.getByLabelText('Response file'), { target: { files: [file] } })
+    expect(screen.getByLabelText('Your response')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Send back' })).toBeDisabled()
+    await act(async () => { finish(new TextEncoder().encode('Loaded').buffer) })
+    expect(screen.getByLabelText('Your response')).toHaveValue('Loaded')
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    expect(onDecide).not.toHaveBeenCalled()
+  })
+
   it('shows the upstream questions readably and approves with the typed response', async () => {
     const onDecide = vi.fn(async () => true)
     renderPanel(onDecide)
@@ -37,7 +96,7 @@ describe('HumanGateAnswerPanel', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Draft saved in this browser. Not submitted.')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Approve' })) })
 
-    expect(onDecide).toHaveBeenCalledWith('pass', answer)
+    expect(onDecide).toHaveBeenCalledWith('pass', `  ${answer}\n`)
     expect(window.localStorage.getItem('archon.gateResponse.run_1.9')).toBeNull()
     expect(screen.getByRole('status')).toHaveTextContent('Answer submitted.')
   })

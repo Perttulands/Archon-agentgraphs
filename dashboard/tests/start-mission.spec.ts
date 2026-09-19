@@ -126,9 +126,39 @@ for (const switchFromExisting of [false, true]) {
     await expect(dialog.getByRole('alert')).toContainText('Fixture-only payload captured')
     expect(submissions).toHaveLength(1)
     expect(submissions[0]).toMatchObject({
-      cwd: '', brief: 'A fixture-only sketch',
+      cwd: '', contextPaths: [], brief: 'A fixture-only sketch',
       limits: { maxDispatch: 20, maxAttempts: 3, wallClockSeconds: 1800, redact: false },
     })
+    expect(fixture.writes).toEqual([])
+  })
+}
+
+for (const mode of ['automatic', 'existing']) {
+  test(`context paths survive workspace switches and submit in ${mode} mode`, async ({ page }) => {
+    const fixture = await wayfindingFixture(page)
+    const payloads: Record<string, unknown>[] = []
+    await page.route('**/api/formations/runs', async route => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      payloads.push(route.request().postDataJSON())
+      await route.fulfill({ status: 409, json: { success: false, error: { message: 'Fixture-only payload captured' } } })
+    })
+    await page.goto('/?board=wayfinding')
+    await page.getByTitle('Start mission', { exact: true }).first().click()
+    const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
+    await dialog.getByLabel('Brief', { exact: true }).fill('Inspect the supplied context')
+    const context = dialog.getByLabel('Context paths', { exact: true })
+    const paths = '/work/prior art\n\n/work/notes.md\n'
+    await context.fill(paths)
+    const workspace = dialog.getByLabel('Workspace', { exact: true })
+    await workspace.selectOption('existing')
+    await dialog.getByLabel('Working directory').fill('/work/project')
+    await workspace.selectOption('automatic')
+    await workspace.selectOption(mode)
+    await expect(context).toHaveValue(paths)
+    await dialog.getByRole('button', { name: 'Start mission', exact: true }).click()
+    await expect(dialog.getByRole('alert')).toContainText('Fixture-only payload captured')
+    expect(payloads).toHaveLength(1)
+    expect(payloads[0]).toMatchObject({ cwd: mode === 'existing' ? '/work/project' : '', contextPaths: ['/work/prior art', '/work/notes.md'] })
     expect(fixture.writes).toEqual([])
   })
 }

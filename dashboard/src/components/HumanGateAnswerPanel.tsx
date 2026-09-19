@@ -57,16 +57,41 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
   const [draft, setDraft] = useState(() => readDraft(key))
   const response = draft.text
   const [submitting, setSubmitting] = useState<GateDecision | ''>('')
+  const [loadingFile, setLoadingFile] = useState(false)
+  const [fileError, setFileError] = useState('')
+  const fileInput = useRef<HTMLInputElement>(null)
   const panel = useRef<HTMLElement>(null)
   const trimmed = response.trim()
   // The run's frozen criterion wins over the board's current draft.
   const shownCriterion = (upstream.state === 'ready' && upstream.criterion) || criterion
 
+  const updateDraft = (text: string) => {
+    const saved = writeDraft(key, text)
+    setDraft({ text, cue: saved
+      ? text ? 'Draft saved in this browser. Not submitted.' : 'Draft cleared. Not submitted.'
+      : 'Draft not saved in this browser. Keep this page open. Not submitted.' })
+  }
+
+  // Adapted from CHROTE FilesViewContent's hidden file input and fileService's
+  // strict UTF-8 decoding. This reads locally into a draft, with no server upload.
+  const loadResponseFile = async (file: File) => {
+    setLoadingFile(true)
+    setFileError('')
+    try {
+      const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(await file.arrayBuffer())
+      updateDraft(text)
+    } catch {
+      setFileError('Could not read this file as UTF-8 text. Your response has not changed.')
+    } finally {
+      setLoadingFile(false)
+    }
+  }
+
   const decide = async (verdict: GateDecision) => {
-    if (submitting) return
+    if (submitting || loadingFile) return
     setSubmitting(verdict)
     try {
-      if (await onDecide(verdict, trimmed)) {
+      if (await onDecide(verdict, response)) {
         const cleared = writeDraft(key, '')
         setDraft(current => ({ ...current, cue: cleared ? 'Answer submitted.' : 'Answer submitted. The browser draft could not be cleared.' }))
       }
@@ -118,28 +143,32 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
         className="gate-answer-input"
         value={response}
         placeholder="Answer the questions or explain what to change. Approve sends this to the next step."
-        disabled={submitting !== ''}
-        onChange={event => {
-          const text = event.target.value
-          const saved = writeDraft(key, text)
-          setDraft({ text, cue: saved
-            ? text ? 'Draft saved in this browser. Not submitted.' : 'Draft cleared. Not submitted.'
-            : 'Draft not saved in this browser. Keep this page open. Not submitted.' })
-        }}
+        disabled={submitting !== '' || loadingFile}
+        onChange={event => updateDraft(event.target.value)}
       />
+      <input ref={fileInput} type="file" hidden aria-label="Response file" accept="text/*,.txt,.md,.json" disabled={submitting !== '' || loadingFile}
+        onChange={event => {
+          const file = event.currentTarget.files?.[0]
+          event.currentTarget.value = ''
+          if (file) void loadResponseFile(file)
+        }} />
+      <button type="button" className="gate-answer-load" disabled={submitting !== '' || loadingFile}
+        onClick={() => fileInput.current?.click()}>{loadingFile ? 'Loading response file…' : 'Load response file'}</button>
+      <p className="gate-answer-draft">Load a UTF-8 text file from this device to replace your draft. Review or edit it before submitting.</p>
+      {fileError ? <p className="gate-answer-file-error" role="alert">{fileError}</p> : null}
       {draft.cue ? <p className="gate-answer-draft" role="status">{draft.cue}</p> : null}
       <div className="gate-answer-actions">
         <button
           type="button"
           className="gate-answer-back"
-          disabled={submitting !== '' || !trimmed}
+          disabled={submitting !== '' || loadingFile || !trimmed}
           title={trimmed ? 'Send the response back as feedback' : 'Write what should change before sending back'}
           onClick={() => void decide('fail')}
         >{submitting === 'fail' ? 'Sending…' : 'Send back'}</button>
         <button
           type="button"
           className="gate-answer-approve"
-          disabled={submitting !== ''}
+          disabled={submitting !== '' || loadingFile}
           onClick={() => void decide('pass')}
         >{submitting === 'pass' ? 'Approving…' : 'Approve'}</button>
       </div>

@@ -26,7 +26,24 @@ describe('StartMissionDialog', () => {
       expect(screen.queryByLabelText('Working directory')).not.toBeInTheDocument()
     }
     fireEvent.click(screen.getByRole('button', { name: 'Start mission' }))
-    await waitFor(() => expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ cwd: '', brief: 'Sketch' }), 'notify'))
+    await waitFor(() => expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ cwd: '', contextPaths: [], brief: 'Sketch' }), 'notify'))
+  })
+
+  it.each(['automatic', 'existing'])('keeps context paths through mode switches and submits them in %s mode', async mode => {
+    const onStart = vi.fn(async () => {})
+    render(<StartMissionDialog title="Wayfinding" onStart={onStart} onClose={vi.fn()} />)
+    const paths = '/work/prior art\n\n/work/notes.md\n'
+    fireEvent.change(screen.getByLabelText('Context paths'), { target: { value: paths } })
+    fireEvent.change(screen.getByLabelText('Brief'), { target: { value: 'Sketch' } })
+    fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: 'existing' } })
+    fireEvent.change(screen.getByLabelText('Working directory'), { target: { value: '/work/project' } })
+    fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: 'automatic' } })
+    fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: mode } })
+    expect(screen.getByLabelText('Context paths')).toHaveValue(paths)
+    fireEvent.click(screen.getByRole('button', { name: 'Start mission' }))
+    await waitFor(() => expect(onStart).toHaveBeenCalledWith(expect.objectContaining({
+      cwd: mode === 'automatic' ? '' : '/work/project', contextPaths: ['/work/prior art', '/work/notes.md'],
+    }), 'notify'))
   })
 
   it('explains the brief, using the mission input hint when one is set', () => {
@@ -89,7 +106,7 @@ describe('StartMissionDialog', () => {
     fireEvent.change(dispatches, { target: { value: '24' } })
     fireEvent.click(screen.getByRole('button', { name: 'Start mission' }))
     await waitFor(() => expect(onStart).toHaveBeenCalledWith({
-      cwd: '/work', brief: 'Sketch', beadId: '',
+      cwd: '/work', contextPaths: [], brief: 'Sketch', beadId: '',
       limits: { maxDispatch: 24, maxAttempts: 3, wallClockSeconds: 1800, redact: false },
     }, 'notify'))
   })

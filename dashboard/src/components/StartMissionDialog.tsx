@@ -9,6 +9,7 @@ const Markdown = lazy(() => import('../evidence/Markdown'))
 
 export interface RunInputs {
   cwd: string
+  contextPaths: string[]
   brief: string
   beadId: string
   limits: { maxDispatch: number; maxAttempts: number; wallClockSeconds: number; redact: boolean }
@@ -40,6 +41,7 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', humanCh
   onStart: (inputs: RunInputs, humanChannel: HumanChannel) => Promise<void>; onClose: () => void
 }) {
   const [inputs, setInputs] = useState({ cwd: '', brief: '', beadId, limits: { maxDispatch: '20', maxAttempts: '3', wallClockSeconds: '1800', redact: false } })
+  const [contextPaths, setContextPaths] = useState('')
   const [workspaceMode, setWorkspaceMode] = useState('automatic')
   const dialogRef = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
@@ -85,7 +87,7 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', humanCh
       setSaving(true)
       setError('')
       const limits = { maxDispatch: Number(inputs.limits.maxDispatch), maxAttempts: Number(inputs.limits.maxAttempts), wallClockSeconds: Number(inputs.limits.wallClockSeconds), redact: inputs.limits.redact }
-      try { await onStart({ ...inputs, cwd: workspaceMode === 'existing' ? inputs.cwd : '', limits }, channel); onClose() } catch (err) { setError(err instanceof Error ? err.message : 'Failed to start run') } finally { setSaving(false) }
+      try { await onStart({ ...inputs, contextPaths: contextPaths.split(/\r?\n/).map(path => path.trim()).filter(Boolean), cwd: workspaceMode === 'existing' ? inputs.cwd : '', limits }, channel); onClose() } catch (err) { setError(err instanceof Error ? err.message : 'Failed to start run') } finally { setSaving(false) }
     }}>
       <label htmlFor="start-mission-workspace">Workspace</label>
       <select id="start-mission-workspace" className="f" value={workspaceMode} disabled={saving}
@@ -107,6 +109,10 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', humanCh
           <Suspense fallback={hint}><Markdown content={hint} className="start-mission-hint" /></Suspense>
         </div>
       ) : <p id="start-mission-brief-help" className="field-note">{DEFAULT_BRIEF_HINT}</p>}
+      <label htmlFor="start-mission-context">Context paths</label>
+      <textarea id="start-mission-context" className="start-mission-context" value={contextPaths} aria-describedby="start-mission-context-help"
+        onChange={event => setContextPaths(event.target.value)} />
+      <p id="start-mission-context-help" className="field-note">Optional. One absolute path per line to an existing file or directory on the agent host. The first formation will inspect these paths. Your workspace choice does not change them.</p>
       <label htmlFor="start-mission-bead">Bead</label>
       <input id="start-mission-bead" className="f" value={inputs.beadId} pattern="[A-Za-z0-9][A-Za-z0-9._-]*" aria-describedby="start-mission-bead-help"
         onChange={event => setInputs({ ...inputs, beadId: event.target.value })} />
