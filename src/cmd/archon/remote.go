@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
@@ -105,6 +106,14 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	cwd := fs.String("cwd", "", "absolute existing run directory; omit to create a daemon-managed workspace")
 	brief := fs.String("brief", "", "brief file path or literal text")
 	bead := fs.String("bead", "", "run Beads id")
+	var contextPaths stringList
+	if args[0]+" "+args[1] == "mission run" {
+		fs.Var(&contextPaths, "context-path", "context path for the mission; repeat for more")
+	}
+	var responseFile string
+	if args[0] == "gate" && (args[1] == "approve" || args[1] == "reject") {
+		fs.StringVar(&responseFile, "response-file", "", "local UTF-8 file containing the complete verbatim response")
+	}
 	mode := fs.String("mode", "reattach", "resume mode")
 	mission := fs.String("mission", "", "mission id")
 	reason := fs.String("reason", "", "operator reason; for gate approve|reject, the response text")
@@ -148,7 +157,11 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		path += "/runs"
 		method = "POST"
-		body = map[string]any{"cwd": *cwd, "brief": briefText, "beadId": *bead, "board": pos[0], "missionId": *mission, "expectedRev": board.Data.Board.Rev, "limits": map[string]any{"maxDispatch": *maxDispatch, "maxAttempts": *maxAttempts, "wallClockSeconds": *wall, "redact": false}}
+		fields := map[string]any{"cwd": *cwd, "brief": briefText, "beadId": *bead, "board": pos[0], "missionId": *mission, "expectedRev": board.Data.Board.Rev, "limits": map[string]any{"maxDispatch": *maxDispatch, "maxAttempts": *maxAttempts, "wallClockSeconds": *wall, "redact": false}}
+		if len(contextPaths) > 0 {
+			fields["contextPaths"] = contextPaths
+		}
+		body = fields
 	case "run abort", "run resume":
 		if len(pos) != 1 {
 			return remoteUsage(stderr)
@@ -202,6 +215,20 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		if len(pos) != 2 || *seq <= 0 {
 			return remoteUsage(stderr)
 		}
+		given := givenFlags(fs)
+		if given["response-file"] {
+			if given["response"] || given["reason"] {
+				return fail(stderr, errors.New("--response-file cannot be combined with --response or --reason"))
+			}
+			raw, err := os.ReadFile(responseFile)
+			if err != nil {
+				return fail(stderr, fmt.Errorf("read --response-file: %w", err))
+			}
+			if !utf8.Valid(raw) {
+				return fail(stderr, errors.New("--response-file must contain valid UTF-8"))
+			}
+			*reason = string(raw)
+		}
 		verdict := "pass"
 		if args[1] == "reject" {
 			verdict = "fail"
@@ -228,6 +255,6 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 func remoteUsage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "use board, mission, formation, gate and agent authoring and read commands, mission run <board> --mission <id>, run status|logs|follow|seats|gates <run>, gate request <run> <gate>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text] [--relayed-by slot-id]")
+	fmt.Fprintln(stderr, "use board, mission, formation, gate and agent authoring and read commands, mission run <board> --mission <id> [--context-path path ...], run status|logs|follow|seats|gates <run>, gate request <run> <gate>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text | --response-file path] [--relayed-by slot-id]")
 	return 2
 }
