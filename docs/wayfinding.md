@@ -113,5 +113,9 @@ directory at `.formations/artifacts/<runId>/`; use the cockpit Produced list or
 starts a fresh attempt, so the recorded correction must carry the decisions the
 next drafting seat needs. Do not rename or freeze the board when finishing a run.
 
-Verification of these steps on a disposable run is pending; this guide does not
-claim a completed live proof.
+These launch, discovery, watch, seat relay and artifact steps were followed on a
+disposable session mission using its own bounded test limits. Its first seat
+read both context paths; the asking seat relayed a 14,543-byte response file, and
+the downstream seat verified the exact bytes from its dispatch brief. The live
+cockpit loaded the same complete file; browser tests cover both verdicts and
+edited answers. The real Wayfinding board was left unchanged.

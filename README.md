@@ -114,7 +114,9 @@ and authenticate those CLIs. Start the daemon with `--executor tmux` and your
 absolute paths for `--socket`, `--tmux-bin`, `--codex-transcripts` and
 `--claude-transcripts`. The daemon creates seats on demand when a formation
 runs. See the [operator procedure](docs/CONTRACT.md#operator-procedure) for
-configuration, execution limits, approvals and recovery.
+configuration, execution limits, approvals and recovery. The short
+[Wayfinding guide](docs/wayfinding.md) covers launch context, watching a run,
+finding asking seats and answering gates with text or a file.
 
 The delivery example also expects Beads and the shared skills named in its
 briefs. Those tools and skills are not bundled here. Read and adapt the
