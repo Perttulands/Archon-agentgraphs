@@ -77,7 +77,7 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer, runID string) (codexTr
 		if human && (r.Origin.Kind != "" || r.PromptSource != "") {
 			human = r.Origin.Kind == "human" || (r.Origin.Kind == "" && r.PromptSource == "typed")
 		}
-		if human && text == pointer && r.Cwd == cwd && r.SessionID != "" {
+		if human && claudePointerMatches(text, pointer) && r.Cwd == cwd && r.SessionID != "" {
 			turn = codexTranscriptTurn{Consumed: true, SessionID: r.SessionID, TurnID: r.UUID}
 			background = false
 			continue
@@ -179,4 +179,26 @@ func claudeStartsBackgroundWork(content json.RawMessage) bool {
 		}
 	}
 	return false
+}
+
+// claudePointerMatches accepts the exact pointer, plain or inside Claude's
+// native bracketed-paste record. It never strips arbitrary markup or prose.
+func claudePointerMatches(text, pointer string) bool {
+	if text == pointer {
+		return true
+	}
+	rest, ok := strings.CutPrefix(text, "\n\n<pasted_content id=\"")
+	if !ok {
+		return false
+	}
+	id, body, ok := strings.Cut(rest, "\">\n")
+	if !ok || id == "" {
+		return false
+	}
+	for _, c := range id {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return body == pointer+"\n</pasted_content id=\""+id+"\">\n"
 }

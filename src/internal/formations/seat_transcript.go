@@ -52,7 +52,7 @@ func readLatestSeatTurn(s *nativeSeat, path, cwd, pointer string) (codexTranscri
 				text += part.Text
 			}
 		}
-		if text == pointer {
+		if text == pointer || s.variant.ID == "claude-code" && claudePointerMatches(text, pointer) {
 			start = i
 			selectedContext = contextLine
 		}
