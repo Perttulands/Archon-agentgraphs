@@ -132,8 +132,7 @@ your task's values.
 ```bash
 archon --server http://127.0.0.1:8091 mission run delivery \
   --mission mis_delivery --cwd /absolute/path/to/your/repository \
-  --brief /absolute/path/to/your/brief.md --bead your-project-123 \
-  --max-dispatch 30 --max-attempts 3 --wall-clock-seconds 7200 --json
+  --brief /absolute/path/to/your/brief.md --bead your-project-123 --json
 ```
 
 Use the returned run ID with `run status`, `run logs`, `run follow` or

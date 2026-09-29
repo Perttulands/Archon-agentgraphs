@@ -31,8 +31,8 @@ product names; they do not define current behavior.
 | Gate | A criterion with one or more kinds: `code`, `formation`, `human`. Its ports are `in`, `pass`, `fail`, `judge`. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
 | Judge chain | Formations wired from a gate's `judge` port and back to that same port. The final judge result decides the formation kind. |
-| Pushback edge | A gate's `fail` connection back to work, delivering feedback and starting a bounded next attempt. There is no `retry_control` port. |
-| Run | One admitted mission or isolated formation, with definition and persona snapshots, inputs and limits. Later edits affect later runs. |
+| Pushback edge | A gate's `fail` connection back to work, delivering feedback and starting the next attempt, capped only when the run set `maxAttempts`. There is no `retry_control` port. |
+| Run | One admitted mission or isolated formation, with definition and persona snapshots, inputs and any limits the launch set. Later edits affect later runs. |
 | Ledger | Private append-only NDJSON events, ordered by sequence. It records dispatch, results, routing and recovery evidence. |
 | Projection | A sanitized view derived from the ledger, shared by HTTP, Archon and the cockpit. |
 
@@ -205,9 +205,14 @@ For an existing project, supply `cwd` as an absolute existing directory.
 text. The brief becomes mission output; the board goal remains prompt context.
 `beadId` is optional in the API but should identify the owning task.
 
-HTTP admission requires positive `maxDispatch`, `maxAttempts` and
-`wallClockSeconds`, with `redact` false. Remote Archon defaults to 3 dispatches,
-3 attempts and 7200 seconds. Set limits explicitly for larger graphs. Dispatch
+Runs have no limits unless the launch sets them. `maxDispatch`, `maxAttempts`
+and `wallClockSeconds` are optional; an absent or zero limit means none, in
+admission and in the engine. A negative limit, or `redact` true, is rejected.
+Neither `archon mission run` nor the cockpit's Start mission dialog supplies a
+limit: a run started without one loops through send-backs until a gate passes
+or its driver stops it. Set `--max-dispatch`, `--max-attempts` or
+`--wall-clock-seconds` to cap a run; each set limit is enforced and named when
+it blocks the run, as below. Dispatch
 limits bound formation execution steps, including judge steps. Each durable
 formation start consumes one dispatch before any seat launches, including failed
 or interrupted execution. Human approval, resume, restart and redispatch do not
@@ -227,7 +232,10 @@ claiming success. A block that exhausts attempts or dispatches
 limit_exhausted`, because resuming could only block again; its run evidence
 names the limit as `limit` (`kind` `attempts` or `dispatches`, `nodeId`,
 `used`, `max`). Older ledgers that recorded such a block as resumable project
-the same way and reject a resume.
+the same way and reject a resume. Ledgers written before limits became
+optional replay as recorded: their limits stay in `run_started`. The engine
+then gave a run without `maxAttempts` one attempt per node, so an attempt
+block in such a ledger names `max` 1.
 
 A formation may author `[formation.execution]` with a positive
 `timeoutSeconds`. That allocation covers the whole attempt: seat startup,
@@ -746,14 +754,13 @@ included, as `ERROR`/`WARN` lines or `--json`, and exits 1 on any error.
 rejected. The cockpit tags incomplete nodes as drafts and highlights the nodes
 a rejected start names.
 
-For the delivery template use the following limits as a bounded smoke example,
-and allow enough wall time for the actual task. Lab briefs need the synthetic
+For the delivery template the following starts a run without limits; add
+`--max-*` flags only when the run needs a cap. Lab briefs need the synthetic
 verdict described above. Real briefs describe the work to deliver.
 
 ```bash
 FORM_START=$(archon --server "$FORM_SERVER" mission run delivery \
-  --mission mis_delivery --brief "$FORM_BRIEF" --bead "$FORM_BEAD" \
-  --max-dispatch 30 --max-attempts 3 --wall-clock-seconds 7200 --json)
+  --mission mis_delivery --brief "$FORM_BRIEF" --bead "$FORM_BEAD" --json)
 FORM_RUN_ID=$(printf '%s\n' "$FORM_START" | jq -er '.data.runId')
 archon --server "$FORM_SERVER" run status "$FORM_RUN_ID" --json
 archon --server "$FORM_SERVER" run logs "$FORM_RUN_ID" --json
@@ -845,7 +852,7 @@ archon --server "$FORM_SERVER" run resume "$FORM_RUN_ID" --mode redispatch --rea
 ```
 
 The abandoned dispatch is recorded as a `slot_result` with status `abandoned`;
-the node's next attempt counts against `maxAttempts`. A failed reattach never
+the node's next attempt counts against `maxAttempts` when the run set one. A failed reattach never
 finishes the run: it records `dispatch_reattach_failed` with the reason and
 leaves the run blocked and resumable.
 
@@ -1063,7 +1070,8 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   64 KiB, and `truncated`. `routes` says where each verdict leads on the
   run's frozen board: `verdict` (`pass`, `fail`), `targets` (`nodeId`,
   `title`, `kind`, and for a formation the `attempt` it would start, the
-  engine's effective `maxAttempts` (1 when the run set none) and
+  run's `maxAttempts` (omitted when the run set none, so attempts are
+  unlimited; the engine applies the same rule) and
   `waitsForInputs` for a join still missing another input), `endsRun` for an
   approval with nothing downstream when every reachable formation has output
   and no other gate or step is open, `nothingFollows` for an approval with

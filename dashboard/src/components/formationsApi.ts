@@ -267,7 +267,8 @@ export async function startRun(etag: string, body: { board: string; missionId?: 
   const result = await fetchApi<{ runId: string }>('/api/formations/runs', {
     method: 'POST',
     headers: { 'If-Match': etag },
-    body: JSON.stringify({ ...body, limits: body.limits ?? { maxDispatch: 20, maxAttempts: 3, wallClockSeconds: 1800, redact: false } }),
+    // The cockpit starts runs without limits (form-o7p.7).
+    body: JSON.stringify(body),
   })
   return { runId: result.data.runId, status: runStatusFromResponse(await fetchRunStatus(result.data.runId)) }
 }
@@ -332,7 +333,7 @@ export interface GateRouteTarget {
   title: string
   kind: string
   attempt?: number
-  /** The engine's effective attempt limit: 1 when the run set none. */
+  /** The run's attempt limit; absent when the run set none and attempts are unlimited (form-o7p.7). */
   maxAttempts?: number
   /** A join that receives this and still waits for another input. */
   waitsForInputs?: boolean

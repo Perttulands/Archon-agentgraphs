@@ -74,16 +74,36 @@ func TestHumanGateRoutesNameDestinationsAndTheLastAttempt(t *testing.T) {
 	}
 }
 
-// The panel uses the engine's effective attempt limit: a run that set none
-// gets one attempt per node, so a send-back after the first blocks, as the
-// engine will. A run without a dispatch limit reports no dispatch use.
-func TestHumanGateRoutesUseTheEnginesAttemptLimit(t *testing.T) {
-	events := draftAttempts(0, 1)
-	events[0].Data = map[string]any{"limits": map[string]any{}}
-	sendBack := HumanGateRoutes(gateRoutesBoard(), events, "gate_review")[1]
-	if sendBack.Dispatches != nil || !reflect.DeepEqual(sendBack.Targets, []GateRouteTarget{{NodeID: "fmn_draft", Title: "Draft", Kind: "formation", Attempt: 2, MaxAttempts: maxAttempts(RunLimits{})}}) ||
-		!reflect.DeepEqual(sendBack.Limit, &RunLimitReached{Kind: RunLimitAttempts, NodeID: "fmn_draft", Used: 1, Max: 1}) {
-		t.Fatalf("send back without limits = %+v limit %+v", sendBack, sendBack.Limit)
+// A run that set no limits has none (form-o7p.7): however often the draft was
+// sent back, the next send-back names no attempt limit and no dispatch use,
+// because the engine will start the draft again.
+func TestHumanGateRoutesNameNoLimitWhenTheRunSetNone(t *testing.T) {
+	for _, attempts := range []int{1, 2, 5, 12} {
+		events := draftAttempts(0, attempts)
+		events[0].Data = map[string]any{"limits": map[string]any{"redact": false}}
+		sendBack := HumanGateRoutes(gateRoutesBoard(), events, "gate_review")[1]
+		if sendBack.Dispatches != nil || sendBack.Limit != nil || !reflect.DeepEqual(sendBack.Targets, []GateRouteTarget{{NodeID: "fmn_draft", Title: "Draft", Kind: "formation", Attempt: attempts + 1}}) {
+			t.Fatalf("send back after %d attempts without limits = %+v limit %+v", attempts, sendBack, sendBack.Limit)
+		}
+	}
+}
+
+// The panel and the engine share one attempt rule (attemptsExhausted): the
+// panel names an attempt limit exactly when the engine would refuse the start.
+func TestHumanGateRoutesAgreeWithTheEnginesAttemptRule(t *testing.T) {
+	for _, max := range []int{0, 1, 2, 3} {
+		for attempts := 1; attempts <= 4; attempts++ {
+			events := draftAttempts(0, attempts)
+			events[0].Data = map[string]any{"limits": map[string]any{"maxAttempts": max}}
+			sendBack := HumanGateRoutes(gateRoutesBoard(), events, "gate_review")[1]
+			engineRefuses := attemptsExhausted(RunLimits{MaxAttempts: max}, attempts+1)
+			if (sendBack.Limit != nil) != engineRefuses {
+				t.Fatalf("maxAttempts %d after %d attempts: panel limit %+v, engine refuses %v", max, attempts, sendBack.Limit, engineRefuses)
+			}
+			if engineRefuses != (max > 0 && attempts >= max) {
+				t.Fatalf("maxAttempts %d after %d attempts: engine refuses %v", max, attempts, engineRefuses)
+			}
+		}
 	}
 }
 

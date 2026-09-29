@@ -30,6 +30,7 @@ var (
 	ErrConflict                   = errors.New("formations conflict")
 	ErrAmbiguousSelector          = errors.New("ambiguous formations selector")
 	ErrInvalidSlug                = errors.New("invalid formations slug")
+	ErrInvalidRunLimits           = errors.New("limits must be positive when set; omit a limit to run without it")
 	ErrNotFound                   = errors.New("formations file not found")
 	ErrPreconditionRequired       = errors.New("formations write precondition required")
 	ErrUnsupportedSchema          = errors.New("unsupported formations schema")

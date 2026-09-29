@@ -8,8 +8,9 @@ package formations
 // attempt and dispatch counting.
 
 // GateRouteTarget is a step a verdict delivers to. A formation also says which
-// attempt it would start, the engine's effective attempt limit (maxAttempts:
-// 1 when the run set none), and whether it still waits for other inputs.
+// attempt it would start, the run's attempt limit (maxAttempts, omitted when
+// the run set none and attempts are unlimited), and whether it still waits for
+// other inputs.
 type GateRouteTarget struct {
 	NodeID      string `json:"nodeId"`
 	Title       string `json:"title"`
@@ -69,9 +70,9 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string) []G
 			case "formation":
 				route.DispatchesNeeded++
 				target.Attempt = nodeAttemptsBefore(events, len(events), nodeID) + 1
-				// The engine's own limit, so the panel says what the engine will do.
-				target.MaxAttempts = maxAttempts(limits)
-				if route.Limit == nil && target.Attempt > target.MaxAttempts {
+				target.MaxAttempts = limits.MaxAttempts
+				// The engine's own rule, so the panel says what the engine will do.
+				if route.Limit == nil && attemptsExhausted(limits, target.Attempt) {
 					route.Limit = &RunLimitReached{Kind: RunLimitAttempts, NodeID: nodeID, Used: target.Attempt - 1, Max: target.MaxAttempts}
 				}
 				target.WaitsForInputs = formationWaitsForOtherInputs(board, events, nodeID, portID)
