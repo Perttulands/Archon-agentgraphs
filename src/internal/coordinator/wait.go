@@ -280,19 +280,20 @@ func waitAsk(ask formations.NeedsYouAsk, events []formations.RunEvent, board *fo
 	}
 	switch ask.Kind {
 	case formations.NeedsYouKindHumanGate:
-		out.Criterion = ask.Ask
+		out.Criterion = formations.RedactEvidenceText(ask.Ask)
 		out.Severity = ""
 		input, _ := event.Data["inputRef"].(map[string]any)
 		from, _ := input["fromNodeId"].(string)
 		port, _ := input["fromPortId"].(string)
 		text, _ := input["text"].(string)
+		text = formations.RedactEvidenceText(text)
 		excerpt, truncated := formations.CapEvidenceText(text, waitInputExcerptBytes)
 		out.Input = &WaitInput{FromNodeID: from, FromTitle: waitTitle(board, from), FromPortID: port, Text: excerpt, Bytes: len(text), Truncated: truncated}
 		if board != nil {
 			out.Routes = formations.HumanGateRoutes(board, events, ask.GateID)
 		}
 	default:
-		out.Reason = ask.Ask
+		out.Reason = formations.RedactEvidenceText(ask.Ask)
 		out.Code, _ = event.Data["code"].(string)
 		out.ResumeAllowed = ask.Kind == formations.NeedsYouKindBlocked && ask.ResumeAllowed
 	}

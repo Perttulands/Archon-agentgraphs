@@ -242,11 +242,19 @@ func writeWaitEnd(b *strings.Builder, name string, r coordinator.RunWait) {
 	if end.Code != "" && end.Code != end.Reason {
 		fmt.Fprintf(b, " (%s)", end.Code)
 	}
-	b.WriteString(".")
+	endSentence(b)
 	if end.EndedBy != "" {
 		fmt.Fprintf(b, " Ended by %s.", waitActor(end.EndedBy))
 	}
 	b.WriteString("\n")
+}
+
+// endSentence ends a sentence that may close on quoted text ending in its own
+// punctuation.
+func endSentence(b *strings.Builder) {
+	if text := b.String(); !strings.HasSuffix(text, ".") && !strings.HasSuffix(text, "!") && !strings.HasSuffix(text, "?") {
+		b.WriteString(".")
+	}
 }
 
 // waitActor names who ended a run the way the cockpit does.
@@ -330,7 +338,8 @@ func writeWaitAsk(b *strings.Builder, server, runID string, ask coordinator.Wait
 		if ask.Code != "" && ask.Code != reason {
 			fmt.Fprintf(b, " (%s)", ask.Code)
 		}
-		b.WriteString(".\n")
+		endSentence(b)
+		b.WriteString("\n")
 		if ask.ResumeAllowed {
 			fmt.Fprintf(b, "Resume it once the cause is resolved:\n  archon --server %s run resume %s --reason 'what you resolved'\n", server, runID)
 		} else {
@@ -357,8 +366,18 @@ func describeGateRoute(route formations.GateRoute) string {
 	case route.Unwired:
 		parts = append(parts, "not wired; the run blocks")
 	}
-	if route.Limit != nil {
-		parts = append(parts, "a run limit is spent, so taking it blocks the run")
+	if limit := route.Limit; limit != nil {
+		if limit.Kind == formations.RunLimitAttempts {
+			title := limit.NodeID
+			for _, target := range route.Targets {
+				if target.NodeID == limit.NodeID && target.Title != "" {
+					title = target.Title
+				}
+			}
+			parts = append(parts, fmt.Sprintf("but %q has used all %d of its attempts, so the run blocks instead", title, limit.Max))
+		} else {
+			parts = append(parts, fmt.Sprintf("but the run has used all %d of its dispatches, so it blocks instead", limit.Max))
+		}
 	}
 	return strings.Join(parts, "; ")
 }

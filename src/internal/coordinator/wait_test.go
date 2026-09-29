@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -223,5 +224,25 @@ func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 	ask := settled.Asks[0]
 	if ask.Kind != formations.NeedsYouKindBlocked || ask.Reason != "seat lost" || ask.Code != "seat_lost" || !ask.ResumeAllowed || ask.Title != "fmn_work" {
 		t.Fatalf("ask = %+v", ask)
+	}
+}
+
+// A wait serves gate text as run evidence does: secrets redacted, input capped.
+func TestWaitRedactsAndCapsTheGateInput(t *testing.T) {
+	long := strings.Repeat("x", waitInputExcerptBytes+10)
+	events := []formations.RunEvent{
+		{RunID: "run_x", Seq: 1, Type: formations.RunEventStarted, Data: map[string]any{"boardSlug": "proof"}},
+		{RunID: "run_x", Seq: 2, Type: formations.RunEventHumanInputRequested, GateID: "gate_review", NodeID: "gate_review", Data: map[string]any{
+			"prompt":   "Check with password=hunter2",
+			"inputRef": map[string]any{"fromNodeId": "fmn_work", "text": "token: abc123\n" + long},
+		}},
+	}
+	got, err := projectWait("run_x", events, nil, WaitUntilNeedsYou, 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ask := got.Asks[0]
+	if strings.Contains(ask.Criterion, "hunter2") || strings.Contains(ask.Input.Text, "abc123") || !ask.Input.Truncated || len(ask.Input.Text) != waitInputExcerptBytes || ask.Input.Bytes <= waitInputExcerptBytes {
+		t.Fatalf("criterion %q input bytes %d truncated %v", ask.Criterion, len(ask.Input.Text), ask.Input.Truncated)
 	}
 }
