@@ -93,25 +93,10 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string) []G
 }
 
 // runEndsAfterGate reports whether approving a gate with nothing downstream
-// finishes the run: no send-back is owed, no other gate or step is open, and
-// every formation reachable from the run's start has output.
+// finishes the run. It asks the engine's own rule (unfinishedRunWork), leaving
+// out this gate's pending request, so the answer panel and the engine agree.
 func runEndsAfterGate(board *BoardDocument, events []RunEvent, gateID string) bool {
-	if pendingPushback(board, events) {
-		return false
-	}
-	for _, nodeID := range runOpenNodesAt(events, len(events)) {
-		if nodeID != gateID {
-			return false
-		}
-	}
-	start := ""
-	if len(events) > 0 {
-		start = events[0].MissionID
-		if formationID := stringFromEventData(events[0], "formationId"); formationID != "" {
-			start = formationID
-		}
-	}
-	return start != "" && runGraphComplete(board, start, completedFormationsFromEvents(events))
+	return len(unfinishedRunWork(board, events, gateID)) == 0
 }
 
 // formationWaitsForOtherInputs reports whether a formation, given this input

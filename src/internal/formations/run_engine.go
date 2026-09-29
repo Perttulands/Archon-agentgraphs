@@ -996,21 +996,17 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 	ready := map[string]map[string]RunInputRef{}
 	queued := map[string]bool{}
 	attempts := map[string]int{}
-	completed := map[string]bool{}
-	lastOutputIdx := map[string]int{}
 	processedGateInputs := processedGateInputRefs(board, events)
 	replayOutputOrdinals := map[string]int{}
 	var queue []string
 
-	for i, event := range events {
+	for _, event := range events {
 		if event.Type == RunEventNodeStarted && event.Attempt > attempts[event.NodeID] {
 			attempts[event.NodeID] = event.Attempt
 		}
 		if event.Type != RunEventNodeOutput {
 			continue
 		}
-		completed[event.NodeID] = true
-		lastOutputIdx[event.NodeID] = i
 		if err := e.replayNodeOutputToReady(runID, board, gateByID, event, limits, processedGateInputs, replayOutputOrdinals, ready, queued, &queue); err != nil {
 			if errors.Is(err, errRunStopped) {
 				return nil
@@ -1024,7 +1020,7 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		}
 		return err
 	}
-	if err := e.replayGateVerdictsToReady(runID, board, gateByID, events, limits, ready, queued, &queue, completed, lastOutputIdx); err != nil {
+	if err := e.replayGateVerdictsToReady(runID, board, gateByID, events, limits, ready, queued, &queue); err != nil {
 		if errors.Is(err, errRunStopped) {
 			return nil
 		}
@@ -1036,7 +1032,14 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		nodeID := queue[0]
 		queue = queue[1:]
 		queued[nodeID] = false
-		if completed[nodeID] {
+		// Replay queues every formation the ledger ever fed; run only those
+		// still owed a delivery, read from the ledger as it stands now, so a
+		// send-back routed during this resume runs again (form-n7u.53).
+		current, err := e.store.ReadRunEvents(runID)
+		if err != nil {
+			return err
+		}
+		if !runWorkOwedTo(board, current, nodeID) {
 			continue
 		}
 		formation, ok := formationByID[nodeID]
@@ -1101,7 +1104,6 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		}); err != nil {
 			return err
 		}
-		completed[nodeID] = true
 		if err := e.deliverFormationOutput(runID, board, gateByID, nodeID, result, limits, ready, queued, &queue); err != nil {
 			if errors.Is(err, errRunStopped) {
 				return nil
@@ -1113,38 +1115,20 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 	if starved := starvedFormations(formationByID, ready); len(starved) > 0 {
 		return e.appendStarvedBlock(runID, starved)
 	}
-	completionEvents := events
-	if refreshed, err := e.store.ReadRunEvents(runID); err == nil && len(refreshed) > len(events) {
-		completionEvents = refreshed
-		completed = completedFormationsFromEvents(refreshed)
+	completionEvents, err := e.store.ReadRunEvents(runID)
+	if err != nil {
+		return err
 	}
-	// Replay has queued and run everything the ledger delivered. A human
-	// request still open elsewhere keeps the run waiting rather than done.
-	if pendingHumanRequest(completionEvents) {
-		return nil
+	if unfinished := unfinishedRunWork(board, completionEvents, ""); len(unfinished) > 0 {
+		return e.appendUnfinishedWorkBlock(runID, unfinished)
 	}
 	if !ranAny {
-		if terminalPassReachedOnBoard(board, completionEvents) || (latestGateVerdictAllowsGraphCompletion(completionEvents) && runGraphComplete(board, mission.ID, completed) && !pendingPushback(board, completionEvents)) {
+		if terminalPassReachedOnBoard(board, completionEvents) || (latestGateVerdictAllowsGraphCompletion(completionEvents) && runGraphComplete(board, mission.ID, completedFormationsFromEvents(completionEvents)) && !pendingPushback(board, completionEvents)) {
 			return e.appendResumeSucceeded(runID)
 		}
 		return e.appendErrorAndBlock(runID, "resume_no_work", "no resumable work found", "engine", "", "no resumable work found")
 	}
 	return e.appendResumeSucceeded(runID)
-}
-
-// pendingHumanRequest reports a human gate request with no recorded verdict.
-func pendingHumanRequest(events []RunEvent) bool {
-	checked := map[string]bool{}
-	for _, event := range events {
-		if event.Type != RunEventHumanInputRequested || checked[event.GateID] {
-			continue
-		}
-		checked[event.GateID] = true
-		if _, ok := latestHumanRequest(events, event.GateID); ok {
-			return true
-		}
-	}
-	return false
 }
 
 func (e *RunEngine) resumeIncompleteGateEvaluations(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
@@ -1485,7 +1469,7 @@ func (e *RunEngine) replayNodeOutputToReady(runID string, board *BoardDocument, 
 	return nil
 }
 
-func (e *RunEngine) replayGateVerdictsToReady(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string, completed map[string]bool, lastOutputIdx map[string]int) error {
+func (e *RunEngine) replayGateVerdictsToReady(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
 	evaluations := gateEvaluationKeys(board, events)
 	outputOrdinals := map[string]int{}
 	for i, event := range events {
@@ -1506,15 +1490,8 @@ func (e *RunEngine) replayGateVerdictsToReady(runID string, board *BoardDocument
 		}
 		input := runInputRefFromAny(event.Data["inputRef"])
 		for _, route := range gateVerdictRoutes(board, event, gateID, routePort) {
-			// A gate verdict newer than the target node's last output is a pushback
-			// route (for example gate:fail -> work). Clear the completed mark so a
-			// resume re-dispatches the stale target, but do not rerun a pushback that
-			// was already serviced by a later node_output.
-			if toNode, _ := endpointParts(route.To); toNode != "" {
-				if idx, ok := lastOutputIdx[toNode]; ok && i > idx {
-					delete(completed, toNode)
-				}
-			}
+			// Every route is replayed; the resume loop runs only targets still
+			// owed this delivery (runWorkOwedTo), so a serviced pushback is not rerun.
 			nextInput := input
 			if routePort == "fail" {
 				nextInput = gateFailInput(runID, route, gateID, event.Attempt, input, stringFromEventData(event, "reason"), gateEvidenceRefsFromRunEventData(event.Data["evidence"]))
@@ -1785,6 +1762,13 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 
 	if starved := starvedFormations(formationByID, ready); len(starved) > 0 {
 		return e.appendStarvedBlock(runID, starved)
+	}
+	finalEvents, err := e.store.ReadRunEvents(runID)
+	if err != nil {
+		return err
+	}
+	if unfinished := unfinishedRunWork(board, finalEvents, ""); len(unfinished) > 0 {
+		return e.appendUnfinishedWorkBlock(runID, unfinished)
 	}
 	if err := e.EndKeptSeats(runID); err != nil {
 		return err
@@ -2829,6 +2813,14 @@ func starvedFormations(formationByID map[string]FormationNode, ready map[string]
 // when reachable required formations can never run. Resume cannot conjure a
 // missing producer, so the run is blocked non-resumably with recovery guidance:
 // wire a producer to the starved ports and start a new run.
+// appendUnfinishedWorkBlock refuses success while unfinishedRunWork names
+// nodes: the run blocks, resumable, naming them, rather than claim success
+// with work still owed (form-n7u.53).
+func (e *RunEngine) appendUnfinishedWorkBlock(runID string, unfinished []string) error {
+	message := fmt.Sprintf("run has unfinished work at %v; resume to continue it", unfinished)
+	return e.appendErrorAndBlock(runID, "run_work_unfinished", message, "engine", unfinished[0], message)
+}
+
 func (e *RunEngine) appendStarvedBlock(runID string, starved []starvedFormation) error {
 	waitingNodes := make([]map[string]any, 0, len(starved))
 	for _, s := range starved {

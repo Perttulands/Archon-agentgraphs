@@ -416,9 +416,15 @@ A pushback also holds when the failing gate was fed by another gate's pass:
 resume never re-delivers an input a gate has already evaluated, so the pushback
 target runs first. A pass cannot finish a run while a fail verdict's target has
 not yet acted on its feedback. Nor can a pass with no route, from any gate
-kind, finish a run while other work remains: a run succeeds only when every
-formation its ledger has delivered input to has run and no human request is
-open. Resume continues such work before it records success.
+kind. A run succeeds only when nothing else can still run: every formation has
+produced output since the last delivery it received (a node's output on a wired
+port, or a verdict's route, including a send-back), every gate has evaluated
+the last input it received, and no formation, gate or human request is still
+open. A formation reached only through a route no verdict took is not pending
+work. Resume first runs whatever is still owed, including a send-back a gate
+routes during that resume; if work remains that it cannot run, the run blocks
+with `run_work_unfinished` naming those nodes instead of succeeding. A human
+gate's answer panel says approving ends the run by the same rule.
 A human kind waits for an explicit verdict naming the exact pending sequence;
 stale or duplicate decisions return HTTP 409. There is no default verdict.
 The verdict's `reason` is the operator's response, preserved verbatim including
@@ -430,10 +436,10 @@ empty response routes the input unchanged. On fail the response becomes the
 feedback reason. Resume rebuilds the response from the verdict recorded for
 that exact request, so it survives restart. Recording the verdict blocks the run
 with code `resume_after_verdict` until the coordinator resumes it; that block is
-a pause, not a failure. While a human request waits, the run dispatches nothing
-else, including independent branches; they run after the verdict, and approving
-a gate with no pass route ends the run only once they have run. The cockpit
-shows a pending human gate's input with a response box, Approve and Send back.
+a pause, not a failure. Currently, while a human request waits, no other work
+is dispatched; branches not behind the gate run after the verdict, and
+approving a gate with no pass route ends the run only once they have run. The
+cockpit shows a pending human gate's input with a response box, Approve and Send back.
 A verdict may carry `relayedBy`, the slot ID of the seat that typed the
 operator's confirmed decision (a letter or digit, then up to 63 letters, digits,
 underscores or hyphens): `archon gate approve|reject ... --relayed-by <slot-id>`.

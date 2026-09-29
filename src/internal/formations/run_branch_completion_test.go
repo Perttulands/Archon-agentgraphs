@@ -6,9 +6,8 @@ import (
 	"testing"
 )
 
-// branchingBoardFormation and branchingBoardConnection build the small boards
-// these tests use. The board shape mirrors branchingGateBoardFixture on
-// lane/runs (src/internal/formations/gate_routes_branch_test.go, form-n7u.7).
+// branchingBoardFormation, branchingBoardConnection and branchingBoardHumanGate
+// build the small branching boards the engine and gate-route tests share.
 func branchingBoardFormation(id, title string) string {
 	return `
 [[formation]]
@@ -53,7 +52,7 @@ criterion = "Good enough"
 }
 
 // mission -> A -> terminal human gate, and mission -> B -> C.
-func branchingTerminalGateBoardFixture() string {
+func branchingGateBoardFixture() string {
 	return s4MissionOnlyBoardFixture() +
 		branchingBoardFormation("fmn_a", "A") + branchingBoardFormation("fmn_b", "B") + branchingBoardFormation("fmn_c", "C") +
 		branchingBoardHumanGate("gate_review") +
@@ -161,7 +160,7 @@ func TestApprovingATerminalHumanGateRunsTheOtherBranchesBeforeSuccess(t *testing
 	for _, restart := range []bool{false, true} {
 		t.Run(map[bool]string{false: "same engine", true: "restarted engine"}[restart], func(t *testing.T) {
 			executor := &fakeRunExecutor{}
-			store, personas, engine, status := startBranchingRun(t, branchingTerminalGateBoardFixture(), executor)
+			store, personas, engine, status := startBranchingRun(t, branchingGateBoardFixture(), executor)
 			if got := pendingHumanGates(t, store, status.RunID); status.Final || !reflect.DeepEqual(got, []string{"gate_review"}) {
 				t.Fatalf("status = %+v, pending %v, want waiting for the gate", status, got)
 			}
@@ -201,7 +200,7 @@ func TestApprovingATerminalHumanGateRunsTheOtherBranchesBeforeSuccess(t *testing
 // terminal pass already in the ledger must not let the next resume skip it.
 func TestATerminalPassInTheLedgerDoesNotSkipABranchThatFailedAfterIt(t *testing.T) {
 	executor := &seatLossOnceExecutor{failNodeID: "fmn_b"}
-	store, _, engine, status := startBranchingRun(t, branchingTerminalGateBoardFixture(), executor)
+	store, _, engine, status := startBranchingRun(t, branchingGateBoardFixture(), executor)
 	status, err := engine.RecordHumanGateVerdict(status.RunID, HumanGateVerdictRequest{GateID: "gate_review", Verdict: "pass", Actor: "human:operator"})
 	if err != nil {
 		t.Fatal(err)

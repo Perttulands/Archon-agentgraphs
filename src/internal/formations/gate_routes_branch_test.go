@@ -4,49 +4,10 @@ import (
 	"testing"
 )
 
-// mission -> A -> terminal human gate, and mission -> B -> C.
-func branchingGateBoardFixture() string {
-	formation := func(id, title string) string {
-		return `
-[[formation]]
-id = "` + id + `"
-type = "solo"
-title = "` + title + `"
-
-[[formation.input]]
-id = "port_` + id + `_in"
-label = "Input"
-
-[[formation.output]]
-id = "port_` + id + `_out"
-label = "Output"
-
-[[formation.slot]]
-id = "slot_` + id + `"
-label = "Worker"
-agentId = "scout"
-harness = "openai-codex"
-controller = true
-`
-	}
-	connection := func(id, from, to string) string {
-		return `
-[[connection]]
-id = "` + id + `"
-from = "` + from + `"
-to = "` + to + `"
-`
-	}
-	return s4MissionOnlyBoardFixture() + formation("fmn_a", "A") + formation("fmn_b", "B") + formation("fmn_c", "C") + `
-[[gate]]
-id = "gate_review"
-title = "Review"
-kinds = ["human"]
-criterion = "Good enough"
-` + connection("edge_m_a", "mis_showcase:out", "fmn_a:port_fmn_a_in") +
-		connection("edge_a_gate", "fmn_a:port_fmn_a_out", "gate_review:in") +
-		connection("edge_m_b", "mis_showcase:out", "fmn_b:port_fmn_b_in") +
-		connection("edge_b_c", "fmn_b:port_fmn_b_out", "fmn_c:port_fmn_c_in")
+// branchOutputData is a node_output payload on one port, as the engine
+// records it; deliveries follow the payload's ports.
+func branchOutputData(port string) map[string]any {
+	return formationOutputEventData(FormationExecutionResult{Status: "done", Text: "output", Outputs: map[string]FormationOutputPayload{port: {Text: "output"}}})
 }
 
 // Approving a gate with nothing downstream ends the run only when nothing
@@ -73,9 +34,9 @@ func TestHumanGateRoutesOnABranchingBoardEndOnlyWhenNothingElseCanRun(t *testing
 	}
 	for _, event := range []RunEvent{
 		{Type: RunEventNodeStarted, NodeID: "mis_showcase", Data: map[string]any{"nodeKind": "mission"}},
-		{Type: RunEventNodeOutput, NodeID: "mis_showcase"},
+		{Type: RunEventNodeOutput, NodeID: "mis_showcase", Data: branchOutputData("out")},
 		{Type: RunEventNodeStarted, NodeID: "fmn_a", Attempt: 1, Data: map[string]any{"nodeKind": "formation"}},
-		{Type: RunEventNodeOutput, NodeID: "fmn_a"},
+		{Type: RunEventNodeOutput, NodeID: "fmn_a", Data: branchOutputData("port_fmn_a_out")},
 		{Type: RunEventGateEvaluating, NodeID: "gate_review", GateID: "gate_review"},
 		{Type: RunEventHumanInputRequested, NodeID: "gate_review", GateID: "gate_review"},
 	} {
@@ -96,9 +57,9 @@ func TestHumanGateRoutesOnABranchingBoardEndOnlyWhenNothingElseCanRun(t *testing
 	done := append([]RunEvent{}, events...)
 	for _, event := range []RunEvent{
 		{Type: RunEventNodeStarted, NodeID: "fmn_b", Attempt: 1, Data: map[string]any{"nodeKind": "formation"}},
-		{Type: RunEventNodeOutput, NodeID: "fmn_b"},
+		{Type: RunEventNodeOutput, NodeID: "fmn_b", Data: branchOutputData("port_fmn_b_out")},
 		{Type: RunEventNodeStarted, NodeID: "fmn_c", Attempt: 1, Data: map[string]any{"nodeKind": "formation"}},
-		{Type: RunEventNodeOutput, NodeID: "fmn_c"},
+		{Type: RunEventNodeOutput, NodeID: "fmn_c", Data: branchOutputData("port_fmn_c_out")},
 	} {
 		event.Seq = len(done) + 1
 		done = append(done, event)
