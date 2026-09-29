@@ -3,6 +3,8 @@ package coordinator
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -42,7 +44,7 @@ func TestPendingGateRequestServesOnlyTheRoutedInput(t *testing.T) {
 			// used; the send-back is unwired, so it would block the run.
 			Routes: []formations.GateRoute{
 				{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_after", Title: "After", Kind: "formation", Attempt: 1, MaxAttempts: 1}},
-					Dispatches: &formations.RunLimitReached{Kind: formations.RunLimitDispatches, Used: 1, Max: 3}},
+					Dispatches: &formations.RunLimitReached{Kind: formations.RunLimitDispatches, Used: 1, Max: 3}, DispatchesNeeded: 1},
 				{Verdict: "fail", Targets: []formations.GateRouteTarget{}, Unwired: true},
 			}}
 		if !reflect.DeepEqual(body.Data.Request, want) {
@@ -79,6 +81,27 @@ func TestPendingGateRequestServesOnlyTheRoutedInput(t *testing.T) {
 	awaitState(t, c, id, "succeeded")
 	if w := get(c, path); w.Code != 409 {
 		t.Fatalf("decided request: %d %s, want 409", w.Code, w.Body.String())
+	}
+}
+
+// An unreadable frozen board leaves the routes out; the request is still served.
+func TestPendingGateRequestServesWithoutRoutesWhenTheBoardIsUnreadable(t *testing.T) {
+	c, executor, root := fixture(t)
+	id := startRun(t, c)
+	<-executor.entered
+	executor.proceed <- struct{}{}
+	awaitState(t, c, id, "waiting_human")
+	snapshots, err := filepath.Glob(filepath.Join(root, ".formations", "runs", "*", id+".snapshot.toml"))
+	if err != nil || len(snapshots) != 1 {
+		t.Fatalf("snapshots = %v, %v", snapshots, err)
+	}
+	if err := os.WriteFile(snapshots[0], []byte("not = [toml"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	c.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/api/formations/runs/"+id+"/gates/gate_review/request", nil))
+	if w.Code != 200 || strings.Contains(w.Body.String(), `"routes"`) || !strings.Contains(w.Body.String(), "PRIVATE-OUTPUT") {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 }
 

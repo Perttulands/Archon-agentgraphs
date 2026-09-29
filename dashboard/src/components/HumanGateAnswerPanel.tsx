@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { GateTalkPanel } from '../talk/useGateTalk'
 import type { GateRoute } from './formationsApi'
 import { gateRouteWords } from './runOutcome'
@@ -32,6 +32,12 @@ interface HumanGateAnswerPanelProps {
 function draftKey(runId: string, requestedSeq: number) {
   return `archon.gateResponse.${runId}.${requestedSeq}`
 }
+
+/**
+ * Where a framing window learns whether the draft is saved in this browser, so
+ * closing it can say truthfully whether the draft comes back.
+ */
+export const GateDraftSavedContext = createContext<((saved: boolean) => void) | null>(null)
 
 /** Whether the operator has an unsent answer to this request saved in this browser. */
 export function hasGateDraft(runId: string, requestedSeq: number): boolean {
@@ -84,8 +90,13 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
   const approve = gateRouteWords('pass', routes?.find(route => route.verdict === 'pass'), titleOf)
   const sendBack = gateRouteWords('fail', routes?.find(route => route.verdict === 'fail'), titleOf)
 
+  const reportSaved = useContext(GateDraftSavedContext)
+  // A draft this browser could not even read cannot be kept either.
+  const unavailable = draft.cue.startsWith('Browser draft unavailable')
+  useEffect(() => { if (unavailable) reportSaved?.(false) }, [reportSaved, unavailable])
   const updateDraft = (text: string) => {
     const saved = writeDraft(key, text)
+    reportSaved?.(saved || !text)
     setDraft({ text, cue: saved
       ? text ? 'Draft saved in this browser. Not submitted.' : 'Draft cleared. Not submitted.'
       : 'Draft not saved in this browser. Keep this page open. Not submitted.' })
@@ -120,7 +131,7 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
   }
 
   return (
-    <section ref={panel} className={`gate-answer${framed ? ' framed' : ''}`} role={framed ? 'region' : 'dialog'} aria-label={`Answer gate ${gateTitle}`} data-testid="gate-answer" onPointerDown={event => event.stopPropagation()}>
+    <section ref={panel} className={`gate-answer${framed ? ' framed' : ''}`} role={framed ? 'region' : 'dialog'} aria-label={framed ? `Your answer to ${gateTitle}` : `Answer gate ${gateTitle}`} data-testid="gate-answer" onPointerDown={event => event.stopPropagation()}>
       <header className="gate-answer-hd">
         {framed ? null : <span className="gate-answer-kicker">Needs your answer</span>}
         {framed ? null : <span className="gate-answer-title">{gateTitle}</span>}

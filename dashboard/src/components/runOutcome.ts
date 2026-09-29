@@ -17,8 +17,11 @@ export function runActorLabel(actor = ''): string {
     case 'operator:archon':
       return 'the archon CLI'
     case 'archond':
-    case 'operator:standalone':
       return 'Archon'
+    // The coordinator's own identity, which later events inherit from the
+    // start: it says the coordinator recorded the event, not who asked.
+    case 'operator:standalone':
+      return 'the coordinator'
     default:
       return actor
   }
@@ -36,9 +39,13 @@ export function runEndProblem<T extends EvidenceProblem>(problems: readonly T[])
   return [...problems].reverse().find(problem => problem.type === 'run_failed' || problem.type === 'run_canceled')
 }
 
+/** The reason a cancel records when the operator gives none; it adds nothing to "canceled by …". */
+export const DEFAULT_STOP_REASON = 'operator stop'
+
 /** Why a run ended and who ended it: "failed at Execution: … · ended by Archon". */
 export function runEndPhrase(kind: 'failed' | 'canceled', where: string, end?: Pick<EvidenceProblem, 'reason' | 'actor' | 'code'>): string {
-  const reason = end?.reason.text.trim() || end?.code || ''
+  const recorded = end?.reason.text.trim() || end?.code || ''
+  const reason = kind === 'canceled' && recorded === DEFAULT_STOP_REASON ? '' : recorded
   const actor = runActorLabel(end?.actor)
   if (kind === 'canceled') {
     return `canceled${where ? ` at ${where}` : ''}${actor ? ` by ${actor}` : ''}${reason ? `: ${reason}` : ''}`
@@ -106,6 +113,7 @@ export function gateRouteWords(verdict: 'pass' | 'fail', route: GateRoute | unde
     }
   }
   if (route.endsRun) return { button: `${verb} and end the run`, outcome: `${verb} ends the run.`, blocks: false, last: false }
+  if (route.nothingFollows) return { button: verb, outcome: `${verb}: nothing follows this gate.`, blocks: false, last: false }
   if (route.unwired || !route.targets.length) {
     return verdict === 'fail'
       ? { button: verb, outcome: 'Send back blocks the run: this gate has no send-back route.', blocks: true, last: false }
@@ -113,26 +121,30 @@ export function gateRouteWords(verdict: 'pass' | 'fail', route: GateRoute | unde
   }
   const to = titles(route.targets)
   const button = verdict === 'pass' ? `${verb} → ${to}` : `${verb} to ${to}`
-  const notes: string[] = []
-  let attemptNote = ''
   let last = false
-  for (const target of route.targets) {
-    if (!target.attempt || !target.maxAttempts || target.attempt < 2) continue
-    const lastAttempt = target.attempt >= target.maxAttempts
-    last ||= lastAttempt
-    const attempt = `attempt ${target.attempt} of ${target.maxAttempts}${lastAttempt ? ', its last' : ''}`
-    // One destination carries its attempt in brackets; several name theirs.
-    if (route.targets.length === 1) attemptNote = ` (${attempt})`
-    else notes.push(`${target.title || target.nodeId} starts ${attempt}`)
-  }
-  const formations = route.targets.filter(target => target.kind === 'formation').length
-  if (route.dispatches && route.dispatches.max > 0) {
+  // What each destination does with the answer, with its attempt when it has run before.
+  const clauses = route.targets.map(target => {
+    const name = target.title || target.nodeId
+    let attempt = ''
+    if (target.attempt && target.maxAttempts && target.attempt >= 2) {
+      const lastAttempt = target.attempt >= target.maxAttempts
+      last ||= lastAttempt
+      attempt = ` (attempt ${target.attempt} of ${target.maxAttempts}${lastAttempt ? ', its last' : ''})`
+    }
+    if (target.kind !== 'formation') return `${name} receives ${verdict === 'pass' ? 'it' : 'your response'} next`
+    if (target.waitsForInputs) return `${name} receives ${verdict === 'pass' ? 'this' : 'your response'} and waits for its other inputs${attempt}`
+    if (verdict === 'pass') return `${name} runs next${attempt}`
+    // A step that never ran runs for the first time, not again.
+    return `${name} runs ${target.attempt && target.attempt > 1 ? 'again ' : ''}with your response${attempt}`
+  })
+  const notes: string[] = []
+  const needed = route.dispatchesNeeded ?? route.targets.filter(target => target.kind === 'formation').length
+  if (route.dispatches && route.dispatches.max > 0 && needed > 0) {
     const left = route.dispatches.max - route.dispatches.used
-    if (left <= formations) {
+    if (left <= needed) {
       last = true
       notes.push(`the run has ${left} of ${route.dispatches.max} dispatches left`)
     }
   }
-  const verbed = verdict === 'pass' ? `${to} ${route.targets.length > 1 ? 'run' : 'runs'} next` : `${to} ${route.targets.length > 1 ? 'run' : 'runs'} again with your response`
-  return { button, outcome: `${verb}: ${verbed}${attemptNote}${notes.length ? `; ${notes.join('; ')}` : ''}.`, blocks: false, last }
+  return { button, outcome: `${verb}: ${[...clauses, ...notes].join('; ')}.`, blocks: false, last }
 }

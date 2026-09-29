@@ -53,8 +53,12 @@ test('Stop asks first, Escape keeps the run, and the canceled run says who stopp
   const topmost = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[role="alertdialog"]') !== null, { x: box.x + box.width / 2, y: box.y + 40 })
   expect(topmost).toBe(true)
 
+  // Modal: the page behind is inert while the dialog is open.
+  await expect(page.locator('.fmx[data-testid="formations-view"]').locator('xpath=ancestor-or-self::*[@inert]')).toHaveCount(1)
   await page.keyboard.press('Escape')
   await expect(confirm).toHaveCount(0)
+  // Escape closed only the dialog: the answer window beneath it is still open.
+  await expect(answer).toBeVisible()
   await expect(stop).toBeFocused()
   expect(aborts).toEqual([])
 
@@ -71,8 +75,8 @@ test('the answer window moves, names where the answer leads, and comes back from
   await cockpitFixture(page, { waitingHuman: true })
   await page.goto('/')
   const answer = page.getByRole('dialog', { name: 'Answer gate Disconnected gate' })
-  await expect(answer.getByRole('button', { name: 'Approve and end the run' })).toBeVisible()
-  await expect(answer.getByRole('list', { name: 'Where your answer leads' })).toContainText('Approve ends the run.')
+  await expect(answer.getByRole('button', { name: 'Approve', exact: true })).toBeVisible()
+  await expect(answer.getByRole('list', { name: 'Where your answer leads' })).toContainText('Approve: nothing follows this gate.')
   await expect(answer.getByRole('list', { name: 'Where your answer leads' })).toContainText('Send back blocks the run: this gate has no send-back route.')
 
   // It opens clear of the gate it answers.
@@ -106,5 +110,6 @@ test('a block that cannot resume offers no Resume and says so', async ({ page })
   await page.goto('/')
   await expect(page.getByTestId('run-point')).toContainText('blocked at Review gate')
   await expect(page.getByRole('button', { name: 'Resume run' })).toHaveCount(0)
-  await expect(page.getByTestId('run-not-resumable')).toHaveText('Can’t resume. Start a new run.')
+  await expect(page.getByTestId('run-not-resumable')).toHaveText(/^Can’t resume: .+\.$/)
+  await expect(page.getByTestId('run-not-resumable')).not.toContainText('new run')
 })

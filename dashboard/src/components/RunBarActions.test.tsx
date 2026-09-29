@@ -1,4 +1,5 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import DismissiblePanel from './DismissiblePanel'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import RunBarActions, { DEFAULT_STOP_REASON, stopRunConsequences } from './RunBarActions'
 import type { RunStatusProjection } from './formationsTypes'
@@ -26,6 +27,36 @@ describe('RunBarActions', () => {
   afterEach(() => {
     cleanup()
     localStorage.clear()
+    vi.unstubAllGlobals()
+  })
+
+  it('closes only itself on Escape, above a menu and window listeners beneath it', () => {
+    const menuDismissed = vi.fn()
+    const windowEscape = vi.fn()
+    window.addEventListener('keydown', windowEscape)
+    render(<DismissiblePanel panelPosition="fixed" onDismiss={menuDismissed}><div>menu</div></DismissiblePanel>)
+    const { onStop } = renderBar()
+    fireEvent.click(screen.getByRole('button', { name: 'Stop run' }))
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Keep running' }), { key: 'Escape' })
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(menuDismissed).not.toHaveBeenCalled()
+    expect(windowEscape).not.toHaveBeenCalled()
+    expect(onStop).not.toHaveBeenCalled()
+    window.removeEventListener('keydown', windowEscape)
+  })
+
+  it('is modal: a backdrop covers the page and everything behind it is inert until it closes', () => {
+    renderBar()
+    const stop = screen.getByRole('button', { name: 'Stop run' })
+    fireEvent.click(stop)
+    const layer = screen.getByTestId('stop-run-layer')
+    expect(layer.querySelector('.stop-run-backdrop')).not.toBeNull()
+    const behind = [...document.body.children].filter(element => element !== layer)
+    expect(behind.length).toBeGreaterThan(0)
+    for (const element of behind) expect(element).toHaveAttribute('inert')
+    fireEvent.click(screen.getByRole('button', { name: 'Keep running' }))
+    for (const element of behind) expect(element).not.toHaveAttribute('inert')
+    expect(stop).toHaveFocus()
   })
 
   it('asks before stopping, naming the run, where it is and what ends', () => {
@@ -85,7 +116,13 @@ describe('RunBarActions', () => {
     ])
   })
 
-  it('offers Resume only when the run can resume, and says so plainly when it cannot', () => {
+  it('offers Resume only when the run can resume, and says why it cannot', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      ok: true, status: 200, headers: { get: () => '' },
+      json: () => Promise.resolve({ success: true, data: { problems: [
+        { seq: 20, type: 'run_blocked', code: 'resume_attempts_exhausted', nodeIds: ['fmn_draft'], reason: { text: 'resume attempts exhausted', bytes: 25 }, resumeAllowed: false, limit: { kind: 'attempts', nodeId: 'fmn_draft', used: 3, max: 3 } },
+      ] } }),
+    } as unknown as Response)))
     const { onResume } = renderBar({ run: run({ status: 'blocked', resumeAllowed: true }), pendingGate: null })
     fireEvent.click(screen.getByRole('button', { name: 'Resume run' }))
     expect(onResume).toHaveBeenCalled()
@@ -94,7 +131,8 @@ describe('RunBarActions', () => {
 
     renderBar({ run: run({ status: 'blocked', resumeAllowed: false }), pendingGate: null })
     expect(screen.queryByRole('button', { name: 'Resume run' })).toBeNull()
-    expect(screen.getByTestId('run-not-resumable')).toHaveTextContent('Can’t resume. Start a new run.')
+    await waitFor(() => expect(screen.getByTestId('run-not-resumable')).toHaveTextContent('Can’t resume: Draft used 3 of 3 attempts.'))
+    expect(screen.getByTestId('run-not-resumable')).not.toHaveTextContent(/new run/)
     expect(screen.getByRole('button', { name: 'Stop run' })).toBeInTheDocument()
   })
 

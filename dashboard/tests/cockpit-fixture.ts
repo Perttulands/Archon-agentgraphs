@@ -176,8 +176,9 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path.endsWith('/events')) return respond({ events: [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' }] })
     if (path === '/api/formations/runs/run_browser/gates/loose/request') return respond({ request: { gateId: 'loose', requestedSeq: 3, criterion: board.gates[1].criterion,
       input: { fromNodeId: 'execution', fromPortId: 'out', truncated: false, text: Array.from({ length: 60 }, (_, i) => `${i + 1}. A question the operator should answer before the brief is written.`).join('\n') },
-      // The disconnected gate: as the daemon derives it, approving ends the run and a send-back has nowhere to go.
-      routes: [{ verdict: 'pass', targets: [], endsRun: true }, { verdict: 'fail', targets: [], unwired: true }] } })
+      // The disconnected gate: as the daemon derives it while Execution is still open, nothing
+      // follows an approval (the run does not end here) and a send-back has nowhere to go.
+      routes: [{ verdict: 'pass', targets: [], nothingFollows: true }, { verdict: 'fail', targets: [], unwired: true }] } })
     if (options.blockedAtJudge && path === '/api/formations/runs/run_browser/evidence/problems') return respond({ problems: [
       { seq: 7, type: 'error', code: 'invalid_judge_result', nodeIds: ['gate'], reason: { text: 'missing or unterminated chrote-verdict block', bytes: 44 } },
       { seq: 8, type: 'run_blocked', nodeIds: ['gate'], reason: { text: judgeBlockReason, bytes: judgeBlockReason.length }, resumeAllowed: false },

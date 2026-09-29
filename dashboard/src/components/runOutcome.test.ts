@@ -11,6 +11,8 @@ describe('run outcome words', () => {
     expect(runActorLabel('agent:ui')).toBe('the operator in the cockpit')
     expect(runActorLabel('agent:archon')).toBe('the archon CLI')
     expect(runActorLabel('archond')).toBe('Archon')
+    // Inherited from the run's start, so it names the recorder, not who asked.
+    expect(runActorLabel('operator:standalone')).toBe('the coordinator')
     expect(runActorLabel('human:perttu')).toBe('human:perttu')
     expect(runActorLabel()).toBe('')
   })
@@ -18,8 +20,11 @@ describe('run outcome words', () => {
   it('says why a run failed or was canceled and who ended it', () => {
     expect(runEndPhrase('failed', 'Execution', { code: 'coordinator_execution_failed', reason: text('completed recovery requires a single-slot formation'), actor: 'archond' }))
       .toBe('failed at Execution: completed recovery requires a single-slot formation · ended by Archon')
+    // The default reason adds nothing to who stopped it.
     expect(runEndPhrase('canceled', 'Operator review', { reason: text('operator stop'), actor: 'agent:ui' }))
-      .toBe('canceled at Operator review by the operator in the cockpit: operator stop')
+      .toBe('canceled at Operator review by the operator in the cockpit')
+    expect(runEndPhrase('canceled', 'Draft', { reason: text('the brief was wrong'), actor: 'agent:ui' }))
+      .toBe('canceled at Draft by the operator in the cockpit: the brief was wrong')
     // A failure with only a code still says something.
     expect(runEndPhrase('failed', '', { code: 'coordinator_execution_failed', reason: text('') })).toBe('failed: coordinator_execution_failed')
     expect(runEndPhrase('canceled', '', undefined)).toBe('canceled')
@@ -77,7 +82,26 @@ describe('gate route words', () => {
     expect(spent.outcome).toBe('Approve blocks the run: the run used 20 of 20 dispatches. It cannot resume.')
   })
 
-  it('gives no attempt or dispatch warning to a run without limits', () => {
+  it('says a send-back to a step that never ran runs it, not again', () => {
+    expect(gateRouteWords('fail', { verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 1, maxAttempts: 3 }] }, titleOf).outcome)
+      .toBe('Send back: Draft runs with your response.')
+  })
+
+  it('says a join receives the approval and waits for its other inputs', () => {
+    expect(gateRouteWords('pass', { verdict: 'pass', targets: [{ nodeId: 'fmn_publish', title: 'Publish', kind: 'formation', attempt: 1, maxAttempts: 3, waitsForInputs: true }] }, titleOf).outcome)
+      .toBe('Approve: Publish receives this and waits for its other inputs.')
+  })
+
+  it('says nothing follows a gate whose run has other work', () => {
+    expect(gateRouteWords('pass', { verdict: 'pass', targets: [], nothingFollows: true }, titleOf)).toEqual({ button: 'Approve', outcome: 'Approve: nothing follows this gate.', blocks: false, last: false })
+  })
+
+  it('counts the judge dispatch of a judge gate', () => {
+    const words = gateRouteWords('pass', { verdict: 'pass', targets: [{ nodeId: 'gate_judged', title: 'Judged', kind: 'gate' }], dispatches: { kind: 'dispatches', used: 19, max: 20 }, dispatchesNeeded: 1 }, titleOf)
+    expect(words).toEqual({ button: 'Approve → Judged', outcome: 'Approve: Judged receives it next; the run has 1 of 20 dispatches left.', blocks: false, last: true })
+  })
+
+  it('gives no attempt warning without an attempt limit', () => {
     const words = gateRouteWords('fail', { verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 4 }] }, titleOf)
     expect(words).toEqual({ button: 'Send back to Draft', outcome: 'Send back: Draft runs again with your response.', blocks: false, last: false })
   })

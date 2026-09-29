@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import HumanGateAnswerPanel from './HumanGateAnswerPanel'
 import GateAnswerWindow, { cardRects } from './GateAnswerWindow'
 import FloatingWindow from '../windows/FloatingWindow'
 import { WindowManagerProvider, useWindowManager } from '../windows/WindowManager'
@@ -41,6 +42,30 @@ describe('GateAnswerWindow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'open other window' }))
     expect(z('file notes')).toBeGreaterThan(z('Answer gate Operator review'))
+  })
+
+  it('names the window and its answer apart, and says truthfully whether closing keeps the draft', () => {
+    function Framed() {
+      const stack = useWindowManager()
+      return (
+        <WindowManagerProvider stack={stack}>
+          <GateAnswerWindow gateId="gate_review" gateTitle="Operator review" anchor={() => null} keepClear={() => []} onClose={() => {}}>
+            <HumanGateAnswerPanel framed runId="run_1" gateId="gate_review" requestedSeq={4} gateTitle="Operator review" criterion=""
+              upstream={{ state: 'loading' }} onDecide={async () => true} />
+          </GateAnswerWindow>
+        </WindowManagerProvider>
+      )
+    }
+    render(<Framed />)
+    expect(screen.getByRole('dialog', { name: 'Answer gate Operator review' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Your answer to Operator review' })).toBeInTheDocument()
+    const close = screen.getByRole('button', { name: 'Close Answer gate Operator review' })
+    fireEvent.change(screen.getByLabelText('Your response'), { target: { value: 'kept' } })
+    expect(close.getAttribute('title')).toMatch(/draft stays in this browser/)
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota') })
+    fireEvent.change(screen.getByLabelText('Your response'), { target: { value: 'not kept' } })
+    expect(close.getAttribute('title')).toMatch(/could not be saved.*lost/)
+    setItem.mockRestore()
   })
 
   it('measures the cards it keeps clear of', () => {

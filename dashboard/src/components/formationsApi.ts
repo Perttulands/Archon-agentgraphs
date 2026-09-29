@@ -319,7 +319,10 @@ export interface GateRouteTarget {
   title: string
   kind: string
   attempt?: number
+  /** The engine's effective attempt limit: 1 when the run set none. */
   maxAttempts?: number
+  /** A join that receives this and still waits for another input. */
+  waitsForInputs?: boolean
 }
 
 /** Where one verdict leads on the run's frozen board (internal/formations/gate_routes.go). */
@@ -327,10 +330,14 @@ export interface GateRoute {
   verdict: 'pass' | 'fail'
   targets: GateRouteTarget[]
   endsRun?: boolean
+  /** Nothing is wired downstream, but the run has other work, so it does not end here. */
+  nothingFollows?: boolean
   unwired?: boolean
   /** A limit the route needs is spent, so taking it blocks the run. */
   limit?: RunLimitUse
   dispatches?: RunLimitUse
+  /** Formation starts the route makes, judges included. */
+  dispatchesNeeded?: number
 }
 
 export interface HumanGateRequest {

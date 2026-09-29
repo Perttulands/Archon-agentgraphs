@@ -1004,12 +1004,17 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `criterion` and the routed input: `fromNodeId`, `fromPortId`, `text` capped at
   64 KiB, and `truncated`. `routes` says where each verdict leads on the
   run's frozen board: `verdict` (`pass`, `fail`), `targets` (`nodeId`,
-  `title`, `kind`, and for a formation the `attempt` it would start and, when
-  the run was admitted with an attempt limit, `maxAttempts`), `endsRun` for an approval that finishes the run, `unwired`
-  for a send-back with no route, `dispatches` (`used`, `max`) when the route
-  starts formations under a dispatch limit, and `limit` when a limit the route
-  needs is already spent, so taking it blocks the run. An unknown run or gate
-  returns 404; a decided request
+  `title`, `kind`, and for a formation the `attempt` it would start, the
+  engine's effective `maxAttempts` (1 when the run set none) and
+  `waitsForInputs` for a join still missing another input), `endsRun` for an
+  approval with nothing downstream when every reachable formation has output
+  and no other gate or step is open, `nothingFollows` for an approval with
+  nothing downstream while the run has other work, `unwired` for a send-back
+  with no route, `dispatches` (`used`, `max`) and `dispatchesNeeded` (judges
+  included) when the route starts formations under a dispatch limit, and
+  `limit` when a limit the route needs is already spent, so taking it blocks
+  the run. When the frozen board cannot be read, `routes` is omitted. An
+  unknown run or gate returns 404; a decided request
   returns 409. After the verdict, the gate's node evidence holds the same input
   with the response.
 

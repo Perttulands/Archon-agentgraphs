@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
@@ -27,7 +28,7 @@ type PendingGateRequest struct {
 	Criterion    string           `json:"criterion"`
 	Input        PendingGateInput `json:"input"`
 	// Routes say where each verdict leads on the run's frozen board (form-n7u.7).
-	Routes []formations.GateRoute `json:"routes"`
+	Routes []formations.GateRoute `json:"routes,omitempty"`
 }
 
 // pendingGateRequest serves the latest human request for a gate while it is
@@ -72,12 +73,13 @@ func (c *Coordinator) pendingGateRequest(w http.ResponseWriter, r *http.Request)
 	body.Input.FromPortID, _ = input["fromPortId"].(string)
 	text, _ := input["text"].(string)
 	body.Input.Text, body.Input.Truncated = capPendingGateText(text)
-	board, err := c.store.ReadRunBoard(runID)
-	if err != nil {
-		failure(w, err)
-		return
+	// Routes are a courtesy: an unreadable frozen board leaves them out, and
+	// the cockpit falls back to the plain verbs.
+	if board, err := c.store.ReadRunBoard(runID); err == nil {
+		body.Routes = formations.HumanGateRoutes(board, events, gateID)
+	} else {
+		log.Printf("run %s: gate %s routes unavailable: %v", runID, gateID, err)
 	}
-	body.Routes = formations.HumanGateRoutes(board, events, gateID)
 	reply(w, http.StatusOK, map[string]any{"request": body})
 }
 

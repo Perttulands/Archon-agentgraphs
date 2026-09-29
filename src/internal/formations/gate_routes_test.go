@@ -22,7 +22,7 @@ func gateRoutesBoard() *BoardDocument {
 }
 
 func draftAttempts(maxDispatch float64, attempts int) []RunEvent {
-	events := []RunEvent{{Seq: 1, Type: RunEventStarted, Data: map[string]any{"limits": map[string]any{"maxAttempts": float64(3), "maxDispatch": maxDispatch}}}}
+	events := []RunEvent{{Seq: 1, Type: RunEventStarted, MissionID: "mis_note", Data: map[string]any{"limits": map[string]any{"maxAttempts": float64(3), "maxDispatch": maxDispatch}}}}
 	for attempt := 1; attempt <= attempts; attempt++ {
 		events = append(events,
 			RunEvent{Type: RunEventNodeStarted, NodeID: "fmn_draft", Attempt: attempt, Data: map[string]any{"nodeKind": "formation"}},
@@ -74,14 +74,44 @@ func TestHumanGateRoutesNameDestinationsAndTheLastAttempt(t *testing.T) {
 	}
 }
 
-// A run admitted without limits gets no attempt or dispatch warning.
-func TestHumanGateRoutesWarnOnlyAboutLimitsTheRunHas(t *testing.T) {
-	events := draftAttempts(0, 3)
+// The panel uses the engine's effective attempt limit: a run that set none
+// gets one attempt per node, so a send-back after the first blocks, as the
+// engine will. A run without a dispatch limit reports no dispatch use.
+func TestHumanGateRoutesUseTheEnginesAttemptLimit(t *testing.T) {
+	events := draftAttempts(0, 1)
 	events[0].Data = map[string]any{"limits": map[string]any{}}
-	routes := HumanGateRoutes(gateRoutesBoard(), events, "gate_review")
-	sendBack := routes[1]
-	if sendBack.Limit != nil || sendBack.Dispatches != nil || !reflect.DeepEqual(sendBack.Targets, []GateRouteTarget{{NodeID: "fmn_draft", Title: "Draft", Kind: "formation", Attempt: 4}}) {
-		t.Fatalf("send back without limits = %+v", sendBack)
+	sendBack := HumanGateRoutes(gateRoutesBoard(), events, "gate_review")[1]
+	if sendBack.Dispatches != nil || !reflect.DeepEqual(sendBack.Targets, []GateRouteTarget{{NodeID: "fmn_draft", Title: "Draft", Kind: "formation", Attempt: 2, MaxAttempts: maxAttempts(RunLimits{})}}) ||
+		!reflect.DeepEqual(sendBack.Limit, &RunLimitReached{Kind: RunLimitAttempts, NodeID: "fmn_draft", Used: 1, Max: 1}) {
+		t.Fatalf("send back without limits = %+v limit %+v", sendBack, sendBack.Limit)
+	}
+}
+
+// A join receives the approval and waits for its other input; a judge gate
+// needs a dispatch for each judge.
+func TestHumanGateRoutesNameAJoinThatWaitsAndCountJudges(t *testing.T) {
+	board := gateRoutesBoard()
+	board.Formations = append(board.Formations, FormationNode{ID: "fmn_facts", Title: "Facts"}, FormationNode{ID: "fmn_judge", Title: "Judge"})
+	for i := range board.Formations {
+		if board.Formations[i].ID == "fmn_publish" {
+			board.Formations[i].Inputs = []FormationPort{{ID: "in", Label: "Draft"}, {ID: "facts", Label: "Facts"}}
+		}
+	}
+	board.Gates = append(board.Gates, GateNode{ID: "gate_judged", Title: "Judged", Kinds: []string{"judge"}})
+	board.Connections = append(board.Connections,
+		BoardConnection{ID: "edge_facts", From: "fmn_facts:out", To: "fmn_publish:facts"},
+		BoardConnection{ID: "edge_to_judged", From: "gate_review:pass", To: "gate_judged:in"},
+		BoardConnection{ID: "edge_judge_send", From: "gate_judged:judge", To: "fmn_judge:in"},
+		BoardConnection{ID: "edge_judge_back", From: "fmn_judge:out", To: "gate_judged:judge"},
+	)
+	approve := HumanGateRoutes(board, draftAttempts(20, 1), "gate_review")[0]
+	if len(approve.Targets) != 2 || !approve.Targets[0].WaitsForInputs || approve.DispatchesNeeded != 2 {
+		t.Fatalf("approve = %+v", approve)
+	}
+	facts := draftAttempts(20, 1)
+	facts = append(facts, RunEvent{Seq: len(facts) + 1, Type: RunEventNodeOutput, NodeID: "fmn_facts"})
+	if approve := HumanGateRoutes(board, facts, "gate_review")[0]; approve.Targets[0].WaitsForInputs {
+		t.Fatalf("approve once Facts delivered = %+v", approve)
 	}
 }
 

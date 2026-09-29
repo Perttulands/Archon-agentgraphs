@@ -24,7 +24,9 @@
 .fmx .run-banner .run-stop{flex-shrink:0;white-space:nowrap;}
 .fmx .run-banner .run-note{flex-shrink:0;color:var(--ink2);font-size:11px;letter-spacing:.02em;white-space:nowrap;}
 
-/* Stop asks first (form-n7u.8). */
+/* Stop asks first (form-n7u.8), in a modal layer over the whole page. */
+.fmx.stop-run-layer{position:fixed;inset:0;z-index:1000;display:block;background:transparent;overflow:visible;}
+.fmx.stop-run-layer .stop-run-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.45);}
 .fmx .pop.stop-run{width:min(480px,calc(100vw - 40px));left:calc(50% - min(240px,50vw - 20px));top:120px;}
 .fmx .stop-run-what{margin:0 0 10px;color:var(--ink2);font-size:12px;line-height:1.5;overflow-wrap:anywhere;}
 .fmx .stop-run-what strong{color:var(--ink);}

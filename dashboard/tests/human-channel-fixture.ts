@@ -107,8 +107,8 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
       input: { fromNodeId: peers.id, text: '1. Who reads the brief first?\n2. Which sources are off limits?\n3. What does done look like?', truncated: false },
       // As the daemon derives them for a run admitted with 3 attempts and 20 dispatches, two of them used.
       routes: [
-        { verdict: 'pass', targets: [{ nodeId: draftBrief.id, title: 'Draft the brief', kind: 'formation', attempt: 1, maxAttempts: 3 }], dispatches: { kind: 'dispatches', used: 2, max: 20 } },
-        { verdict: 'fail', targets: [{ nodeId: peers.id, title: 'Question peers', kind: 'formation', attempt: 2, maxAttempts: 3 }], dispatches: { kind: 'dispatches', used: 2, max: 20 } },
+        { verdict: 'pass', targets: [{ nodeId: draftBrief.id, title: 'Draft the brief', kind: 'formation', attempt: 1, maxAttempts: 3 }], dispatches: { kind: 'dispatches', used: 2, max: 20 }, dispatchesNeeded: 1 },
+        { verdict: 'fail', targets: [{ nodeId: peers.id, title: 'Question peers', kind: 'formation', attempt: 2, maxAttempts: 3 }], dispatches: { kind: 'dispatches', used: 2, max: 20 }, dispatchesNeeded: 1 },
       ],
     } }))
     if (path === `/api/formations/runs/${talkRunId}/escalations`) return route.fulfill(respond({ escalations: [] }))

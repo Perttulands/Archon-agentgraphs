@@ -1,4 +1,5 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { GateDraftSavedContext } from './HumanGateAnswerPanel'
 import FloatingFrameHandles from '../windows/FloatingFrameHandles'
 import { useFloatingWindow } from '../windows/useFloatingWindow'
 import { useWindowStack } from '../windows/WindowManager'
@@ -46,6 +47,7 @@ export default function GateAnswerWindow({ gateId, gateTitle, anchor, keepClear,
     onClose,
   })
   const { ref } = win.rootProps
+  const [draftSaved, setDraftSaved] = useState(true)
   const stack = useWindowStack()
   const { order, focus } = stack
 
@@ -77,9 +79,10 @@ export default function GateAnswerWindow({ gateId, gateTitle, anchor, keepClear,
         <span className="fwin-title" tabIndex={0} aria-label={`Move ${label} with arrow keys`} onKeyDown={win.onMoveKeyDown}>
           <span className="gate-answer-kicker">Needs your answer</span> {gateTitle}
         </span>
-        <button type="button" className="fwin-close" aria-label={`Close ${label}`} title="Close. Your draft stays; reopen it from the run bar." onClick={onClose}>×</button>
+        <button type="button" className="fwin-close" aria-label={`Close ${label}`} title={draftSaved ? 'Close. Your draft stays in this browser; reopen the answer from the run bar.' : 'Close. Your draft could not be saved in this browser and is lost when you close.'}
+          onClick={onClose}>×</button>
       </header>
-      <div className="fwin-body">{children}</div>
+      <div className="fwin-body"><GateDraftSavedContext.Provider value={setDraftSaved}>{children}</GateDraftSavedContext.Provider></div>
       <FloatingFrameHandles handles={win.handles} activeHandle={win.activeHandle} />
     </section>
   )
