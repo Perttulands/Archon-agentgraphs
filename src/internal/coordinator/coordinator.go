@@ -341,6 +341,42 @@ func (c *Coordinator) acquire(id string) bool {
 	c.workers.Add(1)
 	return true
 }
+
+// runCommandWait bounds how long a verdict or resume waits for the command
+// still executing on its run.
+const runCommandWait = 5 * time.Second
+
+// acquireSoon takes the run's command reservation, waiting up to
+// runCommandWait for a command still executing to release it. A driver that
+// answers the moment run wait reports an ask then never races the command
+// that recorded the ask and is still settling the run.
+func (c *Coordinator) acquireSoon(ctx context.Context, id string) bool {
+	timer := time.NewTimer(runCommandWait)
+	defer timer.Stop()
+	for !c.acquire(id) {
+		c.mu.Lock()
+		state := c.state(id)
+		closed, busy, done := c.closed, state.busy, state.done
+		c.mu.Unlock()
+		if closed {
+			return false
+		}
+		if !busy {
+			continue // released between the two reads
+		}
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return false
+		case <-c.stopping:
+			return false
+		case <-timer.C:
+			return false
+		}
+	}
+	return true
+}
+
 func (c *Coordinator) release(id string) {
 	c.mu.Lock()
 	notify := c.needsYou
@@ -639,7 +675,7 @@ func (c *Coordinator) verdict(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	runID, gateID := r.PathValue("runId"), r.PathValue("gateId")
-	if !c.acquire(runID) {
+	if !c.acquireSoon(r.Context(), runID) {
 		reply(w, 409, map[string]string{"error": "coordinator is executing"})
 		return
 	}

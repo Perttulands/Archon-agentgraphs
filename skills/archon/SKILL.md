@@ -260,15 +260,44 @@ archon $S run status "$FORM_RUN_ID" --json
 
 ### Watch
 
-The driving agent pulls; Archon never pushes into your session.
+The driving agent pulls; Archon never pushes into your session. Start
+`run wait` in the background right after the launch, and again after every
+answer:
 
-- `run status "$FORM_RUN_ID" --json` returns one projection at once. Poll it to
-  watch a run from your own turn.
-- `run follow "$FORM_RUN_ID" --json` prints a projection after each durable
-  change and does not return until the run is final. It keeps waiting while a
-  human gate waits, so run it in the background (and read its output) or it
-  holds your turn for the whole run. Interrupting it stops watching, not the run.
-- `run logs` is the same sanitized view as status.
+```bash
+archon $S run wait "$FORM_RUN_ID" --until needs-you
+```
+
+It blocks until the run needs you, ends or changes, prints one paragraph
+written for you, and exits. Act on the exit code:
+
+| Exit | Meaning | What to do |
+| --- | --- | --- |
+| 3 | The run needs you | Do what the paragraph says. For a gate it names the gate, criterion, input and where each verdict leads, and prints the exact `gate approve`/`gate reject --requested-seq <n>` commands; for a block, the `run resume` or `run abort` command. Answer with the operator's authority, then wait again. |
+| 0 | The run ended | Read how: its status, the step it stopped at, the reason and who ended it. No further wait. |
+| 4 | Something changed (`any-change`) | Read the listed events, then wait again. |
+| 5 | `--timeout` passed first | Wait again with the same command. |
+| 6 | The daemon stayed unreachable (`--reconnect`, default one minute) | Wait again with the printed command once the daemon is back. |
+| 1, 2 | Error or usage | Read stderr; an unknown run or a bad `--since` does not improve by waiting. |
+
+- Every answer except a final one ends with `Wait for what comes next:` and
+  the exact next command, carrying `--since <seq>`. Always run that command,
+  never `--since 0` again in a loop: an ask counts as new only after `--since`,
+  so you see each ask once and miss nothing between waits or across a daemon
+  restart. The first wait, without `--since`, reports every open ask.
+- `--until needs-you` (the default) is for driving: it returns for gates,
+  blocking escalations, blocks and the end. `--until final` returns only at
+  the end. `--until any-change` returns at every ledger event for step-by-step
+  oversight, and still answers 3 when an event opens an ask.
+- Answer the moment a wait returns: a verdict or resume sent while the run's
+  command is still settling waits for it on the daemon.
+- `--json` prints the same answer for machines: `outcome`, `seq`, `status`,
+  `asks`, `end`, `changes` and `next` (the next command, with `--json`).
+- `run status "$FORM_RUN_ID" --json` returns one projection at once, and
+  `run follow "$FORM_RUN_ID" --json` streams a projection after each durable
+  change until the run is final. Prefer `run wait` for driving; interrupting
+  any of them stops watching, not the run. `run logs` is the same sanitized
+  view as status.
 
 Read `status` (`running`, `waiting_human`, `blocked`, `succeeded`, `failed`,
 `canceled`), `final`, `resumeAllowed` and `waitingGates`. `waiting_human` means
@@ -287,7 +316,9 @@ are working inside a seat, read [references/seat-output.md](references/seat-outp
 
 ## Decide a human gate
 
-Decide only with the operator's authority. Read fresh status, then take
+Decide only with the operator's authority. A `run wait` that exited 3 already
+printed both commands with the current `--requested-seq`. Otherwise read fresh
+status, then take
 `FORM_GATE_ID` and `FORM_REQUESTED_SEQ` from the same `.data.waitingGates`
 entry. `run gates "$FORM_RUN_ID"` lists them; `gate request "$FORM_RUN_ID"
 "$FORM_GATE_ID"` shows the question, the input and where each verdict leads:

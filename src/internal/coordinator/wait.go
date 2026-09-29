@@ -38,7 +38,7 @@ const (
 type RunWait struct {
 	RunID     string `json:"runId"`
 	BoardSlug string `json:"boardSlug"`
-	// Mission is the run's mission title on its frozen board.
+	// Mission is the run's mission title on its frozen board, or the board's.
 	Mission string `json:"mission"`
 	Until   string `json:"until"`
 	Outcome string `json:"outcome"`
@@ -231,28 +231,32 @@ func projectWait(runID string, events []formations.RunEvent, board *formations.B
 	for _, ask := range result.Asks {
 		newAsk = newAsk || ask.New
 	}
-	switch {
-	case status.Final:
-		result.Outcome = WaitOutcomeFinal
-	case newAsk && until != WaitUntilFinal:
-		result.Outcome = WaitOutcomeNeedsYou
-	case until == WaitUntilAnyChange && len(events) > since:
-		result.Outcome = WaitOutcomeChanged
-	default:
-		// Nothing was reported, so the cursor stays where the driver put it.
-		result.Outcome = WaitOutcomePending
-		result.Seq = since
-		return result, nil
-	}
-	if until == WaitUntilNeedsYou && !settled && status.Status == formations.RunStatusBlocked {
-		// The cursor never passes a block the daemon has not settled, so the
-		// next wait still sees it if it becomes an ask.
+	if !status.Final && !settled && status.Status == formations.RunStatusBlocked && len(result.Asks) == 0 {
+		// A block recorded inside a command is either a verdict on its way to
+		// the automatic resume or a real block the settle will announce. Until
+		// the run settles the run is still executing, and in every mode the
+		// cursor stops below the block, so the next wait still reports it as
+		// new if it becomes an ask.
+		result.Status = formations.RunStatusRunning
 		for i := len(events) - 1; i >= 0 && events[i].Seq > since; i-- {
 			if events[i].Type == formations.RunEventBlocked {
 				result.Seq = events[i].Seq - 1
 				break
 			}
 		}
+	}
+	switch {
+	case status.Final:
+		result.Outcome = WaitOutcomeFinal
+	case newAsk && until != WaitUntilFinal:
+		result.Outcome = WaitOutcomeNeedsYou
+	case until == WaitUntilAnyChange && result.Seq > since:
+		result.Outcome = WaitOutcomeChanged
+	default:
+		// Nothing was reported, so the cursor stays where the driver put it.
+		result.Outcome = WaitOutcomePending
+		result.Seq = since
+		return result, nil
 	}
 	for _, event := range events {
 		if event.Seq <= since || event.Seq > result.Seq {
@@ -317,8 +321,13 @@ func waitEnd(events []formations.RunEvent, board *formations.BoardDocument, stat
 }
 
 func waitMissionTitle(board *formations.BoardDocument, status *formations.RunStatusProjection) string {
-	if board != nil && board.Title != "" {
-		return board.Title
+	if board != nil {
+		if title := nodeTitle(board, status.MissionID); status.MissionID != "" && title != status.MissionID {
+			return title
+		}
+		if board.Title != "" {
+			return board.Title
+		}
 	}
 	return status.BoardSlug
 }

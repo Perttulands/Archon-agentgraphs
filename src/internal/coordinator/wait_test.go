@@ -207,12 +207,32 @@ func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 	if busy.Outcome != WaitOutcomePending || busy.Seq != 1 || len(busy.Asks) != 0 {
 		t.Fatalf("busy = %+v", busy)
 	}
+	// Any change reports the events below the block and stops there, and the
+	// run reads as still running, never as blocked, until it settles.
 	changed, err := projectWait("run_x", events, nil, WaitUntilAnyChange, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed.Outcome != WaitOutcomeChanged || changed.Seq != 3 {
+	if changed.Outcome != WaitOutcomeChanged || changed.Seq != 2 || len(changed.Changes) != 1 || changed.Changes[0].Seq != 2 || changed.Status != formations.RunStatusRunning {
 		t.Fatalf("changed = %+v", changed)
+	}
+	// With nothing new below the block, any change stays pending.
+	held, err := projectWait("run_x", events, nil, WaitUntilAnyChange, 2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if held.Outcome != WaitOutcomePending || held.Seq != 2 || held.Status != formations.RunStatusRunning {
+		t.Fatalf("held = %+v", held)
+	}
+	// Once settled, the same cursor reports the block as a new ask in every mode.
+	for _, until := range []string{WaitUntilAnyChange, WaitUntilNeedsYou} {
+		got, err := projectWait("run_x", events, nil, until, 2, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Outcome != WaitOutcomeNeedsYou || len(got.Asks) != 1 || !got.Asks[0].New || got.Status != formations.RunStatusBlocked {
+			t.Fatalf("%s settled = %+v", until, got)
+		}
 	}
 	settled, err := projectWait("run_x", events, nil, WaitUntilNeedsYou, 1, true)
 	if err != nil {
@@ -244,5 +264,84 @@ func TestWaitRedactsAndCapsTheGateInput(t *testing.T) {
 	ask := got.Asks[0]
 	if strings.Contains(ask.Criterion, "hunter2") || strings.Contains(ask.Input.Text, "abc123") || !ask.Input.Truncated || len(ask.Input.Text) != waitInputExcerptBytes || ask.Input.Bytes <= waitInputExcerptBytes {
 		t.Fatalf("criterion %q input bytes %d truncated %v", ask.Criterion, len(ask.Input.Text), ask.Input.Truncated)
+	}
+}
+
+// The reviewer's probe: a driver looping any-change waits over a run that a
+// gate approval pushes into its dispatch limit. Every loop must end with the
+// block as a new ask, never a changed answer that skips it and then hangs,
+// and a verdict sent the moment the gate is reported must be accepted.
+func TestAnyChangeLoopReportsALimitBlockAndItsGateVerdictIsAccepted(t *testing.T) {
+	for round := 0; round < 5; round++ {
+		c, e, _ := fixture(t)
+		w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"probe","board":"proof","missionId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":1,"maxAttempts":1,"wallClockSeconds":600,"redact":false}}`)
+		if w.Code != 202 {
+			t.Fatalf("start %d %s", w.Code, w.Body.String())
+		}
+		var receipt struct {
+			Data struct {
+				RunID string `json:"runId"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &receipt); err != nil {
+			t.Fatal(err)
+		}
+		id := receipt.Data.RunID
+		go func() { <-e.entered; e.proceed <- struct{}{} }()
+		since, blocked := 0, false
+		for i := 0; i < 100 && !blocked; i++ {
+			got := waitRequest(t, c, id, "until=any-change&hold=5&since="+strconv.Itoa(since))
+			r := got.result
+			if got.code != 200 || r.Outcome == WaitOutcomePending || r.Outcome == WaitOutcomeFinal {
+				t.Fatalf("round %d: the loop stalled or ended at since %d: %d %+v", round, since, got.code, r)
+			}
+			if !r.Settled && r.Status == formations.RunStatusBlocked {
+				t.Fatalf("round %d: an unsettled run read as blocked: %+v", round, r)
+			}
+			for _, ask := range r.Asks {
+				if !ask.New {
+					continue
+				}
+				switch ask.Kind {
+				case formations.NeedsYouKindHumanGate:
+					// Answer at once, as a driver does; the verdict must not race
+					// the command that is still settling the run.
+					if v := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(ask.Seq)+`,"verdict":"pass"}`); v.Code != 202 {
+						t.Fatalf("round %d: verdict right after needs-you: %d %s", round, v.Code, v.Body.String())
+					}
+				case formations.NeedsYouKindBlocked:
+					blocked = true
+				}
+			}
+			since = r.Seq
+		}
+		if !blocked {
+			t.Fatalf("round %d: the limit block was never reported", round)
+		}
+	}
+}
+
+// A resume sent the moment a blocking escalation is reported waits for the
+// command that recorded it instead of answering 409.
+func TestResumeWaitsForTheCommandThatRecordedTheEscalation(t *testing.T) {
+	c, _, _ := fixture(t)
+	started, err := c.store.StartRun("proof", formations.RunStartRequest{MissionID: "mis_proof", ExpectedBoardRev: 1, Personas: c.personas, Limits: formations.RunLimits{MaxDispatch: 3, MaxAttempts: 1, WallClockSeconds: 600}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := started.RunID
+	if !c.acquire(id) { // the command that captures the escalation
+		t.Fatal("reserve")
+	}
+	if _, err := c.store.RecordEscalationFromCapture(id, "fmn_work", `<<<CHROTE-ESCALATE run-id=`+id+` severity=stop reason="credentials missing">>>`); err != nil {
+		t.Fatal(err)
+	}
+	got := waitRequest(t, c, id, "until=needs-you&hold=0")
+	if got.result.Outcome != WaitOutcomeNeedsYou || len(got.result.Asks) != 1 || got.result.Asks[0].Kind != formations.NeedsYouKindEscalation {
+		t.Fatalf("wait = %+v", got.result)
+	}
+	go func() { time.Sleep(200 * time.Millisecond); c.release(id) }()
+	if w := post(t, c, "/api/formations/runs/"+id+"/resume", `{"reason":"credentials added"}`); w.Code != 202 {
+		t.Fatalf("resume right after the escalation: %d %s", w.Code, w.Body.String())
 	}
 }

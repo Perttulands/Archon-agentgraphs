@@ -386,7 +386,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProjectionEnvelope'
         '409':
-          description: Run executing
+          description: Run still executing after a five-second wait for its command
           final: null
           or not resumable: null
   /api/formations/runs/{runId}/wait:
@@ -617,7 +617,7 @@ paths:
         '400':
           description: Invalid verdict, or a relayedBy that is not a slot ID
         '409':
-          description: Busy
+          description: Busy after a five-second wait for the run's command
           final: null
           duplicate or stale human request: null
         '422':

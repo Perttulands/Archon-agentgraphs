@@ -296,38 +296,53 @@ archon --server "$FORM_SERVER" run wait "$FORM_RUN_ID" --until needs-you
   the exact `gate approve`/`gate reject` commands with `--requested-seq`, or
   the `run resume` or `run abort` command a block needs.
 - `final` returns when the run succeeds, fails or is canceled.
-- `any-change` returns at the next ledger event and lists the new events.
+- `any-change` returns at the next ledger event and lists the new events. When
+  that event opens a new ask it answers as `needs-you` (exit 3) instead.
 
 Every mode returns at once for a final run, and says how it ended: its status,
 the step it stopped at, the terminal reason and code from its evidence
-problems, and who ended it. Every answer ends with the command that waits for
-what comes next, carrying `--since <seq>`, the ledger sequence the answer
-covers. Pass it to the next wait: an ask counts as new only after `since`, so a
-driver that loops sees each ask once and misses nothing between calls. Without
-`--since` every open ask is new. Other open asks are still listed as reported
-earlier. A bare block counts only once the daemon has settled the run, since
-a verdict records one on its way to the automatic resume; the cursor never
-passes an unsettled block.
+problems, and who ended it. Every other answer ends with the command that
+waits for what comes next, carrying `--since <seq>`, the ledger sequence the
+answer covers, and `--json` when the wait used it. Pass it to the next wait:
+an ask counts as new only after `since`, so a driver that loops sees each ask
+once and misses nothing between calls. Without `--since` every open ask is new.
+Other open asks are still listed as reported earlier.
+
+A bare block counts only once the daemon has settled the run, since a verdict
+records one on its way to the automatic resume. Until then the run reads as
+`running`, and in every mode the cursor stops below the block and an answer
+reports only the events before it; with nothing else new the wait keeps
+holding. Once the run settles, a real block is a new ask in every mode.
+
+A verdict or resume sent while the command that recorded the ask is still
+settling the run waits for that command, up to five seconds, instead of
+answering 409, so a driver can answer the moment a wait returns.
 
 `--json` prints the daemon's answer (`runId`, `mission`, `until`, `outcome`,
 `since`, `seq`, `status`, `final`, `resumeAllowed`, `settled`, `end`, `asks`,
-`changes`) with `next`, the next wait command, and on a lost daemon `error`.
-Exit codes:
+`changes`) with `next`, the next wait command (absent for a final run), and on
+a lost daemon `error`. `outcome` is `final`, `needs-you` or `changed` from the
+daemon, or from the client `timeout` (the last answer, with the cursor
+unchanged) or `daemon-lost` (with `error` and the cursor unchanged). Exit
+codes:
 
 | Code | Meaning |
 | --- | --- |
 | 0 | The run is final (succeeded, failed or canceled). |
 | 1 | Error, such as an unknown run or a `--since` past the run's last event. |
 | 2 | Usage, or run without `--server`. |
-| 3 | The run needs you. |
-| 4 | The run changed (`any-change`). |
+| 3 | The run needs you, in `needs-you` or `any-change`. |
+| 4 | The run changed, with no new ask (`any-change`). |
 | 5 | `--timeout` passed first; the cursor is unchanged. |
 | 6 | The daemon stayed unreachable for `--reconnect` (default one minute). |
 
 A daemon that stops answers waits with 503. The client retries the same
 `--since` every quarter second until the daemon is back, so a restart mid-wait
 loses nothing; only a daemon still unreachable after `--reconnect` ends the
-wait with code 6. The daemon answers within a second of the ledger event.
+wait with code 6, printing the command that waits again from the same cursor.
+One wait keeps one connection to the daemon across its polls, and the daemon
+closes connections idle for two minutes. The daemon answers within a second of
+the ledger event.
 
 `run gates <run>` lists pending gate IDs, request sequences and asking seats.
 `gate request <run> <gate>` reads the question and routed input. `run seats <run>`
@@ -622,7 +637,8 @@ unsent operator text found before a paste, still waits without a fallback.
 Only after a fallback does the notify command, if configured, get its
 `human_gate` notification. Both events are
 appended under the run's command reservation, so a verdict sent in that moment
-gets the busy 409, and replay ignores them.
+waits for it (the busy 409 comes only after five seconds), and replay ignores
+them.
 
 Kept seats are reconsidered when the run settles and before a formation is
 dispatched. A kept seat ends when it has received an ask and no open request

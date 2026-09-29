@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -167,7 +168,7 @@ func TestRunWaitTellsTheDriverWhatTheGateAsksAndHowToAnswer(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &answer); err != nil || code != waitExitNeedsYou {
 		t.Fatalf("code %d err %v json %s", code, err, raw)
 	}
-	if answer.Outcome != "needs-you" || answer.Seq != cursor || len(answer.Asks) != 1 || answer.Asks[0].Seq != seq || answer.Asks[0].Input == nil || !strings.HasPrefix(answer.Next, "archon --server ") {
+	if answer.Outcome != "needs-you" || answer.Seq != cursor || len(answer.Asks) != 1 || answer.Asks[0].Seq != seq || answer.Asks[0].Input == nil || !strings.HasPrefix(answer.Next, "archon --server ") || !strings.HasSuffix(answer.Next, " --json") {
 		t.Fatalf("answer = %+v", answer)
 	}
 
@@ -246,7 +247,7 @@ func TestRunWaitReconnectsAcrossARestart(t *testing.T) {
 		}
 	}
 	want := `Run run_x (mission "Proof") failed at #9 while at "Execution": completed recovery requires a single-slot formation (coordinator_execution_failed). Ended by Archon (archond).`
-	if !strings.Contains(out, want) || !strings.Contains(out, "--until final --since 9") {
+	if !strings.Contains(out, want) || strings.Contains(out, "Wait for what comes next") {
 		t.Fatalf("out:\n%s", out)
 	}
 }
@@ -300,5 +301,47 @@ func TestDescribeGateRouteSaysWhereEachVerdictLeads(t *testing.T) {
 		if got := describeGateRoute(tt.route); got != tt.want {
 			t.Errorf("got %q want %q", got, tt.want)
 		}
+	}
+}
+
+// Every poll of one wait reuses one connection to the daemon.
+func TestRunWaitKeepsOneConnectionAcrossPolls(t *testing.T) {
+	var polls atomic.Int32
+	var conns atomic.Int32
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		outcome, final := "pending", "false"
+		if polls.Add(1) >= 5 {
+			outcome, final = "final", "true"
+		}
+		fmt.Fprintf(w, `{"success":true,"data":{"runId":"run_x","mission":"Proof","until":"final","outcome":%q,"since":3,"seq":3,"status":"succeeded","final":%s,"settled":true,"asks":[],"changes":[]}}`, outcome, final)
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			conns.Add(1)
+		}
+	}
+	server.Start()
+	defer server.Close()
+	if _, stderr, code := runArchon(t, &fakeTmux{}, "--server", server.URL, "run", "wait", "run_x", "--until", "final", "--since", "3"); code != waitExitFinal {
+		t.Fatalf("code %d %s", code, stderr)
+	}
+	if polls.Load() != 5 || conns.Load() != 1 {
+		t.Fatalf("%d polls opened %d connections", polls.Load(), conns.Load())
+	}
+}
+
+func TestRunWaitWordsStatusesAndEscalationsPlainly(t *testing.T) {
+	out := renderWait("http://127.0.0.1:1", &waitOutput{RunWait: coordinator.RunWait{RunID: "run_x", Mission: "Proof", Since: 3, Seq: 4, Status: "waiting_human", Asks: []coordinator.WaitAsk{{Kind: formations.NeedsYouKindEscalation, Seq: 4, New: true, Title: "Work", Severity: "stop", Reason: "credentials missing"}}}, Next: "archon next"}, waitExitNeedsYou)
+	for _, raw := range []string{"waiting_human", "stop escalation", "blocking"} {
+		if strings.Contains(out, raw) {
+			t.Fatalf("raw %q in:\n%s", raw, out)
+		}
+	}
+	if !strings.Contains(out, `"Work" escalated at #4 and the run stopped for it: credentials missing`) {
+		t.Fatalf("out:\n%s", out)
+	}
+	changed := renderWait("s", &waitOutput{RunWait: coordinator.RunWait{RunID: "run_x", Mission: "Proof", Since: 3, Seq: 4, Status: "waiting_human", Changes: []coordinator.WaitChange{{Seq: 4, Type: "node_output"}}}, Next: "n"}, waitExitChanged)
+	if !strings.Contains(changed, "It is now waiting for a human verdict.") {
+		t.Fatalf("changed:\n%s", changed)
 	}
 }

@@ -48,8 +48,9 @@ func runWaitOffline(stderr io.Writer) int {
 // returned.
 type waitOutput struct {
 	coordinator.RunWait
-	// Next is the command that waits for what comes after this answer.
-	Next string `json:"next"`
+	// Next is the command that waits for what comes after this answer; a
+	// final run has none.
+	Next string `json:"next,omitempty"`
 	// Error says why the client gave up on the daemon.
 	Error string `json:"error,omitempty"`
 }
@@ -70,12 +71,15 @@ func runWaitRemote(c *remoteClient, args []string, stdout, stderr io.Writer) int
 		return 2
 	}
 	runID := fs.Arg(0)
-	w := &runWaiter{client: c, runID: runID, until: *until, since: *since, reconnect: *reconnect, now: time.Now, sleep: time.Sleep}
+	w := newRunWaiter(c, runID, *until, *since, *reconnect)
+	defer w.http.CloseIdleConnections()
 	out, code, err := w.wait(*timeout)
 	if err != nil {
 		return fail(stderr, err)
 	}
-	out.Next = waitCommand(c.server, runID, *until, out.Seq)
+	if code != waitExitFinal {
+		out.Next = waitCommand(c.server, runID, *until, out.Seq, *jsonOut)
+	}
 	if *jsonOut {
 		if writeJSON(stdout, out) != 0 {
 			return 1
@@ -87,13 +91,27 @@ func runWaitRemote(c *remoteClient, args []string, stdout, stderr io.Writer) int
 }
 
 type runWaiter struct {
-	client    *remoteClient
+	client *remoteClient
+	// http is the one client every poll of this wait reuses, so a long wait
+	// keeps a single connection to the daemon.
+	http      *http.Client
 	runID     string
 	until     string
 	since     int
 	reconnect time.Duration
 	now       func() time.Time
 	sleep     func(time.Duration)
+}
+
+func newRunWaiter(c *remoteClient, runID, until string, since int, reconnect time.Duration) *runWaiter {
+	return &runWaiter{
+		client: c, runID: runID, until: until, since: since, reconnect: reconnect, now: time.Now, sleep: time.Sleep,
+		http: &http.Client{
+			// The daemon holds each poll at most waitHold before its headers.
+			Transport:     &http.Transport{Proxy: nil, ResponseHeaderTimeout: waitHold + 15*time.Second, MaxIdleConnsPerHost: 1},
+			CheckRedirect: c.http.CheckRedirect,
+		},
+	}
 }
 
 // wait polls until the daemon answers, the timeout passes or the daemon stays
@@ -150,15 +168,12 @@ func (w *runWaiter) wait(timeout time.Duration) (*waitOutput, int, error) {
 // such as while it restarts.
 func (w *runWaiter) poll(hold time.Duration) (*coordinator.RunWait, bool, error) {
 	query := url.Values{"until": {w.until}, "since": {strconv.Itoa(w.since)}, "hold": {strconv.Itoa(int(hold / time.Second))}}
-	client := &http.Client{
-		Transport:     &http.Transport{Proxy: nil, ResponseHeaderTimeout: hold + 15*time.Second},
-		CheckRedirect: w.client.http.CheckRedirect,
-	}
-	response, err := client.Get(w.client.server + "/api/formations/runs/" + url.PathEscape(w.runID) + "/wait?" + query.Encode())
+	response, err := w.http.Get(w.client.server + "/api/formations/runs/" + url.PathEscape(w.runID) + "/wait?" + query.Encode())
 	if err != nil {
 		return nil, true, fmt.Errorf("daemon unreachable: %w", err)
 	}
 	defer response.Body.Close()
+	// Reading the whole body lets the connection return to the pool.
 	raw, err := io.ReadAll(io.LimitReader(response.Body, 16<<20))
 	if err != nil {
 		return nil, true, fmt.Errorf("daemon answer cut off: %w", err)
@@ -178,8 +193,23 @@ func (w *runWaiter) poll(hold time.Duration) (*coordinator.RunWait, bool, error)
 	return envelope.Data, false, nil
 }
 
-func waitCommand(server, runID, until string, since int) string {
-	return fmt.Sprintf("archon --server %s run wait %s --until %s --since %d", server, runID, until, since)
+func waitCommand(server, runID, until string, since int, jsonOut bool) string {
+	command := fmt.Sprintf("archon --server %s run wait %s --until %s --since %d", server, runID, until, since)
+	if jsonOut {
+		command += " --json"
+	}
+	return command
+}
+
+// waitStatus says a run status in words.
+func waitStatus(status string) string {
+	switch status {
+	case "waiting_human":
+		return "waiting for a human verdict"
+	case "":
+		return "in an unknown state"
+	}
+	return status
 }
 
 // renderWait writes the paragraph for the agent driving the run: what the run
@@ -196,7 +226,7 @@ func renderWait(server string, out *waitOutput, code int) string {
 		fmt.Fprintf(&b, "%s needs you.\n", name)
 		writeWaitAsks(&b, server, r, true)
 	case waitExitChanged:
-		fmt.Fprintf(&b, "%s changed: %s. It is now %s.\n", name, waitSpan(r), r.Status)
+		fmt.Fprintf(&b, "%s changed: %s. It is now %s.\n", name, waitSpan(r), waitStatus(r.Status))
 		if r.ChangesOmitted > 0 {
 			fmt.Fprintf(&b, "  (%d earlier events omitted: archon --server %s run logs %s)\n", r.ChangesOmitted, server, r.RunID)
 		}
@@ -207,7 +237,7 @@ func renderWait(server string, out *waitOutput, code int) string {
 	case waitExitTimeout:
 		fmt.Fprintf(&b, "Run %s: nothing the wait asked for (%s) happened before the timeout. ", r.RunID, r.Until)
 		if r.Status != "" {
-			fmt.Fprintf(&b, "It is %s.\n", r.Status)
+			fmt.Fprintf(&b, "It is %s.\n", waitStatus(r.Status))
 		} else {
 			b.WriteString("\n")
 		}
@@ -215,14 +245,16 @@ func renderWait(server string, out *waitOutput, code int) string {
 	case waitExitLost:
 		fmt.Fprintf(&b, "Run %s: lost contact with the Archon daemon at %s (%s). The run keeps its ledger, so nothing after #%d is missed; wait again once the daemon is back.\n", r.RunID, server, out.Error, r.Seq)
 	}
-	fmt.Fprintf(&b, "Wait for what comes next: %s\n", out.Next)
+	if out.Next != "" {
+		fmt.Fprintf(&b, "Wait for what comes next: %s\n", out.Next)
+	}
 	return b.String()
 }
 
 func writeWaitEnd(b *strings.Builder, name string, r coordinator.RunWait) {
 	end := r.End
 	if end == nil {
-		fmt.Fprintf(b, "%s ended: %s.\n", name, r.Status)
+		fmt.Fprintf(b, "%s ended: %s.\n", name, waitStatus(r.Status))
 		return
 	}
 	fmt.Fprintf(b, "%s %s at #%d", name, end.Status, end.Seq)
@@ -323,7 +355,7 @@ func writeWaitAsk(b *strings.Builder, server, runID string, ask coordinator.Wait
 		fmt.Fprintf(b, "  archon --server %s gate approve %s %s --requested-seq %d --response 'your answer'\n", server, runID, ask.GateID, ask.Seq)
 		fmt.Fprintf(b, "  archon --server %s gate reject %s %s --requested-seq %d --response 'what to change'\n", server, runID, ask.GateID, ask.Seq)
 	case formations.NeedsYouKindEscalation:
-		fmt.Fprintf(b, "%q raised a blocking %s escalation at #%d: %s\n", ask.Title, ask.Severity, ask.Seq, ask.Reason)
+		fmt.Fprintf(b, "%q escalated at #%d and the run stopped for it: %s\n", ask.Title, ask.Seq, ask.Reason)
 		fmt.Fprintf(b, "The run stays blocked until you resolve it and resume:\n  archon --server %s run resume %s --reason 'how it was resolved'\n", server, runID)
 	case formations.NeedsYouKindBlocked:
 		reason := ask.Reason
