@@ -350,36 +350,35 @@ func writeWaitAsk(b *strings.Builder, server, runID string, ask coordinator.Wait
 
 // describeGateRoute says where a verdict leads, as the cockpit's answer panel does.
 func describeGateRoute(route formations.GateRoute) string {
-	var parts []string
-	if len(route.Targets) > 0 {
+	var where string
+	switch {
+	case len(route.Targets) > 0:
 		titles := make([]string, 0, len(route.Targets))
 		for _, target := range route.Targets {
 			titles = append(titles, strconv.Quote(firstWaitNonEmpty(target.Title, target.NodeID)))
 		}
-		parts = append(parts, "goes to "+strings.Join(titles, ", "))
-	}
-	switch {
+		where = "goes to " + strings.Join(titles, ", ")
 	case route.EndsRun:
-		parts = append(parts, "ends the run")
+		where = "ends the run"
 	case route.NothingFollows:
-		parts = append(parts, "nothing follows")
+		where = "nothing follows this gate; the run goes on with its other work"
 	case route.Unwired:
-		parts = append(parts, "not wired; the run blocks")
+		where = "no route is wired, so the run blocks"
 	}
-	if limit := route.Limit; limit != nil {
-		if limit.Kind == formations.RunLimitAttempts {
-			title := limit.NodeID
-			for _, target := range route.Targets {
-				if target.NodeID == limit.NodeID && target.Title != "" {
-					title = target.Title
-				}
+	limit := route.Limit
+	if where == "" || limit == nil {
+		return where
+	}
+	if limit.Kind == formations.RunLimitAttempts {
+		title := limit.NodeID
+		for _, target := range route.Targets {
+			if target.NodeID == limit.NodeID && target.Title != "" {
+				title = target.Title
 			}
-			parts = append(parts, fmt.Sprintf("but %q has used all %d of its attempts, so the run blocks instead", title, limit.Max))
-		} else {
-			parts = append(parts, fmt.Sprintf("but the run has used all %d of its dispatches, so it blocks instead", limit.Max))
 		}
+		return fmt.Sprintf("%s, but %q has used all %d of its attempts, so the run blocks instead", where, title, limit.Max)
 	}
-	return strings.Join(parts, "; ")
+	return fmt.Sprintf("%s, but the run has used all %d of its dispatches, so it blocks instead", where, limit.Max)
 }
 
 func firstWaitNonEmpty(values ...string) string {
