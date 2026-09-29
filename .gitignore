@@ -20,3 +20,6 @@ dashboard/playwright-report/
 /dist/
 
 /.beads/interactions.jsonl
+
+# Agent worktrees created by Claude Code lanes
+.claude/worktrees/
