@@ -4,7 +4,6 @@ import {
   findAddedByID,
   findAddedPort,
   judgeChainWithReturn,
-  undoBoardPatch,
   upsertNode,
 } from './formationsBoardModel'
 import type { BoardDocument, FormationBrief, LayoutNode } from './formationsTypes'
@@ -24,23 +23,6 @@ describe('formations board model helpers', () => {
       { id: 'formation-frame', x: 160, y: 180 },
       nodes[1],
     ])
-  })
-
-  it('turns undo actions into single-writer board patches', () => {
-    expect(undoBoardPatch({ kind: 'assignSlot', formationId: 'formation-frame', slotId: 'slot-lead', agentId: 'codex', harness: 'openai-codex' })).toEqual({
-      assignSlot: {
-        formationId: 'formation-frame',
-        slotId: 'slot-lead',
-        agentId: 'codex',
-        harness: 'openai-codex',
-      },
-    })
-    expect(undoBoardPatch({ kind: 'setBrief', formationId: 'formation-frame' })).toEqual({
-      clearBrief: { formationId: 'formation-frame' },
-    })
-    expect(undoBoardPatch({ kind: 'unwireConnection', from: 'formation-frame:out', to: 'formation-ship:in' })).toEqual({
-      unwireConnection: { from: 'formation-frame:out', to: 'formation-ship:in' },
-    })
   })
 
   it('finds new ids and newly added ports across board revisions', () => {

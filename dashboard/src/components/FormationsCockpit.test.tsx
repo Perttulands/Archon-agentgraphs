@@ -131,6 +131,7 @@ type TestFinding = { code: string; nodeId: string; message: string }
 type TestNoteEntry = { id: string; author: string; createdAt: string; editedAt?: string; text: string }
 const noteEntry = (id: string, author: string, text: string): TestNoteEntry => ({ id, author, createdAt: '2026-09-16T12:00:00Z', text })
 let recordedMutations: RecordedMutation[] = []
+let recordedFetches: string[] = []
 
 function installFetchMock(options: {
   emptyBoards?: boolean
@@ -150,9 +151,16 @@ function installFetchMock(options: {
   agentDetailGate?: Promise<void>
   validation?: { errors: TestFinding[]; warnings: TestFinding[] }
   runStartFindings?: TestFinding[]
+  restoreFailure?: boolean
+  /** The first PATCH carrying this op answers a stale-revision CONFLICT, as after another editor's write. */
+  conflictOnce?: string
+  /** addPort answers only once this settles, so an edit is in flight. */
+  addPortGate?: Promise<void>
 } = {}) {
+  let conflictPending = options.conflictOnce
   const patches: RecordedPatch[] = []
   recordedMutations = []
+  recordedFetches = []
   let availableBoards = options.emptyBoards ? [] : (options.boards?.length ? options.boards : [makeBoard()])
   let board = availableBoards[0] || makeBoard()
   let availableAgents = options.agents || agents
@@ -172,6 +180,7 @@ function installFetchMock(options: {
     const url = String(input)
     const method = (init?.method || 'GET').toUpperCase()
     if (method !== 'GET') recordedMutations.push({ method, url })
+    else recordedFetches.push(url)
     const respond = (data: unknown, etag = '') => Promise.resolve({
       ok: true,
       headers: { get: (name: string) => (name.toLowerCase() === 'etag' ? etag || null : null) },
@@ -309,10 +318,78 @@ function installFetchMock(options: {
         board = { ...board, formations, rev: board.rev + 1, connections: [...connections, { id: `edge_${board.rev}`, from: edit.from, to }] }
         return respond({ board }, `board-${board.rev}`)
       }
+      if (conflictPending && body[conflictPending]) {
+        conflictPending = undefined
+        return conflict('Formation definition changed; reload and retry')
+      }
+      if (body.addPort && options.addPortGate) {
+        const gateOpen = options.addPortGate
+        options = { ...options, addPortGate: undefined }
+        return gateOpen.then(() => (globalThis.fetch as unknown as (input: string, init: RequestInit) => Promise<unknown>)(url, init!))
+      }
+      // Deletes and restores mirror the store: a delete drops the node, its
+      // connections and its layout node; a restore refuses a node already there.
+      const nodeKinds = [['deleteFormation', 'formations'], ['deleteGate', 'gates'], ['deleteMission', 'missions']] as const
+      for (const [op, key] of nodeKinds) {
+        if (!body[op]) continue
+        const { id } = body[op] as { id: string }
+        const nodes = board[key] as Array<{ id: string }>
+        if (!nodes.some(node => node.id === id)) return Promise.resolve({
+          ok: false, status: 404, headers: { get: () => null },
+          json: () => Promise.resolve({ success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } }),
+          text: () => Promise.resolve(''),
+        })
+        board = { ...board, rev: board.rev + 1, [key]: nodes.filter(node => node.id !== id),
+          connections: board.connections.filter(edge => edge.from.split(':')[0] !== id && edge.to.split(':')[0] !== id) }
+        currentLayout = { ...currentLayout, boardRev: board.rev, nodes: currentLayout.nodes.filter(node => node.id !== id) }
+        return respond({ board, layout: currentLayout }, `board-${board.rev}`)
+      }
+      if (body.restoreNode) {
+        const restore = body.restoreNode as { mission?: { id: string }; formation?: { id: string }; gate?: { id: string }; connections: TestBoard['connections']; x: number; y: number }
+        const key = restore.mission ? 'missions' : restore.formation ? 'formations' : 'gates'
+        const node = (restore.mission || restore.formation || restore.gate)!
+        const taken = [...board.missions, ...board.formations, ...board.gates].some(item => item.id === node.id)
+        if (taken || options.restoreFailure) return Promise.resolve({
+          ok: false, status: 409, headers: { get: () => null },
+          json: () => Promise.resolve({ success: false, error: { code: 'INVALID_NODE_RESTORE', message: `node "${node.id}" is already on the board` } }),
+          text: () => Promise.resolve(''),
+        })
+        board = { ...board, rev: board.rev + 1, [key]: [...(board[key] as unknown[]), node], connections: [...board.connections, ...restore.connections] } as TestBoard
+        currentLayout = { ...currentLayout, boardRev: board.rev, nodes: [...currentLayout.nodes, { id: node.id, x: restore.x, y: restore.y }] }
+        return respond({ board, layout: currentLayout, nodeId: node.id }, `board-${board.rev}`)
+      }
+      if (body.restorePort) {
+        const { formationId, direction, port, index, connections } = body.restorePort as { formationId: string; direction: string; port: { id: string; label: string }; index: number; connections: TestBoard['connections'] }
+        const key = direction === 'input' ? 'inputs' : 'outputs'
+        board = { ...board, rev: board.rev + 1,
+          formations: board.formations.map(item => item.id !== formationId ? item : { ...item, [key]: [...item[key].slice(0, index), port, ...item[key].slice(index)] }),
+          connections: [...board.connections, ...connections],
+        }
+        return respond({ board }, `board-${board.rev}`)
+      }
+      if (body.addPort) {
+        // Mirrors the store: only input and output are directions (FormationPortInput/Output).
+        const { formationId, direction, label } = body.addPort as { formationId: string; direction: string; label?: string }
+        if (direction !== 'input' && direction !== 'output') {
+          return Promise.resolve({
+            ok: false,
+            status: 400,
+            headers: { get: () => null },
+            json: () => Promise.resolve({ success: false, error: { code: 'INVALID_PORT_DIRECTION', message: `port direction "${direction}" must be input or output` } }),
+            text: () => Promise.resolve(''),
+          })
+        }
+        const key = direction === 'input' ? 'inputs' : 'outputs'
+        const port = { id: `port_added_${board.rev}`, label: label || (direction === 'input' ? 'Input' : 'Output') }
+        board = { ...board, rev: board.rev + 1,
+          formations: board.formations.map(item => item.id === formationId ? { ...item, [key]: [...item[key], port] } : item),
+        }
+        return respond({ board }, `board-${board.rev}`)
+      }
       if (body.removePort) {
         const { formationId, portId } = body.removePort as { formationId: string; portId: string }
         board = { ...board, rev: board.rev + 1,
-          formations: board.formations.map(item => item.id === formationId ? { ...item, inputs: item.inputs.filter(port => port.id !== portId) } : item),
+          formations: board.formations.map(item => item.id === formationId ? { ...item, inputs: item.inputs.filter(port => port.id !== portId), outputs: item.outputs.filter(port => port.id !== portId) } : item),
           connections: board.connections.filter(edge => edge.to !== `${formationId}:${portId}` && edge.from !== `${formationId}:${portId}`),
         }
         return respond({ board }, `board-${board.rev}`)
@@ -1260,15 +1337,18 @@ describe('FormationsCockpit reference parity', () => {
       })
     })
     expect(dialog).not.toBeInTheDocument()
+    expect(await screen.findByTestId('mission-node-mis_created')).toHaveTextContent('New mission')
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => {
       expect(patches.some(patch => (patch.body.deleteMission as { id?: string } | undefined)?.id === 'mis_created')).toBe(true)
     })
+    await waitFor(() => expect(screen.queryByTestId('mission-node-mis_created')).toBeNull())
 
+    // The undone create stays undone after a reload.
     unmount()
     await renderCockpit()
-    expect(await screen.findByTestId('mission-node-mis_created')).toHaveTextContent('New mission')
+    expect(screen.queryByTestId('mission-node-mis_created')).toBeNull()
   })
 
   it('creates a Mission with a project Bead ID when one is given', async () => {
@@ -2080,14 +2160,174 @@ describe('FormationsCockpit reference parity', () => {
     }
   })
 
-  it('adds an input port from the formation context menu', async () => {
+  it('undoes a deleted gate with its wires instead of an earlier rename, then the rename', async () => {
+    await renderCockpit()
+    const judge = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_judge')).getAllByText('Judge')[0], 'Formation · Judge')
+    fireEvent.click(within(judge).getByRole('button', { name: 'Edit title' }))
+    fireEvent.change(within(judge).getByRole('textbox', { name: 'Title' }), { target: { value: 'Review' } })
+    fireEvent.click(within(judge).getByRole('button', { name: 'Save title' }))
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateFormation)).toHaveLength(1))
+
+    fireEvent.contextMenu(screen.getByTestId('gate-node-gate_review'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete gate' }))
+    await waitFor(() => expect(screen.queryByTestId('gate-node-gate_review')).toBeNull())
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    expect(await screen.findByTestId('gate-node-gate_review')).toBeInTheDocument()
+    const restore = patches.find(patch => patch.body.restoreNode)?.body.restoreNode as { gate: TestGate; connections: Array<{ id: string }>; x: number; y: number }
+    expect(restore.gate).toEqual(gate)
+    expect(restore.connections.map(edge => edge.id).sort()).toEqual(['edge_frame_gate', 'edge_judge_return', 'edge_judge_send'])
+    expect(restore).toEqual(expect.objectContaining({ x: 860, y: 100 }))
+    expect(patches.filter(patch => patch.body.updateFormation)).toHaveLength(1)
+    expect(screen.queryByTestId('formations-error')).toBeNull()
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateFormation).map(patch => patch.body.updateFormation)).toEqual([
+      { id: 'fmn_judge', title: 'Review' },
+      { id: 'fmn_judge', title: 'Judge' },
+    ]))
+  })
+
+  it('restores a deleted formation and mission with their staffing, ports and brief', async () => {
+    await renderCockpit()
+    for (const [testId, item, op] of [['formation-node-fmn_judge', 'Delete formation', 'formation'], ['mission-node-mis_showcase', 'Delete mission', 'mission']] as const) {
+      fireEvent.contextMenu(screen.getByTestId(testId))
+      fireEvent.click(await screen.findByRole('menuitem', { name: item }))
+      await waitFor(() => expect(screen.queryByTestId(testId)).toBeNull())
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+      expect(await screen.findByTestId(testId)).toBeInTheDocument()
+      const restored = patches.filter(patch => patch.body.restoreNode).slice(-1)[0].body.restoreNode as Record<string, unknown>
+      expect(restored[op]).toEqual(op === 'formation' ? judgeFormation : mission)
+    }
+    expect(screen.queryByTestId('formations-error')).toBeNull()
+  })
+
+  it('reports a failed undo once, drops it, and the next Ctrl+Z reaches older history', async () => {
+    patches = installFetchMock({ restoreFailure: true })
+    await renderCockpit()
+    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_judge'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Add output port' }))
+    await waitFor(() => expect(patches.filter(patch => patch.body.addPort)).toHaveLength(1))
+    fireEvent.contextMenu(screen.getByTestId('mission-node-mis_showcase'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete mission' }))
+    await waitFor(() => expect(screen.queryByTestId('mission-node-mis_showcase')).toBeNull())
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    expect(await screen.findByTestId('formations-error')).toHaveTextContent(
+      'Could not undo the delete of mission “Showcase”: node "mis_showcase" is already on the board. It was removed from the undo history.')
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(patches.map(patch => patch.body.removePort).filter(Boolean)).toEqual([{ formationId: 'fmn_judge', portId: 'port_added_7' }]))
+    expect(patches.filter(patch => patch.body.restoreNode)).toHaveLength(1)
+    await waitFor(() => expect(screen.queryByTestId('formations-error')).toBeNull())
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(patches.filter(patch => patch.body.restoreNode || patch.body.removePort)).toHaveLength(2)
+  })
+
+  it('reloads and retries once when another editor changed the board, keeping the undo', async () => {
+    patches = installFetchMock({ conflictOnce: 'restoreNode' })
+    await renderCockpit()
+    fireEvent.contextMenu(screen.getByTestId('mission-node-mis_showcase'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete mission' }))
+    await waitFor(() => expect(screen.queryByTestId('mission-node-mis_showcase')).toBeNull())
+    const reads = () => recordedFetches.filter(url => url.endsWith('/boards/test-board')).length
+    const readsBefore = reads()
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    expect(await screen.findByTestId('mission-node-mis_showcase')).toBeInTheDocument()
+    expect(patches.filter(patch => patch.body.restoreNode)).toHaveLength(2)
+    expect(reads()).toBeGreaterThan(readsBefore)
+    expect(screen.queryByTestId('formations-error')).toBeNull()
+  })
+
+  it('waits for an edit in flight, so Ctrl+Z undoes that edit and not an older one', async () => {
+    let release: () => void = () => undefined
+    patches = installFetchMock({ addPortGate: new Promise<void>(resolve => { release = resolve }) })
+    await renderCockpit()
+    fireEvent.contextMenu(screen.getByTestId('mission-node-mis_showcase'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete mission' }))
+    await waitFor(() => expect(screen.queryByTestId('mission-node-mis_showcase')).toBeNull())
+    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_judge'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Add output port' }))
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(patches.filter(patch => patch.body.restoreNode || patch.body.removePort)).toEqual([])
+    release()
+    await waitFor(() => expect(patches.map(patch => patch.body.removePort).filter(Boolean)).toHaveLength(1))
+    expect(patches.filter(patch => patch.body.restoreNode)).toEqual([])
+    expect(screen.queryByTestId('mission-node-mis_showcase')).toBeNull()
+    expect(screen.queryByTestId('formations-error')).toBeNull()
+  })
+
+  it('asks before deleting a formation with retired inline verification, which cannot be undone', async () => {
+    await renderCockpit()
+    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete formation' }))
+    const dialog = await screen.findByRole('alertdialog', { name: 'Delete formation' })
+    expect(dialog).toHaveTextContent('Frame cannot be put back after deleting, because it still carries retired inline verification. Ctrl+Z will not undo this delete.')
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(patches.filter(patch => patch.body.deleteFormation)).toEqual([])
+
+    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete formation' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete for good' }))
+    await waitFor(() => expect(screen.queryByTestId('formation-node-fmn_frame')).toBeNull())
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(patches.filter(patch => patch.body.restoreNode)).toEqual([])
+  })
+
+  it('undoes Remove this input by restoring the port in place with its wire', async () => {
+    await renderCockpit()
+    fireEvent.contextMenu(document.querySelector<HTMLElement>('[data-port-in="fmn_judge:port_judge_in"]')!.closest<HTMLElement>('.fio')!)
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Remove this input' }))
+    await waitFor(() => expect(document.querySelector('[data-port-in="fmn_judge:port_judge_in"]')).toBeNull())
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(document.querySelector('[data-port-in="fmn_judge:port_judge_in"]')).not.toBeNull())
+    expect(patches.find(patch => patch.body.restorePort)?.body.restorePort).toEqual({
+      formationId: 'fmn_judge', direction: 'input', port: { id: 'port_judge_in', label: 'Input' }, index: 0,
+      connections: [{ id: 'edge_judge_send', from: 'gate_review:judge', to: 'fmn_judge:port_judge_in' }],
+    })
+  })
+
+  it('records one undo for a toolbar New formation', async () => {
+    await renderCockpit()
+    fireEvent.click(screen.getByTestId('new-formation'))
+    expect(await screen.findByTestId('formation-node-fmn_created')).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(screen.queryByTestId('formation-node-fmn_created')).toBeNull())
+    expect(patches.map(patch => patch.body.deleteFormation).filter(Boolean)).toEqual([{ id: 'fmn_created' }])
+  })
+
+  it('adds an input port from the formation context menu, and one undo removes it', async () => {
     await renderCockpit()
     fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Add input port' }))
     await waitFor(() => {
       const port = patches.map(patch => patch.body.addPort as { direction?: string } | undefined).find(Boolean)
-      expect(port).toEqual(expect.objectContaining({ direction: 'in' }))
+      expect(port).toEqual(expect.objectContaining({ formationId: 'fmn_frame', direction: 'input', label: 'Input' }))
     })
+    await waitFor(() => expect(screen.queryByTestId('formations-error')).toBeNull())
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => {
+      expect(patches.map(patch => patch.body.removePort).filter(Boolean)).toEqual([{ formationId: 'fmn_frame', portId: 'port_added_7' }])
+    })
+  })
+
+  it('adds ports in the server vocabulary from the card, input row and output row menus', async () => {
+    await renderCockpit()
+    const menuAdd = async (target: HTMLElement, name: string) => {
+      fireEvent.contextMenu(target)
+      fireEvent.click(await screen.findByRole('menuitem', { name }))
+    }
+    await menuAdd(screen.getByTestId('formation-node-fmn_frame'), 'Add output port')
+    await waitFor(() => expect(patches.filter(patch => patch.body.addPort)).toHaveLength(1))
+    await menuAdd(document.querySelector<HTMLElement>('[data-port-in="fmn_frame:port_frame_in"]')!.closest<HTMLElement>('.fio')!, 'Add input port')
+    await waitFor(() => expect(patches.filter(patch => patch.body.addPort)).toHaveLength(2))
+    await menuAdd(document.querySelector<HTMLElement>('[data-port-out="fmn_frame:port_frame_out"]')!.closest<HTMLElement>('.fio')!, 'Add output port')
+    await waitFor(() => expect(patches.filter(patch => patch.body.addPort)).toHaveLength(3))
+    expect(patches.map(patch => (patch.body.addPort as { direction?: string } | undefined)?.direction).filter(Boolean)).toEqual(['output', 'input', 'output'])
+    expect(screen.queryByTestId('formations-error')).toBeNull()
   })
 
   it('shows legacy inline verification as read-only migration input', async () => {

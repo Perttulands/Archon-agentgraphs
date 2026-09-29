@@ -97,6 +97,15 @@ describe('formations API helpers', () => {
     await expect(fetchApi('/api/formations/boards')).rejects.toBeInstanceOf(ApiRequestError)
   })
 
+  it('turns a formation null port or slot list into an empty one, as after removing its only input', () => {
+    const board = normalizeBoard({
+      id: 'brd_1', slug: 'ports', title: 'Ports', rev: 2, etag: 'e',
+      formations: [{ id: 'fmn', type: 'solo', title: 'Plan', inputs: null, outputs: [{ id: 'out', label: 'Output' }], slots: null }],
+      connections: [],
+    } as unknown as BoardDocument)
+    expect(board.formations[0]).toEqual({ id: 'fmn', type: 'solo', title: 'Plan', inputs: [], outputs: [{ id: 'out', label: 'Output' }], slots: [] })
+  })
+
   it('normalizes optional board and layout arrays at the API boundary', () => {
     const board = normalizeBoard({
       id: 'brd_1',

@@ -80,7 +80,7 @@ const succeededEvidence: Record<string, unknown> = {
   '/api/formations/runs/run_browser/evidence/artifacts/logs/worker.log': { artifact: { name: 'logs/worker.log', size: 40, modifiedAt: '2026-09-16T00:00:00Z', kind: 'text', text: evidenceText('worker started\nworker finished') } },
 }
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; join?: boolean } = {}) {
+export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; join?: boolean; extraAgents?: number } = {}) {
   const currentBoard = structuredClone(board)
   if (options.join) {
     currentBoard.formations = ['a', 'b', 'c', 'sink'].map(id => ({ ...structuredClone(board.formations[2]), id, title: id === 'sink' ? 'Join' : `Solo ${id.toUpperCase()}` }))
@@ -141,10 +141,44 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
             formation.inputs = formation.inputs.filter(port => port.id !== portId)
           }
           currentBoard.connections = [...edges, { id: `edge_${currentBoard.rev}`, from: edit.from, to }]
+        } else if (body.deleteFormation || body.deleteGate || body.deleteMission) {
+          // Mirrors the store: a delete drops the node, the connections touching it and its layout node.
+          const id = (body.deleteFormation || body.deleteGate || body.deleteMission).id
+          const key = body.deleteFormation ? 'formations' : body.deleteGate ? 'gates' : 'missions'
+          const list = currentBoard[key] as Array<{ id: string }>
+          if (!list.some(node => node.id === id)) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
+          ;(currentBoard[key] as Array<{ id: string }>) = list.filter(node => node.id !== id)
+          currentBoard.connections = currentBoard.connections.filter(edge => edge.from.split(':')[0] !== id && edge.to.split(':')[0] !== id)
+          nodes = nodes.filter(node => node.id !== id)
+        } else if (body.restoreNode) {
+          // Mirrors the store: a node ID already on the board refuses the whole restore.
+          const { mission, formation, gate, connections, index, x, y } = body.restoreNode
+          const node = mission || formation || gate
+          const key = mission ? 'missions' : formation ? 'formations' : 'gates'
+          const taken = [...currentBoard.missions, ...currentBoard.formations, ...currentBoard.gates].some(item => item.id === node.id)
+          if (taken) return route.fulfill({ status: 409, json: { success: false, error: { code: 'INVALID_NODE_RESTORE', message: `node "${node.id}" is already on the board` } } })
+          ;(currentBoard[key] as unknown[]).splice(index ?? (currentBoard[key] as unknown[]).length, 0, node)
+          currentBoard.connections = [...currentBoard.connections, ...connections]
+          nodes = [...nodes, { id: node.id, x, y }]
+        } else if (body.addPort) {
+          // Mirrors the store (AddFormationPort): the only directions are input and output.
+          const { formationId, direction, label } = body.addPort
+          if (direction !== 'input' && direction !== 'output') {
+            return route.fulfill({ status: 400, json: { success: false, error: { code: 'INVALID_PORT_DIRECTION', message: `port direction "${direction}" must be input or output` } } })
+          }
+          const formation = currentBoard.formations.find(item => item.id === formationId)
+          if (!formation) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
+          const port = { id: `port_${currentBoard.rev}`, label: label || (direction === 'input' ? 'Input' : 'Output') }
+          if (direction === 'input') formation.inputs = [...formation.inputs, port]
+          else formation.outputs = [...formation.outputs, port]
         } else if (body.removePort) {
           const { formationId, portId } = body.removePort
-          const formation = currentBoard.formations.find(item => item.id === formationId)!
+          const formation = currentBoard.formations.find(item => item.id === formationId)
+          if (!formation || ![...formation.inputs, ...formation.outputs].some(port => port.id === portId)) {
+            return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
+          }
           formation.inputs = formation.inputs.filter(port => port.id !== portId)
+          formation.outputs = formation.outputs.filter(port => port.id !== portId)
           currentBoard.connections = currentBoard.connections.filter(edge => edge.to !== `${formationId}:${portId}` && edge.from !== `${formationId}:${portId}`)
         } else if (body.unwireConnection) {
           currentBoard.connections = currentBoard.connections.filter(edge => edge.from !== body.unwireConnection.from || edge.to !== body.unwireConnection.to)
@@ -153,6 +187,10 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
         }
         currentBoard.rev++
         currentBoard.etag = `board-${currentBoard.rev}`
+        // Node deletes and restores publish the layout with the board, as the store does.
+        if (body.deleteFormation || body.deleteGate || body.deleteMission || body.restoreNode) {
+          return respond({ board: boardState(), layout: { boardId: board.id, boardRev: currentBoard.rev, etag: `layout-${currentBoard.rev}`, nodes, edges: [] } })
+        }
       }
       return respond({ board: boardState() })
     }
@@ -161,6 +199,9 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path === '/api/agents') return respond({ agents: [
       { id: 'claude', displayName: 'Claude controller', harnessDefault: 'claude-code', assignable: true, liveness: 'live', tags: [], kind: 'controller' },
       { id: 'codex', displayName: 'Codex builder', harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' },
+      // A large roster, as on a real host, makes long staffing menus.
+      ...Array.from({ length: options.extraAgents || 0 }, (_, index) => ({ id: `agent-${index + 1}`, displayName: `Roster agent ${index + 1}`,
+        harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' })),
     ] })
     if (path === '/api/agents/codex') return respond({ id: 'codex', displayName: 'Codex builder', kind: 'builder', summary: 'Builds the change.', tags: [],
       harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'codex', launch: 'codex', effectiveEffort: 'medium',

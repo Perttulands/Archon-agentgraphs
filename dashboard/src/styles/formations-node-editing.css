@@ -3,5 +3,3 @@
 .fmx .untitled{color:var(--dim);font-style:italic;}
 .fmx .fhead .ftype{flex-shrink:0;border:1px solid var(--line);border-radius:4px;background:var(--paper2);color:var(--ink2);padding:3px 7px;font:700 9px/1.2 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;cursor:pointer;}
 .fmx .fhead .ftype:hover{border-color:var(--terra);color:var(--terra);}
-/* Section heads inside canvas context menus (type choices, judge picker). */
-.fmx .formations-context-menu .msection{margin-top:4px;padding:7px 10px 4px;border-top:1px solid var(--line);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);}

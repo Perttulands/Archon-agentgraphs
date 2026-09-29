@@ -1,7 +1,6 @@
 import type {
   BoardConnection,
   BoardDocument,
-  BoardUndoAction,
   FormationBrief,
   FormationPort,
   LayoutNode,
@@ -11,62 +10,6 @@ export function upsertNode(nodes: LayoutNode[], next: LayoutNode): LayoutNode[] 
   const index = nodes.findIndex(node => node.id === next.id)
   if (index < 0) return [...nodes, next]
   return nodes.map(node => node.id === next.id ? next : node)
-}
-
-export function undoBoardPatch(action: BoardUndoAction): Record<string, unknown> {
-  switch (action.kind) {
-    case 'deleteFormation':
-      return { deleteFormation: { id: action.formationId } }
-    case 'deleteGate':
-      return { deleteGate: { id: action.gateId } }
-    case 'deleteMission':
-      return { deleteMission: { id: action.missionId } }
-    case 'assignSlot':
-      return {
-        assignSlot: {
-          formationId: action.formationId,
-          slotId: action.slotId,
-          agentId: action.agentId,
-          harness: action.harness,
-        },
-      }
-    case 'makeController':
-      return {
-        makeController: {
-          formationId: action.formationId,
-          slotId: action.slotId,
-        },
-      }
-    case 'setBrief':
-      if (!action.brief) {
-        return { clearBrief: { formationId: action.formationId } }
-      }
-      return {
-        setBrief: {
-          formationId: action.formationId,
-          goal: action.brief.goal || '',
-          beadId: action.brief.beadId || '',
-          files: action.brief.files || [],
-          links: action.brief.links || [],
-        },
-      }
-    case 'setExecution':
-      return { setExecution: { formationId: action.formationId, timeoutSeconds: action.timeoutSeconds } }
-    case 'removePort':
-      return {
-        removePort: {
-          formationId: action.formationId,
-          portId: action.portId,
-        },
-      }
-    case 'unwireConnection':
-      return {
-        unwireConnection: {
-          from: action.from,
-          to: action.to,
-        },
-      }
-  }
 }
 
 export function findAddedByID<T extends { id: string }>(before: T[], after: T[]): T | undefined {

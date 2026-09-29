@@ -395,6 +395,9 @@ func (s *Store) ResolveBoardSelector(selector string) (string, error) {
 // node's definition block to the (rev-bumped) board TOML, and node is the
 // layout placement recorded for it in the derivable layout overlay.
 type nodeCreateCandidate struct {
+	// prepare, when set, checks the node against the current board before it
+	// is appended; restoring a deleted node uses it to refuse ID collisions.
+	prepare          func(raw []byte, current *BoardDocument) error
 	appendBoardBlock func([]byte) []byte
 	node             LayoutNode
 	updatedBy        string
@@ -442,6 +445,11 @@ func (s *Store) createNode(
 			board, err := parseBoardForWrite(current.board)
 			if err != nil {
 				return definitionPairState{}, err
+			}
+			if candidate.prepare != nil {
+				if err := candidate.prepare(current.board, board); err != nil {
+					return definitionPairState{}, err
+				}
 			}
 			nextRev := board.Rev + 1
 			updatedAt := s.now().Format(time.RFC3339)
@@ -1259,14 +1267,22 @@ func slotsForFormationType(formation FormationNode, target, keepSlotID string) (
 }
 
 func validateRestoredSlots(slots []FormationSlot) error {
+	if id, bad := firstBadSlotID(slots); bad {
+		return fmt.Errorf("%w: slot id %q is missing, invalid or repeated", ErrInvalidTypeChange, id)
+	}
+	return nil
+}
+
+// firstBadSlotID names the first slot ID that is missing, invalid or repeated.
+func firstBadSlotID(slots []FormationSlot) (string, bool) {
 	seen := make(map[string]bool, len(slots))
 	for _, slot := range slots {
 		if !validToolDefinitionID(slot.ID) || seen[slot.ID] {
-			return fmt.Errorf("%w: slot id %q is missing, invalid or repeated", ErrInvalidTypeChange, slot.ID)
+			return slot.ID, true
 		}
 		seen[slot.ID] = true
 	}
-	return nil
+	return "", false
 }
 
 func findSlot(slots []FormationSlot, id string) (FormationSlot, bool) {
@@ -2200,6 +2216,14 @@ func appendGateBlock(raw []byte, gate GateNode) []byte {
 		b.WriteString("check = " + renderString(gate.Check) + "\n")
 		b.WriteString("checkVersion = " + renderString(gate.CheckVersion) + "\n")
 		b.WriteString("checkValue = " + renderString(gate.CheckValue) + "\n")
+	} else {
+		// A draft code gate may hold a version or value before its profile.
+		if gate.CheckVersion != "" {
+			b.WriteString("checkVersion = " + renderString(gate.CheckVersion) + "\n")
+		}
+		if gate.CheckValue != "" {
+			b.WriteString("checkValue = " + renderString(gate.CheckValue) + "\n")
+		}
 	}
 	if len(gate.Files) > 0 {
 		b.WriteString("files = " + renderStringArray(gate.Files) + "\n")
@@ -2224,6 +2248,9 @@ func appendMissionBlock(raw []byte, mission MissionNode) []byte {
 	b.WriteString("beadId = " + renderString(mission.BeadID) + "\n")
 	if len(mission.Files) > 0 {
 		b.WriteString("files = " + renderStringArray(mission.Files) + "\n")
+	}
+	if mission.InputHint != "" {
+		b.WriteString("inputHint = " + renderString(mission.InputHint) + "\n")
 	}
 	if mission.HumanChannel != "" {
 		b.WriteString("humanChannel = " + renderString(mission.HumanChannel) + "\n")

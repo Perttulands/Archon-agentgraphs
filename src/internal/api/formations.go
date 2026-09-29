@@ -77,6 +77,7 @@ type formationsBoardPatchRequest struct {
 	UpdateMission                 *formationsUpdateMissionRequest         `json:"updateMission"`
 	DeleteGate                    *formationsDeleteGateRequest            `json:"deleteGate"`
 	DeleteMission                 *formationsDeleteMissionRequest         `json:"deleteMission"`
+	RestoreNode                   *formationsRestoreNodeRequest           `json:"restoreNode"`
 	AssignSlot                    *formationsAssignSlotRequest            `json:"assignSlot"`
 	MakeController                *formationsMakeControllerRequest        `json:"makeController"`
 	SetBrief                      *formationsSetBriefRequest              `json:"setBrief"`
@@ -85,6 +86,7 @@ type formationsBoardPatchRequest struct {
 	RemoveVerification            *formationsRemoveVerificationRequest    `json:"removeVerification"`
 	AddPort                       *formationsAddPortRequest               `json:"addPort"`
 	RemovePort                    *formationsRemovePortRequest            `json:"removePort"`
+	RestorePort                   *formationsRestorePortRequest           `json:"restorePort"`
 	WireConnection                *formationsWireConnectionRequest        `json:"wireConnection"`
 	UnwireConnection              *formationsWireConnectionRequest        `json:"unwireConnection"`
 	RewireConnection              *formationsRewireConnectionRequest      `json:"rewireConnection"`
@@ -179,6 +181,21 @@ type formationsDeleteMissionRequest struct {
 	UpdatedBy   string `json:"updatedBy"`
 }
 
+// formationsRestoreNodeRequest undoes a node delete: exactly one node as the
+// board document showed it, with the connections that touched it and its
+// layout position.
+type formationsRestoreNodeRequest struct {
+	Mission     *formations.MissionNode      `json:"mission"`
+	Formation   *formations.FormationNode    `json:"formation"`
+	Gate        *formations.GateNode         `json:"gate"`
+	Connections []formations.BoardConnection `json:"connections"`
+	Index       *int                         `json:"index"`
+	X           int                          `json:"x"`
+	Y           int                          `json:"y"`
+	ExpectedRev int                          `json:"expectedRev"`
+	UpdatedBy   string                       `json:"updatedBy"`
+}
+
 type formationsAssignSlotRequest struct {
 	FormationID string `json:"formationId"`
 	SlotID      string `json:"slotId"`
@@ -249,6 +266,18 @@ type formationsRemovePortRequest struct {
 	UpdatedBy   string `json:"updatedBy"`
 }
 
+// formationsRestorePortRequest undoes Remove port: the port as it was, its
+// place among the formation's ports of that direction, and its connections.
+type formationsRestorePortRequest struct {
+	FormationID string                       `json:"formationId"`
+	Direction   string                       `json:"direction"`
+	Port        formations.FormationPort     `json:"port"`
+	Index       int                          `json:"index"`
+	Connections []formations.BoardConnection `json:"connections"`
+	ExpectedRev int                          `json:"expectedRev"`
+	UpdatedBy   string                       `json:"updatedBy"`
+}
+
 type formationsWireConnectionRequest struct {
 	JoinIfOccupied bool   `json:"joinIfOccupied"`
 	From           string `json:"from"`
@@ -301,6 +330,7 @@ var boardPatchMutationKeys = []string{
 	"updateMission",
 	"deleteGate",
 	"deleteMission",
+	"restoreNode",
 	"assignSlot",
 	"makeController",
 	"setBrief",
@@ -309,6 +339,7 @@ var boardPatchMutationKeys = []string{
 	"removeVerification",
 	"addPort",
 	"removePort",
+	"restorePort",
 	"wireConnection",
 	"unwireConnection",
 	"rewireConnection",
@@ -1131,6 +1162,50 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		core.WriteSuccess(w, result)
 		return
 	}
+	if request.RestoreNode != nil {
+		restore := request.RestoreNode
+		result, err := h.store.RestoreNode(slug, formations.NodeRestoreRequest{
+			Mission:     restore.Mission,
+			Formation:   restore.Formation,
+			Gate:        restore.Gate,
+			Connections: restore.Connections,
+			Index:       restore.Index,
+			X:           restore.X,
+			Y:           restore.Y,
+			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, restore.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, restore.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", result.Board.ETag)
+		core.WriteSuccess(w, result)
+		return
+	}
+	if request.RestorePort != nil {
+		restore := request.RestorePort
+		board, err := h.store.RestoreFormationPort(slug, formations.PortRestoreRequest{
+			FormationID: restore.FormationID,
+			Direction:   restore.Direction,
+			Port:        restore.Port,
+			Index:       restore.Index,
+			Connections: restore.Connections,
+			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, restore.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, restore.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", board.ETag)
+		core.WriteSuccess(w, map[string]any{"board": board})
+		return
+	}
 	if request.AssignSlot != nil {
 		assign := request.AssignSlot
 		board, err := h.store.AssignFormationSlot(slug, formations.FormationSlotAssignmentRequest{
@@ -1743,6 +1818,8 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusUnprocessableEntity, formations.ToolExecutionUnavailableCode, "Tool execution is unavailable")
 	case errors.Is(err, formations.ErrRuntimeAuthorityNonAuthorizing):
 		core.WriteError(w, http.StatusServiceUnavailable, "RUNTIME_AUTHORITY_NON_AUTHORIZING", "Formations runtime authority is unavailable")
+	case errors.Is(err, formations.ErrInvalidNodeRestore):
+		core.WriteError(w, http.StatusConflict, "INVALID_NODE_RESTORE", fieldErrorMessage(err, formations.ErrInvalidNodeRestore))
 	case errors.Is(err, formations.ErrInputOccupied):
 		core.WriteError(w, http.StatusConflict, "INPUT_OCCUPIED", err.Error())
 	case errors.Is(err, formations.ErrSelfWire):
