@@ -1,7 +1,29 @@
 // Package terminal attaches to one durably identified Formations seat. Its PTY
-// relay and frames are adapted from CHROTE's native terminal transport
-// (/srv/chrote/src/internal/proxy/terminal.go): the operator types into the seat
-// and sizes their own view, and the seat's window keeps its size.
+// relay, frames, flow control and refusals are ported from CHROTE's native
+// terminal transport (/srv/chrote/src/internal/proxy/terminal.go, re-ported at
+// CHROTE 355ace49 under form-o7p.13.1): the operator types into the seat and
+// sizes their own view, and the seat's window keeps its size.
+//
+// Departures from CHROTE, and why:
+//   - A seat is addressed by the immutable tmux session ID and pane ID its
+//     seat_created event recorded, after proving the socket is the same tmux
+//     server (core.SocketIdentity). CHROTE attaches by session name on a
+//     socket resolved per Unix user; a name can be reused by another session,
+//     and Archon's runtime must never attach an operator to a session it does
+//     not own.
+//   - There are no viewing modes. Every seat terminal attaches with
+//     `-f ignore-size`, as a CHROTE peek does, and the `4` claim frame is
+//     declined: the executor pins each seat window at 160x48 (tmux
+//     `window-size manual`) so agents always see the grid their brief was laid
+//     out for, and no viewer may take the sizing seat.
+//   - The pty starts at the seat's native client grid, not the handshake's, so
+//     even a sole viewer of a seat kept on call never shrinks its window.
+//   - Daemon shutdown closes every terminal with 1001, because hijacked
+//     WebSockets outlive http.Server.Shutdown; CHROTE's terminals end with the
+//     process instead.
+//   - The attach environment also drops TMUX, TMUX_PANE and TMUX_TMPDIR, and
+//     falls back to C.UTF-8, which glibc always provides, where CHROTE falls
+//     back to en_US.UTF-8.
 package terminal
 
 import (
@@ -31,6 +53,10 @@ const (
 	clientResize = '1'
 	clientPause  = '2'
 	clientResume = '3'
+	// clientClaim is CHROTE's request to become the session's one sizing
+	// client. A seat window is pinned, so Archon declines it, as CHROTE does
+	// for a peek.
+	clientClaim = '4'
 
 	serverOutput = '0'
 )
@@ -178,12 +204,22 @@ func (o *Observer) Serve(ctx context.Context, w http.ResponseWriter, r *http.Req
 	conn.SetReadLimit(inputReadLimit)
 	status := o.Probe(ctx, target)
 	if status.State != "live" {
-		finish(websocket.CloseNormalClosure, status.Reason)
+		refuse(conn, finish, status.Reason)
 		return
 	}
 	if err := o.attach(ctx, conn, target, status, finish); err != nil {
-		finish(websocket.CloseNormalClosure, "terminal attach unavailable")
+		refuse(conn, finish, "terminal attach unavailable: "+err.Error())
 	}
+}
+
+// refuse reports a refusal in the terminal itself, then closes with a close
+// frame. As in CHROTE, the pane is the only place an operator looking at a
+// blank terminal sees the reason, and a refusal is an answer, not a lost
+// connection, so the browser must not read it as one and dial it again.
+func refuse(conn *websocket.Conn, finish func(int, string), reason string) {
+	_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
+	_ = conn.WriteMessage(websocket.BinaryMessage, append([]byte{serverOutput}, "Archon: "+reason+"\r\n"...))
+	finish(websocket.CloseNormalClosure, "attach refused")
 }
 
 func (o *Observer) attach(ctx context.Context, conn *websocket.Conn, target Target, size Status, finish func(int, string)) error {
@@ -272,6 +308,8 @@ read:
 			flow.pause()
 		case clientResume:
 			flow.resume()
+		case clientClaim:
+			// Declined: the seat window is pinned and this client ignores size.
 		}
 	}
 	finish(websocket.CloseNormalClosure, "terminal viewer closed")
