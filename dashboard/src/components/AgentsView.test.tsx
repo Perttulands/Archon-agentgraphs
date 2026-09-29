@@ -31,6 +31,53 @@ describe('AgentsView', () => {
     ])
   })
 
+  it('reaches every judge in a reached gate\'s judge chain, and the work behind a Tool', () => {
+    const items = reachableMissionItems(judgedBoard(), 'mission')
+    expect(items.map(item => {
+      const via = item.via ? `${item.via.gateId}/${item.via.branch}` : 'main'
+      return `${item.kind}:${item.id}:${via}:${item.depth}`
+    })).toEqual([
+      'formation:build:main:1',
+      'gate:review:main:3',
+      'formation:judge-a:review/judge:4',
+      'formation:judge-b:review/judge:4',
+      'formation:ship:review/pass:4',
+    ])
+    expect(orderReachableItems(items, null).map(item => item.id)).toEqual(['build', 'review', 'judge-a', 'judge-b', 'ship'])
+  })
+
+  it('counts judge slots in readiness and in a judge persona\'s slots on this mission', async () => {
+    const board = judgedBoard()
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/agents') {
+        return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('critic', { displayName: 'Critic' }), agent('builder', { displayName: 'Builder' })], count: 2 } }))
+      }
+      if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic' }) }, 200, { ETag: 'critic-etag' }))
+      if (url === '/api/formations/boards') {
+        return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'judged', slug: 'judged', title: 'Judged', rev: 3, etag: 'judged-etag' }] } }))
+      }
+      if (url === '/api/formations/boards/judged/layout') return Promise.resolve(jsonResponse({ success: true, data: { layout: { boardId: 'judged', boardRev: 3, etag: 'l', nodes: [] } } }, 200, { ETag: 'l' }))
+      if (url === '/api/formations/boards/judged') return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'judged-etag' }))
+      return Promise.reject(new Error(`unexpected fetch ${url}`))
+    })
+
+    render(<AgentsView />)
+
+    expect(await screen.findByText('Second judge')).toBeInTheDocument()
+    expect(screen.getByText('First judge')).toBeInTheDocument()
+    expect(screen.getAllByText('judges Review')).toHaveLength(2)
+    expect(screen.getByText('judged by First judge → Second judge')).toBeInTheDocument()
+    expect(screen.getByText('3/4 slots staffed · 1 open')).toBeInTheDocument()
+    expect(screen.queryByText(/ready/)).not.toBeInTheDocument()
+    expect(within(screen.getByRole('complementary', { name: 'Agent roster' })).getByText('2 · 2 on mission')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Critic' }))
+    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    expect(within(inspector).getByText('First judge')).toBeInTheDocument()
+    expect(within(inspector).queryByText('No slots on this mission.')).not.toBeInTheDocument()
+  })
+
   it('orders staffing by the wiring from the mission, using the canvas only between parallel branches', () => {
     const board = missionBoard()
     const layout: LayoutDocument = {
@@ -576,6 +623,32 @@ function missionLayout(): LayoutDocument {
       { id: 'escalate-fail', x: 400, y: 180 },
     ],
   }
+}
+
+/** Mission → Build → Tool → Review gate; the gate is judged by a two-formation chain. */
+function judgedBoard(): BoardDocument {
+  const solo = (id: string, title: string, agentId?: string) => ({
+    id, type: 'solo' as const, title,
+    inputs: [{ id: 'in', label: 'Input' }],
+    outputs: [{ id: 'out', label: 'Output' }],
+    slots: [{ id: 'agent', label: 'Agent', controller: true, harness: 'claude-code', ...(agentId ? { agentId } : {}) }],
+  })
+  return {
+    id: 'judged', slug: 'judged', title: 'Judged', rev: 3, etag: 'judged-etag',
+    missions: [{ id: 'mission', title: 'Mission', goal: 'Ship it' }],
+    formations: [solo('build', 'Build', 'builder'), solo('judge-a', 'First judge', 'critic'), solo('judge-b', 'Second judge'), solo('ship', 'Ship', 'builder')],
+    tools: [{ id: 'lint', title: 'Lint', profileId: 'shell', profileVersion: '1', params: {}, inputs: [{ id: 'in' }], outputs: [{ id: 'out' }] }],
+    gates: [{ id: 'review', title: 'Review', kinds: ['formation'], criterion: 'The judges accept it.' }],
+    connections: [
+      { id: 'c1', from: 'mission:out', to: 'build:in' },
+      { id: 'c2', from: 'build:out', to: 'lint:in' },
+      { id: 'c3', from: 'lint:out', to: 'review:in' },
+      { id: 'c4', from: 'review:judge', to: 'judge-a:in' },
+      { id: 'c5', from: 'judge-a:out', to: 'judge-b:in' },
+      { id: 'c6', from: 'judge-b:out', to: 'review:judge' },
+      { id: 'c7', from: 'review:pass', to: 'ship:in' },
+    ],
+  } as BoardDocument
 }
 
 function emptyBoard(): BoardDocument {

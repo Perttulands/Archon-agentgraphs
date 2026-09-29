@@ -62,6 +62,7 @@
 .agx-branches { display:flex; flex-wrap:wrap; gap:3px 10px; margin-top:5px; font-size:9px; letter-spacing:.08em; text-transform:uppercase; }
 .agx-branches .pass { color:var(--sage); }
 .agx-branches .fail { color:var(--terra-d); }
+.agx-branches .judge { color:var(--gold); }
 .agx .formation.state-waiting,.agx .formation.state-blocked,
 .agx .gatecard.state-waiting,.agx .gatecard.state-blocked { box-shadow:0 0 0 1.5px var(--gold); }
 .agx .formation.state-failed,.agx .gatecard.state-failed { box-shadow:0 0 0 1.5px var(--terra-d); }

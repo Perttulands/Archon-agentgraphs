@@ -9,6 +9,7 @@ import {
   fetchBoardSummaries,
   patchBoardDocument,
 } from './formationsApi'
+import { judgeChain } from '../flow/flowModel'
 import { runStatusLabel } from './formationsRunDiscovery'
 import { projectNodeStates } from './formationsRunState'
 import {
@@ -99,9 +100,12 @@ export type ReachableMissionItem = {
   via?: BranchProvenance
 }
 
+type BranchLabels = { pass: string[]; fail: string[]; judge: string[] }
+
 type BranchProvenance = {
   gateId: string
-  branch: 'pass' | 'fail'
+  /** `judge` marks a formation in the gate's judge chain. */
+  branch: 'pass' | 'fail' | 'judge'
 }
 
 type CreateDraft = {
@@ -134,10 +138,16 @@ const EMPTY_CREATE: CreateDraft = {
   capabilities: '',
 }
 
+/**
+ * Everything a run of the mission can reach: formations and gates along
+ * outputs and pass/fail routes, the judge chain of every reached gate, and the
+ * work behind Tools (which have no slots, so they are walked, not listed).
+ */
 export function reachableMissionItems(board: BoardDocument, missionId: string): ReachableMissionItem[] {
   const formationIds = new Set(board.formations.map(formation => formation.id))
   const gateIds = new Set((board.gates || []).map(gate => gate.id))
   const formationById = new Map(board.formations.map(formation => [formation.id, formation]))
+  const toolById = new Map((board.tools || []).map(tool => [tool.id, tool]))
   const outgoing = new Map<string, string[]>()
   for (const connection of board.connections || []) {
     const list = outgoing.get(connection.from) || []
@@ -157,11 +167,12 @@ export function reachableMissionItems(board: BoardDocument, missionId: string): 
       const item = via ? { kind, id, depth, via } : { kind, id, depth }
       seenNodes.set(key, item)
       result.push(item)
-      return
+      return false
     }
     if (!sameProvenance(existing.via, via)) {
       delete existing.via
     }
+    return true
   }
 
   while (queue.length > 0) {
@@ -182,11 +193,25 @@ export function reachableMissionItems(board: BoardDocument, missionId: string): 
         continue
       }
       if (gateIds.has(nodeId)) {
-        recordNode('gate', nodeId, depth, nextEndpoint.via)
+        // A judge chain returns to its gate's judge port; that is not a new arrival.
+        if (next === `${nodeId}:judge`) continue
+        const seenBefore = recordNode('gate', nodeId, depth, nextEndpoint.via)
+        if (!seenBefore) {
+          // Judges decide before either branch runs: one step past the gate, kept in chain order.
+          judgeChain(board, nodeId)
+            .filter(judgeId => formationIds.has(judgeId))
+            .forEach(judgeId => recordNode('formation', judgeId, depth + 1, { gateId: nodeId, branch: 'judge' }))
+        }
         queue.push(
           { endpoint: `${nodeId}:pass`, depth, via: { gateId: nodeId, branch: 'pass' } },
           { endpoint: `${nodeId}:fail`, depth, via: { gateId: nodeId, branch: 'fail' } },
         )
+        continue
+      }
+      const tool = toolById.get(nodeId)
+      if (tool) {
+        const outputs = tool.outputs?.length ? tool.outputs : [{ id: 'out' }]
+        outputs.forEach(output => queue.push({ endpoint: `${nodeId}:${output.id}`, depth, via: nextEndpoint.via }))
       }
     }
   }
@@ -256,12 +281,12 @@ export default function AgentsView() {
   }, [reachableItems])
 
   const gateBranchLabels = useMemo(() => {
-    const map = new Map<string, { pass: string[]; fail: string[] }>()
+    const map = new Map<string, BranchLabels>()
     if (!board) return map
     const formationTitles = new Map(board.formations.map(formation => [formation.id, formation.title]))
     for (const item of reachableItems) {
       if (item.kind !== 'formation' || !item.via) continue
-      const labels = map.get(item.via.gateId) || { pass: [], fail: [] }
+      const labels = map.get(item.via.gateId) || { pass: [], fail: [], judge: [] }
       labels[item.via.branch].push(formationTitles.get(item.id) || item.id)
       map.set(item.via.gateId, labels)
     }
@@ -772,6 +797,10 @@ export function orderReachableItems(items: ReachableMissionItem[], layout: Layou
   const position = new Map((layout?.nodes || []).map(node => [node.id, node]))
   return [...items].sort((a, b) => {
     if (a.depth !== b.depth) return a.depth - b.depth
+    // A gate's judges decide before its branches run.
+    const aJudge = a.via?.branch === 'judge'
+    if (aJudge !== (b.via?.branch === 'judge')) return aJudge ? -1 : 1
+    if (aJudge && a.via?.gateId === b.via?.gateId) return items.indexOf(a) - items.indexOf(b)
     const ap = position.get(a.id)
     const bp = position.get(b.id)
     if (ap && bp && (ap.y !== bp.y || ap.x !== bp.x)) return ap.y === bp.y ? ap.x - bp.x : ap.y - bp.y
@@ -888,7 +917,9 @@ function FormationStaffingCard({
 }) {
   if (!formation) return null
   const open = formation.slots.filter(slot => !slot.agentId).length
-  const fallbackLabel = via?.branch === 'fail' ? `fallback on ${viaGateTitle || via.gateId} fail` : ''
+  const fallbackLabel = via?.branch === 'fail'
+    ? `fallback on ${viaGateTitle || via.gateId} fail`
+    : via?.branch === 'judge' ? `judges ${viaGateTitle || via.gateId}` : ''
   const summary = formationSummary(formation)
   return (
     <section className={`formation type-${formation.type}${nodeState === 'running' ? ' running' : ''}${nodeState ? ` state-${nodeState}` : ''}`}>
@@ -975,7 +1006,7 @@ function GateRow({
 }: {
   gate: GateNode | null
   state: string
-  branchLabels?: { pass: string[]; fail: string[] }
+  branchLabels?: BranchLabels
 }) {
   if (!gate) return null
   const title = gate.title || 'Gate'
@@ -987,8 +1018,9 @@ function GateRow({
         <span className="gt">{title}</span>
         <GateKindChips gateId={gate.id} kinds={gate.kinds} />
         <span className="gs" title={criterion}>{criterion}</span>
-        {Boolean(branchLabels?.pass.length || branchLabels?.fail.length) && (
+        {Boolean(branchLabels?.pass.length || branchLabels?.fail.length || branchLabels?.judge.length) && (
           <span className="agx-branches" aria-label={`${title} branch targets`}>
+            {branchLabels?.judge.length ? <span className="judge">judged by {branchLabels.judge.join(' → ')}</span> : null}
             {branchLabels?.pass.length ? <span className="pass">pass → {branchLabels.pass.join(', ')}</span> : null}
             {branchLabels?.fail.length ? <span className="fail">fail → {branchLabels.fail.join(', ')}</span> : null}
           </span>
