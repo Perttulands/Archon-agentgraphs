@@ -347,8 +347,9 @@ its neighbours, its next links and the title bars of open windows visible and
 clickable, and cascades when no free space is left. Menus opened from the run
 bar render above every window.
 
-The cockpit's floating Peek attaches to an owned live seat and sends typing and
-resize as CHROTE's terminals do, through the seat terminal WebSocket below. The
+The cockpit's floating Peek attaches to an owned live seat and sends typing
+through the seat terminal WebSocket below. Its resizes change only the viewer's
+own view; the seat keeps its pinned size. The
 operator types to the agent whether it is working a dispatch, on call or idle.
 Seat terminals are re-ported from CHROTE's terminal (form-o7p.13.1). Each holds
 the seat's native grid and fits its font to its window: the largest font up to

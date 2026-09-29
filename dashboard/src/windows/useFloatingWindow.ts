@@ -236,6 +236,7 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
       cleanupRef.current?.()
       const grabbedAt = { x: event.clientX, y: event.clientY }
       const area = workspace()
+      const wasSized = sized.current
       let last = start
       setActiveHandle(direction.id)
       const end = (keep: boolean) => {
@@ -243,12 +244,26 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
         cleanupRef.current = null
         setActiveHandle(null)
         if (keep && last !== start) remember(last)
-        if (!keep) setRect(start)
+        if (!keep) {
+          setRect(start)
+          // A cancelled first drag is not the operator sizing the window.
+          if (!wasSized) {
+            sized.current = false
+            setSizedByOperator(false)
+          }
+        }
       }
       cleanupRef.current = capturePointerDrag(event.currentTarget, event.pointerId, {
         move: moveEvent => {
           const next = resizeWindowRect(start, direction, moveEvent.clientX - grabbedAt.x, moveEvent.clientY - grabbedAt.y, area, placement.current.minimum)
           if (!next) return
+          // The operator is sizing the window from the first move: stop any
+          // self-fitting (fitTo) so it cannot pull the window back mid-drag,
+          // as CHROTE's Peek follows the dragged size while resizing.
+          if (!sized.current) {
+            sized.current = true
+            setSizedByOperator(true)
+          }
           last = next
           setRect(next)
         },

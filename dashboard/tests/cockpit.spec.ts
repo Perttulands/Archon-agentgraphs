@@ -72,12 +72,38 @@ for (const width of [1440, 390]) test(`floating Peek shows the seat's whole grid
   if (width === 1440) {
     // Sizing the window larger fits a larger font until the whole grid shows;
     // the seat keeps its size.
-    // Grown up and to the right with the frame's keyboard resize, 16px per arrow.
+    // Grown up and to the right by dragging the corner. The first drag is the
+    // operator sizing the window, so Peek must not fit itself back mid-drag.
     const before = (await page.locator('.xterm-screen').boundingBox())!
-    await peek.locator('[data-handle="n"]').focus()
-    for (let i = 0; i < 30; i++) await page.keyboard.press('ArrowUp')
-    await peek.locator('[data-handle="e"]').focus()
-    for (let i = 0; i < 30; i++) await page.keyboard.press('ArrowRight')
+    const corner = (await page.locator('.floating-peek [data-handle="ne"]').boundingBox())!
+    const peekBox = (await peek.boundingBox())!
+    const target = { x: corner.x + Math.min(500, 1370 - peekBox.x - peekBox.width), y: Math.max(160, corner.y - 500) }
+    const grab = { x: corner.x + corner.width / 2, y: corner.y + corner.height / 2 }
+    await page.mouse.move(grab.x, grab.y)
+    await page.mouse.down()
+    // Unpaced moves, faster than a frame: the window must follow the pointer
+    // every step and never shrink back to wrap the grid mid-drag.
+    const sizes: { width: number, height: number }[] = []
+    for (let i = 1; i <= 24; i++) {
+      await page.mouse.move(grab.x + (target.x - grab.x) * i / 24, grab.y + (target.y - grab.y) * i / 24)
+      const box = (await peek.boundingBox())!
+      sizes.push({ width: box.width, height: box.height })
+    }
+    await page.mouse.up()
+    for (let i = 1; i < sizes.length; i++) {
+      expect(sizes[i].width, `width shrank mid-drag at step ${i}`).toBeGreaterThanOrEqual(sizes[i - 1].width - 1)
+      expect(sizes[i].height, `height shrank mid-drag at step ${i}`).toBeGreaterThanOrEqual(sizes[i - 1].height - 1)
+    }
+    await page.waitForTimeout(300)
+    const dragged = (await peek.boundingBox())!
+    // The drag grew the window both ways (the workspace edge may clamp it), and
+    // what is remembered is the size the window really has.
+    expect(dragged.width).toBeGreaterThan(peekBox.width + 100)
+    expect(dragged.height).toBeGreaterThan(peekBox.height + 100)
+    const remembered = await page.evaluate(() => JSON.parse(localStorage.getItem('archon.floatingWindowSize.v1') || 'null')?.sizes?.peek ?? null)
+    expect(remembered, 'the dragged size is remembered').not.toBeNull()
+    expect(Math.abs(remembered.width - dragged.width)).toBeLessThan(2)
+    expect(Math.abs(remembered.height - dragged.height)).toBeLessThan(2)
     await expect.poll(async () => (await page.locator('.xterm-screen').boundingBox())!.width).toBeGreaterThan(before.width)
     await expect.poll(() => room.evaluate(el => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight)).toBe(true)
     await expect(peek.getByRole('button', { name: 'End of line' })).toHaveCount(0)
