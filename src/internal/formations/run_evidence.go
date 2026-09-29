@@ -163,7 +163,17 @@ type EvidenceProblem struct {
 	Code          string       `json:"code,omitempty"`
 	Reason        EvidenceText `json:"reason"`
 	ResumeAllowed *bool        `json:"resumeAllowed,omitempty"`
+	// Actor is who ended the run, on a run_failed or run_canceled.
+	Actor string `json:"actor,omitempty"`
+	// ResumedSeq is the run_resumed that followed a block, so a block the run
+	// moved past is not read as what stopped it.
+	ResumedSeq int `json:"resumedSeq,omitempty"`
+	// Limit is the run limit a block exhausted.
+	Limit *RunLimitReached `json:"limit,omitempty"`
 }
+
+// RunFailureActor is who a coordinator failure names as having ended the run.
+const RunFailureActor = "archond"
 
 // EvidenceNodeDefinition carries only display names and outgoing topology from
 // the admitted board. Editing the current board cannot rename or reorder a
@@ -327,7 +337,7 @@ func projectNodeEvidence(runID, nodeID, kind string, events []RunEvent, final bo
 		}
 	}
 	dispatchByID := map[string][2]int{}
-	for _, event := range events {
+	for index, event := range events {
 		switch event.Type {
 		case RunEventNodeStarted:
 			if event.NodeID != nodeID {
@@ -459,11 +469,11 @@ func projectNodeEvidence(runID, nodeID, kind string, events []RunEvent, final bo
 			verdict.PerKind = stringMapFromRunEventData(event.Data["perKind"])
 			verdict.Evidence, verdict.EvidenceOmitted = evidenceItems(event.Data["evidence"], capper)
 			evaluation.Verdict = verdict
-		case RunEventBlocked, RunEventError:
-			if !slices.Contains(evidenceProblemNodes(event), nodeID) {
+		case RunEventBlocked, RunEventError, RunEventFailed, RunEventCanceled:
+			if !slices.Contains(runProblemNodes(events, index), nodeID) {
 				continue
 			}
-			evidence.Problems = append(evidence.Problems, evidenceProblem(event, capper))
+			evidence.Problems = append(evidence.Problems, evidenceProblem(events, index, capper))
 		}
 	}
 	return evidence
@@ -485,17 +495,95 @@ func currentEvidenceEvaluation(evidence *NodeEvidence, event RunEvent) *Evidence
 	return &evidence.Evaluations[len(evidence.Evaluations)-1]
 }
 
-func evidenceProblem(event RunEvent, capper *evidenceCapper) EvidenceProblem {
+// evidenceProblem reads the block, error or run end at index. A run end says
+// who ended it and why; a block says whether it was resumed and which limit,
+// if any, it exhausted.
+func evidenceProblem(events []RunEvent, index int, capper *evidenceCapper) EvidenceProblem {
+	event := events[index]
 	problem := EvidenceProblem{Seq: event.Seq, Type: event.Type, Code: stringFromEventData(event, "code")}
 	reason := stringFromEventData(event, "reason")
 	if reason == "" {
 		reason = stringFromEventData(event, "message")
 	}
+	switch event.Type {
+	case RunEventFailed:
+		// The coordinator records a code as the reason and the cause as detail.
+		if detail := stringFromEventData(event, "detail"); detail != "" {
+			if problem.Code == "" {
+				problem.Code = reason
+			}
+			reason = detail
+		}
+		problem.Actor = runEndActor(event)
+	case RunEventCanceled:
+		problem.Actor = runEndActor(event)
+	case RunEventBlocked:
+		problem.Limit = runLimitReached(events, index)
+		if problem.Code == "" && problem.Limit != nil {
+			problem.Code = runBlockCode(events, index)
+		}
+		problem.ResumedSeq = runResumedAfter(events, index)
+	}
 	problem.Reason = capper.text(reason)
-	if allowed, ok := event.Data["resumeAllowed"].(bool); ok {
+	if _, ok := event.Data["resumeAllowed"].(bool); ok {
+		allowed := event.Type == RunEventBlocked && runBlockResumeAllowed(events, index) || event.Type != RunEventBlocked && boolFromEventData(event, "resumeAllowed")
 		problem.ResumeAllowed = &allowed
 	}
 	return problem
+}
+
+// runResumedAfter is the seq of the run_resumed that ended the block at index,
+// or 0 when the block still holds or the run ended from it.
+func runResumedAfter(events []RunEvent, index int) int {
+	for _, event := range events[index+1:] {
+		switch event.Type {
+		case RunEventResumed:
+			return event.Seq
+		case RunEventBlocked, RunEventCanceled, RunEventFailed, RunEventSucceeded:
+			return 0
+		}
+	}
+	return 0
+}
+
+// runProblemNodes are the nodes a problem names. A run end that names none,
+// such as a coordinator failure or a cancel, belongs to the nodes it stopped:
+// those still running, evaluating or waiting for the operator.
+func runProblemNodes(events []RunEvent, index int) []string {
+	nodes := evidenceProblemNodes(events[index])
+	if len(nodes) > 0 || !isFinalRunEvent(events[index].Type) {
+		return nodes
+	}
+	return runOpenNodesAt(events, index)
+}
+
+// runOpenNodesAt lists, in the order they opened, the nodes that had started
+// and not finished before index: a formation without output, a gate
+// evaluating or waiting for a human answer without a verdict.
+func runOpenNodesAt(events []RunEvent, index int) []string {
+	open := []string{}
+	closeNode := func(nodeID string) {
+		open = slices.DeleteFunc(open, func(candidate string) bool { return candidate == nodeID })
+	}
+	for _, event := range events[:index] {
+		gateID := event.GateID
+		if gateID == "" {
+			gateID = event.NodeID
+		}
+		switch event.Type {
+		case RunEventNodeStarted:
+			closeNode(event.NodeID)
+			open = append(open, event.NodeID)
+		case RunEventNodeOutput:
+			closeNode(event.NodeID)
+		case RunEventGateEvaluating, RunEventHumanInputRequested:
+			closeNode(gateID)
+			open = append(open, gateID)
+		case RunEventGateVerdict, RunEventHumanVerdictRecorded:
+			closeNode(gateID)
+		}
+	}
+	return slices.DeleteFunc(open, func(nodeID string) bool { return nodeID == "" })
 }
 
 // evidenceProblemNodes are the nodes a block or error names: its own node and
@@ -537,7 +625,8 @@ type RunProblem struct {
 	NodeIDs []string `json:"nodeIds"`
 }
 
-// ProjectRunProblems reads every block and error a run recorded, oldest first.
+// ProjectRunProblems reads every block and error a run recorded, and the
+// failure or cancel that ended it, oldest first.
 // The response budget is spent on the latest first, so the current block's
 // reason is served even when earlier ones filled the budget.
 func (s *Store) ProjectRunProblems(runID string) ([]RunProblem, error) {
@@ -552,8 +641,9 @@ func projectRunProblems(events []RunEvent) []RunProblem {
 	capper := &evidenceCapper{remaining: EvidenceNodeBudgetBytes}
 	problems := []RunProblem{}
 	for i := len(events) - 1; i >= 0; i-- {
-		if event := events[i]; event.Type == RunEventBlocked || event.Type == RunEventError {
-			problems = append(problems, RunProblem{EvidenceProblem: evidenceProblem(event, capper), NodeIDs: evidenceProblemNodes(event)})
+		switch events[i].Type {
+		case RunEventBlocked, RunEventError, RunEventFailed, RunEventCanceled:
+			problems = append(problems, RunProblem{EvidenceProblem: evidenceProblem(events, i, capper), NodeIDs: runProblemNodes(events, i)})
 		}
 	}
 	slices.Reverse(problems)

@@ -221,7 +221,13 @@ timestamps, so they survive restarts, and a request still waiting never runs
 the clock out. A dispatch that exceeds it blocks the run with
 `wall_clock_exceeded`. Formation allocations also bound real agent execution.
 Limit exhaustion and unresolved execution leave visible blocks rather than
-claiming success.
+claiming success. A block that exhausts attempts or dispatches
+(`resume_attempts_exhausted`, `revise_loop_exhausted`,
+`max_dispatch_exceeded`) records `resumeAllowed: false` and `resumePolicy:
+limit_exhausted`, because resuming could only block again; its run evidence
+names the limit as `limit` (`kind` `attempts` or `dispatches`, `nodeId`,
+`used`, `max`). Older ledgers that recorded such a block as resumable project
+the same way and reject a resume.
 
 A formation may author `[formation.execution]` with a positive
 `timeoutSeconds`. That allocation covers the whole attempt: seat startup,
@@ -239,7 +245,8 @@ policy; that default was not frozen in their run record.
 
 The projection reports `running`, `waiting_human`, `blocked`, `succeeded`,
 `failed` or `canceled`. Always check `final` and `resumeAllowed`; a blocked run
-is not a completed delivery. Events expose node, slot and gate identities,
+is not a completed delivery. A failed or canceled run names who ended it in
+`endedBy`; why is in its run evidence problems. Events expose node, slot and gate identities,
 attempt, status/verdict, session display name and cleanup outcome where
 applicable.
 Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
@@ -333,6 +340,12 @@ outputs feed nothing), or a running run's latest step, and a menu holds the
 rest, including artifact files no output names. A chip opens the file in a
 floating file window, rendered by kind, with Open raw and Copy path (relative to
 the state directory) for artifacts; several can be open side by side.
+Node, note and file windows open in the free space nearest what opened them:
+Flow's gutters, or the canvas above and below the graph, shrinking to half
+their remembered size at most to fit. A window leaves its own card or Flow row,
+its neighbours, its next links and the title bars of open windows visible and
+clickable, and cascades when no free space is left. Menus opened from the run
+bar render above every window.
 
 The cockpit's floating Peek attaches to an owned live seat and sends typing and
 resize as CHROTE's terminals do, through the seat terminal WebSocket below. The
@@ -996,11 +1009,17 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   in `evidenceOmitted`; one response carries at most 2 MiB of text, after which
   texts are empty and truncated. An unknown node returns 404.
 - `/api/formations/runs/{runId}/evidence/problems` returns `data.problems`,
-  every block and error of the run oldest first: `seq`, `type`, `code`,
-  `reason`, `resumeAllowed` and `nodeIds`, the nodes it names (its node or
-  gate, the blocked node or gate, and nodes with open dispatches). A block that
-  names no node, such as an exceeded wall clock, has empty `nodeIds` and its
-  reason. The 2 MiB budget is spent on the latest first.
+  every block and error of the run and the `run_failed` or `run_canceled` that
+  ended it, oldest first: `seq`, `type`, `code`, `reason`, `resumeAllowed` and
+  `nodeIds`, the nodes it names (its node or gate, the blocked node or gate,
+  and nodes with open dispatches). A block that names no node, such as an
+  exceeded wall clock, has empty `nodeIds` and its reason. A run end that names
+  no node lists the nodes it stopped: formations without output and gates
+  without a verdict. A run end carries `actor`, who ended it (`archond` for a
+  coordinator failure, whose cause is its `reason` and code its `code`). A
+  block the run later resumed carries `resumedSeq`; a limit block carries
+  `limit`. Node evidence `problems` include the same run end for the nodes it
+  stopped. The 2 MiB budget is spent on the latest first.
 - `/api/formations/runs/{runId}/evidence/briefs/{dispatchSeq}` returns
   `data.brief` (`dispatchSeq`, `nodeId`, `slotId`, `attempt`, `text` capped at
   256 KiB): the brief that this run's `slot_dispatch` at that sequence sent to
@@ -1025,7 +1044,19 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   view of a human request still waiting for an answer. For the gate's latest
   request, while it is pending, it returns `gateId`, `requestedSeq`, the frozen
   `criterion` and the routed input: `fromNodeId`, `fromPortId`, `text` capped at
-  64 KiB, and `truncated`. An unknown run or gate returns 404; a decided request
+  64 KiB, and `truncated`. `routes` says where each verdict leads on the
+  run's frozen board: `verdict` (`pass`, `fail`), `targets` (`nodeId`,
+  `title`, `kind`, and for a formation the `attempt` it would start, the
+  engine's effective `maxAttempts` (1 when the run set none) and
+  `waitsForInputs` for a join still missing another input), `endsRun` for an
+  approval with nothing downstream when every reachable formation has output
+  and no other gate or step is open, `nothingFollows` for an approval with
+  nothing downstream while the run has other work, `unwired` for a send-back
+  with no route, `dispatches` (`used`, `max`) and `dispatchesNeeded` (judges
+  included) when the route starts formations under a dispatch limit, and
+  `limit` when a limit the route needs is already spent, so taking it blocks
+  the run. When the frozen board cannot be read, `routes` is omitted. An
+  unknown run or gate returns 404; a decided request
   returns 409. After the verdict, the gate's node evidence holds the same input
   with the response.
 

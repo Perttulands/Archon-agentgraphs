@@ -71,7 +71,8 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   expect(overlaps(plannerBox, panelBox)).toBe(false)
   expect(overlaps(codexBox, panelBox)).toBe(false)
   expect(overlaps(codexBox, plannerBox)).toBe(false)
-  expect(plannerBox!.x + plannerBox!.width).toBeLessThanOrEqual(panelBox!.x)
+  // The answer window opens clear of the gate and where it leads (form-n7u.7); the first seat sits on either side of it.
+  expect(plannerBox!.x + plannerBox!.width <= panelBox!.x || plannerBox!.x >= panelBox!.x + panelBox!.width).toBe(true)
 
   // The first seat takes the keyboard as it opens; Escape goes to the agent, not the window.
   await expect.poll(() => fixture.resizes(21).length).toBeGreaterThan(0)
@@ -89,10 +90,13 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   expect(fixture.typed(21)).toBe('Settle 1 and 3 first\r\x1b')
   const before = fixture.resizes(22).at(-1)!
   const plannerResizes = fixture.resizes(21).length
-  const corner = (await codex.locator('.floating-frame-handle[data-handle="se"]').boundingBox())!
-  await page.mouse.move(corner.x + 6, corner.y + 6)
+  // Grow the window taller towards whichever edge has room; windows open in free space, sometimes at the canvas's foot.
+  const codexNow = (await codex.boundingBox())!
+  const growUp = codexNow.y + codexNow.height + 186 > 1080 - 8
+  const edge = (await codex.locator(`.floating-frame-handle[data-handle="${growUp ? 'n' : 's'}"]`).boundingBox())!
+  await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2)
   await page.mouse.down()
-  await page.mouse.move(corner.x + 6, corner.y + 186, { steps: 8 })
+  await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2 + (growUp ? -180 : 180), { steps: 8 })
   await page.mouse.up()
   await expect.poll(() => fixture.resizes(22).at(-1)!.rows).toBeGreaterThan(before.rows)
   expect(fixture.resizes(21)).toHaveLength(plannerResizes)

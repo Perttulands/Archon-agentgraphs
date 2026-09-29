@@ -112,10 +112,11 @@ test('two floating windows open, resize, stack and stay off the zoom column', as
   await expect(run).toBeVisible()
   const z = (win: typeof run) => win.evaluate(el => Number(getComputedStyle(el).zIndex))
   expect(await z(run)).toBeGreaterThan(await z(peer))
-  const peerBox = (await peer.boundingBox())!
   const before = (await run.boundingBox())!
-  expect(before.x).toBeGreaterThan(peerBox.x)
-  expect(before.y).toBeGreaterThan(peerBox.y)
+  // The run window opens clear of the peer window's title bar, so both can still be grabbed.
+  const peerHead = (await peer.locator('.peek-head').boundingBox())!
+  expect(before.y >= peerHead.y + peerHead.height || before.y + before.height <= peerHead.y
+    || before.x >= peerHead.x + peerHead.width || before.x + before.width <= peerHead.x).toBe(true)
 
   const corner = (await run.locator('[data-handle="se"]').boundingBox())!
   await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2)
@@ -127,7 +128,7 @@ test('two floating windows open, resize, stack and stay off the zoom column', as
   expect(after.y).toBeCloseTo(before.y, 0)
   expect(after.width * after.height).toBeGreaterThan(before.width * before.height)
 
-  // The run window cascaded below and right of the peer window, so the peer's top-left header corner stays uncovered.
+  // The peer's header stays uncovered even after the run window grew.
   const head = (await peer.locator('.peek-head').boundingBox())!
   await page.mouse.move(head.x + 8, head.y + 8)
   await page.mouse.down()
@@ -174,14 +175,24 @@ test('a finished run opens what it produced from the run bar and cards in file w
   await expect(review.getByRole('heading', { name: 'Peer review' })).toBeVisible()
   await expect(review.locator('strong', { hasText: 'revise' })).toBeVisible()
   await expect(review.getByRole('link', { name: 'Open raw' })).toHaveAttribute('href', '/api/formations/runs/run_browser/artifacts/review.md')
-  // Each window opens beside where it was opened: the card's chip beside the card, the run bar's below the bar.
+  // Each window opens near where it was opened, clear of it and of the other: the card's chip by the card, the run bar's below the bar.
   const card = (await page.locator('[data-node="execution"]').boundingBox())!
   const opened = (await result.boundingBox())!
-  expect(opened.x >= card.x + card.width || opened.x + opened.width <= card.x || opened.y >= card.y + card.height || opened.y + opened.height <= card.y).toBe(true)
+  const apart = (a: typeof card, b: typeof card) => a.x >= b.x + b.width || a.x + a.width <= b.x || a.y >= b.y + b.height || a.y + a.height <= b.y
+  // The gap between two boxes along the axis that separates them.
+  const gap = (a: typeof card, b: typeof card) => Math.hypot(Math.max(0, b.x - (a.x + a.width), a.x - (b.x + b.width)), Math.max(0, b.y - (a.y + a.height), a.y - (b.y + b.height)))
+  expect(apart(opened, card)).toBe(true)
+  const chip = (await page.getByTestId('produced-execution').getByRole('button', { name: 'Result' }).boundingBox())!
+  expect(gap(opened, chip)).toBeLessThanOrEqual(240)
   const bar = (await produced.boundingBox())!
   const below = (await review.boundingBox())!
   expect(below.y).toBeGreaterThanOrEqual(bar.y + bar.height)
-  expect(Math.abs(below.x - bar.x)).toBeLessThanOrEqual(1)
+  expect(apart(below, opened)).toBe(true)
+  // A run bar file opens where it lives: right below the bar, by its chip, over cards if need be but clear of the other window.
+  const reviewChip = (await produced.getByRole('button', { name: 'review.md' }).boundingBox())!
+  expect(gap(below, reviewChip)).toBeLessThanOrEqual(240)
+  const banner = (await page.getByTestId('run-banner').boundingBox())!
+  expect(apart(below, banner)).toBe(true)
 
   // Drag the review to the right of the canvas and the result to the left, so the two sit side by side.
   // The review, on top, moves right by its title; the result then moves left by the start of its own title.

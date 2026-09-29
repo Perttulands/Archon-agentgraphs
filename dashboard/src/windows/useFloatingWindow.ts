@@ -22,8 +22,9 @@ import {
   type FloatingWindowKind,
   type FrameSize,
 } from './floatingWindowSize'
-import { WINDOW_Z_BASE, useWindowStack } from './WindowManager'
-import { keepInWorkspace, moveWindowRect, placeBeside, placeWindow, resizeWindowRect, type HandleAxis, type WindowRect, type Workspace } from './windowGeometry'
+import { WINDOW_Z_BASE, useWindowStack, type WindowStack } from './WindowManager'
+import { keepInWorkspace, moveWindowRect, resizeWindowRect, type HandleAxis, type WindowRect } from './windowGeometry'
+import { placeOpeningWindow } from './windowPlacement'
 
 export type FrameHandleId = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
@@ -71,10 +72,18 @@ export interface UseFloatingWindowOptions {
   minimum?: FrameSize
   /**
    * Where the thing the window belongs to sits, in viewport pixels, read as the
-   * window opens. The window opens beside it; without one, or when it is out of
-   * view, the window opens centred.
+   * window opens. The window opens in free space near it and never covers it
+   * when it can avoid it; without one the window opens near the centre.
    */
   anchor?: () => WindowRect | null
+  /**
+   * What the window must leave visible and clickable, read as it opens: the
+   * node's neighbours, its next link, or a downstream node the window talks
+   * about. See windowPlacement.ts.
+   */
+  keepClear?: () => readonly WindowRect[]
+  /** Whether the anchor is a node on the canvas or a control outside it, such as a run bar chip; see PlacementScene. */
+  anchorKind?: 'node' | 'control'
   onClose: () => void
 }
 
@@ -102,9 +111,15 @@ export interface FloatingWindow<T extends HTMLElement> {
 // A press on a control in the title bar uses the control, not the window.
 const CONTROL = 'button,select,input,textarea,a,[role="separator"]'
 
-function openingRect(size: FrameSize, workspace: Workspace, minimum: FrameSize, cascade: number, anchor?: () => WindowRect | null): WindowRect {
-  const beside = anchor?.()
-  return (beside && placeBeside(size, beside, workspace, minimum)) || placeWindow(size, workspace, minimum, cascade)
+function openingRect(stack: WindowStack, id: string, size: FrameSize, minimum: FrameSize, anchor?: () => WindowRect | null, keepClear?: () => readonly WindowRect[], anchorKind?: 'node' | 'control'): WindowRect {
+  return placeOpeningWindow(size, minimum, {
+    workspace: stack.workspace(),
+    anchor: anchor?.() ?? null,
+    anchorKind,
+    keepClear: keepClear?.() ?? [],
+    windows: stack.openRects(id),
+    ...stack.scene(),
+  })
 }
 
 export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
@@ -114,16 +129,20 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   defaultSize,
   minimum = FLOATING_WINDOW_MINIMUM[kind],
   anchor,
+  keepClear,
+  anchorKind,
   onClose,
 }: UseFloatingWindowOptions): FloatingWindow<T> {
   const stack = useWindowStack()
-  const { openCount, register, workspace } = stack
+  const { register, track, workspace } = stack
+  const stackRef = useRef(stack)
+  stackRef.current = stack
   const ref = useRef<T>(null)
   // Placed as it first renders, so it is visible, and can take focus, from its first paint.
-  const placedAt = useRef({ cascade: -1, size: defaultSize })
+  const placedAt = useRef({ others: -1, size: defaultSize })
   const [rect, setRect] = useState<WindowRect>(() => {
-    placedAt.current = { cascade: openCount(), size: readFloatingWindowSize(kind) ?? defaultSize }
-    return openingRect(placedAt.current.size, workspace(), minimum, placedAt.current.cascade, anchor)
+    placedAt.current = { others: stack.openRects(id).length, size: readFloatingWindowSize(kind) ?? defaultSize }
+    return openingRect(stack, id, placedAt.current.size, minimum, anchor, keepClear, anchorKind)
   })
   const rectRef = useRef(rect)
   rectRef.current = rect
@@ -131,25 +150,47 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   const cleanupRef = useRef<(() => void) | null>(null)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
-  const placement = useRef({ kind, minimum, anchor })
-  placement.current = { kind, minimum, anchor }
+  const placement = useRef({ kind, minimum, anchor, keepClear, anchorKind })
+  placement.current = { kind, minimum, anchor, keepClear, anchorKind }
 
-  // Windows opened in the same render all counted the same windows before them,
-  // so each steps past the ones registered first before it paints.
+  // The stack knows where every open window is, so the next one opens clear
+  // of it. Before the window registers this does nothing; registering tracks it.
   useLayoutEffect(() => {
-    const cascade = openCount()
-    if (cascade !== placedAt.current.cascade) {
-      placedAt.current = { ...placedAt.current, cascade }
-      setRect(openingRect(placedAt.current.size, workspace(), placement.current.minimum, cascade, placement.current.anchor))
-    }
-    return register(id)
-  }, [id, openCount, register, workspace])
+    track(id, rect)
+  }, [id, rect, track])
 
+  // Windows opened in the same render were all placed before any of them was
+  // open, so each makes room for the ones registered first before it paints.
+  useLayoutEffect(() => {
+    const unregister = register(id)
+    const others = stackRef.current.openRects(id).length
+    if (others !== placedAt.current.others) {
+      placedAt.current = { ...placedAt.current, others }
+      const { minimum: least, anchor: beside, keepClear: clear, anchorKind: besideKind } = placement.current
+      const placed = openingRect(stackRef.current, id, placedAt.current.size, least, beside, clear, besideKind)
+      rectRef.current = placed
+      setRect(placed)
+    }
+    // Tracked now, so a window opened in the same render after this one makes room for where this one is going.
+    track(id, rectRef.current)
+    return unregister
+  }, [id, register, track])
+
+  const { onReflow } = stack
   useEffect(() => {
-    const hold = () => setRect(current => keepInWorkspace(current, workspace(), placement.current.minimum))
+    // A window already inside keeps its rect, so a reflow on every frame of a
+    // drag or resize elsewhere re-renders nothing, a Peek terminal included.
+    const hold = () => setRect(current => {
+      const held = keepInWorkspace(current, workspace(), placement.current.minimum)
+      return held.left === current.left && held.top === current.top && held.width === current.width && held.height === current.height ? current : held
+    })
     window.addEventListener('resize', hold)
-    return () => window.removeEventListener('resize', hold)
-  }, [workspace])
+    const stop = onReflow(hold)
+    return () => {
+      window.removeEventListener('resize', hold)
+      stop()
+    }
+  }, [onReflow, workspace])
 
   useEffect(() => () => {
     cleanupRef.current?.()

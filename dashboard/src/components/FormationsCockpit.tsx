@@ -61,6 +61,9 @@ import CanvasContextMenu, { type MenuItem, type MenuState } from './CanvasContex
 import PersonaEditorDialog from './PersonaEditorDialog'
 import HumanGateAnswerPanel, { type GateDecision } from './HumanGateAnswerPanel'
 import RunPoint from './RunPoint'
+import RunBarActions from './RunBarActions'
+import GateAnswerWindow, { GATE_ANSWER_WINDOW_ID, cardRects } from './GateAnswerWindow'
+import { nodeTitle } from '../nodeWindow/boardRoutes'
 import CanvasLegend from './CanvasLegend'
 import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
 import { ProducedFiles, RunProduced, RunProducedProvider } from '../files/ProducedFiles'
@@ -88,6 +91,7 @@ import type { NodeWindowOps } from '../nodeWindow/NodeWindow'
 import { readBoardView, writeBoardView, type BoardView } from '../flow/boardView'
 import type { FlowRun } from '../flow/FlowView'
 import { cockpitWorkspace } from '../windows/cockpitWorkspace'
+import { cockpitScene, measureElement, nodeAnchor, nodeWindowKeepClear } from '../windows/cockpitScene'
 import { humanChannelField, humanChannelLabel, humanChannelOf, type HumanChannel } from '../humanChannel/humanChannel'
 import { useGateTalk } from '../talk/useGateTalk'
 import type { WindowRect } from '../windows/windowGeometry'
@@ -161,6 +165,12 @@ type BoardDialogState = {
   saving: boolean
   error: string
 }
+// Board notes open near their button in the toolbar, in free space over the canvas.
+function boardNotesAnchor(): WindowRect | null {
+  const button = document.querySelector('.board-notes-button')
+  return button ? measureElement(button) : null
+}
+
 export default function FormationsCockpit({ active = true }: { active?: boolean } = {}) {
   const [boards, setBoards] = useState<BoardSummary[]>([])
   const [selectedSlug, setSelectedSlug] = useState('')
@@ -193,6 +203,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [inspectedNodeId, setInspectedNodeId] = useState<string | null>(null)
   // Formations whose terminal Peek is open; '' is the run-wide Peek.
   const [peeks, setPeeks] = useState<string[]>([])
+  // The gate answer window, per pending request: closed by the operator, or reopened from the run bar with focus.
+  const [answerWindow, setAnswerWindow] = useState<{ key: string; closed: boolean; focus: number }>({ key: '', closed: false, focus: 0 })
   // The card the run bar's phrase last located, marked briefly on the canvas.
   const [locatedNodeId, setLocatedNodeId] = useState('')
   // Missions, formations and gates open in node windows, oldest first.
@@ -239,8 +251,17 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const notesRef = useRef<BoardNotesDocument | null>(null)
   const noteDraftsRef = useRef<Record<string, string>>({})
   const viewportRef = useRef<HTMLDivElement | null>(null)
-  const windows = useWindowManager(() => cockpitWorkspace(viewportRef.current))
-  const { focus: focusWindow } = windows
+  const windows = useWindowManager(() => cockpitWorkspace(viewportRef.current), () => cockpitScene(viewportRef.current || document))
+  const { focus: focusWindow, reflow: reflowWindows } = windows
+  // The canvas changes size when the run bar appears or the roster collapses;
+  // open windows move back inside it, so none is left over the run bar.
+  useEffect(() => {
+    const canvas = viewportRef.current
+    if (!canvas || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => reflowWindows())
+    observer.observe(canvas)
+    return () => observer.disconnect()
+  }, [reflowWindows])
   // Each Peek is its own window; asking for one already open raises it.
   const openPeek = useCallback((nodeId: string) => {
     setPeeks(current => current.includes(nodeId) ? current : [...current, nodeId])
@@ -1498,16 +1519,19 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setRunEvents(events)
   }, [])
 
-  const abortActiveRun = useCallback(async () => {
-    if (!activeRun?.runId || activeRun.final) return
+  // Stop is confirmed in the run bar first, which passes the operator's reason (form-n7u.8).
+  const abortActiveRun = useCallback(async (reason: string) => {
+    if (!activeRun?.runId || activeRun.final) return false
     try {
-      const status = runStatusFromResponse(await abortRunRequest(activeRun.runId, { reason: 'operator stop', requestedBy: 'agent:ui' }))
+      const status = runStatusFromResponse(await abortRunRequest(activeRun.runId, { reason, requestedBy: 'agent:ui' }))
       setActiveRun(status)
       await refreshRunEvents(activeRun.runId)
       if (status.final && selectedSlug) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
       setError('')
+      return true
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to abort run')
+      return false
     }
   }, [activeRun, refreshRunEvents, selectedSlug])
 
@@ -2436,10 +2460,19 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const state = nodeStates.get(nodeId)
     return state === 'blocked' || state === 'failed' ? <span className={`run-chip ${state}`} data-testid={`run-chip-${nodeId}`}>{state}</span> : null
   }
-  // The pending human gate's answer panel: over the canvas, or in the gate's row in Flow.
-  const answerPanel = activeRun && !activeRun.final && pendingHumanGate ? (
+  // The pending human gate's answer panel: in a floating window over the canvas, or in the gate's row in Flow.
+  const answerKey = activeRun && pendingHumanGate ? `${activeRun.runId}:${pendingHumanGate.requestedSeq}` : ''
+  const answerWindowOpen = Boolean(answerKey) && !(answerWindow.key === answerKey && answerWindow.closed)
+  const showAnswer = useCallback((gateId: string) => {
+    locateNode(gateId)
+    setAnswerWindow(current => ({ key: answerKey, closed: false, focus: current.focus + 1 }))
+    focusWindow(GATE_ANSWER_WINDOW_ID)
+  }, [answerKey, focusWindow, locateNode])
+  const answerPanelFor = (framed: boolean) => activeRun && !activeRun.final && pendingHumanGate ? (
     <HumanGateAnswerPanel
       key={`${activeRun.runId}:${pendingHumanGate.requestedSeq}`}
+      framed={framed}
+      titleOf={nodeId => (board ? nodeTitle(board, nodeId) : nodeId)}
       runId={activeRun.runId}
       gateId={pendingHumanGate.gateId}
       requestedSeq={pendingHumanGate.requestedSeq}
@@ -2452,6 +2485,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       onDecide={(verdict, response) => recordHumanGateVerdict(pendingHumanGate.gateId, pendingHumanGate.requestedSeq, verdict, response)}
     />
   ) : null
+  const answerPanel = answerPanelFor(false)
   const showFlow = boardView === 'flow' && Boolean(board)
   const runPointTitle = (() => {
     const nodeId = runPoint?.nodeId
@@ -2632,14 +2666,18 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               <div className="run-banner" data-testid="run-banner">
                 <span>run</span>
                 <span className={`badge ${runBadgeClass}`}>{runStatusLabel(activeRun.status)}</span>
-                <RunPoint runId={activeRun.runId} point={runPoint} title={runPointTitle} onLocate={locateAndOpenNode}
-                  action={showFlow ? 'Open the step' : 'Show it on the canvas and open it'} />
+                {/* Waiting at a gate on the canvas, the phrase brings up the answer, not the gate's editor. */}
+                <RunPoint runId={activeRun.runId} point={runPoint} title={runPointTitle}
+                  titleOf={nodeId => (board ? nodeTitle(board, nodeId) : nodeId)}
+                  onLocate={!showFlow && runPoint?.kind === 'waiting' && answerKey ? showAnswer : locateAndOpenNode}
+                  action={showFlow ? 'Open the step' : runPoint?.kind === 'waiting' && answerKey ? 'Show it on the canvas with your answer' : 'Show it on the canvas and open it'} />
                 <RunProduced />
                 {activeRun.final || choices.open.length + choices.finished.length > 1 ? runPicker(activeRun.runId) : null}
                 {activeRun.cwd && <span className="run-cwd" title={activeRun.cwd}>{activeRun.cwd}</span>}
                 {activeRun.beadId && <span>{activeRun.beadId}</span>}
-                {!activeRun.final && activeRun.resumeAllowed ? <button type="button" onClick={() => void resumeActiveRun()}>Resume run</button> : null}
-                {!activeRun.final ? <button type="button" onClick={() => void abortActiveRun()}>stop</button> : null}
+                <RunBarActions run={activeRun} point={runPoint} pointTitle={runPointTitle} boardTitle={board?.title || ''}
+                  titleOf={nodeId => (board ? nodeTitle(board, nodeId) : nodeId)}
+                  pendingGate={pendingHumanGate} onResume={() => void resumeActiveRun()} onStop={abortActiveRun} />
               </div>
             ) : choices.finished.length ? (
               // No run is shown, but finished runs can be reopened to read what they produced.
@@ -2998,7 +3036,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           </div>
 
 
-          {showFlow ? null : answerPanel}
 
           {openEscalations.length ? (
             <div className="needs-you" data-testid="escalations-banner" role="alert">
@@ -3047,7 +3084,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             key={target}
             target={target}
             title={noteTitleOf(target)}
-            anchor={target === BOARD_NOTE_TARGET ? undefined : () => noteWindowAnchor(worldRef.current, target)}
+            anchor={target === BOARD_NOTE_TARGET ? boardNotesAnchor : () => (showFlow ? nodeAnchor(target) : noteWindowAnchor(worldRef.current, target))}
+            keepClear={target === BOARD_NOTE_TARGET ? undefined : () => nodeWindowKeepClear(target, board.connections)}
             entries={(target === BOARD_NOTE_TARGET ? notes?.board : noteByNode.get(target)) || []}
             draft={noteDrafts[target] || ''}
             editingEntryId={noteEditing[target]}
@@ -3078,6 +3116,18 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           </Suspense>
         )) : null}
         {gateTalk.windows}
+        {!showFlow && pendingHumanGate && answerWindowOpen ? (
+          <GateAnswerWindow key={answerKey} gateId={pendingHumanGate.gateId} gateTitle={pendingHumanGate.title}
+            focusRequest={answerWindow.key === answerKey ? answerWindow.focus : 0}
+            anchor={() => cardRects([pendingHumanGate.gateId], worldRef.current || document)[0] || null}
+            // Where Approve and Send back lead stays in view beside the answer.
+            keepClear={() => cardRects((board?.connections || [])
+              .filter(connection => connection.from === `${pendingHumanGate.gateId}:pass` || connection.from === `${pendingHumanGate.gateId}:fail`)
+              .map(connection => connection.to.split(':')[0]), worldRef.current || document)}
+            onClose={() => setAnswerWindow(current => ({ key: answerKey, closed: true, focus: current.focus }))}>
+            {answerPanelFor(true)}
+          </GateAnswerWindow>
+        ) : null}
         <FileWindowsLayer />
       </WindowManagerProvider>
 

@@ -1,4 +1,4 @@
-import { fetchApi } from '../components/formationsApi'
+import { fetchApi, type RunLimitUse } from '../components/formationsApi'
 
 // Read models for the run evidence routes (ADR-0017). They mirror the Go
 // response types in internal/formations/run_evidence*.go.
@@ -114,6 +114,12 @@ export interface EvidenceProblem {
   code?: string
   reason: EvidenceText
   resumeAllowed?: boolean
+  /** Who ended the run, on a run_failed or run_canceled. */
+  actor?: string
+  /** The run_resumed that moved the run past this block. */
+  resumedSeq?: number
+  /** The run limit this block exhausted. */
+  limit?: RunLimitUse
 }
 
 /** A block or error from anywhere in a run, with the nodes it names (none for, say, an exceeded wall clock). */

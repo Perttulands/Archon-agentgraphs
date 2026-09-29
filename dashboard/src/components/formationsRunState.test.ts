@@ -147,6 +147,24 @@ describe('formations run-state helpers', () => {
     expect(runCurrentPoint(events, null)).toBeNull()
   })
 
+  it('names the gate or node a canceled run stopped', () => {
+    const atGate: RunEvent[] = [
+      { runId: 'run_1', seq: 1, type: 'node_started', nodeId: 'fmn_draft', attempt: 1 },
+      { runId: 'run_1', seq: 2, type: 'node_output', nodeId: 'fmn_draft' },
+      { runId: 'run_1', seq: 3, type: 'human_input_requested', nodeId: 'gate_review', gateId: 'gate_review' },
+      { runId: 'run_1', seq: 4, type: 'run_canceled' },
+    ]
+    const point = runCurrentPoint(atGate, run('canceled'))
+    expect(point).toEqual({ kind: 'canceled', nodeId: 'gate_review', gate: true })
+    expect(runPointPhrase(point!, 'Operator review')).toBe('canceled at Operator review')
+    const inFlight: RunEvent[] = [
+      { runId: 'run_1', seq: 1, type: 'node_started', nodeId: 'fmn_draft', attempt: 2 },
+      { runId: 'run_1', seq: 2, type: 'run_canceled' },
+    ]
+    expect(runCurrentPoint(inFlight, run('canceled'))).toEqual({ kind: 'canceled', nodeId: 'fmn_draft', gate: false })
+    expect(runPointPhrase({ kind: 'canceled', nodeId: '', gate: false }, '')).toBe('')
+  })
+
   it('extracts run text, report references, and resume affordance from events', () => {
     expect(runEventText({ runId: 'run_1', seq: 1, type: 'run_blocked', data: { reason: 'needs human' } })).toBe('needs human')
     expect(runEventText({ runId: 'run_1', seq: 2, type: 'node_output', data: { text: 'report body' } })).toBe('report body')
