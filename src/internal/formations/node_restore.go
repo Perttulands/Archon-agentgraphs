@@ -133,12 +133,21 @@ func restoredNodeBlock(req NodeRestoreRequest) (string, string, func([]byte) []b
 		if err := rejectLegacyScriptGateWrite(false, gate.Command, gate.CommandArgv, gate.CommandCWD, gate.CommandShell); err != nil {
 			return "", "", nil, err
 		}
+		// The field rules of CreateGate and UpdateGate: at least one kind, a
+		// registered profile when one is named, and code check fields only on a
+		// gate with the code kind.
 		kinds, err := normalizeGateKinds(gate.Kinds)
 		if err != nil {
 			return "", "", nil, err
 		}
+		if len(kinds) == 0 {
+			return "", "", nil, fmt.Errorf("%w: gate %q must name at least one of code, formation and human", ErrInvalidGateKind, gate.ID)
+		}
 		if err := validateCodeGateAuthoring(gate.Check, gate.CheckVersion); err != nil {
 			return "", "", nil, err
+		}
+		if !hasGateKind(kinds, "code") && strings.TrimSpace(gate.Check+gate.CheckVersion+gate.CheckValue) != "" {
+			return "", "", nil, fmt.Errorf("%w: gate %q sets a code check without the code kind", ErrInvalidCodeGateProfile, gate.ID)
 		}
 		gate.Kinds = kinds
 		gate.Files = normalizeFileRefs(gate.Files)
@@ -184,12 +193,8 @@ func validateRestoredFormation(formation FormationNode) error {
 		}
 		ports[port.ID] = true
 	}
-	slots := map[string]bool{}
-	for _, slot := range formation.Slots {
-		if !validToolDefinitionID(slot.ID) || slots[slot.ID] {
-			return invalidNodeRestore("formation %q slot id %q is missing, invalid or repeated", formation.ID, slot.ID)
-		}
-		slots[slot.ID] = true
+	if id, bad := firstBadSlotID(formation.Slots); bad {
+		return invalidNodeRestore("formation %q slot id %q is missing, invalid or repeated", formation.ID, id)
 	}
 	return nil
 }
@@ -277,6 +282,9 @@ func planRestoredWires(withTarget []byte, current *BoardDocument, requested []Bo
 		}
 		candidate := BoardConnection{ID: wire.ID, From: from, To: to}
 		duplicate, err := validateConnectionCandidate(existing, board.Gates, candidate)
+		if errors.Is(err, ErrInputOccupied) {
+			return nil, invalidNodeRestore("%s is now fed by another wire", endpointLabel(board, to))
+		}
 		if err != nil {
 			return nil, err
 		}

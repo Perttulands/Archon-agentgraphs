@@ -1267,14 +1267,22 @@ func slotsForFormationType(formation FormationNode, target, keepSlotID string) (
 }
 
 func validateRestoredSlots(slots []FormationSlot) error {
+	if id, bad := firstBadSlotID(slots); bad {
+		return fmt.Errorf("%w: slot id %q is missing, invalid or repeated", ErrInvalidTypeChange, id)
+	}
+	return nil
+}
+
+// firstBadSlotID names the first slot ID that is missing, invalid or repeated.
+func firstBadSlotID(slots []FormationSlot) (string, bool) {
 	seen := make(map[string]bool, len(slots))
 	for _, slot := range slots {
 		if !validToolDefinitionID(slot.ID) || seen[slot.ID] {
-			return fmt.Errorf("%w: slot id %q is missing, invalid or repeated", ErrInvalidTypeChange, slot.ID)
+			return slot.ID, true
 		}
 		seen[slot.ID] = true
 	}
-	return nil
+	return "", false
 }
 
 func findSlot(slots []FormationSlot, id string) (FormationSlot, bool) {
