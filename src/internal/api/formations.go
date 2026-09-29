@@ -189,6 +189,7 @@ type formationsRestoreNodeRequest struct {
 	Formation   *formations.FormationNode    `json:"formation"`
 	Gate        *formations.GateNode         `json:"gate"`
 	Connections []formations.BoardConnection `json:"connections"`
+	Index       *int                         `json:"index"`
 	X           int                          `json:"x"`
 	Y           int                          `json:"y"`
 	ExpectedRev int                          `json:"expectedRev"`
@@ -1168,6 +1169,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Formation:   restore.Formation,
 			Gate:        restore.Gate,
 			Connections: restore.Connections,
+			Index:       restore.Index,
 			X:           restore.X,
 			Y:           restore.Y,
 			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, restore.UpdatedBy),

@@ -66,11 +66,11 @@ describe('delete and port undo capture', () => {
   it('captures a node as the server sent it, with every touching connection and its place', () => {
     expect(nodeDeleteUndo(board, 'fmn', { x: 420.4, y: 96 })).toEqual({
       label: 'delete formation “Plan”',
-      steps: [boardStep({ restoreNode: { formation: board.formations[0], connections: board.connections, x: 420, y: 96 } })],
+      steps: [boardStep({ restoreNode: { formation: board.formations[0], connections: board.connections, index: 0, x: 420, y: 96 } })],
     })
     expect(nodeDeleteUndo(board, 'gate', { x: 1, y: 2 })?.label).toBe('delete gate untitled')
     expect(nodeDeleteUndo(board, 'mis', { x: 1, y: 2 })?.steps).toEqual([
-      boardStep({ restoreNode: { mission: board.missions![0], connections: [board.connections[0]], x: 1, y: 2 } }),
+      boardStep({ restoreNode: { mission: board.missions![0], connections: [board.connections[0]], index: 0, x: 1, y: 2 } }),
     ])
     expect(nodeDeleteUndo(board, 'missing', { x: 0, y: 0 })).toBeNull()
   })

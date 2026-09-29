@@ -72,13 +72,12 @@ export const boardStep = (patch: Record<string, unknown>): UndoStep => ({ board:
 
 type NodeKind = 'mission' | 'formation' | 'gate'
 
-function nodeOf(board: BoardDocument, id: string): { kind: NodeKind; node: object; title: string } | null {
-  const mission = board.missions?.find(item => item.id === id)
-  if (mission) return { kind: 'mission', node: mission, title: mission.title }
-  const formation = board.formations.find(item => item.id === id)
-  if (formation) return { kind: 'formation', node: formation, title: formation.title }
-  const gate = board.gates?.find(item => item.id === id)
-  if (gate) return { kind: 'gate', node: gate, title: gate.title }
+function nodeOf(board: BoardDocument, id: string): { kind: NodeKind; node: object; title: string; index: number } | null {
+  const lists: Array<[NodeKind, Array<{ id: string; title: string }>]> = [['mission', board.missions || []], ['formation', board.formations], ['gate', board.gates || []]]
+  for (const [kind, nodes] of lists) {
+    const index = nodes.findIndex(item => item.id === id)
+    if (index >= 0) return { kind, node: nodes[index], title: nodes[index].title, index }
+  }
   return null
 }
 
@@ -92,7 +91,8 @@ export function quoted(title: string, fallback: string) {
 
 /**
  * The undo of deleting a node, captured from the board before the delete: the
- * node as the server sent it, every connection touching it, and where it sat.
+ * node as the server sent it, every connection touching it, where it sat on the
+ * canvas and its place among the board's nodes of its kind.
  */
 export function nodeDeleteUndo(board: BoardDocument, nodeId: string, position: { x: number; y: number }): CockpitUndo | null {
   const found = nodeOf(board, nodeId)
@@ -100,7 +100,7 @@ export function nodeDeleteUndo(board: BoardDocument, nodeId: string, position: {
   const connections = touching(board.connections || [], endpoint => endpoint.split(':')[0] === nodeId)
   return {
     label: `delete ${found.kind} ${quoted(found.title, 'untitled')}`,
-    steps: [boardStep({ restoreNode: { [found.kind]: found.node, connections, x: Math.round(position.x), y: Math.round(position.y) } })],
+    steps: [boardStep({ restoreNode: { [found.kind]: found.node, connections, index: found.index, x: Math.round(position.x), y: Math.round(position.y) } })],
   }
 }
 

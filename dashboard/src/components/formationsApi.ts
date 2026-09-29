@@ -63,7 +63,13 @@ export function normalizeBoard(board: BoardDocument, etag = ''): BoardDocument {
     ...board,
     etag: etag || board.etag,
     missions: board.missions || [],
-    formations: board.formations || [],
+    // The server sends null for an empty port or slot list, as after removing a formation's only input.
+    formations: (board.formations || []).map(formation => ({
+      ...formation,
+      inputs: formation.inputs || [],
+      outputs: formation.outputs || [],
+      slots: formation.slots || [],
+    })),
     gates: board.gates || [],
     tools: board.tools || [],
     connections: board.connections || [],

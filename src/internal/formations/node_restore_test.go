@@ -226,13 +226,23 @@ func TestRestoreNodePutsBackEachDeletedNodeExactly(t *testing.T) {
 			}
 			position, _ := layoutPosition(t, store, id)
 			req := NodeRestoreRequest{Connections: touching(before, id), X: position.X, Y: position.Y, UpdatedBy: "agent:ui"}
-			if mission, ok := findMissionForTest(before, id); ok {
-				req.Mission = &mission
-			} else if formation, ok := findFormation(before.Formations, id); ok {
-				req.Formation = &formation
-			} else if gate, ok := findGate(before.Gates, id); ok {
-				req.Gate = &gate
+			index := 0
+			for i, mission := range before.Missions {
+				if mission.ID == id {
+					req.Mission, index = &before.Missions[i], i
+				}
 			}
+			for i, formation := range before.Formations {
+				if formation.ID == id {
+					req.Formation, index = &before.Formations[i], i
+				}
+			}
+			for i, gate := range before.Gates {
+				if gate.ID == id {
+					req.Gate, index = &before.Gates[i], i
+				}
+			}
+			req.Index = &index
 
 			deleteNode(t, store, id)
 			result, err := store.RestoreNode("restore", req, restoreOptions(t, store))
@@ -247,20 +257,9 @@ func TestRestoreNodePutsBackEachDeletedNodeExactly(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(after.Missions, before.Missions) && req.Mission != nil {
-				t.Fatalf("missions = %+v\nwant %+v", after.Missions, before.Missions)
-			}
-			if req.Formation != nil {
-				got, _ := findFormation(after.Formations, id)
-				if !reflect.DeepEqual(got, *req.Formation) {
-					t.Fatalf("formation = %+v\nwant %+v", got, *req.Formation)
-				}
-			}
-			if req.Gate != nil {
-				got, _ := findGate(after.Gates, id)
-				if !reflect.DeepEqual(got, *req.Gate) {
-					t.Fatalf("gate = %+v\nwant %+v", got, *req.Gate)
-				}
+			// Every node list reads as before, in its old order.
+			if !reflect.DeepEqual(after.Missions, before.Missions) || !reflect.DeepEqual(after.Formations, before.Formations) || !reflect.DeepEqual(after.Gates, before.Gates) {
+				t.Fatalf("nodes = %+v %+v %+v\nwant %+v %+v %+v", after.Missions, after.Formations, after.Gates, before.Missions, before.Formations, before.Gates)
 			}
 			if got := touching(after, id); !reflect.DeepEqual(got, req.Connections) {
 				t.Fatalf("connections = %+v\nwant %+v", got, req.Connections)
@@ -287,15 +286,6 @@ func TestRestoreNodePutsBackEachDeletedNodeExactly(t *testing.T) {
 			}
 		})
 	}
-}
-
-func findMissionForTest(board *BoardDocument, id string) (MissionNode, bool) {
-	for _, mission := range board.Missions {
-		if mission.ID == id {
-			return mission, true
-		}
-	}
-	return MissionNode{}, false
 }
 
 func TestRestoreNodeRefusesWithoutWritingWhenTheBoardNoLongerFits(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // ErrInvalidNodeRestore rejects a restore that would not put back the node
@@ -21,9 +22,12 @@ type NodeRestoreRequest struct {
 	Formation   *FormationNode
 	Gate        *GateNode
 	Connections []BoardConnection
-	X           int
-	Y           int
-	UpdatedBy   string
+	// Index, when set, is the node's place among the board's nodes of its
+	// kind, so the definition reads in its old order; nil appends it.
+	Index     *int
+	X         int
+	Y         int
+	UpdatedBy string
 }
 
 type NodeRestoreResult struct {
@@ -42,9 +46,18 @@ func (s *Store) RestoreNode(slug string, req NodeRestoreRequest, opts WriteOptio
 	if opts.ExpectedETag == "" || opts.ExpectedRev == 0 {
 		return nil, ErrPreconditionRequired
 	}
-	nodeID, appendNode, err := restoredNodeBlock(req)
+	nodeID, section, appendBlock, err := restoredNodeBlock(req)
 	if err != nil {
 		return nil, err
+	}
+	if req.Index != nil && *req.Index < 0 {
+		return nil, invalidNodeRestore("node index %d is negative", *req.Index)
+	}
+	appendNode := func(raw []byte) []byte {
+		if req.Index == nil {
+			return appendBlock(raw)
+		}
+		return insertNodeBlock(raw, section, *req.Index, appendBlock(nil), appendBlock)
 	}
 	var connections []BoardConnection
 	board, layout, err := s.createNode(slug, opts, nodeCreateCandidate{
@@ -73,9 +86,29 @@ func invalidNodeRestore(format string, args ...any) error {
 	return fmt.Errorf("%w: "+format, append([]any{ErrInvalidNodeRestore}, args...)...)
 }
 
-// restoredNodeBlock validates the node on its own and returns how to append it.
-// It applies the same field rules as creating and editing that kind of node.
-func restoredNodeBlock(req NodeRestoreRequest) (string, func([]byte) []byte, error) {
+// insertNodeBlock puts block before the index-th top-level [[section]] table,
+// or appends it with appendBlock when there are not that many.
+func insertNodeBlock(raw []byte, section string, index int, block []byte, appendBlock func([]byte) []byte) []byte {
+	lines := splitLines(raw)
+	seen := 0
+	for i, line := range lines {
+		name, ok := tomlLineSectionName(line)
+		if !ok || name != section || !strings.HasPrefix(strings.TrimSpace(line.body), "[[") {
+			continue
+		}
+		if seen == index {
+			body := append(splitLines(block), tomlLine{body: "", newline: "\n"})
+			return renderTOMLLines(insertTomLLines(lines, i, body))
+		}
+		seen++
+	}
+	return appendBlock(raw)
+}
+
+// restoredNodeBlock validates the node on its own and returns its ID, its
+// table name and how to append it. It applies the same field rules as creating
+// and editing that kind of node.
+func restoredNodeBlock(req NodeRestoreRequest) (string, string, func([]byte) []byte, error) {
 	count := 0
 	for _, present := range []bool{req.Mission != nil, req.Formation != nil, req.Gate != nil} {
 		if present {
@@ -83,48 +116,48 @@ func restoredNodeBlock(req NodeRestoreRequest) (string, func([]byte) []byte, err
 		}
 	}
 	if count != 1 {
-		return "", nil, invalidNodeRestore("name exactly one mission, formation or gate")
+		return "", "", nil, invalidNodeRestore("name exactly one mission, formation or gate")
 	}
 	switch {
 	case req.Formation != nil:
 		formation := *req.Formation
 		if err := validateRestoredFormation(formation); err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
-		return formation.ID, func(raw []byte) []byte { return appendRestoredFormationBlock(raw, formation) }, nil
+		return formation.ID, "formation", func(raw []byte) []byte { return appendRestoredFormationBlock(raw, formation) }, nil
 	case req.Gate != nil:
 		gate := *req.Gate
 		if !validToolDefinitionID(gate.ID) {
-			return "", nil, invalidNodeRestore("gate id %q is invalid", gate.ID)
+			return "", "", nil, invalidNodeRestore("gate id %q is invalid", gate.ID)
 		}
 		if err := rejectLegacyScriptGateWrite(false, gate.Command, gate.CommandArgv, gate.CommandCWD, gate.CommandShell); err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 		kinds, err := normalizeGateKinds(gate.Kinds)
 		if err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 		if err := validateCodeGateAuthoring(gate.Check, gate.CheckVersion); err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 		gate.Kinds = kinds
 		gate.Files = normalizeFileRefs(gate.Files)
-		return gate.ID, func(raw []byte) []byte { return appendGateBlock(raw, gate) }, nil
+		return gate.ID, "gate", func(raw []byte) []byte { return appendGateBlock(raw, gate) }, nil
 	default:
 		mission := *req.Mission
 		if !validToolDefinitionID(mission.ID) {
-			return "", nil, invalidNodeRestore("mission id %q is invalid", mission.ID)
+			return "", "", nil, invalidNodeRestore("mission id %q is invalid", mission.ID)
 		}
 		if mission.BeadID != "" && !isSafeBeadsIssueID(mission.BeadID) {
-			return "", nil, invalidBeadID("mission beadId", mission.BeadID)
+			return "", "", nil, invalidBeadID("mission beadId", mission.BeadID)
 		}
 		channel, err := NormalizeHumanChannel(mission.HumanChannel)
 		if err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 		mission.HumanChannel = channel
 		mission.Files = normalizeFileRefs(mission.Files)
-		return mission.ID, func(raw []byte) []byte { return appendMissionBlock(raw, mission) }, nil
+		return mission.ID, "mission", func(raw []byte) []byte { return appendMissionBlock(raw, mission) }, nil
 	}
 }
 
@@ -229,7 +262,15 @@ func planRestoredWires(withTarget []byte, current *BoardDocument, requested []Bo
 		_, fromOK := endpointAllowsDirection(withTarget, from, FormationPortOutput)
 		_, toOK := endpointAllowsDirection(withTarget, to, FormationPortInput)
 		if !fromOK || !toOK {
-			return nil, invalidNodeRestore("connection %s → %s no longer has both ends on the board", from, to)
+			missing := to
+			if !fromOK {
+				missing = from
+			}
+			gone := endpointLabel(board, missing)
+			if nodeID := endpointNodeID(missing); !nodeIDTaken(board, nodeID) {
+				gone = nodeID
+			}
+			return nil, invalidNodeRestore("what it was wired to (%s) is no longer on the board", gone)
 		}
 		if !touches(from, to) {
 			return nil, invalidNodeRestore("connection %s → %s does not touch %s", from, to, target)
@@ -346,4 +387,39 @@ func nodeIDTaken(board *BoardDocument, id string) bool {
 		}
 	}
 	return false
+}
+
+// endpointLabel names a connection end for the operator: the node's title and
+// the port's label when the board still has them, else the raw endpoint.
+func endpointLabel(board *BoardDocument, endpoint string) string {
+	nodeID, portID, ok := splitEndpoint(endpoint)
+	if !ok {
+		return endpoint
+	}
+	title, port := "", portID
+	for _, mission := range board.Missions {
+		if mission.ID == nodeID {
+			title = mission.Title
+		}
+	}
+	for _, gate := range board.Gates {
+		if gate.ID == nodeID {
+			title = gate.Title
+		}
+	}
+	for _, formation := range board.Formations {
+		if formation.ID != nodeID {
+			continue
+		}
+		title = formation.Title
+		for _, candidate := range append(append([]FormationPort(nil), formation.Inputs...), formation.Outputs...) {
+			if candidate.ID == portID && candidate.Label != "" {
+				port = candidate.Label
+			}
+		}
+	}
+	if title == "" {
+		return endpoint
+	}
+	return fmt.Sprintf("%q (%s)", title, port)
 }

@@ -1212,6 +1212,10 @@ components:
                     type: string
                   to:
                     type: string
+            index:
+              type: integer
+              minimum: 0
+              description: The node's old place among the board's nodes of its kind; absent appends it.
             x:
               type: integer
             y:
