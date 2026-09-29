@@ -70,6 +70,53 @@ func TestPersonaEffortIsValidatedPerHarness(t *testing.T) {
 	}
 }
 
+func TestVariantEditsNameEachVariantOnceAndCheckOnlyWhatChanges(t *testing.T) {
+	s := NewPersonaStore(t.TempDir())
+	raw := "schema = 1\n\n[card]\nid = \"mixed\"\nkind = \"specialist\"\n\n[harness]\ndefault = \"claude-code\"\n\n" +
+		"[[harness.variant]]\nid = \"claude-code\"\nsession_stem = \"mixed\"\neffort = \"extreme\"\n\n" +
+		"[[harness.variant]]\nid = \"hermes\"\nsession_stem = \"hermes-mixed\"\nlaunch = \"hermes --profile old\"\n"
+	if err := os.WriteFile(s.PersonaPath("mixed"), []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	card, err := s.ReadPersona("mixed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	low, high, model := "low", "high", "claude-opus-5"
+	for name, req := range map[string]EditPersonaRequest{
+		"a variant listed twice":            {SetVariants: []VariantSettings{{ID: "claude-code", Effort: &low}, {ID: "claude-code", Effort: &high}}},
+		"the default named blank and by id": {SetVariants: []VariantSettings{{ID: "", Effort: &low}, {ID: "claude-code", Model: &model}}},
+		"the list and variant/model/effort": {SetVariants: []VariantSettings{{ID: "claude-code", Effort: &low}}, Variant: "claude-code", SetModel: &model},
+	} {
+		req.ExpectedETag = card.ETag
+		if _, err := s.EditPersona("mixed", req); !errors.Is(err, ErrInvalidAgentCard) || !strings.Contains(err.Error(), `"claude-code" is edited twice`) {
+			t.Fatalf("%s: error = %v", name, err)
+		}
+	}
+
+	// The hand-edited effort is invalid, but a model-only edit does not touch it.
+	card, err = s.EditPersona("mixed", EditPersonaRequest{ExpectedETag: card.ETag, SetModel: &model})
+	if err != nil {
+		t.Fatalf("model-only edit beside an invalid effort: %v", err)
+	}
+	if v := card.DefaultVariant(); v.Model != model || v.Effort != "extreme" {
+		t.Fatalf("default variant = %+v", v)
+	}
+
+	// A harness Archon cannot start keeps an editable launch string; one it starts refuses it.
+	launch := "hermes --profile new"
+	card, err = s.EditPersona("mixed", EditPersonaRequest{ExpectedETag: card.ETag, SetVariants: []VariantSettings{{ID: "hermes", Launch: &launch}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hermes, _ := card.SelectHarnessVariant("hermes"); hermes.Launch != launch {
+		t.Fatalf("hermes launch = %q", hermes.Launch)
+	}
+	if _, err := s.EditPersona("mixed", EditPersonaRequest{ExpectedETag: card.ETag, SetVariants: []VariantSettings{{ID: "claude-code", Launch: &launch}}}); !errors.Is(err, ErrInvalidAgentCard) || !strings.Contains(err.Error(), "would not be run") {
+		t.Fatalf("claude launch error = %v", err)
+	}
+}
+
 func TestSeatLaunchIsTheRenderedCardSettings(t *testing.T) {
 	bin := t.TempDir()
 	for _, name := range []string{"claude", "codex"} {

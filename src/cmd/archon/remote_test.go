@@ -275,6 +275,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("agent", "edit", "scout-x", "--harness", "claude-code", "--model", "claude-opus-5", "--effort", "low"))},
 		{args: with(fixed("agent", "edit", "scout-x", "--harness", "claude-code", "--effort", "ultra")), errorOnly: true},
 		{args: with(fixed("agent", "edit", "scout-x", "--harness", "hermes", "--effort", "low")), errorOnly: true},
+		{args: with(fixed("agent", "edit", "scout-x", "--harness", "claude-code")), errorOnly: true},
 		{args: with(fixed("agent", "new", "bad-effort", "--harness", "claude-code", "--effort", "extreme")), errorOnly: true},
 		{args: with(fixed("mission", "create", "demo", "--title", "Work", "--goal", "Do it", "--bead", "form-demo", "--file", "docs/brief.md", "--human-channel", "session")), creates: "mission"},
 		{args: with(fixed("formation", "create", "demo", "solo", "--title", "Worker")), creates: "formation"},

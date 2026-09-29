@@ -24,7 +24,7 @@ type agentNewFlags struct {
 func newAgentNewFlags(fs *flag.FlagSet, stderr io.Writer) agentNewFlags {
 	flags := agentNewFlags{
 		kind:        fs.String("kind", "", "role kind (default specialist)"),
-		harness:     fs.String("harness", "", "default harness: claude-code or openai-codex (default claude-code, or inferred from --from)"),
+		harness:     fs.String("harness", "", "default harness: claude-code, openai-codex or hermes (default claude-code, or inferred from --from); hermes takes no model or effort"),
 		capable:     fs.String("capable", "", "comma-separated bare capabilities"),
 		personality: fs.String("personality", "", "personality facet"),
 		from:        fs.String("from", "", "source config path"),
@@ -77,4 +77,22 @@ func agentUsage(fs *flag.FlagSet, stderr io.Writer, usage string) {
 		fmt.Fprintln(stderr, "Seats start from the harness, model and effort; a launch string is not used for claude-code or openai-codex.")
 		fs.PrintDefaults()
 	}
+}
+
+// checkEditHarness refuses an --harness that would otherwise be ignored: it
+// only picks the variant --model and --effort change.
+func checkEditHarness(fs *flag.FlagSet, f agentEditFlags, stderr io.Writer) bool {
+	given := givenFlags(fs)
+	if !given["harness"] {
+		return true
+	}
+	switch {
+	case *f.addHarness != "":
+		fmt.Fprintln(stderr, "--harness picks the variant --model and --effort change; with --add-harness they already set the added variant, so drop --harness")
+	case !given["model"] && !given["effort"]:
+		fmt.Fprintln(stderr, "--harness picks the variant --model and --effort change; give --model or --effort with it")
+	default:
+		return true
+	}
+	return false
 }

@@ -296,6 +296,12 @@ func TestAgentsHandlerCreatesAndEditsModelAndEffortAndShowsTheSeatLaunch(t *test
 	if claude := decode(both).DefaultVariant(); claude.Effort != "high" {
 		t.Fatalf("partially applied edit: %+v", claude)
 	}
+	if rec := patch(`{"variants":[{"id":"claude-code","effort":"low"}],"variant":"claude-code","model":"other"}`, both.Header().Get("ETag")); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "edited twice") {
+		t.Fatalf("variant named twice = %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := patch(`{"variants":[{"id":"claude-code","launch":"claude --effort max"}]}`, both.Header().Get("ETag")); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "would not be run") {
+		t.Fatalf("launch on a launchable variant = %d %s", rec.Code, rec.Body.String())
+	}
 	if raw := readAgentFixture(t, agentsDir, "critic"); strings.Contains(raw, `effort = "low"`) {
 		t.Fatalf("an edit with one invalid variant was partly written:\n%s", raw)
 	}

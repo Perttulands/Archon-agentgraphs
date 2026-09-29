@@ -458,6 +458,9 @@ func runAgentEdit(store *formations.PersonaStore, args []string, stdout, stderr 
 		fmt.Fprintln(stderr, agentEditUsage)
 		return 2
 	}
+	if !checkEditHarness(fs, f, stderr) {
+		return 2
+	}
 	before, err := store.ReadPersona(fs.Arg(0))
 	if err != nil {
 		return fail(stderr, err)

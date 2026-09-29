@@ -57,7 +57,9 @@ reader's PATH (the daemon's for HTTP); `seatLaunchError` says why a variant
 cannot start. `archon agent spawn` runs the same command. A card's `launch`
 string is legacy: new cards get none, seats and spawn ignore it for
 `claude-code` and `openai-codex`, and it is kept only for a harness Archon
-cannot start, such as `hermes`, whose `agent spawn` still runs it.
+cannot start, such as `hermes`, whose `agent spawn` still runs it; the editor,
+the New agent form and a `variants` entry's `launch` edit it for such a harness
+only. One edit names each variant once.
 
 Notes are operator intent, not
 automatically executable briefs. Read board and element notes, then translate

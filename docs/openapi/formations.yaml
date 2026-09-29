@@ -829,9 +829,9 @@ paths:
         '200':
           description: Persona card in data; returns ETag. Each harnessVariants entry has its stored model and
             effort, effectiveEffort (medium when effort is unset), efforts (the values its harness accepts), and
-            seatLaunch, the command a seat for that
-            variant runs, rendered by the seat launcher on the daemon's PATH; seatLaunchError says why a variant
-            cannot start (an unsupported harness, or its CLI missing from PATH). Create and patch return the same.
+            seatLaunch, the command a seat for that variant runs, rendered by the seat launcher on the daemon's
+            PATH; seatLaunchError says why a variant cannot start (an unsupported harness, or its CLI missing
+            from PATH). Create and patch return the same.
         '422':
           description: INVALID_AGENT_CARD when the stored card lacks a required field; the message names the card and field
     patch:
@@ -1628,7 +1628,10 @@ components:
             With addHarness, model and effort set the added variant instead.
         variants:
           type: array
-          description: Model and effort for several variants in one edit; all apply or none do.
+          description: Model and effort for several variants in one edit; all apply or none do. Name each
+            variant once, and not also through variant/model/effort (422 otherwise). Only the fields given are
+            validated. launch is accepted only for a harness Archon cannot start (such as hermes), whose
+            archon agent spawn runs it.
           items:
             type: object
             required: [id]
@@ -1638,6 +1641,8 @@ components:
               model:
                 type: string
               effort:
+                type: string
+              launch:
                 type: string
         model:
           type: string

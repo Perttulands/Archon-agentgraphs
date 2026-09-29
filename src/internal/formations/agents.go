@@ -110,12 +110,36 @@ type EditPersonaRequest struct {
 	SetVariants []VariantSettings
 }
 
-// VariantSettings sets one harness variant's model and effort; a nil field is
-// left as it is and a blank one is cleared.
+// VariantSettings sets one harness variant's model and effort, or the launch
+// string of a harness Archon cannot start (the only command `agent spawn` has
+// for it); a nil field is left as it is and a blank one is cleared.
 type VariantSettings struct {
 	ID     string  `json:"id"`
 	Model  *string `json:"model,omitempty"`
 	Effort *string `json:"effort,omitempty"`
+	Launch *string `json:"launch,omitempty"`
+}
+
+// variantEdits resolves each edit's variant and refuses one edit naming a
+// variant twice, whether in the list or also through variant/model/effort.
+func variantEdits(card *PersonaCard, req EditPersonaRequest) ([]VariantSettings, error) {
+	settings := append([]VariantSettings{}, req.SetVariants...)
+	if req.SetModel != nil || req.SetEffort != nil {
+		settings = append(settings, VariantSettings{ID: req.Variant, Model: req.SetModel, Effort: req.SetEffort})
+	}
+	named := map[string]bool{}
+	for i := range settings {
+		target, err := editedVariant(card, settings[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		if named[target.ID] {
+			return nil, fmt.Errorf("%w: agent %q harness variant %q is edited twice in one change; name each variant once", ErrInvalidAgentCard, card.ID, target.ID)
+		}
+		named[target.ID] = true
+		settings[i].ID = target.ID
+	}
+	return settings, nil
 }
 
 func applyVariantSettings(raw string, card *PersonaCard, setting VariantSettings) (string, error) {
@@ -123,15 +147,24 @@ func applyVariantSettings(raw string, card *PersonaCard, setting VariantSettings
 	if err != nil {
 		return "", err
 	}
-	model, effort := target.Model, target.Effort
-	if setting.Model != nil {
-		model = strings.TrimSpace(*setting.Model)
+	// Only the fields being changed are checked, so a hand-edited value the
+	// harness rejects does not block an edit to the other field.
+	trimmed := func(value *string) string {
+		if value == nil {
+			return ""
+		}
+		return strings.TrimSpace(*value)
 	}
-	if setting.Effort != nil {
-		effort = strings.TrimSpace(*setting.Effort)
-	}
-	if err := validateHarnessSettings(card.ID, target.ID, model, effort); err != nil {
+	if err := validateHarnessSettings(card.ID, target.ID, trimmed(setting.Model), trimmed(setting.Effort)); err != nil {
 		return "", err
+	}
+	if setting.Launch != nil {
+		if _, ok := launchableHarness(target.ID); ok {
+			return "", fmt.Errorf("%w: agent %q harness %q seats start from model and effort; a launch string would not be run", ErrInvalidAgentCard, card.ID, target.ID)
+		}
+		if raw, err = setHarnessVariantScalar(raw, target.ID, "launch", strings.TrimSpace(*setting.Launch)); err != nil {
+			return "", err
+		}
 	}
 	// Blank removes the setting: the harness default model, the default effort.
 	for _, field := range []struct {
@@ -433,9 +466,9 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 				return err
 			}
 		}
-		settings := append([]VariantSettings{}, req.SetVariants...)
-		if req.SetModel != nil || req.SetEffort != nil {
-			settings = append(settings, VariantSettings{ID: req.Variant, Model: req.SetModel, Effort: req.SetEffort})
+		settings, err := variantEdits(card, req)
+		if err != nil {
+			return err
 		}
 		for _, setting := range settings {
 			if next, err = applyVariantSettings(next, card, setting); err != nil {

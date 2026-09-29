@@ -299,6 +299,19 @@ func TestArchonAgentModelAndEffortDriveSpawn(t *testing.T) {
 		t.Fatalf("spawned=%#v, want the seat launch at medium", runner.spawned)
 	}
 
+	for _, args := range [][]string{
+		{"agent", "edit", "codexer", "--harness", "claude-code"},
+		{"agent", "edit", "codexer", "--harness", "claude-code", "--summary", "x"},
+		{"agent", "edit", "codexer", "--add-harness", "hermes", "--harness", "claude-code", "--effort", "low"},
+	} {
+		if _, stderr, code := runArchon(t, runner, args...); code != 2 || !strings.Contains(stderr, "--harness picks the variant") {
+			t.Fatalf("%v: code=%d stderr=%s, want --harness refused", args, code, stderr)
+		}
+	}
+	if _, newHelp, _ := runArchon(t, runner, "agent", "new", "-h"); !strings.Contains(newHelp, "claude-code, openai-codex or hermes") {
+		t.Fatalf("agent new -h does not name hermes:\n%s", newHelp)
+	}
+
 	_, help, _ := runArchon(t, runner, "agent", "edit", "-h")
 	for _, want := range []string{agentEditUsage, "-model", "harness default model", "-effort", "blank means medium", "openai-codex: low, medium, high, xhigh, max, ultra", "openai-codex seats ignore it"} {
 		if !strings.Contains(help, want) {

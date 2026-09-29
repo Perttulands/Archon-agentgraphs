@@ -1151,6 +1151,9 @@ func remoteAgentEdit(c *remoteClient, args []string, stdout, stderr io.Writer) i
 		fmt.Fprintln(stderr, agentEditUsage)
 		return 2
 	}
+	if !checkEditHarness(fs, f, stderr) {
+		return 2
+	}
 	given := givenFlags(fs)
 	body := map[string]any{"addCapability": *f.addCapability, "removeCapability": *f.removeCapability, "addHarness": *f.addHarness, "note": *f.note}
 	for flagName, field := range map[string]struct {
