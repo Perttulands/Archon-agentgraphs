@@ -85,14 +85,16 @@ test('the answer window moves, names where the answer leads, and comes back from
   const overlaps = (a: typeof gate, b: typeof gate) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
   expect(overlaps(before, gate), 'answer window over its gate').toBe(false)
 
+  // Drag it 100px toward the side of the canvas with room, so the workspace clamp never interferes.
   const title = answer.locator('.fwin-head')
   const start = (await title.boundingBox())!
+  const dx = before.x + before.width / 2 > 960 ? -100 : 100
   await page.mouse.move(start.x + 120, start.y + start.height / 2)
   await page.mouse.down()
-  await page.mouse.move(start.x + 20, start.y + 200, { steps: 6 })
+  await page.mouse.move(start.x + 120 + dx, start.y + 200, { steps: 6 })
   await page.mouse.up()
   const moved = (await answer.boundingBox())!
-  expect(Math.abs(moved.x - (before.x - 100))).toBeLessThan(2)
+  expect(Math.abs(moved.x - (before.x + dx))).toBeLessThan(2)
   expect(moved.y).not.toBe(before.y)
 
   await answer.getByRole('button', { name: 'Close Answer gate Disconnected gate' }).click()
