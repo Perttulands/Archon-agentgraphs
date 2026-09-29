@@ -15,7 +15,7 @@ export interface RunInputs {
 }
 
 /** What the brief field asks for when the mission gives no input hint of its own. */
-export const DEFAULT_BRIEF_HINT = 'The input this run works on: the request, sketch or task its first step receives. The board stays reusable; each run takes its own brief.'
+export const DEFAULT_BRIEF_HINT = 'The input this run works on: the request, sketch or task its first step receives. The mission stays reusable; each run takes its own brief.'
 
 export function StartMissionDialog({ title, beadId = '', inputHint = '', humanChannel = 'notify', onStart, onClose }: {
   title: string; beadId?: string; inputHint?: string

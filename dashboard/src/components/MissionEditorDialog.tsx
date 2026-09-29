@@ -17,12 +17,12 @@ export function MissionEditorDialog({ initial, saving, onSave, onClose }: {
 }) {
   const [draft, setDraft] = useState<MissionDraft>(initial)
   const [error, setError] = useState('')
-  const heading = 'Create mission'
+  const heading = 'Add Input card'
   return (
     <div className="pop" role="dialog" aria-label={heading} onPointerDown={event => event.stopPropagation()}>
       <div className="pop-head">
         <span className="pt">{heading}</span>
-        <button className="x" type="button" aria-label="Close mission creator" disabled={saving} onClick={onClose}>x</button>
+        <button className="x" type="button" aria-label="Close Input card creator" disabled={saving} onClick={onClose}>x</button>
       </div>
       <form
         className="pop-body"
@@ -37,7 +37,7 @@ export function MissionEditorDialog({ initial, saving, onSave, onClose }: {
         }}
       >
         <label htmlFor="cockpit-mission-title">Title</label>
-        <input id="cockpit-mission-title" className="f" aria-label="Mission title" value={draft.title}
+        <input id="cockpit-mission-title" className="f" aria-label="Input card title" value={draft.title}
           onChange={event => setDraft(current => ({ ...current, title: event.target.value }))} />
         <label htmlFor="cockpit-mission-goal">Goal</label>
         <textarea id="cockpit-mission-goal" aria-label="Mission goal" value={draft.goal}
@@ -62,9 +62,9 @@ export function MissionEditorDialog({ initial, saving, onSave, onClose }: {
           {error || 'Optional. The Beads issue that owns this mission, for example ctx-ug7.25.'}
         </p>
         <div className="pop-actions">
-          <button className="cancel" type="button" aria-label="Cancel mission creation" disabled={saving} onClick={onClose}>Cancel</button>
+          <button className="cancel" type="button" aria-label="Cancel adding the Input card" disabled={saving} onClick={onClose}>Cancel</button>
           <button className="save" type="submit" disabled={saving}>
-            {saving ? 'Saving…' : 'Create mission'}
+            {saving ? 'Saving…' : 'Add Input card'}
           </button>
         </div>
       </form>

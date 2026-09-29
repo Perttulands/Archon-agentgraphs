@@ -125,7 +125,7 @@ to = "fmn_plan:port_plan_in"
 	// A second restore of the same node is refused and changes nothing.
 	current, _ := store.ReadBoard("undo")
 	again := patch(restore)
-	if again.Code != http.StatusConflict || !strings.Contains(again.Body.String(), `"code":"INVALID_NODE_RESTORE"`) || !strings.Contains(again.Body.String(), `node \"fmn_plan\" is already on the board`) {
+	if again.Code != http.StatusConflict || !strings.Contains(again.Body.String(), `"code":"INVALID_NODE_RESTORE"`) || !strings.Contains(again.Body.String(), `node \"fmn_plan\" is already in the mission`) {
 		t.Fatalf("second restore: %d %s", again.Code, again.Body.String())
 	}
 	if after, _ := store.ReadBoard("undo"); after.ETag != current.ETag {

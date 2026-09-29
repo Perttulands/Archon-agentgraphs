@@ -12,12 +12,75 @@ import (
 	"testing"
 )
 
+// run list --mission (or the older --board) asks the daemon for ?mission=.
+func TestRemoteRunListFiltersByMission(t *testing.T) {
+	for _, args := range [][]string{{"--mission", "proof"}, {"--board", "proof"}, nil} {
+		t.Run(fmt.Sprint(args), func(t *testing.T) {
+			var query string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/formations/runs" {
+					t.Errorf("unexpected %s", r.URL)
+				}
+				query = r.URL.RawQuery
+				fmt.Fprint(w, `{"data":[]}`)
+			}))
+			defer server.Close()
+			if _, stderr, code := runArchon(t, &fakeTmux{}, append([]string{"--server", server.URL, "run", "list"}, args...)...); code != 0 {
+				t.Fatalf("code %d: %s", code, stderr)
+			}
+			want := ""
+			if args != nil {
+				want = "mission=proof"
+			}
+			if query != want {
+				t.Fatalf("query %q, want %q", query, want)
+			}
+		})
+	}
+}
+
+// A mission has one Input card, so a remote start need not name it; --input
+// and the older --mission still pick one explicitly.
+func TestRemoteMissionRunStartsFromTheInputCard(t *testing.T) {
+	for _, extra := range [][]string{nil, {"--input", "mis_named"}, {"--mission", "mis_named"}} {
+		t.Run(fmt.Sprint(extra), func(t *testing.T) {
+			var started string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == "GET" {
+					fmt.Fprint(w, `{"data":{"board":{"rev":3,"missions":[{"id":"mis_only","title":"Brief"}]}}}`)
+					return
+				}
+				var body struct {
+					MissionID string `json:"missionId"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Error(err)
+				}
+				started = body.MissionID
+				fmt.Fprint(w, `{"data":{"runId":"run_proof"}}`)
+			}))
+			defer server.Close()
+			args := append([]string{"--server", server.URL, "mission", "run", "proof", "--brief", "Go", "--json"}, extra...)
+			if _, stderr, code := runArchon(t, &fakeTmux{}, args...); code != 0 {
+				t.Fatalf("code %d: %s", code, stderr)
+			}
+			want := "mis_only"
+			if extra != nil {
+				want = "mis_named"
+			}
+			if started != want {
+				t.Fatalf("started from %q, want %q", started, want)
+			}
+		})
+	}
+}
+
 func TestRemoteMissionContextPaths(t *testing.T) {
 	for _, paths := range [][]string{nil, {"/context/prior art", "relative/ääni.md", "/context/prior art", ""}} {
 		t.Run(fmt.Sprint(paths), func(t *testing.T) {
 			starts := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == "GET" && r.URL.Path == "/api/formations/boards/proof" {
+				if r.Method == "GET" && r.URL.Path == "/api/formations/missions/proof" {
 					fmt.Fprint(w, `{"data":{"board":{"rev":3}}}`)
 					return
 				}

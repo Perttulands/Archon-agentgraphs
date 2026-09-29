@@ -99,12 +99,12 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
       onContextMenu={event => event.stopPropagation()}
     >
       {flow.sections.map(section => (
-        <section key={section.mission?.id || 'unreached'} className="flow-section" aria-label={section.mission ? `Mission ${section.mission.title}` : 'Steps no mission reaches'}>
+        <section key={section.mission?.id || 'unreached'} className="flow-section" aria-label={section.mission ? `Input card ${section.mission.title}` : 'Steps the Input card does not reach'}>
           {section.mission ? (
             <header className="flow-mission" data-flow-node={section.mission.id}>
               <div className="flow-mission-head">
                 <button type="button" className="flow-title" onClick={event => onOpenNode(section.mission!.id, controlAnchor(event.currentTarget))}>
-                  <span className="flow-kicker">◆ Mission</span> {section.mission.title || 'Untitled mission'}
+                  <span className="flow-kicker">◆ Input</span> {section.mission.title || 'Input'}
                 </button>
                 <button type="button" className="flow-action" onClick={() => onStartMission(section.mission!)}>Start mission</button>
               </div>
@@ -113,10 +113,10 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
               <p className="flow-line flow-channel"><span className="flow-label">Human gates</span>{humanChannelLabel(humanChannelOf(section.mission))}</p>
               <FileChips files={section.mission.files} context={section.mission.title} />
               <NoteLine nodeId={section.mission.id} notes={notes} onOpenNotes={onOpenNotes} />
-              {section.start.length ? null : <p className="flow-line warn">Wire the mission to its first step.</p>}
+              {section.start.length ? null : <p className="flow-line warn">Wire the Input card to its first step.</p>}
             </header>
           ) : (
-            <header className="flow-mission unreached"><h2>Not reached from a mission</h2></header>
+            <header className="flow-mission unreached"><h2>Not reached from the Input card</h2></header>
           )}
           <ol className="flow-steps">
             {section.steps.map(step => <FlowRow key={step.id} step={step} {...context} />)}

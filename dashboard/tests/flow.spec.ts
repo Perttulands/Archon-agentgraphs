@@ -6,7 +6,7 @@ type Node = { id: string; title: string }
 test('Flow shows all 7 Wayfinding steps readable at 1440x900 without horizontal scroll', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   const fixture = await wayfindingFixture(page)
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await expect(page.locator('.formation').first()).toBeVisible()
   await page.getByRole('radio', { name: 'Flow' }).click()
   const flow = page.getByTestId('flow-view')
@@ -63,7 +63,7 @@ test('Flow opens windows beside the clicked title or route link, and its run poi
     if (path.endsWith('/escalations')) return route.fulfill(reply({ escalations: [] }))
     return route.fulfill({ status: 404, json: { success: false, error: { message: `Fixture has no ${path}` } } })
   })
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await expect(page.locator('.formation').first()).toBeVisible()
   await page.getByRole('radio', { name: 'Flow' }).click()
   const flow = page.getByTestId('flow-view')

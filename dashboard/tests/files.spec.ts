@@ -42,7 +42,7 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Wayfind
     const text = '# Adversarial review rubric\n\nFail a brief whose recommendation would fit any project.'
     return route.fulfill({ json: { success: true, data: { file: { path, name: 'adversarial-review.md', size: text.length, modifiedAt: '', kind: 'markdown', text: { text, bytes: text.length } } } } })
   })
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await expect(page.getByRole('note')).toHaveCount(wayfinding.notes.elements.length)
 
   const cards: Array<[Node, 'mission' | 'gate' | 'formation']> = [
@@ -83,7 +83,7 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Wayfind
 
   // A file link in a node window opens its file near that window, clear of it.
   await page.getByTestId(`mission-node-${board.missions[0].id}`).locator('.mtitle').click()
-  const missionWindow = page.getByRole('dialog', { name: 'Mission · Wayfinding' })
+  const missionWindow = page.getByRole('dialog', { name: 'Input card · Wayfinding' })
   await missionWindow.getByRole('button', { name: 'Open file /srv/projects/wayfinding/sketch.md' }).click()
   const sketch = page.getByRole('dialog', { name: 'file sketch.md' })
   await expect(sketch.getByRole('alert')).toContainText('file is not readable here')
@@ -98,7 +98,7 @@ test('a file opened from a Flow row leaves that row\'s number, title, labels and
   await page.addInitScript(() => localStorage.clear())
   await wayfindingFixture(page, { board: boardWithFiles() })
   await page.route('**/api/formations/files/preview?**', route => route.fulfill({ status: 403, json: { success: false, error: { code: 'Forbidden', message: "file is not readable here: it is outside the daemon's file roots" } } }))
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await page.getByRole('radio', { name: 'Flow' }).click()
   const gate = page.locator(`.flow-step[data-flow-node="${wayfinding.board.gates.find((node: Node) => node.title === 'Adversarial review').id}"]`)
   await gate.scrollIntoViewIfNeeded()
@@ -130,7 +130,7 @@ test('refused copying leaves a selectable path beside the file download action',
   await page.route('**/api/formations/files/preview?**', route => route.fulfill({ json: { success: true, data: { file: {
     path: 'rubrics/adversarial-review.md', name: 'adversarial-review.md', size: text.length, kind: 'markdown', text: { text, bytes: text.length },
   } } } }))
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await page.getByRole('button', { name: 'Open rubrics/adversarial-review.md', exact: true }).click()
   const file = page.getByRole('dialog', { name: 'file adversarial-review.md' })
   await expect(file.getByRole('link', { name: 'Download', exact: true })).toHaveAttribute('download', 'adversarial-review.md')

@@ -337,7 +337,7 @@ func cockpitLink(base, slug, runID string) string {
 	}
 	query := url.Values{}
 	if slug != "" {
-		query.Set("board", slug)
+		query.Set("mission", slug)
 	}
 	query.Set("run", runID)
 	return base + "/?" + query.Encode()

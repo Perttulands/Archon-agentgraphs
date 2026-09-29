@@ -12,7 +12,7 @@ test('pending launch keeps focus on enabled dialog controls', async ({ page }) =
     await pending
     await route.fulfill({ status: 409, json: { success: false, error: { message: 'Fixture-only pending launch ended' } } })
   })
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await page.getByTitle('Start mission', { exact: true }).first().click()
   const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
   await dialog.getByLabel('Workspace', { exact: true }).selectOption('existing')
@@ -39,7 +39,7 @@ test('pending launch keeps focus on enabled dialog controls', async ({ page }) =
 
 test('launch keeps keyboard focus inside and restores its opener after dismissal', async ({ page }) => {
   const fixture = await wayfindingFixture(page)
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   const opener = page.getByTitle('Start mission', { exact: true }).first()
   await opener.click()
   const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
@@ -66,7 +66,7 @@ test('launch keeps keyboard focus inside and restores its opener after dismissal
 
 test('the dialog asks for no launch limits', async ({ page }) => {
   const fixture = await wayfindingFixture(page)
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await page.getByTitle('Start mission', { exact: true }).first().click()
   const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
   await expect(dialog.getByLabel('Brief', { exact: true })).toBeVisible()
@@ -85,7 +85,7 @@ for (const switchFromExisting of [false, true]) {
       submissions.push(route.request().postDataJSON())
       await route.fulfill({ status: 409, json: { success: false, error: { message: 'Fixture-only payload captured' } } })
     })
-    await page.goto('/?board=wayfinding')
+    await page.goto('/?mission=wayfinding')
     await page.getByTitle('Start mission', { exact: true }).first().click()
     const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
     const workspace = dialog.getByLabel('Workspace', { exact: true })
@@ -123,7 +123,7 @@ for (const mode of ['automatic', 'existing']) {
       payloads.push(route.request().postDataJSON())
       await route.fulfill({ status: 409, json: { success: false, error: { message: 'Fixture-only payload captured' } } })
     })
-    await page.goto('/?board=wayfinding')
+    await page.goto('/?mission=wayfinding')
     await page.getByTitle('Start mission', { exact: true }).first().click()
     const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
     await dialog.getByLabel('Brief', { exact: true }).fill('Inspect the supplied context')

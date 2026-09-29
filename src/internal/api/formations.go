@@ -614,8 +614,6 @@ func (h *FormationsHandler) newRunEngine(boundary string) *formations.RunEngine 
 }
 
 func (h *FormationsHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/formations/boards", h.ListBoards)
-	mux.HandleFunc("POST /api/formations/boards", h.CreateBoard)
 	mux.HandleFunc("GET /api/formations/gate-profiles", h.ListGateProfiles)
 	mux.HandleFunc("POST /api/formations/runs", h.StartRun)
 	mux.HandleFunc("GET /api/formations/runs/{runId}", h.GetRun)
@@ -625,15 +623,21 @@ func (h *FormationsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/formations/runs/{runId}/abort", h.AbortRun)
 	mux.HandleFunc("POST /api/formations/runs/{runId}/gates/{gateId}/verdict", h.RecordHumanGateVerdict)
 	mux.HandleFunc("GET /api/formations/runs/{runId}/escalations", h.GetRunEscalations)
-	mux.HandleFunc("GET /api/formations/boards/{board}/changes", h.GetBoardChanges)
-	mux.HandleFunc("GET /api/formations/boards/{board}/validation", h.GetBoardValidation)
-	mux.HandleFunc("GET /api/formations/boards/{board}", h.GetBoard)
-	mux.HandleFunc("PATCH /api/formations/boards/{board}", h.PatchBoard)
-	mux.HandleFunc("DELETE /api/formations/boards/{board}", h.DeleteBoard)
-	mux.HandleFunc("GET /api/formations/boards/{board}/notes", h.GetBoardNotes)
-	mux.HandleFunc("PATCH /api/formations/boards/{board}/notes", h.PatchBoardNotes)
-	mux.HandleFunc("GET /api/formations/boards/{board}/layout", h.GetLayout)
-	mux.HandleFunc("PATCH /api/formations/boards/{board}/layout", h.PatchLayout)
+	// Missions are served under /missions. The /boards routes are the same
+	// handlers, kept for one release after the rename and deprecated in OpenAPI.
+	for _, base := range []string{"/api/formations/missions", "/api/formations/boards"} {
+		mux.HandleFunc("GET "+base, h.ListBoards)
+		mux.HandleFunc("POST "+base, h.CreateBoard)
+		mux.HandleFunc("GET "+base+"/{board}/changes", h.GetBoardChanges)
+		mux.HandleFunc("GET "+base+"/{board}/validation", h.GetBoardValidation)
+		mux.HandleFunc("GET "+base+"/{board}", h.GetBoard)
+		mux.HandleFunc("PATCH "+base+"/{board}", h.PatchBoard)
+		mux.HandleFunc("DELETE "+base+"/{board}", h.DeleteBoard)
+		mux.HandleFunc("GET "+base+"/{board}/notes", h.GetBoardNotes)
+		mux.HandleFunc("PATCH "+base+"/{board}/notes", h.PatchBoardNotes)
+		mux.HandleFunc("GET "+base+"/{board}/layout", h.GetLayout)
+		mux.HandleFunc("PATCH "+base+"/{board}/layout", h.PatchLayout)
+	}
 }
 
 func (h *FormationsHandler) ListGateProfiles(w http.ResponseWriter, _ *http.Request) {
@@ -650,7 +654,7 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if request.Board == "" {
-		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "board is required")
+		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "mission is required")
 		return
 	}
 	if (request.MissionID == "") == (request.FormationID == "") {
@@ -914,7 +918,7 @@ func (h *FormationsHandler) CreateBoard(w http.ResponseWriter, r *http.Request) 
 		slug = boardSlugFromTitle(title)
 	}
 	if slug == "" {
-		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Board name must contain a letter or number")
+		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Mission name must contain a letter or number")
 		return
 	}
 	board, err := h.store.CreateBoard(formations.BoardCreateRequest{
@@ -1724,7 +1728,7 @@ func (h *FormationsHandler) PatchLayout(w http.ResponseWriter, r *http.Request) 
 }
 
 const (
-	untitledBoardTitle = "Untitled board"
+	untitledBoardTitle = "Untitled mission"
 	maxUntitledBoards  = 100
 )
 
@@ -1787,7 +1791,7 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	case errors.As(err, &admission):
 		WriteRunAdmissionError(w, admission)
 	case errors.Is(err, formations.ErrDefinitionPublicationUncertain):
-		core.WriteError(w, http.StatusServiceUnavailable, "DEFINITION_PUBLICATION_UNCERTAIN", "Reload both board and layout before any explicit retry")
+		core.WriteError(w, http.StatusServiceUnavailable, "DEFINITION_PUBLICATION_UNCERTAIN", "Reload both the mission and its layout before any explicit retry")
 	case errors.Is(err, formations.ErrInvalidToolMutation):
 		message := "Tool mutation is invalid"
 		if err.Error() != formations.ErrInvalidToolMutation.Error() {
@@ -1833,7 +1837,7 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	case errors.Is(err, formations.ErrConflict):
 		core.WriteError(w, http.StatusConflict, "CONFLICT", "Formation definition changed; reload and retry")
 	case errors.Is(err, formations.ErrAlreadyExists):
-		core.WriteError(w, http.StatusConflict, "BOARD_EXISTS", "A board with that name already exists")
+		core.WriteError(w, http.StatusConflict, "BOARD_EXISTS", "A mission with that name already exists")
 	case errors.Is(err, formations.ErrAmbiguousSelector):
 		core.WriteError(w, http.StatusBadRequest, "AMBIGUOUS_SELECTOR", err.Error())
 	case errors.Is(err, formations.ErrNotFound), errors.Is(err, formations.ErrNoteTargetNotFound):

@@ -5,11 +5,23 @@ import type { RunStatusProjection } from './formationsTypes'
 const run = (runId: string, status: string, final = false): RunStatusProjection => ({ runId, status, final, boardSlug: 'wayfinding', missionId: 'mis', eventCount: 1 })
 
 describe('run discovery', () => {
-  it('reads and writes the board and run link without touching other parameters', () => {
-    expect(readRunLink('?board=wayfinding&run=run_01A')).toEqual({ board: 'wayfinding', run: 'run_01A' })
+  it('reads and writes the mission and run link without touching other parameters', () => {
+    expect(readRunLink('?mission=wayfinding&run=run_01A')).toEqual({ board: 'wayfinding', run: 'run_01A' })
     expect(readRunLink('')).toEqual({ board: '', run: '' })
-    expect(runLinkSearch('?theme=dark&run=run_old', { board: 'wayfinding', run: '' })).toBe('?theme=dark&board=wayfinding')
-    expect(runLinkSearch('', { board: 'wayfinding', run: 'run_01A' })).toBe('?board=wayfinding&run=run_01A')
+    expect(runLinkSearch('?theme=dark&run=run_old', { board: 'wayfinding', run: '' })).toBe('?mission=wayfinding&theme=dark')
+    expect(runLinkSearch('', { board: 'wayfinding', run: 'run_01A' })).toBe('?mission=wayfinding&run=run_01A')
+    expect(runLinkSearch('?mission=x', { board: '', run: '' })).toBe('')
+  })
+
+  // Links made before the rename say ?board=. They open the same mission and
+  // run, and writing the link back rewrites ?board= to ?mission=, keeping run=
+  // and every other parameter.
+  it('opens a pre-rename ?board= link and rewrites it to ?mission=', () => {
+    expect(readRunLink('?board=wayfinding&run=run_01A')).toEqual({ board: 'wayfinding', run: 'run_01A' })
+    expect(readRunLink('?board=old&mission=new')).toEqual({ board: 'new', run: '' })
+    const old = '?theme=dark&board=wayfinding&run=run_01A&view=flow'
+    expect(runLinkSearch(old, readRunLink(old))).toBe('?mission=wayfinding&run=run_01A&theme=dark&view=flow')
+    expect(runLinkSearch('?board=wayfinding', readRunLink('?board=wayfinding'))).toBe('?mission=wayfinding')
     expect(runLinkSearch('?board=x', { board: '', run: '' })).toBe('')
   })
 

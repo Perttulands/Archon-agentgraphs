@@ -95,13 +95,13 @@ func TestNeedsYouMailsSettledAsksOnceAndSkipsTransientBlocks(t *testing.T) {
 	if gate.Kind != formations.NeedsYouKindHumanGate || gate.Seq != seq || gate.RunStatus != "waiting_human" || gate.GateTitle != "Review" || gate.BoardTitle != "Proof" {
 		t.Fatalf("gate notification = %+v", gate)
 	}
-	if gate.Subject != "Archon needs your answer: Review (Proof)" || gate.BoardURL != "https://cockpit.example/?board=proof&run="+id {
+	if gate.Subject != "Archon needs your answer: Review (Proof)" || gate.BoardURL != "https://cockpit.example/?mission=proof&run="+id {
 		t.Fatalf("subject %q link %q", gate.Subject, gate.BoardURL)
 	}
 	for _, want := range []string{
 		"Gate criterion:\nPRIVATE-CRITERION",
 		"The gate received this from Work:\n\nPRIVATE-OUTPUT\n",
-		"Answer in the cockpit: https://cockpit.example/?board=proof&run=" + id,
+		"Answer in the cockpit: https://cockpit.example/?mission=proof&run=" + id,
 		"archon --server http://127.0.0.1:8091 gate approve " + id + " gate_review --requested-seq " + strconv.Itoa(seq) + " --response 'your answer'",
 		"archon --server http://127.0.0.1:8091 gate reject " + id + " gate_review --requested-seq " + strconv.Itoa(seq) + " --response 'what to change'",
 	} {

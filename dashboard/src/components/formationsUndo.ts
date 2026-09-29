@@ -155,7 +155,7 @@ export function undoOutcomeMessage(outcome: UndoOutcome): string {
     const total = outcome.entry.steps.length
     const done = describeSteps(outcome.done, total)
     const partly = outcome.done.length ? ` ${done.charAt(0).toUpperCase()}${done.slice(1)} ${outcome.done.length === 1 ? 'was' : 'were'} undone.` : ''
-    return `The board kept changing while undoing ${outcome.entry.label}.${partly} The rest is still on the undo history; press Ctrl+Z to try again.`
+    return `The mission kept changing while undoing ${outcome.entry.label}.${partly} The rest is still on the undo history; press Ctrl+Z to try again.`
   }
   return ''
 }
@@ -168,6 +168,9 @@ export function combineUndo(label: string, ...parts: Array<UndoDraft | null | un
 export const boardStep = (patch: Record<string, unknown>, what?: string): UndoStep => (what ? { board: patch, what } : { board: patch })
 
 type NodeKind = 'mission' | 'formation' | 'gate'
+
+/** What undo messages call each node kind; the mission node is the Input card. */
+const KIND_WORD: Record<NodeKind, string> = { mission: 'Input card', formation: 'formation', gate: 'gate' }
 
 function nodeOf(board: BoardDocument, id: string): { kind: NodeKind; node: object; title: string; index: number } | null {
   const lists: Array<[NodeKind, Array<{ id: string; title: string }>]> = [['mission', board.missions || []], ['formation', board.formations], ['gate', board.gates || []]]
@@ -221,7 +224,7 @@ export function nodeDeleteUndo(board: BoardDocument, nodeId: string, position: {
   if (!found) return null
   const connections = touching(board.connections || [], endpoint => endpoint.split(':')[0] === nodeId)
   return {
-    label: `the delete of ${found.kind} ${quoted(found.title, 'untitled')}`,
+    label: `the delete of ${KIND_WORD[found.kind]} ${quoted(found.title, 'untitled')}`,
     steps: [boardStep({ restoreNode: { [found.kind]: found.node, connections, index: found.index, x: Math.round(position.x), y: Math.round(position.y) } })],
   }
 }

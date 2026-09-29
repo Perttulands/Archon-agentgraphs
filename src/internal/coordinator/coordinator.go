@@ -276,8 +276,13 @@ func (c *Coordinator) Handler() http.Handler {
 	c.mu.Unlock()
 	api.NewAgentsHandlerWithStoreAndLiveness(c.personas, liveness).RegisterRoutes(mux)
 	mux.HandleFunc("GET /api/formations/runs", func(w http.ResponseWriter, r *http.Request) {
-		// An optional board filter lets a cockpit poll only its board's runs.
-		runs, err := c.store.ListRuns(formations.RunListFilter{BoardSlug: r.URL.Query().Get("board")})
+		// An optional ?mission= filter lets a cockpit poll only its mission's
+		// runs; ?board= is its name before the rename, kept for one release.
+		mission := r.URL.Query().Get("mission")
+		if mission == "" {
+			mission = r.URL.Query().Get("board")
+		}
+		runs, err := c.store.ListRuns(formations.RunListFilter{BoardSlug: mission})
 		if err != nil {
 			failure(w, err)
 			return
@@ -466,7 +471,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !connected {
-		reply(w, 422, map[string]string{"error": "wire the mission to a formation"})
+		reply(w, 422, map[string]string{"error": "wire the Input card to a step"})
 		return
 	}
 	req.Limits = c.engine.AdmissionLimits(req.Limits)

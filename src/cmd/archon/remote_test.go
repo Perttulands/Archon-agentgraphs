@@ -23,7 +23,7 @@ func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
 	var received string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/formations/boards/proof":
+		case "/api/formations/missions/proof":
 			w.Write([]byte(`{"success":true,"timestamp":"test","data":{"board":{"rev":9}}}`))
 		case "/api/formations/runs":
 			buf := new(bytes.Buffer)
@@ -169,7 +169,15 @@ func newAuthoringSides(t *testing.T) (offline, remote authoringSide, server *htt
 	if err != nil {
 		t.Fatal(err)
 	}
-	server = httptest.NewServer(c.Handler())
+	handler := c.Handler()
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The CLI calls only the mission routes; /boards and ?board= are for
+		// older clients.
+		if strings.HasPrefix(r.URL.Path, "/api/formations/boards") || r.URL.Query().Has("board") {
+			t.Errorf("the CLI called the deprecated route %s %s", r.Method, r.URL)
+		}
+		handler.ServeHTTP(w, r)
+	}))
 	t.Cleanup(func() { server.Close(); c.Close() })
 	remote = authoringSide{name: "remote", store: formations.NewStore(remoteRoot), run: func(args ...string) (string, string, int) {
 		return runArchon(t, runner, append([]string{"--server", server.URL}, args...)...)
@@ -275,7 +283,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		}
 	}
 	steps := []authoringStep{
-		{args: with(fixed("board", "new", "demo", "--title", "Demo"))},
+		{args: with(fixed("mission", "new", "demo", "--title", "Demo"))},
 		{args: with(fixed("agent", "new", "scout-x", "--kind", "scout", "--harness", "openai-codex", "--capable", "research"))},
 		{args: with(fixed("agent", "edit", "scout-x", "--summary", "Finds things", "--add-capability", "inspect", "--display-name", "Scout X"))},
 		{args: with(fixed("agent", "edit", "scout-x", "--model", "gpt-6-sol", "--effort", "ultra"))},
@@ -337,7 +345,8 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("gate", "update", "demo", "Signoff", "--title", "Sign-off", "--kinds", "human,code", "--check", "output_contains", "--check-version", "1", "--check-value", "done"))},
 		{args: with(fixed("gate", "update", "demo", "Sign-off", "--clear-check", "--kinds", "human"))},
 		{args: with(fixed("gate", "create", "demo", "--title", "Default")), creates: "gate"},
-		{args: with(fixed("mission", "update", "demo", "Work", "--goal", "Do it well"))},
+		{args: with(fixed("mission", "update", "demo", "Work", "--goal", "Do it"))},
+		{args: with(fixed("mission", "update", "demo", "--goal", "Do it well"))},
 		{args: with(fixed("mission", "update", "demo", "Work", "--file", "docs/brief.md", "--file", "docs/context.md"))},
 		{args: with(fixed("mission", "update", "demo", "Work", "--human-channel", "notify"))},
 		{args: with(fixed("mission", "update", "demo", "Work", "--human-channel", "session"))},
@@ -351,32 +360,33 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("tool", "update", "demo", "Normalize", "--title", "Normalize report", "--params-json", `{"mode":"strict"}`))},
 		{args: with(fixed("tool", "inspect", "demo", "Normalize report"))},
 		{args: with(fixed("tool", "delete", "demo", "Scratch"))},
-		{args: with(fixed("board", "note", "demo", "--text", "Board intent"))},
+		{args: with(fixed("mission", "note", "demo", "--text", "Board intent"))},
 		{args: with(func(board *formations.BoardDocument) []string {
-			return []string{"board", "note", "demo", "--node", worker(board).ID, "--text", "Worker intent"}
+			return []string{"mission", "note", "demo", "--node", worker(board).ID, "--text", "Worker intent"}
 		})},
 		{noteArgs: func(board *formations.BoardDocument, notes *formations.BoardNotesDocument) []string {
-			return with(fixed("board", "note", "demo", "--node", worker(board).ID, "--text", "Reply"))(board)
+			return with(fixed("mission", "note", "demo", "--node", worker(board).ID, "--text", "Reply"))(board)
 		}},
 		{noteArgs: func(board *formations.BoardDocument, notes *formations.BoardNotesDocument) []string {
 			entries := workerNotes(notes, worker(board).ID)
-			return with(fixed("board", "note", "demo", "--node", worker(board).ID, "--entry", entries[len(entries)-1].ID, "--text", "Edited reply"))(board)
+			return with(fixed("mission", "note", "demo", "--node", worker(board).ID, "--entry", entries[len(entries)-1].ID, "--text", "Edited reply"))(board)
 		}},
 		{noteArgs: func(board *formations.BoardDocument, notes *formations.BoardNotesDocument) []string {
-			return with(fixed("board", "note", "demo", "--node", worker(board).ID, "--entry", workerNotes(notes, worker(board).ID)[0].ID, "--text", "Not mine", "--author", "human:ui"))(board)
+			return with(fixed("mission", "note", "demo", "--node", worker(board).ID, "--entry", workerNotes(notes, worker(board).ID)[0].ID, "--text", "Not mine", "--author", "human:ui"))(board)
 		}, errorOnly: true},
 		{noteArgs: func(board *formations.BoardDocument, notes *formations.BoardNotesDocument) []string {
-			return with(fixed("board", "note", "demo", "--clear", "--entry", notes.Board[0].ID))(board)
+			return with(fixed("mission", "note", "demo", "--clear", "--entry", notes.Board[0].ID))(board)
 		}},
-		{args: with(fixed("board", "note", "demo", "--text", "Board intent"))},
-		{args: with(fixed("board", "notes", "demo"))},
-		{args: with(fixed("board", "arrange", "demo"))},
-		{args: with(fixed("board", "validate", "demo"))},
-		{args: with(fixed("board", "list"))},
-		{args: with(fixed("board", "inspect", "demo"))},
+		{args: with(fixed("mission", "note", "demo", "--text", "Board intent"))},
+		{args: with(fixed("mission", "notes", "demo"))},
+		{args: with(fixed("mission", "arrange", "demo"))},
+		{args: with(fixed("mission", "validate", "demo"))},
+		{args: with(fixed("mission", "list"))},
+		{args: with(fixed("mission", "inspect", "demo"))},
 		{args: with(fixed("formation", "list", "demo"))},
 		{args: with(fixed("formation", "inspect", "demo", "Worker"))},
-		{args: with(fixed("mission", "list", "demo"))},
+		{args: with(fixed("mission", "list", "demo")), errorOnly: true},
+		{args: with(fixed("mission", "create", "demo", "--title", "Second")), errorOnly: true},
 		{args: with(fixed("mission", "inspect", "demo", "Work"))},
 		{args: with(fixed("agent", "list"))},
 		{args: with(fixed("agent", "list", "--capable", "research", "--assignable"))},
@@ -384,13 +394,13 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("formation", "rename", "demo", "Nobody", "Ghost")), errorOnly: true},
 		{args: with(fixed("gate", "update", "demo", "Nobody", "--title", "Ghost")), errorOnly: true},
 		{args: with(fixed("mission", "wire", "demo", "Nobody", "x:y")), errorOnly: true},
-		{args: with(fixed("board", "new", "demo")), errorOnly: true},
+		{args: with(fixed("mission", "new", "demo")), errorOnly: true},
 		{args: with(fixed("mission", "create", "demo", "--bead", "Home-123")), errorOnly: true},
 		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--bead", "chlab/123")), errorOnly: true},
 		{args: with(fixed("gate", "create", "demo", "--command", "make test")), errorOnly: true},
 		{args: with(fixed("gate", "create", "demo", "--check", "output_contains", "--check-version", "1", "--check-value", "done")), errorOnly: true},
 		{args: with(fixed("formation", "create", "missing-board")), errorOnly: true},
-		{args: with(fixed("board", "inspect", "missing-board")), errorOnly: true},
+		{args: with(fixed("mission", "inspect", "missing-board")), errorOnly: true},
 		{args: with(fixed("mission", "list", "missing-board")), errorOnly: true},
 		{args: with(fixed("formation", "list", "missing-board")), errorOnly: true},
 		{args: with(fixed("formation", "inspect", "demo", "Nobody")), errorOnly: true},
@@ -470,7 +480,7 @@ func TestRemoteAuthoringMatchesOfflineCommands(t *testing.T) {
 					}
 					continue
 				}
-				if off[2] != "0" && !(args[0] == "board" && args[1] == "validate") {
+				if off[2] != "0" && !(args[0] == "mission" && args[1] == "validate") {
 					t.Fatalf("step %d %v failed on both sides: %s", index, args, off[1])
 				}
 				if off[0] != rem[0] {
@@ -548,7 +558,7 @@ func TestRemoteAuthoringCoversEveryCommandWithOfflineFlags(t *testing.T) {
 
 func TestRemoteAuthoringRetriesAWriteRaceThenGivesUp(t *testing.T) {
 	_, remote, daemon := newAuthoringSides(t)
-	if _, stderr, code := remote.run("board", "new", "race"); code != 0 {
+	if _, stderr, code := remote.run("mission", "new", "race"); code != 0 {
 		t.Fatal(stderr)
 	}
 	target, err := url.Parse(daemon.URL)
@@ -657,7 +667,7 @@ func TestRemoteAgentListShowsTheDaemonsLiveness(t *testing.T) {
 func TestRemoteToolErrorsCarryTheOfflineReason(t *testing.T) {
 	offline, remote, _ := newAuthoringSides(t)
 	for _, side := range []authoringSide{offline, remote} {
-		if _, stderr, code := side.run("board", "new", "tools"); code != 0 {
+		if _, stderr, code := side.run("mission", "new", "tools"); code != 0 {
 			t.Fatalf("%s board new: %s", side.name, stderr)
 		}
 		for reason, args := range map[string][]string{
@@ -678,7 +688,7 @@ func TestRemoteToolErrorsCarryTheOfflineReason(t *testing.T) {
 func TestRepeatedAuthoringEditsKeepTheRevisionOfflineAndRemote(t *testing.T) {
 	offline, remote, _ := newAuthoringSides(t)
 	for _, side := range []authoringSide{offline, remote} {
-		for _, args := range [][]string{{"board", "new", "same"}, {"formation", "create", "same", "solo", "--title", "Worker"}} {
+		for _, args := range [][]string{{"mission", "new", "same"}, {"formation", "create", "same", "solo", "--title", "Worker"}} {
 			if _, stderr, code := side.run(args...); code != 0 {
 				t.Fatalf("%s %v: %s", side.name, args, stderr)
 			}

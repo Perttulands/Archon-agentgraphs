@@ -214,7 +214,7 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 	}
 	mission, ok := findMission(board, req.MissionID)
 	if !ok {
-		return nil, fmt.Errorf("%w: mission %q", ErrNotFound, req.MissionID)
+		return nil, fmt.Errorf("%w: Input card %q", ErrNotFound, req.MissionID)
 	}
 	if req.BeadID != "" {
 		mission.BeadID = req.BeadID

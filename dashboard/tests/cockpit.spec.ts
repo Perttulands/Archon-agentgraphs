@@ -158,10 +158,26 @@ test('two floating windows open, resize, stack and stay off the zoom column', as
   await expect(run).toBeVisible()
 })
 
+test('an old ?board= link opens the same mission and run and becomes a ?mission= link', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await cockpitFixture(page, { succeeded: true })
+  const requests: string[] = []
+  page.on('request', request => requests.push(new URL(request.url()).pathname + new URL(request.url()).search))
+  await page.goto('/?board=browser&run=run_browser&theme=dark')
+  await expect(page.getByTestId('board-picker')).toHaveValue('browser')
+  await expect(page.getByTestId('run-produced').getByRole('button')).toHaveText(['▤review.md', '+3'])
+  await expect(page).toHaveURL(/\/\?mission=browser&run=run_browser&theme=dark$/)
+  await page.goto('/?board=browser')
+  await expect(page.getByTestId('board-picker')).toHaveValue('browser')
+  await expect(page).toHaveURL(/\/\?mission=browser(&run=run_browser)?$/)
+  expect(requests.filter(path => path.startsWith('/api/') && (path.startsWith('/api/formations/boards') || path.includes('board=')))).toEqual([])
+  expect(requests.some(path => path.startsWith('/api/formations/missions/browser'))).toBe(true)
+})
+
 test('a finished run opens what it produced from the run bar and cards in file windows side by side', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await cockpitFixture(page, { succeeded: true })
-  await page.goto('/?board=browser&run=run_browser')
+  await page.goto('/?mission=browser&run=run_browser')
 
   const produced = page.getByTestId('run-produced')
   await expect(produced.getByRole('button')).toHaveText(['▤review.md', '+3'])
@@ -298,7 +314,7 @@ test('the phone roster count stays inside its header column', async ({ page }) =
   await cockpitFixture(page, { run: true })
   await page.goto('/')
   const count = page.getByTestId('roster-count')
-  await expect(count).toHaveText(/on board/)
+  await expect(count).toHaveText(/on canvas/)
   const header = (await page.locator('.roster-hd').boundingBox())!
   const pill = (await count.boundingBox())!
   const label = (await page.locator('.roster-group-label').first().boundingBox())!

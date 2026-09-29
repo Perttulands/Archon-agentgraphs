@@ -397,7 +397,7 @@ export default function AgentsView() {
       setBoardError('')
       setError('')
     } catch (err) {
-      setBoardError(err instanceof Error ? err.message : 'Failed to load board')
+      setBoardError(err instanceof Error ? err.message : 'Failed to load mission')
     } finally {
       setBoardLoading(false)
     }
@@ -429,7 +429,7 @@ export default function AgentsView() {
         // Boards and Agents share one current board: the link's, else the last used here.
         const { slug, missingLinked } = chooseCurrentBoard(nextBoards.map(next => next.slug), window.location.search)
         setSelectedSlug(current => current || slug)
-        setError(missingLinked && nextBoards.length ? `Board "${missingLinked}" from the link was not found` : '')
+        setError(missingLinked && nextBoards.length ? `Mission "${missingLinked}" from the link was not found` : '')
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Agents request failed')
       } finally {
@@ -507,10 +507,10 @@ export default function AgentsView() {
       await loadAgents()
     } catch (err) {
       if (err instanceof ApiRequestError && (err.status === 409 || err.status === 428)) {
-        setError('Board changed; reload and retry')
+        setError('The mission changed; reload and retry')
         return
       }
-      setError(err instanceof Error ? err.message : 'Board update failed')
+      setError(err instanceof Error ? err.message : 'Mission update failed')
     }
   }, [board, loadAgents])
 
@@ -649,9 +649,9 @@ export default function AgentsView() {
     <div className="fmx agx" data-testid="agents-view">
       <div className="topbar">
         <div className="boardpick">
-          board
-          <select aria-label="Board" value={selectedSlug} onChange={event => setSelectedSlug(event.target.value)} disabled={loading || boards.length === 0}>
-            {boards.length === 0 && <option value="">No boards</option>}
+          mission
+          <select aria-label="Mission" value={selectedSlug} onChange={event => setSelectedSlug(event.target.value)} disabled={loading || boards.length === 0}>
+            {boards.length === 0 && <option value="">No missions</option>}
             {boards.map(next => (
               <option key={next.slug} value={next.slug}>{next.title || next.slug}</option>
             ))}
@@ -660,14 +660,14 @@ export default function AgentsView() {
         </div>
         <div className="sep" />
         <div className="boardpick">
-          mission
+          input
           <select
-            aria-label="Mission"
+            aria-label="Input card"
             value={selectedMissionId}
             onChange={event => setSelectedMissionId(event.target.value)}
             disabled={boardLoading || !board?.missions?.length}
           >
-            {!board?.missions?.length && <option value="">No missions</option>}
+            {!board?.missions?.length && <option value="">No Input card</option>}
             {(board?.missions || []).map(mission => (
               <option key={mission.id} value={mission.id}>{mission.title}</option>
             ))}
@@ -738,7 +738,7 @@ export default function AgentsView() {
         <main className="agx-staffing" aria-label="Mission staffing">
           {boardError && (
             <div className="agx-alert agx-board-alert" role="alert">
-              <span>Board load failed: {boardError}</span>
+              <span>Mission load failed: {boardError}</span>
               <button className="board-action" type="button" onClick={() => selectedSlug && loadBoard(selectedSlug)}>
                 Retry board
               </button>
@@ -750,10 +750,10 @@ export default function AgentsView() {
           <div className="agx-cards">
             {!loading && !boardLoading && !selectedMission && (
               <StaffingEmpty
-                title={boards.length === 0 ? 'No boards' : 'No mission on this board'}
+                title={boards.length === 0 ? 'No missions' : 'This mission has no Input card'}
                 copy={boards.length === 0
-                  ? 'Create a board on the Boards tab to staff a mission.'
-                  : 'Add a Mission card on the Boards tab and wire it to a formation.'}
+                  ? 'Create a mission on the Missions tab to staff it.'
+                  : 'Add an Input card on the Missions tab and wire it to a formation.'}
               />
             )}
             {selectedMission && (
@@ -762,7 +762,7 @@ export default function AgentsView() {
             {selectedMission && reachableItems.length === 0 && (
               <StaffingEmpty
                 title="Nothing wired to this mission"
-                copy="Wire the mission's output to a formation on the Boards tab to staff it here."
+                copy="Wire the Input card to a formation on the Missions tab to staff it here."
               />
             )}
             {selectedMission && reachableItems.map(item => (
@@ -927,7 +927,7 @@ function MissionCard({ mission, slotCounts }: {
   return (
     <section className="missioncard">
       <div className="mhd">
-        <span className="meyebrow">◆ Mission</span>
+        <span className="meyebrow">◆ Input</span>
       </div>
       <div className="mtitle">{mission.title}</div>
       <div className={`mgoal${mission.goal ? '' : ' placeholder'}`}>{mission.goal || 'set the mission objective…'}</div>
@@ -1239,8 +1239,8 @@ function Inspector({
   }
 
   return (
-    <InspectorPanel title="Slot" meta="no longer on this board" onClose={onClose}>
-      <p className="note-empty">This slot was removed from the board.</p>
+    <InspectorPanel title="Slot" meta="no longer in this mission" onClose={onClose}>
+      <p className="note-empty">This slot was removed from the mission.</p>
     </InspectorPanel>
   )
 }
@@ -1387,7 +1387,7 @@ function MissionRunState({ board, missionRun }: { board: BoardDocument; missionR
       <section className="run-banner agx-run-banner" data-testid="mission-run" aria-label="Mission run">
         <span className="agx-run-label">run</span>
         <span className="agx-run-none">No run for this mission yet.</span>
-        <a className="agx-run-link" href={boardsRunHref(board.slug, '')}>Start it on Boards</a>
+        <a className="agx-run-link" href={boardsRunHref(board.slug, '')}>Start it on Missions</a>
       </section>
     )
   }
@@ -1405,7 +1405,7 @@ function MissionRunState({ board, missionRun }: { board: BoardDocument; missionR
         </span>
       ) : null}
       {openCount > 1 ? <span>{openCount} open runs</span> : null}
-      <a className="agx-run-link" href={boardsRunHref(board.slug, run.runId)}>Open on Boards</a>
+      <a className="agx-run-link" href={boardsRunHref(board.slug, run.runId)}>Open on Missions</a>
     </section>
   )
 }

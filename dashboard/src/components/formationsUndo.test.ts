@@ -70,8 +70,8 @@ describe('UndoHistory', () => {
     const history = historyOn()
     history.record({ board: 'b', label: 'the rename', steps: [boardStep({ rename: true })] })
     history.record({ board: 'b', label: 'the delete of gate “Tests”', steps: [boardStep({ restore: true })] })
-    const failed = await history.undo(runner(async () => { throw new Error('what it was wired to (fmn) is no longer on the board') }).value)
-    expect(undoOutcomeMessage(failed)).toBe('Could not undo the delete of gate “Tests”: what it was wired to (fmn) is no longer on the board. It was removed from the undo history.')
+    const failed = await history.undo(runner(async () => { throw new Error('what it was wired to (fmn) is no longer in the mission') }).value)
+    expect(undoOutcomeMessage(failed)).toBe('Could not undo the delete of gate “Tests”: what it was wired to (fmn) is no longer in the mission. It was removed from the undo history.')
     const applied: UndoStep[] = []
     expect((await history.undo(runner(async step => { applied.push(step) }).value)).status).toBe('undone')
     expect(applied).toEqual([boardStep({ rename: true })])
@@ -98,7 +98,7 @@ describe('UndoHistory', () => {
     expect(outcome.status).toBe('busy')
     expect(calls.reloads).toBe(1)
     expect(attempts).toBe(3)
-    expect(undoOutcomeMessage(outcome)).toBe('The board kept changing while undoing the reconnection. The new wire was undone. The rest is still on the undo history; press Ctrl+Z to try again.')
+    expect(undoOutcomeMessage(outcome)).toBe('The mission kept changing while undoing the reconnection. The new wire was undone. The rest is still on the undo history; press Ctrl+Z to try again.')
     const applied: UndoStep[] = []
     expect((await history.undo(runner(async step => { applied.push(step) }).value)).status).toBe('undone')
     expect(applied).toEqual([boardStep({ two: 2 }, 'the old wire')])

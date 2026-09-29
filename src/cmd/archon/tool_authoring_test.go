@@ -792,13 +792,13 @@ func TestArchonToolUsageAndStableErrorCodes(t *testing.T) {
 	}
 	private := fmt.Errorf("private reconciliation detail: %w", joined)
 	response := archonErrorFromError(private, "tool", "tool_target")
-	if response.Message != "Reload both board and layout before any explicit retry" ||
+	if response.Message != "Reload both the mission and its layout before any explicit retry" ||
 		strings.Contains(response.Message, "private") || strings.Contains(response.Message, formations.ErrDefinitionPublicationUncertain.Error()) {
 		t.Fatalf("publication uncertainty JSON message = %q, want exact safe guidance", response.Message)
 	}
 	var textError bytes.Buffer
 	if code := failJSON(&textError, private, false, "tool", "tool_target"); code != 1 ||
-		textError.String() != "Reload both board and layout before any explicit retry\n" {
+		textError.String() != "Reload both the mission and its layout before any explicit retry\n" {
 		t.Fatalf("publication uncertainty text error code=%d message=%q, want safe guidance", code, textError.String())
 	}
 }
@@ -861,14 +861,14 @@ func TestArchonToolMutationCommandsRedactPublicationUncertainty(t *testing.T) {
 					if err := json.Unmarshal(stderr.Bytes(), &response); err != nil {
 						t.Fatalf("decode uncertain Tool %s error: %v\n%s", command.name, err, stderr.String())
 					}
-					if response.Code != "definition_publication_uncertain" || response.Message != "Reload both board and layout before any explicit retry" ||
+					if response.Code != "definition_publication_uncertain" || response.Message != "Reload both the mission and its layout before any explicit retry" ||
 						response.Boundary != "tool" || response.Selector != command.selector {
 						t.Fatalf("uncertain Tool %s JSON error = %#v", command.name, response)
 					}
 					if strings.Contains(response.Message, "private reconciliation") || strings.Contains(response.Message, formations.ErrDefinitionPublicationUncertain.Error()) {
 						t.Fatalf("uncertain Tool %s leaked private error in JSON message: %q", command.name, response.Message)
 					}
-				} else if stderr.String() != "Reload both board and layout before any explicit retry\n" {
+				} else if stderr.String() != "Reload both the mission and its layout before any explicit retry\n" {
 					t.Fatalf("uncertain Tool %s text error = %q", command.name, stderr.String())
 				} else if strings.Contains(stderr.String(), "private reconciliation") || strings.Contains(stderr.String(), formations.ErrDefinitionPublicationUncertain.Error()) {
 					t.Fatalf("uncertain Tool %s leaked private error: %q", command.name, stderr.String())
@@ -884,7 +884,7 @@ func TestArchonToolMutationCommandsRedactPublicationUncertainty(t *testing.T) {
 func TestArchonToolAppearsInTopLevelUsage(t *testing.T) {
 	harness := newArchonToolAuthoringHarness(t, true, false)
 	stdout, stderr, code := harness.run(t)
-	if code != 2 || stdout != "" || !strings.Contains(stderr, "<agent|board|formation|gate|mission|tool|run|peer>") {
+	if code != 2 || stdout != "" || !strings.Contains(stderr, "<mission|formation|gate|tool|agent|run|peer>") {
 		t.Fatalf("top-level usage code=%d stdout=%q stderr=%q, want Tool noun", code, stdout, stderr)
 	}
 }

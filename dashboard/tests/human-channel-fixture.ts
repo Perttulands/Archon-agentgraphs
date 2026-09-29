@@ -15,7 +15,7 @@ export async function humanChannelFixture(page: Page, options: { humanChannel?: 
   if (options.humanChannel) board.missions = board.missions.map((mission: { id: string }) => ({ ...mission, humanChannel: options.humanChannel }))
   const patches: Patch[] = []
   // Routes added later answer first, so this one serves the board and takes its mission patches.
-  await page.route('**/api/formations/boards/wayfinding', async route => {
+  await page.route('**/api/formations/missions/wayfinding', async route => {
     const request = route.request()
     if (request.method() === 'GET') return route.fulfill({ json: { success: true, data: { board } }, headers: { ETag: board.etag } })
     const patch = request.postDataJSON() as Patch

@@ -254,13 +254,13 @@ func (e *RunEngine) RunMission(slug string, req RunStartRequest) (*RunStatusProj
 	}
 	mission, ok := findMission(board, req.MissionID)
 	if !ok {
-		return nil, fmt.Errorf("%w: mission %q", ErrNotFound, req.MissionID)
+		return nil, fmt.Errorf("%w: Input card %q", ErrNotFound, req.MissionID)
 	}
 	if err := preflightMissionMigrations(board, mission.ID, reachableNodeIDs(board, mission.ID)); err != nil {
 		return nil, err
 	}
 	if len(outgoingConnections(board.Connections, mission.ID)) == 0 {
-		return nil, fmt.Errorf("%w: wire the mission to a step", ErrConflict)
+		return nil, fmt.Errorf("%w: wire the Input card to a step", ErrConflict)
 	}
 	if req.Personas == nil {
 		req.Personas = e.personas

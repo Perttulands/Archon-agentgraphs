@@ -64,7 +64,7 @@ label = "Input"
 	if _, stderr, code := archon("mission", "update", "rename", "mis_frame", "--human-channel", "session"); code != 0 {
 		t.Fatalf("set human channel: %d %s", code, stderr)
 	}
-	if stdout, stderr, code := archon("board", "inspect", "rename", "--json"); code != 0 || !strings.Contains(stdout, `"humanChannel": "session"`) {
+	if stdout, stderr, code := archon("mission", "inspect", "rename", "--json"); code != 0 || !strings.Contains(stdout, `"humanChannel": "session"`) {
 		t.Fatalf("board inspect after session: %d %s %s", code, stdout, stderr)
 	}
 	for _, clear := range []string{"notify", ""} {
@@ -86,7 +86,7 @@ label = "Input"
 		t.Fatalf("a rejected human channel saved the board:\n%s", after)
 	}
 
-	if _, stderr, code := archon("mission", "update", "rename", "mis_frame"); code != 2 || !strings.Contains(stderr, "Only the flags you give change the mission") {
+	if _, stderr, code := archon("mission", "update", "rename", "mis_frame"); code != 2 || !strings.Contains(stderr, "Only the flags you give change it") {
 		t.Fatalf("update without fields: %d %s", code, stderr)
 	}
 	if _, _, code := archon("mission", "update", "rename", "mis_frame", "--bead", "Home-123"); code == 0 {

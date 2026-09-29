@@ -82,15 +82,15 @@ paths:
       responses:
         '200':
           description: Coordinator is serving
-  /api/formations/boards:
+  /api/formations/missions:
     get:
       responses:
         '200':
-          description: Shared-package definition summaries
+          description: Mission summaries in data.boards
     post:
       responses:
         '201':
-          description: Created board in data.board; returns ETag
+          description: Created mission in data.board; returns ETag
       requestBody:
         required: true
         content:
@@ -105,13 +105,28 @@ paths:
                   type: string
                 updatedBy:
                   type: string
-                  description: Actor recorded on the new board; defaults to agent:ui
+                  description: Actor recorded on the new mission; defaults to agent:ui
               required:
               - title
-  /api/formations/boards/{board}:
+  /api/formations/boards:
+    get:
+      deprecated: true
+      summary: Former name of GET /api/formations/missions, kept for one release after the rename
+      description: Same handler, request and response as GET /api/formations/missions. New clients use the mission route.
+      responses:
+        default:
+          description: As GET /api/formations/missions
+    post:
+      deprecated: true
+      summary: Former name of POST /api/formations/missions, kept for one release after the rename
+      description: Same handler, request and response as POST /api/formations/missions. New clients use the mission route.
+      responses:
+        default:
+          description: As POST /api/formations/missions
+  /api/formations/missions/{mission}:
     parameters:
     - in: path
-      name: board
+      name: mission
       required: true
       schema:
         type: string
@@ -135,11 +150,11 @@ paths:
                             items:
                               $ref: '#/components/schemas/FormationNode'
         '404':
-          description: No such board
+          description: No such mission
     patch:
       responses:
         '200':
-          description: Updated board or compound authoring result; createFormation, createGate and createMission return {board, layout, formation|gate|mission}. Returns ETag. An edit that changes nothing returns the current board with its revision and ETag unchanged.
+          description: Updated mission or compound authoring result; createFormation, createGate and createMission return {board, layout, formation|gate|mission}. Returns ETag. An edit that changes nothing returns the current mission with its revision and ETag unchanged.
         '428':
           description: Missing preconditions
         '409':
@@ -147,7 +162,7 @@ paths:
         '422':
           description: Unprocessable write, such as a code check naming no registered profile. A Tool write returns INVALID_TOOL_MUTATION with a message naming the invalid field or reason.
         '400':
-          description: Invalid mutation or retired inline verification/script gate. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (mission beadId or brief beadId). A mission humanChannel other than notify or session returns INVALID_HUMAN_CHANNEL naming the allowed values. makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. An invalid board slug returns BAD_REQUEST 'Invalid formation slug'.
+          description: Invalid mutation or retired inline verification/script gate. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (Input card beadId or brief beadId). An Input card humanChannel other than notify or session returns INVALID_HUMAN_CHANNEL naming the allowed values. makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. An invalid mission slug returns BAD_REQUEST 'Invalid formation slug'.
       parameters:
       - in: header
         name: If-Match
@@ -160,7 +175,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BoardPatch'
+              $ref: '#/components/schemas/MissionPatch'
     delete:
       responses:
         '200':
@@ -184,14 +199,48 @@ paths:
                   minimum: 1
               required:
               - expectedRev
+  /api/formations/boards/{board}:
+    parameters:
+    - in: path
+      name: board
+      required: true
+      schema:
+        type: string
+    get:
+      deprecated: true
+      summary: Former name of GET /api/formations/missions/{mission}, kept for one release after the rename
+      description: Same handler, request and response as GET /api/formations/missions/{mission}. New clients use the mission route.
+      responses:
+        default:
+          description: As GET /api/formations/missions/{mission}
+    patch:
+      deprecated: true
+      summary: Former name of PATCH /api/formations/missions/{mission}, kept for one release after the rename
+      description: Same handler, request and response as PATCH /api/formations/missions/{mission}. New clients use the mission route.
+      responses:
+        default:
+          description: As PATCH /api/formations/missions/{mission}
+    delete:
+      deprecated: true
+      summary: Former name of DELETE /api/formations/missions/{mission}, kept for one release after the rename
+      description: Same handler, request and response as DELETE /api/formations/missions/{mission}. New clients use the mission route.
+      responses:
+        default:
+          description: As DELETE /api/formations/missions/{mission}
   /api/formations/runs:
     get:
       parameters:
       - in: query
-        name: board
+        name: mission
         schema:
           type: string
-        description: Only runs of this board slug
+        description: Only runs of this mission slug
+      - in: query
+        name: board
+        deprecated: true
+        schema:
+          type: string
+        description: Former name of mission, kept for one release after the rename
       responses:
         '200':
           description: Canonical run projections
@@ -233,6 +282,10 @@ paths:
               properties:
                 board:
                   type: string
+                  description: The mission's slug or ID. The field keeps its name from before the rename.
+                missionId:
+                  type: string
+                  description: The Input card to start from. The field keeps its name from before the rename.
                 cwd:
                   type: string
                   description: Absolute existing seat working directory; omitted or empty creates a private workspace under the configured run workspace root
@@ -244,12 +297,10 @@ paths:
                 brief:
                   type: string
                   minLength: 1
-                  description: Mission output text
+                  description: The Input card's output text for this run
                 beadId:
                   type: string
                   pattern: ^[A-Za-z0-9][A-Za-z0-9._-]*$
-                missionId:
-                  type: string
                 formationId:
                   type: string
                 actor:
@@ -297,7 +348,7 @@ paths:
         '400':
           description: Invalid request or unsupported redacted execution
         '409':
-          description: Coordinator closing or stale board revision; checked before admission findings
+          description: Coordinator closing or stale mission revision; checked before admission findings
         '422':
           description: Run admission failed. error.code is RUN_ADMISSION_FAILED and error.findings lists every problem the run would hit; no run is recorded. Other 422 errors reject the definition.
           content:
@@ -422,7 +473,7 @@ paths:
         '200':
           description: Enveloped data.evidence contains runId, nodeId, kind (mission, formation, gate, tool), attempts (inputs, dispatches, seatCleanups with slot and outcome, output with sorted ports), evaluations (criterion, input, kindResults, judgeFailures, humanRequests with a decision's verdict, response, decidedBy and relayedBy, verdict with perKind and routePort) and problems (blocks and errors).
         '404':
-          description: No such run, or the node is not on the run's frozen board
+          description: No such run, or the node is not in the run's frozen mission
   /api/formations/runs/{runId}/evidence/problems:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -585,15 +636,15 @@ paths:
           duplicate or stale human request: null
         '422':
           description: Run state does not permit a verdict, or the frozen gate definition or prerequisite evidence failed validation
-  /api/formations/boards/{board}/validation:
+  /api/formations/missions/{mission}/validation:
     parameters:
     - in: path
-      name: board
+      name: mission
       required: true
       schema:
         type: string
     get:
-      summary: List what the whole board still needs before its runs can start
+      summary: List what the whole mission still needs before its runs can start. A file holding several Input cards gets one several_input_cards error naming them and how to split the file, and admission refuses its runs with the same message.
       description: Structural findings plus run admission checks for every node. The cockpit marks draft nodes from this report.
       responses:
         '200':
@@ -626,13 +677,44 @@ paths:
                       errors:
                         type: array
                         items:
-                          $ref: '#/components/schemas/BoardFinding'
+                          $ref: '#/components/schemas/MissionFinding'
                       warnings:
                         type: array
                         items:
-                          $ref: '#/components/schemas/BoardFinding'
+                          $ref: '#/components/schemas/MissionFinding'
         '404':
-          description: No such board
+          description: No such mission
+  /api/formations/boards/{board}/validation:
+    parameters:
+    - in: path
+      name: board
+      required: true
+      schema:
+        type: string
+    get:
+      deprecated: true
+      summary: Former name of GET /api/formations/missions/{mission}/validation, kept for one release after the rename
+      description: Same handler, request and response as GET /api/formations/missions/{mission}/validation. New clients use the mission route.
+      responses:
+        default:
+          description: As GET /api/formations/missions/{mission}/validation
+  /api/formations/missions/{mission}/changes:
+    parameters:
+    - in: path
+      name: mission
+      required: true
+      schema:
+        type: string
+    get:
+      responses:
+        '200':
+          description: Mission change signal in data.signal
+      parameters:
+      - in: query
+        name: etag
+        schema:
+          type: string
+        description: Previously observed mission ETag
   /api/formations/boards/{board}/changes:
     parameters:
     - in: path
@@ -641,26 +723,23 @@ paths:
       schema:
         type: string
     get:
+      deprecated: true
+      summary: Former name of GET /api/formations/missions/{mission}/changes, kept for one release after the rename
+      description: Same handler, request and response as GET /api/formations/missions/{mission}/changes. New clients use the mission route.
       responses:
-        '200':
-          description: Board change signal in data.signal
-      parameters:
-      - in: query
-        name: etag
-        schema:
-          type: string
-        description: Previously observed board ETag
-  /api/formations/boards/{board}/notes:
+        default:
+          description: As GET /api/formations/missions/{mission}/changes
+  /api/formations/missions/{mission}/notes:
     parameters:
     - in: path
-      name: board
+      name: mission
       required: true
       schema:
         type: string
     get:
       responses:
         '200':
-          description: Notes document in data.notes (schema 2) with board as an ordered entry list and elements
+          description: Notes document in data.notes (schema 2) with board (the mission thread) as an ordered entry list and elements
             as nodeId plus entries. Each entry has id, author (human:<name> or agent:<name>), createdAt, optional
             editedAt and text. Schema 1 files load as one human entry per text. Returns ETag.
     patch:
@@ -693,7 +772,7 @@ paths:
               properties:
                 target:
                   type: string
-                  description: board (default) or an element ID
+                  description: board (the mission thread, default) or an element ID
                 action:
                   enum:
                   - append
@@ -713,10 +792,31 @@ paths:
                   description: Older name for author
       description: BoardNotePatch. Appends a new entry by default; edit and delete change only the author's own
         entry, so a reply never erases another author's words.
-  /api/formations/boards/{board}/layout:
+  /api/formations/boards/{board}/notes:
     parameters:
     - in: path
       name: board
+      required: true
+      schema:
+        type: string
+    get:
+      deprecated: true
+      summary: Former name of GET /api/formations/missions/{mission}/notes, kept for one release after the rename
+      description: Same handler, request and response as GET /api/formations/missions/{mission}/notes. New clients use the mission route.
+      responses:
+        default:
+          description: As GET /api/formations/missions/{mission}/notes
+    patch:
+      deprecated: true
+      summary: Former name of PATCH /api/formations/missions/{mission}/notes, kept for one release after the rename
+      description: Same handler, request and response as PATCH /api/formations/missions/{mission}/notes. New clients use the mission route.
+      responses:
+        default:
+          description: As PATCH /api/formations/missions/{mission}/notes
+  /api/formations/missions/{mission}/layout:
+    parameters:
+    - in: path
+      name: mission
       required: true
       schema:
         type: string
@@ -758,6 +858,27 @@ paths:
                   format: date-time
       description: Arrange alone, update node positions, update edge routing, or update timestamp metadata.
         See formationsLayoutPatchRequest for node/edge fields. Arrange cannot combine with other mutations.
+  /api/formations/boards/{board}/layout:
+    parameters:
+    - in: path
+      name: board
+      required: true
+      schema:
+        type: string
+    get:
+      deprecated: true
+      summary: Former name of GET /api/formations/missions/{mission}/layout, kept for one release after the rename
+      description: Same handler, request and response as GET /api/formations/missions/{mission}/layout. New clients use the mission route.
+      responses:
+        default:
+          description: As GET /api/formations/missions/{mission}/layout
+    patch:
+      deprecated: true
+      summary: Former name of PATCH /api/formations/missions/{mission}/layout, kept for one release after the rename
+      description: Same handler, request and response as PATCH /api/formations/missions/{mission}/layout. New clients use the mission route.
+      responses:
+        default:
+          description: As PATCH /api/formations/missions/{mission}/layout
   /api/formations/gate-profiles:
     get:
       responses:
@@ -891,7 +1012,7 @@ components:
           type: string
         execution:
           $ref: '#/components/schemas/FormationExecutionPolicy'
-    BoardFinding:
+    MissionFinding:
       type: object
       required:
       - code
@@ -903,7 +1024,7 @@ components:
           description: Stable finding code, such as unstaffed_slot or gate_not_routable
         nodeId:
           type: string
-          description: Node or connection ID; empty for a board-level finding
+          description: Node or connection ID; empty for a mission-level finding
         message:
           type: string
     AdmissionErrorEnvelope:
@@ -931,7 +1052,7 @@ components:
             findings:
               type: array
               items:
-                $ref: '#/components/schemas/BoardFinding'
+                $ref: '#/components/schemas/MissionFinding'
     ReceiptEnvelope:
       type: object
       required:
@@ -1136,7 +1257,7 @@ components:
                   no_receivable_seat, asked_seats_gone, delivery_uncertain).
               blocks:
                 type: boolean
-    BoardPatch:
+    MissionPatch:
       type: object
       properties:
         title:
@@ -1197,7 +1318,7 @@ components:
               type: string
         restoreNode:
           type: object
-          description: Undo a node delete. Name exactly one of mission, formation or gate, as the board
+          description: Undo a node delete. Name exactly one of mission (the Input card), formation or gate, as the mission
             document showed it before the delete, with the connections that touched it and its layout
             position. The node, its connections and its layout placement publish together or not at
             all, keeping every ID, so its notes and wire lanes apply again. A node ID already on the

@@ -20,7 +20,7 @@ func TestArchonUsesExistingInspectValidateWireAndArrangeSurfacesForTools(t *test
 	layoutBytesBeforeRead := readArchonFile(t, store.LayoutPath("tool-parity"))
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "board", "inspect", "tool-parity", "--json")
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "inspect", "tool-parity", "--json")
 	if code != 0 || stderr != "" {
 		t.Fatalf("Tool board inspect code=%d stdout=%s stderr=%s", code, stdout, stderr)
 	}
@@ -42,7 +42,7 @@ func TestArchonUsesExistingInspectValidateWireAndArrangeSurfacesForTools(t *test
 	writeArchonFile(t, store.BoardPath("tool-invalid"), invalidRaw)
 	invalidBytesBeforeValidation := readArchonFile(t, store.BoardPath("tool-invalid"))
 	workspaceBeforeValidation := snapshotArchonToolParityTree(t, workspace)
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "validate", "tool-invalid", "--json")
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "validate", "tool-invalid", "--json")
 	if code != 1 || stderr != "" {
 		t.Fatalf("invalid Tool validate code=%d stdout=%s stderr=%s, want frozen invalid_tool finding", code, stdout, stderr)
 	}
@@ -136,7 +136,7 @@ func TestArchonUsesExistingInspectValidateWireAndArrangeSurfacesForTools(t *test
 		t.Fatalf("Tool-to-Gate response does not match persisted board: response=%+v persisted=%+v", gateWired.Connections, persistedGateWired.Connections)
 	}
 	boardBytesBeforeArrange := readArchonFile(t, store.BoardPath("tool-parity"))
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "arrange", "tool-parity", "--json")
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "arrange", "tool-parity", "--json")
 	if code != 0 || stderr != "" {
 		t.Fatalf("Tool board arrange code=%d stdout=%s stderr=%s", code, stdout, stderr)
 	}

@@ -17,6 +17,7 @@ const (
 	FindingLegacyScriptGate                          = LegacyScriptGateMigrationCode
 	FindingLegacyInlineVerificationRequiresMigration = LegacyInlineVerificationMigrationCode
 	FindingMissionCount                              = "mission_count"
+	FindingSeveralInputCards                         = "several_input_cards"
 	FindingMissionNotRunnable                        = "mission_not_runnable"
 	FindingInvalidTool                               = "invalid_tool"
 	FindingDuplicateNodeID                           = "duplicate_node_id"
@@ -152,7 +153,7 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 			report.Errors = append(report.Errors, BoardFinding{
 				Code:    FindingInvalidTool,
 				NodeID:  tool.ID,
-				Message: fmt.Sprintf("Tool %q requires board schema %d", tool.ID, CurrentBoardSchema),
+				Message: fmt.Sprintf("Tool %q requires mission file schema %d", tool.ID, CurrentBoardSchema),
 			})
 			continue
 		}
@@ -177,22 +178,25 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	if len(board.Missions) == 0 {
 		report.Errors = append(report.Errors, BoardFinding{
 			Code:    FindingMissionCount,
-			Message: "a board must have at least one mission to run",
+			Message: "a mission needs its Input card to run; add one on the canvas or with archon mission create",
 		})
+	}
+	if len(board.Missions) > 1 {
+		report.Errors = append(report.Errors, SeveralInputCardsFinding(board))
 	}
 	for _, mission := range board.Missions {
 		if _, err := NormalizeHumanChannel(mission.HumanChannel); err != nil {
 			report.Errors = append(report.Errors, BoardFinding{
 				Code:    FindingInvalidHumanChannel,
 				NodeID:  mission.ID,
-				Message: fmt.Sprintf("mission %q has human channel %q; set it to notify or session with mission update --human-channel", mission.ID, mission.HumanChannel),
+				Message: fmt.Sprintf("Input card %q has human channel %q; set it to notify or session with archon mission update --human-channel", mission.ID, mission.HumanChannel),
 			})
 		}
 		if len(outgoingConnections(board.Connections, mission.ID)) == 0 {
 			report.Warnings = append(report.Warnings, BoardFinding{
 				Code:    FindingMissionNotRunnable,
 				NodeID:  mission.ID,
-				Message: fmt.Sprintf("mission %q has no outgoing connection, so it cannot start a run; wire it to a first step", mission.ID),
+				Message: fmt.Sprintf("Input card %q has no outgoing connection, so it cannot start a run; wire it to a first step", mission.ID),
 			})
 		}
 	}
@@ -200,6 +204,24 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	sortFindings(report.Errors)
 	sortFindings(report.Warnings)
 	return report
+}
+
+// SeveralInputCardsFinding reports a file saved before one mission per file,
+// when a board could hold several mission nodes. It still loads and stays
+// editable; the finding names its Input cards and how to split it, and
+// admission refuses every run from it with the same message.
+func SeveralInputCardsFinding(board *BoardDocument) BoardFinding {
+	cards := make([]string, 0, len(board.Missions))
+	for _, mission := range board.Missions {
+		cards = append(cards, fmt.Sprintf("%q (%s)", mission.Title, mission.ID))
+	}
+	return BoardFinding{
+		Code: FindingSeveralInputCards,
+		Message: fmt.Sprintf("mission %q holds %d Input cards, %s; a mission has one, so no run can start from it. "+
+			"Split it: copy %s.formation.toml beside itself under a new slug and give the copy a new id, slug and title, "+
+			"then delete from each file the Input cards, and the steps only they reach, that belong to the other",
+			board.Slug, len(board.Missions), strings.Join(cards, ", "), board.Slug),
+	}
 }
 
 // duplicateSlotFindings reports a slot ID that more than one slot uses. A seat's
@@ -240,7 +262,7 @@ func duplicateSlotFindings(formations []FormationNode) []BoardFinding {
 			findings = append(findings, BoardFinding{
 				Code:    FindingDuplicateSlotID,
 				NodeID:  node,
-				Message: fmt.Sprintf("slot id %q is used by %s; give every slot on the board its own id", slotID, described),
+				Message: fmt.Sprintf("slot id %q is used by %s; give every slot in the mission its own id", slotID, described),
 			})
 		}
 	}

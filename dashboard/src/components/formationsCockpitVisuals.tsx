@@ -90,10 +90,10 @@ export function outputRowStatus(runSelected: boolean, state: NodeRunState | unde
   }
 }
 
-/* Roster header count. The Boards tab counts agents placed anywhere on the
-   board and the Agents tab counts agents staffed on the selected mission, so
-   the label names its scope rather than sharing one word for both. */
-export function rosterCountLabel(total: number | string, counts: { live?: number; placed: number; scope: 'board' | 'mission' }): string {
+/* Roster header count. The Missions tab counts agents placed anywhere on the
+   canvas and the Agents tab counts agents staffed from the selected Input
+   card, so the label names its scope rather than sharing one word for both. */
+export function rosterCountLabel(total: number | string, counts: { live?: number; placed: number; scope: 'canvas' | 'mission' }): string {
   return [
     String(total),
     counts.live ? `${counts.live} live` : '',

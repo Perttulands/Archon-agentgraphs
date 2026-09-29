@@ -1344,7 +1344,7 @@ func TestFormationsHandlerMapsDefinitionPublicationUncertaintySafely(t *testing.
 	writeFormationsError(recorder, fmt.Errorf("private publication detail: %w", formations.ErrDefinitionPublicationUncertain))
 	response := assertFormationsAPIToolError(t, recorder, http.StatusServiceUnavailable, "DEFINITION_PUBLICATION_UNCERTAIN")
 	message := strings.ToLower(response.Error.Message)
-	if !strings.Contains(message, "reload both board and layout") || !strings.Contains(message, "explicit retry") {
+	if !strings.Contains(message, "reload both the mission and its layout") || !strings.Contains(message, "explicit retry") {
 		t.Fatalf("uncertainty message = %q, want safe reload-before-retry guidance", response.Error.Message)
 	}
 	if strings.Contains(response.Error.Message, "private publication detail") || strings.Contains(response.Error.Message, formations.ErrDefinitionPublicationUncertain.Error()) {

@@ -98,7 +98,7 @@ export function missingLayoutForBoard(board: BoardDocument): LayoutDocument {
 }
 
 export async function fetchBoardSummaries(): Promise<BoardSummary[]> {
-  const result = await fetchApi<{ boards: BoardSummary[] }>('/api/formations/boards')
+  const result = await fetchApi<{ boards: BoardSummary[] }>('/api/formations/missions')
   return result.data.boards || []
 }
 
@@ -108,12 +108,12 @@ export async function fetchCodeGateProfiles(): Promise<CodeGateProfileDescriptor
 }
 
 export async function fetchBoardDocument(slug: string): Promise<BoardDocument> {
-  const result = await fetchApi<{ board: BoardDocument }>(`/api/formations/boards/${encodeURIComponent(slug)}`)
+  const result = await fetchApi<{ board: BoardDocument }>(`/api/formations/missions/${encodeURIComponent(slug)}`)
   return normalizeBoard(result.data.board, result.etag)
 }
 
 export async function fetchBoardValidation(slug: string): Promise<BoardValidation> {
-  const result = await fetchApi<Partial<BoardValidation>>(`/api/formations/boards/${encodeURIComponent(slug)}/validation`)
+  const result = await fetchApi<Partial<BoardValidation>>(`/api/formations/missions/${encodeURIComponent(slug)}/validation`)
   return {
     boardRev: result.data.boardRev ?? 0,
     boardEtag: result.data.boardEtag || result.etag,
@@ -123,7 +123,7 @@ export async function fetchBoardValidation(slug: string): Promise<BoardValidatio
 }
 
 export async function fetchBoardLayout(slug: string): Promise<LayoutDocument> {
-  const result = await fetchApi<{ layout: LayoutDocument }>(`/api/formations/boards/${encodeURIComponent(slug)}/layout`)
+  const result = await fetchApi<{ layout: LayoutDocument }>(`/api/formations/missions/${encodeURIComponent(slug)}/layout`)
   return normalizeLayout(result.data.layout, result.etag)
 }
 
@@ -140,7 +140,7 @@ export async function fetchBoardWithLayout(slug: string): Promise<{ board: Board
 }
 
 export async function createBoard(title: string): Promise<BoardDocument> {
-  const result = await fetchApi<{ board: BoardDocument }>('/api/formations/boards', {
+  const result = await fetchApi<{ board: BoardDocument }>('/api/formations/missions', {
     method: 'POST',
     body: JSON.stringify({ title }),
   })
@@ -149,7 +149,7 @@ export async function createBoard(title: string): Promise<BoardDocument> {
 
 export async function deleteBoard(slug: string, etag: string, rev: number): Promise<BoardDeletion> {
   const result = await fetchApi<{ deletion: BoardDeletion }>(
-    `/api/formations/boards/${encodeURIComponent(slug)}`,
+    `/api/formations/missions/${encodeURIComponent(slug)}`,
     {
       method: 'DELETE',
       headers: { 'If-Match': etag },
@@ -169,13 +169,13 @@ function normalizeNotes(notes: BoardNotesDocument, etag: string): BoardNotesDocu
 }
 
 export async function fetchBoardNotes(slug: string): Promise<BoardNotesDocument> {
-  const result = await fetchApi<{ notes: BoardNotesDocument }>(`/api/formations/boards/${encodeURIComponent(slug)}/notes`)
+  const result = await fetchApi<{ notes: BoardNotesDocument }>(`/api/formations/missions/${encodeURIComponent(slug)}/notes`)
   return normalizeNotes(result.data.notes, result.etag)
 }
 
 /** The cockpit writes notes as the operator, human:ui. */
 export async function patchBoardNote(slug: string, etag: string, patch: NotePatch): Promise<BoardNotesDocument> {
-  const result = await fetchApi<{ notes: BoardNotesDocument }>(`/api/formations/boards/${encodeURIComponent(slug)}/notes`, {
+  const result = await fetchApi<{ notes: BoardNotesDocument }>(`/api/formations/missions/${encodeURIComponent(slug)}/notes`, {
     method: 'PATCH',
     headers: { 'If-Match': etag },
     body: JSON.stringify({ ...patch, author: 'human:ui' }),
@@ -216,7 +216,7 @@ export async function overrideAgentCard(agentID: string, etag: string, patch: {
 
 export async function fetchBoardChanged(slug: string, etag: string): Promise<boolean> {
   const result = await fetchApi<{ signal: { changed?: boolean } }>(
-    `/api/formations/boards/${encodeURIComponent(slug)}/changes?etag=${encodeURIComponent(etag)}`
+    `/api/formations/missions/${encodeURIComponent(slug)}/changes?etag=${encodeURIComponent(etag)}`
   )
   return result.data.signal?.changed === true
 }
@@ -233,7 +233,7 @@ export async function patchBoardDocument<TExtra extends object = Record<string, 
   patch: Record<string, unknown>,
 ): Promise<PatchBoardResponse<TExtra>> {
   const result = await fetchApi<PatchBoardResponse<TExtra>>(
-    `/api/formations/boards/${encodeURIComponent(slug)}`,
+    `/api/formations/missions/${encodeURIComponent(slug)}`,
     {
       method: 'PATCH',
       headers: { 'If-Match': etag },
@@ -253,7 +253,7 @@ export async function patchBoardDocument<TExtra extends object = Record<string, 
 
 export async function patchBoardLayout(slug: string, etag: string, patch: { nodes?: LayoutNode[]; edges?: LayoutEdge[]; arrange?: boolean }): Promise<LayoutDocument> {
   const result = await fetchApi<{ layout: LayoutDocument }>(
-    `/api/formations/boards/${encodeURIComponent(slug)}/layout`,
+    `/api/formations/missions/${encodeURIComponent(slug)}/layout`,
     {
       method: 'PATCH',
       headers: { 'If-Match': etag },
@@ -275,7 +275,7 @@ export async function startRun(etag: string, body: { board: string; missionId?: 
 
 /** Lists a board's runs from the daemon; a response without a run list yields none. */
 export async function fetchBoardRuns(slug: string): Promise<RunStatusProjection[]> {
-  const result = await fetchApi<RunStatusProjection[]>(`/api/formations/runs?board=${encodeURIComponent(slug)}`)
+  const result = await fetchApi<RunStatusProjection[]>(`/api/formations/runs?mission=${encodeURIComponent(slug)}`)
   return Array.isArray(result.data) ? result.data.filter(run => !run.boardSlug || run.boardSlug === slug) : []
 }
 

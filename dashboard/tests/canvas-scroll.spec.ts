@@ -6,7 +6,7 @@ type Node = { id: string; title: string }
 test('the canvas never scrolls natively: card clicks and keyboard focus leave the zoom column at the right edge', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   const fixture = await wayfindingFixture(page)
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   const canvas = page.getByTestId('formations-canvas')
   await expect(page.locator('.formation').first()).toBeVisible()
   // Zoom in until the Wayfinding chain runs off both sides of the canvas.

@@ -52,8 +52,8 @@ func TestFormationsAPIReportsUnsafeBeadIDsByField(t *testing.T) {
 		t.Fatal(err)
 	}
 	for body, field := range map[string]string{
-		`{"createMission":{"title":"Other","beadId":"Home-123"}}`:                                          `mission beadId \"Home-123\"`,
-		`{"updateMission":{"id":"` + board.Missions[0].ID + `","beadId":"../escape"}}`:                     `mission beadId \"../escape\"`,
+		`{"createMission":{"title":"Other","beadId":"Home-123"}}`:                                          `Input card beadId \"Home-123\"`,
+		`{"updateMission":{"id":"` + board.Missions[0].ID + `","beadId":"../escape"}}`:                     `Input card beadId \"../escape\"`,
 		`{"setBrief":{"formationId":"` + board.Formations[0].ID + `","goal":"Work","beadId":"chlab/123"}}`: `brief beadId \"chlab/123\"`,
 	} {
 		rec := patch(body)

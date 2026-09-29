@@ -81,7 +81,7 @@ func TestS4MissionWithoutOutgoingWireFailsBeforeRun(t *testing.T) {
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 	})
-	if err == nil || !strings.Contains(err.Error(), "wire the mission to a step") {
+	if err == nil || !strings.Contains(err.Error(), "wire the Input card to a step") {
 		t.Fatalf("run mission without outgoing wire error = %v, want wire-the-mission failure", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(store.Workspace, ".formations", "runs", "session-search")); !os.IsNotExist(statErr) {

@@ -87,8 +87,8 @@ export async function agentsFixture(page: Page) {
     const respond = (data: unknown, etag = 'fixture-etag', status = 200) => route.fulfill({ status, json: { success: true, data }, headers: { ETag: etag } })
     const fail = (status: number, code: string, message: string) => route.fulfill({ status, json: { success: false, error: { code, message } } })
     if (path === '/api/theme') return route.fulfill({ json: defaultTheme })
-    if (path === '/api/formations/boards') return respond({ boards: Object.values(boards) })
-    const boardMatch = path.match(/^\/api\/formations\/boards\/([^/]+)(\/.*)?$/)
+    if (path === '/api/formations/missions') return respond({ boards: Object.values(boards) })
+    const boardMatch = path.match(/^\/api\/formations\/missions\/([^/]+)(\/.*)?$/)
     if (boardMatch) {
       const board = boards[boardMatch[1] as keyof typeof boards]
       if (!board) return fail(404, 'NOT_FOUND', 'Board not found')

@@ -4,7 +4,7 @@ import { cockpitFixture } from './cockpit-fixture'
 test('Ctrl+Z restores a deleted gate with its wires, then the older edit, and never repeats a failure', async ({ page }) => {
   await page.addInitScript(() => localStorage.clear())
   const fixture = await cockpitFixture(page)
-  await page.goto('/?board=browser')
+  await page.goto('/?mission=browser')
   const peer = page.getByTestId('formation-node-peer')
   await expect(peer).toBeVisible()
   const menuItem = (name: string) => page.locator('.ctxmenu').getByRole('menuitem', { name })
@@ -37,7 +37,7 @@ test('Ctrl+Z restores a deleted gate with its wires, then the older edit, and ne
 test('a failed undo is reported once and Ctrl+Z moves on to older history', async ({ page }) => {
   await page.addInitScript(() => localStorage.clear())
   const fixture = await cockpitFixture(page)
-  await page.goto('/?board=browser')
+  await page.goto('/?mission=browser')
   const judge = page.getByTestId('formation-node-judge')
   await expect(judge).toBeVisible()
   const menuItem = (name: string) => page.locator('.ctxmenu').getByRole('menuitem', { name })
@@ -46,14 +46,14 @@ test('a failed undo is reported once and Ctrl+Z moves on to older history', asyn
   await menuItem('Add input port').click()
   await expect(judge.locator('.fio.in')).toHaveCount(2)
   await page.getByTestId('mission-node-mission').click({ button: 'right' })
-  await menuItem('Delete mission').click()
+  await menuItem('Delete Input card').click()
   await expect(page.getByTestId('mission-node-mission')).toHaveCount(0)
 
   // Someone else puts a node with the same ID back first, so this undo can no longer apply.
   fixture.board().missions.push({ id: 'mission', title: 'Delivery', goal: '', beadId: '' })
   await page.keyboard.press('Control+z')
   await expect(page.getByTestId('formations-error')).toHaveText(
-    'Could not undo the delete of mission “Delivery”: node "mission" is already on the board. It was removed from the undo history.')
+    'Could not undo the delete of Input card “Delivery”: node "mission" is already in the mission. It was removed from the undo history.')
   await page.screenshot({ path: test.info().outputPath('undo-failed-once.png') })
 
   await page.keyboard.press('Control+z')
@@ -68,7 +68,7 @@ test('Ctrl+Z during an edit in flight undoes that edit, and a stale revision is 
   const addHeld = new Promise<void>(resolve => { releaseAdd = resolve })
   let staleOnce = true
   // Registered after the fixture, so it sees board writes first.
-  await page.route('**/api/formations/boards/browser', async route => {
+  await page.route('**/api/formations/missions/browser', async route => {
     const body = route.request().method() === 'PATCH' ? route.request().postDataJSON() : null
     if (body?.addPort) await addHeld
     if (body?.restoreNode && staleOnce) {
@@ -77,13 +77,13 @@ test('Ctrl+Z during an edit in flight undoes that edit, and a stale revision is 
     }
     return route.fallback()
   })
-  await page.goto('/?board=browser')
+  await page.goto('/?mission=browser')
   const judge = page.getByTestId('formation-node-judge')
   await expect(judge).toBeVisible()
   const menuItem = (name: string) => page.locator('.ctxmenu').getByRole('menuitem', { name })
 
   await page.getByTestId('mission-node-mission').click({ button: 'right' })
-  await menuItem('Delete mission').click()
+  await menuItem('Delete Input card').click()
   await expect(page.getByTestId('mission-node-mission')).toHaveCount(0)
   await judge.locator('.fhead').click({ button: 'right' })
   await menuItem('Add output port').click()

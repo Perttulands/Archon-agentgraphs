@@ -89,11 +89,11 @@ describe('AgentsView', () => {
         return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('critic', { displayName: 'Critic' }), agent('builder', { displayName: 'Builder' })], count: 2 } }))
       }
       if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic' }) }, 200, { ETag: 'critic-etag' }))
-      if (url === '/api/formations/boards') {
+      if (url === '/api/formations/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'judged', slug: 'judged', title: 'Judged', rev: 3, etag: 'judged-etag' }] } }))
       }
-      if (url === '/api/formations/boards/judged/layout') return Promise.resolve(jsonResponse({ success: true, data: { layout: { boardId: 'judged', boardRev: 3, etag: 'l', nodes: [] } } }, 200, { ETag: 'l' }))
-      if (url === '/api/formations/boards/judged') return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'judged-etag' }))
+      if (url === '/api/formations/missions/judged/layout') return Promise.resolve(jsonResponse({ success: true, data: { layout: { boardId: 'judged', boardRev: 3, etag: 'l', nodes: [] } } }, 200, { ETag: 'l' }))
+      if (url === '/api/formations/missions/judged') return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'judged-etag' }))
       return Promise.reject(new Error(`unexpected fetch ${url}`))
     })
 
@@ -119,15 +119,15 @@ describe('AgentsView', () => {
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0 } }))
-      if (url === '/api/formations/boards') {
+      if (url === '/api/formations/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [
           { id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' },
           { id: 'judged', slug: 'judged', title: 'Judged', rev: 3, etag: 'judged-etag' },
         ] } }))
       }
       if (url.endsWith('/layout')) return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'l' }))
-      if (url === '/api/formations/boards/judged') return Promise.resolve(jsonResponse({ success: true, data: { board: judged } }, 200, { ETag: 'judged-etag' }))
-      if (url === '/api/formations/boards/mission-board') return Promise.resolve(jsonResponse({ success: true, data: { board: mission } }, 200, { ETag: 'board-etag' }))
+      if (url === '/api/formations/missions/judged') return Promise.resolve(jsonResponse({ success: true, data: { board: judged } }, 200, { ETag: 'judged-etag' }))
+      if (url === '/api/formations/missions/mission-board') return Promise.resolve(jsonResponse({ success: true, data: { board: mission } }, 200, { ETag: 'board-etag' }))
       return Promise.reject(new Error(`unexpected fetch ${url}`))
     })
     window.localStorage.setItem('archon.currentBoard.v1', 'judged')
@@ -135,12 +135,18 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     expect(await screen.findByText('First judge')).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: 'Board' })).toHaveValue('judged')
-    expect(window.location.search).toBe('?board=judged')
+    expect(screen.getByRole('combobox', { name: 'Mission' })).toHaveValue('judged')
+    expect(screen.getByRole('combobox', { name: 'Input card' })).toBeInTheDocument()
+    // Apart from the missions' own titles in the picker, nothing says board.
+    const view = screen.getByTestId('agents-view').cloneNode(true) as HTMLElement
+    view.querySelectorAll('option').forEach(option => option.remove())
+    const words = [view.textContent || '', ...[...view.querySelectorAll('[aria-label],[title]')].map(element => `${element.getAttribute('aria-label') || ''} ${element.getAttribute('title') || ''}`)].join('\n')
+    expect(words).not.toMatch(/\bboards?\b/i)
+    expect(window.location.search).toBe('?mission=judged')
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Board' }), { target: { value: 'mission-board' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Mission' }), { target: { value: 'mission-board' } })
     expect(await screen.findByText('Authoring')).toBeInTheDocument()
-    expect(window.location.search).toBe('?board=mission-board')
+    expect(window.location.search).toBe('?mission=mission-board')
     expect(window.localStorage.getItem('archon.currentBoard.v1')).toBe('mission-board')
   })
 
@@ -185,17 +191,17 @@ describe('AgentsView', () => {
       if (url === '/api/agents/susie') {
         return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName: 'Susie', harnessVariants: [{ id: 'claude-code', sessionStem: 'susie', source: '/tmp/SUSIE.toml' }] }) }, 200, { ETag: 'susie-etag' }))
       }
-      if (url === '/api/formations/boards') {
+      if (url === '/api/formations/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' }] } }))
       }
-      if (url === '/api/formations/boards/mission-board/layout') {
+      if (url === '/api/formations/missions/mission-board/layout') {
         return Promise.resolve(jsonResponse({ success: true, data: { layout } }, 200, { ETag: 'layout-etag' }))
       }
-      if (url === '/api/formations/boards/mission-board' && init?.method === 'PATCH') {
+      if (url === '/api/formations/missions/mission-board' && init?.method === 'PATCH') {
         patches.push({ headers: init.headers, body: JSON.parse(String(init.body)) })
         return Promise.resolve(jsonResponse({ success: true, data: { board: { ...board, etag: 'board-etag-2' } } }, 200, { ETag: 'board-etag-2' }))
       }
-      if (url === '/api/formations/boards/mission-board') {
+      if (url === '/api/formations/missions/mission-board') {
         return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'board-etag' }))
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`))
@@ -236,13 +242,13 @@ describe('AgentsView', () => {
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0 } }))
-      if (url === '/api/formations/boards') {
+      if (url === '/api/formations/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' }] } }))
       }
-      if (url === '/api/formations/boards/mission-board/layout') {
+      if (url === '/api/formations/missions/mission-board/layout') {
         return Promise.resolve(jsonResponse({ success: true, data: { layout: missionLayout() } }, 200, { ETag: 'layout-etag' }))
       }
-      if (url === '/api/formations/boards/mission-board') {
+      if (url === '/api/formations/missions/mission-board') {
         return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'board-etag' }))
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`))
@@ -262,16 +268,16 @@ describe('AgentsView', () => {
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0 } }))
-      if (url === '/api/formations/boards') {
+      if (url === '/api/formations/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' }] } }))
       }
-      if (url === '/api/formations/boards/mission-board/layout') {
+      if (url === '/api/formations/missions/mission-board/layout') {
         return Promise.resolve(jsonResponse({ success: true, data: { layout: missionLayout() } }, 200, { ETag: 'layout-etag' }))
       }
-      if (url === '/api/formations/boards/mission-board') {
+      if (url === '/api/formations/missions/mission-board') {
         return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'board-etag' }))
       }
-      if (url === '/api/formations/runs?board=mission-board') {
+      if (url === '/api/formations/runs?mission=mission-board') {
         return Promise.resolve(jsonResponse({
           success: true,
           data: [
@@ -292,7 +298,7 @@ describe('AgentsView', () => {
     const run = await screen.findByTestId('mission-run')
     await waitFor(() => expect(run).toHaveTextContent('Waiting for your answer'))
     expect(run).toHaveTextContent('waiting on Human Review')
-    expect(within(run).getByRole('link', { name: 'Open on Boards' })).toHaveAttribute('href', '?board=mission-board&run=run_01B_cli')
+    expect(within(run).getByRole('link', { name: 'Open on Missions' })).toHaveAttribute('href', '?mission=mission-board&run=run_01B_cli')
     for (const action of [/start mission/i, /^pass$/i, /^fail$/i, /^resume/i, /^stop$/i]) {
       expect(screen.queryByRole('button', { name: action })).toBeNull()
     }
@@ -306,16 +312,16 @@ describe('AgentsView', () => {
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0 } }))
-      if (url === '/api/formations/boards') {
+      if (url === '/api/formations/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' }] } }))
       }
-      if (url === '/api/formations/boards/mission-board/layout') {
+      if (url === '/api/formations/missions/mission-board/layout') {
         return Promise.resolve(jsonResponse({ success: true, data: { layout: missionLayout() } }, 200, { ETag: 'layout-etag' }))
       }
-      if (url === '/api/formations/boards/mission-board') {
+      if (url === '/api/formations/missions/mission-board') {
         return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'board-etag' }))
       }
-      if (url === '/api/formations/runs?board=mission-board') {
+      if (url === '/api/formations/runs?mission=mission-board') {
         return Promise.resolve(jsonResponse({ success: true, data: [{ ...runStatus('run_01D_blocked', 'mission-alpha'), status: 'blocked', resumeAllowed: false }] }))
       }
       if (url === '/api/formations/runs/run_01D_blocked/events') {
@@ -324,7 +330,7 @@ describe('AgentsView', () => {
       if (url === '/api/formations/runs/run_01D_blocked/evidence/problems') {
         return Promise.resolve(jsonResponse({ success: true, data: { problems: [{ seq: 7, type: 'run_blocked', nodeIds: ['human-review'], reason: { text: 'invalid judge result: expected exactly one chrote-verdict block', bytes: 64 }, resumeAllowed: false }] } }))
       }
-      if (url === '/api/formations/runs?board=empty') return Promise.resolve(jsonResponse({ success: true, data: [] }))
+      if (url === '/api/formations/runs?mission=empty') return Promise.resolve(jsonResponse({ success: true, data: [] }))
       return Promise.reject(new Error(`unexpected fetch ${url}`))
     })
 
@@ -332,7 +338,7 @@ describe('AgentsView', () => {
 
     const run = await screen.findByTestId('mission-run')
     await waitFor(() => expect(run).toHaveTextContent('blocked: invalid judge result: expected exactly one chrote-verdict block'))
-    expect(within(run).getByRole('link', { name: 'Open on Boards' })).toHaveAttribute('href', '?board=mission-board&run=run_01D_blocked')
+    expect(within(run).getByRole('link', { name: 'Open on Missions' })).toHaveAttribute('href', '?mission=mission-board&run=run_01D_blocked')
   })
 
   it('edits a persona from the Agents tab with the shared persona editor', async () => {
@@ -351,13 +357,13 @@ describe('AgentsView', () => {
       if (url === '/api/agents/susie') {
         return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName, summary: 'Designs things', harnessVariants: [claudeVariant({ sessionStem: 'susie', launch: 'claude', model: 'claude-opus-5' })] }) }, 200, { ETag: 'susie-etag' }))
       }
-      if (url === '/api/formations/boards') {
+      if (url === '/api/formations/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
       }
-      if (url === '/api/formations/boards/empty/layout') {
+      if (url === '/api/formations/missions/empty/layout') {
         return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
       }
-      if (url === '/api/formations/boards/empty') {
+      if (url === '/api/formations/missions/empty') {
         return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'empty-etag' }))
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`))
@@ -405,9 +411,9 @@ describe('AgentsView', () => {
         return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { harnessVariants: [variant, codex] }) }, 200, { ETag: 'critic-etag-2' }))
       }
       if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic', harnessVariants: [variant, codex] }) }, 200, { ETag: 'critic-etag' }))
-      if (url === '/api/formations/boards') return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
-      if (url === '/api/formations/boards/empty/layout') return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
-      if (url === '/api/formations/boards/empty') return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'empty-etag' }))
+      if (url === '/api/formations/missions') return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
+      if (url === '/api/formations/missions/empty/layout') return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
+      if (url === '/api/formations/missions/empty') return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'empty-etag' }))
       return Promise.reject(new Error(`unexpected fetch ${url}`))
     })
 
@@ -450,14 +456,14 @@ describe('AgentsView', () => {
       if (url === '/api/agents') {
         return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0 } }))
       }
-      if (url === '/api/formations/boards') {
+      if (url === '/api/formations/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
       }
-      if (url === '/api/formations/boards/empty/layout') {
+      if (url === '/api/formations/missions/empty/layout') {
         if (failBoard) return Promise.reject(new Error('layout unavailable'))
         return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
       }
-      if (url === '/api/formations/boards/empty') {
+      if (url === '/api/formations/missions/empty') {
         if (failBoard) return Promise.reject(new Error('board unavailable'))
         return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'empty-etag' }))
       }
@@ -466,12 +472,12 @@ describe('AgentsView', () => {
 
     render(<AgentsView />)
 
-    expect(await screen.findByText(/Board load failed:/)).toBeInTheDocument()
+    expect(await screen.findByText(/Mission load failed:/)).toBeInTheDocument()
     failBoard = false
     fireEvent.click(screen.getByRole('button', { name: /retry board/i }))
 
     expect(await screen.findByText(/No personas yet/)).toBeInTheDocument()
-    expect(screen.queryByText(/Board load failed:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Mission load failed:/)).not.toBeInTheDocument()
   })
 
   it('keeps slot eligibility usable when one persona detail load fails', async () => {
@@ -496,16 +502,16 @@ describe('AgentsView', () => {
       if (url === '/api/agents/broken') {
         return Promise.reject(new Error('detail failed'))
       }
-      if (url === '/api/formations/boards') {
+      if (url === '/api/formations/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' }] } }))
       }
-      if (url === '/api/formations/boards/mission-board/layout') {
+      if (url === '/api/formations/missions/mission-board/layout') {
         return Promise.resolve(jsonResponse({ success: true, data: { layout: missionLayout() } }, 200, { ETag: 'layout-etag' }))
       }
-      if (url === '/api/formations/boards/mission-board' && init?.method === 'PATCH') {
+      if (url === '/api/formations/missions/mission-board' && init?.method === 'PATCH') {
         return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'board-etag' }))
       }
-      if (url === '/api/formations/boards/mission-board') {
+      if (url === '/api/formations/missions/mission-board') {
         return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'board-etag' }))
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`))
@@ -542,13 +548,13 @@ describe('AgentsView', () => {
       if (url === '/api/agents/retired-one') {
         return Promise.resolve(jsonResponse({ success: true, data: persona('retired-one', { displayName: 'Retired One', status: 'retired' }) }, 200, { ETag: 'retired-etag' }))
       }
-      if (url === '/api/formations/boards') {
+      if (url === '/api/formations/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
       }
-      if (url === '/api/formations/boards/empty/layout') {
+      if (url === '/api/formations/missions/empty/layout') {
         return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
       }
-      if (url === '/api/formations/boards/empty') {
+      if (url === '/api/formations/missions/empty') {
         return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'empty-etag' }))
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`))
@@ -596,13 +602,13 @@ describe('AgentsView', () => {
       if (url === '/api/agents') {
         return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0, harnesses: HARNESSES } }))
       }
-      if (url === '/api/formations/boards') {
+      if (url === '/api/formations/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
       }
-      if (url === '/api/formations/boards/empty/layout') {
+      if (url === '/api/formations/missions/empty/layout') {
         return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
       }
-      if (url === '/api/formations/boards/empty') {
+      if (url === '/api/formations/missions/empty') {
         return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'empty-etag' }))
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`))
@@ -670,13 +676,13 @@ describe('AgentsView', () => {
           }),
         }, 200, { ETag: 'susie-etag' }))
       }
-      if (url === '/api/formations/boards') {
+      if (url === '/api/formations/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
       }
-      if (url === '/api/formations/boards/empty/layout') {
+      if (url === '/api/formations/missions/empty/layout') {
         return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
       }
-      if (url === '/api/formations/boards/empty') {
+      if (url === '/api/formations/missions/empty') {
         return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'empty-etag' }))
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`))

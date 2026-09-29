@@ -115,7 +115,9 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		fs.StringVar(&responseFile, "response-file", "", "local UTF-8 file containing the complete verbatim response")
 	}
 	mode := fs.String("mode", "reattach", "resume mode")
-	mission := fs.String("mission", "", "mission id")
+	mission := fs.String("input", "", "the Input card to start from; needed only when the mission has several")
+	fs.StringVar(mission, "mission", "", "run list: the mission whose runs to list; mission run: older name for --input")
+	boardFilter := fs.String("board", "", "run list: older name for --mission")
 	reason := fs.String("reason", "", "operator reason; for gate approve|reject, the response text")
 	fs.StringVar(reason, "response", "", "alias of --reason for gate approve|reject")
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
@@ -133,7 +135,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	var body any
 	switch args[0] + " " + args[1] {
 	case "mission run":
-		if len(pos) != 1 || *mission == "" {
+		if len(pos) != 1 {
 			return remoteUsage(stderr)
 		}
 		briefText := *brief
@@ -142,19 +144,24 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		} else if !os.IsNotExist(err) && !errors.Is(err, syscall.ENAMETOOLONG) {
 			return fail(stderr, err)
 		}
-		raw, err := request("GET", path+"/boards/"+url.PathEscape(pos[0]), nil)
+		raw, err := request("GET", path+"/missions/"+url.PathEscape(pos[0]), nil)
 		if err != nil {
 			return fail(stderr, err)
 		}
 		var board struct {
 			Data struct {
-				Board struct {
-					Rev int `json:"rev"`
-				} `json:"board"`
+				Board formations.BoardDocument `json:"board"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(raw, &board); err != nil {
 			return fail(stderr, err)
+		}
+		if *mission == "" {
+			id, err := runInputCard(&board.Data.Board, pos[0])
+			if err != nil {
+				return failJSON(stderr, err, *jsonOut, "run", "")
+			}
+			*mission = id
 		}
 		path += "/runs"
 		method = "POST"
@@ -182,6 +189,13 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 	case "run list":
 		path += "/runs"
+		filter := *mission
+		if filter == "" {
+			filter = *boardFilter
+		}
+		if filter != "" {
+			path += "?mission=" + url.QueryEscape(filter)
+		}
 	case "run status", "run logs", "run gates", "run seats":
 		if len(pos) != 1 {
 			return remoteUsage(stderr)
@@ -262,6 +276,6 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 func remoteUsage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "use board, mission, formation, gate and agent authoring and read commands, mission run <board> --mission <id> [--context-path path ...], run status|logs|follow|seats|gates <run>, gate request <run> <gate>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text | --response-file path] [--relayed-by slot-id]")
+	fmt.Fprintln(stderr, "use mission, formation, gate and agent authoring and read commands, mission run <mission> [--input <input>] [--context-path path ...], run status|logs|follow|seats|gates <run>, gate request <run> <gate>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text | --response-file path] [--relayed-by slot-id]")
 	return 2
 }

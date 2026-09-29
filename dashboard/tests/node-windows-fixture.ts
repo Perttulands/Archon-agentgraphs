@@ -40,7 +40,7 @@ export async function nodeWindowsFixture(page: Page) {
   // Routes added later answer first, so these replace the board and agents of the Wayfinding fixture.
   const fixture = await wayfindingFixture(page)
   const respond = (data: unknown) => ({ json: { success: true, data }, headers: { ETag: 'fixture-etag' } })
-  await page.route('**/api/formations/boards/wayfinding', route => route.fulfill(respond({ board: authoredBoard })))
+  await page.route('**/api/formations/missions/wayfinding', route => route.fulfill(respond({ board: authoredBoard })))
   await page.route('**/api/agents', route => route.fulfill(respond({ agents, count: agents.length })))
   for (const agent of agents) {
     const model = agent.harnessDefault === 'openai-codex' ? 'gpt-5.5' : 'opus'

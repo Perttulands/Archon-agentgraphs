@@ -106,7 +106,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
       themeFetches++
       return route.fulfill(options.themeFailure ? { status: 500, json: { error: 'Unavailable' } } : { json: defaultTheme })
     }
-    if (path === '/api/formations/boards') return respond({ boards: [boardState()] })
+    if (path === '/api/formations/missions') return respond({ boards: [boardState()] })
     if (path.endsWith('/notes')) return respond({ notes: { schema: 2, boardId: board.id, rev: 1,
       board: [{ id: 'nte_board', author: 'human:ui', createdAt: '2026-09-12T00:00:00Z', text: 'Keep the current graph and harness identities.' }],
       elements: [{ nodeId: 'execution', entries: [
@@ -117,7 +117,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
       if (method === 'PATCH') nodes = positions.map(p => ({ ...p }))
       return respond({ layout: { boardId: board.id, boardRev: 1, etag: 'layout-1', nodes, edges: [] } })
     }
-    if (path === '/api/formations/boards/browser') {
+    if (path === '/api/formations/missions/browser') {
       if (method === 'PATCH') {
         const body = route.request().postDataJSON()
         const edit = body.wireConnection || body.rewireConnection
@@ -156,7 +156,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
           const node = mission || formation || gate
           const key = mission ? 'missions' : formation ? 'formations' : 'gates'
           const taken = [...currentBoard.missions, ...currentBoard.formations, ...currentBoard.gates].some(item => item.id === node.id)
-          if (taken) return route.fulfill({ status: 409, json: { success: false, error: { code: 'INVALID_NODE_RESTORE', message: `node "${node.id}" is already on the board` } } })
+          if (taken) return route.fulfill({ status: 409, json: { success: false, error: { code: 'INVALID_NODE_RESTORE', message: `node "${node.id}" is already in the mission` } } })
           ;(currentBoard[key] as unknown[]).splice(index ?? (currentBoard[key] as unknown[]).length, 0, node)
           currentBoard.connections = [...currentBoard.connections, ...connections]
           nodes = [...nodes, { id: node.id, x, y }]

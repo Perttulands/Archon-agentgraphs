@@ -93,7 +93,7 @@ same release identity. Older releases remain on disk. A running daemon keeps
 using its loaded binary until the operator restarts it.
 
 The installer creates no service and does not copy, migrate or remove runtime
-state. Supply the same `--state-dir` when restarting to retain boards and run
+state. Supply the same `--state-dir` when restarting to retain missions and run
 history. Follow the [shutdown and recovery procedure](CONTRACT.md#operator-procedure)
 before restarting a daemon that has active work.
 
