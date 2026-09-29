@@ -1522,9 +1522,9 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 	fs.SetOutput(stderr)
 	missionSelector := fs.String("mission", "", "mission id or title")
 	actor := fs.String("actor", "agent:archon", "run actor")
-	maxDispatch := fs.Int("max-dispatch", 0, "maximum dispatches")
-	maxAttempts := fs.Int("max-attempts", 0, "maximum attempts per formation")
-	wallClockSeconds := fs.Int("wall-clock-seconds", 0, "wall clock limit in seconds")
+	maxDispatch := fs.Int("max-dispatch", 0, "optional cap on the run's formation starts, judges included; unset means no limit")
+	maxAttempts := fs.Int("max-attempts", 0, "optional cap on each step's attempts; unset means no limit")
+	wallClockSeconds := fs.Int("wall-clock-seconds", 0, "optional run wall clock in seconds; unset means no limit")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
@@ -1583,9 +1583,9 @@ func runFormationRun(store *formations.Store, args []string, stdout, stderr io.W
 	fs := flag.NewFlagSet("formation run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	actor := fs.String("actor", "agent:archon", "run actor")
-	maxDispatch := fs.Int("max-dispatch", 0, "maximum dispatches")
-	maxAttempts := fs.Int("max-attempts", 0, "maximum attempts per formation")
-	wallClockSeconds := fs.Int("wall-clock-seconds", 0, "wall clock limit in seconds")
+	maxDispatch := fs.Int("max-dispatch", 0, "optional cap on the run's formation starts, judges included; unset means no limit")
+	maxAttempts := fs.Int("max-attempts", 0, "optional cap on each step's attempts; unset means no limit")
+	wallClockSeconds := fs.Int("wall-clock-seconds", 0, "optional run wall clock in seconds; unset means no limit")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2

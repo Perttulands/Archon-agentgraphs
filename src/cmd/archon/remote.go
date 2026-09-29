@@ -120,9 +120,10 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(reason, "response", "", "alias of --reason for gate approve|reject")
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
 	relayedBy := fs.String("relayed-by", "", relayedByUsage)
-	maxDispatch := fs.Int("max-dispatch", 3, "maximum dispatch count")
-	maxAttempts := fs.Int("max-attempts", 3, "maximum node attempts")
-	wall := fs.Int("wall-clock-seconds", 7200, "run wall clock limit")
+	// Runs have no limits unless the launch sets them (form-o7p.7).
+	maxDispatch := fs.Int("max-dispatch", 0, "optional cap on the run's formation starts, judges included; unset means no limit")
+	maxAttempts := fs.Int("max-attempts", 0, "optional cap on each step's attempts; unset means no limit")
+	wall := fs.Int("wall-clock-seconds", 0, "optional run wall clock in seconds; unset means no limit")
 	if err := fs.Parse(reorderFlags(args[2:], map[string]bool{"json": true})); err != nil {
 		return 2
 	}
@@ -157,7 +158,13 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		path += "/runs"
 		method = "POST"
-		fields := map[string]any{"cwd": *cwd, "brief": briefText, "beadId": *bead, "board": pos[0], "missionId": *mission, "expectedRev": board.Data.Board.Rev, "limits": map[string]any{"maxDispatch": *maxDispatch, "maxAttempts": *maxAttempts, "wallClockSeconds": *wall, "redact": false}}
+		limits := map[string]any{"redact": false}
+		for key, value := range map[string]int{"maxDispatch": *maxDispatch, "maxAttempts": *maxAttempts, "wallClockSeconds": *wall} {
+			if value != 0 {
+				limits[key] = value
+			}
+		}
+		fields := map[string]any{"cwd": *cwd, "brief": briefText, "beadId": *bead, "board": pos[0], "missionId": *mission, "expectedRev": board.Data.Board.Rev, "limits": limits}
 		if len(contextPaths) > 0 {
 			fields["contextPaths"] = contextPaths
 		}

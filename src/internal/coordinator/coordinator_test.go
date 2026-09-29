@@ -239,6 +239,46 @@ from = "gate_review:pass"
 to = "fmn_after:port_after_in"
 `
 
+// Limits are optional (form-o7p.7): a start without limits is admitted and its
+// ledger records none, and a negative limit is refused.
+func TestAdmissionTakesARunWithoutLimits(t *testing.T) {
+	for _, body := range []string{`"limits":{"redact":false},`, `"limits":{"maxDispatch":0,"maxAttempts":0,"wallClockSeconds":0},`, ``} {
+		c, e, _ := fixture(t)
+		w := post(t, c, "/api/formations/runs", `{`+body+`"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof","missionId":"mis_proof","expectedRev":1}`)
+		if w.Code != 202 {
+			t.Fatalf("%s admission %d %s", body, w.Code, w.Body.String())
+		}
+		var receipt struct {
+			Data struct {
+				RunID string `json:"runId"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &receipt); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-e.entered:
+		case <-time.After(5 * time.Second):
+			t.Fatal("execution did not start")
+		}
+		events, err := c.store.ReadRunEvents(receipt.Data.RunID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		limits, _ := events[0].Data["limits"].(map[string]any)
+		if limits["maxDispatch"] != float64(0) || limits["maxAttempts"] != nil || limits["wallClockSeconds"] != float64(0) {
+			t.Fatalf("%s recorded limits = %#v, want none", body, limits)
+		}
+	}
+	for _, limits := range []string{`{"maxDispatch":-1}`, `{"maxAttempts":-1}`, `{"wallClockSeconds":-1}`, `{"redact":true}`} {
+		c, _, _ := fixture(t)
+		w := post(t, c, "/api/formations/runs", `{"limits":`+limits+`,"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof","missionId":"mis_proof","expectedRev":1}`)
+		if w.Code != 400 {
+			t.Fatalf("limits %s admission %d %s, want 400", limits, w.Code, w.Body.String())
+		}
+	}
+}
+
 func TestAdmissionFreezesExecutorFormationDefault(t *testing.T) {
 	for _, mode := range []string{"mission", "formation"} {
 		t.Run(mode, func(t *testing.T) {
