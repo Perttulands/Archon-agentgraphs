@@ -12,7 +12,7 @@ import (
 // as archond does at startup, and prints every staffed slot's seat launch
 // command before and after. --dry-run writes nothing.
 func runBoardMigrateSlots(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("board migrate-slots", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mission migrate-slots", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dryRun := fs.Bool("dry-run", false, "report without writing")
 	jsonOut := fs.Bool("json", false, "write JSON")
@@ -20,7 +20,7 @@ func runBoardMigrateSlots(store *formations.Store, args []string, stdout, stderr
 		return 2
 	}
 	if fs.NArg() > 1 {
-		fmt.Fprintln(stderr, "usage: archon board migrate-slots [<mission>] [--dry-run] [--json]\nRole cards are read from CHROTE_AGENTS_DIR (default ~/agents).")
+		fmt.Fprintln(stderr, "usage: archon mission migrate-slots [<mission>] [--dry-run] [--json]\nRole cards are read from CHROTE_AGENTS_DIR (default ~/agents).")
 		return 2
 	}
 	var only []string

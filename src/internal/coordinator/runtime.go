@@ -136,7 +136,7 @@ func (c *Coordinator) resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("runId")
-	if !c.acquire(id) {
+	if !c.acquireSoon(r.Context(), id) {
 		reply(w, 409, map[string]string{"error": "coordinator is executing"})
 		return
 	}

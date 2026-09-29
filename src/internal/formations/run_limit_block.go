@@ -71,7 +71,13 @@ func runLimitReached(events []RunEvent, index int) *RunLimitReached {
 	if code == RunBlockMaxDispatchExceeded {
 		return &RunLimitReached{Kind: RunLimitDispatches, NodeID: nodeID, Used: formationStartsBefore(events, index), Max: limits.MaxDispatch}
 	}
-	return &RunLimitReached{Kind: RunLimitAttempts, NodeID: nodeID, Used: nodeAttemptsBefore(events, index, nodeID), Max: maxAttempts(limits)}
+	max := limits.MaxAttempts
+	if max == 0 {
+		// Only a ledger from before form-o7p.7 records an attempt block without
+		// maxAttempts: the engine then allowed one attempt when the run set none.
+		max = 1
+	}
+	return &RunLimitReached{Kind: RunLimitAttempts, NodeID: nodeID, Used: nodeAttemptsBefore(events, index, nodeID), Max: max}
 }
 
 // formationStartsBefore counts the dispatches the run consumed before index,

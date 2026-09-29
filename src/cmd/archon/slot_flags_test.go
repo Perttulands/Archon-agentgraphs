@@ -102,7 +102,7 @@ func TestArchonFormationAssignSetsTheSlotsSettings(t *testing.T) {
 	}
 }
 
-// board migrate-slots reports every staffed slot's launch before and after,
+// mission migrate-slots reports every staffed slot's launch before and after,
 // and --dry-run writes nothing.
 func TestArchonBoardMigrateSlotsReportsIdenticalLaunches(t *testing.T) {
 	bin := t.TempDir()
@@ -118,7 +118,7 @@ func TestArchonBoardMigrateSlotsReportsIdenticalLaunches(t *testing.T) {
 	writeArchonFile(t, store.BoardPath("staff"), slotStaffingBoard)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "board", "migrate-slots", "--dry-run")
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "migrate-slots", "--dry-run")
 	wantLaunch := "exec '" + filepath.Join(bin, "codex") + "' --model 'gpt-6-astra' -c 'model_reasoning_effort=\"medium\"' -c check_for_update_on_startup=false --dangerously-bypass-approvals-and-sandbox"
 	if code != 0 || !strings.Contains(stdout, "would-migrate\tstaff/fmn_work\tslot_b\tdelivery-final-reviewer · openai-codex · gpt-6-astra · medium\n  before: "+wantLaunch+"\n  after:  "+wantLaunch+"\n  identical: true\n") {
 		t.Fatalf("dry run code=%d stdout=%s stderr=%s", code, stdout, stderr)
@@ -126,7 +126,7 @@ func TestArchonBoardMigrateSlotsReportsIdenticalLaunches(t *testing.T) {
 	if raw := readArchonFile(t, store.BoardPath("staff")); raw != slotStaffingBoard {
 		t.Fatalf("dry run wrote the board:\n%s", raw)
 	}
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "migrate-slots", "staff", "--json")
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "migrate-slots", "staff", "--json")
 	var report formations.SlotMigrationReport
 	if code != 0 || json.Unmarshal([]byte(stdout), &report) != nil || len(report.Slots) != 1 || report.Slots[0].Outcome != formations.SlotMigrationMigrated || !report.Slots[0].Identical || report.Boards[0].RevTo != 2 {
 		t.Fatalf("migrate code=%d stdout=%s stderr=%s", code, stdout, stderr)

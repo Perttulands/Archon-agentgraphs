@@ -84,8 +84,8 @@ export function locateNode(board: Pick<BoardDocument, 'formations'> & Partial<Pi
   return null
 }
 
-const KIND_WORD = { mission: 'Mission', formation: 'Formation', gate: 'Gate' } as const
-const UNTITLED = { mission: 'Untitled mission', formation: 'Untitled formation', gate: 'Gate' } as const
+const KIND_WORD = { mission: 'Input card', formation: 'Formation', gate: 'Gate' } as const
+const UNTITLED = { mission: 'Input', formation: 'Untitled formation', gate: 'Gate' } as const
 
 /** The window's accessible name, which its close button and handles repeat. */
 export function nodeWindowLabel(located: Located): string {
@@ -115,7 +115,7 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
     : located.kind === 'gate' ? located.node.kinds.map(kind => (kind === 'formation' ? 'judge' : kind)).join(', ') || 'no kind'
       : ''
   const judged = flow.judgeOf.get(nodeId)
-  const eyebrow = located.kind === 'mission' ? 'Mission'
+  const eyebrow = located.kind === 'mission' ? 'Input card'
     : steps.has(nodeId) ? `Step ${steps.get(nodeId)} · ${KIND_WORD[located.kind]}${detail ? ` · ${detail}` : ''}`
       : judged ? `Judge of ${steps.has(judged) ? `${steps.get(judged)} ` : ''}${nodeTitle(board, judged)} · ${detail}`
         : `${KIND_WORD[located.kind]}${detail ? ` · ${detail}` : ''}`

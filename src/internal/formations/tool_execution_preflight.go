@@ -94,7 +94,7 @@ func preflightSelectedTools(board *BoardDocument, selected map[string]bool) erro
 		}
 		hasTool = true
 		if board.Schema != CurrentBoardSchema {
-			return fmt.Errorf("%s: Tool %q requires board schema %d", FindingInvalidTool, tool.ID, CurrentBoardSchema)
+			return fmt.Errorf("%s: Tool %q requires mission file schema %d", FindingInvalidTool, tool.ID, CurrentBoardSchema)
 		}
 		descriptor, ok := LookupToolProfileDescriptor(tool.ProfileID, tool.ProfileVersion)
 		if !ok {

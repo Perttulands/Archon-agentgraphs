@@ -218,7 +218,7 @@ func needsYouBoardPointer(base, slug string) string {
 	if slug == "" {
 		return base
 	}
-	return base + "/?board=" + url.QueryEscape(slug)
+	return base + "/?mission=" + url.QueryEscape(slug)
 }
 
 func needsYouText(n NeedsYouNotification) string {
@@ -239,7 +239,7 @@ func needsYouText(n NeedsYouNotification) string {
 	b.WriteString(" — run ")
 	b.WriteString(n.RunID)
 	if n.BoardSlug != "" {
-		b.WriteString(" · board ")
+		b.WriteString(" · mission ")
 		b.WriteString(n.BoardSlug)
 	}
 	b.WriteString(" · ")

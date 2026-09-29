@@ -183,7 +183,7 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
                     onDraft={setDraft(variant.id)}
                     disabled={editor.saving}
                   />
-                  <SeatLaunch variant={variant} label="Seats now run" />
+                  <SeatLaunch variant={variant} />
                 </section>
               ))}
             </div>

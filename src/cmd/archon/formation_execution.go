@@ -15,7 +15,7 @@ func executionFlags(args []string, stderr io.Writer) (*flag.FlagSet, *int, *stri
 	jsonOut := fs.Bool("json", false, "write JSON")
 	err := fs.Parse(reorderFlags(args, map[string]bool{"json": true}))
 	if err == nil && (fs.NArg() != 2 || *seconds < 0) {
-		err = fmt.Errorf("usage: archon formation set-execution <board> <formation> --timeout-seconds <seconds|0> [--json]")
+		err = fmt.Errorf("usage: archon formation set-execution <mission> <formation> --timeout-seconds <seconds|0> [--json]")
 		fmt.Fprintln(stderr, err)
 	}
 	return fs, seconds, actor, jsonOut, err

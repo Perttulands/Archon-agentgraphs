@@ -28,9 +28,9 @@ export function chooseMissionRun(runs: RunStatusProjection[], missionId: string)
   return { run: newest, openCount: 0 }
 }
 
-/** The ?board=&run= link that opens a run on the Boards tab. */
+/** The ?mission=&run= link that opens a run on the Missions tab. */
 export function boardsRunHref(board: string, runId: string): string {
-  const params = new URLSearchParams({ board })
+  const params = new URLSearchParams({ mission: board })
   if (runId) params.set('run', runId)
   return `?${params.toString()}`
 }

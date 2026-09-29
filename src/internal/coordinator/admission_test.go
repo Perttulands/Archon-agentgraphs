@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
@@ -123,5 +124,57 @@ func TestRunStartReturnsEveryAdmissionFindingAs422(t *testing.T) {
 	}
 	if report.Data.BoardRev != 4 || len(report.Data.Errors) != 3 {
 		t.Fatalf("validation route body = %s, want the same three findings", validation.Body.String())
+	}
+}
+
+// A file saved when a board could hold several mission nodes loads and
+// validates with the migration finding, and admission refuses its runs over
+// HTTP with the same message, on the mission route and the former board route.
+func TestRunStartRefusesAFileWithSeveralInputCards(t *testing.T) {
+	c, _, _ := fixture(t)
+	legacy := strings.Replace(draftBoard, "[[formation]]", "[[mission]]\nid = \"mis_other\"\ntitle = \"Other\"\ngoal = \"\"\n[[formation]]", 1)
+	if err := os.WriteFile(c.store.BoardPath("draft"), []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var message string
+	for _, route := range []string{"/api/formations/missions/draft/validation", "/api/formations/boards/draft/validation"} {
+		validation := httptest.NewRecorder()
+		c.Handler().ServeHTTP(validation, httptest.NewRequest("GET", route, nil))
+		var report struct {
+			Data struct {
+				Errors []formations.BoardFinding `json:"errors"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(validation.Body.Bytes(), &report); err != nil || validation.Code != 200 {
+			t.Fatalf("%s = %d %s", route, validation.Code, validation.Body.String())
+		}
+		for _, finding := range report.Data.Errors {
+			if finding.Code == formations.FindingSeveralInputCards {
+				message = finding.Message
+			}
+		}
+		if !strings.Contains(message, `"Draft" (mis_draft)`) || !strings.Contains(message, `"Other" (mis_other)`) || !strings.Contains(message, "Split it") {
+			t.Fatalf("%s findings %s, want the migration message", route, validation.Body.String())
+		}
+	}
+	for _, target := range []string{`"missionId":"mis_draft"`, `"formationId":"fmn_plan"`} {
+		w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"sketch","board":"draft",`+target+`,"expectedRev":4,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600,"redact":false}}`)
+		var body struct {
+			Error struct {
+				Findings []formations.BoardFinding `json:"findings"`
+			} `json:"error"`
+		}
+		refused := false
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err == nil {
+			for _, finding := range body.Error.Findings {
+				refused = refused || finding.Code == formations.FindingSeveralInputCards && finding.Message == message
+			}
+		}
+		if w.Code != 422 || !refused {
+			t.Fatalf("start %s = %d %s, want 422 with the migration message", target, w.Code, w.Body.String())
+		}
+	}
+	if runs, err := c.store.ListRuns(formations.RunListFilter{}); err != nil || len(runs) != 0 {
+		t.Fatalf("refused starts recorded runs %+v (%v)", runs, err)
 	}
 }

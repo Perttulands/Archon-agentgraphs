@@ -5,12 +5,12 @@ import { wayfinding } from './wayfinding-fixture'
 test('every Wayfinding node reads in full in its window, with no edit dialog and no board write', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   const fixture = await nodeWindowsFixture(page)
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await expect(page.getByTestId(`mission-node-${wayfindingBoard.missions[0].id}`)).toBeVisible()
   await page.getByRole('button', { name: 'FIT' }).click()
 
   const nodes = [
-    ...wayfindingBoard.missions.map(node => ({ label: `Mission · ${node.title}`, card: page.getByTestId(`mission-node-${node.id}`), text: node.goal, field: 'mission goal', title: node.title })),
+    ...wayfindingBoard.missions.map(node => ({ label: `Input card · ${node.title}`, card: page.getByTestId(`mission-node-${node.id}`), text: node.goal, field: 'mission goal', title: node.title })),
     ...wayfindingBoard.formations.map(node => ({ label: `Formation · ${node.title}`, card: page.getByTestId(`formation-node-${node.id}`).locator('.fhead .tt'), text: node.brief.goal, field: 'brief', title: node.title })),
     ...wayfindingBoard.gates.map(node => ({ label: `Gate · ${node.title}`, card: page.getByTestId(`gate-node-${node.id}`).locator('.gt'), text: node.criterion, field: 'criterion', title: node.title })),
   ]

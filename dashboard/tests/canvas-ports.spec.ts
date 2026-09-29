@@ -6,7 +6,7 @@ import { cockpitFixture } from './cockpit-fixture'
 test('every add-port menu adds a port, and each add is one undo entry', async ({ page }) => {
   await page.addInitScript(() => localStorage.clear())
   const fixture = await cockpitFixture(page)
-  await page.goto('/?board=browser')
+  await page.goto('/?mission=browser')
   const peer = page.getByTestId('formation-node-peer')
   await expect(peer).toBeVisible()
   const menuItem = (name: string) => page.locator('.ctxmenu').getByRole('menuitem', { name })

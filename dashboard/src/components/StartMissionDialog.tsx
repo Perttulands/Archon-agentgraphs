@@ -12,27 +12,10 @@ export interface RunInputs {
   contextPaths: string[]
   brief: string
   beadId: string
-  limits: { maxDispatch: number; maxAttempts: number; wallClockSeconds: number; redact: boolean }
 }
-
-/** The time limit counts agent work only: a run waiting at a human gate does not spend it (form-t5o). */
-export const TIME_LIMIT_HINT = 'The time limit counts how long the agents work, from the start of the run. Time the run waits for you at a gate doesn\u2019t count.'
 
 /** What the brief field asks for when the mission gives no input hint of its own. */
-export const DEFAULT_BRIEF_HINT = 'The input this run works on: the request, sketch or task its first step receives. The board stays reusable; each run takes its own brief.'
-
-const LIMIT_HINTS = {
-  maxDispatch: 'Formation executions across this run, including judge steps.',
-  maxAttempts: 'Maximum visits to each node.',
-}
-
-function readableDuration(value: string): string {
-  const seconds = Number(value)
-  if (!Number.isSafeInteger(seconds) || seconds < 1) return ''
-  return [[Math.floor(seconds / 3600), 'hour'], [Math.floor(seconds % 3600 / 60), 'minute'], [seconds % 60, 'second']]
-    .filter(([amount]) => amount !== 0)
-    .map(([amount, unit]) => `${amount} ${unit}${amount === 1 ? '' : 's'}`).join(' ')
-}
+export const DEFAULT_BRIEF_HINT = 'The input this run works on: the request, sketch or task its first step receives. The mission stays reusable; each run takes its own brief.'
 
 export function StartMissionDialog({ title, beadId = '', inputHint = '', humanChannel = 'notify', onStart, onClose }: {
   title: string; beadId?: string; inputHint?: string
@@ -40,7 +23,7 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', humanCh
   humanChannel?: HumanChannel
   onStart: (inputs: RunInputs, humanChannel: HumanChannel) => Promise<void>; onClose: () => void
 }) {
-  const [inputs, setInputs] = useState({ cwd: '', brief: '', beadId, limits: { maxDispatch: '20', maxAttempts: '3', wallClockSeconds: '1800', redact: false } })
+  const [inputs, setInputs] = useState({ cwd: '', brief: '', beadId })
   const [contextPaths, setContextPaths] = useState('')
   const [workspaceMode, setWorkspaceMode] = useState('automatic')
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -62,9 +45,7 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', humanCh
     }
   }, [saving])
   useEscapeKey(!saving, onClose)
-  const limits = [['maxDispatch', 'Maximum dispatches'], ['maxAttempts', 'Maximum attempts'], ['wallClockSeconds', 'Time limit in seconds']] as const
   const hint = inputHint.trim()
-  const duration = readableDuration(inputs.limits.wallClockSeconds)
   return <div ref={dialogRef} className="pop board-dialog start-mission" role="dialog" aria-modal="true" aria-label="Start mission" onPointerDown={event => event.stopPropagation()}
     onKeyDown={event => {
       if (event.key !== 'Tab') return
@@ -86,8 +67,7 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', humanCh
       if (!event.currentTarget.reportValidity()) return
       setSaving(true)
       setError('')
-      const limits = { maxDispatch: Number(inputs.limits.maxDispatch), maxAttempts: Number(inputs.limits.maxAttempts), wallClockSeconds: Number(inputs.limits.wallClockSeconds), redact: inputs.limits.redact }
-      try { await onStart({ ...inputs, contextPaths: contextPaths.split(/\r?\n/).map(path => path.trim()).filter(Boolean), cwd: workspaceMode === 'existing' ? inputs.cwd : '', limits }, channel); onClose() } catch (err) { setError(err instanceof Error ? err.message : 'Failed to start run') } finally { setSaving(false) }
+      try { await onStart({ ...inputs, contextPaths: contextPaths.split(/\r?\n/).map(path => path.trim()).filter(Boolean), cwd: workspaceMode === 'existing' ? inputs.cwd : '' }, channel); onClose() } catch (err) { setError(err instanceof Error ? err.message : 'Failed to start run') } finally { setSaving(false) }
     }}>
       <label htmlFor="start-mission-workspace">Workspace</label>
       <select id="start-mission-workspace" className="f" value={workspaceMode} disabled={saving}
@@ -120,18 +100,6 @@ export function StartMissionDialog({ title, beadId = '', inputHint = '', humanCh
       <span className="start-mission-label" aria-hidden="true">Human gates</span>
       <HumanChannelChoice value={channel} disabled={saving} describedBy="start-mission-channel-help" onChange={setChannel} />
       <p id="start-mission-channel-help" className="field-note">Saved on the mission when you start. {HUMAN_CHANNEL_TIMING}</p>
-      <div className="start-mission-limits">
-        {limits.map(([key, label]) => <div key={key}>
-          <label htmlFor={`start-mission-${key}`}>{label}</label>
-          <input id={`start-mission-${key}`} className="f" type="number" min="1" required value={inputs.limits[key]}
-            aria-describedby={key === 'wallClockSeconds' ? `${duration ? 'start-mission-duration ' : ''}start-mission-time-limit-help` : `start-mission-${key}-help`}
-            onChange={event => setInputs({ ...inputs, limits: { ...inputs.limits, [key]: event.target.value } })} />
-          {key === 'wallClockSeconds'
-            ? <p id="start-mission-duration" className="field-note">{duration}</p>
-            : <p id={`start-mission-${key}-help`} className="field-note">{LIMIT_HINTS[key]}</p>}
-        </div>)}
-      </div>
-      <p id="start-mission-time-limit-help" className="field-note">{TIME_LIMIT_HINT}</p>
       {error && <p className="field-note error" role="alert">{error}</p>}
       <div className="pop-actions">
         <button className="cancel" type="button" disabled={saving} onClick={onClose}>Cancel</button>

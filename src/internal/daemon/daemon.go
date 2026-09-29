@@ -177,7 +177,9 @@ func Run(args []string) error {
 		needsYou.Notifier = coordinator.CommandNotifier{Path: *notifyCommand}
 	}
 	c.EnableNeedsYou(needsYou)
-	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
+	// IdleTimeout closes keep-alive connections a client left behind, such as
+	// a run wait or cockpit that went away, without touching held requests.
+	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 2 * time.Minute}
 	for _, listener := range listeners {
 		fmt.Printf("Archon coordinator http://%s\n", listener.Addr())
 	}

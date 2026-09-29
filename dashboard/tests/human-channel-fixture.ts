@@ -15,7 +15,7 @@ export async function humanChannelFixture(page: Page, options: { humanChannel?: 
   if (options.humanChannel) board.missions = board.missions.map((mission: { id: string }) => ({ ...mission, humanChannel: options.humanChannel }))
   const patches: Patch[] = []
   // Routes added later answer first, so this one serves the board and takes its mission patches.
-  await page.route('**/api/formations/boards/wayfinding', async route => {
+  await page.route('**/api/formations/missions/wayfinding', async route => {
     const request = route.request()
     if (request.method() === 'GET') return route.fulfill({ json: { success: true, data: { board } }, headers: { ETag: board.etag } })
     const patch = request.postDataJSON() as Patch
@@ -140,6 +140,7 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
   })
   const typed = (createdSeq: number) => (frames.get(createdSeq) || []).filter(frame => frame.startsWith('0')).map(frame => frame.slice(1)).join('')
   const resizes = (createdSeq: number) => (frames.get(createdSeq) || []).filter(frame => frame.startsWith('1')).map(frame => JSON.parse(frame.slice(1)) as { columns: number; rows: number })
+  const handshakes = (createdSeq: number) => (frames.get(createdSeq) || []).filter(frame => frame.startsWith('{')).map(frame => JSON.parse(frame) as { columns: number; rows: number })
   /** The operator's decision is recorded, as a seat's relayed command would: the request stops waiting, and the kept seats hold no ask until they close. */
   const decide = () => {
     events = [...events, { seq: 14, type: 'human_verdict_recorded', nodeId: answerGate.id, gateId: answerGate.id }]
@@ -147,5 +148,5 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
   }
   /** The seat's session ends, as a kept seat does once idle after the decision. */
   const endSeat = async (createdSeq: number) => { for (const socket of sockets.get(createdSeq) || []) await socket.close({ code: 1000 }) }
-  return { ...fixture, typed, resizes, decide, endSeat }
+  return { ...fixture, typed, resizes, handshakes, decide, endSeat }
 }

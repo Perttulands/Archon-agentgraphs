@@ -6,14 +6,14 @@ A workbench for teams of coding agents. Draw the work, assign Claude Code and
 Codex agents, and decide where a review or human approval must happen before
 the next step runs.
 
-Archon combines a visual board editor, a CLI and a local coordinator. Agents
+Archon combines a visual mission editor, a CLI and a local coordinator. Agents
 work in tmux sessions on your machine. The UI shows their assignments and
 terminal output; the coordinator routes results through the graph and keeps
 the run history on disk.
 
-![Delivery board with agent assignments, a review gate and attached notes](docs/images/workflow.png)
+![Delivery mission with agent assignments, a review gate and attached notes](docs/images/workflow.png)
 
-The included delivery board plans a change, drafts Beads, reviews the proposed
+The included delivery mission plans a change, drafts Beads, reviews the proposed
 work, then hands execution to a Claude controller with three Codex workers.
 A final reviewer checks the result. A failed Beads review sends feedback back
 to the drafting step.
@@ -40,7 +40,7 @@ no model is running in it.
 
 The Agents view keeps reusable personas beside the mission's staffing. Inspect
 and edit a persona and see which slots use it. It shows the mission's current
-run read-only and links to Boards, where runs start and gates are answered.
+run read-only and links to Missions, where runs start and gates are answered.
 
 ![Agents view with delivery personas, staffed execution slots and the controller inspector](docs/images/agents.png)
 
@@ -69,11 +69,11 @@ choose another location. It installs `bin/archon`, `bin/archond` and the
 `formationsd` compatibility command, with complete releases under
 `lib/archon/releases/` and a `lib/archon/current` link.
 The daemon finds the installed UI automatically. Keep runtime state in a
-separate directory so replacing a release leaves boards and history intact.
+separate directory so replacing a release leaves missions and history intact.
 
 | Part | Role |
 | --- | --- |
-| `archon` | Author boards locally and send runtime commands to the daemon. |
+| `archon` | Author missions locally and send runtime commands to the daemon. |
 | `archond` | Run missions, manage agent seats, persist events and serve the UI. |
 | `share/archon/ui/` | Browser UI included in the release. |
 
@@ -84,7 +84,7 @@ also the name of an execution node. CHROTE is not required.
 ## Try the UI
 
 After installing to `$HOME/.local`, import the delivery example and start a
-lab daemon. Lab lets you explore boards without launching agents.
+lab daemon. Lab lets you explore missions without launching agents.
 
 ```bash
 export ARCHON_STATE="${XDG_DATA_HOME:-$HOME/.local/share}/archon/state"
@@ -93,8 +93,8 @@ umask 077
 mkdir -p "$ARCHON_STATE/.formations/boards" "$ARCHON_STATE/.formations/notes"
 cp "$ARCHON_SHARE/examples/delivery.formation.toml" "$ARCHON_STATE/.formations/boards/"
 cp "$ARCHON_SHARE/examples/delivery.notes.toml" "$ARCHON_STATE/.formations/notes/"
-archon --workspace "$ARCHON_STATE" board validate delivery --json
-archon --workspace "$ARCHON_STATE" board arrange delivery --json
+archon --workspace "$ARCHON_STATE" mission validate delivery --json
+archon --workspace "$ARCHON_STATE" mission arrange delivery --json
 archond --executor lab --state-dir "$ARCHON_STATE" --listen 127.0.0.1:8091
 ```
 
@@ -119,28 +119,52 @@ configuration, execution limits, approvals and recovery. The short
 finding asking seats and answering gates with text or a file.
 
 The delivery example also expects Beads and the shared skills named in its
-briefs. Those tools and skills are not bundled here. Read and adapt the
-[board](examples/delivery.formation.toml) and its
+briefs. Those tools and skills are not bundled here; only Archon's own skill is. Read and adapt the
+[mission](examples/delivery.formation.toml) and its
 [notes](examples/delivery.notes.toml) before running it against a repository.
-The [minimal board](docs/CONTRACT.md#definitions-and-storage) is a smaller
+The [minimal mission](docs/CONTRACT.md#definitions-and-storage) is a smaller
 starting point for your own workflow.
 
-With a configured daemon and a prepared delivery board, submit a mission from
+With a configured daemon and a prepared delivery mission, start a run from
 another terminal. Replace the working directory, brief and Bead below with
 your task's values.
 
 ```bash
 archon --server http://127.0.0.1:8091 mission run delivery \
-  --mission mis_delivery --cwd /absolute/path/to/your/repository \
-  --brief /absolute/path/to/your/brief.md --bead your-project-123 \
-  --max-dispatch 30 --max-attempts 3 --wall-clock-seconds 7200 --json
+  --cwd /absolute/path/to/your/repository \
+  --brief /absolute/path/to/your/brief.md --bead your-project-123 --json
 ```
 
-Use the returned run ID with `run status`, `run logs`, `run follow` or
-`run abort`. Runtime commands always use `--server`; local authoring uses
-`--workspace`. A run keeps a snapshot of its board and personas, so later
+Use the returned run ID with `run status`, `run logs`, `run follow`,
+`run wait` or `run abort`. An agent driving the run leaves `run wait` running
+in the background: it returns when the run needs an answer, ends or changes,
+and prints the command that answers it. Runtime commands always use `--server`; local authoring uses
+`--workspace`. A run keeps a snapshot of its mission and personas, so later
 edits apply to later runs. Recovery records unresolved work explicitly;
 inspect a blocked run before deciding how to continue it.
+
+## Let agents drive Archon
+
+The release ships the `archon` agent skill, which teaches Claude Code and Codex
+agents to author missions, run them and answer gates. Link it where each harness
+discovers user-level skills. The loop skips a directory that already provides
+an `archon` skill, such as a shared skills catalog, and never replaces an
+existing path:
+
+```bash
+export ARCHON_SHARE="$HOME/.local/lib/archon/current/share/archon"
+for dir in "$HOME/.claude/skills" "$HOME/.agents/skills"; do
+  mkdir -p "$dir"
+  if [ -e "$dir/archon/SKILL.md" ]; then
+    echo "$dir/archon already provides the archon skill; left unchanged"
+  else
+    ln -sn "$ARCHON_SHARE/skills/archon" "$dir/archon"
+  fi
+done
+```
+
+The links follow `current`, so an upgrade updates the skill with the binaries.
+In a source checkout the skill is [skills/archon](skills/archon/SKILL.md).
 
 ## Build from source
 
@@ -174,7 +198,7 @@ For Vite development, set `FORMATIONS_API_URL` to the daemon URL and run
 | `src/internal/api/` | Authoring HTTP and local adapters. |
 | `src/internal/daemon/` | `archond` flags, executor wiring and startup. |
 | `src/cmd/archon/`, `src/cmd/archond/`, `src/cmd/formationsd/` | CLI and daemon entrypoints. |
-| `dashboard/` | Board editor, agent staffing and terminal Peek. |
+| `dashboard/` | Mission editor, agent staffing and terminal Peek. |
 
 Read the [runtime contract](docs/CONTRACT.md),
 [daily-capability decisions](docs/adr/0016-daily-capability.md) and

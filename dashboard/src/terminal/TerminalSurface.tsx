@@ -1,49 +1,64 @@
-import { useEffect, useRef } from 'react'
-import { useTheme } from '../theme/ThemeContext'
-import { createTerminalSession, type ConnectionState, type TerminalSession } from './terminalSession'
-import { seatSocketUrl, type RunSeat } from './seatApi'
+// Ported from CHROTE dashboard/src/components/TerminalSurface.tsx (CHROTE
+// 355ace49, including chrote-te47's activation on first visible layout) under
+// form-o7p.13.1. CHROTE's useTerminalSession, which gives Peek a terminal of
+// its own, is not ported: every Archon seat view takes its terminal from a seat
+// terminal pool (seatTerminalPool.ts), so there is one owner of terminal life.
+import { useEffect, useRef, useState } from 'react'
+import type { TerminalSession } from './terminalSession'
 
-/** A seat's live terminal: native-width lines remain readable in a narrow window. */
-export default function TerminalSurface({ seat, onStateChange, focusOnOpen = false }: {
-  seat: RunSeat
-  onStateChange: (state: ConnectionState) => void
-  /** Take keyboard focus once the seat is attached, for a window opened to talk. */
-  focusOnOpen?: boolean
-}) {
-  const host = useRef<HTMLDivElement>(null)
-  const session = useRef<TerminalSession | null>(null)
-  const { theme } = useTheme()
-  const latest = useRef({ theme, onStateChange, focusOnOpen })
-  latest.current = { theme, onStateChange, focusOnOpen }
-  const url = seatSocketUrl(seat)
+interface TerminalSurfaceProps {
+  /** The terminal to show here, from a seat terminal pool. */
+  session: TerminalSession | null
+  /** Off screen; an already-shown terminal keeps its connection. */
+  hidden?: boolean
+  /** False for an ended seat: show the last frame without dialling again. */
+  connect?: boolean
+}
+
+const FIT_DEBOUNCE_MS = 100
+
+/** The one place a terminal is put on screen. */
+export default function TerminalSurface({ session, hidden = false, connect = true }: TerminalSurfaceProps) {
+  const hostRef = useRef<HTMLDivElement>(null)
+  const [shownSession, setShownSession] = useState(hidden ? null : session)
+
+  // First display starts the attachment. After that, visibility only controls
+  // fitting: neither hiding nor showing an existing frame should redial it.
   useEffect(() => {
-    const element = host.current
-    if (!url || !element) return
-    const created = createTerminalSession({
-      url, columns: seat.columns!, rows: seat.rows!, theme: latest.current.theme.terminal,
-      onStateChange: state => {
-        if (state === 'open') {
-          created.scrollToBottom()
-          if (latest.current.focusOnOpen) created.focus()
-        }
-        latest.current.onStateChange(state)
-      },
+    if (!hidden) setShownSession(session)
+  }, [session, hidden])
+  const hasBeenShown = session !== null && (!hidden || shownSession === session)
+
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host || !session || !hasBeenShown) return
+    session.attach(host, { connect })
+    return () => session.detach()
+  }, [session, connect, hasBeenShown])
+
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host || !session || hidden) return
+    session.fit()
+    if (typeof ResizeObserver === 'undefined') return
+    let timer: ReturnType<typeof setTimeout>
+    const observer = new ResizeObserver(() => {
+      clearTimeout(timer)
+      timer = setTimeout(() => session.fit(), FIT_DEBOUNCE_MS)
     })
-    session.current = created
-    created.attach(element)
-    // Resize only this viewer's row count; the seat retains its native grid.
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => created.fit())
-    observer?.observe(element)
-    return () => { observer?.disconnect(); created.dispose(); session.current = null }
-  }, [url, seat.columns, seat.rows])
-  useEffect(() => { session.current?.applyTheme(theme.terminal) }, [theme])
-  return <div className="peek-terminal">
-    <div className="peek-scroll-controls" aria-label="Terminal scrolling">
-      <button onClick={() => session.current?.scrollLines(-10)}>Older output</button>
-      <button onClick={() => session.current?.scrollToBottom()}>Latest output</button>
-      <button onClick={() => session.current?.scrollToStart()}>Start of line</button>
-      <button onClick={() => session.current?.scrollToEnd()}>End of line</button>
-    </div>
-    <div ref={host} className="terminal-surface-host" data-testid="terminal-surface" onClick={() => session.current?.focus()} />
-  </div>
+    observer.observe(host)
+    return () => {
+      clearTimeout(timer)
+      observer.disconnect()
+    }
+  }, [session, hidden])
+
+  return (
+    <div
+      ref={hostRef}
+      className="terminal-surface-host"
+      data-testid="terminal-surface"
+      style={hidden ? { display: 'none' } : undefined}
+    />
+  )
 }

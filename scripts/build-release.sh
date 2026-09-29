@@ -45,6 +45,8 @@ for arch in "${arches[@]}"; do
   cp "$bundle/bin/archond" "$bundle/bin/formationsd"
   cp -R "$root/dashboard/dist" "$bundle/share/archon/ui"
   cp -R "$root/examples" "$root/docs" "$bundle/share/archon/"
+  mkdir -p "$bundle/share/archon/skills"
+  cp -R "$root/skills/archon" "$bundle/share/archon/skills/"
   cp "$root/README.md" "$root/LICENSE" "$bundle/"
   cp -R "$root/examples" "$root/docs" "$bundle/"
   cp "$root/scripts/install.sh" "$bundle/install.sh"

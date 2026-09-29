@@ -124,8 +124,8 @@ export function VariantSettingsFields({ idPrefix, harness, efforts, draft, onDra
   )
 }
 
-/** What a seat for this variant runs, as the daemon renders it, and why a legacy launch string is not it. */
-export function SeatLaunch({ variant, label = 'Seats run' }: { variant: PersonaHarnessVariant; label?: string }) {
+/** What a slot starts as when this role is dragged onto it (the daemon's rendering), and why a legacy launch string is not it. Each slot's own settings decide what its seat runs. */
+export function SeatLaunch({ variant, label = 'A slot this role is dragged onto starts as' }: { variant: PersonaHarnessVariant; label?: string }) {
   const launchable = isLaunchable(variant)
   return (
     <div className="ph-launch">
@@ -138,8 +138,8 @@ export function SeatLaunch({ variant, label = 'Seats run' }: { variant: PersonaH
       {variant.seatLaunchError ? <p className="ph-warn">{seatLaunchProblem(variant)}</p> : null}
       {variant.launch && launchable ? (
         <p className="ph-legacy">
-          This card also holds a legacy launch string, <code>{variant.launch}</code>. Seats do not use it: they start from
-          the harness, model and effort above, which are authoritative.
+          This card also holds a legacy launch string, <code>{variant.launch}</code>. Seats do not use it: each slot's own harness, model and effort decide what its
+          seat runs.
         </p>
       ) : null}
     </div>

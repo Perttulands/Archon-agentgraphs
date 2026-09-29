@@ -31,7 +31,7 @@ test('Wayfinding loops are labelled back-references and no two share a channel s
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.addInitScript(() => localStorage.clear())
   const fixture = await wayfindingFixture(page)
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
 
   const titleOf = (nodeId: string) => [...wayfinding.board.formations, ...wayfinding.board.gates].find((node: { id: string }) => node.id === nodeId)?.title
   const loops = (wayfinding.board.connections as Array<{ id: string; from: string; to: string }>).filter(connection => connection.from.endsWith(':fail'))

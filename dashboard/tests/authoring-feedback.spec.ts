@@ -8,7 +8,7 @@ test('roster search matches names, IDs, harnesses and tags and clears without wr
     { id: 'critic-id', displayName: 'Brief Critic', harnessDefault: 'claude-code', tags: ['review'], kind: 'judge', assignable: true },
   ]
   await page.route('**/api/agents', route => route.fulfill({ json: { success: true, data: { agents, count: agents.length } } }))
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   const roster = page.getByTestId('agent-roster')
   await expect(roster.locator('.ragent')).toHaveCount(2)
   const filter = roster.getByRole('searchbox', { name: 'Filter agents' })
@@ -38,7 +38,7 @@ test('brief shortcuts and a confirmed save receipt accompany the note purpose he
   const fixture = await nodeWindowsFixture(page)
   let board = structuredClone(authoredBoard)
   let saves = 0
-  await page.route('**/api/formations/boards/wayfinding', async route => {
+  await page.route('**/api/formations/missions/wayfinding', async route => {
     if (route.request().method() === 'PATCH') {
       const patch = route.request().postDataJSON().setBrief
       board = { ...board, rev: board.rev + 1, formations: board.formations.map((formation: { id: string }) => formation.id === patch.formationId ? { ...formation, brief: { goal: patch.goal } } : formation) }
@@ -46,7 +46,7 @@ test('brief shortcuts and a confirmed save receipt accompany the note purpose he
     }
     await route.fulfill({ json: { success: true, data: { board } }, headers: { ETag: 'edited-fixture' } })
   })
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await page.getByRole('radio', { name: 'Flow', exact: true }).click()
   await page.getByRole('button', { name: '1 Map the territory', exact: true }).click()
   const win = page.getByRole('dialog', { name: 'Formation · Map the territory' })
@@ -64,8 +64,8 @@ test('brief shortcuts and a confirmed save receipt accompany the note purpose he
   await brief.press('Escape')
   await expect(win).toBeVisible()
   await expect(brief).toHaveCount(0)
-  await page.getByRole('button', { name: 'Board notes', exact: true }).click()
-  const notes = page.getByRole('dialog', { name: 'board notes' })
+  await page.getByRole('button', { name: 'Mission notes', exact: true }).click()
+  const notes = page.getByRole('dialog', { name: 'mission notes' })
   await expect(notes.getByText('Notes record intent. Agents must incorporate them into briefs to change the work.')).toBeVisible()
   await page.screenshot({ path: test.info().outputPath('notes.png') })
   expect(fixture.writes).toEqual([])

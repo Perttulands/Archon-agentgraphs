@@ -1,8 +1,10 @@
 import type { RunStatusProjection } from './formationsTypes'
 
-// A board's runs come from the daemon, so runs started by the CLI, an agent or
-// another browser appear too. The address bar carries ?board=&run= so a link
-// from a notification opens that run and a reload keeps it.
+// A mission's runs come from the daemon, so runs started by the CLI, an agent or
+// another browser appear too. The address bar carries ?mission=&run= so a link
+// from a notification opens that run and a reload keeps it. Links made before
+// the rename say ?board=; they still open, and the address bar is rewritten to
+// ?mission= with the other parameters kept.
 
 export interface RunLink {
   board: string
@@ -11,16 +13,20 @@ export interface RunLink {
 
 export function readRunLink(search: string): RunLink {
   const params = new URLSearchParams(search)
-  return { board: params.get('board') || '', run: params.get('run') || '' }
+  return { board: params.get('mission') || params.get('board') || '', run: params.get('run') || '' }
 }
 
-/** Returns the search string for a board and run, keeping unrelated parameters. */
+/**
+ * Returns the search string for a mission and run: ?mission= and ?run= first,
+ * then every unrelated parameter in its order. A pre-rename ?board= is dropped.
+ */
 export function runLinkSearch(search: string, link: RunLink): string {
-  const params = new URLSearchParams(search)
-  if (link.board) params.set('board', link.board)
-  else params.delete('board')
+  const rest = new URLSearchParams(search)
+  for (const name of ['mission', 'board', 'run']) rest.delete(name)
+  const params = new URLSearchParams()
+  if (link.board) params.set('mission', link.board)
   if (link.run) params.set('run', link.run)
-  else params.delete('run')
+  rest.forEach((value, name) => params.append(name, value))
   const next = params.toString()
   return next ? `?${next}` : ''
 }

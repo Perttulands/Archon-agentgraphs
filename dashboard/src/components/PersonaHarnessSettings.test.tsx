@@ -33,7 +33,7 @@ describe('persona harness settings', () => {
   it('says a legacy launch string is not what seats run, and why a variant cannot start', () => {
     const { rerender } = render(<SeatLaunch variant={{ ...claude, launch: 'claude --effort="max"', seatLaunch: "exec '/bin/claude' --effort 'medium'" }} />)
     expect(screen.getByTestId('seat-launch-claude-code')).toHaveTextContent("exec '/bin/claude' --effort 'medium'")
-    expect(screen.getByText(/legacy launch string/)).toHaveTextContent('Seats do not use it: they start from the harness, model and effort above, which are authoritative.')
+    expect(screen.getByText(/legacy launch string/)).toHaveTextContent("Seats do not use it: each slot's own harness, model and effort decide what its seat runs.")
     rerender(<SeatLaunch variant={{ id: 'hermes', launch: 'hermes --profile x', seatLaunchError: 'unsupported seat harness "hermes"' }} />)
     expect(screen.getByText('Archon cannot start hermes seats.')).toBeInTheDocument()
     expect(screen.queryByText(/legacy launch string/)).toBeNull()

@@ -191,7 +191,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [validation, setValidation] = useState<BoardValidation | null>(null)
   const [admissionFindings, setAdmissionFindings] = useState<BoardFinding[]>([])
   const [activeRun, setActiveRun] = useState<RunStatusProjection | null>(null)
-  // A link's ?board=&run= and the run picker pin a run to its board.
+  // A link's ?mission=&run= and the run picker pin a run to its mission.
   const initialRunLink = useRef(readRunLink(window.location.search)).current
   const [pinnedRun, setPinnedRun] = useState({ slug: initialRunLink.board, runId: initialRunLink.run })
   const [boardRuns, setBoardRuns] = useState<RunStatusProjection[]>([])
@@ -371,7 +371,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         if (list[0]) {
           const { slug, missingLinked } = chooseCurrentBoard(list.map(item => item.slug), window.location.search)
           if (missingLinked) {
-            setLinkError(`Board "${missingLinked}" from the link was not found`)
+            setLinkError(`Mission "${missingLinked}" from the link was not found`)
             setPinnedRun({ slug: '', runId: '' })
           }
           setSelectedSlug(current => current || slug)
@@ -387,7 +387,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         setRunEvents([])
         setEscalations([])
       })
-      .catch(err => !cancelled && setError(err instanceof Error ? err.message : 'Failed to load boards'))
+      .catch(err => !cancelled && setError(err instanceof Error ? err.message : 'Failed to load missions'))
     return () => { cancelled = true }
   }, [])
 
@@ -411,7 +411,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         setLayout(nextLayout)
         setError('')
       })
-      .catch(err => !cancelled && setError(err instanceof Error ? err.message : 'Failed to load board'))
+      .catch(err => !cancelled && setError(err instanceof Error ? err.message : 'Failed to load mission'))
     return () => { cancelled = true }
   }, [selectedSlug])
 
@@ -438,7 +438,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         notesRef.current = next
         setNotes(next)
       } catch (err) {
-        if (!cancelled) setNoteErrors(current => ({ ...current, [BOARD_NOTE_TARGET]: err instanceof Error ? err.message : 'Failed to load board notes' }))
+        if (!cancelled) setNoteErrors(current => ({ ...current, [BOARD_NOTE_TARGET]: err instanceof Error ? err.message : 'Failed to load mission notes' }))
       }
     }
     if (!notesRef.current) void loadNotes()
@@ -466,7 +466,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         setLayout(nextLayout)
         setError('')
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to check board changes')
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to check mission changes')
       }
     }
     void checkChanges()
@@ -530,7 +530,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         const status = runStatusFromResponse(await fetchRunStatus(runId))
         if (cancelled) return
         if (status.boardSlug && status.boardSlug !== selectedSlug) {
-          if (runId === pinnedRunId) dropPin(`Run ${runId} belongs to board "${status.boardSlug}", not "${selectedSlug}"`)
+          if (runId === pinnedRunId) dropPin(`Run ${runId} belongs to mission "${status.boardSlug}", not "${selectedSlug}"`)
           return
         }
         try {
@@ -754,7 +754,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // Writes one board edit and adopts the result; a failure throws.
   const applyBoardPatch = useCallback(async (patch: Record<string, unknown>): Promise<{ board: BoardDocument; layout: LayoutDocument | null }> => {
     const current = boardRef.current
-    if (!current) throw new Error('No board is open')
+    if (!current) throw new Error('No mission is open')
     const result = await writes.track(patchBoardDocument(current.slug, current.etag, current.rev, patch))
     lastWriteBoardRef.current = current.slug
     // A write that finishes after the operator switched boards must not replace the new board.
@@ -783,7 +783,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const dirty = Object.keys(noteDraftsRef.current).find(target => noteDraftsRef.current[target])
     if (!dirty) return false
     openNoteWindow(dirty)
-    setNoteErrors(current => ({ ...current, [dirty]: 'Save the current notes before leaving this board.' }))
+    setNoteErrors(current => ({ ...current, [dirty]: 'Save the current notes before leaving this mission.' }))
     return true
   }, [openNoteWindow])
 
@@ -816,7 +816,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const saveBoardName = useCallback(async () => {
     if (!boardDialog || boardDialog.mode === 'delete') return
-    // A blank name saves too: the server names new boards "Untitled board".
+    // A blank name saves too: the server names new missions "Untitled mission".
     const title = boardDialog.title.trim()
     if (boardDialog.mode === 'create' && blockBoardExitForDirtyNotes()) {
       closeBoardDialog()
@@ -841,7 +841,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         setSelectedSlug(created.slug)
       } else {
         const target = boardDialog.target
-        if (!target) throw new Error('Board target is missing; close and retry')
+        if (!target) throw new Error('Mission target is missing; close and retry')
         const result = await patchBoardDocument(target.slug, target.etag, target.rev, { title })
         if (boardRef.current?.id === target.id) {
           boardRef.current = result.board
@@ -860,7 +860,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       setBoardDialog(current => current ? {
         ...current,
         saving: false,
-        error: err instanceof Error ? err.message : 'Board update failed',
+        error: err instanceof Error ? err.message : 'Mission update failed',
       } : current)
     }
   }, [blockBoardExitForDirtyNotes, boardDialog, closeBoardDialog])
@@ -893,7 +893,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       setBoardDialog(dialog => dialog ? {
         ...dialog,
         saving: false,
-        error: err instanceof Error ? err.message : 'Board deletion failed',
+        error: err instanceof Error ? err.message : 'Mission deletion failed',
       } : dialog)
     }
   }, [blockBoardExitForDirtyNotes, boardDialog, closeBoardDialog])
@@ -902,7 +902,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const applyLayoutPatch = useCallback(async (patch: { nodes?: LayoutNode[]; edges?: LayoutEdge[]; arrange?: boolean }) => {
     const currentBoard = boardRef.current
     const currentLayout = layoutRef.current
-    if (!currentBoard || !currentLayout) throw new Error('No board layout is open')
+    if (!currentBoard || !currentLayout) throw new Error('No mission layout is open')
     const next = await writes.track(patchBoardLayout(currentBoard.slug, currentLayout.etag, patch))
     lastWriteBoardRef.current = currentBoard.slug
     if (boardRef.current?.slug !== currentBoard.slug) return next
@@ -1128,7 +1128,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [patchBoard, placementForNewNode, recordUndo])
 
   const createMissionAt = useCallback((x: number, y: number) => {
-    setMissionEditor({ initial: { title: 'New mission', goal: '', beadId: '' }, x, y })
+    setMissionEditor({ initial: { title: boardRef.current?.title || 'Input', goal: '', beadId: '' }, x, y })
     setMissionEditorSaving(false)
   }, [])
 
@@ -1143,12 +1143,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setMissionEditorSaving(true)
     const placement = placementForNewNode(missionEditor.x, missionEditor.y)
     const result = await patchBoard({
-      createMission: { ...draft, title: draft.title || 'New mission', x: placement.x, y: placement.y },
+      createMission: { ...draft, title: draft.title || 'Input', x: placement.x, y: placement.y },
     })
     setMissionEditorSaving(false)
     if (!result) return
     const created = findAddedByID(before.missions || [], result.board.missions || [])
-    if (created) recordUndo(`the new mission ${quoted(created.title, '')}`.trim(), boardStep({ deleteMission: { id: created.id } }))
+    if (created) recordUndo(`the new Input card ${quoted(created.title, '')}`.trim(), boardStep({ deleteMission: { id: created.id } }))
     setMissionEditor(null)
   }, [missionEditor, missionEditorSaving, patchBoard, placementForNewNode, recordUndo])
 
@@ -1181,7 +1181,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!previous) return false
     if (!await patchBoard({ updateMission: { id: missionId, ...fields } })) return false
     // An absent field is restored as empty, which clears it.
-    recordUndo(`the edit of mission ${quoted(previous.title, 'untitled')}`, boardStep({ updateMission: { id: missionId, ...Object.fromEntries(Object.keys(fields).map(key => [key, previous[key as keyof typeof fields] ?? (key === 'files' ? [] : '')])) } }))
+    recordUndo(`the edit of Input card ${quoted(previous.title, 'untitled')}`, boardStep({ updateMission: { id: missionId, ...Object.fromEntries(Object.keys(fields).map(key => [key, previous[key as keyof typeof fields] ?? (key === 'files' ? [] : '')])) } }))
     return true
   }, [patchBoard, recordUndo])
 
@@ -1211,7 +1211,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     // A node whose restore the server would refuse is deleted only after the operator agrees it cannot be undone.
     const blocker = restoreBlocker(before, nodeId)
     if (blocker && !confirmed) {
-      const kind = patch.deleteFormation ? 'formation' : patch.deleteGate ? 'gate' : 'mission'
+      const kind = patch.deleteFormation ? 'formation' : patch.deleteGate ? 'gate' : 'Input card'
       const title = [...(before.missions || []), ...before.formations, ...(before.gates || [])].find(node => node.id === nodeId)?.title || ''
       setDeleteConfirm({ title, kind, reason: blocker, patch })
       return
@@ -1293,8 +1293,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!legacyVerification?.replacementGateId || legacyVerificationPendingRef.current) return
     const current = boardRef.current
     if (!current || current.slug !== legacyVerification.boardSlug || current.rev !== legacyVerification.boardRev || current.etag !== legacyVerification.boardETag) {
-      setError('Board changed while legacy verification was open. Reopen migration to continue.')
-      setLegacyVerification(open => open ? { ...open, error: 'Could not remove legacy verification. Reopen migration from the current board and try again.' } : open)
+      setError('The mission changed while legacy verification was open. Reopen migration to continue.')
+      setLegacyVerification(open => open ? { ...open, error: 'Could not remove legacy verification. Reopen migration from the current mission and try again.' } : open)
       return
     }
     legacyVerificationPendingRef.current = true
@@ -1317,7 +1317,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setLegacyVerification(open => open ? {
       ...open,
       pending: false,
-      error: 'Could not remove legacy verification. Review the current board before trying again.',
+      error: 'Could not remove legacy verification. Review the current mission before trying again.',
     } : open)
   }, [legacyVerification, patchBoard])
 
@@ -2150,9 +2150,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [deleteGateOp, detachJudge, gateHasJudge, openJudgePicker, openMenu])
 
   const missionMenu = useCallback((event: ReactMouseEvent<HTMLElement>, mission: MissionNode) => {
-    openMenu(event, 'Mission actions', [
+    openMenu(event, 'Input card actions', [
       { label: 'Start mission', action: () => setStartMission(mission) },
-      { label: 'Delete mission', destructive: true, action: () => deleteMissionOp(mission) },
+      { label: 'Delete Input card', destructive: true, action: () => deleteMissionOp(mission) },
     ])
   }, [deleteMissionOp, openMenu])
 
@@ -2183,7 +2183,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       x: event.clientX,
       y: event.clientY,
       items: [
-        { label: 'Mission', action: () => createMissionAt(w.x, w.y) },
+        // One mission per file: the Input card is offered only while the mission has none.
+        ...(boardRef.current?.missions?.length ? [] : [{ label: 'Input card', action: () => createMissionAt(w.x, w.y) }]),
         { label: 'Solo formation', action: () => void createFormationAt('solo', 'New formation', w.x, w.y) },
         { label: 'Peer formation', action: () => void createFormationAt('peer', 'New peers', w.x, w.y) },
         { label: 'Orchestrated formation', action: () => void createFormationAt('orchestrated', 'New desk', w.x, w.y) },
@@ -2232,7 +2233,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const noteElements = useMemo(() => {
     if (!board) return []
     return [
-      ...(board.missions || []).map(node => ({ id: node.id, title: node.title, kind: 'Mission' })),
+      ...(board.missions || []).map(node => ({ id: node.id, title: node.title, kind: 'Input card' })),
       ...(board.formations || []).map(node => ({ id: node.id, title: node.title, kind: 'Formation' })),
       ...(board.gates || []).map(node => ({ id: node.id, title: node.title || 'Gate', kind: 'Gate' })),
       ...(board.tools || []).map(node => ({ id: node.id, title: node.title, kind: 'Tool' })),
@@ -2244,7 +2245,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     [noteByNode, noteElements],
   )
   const noteTitleOf = (target: string) => target === BOARD_NOTE_TARGET
-    ? board?.title || 'Board'
+    ? board?.title || 'Mission'
     : noteElements.find(element => element.id === target)?.title || target
 
   const changeNotesMode = useCallback((mode: NotesMode) => {
@@ -2545,19 +2546,19 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     <div className="fmx" data-testid="formations-view" data-cockpit="d7">
       <div className="topbar">
         <div className="boardpick">
-          board
-          <select value={selectedSlug} onChange={event => selectBoard(event.target.value)} data-testid="board-picker" disabled={boards.length === 0 || Boolean(boardDialog)}>
-            {boards.length === 0 ? <option value="">No boards</option> : null}
+          mission
+          <select aria-label="Mission" value={selectedSlug} onChange={event => selectBoard(event.target.value)} data-testid="board-picker" disabled={boards.length === 0 || Boolean(boardDialog)}>
+            {boards.length === 0 ? <option value="">No missions</option> : null}
             {boards.map(summary => <option key={summary.slug} value={summary.slug}>{summary.title || summary.slug}</option>)}
           </select>
           {board ? <span className="rev">rev {board.rev}</span> : null}
         </div>
         <button className="newbtn board-new" type="button" onClick={event => openCreateBoard(event.currentTarget)} data-testid="new-board" disabled={Boolean(boardDialog)}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
-          New board
+          New mission
         </button>
-        <button className="board-action" type="button" aria-label="Rename board" disabled={!board || Boolean(boardDialog)} onClick={event => openRenameBoard(event.currentTarget)}>Rename</button>
-        <button className="board-action danger" type="button" aria-label="Delete board" disabled={!board || Boolean(boardDialog)} onClick={event => openDeleteBoard(event.currentTarget)}>Delete</button>
+        <button className="board-action" type="button" aria-label="Rename mission" disabled={!board || Boolean(boardDialog)} onClick={event => openRenameBoard(event.currentTarget)}>Rename</button>
+        <button className="board-action danger" type="button" aria-label="Delete mission" disabled={!board || Boolean(boardDialog)} onClick={event => openDeleteBoard(event.currentTarget)}>Delete</button>
         <div className="sep" />
         <button className="newbtn" onClick={createSolo} data-testid="new-formation" disabled={!board}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
@@ -2569,7 +2570,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         </div>
         <div className="spacer" />
         <CanvasLegend />
-        <div className="notes-switch view-switch" role="radiogroup" aria-label="Board view">
+        <div className="notes-switch view-switch" role="radiogroup" aria-label="Mission view">
           {(['canvas', 'flow'] as const).map(view => (
             <button key={view} type="button" role="radio" aria-checked={boardView === view} className={boardView === view ? 'on' : ''}
               disabled={!board} onClick={() => changeBoardView(view)}>{view === 'canvas' ? 'Canvas' : 'Flow'}</button>
@@ -2581,7 +2582,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               onClick={() => changeNotesMode(mode)}>{mode === 'hidden' ? 'Hide notes' : mode === 'preview' ? 'Preview' : 'Full notes'}</button>
           ))}
         </div>
-        <button type="button" className="newbtn board-notes-button" disabled={!board} onClick={() => openNoteWindow(BOARD_NOTE_TARGET)}>Board notes</button>
+        <button type="button" className="newbtn board-notes-button" disabled={!board} onClick={() => openNoteWindow(BOARD_NOTE_TARGET)}>Mission notes</button>
         <button type="button" className="newbtn" disabled={!activeRun}
           title={activeRun ? 'Observe run seats' : 'Start a run to observe its seats'}
           onClick={() => openPeek('')}>Open terminal</button>
@@ -2596,8 +2597,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         >
           <div className="roster-hd">
             <div className="t">Agents</div>
-            <span className="s" data-testid="roster-count" title={`${rosterAgents.length} catalog agents · ${deployedAgentCount} placed on this board`}>
-              {rosterCountLabel(rosterAgents.length, { placed: deployedAgentCount, scope: 'board' })}
+            <span className="s" data-testid="roster-count" title={`${rosterAgents.length} catalog agents · ${deployedAgentCount} placed in this mission`}>
+              {rosterCountLabel(rosterAgents.length, { placed: deployedAgentCount, scope: 'canvas' })}
             </span>
             <button type="button" className="roster-toggle" aria-expanded={!roster.collapsed}
               aria-label={roster.collapsed ? 'Expand agent roster' : 'Collapse agent roster'} onClick={roster.toggle}>
@@ -2740,13 +2741,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
             {!board ? (
               <div className="empty-board" data-testid="formations-empty-board">
-                <div className="empty-title">No persisted formation boards</div>
-                <div className="empty-copy">Create a board from the top bar to start sketching a mission.</div>
+                <div className="empty-title">No missions yet</div>
+                <div className="empty-copy">Create a mission from the top bar to start sketching it.</div>
               </div>
             ) : (board.missions || []).length + board.formations.length + (board.gates || []).length + (board.tools || []).length === 0 ? (
               <div className="empty-board" data-testid="formations-empty-board">
-                <div className="empty-title">This board is empty</div>
-                <div className="empty-copy">Add a formation, Gate, Mission, or Tool to sketch the workflow.</div>
+                <div className="empty-title">This mission is empty</div>
+                <div className="empty-copy">Add an Input card, a formation, a Gate or a Tool to sketch the workflow.</div>
               </div>
             ) : null}
 
@@ -2767,7 +2768,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   {renderDraftMarker(mission.id)}
                   {renderRunChip(mission.id)}
                   <div className="mhd">
-                    <span className="meyebrow">◆ Mission</span>
+                    <span className="meyebrow">◆ Input</span>
                     <button className="mrun" title="Start mission" onClick={() => setStartMission(mission)} data-testid={`run-mission-${mission.id}`}>{PLAY_SVG}</button>
                   </div>
                   {renderNodeTitle(mission.title, 'mtitle', 'Untitled mission', 'div')}
@@ -3175,23 +3176,23 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           className="pop board-dialog"
           role="dialog"
           aria-modal="true"
-          aria-label={boardDialog.mode === 'create' ? 'Create board' : boardDialog.mode === 'rename' ? 'Rename board' : 'Delete board'}
+          aria-label={boardDialog.mode === 'create' ? 'Create mission' : boardDialog.mode === 'rename' ? 'Rename mission' : 'Delete mission'}
           onPointerDown={event => event.stopPropagation()}
         >
           <div className="pop-head">
-            <span className="pt">{boardDialog.mode === 'create' ? 'Create board' : boardDialog.mode === 'rename' ? 'Rename board' : 'Delete board'}</span>
-            <button className="x" type="button" aria-label="Close board dialog" disabled={boardDialog.saving} onClick={closeBoardDialog}>x</button>
+            <span className="pt">{boardDialog.mode === 'create' ? 'Create mission' : boardDialog.mode === 'rename' ? 'Rename mission' : 'Delete mission'}</span>
+            <button className="x" type="button" aria-label="Close mission dialog" disabled={boardDialog.saving} onClick={closeBoardDialog}>x</button>
           </div>
           {boardDialog.mode === 'delete' ? (
             <div className="pop-body">
               <p className="board-delete-warning">
-                <strong>{boardDialog.title}</strong> will be removed from the live board list. Its definition and layout are archived, not destroyed; run history is untouched.
+                <strong>{boardDialog.title}</strong> will be removed from the mission list. Its definition and layout are archived, not destroyed; run history is untouched.
               </p>
               {boardDialog.error ? <p className="field-note error">{boardDialog.error}</p> : null}
               <div className="pop-actions">
                 <button autoFocus className="cancel" type="button" disabled={boardDialog.saving} onClick={closeBoardDialog}>Cancel</button>
                 <button className="retire" type="button" disabled={boardDialog.saving} onClick={() => void archiveSelectedBoard()}>
-                  {boardDialog.saving ? 'Archiving…' : 'Archive board'}
+                  {boardDialog.saving ? 'Archiving…' : 'Archive mission'}
                 </button>
               </div>
             </div>
@@ -3203,7 +3204,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 void saveBoardName()
               }}
             >
-              <label htmlFor="formations-board-name">Board name</label>
+              <label htmlFor="formations-board-name">Mission name</label>
               <input
                 id="formations-board-name"
                 className="f"
@@ -3213,12 +3214,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 disabled={boardDialog.saving}
                 onChange={event => setBoardDialog(current => current ? { ...current, title: event.target.value, error: '' } : current)}
               />
-              <p className="field-note">The board slug is derived from this name and remains stable after renaming.</p>
+              <p className="field-note">The mission slug is derived from this name and remains stable after renaming.</p>
               {boardDialog.error ? <p className="field-note error">{boardDialog.error}</p> : null}
               <div className="pop-actions">
                 <button className="cancel" type="button" disabled={boardDialog.saving} onClick={closeBoardDialog}>Cancel</button>
                 <button className="save" type="submit" disabled={boardDialog.saving}>
-                  {boardDialog.saving ? 'Saving…' : boardDialog.mode === 'create' ? 'Create board' : 'Save board name'}
+                  {boardDialog.saving ? 'Saving…' : boardDialog.mode === 'create' ? 'Create mission' : 'Save mission name'}
                 </button>
               </div>
             </form>

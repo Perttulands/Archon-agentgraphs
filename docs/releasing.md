@@ -39,6 +39,7 @@ bin/formationsd
 share/archon/ui/
 share/archon/examples/
 share/archon/docs/
+share/archon/skills/archon/
 docs/
 examples/
 install.sh
@@ -79,6 +80,8 @@ lib/archon/releases/<version>-<commit>-<platform>/
 
 The release directory contains the full archive. Examples are available under
 `lib/archon/current/share/archon/examples/` and documentation beside them.
+The `archon` agent skill is at `lib/archon/current/share/archon/skills/archon/`;
+the README shows how to link it for Claude Code and Codex.
 The daemon resolves its executable and finds the bundled UI automatically.
 Use `--ui-dir /absolute/path` to serve another UI build, or `--ui-dir ''` to
 run without the UI.
@@ -90,7 +93,7 @@ same release identity. Older releases remain on disk. A running daemon keeps
 using its loaded binary until the operator restarts it.
 
 The installer creates no service and does not copy, migrate or remove runtime
-state. Supply the same `--state-dir` when restarting to retain boards and run
+state. Supply the same `--state-dir` when restarting to retain missions and run
 history. Follow the [shutdown and recovery procedure](CONTRACT.md#operator-procedure)
 before restarting a daemon that has active work.
 

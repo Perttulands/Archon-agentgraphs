@@ -3,19 +3,24 @@ import { agentsFixture } from './agents-fixture'
 
 test.use({ viewport: { width: 1920, height: 1080 } })
 
-test('Boards and Agents share one current board across view switches, reloads and fresh opens', async ({ page }) => {
+test('Missions and Agents share one current mission across view switches, reloads and fresh opens', async ({ page }) => {
   await agentsFixture(page)
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await expect(page.getByTestId('board-picker')).toHaveValue('wayfinding')
+  // No tab, label, button or accessible name calls the unit a board.
+  const boardWords = () => page.evaluate(() => [document.body.innerText, ...[...document.querySelectorAll('[aria-label],[title],[placeholder]')]
+    .flatMap(element => ['aria-label', 'title', 'placeholder'].map(name => element.getAttribute(name) || ''))].join('\n').match(/\bboards?\b/gi) || [])
+  expect(await boardWords()).toEqual([])
 
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
   const agents = page.getByTestId('agents-view')
-  await expect(agents.getByRole('combobox', { name: 'Board' })).toHaveValue('wayfinding')
+  await expect(agents.getByRole('combobox', { name: 'Mission' })).toHaveValue('wayfinding')
+  expect(await boardWords()).toEqual([])
   await expect(agents.locator('section.formation .tt')).toHaveText(['Map'])
 
-  await agents.getByRole('combobox', { name: 'Board' }).selectOption('delivery')
-  await expect(page).toHaveURL(/\?board=delivery$/)
-  await page.getByRole('button', { name: 'Boards', exact: true }).click()
+  await agents.getByRole('combobox', { name: 'Mission' }).selectOption('delivery')
+  await expect(page).toHaveURL(/\?mission=delivery$/)
+  await page.getByRole('button', { name: 'Missions', exact: true }).click()
   await expect(page.getByTestId('board-picker')).toHaveValue('delivery')
 
   await page.reload()
@@ -25,12 +30,12 @@ test('Boards and Agents share one current board across view switches, reloads an
   await page.goto('/')
   await expect(page.getByTestId('board-picker')).toHaveValue('delivery')
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
-  await expect(agents.getByRole('combobox', { name: 'Board' })).toHaveValue('delivery')
+  await expect(agents.getByRole('combobox', { name: 'Mission' })).toHaveValue('delivery')
 })
 
 test('a mission is not ready while a slot in its judge chain is open', async ({ page }) => {
   await agentsFixture(page)
-  await page.goto('/?board=delivery')
+  await page.goto('/?mission=delivery')
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
   const agents = page.getByTestId('agents-view')
 
@@ -49,7 +54,7 @@ test('a mission is not ready while a slot in its judge chain is open', async ({ 
 
 test('a persona\'s model and effort are shown and edited per harness variant, with the command seats run', async ({ page }) => {
   const fixture = await agentsFixture(page)
-  await page.goto('/?board=delivery')
+  await page.goto('/?mission=delivery')
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
   const agents = page.getByTestId('agents-view')
 
@@ -92,7 +97,7 @@ test('a persona\'s model and effort are shown and edited per harness variant, wi
 
 test('a hermes persona keeps an editable launch command, the one archon agent spawn runs', async ({ page }) => {
   const fixture = await agentsFixture(page)
-  await page.goto('/?board=delivery')
+  await page.goto('/?mission=delivery')
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
   const agents = page.getByTestId('agents-view')
   await agents.getByRole('button', { name: 'Inspect Hermes spawner' }).click()

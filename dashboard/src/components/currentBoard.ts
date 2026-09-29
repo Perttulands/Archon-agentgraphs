@@ -1,8 +1,8 @@
 /**
- * The one current board that Boards and Agents share. The address bar's
- * ?board= names it, so a reload, a view switch or a shared link keeps it; this
- * device also remembers the last board used, so a fresh open with no query
- * lands there instead of on whichever board sorts first.
+ * The one current mission that Missions and Agents share. The address bar's
+ * ?mission= (or a pre-rename ?board=) names it, so a reload, a view switch or a
+ * shared link keeps it; this device also remembers the last mission used, so a
+ * fresh open with no query lands there instead of on whichever sorts first.
  */
 
 import { readRunLink, runLinkSearch } from './formationsRunDiscovery'

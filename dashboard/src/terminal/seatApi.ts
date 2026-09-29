@@ -1,4 +1,5 @@
 import { fetchApi } from '../components/formationsApi'
+import type { PooledSeat } from './seatTerminalPool'
 
 export interface RunSeat {
   runId: string
@@ -44,4 +45,12 @@ export function seatSocketUrl(seat: RunSeat): string | null {
   if (seat.state !== 'live' || seat.terminalUrl !== path || !Number.isSafeInteger(seat.createdSeq) || seat.createdSeq < 1
     || !Number.isInteger(seat.columns) || !Number.isInteger(seat.rows) || seat.columns! < 1 || seat.rows! < 1) return null
   return `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}${path}`
+}
+
+/** The seats a terminal pool may hold: each live seat with its exact terminal URL and native grid. */
+export function pooledSeats(seats: readonly RunSeat[]): PooledSeat[] {
+  return seats.flatMap(seat => {
+    const url = seatSocketUrl(seat)
+    return url ? [{ url, columns: seat.columns!, rows: seat.rows! }] : []
+  })
 }

@@ -258,6 +258,7 @@ func (c *Coordinator) Handler() http.Handler {
 	mux.HandleFunc("GET /api/formations/runs/{runId}/seats", c.seats)
 	mux.HandleFunc("GET /api/formations/runs/{runId}/seats/{createdSeq}/terminal", c.viewTerminal)
 	mux.HandleFunc("GET /api/formations/runs/{runId}/gates/{gateId}/request", c.pendingGateRequest)
+	mux.HandleFunc("GET /api/formations/runs/{runId}/wait", c.wait)
 	c.registerEvidenceRoutes(mux)
 	c.registerFileRoutes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -276,8 +277,13 @@ func (c *Coordinator) Handler() http.Handler {
 	c.mu.Unlock()
 	api.NewAgentsHandlerWithStoreAndLiveness(c.personas, liveness).RegisterRoutes(mux)
 	mux.HandleFunc("GET /api/formations/runs", func(w http.ResponseWriter, r *http.Request) {
-		// An optional board filter lets a cockpit poll only its board's runs.
-		runs, err := c.store.ListRuns(formations.RunListFilter{BoardSlug: r.URL.Query().Get("board")})
+		// An optional ?mission= filter lets a cockpit poll only its mission's
+		// runs; ?board= is its name before the rename, kept for one release.
+		mission := r.URL.Query().Get("mission")
+		if mission == "" {
+			mission = r.URL.Query().Get("board")
+		}
+		runs, err := c.store.ListRuns(formations.RunListFilter{BoardSlug: mission})
 		if err != nil {
 			failure(w, err)
 			return
@@ -340,6 +346,42 @@ func (c *Coordinator) acquire(id string) bool {
 	c.workers.Add(1)
 	return true
 }
+
+// runCommandWait bounds how long a verdict or resume waits for the command
+// still executing on its run.
+const runCommandWait = 5 * time.Second
+
+// acquireSoon takes the run's command reservation, waiting up to
+// runCommandWait for a command still executing to release it. A driver that
+// answers the moment run wait reports an ask then never races the command
+// that recorded the ask and is still settling the run.
+func (c *Coordinator) acquireSoon(ctx context.Context, id string) bool {
+	timer := time.NewTimer(runCommandWait)
+	defer timer.Stop()
+	for !c.acquire(id) {
+		c.mu.Lock()
+		state := c.state(id)
+		closed, busy, done := c.closed, state.busy, state.done
+		c.mu.Unlock()
+		if closed {
+			return false
+		}
+		if !busy {
+			continue // released between the two reads
+		}
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return false
+		case <-c.stopping:
+			return false
+		case <-timer.C:
+			return false
+		}
+	}
+	return true
+}
+
 func (c *Coordinator) release(id string) {
 	c.mu.Lock()
 	notify := c.needsYou
@@ -380,8 +422,13 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	if req.Board == "" || (req.MissionID == "") == (req.FormationID == "") || req.ExpectedRev <= 0 || req.Limits.MaxDispatch <= 0 || req.Limits.MaxAttempts <= 0 || req.Limits.WallClockSeconds <= 0 || req.Limits.Redact {
-		reply(w, 400, map[string]string{"error": "board, missionId, expectedRev and positive limits required; redacted execution is not supported"})
+	if req.Board == "" || (req.MissionID == "") == (req.FormationID == "") || req.ExpectedRev <= 0 || req.Limits.Redact {
+		reply(w, 400, map[string]string{"error": "board, missionId and expectedRev required; redacted execution is not supported"})
+		return
+	}
+	// Limits are optional (form-o7p.7): an absent or zero limit means none.
+	if err := formations.ValidateRunLimits(req.Limits); err != nil {
+		reply(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
 	if req.MissionID != "" {
@@ -461,7 +508,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !connected {
-		reply(w, 422, map[string]string{"error": "wire the mission to a formation"})
+		reply(w, 422, map[string]string{"error": "wire the Input card to a step"})
 		return
 	}
 	req.Limits = c.engine.AdmissionLimits(req.Limits)
@@ -633,7 +680,7 @@ func (c *Coordinator) verdict(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	runID, gateID := r.PathValue("runId"), r.PathValue("gateId")
-	if !c.acquire(runID) {
+	if !c.acquireSoon(r.Context(), runID) {
 		reply(w, 409, map[string]string{"error": "coordinator is executing"})
 		return
 	}

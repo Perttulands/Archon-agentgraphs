@@ -88,7 +88,7 @@ describe('outputRowStatus', () => {
 
 describe('rosterCountLabel', () => {
   it('names the scope of the placed count so the two tabs never share one word for different facts', () => {
-    expect(rosterCountLabel(25, { placed: 6, scope: 'board' })).toBe('25 · 6 on board')
+    expect(rosterCountLabel(25, { placed: 6, scope: 'canvas' })).toBe('25 · 6 on canvas')
     expect(rosterCountLabel(25, { live: 2, placed: 5, scope: 'mission' })).toBe('25 · 2 live · 5 on mission')
     expect(rosterCountLabel('…', { live: 0, placed: 0, scope: 'mission' })).toBe('…')
   })

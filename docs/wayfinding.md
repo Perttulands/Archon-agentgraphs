@@ -7,23 +7,20 @@ host. They supply reference material; the run gets a separate workspace.
 
 ```bash
 SERVER='http://127.0.0.1:8080'
-BOARD='wayfinding'
+MISSION='wayfinding'
 BRIEF='/absolute/path/to/brief.txt'
 CONTEXT_REPO='/absolute/path/to/prior-art'
 CONTEXT_NOTES='/absolute/path/to/context.md'
 BEAD='your-task-id'
-archon --server "$SERVER" board list
-archon --server "$SERVER" board inspect "$BOARD" --json
-archon --server "$SERVER" mission list "$BOARD"
-MISSION='mis_replace_with_the_listed_mission_id'
-archon --server "$SERVER" mission inspect "$BOARD" "$MISSION" --json
+archon --server "$SERVER" mission list
+archon --server "$SERVER" mission inspect "$MISSION" --json
 ```
 
-Check the board revision, selected mission, staffing and `humanChannel: session`
+Check the mission revision, its Input card, staffing and `humanChannel: session`
 before starting. Wayfinding uses 30 dispatches, 30 attempts and 7200 seconds per
 run; its peer formation has an authored 600-second timeout. Inspect that setting
-in the board JSON. Gate waits do not consume the run wall clock. The CLI fetches
-the current board revision for admission; a revision conflict requires inspection
+in the mission JSON. Gate waits do not consume the run wall clock. The CLI fetches
+the current mission revision for admission; a revision conflict requires inspection
 before trying again.
 
 Launch once. `BRIEF` is read by the local CLI. Omit `--cwd` for an automatic
@@ -31,7 +28,7 @@ workspace; use `--cwd /absolute/existing/project` when work belongs there.
 Repeat `--context-path` for each input, or omit it when none is needed.
 
 ```bash
-archon --server "$SERVER" mission run "$BOARD" --mission "$MISSION" \
+archon --server "$SERVER" mission run "$MISSION" \
   --brief "$BRIEF" --bead "$BEAD" \
   --context-path "$CONTEXT_REPO" --context-path "$CONTEXT_NOTES" \
   --max-dispatch 30 --max-attempts 30 --wall-clock-seconds 7200 \
@@ -41,7 +38,10 @@ archon --server "$SERVER" run status "$RUN" --json
 archon --server "$SERVER" run follow "$RUN" --json
 ```
 
-`follow` waits through human gates. Ctrl-C stops viewing, not the run. If launch
+`follow` waits through human gates. Ctrl-C stops viewing, not the run. An
+agent driving the run uses `archon --server "$SERVER" run wait "$RUN"` instead:
+it returns when a gate needs an answer or the run ends, with the exact answer
+command and the `--since` cursor for its next wait. If launch
 returns no receipt, use `archon --server "$SERVER" run list --json` to find an
 admitted run before launching again. Status reports the actual `cwd` and
 `contextPaths`; the cockpit also shows the workspace path.
@@ -111,11 +111,11 @@ reported workspace are retained. Declared artifacts live under the daemon state
 directory at `.formations/artifacts/<runId>/`; use the cockpit Produced list or
 `GET /api/formations/runs/<runId>/evidence/artifacts` to locate them. A send-back
 starts a fresh attempt, so the recorded correction must carry the decisions the
-next drafting seat needs. Do not rename or freeze the board when finishing a run.
+next drafting seat needs. Do not rename or freeze the mission when finishing a run.
 
 These launch, discovery, watch, seat relay and artifact steps were followed on a
 disposable session mission using its own bounded test limits. Its first seat
 read both context paths; the asking seat relayed a 14,543-byte response file, and
 the downstream seat verified the exact bytes from its dispatch brief. The live
 cockpit loaded the same complete file; browser tests cover both verdicts and
-edited answers. The real Wayfinding board was left unchanged.
+edited answers. The real Wayfinding mission was left unchanged.
