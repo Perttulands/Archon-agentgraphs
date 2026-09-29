@@ -6,6 +6,8 @@ import { clampFrameSize, type FrameSize } from './floatingWindowSize'
  *
  * A workspace is the area windows are held inside, plus zones they must stay
  * off: the cockpit keeps windows on its canvas and away from the zoom column.
+ * Where a new window opens is windowPlacement.ts; this module keeps a window
+ * inside its workspace as it is moved and resized.
  */
 
 export interface WindowRect {
@@ -25,9 +27,6 @@ export interface HandleAxis {
   x: -1 | 0 | 1
   y: -1 | 0 | 1
 }
-
-/** How far a newly opened window steps down and right from the last one. */
-export const CASCADE_STEP = 28
 
 const right = (rect: WindowRect) => rect.left + rect.width
 const bottom = (rect: WindowRect) => rect.top + rect.height
@@ -83,55 +82,6 @@ export function keepInWorkspace(rect: WindowRect, workspace: Workspace, minimum:
     next = shrunk.sort((a, b) => area(b) - area(a))[0] || current
   }
   return next
-}
-
-/** A new window: centred in the workspace, stepped down and right past the windows already open. */
-export function placeWindow(size: FrameSize, workspace: Workspace, minimum: FrameSize, cascade: number): WindowRect {
-  const { bounds } = workspace
-  const fitted = clampFrameSize(size, minimum, bounds)
-  const step = CASCADE_STEP * cascade
-  return keepInWorkspace({
-    ...fitted,
-    left: bounds.left + (bounds.width - fitted.width) / 2 + step,
-    top: bounds.top + (bounds.height - fitted.height) / 2 + step,
-  }, workspace, minimum)
-}
-
-/** Room left between a window and the thing it opened beside. */
-export const ANCHOR_GAP = 12
-
-/** How far outside the workspace an anchor still counts as in view, such as a chip in a bar along its edge. */
-export const ANCHOR_REACH = 48
-
-/**
- * A new window beside what it belongs to: right of it, else left of it, below
- * or above, whichever side first fits the workspace without covering it. The
- * window lines up with the anchor's top or left edge. An anchor just outside
- * the workspace tries the side facing the workspace first. Null when the anchor
- * is empty, out of view, or no side leaves it uncovered, so the window opens
- * centred.
- */
-export function placeBeside(size: FrameSize, anchor: WindowRect, workspace: Workspace, minimum: FrameSize): WindowRect | null {
-  const { bounds } = workspace
-  const reach = { left: bounds.left - ANCHOR_REACH, top: bounds.top - ANCHOR_REACH, width: bounds.width + 2 * ANCHOR_REACH, height: bounds.height + 2 * ANCHOR_REACH }
-  if (anchor.width <= 0 || anchor.height <= 0 || !rectsOverlap(anchor, reach)) return null
-  const fitted = clampFrameSize(size, minimum, bounds)
-  const rightSide = { ...fitted, left: right(anchor) + ANCHOR_GAP, top: anchor.top }
-  const leftSide = { ...fitted, left: anchor.left - ANCHOR_GAP - fitted.width, top: anchor.top }
-  const below = { ...fitted, left: anchor.left, top: bottom(anchor) + ANCHOR_GAP }
-  const above = { ...fitted, left: anchor.left, top: anchor.top - ANCHOR_GAP - fitted.height }
-  const facing = bottom(anchor) <= bounds.top ? below
-    : anchor.top >= bottom(bounds) ? above
-      : right(anchor) <= bounds.left ? rightSide
-        : anchor.left >= right(bounds) ? leftSide
-          : null
-  const order = [rightSide, leftSide, below, above]
-  const sides = facing ? [facing, ...order.filter(side => side !== facing)] : order
-  for (const side of sides) {
-    const held = keepInWorkspace(side, workspace, minimum)
-    if (!rectsOverlap(held, anchor)) return held
-  }
-  return null
 }
 
 /** A window moved by the pointer's travel since the gesture began. */

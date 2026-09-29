@@ -1,10 +1,10 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { useState } from 'react'
+import { Profiler, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import FloatingWindow from './FloatingWindow'
 import { WindowManagerProvider, useWindowManager } from './WindowManager'
 import { readFloatingWindowSize } from './floatingWindowSize'
-import type { WindowRect, Workspace } from './windowGeometry'
+import { rectsOverlap, type WindowRect, type Workspace } from './windowGeometry'
 
 // jsdom lays nothing out, so the workspace is given directly: a 1200 x 800
 // canvas with the zoom column in its bottom-right corner.
@@ -18,6 +18,7 @@ function Harness({ initial, anchors = {} }: { initial: string[]; anchors?: Recor
   return (
     <>
       <button type="button" onClick={() => setOpen(ids => [...ids, `w${ids.length + 1}`])}>Open another</button>
+      <button type="button" onClick={stack.reflow}>Reflow</button>
       <WindowManagerProvider stack={stack}>
         {open.map(id => (
           <FloatingWindow key={id} id={id} kind="node" title={`Window ${id}`} label={`window ${id}`}
@@ -50,13 +51,14 @@ afterEach(() => {
 })
 
 describe('floating windows', () => {
-  it('opens centred, cascades the next window on top, and raises a window when it is focused', () => {
+  it('opens centred, opens the next window clear of it, and raises a window when it is focused', () => {
     render(<Harness initial={['w1']} />)
     expect(rectOf('w1')).toEqual({ left: 400, top: 250, width: 400, height: 300 })
     expect(windowOf('w1')).toHaveFocus()
 
     fireEvent.click(screen.getByRole('button', { name: 'Open another' }))
-    expect(rectOf('w2')).toEqual({ left: 428, top: 278, width: 400, height: 300 })
+    expect(rectOf('w2')).toMatchObject({ width: 400, height: 300 })
+    expect(rectsOverlap(rectOf('w1'), rectOf('w2'))).toBe(false)
     expect(zOf('w2')).toBeGreaterThan(zOf('w1'))
     expect(windowOf('w2')).toHaveClass('focused')
 
@@ -66,26 +68,34 @@ describe('floating windows', () => {
     expect(windowOf('w1')).toHaveFocus()
   })
 
-  it('cascades windows that open in the same render', () => {
-    render(<Harness initial={['w1', 'w2']} />)
+  it('opens windows that open in the same render clear of one another', () => {
+    render(<Harness initial={['w1', 'w2', 'w3']} />)
     expect(rectOf('w1')).toEqual({ left: 400, top: 250, width: 400, height: 300 })
-    expect(rectOf('w2')).toEqual({ left: 428, top: 278, width: 400, height: 300 })
+    expect(rectsOverlap(rectOf('w1'), rectOf('w2'))).toBe(false)
+    expect(rectsOverlap(rectOf('w3'), rectOf('w1')) || rectsOverlap(rectOf('w3'), rectOf('w2'))).toBe(false)
+    expect(zOf('w3')).toBeGreaterThan(zOf('w2'))
     expect(zOf('w2')).toBeGreaterThan(zOf('w1'))
   })
 
-  it('opens beside its anchor, and centred when the anchor is out of view', () => {
-    render(<Harness initial={['w1']} anchors={{
+  it('opens beside its anchor without covering it, and near the centre when the anchor is out of view', () => {
+    const anchors = {
       w1: { left: 100, top: 120, width: 200, height: 100 },
       w2: { left: 900, top: 100, width: 200, height: 100 },
       w3: { left: -500, top: 100, width: 200, height: 100 },
-    }} />)
-    expect(rectOf('w1')).toEqual({ left: 312, top: 120, width: 400, height: 300 })
+    }
+    render(<Harness initial={['w1']} anchors={anchors} />)
+    const w1 = rectOf('w1')
+    expect(rectsOverlap(w1, anchors.w1)).toBe(false)
+    expect(Math.max(0, w1.top - 220, 120 - (w1.top + w1.height), w1.left - 300, 100 - (w1.left + w1.width))).toBeLessThanOrEqual(12)
 
     fireEvent.click(screen.getByRole('button', { name: 'Open another' }))
-    expect(rectOf('w2')).toEqual({ left: 488, top: 100, width: 400, height: 300 })
+    expect(rectsOverlap(rectOf('w2'), anchors.w2)).toBe(false)
+    expect(rectsOverlap(rectOf('w2'), w1)).toBe(false)
 
     fireEvent.click(screen.getByRole('button', { name: 'Open another' }))
-    expect(rectOf('w3')).toEqual({ left: 456, top: 306, width: 400, height: 300 })
+    const w3 = rectOf('w3')
+    expect(rectsOverlap(w3, w1) || rectsOverlap(w3, rectOf('w2'))).toBe(false)
+    expect(w3.left).toBeGreaterThan(0)
   })
 
   it('moves by its title bar and stays inside the workspace', () => {
@@ -116,8 +126,10 @@ describe('floating windows', () => {
     expect(rectOf('w1')).toEqual({ left: 350, top: 200, width: 550, height: 366 })
     expect(readFloatingWindowSize('node')).toEqual({ width: 550, height: 366 })
 
+    // The next window of the kind opens at the remembered size where there is room for it.
+    fireEvent.click(screen.getByRole('button', { name: 'Close window w1' }))
     fireEvent.click(screen.getByRole('button', { name: 'Open another' }))
-    expect(rectOf('w2')).toMatchObject({ width: 550, height: 366 })
+    expect(rectOf('w1')).toMatchObject({ width: 550, height: 366 })
   })
 
   it('opens at the remembered size', () => {
@@ -156,6 +168,44 @@ describe('floating windows', () => {
     expect(rectOf('w1')).toEqual({ left: 520, top: 350, width: 400, height: 300 })
     drag(screen.getByRole('separator', { name: 'Resize the window w1 from the right' }), { x: 920, y: 400 }, { x: 1190, y: 400 })
     expect(rectOf('w1')).toEqual({ left: 520, top: 350, width: zoom.left - 520, height: 300 })
+  })
+
+  it('moves open windows back inside the workspace when it changes without the page resizing', () => {
+    render(<Harness initial={['w1']} />)
+    expect(rectOf('w1')).toEqual({ left: 400, top: 250, width: 400, height: 300 })
+    // The run bar appears over the canvas's top 300 pixels.
+    canvas = { bounds: { left: 0, top: 300, width: 1200, height: 500 }, avoid: [zoom] }
+    fireEvent.click(screen.getByRole('button', { name: 'Reflow' }))
+    expect(rectOf('w1')).toEqual({ left: 400, top: 300, width: 400, height: 300 })
+  })
+
+  it('re-renders nothing when a reflow finds every window already inside', () => {
+    let commits = 0
+    function Counted() {
+      const stack = useWindowManager(workspace)
+      return (
+        <>
+          <button type="button" onClick={stack.reflow}>Reflow</button>
+          <WindowManagerProvider stack={stack}>
+            <Profiler id="w1" onRender={() => { commits += 1 }}>
+              <FloatingWindow id="w1" kind="node" title="Window w1" label="window w1" defaultSize={{ width: 400, height: 300 }} onClose={() => {}}>
+                <p>Body of w1</p>
+              </FloatingWindow>
+            </Profiler>
+          </WindowManagerProvider>
+        </>
+      )
+    }
+    render(<Counted />)
+    // React may render once before it bails out of an unchanged state; after that, frames cost nothing.
+    fireEvent.click(screen.getByRole('button', { name: 'Reflow' }))
+    const before = commits
+    for (let frame = 0; frame < 5; frame += 1) fireEvent.click(screen.getByRole('button', { name: 'Reflow' }))
+    expect(commits).toBe(before)
+    // A reflow that does move the window still renders it.
+    canvas = { bounds: { left: 0, top: 300, width: 1200, height: 500 }, avoid: [zoom] }
+    fireEvent.click(screen.getByRole('button', { name: 'Reflow' }))
+    expect(commits).toBeGreaterThan(before)
   })
 
   it('holds open windows inside the viewport when it shrinks', () => {

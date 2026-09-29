@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BoardDocument } from '../components/formationsTypes'
 import { evidenceNamesForBoard } from '../evidence/evidenceNames'
 import { WindowManagerProvider, useWindowManager } from '../windows/WindowManager'
+import { rectsOverlap } from '../windows/windowGeometry'
 import type { Workspace } from '../windows/windowGeometry'
 import { FileWindowsLayer, FileWindowsProvider, useFileWindows } from './FileWindows'
 import { ProducedFiles, RunProduced, RunProducedProvider } from './ProducedFiles'
@@ -105,11 +106,30 @@ describe('produced files', () => {
     expect(bar.getAllByRole('button').map(button => button.textContent)).toEqual(['▤final-review.md', '¶report', '+2'])
     fireEvent.click(bar.getByRole('button', { name: '2 more produced files' }))
     const menu = screen.getByRole('menu', { name: 'Everything this run produced' })
+    // Drawn at the page's top level, outside the run bar's stacking layer, so it opens above file windows.
+    expect(menu.parentElement).toBe(document.body)
     expect(within(menu).getByText('Plan')).toBeInTheDocument()
     expect(within(menu).getByText('Other files')).toBeInTheDocument()
-    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['¶report', '▤worker.log'])
-    fireEvent.keyDown(document, { key: 'Escape' })
+    const items = within(menu).getAllByRole('menuitem')
+    expect(items.map(item => item.textContent)).toEqual(['¶report', '▤worker.log'])
+    // Drawn at the end of the page, the menu takes focus as it opens; arrow keys move through it.
+    expect(items[0]).toHaveFocus()
+    fireEvent.keyDown(items[0], { key: 'ArrowDown' })
+    expect(items[1]).toHaveFocus()
+    fireEvent.keyDown(items[1], { key: 'ArrowDown' })
+    expect(items[0]).toHaveFocus()
+    fireEvent.keyDown(items[0], { key: 'ArrowUp' })
+    expect(items[1]).toHaveFocus()
+    // Escape closes it and gives focus back to its button.
+    fireEvent.keyDown(items[1], { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBeNull()
+    const more = bar.getByRole('button', { name: '2 more produced files' })
+    expect(more).toHaveFocus()
+    // So does Tab, rather than leaving focus at the end of the page.
+    fireEvent.click(more)
+    fireEvent.keyDown(screen.getAllByRole('menuitem')[0], { key: 'Tab' })
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(more).toHaveFocus()
   })
 
   it('opens a Markdown artifact rendered from the run bar in one click, with raw and path actions', async () => {
@@ -141,12 +161,22 @@ describe('produced files', () => {
     expect(report).toHaveTextContent('Plan')
     expect(within(report).queryByRole('link', { name: 'Open raw' })).toBeNull()
 
+    // The run bar sits just above the workspace. A file from its menu opens right below it, though the
+    // menu itself is drawn at the end of the page.
+    const barBox = { left: 900, top: -40, width: 300, height: 24 }
+    screen.getByTestId('run-produced').getBoundingClientRect = () => ({ ...barBox, right: 1200, bottom: -16, x: 900, y: -40, toJSON: () => ({}) })
     fireEvent.click(screen.getByRole('button', { name: '2 more produced files' }))
     fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'worker.log' }))
     const log = await screen.findByRole('dialog', { name: 'file worker.log' })
+    expect(rectOf(log).top).toBe(0)
+    // Below the chips, beside the report window it must not cover.
+    const opened = rectOf(log)
+    expect(opened.left < barBox.left + barBox.width && opened.left + opened.width > barBox.left).toBe(true)
     await waitFor(() => expect(within(log).getByTestId('file-truncated')).toHaveTextContent('Showing 17 B of 293 KiB. Open it raw for the whole file.'))
 
     expect(screen.getAllByRole('dialog')).toHaveLength(2)
+    // Side by side: the second opens clear of the first.
+    expect(rectsOverlap(rectOf(report), rectOf(log))).toBe(false)
     expect(rectOf(log)).not.toEqual(rectOf(report))
     expect(Number(log.style.zIndex)).toBeGreaterThan(Number(report.style.zIndex))
 
@@ -158,16 +188,24 @@ describe('produced files', () => {
     expect(screen.getAllByRole('dialog')).toHaveLength(1)
   })
 
-  it('opens a file window beside the card whose chip opened it, and centred from a control without a place', async () => {
+  it('opens a file window beside the card whose chip opened it, and the next one clear of it', async () => {
     render(<Cockpit produced={produced} final />)
     const card = screen.getByTestId('card-plan')
-    card.getBoundingClientRect = () => ({ left: 100, top: 120, width: 300, height: 200, right: 400, bottom: 320, x: 100, y: 120, toJSON: () => ({}) })
+    const cardBox = { left: 100, top: 120, width: 300, height: 200 }
+    card.getBoundingClientRect = () => ({ ...cardBox, right: 400, bottom: 320, x: 100, y: 120, toJSON: () => ({}) })
     fireEvent.click(within(card).getByRole('button', { name: 'report' }))
-    expect(rectOf(await screen.findByRole('dialog', { name: 'file report' }))).toEqual({ left: 412, top: 120, width: 720, height: 560 })
+    const report = rectOf(await screen.findByRole('dialog', { name: 'file report' }))
+    expect(report).toMatchObject({ width: 720, height: 560 })
+    expect(rectsOverlap(report, cardBox)).toBe(false)
+    // Beside the card: its nearest edge a gap away.
+    const gap = Math.max(report.left - 400, cardBox.left - (report.left + report.width), report.top - 320, cardBox.top - (report.top + report.height))
+    expect(gap).toBe(12)
 
-    // A control that passes no anchor opens its window centred, stepped past the open one.
+    // A control that passes no anchor opens its window near the centre, clear of the open one.
     fireEvent.click(screen.getByRole('button', { name: 'Open paper.pdf' }))
-    expect(rectOf(await screen.findByRole('dialog', { name: 'file paper.pdf' }))).toMatchObject({ width: 720, height: 560, left: 440 + 28, top: 220 + 28 })
+    const paper = rectOf(await screen.findByRole('dialog', { name: 'file paper.pdf' }))
+    expect(paper).toMatchObject({ width: 720, height: 560 })
+    expect(rectsOverlap(paper, report)).toBe(false)
   })
 
   it('refreshes a revised output in its existing moved window when the latest chip is opened', async () => {

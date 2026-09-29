@@ -333,6 +333,12 @@ outputs feed nothing), or a running run's latest step, and a menu holds the
 rest, including artifact files no output names. A chip opens the file in a
 floating file window, rendered by kind, with Open raw and Copy path (relative to
 the state directory) for artifacts; several can be open side by side.
+Node, note and file windows open in the free space nearest what opened them:
+Flow's gutters, or the canvas above and below the graph, shrinking to half
+their remembered size at most to fit. A window leaves its own card or Flow row,
+its neighbours, its next links and the title bars of open windows visible and
+clickable, and cascades when no free space is left. Menus opened from the run
+bar render above every window.
 
 The cockpit's floating Peek attaches to an owned live seat and sends typing and
 resize as CHROTE's terminals do, through the seat terminal WebSocket below. The

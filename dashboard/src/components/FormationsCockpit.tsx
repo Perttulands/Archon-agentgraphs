@@ -88,6 +88,7 @@ import type { NodeWindowOps } from '../nodeWindow/NodeWindow'
 import { readBoardView, writeBoardView, type BoardView } from '../flow/boardView'
 import type { FlowRun } from '../flow/FlowView'
 import { cockpitWorkspace } from '../windows/cockpitWorkspace'
+import { cockpitScene, measureElement, nodeAnchor, nodeWindowKeepClear } from '../windows/cockpitScene'
 import { humanChannelField, humanChannelLabel, humanChannelOf, type HumanChannel } from '../humanChannel/humanChannel'
 import { useGateTalk } from '../talk/useGateTalk'
 import type { WindowRect } from '../windows/windowGeometry'
@@ -161,6 +162,12 @@ type BoardDialogState = {
   saving: boolean
   error: string
 }
+// Board notes open near their button in the toolbar, in free space over the canvas.
+function boardNotesAnchor(): WindowRect | null {
+  const button = document.querySelector('.board-notes-button')
+  return button ? measureElement(button) : null
+}
+
 export default function FormationsCockpit({ active = true }: { active?: boolean } = {}) {
   const [boards, setBoards] = useState<BoardSummary[]>([])
   const [selectedSlug, setSelectedSlug] = useState('')
@@ -239,8 +246,17 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const notesRef = useRef<BoardNotesDocument | null>(null)
   const noteDraftsRef = useRef<Record<string, string>>({})
   const viewportRef = useRef<HTMLDivElement | null>(null)
-  const windows = useWindowManager(() => cockpitWorkspace(viewportRef.current))
-  const { focus: focusWindow } = windows
+  const windows = useWindowManager(() => cockpitWorkspace(viewportRef.current), () => cockpitScene(viewportRef.current || document))
+  const { focus: focusWindow, reflow: reflowWindows } = windows
+  // The canvas changes size when the run bar appears or the roster collapses;
+  // open windows move back inside it, so none is left over the run bar.
+  useEffect(() => {
+    const canvas = viewportRef.current
+    if (!canvas || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => reflowWindows())
+    observer.observe(canvas)
+    return () => observer.disconnect()
+  }, [reflowWindows])
   // Each Peek is its own window; asking for one already open raises it.
   const openPeek = useCallback((nodeId: string) => {
     setPeeks(current => current.includes(nodeId) ? current : [...current, nodeId])
@@ -3047,7 +3063,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             key={target}
             target={target}
             title={noteTitleOf(target)}
-            anchor={target === BOARD_NOTE_TARGET ? undefined : () => noteWindowAnchor(worldRef.current, target)}
+            anchor={target === BOARD_NOTE_TARGET ? boardNotesAnchor : () => (showFlow ? nodeAnchor(target) : noteWindowAnchor(worldRef.current, target))}
+            keepClear={target === BOARD_NOTE_TARGET ? undefined : () => nodeWindowKeepClear(target, board.connections)}
             entries={(target === BOARD_NOTE_TARGET ? notes?.board : noteByNode.get(target)) || []}
             draft={noteDrafts[target] || ''}
             editingEntryId={noteEditing[target]}

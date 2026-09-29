@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { EvidenceNames } from '../evidence/evidenceNames'
 import { formatBytes } from '../evidence/runEvidenceApi'
 import { fileAnchor, useFileWindows } from './FileWindows'
@@ -35,11 +36,13 @@ export function producedRequest(runId: string, item: ProducedItem, names: RunPro
   return outputFileRequest(runId, item.nodeId || '', producedLabel(item, names), step, item.portId)
 }
 
-function ProducedChip({ item, value, onOpened, role }: {
+function ProducedChip({ item, value, onOpened, role, openedFrom }: {
   item: ProducedItem
   value: RunProducedValue
   onOpened?: () => void
   role?: 'menuitem'
+  /** What the file opens by, when not the chip itself: the run bar's +N button for a chip in its menu. */
+  openedFrom?: () => Element | null
 }) {
   const files = useFileWindows()
   const label = producedLabel(item, value.names)
@@ -55,7 +58,7 @@ function ProducedChip({ item, value, onOpened, role }: {
       onPointerDown={event => event.stopPropagation()}
       onClick={event => {
         event.stopPropagation()
-        files?.open(producedRequest(value.runId, item, value.names), fileAnchor(event.currentTarget))
+        files?.open(producedRequest(value.runId, item, value.names), fileAnchor(openedFrom?.() || event.currentTarget))
         onOpened?.()
       }}
     >
@@ -107,6 +110,29 @@ export function RunProduced() {
     }
   }, [menu])
 
+  // The menu is drawn at the end of the page, so it takes focus as it opens:
+  // arrow keys move between its items, Escape and Tab return to the + button.
+  const open = Boolean(menu)
+  useEffect(() => {
+    if (open) menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus({ preventScroll: true })
+  }, [open])
+  const menuKeys = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const items = [...(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') || [])]
+    const at = items.indexOf(document.activeElement as HTMLElement)
+    const step = { ArrowDown: 1, ArrowUp: -1 }[event.key]
+    if (step) {
+      event.preventDefault()
+      items[(at + step + items.length) % items.length]?.focus()
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault()
+      items[event.key === 'Home' ? 0 : items.length - 1]?.focus()
+    } else if (event.key === 'Tab') {
+      event.preventDefault()
+      moreRef.current?.focus()
+      setMenu(null)
+    }
+  }
+
   if (!value || !files) return null
   const { primary, others } = value.summary
   const lead = primary.length ? primary : others
@@ -140,16 +166,18 @@ export function RunProduced() {
           }}
         >+{rest.length}</button>
       ) : null}
-      {menu ? (
-        <div ref={menuRef} className="run-produced-menu" role="menu" aria-label="Everything this run produced" style={{ left: menu.left, top: menu.top }}>
+      {/* The run bar is its own stacking layer under the floating windows, so
+          the menu is drawn at the page's top level to open above every window. */}
+      {menu ? createPortal((
+        <div ref={menuRef} className="run-produced-menu" role="menu" aria-label="Everything this run produced" style={{ left: menu.left, top: menu.top }} onKeyDown={menuKeys}>
           {groups.map(group => (
             <div className="run-produced-group" key={group.title}>
               <div className="run-produced-group-title">{group.title}</div>
-              {group.items.map(item => <ProducedChip key={item.key} item={item} value={value} role="menuitem" onOpened={() => setMenu(null)} />)}
+              {group.items.map(item => <ProducedChip key={item.key} item={item} value={value} role="menuitem" openedFrom={() => moreRef.current} onOpened={() => setMenu(null)} />)}
             </div>
           ))}
         </div>
-      ) : null}
+      ), document.body) : null}
     </span>
   )
 }
