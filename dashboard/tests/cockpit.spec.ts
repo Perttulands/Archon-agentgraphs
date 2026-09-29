@@ -72,14 +72,12 @@ for (const width of [1440, 390]) test(`floating Peek shows the seat's whole grid
   if (width === 1440) {
     // Sizing the window larger fits a larger font until the whole grid shows;
     // the seat keeps its size.
-    // Grown up and to the right, where Peek opened below the graph with room to spare.
+    // Grown up and to the right with the frame's keyboard resize, 16px per arrow.
     const before = (await page.locator('.xterm-screen').boundingBox())!
-    const corner = (await page.locator('.floating-peek [data-handle="ne"]').boundingBox())!
-    const peekBox = (await peek.boundingBox())!
-    await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(corner.x + Math.min(500, 1370 - peekBox.x - peekBox.width), Math.max(160, corner.y - 500), { steps: 6 })
-    await page.mouse.up()
+    await peek.locator('[data-handle="n"]').focus()
+    for (let i = 0; i < 30; i++) await page.keyboard.press('ArrowUp')
+    await peek.locator('[data-handle="e"]').focus()
+    for (let i = 0; i < 30; i++) await page.keyboard.press('ArrowRight')
     await expect.poll(async () => (await page.locator('.xterm-screen').boundingBox())!.width).toBeGreaterThan(before.width)
     await expect.poll(() => room.evaluate(el => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight)).toBe(true)
     await expect(peek.getByRole('button', { name: 'End of line' })).toHaveCount(0)
