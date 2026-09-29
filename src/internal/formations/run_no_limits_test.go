@@ -1,6 +1,7 @@
 package formations
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -102,6 +103,27 @@ func TestRunWithExplicitLimitsStillBlocksAndNamesTheLimit(t *testing.T) {
 				t.Fatalf("limit block = %+v limit %+v, want %+v", last, last.Limit, tc.limit)
 			}
 		})
+	}
+}
+
+// A negative limit is refused before anything is written, by the engine's own
+// mission and formation starts, so every caller refuses it the same way.
+func TestRunStartsRefuseNegativeLimits(t *testing.T) {
+	for _, limits := range []RunLimits{{MaxDispatch: -1}, {MaxAttempts: -1}, {WallClockSeconds: -1}} {
+		store, personas := s4RunFixture(t)
+		createS4Persona(t, personas, "scout")
+		writeFixture(t, store.BoardPath("session-search"), s4GateBoardFixture(true))
+		engine := NewRunEngine(store, personas, &fakeRunExecutor{})
+		if _, err := engine.RunMission("session-search", RunStartRequest{MissionID: "mis_showcase", Limits: limits}); !errors.Is(err, ErrInvalidRunLimits) {
+			t.Fatalf("mission start with %+v: err = %v", limits, err)
+		}
+		if _, err := engine.RunFormation("session-search", "fmn_work", FormationRunRequest{Limits: limits}); !errors.Is(err, ErrInvalidRunLimits) {
+			t.Fatalf("formation start with %+v: err = %v", limits, err)
+		}
+		assertNoRunArtifacts(t, store, "session-search")
+	}
+	if err := ValidateRunLimits(RunLimits{}); err != nil {
+		t.Fatalf("no limits: %v", err)
 	}
 }
 

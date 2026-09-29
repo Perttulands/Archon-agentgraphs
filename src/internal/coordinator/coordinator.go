@@ -385,8 +385,8 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Limits are optional (form-o7p.7): an absent or zero limit means none.
-	if req.Limits.MaxDispatch < 0 || req.Limits.MaxAttempts < 0 || req.Limits.WallClockSeconds < 0 {
-		reply(w, 400, map[string]string{"error": "limits must be positive when set; omit a limit to run without it"})
+	if err := formations.ValidateRunLimits(req.Limits); err != nil {
+		reply(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
 	if req.MissionID != "" {

@@ -224,7 +224,6 @@ paths:
               required:
               - board
               - expectedRev
-              - limits
               oneOf:
               - required:
                 - missionId
@@ -261,22 +260,22 @@ paths:
                 limits:
                   type: object
                   additionalProperties: false
-                  required:
-                  - maxDispatch
-                  - maxAttempts
-                  - wallClockSeconds
+                  description: Optional. A run has no limits unless the launch sets them; an absent or zero
+                    limit means none, and a negative limit is rejected.
                   properties:
                     maxDispatch:
                       type: integer
-                      minimum: 1
+                      minimum: 0
+                      description: Cap on the run's formation starts, judges included. Absent or 0 means no limit.
                     maxAttempts:
                       type: integer
-                      minimum: 1
+                      minimum: 0
+                      description: Cap on each step's attempts. Absent or 0 means no limit.
                     wallClockSeconds:
                       type: integer
-                      minimum: 1
+                      minimum: 0
                       description: Time the run's agent work may take from its start. Waits at human gates, from
-                        each request to its verdict, do not count.
+                        each request to its verdict, do not count. Absent or 0 means no limit.
                     formationTimeoutSeconds:
                       type: integer
                       minimum: 1

@@ -53,7 +53,6 @@ func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
 	}
 	server.Close()
 	out.Reset()
-	out.Reset()
 	stderr.Reset()
 	if code := runRemote(server.URL, []string{"run", "status", "run_proof", "--json"}, &out, &stderr); code == 0 || out.Len() != 0 {
 		t.Fatalf("unavailable coordinator fell back: code %d output %s", code, out.String())
