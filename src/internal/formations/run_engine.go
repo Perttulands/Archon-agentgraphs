@@ -990,9 +990,8 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 	for _, gate := range board.Gates {
 		gateByID[gate.ID] = gate
 	}
-	if terminalPassReachedOnBoard(board, events) {
-		return e.appendResumeSucceeded(runID)
-	}
+	// A terminal pass in the ledger is not the end of the run by itself:
+	// replay first, so every branch still to run continues (form-n7u.53).
 
 	ready := map[string]map[string]RunInputRef{}
 	queued := map[string]bool{}
@@ -1114,18 +1113,38 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 	if starved := starvedFormations(formationByID, ready); len(starved) > 0 {
 		return e.appendStarvedBlock(runID, starved)
 	}
+	completionEvents := events
+	if refreshed, err := e.store.ReadRunEvents(runID); err == nil && len(refreshed) > len(events) {
+		completionEvents = refreshed
+		completed = completedFormationsFromEvents(refreshed)
+	}
+	// Replay has queued and run everything the ledger delivered. A human
+	// request still open elsewhere keeps the run waiting rather than done.
+	if pendingHumanRequest(completionEvents) {
+		return nil
+	}
 	if !ranAny {
-		completionEvents := events
-		if refreshed, err := e.store.ReadRunEvents(runID); err == nil && len(refreshed) > len(events) {
-			completionEvents = refreshed
-			completed = completedFormationsFromEvents(refreshed)
-		}
 		if terminalPassReachedOnBoard(board, completionEvents) || (latestGateVerdictAllowsGraphCompletion(completionEvents) && runGraphComplete(board, mission.ID, completed) && !pendingPushback(board, completionEvents)) {
 			return e.appendResumeSucceeded(runID)
 		}
 		return e.appendErrorAndBlock(runID, "resume_no_work", "no resumable work found", "engine", "", "no resumable work found")
 	}
 	return e.appendResumeSucceeded(runID)
+}
+
+// pendingHumanRequest reports a human gate request with no recorded verdict.
+func pendingHumanRequest(events []RunEvent) bool {
+	checked := map[string]bool{}
+	for _, event := range events {
+		if event.Type != RunEventHumanInputRequested || checked[event.GateID] {
+			continue
+		}
+		checked[event.GateID] = true
+		if _, ok := latestHumanRequest(events, event.GateID); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *RunEngine) resumeIncompleteGateEvaluations(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
