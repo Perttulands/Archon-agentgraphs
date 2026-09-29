@@ -70,7 +70,7 @@ func ValidateRunAdmission(board *BoardDocument, personas *PersonaStore, scope Ru
 	}
 	findingInScope := func(finding BoardFinding) bool {
 		switch {
-		case selected == nil || finding.Code == FindingInvalidFormationType:
+		case selected == nil || finding.Code == FindingInvalidFormationType || finding.Code == FindingSeveralInputCards:
 			return true
 		case finding.NodeID == "":
 			return false

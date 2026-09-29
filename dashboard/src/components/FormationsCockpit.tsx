@@ -190,7 +190,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [validation, setValidation] = useState<BoardValidation | null>(null)
   const [admissionFindings, setAdmissionFindings] = useState<BoardFinding[]>([])
   const [activeRun, setActiveRun] = useState<RunStatusProjection | null>(null)
-  // A link's ?board=&run= and the run picker pin a run to its board.
+  // A link's ?mission=&run= and the run picker pin a run to its mission.
   const initialRunLink = useRef(readRunLink(window.location.search)).current
   const [pinnedRun, setPinnedRun] = useState({ slug: initialRunLink.board, runId: initialRunLink.run })
   const [boardRuns, setBoardRuns] = useState<RunStatusProjection[]>([])

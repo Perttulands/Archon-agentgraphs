@@ -4,7 +4,7 @@ import { cockpitFixture } from './cockpit-fixture'
 test('three solo outputs join one input and one undo removes the last join', async ({ page }) => {
   await page.addInitScript(() => localStorage.clear())
   const fixture = await cockpitFixture(page, { join: true })
-  await page.goto('/?board=browser')
+  await page.goto('/?mission=browser')
   const sink = page.getByTestId('formation-node-sink')
   await expect(sink).toBeVisible()
   for (const [index, id] of ['a', 'b', 'c'].entries()) {

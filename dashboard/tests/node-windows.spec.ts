@@ -5,7 +5,7 @@ import { wayfinding } from './wayfinding-fixture'
 test('every Wayfinding node reads in full in its window, with no edit dialog and no board write', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   const fixture = await nodeWindowsFixture(page)
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await expect(page.getByTestId(`mission-node-${wayfindingBoard.missions[0].id}`)).toBeVisible()
   await page.getByRole('button', { name: 'FIT' }).click()
 

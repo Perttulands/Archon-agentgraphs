@@ -17,6 +17,7 @@ const (
 	FindingLegacyScriptGate                          = LegacyScriptGateMigrationCode
 	FindingLegacyInlineVerificationRequiresMigration = LegacyInlineVerificationMigrationCode
 	FindingMissionCount                              = "mission_count"
+	FindingSeveralInputCards                         = "several_input_cards"
 	FindingMissionNotRunnable                        = "mission_not_runnable"
 	FindingInvalidTool                               = "invalid_tool"
 	FindingDuplicateNodeID                           = "duplicate_node_id"
@@ -180,6 +181,9 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 			Message: "a mission needs its Input card to run; add one on the canvas or with archon mission create",
 		})
 	}
+	if len(board.Missions) > 1 {
+		report.Errors = append(report.Errors, severalInputCardsFinding(board))
+	}
 	for _, mission := range board.Missions {
 		if _, err := NormalizeHumanChannel(mission.HumanChannel); err != nil {
 			report.Errors = append(report.Errors, BoardFinding{
@@ -200,6 +204,24 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	sortFindings(report.Errors)
 	sortFindings(report.Warnings)
 	return report
+}
+
+// severalInputCardsFinding reports a file saved before one mission per file,
+// when a board could hold several mission nodes. It still loads and stays
+// editable; the finding names its Input cards and how to split it, and
+// admission refuses every run from it with the same message.
+func severalInputCardsFinding(board *BoardDocument) BoardFinding {
+	cards := make([]string, 0, len(board.Missions))
+	for _, mission := range board.Missions {
+		cards = append(cards, fmt.Sprintf("%q (%s)", mission.Title, mission.ID))
+	}
+	return BoardFinding{
+		Code: FindingSeveralInputCards,
+		Message: fmt.Sprintf("mission %q holds %d Input cards, %s; a mission has one, so no run can start from it. "+
+			"Split it: copy %s.formation.toml beside itself under a new slug and give the copy a new id, slug and title, "+
+			"then delete from each file the Input cards, and the steps only they reach, that belong to the other",
+			board.Slug, len(board.Missions), strings.Join(cards, ", "), board.Slug),
+	}
 }
 
 // duplicateSlotFindings reports a slot ID that more than one slot uses. A seat's

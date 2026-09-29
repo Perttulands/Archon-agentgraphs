@@ -188,7 +188,7 @@ func remoteFail(stderr io.Writer, err error, jsonOut bool, boundary, selector st
 }
 
 func boardPath(selector string, rest ...string) string {
-	path := "/api/formations/boards/" + url.PathEscape(selector)
+	path := "/api/formations/missions/" + url.PathEscape(selector)
 	for _, part := range rest {
 		path += "/" + part
 	}
@@ -308,7 +308,7 @@ func remoteBoardNew(c *remoteClient, args []string, stdout, stderr io.Writer) in
 		fmt.Fprintln(stderr, "usage: archon mission new <slug> [--title <title>] [--json]")
 		return 2
 	}
-	data, _, err := c.call("POST", "/api/formations/boards", map[string]any{"slug": fs.Arg(0), "title": *title, "updatedBy": *updatedBy}, "")
+	data, _, err := c.call("POST", "/api/formations/missions", map[string]any{"slug": fs.Arg(0), "title": *title, "updatedBy": *updatedBy}, "")
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "board", fs.Arg(0))
 	}
@@ -330,7 +330,7 @@ func remoteBoardList(c *remoteClient, args []string, stdout, stderr io.Writer) i
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
-	data, _, err := c.call("GET", "/api/formations/boards", nil, "")
+	data, _, err := c.call("GET", "/api/formations/missions", nil, "")
 	if err != nil {
 		return fail(stderr, err)
 	}

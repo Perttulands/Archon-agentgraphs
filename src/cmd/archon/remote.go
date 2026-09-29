@@ -116,7 +116,8 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	}
 	mode := fs.String("mode", "reattach", "resume mode")
 	mission := fs.String("input", "", "the Input card to start from; needed only when the mission has several")
-	fs.StringVar(mission, "mission", "", "older name for --input")
+	fs.StringVar(mission, "mission", "", "run list: the mission whose runs to list; mission run: older name for --input")
+	boardFilter := fs.String("board", "", "run list: older name for --mission")
 	reason := fs.String("reason", "", "operator reason; for gate approve|reject, the response text")
 	fs.StringVar(reason, "response", "", "alias of --reason for gate approve|reject")
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
@@ -142,7 +143,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		} else if !os.IsNotExist(err) && !errors.Is(err, syscall.ENAMETOOLONG) {
 			return fail(stderr, err)
 		}
-		raw, err := request("GET", path+"/boards/"+url.PathEscape(pos[0]), nil)
+		raw, err := request("GET", path+"/missions/"+url.PathEscape(pos[0]), nil)
 		if err != nil {
 			return fail(stderr, err)
 		}
@@ -181,6 +182,13 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 	case "run list":
 		path += "/runs"
+		filter := *mission
+		if filter == "" {
+			filter = *boardFilter
+		}
+		if filter != "" {
+			path += "?mission=" + url.QueryEscape(filter)
+		}
 	case "run status", "run logs", "run gates", "run seats":
 		if len(pos) != 1 {
 			return remoteUsage(stderr)

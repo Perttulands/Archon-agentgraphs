@@ -614,8 +614,6 @@ func (h *FormationsHandler) newRunEngine(boundary string) *formations.RunEngine 
 }
 
 func (h *FormationsHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/formations/boards", h.ListBoards)
-	mux.HandleFunc("POST /api/formations/boards", h.CreateBoard)
 	mux.HandleFunc("GET /api/formations/gate-profiles", h.ListGateProfiles)
 	mux.HandleFunc("POST /api/formations/runs", h.StartRun)
 	mux.HandleFunc("GET /api/formations/runs/{runId}", h.GetRun)
@@ -625,15 +623,21 @@ func (h *FormationsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/formations/runs/{runId}/abort", h.AbortRun)
 	mux.HandleFunc("POST /api/formations/runs/{runId}/gates/{gateId}/verdict", h.RecordHumanGateVerdict)
 	mux.HandleFunc("GET /api/formations/runs/{runId}/escalations", h.GetRunEscalations)
-	mux.HandleFunc("GET /api/formations/boards/{board}/changes", h.GetBoardChanges)
-	mux.HandleFunc("GET /api/formations/boards/{board}/validation", h.GetBoardValidation)
-	mux.HandleFunc("GET /api/formations/boards/{board}", h.GetBoard)
-	mux.HandleFunc("PATCH /api/formations/boards/{board}", h.PatchBoard)
-	mux.HandleFunc("DELETE /api/formations/boards/{board}", h.DeleteBoard)
-	mux.HandleFunc("GET /api/formations/boards/{board}/notes", h.GetBoardNotes)
-	mux.HandleFunc("PATCH /api/formations/boards/{board}/notes", h.PatchBoardNotes)
-	mux.HandleFunc("GET /api/formations/boards/{board}/layout", h.GetLayout)
-	mux.HandleFunc("PATCH /api/formations/boards/{board}/layout", h.PatchLayout)
+	// Missions are served under /missions. The /boards routes are the same
+	// handlers, kept for one release after the rename and deprecated in OpenAPI.
+	for _, base := range []string{"/api/formations/missions", "/api/formations/boards"} {
+		mux.HandleFunc("GET "+base, h.ListBoards)
+		mux.HandleFunc("POST "+base, h.CreateBoard)
+		mux.HandleFunc("GET "+base+"/{board}/changes", h.GetBoardChanges)
+		mux.HandleFunc("GET "+base+"/{board}/validation", h.GetBoardValidation)
+		mux.HandleFunc("GET "+base+"/{board}", h.GetBoard)
+		mux.HandleFunc("PATCH "+base+"/{board}", h.PatchBoard)
+		mux.HandleFunc("DELETE "+base+"/{board}", h.DeleteBoard)
+		mux.HandleFunc("GET "+base+"/{board}/notes", h.GetBoardNotes)
+		mux.HandleFunc("PATCH "+base+"/{board}/notes", h.PatchBoardNotes)
+		mux.HandleFunc("GET "+base+"/{board}/layout", h.GetLayout)
+		mux.HandleFunc("PATCH "+base+"/{board}/layout", h.PatchLayout)
+	}
 }
 
 func (h *FormationsHandler) ListGateProfiles(w http.ResponseWriter, _ *http.Request) {

@@ -119,11 +119,6 @@ id = "mis_main"
 title = "Main"
 goal = "Ship it"
 
-[[mission]]
-id = "mis_idle"
-title = "Idle"
-goal = ""
-
 [[formation]]
 id = "fmn_plan"
 type = "solo"
@@ -244,7 +239,7 @@ func TestRunAdmissionReportsEveryProblemAtOnce(t *testing.T) {
 		t.Errorf("mission-scoped errors = %+v, want exactly %d findings", report.Errors, len(want))
 	}
 	for _, finding := range append(report.Errors, report.Warnings...) {
-		if finding.NodeID == "gate_unwired" || finding.NodeID == "mis_idle" || (finding.NodeID == "fmn_sketch" && finding.Code == FindingUnstaffedSlot) {
+		if finding.NodeID == "gate_unwired" || (finding.NodeID == "fmn_sketch" && finding.Code == FindingUnstaffedSlot) {
 			t.Errorf("mission-scoped report includes unreachable draft %+v", finding)
 		}
 	}
@@ -255,16 +250,62 @@ func TestRunAdmissionReportsEveryProblemAtOnce(t *testing.T) {
 		t.Fatalf("CheckRunAdmission error = %v, want RunAdmissionError with every finding", err)
 	}
 
-	idle := ValidateRunAdmission(board, personas, RunAdmissionScope{MissionID: "mis_idle"})
-	if len(findBoardFindings(idle.Errors, FindingMissionNotRunnable)) != 1 {
-		t.Fatalf("unwired mission errors = %+v, want mission_not_runnable promoted to an error", idle.Errors)
-	}
-
 	whole := ValidateRunAdmission(board, personas, RunAdmissionScope{})
 	if !hasBoardFinding(whole.Errors, "gate_unwired", "a code check") ||
-		!hasBoardFinding(whole.Errors, "fmn_sketch", `slot "Step" (slot_sketch) needs an agent`) ||
-		!hasBoardFinding(whole.Warnings, "mis_idle", "no outgoing connection") {
+		!hasBoardFinding(whole.Errors, "fmn_sketch", `slot "Step" (slot_sketch) needs an agent`) {
 		t.Fatalf("whole-board report errors=%+v warnings=%+v, want every draft marker", whole.Errors, whole.Warnings)
+	}
+
+	unwired := *board
+	unwired.Connections = nil
+	for _, connection := range board.Connections {
+		if connection.ID != "edge_start" {
+			unwired.Connections = append(unwired.Connections, connection)
+		}
+	}
+	if report := ValidateRunAdmission(&unwired, personas, RunAdmissionScope{}); !hasBoardFinding(report.Warnings, "mis_main", "no outgoing connection") {
+		t.Fatalf("unwired Input card validation warnings = %+v, want mission_not_runnable", report.Warnings)
+	}
+	if report := ValidateRunAdmission(&unwired, personas, RunAdmissionScope{MissionID: "mis_main"}); len(findBoardFindings(report.Errors, FindingMissionNotRunnable)) != 1 {
+		t.Fatalf("unwired Input card admission errors = %+v, want mission_not_runnable promoted to an error", report.Errors)
+	}
+}
+
+// A file saved before one mission per file may hold several Input cards. It
+// validates with one migration finding naming each card and how to split the
+// file, and admission refuses every run from it, mission or formation, with
+// that message.
+func TestRunAdmissionRefusesAFileWithSeveralInputCards(t *testing.T) {
+	store := NewStore(t.TempDir())
+	raw := strings.Replace(admissionDraftBoard, "[[formation]]", "[[mission]]\nid = \"mis_idle\"\ntitle = \"Idle\"\ngoal = \"\"\n\n[[formation]]", 1)
+	writeFixture(t, store.BoardPath("draft"), raw)
+	board, err := store.ReadBoard("draft")
+	if err != nil {
+		t.Fatalf("read board: %v", err)
+	}
+	personas := NewPersonaStore(filepath.Join(t.TempDir(), "agents"))
+	whole := ValidateRunAdmission(board, personas, RunAdmissionScope{})
+	findings := findBoardFindings(whole.Errors, FindingSeveralInputCards)
+	if len(findings) != 1 {
+		t.Fatalf("validation errors = %+v, want one several_input_cards finding", whole.Errors)
+	}
+	message := findings[0].Message
+	for _, part := range []string{`mission "draft" holds 2 Input cards`, `"Main" (mis_main)`, `"Idle" (mis_idle)`, "draft.formation.toml", "new id, slug and title", "delete"} {
+		if !strings.Contains(message, part) {
+			t.Fatalf("migration message %q lacks %q", message, part)
+		}
+	}
+	for _, scope := range []RunAdmissionScope{{MissionID: "mis_main"}, {MissionID: "mis_idle"}, {FormationID: "fmn_plan"}} {
+		err := CheckRunAdmission(board, personas, scope)
+		var admission *RunAdmissionError
+		if !errors.As(err, &admission) || len(findBoardFindings(admission.Findings, FindingSeveralInputCards)) != 1 || !strings.Contains(err.Error(), message) {
+			t.Fatalf("admission %+v = %v, want refusal with the migration message", scope, err)
+		}
+	}
+
+	// The file still loads and stays editable.
+	if _, err := store.UpdateMission("draft", MissionUpdateRequest{MissionID: "mis_idle", Goal: stringPtr("Kept editable"), UpdatedBy: "test"}, WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev}); err != nil {
+		t.Fatalf("edit a file with several Input cards: %v", err)
 	}
 }
 

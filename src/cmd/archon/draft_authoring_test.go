@@ -138,9 +138,9 @@ func TestRemoteAdmissionFindingsAndBoardValidation(t *testing.T) {
 	findings := `[{"code":"unstaffed_slot","nodeId":"fmn_plan","message":"formation \"fmn_plan\" slot \"Planner\" (slot_plan) needs an agent"},{"code":"gate_not_routable","nodeId":"gate_lint","message":"gate \"gate_lint\" needs forbidden text for code check output_absent@1"}]`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/formations/boards/draft":
+		case "/api/formations/missions/draft":
 			w.Write([]byte(`{"success":true,"data":{"board":{"rev":4}}}`))
-		case "/api/formations/boards/draft/validation":
+		case "/api/formations/missions/draft/validation":
 			w.Write([]byte(`{"success":true,"data":{"boardRev":4,"errors":` + findings + `,"warnings":[]}}`))
 		case "/api/formations/runs":
 			w.WriteHeader(422)

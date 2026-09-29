@@ -4,7 +4,7 @@ import { answerGate, evidenceShot, humanChannelFixture, missionId, peers, talkRu
 test('a mission human channel is chosen in its window and Start mission, saved with undo, and shown on the canvas and in Flow', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   const fixture = await humanChannelFixture(page)
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   const card = page.getByTestId(`mission-node-${missionId}`)
   await expect(card.locator('.mchannel')).toHaveText('Human gates · Notify me')
 
@@ -52,7 +52,7 @@ test('a mission human channel is chosen in its window and Start mission, saved w
 test('Talk with the asked formation opens each peer seat beside the answer panel, where typing and resizing reach that seat', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   const fixture = await talkRunFixture(page)
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   const panel = page.getByRole('dialog', { name: 'Answer gate Answer questions' })
   await expect(panel).toContainText('The 2 agents that did the work are waiting in their terminals.')
   await panel.getByRole('button', { name: 'Talk with Question peers' }).click()
@@ -138,7 +138,7 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
 test('a gate whose ask fell back says why, and a relayed decision names the seat that recorded it', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await talkRunFixture(page, { fallbackReason: 'every seat that received the ask is gone' })
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   const panel = page.getByRole('dialog', { name: 'Answer gate Answer questions' })
   await expect(panel.getByRole('note')).toHaveText('The agents are not available for this gate: every seat that received the ask is gone. Answer here.')
   await expect(panel.getByRole('button', { name: /Talk with/ })).toHaveCount(0)
@@ -154,7 +154,7 @@ test('a narrow Talk window exposes the end of a native-width line without resizi
   await page.setViewportSize({ width: 1920, height: 1080 })
   const marker = 'END_OF_LINE'
   const fixture = await talkRunFixture(page, { columns: 160, terminalText: `\x1b[?1049h${'Question '.repeat(16)}${marker}\r\n> ` })
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await page.getByRole('button', { name: 'Talk with Question peers' }).click()
   const win = page.getByRole('dialog', { name: 'Talk with Delivery Planner · Claude Code' })
   await expect(win).toContainText('Live · type to talk to the agent')

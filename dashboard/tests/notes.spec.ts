@@ -16,7 +16,7 @@ test.beforeEach(async ({ page }) => {
 
 test('no card covers any note preview on Wayfinding', async ({ page }) => {
   const fixture = await wayfindingFixture(page)
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await expect(page.getByRole('note')).toHaveCount(elementNotes.length)
   await page.getByTitle('Fit', { exact: true }).click()
   await page.waitForTimeout(500)
@@ -39,7 +39,7 @@ test('no card covers any note preview on Wayfinding', async ({ page }) => {
 
 test('full note text on Wayfinding reads on the canvas and in note windows, with no notepad', async ({ page }) => {
   await wayfindingFixture(page)
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await expect(page.getByRole('complementary', { name: 'Shared board notepad' })).toHaveCount(0)
   await page.getByRole('radio', { name: 'Full notes' }).click()
 
@@ -63,7 +63,7 @@ test('full note text on Wayfinding reads on the canvas and in note windows, with
 
 test('a note window opens beside its node, leaving the card and its note in view', async ({ page }) => {
   await wayfindingFixture(page)
-  await page.goto('/?board=wayfinding')
+  await page.goto('/?mission=wayfinding')
   await expect(page.getByRole('note')).toHaveCount(elementNotes.length)
   await page.getByTitle('Fit', { exact: true }).click()
   await page.waitForTimeout(500)

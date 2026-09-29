@@ -16,7 +16,7 @@ async function expectOnScreen(page: Page, menu: Locator) {
 test('the canvas menu stays on screen from every corner of the canvas', async ({ page }) => {
   await page.addInitScript(() => localStorage.clear())
   await cockpitFixture(page)
-  await page.goto('/?board=browser')
+  await page.goto('/?mission=browser')
   await expect(page.getByTestId('formation-node-peer')).toBeVisible()
   const viewport = await page.locator('.viewport').boundingBox()
   const menu = page.locator('.ctxmenu')
@@ -45,7 +45,7 @@ test('the canvas menu stays on screen from every corner of the canvas', async ({
 test('a long Assign agent menu fits the screen, scrolls to its last agent, and its section head matches the menu', async ({ page }) => {
   await page.addInitScript(() => localStorage.clear())
   await cockpitFixture(page, { extraAgents: 40 })
-  await page.goto('/?board=browser')
+  await page.goto('/?mission=browser')
   const slot = page.getByTestId('slot-execution-worker')
   await expect(slot).toBeVisible()
   await slot.click({ button: 'right' })

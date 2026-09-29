@@ -201,7 +201,7 @@ function installFetchMock(options: {
       json: () => Promise.resolve({ success: false, error: { code: 'CONFLICT', message } }),
       text: () => Promise.resolve(message),
     })
-    if (method === 'POST' && url === '/api/formations/boards') {
+    if (method === 'POST' && url === '/api/formations/missions') {
       const body = JSON.parse(String(init?.body)) as { title: string }
       const created = {
         ...makeBoard(),
@@ -221,14 +221,14 @@ function installFetchMock(options: {
       boardNotes = { ...boardNotes, boardId: created.id, rev: 0, board: [], elements: [], etag: '*' }
       return respond({ board: created }, created.etag)
     }
-    if (method === 'DELETE' && url.includes('/api/formations/boards/')) {
+    if (method === 'DELETE' && url.includes('/api/formations/missions/')) {
       availableBoards = availableBoards.filter(item => item.slug !== board.slug)
       return respond({ deletion: { id: board.id, slug: board.slug, title: board.title, archiveId: 'archive_test' } })
     }
-    if (method === 'GET' && /^\/api\/formations\/boards\/[^/]+\/notes$/.test(url)) {
+    if (method === 'GET' && /^\/api\/formations\/missions\/[^/]+\/notes$/.test(url)) {
       return respond({ notes: boardNotes }, boardNotes.etag)
     }
-    if (method === 'PATCH' && /^\/api\/formations\/boards\/[^/]+\/notes$/.test(url)) {
+    if (method === 'PATCH' && /^\/api\/formations\/missions\/[^/]+\/notes$/.test(url)) {
       if (options.notePatchConflict) return conflict('Shared notes changed; reload and retry')
       const body = JSON.parse(String(init?.body)) as { target: string; action: string; entryId?: string; text?: string; author: string }
       const thread = body.target === 'board' ? boardNotes.board : boardNotes.elements.find(note => note.nodeId === body.target)?.entries || []
@@ -588,7 +588,7 @@ function installFetchMock(options: {
         },
       ] })
     }
-    if (url === '/api/formations/boards') return respond({ boards: availableBoards.map(item => ({ id: item.id, slug: item.slug, title: item.title, rev: item.rev, etag: item.etag })) })
+    if (url === '/api/formations/missions') return respond({ boards: availableBoards.map(item => ({ id: item.id, slug: item.slug, title: item.title, rev: item.rev, etag: item.etag })) })
     if (url.includes('/changes')) {
       const refreshedBoard = options.sameBoardRefreshes?.shift()
       if (!refreshedBoard) return respond({ signal: { changed: false } })
@@ -607,10 +607,10 @@ function installFetchMock(options: {
     if (url.endsWith('/validation')) {
       return respond({ boardRev: board.rev, boardEtag: board.etag, errors: options.validation?.errors || [], warnings: options.validation?.warnings || [] })
     }
-    if (url.includes('/api/formations/boards/')) {
-      const requested = url.includes(`/boards/${board.slug}`)
+    if (url.includes('/api/formations/missions/')) {
+      const requested = url.includes(`/missions/${board.slug}`)
         ? board
-        : availableBoards.find(item => url.includes(`/boards/${item.slug}`)) || board
+        : availableBoards.find(item => url.includes(`/missions/${item.slug}`)) || board
       return respond({ board: requested }, requested.etag)
     }
     if (url === '/api/agents') return respond({ agents: availableAgents })
@@ -802,7 +802,7 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveValue('release-plan'))
     expect(screen.getByTestId('board-picker')).toHaveTextContent('Release Plan')
     expect(screen.getByTestId('formations-empty-board')).toHaveTextContent('This mission is empty')
-    expect(recordedMutations).toContainEqual({ method: 'POST', url: '/api/formations/boards' })
+    expect(recordedMutations).toContainEqual({ method: 'POST', url: '/api/formations/missions' })
   })
 
   it('renames the selected board through the top-bar board controls', async () => {
@@ -830,7 +830,7 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Archive mission' }))
     await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveTextContent('No missions'))
-    expect(recordedMutations).toContainEqual({ method: 'DELETE', url: '/api/formations/boards/test-board' })
+    expect(recordedMutations).toContainEqual({ method: 'DELETE', url: '/api/formations/missions/test-board' })
   })
 
   it('restores board-dialog trigger focus after Escape', async () => {
@@ -855,7 +855,7 @@ describe('FormationsCockpit reference parity', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Create mission' })).toBeNull())
     expect(boardNote).toHaveValue('Draft made after dialog opened')
-    expect(recordedMutations.some(mutation => mutation.method === 'POST' && mutation.url === '/api/formations/boards')).toBe(false)
+    expect(recordedMutations.some(mutation => mutation.method === 'POST' && mutation.url === '/api/formations/missions')).toBe(false)
   })
 
   it('rechecks note drafts before archiving from an open dialog', async () => {
@@ -2261,7 +2261,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.contextMenu(screen.getByTestId('mission-node-mis_showcase'))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete Input card' }))
     await waitFor(() => expect(screen.queryByTestId('mission-node-mis_showcase')).toBeNull())
-    const reads = () => recordedFetches.filter(url => url.endsWith('/boards/test-board')).length
+    const reads = () => recordedFetches.filter(url => url.endsWith('/missions/test-board')).length
     const readsBefore = reads()
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     expect(await screen.findByTestId('mission-node-mis_showcase')).toBeInTheDocument()
@@ -2705,7 +2705,7 @@ describe('FormationsCockpit reference parity', () => {
         json: () => Promise.resolve(status < 300 ? { success: true, data } : { success: false, error: { code: 'NOT_FOUND', message: 'Not Found' } }),
         text: () => Promise.resolve(''),
       })
-      const listed = url.match(/^\/api\/formations\/runs\?board=([^&]+)$/)
+      const listed = url.match(/^\/api\/formations\/runs\?mission=([^&]+)$/)
       if (listed) return reply(runs.filter(run => run.boardSlug === decodeURIComponent(listed[1])))
       const runURL = url.match(/^\/api\/formations\/runs\/([^/?]+)(\/.*)?$/)
       if (runURL) {
@@ -2735,7 +2735,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(await screen.findByTestId('run-banner')).toHaveTextContent('Waiting for your answer')
     const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
     await waitFor(() => expect(within(panel).getByText('Question for run_01CLI')).toBeInTheDocument())
-    expect(fetch).toHaveBeenCalledWith('/api/formations/runs?board=test-board', expect.anything())
+    expect(fetch).toHaveBeenCalledWith('/api/formations/runs?mission=test-board', expect.anything())
     expect(screen.queryByRole('combobox', { name: 'Choose run' })).toBeNull()
 
     fireEvent.change(within(panel).getByLabelText('Your response'), { target: { value: 'Postgres' } })
@@ -2781,11 +2781,11 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.change(picker, { target: { value: 'run_01B' } })
     await waitFor(() => expect(screen.getByTestId('run-banner')).toHaveTextContent('Running'))
     expect(screen.queryByRole('dialog', { name: 'Answer gate Review' })).toBeNull()
-    expect(window.location.search).toBe('?board=test-board&run=run_01B')
+    expect(window.location.search).toBe('?mission=test-board&run=run_01B')
   })
 
   it('opens a board and run from a link and keeps them on reload', async () => {
-    window.history.replaceState(null, '', '/?board=second-board&run=run_01LINK')
+    window.history.replaceState(null, '', '/?mission=second-board&run=run_01LINK')
     const second = { ...makeBoard(), id: 'brd_second', slug: 'second-board', title: 'Second board', etag: 'second-etag' }
     patches = installFetchMock({ boards: [makeBoard(), second] })
     installRunsMock([
@@ -2799,21 +2799,44 @@ describe('FormationsCockpit reference parity', () => {
       expect(await screen.findByRole('combobox', { name: 'Choose run' })).toHaveValue('run_01LINK')
       const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
       await waitFor(() => expect(within(panel).getByText('Question for run_01LINK')).toBeInTheDocument())
-      expect(window.location.search).toBe('?board=second-board&run=run_01LINK')
+      expect(window.location.search).toBe('?mission=second-board&run=run_01LINK')
       unmount()
     }
   })
 
+  // Links made before the rename, such as older notifications, say ?board=.
+  it('opens a pre-rename ?board= link on the same mission and run and rewrites it to ?mission=', async () => {
+    const second = { ...makeBoard(), id: 'brd_second', slug: 'second-board', title: 'Second', etag: 'second-etag' }
+    patches = installFetchMock({ boards: [makeBoard(), second] })
+    installRunsMock([
+      { runId: 'run_01LINK', status: 'waiting_human', final: false, boardSlug: 'second-board', missionId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] },
+    ], { run_01LINK: waitingEvents('run_01LINK') })
+
+    window.history.replaceState(null, '', '/?theme=dark&board=second-board&run=run_01LINK')
+    const { unmount } = await renderCockpit()
+    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveValue('second-board'))
+    const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
+    await waitFor(() => expect(within(panel).getByText('Question for run_01LINK')).toBeInTheDocument())
+    await waitFor(() => expect(window.location.search).toBe('?mission=second-board&run=run_01LINK&theme=dark'))
+    expect(recordedFetches.some(url => url.includes('/api/formations/boards') || url.includes('board='))).toBe(false)
+    unmount()
+
+    window.history.replaceState(null, '', '/?board=second-board')
+    await renderCockpit()
+    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveValue('second-board'))
+    await waitFor(() => expect(window.location.search).toMatch(/^\?mission=second-board(&run=run_01LINK)?$/))
+  })
+
   it('says when a linked run or board does not exist', async () => {
-    window.history.replaceState(null, '', '/?board=test-board&run=run_01GONE')
+    window.history.replaceState(null, '', '/?mission=test-board&run=run_01GONE')
     installRunsMock([{ runId: 'run_01OPEN', status: 'running', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 2 }])
     const { unmount } = await renderCockpit()
     expect(await screen.findByTestId('formations-error')).toHaveTextContent('Run run_01GONE from the link was not found')
     await waitFor(() => expect(screen.getByTestId('run-banner')).toHaveTextContent('Running'))
-    expect(window.location.search).toBe('?board=test-board')
+    expect(window.location.search).toBe('?mission=test-board')
     unmount()
 
-    window.history.replaceState(null, '', '/?board=no-such-board&run=run_01OPEN')
+    window.history.replaceState(null, '', '/?mission=no-such-board&run=run_01OPEN')
     await renderCockpit()
     expect(await screen.findByTestId('formations-error')).toHaveTextContent('Mission "no-such-board" from the link was not found')
     expect(screen.getByTestId('board-picker')).toHaveValue('test-board')
@@ -2848,7 +2871,7 @@ describe('FormationsCockpit reference parity', () => {
   })
 
   it('shows what a finished run produced and opens it in a file window', async () => {
-    window.history.replaceState(null, '', '/?board=test-board&run=run_01DONE')
+    window.history.replaceState(null, '', '/?mission=test-board&run=run_01DONE')
     installRunsMock([{ runId: 'run_01DONE', status: 'succeeded', final: true, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 6 }], {
       run_01DONE: [
         { runId: 'run_01DONE', seq: 1, type: 'node_started', nodeId: 'fmn_frame', attempt: 1 },
@@ -2900,7 +2923,7 @@ describe('FormationsCockpit reference parity', () => {
     }))
     if (edit === 'rewiring') currentBoard.connections = []
     patches = installFetchMock({ boards: [currentBoard] })
-    window.history.replaceState(null, '', '/?board=test-board&run=run_01HISTORY')
+    window.history.replaceState(null, '', '/?mission=test-board&run=run_01HISTORY')
     installRunsMock([{ runId: 'run_01HISTORY', status: 'succeeded', final: true, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 5 }], {
       run_01HISTORY: [
         { runId: 'run_01HISTORY', seq: 2, type: 'node_output', nodeId: 'fmn_frame' },
@@ -3030,7 +3053,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.change(picker, { target: { value: 'run_01M2B0NEWER' } })
     const banner = await screen.findByTestId('run-banner')
     expect(banner).toHaveTextContent('Succeeded')
-    expect(window.location.search).toBe('?board=test-board&run=run_01M2B0NEWER')
+    expect(window.location.search).toBe('?mission=test-board&run=run_01M2B0NEWER')
     await waitFor(() => expect(within(banner).getByRole('button', { name: 'frame.md' })).toBeInTheDocument())
     const shown = within(banner).getByRole('combobox', { name: 'Choose run' })
     expect(shown).toHaveValue('run_01M2B0NEWER')
@@ -3038,7 +3061,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.change(shown, { target: { value: '' } })
     expect(await screen.findByTestId('run-banner-idle')).toBeInTheDocument()
     expect(screen.queryByTestId('run-banner')).toBeNull()
-    expect(window.location.search).toBe('?board=test-board')
+    expect(window.location.search).toBe('?mission=test-board')
   })
 
   it('switches a board to Flow, remembers it for that board, and opens windows from rows', async () => {
@@ -3081,7 +3104,7 @@ describe('FormationsCockpit reference parity', () => {
   })
 
   it('shows each step state, attempt and block reason in Flow with a run selected', async () => {
-    window.history.replaceState(null, '', '/?board=test-board&run=run_01BLOCK')
+    window.history.replaceState(null, '', '/?mission=test-board&run=run_01BLOCK')
     installRunsMock([{ runId: 'run_01BLOCK', status: 'blocked', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 5 }], {
       run_01BLOCK: [
         { runId: 'run_01BLOCK', seq: 1, type: 'node_started', nodeId: 'fmn_frame', attempt: 1 },
@@ -3254,7 +3277,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(screen.getByTestId('arrange-layout'))
     await waitFor(() => {
       expect(patches).toContainEqual({
-        url: '/api/formations/boards/test-board/layout',
+        url: '/api/formations/missions/test-board/layout',
         body: { arrange: true },
       })
     })

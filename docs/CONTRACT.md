@@ -334,8 +334,11 @@ an agent or another browser appear. It shows the open run that most needs the
 operator: waiting for a human, then running, then blocked, newest first. A
 picker switches between open runs and the mission's ten most recent finished
 runs; when no run is open, the run bar still offers the finished ones, and a
-reopened finished run can be put away again. `/?board=<slug>&run=<runId>`, the link that
-notifications carry, opens that mission and keeps that run shown. The address bar
+reopened finished run can be put away again. `/?mission=<slug>&run=<runId>`, the link that
+notifications carry, opens that mission and keeps that run shown. A link from
+before the rename, `/?board=<slug>` with or without `run=`, opens the same
+mission and run, and the address bar is rewritten to `?mission=` with its other
+parameters kept. The address bar
 keeps a chosen run across reloads, and an unknown linked mission or run is
 reported rather than silently replaced.
 
@@ -895,7 +898,8 @@ with or without a notify command.
 A notification carries `runId`, `boardSlug`, `boardTitle`, `seq`, `kind`,
 `runStatus`, `nodeId`, `gateId`, `gateTitle`, `ask`, `severity`, `blocks`,
 `boardUrl`, a one-line `text`, and a complete plain-text `subject` and `body`.
-The kinds are:
+The `board*` fields name the mission; `boardUrl` is its cockpit link,
+`/?mission=<slug>` with `&run=<runId>` when the run is known. The kinds are:
 
 - `human_gate`, keyed by the request sequence. The body carries the criterion,
   the gate's input text capped at 64 KiB, the cockpit link, and exact
@@ -935,53 +939,67 @@ script, sender and address with the host deployment.
 
 [OpenAPI](openapi/formations.yaml) lists the served routes. Except for the raw
 theme document described below, JSON responses use
-`{success,timestamp,data}`; errors carry an error object. Board authoring includes
-list/create/read/patch/delete, notes, layout and change polling. Agent routes
+`{success,timestamp,data}`; errors carry an error object. Mission authoring
+under `/api/formations/missions` includes list/create/read/patch/delete, notes,
+layout, validation and change polling. The `/api/formations/boards` routes, the
+same handlers under the name used before the rename, answer identically for one
+release and are marked deprecated in OpenAPI; the cockpit and Archon call only
+the mission routes. Request and response fields keep their names, such as
+`board` and `missionId` when starting a run and `data.board` in responses. Agent routes
 list/create/read/patch persona cards; gate profiles expose the two code checks.
 With the tmux executor the agent roster marks a persona live when a session named
 by its default session stem runs on `--socket`, and lists the socket's other
 sessions as unbound. The lab executor reports every agent offline.
-Revision and ETag checks protect edits. A board edit that leaves the board as
-it was (the same slot assignment, title, brief, type, controller, gate or
-mission fields, or judge chain) saves nothing: it answers 200 with the current
-board, its revision and ETag unchanged, and a stale ETag still conflicts. Tool
+Revision and ETag checks protect edits. A mission edit that leaves the mission
+as it was (the same slot assignment, title, brief, type, controller, gate or
+Input card fields, or judge chain) saves nothing: it answers 200 with the
+current mission, its revision and ETag unchanged, and a stale ETag still conflicts. Tool
 and note edits still save a revision. Runtime routes start/list/read runs
-(`GET /api/formations/runs?board=<slug>` lists one board's runs), read projected
+(`GET /api/formations/runs?mission=<slug>` lists one mission's runs; `?board=`
+still works for one release), read projected
 events/escalations, stream SSE, abort, resume, read run evidence and record
 exact human verdicts. They all use the coordinator; no request-local executor
 exists.
-There is no generic file reader, transcript endpoint, board import endpoint or
+There is no generic file reader, transcript endpoint, mission import endpoint or
 authentication layer. Run evidence reads only one run's ledger, its artifact
 directory and the briefs its own dispatches recorded.
 
 With `--server`, Archon runs these authoring and read commands through the
-daemon, so an open cockpit sees the edits through its change polling: `board
-list|inspect|new|notes|note|validate|arrange`, `mission
-list|inspect|create|update|wire`, `formation
+daemon, so an open cockpit sees the edits through its change polling: `mission
+new|list|inspect|notes|note|validate|arrange|create|update|wire`, `formation
 list|inspect|create|rename|set-type|assign|unassign|set-brief|add-input|add-output|wire|unwire`,
 `gate create|update|judge`, `tool create|update|delete|inspect` and `agent
 list|inspect|new|edit`. They take the offline flags and print the offline
 output: unwrapped JSON without TOML, or the same text. Each command reads the
 document it changes, resolves formation, gate, mission and Tool selectors from
-that read, and writes with its ETag and board revision; Tool writes also carry
+that read, and writes with its ETag and mission revision; Tool writes also carry
 the layout's state and ETag. A write that loses to another editor is read and
 retried up to three times. Differences from offline use:
 
 - Error messages come from the daemon (`coordinator HTTP <status>: ...`). JSON
   error codes, boundaries and selectors match.
 - Agent cards are the daemon's `--agents-dir`, with the liveness the daemon
-  reports, and `agent new --from` names a path on the daemon host. `board note
+  reports, and `agent new --from` names a path on the daemon host. `mission note
   --file` reads locally.
 - Runtime commands (`mission run`, `run`, `gate approve|reject`) print the
   daemon's `{success,timestamp,data}` envelope, except `run gates`, `run seats`
-  and `gate request`, which require `--json` for that format; `board list` and `board
-  inspect` print offline JSON like the other reads. `formation
+  and `gate request`, which require `--json` for that format; `mission list` and
+  `mission inspect` print offline JSON like the other reads. `formation
   remove-verification|run`, `run ask` and `agent spawn|attach|retire` remain
   offline only.
 
-`GET /api/formations/boards/{board}/validation` returns
-`{boardRev,boardEtag,errors,warnings}` for the whole board, the same report as
-`board validate`.
+`GET /api/formations/missions/{mission}/validation` returns
+`{boardRev,boardEtag,errors,warnings}` for the whole mission, the same report as
+`mission validate`.
+
+One mission per file. A file saved when a board could hold several mission
+nodes still loads and stays editable. Validation reports it with one
+`several_input_cards` error that names each Input card and says how to split
+the file: copy it beside itself under a new slug with a new id, slug and title,
+then delete from each file the Input cards, and the steps only they reach, that
+belong to the other. Admission refuses every run from such a file, mission or
+single formation, with the same message. Files with one Input card, their runs
+and their ledgers load and replay unchanged.
 
 `GET /api/theme` returns the raw CHROTE schema-1 theme document with no response
 envelope. Optional `--theme-file <absolute-path>` selects a host-owned file,

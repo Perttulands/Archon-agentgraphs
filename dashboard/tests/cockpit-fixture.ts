@@ -106,7 +106,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
       themeFetches++
       return route.fulfill(options.themeFailure ? { status: 500, json: { error: 'Unavailable' } } : { json: defaultTheme })
     }
-    if (path === '/api/formations/boards') return respond({ boards: [boardState()] })
+    if (path === '/api/formations/missions') return respond({ boards: [boardState()] })
     if (path.endsWith('/notes')) return respond({ notes: { schema: 2, boardId: board.id, rev: 1,
       board: [{ id: 'nte_board', author: 'human:ui', createdAt: '2026-09-12T00:00:00Z', text: 'Keep the current graph and harness identities.' }],
       elements: [{ nodeId: 'execution', entries: [
@@ -117,7 +117,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
       if (method === 'PATCH') nodes = positions.map(p => ({ ...p }))
       return respond({ layout: { boardId: board.id, boardRev: 1, etag: 'layout-1', nodes, edges: [] } })
     }
-    if (path === '/api/formations/boards/browser') {
+    if (path === '/api/formations/missions/browser') {
       if (method === 'PATCH') {
         const body = route.request().postDataJSON()
         const edit = body.wireConnection || body.rewireConnection

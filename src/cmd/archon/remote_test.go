@@ -23,7 +23,7 @@ func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
 	var received string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/formations/boards/proof":
+		case "/api/formations/missions/proof":
 			w.Write([]byte(`{"success":true,"timestamp":"test","data":{"board":{"rev":9}}}`))
 		case "/api/formations/runs":
 			buf := new(bytes.Buffer)
@@ -161,7 +161,15 @@ func newAuthoringSides(t *testing.T) (offline, remote authoringSide, server *htt
 	if err != nil {
 		t.Fatal(err)
 	}
-	server = httptest.NewServer(c.Handler())
+	handler := c.Handler()
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The CLI calls only the mission routes; /boards and ?board= are for
+		// older clients.
+		if strings.HasPrefix(r.URL.Path, "/api/formations/boards") || r.URL.Query().Has("board") {
+			t.Errorf("the CLI called the deprecated route %s %s", r.Method, r.URL)
+		}
+		handler.ServeHTTP(w, r)
+	}))
 	t.Cleanup(func() { server.Close(); c.Close() })
 	remote = authoringSide{name: "remote", store: formations.NewStore(remoteRoot), run: func(args ...string) (string, string, int) {
 		return runArchon(t, runner, append([]string{"--server", server.URL}, args...)...)
