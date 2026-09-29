@@ -237,14 +237,25 @@ func TestArchonAgentNewFromHermesProfilePopulatesLaunchReference(t *testing.T) {
 	}
 }
 
-func TestArchonAgentNewOpenAICodexDefaultsLaunchAndSpawnUsesIt(t *testing.T) {
+// Personas carry harness, model and effort; agent spawn and seats both start
+// the harness CLI from them through the same renderer, never a launch string.
+func TestArchonAgentModelAndEffortDriveSpawn(t *testing.T) {
 	withoutArchonTmuxPrefix(t)
 	agentsDir := t.TempDir()
 	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	bin := t.TempDir()
+	for _, name := range []string{"claude", "codex"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin)
 	runner := &fakeTmux{live: map[string]bool{}}
-	wantLaunch := "codex --yolo -c check_for_update_on_startup=false"
 
-	stdout, stderr, code := runArchon(t, runner, "agent", "new", "codexer", "--kind", "specialist", "--harness", "openai-codex", "--json")
+	if _, stderr, code := runArchon(t, runner, "agent", "new", "clauder", "--harness", "claude-code", "--effort", "ultra"); code == 0 || !strings.Contains(stderr, "low, medium, high, xhigh, max") {
+		t.Fatalf("claude ultra accepted: code=%d stderr=%s", code, stderr)
+	}
+	stdout, stderr, code := runArchon(t, runner, "agent", "new", "codexer", "--harness", "openai-codex", "--model", "gpt-6-sol", "--effort", "high", "--json")
 	if code != 0 {
 		t.Fatalf("create openai-codex failed: code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -253,49 +264,46 @@ func TestArchonAgentNewOpenAICodexDefaultsLaunchAndSpawnUsesIt(t *testing.T) {
 		t.Fatalf("decode created card JSON: %v\n%s", err, stdout)
 	}
 	variant := card.DefaultVariant()
-	if variant.ID != "openai-codex" || variant.Launch != wantLaunch {
-		t.Fatalf("openai-codex variant = %#v, want launch %q", variant, wantLaunch)
+	wantLaunch := "exec '" + filepath.Join(bin, "codex") + "' --model 'gpt-6-sol' -c 'model_reasoning_effort=\"high\"' -c check_for_update_on_startup=false --dangerously-bypass-approvals-and-sandbox"
+	if variant.ID != "openai-codex" || variant.Launch != "" || variant.Model != "gpt-6-sol" || variant.Effort != "high" || variant.SeatLaunch != wantLaunch {
+		t.Fatalf("openai-codex variant = %#v, want seat launch %q", variant, wantLaunch)
 	}
-	raw := readArchonFile(t, filepath.Join(agentsDir, "codexer.toml"))
-	if !strings.Contains(raw, `launch = "`+wantLaunch+`"`) {
-		t.Fatalf("created TOML missing codex launch %q:\n%s", wantLaunch, raw)
+	if raw := readArchonFile(t, filepath.Join(agentsDir, "codexer.toml")); strings.Contains(raw, "launch") {
+		t.Fatalf("created TOML has a launch string:\n%s", raw)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "agent", "spawn", "codexer")
+	if _, stderr, code := runArchon(t, runner, "agent", "edit", "codexer", "--add-harness", "claude-code", "--effort", "max"); code != 0 {
+		t.Fatalf("add claude variant: %d %s", code, stderr)
+	}
+	if _, stderr, code := runArchon(t, runner, "agent", "edit", "codexer", "--harness", "claude-code", "--model", "claude-opus-5", "--effort", "low"); code != 0 {
+		t.Fatalf("edit claude variant: %d %s", code, stderr)
+	}
+	if _, stderr, code := runArchon(t, runner, "agent", "edit", "codexer", "--effort", ""); code != 0 {
+		t.Fatalf("clear default effort: %d %s", code, stderr)
+	}
+	stdout, _, _ = runArchon(t, runner, "agent", "inspect", "codexer", "--json")
+	card = formations.PersonaCard{}
+	if err := json.Unmarshal([]byte(stdout), &card); err != nil {
+		t.Fatal(err)
+	}
+	claude, _ := card.SelectHarnessVariant("claude-code")
+	if codex := card.DefaultVariant(); codex.Effort != "" || codex.EffectiveEffort != "medium" || claude.Model != "claude-opus-5" || claude.Effort != "low" {
+		t.Fatalf("edited variants = %+v / %+v", codex, claude)
+	}
+
+	stdout, stderr, code = runArchon(t, runner, "agent", "spawn", "codexer", "--harness", "openai-codex")
 	if code != 0 {
 		t.Fatalf("spawn openai-codex failed: code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
-	if len(runner.spawned) != 1 || runner.spawned[0] != "codexer:"+wantLaunch {
-		t.Fatalf("spawned=%#v, want codexer:%s", runner.spawned, wantLaunch)
-	}
-}
-
-func TestArchonAgentNewClaudeCodeDefaultsLaunchAndSpawnUsesIt(t *testing.T) {
-	withoutArchonTmuxPrefix(t)
-	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
-	runner := &fakeTmux{live: map[string]bool{}}
-	wantLaunch := "claude --dangerously-skip-permissions --effort=\"max\""
-
-	stdout, stderr, code := runArchon(t, runner, "agent", "new", "clauder", "--kind", "specialist", "--harness", "claude-code", "--json")
-	if code != 0 {
-		t.Fatalf("create claude-code failed: code=%d stderr=%s stdout=%s", code, stderr, stdout)
-	}
-	var card formations.PersonaCard
-	if err := json.Unmarshal([]byte(stdout), &card); err != nil {
-		t.Fatalf("decode created card JSON: %v\n%s", err, stdout)
-	}
-	variant := card.DefaultVariant()
-	if variant.ID != "claude-code" || variant.Launch != wantLaunch {
-		t.Fatalf("claude-code variant = %#v, want launch %q", variant, wantLaunch)
+	if len(runner.spawned) != 1 || runner.spawned[0] != "codexer:"+strings.Replace(wantLaunch, "\"high\"", "\"medium\"", 1) {
+		t.Fatalf("spawned=%#v, want the seat launch at medium", runner.spawned)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "agent", "spawn", "clauder")
-	if code != 0 {
-		t.Fatalf("spawn claude-code failed: code=%d stderr=%s stdout=%s", code, stderr, stdout)
-	}
-	if len(runner.spawned) != 1 || runner.spawned[0] != "clauder:"+wantLaunch {
-		t.Fatalf("spawned=%#v, want clauder:%s", runner.spawned, wantLaunch)
+	_, help, _ := runArchon(t, runner, "agent", "edit", "-h")
+	for _, want := range []string{agentEditUsage, "-model", "harness default model", "-effort", "blank means medium", "openai-codex: low, medium, high, xhigh, max, ultra", "openai-codex seats ignore it"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("agent edit -h missing %q:\n%s", want, help)
+		}
 	}
 }
 

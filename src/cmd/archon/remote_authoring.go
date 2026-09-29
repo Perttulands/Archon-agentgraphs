@@ -1126,64 +1126,52 @@ func remoteAgentInspect(c *remoteClient, args []string, stdout, stderr io.Writer
 // the daemon host.
 func remoteAgentNew(c *remoteClient, args []string, stdout, stderr io.Writer) int {
 	fs := remoteFlags("agent new", stderr)
-	kind := fs.String("kind", "", "agent kind")
-	harness := fs.String("harness", "", "default harness")
-	capable := fs.String("capable", "", "comma-separated bare capabilities")
-	personality := fs.String("personality", "", "personality facet")
-	from := fs.String("from", "", "source config path")
-	jsonOut := fs.Bool("json", false, "write JSON")
+	f := newAgentNewFlags(fs, stderr)
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon agent new <id> [--kind <kind>] [--harness <h>] [--from <path>]")
+		fmt.Fprintln(stderr, agentNewUsage)
 		return 2
 	}
-	data, _, err := c.call("POST", "/api/agents", map[string]any{"id": fs.Arg(0), "kind": *kind, "harness": *harness, "capabilities": splitCSV(*capable), "personality": *personality, "source": *from}, "")
+	data, _, err := c.call("POST", "/api/agents", map[string]any{"id": fs.Arg(0), "kind": *f.kind, "harness": *f.harness, "model": *f.model, "effort": *f.effort, "capabilities": splitCSV(*f.capable), "personality": *f.personality, "source": *f.from}, "")
 	if err != nil {
 		return fail(stderr, err)
 	}
-	return writeRemoteAgent(stdout, stderr, data, *jsonOut, "created")
+	return writeRemoteAgent(stdout, stderr, data, *f.jsonOut, "created")
 }
 
 func remoteAgentEdit(c *remoteClient, args []string, stdout, stderr io.Writer) int {
 	fs := remoteFlags("agent edit", stderr)
-	addCapability := fs.String("add-capability", "", "add bare capability")
-	removeCapability := fs.String("remove-capability", "", "remove bare capability")
-	addHarness := fs.String("add-harness", "", "add harness variant")
-	sessionStem := fs.String("session-stem", "", "session stem for added harness")
-	launch := fs.String("launch", "", "default or added-harness launch command")
-	displayName := fs.String("display-name", "", "replace display name")
-	kind := fs.String("kind", "", "replace role kind")
-	summary := fs.String("summary", "", "replace summary")
-	capable := fs.String("capable", "", "replace comma-separated bare capabilities")
-	note := fs.String("note", "", "append note")
-	jsonOut := fs.Bool("json", false, "write JSON")
+	f := newAgentEditFlags(fs, stderr)
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon agent edit <id> [--display-name n] [--kind k] [--summary s] [--capable a,b] [--session-stem s] [--launch command] [--add-capability t|--remove-capability t|--add-harness h|--note text]")
+		fmt.Fprintln(stderr, agentEditUsage)
 		return 2
 	}
 	given := givenFlags(fs)
-	body := map[string]any{"addCapability": *addCapability, "removeCapability": *removeCapability, "addHarness": *addHarness, "note": *note}
+	body := map[string]any{"addCapability": *f.addCapability, "removeCapability": *f.removeCapability, "addHarness": *f.addHarness, "note": *f.note}
 	for flagName, field := range map[string]struct {
 		key   string
 		value *string
-	}{"display-name": {"displayName", displayName}, "kind": {"kind", kind}, "summary": {"summary", summary}} {
+	}{"display-name": {"displayName", f.displayName}, "kind": {"kind", f.kind}, "summary": {"summary", f.summary}, "model": {"model", f.model}, "effort": {"effort", f.effort}} {
 		if given[flagName] {
 			body[field.key] = *field.value
 		}
 	}
 	if given["capable"] {
-		body["capabilities"] = append([]string{}, splitCSV(*capable)...)
+		body["capabilities"] = append([]string{}, splitCSV(*f.capable)...)
 	}
-	if *addHarness != "" || given["session-stem"] {
-		body["sessionStem"] = *sessionStem
+	if *f.addHarness != "" || given["session-stem"] {
+		body["sessionStem"] = *f.sessionStem
 	}
-	if *addHarness != "" || given["launch"] {
-		body["launch"] = *launch
+	if *f.addHarness != "" || given["launch"] {
+		body["launch"] = *f.launch
+	}
+	if *f.addHarness == "" && *f.harness != "" {
+		body["variant"] = *f.harness
 	}
 	path := "/api/agents/" + url.PathEscape(fs.Arg(0))
 	var data json.RawMessage
@@ -1201,5 +1189,5 @@ func remoteAgentEdit(c *remoteClient, args []string, stdout, stderr io.Writer) i
 	if err != nil {
 		return fail(stderr, err)
 	}
-	return writeRemoteAgent(stdout, stderr, data, *jsonOut, "updated")
+	return writeRemoteAgent(stdout, stderr, data, *f.jsonOut, "updated")
 }

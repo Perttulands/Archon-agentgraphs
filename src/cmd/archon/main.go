@@ -399,6 +399,8 @@ func runAgentInspect(store *formations.PersonaStore, args []string, stdout, stde
 	if err != nil {
 		return fail(stderr, err)
 	}
+	// Offline, the launch shown is what seats started from this host run.
+	card.DescribeLaunches()
 	return writeAgentInspect(stdout, card, *jsonOut)
 }
 
@@ -415,32 +417,30 @@ func writeAgentInspect(stdout io.Writer, card *formations.PersonaCard, jsonOut b
 func runAgentNew(store *formations.PersonaStore, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("agent new", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	kind := fs.String("kind", "", "agent kind")
-	harness := fs.String("harness", "", "default harness")
-	capable := fs.String("capable", "", "comma-separated bare capabilities")
-	personality := fs.String("personality", "", "personality facet")
-	from := fs.String("from", "", "source config path")
-	jsonOut := fs.Bool("json", false, "write JSON")
+	f := newAgentNewFlags(fs, stderr)
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon agent new <id> [--kind <kind>] [--harness <h>] [--from <path>]")
+		fmt.Fprintln(stderr, agentNewUsage)
 		return 2
 	}
 	card, err := store.CreatePersona(formations.CreatePersonaRequest{
 		ID:           fs.Arg(0),
-		Kind:         *kind,
-		Harness:      *harness,
-		Capabilities: splitCSV(*capable),
-		Personality:  *personality,
-		Source:       *from,
+		Kind:         *f.kind,
+		Harness:      *f.harness,
+		Model:        *f.model,
+		Effort:       *f.effort,
+		Capabilities: splitCSV(*f.capable),
+		Personality:  *f.personality,
+		Source:       *f.from,
 	})
 	if err != nil {
 		return fail(stderr, err)
 	}
 	card.TOML = ""
-	if *jsonOut {
+	if *f.jsonOut {
+		card.DescribeLaunches()
 		return writeJSON(stdout, card)
 	}
 	fmt.Fprintf(stdout, "created %s\n", card.ID)
@@ -450,22 +450,12 @@ func runAgentNew(store *formations.PersonaStore, args []string, stdout, stderr i
 func runAgentEdit(store *formations.PersonaStore, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("agent edit", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	addCapability := fs.String("add-capability", "", "add bare capability")
-	removeCapability := fs.String("remove-capability", "", "remove bare capability")
-	addHarness := fs.String("add-harness", "", "add harness variant")
-	sessionStem := fs.String("session-stem", "", "session stem for added harness")
-	launch := fs.String("launch", "", "default or added-harness launch command")
-	displayName := fs.String("display-name", "", "replace display name")
-	kind := fs.String("kind", "", "replace role kind")
-	summary := fs.String("summary", "", "replace summary")
-	capable := fs.String("capable", "", "replace comma-separated bare capabilities")
-	note := fs.String("note", "", "append note")
-	jsonOut := fs.Bool("json", false, "write JSON")
+	f := newAgentEditFlags(fs, stderr)
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon agent edit <id> [--display-name n] [--kind k] [--summary s] [--capable a,b] [--session-stem s] [--launch command] [--add-capability t|--remove-capability t|--add-harness h|--note text]")
+		fmt.Fprintln(stderr, agentEditUsage)
 		return 2
 	}
 	before, err := store.ReadPersona(fs.Arg(0))
@@ -473,36 +463,44 @@ func runAgentEdit(store *formations.PersonaStore, args []string, stdout, stderr 
 		return fail(stderr, err)
 	}
 	edit := formations.EditPersonaRequest{
-		AddCapability:    *addCapability,
-		RemoveCapability: *removeCapability,
-		AddHarness:       *addHarness,
-		Note:             *note,
+		AddCapability:    *f.addCapability,
+		RemoveCapability: *f.removeCapability,
+		AddHarness:       *f.addHarness,
+		Note:             *f.note,
 		ExpectedETag:     before.ETag,
 	}
-	setFlags := map[string]bool{}
-	fs.Visit(func(current *flag.Flag) { setFlags[current.Name] = true })
+	setFlags := givenFlags(fs)
 	if setFlags["display-name"] {
-		edit.SetDisplayName = displayName
+		edit.SetDisplayName = f.displayName
 	}
 	if setFlags["kind"] {
-		edit.SetKind = kind
+		edit.SetKind = f.kind
 	}
 	if setFlags["summary"] {
-		edit.SetSummary = summary
+		edit.SetSummary = f.summary
 	}
 	if setFlags["capable"] {
-		capabilities := splitCSV(*capable)
+		capabilities := splitCSV(*f.capable)
 		edit.SetCapabilities = &capabilities
 	}
-	if *addHarness != "" {
-		edit.SessionStem = *sessionStem
-		edit.Launch = *launch
+	if *f.addHarness != "" {
+		edit.SessionStem = *f.sessionStem
+		edit.Launch = *f.launch
+		edit.Model = *f.model
+		edit.Effort = *f.effort
 	} else {
 		if setFlags["session-stem"] {
-			edit.SetSessionStem = sessionStem
+			edit.SetSessionStem = f.sessionStem
 		}
 		if setFlags["launch"] {
-			edit.SetLaunch = launch
+			edit.SetLaunch = f.launch
+		}
+		edit.Variant = *f.harness
+		if setFlags["model"] {
+			edit.SetModel = f.model
+		}
+		if setFlags["effort"] {
+			edit.SetEffort = f.effort
 		}
 	}
 	card, err := store.EditPersona(fs.Arg(0), edit)
@@ -510,7 +508,8 @@ func runAgentEdit(store *formations.PersonaStore, args []string, stdout, stderr 
 		return fail(stderr, err)
 	}
 	card.TOML = ""
-	if *jsonOut {
+	if *f.jsonOut {
+		card.DescribeLaunches()
 		return writeJSON(stdout, card)
 	}
 	fmt.Fprintf(stdout, "updated %s\n", card.ID)
@@ -550,7 +549,11 @@ func runAgentSpawn(store *formations.PersonaStore, args []string, stdout, stderr
 		return fail(stderr, fmt.Errorf("%w: agent %q harness %q has no session_stem", formations.ErrAgentSessionOffline, card.ID, variant.ID))
 	}
 	targetSession := archonTmuxTargetSessionName(variant.SessionStem)
-	if err := runner.Spawn(targetSession, variant.Launch); err != nil {
+	command, err := variant.SpawnCommand()
+	if err != nil {
+		return fail(stderr, err)
+	}
+	if err := runner.Spawn(targetSession, command); err != nil {
 		return fail(stderr, err)
 	}
 	fmt.Fprintf(stdout, "spawned %s as %s\n", card.ID, targetSession)

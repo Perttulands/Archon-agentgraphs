@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -99,19 +98,8 @@ func (t realSeatTransport) Create(ctx context.Context, socket, name, cwd, root s
 			watch.Close()
 		}
 	}()
-	bin := "codex"
-	if v.ID == "claude-code" {
-		bin = "claude"
-	}
-	bin, err = exec.LookPath(bin)
-	if err != nil {
-		return nil, err
-	}
-	bin, err = filepath.Abs(bin)
-	if err != nil {
-		return nil, err
-	}
-	launch, err := v.RenderLaunch(bin)
+	// The same renderer the persona's shown launch uses (DescribeLaunches).
+	launch, err := v.LaunchCommand()
 	if err != nil {
 		return nil, err
 	}

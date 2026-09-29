@@ -27,7 +27,7 @@ product names; they do not define current behavior.
 | Formation | An execution node. `solo` has one seat; `peer` has peer seats; `orchestrated` has a controller directing its bound workers. |
 | Slot | A position in a formation, bound to a persona and harness variant. A seat is the slot's runtime agent session. |
 | Persona | A TOML agent card with a summary, capabilities and harness variants. Presets remain available; local cards can override them. |
-| Harness variant | The persona's `openai-codex` or `claude-code` settings, including session stem, model and effort. Omitted effort resolves to `medium`; omitted model uses the harness default. |
+| Harness variant | The persona's `openai-codex` or `claude-code` settings, including session stem, model and effort. Omitted effort resolves to `medium`; omitted model uses the harness default. Seats start from these settings, never from a launch string. |
 | Gate | A criterion with one or more kinds: `code`, `formation`, `human`. Its ports are `in`, `pass`, `fail`, `judge`. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
 | Judge chain | Formations wired from a gate's `judge` port and back to that same port. The final judge result decides the formation kind. |
@@ -41,7 +41,25 @@ The private `<state-dir>` is also Archon's `--workspace`. It contains
 `.formations/runs` ledgers and snapshots, `.formations/artifacts`, and `briefs`.
 Persona cards default to `<state-dir>/agents`; daemon `--agents-dir` can select
 another absolute directory. Match offline persona authoring to that directory
-with `CHROTE_AGENTS_DIR` when using an override. Notes are operator intent, not
+with `CHROTE_AGENTS_DIR` when using an override.
+
+Author a persona's model and effort per harness variant in the Agents view
+(inspector, persona editor and New agent form), with `model`, `effort` and
+`variant` (or a `variants` list) on `POST`/`PATCH /api/agents`, or with
+`archon agent new|edit --model --effort` (`edit --harness` picks the
+variant). The inspector and editor show every variant. Effort must be one the
+harness accepts: `claude-code` takes `low`, `medium`, `high`, `xhigh` or `max`;
+`openai-codex` also takes `ultra`, though a Codex model may accept fewer. A
+blank model or effort clears it to the harness default model or `medium`.
+Persona reads carry each variant's `effectiveEffort` and `seatLaunch`, the
+command its seats run, rendered by the seat launcher from the harness CLI on the
+reader's PATH (the daemon's for HTTP); `seatLaunchError` says why a variant
+cannot start. `archon agent spawn` runs the same command. A card's `launch`
+string is legacy: new cards get none, seats and spawn ignore it for
+`claude-code` and `openai-codex`, and it is kept only for a harness Archon
+cannot start, such as `hermes`, whose `agent spawn` still runs it.
+
+Notes are operator intent, not
 automatically executable briefs. Read board and element notes, then translate
 them into formation briefs, staffing and edges.
 

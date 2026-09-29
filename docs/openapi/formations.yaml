@@ -790,8 +790,9 @@ paths:
     get:
       responses:
         '200':
-          description: Roster in data.agents and data.count, including presets and overrides. No live-session
-            provider is wired by the daemon.
+          description: Roster in data.agents and data.count, including presets and overrides, and
+            data.harnesses, the harnesses whose seats Archon starts, each with the efforts it accepts and its
+            defaultEffort. No live-session provider is wired by the daemon.
         '422':
           description: INVALID_AGENT_CARD when a stored card lacks a required field; the message names the card and field
       parameters:
@@ -807,6 +808,9 @@ paths:
       responses:
         '201':
           description: Created persona card in data; returns ETag
+        '422':
+          description: INVALID_AGENT_CARD when model or effort is not one the harness accepts; the message lists
+            the accepted efforts
       requestBody:
         required: true
         content:
@@ -823,13 +827,19 @@ paths:
     get:
       responses:
         '200':
-          description: Persona card in data, including harnessVariants model/effort; returns ETag
+          description: Persona card in data; returns ETag. Each harnessVariants entry has its stored model and
+            effort, effectiveEffort (medium when effort is unset), and seatLaunch, the command a seat for that
+            variant runs, rendered by the seat launcher on the daemon's PATH; seatLaunchError says why a variant
+            cannot start (an unsupported harness, or its CLI missing from PATH). Create and patch return the same.
         '422':
           description: INVALID_AGENT_CARD when the stored card lacks a required field; the message names the card and field
     patch:
       responses:
         '200':
           description: Updated persona card in data; returns ETag
+        '422':
+          description: INVALID_AGENT_CARD when model or effort is not one the harness accepts, or variant names
+            no harness variant of the card
         '428':
           description: Missing If-Match
         '409':
@@ -1585,6 +1595,15 @@ components:
           type: string
         launch:
           type: string
+          description: Legacy launch string, kept only for a harness Archon cannot start (such as hermes).
+            claude-code and openai-codex seats start from harness, model and effort and ignore it.
+        model:
+          type: string
+          description: Model for the harness; omit for the harness default model.
+        effort:
+          type: string
+          description: Effort the harness accepts (claude-code low|medium|high|xhigh|max; openai-codex
+            low|medium|high|xhigh|max|ultra); omit for medium.
         source:
           type: string
     AgentPatch:
@@ -1600,6 +1619,31 @@ components:
           type: string
         launch:
           type: string
+          description: Legacy launch string for the default or added variant; ignored by claude-code and
+            openai-codex seats.
+        variant:
+          type: string
+          description: Harness variant that model and effort change; defaults to the card's default harness.
+            With addHarness, model and effort set the added variant instead.
+        variants:
+          type: array
+          description: Model and effort for several variants in one edit; all apply or none do.
+          items:
+            type: object
+            required: [id]
+            properties:
+              id:
+                type: string
+              model:
+                type: string
+              effort:
+                type: string
+        model:
+          type: string
+          description: Model for the variant; an empty string clears it to the harness default model.
+        effort:
+          type: string
+          description: Effort the variant's harness accepts; an empty string clears it to medium.
         source:
           type: string
         note:
@@ -1616,6 +1660,5 @@ components:
           type: array
           items:
             type: string
-      description: Persona editor fields. Model/effort are read from harness variants in TOML cards; this
-        editor exposes no dedicated model or effort fields. Source is harness provenance/launch inference,
-        not replacement card content.
+      description: Persona editor fields. Model and effort edit one harness variant (variant, else the
+        default harness). Source is harness provenance, not replacement card content.

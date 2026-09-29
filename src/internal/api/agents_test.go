@@ -102,7 +102,15 @@ func TestAgentsHandlerFiltersAssignableAndCapability(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	if strings.Contains(rec.Body.String(), "codex") || strings.Contains(rec.Body.String(), "scratch") {
+	var filtered struct {
+		Data struct {
+			Agents []formations.AgentProjection `json:"agents"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &filtered); err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered.Data.Agents) != 1 || filtered.Data.Agents[0].ID != "susie" {
 		t.Fatalf("filtered roster included non-matching/unbound agents: %s", rec.Body.String())
 	}
 	if !strings.Contains(rec.Body.String(), "susie") {
@@ -205,6 +213,105 @@ func TestAgentsHandlerOverridesBuiltInCodexPresetThroughSharedWriter(t *testing.
 	}
 	if _, err := os.Stat(filepath.Join(agentsDir, "codex-planner.toml")); err != nil {
 		t.Fatalf("materialized API override: %v", err)
+	}
+}
+
+func TestAgentsHandlerCreatesAndEditsModelAndEffortAndShowsTheSeatLaunch(t *testing.T) {
+	bin := t.TempDir()
+	for _, name := range []string{"claude", "codex"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin)
+	agentsDir := t.TempDir()
+	handler := NewAgentsHandler(agentsDir, fakeAgentLiveness{})
+	decode := func(rec *httptest.ResponseRecorder) formations.PersonaCard {
+		t.Helper()
+		var response struct {
+			Data formations.PersonaCard `json:"data"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode %s: %v", rec.Body.String(), err)
+		}
+		return response.Data
+	}
+	patch := func(body, etag string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPatch, "/api/agents/critic", bytes.NewBufferString(body))
+		req.SetPathValue("agentId", "critic")
+		req.Header.Set("If-Match", etag)
+		rec := httptest.NewRecorder()
+		handler.UpdateAgent(rec, req)
+		return rec
+	}
+
+	bad := httptest.NewRecorder()
+	handler.CreateAgent(bad, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"critic","harness":"claude-code","effort":"ultra"}`)))
+	if bad.Code != http.StatusUnprocessableEntity || !strings.Contains(bad.Body.String(), "low, medium, high, xhigh, max") {
+		t.Fatalf("invalid effort create = %d %s", bad.Code, bad.Body.String())
+	}
+
+	created := httptest.NewRecorder()
+	handler.CreateAgent(created, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"critic","harness":"claude-code","model":"claude-opus-5"}`)))
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", created.Code, created.Body.String())
+	}
+	claude := decode(created).DefaultVariant()
+	want := "exec '" + filepath.Join(bin, "claude") + "' --model 'claude-opus-5' --effort 'medium' --dangerously-skip-permissions"
+	if claude.Launch != "" || claude.Model != "claude-opus-5" || claude.Effort != "" || claude.EffectiveEffort != "medium" || claude.SeatLaunch != want {
+		t.Fatalf("created variant = %+v, want seat launch %s", claude, want)
+	}
+
+	added := patch(`{"addHarness":"openai-codex","model":"gpt-6-sol","effort":"ultra"}`, created.Header().Get("ETag"))
+	if added.Code != http.StatusOK {
+		t.Fatalf("add harness = %d %s", added.Code, added.Body.String())
+	}
+	edited := patch(`{"variant":"openai-codex","effort":"xhigh","model":""}`, added.Header().Get("ETag"))
+	if edited.Code != http.StatusOK {
+		t.Fatalf("edit variant = %d %s", edited.Code, edited.Body.String())
+	}
+	card := decode(edited)
+	codex, _ := card.SelectHarnessVariant("openai-codex")
+	if codex.Model != "" || codex.Effort != "xhigh" || !strings.Contains(codex.SeatLaunch, `model_reasoning_effort="xhigh"`) || strings.Contains(codex.SeatLaunch, "--model") {
+		t.Fatalf("edited codex variant = %+v", codex)
+	}
+	if card.DefaultVariant().Model != "claude-opus-5" {
+		t.Fatalf("default variant changed: %+v", card.DefaultVariant())
+	}
+	if rec := patch(`{"variant":"openai-codex","effort":"extreme"}`, edited.Header().Get("ETag")); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "ultra") {
+		t.Fatalf("invalid codex effort = %d %s", rec.Code, rec.Body.String())
+	}
+	both := patch(`{"variants":[{"id":"claude-code","effort":"high"},{"id":"openai-codex","model":"gpt-6-luna"}]}`, edited.Header().Get("ETag"))
+	if both.Code != http.StatusOK {
+		t.Fatalf("edit both variants = %d %s", both.Code, both.Body.String())
+	}
+	card = decode(both)
+	codex, _ = card.SelectHarnessVariant("openai-codex")
+	if claude := card.DefaultVariant(); claude.Effort != "high" || claude.Model != "claude-opus-5" || codex.Model != "gpt-6-luna" || codex.Effort != "xhigh" {
+		t.Fatalf("edited both variants = %+v / %+v", claude, codex)
+	}
+	if rec := patch(`{"variants":[{"id":"claude-code","effort":"low"},{"id":"openai-codex","effort":"nope"}]}`, both.Header().Get("ETag")); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("one invalid variant = %d %s", rec.Code, rec.Body.String())
+	}
+	if claude := decode(both).DefaultVariant(); claude.Effort != "high" {
+		t.Fatalf("partially applied edit: %+v", claude)
+	}
+	if raw := readAgentFixture(t, agentsDir, "critic"); strings.Contains(raw, `effort = "low"`) {
+		t.Fatalf("an edit with one invalid variant was partly written:\n%s", raw)
+	}
+	if raw := readAgentFixture(t, agentsDir, "critic"); strings.Contains(raw, "launch") || strings.Contains(raw, "seatLaunch") || strings.Contains(raw, "extreme") {
+		t.Fatalf("card stores derived or rejected values:\n%s", raw)
+	}
+
+	list := httptest.NewRecorder()
+	handler.ListAgents(list, httptest.NewRequest(http.MethodGet, "/api/agents", nil))
+	var roster struct {
+		Data struct {
+			Harnesses []formations.LaunchableHarness `json:"harnesses"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &roster); err != nil || len(roster.Data.Harnesses) != 2 || roster.Data.Harnesses[0].ID != "claude-code" || roster.Data.Harnesses[0].DefaultEffort != "medium" {
+		t.Fatalf("roster harnesses = %+v (%v) from %s", roster.Data.Harnesses, err, list.Body.String())
 	}
 }
 

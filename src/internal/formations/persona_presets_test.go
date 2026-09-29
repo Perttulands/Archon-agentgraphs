@@ -29,7 +29,7 @@ func TestCodexPersonaPresetsAreAvailableWithoutPersistedCards(t *testing.T) {
 			t.Fatalf("preset projection = %+v", card)
 		}
 		variant := card.DefaultVariant()
-		if variant.ID != "openai-codex" || variant.SessionStem != card.ID || variant.Launch != "codex --yolo -c check_for_update_on_startup=false" {
+		if variant.ID != "openai-codex" || variant.SessionStem != card.ID || variant.Launch != "" {
 			t.Fatalf("preset harness = %+v", variant)
 		}
 	}

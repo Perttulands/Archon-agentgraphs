@@ -39,10 +39,6 @@ func builtinPresetPersona(id string) (*PersonaCard, bool) {
 		if harness == "" {
 			harness = "openai-codex"
 		}
-		launch := "codex --yolo -c check_for_update_on_startup=false"
-		if harness == "claude-code" {
-			launch = "claude --dangerously-skip-permissions"
-		}
 		tags = append(tags, "role:"+preset.Kind, "provider:"+harness)
 		req := CreatePersonaRequest{
 			ID:           preset.ID,
@@ -52,7 +48,6 @@ func builtinPresetPersona(id string) (*PersonaCard, bool) {
 			Capabilities: tags,
 			Harness:      harness,
 			SessionStem:  preset.ID,
-			Launch:       launch,
 			Model:        preset.Model,
 			Effort:       preset.Effort,
 		}

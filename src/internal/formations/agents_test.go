@@ -53,20 +53,21 @@ func TestCreatePersonaWritesOneIDSpineAndDefaultSessionStem(t *testing.T) {
 	}
 }
 
-func TestCreatePersonaOpenAICodexInfersLaunch(t *testing.T) {
-	store := NewPersonaStore(t.TempDir())
-	wantLaunch := "codex --yolo -c check_for_update_on_startup=false"
-
-	card, err := store.CreatePersona(CreatePersonaRequest{ID: "codexer", Kind: "specialist", Harness: "openai-codex"})
-	if err != nil {
-		t.Fatalf("create openai-codex persona: %v", err)
-	}
-	if got := card.DefaultVariant().Launch; got != wantLaunch {
-		t.Fatalf("openai-codex launch = %q, want %q", got, wantLaunch)
-	}
-	raw := readFile(t, store.PersonaPath("codexer"))
-	if !strings.Contains(raw, `launch = "`+wantLaunch+`"`) {
-		t.Fatalf("persona TOML missing codex launch:\n%s", raw)
+// Seats start from harness, model and effort, so a launchable harness gets no
+// launch string that would read as the command it runs.
+func TestCreatePersonaWritesNoLaunchForLaunchableHarnesses(t *testing.T) {
+	for _, harness := range []string{"openai-codex", "claude-code"} {
+		store := NewPersonaStore(t.TempDir())
+		card, err := store.CreatePersona(CreatePersonaRequest{ID: "worker", Kind: "specialist", Harness: harness})
+		if err != nil {
+			t.Fatalf("create %s persona: %v", harness, err)
+		}
+		if got := card.DefaultVariant().Launch; got != "" {
+			t.Fatalf("%s launch = %q, want none", harness, got)
+		}
+		if raw := readFile(t, store.PersonaPath("worker")); strings.Contains(raw, "launch") {
+			t.Fatalf("%s persona TOML has a launch string:\n%s", harness, raw)
+		}
 	}
 }
 
@@ -170,24 +171,28 @@ func TestEditPersonaAddsHarnessVariantAndNote(t *testing.T) {
 	}
 }
 
-func TestEditPersonaAddOpenAICodexInfersLaunch(t *testing.T) {
+func TestEditPersonaAddOpenAICodexCarriesSettingsNotLaunch(t *testing.T) {
 	store := NewPersonaStore(t.TempDir())
 	writeFixture(t, store.PersonaPath("susie"), minimalPersona("susie", "specialist", []string{"design"}))
-	wantLaunch := "codex --yolo -c check_for_update_on_startup=false"
 
 	card := editPersonaWithFreshETag(t, store, "susie", EditPersonaRequest{
 		AddHarness:  "openai-codex",
 		SessionStem: "codex-susie",
+		Model:       " gpt-6-sol ",
+		Effort:      "ultra",
 	})
 	if len(card.HarnessVariants) != 2 {
 		t.Fatalf("harness variants = %d, want 2", len(card.HarnessVariants))
 	}
-	if got := card.HarnessVariants[1].Launch; got != wantLaunch {
-		t.Fatalf("added openai-codex launch = %q, want %q", got, wantLaunch)
+	if added := card.HarnessVariants[1]; added.Launch != "" || added.Model != "gpt-6-sol" || added.Effort != "ultra" {
+		t.Fatalf("added openai-codex variant = %+v, want model and effort and no launch", added)
 	}
-	raw := readFile(t, store.PersonaPath("susie"))
-	if !strings.Contains(raw, `launch = "`+wantLaunch+`"`) {
-		t.Fatalf("edited persona TOML missing codex launch:\n%s", raw)
+	current, err := store.ReadPersona("susie")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.EditPersona("susie", EditPersonaRequest{ExpectedETag: current.ETag, AddHarness: "hermes", Effort: "high"}); !errors.Is(err, ErrInvalidAgentCard) {
+		t.Fatalf("hermes variant with effort error = %v, want ErrInvalidAgentCard", err)
 	}
 }
 

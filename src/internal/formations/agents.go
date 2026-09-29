@@ -55,6 +55,10 @@ type HarnessVariant struct {
 	Model       string `json:"model,omitempty"`
 	Effort      string `json:"effort,omitempty"`
 	Source      string `json:"source,omitempty"`
+	// Derived for readers by DescribeLaunches; never stored in the card.
+	EffectiveEffort string `json:"effectiveEffort,omitempty"`
+	SeatLaunch      string `json:"seatLaunch,omitempty"`
+	SeatLaunchError string `json:"seatLaunchError,omitempty"`
 }
 
 type PersonaNote struct {
@@ -98,6 +102,61 @@ type EditPersonaRequest struct {
 	SetLaunch        *string
 	SetModel         *string
 	SetEffort        *string
+	// Variant names the harness variant SetModel and SetEffort change; blank
+	// means the card's default harness.
+	Variant string
+	// SetVariants sets several variants' model and effort in one edit.
+	SetVariants []VariantSettings
+}
+
+// VariantSettings sets one harness variant's model and effort; a nil field is
+// left as it is and a blank one is cleared.
+type VariantSettings struct {
+	ID     string  `json:"id"`
+	Model  *string `json:"model,omitempty"`
+	Effort *string `json:"effort,omitempty"`
+}
+
+func applyVariantSettings(raw string, card *PersonaCard, setting VariantSettings) (string, error) {
+	target, err := editedVariant(card, setting.ID)
+	if err != nil {
+		return "", err
+	}
+	model, effort := target.Model, target.Effort
+	if setting.Model != nil {
+		model = strings.TrimSpace(*setting.Model)
+	}
+	if setting.Effort != nil {
+		effort = strings.TrimSpace(*setting.Effort)
+	}
+	if err := validateHarnessSettings(card.ID, target.ID, model, effort); err != nil {
+		return "", err
+	}
+	// Blank removes the setting: the harness default model, the default effort.
+	for _, field := range []struct {
+		key   string
+		value *string
+	}{{"model", setting.Model}, {"effort", setting.Effort}} {
+		if field.value == nil {
+			continue
+		}
+		if raw, err = setHarnessVariantScalar(raw, target.ID, field.key, strings.TrimSpace(*field.value)); err != nil {
+			return "", err
+		}
+	}
+	return raw, nil
+}
+
+func editedVariant(card *PersonaCard, variantID string) (HarnessVariant, error) {
+	if variantID == "" {
+		variantID = card.HarnessDefault
+	}
+	for _, variant := range card.HarnessVariants {
+		if variant.ID == variantID {
+			return variant, nil
+		}
+	}
+	return HarnessVariant{}, fmt.Errorf("%w: agent %q has no harness variant %q", ErrInvalidAgentCard, card.ID, variantID)
 }
 
 type AgentRosterFilter struct {
@@ -269,6 +328,10 @@ func (s *PersonaStore) CreatePersona(req CreatePersonaRequest) (*PersonaCard, er
 		if harness == "" {
 			harness = "claude-code"
 		}
+		req.Model, req.Effort = strings.TrimSpace(req.Model), strings.TrimSpace(req.Effort)
+		if err := validateHarnessSettings(req.ID, harness, req.Model, req.Effort); err != nil {
+			return err
+		}
 		sessionStem := req.SessionStem
 		if sessionStem == "" {
 			sessionStem = req.ID
@@ -369,12 +432,13 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 				return err
 			}
 		}
-		for key, value := range map[string]*string{"model": req.SetModel, "effort": req.SetEffort} {
-			if value != nil {
-				next, err = setHarnessVariantScalar(next, card.HarnessDefault, key, strings.TrimSpace(*value))
-				if err != nil {
-					return err
-				}
+		settings := append([]VariantSettings{}, req.SetVariants...)
+		if req.SetModel != nil || req.SetEffort != nil {
+			settings = append(settings, VariantSettings{ID: req.Variant, Model: req.SetModel, Effort: req.SetEffort})
+		}
+		for _, setting := range settings {
+			if next, err = applyVariantSettings(next, card, setting); err != nil {
+				return err
 			}
 		}
 		if req.AddCapability != "" || req.RemoveCapability != "" {
@@ -391,6 +455,9 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 			next = setSectionScalar(next, "card", "status", renderString("retired"))
 		}
 		if req.AddHarness != "" {
+			if err := validateHarnessSettings(id, req.AddHarness, req.Model, req.Effort); err != nil {
+				return err
+			}
 			stem := req.SessionStem
 			if stem == "" {
 				stem = req.AddHarness + "-" + id
@@ -403,8 +470,8 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 				ID:          req.AddHarness,
 				SessionStem: stem,
 				Launch:      launch,
-				Model:       req.Model,
-				Effort:      req.Effort,
+				Model:       strings.TrimSpace(req.Model),
+				Effort:      strings.TrimSpace(req.Effort),
 				Source:      req.Source,
 			})
 		}
@@ -873,6 +940,13 @@ func setHarnessVariantScalar(raw, variantID, key, value string) (string, error) 
 			start = end - 1
 			continue
 		}
+		if value == "" && (key == "model" || key == "effort") {
+			// An unset model or effort is absent, so the card reads as the default.
+			if fieldIndex >= 0 {
+				lines = append(lines[:fieldIndex], lines[fieldIndex+1:]...)
+			}
+			return renderLines(lines), nil
+		}
 		rendered := renderString(value)
 		if fieldIndex >= 0 {
 			lines[fieldIndex].body = replaceScalarValue(lines[fieldIndex].body, rendered)
@@ -1010,13 +1084,9 @@ func inferHarness(source string) string {
 	}
 }
 
+// inferLaunch supplies a launch string only for a harness Archon cannot render;
+// claude-code and openai-codex start from the card's model and effort instead.
 func inferLaunch(harness, source string) string {
-	if harness == "openai-codex" {
-		return "codex --yolo -c check_for_update_on_startup=false"
-	}
-	if harness == "claude-code" {
-		return "claude --dangerously-skip-permissions --effort=\"max\""
-	}
 	if harness == "hermes" && source != "" {
 		return "hermes --profile " + shellQuote(source)
 	}
