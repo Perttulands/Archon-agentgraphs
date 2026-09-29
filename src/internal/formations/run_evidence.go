@@ -650,6 +650,21 @@ func projectRunProblems(events []RunEvent) []RunProblem {
 	return problems
 }
 
+// RunEndProblem is the failure or cancel that ended a run, as the run's
+// evidence problems report it, or nil when the run did not end that way.
+func RunEndProblem(events []RunEvent) *RunProblem {
+	if len(events) == 0 {
+		return nil
+	}
+	switch events[len(events)-1].Type {
+	case RunEventFailed, RunEventCanceled:
+	default:
+		return nil
+	}
+	problems := projectRunProblems(events)
+	return &problems[len(problems)-1]
+}
+
 func evidenceInput(raw any, capper *evidenceCapper, artifactRoots []string) *EvidenceInput {
 	data, ok := raw.(map[string]any)
 	if !ok {

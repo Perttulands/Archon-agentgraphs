@@ -258,6 +258,7 @@ func (c *Coordinator) Handler() http.Handler {
 	mux.HandleFunc("GET /api/formations/runs/{runId}/seats", c.seats)
 	mux.HandleFunc("GET /api/formations/runs/{runId}/seats/{createdSeq}/terminal", c.viewTerminal)
 	mux.HandleFunc("GET /api/formations/runs/{runId}/gates/{gateId}/request", c.pendingGateRequest)
+	mux.HandleFunc("GET /api/formations/runs/{runId}/wait", c.wait)
 	c.registerEvidenceRoutes(mux)
 	c.registerFileRoutes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
