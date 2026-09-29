@@ -55,3 +55,6 @@ a.evidence-meta:hover { color: var(--accent); }
   .fmx .run-evidence { left: 10px; right: 10px; width: auto; top: 10px; }
   .fmx .run-evidence .pop-body { max-height: calc(100vh - 80px); }
 }
+
+/* A block the run later resumed past is history, not why the run stopped. */
+.node-evidence-verdict.fail.resumed{opacity:.72;}

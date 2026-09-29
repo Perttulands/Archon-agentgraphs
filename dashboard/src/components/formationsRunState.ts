@@ -167,7 +167,7 @@ export function projectNodeAttempts(events: RunEvent[]): Map<string, number> {
   return projectRun(events).attempts
 }
 
-export type RunPointKind = 'waiting' | 'running' | 'blocked' | 'failed'
+export type RunPointKind = 'waiting' | 'running' | 'blocked' | 'failed' | 'canceled'
 
 /** Where a run is now: the node it waits at, runs, or stopped on. */
 export interface RunPoint {
@@ -205,6 +205,11 @@ export function runCurrentPoint(events: RunEvent[], run: RunStatusProjection | n
     const nodeId = latest('failed')
     return { kind: 'failed', nodeId, gate: gates.has(nodeId) }
   }
+  if (run.status === 'canceled') {
+    // A cancel names no node: it stopped the gate waiting for an answer, else the node in flight.
+    const nodeId = openHumanGateId(events.filter(event => event.type !== 'run_canceled')) || latest('running') || latest('blocked')
+    return { kind: 'canceled', nodeId, gate: gates.has(nodeId) }
+  }
   if (run.status === 'running') {
     const nodeId = latest('running')
     return nodeId ? { kind: 'running', nodeId, gate: gates.has(nodeId), attempt: attempts.get(nodeId) } : null
@@ -229,6 +234,8 @@ export function runPointPhrase(point: RunPoint, title: string, reason = '', paus
       return `${where ? `blocked at ${where}` : 'blocked'}${reason ? `: ${reason}` : ''}`
     case 'failed':
       return where ? `failed at ${where}` : ''
+    case 'canceled':
+      return where ? `canceled at ${where}` : ''
   }
 }
 

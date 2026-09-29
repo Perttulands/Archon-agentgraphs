@@ -28,7 +28,7 @@ for (const [button, verdict] of [['Approve', 'pass'], ['Send back', 'fail']]) {
         await response.press('Enter')
         await expect(response).toHaveValue(expected)
       }
-      await panel.getByRole('button', { name: button, exact: true }).click()
+      await panel.getByRole('button', { name: new RegExp(`^${button}`) }).click()
       await expect.poll(() => payloads.length).toBe(1)
       expect(payloads[0]).toEqual({ actor: 'agent:ui', requestedSeq: 11, verdict, reason: expected })
       expect(fixture.writes).toEqual([])
@@ -48,7 +48,7 @@ test('unmodified imported text preserves BOM and CRLF in the actual verdict payl
   const text = `\uFEFF${longAnswer.replace(/\n/g, '\r\n')}`
   await panel.getByLabel('Response file', { exact: true }).setInputFiles({ name: 'answer.txt', mimeType: 'text/plain', buffer: Buffer.from(text, 'utf8') })
   await expect(panel.getByRole('status')).toContainText('Draft saved')
-  await panel.getByRole('button', { name: 'Approve', exact: true }).click()
+  await panel.getByRole('button', { name: /^Approve/ }).click()
   await expect.poll(() => payloads.length).toBe(1)
   expect(payloads[0].reason).toBe(text)
 })

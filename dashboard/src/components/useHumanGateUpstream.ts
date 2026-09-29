@@ -18,7 +18,7 @@ export function useHumanGateUpstream(runId: string, gate: { gateId: string; requ
       .then(request => {
         if (cancelled) return
         const upstream: GateUpstream = request.requestedSeq === requestedSeq
-          ? { state: 'ready', from: request.input.fromNodeId || 'upstream step', text: request.input.text, truncated: request.input.truncated, criterion: request.criterion }
+          ? { state: 'ready', from: request.input.fromNodeId || 'upstream step', text: request.input.text, truncated: request.input.truncated, criterion: request.criterion, routes: request.routes }
           : { state: 'unavailable', message: 'This gate request changed; refresh the run.' }
         setLoaded({ key: requestKey, upstream })
       })
