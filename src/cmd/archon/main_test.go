@@ -320,7 +320,21 @@ func TestArchonAgentModelAndEffortDriveSpawn(t *testing.T) {
 	}
 }
 
+// withFakeHarnesses puts stub claude and codex executables first on PATH.
+// Spawning resolves the harness binary, and CI runners have neither installed.
+func withFakeHarnesses(t *testing.T) {
+	t.Helper()
+	binDir := t.TempDir()
+	for _, name := range []string{"claude", "codex"} {
+		if err := os.WriteFile(filepath.Join(binDir, name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
 func TestArchonAgentSpawnUsesFakeTmuxWithoutDuplicateSession(t *testing.T) {
+	withFakeHarnesses(t)
 	withoutArchonTmuxPrefix(t)
 	agentsDir := t.TempDir()
 	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
@@ -346,6 +360,7 @@ func TestArchonAgentSpawnUsesFakeTmuxWithoutDuplicateSession(t *testing.T) {
 }
 
 func TestArchonAgentSpawnListAttachUseTmuxSessionPrefix(t *testing.T) {
+	withFakeHarnesses(t)
 	agentsDir := t.TempDir()
 	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
 	t.Setenv("CHROTE_FORMATIONS_TMUX_SESSION_PREFIX", "dogfood-")
@@ -388,6 +403,7 @@ func TestArchonAgentSpawnListAttachUseTmuxSessionPrefix(t *testing.T) {
 }
 
 func TestArchonAgentSpawnAndAttachUseExplicitHarnessStem(t *testing.T) {
+	withFakeHarnesses(t)
 	withoutArchonTmuxPrefix(t)
 	agentsDir := t.TempDir()
 	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
