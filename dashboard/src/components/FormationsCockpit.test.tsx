@@ -136,6 +136,7 @@ function installFetchMock(options: {
   emptyBoards?: boolean
   freshCreateLayout?: boolean
   missionCreateFailure?: boolean
+  wireFailure?: boolean
   removalFailure?: boolean
   removalGate?: Promise<void>
   boards?: TestBoard[]
@@ -288,6 +289,39 @@ function installFetchMock(options: {
     if (init?.method === 'PATCH') {
       const body = JSON.parse(String(init.body)) as Record<string, unknown>
       patches.push({ url, body })
+      if (body.wireConnection || body.rewireConnection) {
+        if (options.wireFailure) return reject('Input already has a feed')
+        const edit = (body.wireConnection || body.rewireConnection) as { from: string; to: string; previousTo?: string; joinIfOccupied?: boolean; removePreviousInput?: boolean }
+        const connections = board.connections.filter(edge => !(edit.previousTo && edge.from === edit.from && edge.to === edit.previousTo))
+        let to = edit.to
+        let formations = structuredClone(board.formations)
+        if (connections.some(edge => edge.to === to)) {
+          const target = formations.find(item => item.id === to.split(':')[0])
+          if (!target || !edit.joinIfOccupied) return reject('Input already has a feed')
+          const port = { id: `join_${board.rev}`, label: 'Input' }
+          target.inputs.push(port)
+          to = `${target.id}:${port.id}`
+        }
+        if (edit.removePreviousInput) {
+          const [nodeId, portId] = edit.previousTo!.split(':')
+          formations = formations.map(item => item.id === nodeId ? { ...item, inputs: item.inputs.filter(port => port.id !== portId) } : item)
+        }
+        board = { ...board, formations, rev: board.rev + 1, connections: [...connections, { id: `edge_${board.rev}`, from: edit.from, to }] }
+        return respond({ board }, `board-${board.rev}`)
+      }
+      if (body.removePort) {
+        const { formationId, portId } = body.removePort as { formationId: string; portId: string }
+        board = { ...board, rev: board.rev + 1,
+          formations: board.formations.map(item => item.id === formationId ? { ...item, inputs: item.inputs.filter(port => port.id !== portId) } : item),
+          connections: board.connections.filter(edge => edge.to !== `${formationId}:${portId}` && edge.from !== `${formationId}:${portId}`),
+        }
+        return respond({ board }, `board-${board.rev}`)
+      }
+      if (body.unwireConnection) {
+        const { from, to } = body.unwireConnection as { from: string; to: string }
+        board = { ...board, rev: board.rev + 1, connections: board.connections.filter(edge => edge.from !== from || edge.to !== to) }
+        return respond({ board }, `board-${board.rev}`)
+      }
       if (!url.endsWith('/layout') && typeof body.title === 'string') {
         board = { ...board, title: body.title, rev: board.rev + 1, etag: 'board-etag-2' }
         availableBoards = availableBoards.map(item => item.slug === board.slug ? board : item)
@@ -543,6 +577,57 @@ describe('FormationsCockpit reference parity', () => {
 
   it('falls back to default text size outside a SessionProvider', async () => {
     await renderCockpit()
+  })
+
+  it.each([false, true])('joins a fed input and undoes the port and wire together (reconnect=%s)', async reconnect => {
+    const { container } = await renderCockpit()
+    const source = container.querySelector<HTMLElement>(reconnect ? '[data-port-in="fmn_frame:port_frame_in"]' : '[data-port-out="fmn_frame:port_frame_out"]')!
+    const target = container.querySelector<HTMLElement>('[data-port-in="fmn_judge:port_judge_in"]')!
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target })
+    try {
+      fireEvent.pointerDown(source, { button: 0, pointerId: 77, clientX: 300, clientY: 200 })
+      fireEvent.pointerMove(window, { pointerId: 77, clientX: 600, clientY: 400 })
+      fireEvent.pointerUp(window, { pointerId: 77, clientX: 600, clientY: 400 })
+      await waitFor(() => expect(container.querySelectorAll('[data-port-in^="fmn_judge:"]')).toHaveLength(2))
+      expect(patches.map(patch => patch.body[reconnect ? 'rewireConnection' : 'wireConnection']).filter(Boolean)).toEqual([
+        expect.objectContaining({ to: 'fmn_judge:port_judge_in', joinIfOccupied: true }),
+      ])
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+      await waitFor(() => expect(container.querySelectorAll('[data-port-in^="fmn_judge:"]')).toHaveLength(1))
+      if (reconnect) {
+        expect(patches[patches.length - 1]?.body.rewireConnection).toEqual({ from: 'mis_showcase:out', previousTo: 'fmn_judge:join_7', to: 'fmn_frame:port_frame_in', removePreviousInput: true })
+        expect(screen.getByTestId('formation-node-fmn_frame').querySelector('[data-port-in].has')).not.toBeNull()
+      } else {
+        expect(patches[patches.length - 1]?.body.removePort).toEqual({ formationId: 'fmn_judge', portId: 'join_7' })
+      }
+      const count = patches.length
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+      await act(async () => { await Promise.resolve() })
+      expect(patches).toHaveLength(count)
+    } finally {
+      delete (document as { elementFromPoint?: unknown }).elementFromPoint
+    }
+  })
+
+  it.each([false, true])('records no undo after a failed wire (reconnect=%s)', async reconnect => {
+    patches = installFetchMock({ wireFailure: true })
+    const { container } = await renderCockpit()
+    const source = container.querySelector<HTMLElement>(reconnect ? '[data-port-in="fmn_frame:port_frame_in"]' : '[data-port-out="fmn_frame:port_frame_out"]')!
+    const target = container.querySelector<HTMLElement>('[data-port-in="fmn_judge:port_judge_in"]')!
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target })
+    try {
+      fireEvent.pointerDown(source, { button: 0, pointerId: 78, clientX: 300, clientY: 200 })
+      fireEvent.pointerMove(window, { pointerId: 78, clientX: 600, clientY: 400 })
+      fireEvent.pointerUp(window, { pointerId: 78, clientX: 600, clientY: 400 })
+      await screen.findByText('Input already has a feed')
+      const count = patches.length
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+      await act(async () => { await Promise.resolve() })
+      expect(patches).toHaveLength(count)
+      expect(container.querySelectorAll('[data-port-in^="fmn_judge:"]')).toHaveLength(1)
+    } finally {
+      delete (document as { elementFromPoint?: unknown }).elementFromPoint
+    }
   })
 
   it('labels gate wires beside the gate, draws a loop as a dashed back-reference and names the judge chain', async () => {

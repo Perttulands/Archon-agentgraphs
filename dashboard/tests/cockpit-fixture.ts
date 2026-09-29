@@ -80,8 +80,17 @@ const succeededEvidence: Record<string, unknown> = {
   '/api/formations/runs/run_browser/evidence/artifacts/logs/worker.log': { artifact: { name: 'logs/worker.log', size: 40, modifiedAt: '2026-09-16T00:00:00Z', kind: 'text', text: evidenceText('worker started\nworker finished') } },
 }
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean } = {}) {
+export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; join?: boolean } = {}) {
+  const currentBoard = structuredClone(board)
+  if (options.join) {
+    currentBoard.formations = ['a', 'b', 'c', 'sink'].map(id => ({ ...structuredClone(board.formations[2]), id, title: id === 'sink' ? 'Join' : `Solo ${id.toUpperCase()}` }))
+    currentBoard.missions = []
+    currentBoard.gates = []
+    currentBoard.connections = []
+  }
+  const boardState = () => currentBoard
   let nodes = positions.map(p => ({ ...p, x: p.x + (options.far ? 1800 : 0) }))
+  if (options.join) nodes = [{ id: 'a', x: 100, y: 80 }, { id: 'b', x: 100, y: 350 }, { id: 'c', x: 100, y: 620 }, { id: 'sink', x: 650, y: 350 }]
   let seatsFetches = 0
   let themeFetches = 0
   const writes: string[] = []
@@ -97,7 +106,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
       themeFetches++
       return route.fulfill(options.themeFailure ? { status: 500, json: { error: 'Unavailable' } } : { json: defaultTheme })
     }
-    if (path === '/api/formations/boards') return respond({ boards: [board] })
+    if (path === '/api/formations/boards') return respond({ boards: [boardState()] })
     if (path.endsWith('/notes')) return respond({ notes: { schema: 2, boardId: board.id, rev: 1,
       board: [{ id: 'nte_board', author: 'human:ui', createdAt: '2026-09-12T00:00:00Z', text: 'Keep the current graph and harness identities.' }],
       elements: [{ nodeId: 'execution', entries: [
@@ -108,7 +117,45 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
       if (method === 'PATCH') nodes = positions.map(p => ({ ...p }))
       return respond({ layout: { boardId: board.id, boardRev: 1, etag: 'layout-1', nodes, edges: [] } })
     }
-    if (path === '/api/formations/boards/browser') return respond({ board })
+    if (path === '/api/formations/boards/browser') {
+      if (method === 'PATCH') {
+        const body = route.request().postDataJSON()
+        const edit = body.wireConnection || body.rewireConnection
+        if (edit) {
+          const edges = currentBoard.connections.filter(edge => !(body.rewireConnection && edge.from === edit.from && edge.to === edit.previousTo))
+          const reject = (code: string, message: string) => route.fulfill({ status: 409, json: { success: false, error: { code, message } } })
+          if (edit.from.split(':')[0] === edit.to.split(':')[0]) return reject('SELF_WIRE', 'A node cannot be wired to itself')
+          if (edges.some(edge => edge.from === edit.from && edge.to === edit.to)) return reject('DUPLICATE_CONNECTION', 'This connection already exists')
+          let to = edit.to
+          if (edges.some(edge => edge.to === to)) {
+            const formation = currentBoard.formations.find(item => item.id === to.split(':')[0])
+            if (!edit.joinIfOccupied || !formation) return reject('INPUT_OCCUPIED', 'Input already has a feed')
+            const port = { id: `join_${currentBoard.rev}`, label: 'Input' }
+            formation.inputs.push(port)
+            to = `${formation.id}:${port.id}`
+          }
+          if (edit.removePreviousInput) {
+            const [nodeId, portId] = edit.previousTo.split(':')
+            if (edges.some(edge => edge.to === edit.previousTo || edge.from === edit.previousTo)) return reject('INPUT_OCCUPIED', 'Input already has a feed')
+            const formation = currentBoard.formations.find(item => item.id === nodeId)!
+            formation.inputs = formation.inputs.filter(port => port.id !== portId)
+          }
+          currentBoard.connections = [...edges, { id: `edge_${currentBoard.rev}`, from: edit.from, to }]
+        } else if (body.removePort) {
+          const { formationId, portId } = body.removePort
+          const formation = currentBoard.formations.find(item => item.id === formationId)!
+          formation.inputs = formation.inputs.filter(port => port.id !== portId)
+          currentBoard.connections = currentBoard.connections.filter(edge => edge.to !== `${formationId}:${portId}` && edge.from !== `${formationId}:${portId}`)
+        } else if (body.unwireConnection) {
+          currentBoard.connections = currentBoard.connections.filter(edge => edge.from !== body.unwireConnection.from || edge.to !== body.unwireConnection.to)
+        } else {
+          return route.fulfill({ status: 400, json: { success: false, error: { message: 'Unsupported fixture edit' } } })
+        }
+        currentBoard.rev++
+        currentBoard.etag = `board-${currentBoard.rev}`
+      }
+      return respond({ board: boardState() })
+    }
     if (path.endsWith('/changes')) return respond({ signal: { changed: false } })
     if (path === '/api/formations/gate-profiles') return respond({ profiles: [] })
     if (path === '/api/agents') return respond({ agents: [
@@ -137,5 +184,5 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path.endsWith('/seats')) { seatsFetches++; return respond({ runId: 'run_browser', available: true, seats }) }
     return route.fulfill({ status: 404, json: { success: false, error: { message: `Fixture has no ${path}` } } })
   })
-  return { writes, seatsFetches: () => seatsFetches, themeFetches: () => themeFetches }
+  return { writes, board: boardState, seatsFetches: () => seatsFetches, themeFetches: () => themeFetches }
 }

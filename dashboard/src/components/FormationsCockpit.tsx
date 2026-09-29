@@ -165,7 +165,7 @@ type CockpitUndo =
   | { kind: 'setExecution'; formationId: string; timeoutSeconds: number }
   | { kind: 'wireConnection'; from: string; to: string }
   | { kind: 'unwireConnection'; from: string; to: string }
-  | { kind: 'rewireConnection'; from: string; previousTo: string; to: string }
+  | { kind: 'rewireConnection'; from: string; previousTo: string; to: string; removePreviousInput?: boolean }
   | { kind: 'rewireSource'; previousFrom: string; from: string; to: string }
   | { kind: 'deleteFormation'; id: string }
   | { kind: 'deleteGate'; id: string }
@@ -993,7 +993,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         patch = { unwireConnection: { from: action.from, to: action.to } }
         break
       case 'rewireConnection':
-        patch = { rewireConnection: { from: action.from, previousTo: action.previousTo, to: action.to } }
+        patch = { rewireConnection: { from: action.from, previousTo: action.previousTo, to: action.to, ...(action.removePreviousInput ? { removePreviousInput: true } : {}) } }
         break
       case 'deleteFormation':
         patch = { deleteFormation: { id: action.id } }
@@ -1065,16 +1065,31 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     }
   }, [active, menu])
 
-  const wire = useCallback((from: string, to: string) => {
+  const wire = useCallback(async (from: string, to: string) => {
     if (!from || !to || from.split(':')[0] === to.split(':')[0]) return
-    undoStack.current.push({ kind: 'unwireConnection', from, to })
-    void patchBoard({ wireConnection: { from, to } })
+    const previous = boardRef.current
+    if (!previous) return
+    const result = await patchBoard({ wireConnection: { from, to, joinIfOccupied: true } })
+    if (!result) return
+    const added = result.board.connections.find(edge => edge.from === from && !previous.connections.some(old => old.id === edge.id))
+    if (!added) return
+    if (added.to !== to) {
+      const [formationId, portId] = added.to.split(':')
+      undoStack.current.push({ kind: 'removePort', formationId, portId })
+    } else {
+      undoStack.current.push({ kind: 'unwireConnection', from, to })
+    }
   }, [patchBoard])
 
-  const rewireTarget = useCallback((connection: BoardConnection, to: string) => {
+  const rewireTarget = useCallback(async (connection: BoardConnection, to: string) => {
     if (!to || connection.to === to || connection.from.split(':')[0] === to.split(':')[0]) return
-    undoStack.current.push({ kind: 'rewireConnection', from: connection.from, previousTo: to, to: connection.to })
-    void patchBoard({ rewireConnection: { from: connection.from, previousTo: connection.to, to } })
+    const previous = boardRef.current
+    if (!previous) return
+    const result = await patchBoard({ rewireConnection: { from: connection.from, previousTo: connection.to, to, joinIfOccupied: true } })
+    if (!result) return
+    const added = result.board.connections.find(edge => edge.from === connection.from && !previous.connections.some(old => old.id === edge.id))
+    if (!added) return
+    undoStack.current.push({ kind: 'rewireConnection', from: connection.from, previousTo: added.to, to: connection.to, removePreviousInput: added.to !== to })
   }, [patchBoard])
 
   const removeWire = useCallback((connection: BoardConnection) => {
