@@ -156,9 +156,9 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 			return fail(stderr, err)
 		}
 		if *mission == "" {
-			id, err := soleInputCard(&board.Data.Board, pos[0])
+			id, err := runInputCard(&board.Data.Board, pos[0])
 			if err != nil {
-				return fail(stderr, err)
+				return failJSON(stderr, err, *jsonOut, "run", "")
 			}
 			*mission = id
 		}

@@ -182,7 +182,7 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 		})
 	}
 	if len(board.Missions) > 1 {
-		report.Errors = append(report.Errors, severalInputCardsFinding(board))
+		report.Errors = append(report.Errors, SeveralInputCardsFinding(board))
 	}
 	for _, mission := range board.Missions {
 		if _, err := NormalizeHumanChannel(mission.HumanChannel); err != nil {
@@ -206,11 +206,11 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	return report
 }
 
-// severalInputCardsFinding reports a file saved before one mission per file,
+// SeveralInputCardsFinding reports a file saved before one mission per file,
 // when a board could hold several mission nodes. It still loads and stays
 // editable; the finding names its Input cards and how to split it, and
 // admission refuses every run from it with the same message.
-func severalInputCardsFinding(board *BoardDocument) BoardFinding {
+func SeveralInputCardsFinding(board *BoardDocument) BoardFinding {
 	cards := make([]string, 0, len(board.Missions))
 	for _, mission := range board.Missions {
 		cards = append(cards, fmt.Sprintf("%q (%s)", mission.Title, mission.ID))

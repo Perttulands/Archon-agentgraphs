@@ -1533,11 +1533,8 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 	}
 	missionID := *missionSelector
 	if missionID == "" {
-		if len(board.Missions) > 1 {
-			return failJSON(stderr, fmt.Errorf("%w: mission %q has %d Input cards; pass --input", formations.ErrConflict, slug, len(board.Missions)), *jsonOut, "mission", "")
-		}
-		if missionID, err = soleInputCard(board, slug); err != nil {
-			return failJSON(stderr, err, *jsonOut, "mission", "")
+		if missionID, err = runInputCard(board, slug); err != nil {
+			return failJSON(stderr, err, *jsonOut, "run", "")
 		}
 	} else if resolved, err := resolveMissionSelector(board, missionID); err != nil {
 		return failSelector(stderr, err, *jsonOut, "mission", missionID)

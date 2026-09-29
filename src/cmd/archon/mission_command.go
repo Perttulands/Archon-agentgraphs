@@ -73,6 +73,16 @@ func inputCardArgs(board *formations.BoardDocument, missionSelector string, args
 	return id, args, err
 }
 
+// runInputCard picks the Input card a run starts from when none is named. A
+// file with several cannot run at all, so it answers with the admission
+// finding that says how to split it rather than asking which card.
+func runInputCard(board *formations.BoardDocument, missionSelector string) (string, error) {
+	if len(board.Missions) > 1 {
+		return "", &formations.RunAdmissionError{Findings: []formations.BoardFinding{formations.SeveralInputCardsFinding(board)}}
+	}
+	return soleInputCard(board, missionSelector)
+}
+
 // soleInputCard names the mission's Input card when it has exactly one.
 func soleInputCard(board *formations.BoardDocument, missionSelector string) (string, error) {
 	switch len(board.Missions) {

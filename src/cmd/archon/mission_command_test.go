@@ -150,7 +150,7 @@ func TestArchonMissionCommandsAskWhichInputCardWhenThereAreSeveral(t *testing.T)
 			t.Fatalf("%v code=%d stderr=%s", args, code, stderr)
 		}
 	}
-	if _, stderr, code := archon("mission", "run", "legacy"); code == 0 || !strings.Contains(stderr, `mission "legacy" has 2 Input cards; pass --input`) {
+	if _, stderr, code := archon("mission", "run", "legacy"); code == 0 || !strings.Contains(stderr, `mission "legacy" holds 2 Input cards`) || !strings.Contains(stderr, "Split it") {
 		t.Fatalf("run code=%d stderr=%s", code, stderr)
 	}
 	if _, stderr, code := archon("mission", "update", "legacy", "Second", "--goal", "Named"); code != 0 {
