@@ -135,10 +135,16 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     expect(await screen.findByText('First judge')).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: 'Board' })).toHaveValue('judged')
+    expect(screen.getByRole('combobox', { name: 'Mission' })).toHaveValue('judged')
+    expect(screen.getByRole('combobox', { name: 'Input card' })).toBeInTheDocument()
+    // Apart from the missions' own titles in the picker, nothing says board.
+    const view = screen.getByTestId('agents-view').cloneNode(true) as HTMLElement
+    view.querySelectorAll('option').forEach(option => option.remove())
+    const words = [view.textContent || '', ...[...view.querySelectorAll('[aria-label],[title]')].map(element => `${element.getAttribute('aria-label') || ''} ${element.getAttribute('title') || ''}`)].join('\n')
+    expect(words).not.toMatch(/\bboards?\b/i)
     expect(window.location.search).toBe('?board=judged')
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Board' }), { target: { value: 'mission-board' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Mission' }), { target: { value: 'mission-board' } })
     expect(await screen.findByText('Authoring')).toBeInTheDocument()
     expect(window.location.search).toBe('?board=mission-board')
     expect(window.localStorage.getItem('archon.currentBoard.v1')).toBe('mission-board')
@@ -292,7 +298,7 @@ describe('AgentsView', () => {
     const run = await screen.findByTestId('mission-run')
     await waitFor(() => expect(run).toHaveTextContent('Waiting for your answer'))
     expect(run).toHaveTextContent('waiting on Human Review')
-    expect(within(run).getByRole('link', { name: 'Open on Boards' })).toHaveAttribute('href', '?board=mission-board&run=run_01B_cli')
+    expect(within(run).getByRole('link', { name: 'Open on Missions' })).toHaveAttribute('href', '?board=mission-board&run=run_01B_cli')
     for (const action of [/start mission/i, /^pass$/i, /^fail$/i, /^resume/i, /^stop$/i]) {
       expect(screen.queryByRole('button', { name: action })).toBeNull()
     }
@@ -332,7 +338,7 @@ describe('AgentsView', () => {
 
     const run = await screen.findByTestId('mission-run')
     await waitFor(() => expect(run).toHaveTextContent('blocked: invalid judge result: expected exactly one chrote-verdict block'))
-    expect(within(run).getByRole('link', { name: 'Open on Boards' })).toHaveAttribute('href', '?board=mission-board&run=run_01D_blocked')
+    expect(within(run).getByRole('link', { name: 'Open on Missions' })).toHaveAttribute('href', '?board=mission-board&run=run_01D_blocked')
   })
 
   it('edits a persona from the Agents tab with the shared persona editor', async () => {
@@ -466,12 +472,12 @@ describe('AgentsView', () => {
 
     render(<AgentsView />)
 
-    expect(await screen.findByText(/Board load failed:/)).toBeInTheDocument()
+    expect(await screen.findByText(/Mission load failed:/)).toBeInTheDocument()
     failBoard = false
     fireEvent.click(screen.getByRole('button', { name: /retry board/i }))
 
     expect(await screen.findByText(/No personas yet/)).toBeInTheDocument()
-    expect(screen.queryByText(/Board load failed:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Mission load failed:/)).not.toBeInTheDocument()
   })
 
   it('keeps slot eligibility usable when one persona detail load fails', async () => {

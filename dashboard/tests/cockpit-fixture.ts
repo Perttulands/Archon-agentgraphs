@@ -156,7 +156,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
           const node = mission || formation || gate
           const key = mission ? 'missions' : formation ? 'formations' : 'gates'
           const taken = [...currentBoard.missions, ...currentBoard.formations, ...currentBoard.gates].some(item => item.id === node.id)
-          if (taken) return route.fulfill({ status: 409, json: { success: false, error: { code: 'INVALID_NODE_RESTORE', message: `node "${node.id}" is already on the board` } } })
+          if (taken) return route.fulfill({ status: 409, json: { success: false, error: { code: 'INVALID_NODE_RESTORE', message: `node "${node.id}" is already in the mission` } } })
           ;(currentBoard[key] as unknown[]).splice(index ?? (currentBoard[key] as unknown[]).length, 0, node)
           currentBoard.connections = [...currentBoard.connections, ...connections]
           nodes = [...nodes, { id: node.id, x, y }]

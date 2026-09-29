@@ -83,7 +83,7 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Wayfind
 
   // A file link in a node window opens its file near that window, clear of it.
   await page.getByTestId(`mission-node-${board.missions[0].id}`).locator('.mtitle').click()
-  const missionWindow = page.getByRole('dialog', { name: 'Mission · Wayfinding' })
+  const missionWindow = page.getByRole('dialog', { name: 'Input card · Wayfinding' })
   await missionWindow.getByRole('button', { name: 'Open file /srv/projects/wayfinding/sketch.md' }).click()
   const sketch = page.getByRole('dialog', { name: 'file sketch.md' })
   await expect(sketch.getByRole('alert')).toContainText('file is not readable here')

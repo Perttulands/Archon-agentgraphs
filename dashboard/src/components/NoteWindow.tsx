@@ -35,7 +35,7 @@ export default function NoteWindow({ target, title, anchor, keepClear, entries, 
   onClose: () => void
 }) {
   const board = target === BOARD_NOTE_TARGET
-  const subject = board ? 'the board' : title
+  const subject = board ? 'the mission' : title
   const reply = useRef<HTMLTextAreaElement>(null)
   // A new window is ready to write in; it opens after the window takes focus.
   useEffect(() => {
@@ -46,8 +46,8 @@ export default function NoteWindow({ target, title, anchor, keepClear, entries, 
     <FloatingWindow
       id={noteWindowId(target)}
       kind="note"
-      title={board ? 'Board notes' : `Notes · ${title}`}
-      label={board ? 'board notes' : `notes for ${title}`}
+      title={board ? 'Mission notes' : `Notes · ${title}`}
+      label={board ? 'mission notes' : `notes for ${title}`}
       defaultSize={{ width: 400, height: 440 }}
       anchor={anchor}
       keepClear={keepClear}
@@ -59,7 +59,7 @@ export default function NoteWindow({ target, title, anchor, keepClear, entries, 
         <p className="note-purpose">Notes record intent. Agents must incorporate them into briefs to change the work.</p>
         {entries.length ? (
           <NoteThread
-            label={board ? 'Board note thread' : `Note thread for ${title}`}
+            label={board ? 'Mission note thread' : `Note thread for ${title}`}
             entries={entries}
             editingEntryId={editingEntryId}
             busy={saving}

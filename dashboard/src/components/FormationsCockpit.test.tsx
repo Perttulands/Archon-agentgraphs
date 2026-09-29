@@ -351,7 +351,7 @@ function installFetchMock(options: {
         const taken = [...board.missions, ...board.formations, ...board.gates].some(item => item.id === node.id)
         if (taken || options.restoreFailure) return Promise.resolve({
           ok: false, status: 409, headers: { get: () => null },
-          json: () => Promise.resolve({ success: false, error: { code: 'INVALID_NODE_RESTORE', message: `node "${node.id}" is already on the board` } }),
+          json: () => Promise.resolve({ success: false, error: { code: 'INVALID_NODE_RESTORE', message: `node "${node.id}" is already in the mission` } }),
           text: () => Promise.resolve(''),
         })
         board = { ...board, rev: board.rev + 1, [key]: [...(board[key] as unknown[]), node], connections: [...board.connections, ...restore.connections] } as TestBoard
@@ -619,6 +619,12 @@ function installFetchMock(options: {
   return patches
 }
 
+/** A mission saved before its Input card was added: the canvas offers the Input card. */
+function missionlessBoard() {
+  const board = makeBoard()
+  return { ...board, missions: [], connections: board.connections.filter(edge => !edge.from.startsWith(`${mission.id}:`)) }
+}
+
 async function renderCockpit() {
   const utils = render(<FormationsCockpit />)
   await screen.findByTestId('formation-node-fmn_frame')
@@ -751,11 +757,32 @@ describe('FormationsCockpit reference parity', () => {
     expect(patches).toEqual([])
   })
 
+  // The reusable unit is a mission and its entry node is the Input card; no
+  // label, button, menu or accessible name calls either of them a board.
+  it('names the unit a mission and its entry the Input card, never a board', async () => {
+    patches = installFetchMock({ boards: [{ ...makeBoard(), title: 'Delivery' }] })
+    const { container } = await renderCockpit()
+    const accessibleText = () => [container.textContent || '', ...[...container.querySelectorAll('[aria-label],[title],[placeholder]')]
+      .flatMap(element => ['aria-label', 'title', 'placeholder'].map(name => element.getAttribute(name) || ''))].join('\n')
+    expect(screen.getByRole('combobox', { name: 'Mission' })).toHaveValue('test-board')
+    expect(screen.getByTestId('new-board')).toHaveTextContent('New mission')
+    expect(screen.getByRole('button', { name: 'Mission notes' })).toBeInTheDocument()
+    expect(screen.getByTestId(`mission-node-${mission.id}`)).toHaveTextContent('◆ Input')
+    fireEvent.contextMenu(screen.getByTestId(`mission-node-${mission.id}`))
+    const actions = await screen.findByRole('menu', { name: 'Input card actions' })
+    expect(within(actions).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Start mission', 'Delete Input card'])
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(accessibleText()).not.toMatch(/\bboards?\b/i)
+    fireEvent.click(screen.getByRole('radio', { name: 'Flow' }))
+    await screen.findByRole('region', { name: 'Input card Showcase' })
+    expect(accessibleText()).not.toMatch(/\bboards?\b/i)
+  })
+
   it('does not fabricate a starter board when no real boards exist', async () => {
     patches = installFetchMock({ emptyBoards: true })
     render(<FormationsCockpit />)
-    expect(await screen.findByTestId('formations-empty-board')).toHaveTextContent('No persisted formation boards')
-    expect(screen.getByTestId('board-picker')).toHaveTextContent('No boards')
+    expect(await screen.findByTestId('formations-empty-board')).toHaveTextContent('No missions yet')
+    expect(screen.getByTestId('board-picker')).toHaveTextContent('No missions')
     expect(screen.queryByText('Improve session search')).toBeNull()
     expect(screen.getByTestId('new-board')).toBeEnabled()
     expect(screen.getByTestId('new-formation')).toBeDisabled()
@@ -768,25 +795,25 @@ describe('FormationsCockpit reference parity', () => {
     await screen.findByTestId('formations-empty-board')
 
     fireEvent.click(screen.getByTestId('new-board'))
-    const dialog = await screen.findByRole('dialog', { name: 'Create board' })
-    fireEvent.change(within(dialog).getByLabelText('Board name'), { target: { value: 'Release Plan' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create board' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Create mission' })
+    fireEvent.change(within(dialog).getByLabelText('Mission name'), { target: { value: 'Release Plan' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create mission' }))
 
     await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveValue('release-plan'))
     expect(screen.getByTestId('board-picker')).toHaveTextContent('Release Plan')
-    expect(screen.getByTestId('formations-empty-board')).toHaveTextContent('This board is empty')
+    expect(screen.getByTestId('formations-empty-board')).toHaveTextContent('This mission is empty')
     expect(recordedMutations).toContainEqual({ method: 'POST', url: '/api/formations/boards' })
   })
 
   it('renames the selected board through the top-bar board controls', async () => {
     await renderCockpit()
-    fireEvent.click(screen.getByRole('button', { name: 'Rename board' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Rename board' })
+    fireEvent.click(screen.getByRole('button', { name: 'Rename mission' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Rename mission' })
     expect(screen.getByTestId('board-picker')).toBeDisabled()
-    const input = within(dialog).getByLabelText('Board name')
+    const input = within(dialog).getByLabelText('Mission name')
     expect(input).toHaveValue('Test board')
     fireEvent.change(input, { target: { value: 'Delivery map' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save board name' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save mission name' }))
 
     await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveTextContent('Delivery map'))
     expect(patches.some(patch => patch.body.title === 'Delivery map')).toBe(true)
@@ -794,15 +821,15 @@ describe('FormationsCockpit reference parity', () => {
 
   it('archives a board only after explicit confirmation', async () => {
     await renderCockpit()
-    const trigger = screen.getByRole('button', { name: 'Delete board' })
+    const trigger = screen.getByRole('button', { name: 'Delete mission' })
     fireEvent.click(trigger)
-    const dialog = await screen.findByRole('dialog', { name: 'Delete board' })
+    const dialog = await screen.findByRole('dialog', { name: 'Delete mission' })
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus()
     expect(dialog).toHaveTextContent('archived')
     expect(recordedMutations.some(mutation => mutation.method === 'DELETE')).toBe(false)
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Archive board' }))
-    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveTextContent('No boards'))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Archive mission' }))
+    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveTextContent('No missions'))
     expect(recordedMutations).toContainEqual({ method: 'DELETE', url: '/api/formations/boards/test-board' })
   })
 
@@ -810,37 +837,37 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
     const trigger = screen.getByTestId('new-board')
     fireEvent.click(trigger)
-    expect(await screen.findByLabelText('Board name')).toHaveFocus()
+    expect(await screen.findByLabelText('Mission name')).toHaveFocus()
     fireEvent.keyDown(window, { key: 'Escape' })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Create board' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Create mission' })).toBeNull())
     await waitFor(() => expect(trigger).toHaveFocus())
   })
 
   it('rechecks note drafts before creating a board from an open dialog', async () => {
     await renderCockpit()
-    fireEvent.click(screen.getByRole('button', { name: 'Board notes' }))
-    const boardNote = await screen.findByRole('textbox', { name: 'Note for the board' })
+    fireEvent.click(screen.getByRole('button', { name: 'Mission notes' }))
+    const boardNote = await screen.findByRole('textbox', { name: 'Note for the mission' })
     fireEvent.click(screen.getByTestId('new-board'))
-    const dialog = await screen.findByRole('dialog', { name: 'Create board' })
-    fireEvent.change(within(dialog).getByLabelText('Board name'), { target: { value: 'Should not create' } })
+    const dialog = await screen.findByRole('dialog', { name: 'Create mission' })
+    fireEvent.change(within(dialog).getByLabelText('Mission name'), { target: { value: 'Should not create' } })
     fireEvent.change(boardNote, { target: { value: 'Draft made after dialog opened' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create board' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create mission' }))
 
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Create board' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Create mission' })).toBeNull())
     expect(boardNote).toHaveValue('Draft made after dialog opened')
     expect(recordedMutations.some(mutation => mutation.method === 'POST' && mutation.url === '/api/formations/boards')).toBe(false)
   })
 
   it('rechecks note drafts before archiving from an open dialog', async () => {
     await renderCockpit()
-    fireEvent.click(screen.getByRole('button', { name: 'Board notes' }))
-    const boardNote = await screen.findByRole('textbox', { name: 'Note for the board' })
-    fireEvent.click(screen.getByRole('button', { name: 'Delete board' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Delete board' })
+    fireEvent.click(screen.getByRole('button', { name: 'Mission notes' }))
+    const boardNote = await screen.findByRole('textbox', { name: 'Note for the mission' })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete mission' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Delete mission' })
     fireEvent.change(boardNote, { target: { value: 'Draft made after delete opened' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Archive board' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Archive mission' }))
 
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Delete board' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Delete mission' })).toBeNull())
     expect(boardNote).toHaveValue('Draft made after delete opened')
     expect(recordedMutations.some(mutation => mutation.method === 'DELETE')).toBe(false)
   })
@@ -899,17 +926,17 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.getByTestId('note-entry-nte_operator')).toHaveTextContent('edited')
     expect(screen.getByTestId('note-entry-nte_agent')).toHaveTextContent('Staffed Mason as the lead.')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Board notes' }))
-    const boardWindow = await screen.findByRole('dialog', { name: 'board notes' })
+    fireEvent.click(screen.getByRole('button', { name: 'Mission notes' }))
+    const boardWindow = await screen.findByRole('dialog', { name: 'mission notes' })
     expect(noteWindow).toBeInTheDocument()
-    const boardThread = within(boardWindow).getByRole('list', { name: 'Board note thread' })
+    const boardThread = within(boardWindow).getByRole('list', { name: 'Mission note thread' })
     fireEvent.click(within(boardThread).getByRole('button', { name: /^Delete your note/ }))
-    await waitFor(() => expect(within(boardWindow).queryByRole('list', { name: 'Board note thread' })).toBeNull())
+    await waitFor(() => expect(within(boardWindow).queryByRole('list', { name: 'Mission note thread' })).toBeNull())
     expect(boardWindow).toHaveTextContent('No notes yet')
 
     fireEvent.click(within(noteWindow).getByRole('button', { name: 'Close notes for Frame' }))
     expect(screen.queryByRole('dialog', { name: 'notes for Frame' })).toBeNull()
-    expect(screen.getByRole('dialog', { name: 'board notes' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'mission notes' })).toBeInTheDocument()
   })
 
   it('adds a note to a node in one action from its note pin', async () => {
@@ -971,9 +998,9 @@ describe('FormationsCockpit reference parity', () => {
   it('preserves a local note draft and offers an explicit reload after a repeated conflict', async () => {
     patches = installFetchMock({ boardNotes: { board: [noteEntry('nte_server', 'agent:archon', 'Server version')] }, notePatchConflict: true })
     await renderCockpit()
-    fireEvent.click(screen.getByRole('button', { name: 'Board notes' }))
-    const boardWindow = await screen.findByRole('dialog', { name: 'board notes' })
-    const boardNote = within(boardWindow).getByRole('textbox', { name: 'Note for the board' })
+    fireEvent.click(screen.getByRole('button', { name: 'Mission notes' }))
+    const boardWindow = await screen.findByRole('dialog', { name: 'mission notes' })
+    const boardNote = within(boardWindow).getByRole('textbox', { name: 'Note for the mission' })
     fireEvent.change(boardNote, { target: { value: 'Local draft' } })
     fireEvent.click(within(boardWindow).getByRole('button', { name: 'Reply' }))
 
@@ -988,21 +1015,21 @@ describe('FormationsCockpit reference parity', () => {
     patches = installFetchMock({ boards: [makeBoard(), second] })
     await renderCockpit()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Board notes' }))
-    const boardNote = await screen.findByRole('textbox', { name: 'Note for the board' })
+    fireEvent.click(screen.getByRole('button', { name: 'Mission notes' }))
+    const boardNote = await screen.findByRole('textbox', { name: 'Note for the mission' })
     fireEvent.change(boardNote, { target: { value: 'Unsaved local context' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Close board notes' }))
-    expect(screen.queryByRole('dialog', { name: 'board notes' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Close mission notes' }))
+    expect(screen.queryByRole('dialog', { name: 'mission notes' })).toBeNull()
     fireEvent.change(screen.getByTestId('board-picker'), { target: { value: 'second-board' } })
 
     expect(screen.getByTestId('board-picker')).toHaveValue('test-board')
-    const reopened = await screen.findByRole('dialog', { name: 'board notes' })
-    expect(within(reopened).getByRole('alert')).toHaveTextContent('Save the current notes before leaving this board')
-    expect(within(reopened).getByRole('textbox', { name: 'Note for the board' })).toHaveValue('Unsaved local context')
-    fireEvent.click(screen.getByRole('button', { name: 'Delete board' }))
-    expect(screen.queryByRole('dialog', { name: 'Delete board' })).toBeNull()
+    const reopened = await screen.findByRole('dialog', { name: 'mission notes' })
+    expect(within(reopened).getByRole('alert')).toHaveTextContent('Save the current notes before leaving this mission')
+    expect(within(reopened).getByRole('textbox', { name: 'Note for the mission' })).toHaveValue('Unsaved local context')
+    fireEvent.click(screen.getByRole('button', { name: 'Delete mission' }))
+    expect(screen.queryByRole('dialog', { name: 'Delete mission' })).toBeNull()
     fireEvent.click(screen.getByTestId('new-board'))
-    expect(screen.queryByRole('dialog', { name: 'Create board' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Create mission' })).toBeNull()
   })
 
   it('keeps loading agent dialogs focused and restores their trigger on Escape', async () => {
@@ -1061,7 +1088,7 @@ describe('FormationsCockpit reference parity', () => {
   it('shows only assignable persona cards in the formation staffing roster', async () => {
     await renderCockpit()
     const roster = screen.getByTestId('agent-roster')
-    expect(screen.getByTestId('roster-count')).toHaveTextContent(/^2 · 1 on board$/)
+    expect(screen.getByTestId('roster-count')).toHaveTextContent(/^2 · 1 on canvas$/)
     expect(roster).toHaveTextContent('Mason')
     expect(roster).toHaveTextContent('Hazel')
     expect(roster).not.toHaveTextContent('scratch')
@@ -1306,30 +1333,32 @@ describe('FormationsCockpit reference parity', () => {
   })
 
   it('creates a Mission with no optional input and rejects only an unsafe Bead ID', async () => {
+    patches = installFetchMock({ boards: [missionlessBoard()] })
     vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1)
     const { container, unmount } = await renderCockpit()
     const viewport = container.querySelector('.viewport') as HTMLElement
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
     const menu = await screen.findByRole('menu', { name: 'New' })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Mission' }))
+    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Input card', 'Solo formation', 'Peer formation', 'Orchestrated formation', 'Gate'])
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Input card' }))
 
-    const dialog = await screen.findByRole('dialog', { name: 'Create mission' })
+    const dialog = await screen.findByRole('dialog', { name: 'Add Input card' })
     expect(menu).not.toBeInTheDocument()
     expect(patches.filter(patch => patch.body.createMission)).toEqual([])
 
     fireEvent.change(screen.getByLabelText('Mission Bead ID'), { target: { value: 'Home-123' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create mission' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Input card' }))
     expect(await screen.findByText('Enter a Beads issue ID such as ctx-ug7.25, or leave it blank.')).toBeInTheDocument()
     expect(screen.getByLabelText('Mission Bead ID')).toHaveAttribute('aria-invalid', 'true')
     expect(patches.filter(patch => patch.body.createMission)).toEqual([])
 
     fireEvent.change(screen.getByLabelText('Mission Bead ID'), { target: { value: '' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create mission' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Input card' }))
 
     await waitFor(() => {
       const create = patches.find(patch => patch.body.createMission)
       expect(create?.body.createMission).toEqual({
-        title: 'New mission',
+        title: 'Test board',
         goal: '',
         beadId: '',
         x: 1260,
@@ -1337,7 +1366,7 @@ describe('FormationsCockpit reference parity', () => {
       })
     })
     expect(dialog).not.toBeInTheDocument()
-    expect(await screen.findByTestId('mission-node-mis_created')).toHaveTextContent('New mission')
+    expect(await screen.findByTestId('mission-node-mis_created')).toHaveTextContent('◆ InputTest board')
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => {
@@ -1352,15 +1381,16 @@ describe('FormationsCockpit reference parity', () => {
   })
 
   it('creates a Mission with a project Bead ID when one is given', async () => {
+    patches = installFetchMock({ boards: [missionlessBoard()] })
     const { container } = await renderCockpit()
     const viewport = container.querySelector('.viewport') as HTMLElement
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Mission' }))
-    await screen.findByRole('dialog', { name: 'Create mission' })
-    fireEvent.change(screen.getByLabelText('Mission title'), { target: { value: '  Plan release  ' } })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Input card' }))
+    await screen.findByRole('dialog', { name: 'Add Input card' })
+    fireEvent.change(screen.getByLabelText('Input card title'), { target: { value: '  Plan release  ' } })
     fireEvent.change(screen.getByLabelText('Mission goal'), { target: { value: '  Ship reduced candidate  ' } })
     fireEvent.change(screen.getByLabelText('Mission Bead ID'), { target: { value: ' home-vdki.34.1 ' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create mission' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Input card' }))
     await waitFor(() => {
       expect(patches.find(patch => patch.body.createMission)?.body.createMission).toMatchObject({
         title: 'Plan release',
@@ -1371,42 +1401,43 @@ describe('FormationsCockpit reference parity', () => {
   })
 
   it('cancels Mission creation with Cancel and Escape without mutation', async () => {
+    patches = installFetchMock({ boards: [missionlessBoard()] })
     const { container } = await renderCockpit()
     const viewport = container.querySelector('.viewport') as HTMLElement
 
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Mission' }))
-    await screen.findByRole('dialog', { name: 'Create mission' })
-    fireEvent.change(screen.getByLabelText('Mission title'), { target: { value: 'Discard me' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel mission creation' }))
-    expect(screen.queryByRole('dialog', { name: 'Create mission' })).toBeNull()
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Input card' }))
+    await screen.findByRole('dialog', { name: 'Add Input card' })
+    fireEvent.change(screen.getByLabelText('Input card title'), { target: { value: 'Discard me' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel adding the Input card' }))
+    expect(screen.queryByRole('dialog', { name: 'Add Input card' })).toBeNull()
 
     fireEvent.contextMenu(viewport, { clientX: 360, clientY: 360 })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Mission' }))
-    await screen.findByRole('dialog', { name: 'Create mission' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Input card' }))
+    await screen.findByRole('dialog', { name: 'Add Input card' })
     fireEvent.change(screen.getByLabelText('Mission goal'), { target: { value: 'Discard this too' } })
     fireEvent.keyDown(window, { key: 'Escape' })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Create mission' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add Input card' })).toBeNull())
 
     expect(patches.filter(patch => patch.body.createMission)).toEqual([])
   })
 
   it('retains the Mission draft after the API rejects creation', async () => {
-    patches = installFetchMock({ missionCreateFailure: true })
+    patches = installFetchMock({ missionCreateFailure: true, boards: [missionlessBoard()] })
     const { container } = await renderCockpit()
     const viewport = container.querySelector('.viewport') as HTMLElement
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Mission' }))
-    await screen.findByRole('dialog', { name: 'Create mission' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Input card' }))
+    await screen.findByRole('dialog', { name: 'Add Input card' })
 
-    fireEvent.change(screen.getByLabelText('Mission title'), { target: { value: 'Plan release' } })
+    fireEvent.change(screen.getByLabelText('Input card title'), { target: { value: 'Plan release' } })
     fireEvent.change(screen.getByLabelText('Mission goal'), { target: { value: 'Ship reduced candidate' } })
     fireEvent.change(screen.getByLabelText('Mission Bead ID'), { target: { value: 'ctx-ug7.25' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create mission' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Input card' }))
 
     expect(await screen.findByTestId('formations-error')).toHaveTextContent('Mission create failed')
-    expect(screen.getByRole('dialog', { name: 'Create mission' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Mission title')).toHaveValue('Plan release')
+    expect(screen.getByRole('dialog', { name: 'Add Input card' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Input card title')).toHaveValue('Plan release')
     expect(screen.getByLabelText('Mission goal')).toHaveValue('Ship reduced candidate')
     expect(screen.getByLabelText('Mission Bead ID')).toHaveValue('ctx-ug7.25')
   })
@@ -1604,7 +1635,7 @@ describe('FormationsCockpit reference parity', () => {
 
   it('opens each node kind in a window by click, and a drag moves a card without opening it', async () => {
     await renderCockpit()
-    const mission = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Mission · Showcase')
+    const mission = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Input card · Showcase')
     expect(within(mission).getByText('Build the page')).toBeInTheDocument()
     expect(within(mission).getByText('home-7kc4.5')).toBeInTheDocument()
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
@@ -1616,7 +1647,7 @@ describe('FormationsCockpit reference parity', () => {
     // Clicking the mission card again raises its open window instead of opening another.
     clickCard(screen.getByTestId('mission-node-mis_showcase'))
     await waitFor(() => expect(Number(mission.style.zIndex)).toBeGreaterThan(Number(review.style.zIndex)))
-    expect(screen.getAllByRole('dialog', { name: 'Mission · Showcase' })).toHaveLength(1)
+    expect(screen.getAllByRole('dialog', { name: 'Input card · Showcase' })).toHaveLength(1)
     expect(patches).toEqual([])
 
     fireEvent.keyDown(review, { key: 'Escape' })
@@ -1774,7 +1805,7 @@ describe('FormationsCockpit reference parity', () => {
 
   it('edits a mission goal and Bead ID in its window, undoes it, and the change survives reload', async () => {
     const { unmount } = await renderCockpit()
-    const win = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Mission · Showcase')
+    const win = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Input card · Showcase')
 
     fireEvent.click(within(win).getByRole('button', { name: 'Edit bead' }))
     fireEvent.change(within(win).getByRole('textbox', { name: 'Bead' }), { target: { value: 'Not A Bead' } })
@@ -1814,7 +1845,7 @@ describe('FormationsCockpit reference parity', () => {
 
   it('sets the input hint Start mission shows from the mission window, with undo', async () => {
     await renderCockpit()
-    const win = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Mission · Showcase')
+    const win = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Input card · Showcase')
     fireEvent.click(within(win).getByRole('button', { name: 'Edit input hint' }))
     fireEvent.change(within(win).getByRole('textbox', { name: 'Input hint' }), { target: { value: 'Paste the page sketch and its copy deck.' } })
     fireEvent.click(within(win).getByRole('button', { name: 'Save input hint' }))
@@ -1834,7 +1865,7 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
     const card = screen.getByTestId('mission-node-mis_showcase')
     expect(card).toHaveTextContent('Human gates · Notify me')
-    const win = await openNodeWindow(card, 'Mission · Showcase')
+    const win = await openNodeWindow(card, 'Input card · Showcase')
     const channel = within(win).getByRole('radiogroup', { name: 'Human gates' })
     expect(within(channel).getByRole('radio', { name: /Notify me/ })).toBeChecked()
     expect(channel).toHaveAccessibleDescription('A change applies to runs started afterwards; runs already going keep their channel.')
@@ -1886,7 +1917,7 @@ describe('FormationsCockpit reference parity', () => {
 
   it('edits the reference files of a mission and a gate in their windows, with undo', async () => {
     await renderCockpit()
-    const mission = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Mission · Showcase')
+    const mission = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Input card · Showcase')
     fireEvent.click(within(mission).getByRole('button', { name: 'Edit files' }))
     fireEvent.change(within(mission).getByRole('textbox', { name: 'Files' }), { target: { value: 'docs/sketch.md, docs/copy.md' } })
     fireEvent.click(within(mission).getByRole('button', { name: 'Save files' }))
@@ -2049,7 +2080,7 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.contextMenu(container.querySelector('.viewport') as HTMLElement, { clientX: 300, clientY: 300 })
     const create = await screen.findByRole('menu', { name: 'New' })
-    expect(within(create).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Mission', 'Solo formation', 'Peer formation', 'Orchestrated formation', 'Gate'])
+    expect(within(create).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Solo formation', 'Peer formation', 'Orchestrated formation', 'Gate'])
   })
 
   it('shows every slot of a retired formation type and converts it from the type chip', async () => {
@@ -2190,7 +2221,7 @@ describe('FormationsCockpit reference parity', () => {
 
   it('restores a deleted formation and mission with their staffing, ports and brief', async () => {
     await renderCockpit()
-    for (const [testId, item, op] of [['formation-node-fmn_judge', 'Delete formation', 'formation'], ['mission-node-mis_showcase', 'Delete mission', 'mission']] as const) {
+    for (const [testId, item, op] of [['formation-node-fmn_judge', 'Delete formation', 'formation'], ['mission-node-mis_showcase', 'Delete Input card', 'mission']] as const) {
       fireEvent.contextMenu(screen.getByTestId(testId))
       fireEvent.click(await screen.findByRole('menuitem', { name: item }))
       await waitFor(() => expect(screen.queryByTestId(testId)).toBeNull())
@@ -2209,12 +2240,12 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Add output port' }))
     await waitFor(() => expect(patches.filter(patch => patch.body.addPort)).toHaveLength(1))
     fireEvent.contextMenu(screen.getByTestId('mission-node-mis_showcase'))
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete mission' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete Input card' }))
     await waitFor(() => expect(screen.queryByTestId('mission-node-mis_showcase')).toBeNull())
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     expect(await screen.findByTestId('formations-error')).toHaveTextContent(
-      'Could not undo the delete of mission “Showcase”: node "mis_showcase" is already on the board. It was removed from the undo history.')
+      'Could not undo the delete of Input card “Showcase”: node "mis_showcase" is already in the mission. It was removed from the undo history.')
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => expect(patches.map(patch => patch.body.removePort).filter(Boolean)).toEqual([{ formationId: 'fmn_judge', portId: 'port_added_7' }]))
     expect(patches.filter(patch => patch.body.restoreNode)).toHaveLength(1)
@@ -2228,7 +2259,7 @@ describe('FormationsCockpit reference parity', () => {
     patches = installFetchMock({ conflictOnce: 'restoreNode' })
     await renderCockpit()
     fireEvent.contextMenu(screen.getByTestId('mission-node-mis_showcase'))
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete mission' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete Input card' }))
     await waitFor(() => expect(screen.queryByTestId('mission-node-mis_showcase')).toBeNull())
     const reads = () => recordedFetches.filter(url => url.endsWith('/boards/test-board')).length
     const readsBefore = reads()
@@ -2244,7 +2275,7 @@ describe('FormationsCockpit reference parity', () => {
     patches = installFetchMock({ addPortGate: new Promise<void>(resolve => { release = resolve }) })
     await renderCockpit()
     fireEvent.contextMenu(screen.getByTestId('mission-node-mis_showcase'))
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete mission' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete Input card' }))
     await waitFor(() => expect(screen.queryByTestId('mission-node-mis_showcase')).toBeNull())
     fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_judge'))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Add output port' }))
@@ -2657,7 +2688,7 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => expect(screen.queryByTestId('node-inspector')).toBeNull())
     expect(screen.getByRole('dialog', { name: 'Gate · Review' })).toBe(review)
 
-    const mission = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Mission · Showcase')
+    const mission = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Input card · Showcase')
     expect(within(mission).queryByRole('region', { name: 'Run' })).toBeNull()
   })
 
@@ -2784,7 +2815,7 @@ describe('FormationsCockpit reference parity', () => {
 
     window.history.replaceState(null, '', '/?board=no-such-board&run=run_01OPEN')
     await renderCockpit()
-    expect(await screen.findByTestId('formations-error')).toHaveTextContent('Board "no-such-board" from the link was not found')
+    expect(await screen.findByTestId('formations-error')).toHaveTextContent('Mission "no-such-board" from the link was not found')
     expect(screen.getByTestId('board-picker')).toHaveValue('test-board')
   })
 
@@ -3018,7 +3049,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.getByRole('radio', { name: 'Flow' })).toBeChecked()
     expect(JSON.parse(localStorage.getItem('archon.boardView.v1') || '{}')).toEqual({ 'test-board': 'flow' })
 
-    const mission = within(flow).getByRole('region', { name: 'Mission Showcase' })
+    const mission = within(flow).getByRole('region', { name: 'Input card Showcase' })
     expect(mission).toHaveTextContent('Build the page')
     const frame = within(flow).getByTestId('flow-step-fmn_frame')
     expect(frame).toHaveTextContent('No brief yet.')
@@ -3211,7 +3242,7 @@ describe('FormationsCockpit reference parity', () => {
   it('deletes a mission from its context menu', async () => {
     await renderCockpit()
     fireEvent.contextMenu(screen.getByTestId('mission-node-mis_showcase'))
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete mission' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete Input card' }))
     await waitFor(() => {
       const removal = patches.map(patch => patch.body.deleteMission as { id?: string } | undefined).find(Boolean)
       expect(removal).toEqual(expect.objectContaining({ id: 'mis_showcase' }))

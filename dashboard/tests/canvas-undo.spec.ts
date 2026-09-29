@@ -46,14 +46,14 @@ test('a failed undo is reported once and Ctrl+Z moves on to older history', asyn
   await menuItem('Add input port').click()
   await expect(judge.locator('.fio.in')).toHaveCount(2)
   await page.getByTestId('mission-node-mission').click({ button: 'right' })
-  await menuItem('Delete mission').click()
+  await menuItem('Delete Input card').click()
   await expect(page.getByTestId('mission-node-mission')).toHaveCount(0)
 
   // Someone else puts a node with the same ID back first, so this undo can no longer apply.
   fixture.board().missions.push({ id: 'mission', title: 'Delivery', goal: '', beadId: '' })
   await page.keyboard.press('Control+z')
   await expect(page.getByTestId('formations-error')).toHaveText(
-    'Could not undo the delete of mission “Delivery”: node "mission" is already on the board. It was removed from the undo history.')
+    'Could not undo the delete of Input card “Delivery”: node "mission" is already in the mission. It was removed from the undo history.')
   await page.screenshot({ path: test.info().outputPath('undo-failed-once.png') })
 
   await page.keyboard.press('Control+z')
@@ -83,7 +83,7 @@ test('Ctrl+Z during an edit in flight undoes that edit, and a stale revision is 
   const menuItem = (name: string) => page.locator('.ctxmenu').getByRole('menuitem', { name })
 
   await page.getByTestId('mission-node-mission').click({ button: 'right' })
-  await menuItem('Delete mission').click()
+  await menuItem('Delete Input card').click()
   await expect(page.getByTestId('mission-node-mission')).toHaveCount(0)
   await judge.locator('.fhead').click({ button: 'right' })
   await menuItem('Add output port').click()

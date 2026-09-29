@@ -55,8 +55,8 @@ test('full note text on Wayfinding reads on the canvas and in note windows, with
   const entryText = noteWindow.locator('.note-entry-text').first()
   expect(await entryText.evaluate(element => element.scrollHeight <= element.clientHeight + 1)).toBe(true)
 
-  await page.getByRole('button', { name: 'Board notes' }).click()
-  const boardWindow = page.getByRole('dialog', { name: 'board notes' })
+  await page.getByRole('button', { name: 'Mission notes' }).click()
+  const boardWindow = page.getByRole('dialog', { name: 'mission notes' })
   for (const entry of wayfinding.notes.board as Entry[]) await expect(boardWindow).toContainText(entry.text)
   await expect(noteWindow).toBeVisible()
 })

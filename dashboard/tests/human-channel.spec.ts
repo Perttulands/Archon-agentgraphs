@@ -9,7 +9,7 @@ test('a mission human channel is chosen in its window and Start mission, saved w
   await expect(card.locator('.mchannel')).toHaveText('Human gates · Notify me')
 
   await card.click()
-  const win = page.getByRole('dialog', { name: 'Mission · Wayfinding' })
+  const win = page.getByRole('dialog', { name: 'Input card · Wayfinding' })
   const channel = win.getByRole('radiogroup', { name: 'Human gates' })
   await expect(channel.getByRole('radio', { name: /Notify me/ })).toBeChecked()
   await channel.getByText('Talk with the agents').click()
@@ -41,7 +41,7 @@ test('a mission human channel is chosen in its window and Start mission, saved w
 
   // Flow names the channel under the mission's goal.
   await card.click()
-  await page.getByRole('dialog', { name: 'Mission · Wayfinding' }).getByRole('radiogroup', { name: 'Human gates' }).getByText('Talk with the agents').click()
+  await page.getByRole('dialog', { name: 'Input card · Wayfinding' }).getByRole('radiogroup', { name: 'Human gates' }).getByText('Talk with the agents').click()
   await expect.poll(() => fixture.patches.length).toBe(3)
   await page.keyboard.press('Escape')
   await page.getByRole('radio', { name: 'Flow' }).click()
