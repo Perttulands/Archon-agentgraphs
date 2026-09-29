@@ -64,6 +64,7 @@ import RunPoint from './RunPoint'
 import RunBarActions from './RunBarActions'
 import GateAnswerWindow, { GATE_ANSWER_WINDOW_ID, cardRects } from './GateAnswerWindow'
 import { nodeTitle } from '../nodeWindow/boardRoutes'
+import { slotStaffed } from '../nodeWindow/staffing'
 import CanvasLegend from './CanvasLegend'
 import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
 import { ProducedFiles, RunProduced, RunProducedProvider } from '../files/ProducedFiles'
@@ -1095,13 +1096,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if ((slot.agentId || '') === agentId && (slot.harness || '') === harness) return
     void patchBoard({ assignSlot: { formationId: formation.id, slotId: slot.id, agentId, harness } }).then(result => {
       if (!result) return
+      // Undo restores the slot's own settings too, so the model and effort come back exactly.
       recordUndo(agentId ? `the staffing of ${quoted(slot.label, 'a slot')}` : `the unassignment from ${quoted(slot.label, 'a slot')}`,
-        boardStep({ assignSlot: { formationId: formation.id, slotId: slot.id, agentId: slot.agentId || '', harness: slot.harness || '' } }))
+        boardStep({ assignSlot: { formationId: formation.id, slotId: slot.id, agentId: slot.agentId || '', harness: slot.harness || '', model: slot.model || '', effort: slot.effort || '' } }))
     })
   }, [patchBoard, recordUndo])
 
   const unassignSlot = useCallback((formation: FormationNode, slot: FormationSlot) => {
-    if (!slot.agentId) return
+    if (!slotStaffed(slot)) return
     assignSlot(formation, slot, '', '')
   }, [assignSlot])
 

@@ -40,8 +40,6 @@ import type {
   VariantSettingsPatch,
 } from './formationsTypes'
 import {
-  EffortSelect,
-  HARNESS_DEFAULT_MODEL,
   isLaunchable,
   SeatLaunch,
   VariantSettingsFields,
@@ -123,8 +121,6 @@ type CreateDraft = {
   harness: string
   sessionStem: string
   summary: string
-  model: string
-  effort: string
   /** Only for a harness Archon cannot start: what `archon agent spawn` runs. */
   launch: string
   source: string
@@ -144,8 +140,6 @@ const EMPTY_CREATE: CreateDraft = {
   harness: 'claude-code',
   sessionStem: '',
   summary: '',
-  model: '',
-  effort: '',
   launch: '',
   source: '',
   capabilities: '',
@@ -539,7 +533,8 @@ export default function AgentsView() {
   const createPersona = useCallback(async (event: FormEvent) => {
     event.preventDefault()
     const capabilities = splitCommaList(createDraft.capabilities)
-    // Only a harness Archon starts takes a model and effort.
+    // A new role carries no model or effort; only a harness Archon cannot start
+    // keeps a launch command.
     const launchable = harnesses.some(harness => harness.id === createDraft.harness.trim())
     try {
       const result = await fetchApi<PersonaCard>('/api/agents', {
@@ -551,7 +546,7 @@ export default function AgentsView() {
           harness: createDraft.harness.trim(),
           sessionStem: createDraft.sessionStem.trim(),
           summary: createDraft.summary.trim(),
-          ...(launchable ? { model: createDraft.model.trim(), effort: createDraft.effort } : { launch: createDraft.launch.trim() }),
+          ...(launchable ? {} : { launch: createDraft.launch.trim() }),
           source: createDraft.source.trim(),
           capabilities,
         }),
@@ -1424,11 +1419,10 @@ function CreatePersonaPopover({
   onClose: () => void
 }) {
   const set = (key: keyof CreateDraft, value: string) => onDraft({ ...draft, [key]: value })
-  const effortsFor = (harness: string) => harnesses.find(next => next.id === harness)?.efforts || []
-  const efforts = effortsFor(draft.harness)
-  // An effort one harness takes may not suit the next, so a change of harness keeps only a valid one.
-  const changeHarness = (harness: string) =>
-    onDraft({ ...draft, harness, effort: effortsFor(harness).includes(draft.effort) ? draft.effort : '' })
+  // A harness Archon starts takes its model and effort from each slot; any
+  // other harness keeps a launch command for archon agent spawn.
+  const launchable = harnesses.some(next => next.id === draft.harness)
+  const changeHarness = (harness: string) => onDraft({ ...draft, harness })
   return (
     <div className="pop agx-pop" role="dialog" aria-label="Create persona">
       <div className="pop-head">
@@ -1448,17 +1442,10 @@ function CreatePersonaPopover({
           <option value="openai-codex">openai-codex</option>
           <option value="hermes">hermes</option>
         </select>
-        {efforts.length ? (
-          <div className="agx-create-pair">
-            <div>
-              <label htmlFor="agx-create-model">Model</label>
-              <input id="agx-create-model" className="f" value={draft.model} placeholder={HARNESS_DEFAULT_MODEL} spellCheck={false} onChange={event => set('model', event.target.value)} />
-            </div>
-            <div>
-              <label htmlFor="agx-create-effort">Effort</label>
-              <EffortSelect id="agx-create-effort" className="f" efforts={efforts} value={draft.effort} onChange={effort => set('effort', effort)} />
-            </div>
-          </div>
+        {launchable ? (
+          <p className="ph-none agx-create-none">
+            A role carries no model or effort. Each slot that uses it sets them.
+          </p>
         ) : (
           <>
             <p className="ph-none agx-create-none">

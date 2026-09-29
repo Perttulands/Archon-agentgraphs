@@ -8,12 +8,12 @@ export const board = {
   missions: [{ id: 'mission', title: 'Delivery', goal: 'Verify the implementation', beadId: 'form-mnf' }],
   formations: [
     { id: 'execution', type: 'orchestrated', title: 'Execution', brief: { goal: 'Implement the reviewed plan and verify the result.' }, ...ports,
-      slots: [{ id: 'controller', label: 'Controller', agentId: 'claude', harness: 'claude-code', controller: true },
-        { id: 'worker', label: 'Worker 1', agentId: 'codex', harness: 'openai-codex', controller: false }] },
+      slots: [{ id: 'controller', label: 'Controller', agentId: 'claude', harness: 'claude-code', effort: 'medium', controller: true },
+        { id: 'worker', label: 'Worker 1', agentId: 'codex', harness: 'openai-codex', effort: 'medium', controller: false }] },
     { id: 'peer', type: 'peer', title: 'Peer review', brief: { goal: 'Compare the design and implementation.' }, ...ports,
-      slots: [{ id: 'peer_1', label: 'Reviewer', agentId: 'codex', harness: 'openai-codex', controller: false }] },
+      slots: [{ id: 'peer_1', label: 'Reviewer', agentId: 'codex', harness: 'openai-codex', effort: 'medium', controller: false }] },
     { id: 'judge', type: 'solo', title: 'Judge', brief: { goal: 'Check the review evidence.' }, ...ports,
-      slots: [{ id: 'judge_1', label: 'Judge', agentId: 'claude', harness: 'claude-code', controller: true }] },
+      slots: [{ id: 'judge_1', label: 'Judge', agentId: 'claude', harness: 'claude-code', effort: 'medium', controller: true }] },
   ],
   gates: [{ id: 'gate', title: 'Review gate', kinds: ['formation'], criterion: 'Evidence supports acceptance' },
     { id: 'loose', title: 'Disconnected gate', kinds: ['human'], criterion: 'Operator approval' }],
@@ -33,10 +33,10 @@ const positions = [
 ]
 export const seats = [
   { runId: 'run_browser', nodeId: 'execution', nodeTitle: 'Execution', slotId: 'controller', slotLabel: 'Controller',
-    harness: 'claude-code', controller: true, createdSeq: 7, sessionName: 'scratch-controller', state: 'live',
+    harness: 'claude-code', effort: 'medium', controller: true, createdSeq: 7, sessionName: 'scratch-controller', state: 'live',
     columns: 96, rows: 30, terminalUrl: '/api/formations/runs/run_browser/seats/7/terminal' },
   { runId: 'run_browser', nodeId: 'execution', nodeTitle: 'Execution', slotId: 'worker', slotLabel: 'Worker 1',
-    harness: 'openai-codex', controller: false, createdSeq: 8, sessionName: 'scratch-worker', state: 'live',
+    harness: 'openai-codex', effort: 'medium', controller: false, createdSeq: 8, sessionName: 'scratch-worker', state: 'live',
     columns: 96, rows: 30, terminalUrl: '/api/formations/runs/run_browser/seats/8/terminal' },
 ]
 

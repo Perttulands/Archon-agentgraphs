@@ -18,10 +18,18 @@ export function authoredText(title: string, field: string): string {
   ].join('\n')
 }
 
+const slotModel = (harness: string) => harness === 'openai-codex' ? 'gpt-5.5' : 'opus'
+
 export const authoredBoard = {
   ...wayfinding.board,
   missions: wayfinding.board.missions.map((mission: Node) => ({ ...mission, goal: authoredText(mission.title, 'mission goal'), beadId: 'form-3yd.10' })),
-  formations: wayfinding.board.formations.map((formation: Node) => ({ ...formation, brief: { goal: authoredText(formation.title, 'brief') } })),
+  // Each staffed slot carries the settings its role card below had when the
+  // daemon migrated it: slots own their harness, model and effort.
+  formations: wayfinding.board.formations.map((formation: Node & { slots: Array<{ agentId?: string; harness?: string }> }) => ({
+    ...formation,
+    brief: { goal: authoredText(formation.title, 'brief') },
+    slots: formation.slots.map(slot => slot.agentId ? { ...slot, model: slotModel(slot.harness || ''), effort: 'medium' } : slot),
+  })),
   gates: wayfinding.board.gates.map((gate: Node) => ({ ...gate, criterion: authoredText(gate.title, 'criterion') })),
 }
 
@@ -43,7 +51,7 @@ export async function nodeWindowsFixture(page: Page) {
   await page.route('**/api/formations/boards/wayfinding', route => route.fulfill(respond({ board: authoredBoard })))
   await page.route('**/api/agents', route => route.fulfill(respond({ agents, count: agents.length })))
   for (const agent of agents) {
-    const model = agent.harnessDefault === 'openai-codex' ? 'gpt-5.5' : 'opus'
+    const model = slotModel(agent.harnessDefault)
     await page.route(`**/api/agents/${agent.id}`, route => route.fulfill(respond({
       ...agent, summary: '', harnessVariants: [{ id: agent.harnessDefault, model, effort: 'medium' }], etag: `${agent.id}-card`,
     })))

@@ -3,6 +3,7 @@
  * the server never drops a bound agent without being told which slot stays. */
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import type { FormationNode, FormationType } from './formationsTypes'
+import { slotStaffed } from '../nodeWindow/staffing'
 import '../styles/formations-node-editing.css'
 
 export interface FormationTypeChoice {
@@ -17,10 +18,10 @@ export function formationTypeChoices(formation: FormationNode): FormationTypeCho
   const choices: FormationTypeChoice[] = []
   for (const type of Object.keys(TYPE_LABELS) as FormationType[]) {
     if (type === formation.type) continue
-    const staffed = formation.slots.filter(slot => slot.agentId)
+    const staffed = formation.slots.filter(slotStaffed)
     if (type === 'solo' && staffed.length > 1) {
       for (const slot of staffed) {
-        choices.push({ label: `Solo, keeping ${slot.label || slot.id} (${slot.agentId})`, type, keepSlotId: slot.id })
+        choices.push({ label: `Solo, keeping ${slot.label || slot.id} (${slot.agentId || 'vanilla'})`, type, keepSlotId: slot.id })
       }
       continue
     }

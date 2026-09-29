@@ -622,10 +622,10 @@ describe('AgentsView', () => {
     fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Writer' } })
     fireEvent.change(screen.getByLabelText('Harness'), { target: { value: 'openai-codex' } })
     fireEvent.change(screen.getByLabelText('Summary'), { target: { value: 'Writes launch copy' } })
-    expect(screen.getByLabelText('Model')).toHaveAttribute('placeholder', 'harness default')
-    expect(screen.getByLabelText('Effort')).toHaveDisplayValue('medium (default)')
-    fireEvent.change(screen.getByLabelText('Model'), { target: { value: ' gpt-6-sol ' } })
-    fireEvent.change(screen.getByLabelText('Effort'), { target: { value: 'ultra' } })
+    // A new role carries no model or effort; each slot sets them.
+    expect(screen.queryByLabelText('Model')).toBeNull()
+    expect(screen.queryByLabelText('Effort')).toBeNull()
+    expect(screen.getByText('A role carries no model or effort. Each slot that uses it sets them.')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Capabilities'), { target: { value: 'writing, voice' } })
     fireEvent.click(screen.getByRole('button', { name: /^Create persona$/i }))
 
@@ -636,11 +636,11 @@ describe('AgentsView', () => {
       kind: 'specialist',
       harness: 'openai-codex',
       summary: 'Writes launch copy',
-      model: 'gpt-6-sol',
-      effort: 'ultra',
       capabilities: ['writing', 'voice'],
     })
     expect(postedBodies[0]).not.toHaveProperty('launch')
+    expect(postedBodies[0]).not.toHaveProperty('model')
+    expect(postedBodies[0]).not.toHaveProperty('effort')
   })
 
   it('uses persona detail ETags for edits and keeps user input visible on 409 and 428 conflicts', async () => {

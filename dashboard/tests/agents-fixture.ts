@@ -9,7 +9,8 @@ const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/the
 const ports = { inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Result' }] }
 const solo = (id: string, title: string, agentId?: string, harness = 'claude-code') => ({
   id, type: 'solo', title, brief: { goal: `${title} the change.` }, ...ports,
-  slots: [{ id: `${id}_seat`, label: title, controller: true, harness, ...(agentId ? { agentId } : {}) }],
+  // A staffed slot states its harness and effort; an empty slot has neither.
+  slots: [{ id: `${id}_seat`, label: title, controller: true, ...(agentId ? { agentId, harness, effort: 'medium' } : {}) }],
 })
 const mission = (goal: string) => ({ id: 'mission', title: 'Deliver', goal })
 
@@ -49,6 +50,14 @@ const layouts: Record<string, Array<{ id: string; x: number; y: number }>> = {
 export const harnesses = [
   { id: 'claude-code', executable: 'claude', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium' },
   { id: 'openai-codex', executable: 'codex', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'medium' },
+]
+
+/** The effort policy the daemon serves with the roster (slot_settings.go). */
+export const effortPolicy = [
+  { effort: 'low', use: 'errands' },
+  { effort: 'medium', use: 'making things' },
+  { effort: 'xhigh', use: 'architecture and review' },
+  { effort: 'max', use: 'consequential reviews' },
 ]
 
 type Variant = { id: string; sessionStem: string; launch?: string; model?: string; effort?: string }
@@ -103,7 +112,7 @@ export async function agentsFixture(page: Page) {
     if (path === '/api/formations/gate-profiles') return respond({ profiles: [] })
     if (path === '/api/agents') {
       const agents = Object.values(cards).map(card => ({ id: card.id, displayName: card.displayName, kind: card.kind, tags: card.tags, harnessDefault: card.harnessDefault, liveness: 'offline', assignable: true }))
-      return respond({ agents, count: agents.length, harnesses })
+      return respond({ agents, count: agents.length, harnesses, effortPolicy })
     }
     const agentMatch = path.match(/^\/api\/agents\/([^/]+)$/)
     if (agentMatch) {

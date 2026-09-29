@@ -40,7 +40,8 @@
             "id": "plan",
             "label": "Plan",
             "agentId": "delivery-planner",
-            "harness": "claude-code"
+            "harness": "claude-code",
+            "effort": "medium"
           }
         ]
       },
@@ -69,7 +70,8 @@
             "id": "beads",
             "label": "Beads",
             "agentId": "delivery-beads-drafter",
-            "harness": "claude-code"
+            "harness": "claude-code",
+            "effort": "medium"
           }
         ]
       },
@@ -98,7 +100,8 @@
             "id": "beads_reviewer",
             "label": "Beads reviewer",
             "agentId": "delivery-beads-reviewer",
-            "harness": "claude-code"
+            "harness": "claude-code",
+            "effort": "medium"
           }
         ]
       },
@@ -127,28 +130,32 @@
             "id": "execution",
             "label": "Controller",
             "agentId": "delivery-lead",
-            "harness": "claude-code"
+            "harness": "claude-code",
+            "effort": "medium"
           },
           {
             "controller": false,
             "id": "worker_1",
             "label": "Worker 1",
             "agentId": "delivery-worker",
-            "harness": "openai-codex"
+            "harness": "openai-codex",
+            "effort": "medium"
           },
           {
             "controller": false,
             "id": "worker_2",
             "label": "Worker 2",
             "agentId": "delivery-worker",
-            "harness": "openai-codex"
+            "harness": "openai-codex",
+            "effort": "medium"
           },
           {
             "controller": false,
             "id": "worker_3",
             "label": "Worker 3",
             "agentId": "delivery-worker",
-            "harness": "openai-codex"
+            "harness": "openai-codex",
+            "effort": "medium"
           }
         ]
       },
@@ -177,7 +184,9 @@
             "id": "final_review",
             "label": "Final review",
             "agentId": "delivery-final-reviewer",
-            "harness": "openai-codex"
+            "harness": "openai-codex",
+            "model": "gpt-6-astra",
+            "effort": "medium"
           }
         ]
       }

@@ -57,8 +57,12 @@ export interface FormationSlot {
   id: string
   label: string
   controller: boolean
+  /** The slot's optional role (persona id); a slot without one is a vanilla agent. */
   agentId?: string
+  /** What the slot's seat runs. A blank model is the harness default. */
   harness?: string
+  model?: string
+  effort?: string
 }
 
 export interface FormationBrief {
@@ -340,6 +344,12 @@ export interface LaunchableHarness {
   executable: string
   efforts: string[]
   defaultEffort: string
+}
+
+/** One line of the effort policy the roster serves: which effort suits which work. */
+export interface EffortPolicyEntry {
+  effort: string
+  use: string
 }
 
 /** One variant's model and effort in a persona patch; an empty string clears the setting. */

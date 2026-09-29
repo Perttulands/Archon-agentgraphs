@@ -39,6 +39,7 @@
             "label": "Agent",
             "agentId": "codex-scout",
             "harness": "openai-codex",
+            "effort": "medium",
             "controller": false
           }
         ],
@@ -68,6 +69,7 @@
             "label": "Peer",
             "agentId": "delivery-planner",
             "harness": "claude-code",
+            "effort": "medium",
             "controller": false
           },
           {
@@ -75,6 +77,7 @@
             "label": "Peer",
             "agentId": "codex-planner",
             "harness": "openai-codex",
+            "effort": "medium",
             "controller": false
           }
         ],
@@ -104,6 +107,7 @@
             "label": "Agent",
             "agentId": "delivery-planner",
             "harness": "claude-code",
+            "effort": "medium",
             "controller": false
           }
         ],
@@ -133,6 +137,7 @@
             "label": "Agent",
             "agentId": "codex-judge",
             "harness": "openai-codex",
+            "effort": "medium",
             "controller": false
           }
         ],

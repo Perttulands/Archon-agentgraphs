@@ -18,7 +18,7 @@ paths:
       summary: List latest owned seats from the frozen run
       responses:
         '200':
-          description: Enveloped data contains runId, available, optional reason, and seats. Each seat has runId, nodeId, nodeTitle, slotId, slotLabel, harness, controller, createdSeq, sessionName and state (live, ended, missing, unavailable). Live seats include native columns/rows and terminalUrl; others include a reason. A seat kept on call for a session-channel human gate (ADR-0019) includes onCall with keptSeq and waitingOn, the pending gateId/requestedSeq asks it received. Private session/socket identities are omitted.
+          description: Enveloped data contains runId, available, optional reason, and seats. Each seat has runId, nodeId, nodeTitle, slotId, slotLabel, harness, the model (absent for the harness default) and effort it was started with, controller, createdSeq, sessionName and state (live, ended, missing, unavailable). Live seats include native columns/rows and terminalUrl; others include a reason. A seat kept on call for a session-channel human gate (ADR-0019) includes onCall with keptSeq and waitingOn, the pending gateId/requestedSeq asks it received. Private session/socket identities are omitted.
         '404':
           description: No such run
   /api/formations/runs/{runId}/seats/{createdSeq}/terminal:
@@ -145,7 +145,7 @@ paths:
         '409':
           description: Stale revision or ETag
         '422':
-          description: Unprocessable write, such as a code check naming no registered profile. A Tool write returns INVALID_TOOL_MUTATION with a message naming the invalid field or reason.
+          description: Unprocessable write, such as a code check naming no registered profile. A Tool write returns INVALID_TOOL_MUTATION with a message naming the invalid field or reason. An assignSlot whose harness, model or effort no seat could start with, that leaves the effort unchosen, or that names an unknown role alone returns INVALID_SLOT_SETTINGS with a message naming the slot and the fix, including the effort policy when the effort is missing.
         '400':
           description: Invalid mutation or retired inline verification/script gate. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (mission beadId or brief beadId). A mission humanChannel other than notify or session returns INVALID_HUMAN_CHANNEL naming the allowed values. makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. An invalid board slug returns BAD_REQUEST 'Invalid formation slug'.
       parameters:
@@ -792,7 +792,9 @@ paths:
         '200':
           description: Roster in data.agents and data.count, including presets and overrides, and
             data.harnesses, the harnesses whose seats Archon starts, each with the efforts it accepts and its
-            defaultEffort. No live-session provider is wired by the daemon.
+            defaultEffort, and data.effortPolicy, the {effort,use} lines that guide a slot's effort (low for
+            errands, medium for making things, xhigh for architecture and review, max for consequential
+            reviews). No live-session provider is wired by the daemon.
         '422':
           description: INVALID_AGENT_CARD when a stored card lacks a required field; the message names the card and field
       parameters:
@@ -809,8 +811,8 @@ paths:
         '201':
           description: Created persona card in data; returns ETag
         '422':
-          description: INVALID_AGENT_CARD when model or effort is not one the harness accepts; the message lists
-            the accepted efforts
+          description: INVALID_AGENT_CARD when the request gives a model or effort; a new role carries neither,
+            and each slot that uses it sets them
       requestBody:
         required: true
         content:
@@ -1237,6 +1239,10 @@ components:
               type: string
         assignSlot:
           type: object
+          description: Staffs a slot. With an effort, the request states the slot's harness, model and effort in
+            full, and agentId is its optional role. Without an effort it is refused with INVALID_SLOT_SETTINGS
+            (HTTP 422), except a request naming only agentId (and perhaps harness), which writes that role's
+            current effective settings onto the slot. A request naming none of them empties the slot.
           properties:
             formationId:
               type: string
@@ -1244,8 +1250,19 @@ components:
               type: string
             agentId:
               type: string
+              description: The slot's optional role (persona id); blank for a vanilla agent.
             harness:
               type: string
+              enum:
+              - claude-code
+              - openai-codex
+            model:
+              type: string
+              description: One model name without spaces; blank means the harness default model.
+            effort:
+              type: string
+              description: One effort the harness accepts (claude-code low, medium, high, xhigh, max; openai-codex
+                also ultra). Choose it by the roster's effortPolicy.
             expectedRev:
               type: integer
             updatedBy:
@@ -1511,6 +1528,10 @@ components:
                     type: string
                   harness:
                     type: string
+                  model:
+                    type: string
+                  effort:
+                    type: string
                   controller:
                     type: boolean
             expectedRev:
@@ -1681,11 +1702,10 @@ components:
             claude-code and openai-codex seats start from harness, model and effort and ignore it.
         model:
           type: string
-          description: Model for the harness; omit for the harness default model.
+          description: Refused when non-empty. A new role carries no model; each slot sets its own.
         effort:
           type: string
-          description: Effort the harness accepts (claude-code low|medium|high|xhigh|max; openai-codex
-            low|medium|high|xhigh|max|ultra); omit for medium.
+          description: Refused when non-empty. A new role carries no effort; each slot sets its own.
         source:
           type: string
     AgentPatch:

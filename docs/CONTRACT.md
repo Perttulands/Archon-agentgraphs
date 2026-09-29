@@ -25,9 +25,9 @@ product names; they do not define current behavior.
 | Board | A schema-1 TOML graph with a stable ID, slug and revision. |
 | Mission | An entry node with a goal and `out` port. A run supplies its input text. |
 | Formation | An execution node. `solo` has one seat; `peer` has peer seats; `orchestrated` has a controller directing its bound workers. |
-| Slot | A position in a formation, bound to a persona and harness variant. A seat is the slot's runtime agent session. |
-| Persona | A TOML agent card with a summary, capabilities and harness variants. Presets remain available; local cards can override them. |
-| Harness variant | The persona's `openai-codex` or `claude-code` settings, including session stem, model and effort. Omitted effort resolves to `medium`; omitted model uses the harness default. Seats start from these settings, never from a launch string. |
+| Slot | A position in a formation that owns what its seat runs: a harness (`claude-code` or `openai-codex`), a model (blank means the harness default) and an effort, plus an optional role (`agentId`, a persona). A slot without a role is a vanilla agent, such as `claude-code · opus · low`. A seat is the slot's runtime agent session. |
+| Persona (role) | A TOML agent card with generic role text: a summary, capabilities and kind. It carries no model or effort for new work; a card's legacy harness variant settings are still read, for migration and the cockpit's role drag. Presets remain available; local cards can override them. |
+| Harness variant | A persona card's legacy `openai-codex` or `claude-code` settings, including session stem, model and effort. Seats start from slot settings, never from a variant's launch string. |
 | Gate | A criterion with one or more kinds: `code`, `formation`, `human`. Its ports are `in`, `pass`, `fail`, `judge`. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
 | Judge chain | Formations wired from a gate's `judge` port and back to that same port. The final judge result decides the formation kind. |
@@ -43,16 +43,45 @@ Persona cards default to `<state-dir>/agents`; daemon `--agents-dir` can select
 another absolute directory. Match offline persona authoring to that directory
 with `CHROTE_AGENTS_DIR` when using an override.
 
-Author a persona's model and effort per harness variant in the Agents view
-(inspector, persona editor and New agent form), with `model`, `effort` and
-`variant` (or a `variants` list) on `POST`/`PATCH /api/agents`, or with
-`archon agent new|edit --model --effort` (`edit --harness` picks the
-variant). The inspector and editor show every variant. Effort must be one the
+A slot owns its harness, model and effort. Staff it with `archon formation
+assign <mission> <formation> --slot <slot> --harness <h> --effort <e>
+[--model <m>] [--role <persona>]` (`--agent` is the older name for `--role`),
+or the `assignSlot` board patch with `agentId`, `harness`, `model` and
+`effort`. Staffing always states its effort: the CLI requires `--harness` and
+`--effort`, and a patch without an effort is refused with
+`INVALID_SLOT_SETTINGS` (HTTP 422, CLI code `invalid_slot_settings`), except a
+patch naming only a role (and perhaps a harness), which is the cockpit's role
+drag: it writes that role's current effective harness, model and effort onto
+the slot. A patch naming none of them empties the slot, as does `formation
+unassign`. The harness must be one Archon starts and must accept the effort,
+and a model is one name without spaces; a model outside any catalog is
+accepted and the harness decides. Choose the effort by the policy the agent
+roster serves as `effortPolicy`: `low` for errands, `medium` for making
+things, `xhigh` for architecture and review, `max` for consequential reviews.
+One role may staff several slots, each with its own settings.
+
+Slots written before slots owned their settings name a role and no model or
+effort. archond migrates them at startup, and `archon board migrate-slots
+[<mission>] [--dry-run] [--json]` does the same offline: each such slot takes
+its role's current effective harness, model and effort (a blank variant effort
+is `medium`), so every seat launches exactly as before. The command prints each
+staffed slot's seat launch before and after; the daemon logs each migrated slot
+and any slot it left alone, such as one whose role is missing. A board write
+records `updatedBy = "archon:slot-settings-migration"`. Until a slot is
+migrated, admission still reads its settings from its role.
+
+A new role carries no model or effort: `POST /api/agents` and `archon agent
+new` refuse them with `INVALID_AGENT_CARD`, and the New agent form no longer
+asks for them. An existing card's legacy variant settings are still edited per
+harness variant in the Agents view inspector and persona editor, with `model`,
+`effort` and `variant` (or a `variants` list) on `PATCH /api/agents`, or with
+`archon agent edit --model --effort` (`edit --harness` picks the variant); the
+role drag and `archon agent spawn` read them. Effort must be one the
 harness accepts: `claude-code` takes `low`, `medium`, `high`, `xhigh` or `max`;
 `openai-codex` also takes `ultra`, though a Codex model may accept fewer. A
 blank model or effort clears it to the harness default model or `medium`.
 Persona reads carry each variant's `effectiveEffort` and `seatLaunch`, the
-command its seats run, rendered by the seat launcher from the harness CLI on the
+command a seat with those settings runs, rendered by the seat launcher from the harness CLI on the
 reader's PATH (the daemon's for HTTP); `seatLaunchError` says why a variant
 cannot start. `archon agent spawn` runs the same command. A card's `launch`
 string is legacy: new cards get none, seats and spawn ignore it for
@@ -108,6 +137,8 @@ id = "slot_work"
 label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
+model = "gpt-6-astra"
+effort = "medium"
 controller = true
 
 [[connection]]
@@ -144,7 +175,7 @@ reserved for stale board revisions or ETags in these edits.
 
 The [delivery board](../examples/delivery.formation.toml) and its
 [notes](../examples/delivery.notes.toml) add Plan, Beads, a Beads-review judge,
-orchestrated Execution and Final review. Six `delivery-*` presets staff it.
+orchestrated Execution and Final review. Six `delivery-*` preset roles staff it, each slot at `medium` effort.
 Execution uses a Claude controller and three Codex workers; Final review uses
 Astra. Failed Beads review returns directly to Beads. Final review produces a
 report, with no following gate. This graph has no human gate.
@@ -162,23 +193,27 @@ One coordinator locks a state directory. Many runs execute concurrently within
 it. Admission validates the graph and inputs, snapshots definitions, durably
 appends `run_started`, then returns HTTP 202.
 
-New runs freeze each complete persona card, its selected model setting and its
-resolved effort in a private schema-2 bindings snapshot. Tmux, lab execution and
-completed-turn recovery use that snapshot after edits, retries and restarts.
-An omitted model freezes the choice to use the harness default, which remains
-unpinned; specify a model in the persona to retain an exact model setting.
-Older schema-1 bindings have only paths and hashes. Their history remains
-readable, but seat execution and recovery block with
-`persona_snapshot_incomplete` instead of substituting today's persona. Start a
-new run to use current personas.
+New runs freeze each staffed slot's harness, model and effort, and its complete
+role card when it has one, in a private schema-3 bindings snapshot. Tmux, lab
+execution and completed-turn recovery use that snapshot after edits, retries
+and restarts, and refuse a snapshot whose settings disagree with the frozen
+slot. An omitted model freezes the choice to use the harness default, which
+remains unpinned; give the slot a model to retain an exact model setting.
+Schema-2 bindings, from runs admitted before slots owned their settings, keep
+working from their frozen persona card's variant. Older schema-1 bindings have
+only paths and hashes. Their history remains readable, but seat execution and
+recovery block with `persona_snapshot_incomplete` instead of substituting
+today's persona. Start a new run to use current staffing.
 
 Admission first checks that `expectedRev` and any `If-Match` name the current
 board (HTTP 409 otherwise). It then builds one report of every problem the run
-would hit: board validation plus supported formation types, slots with readable
-personas and harness variants, one controller and a worker in each orchestrated
+would hit: board validation plus supported formation types, staffed slots
+(`unstaffed_slot`) whose harness, model and effort can start a seat
+(`invalid_slot_settings`) and whose role, if named, is readable
+(`unavailable_persona`), one controller and a worker in each orchestrated
 formation, complete code checks, judge chains, runnable Tools and a wired
 mission. Findings cover the nodes the run reaches from its mission, or the
-selected formation. Formation types, slot counts and persona bindings are
+selected formation. Formation types, slot counts and slot staffing are
 checked across the whole board, because the run snapshot binds every formation.
 Any finding rejects the start with HTTP 422, error code `RUN_ADMISSION_FAILED`
 and `error.findings` as `{code,nodeId,message}` entries; no run is recorded.
@@ -282,7 +317,7 @@ its own `--relayed-by` slot ID and the exact `--response` or `--response-file`.
 The `tmux` executor uses one implementation with Claude Code and OpenAI Codex
 adapters. It resolves authenticated harness executables from its environment.
 Each fresh seat gets a pointer to a file under `<state-dir>/briefs`. The file
-contains run/node/slot identity, cwd, mission goal, Bead, persona summary,
+contains run/node/slot identity, the role (`agent: vanilla (no role)` for a slot without one), cwd, mission goal, Bead, role summary,
 formation brief, file/link references, routed inputs, gate feedback, human
 responses, output ports, artifact directory and completion instructions.
 Orchestrated controllers also get their bound workers and may direct only those
@@ -306,7 +341,7 @@ running for its human gate. That seat's later cleanup records `ended`, `gone`,
 `left_socket_changed` or `left_cleanup_failed`, and the ledger keeps the
 `cause` when the runtime ended it.
 
-Native completion must match the exact pointer, cwd, persona model/effort,
+Native completion must match the exact pointer, cwd, the slot's model/effort,
 native session, and a natively finished agent turn carrying this run's
 completion sentinel: Codex task completion, or Claude's end_turn assistant
 message. A marker alone is insufficient, and another run's sentinel never
@@ -632,7 +667,7 @@ their explicit cwd or allocate an automatic workspace as described above.
 Repeat `--listen` for each trusted interface. `--agents-dir` overrides cards;
 installed daemons find `../share/archon/ui` beside their `bin` directory.
 Set `--ui-dir ''` to disable the cockpit, or an absolute path to select another
-build. These are daemon flags, not model settings. Set model and effort on persona harness variants.
+build. These are daemon flags, not model settings. Set harness, model and effort on each slot.
 `--notify-command` and `--cockpit-url` configure needs-you notifications,
 described at the end of this section. Repeat `--file-root <absolute-dir>` for
 each directory whose files missions, briefs and gates may reference; the
@@ -671,7 +706,7 @@ with `--json` `{board, layout, mission|formation|gate}` naming the new node.
 list that board's missions and formations, each formation with its slots and
 staffing. `mission inspect <board> <mission>` prints one mission with its
 reachable chain, and `formation inspect <board> <formation>` one formation with
-its slots, ports, brief and the connections at its ports; `board inspect` prints
+its slots, ports, brief and the connections at its ports, then one line per slot with its staffing (`vanilla · claude-code · opus · low`); `board inspect` prints
 the whole board.
 Nodes keep their IDs when edited: `archon formation rename <board> <formation>
 <title>`, `archon mission update <board> <mission>` with `--title`, `--goal`,
@@ -908,7 +943,7 @@ script, sender and address with the host deployment.
 theme document described below, JSON responses use
 `{success,timestamp,data}`; errors carry an error object. Board authoring includes
 list/create/read/patch/delete, notes, layout and change polling. Agent routes
-list/create/read/patch persona cards; gate profiles expose the two code checks.
+list/create/read/patch persona cards; the roster also serves `harnesses` (each with the efforts it accepts) and `effortPolicy` (`{effort,use}` lines). Gate profiles expose the two code checks.
 With the tmux executor the agent roster marks a persona live when a session named
 by its default session stem runs on `--socket`, and lists the socket's other
 sessions as unbound. The lab executor reports every agent offline.
@@ -967,7 +1002,7 @@ picker or polling are provided. Host paths and deployment belong to the host.
 
 `GET /api/formations/runs/{runId}/seats` returns an enveloped
 `{runId,available,reason?,seats}`. Each latest seat per node/slot includes
-`runId`, `nodeId`, `nodeTitle`, `slotId`, `slotLabel`, `harness`, `controller`,
+`runId`, `nodeId`, `nodeTitle`, `slotId`, `slotLabel`, `harness`, the `model` (absent for the harness default) and `effort` the seat was started with, `controller`,
 `createdSeq`, `sessionName` and `state` (`live`, `ended`, `missing`, `unavailable`).
 A live seat also includes native `columns`, `rows` and a relative `terminalUrl`;
 other states include a reason and no terminal URL. A seat kept on call also

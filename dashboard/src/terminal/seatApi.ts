@@ -7,6 +7,9 @@ export interface RunSeat {
   slotId: string
   slotLabel: string
   harness: string
+  /** What the seat was started with; a missing model is the harness default. */
+  model?: string
+  effort?: string
   controller: boolean
   createdSeq: number
   sessionName: string

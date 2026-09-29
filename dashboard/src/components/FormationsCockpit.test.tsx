@@ -2009,7 +2009,7 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => {
-      expect(patches.filter(patch => patch.body.assignSlot).slice(-1)[0]?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: 'mason', harness: 'codex' })
+      expect(patches.filter(patch => patch.body.assignSlot).slice(-1)[0]?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: 'mason', harness: 'codex', model: '', effort: '' })
     })
   })
 
