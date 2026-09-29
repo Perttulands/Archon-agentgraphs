@@ -5,9 +5,9 @@ description: Author Archon missions and drive their runs through the archond dae
 
 # Archon
 
-This skill documents the Archon contract at commit 7a785cf (VERSION 0.1.0,
-2026-09-29): the reusable unit is a mission, run limits are optional, and
-drivers pull with `run wait`. It ships with that source.
+This skill documents the Archon contract at commit 5cf6e7e (VERSION 0.1.0,
+2026-09-29): the reusable unit is a mission, each slot owns its harness, model
+and effort, run limits are optional, and drivers pull with `run wait`. It ships with that source.
 `archon --version` names the build on PATH. When that build is older, a flag or
 behaviour named here may differ: read the command's `-h` and trust the binary.
 
