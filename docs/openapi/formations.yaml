@@ -828,7 +828,8 @@ paths:
       responses:
         '200':
           description: Persona card in data; returns ETag. Each harnessVariants entry has its stored model and
-            effort, effectiveEffort (medium when effort is unset), and seatLaunch, the command a seat for that
+            effort, effectiveEffort (medium when effort is unset), efforts (the values its harness accepts), and
+            seatLaunch, the command a seat for that
             variant runs, rendered by the seat launcher on the daemon's PATH; seatLaunchError says why a variant
             cannot start (an unsupported harness, or its CLI missing from PATH). Create and patch return the same.
         '422':

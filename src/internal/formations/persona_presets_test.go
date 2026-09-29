@@ -62,7 +62,7 @@ func TestDeliveryPresetsResolveHarnessSettingsAndLocalOverrides(t *testing.T) {
 			t.Fatal(err)
 		}
 		local, err := store.ReadPersona(id)
-		if err != nil || !local.Customized || !local.Preset || local.DisplayName != name || local.DefaultVariant() != variant {
+		if err != nil || !local.Customized || !local.Preset || local.DisplayName != name || !reflect.DeepEqual(local.DefaultVariant(), variant) {
 			t.Fatalf("local override lost preset settings: %+v, %v", local, err)
 		}
 	}

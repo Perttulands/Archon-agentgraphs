@@ -91,7 +91,10 @@ func TestSeatLaunchIsTheRenderedCardSettings(t *testing.T) {
 	if !strings.Contains(codex.SeatLaunch, "--model 'gpt-6-sol'") || !strings.Contains(codex.SeatLaunch, `model_reasoning_effort="high"`) || codex.EffectiveEffort != "high" {
 		t.Fatalf("codex = %+v", codex)
 	}
-	if hermes.SeatLaunch != "" || !strings.Contains(hermes.SeatLaunchError, `unsupported seat harness "hermes"`) || hermes.EffectiveEffort != "" {
+	if strings.Join(claude.Efforts, ",") != "low,medium,high,xhigh,max" || strings.Join(codex.Efforts, ",") != "low,medium,high,xhigh,max,ultra" {
+		t.Fatalf("efforts = %v / %v", claude.Efforts, codex.Efforts)
+	}
+	if hermes.SeatLaunch != "" || !strings.Contains(hermes.SeatLaunchError, `unsupported seat harness "hermes"`) || hermes.EffectiveEffort != "" || hermes.Efforts != nil {
 		t.Fatalf("hermes = %+v", hermes)
 	}
 	if command, err := card.HarnessVariants[0].SpawnCommand(); err != nil || command != claude.SeatLaunch {

@@ -125,14 +125,16 @@ func (v HarnessVariant) SpawnCommand() (string, error) {
 	return v.Launch, nil
 }
 
-// DescribeLaunches fills each variant's resolved effort and the command its
-// seats run, for readers; neither is stored in the card.
+// DescribeLaunches fills each variant's resolved effort, the efforts its
+// harness accepts and the command its seats run, for readers; none of them is
+// stored in the card.
 func (c *PersonaCard) DescribeLaunches() {
 	for i := range c.HarnessVariants {
 		variant := &c.HarnessVariants[i]
-		variant.EffectiveEffort, variant.SeatLaunch, variant.SeatLaunchError = "", "", ""
-		if _, ok := launchableHarness(variant.ID); ok {
+		variant.EffectiveEffort, variant.Efforts, variant.SeatLaunch, variant.SeatLaunchError = "", nil, "", ""
+		if harness, ok := launchableHarness(variant.ID); ok {
 			variant.EffectiveEffort = variant.effectiveEffort()
+			variant.Efforts = slices.Clone(harness.Efforts)
 		}
 		command, err := variant.LaunchCommand()
 		variant.SeatLaunch = command

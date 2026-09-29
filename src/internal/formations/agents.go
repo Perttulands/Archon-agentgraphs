@@ -56,9 +56,10 @@ type HarnessVariant struct {
 	Effort      string `json:"effort,omitempty"`
 	Source      string `json:"source,omitempty"`
 	// Derived for readers by DescribeLaunches; never stored in the card.
-	EffectiveEffort string `json:"effectiveEffort,omitempty"`
-	SeatLaunch      string `json:"seatLaunch,omitempty"`
-	SeatLaunchError string `json:"seatLaunchError,omitempty"`
+	EffectiveEffort string   `json:"effectiveEffort,omitempty"`
+	Efforts         []string `json:"efforts,omitempty"`
+	SeatLaunch      string   `json:"seatLaunch,omitempty"`
+	SeatLaunchError string   `json:"seatLaunchError,omitempty"`
 }
 
 type PersonaNote struct {
