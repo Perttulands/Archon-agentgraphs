@@ -9,6 +9,7 @@ describe('AgentsView', () => {
   beforeEach(() => {
     fetchMock.mockReset()
     window.localStorage.clear()
+    window.history.replaceState(null, '', '/')
     vi.stubGlobal('fetch', fetchMock)
   })
 
@@ -76,6 +77,37 @@ describe('AgentsView', () => {
     const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
     expect(within(inspector).getByText('First judge')).toBeInTheDocument()
     expect(within(inspector).queryByText('No slots on this mission.')).not.toBeInTheDocument()
+  })
+
+  it('opens the shared current board and makes a board chosen here current for Boards too', async () => {
+    const judged = judgedBoard()
+    const mission = missionBoard()
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0 } }))
+      if (url === '/api/formations/boards') {
+        return Promise.resolve(jsonResponse({ success: true, data: { boards: [
+          { id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' },
+          { id: 'judged', slug: 'judged', title: 'Judged', rev: 3, etag: 'judged-etag' },
+        ] } }))
+      }
+      if (url.endsWith('/layout')) return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'l' }))
+      if (url === '/api/formations/boards/judged') return Promise.resolve(jsonResponse({ success: true, data: { board: judged } }, 200, { ETag: 'judged-etag' }))
+      if (url === '/api/formations/boards/mission-board') return Promise.resolve(jsonResponse({ success: true, data: { board: mission } }, 200, { ETag: 'board-etag' }))
+      return Promise.reject(new Error(`unexpected fetch ${url}`))
+    })
+    window.localStorage.setItem('archon.currentBoard.v1', 'judged')
+
+    render(<AgentsView />)
+
+    expect(await screen.findByText('First judge')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Board' })).toHaveValue('judged')
+    expect(window.location.search).toBe('?board=judged')
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Board' }), { target: { value: 'mission-board' } })
+    expect(await screen.findByText('Authoring')).toBeInTheDocument()
+    expect(window.location.search).toBe('?board=mission-board')
+    expect(window.localStorage.getItem('archon.currentBoard.v1')).toBe('mission-board')
   })
 
   it('orders staffing by the wiring from the mission, using the canvas only between parallel branches', () => {
@@ -231,7 +263,8 @@ describe('AgentsView', () => {
       expect(screen.queryByRole('button', { name: action })).toBeNull()
     }
     expect(fetchMock.mock.calls.some(([, init]) => init && (init as RequestInit).method && (init as RequestInit).method !== 'GET')).toBe(false)
-    expect(window.localStorage.length).toBe(0)
+    // Read-only: the only thing stored is the shared current board, never a run pin.
+    expect(Object.keys(window.localStorage)).toEqual(['archon.currentBoard.v1'])
   })
 
   it('names why the mission run is blocked from its run evidence', async () => {

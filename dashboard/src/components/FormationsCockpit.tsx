@@ -48,6 +48,7 @@ import {
   upsertRunEvent,
 } from './formationsRunState'
 import { chooseBoardRun, readRunLink, runChoiceLabel, runChoices, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
+import { chooseCurrentBoard, rememberBoardOnDevice } from './currentBoard'
 import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
 import { FormationSeats, GATE_SVG, PLAY_SVG, slotTooltip, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
 import { useEscapeKey } from './useEscapeKey'
@@ -353,12 +354,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         if (cancelled) return
         setBoards(list)
         if (list[0]) {
-          const linked = list.some(item => item.slug === initialRunLink.board) ? initialRunLink.board : ''
-          if (initialRunLink.board && !linked) {
-            setLinkError(`Board "${initialRunLink.board}" from the link was not found`)
+          const { slug, missingLinked } = chooseCurrentBoard(list.map(item => item.slug), window.location.search)
+          if (missingLinked) {
+            setLinkError(`Board "${missingLinked}" from the link was not found`)
             setPinnedRun({ slug: '', runId: '' })
           }
-          setSelectedSlug(current => current || linked || list[0].slug)
+          setSelectedSlug(current => current || slug)
           return
         }
         boardRef.current = null
@@ -551,6 +552,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // The address bar names the board and a pinned run, so a reload keeps them.
   useEffect(() => {
     if (!selectedSlug) return
+    rememberBoardOnDevice(selectedSlug)
     const search = runLinkSearch(window.location.search, { board: selectedSlug, run: pinnedRun.slug === selectedSlug ? pinnedRun.runId : '' })
     if (search !== window.location.search) window.history.replaceState(window.history.state, '', `${window.location.pathname}${search}${window.location.hash}`)
   }, [pinnedRun, selectedSlug])

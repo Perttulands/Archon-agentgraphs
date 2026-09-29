@@ -10,6 +10,7 @@ import {
   patchBoardDocument,
 } from './formationsApi'
 import { judgeChain } from '../flow/flowModel'
+import { chooseCurrentBoard, rememberCurrentBoard } from './currentBoard'
 import { runStatusLabel } from './formationsRunDiscovery'
 import { projectNodeStates } from './formationsRunState'
 import {
@@ -363,7 +364,7 @@ export default function AgentsView() {
   const loadBoards = useCallback(async () => {
     const nextBoards = await fetchBoardSummaries()
     setBoards(nextBoards)
-    setSelectedSlug(current => current || nextBoards[0]?.slug || '')
+    setSelectedSlug(current => nextBoards.some(next => next.slug === current) ? current : chooseCurrentBoard(nextBoards.map(next => next.slug), window.location.search).slug)
   }, [])
 
   const loadBoard = useCallback(async (slug: string) => {
@@ -410,8 +411,10 @@ export default function AgentsView() {
         if (cancelled) return
         setAgents(nextAgents as RosterAgent[])
         setBoards(nextBoards)
-        setSelectedSlug(current => current || nextBoards[0]?.slug || '')
-        setError('')
+        // Boards and Agents share one current board: the link's, else the last used here.
+        const { slug, missingLinked } = chooseCurrentBoard(nextBoards.map(next => next.slug), window.location.search)
+        setSelectedSlug(current => current || slug)
+        setError(missingLinked && nextBoards.length ? `Board "${missingLinked}" from the link was not found` : '')
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Agents request failed')
       } finally {
@@ -428,6 +431,7 @@ export default function AgentsView() {
       setLayout(null)
       return
     }
+    rememberCurrentBoard(selectedSlug)
     void loadBoard(selectedSlug)
   }, [loadBoard, selectedSlug])
 
