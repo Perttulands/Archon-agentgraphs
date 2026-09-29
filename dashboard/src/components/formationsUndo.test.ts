@@ -9,7 +9,7 @@ const board: BoardDocument = {
     id: 'fmn', type: 'solo', title: 'Plan', brief: { goal: 'Plan it' },
     inputs: [{ id: 'in_a', label: 'Input' }, { id: 'in_b', label: 'Rework' }],
     outputs: [{ id: 'out', label: 'Output' }],
-    slots: [{ id: 'slot', label: 'Agent', agentId: 'codex', harness: 'openai-codex' }],
+    slots: [{ id: 'slot', label: 'Agent', agentId: 'codex', harness: 'openai-codex', controller: false }],
   }],
   gates: [{ id: 'gate', title: '', kinds: ['human'], criterion: 'Looks right' }],
   connections: [
