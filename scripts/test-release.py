@@ -55,6 +55,18 @@ def stop(process):
     assert process.returncode == 0, errors
 
 
+def check_skill(skill):
+    """The installed release carries the archon agent skill with working links."""
+    text = (skill / 'SKILL.md').read_text()
+    front = re.match(r'---\n(.*?)\n---\n', text, re.S)
+    assert front and re.search(r'^name: archon$', front[1], re.M), 'skill frontmatter must name archon'
+    assert re.search(r'^description: \S', front[1], re.M), 'skill needs a description'
+    for page in skill.rglob('*.md'):
+        for target in re.findall(r'\]\(([^)#:]+\.md)\)', page.read_text()):
+            assert (page.parent / target).is_file(), f'{page.name} links to missing {target}'
+    assert not (skill.parent / 'eval').exists(), 'the skill eval is source-only'
+
+
 def main():
     archive = Path(sys.argv[1]).resolve()
     with tempfile.TemporaryDirectory(prefix='archon-release-test-') as temporary:
@@ -81,6 +93,7 @@ def main():
         assert current == (prefix / 'lib/archon/current').resolve()
         assert sentinel.read_text() == 'keep this data\n'
         version, commit = (bundle / 'VERSION').read_text().strip(), (bundle / 'COMMIT').read_text().strip()
+        check_skill(prefix / 'lib/archon/current/share/archon/skills/archon')
         for command in ('archon', 'archond', 'formationsd'):
             result = run(str(prefix / 'bin' / command), '--version', cwd='/')
             assert version in result and commit in result, result
@@ -163,7 +176,7 @@ to = "fmn_work:port_in"
         assert failed.returncode != 0 and os.readlink(current_link) == 'releases/operator-files'
         assert (operator_dir / 'keep').read_text() == 'operator files'
         assert sentinel.read_text() == 'keep this data\n'
-        print(f'PASS {archive.name}: install, upgrade, reinstall, checksum rejection, unmanaged-file protection, UI, command aliases, persisted run')
+        print(f'PASS {archive.name}: install, upgrade, reinstall, checksum rejection, unmanaged-file protection, UI, command aliases, persisted run, agent skill')
 
 
 if __name__ == '__main__':

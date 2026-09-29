@@ -659,7 +659,12 @@ tool and agent nouns offline (`--workspace`) or through the daemon (`--server`).
 Read command-specific help with `-h`, including `--server` when using the
 daemon. Preserve an operator's draft
 and notes, staff its slots, write executable briefs, wire exact port IDs, then
-validate and arrange. The shared `archon` skill gives an authoring recipe.
+validate and arrange. The `archon` skill gives agents the authoring, run and
+recovery recipe for this contract. Its source is `skills/archon/` in this
+repository, and a release installs it under `lib/archon/current/share/archon`
+(`ARCHON_SHARE`). Link it where Claude Code and Codex discover user-level skills:
+`ln -sfn "$ARCHON_SHARE/skills/archon" ~/.claude/skills/archon` and
+`ln -sfn "$ARCHON_SHARE/skills/archon" ~/.agents/skills/archon`.
 Arrange (`board arrange`, the cockpit's Arrange) rewrites only the layout. It
 lays columns along the run from each mission (mission out, formation and Tool
 outputs, gate pass), ignores fail edges back to earlier steps and judge wiring,
@@ -709,7 +714,8 @@ because it cannot be undone.
 The formation window's Execution duration field sets the total seconds for one
 formation invocation, including preparation and finalization. Leave it blank
 to inherit the run's execution default. The authored field is
-`execution.timeoutSeconds`; `setExecution` with zero clears it. The admitted
+`execution.timeoutSeconds`, set with `setExecution` or `archon formation
+set-execution <board> <formation> --timeout-seconds <n>`; zero clears it. The admitted
 run freezes the effective duration, so later edits apply to new runs. Saving or
 clearing a duration has its own undo entry.
 `archon formation set-type <board> <formation> <solo|peer|orchestrated>` and the
