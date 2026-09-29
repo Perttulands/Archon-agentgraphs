@@ -1,8 +1,8 @@
-# Example boards and lab runs
+# Example missions and lab runs
 
 Read with the main [Archon skill](../SKILL.md).
 
-## Import an example board
+## Import an example mission
 
 There is no import command: copy the TOML into the state directory. The
 examples ship with Archon, in `examples/` of the source checkout or
@@ -13,12 +13,12 @@ examples ship with Archon, in `examples/` of the source checkout or
 mkdir -p "$FORM_STATE/.formations/boards" "$FORM_STATE/.formations/notes"
 cp "$EXAMPLES/delivery.formation.toml" "$FORM_STATE/.formations/boards/"
 cp "$EXAMPLES/delivery.notes.toml" "$FORM_STATE/.formations/notes/"
-archon --server "$FORM_SERVER" board validate delivery --json
-archon --server "$FORM_SERVER" board arrange delivery --json
+archon --server "$FORM_SERVER" mission validate delivery --json
+archon --server "$FORM_SERVER" mission arrange delivery --json
 ```
 
-Read an imported board's briefs and staffing before running it. The delivery
-template's mission is `mis_delivery`.
+Read an imported mission's briefs and staffing before running it. The delivery
+template's Input card is `mis_delivery`.
 
 ## Lab runs
 

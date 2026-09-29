@@ -14,37 +14,37 @@ id = "first-step"
 source = "CONTRACT: Operator procedure (authoring order, create JSON); Definitions and storage (slot, harness variant)"
 question = "The operator wants a new mission where one agent writes a report from the run's brief. What are my first authoring commands, and where do the IDs I pass come from?"
 expected = """
-Through the daemon (`--server`): `board new`, then `mission create` and
-`formation create <board> solo`. Take the mission, formation, slot and port IDs
+Through the daemon (`--server`): `mission new`, then `mission create` (the Input card) and
+`formation create <mission> solo`. Take the mission, formation, slot and port IDs
 from the JSON each create returns (`--json`; `.mission.id`, `.formation.id`,
 `.formation.slots[].id`, `.formation.inputs[]`/`outputs[]`); never guess them.
 Staff the slot with `formation assign --slot <slot> --agent <persona> --harness
 <claude-code|openai-codex>`, write the step's brief with `formation set-brief`,
-wire the mission into the formation's input with `mission wire <board> <mission>
-<formation>:<input-port>`, then `board validate` until zero errors (and
-`board arrange`).
+wire the Input card into the formation's input with `mission wire <mission>
+<formation>:<input-port>`, then `mission validate` until zero errors (and
+`mission arrange`).
 """
 key_points = [
-  "Creates the board, mission and a solo formation.",
+  "Creates the mission, its Input card and a solo formation.",
   "Takes IDs (mission, formation, slot, ports) from the commands' JSON output rather than guessing.",
   "Staffs the slot with `formation assign` naming a persona and a harness.",
-  "Wires the mission to the formation input with `mission wire` and runs `board validate` before running.",
+  "Wires the Input card to the formation input with `mission wire` and runs `mission validate` before running.",
 ]
 
 [[question]]
 id = "notes-intent"
 source = "CONTRACT: Definitions and storage (notes are operator intent; note threads)"
-question = "The operator left notes on the board and on some cards. What do I do with them, and how do I answer a note?"
+question = "The operator left notes on the mission and on some cards. What do I do with them, and how do I answer a note?"
 expected = """
-Read them (`board notes`) before editing. Notes are the operator's intent, not
+Read them (`mission notes`) before editing. Notes are the operator's intent, not
 executable seat instructions: translate them into formation briefs, staffing
 and wiring. Each note is a thread; answer by appending an entry with
-`board note <board> [--node <id>] --text ...`, never by rewriting the
+`mission note <mission> [--node <id>] --text ...`, never by rewriting the
 operator's words. Only an entry's author can edit or clear it.
 """
 key_points = [
   "Notes are intent to translate into briefs, staffing and wiring, not instructions the seats run.",
-  "Answer by appending to the thread with `board note`, without rewriting the operator's entries.",
+  "Answer by appending to the thread with `mission note`, without rewriting the operator's entries.",
 ]
 
 [[question]]
@@ -54,7 +54,7 @@ question = "I want three agents to review the same change in parallel, then one 
 expected = """
 Create the three reviewer formations and a lead formation. Wire the work's output
 to each reviewer's input (one output can feed many inputs). Wire each reviewer's
-output into the lead's input with `archon formation wire <board> <from> <to> --join`:
+output into the lead's input with `archon formation wire <mission> <from> <to> --join`:
 the first wire takes the free input and each later one adds a new input port and
 its connection atomically. The lead waits until every input port has received its
 input. Without --join, wiring into an occupied input is refused as occupied.
@@ -121,7 +121,7 @@ id = "effort"
 source = "CONTRACT: Definitions and storage (persona model and effort); form-o7p settled decision (effort policy)"
 question = "Where do I set the reasoning effort for an agent in a mission, and which effort should a code-review step get versus a step that writes code?"
 expected = """
-Effort lives on the persona's harness variant, not on the board: `archon agent
+Effort lives on the persona's harness variant, not on the mission: `archon agent
 new|edit <id> --effort <e>` (edit --harness picks the variant). Blank means
 medium. Policy: architecture, design and review get xhigh; consequential
 reviews get max; making things gets medium; errands get low. So a code review
@@ -140,7 +140,7 @@ question = "My peer formation's agents keep discussing and never converge. How d
 expected = """
 A peer conversation has no fixed turn or round count; it ends when every seat
 acknowledges one proposal. Bound it with the formation's execution duration:
-`archon formation set-execution <board> <formation> --timeout-seconds <n>`
+`archon formation set-execution <mission> <formation> --timeout-seconds <n>`
 (authored as execution.timeoutSeconds; 0 inherits the daemon default). The
 duration covers startup, openings, discussion and finalization; expiry blocks
 the run with formation_timeout_exceeded and keeps the journal and openings. The
@@ -175,7 +175,7 @@ source = "CONTRACT: Gates and output contracts (judge chain, chrote-verdict)"
 question = "How do I make a gate where an agent judges the work, and what must that judge agent output?"
 expected = """
 Create the gate with `gate create --kinds formation`, create a (solo) judge
-formation, and attach it with `gate judge <board> <gate> --chain <judge>`,
+formation, and attach it with `gate judge <mission> <gate> --chain <judge>`,
 which wires both ends. The judge must emit exactly one fenced chrote-verdict
 block with exactly verdict (pass or fail), reason (string) and evidence (array
 of strings), plus its normal chrote-outputs block. A missing, duplicate or

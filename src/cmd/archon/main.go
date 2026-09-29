@@ -2090,7 +2090,7 @@ func identityFromBoard(board *formations.BoardDocument) archonBoardIdentity {
 }
 
 func runBoardNew(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("board new", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mission new", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	title := fs.String("title", "", "mission title")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
@@ -2119,7 +2119,7 @@ func runBoardNew(store *formations.Store, args []string, stdout, stderr io.Write
 }
 
 func runBoardList(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("board list", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mission list", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -2144,7 +2144,7 @@ func writeBoardList(stdout io.Writer, boards []formations.BoardSummary, jsonOut 
 }
 
 func runBoardInspect(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("board inspect", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mission inspect", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -2176,7 +2176,7 @@ func writeBoardInspect(stdout io.Writer, board *formations.BoardDocument, jsonOu
 }
 
 func runBoardNotes(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("board notes", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mission notes", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -2227,7 +2227,7 @@ func writeBoardNotesText(stdout io.Writer, slug string, notes *formations.BoardN
 }
 
 func runBoardNote(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("board note", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mission note", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	selector, patch, jsonOut, code := parseBoardNote(fs, args, stderr)
 	if code != 0 {
@@ -2336,7 +2336,7 @@ func boolCount(values ...bool) int {
 }
 
 func runBoardValidate(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("board validate", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mission validate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -2376,7 +2376,7 @@ func runBoardValidate(store *formations.Store, args []string, stdout, stderr io.
 }
 
 func runBoardArrange(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("board arrange", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mission arrange", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {

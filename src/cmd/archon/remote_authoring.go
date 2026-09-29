@@ -297,7 +297,7 @@ func writeRemoteBoard(stdout, stderr io.Writer, data json.RawMessage, jsonOut bo
 }
 
 func remoteBoardNew(c *remoteClient, args []string, stdout, stderr io.Writer) int {
-	fs := remoteFlags("board new", stderr)
+	fs := remoteFlags("mission new", stderr)
 	title := fs.String("title", "", "mission title")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
@@ -325,7 +325,7 @@ func remoteBoardNew(c *remoteClient, args []string, stdout, stderr io.Writer) in
 }
 
 func remoteBoardList(c *remoteClient, args []string, stdout, stderr io.Writer) int {
-	fs := remoteFlags("board list", stderr)
+	fs := remoteFlags("mission list", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
@@ -359,7 +359,7 @@ func remoteFormationList(c *remoteClient, args []string, stdout, stderr io.Write
 }
 
 func remoteBoardInspect(c *remoteClient, args []string, stdout, stderr io.Writer) int {
-	fs := remoteFlags("board inspect", stderr)
+	fs := remoteFlags("mission inspect", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
@@ -393,7 +393,7 @@ func remoteFormationInspect(c *remoteClient, args []string, stdout, stderr io.Wr
 }
 
 func remoteBoardNotes(c *remoteClient, args []string, stdout, stderr io.Writer) int {
-	fs := remoteFlags("board notes", stderr)
+	fs := remoteFlags("mission notes", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
@@ -422,7 +422,7 @@ func remoteBoardNotes(c *remoteClient, args []string, stdout, stderr io.Writer) 
 }
 
 func remoteBoardNote(c *remoteClient, args []string, stdout, stderr io.Writer) int {
-	selector, patch, jsonOut, code := parseBoardNote(remoteFlags("board note", stderr), args, stderr)
+	selector, patch, jsonOut, code := parseBoardNote(remoteFlags("mission note", stderr), args, stderr)
 	if code != 0 {
 		return code
 	}
@@ -452,7 +452,7 @@ func remoteBoardNote(c *remoteClient, args []string, stdout, stderr io.Writer) i
 }
 
 func remoteBoardValidate(c *remoteClient, args []string, stdout, stderr io.Writer) int {
-	fs := remoteFlags("board validate", stderr)
+	fs := remoteFlags("mission validate", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
@@ -500,7 +500,7 @@ func remoteBoardValidate(c *remoteClient, args []string, stdout, stderr io.Write
 }
 
 func remoteBoardArrange(c *remoteClient, args []string, stdout, stderr io.Writer) int {
-	fs := remoteFlags("board arrange", stderr)
+	fs := remoteFlags("mission arrange", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
