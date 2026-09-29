@@ -2,6 +2,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { Profiler, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import FloatingWindow from './FloatingWindow'
+import FloatingFrameHandles from './FloatingFrameHandles'
+import { useFloatingWindow } from './useFloatingWindow'
 import { WindowManagerProvider, useWindowManager } from './WindowManager'
 import { readFloatingWindowSize } from './floatingWindowSize'
 import { rectsOverlap, type WindowRect, type Workspace } from './windowGeometry'
@@ -216,5 +218,39 @@ describe('floating windows', () => {
     act(() => { window.dispatchEvent(new Event('resize')) })
     // Held at the new right edge, then stepped left of the zoom column.
     expect(rectOf('w1')).toEqual({ left: smallZoom.left - 400, top: 200, width: 400, height: 300 })
+  })
+
+  // CHROTE's Peek wraps its window around the grid its font fit drew
+  // (chrote-8eyu), until the operator sizes it; then the operator's size wins.
+  it('wraps a window around its content until the operator sizes one of its kind', () => {
+    let fit: (size: { width: number; height: number }) => void = () => {}
+    function Fitted() {
+      const win = useFloatingWindow<HTMLElement>({ id: 'fit', kind: 'peek', label: 'fitted', defaultSize: { width: 1000, height: 700 }, onClose: () => {} })
+      fit = win.fitTo
+      return <section {...win.rootProps} role="dialog" aria-label="fitted"><FloatingFrameHandles handles={win.handles} activeHandle={win.activeHandle} /></section>
+    }
+    function FittedHarness() {
+      const stack = useWindowManager(workspace)
+      return <WindowManagerProvider stack={stack}><Fitted /></WindowManagerProvider>
+    }
+    const { unmount } = render(<FittedHarness />)
+    const size = () => { const { width, height } = screen.getByRole('dialog', { name: 'fitted' }).style; return [parseFloat(width), parseFloat(height)] }
+    const left = () => parseFloat(screen.getByRole('dialog', { name: 'fitted' }).style.left)
+    const before = left()
+
+    act(() => fit({ width: 900, height: 600 }))
+    expect(size()).toEqual([900, 600])
+    expect(left()).toBe(before)
+
+    fireEvent.keyDown(screen.getByRole('separator', { name: 'Resize the fitted from the bottom' }), { key: 'ArrowDown' })
+    const sized = size()
+    act(() => fit({ width: 700, height: 500 }))
+    expect(size()).toEqual(sized)
+
+    // The remembered size is the operator's from the next window's first paint.
+    unmount()
+    render(<FittedHarness />)
+    act(() => fit({ width: 700, height: 500 }))
+    expect(size()).toEqual(sized)
   })
 })

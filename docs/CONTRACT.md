@@ -433,19 +433,29 @@ its neighbours, its next links and the title bars of open windows visible and
 clickable, and cascades when no free space is left. Menus opened from the run
 bar render above every window.
 
-The cockpit's floating Peek attaches to an owned live seat and sends typing and
-resize as CHROTE's terminals do, through the seat terminal WebSocket below. The
-operator types to the agent whether it is working a dispatch, on call or idle,
-and the terminal fits its row count to the window while retaining every native
-column. Narrow windows scroll horizontally, with Start of line and End of line
-controls. Resizing changes only that viewer, not the seat. A seat kept on call
+The cockpit's floating Peek attaches to an owned live seat and sends typing
+through the seat terminal WebSocket below. Its resizes change only the viewer's
+own view; the seat keeps its pinned size. The
+operator types to the agent whether it is working a dispatch, on call or idle.
+Seat terminals are re-ported from CHROTE's terminal (form-o7p.13.1). Each holds
+the seat's native grid and fits its font to its window: the largest font up to
+14px at which every row and column fits, down to an 11px floor. Below the floor
+the grid scrolls, starting at its newest rows, with Start of line and End of
+line controls when it is wider than the window. Resizing a window changes only
+its font; no size reaches the seat. Peek opens where window placement finds room
+and shrinks to the grid it drew until the operator sizes it. Peek keeps the
+terminal, connection and frame of every seat it has shown while it is open, so
+switching seats does not reconnect. A connection lost with the seat still live,
+such as across a daemon restart, dials again once on Refresh seats (Refresh in a
+Talk window) or when the page becomes visible again; nothing retries on its
+own. A refused attach prints its reason in the terminal. Painting a selection
+copies it and the footer says whether it reached the clipboard. A seat kept on call
 for a human gate is marked on call, and
 waiting for you while it holds a pending ask. On a session-channel run the
 waiting gate's answer panel offers Talk with the asking formation, which opens
 each asked seat's terminal in its own window beside the panel; a window says
 when the decision is recorded. Peek does not enter tmux copy mode, resize the
-seat window, or end sessions. Switching seats and closing Peek disconnect only
-its own client. Labels and controller/worker roles come from the run's frozen
+seat window, or end sessions. Closing Peek disconnects only its own clients. Labels and controller/worker roles come from the run's frozen
 graph; a new attempt has a new terminal URL. Scroll and selection happen in the
 browser; the stream shows the native current screen and subsequent output,
 without an API for reading old transcripts or entering historical tmux copy
@@ -1115,13 +1125,16 @@ configuration or shutdown 503. The frames are CHROTE's. The opening JSON frame
 gives `columns` and `rows`, and the terminal attaches at the seat's native grid.
 Afterwards the client sends binary frames: ASCII `0` followed by input bytes,
 which reach the pane; `1` followed by JSON `columns` and `rows`, which sizes this
-terminal's view; and `2` and `3` to pause and resume output. Other frames are
-ignored. The seat window keeps its own size: the executor sizes a new seat's
+terminal's view; and `2` and `3` to pause and resume output. CHROTE's `4`
+claim frame, which asks to size the window, is declined, and other frames are
+ignored. The cockpit's handshake is CHROTE's, `{AuthToken:"",columns,rows}`,
+with the seat's native grid; the token is not checked. The seat window keeps its own size: the executor sizes a new seat's
 window to 160x48 and pins it (tmux `window-size manual`), so no viewer resizes
 it, including the only viewer of a seat kept on call. A CHROTE tile watches
 the pinned window at that size.
 Output frames are binary ASCII `0` followed by terminal bytes. A terminal ending
-closes with 1000; daemon shutdown closes terminals with 1001. WebSocket origins must
+closes with 1000, and so does a refused attach, after an output frame reading
+`Archon: <reason>`; daemon shutdown closes terminals with 1001. WebSocket origins must
 match the request host. Terminal bytes are the actual seat display, not the
 sanitized ledger projection. The same trusted-network access boundary applies.
 

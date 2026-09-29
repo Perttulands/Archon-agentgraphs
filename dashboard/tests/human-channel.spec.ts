@@ -75,7 +75,7 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   expect(plannerBox!.x + plannerBox!.width <= panelBox!.x || plannerBox!.x >= panelBox!.x + panelBox!.width).toBe(true)
 
   // The first seat takes the keyboard as it opens; Escape goes to the agent, not the window.
-  await expect.poll(() => fixture.resizes(21).length).toBeGreaterThan(0)
+  await expect.poll(() => fixture.handshakes(21)).toEqual([{ AuthToken: '', columns: 100, rows: 30 }])
   await page.keyboard.type('Settle 1 and 3 first')
   await page.keyboard.press('Enter')
   await page.keyboard.press('Escape')
@@ -83,13 +83,12 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   await expect(planner).toBeVisible()
   await evidenceShot(page, 'talk-with-question-peers')
 
-  // The other peer is typed into after a click, and its window's size reaches only that seat.
+  // The other peer is typed into after a click. Its window's size changes only its font, and reaches no seat.
   await codex.locator('.terminal-surface-host').click()
   await page.keyboard.type('agreed')
   await expect.poll(() => fixture.typed(22)).toBe('agreed')
   expect(fixture.typed(21)).toBe('Settle 1 and 3 first\r\x1b')
-  const before = fixture.resizes(22).at(-1)!
-  const plannerResizes = fixture.resizes(21).length
+  const gridBefore = (await codex.locator('.xterm-screen').boundingBox())!
   // Grow the window taller towards whichever edge has room; windows open in free space, sometimes at the canvas's foot.
   const codexNow = (await codex.boundingBox())!
   const growUp = codexNow.y + codexNow.height + 186 > 1080 - 8
@@ -98,8 +97,12 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   await page.mouse.down()
   await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2 + (growUp ? -180 : 180), { steps: 8 })
   await page.mouse.up()
-  await expect.poll(() => fixture.resizes(22).at(-1)!.rows).toBeGreaterThan(before.rows)
-  expect(fixture.resizes(21)).toHaveLength(plannerResizes)
+  // A taller room can only keep or grow the font a narrow window's width allows; the seat is told nothing.
+  await page.waitForTimeout(300)
+  expect((await codex.locator('.xterm-screen').boundingBox())!.height).toBeGreaterThanOrEqual(gridBefore.height)
+  expect(fixture.resizes(22)).toEqual([])
+  expect(fixture.resizes(21)).toEqual([])
+  expect(fixture.handshakes(22)).toEqual([{ AuthToken: '', columns: 100, rows: 30 }])
 
   // Talk again raises the open windows instead of opening more; the Flow row offers the same.
   await panel.getByRole('button', { name: 'Talk with Question peers' }).click()
@@ -158,8 +161,9 @@ test('a narrow Talk window exposes the end of a native-width line without resizi
   await page.getByRole('button', { name: 'Talk with Question peers' }).click()
   const win = page.getByRole('dialog', { name: 'Talk with Delivery Planner · Claude Code' })
   await expect(win).toContainText('Live · type to talk to the agent')
-  await expect.poll(() => fixture.resizes(21).at(-1)?.columns).toBe(160)
-  const host = win.getByTestId('terminal-surface')
+  await expect.poll(() => fixture.handshakes(21).at(-1)?.columns).toBe(160)
+  // Below the 11px floor the native grid scrolls rather than being cut (form-a2a).
+  const host = win.getByTestId('seat-terminal-room')
   await expect.poll(() => host.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
   await win.getByRole('button', { name: 'End of line' }).click()
   // Check the actual glyph range is inside the scroll viewport, not merely in the DOM.
