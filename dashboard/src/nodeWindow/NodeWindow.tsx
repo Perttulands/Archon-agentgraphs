@@ -21,6 +21,7 @@ import { ProducedFiles } from '../files/ProducedFiles'
 import { referencedFileRequest } from '../files/fileWindowModel'
 import { nodeFileRefs } from '../files/referencedFiles'
 import FloatingWindow from '../windows/FloatingWindow'
+import { nodeAnchor, nodeWindowKeepClear } from '../windows/cockpitScene'
 import type { WindowRect } from '../windows/windowGeometry'
 import { EditableField } from './EditableField'
 import { FormationDurationField } from './FormationDurationField'
@@ -87,14 +88,6 @@ const KIND_WORD = { mission: 'Mission', formation: 'Formation', gate: 'Gate' } a
 const UNTITLED = { mission: 'Untitled mission', formation: 'Untitled formation', gate: 'Gate' } as const
 
 /** Where a node sits on screen, its Flow row or else its card, so its window opens beside it. */
-function cardRect(nodeId: string) {
-  const escaped = nodeId.replace(/["\\]/g, '\\$&')
-  const card = document.querySelector(`[data-flow-node="${escaped}"]`) || document.querySelector(`[data-node="${escaped}"]`)
-  if (!card) return null
-  const { left, top, width, height } = card.getBoundingClientRect()
-  return { left, top, width, height }
-}
-
 /** The window's accessible name, which its close button and handles repeat. */
 export function nodeWindowLabel(located: Located): string {
   return `${KIND_WORD[located.kind]} · ${located.node.title || UNTITLED[located.kind]}`
@@ -134,7 +127,8 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
       label={label}
       title={<><span className="nwin-kind">{KIND_WORD[located.kind]}</span> {located.node.title || UNTITLED[located.kind]}</>}
       defaultSize={{ width: 540, height: 620 }}
-      anchor={() => anchor || cardRect(nodeId)}
+      anchor={() => anchor || nodeAnchor(nodeId)}
+      keepClear={() => nodeWindowKeepClear(nodeId, board.connections)}
       onClose={onClose}
     >
       <div className="nwin" data-testid={`node-window-${nodeId}`}>

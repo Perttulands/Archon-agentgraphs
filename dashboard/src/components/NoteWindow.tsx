@@ -13,11 +13,13 @@ export function noteWindowId(target: string): string {
   return `note:${target}`
 }
 
-export default function NoteWindow({ target, title, anchor, entries, draft, editingEntryId, saving, error, conflict, onDraft, onSave, onCancelEdit, onEdit, onDelete, onReload, onClose }: {
+export default function NoteWindow({ target, title, anchor, keepClear, entries, draft, editingEntryId, saving, error, conflict, onDraft, onSave, onCancelEdit, onEdit, onDelete, onReload, onClose }: {
   target: string
   title: string
   /** What the window opens beside: the node's card and sticky. */
   anchor?: () => WindowRect | null
+  /** What the window leaves visible as it opens: the node's neighbours and next links. */
+  keepClear?: () => readonly WindowRect[]
   entries: NoteEntry[]
   draft: string
   editingEntryId?: string
@@ -48,6 +50,7 @@ export default function NoteWindow({ target, title, anchor, entries, draft, edit
       label={board ? 'board notes' : `notes for ${title}`}
       defaultSize={{ width: 400, height: 440 }}
       anchor={anchor}
+      keepClear={keepClear}
       className="note-window"
       onClose={onClose}
     >

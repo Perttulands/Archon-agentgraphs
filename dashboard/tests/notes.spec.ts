@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { wayfinding, wayfindingFixture } from './wayfinding-fixture'
 
+const CARDS = '.formation[data-node], .gatecard[data-node], .missioncard[data-node], .toolcard[data-node]'
+
 type Entry = { id: string; author: string; text: string }
 const titleOf = (nodeId: string): string => [
   ...wayfinding.board.missions, ...wayfinding.board.formations, ...wayfinding.board.gates,
@@ -81,7 +83,14 @@ test('a note window opens beside its node, leaving the card and its note in view
     }
     const gap = Math.max(win.x - idea.right, idea.left - (win.x + win.width), win.y - idea.bottom, idea.top - (win.y + win.height))
     expect(gap, `${title} window covers its card or note`).toBeGreaterThanOrEqual(0)
-    expect(gap, `${title} window opens away from its node`).toBeLessThanOrEqual(16)
+    // It opens in the free space nearest its node, so it may sit a little way off rather than over a neighbour.
+    expect(gap, `${title} window opens away from its node`).toBeLessThanOrEqual(240)
+    for (const other of await page.locator(CARDS).all()) {
+      const box = await other.boundingBox()
+      if (!box) continue
+      const covers = win.x < box.x + box.width && box.x < win.x + win.width && win.y < box.y + box.height && box.y < win.y + win.height
+      expect(covers, `${title} window covers a card`).toBe(false)
+    }
     await noteWindow.getByRole('button', { name: `Close notes for ${title}` }).click()
   }
 })

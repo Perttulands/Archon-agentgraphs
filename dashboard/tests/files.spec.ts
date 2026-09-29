@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { wayfinding, wayfindingFixture } from './wayfinding-fixture'
 
+const CARDS = '.formation[data-node], .gatecard[data-node], .missioncard[data-node], .toolcard[data-node]'
+
 type Node = { id: string; title: string; type?: string; files?: string[]; brief?: { goal?: string; files?: string[] } }
 type Box = { x: number; y: number; width: number; height: number }
 
@@ -63,9 +65,15 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Wayfind
   await expect(rubric).toContainText('Adversarial review · rubrics/adversarial-review.md')
   // A chip opens its file beside the card, not the card's node window.
   await expect(page.getByRole('dialog', { name: 'Gate · Adversarial review' })).toHaveCount(0)
-  const besideGate = gapBetween((await rubric.boundingBox())!, (await gate.boundingBox())!)
+  // It opens in the free space nearest the gate: clear of it and of every card, a short way off.
+  const rubricBox = (await rubric.boundingBox())!
+  const besideGate = gapBetween(rubricBox, (await gate.boundingBox())!)
   expect(besideGate).toBeGreaterThanOrEqual(0)
-  expect(besideGate).toBeLessThanOrEqual(16)
+  expect(besideGate).toBeLessThanOrEqual(240)
+  for (const other of await page.locator(CARDS).all()) {
+    const box = await other.boundingBox()
+    if (box) expect(gapBetween(rubricBox, box), 'the rubric covers a card').toBeGreaterThanOrEqual(0)
+  }
 
   await gate.getByRole('button', { name: '1 more referenced file' }).click()
   await page.getByRole('menuitem', { name: '/home/operator/private/scoring.md · judge Brief critic' }).click()
@@ -73,7 +81,7 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Wayfind
   await expect(outside.getByRole('alert')).toContainText('file is not readable here')
   await expect(outside).toContainText('/home/operator/private/scoring.md')
 
-  // A file link in a node window opens its file beside that window.
+  // A file link in a node window opens its file near that window, clear of it.
   await page.getByTestId(`mission-node-${board.missions[0].id}`).locator('.mtitle').click()
   const missionWindow = page.getByRole('dialog', { name: 'Mission · Wayfinding' })
   await missionWindow.getByRole('button', { name: 'Open file /srv/projects/wayfinding/sketch.md' }).click()
@@ -81,7 +89,7 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Wayfind
   await expect(sketch.getByRole('alert')).toContainText('file is not readable here')
   const besideWindow = gapBetween((await sketch.boundingBox())!, (await missionWindow.boundingBox())!)
   expect(besideWindow).toBeGreaterThanOrEqual(0)
-  expect(besideWindow).toBeLessThanOrEqual(16)
+  expect(besideWindow).toBeLessThanOrEqual(240)
   expect(fixture.writes).toEqual([])
 })
 
