@@ -133,16 +133,19 @@ type FormationPortRemovalRequest struct {
 }
 
 type FormationWireRequest struct {
-	From      string
-	To        string
-	UpdatedBy string
+	JoinIfOccupied bool
+	From           string
+	To             string
+	UpdatedBy      string
 }
 
 type FormationRewireRequest struct {
-	From       string
-	PreviousTo string
-	To         string
-	UpdatedBy  string
+	JoinIfOccupied      bool
+	RemovePreviousInput bool // Undo a join: remove the previous input only if no other edge uses it.
+	From                string
+	PreviousTo          string
+	To                  string
+	UpdatedBy           string
 }
 
 type GateCreateRequest struct {
@@ -1648,37 +1651,57 @@ func (s *Store) WireFormationPorts(slug string, req FormationWireRequest, opts W
 		return nil, ErrNotFound
 	}
 	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, current *BoardDocument) ([]byte, error) {
-		fromNode, ok := endpointAllowsDirection(raw, req.From, FormationPortOutput)
-		if !ok {
-			return nil, ErrNotFound
+		raw, to, err := prepareWireTarget(raw, current, req.From, req.To, req.JoinIfOccupied)
+		if err != nil {
+			return nil, err
 		}
-		toNode, ok := endpointAllowsDirection(raw, req.To, FormationPortInput)
-		if !ok {
-			return nil, ErrNotFound
-		}
-		if fromNode == toNode {
-			return nil, ErrConflict
-		}
-		for _, connection := range current.Connections {
-			if connection.From == req.From && connection.To == req.To {
-				return nil, ErrConflict
-			}
-			if connection.To == req.To &&
-				!isGateFailPushbackEndpoint(current.Gates, req.From) &&
-				!isGateFailPushbackEndpoint(current.Gates, connection.From) {
-				return nil, ErrConflict
-			}
-		}
-		candidate := BoardConnection{
-			From: req.From,
-			To:   req.To,
-		}
-		if _, incompatible := toolConnectionCompatibilityFinding(current, candidate); incompatible {
-			return nil, ErrConflict
-		}
+		candidate := BoardConnection{From: req.From, To: to}
 		candidate.ID = newPrefixedID("edge")
 		return appendConnectionBlock(raw, candidate), nil
 	})
+}
+
+// prepareWireTarget validates before allocating a join input. It only edits the
+// in-memory TOML; the caller publishes the port and connection in one revision.
+func prepareWireTarget(raw []byte, current *BoardDocument, from, to string, join bool) ([]byte, string, error) {
+	fromNode, ok := endpointAllowsDirection(raw, from, FormationPortOutput)
+	if !ok {
+		return nil, "", ErrNotFound
+	}
+	toNode, ok := endpointAllowsDirection(raw, to, FormationPortInput)
+	if !ok {
+		return nil, "", ErrNotFound
+	}
+	if fromNode == toNode {
+		return nil, "", ErrSelfWire
+	}
+	occupied := false
+	for _, connection := range current.Connections {
+		if connection.From == from && connection.To == to {
+			return nil, "", ErrDuplicateConnection
+		}
+		if connection.To == to && !isGateFailPushbackEndpoint(current.Gates, from) && !isGateFailPushbackEndpoint(current.Gates, connection.From) {
+			occupied = true
+		}
+	}
+	if _, incompatible := toolConnectionCompatibilityFinding(current, BoardConnection{From: from, To: to}); incompatible {
+		return nil, "", ErrIncompatibleToolConnection
+	}
+	if !occupied {
+		return raw, to, nil
+	}
+	lines := splitLines(raw)
+	_, end, formation := findFormationBlockByID(lines, toNode)
+	if !join || !formation {
+		return nil, "", ErrInputOccupied
+	}
+	portID := newPrefixedID("port")
+	lines = insertTomLLines(lines, end, []tomlLine{
+		{body: "[[formation.input]]", newline: "\n"},
+		{body: "id = " + renderString(portID), newline: "\n"},
+		{body: "label = " + renderString("Input"), newline: "\n"},
+	})
+	return renderTOMLLines(lines), toNode + ":" + portID, nil
 }
 
 func (s *Store) UnwireFormationPorts(slug string, req FormationWireRequest, opts WriteOptions) (*BoardDocument, error) {
@@ -1699,43 +1722,46 @@ func (s *Store) RewireFormationTarget(slug string, req FormationRewireRequest, o
 		return nil, ErrNotFound
 	}
 	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, current *BoardDocument) ([]byte, error) {
-		fromNode, ok := endpointAllowsDirection(raw, req.From, FormationPortOutput)
-		if !ok {
-			return nil, ErrNotFound
-		}
-		toNode, ok := endpointAllowsDirection(raw, req.To, FormationPortInput)
-		if !ok {
-			return nil, ErrNotFound
-		}
-		if fromNode == toNode {
-			return nil, ErrConflict
-		}
-		hasOriginal := false
-		for _, connection := range current.Connections {
-			if connection.From == req.From && connection.To == req.PreviousTo {
-				hasOriginal = true
-				continue
-			}
-			if connection.From == req.From && connection.To == req.To {
-				return nil, ErrConflict
-			}
-			if connection.To == req.To {
-				return nil, ErrConflict
-			}
-		}
-		if !hasOriginal {
-			return nil, ErrNotFound
-		}
-		candidate := BoardConnection{
-			From: req.From,
-			To:   req.To,
-		}
-		if _, incompatible := toolConnectionCompatibilityFinding(current, candidate); incompatible {
-			return nil, ErrConflict
-		}
 		nextRaw, deleted := deleteConnectionByEndpoints(raw, req.From, req.PreviousTo)
 		if !deleted {
 			return nil, ErrNotFound
+		}
+		remaining := *current
+		remaining.Connections = nil
+		for _, connection := range current.Connections {
+			if connection.From != req.From || connection.To != req.PreviousTo {
+				remaining.Connections = append(remaining.Connections, connection)
+			}
+		}
+		nextRaw, to, err := prepareWireTarget(nextRaw, &remaining, req.From, req.To, req.JoinIfOccupied)
+		if err != nil {
+			return nil, err
+		}
+		candidate := BoardConnection{From: req.From, To: to}
+		if req.RemovePreviousInput {
+			if to == req.PreviousTo {
+				return nil, ErrInputOccupied
+			}
+			for _, connection := range remaining.Connections {
+				if connection.To == req.PreviousTo || connection.From == req.PreviousTo {
+					return nil, ErrInputOccupied
+				}
+			}
+			lines := splitLines(nextRaw)
+			start, end, ok := findFormationBlockByID(lines, endpointNodeID(req.PreviousTo))
+			if !ok {
+				return nil, ErrNotFound
+			}
+			_, ok = endpointAllowsDirection(nextRaw, req.PreviousTo, FormationPortInput)
+			if !ok {
+				return nil, ErrNotFound
+			}
+			portID := strings.SplitN(req.PreviousTo, ":", 2)[1]
+			start, end, ok = findFormationPortBlock(lines, start, end, portID)
+			if !ok {
+				return nil, ErrNotFound
+			}
+			nextRaw = renderTOMLLines(append(lines[:start], lines[end:]...))
 		}
 		candidate.ID = newPrefixedID("edge")
 		return appendConnectionBlock(nextRaw, candidate), nil
@@ -2305,7 +2331,7 @@ func judgeChainConnections(raw []byte, req GateJudgeRequest) ([]BoardConnection,
 
 func validateConnectionCandidate(existing []BoardConnection, gates []GateNode, candidate BoardConnection) (bool, error) {
 	if endpointNodeID(candidate.From) == endpointNodeID(candidate.To) {
-		return false, ErrConflict
+		return false, ErrSelfWire
 	}
 	for _, connection := range existing {
 		if connection.From == candidate.From && connection.To == candidate.To {
@@ -2314,7 +2340,7 @@ func validateConnectionCandidate(existing []BoardConnection, gates []GateNode, c
 		if connection.To == candidate.To &&
 			!isGateFailPushbackEndpoint(gates, candidate.From) &&
 			!isGateFailPushbackEndpoint(gates, connection.From) {
-			return false, ErrConflict
+			return false, ErrInputOccupied
 		}
 	}
 	return false, nil

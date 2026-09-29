@@ -250,10 +250,11 @@ type formationsRemovePortRequest struct {
 }
 
 type formationsWireConnectionRequest struct {
-	From        string `json:"from"`
-	To          string `json:"to"`
-	ExpectedRev int    `json:"expectedRev"`
-	UpdatedBy   string `json:"updatedBy"`
+	JoinIfOccupied bool   `json:"joinIfOccupied"`
+	From           string `json:"from"`
+	To             string `json:"to"`
+	ExpectedRev    int    `json:"expectedRev"`
+	UpdatedBy      string `json:"updatedBy"`
 }
 
 type formationsCreateGateRequest struct {
@@ -528,11 +529,13 @@ type formationsDetachGateJudgeRequest struct {
 }
 
 type formationsRewireConnectionRequest struct {
-	From        string `json:"from"`
-	PreviousTo  string `json:"previousTo"`
-	To          string `json:"to"`
-	ExpectedRev int    `json:"expectedRev"`
-	UpdatedBy   string `json:"updatedBy"`
+	JoinIfOccupied      bool   `json:"joinIfOccupied"`
+	RemovePreviousInput bool   `json:"removePreviousInput"`
+	From                string `json:"from"`
+	PreviousTo          string `json:"previousTo"`
+	To                  string `json:"to"`
+	ExpectedRev         int    `json:"expectedRev"`
+	UpdatedBy           string `json:"updatedBy"`
 }
 
 type formationsCreateMissionRequest struct {
@@ -1300,9 +1303,10 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 	if request.WireConnection != nil {
 		wire := request.WireConnection
 		board, err := h.store.WireFormationPorts(slug, formations.FormationWireRequest{
-			From:      wire.From,
-			To:        wire.To,
-			UpdatedBy: patchUpdatedBy(request.UpdatedBy, wire.UpdatedBy),
+			JoinIfOccupied: wire.JoinIfOccupied,
+			From:           wire.From,
+			To:             wire.To,
+			UpdatedBy:      patchUpdatedBy(request.UpdatedBy, wire.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
 			ExpectedRev:  patchExpectedRev(request.ExpectedRev, wire.ExpectedRev),
@@ -1318,10 +1322,12 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 	if request.RewireConnection != nil {
 		wire := request.RewireConnection
 		board, err := h.store.RewireFormationTarget(slug, formations.FormationRewireRequest{
-			From:       wire.From,
-			PreviousTo: wire.PreviousTo,
-			To:         wire.To,
-			UpdatedBy:  patchUpdatedBy(request.UpdatedBy, wire.UpdatedBy),
+			JoinIfOccupied:      wire.JoinIfOccupied,
+			RemovePreviousInput: wire.RemovePreviousInput,
+			From:                wire.From,
+			PreviousTo:          wire.PreviousTo,
+			To:                  wire.To,
+			UpdatedBy:           patchUpdatedBy(request.UpdatedBy, wire.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
 			ExpectedRev:  patchExpectedRev(request.ExpectedRev, wire.ExpectedRev),
@@ -1737,6 +1743,14 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusUnprocessableEntity, formations.ToolExecutionUnavailableCode, "Tool execution is unavailable")
 	case errors.Is(err, formations.ErrRuntimeAuthorityNonAuthorizing):
 		core.WriteError(w, http.StatusServiceUnavailable, "RUNTIME_AUTHORITY_NON_AUTHORIZING", "Formations runtime authority is unavailable")
+	case errors.Is(err, formations.ErrInputOccupied):
+		core.WriteError(w, http.StatusConflict, "INPUT_OCCUPIED", err.Error())
+	case errors.Is(err, formations.ErrSelfWire):
+		core.WriteError(w, http.StatusUnprocessableEntity, "SELF_WIRE", err.Error())
+	case errors.Is(err, formations.ErrDuplicateConnection):
+		core.WriteError(w, http.StatusConflict, "DUPLICATE_CONNECTION", err.Error())
+	case errors.Is(err, formations.ErrIncompatibleToolConnection):
+		core.WriteError(w, http.StatusUnprocessableEntity, "INCOMPATIBLE_TOOL_CONNECTION", err.Error())
 	case errors.Is(err, formations.ErrConflict):
 		core.WriteError(w, http.StatusConflict, "CONFLICT", "Formation definition changed; reload and retry")
 	case errors.Is(err, formations.ErrAlreadyExists):

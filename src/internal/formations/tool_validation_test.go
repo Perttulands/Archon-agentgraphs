@@ -848,8 +848,8 @@ func assertToolStructuralWriterRejectedWithoutPublication(
 			From: from, PreviousTo: previousTo, To: to, UpdatedBy: "agent:test",
 		}, opts)
 	}
-	if !errors.Is(err, ErrConflict) {
-		t.Fatalf("incompatible Tool connection error = %v, want ErrConflict", err)
+	if !errors.Is(err, ErrIncompatibleToolConnection) {
+		t.Fatalf("incompatible Tool connection error = %v, want ErrIncompatibleToolConnection", err)
 	}
 	assertToolStructuralFileIdentity(t, path, wantRaw, wantIdentity)
 }

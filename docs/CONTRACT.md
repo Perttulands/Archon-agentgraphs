@@ -105,6 +105,23 @@ becomes `specialist`, a board named in neither title nor slug becomes
 Bead ID, an unknown formation type or an unknown code check profile is rejected
 on write. Only run admission and `board validate` reject incomplete work.
 
+Each formation input port takes one ordinary feed, and a formation waits for all
+of its input ports before starting. Joining work means one input port per
+upstream. Dropping a wire (or reconnecting its target) onto a fed formation input
+on the canvas adds a new input port and its connection in one board revision;
+one undo removes that join. Free inputs use their existing port. Gate and Tool
+inputs remain single-feed. Gate-fail pushback retains its feedback exception.
+
+For CLI authoring, `archon formation wire <board> <from-node:port>
+<to-node:port> --join` enables the same join, both offline and with `--server`.
+Without `--join`, an occupied exact input returns an occupied-input error.
+HTTP `wireConnection` and `rewireConnection` accept `joinIfOccupied: true`.
+To undo a target join atomically, `rewireConnection` also accepts
+`removePreviousInput: true`: it removes the old formation input only if no
+other connection uses it. Wiring errors use `INPUT_OCCUPIED`, `SELF_WIRE`,
+`DUPLICATE_CONNECTION` or `INCOMPATIBLE_TOOL_CONNECTION`; `CONFLICT` remains
+reserved for stale board revisions or ETags in these edits.
+
 The [delivery board](../examples/delivery.formation.toml) and its
 [notes](../examples/delivery.notes.toml) add Plan, Beads, a Beads-review judge,
 orchestrated Execution and Final review. Six `delivery-*` presets staff it.

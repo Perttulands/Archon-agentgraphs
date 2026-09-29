@@ -956,8 +956,12 @@ func runFormationWire(store *formations.Store, args []string, stdout, stderr io.
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
+	join := new(bool)
+	if !remove {
+		join = fs.Bool("join", false, "join an occupied formation input by adding a new input port atomically")
+	}
 	jsonOut := fs.Bool("json", false, "write JSON")
-	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true, "join": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 3 {
@@ -973,9 +977,10 @@ func runFormationWire(store *formations.Store, args []string, stdout, stderr io.
 		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
 	}
 	request := formations.FormationWireRequest{
-		From:      fs.Arg(1),
-		To:        fs.Arg(2),
-		UpdatedBy: *updatedBy,
+		JoinIfOccupied: *join,
+		From:           fs.Arg(1),
+		To:             fs.Arg(2),
+		UpdatedBy:      *updatedBy,
 	}
 	var result *formations.BoardDocument
 	if remove {
@@ -2667,7 +2672,7 @@ func failJSON(stderr io.Writer, err error, jsonOut bool, boundary, selector stri
 }
 
 func failDefinitionWrite(stderr io.Writer, err error, jsonOut bool, boundary, selector string) int {
-	if errors.Is(err, formations.ErrInvalidDefinitionSource) {
+	if errors.Is(err, formations.ErrInvalidDefinitionSource) || errors.Is(err, formations.ErrInputOccupied) || errors.Is(err, formations.ErrSelfWire) || errors.Is(err, formations.ErrDuplicateConnection) || errors.Is(err, formations.ErrIncompatibleToolConnection) {
 		return failJSON(stderr, err, jsonOut, boundary, selector)
 	}
 	return fail(stderr, err)
@@ -2738,6 +2743,14 @@ func archonErrorCode(err error) string {
 		return "not_found"
 	case errors.Is(err, formations.ErrAlreadyExists):
 		return "conflict"
+	case errors.Is(err, formations.ErrInputOccupied):
+		return "input_occupied"
+	case errors.Is(err, formations.ErrSelfWire):
+		return "self_wire"
+	case errors.Is(err, formations.ErrDuplicateConnection):
+		return "duplicate_connection"
+	case errors.Is(err, formations.ErrIncompatibleToolConnection):
+		return "incompatible_tool_connection"
 	case errors.Is(err, formations.ErrConflict):
 		return "conflict"
 	case errors.Is(err, formations.ErrInvalidBeadID):

@@ -1299,6 +1299,9 @@ components:
               type: string
             to:
               type: string
+            joinIfOccupied:
+              type: boolean
+              description: Add a formation input and wire to it atomically when the target is fed. Gates and Tools remain single-feed.
             expectedRev:
               type: integer
             updatedBy:
@@ -1323,6 +1326,12 @@ components:
               type: string
             to:
               type: string
+            joinIfOccupied:
+              type: boolean
+              description: Add a formation input and wire to it atomically when the target is fed. Gates and Tools remain single-feed.
+            removePreviousInput:
+              type: boolean
+              description: Remove the previous formation input atomically after rewiring, only if no other connection uses it. Used to undo a join.
             expectedRev:
               type: integer
             updatedBy:

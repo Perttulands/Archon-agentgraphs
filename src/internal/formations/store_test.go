@@ -2094,22 +2094,22 @@ func TestS3WireRejectsSelfDuplicateAndSecondInput(t *testing.T) {
 		From:      "fmn_frame:port_frame_out",
 		To:        "fmn_research:port_research_in",
 		UpdatedBy: "agent:test",
-	}, WriteOptions{ExpectedETag: wired.ETag, ExpectedRev: wired.Rev}); !errors.Is(err, ErrConflict) {
-		t.Fatalf("duplicate wire error = %v, want ErrConflict", err)
+	}, WriteOptions{ExpectedETag: wired.ETag, ExpectedRev: wired.Rev}); !errors.Is(err, ErrDuplicateConnection) {
+		t.Fatalf("duplicate wire error = %v, want ErrDuplicateConnection", err)
 	}
 	if _, err := store.WireFormationPorts("session-search", FormationWireRequest{
 		From:      "fmn_research:port_research_out",
 		To:        "fmn_research:port_research_in",
 		UpdatedBy: "agent:test",
-	}, WriteOptions{ExpectedETag: wired.ETag, ExpectedRev: wired.Rev}); !errors.Is(err, ErrConflict) {
-		t.Fatalf("self wire error = %v, want ErrConflict", err)
+	}, WriteOptions{ExpectedETag: wired.ETag, ExpectedRev: wired.Rev}); !errors.Is(err, ErrSelfWire) {
+		t.Fatalf("self wire error = %v, want ErrSelfWire", err)
 	}
 	if _, err := store.WireFormationPorts("session-search", FormationWireRequest{
 		From:      "fmn_ship:port_ship_out",
 		To:        "fmn_research:port_research_in",
 		UpdatedBy: "agent:test",
-	}, WriteOptions{ExpectedETag: wired.ETag, ExpectedRev: wired.Rev}); !errors.Is(err, ErrConflict) {
-		t.Fatalf("second input wire error = %v, want ErrConflict", err)
+	}, WriteOptions{ExpectedETag: wired.ETag, ExpectedRev: wired.Rev}); !errors.Is(err, ErrInputOccupied) {
+		t.Fatalf("second input wire error = %v, want ErrInputOccupied", err)
 	}
 }
 
@@ -2142,8 +2142,8 @@ func TestS3RewireRejectsOccupiedTargetWithoutDroppingOriginal(t *testing.T) {
 		PreviousTo: "fmn_research:port_research_in",
 		To:         "fmn_ship:port_ship_in",
 		UpdatedBy:  "agent:test",
-	}, WriteOptions{ExpectedETag: second.ETag, ExpectedRev: second.Rev}); !errors.Is(err, ErrConflict) {
-		t.Fatalf("rewire occupied target error = %v, want ErrConflict", err)
+	}, WriteOptions{ExpectedETag: second.ETag, ExpectedRev: second.Rev}); !errors.Is(err, ErrInputOccupied) {
+		t.Fatalf("rewire occupied target error = %v, want ErrInputOccupied", err)
 	}
 	after, err := store.ReadBoard("session-search")
 	if err != nil {
@@ -2454,8 +2454,8 @@ to = "fmn_j1:port_j1_in"
 		GateID:    "gate_review",
 		Chain:     []string{"fmn_j1"},
 		UpdatedBy: "agent:test",
-	}, WriteOptions{ExpectedETag: before.ETag, ExpectedRev: before.Rev}); !errors.Is(err, ErrConflict) {
-		t.Fatalf("judge chain second input error = %v, want ErrConflict", err)
+	}, WriteOptions{ExpectedETag: before.ETag, ExpectedRev: before.Rev}); !errors.Is(err, ErrInputOccupied) {
+		t.Fatalf("judge chain second input error = %v, want ErrInputOccupied", err)
 	}
 	after, err := store.ReadBoard("session-search")
 	if err != nil {

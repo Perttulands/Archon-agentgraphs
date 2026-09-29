@@ -48,8 +48,8 @@ func TestWireFormationPortsAllowsGateFailPushback(t *testing.T) {
 		}
 		if _, err := store.WireFormationPorts("session-search", FormationWireRequest{
 			From: "fmn_ship:port_ship_out", To: "fmn_work:port_work_in", UpdatedBy: "agent:test",
-		}, WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev}); !errors.Is(err, ErrConflict) {
-			t.Fatalf("second non-pushback producer error = %v, want ErrConflict", err)
+		}, WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev}); !errors.Is(err, ErrInputOccupied) {
+			t.Fatalf("second non-pushback producer error = %v, want ErrInputOccupied", err)
 		}
 	})
 	t.Run("pushback wired first", func(t *testing.T) {
@@ -82,8 +82,8 @@ func TestWireFormationPortsAllowsGateFailPushback(t *testing.T) {
 		}
 		if _, err := store.WireFormationPorts("session-search", FormationWireRequest{
 			From: "gate_review:fail", To: "fmn_work:port_work_in", UpdatedBy: "agent:test",
-		}, WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev}); !errors.Is(err, ErrConflict) {
-			t.Fatalf("duplicate pushback edge error = %v, want ErrConflict", err)
+		}, WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev}); !errors.Is(err, ErrDuplicateConnection) {
+			t.Fatalf("duplicate pushback edge error = %v, want ErrDuplicateConnection", err)
 		}
 	})
 }

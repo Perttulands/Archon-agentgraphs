@@ -83,6 +83,14 @@ func (e *remoteHTTPError) Unwrap() error {
 	switch e.Code {
 	case "NOT_FOUND":
 		return formations.ErrNotFound
+	case "INPUT_OCCUPIED":
+		return formations.ErrInputOccupied
+	case "SELF_WIRE":
+		return formations.ErrSelfWire
+	case "DUPLICATE_CONNECTION":
+		return formations.ErrDuplicateConnection
+	case "INCOMPATIBLE_TOOL_CONNECTION":
+		return formations.ErrIncompatibleToolConnection
 	case "CONFLICT":
 		return formations.ErrConflict
 	case "BOARD_EXISTS", "AGENT_EXISTS":
@@ -881,8 +889,12 @@ func remoteFormationWire(remove bool) remoteAuthoringCommand {
 		}
 		fs := remoteFlags(name, stderr)
 		updatedBy := fs.String("updated-by", "agent:archon", "update actor")
+		join := new(bool)
+		if !remove {
+			join = fs.Bool("join", false, "join an occupied formation input by adding a new input port atomically")
+		}
 		jsonOut := fs.Bool("json", false, "write JSON")
-		if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true, "join": true})); err != nil {
 			return 2
 		}
 		if fs.NArg() != 3 {
@@ -890,7 +902,7 @@ func remoteFormationWire(remove bool) remoteAuthoringCommand {
 			return 2
 		}
 		data, _, err := c.patchBoard(fs.Arg(0), *updatedBy, func(*formations.BoardDocument) (string, map[string]any, error) {
-			return operation, map[string]any{"from": fs.Arg(1), "to": fs.Arg(2)}, nil
+			return operation, map[string]any{"from": fs.Arg(1), "to": fs.Arg(2), "joinIfOccupied": *join}, nil
 		})
 		if err != nil {
 			return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
