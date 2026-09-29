@@ -206,8 +206,15 @@ func planRestoredConnections(raw []byte, current *BoardDocument, nodeID string, 
 			}
 		}
 	}
-	withNode := appendNode(raw)
-	board, err := parseBoardForWrite(withNode)
+	touches := func(from, to string) bool { return endpointNodeID(from) == nodeID || endpointNodeID(to) == nodeID }
+	return planRestoredWires(appendNode(raw), current, req.Connections, touches, fmt.Sprintf("node %q", nodeID))
+}
+
+// planRestoredWires validates connections against the board as it will be
+// once the restored node or port is in withTarget. Each must touch the target
+// and still fit; a connection ID already in use gets a fresh one.
+func planRestoredWires(withTarget []byte, current *BoardDocument, requested []BoardConnection, touches func(from, to string) bool, target string) ([]BoardConnection, error) {
+	board, err := parseBoardForWrite(withTarget)
 	if err != nil {
 		return nil, err
 	}
@@ -216,18 +223,18 @@ func planRestoredConnections(raw []byte, current *BoardDocument, nodeID string, 
 		edgeIDs[connection.ID] = true
 	}
 	existing := append([]BoardConnection(nil), current.Connections...)
-	planned := make([]BoardConnection, 0, len(req.Connections))
-	for _, requested := range req.Connections {
-		from, to := requested.From, requested.To
-		fromNode, fromOK := endpointAllowsDirection(withNode, from, FormationPortOutput)
-		toNode, toOK := endpointAllowsDirection(withNode, to, FormationPortInput)
+	planned := make([]BoardConnection, 0, len(requested))
+	for _, wire := range requested {
+		from, to := wire.From, wire.To
+		_, fromOK := endpointAllowsDirection(withTarget, from, FormationPortOutput)
+		_, toOK := endpointAllowsDirection(withTarget, to, FormationPortInput)
 		if !fromOK || !toOK {
 			return nil, invalidNodeRestore("connection %s → %s no longer has both ends on the board", from, to)
 		}
-		if fromNode != nodeID && toNode != nodeID {
-			return nil, invalidNodeRestore("connection %s → %s does not touch node %q", from, to, nodeID)
+		if !touches(from, to) {
+			return nil, invalidNodeRestore("connection %s → %s does not touch %s", from, to, target)
 		}
-		candidate := BoardConnection{ID: requested.ID, From: from, To: to}
+		candidate := BoardConnection{ID: wire.ID, From: from, To: to}
 		duplicate, err := validateConnectionCandidate(existing, board.Gates, candidate)
 		if err != nil {
 			return nil, err
@@ -246,6 +253,75 @@ func planRestoredConnections(raw []byte, current *BoardDocument, nodeID string, 
 		planned = append(planned, candidate)
 	}
 	return planned, nil
+}
+
+// PortRestoreRequest puts back one removed formation port with its ID, label,
+// place among the formation's ports of that direction, and connections. It is
+// how the cockpit undoes Remove this input/output.
+type PortRestoreRequest struct {
+	FormationID string
+	Direction   string
+	Port        FormationPort
+	Index       int
+	Connections []BoardConnection
+	UpdatedBy   string
+}
+
+// RestoreFormationPort publishes the port and its connections in one revision,
+// or refuses with nothing written.
+func (s *Store) RestoreFormationPort(slug string, req PortRestoreRequest, opts WriteOptions) (*BoardDocument, error) {
+	if req.Direction != FormationPortInput && req.Direction != FormationPortOutput {
+		return nil, fmt.Errorf("%w: port direction %q must be input or output", ErrInvalidPortDirection, req.Direction)
+	}
+	if !validToolDefinitionID(req.Port.ID) {
+		return nil, invalidNodeRestore("port id %q is invalid", req.Port.ID)
+	}
+	if req.Index < 0 {
+		return nil, invalidNodeRestore("port index %d is negative", req.Index)
+	}
+	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, current *BoardDocument) ([]byte, error) {
+		lines := splitLines(raw)
+		formationStart, formationEnd, ok := findFormationBlockByID(lines, req.FormationID)
+		if !ok {
+			return nil, ErrNotFound
+		}
+		if _, _, taken := findFormationPortBlock(lines, formationStart, formationEnd, req.Port.ID); taken {
+			return nil, invalidNodeRestore("formation %q already has port %q", req.FormationID, req.Port.ID)
+		}
+		section := "formation." + req.Direction
+		insertAt := formationEnd
+		seen := 0
+		for i := formationStart + 1; i < formationEnd; i++ {
+			name, ok := tomlLineSectionName(lines[i])
+			if !ok || name != section {
+				continue
+			}
+			if seen == req.Index {
+				insertAt = i
+				break
+			}
+			seen++
+		}
+		block := []tomlLine{
+			{body: "[[" + section + "]]", newline: "\n"},
+			{body: "id = " + renderString(req.Port.ID), newline: "\n"},
+			{body: "label = " + renderString(req.Port.Label), newline: "\n"},
+		}
+		if insertAt < formationEnd {
+			block = append(block, tomlLine{body: "", newline: "\n"})
+		}
+		withPort := renderTOMLLines(insertTomLLines(lines, insertAt, block))
+		endpoint := req.FormationID + ":" + req.Port.ID
+		touches := func(from, to string) bool { return from == endpoint || to == endpoint }
+		wires, err := planRestoredWires(withPort, current, req.Connections, touches, "port "+endpoint)
+		if err != nil {
+			return nil, err
+		}
+		for _, wire := range wires {
+			withPort = appendConnectionBlock(withPort, wire)
+		}
+		return withPort, nil
+	})
 }
 
 func nodeIDTaken(board *BoardDocument, id string) bool {

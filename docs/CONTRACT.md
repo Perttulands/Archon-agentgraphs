@@ -653,7 +653,8 @@ Every canvas edit that changes the board is one undo entry, and Ctrl+Z undoes
 the newest. Deleting a mission, formation or gate is undone by HTTP
 `restoreNode`, which puts the node back with its IDs, fields, staffing, ports,
 connections and position in one revision; its notes and wire lanes, kept by
-ID, apply again. An undo the board no longer allows is reported once and
+ID, apply again. Removing a port is undone by `restorePort`, which puts it back
+in its place with its connections. An undo the board no longer allows is reported once and
 dropped from the history, so older entries stay reachable.
 The formation window's Execution duration field sets the total seconds for one
 formation invocation, including preparation and finalization. Leave it blank

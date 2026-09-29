@@ -1330,6 +1330,45 @@ components:
               type: integer
             updatedBy:
               type: string
+        restorePort:
+          type: object
+          description: Undo removePort. Puts the port back with its id and label at index among the
+            formation's ports of that direction, with the connections that used it, in one revision.
+            A port id the formation already has, or a connection that no longer fits, returns
+            INVALID_NODE_RESTORE (409) or the wiring error, and nothing changes.
+          properties:
+            formationId:
+              type: string
+            direction:
+              type: string
+              enum:
+                - input
+                - output
+            port:
+              type: object
+              properties:
+                id:
+                  type: string
+                label:
+                  type: string
+            index:
+              type: integer
+              minimum: 0
+            connections:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  from:
+                    type: string
+                  to:
+                    type: string
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
         wireConnection:
           type: object
           properties:
