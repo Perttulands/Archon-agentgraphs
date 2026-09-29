@@ -2,7 +2,9 @@ Archon is a standalone workbench for teams of coding agents. This release ships
 the `archon` CLI, `archond` coordinator and Archon UI together for Linux on
 x86-64 and ARM64.
 
-- Draw boards with agent formations, review gates and human approvals.
+- Draw missions with agent formations, review gates and human approvals.
+- The reusable unit is now called a mission and its entry node the Input card.
+  `archon board` still works as a deprecated alias for one release.
 - Run Claude Code and Codex seats through tmux, with durable run history.
 - Inspect staffing and live output through the Agents view and floating Peek.
 - Install one archive with `install.sh`; the daemon finds its bundled UI.
