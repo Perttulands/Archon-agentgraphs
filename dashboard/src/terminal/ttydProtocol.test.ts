@@ -1,69 +1,191 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { connectSeatTerminal } from './ttydProtocol'
+// Ported from CHROTE dashboard/src/terminal/ttydProtocol.test.ts (355ace49) under
+// form-o7p.13.1, with Archon's cases for the claim frame, daemon shutdown and a
+// closed connection added at the end.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { FakeSocket } from '../test/fakeWebSocket'
+import { connectTtyd, type TerminalOutputSink } from './ttydProtocol'
 
-class Socket {
-  static OPEN = 1
-  static last: Socket
-  readyState = 1
-  binaryType = ''
-  sent: Uint8Array[] = []
-  onopen: (() => void) | null = null
-  onclose: ((event: { code: number }) => void) | null = null
-  onerror: (() => void) | null = null
-  onmessage: ((event: { data: ArrayBuffer }) => void) | null = null
-  constructor(readonly url: string, readonly protocols: string[]) { Socket.last = this }
-  send(data: Uint8Array) { this.sent.push(data) }
-  close() {}
+const decode = (frame: Uint8Array) => new TextDecoder().decode(frame)
+
+function recordingSink() {
+  const written: string[] = []
+  const drains: (() => void)[] = []
+  const sink: TerminalOutputSink = {
+    write(data, onDrained) {
+      written.push(decode(data))
+      if (onDrained) drains.push(onDrained)
+    },
+  }
+  return { sink, written, drains }
 }
-afterEach(() => vi.unstubAllGlobals())
-const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
 
-describe('seat tty transport', () => {
-  it('sends the grid handshake and bounded flow control, and nothing after disposal', () => {
-    vi.stubGlobal('WebSocket', Socket)
-    const drained: (() => void)[] = []
-    const write = vi.fn((_data, done?: () => void) => { if (done) drained.push(done) })
-    const connection = connectSeatTerminal('ws://localhost/seat', { columns: 123, rows: 41 }, { write }, vi.fn(), vi.fn())
-    const socket = Socket.last
-    socket.onopen!()
+describe('ttyd transport', () => {
+  beforeEach(() => {
+    FakeSocket.instances = []
+    vi.stubGlobal('WebSocket', FakeSocket)
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  const connect = (sink: TerminalOutputSink, events = {}) =>
+    connectTtyd('ws://host/terminal/ws?arg=main', { cols: 80, rows: 24 }, sink, events)
+
+  it('asks for the tty subprotocol and announces the grid before ttyd spawns a pty', () => {
+    const { sink } = recordingSink()
+    const onOpen = vi.fn()
+    connect(sink, { onOpen })
+    const socket = FakeSocket.instances[0]
+
     expect(socket.protocols).toEqual(['tty'])
-    expect(JSON.parse(decode(socket.sent[0]))).toEqual({ columns: 123, rows: 41 })
-    for (let i = 0; i < 12; i++) {
-      const frame = new Uint8Array(100002); frame[0] = 0x30
-      socket.onmessage!({ data: frame.buffer })
-    }
-    expect(socket.sent.slice(1).map(decode)).toContain('2')
-    drained.splice(0, 10).forEach(done => done())
-    expect(socket.sent.slice(1).map(decode)).toContain('3')
-    const count = socket.sent.length
+    expect(socket.binaryType).toBe('arraybuffer')
+    expect(socket.sent).toHaveLength(0)
+
+    socket.accept()
+
+    expect(JSON.parse(decode(socket.sent[0]))).toEqual({ AuthToken: '', columns: 80, rows: 24 })
+    expect(onOpen).toHaveBeenCalled()
+  })
+
+  it('sends keystrokes to ttyd', () => {
+    const { sink } = recordingSink()
+    const connection = connect(sink)
+    const socket = FakeSocket.instances[0]
+    socket.accept()
+
+    connection.sendInput('ls -l\r')
+
+    expect(decode(socket.sent[1])).toBe('0ls -l\r')
+  })
+
+  it('sends binary key sequences byte for byte rather than as text', () => {
+    const { sink } = recordingSink()
+    const connection = connect(sink)
+    const socket = FakeSocket.instances[0]
+    socket.accept()
+
+    connection.sendInput(Uint8Array.from([0x00, 0xff]))
+
+    expect(Array.from(socket.sent[1])).toEqual([0x30, 0x00, 0xff])
+  })
+
+  it('reports a new grid when the terminal resizes', () => {
+    const { sink } = recordingSink()
+    const connection = connect(sink)
+    const socket = FakeSocket.instances[0]
+    socket.accept()
+
+    connection.sendResize(120, 50)
+
+    expect(decode(socket.sent[1])).toBe('1{"columns":120,"rows":50}')
+  })
+
+  it('drops input while the socket is not open instead of throwing', () => {
+    const { sink } = recordingSink()
+    const connection = connect(sink)
+    const socket = FakeSocket.instances[0]
+
+    connection.sendInput('typed before connect')
+    connection.sendResize(10, 10)
+
+    expect(socket.sent).toHaveLength(0)
+  })
+
+  it('renders pty output and ignores window title and preference frames', () => {
+    const { sink, written } = recordingSink()
+    connect(sink)
+    const socket = FakeSocket.instances[0]
+    socket.accept()
+
+    socket.deliver('1', 'some tmux title')
+    socket.deliver('2', '{"fontSize":9}')
+    socket.deliver('0', 'hello from the pty')
+
+    expect(written).toEqual(['hello from the pty'])
+  })
+
+  it('pauses ttyd when output outruns the renderer and resumes once it drains', () => {
+    const { sink, drains } = recordingSink()
+    connect(sink)
+    const socket = FakeSocket.instances[0]
+    socket.accept()
+
+    const firehoseFrame = new Uint8Array(100_001)
+    for (let i = 0; i < 11; i++) socket.deliver('0', firehoseFrame)
+
+    const control = () => socket.sent.slice(1).map(decode)
+    expect(control()).toContain('2')
+    expect(control()).not.toContain('3')
+
+    drains.forEach(drain => drain())
+
+    expect(control()).toContain('3')
+  })
+
+  it('tells a terminal that ended from a connection that was lost, and stays quiet about a close it was asked for', () => {
+    const { sink } = recordingSink()
+    const onClose = vi.fn()
+    connect(sink, { onClose })
+    const socket = FakeSocket.instances[0]
+    socket.accept()
+
+    socket.endCleanly()
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledWith({ terminalEnded: true })
+
+    // No close frame: the service restarted, or the network went away. That is
+    // a lost connection to recover from, not a terminal that finished.
+    const lost = recordingSink()
+    const onLost = vi.fn()
+    connect(lost.sink, { onClose: onLost })
+    FakeSocket.instances[1].accept()
+    FakeSocket.instances[1].close()
+
+    expect(onLost).toHaveBeenCalledWith({ terminalEnded: false })
+
+    // A close the caller asked for is not news, so nobody is told about it.
+    const asked = recordingSink()
+    const onAsked = vi.fn()
+    const connection = connect(asked.sink, { onClose: onAsked })
+    FakeSocket.instances[2].accept()
     connection.close()
-    drained.forEach(done => done())
+
+    expect(onAsked).not.toHaveBeenCalled()
+    expect(FakeSocket.instances[2].readyState).toBe(FakeSocket.CLOSED)
+  })
+
+  it('sends the claim frame CHROTE defines, which the seat terminal declines', () => {
+    const connection = connect(recordingSink().sink)
+    const socket = FakeSocket.instances[0]
+    socket.accept()
+
+    connection.claimSizing()
+
+    expect(decode(socket.sent[1])).toBe('4')
+  })
+
+  it('reads a daemon shutdown as a lost connection rather than an ended seat', () => {
+    const onClose = vi.fn()
+    connect(recordingSink().sink, { onClose })
+    FakeSocket.instances[0].accept()
+
+    FakeSocket.instances[0].onclose!({ code: 1001 })
+
+    expect(onClose).toHaveBeenCalledWith({ terminalEnded: false })
+  })
+
+  it('sends nothing once closed, not even a resume for output drained afterwards', () => {
+    const { sink, drains } = recordingSink()
+    const connection = connect(sink)
+    const socket = FakeSocket.instances[0]
+    socket.accept()
+    for (let i = 0; i < 11; i++) socket.deliver('0', new Uint8Array(100_001))
+    const count = socket.sent.length
+
+    connection.close()
+    drains.forEach(drain => drain())
     connection.sendInput('late')
     connection.sendResize(90, 30)
+
     expect(socket.sent).toHaveLength(count)
-  })
-
-  it('sends typed input as 0 frames, binary input raw, and resize as a 1 frame', () => {
-    vi.stubGlobal('WebSocket', Socket)
-    const connection = connectSeatTerminal('ws://localhost/seat', { columns: 80, rows: 24 }, { write: vi.fn() }, vi.fn(), vi.fn())
-    const socket = Socket.last
-    socket.readyState = 0
-    connection.sendInput('before open')
-    expect(socket.sent).toHaveLength(0)
-    socket.readyState = 1
-    socket.onopen!()
-    connection.sendInput('yes, ship it\r')
-    connection.sendInput(Uint8Array.of(0x1b, 0x5b, 0x41))
-    connection.sendResize(132, 40)
-    expect(socket.sent.slice(1).map(decode)).toEqual(['0yes, ship it\r', '0\x1b[A', '1{"columns":132,"rows":40}'])
-  })
-
-  it('passes terminal end, shutdown and rejection codes without reconnecting', () => {
-    vi.stubGlobal('WebSocket', Socket)
-    const onClose = vi.fn()
-    connectSeatTerminal('ws://localhost/seat', { columns: 80, rows: 24 }, { write: vi.fn() }, vi.fn(), onClose)
-    for (const code of [1000, 1001, 1008, 1006]) Socket.last.onclose!({ code })
-    expect(onClose.mock.calls).toEqual([[1000], [1001], [1008], [1006]])
-    expect(Socket.last.sent).toHaveLength(0)
   })
 })

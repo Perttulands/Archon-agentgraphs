@@ -106,6 +106,14 @@ export interface FloatingWindow<T extends HTMLElement> {
   moveProps: { onPointerDown: PointerEventHandler<HTMLElement> }
   /** Arrow keys on a focusable title move the window. */
   onMoveKeyDown: KeyboardEventHandler<HTMLElement>
+  /**
+   * Wrap the window around its content, keeping its top left, as CHROTE's Peek
+   * shrinks to the grid its font fit drew (chrote-8eyu). Ignored once the
+   * operator has sized a window of this kind, whose size then wins.
+   */
+  fitTo: (size: FrameSize) => void
+  /** Whether the operator has sized a window of this kind, now or before it opened. */
+  sizedByOperator: boolean
 }
 
 // A press on a control in the title bar uses the control, not the window.
@@ -147,6 +155,9 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   const rectRef = useRef(rect)
   rectRef.current = rect
   const [activeHandle, setActiveHandle] = useState<FrameHandleId | null>(null)
+  // A remembered size is the operator's, so it wins from the first paint.
+  const [sizedByOperator, setSizedByOperator] = useState(() => readFloatingWindowSize(kind) !== null)
+  const sized = useRef(sizedByOperator)
   const cleanupRef = useRef<(() => void) | null>(null)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
@@ -198,8 +209,18 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   }, [])
 
   const remember = useCallback((size: WindowRect) => {
+    sized.current = true
+    setSizedByOperator(true)
     writeFloatingWindowSize(placement.current.kind, { width: size.width, height: size.height })
   }, [])
+
+  const fitTo = useCallback((size: FrameSize) => {
+    if (sized.current) return
+    setRect(current => {
+      if (current.width === size.width && current.height === size.height) return current
+      return keepInWorkspace({ ...current, width: size.width, height: size.height }, workspace(), placement.current.minimum)
+    })
+  }, [workspace])
 
   const handleProps = useCallback((direction: HandleDirection): FloatingFrameHandleProps => ({
     role: 'separator',
@@ -310,5 +331,7 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
     },
     moveProps: { onPointerDown: beginMove },
     onMoveKeyDown,
+    fitTo,
+    sizedByOperator,
   }
 }

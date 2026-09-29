@@ -56,3 +56,26 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
   }
   return fallbackCopyText(text)
 }
+
+/** Where a copy says how it went: a confirmation, or a failure with its reason. */
+export type CopyAnnouncer = (message: string, severity: 'success' | 'error') => void
+
+// Ported from CHROTE dashboard/src/utils/clipboard.ts (355ace49). The boolean
+// says only that the text did not land; this says what stood in the way.
+function clipboardFailureReason(): string {
+  if (canUseAsyncClipboard()) return 'the browser refused'
+  if (typeof document === 'undefined' || typeof document.execCommand !== 'function') return 'this browser has no clipboard API'
+  return 'the clipboard API is unavailable here and the fallback was refused'
+}
+
+/**
+ * Copy, wait for the write to settle, and say how it went: "Copied <what>" as a
+ * confirmation, or "Could not copy <what>: <reason>" as a failure, so no copy
+ * claims success before it has it.
+ */
+export async function copyAndAnnounce(text: string, what: string, announce: CopyAnnouncer): Promise<boolean> {
+  const copied = await copyTextToClipboard(text)
+  if (copied) announce(`Copied ${what}`, 'success')
+  else announce(`Could not copy ${what}: ${clipboardFailureReason()}`, 'error')
+  return copied
+}

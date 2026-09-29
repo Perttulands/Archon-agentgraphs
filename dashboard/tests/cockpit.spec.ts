@@ -17,8 +17,9 @@ test('theme fallback, local font, notes and harness icons survive', async ({ pag
   expect(fixture.themeFetches()).toBe(1)
 })
 
-for (const width of [1440, 390]) test(`floating Peek shows native output, sends typing and resize to a working seat, and keeps the graph stable at ${width}px`, async ({ page }) => {
+for (const width of [1440, 390]) test(`floating Peek shows the seat's whole grid, sends typing to a working seat, never resizes it, and keeps the graph stable at ${width}px`, async ({ page, context }) => {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 })
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   const fixture = await cockpitFixture(page, { run: true })
   const frames: string[] = []
   await page.routeWebSocket('**/seats/*/terminal', socket => {
@@ -41,18 +42,23 @@ for (const width of [1440, 390]) test(`floating Peek shows native output, sends 
   await expect(page.locator('.xterm-screen')).toBeVisible()
   const rows = page.locator('.xterm-rows')
   await expect(rows).toContainText('line 44')
-  // The grid fits its window, and the seat is told the fitted size.
-  await expect.poll(() => resizes().length).toBeGreaterThan(0)
-  await page.getByRole('button', { name: 'Older output', exact: true }).click()
-  await expect(rows).not.toContainText('line 44')
+  const peek = page.getByRole('dialog', { name: 'Formation terminal Peek' })
+  const room = peek.getByTestId('seat-terminal-room')
+  // Peek opens where its placement leaves room, beside the graph. There the
+  // seat's grid is drawn at the 11px floor and scrolls rather than being cut,
+  // newest rows in view.
+  await expect.poll(() => room.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
+  await expect(peek.getByRole('button', { name: 'End of line' })).toBeVisible()
+  expect(await room.evaluate(el => el.scrollTop + el.clientHeight >= el.scrollHeight - 1)).toBe(true)
+  // Painting a selection copies it, and Peek says so.
   const grid = (await page.locator('.xterm-screen').boundingBox())!
-  await page.mouse.move(grid.x + 4, grid.y + 20)
+  await page.mouse.move(grid.x + 4, grid.y + grid.height - 8)
   await page.mouse.down()
-  await page.mouse.move(grid.x + 120, grid.y + 20, { steps: 8 })
+  await page.mouse.move(grid.x + 60, grid.y + grid.height - 8, { steps: 8 })
   await page.mouse.up()
   await expect(page.locator('.xterm-selection div').first()).toBeVisible()
-  await page.getByRole('button', { name: 'Latest output', exact: true }).click()
-  await expect(rows).toContainText('line 44')
+  await expect(peek.locator('.peek-foot')).toContainText('Copied selection')
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('ine 4')
   expect(await world.getAttribute('style')).toBe(transform)
 
   // Typing reaches the seat; Escape goes to the agent and leaves the window open.
@@ -64,16 +70,22 @@ for (const width of [1440, 390]) test(`floating Peek shows native output, sends 
   await expect(page.getByRole('dialog', { name: 'Formation terminal Peek' })).toBeVisible()
 
   if (width === 1440) {
-    // Resizing the window resizes the terminal and the seat.
-    const before = resizes().slice(-1)[0]
-    const corner = (await page.locator('.floating-peek [data-handle="se"]').boundingBox())!
+    // Sizing the window larger fits a larger font until the whole grid shows;
+    // the seat keeps its size.
+    // Grown up and to the right, where Peek opened below the graph with room to spare.
+    const before = (await page.locator('.xterm-screen').boundingBox())!
+    const corner = (await page.locator('.floating-peek [data-handle="ne"]').boundingBox())!
+    const peekBox = (await peek.boundingBox())!
     await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2)
     await page.mouse.down()
-    await page.mouse.move(corner.x + 200, corner.y + 120, { steps: 6 })
+    await page.mouse.move(corner.x + Math.min(500, 1370 - peekBox.x - peekBox.width), Math.max(160, corner.y - 500), { steps: 6 })
     await page.mouse.up()
-    await expect.poll(() => resizes().slice(-1)[0].rows).toBeGreaterThan(before.rows)
-    expect(resizes().slice(-1)[0].columns).toBe(before.columns)
+    await expect.poll(async () => (await page.locator('.xterm-screen').boundingBox())!.width).toBeGreaterThan(before.width)
+    await expect.poll(() => room.evaluate(el => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight)).toBe(true)
+    await expect(peek.getByRole('button', { name: 'End of line' })).toHaveCount(0)
+    await expect(rows).toContainText('line 44')
   }
+  expect(resizes()).toEqual([])
 
   const before = fixture.seatsFetches()
   await page.getByRole('button', { name: 'Worker 1', exact: true }).click()
@@ -92,10 +104,10 @@ for (const width of [1440, 390]) test(`floating Peek shows native output, sends 
   await expect(page.getByText('Live · type to talk to the agent', { exact: true })).toBeVisible()
   expect(await world.getAttribute('style')).toBe(transform)
   expect(fixture.writes).toEqual([])
-  // Each connection opens with the seat's native grid, then speaks only input, resize and flow control.
+  // Each connection opens with the seat's native grid, then speaks only input and flow control.
   const handshakes = frames.filter(frame => frame.startsWith('{'))
   expect(handshakes.length).toBeGreaterThan(1)
-  for (const frame of handshakes) expect(JSON.parse(frame)).toEqual({ columns: 96, rows: 30 })
+  for (const frame of handshakes) expect(JSON.parse(frame)).toEqual({ AuthToken: '', columns: 96, rows: 30 })
   for (const frame of frames) expect(frame[0]).toMatch(/[{0123]/)
 })
 
@@ -110,6 +122,13 @@ test('two floating windows open, resize, stack and stay off the zoom column', as
   const run = page.locator('[data-window-id="peek:"]')
   await expect(peer).toBeVisible()
   await expect(run).toBeVisible()
+  // The run window wraps its seat's grid once its font is fitted; measure it after that.
+  await expect(run.locator('.seat-terminal-grid.fitted')).toBeVisible()
+  await expect.poll(async () => {
+    const first = await run.boundingBox()
+    await page.waitForTimeout(100)
+    return JSON.stringify(first) === JSON.stringify(await run.boundingBox())
+  }).toBe(true)
   const z = (win: typeof run) => win.evaluate(el => Number(getComputedStyle(el).zIndex))
   expect(await z(run)).toBeGreaterThan(await z(peer))
   const before = (await run.boundingBox())!
@@ -352,9 +371,10 @@ test('refresh follows the selected worker across attempts and never reconnects i
   await page.waitForTimeout(200)
   expect(sockets).toHaveLength(count)
   current = current.map(s => s.slotId === 'worker' ? { ...s, createdSeq: 28, terminalUrl: '/api/formations/runs/run_browser/seats/28/terminal' } : s)
+  // Refresh keeps the terminal on screen until the new projection arrives; the new attempt then gets its own.
   await page.getByRole('button', { name: 'Refresh seats' }).click()
+  await expect.poll(() => sockets.at(-1)).toContain('/seats/28/terminal')
   await expect(page.getByText('Disconnected. Refresh seats to reconnect.')).toBeVisible()
-  expect(sockets.at(-1)).toContain('/seats/28/terminal')
   await expect(page.getByRole('button', { name: 'Worker 1', exact: true })).toHaveAttribute('aria-pressed', 'true')
   current = current.map(s => ({ ...s, state: 'ended', terminalUrl: '' }))
   await page.getByRole('button', { name: 'Refresh seats' }).click()
