@@ -201,6 +201,8 @@ export interface RunStatusProjection {
   humanChannel?: 'notify' | 'session'
   /** Seats kept after their formation finished, to answer human gate asks. */
   onCallSeats?: OnCallSeat[]
+  /** Who failed or canceled a final run; why is in its run evidence problems. */
+  endedBy?: string
 }
 
 /** A seat that received a human gate's ask on a session-channel run. */

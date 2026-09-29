@@ -47,7 +47,8 @@ test('the answer panel never overlaps the zoom column at 1440x900', async ({ pag
   await expect(panel.locator('.gate-answer-text')).toContainText('60. A question')
   const approve = panel.getByRole('button', { name: 'Approve' })
   await expect(approve).toBeInViewport()
-  const panelBox = (await panel.boundingBox())!
+  // The answer scrolls inside its window (form-n7u.7), so the window is what shows.
+  const panelBox = (await page.getByTestId('gate-answer-window').boundingBox())!
   const approveBox = (await approve.boundingBox())!
   for (const control of [page.locator('.zoomctl'), page.locator('.zoomlevel')]) {
     const box = (await control.boundingBox())!

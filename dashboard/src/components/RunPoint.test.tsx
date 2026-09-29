@@ -10,7 +10,11 @@ const problems = [
   { seq: 14, type: 'run_blocked', nodeIds: ['fmn_map'], reason: text('coordinator restarted; completed-turn evidence required'), resumeAllowed: true },
   { seq: 17, type: 'error', code: 'wall_clock_exceeded', nodeIds: [], reason: text('wall clock limit exceeded') },
   { seq: 18, type: 'run_blocked', nodeIds: [], reason: text('wall clock limit exceeded'), resumeAllowed: true },
+  { seq: 22, type: 'run_blocked', code: 'resume_attempts_exhausted', nodeIds: ['fmn_draft'], reason: text('resume attempts exhausted'), resumeAllowed: false, limit: { kind: 'attempts', nodeId: 'fmn_draft', used: 3, max: 3 } },
+  { seq: 25, type: 'run_blocked', code: 'max_dispatch_exceeded', nodeIds: ['fmn_critic'], reason: text('max dispatch exceeded'), resumeAllowed: false, limit: { kind: 'dispatches', nodeId: 'fmn_critic', used: 8, max: 8 } },
 ]
+const ended = (end: object) => [{ seq: 51, type: 'run_blocked', nodeIds: ['fmn_exec'], reason: text('another user message interrupted the dispatched Claude turn'), resumeAllowed: true, resumedSeq: 52 }, end]
+let served: unknown[] = problems
 
 describe('RunPoint', () => {
   beforeEach(() => {
@@ -20,11 +24,12 @@ describe('RunPoint', () => {
         ok: found,
         status: found ? 200 : 404,
         headers: { get: () => '' },
-        json: () => Promise.resolve(found ? { success: true, data: { problems } } : { success: false, error: { code: 'NOT_FOUND', message: 'not found' } }),
+        json: () => Promise.resolve(found ? { success: true, data: { problems: served } } : { success: false, error: { code: 'NOT_FOUND', message: 'not found' } }),
       } as unknown as Response)
     }))
   })
   afterEach(() => {
+    served = problems
     cleanup()
     vi.unstubAllGlobals()
   })
@@ -74,6 +79,28 @@ describe('RunPoint', () => {
     render(<RunPoint runId="run_1" point={{ kind: 'blocked', nodeId: 'gate_framing', gate: true, blockSeq: 6 }} title="Framing review" onLocate={() => {}} />)
     await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent('paused at Framing review after your answer'))
     expect(screen.getByTestId('run-point')).toHaveClass('paused')
+  })
+
+  it('names the limit a block exhausted', async () => {
+    const { rerender } = render(<RunPoint runId="run_1" point={{ kind: 'blocked', nodeId: 'fmn_draft', gate: false, blockSeq: 22 }} title="Draft" onLocate={() => {}} />)
+    await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent(/^blocked at Draft: Draft used 3 of 3 attempts$/))
+    rerender(<RunPoint runId="run_1" point={{ kind: 'blocked', nodeId: 'fmn_critic', gate: false, blockSeq: 25 }} title="Brief critic" onLocate={() => {}} />)
+    await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent(/^blocked at Brief critic: the run used 8 of 8 dispatches$/))
+  })
+
+  it('says why a failed run ended and who ended it, not an earlier resumed block', async () => {
+    served = ended({ seq: 53, type: 'run_failed', code: 'coordinator_execution_failed', nodeIds: ['fmn_exec'], reason: text('completed recovery requires a single-slot formation'), actor: 'archond' })
+    render(<RunPoint runId="run_1" point={{ kind: 'failed', nodeId: 'fmn_exec', gate: false }} title="Execution" onLocate={() => {}} />)
+    await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent(/^failed at Execution: completed recovery requires a single-slot formation · ended by Archon$/))
+    expect(screen.getByTestId('run-point')).toHaveClass('failed')
+  })
+
+  it('says who canceled a run and why', async () => {
+    served = [{ seq: 9, type: 'run_canceled', nodeIds: ['gate_review'], reason: text('the brief was wrong'), actor: 'agent:ui' }]
+    render(<RunPoint runId="run_1" point={{ kind: 'canceled', nodeId: 'gate_review', gate: true }} title="Operator review" onLocate={() => {}} />)
+    expect(screen.getByTestId('run-point')).toHaveTextContent(/^canceled at Operator review$/)
+    await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent('canceled at Operator review by the operator in the cockpit: the brief was wrong'))
+    expect(screen.getByTestId('run-point')).toHaveClass('canceled')
   })
 
   it('names the node a failed run stopped on and says nothing when none is known', () => {

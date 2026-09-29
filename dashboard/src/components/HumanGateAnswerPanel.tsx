@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react'
 import type { GateTalkPanel } from '../talk/useGateTalk'
+import type { GateRoute } from './formationsApi'
+import { gateRouteWords } from './runOutcome'
 import './humanGateAnswer.css'
 
 export type GateUpstream =
   | { state: 'loading' }
-  | { state: 'ready'; from: string; text: string; truncated: boolean; criterion: string }
+  | { state: 'ready'; from: string; text: string; truncated: boolean; criterion: string; routes?: GateRoute[] }
   | { state: 'unavailable'; message: string }
 
 export type GateDecision = 'pass' | 'fail'
@@ -21,10 +23,23 @@ interface HumanGateAnswerPanelProps {
   talk?: GateTalkPanel | null
   /** Resolves true once the verdict is recorded. */
   onDecide: (verdict: GateDecision, response: string) => Promise<boolean>
+  /** A node's title, for a limit that names a step. */
+  titleOf?: (nodeId: string) => string
+  /** In a floating window, whose title bar already says what needs an answer. */
+  framed?: boolean
 }
 
 function draftKey(runId: string, requestedSeq: number) {
   return `archon.gateResponse.${runId}.${requestedSeq}`
+}
+
+/** Whether the operator has an unsent answer to this request saved in this browser. */
+export function hasGateDraft(runId: string, requestedSeq: number): boolean {
+  try {
+    return Boolean(window.localStorage.getItem(draftKey(runId, requestedSeq))?.trim())
+  } catch {
+    return false
+  }
 }
 
 function readDraft(key: string) {
@@ -52,7 +67,7 @@ function writeDraft(key: string, text: string) {
  * Approve delivers the response to the next formation with the gate input;
  * Send back returns it to the pushback route as feedback.
  */
-function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterion, upstream, talk, onOpenEvidence, onDecide }: HumanGateAnswerPanelProps) {
+function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterion, upstream, talk, onOpenEvidence, onDecide, titleOf = id => id, framed = false }: HumanGateAnswerPanelProps) {
   const key = draftKey(runId, requestedSeq)
   const [draft, setDraft] = useState(() => readDraft(key))
   const response = draft.text
@@ -64,6 +79,10 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
   const trimmed = response.trim()
   // The run's frozen criterion wins over the board's current draft.
   const shownCriterion = (upstream.state === 'ready' && upstream.criterion) || criterion
+  // Where each decision leads, from the run's frozen board (form-n7u.7).
+  const routes = upstream.state === 'ready' ? upstream.routes : undefined
+  const approve = gateRouteWords('pass', routes?.find(route => route.verdict === 'pass'), titleOf)
+  const sendBack = gateRouteWords('fail', routes?.find(route => route.verdict === 'fail'), titleOf)
 
   const updateDraft = (text: string) => {
     const saved = writeDraft(key, text)
@@ -101,10 +120,10 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
   }
 
   return (
-    <section ref={panel} className="gate-answer" role="dialog" aria-label={`Answer gate ${gateTitle}`} data-testid="gate-answer" onPointerDown={event => event.stopPropagation()}>
+    <section ref={panel} className={`gate-answer${framed ? ' framed' : ''}`} role={framed ? 'region' : 'dialog'} aria-label={`Answer gate ${gateTitle}`} data-testid="gate-answer" onPointerDown={event => event.stopPropagation()}>
       <header className="gate-answer-hd">
-        <span className="gate-answer-kicker">Needs your answer</span>
-        <span className="gate-answer-title">{gateTitle}</span>
+        {framed ? null : <span className="gate-answer-kicker">Needs your answer</span>}
+        {framed ? null : <span className="gate-answer-title">{gateTitle}</span>}
         <span className="gate-answer-id">{gateId} · request #{requestedSeq}</span>
       </header>
       {talk?.fallbackReason ? (
@@ -142,7 +161,7 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
         id={`gate-answer-${gateId}`}
         className="gate-answer-input"
         value={response}
-        placeholder="Answer the questions or explain what to change. Approve sends this to the next step."
+        placeholder="Answer the questions or explain what to change. Approve passes this on with the gate input; Send back returns it as feedback."
         disabled={submitting !== '' || loadingFile}
         onChange={event => updateDraft(event.target.value)}
       />
@@ -157,20 +176,28 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
       <p className="gate-answer-draft">Load a UTF-8 text file from this device to replace your draft. Review or edit it before submitting.</p>
       {fileError ? <p className="gate-answer-file-error" role="alert">{fileError}</p> : null}
       {draft.cue ? <p className="gate-answer-draft" role="status">{draft.cue}</p> : null}
+      {approve.outcome || sendBack.outcome ? (
+        <ul className="gate-answer-routes" aria-label="Where your answer leads" data-testid="gate-answer-routes">
+          {[approve, sendBack].filter(words => words.outcome).map(words => (
+            <li key={words.outcome} className={words.blocks ? 'blocks' : words.last ? 'last' : ''}>{words.outcome}</li>
+          ))}
+        </ul>
+      ) : null}
       <div className="gate-answer-actions">
         <button
           type="button"
-          className="gate-answer-back"
+          className={`gate-answer-back${sendBack.blocks ? ' blocks' : ''}`}
           disabled={submitting !== '' || loadingFile || !trimmed}
-          title={trimmed ? 'Send the response back as feedback' : 'Write what should change before sending back'}
+          title={trimmed ? sendBack.outcome || 'Send the response back as feedback' : 'Write what should change before sending back'}
           onClick={() => void decide('fail')}
-        >{submitting === 'fail' ? 'Sending…' : 'Send back'}</button>
+        >{submitting === 'fail' ? 'Sending…' : sendBack.button}</button>
         <button
           type="button"
-          className="gate-answer-approve"
+          className={`gate-answer-approve${approve.blocks ? ' blocks' : ''}`}
           disabled={submitting !== '' || loadingFile}
+          title={approve.outcome || undefined}
           onClick={() => void decide('pass')}
-        >{submitting === 'pass' ? 'Approving…' : 'Approve'}</button>
+        >{submitting === 'pass' ? 'Approving…' : approve.button}</button>
       </div>
     </section>
   )

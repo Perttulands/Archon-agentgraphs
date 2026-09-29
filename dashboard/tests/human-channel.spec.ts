@@ -71,7 +71,8 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   expect(overlaps(plannerBox, panelBox)).toBe(false)
   expect(overlaps(codexBox, panelBox)).toBe(false)
   expect(overlaps(codexBox, plannerBox)).toBe(false)
-  expect(plannerBox!.x + plannerBox!.width).toBeLessThanOrEqual(panelBox!.x)
+  // The answer window opens clear of the gate and where it leads (form-n7u.7); the first seat sits on either side of it.
+  expect(plannerBox!.x + plannerBox!.width <= panelBox!.x || plannerBox!.x >= panelBox!.x + panelBox!.width).toBe(true)
 
   // The first seat takes the keyboard as it opens; Escape goes to the agent, not the window.
   await expect.poll(() => fixture.resizes(21).length).toBeGreaterThan(0)

@@ -16,5 +16,15 @@
 .fmx .run-banner button.run-point:disabled{cursor:default;}
 .fmx .run-banner button.run-point.waiting{color:var(--gold);}
 .fmx .run-banner button.run-point.blocked,.fmx .run-banner button.run-point.failed{color:var(--terra-d);}
+.fmx .run-banner button.run-point.canceled{color:var(--ink2);}
 
 .fmx .run-banner .run-none{color:var(--dim);}
+
+/* A block that cannot resume says so beside the run point (form-n7u.6). */
+.fmx .run-banner .run-note{flex-shrink:0;color:var(--ink2);font-size:11px;letter-spacing:.02em;white-space:nowrap;}
+
+/* Stop asks first (form-n7u.8). */
+.fmx .pop.stop-run{width:min(480px,calc(100vw - 40px));left:calc(50% - min(240px,50vw - 20px));top:120px;}
+.fmx .stop-run-what{margin:0 0 10px;color:var(--ink2);font-size:12px;line-height:1.5;overflow-wrap:anywhere;}
+.fmx .stop-run-what strong{color:var(--ink);}
+.fmx .stop-run-consequences{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;color:var(--ink2);font-size:12px;line-height:1.5;}

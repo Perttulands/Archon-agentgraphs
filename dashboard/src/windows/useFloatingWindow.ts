@@ -17,6 +17,7 @@ import type { CSSProperties, FocusEvent, KeyboardEvent, KeyboardEventHandler, Po
 import { RESIZE_KEYBOARD_STEP, capturePointerDrag } from './resizeGesture'
 import {
   FLOATING_WINDOW_MINIMUM,
+  clampFrameSize,
   readFloatingWindowSize,
   writeFloatingWindowSize,
   type FloatingWindowKind,
@@ -75,6 +76,13 @@ export interface UseFloatingWindowOptions {
    * view, the window opens centred.
    */
   anchor?: () => WindowRect | null
+  /**
+   * What the window must leave visible as it opens, read as it opens: a
+   * downstream node the window talks about, such as the step a gate passes to.
+   * Interim placement for form-n7u.7; form-n7u.4's scene placement serves the
+   * same option.
+   */
+  keepClear?: () => readonly WindowRect[]
   onClose: () => void
 }
 
@@ -102,9 +110,38 @@ export interface FloatingWindow<T extends HTMLElement> {
 // A press on a control in the title bar uses the control, not the window.
 const CONTROL = 'button,select,input,textarea,a,[role="separator"]'
 
-function openingRect(size: FrameSize, workspace: Workspace, minimum: FrameSize, cascade: number, anchor?: () => WindowRect | null): WindowRect {
+function openingRect(size: FrameSize, workspace: Workspace, minimum: FrameSize, cascade: number, anchor?: () => WindowRect | null, keepClear?: () => readonly WindowRect[]): WindowRect {
   const beside = anchor?.()
+  if (keepClear) {
+    const clear = beside ? [beside, ...keepClear()] : [...keepClear()]
+    if (clear.length) return placeClearOf(size, workspace, minimum, clear)
+  }
   return (beside && placeBeside(size, beside, workspace, minimum)) || placeWindow(size, workspace, minimum, cascade)
+}
+
+// The workspace's corners, top right first, then beside what must stay clear:
+// the first place that covers none of it, else the one that covers least.
+function placeClearOf(size: FrameSize, workspace: Workspace, minimum: FrameSize, clear: readonly WindowRect[]): WindowRect {
+  const { bounds } = workspace
+  const fitted = clampFrameSize(size, minimum, bounds)
+  const corner = (left: number, top: number) => keepInWorkspace({ ...fitted, left, top }, workspace, minimum)
+  const farLeft = bounds.left + bounds.width - fitted.width
+  const farTop = bounds.top + bounds.height - fitted.height
+  const union = clear.reduce((all, rect) => {
+    const left = Math.min(all.left, rect.left)
+    const top = Math.min(all.top, rect.top)
+    return { left, top, width: Math.max(all.left + all.width, rect.left + rect.width) - left, height: Math.max(all.top + all.height, rect.top + rect.height) - top }
+  })
+  const candidates = [corner(farLeft, bounds.top), corner(bounds.left, bounds.top), corner(farLeft, farTop), corner(bounds.left, farTop), placeBeside(size, union, workspace, minimum)]
+    .filter((rect): rect is WindowRect => rect !== null)
+  const covered = (rect: WindowRect) => clear.reduce((sum, zone) => sum + overlapArea(rect, zone), 0)
+  return candidates.find(rect => covered(rect) === 0) || candidates.sort((a, b) => covered(a) - covered(b))[0]
+}
+
+function overlapArea(a: WindowRect, b: WindowRect): number {
+  const width = Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left)
+  const height = Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top)
+  return width > 0 && height > 0 ? width * height : 0
 }
 
 export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
@@ -114,6 +151,7 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   defaultSize,
   minimum = FLOATING_WINDOW_MINIMUM[kind],
   anchor,
+  keepClear,
   onClose,
 }: UseFloatingWindowOptions): FloatingWindow<T> {
   const stack = useWindowStack()
@@ -123,7 +161,7 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   const placedAt = useRef({ cascade: -1, size: defaultSize })
   const [rect, setRect] = useState<WindowRect>(() => {
     placedAt.current = { cascade: openCount(), size: readFloatingWindowSize(kind) ?? defaultSize }
-    return openingRect(placedAt.current.size, workspace(), minimum, placedAt.current.cascade, anchor)
+    return openingRect(placedAt.current.size, workspace(), minimum, placedAt.current.cascade, anchor, keepClear)
   })
   const rectRef = useRef(rect)
   rectRef.current = rect
@@ -131,8 +169,8 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   const cleanupRef = useRef<(() => void) | null>(null)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
-  const placement = useRef({ kind, minimum, anchor })
-  placement.current = { kind, minimum, anchor }
+  const placement = useRef({ kind, minimum, anchor, keepClear })
+  placement.current = { kind, minimum, anchor, keepClear }
 
   // Windows opened in the same render all counted the same windows before them,
   // so each steps past the ones registered first before it paints.
@@ -140,7 +178,7 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
     const cascade = openCount()
     if (cascade !== placedAt.current.cascade) {
       placedAt.current = { ...placedAt.current, cascade }
-      setRect(openingRect(placedAt.current.size, workspace(), placement.current.minimum, cascade, placement.current.anchor))
+      setRect(openingRect(placedAt.current.size, workspace(), placement.current.minimum, cascade, placement.current.anchor, placement.current.keepClear))
     }
     return register(id)
   }, [id, openCount, register, workspace])

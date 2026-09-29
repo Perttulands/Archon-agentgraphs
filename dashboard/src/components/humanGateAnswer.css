@@ -34,3 +34,15 @@
 .fmx .gate-answer-load{align-self:flex-start;border:1px solid var(--line);border-radius:5px;padding:5px 9px;background:var(--paper2);color:var(--ink2);font:11px var(--font-mono);cursor:pointer;}
 .fmx .gate-answer-load:disabled{opacity:.55;cursor:not-allowed;}
 .fmx .gate-answer-file-error{margin:0;color:var(--terra);font-size:11px;}
+
+/* In its floating window (form-n7u.7) the window is the frame: the panel fills
+   its body and scrolls with it, with the decisions kept at the bottom. */
+.fmx .gate-answer-window{border-color:color-mix(in srgb,var(--gold) 70%,var(--divider));}
+.fmx .gate-answer-window .fwin-title .gate-answer-kicker{margin-right:6px;}
+.fmx .gate-answer.framed{position:static;width:auto;max-height:none;min-height:100%;box-sizing:border-box;border:0;border-radius:0;box-shadow:none;overflow:visible;}
+/* Where each decision leads; the last of a limit in gold, a blocking route in red. */
+.fmx .gate-answer-routes{margin:0;padding:8px 10px;list-style:none;display:flex;flex-direction:column;gap:4px;border:1px solid var(--line2);border-radius:6px;font-size:11.5px;line-height:1.45;color:var(--ink2);}
+.fmx .gate-answer-routes li.last{color:var(--gold);}
+.fmx .gate-answer-routes li.blocks{color:var(--terra-d);font-weight:700;}
+.fmx .gate-answer-actions button.blocks{border-color:var(--terra-d);color:var(--terra-d);}
+.fmx .gate-answer-actions button{text-transform:none;letter-spacing:.02em;font-size:11px;}

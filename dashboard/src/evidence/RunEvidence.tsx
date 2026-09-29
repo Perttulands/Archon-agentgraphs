@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { gateKindLabel } from '../components/GateEditorDialog'
 import { useEscapeKey } from '../components/useEscapeKey'
+import { problemHeadline } from '../components/runOutcome'
 import type { BoardDocument } from '../components/formationsTypes'
 import { evidenceNamesForBoard, type EvidenceNames } from './evidenceNames'
 import { useFileWindows } from '../files/FileWindows'
@@ -137,9 +138,9 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
           <section className="node-evidence-section" data-testid="evidence-failures">
             <h3>Blocks and errors</h3>
             {failures.map(problem => (
-              <div className="node-evidence-verdict fail" key={problem.seq}>
-                <div className="node-verdict-line">#{problem.seq} · {problem.type === 'run_blocked' ? 'blocked' : problem.type}{problem.code ? ` · ${problem.code}` : ''}{problem.resumeAllowed === undefined ? '' : problem.resumeAllowed ? ' · resumable' : ' · not resumable'}</div>
-                <EvidenceTextView value={problem.reason} format="text" label="Block reason" />
+              <div className={`node-evidence-verdict fail${problem.resumedSeq ? ' resumed' : ''}`} key={problem.seq} data-testid={`evidence-problem-${problem.seq}`}>
+                <div className="node-verdict-line">{problemHeadline(problem, names)}</div>
+                <EvidenceTextView value={problem.reason} format="text" label={problem.type === 'run_failed' || problem.type === 'run_canceled' ? 'Why the run ended' : 'Block reason'} />
               </div>
             ))}
           </section>

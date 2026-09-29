@@ -2895,6 +2895,47 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => expect(verdicts).toEqual([{ actor: 'agent:ui', verdict: 'pass', requestedSeq: 4, reason: '1. Postgres.\n2. The operator.' }]))
   })
 
+  it('keeps the gate answer in a window the run bar brings back, never under the gate editor', async () => {
+    localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
+    installFetchMock({
+      runStatus: { status: 'waiting_human', final: false },
+      runEvents: [
+        { runId: 'run_legacy', seq: 3, type: 'node_output', nodeId: 'fmn_frame' },
+        { runId: 'run_legacy', seq: 4, type: 'human_input_requested', nodeId: 'gate_review', gateId: 'gate_review' },
+      ],
+    })
+    const coordinator = globalThis.fetch
+    ;(globalThis as Record<string, unknown>).fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/formations/runs/run_legacy/gates/gate_review/request') {
+        return Promise.resolve({ ok: true, headers: { get: () => null }, text: () => Promise.resolve(''), json: () => Promise.resolve({ success: true, data: { request: {
+          gateId: 'gate_review', requestedSeq: 4, criterion: 'Review the frame', input: { fromNodeId: 'fmn_frame', text: 'frame', truncated: false },
+          routes: [{ verdict: 'pass', targets: [], endsRun: true }, { verdict: 'fail', targets: [{ nodeId: 'fmn_frame', title: 'Frame', kind: 'formation', attempt: 2, maxAttempts: 2 }] }],
+        } } }) })
+      }
+      return coordinator(input, init)
+    }) as unknown as typeof fetch
+    await renderCockpit()
+
+    const answer = await screen.findByRole('dialog', { name: 'Answer gate Review' })
+    expect(answer).toHaveAttribute('data-window-kind', 'answer')
+    // A run reaching the gate does not take the keyboard from the operator.
+    expect(within(answer).getByLabelText('Your response')).not.toHaveFocus()
+    expect(await within(answer).findByRole('button', { name: 'Approve and end the run' })).toBeInTheDocument()
+    expect(within(answer).getByText('Send back: Frame runs again with your response (attempt 2 of 2, its last).')).toBeInTheDocument()
+
+    fireEvent.click(within(answer).getByRole('button', { name: 'Close Answer gate Review' }))
+    expect(screen.queryByRole('dialog', { name: 'Answer gate Review' })).toBeNull()
+
+    // The run point brings the answer back, with the keyboard, and does not open the gate's editor over it.
+    const point = screen.getByTestId('run-point')
+    expect(point).toHaveAttribute('title', 'waiting for you at Review. Show it on the canvas with your answer.')
+    await act(async () => { fireEvent.click(point) })
+    const reopened = await screen.findByRole('dialog', { name: 'Answer gate Review' })
+    await waitFor(() => expect(within(reopened).getByLabelText('Your response')).toHaveFocus())
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 600)) })
+    expect(document.querySelector('[data-window-id="node:gate_review"]')).toBeNull()
+  })
+
   it('detaches the judge from the gate context menu', async () => {
     await renderCockpit()
     fireEvent.contextMenu(screen.getByTestId('gate-node-gate_review'))

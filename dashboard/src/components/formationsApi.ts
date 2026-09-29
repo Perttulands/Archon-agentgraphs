@@ -305,11 +305,40 @@ export async function resumeRunRequest(runId: string, body: { actor: string; mod
   return result.data
 }
 
+/** A limit a run used: one node's attempts or the run's formation dispatches. */
+export interface RunLimitUse {
+  kind: 'attempts' | 'dispatches'
+  nodeId?: string
+  used: number
+  max: number
+}
+
+/** A step a gate verdict delivers to; a formation says which attempt it starts. */
+export interface GateRouteTarget {
+  nodeId: string
+  title: string
+  kind: string
+  attempt?: number
+  maxAttempts?: number
+}
+
+/** Where one verdict leads on the run's frozen board (internal/formations/gate_routes.go). */
+export interface GateRoute {
+  verdict: 'pass' | 'fail'
+  targets: GateRouteTarget[]
+  endsRun?: boolean
+  unwired?: boolean
+  /** A limit the route needs is spent, so taking it blocks the run. */
+  limit?: RunLimitUse
+  dispatches?: RunLimitUse
+}
+
 export interface HumanGateRequest {
   gateId: string
   requestedSeq: number
   criterion: string
   input: { fromNodeId?: string; fromPortId?: string; text: string; truncated: boolean }
+  routes?: GateRoute[]
 }
 
 export async function fetchHumanGateRequest(runId: string, gateId: string): Promise<HumanGateRequest> {
