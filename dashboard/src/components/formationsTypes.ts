@@ -342,6 +342,8 @@ export interface VariantSettingsPatch {
   id: string
   model?: string
   effort?: string
+  /** Only for a harness Archon cannot start: the command `archon agent spawn` runs. */
+  launch?: string
 }
 
 export interface PersonaCard {

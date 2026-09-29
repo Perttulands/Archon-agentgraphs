@@ -42,6 +42,7 @@ import type {
 import {
   EffortSelect,
   HARNESS_DEFAULT_MODEL,
+  isLaunchable,
   SeatLaunch,
   VariantSettingsFields,
   variantChanges,
@@ -124,6 +125,8 @@ type CreateDraft = {
   summary: string
   model: string
   effort: string
+  /** Only for a harness Archon cannot start: what `archon agent spawn` runs. */
+  launch: string
   source: string
   capabilities: string
 }
@@ -143,6 +146,7 @@ const EMPTY_CREATE: CreateDraft = {
   summary: '',
   model: '',
   effort: '',
+  launch: '',
   source: '',
   capabilities: '',
 }
@@ -547,7 +551,7 @@ export default function AgentsView() {
           harness: createDraft.harness.trim(),
           sessionStem: createDraft.sessionStem.trim(),
           summary: createDraft.summary.trim(),
-          ...(launchable ? { model: createDraft.model.trim(), effort: createDraft.effort } : {}),
+          ...(launchable ? { model: createDraft.model.trim(), effort: createDraft.effort } : { launch: createDraft.launch.trim() }),
           source: createDraft.source.trim(),
           capabilities,
         }),
@@ -1253,9 +1257,9 @@ function VariantEditor({ agentId, variant, isDefault, fallbackStem, onSave }: {
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<{ error: string; saved: boolean }>({ error: '', saved: false })
   // A save here or an edit elsewhere changes the card; show what it now holds.
-  useEffect(() => setDraft(variantDraft(variant)), [variant.model, variant.effort]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setDraft(variantDraft(variant)), [variant.model, variant.effort, variant.launch]) // eslint-disable-line react-hooks/exhaustive-deps
   const changes = variantChanges(variant, draft)
-  const launchable = Boolean(variant.efforts?.length)
+  const launchable = isLaunchable(variant)
   const idPrefix = `agx-variant-${variant.id}`
 
   const save = async (event: FormEvent) => {
@@ -1282,15 +1286,13 @@ function VariantEditor({ agentId, variant, isDefault, fallbackStem, onSave }: {
         onDraft={next => { setDraft(next); setStatus({ error: '', saved: false }) }}
         disabled={saving}
       />
-      {launchable ? (
-        <div className="ph-actions">
-          {status.saved && !changes ? <span className="ph-saved" role="status">Saved</span> : null}
-          {changes ? <button type="button" className="board-action" disabled={saving} onClick={() => { setDraft(variantDraft(variant)); setStatus({ error: '', saved: false }) }}>Revert</button> : null}
-          <button className="primary" type="submit" disabled={!changes || saving} aria-label={`Save ${variant.id} model and effort`}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      ) : null}
+      <div className="ph-actions">
+        {status.saved && !changes ? <span className="ph-saved" role="status">Saved</span> : null}
+        {changes ? <button type="button" className="board-action" disabled={saving} onClick={() => { setDraft(variantDraft(variant)); setStatus({ error: '', saved: false }) }}>Revert</button> : null}
+        <button className="primary" type="submit" disabled={!changes || saving} aria-label={`Save ${variant.id} ${launchable ? 'model and effort' : 'launch command'}`}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
       {status.error ? <p className="ph-error" role="alert">{status.error}</p> : null}
       <SeatLaunch variant={variant} />
       {variant.source ? <div className="ph-head"><span>source</span><code>{variant.source}</code></div> : null}
@@ -1458,7 +1460,13 @@ function CreatePersonaPopover({
             </div>
           </div>
         ) : (
-          <p className="ph-none agx-create-none">{draft.harness} takes no model or effort here: Archon cannot start its seats.</p>
+          <>
+            <p className="ph-none agx-create-none">
+              Archon cannot start {draft.harness} seats, so it takes no model or effort. <code>archon agent spawn</code> runs its launch command; leave it blank to derive it from Source.
+            </p>
+            <label htmlFor="agx-create-launch">Launch command (archon agent spawn)</label>
+            <input id="agx-create-launch" className="f" value={draft.launch} spellCheck={false} onChange={event => set('launch', event.target.value)} />
+          </>
         )}
         <label htmlFor="agx-create-stem">Session stem</label>
         <input id="agx-create-stem" className="f" value={draft.sessionStem} onChange={event => set('sessionStem', event.target.value)} />

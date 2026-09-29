@@ -73,6 +73,8 @@ export async function agentsFixture(page: Page) {
       harnessVariants: [{ id: 'claude-code', sessionStem: 'critic', launch: 'claude', model: 'claude-opus-5', effort: 'low' }] },
     builder: { id: 'builder', displayName: 'Builder', kind: 'builder', summary: 'Builds the change.', tags: ['implement'], harnessDefault: 'openai-codex', rev: 1,
       harnessVariants: [{ id: 'openai-codex', sessionStem: 'builder' }, { id: 'claude-code', sessionStem: 'claude-builder' }] },
+    spawner: { id: 'spawner', displayName: 'Hermes spawner', kind: 'specialist', summary: 'Runs through hermes.', tags: [], harnessDefault: 'hermes', rev: 1,
+      harnessVariants: [{ id: 'hermes', sessionStem: 'spawner', launch: "hermes --profile '/profiles/old'" }] },
   }
   const patches: unknown[] = []
   const read = (card: Card) => ({ ...card, etag: `${card.id}-${card.rev}`, harnessVariants: card.harnessVariants.map(describe) })
@@ -113,13 +115,21 @@ export async function agentsFixture(page: Page) {
         patches.push(body)
         const next = structuredClone(card)
         const settings = [...(body.variants || []), ...(body.model !== undefined || body.effort !== undefined ? [{ id: body.variant || '', model: body.model, effort: body.effort }] : [])]
+        const named = new Set<string>()
         for (const setting of settings) {
           const variant = next.harnessVariants.find(candidate => candidate.id === (setting.id || next.harnessDefault))
           if (!variant) return fail(422, 'INVALID_AGENT_CARD', `agent "${card.id}" has no harness variant "${setting.id}"`)
+          if (named.has(variant.id)) return fail(422, 'INVALID_AGENT_CARD', `agent "${card.id}" harness variant "${variant.id}" is edited twice in one change; name each variant once`)
+          named.add(variant.id)
           const harness = harnesses.find(candidate => candidate.id === variant.id)
-          const effort = setting.effort ?? variant.effort ?? ''
-          if (!harness) return fail(422, 'INVALID_AGENT_CARD', `agent "${card.id}" harness "${variant.id}" has no model or effort setting`)
-          if (effort && !harness.efforts.includes(effort)) return fail(422, 'INVALID_AGENT_CARD', `agent "${card.id}" effort "${effort}" is not one ${harness.id} accepts; use ${harness.efforts.join(', ')}`)
+          // Only the fields being changed are validated.
+          if (setting.launch !== undefined) {
+            if (harness) return fail(422, 'INVALID_AGENT_CARD', `agent "${card.id}" harness "${variant.id}" seats start from model and effort; a launch string would not be run`)
+            variant.launch = setting.launch.trim() || undefined
+          }
+          if ((setting.model?.trim() || setting.effort?.trim()) && !harness) return fail(422, 'INVALID_AGENT_CARD', `agent "${card.id}" harness "${variant.id}" has no model or effort setting`)
+          const effort = setting.effort?.trim() || ''
+          if (harness && effort && !harness.efforts.includes(effort)) return fail(422, 'INVALID_AGENT_CARD', `agent "${card.id}" effort "${effort}" is not one ${harness.id} accepts; use ${harness.efforts.join(', ')}`)
           if (setting.model !== undefined) variant.model = setting.model.trim() || undefined
           if (setting.effort !== undefined) variant.effort = setting.effort.trim() || undefined
         }

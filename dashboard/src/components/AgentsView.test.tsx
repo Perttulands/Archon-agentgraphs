@@ -47,6 +47,40 @@ describe('AgentsView', () => {
     expect(orderReachableItems(items, null).map(item => item.id)).toEqual(['build', 'review', 'judge-a', 'judge-b', 'ship'])
   })
 
+  it('lists each reachable node once through fail loops, gates reached twice and fail edges into a judge', () => {
+    const label = (items: ReturnType<typeof reachableMissionItems>) => items.map(item => `${item.kind}:${item.id}:${item.via ? `${item.via.gateId}/${item.via.branch}` : 'main'}`)
+    const base = judgedBoard()
+
+    // review:fail -> build:in loops back to work already reached; the walk ends and adds nothing.
+    const loop = { ...base, connections: [...base.connections, { id: 'loop', from: 'review:fail', to: 'build:in' }] }
+    expect(label(reachableMissionItems(loop, 'mission'))).toEqual([
+      'formation:build:main', 'gate:review:main', 'formation:judge-a:review/judge', 'formation:judge-b:review/judge', 'formation:ship:review/pass',
+    ])
+
+    // Two paths into one gate: the gate and its judges appear once.
+    const twoPaths = {
+      ...base,
+      formations: [...base.formations, { ...base.formations[0], id: 'other', title: 'Other' }],
+      connections: [...base.connections, { id: 'm2', from: 'mission:out', to: 'other:in' }, { id: 'o1', from: 'other:out', to: 'review:in' }],
+    }
+    const twice = reachableMissionItems(twoPaths, 'mission')
+    for (const id of ['review', 'judge-a', 'judge-b', 'ship']) expect(twice.filter(item => item.id === id)).toHaveLength(1)
+    expect(twice.find(item => item.id === 'judge-a')?.via).toEqual({ gateId: 'review', branch: 'judge' })
+
+    // A second gate's fail edge into a judge: the judge is still one card and one slot.
+    const failToJudge = {
+      ...base,
+      gates: [...(base.gates || []), { id: 'recheck', title: 'Recheck', kinds: ['human'], criterion: 'Looks right.' }],
+      connections: [...base.connections.filter(edge => edge.id !== 'c7'), { id: 'p1', from: 'review:pass', to: 'recheck:in' }, { id: 'f1', from: 'recheck:fail', to: 'judge-a:in' }],
+    } as BoardDocument
+    const judged = reachableMissionItems(failToJudge, 'mission')
+    expect(judged.filter(item => item.id === 'judge-a')).toHaveLength(1)
+    expect(label(judged)).toEqual([
+      // Reached both as judges and on a fail route, the chain carries no single provenance.
+      'formation:build:main', 'gate:review:main', 'formation:judge-a:main', 'formation:judge-b:main', 'gate:recheck:review/pass',
+    ])
+  })
+
   it('counts judge slots in readiness and in a judge persona\'s slots on this mission', async () => {
     const board = judgedBoard()
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
@@ -580,7 +614,9 @@ describe('AgentsView', () => {
     expect(screen.queryByLabelText('Launch')).toBeNull()
     fireEvent.change(screen.getByLabelText('Harness'), { target: { value: 'hermes' } })
     expect(screen.queryByLabelText('Model')).toBeNull()
-    expect(screen.getByText(/hermes takes no model or effort/)).toBeInTheDocument()
+    expect(screen.getByText(/Archon cannot start hermes seats, so it takes no model or effort/)).toBeInTheDocument()
+    // hermes keeps its launch command: archon agent spawn runs it. A launchable harness never sends one.
+    fireEvent.change(screen.getByLabelText('Launch command (archon agent spawn)'), { target: { value: 'hermes --profile writer' } })
     expect(screen.queryByRole('option', { name: 'codex' })).toBeNull()
     fireEvent.change(screen.getByLabelText('Agent id'), { target: { value: 'writer' } })
     fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Writer' } })
