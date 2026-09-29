@@ -56,7 +56,7 @@ const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
 const RunEvidence = lazy(() => import('../evidence/RunEvidence'))
 const NodeWindow = lazy(() => import('../nodeWindow/NodeWindow'))
 const FlowView = lazy(() => import('../flow/FlowView'))
-import DismissiblePanel from './DismissiblePanel'
+import CanvasContextMenu, { type MenuItem, type MenuState } from './CanvasContextMenu'
 import PersonaEditorDialog from './PersonaEditorDialog'
 import HumanGateAnswerPanel, { type GateDecision } from './HumanGateAnswerPanel'
 import RunPoint from './RunPoint'
@@ -131,8 +131,6 @@ type WireDrag =
   | { kind: 'reconnect-source'; connection: BoardConnection }
   | { kind: 'judge'; gate: GateNode; moved: boolean; startX: number; startY: number }
 type LaneDrag = { connectionId: string; previousLane: string; moved: boolean }
-type MenuItem = { label: string; action?: () => void; destructive?: boolean; disabled?: boolean; head?: boolean }
-type MenuState = { label: string; x: number; y: number; items: MenuItem[] }
 type LegacyVerificationState = {
   boardSlug: string
   boardRev: number
@@ -3274,36 +3272,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         </div>
       ) : null}
 
-      {menu ? (
-        <DismissiblePanel onDismiss={closeMenu} panelPosition="fixed">
-          <div
-            className="formations-context-menu ctxmenu"
-            role="menu"
-            aria-label={menu.label}
-            style={{ left: Math.min(menu.x, window.innerWidth - 220), top: Math.min(menu.y, window.innerHeight - 80) }}
-            onPointerDown={event => event.stopPropagation()}
-          >
-            <div className="mhead">{menu.label}</div>
-            {menu.items.map((item, itemIndex) => item.head ? (
-              <div key={`${item.label}-${itemIndex}`} className="msection">{item.label}</div>
-            ) : (
-              <button
-                key={`${item.label}-${itemIndex}`}
-                type="button"
-                role="menuitem"
-                disabled={item.disabled}
-                className={item.destructive ? 'danger' : undefined}
-                onClick={() => {
-                  closeMenu()
-                  item.action?.()
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </DismissiblePanel>
-      ) : null}
+      {menu ? <CanvasContextMenu menu={menu} onClose={closeMenu} /> : null}
 
       {ghost ? (
         <div className="fmx-ghost" style={{ left: ghost.x, top: ghost.y }}>{harnessGlyph(ghost.harness) ?? initials(ghost.agentId)}</div>

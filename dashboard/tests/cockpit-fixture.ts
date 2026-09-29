@@ -80,7 +80,7 @@ const succeededEvidence: Record<string, unknown> = {
   '/api/formations/runs/run_browser/evidence/artifacts/logs/worker.log': { artifact: { name: 'logs/worker.log', size: 40, modifiedAt: '2026-09-16T00:00:00Z', kind: 'text', text: evidenceText('worker started\nworker finished') } },
 }
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; join?: boolean } = {}) {
+export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; join?: boolean; extraAgents?: number } = {}) {
   const currentBoard = structuredClone(board)
   if (options.join) {
     currentBoard.formations = ['a', 'b', 'c', 'sink'].map(id => ({ ...structuredClone(board.formations[2]), id, title: id === 'sink' ? 'Join' : `Solo ${id.toUpperCase()}` }))
@@ -199,6 +199,9 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path === '/api/agents') return respond({ agents: [
       { id: 'claude', displayName: 'Claude controller', harnessDefault: 'claude-code', assignable: true, liveness: 'live', tags: [], kind: 'controller' },
       { id: 'codex', displayName: 'Codex builder', harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' },
+      // A large roster, as on a real host, makes long staffing menus.
+      ...Array.from({ length: options.extraAgents || 0 }, (_, index) => ({ id: `agent-${index + 1}`, displayName: `Roster agent ${index + 1}`,
+        harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' })),
     ] })
     if (path === '/api/agents/codex') return respond({ id: 'codex', displayName: 'Codex builder', kind: 'builder', summary: 'Builds the change.', tags: [],
       harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'codex', launch: 'codex' }], etag: 'codex-card' })

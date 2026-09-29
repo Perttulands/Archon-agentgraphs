@@ -306,8 +306,11 @@
 .fmx [data-gate].fail .gico,.fmx [data-gate].fail .vico{border-color:var(--terra-d);background:var(--color-error-light);color:var(--terra-d);border-style:solid;}
 
 /* Root-level context menus and local editor popovers. */
-.formations-context-menu{position:fixed;background:var(--surface-primary);border:1px solid var(--divider);border-radius:6px;padding:5px;box-shadow:0 4px 16px rgba(0,0,0,.4);min-width:178px;color:var(--text-primary);font-family:var(--font-mono);}
+.formations-context-menu{position:fixed;background:var(--surface-primary);border:1px solid var(--divider);border-radius:6px;padding:5px;box-shadow:0 4px 16px rgba(0,0,0,.4);min-width:178px;color:var(--text-primary);font-family:var(--font-mono);overflow-y:auto;overscroll-behavior:contain;}
 .formations-context-menu .mhead{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim);padding:7px 10px 5px;}
+/* Section heads inside a menu (type choices, Assign agent, judge picker). The
+   menu is portaled to <body>, so these rules must not depend on .fmx. */
+.formations-context-menu .msection{margin-top:4px;border-top:1px solid var(--divider);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim);padding:9px 10px 5px;}
 .formations-context-menu button{display:flex;width:100%;align-items:center;gap:10px;padding:8px 11px;border:0;border-radius:5px;background:transparent;color:var(--text-primary);cursor:pointer;font:inherit;font-size:13px;text-align:left;transition:background .1s;}
 .formations-context-menu button:hover{background:rgba(var(--accent-rgb),.1);}
 .formations-context-menu button.danger{color:var(--color-error);}
