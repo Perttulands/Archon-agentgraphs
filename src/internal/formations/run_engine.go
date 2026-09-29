@@ -2809,10 +2809,6 @@ func starvedFormations(formationByID map[string]FormationNode, ready map[string]
 	return starved
 }
 
-// appendStarvedBlock records a fail-loud run_blocked instead of run_succeeded
-// when reachable required formations can never run. Resume cannot conjure a
-// missing producer, so the run is blocked non-resumably with recovery guidance:
-// wire a producer to the starved ports and start a new run.
 // appendUnfinishedWorkBlock refuses success while unfinishedRunWork names
 // nodes: the run blocks, resumable, naming them, rather than claim success
 // with work still owed (form-n7u.53).
@@ -2821,6 +2817,10 @@ func (e *RunEngine) appendUnfinishedWorkBlock(runID string, unfinished []string)
 	return e.appendErrorAndBlock(runID, "run_work_unfinished", message, "engine", unfinished[0], message)
 }
 
+// appendStarvedBlock records a fail-loud run_blocked instead of run_succeeded
+// when reachable required formations can never run. Resume cannot conjure a
+// missing producer, so the run is blocked non-resumably with recovery guidance:
+// wire a producer to the starved ports and start a new run.
 func (e *RunEngine) appendStarvedBlock(runID string, starved []starvedFormation) error {
 	waitingNodes := make([]map[string]any, 0, len(starved))
 	for _, s := range starved {

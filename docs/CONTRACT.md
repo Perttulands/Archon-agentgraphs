@@ -422,8 +422,10 @@ port, or a verdict's route, including a send-back), every gate has evaluated
 the last input it received, and no formation, gate or human request is still
 open. A formation reached only through a route no verdict took is not pending
 work. Resume first runs whatever is still owed, including a send-back a gate
-routes during that resume; if work remains that it cannot run, the run blocks
-with `run_work_unfinished` naming those nodes instead of succeeding. A human
+routes during that resume. The same rule applies on first execution. A
+formation that can never receive a missing input blocks non-resumably with
+`reachable_node_starved`; any other work that remains blocks, resumably, with
+`run_work_unfinished` naming those nodes instead of succeeding. A human
 gate's answer panel says approving ends the run by the same rule.
 A human kind waits for an explicit verdict naming the exact pending sequence;
 stale or duplicate decisions return HTTP 409. There is no default verdict.
