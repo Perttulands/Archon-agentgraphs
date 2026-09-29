@@ -492,7 +492,7 @@ func (c *Coordinator) recordFailure(runID string, err error) {
 			log.Printf("run %s: kept seats before failure: %v", runID, endErr)
 		}
 		// Private ledger keeps the diagnostic. Public projection exposes no raw errors.
-		_ = c.store.AppendRunEvent(runID, formations.RunEvent{Type: formations.RunEventFailed, Data: map[string]any{"reason": "coordinator_execution_failed", "detail": err.Error(), "final": true}})
+		_ = c.store.AppendRunEvent(runID, formations.RunEvent{Type: formations.RunEventFailed, Actor: formations.RunFailureActor, Data: map[string]any{"reason": "coordinator_execution_failed", "detail": err.Error(), "final": true}})
 	}
 }
 

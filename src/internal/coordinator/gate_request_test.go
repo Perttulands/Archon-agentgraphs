@@ -3,6 +3,7 @@ package coordinator
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -36,8 +37,15 @@ func TestPendingGateRequestServesOnlyTheRoutedInput(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 			t.Fatal(err)
 		}
-		want := PendingGateRequest{GateID: "gate_review", RequestedSeq: seq, Criterion: "PRIVATE-CRITERION", Input: PendingGateInput{FromNodeID: "fmn_work", FromPortID: "port_out", Text: "PRIVATE-OUTPUT"}}
-		if body.Data.Request != want {
+		want := PendingGateRequest{GateID: "gate_review", RequestedSeq: seq, Criterion: "PRIVATE-CRITERION", Input: PendingGateInput{FromNodeID: "fmn_work", FromPortID: "port_out", Text: "PRIVATE-OUTPUT"},
+			// Approve starts After's first of one attempt with one of three dispatches
+			// used; the send-back is unwired, so it would block the run.
+			Routes: []formations.GateRoute{
+				{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_after", Title: "After", Kind: "formation", Attempt: 1, MaxAttempts: 1}},
+					Dispatches: &formations.RunLimitReached{Kind: formations.RunLimitDispatches, Used: 1, Max: 3}},
+				{Verdict: "fail", Targets: []formations.GateRouteTarget{}, Unwired: true},
+			}}
+		if !reflect.DeepEqual(body.Data.Request, want) {
 			t.Fatalf("request = %+v, want %+v", body.Data.Request, want)
 		}
 		for _, private := range []string{"/private/", "PRIVATE-CAPTURE", "PRIVATE-OBJECTIVE", "run the proof", "prompt", `"ref"`, "sessionRef", "briefPath"} {

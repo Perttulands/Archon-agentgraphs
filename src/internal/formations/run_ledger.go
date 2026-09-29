@@ -122,6 +122,9 @@ type RunStatusProjection struct {
 	Epoch         int      `json:"epoch"`
 	EventCount    int      `json:"eventCount"`
 	ResumeAllowed bool     `json:"resumeAllowed"`
+	// EndedBy names who failed or canceled a final run; the reason itself is
+	// run evidence (ADR-0017), since it can quote private text.
+	EndedBy string `json:"endedBy,omitempty"`
 }
 
 type RunListFilter struct {
@@ -375,7 +378,7 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 				return ErrRunEpochBlocked
 			}
 			if event.Type == RunEventResumed {
-				if !boolFromEventData(last, "resumeAllowed") {
+				if !runBlockResumeAllowed(lifecycle, len(lifecycle)-1) {
 					return ErrRunResumeNotAllowed
 				}
 				if event.Epoch == 0 {
@@ -469,7 +472,7 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		if err := rejectLegacyInlineVerification(runSnapshot); err != nil {
 			return err
 		}
-		if last.Type != RunEventBlocked || !boolFromEventData(last, "resumeAllowed") {
+		if last.Type != RunEventBlocked || !runBlockResumeAllowed(lifecycle, len(lifecycle)-1) {
 			return ErrRunResumeNotAllowed
 		}
 		actor := defaultRunActor(req.Actor)
@@ -596,15 +599,17 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 		case RunEventBlocked:
 			status.Status = RunStatusBlocked
 			status.Final = false
-			status.ResumeAllowed = boolFromEventData(event, "resumeAllowed")
+			status.ResumeAllowed = runBlockResumeAllowed(events, i)
 		case RunEventCanceled:
 			status.Status = RunStatusCanceled
 			status.Final = true
 			status.ResumeAllowed = false
+			status.EndedBy = runEndActor(event)
 		case RunEventFailed:
 			status.Status = RunStatusFailed
 			status.Final = true
 			status.ResumeAllowed = false
+			status.EndedBy = runEndActor(event)
 		case RunEventSucceeded:
 			status.Status = RunStatusSucceeded
 			status.Final = true
@@ -1054,4 +1059,21 @@ func ValidateRunContextPaths(paths []string) error {
 		}
 	}
 	return nil
+}
+
+// runEndActor is who ended a run with a cancel or failure: the requester of a
+// cancel, and Archon itself for a coordinator failure, whatever actor the
+// ledger inherited from the start.
+func runEndActor(event RunEvent) string {
+	switch event.Type {
+	case RunEventCanceled:
+		if requestedBy := stringFromEventData(event, "requestedBy"); requestedBy != "" {
+			return requestedBy
+		}
+	case RunEventFailed:
+		if stringFromEventData(event, "reason") == "coordinator_execution_failed" {
+			return RunFailureActor
+		}
+	}
+	return event.Actor
 }

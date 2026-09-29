@@ -2624,6 +2624,11 @@ func (e *RunEngine) appendErrorAndBlockWithDetails(runID, code, message, boundar
 		"nodeId":      nodeID,
 		"recoverable": true,
 	}
+	// A spent limit stays spent: resuming would only block again (form-n7u.6).
+	limit := isRunLimitCode(code)
+	if limit {
+		data["recoverable"] = false
+	}
 	if slotID != "" {
 		data["slotId"] = slotID
 	}
@@ -2638,7 +2643,14 @@ func (e *RunEngine) appendErrorAndBlockWithDetails(runID, code, message, boundar
 	}); err != nil {
 		return err
 	}
-	return e.appendRunBlockedWithDispatches(runID, blockReason, nodeID, "", slotID, openDispatchesForBlock(nodeID, slotID, dispatchID))
+	block := runBlockedEvent(blockReason, nodeID, "", slotID, openDispatchesForBlock(nodeID, slotID, dispatchID))
+	if limit {
+		block.Data["code"] = code
+		block.Data["resumeAllowed"] = false
+		block.Data["resumePolicy"] = "limit_exhausted"
+		delete(block.Data, "nextEpoch")
+	}
+	return e.store.AppendRunEvent(runID, block)
 }
 
 func (e *RunEngine) appendGateErrorAndBlock(runID, gateID, code, message, boundary, blockReason string) error {

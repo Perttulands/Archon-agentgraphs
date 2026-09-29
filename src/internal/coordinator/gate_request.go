@@ -26,10 +26,13 @@ type PendingGateRequest struct {
 	RequestedSeq int              `json:"requestedSeq"`
 	Criterion    string           `json:"criterion"`
 	Input        PendingGateInput `json:"input"`
+	// Routes say where each verdict leads on the run's frozen board (form-n7u.7).
+	Routes []formations.GateRoute `json:"routes"`
 }
 
 // pendingGateRequest serves the latest human request for a gate while it is
-// pending: its frozen criterion and routed input text, never refs, paths,
+// pending: its frozen criterion, routed input text and where each verdict
+// leads, never refs, paths,
 // prompts or session identities. An unknown run or gate is 404; a request that
 // is no longer pending is 409.
 func (c *Coordinator) pendingGateRequest(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +72,12 @@ func (c *Coordinator) pendingGateRequest(w http.ResponseWriter, r *http.Request)
 	body.Input.FromPortID, _ = input["fromPortId"].(string)
 	text, _ := input["text"].(string)
 	body.Input.Text, body.Input.Truncated = capPendingGateText(text)
+	board, err := c.store.ReadRunBoard(runID)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	body.Routes = formations.HumanGateRoutes(board, events, gateID)
 	reply(w, http.StatusOK, map[string]any{"request": body})
 }
 
