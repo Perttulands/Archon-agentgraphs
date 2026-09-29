@@ -5,10 +5,10 @@ description: Author Archon missions and drive their runs through the archond dae
 
 # Archon
 
-This skill documents the Archon contract at commit 7adfe4c (VERSION 0.1.0,
-2026-09-29). It ships with that source. `archon --version` names the build on
-PATH. When that build is older, a flag named here may be missing: read the
-command's `-h` and trust the binary.
+This skill documents the Archon contract at commit 122ebdd (VERSION 0.1.0,
+2026-09-29), where run limits became optional. It ships with that source.
+`archon --version` names the build on PATH. When that build is older, a flag or
+behaviour named here may differ: read the command's `-h` and trust the binary.
 
 ## Vocabulary
 
@@ -201,8 +201,8 @@ when a step's work differs from that default:
   a known time.
 
 `formation set-execution "$BOARD" "$FORMATION" --timeout-seconds <n>` sets it;
-`0` returns to the daemon default. A run freezes the duration at admission. A
-pushback loop is bounded separately, by the run's `--max-attempts`.
+`0` returns to the daemon default. A run freezes the duration at admission.
+A step's duration does not bound a send-back loop; see run limits below.
 
 ### Human channel
 
@@ -234,8 +234,7 @@ To import an example board or smoke-test routing on a lab daemon, read
 ```bash
 FORM_START=$(archon $S mission run "$BOARD" --mission "$MISSION" \
   --brief "$FORM_BRIEF" --bead "$FORM_BEAD" \
-  --context-path /abs/prior-art --context-path /abs/notes.md \
-  --max-dispatch 30 --max-attempts 3 --wall-clock-seconds 7200 --json)
+  --context-path /abs/prior-art --context-path /abs/notes.md --json)
 FORM_RUN_ID=$(jq -er .data.runId <<<"$FORM_START")
 archon $S run status "$FORM_RUN_ID" --json
 ```
@@ -247,10 +246,16 @@ archon $S run status "$FORM_RUN_ID" --json
 - `--context-path` names absolute existing files or directories the seats must
   inspect as prior art. They are read-only references, frozen as paths; repeat
   the flag for more.
-- Set limits for the graph. Remote defaults are 3 dispatches, 3 attempts and
-  7200 seconds. Every formation start, judges included, spends one dispatch;
-  resume never refills them. Attempts bound revisits to one node. The wall clock
-  excludes time waiting at human gates.
+- A run has no limits unless the launch sets them, and nothing supplies them
+  for you. Without limits a send-back loop continues until its gate passes or
+  you stop the run with `run abort`.
+- Add a cap only when the mission needs one: `--max-attempts <n>` bounds
+  revisits to any one node, `--max-dispatch <n>` bounds formation starts across
+  the run (judges included; resume never refills them), and
+  `--wall-clock-seconds <n>` bounds agent work from the run's start, excluding
+  time waiting at human gates. Each must be positive; omitting it means none. A
+  spent cap blocks the run naming the limit (for example the attempts used of
+  the maximum), and that block is not resumable.
 - A lost receipt: check `run list --json` before starting again.
 
 ### Watch
@@ -285,7 +290,10 @@ are working inside a seat, read [references/seat-output.md](references/seat-outp
 Decide only with the operator's authority. Read fresh status, then take
 `FORM_GATE_ID` and `FORM_REQUESTED_SEQ` from the same `.data.waitingGates`
 entry. `run gates "$FORM_RUN_ID"` lists them; `gate request "$FORM_RUN_ID"
-"$FORM_GATE_ID"` shows the question, the input and where each verdict leads.
+"$FORM_GATE_ID"` shows the question, the input and where each verdict leads:
+the targets, the attempt each would start and, only when the run set a cap, that
+cap (`maxAttempts`, `dispatches`) and a `limit` entry if taking the route would
+exceed it.
 
 ```bash
 archon $S gate approve "$FORM_RUN_ID" "$FORM_GATE_ID" --requested-seq "$FORM_REQUESTED_SEQ" --response "$FORM_RESPONSE" --json

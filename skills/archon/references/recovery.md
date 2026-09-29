@@ -15,7 +15,7 @@ block with `code`, `reason`, `resumeAllowed` and the `nodeIds` it names.
 | `resume_after_verdict` | A human verdict was just recorded. | Nothing; the coordinator resumes. |
 | `run_work_unfinished` | Work remains that the run still owes. | Resume. |
 | `reachable_node_starved` | A formation can never receive a missing input. | Not resumable. Fix the wiring and start a new run. |
-| `resume_attempts_exhausted`, `revise_loop_exhausted`, `max_dispatch_exceeded` | A limit is spent (`resumePolicy: limit_exhausted`, `limit` names it). | Not resumable. Start a new run with larger limits. |
+| `resume_attempts_exhausted`, `revise_loop_exhausted`, `max_dispatch_exceeded` | A limit is spent (`resumePolicy: limit_exhausted`, `limit` names it). | Not resumable. Start a new run with a larger cap, or none. |
 | `wall_clock_exceeded` | A dispatch ran past the run's wall clock. | The clock counts from the run's start, so start a new run with more time. |
 | `formation_timeout_exceeded` | A step ran past its execution duration. | Inspect the partial evidence. `--mode redispatch` starts a fresh attempt with a fresh duration; `set-execution` changes later runs only. |
 | Malformed `chrote-verdict` | The judge broke the verdict contract. | Not resumable. Fix the judge brief and start a new run. |

@@ -144,7 +144,7 @@ acknowledges one proposal. Bound it with the formation's execution duration:
 (authored as execution.timeoutSeconds; 0 inherits the daemon default). The
 duration covers startup, openings, discussion and finalization; expiry blocks
 the run with formation_timeout_exceeded and keeps the journal and openings. The
-run's wall clock also bounds it.
+run's wall clock, when the launch set one, also bounds it.
 """
 key_points = [
   "Set the formation's execution duration (`formation set-execution --timeout-seconds`, i.e. execution.timeoutSeconds).",
@@ -222,19 +222,21 @@ key_points = [
 [[question]]
 id = "limits"
 source = "CONTRACT: Execution and authority (limits)"
-question = "What do --max-dispatch, --max-attempts and --wall-clock-seconds bound on a mission run, and what are the defaults?"
+question = "Do I need to pass --max-dispatch, --max-attempts or --wall-clock-seconds when I start a mission run, and what does each bound?"
 expected = """
-Remote defaults are 3 dispatches, 3 attempts and 7200 seconds; set them
-explicitly for larger graphs. Every formation start, judge steps included,
-consumes one dispatch, and resume or approval never replenishes them. Attempts
-bound revisits to one node (pushback retries). The wall clock bounds agent work
-from the run's start, excluding time waiting for a human verdict. Exhausting
-attempts or dispatches blocks the run without resume.
+No. Runs have no limits unless the launch sets them; neither the CLI nor the
+cockpit supplies defaults. Without limits a send-back loop continues until its
+gate passes or the driver stops the run (run abort). Set a cap only when the
+mission needs one; each must be positive. --max-attempts bounds revisits to one
+node, --max-dispatch bounds formation starts across the run (judges included;
+resume never replenishes them), and --wall-clock-seconds bounds agent work from
+the run's start, excluding time waiting on human gates. A spent cap blocks the
+run naming the limit, and that block is not resumable.
 """
 key_points = [
-  "Defaults are 3 dispatches, 3 attempts and 7200 seconds.",
-  "Each formation start, including judges, spends a dispatch.",
-  "Attempts bound revisits to a node; the wall clock excludes time waiting on human gates.",
+  "Limits are optional and absent by default; nothing supplies them.",
+  "Without limits a send-back loop runs until the gate passes or the run is aborted.",
+  "Attempts bound revisits to a node, dispatches bound formation starts (judges included), and the wall clock excludes human-gate waits.",
 ]
 
 [[question]]
@@ -276,11 +278,11 @@ question = "A run is blocked with max_dispatch_exceeded. Can I resume it?"
 expected = """
 No. A block that exhausts dispatches or attempts records resumeAllowed false and
 resumePolicy limit_exhausted, with the limit named; resuming could only block
-again and is rejected. Start a new run with larger limits.
+again and is rejected. Start a new run with a larger cap, or none.
 """
 key_points = [
   "It cannot be resumed (resumeAllowed false, limit exhausted).",
-  "Start a new run with larger limits.",
+  "Start a new run with a larger cap (or without one).",
 ]
 
 [[question]]
@@ -290,7 +292,7 @@ question = "A seat died mid-turn and there is no completed evidence. How do I ge
 expected = """
 `archon --server <server> run resume <run> --mode redispatch --reason ...`
 abandons the open dispatch and runs the node again as a new attempt that counts
-against maxAttempts. A plain resume cannot invent the missing completion.
+against maxAttempts when the run set one. A plain resume cannot invent the missing completion.
 """
 key_points = [
   "`run resume --mode redispatch` through the daemon.",
