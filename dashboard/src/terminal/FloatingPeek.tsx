@@ -95,7 +95,7 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
 
   // Size the window by the seat, as CHROTE's Peek does (chrote-8eyu,
   // chrote-wshh), until the operator sizes it. The font is fitted to the room
-  // the window opened with, never to the window, so the window wrapping the
+  // the window was placed with, never to the window, so the window wrapping the
   // grid cannot move the font; the window then wraps the box the grid took. A
   // grid that does not fit even there scrolls. The chrome is the window less
   // the room the terminal has in it.
@@ -110,10 +110,10 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
     setChrome(previous => previous && previous.width === next.width && previous.height === next.height ? previous : next)
   }, [root])
   const { fitTo, sizedByOperator, rect } = win
-  // Peek opens where its placement finds room beside the graph, and never grows
-  // past what it was given there, so it never covers what its placement kept
-  // clear (windowPlacement.ts). CHROTE's Peek opens at up to 90% of the
-  // workspace, centred over it.
+  // Peek opens where its placement finds room beside the graph, and never
+  // grows past what it was given there, so it never covers what its placement
+  // keeps clear (windowPlacement.ts). CHROTE's Peek is centred over the
+  // workspace at up to 90% of it instead.
   const [placed, setPlaced] = useState<FrameSize | null>(null)
   if (chrome && !placed) setPlaced({ width: rect.width, height: rect.height })
   const capsRoom = !sizedByOperator && chrome && placed ? { width: placed.width - chrome.width, height: placed.height - chrome.height } : null
