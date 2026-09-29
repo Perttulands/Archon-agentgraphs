@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { useState } from 'react'
+import { Profiler, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import FloatingWindow from './FloatingWindow'
 import { WindowManagerProvider, useWindowManager } from './WindowManager'
@@ -177,6 +177,35 @@ describe('floating windows', () => {
     canvas = { bounds: { left: 0, top: 300, width: 1200, height: 500 }, avoid: [zoom] }
     fireEvent.click(screen.getByRole('button', { name: 'Reflow' }))
     expect(rectOf('w1')).toEqual({ left: 400, top: 300, width: 400, height: 300 })
+  })
+
+  it('re-renders nothing when a reflow finds every window already inside', () => {
+    let commits = 0
+    function Counted() {
+      const stack = useWindowManager(workspace)
+      return (
+        <>
+          <button type="button" onClick={stack.reflow}>Reflow</button>
+          <WindowManagerProvider stack={stack}>
+            <Profiler id="w1" onRender={() => { commits += 1 }}>
+              <FloatingWindow id="w1" kind="node" title="Window w1" label="window w1" defaultSize={{ width: 400, height: 300 }} onClose={() => {}}>
+                <p>Body of w1</p>
+              </FloatingWindow>
+            </Profiler>
+          </WindowManagerProvider>
+        </>
+      )
+    }
+    render(<Counted />)
+    // React may render once before it bails out of an unchanged state; after that, frames cost nothing.
+    fireEvent.click(screen.getByRole('button', { name: 'Reflow' }))
+    const before = commits
+    for (let frame = 0; frame < 5; frame += 1) fireEvent.click(screen.getByRole('button', { name: 'Reflow' }))
+    expect(commits).toBe(before)
+    // A reflow that does move the window still renders it.
+    canvas = { bounds: { left: 0, top: 300, width: 1200, height: 500 }, avoid: [zoom] }
+    fireEvent.click(screen.getByRole('button', { name: 'Reflow' }))
+    expect(commits).toBeGreaterThan(before)
   })
 
   it('holds open windows inside the viewport when it shrinks', () => {

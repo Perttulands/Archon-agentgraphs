@@ -110,9 +110,26 @@ describe('produced files', () => {
     expect(menu.parentElement).toBe(document.body)
     expect(within(menu).getByText('Plan')).toBeInTheDocument()
     expect(within(menu).getByText('Other files')).toBeInTheDocument()
-    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['¶report', '▤worker.log'])
-    fireEvent.keyDown(document, { key: 'Escape' })
+    const items = within(menu).getAllByRole('menuitem')
+    expect(items.map(item => item.textContent)).toEqual(['¶report', '▤worker.log'])
+    // Drawn at the end of the page, the menu takes focus as it opens; arrow keys move through it.
+    expect(items[0]).toHaveFocus()
+    fireEvent.keyDown(items[0], { key: 'ArrowDown' })
+    expect(items[1]).toHaveFocus()
+    fireEvent.keyDown(items[1], { key: 'ArrowDown' })
+    expect(items[0]).toHaveFocus()
+    fireEvent.keyDown(items[0], { key: 'ArrowUp' })
+    expect(items[1]).toHaveFocus()
+    // Escape closes it and gives focus back to its button.
+    fireEvent.keyDown(items[1], { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBeNull()
+    const more = bar.getByRole('button', { name: '2 more produced files' })
+    expect(more).toHaveFocus()
+    // So does Tab, rather than leaving focus at the end of the page.
+    fireEvent.click(more)
+    fireEvent.keyDown(screen.getAllByRole('menuitem')[0], { key: 'Tab' })
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(more).toHaveFocus()
   })
 
   it('opens a Markdown artifact rendered from the run bar in one click, with raw and path actions', async () => {

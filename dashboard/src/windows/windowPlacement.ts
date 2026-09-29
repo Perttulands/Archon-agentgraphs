@@ -163,9 +163,51 @@ function growFrom(x: number, y: number, size: FrameSize, bounds: WindowRect, obs
 
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value))
 
+interface Plan {
+  candidates: WindowRect[]
+  violation: (rect: WindowRect) => number
+  cost: (rect: WindowRect) => number
+}
+
 /** Where a new window of `size` opens in `scene`. */
 export function placeOpeningWindow(size: FrameSize, minimum: FrameSize, scene: PlacementScene): WindowRect {
-  const { bounds, avoid } = scene.workspace
+  const { candidates, violation, cost } = plan(size, minimum, scene)
+  let best = candidates[0]
+  let bestViolation = Number.POSITIVE_INFINITY
+  let bestCost = Number.POSITIVE_INFINITY
+  for (const candidate of candidates) {
+    const broken = violation(candidate)
+    if (broken > bestViolation) continue
+    const value = cost(candidate)
+    if (broken < bestViolation || value < bestCost) {
+      best = candidate
+      bestViolation = broken
+      bestCost = value
+    }
+  }
+  return {
+    left: Math.round(best.left),
+    top: Math.round(best.top),
+    width: Math.round(best.width),
+    height: Math.round(best.height),
+  }
+}
+
+/**
+ * How many places placing a window in `scene` weighs. It depends only on what
+ * lies within reach of the workspace, so a long Flow scrolled mostly out of
+ * view costs no more than a short one.
+ */
+export function placementCandidateCount(size: FrameSize, minimum: FrameSize, scene: PlacementScene): number {
+  return plan(size, minimum, scene).candidates.length
+}
+
+function plan(size: FrameSize, minimum: FrameSize, scene: PlacementScene): Plan {
+  const { bounds } = scene.workspace
+  // Only what comes within the gap of the workspace can shape a place in it.
+  const near = grow(bounds, PLACEMENT_GAP)
+  const inReach = (rect: WindowRect | null | undefined): rect is WindowRect => usable(rect) && rectsOverlap(rect, near)
+  const avoid = scene.workspace.avoid.filter(inReach)
   const full = clampFrameSize(size, minimum, bounds)
   const smallest = {
     width: Math.min(full.width, Math.max(minimum.width, Math.ceil(full.width * FIT_SHARE))),
@@ -174,10 +216,10 @@ export function placeOpeningWindow(size: FrameSize, minimum: FrameSize, scene: P
   const reach = grow(bounds, ANCHOR_REACH)
   // An anchor scrolled out of view says nothing about where to open.
   const anchor = usable(scene.anchor) && rectsOverlap(scene.anchor, reach) ? scene.anchor : null
-  const keepClear = (scene.keepClear || []).filter(usable)
-  const windows = (scene.windows || []).filter(usable)
-  const landmarks = (scene.landmarks || []).filter(usable)
-  const content = (scene.content || []).filter(usable)
+  const keepClear = (scene.keepClear || []).filter(inReach)
+  const windows = (scene.windows || []).filter(inReach)
+  const landmarks = (scene.landmarks || []).filter(inReach)
+  const content = (scene.content || []).filter(inReach)
   const centre = {
     left: bounds.left + (bounds.width - full.width) / 2,
     top: bounds.top + (bounds.height - full.height) / 2,
@@ -217,18 +259,22 @@ export function placeOpeningWindow(size: FrameSize, minimum: FrameSize, scene: P
   const hard = [...mustClear, ...windows.map(margin), ...landmarks.map(margin), ...content.map(margin), ...avoid]
   const lenient = [...mustClear, ...avoid]
 
+  // Edges a window can line up with, inside the workspace; an edge beyond it
+  // gives only a place already held at the workspace's own edge.
   const xs = new Set<number>([bounds.left, right(bounds)])
   const ys = new Set<number>([bounds.top, bottom(bounds)])
+  const addX = (x: number) => { if (x > bounds.left && x < right(bounds)) xs.add(Math.round(x)) }
+  const addY = (y: number) => { if (y > bounds.top && y < bottom(bounds)) ys.add(Math.round(y)) }
   for (const zone of hard) {
-    xs.add(zone.left)
-    xs.add(right(zone))
-    ys.add(zone.top)
-    ys.add(bottom(zone))
+    addX(zone.left)
+    addX(right(zone))
+    addY(zone.top)
+    addY(bottom(zone))
   }
   // Lined up with the anchor's left or top edge.
   if (anchor) {
-    xs.add(anchor.left)
-    ys.add(anchor.top)
+    addX(anchor.left)
+    addY(anchor.top)
   }
 
   const candidates: WindowRect[] = []
@@ -279,23 +325,5 @@ export function placeOpeningWindow(size: FrameSize, minimum: FrameSize, scene: P
     }
   }
 
-  let best = candidates[0]
-  let bestViolation = Number.POSITIVE_INFINITY
-  let bestCost = Number.POSITIVE_INFINITY
-  for (const candidate of candidates) {
-    const broken = violation(candidate)
-    if (broken > bestViolation) continue
-    const value = cost(candidate)
-    if (broken < bestViolation || value < bestCost) {
-      best = candidate
-      bestViolation = broken
-      bestCost = value
-    }
-  }
-  return {
-    left: Math.round(best.left),
-    top: Math.round(best.top),
-    width: Math.round(best.width),
-    height: Math.round(best.height),
-  }
+  return { candidates, violation, cost }
 }

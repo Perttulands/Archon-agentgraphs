@@ -87,7 +87,6 @@ export function locateNode(board: Pick<BoardDocument, 'formations'> & Partial<Pi
 const KIND_WORD = { mission: 'Mission', formation: 'Formation', gate: 'Gate' } as const
 const UNTITLED = { mission: 'Untitled mission', formation: 'Untitled formation', gate: 'Gate' } as const
 
-/** Where a node sits on screen, its Flow row or else its card, so its window opens beside it. */
 /** The window's accessible name, which its close button and handles repeat. */
 export function nodeWindowLabel(located: Located): string {
   return `${KIND_WORD[located.kind]} · ${located.node.title || UNTITLED[located.kind]}`

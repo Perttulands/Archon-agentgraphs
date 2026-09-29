@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { rectsOverlap, type WindowRect, type Workspace } from './windowGeometry'
-import { TITLE_STRIP, placeOpeningWindow, type PlacementScene } from './windowPlacement'
+import { TITLE_STRIP, placeOpeningWindow, placementCandidateCount, type PlacementScene } from './windowPlacement'
 import { FLOATING_WINDOW_MINIMUM } from './floatingWindowSize'
 import scenes from './fixtures/wayfindingScenes.json'
 
@@ -191,11 +191,19 @@ describe('window placement rules', () => {
     expect(rectsOverlap(rect, anchor)).toBe(false)
   })
 
-  it('places quickly enough to open on a click, even in a crowded view', () => {
-    const scene = measured['wayfinding-canvas-2560']
-    const windows = openInTurn('wayfinding-canvas-2560', [MAP, DRAFT, SIGN_OFF])
-    const started = performance.now()
-    placeOpeningWindow(NODE, FLOATING_WINDOW_MINIMUM.node, { workspace: scene.workspace, anchor: scene.nodes[PEERS].anchor, keepClear: scene.nodes[PEERS].keepClear, windows, landmarks: scene.landmarks, content: scene.content })
-    expect(performance.now() - started).toBeLessThan(60)
+  it('weighs only what is within reach of the workspace, so a long Flow costs no more than a short one', () => {
+    const scene = measured['wayfinding-flow-1920']
+    const node = scene.nodes[FRAMING]
+    const rowsTall = 230
+    // Eighty rows: the measured ones and seventy-two more below, scrolled out of view.
+    const more = (rects: WindowRect[]) => Array.from({ length: 9 }, (_, page) => rects.map(rect => ({ ...rect, top: rect.top + 2000 + page * 8 * rowsTall }))).flat()
+    const short: PlacementScene = { workspace: scene.workspace, anchor: node.anchor, keepClear: node.keepClear, landmarks: scene.landmarks, content: scene.content }
+    const long: PlacementScene = { ...short, landmarks: [...scene.landmarks, ...more(scene.landmarks)], content: [...scene.content, ...more(scene.content)] }
+    expect(long.content!.length).toBe(80)
+    const shortCount = placementCandidateCount(NODE, FLOATING_WINDOW_MINIMUM.node, short)
+    expect(placementCandidateCount(NODE, FLOATING_WINDOW_MINIMUM.node, long)).toBe(shortCount)
+    expect(placeOpeningWindow(NODE, FLOATING_WINDOW_MINIMUM.node, long)).toEqual(placeOpeningWindow(NODE, FLOATING_WINDOW_MINIMUM.node, short))
+    // What is in view bounds the work: a few thousand places, not hundreds of thousands.
+    expect(shortCount).toBeLessThan(20000)
   })
 })

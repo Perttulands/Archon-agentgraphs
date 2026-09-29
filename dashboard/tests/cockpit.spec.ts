@@ -179,11 +179,22 @@ test('a finished run opens what it produced from the run bar and cards in file w
   const card = (await page.locator('[data-node="execution"]').boundingBox())!
   const opened = (await result.boundingBox())!
   const apart = (a: typeof card, b: typeof card) => a.x >= b.x + b.width || a.x + a.width <= b.x || a.y >= b.y + b.height || a.y + a.height <= b.y
+  // The gap between two boxes along the axis that separates them.
+  const gap = (a: typeof card, b: typeof card) => Math.hypot(Math.max(0, b.x - (a.x + a.width), a.x - (b.x + b.width)), Math.max(0, b.y - (a.y + a.height), a.y - (b.y + b.height)))
   expect(apart(opened, card)).toBe(true)
+  const chip = (await page.getByTestId('produced-execution').getByRole('button', { name: 'Result' }).boundingBox())!
+  expect(gap(opened, chip)).toBeLessThanOrEqual(240)
   const bar = (await produced.boundingBox())!
   const below = (await review.boundingBox())!
   expect(below.y).toBeGreaterThanOrEqual(bar.y + bar.height)
   expect(apart(below, opened)).toBe(true)
+  // At 100% this board leaves no free space near the run bar, so the run bar's file opens in the free space
+  // nearest it rather than over the cards: it covers none of them.
+  for (const other of await page.locator('.formation[data-node], .gatecard[data-node], .missioncard[data-node]').all()) {
+    // Cards sit at sub-pixel positions; a window rounded to whole pixels may touch one by less than a pixel.
+    const box = (await other.boundingBox())!
+    expect(apart(below, { x: box.x + 1, y: box.y + 1, width: box.width - 2, height: box.height - 2 }), 'the run bar file covers a card').toBe(true)
+  }
 
   // Drag the review to the right of the canvas and the result to the left, so the two sit side by side.
   // The review, on top, moves right by its title; the result then moves left by the start of its own title.

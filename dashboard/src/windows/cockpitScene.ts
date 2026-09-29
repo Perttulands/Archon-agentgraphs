@@ -22,10 +22,16 @@ const CANVAS_CARDS = '.formation[data-node], .gatecard[data-node], .missioncard[
 const CANVAS_LANDMARKS = `${CANVAS_CARDS}, .note-sticky`
 const CANVAS_CONTENT = '.wire-label'
 
-function measure(element: Element): WindowRect | null {
+/**
+ * An element's box in viewport pixels. Null when it has no size, unless
+ * `always`: a control's box is still where the operator clicked.
+ */
+export function measureElement(element: Element, always = false): WindowRect | null {
   const { left, top, width, height } = element.getBoundingClientRect()
-  return width > 0 && height > 0 ? { left, top, width, height } : null
+  return always || (width > 0 && height > 0) ? { left, top, width, height } : null
 }
+
+const measure = (element: Element) => measureElement(element)
 
 function measureAll(elements: Iterable<Element>): WindowRect[] {
   return [...elements].map(measure).filter((rect): rect is WindowRect => rect !== null)

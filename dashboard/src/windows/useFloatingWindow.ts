@@ -174,7 +174,12 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
 
   const { onReflow } = stack
   useEffect(() => {
-    const hold = () => setRect(current => keepInWorkspace(current, workspace(), placement.current.minimum))
+    // A window already inside keeps its rect, so a reflow on every frame of a
+    // drag or resize elsewhere re-renders nothing, a Peek terminal included.
+    const hold = () => setRect(current => {
+      const held = keepInWorkspace(current, workspace(), placement.current.minimum)
+      return held.left === current.left && held.top === current.top && held.width === current.width && held.height === current.height ? current : held
+    })
     window.addEventListener('resize', hold)
     const stop = onReflow(hold)
     return () => {

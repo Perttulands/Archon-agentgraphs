@@ -86,7 +86,7 @@ import type { NodeWindowOps } from '../nodeWindow/NodeWindow'
 import { readBoardView, writeBoardView, type BoardView } from '../flow/boardView'
 import type { FlowRun } from '../flow/FlowView'
 import { cockpitWorkspace } from '../windows/cockpitWorkspace'
-import { cockpitScene, nodeAnchor, nodeWindowKeepClear } from '../windows/cockpitScene'
+import { cockpitScene, measureElement, nodeAnchor, nodeWindowKeepClear } from '../windows/cockpitScene'
 import { humanChannelField, humanChannelLabel, humanChannelOf, type HumanChannel } from '../humanChannel/humanChannel'
 import { useGateTalk } from '../talk/useGateTalk'
 import type { WindowRect } from '../windows/windowGeometry'
@@ -187,9 +187,7 @@ type CockpitUndo =
 // Board notes open near their button in the toolbar, in free space over the canvas.
 function boardNotesAnchor(): WindowRect | null {
   const button = document.querySelector('.board-notes-button')
-  if (!button) return null
-  const { left, top, width, height } = button.getBoundingClientRect()
-  return { left, top, width, height }
+  return button ? measureElement(button) : null
 }
 
 export default function FormationsCockpit({ active = true }: { active?: boolean } = {}) {

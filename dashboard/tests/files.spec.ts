@@ -93,6 +93,30 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Wayfind
   expect(fixture.writes).toEqual([])
 })
 
+test('a file opened from a Flow row leaves that row\'s number, title, labels and links clickable', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await page.addInitScript(() => localStorage.clear())
+  await wayfindingFixture(page, { board: boardWithFiles() })
+  await page.route('**/api/formations/files/preview?**', route => route.fulfill({ status: 403, json: { success: false, error: { code: 'Forbidden', message: "file is not readable here: it is outside the daemon's file roots" } } }))
+  await page.goto('/?board=wayfinding')
+  await page.getByRole('radio', { name: 'Flow' }).click()
+  const gate = page.locator(`.flow-step[data-flow-node="${wayfinding.board.gates.find((node: Node) => node.title === 'Adversarial review').id}"]`)
+  await gate.scrollIntoViewIfNeeded()
+  const chip = gate.getByRole('button', { name: 'adversarial-review.md' })
+  await chip.click()
+  await expect(page.getByRole('dialog', { name: 'file adversarial-review.md' })).toBeVisible()
+  const handles = gate.locator('> .flow-body .flow-number, > .flow-body .flow-step-head .flow-title, .flow-label, .flow-link')
+  expect(await handles.count()).toBeGreaterThan(3)
+  for (const handle of await handles.all()) {
+    const reachable = await handle.evaluate(element => {
+      const rect = element.getBoundingClientRect()
+      const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+      return Boolean(hit && (hit === element || element.contains(hit)))
+    })
+    expect(reachable, `${await handle.innerText()} stays clickable`).toBe(true)
+  }
+})
+
 test('refused copying leaves a selectable path beside the file download action', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.clear()
