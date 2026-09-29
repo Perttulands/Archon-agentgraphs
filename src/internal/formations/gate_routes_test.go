@@ -74,6 +74,17 @@ func TestHumanGateRoutesNameDestinationsAndTheLastAttempt(t *testing.T) {
 	}
 }
 
+// A run admitted without limits gets no attempt or dispatch warning.
+func TestHumanGateRoutesWarnOnlyAboutLimitsTheRunHas(t *testing.T) {
+	events := draftAttempts(0, 3)
+	events[0].Data = map[string]any{"limits": map[string]any{}}
+	routes := HumanGateRoutes(gateRoutesBoard(), events, "gate_review")
+	sendBack := routes[1]
+	if sendBack.Limit != nil || sendBack.Dispatches != nil || !reflect.DeepEqual(sendBack.Targets, []GateRouteTarget{{NodeID: "fmn_draft", Title: "Draft", Kind: "formation", Attempt: 4}}) {
+		t.Fatalf("send back without limits = %+v", sendBack)
+	}
+}
+
 func TestHumanGateRoutesSayWhenApprovingEndsTheRun(t *testing.T) {
 	board := gateRoutesBoard()
 	board.Connections = board.Connections[:2]

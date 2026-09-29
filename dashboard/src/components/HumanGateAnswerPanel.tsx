@@ -176,14 +176,15 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
       <p className="gate-answer-draft">Load a UTF-8 text file from this device to replace your draft. Review or edit it before submitting.</p>
       {fileError ? <p className="gate-answer-file-error" role="alert">{fileError}</p> : null}
       {draft.cue ? <p className="gate-answer-draft" role="status">{draft.cue}</p> : null}
-      {approve.outcome || sendBack.outcome ? (
-        <ul className="gate-answer-routes" aria-label="Where your answer leads" data-testid="gate-answer-routes">
-          {[approve, sendBack].filter(words => words.outcome).map(words => (
-            <li key={words.outcome} className={words.blocks ? 'blocks' : words.last ? 'last' : ''}>{words.outcome}</li>
-          ))}
-        </ul>
-      ) : null}
+      {/* The consequences sit with the decisions, so they stay in view as the input grows. */}
       <div className="gate-answer-actions">
+        {approve.outcome || sendBack.outcome ? (
+          <ul className="gate-answer-routes" aria-label="Where your answer leads" data-testid="gate-answer-routes">
+            {[approve, sendBack].filter(words => words.outcome).map(words => (
+              <li key={words.outcome} className={words.blocks ? 'blocks' : words.last ? 'last' : ''}>{words.outcome}</li>
+            ))}
+          </ul>
+        ) : null}
         <button
           type="button"
           className={`gate-answer-back${sendBack.blocks ? ' blocks' : ''}`}

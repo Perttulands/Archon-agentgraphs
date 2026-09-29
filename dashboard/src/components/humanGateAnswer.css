@@ -41,7 +41,8 @@
 .fmx .gate-answer-window .fwin-title .gate-answer-kicker{margin-right:6px;}
 .fmx .gate-answer.framed{position:static;width:auto;max-height:none;min-height:100%;box-sizing:border-box;border:0;border-radius:0;box-shadow:none;overflow:visible;}
 /* Where each decision leads; the last of a limit in gold, a blocking route in red. */
-.fmx .gate-answer-routes{margin:0;padding:8px 10px;list-style:none;display:flex;flex-direction:column;gap:4px;border:1px solid var(--line2);border-radius:6px;font-size:11.5px;line-height:1.45;color:var(--ink2);}
+.fmx .gate-answer-actions{flex-wrap:wrap;}
+.fmx .gate-answer-routes{flex:1 0 100%;box-sizing:border-box;margin:0;padding:8px 10px;list-style:none;display:flex;flex-direction:column;gap:4px;border:1px solid var(--line2);border-radius:6px;font-size:11.5px;line-height:1.45;color:var(--ink2);}
 .fmx .gate-answer-routes li.last{color:var(--gold);}
 .fmx .gate-answer-routes li.blocks{color:var(--terra-d);font-weight:700;}
 .fmx .gate-answer-actions button.blocks{border-color:var(--terra-d);color:var(--terra-d);}

@@ -21,6 +21,7 @@
 .fmx .run-banner .run-none{color:var(--dim);}
 
 /* A block that cannot resume says so beside the run point (form-n7u.6). */
+.fmx .run-banner .run-stop{flex-shrink:0;white-space:nowrap;}
 .fmx .run-banner .run-note{flex-shrink:0;color:var(--ink2);font-size:11px;letter-spacing:.02em;white-space:nowrap;}
 
 /* Stop asks first (form-n7u.8). */

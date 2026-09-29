@@ -77,6 +77,11 @@ describe('gate route words', () => {
     expect(spent.outcome).toBe('Approve blocks the run: the run used 20 of 20 dispatches. It cannot resume.')
   })
 
+  it('gives no attempt or dispatch warning to a run without limits', () => {
+    const words = gateRouteWords('fail', { verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 4 }] }, titleOf)
+    expect(words).toEqual({ button: 'Send back to Draft', outcome: 'Send back: Draft runs again with your response.', blocks: false, last: false })
+  })
+
   it('warns when a route takes the last dispatch', () => {
     const words = gateRouteWords('pass', { ...approve, dispatches: { kind: 'dispatches', used: 19, max: 20 } }, titleOf)
     expect(words.last).toBe(true)

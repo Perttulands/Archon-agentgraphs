@@ -38,7 +38,7 @@ export default function RunBarActions({ run, point, pointTitle, boardTitle, titl
     <>
       {run.resumeAllowed ? <button type="button" onClick={onResume}>Resume run</button> : null}
       {cannotResume ? (
-        <span className="run-note" role="note" data-testid="run-not-resumable">This run can’t resume. Stop it and start a new run.</span>
+        <span className="run-note" role="note" data-testid="run-not-resumable" title="Resuming cannot make progress from this block. Stop the run and start a new one.">Can’t resume. Start a new run.</span>
       ) : null}
       <button type="button" ref={stopButton} className="run-stop" aria-haspopup="dialog" onClick={() => setConfirming(true)}>Stop run</button>
       {confirming ? createPortal(

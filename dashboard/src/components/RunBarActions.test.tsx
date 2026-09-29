@@ -94,7 +94,7 @@ describe('RunBarActions', () => {
 
     renderBar({ run: run({ status: 'blocked', resumeAllowed: false }), pendingGate: null })
     expect(screen.queryByRole('button', { name: 'Resume run' })).toBeNull()
-    expect(screen.getByTestId('run-not-resumable')).toHaveTextContent('This run can’t resume. Stop it and start a new run.')
+    expect(screen.getByTestId('run-not-resumable')).toHaveTextContent('Can’t resume. Start a new run.')
     expect(screen.getByRole('button', { name: 'Stop run' })).toBeInTheDocument()
   })
 

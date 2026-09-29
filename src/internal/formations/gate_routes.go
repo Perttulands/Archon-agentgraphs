@@ -57,8 +57,10 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string) []G
 			if target.Kind == "formation" {
 				starts++
 				target.Attempt = nodeAttemptsBefore(events, len(events), nodeID) + 1
-				target.MaxAttempts = maxAttempts(limits)
-				if route.Limit == nil && target.Attempt > target.MaxAttempts {
+				// Only a limit the run was admitted with is reported; a run
+				// without one gets no attempt warning (form-n7u.6).
+				target.MaxAttempts = limits.MaxAttempts
+				if route.Limit == nil && target.MaxAttempts > 0 && target.Attempt > target.MaxAttempts {
 					route.Limit = &RunLimitReached{Kind: RunLimitAttempts, NodeID: nodeID, Used: target.Attempt - 1, Max: target.MaxAttempts}
 				}
 			}
