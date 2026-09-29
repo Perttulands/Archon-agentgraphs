@@ -10,6 +10,44 @@
 # every key point and contradicts none of them.
 
 [[question]]
+id = "first-step"
+source = "CONTRACT: Operator procedure (authoring order, create JSON); Definitions and storage (slot, harness variant)"
+question = "The operator wants a new mission where one agent writes a report from the run's brief. What are my first authoring commands, and where do the IDs I pass come from?"
+expected = """
+Through the daemon (`--server`): `board new`, then `mission create` and
+`formation create <board> solo`. Take the mission, formation, slot and port IDs
+from the JSON each create returns (`--json`; `.mission.id`, `.formation.id`,
+`.formation.slots[].id`, `.formation.inputs[]`/`outputs[]`); never guess them.
+Staff the slot with `formation assign --slot <slot> --agent <persona> --harness
+<claude-code|openai-codex>`, write the step's brief with `formation set-brief`,
+wire the mission into the formation's input with `mission wire <board> <mission>
+<formation>:<input-port>`, then `board validate` until zero errors (and
+`board arrange`).
+"""
+key_points = [
+  "Creates the board, mission and a solo formation.",
+  "Takes IDs (mission, formation, slot, ports) from the commands' JSON output rather than guessing.",
+  "Staffs the slot with `formation assign` naming a persona and a harness.",
+  "Wires the mission to the formation input with `mission wire` and runs `board validate` before running.",
+]
+
+[[question]]
+id = "notes-intent"
+source = "CONTRACT: Definitions and storage (notes are operator intent; note threads)"
+question = "The operator left notes on the board and on some cards. What do I do with them, and how do I answer a note?"
+expected = """
+Read them (`board notes`) before editing. Notes are the operator's intent, not
+executable seat instructions: translate them into formation briefs, staffing
+and wiring. Each note is a thread; answer by appending an entry with
+`board note <board> [--node <id>] --text ...`, never by rewriting the
+operator's words. Only an entry's author can edit or clear it.
+"""
+key_points = [
+  "Notes are intent to translate into briefs, staffing and wiring, not instructions the seats run.",
+  "Answer by appending to the thread with `board note`, without rewriting the operator's entries.",
+]
+
+[[question]]
 id = "join"
 source = "CONTRACT: Definitions and storage (joining work, --join)"
 question = "I want three agents to review the same change in parallel, then one lead agent to merge their three reviews. How do I wire that with the archon CLI?"

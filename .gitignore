@@ -23,3 +23,4 @@ dashboard/playwright-report/
 
 # Agent worktrees created by Claude Code lanes
 .claude/worktrees/
+__pycache__/

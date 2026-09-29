@@ -110,6 +110,10 @@ edit <id> --harness <h> --effort <e>`. Blank effort means `medium`; blank model
 means the harness default. `claude-code` takes `low`, `medium`, `high`, `xhigh`
 or `max`; `openai-codex` also takes `ultra`.
 
+A persona is shared: `agent edit` changes every slot staffed with it, on every
+board, from the next run on. When one step needs different settings, create a
+dedicated persona (`agent new`) and assign it to that slot instead.
+
 Choose effort by the step's job:
 
 | Job | Effort |
@@ -181,15 +185,24 @@ human request is open. So a pass with no route finishes only once every other
 reachable branch has run, and a fail with no route leaves a visible block. Wire
 every `fail` somewhere.
 
-### Bounding a step
+### Step duration
 
-A peer conversation has no fixed round count; its seats talk until every seat
-acknowledges one proposal. Bound it, and any long step, with a total duration:
-`formation set-execution "$BOARD" "$FORMATION" --timeout-seconds <n>` (`0`
-inherits the daemon's `--seat-timeout`, default 30 minutes). The duration covers
-startup, discussion and finalization; expiry blocks with
-`formation_timeout_exceeded` and keeps the partial evidence. A pushback loop is
-bounded by the run's `--max-attempts`.
+Archon adds no guardrails a mission did not ask for, but every step already has
+a time budget: a step without its own duration inherits the daemon's
+`--seat-timeout` (30 minutes unless the host configured another value). That
+budget covers startup, the work and finalization, and expiry blocks the run with
+`formation_timeout_exceeded`, keeping the partial evidence. So set a duration
+when a step's work differs from that default:
+
+- A long step (a large build, a deep review) needs more time, or the inherited
+  default cuts it short.
+- A peer conversation has no fixed round count; its seats talk until every seat
+  acknowledges one proposal. Give it a duration when it must stop converging by
+  a known time.
+
+`formation set-execution "$BOARD" "$FORMATION" --timeout-seconds <n>` sets it;
+`0` returns to the daemon default. A run freezes the duration at admission. A
+pushback loop is bounded separately, by the run's `--max-attempts`.
 
 ### Human channel
 
@@ -213,9 +226,8 @@ incomplete gates, an unwired mission, `invalid_formation_type`,
 `duplicate_slot_id`. A rejected `mission run` prints the same findings (HTTP 422
 `RUN_ADMISSION_FAILED`) and records no run.
 
-To import an example, copy its TOML: `$FORM_SOURCE/examples/*.formation.toml`
-into `$FORM_STATE/.formations/boards/` and `*.notes.toml` into
-`.formations/notes/`. There is no import command.
+To import an example board or smoke-test routing on a lab daemon, read
+[references/lab-and-examples.md](references/lab-and-examples.md).
 
 ## Run a mission
 
@@ -225,7 +237,7 @@ FORM_START=$(archon $S mission run "$BOARD" --mission "$MISSION" \
   --context-path /abs/prior-art --context-path /abs/notes.md \
   --max-dispatch 30 --max-attempts 3 --wall-clock-seconds 7200 --json)
 FORM_RUN_ID=$(jq -er .data.runId <<<"$FORM_START")
-archon $S run follow "$FORM_RUN_ID" --json
+archon $S run status "$FORM_RUN_ID" --json
 ```
 
 - `--brief` is a file path read locally, or literal text. It becomes the
@@ -243,10 +255,15 @@ archon $S run follow "$FORM_RUN_ID" --json
 
 ### Watch
 
-The driving agent pulls; Archon never pushes into your session. `run follow`
-prints a complete projection after each durable change, waits through human
-gates, and exits only at a final status. Interrupting it stops watching, not the
-run. `run status` gives one projection; `run logs` is the same sanitized view.
+The driving agent pulls; Archon never pushes into your session.
+
+- `run status "$FORM_RUN_ID" --json` returns one projection at once. Poll it to
+  watch a run from your own turn.
+- `run follow "$FORM_RUN_ID" --json` prints a projection after each durable
+  change and does not return until the run is final. It keeps waiting while a
+  human gate waits, so run it in the background (and read its output) or it
+  holds your turn for the whole run. Interrupting it stops watching, not the run.
+- `run logs` is the same sanitized view as status.
 
 Read `status` (`running`, `waiting_human`, `blocked`, `succeeded`, `failed`,
 `canceled`), `final`, `resumeAllowed` and `waitingGates`. `waiting_human` means
@@ -259,30 +276,9 @@ Outputs: declared artifacts live under
 opens them. Check each `seat_cleanup` outcome (`ended`, `left_socket_changed`,
 `left_cleanup_failed`).
 
-### What seats emit
-
-A real seat finishes with one `chrote-outputs` block naming all and only its
-declared output port IDs, then this run's exact sentinel:
-
-````text
-```chrote-outputs
-{"port_out":{"text":"Short result"}}
-```
-<<<CHROTE-DONE run-id=<run-id> status=ok artifact=<path-or-ref>>>
-````
-
-A `ref` instead of `text` names a file by absolute path under the run's
-artifact directory. The runtime writes the brief each seat receives; you author
-only the formation brief.
-
-### Lab runs
-
-A daemon on `--executor lab` echoes inputs and launches no agents. It proves
-routing, not work. To pass a formation judge in lab, put exactly one synthetic
-block in the run brief:
-`{"verdict":"pass","reason":"Lab fixture","evidence":["Simulated input"]}`
-inside a `chrote-verdict` fence. A plain brief blocks at the judge. Report lab
-success as routing evidence only.
+The runtime writes the brief each seat receives, including its output contract;
+you author only the formation brief. When a seat's output did not route, or you
+are working inside a seat, read [references/seat-output.md](references/seat-output.md).
 
 ## Decide a human gate
 

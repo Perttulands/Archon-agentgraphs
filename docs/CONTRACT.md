@@ -662,9 +662,11 @@ and notes, staff its slots, write executable briefs, wire exact port IDs, then
 validate and arrange. The `archon` skill gives agents the authoring, run and
 recovery recipe for this contract. Its source is `skills/archon/` in this
 repository, and a release installs it under `lib/archon/current/share/archon`
-(`ARCHON_SHARE`). Link it where Claude Code and Codex discover user-level skills:
-`ln -sfn "$ARCHON_SHARE/skills/archon" ~/.claude/skills/archon` and
-`ln -sfn "$ARCHON_SHARE/skills/archon" ~/.agents/skills/archon`.
+(`ARCHON_SHARE`). Link it where Claude Code and Codex discover user-level skills,
+unless that directory already provides an `archon` skill (a shared catalog, for
+example), which stays unchanged: for each of `~/.claude/skills` and
+`~/.agents/skills`, `[ -e "$dir/archon/SKILL.md" ] || ln -sn
+"$ARCHON_SHARE/skills/archon" "$dir/archon"`. The README gives the full loop.
 Arrange (`board arrange`, the cockpit's Arrange) rewrites only the layout. It
 lays columns along the run from each mission (mission out, formation and Tool
 outputs, gate pass), ignores fail edges back to earlier steps and judge wiring,

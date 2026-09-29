@@ -146,13 +146,20 @@ inspect a blocked run before deciding how to continue it.
 
 The release ships the `archon` agent skill, which teaches Claude Code and Codex
 agents to author missions, run them and answer gates. Link it where each harness
-discovers user-level skills:
+discovers user-level skills. The loop skips a directory that already provides
+an `archon` skill, such as a shared skills catalog, and never replaces an
+existing path:
 
 ```bash
 export ARCHON_SHARE="$HOME/.local/lib/archon/current/share/archon"
-mkdir -p "$HOME/.claude/skills" "$HOME/.agents/skills"
-ln -sfn "$ARCHON_SHARE/skills/archon" "$HOME/.claude/skills/archon"
-ln -sfn "$ARCHON_SHARE/skills/archon" "$HOME/.agents/skills/archon"
+for dir in "$HOME/.claude/skills" "$HOME/.agents/skills"; do
+  mkdir -p "$dir"
+  if [ -e "$dir/archon/SKILL.md" ]; then
+    echo "$dir/archon already provides the archon skill; left unchanged"
+  else
+    ln -sn "$ARCHON_SHARE/skills/archon" "$dir/archon"
+  fi
+done
 ```
 
 The links follow `current`, so an upgrade updates the skill with the binaries.

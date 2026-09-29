@@ -58,5 +58,7 @@ read fresh status and decide that exact request. Then inspect `run list` and
 `run status` and resume as above.
 
 Explicit recovery from a chosen transcript is a daemon restart with
-`--resume-run`, `--completed-transcript` and `--completed-brief` together; read
-`docs/CONTRACT.md` (Operator procedure) in the Archon source before using it.
+`--resume-run`, `--completed-transcript` and `--completed-brief` together. Before
+using it, read the Operator procedure in `docs/CONTRACT.md` of the Archon source,
+or `$ARCHON_SHARE/docs/CONTRACT.md` of an installed release
+(`<prefix>/lib/archon/current/share/archon`).
