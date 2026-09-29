@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchAgentCard, overrideAgentCard } from './formationsApi'
+import type { PersonaHarnessVariant, VariantSettingsPatch } from './formationsTypes'
+import { SeatLaunch, VariantSettingsFields, variantChanges, variantDraft, type VariantDraft } from './PersonaHarnessSettings'
 
 // The one persona editor. The Agents tab opens it from the persona inspector
 // and the Boards roster opens it from an agent's ••• action; both save the same
@@ -24,7 +26,9 @@ interface EditorState {
   summary: string
   capabilities: string
   sessionStem: string
-  launch: string
+  harnessDefault: string
+  variants: PersonaHarnessVariant[]
+  drafts: Record<string, VariantDraft>
   etag: string
   loading: boolean
   saving: boolean
@@ -48,7 +52,9 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
     summary: '',
     capabilities: capabilityTags(agent.tags),
     sessionStem: agent.id,
-    launch: '',
+    harnessDefault: agent.harnessDefault || '',
+    variants: [],
+    drafts: {},
     etag: '',
     loading: true,
     saving: false,
@@ -74,7 +80,9 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
         summary: card.summary || '',
         capabilities: capabilityTags(card.tags),
         sessionStem: variant?.sessionStem || card.id,
-        launch: variant?.launch || '',
+        harnessDefault: card.harnessDefault,
+        variants: card.harnessVariants,
+        drafts: Object.fromEntries(card.harnessVariants.map(next => [next.id, variantDraft(next)])),
         etag: card.etag,
         loading: false,
       }))
@@ -97,14 +105,18 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
   const save = async () => {
     if (editor.loading || !editor.etag) return
     setEditor(state => ({ ...state, saving: true, error: '' }))
+    const variants = editor.variants
+      .map(variant => variantChanges(variant, editor.drafts[variant.id] || variantDraft(variant)))
+      .filter((patch): patch is VariantSettingsPatch => Boolean(patch))
     try {
+      // The card's legacy launch string is left as it is; seats never run it.
       await overrideAgentCard(agent.id, editor.etag, {
         displayName: editor.displayName.trim(),
         kind: editor.kind.trim(),
         summary: editor.summary.trim(),
         capabilities: editor.capabilities.split(',').map(value => value.trim()).filter(Boolean),
         sessionStem: editor.sessionStem.trim(),
-        launch: editor.launch.trim(),
+        ...(variants.length ? { variants } : {}),
       })
       await onSaved()
       close()
@@ -113,8 +125,10 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
     }
   }
 
-  const field = (key: 'displayName' | 'kind' | 'summary' | 'capabilities' | 'sessionStem' | 'launch') =>
+  const field = (key: 'displayName' | 'kind' | 'summary' | 'capabilities' | 'sessionStem') =>
     (event: { target: { value: string } }) => setEditor(state => ({ ...state, [key]: event.target.value }))
+  const setDraft = (variantID: string) => (draft: VariantDraft) =>
+    setEditor(state => ({ ...state, drafts: { ...state.drafts, [variantID]: draft } }))
 
   return (
     <div
@@ -153,10 +167,26 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
               <span>Session stem</span>
               <input aria-label="Agent session stem" value={editor.sessionStem} onChange={field('sessionStem')} />
             </label>
-            <label className="wide">
-              <span>Launch command</span>
-              <input aria-label="Agent launch command" value={editor.launch} onChange={field('launch')} />
-            </label>
+            <div className="ph-section-title">Harness variants</div>
+            <div className="ph-editor-variants">
+              {editor.variants.map(variant => (
+                <section className="ph-variant" key={variant.id} aria-label={`${variant.id} harness variant`}>
+                  <div className="ph-head">
+                    <strong>{variant.id}</strong>
+                    {variant.id === editor.harnessDefault ? <span className="ph-default">default</span> : null}
+                  </div>
+                  <VariantSettingsFields
+                    idPrefix={`agent-dialog-${variant.id}`}
+                    harness={variant.id}
+                    efforts={variant.efforts}
+                    draft={editor.drafts[variant.id] || variantDraft(variant)}
+                    onDraft={setDraft(variant.id)}
+                    disabled={editor.saving}
+                  />
+                  <SeatLaunch variant={variant} label="Seats now run" />
+                </section>
+              ))}
+            </div>
           </div>
         )}
         {editor.preset ? <div className="agent-dialog-note">Saving materializes a local persona TOML override; the built-in default remains the fallback.</div> : null}

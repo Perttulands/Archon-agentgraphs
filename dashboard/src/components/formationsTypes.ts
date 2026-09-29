@@ -315,10 +315,33 @@ export interface AgentProjection {
 export interface PersonaHarnessVariant {
   id: string
   sessionStem?: string
+  /** Legacy; claude-code and openai-codex seats ignore it. */
   launch?: string
   model?: string
   effort?: string
   source?: string
+  /** Derived by the daemon on read: the effort seats run at (unset is medium). */
+  effectiveEffort?: string
+  /** Derived: the efforts this harness accepts; absent when Archon cannot start it. */
+  efforts?: string[]
+  /** Derived: the command a seat for this variant runs, from the seat launcher itself. */
+  seatLaunch?: string
+  seatLaunchError?: string
+}
+
+/** A harness whose seats Archon starts from model and effort (GET /api/agents data.harnesses). */
+export interface LaunchableHarness {
+  id: string
+  executable: string
+  efforts: string[]
+  defaultEffort: string
+}
+
+/** One variant's model and effort in a persona patch; an empty string clears the setting. */
+export interface VariantSettingsPatch {
+  id: string
+  model?: string
+  effort?: string
 }
 
 export interface PersonaCard {

@@ -15,7 +15,9 @@ import type {
   LayoutNode,
   NotePatch,
   OpenEscalation,
+  LaunchableHarness,
   PersonaCard,
+  VariantSettingsPatch,
   RunEvent,
   RunStartResult,
   RunStatusProjection,
@@ -185,13 +187,18 @@ export async function fetchAgentCard(agentID: string): Promise<PersonaCard> {
   return { ...result.data, etag: result.etag || result.data.etag }
 }
 
+export async function fetchAgentRoster(): Promise<{ agents: AgentProjection[]; harnesses: LaunchableHarness[] }> {
+  const result = await fetchApi<{ agents: AgentProjection[]; harnesses?: LaunchableHarness[] }>('/api/agents')
+  return { agents: result.data.agents || [], harnesses: result.data.harnesses || [] }
+}
+
 export async function overrideAgentCard(agentID: string, etag: string, patch: {
-  displayName: string
-  kind: string
-  summary: string
-  capabilities: string[]
-  sessionStem: string
-  launch: string
+  displayName?: string
+  kind?: string
+  summary?: string
+  capabilities?: string[]
+  sessionStem?: string
+  variants?: VariantSettingsPatch[]
 }): Promise<PersonaCard> {
   const result = await fetchApi<PersonaCard>(`/api/agents/${encodeURIComponent(agentID)}`, {
     method: 'PATCH',

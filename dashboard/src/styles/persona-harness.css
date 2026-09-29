@@ -1,0 +1,25 @@
+/* Persona harness variants: model, effort and the command seats run. */
+.ph-variant { border:1px solid var(--line); border-radius:4px; background:var(--paper2); padding:9px 10px; display:flex; flex-direction:column; gap:8px; }
+.ph-variant + .ph-variant { margin-top:8px; }
+.ph-head { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 9px; font-size:11px; color:var(--dim); }
+.ph-head strong { color:var(--ink); font-family:var(--font-mono,monospace); }
+.ph-head .ph-default { font:700 9px/1 var(--font-mono,monospace); letter-spacing:.08em; text-transform:uppercase; color:var(--sage); }
+.ph-fields { display:grid; grid-template-columns:auto 1fr; gap:6px 10px; align-items:center; }
+.ph-fields label { font:700 9px/1 var(--font-mono,monospace); letter-spacing:.1em; text-transform:uppercase; color:var(--dim); }
+.ph-fields input,.ph-fields select { width:100%; min-width:0; border:1px solid var(--line); background:var(--paper); color:var(--ink); padding:6px 8px; font:11px/1.3 var(--font-mono,monospace); outline:none; }
+.ph-fields input::placeholder { color:var(--dim); opacity:1; }
+.ph-fields input:focus,.ph-fields select:focus { border-color:var(--terra); }
+.ph-fields input:disabled,.ph-fields select:disabled { opacity:.6; }
+.ph-none { margin:0; color:var(--dim); font-size:11px; line-height:1.45; }
+.ph-launch { display:flex; flex-direction:column; gap:4px; }
+.ph-launch-label { font:700 9px/1 var(--font-mono,monospace); letter-spacing:.1em; text-transform:uppercase; color:var(--dim); }
+.ph-launch code { display:block; color:var(--ink); font:10px/1.45 var(--font-mono,monospace); overflow-wrap:anywhere; white-space:pre-wrap; }
+.ph-launch p { margin:0; font-size:10.5px; line-height:1.45; }
+.ph-launch p code { display:inline; }
+.ph-warn { color:var(--gold); }
+.ph-legacy { color:var(--dim); border-left:2px solid var(--gold); padding-left:7px; }
+.ph-actions { display:flex; justify-content:flex-end; align-items:center; gap:8px; }
+.ph-actions .ph-saved { color:var(--sage); font:10px var(--font-mono,monospace); }
+.ph-error { margin:0; color:var(--terra-d,var(--terra)); font-size:11px; line-height:1.4; }
+.ph-section-title { grid-column:1/-1; font:700 9px/1 var(--font-mono,monospace); letter-spacing:.1em; text-transform:uppercase; color:var(--dim); margin-top:4px; }
+.ph-editor-variants { grid-column:1/-1; }

@@ -163,7 +163,9 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
       { id: 'codex', displayName: 'Codex builder', harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' },
     ] })
     if (path === '/api/agents/codex') return respond({ id: 'codex', displayName: 'Codex builder', kind: 'builder', summary: 'Builds the change.', tags: [],
-      harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'codex', launch: 'codex' }], etag: 'codex-card' })
+      harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'codex', launch: 'codex', effectiveEffort: 'medium',
+        efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+        seatLaunch: `exec '/usr/local/bin/codex' -c 'model_reasoning_effort="medium"' -c check_for_update_on_startup=false --dangerously-bypass-approvals-and-sandbox` }], etag: 'codex-card' })
     if (path === '/api/formations/runs/run_browser' && options.waitingHuman) return respond({ runId: 'run_browser', status: 'waiting_human', final: false, boardSlug: 'browser', missionId: 'mission', eventCount: 3, cwd: runCwd, waitingGates: [{ gateId: 'loose', requestedSeq: 3 }] })
     if (path === '/api/formations/runs/run_browser' && options.succeeded) return respond({ runId: 'run_browser', status: 'succeeded', final: true, boardSlug: 'browser', missionId: 'mission', eventCount: 7, cwd: runCwd })
     if (options.succeeded && path in succeededEvidence) return respond(succeededEvidence[path])

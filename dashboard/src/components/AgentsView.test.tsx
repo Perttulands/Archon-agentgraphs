@@ -315,7 +315,7 @@ describe('AgentsView', () => {
         return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName }) }, 200, { ETag: 'susie-etag-2' }))
       }
       if (url === '/api/agents/susie') {
-        return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName, summary: 'Designs things', harnessVariants: [{ id: 'claude-code', sessionStem: 'susie', launch: 'claude' }] }) }, 200, { ETag: 'susie-etag' }))
+        return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName, summary: 'Designs things', harnessVariants: [claudeVariant({ sessionStem: 'susie', launch: 'claude', model: 'claude-opus-5' })] }) }, 200, { ETag: 'susie-etag' }))
       }
       if (url === '/api/formations/boards') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
@@ -336,14 +336,76 @@ describe('AgentsView', () => {
     const editor = await screen.findByTestId('persona-editor')
     const name = await within(editor).findByLabelText('Agent display name')
     expect(within(editor).getByLabelText('Agent summary')).toHaveValue('Designs things')
+    // No inert launch field: the legacy string is explained, and the seat command is the daemon's.
+    expect(within(editor).queryByLabelText('Agent launch command')).toBeNull()
+    expect(within(editor).getByText(/legacy launch string/)).toHaveTextContent('Seats do not use it')
+    expect(within(editor).getByTestId('seat-launch-claude-code')).toHaveTextContent("exec '/usr/bin/claude' --model 'claude-opus-5' --effort 'medium'")
+    expect(within(editor).getByLabelText('claude-code model')).toHaveValue('claude-opus-5')
+    expect(within(editor).getByLabelText('claude-code effort')).toHaveDisplayValue('medium (default)')
+    expect(within(within(editor).getByLabelText('claude-code effort')).queryByRole('option', { name: 'ultra' })).toBeNull()
     fireEvent.change(name, { target: { value: 'Susie Designer' } })
+    fireEvent.change(within(editor).getByLabelText('claude-code effort'), { target: { value: 'xhigh' } })
     fireEvent.click(within(editor).getByRole('button', { name: 'Save agent override' }))
 
     await waitFor(() => expect(patches).toHaveLength(1))
     expect(headerValue(patches[0].headers, 'If-Match')).toBe('susie-etag')
-    expect(patches[0].body).toMatchObject({ displayName: 'Susie Designer', summary: 'Designs things', launch: 'claude' })
+    expect(patches[0].body).toMatchObject({ displayName: 'Susie Designer', summary: 'Designs things', variants: [{ id: 'claude-code', effort: 'xhigh' }] })
+    expect(patches[0].body).not.toHaveProperty('launch')
     await waitFor(() => expect(screen.queryByTestId('persona-editor')).toBeNull())
     expect(await screen.findByRole('button', { name: /inspect Susie Designer/i })).toBeInTheDocument()
+  })
+
+  it('shows and edits each variant\'s model and effort in the inspector, and the command seats run', async () => {
+    const board = emptyBoard()
+    const patches: unknown[] = []
+    let variant = claudeVariant({ sessionStem: 'critic' })
+    const codex = { id: 'openai-codex', sessionStem: 'codex-critic', model: 'gpt-6-sol', effort: 'ultra', effectiveEffort: 'ultra', efforts: HARNESSES[1].efforts, seatLaunch: "exec '/usr/bin/codex' --model 'gpt-6-sol' -c 'model_reasoning_effort=\"ultra\"'" }
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('critic', { displayName: 'Critic', harnessDefault: 'claude-code' })], count: 1, harnesses: HARNESSES } }))
+      if (url === '/api/agents/critic' && init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body))
+        patches.push(body)
+        if (headerValue(init.headers, 'If-Match') !== 'critic-etag') return Promise.resolve(jsonResponse({ success: false, error: { message: 'Agent card changed; reload and retry' } }, 409))
+        variant = claudeVariant({ sessionStem: 'critic', model: body.variants[0].model, effort: body.variants[0].effort })
+        return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { harnessVariants: [variant, codex] }) }, 200, { ETag: 'critic-etag-2' }))
+      }
+      if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic', harnessVariants: [variant, codex] }) }, 200, { ETag: 'critic-etag' }))
+      if (url === '/api/formations/boards') return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
+      if (url === '/api/formations/boards/empty/layout') return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
+      if (url === '/api/formations/boards/empty') return Promise.resolve(jsonResponse({ success: true, data: { board } }, 200, { ETag: 'empty-etag' }))
+      return Promise.reject(new Error(`unexpected fetch ${url}`))
+    })
+
+    render(<AgentsView />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Inspect Critic' }))
+    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    const claude = await within(inspector).findByRole('form', { name: 'claude-code harness variant' })
+    expect(within(inspector).getByText('harness default · effort medium (default)')).toBeInTheDocument()
+    expect(within(claude).getByLabelText('claude-code model')).toHaveValue('')
+    expect(within(claude).getByLabelText('claude-code model')).toHaveAttribute('placeholder', 'harness default')
+    expect(within(claude).getByLabelText('claude-code effort')).toHaveDisplayValue('medium (default)')
+    expect(within(claude).getByTestId('seat-launch-claude-code')).toHaveTextContent("exec '/usr/bin/claude' --effort 'medium' --dangerously-skip-permissions")
+    const codexForm = within(inspector).getByRole('form', { name: 'openai-codex harness variant' })
+    expect(within(codexForm).getByLabelText('openai-codex model')).toHaveValue('gpt-6-sol')
+    expect(within(codexForm).getByLabelText('openai-codex effort')).toHaveDisplayValue('ultra')
+    expect(within(claude).getByRole('button', { name: 'Save claude-code model and effort' })).toBeDisabled()
+
+    fireEvent.change(within(claude).getByLabelText('claude-code model'), { target: { value: 'claude-opus-5' } })
+    fireEvent.change(within(claude).getByLabelText('claude-code effort'), { target: { value: 'low' } })
+    fireEvent.click(within(claude).getByRole('button', { name: 'Save claude-code model and effort' }))
+
+    await waitFor(() => expect(within(claude).getByTestId('seat-launch-claude-code')).toHaveTextContent("--model 'claude-opus-5' --effort 'low'"))
+    expect(patches).toEqual([{ variants: [{ id: 'claude-code', model: 'claude-opus-5', effort: 'low' }] }])
+    expect(within(claude).getByRole('status')).toHaveTextContent('Saved')
+    expect(within(inspector).getByText('claude-opus-5 · effort low')).toBeInTheDocument()
+
+    // A stale card is reloaded and the operator's draft is kept to save again.
+    fireEvent.change(within(claude).getByLabelText('claude-code effort'), { target: { value: 'max' } })
+    fireEvent.click(within(claude).getByRole('button', { name: 'Save claude-code model and effort' }))
+    expect(await within(claude).findByRole('alert')).toHaveTextContent('changed elsewhere and was reloaded')
+    expect(within(claude).getByLabelText('claude-code effort')).toHaveDisplayValue('max')
   })
 
   it('offers a board retry when the selected board fails to load', async () => {
@@ -498,7 +560,7 @@ describe('AgentsView', () => {
         return Promise.resolve(jsonResponse({ success: true, data: persona('writer', { displayName: 'Writer', harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'writer', launch: 'codex --profile writer' }] }) }, 201, { ETag: 'writer-etag' }))
       }
       if (url === '/api/agents') {
-        return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0 } }))
+        return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0, harnesses: HARNESSES } }))
       }
       if (url === '/api/formations/boards') {
         return Promise.resolve(jsonResponse({ success: true, data: { boards: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
@@ -515,12 +577,19 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     fireEvent.click(await screen.findByRole('button', { name: /new agent/i }))
+    expect(screen.queryByLabelText('Launch')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Harness'), { target: { value: 'hermes' } })
+    expect(screen.queryByLabelText('Model')).toBeNull()
+    expect(screen.getByText(/hermes takes no model or effort/)).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: 'codex' })).toBeNull()
     fireEvent.change(screen.getByLabelText('Agent id'), { target: { value: 'writer' } })
     fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Writer' } })
     fireEvent.change(screen.getByLabelText('Harness'), { target: { value: 'openai-codex' } })
     fireEvent.change(screen.getByLabelText('Summary'), { target: { value: 'Writes launch copy' } })
-    fireEvent.change(screen.getByLabelText('Launch'), { target: { value: 'codex --profile writer' } })
+    expect(screen.getByLabelText('Model')).toHaveAttribute('placeholder', 'harness default')
+    expect(screen.getByLabelText('Effort')).toHaveDisplayValue('medium (default)')
+    fireEvent.change(screen.getByLabelText('Model'), { target: { value: ' gpt-6-sol ' } })
+    fireEvent.change(screen.getByLabelText('Effort'), { target: { value: 'ultra' } })
     fireEvent.change(screen.getByLabelText('Capabilities'), { target: { value: 'writing, voice' } })
     fireEvent.click(screen.getByRole('button', { name: /^Create persona$/i }))
 
@@ -531,9 +600,11 @@ describe('AgentsView', () => {
       kind: 'specialist',
       harness: 'openai-codex',
       summary: 'Writes launch copy',
-      launch: 'codex --profile writer',
+      model: 'gpt-6-sol',
+      effort: 'ultra',
       capabilities: ['writing', 'voice'],
     })
+    expect(postedBodies[0]).not.toHaveProperty('launch')
   })
 
   it('uses persona detail ETags for edits and keeps user input visible on 409 and 428 conflicts', async () => {
@@ -722,6 +793,24 @@ function agent(id: string, overrides: Record<string, unknown> = {}) {
     liveness: 'offline',
     assignable: true,
     ...overrides,
+  }
+}
+
+/** The daemon's launchable harnesses, as GET /api/agents lists them. */
+const HARNESSES = [
+  { id: 'claude-code', executable: 'claude', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium' },
+  { id: 'openai-codex', executable: 'codex', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'medium' },
+]
+
+/** A claude-code variant as the daemon reads it, with the derived seat launch. */
+function claudeVariant(overrides: { sessionStem?: string; launch?: string; model?: string; effort?: string } = {}) {
+  const effort = overrides.effort || 'medium'
+  return {
+    id: 'claude-code',
+    ...overrides,
+    effectiveEffort: effort,
+    efforts: HARNESSES[0].efforts,
+    seatLaunch: `exec '/usr/bin/claude'${overrides.model ? ` --model '${overrides.model}'` : ''} --effort '${effort}' --dangerously-skip-permissions`,
   }
 }
 
