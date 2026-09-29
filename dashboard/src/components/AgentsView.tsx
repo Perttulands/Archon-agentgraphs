@@ -1447,14 +1447,18 @@ function CreatePersonaPopover({
           <option value="hermes">hermes</option>
         </select>
         {efforts.length ? (
-          <>
-            <label htmlFor="agx-create-model">Model</label>
-            <input id="agx-create-model" className="f" value={draft.model} placeholder={HARNESS_DEFAULT_MODEL} spellCheck={false} onChange={event => set('model', event.target.value)} />
-            <label htmlFor="agx-create-effort">Effort</label>
-            <EffortSelect id="agx-create-effort" efforts={efforts} value={draft.effort} onChange={effort => set('effort', effort)} />
-          </>
+          <div className="agx-create-pair">
+            <div>
+              <label htmlFor="agx-create-model">Model</label>
+              <input id="agx-create-model" className="f" value={draft.model} placeholder={HARNESS_DEFAULT_MODEL} spellCheck={false} onChange={event => set('model', event.target.value)} />
+            </div>
+            <div>
+              <label htmlFor="agx-create-effort">Effort</label>
+              <EffortSelect id="agx-create-effort" className="f" efforts={efforts} value={draft.effort} onChange={effort => set('effort', effort)} />
+            </div>
+          </div>
         ) : (
-          <p className="ph-none">{draft.harness} takes no model or effort here: Archon cannot start its seats.</p>
+          <p className="ph-none agx-create-none">{draft.harness} takes no model or effort here: Archon cannot start its seats.</p>
         )}
         <label htmlFor="agx-create-stem">Session stem</label>
         <input id="agx-create-stem" className="f" value={draft.sessionStem} onChange={event => set('sessionStem', event.target.value)} />

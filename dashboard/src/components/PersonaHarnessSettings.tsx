@@ -34,8 +34,9 @@ export function variantChanges(variant: PersonaHarnessVariant, draft: VariantDra
   return patch.model === undefined && patch.effort === undefined ? null : patch
 }
 
-export function EffortSelect({ id, efforts, value, onChange, disabled, label = 'Effort' }: {
+export function EffortSelect({ id, efforts, value, onChange, disabled, label = 'Effort', className }: {
   id: string
+  className?: string
   efforts: string[]
   value: string
   onChange: (effort: string) => void
@@ -46,7 +47,7 @@ export function EffortSelect({ id, efforts, value, onChange, disabled, label = '
   // A hand-edited card may hold an effort the harness does not take; show it as it is.
   const unknown = current && !efforts.includes(current) ? current : ''
   return (
-    <select id={id} aria-label={label} value={current} disabled={disabled} onChange={event => onChange(event.target.value)}>
+    <select id={id} className={className} aria-label={label} value={current} disabled={disabled} onChange={event => onChange(event.target.value)}>
       <option value="">{DEFAULT_EFFORT} (default)</option>
       {efforts.filter(effort => effort !== DEFAULT_EFFORT).map(effort => <option key={effort} value={effort}>{effort}</option>)}
       {unknown ? <option value={unknown}>{unknown} (not accepted by this harness)</option> : null}
