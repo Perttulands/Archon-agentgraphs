@@ -1275,6 +1275,9 @@ components:
               type: string
             direction:
               type: string
+              enum:
+                - input
+                - output
             label:
               type: string
             expectedRev:

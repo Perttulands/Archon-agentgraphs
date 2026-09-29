@@ -100,6 +100,7 @@ import type {
   CodeGateProfileDescriptor,
   FormationBrief,
   FormationNode,
+  FormationPortDirection,
   FormationSlot,
   FormationType,
   GateNode,
@@ -1231,13 +1232,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     void patchBoard({ deleteMission: { id: mission.id } })
   }, [patchBoard])
 
-  const addPortOp = useCallback(async (formation: FormationNode, direction: 'in' | 'out') => {
+  const addPortOp = useCallback(async (formation: FormationNode, direction: FormationPortDirection) => {
     const before = boardRef.current?.formations.find(item => item.id === formation.id)
-    const result = await patchBoard({ addPort: { formationId: formation.id, direction, label: direction === 'in' ? 'Input' : 'Output' } })
+    const result = await patchBoard({ addPort: { formationId: formation.id, direction, label: direction === 'input' ? 'Input' : 'Output' } })
     if (!before || !result) return
     const after = result.board.formations.find(item => item.id === formation.id)
     if (!after) return
-    const created = direction === 'in'
+    const created = direction === 'input'
       ? findAddedByID(before.inputs || [], after.inputs || [])
       : findAddedByID(before.outputs || [], after.outputs || [])
     if (created) undoStack.current.push({ kind: 'removePort', formationId: formation.id, portId: created.id })
@@ -2028,8 +2029,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const formationMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode) => {
     openMenu(event, 'Formation actions', [
       { label: 'Run formation', action: () => void runFormation(formation) },
-      { label: 'Add input port', action: () => void addPortOp(formation, 'in') },
-      { label: 'Add output port', action: () => void addPortOp(formation, 'out') },
+      { label: 'Add input port', action: () => void addPortOp(formation, 'input') },
+      { label: 'Add output port', action: () => void addPortOp(formation, 'output') },
       ...(formation.verification ? [
         { label: 'Migrate legacy verification', action: () => openLegacyVerification(formation) },
       ] : []),
@@ -2107,14 +2108,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const inputRowMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode, portId: string, incoming?: BoardConnection) => {
     openMenu(event, 'Input port', [
       ...(incoming ? [{ label: 'Disconnect input', action: () => removeWire(incoming) }] : []),
-      { label: 'Add input port', action: () => void addPortOp(formation, 'in') },
+      { label: 'Add input port', action: () => void addPortOp(formation, 'input') },
       { label: 'Remove this input', destructive: true, action: () => removePortOp(formation, portId) },
     ])
   }, [addPortOp, openMenu, removePortOp, removeWire])
 
   const outputRowMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode, portId: string) => {
     openMenu(event, 'Output port', [
-      { label: 'Add output port', action: () => void addPortOp(formation, 'out') },
+      { label: 'Add output port', action: () => void addPortOp(formation, 'output') },
       { label: 'Remove this output', destructive: true, action: () => removePortOp(formation, portId) },
     ])
   }, [addPortOp, openMenu, removePortOp])

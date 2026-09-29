@@ -50,6 +50,9 @@ export interface FormationPort {
   label: string
 }
 
+/** The `addPort` direction, in the server's vocabulary (FormationPortInput/Output). */
+export type FormationPortDirection = 'input' | 'output'
+
 export interface FormationSlot {
   id: string
   label: string

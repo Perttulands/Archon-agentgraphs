@@ -309,10 +309,29 @@ function installFetchMock(options: {
         board = { ...board, formations, rev: board.rev + 1, connections: [...connections, { id: `edge_${board.rev}`, from: edit.from, to }] }
         return respond({ board }, `board-${board.rev}`)
       }
+      if (body.addPort) {
+        // Mirrors the store: only input and output are directions (FormationPortInput/Output).
+        const { formationId, direction, label } = body.addPort as { formationId: string; direction: string; label?: string }
+        if (direction !== 'input' && direction !== 'output') {
+          return Promise.resolve({
+            ok: false,
+            status: 400,
+            headers: { get: () => null },
+            json: () => Promise.resolve({ success: false, error: { code: 'INVALID_PORT_DIRECTION', message: `port direction "${direction}" must be input or output` } }),
+            text: () => Promise.resolve(''),
+          })
+        }
+        const key = direction === 'input' ? 'inputs' : 'outputs'
+        const port = { id: `port_added_${board.rev}`, label: label || (direction === 'input' ? 'Input' : 'Output') }
+        board = { ...board, rev: board.rev + 1,
+          formations: board.formations.map(item => item.id === formationId ? { ...item, [key]: [...item[key], port] } : item),
+        }
+        return respond({ board }, `board-${board.rev}`)
+      }
       if (body.removePort) {
         const { formationId, portId } = body.removePort as { formationId: string; portId: string }
         board = { ...board, rev: board.rev + 1,
-          formations: board.formations.map(item => item.id === formationId ? { ...item, inputs: item.inputs.filter(port => port.id !== portId) } : item),
+          formations: board.formations.map(item => item.id === formationId ? { ...item, inputs: item.inputs.filter(port => port.id !== portId), outputs: item.outputs.filter(port => port.id !== portId) } : item),
           connections: board.connections.filter(edge => edge.to !== `${formationId}:${portId}` && edge.from !== `${formationId}:${portId}`),
         }
         return respond({ board }, `board-${board.rev}`)
@@ -2080,14 +2099,35 @@ describe('FormationsCockpit reference parity', () => {
     }
   })
 
-  it('adds an input port from the formation context menu', async () => {
+  it('adds an input port from the formation context menu, and one undo removes it', async () => {
     await renderCockpit()
     fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Add input port' }))
     await waitFor(() => {
       const port = patches.map(patch => patch.body.addPort as { direction?: string } | undefined).find(Boolean)
-      expect(port).toEqual(expect.objectContaining({ direction: 'in' }))
+      expect(port).toEqual(expect.objectContaining({ formationId: 'fmn_frame', direction: 'input', label: 'Input' }))
     })
+    await waitFor(() => expect(screen.queryByTestId('formations-error')).toBeNull())
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => {
+      expect(patches.map(patch => patch.body.removePort).filter(Boolean)).toEqual([{ formationId: 'fmn_frame', portId: 'port_added_7' }])
+    })
+  })
+
+  it('adds ports in the server vocabulary from the card, input row and output row menus', async () => {
+    await renderCockpit()
+    const menuAdd = async (target: HTMLElement, name: string) => {
+      fireEvent.contextMenu(target)
+      fireEvent.click(await screen.findByRole('menuitem', { name }))
+    }
+    await menuAdd(screen.getByTestId('formation-node-fmn_frame'), 'Add output port')
+    await waitFor(() => expect(patches.filter(patch => patch.body.addPort)).toHaveLength(1))
+    await menuAdd(document.querySelector<HTMLElement>('[data-port-in="fmn_frame:port_frame_in"]')!.closest<HTMLElement>('.fio')!, 'Add input port')
+    await waitFor(() => expect(patches.filter(patch => patch.body.addPort)).toHaveLength(2))
+    await menuAdd(document.querySelector<HTMLElement>('[data-port-out="fmn_frame:port_frame_out"]')!.closest<HTMLElement>('.fio')!, 'Add output port')
+    await waitFor(() => expect(patches.filter(patch => patch.body.addPort)).toHaveLength(3))
+    expect(patches.map(patch => (patch.body.addPort as { direction?: string } | undefined)?.direction).filter(Boolean)).toEqual(['output', 'input', 'output'])
+    expect(screen.queryByTestId('formations-error')).toBeNull()
   })
 
   it('shows legacy inline verification as read-only migration input', async () => {

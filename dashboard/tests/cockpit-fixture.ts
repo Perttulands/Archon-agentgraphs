@@ -141,10 +141,25 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
             formation.inputs = formation.inputs.filter(port => port.id !== portId)
           }
           currentBoard.connections = [...edges, { id: `edge_${currentBoard.rev}`, from: edit.from, to }]
+        } else if (body.addPort) {
+          // Mirrors the store (AddFormationPort): the only directions are input and output.
+          const { formationId, direction, label } = body.addPort
+          if (direction !== 'input' && direction !== 'output') {
+            return route.fulfill({ status: 400, json: { success: false, error: { code: 'INVALID_PORT_DIRECTION', message: `port direction "${direction}" must be input or output` } } })
+          }
+          const formation = currentBoard.formations.find(item => item.id === formationId)
+          if (!formation) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
+          const port = { id: `port_${currentBoard.rev}`, label: label || (direction === 'input' ? 'Input' : 'Output') }
+          if (direction === 'input') formation.inputs = [...formation.inputs, port]
+          else formation.outputs = [...formation.outputs, port]
         } else if (body.removePort) {
           const { formationId, portId } = body.removePort
-          const formation = currentBoard.formations.find(item => item.id === formationId)!
+          const formation = currentBoard.formations.find(item => item.id === formationId)
+          if (!formation || ![...formation.inputs, ...formation.outputs].some(port => port.id === portId)) {
+            return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
+          }
           formation.inputs = formation.inputs.filter(port => port.id !== portId)
+          formation.outputs = formation.outputs.filter(port => port.id !== portId)
           currentBoard.connections = currentBoard.connections.filter(edge => edge.to !== `${formationId}:${portId}` && edge.from !== `${formationId}:${portId}`)
         } else if (body.unwireConnection) {
           currentBoard.connections = currentBoard.connections.filter(edge => edge.from !== body.unwireConnection.from || edge.to !== body.unwireConnection.to)
