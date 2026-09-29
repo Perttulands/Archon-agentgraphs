@@ -131,6 +131,7 @@ type TestFinding = { code: string; nodeId: string; message: string }
 type TestNoteEntry = { id: string; author: string; createdAt: string; editedAt?: string; text: string }
 const noteEntry = (id: string, author: string, text: string): TestNoteEntry => ({ id, author, createdAt: '2026-09-16T12:00:00Z', text })
 let recordedMutations: RecordedMutation[] = []
+let recordedFetches: string[] = []
 
 function installFetchMock(options: {
   emptyBoards?: boolean
@@ -151,9 +152,15 @@ function installFetchMock(options: {
   validation?: { errors: TestFinding[]; warnings: TestFinding[] }
   runStartFindings?: TestFinding[]
   restoreFailure?: boolean
+  /** The first PATCH carrying this op answers a stale-revision CONFLICT, as after another editor's write. */
+  conflictOnce?: string
+  /** addPort answers only once this settles, so an edit is in flight. */
+  addPortGate?: Promise<void>
 } = {}) {
+  let conflictPending = options.conflictOnce
   const patches: RecordedPatch[] = []
   recordedMutations = []
+  recordedFetches = []
   let availableBoards = options.emptyBoards ? [] : (options.boards?.length ? options.boards : [makeBoard()])
   let board = availableBoards[0] || makeBoard()
   let availableAgents = options.agents || agents
@@ -173,6 +180,7 @@ function installFetchMock(options: {
     const url = String(input)
     const method = (init?.method || 'GET').toUpperCase()
     if (method !== 'GET') recordedMutations.push({ method, url })
+    else recordedFetches.push(url)
     const respond = (data: unknown, etag = '') => Promise.resolve({
       ok: true,
       headers: { get: (name: string) => (name.toLowerCase() === 'etag' ? etag || null : null) },
@@ -309,6 +317,15 @@ function installFetchMock(options: {
         }
         board = { ...board, formations, rev: board.rev + 1, connections: [...connections, { id: `edge_${board.rev}`, from: edit.from, to }] }
         return respond({ board }, `board-${board.rev}`)
+      }
+      if (conflictPending && body[conflictPending]) {
+        conflictPending = undefined
+        return conflict('Formation definition changed; reload and retry')
+      }
+      if (body.addPort && options.addPortGate) {
+        const gateOpen = options.addPortGate
+        options = { ...options, addPortGate: undefined }
+        return gateOpen.then(() => (globalThis.fetch as unknown as (input: string, init: RequestInit) => Promise<unknown>)(url, init!))
       }
       // Deletes and restores mirror the store: a delete drops the node, its
       // connections and its layout node; a restore refuses a node already there.
@@ -2197,7 +2214,7 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     expect(await screen.findByTestId('formations-error')).toHaveTextContent(
-      'Could not undo delete mission “Showcase”: node "mis_showcase" is already on the board. It was removed from the undo history.')
+      'Could not undo the delete of mission “Showcase”: node "mis_showcase" is already on the board. It was removed from the undo history.')
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => expect(patches.map(patch => patch.body.removePort).filter(Boolean)).toEqual([{ formationId: 'fmn_judge', portId: 'port_added_7' }]))
     expect(patches.filter(patch => patch.body.restoreNode)).toHaveLength(1)
@@ -2205,6 +2222,59 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(patches.filter(patch => patch.body.restoreNode || patch.body.removePort)).toHaveLength(2)
+  })
+
+  it('reloads and retries once when another editor changed the board, keeping the undo', async () => {
+    patches = installFetchMock({ conflictOnce: 'restoreNode' })
+    await renderCockpit()
+    fireEvent.contextMenu(screen.getByTestId('mission-node-mis_showcase'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete mission' }))
+    await waitFor(() => expect(screen.queryByTestId('mission-node-mis_showcase')).toBeNull())
+    const reads = () => recordedFetches.filter(url => url.endsWith('/boards/test-board')).length
+    const readsBefore = reads()
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    expect(await screen.findByTestId('mission-node-mis_showcase')).toBeInTheDocument()
+    expect(patches.filter(patch => patch.body.restoreNode)).toHaveLength(2)
+    expect(reads()).toBeGreaterThan(readsBefore)
+    expect(screen.queryByTestId('formations-error')).toBeNull()
+  })
+
+  it('waits for an edit in flight, so Ctrl+Z undoes that edit and not an older one', async () => {
+    let release: () => void = () => undefined
+    patches = installFetchMock({ addPortGate: new Promise<void>(resolve => { release = resolve }) })
+    await renderCockpit()
+    fireEvent.contextMenu(screen.getByTestId('mission-node-mis_showcase'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete mission' }))
+    await waitFor(() => expect(screen.queryByTestId('mission-node-mis_showcase')).toBeNull())
+    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_judge'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Add output port' }))
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(patches.filter(patch => patch.body.restoreNode || patch.body.removePort)).toEqual([])
+    release()
+    await waitFor(() => expect(patches.map(patch => patch.body.removePort).filter(Boolean)).toHaveLength(1))
+    expect(patches.filter(patch => patch.body.restoreNode)).toEqual([])
+    expect(screen.queryByTestId('mission-node-mis_showcase')).toBeNull()
+    expect(screen.queryByTestId('formations-error')).toBeNull()
+  })
+
+  it('asks before deleting a formation with retired inline verification, which cannot be undone', async () => {
+    await renderCockpit()
+    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete formation' }))
+    const dialog = await screen.findByRole('alertdialog', { name: 'Delete formation' })
+    expect(dialog).toHaveTextContent('Frame cannot be put back after deleting, because it still carries retired inline verification. Ctrl+Z will not undo this delete.')
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(patches.filter(patch => patch.body.deleteFormation)).toEqual([])
+
+    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete formation' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete for good' }))
+    await waitFor(() => expect(screen.queryByTestId('formation-node-fmn_frame')).toBeNull())
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(patches.filter(patch => patch.body.restoreNode)).toEqual([])
   })
 
   it('undoes Remove this input by restoring the port in place with its wire', async () => {

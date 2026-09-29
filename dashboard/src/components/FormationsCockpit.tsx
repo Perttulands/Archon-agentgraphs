@@ -71,7 +71,7 @@ import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget,
 import { gateWireNeedsLabel, loopConnectionIds, routeJudgeWire, routeLoopWires, routeOrthoWire, type LoopWire } from './formationsRouting'
 import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
-import { UndoHistory, boardStep, combineUndo, nodeDeleteUndo, portRemoveUndo, quoted, undoOutcomeMessage, type CockpitUndo, type UndoStep } from './formationsUndo'
+import { UndoHistory, WriteTracker, boardStep, combineUndo, nodeDeleteUndo, portRemoveUndo, quoted, restoreBlocker, undoOutcomeMessage, type UndoDraft, type UndoStep } from './formationsUndo'
 import { NOTE_CARDS, NoteLayer, NOTES_MODES, noteWindowAnchor, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
 import NoteWindow, { BOARD_NOTE_TARGET, noteWindowId } from './NoteWindow'
 import { FormationTypeChip, formationTypeChoices } from './FormationTypeChip'
@@ -267,9 +267,19 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const undoHistoryRef = useRef<UndoHistory | null>(null)
   if (!undoHistoryRef.current) undoHistoryRef.current = new UndoHistory()
   const undoHistory = undoHistoryRef.current
-  const recordUndo = useCallback((label: string, ...steps: UndoStep[]) => undoHistory.record({ label, steps }), [undoHistory])
+  // Board and layout writes in flight; undo waits for them.
+  const writesRef = useRef<WriteTracker | null>(null)
+  if (!writesRef.current) writesRef.current = new WriteTracker()
+  const writes = writesRef.current
+  // The board the latest write went to. An entry is stamped with it, so an edit
+  // that finishes after a board switch cannot put its undo on the new board.
+  const lastWriteBoardRef = useRef('')
+  const recordEntry = useCallback((draft: UndoDraft | null | undefined) => {
+    if (draft) undoHistory.record({ ...draft, board: lastWriteBoardRef.current })
+  }, [undoHistory])
+  const recordUndo = useCallback((label: string, ...steps: UndoStep[]) => recordEntry({ label, steps }), [recordEntry])
   // Undo belongs to the board it was recorded on.
-  useEffect(() => undoHistory.clear(), [selectedSlug, undoHistory])
+  useEffect(() => undoHistory.setBoard(selectedSlug), [selectedSlug, undoHistory])
   const fittedBoardRef = useRef<string | null>(null)
   const judgeHoverRef = useRef<string | null>(null)
   const openJudgePickerRef = useRef<((gate: GateNode, x: number, y: number) => void) | null>(null)
@@ -721,7 +731,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const applyBoardPatch = useCallback(async (patch: Record<string, unknown>): Promise<{ board: BoardDocument; layout: LayoutDocument | null }> => {
     const current = boardRef.current
     if (!current) throw new Error('No board is open')
-    const result = await patchBoardDocument(current.slug, current.etag, current.rev, patch)
+    const result = await writes.track(patchBoardDocument(current.slug, current.etag, current.rev, patch))
+    lastWriteBoardRef.current = current.slug
+    // A write that finishes after the operator switched boards must not replace the new board.
+    if (boardRef.current?.slug !== current.slug) return { board: result.board, layout: result.layout ?? null }
     boardRef.current = result.board
     setBoard(result.board)
     if (result.layout) {
@@ -729,7 +742,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       setLayout(result.layout)
     }
     return { board: result.board, layout: result.layout ?? null }
-  }, [])
+  }, [writes])
 
   const patchBoard = useCallback(async (patch: Record<string, unknown>): Promise<{ board: BoardDocument; layout: LayoutDocument | null } | null> => {
     try {
@@ -866,11 +879,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const currentBoard = boardRef.current
     const currentLayout = layoutRef.current
     if (!currentBoard || !currentLayout) throw new Error('No board layout is open')
-    const next = await patchBoardLayout(currentBoard.slug, currentLayout.etag, patch)
+    const next = await writes.track(patchBoardLayout(currentBoard.slug, currentLayout.etag, patch))
+    lastWriteBoardRef.current = currentBoard.slug
+    if (boardRef.current?.slug !== currentBoard.slug) return next
     layoutRef.current = next
     setLayout(next)
     return next
-  }, [])
+  }, [writes])
 
   const patchLayoutEdge = useCallback(async (edgeId: string, lane: string): Promise<boolean> => {
     try {
@@ -938,18 +953,34 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return true
   }, [patchBoard, recordUndo])
 
-  const applyUndoStep = useCallback(async (step: UndoStep) => {
-    if ('board' in step) await applyBoardPatch(step.board)
-    else await applyLayoutPatch(step.layout)
-  }, [applyBoardPatch, applyLayoutPatch])
+  // Undo waits for edits in flight, then runs the newest entry. A stale
+  // revision (another editor, or the poll not yet caught up) reloads the board
+  // and retries once; only an undo the board truly refuses is dropped.
+  const undoRunner = useMemo(() => ({
+    board: () => boardRef.current?.slug || '',
+    idle: () => writes.idle(),
+    apply: async (step: UndoStep) => {
+      if ('board' in step) await applyBoardPatch(step.board)
+      else await applyLayoutPatch(step.layout)
+    },
+    isConflict: (err: unknown) => err instanceof ApiRequestError && err.code === 'CONFLICT',
+    reload: async () => {
+      const slug = boardRef.current?.slug
+      if (!slug) return
+      const next = await fetchBoardWithLayout(slug)
+      if (boardRef.current?.slug !== slug) return
+      boardRef.current = next.board
+      layoutRef.current = next.layout
+      setBoard(next.board)
+      setLayout(next.layout)
+    },
+  }), [applyBoardPatch, applyLayoutPatch, writes])
 
-  // Undo runs the newest entry once. A failure is reported once and the entry
-  // is dropped, so Ctrl+Z moves on to older edits.
   const performUndo = useCallback(async () => {
-    const outcome = await undoHistory.undo(applyUndoStep)
-    if (outcome.status === 'failed') setError(undoOutcomeMessage(outcome))
+    const outcome = await undoHistory.undo(undoRunner)
+    if (outcome.status === 'failed' || outcome.status === 'busy') setError(undoOutcomeMessage(outcome))
     else if (outcome.status === 'undone') setError('')
-  }, [applyUndoStep, undoHistory])
+  }, [undoHistory, undoRunner])
 
   useEffect(() => {
     if (!active) return
@@ -1148,14 +1179,42 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // undo restores it with its brief, staffing, ports, wires and notes.
   const displayLayoutRef = useRef(displayLayoutByNode)
   displayLayoutRef.current = displayLayoutByNode
-  const deleteNodeOp = useCallback(async (nodeId: string, patch: Record<string, unknown>) => {
+  const [deleteConfirm, setDeleteConfirm] = useState<{ title: string; kind: string; reason: string; patch: Record<string, unknown> } | null>(null)
+  const deleteNodeOp = useCallback(async (nodeId: string, patch: Record<string, unknown>, confirmed = false) => {
     const before = boardRef.current
     if (!before) return
+    // A node whose restore the server would refuse is deleted only after the operator agrees it cannot be undone.
+    const blocker = restoreBlocker(before, nodeId)
+    if (blocker && !confirmed) {
+      const kind = patch.deleteFormation ? 'formation' : patch.deleteGate ? 'gate' : 'mission'
+      const title = [...(before.missions || []), ...before.formations, ...(before.gates || [])].find(node => node.id === nodeId)?.title || ''
+      setDeleteConfirm({ title, kind, reason: blocker, patch })
+      return
+    }
     const position = displayLayoutRef.current.get(nodeId) || { x: 200, y: 200 }
-    const undo = nodeDeleteUndo(before, nodeId, position)
+    const undo = blocker ? null : nodeDeleteUndo(before, nodeId, position)
     if (!await patchBoard(patch)) return
-    undoHistory.record(undo)
-  }, [patchBoard, undoHistory])
+    recordEntry(undo)
+  }, [patchBoard, recordEntry])
+
+  const confirmDelete = useCallback(() => {
+    if (!deleteConfirm) return
+    const patch = deleteConfirm.patch
+    const nodeId = String((Object.values(patch)[0] as { id: string }).id)
+    setDeleteConfirm(null)
+    void deleteNodeOp(nodeId, patch, true)
+  }, [deleteConfirm, deleteNodeOp])
+
+  useEffect(() => {
+    if (!active || !deleteConfirm) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setDeleteConfirm(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [active, deleteConfirm])
 
   const deleteFormationOp = useCallback((formation: FormationNode) => {
     void deleteNodeOp(formation.id, { deleteFormation: { id: formation.id } })
@@ -1186,8 +1245,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!before) return
     const undo = portRemoveUndo(before, formation.id, portId)
     if (!await patchBoard({ removePort: { formationId: formation.id, portId } })) return
-    undoHistory.record(undo)
-  }, [patchBoard, undoHistory])
+    recordEntry(undo)
+  }, [patchBoard, recordEntry])
 
   const closeLegacyVerification = useCallback(() => {
     if (legacyVerificationPendingRef.current) return
@@ -1293,20 +1352,20 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const previous = boardRef.current?.gates?.find(item => item.id === gate.id) || gate
     const chain = judgeChainOf(gate.id)
     return [
-      boardStep(chain.length ? { setGateJudge: { gateId: gate.id, chain } } : { detachGateJudge: { gateId: gate.id } }),
-      boardStep({ updateGate: { id: gate.id, ...gateFieldsFromGate(previous) } }),
+      boardStep(chain.length ? { setGateJudge: { gateId: gate.id, chain } } : { detachGateJudge: { gateId: gate.id } }, 'the judge'),
+      boardStep({ updateGate: { id: gate.id, ...gateFieldsFromGate(previous) } }, 'the gate settings'),
     ]
   }, [judgeChainOf])
 
-  const attachJudge = useCallback(async (gate: GateNode, chain: string[]): Promise<CockpitUndo | null> => {
+  const attachJudge = useCallback(async (gate: GateNode, chain: string[]): Promise<UndoDraft | null> => {
     const steps = gateRestoreSteps(gate)
     if (!await patchBoard({ setGateJudge: { gateId: gate.id, chain } })) return null
     return { label: `the judge of ${quoted(gate.title, 'the gate')}`, steps }
   }, [gateRestoreSteps, patchBoard])
 
   const attachJudgeOp = useCallback((gate: GateNode, chain: string[]) => {
-    void attachJudge(gate, chain).then(undo => undoHistory.record(undo))
-  }, [attachJudge, undoHistory])
+    void attachJudge(gate, chain).then(recordEntry)
+  }, [attachJudge, recordEntry])
 
   const detachJudge = useCallback((gate: GateNode) => {
     const previousChain = judgeChainOf(gate.id)
@@ -1315,8 +1374,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       if (!result) return
       // Restore the fields first: the chain needs the formation kind back.
       recordUndo(`the judge detach from ${quoted(gate.title, 'the gate')}`,
-        boardStep({ updateGate: { id: gate.id, ...gateFieldsFromGate(previous) } }),
-        ...(previousChain.length ? [boardStep({ setGateJudge: { gateId: gate.id, chain: previousChain } })] : []))
+        boardStep({ updateGate: { id: gate.id, ...gateFieldsFromGate(previous) } }, 'the gate settings'),
+        ...(previousChain.length ? [boardStep({ setGateJudge: { gateId: gate.id, chain: previousChain } }, 'the judge')] : []))
     })
   }, [judgeChainOf, patchBoard, recordUndo])
 
@@ -1324,10 +1383,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const createJudgeFor = useCallback(async (gate: GateNode, type: FormationType, title: string, x: number, y: number) => {
     const created = await createFormationAt(type, title, x, y, false)
     if (!created) return
-    const removeJudge: CockpitUndo = { label: '', steps: [boardStep({ deleteFormation: { id: created.id } })] }
+    const removeJudge: UndoDraft = { label: '', steps: [boardStep({ deleteFormation: { id: created.id } }, 'the new judge formation')] }
     const attached = await attachJudge(gate, [created.id])
-    undoHistory.record(combineUndo(`the new judge ${quoted(created.title, '')} for ${quoted(gate.title, 'the gate')}`, removeJudge, attached))
-  }, [attachJudge, createFormationAt, undoHistory])
+    recordEntry(combineUndo(`the new judge ${quoted(created.title, '')} for ${quoted(gate.title, 'the gate')}`, removeJudge, attached))
+  }, [attachJudge, createFormationAt, recordEntry])
 
   // Drafts save: missing code fields or a missing judge chain become run findings.
   const saveGateEditor = useCallback(async (draft: GateDraft) => {
@@ -1360,8 +1419,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const chain = previous.kinds.includes('formation') && !kinds.includes('formation') ? judgeChainOf(previous.id) : []
     if (!await patchBoard({ updateGate: { id: previous.id, ...rest, ...(kinds.length ? { kinds } : {}) } })) return false
     recordUndo(`the edit of gate ${quoted(previous.title, 'untitled')}`,
-      boardStep({ updateGate: { id: previous.id, ...gateFieldsFromGate(previous) } }),
-      ...(chain.length ? [boardStep({ setGateJudge: { gateId: previous.id, chain } })] : []))
+      boardStep({ updateGate: { id: previous.id, ...gateFieldsFromGate(previous) } }, 'the gate settings'),
+      ...(chain.length ? [boardStep({ setGateJudge: { gateId: previous.id, chain } }, 'the judge')] : []))
     return true
   }, [judgeChainOf, patchBoard, recordUndo])
 
@@ -1369,11 +1428,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!newFrom || newFrom === connection.from || newFrom.split(':')[0] === connection.to.split(':')[0]) return
     const removed = await patchBoard({ unwireConnection: { from: connection.from, to: connection.to } })
     if (!removed) return
-    const restoreOld = boardStep({ wireConnection: { from: connection.from, to: connection.to } })
+    const restoreOld = boardStep({ wireConnection: { from: connection.from, to: connection.to } }, 'the old wire')
     const added = await patchBoard({ wireConnection: { from: newFrom, to: connection.to } })
     // If the new wire fails, the removal still changed the board, so it is undoable alone.
     if (!added) recordUndo('the connection removal', restoreOld)
-    else recordUndo('the reconnection', boardStep({ unwireConnection: { from: newFrom, to: connection.to } }), restoreOld)
+    else recordUndo('the reconnection', boardStep({ unwireConnection: { from: newFrom, to: connection.to } }, 'the new wire'), restoreOld)
   }, [patchBoard, recordUndo])
 
   const [startMission, setStartMission] = useState<MissionNode | null>(null)
@@ -1645,7 +1704,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     try {
       await applyLayoutPatch({ arrange: true })
       setError('')
-      if (previous.length) recordUndo('Arrange', { layout: { nodes: previous } })
+      if (previous.length) recordUndo('the arrangement', { layout: { nodes: previous } })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to arrange layout')
     }
@@ -1836,8 +1895,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               void (async () => {
                 if (moved && !await patchBoard({ unwireConnection: { from: moved.from, to: moved.to } })) return
                 const attached = await attachJudge(gate, [fromNodeId])
-                const unwired: CockpitUndo | null = moved ? { label: '', steps: [boardStep({ wireConnection: { from: moved.from, to: moved.to } })] } : null
-                undoHistory.record(combineUndo(`the judge of ${quoted(gate.title, 'the gate')}`, unwired, attached))
+                const unwired: UndoDraft | null = moved ? { label: '', steps: [boardStep({ wireConnection: { from: moved.from, to: moved.to } }, 'the moved wire')] } : null
+                recordEntry(combineUndo(`the judge of ${quoted(gate.title, 'the gate')}`, unwired, attached))
               })()
             }
           } else if (target?.dataset.portIn) {
@@ -1853,7 +1912,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         setJudgeHover(null)
       },
     })
-  }, [attachJudge, attachJudgeOp, createJudgeFor, interactionOwner, patchBoard, rewireSource, rewireTarget, screenToWorld, undoHistory, wire])
+  }, [attachJudge, attachJudgeOp, createJudgeFor, interactionOwner, patchBoard, recordEntry, rewireSource, rewireTarget, screenToWorld, wire])
 
   const beginWire = useCallback((event: ReactPointerEvent, endpoint: string, kind: WirePath['kind']) => {
     if (event.button !== 0) return
@@ -3031,6 +3090,31 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       ) : null}
 
       {startMission && <StartMissionDialog title={startMission.title} beadId={startMission.beadId} inputHint={startMission.inputHint} humanChannel={humanChannelOf(startMission)} onStart={(inputs, channel) => startMissionRun(startMission, inputs, channel)} onClose={() => setStartMission(null)} />}
+
+      {deleteConfirm ? (
+        <div
+          className="pop board-dialog"
+          role="alertdialog"
+          aria-modal="true"
+          aria-label={`Delete ${deleteConfirm.kind}`}
+          aria-describedby="delete-confirm-reason"
+          onPointerDown={event => event.stopPropagation()}
+        >
+          <div className="pop-head">
+            <span className="pt">Delete {deleteConfirm.kind}</span>
+            <button className="x" type="button" aria-label="Close delete dialog" onClick={() => setDeleteConfirm(null)}>x</button>
+          </div>
+          <div className="pop-body">
+            <p id="delete-confirm-reason" className="board-delete-warning">
+              <strong>{deleteConfirm.title || `This ${deleteConfirm.kind}`}</strong> cannot be put back after deleting, because {deleteConfirm.reason}. Ctrl+Z will not undo this delete.
+            </p>
+            <div className="pop-actions">
+              <button autoFocus className="cancel" type="button" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+              <button className="retire" type="button" onClick={confirmDelete}>Delete for good</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {boardDialog ? (
         <div

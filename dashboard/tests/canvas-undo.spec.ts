@@ -53,10 +53,53 @@ test('a failed undo is reported once and Ctrl+Z moves on to older history', asyn
   fixture.board().missions.push({ id: 'mission', title: 'Delivery', goal: '', beadId: '' })
   await page.keyboard.press('Control+z')
   await expect(page.getByTestId('formations-error')).toHaveText(
-    'Could not undo delete mission “Delivery”: node "mission" is already on the board. It was removed from the undo history.')
+    'Could not undo the delete of mission “Delivery”: node "mission" is already on the board. It was removed from the undo history.')
   await page.screenshot({ path: test.info().outputPath('undo-failed-once.png') })
 
   await page.keyboard.press('Control+z')
   await expect(judge.locator('.fio.in')).toHaveCount(1)
+  await expect(page.getByTestId('formations-error')).toHaveCount(0)
+})
+
+test('Ctrl+Z during an edit in flight undoes that edit, and a stale revision is reloaded and retried', async ({ page }) => {
+  await page.addInitScript(() => localStorage.clear())
+  const fixture = await cockpitFixture(page)
+  let releaseAdd: () => void = () => undefined
+  const addHeld = new Promise<void>(resolve => { releaseAdd = resolve })
+  let staleOnce = true
+  // Registered after the fixture, so it sees board writes first.
+  await page.route('**/api/formations/boards/browser', async route => {
+    const body = route.request().method() === 'PATCH' ? route.request().postDataJSON() : null
+    if (body?.addPort) await addHeld
+    if (body?.restoreNode && staleOnce) {
+      staleOnce = false
+      return route.fulfill({ status: 409, json: { success: false, error: { code: 'CONFLICT', message: 'Formation definition changed; reload and retry' } } })
+    }
+    return route.fallback()
+  })
+  await page.goto('/?board=browser')
+  const judge = page.getByTestId('formation-node-judge')
+  await expect(judge).toBeVisible()
+  const menuItem = (name: string) => page.locator('.ctxmenu').getByRole('menuitem', { name })
+
+  await page.getByTestId('mission-node-mission').click({ button: 'right' })
+  await menuItem('Delete mission').click()
+  await expect(page.getByTestId('mission-node-mission')).toHaveCount(0)
+  await judge.locator('.fhead').click({ button: 'right' })
+  await menuItem('Add output port').click()
+  // The add is still being saved: Ctrl+Z must wait for it, not undo the delete.
+  await page.keyboard.press('Control+z')
+  await page.waitForTimeout(300)
+  await expect(page.getByTestId('mission-node-mission')).toHaveCount(0)
+  releaseAdd()
+  // delete (rev 2), the add (rev 3), then its undo (rev 4)
+  await expect.poll(() => fixture.board().rev).toBe(4)
+  await expect(judge.locator('.fio.out')).toHaveCount(1)
+  await expect(page.getByTestId('mission-node-mission')).toHaveCount(0)
+  expect(fixture.board().formations.find(item => item.id === 'judge')!.outputs).toHaveLength(1)
+
+  // The next undo meets a stale revision once; it reloads, retries and restores the mission.
+  await page.keyboard.press('Control+z')
+  await expect(page.getByTestId('mission-node-mission')).toBeVisible()
   await expect(page.getByTestId('formations-error')).toHaveCount(0)
 })
