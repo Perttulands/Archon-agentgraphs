@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { EvidenceNames } from '../evidence/evidenceNames'
 import { formatBytes } from '../evidence/runEvidenceApi'
 import { fileAnchor, useFileWindows } from './FileWindows'
@@ -140,7 +141,9 @@ export function RunProduced() {
           }}
         >+{rest.length}</button>
       ) : null}
-      {menu ? (
+      {/* The run bar is its own stacking layer under the floating windows, so
+          the menu is drawn at the page's top level to open above every window. */}
+      {menu ? createPortal((
         <div ref={menuRef} className="run-produced-menu" role="menu" aria-label="Everything this run produced" style={{ left: menu.left, top: menu.top }}>
           {groups.map(group => (
             <div className="run-produced-group" key={group.title}>
@@ -149,7 +152,7 @@ export function RunProduced() {
             </div>
           ))}
         </div>
-      ) : null}
+      ), document.body) : null}
     </span>
   )
 }
