@@ -36,11 +36,13 @@ export function producedRequest(runId: string, item: ProducedItem, names: RunPro
   return outputFileRequest(runId, item.nodeId || '', producedLabel(item, names), step, item.portId)
 }
 
-function ProducedChip({ item, value, onOpened, role }: {
+function ProducedChip({ item, value, onOpened, role, openedFrom }: {
   item: ProducedItem
   value: RunProducedValue
   onOpened?: () => void
   role?: 'menuitem'
+  /** What the file opens by, when not the chip itself: the run bar's +N button for a chip in its menu. */
+  openedFrom?: () => Element | null
 }) {
   const files = useFileWindows()
   const label = producedLabel(item, value.names)
@@ -56,7 +58,7 @@ function ProducedChip({ item, value, onOpened, role }: {
       onPointerDown={event => event.stopPropagation()}
       onClick={event => {
         event.stopPropagation()
-        files?.open(producedRequest(value.runId, item, value.names), fileAnchor(event.currentTarget))
+        files?.open(producedRequest(value.runId, item, value.names), fileAnchor(openedFrom?.() || event.currentTarget))
         onOpened?.()
       }}
     >
@@ -171,7 +173,7 @@ export function RunProduced() {
           {groups.map(group => (
             <div className="run-produced-group" key={group.title}>
               <div className="run-produced-group-title">{group.title}</div>
-              {group.items.map(item => <ProducedChip key={item.key} item={item} value={value} role="menuitem" onOpened={() => setMenu(null)} />)}
+              {group.items.map(item => <ProducedChip key={item.key} item={item} value={value} role="menuitem" openedFrom={() => moreRef.current} onOpened={() => setMenu(null)} />)}
             </div>
           ))}
         </div>

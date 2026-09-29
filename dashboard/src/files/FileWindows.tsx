@@ -24,6 +24,8 @@ export interface FileWindows {
 export interface FilePlace {
   anchor: WindowRect
   keepClear: readonly WindowRect[]
+  /** A chip in the run bar is a control: its file opens right below it. */
+  anchorKind: 'node' | 'control'
 }
 
 interface OpenFile {
@@ -48,7 +50,8 @@ export function fileAnchor(control: Element): FilePlace {
   const nodeId = holder?.getAttribute('data-node') || holder?.getAttribute('data-flow-node') || ''
   const anchorElement = !holder || holder.hasAttribute('data-flow-node') ? control : holder
   const anchor = measureElement(anchorElement, true)!
-  return { anchor, keepClear: nodeId ? nodeBoxes([nodeId]) : [] }
+  const anchorKind = holder?.hasAttribute('data-file-anchor') ? 'control' : 'node'
+  return { anchor, keepClear: nodeId ? nodeBoxes([nodeId]) : [], anchorKind }
 }
 
 const FileWindowsContext = createContext<FileWindowsState | null>(null)

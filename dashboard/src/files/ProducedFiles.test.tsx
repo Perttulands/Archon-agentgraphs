@@ -161,9 +161,17 @@ describe('produced files', () => {
     expect(report).toHaveTextContent('Plan')
     expect(within(report).queryByRole('link', { name: 'Open raw' })).toBeNull()
 
+    // The run bar sits just above the workspace. A file from its menu opens right below it, though the
+    // menu itself is drawn at the end of the page.
+    const barBox = { left: 900, top: -40, width: 300, height: 24 }
+    screen.getByTestId('run-produced').getBoundingClientRect = () => ({ ...barBox, right: 1200, bottom: -16, x: 900, y: -40, toJSON: () => ({}) })
     fireEvent.click(screen.getByRole('button', { name: '2 more produced files' }))
     fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'worker.log' }))
     const log = await screen.findByRole('dialog', { name: 'file worker.log' })
+    expect(rectOf(log).top).toBe(0)
+    // Below the chips, beside the report window it must not cover.
+    const opened = rectOf(log)
+    expect(opened.left < barBox.left + barBox.width && opened.left + opened.width > barBox.left).toBe(true)
     await waitFor(() => expect(within(log).getByTestId('file-truncated')).toHaveTextContent('Showing 17 B of 293 KiB. Open it raw for the whole file.'))
 
     expect(screen.getAllByRole('dialog')).toHaveLength(2)

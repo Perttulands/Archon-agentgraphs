@@ -188,13 +188,11 @@ test('a finished run opens what it produced from the run bar and cards in file w
   const below = (await review.boundingBox())!
   expect(below.y).toBeGreaterThanOrEqual(bar.y + bar.height)
   expect(apart(below, opened)).toBe(true)
-  // At 100% this board leaves no free space near the run bar, so the run bar's file opens in the free space
-  // nearest it rather than over the cards: it covers none of them.
-  for (const other of await page.locator('.formation[data-node], .gatecard[data-node], .missioncard[data-node]').all()) {
-    // Cards sit at sub-pixel positions; a window rounded to whole pixels may touch one by less than a pixel.
-    const box = (await other.boundingBox())!
-    expect(apart(below, { x: box.x + 1, y: box.y + 1, width: box.width - 2, height: box.height - 2 }), 'the run bar file covers a card').toBe(true)
-  }
+  // A run bar file opens where it lives: right below the bar, by its chip, over cards if need be but clear of the other window.
+  const reviewChip = (await produced.getByRole('button', { name: 'review.md' }).boundingBox())!
+  expect(gap(below, reviewChip)).toBeLessThanOrEqual(240)
+  const banner = (await page.getByTestId('run-banner').boundingBox())!
+  expect(apart(below, banner)).toBe(true)
 
   // Drag the review to the right of the canvas and the result to the left, so the two sit side by side.
   // The review, on top, moves right by its title; the result then moves left by the start of its own title.

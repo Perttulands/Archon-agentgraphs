@@ -51,6 +51,7 @@ export default function NoteWindow({ target, title, anchor, keepClear, entries, 
       defaultSize={{ width: 400, height: 440 }}
       anchor={anchor}
       keepClear={keepClear}
+      anchorKind={board ? 'control' : 'node'}
       className="note-window"
       onClose={onClose}
     >

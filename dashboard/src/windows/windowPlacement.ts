@@ -28,6 +28,11 @@ import { rectsOverlap, type WindowRect, type Workspace } from './windowGeometry'
  *   canvas above and below the graph, and covers content only when that is the
  *   only way to stay near the anchor at a readable size.
  *
+ * A window opened from a control outside the canvas, such as a run bar chip
+ * or a toolbar button, sets `anchorKind: 'control'`: it opens right by the
+ * control, just below the bar, covering canvas cards if it must but never an
+ * open window, so the operator keeps track of what opened it.
+ *
  * To keep a particular node visible, say the step a gate passes to, put its
  * box in `keepClear`:
  *
@@ -46,6 +51,15 @@ export interface PlacementScene {
   workspace: Workspace
   /** What the window belongs to. Never covered when a placement can avoid it. */
   anchor?: WindowRect | null
+  /**
+   * What the anchor is. A `node` (the default: a card, a Flow row, a window)
+   * lives on the canvas, so its window takes the free space nearest it. A
+   * `control`, such as a run bar chip or a toolbar button, lives outside the
+   * canvas: its window opens right by it, just below the bar, on the side
+   * nearest the control, covering canvas cards if it must, but never another
+   * window's title bar or body.
+   */
+  anchorKind?: 'node' | 'control'
   /**
    * What must stay visible and clickable while the window is open: the node's
    * title, its immediate neighbours, its next link, or a downstream node the
@@ -81,6 +95,10 @@ export const FIT_SHARE = 0.5
 // Both are covered pixels times weight.
 const MUST = { avoid: 1e6, anchor: 4, keepClear: 2, title: 2 }
 const PREFER = { landmark: 8, window: 4, content: 1 }
+// A control's window: the canvas under it matters little, open windows as much
+// as what must stay clear, and every pixel away from the control a great deal,
+// so it covers a card before it wanders from the control.
+const CONTROL = { landmark: 2, content: 0.5, window: 2, near: 1000 }
 // A window keeps this much room around its anchor, and a little around what it keeps clear.
 const BREATHING = { anchor: 12, keepClear: 4 }
 // Each pixel of window given up to fit free space costs less than a covered pixel of content.
@@ -216,6 +234,7 @@ function plan(size: FrameSize, minimum: FrameSize, scene: PlacementScene): Plan 
   const reach = grow(bounds, ANCHOR_REACH)
   // An anchor scrolled out of view says nothing about where to open.
   const anchor = usable(scene.anchor) && rectsOverlap(scene.anchor, reach) ? scene.anchor : null
+  const control = Boolean(anchor) && scene.anchorKind === 'control'
   const keepClear = (scene.keepClear || []).filter(inReach)
   const windows = (scene.windows || []).filter(inReach)
   const landmarks = (scene.landmarks || []).filter(inReach)
@@ -232,11 +251,12 @@ function plan(size: FrameSize, minimum: FrameSize, scene: PlacementScene): Plan 
     ...(anchor ? [[grow(anchor, BREATHING.anchor), MUST.anchor] as [WindowRect, number]] : []),
     ...keepClear.map(rect => [grow(rect, BREATHING.keepClear), MUST.keepClear] as [WindowRect, number]),
     ...windows.map(rect => [titleStrip(rect), MUST.title] as [WindowRect, number]),
+    ...(control ? windows.map(rect => [rect, CONTROL.window] as [WindowRect, number]) : []),
   ]
   const prefer: Array<[WindowRect, number]> = [
-    ...landmarks.map(rect => [rect, PREFER.landmark] as [WindowRect, number]),
-    ...windows.map(rect => [rect, PREFER.window] as [WindowRect, number]),
-    ...content.map(rect => [rect, PREFER.content] as [WindowRect, number]),
+    ...landmarks.map(rect => [rect, control ? CONTROL.landmark : PREFER.landmark] as [WindowRect, number]),
+    ...(control ? [] : windows.map(rect => [rect, PREFER.window] as [WindowRect, number])),
+    ...content.map(rect => [rect, control ? CONTROL.content : PREFER.content] as [WindowRect, number]),
   ]
   const covered = (rect: WindowRect, zones: Array<[WindowRect, number]>) => zones.reduce((total, [zone, weight]) => total + weight * overlapArea(rect, zone), 0)
 
@@ -249,7 +269,7 @@ function plan(size: FrameSize, minimum: FrameSize, scene: PlacementScene): Plan 
   }
   const cost = (rect: WindowRect): number => covered(rect, prefer)
     + SHRINK * (full.width * full.height - rect.width * rect.height)
-    + (anchor ? NEAR * separation(rect, anchor) + CENTRED * centreDistance(rect, anchor) : CENTRED * centreDistance(rect, centre))
+    + (anchor ? (control ? CONTROL.near : NEAR) * separation(rect, anchor) + CENTRED * centreDistance(rect, anchor) : CENTRED * centreDistance(rect, centre))
 
   // Free space is measured between everything in the scene, each with a
   // margin; and, for a window that has to cover some content, between only
@@ -257,7 +277,7 @@ function plan(size: FrameSize, minimum: FrameSize, scene: PlacementScene): Plan 
   const margin = (rect: WindowRect) => grow(rect, PLACEMENT_GAP)
   const mustClear = [...(anchor ? [anchor] : []), ...keepClear, ...windows.map(titleStrip)].map(margin)
   const hard = [...mustClear, ...windows.map(margin), ...landmarks.map(margin), ...content.map(margin), ...avoid]
-  const lenient = [...mustClear, ...avoid]
+  const lenient = [...mustClear, ...(control ? windows.map(margin) : []), ...avoid]
 
   // Edges a window can line up with, inside the workspace; an edge beyond it
   // gives only a place already held at the workspace's own edge.
@@ -300,6 +320,7 @@ function plan(size: FrameSize, minimum: FrameSize, scene: PlacementScene): Plan 
       candidates.push(hold({ ...full, left: anchor.left - PLACEMENT_GAP - full.width, top }))
     }
     candidates.push(hold({ ...full, left: anchor.left, top: bottom(anchor) + PLACEMENT_GAP }))
+    candidates.push(hold({ ...full, left: right(anchor) - full.width, top: bottom(anchor) + PLACEMENT_GAP }))
     candidates.push(hold({ ...full, left: anchor.left, top: anchor.top - PLACEMENT_GAP - full.height }))
   } else {
     candidates.push(hold(centre))

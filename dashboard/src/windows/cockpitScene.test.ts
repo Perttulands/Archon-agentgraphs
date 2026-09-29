@@ -36,6 +36,13 @@ function flowRow() {
 }
 
 describe('cockpit scene', () => {
+  it('opens a file from the run bar as a control, right by its chip', () => {
+    document.body.innerHTML = '<span data-file-anchor><button class="chip">review.md</button></span>'
+    place(document.querySelector('[data-file-anchor]')!, 400, 100, 300, 24)
+    const barPlace = fileAnchor(document.querySelector('.chip')!)
+    expect(barPlace).toEqual({ anchor: { left: 400, top: 100, width: 300, height: 24 }, keepClear: [], anchorKind: 'control' })
+  })
+
   it('keeps a Flow row\'s number, title, labels and links, not its text, as what must stay visible', () => {
     flowRow()
     expect(nodeBoxes(['map'])).toEqual([
@@ -53,6 +60,7 @@ describe('cockpit scene', () => {
     // The row spans the column, so the chip, not the row, is what the window opens beside.
     expect(chipPlace.anchor).toEqual({ left: 615, top: 455, width: 90, height: 16 })
     expect(chipPlace.keepClear).toEqual(nodeBoxes(['map']))
+    expect(chipPlace.anchorKind).toBe('node')
   })
 
   it('opens a file from a card beside the card, keeping the card and its note in view', () => {
@@ -64,6 +72,7 @@ describe('cockpit scene', () => {
     place(document.querySelector('.note-sticky')!, 482, 670, 130, 50)
     const cardPlace = fileAnchor(document.querySelector('.chip')!)
     expect(cardPlace.anchor).toEqual({ left: 450, top: 482, width: 162, height: 180 })
+    expect(cardPlace.anchorKind).toBe('node')
     expect(cardPlace.keepClear).toEqual([{ left: 450, top: 482, width: 162, height: 180 }, { left: 482, top: 670, width: 130, height: 50 }])
   })
 })

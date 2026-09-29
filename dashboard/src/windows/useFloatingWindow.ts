@@ -82,6 +82,8 @@ export interface UseFloatingWindowOptions {
    * about. See windowPlacement.ts.
    */
   keepClear?: () => readonly WindowRect[]
+  /** Whether the anchor is a node on the canvas or a control outside it, such as a run bar chip; see PlacementScene. */
+  anchorKind?: 'node' | 'control'
   onClose: () => void
 }
 
@@ -109,10 +111,11 @@ export interface FloatingWindow<T extends HTMLElement> {
 // A press on a control in the title bar uses the control, not the window.
 const CONTROL = 'button,select,input,textarea,a,[role="separator"]'
 
-function openingRect(stack: WindowStack, id: string, size: FrameSize, minimum: FrameSize, anchor?: () => WindowRect | null, keepClear?: () => readonly WindowRect[]): WindowRect {
+function openingRect(stack: WindowStack, id: string, size: FrameSize, minimum: FrameSize, anchor?: () => WindowRect | null, keepClear?: () => readonly WindowRect[], anchorKind?: 'node' | 'control'): WindowRect {
   return placeOpeningWindow(size, minimum, {
     workspace: stack.workspace(),
     anchor: anchor?.() ?? null,
+    anchorKind,
     keepClear: keepClear?.() ?? [],
     windows: stack.openRects(id),
     ...stack.scene(),
@@ -127,6 +130,7 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   minimum = FLOATING_WINDOW_MINIMUM[kind],
   anchor,
   keepClear,
+  anchorKind,
   onClose,
 }: UseFloatingWindowOptions): FloatingWindow<T> {
   const stack = useWindowStack()
@@ -138,7 +142,7 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   const placedAt = useRef({ others: -1, size: defaultSize })
   const [rect, setRect] = useState<WindowRect>(() => {
     placedAt.current = { others: stack.openRects(id).length, size: readFloatingWindowSize(kind) ?? defaultSize }
-    return openingRect(stack, id, placedAt.current.size, minimum, anchor, keepClear)
+    return openingRect(stack, id, placedAt.current.size, minimum, anchor, keepClear, anchorKind)
   })
   const rectRef = useRef(rect)
   rectRef.current = rect
@@ -146,8 +150,8 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   const cleanupRef = useRef<(() => void) | null>(null)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
-  const placement = useRef({ kind, minimum, anchor, keepClear })
-  placement.current = { kind, minimum, anchor, keepClear }
+  const placement = useRef({ kind, minimum, anchor, keepClear, anchorKind })
+  placement.current = { kind, minimum, anchor, keepClear, anchorKind }
 
   // The stack knows where every open window is, so the next one opens clear
   // of it. Before the window registers this does nothing; registering tracks it.
@@ -162,8 +166,8 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
     const others = stackRef.current.openRects(id).length
     if (others !== placedAt.current.others) {
       placedAt.current = { ...placedAt.current, others }
-      const { minimum: least, anchor: beside, keepClear: clear } = placement.current
-      const placed = openingRect(stackRef.current, id, placedAt.current.size, least, beside, clear)
+      const { minimum: least, anchor: beside, keepClear: clear, anchorKind: besideKind } = placement.current
+      const placed = openingRect(stackRef.current, id, placedAt.current.size, least, beside, clear, besideKind)
       rectRef.current = placed
       setRect(placed)
     }

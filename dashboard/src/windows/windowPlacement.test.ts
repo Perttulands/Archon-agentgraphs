@@ -143,6 +143,28 @@ describe('window placement rules', () => {
     expect(rectsOverlap(first, second)).toBe(false)
   })
 
+  it('opens run bar files right below the bar on a crowded canvas, over cards but never over a window', () => {
+    // Wayfinding at 100% fills the canvas: no free space lies near the run bar.
+    const scene = measured['wayfinding-canvas-1920']
+    const crowded = { ...scene, landmarks: [...scene.landmarks, { left: 244, top: 138, width: 1668, height: 300 }] }
+    const chip = { left: 440, top: 100, width: 90, height: 24 }
+    const bar = { left: 236, top: 90, width: 1684, height: 40 }
+    const opened: WindowRect[] = []
+    for (let index = 0; index < 2; index += 1) {
+      opened.push(placeOpeningWindow(FILE, minimum, { workspace: crowded.workspace, anchor: chip, anchorKind: 'control', windows: [...opened], landmarks: crowded.landmarks, content: crowded.content }))
+    }
+    const gap = (a: WindowRect, b: WindowRect) => Math.hypot(Math.max(0, b.left - right(a), a.left - right(b)), Math.max(0, b.top - bottom(a), a.top - bottom(b)))
+    for (const rect of opened) {
+      expect(gap(rect, chip)).toBeLessThanOrEqual(240)
+      expect(rectsOverlap(rect, bar)).toBe(false)
+    }
+    expect(opened[0].top).toBe(crowded.workspace.bounds.top)
+    expect(rectsOverlap(opened[0], opened[1])).toBe(false)
+    // The same chip as a node would send the window off to free space instead.
+    const asNode = placeOpeningWindow(FILE, minimum, { workspace: crowded.workspace, anchor: chip, landmarks: crowded.landmarks, content: crowded.content })
+    expect(gap(asNode, chip)).toBeGreaterThan(240)
+  })
+
   it('cascades windows with nowhere free to go, each earlier title bar left showing', () => {
     // A 1920 canvas already holding two file windows side by side: the next ones have to overlap.
     const canvas: Workspace = { bounds: { left: 244, top: 138, width: 1668, height: 934 }, avoid: [] }

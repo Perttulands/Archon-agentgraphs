@@ -28,6 +28,7 @@ export default function FileWindow({ request, place, onOpen, onClose }: {
       defaultSize={{ width: 720, height: 560 }}
       anchor={place ? () => place.anchor : undefined}
       keepClear={place ? () => place.keepClear : undefined}
+      anchorKind={place?.anchorKind}
       className="file-window"
       actions={<FileActions request={request} preview={preview} mode={mode} onMode={setMode} />}
       onClose={onClose}
