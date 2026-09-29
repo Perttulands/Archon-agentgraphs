@@ -99,6 +99,9 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	if command, ok := remoteAuthoringCommands[args[0]+" "+args[1]]; ok {
 		return command(client, args[2:], stdout, stderr)
 	}
+	if args[0]+" "+args[1] == "run wait" {
+		return runWaitRemote(client, args[2:], stdout, stderr)
+	}
 	request := client.raw
 	fs := flag.NewFlagSet(args[0]+" "+args[1], flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -276,6 +279,6 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 func remoteUsage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "use mission, formation, gate and agent authoring and read commands, mission run <mission> [--input <input>] [--context-path path ...], run status|logs|follow|seats|gates <run>, gate request <run> <gate>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text | --response-file path] [--relayed-by slot-id]")
+	fmt.Fprintln(stderr, "use mission, formation, gate and agent authoring and read commands, mission run <mission> [--input <input>] [--context-path path ...], run status|logs|follow|wait|seats|gates <run>, gate request <run> <gate>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text | --response-file path] [--relayed-by slot-id]")
 	return 2
 }

@@ -100,20 +100,44 @@ key_points = [
 
 [[question]]
 id = "needs-operator"
-source = "CONTRACT: Execution and authority (projection, run follow); Gates (human kind)"
+source = "CONTRACT: Execution and authority (Waiting on a run); Gates (human kind)"
 question = "I'm the agent driving a run. How do I find out that the run needs the operator, and what do I need to answer it?"
 expected = """
-The driver pulls: `archon --server ... run follow <run>` prints each projection
-until the run is final and waits through human gates; `run status` gives one
-projection. Status `waiting_human` with `waitingGates` entries (gateId,
-requestedSeq) means a human gate is waiting; `run gates <run>` lists them and
-`gate request <run> <gate>` shows the question. Answer with the exact
-requestedSeq from fresh status. A `blocked` status also needs attention and is
-not a completed delivery.
+The driver pulls: run `archon --server ... run wait <run>` (default `--until
+needs-you`) in the background. It returns exit 3 when a human gate waits (or a
+blocking escalation or block needs you), with a paragraph naming the gate, its
+criterion and input and the exact `gate approve`/`gate reject <run> <gate>
+--requested-seq <seq>` commands, and exit 0 when the run ended. `run status`
+also shows `waiting_human` with `waitingGates` (gateId, requestedSeq). Answer
+with the operator's authority using that exact requestedSeq, then wait again
+with the printed `--since`. A block is not a completed delivery.
 """
 key_points = [
-  "Watch with `run follow` (or poll `run status`) through the daemon.",
-  "Status `waiting_human` with `waitingGates` carrying gateId and requestedSeq signals a pending human gate.",
+  "Uses `run wait` (in the background) through the daemon to learn when the run needs the operator.",
+  "Exit 3 means the run needs you; the answer names the gate and prints the exact approve/reject command with `--requested-seq`.",
+  "Waits again after answering, passing the printed `--since`.",
+]
+
+[[question]]
+id = "wait-loop"
+source = "CONTRACT: Execution and authority (Waiting on a run)"
+question = "I left `archon run wait` running in the background while driving a run. It just exited. How do I tell what happened, and how do I keep watching without missing or repeating anything?"
+expected = """
+The exit code says why it returned: 0 the run ended (succeeded, failed or
+canceled; the paragraph says why and who ended it, and there is nothing more
+to wait for), 3 the run needs you (answer with the printed command), 4 it
+changed under `--until any-change`, 5 the `--timeout` passed, 6 the daemon
+stayed unreachable past `--reconnect`; 1 and 2 are errors or usage. Every
+non-final answer ends with the next wait command carrying `--since <seq>`; run
+exactly that, never restart from `--since 0`, because an ask counts as new only
+after `--since`. The cursor survives a daemon restart. `--until needs-you` is
+the default for driving, `final` returns only at the end, `any-change` at every
+event. `--json` gives the same answer for machines.
+"""
+key_points = [
+  "Reads the exit code: 0 ended, 3 needs you, 4 changed, 5 timeout, 6 daemon unreachable.",
+  "Continues with the printed next command and its `--since <seq>`, never restarting from 0, so each ask is seen once.",
+  "A final run (exit 0) needs no further wait.",
 ]
 
 [[question]]

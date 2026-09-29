@@ -45,7 +45,8 @@ archon --server "$FORM_SERVER" run resume "$FORM_RUN_ID" --mode redispatch --rea
 
 A 409 means your view is stale. Read fresh status and use the current
 `requestedSeq`; never reuse an old one or derive it from `eventCount`.
-`coordinator is executing` is busy: retry the same command after a few seconds.
+`coordinator is executing` means a command kept running for the five seconds
+the daemon waits for it: retry the same command after a few seconds.
 `human gate request is no longer pending` means someone else decided first.
 
 ## After a daemon restart

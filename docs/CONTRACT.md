@@ -283,6 +283,74 @@ human gates and closes only at finality. Interrupting that client stops viewing,
 not execution. Abort cancels only the selected run and waits for owned-seat
 cleanup, including seats kept on call, before returning `canceled`.
 
+### Waiting on a run
+
+The agent that launched a run drives it by pulling; Archon pushes nothing into
+its session. `archon --server <server> run wait <run>` blocks until the run
+needs the driver, ends or changes, then prints one paragraph for the agent and
+exits. Leave it running in the background and react when it returns:
+
+```bash
+archon --server "$FORM_SERVER" run wait "$FORM_RUN_ID" --until needs-you
+```
+
+`--until` takes `needs-you` (the default), `final` or `any-change`:
+
+- `needs-you` returns when a human gate asks for a verdict, a blocking
+  escalation is raised, or the run blocks with no gate or escalation to explain
+  it. The paragraph names the gate or step, the gate's criterion, the start of
+  its input (the whole input is `gate request`), where each verdict leads, and
+  the exact `gate approve`/`gate reject` commands with `--requested-seq`, or
+  the `run resume` or `run abort` command a block needs.
+- `final` returns when the run succeeds, fails or is canceled.
+- `any-change` returns at the next ledger event and lists the new events. When
+  that event opens a new ask it answers as `needs-you` (exit 3) instead.
+
+Every mode returns at once for a final run, and says how it ended: its status,
+the step it stopped at, the terminal reason and code from its evidence
+problems, and who ended it. Every other answer ends with the command that
+waits for what comes next, carrying `--since <seq>`, the ledger sequence the
+answer covers, and `--json` when the wait used it. Pass it to the next wait:
+an ask counts as new only after `since`, so a driver that loops sees each ask
+once and misses nothing between calls. Without `--since` every open ask is new.
+Other open asks are still listed as reported earlier.
+
+A bare block counts only once the daemon has settled the run, since a verdict
+records one on its way to the automatic resume. Until then the run reads as
+`running`, and in every mode the cursor stops below the block and an answer
+reports only the events before it; with nothing else new the wait keeps
+holding. Once the run settles, a real block is a new ask in every mode.
+
+A verdict or resume sent while the command that recorded the ask is still
+settling the run waits for that command, up to five seconds, instead of
+answering 409, so a driver can answer the moment a wait returns.
+
+`--json` prints the daemon's answer (`runId`, `mission`, `until`, `outcome`,
+`since`, `seq`, `status`, `final`, `resumeAllowed`, `settled`, `end`, `asks`,
+`changes`) with `next`, the next wait command (absent for a final run), and on
+a lost daemon `error`. `outcome` is `final`, `needs-you` or `changed` from the
+daemon, or from the client `timeout` (the last answer, with the cursor
+unchanged) or `daemon-lost` (with `error` and the cursor unchanged). Exit
+codes:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | The run is final (succeeded, failed or canceled). |
+| 1 | Error, such as an unknown run or a `--since` past the run's last event. |
+| 2 | Usage, or run without `--server`. |
+| 3 | The run needs you, in `needs-you` or `any-change`. |
+| 4 | The run changed, with no new ask (`any-change`). |
+| 5 | `--timeout` passed first; the cursor is unchanged. |
+| 6 | The daemon stayed unreachable for `--reconnect` (default one minute). |
+
+A daemon that stops answers waits with 503. The client retries the same
+`--since` every quarter second until the daemon is back, so a restart mid-wait
+loses nothing; only a daemon still unreachable after `--reconnect` ends the
+wait with code 6, printing the command that waits again from the same cursor.
+One wait keeps one connection to the daemon across its polls, and the daemon
+closes connections idle for two minutes. The daemon answers within a second of
+the ledger event.
+
 `run gates <run>` lists pending gate IDs, request sequences and asking seats.
 `gate request <run> <gate>` reads the question and routed input. `run seats <run>`
 lists the public seat projection, including session names and on-call requests.
@@ -579,7 +647,8 @@ unsent operator text found before a paste, still waits without a fallback.
 Only after a fallback does the notify command, if configured, get its
 `human_gate` notification. Both events are
 appended under the run's command reservation, so a verdict sent in that moment
-gets the busy 409, and replay ignores them.
+waits for it (the busy 409 comes only after five seconds), and replay ignores
+them.
 
 Kept seats are reconsidered when the run settles and before a formation is
 dispatched. A kept seat ends when it has received an ask and no open request
@@ -797,6 +866,7 @@ FORM_RUN_ID=$(printf '%s\n' "$FORM_START" | jq -er '.data.runId')
 archon --server "$FORM_SERVER" run status "$FORM_RUN_ID" --json
 archon --server "$FORM_SERVER" run logs "$FORM_RUN_ID" --json
 archon --server "$FORM_SERVER" run follow "$FORM_RUN_ID" --json
+archon --server "$FORM_SERVER" run wait "$FORM_RUN_ID" --until needs-you
 archon --server "$FORM_SERVER" run list --json
 ```
 
@@ -998,7 +1068,8 @@ retried up to three times. Differences from offline use:
   --file` reads locally.
 - Runtime commands (`mission run`, `run`, `gate approve|reject`) print the
   daemon's `{success,timestamp,data}` envelope, except `run gates`, `run seats`
-  and `gate request`, which require `--json` for that format; `mission list` and
+  and `gate request`, which require `--json` for that format, and `run wait`,
+  which prints its paragraph or its own JSON (see [Waiting on a run](#waiting-on-a-run)); `mission list` and
   `mission inspect` print offline JSON like the other reads. `formation
   remove-verification|run`, `run ask` and `agent spawn|attach|retire` remain
   offline only.
@@ -1130,6 +1201,18 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   unknown run or gate returns 404; a decided request
   returns 409. After the verdict, the gate's node evidence holds the same input
   with the response.
+- `/api/formations/runs/{runId}/wait?until=&since=&hold=` holds the request
+  until the run is final, has an ask after `since` (`needs-you`,
+  `any-change`) or has any event after `since` (`any-change`), for at most
+  `hold` seconds (0 to 60, default 30). It returns `data` as `run wait --json`
+  describes, with `outcome` `final`, `needs-you`, `changed`, or `pending` when
+  the hold ended first; a pending answer keeps `seq` at `since`. Asks carry
+  their gate or step `title`, a human gate's `criterion`, `input` (the start of
+  the text, capped at 4 KiB, with `bytes` and `truncated`) and `routes`, and a
+  block's `reason`, `code` and `resumeAllowed`; texts are redacted like run
+  evidence. `end` carries `status`, `seq`, `code`, `reason`, `endedBy` and the
+  `stopped` steps. A bad `until`, `since` or `hold`, or a `since` past the
+  run's last event, returns 400, an unknown run 404, and a stopping daemon 503.
 
 Artifact names are relative; every component is opened from the state
 directory without following symlinks, and only regular files with one link are

@@ -38,7 +38,10 @@ archon --server "$SERVER" run status "$RUN" --json
 archon --server "$SERVER" run follow "$RUN" --json
 ```
 
-`follow` waits through human gates. Ctrl-C stops viewing, not the run. If launch
+`follow` waits through human gates. Ctrl-C stops viewing, not the run. An
+agent driving the run uses `archon --server "$SERVER" run wait "$RUN"` instead:
+it returns when a gate needs an answer or the run ends, with the exact answer
+command and the `--since` cursor for its next wait. If launch
 returns no receipt, use `archon --server "$SERVER" run list --json` to find an
 admitted run before launching again. Status reports the actual `cwd` and
 `contextPaths`; the cockpit also shows the workspace path.

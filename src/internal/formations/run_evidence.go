@@ -217,6 +217,12 @@ func redactEvidenceText(text string) string {
 	return credentialAssignmentPattern.ReplaceAllString(redacted, "$1=[REDACTED]")
 }
 
+// RedactEvidenceText applies the ledger's secret patterns, as the run
+// evidence routes serve text.
+func RedactEvidenceText(text string) string {
+	return redactEvidenceText(text)
+}
+
 // evidenceCapper caps each text and spends a shared response budget.
 type evidenceCapper struct {
 	remaining int
@@ -648,6 +654,21 @@ func projectRunProblems(events []RunEvent) []RunProblem {
 	}
 	slices.Reverse(problems)
 	return problems
+}
+
+// RunEndProblem is the failure or cancel that ended a run, as the run's
+// evidence problems report it, or nil when the run did not end that way.
+func RunEndProblem(events []RunEvent) *RunProblem {
+	if len(events) == 0 {
+		return nil
+	}
+	switch events[len(events)-1].Type {
+	case RunEventFailed, RunEventCanceled:
+	default:
+		return nil
+	}
+	problems := projectRunProblems(events)
+	return &problems[len(problems)-1]
 }
 
 func evidenceInput(raw any, capper *evidenceCapper, artifactRoots []string) *EvidenceInput {

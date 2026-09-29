@@ -296,6 +296,8 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 			return runLogs(store, args[2:], stdout, stderr)
 		case "follow":
 			return runFollow(store, args[2:], stdout, stderr)
+		case "wait":
+			return runWaitOffline(stderr)
 		case "resume":
 			return runResume(runtimeStore(config.Workspace), args[2:], stdout, stderr)
 		case "abort":

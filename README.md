@@ -135,8 +135,10 @@ archon --server http://127.0.0.1:8091 mission run delivery \
   --brief /absolute/path/to/your/brief.md --bead your-project-123 --json
 ```
 
-Use the returned run ID with `run status`, `run logs`, `run follow` or
-`run abort`. Runtime commands always use `--server`; local authoring uses
+Use the returned run ID with `run status`, `run logs`, `run follow`,
+`run wait` or `run abort`. An agent driving the run leaves `run wait` running
+in the background: it returns when the run needs an answer, ends or changes,
+and prints the command that answers it. Runtime commands always use `--server`; local authoring uses
 `--workspace`. A run keeps a snapshot of its mission and personas, so later
 edits apply to later runs. Recovery records unresolved work explicitly;
 inspect a blocked run before deciding how to continue it.

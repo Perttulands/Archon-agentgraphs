@@ -437,9 +437,46 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProjectionEnvelope'
         '409':
-          description: Run executing
+          description: Run still executing after a five-second wait for its command
           final: null
           or not resumable: null
+  /api/formations/runs/{runId}/wait:
+    parameters:
+    - $ref: '#/components/parameters/RunID'
+    get:
+      summary: Hold until the run needs its driver, ends or changes after a ledger sequence
+      description: The long poll behind archon run wait (form-o7p.6). A final run answers at once in every mode.
+      parameters:
+      - in: query
+        name: until
+        schema:
+          type: string
+          enum: [needs-you, final, any-change]
+          default: needs-you
+      - in: query
+        name: since
+        description: Ledger sequence the driver has already seen; asks and changes after it are new.
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - in: query
+        name: hold
+        description: Seconds to hold before answering pending.
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 60
+          default: 30
+      responses:
+        '200':
+          description: Enveloped data contains runId, boardSlug, mission, until, outcome (final, needs-you, changed, pending), since, seq (the next since), status, final, resumeAllowed, settled, end (status, seq, code, reason, reasonTruncated, endedBy, stopped), asks (kind, seq, new, gateId, nodeId, title, criterion, reason, code, severity, resumeAllowed, input with fromNodeId, fromTitle, fromPortId, text capped at 4 KiB, bytes and truncated, routes) and changes (seq, type, nodeId, gateId, title, attempt, status, verdict; the latest 50, with changesOmitted). Texts are redacted like run evidence.
+        '400':
+          description: Bad until, since or hold, or since past the run's last event
+        '404':
+          description: No such run
+        '503':
+          description: The daemon is stopping; wait again with the same since
   /api/formations/runs/{runId}/gates/{gateId}/request:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -631,7 +668,7 @@ paths:
         '400':
           description: Invalid verdict, or a relayedBy that is not a slot ID
         '409':
-          description: Busy
+          description: Busy after a five-second wait for the run's command
           final: null
           duplicate or stale human request: null
         '422':
