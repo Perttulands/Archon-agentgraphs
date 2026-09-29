@@ -1794,6 +1794,8 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 			message = fieldErrorMessage(err, formations.ErrInvalidToolMutation)
 		}
 		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_TOOL_MUTATION", message)
+	case errors.Is(err, formations.ErrInvalidRunLimits):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_RUN_LIMITS", err.Error())
 	case errors.Is(err, formations.ErrInvalidNotePatch):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_NOTE_PATCH", err.Error())
 	case errors.Is(err, formations.ErrNoteEntryNotFound):

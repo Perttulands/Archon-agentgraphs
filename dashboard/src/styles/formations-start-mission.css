@@ -1,10 +1,8 @@
-/* Start mission: styled fields, a hint under each, limits in one row. */
+/* Start mission: styled fields with a hint under each. */
 .fmx .pop.start-mission{width:min(560px,calc(100vw - 40px));left:calc(50% - min(280px,50vw - 20px));top:90px;}
 .fmx .pop.start-mission .pop-body{max-height:calc(100vh - 180px);}
 .fmx .pop.start-mission textarea{min-height:140px;}
 .fmx .pop.start-mission .field-note{color:var(--ink2);font-size:11px;}
-.fmx .start-mission-limits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
-.fmx .pop-body .start-mission-limits label:first-child{margin-top:14px;}
 .fmx .pop.start-mission .field-note .start-mission-hint{--archon-markdown-font-size:11px;color:var(--ink2);}
 .fmx .pop.start-mission .field-note .start-mission-hint>*{margin:4px 0 0;}
 .fmx .pop.start-mission .field-note .start-mission-hint>:first-child{margin-top:0;}

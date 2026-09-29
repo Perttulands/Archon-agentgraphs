@@ -119,7 +119,7 @@ configuration, execution limits, approvals and recovery. The short
 finding asking seats and answering gates with text or a file.
 
 The delivery example also expects Beads and the shared skills named in its
-briefs. Those tools and skills are not bundled here. Read and adapt the
+briefs. Those tools and skills are not bundled here; only Archon's own skill is. Read and adapt the
 [board](examples/delivery.formation.toml) and its
 [notes](examples/delivery.notes.toml) before running it against a repository.
 The [minimal board](docs/CONTRACT.md#definitions-and-storage) is a smaller
@@ -132,8 +132,7 @@ your task's values.
 ```bash
 archon --server http://127.0.0.1:8091 mission run delivery \
   --mission mis_delivery --cwd /absolute/path/to/your/repository \
-  --brief /absolute/path/to/your/brief.md --bead your-project-123 \
-  --max-dispatch 30 --max-attempts 3 --wall-clock-seconds 7200 --json
+  --brief /absolute/path/to/your/brief.md --bead your-project-123 --json
 ```
 
 Use the returned run ID with `run status`, `run logs`, `run follow`,
@@ -143,6 +142,29 @@ and prints the command that answers it. Runtime commands always use `--server`; 
 `--workspace`. A run keeps a snapshot of its board and personas, so later
 edits apply to later runs. Recovery records unresolved work explicitly;
 inspect a blocked run before deciding how to continue it.
+
+## Let agents drive Archon
+
+The release ships the `archon` agent skill, which teaches Claude Code and Codex
+agents to author missions, run them and answer gates. Link it where each harness
+discovers user-level skills. The loop skips a directory that already provides
+an `archon` skill, such as a shared skills catalog, and never replaces an
+existing path:
+
+```bash
+export ARCHON_SHARE="$HOME/.local/lib/archon/current/share/archon"
+for dir in "$HOME/.claude/skills" "$HOME/.agents/skills"; do
+  mkdir -p "$dir"
+  if [ -e "$dir/archon/SKILL.md" ]; then
+    echo "$dir/archon already provides the archon skill; left unchanged"
+  else
+    ln -sn "$ARCHON_SHARE/skills/archon" "$dir/archon"
+  fi
+done
+```
+
+The links follow `current`, so an upgrade updates the skill with the binaries.
+In a source checkout the skill is [skills/archon](skills/archon/SKILL.md).
 
 ## Build from source
 

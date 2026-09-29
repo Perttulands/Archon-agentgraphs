@@ -39,6 +39,7 @@ bin/formationsd
 share/archon/ui/
 share/archon/examples/
 share/archon/docs/
+share/archon/skills/archon/
 docs/
 examples/
 install.sh
@@ -79,6 +80,8 @@ lib/archon/releases/<version>-<commit>-<platform>/
 
 The release directory contains the full archive. Examples are available under
 `lib/archon/current/share/archon/examples/` and documentation beside them.
+The `archon` agent skill is at `lib/archon/current/share/archon/skills/archon/`;
+the README shows how to link it for Claude Code and Codex.
 The daemon resolves its executable and finds the bundled UI automatically.
 Use `--ui-dir /absolute/path` to serve another UI build, or `--ui-dir ''` to
 run without the UI.

@@ -40,8 +40,16 @@ func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
 	if code := runRemote(server.URL, []string{"mission", "run", "proof", "--mission", "mis_proof", "--json"}, &out, &stderr); code != 0 {
 		t.Fatalf("%d %s", code, stderr.String())
 	}
-	if !strings.Contains(received, `"maxAttempts":3`) || !strings.Contains(received, `"expectedRev":9`) || !strings.Contains(out.String(), "run_proof") {
+	// No limit flags sends no limits (form-o7p.7).
+	if !strings.Contains(received, `"limits":{"redact":false}`) || !strings.Contains(received, `"expectedRev":9`) || !strings.Contains(out.String(), "run_proof") {
 		t.Fatalf("request %s output %s", received, out.String())
+	}
+	out.Reset()
+	if code := runRemote(server.URL, []string{"mission", "run", "proof", "--mission", "mis_proof", "--max-attempts", "4", "--max-dispatch", "9", "--wall-clock-seconds", "600", "--json"}, &out, &stderr); code != 0 {
+		t.Fatalf("%d %s", code, stderr.String())
+	}
+	if !strings.Contains(received, `"limits":{"maxAttempts":4,"maxDispatch":9,"redact":false,"wallClockSeconds":600}`) {
+		t.Fatalf("explicit limits request %s", received)
 	}
 	server.Close()
 	out.Reset()

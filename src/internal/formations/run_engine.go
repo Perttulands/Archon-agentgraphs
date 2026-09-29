@@ -245,6 +245,9 @@ func (e *RunEngine) RunMission(slug string, req RunStartRequest) (*RunStatusProj
 	if e == nil || e.store == nil {
 		return nil, fmt.Errorf("%w: run engine store required", ErrNotFound)
 	}
+	if err := ValidateRunLimits(req.Limits); err != nil {
+		return nil, err
+	}
 	board, err := e.store.ReadBoard(slug)
 	if err != nil {
 		return nil, err
@@ -308,6 +311,9 @@ func (e *RunEngine) RunFormation(slug, formationID string, req FormationRunReque
 func (e *RunEngine) PrepareFormationRun(slug, formationID string, req FormationRunRequest) (*RunStartResult, func() (*RunStatusProjection, error), error) {
 	if e == nil || e.store == nil {
 		return nil, nil, fmt.Errorf("%w: run engine store required", ErrNotFound)
+	}
+	if err := ValidateRunLimits(req.Limits); err != nil {
+		return nil, nil, err
 	}
 	board, err := e.store.ReadBoard(slug)
 	if err != nil {
@@ -1054,7 +1060,7 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 			continue
 		}
 		nextAttempt := attempts[nodeID] + 1
-		if maxAttempts(limits) > 0 && nextAttempt > maxAttempts(limits) {
+		if attemptsExhausted(limits, nextAttempt) {
 			return e.appendErrorAndBlock(runID, "resume_attempts_exhausted", "resume attempts exhausted", "engine", nodeID, "resume attempts exhausted")
 		}
 		attempts[nodeID] = nextAttempt
@@ -1697,7 +1703,7 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 			continue
 		}
 		nextAttempt := attempts[nodeID] + 1
-		if maxAttempts(limits) > 0 && nextAttempt > maxAttempts(limits) {
+		if attemptsExhausted(limits, nextAttempt) {
 			if err := e.appendErrorAndBlock(runID, "revise_loop_exhausted", "revise loop exhausted", "engine", nodeID, "revise loop exhausted"); err != nil {
 				return err
 			}
@@ -2851,11 +2857,12 @@ func (e *RunEngine) appendStarvedBlock(runID string, starved []starvedFormation)
 	})
 }
 
-func maxAttempts(limits RunLimits) int {
-	if limits.MaxAttempts > 0 {
-		return limits.MaxAttempts
-	}
-	return 1
+// attemptsExhausted reports whether starting a node's nextAttempt would go
+// past the run's attempt limit. A run that set no maxAttempts has no attempt
+// limit (form-o7p.7). The engine and the gate answer panel (HumanGateRoutes)
+// both ask this, so the panel says what the engine will do.
+func attemptsExhausted(limits RunLimits, nextAttempt int) bool {
+	return limits.MaxAttempts > 0 && nextAttempt > limits.MaxAttempts
 }
 
 func runLimitsFromEvent(event RunEvent) RunLimits {

@@ -381,8 +381,13 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	if req.Board == "" || (req.MissionID == "") == (req.FormationID == "") || req.ExpectedRev <= 0 || req.Limits.MaxDispatch <= 0 || req.Limits.MaxAttempts <= 0 || req.Limits.WallClockSeconds <= 0 || req.Limits.Redact {
-		reply(w, 400, map[string]string{"error": "board, missionId, expectedRev and positive limits required; redacted execution is not supported"})
+	if req.Board == "" || (req.MissionID == "") == (req.FormationID == "") || req.ExpectedRev <= 0 || req.Limits.Redact {
+		reply(w, 400, map[string]string{"error": "board, missionId and expectedRev required; redacted execution is not supported"})
+		return
+	}
+	// Limits are optional (form-o7p.7): an absent or zero limit means none.
+	if err := formations.ValidateRunLimits(req.Limits); err != nil {
+		reply(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
 	if req.MissionID != "" {

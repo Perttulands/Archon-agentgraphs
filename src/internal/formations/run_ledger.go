@@ -81,6 +81,16 @@ type RunLimits struct {
 	Redact                  bool `json:"redact"`
 }
 
+// ValidateRunLimits refuses a negative limit. Limits are optional (form-o7p.7):
+// an absent or zero limit means none. Every run start calls this, locally and
+// through the daemon, so each refuses -1 with the same message.
+func ValidateRunLimits(limits RunLimits) error {
+	if limits.MaxDispatch < 0 || limits.MaxAttempts < 0 || limits.WallClockSeconds < 0 {
+		return ErrInvalidRunLimits
+	}
+	return nil
+}
+
 type RunStartResult struct {
 	RunID                string `json:"runId"`
 	BoardSlug            string `json:"boardSlug"`

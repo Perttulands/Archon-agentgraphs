@@ -1,0 +1,316 @@
+# Questions a fresh agent must answer correctly from the archon skill alone.
+#
+# Each expected answer is written from docs/CONTRACT.md (the `source` names the
+# section) or, where marked, from a settled decision on the form-o7p epic.
+# Any contract change that touches authoring, running or deciding adds a
+# question here or updates the affected expected answer and key points, in the
+# same change that updates the contract and the skill.
+#
+# `key_points` are what the critic checks: an answer passes only when it states
+# every key point and contradicts none of them.
+
+[[question]]
+id = "first-step"
+source = "CONTRACT: Operator procedure (authoring order, create JSON); Definitions and storage (slot, harness variant)"
+question = "The operator wants a new mission where one agent writes a report from the run's brief. What are my first authoring commands, and where do the IDs I pass come from?"
+expected = """
+Through the daemon (`--server`): `board new`, then `mission create` and
+`formation create <board> solo`. Take the mission, formation, slot and port IDs
+from the JSON each create returns (`--json`; `.mission.id`, `.formation.id`,
+`.formation.slots[].id`, `.formation.inputs[]`/`outputs[]`); never guess them.
+Staff the slot with `formation assign --slot <slot> --agent <persona> --harness
+<claude-code|openai-codex>`, write the step's brief with `formation set-brief`,
+wire the mission into the formation's input with `mission wire <board> <mission>
+<formation>:<input-port>`, then `board validate` until zero errors (and
+`board arrange`).
+"""
+key_points = [
+  "Creates the board, mission and a solo formation.",
+  "Takes IDs (mission, formation, slot, ports) from the commands' JSON output rather than guessing.",
+  "Staffs the slot with `formation assign` naming a persona and a harness.",
+  "Wires the mission to the formation input with `mission wire` and runs `board validate` before running.",
+]
+
+[[question]]
+id = "notes-intent"
+source = "CONTRACT: Definitions and storage (notes are operator intent; note threads)"
+question = "The operator left notes on the board and on some cards. What do I do with them, and how do I answer a note?"
+expected = """
+Read them (`board notes`) before editing. Notes are the operator's intent, not
+executable seat instructions: translate them into formation briefs, staffing
+and wiring. Each note is a thread; answer by appending an entry with
+`board note <board> [--node <id>] --text ...`, never by rewriting the
+operator's words. Only an entry's author can edit or clear it.
+"""
+key_points = [
+  "Notes are intent to translate into briefs, staffing and wiring, not instructions the seats run.",
+  "Answer by appending to the thread with `board note`, without rewriting the operator's entries.",
+]
+
+[[question]]
+id = "join"
+source = "CONTRACT: Definitions and storage (joining work, --join)"
+question = "I want three agents to review the same change in parallel, then one lead agent to merge their three reviews. How do I wire that with the archon CLI?"
+expected = """
+Create the three reviewer formations and a lead formation. Wire the work's output
+to each reviewer's input (one output can feed many inputs). Wire each reviewer's
+output into the lead's input with `archon formation wire <board> <from> <to> --join`:
+the first wire takes the free input and each later one adds a new input port and
+its connection atomically. The lead waits until every input port has received its
+input. Without --join, wiring into an occupied input is refused as occupied.
+"""
+key_points = [
+  "The work's output is wired to each of the three reviewers' inputs.",
+  "Reviewer outputs are wired into the lead with `formation wire ... --join`, which adds a new input port when the input is already fed.",
+  "The lead starts only after all of its inputs have arrived.",
+]
+
+[[question]]
+id = "context-paths"
+source = "CONTRACT: Execution and authority (contextPaths)"
+question = "A run should study an existing repository and a notes file as prior art, but must not work inside that repository. How do I start it?"
+expected = """
+Pass each as `--context-path <absolute path>` (repeat the flag) on
+`archon --server ... mission run`. They must be absolute existing files or
+directories. Every seat is told to inspect them; they are reference inputs, frozen
+as paths (contents are not snapshotted), not permission to modify them. Omit
+--cwd so the daemon allocates a private workspace for the run (or give --cwd for
+a different existing directory).
+"""
+key_points = [
+  "Uses `--context-path` on `mission run`, repeated once per path.",
+  "Paths must be absolute and existing.",
+  "Context paths are read-only reference, separate from the run's workspace (cwd).",
+]
+
+[[question]]
+id = "workspace"
+source = "CONTRACT: Execution and authority (cwd, automatic workspace)"
+question = "What happens if I start a mission run without --cwd, and when should I pass --cwd?"
+expected = """
+Without --cwd the daemon creates a private workspace for that run (under the
+state directory's workspaces/<runId>, or --run-workspace-root) and every seat
+works there; it is kept after the run. Pass --cwd with an absolute existing
+directory to work in an existing project.
+"""
+key_points = [
+  "Omitting --cwd makes the daemon allocate a private per-run workspace.",
+  "--cwd takes an absolute existing directory, used to work in an existing project.",
+]
+
+[[question]]
+id = "needs-operator"
+source = "CONTRACT: Execution and authority (projection, run follow); Gates (human kind)"
+question = "I'm the agent driving a run. How do I find out that the run needs the operator, and what do I need to answer it?"
+expected = """
+The driver pulls: `archon --server ... run follow <run>` prints each projection
+until the run is final and waits through human gates; `run status` gives one
+projection. Status `waiting_human` with `waitingGates` entries (gateId,
+requestedSeq) means a human gate is waiting; `run gates <run>` lists them and
+`gate request <run> <gate>` shows the question. Answer with the exact
+requestedSeq from fresh status. A `blocked` status also needs attention and is
+not a completed delivery.
+"""
+key_points = [
+  "Watch with `run follow` (or poll `run status`) through the daemon.",
+  "Status `waiting_human` with `waitingGates` carrying gateId and requestedSeq signals a pending human gate.",
+]
+
+[[question]]
+id = "effort"
+source = "CONTRACT: Definitions and storage (persona model and effort); form-o7p settled decision (effort policy)"
+question = "Where do I set the reasoning effort for an agent in a mission, and which effort should a code-review step get versus a step that writes code?"
+expected = """
+Effort lives on the persona's harness variant, not on the board: `archon agent
+new|edit <id> --effort <e>` (edit --harness picks the variant). Blank means
+medium. Policy: architecture, design and review get xhigh; consequential
+reviews get max; making things gets medium; errands get low. So a code review
+step gets xhigh (max if consequential) and a code-writing step medium.
+"""
+key_points = [
+  "Effort is set on the persona's harness variant, e.g. `agent new|edit --effort`.",
+  "A review step gets xhigh (max when the review is consequential).",
+  "A step that makes things gets medium.",
+]
+
+[[question]]
+id = "peer-loop"
+source = "CONTRACT: Peer conversations; Execution and authority (formation.execution timeoutSeconds)"
+question = "My peer formation's agents keep discussing and never converge. How do I bound it?"
+expected = """
+A peer conversation has no fixed turn or round count; it ends when every seat
+acknowledges one proposal. Bound it with the formation's execution duration:
+`archon formation set-execution <board> <formation> --timeout-seconds <n>`
+(authored as execution.timeoutSeconds; 0 inherits the daemon default). The
+duration covers startup, openings, discussion and finalization; expiry blocks
+the run with formation_timeout_exceeded and keeps the journal and openings. The
+run's wall clock, when the launch set one, also bounds it.
+"""
+key_points = [
+  "Set the formation's execution duration (`formation set-execution --timeout-seconds`, i.e. execution.timeoutSeconds).",
+  "The duration covers the whole conversation including finalization, and expiry blocks the run visibly rather than succeeding.",
+]
+
+[[question]]
+id = "path-end"
+source = "CONTRACT: Gates and output contracts (nothing else can still run)"
+question = "How does a path in a mission end on purpose, and when does the whole run count as succeeded?"
+expected = """
+A path ends where an output or a gate's pass has no outgoing wire. The run
+succeeds only when nothing else can still run: every formation has produced
+output since its last input, every gate has evaluated its last input, and no
+formation, gate or human request is open. An approved gate with no pass route
+ends the run only once other reachable branches have run. An unwired fail
+leaves a visible block, so wire every fail.
+"""
+key_points = [
+  "An unwired output or gate pass ends that path.",
+  "The run succeeds only when no other work can still run (all reachable work done, nothing open).",
+  "An unwired fail route leaves a visible block rather than ending the run.",
+]
+
+[[question]]
+id = "judge-gate"
+source = "CONTRACT: Gates and output contracts (judge chain, chrote-verdict)"
+question = "How do I make a gate where an agent judges the work, and what must that judge agent output?"
+expected = """
+Create the gate with `gate create --kinds formation`, create a (solo) judge
+formation, and attach it with `gate judge <board> <gate> --chain <judge>`,
+which wires both ends. The judge must emit exactly one fenced chrote-verdict
+block with exactly verdict (pass or fail), reason (string) and evidence (array
+of strings), plus its normal chrote-outputs block. A missing, duplicate or
+malformed verdict blocks the run and it cannot be resumed.
+"""
+key_points = [
+  "Gate kind `formation` with a judge attached by `gate judge --chain`.",
+  "The judge emits exactly one chrote-verdict block with verdict, reason and evidence.",
+  "A malformed or missing verdict blocks the run (not resumable).",
+]
+
+[[question]]
+id = "code-gate"
+source = "CONTRACT: Gates and output contracts (code kind)"
+question = "Can I make a code gate that runs the test suite or a linter?"
+expected = """
+No. Code gates run only output_contains@1 and output_absent@1 against the
+gate's input text; they run no shell commands. Put checks like tests, lint or
+code review in a judge formation (formation gate kind).
+"""
+key_points = [
+  "Code gates support only output_contains@1 and output_absent@1 and run no commands.",
+  "Tests or lint belong in a judge formation.",
+]
+
+[[question]]
+id = "decide-gate"
+source = "CONTRACT: Gates and output contracts (human kind); Operator procedure"
+question = "The operator told me to approve the pending gate with the note 'Focus on editors'. What exact command do I run, and what happens to the note?"
+expected = """
+Read fresh status and take gateId and requestedSeq from the same waitingGates
+entry, then run `archon --server <server> gate approve <run> <gate>
+--requested-seq <seq> --response 'Focus on editors'` (--response aliases
+--reason). On approve a nonempty response travels with the gate's input to the
+next step; on reject it would become the feedback. A stale or duplicate
+sequence returns HTTP 409.
+"""
+key_points = [
+  "`gate approve <run> <gate> --requested-seq <seq> --response ...` through --server.",
+  "The requested sequence comes from fresh status (waitingGates).",
+  "On approve the response is passed on to the next step with the gate's input.",
+]
+
+[[question]]
+id = "limits"
+source = "CONTRACT: Execution and authority (limits)"
+question = "Do I need to pass --max-dispatch, --max-attempts or --wall-clock-seconds when I start a mission run, and what does each bound?"
+expected = """
+No. Runs have no limits unless the launch sets them; neither the CLI nor the
+cockpit supplies defaults. Without limits a send-back loop continues until its
+gate passes or the driver stops the run (run abort). Set a cap only when the
+mission needs one; each must be positive. --max-attempts bounds revisits to one
+node, --max-dispatch bounds formation starts across the run (judges included;
+resume never replenishes them), and --wall-clock-seconds bounds agent work from
+the run's start, excluding time waiting on human gates. A spent cap blocks the
+run naming the limit, and that block is not resumable.
+"""
+key_points = [
+  "Limits are optional and absent by default; nothing supplies them.",
+  "Without limits a send-back loop runs until the gate passes or the run is aborted.",
+  "Attempts bound revisits to a node, dispatches bound formation starts (judges included), and the wall clock excludes human-gate waits.",
+]
+
+[[question]]
+id = "seat-completion"
+source = "CONTRACT: Gates and output contracts (chrote-outputs, sentinel)"
+question = "What must a real agent seat emit for its step to complete and route its output?"
+expected = """
+One fenced chrote-outputs block naming all and only its declared output port
+IDs (text, or a ref to a file by absolute path under the artifact directory),
+then the exact sentinel with this run's ID:
+<<<CHROTE-DONE run-id=<run-id> status=ok artifact=<path-or-ref>>>.
+Free-form text is not routed.
+"""
+key_points = [
+  "A chrote-outputs block with all and only the declared output port IDs.",
+  "The exact CHROTE-DONE sentinel carrying this run's ID.",
+]
+
+[[question]]
+id = "server-vs-workspace"
+source = "CONTRACT: Operator procedure; HTTP contract (--server authoring)"
+question = "When do I use --server and when --workspace with the archon CLI?"
+expected = """
+Runtime commands (mission run, run status/follow/abort/resume, gate
+approve/reject) always use --server with the daemon URL, and a remote failure
+never falls back locally. Authoring works both ways: through --server the edits
+go through the daemon so an open cockpit shows them; --workspace edits the state
+directory's files offline. Do not run offline runtime mutations beside the daemon.
+"""
+key_points = [
+  "Runtime commands always go through --server.",
+  "Authoring through --server makes edits visible in the open cockpit; --workspace authors offline.",
+]
+
+[[question]]
+id = "limit-block"
+source = "CONTRACT: Execution and authority (limit exhaustion)"
+question = "A run is blocked with max_dispatch_exceeded. Can I resume it?"
+expected = """
+No. A block that exhausts dispatches or attempts records resumeAllowed false and
+resumePolicy limit_exhausted, with the limit named; resuming could only block
+again and is rejected. Start a new run with a larger cap, or none.
+"""
+key_points = [
+  "It cannot be resumed (resumeAllowed false, limit exhausted).",
+  "Start a new run with a larger cap (or without one).",
+]
+
+[[question]]
+id = "lost-seat"
+source = "CONTRACT: Operator procedure (redispatch)"
+question = "A seat died mid-turn and there is no completed evidence. How do I get that step to run again?"
+expected = """
+`archon --server <server> run resume <run> --mode redispatch --reason ...`
+abandons the open dispatch and runs the node again as a new attempt that counts
+against maxAttempts when the run set one. A plain resume cannot invent the missing completion.
+"""
+key_points = [
+  "`run resume --mode redispatch` through the daemon.",
+  "The rerun counts as a new attempt.",
+]
+
+[[question]]
+id = "operator-typing"
+source = "CONTRACT: Execution and authority (tmux executor, native completion)"
+question = "May the operator type into an agent's seat while it is working a dispatch, and may I as the driving agent type into seats?"
+expected = """
+The operator may type into any live seat at any time; the dispatch waits
+through their turns and still completes on the run's exact sentinel. Archon
+agents must not type into seats or manage their sessions: the runtime owns seat
+creation, input and cleanup (only an orchestrated controller directs its own
+bound workers).
+"""
+key_points = [
+  "The operator may type into a seat mid-dispatch without breaking it.",
+  "The driving agent must not type into or manage seat sessions; the runtime owns them.",
+]
