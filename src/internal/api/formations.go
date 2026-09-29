@@ -199,8 +199,11 @@ type formationsRestoreNodeRequest struct {
 type formationsAssignSlotRequest struct {
 	FormationID string `json:"formationId"`
 	SlotID      string `json:"slotId"`
+	// AgentID is the slot's optional role (persona id).
 	AgentID     string `json:"agentId"`
 	Harness     string `json:"harness"`
+	Model       string `json:"model"`
+	Effort      string `json:"effort"`
 	ExpectedRev int    `json:"expectedRev"`
 	UpdatedBy   string `json:"updatedBy"`
 }
@@ -1213,6 +1216,9 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			SlotID:      assign.SlotID,
 			AgentID:     assign.AgentID,
 			Harness:     assign.Harness,
+			Model:       assign.Model,
+			Effort:      assign.Effort,
+			Personas:    h.personas,
 			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, assign.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
@@ -1850,6 +1856,8 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusBadRequest, "INVALID_PORT_DIRECTION", fieldErrorMessage(err, formations.ErrInvalidPortDirection))
 	case errors.Is(err, formations.ErrInvalidAgentCard):
 		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_AGENT_CARD", fieldErrorMessage(err, formations.ErrInvalidAgentCard))
+	case errors.Is(err, formations.ErrInvalidSlotSettings):
+		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_SLOT_SETTINGS", fieldErrorMessage(err, formations.ErrInvalidSlotSettings))
 	case errors.Is(err, formations.ErrInvalidSlug):
 		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid formation slug")
 	case errors.Is(err, formations.ErrUnsupportedSchema):

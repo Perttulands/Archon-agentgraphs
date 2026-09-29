@@ -31,6 +31,7 @@ label = "Producer"
 agentId = "codex-builder"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_reviewer"
@@ -51,6 +52,7 @@ label = "Reviewer"
 agentId = "codex-reviewer"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_integrator"
@@ -71,6 +73,7 @@ label = "Integrator"
 agentId = "codex-builder"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[gate]]
 id = "gate_operator"

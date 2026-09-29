@@ -99,6 +99,8 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrAmbiguousSelector
 	case "INVALID_GATE_KIND":
 		return formations.ErrInvalidGateKind
+	case "INVALID_SLOT_SETTINGS":
+		return formations.ErrInvalidSlotSettings
 	case "INVALID_NOTE_PATCH":
 		return formations.ErrInvalidNotePatch
 	case "NOTE_ENTRY_NOT_FOUND":
@@ -786,25 +788,25 @@ func remoteFormationSetType(c *remoteClient, args []string, stdout, stderr io.Wr
 
 func remoteFormationAssign(c *remoteClient, args []string, stdout, stderr io.Writer) int {
 	fs := remoteFlags("formation assign", stderr)
-	slotID := fs.String("slot", "", "slot id")
-	agentID := fs.String("agent", "", "persona id")
-	harness := fs.String("harness", "", "harness variant")
-	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
-	jsonOut := fs.Bool("json", false, "write JSON")
+	f := newSlotAssignFlags(fs, stderr)
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
-	if fs.NArg() != 2 || *slotID == "" || *agentID == "" {
-		fmt.Fprintln(stderr, "usage: archon formation assign <board> <formation> --slot <slot> --agent <agent> [--harness <h>] [--json]")
+	role, ok := f.resolve(fs, stderr)
+	if !ok {
 		return 2
 	}
-	data, _, err := c.patchFormation(fs.Arg(0), fs.Arg(1), *updatedBy, func(id string) (string, map[string]any) {
-		return "assignSlot", map[string]any{"formationId": id, "slotId": *slotID, "agentId": *agentID, "harness": *harness}
+	data, formationID, err := c.patchFormation(fs.Arg(0), fs.Arg(1), *f.updatedBy, func(id string) (string, map[string]any) {
+		return "assignSlot", map[string]any{"formationId": id, "slotId": *f.slot, "agentId": role, "harness": *f.harness, "model": *f.model, "effort": *f.effort}
 	})
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "formation", fs.Arg(1))
+		return remoteFail(stderr, err, *f.jsonOut, "formation", fs.Arg(1))
 	}
-	return writeRemoteBoard(stdout, stderr, data, *jsonOut, fmt.Sprintf("assigned %s to %s", *agentID, *slotID))
+	board, err := decodeRemote[formations.BoardDocument](data, "board")
+	if err != nil {
+		return fail(stderr, err)
+	}
+	return writeRemoteBoard(stdout, stderr, data, *f.jsonOut, assignedText(board, formationID, *f.slot))
 }
 
 func remoteFormationUnassign(c *remoteClient, args []string, stdout, stderr io.Writer) int {
@@ -1132,6 +1134,9 @@ func remoteAgentNew(c *remoteClient, args []string, stdout, stderr io.Writer) in
 	}
 	if fs.NArg() != 1 {
 		fmt.Fprintln(stderr, agentNewUsage)
+		return 2
+	}
+	if f.refusedSettings(stderr) {
 		return 2
 	}
 	data, _, err := c.call("POST", "/api/agents", map[string]any{"id": fs.Arg(0), "kind": *f.kind, "harness": *f.harness, "model": *f.model, "effort": *f.effort, "capabilities": splitCSV(*f.capable), "personality": *f.personality, "source": *f.from}, "")

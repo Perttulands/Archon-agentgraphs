@@ -131,6 +131,7 @@ func Run(args []string) error {
 	if err := c.ConfigureFileRoots(fileRoots); err != nil {
 		return err
 	}
+	migrateSlotSettings(c.Store(), personas)
 	if *executor == "tmux" {
 		if err := c.ConfigureTerminals(*socket, *tmux); err != nil {
 			return err

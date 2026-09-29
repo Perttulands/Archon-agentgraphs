@@ -784,38 +784,36 @@ func readRunEventsFile(path string) ([]RunEvent, error) {
 	return classifyAndReadRunEvents(file, runID)
 }
 
+// resolveRunBindings freezes what every staffed slot on the board runs: its
+// harness, model and effort, and its role card when it has one.
 func resolveRunBindings(board *BoardDocument, personas *PersonaStore) ([]runBinding, error) {
 	var bindings []runBinding
 	for _, formation := range board.Formations {
 		for _, slot := range formation.Slots {
-			if slot.AgentID == "" {
+			if !slot.Staffed() {
 				continue
 			}
-			if personas == nil {
-				return nil, fmt.Errorf("%w: persona store required for slot %q", ErrNotFound, slot.ID)
-			}
-			card, err := personas.ReadPersona(slot.AgentID)
+			settings, card, err := ResolveSlotSettings(slot, personas)
 			if err != nil {
 				return nil, err
 			}
-			variant, err := card.SelectHarnessVariant(slot.Harness)
-			if err != nil {
-				return nil, err
-			}
-			bindings = append(bindings, runBinding{
+			binding := runBinding{
 				NodeID:      formation.ID,
 				SlotID:      slot.ID,
-				AgentID:     card.ID,
-				Harness:     variant.ID,
-				SessionStem: variant.SessionStem,
-				CardPath:    filepath.ToSlash(personas.PersonaPath(card.ID)),
-				CardHash:    etag([]byte(card.TOML)),
-				CardTOML:    card.TOML,
-				Model:       variant.Model,
-				Effort:      variant.effectiveEffort(),
-				Launch:      variant.Launch,
-				Source:      variant.Source,
-			})
+				AgentID:     settings.Role,
+				Harness:     settings.Harness,
+				SessionStem: settings.SessionStem,
+				Model:       settings.Model,
+				Effort:      settings.Effort,
+				Launch:      settings.Launch,
+				Source:      settings.Source,
+			}
+			if card != nil {
+				binding.CardPath = filepath.ToSlash(personas.PersonaPath(card.ID))
+				binding.CardHash = etag([]byte(card.TOML))
+				binding.CardTOML = card.TOML
+			}
+			bindings = append(bindings, binding)
 		}
 	}
 	return bindings, nil
@@ -823,7 +821,7 @@ func resolveRunBindings(board *BoardDocument, personas *PersonaStore) ([]runBind
 
 func renderRunBindings(runID string, board *BoardDocument, mission MissionNode, bindings []runBinding, gateBindings []RunGateBinding) string {
 	var b strings.Builder
-	b.WriteString("schema = 2\n")
+	b.WriteString("schema = 3\n")
 	b.WriteString("runId = " + renderString(runID) + "\n")
 	b.WriteString("boardId = " + renderString(board.ID) + "\n")
 	b.WriteString("boardSlug = " + renderString(board.Slug) + "\n")
@@ -837,9 +835,11 @@ func renderRunBindings(runID string, board *BoardDocument, mission MissionNode, 
 		b.WriteString("agentId = " + renderString(binding.AgentID) + "\n")
 		b.WriteString("harness = " + renderString(binding.Harness) + "\n")
 		b.WriteString("sessionStem = " + renderString(binding.SessionStem) + "\n")
-		b.WriteString("cardPath = " + renderString(binding.CardPath) + "\n")
-		b.WriteString("cardSha256 = " + renderString(binding.CardHash) + "\n")
-		b.WriteString("cardToml = " + renderString(binding.CardTOML) + "\n")
+		if binding.CardTOML != "" {
+			b.WriteString("cardPath = " + renderString(binding.CardPath) + "\n")
+			b.WriteString("cardSha256 = " + renderString(binding.CardHash) + "\n")
+			b.WriteString("cardToml = " + renderString(binding.CardTOML) + "\n")
+		}
 		b.WriteString("model = " + renderString(binding.Model) + "\n")
 		b.WriteString("effort = " + renderString(binding.Effort) + "\n")
 		if binding.Launch != "" {

@@ -193,6 +193,8 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 			return runBoardNote(store, args[2:], stdout, stderr)
 		case "validate":
 			return runBoardValidate(store, args[2:], stdout, stderr)
+		case "migrate-slots":
+			return runBoardMigrateSlots(store, args[2:], stdout, stderr)
 		case "arrange":
 			return runBoardArrange(store, args[2:], stdout, stderr)
 		default:
@@ -423,6 +425,9 @@ func runAgentNew(store *formations.PersonaStore, args []string, stdout, stderr i
 	}
 	if fs.NArg() != 1 {
 		fmt.Fprintln(stderr, agentNewUsage)
+		return 2
+	}
+	if f.refusedSettings(stderr) {
 		return 2
 	}
 	card, err := store.CreatePersona(formations.CreatePersonaRequest{
@@ -691,37 +696,27 @@ func resolveCreateCoordinates(store *formations.Store, slug string, fs *flag.Fla
 func runFormationAssign(store *formations.Store, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("formation assign", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	slotID := fs.String("slot", "", "slot id")
-	agentID := fs.String("agent", "", "persona id")
-	harness := fs.String("harness", "", "harness variant")
-	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
-	jsonOut := fs.Bool("json", false, "write JSON")
+	f := newSlotAssignFlags(fs, stderr)
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
-	if fs.NArg() != 2 || *slotID == "" || *agentID == "" {
-		fmt.Fprintln(stderr, "usage: archon formation assign <board> <formation> --slot <slot> --agent <agent> [--harness <h>] [--json]")
+	role, ok := f.resolve(fs, stderr)
+	if !ok {
 		return 2
 	}
 	slug, board, formationID, err := resolveFormationCommandTarget(store, fs.Arg(0), fs.Arg(1))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "formation", fs.Arg(1))
+		return failSelector(stderr, err, *f.jsonOut, "formation", fs.Arg(1))
 	}
-	result, err := store.AssignFormationSlot(slug, formations.FormationSlotAssignmentRequest{
-		FormationID: formationID,
-		SlotID:      *slotID,
-		AgentID:     *agentID,
-		Harness:     *harness,
-		UpdatedBy:   *updatedBy,
-	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
+	result, err := store.AssignFormationSlot(slug, f.request(formationID, role), formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "formation", fs.Arg(1))
+		return failDefinitionWrite(stderr, err, *f.jsonOut, "formation", fs.Arg(1))
 	}
 	result.TOML = ""
-	if *jsonOut {
+	if *f.jsonOut {
 		return writeJSON(stdout, result)
 	}
-	fmt.Fprintf(stdout, "assigned %s to %s\n", *agentID, *slotID)
+	fmt.Fprintln(stdout, assignedText(result, formationID, *f.slot))
 	return 0
 }
 
@@ -2455,7 +2450,7 @@ func writeFormationList(stdout io.Writer, board *formations.BoardDocument, jsonO
 func formationSummary(formation formations.FormationNode) string {
 	staffed := 0
 	for _, slot := range formation.Slots {
-		if slot.AgentID != "" {
+		if slot.Staffed() {
 			staffed++
 		}
 	}
@@ -2506,6 +2501,13 @@ func writeFormationInspect(stdout, stderr io.Writer, board *formations.BoardDocu
 		return writeJSON(stdout, response)
 	}
 	fmt.Fprintf(stdout, "%s\t%d connections\n", formationSummary(response.Formation), len(response.Connections))
+	for _, slot := range response.Formation.Slots {
+		controller := ""
+		if slot.Controller {
+			controller = " (controller)"
+		}
+		fmt.Fprintf(stdout, "slot %s\t%s%s\t%s\n", slot.ID, slot.Label, controller, slot.StaffingSummary())
+	}
 	return 0
 }
 
@@ -2678,7 +2680,7 @@ func failJSON(stderr io.Writer, err error, jsonOut bool, boundary, selector stri
 }
 
 func failDefinitionWrite(stderr io.Writer, err error, jsonOut bool, boundary, selector string) int {
-	if errors.Is(err, formations.ErrInvalidDefinitionSource) || errors.Is(err, formations.ErrInputOccupied) || errors.Is(err, formations.ErrSelfWire) || errors.Is(err, formations.ErrDuplicateConnection) || errors.Is(err, formations.ErrIncompatibleToolConnection) {
+	if errors.Is(err, formations.ErrInvalidDefinitionSource) || errors.Is(err, formations.ErrInvalidSlotSettings) || errors.Is(err, formations.ErrInputOccupied) || errors.Is(err, formations.ErrSelfWire) || errors.Is(err, formations.ErrDuplicateConnection) || errors.Is(err, formations.ErrIncompatibleToolConnection) {
 		return failJSON(stderr, err, jsonOut, boundary, selector)
 	}
 	return fail(stderr, err)
@@ -2733,6 +2735,8 @@ func archonErrorCode(err error) string {
 		return "invalid_type_change"
 	case errors.Is(err, formations.ErrSlotChoiceRequired):
 		return "slot_choice_required"
+	case errors.Is(err, formations.ErrInvalidSlotSettings):
+		return "invalid_slot_settings"
 	case errors.Is(err, formations.ErrDefinitionPublicationUncertain):
 		return "definition_publication_uncertain"
 	case errors.Is(err, formations.ErrInvalidToolMutation):

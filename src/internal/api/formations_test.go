@@ -933,7 +933,7 @@ controller = false
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"assignSlot":{"formationId":"fmn_frame","slotId":"slot_peer_a","agentId":"conductor","harness":"openai-codex"},"expectedRev":7,"updatedBy":"agent:test"}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"assignSlot":{"formationId":"fmn_frame","slotId":"slot_peer_a","agentId":"conductor","harness":"openai-codex","effort":"high"},"expectedRev":7,"updatedBy":"agent:test"}`))
 	req.Header.Set("If-Match", board.ETag)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -957,7 +957,7 @@ controller = false
 		t.Fatalf("decode response: %v\n%s", err, rec.Body.String())
 	}
 	slot := response.Data.Board.Formations[0].Slots[0]
-	if response.Data.Board.Rev != 8 || slot.AgentID != "conductor" || slot.Harness != "openai-codex" {
+	if response.Data.Board.Rev != 8 || slot.AgentID != "conductor" || slot.Harness != "openai-codex" || slot.Effort != "high" {
 		t.Fatalf("assignment response = %+v, want rev 8 conductor/openai-codex", response.Data.Board)
 	}
 }

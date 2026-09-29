@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -245,16 +246,25 @@ func TestAgentsHandlerCreatesAndEditsModelAndEffortAndShowsTheSeatLaunch(t *test
 		return rec
 	}
 
-	bad := httptest.NewRecorder()
-	handler.CreateAgent(bad, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"critic","harness":"claude-code","effort":"ultra"}`)))
-	if bad.Code != http.StatusUnprocessableEntity || !strings.Contains(bad.Body.String(), "low, medium, high, xhigh, max") {
-		t.Fatalf("invalid effort create = %d %s", bad.Code, bad.Body.String())
+	// A new role carries no model or effort; slots own them.
+	for _, body := range []string{`{"id":"critic","harness":"claude-code","effort":"low"}`, `{"id":"critic","harness":"claude-code","model":"claude-opus-5"}`} {
+		bad := httptest.NewRecorder()
+		handler.CreateAgent(bad, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(body)))
+		if bad.Code != http.StatusUnprocessableEntity || !strings.Contains(bad.Body.String(), "a new role carries no model or effort") {
+			t.Fatalf("role settings create %s = %d %s", body, bad.Code, bad.Body.String())
+		}
 	}
 
-	created := httptest.NewRecorder()
-	handler.CreateAgent(created, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"critic","harness":"claude-code","model":"claude-opus-5"}`)))
-	if created.Code != http.StatusCreated {
-		t.Fatalf("create = %d %s", created.Code, created.Body.String())
+	bare := httptest.NewRecorder()
+	handler.CreateAgent(bare, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"critic","harness":"claude-code"}`)))
+	if bare.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", bare.Code, bare.Body.String())
+	}
+	// A legacy card's model can still be edited; the role drag and agent spawn
+	// read it.
+	created := patch(`{"model":"claude-opus-5"}`, bare.Header().Get("ETag"))
+	if created.Code != http.StatusOK {
+		t.Fatalf("legacy model edit = %d %s", created.Code, created.Body.String())
 	}
 	claude := decode(created).DefaultVariant()
 	want := "exec '" + filepath.Join(bin, "claude") + "' --model 'claude-opus-5' --effort 'medium' --dangerously-skip-permissions"
@@ -313,11 +323,16 @@ func TestAgentsHandlerCreatesAndEditsModelAndEffortAndShowsTheSeatLaunch(t *test
 	handler.ListAgents(list, httptest.NewRequest(http.MethodGet, "/api/agents", nil))
 	var roster struct {
 		Data struct {
-			Harnesses []formations.LaunchableHarness `json:"harnesses"`
+			Harnesses    []formations.LaunchableHarness `json:"harnesses"`
+			EffortPolicy []formations.EffortPolicyEntry `json:"effortPolicy"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(list.Body.Bytes(), &roster); err != nil || len(roster.Data.Harnesses) != 2 || roster.Data.Harnesses[0].ID != "claude-code" || roster.Data.Harnesses[0].DefaultEffort != "medium" {
 		t.Fatalf("roster harnesses = %+v (%v) from %s", roster.Data.Harnesses, err, list.Body.String())
+	}
+	wantPolicy := []formations.EffortPolicyEntry{{Effort: "low", Use: "errands"}, {Effort: "medium", Use: "making things"}, {Effort: "xhigh", Use: "architecture and review"}, {Effort: "max", Use: "consequential reviews"}}
+	if fmt.Sprint(roster.Data.EffortPolicy) != fmt.Sprint(wantPolicy) {
+		t.Fatalf("roster effort policy = %+v, want %+v", roster.Data.EffortPolicy, wantPolicy)
 	}
 }
 

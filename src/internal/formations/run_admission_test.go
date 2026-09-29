@@ -224,11 +224,11 @@ func TestRunAdmissionReportsEveryProblemAtOnce(t *testing.T) {
 
 	report := ValidateRunAdmission(board, personas, RunAdmissionScope{MissionID: "mis_main"})
 	want := map[string]string{
-		FindingUnstaffedSlot + " fmn_plan":           `slot "Planner" (slot_plan) needs an agent`,
+		FindingUnstaffedSlot + " fmn_plan":           `slot "Planner" (slot_plan) needs a harness and effort`,
 		FindingGateNotRoutable + " gate_lint":        "forbidden text for code check output_absent@1",
 		FindingGateNotRoutable + " gate_review":      "a judge chain",
 		FindingOrchestratedController + " fmn_build": "exactly one controller slot; it has 0",
-		FindingUnavailablePersona + " fmn_build":     `unknown agent "nobody-here"`,
+		FindingUnavailablePersona + " fmn_build":     `unknown role "nobody-here"`,
 		FindingInvalidFormationType + " fmn_sketch":  `unsupported type "flow"`,
 	}
 	got := map[string]string{}
@@ -262,7 +262,7 @@ func TestRunAdmissionReportsEveryProblemAtOnce(t *testing.T) {
 
 	whole := ValidateRunAdmission(board, personas, RunAdmissionScope{})
 	if !hasBoardFinding(whole.Errors, "gate_unwired", "a code check") ||
-		!hasBoardFinding(whole.Errors, "fmn_sketch", `slot "Step" (slot_sketch) needs an agent`) ||
+		!hasBoardFinding(whole.Errors, "fmn_sketch", `slot "Step" (slot_sketch) needs a harness and effort`) ||
 		!hasBoardFinding(whole.Warnings, "mis_idle", "no outgoing connection") {
 		t.Fatalf("whole-board report errors=%+v warnings=%+v, want every draft marker", whole.Errors, whole.Warnings)
 	}

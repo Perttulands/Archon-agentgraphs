@@ -11,6 +11,7 @@ const (
 	FindingFormationWithoutSlots    = "formation_without_slots"
 	FindingUnstaffedSlot            = "unstaffed_slot"
 	FindingUnavailablePersona       = "unavailable_persona"
+	FindingInvalidSlotSettings      = "invalid_slot_settings"
 	FindingOrchestratedController   = "orchestrated_controller"
 	FindingToolExecutionUnavailable = ToolExecutionUnavailableCode
 )
@@ -145,26 +146,26 @@ func formationAdmissionFindings(formation FormationNode, personas *PersonaStore,
 		if slot.Controller {
 			controllers++
 		}
-		if slot.AgentID == "" {
+		if !slot.Staffed() {
 			if reached {
-				add(FindingUnstaffedSlot, "formation %q slot %s needs an agent", formation.ID, slotName(slot))
+				add(FindingUnstaffedSlot, "formation %q slot %s needs a harness and effort, and optionally a role", formation.ID, slotName(slot))
 			}
 			continue
 		}
-		if personas == nil {
+		if personas == nil && slot.AgentID != "" {
 			continue
 		}
-		card, err := personas.ReadPersona(slot.AgentID)
-		if errors.Is(err, ErrNotFound) {
-			add(FindingUnavailablePersona, "formation %q slot %s names unknown agent %q", formation.ID, slotName(slot), slot.AgentID)
-			continue
-		}
-		if err != nil {
-			add(FindingUnavailablePersona, "formation %q slot %s cannot read agent %q: %v", formation.ID, slotName(slot), slot.AgentID, err)
-			continue
-		}
-		if _, err := card.SelectHarnessVariant(slot.Harness); err != nil {
-			add(FindingUnavailablePersona, "formation %q slot %s cannot bind agent %q: %v", formation.ID, slotName(slot), slot.AgentID, err)
+		_, _, err := ResolveSlotSettings(slot, personas)
+		switch {
+		case err == nil:
+		case errors.Is(err, ErrInvalidSlotSettings):
+			add(FindingInvalidSlotSettings, "formation %q %s", formation.ID, strings.TrimPrefix(err.Error(), ErrInvalidSlotSettings.Error()+": "))
+		case errors.Is(err, errRoleBinding):
+			add(FindingUnavailablePersona, "formation %q slot %s cannot bind role %q: %s", formation.ID, slotName(slot), slot.AgentID, strings.TrimPrefix(err.Error(), errRoleBinding.Error()+": "))
+		case errors.Is(err, ErrNotFound):
+			add(FindingUnavailablePersona, "formation %q slot %s names unknown role %q", formation.ID, slotName(slot), slot.AgentID)
+		default:
+			add(FindingUnavailablePersona, "formation %q slot %s cannot read role %q: %v", formation.ID, slotName(slot), slot.AgentID, err)
 		}
 	}
 	if reached && formation.Type == FormationTypeOrchestrated && len(formation.Slots) > 0 {

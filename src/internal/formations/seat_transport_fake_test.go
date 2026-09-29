@@ -12,6 +12,7 @@ func (f *fakeTmuxHarnessClient) Create(ctx context.Context, socket, name, cwd, r
 	if err := f.CreateSession(ctx, socket, name, cwd, v.Launch); err != nil {
 		return nil, err
 	}
+	f.seatVariants = append(f.seatVariants, v)
 	return &nativeSeat{name: name, sessionID: name, paneID: name, variant: v}, nil
 }
 func (f *fakeTmuxHarnessClient) Ready(ctx context.Context, socket string, s *nativeSeat, h string) error {

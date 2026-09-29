@@ -175,7 +175,7 @@ func TestIncompletePersonaSnapshotsBlockNewSeats(t *testing.T) {
 				if strings.HasPrefix(line, "cardToml =") || strings.HasPrefix(line, "model =") || strings.HasPrefix(line, "effort =") {
 					continue
 				}
-				legacy = append(legacy, strings.Replace(line, "schema = 2", "schema = 1", 1))
+				legacy = append(legacy, strings.Replace(line, "schema = 3", "schema = 1", 1))
 			}
 			if err := os.WriteFile(path, []byte(strings.Join(legacy, "\n")), 0600); err != nil {
 				t.Fatal(err)

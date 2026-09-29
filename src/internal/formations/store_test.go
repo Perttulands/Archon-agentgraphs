@@ -1621,6 +1621,7 @@ controller = false
 		SlotID:      "slot_peer_a",
 		AgentID:     "susie",
 		Harness:     "openai-codex",
+		Effort:      "medium",
 		UpdatedBy:   "agent:test",
 	}, WriteOptions{ExpectedETag: before.ETag, ExpectedRev: before.Rev})
 	if err != nil {
@@ -1630,6 +1631,9 @@ controller = false
 		FormationID: "fmn_frame",
 		SlotID:      "slot_peer_b",
 		AgentID:     "susie",
+		Harness:     "claude-code",
+		Model:       "claude-opus-5",
+		Effort:      "low",
 		UpdatedBy:   "agent:test",
 	}, WriteOptions{ExpectedETag: assigned.ETag, ExpectedRev: assigned.Rev})
 	if err != nil {
@@ -1640,8 +1644,9 @@ controller = false
 	if slots[0].AgentID != "susie" || slots[0].Harness != "openai-codex" {
 		t.Fatalf("slot A = %+v, want susie/openai-codex", slots[0])
 	}
-	if slots[1].AgentID != "susie" {
-		t.Fatalf("slot B = %+v, want same persona reference", slots[1])
+	// One role, two slots, each with its own settings.
+	if slots[1].AgentID != "susie" || slots[1].Harness != "claude-code" || slots[1].Model != "claude-opus-5" || slots[1].Effort != "low" || slots[0].Effort != "medium" || slots[0].Model != "" {
+		t.Fatalf("slots = %+v, want the same role with each slot's own settings", slots)
 	}
 	raw := readFile(t, store.BoardPath("session-search"))
 	for _, forbidden := range []string{"sessionName", "sessionStem", "tmux"} {

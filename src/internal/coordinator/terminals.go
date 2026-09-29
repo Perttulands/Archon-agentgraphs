@@ -14,12 +14,16 @@ import (
 )
 
 type Seat struct {
-	RunID       string `json:"runId"`
-	NodeID      string `json:"nodeId"`
-	NodeTitle   string `json:"nodeTitle"`
-	SlotID      string `json:"slotId"`
-	SlotLabel   string `json:"slotLabel"`
-	Harness     string `json:"harness"`
+	RunID     string `json:"runId"`
+	NodeID    string `json:"nodeId"`
+	NodeTitle string `json:"nodeTitle"`
+	SlotID    string `json:"slotId"`
+	SlotLabel string `json:"slotLabel"`
+	Harness   string `json:"harness"`
+	// Model and Effort are what the seat was started with; a blank model is the
+	// harness default.
+	Model       string `json:"model,omitempty"`
+	Effort      string `json:"effort,omitempty"`
 	Controller  bool   `json:"controller"`
 	CreatedSeq  int    `json:"createdSeq"`
 	SessionName string `json:"sessionName"`
@@ -89,7 +93,7 @@ func (c *Coordinator) seatRecords(runID string) ([]seatRecord, map[int]bool, err
 						harness = slot.Harness
 					}
 					latest[key] = seatRecord{
-						seat:   Seat{RunID: runID, NodeID: node.ID, NodeTitle: node.Title, SlotID: slot.ID, SlotLabel: slot.Label, Harness: harness, Controller: slot.Controller, CreatedSeq: event.Seq, SessionName: text(event, "sessionName")},
+						seat:   Seat{RunID: runID, NodeID: node.ID, NodeTitle: node.Title, SlotID: slot.ID, SlotLabel: slot.Label, Harness: harness, Model: text(event, "model"), Effort: text(event, "effort"), Controller: slot.Controller, CreatedSeq: event.Seq, SessionName: text(event, "sessionName")},
 						target: terminal.Target{SessionID: text(event, "sessionId"), PaneID: text(event, "paneId"), SocketIdentity: text(event, "socketIdentity")},
 					}
 				}

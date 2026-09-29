@@ -12,7 +12,7 @@ import (
 // agent new and agent edit take the same flags offline and with --server.
 
 const (
-	agentNewUsage  = "usage: archon agent new <id> [--kind <kind>] [--harness <h>] [--model <m>] [--effort <e>] [--capable a,b] [--personality p] [--from <path>] [--json]"
+	agentNewUsage  = "usage: archon agent new <id> [--kind <kind>] [--harness <h>] [--capable a,b] [--personality p] [--from <path>] [--json]\nA role carries no model or effort; each slot that uses it sets them (archon formation assign)."
 	agentEditUsage = "usage: archon agent edit <id> [--display-name n] [--kind k] [--summary s] [--capable a,b] [--session-stem s] [--harness h] [--model m] [--effort e] [--launch command] [--add-capability t|--remove-capability t|--add-harness h|--note text] [--json]"
 )
 
@@ -30,9 +30,21 @@ func newAgentNewFlags(fs *flag.FlagSet, stderr io.Writer) agentNewFlags {
 		from:        fs.String("from", "", "source config path"),
 		jsonOut:     fs.Bool("json", false, "write JSON"),
 	}
-	flags.model, flags.effort = agentSettingsFlags(fs)
+	// A new role carries no model or effort; the flags remain only to refuse
+	// them with directions to the slot.
+	flags.model = fs.String("model", "", "refused: set the model on each slot (archon formation assign --model)")
+	flags.effort = fs.String("effort", "", "refused: set the effort on each slot (archon formation assign --effort)")
 	agentUsage(fs, stderr, agentNewUsage)
 	return flags
+}
+
+// refusedSettings reports, and refuses, a model or effort given to a new role.
+func (f agentNewFlags) refusedSettings(stderr io.Writer) bool {
+	if err := formations.RefuseRoleSettings(*f.model, *f.effort); err != nil {
+		fmt.Fprintln(stderr, err)
+		return true
+	}
+	return false
 }
 
 type agentEditFlags struct {

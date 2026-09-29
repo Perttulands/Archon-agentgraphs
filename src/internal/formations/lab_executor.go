@@ -112,7 +112,7 @@ func (e *LabFormationExecutor) executeFormation(ctx context.Context, req Formati
 	dispatcher := NewSlotDispatcher(e.store, nil)
 	outputs := make([]string, 0, len(req.Formation.Slots))
 	for _, slot := range req.Formation.Slots {
-		if slot.AgentID == "" {
+		if !slot.Staffed() {
 			return FormationExecutionResult{}, runExecutionError("missing_agent", fmt.Sprintf("slot %q is not staffed", slot.ID), "executor", nil)
 		}
 		card, variant, err := e.store.readRunPersonaBinding(req.RunID, req.NodeID, slot)
@@ -211,7 +211,7 @@ func (e *LabFormationExecutor) renderPrompt(req FormationExecution, slot Formati
 	b.WriteString("run: " + req.RunID + "\n")
 	b.WriteString("node: " + req.NodeID + "\n")
 	b.WriteString("slot: " + slot.ID + "\n")
-	b.WriteString("agent: " + card.ID + "\n")
+	b.WriteString(roleLine(card, variant))
 	b.WriteString("harness: " + variant.ID + "\n")
 	b.WriteString("cwd: " + e.config.Cwd + "\n")
 	renderBriefAndInputs(&b, req, card)
@@ -229,7 +229,7 @@ func (e *LabFormationExecutor) renderSlotOutput(req FormationExecution, slot For
 	if inputText == "" {
 		inputText = req.Brief.Goal
 	}
-	return fmt.Sprintf("lab-fake output from %s using %s for %s\nslot: %s\ninput: %s", card.ID, variant.ID, req.Title, slot.ID, inputText)
+	return fmt.Sprintf("lab-fake output from %s using %s for %s\nslot: %s\ninput: %s", roleName(card), variant.ID, req.Title, slot.ID, inputText)
 }
 
 // collapseRepeatedLabVerdicts keeps one copy of a lab judge fixture. Lab seats

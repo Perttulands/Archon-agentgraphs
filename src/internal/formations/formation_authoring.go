@@ -80,9 +80,14 @@ type MissionDeleteResult struct {
 type FormationSlotAssignmentRequest struct {
 	FormationID string
 	SlotID      string
-	AgentID     string
-	Harness     string
-	UpdatedBy   string
+	// AgentID is the slot's optional role (persona id).
+	AgentID string
+	Harness string
+	Model   string
+	Effort  string
+	// Personas reads a role's settings when the request names only a role.
+	Personas  *PersonaStore
+	UpdatedBy string
 }
 
 type FormationControllerRequest struct {
@@ -255,10 +260,16 @@ type FormationPort struct {
 }
 
 type FormationSlot struct {
-	ID         string `json:"id"`
-	Label      string `json:"label"`
-	AgentID    string `json:"agentId,omitempty"`
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	// AgentID is the slot's optional role (persona). A slot without one is a
+	// vanilla agent.
+	AgentID string `json:"agentId,omitempty"`
+	// Harness, Model and Effort are what the slot's seat runs. A blank model
+	// means the harness default model.
 	Harness    string `json:"harness,omitempty"`
+	Model      string `json:"model,omitempty"`
+	Effort     string `json:"effort,omitempty"`
 	Controller bool   `json:"controller"`
 }
 
@@ -755,9 +766,20 @@ func (s *Store) DeleteMission(slug string, req MissionDeleteRequest, opts WriteO
 	return result, nil
 }
 
+// AssignFormationSlot writes a slot's staffing: its optional role and the
+// harness, model and effort its seat runs. A request naming none of them
+// empties the slot. A request with an effort states the slot's settings in
+// full. A request naming only a role (and perhaps a harness) takes that role's
+// current effective settings, as the cockpit's role drag does, and writes them
+// onto the slot; any other request without an effort is refused, so staffing
+// always states its effort.
 func (s *Store) AssignFormationSlot(slug string, req FormationSlotAssignmentRequest, opts WriteOptions) (*BoardDocument, error) {
 	if req.FormationID == "" || req.SlotID == "" {
 		return nil, ErrNotFound
+	}
+	settings, err := assignmentSettings(req)
+	if err != nil {
+		return nil, err
 	}
 	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, _ *BoardDocument) ([]byte, error) {
 		lines := splitLines(raw)
@@ -765,23 +787,78 @@ func (s *Store) AssignFormationSlot(slug string, req FormationSlotAssignmentRequ
 		if !ok {
 			return nil, ErrNotFound
 		}
-		slotStart, slotEnd, ok := findFormationSlotBlock(lines, formationStart, formationEnd, req.SlotID)
-		if !ok {
+		if _, _, ok := findFormationSlotBlock(lines, formationStart, formationEnd, req.SlotID); !ok {
 			return nil, ErrNotFound
 		}
-		if req.AgentID == "" {
-			lines = removeScalarInLineRange(lines, slotStart+1, slotEnd, "agentId")
-			lines = removeScalarInLineRange(lines, slotStart+1, slotEnd, "harness")
-			return renderTOMLLines(lines), nil
-		}
-		lines = setScalarInLineRange(lines, slotStart+1, slotEnd, "agentId", renderString(req.AgentID))
-		if req.Harness != "" {
-			lines = setScalarInLineRange(lines, slotStart+1, slotEnd, "harness", renderString(req.Harness))
-		} else {
-			lines = removeScalarInLineRange(lines, slotStart+1, slotEnd, "harness")
-		}
-		return renderTOMLLines(lines), nil
+		return renderTOMLLines(writeSlotSettings(lines, req.FormationID, req.SlotID, settings)), nil
 	})
+}
+
+// writeSlotSettings sets or removes the slot's agentId, harness, model and
+// effort keys, leaving any other key in its block as it was.
+func writeSlotSettings(lines []tomlLine, formationID, slotID string, settings SlotSettings) []tomlLine {
+	for _, field := range []struct{ key, value string }{
+		{"agentId", settings.Role},
+		{"harness", settings.Harness},
+		{"model", settings.Model},
+		{"effort", settings.Effort},
+	} {
+		// Each edit can move the slot's lines, so find the block again. A new
+		// key goes after the slot's last line of content, not after the blank
+		// lines that separate it from the next table.
+		formationStart, formationEnd, _ := findFormationBlockByID(lines, formationID)
+		slotStart, slotEnd, _ := findFormationSlotBlock(lines, formationStart, formationEnd, slotID)
+		for slotEnd > slotStart+1 && strings.TrimSpace(lines[slotEnd-1].body) == "" {
+			slotEnd--
+		}
+		if field.value == "" {
+			lines = removeScalarInLineRange(lines, slotStart+1, slotEnd, field.key)
+		} else {
+			lines = setScalarInLineRange(lines, slotStart+1, slotEnd, field.key, renderString(field.value))
+		}
+	}
+	return lines
+}
+
+// assignmentSettings resolves what an assignment writes; blank settings empty
+// the slot.
+func assignmentSettings(req FormationSlotAssignmentRequest) (SlotSettings, error) {
+	role := strings.TrimSpace(req.AgentID)
+	harness, model, effort := strings.TrimSpace(req.Harness), strings.TrimSpace(req.Model), strings.TrimSpace(req.Effort)
+	name := fmt.Sprintf("%q", req.SlotID)
+	if role == "" && harness == "" && model == "" && effort == "" {
+		return SlotSettings{}, nil
+	}
+	if role != "" {
+		if err := validatePersonaID(role); err != nil {
+			return SlotSettings{}, fmt.Errorf("%w: slot %s role %q is not a persona id", ErrInvalidSlotSettings, name, role)
+		}
+	}
+	if effort == "" && model == "" && role != "" {
+		// The legacy role drag: the role's current settings become the slot's.
+		if req.Personas == nil {
+			return SlotSettings{}, fmt.Errorf("%w: persona store required to read role %q", ErrNotFound, role)
+		}
+		card, err := req.Personas.ReadPersona(role)
+		if errors.Is(err, ErrNotFound) {
+			return SlotSettings{}, fmt.Errorf("%w: slot %s role %q is not a known persona", ErrInvalidSlotSettings, name, role)
+		}
+		if err != nil {
+			return SlotSettings{}, err
+		}
+		settings, err := roleSettings(card, harness)
+		if err != nil {
+			return SlotSettings{}, fmt.Errorf("%w: slot %s cannot take its settings from role %q: %v; give the slot a harness and effort", ErrInvalidSlotSettings, name, role, err)
+		}
+		if err := validateSlotSettings(name, settings.Harness, settings.Model, settings.Effort); err != nil {
+			return SlotSettings{}, err
+		}
+		return settings, nil
+	}
+	if err := validateSlotSettings(name, harness, model, effort); err != nil {
+		return SlotSettings{}, err
+	}
+	return SlotSettings{Role: role, Harness: harness, Model: model, Effort: effort}, nil
 }
 
 func (s *Store) SetFormationController(slug string, req FormationControllerRequest, opts WriteOptions) (*BoardDocument, error) {
@@ -1213,8 +1290,8 @@ func slotsForFormationType(formation FormationNode, target, keepSlotID string) (
 		if keep == "" {
 			var staffed []string
 			for _, slot := range slots {
-				if slot.AgentID != "" {
-					staffed = append(staffed, fmt.Sprintf("%s (%s)", slotName(slot), slot.AgentID))
+				if slot.Staffed() {
+					staffed = append(staffed, fmt.Sprintf("%s (%s)", slotName(slot), slot.StaffingSummary()))
 				}
 			}
 			switch {
@@ -1222,7 +1299,7 @@ func slotsForFormationType(formation FormationNode, target, keepSlotID string) (
 				return nil, fmt.Errorf("%w: changing formation %q to solo would remove staffed slots %s; name the slot to keep", ErrSlotChoiceRequired, formation.ID, strings.Join(staffed, ", "))
 			case len(staffed) == 1:
 				for _, slot := range slots {
-					if slot.AgentID != "" {
+					if slot.Staffed() {
 						keep = slot.ID
 					}
 				}
@@ -1329,6 +1406,8 @@ func rewriteFormationSlots(lines []tomlLine, formation FormationNode, target []F
 			for _, field := range []struct{ key, value, stored string }{
 				{"agentId", slot.AgentID, existing.AgentID},
 				{"harness", slot.Harness, existing.Harness},
+				{"model", slot.Model, existing.Model},
+				{"effort", slot.Effort, existing.Effort},
 			} {
 				if field.value == field.stored {
 					continue
@@ -1370,6 +1449,12 @@ func renderSlotBlock(slot FormationSlot) []tomlLine {
 	}
 	if slot.Harness != "" {
 		body = append(body, "harness = "+renderString(slot.Harness))
+	}
+	if slot.Model != "" {
+		body = append(body, "model = "+renderString(slot.Model))
+	}
+	if slot.Effort != "" {
+		body = append(body, "effort = "+renderString(slot.Effort))
 	}
 	lines := make([]tomlLine, 0, len(body))
 	for _, line := range body {
@@ -2058,6 +2143,12 @@ func appendFormationBlock(raw []byte, formation FormationNode) []byte {
 		}
 		if slot.Harness != "" {
 			b.WriteString("harness = " + renderString(slot.Harness) + "\n")
+		}
+		if slot.Model != "" {
+			b.WriteString("model = " + renderString(slot.Model) + "\n")
+		}
+		if slot.Effort != "" {
+			b.WriteString("effort = " + renderString(slot.Effort) + "\n")
 		}
 		if i < len(formation.Slots)-1 {
 			b.WriteByte('\n')
@@ -3229,6 +3320,10 @@ func parseFormationNodes(raw []byte) []FormationNode {
 				slot.AgentID = value
 			case "harness":
 				slot.Harness = value
+			case "model":
+				slot.Model = value
+			case "effort":
+				slot.Effort = value
 			case "controller":
 				slot.Controller, _ = strconv.ParseBool(value)
 			}

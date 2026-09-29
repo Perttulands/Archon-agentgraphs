@@ -1516,6 +1516,7 @@ type fakeTmuxHarnessClient struct {
 	listCalls            int
 	describeCalls        int
 	created              []string
+	seatVariants         []HarnessVariant
 	killed               []string
 	ops                  []fakeTmuxOp
 	afterCapture         func(call int)

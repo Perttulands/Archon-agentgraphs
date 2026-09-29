@@ -365,6 +365,12 @@ func decodeFormationSlots(table map[string]any) ([]FormationSlot, error) {
 		if slot.Harness, err = tomlString(table, "harness"); err != nil {
 			return nil, err
 		}
+		if slot.Model, err = tomlString(table, "model"); err != nil {
+			return nil, err
+		}
+		if slot.Effort, err = tomlString(table, "effort"); err != nil {
+			return nil, err
+		}
 		if slot.Controller, err = tomlBool(table, "controller"); err != nil {
 			return nil, err
 		}

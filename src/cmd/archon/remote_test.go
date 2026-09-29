@@ -284,20 +284,20 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("formation", "add-input", "demo", "Worker", "--label", "Extra"))},
 		{args: with(fixed("formation", "add-output", "demo", "Worker", "--label", "Report"))},
 		{args: with(func(board *formations.BoardDocument) []string {
-			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--agent", "scout-x", "--harness", "openai-codex"}
+			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--agent", "scout-x", "--harness", "openai-codex", "--effort", "medium"}
 		})},
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"formation", "unassign", "demo", "Worker", "--slot", worker(board).Slots[0].ID}
 		})},
 		{args: with(func(board *formations.BoardDocument) []string {
-			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--agent", "codex-builder", "--harness", "openai-codex"}
+			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--agent", "codex-builder", "--harness", "openai-codex", "--effort", "medium"}
 		})},
 		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--goal", "Produce the result", "--bead", "form-demo", "--file", "src/a.go", "--link", "https://example.com/spec"))},
 		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "47"))},
 		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "0"))},
 		{args: with(fixed("formation", "set-brief", "demo", "Critic", "--goal", "Judge the result"))},
 		{args: with(func(board *formations.BoardDocument) []string {
-			return []string{"formation", "assign", "demo", "Critic", "--slot", formationTitled(t, board, "Critic").Slots[0].ID, "--agent", "codex-judge", "--harness", "openai-codex"}
+			return []string{"formation", "assign", "demo", "Critic", "--slot", formationTitled(t, board, "Critic").Slots[0].ID, "--agent", "codex-judge", "--harness", "openai-codex", "--effort", "xhigh"}
 		})},
 		{args: with(fixed("formation", "set-type", "demo", "Critic", "peer"))},
 		{args: with(func(board *formations.BoardDocument) []string {
@@ -681,7 +681,7 @@ func TestRepeatedAuthoringEditsKeepTheRevisionOfflineAndRemote(t *testing.T) {
 		}
 		slot := board.Formations[0].Slots[0].ID
 		for _, args := range [][]string{
-			{"formation", "assign", "same", "Worker", "--slot", slot, "--agent", "codex-builder", "--harness", "openai-codex"},
+			{"formation", "assign", "same", "Worker", "--slot", slot, "--agent", "codex-builder", "--harness", "openai-codex", "--effort", "medium"},
 			{"formation", "rename", "same", "Worker", "Worker"},
 			{"formation", "set-brief", "same", "Worker", "--goal", "Produce the result"},
 			{"formation", "set-type", "same", "Worker", "solo"},

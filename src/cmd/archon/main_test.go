@@ -252,12 +252,32 @@ func TestArchonAgentModelAndEffortDriveSpawn(t *testing.T) {
 	t.Setenv("PATH", bin)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	if _, stderr, code := runArchon(t, runner, "agent", "new", "clauder", "--harness", "claude-code", "--effort", "ultra"); code == 0 || !strings.Contains(stderr, "low, medium, high, xhigh, max") {
-		t.Fatalf("claude ultra accepted: code=%d stderr=%s", code, stderr)
+	// A new role carries no model or effort; its slots set them.
+	for _, args := range [][]string{
+		{"agent", "new", "clauder", "--harness", "claude-code", "--effort", "low"},
+		{"agent", "new", "clauder", "--harness", "claude-code", "--model", "claude-opus-5"},
+	} {
+		if _, stderr, code := runArchon(t, runner, args...); code != 2 || !strings.Contains(stderr, "a new role carries no model or effort") || !strings.Contains(stderr, "formation assign") {
+			t.Fatalf("%v: code=%d stderr=%s, want the role settings refused", args, code, stderr)
+		}
 	}
-	stdout, stderr, code := runArchon(t, runner, "agent", "new", "codexer", "--harness", "openai-codex", "--model", "gpt-6-sol", "--effort", "high", "--json")
+	if _, err := os.Stat(filepath.Join(agentsDir, "clauder.toml")); !os.IsNotExist(err) {
+		t.Fatalf("refused role was written: %v", err)
+	}
+	if _, stderr, code := runArchon(t, runner, "agent", "new", "codexer", "--harness", "openai-codex"); code != 0 {
+		t.Fatalf("create openai-codex failed: code=%d stderr=%s", code, stderr)
+	}
+	// Existing cards' legacy model and effort can still be edited and drive
+	// agent spawn.
+	if _, stderr, code := runArchon(t, runner, "agent", "edit", "codexer", "--harness", "claude-code", "--effort", "ultra"); code == 0 || !strings.Contains(stderr, "no harness variant") {
+		t.Fatalf("edit of a missing variant accepted: code=%d stderr=%s", code, stderr)
+	}
+	if _, stderr, code := runArchon(t, runner, "agent", "edit", "codexer", "--model", "gpt-6-sol", "--effort", "high"); code != 0 {
+		t.Fatalf("edit legacy settings failed: code=%d stderr=%s", code, stderr)
+	}
+	stdout, stderr, code := runArchon(t, runner, "agent", "inspect", "codexer", "--json")
 	if code != 0 {
-		t.Fatalf("create openai-codex failed: code=%d stderr=%s stdout=%s", code, stderr, stdout)
+		t.Fatalf("inspect failed: code=%d stderr=%s", code, stderr)
 	}
 	var card formations.PersonaCard
 	if err := json.Unmarshal([]byte(stdout), &card); err != nil {
@@ -539,7 +559,7 @@ customFuture = "keep me"
 		t.Fatalf("formation list JSON = %+v, want the board's one peer formation with its slots", listed)
 	}
 	formation := listed.Formations[0]
-	if stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "assign", "session-search", formation.ID, "--slot", formation.Slots[0].ID, "--agent", "codex-builder", "--harness", "openai-codex"); code != 0 {
+	if stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "assign", "session-search", formation.ID, "--slot", formation.Slots[0].ID, "--agent", "codex-builder", "--harness", "openai-codex", "--effort", "medium"); code != 0 {
 		t.Fatalf("formation assign code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
 	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "list", "session-search")
@@ -573,7 +593,10 @@ customFuture = "keep me"
 		t.Fatalf("formation inspect JSON = %+v, want the formation with its staffing, ports and connections", inspected)
 	}
 	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "inspect", "session-search", formation.ID)
-	if want := formation.ID + "\tpeer\tResearch huddle\t1/" + strconv.Itoa(len(formation.Slots)) + " staffed\t0 connections\n"; code != 0 || stdout != want {
+	want := formation.ID + "\tpeer\tResearch huddle\t1/" + strconv.Itoa(len(formation.Slots)) + " staffed\t0 connections\n" +
+		"slot " + formation.Slots[0].ID + "\tPeer\tcodex-builder · openai-codex · default model · medium\n" +
+		"slot " + formation.Slots[1].ID + "\tPeer\tnot staffed\n"
+	if code != 0 || stdout != want {
 		t.Fatalf("formation inspect text code=%d stdout=%q stderr=%s, want %q", code, stdout, stderr, want)
 	}
 	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "inspect", "session-search", "Nobody", "--json"); code == 0 || !strings.Contains(stderr, `"boundary": "formation"`) {
@@ -1762,7 +1785,7 @@ criterion = "Ready"
 `)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	_, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "assign", "poems", "draft-poem", "--slot", "slot_writer", "--agent", "lab-poet", "--json")
+	_, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "assign", "poems", "draft-poem", "--slot", "slot_writer", "--agent", "lab-poet", "--harness", "claude-code", "--effort", "low", "--json")
 	if code == 0 || !strings.Contains(stderr, "ambiguous") || !strings.Contains(stderr, "draft-poem") {
 		t.Fatalf("ambiguous formation assign code=%d stderr=%s", code, stderr)
 	}
@@ -1838,7 +1861,7 @@ controller = false
 `)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "assign", "session-search", "fmn_frame", "--slot", "slot_peer_a", "--agent", "conductor", "--harness", "openai-codex", "--json")
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "assign", "session-search", "fmn_frame", "--slot", "slot_peer_a", "--agent", "conductor", "--harness", "openai-codex", "--effort", "medium", "--json")
 	if code != 0 {
 		t.Fatalf("formation assign code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -2653,7 +2676,7 @@ func TestArchonPoemMissionRoundTripsThroughCLIAPIFileAndLedger(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
 	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
-	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "lab-fake")
+	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "openai-codex")
 	t.Setenv("CHROTE_FORMATIONS_LAB_CWD", workspace)
 	t.Setenv("CHROTE_FORMATIONS_LAB_ROOTS", workspace)
 
@@ -2703,8 +2726,8 @@ rev = 1
 	polish := mustFormationByTitle(t, board, "Polish poem")
 	gate := mustGateByTitle(t, board, "Human review")
 
-	archon(workspaceArgs("formation", "assign", "poems", draft.ID, "--slot", draft.Slots[0].ID, "--agent", "lab-poet", "--harness", "lab-fake", "--json")...)
-	archon(workspaceArgs("formation", "assign", "poems", polish.ID, "--slot", polish.Slots[0].ID, "--agent", "lab-poem-reviewer", "--harness", "lab-fake", "--json")...)
+	archon(workspaceArgs("formation", "assign", "poems", draft.ID, "--slot", draft.Slots[0].ID, "--agent", "lab-poet", "--harness", "openai-codex", "--effort", "medium", "--json")...)
+	archon(workspaceArgs("formation", "assign", "poems", polish.ID, "--slot", polish.Slots[0].ID, "--agent", "lab-poem-reviewer", "--harness", "openai-codex", "--effort", "xhigh", "--json")...)
 	archon(workspaceArgs("mission", "wire", "poems", mission.ID, draft.ID+":"+draft.Inputs[0].ID, "--json")...)
 	archon(workspaceArgs("formation", "wire", "poems", draft.ID+":"+draft.Outputs[0].ID, gate.ID+":in", "--json")...)
 	archon(workspaceArgs("formation", "wire", "poems", gate.ID+":pass", polish.ID+":"+polish.Inputs[0].ID, "--json")...)
@@ -2880,11 +2903,11 @@ y = 120
 	assignRaw := requestAPI(
 		http.MethodPatch,
 		"/api/formations/boards/poems",
-		`{"assignSlot":{"formationId":"fmn_draft","slotId":"slot_writer","agentId":"lab-poet","harness":"lab-fake"},"expectedRev":3,"updatedBy":"agent:ui"}`,
+		`{"assignSlot":{"formationId":"fmn_draft","slotId":"slot_writer","agentId":"lab-poet","harness":"openai-codex","effort":"medium"},"expectedRev":3,"updatedBy":"agent:ui"}`,
 		board.ETag,
 	)
 	assigned := decodeAPIBoard(t, assignRaw)
-	if assigned.Rev != 4 || assigned.Formations[0].Slots[0].AgentID != "lab-poet" || assigned.Formations[0].Slots[0].Harness != "lab-fake" {
+	if assigned.Rev != 4 || assigned.Formations[0].Slots[0].AgentID != "lab-poet" || assigned.Formations[0].Slots[0].Harness != "openai-codex" || assigned.Formations[0].Slots[0].Effort != "medium" {
 		t.Fatalf("assigned board = %+v, want UI slot assignment persisted through API", assigned)
 	}
 

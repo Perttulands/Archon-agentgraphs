@@ -28,6 +28,7 @@ label = "Plan"
 agentId = "delivery-planner"
 harness = "claude-code"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_beads"
@@ -47,6 +48,7 @@ label = "Beads"
 agentId = "delivery-beads-drafter"
 harness = "claude-code"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_beads_reviewer"
@@ -66,6 +68,7 @@ label = "Beads reviewer"
 agentId = "delivery-beads-reviewer"
 harness = "claude-code"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_execution"
@@ -85,24 +88,28 @@ label = "Controller"
 agentId = "delivery-lead"
 harness = "claude-code"
 controller = true
+effort = "medium"
 [[formation.slot]]
 id = "worker_1"
 label = "Worker 1"
 agentId = "delivery-worker"
 harness = "openai-codex"
 controller = false
+effort = "medium"
 [[formation.slot]]
 id = "worker_2"
 label = "Worker 2"
 agentId = "delivery-worker"
 harness = "openai-codex"
 controller = false
+effort = "medium"
 [[formation.slot]]
 id = "worker_3"
 label = "Worker 3"
 agentId = "delivery-worker"
 harness = "openai-codex"
 controller = false
+effort = "medium"
 
 [[formation]]
 id = "fmn_final_review"
@@ -122,6 +129,8 @@ label = "Final review"
 agentId = "delivery-final-reviewer"
 harness = "openai-codex"
 controller = true
+model = "gpt-6-astra"
+effort = "medium"
 
 [[gate]]
 id = "gate_beads_review"

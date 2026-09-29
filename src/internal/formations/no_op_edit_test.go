@@ -49,7 +49,7 @@ func TestAuthoringEditsThatChangeNothingKeepRevisionAndETag(t *testing.T) {
 		edit func(WriteOptions) error
 	}{
 		{"assign the same agent and harness", func(opts WriteOptions) error {
-			_, err := store.AssignFormationSlot("same", FormationSlotAssignmentRequest{FormationID: worker.Formation.ID, SlotID: worker.Formation.Slots[0].ID, AgentID: "codex-builder", Harness: "openai-codex"}, opts)
+			_, err := store.AssignFormationSlot("same", FormationSlotAssignmentRequest{FormationID: worker.Formation.ID, SlotID: worker.Formation.Slots[0].ID, AgentID: "codex-builder", Harness: "openai-codex", Model: "gpt-6-astra", Effort: "high"}, opts)
 			return err
 		}},
 		{"rename a formation to its title", func(opts WriteOptions) error {

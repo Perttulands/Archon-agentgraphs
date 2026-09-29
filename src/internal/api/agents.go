@@ -64,6 +64,8 @@ func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 		"agents":    roster.Agents,
 		"count":     len(roster.Agents),
 		"harnesses": formations.LaunchableHarnesses(),
+		// The effort policy guides the effort a slot is staffed with.
+		"effortPolicy": formations.EffortPolicy(),
 	})
 }
 
@@ -95,6 +97,10 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		Source       string   `json:"source"`
 	}
 	if !decodeJSONBody(w, r, &req) {
+		return
+	}
+	if err := formations.RefuseRoleSettings(req.Model, req.Effort); err != nil {
+		writeAgentError(w, err)
 		return
 	}
 	card, err := h.store.CreatePersona(formations.CreatePersonaRequest{

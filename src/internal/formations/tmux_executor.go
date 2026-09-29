@@ -767,7 +767,7 @@ func (e *TmuxFormationExecutor) resolveSlotBinding(ctx context.Context, req Form
 	if err := dispatchContextError(ctx); err != nil {
 		return tmuxSlotBinding{}, err
 	}
-	if slot.AgentID == "" {
+	if !slot.Staffed() {
 		return tmuxSlotBinding{}, runExecutionError("missing_agent", fmt.Sprintf("slot %q is not staffed", slot.ID), "executor", nil)
 	}
 	card, variant, err := e.store.readRunPersonaBinding(req.RunID, req.NodeID, slot)
@@ -1603,7 +1603,7 @@ func (e *TmuxFormationExecutor) renderPromptWithContext(req FormationExecution, 
 	b.WriteString("run: " + req.RunID + "\n")
 	b.WriteString("node: " + req.NodeID + "\n")
 	b.WriteString("slot: " + slot.ID + "\n")
-	b.WriteString("agent: " + card.ID + "\n")
+	b.WriteString(roleLine(card, variant))
 	b.WriteString("harness: " + variant.ID + "\n")
 	b.WriteString("cwd: " + e.config.Cwd + "\n")
 	if phase != "" {
