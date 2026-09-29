@@ -21,6 +21,7 @@ test('the canvas menu stays on screen from every corner of the canvas', async ({
   const viewport = await page.locator('.viewport').boundingBox()
   const menu = page.locator('.ctxmenu')
   let opened = 0
+  const widths = new Set<number>()
   for (const [fx, fy] of [[0.02, 0.02], [0.98, 0.02], [0.02, 0.98], [0.98, 0.98], [0.5, 0.9]]) {
     const x = viewport!.x + viewport!.width * fx
     const y = viewport!.y + viewport!.height * fy
@@ -30,12 +31,15 @@ test('the canvas menu stays on screen from every corner of the canvas', async ({
     await page.mouse.click(x, y, { button: 'right' })
     await expect(menu).toBeVisible()
     await expectOnScreen(page, menu)
+    // Measured before placement where nothing narrows it, the menu keeps one width at every edge.
+    widths.add(Math.round((await menu.boundingBox())!.width))
     await expect(menu.getByRole('menuitem').last()).toBeInViewport()
     await page.keyboard.press('Escape')
     await expect(menu).toHaveCount(0)
     opened++
   }
   expect(opened).toBeGreaterThanOrEqual(4)
+  expect([...widths]).toHaveLength(1)
 })
 
 test('a long Assign agent menu fits the screen, scrolls to its last agent, and its section head matches the menu', async ({ page }) => {

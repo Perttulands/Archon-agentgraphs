@@ -37,7 +37,8 @@ export function placeMenu(point: { x: number; y: number }, size: { width: number
 /** The canvas right-click menu: on screen at any click position, scrolling when long. */
 export default function CanvasContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }) {
   const ref = useRef<HTMLDivElement | null>(null)
-  // Until measured, the menu renders hidden at the click point.
+  // Until measured, the menu renders hidden at the top left, where nothing
+  // narrows it, so its natural size is what gets placed.
   const [placement, setPlacement] = useState<MenuPlacement | null>(null)
 
   const place = useCallback(() => {
@@ -69,7 +70,7 @@ export default function CanvasContextMenu({ menu, onClose }: { menu: MenuState; 
         aria-label={menu.label}
         style={placement
           ? { left: placement.left, top: placement.top, maxHeight: placement.maxHeight }
-          : { left: menu.x, top: menu.y, visibility: 'hidden' }}
+          : { left: 0, top: 0, visibility: 'hidden' }}
         onPointerDown={event => event.stopPropagation()}
       >
         <div className="mhead">{menu.label}</div>
