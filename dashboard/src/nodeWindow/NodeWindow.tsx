@@ -29,7 +29,7 @@ import { HumanChannelField } from '../humanChannel/HumanChannelField'
 import { humanChannelField, humanChannelOf } from '../humanChannel/humanChannel'
 import { buildFlow } from '../flow/flowModel'
 import { judgeChain, nodeRoutes, nodeTitle } from './boardRoutes'
-import { staffingSentence } from './staffing'
+import { slotStaffed, staffingSentence } from './staffing'
 import { usePersonaCards } from './usePersonaCards'
 import './nodeWindow.css'
 
@@ -279,7 +279,7 @@ function SlotStaffing({ formation, slot, agents, card, ops }: {
             const chosen = agents.find(candidate => candidate.id === event.target.value)
             ops.assignSlot(formation, slot, chosen?.id || '', chosen?.harnessDefault || '')
           }}>
-          <option value="">Not staffed</option>
+          <option value="">{slotStaffed(slot) && !slot.agentId ? 'No role (vanilla)' : 'Not staffed'}</option>
           {slot.agentId && !agent ? <option value={slot.agentId}>{slot.agentId}</option> : null}
           {choices.map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.displayName || candidate.id}</option>)}
         </select>

@@ -1994,6 +1994,27 @@ describe('FormationsCockpit reference parity', () => {
     expect(patches.filter(patch => patch.body.setExecution)).toEqual([])
   })
 
+  it('states a vanilla slot as staffed with no role, and restores a slot\'s own model and effort on undo', async () => {
+    const board = makeBoard()
+    board.formations = board.formations.map(item => item.id === 'fmn_frame'
+      ? { ...item, slots: [{ id: 'slot_lead', label: 'Lead', controller: true, agentId: 'mason', harness: 'codex', model: 'gpt-6-astra', effort: 'xhigh' }, { id: 'slot_worker', label: 'Worker', controller: false, harness: 'claude', model: 'opus', effort: 'low' }] }
+      : item) as typeof board.formations
+    patches = installFetchMock({ boards: [board] })
+    await renderCockpit()
+    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
+    const staffing = within(frame).getByRole('region', { name: 'Staffing' })
+    expect(await within(staffing).findByText('Worker is a vanilla agent on claude, model opus, low effort.')).toBeInTheDocument()
+    expect(within(staffing).getByRole('combobox', { name: 'Persona for Worker' })).toHaveDisplayValue('No role (vanilla)')
+    expect(within(staffing).getByText('Lead (controller) is Mason (mason) on codex, model gpt-6-astra, xhigh effort.')).toBeInTheDocument()
+
+    fireEvent.change(within(staffing).getByRole('combobox', { name: 'Persona for Lead' }), { target: { value: 'hazel' } })
+    await waitFor(() => expect(patches.find(patch => patch.body.assignSlot)).toBeTruthy())
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => {
+      expect(patches.filter(patch => patch.body.assignSlot).slice(-1)[0]?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: 'mason', harness: 'codex', model: 'gpt-6-astra', effort: 'xhigh' })
+    })
+  })
+
   it('states staffing in words and restaffs a slot from its window with undo', async () => {
     await renderCockpit()
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
