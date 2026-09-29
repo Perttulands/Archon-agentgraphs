@@ -77,6 +77,7 @@ type formationsBoardPatchRequest struct {
 	UpdateMission                 *formationsUpdateMissionRequest         `json:"updateMission"`
 	DeleteGate                    *formationsDeleteGateRequest            `json:"deleteGate"`
 	DeleteMission                 *formationsDeleteMissionRequest         `json:"deleteMission"`
+	RestoreNode                   *formationsRestoreNodeRequest           `json:"restoreNode"`
 	AssignSlot                    *formationsAssignSlotRequest            `json:"assignSlot"`
 	MakeController                *formationsMakeControllerRequest        `json:"makeController"`
 	SetBrief                      *formationsSetBriefRequest              `json:"setBrief"`
@@ -177,6 +178,20 @@ type formationsDeleteMissionRequest struct {
 	ID          string `json:"id"`
 	ExpectedRev int    `json:"expectedRev"`
 	UpdatedBy   string `json:"updatedBy"`
+}
+
+// formationsRestoreNodeRequest undoes a node delete: exactly one node as the
+// board document showed it, with the connections that touched it and its
+// layout position.
+type formationsRestoreNodeRequest struct {
+	Mission     *formations.MissionNode      `json:"mission"`
+	Formation   *formations.FormationNode    `json:"formation"`
+	Gate        *formations.GateNode         `json:"gate"`
+	Connections []formations.BoardConnection `json:"connections"`
+	X           int                          `json:"x"`
+	Y           int                          `json:"y"`
+	ExpectedRev int                          `json:"expectedRev"`
+	UpdatedBy   string                       `json:"updatedBy"`
 }
 
 type formationsAssignSlotRequest struct {
@@ -301,6 +316,7 @@ var boardPatchMutationKeys = []string{
 	"updateMission",
 	"deleteGate",
 	"deleteMission",
+	"restoreNode",
 	"assignSlot",
 	"makeController",
 	"setBrief",
@@ -1131,6 +1147,28 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		core.WriteSuccess(w, result)
 		return
 	}
+	if request.RestoreNode != nil {
+		restore := request.RestoreNode
+		result, err := h.store.RestoreNode(slug, formations.NodeRestoreRequest{
+			Mission:     restore.Mission,
+			Formation:   restore.Formation,
+			Gate:        restore.Gate,
+			Connections: restore.Connections,
+			X:           restore.X,
+			Y:           restore.Y,
+			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, restore.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, restore.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", result.Board.ETag)
+		core.WriteSuccess(w, result)
+		return
+	}
 	if request.AssignSlot != nil {
 		assign := request.AssignSlot
 		board, err := h.store.AssignFormationSlot(slug, formations.FormationSlotAssignmentRequest{
@@ -1743,6 +1781,8 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusUnprocessableEntity, formations.ToolExecutionUnavailableCode, "Tool execution is unavailable")
 	case errors.Is(err, formations.ErrRuntimeAuthorityNonAuthorizing):
 		core.WriteError(w, http.StatusServiceUnavailable, "RUNTIME_AUTHORITY_NON_AUTHORIZING", "Formations runtime authority is unavailable")
+	case errors.Is(err, formations.ErrInvalidNodeRestore):
+		core.WriteError(w, http.StatusConflict, "INVALID_NODE_RESTORE", fieldErrorMessage(err, formations.ErrInvalidNodeRestore))
 	case errors.Is(err, formations.ErrInputOccupied):
 		core.WriteError(w, http.StatusConflict, "INPUT_OCCUPIED", err.Error())
 	case errors.Is(err, formations.ErrSelfWire):

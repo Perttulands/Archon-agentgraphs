@@ -1185,6 +1185,41 @@ components:
               type: integer
             updatedBy:
               type: string
+        restoreNode:
+          type: object
+          description: Undo a node delete. Name exactly one of mission, formation or gate, as the board
+            document showed it before the delete, with the connections that touched it and its layout
+            position. The node, its connections and its layout placement publish together or not at
+            all, keeping every ID, so its notes and wire lanes apply again. A node ID already on the
+            board, a connection that no longer fits or a malformed field returns INVALID_NODE_RESTORE
+            (409) or the field's own error, and nothing changes. A connection ID already in use gets a
+            fresh ID. The response carries board, layout and nodeId.
+          properties:
+            mission:
+              type: object
+            formation:
+              $ref: '#/components/schemas/FormationNode'
+            gate:
+              type: object
+            connections:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  from:
+                    type: string
+                  to:
+                    type: string
+            x:
+              type: integer
+            y:
+              type: integer
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
         assignSlot:
           type: object
           properties:

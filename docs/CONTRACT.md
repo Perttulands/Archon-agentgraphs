@@ -649,6 +649,12 @@ in full and edited in place: titles, a mission's goal, input hint, Bead ID and
 files, a formation's type, brief and staffing, and a gate's kinds, check,
 criterion, judge and files. Each save is one board edit with undo. Ports, edges, layout and notes are
 unchanged.
+Every canvas edit that changes the board is one undo entry, and Ctrl+Z undoes
+the newest. Deleting a mission, formation or gate is undone by HTTP
+`restoreNode`, which puts the node back with its IDs, fields, staffing, ports,
+connections and position in one revision; its notes and wire lanes, kept by
+ID, apply again. An undo the board no longer allows is reported once and
+dropped from the history, so older entries stay reachable.
 The formation window's Execution duration field sets the total seconds for one
 formation invocation, including preparation and finalization. Leave it blank
 to inherit the run's execution default. The authored field is
