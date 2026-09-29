@@ -721,7 +721,7 @@ func validateToolSchemaTwoMigrationAuthority(raw []byte) ([]byte, error) {
 		return nil, err
 	}
 	if !bytes.Equal(validated, raw) {
-		return nil, fmt.Errorf("Tool mutation requires board schema %d", CurrentBoardSchema)
+		return nil, fmt.Errorf("Tool mutation requires mission file schema %d", CurrentBoardSchema)
 	}
 	return validated, nil
 }
@@ -947,7 +947,7 @@ func renderToolParameter(value any) string {
 
 func validateToolMutationBoard(board *BoardDocument, slug string) error {
 	if board == nil || board.Schema != CurrentBoardSchema {
-		return fmt.Errorf("Tool mutation requires board schema %d", CurrentBoardSchema)
+		return fmt.Errorf("Tool mutation requires mission file schema %d", CurrentBoardSchema)
 	}
 	if !validToolDefinitionID(board.ID) {
 		return fmt.Errorf("invalid_board_id: board id %q is invalid", board.ID)

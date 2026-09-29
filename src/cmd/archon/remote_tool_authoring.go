@@ -81,7 +81,7 @@ func remoteToolCreate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon tool create <board> --profile-id <id> --profile-version <version> --title <title> --params-json <object> [--x n --y n|--predecessor-node-id <id>|--successor-node-id <id>] [--json]")
+		fmt.Fprintln(stderr, "usage: archon tool create <mission> --profile-id <id> --profile-version <version> --title <title> --params-json <object> [--x n --y n|--predecessor-node-id <id>|--successor-node-id <id>] [--json]")
 		return 2
 	}
 	selector := archonToolProfileSelector(*profileID, *profileVersion)
@@ -135,7 +135,7 @@ func remoteToolUpdate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon tool update <board> <tool> [--title <title>] [--params-json <object>] [--json]")
+		fmt.Fprintln(stderr, "usage: archon tool update <mission> <tool> [--title <title>] [--params-json <object>] [--json]")
 		return 2
 	}
 	fields := map[string]any{}
@@ -172,7 +172,7 @@ func remoteToolDelete(c *remoteClient, args []string, stdout, stderr io.Writer) 
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon tool delete <board> <tool> [--json]")
+		fmt.Fprintln(stderr, "usage: archon tool delete <mission> <tool> [--json]")
 		return 2
 	}
 	data, err := c.patchTool(fs.Arg(0), *updatedBy, func(board *formations.BoardDocument) (string, map[string]any, error) {
@@ -196,7 +196,7 @@ func remoteToolInspect(c *remoteClient, args []string, stdout, stderr io.Writer)
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon tool inspect <board> <tool> [--json]")
+		fmt.Fprintln(stderr, "usage: archon tool inspect <mission> <tool> [--json]")
 		return 2
 	}
 	board, err := c.readBoard(fs.Arg(0))

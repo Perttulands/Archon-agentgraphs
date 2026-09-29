@@ -461,7 +461,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !connected {
-		reply(w, 422, map[string]string{"error": "wire the mission to a formation"})
+		reply(w, 422, map[string]string{"error": "wire the Input card to a step"})
 		return
 	}
 	req.Limits = c.engine.AdmissionLimits(req.Limits)

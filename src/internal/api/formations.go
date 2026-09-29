@@ -650,7 +650,7 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if request.Board == "" {
-		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "board is required")
+		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "mission is required")
 		return
 	}
 	if (request.MissionID == "") == (request.FormationID == "") {
@@ -914,7 +914,7 @@ func (h *FormationsHandler) CreateBoard(w http.ResponseWriter, r *http.Request) 
 		slug = boardSlugFromTitle(title)
 	}
 	if slug == "" {
-		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Board name must contain a letter or number")
+		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Mission name must contain a letter or number")
 		return
 	}
 	board, err := h.store.CreateBoard(formations.BoardCreateRequest{
@@ -1724,7 +1724,7 @@ func (h *FormationsHandler) PatchLayout(w http.ResponseWriter, r *http.Request) 
 }
 
 const (
-	untitledBoardTitle = "Untitled board"
+	untitledBoardTitle = "Untitled mission"
 	maxUntitledBoards  = 100
 )
 
@@ -1787,7 +1787,7 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	case errors.As(err, &admission):
 		WriteRunAdmissionError(w, admission)
 	case errors.Is(err, formations.ErrDefinitionPublicationUncertain):
-		core.WriteError(w, http.StatusServiceUnavailable, "DEFINITION_PUBLICATION_UNCERTAIN", "Reload both board and layout before any explicit retry")
+		core.WriteError(w, http.StatusServiceUnavailable, "DEFINITION_PUBLICATION_UNCERTAIN", "Reload both the mission and its layout before any explicit retry")
 	case errors.Is(err, formations.ErrInvalidToolMutation):
 		message := "Tool mutation is invalid"
 		if err.Error() != formations.ErrInvalidToolMutation.Error() {
@@ -1831,7 +1831,7 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	case errors.Is(err, formations.ErrConflict):
 		core.WriteError(w, http.StatusConflict, "CONFLICT", "Formation definition changed; reload and retry")
 	case errors.Is(err, formations.ErrAlreadyExists):
-		core.WriteError(w, http.StatusConflict, "BOARD_EXISTS", "A board with that name already exists")
+		core.WriteError(w, http.StatusConflict, "BOARD_EXISTS", "A mission with that name already exists")
 	case errors.Is(err, formations.ErrAmbiguousSelector):
 		core.WriteError(w, http.StatusBadRequest, "AMBIGUOUS_SELECTOR", err.Error())
 	case errors.Is(err, formations.ErrNotFound), errors.Is(err, formations.ErrNoteTargetNotFound):

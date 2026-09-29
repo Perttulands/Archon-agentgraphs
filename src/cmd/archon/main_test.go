@@ -479,7 +479,7 @@ to = "gate_orphan:in"
 `)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "board", "validate", "session-search", "--json")
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "validate", "session-search", "--json")
 	if code != 1 {
 		t.Fatalf("board validate code=%d stderr=%s stdout=%s, want validation failure code 1", code, stderr, stdout)
 	}
@@ -490,7 +490,7 @@ to = "gate_orphan:in"
 		t.Fatalf("validate JSON missing warnings envelope: %s", stdout)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "validate", "session-search")
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "validate", "session-search")
 	if code != 1 {
 		t.Fatalf("text board validate code=%d stderr=%s stdout=%s, want validation failure code 1", code, stderr, stdout)
 	}
@@ -524,7 +524,7 @@ customFuture = "keep me"
 		t.Fatalf("formation create did not preserve board structure/layout split:\n%s", boardRaw)
 	}
 
-	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "list"); code != 2 || !strings.Contains(stderr, "usage: archon formation list <board>") {
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "list"); code != 2 || !strings.Contains(stderr, "usage: archon formation list <mission>") {
 		t.Fatalf("formation list without a board code=%d stderr=%s, want usage", code, stderr)
 	}
 	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "list", "session-search", "--json")
@@ -547,7 +547,7 @@ customFuture = "keep me"
 		t.Fatalf("formation list text code=%d stdout=%q stderr=%s, want %q", code, stdout, stderr, want)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "inspect", "brd_01J9_sesssearch", "--json")
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "inspect", "brd_01J9_sesssearch", "--json")
 	if code != 0 {
 		t.Fatalf("board inspect by id code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -558,7 +558,7 @@ customFuture = "keep me"
 		t.Fatalf("inspect JSON leaked layout coordinates: %s", stdout)
 	}
 
-	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "inspect", "session-search"); code != 2 || !strings.Contains(stderr, "usage: archon formation inspect <board> <formation>") {
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "inspect", "session-search"); code != 2 || !strings.Contains(stderr, "usage: archon formation inspect <mission> <formation>") {
 		t.Fatalf("formation inspect without a formation code=%d stderr=%s, want usage", code, stderr)
 	}
 	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "inspect", "session-search", "Research huddle", "--json")
@@ -728,11 +728,11 @@ func TestArchonLegacyScriptGateInspectionStartAndResumeBoundary(t *testing.T) {
 		writeArchonFile(t, store.BoardPath("session-search"), archonLegacyScriptGateBoardFixture())
 		runner := &fakeTmux{live: map[string]bool{}}
 
-		stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "board", "validate", "session-search", "--json")
+		stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "validate", "session-search", "--json")
 		if code != 1 || !strings.Contains(stdout, formations.LegacyScriptGateMigrationCode) || !strings.Contains(stdout, `"targetKind": "tool_plus_pure_gate"`) || strings.Contains(stdout, "npm") {
 			t.Fatalf("board validate code=%d stderr=%s stdout=%s, want non-mutating migration plan without raw command", code, stderr, stdout)
 		}
-		stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "inspect", "session-search", "--json")
+		stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "inspect", "session-search", "--json")
 		if code != 0 || !strings.Contains(stdout, `"commandArgv": [`) || !strings.Contains(stdout, `"legacyScriptMigration"`) {
 			t.Fatalf("board inspect code=%d stderr=%s stdout=%s, want exact source plus migration inspection", code, stderr, stdout)
 		}
@@ -866,7 +866,7 @@ to = "gate_migrated:in"
 	if len(entries) != 0 {
 		t.Fatalf("run artifacts = %+v, want none before Archon rejection", entries)
 	}
-	inspectOut, inspectErr, inspectCode := runArchon(t, runner, "--workspace", workspace, "board", "inspect", "legacy-inline", "--json")
+	inspectOut, inspectErr, inspectCode := runArchon(t, runner, "--workspace", workspace, "mission", "inspect", "legacy-inline", "--json")
 	if inspectCode != 0 || inspectErr != "" || !strings.Contains(inspectOut, `"verification"`) || !strings.Contains(inspectOut, `"criterion": "Tests pass"`) {
 		t.Fatalf("legacy inspection code=%d stdout=%s stderr=%s, want readable verification", inspectCode, inspectOut, inspectErr)
 	}
@@ -971,7 +971,7 @@ to = "gate_review:in"
 `)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "board", "list", "--json")
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "list", "--json")
 	if code != 0 {
 		t.Fatalf("board list code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -985,7 +985,7 @@ to = "gate_review:in"
 		t.Fatalf("board list = %+v, want stable board identity with revision", list.Boards)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "inspect", "poems", "--json")
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "inspect", "poems", "--json")
 	if code != 0 {
 		t.Fatalf("board inspect code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -1033,7 +1033,7 @@ label = "Builder"
 `)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "board", "note", "session-search", "--text", "Shared plan\nShip tests", "--json")
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "note", "session-search", "--text", "Shared plan\nShip tests", "--json")
 	if code != 0 {
 		t.Fatalf("board note code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -1045,11 +1045,11 @@ label = "Builder"
 		t.Fatalf("board note = %+v", boardNote)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "note", "session-search", "--node", "fmn_frame", "--text", "Builder owns this", "--json")
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "note", "session-search", "--node", "fmn_frame", "--text", "Builder owns this", "--json")
 	if code != 0 {
 		t.Fatalf("element note code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "notes", "session-search", "--json")
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "notes", "session-search", "--json")
 	if code != 0 {
 		t.Fatalf("board notes code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -1064,7 +1064,7 @@ label = "Builder"
 		t.Fatalf("board notes leaked raw TOML: %s", stdout)
 	}
 
-	_, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "note", "session-search", "--node", "fmn_frame", "--clear", "--entry", notes.Elements[0].Entries[0].ID)
+	_, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "note", "session-search", "--node", "fmn_frame", "--clear", "--entry", notes.Elements[0].Entries[0].ID)
 	if code != 0 {
 		t.Fatalf("clear element note code=%d stderr=%s", code, stderr)
 	}
@@ -1079,7 +1079,7 @@ func TestArchonBoardNewCreatesDurableBoardJSONAndText(t *testing.T) {
 	store := formations.NewStore(workspace)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "board", "new", "poems", "--title", "Poems", "--json")
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "new", "poems", "--title", "Poems", "--json")
 	if code != 0 {
 		t.Fatalf("board new --json code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -1100,7 +1100,7 @@ func TestArchonBoardNewCreatesDurableBoardJSONAndText(t *testing.T) {
 		}
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "new", "drafts", "--title", "Drafts")
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "new", "drafts", "--title", "Drafts")
 	if code != 0 {
 		t.Fatalf("board new text code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -1153,7 +1153,7 @@ id = "fmn_finish"
 x = 100
 y = 100
 `)
-	stdout, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "board", "arrange", "arrange", "--json")
+	stdout, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "mission", "arrange", "arrange", "--json")
 	if code != 0 {
 		t.Fatalf("board arrange code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -1175,12 +1175,12 @@ func TestArchonBoardNewDuplicateFailsWithoutChangingBoard(t *testing.T) {
 	store := formations.NewStore(workspace)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "board", "new", "poems", "--title", "Poems"); code != 0 {
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "new", "poems", "--title", "Poems"); code != 0 {
 		t.Fatalf("first board create failed: %d %s", code, stderr)
 	}
 	before := readArchonFile(t, store.BoardPath("poems"))
 
-	_, stderr, code := runArchon(t, runner, "--workspace", workspace, "board", "new", "poems", "--title", "Different")
+	_, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "new", "poems", "--title", "Different")
 	if code == 0 || !strings.Contains(stderr, "already exists") {
 		t.Fatalf("duplicate board create code=%d stderr=%s", code, stderr)
 	}
@@ -1194,12 +1194,12 @@ func TestArchonBoardNewRequiresSlugAndDefaultsTitle(t *testing.T) {
 	workspace := t.TempDir()
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	_, stderr, code := runArchon(t, runner, "--workspace", workspace, "board", "new", "--title", "Missing slug")
-	if code == 0 || !strings.Contains(stderr, "usage: archon board new") {
+	_, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "new", "--title", "Missing slug")
+	if code == 0 || !strings.Contains(stderr, "usage: archon mission new") {
 		t.Fatalf("missing slug code=%d stderr=%s", code, stderr)
 	}
 
-	_, stderr, code = runArchon(t, runner, "--workspace", workspace, "board", "new", "poems")
+	_, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "new", "poems")
 	if code != 0 {
 		t.Fatalf("draft board without title code=%d stderr=%s", code, stderr)
 	}
@@ -1225,7 +1225,7 @@ title = "Drafts"
 rev = 2
 `)
 
-	_, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "board", "inspect", "brd_duplicate", "--json")
+	_, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "mission", "inspect", "brd_duplicate", "--json")
 	if code == 0 || !strings.Contains(stderr, "ambiguous") || !strings.Contains(stderr, "brd_duplicate") {
 		t.Fatalf("ambiguous board inspect code=%d stderr=%s, want loud ambiguous selector", code, stderr)
 	}
@@ -1384,23 +1384,24 @@ to = "fmn_polish:port_polish_in"
 `)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "list", "poems", "--json")
-	if code != 0 {
-		t.Fatalf("mission list code=%d stderr=%s stdout=%s", code, stderr, stdout)
+	// Before the rename, "mission list <board>" listed a board's mission nodes.
+	// It now lists missions, so the old form names the command that shows the
+	// Input card instead of silently answering something else.
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "list", "poems")
+	if code != 2 || stdout != "" || !strings.Contains(stderr, "archon mission inspect poems") {
+		t.Fatalf("old mission list form code=%d stdout=%q stderr=%q, want the replacement named", code, stdout, stderr)
 	}
-	var list struct {
-		Board    archonBoardIdentity      `json:"board"`
-		Missions []formations.MissionNode `json:"missions"`
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "inspect", "poems", "--json")
+	if code != 0 || stderr != "" {
+		t.Fatalf("mission inspect code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
-	if err := json.Unmarshal([]byte(stdout), &list); err != nil {
-		t.Fatalf("decode mission list: %v\n%s", err, stdout)
+	var whole formations.BoardDocument
+	if err := json.Unmarshal([]byte(stdout), &whole); err != nil {
+		t.Fatalf("decode mission inspect: %v\n%s", err, stdout)
 	}
-	if list.Board.ID != "brd_poems" || list.Board.Slug != "poems" || list.Board.Rev != 7 || list.Board.ETag == "" {
-		t.Fatalf("mission list board identity = %+v, want stable board identity", list.Board)
-	}
-	if len(list.Missions) != 1 || list.Missions[0].ID != "mis_poem" || list.Missions[0].Title != "Simple poem" ||
-		list.Missions[0].Goal != "Create a simple poem" || list.Missions[0].BeadID != "home-vdki.33.1" {
-		t.Fatalf("mission list missions = %+v, want stable mission fields", list.Missions)
+	if whole.ID != "brd_poems" || whole.Slug != "poems" || whole.Rev != 7 || len(whole.Missions) != 1 || whole.Missions[0].ID != "mis_poem" ||
+		whole.Missions[0].Title != "Simple poem" || whole.Missions[0].Goal != "Create a simple poem" || whole.Missions[0].BeadID != "home-vdki.33.1" {
+		t.Fatalf("mission inspect = %+v, want the whole mission with its Input card", whole)
 	}
 
 	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "inspect", "poems", "simple-poem", "--json")
@@ -2165,16 +2166,15 @@ label = "Input"
 		t.Fatalf("mission wire code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
 
+	// One mission per file: a second Input card is refused with the commands
+	// that replace it, and nothing is written.
+	before := readArchonFile(t, store.BoardPath("session-search"))
 	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "create", "session-search", "--title", "Follow-up")
-	if code != 0 {
-		t.Fatalf("text mission create code=%d stderr=%s stdout=%s", code, stderr, stdout)
+	if code == 0 || stdout != "" || !strings.Contains(stderr, "already has its Input card") || !strings.Contains(stderr, "archon mission update session-search") || !strings.Contains(stderr, "archon mission new <slug>") {
+		t.Fatalf("second mission create code=%d stdout=%q stderr=%q, want refusal naming update and new", code, stdout, stderr)
 	}
-	board, err = store.ReadBoard("session-search")
-	if err != nil {
-		t.Fatalf("read mission board: %v", err)
-	}
-	if len(board.Missions) != 2 || stdout != "created "+board.Missions[1].ID+"\n" {
-		t.Fatalf("text mission create stdout = %q, want the created mission's ID; missions = %+v", stdout, board.Missions)
+	if after := readArchonFile(t, store.BoardPath("session-search")); after != before {
+		t.Fatalf("refused mission create changed the file:\n%s", after)
 	}
 }
 
@@ -2687,7 +2687,7 @@ rev = 1
 		archon(workspaceArgs("agent", "new", persona.id, "--kind", persona.kind, "--harness", "lab-fake", "--json")...)
 	}
 
-	boardList := decodeArchonBoardList(t, archon(workspaceArgs("board", "list", "--json")...))
+	boardList := decodeArchonBoardList(t, archon(workspaceArgs("mission", "list", "--json")...))
 	if len(boardList.Boards) != 1 || boardList.Boards[0].ID != "brd_poems" || boardList.Boards[0].Slug != "poems" {
 		t.Fatalf("board list = %+v, want selected empty poems board", boardList)
 	}
@@ -2697,7 +2697,7 @@ rev = 1
 	archon(workspaceArgs("formation", "create", "poems", "solo", "--title", "Polish poem", "--x", "860", "--y", "120", "--json")...)
 	archon(workspaceArgs("gate", "create", "poems", "--title", "Human review", "--kinds", "human", "--criterion", "Draft is ready to polish", "--json")...)
 
-	board := decodeArchonBoard(t, archon(workspaceArgs("board", "inspect", "poems", "--json")...))
+	board := decodeArchonBoard(t, archon(workspaceArgs("mission", "inspect", "poems", "--json")...))
 	mission := mustMissionByTitle(t, board, "Simple poem")
 	draft := mustFormationByTitle(t, board, "Draft poem")
 	polish := mustFormationByTitle(t, board, "Polish poem")
@@ -2709,7 +2709,7 @@ rev = 1
 	archon(workspaceArgs("formation", "wire", "poems", draft.ID+":"+draft.Outputs[0].ID, gate.ID+":in", "--json")...)
 	archon(workspaceArgs("formation", "wire", "poems", gate.ID+":pass", polish.ID+":"+polish.Inputs[0].ID, "--json")...)
 
-	afterAuthoring := decodeArchonBoard(t, archon(workspaceArgs("board", "inspect", "poems", "--json")...))
+	afterAuthoring := decodeArchonBoard(t, archon(workspaceArgs("mission", "inspect", "poems", "--json")...))
 	draft = mustFormationByTitle(t, afterAuthoring, "Draft poem")
 	polish = mustFormationByTitle(t, afterAuthoring, "Polish poem")
 	gate = mustGateByTitle(t, afterAuthoring, "Human review")
@@ -2914,7 +2914,7 @@ y = 120
 		layout.ETag,
 	)
 
-	stdout, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "board", "inspect", "poems", "--json")
+	stdout, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "mission", "inspect", "poems", "--json")
 	if code != 0 {
 		t.Fatalf("archon inspect code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}

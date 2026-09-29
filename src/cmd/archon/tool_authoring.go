@@ -46,7 +46,7 @@ func runToolCreate(store archonToolStore, args []string, stdout, stderr io.Write
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon tool create <board> --profile-id <id> --profile-version <version> --title <title> --params-json <object> [--x n --y n|--predecessor-node-id <id>|--successor-node-id <id>] [--json]")
+		fmt.Fprintln(stderr, "usage: archon tool create <mission> --profile-id <id> --profile-version <version> --title <title> --params-json <object> [--x n --y n|--predecessor-node-id <id>|--successor-node-id <id>] [--json]")
 		return 2
 	}
 
@@ -92,7 +92,7 @@ func runToolUpdate(store archonToolStore, args []string, stdout, stderr io.Write
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon tool update <board> <tool> [--title <title>] [--params-json <object>] [--json]")
+		fmt.Fprintln(stderr, "usage: archon tool update <mission> <tool> [--title <title>] [--params-json <object>] [--json]")
 		return 2
 	}
 
@@ -137,7 +137,7 @@ func runToolDelete(store archonToolStore, args []string, stdout, stderr io.Write
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon tool delete <board> <tool> [--json]")
+		fmt.Fprintln(stderr, "usage: archon tool delete <mission> <tool> [--json]")
 		return 2
 	}
 	snapshot, err := readArchonToolWriteSnapshot(store, fs.Arg(0))
@@ -177,7 +177,7 @@ func runToolInspect(store archonToolStore, args []string, stdout, stderr io.Writ
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon tool inspect <board> <tool> [--json]")
+		fmt.Fprintln(stderr, "usage: archon tool inspect <mission> <tool> [--json]")
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))

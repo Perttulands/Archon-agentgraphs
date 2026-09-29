@@ -44,7 +44,7 @@ func TestDraftAuthoringSavesBlankAndPartialFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	if got, ok := findMission(reloaded, mission.Mission.ID); !ok || got.BeadID != "" || got.Title != "Mission" {
+	if got, ok := findMission(reloaded, mission.Mission.ID); !ok || got.BeadID != "" || got.Title != "Input" {
 		t.Fatalf("reloaded mission = %+v, want draft with default title and no Bead", got)
 	}
 	if got, ok := findGate(reloaded.Gates, partialGate.Gate.ID); !ok || got.Check != "output_absent" || got.CheckVersion != "1" || got.CheckValue != "" {

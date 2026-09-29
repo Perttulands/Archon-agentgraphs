@@ -152,7 +152,7 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 			report.Errors = append(report.Errors, BoardFinding{
 				Code:    FindingInvalidTool,
 				NodeID:  tool.ID,
-				Message: fmt.Sprintf("Tool %q requires board schema %d", tool.ID, CurrentBoardSchema),
+				Message: fmt.Sprintf("Tool %q requires mission file schema %d", tool.ID, CurrentBoardSchema),
 			})
 			continue
 		}
@@ -177,7 +177,7 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	if len(board.Missions) == 0 {
 		report.Errors = append(report.Errors, BoardFinding{
 			Code:    FindingMissionCount,
-			Message: "a board must have at least one mission to run",
+			Message: "a mission needs its Input card to run; add one on the canvas or with archon mission create",
 		})
 	}
 	for _, mission := range board.Missions {
@@ -185,14 +185,14 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 			report.Errors = append(report.Errors, BoardFinding{
 				Code:    FindingInvalidHumanChannel,
 				NodeID:  mission.ID,
-				Message: fmt.Sprintf("mission %q has human channel %q; set it to notify or session with mission update --human-channel", mission.ID, mission.HumanChannel),
+				Message: fmt.Sprintf("Input card %q has human channel %q; set it to notify or session with archon mission update --human-channel", mission.ID, mission.HumanChannel),
 			})
 		}
 		if len(outgoingConnections(board.Connections, mission.ID)) == 0 {
 			report.Warnings = append(report.Warnings, BoardFinding{
 				Code:    FindingMissionNotRunnable,
 				NodeID:  mission.ID,
-				Message: fmt.Sprintf("mission %q has no outgoing connection, so it cannot start a run; wire it to a first step", mission.ID),
+				Message: fmt.Sprintf("Input card %q has no outgoing connection, so it cannot start a run; wire it to a first step", mission.ID),
 			})
 		}
 	}
@@ -240,7 +240,7 @@ func duplicateSlotFindings(formations []FormationNode) []BoardFinding {
 			findings = append(findings, BoardFinding{
 				Code:    FindingDuplicateSlotID,
 				NodeID:  node,
-				Message: fmt.Sprintf("slot id %q is used by %s; give every slot on the board its own id", slotID, described),
+				Message: fmt.Sprintf("slot id %q is used by %s; give every slot in the mission its own id", slotID, described),
 			})
 		}
 	}

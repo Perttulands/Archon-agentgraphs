@@ -116,7 +116,7 @@ func restoredNodeBlock(req NodeRestoreRequest) (string, string, func([]byte) []b
 		}
 	}
 	if count != 1 {
-		return "", "", nil, invalidNodeRestore("name exactly one mission, formation or gate")
+		return "", "", nil, invalidNodeRestore("name exactly one Input card, formation or gate")
 	}
 	switch {
 	case req.Formation != nil:
@@ -155,10 +155,10 @@ func restoredNodeBlock(req NodeRestoreRequest) (string, string, func([]byte) []b
 	default:
 		mission := *req.Mission
 		if !validToolDefinitionID(mission.ID) {
-			return "", "", nil, invalidNodeRestore("mission id %q is invalid", mission.ID)
+			return "", "", nil, invalidNodeRestore("Input card id %q is invalid", mission.ID)
 		}
 		if mission.BeadID != "" && !isSafeBeadsIssueID(mission.BeadID) {
-			return "", "", nil, invalidBeadID("mission beadId", mission.BeadID)
+			return "", "", nil, invalidBeadID("Input card beadId", mission.BeadID)
 		}
 		channel, err := NormalizeHumanChannel(mission.HumanChannel)
 		if err != nil {
@@ -233,7 +233,7 @@ func appendRestoredFormationBlock(raw []byte, formation FormationNode) []byte {
 // returns the connections to append, keeping their IDs where still free.
 func planRestoredConnections(raw []byte, current *BoardDocument, nodeID string, req NodeRestoreRequest, appendNode func([]byte) []byte) ([]BoardConnection, error) {
 	if nodeIDTaken(current, nodeID) {
-		return nil, invalidNodeRestore("node %q is already on the board", nodeID)
+		return nil, invalidNodeRestore("node %q is already in the mission", nodeID)
 	}
 	if req.Formation != nil {
 		for _, slot := range req.Formation.Slots {
@@ -275,7 +275,7 @@ func planRestoredWires(withTarget []byte, current *BoardDocument, requested []Bo
 			if nodeID := endpointNodeID(missing); !nodeIDTaken(board, nodeID) {
 				gone = nodeID
 			}
-			return nil, invalidNodeRestore("what it was wired to (%s) is no longer on the board", gone)
+			return nil, invalidNodeRestore("what it was wired to (%s) is no longer in the mission", gone)
 		}
 		if !touches(from, to) {
 			return nil, invalidNodeRestore("connection %s → %s does not touch %s", from, to, target)

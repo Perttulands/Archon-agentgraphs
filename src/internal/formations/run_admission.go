@@ -121,7 +121,7 @@ func CheckRunAdmission(board *BoardDocument, personas *PersonaStore, scope RunAd
 		return ErrNotFound
 	}
 	if _, ok := findMission(board, scope.MissionID); scope.MissionID != "" && !ok {
-		return fmt.Errorf("%w: mission %q", ErrNotFound, scope.MissionID)
+		return fmt.Errorf("%w: Input card %q", ErrNotFound, scope.MissionID)
 	}
 	if _, ok := findFormation(board.Formations, scope.FormationID); scope.FormationID != "" && !ok {
 		return fmt.Errorf("%w: formation %q", ErrNotFound, scope.FormationID)

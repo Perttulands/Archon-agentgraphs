@@ -337,7 +337,7 @@ func NormalizeHumanChannel(value string) (string, error) {
 	case HumanChannelSession:
 		return channel, nil
 	default:
-		return "", fmt.Errorf("%w: mission humanChannel %q must be notify or session", ErrInvalidHumanChannel, value)
+		return "", fmt.Errorf("%w: Input card humanChannel %q must be notify or session", ErrInvalidHumanChannel, value)
 	}
 }
 
@@ -370,7 +370,7 @@ func (s *Store) ResolveBoardSelector(selector string) (string, error) {
 		return matches[0].Slug, nil
 	}
 	if len(matches) > 1 {
-		return "", fmt.Errorf("%w: board %q matched %d boards", ErrAmbiguousSelector, selector, len(matches))
+		return "", fmt.Errorf("%w: mission %q matched %d missions", ErrAmbiguousSelector, selector, len(matches))
 	}
 	definition, err := s.openBoardDefinition(selector, false)
 	if errors.Is(err, ErrNotFound) {
@@ -1386,7 +1386,7 @@ func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteO
 		return nil, ErrNotFound
 	}
 	if req.BeadID != nil && *req.BeadID != "" && !isSafeBeadsIssueID(*req.BeadID) {
-		return nil, invalidBeadID("mission beadId", *req.BeadID)
+		return nil, invalidBeadID("Input card beadId", *req.BeadID)
 	}
 	var humanChannel string
 	if req.HumanChannel != nil {
@@ -1567,7 +1567,7 @@ func (s *Store) CreateMission(slug string, req MissionCreateRequest, opts WriteO
 
 func (s *Store) createMission(slug string, req MissionCreateRequest, opts WriteOptions, fault func(string) error) (*MissionCreateResult, error) {
 	if req.BeadID != "" && !isSafeBeadsIssueID(req.BeadID) {
-		return nil, invalidBeadID("mission beadId", req.BeadID)
+		return nil, invalidBeadID("Input card beadId", req.BeadID)
 	}
 	humanChannel, err := NormalizeHumanChannel(req.HumanChannel)
 	if err != nil {
@@ -1581,7 +1581,7 @@ func (s *Store) createMission(slug string, req MissionCreateRequest, opts WriteO
 	}
 	title := req.Title
 	if title == "" {
-		title = "Mission"
+		title = "Input"
 	}
 	mission := MissionNode{
 		ID:           newPrefixedID("mis"),

@@ -20,7 +20,7 @@ func TestArchonDraftAuthoringSavesAndAdmissionListsEveryProblem(t *testing.T) {
 		return runArchon(t, runner, append([]string{"--workspace", workspace}, args...)...)
 	}
 
-	if _, stderr, code := archon("board", "new", "sketch"); code != 0 {
+	if _, stderr, code := archon("mission", "new", "sketch"); code != 0 {
 		t.Fatalf("board new without title: %d %s", code, stderr)
 	}
 	if _, stderr, code := archon("mission", "create", "sketch"); code != 0 {
@@ -60,7 +60,7 @@ func TestArchonDraftAuthoringSavesAndAdmissionListsEveryProblem(t *testing.T) {
 		t.Fatalf("formation wire: %d %s", code, stderr)
 	}
 
-	stdout, _, code = archon("board", "validate", "sketch")
+	stdout, _, code = archon("mission", "validate", "sketch")
 	if code != 1 || !strings.Contains(stdout, "ERROR\tunstaffed_slot\t"+formation.ID) || !strings.Contains(stdout, "ERROR\tgate_not_routable\t"+gate.ID+"\tgate \""+gate.ID+"\" needs forbidden text") {
 		t.Fatalf("board validate %d:\n%s", code, stdout)
 	}
@@ -94,7 +94,7 @@ func TestArchonGateCreateWithoutKindsIsARoutableHumanGate(t *testing.T) {
 		}
 		return stdout
 	}
-	archon("board", "new", "review")
+	archon("mission", "new", "review")
 	archon("mission", "create", "review", "--title", "Work", "--goal", "Do it", "--bead", "form-demo")
 	var created struct {
 		Formation formations.FormationNode `json:"formation"`
@@ -129,7 +129,7 @@ func TestArchonGateCreateWithoutKindsIsARoutableHumanGate(t *testing.T) {
 	archon("formation", "set-brief", "review", worker.ID, "--goal", "Produce the result")
 	archon("mission", "wire", "review", "Work", worker.ID+":"+worker.Inputs[0].ID)
 	archon("formation", "wire", "review", worker.ID+":"+worker.Outputs[0].ID, gate.ID+":in")
-	if stdout := archon("board", "validate", "review"); stdout != "review\t0 errors\t0 warnings\n" {
+	if stdout := archon("mission", "validate", "review"); stdout != "review\t0 errors\t0 warnings\n" {
 		t.Fatalf("board validate with a wired human gate:\n%s", stdout)
 	}
 }
@@ -162,7 +162,7 @@ func TestRemoteAdmissionFindingsAndBoardValidation(t *testing.T) {
 
 	out.Reset()
 	stderr.Reset()
-	if code := runRemote(server.URL, []string{"board", "validate", "draft"}, &out, &stderr); code != 1 {
+	if code := runRemote(server.URL, []string{"mission", "validate", "draft"}, &out, &stderr); code != 1 {
 		t.Fatalf("remote board validate code %d stderr %s", code, stderr.String())
 	}
 	if !strings.HasPrefix(out.String(), "draft\t2 errors\t0 warnings\n") || strings.Count(out.String(), "ERROR\t") != 2 {

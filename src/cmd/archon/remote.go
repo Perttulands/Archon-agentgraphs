@@ -115,7 +115,8 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		fs.StringVar(&responseFile, "response-file", "", "local UTF-8 file containing the complete verbatim response")
 	}
 	mode := fs.String("mode", "reattach", "resume mode")
-	mission := fs.String("mission", "", "mission id")
+	mission := fs.String("input", "", "the Input card to start from; needed only when the mission has several")
+	fs.StringVar(mission, "mission", "", "older name for --input")
 	reason := fs.String("reason", "", "operator reason; for gate approve|reject, the response text")
 	fs.StringVar(reason, "response", "", "alias of --reason for gate approve|reject")
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
@@ -132,7 +133,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	var body any
 	switch args[0] + " " + args[1] {
 	case "mission run":
-		if len(pos) != 1 || *mission == "" {
+		if len(pos) != 1 {
 			return remoteUsage(stderr)
 		}
 		briefText := *brief
@@ -147,13 +148,18 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		var board struct {
 			Data struct {
-				Board struct {
-					Rev int `json:"rev"`
-				} `json:"board"`
+				Board formations.BoardDocument `json:"board"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(raw, &board); err != nil {
 			return fail(stderr, err)
+		}
+		if *mission == "" {
+			id, err := soleInputCard(&board.Data.Board, pos[0])
+			if err != nil {
+				return fail(stderr, err)
+			}
+			*mission = id
 		}
 		path += "/runs"
 		method = "POST"
@@ -255,6 +261,6 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 func remoteUsage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "use board, mission, formation, gate and agent authoring and read commands, mission run <board> --mission <id> [--context-path path ...], run status|logs|follow|seats|gates <run>, gate request <run> <gate>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text | --response-file path] [--relayed-by slot-id]")
+	fmt.Fprintln(stderr, "use mission, formation, gate and agent authoring and read commands, mission run <mission> [--input <input>] [--context-path path ...], run status|logs|follow|seats|gates <run>, gate request <run> <gate>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text | --response-file path] [--relayed-by slot-id]")
 	return 2
 }

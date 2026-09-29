@@ -12,6 +12,42 @@ import (
 	"testing"
 )
 
+// A mission has one Input card, so a remote start need not name it; --input
+// and the older --mission still pick one explicitly.
+func TestRemoteMissionRunStartsFromTheInputCard(t *testing.T) {
+	for _, extra := range [][]string{nil, {"--input", "mis_named"}, {"--mission", "mis_named"}} {
+		t.Run(fmt.Sprint(extra), func(t *testing.T) {
+			var started string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == "GET" {
+					fmt.Fprint(w, `{"data":{"board":{"rev":3,"missions":[{"id":"mis_only","title":"Brief"}]}}}`)
+					return
+				}
+				var body struct {
+					MissionID string `json:"missionId"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Error(err)
+				}
+				started = body.MissionID
+				fmt.Fprint(w, `{"data":{"runId":"run_proof"}}`)
+			}))
+			defer server.Close()
+			args := append([]string{"--server", server.URL, "mission", "run", "proof", "--brief", "Go", "--json"}, extra...)
+			if _, stderr, code := runArchon(t, &fakeTmux{}, args...); code != 0 {
+				t.Fatalf("code %d: %s", code, stderr)
+			}
+			want := "mis_only"
+			if extra != nil {
+				want = "mis_named"
+			}
+			if started != want {
+				t.Fatalf("started from %q, want %q", started, want)
+			}
+		})
+	}
+}
+
 func TestRemoteMissionContextPaths(t *testing.T) {
 	for _, paths := range [][]string{nil, {"/context/prior art", "relative/ääni.md", "/context/prior art", ""}} {
 		t.Run(fmt.Sprint(paths), func(t *testing.T) {

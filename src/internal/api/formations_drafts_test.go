@@ -28,7 +28,7 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 		return rec
 	}
 
-	for _, want := range []string{"untitled-board", "untitled-board-2"} {
+	for _, want := range []string{"untitled-mission", "untitled-mission-2"} {
 		rec := serve(http.MethodPost, "/api/formations/boards", "", `{"title":"  "}`)
 		if rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), `"slug":"`+want+`"`) {
 			t.Fatalf("unnamed board create = %d %s, want %s", rec.Code, rec.Body.String(), want)
@@ -37,11 +37,11 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 
 	patch := func(body string) *httptest.ResponseRecorder {
 		t.Helper()
-		board, err := store.ReadBoard("untitled-board")
+		board, err := store.ReadBoard("untitled-mission")
 		if err != nil {
 			t.Fatal(err)
 		}
-		return serve(http.MethodPatch, "/api/formations/boards/untitled-board", board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{"))
+		return serve(http.MethodPatch, "/api/formations/boards/untitled-mission", board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{"))
 	}
 	for _, body := range []string{
 		`{"createMission":{"title":"","goal":"","beadId":""}}`,
@@ -56,7 +56,7 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 		t.Fatalf("unsafe Bead ID = %d %s, want rejected", rec.Code, rec.Body.String())
 	}
 
-	board, err := store.ReadBoard("untitled-board")
+	board, err := store.ReadBoard("untitled-mission")
 	if err != nil || len(board.Missions) != 1 || len(board.Formations) != 1 || len(board.Gates) != 1 {
 		t.Fatalf("reloaded draft board = %+v (%v)", board, err)
 	}
@@ -70,7 +70,7 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 		}
 	}
 
-	rec := serve(http.MethodGet, "/api/formations/boards/untitled-board/validation", "", "")
+	rec := serve(http.MethodGet, "/api/formations/boards/untitled-mission/validation", "", "")
 	var validation struct {
 		Data struct {
 			Errors []formations.BoardFinding `json:"errors"`
@@ -80,8 +80,8 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 		t.Fatalf("validation = %d %s (%v), want unstaffed slot and incomplete gate", rec.Code, rec.Body.String(), err)
 	}
 
-	board, _ = store.ReadBoard("untitled-board")
-	rec = serve(http.MethodPost, "/api/formations/runs", board.ETag, `{"board":"untitled-board","missionId":"`+mission.ID+`","expectedRev":`+jsonInt(board.Rev)+`,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":60}}`)
+	board, _ = store.ReadBoard("untitled-mission")
+	rec = serve(http.MethodPost, "/api/formations/runs", board.ETag, `{"board":"untitled-mission","missionId":"`+mission.ID+`","expectedRev":`+jsonInt(board.Rev)+`,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":60}}`)
 	var failure struct {
 		Error struct {
 			Code     string                    `json:"code"`
