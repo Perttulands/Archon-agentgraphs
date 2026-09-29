@@ -141,6 +141,25 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
             formation.inputs = formation.inputs.filter(port => port.id !== portId)
           }
           currentBoard.connections = [...edges, { id: `edge_${currentBoard.rev}`, from: edit.from, to }]
+        } else if (body.deleteFormation || body.deleteGate || body.deleteMission) {
+          // Mirrors the store: a delete drops the node, the connections touching it and its layout node.
+          const id = (body.deleteFormation || body.deleteGate || body.deleteMission).id
+          const key = body.deleteFormation ? 'formations' : body.deleteGate ? 'gates' : 'missions'
+          const list = currentBoard[key] as Array<{ id: string }>
+          if (!list.some(node => node.id === id)) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
+          ;(currentBoard[key] as Array<{ id: string }>) = list.filter(node => node.id !== id)
+          currentBoard.connections = currentBoard.connections.filter(edge => edge.from.split(':')[0] !== id && edge.to.split(':')[0] !== id)
+          nodes = nodes.filter(node => node.id !== id)
+        } else if (body.restoreNode) {
+          // Mirrors the store: a node ID already on the board refuses the whole restore.
+          const { mission, formation, gate, connections, x, y } = body.restoreNode
+          const node = mission || formation || gate
+          const key = mission ? 'missions' : formation ? 'formations' : 'gates'
+          const taken = [...currentBoard.missions, ...currentBoard.formations, ...currentBoard.gates].some(item => item.id === node.id)
+          if (taken) return route.fulfill({ status: 409, json: { success: false, error: { code: 'INVALID_NODE_RESTORE', message: `node "${node.id}" is already on the board` } } })
+          ;(currentBoard[key] as unknown[]).push(node)
+          currentBoard.connections = [...currentBoard.connections, ...connections]
+          nodes = [...nodes, { id: node.id, x, y }]
         } else if (body.addPort) {
           // Mirrors the store (AddFormationPort): the only directions are input and output.
           const { formationId, direction, label } = body.addPort
@@ -168,6 +187,10 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
         }
         currentBoard.rev++
         currentBoard.etag = `board-${currentBoard.rev}`
+        // Node deletes and restores publish the layout with the board, as the store does.
+        if (body.deleteFormation || body.deleteGate || body.deleteMission || body.restoreNode) {
+          return respond({ board: boardState(), layout: { boardId: board.id, boardRev: currentBoard.rev, etag: `layout-${currentBoard.rev}`, nodes, edges: [] } })
+        }
       }
       return respond({ board: boardState() })
     }

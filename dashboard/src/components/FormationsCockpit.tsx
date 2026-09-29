@@ -71,6 +71,7 @@ import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget,
 import { gateWireNeedsLabel, loopConnectionIds, routeJudgeWire, routeLoopWires, routeOrthoWire, type LoopWire } from './formationsRouting'
 import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
+import { UndoHistory, boardStep, combineUndo, nodeDeleteUndo, portRemoveUndo, quoted, undoOutcomeMessage, type CockpitUndo, type UndoStep } from './formationsUndo'
 import { NOTE_CARDS, NoteLayer, NOTES_MODES, noteWindowAnchor, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
 import NoteWindow, { BOARD_NOTE_TARGET, noteWindowId } from './NoteWindow'
 import { FormationTypeChip, formationTypeChoices } from './FormationTypeChip'
@@ -78,7 +79,7 @@ import { MissionEditorDialog } from './MissionEditorDialog'
 import type { MissionDraft } from './MissionEditorDialog'
 import { AdmissionFindingsPanel, DraftMarker, findingsByNode, unresolvedFindings } from './formationsDrafts'
 import { GateEditorDialog, GateKindChips, gateFieldsFromDraft, gateFieldsFromGate, gateKindLabel, newGateDraft } from './GateEditorDialog'
-import type { GateDraft, GateFields } from './GateEditorDialog'
+import type { GateDraft } from './GateEditorDialog'
 import { createFormationsInteractionOwner } from './formationsInteraction'
 import type { FormationsInteractionOwner } from './formationsInteraction'
 import { WindowManagerProvider, useWindowManager } from '../windows/WindowManager'
@@ -105,6 +106,7 @@ import type {
   FormationType,
   GateNode,
   LayoutDocument,
+  LayoutEdge,
   LayoutNode,
   MissionNode,
   NoteEntry,
@@ -160,30 +162,6 @@ type BoardDialogState = {
   saving: boolean
   error: string
 }
-type CockpitUndo =
-  | { kind: 'clearBrief'; formationId: string }
-  | { kind: 'setBrief'; formationId: string; brief: FormationBrief }
-  | { kind: 'setExecution'; formationId: string; timeoutSeconds: number }
-  | { kind: 'wireConnection'; from: string; to: string }
-  | { kind: 'unwireConnection'; from: string; to: string }
-  | { kind: 'rewireConnection'; from: string; previousTo: string; to: string; removePreviousInput?: boolean }
-  | { kind: 'rewireSource'; previousFrom: string; from: string; to: string }
-  | { kind: 'deleteFormation'; id: string }
-  | { kind: 'deleteGate'; id: string }
-  | { kind: 'updateGate'; gateId: string; fields: Partial<GateFields> & { files?: string[] }; chain: string[] }
-  | { kind: 'updateFormation'; id: string; title: string }
-  | { kind: 'setFormationType'; id: string; type: FormationNode['type']; slots: FormationSlot[] }
-  | { kind: 'updateMission'; id: string; fields: Partial<Pick<MissionNode, 'title' | 'goal' | 'beadId' | 'inputHint' | 'files' | 'humanChannel'>> }
-  | { kind: 'deleteMission'; id: string }
-  | { kind: 'assignSlot'; formationId: string; slotId: string; agentId: string; harness: string }
-  | { kind: 'moveNode'; id: string; x: number; y: number }
-  | { kind: 'moveNodes'; nodes: { id: string; x: number; y: number }[] }
-  | { kind: 'setLane'; edgeId: string; lane: string }
-  | { kind: 'setGateJudge'; gateId: string; chain: string[] }
-  | { kind: 'detachGateJudge'; gateId: string }
-  | { kind: 'removePort'; formationId: string; portId: string }
-  | { kind: 'makeController'; formationId: string; slotId: string }
-
 export default function FormationsCockpit({ active = true }: { active?: boolean } = {}) {
   const [boards, setBoards] = useState<BoardSummary[]>([])
   const [selectedSlug, setSelectedSlug] = useState('')
@@ -287,7 +265,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const interactionOwnerRef = useRef<FormationsInteractionOwner | null>(null)
   if (!interactionOwnerRef.current) interactionOwnerRef.current = createFormationsInteractionOwner()
   const interactionOwner = interactionOwnerRef.current
-  const undoStack = useRef<CockpitUndo[]>([])
+  // Every canvas edit that changes the board records one undo entry, after it succeeds.
+  const undoHistoryRef = useRef<UndoHistory | null>(null)
+  if (!undoHistoryRef.current) undoHistoryRef.current = new UndoHistory()
+  const undoHistory = undoHistoryRef.current
+  const recordUndo = useCallback((label: string, ...steps: UndoStep[]) => undoHistory.record({ label, steps }), [undoHistory])
+  // Undo belongs to the board it was recorded on.
+  useEffect(() => undoHistory.clear(), [selectedSlug, undoHistory])
   const fittedBoardRef = useRef<string | null>(null)
   const judgeHoverRef = useRef<string | null>(null)
   const openJudgePickerRef = useRef<((gate: GateNode, x: number, y: number) => void) | null>(null)
@@ -735,24 +719,30 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [])
 
   // ----- mutations -----
-  const patchBoard = useCallback(async (patch: Record<string, unknown>): Promise<{ board: BoardDocument; layout: LayoutDocument | null } | null> => {
+  // Writes one board edit and adopts the result; a failure throws.
+  const applyBoardPatch = useCallback(async (patch: Record<string, unknown>): Promise<{ board: BoardDocument; layout: LayoutDocument | null }> => {
     const current = boardRef.current
-    if (!current) return null
+    if (!current) throw new Error('No board is open')
+    const result = await patchBoardDocument(current.slug, current.etag, current.rev, patch)
+    boardRef.current = result.board
+    setBoard(result.board)
+    if (result.layout) {
+      layoutRef.current = result.layout
+      setLayout(result.layout)
+    }
+    return { board: result.board, layout: result.layout ?? null }
+  }, [])
+
+  const patchBoard = useCallback(async (patch: Record<string, unknown>): Promise<{ board: BoardDocument; layout: LayoutDocument | null } | null> => {
     try {
-      const result = await patchBoardDocument(current.slug, current.etag, current.rev, patch)
-      boardRef.current = result.board
-      setBoard(result.board)
-      if (result.layout) {
-        layoutRef.current = result.layout
-        setLayout(result.layout)
-      }
+      const result = await applyBoardPatch(patch)
       setError('')
-      return { board: result.board, layout: result.layout ?? null }
+      return result
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Update failed')
       return null
     }
-  }, [])
+  }, [applyBoardPatch])
 
   const blockBoardExitForDirtyNotes = useCallback(() => {
     const dirty = Object.keys(noteDraftsRef.current).find(target => noteDraftsRef.current[target])
@@ -873,37 +863,48 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     }
   }, [blockBoardExitForDirtyNotes, boardDialog, closeBoardDialog])
 
-  const patchLayoutEdge = useCallback(async (edgeId: string, lane: string) => {
+  // Writes one layout edit and adopts the result; a failure throws.
+  const applyLayoutPatch = useCallback(async (patch: { nodes?: LayoutNode[]; edges?: LayoutEdge[]; arrange?: boolean }) => {
     const currentBoard = boardRef.current
     const currentLayout = layoutRef.current
-    if (!currentBoard || !currentLayout) return
+    if (!currentBoard || !currentLayout) throw new Error('No board layout is open')
+    const next = await patchBoardLayout(currentBoard.slug, currentLayout.etag, patch)
+    layoutRef.current = next
+    setLayout(next)
+    return next
+  }, [])
+
+  const patchLayoutEdge = useCallback(async (edgeId: string, lane: string): Promise<boolean> => {
     try {
-      const next = await patchBoardLayout(currentBoard.slug, currentLayout.etag, { edges: [{ id: edgeId, lane }] })
-      layoutRef.current = next
-      setLayout(next)
+      await applyLayoutPatch({ edges: [{ id: edgeId, lane }] })
       setError('')
+      return true
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update wire routing')
+      return false
     }
-  }, [])
+  }, [applyLayoutPatch])
 
-  const persistPositions = useCallback(async (nodes: { id: string; x: number; y: number }[]) => {
-    const currentBoard = boardRef.current
-    const currentLayout = layoutRef.current
-    if (!currentBoard || !currentLayout || !nodes.length) return
+  // A routing change is one undo entry that restores the wire's previous lane.
+  const setWireLane = useCallback(async (edgeId: string, lane: string, label: string) => {
+    const previous = layoutRef.current?.edges?.find(edge => edge.id === edgeId)?.lane || 'auto'
+    if (previous === lane) return true
+    if (!await patchLayoutEdge(edgeId, lane)) return false
+    recordUndo(label, { layout: { edges: [{ id: edgeId, lane: previous }] } })
+    return true
+  }, [patchLayoutEdge, recordUndo])
+
+  const persistPositions = useCallback(async (nodes: { id: string; x: number; y: number }[]): Promise<boolean> => {
+    if (!nodes.length) return false
     try {
-      const next = await patchBoardLayout(currentBoard.slug, currentLayout.etag, { nodes })
-      layoutRef.current = next
-      setLayout(next)
+      await applyLayoutPatch({ nodes })
       setError('')
+      return true
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save layout')
+      return false
     }
-  }, [])
-
-  const persistPosition = useCallback(async (id: string, x: number, y: number) => {
-    await persistPositions([{ id, x, y }])
-  }, [persistPositions])
+  }, [applyLayoutPatch])
 
   const closeMenu = useCallback(() => setMenu(null), [])
 
@@ -925,114 +926,32 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       setBrief: { formationId, goal: brief.goal || '', beadId: brief.beadId || '', files: brief.files || [], links: brief.links || [] },
     })
     if (!result) return false
-    undoStack.current.push(previous ? { kind: 'setBrief', formationId, brief: previous } : { kind: 'clearBrief', formationId })
+    recordUndo('the brief edit', boardStep(previous
+      ? { setBrief: { formationId, goal: previous.goal || '', beadId: previous.beadId || '', files: previous.files || [], links: previous.links || [] } }
+      : { clearBrief: { formationId } }))
     return true
-  }, [patchBoard])
+  }, [patchBoard, recordUndo])
 
   const saveExecution = useCallback(async (formationId: string, timeoutSeconds: number): Promise<boolean> => {
     const previous = boardRef.current?.formations.find(formation => formation.id === formationId)?.execution?.timeoutSeconds || 0
     const result = await patchBoard({ setExecution: { formationId, timeoutSeconds } })
     if (!result) return false
-    undoStack.current.push({ kind: 'setExecution', formationId, timeoutSeconds: previous })
+    recordUndo('the execution duration edit', boardStep({ setExecution: { formationId, timeoutSeconds: previous } }))
     return true
-  }, [patchBoard])
+  }, [patchBoard, recordUndo])
 
+  const applyUndoStep = useCallback(async (step: UndoStep) => {
+    if ('board' in step) await applyBoardPatch(step.board)
+    else await applyLayoutPatch(step.layout)
+  }, [applyBoardPatch, applyLayoutPatch])
+
+  // Undo runs the newest entry once. A failure is reported once and the entry
+  // is dropped, so Ctrl+Z moves on to older edits.
   const performUndo = useCallback(async () => {
-    const action = undoStack.current.pop()
-    if (!action) return
-    const retry = () => undoStack.current.push(action)
-    if (action.kind === 'rewireSource') {
-      // Undo of a source-end reconnect is two sequential ops: drop the new wire,
-      // restore the previous one.
-      const removed = await patchBoard({ unwireConnection: { from: action.from, to: action.to } })
-      if (!removed) { retry(); return }
-      await patchBoard({ wireConnection: { from: action.previousFrom, to: action.to } })
-      return
-    }
-    if (action.kind === 'moveNode') {
-      await persistPosition(action.id, action.x, action.y)
-      return
-    }
-    if (action.kind === 'moveNodes') {
-      await persistPositions(action.nodes)
-      return
-    }
-    if (action.kind === 'setLane') {
-      await patchLayoutEdge(action.edgeId, action.lane)
-      return
-    }
-    if (action.kind === 'updateGate') {
-      // Restore the fields, then any judge chain the edit detached.
-      const restored = await patchBoard({ updateGate: { id: action.gateId, ...action.fields } })
-      if (!restored) { retry(); return }
-      if (action.chain.length) await patchBoard({ setGateJudge: { gateId: action.gateId, chain: action.chain } })
-      return
-    }
-    let patch: Record<string, unknown>
-    switch (action.kind) {
-      case 'clearBrief':
-        patch = { clearBrief: { formationId: action.formationId } }
-        break
-      case 'setExecution':
-        patch = { setExecution: { formationId: action.formationId, timeoutSeconds: action.timeoutSeconds } }
-        break
-      case 'setBrief':
-        patch = {
-          setBrief: {
-            formationId: action.formationId,
-            goal: action.brief.goal || '',
-            beadId: action.brief.beadId || '',
-            files: action.brief.files || [],
-            links: action.brief.links || [],
-          },
-        }
-        break
-      case 'wireConnection':
-        patch = { wireConnection: { from: action.from, to: action.to } }
-        break
-      case 'unwireConnection':
-        patch = { unwireConnection: { from: action.from, to: action.to } }
-        break
-      case 'rewireConnection':
-        patch = { rewireConnection: { from: action.from, previousTo: action.previousTo, to: action.to, ...(action.removePreviousInput ? { removePreviousInput: true } : {}) } }
-        break
-      case 'deleteFormation':
-        patch = { deleteFormation: { id: action.id } }
-        break
-      case 'deleteGate':
-        patch = { deleteGate: { id: action.id } }
-        break
-      case 'deleteMission':
-        patch = { deleteMission: { id: action.id } }
-        break
-      case 'updateFormation':
-        patch = { updateFormation: { id: action.id, title: action.title } }
-        break
-      case 'setFormationType':
-        patch = { setFormationType: { id: action.id, type: action.type, slots: action.slots } }
-        break
-      case 'updateMission':
-        patch = { updateMission: { id: action.id, ...action.fields } }
-        break
-      case 'assignSlot':
-        patch = { assignSlot: { formationId: action.formationId, slotId: action.slotId, agentId: action.agentId, harness: action.harness } }
-        break
-      case 'setGateJudge':
-        patch = { setGateJudge: { gateId: action.gateId, chain: action.chain } }
-        break
-      case 'detachGateJudge':
-        patch = { detachGateJudge: { gateId: action.gateId } }
-        break
-      case 'removePort':
-        patch = { removePort: { formationId: action.formationId, portId: action.portId } }
-        break
-      case 'makeController':
-        patch = { makeController: { formationId: action.formationId, slotId: action.slotId } }
-        break
-    }
-    const result = await patchBoard(patch)
-    if (!result) retry()
-  }, [patchBoard, patchLayoutEdge, persistPosition, persistPositions])
+    const outcome = await undoHistory.undo(applyUndoStep)
+    if (outcome.status === 'failed') setError(undoOutcomeMessage(outcome))
+    else if (outcome.status === 'undone') setError('')
+  }, [applyUndoStep, undoHistory])
 
   useEffect(() => {
     if (!active) return
@@ -1076,11 +995,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!added) return
     if (added.to !== to) {
       const [formationId, portId] = added.to.split(':')
-      undoStack.current.push({ kind: 'removePort', formationId, portId })
+      recordUndo('the join', boardStep({ removePort: { formationId, portId } }))
     } else {
-      undoStack.current.push({ kind: 'unwireConnection', from, to })
+      recordUndo('the connection', boardStep({ unwireConnection: { from, to } }))
     }
-  }, [patchBoard])
+  }, [patchBoard, recordUndo])
 
   const rewireTarget = useCallback(async (connection: BoardConnection, to: string) => {
     if (!to || connection.to === to || connection.from.split(':')[0] === to.split(':')[0]) return
@@ -1090,13 +1009,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!result) return
     const added = result.board.connections.find(edge => edge.from === connection.from && !previous.connections.some(old => old.id === edge.id))
     if (!added) return
-    undoStack.current.push({ kind: 'rewireConnection', from: connection.from, previousTo: added.to, to: connection.to, removePreviousInput: added.to !== to })
-  }, [patchBoard])
+    recordUndo('the reconnection', boardStep({ rewireConnection: { from: connection.from, previousTo: added.to, to: connection.to, ...(added.to !== to ? { removePreviousInput: true } : {}) } }))
+  }, [patchBoard, recordUndo])
 
-  const removeWire = useCallback((connection: BoardConnection) => {
-    undoStack.current.push({ kind: 'wireConnection', from: connection.from, to: connection.to })
-    void patchBoard({ unwireConnection: { from: connection.from, to: connection.to } })
-  }, [patchBoard])
+  const removeWire = useCallback(async (connection: BoardConnection): Promise<boolean> => {
+    if (!await patchBoard({ unwireConnection: { from: connection.from, to: connection.to } })) return false
+    recordUndo('the connection removal', boardStep({ wireConnection: { from: connection.from, to: connection.to } }))
+    return true
+  }, [patchBoard, recordUndo])
 
   const createGateAt = useCallback((worldX: number, worldY: number) => {
     setGateEditor({ initial: newGateDraft(gateProfiles), x: worldX, y: worldY, saving: false })
@@ -1121,32 +1041,37 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const assignSlot = useCallback((formation: FormationNode, slot: FormationSlot, agentId: string, harness: string) => {
     // An unchanged assignment writes nothing, so it cannot churn the board revision.
     if ((slot.agentId || '') === agentId && (slot.harness || '') === harness) return
-    undoStack.current.push({ kind: 'assignSlot', formationId: formation.id, slotId: slot.id, agentId: slot.agentId || '', harness: slot.harness || '' })
-    void patchBoard({ assignSlot: { formationId: formation.id, slotId: slot.id, agentId, harness } })
-  }, [patchBoard])
+    void patchBoard({ assignSlot: { formationId: formation.id, slotId: slot.id, agentId, harness } }).then(result => {
+      if (!result) return
+      recordUndo(agentId ? `the staffing of ${quoted(slot.label, 'a slot')}` : `the unassignment from ${quoted(slot.label, 'a slot')}`,
+        boardStep({ assignSlot: { formationId: formation.id, slotId: slot.id, agentId: slot.agentId || '', harness: slot.harness || '' } }))
+    })
+  }, [patchBoard, recordUndo])
 
   const unassignSlot = useCallback((formation: FormationNode, slot: FormationSlot) => {
     if (!slot.agentId) return
     assignSlot(formation, slot, '', '')
   }, [assignSlot])
 
+  // Undo restores the exact previous slots, so it also covers a formation that had no controller.
   const makeControllerOp = useCallback((formation: FormationNode, slot: FormationSlot) => {
-    const previous = formation.slots.find(item => item.controller)
-    if (previous && previous.id !== slot.id) {
-      undoStack.current.push({ kind: 'makeController', formationId: formation.id, slotId: previous.id })
-    }
-    void patchBoard({ makeController: { formationId: formation.id, slotId: slot.id } })
-  }, [patchBoard])
+    const previous = boardRef.current?.formations.find(item => item.id === formation.id) || formation
+    void patchBoard({ makeController: { formationId: formation.id, slotId: slot.id } }).then(result => {
+      if (!result) return
+      recordUndo(`the controller change in ${quoted(previous.title, 'the formation')}`, boardStep({ setFormationType: { id: previous.id, type: previous.type, slots: previous.slots } }))
+    })
+  }, [patchBoard, recordUndo])
 
-  const createFormationAt = useCallback(async (type: FormationType, title: string, x: number, y: number): Promise<FormationNode | null> => {
+  // `record: false` leaves the undo entry to a caller that combines this with more edits.
+  const createFormationAt = useCallback(async (type: FormationType, title: string, x: number, y: number, record = true): Promise<FormationNode | null> => {
     const placement = placementForNewNode(x, y)
     const before = boardRef.current
     const result = await patchBoard({ createFormation: { type, title, x: placement.x, y: placement.y } })
     if (!before || !result) return null
     const created = findAddedByID(before.formations || [], result.board.formations || [])
-    if (created) undoStack.current.push({ kind: 'deleteFormation', id: created.id })
+    if (created && record) recordUndo(`the new formation ${quoted(created.title, '')}`.trim(), boardStep({ deleteFormation: { id: created.id } }))
     return created ?? null
-  }, [patchBoard, placementForNewNode])
+  }, [patchBoard, placementForNewNode, recordUndo])
 
   const createMissionAt = useCallback((x: number, y: number) => {
     setMissionEditor({ initial: { title: 'New mission', goal: '', beadId: '' }, x, y })
@@ -1169,9 +1094,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setMissionEditorSaving(false)
     if (!result) return
     const created = findAddedByID(before.missions || [], result.board.missions || [])
-    if (created) undoStack.current.push({ kind: 'deleteMission', id: created.id })
+    if (created) recordUndo(`the new mission ${quoted(created.title, '')}`.trim(), boardStep({ deleteMission: { id: created.id } }))
     setMissionEditor(null)
-  }, [missionEditor, missionEditorSaving, patchBoard, placementForNewNode])
+  }, [missionEditor, missionEditorSaving, patchBoard, placementForNewNode, recordUndo])
 
   // A rename keeps the node's ID, ports, edges, layout and notes.
   const renameNode = useCallback(async (nodeId: string, title: string): Promise<boolean> => {
@@ -1183,27 +1108,28 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const previous = formation?.title ?? mission?.title ?? gate?.title
     if (previous === undefined) return false
     if (previous === title) return true
+    const label = `the rename of ${quoted(previous, 'an untitled node')}`
     if (formation) {
       if (!await patchBoard({ updateFormation: { id: nodeId, title } })) return false
-      undoStack.current.push({ kind: 'updateFormation', id: nodeId, title: previous })
+      recordUndo(label, boardStep({ updateFormation: { id: nodeId, title: previous } }))
     } else if (mission) {
       if (!await patchBoard({ updateMission: { id: nodeId, title } })) return false
-      undoStack.current.push({ kind: 'updateMission', id: nodeId, fields: { title: previous } })
+      recordUndo(label, boardStep({ updateMission: { id: nodeId, title: previous } }))
     } else if (gate) {
       if (!await patchBoard({ updateGate: { id: nodeId, title } })) return false
-      undoStack.current.push({ kind: 'updateGate', gateId: nodeId, fields: gateFieldsFromGate(gate), chain: [] })
+      recordUndo(label, boardStep({ updateGate: { id: nodeId, title: previous } }))
     }
     return true
-  }, [patchBoard])
+  }, [patchBoard, recordUndo])
 
   const updateMissionFields = useCallback(async (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'beadId' | 'inputHint' | 'files' | 'humanChannel'>>): Promise<boolean> => {
     const previous = boardRef.current?.missions?.find(mission => mission.id === missionId)
     if (!previous) return false
     if (!await patchBoard({ updateMission: { id: missionId, ...fields } })) return false
     // An absent field is restored as empty, which clears it.
-    undoStack.current.push({ kind: 'updateMission', id: missionId, fields: Object.fromEntries(Object.keys(fields).map(key => [key, previous[key as keyof typeof fields] ?? (key === 'files' ? [] : '')])) })
+    recordUndo(`the edit of mission ${quoted(previous.title, 'untitled')}`, boardStep({ updateMission: { id: missionId, ...Object.fromEntries(Object.keys(fields).map(key => [key, previous[key as keyof typeof fields] ?? (key === 'files' ? [] : '')])) } }))
     return true
-  }, [patchBoard])
+  }, [patchBoard, recordUndo])
 
   const renderNodeTitle = (title: string, className: string, fallback: string, Tag: 'div' | 'span') => (
     <Tag className={`${className}${title ? '' : ' untitled'}`}>{title || fallback}</Tag>
@@ -1220,17 +1146,30 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [active, closeMissionEditor, missionEditor, missionEditorSaving])
 
+  // A delete captures the node, its connections and its place first, so one
+  // undo restores it with its brief, staffing, ports, wires and notes.
+  const displayLayoutRef = useRef(displayLayoutByNode)
+  displayLayoutRef.current = displayLayoutByNode
+  const deleteNodeOp = useCallback(async (nodeId: string, patch: Record<string, unknown>) => {
+    const before = boardRef.current
+    if (!before) return
+    const position = displayLayoutRef.current.get(nodeId) || { x: 200, y: 200 }
+    const undo = nodeDeleteUndo(before, nodeId, position)
+    if (!await patchBoard(patch)) return
+    undoHistory.record(undo)
+  }, [patchBoard, undoHistory])
+
   const deleteFormationOp = useCallback((formation: FormationNode) => {
-    void patchBoard({ deleteFormation: { id: formation.id } })
-  }, [patchBoard])
+    void deleteNodeOp(formation.id, { deleteFormation: { id: formation.id } })
+  }, [deleteNodeOp])
 
   const deleteGateOp = useCallback((gate: GateNode) => {
-    void patchBoard({ deleteGate: { id: gate.id } })
-  }, [patchBoard])
+    void deleteNodeOp(gate.id, { deleteGate: { id: gate.id } })
+  }, [deleteNodeOp])
 
   const deleteMissionOp = useCallback((mission: MissionNode) => {
-    void patchBoard({ deleteMission: { id: mission.id } })
-  }, [patchBoard])
+    void deleteNodeOp(mission.id, { deleteMission: { id: mission.id } })
+  }, [deleteNodeOp])
 
   const addPortOp = useCallback(async (formation: FormationNode, direction: FormationPortDirection) => {
     const before = boardRef.current?.formations.find(item => item.id === formation.id)
@@ -1241,12 +1180,16 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const created = direction === 'input'
       ? findAddedByID(before.inputs || [], after.inputs || [])
       : findAddedByID(before.outputs || [], after.outputs || [])
-    if (created) undoStack.current.push({ kind: 'removePort', formationId: formation.id, portId: created.id })
-  }, [patchBoard])
+    if (created) recordUndo(`the new ${direction} on ${quoted(formation.title, 'the formation')}`, boardStep({ removePort: { formationId: formation.id, portId: created.id } }))
+  }, [patchBoard, recordUndo])
 
-  const removePortOp = useCallback((formation: FormationNode, portId: string) => {
-    void patchBoard({ removePort: { formationId: formation.id, portId } })
-  }, [patchBoard])
+  const removePortOp = useCallback(async (formation: FormationNode, portId: string) => {
+    const before = boardRef.current
+    if (!before) return
+    const undo = portRemoveUndo(before, formation.id, portId)
+    if (!await patchBoard({ removePort: { formationId: formation.id, portId } })) return
+    undoHistory.record(undo)
+  }, [patchBoard, undoHistory])
 
   const closeLegacyVerification = useCallback(() => {
     if (legacyVerificationPendingRef.current) return
@@ -1346,26 +1289,47 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return visit(start, []) || [start]
   }, [])
 
-  const attachJudge = useCallback((gate: GateNode, chain: string[]) => {
-    const previous = judgeChainOf(gate.id)
-    undoStack.current.push(previous.length
-      ? { kind: 'setGateJudge', gateId: gate.id, chain: previous }
-      : { kind: 'detachGateJudge', gateId: gate.id })
-    void patchBoard({ setGateJudge: { gateId: gate.id, chain } })
-  }, [judgeChainOf, patchBoard])
+  // Restores a gate as it was: its previous judge chain (or none), then its
+  // fields, since attaching adds the formation kind and detaching drops it.
+  const gateRestoreSteps = useCallback((gate: GateNode): UndoStep[] => {
+    const previous = boardRef.current?.gates?.find(item => item.id === gate.id) || gate
+    const chain = judgeChainOf(gate.id)
+    return [
+      boardStep(chain.length ? { setGateJudge: { gateId: gate.id, chain } } : { detachGateJudge: { gateId: gate.id } }),
+      boardStep({ updateGate: { id: gate.id, ...gateFieldsFromGate(previous) } }),
+    ]
+  }, [judgeChainOf])
 
-  // Detaching may change the kinds (a judge-only gate becomes human), so undo
-  // restores the gate's fields before its chain.
+  const attachJudge = useCallback(async (gate: GateNode, chain: string[]): Promise<CockpitUndo | null> => {
+    const steps = gateRestoreSteps(gate)
+    if (!await patchBoard({ setGateJudge: { gateId: gate.id, chain } })) return null
+    return { label: `the judge of ${quoted(gate.title, 'the gate')}`, steps }
+  }, [gateRestoreSteps, patchBoard])
+
+  const attachJudgeOp = useCallback((gate: GateNode, chain: string[]) => {
+    void attachJudge(gate, chain).then(undo => undoHistory.record(undo))
+  }, [attachJudge, undoHistory])
+
   const detachJudge = useCallback((gate: GateNode) => {
-    undoStack.current.push({ kind: 'updateGate', gateId: gate.id, fields: gateFieldsFromGate(gate), chain: judgeChainOf(gate.id) })
-    void patchBoard({ detachGateJudge: { gateId: gate.id } })
-  }, [judgeChainOf, patchBoard])
+    const previousChain = judgeChainOf(gate.id)
+    const previous = boardRef.current?.gates?.find(item => item.id === gate.id) || gate
+    void patchBoard({ detachGateJudge: { gateId: gate.id } }).then(result => {
+      if (!result) return
+      // Restore the fields first: the chain needs the formation kind back.
+      recordUndo(`the judge detach from ${quoted(gate.title, 'the gate')}`,
+        boardStep({ updateGate: { id: gate.id, ...gateFieldsFromGate(previous) } }),
+        ...(previousChain.length ? [boardStep({ setGateJudge: { gateId: gate.id, chain: previousChain } })] : []))
+    })
+  }, [judgeChainOf, patchBoard, recordUndo])
 
-  /** Drop on empty canvas / picker "new judge": create the formation, then wire it as judge. */
+  /** Drop on empty canvas / picker "new judge": create the formation, then wire it as judge; one undo removes both. */
   const createJudgeFor = useCallback(async (gate: GateNode, type: FormationType, title: string, x: number, y: number) => {
-    const created = await createFormationAt(type, title, x, y)
-    if (created) attachJudge(gate, [created.id])
-  }, [attachJudge, createFormationAt])
+    const created = await createFormationAt(type, title, x, y, false)
+    if (!created) return
+    const removeJudge: CockpitUndo = { label: '', steps: [boardStep({ deleteFormation: { id: created.id } })] }
+    const attached = await attachJudge(gate, [created.id])
+    undoHistory.record(combineUndo(`the new judge ${quoted(created.title, '')} for ${quoted(gate.title, 'the gate')}`, removeJudge, attached))
+  }, [attachJudge, createFormationAt, undoHistory])
 
   // Drafts save: missing code fields or a missing judge chain become run findings.
   const saveGateEditor = useCallback(async (draft: GateDraft) => {
@@ -1378,17 +1342,17 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setGateEditor(current => current ? { ...current, saving: false } : null)
     if (!result) return
     const gate = findAddedByID(before.gates || [], result.board.gates || [])
-    if (gate) undoStack.current.push({ kind: 'deleteGate', id: gate.id })
+    if (gate) recordUndo(`the new gate ${quoted(gate.title, '')}`.trim(), boardStep({ deleteGate: { id: gate.id } }))
     setGateEditor(null)
-  }, [gateEditor, patchBoard, placementForNewNode])
+  }, [gateEditor, patchBoard, placementForNewNode, recordUndo])
 
   const setGateFiles = useCallback(async (gateId: string, files: string[]): Promise<boolean> => {
     const previous = boardRef.current?.gates?.find(gate => gate.id === gateId)
     if (!previous) return false
     if (!await patchBoard({ updateGate: { id: gateId, files } })) return false
-    undoStack.current.push({ kind: 'updateGate', gateId, fields: { files: previous.files || [] }, chain: [] })
+    recordUndo(`the files of gate ${quoted(previous.title, 'untitled')}`, boardStep({ updateGate: { id: gateId, files: previous.files || [] } }))
     return true
-  }, [patchBoard])
+  }, [patchBoard, recordUndo])
 
   // Dropping the judge kind detaches the chain, so undo restores the chain after the fields.
   const updateGateFields = useCallback(async (gateId: string, draft: GateDraft): Promise<boolean> => {
@@ -1397,17 +1361,22 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const { kinds, ...rest } = gateFieldsFromDraft(draft)
     const chain = previous.kinds.includes('formation') && !kinds.includes('formation') ? judgeChainOf(previous.id) : []
     if (!await patchBoard({ updateGate: { id: previous.id, ...rest, ...(kinds.length ? { kinds } : {}) } })) return false
-    undoStack.current.push({ kind: 'updateGate', gateId: previous.id, fields: gateFieldsFromGate(previous), chain })
+    recordUndo(`the edit of gate ${quoted(previous.title, 'untitled')}`,
+      boardStep({ updateGate: { id: previous.id, ...gateFieldsFromGate(previous) } }),
+      ...(chain.length ? [boardStep({ setGateJudge: { gateId: previous.id, chain } })] : []))
     return true
-  }, [judgeChainOf, patchBoard])
+  }, [judgeChainOf, patchBoard, recordUndo])
 
   const rewireSource = useCallback(async (connection: BoardConnection, newFrom: string) => {
     if (!newFrom || newFrom === connection.from || newFrom.split(':')[0] === connection.to.split(':')[0]) return
     const removed = await patchBoard({ unwireConnection: { from: connection.from, to: connection.to } })
     if (!removed) return
+    const restoreOld = boardStep({ wireConnection: { from: connection.from, to: connection.to } })
     const added = await patchBoard({ wireConnection: { from: newFrom, to: connection.to } })
-    if (added) undoStack.current.push({ kind: 'rewireSource', previousFrom: connection.from, from: newFrom, to: connection.to })
-  }, [patchBoard])
+    // If the new wire fails, the removal still changed the board, so it is undoable alone.
+    if (!added) recordUndo('the connection removal', restoreOld)
+    else recordUndo('the reconnection', boardStep({ unwireConnection: { from: newFrom, to: connection.to } }), restoreOld)
+  }, [patchBoard, recordUndo])
 
   const [startMission, setStartMission] = useState<MissionNode | null>(null)
 
@@ -1536,16 +1505,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const center = rect
       ? { x: (rect.width / 2 - v.x) / (v.scale || 1) - 150, y: (rect.height / 2 - v.y) / (v.scale || 1) - 120 }
       : { x: 200, y: 200 }
-    const placement = placementForNewNode(center.x, center.y)
-    void patchBoard({
-      createFormation: {
-        type: 'solo',
-        title: 'New formation',
-        x: placement.x,
-        y: placement.y,
-      },
-    })
-  }, [patchBoard, placementForNewNode])
+    void createFormationAt('solo', 'New formation', center.x, center.y)
+  }, [createFormationAt])
 
   // ----- pan + zoom -----
   const onViewportPointerDown = useCallback((event: ReactPointerEvent) => {
@@ -1683,17 +1644,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const currentLayout = layoutRef.current
     if (!currentBoard || !currentLayout) return
     const previous = currentLayout.nodes.map(node => ({ id: node.id, x: node.x, y: node.y }))
-    undoStack.current.push({ kind: 'moveNodes', nodes: previous })
     try {
-      const next = await patchBoardLayout(currentBoard.slug, currentLayout.etag, { arrange: true })
-      layoutRef.current = next
-      setLayout(next)
+      await applyLayoutPatch({ arrange: true })
       setError('')
+      if (previous.length) recordUndo('Arrange', { layout: { nodes: previous } })
     } catch (err) {
-      undoStack.current.pop()
       setError(err instanceof Error ? err.message : 'Failed to arrange layout')
     }
-  }, [])
+  }, [applyLayoutPatch, recordUndo])
 
   const screenToWorld = useCallback((clientX: number, clientY: number) => {
     const rect = viewportRef.current?.getBoundingClientRect()
@@ -1788,16 +1746,20 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           return
         }
         const scale = viewRef.current.scale || 1
-        undoStack.current.push({ kind: 'moveNode', id: drag.id, x: drag.originX, y: drag.originY })
         // Release snaps to the visible dot grid so hand-placed cards line up.
-        void persistPosition(drag.id, snapToGrid(drag.originX + (pointer.clientX - drag.startX) / scale), snapToGrid(drag.originY + (pointer.clientY - drag.startY) / scale))
+        const x = snapToGrid(drag.originX + (pointer.clientX - drag.startX) / scale)
+        const y = snapToGrid(drag.originY + (pointer.clientY - drag.startY) / scale)
+        if (x === drag.originX && y === drag.originY) return
+        void persistPositions([{ id: drag.id, x, y }]).then(saved => {
+          if (saved) recordUndo('the move', { layout: { nodes: [{ id: drag.id, x: drag.originX, y: drag.originY }] } })
+        })
       },
       cancel: () => {
         worldRef.current?.classList.remove('nodedrag')
         setDragPos(null)
       },
     })
-  }, [interactionOwner, openNodeWindow, persistPosition, positionOf])
+  }, [interactionOwner, openNodeWindow, persistPositions, positionOf, recordUndo])
 
   const endpointWorldCenter = useCallback((endpoint: string, direction: 'out' | 'in') => {
     const world = worldRef.current
@@ -1847,7 +1809,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           if (!active.moved) {
             openJudgePickerRef.current?.(gate, pointer.clientX, pointer.clientY)
           } else if (hoveredJudge) {
-            attachJudge(gate, [hoveredJudge])
+            attachJudgeOp(gate, [hoveredJudge])
           } else {
             // Dropped on empty canvas inside the viewport → spawn a judge there (reference just-works).
             const rect = viewportRef.current?.getBoundingClientRect()
@@ -1871,8 +1833,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             const fromNodeId = fromEndpoint.split(':')[0]
             const isFormation = boardRef.current?.formations.some(item => item.id === fromNodeId)
             if (gate && isFormation) {
-              if (active.kind === 'reconnect-target') removeWire(active.connection)
-              attachJudge(gate, [fromNodeId])
+              // One gesture, one undo entry: the wire removal and the judge attach run in turn.
+              const moved = active.kind === 'reconnect-target' ? active.connection : null
+              void (async () => {
+                if (moved && !await patchBoard({ unwireConnection: { from: moved.from, to: moved.to } })) return
+                const attached = await attachJudge(gate, [fromNodeId])
+                const unwired: CockpitUndo | null = moved ? { label: '', steps: [boardStep({ wireConnection: { from: moved.from, to: moved.to } })] } : null
+                undoHistory.record(combineUndo(`the judge of ${quoted(gate.title, 'the gate')}`, unwired, attached))
+              })()
             }
           } else if (target?.dataset.portIn) {
             if (active.kind === 'new') wire(active.from, target.dataset.portIn)
@@ -1887,7 +1855,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         setJudgeHover(null)
       },
     })
-  }, [attachJudge, createJudgeFor, interactionOwner, removeWire, rewireSource, rewireTarget, screenToWorld, wire])
+  }, [attachJudge, attachJudgeOp, createJudgeFor, interactionOwner, patchBoard, rewireSource, rewireTarget, screenToWorld, undoHistory, wire])
 
   const beginWire = useCallback((event: ReactPointerEvent, endpoint: string, kind: WirePath['kind']) => {
     if (event.button !== 0) return
@@ -1981,12 +1949,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       finalize: pointer => {
         if (!lane.moved) return
         const projected = screenToWorld(pointer.clientX, pointer.clientY)
-        undoStack.current.push({ kind: 'setLane', edgeId: lane.connectionId, lane: lane.previousLane })
-        void patchLayoutEdge(lane.connectionId, `y:${Math.round(projected.y)}`).then(() => setLaneDraft(null))
+        void setWireLane(lane.connectionId, `y:${Math.round(projected.y)}`, 'the wire routing').then(() => setLaneDraft(null))
       },
       cancel: () => setLaneDraft(null),
     })
-  }, [beginReconnect, beginReconnectSource, endpointWorldCenter, interactionOwner, patchLayoutEdge, screenToWorld])
+  }, [beginReconnect, beginReconnectSource, endpointWorldCenter, interactionOwner, screenToWorld, setWireLane])
 
   const beginGateToken = useCallback((event: ReactPointerEvent) => {
     if (event.button !== 0) return
@@ -2015,11 +1982,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   // Undo restores the exact previous slots, including any a change to solo removed.
   const changeFormationType = useCallback((formation: FormationNode, type: FormationType, keepSlotId?: string) => {
-    undoStack.current.push({ kind: 'setFormationType', id: formation.id, type: formation.type, slots: formation.slots })
     void patchBoard({ setFormationType: { id: formation.id, type, ...(keepSlotId ? { keepSlotId } : {}) } }).then(result => {
-      if (!result) undoStack.current.pop()
+      if (result) recordUndo(`the type change of ${quoted(formation.title, 'the formation')}`, boardStep({ setFormationType: { id: formation.id, type: formation.type, slots: formation.slots } }))
     })
-  }, [patchBoard])
+  }, [patchBoard, recordUndo])
 
   const formationTypeMenuItems = useCallback((formation: FormationNode): MenuItem[] => [
     { label: 'Change type', head: true },
@@ -2061,10 +2027,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const wireMenu = useCallback((event: ReactMouseEvent<SVGPathElement>, connection: BoardConnection) => {
     openMenu(event, 'Connection actions', [
-      { label: 'Reset routing', action: () => void patchLayoutEdge(connection.id, 'auto') },
-      { label: 'Remove connection', destructive: true, action: () => removeWire(connection) },
+      { label: 'Reset routing', action: () => void setWireLane(connection.id, 'auto', 'the routing reset') },
+      { label: 'Remove connection', destructive: true, action: () => void removeWire(connection) },
     ])
-  }, [openMenu, patchLayoutEdge, removeWire])
+  }, [openMenu, removeWire, setWireLane])
 
   const openJudgePicker = useCallback((gate: GateNode, x: number, y: number) => {
     const pos = displayLayoutByNode.get(gate.id)
@@ -2080,14 +2046,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (formations.length) {
       items.push({ label: '…or an existing formation', head: true })
       for (const formation of formations) {
-        items.push({ label: formation.title, action: () => attachJudge(gate, [formation.id]) })
+        items.push({ label: formation.title, action: () => attachJudgeOp(gate, [formation.id]) })
       }
     }
     if (gateHasJudge(gate.id)) {
       items.push({ label: 'Detach judge', destructive: true, action: () => detachJudge(gate) })
     }
     setMenu({ label: 'Judge', x, y, items })
-  }, [attachJudge, createJudgeFor, detachJudge, displayLayoutByNode, gateHasJudge])
+  }, [attachJudgeOp, createJudgeFor, detachJudge, displayLayoutByNode, gateHasJudge])
   openJudgePickerRef.current = openJudgePicker
 
   const gateMenu = useCallback((event: ReactMouseEvent<HTMLElement>, gate: GateNode) => {
@@ -2107,16 +2073,16 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const inputRowMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode, portId: string, incoming?: BoardConnection) => {
     openMenu(event, 'Input port', [
-      ...(incoming ? [{ label: 'Disconnect input', action: () => removeWire(incoming) }] : []),
+      ...(incoming ? [{ label: 'Disconnect input', action: () => void removeWire(incoming) }] : []),
       { label: 'Add input port', action: () => void addPortOp(formation, 'input') },
-      { label: 'Remove this input', destructive: true, action: () => removePortOp(formation, portId) },
+      { label: 'Remove this input', destructive: true, action: () => void removePortOp(formation, portId) },
     ])
   }, [addPortOp, openMenu, removePortOp, removeWire])
 
   const outputRowMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode, portId: string) => {
     openMenu(event, 'Output port', [
       { label: 'Add output port', action: () => void addPortOp(formation, 'output') },
-      { label: 'Remove this output', destructive: true, action: () => removePortOp(formation, portId) },
+      { label: 'Remove this output', destructive: true, action: () => void removePortOp(formation, portId) },
     ])
   }, [addPortOp, openMenu, removePortOp])
 

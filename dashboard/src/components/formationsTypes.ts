@@ -363,16 +363,3 @@ export type WireDragState =
   | { kind: 'reconnect-target'; connection: BoardConnection }
   | { kind: 'judge'; gateId: string }
 
-export type UndoAction =
-  | { kind: 'deleteFormation'; formationId: string }
-  | { kind: 'deleteGate'; gateId: string }
-  | { kind: 'deleteMission'; missionId: string }
-  | { kind: 'assignSlot'; formationId: string; slotId: string; agentId: string; harness: string }
-  | { kind: 'makeController'; formationId: string; slotId: string }
-  | { kind: 'setBrief'; formationId: string; brief?: FormationBrief }
-  | { kind: 'setExecution'; formationId: string; timeoutSeconds: number }
-  | { kind: 'removePort'; formationId: string; portId: string }
-  | { kind: 'unwireConnection'; from: string; to: string }
-  | { kind: 'moveNode'; node: LayoutNode }
-
-export type BoardUndoAction = Exclude<UndoAction, { kind: 'moveNode'; node: LayoutNode }>
