@@ -73,7 +73,7 @@ type Event struct {
 	Outcome      string `json:"outcome,omitempty"`
 	Blocks       bool   `json:"blocks,omitempty"`
 	// EndIDs, on run_succeeded and run_failed, are the End nodes the run's
-	// paths reached (form-o7p.10).
+	// paths reached (archon-o7p.10).
 	EndIDs []string `json:"endIds,omitempty"`
 }
 type Projection struct {
@@ -424,7 +424,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		reply(w, 400, map[string]string{"error": "mission, inputCardId and expectedRev required"})
 		return
 	}
-	// Limits are optional (form-o7p.7): an absent or zero limit means none.
+	// Limits are optional (archon-o7p.7): an absent or zero limit means none.
 	if err := formations.ValidateRunLimits(req.Limits); err != nil {
 		reply(w, 400, map[string]string{"error": err.Error()})
 		return

@@ -276,7 +276,7 @@
 .fmx .gmeta .gt{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;}
 .fmx .gmeta .gs{font-size:11px;color:var(--ink2);line-height:1.32;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;max-width:150px;}
 .fmx .gmeta .gs.placeholder{color:var(--dimmer);font-style:italic;}
-/* End node (form-o7p.10): a small terminal stadium with an input port only. Its
+/* End node (archon-o7p.10): a small terminal stadium with an input port only. Its
    outcome colours the ring and mark: done in sage, rejected in the error red. */
 .fmx .endcard{--end:var(--sage);position:absolute;display:flex;align-items:center;gap:9px;height:56px;min-width:132px;max-width:208px;padding:0 18px 0 12px;background:var(--card);border:1.5px solid var(--end);border-radius:28px;box-shadow:0 2px 8px rgba(0,0,0,.35);z-index:1;cursor:grab;transition:box-shadow .16s,left .18s cubic-bezier(.2,.7,.3,1),top .18s cubic-bezier(.2,.7,.3,1);}
 .fmx .endcard.end-rejected{--end:var(--terra-d);}

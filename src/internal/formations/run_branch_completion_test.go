@@ -53,7 +53,7 @@ criterion = "Good enough"
 }
 
 // branchingBoardEnds are the Done and Rejected End nodes every branching
-// board ends its paths at (form-o7p.10).
+// board ends its paths at (archon-o7p.10).
 func branchingBoardEnds() string {
 	return `
 [[end]]
@@ -191,7 +191,7 @@ func eventTypeTrail(events []RunEvent) string {
 	return strings.Join(trail, ", ")
 }
 
-// form-n7u.53: approving a terminal human gate continues every branch that
+// archon-n7u.53: approving a terminal human gate continues every branch that
 // is still to run, and the run succeeds only after them. A second engine on
 // the same store replays the ledger to the same outcome.
 func TestApprovingATerminalHumanGateRunsTheOtherBranchesBeforeSuccess(t *testing.T) {

@@ -13,7 +13,7 @@ or a diagram of the runtime. The original generated PNG is stored unchanged.
 ## Screenshots
 
 The captures predate the rename of boards to missions, so their labels may
-say Boards. All captures use Chromium and the real branded UI introduced in `form-pvl.1`,
+say Boards. All captures use Chromium and the real branded UI introduced in `archon-pvl.1`,
 with the bundled dark theme. The frozen capture build contains
 `index-CP2HVN87.js` and `index-B3tsUi9f.css`.
 They were captured on 2026-09-14 in an isolated local workspace using the

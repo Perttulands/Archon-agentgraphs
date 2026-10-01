@@ -87,7 +87,7 @@ func TestRunStartReturnsEveryAdmissionFindingAs422(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	// The draft's dangling routes are admission findings too (form-o7p.10).
+	// The draft's dangling routes are admission findings too (archon-o7p.10).
 	want := []string{
 		"fmn_plan " + formations.FindingUnstaffedSlot,
 		"gate_lint " + formations.FindingGateNotRoutable,

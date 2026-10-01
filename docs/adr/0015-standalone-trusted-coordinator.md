@@ -12,7 +12,7 @@ statements below describe the original proving mission. Read
 [the current contract](../CONTRACT.md) for current behavior. Service ownership,
 trusted authority, private evidence and immutable cleanup principles remain.
 
-Accepted for the form-2fb proving mission on 2026-09-06. Formations now runs in
+Accepted for the archon-2fb proving mission on 2026-09-06. Formations now runs in
 its own process, `formationsd`, with Archon as its authoring and command client.
 CHROTE can consume this HTTP boundary in separately authorized integration work.
 This repository does not change the CHROTE binary or its services.
@@ -25,7 +25,7 @@ the smaller current contract explicit; it does not claim certified same-UID
 isolation, existing-session attachment, private artifact capabilities, durable
 command receipts, or automatic crash recovery. The current code already allows
 trusted runtime effects through `RequireRuntimeAuthority`; older root-spec
-claims that all runtime calls are disabled need reconciliation in form-1jw.
+claims that all runtime calls are disabled need reconciliation in archon-1jw.
 
 One coordinator holds a kernel lock on its configured state directory. That
 directory is outside the source checkout and contains the definition workspace,

@@ -234,7 +234,7 @@ func TestRunAdmissionReportsEveryProblemAtOnce(t *testing.T) {
 			t.Errorf("finding %s = %q, want message containing %q", key, got[key], substring)
 		}
 	}
-	// Every route on the run path leads somewhere (form-o7p.10): admission
+	// Every route on the run path leads somewhere (archon-o7p.10): admission
 	// names each one that leads nowhere.
 	var nowhere []string
 	for _, finding := range findBoardFindings(report.Errors, FindingRouteLeadsNowhere) {

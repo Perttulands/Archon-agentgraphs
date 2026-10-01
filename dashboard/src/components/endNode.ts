@@ -1,7 +1,7 @@
 import type { EndOutcome } from './formationsTypes'
 
 /**
- * End nodes end a path on purpose (form-o7p.10): every route leads to a step,
+ * End nodes end a path on purpose (archon-o7p.10): every route leads to a step,
  * a gate or an End node, done or rejected. These are the words the canvas, the
  * Flow view, node windows and the gate answer panel share.
  */

@@ -54,7 +54,7 @@ func TestPendingHumanGateSurvivesRestart(t *testing.T) {
 					awaitState(t, c, id, "succeeded")
 				} else {
 					// The send-back ends this path rejected, which fails the run
-					// with the operator's reason (form-o7p.10).
+					// with the operator's reason (archon-o7p.10).
 					awaitState(t, c, id, "failed")
 					events, _ := c.store.ReadRunEvents(id)
 					last := events[len(events)-1]

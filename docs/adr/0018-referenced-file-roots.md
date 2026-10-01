@@ -2,8 +2,8 @@
 
 # Referenced file roots
 
-Accepted 2026-09-16. Implements the file-reference part of form-ged.5 under the
-epic form-ged, whose operator decisions ask for a gate's rubric and other
+Accepted 2026-09-16. Implements the file-reference part of archon-ged.5 under the
+epic archon-ged, whose operator decisions ask for a gate's rubric and other
 referenced files to open from the cockpit. Extends
 [ADR-0017](0017-run-evidence-api.md), whose trust boundary and confinement it
 reuses.

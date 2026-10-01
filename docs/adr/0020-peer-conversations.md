@@ -1,6 +1,6 @@
 # Peer conversations and authored execution duration
 
-Accepted 2026-09-17. Implements `form-0wz`. Supersedes the fixed peer-turn and
+Accepted 2026-09-17. Implements `archon-0wz`. Supersedes the fixed peer-turn and
 first-peer facilitator schedule in ADR-0007. The running contract is
 [CONTRACT.md](../CONTRACT.md).
 

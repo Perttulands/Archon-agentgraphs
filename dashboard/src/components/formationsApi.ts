@@ -275,7 +275,7 @@ export async function startRun(etag: string, body: { mission: string; inputCardI
   const result = await fetchApi<{ runId: string }>('/api/runs', {
     method: 'POST',
     headers: { 'If-Match': etag },
-    // The cockpit starts runs without limits (form-o7p.7).
+    // The cockpit starts runs without limits (archon-o7p.7).
     body: JSON.stringify(body),
   })
   return { runId: result.data.runId, status: runStatusFromResponse(await fetchRunStatus(result.data.runId)) }
@@ -344,7 +344,7 @@ export interface GateRouteTarget {
   outcome?: 'done' | 'rejected'
 
   attempt?: number
-  /** The run's attempt limit; absent when the run set none and attempts are unlimited (form-o7p.7). */
+  /** The run's attempt limit; absent when the run set none and attempts are unlimited (archon-o7p.7). */
   maxAttempts?: number
   /** A join that receives this and still waits for another input. */
   waitsForInputs?: boolean

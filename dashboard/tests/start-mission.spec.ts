@@ -70,7 +70,7 @@ test('the dialog asks for no launch limits', async ({ page }) => {
   await page.getByTitle('Start mission', { exact: true }).first().click()
   const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
   await expect(dialog.getByLabel('Brief', { exact: true })).toBeVisible()
-  // Runs have no limits unless the mission sets them (form-o7p.7).
+  // Runs have no limits unless the mission sets them (archon-o7p.7).
   await expect(dialog.getByRole('spinbutton')).toHaveCount(0)
   await expect(dialog.getByText(/dispatch|attempt|time limit/i)).toHaveCount(0)
   expect(fixture.writes).toEqual([])

@@ -1,6 +1,6 @@
 package formations
 
-// Limit blocks (form-n7u.6). A run that exhausts its attempts or dispatches
+// Limit blocks (archon-n7u.6). A run that exhausts its attempts or dispatches
 // blocks, and resuming it cannot progress: the engine counts every recorded
 // start, and neither resume nor a new engine replenishes the allowance. Such a
 // block records resumeAllowed false, and every reader derives the limit it hit

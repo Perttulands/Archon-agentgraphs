@@ -391,7 +391,7 @@ describe('formations API helpers', () => {
     expect(calls[0].url).toBe('/api/runs')
     expect(calls[0].init?.method).toBe('POST')
     expect(calls[0].init?.headers).toMatchObject({ 'If-Match': 'board-etag' })
-    // No default limits: the run has none (form-o7p.7).
+    // No default limits: the run has none (archon-o7p.7).
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({ mission: 'session-search', inputCardId: 'mis_showcase', expectedRev: 1, actor: 'agent:ui' })
   })
 })

@@ -3,7 +3,7 @@ import { cockpitFixture } from './cockpit-fixture'
 import { scouting, scoutingFixture } from './scouting-fixture'
 
 // Floating windows open clear of the step being read, its neighbours and each
-// other (form-n7u.4), on the canvas and in Flow, at 1920 and 2560 wide.
+// other (archon-n7u.4), on the canvas and in Flow, at 1920 and 2560 wide.
 
 type Node = { id: string; title: string }
 type Box = { x: number; y: number; width: number; height: number }

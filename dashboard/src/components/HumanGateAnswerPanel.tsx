@@ -85,7 +85,7 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
   const trimmed = response.trim()
   // The run's frozen criterion wins over the mission's current draft.
   const shownCriterion = (upstream.state === 'ready' && upstream.criterion) || criterion
-  // Where each decision leads, from the run's frozen board (form-n7u.7).
+  // Where each decision leads, from the run's frozen board (archon-n7u.7).
   const routes = upstream.state === 'ready' ? upstream.routes : undefined
   const approve = gateRouteWords('pass', routes?.find(route => route.verdict === 'pass'), titleOf)
   const sendBack = gateRouteWords('fail', routes?.find(route => route.verdict === 'fail'), titleOf)

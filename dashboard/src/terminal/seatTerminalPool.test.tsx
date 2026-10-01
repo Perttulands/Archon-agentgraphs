@@ -1,5 +1,5 @@
 // Adapted from CHROTE dashboard/src/components/TerminalPool.test.tsx (355ace49)
-// under form-o7p.13.1: a window's pool of seat terminals instead of CHROTE's
+// under archon-o7p.13.1: a window's pool of seat terminals instead of CHROTE's
 // app-wide pool of bound sessions.
 import { act, render } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'

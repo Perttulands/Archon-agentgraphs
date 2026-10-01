@@ -1,5 +1,5 @@
 // Adapted from CHROTE dashboard/src/components/TerminalPool.tsx (CHROTE
-// 355ace49) under form-o7p.13.1: one terminal per seat, outliving the view
+// 355ace49) under archon-o7p.13.1: one terminal per seat, outliving the view
 // that shows it, created unconnected and dialled only when first shown, and
 // woken when the operator comes back to the page.
 //

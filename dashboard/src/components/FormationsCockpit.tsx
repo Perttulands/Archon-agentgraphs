@@ -1439,7 +1439,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setRunEvents(events)
   }, [])
 
-  // Stop is confirmed in the run bar first, which passes the operator's reason (form-n7u.8).
+  // Stop is confirmed in the run bar first, which passes the operator's reason (archon-n7u.8).
   const abortActiveRun = useCallback(async (reason: string) => {
     if (!activeRun?.runId || activeRun.final) return false
     try {

@@ -51,7 +51,7 @@ necessary departure from the CHROTE implementation.
 
 ## Work state
 
-Use this repository's `form-` Beads store. Execute the active Bead and record
+Use this repository's `archon-` Beads store. Execute the active Bead and record
 unrelated findings separately. Host deployment and forwarding live outside this
 repository; CHROTE integration and SRV deployment require Beads in their owning
 stores. Keep tracked files host-neutral. Supply host paths, sockets, users and

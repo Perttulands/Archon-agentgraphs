@@ -3,7 +3,7 @@ import type { GateRoute, GateRouteTarget, RunLimitUse } from './formationsApi'
 import type { EvidenceProblem } from '../evidence/runEvidenceApi'
 
 // The words for how a run stopped and where a gate's answer leads
-// (form-n7u.5, .6, .7). The daemon supplies the facts: who ended a run and why,
+// (archon-n7u.5, .6, .7). The daemon supplies the facts: who ended a run and why,
 // the limit a block exhausted, and each verdict's destinations on the run's
 // frozen board. These functions only phrase them.
 
@@ -114,7 +114,7 @@ export function gateRouteWords(verdict: 'pass' | 'fail', route: GateRoute | unde
     }
   }
   if (!route.targets.length) return { button: verb, outcome: '', blocks: false, last: false }
-  // Every route leads somewhere (form-o7p.10); an End node target ends this path.
+  // Every route leads somewhere (archon-o7p.10); an End node target ends this path.
   const steps = route.targets.filter(target => target.kind !== 'end')
   const ends = route.targets.filter(target => target.kind === 'end').map(target => endPathWords(target.outcome))
   if (!steps.length) {

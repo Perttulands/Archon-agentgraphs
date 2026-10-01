@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// End nodes end a path on purpose (form-o7p.10). Every output and gate route
+// End nodes end a path on purpose (archon-o7p.10). Every output and gate route
 // leads to a step, a gate or an End node; an End node has one input, takes
 // any number of routes into it, and leads nowhere. Its outcome says how the
 // path ended: done, or rejected, which fails the run with the reason of the

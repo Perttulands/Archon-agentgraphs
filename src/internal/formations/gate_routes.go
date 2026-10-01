@@ -1,10 +1,10 @@
 package formations
 
-// Where a human gate's answer leads (form-n7u.7). The operator decides with the
+// Where a human gate's answer leads (archon-n7u.7). The operator decides with the
 // consequence in view: the steps each verdict delivers to on the run's frozen
 // board, whether a verdict ends the run, and whether the step a verdict starts
 // would take the last of a limit or find it already spent, which blocks the run
-// instead (form-n7u.6). The routes follow routeGateVerdict and the engine's
+// instead (archon-n7u.6). The routes follow routeGateVerdict and the engine's
 // attempt and dispatch counting.
 
 // GateRouteTarget is a step, gate or End node a verdict delivers to. A

@@ -8,8 +8,8 @@ import { DEFAULT_STOP_REASON, runLimitPhrase } from './runOutcome'
 import '../styles/formations-run.css'
 
 // The run bar's recoveries: Resume only when resuming can make progress, a
-// plain statement of why a block cannot resume (form-n7u.6), and Stop behind a
-// modal confirmation that names the run and what ends with it (form-n7u.8).
+// plain statement of why a block cannot resume (archon-n7u.6), and Stop behind a
+// modal confirmation that names the run and what ends with it (archon-n7u.8).
 
 export { DEFAULT_STOP_REASON }
 

@@ -10,7 +10,7 @@ import (
 )
 
 // branchingProofBoard is mission -> A -> human gate (pass Done, fail
-// Rejected), and mission -> B -> C -> Done (form-n7u.53).
+// Rejected), and mission -> B -> C -> Done (archon-n7u.53).
 func branchingProofBoard() string {
 	formation := func(id string) string {
 		return `

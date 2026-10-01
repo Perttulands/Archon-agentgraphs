@@ -4,7 +4,7 @@
 
 # Daily Formations capability
 
-Accepted 2026-09-08. Implements the decisions in form-bxm. Supersedes
+Accepted 2026-09-08. Implements the decisions in archon-bxm. Supersedes
 [ADR-0015](0015-standalone-trusted-coordinator.md) on admission, harnesses,
 network listeners, cockpit ownership, cancellation and recovery.
 

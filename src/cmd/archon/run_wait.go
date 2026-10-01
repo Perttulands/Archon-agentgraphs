@@ -16,7 +16,7 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// `archon run wait` (form-o7p.6) blocks until a run needs its driver, ends or
+// `archon run wait` (archon-o7p.6) blocks until a run needs its driver, ends or
 // changes, then prints one paragraph written for the agent that reads it. The
 // daemon decides; this client long-polls it, reconnects across restarts with
 // the same cursor, and turns the answer into text, JSON and an exit code.

@@ -177,7 +177,7 @@ export interface GateNode {
 
 export type EndOutcome = 'done' | 'rejected'
 
-/** Ends a path on purpose (form-o7p.10). Its only port is `in`, which takes any number of routes. */
+/** Ends a path on purpose (archon-o7p.10). Its only port is `in`, which takes any number of routes. */
 export interface EndNode {
   id: string
   title: string

@@ -128,7 +128,7 @@ func TestArchonGateCreateWithoutKindsIsARoutableHumanGate(t *testing.T) {
 	archon("formation", "set-brief", "review", worker.ID, "--goal", "Produce the result")
 	archon("mission", "wire", "review", "Work", worker.ID+":"+worker.Inputs[0].ID)
 	archon("formation", "wire", "review", worker.ID+":"+worker.Outputs[0].ID, gate.ID+":in")
-	// Every route leads somewhere (form-o7p.10): Signoff passes to Lint, Lint's
+	// Every route leads somewhere (archon-o7p.10): Signoff passes to Lint, Lint's
 	// pass ends the path done, and both gates' fails end it at one Rejected node.
 	lint := board.Gates[1]
 	var done, rejected struct {

@@ -7,7 +7,7 @@ import (
 )
 
 // A run that fails at a rejected End node names it by title in run wait and
-// notifications, as it names steps and gates (form-o7p.10).
+// notifications, as it names steps and gates (archon-o7p.10).
 func TestNodeTitleNamesEndNodes(t *testing.T) {
 	board := &formations.BoardDocument{Ends: []formations.EndNode{{ID: "end_rejected", Title: "Rejected", Outcome: formations.EndOutcomeRejected}}}
 	if got := waitTitle(board, "end_rejected"); got != "Rejected" {

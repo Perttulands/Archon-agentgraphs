@@ -7,7 +7,7 @@ import type { WindowRect } from '../windows/windowGeometry'
 import '../windows/floatingWindows.css'
 
 // The pending human gate's answer on the canvas, as a floating window
-// (form-n7u.7): the operator moves, resizes or closes it like any other, and it
+// (archon-n7u.7): the operator moves, resizes or closes it like any other, and it
 // opens clear of the gate and the steps Approve leads to, so the consequence of
 // the decision stays in view. The gate's own node window never covers it: when
 // that window opens, this one is raised above it once.

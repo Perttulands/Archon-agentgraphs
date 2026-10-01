@@ -1,4 +1,4 @@
-# Historical form-2fb proving mission from 2026-09-06. Its briefs target that task.
+# Historical archon-2fb proving mission from 2026-09-06. Its briefs target that task.
 # For current Archon operation use docs/CONTRACT.md; adapt before running.
 schema = 1
 id = "brd_operations_proof"
@@ -9,15 +9,15 @@ rev = 1
 [[inputCard]]
 id = "mis_operations"
 title = "Prove a useful operations handoff"
-goal = "Produce, independently review and integrate a usable standalone operations guide. End at a real operator gate. This is form-2fb work."
+goal = "Produce, independently review and integrate a usable standalone operations guide. End at a real operator gate. This is archon-2fb work."
 
 [[formation]]
 id = "fmn_producer"
 type = "solo"
 title = "Producer"
 [formation.brief]
-goal = "You are a bounded seat in the form-2fb proving mission. The parent owns the Bead. Read the owning Bead and repository instructions. No Git operations, tmux operations, service changes, new agents, or changes outside your named file. Source documentation must be host-neutral, with no actual local paths, socket values, credentials, native session IDs, or run data. Follow the output and completion contract below. Keep your work bounded to this turn. Produce docs/standalone-operations.md, a concise operator guide for this standalone coordinator. Read docs/adr/0015-standalone-trusted-coordinator.md, docs/openapi/archon.yaml, src/cmd/archond/main.go, src/cmd/archon/remote.go and examples/operations-proof.mission.toml. Explain build, private state vs source workspace, import of this example, launch using configured host paths, mission start, status/follow, exact human approval/rejection, session ownership and current recovery limitations. Use shell variables as placeholders. Do not start a service or a mission. The guide must let an operator locate and enter the actual pending gate verdict. State any uncertainty in your routed output."
-beadId = "form-2fb"
+goal = "You are a bounded seat in the archon-2fb proving mission. The parent owns the Bead. Read the owning Bead and repository instructions. No Git operations, tmux operations, service changes, new agents, or changes outside your named file. Source documentation must be host-neutral, with no actual local paths, socket values, credentials, native session IDs, or run data. Follow the output and completion contract below. Keep your work bounded to this turn. Produce docs/standalone-operations.md, a concise operator guide for this standalone coordinator. Read docs/adr/0015-standalone-trusted-coordinator.md, docs/openapi/archon.yaml, src/cmd/archond/main.go, src/cmd/archon/remote.go and examples/operations-proof.mission.toml. Explain build, private state vs source workspace, import of this example, launch using configured host paths, mission start, status/follow, exact human approval/rejection, session ownership and current recovery limitations. Use shell variables as placeholders. Do not start a service or a mission. The guide must let an operator locate and enter the actual pending gate verdict. State any uncertainty in your routed output."
+beadId = "archon-2fb"
 [[formation.input]]
 id = "port_producer_in"
 label = "Input"
@@ -37,8 +37,8 @@ id = "fmn_reviewer"
 type = "solo"
 title = "Reviewer"
 [formation.brief]
-goal = "You are a bounded seat in the form-2fb proving mission. The parent owns the Bead. Read the owning Bead and repository instructions. No Git operations, tmux operations, service changes, new agents, or changes outside your named file. Source documentation must be host-neutral, with no actual local paths, socket values, credentials, native session IDs, or run data. Follow the output and completion contract below. Keep your work bounded to this turn. Independently review docs/standalone-operations.md against the actual source and ADR/OpenAPI. This seat is read-only in the repository. Identify concrete errors that would prevent an operator from using it, incomplete lifecycle claims, unclear gate steps, or invented commands. Return a ranked list of corrections in your routed output. If it passes, say why with precise source evidence. Do not demand broader schema-2 work or implement changes. Judge whether a separate reviewer added useful information in this small mission."
-beadId = "form-2fb"
+goal = "You are a bounded seat in the archon-2fb proving mission. The parent owns the Bead. Read the owning Bead and repository instructions. No Git operations, tmux operations, service changes, new agents, or changes outside your named file. Source documentation must be host-neutral, with no actual local paths, socket values, credentials, native session IDs, or run data. Follow the output and completion contract below. Keep your work bounded to this turn. Independently review docs/standalone-operations.md against the actual source and ADR/OpenAPI. This seat is read-only in the repository. Identify concrete errors that would prevent an operator from using it, incomplete lifecycle claims, unclear gate steps, or invented commands. Return a ranked list of corrections in your routed output. If it passes, say why with precise source evidence. Do not demand broader schema-2 work or implement changes. Judge whether a separate reviewer added useful information in this small mission."
+beadId = "archon-2fb"
 [[formation.input]]
 id = "port_reviewer_in"
 label = "Input"
@@ -58,8 +58,8 @@ id = "fmn_integrator"
 type = "solo"
 title = "Integrator"
 [formation.brief]
-goal = "You are a bounded seat in the form-2fb proving mission. The parent owns the Bead. Read the owning Bead and repository instructions. No Git operations, tmux operations, service changes, new agents, or changes outside your named file. Source documentation must be host-neutral, with no actual local paths, socket values, credentials, native session IDs, or run data. Follow the output and completion contract below. Keep your work bounded to this turn. Integrate the preceding reviewer findings into docs/standalone-operations.md, the only source file you may edit. Check the final guide against the coordinator and CLI source. Fix concrete errors; preserve useful concise instructions. Do not execute example commands that create sessions or alter runtime state. In your routed output give a short file-level receipt and say which reviewer findings changed the guide, and whether this handoff earned its overhead. The parent will independently verify the file before the human gate."
-beadId = "form-2fb"
+goal = "You are a bounded seat in the archon-2fb proving mission. The parent owns the Bead. Read the owning Bead and repository instructions. No Git operations, tmux operations, service changes, new agents, or changes outside your named file. Source documentation must be host-neutral, with no actual local paths, socket values, credentials, native session IDs, or run data. Follow the output and completion contract below. Keep your work bounded to this turn. Integrate the preceding reviewer findings into docs/standalone-operations.md, the only source file you may edit. Check the final guide against the coordinator and CLI source. Fix concrete errors; preserve useful concise instructions. Do not execute example commands that create sessions or alter runtime state. In your routed output give a short file-level receipt and say which reviewer findings changed the guide, and whether this handoff earned its overhead. The parent will independently verify the file before the human gate."
+beadId = "archon-2fb"
 [[formation.input]]
 id = "port_integrator_in"
 label = "Input"

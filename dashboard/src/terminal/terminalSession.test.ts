@@ -1,5 +1,5 @@
 // Ported from CHROTE dashboard/src/terminal/terminalSession.test.ts (355ace49)
-// under form-o7p.13.1. The claim and leader-chord cases are not ported, because
+// under archon-o7p.13.1. The claim and leader-chord cases are not ported, because
 // Archon's session has neither (see terminalSession.ts); the seat's fixed grid
 // cases are added at the end.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

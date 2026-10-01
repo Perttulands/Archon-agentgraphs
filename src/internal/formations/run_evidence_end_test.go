@@ -7,7 +7,7 @@ import (
 
 // A final run says why it ended and who ended it, on the run's problems and on
 // the node it stopped, and an earlier block the run resumed past is marked so
-// it is not read as the cause (form-n7u.5).
+// it is not read as the cause (archon-n7u.5).
 func TestRunProblemsNameTheEndOfARunAndWhoEndedIt(t *testing.T) {
 	failed := []RunEvent{
 		{Seq: 1, Type: RunEventStarted},

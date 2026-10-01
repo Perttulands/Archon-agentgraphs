@@ -1,4 +1,4 @@
-// Ported from CHROTE dashboard/src/components/TerminalSurface.test.tsx (355ace49) under form-o7p.13.1.
+// Ported from CHROTE dashboard/src/components/TerminalSurface.test.tsx (355ace49) under archon-o7p.13.1.
 import { render } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import TerminalSurface from './TerminalSurface'

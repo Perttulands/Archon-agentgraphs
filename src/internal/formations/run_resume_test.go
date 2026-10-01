@@ -202,7 +202,7 @@ func TestEngineResumeDoesNotReplenishDispatchBudget(t *testing.T) {
 		t.Fatalf("initial status/calls = %+v/%d", status, len(executor.calls))
 	}
 	// A spent dispatch budget cannot progress, so the block is not resumable,
-	// even from a fresh engine that models restarting the daemon (form-n7u.6).
+	// even from a fresh engine that models restarting the daemon (archon-n7u.6).
 	if status.ResumeAllowed {
 		t.Fatalf("dispatch-limit block projects resumeAllowed: %+v", status)
 	}
@@ -564,7 +564,7 @@ func TestS5EngineResumeTerminalJudgeGatePassDoesNotReplayJudge(t *testing.T) {
 
 // A restart between a fail routed to a rejected End and the run's end: the
 // resume reads the ended path from the ledger and fails the run with the
-// gate's reason, never success (form-n7u.54, form-o7p.10).
+// gate's reason, never success (archon-n7u.54, archon-o7p.10).
 func TestS5EngineResumeAfterARejectedPathFailsTheRunWithTheGatesReason(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	store.Now = fixedClock()

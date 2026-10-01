@@ -10,7 +10,7 @@ import (
 )
 
 // The local mission run and formation run refuse a negative limit with
-// admission's message (form-o7p.7) and write no run.
+// admission's message (archon-o7p.7) and write no run.
 func TestArchonLocalRunsRefuseNegativeLimits(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()

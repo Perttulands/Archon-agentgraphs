@@ -13,7 +13,7 @@ func branchOutputData(port string) map[string]any {
 
 // Approving a gate whose pass ends its path at an End node ends the run only
 // when nothing else can still run; with another branch still to run, the path
-// ends and the run goes on (form-n7u.7 review, form-o7p.10).
+// ends and the run goes on (archon-n7u.7 review, archon-o7p.10).
 func TestHumanGateRoutesOnABranchingBoardEndOnlyWhenNothingElseCanRun(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	createS4Persona(t, personas, "scout")

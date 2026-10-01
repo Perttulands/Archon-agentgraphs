@@ -2,7 +2,7 @@ package terminal
 
 // Ported from CHROTE's terminal transport tests
 // (/srv/chrote/src/internal/proxy/terminal_test.go, CHROTE 355ace49) under
-// form-o7p.13.1. As there, a fake tmux records its argv and then behaves like
+// archon-o7p.13.1. As there, a fake tmux records its argv and then behaves like
 // an ordinary program on a tty, which exercises the real pty, the real relay
 // and the real hangup without a live session anywhere near the suite. The
 // socket is a real Unix listener so the seat's socket-identity proof runs

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// End nodes end paths on purpose (form-o7p.10). A run finishes when every path
+// End nodes end paths on purpose (archon-o7p.10). A run finishes when every path
 // has ended and nothing else can run (unfinishedRunWork), and fails when a
 // path ended at a rejected End node, with the reason of the gate verdict that
 // routed there. These tests drive the engine on linear and branching boards,
@@ -79,7 +79,7 @@ func TestAStepOutputEndingRejectedFailsTheRunNamingTheEnd(t *testing.T) {
 
 // Rejecting a human gate whose fail ends rejected fails the run with the
 // operator's reason, the same on a linear board and on a branching one,
-// where the other branch runs to its own end first (form-n7u.54).
+// where the other branch runs to its own end first (archon-n7u.54).
 func TestRejectingAGateWhoseFailEndsRejectedFailsTheRunWithItsReason(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

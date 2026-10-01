@@ -74,7 +74,7 @@ func TestHumanGateRoutesNameDestinationsAndTheLastAttempt(t *testing.T) {
 	}
 }
 
-// A run that set no limits has none (form-o7p.7): however often the draft was
+// A run that set no limits has none (archon-o7p.7): however often the draft was
 // sent back, the next send-back names no attempt limit and no dispatch use,
 // because the engine will start the draft again.
 func TestHumanGateRoutesNameNoLimitWhenTheRunSetNone(t *testing.T) {
@@ -136,7 +136,7 @@ func TestHumanGateRoutesNameAJoinThatWaitsAndCountJudges(t *testing.T) {
 }
 
 // A verdict whose routes all lead to End nodes ends its path; with nothing
-// else to run it ends the run, which a rejected End fails (form-o7p.10).
+// else to run it ends the run, which a rejected End fails (archon-o7p.10).
 func TestHumanGateRoutesSayWhenAVerdictEndsTheRun(t *testing.T) {
 	board := gateRoutesBoard()
 	board.Ends = []EndNode{{ID: "end_done", Title: "Shipped", Outcome: EndOutcomeDone}, {ID: "end_rejected", Title: "Rejected", Outcome: EndOutcomeRejected}}

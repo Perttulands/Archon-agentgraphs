@@ -40,7 +40,7 @@ func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
 	if code := runRemote(server.URL, []string{"mission", "run", "proof", "--input", "mis_proof", "--json"}, &out, &stderr); code != 0 {
 		t.Fatalf("%d %s", code, stderr.String())
 	}
-	// No limit flags sends no limits (form-o7p.7).
+	// No limit flags sends no limits (archon-o7p.7).
 	if !strings.Contains(received, `"limits":{}`) || !strings.Contains(received, `"expectedRev":9`) || !strings.Contains(out.String(), "run_proof") {
 		t.Fatalf("request %s output %s", received, out.String())
 	}
@@ -362,7 +362,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("gate", "update", "demo", "Signoff", "--title", "Sign-off", "--kinds", "human,code", "--check", "output_contains", "--check-version", "1", "--check-value", "done"))},
 		{args: with(fixed("gate", "update", "demo", "Sign-off", "--clear-check", "--kinds", "human"))},
 		{args: with(fixed("gate", "create", "demo", "--title", "Default")), creates: "gate"},
-		// End nodes end paths on purpose; one End node takes several routes (form-o7p.10).
+		// End nodes end paths on purpose; one End node takes several routes (archon-o7p.10).
 		{args: with(fixed("end", "create", "demo")), creates: "end"},
 		{args: with(fixed("end", "create", "demo", "--outcome", "rejected", "--title", "Rejected")), creates: "end"},
 		{args: with(fixed("end", "update", "demo", "Rejected", "--title", "Sent back"))},

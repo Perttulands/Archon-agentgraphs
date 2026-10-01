@@ -7,7 +7,7 @@ import (
 )
 
 // joinRejectBoard is Input -> A -> gate (pass -> J.a, fail -> Rejected) and
-// Input -> B -> J.b, with J -> Done (form-o7p.10 review). bFirst wires B
+// Input -> B -> J.b, with J -> Done (archon-o7p.10 review). bFirst wires B
 // before A, so B has fed J before the gate decides; otherwise B runs after.
 // The gate is a human gate, or a code gate when code is set.
 func joinRejectBoard(bFirst, code bool) string {

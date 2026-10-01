@@ -13,5 +13,5 @@ func isSafeBeadsIssueID(value string) bool {
 
 // invalidBeadID names the field holding an unsafe Bead ID.
 func invalidBeadID(field, value string) error {
-	return fmt.Errorf("%w: %s %q must be a safe Beads issue id: a lowercase prefix, a hyphen and an id, such as form-3yd.4", ErrInvalidBeadID, field, value)
+	return fmt.Errorf("%w: %s %q must be a safe Beads issue id: a lowercase prefix, a hyphen and an id, such as archon-3yd.4", ErrInvalidBeadID, field, value)
 }

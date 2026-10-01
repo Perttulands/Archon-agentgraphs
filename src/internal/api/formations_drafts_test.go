@@ -82,7 +82,7 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 		return validation.Data.Errors
 	}
 	// The draft saves with its gate's routes leading nowhere; validation names
-	// them (form-o7p.10).
+	// them (archon-o7p.10).
 	if errors := validate(); len(errors) != 4 || len(findingsWithCode(errors, formations.FindingRouteLeadsNowhere)) != 2 {
 		t.Fatalf("validation = %+v, want unstaffed slot, incomplete gate and two routes leading nowhere", errors)
 	}

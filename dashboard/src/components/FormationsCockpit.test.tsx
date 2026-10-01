@@ -2316,7 +2316,7 @@ describe('FormationsCockpit reference parity', () => {
     const call = vi.mocked(fetch).mock.calls.find(([url, init]) => url === '/api/runs' && init?.method === 'POST')
     const body = JSON.parse(String(call?.[1]?.body))
     expect(body).toMatchObject({ cwd: '/work/project', brief: 'Implement the requested change', beadId: 'form-proof' })
-    // The run starts without limits (form-o7p.7).
+    // The run starts without limits (archon-o7p.7).
     expect(body).not.toHaveProperty('limits')
     expect(localStorage.getItem('archon.activeRun.test-board')).toBeNull()
   })

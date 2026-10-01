@@ -8,7 +8,7 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// Run wait (form-o7p.6) is how the agent driving a run learns that the run
+// Run wait (archon-o7p.6) is how the agent driving a run learns that the run
 // needs it, ended or changed. Archon pushes nothing into outside sessions: the
 // driver long-polls this route, usually through a background `archon run wait`.
 // Every answer carries the ledger sequence to pass as `since` next, so a

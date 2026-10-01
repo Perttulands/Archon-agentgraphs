@@ -96,7 +96,7 @@ export function StartMissionDialog({ title, inputHint = '', humanChannel = 'noti
       <label htmlFor="start-mission-bead">Bead</label>
       <input id="start-mission-bead" className="f" value={inputs.beadId} pattern="[A-Za-z0-9][A-Za-z0-9._-]*" aria-describedby="start-mission-bead-help"
         onChange={event => setInputs({ ...inputs, beadId: event.target.value })} />
-      <p id="start-mission-bead-help" className="field-note">Optional. The Beads issue this run belongs to, for example form-3yd.4.</p>
+      <p id="start-mission-bead-help" className="field-note">Optional. The Beads issue this run belongs to, for example archon-3yd.4.</p>
       <span className="start-mission-label" aria-hidden="true">Human gates</span>
       <HumanChannelChoice value={channel} disabled={saving} describedBy="start-mission-channel-help" onChange={setChannel} />
       <p id="start-mission-channel-help" className="field-note">Saved on the mission when you start. {HUMAN_CHANNEL_TIMING}</p>

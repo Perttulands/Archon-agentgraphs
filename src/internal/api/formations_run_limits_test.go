@@ -12,7 +12,7 @@ import (
 )
 
 // A negative limit is refused on the local API path with admission's message
-// (form-o7p.7), for a mission and for a single formation, and writes no run.
+// (archon-o7p.7), for a mission and for a single formation, and writes no run.
 func TestFormationsHandlerRefusesNegativeRunLimits(t *testing.T) {
 	store := formations.NewStore(t.TempDir())
 	personas := formations.NewPersonaStore(t.TempDir())

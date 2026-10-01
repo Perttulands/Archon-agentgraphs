@@ -18,7 +18,7 @@ import (
 
 // A seat kept on call has no clients once its control client leaves. The
 // operator's terminal is then the only viewer, and its resizes must size its
-// own view while the seat window keeps the grid the executor gave it (form-de9).
+// own view while the seat window keeps the grid the executor gave it (archon-de9).
 func TestScratchSeatWindowKeepsItsSizeForALoneViewer(t *testing.T) {
 	bin, err := exec.LookPath(core.TmuxBin())
 	if err != nil {

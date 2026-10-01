@@ -19,5 +19,5 @@ test('Arrange followed immediately by Fit keeps the disconnected gate accessible
   })
   expect(bounds.left).toBeGreaterThanOrEqual(bounds.viewportLeft)
   expect(bounds.accessible).toBe(true)
-  await page.screenshot({ path: '/tmp/form-nno-after.png' })
+  await page.screenshot({ path: '/tmp/archon-nno-after.png' })
 })

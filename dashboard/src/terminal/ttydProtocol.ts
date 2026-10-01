@@ -1,5 +1,5 @@
 // Ported from CHROTE dashboard/src/terminal/ttydProtocol.ts (CHROTE 355ace49,
-// re-ported under form-o7p.13.1): ttyd's browser protocol as CHROTE speaks it.
+// re-ported under archon-o7p.13.1): ttyd's browser protocol as CHROTE speaks it.
 //
 // Frames are binary with a one-byte ASCII command prefix. The client sends `0`
 // input, `1` resize as JSON, `2`/`3` flow control and `4` claim, after an

@@ -396,7 +396,7 @@ paths:
     - $ref: '#/components/parameters/RunID'
     get:
       summary: Hold until the run needs its driver, ends or changes after a ledger sequence
-      description: The long poll behind archon run wait (form-o7p.6). A final run answers at once in every mode.
+      description: The long poll behind archon run wait (archon-o7p.6). A final run answers at once in every mode.
       parameters:
       - in: query
         name: until

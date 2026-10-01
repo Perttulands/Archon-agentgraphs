@@ -5,7 +5,7 @@ import RunBarActions, { DEFAULT_STOP_REASON, stopRunConsequences } from './RunBa
 import type { RunStatusProjection } from './formationsTypes'
 
 const run = (extra: Partial<RunStatusProjection> = {}): RunStatusProjection => ({
-  runId: 'run_01M3P6BC5ZZY875NVMVM810K49', status: 'waiting_human', final: false, missionSlug: 'runs-gate', inputCardId: 'mis_note', eventCount: 9, beadId: 'form-3yd.10', ...extra,
+  runId: 'run_01M3P6BC5ZZY875NVMVM810K49', status: 'waiting_human', final: false, missionSlug: 'runs-gate', inputCardId: 'mis_note', eventCount: 9, beadId: 'archon-3yd.10', ...extra,
 })
 const titleOf = (nodeId: string) => ({ fmn_draft: 'Draft', gate_review: 'Operator review' } as Record<string, string>)[nodeId] || nodeId
 
@@ -65,7 +65,7 @@ describe('RunBarActions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stop run' }))
     expect(onStop).not.toHaveBeenCalled()
     const dialog = screen.getByRole('alertdialog', { name: 'Stop run …810K49?' })
-    expect(dialog).toHaveTextContent('Runs gate · form-3yd.10 · run …810K49, waiting for you at Operator review')
+    expect(dialog).toHaveTextContent('Runs gate · archon-3yd.10 · run …810K49, waiting for you at Operator review')
     expect(dialog).toHaveTextContent('Operator review stops waiting for you, and your unsent answer is not sent.')
     expect(dialog).toHaveTextContent('No agent seats are kept on call for this run.')
     expect(dialog).toHaveTextContent('The run ends as canceled and cannot be resumed. Its workspace and outputs stay.')

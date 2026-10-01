@@ -1,6 +1,6 @@
 // Ported from CHROTE dashboard/src/components/TerminalSurface.tsx (CHROTE
 // 355ace49, including chrote-te47's activation on first visible layout) under
-// form-o7p.13.1. CHROTE's useTerminalSession, which gives Peek a terminal of
+// archon-o7p.13.1. CHROTE's useTerminalSession, which gives Peek a terminal of
 // its own, is not ported: every Archon seat view takes its terminal from a seat
 // terminal pool (seatTerminalPool.ts), so there is one owner of terminal life.
 import { useEffect, useRef, useState } from 'react'

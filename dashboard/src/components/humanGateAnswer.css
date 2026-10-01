@@ -35,7 +35,7 @@
 .fmx .gate-answer-load:disabled{opacity:.55;cursor:not-allowed;}
 .fmx .gate-answer-file-error{margin:0;color:var(--terra);font-size:11px;}
 
-/* In its floating window (form-n7u.7) the window is the frame: the panel fills
+/* In its floating window (archon-n7u.7) the window is the frame: the panel fills
    its body and scrolls with it, with the decisions kept at the bottom. */
 .fmx .gate-answer-window{border-color:color-mix(in srgb,var(--gold) 70%,var(--divider));}
 .fmx .gate-answer-window .fwin-title .gate-answer-kicker{margin-right:6px;}

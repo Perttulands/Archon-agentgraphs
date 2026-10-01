@@ -91,7 +91,7 @@ const succeededEvidence: Record<string, unknown> = {
 export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; join?: boolean; extraAgents?: number } = {}) {
   const currentBoard = structuredClone(board)
   if (options.waitingHuman) {
-    // The answered gate's routes lead somewhere, as admission requires (form-o7p.10).
+    // The answered gate's routes lead somewhere, as admission requires (archon-o7p.10).
     currentBoard.ends = [{ id: 'end_done', title: 'Done', outcome: 'done' }, { id: 'end_rejected', title: 'Rejected', outcome: 'rejected' }]
     currentBoard.connections = [...currentBoard.connections,
       { id: 'loose-pass', from: 'loose:pass', to: 'end_done:in' }, { id: 'loose-fail', from: 'loose:fail', to: 'end_rejected:in' }]

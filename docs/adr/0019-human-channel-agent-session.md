@@ -1,15 +1,15 @@
 # Human gates reach the operator by mission channel
 
-Accepted 2026-09-17 by the operator's decision form-xex. Operator request under
-form-3yd.10: a mission chooses how its human gates reach the operator, and the
+Accepted 2026-09-17 by the operator's decision archon-xex. Operator request under
+archon-3yd.10: a mission chooses how its human gates reach the operator, and the
 operator wants to answer the first real Wayfinding run in an agent's tmux
 session instead of by email. The operator chose to talk to the agents that asked
-(form-xex option c), and allowed those agents to record a decision the operator
+(archon-xex option c), and allowed those agents to record a decision the operator
 has confirmed. The operator then ruled that typing into agents must never be
 blocked: "I want to be able to interact with agents normally in tmux even if
 they are working on a mission."
 
-Clarified 2026-09-17 in form-epn and form-n64.7: a complete, unambiguous
+Clarified 2026-09-17 in archon-epn and archon-n64.7: a complete, unambiguous
 operator verdict for the pending gate, with the exact response to record,
 is itself confirmation. The agent need not ask for the same confirmation again.
 

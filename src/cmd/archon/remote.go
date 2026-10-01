@@ -133,7 +133,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	}
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
 	relayedBy := fs.String("relayed-by", "", relayedByUsage)
-	// Runs have no limits unless the launch sets them (form-o7p.7).
+	// Runs have no limits unless the launch sets them (archon-o7p.7).
 	maxDispatch := fs.Int("max-dispatch", 0, "optional cap on the run's formation starts, judges included; unset means no limit")
 	maxAttempts := fs.Int("max-attempts", 0, "optional cap on each step's attempts; unset means no limit")
 	wall := fs.Int("wall-clock-seconds", 0, "optional run wall clock in seconds; unset means no limit")

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// A run started without limits has none (form-o7p.7): a gate that keeps
+// A run started without limits has none (archon-o7p.7): a gate that keeps
 // sending the work back re-runs it as often as it takes, and the run finishes
 // when the gate passes. Hours pass between steps, and no wall clock stops it.
 func TestRunWithoutLimitsLoopsUntilTheGatePasses(t *testing.T) {

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { cockpitFixture } from './cockpit-fixture'
 
-/* Run bar journeys (form-n7u.5-.8). The fixture answers as archond does: an
+/* Run bar journeys (archon-n7u.5-.8). The fixture answers as archond does: an
  * abort of a waiting run returns the canceled projection with endedBy, its
  * events end with run_canceled, and the problems route serves the cancel with
  * the requester and reason; a limit block projects resumeAllowed false. */
@@ -11,7 +11,7 @@ const text = (value: string) => ({ text: value, bytes: value.length })
 async function cancelableRun(page: Page) {
   const aborts: unknown[] = []
   let canceled = false
-  const waiting = { runId: 'run_browser', status: 'waiting_human', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 3, beadId: 'form-mnf', waitingGates: [{ gateId: 'loose', requestedSeq: 3 }], onCallSeats: [] }
+  const waiting = { runId: 'run_browser', status: 'waiting_human', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 3, beadId: 'archon-mnf', waitingGates: [{ gateId: 'loose', requestedSeq: 3 }], onCallSeats: [] }
   const ended = () => ({ ...waiting, status: 'canceled', final: true, eventCount: 4, waitingGates: [], endedBy: 'agent:ui' })
   const events = [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_output', nodeId: 'execution' }, { seq: 3, type: 'human_input_requested', nodeId: 'loose', gateId: 'loose' }]
   await page.route('**/api/runs/run_browser**', async route => {
@@ -44,7 +44,7 @@ test('Stop asks first, Escape keeps the run, and the canceled run says who stopp
   const stop = page.getByRole('button', { name: 'Stop run' })
   await stop.click()
   const confirm = page.getByRole('alertdialog', { name: 'Stop run …rowser?' })
-  await expect(confirm).toContainText('Peer and judge · form-mnf · run …rowser, waiting for you at Disconnected gate')
+  await expect(confirm).toContainText('Peer and judge · archon-mnf · run …rowser, waiting for you at Disconnected gate')
   await expect(confirm).toContainText('Disconnected gate stops waiting for you, and your unsent answer is not sent.')
   await expect(confirm).toContainText('No agent seats are kept on call for this run.')
   await expect(confirm.getByRole('button', { name: 'Keep running' })).toBeFocused()

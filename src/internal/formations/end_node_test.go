@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// End nodes are authored like any node (form-o7p.10): create, rename, change
+// End nodes are authored like any node (archon-o7p.10): create, rename, change
 // outcome, wire any number of routes into one, delete, and restore on undo.
 func TestEndNodesAreAuthoredWiredDeletedAndRestored(t *testing.T) {
 	store := NewStore(t.TempDir())

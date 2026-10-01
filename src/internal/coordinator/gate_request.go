@@ -27,7 +27,7 @@ type PendingGateRequest struct {
 	RequestedSeq int              `json:"requestedSeq"`
 	Criterion    string           `json:"criterion"`
 	Input        PendingGateInput `json:"input"`
-	// Routes say where each verdict leads on the run's frozen board (form-n7u.7).
+	// Routes say where each verdict leads on the run's frozen board (archon-n7u.7).
 	Routes []formations.GateRoute `json:"routes,omitempty"`
 }
 

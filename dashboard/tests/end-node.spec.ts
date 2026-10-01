@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { cockpitFixture } from './cockpit-fixture'
 
-// End nodes end a path on purpose (form-o7p.10): created from the End token and
+// End nodes end a path on purpose (archon-o7p.10): created from the End token and
 // the canvas menu, wired from gate routes (several into one), switched between
 // done and rejected, deleted and restored, each step with undo.
 

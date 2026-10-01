@@ -18,7 +18,7 @@ criterion = "Judge the work"
 
 // mission -> A -> human gate ending Done or Rejected, and mission -> work ->
 // judge gate whose fail sends back to work and whose pass goes to ship, which
-// ends Done (form-n7u.53 review).
+// ends Done (archon-n7u.53 review).
 func pushbackAfterApproveBoardFixture() string {
 	return s4MissionOnlyBoardFixture() +
 		branchingBoardFormation("fmn_a", "A") + branchingBoardFormation("fmn_work", "Work") +

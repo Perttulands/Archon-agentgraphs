@@ -182,7 +182,7 @@ func TestConfiguredListenAddress(t *testing.T) {
 }
 
 // endNodes are the Done and Rejected End nodes test missions end their paths
-// at (form-o7p.10).
+// at (archon-o7p.10).
 const endNodes = `
 [[end]]
 id = "end_done"
@@ -278,7 +278,7 @@ from = "fmn_after:port_after_out"
 to = "end_done:in"
 `
 
-// Limits are optional (form-o7p.7): a start without limits is admitted and its
+// Limits are optional (archon-o7p.7): a start without limits is admitted and its
 // ledger records none, and a negative limit is refused.
 func TestAdmissionTakesARunWithoutLimits(t *testing.T) {
 	for _, body := range []string{`"limits":{},`, `"limits":{"maxDispatch":0,"maxAttempts":0,"wallClockSeconds":0},`, ``} {

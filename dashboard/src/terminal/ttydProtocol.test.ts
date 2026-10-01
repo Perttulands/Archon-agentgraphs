@@ -1,5 +1,5 @@
 // Ported from CHROTE dashboard/src/terminal/ttydProtocol.test.ts (355ace49) under
-// form-o7p.13.1, with Archon's cases for the claim frame, daemon shutdown and a
+// archon-o7p.13.1, with Archon's cases for the claim frame, daemon shutdown and a
 // closed connection added at the end.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeSocket } from '../test/fakeWebSocket'

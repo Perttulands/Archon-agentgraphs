@@ -2452,7 +2452,7 @@ rev = 1
 	archon(workspaceArgs("mission", "wire", "poems", mission.ID, draft.ID+":"+draft.Inputs[0].ID, "--json")...)
 	archon(workspaceArgs("formation", "wire", "poems", draft.ID+":"+draft.Outputs[0].ID, gate.ID+":in", "--json")...)
 	archon(workspaceArgs("formation", "wire", "poems", gate.ID+":pass", polish.ID+":"+polish.Inputs[0].ID, "--json")...)
-	// Every route leads somewhere (form-o7p.10): the polished poem ends the
+	// Every route leads somewhere (archon-o7p.10): the polished poem ends the
 	// path done, and a send-back ends it rejected.
 	var done, rejected struct {
 		End formations.EndNode `json:"end"`

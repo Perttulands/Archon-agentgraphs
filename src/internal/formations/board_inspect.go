@@ -352,7 +352,7 @@ func sortFindings(findings []BoardFinding) {
 }
 
 // routeLeadsNowhereFindings reports every formation output and gate pass or
-// fail port with no wire (form-o7p.10). Every route leads to a step, a gate
+// fail port with no wire (archon-o7p.10). Every route leads to a step, a gate
 // or an End node, so no path stops by accident. Judge formations report too:
 // their output returns the verdict to the gate's judge port.
 func routeLeadsNowhereFindings(board *BoardDocument) []BoardFinding {

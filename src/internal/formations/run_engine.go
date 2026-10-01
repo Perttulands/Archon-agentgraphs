@@ -980,7 +980,7 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		gateByID[gate.ID] = gate
 	}
 	// A terminal pass in the ledger is not the end of the run by itself:
-	// replay first, so every branch still to run continues (form-n7u.53).
+	// replay first, so every branch still to run continues (archon-n7u.53).
 
 	ready := map[string]map[string]RunInputRef{}
 	queued := map[string]bool{}
@@ -1022,7 +1022,7 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		queued[nodeID] = false
 		// Replay queues every formation the ledger ever fed; run only those
 		// still owed a delivery, read from the ledger as it stands now, so a
-		// send-back routed during this resume runs again (form-n7u.53).
+		// send-back routed during this resume runs again (archon-n7u.53).
 		current, err := e.store.ReadRunEvents(runID)
 		if err != nil {
 			return err
@@ -2503,7 +2503,7 @@ func (e *RunEngine) appendErrorAndBlockWithDetails(runID, code, message, boundar
 		"nodeId":      nodeID,
 		"recoverable": true,
 	}
-	// A spent limit stays spent: resuming would only block again (form-n7u.6).
+	// A spent limit stays spent: resuming would only block again (archon-n7u.6).
 	limit := isRunLimitCode(code)
 	if limit {
 		data["recoverable"] = false
@@ -2662,7 +2662,7 @@ type starvedFormation struct {
 
 // appendUnfinishedWorkBlock refuses success while unfinishedRunWork names
 // nodes: the run blocks, resumable, naming them, rather than claim success
-// with work still owed (form-n7u.53).
+// with work still owed (archon-n7u.53).
 func (e *RunEngine) appendUnfinishedWorkBlock(runID string, unfinished []string) error {
 	message := fmt.Sprintf("run has unfinished work at %v; resume to continue it", unfinished)
 	return e.appendErrorAndBlock(runID, "run_work_unfinished", message, "engine", unfinished[0], message)
@@ -2704,7 +2704,7 @@ func (e *RunEngine) appendStarvedBlock(runID string, starved []starvedFormation)
 
 // attemptsExhausted reports whether starting a node's nextAttempt would go
 // past the run's attempt limit. A run that set no maxAttempts has no attempt
-// limit (form-o7p.7). The engine and the gate answer panel (HumanGateRoutes)
+// limit (archon-o7p.7). The engine and the gate answer panel (HumanGateRoutes)
 // both ask this, so the panel says what the engine will do.
 func attemptsExhausted(limits RunLimits, nextAttempt int) bool {
 	return limits.MaxAttempts > 0 && nextAttempt > limits.MaxAttempts

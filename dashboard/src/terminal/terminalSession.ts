@@ -2,13 +2,13 @@
 //
 // Ported from CHROTE dashboard/src/terminal/terminalSession.ts (CHROTE 355ace49,
 // which carries chrote-8eyu, chrote-wshh, chrote-te47 and chrote-0k1g),
-// re-ported under form-o7p.13.1. The pooling contract (attach, detach,
+// re-ported under archon-o7p.13.1. The pooling contract (attach, detach,
 // reconnect, redialIfDropped), the fixed-grid font fit Peek uses, the
 // first-visible-layout activation, the font-ready open, Unicode 11 widths and
 // the settled-selection copy are CHROTE's.
 //
 // Departures from CHROTE, and why:
-// - No Bead, path or URL links yet: those are form-o7p.13.2, which ports
+// - No Bead, path or URL links yet: those are archon-o7p.13.2, which ports
 //   CHROTE's beadLinks, pathLinks and WebLinksAddon onto this session.
 // - No leader-chord key handler: Archon has no chord registry, so every key a
 //   focused terminal receives belongs to the seat (ADR-0019: the operator may

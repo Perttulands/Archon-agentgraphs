@@ -12,7 +12,7 @@ import (
 
 // pushbackProofBoard is mission -> A -> human gate (pass Done, fail
 // Rejected), and mission -> work -> judge gate whose fail sends back to work
-// and whose pass goes to ship, which ends Done (form-n7u.53 review).
+// and whose pass goes to ship, which ends Done (archon-n7u.53 review).
 func pushbackProofBoard() string {
 	board := strings.SplitN(branchingProofBoard(), "[[formation]]", 2)[0]
 	formation := func(id string) string {

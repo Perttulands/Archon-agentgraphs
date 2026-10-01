@@ -7,7 +7,7 @@
 //
 // Departure from CHROTE, and why: below the floor CHROTE clips the grid,
 // anchored to the bottom left. Archon scrolls it instead, starting at the
-// bottom left, with Start of line and End of line controls, because form-a2a
+// bottom left, with Start of line and End of line controls, because archon-a2a
 // requires every column of a pinned 160-column seat to stay readable in a
 // narrow Talk window.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'

@@ -101,7 +101,7 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 	gate := doc.Board.Gates[0].ID
 	patch("wireConnection", map[string]any{"from": work.ID + ":" + work.Outputs[0].ID, "to": gate + ":in"})
 	// Every route leads somewhere: the gate's pass ends the path done and its
-	// fail ends it rejected (form-o7p.10).
+	// fail ends it rejected (archon-o7p.10).
 	patch("createEnd", map[string]any{"outcome": "done"})
 	patch("createEnd", map[string]any{"outcome": "rejected"})
 	if len(doc.Board.Ends) != 2 || doc.Board.Ends[0].Title != "Done" || doc.Board.Ends[1].Outcome != "rejected" {

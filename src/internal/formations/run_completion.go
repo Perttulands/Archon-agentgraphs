@@ -5,8 +5,8 @@ import (
 	"sort"
 )
 
-// When a run has nothing left to do, and how it ended (form-n7u.53,
-// form-o7p.10). The engine, before it finishes a run, and a human gate's
+// When a run has nothing left to do, and how it ended (archon-n7u.53,
+// archon-o7p.10). The engine, before it finishes a run, and a human gate's
 // routes, before they say approving ends the run, ask the same question of
 // the same ledger through runPaths, so the two cannot disagree.
 //

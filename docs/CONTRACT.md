@@ -474,7 +474,7 @@ The cockpit's floating Peek attaches to an owned live seat and sends typing
 through the seat terminal WebSocket below. Its resizes change only the viewer's
 own view; the seat keeps its pinned size. The
 operator types to the agent whether it is working a dispatch, on call or idle.
-Seat terminals are re-ported from CHROTE's terminal (form-o7p.13.1). Each holds
+Seat terminals are re-ported from CHROTE's terminal (archon-o7p.13.1). Each holds
 the seat's native grid and fits its font to its window: the largest font up to
 14px at which every row and column fits, down to an 11px floor. Below the floor
 the grid scrolls, starting at its newest rows, with Start of line and End of
@@ -551,7 +551,7 @@ target runs first.
 
 ### End nodes and how a run finishes
 
-Every route leads somewhere (form-o7p.10). Each formation output and each
+Every route leads somewhere (archon-o7p.10). Each formation output and each
 gate's `pass` and `fail` lead to a step, a gate or an End node; an End node
 ends that path on purpose with outcome `done` or `rejected`. Validation reports
 a route that leads nowhere as the error `route_leads_nowhere`, worded "Brief

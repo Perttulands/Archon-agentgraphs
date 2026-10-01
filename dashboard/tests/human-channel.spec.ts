@@ -71,7 +71,7 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   expect(overlaps(plannerBox, panelBox)).toBe(false)
   expect(overlaps(codexBox, panelBox)).toBe(false)
   expect(overlaps(codexBox, plannerBox)).toBe(false)
-  // The answer window opens clear of the gate and where it leads (form-n7u.7); the first seat sits on either side of it.
+  // The answer window opens clear of the gate and where it leads (archon-n7u.7); the first seat sits on either side of it.
   expect(plannerBox!.x + plannerBox!.width <= panelBox!.x || plannerBox!.x >= panelBox!.x + panelBox!.width).toBe(true)
 
   // The first seat takes the keyboard as it opens; Escape goes to the agent, not the window.
@@ -162,7 +162,7 @@ test('a narrow Talk window exposes the end of a native-width line without resizi
   const win = page.getByRole('dialog', { name: 'Talk with Delivery Planner · Claude Code' })
   await expect(win).toContainText('Live · type to talk to the agent')
   await expect.poll(() => fixture.handshakes(21).at(-1)?.columns).toBe(160)
-  // Below the 11px floor the native grid scrolls rather than being cut (form-a2a).
+  // Below the 11px floor the native grid scrolls rather than being cut (archon-a2a).
   const host = win.getByTestId('seat-terminal-room')
   await expect.poll(() => host.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
   await win.getByRole('button', { name: 'End of line' }).click()

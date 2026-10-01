@@ -8,7 +8,7 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// archon end create|update|delete (form-o7p.10). An End node ends a path on
+// archon end create|update|delete (archon-o7p.10). An End node ends a path on
 // purpose: wire a step's output or a gate's pass or fail route to its input
 // (<end-id>:in) with archon formation wire.
 
