@@ -26,8 +26,8 @@ A daemon started with `--executor lab` echoes inputs and launches no agents. It
 proves routing, not work, and writes each rendered brief to
 `<state-dir>/briefs/lab-*.md` as a seat would receive it.
 
-To pass a formation judge in lab, put exactly one synthetic block in the run
-brief:
+To pass a formation judge in lab, put exactly one synthetic block in an input
+the first step receives (for example `--input-file brief=<file>`):
 
 ````text
 ```archon-verdict

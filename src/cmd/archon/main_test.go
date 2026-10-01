@@ -1939,7 +1939,7 @@ func TestArchonS4MissionRunFormationRunStatusLogsFollowAbort(t *testing.T) {
 	writeArchonFile(t, store.BoardPath("session-search"), archonS4BoardFixture())
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "run", "session-search", "--json")
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "run", "session-search", "--input", "brief=Search the sessions", "--json")
 	if code != 0 {
 		t.Fatalf("mission run code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -1978,7 +1978,7 @@ func TestArchonS4MissionRunFormationRunStatusLogsFollowAbort(t *testing.T) {
 		t.Fatalf("logs missing run start/block events: %+v", failLoudEvents)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "run", "session-search", "work", "--json")
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "run", "session-search", "work", "--input", "brief=Search the sessions", "--json")
 	if code != 0 {
 		t.Fatalf("formation run code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -2168,7 +2168,7 @@ func TestArchonS5RunResumeCommandUsesEngine(t *testing.T) {
 	writeArchonFile(t, store.BoardPath("session-search"), archonS5CascadeBoardFixture())
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "run", "session-search", "--max-dispatch", "1", "--json")
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "run", "session-search", "--input", "brief=Search the sessions", "--max-dispatch", "1", "--json")
 	if code != 0 {
 		t.Fatalf("mission run code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -2303,7 +2303,7 @@ func TestArchonS4ConfiguredLabPoemMissionReachesGateAndPolishesAfterApproval(t *
 	writeArchonFile(t, store.BoardPath("poems"), archonS4PoemBoardFixture())
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "run", "poems", "--input", "mis_poem", "--json")
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "run", "poems", "--input", "brief=Create a simple poem about the sea", "--json")
 	if code != 0 {
 		t.Fatalf("mission run code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -2342,7 +2342,7 @@ func TestArchonS4ConfiguredLabPoemMissionReachesGateAndPolishesAfterApproval(t *
 		t.Fatalf("project draft report: %v", err)
 	}
 	if !strings.Contains(draftReport.Text, "lab-poet") || !strings.Contains(draftReport.Text, "Create a simple poem") {
-		t.Fatalf("draft report text = %q, want lab-poet output seeded by mission objective", draftReport.Text)
+		t.Fatalf("draft report text = %q, want lab-poet output seeded by the run's brief", draftReport.Text)
 	}
 
 	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "gate", "approve", started.RunID, "gate_review", "--response", "draft approved", "--json")
@@ -2480,7 +2480,7 @@ rev = 1
 		}
 	}
 
-	started := decodeArchonRunResponse(t, archon(workspaceArgs("mission", "run", "poems", "--input", mission.ID, "--json")...))
+	started := decodeArchonRunResponse(t, archon(workspaceArgs("mission", "run", "poems", "--input", "brief=Create a simple poem about the sea", "--json")...))
 	if started.RunID == "" || !strings.HasPrefix(started.RunID, "run_") {
 		t.Fatalf("run id = %q, want stable run_ id", started.RunID)
 	}
@@ -2712,7 +2712,7 @@ func TestArchonConfiguredLabExecutorUsesAutomaticMissionWorkspace(t *testing.T) 
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("poems"), archonS4PoemMissingRootBoardFixture())
 
-	stdout, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "mission", "run", "poems", "--input", "mis_poem", "--json")
+	stdout, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "mission", "run", "poems", "--input", "brief=Create a simple poem about the sea", "--json")
 	if code != 0 {
 		t.Fatalf("mission run code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}

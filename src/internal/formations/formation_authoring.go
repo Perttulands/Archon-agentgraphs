@@ -197,6 +197,7 @@ type MissionUpdateRequest struct {
 	Files        *[]string // replaces the file references; empty clears them
 	InputHint    *string
 	HumanChannel *string
+	Inputs       *[]MissionInput // replaces the declared inputs; empty clears them
 	UpdatedBy    string
 }
 
@@ -286,6 +287,9 @@ type MissionNode struct {
 	Files []string `json:"files,omitempty"`
 	// InputHint tells whoever starts the mission what its run brief should contain.
 	InputHint string `json:"inputHint,omitempty"`
+	// Inputs are the named values each run supplies (archon-o7p.3). None
+	// declared means one implicit required text input, brief.
+	Inputs []MissionInput `json:"inputs,omitempty"`
 	// HumanChannel is how the mission's runs reach the operator: empty for the
 	// default notify channel, or session (ADR-0019).
 	HumanChannel string `json:"humanChannel,omitempty"`
@@ -1336,6 +1340,14 @@ func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteO
 		}
 		humanChannel = channel
 	}
+	var inputs []MissionInput
+	if req.Inputs != nil {
+		normalized, err := NormalizeMissionInputs(*req.Inputs)
+		if err != nil {
+			return nil, err
+		}
+		inputs = normalized
+	}
 	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, _ *BoardDocument) ([]byte, error) {
 		lines := splitLines(raw)
 		for _, field := range []struct {
@@ -1376,6 +1388,14 @@ func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteO
 				lines = removeScalarInLineRange(lines, start+1, end, "humanChannel")
 			} else {
 				lines = setScalarInLineRange(lines, start+1, end, "humanChannel", renderString(humanChannel))
+			}
+		}
+		if req.Inputs != nil {
+			start, end, _ = findMissionBlockByID(lines, req.MissionID)
+			if len(inputs) == 0 {
+				lines = removeScalarInLineRange(lines, start+1, end, "inputs")
+			} else {
+				lines = setScalarInLineRange(lines, start+1, end, "inputs", renderMissionInputs(inputs))
 			}
 		}
 		return renderTOMLLines(lines), nil
@@ -2196,7 +2216,29 @@ func appendMissionBlock(raw []byte, mission MissionNode) []byte {
 	if mission.HumanChannel != "" {
 		b.WriteString("humanChannel = " + renderString(mission.HumanChannel) + "\n")
 	}
+	if len(mission.Inputs) > 0 {
+		b.WriteString("inputs = " + renderMissionInputs(mission.Inputs) + "\n")
+	}
 	return []byte(b.String())
+}
+
+// renderMissionInputs is the TOML array of an Input card's declared inputs,
+// one inline table per line.
+func renderMissionInputs(inputs []MissionInput) string {
+	var b strings.Builder
+	b.WriteString("[\n")
+	for _, input := range inputs {
+		b.WriteString("  { name = " + renderString(input.Name) + ", kind = " + renderString(input.Kind))
+		if input.Required {
+			b.WriteString(", required = true")
+		}
+		if input.Description != "" {
+			b.WriteString(", description = " + renderString(input.Description))
+		}
+		b.WriteString(" },\n")
+	}
+	b.WriteString("]")
+	return b.String()
 }
 
 // normalizeFileRefs trims file references and drops blank ones; none is nil.
@@ -3280,7 +3322,8 @@ func parseMissionNodes(raw []byte) []MissionNode {
 	var missions []MissionNode
 	var current *MissionNode
 	active := false
-	for _, line := range splitLines(raw) {
+	lines := splitLines(raw)
+	for index, line := range lines {
 		trimmed := strings.TrimSpace(line.body)
 		section, isSection := tomlLineSectionName(line)
 		isArraySection := strings.HasPrefix(trimmed, "[[")
@@ -3317,6 +3360,8 @@ func parseMissionNodes(raw []byte) []MissionNode {
 			current.InputHint = value
 		case "humanChannel":
 			current.HumanChannel = decodedHumanChannel(value)
+		case "inputs":
+			current.Inputs = decodedMissionInputsInLineRange(lines, index, tomlValueLineEnd(lines, index, len(lines)))
 		}
 	}
 	return missions

@@ -408,7 +408,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Cwd          string               `json:"cwd"`
 		ContextPaths []string             `json:"contextPaths"`
-		Brief        string               `json:"brief"`
+		Inputs       map[string]string    `json:"inputs"`
 		BeadID       string               `json:"beadId"`
 		Actor        string               `json:"actor"`
 		FormationID  string               `json:"formationId"`
@@ -429,22 +429,24 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		reply(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
-	if req.MissionID != "" {
-		if err := formations.ValidateRunContextPaths(req.ContextPaths); err != nil {
-			reply(w, 400, map[string]string{"error": err.Error()})
+	// A single step takes the same run fields as a mission (archon-o7p.3).
+	if err := formations.ValidateRunContextPaths(req.ContextPaths); err != nil {
+		reply(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
+	if req.Cwd != "" {
+		info, err := os.Stat(req.Cwd)
+		if !filepath.IsAbs(req.Cwd) || err != nil || !info.IsDir() {
+			reply(w, 400, map[string]string{"error": "cwd must be omitted or an absolute existing directory"})
 			return
 		}
-		if req.Cwd != "" {
-			info, err := os.Stat(req.Cwd)
-			if !filepath.IsAbs(req.Cwd) || err != nil || !info.IsDir() {
-				reply(w, 400, map[string]string{"error": "cwd must be omitted or an absolute existing directory"})
-				return
-			}
-		}
-		if strings.TrimSpace(req.Brief) == "" || req.BeadID != "" && !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`).MatchString(req.BeadID) {
-			reply(w, 400, map[string]string{"error": "nonempty brief and safe beadId required"})
-			return
-		}
+	}
+	if req.BeadID != "" && !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`).MatchString(req.BeadID) {
+		reply(w, 400, map[string]string{"error": "beadId must be a safe Beads issue id"})
+		return
+	}
+	if req.Inputs == nil {
+		req.Inputs = map[string]string{}
 	}
 	c.admissions.Lock()
 	defer c.admissions.Unlock()
@@ -469,7 +471,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		failure(w, formations.ErrConflict)
 		return
 	}
-	if err := formations.CheckRunAdmission(board, c.personas, formations.RunAdmissionScope{MissionID: req.MissionID, FormationID: req.FormationID}); err != nil {
+	if err := formations.CheckRunAdmission(board, c.personas, formations.RunAdmissionScope{MissionID: req.MissionID, FormationID: req.FormationID, Inputs: req.Inputs}); err != nil {
 		var admission *formations.RunAdmissionError
 		if errors.As(err, &admission) {
 			api.WriteRunAdmissionError(w, admission)
@@ -486,7 +488,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.FormationID != "" {
-		started, execute, err := c.engine.PrepareFormationRun(req.Board, req.FormationID, formations.FormationRunRequest{Actor: req.Actor, Personas: c.personas, Limits: req.Limits, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match")})
+		started, execute, err := c.engine.PrepareFormationRun(req.Board, req.FormationID, formations.FormationRunRequest{Actor: req.Actor, Personas: c.personas, Limits: req.Limits, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Cwd: req.Cwd, ContextPaths: req.ContextPaths, BeadID: req.BeadID, Inputs: req.Inputs})
 		if err != nil {
 			failure(w, err)
 			return
@@ -509,7 +511,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		reply(w, 422, map[string]string{"error": "wire the Input card to a step"})
 		return
 	}
-	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, ContextPaths: req.ContextPaths, Brief: req.Brief, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: "operator:standalone", Personas: c.personas, Limits: req.Limits})
+	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, ContextPaths: req.ContextPaths, Inputs: req.Inputs, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: "operator:standalone", Personas: c.personas, Limits: req.Limits})
 	if err != nil {
 		failure(w, err)
 		return
@@ -780,7 +782,7 @@ func decode(w http.ResponseWriter, r *http.Request, target any) bool {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		reply(w, 400, map[string]string{"error": "invalid JSON request"})
+		reply(w, 400, map[string]string{"error": "invalid JSON request: " + strings.TrimPrefix(err.Error(), "json: ")})
 		return false
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {

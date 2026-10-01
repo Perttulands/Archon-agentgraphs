@@ -24,8 +24,9 @@ A mission is one reusable .mission.toml file. Its Input card starts each run.
   arrange <mission>                        lay the canvas out along the run
   create <mission> [--title --goal ...]    add the Input card to a mission that has none
   update <mission> [<input>] --goal <g>    change the Input card (see "archon mission update")
+  input <mission> [<name>] [--kind ...]    list or declare the inputs its runs supply (see "archon mission input")
   wire <mission> [<input>] <node:port>     wire the Input card to the first step
-  run <mission> [--brief <text>]           start a run
+  run <mission> [--input name=value]...    start a run (see "archon mission run -h")
 
 <input> may be left out when the mission has one Input card.
 `

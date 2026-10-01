@@ -133,13 +133,14 @@ The [minimal mission](docs/CONTRACT.md#definitions-and-storage) is a smaller
 starting point for your own workflow.
 
 With a configured daemon and a prepared delivery mission, start a run from
-another terminal. Replace the working directory, brief and Bead below with
-your task's values.
+another terminal. `archon --server http://127.0.0.1:8091 mission input delivery`
+lists the inputs a run supplies. Replace the working directory, brief and Bead
+below with your task's values.
 
 ```bash
 archon --server http://127.0.0.1:8091 mission run delivery \
   --cwd /absolute/path/to/your/repository \
-  --brief /absolute/path/to/your/brief.md --bead your-project-123 --json
+  --input-file brief=/absolute/path/to/your/brief.md --bead your-project-123 --json
 ```
 
 Use the returned run ID with `run status`, `run logs`, `run follow`,

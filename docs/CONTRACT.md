@@ -23,7 +23,8 @@ decisions; [examples](../examples/) provide reusable missions.
 | Noun | Meaning |
 | --- | --- |
 | Mission | The reusable unit: one schema-1 TOML graph file, `<slug>.mission.toml`, with a stable ID, slug and revision. |
-| Input card | The mission's entry node (`[[inputCard]]` in TOML, `inputCards` in JSON) with the mission's goal, input hint and `out` port. A run supplies its input text. A mission has one Input card. |
+| Input card | The mission's entry node (`[[inputCard]]` in TOML, `inputCards` in JSON) with the mission's goal, input hint, declared inputs and `out` port. A mission has one Input card. |
+| Input | A named value each run of the mission supplies: a name, a description, a kind (`text`, `file` or `folder`) and whether it is required. Step briefs reference it as `{name}`. A mission that declares none has one implicit required text input, `brief`. |
 | Formation | A step: the team of agents that does it. `solo` has one seat; `peer` has peer seats; `orchestrated` has a controller directing its bound workers. |
 | Slot | A position in a formation that owns what its seat runs: a harness (`claude-code` or `openai-codex`), a model (blank means the harness default) and an effort, plus an optional role (`agentId`, a persona). A slot without a role is a vanilla agent, such as `claude-code · opus · low`. A seat is the slot's runtime agent session. |
 | Persona (role) | A TOML agent card with generic role text: a summary, capabilities and kind. A new card carries no model or effort; an existing card's harness variant settings are read by the cockpit's role drag and `archon agent spawn`. Presets remain available; local cards can override them. |
@@ -203,15 +204,17 @@ staffed slots (`unstaffed_slot`) whose harness, model and effort can start a
 seat (`invalid_slot_settings`) and whose role, if named, is readable
 (`unavailable_persona`), one controller and a worker in each orchestrated
 formation, complete code checks, judge chains, runnable Tools and a wired Input
-card. Findings cover the nodes the run reaches from its Input card, or the
-selected formation. Formation types, slot counts and slot staffing are checked
-across the whole mission, because the run snapshot binds every formation.
+card, and the run's inputs (see [Mission inputs](#mission-inputs)). Findings
+cover the nodes the run reaches from its Input card, or the selected formation.
+Formation types, slot counts and slot staffing are checked across the whole
+mission, because the run snapshot binds every formation.
 Any finding rejects the start with HTTP 422, error code `RUN_ADMISSION_FAILED`
 and `error.findings` as `{code,nodeId,message}` entries; no run is recorded.
 The engine's own fail-fast checks remain behind this report. The worker continues after the
 client disconnects. A missing receipt requires checking the run list before
-starting again. Omit `cwd` (or send an empty string) to create a private workspace
-for this mission under `<state-dir>/workspaces/<runId>`. The daemon's
+starting again. A mission run and a single step's run take the same run fields:
+`cwd`, `contextPaths`, `beadId` and `inputs`. Omit `cwd` (or send an empty string) to create a private workspace
+for this run under `<state-dir>/workspaces/<runId>`. The daemon's
 `--run-workspace-root` flag can select another absolute root. Admission records
 the resolved directory in `run_started` and run status; every seat uses it.
 Optional `contextPaths` names absolute existing files or directories to inspect as
@@ -227,11 +230,54 @@ referenced projects.
 Rejected admission removes any newly allocated empty workspace. Admitted runs
 retain their workspace and outputs after completion, cancellation or failure.
 For an existing project, supply `cwd` as an absolute existing directory.
-`brief` must be nonempty. Archon reads an existing brief file or sends the argument as literal
-text. The brief becomes the Input card's output; the mission goal remains prompt
-context.
 The run's `beadId` is optional but should identify the owning task. An Input
 card has no Bead ID; a formation brief may name its own.
+
+### Mission inputs
+
+A mission declares on its Input card the named values its runs supply
+(archon-o7p.3), so an agent can start it without reading its steps:
+
+```toml
+[[inputCard]]
+id = "inp_delivery"
+title = "Deliver"
+goal = "Deliver a reviewed change"
+inputs = [
+  { name = "change", kind = "text", required = true, description = "What to deliver and why" },
+  { name = "spec", kind = "file", description = "An existing spec to follow" },
+]
+```
+
+A name is a lowercase letter followed by lowercase letters, digits or
+underscores, unique in the mission. The kind is `text` (the default), `file` or
+`folder`; an input is optional unless `required = true`. Authoring refuses
+anything else with `INVALID_MISSION_INPUT` (CLI code `invalid_mission_input`),
+and `mission validate` reports a hand-written mistake as
+`invalid_mission_input`. A mission that declares no inputs has one implicit
+required text input named `brief`, described by the Input card's input hint.
+
+A run supplies values by name: HTTP `inputs` (`{"change":"..."}`), and on the
+CLI `--input name=value` or `--input-file name=path` (the file's UTF-8 text),
+each repeated per input. `archon mission input <mission>` lists what a run
+supplies. Admission reports, on the Input card, a required input missing or
+blank (`missing_input`: "input change is required: What to deliver and why"),
+a name the mission does not declare (`unknown_input`), and a `file` or
+`folder` value that is not the absolute path of an existing regular file or
+directory (`invalid_input`). Text is kept verbatim; a path is trimmed.
+
+The Input card hands its first step the supplied values: the implicit `brief`
+unchanged, or one `name: value` line per supplied input in declared order. A
+step brief references an input as `{name}`, and each seat's brief carries the
+value in its place, or `(not supplied)` for an optional input the run left out.
+Braces around anything else stay as written. A reference to a name the mission
+does not declare is the validation error `unknown_input_reference`: "Plan's
+brief references {topic}, but the mission has no input named topic; its inputs
+are change, spec". `run_started` records the supplied values as `inputs`
+(`name`, `kind`, `value`), and run status and the run list project them, so
+resume and restart substitute the same values. A single step's run takes the
+mission's inputs and the same checks, and its step receives them as the first
+step does. The mission goal remains prompt context.
 
 Runs have no limits unless the launch sets them. `maxDispatch`, `maxAttempts`
 and `wallClockSeconds` are optional; an absent or zero limit means none, in
@@ -289,7 +335,7 @@ Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
 channel](#human-gates-on-the-session-channel)). Pending human requests appear in
 `waitingGates` with `gateId` and `requestedSeq`.
 
-The public projection includes cwd, context paths and Bead ID but excludes prompt text,
+The public projection includes cwd, context paths, inputs and Bead ID but excludes prompt text,
 artifact contents, brief paths, native session IDs and arbitrary private event
 data. Projections and SSE stay sanitized; the run evidence routes under
 [HTTP contract](#http-contract) serve a run's outputs, gate results, human
@@ -866,8 +912,13 @@ Nodes keep their IDs when edited: `archon formation rename <mission> <formation>
 <title>`, `archon mission update <mission> [<input>]` with `--title`, `--goal`,
 `--file`, `--human-channel` or `--input-hint`, and `archon gate update --title` change only what
 they name, and an empty value clears a field. `<input>` names the Input card
-and may be left out when the mission has one. The Input card's input hint says
-what a run brief should contain; Start mission shows it. Its `humanChannel`
+and may be left out when the mission has one. The Input card's input hint
+describes the implicit `brief` input of a mission that declares none; Start
+mission shows it. `archon mission input <mission> <name> [--kind
+text|file|folder] [--required|--optional] [--description <text>]` declares an
+input or changes only the flags given, `--delete` removes it, and without a
+name the command lists the run's inputs; the patch is `updateInputCard` with
+`inputs`, which replaces the list. Its `humanChannel`
 (`--human-channel` on `mission create|update`) records how its runs' human gates
 reach the operator ([ADR-0019](adr/0019-human-channel-agent-session.md)):
 `notify`, the default, or `session`. `notify` and an empty value store no
@@ -930,7 +981,7 @@ verdict described above. Real briefs describe the work to deliver.
 
 ```bash
 ARCHON_START=$(archon --server "$ARCHON_SERVER" mission run delivery \
-  --brief "$ARCHON_BRIEF" --bead "$ARCHON_BEAD" --json)
+  --input brief="$ARCHON_BRIEF" --bead "$ARCHON_BEAD" --json)
 ARCHON_RUN_ID=$(printf '%s\n' "$ARCHON_START" | jq -er '.data.runId')
 archon --server "$ARCHON_SERVER" run status "$ARCHON_RUN_ID" --json
 archon --server "$ARCHON_SERVER" run logs "$ARCHON_RUN_ID" --json
@@ -1093,7 +1144,8 @@ theme document described below, JSON responses use
 under `/api/missions` includes list/create/read/patch/delete, notes, layout,
 validation and change polling. A mission read or edit answers `data.mission`
 (with `layout` and the created or changed node, such as `inputCard`, where it
-applies); a run starts with `mission` and `inputCardId` (or `formationId`). The
+applies); a run starts with `mission` and `inputCardId` (or `formationId`), its
+`inputs` and the other run fields. The
 Input card patch actions are `createInputCard`, `updateInputCard` and
 `deleteInputCard`. Agent routes
 list/create/read/patch persona cards; the roster also serves `harnesses` (each
@@ -1117,7 +1169,7 @@ directory and the briefs its own dispatches recorded.
 
 With `--server`, Archon runs these authoring and read commands through the
 daemon, so an open cockpit sees the edits through its change polling: `mission
-new|list|inspect|notes|note|validate|arrange|create|update|wire`, `formation
+new|list|inspect|notes|note|validate|arrange|create|update|input|wire`, `formation
 list|inspect|create|rename|set-type|assign|unassign|set-brief|add-input|add-output|wire|unwire`,
 `gate create|update|judge`, `end create|update|delete`, `tool create|update|delete|inspect` and `agent
 list|inspect|new|edit`. They take the offline flags and print the offline
@@ -1132,12 +1184,12 @@ retried up to three times. Differences from offline use:
 - Agent cards are the daemon's `--agents-dir`, with the liveness the daemon
   reports, and `agent new --from` names a path on the daemon host. `mission note
   --file` reads locally.
-- Runtime commands (`mission run`, `run`, `gate approve|reject`) print the
+- Runtime commands (`mission run`, `formation run`, `run`, `gate approve|reject`) print the
   daemon's `{success,timestamp,data}` envelope, except `run gates`, `run seats`
   and `gate request`, which require `--json` for that format, and `run wait`,
   which prints its paragraph or its own JSON (see [Waiting on a run](#waiting-on-a-run)); `mission list` and
-  `mission inspect` print offline JSON like the other reads. `formation run`,
-  `run ask` and `agent spawn|attach|retire` remain offline only.
+  `mission inspect` print offline JSON like the other reads. `run ask` and
+  `agent spawn|attach|retire` remain offline only.
 
 `GET /api/missions/{mission}/validation` returns
 `{missionRev,missionEtag,errors,warnings}` for the whole mission, the same report as

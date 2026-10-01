@@ -69,11 +69,11 @@ func TestArchonDraftAuthoringSavesAndAdmissionListsEveryProblem(t *testing.T) {
 	if err := json.Unmarshal([]byte(stderr), &failure); code != 1 || err != nil {
 		t.Fatalf("mission run %d %s (%v)", code, stderr, err)
 	}
-	if failure.Code != "run_admission_failed" || len(failure.Findings) != 4 {
-		t.Fatalf("mission run failure = %+v, want every finding, the two routes leading nowhere included", failure)
+	if failure.Code != "run_admission_failed" || len(failure.Findings) != 5 || !strings.Contains(failure.Message, "input brief is required") {
+		t.Fatalf("mission run failure = %+v, want every finding, the two routes leading nowhere and the missing brief included", failure)
 	}
 	_, stderr, _ = archon("mission", "run", "sketch")
-	if !strings.Contains(stderr, "run admission found 4 problem(s)") || strings.Count(stderr, "\nERROR\t") != 4 {
+	if !strings.Contains(stderr, "run admission found 5 problem(s)") || strings.Count(stderr, "\nERROR\t") != 5 {
 		t.Fatalf("mission run text stderr:\n%s", stderr)
 	}
 	if runs, err := store.ListRuns(formations.RunListFilter{}); err != nil || len(runs) != 0 {
@@ -154,7 +154,7 @@ func TestRemoteAdmissionFindingsAndBoardValidation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/missions/draft":
-			w.Write([]byte(`{"success":true,"data":{"mission":{"rev":4}}}`))
+			w.Write([]byte(`{"success":true,"data":{"mission":{"rev":4,"inputCards":[{"id":"mis_draft"}]}}}`))
 		case "/api/missions/draft/validation":
 			w.Write([]byte(`{"success":true,"data":{"missionRev":4,"errors":` + findings + `,"warnings":[]}}`))
 		case "/api/runs":
@@ -168,7 +168,7 @@ func TestRemoteAdmissionFindingsAndBoardValidation(t *testing.T) {
 	defer server.Close()
 
 	var out, stderr bytes.Buffer
-	if code := runRemote(server.URL, []string{"mission", "run", "draft", "--input", "mis_draft", "--cwd", t.TempDir(), "--brief", "sketch"}, &out, &stderr); code != 1 {
+	if code := runRemote(server.URL, []string{"mission", "run", "draft", "--cwd", t.TempDir(), "--input", "brief=sketch"}, &out, &stderr); code != 1 {
 		t.Fatalf("remote mission run code %d stderr %s", code, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "ERROR\tunstaffed_slot\tfmn_plan\t") || !strings.Contains(stderr.String(), "ERROR\tgate_not_routable\tgate_lint\t") {

@@ -143,6 +143,7 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 		}
 	}
 	report.Errors = append(report.Errors, routeLeadsNowhereFindings(board)...)
+	report.Errors = append(report.Errors, missionInputFindings(board)...)
 	report.Warnings = append(report.Warnings, unreachableNodeFindings(board)...)
 
 	for _, tool := range board.Tools {

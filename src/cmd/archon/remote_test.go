@@ -24,7 +24,7 @@ func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/missions/proof":
-			w.Write([]byte(`{"success":true,"timestamp":"test","data":{"mission":{"rev":9}}}`))
+			w.Write([]byte(`{"success":true,"timestamp":"test","data":{"mission":{"rev":9,"inputCards":[{"id":"mis_proof"}]}}}`))
 		case "/api/runs":
 			buf := new(bytes.Buffer)
 			buf.ReadFrom(r.Body)
@@ -37,7 +37,7 @@ func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
 		}
 	}))
 	var out, stderr bytes.Buffer
-	if code := runRemote(server.URL, []string{"mission", "run", "proof", "--input", "mis_proof", "--json"}, &out, &stderr); code != 0 {
+	if code := runRemote(server.URL, []string{"mission", "run", "proof", "--input", "brief=prove it", "--json"}, &out, &stderr); code != 0 {
 		t.Fatalf("%d %s", code, stderr.String())
 	}
 	// No limit flags sends no limits (archon-o7p.7).
@@ -45,7 +45,7 @@ func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
 		t.Fatalf("request %s output %s", received, out.String())
 	}
 	out.Reset()
-	if code := runRemote(server.URL, []string{"mission", "run", "proof", "--input", "mis_proof", "--max-attempts", "4", "--max-dispatch", "9", "--wall-clock-seconds", "600", "--json"}, &out, &stderr); code != 0 {
+	if code := runRemote(server.URL, []string{"mission", "run", "proof", "--input", "brief=prove it", "--max-attempts", "4", "--max-dispatch", "9", "--wall-clock-seconds", "600", "--json"}, &out, &stderr); code != 0 {
 		t.Fatalf("%d %s", code, stderr.String())
 	}
 	if !strings.Contains(received, `"limits":{"maxAttempts":4,"maxDispatch":9,"wallClockSeconds":600}`) {
@@ -83,27 +83,34 @@ func TestRemoteRunInputsReadFilesAndLongLiteralBriefs(t *testing.T) {
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
-			fmt.Fprint(w, `{"data":{"mission":{"rev":1}}}`)
+			fmt.Fprint(w, `{"data":{"mission":{"rev":1,"inputCards":[{"id":"mis_proof"}]}}}`)
 			return
 		}
 		var got struct {
 			Cwd    string
-			Brief  string
+			Inputs map[string]string
 			BeadID string
 		}
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Error(err)
 		}
-		if got.Cwd != cwd || got.Brief != brief || got.BeadID != "archon-proof" {
+		if got.Cwd != cwd || got.Inputs["brief"] != brief || len(got.Inputs) != 1 || got.BeadID != "archon-proof" {
 			t.Errorf("run inputs: %+v", got)
 		}
 		fmt.Fprint(w, `{"data":{"runId":"run_proof"}}`)
 	}))
 	defer server.Close()
-	for _, input := range []string{brief, file} {
+	// A literal value is sent as written, even when it names a file; --input-file reads one.
+	for _, flags := range [][]string{{"--input", "brief=" + brief}, {"--input-file", "brief=" + file}} {
 		var out, stderr bytes.Buffer
-		if code := runRemote(server.URL, []string{"mission", "run", "proof", "--input", "mis_proof", "--cwd", cwd, "--brief", input, "--bead", "archon-proof"}, &out, &stderr); code != 0 {
+		if code := runRemote(server.URL, append([]string{"mission", "run", "proof", "--cwd", cwd, "--bead", "archon-proof"}, flags...), &out, &stderr); code != 0 {
 			t.Fatalf("%d %s", code, stderr.String())
+		}
+	}
+	for _, flags := range [][]string{{"--input", "brief"}, {"--input", "=x"}, {"--input", "brief=a", "--input", "brief=b"}, {"--input-file", "brief=" + filepath.Join(cwd, "missing.md")}} {
+		var out, stderr bytes.Buffer
+		if code := runRemote(server.URL, append([]string{"mission", "run", "proof"}, flags...), &out, &stderr); code != 2 || out.Len() != 0 {
+			t.Fatalf("%v: code %d stdout %s stderr %s, want a usage refusal that sends nothing", flags, code, out.String(), stderr.String())
 		}
 	}
 }
@@ -388,6 +395,16 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("mission", "update", "demo", "Work", "--human-channel", "notify"))},
 		{args: with(fixed("mission", "update", "demo", "Work", "--human-channel", "session"))},
 		{args: with(fixed("mission", "update", "demo", "Work", "--human-channel", "email")), errorOnly: true},
+		// Named inputs its runs supply (archon-o7p.3).
+		{args: with(fixed("mission", "input", "demo"))},
+		{args: with(fixed("mission", "input", "demo", "topic", "--required", "--description", "What to explore"))},
+		{args: with(fixed("mission", "input", "demo", "sketch", "--kind", "file"))},
+		{args: with(fixed("mission", "input", "demo", "sketch", "--description", "A raw sketch", "--optional"))},
+		{args: with(fixed("mission", "input", "demo"))},
+		{args: with(fixed("mission", "input", "demo", "topic", "--kind", "video")), errorOnly: true},
+		{args: with(fixed("mission", "input", "demo", "Bad-Name")), errorOnly: true},
+		{args: with(fixed("mission", "input", "demo", "nothing", "--delete")), errorOnly: true},
+		{args: with(fixed("mission", "input", "demo", "sketch", "--delete"))},
 		{args: with(fixed("gate", "update", "demo", "Review", "--file", "rubrics/quality.md"))},
 		{args: with(fixed("gate", "update", "demo", "Sign-off", "--file", ""))},
 		{args: with(fixed("tool", "create", "demo", "--profile-id", "json.normalize", "--profile-version", "1", "--title", "Normalize", "--params-json", `{"mode":"strict"}`)), creates: "tool"},

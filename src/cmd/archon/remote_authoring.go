@@ -35,6 +35,7 @@ var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
 	"mission inspect":         remoteMissionInspect,
 	"mission create":          remoteMissionCreate,
 	"mission update":          remoteMissionUpdate,
+	"mission input":           remoteMissionInput,
 	"mission wire":            remoteMissionWire,
 	"formation list":          remoteFormationList,
 	"formation inspect":       remoteFormationInspect,
@@ -112,6 +113,8 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrInvalidBeadID
 	case "INVALID_HUMAN_CHANNEL":
 		return formations.ErrInvalidHumanChannel
+	case "INVALID_MISSION_INPUT":
+		return formations.ErrInvalidMissionInput
 	case "INVALID_EXECUTION_POLICY":
 		return formations.ErrInvalidExecutionPolicy
 	case "INVALID_TOOL_MUTATION":

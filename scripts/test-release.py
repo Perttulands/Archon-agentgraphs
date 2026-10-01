@@ -143,7 +143,7 @@ to = "fmn_work:port_in"
                 assert len(get(url + asset)) > 0
             receipt = json.loads(run(cli, '--server', url, 'mission', 'run', 'hello',
                                      '--cwd', str(root),
-                                     '--brief', 'Archon release smoke', '--json'))
+                                     '--input', 'brief=Archon release smoke', '--json'))
             run_id = receipt['data']['runId']
             follow = run(cli, '--server', url, 'run', 'follow', run_id, '--json', timeout=20)
             assert 'succeeded' in follow, follow

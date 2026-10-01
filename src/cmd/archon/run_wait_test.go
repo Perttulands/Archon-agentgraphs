@@ -127,7 +127,7 @@ func startWaitDaemon(t *testing.T) (*httptest.Server, *waitExecutor, string) {
 	}
 	server := httptest.NewServer(c.Handler())
 	t.Cleanup(func() { close(e.proceed); server.Close(); c.Close() })
-	out, stderr, code := runArchon(t, &fakeTmux{}, "--server", server.URL, "mission", "run", "proof", "--input", "mis_proof", "--brief", "prove it", "--cwd", root)
+	out, stderr, code := runArchon(t, &fakeTmux{}, "--server", server.URL, "mission", "run", "proof", "--input", "brief=prove it", "--cwd", root)
 	if code != 0 {
 		t.Fatalf("start %d %s %s", code, out, stderr)
 	}
