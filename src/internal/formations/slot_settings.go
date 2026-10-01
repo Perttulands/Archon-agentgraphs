@@ -143,8 +143,13 @@ func validateSlotSettings(slot, harnessID, model, effort string) error {
 	if effort == "" {
 		return fmt.Errorf("%w: slot %s needs an effort; the policy is %s", ErrInvalidSlotSettings, slot, EffortPolicyText())
 	}
-	if !slices.Contains(harness.Efforts, effort) {
-		return fmt.Errorf("%w: slot %s effort %q is not one %s accepts; use %s", ErrInvalidSlotSettings, slot, effort, harness.ID, strings.Join(harness.Efforts, ", "))
+	// A model whose levels the host knows narrows the harness's efforts.
+	efforts, accepts := harness.Efforts, harness.ID
+	if known, ok := modelEfforts(harness.ID, model); ok {
+		efforts, accepts = known, model
+	}
+	if !slices.Contains(efforts, effort) {
+		return fmt.Errorf("%w: slot %s effort %q is not one %s accepts; use %s", ErrInvalidSlotSettings, slot, effort, accepts, strings.Join(efforts, ", "))
 	}
 	return nil
 }

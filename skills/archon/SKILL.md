@@ -118,8 +118,12 @@ Each slot sets its own harness, model and effort, in the mission, where the
 operator can see them: `formation assign "$M" <formation> --slot <slot>
 --harness <h> --effort <e> [--model <m>] [--role <role>]`. `--effort` is
 required; a blank `--model` means the harness default. `claude-code` takes
-`low`, `medium`, `high`, `xhigh` or `max`; `openai-codex` also takes `ultra`.
-Omit `--role` for a vanilla agent. A role adds only its text, so one step's
+`low`, `medium`, `high`, `xhigh` or `max`; `openai-codex` also takes `ultra`,
+though a known Codex model may take fewer (`gpt-5.5` stops at `xhigh`). The
+known models are in `GET /api/agents` `harnesses[].models` and the `formation
+assign` usage: `claude-code` runs `opus`, `sonnet`, `haiku` and `fable`, and
+Codex the models its CLI lists on the daemon host. Another model is staffed
+with a warning; check its name. Omit `--role` for a vanilla agent. A role adds only its text, so one step's
 settings never change another's. `formation inspect` prints each slot's
 staffing, for example `vanilla · claude-code · opus · low`.
 

@@ -766,3 +766,33 @@ func TestRepeatedAuthoringEditsKeepTheRevisionOfflineAndRemote(t *testing.T) {
 		}
 	}
 }
+
+// A model outside the catalog warns the same way offline and through the
+// daemon, which answers the warning with the staffed mission.
+func TestRemoteAssignWarnsOfAModelOutsideTheCatalogAsOfflineDoes(t *testing.T) {
+	offline, remote, _ := newAuthoringSides(t)
+	for _, side := range []authoringSide{offline, remote} {
+		if _, stderr, code := side.run("mission", "new", "demo"); code != 0 {
+			t.Fatalf("%s mission new: %s", side.name, stderr)
+		}
+		if _, stderr, code := side.run("formation", "create", "demo", "solo", "--title", "Worker"); code != 0 {
+			t.Fatalf("%s formation create: %s", side.name, stderr)
+		}
+	}
+	var warnings []string
+	for _, side := range []authoringSide{offline, remote} {
+		board, err := side.store.ReadBoard("demo")
+		if err != nil {
+			t.Fatal(err)
+		}
+		slot := formationTitled(t, board, "Worker").Slots[0]
+		stdout, stderr, code := side.run("formation", "assign", "demo", "Worker", "--slot", slot.ID, "--harness", "claude-code", "--model", "claude-opus-5", "--effort", "xhigh")
+		if code != 0 || !strings.Contains(stdout, "vanilla · claude-code · claude-opus-5 · xhigh") {
+			t.Fatalf("%s assign: code=%d stdout=%q stderr=%q", side.name, code, stdout, stderr)
+		}
+		warnings = append(warnings, strings.ReplaceAll(stderr, slot.ID, "<slot>"))
+	}
+	if warnings[0] != warnings[1] || !strings.Contains(warnings[0], `warning: slot "Agent" (<slot>) model "claude-opus-5" is not in the claude-code catalog; the harness decides`) {
+		t.Fatalf("warnings offline %q remote %q", warnings[0], warnings[1])
+	}
+}

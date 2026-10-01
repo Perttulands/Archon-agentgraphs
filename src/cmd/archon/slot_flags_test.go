@@ -109,3 +109,26 @@ func TestArchonMissionMigrateSlotsIsUnknown(t *testing.T) {
 		t.Fatalf("migrate-slots code=%d stderr=%s", code, stderr)
 	}
 }
+
+// A model outside its harness's catalog is staffed with a warning, and the
+// usage names the known models (archon-v53).
+func TestArchonFormationAssignWarnsOfAModelOutsideTheCatalog(t *testing.T) {
+	workspace := t.TempDir()
+	t.Setenv("ARCHON_AGENTS_DIR", t.TempDir())
+	store := formations.NewStore(workspace)
+	writeArchonFile(t, store.BoardPath("staff"), slotStaffingBoard)
+	runner := &fakeTmux{live: map[string]bool{}}
+	archon := func(args ...string) (string, string, int) {
+		return runArchon(t, runner, append([]string{"--workspace", workspace}, args...)...)
+	}
+	stdout, stderr, code := archon("formation", "assign", "staff", "Work", "--slot", "slot_a", "--harness", "claude-code", "--model", "claude-opus-5", "--effort", "xhigh")
+	if code != 0 || stdout != "slot_a is vanilla · claude-code · claude-opus-5 · xhigh\n" || stderr != "warning: slot \"A\" (slot_a) model \"claude-opus-5\" is not in the claude-code catalog; the harness decides\n" {
+		t.Fatalf("off-catalog model: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if _, stderr, code := archon("formation", "assign", "staff", "Work", "--slot", "slot_a", "--harness", "claude-code", "--model", "sonnet", "--effort", "xhigh"); code != 0 || stderr != "" {
+		t.Fatalf("known model: code=%d stderr=%q", code, stderr)
+	}
+	if _, stderr, _ := archon("formation", "assign", "staff", "Work", "--slot", "slot_a"); !strings.Contains(stderr, "Known models: claude-code runs opus, sonnet, haiku, fable. Another model is accepted with a warning.") {
+		t.Fatalf("usage does not name the known models:\n%s", stderr)
+	}
+}

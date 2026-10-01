@@ -809,6 +809,9 @@ func remoteFormationAssign(c *remoteClient, args []string, stdout, stderr io.Wri
 	if err != nil {
 		return fail(stderr, err)
 	}
+	if warnings, err := decodeRemote[[]string](data, "warnings"); err == nil {
+		printWarnings(stderr, *warnings)
+	}
 	return writeRemoteBoard(stdout, stderr, data, *f.jsonOut, assignedText(board, formationID, *f.slot))
 }
 

@@ -1156,7 +1156,12 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"mission": board})
+		response := map[string]interface{}{"mission": board}
+		// A model outside its harness's catalog is accepted with a warning.
+		if warnings := formations.SlotWarnings(board, assign.FormationID, assign.SlotID); len(warnings) > 0 {
+			response["warnings"] = warnings
+		}
+		core.WriteSuccess(w, response)
 		return
 	}
 	if request.MakeController != nil {

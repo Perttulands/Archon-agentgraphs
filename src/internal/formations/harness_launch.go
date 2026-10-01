@@ -12,15 +12,17 @@ import (
 // DefaultHarnessEffort is the effort a harness variant with no effort runs at.
 const DefaultHarnessEffort = "medium"
 
-// LaunchableHarness is a harness whose seats Archon starts from card settings.
+// LaunchableHarness is a harness whose seats Archon starts from slot settings.
 // Efforts lists the values its CLI accepts: `claude --effort` for Claude Code,
 // and the union of every Codex model's supported reasoning levels (Codex
 // models_cache.json) for Codex, whose `-c model_reasoning_effort` takes them.
+// Models lists the models it is known to run (HarnessModels).
 type LaunchableHarness struct {
-	ID            string   `json:"id"`
-	Executable    string   `json:"executable"`
-	Efforts       []string `json:"efforts"`
-	DefaultEffort string   `json:"defaultEffort"`
+	ID            string         `json:"id"`
+	Executable    string         `json:"executable"`
+	Efforts       []string       `json:"efforts"`
+	DefaultEffort string         `json:"defaultEffort"`
+	Models        []HarnessModel `json:"models"`
 }
 
 var launchableHarnesses = []LaunchableHarness{
@@ -28,11 +30,13 @@ var launchableHarnesses = []LaunchableHarness{
 	{ID: "openai-codex", Executable: "codex", Efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}, DefaultEffort: DefaultHarnessEffort},
 }
 
-// LaunchableHarnesses returns the harnesses Archon can start seats for.
+// LaunchableHarnesses returns the harnesses Archon can start seats for, each
+// with the models this host knows it to run.
 func LaunchableHarnesses() []LaunchableHarness {
 	out := make([]LaunchableHarness, len(launchableHarnesses))
 	for i, harness := range launchableHarnesses {
 		harness.Efforts = slices.Clone(harness.Efforts)
+		harness.Models = HarnessModels(harness.ID)
 		out[i] = harness
 	}
 	return out

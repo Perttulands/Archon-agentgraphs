@@ -56,8 +56,15 @@ patch naming only a role (and perhaps a harness), which is the cockpit's role
 drag: it writes that role's current effective harness, model and effort onto
 the slot. A patch naming none of them empties the slot, as does `formation
 unassign`. The harness must be one Archon starts and must accept the effort,
-and a model is one name without spaces; a model outside any catalog is
-accepted and the harness decides. Choose the effort by the policy the agent
+and a model is one name without spaces. The agent roster serves each
+harness's known `models`: `claude-code` runs the aliases `opus`, `sonnet`,
+`haiku` and `fable`, and `openai-codex` runs the models its CLI lists in
+`$CODEX_HOME/models_cache.json` (default `~/.codex`), by priority, each with
+the efforts it accepts; without that cache Codex lists none. A known Codex
+model narrows the slot's efforts to its own: `gpt-5.5` takes `low` to `xhigh`.
+A model outside the catalog is accepted and the harness decides; the
+`assignSlot` answer then carries `warnings`, and `formation assign` prints
+them. Choose the effort by the policy the agent
 roster serves as `effortPolicy`: `low` for errands, `medium` for making
 things, `xhigh` for architecture and review, `max` for consequential reviews.
 One role may staff several slots, each with its own settings.
@@ -1097,7 +1104,8 @@ applies); a run starts with `mission` and `inputCardId` (or `formationId`). The
 Input card patch actions are `createInputCard`, `updateInputCard` and
 `deleteInputCard`. Agent routes
 list/create/read/patch persona cards; the roster also serves `harnesses` (each
-with the efforts it accepts) and `effortPolicy` (`{effort,use}` lines). Gate
+with the efforts it accepts and its known `models`, `{id,efforts?}`) and
+`effortPolicy` (`{effort,use}` lines). Gate
 profiles expose the two code checks.
 With the tmux executor the agent roster marks a persona live when a session named
 by its default session stem runs on `--socket`, and lists the socket's other

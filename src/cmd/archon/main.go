@@ -700,6 +700,7 @@ func runFormationAssign(store *formations.Store, args []string, stdout, stderr i
 		return failDefinitionWrite(stderr, err, *f.jsonOut, "formation", fs.Arg(1))
 	}
 	result.TOML = ""
+	printWarnings(stderr, formations.SlotWarnings(result, formationID, *f.slot))
 	if *f.jsonOut {
 		return writeJSON(stdout, result)
 	}

@@ -826,8 +826,9 @@ paths:
       responses:
         '200':
           description: Roster in data.agents and data.count, including presets and overrides, and
-            data.harnesses, the harnesses whose seats Archon starts, each with the efforts it accepts and its
-            defaultEffort, and data.effortPolicy, the {effort,use} lines that guide a slot's effort (low for
+            data.harnesses, the harnesses whose seats Archon starts, each with the efforts it accepts, its
+            defaultEffort and its known models ({id, efforts?}; claude-code's aliases, and the Codex models the
+            daemon host's models_cache.json lists, each with the efforts that model accepts), and data.effortPolicy, the {effort,use} lines that guide a slot's effort (low for
             errands, medium for making things, xhigh for architecture and review, max for consequential
             reviews). No live-session provider is wired by the daemon.
         '422':
@@ -1310,7 +1311,9 @@ components:
               - openai-codex
             model:
               type: string
-              description: One model name without spaces; blank means the harness default model.
+              description: One model name without spaces; blank means the harness default model. A model outside
+                the harness's known models is accepted, and the answer carries data.warnings naming it. A known
+                Codex model narrows the efforts to its own.
             effort:
               type: string
               description: One effort the harness accepts (claude-code low, medium, high, xhigh, max; openai-codex
