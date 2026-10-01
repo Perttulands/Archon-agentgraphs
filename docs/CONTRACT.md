@@ -601,7 +601,8 @@ A payload can also include `ref` naming a text file anywhere on disk,
 preferably under the prompt's artifact directory. Use its full absolute
 filesystem path. A legacy relative `ref` resolves against the state workspace,
 not the run artifact directory. A missing, unreadable, non-text or oversized
-reference blocks routing. Free-form answer text is not
+reference blocks routing. The file's text is routed exactly as written; redaction
+applies only to what Archon displays. Free-form answer text is not
 routed. Finish with the exact run ID substituted in the sentinel:
 
 ```text

@@ -683,7 +683,8 @@ func testTmuxOutputRefRouting(t *testing.T, location string) {
 		t.Fatalf("relative artifact ref: %v", err)
 	}
 	leftArtifactRef = filepath.ToSlash(leftArtifactRef)
-	longLeft := "LEFT-ARTIFACT-BEGIN\n" + strings.Repeat("long routed artifact line with preserved spacing 0123456789\n", 80) + "LEFT-ARTIFACT-END"
+	// Secret-shaped text is data the next step needs; routing never redacts it.
+	longLeft := "LEFT-ARTIFACT-BEGIN\napi_key = sk-routedsecret123\n" + strings.Repeat("long routed artifact line with preserved spacing 0123456789\n", 80) + "LEFT-ARTIFACT-END\n"
 	switch location {
 	case "workspace":
 		writeFixture(t, leftArtifact, longLeft)

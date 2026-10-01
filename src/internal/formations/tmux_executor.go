@@ -435,7 +435,8 @@ func (e *TmuxFormationExecutor) materializeOutputRefs(outputs map[string]Formati
 		if err != nil {
 			return err
 		}
-		payload.Text = redactLedgerText(body)
+		// Routed text reaches the next step exactly as the seat wrote it.
+		payload.Text = body
 		outputs[portID] = payload
 	}
 	return nil
