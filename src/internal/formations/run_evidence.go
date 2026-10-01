@@ -585,7 +585,9 @@ func runOpenNodesAt(events []RunEvent, index int) []string {
 		case RunEventGateEvaluating, RunEventHumanInputRequested:
 			closeNode(gateID)
 			open = append(open, gateID)
-		case RunEventGateVerdict, RunEventHumanVerdictRecorded:
+		case RunEventGateVerdict:
+			// A recorded human verdict leaves its gate open until the run
+			// routes it (archon-o7p.11).
 			closeNode(gateID)
 		}
 	}

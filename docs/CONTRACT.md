@@ -274,8 +274,9 @@ downstream human gate waits after the formation finishes and spends no
 formation time.
 
 The projection reports `running`, `waiting_human`, `blocked`, `succeeded`,
-`failed` or `canceled`. Always check `final` and `resumeAllowed`; a blocked run
-is not a completed delivery. A failed or canceled run names who ended it in
+`failed` or `canceled`. `waiting_human` means at least one human gate waits,
+even while other steps still run; the events say what runs. Always check
+`final` and `resumeAllowed`; a blocked run is not a completed delivery. A failed or canceled run names who ended it in
 `endedBy`; why is in its run evidence problems. Events expose node, slot and gate identities,
 attempt, status/verdict, session display name and cleanup outcome where
 applicable. `run_succeeded` and `run_failed` list in `endIds` the End nodes the
@@ -287,7 +288,7 @@ Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
 `judge_attempt_failed`. Session-channel runs add `human_ask_delivered` and
 `human_ask_fallback` (see [Human gates on the session
 channel](#human-gates-on-the-session-channel)). Pending human requests appear in
-`waitingGates` with `gateId` and `requestedSeq`.
+`waitingGates` with `gateId` and `requestedSeq`; several can wait at once.
 
 The public projection includes cwd, context paths and Bead ID but excludes prompt text,
 artifact contents, brief paths, native session IDs and arbitrary private event
@@ -314,8 +315,8 @@ archon --server "$ARCHON_SERVER" run wait "$ARCHON_RUN_ID" --until needs-you
 `--until` takes `needs-you` (the default), `final` or `any-change`:
 
 - `needs-you` returns when a human gate asks for a verdict, a blocking
-  escalation is raised, or the run blocks with no gate or escalation to explain
-  it. The paragraph names the gate or step, the gate's criterion, the start of
+  escalation is raised, or the run blocks with no blocking escalation to
+  explain it. A waiting gate explains no block: it holds up only its own path. The paragraph names the gate or step, the gate's criterion, the start of
   its input (the whole input is `gate request`), where each verdict leads, and
   the exact `gate approve`/`gate reject` commands with `--requested-seq`, or
   the `run resume` or `run abort` command a block needs.
@@ -332,15 +333,16 @@ an ask counts as new only after `since`, so a driver that loops sees each ask
 once and misses nothing between calls. Without `--since` every open ask is new.
 Other open asks are still listed as reported earlier.
 
-A bare block counts only once the daemon has settled the run, since a verdict
-records one on its way to the automatic resume. Until then the run reads as
-`running`, and in every mode the cursor stops below the block and an answer
-reports only the events before it; with nothing else new the wait keeps
-holding. Once the run settles, a real block is a new ask in every mode.
+A bare block counts only once the daemon has settled the run, since the
+command that recorded it can still end the run, as a stop does. Until then the
+run reads as `running`, and in every mode the cursor stops below the block and
+an answer reports only the events before it; with nothing else new the wait
+keeps holding. Once the run settles, a real block is a new ask in every mode.
 
-A verdict or resume sent while the command that recorded the ask is still
-settling the run waits for that command, up to five seconds, instead of
-answering 409, so a driver can answer the moment a wait returns.
+A verdict never waits: the daemon records it at once, even while other steps
+run (see [Human verdicts](#human-verdicts)). A resume sent while the run's
+command is still settling waits for that command, up to five seconds, instead
+of answering 409, so a driver can answer the moment a wait returns.
 
 `--json` prints the daemon's answer (`runId`, `missionSlug`, `missionTitle`, `until`, `outcome`,
 `since`, `seq`, `status`, `final`, `resumeAllowed`, `settled`, `end`, `asks`,
@@ -593,7 +595,9 @@ rule.
 ### Human verdicts
 
 A human kind waits for an explicit verdict naming the exact pending sequence;
-stale or duplicate decisions return HTTP 409. There is no default verdict.
+stale or duplicate decisions return HTTP 409. There is no default verdict. A
+gate that evaluates a newer input while its request waits replaces that
+request, and a verdict naming the old one answers 409.
 The verdict's `reason` is the operator's response, preserved verbatim including
 leading/trailing whitespace and newlines. On pass, a nonempty response
 travels on every pass route together with the gate's original input. It is typed
@@ -601,12 +605,24 @@ with gate ID, gate attempt, requested sequence, deciding actor and text, and
 the next prompt renders it as a human-response section after that input. An
 empty response routes the input unchanged. On fail the response becomes the
 feedback reason. Resume rebuilds the response from the verdict recorded for
-that exact request, so it survives restart. Recording the verdict blocks the run
-with code `resume_after_verdict` until the coordinator resumes it; that block is
-a pause, not a failure. Currently, while a human request waits, no other work
-is dispatched; branches not behind the gate run after the verdict, and a
-verdict that ends its path ends the run only once they have run. The
-cockpit shows a pending human gate's input with a response box, Approve and Send back.
+that exact request, so it survives restart.
+
+A human gate blocks only the work it gates (archon-o7p.11). While its request
+waits, the run keeps dispatching every step not behind it, one step at a time,
+and several requests can wait at once, each answered on its own and in any
+order. The daemon records a verdict at once, while other seats work, and the
+run routes it between steps: once the step running when it arrived has
+recorded its output, before that output moves on. A send-back to a step still
+working its first attempt runs that step again once the attempt ends. A run
+whose only open work is waiting gates waits, with no block, and a verdict that
+ends its path ends the run only once every other path has ended. A verdict is
+also accepted on a blocked run, which routes it when it resumes, and a blocked
+run resumes while its gates keep waiting.
+
+The cockpit shows a pending human gate's input with a response box, Approve and
+Send back. The run bar names every gate that waits and every step that runs
+("waiting for you at Review · running Draft"); choosing a waiting gate there
+opens its answer.
 A verdict may carry `relayedBy`, the slot ID of the seat that typed the
 operator's confirmed decision (a letter or digit, then up to 63 letters, digits,
 underscores or hyphens): `archon gate approve|reject ... --relayed-by <slot-id>`.
@@ -707,10 +723,9 @@ approval or send-back. If the agent drafts or paraphrases the response, or the
 verdict, response or intended gate is ambiguous, it shows the proposed verdict
 and exact response together and waits for confirmation. It must not infer a
 verdict from discussion or invent missing response text. The instructions also
-say to run the same command again a few seconds after a 409
-`coordinator is executing`, and to tell the operator that another
-seat or the cockpit decided first after a 409 `human gate request is no longer
-pending`. The formation brief's limits still apply, except for that command.
+say to run the same command again a few seconds after a 503 while the daemon
+restarts, and to tell the operator that another seat or the cockpit decided
+first after a 409 `human gate request is no longer pending`. The formation brief's limits still apply, except for that command.
 
 Each pasted ask is recorded as `human_ask_delivered` with the request sequence,
 gate, asking formation, slot, the seat's created sequence, session name and
@@ -728,14 +743,16 @@ and replacement seats remain eligible. A verdict arriving during the failed
 paste does not discard that seat identity. An agent that is merely busy, or
 unsent operator text found before a paste, still waits without a fallback.
 Only after a fallback does the notify command, if configured, get its
-`human_gate` notification. Both events are
-appended under the run's command reservation, so a verdict sent in that moment
-waits for it (the busy 409 comes only after five seconds), and replay ignores
+`human_gate` notification. Asks are delivered as soon as the gate asks, while
+other steps still run. Each delivery or fallback is recorded only while its
+request still waits and its seat is still kept, checked as it is appended, so
+it never lands after the verdict or seat end it raced with, and replay ignores
 them.
 
 Kept seats are reconsidered when the run settles and before a formation is
-dispatched. A kept seat ends when it has received an ask and no open request
-names its formation (cause `ask_answered`), when its formation starts a new
+dispatched. A kept seat ends when it has received an ask and neither an open
+request nor a verdict the run has yet to route names its formation (cause
+`ask_answered`), when its formation starts a new
 attempt (`new_attempt`), or when the run is about to succeed, fail or be
 canceled, including an abort of a waiting run (`run_final`). Ending waits up to
 60 seconds for the agent to go idle with an empty input line, the check every
@@ -985,13 +1002,15 @@ immediately. Active turns have five
 seconds to finish, then the daemon cancels observation and detaches from its
 seats without ending them. HTTP draining and execution share a ten-second total
 shutdown budget. Open dispatch identities remain in a resumable block for
-startup recovery; an idle human request remains answerable. Abort runs explicitly
+startup recovery; a waiting human request remains answerable, on the blocked run
+too. Abort runs explicitly
 when seat cancellation is intended.
 
 The ledger accepts nothing after a final event. After `run_blocked` it accepts
-only a resume, a cancel, a failure, or the `seat_cleanup` of seats kept on call,
-which the runtime records just before the cancel or failure that ends the run.
-Those cleanups leave the run blocked. A ledger ending in them, as a crash
+only a resume, a cancel, a failure, a human verdict (routed once the run
+resumes), or the `seat_cleanup` of seats kept on call, which the runtime
+records just before the cancel or failure that ends the run. Those verdicts and
+cleanups leave the run blocked. A ledger ending in them, as a crash
 between the cleanup and the cancel leaves it, projects the block's status,
 `resumeAllowed` and needs-you asks, is recovered at startup as that block, and
 still accepts a resume, cancel or failure.
@@ -1008,8 +1027,12 @@ Inspect list/status after restart. For a resumable block whose cause is resolved
 archon --server "$ARCHON_SERVER" run resume "$ARCHON_RUN_ID" --reason "Recovery evidence inspected" --json
 ```
 
-An idle human request with no unresolved dispatch survives restart with its
-original `requestedSeq`. Approve or reject using the same exact request sequence after restart.
+A run that only waits on its gates survives restart waiting, with each
+request's original `requestedSeq`; approve or reject using the same exact
+request sequence after restart. A run that was between steps, with work still
+owed or a recorded verdict not yet routed, is blocked at startup ("coordinator
+restarted between steps; resume to continue"), and resuming continues it while
+its gates keep waiting.
 
 When a seat died mid-turn and its completed evidence cannot be found, abandon
 the open dispatch and run the node again as a fresh bounded attempt:
@@ -1055,14 +1078,15 @@ A notification carries `runId`, `missionSlug`, `missionTitle`, `seq`, `kind`,
   the gate's input text capped at 64 KiB, the cockpit link, and exact
   `gate approve` and `gate reject` commands with `--requested-seq`.
 - `escalation`, keyed by a blocking escalation's sequence.
-- `blocked`, keyed by the `run_blocked` sequence when no open gate or escalation
-  already explains the block. The body gives the reason and, when resumable,
+- `blocked`, keyed by the `run_blocked` sequence when no blocking escalation
+  already explains the block. A waiting gate explains none. The body gives the reason and, when resumable,
   the `run resume` command.
 - `final`, keyed by the terminal event sequence.
 
-Only settled runs are announced: the run's command worker has exited. A block
-recorded inside a command, such as a human verdict awaiting its automatic
-resume, is never sent. Each ask is sent once and recorded in the run's
+A human gate's ask and a blocking escalation are sent as soon as the ledger
+records them, while other steps still run. Blocks and final outcomes are sent
+only once the run has settled: its command worker has exited, so a block that
+same command follows with a cancel is never sent. Each ask is sent once and recorded in the run's
 `.needs-you.json` artifact, so restarts send no duplicates. A failed send stays
 unrecorded and is retried at the run's next settle, at startup and every five
 minutes. Sends never delay runs or shutdown. At startup the daemon reconciles

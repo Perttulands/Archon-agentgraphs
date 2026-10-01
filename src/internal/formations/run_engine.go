@@ -138,10 +138,12 @@ type GateEvidenceRef struct {
 }
 
 type HumanGateVerdictRequest struct {
-	GateID  string
-	Verdict string
-	Reason  string
-	Actor   string
+	GateID string
+	// RequestedSeq, when set, names the exact pending request decided.
+	RequestedSeq int
+	Verdict      string
+	Reason       string
+	Actor        string
 	// RelayedBy is the slot ID of the seat that typed a decision the actor made.
 	RelayedBy string
 }
@@ -503,7 +505,40 @@ func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusPro
 	if !ok {
 		return nil, fmt.Errorf("%w: mission %q", ErrNotFound, started.MissionID)
 	}
-	if err := e.resumeSnapshot(runID, board, mission, runLimitsFromEvent(started), events); err != nil {
+	if err := e.resumeSnapshot(runID, board, mission, runLimitsFromEvent(started), events, "resume"); err != nil {
+		return nil, err
+	}
+	return e.projectAndNotify(runID)
+}
+
+// ContinueRun goes on with a run that is neither blocked nor final: it routes
+// the human verdicts recorded since the run last worked and runs whatever they,
+// or anything else, still owe (archon-o7p.11). The coordinator calls it after a
+// verdict on a run with no worker. A blocked run continues on resume instead.
+func (e *RunEngine) ContinueRun(runID string) (*RunStatusProjection, error) {
+	if e == nil || e.store == nil {
+		return nil, fmt.Errorf("%w: run engine store required", ErrNotFound)
+	}
+	events, err := e.store.ReadRunEvents(runID)
+	if err != nil {
+		return nil, err
+	}
+	lifecycle := lifecycleLedger(events)
+	if len(lifecycle) == 0 {
+		return nil, ErrRunLedgerInvalid
+	}
+	if last := lifecycle[len(lifecycle)-1]; isFinalRunEvent(last.Type) || last.Type == RunEventBlocked {
+		return e.store.ProjectRun(runID)
+	}
+	board, err := e.readRunBoard(runID)
+	if err != nil {
+		return nil, err
+	}
+	mission, ok := findMission(board, events[0].MissionID)
+	if !ok {
+		return nil, fmt.Errorf("%w: mission %q", ErrNotFound, events[0].MissionID)
+	}
+	if err := e.resumeSnapshot(runID, board, mission, runLimitsFromEvent(events[0]), events, "continue"); err != nil {
 		return nil, err
 	}
 	return e.projectAndNotify(runID)
@@ -603,6 +638,12 @@ func (e *RunEngine) validateGateVerdictKindResults(runID string, gate GateNode, 
 	return nil
 }
 
+// RecordHumanGateVerdict records the operator's verdict on a gate's pending
+// request. It routes nothing: the run's worker routes recorded verdicts
+// (routeRecordedVerdicts), so a verdict is accepted while other seats work,
+// and on a blocked run it waits for the resume (archon-o7p.11). The request
+// is checked under the ledger's append lock, so two verdicts on one request
+// cannot both land.
 func (e *RunEngine) RecordHumanGateVerdict(runID string, req HumanGateVerdictRequest) (*RunStatusProjection, error) {
 	if e == nil || e.store == nil {
 		return nil, fmt.Errorf("%w: run engine store required", ErrNotFound)
@@ -621,6 +662,9 @@ func (e *RunEngine) RecordHumanGateVerdict(runID string, req HumanGateVerdictReq
 	if !ok {
 		return nil, fmt.Errorf("%w: human gate request %q", ErrNotFound, req.GateID)
 	}
+	if req.RequestedSeq != 0 && req.RequestedSeq != requestEvent.Seq {
+		return nil, ErrHumanRequestNotPending
+	}
 	board, err := e.readRunBoard(runID)
 	if err != nil {
 		return nil, err
@@ -635,12 +679,11 @@ func (e *RunEngine) RecordHumanGateVerdict(runID string, req HumanGateVerdictReq
 	if err := e.validateHumanRequestKindResults(runID, gate, requestEvent, events); err != nil {
 		return nil, err
 	}
-	verdict := normalizeGateVerdict(req.Verdict)
 	actor := defaultRunActor(req.Actor)
 	data := map[string]any{
 		"gateId":       req.GateID,
 		"nodeId":       req.GateID,
-		"verdict":      verdict,
+		"verdict":      normalizeGateVerdict(req.Verdict),
 		"reason":       req.Reason,
 		"requestedSeq": requestEvent.Seq,
 		"decidedBy":    actor,
@@ -648,26 +691,21 @@ func (e *RunEngine) RecordHumanGateVerdict(runID string, req HumanGateVerdictReq
 	if req.RelayedBy != "" {
 		data["relayedBy"] = req.RelayedBy
 	}
-	validatedBoard, err := e.store.appendRunEventWithSnapshot(runID, RunEvent{
+	if err := e.store.appendRunEventIf(runID, RunEvent{
 		Type:   RunEventHumanVerdictRecorded,
 		Actor:  actor,
 		GateID: req.GateID,
 		NodeID: req.GateID,
 		Data:   data,
-	})
-	if err != nil {
+	}, func(current []RunEvent) error {
+		if pending, ok := latestHumanRequest(current, req.GateID); !ok || pending.Seq != requestEvent.Seq {
+			return ErrHumanRequestNotPending
+		}
+		return nil
+	}); err != nil {
 		return nil, err
 	}
-	if validatedBoard == nil {
-		return nil, ErrRunLedgerInvalid
-	}
-	input := runInputRefFromAny(requestEvent.Data["inputRef"])
-	status, err := e.routeGateVerdict(runID, validatedBoard, gate, input, verdict, req.Reason, runLimitsFromEvent(events[0]), requestEvent)
-	if err != nil {
-		return nil, err
-	}
-	e.reconcileNeedsYou(runID)
-	return status, nil
+	return e.store.ProjectRun(runID)
 }
 
 func (e *RunEngine) validateHumanRequestKindResults(runID string, gate GateNode, request RunEvent, events []RunEvent) error {
@@ -878,6 +916,7 @@ func (e *RunEngine) appendOpenDispatchReattachFailure(runID string, refs []openD
 		NodeID: blockedNodeID,
 		SlotID: blockedSlotID,
 		Data: map[string]any{
+			"code":           "dispatch_reattach_failed",
 			"reason":         "dispatch reattach failed: " + reason,
 			"blockedNodeId":  blockedNodeID,
 			"resumeAllowed":  true,
@@ -970,11 +1009,10 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 	return started, mission, seedInput, nil
 }
 
-func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission MissionNode, limits RunLimits, events []RunEvent) error {
-	formationByID := map[string]FormationNode{}
-	for _, formation := range board.Formations {
-		formationByID[formation.ID] = formation
-	}
+// resumeSnapshot rebuilds the run's deliveries from its ledger and runs
+// whatever is still owed. reason names why the run continues: resume after a
+// block, or continue after a verdict.
+func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission MissionNode, limits RunLimits, events []RunEvent, reason string) error {
 	gateByID := map[string]GateNode{}
 	for _, gate := range board.Gates {
 		gateByID[gate.ID] = gate
@@ -1015,14 +1053,50 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		}
 		return err
 	}
+	// A run interrupted before its Input card delivered the brief, its first
+	// output, starts there.
+	if !slices.ContainsFunc(events, func(event RunEvent) bool { return event.Type == RunEventNodeOutput }) {
+		if err := e.deliverInputCard(runID, board, gateByID, mission, limits, ready, queued, &queue); err != nil {
+			if errors.Is(err, errRunStopped) {
+				return nil
+			}
+			return err
+		}
+	}
+	exhausted := RunBlockResumeAttemptsExhausted
+	return e.drainRun(runID, board, gateByID, limits, attempts, ready, queued, &queue, reason, exhausted, reason)
+}
 
-	for len(queue) > 0 {
-		nodeID := queue[0]
-		queue = queue[1:]
+// drainRun runs the queued steps one at a time, then ends the run by the one
+// completion rule. Before each step, and after each step records its output
+// but before that output is delivered, it routes the human verdicts recorded
+// meanwhile (archon-o7p.11). Replay queues every formation the ledger ever
+// fed; a step runs only while the ledger, read as it stands now, still owes
+// it a delivery, so a send-back routed during this drain runs again
+// (archon-n7u.53). startReason is recorded on each node_started, exhausted is
+// the block code when a step would pass the run's attempt limit, and
+// finishReason, when set, is recorded on run_succeeded.
+func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[string]GateNode, limits RunLimits, attempts map[string]int, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string, startReason, exhausted, finishReason string) error {
+	formationByID := map[string]FormationNode{}
+	for _, formation := range board.Formations {
+		formationByID[formation.ID] = formation
+	}
+	stopped := func(err error) error {
+		if errors.Is(err, errRunStopped) {
+			return nil
+		}
+		return err
+	}
+	for {
+		if err := e.routeRecordedVerdicts(runID, board, gates, limits, ready, queued, queue); err != nil {
+			return stopped(err)
+		}
+		if len(*queue) == 0 {
+			break
+		}
+		nodeID := (*queue)[0]
+		*queue = (*queue)[1:]
 		queued[nodeID] = false
-		// Replay queues every formation the ledger ever fed; run only those
-		// still owed a delivery, read from the ledger as it stands now, so a
-		// send-back routed during this resume runs again (archon-n7u.53).
 		current, err := e.store.ReadRunEvents(runID)
 		if err != nil {
 			return err
@@ -1043,7 +1117,8 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		}
 		nextAttempt := attempts[nodeID] + 1
 		if attemptsExhausted(limits, nextAttempt) {
-			return e.appendErrorAndBlock(runID, "resume_attempts_exhausted", "resume attempts exhausted", "engine", nodeID, "resume attempts exhausted")
+			message := strings.ReplaceAll(exhausted, "_", " ")
+			return e.appendErrorAndBlock(runID, exhausted, message, "engine", nodeID, message)
 		}
 		attempts[nodeID] = nextAttempt
 		if err := e.startFormationExecution(runID, formation, limits, RunEvent{
@@ -1053,14 +1128,11 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 			Data: map[string]any{
 				"nodeKind":  "formation",
 				"inputRefs": inputs,
-				"reason":    "resume",
+				"reason":    startReason,
 				"brief":     formationBriefEventData(formationBriefValue(formation)),
 			},
 		}); err != nil {
-			if errors.Is(err, errRunStopped) {
-				return nil
-			}
-			return err
+			return stopped(err)
 		}
 		result, err := e.executeFormation(FormationExecution{
 			RunID:           runID,
@@ -1070,7 +1142,7 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 			Brief:           formationBriefValue(formation),
 			Inputs:          inputs,
 			Attempt:         nextAttempt,
-			KeepSeatsOnCall: RunHumanChannel(board, events) == HumanChannelSession && FormationKeepsSeatsOnCall(board, nodeID),
+			KeepSeatsOnCall: RunHumanChannel(board, current) == HumanChannelSession && FormationKeepsSeatsOnCall(board, nodeID),
 		}, limits)
 		if err != nil {
 			return e.appendExecutionFailureAndBlock(runID, nodeID, err)
@@ -1079,10 +1151,7 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 			result.Status = "done"
 		}
 		if err := e.ensureFormationOutputPayloads(runID, formation, result); err != nil {
-			if errors.Is(err, errRunStopped) {
-				return nil
-			}
-			return err
+			return stopped(err)
 		}
 		if err := e.store.AppendRunEvent(runID, RunEvent{
 			Type:   RunEventNodeOutput,
@@ -1091,19 +1160,18 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		}); err != nil {
 			return err
 		}
-		if err := e.deliverFormationOutput(runID, board, gateByID, nodeID, result, limits, ready, queued, &queue); err != nil {
-			if errors.Is(err, errRunStopped) {
-				return nil
-			}
-			return err
+		if err := e.routeRecordedVerdicts(runID, board, gates, limits, ready, queued, queue); err != nil {
+			return stopped(err)
+		}
+		if err := e.deliverFormationOutput(runID, board, gates, nodeID, result, limits, ready, queued, queue); err != nil {
+			return stopped(err)
 		}
 	}
-
 	completionEvents, err := e.store.ReadRunEvents(runID)
 	if err != nil {
 		return err
 	}
-	return e.endWhenNothingCanRun(runID, board, completionEvents, "resume")
+	return e.endWhenNothingCanRun(runID, board, completionEvents, finishReason)
 }
 
 func (e *RunEngine) resumeIncompleteGateEvaluations(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
@@ -1247,14 +1315,19 @@ func (e *RunEngine) gateKindResultFromEvent(runID string, gate GateNode, input R
 
 // endWhenNothingCanRun applies the one completion rule (runFinishState) once
 // the engine has run everything queued: work that can still run blocks the
-// run resumably; a rejected path fails it, even when its rejection starved a
-// join; formations starved with no rejection block it as a wiring gap; and
-// otherwise it succeeds.
+// run resumably; gates waiting on the operator leave the run waiting, with no
+// event, until a verdict continues it (archon-o7p.11); a rejected path fails
+// it, even when its rejection starved a join; formations starved with no
+// rejection block it as a wiring gap; and otherwise it succeeds.
 func (e *RunEngine) endWhenNothingCanRun(runID string, board *BoardDocument, events []RunEvent, reason string) error {
 	finish := runFinishState(board, events, "")
+	deciding := openHumanDecisions(events)
+	runnable := slices.DeleteFunc(finish.runnable, func(nodeID string) bool { return slices.Contains(deciding, nodeID) })
 	switch {
-	case len(finish.runnable) > 0:
-		return e.appendUnfinishedWorkBlock(runID, finish.runnable)
+	case len(runnable) > 0:
+		return e.appendUnfinishedWorkBlock(runID, runnable)
+	case len(deciding) > 0:
+		return nil
 	case finish.rejected == nil && len(finish.starved) > 0:
 		return e.appendStarvedBlock(runID, finish.starved)
 	}
@@ -1537,20 +1610,26 @@ func (s *Store) ReadRunBoard(runID string) (*BoardDocument, error) {
 }
 
 func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission MissionNode, limits RunLimits) error {
-	formationByID := map[string]FormationNode{}
-	for _, formation := range board.Formations {
-		formationByID[formation.ID] = formation
-	}
 	gateByID := map[string]GateNode{}
 	for _, gate := range board.Gates {
 		gateByID[gate.ID] = gate
 	}
-
 	ready := map[string]map[string]RunInputRef{}
 	queued := map[string]bool{}
 	attempts := map[string]int{}
 	var queue []string
+	if err := e.deliverInputCard(runID, board, gateByID, mission, limits, ready, queued, &queue); err != nil {
+		if errors.Is(err, errRunStopped) {
+			return nil
+		}
+		return err
+	}
+	return e.drainRun(runID, board, gateByID, limits, attempts, ready, queued, &queue, "initial", RunBlockReviseLoopExhausted, "")
+}
 
+// deliverInputCard records the Input card's output, the run's brief, and
+// delivers it to the steps it is wired to.
+func (e *RunEngine) deliverInputCard(runID string, board *BoardDocument, gates map[string]GateNode, mission MissionNode, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
 	if err := e.store.AppendRunEvent(runID, RunEvent{
 		Type:      RunEventNodeStarted,
 		NodeID:    mission.ID,
@@ -1568,7 +1647,6 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 	if err != nil {
 		return err
 	}
-	session := RunHumanChannel(board, events) == HumanChannelSession
 	if brief := stringFromEventData(events[0], "brief"); brief != "" {
 		missionText = brief
 	}
@@ -1587,97 +1665,7 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 	}); err != nil {
 		return err
 	}
-	if err := e.deliverOutputPayloads(runID, board, gateByID, mission.ID, missionOutputs, limits, ready, queued, &queue); err != nil {
-		if errors.Is(err, errRunStopped) {
-			return nil
-		}
-		return err
-	}
-
-	for len(queue) > 0 {
-		nodeID := queue[0]
-		queue = queue[1:]
-		queued[nodeID] = false
-		formation, ok := formationByID[nodeID]
-		if !ok {
-			continue
-		}
-		inputs := orderedInputs(formation, ready[nodeID])
-		if !formationReady(formation, ready[nodeID]) {
-			if err := e.appendWaiting(runID, formation, ready[nodeID]); err != nil {
-				return err
-			}
-			continue
-		}
-		nextAttempt := attempts[nodeID] + 1
-		if attemptsExhausted(limits, nextAttempt) {
-			if err := e.appendErrorAndBlock(runID, "revise_loop_exhausted", "revise loop exhausted", "engine", nodeID, "revise loop exhausted"); err != nil {
-				return err
-			}
-			return nil
-		}
-		attempts[nodeID] = nextAttempt
-		if err := e.startFormationExecution(runID, formation, limits, RunEvent{
-			Type:    RunEventNodeStarted,
-			NodeID:  nodeID,
-			Attempt: nextAttempt,
-			Data: map[string]any{
-				"nodeKind":  "formation",
-				"inputRefs": inputs,
-				"reason":    "initial",
-				"brief":     formationBriefEventData(formationBriefValue(formation)),
-			},
-		}); err != nil {
-			if errors.Is(err, errRunStopped) {
-				return nil
-			}
-			return err
-		}
-		result, err := e.executeFormation(FormationExecution{
-			RunID:           runID,
-			NodeID:          nodeID,
-			Title:           formation.Title,
-			Formation:       formation,
-			Brief:           formationBriefValue(formation),
-			Inputs:          inputs,
-			Attempt:         nextAttempt,
-			KeepSeatsOnCall: session && FormationKeepsSeatsOnCall(board, nodeID),
-		}, limits)
-		if err != nil {
-			if blockErr := e.appendExecutionFailureAndBlock(runID, nodeID, err); blockErr != nil {
-				return blockErr
-			}
-			return nil
-		}
-		if result.Status == "" {
-			result.Status = "done"
-		}
-		if err := e.ensureFormationOutputPayloads(runID, formation, result); err != nil {
-			if errors.Is(err, errRunStopped) {
-				return nil
-			}
-			return err
-		}
-		if err := e.store.AppendRunEvent(runID, RunEvent{
-			Type:   RunEventNodeOutput,
-			NodeID: nodeID,
-			Data:   formationOutputEventData(result),
-		}); err != nil {
-			return err
-		}
-		if err := e.deliverFormationOutput(runID, board, gateByID, nodeID, result, limits, ready, queued, &queue); err != nil {
-			if errors.Is(err, errRunStopped) {
-				return nil
-			}
-			return err
-		}
-	}
-
-	finalEvents, err := e.store.ReadRunEvents(runID)
-	if err != nil {
-		return err
-	}
-	return e.endWhenNothingCanRun(runID, board, finalEvents, "")
+	return e.deliverOutputPayloads(runID, board, gates, mission.ID, missionOutputs, limits, ready, queued, queue)
 }
 
 // startFormationExecution reserves one run-wide execution before the executor
@@ -2130,7 +2118,9 @@ func (e *RunEngine) evaluateGateKinds(runID string, board *BoardDocument, gates 
 		}); err != nil {
 			return err
 		}
-		return errRunStopped
+		// Only this path waits for the verdict; the run goes on with every
+		// other branch (archon-o7p.11).
+		return nil
 	}
 	return e.routeGateEvaluation(runID, board, gates, gate, input, "pass", result, limits, ready, queued, queue)
 }
@@ -2163,22 +2153,12 @@ func (e *RunEngine) appendGateKindResult(runID string, gate GateNode, kind strin
 		data["maxResultBytes"] = binding.MaxResultBytes
 		data["maxOperations"] = binding.MaxOperations
 	}
-	if err := e.store.AppendRunEvent(runID, RunEvent{
+	return e.store.appendRunEventSeq(runID, RunEvent{
 		Type:   RunEventGateKindResult,
 		GateID: gate.ID,
 		NodeID: gate.ID,
 		Data:   data,
-	}); err != nil {
-		return 0, err
-	}
-	events, err := e.store.ReadRunEvents(runID)
-	if err != nil {
-		return 0, err
-	}
-	if len(events) == 0 || events[len(events)-1].Type != RunEventGateKindResult {
-		return 0, ErrRunLedgerInvalid
-	}
-	return events[len(events)-1].Seq, nil
+	})
 }
 
 func markLaterGateKindsNotRun(kinds []string, perKind map[string]string, failedKind string) {
@@ -2237,15 +2217,74 @@ func (e *RunEngine) routeGateEvaluation(runID string, board *BoardDocument, gate
 	return nil
 }
 
-func (e *RunEngine) routeGateVerdict(runID string, board *BoardDocument, gate GateNode, input RunInputRef, verdict, reason string, limits RunLimits, requestEvent RunEvent) (*RunStatusProjection, error) {
-	attempt, err := e.gateAttempt(runID, gate.ID)
-	if err != nil {
-		return nil, err
+// unroutedHumanVerdicts lists, oldest first, the recorded human verdicts the
+// run has not routed yet: each human_verdict_recorded whose request no
+// gate_verdict names.
+func unroutedHumanVerdicts(events []RunEvent) []RunEvent {
+	routed := map[int]bool{}
+	for _, event := range events {
+		if event.Type == RunEventGateVerdict {
+			if seq := intFromRunEventData(event.Data["requestedSeq"]); seq > 0 {
+				routed[seq] = true
+			}
+		}
 	}
+	var verdicts []RunEvent
+	for _, event := range events {
+		if event.Type == RunEventHumanVerdictRecorded && !routed[intFromRunEventData(event.Data["requestedSeq"])] {
+			verdicts = append(verdicts, event)
+		}
+	}
+	return verdicts
+}
+
+// routeRecordedVerdicts routes every recorded human verdict the run has not
+// routed yet, oldest first, as a code or judge verdict routes. The run's
+// worker calls it between steps, so a verdict recorded while a seat worked is
+// routed once that step has recorded its output (archon-o7p.11).
+func (e *RunEngine) routeRecordedVerdicts(runID string, board *BoardDocument, gates map[string]GateNode, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+	for {
+		events, err := e.store.ReadRunEvents(runID)
+		if err != nil {
+			return err
+		}
+		pending := unroutedHumanVerdicts(events)
+		if len(pending) == 0 {
+			return nil
+		}
+		if err := e.routeHumanVerdict(runID, board, gates, events, pending[0], limits, ready, queued, queue); err != nil {
+			return err
+		}
+	}
+}
+
+// routeHumanVerdict records the gate verdict for one recorded human verdict
+// and delivers its routes: a pass carries the request's input with the
+// operator's response, a fail sends that input back as feedback.
+func (e *RunEngine) routeHumanVerdict(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, recorded RunEvent, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+	gate, ok := gates[recorded.GateID]
+	if !ok {
+		return fmt.Errorf("%w: gate %q", ErrNotFound, recorded.GateID)
+	}
+	requestedSeq := intFromRunEventData(recorded.Data["requestedSeq"])
+	if requestedSeq <= 0 || requestedSeq >= recorded.Seq || events[requestedSeq-1].Type != RunEventHumanInputRequested || events[requestedSeq-1].GateID != gate.ID {
+		return fmt.Errorf("%w: Gate %q verdict names invalid human request %d", ErrRunLedgerInvalid, gate.ID, requestedSeq)
+	}
+	request := events[requestedSeq-1]
+	// The verdict answers the evaluation that asked, even when the gate has
+	// evaluated again since.
+	attempt := 0
+	for _, event := range events[:requestedSeq] {
+		if event.Type == RunEventGateEvaluating && event.GateID == gate.ID {
+			attempt++
+		}
+	}
+	verdict := normalizeGateVerdict(stringFromEventData(recorded, "verdict"))
+	reason := stringFromEventData(recorded, "reason")
+	input := runInputRefFromAny(request.Data["inputRef"])
 	routes := outgoingConnectionsFromPort(board.Connections, gate.ID, verdict)
-	routePort := verdict
-	result := gateResultFromHumanRequest(requestEvent, verdict, reason)
-	if err := e.store.AppendRunEvent(runID, RunEvent{
+	result := gateResultFromHumanRequest(request, verdict, reason)
+	verdictSeq, err := e.store.appendRunEventSeq(runID, RunEvent{
 		Type:    RunEventGateVerdict,
 		Attempt: attempt,
 		GateID:  gate.ID,
@@ -2257,7 +2296,7 @@ func (e *RunEngine) routeGateVerdict(runID string, board *BoardDocument, gate Ga
 			"codeResultSeq":  result.KindResultSeqs["code"],
 			"codeVerdict":    result.CodeVerdict,
 			"codeReason":     result.CodeReason,
-			"routePort":      routePort,
+			"routePort":      verdict,
 			"routedEdges":    connectionIDs(routes),
 			"reason":         reason,
 			"evidence":       result.Evidence,
@@ -2265,18 +2304,28 @@ func (e *RunEngine) routeGateVerdict(runID string, board *BoardDocument, gate Ga
 			"resultSha256":   result.ResultSHA256,
 			"gateBindingId":  result.GateBindingID,
 			"inputRef":       input,
-			"requestedSeq":   requestEvent.Seq,
+			"requestedSeq":   requestedSeq,
 		},
-	}); err != nil {
-		return nil, err
+	})
+	if err != nil {
+		return err
 	}
-
-	pause := runBlockedEvent("human gate verdict recorded; resume required", "", gate.ID, "", nil)
-	pause.Data["code"] = RunBlockResumeAfterVerdict
-	if err := e.store.AppendRunEvent(runID, pause); err != nil {
-		return nil, err
+	if events, err = e.store.ReadRunEvents(runID); err != nil {
+		return err
 	}
-	return e.store.ProjectRun(runID)
+	verdictEvent := events[verdictSeq-1]
+	for _, route := range routes {
+		next := input
+		if verdict == "fail" {
+			next = gateFailInput(runID, route, gate.ID, attempt, input, reason, result.Evidence)
+		} else if next, err = gatePassInput(events, verdictEvent, gate.ID, input); err != nil {
+			return err
+		}
+		if err := e.deliverConnection(runID, board, gates, route, next, limits, ready, queued, queue); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (e *RunEngine) evaluateCodeGateResult(req GateEvaluation) (GateEvaluationResult, error) {
@@ -2522,9 +2571,11 @@ func (e *RunEngine) appendErrorAndBlockWithDetails(runID, code, message, boundar
 	}); err != nil {
 		return err
 	}
+	// The block carries its own code: other writers may append between the
+	// error and the block (archon-o7p.11).
 	block := runBlockedEvent(blockReason, nodeID, "", slotID, openDispatchesForBlock(nodeID, slotID, dispatchID))
+	block.Data["code"] = code
 	if limit {
-		block.Data["code"] = code
 		block.Data["resumeAllowed"] = false
 		block.Data["resumePolicy"] = "limit_exhausted"
 		delete(block.Data, "nextEpoch")
@@ -2550,7 +2601,9 @@ func (e *RunEngine) appendGateErrorAndBlock(runID, gateID, code, message, bounda
 	}); err != nil {
 		return err
 	}
-	return e.appendRunBlocked(runID, blockReason, "", gateID)
+	block := runBlockedEvent(blockReason, "", gateID, "", nil)
+	block.Data["code"] = code
+	return e.store.AppendRunEvent(runID, block)
 }
 
 type executionFailureDetails struct {
@@ -2609,18 +2662,6 @@ func executionFailureEvent(err error) executionFailureDetails {
 		return executionFailureDetails{Code: "executor_failed", Message: redactLedgerText(err.Error()), Boundary: "executor"}
 	}
 }
-
-func (e *RunEngine) appendRunBlocked(runID, reason, nodeID, gateID string) error {
-	return e.appendRunBlockedWithDispatches(runID, reason, nodeID, gateID, "", nil)
-}
-
-func (e *RunEngine) appendRunBlockedWithDispatches(runID, reason, nodeID, gateID, slotID string, openDispatches []map[string]any) error {
-	return e.store.AppendRunEvent(runID, runBlockedEvent(reason, nodeID, gateID, slotID, openDispatches))
-}
-
-// RunBlockResumeAfterVerdict marks the block that follows a recorded human
-// verdict until the run resumes: a pause, not a failure.
-const RunBlockResumeAfterVerdict = "resume_after_verdict"
 
 func runBlockedEvent(reason, nodeID, gateID, slotID string, openDispatches []map[string]any) RunEvent {
 	if openDispatches == nil {
@@ -2741,22 +2782,15 @@ func intFromRunEventData(value any) int {
 	}
 }
 
+// latestHumanRequest is the gate's request still waiting for a verdict, by
+// the one rule (OpenHumanRequests).
 func latestHumanRequest(events []RunEvent, gateID string) (RunEvent, bool) {
-	var request RunEvent
-	var found bool
-	for _, event := range events {
-		if event.GateID != gateID {
-			continue
-		}
-		switch event.Type {
-		case RunEventHumanInputRequested:
-			request = event
-			found = true
-		case RunEventHumanVerdictRecorded:
-			found = false
+	for _, request := range OpenHumanRequests(events) {
+		if request.GateID == gateID {
+			return request, true
 		}
 	}
-	return request, found
+	return RunEvent{}, false
 }
 
 func runInputRefFromAny(value any) RunInputRef {

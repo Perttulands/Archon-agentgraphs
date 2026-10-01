@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -193,8 +194,12 @@ func (e *RunEngine) ValidateCompletedRecovery(runID string) error {
 	return err
 }
 
-// PreservePendingHumanGate recognizes an idle human decision at startup, so a
-// restart leaves it waiting rather than blocking the run.
+// PreservePendingHumanGate recognizes a run that, at startup, only waits on
+// the operator: nothing is in flight, no step is owed, no recorded verdict
+// waits to be routed, and a human request still waits. A restart leaves such
+// a run waiting rather than blocking it. A run with other work owed is
+// blocked instead, and resuming it runs that work while its gates keep
+// waiting (archon-o7p.11).
 func (e *RunEngine) PreservePendingHumanGate(runID string) (bool, error) {
 	events, err := e.store.ReadRunEvents(runID)
 	if err != nil {
@@ -203,54 +208,59 @@ func (e *RunEngine) PreservePendingHumanGate(runID string) (bool, error) {
 	if len(events) == 0 || len(unresolvedDispatches(events)) != 0 {
 		return false, nil
 	}
-	events = lifecycleLedger(events)
-	if len(events) == 0 {
+	lifecycle := lifecycleLedger(events)
+	if len(lifecycle) == 0 {
 		return false, ErrRunLedgerInvalid
 	}
-	last := events[len(events)-1]
-	if isFinalRunEvent(last.Type) {
+	if last := lifecycle[len(lifecycle)-1]; isFinalRunEvent(last.Type) || last.Type == RunEventBlocked {
 		return false, nil
 	}
-	var request RunEvent
-	for _, event := range events {
-		if event.Type == RunEventHumanInputRequested {
-			if pending, ok := latestHumanRequest(events, event.GateID); ok {
-				request = pending
-			}
-		}
-	}
-	if request.Type == "" {
+	requests := OpenHumanRequests(events)
+	if len(requests) == 0 || len(unroutedHumanVerdicts(events)) > 0 {
 		return false, nil
 	}
 	board, err := e.readRunBoard(runID)
 	if err != nil {
 		return false, err
 	}
-	gate, ok := findGate(board.Gates, request.GateID)
-	if !ok || !hasGateKind(gate.Kinds, "human") {
-		return false, nil
+	for _, request := range requests {
+		gate, ok := findGate(board.Gates, request.GateID)
+		if !ok || !hasGateKind(gate.Kinds, "human") {
+			return false, nil
+		}
+		if err := e.validateHumanRequestKindResults(runID, gate, request, events); err != nil {
+			return false, err
+		}
 	}
-	if err := e.validateHumanRequestKindResults(runID, gate, request, events); err != nil {
-		return false, err
+	deciding := openHumanDecisions(events)
+	for _, nodeID := range runFinishState(board, events, "").runnable {
+		if !slices.Contains(deciding, nodeID) {
+			return false, nil
+		}
 	}
-	return last.Type != RunEventBlocked, nil
+	return true, nil
 }
 
 // BlockInterruptedRun records every unresolved dispatch before any restart
 // recovery attempt. A failed recovery therefore remains visible and resumable.
+// A run interrupted between steps names none, and resuming it continues.
 func (e *RunEngine) BlockInterruptedRun(runID string) error {
 	events, err := e.store.ReadRunEvents(runID)
 	if err != nil {
 		return err
 	}
 	refs := unresolvedDispatches(events)
+	message, reason := fmt.Sprintf("coordinator restarted with open dispatches: %v", refs), "coordinator restarted; completed-turn evidence required"
+	if len(refs) == 0 {
+		message, reason = "coordinator restarted between steps", "coordinator restarted between steps; resume to continue"
+	}
 	if err := e.store.AppendRunEvent(runID, RunEvent{Type: RunEventError, Data: map[string]any{
-		"code": "coordinator_interrupted", "message": fmt.Sprintf("coordinator restarted with open dispatches: %v", refs), "openDispatches": refs,
+		"code": "coordinator_interrupted", "message": message, "openDispatches": refs,
 	}}); err != nil {
 		return err
 	}
 	return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventBlocked, Data: map[string]any{
-		"reason": "coordinator restarted; completed-turn evidence required", "openDispatches": refs, "resumeAllowed": true,
+		"code": "coordinator_interrupted", "reason": reason, "openDispatches": refs, "resumeAllowed": true,
 	}})
 }
 

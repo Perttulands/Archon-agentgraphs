@@ -44,7 +44,7 @@ func TestMaxDispatchIncludesJudges(t *testing.T) {
 	}
 }
 
-func TestMaxDispatchSurvivesHumanResume(t *testing.T) {
+func TestMaxDispatchSurvivesAHumanVerdict(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	createS4Persona(t, personas, "scout")
 	writeFixture(t, store.BoardPath("session-search"), s5HumanGateBoardFixture())
@@ -62,7 +62,7 @@ func TestMaxDispatchSurvivesHumanResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	status, err = NewRunEngine(store, personas, executor).ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach", Reason: "approved"})
+	status, err = NewRunEngine(store, personas, executor).ContinueRun(status.RunID)
 	if err != nil {
 		t.Fatal(err)
 	}

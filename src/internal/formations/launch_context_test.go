@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestLaunchContextSurvivesAdmissionAndResumeIntoEverySeatPrompt(t *testing.T) {
+func TestLaunchContextSurvivesAdmissionAndAVerdictIntoEverySeatPrompt(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	createS4Persona(t, personas, "scout")
 	writeFixture(t, store.BoardPath("session-search"), s5HumanGateBoardFixture())
@@ -28,7 +28,7 @@ func TestLaunchContextSurvivesAdmissionAndResumeIntoEverySeatPrompt(t *testing.T
 		t.Fatal(err)
 	}
 	second := &fakeRunExecutor{}
-	if _, err := NewRunEngine(store, personas, second).ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach"}); err != nil {
+	if _, err := NewRunEngine(store, personas, second).ContinueRun(status.RunID); err != nil {
 		t.Fatal(err)
 	}
 	calls := append(first.calls, second.calls...)

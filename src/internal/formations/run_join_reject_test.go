@@ -68,12 +68,13 @@ controller = true
 
 // A rejection upstream of a join fails the run with the gate's reason, not a
 // starved block: once the rejected path has ended, a join it starved is not
-// work that can still run. The same holds whether B fed the join before the
-// verdict or runs after it, on the same engine or after a restart.
+// work that can still run. B feeds the join while the gate waits, whichever
+// branch is wired first (archon-o7p.11), on the same engine or after a
+// restart.
 func TestARejectionUpstreamOfAJoinFailsTheRunWithTheGatesReason(t *testing.T) {
 	for _, bFirst := range []bool{true, false} {
 		for _, restart := range []bool{false, true} {
-			name := map[bool]string{true: "B fed the join first", false: "B runs after the verdict"}[bFirst] + map[bool]string{false: "", true: ", after a restart"}[restart]
+			name := map[bool]string{true: "B wired first", false: "A wired first"}[bFirst] + map[bool]string{false: "", true: ", after a restart"}[restart]
 			t.Run(name, func(t *testing.T) {
 				executor := &fakeRunExecutor{}
 				store, personas, engine, status := startBranchingRun(t, joinRejectBoard(bFirst, false), executor)
@@ -88,23 +89,19 @@ func TestARejectionUpstreamOfAJoinFailsTheRunWithTheGatesReason(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				// The answer panel agrees with the engine: rejecting fails the run, at
-				// once when B has fed the join, else once B has run.
+				// The answer panel agrees with the engine: rejecting fails the run
+				// at once, since B has fed the join.
 				reject := HumanGateRoutes(frozen, events, "gate_review")[1]
-				if reject.EndsRun != bFirst || !reject.RunFails {
-					t.Fatalf("reject route = %+v, want endsRun %v and runFails", reject, bFirst)
+				if !reject.EndsRun || !reject.RunFails {
+					t.Fatalf("reject route = %+v, want endsRun and runFails", reject)
 				}
 				if restart {
 					engine = NewRunEngine(store, personas, executor)
 				}
 				executor.calls = nil
-				status = rejectAndResume(t, engine, status.RunID, "gate_review", "A is wrong")
-				want := []string{"fmn_b"}
-				if bFirst {
-					want = []string{}
-				}
-				if got := append([]string{}, executor.nodeIDs()...); !reflect.DeepEqual(got, want) {
-					t.Fatalf("nodes after the rejection = %v, want %v", got, want)
+				status = rejectAndContinue(t, engine, status.RunID, "gate_review", "A is wrong")
+				if got := executor.nodeIDs(); len(got) != 0 {
+					t.Fatalf("nodes after the rejection = %v, want none", got)
 				}
 				if status.Status != RunStatusFailed || !status.Final {
 					t.Fatalf("status = %+v, want failed", status)
@@ -152,7 +149,7 @@ func TestARejectionUpstreamOfAJoinFailsOnFirstExecution(t *testing.T) {
 func TestAJoinStarvedWithoutARejectionStillBlocksAsStarved(t *testing.T) {
 	fixture := strings.Replace(joinRejectBoard(true, false), "to = \"fmn_j:port_fmn_j_a\"", "to = \"end_done:in\"", 1)
 	store, _, engine, status := startBranchingRun(t, fixture, &fakeRunExecutor{})
-	status = approveAndResume(t, engine, status.RunID, "gate_review")
+	status = approveAndContinue(t, engine, status.RunID, "gate_review")
 	events, err := store.ReadRunEvents(status.RunID)
 	if err != nil {
 		t.Fatal(err)

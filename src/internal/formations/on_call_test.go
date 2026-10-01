@@ -205,12 +205,17 @@ func TestPlanOnCallReleasesAnsweredSeatsButKeepsOnesAskedAgain(t *testing.T) {
 		{Seq: 1, Type: RunEventStarted, MissionID: "mis", RunID: "run"},
 		seatEvents(2, "work", "work_a", "s-work"), cleanup(3, "work", "work_a", "s-work", SeatOutcomeKeptOnCall),
 		request(4, "g1", "work"), delivered(5, 4, 2, "g1", "work", "work_a"),
-		{Seq: 6, Type: RunEventHumanVerdictRecorded, GateID: "g1", NodeID: "g1"},
+		{Seq: 6, Type: RunEventHumanVerdictRecorded, GateID: "g1", NodeID: "g1", Data: map[string]any{"requestedSeq": 4}},
 	}
+	// Until the run routes the verdict, g1's next ask may follow it.
+	if plan := PlanOnCall(board, events, true, present()); len(plan.Answered) != 0 {
+		t.Fatalf("answered before the verdict is routed = %+v", plan)
+	}
+	events = append(events, RunEvent{Seq: 7, Type: RunEventGateVerdict, GateID: "g1", NodeID: "g1", Data: map[string]any{"requestedSeq": 4, "routePort": "pass"}})
 	if plan := PlanOnCall(board, events, true, present()); len(plan.Answered) != 1 || plan.Answered[0].CreatedSeq != 2 {
 		t.Fatalf("answered after the verdict = %+v", plan)
 	}
-	again := append(append([]RunEvent{}, events...), RunEvent{Seq: 7, Type: RunEventResumed}, request(8, "g2", "work"))
+	again := append(append([]RunEvent{}, events...), request(8, "g2", "work"))
 	plan := PlanOnCall(board, again, true, present())
 	if len(plan.Answered) != 0 || len(plan.Deliveries) != 1 || plan.Deliveries[0].Request.Seq != 8 {
 		t.Fatalf("the seat asked again by g2 = %+v", plan)

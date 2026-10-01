@@ -32,7 +32,9 @@ type keeperExecutor struct {
 	askCalls []int
 	gone     map[string]bool
 	// fail makes a node's next executions fail before any seat is created.
-	fail   map[string]int
+	fail map[string]int
+	// holds makes a node's first execution wait until its channel closes.
+	holds  map[string]chan struct{}
 	pastes []string
 	ended  []string
 }
@@ -43,7 +45,12 @@ func (k *keeperExecutor) ExecuteFormation(req formations.FormationExecution) (fo
 	if failing {
 		k.fail[req.NodeID]--
 	}
+	hold := k.holds[req.NodeID]
+	delete(k.holds, req.NodeID)
 	k.mu.Unlock()
+	if hold != nil {
+		<-hold
+	}
 	if failing {
 		return formations.FormationExecutionResult{}, errors.New("formation crashed")
 	}
@@ -283,7 +290,7 @@ func TestSessionAskReachesTheKeptWorkSeatWithoutANotifyCommand(t *testing.T) {
 		"'Send back. Response: Add the missing constraints.'",
 		"If you draft or paraphrase any response, or the verdict, response, or intended gate is ambiguous, show the proposed verdict and exact response together and wait for the operator's confirmation before recording.",
 		"Do not infer a verdict from discussion or invent missing response text.",
-		"A 409 saying the coordinator is executing means the run is busy for a moment: wait a few seconds and run the same command again.",
+		"A 503 means the daemon is restarting: wait a few seconds and run the same command again.",
 		"A 409 saying the human gate request is no longer pending means another seat or the cockpit decided first",
 	} {
 		if !strings.Contains(string(raw), want) {
@@ -298,7 +305,7 @@ func TestSessionAskReachesTheKeptWorkSeatWithoutANotifyCommand(t *testing.T) {
 
 	verdict(t, c, id, "gate_review", gate.RequestedSeq, true, "slot_work")
 	awaitState(t, c, id, "succeeded")
-	want := "created slot_work, kept_on_call slot_work, ask gate_review, delivered slot_work, run_blocked, run_resumed, ended slot_work ask_answered, created slot_after, ended slot_after, run_succeeded"
+	want := "created slot_work, kept_on_call slot_work, ask gate_review, delivered slot_work, ended slot_work ask_answered, created slot_after, ended slot_after, run_succeeded"
 	if got := ledgerTrail(eventsOf(t, c, id)); got != want {
 		t.Fatalf("trail = %s\nwant    %s", got, want)
 	}
@@ -439,7 +446,7 @@ func TestSessionAskReachesEveryPeerSeatWithARetryAndOnlyTheOrchestratedControlle
 		t.Fatalf("team ask reached %+v", team.AskedSeats)
 	}
 	trail := ledgerTrail(eventsOf(t, c, id))
-	want := "created peer_a, created peer_b, kept_on_call peer_a, kept_on_call peer_b, ask gate_peers, delivered peer_a, delivered peer_b, run_blocked, run_resumed, ended peer_a ask_answered, ended peer_b ask_answered, created team_lead, created team_worker, kept_on_call team_lead, ended team_worker, ask gate_team, delivered team_lead"
+	want := "created peer_a, created peer_b, kept_on_call peer_a, kept_on_call peer_b, ask gate_peers, delivered peer_a, delivered peer_b, ended peer_a ask_answered, ended peer_b ask_answered, created team_lead, created team_worker, kept_on_call team_lead, ended team_worker, ask gate_team, delivered team_lead"
 	if trail != want {
 		t.Fatalf("trail = %s\nwant    %s", trail, want)
 	}
@@ -641,7 +648,7 @@ func TestSessionSeatStaysForTheNextHumanGateAndEndsBeforeTheRunSucceeds(t *testi
 	}
 	verdict(t, c, id, "gate_two", second.WaitingGates[0].RequestedSeq, true, "slot_work")
 	awaitState(t, c, id, "succeeded")
-	want := "created slot_work, kept_on_call slot_work, ask gate_one, delivered slot_work, run_blocked, run_resumed, ask gate_two, delivered slot_work, run_blocked, run_resumed, ended slot_work run_final, run_succeeded"
+	want := "created slot_work, kept_on_call slot_work, ask gate_one, delivered slot_work, ask gate_two, delivered slot_work, ended slot_work run_final, run_succeeded"
 	if got := ledgerTrail(eventsOf(t, c, id)); got != want {
 		t.Fatalf("trail = %s\nwant    %s", got, want)
 	}
@@ -665,7 +672,7 @@ func TestUncertainSeatFallsBackForTheNextHumanGateAfterRestart(t *testing.T) {
 	})
 	d := &needsYouDispatcher{c: next, config: NeedsYouConfig{Notifier: notifier}, watching: map[string]bool{}}
 	for range 3 {
-		if retry := d.deliverSession(context.Background(), id); retry {
+		if retry := d.deliverSession(context.Background(), id, true); retry {
 			t.Fatal("the next ask retries against known retained input")
 		}
 		d.deliver(context.Background(), id, true)
@@ -721,7 +728,7 @@ effort = "medium"`, 1)
 		return len(p.WaitingGates) == 1 && p.WaitingGates[0].GateID == "gate_two"
 	})
 	d := &needsYouDispatcher{c: next, watching: map[string]bool{}}
-	if retry := d.deliverSession(context.Background(), id); retry {
+	if retry := d.deliverSession(context.Background(), id, true); retry {
 		t.Fatal("healthy peer delivery should settle")
 	}
 	p, err := next.Project(id)
@@ -738,8 +745,8 @@ effort = "medium"`, 1)
 }
 
 func TestPendingUncertainSeatIsRecordedWhenVerdictAdvancedItsAsk(t *testing.T) {
-	// The dispatcher can lose the run reservation to an operator verdict
-	// between PasteAsk returning an uncertain error and recording its fallback.
+	// An operator verdict can land between PasteAsk returning an uncertain
+	// error and the dispatcher recording its fallback.
 	keeper := &keeperExecutor{refuse: map[string]int{"slot_work": 1000}}
 	c, root := onCallFixture(t, twoGateBoard, keeper, nil)
 	id := startProof(t, c)
@@ -758,7 +765,7 @@ func TestPendingUncertainSeatIsRecordedWhenVerdictAdvancedItsAsk(t *testing.T) {
 	d := &needsYouDispatcher{c: next, watching: map[string]bool{}, askFailures: map[humanAskKey]formations.HumanAskFallback{
 		{runID: id, seq: delivery.Request.Seq}: {Request: delivery.Request, Code: formations.AskFallbackDeliveryUncertain, Seat: delivery.Seat},
 	}}
-	if retry := d.deliverSession(context.Background(), id); retry || len(d.askFailures) != 0 {
+	if retry := d.deliverSession(context.Background(), id, true); retry || len(d.askFailures) != 0 {
 		t.Fatalf("pending seat identity was not recorded before replanning: retry %v, pending %+v", retry, d.askFailures)
 	}
 	events := eventsOf(t, next, id)

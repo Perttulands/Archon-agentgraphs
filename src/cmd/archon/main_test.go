@@ -2349,27 +2349,10 @@ func TestArchonS4ConfiguredLabPoemMissionReachesGateAndPolishesAfterApproval(t *
 	if code != 0 {
 		t.Fatalf("gate approve code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
+	// Offline, the approval routes itself and runs what follows (archon-o7p.11).
 	approved := decodeArchonStatus(t, stdout)
-	if approved.Status != formations.RunStatusBlocked || approved.Final || !approved.ResumeAllowed {
-		t.Fatalf("approved status = %+v, want resumable block before polish dispatch", approved)
-	}
-	events, err = store.ReadRunEvents(started.RunID)
-	if err != nil {
-		t.Fatalf("read approved events: %v", err)
-	}
-	if eventsContain(events, formations.RunEventNodeStarted, "fmn_polish") ||
-		eventsContain(events, formations.RunEventSlotDispatch, "fmn_polish") ||
-		eventsContain(events, formations.RunEventSucceeded, "") {
-		t.Fatalf("approve dispatched or finalized before resume: %s", archonEventTypes(events))
-	}
-
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "run", "resume", started.RunID, "--reason", "gate approved", "--json")
-	if code != 0 {
-		t.Fatalf("run resume code=%d stderr=%s stdout=%s", code, stderr, stdout)
-	}
-	resumed := decodeArchonStatus(t, stdout)
-	if resumed.Status != formations.RunStatusSucceeded || !resumed.Final {
-		t.Fatalf("resumed status = %+v, want final succeeded after polish", resumed)
+	if approved.Status != formations.RunStatusSucceeded || !approved.Final {
+		t.Fatalf("approved status = %+v, want final succeeded after polish", approved)
 	}
 	events, err = store.ReadRunEvents(started.RunID)
 	if err != nil {
@@ -2381,7 +2364,6 @@ func TestArchonS4ConfiguredLabPoemMissionReachesGateAndPolishesAfterApproval(t *
 	}{
 		{formations.RunEventHumanVerdictRecorded, "gate_review"},
 		{formations.RunEventGateVerdict, "gate_review"},
-		{formations.RunEventResumed, ""},
 		{formations.RunEventNodeStarted, "fmn_polish"},
 		{formations.RunEventSlotDispatch, "fmn_polish"},
 		{formations.RunEventSlotResult, "fmn_polish"},
@@ -2509,12 +2491,8 @@ rev = 1
 	}
 
 	approved := decodeArchonStatus(t, archon(workspaceArgs("gate", "approve", started.RunID, gate.ID, "--response", "draft approved", "--json")...))
-	if approved.Status != formations.RunStatusBlocked || approved.Final || !approved.ResumeAllowed {
-		t.Fatalf("approved status = %+v, want resumable block before explicit resume", approved)
-	}
-	resumed := decodeArchonStatus(t, archon(workspaceArgs("run", "resume", started.RunID, "--reason", "gate approved", "--json")...))
-	if resumed.Status != formations.RunStatusSucceeded || !resumed.Final {
-		t.Fatalf("resumed status = %+v, want final success", resumed)
+	if approved.Status != formations.RunStatusSucceeded || !approved.Final {
+		t.Fatalf("approved status = %+v, want final success", approved)
 	}
 	finalStatus := decodeArchonStatus(t, archon(workspaceArgs("run", "status", started.RunID, "--json")...))
 	if finalStatus.RunID != started.RunID || finalStatus.BoardSlug != "poems" || finalStatus.MissionID != mission.ID || finalStatus.Status != formations.RunStatusSucceeded {

@@ -17,6 +17,9 @@ var (
 	ErrRunLedgerInvalid    = errors.New("archon run ledger invalid")
 	ErrRunResumeNotAllowed = errors.New("archon run resume is not allowed")
 	ErrRunEpochBlocked     = errors.New("archon run epoch is blocked")
+	// ErrHumanRequestNotPending refuses a verdict on a request that was
+	// answered, or replaced by a newer request on the same gate.
+	ErrHumanRequestNotPending = errors.New("human gate request is no longer pending")
 )
 
 const (
@@ -317,14 +320,30 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 }
 
 func (s *Store) AppendRunEvent(runID string, event RunEvent) error {
-	_, err := s.appendRunEventWithSnapshot(runID, event)
+	_, _, err := s.appendRunEventWithSnapshot(runID, event, nil)
 	return err
 }
 
-func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*BoardDocument, error) {
+// appendRunEventSeq appends the event and returns its sequence. Other writers
+// append concurrently (archon-o7p.11), so the last event read afterwards need
+// not be this one.
+func (s *Store) appendRunEventSeq(runID string, event RunEvent) (int, error) {
+	_, seq, err := s.appendRunEventWithSnapshot(runID, event, nil)
+	return seq, err
+}
+
+// appendRunEventIf appends the event only when check accepts the ledger as it
+// stands under the append lock, so a decision read from the ledger and the
+// event recording it cannot be split by another writer.
+func (s *Store) appendRunEventIf(runID string, event RunEvent, check func([]RunEvent) error) error {
+	_, _, err := s.appendRunEventWithSnapshot(runID, event, check)
+	return err
+}
+
+func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent, check func([]RunEvent) error) (*BoardDocument, int, error) {
 	ledger, err := s.openRunLedger(runID, true)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer ledger.close()
 	var snapshot *BoardDocument
@@ -338,6 +357,11 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 		}
 		if isFinalRunEvent(events[len(events)-1].Type) {
 			return ErrRunFinal
+		}
+		if check != nil {
+			if err := check(events); err != nil {
+				return err
+			}
 		}
 		first := events[0]
 		tail := events[len(events)-1]
@@ -360,9 +384,10 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 			}
 		}
 		if last.Type == RunEventBlocked {
-			// After a block only a resume, cancel or failure, or the kept seats'
-			// cleanup recorded just before one (ADR-0019), may follow.
-			if event.Type != RunEventResumed && event.Type != RunEventCanceled && event.Type != RunEventFailed && event.Type != RunEventSeatCleanup {
+			// After a block only a resume, cancel or failure, the kept seats'
+			// cleanup recorded just before one (ADR-0019), or a human verdict,
+			// which the run routes once it resumes (archon-o7p.11), may follow.
+			if event.Type != RunEventResumed && event.Type != RunEventCanceled && event.Type != RunEventFailed && event.Type != RunEventSeatCleanup && event.Type != RunEventHumanVerdictRecorded {
 				return ErrRunEpochBlocked
 			}
 			if event.Type == RunEventResumed {
@@ -406,12 +431,12 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if s.OnRunEvent != nil {
 		s.OnRunEvent(event)
 	}
-	return snapshot, nil
+	return snapshot, event.Seq, nil
 }
 
 func (s *Store) ResumeRun(runID string, req RunResumeRequest) (*RunStatusProjection, error) {
@@ -950,14 +975,15 @@ func defaultRunActor(actor string) string {
 }
 
 // lifecycleLedger returns the ledger through its last lifecycle event, without
-// the seat cleanups that follow it. After run_blocked the ledger also accepts a
-// kept seat's seat_cleanup, recorded just before the cancel or failure that
-// ends the run (ADR-0019). A crash can leave such cleanups last, and the run is
-// still blocked, so every check that asks whether the last event is a block,
-// or reads the events just before it, reads through this one helper.
+// the seat cleanups and human verdicts that follow it. After run_blocked the
+// ledger also accepts a kept seat's seat_cleanup, recorded just before the
+// cancel or failure that ends the run (ADR-0019), and a human verdict, which
+// the run routes once it resumes. Either can come last while the run is still
+// blocked, so every check that asks whether the last event is a block, or
+// reads the events just before it, reads through this one helper.
 func lifecycleLedger(events []RunEvent) []RunEvent {
 	end := len(events)
-	for end > 0 && events[end-1].Type == RunEventSeatCleanup {
+	for end > 0 && (events[end-1].Type == RunEventSeatCleanup || events[end-1].Type == RunEventHumanVerdictRecorded) {
 		end--
 	}
 	return events[:end]

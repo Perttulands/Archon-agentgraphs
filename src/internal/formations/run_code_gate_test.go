@@ -396,6 +396,9 @@ func TestMixedCodeHumanGateReusesDurableCodeResultInAggregateVerdict(t *testing.
 	if err != nil {
 		t.Fatalf("record human verdict: %v", err)
 	}
+	if status, err = engine.ContinueRun(status.RunID); err != nil {
+		t.Fatalf("route human verdict: %v", err)
+	}
 	if evaluator.calls != 1 {
 		t.Fatalf("code evaluator calls = %d, want durable result reused without reevaluation", evaluator.calls)
 	}
@@ -469,6 +472,9 @@ func TestMixedCodeFormationHumanGateFreezesBothPriorKindResultSequences(t *testi
 	if err != nil {
 		t.Fatalf("submit human verdict with combined evidence: %v", err)
 	}
+	if status, err = engine.ContinueRun(status.RunID); err != nil || status.Status != RunStatusSucceeded {
+		t.Fatalf("continue approved mixed gate: status=%+v err=%v", status, err)
+	}
 	events, err = store.ReadRunEvents(status.RunID)
 	if err != nil {
 		t.Fatal(err)
@@ -484,10 +490,6 @@ func TestMixedCodeFormationHumanGateFreezesBothPriorKindResultSequences(t *testi
 
 	if !gateEvidenceRefsEqual(gateEvidenceRefsFromRunEventData(verdict.Data["evidence"]), wantEvidence) {
 		t.Fatalf("aggregate lost combined evidence: %+v", verdict)
-	}
-	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach", Reason: "human approved"})
-	if err != nil || status.Status != RunStatusSucceeded {
-		t.Fatalf("resume approved mixed gate: status=%+v err=%v", status, err)
 	}
 }
 

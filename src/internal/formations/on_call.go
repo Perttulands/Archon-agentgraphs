@@ -240,24 +240,29 @@ func KeptSeats(events []RunEvent) []KeptSeat {
 	return kept
 }
 
-// OpenHumanRequests lists the human requests still waiting for a verdict.
+// OpenHumanRequests lists the human requests still waiting for a verdict,
+// oldest first. It is the one rule every reader uses (archon-o7p.11): a
+// request waits from its human_input_requested until a verdict is recorded on
+// its gate, the gate starts evaluating a newer input, which replaces the
+// request, or the run ends. Several gates may wait at once.
 func OpenHumanRequests(events []RunEvent) []RunEvent {
+	open := map[string]RunEvent{}
 	for _, event := range events {
-		if isFinalRunEvent(event.Type) {
+		gateID := event.GateID
+		if gateID == "" {
+			gateID = event.NodeID
+		}
+		switch event.Type {
+		case RunEventHumanInputRequested:
+			open[gateID] = event
+		case RunEventHumanVerdictRecorded, RunEventGateEvaluating:
+			delete(open, gateID)
+		case RunEventSucceeded, RunEventFailed, RunEventCanceled:
 			return nil
 		}
 	}
-	latest := map[string]RunEvent{}
-	for _, event := range events {
-		switch event.Type {
-		case RunEventHumanInputRequested:
-			latest[event.GateID] = event
-		case RunEventHumanVerdictRecorded:
-			delete(latest, event.GateID)
-		}
-	}
-	requests := make([]RunEvent, 0, len(latest))
-	for _, request := range latest {
+	requests := make([]RunEvent, 0, len(open))
+	for _, request := range open {
 		requests = append(requests, request)
 	}
 	sort.Slice(requests, func(i, j int) bool { return requests[i].Seq < requests[j].Seq })
@@ -327,8 +332,9 @@ func HumanAskUncertainSeats(events []RunEvent) map[int]bool {
 type OnCallPlan struct {
 	// Gone lists kept seats no longer present, with the outcome to record.
 	Gone []GoneKeptSeat
-	// Answered lists kept seats that received an ask while no open request
-	// names their formation as the asker.
+	// Answered lists kept seats that received an ask while no open request,
+	// and no verdict the run has yet to route, names their formation as the
+	// asker.
 	Answered    []KeptSeat
 	Deliveries  []HumanAskDelivery
 	Fallbacks   []HumanAskFallback
@@ -376,6 +382,13 @@ func PlanOnCall(board *BoardDocument, events []RunEvent, keeper bool, probe Seat
 	askers := map[string]bool{}
 	for _, request := range requests {
 		askers[AskingFormation(board, events, request)] = true
+	}
+	// A verdict the run has not routed yet still holds its asker's seats: the
+	// gate's next ask may follow it (archon-o7p.11).
+	for _, verdict := range unroutedHumanVerdicts(events) {
+		if seq := intFromRunEventData(verdict.Data["requestedSeq"]); seq > 0 && seq <= len(events) {
+			askers[AskingFormation(board, events, events[seq-1])] = true
+		}
 	}
 	for _, seat := range present {
 		if askers[seat.NodeID] {

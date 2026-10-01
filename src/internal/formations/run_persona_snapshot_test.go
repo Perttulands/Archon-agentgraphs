@@ -40,7 +40,7 @@ func TestLabPersonaSnapshotSurvivesEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	lab := NewLabFormationExecutor(store, personas, LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: store.Workspace})
-	status, err = NewRunEngine(store, personas, lab).ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach", Reason: "approved"})
+	status, err = NewRunEngine(store, personas, lab).ContinueRun(status.RunID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestTmuxSeatsKeepAdmittedPersonaSettingsAcrossRestart(t *testing.T) {
 			}
 			// The replacement executor cannot access the persona store at all.
 			executor = newTmuxFormationExecutorWithClient(store, nil, cfg, client)
-			status, err = NewRunEngine(store, nil, executor).ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach", Reason: "approved after restart"})
+			status, err = NewRunEngine(store, nil, executor).ContinueRun(status.RunID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -106,7 +106,7 @@ func TestTmuxSeatsKeepAdmittedPersonaSettingsAcrossRestart(t *testing.T) {
 			if _, err := engine.RecordHumanGateVerdict(status.RunID, HumanGateVerdictRequest{GateID: "gate_review", Verdict: "pass", Reason: "approved", Actor: "human:operator"}); err != nil {
 				t.Fatal(err)
 			}
-			status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach", Reason: "approved rework"})
+			status, err = engine.ContinueRun(status.RunID)
 			if err != nil {
 				t.Fatal(err)
 			}

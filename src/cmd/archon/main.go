@@ -1159,13 +1159,18 @@ func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Wr
 	}
 	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
 	engine := newArchonRunEngine(store, personas, "archon")
-	status, err := engine.RecordHumanGateVerdict(fs.Arg(0), formations.HumanGateVerdictRequest{
+	if _, err := engine.RecordHumanGateVerdict(fs.Arg(0), formations.HumanGateVerdictRequest{
 		GateID:    fs.Arg(1),
 		Verdict:   verdict,
 		Reason:    *reason,
 		Actor:     *actor,
 		RelayedBy: *relayedBy,
-	})
+	}); err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))
+	}
+	// With no daemon this command is the run's worker: it routes the verdict
+	// and runs what follows, as the daemon does after a verdict.
+	status, err := engine.ContinueRun(fs.Arg(0))
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))
 	}

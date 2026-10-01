@@ -92,19 +92,15 @@ func TestCareerWebAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record human verdict: %v", err)
 	}
-	if status.Status != RunStatusBlocked || status.Final || !status.ResumeAllowed {
-		t.Fatalf("post-verdict status = %+v, want resumable block before route dispatch", status)
+	if status.Status != RunStatusRunning || status.Final {
+		t.Fatalf("post-verdict status = %+v, want running until the verdict is routed", status)
 	}
-	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{
-		Actor:  "agent:archon",
-		Mode:   "reattach",
-		Reason: "human gate approved",
-	})
+	status, err = engine.ContinueRun(status.RunID)
 	if err != nil {
-		t.Fatalf("resume after human verdict: %v", err)
+		t.Fatalf("continue after human verdict: %v", err)
 	}
 	if status.Status != RunStatusSucceeded || !status.Final {
-		t.Fatalf("final status = %+v, want succeeded after resume routes pass wire", status)
+		t.Fatalf("final status = %+v, want succeeded after the verdict routes the pass wire", status)
 	}
 
 	report, err := store.ProjectRunNodeReport(status.RunID, "fmn_frontend")
@@ -128,8 +124,6 @@ func TestCareerWebAcceptance(t *testing.T) {
 		RunEventEscalationRaised,
 		RunEventHumanVerdictRecorded,
 		RunEventGateVerdict,
-		RunEventBlocked,
-		RunEventResumed,
 		RunEventSucceeded,
 	}) {
 		t.Fatalf("event sequence = %v, want career-web acceptance cascade/recovery/human-gate subsequence", eventTypes(events))

@@ -165,6 +165,8 @@ Gate and Tool inputs stay single-feed.
   "$M" "$GATE" --chain "$JUDGE"` wires both ends. `--detach` removes it; a
   judge-only gate then becomes a human gate.
 - **Human** waits for an explicit operator verdict. There is no default verdict.
+  It holds up only its own path: other branches keep running while it waits,
+  and several human gates can wait at once.
 
 Wire work into the gate and route both verdicts:
 
@@ -318,8 +320,9 @@ written for you, and exits. Act on the exit code:
   blocking escalations, blocks and the end. `--until final` returns only at
   the end. `--until any-change` returns at every ledger event for step-by-step
   oversight, and still answers 3 when an event opens an ask.
-- Answer the moment a wait returns: a verdict or resume sent while the run's
-  command is still settling waits for it on the daemon.
+- Answer the moment a wait returns: the daemon records a verdict at once, even
+  while other steps run, and a resume sent while the run's command is still
+  settling waits for it on the daemon.
 - `--json` prints the same answer for machines: `outcome`, `seq`, `status`,
   `asks`, `end`, `changes` and `next` (the next command, with `--json`).
 - `run status "$ARCHON_RUN_ID" --json` returns one projection at once, and
@@ -330,8 +333,9 @@ written for you, and exits. Act on the exit code:
 
 Read `status` (`running`, `waiting_human`, `blocked`, `succeeded`, `failed`,
 `canceled`), `final`, `resumeAllowed` and `waitingGates`. `waiting_human` means
-the run needs the operator: each `waitingGates` entry has `gateId` and
-`requestedSeq`. `blocked` is never a delivery. Runtime JSON is wrapped in
+the run needs the operator, even while other steps still run: each
+`waitingGates` entry has `gateId` and `requestedSeq`, and several gates can
+wait at once; answer each. `blocked` is never a delivery. Runtime JSON is wrapped in
 `.data`; authoring JSON is not.
 
 Outputs: declared artifacts live under
@@ -364,8 +368,9 @@ archon $S gate reject  "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" --requested-seq "$ARCH
 
 Run exactly one. On approve, a nonempty response travels with the gate's input
 to the next step; on reject it becomes the feedback reason. `--response-file
-<utf8-file>` records a long answer verbatim. A brief `resume_after_verdict`
-block right after a verdict is the normal handoff; the coordinator resumes.
+<utf8-file>` records a long answer verbatim. The daemon records the verdict at
+once and the run routes it between steps; nothing blocks or resumes. A blocked
+run takes a verdict too, and routes it once resumed.
 
 ## Stop and recover
 

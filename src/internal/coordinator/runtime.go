@@ -35,23 +35,36 @@ func (c *Coordinator) escalations(w http.ResponseWriter, r *http.Request) {
 
 // launch retains the admission until the executor has returned, including its
 // cleanup. A requested cancellation becomes final only after those events exist.
+// A verdict recorded while the worker executes kicks it to continue once more
+// before it settles, so the verdict is routed (archon-o7p.11).
 func (c *Coordinator) launch(id string, execute func() error) {
 	c.mu.Lock()
 	state := c.state(id)
 	state.executing = true
+	state.kicked = false
 	c.mu.Unlock()
 	go func() {
 		defer c.release(id)
 		err := execute()
-		c.mu.Lock()
-		abort := state.abort
-		state.settling = true // reject late cancellation commands
-		c.mu.Unlock()
-		if abort != nil {
-			c.endKeptSeatsBeforeCancel(id)
-			_ = c.store.AppendRunEvent(id, *abort)
-		} else {
-			c.recordFailure(id, err)
+		for {
+			c.mu.Lock()
+			again := err == nil && state.kicked && state.abort == nil
+			state.kicked = false
+			abort := state.abort
+			if !again {
+				state.settling = true // reject late cancellation commands and kicks
+			}
+			c.mu.Unlock()
+			if !again {
+				if abort != nil {
+					c.endKeptSeatsBeforeCancel(id)
+					_ = c.store.AppendRunEvent(id, *abort)
+				} else {
+					c.recordFailure(id, err)
+				}
+				return
+			}
+			_, err = c.engine.ContinueRun(id)
 		}
 	}()
 }
@@ -146,7 +159,8 @@ func (c *Coordinator) resume(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	if p.Final || !p.ResumeAllowed || len(p.WaitingGates) > 0 {
+	// Gates still waiting keep waiting through the resume (archon-o7p.11).
+	if p.Final || !p.ResumeAllowed {
 		c.release(id)
 		reply(w, 409, map[string]string{"error": "run is not resumable"})
 		return

@@ -113,7 +113,7 @@ func runPastAHumanGate(t *testing.T, contextAware bool, work, wait, beforeShip t
 		t.Fatal(err)
 	}
 	clock = clock.Add(beforeShip)
-	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "coordinator", Mode: "reattach", Reason: "human verdict recorded"})
+	status, err = engine.ContinueRun(status.RunID)
 	if err != nil {
 		t.Fatal(err)
 	}

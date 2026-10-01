@@ -82,7 +82,7 @@ func reopen(t *testing.T, c *Coordinator, root string, executor formations.Forma
 	return next
 }
 
-func TestNeedsYouMailsSettledAsksOnceAndSkipsTransientBlocks(t *testing.T) {
+func TestNeedsYouMailsEachAskOnce(t *testing.T) {
 	c, executor, root := fixture(t)
 	notifier := &recordingNotifier{}
 	c.EnableNeedsYou(NeedsYouConfig{Notifier: notifier, CockpitURL: "https://cockpit.example/", ServerURL: "http://127.0.0.1:8091", RetryInterval: time.Hour})
@@ -115,8 +115,8 @@ func TestNeedsYouMailsSettledAsksOnceAndSkipsTransientBlocks(t *testing.T) {
 		}
 	}
 
-	// The verdict appends a resume-required block and the coordinator resumes
-	// at once. That block settles as success, so it must never be announced.
+	// The verdict records no block: the run continues to success, announced
+	// once (archon-o7p.11).
 	if w := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass","reason":"use Postgres"}`); w.Code != 202 {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
@@ -130,13 +130,13 @@ func TestNeedsYouMailsSettledAsksOnceAndSkipsTransientBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transient := false
+	blocked := false
 	for _, event := range events {
-		transient = transient || event.Type == formations.RunEventBlocked
+		blocked = blocked || event.Type == formations.RunEventBlocked
 	}
 	final := sent[1]
-	if !transient || len(sent) != 2 || final.Kind != formations.NeedsYouKindFinal || final.Seq != len(events) || final.Subject != "Archon run succeeded: Proof" {
-		t.Fatalf("transient block %v, notifications %+v", transient, sent)
+	if blocked || len(sent) != 2 || final.Kind != formations.NeedsYouKindFinal || final.Seq != len(events) || final.Subject != "Archon run succeeded: Proof" {
+		t.Fatalf("block recorded %v, notifications %+v", blocked, sent)
 	}
 
 	// Reopening the same state directory sends nothing again.

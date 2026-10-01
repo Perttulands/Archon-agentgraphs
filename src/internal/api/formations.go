@@ -797,12 +797,17 @@ func (h *FormationsHandler) RecordHumanGateVerdict(w http.ResponseWriter, r *htt
 		return
 	}
 	engine := h.newRunEngine("api")
-	status, err := engine.RecordHumanGateVerdict(r.PathValue("runId"), formations.HumanGateVerdictRequest{
+	if _, err := engine.RecordHumanGateVerdict(r.PathValue("runId"), formations.HumanGateVerdictRequest{
 		GateID:  r.PathValue("gateId"),
 		Verdict: request.Verdict,
 		Reason:  request.Reason,
 		Actor:   request.Actor,
-	})
+	}); err != nil {
+		writeFormationsError(w, err)
+		return
+	}
+	// Without a coordinator this request routes its own verdict.
+	status, err := engine.ContinueRun(r.PathValue("runId"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
