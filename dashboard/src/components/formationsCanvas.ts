@@ -8,15 +8,31 @@ export function snapToGrid(value: number): number {
   return Math.round(value / GRID) * GRID
 }
 
+/** The room a card takes when placing it; an End node is much smaller than a formation. */
+export const CARD_ROOM = { width: 308, height: 280 }
+export const END_ROOM = { width: 148, height: 56 }
+
 export function freeGridPosition(
   desired: { x: number; y: number },
   occupied: ReadonlyArray<{ x: number; y: number }>,
+  room: { width: number; height: number } = CARD_ROOM,
 ): { x: number; y: number } {
   let x = Math.max(GRID * 4, snapToGrid(desired.x))
   let y = Math.max(GRID * 4, snapToGrid(desired.y))
+  // Each occupied card is taken to fill CARD_ROOM from its corner.
+  const collides = () => occupied.some(node => x < node.x + CARD_ROOM.width && node.x < x + room.width && y < node.y + CARD_ROOM.height && node.y < y + room.height)
+  const small = room.height < CARD_ROOM.height
   for (let attempt = 0; attempt < 24; attempt += 1) {
-    const collides = occupied.some(node => Math.abs(node.x - x) < 308 && Math.abs(node.y - y) < 280)
-    if (!collides) return { x, y }
+    if (!collides()) return { x, y }
+    if (small) {
+      // A small card stays near where it was asked for: try below, then beside.
+      y += GRID * 3
+      if (attempt === 11) {
+        x += CARD_ROOM.width + GRID
+        y = Math.max(GRID * 4, snapToGrid(desired.y))
+      }
+      continue
+    }
     x += 336
     if (x > 1900) {
       x = GRID * 4
@@ -70,7 +86,7 @@ export function zoomTransform(current: ViewTransform, factor: number, cursor?: {
   }
 }
 
-export type LayoutItem = { id: string; index: number; kind: 'mission' | 'gate' | 'tool' | FormationNode['type']; slots?: number }
+export type LayoutItem = { id: string; index: number; kind: 'mission' | 'gate' | 'tool' | 'end' | FormationNode['type']; slots?: number }
 
 export function fallbackNodePosition(index: number): { x: number; y: number } {
   return { x: 140 + index * 308, y: 168 + (index % 2) * 196 }
@@ -92,10 +108,12 @@ function boardLayoutItems(board: BoardDocument): LayoutItem[] {
   const formations = board.formations || []
   const gates = board.gates || []
   const tools = board.tools || []
+  const ends = board.ends || []
   return [
     ...missions.map((node, index) => ({ id: node.id, index, kind: 'mission' as const })),
     ...formations.map((node, index) => ({ id: node.id, index: missions.length + index, kind: node.type, slots: node.slots.length })),
     ...gates.map((node, index) => ({ id: node.id, index: missions.length + formations.length + index, kind: 'gate' as const })),
     ...tools.map((node, index) => ({ id: node.id, index: missions.length + formations.length + gates.length + index, kind: 'tool' as const })),
+    ...ends.map((node, index) => ({ id: node.id, index: missions.length + formations.length + gates.length + tools.length + index, kind: 'end' as const })),
   ]
 }

@@ -7,11 +7,13 @@ const gate = (id: string, title: string, kinds = ['human']) => ({ id, title, kin
 const wire = (from: string, to: string) => ({ id: `${from}->${to}`, from, to })
 
 // The Wayfinding shape: map, framing review, questions, answers, draft, an
-// adversarial review judged by a critic, and a sign-off whose pass ends the run.
+// adversarial review judged by a critic, and a sign-off whose pass ends its path
+// at a Done End node.
 const board = {
   missions: [{ id: 'mission', title: 'Wayfinding', goal: '', beadId: '' }],
   formations: [formation('map', 'Map the territory'), formation('questions', 'Question peers'), formation('draft', 'Draft the brief'), formation('critic', 'Brief critic')],
   gates: [gate('framing', 'Framing review'), gate('answers', 'Answer questions'), gate('review', 'Adversarial review', ['formation']), gate('signoff', 'Brief sign-off')],
+  ends: [{ id: 'done', title: 'Done', outcome: 'done' as const }],
   connections: [
     wire('mission:out', 'map:in'),
     wire('map:out', 'framing:in'),
@@ -26,6 +28,7 @@ const board = {
     wire('review:pass', 'signoff:in'),
     wire('review:fail', 'draft:in'),
     wire('signoff:fail', 'draft:in'),
+    wire('signoff:pass', 'done:in'),
   ],
 }
 
@@ -39,7 +42,7 @@ describe('board routes', () => {
     expect(judgeChain(board, 'framing')).toEqual([])
   })
 
-  it('states a gate in words, with a loop back and an unwired pass that ends the run', () => {
+  it('states a gate in words, with a loop back and a pass that ends its path', () => {
     expect(nodeRoutes(board, 'review').map(route => route.text)).toEqual([
       'Fed by 5 Draft the brief',
       'Judged by Brief critic',
@@ -48,10 +51,31 @@ describe('board routes', () => {
     ])
     expect(nodeRoutes(board, 'signoff').map(route => route.text)).toEqual([
       'Fed by 6 Adversarial review',
-      'Pass → run ends here',
+      'Pass → this path ends (done)',
       'Fail ↺ back to 5 Draft the brief',
     ])
-    expect(nodeRoutes(board, 'signoff').find(route => route.kind === 'pass')?.nodeId).toBeUndefined()
+    expect(nodeRoutes(board, 'signoff').find(route => route.kind === 'pass')?.nodeId).toBe('done')
+  })
+
+  it('names a renamed End node and says when a route leads nowhere yet', () => {
+    const renamed = { ...board, ends: [{ id: 'done', title: 'Shipped', outcome: 'done' as const }] }
+    expect(nodeRoutes(renamed, 'signoff').find(route => route.kind === 'pass')?.text).toBe('Pass → this path ends (done) · Shipped')
+    const dangling = { ...board, connections: board.connections.filter(connection => connection.from !== 'signoff:pass' && connection.from !== 'signoff:fail') }
+    expect(nodeRoutes(dangling, 'signoff').map(route => route.text)).toEqual([
+      'Fed by 6 Adversarial review',
+      'Pass → leads nowhere: wire it to a step or an End node',
+      'Fail → leads nowhere: wire it to a step or an End node',
+    ])
+  })
+
+  it('states an End node by the routes that end there', () => {
+    const shared = { ...board, ends: [...board.ends, { id: 'no', title: 'Rejected', outcome: 'rejected' as const }], connections: [...board.connections, wire('framing:fail', 'no:in'), wire('draft:out', 'no:in')] }
+    expect(nodeRoutes(shared, 'no').map(route => route.text)).toEqual([
+      "Ends 2 Framing review's fail route",
+      'Ends 5 Draft the brief',
+    ])
+    expect(nodeRoutes(shared, 'no').map(route => route.kind)).toEqual(['ended-by', 'ended-by'])
+    expect(nodeRoutes({ ...shared, connections: [] }, 'no').map(route => route.text)).toEqual(['No route leads here yet'])
   })
 
   it('states formations, judges and missions in words', () => {
@@ -63,6 +87,6 @@ describe('board routes', () => {
     ])
     expect(nodeRoutes(board, 'critic').map(route => route.text)).toEqual(['Judges 6 Adversarial review'])
     expect(nodeRoutes(board, 'mission')).toEqual([{ kind: 'starts', nodeId: 'map', text: 'Starts → 1 Map the territory' }])
-    expect(nodeRoutes({ ...board, connections: [] }, 'map').map(route => route.text)).toEqual(['Feeds → run ends here'])
+    expect(nodeRoutes({ ...board, connections: [] }, 'map').map(route => route.text)).toEqual(['Feeds → leads nowhere: wire it to a step or an End node'])
   })
 })

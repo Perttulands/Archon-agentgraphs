@@ -109,6 +109,12 @@ function projectRun(events: RunEvent[]): RunProjection {
       beforeBlock.clear()
       continue
     }
+    // A finished run names the End nodes its paths reached (form-o7p.10); the
+    // rejected one a failure names turns failed below.
+    if (event.type === 'run_succeeded' || event.type === 'run_failed') {
+      const endIds: unknown[] = Array.isArray(event.data?.endIds) ? event.data.endIds : []
+      for (const endId of endIds) if (typeof endId === 'string') set(endId, 'done', event.seq)
+    }
     const nodeId = event.nodeId || event.gateId
     if (!nodeId) {
       // A block or failure that names no node stops whatever was in flight.

@@ -54,7 +54,7 @@ test('every Wayfinding node reads in full in its window, with no edit dialog and
   await critic.getByRole('button', { name: 'Judges 6 Adversarial review' }).click()
   await expect(review).toHaveClass(/focused/)
   await review.getByRole('button', { name: 'Pass → 7 Brief sign-off' }).click()
-  await expect(page.getByRole('dialog', { name: 'Gate · Brief sign-off' }).getByText('Pass → run ends here')).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Gate · Brief sign-off' }).getByText('Pass → this path ends (done)')).toBeVisible()
 
   expect(fixture.writes).toEqual([])
 })

@@ -164,7 +164,7 @@
         "type": "solo",
         "title": "Final review",
         "brief": {
-          "goal": "The run supplies the target repository as cwd, the brief and the Bead id as prompt context (mission bead). Read its repository instructions and owning Bead. Use the code-review skill. Input port_final_review_in carries delivered commits, closed Bead ids, verification evidence, findings and the plan path. Independently review the delivered diff, the Beads closure evidence and the plan against the target brief and repository instructions. Write final-review.md only under the run artifact directory shown in this prompt. Report ranked findings with file references and evidence, or an explicit pass with the checks performed. Output the report path and summary on port_final_review_out. The target repository and Beads store are read-only; no fixes, Bead mutations or Git operations. No tmux operations, new agents or service changes. No Git operations outside your assigned scope; commit only verified work if a scoped commit is authorized. No gate follows this report; the run ends.  Follow the supplied chrote-outputs contract using the named output port, then emit the CHROTE-DONE sentinel for this run. "
+          "goal": "The run supplies the target repository as cwd, the brief and the Bead id as prompt context (mission bead). Read its repository instructions and owning Bead. Use the code-review skill. Input port_final_review_in carries delivered commits, closed Bead ids, verification evidence, findings and the plan path. Independently review the delivered diff, the Beads closure evidence and the plan against the target brief and repository instructions. Write final-review.md only under the run artifact directory shown in this prompt. Report ranked findings with file references and evidence, or an explicit pass with the checks performed. Output the report path and summary on port_final_review_out. The target repository and Beads store are read-only; no fixes, Bead mutations or Git operations. No tmux operations, new agents or service changes. No Git operations outside your assigned scope; commit only verified work if a scoped commit is authorized. No gate follows this report; the path ends (done) with it.  Follow the supplied chrote-outputs contract using the named output port, then emit the CHROTE-DONE sentinel for this run. "
         },
         "inputs": [
           {
@@ -241,6 +241,18 @@
         "id": "edge_delivered",
         "from": "fmn_execution:port_execution_out",
         "to": "fmn_final_review:port_final_review_in"
+      },
+      {
+        "id": "edge_reported",
+        "from": "fmn_final_review:port_final_review_out",
+        "to": "end_delivered:in"
+      }
+    ],
+    "ends": [
+      {
+        "id": "end_delivered",
+        "title": "Delivered",
+        "outcome": "done"
       }
     ]
   }

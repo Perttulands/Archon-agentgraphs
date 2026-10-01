@@ -3,7 +3,15 @@ import { readFileSync } from 'node:fs'
 const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/theme_default.json', import.meta.url), 'utf8'))
 
 const ports = { inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Result' }] }
-export const board = {
+type EndNode = { id: string; title: string; outcome: 'done' | 'rejected' }
+export const board: {
+  id: string; slug: string; title: string; rev: number; etag: string
+  missions: Array<{ id: string; title: string; goal: string; beadId: string }>
+  formations: Array<{ id: string; type: string; title: string; brief?: { goal: string }; inputs: Array<{ id: string; label: string }>; outputs: Array<{ id: string; label: string }>; slots: Array<Record<string, unknown>> }>
+  gates: Array<{ id: string; title: string; kinds: string[]; criterion: string }>
+  ends?: EndNode[]
+  connections: Array<{ id: string; from: string; to: string }>
+} = {
   id: 'brd_browser', slug: 'browser', title: 'Peer and judge', rev: 1, etag: 'board-1',
   missions: [{ id: 'mission', title: 'Delivery', goal: 'Verify the implementation', beadId: 'form-mnf' }],
   formations: [
@@ -82,6 +90,12 @@ const succeededEvidence: Record<string, unknown> = {
 
 export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; join?: boolean; extraAgents?: number } = {}) {
   const currentBoard = structuredClone(board)
+  if (options.waitingHuman) {
+    // The answered gate's routes lead somewhere, as admission requires (form-o7p.10).
+    currentBoard.ends = [{ id: 'end_done', title: 'Done', outcome: 'done' }, { id: 'end_rejected', title: 'Rejected', outcome: 'rejected' }]
+    currentBoard.connections = [...currentBoard.connections,
+      { id: 'loose-pass', from: 'loose:pass', to: 'end_done:in' }, { id: 'loose-fail', from: 'loose:fail', to: 'end_rejected:in' }]
+  }
   if (options.join) {
     currentBoard.formations = ['a', 'b', 'c', 'sink'].map(id => ({ ...structuredClone(board.formations[2]), id, title: id === 'sink' ? 'Join' : `Solo ${id.toUpperCase()}` }))
     currentBoard.missions = []
@@ -91,6 +105,8 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
   const boardState = () => currentBoard
   let nodes = positions.map(p => ({ ...p, x: p.x + (options.far ? 1800 : 0) }))
   if (options.join) nodes = [{ id: 'a', x: 100, y: 80 }, { id: 'b', x: 100, y: 350 }, { id: 'c', x: 100, y: 620 }, { id: 'sink', x: 650, y: 350 }]
+  if (options.waitingHuman) nodes = [...nodes, { id: 'end_done', x: 504, y: 672 }, { id: 'end_rejected', x: 504, y: 784 }]
+  const endsOf = () => (currentBoard.ends ||= [])
   let seatsFetches = 0
   let themeFetches = 0
   const writes: string[] = []
@@ -127,7 +143,9 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
           if (edit.from.split(':')[0] === edit.to.split(':')[0]) return reject('SELF_WIRE', 'A node cannot be wired to itself')
           if (edges.some(edge => edge.from === edit.from && edge.to === edit.to)) return reject('DUPLICATE_CONNECTION', 'This connection already exists')
           let to = edit.to
-          if (edges.some(edge => edge.to === to)) {
+          // Any number of routes may lead into one End node.
+          const intoEnd = endsOf().some(end => `${end.id}:in` === to)
+          if (!intoEnd && edges.some(edge => edge.to === to)) {
             const formation = currentBoard.formations.find(item => item.id === to.split(':')[0])
             if (!edit.joinIfOccupied || !formation) return reject('INPUT_OCCUPIED', 'Input already has a feed')
             const port = { id: `join_${currentBoard.rev}`, label: 'Input' }
@@ -141,6 +159,32 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
             formation.inputs = formation.inputs.filter(port => port.id !== portId)
           }
           currentBoard.connections = [...edges, { id: `edge_${currentBoard.rev}`, from: edit.from, to }]
+        } else if (body.createEnd) {
+          // Mirrors the store (CreateEnd): done unless asked, titled after the outcome.
+          const { outcome = 'done', title, x, y } = body.createEnd
+          if (outcome !== 'done' && outcome !== 'rejected') {
+            return route.fulfill({ status: 400, json: { success: false, error: { code: 'INVALID_END_OUTCOME', message: `End outcome "${outcome}" must be done or rejected` } } })
+          }
+          const end: EndNode = { id: `end_${currentBoard.rev}`, title: title || (outcome === 'rejected' ? 'Rejected' : 'Done'), outcome }
+          endsOf().push(end)
+          nodes = [...nodes, { id: end.id, x, y }]
+          currentBoard.rev++
+          currentBoard.etag = `board-${currentBoard.rev}`
+          return respond({ board: boardState(), layout: { boardId: board.id, boardRev: currentBoard.rev, etag: `layout-${currentBoard.rev}`, nodes, edges: [] }, end })
+        } else if (body.updateEnd) {
+          const end = endsOf().find(item => item.id === body.updateEnd.id)
+          if (!end) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
+          if (body.updateEnd.title !== undefined) end.title = body.updateEnd.title
+          if (body.updateEnd.outcome !== undefined) end.outcome = body.updateEnd.outcome
+        } else if (body.deleteEnd) {
+          const id = body.deleteEnd.id
+          if (!endsOf().some(end => end.id === id)) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
+          currentBoard.ends = endsOf().filter(end => end.id !== id)
+          currentBoard.connections = currentBoard.connections.filter(edge => edge.from.split(':')[0] !== id && edge.to.split(':')[0] !== id)
+          nodes = nodes.filter(node => node.id !== id)
+          currentBoard.rev++
+          currentBoard.etag = `board-${currentBoard.rev}`
+          return respond({ board: boardState(), layout: { boardId: board.id, boardRev: currentBoard.rev, etag: `layout-${currentBoard.rev}`, nodes, edges: [] }, endId: id })
         } else if (body.deleteFormation || body.deleteGate || body.deleteMission) {
           // Mirrors the store: a delete drops the node, the connections touching it and its layout node.
           const id = (body.deleteFormation || body.deleteGate || body.deleteMission).id
@@ -152,10 +196,11 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
           nodes = nodes.filter(node => node.id !== id)
         } else if (body.restoreNode) {
           // Mirrors the store: a node ID already on the board refuses the whole restore.
-          const { mission, formation, gate, connections, index, x, y } = body.restoreNode
-          const node = mission || formation || gate
-          const key = mission ? 'missions' : formation ? 'formations' : 'gates'
-          const taken = [...currentBoard.missions, ...currentBoard.formations, ...currentBoard.gates].some(item => item.id === node.id)
+          const { mission, formation, gate, end, connections, index, x, y } = body.restoreNode
+          const node = mission || formation || gate || end
+          const key = mission ? 'missions' : formation ? 'formations' : gate ? 'gates' : 'ends'
+          endsOf()
+          const taken = [...currentBoard.missions, ...currentBoard.formations, ...currentBoard.gates, ...endsOf()].some(item => item.id === node.id)
           if (taken) return route.fulfill({ status: 409, json: { success: false, error: { code: 'INVALID_NODE_RESTORE', message: `node "${node.id}" is already in the mission` } } })
           ;(currentBoard[key] as unknown[]).splice(index ?? (currentBoard[key] as unknown[]).length, 0, node)
           currentBoard.connections = [...currentBoard.connections, ...connections]
@@ -219,9 +264,10 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path.endsWith('/events')) return respond({ events: [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' }] })
     if (path === '/api/formations/runs/run_browser/gates/loose/request') return respond({ request: { gateId: 'loose', requestedSeq: 3, criterion: board.gates[1].criterion,
       input: { fromNodeId: 'execution', fromPortId: 'out', truncated: false, text: Array.from({ length: 60 }, (_, i) => `${i + 1}. A question the operator should answer before the brief is written.`).join('\n') },
-      // The disconnected gate: as the daemon derives it while Execution is still open, nothing
-      // follows an approval (the run does not end here) and a send-back has nowhere to go.
-      routes: [{ verdict: 'pass', targets: [], nothingFollows: true }, { verdict: 'fail', targets: [], unwired: true }] } })
+      // The disconnected gate: as the daemon derives it while Execution is still open, each
+      // verdict ends this path at an End node and the run goes on with its other work.
+      routes: [{ verdict: 'pass', targets: [{ nodeId: 'end_done', title: 'Done', kind: 'end', outcome: 'done' }] },
+        { verdict: 'fail', targets: [{ nodeId: 'end_rejected', title: 'Rejected', kind: 'end', outcome: 'rejected' }] }] } })
     if (options.blockedAtJudge && path === '/api/formations/runs/run_browser/evidence/problems') return respond({ problems: [
       { seq: 7, type: 'error', code: 'invalid_judge_result', nodeIds: ['gate'], reason: { text: 'missing or unterminated chrote-verdict block', bytes: 44 } },
       { seq: 8, type: 'run_blocked', nodeIds: ['gate'], reason: { text: judgeBlockReason, bytes: judgeBlockReason.length }, resumeAllowed: false },

@@ -164,6 +164,27 @@ describe('delete and port undo capture', () => {
     expect(nodeDeleteUndo(board, 'missing', { x: 0, y: 0 })).toBeNull()
   })
 
+  it('captures an End node with every route into it, for restoreNode end', () => {
+    const ended: BoardDocument = {
+      ...board,
+      ends: [{ id: 'end_other', title: 'Other', outcome: 'done' }, { id: 'end_no', title: 'Rejected', outcome: 'rejected' }],
+      connections: [
+        ...board.connections,
+        { id: 'edge_pass', from: 'gate:pass', to: 'end_no:in' },
+        { id: 'edge_fail', from: 'gate:fail', to: 'end_no:in' },
+      ],
+    }
+    expect(nodeDeleteUndo(ended, 'end_no', { x: 840.6, y: 168 })).toEqual({
+      label: 'the delete of End node “Rejected”',
+      steps: [boardStep({ restoreNode: {
+        end: { id: 'end_no', title: 'Rejected', outcome: 'rejected' },
+        connections: [{ id: 'edge_pass', from: 'gate:pass', to: 'end_no:in' }, { id: 'edge_fail', from: 'gate:fail', to: 'end_no:in' }],
+        index: 1, x: 841, y: 168,
+      } })],
+    })
+    expect(restoreBlocker(ended, 'end_no')).toBeNull()
+  })
+
   it('captures a removed port with its direction, place and connections', () => {
     expect(portRemoveUndo(board, 'fmn', 'in_b')).toEqual({
       label: 'the removal of input “Rework” from “Plan”',

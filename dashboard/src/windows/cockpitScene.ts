@@ -18,7 +18,7 @@ const FLOW_ROWS = `${FLOW} .flow-mission[data-flow-node], ${FLOW} .flow-step[dat
 const FLOW_ROW_HANDLES = '.flow-number, .flow-step-head .flow-title, .flow-mission-head .flow-title, .flow-label, .flow-link'
 // A row's own run state; kept clear only for the row the window is about.
 const FLOW_ROW_STATE = '.flow-state, [data-testid="run-point"]'
-const CANVAS_CARDS = '.formation[data-node], .gatecard[data-node], .missioncard[data-node], .toolcard[data-node]'
+const CANVAS_CARDS = '.formation[data-node], .gatecard[data-node], .missioncard[data-node], .toolcard[data-node], .endcard[data-node]'
 const CANVAS_LANDMARKS = `${CANVAS_CARDS}, .note-sticky`
 const CANVAS_CONTENT = '.wire-label'
 
