@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { formationTypeChoices } from '../components/FormationTypeChip'
+import { END_OUTCOMES, defaultEndTitle, endOutcomeMeaning } from '../components/endNode'
 import { GateKindChips, GateKindsFields, draftFromGate, type GateDraft } from '../components/GateEditorDialog'
 import { isSafeBeadsIssueID } from '../components/formationsBeadId'
 import { splitList } from '../components/formationsCockpitDom'
@@ -8,6 +9,8 @@ import type {
   AgentProjection,
   BoardDocument,
   CodeGateProfileDescriptor,
+  EndNode,
+  EndOutcome,
   FormationBrief,
   FormationNode,
   FormationSlot,
@@ -48,6 +51,8 @@ export interface NodeWindowOps {
   changeType: (formation: FormationNode, type: FormationType, keepSlotId?: string) => void
   assignSlot: (formation: FormationNode, slot: FormationSlot, agentId: string, harness: string) => void
   updateGate: (gate: GateNode, draft: GateDraft) => Promise<boolean>
+  /** Sets an End node's outcome: done, or rejected, which fails the run. */
+  setEndOutcome: (end: EndNode, outcome: EndOutcome) => Promise<boolean>
   setGateFiles: (gate: GateNode, files: string[]) => Promise<boolean>
   attachJudge: (gate: GateNode, chain: string[]) => void
   detachJudge: (gate: GateNode) => void
@@ -73,19 +78,22 @@ type Located =
   | { kind: 'inputCard'; node: MissionNode }
   | { kind: 'formation'; node: FormationNode }
   | { kind: 'gate'; node: GateNode }
+  | { kind: 'end'; node: EndNode }
 
-export function locateNode(board: Pick<BoardDocument, 'formations'> & Partial<Pick<BoardDocument, 'inputCards' | 'gates'>>, nodeId: string): Located | null {
+export function locateNode(board: Pick<BoardDocument, 'formations'> & Partial<Pick<BoardDocument, 'inputCards' | 'gates' | 'ends'>>, nodeId: string): Located | null {
   const mission = board.inputCards?.find(node => node.id === nodeId)
   if (mission) return { kind: 'inputCard', node: mission }
   const formation = board.formations.find(node => node.id === nodeId)
   if (formation) return { kind: 'formation', node: formation }
   const gate = board.gates?.find(node => node.id === nodeId)
   if (gate) return { kind: 'gate', node: gate }
+  const end = board.ends?.find(node => node.id === nodeId)
+  if (end) return { kind: 'end', node: end }
   return null
 }
 
-const KIND_WORD = { inputCard: 'Input card', formation: 'Formation', gate: 'Gate' } as const
-const UNTITLED = { inputCard: 'Input', formation: 'Untitled formation', gate: 'Gate' } as const
+const KIND_WORD = { inputCard: 'Input card', formation: 'Formation', gate: 'Gate', end: 'End node' } as const
+const UNTITLED = { inputCard: 'Input', formation: 'Untitled formation', gate: 'Gate', end: 'End' } as const
 
 /** The window's accessible name, which its close button and handles repeat. */
 export function nodeWindowLabel(located: Located): string {
@@ -113,7 +121,8 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
   const label = nodeWindowLabel(located)
   const detail = located.kind === 'formation' ? located.node.type
     : located.kind === 'gate' ? located.node.kinds.map(kind => (kind === 'formation' ? 'judge' : kind)).join(', ') || 'no kind'
-      : ''
+      : located.kind === 'end' ? located.node.outcome
+        : ''
   const judged = flow.judgeOf.get(nodeId)
   const eyebrow = located.kind === 'inputCard' ? 'Input card'
     : steps.has(nodeId) ? `Step ${steps.get(nodeId)} · ${KIND_WORD[located.kind]}${detail ? ` · ${detail}` : ''}`
@@ -136,6 +145,7 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
         {located.kind === 'inputCard' ? <MissionFields mission={located.node} ops={ops} /> : null}
         {located.kind === 'formation' ? <FormationFields formation={located.node} agents={agents} ops={ops} /> : null}
         {located.kind === 'gate' ? <GateFields gate={located.node} board={board} profiles={profiles} ops={ops} /> : null}
+        {located.kind === 'end' ? <EndFields end={located.node} ops={ops} /> : null}
         <section className="nwin-section" aria-label="Notes">
           <h3>Notes</h3>
           <div className="nwin-run">
@@ -288,6 +298,25 @@ function SlotStaffing({ formation, slot, agents, card, ops }: {
           </select>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+/** An End node's outcome, chosen in place, and what it means for the run. */
+function EndFields({ end, ops }: { end: EndNode; ops: NodeWindowOps }) {
+  return (
+    <div className="nfield">
+      <div className="nfield-head"><span className="nfield-label" id={`outcome-${end.id}`}>Outcome</span></div>
+      <div className="nwin-outcomes" role="radiogroup" aria-labelledby={`outcome-${end.id}`}>
+        {END_OUTCOMES.map(outcome => (
+          <button key={outcome} type="button" role="radio" aria-checked={end.outcome === outcome}
+            className={`nwin-outcome end-${outcome}${end.outcome === outcome ? ' on' : ''}`}
+            onClick={() => { if (end.outcome !== outcome) void ops.setEndOutcome(end, outcome) }}>
+            {defaultEndTitle(outcome)}
+          </button>
+        ))}
+      </div>
+      <p className="nfield-note">{endOutcomeMeaning(end.outcome)}</p>
     </div>
   )
 }

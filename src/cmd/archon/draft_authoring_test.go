@@ -58,7 +58,9 @@ func TestArchonDraftAuthoringSavesAndAdmissionListsEveryProblem(t *testing.T) {
 	}
 
 	stdout, _, code = archon("mission", "validate", "sketch")
-	if code != 1 || !strings.Contains(stdout, "ERROR\tunstaffed_slot\t"+formation.ID) || !strings.Contains(stdout, "ERROR\tgate_not_routable\t"+gate.ID+"\tgate \""+gate.ID+"\" needs forbidden text") {
+	if code != 1 || !strings.Contains(stdout, "ERROR\tunstaffed_slot\t"+formation.ID) || !strings.Contains(stdout, "ERROR\tgate_not_routable\t"+gate.ID+"\tgate \""+gate.ID+"\" needs forbidden text") ||
+		!strings.Contains(stdout, "ERROR\troute_leads_nowhere\t"+gate.ID+"\tReview gate's pass route leads nowhere: wire it to a step or an End node") ||
+		!strings.Contains(stdout, "ERROR\troute_leads_nowhere\t"+gate.ID+"\tReview gate's fail route leads nowhere: wire it to a step or an End node") {
 		t.Fatalf("board validate %d:\n%s", code, stdout)
 	}
 
@@ -67,11 +69,11 @@ func TestArchonDraftAuthoringSavesAndAdmissionListsEveryProblem(t *testing.T) {
 	if err := json.Unmarshal([]byte(stderr), &failure); code != 1 || err != nil {
 		t.Fatalf("mission run %d %s (%v)", code, stderr, err)
 	}
-	if failure.Code != "run_admission_failed" || len(failure.Findings) != 2 {
-		t.Fatalf("mission run failure = %+v, want both findings", failure)
+	if failure.Code != "run_admission_failed" || len(failure.Findings) != 4 {
+		t.Fatalf("mission run failure = %+v, want every finding, the two routes leading nowhere included", failure)
 	}
 	_, stderr, _ = archon("mission", "run", "sketch")
-	if !strings.Contains(stderr, "run admission found 2 problem(s)") || strings.Count(stderr, "\nERROR\t") != 2 {
+	if !strings.Contains(stderr, "run admission found 4 problem(s)") || strings.Count(stderr, "\nERROR\t") != 4 {
 		t.Fatalf("mission run text stderr:\n%s", stderr)
 	}
 	if runs, err := store.ListRuns(formations.RunListFilter{}); err != nil || len(runs) != 0 {
@@ -126,6 +128,22 @@ func TestArchonGateCreateWithoutKindsIsARoutableHumanGate(t *testing.T) {
 	archon("formation", "set-brief", "review", worker.ID, "--goal", "Produce the result")
 	archon("mission", "wire", "review", "Work", worker.ID+":"+worker.Inputs[0].ID)
 	archon("formation", "wire", "review", worker.ID+":"+worker.Outputs[0].ID, gate.ID+":in")
+	// Every route leads somewhere (form-o7p.10): Signoff passes to Lint, Lint's
+	// pass ends the path done, and both gates' fails end it at one Rejected node.
+	lint := board.Gates[1]
+	var done, rejected struct {
+		End formations.EndNode `json:"end"`
+	}
+	if err := json.Unmarshal([]byte(archon("end", "create", "review", "--json")), &done); err != nil || done.End.Title != "Done" || done.End.Outcome != "done" {
+		t.Fatalf("end create = %+v (%v), want a Done End node", done.End, err)
+	}
+	if err := json.Unmarshal([]byte(archon("end", "create", "review", "--outcome", "rejected", "--json")), &rejected); err != nil || rejected.End.Title != "Rejected" || rejected.End.Outcome != "rejected" {
+		t.Fatalf("end create --outcome rejected = %+v (%v)", rejected.End, err)
+	}
+	archon("formation", "wire", "review", gate.ID+":pass", lint.ID+":in")
+	archon("formation", "wire", "review", gate.ID+":fail", rejected.End.ID+":in")
+	archon("formation", "wire", "review", lint.ID+":pass", done.End.ID+":in")
+	archon("formation", "wire", "review", lint.ID+":fail", rejected.End.ID+":in")
 	if stdout := archon("mission", "validate", "review"); stdout != "review\t0 errors\t0 warnings\n" {
 		t.Fatalf("board validate with a wired human gate:\n%s", stdout)
 	}

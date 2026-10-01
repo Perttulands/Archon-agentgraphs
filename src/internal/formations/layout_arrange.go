@@ -82,6 +82,9 @@ func arrangedLayoutNodes(board *BoardDocument) []LayoutNode {
 	for _, tool := range board.Tools {
 		items[tool.ID] = arrangementItem{id: tool.ID, kind: "tool"}
 	}
+	for _, end := range board.Ends {
+		items[end.ID] = arrangementItem{id: end.ID, kind: "end"}
+	}
 	if len(items) == 0 {
 		return nil
 	}
@@ -335,6 +338,8 @@ func arrangementItemSize(item arrangementItem) (int, int) {
 		width, height = 236, 144
 	case "gate":
 		width, height = 300, 124
+	case "end":
+		width, height = 148, 64
 	case FormationTypePeer:
 		width, height = 330, 340
 	case FormationTypeOrchestrated:

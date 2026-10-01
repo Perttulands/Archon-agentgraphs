@@ -92,8 +92,21 @@ describe('gate route words', () => {
       .toBe('Approve: Publish receives this and waits for its other inputs.')
   })
 
-  it('says nothing follows a gate whose run has other work', () => {
-    expect(gateRouteWords('pass', { verdict: 'pass', targets: [], nothingFollows: true }, titleOf)).toEqual({ button: 'Approve', outcome: 'Approve: nothing follows this gate.', blocks: false, last: false })
+  const done = { nodeId: 'end_done', title: 'Done', kind: 'end', outcome: 'done' as const }
+  const rejected = { nodeId: 'end_rejected', title: 'Rejected', kind: 'end', outcome: 'rejected' as const }
+
+  it('says a path ends at an End node while the run goes on with its other work', () => {
+    expect(gateRouteWords('pass', { verdict: 'pass', targets: [done] }, titleOf)).toEqual({ button: 'Approve', outcome: 'Approve: this path ends (done); the run goes on with its other work.', blocks: false, last: false })
+    // A rejected End fails the run once the rest of its open work has ended.
+    expect(gateRouteWords('fail', { verdict: 'fail', targets: [rejected], runFails: true }, titleOf).outcome).toBe('Send back: this path ends (rejected), so the run fails once its other open work ends.')
+    // After a path was already rejected, a route on to a step says so too.
+    expect(gateRouteWords('pass', { verdict: 'pass', targets: [{ nodeId: 'fmn_publish', title: 'Publish', kind: 'formation', attempt: 1 }], runFails: true }, titleOf).outcome)
+      .toBe('Approve: Publish runs next; the run fails once its other open work ends.')
+  })
+
+  it('names a step and an End node on one route', () => {
+    const words = gateRouteWords('pass', { verdict: 'pass', targets: [{ nodeId: 'fmn_publish', title: 'Publish', kind: 'formation', attempt: 1 }, done] }, titleOf)
+    expect(words).toEqual({ button: 'Approve → Publish', outcome: 'Approve: Publish runs next; this path ends (done).', blocks: false, last: false })
   })
 
   it('counts the judge dispatch of a judge gate', () => {
@@ -112,9 +125,19 @@ describe('gate route words', () => {
     expect(words.outcome).toBe('Approve: Publish runs next; the run has 1 of 20 dispatches left.')
   })
 
-  it('says when approving ends the run and when a send-back has nowhere to go', () => {
-    expect(gateRouteWords('pass', { verdict: 'pass', targets: [], endsRun: true }, titleOf)).toEqual({ button: 'Approve and end the run', outcome: 'Approve ends the run.', blocks: false, last: false })
-    expect(gateRouteWords('fail', { verdict: 'fail', targets: [], unwired: true }, titleOf)).toEqual({ button: 'Send back', outcome: 'Send back blocks the run: this gate has no send-back route.', blocks: true, last: false })
+  it('says when a verdict ends the run, and whether the run then succeeds or fails', () => {
+    expect(gateRouteWords('pass', { verdict: 'pass', targets: [done], endsRun: true }, titleOf)).toEqual({
+      button: 'Approve and end the run', outcome: 'Approve: this path ends (done), and with nothing else to run, the run succeeds.', blocks: false, last: false,
+    })
+    expect(gateRouteWords('fail', { verdict: 'fail', targets: [rejected], endsRun: true, runFails: true }, titleOf)).toEqual({
+      button: 'Send back and fail the run', outcome: 'Send back: this path ends (rejected), and with nothing else to run, the run fails.', blocks: false, last: false,
+    })
+    // A path already rejected elsewhere fails the run even when this one ends done.
+    expect(gateRouteWords('pass', { verdict: 'pass', targets: [done], endsRun: true, runFails: true }, titleOf).button).toBe('Approve and fail the run')
+  })
+
+  it('keeps the plain verb for a route with no targets', () => {
+    expect(gateRouteWords('fail', { verdict: 'fail', targets: [] }, titleOf)).toEqual({ button: 'Send back', outcome: '', blocks: false, last: false })
   })
 
   it('keeps the plain verbs without routes', () => {

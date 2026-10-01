@@ -167,13 +167,13 @@ export function combineUndo(label: string, ...parts: Array<UndoDraft | null | un
 
 export const boardStep = (patch: Record<string, unknown>, what?: string): UndoStep => (what ? { board: patch, what } : { board: patch })
 
-type NodeKind = 'inputCard' | 'formation' | 'gate'
+type NodeKind = 'inputCard' | 'formation' | 'gate' | 'end'
 
 /** What undo messages call each node kind; the Input card is the mission's entry. */
-const KIND_WORD: Record<NodeKind, string> = { inputCard: 'Input card', formation: 'formation', gate: 'gate' }
+const KIND_WORD: Record<NodeKind, string> = { inputCard: 'Input card', formation: 'formation', gate: 'gate', end: 'End node' }
 
 function nodeOf(board: BoardDocument, id: string): { kind: NodeKind; node: object; title: string; index: number } | null {
-  const lists: Array<[NodeKind, Array<{ id: string; title: string }>]> = [['inputCard', board.inputCards || []], ['formation', board.formations], ['gate', board.gates || []]]
+  const lists: Array<[NodeKind, Array<{ id: string; title: string }>]> = [['inputCard', board.inputCards || []], ['formation', board.formations], ['gate', board.gates || []], ['end', board.ends || []]]
   for (const [kind, nodes] of lists) {
     const index = nodes.findIndex(item => item.id === id)
     if (index >= 0) return { kind, node: nodes[index], title: nodes[index].title, index }

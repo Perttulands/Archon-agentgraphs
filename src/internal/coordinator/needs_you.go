@@ -360,6 +360,11 @@ func nodeTitle(board *formations.BoardDocument, id string) string {
 				return node.Title
 			}
 		}
+		for _, node := range board.Ends {
+			if node.ID == id && node.Title != "" {
+				return node.Title
+			}
+		}
 	}
 	if id == "" {
 		return "the upstream step"

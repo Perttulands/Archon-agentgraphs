@@ -26,8 +26,8 @@ function boardWithFiles() {
 // The room Arrange reserves for each card (arrangementItemSize in
 // src/internal/formations/layout_arrange.go), with its file chip row.
 const FILE_ROW = 30
-const reserved = (node: Node, kind: 'mission' | 'gate' | 'formation') =>
-  (kind === 'mission' ? 144 : kind === 'gate' ? 124 : node.type === 'peer' ? 340 : node.type === 'orchestrated' ? 440 : 310) + FILE_ROW
+const reserved = (node: Node, kind: 'inputCard' | 'gate' | 'formation') =>
+  (kind === 'inputCard' ? 144 : kind === 'gate' ? 124 : node.type === 'peer' ? 340 : node.type === 'orchestrated' ? 440 : 310) + FILE_ROW
 
 test('a gate\'s rubric and its judge\'s brief file open from the gate on Scouting', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
@@ -45,8 +45,8 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Scoutin
   await page.goto('/?mission=scouting')
   await expect(page.getByRole('note')).toHaveCount(scouting.notes.elements.length)
 
-  const cards: Array<[Node, 'mission' | 'gate' | 'formation']> = [
-    [board.inputCards[0], 'mission'],
+  const cards: Array<[Node, 'inputCard' | 'gate' | 'formation']> = [
+    [board.inputCards[0], 'inputCard'],
     [board.gates.find((gate: Node) => gate.title === 'Adversarial review'), 'gate'],
     [board.formations.find((formation: Node) => formation.title === 'Brief critic'), 'formation'],
   ]

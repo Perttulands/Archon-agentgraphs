@@ -2454,14 +2454,27 @@ rev = 1
 	archon(workspaceArgs("mission", "wire", "poems", mission.ID, draft.ID+":"+draft.Inputs[0].ID, "--json")...)
 	archon(workspaceArgs("formation", "wire", "poems", draft.ID+":"+draft.Outputs[0].ID, gate.ID+":in", "--json")...)
 	archon(workspaceArgs("formation", "wire", "poems", gate.ID+":pass", polish.ID+":"+polish.Inputs[0].ID, "--json")...)
+	// Every route leads somewhere (form-o7p.10): the polished poem ends the
+	// path done, and a send-back ends it rejected.
+	var done, rejected struct {
+		End formations.EndNode `json:"end"`
+	}
+	if err := json.Unmarshal([]byte(archon(workspaceArgs("end", "create", "poems", "--json")...)), &done); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(archon(workspaceArgs("end", "create", "poems", "--outcome", "rejected", "--json")...)), &rejected); err != nil {
+		t.Fatal(err)
+	}
+	archon(workspaceArgs("formation", "wire", "poems", polish.ID+":"+polish.Outputs[0].ID, done.End.ID+":in", "--json")...)
+	archon(workspaceArgs("formation", "wire", "poems", gate.ID+":fail", rejected.End.ID+":in", "--json")...)
 
 	afterAuthoring := decodeArchonBoard(t, archon(workspaceArgs("mission", "inspect", "poems", "--json")...))
 	draft = mustFormationByTitle(t, afterAuthoring, "Draft poem")
 	polish = mustFormationByTitle(t, afterAuthoring, "Polish poem")
 	gate = mustGateByTitle(t, afterAuthoring, "Human review")
 	mission = mustMissionByTitle(t, afterAuthoring, "Simple poem")
-	if len(afterAuthoring.Connections) != 3 {
-		t.Fatalf("connections = %+v, want mission->draft, draft->gate, gate->polish", afterAuthoring.Connections)
+	if len(afterAuthoring.Connections) != 5 {
+		t.Fatalf("connections = %+v, want mission->draft, draft->gate, gate->polish, polish->Done, gate fail->Rejected", afterAuthoring.Connections)
 	}
 	for _, edge := range afterAuthoring.Connections {
 		if edge.ID == "" || !strings.HasPrefix(edge.ID, "edge_") {
@@ -3353,6 +3366,20 @@ effort = "medium"
 id = "edge_mission_work"
 from = "mis_showcase:out"
 to = "fmn_work:port_work_in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
+[[connection]]
+id = "edge_work_done"
+from = "fmn_work:port_work_out"
+to = "end_done:in"
 `
 }
 
@@ -3381,6 +3408,11 @@ to = "gate_lint:in"
 id = "edge_gate_work"
 from = "gate_lint:pass"
 to = "fmn_work:port_work_in"
+
+[[connection]]
+id = "edge_gate_fail_rejected"
+from = "gate_lint:fail"
+to = "end_rejected:in"
 `, 1)
 }
 
@@ -3448,6 +3480,20 @@ to = "fmn_work:port_work_in"
 id = "edge_work_ship"
 from = "fmn_work:port_work_out"
 to = "fmn_ship:port_ship_in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
+[[connection]]
+id = "edge_ship_done"
+from = "fmn_ship:port_ship_out"
+to = "end_done:in"
 `
 }
 
@@ -3493,11 +3539,31 @@ effort = "medium"
 id = "edge_mission_draft"
 from = "mis_poem:out"
 to = "fmn_draft:port_draft_in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
+[[connection]]
+id = "edge_draft_done"
+from = "fmn_draft:port_draft_out"
+to = "end_done:in"
 `
 }
 
 func archonS4PoemBoardFixture() string {
-	return archonS4PoemMissingRootBoardFixture() + `
+	// Here the draft goes to the gate rather than straight to Done.
+	return strings.Replace(archonS4PoemMissingRootBoardFixture(), `
+[[connection]]
+id = "edge_draft_done"
+from = "fmn_draft:port_draft_out"
+to = "end_done:in"
+`, "", 1) + `
 [[gate]]
 id = "gate_review"
 title = "Human review"
@@ -3537,6 +3603,15 @@ to = "gate_review:in"
 id = "edge_gate_pass_polish"
 from = "gate_review:pass"
 to = "fmn_polish:port_polish_in"
+[[connection]]
+id = "edge_polish_done"
+from = "fmn_polish:port_polish_out"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_gate_fail_rejected"
+from = "gate_review:fail"
+to = "end_rejected:in"
 `
 }
 
@@ -3615,5 +3690,24 @@ to = "gate_review:in"
 id = "edge_gate_pass_ship"
 from = "gate_review:pass"
 to = "fmn_ship:port_ship_in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
+[[connection]]
+id = "edge_ship_done"
+from = "fmn_ship:port_ship_out"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_gate_fail_rejected"
+from = "gate_review:fail"
+to = "end_rejected:in"
 `
 }

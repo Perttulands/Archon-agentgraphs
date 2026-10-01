@@ -1,5 +1,5 @@
 {
-  "_source": "The Scouting mission (form-3yd.10): structure from the arrange testdata mission scouting with its Arrange layout. Briefs, criteria and the mission goal are trimmed from the live mission at rev 37. Notes are the live threads at rev 11 plus two operator replies added so several nodes carry both human:ui and agent entries.",
+  "_source": "The Scouting mission (form-3yd.10): structure from the arrange testdata mission scouting with its Arrange layout. Briefs, criteria and the mission goal are trimmed from the live mission at rev 37. Notes are the live threads at rev 11 plus two operator replies added so several nodes carry both human:ui and agent entries. Its sign-off pass ends at a Done End node (form-o7p.10).",
   "mission": {
     "schema": 1,
     "id": "brd_01M2N3A879JPHQFNRXH3K5CQGM",
@@ -244,9 +244,21 @@
         "id": "edge_01M2N9NGVNSHE0R1Q9V7M7VQGZ",
         "from": "gate_01M2N9N1R4R184Y5G3R45BB5G1:fail",
         "to": "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD:port_01M2N9N1N6NQ2XGB78NEGTSPJR"
+      },
+      {
+        "id": "edge_signoff_done",
+        "from": "gate_01M2N9N1R4R184Y5G3R45BB5G1:pass",
+        "to": "end_scouting_done:in"
       }
     ],
-    "etag": "scouting-board"
+    "etag": "scouting-board",
+    "ends": [
+      {
+        "id": "end_scouting_done",
+        "title": "Done",
+        "outcome": "done"
+      }
+    ]
   },
   "layout": {
     "schema": 1,
@@ -297,6 +309,11 @@
       {
         "id": "gate_01M2N9N1R4R184Y5G3R45BB5G1",
         "x": 2828,
+        "y": 112
+      },
+      {
+        "id": "end_scouting_done",
+        "x": 3220,
         "y": 112
       }
     ],

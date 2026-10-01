@@ -293,10 +293,10 @@ export async function fetchRunStatus(runId: string): Promise<RunStatusProjection
 }
 
 export async function fetchRunEvents(runId: string): Promise<RunEvent[]> {
-  const result = await fetchApi<{ events: Array<{ seq: number; type: string; nodeId?: string; slotId?: string; gateId?: string; attempt?: number; status?: string; verdict?: string; sessionName?: string; outcome?: string }> }>(`/api/runs/${encodeURIComponent(runId)}/events`)
+  const result = await fetchApi<{ events: Array<{ seq: number; type: string; nodeId?: string; slotId?: string; gateId?: string; attempt?: number; status?: string; verdict?: string; sessionName?: string; outcome?: string; endIds?: string[] }> }>(`/api/runs/${encodeURIComponent(runId)}/events`)
   return (result.data.events || []).map(event => ({
     seq: event.seq, type: event.type, runId, nodeId: event.nodeId, gateId: event.gateId, attempt: event.attempt,
-    data: { slotId: event.slotId, status: event.status, verdict: event.verdict, sessionRef: event.sessionName, reason: event.outcome },
+    data: { slotId: event.slotId, status: event.status, verdict: event.verdict, sessionRef: event.sessionName, reason: event.outcome, ...(event.endIds ? { endIds: event.endIds } : {}) },
   })).sort((a, b) => a.seq - b.seq)
 }
 
@@ -335,11 +335,14 @@ export interface RunLimitUse {
   max: number
 }
 
-/** A step a gate verdict delivers to; a formation says which attempt it starts. */
+/** A step, gate or End node a gate verdict delivers to; a formation says which attempt it starts. */
 export interface GateRouteTarget {
   nodeId: string
   title: string
   kind: string
+  /** An End node's outcome: the path ends there, done or rejected. */
+  outcome?: 'done' | 'rejected'
+
   attempt?: number
   /** The run's attempt limit; absent when the run set none and attempts are unlimited (form-o7p.7). */
   maxAttempts?: number
@@ -351,10 +354,10 @@ export interface GateRouteTarget {
 export interface GateRoute {
   verdict: 'pass' | 'fail'
   targets: GateRouteTarget[]
+  /** Every route ends its path at an End node and nothing else can run, so the run finishes. */
   endsRun?: boolean
-  /** Nothing is wired downstream, but the run has other work, so it does not end here. */
-  nothingFollows?: boolean
-  unwired?: boolean
+  /** That finish fails the run: a rejected End node on this route, or a path already rejected. */
+  runFails?: boolean
   /** A limit the route needs is spent, so taking it blocks the run. */
   limit?: RunLimitUse
   dispatches?: RunLimitUse

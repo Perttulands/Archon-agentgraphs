@@ -389,7 +389,19 @@ to = "gate_peers:in"
 id = "edge_team_gate"
 from = "fmn_team:port_team_out"
 to = "gate_team:in"
-`
+[[connection]]
+id = "edge_peers_fail"
+from = "gate_peers:fail"
+to = "end_rejected:in"
+[[connection]]
+id = "edge_team_pass"
+from = "gate_team:pass"
+to = "end_done:in"
+[[connection]]
+id = "edge_team_fail"
+from = "gate_team:fail"
+to = "end_rejected:in"
+` + endNodes
 
 func TestSessionAskReachesEveryPeerSeatWithARetryAndOnlyTheOrchestratedController(t *testing.T) {
 	keeper := &keeperExecutor{refuse: map[string]int{"peer_b": 2}}
@@ -601,7 +613,19 @@ to = "gate_one:in"
 id = "edge_two"
 from = "gate_one:pass"
 to = "gate_two:in"
-`
+[[connection]]
+id = "edge_one_fail"
+from = "gate_one:fail"
+to = "end_rejected:in"
+[[connection]]
+id = "edge_two_pass"
+from = "gate_two:pass"
+to = "end_done:in"
+[[connection]]
+id = "edge_two_fail"
+from = "gate_two:fail"
+to = "end_rejected:in"
+` + endNodes
 
 func TestSessionSeatStaysForTheNextHumanGateAndEndsBeforeTheRunSucceeds(t *testing.T) {
 	keeper := &keeperExecutor{}

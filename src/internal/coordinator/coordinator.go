@@ -72,6 +72,9 @@ type Event struct {
 	SessionName  string `json:"sessionName,omitempty"`
 	Outcome      string `json:"outcome,omitempty"`
 	Blocks       bool   `json:"blocks,omitempty"`
+	// EndIDs, on run_succeeded and run_failed, are the End nodes the run's
+	// paths reached (form-o7p.10).
+	EndIDs []string `json:"endIds,omitempty"`
 }
 type Projection struct {
 	*formations.RunStatusProjection
@@ -599,6 +602,14 @@ func project(status *formations.RunStatusProjection, events []formations.RunEven
 		case formations.RunEventHumanAskFallback:
 			e.RequestedSeq = intFromData(raw.Data["requestedSeq"])
 			e.Outcome, _ = raw.Data["code"].(string)
+		case formations.RunEventSucceeded, formations.RunEventFailed:
+			if ends, ok := raw.Data["endIds"].([]any); ok {
+				for _, end := range ends {
+					if id, ok := end.(string); ok {
+						e.EndIDs = append(e.EndIDs, id)
+					}
+				}
+			}
 		}
 		p.Events = append(p.Events, e)
 	}

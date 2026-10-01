@@ -141,7 +141,7 @@ describe('produced files', () => {
     expect(within(review).getByText('revise').tagName).toBe('STRONG')
     expect(review).toHaveTextContent('Final review · final-review.md')
     expect(within(review).getByRole('link', { name: 'Open raw' })).toHaveAttribute('href', '/api/runs/run_1/artifacts/final-review.md')
-    expect(within(review).getByRole('button', { name: 'Copy path' })).toHaveAttribute('title', '.formations/artifacts/run_1/final-review.md')
+    expect(within(review).getByRole('button', { name: 'Copy path' })).toHaveAttribute('title', '.archon/artifacts/run_1/final-review.md')
 
     fireEvent.click(within(review).getByRole('button', { name: 'Source' }))
     expect(within(review).getByLabelText('final-review.md source', { selector: 'pre' })).toHaveTextContent('# Final review')

@@ -133,6 +133,9 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 	})
 }
 
+// archonNouns are the nouns the CLI knows, offline and with --server.
+var archonNouns = map[string]bool{"mission": true, "formation": true, "gate": true, "end": true, "tool": true, "agent": true, "run": true, "peer": true}
+
 func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner tmuxRunner, runtimeStore func(string) *formations.Store) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
 		fmt.Fprintln(stdout, buildinfo.String())
@@ -147,8 +150,12 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 		return 2
 	}
 	if len(args) < 2 {
-		fmt.Fprintln(stderr, "usage: archon <mission|formation|gate|tool|agent|run|peer> <command>")
+		fmt.Fprintln(stderr, "usage: archon <mission|formation|gate|end|tool|agent|run|peer> <command>")
 		fmt.Fprintln(stderr, "Run \"archon mission\" to list the mission commands.")
+		return 2
+	}
+	if !archonNouns[args[0]] {
+		fmt.Fprintf(stderr, "unknown archon noun %q\n", args[0])
 		return 2
 	}
 	if config.Server != "" {
@@ -230,6 +237,8 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 			fmt.Fprintf(stderr, "unknown gate command %q\n", args[1])
 			return 2
 		}
+	case "end":
+		return runEndCommand(formations.NewStore(config.Workspace), args[1], args[2:], stdout, stderr)
 	case "mission":
 		store := formations.NewStore(config.Workspace)
 		switch args[1] {
@@ -2968,6 +2977,16 @@ func chainNodeByID(board *formations.BoardDocument, nodeID string, depth int) (a
 				ID:    tool.ID,
 				Kind:  "tool",
 				Title: tool.Title,
+				Depth: depth,
+			}, true
+		}
+	}
+	for _, end := range board.Ends {
+		if end.ID == nodeID {
+			return archonMissionChainNode{
+				ID:    end.ID,
+				Kind:  "end",
+				Title: end.Title,
 				Depth: depth,
 			}, true
 		}

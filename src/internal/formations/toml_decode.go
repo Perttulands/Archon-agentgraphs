@@ -17,6 +17,7 @@ type boardTOMLSource struct {
 	Missions    []MissionNode
 	Formations  []FormationNode
 	Gates       []GateNode
+	Ends        []EndNode
 	Connections []BoardConnection
 }
 
@@ -63,6 +64,9 @@ func decodeBoardTOML(raw []byte) (boardTOMLSource, error) {
 		return boardTOMLSource{}, err
 	}
 	if source.Gates, err = decodeGateNodes(document); err != nil {
+		return boardTOMLSource{}, err
+	}
+	if source.Ends, err = decodeEndNodes(document); err != nil {
 		return boardTOMLSource{}, err
 	}
 	if source.Connections, err = decodeBoardConnections(document); err != nil {

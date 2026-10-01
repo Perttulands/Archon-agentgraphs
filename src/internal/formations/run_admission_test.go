@@ -234,8 +234,22 @@ func TestRunAdmissionReportsEveryProblemAtOnce(t *testing.T) {
 			t.Errorf("finding %s = %q, want message containing %q", key, got[key], substring)
 		}
 	}
-	if len(report.Errors) != len(want) {
-		t.Errorf("mission-scoped errors = %+v, want exactly %d findings", report.Errors, len(want))
+	// Every route on the run path leads somewhere (form-o7p.10): admission
+	// names each one that leads nowhere.
+	var nowhere []string
+	for _, finding := range findBoardFindings(report.Errors, FindingRouteLeadsNowhere) {
+		nowhere = append(nowhere, finding.NodeID+": "+finding.Message)
+	}
+	wantNowhere := []string{
+		"gate_lint: Lint's fail route leads nowhere: wire it to a step or an End node",
+		"gate_review: Review's fail route leads nowhere: wire it to a step or an End node",
+		"gate_review: Review's pass route leads nowhere: wire it to a step or an End node",
+	}
+	if strings.Join(nowhere, "\n") != strings.Join(wantNowhere, "\n") {
+		t.Errorf("route_leads_nowhere findings = %q, want %q", nowhere, wantNowhere)
+	}
+	if len(report.Errors) != len(want)+len(wantNowhere) {
+		t.Errorf("mission-scoped errors = %+v, want exactly %d findings", report.Errors, len(want)+len(wantNowhere))
 	}
 	for _, finding := range append(report.Errors, report.Warnings...) {
 		if finding.NodeID == "gate_unwired" || (finding.NodeID == "fmn_sketch" && finding.Code == FindingUnstaffedSlot) {
@@ -317,6 +331,9 @@ func TestRunAdmissionAcceptsCompleteRunPath(t *testing.T) {
 	raw = strings.Replace(raw, `agentId = "nobody-here"`, "agentId = \"codex-builder\"\nharness = \"openai-codex\"\neffort = \"medium\"", 1)
 	raw = strings.Replace(raw, `type = "flow"`, `type = "solo"`, 1)
 	raw = strings.Replace(raw, "[[connection]]\nid = \"edge_review\"\nfrom = \"fmn_build:port_build_out\"\nto = \"gate_review:in\"\n", "", 1)
+	raw += branchingBoardEnds() +
+		branchingBoardConnection("edge_build_done", "fmn_build:port_build_out", "end_done:in") +
+		branchingBoardConnection("edge_lint_rejected", "gate_lint:fail", "end_rejected:in")
 	writeFixture(t, store.BoardPath("draft"), raw)
 	board, err := store.ReadBoard("draft")
 	if err != nil {

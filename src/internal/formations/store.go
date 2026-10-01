@@ -74,6 +74,7 @@ type BoardDocument struct {
 	Formations  []FormationNode   `json:"formations,omitempty"`
 	Gates       []GateNode        `json:"gates,omitempty"`
 	Tools       []ToolNode        `json:"tools,omitempty"`
+	Ends        []EndNode         `json:"ends,omitempty"`
 	Connections []BoardConnection `json:"connections,omitempty"`
 	ETag        string            `json:"etag"`
 	TOML        string            `json:"toml,omitempty"`
@@ -522,6 +523,7 @@ func boardFromTOMLSource(raw []byte, source boardTOMLSource) (*BoardDocument, er
 		Formations:  source.Formations,
 		Gates:       source.Gates,
 		Tools:       tools,
+		Ends:        source.Ends,
 		Connections: source.Connections,
 		ETag:        etag(raw),
 		TOML:        string(raw),
@@ -551,6 +553,7 @@ func parseBoardCompatibility(raw []byte) (*BoardDocument, error) {
 		Formations:  parseFormationNodes(raw),
 		Gates:       parseGateNodes(raw),
 		Tools:       tools,
+		Ends:        parseEndNodes(raw),
 		Connections: parseBoardConnections(raw),
 		ETag:        etag(raw),
 		TOML:        string(raw),

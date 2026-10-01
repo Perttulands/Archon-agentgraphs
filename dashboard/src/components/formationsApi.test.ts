@@ -9,6 +9,7 @@ import {
   fetchBoardNotes,
   fetchBoardValidation,
   fetchBoardWithLayout,
+  fetchRunEvents,
   normalizeBoard,
   normalizeLayout,
   patchBoardDocument,
@@ -47,6 +48,17 @@ describe('formations API helpers', () => {
 
     expect(failure).toBeInstanceOf(ApiRequestError)
     expect(failure).toMatchObject({ status: 422, code: 'RUN_ADMISSION_FAILED', message: 'The run needs 2 fixes before it can start', findings })
+  })
+
+  it('carries the End nodes a finished run reached into its events', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse({ success: true, data: { events: [
+      { seq: 2, type: 'run_failed', nodeId: 'end_rejected', gateId: 'gate_review', outcome: 'the brief misses the audience', endIds: ['end_done', 'end_rejected'] },
+      { seq: 1, type: 'node_output', nodeId: 'fmn_work', status: 'done' },
+    ] } }))) as unknown as typeof fetch)
+    const events = await fetchRunEvents('run_1')
+    expect(events.map(event => event.seq)).toEqual([1, 2])
+    expect(events[1]).toMatchObject({ type: 'run_failed', nodeId: 'end_rejected', gateId: 'gate_review', data: { reason: 'the brief misses the audience', endIds: ['end_done', 'end_rejected'] } })
+    expect(events[0].data).not.toHaveProperty('endIds')
   })
 
   it('reads board validation with empty lists when none are reported', async () => {

@@ -16,7 +16,7 @@ id = "fmn_producer"
 type = "solo"
 title = "Producer"
 [formation.brief]
-goal = "You are a bounded seat in the form-2fb proving mission. The parent owns the Bead. Read the owning Bead and repository instructions. No Git operations, tmux operations, service changes, new agents, or changes outside your named file. Source documentation must be host-neutral, with no actual local paths, socket values, credentials, native session IDs, or run data. Follow the output and completion contract below. Keep your work bounded to this turn. Produce docs/standalone-operations.md, a concise operator guide for this standalone coordinator. Read docs/adr/0015-standalone-trusted-coordinator.md, docs/openapi/formations.yaml, src/cmd/formationsd/main.go, src/cmd/archon/remote.go and examples/operations-proof.formation.toml. Explain build, private state vs source workspace, import of this example, launch using configured host paths, mission start, status/follow, exact human approval/rejection, session ownership and current recovery limitations. Use shell variables as placeholders. Do not start a service or a mission. The guide must let an operator locate and enter the actual pending gate verdict. State any uncertainty in your routed output."
+goal = "You are a bounded seat in the form-2fb proving mission. The parent owns the Bead. Read the owning Bead and repository instructions. No Git operations, tmux operations, service changes, new agents, or changes outside your named file. Source documentation must be host-neutral, with no actual local paths, socket values, credentials, native session IDs, or run data. Follow the output and completion contract below. Keep your work bounded to this turn. Produce docs/standalone-operations.md, a concise operator guide for this standalone coordinator. Read docs/adr/0015-standalone-trusted-coordinator.md, docs/openapi/archon.yaml, src/cmd/archond/main.go, src/cmd/archon/remote.go and examples/operations-proof.mission.toml. Explain build, private state vs source workspace, import of this example, launch using configured host paths, mission start, status/follow, exact human approval/rejection, session ownership and current recovery limitations. Use shell variables as placeholders. Do not start a service or a mission. The guide must let an operator locate and enter the actual pending gate verdict. State any uncertainty in your routed output."
 beadId = "form-2fb"
 [[formation.input]]
 id = "port_producer_in"
@@ -80,6 +80,16 @@ title = "Operator verdict"
 kinds = ["human"]
 criterion = "The operations guide is usable and this producer-reviewer-integrator handoff is worth keeping. The operator must enter pass or fail after inspecting the guide and mission evidence."
 
+[[end]]
+id = "end_kept"
+title = "Kept"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
 [[connection]]
 id = "edge_0"
 from = "mis_operations:out"
@@ -99,3 +109,13 @@ to = "fmn_integrator:port_integrator_in"
 id = "edge_3"
 from = "fmn_integrator:port_integrator_out"
 to = "gate_operator:in"
+
+[[connection]]
+id = "edge_4"
+from = "gate_operator:pass"
+to = "end_kept:in"
+
+[[connection]]
+id = "edge_5"
+from = "gate_operator:fail"
+to = "end_rejected:in"

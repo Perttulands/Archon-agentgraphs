@@ -505,7 +505,12 @@ criterion = "Confirm the payload"
 id = "edge_gate_tool_media_overlap"
 from = "gate_media:pass"
 to = "tool_normalize:port_tool_in"
-`
+
+[[connection]]
+id = "edge_gate_media_fail_rejected"
+from = "gate_media:fail"
+to = "end_rejected:in"
+` + branchingBoardEnds()
 		report := ValidateBoard(mustParseValidateBoardFixture(t, raw))
 		if dangling := findBoardFindings(report.Errors, FindingDanglingConnection); len(dangling) != 0 {
 			t.Fatalf("known Gate and Tool endpoints produced dangling findings: %+v", dangling)
@@ -522,7 +527,17 @@ to = "tool_normalize:port_tool_in"
 id = "edge_tool_gate_media_subset"
 from = "tool_normalize:port_tool_out"
 to = "gate_media:in"
-`
+
+[[connection]]
+id = "edge_gate_media_pass_done"
+from = "gate_media:pass"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_gate_media_fail_rejected"
+from = "gate_media:fail"
+to = "end_rejected:in"
+` + branchingBoardEnds()
 		assertToolStructuralBoardAccepted(t, raw, "Tool JSON output routed to full-set Gate input")
 	})
 }
@@ -539,7 +554,12 @@ criterion = "Confirm the payload"
 id = "edge_gate_feedback_tool_work"
 from = "gate_feedback:fail"
 to = "tool_normalize:port_tool_in"
-`
+
+[[connection]]
+id = "edge_gate_feedback_pass_done"
+from = "gate_feedback:pass"
+to = "end_done:in"
+` + branchingBoardEnds()
 	report := ValidateBoard(mustParseValidateBoardFixture(t, raw))
 	if dangling := findBoardFindings(report.Errors, FindingDanglingConnection); len(dangling) != 0 {
 		t.Fatalf("known Gate fail and Tool input endpoints produced dangling findings: %+v", dangling)
@@ -1091,7 +1111,47 @@ to = "fmn_judge:port_judge_in"
 id = "edge_formation_gate_judge"
 from = "fmn_judge:port_judge_out"
 to = "gate_judge:judge"
-`
+
+[[connection]]
+id = "edge_gate_primary_pass_done"
+from = "gate_primary:pass"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_gate_primary_fail_rejected"
+from = "gate_primary:fail"
+to = "end_rejected:in"
+
+[[connection]]
+id = "edge_gate_secondary_pass_done"
+from = "gate_secondary:pass"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_gate_secondary_fail_rejected"
+from = "gate_secondary:fail"
+to = "end_rejected:in"
+
+[[connection]]
+id = "edge_gate_judge_pass_done"
+from = "gate_judge:pass"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_gate_judge_fail_rejected"
+from = "gate_judge:fail"
+to = "end_rejected:in"
+
+[[connection]]
+id = "edge_gate_candidate_pass_done"
+from = "gate_candidate:pass"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_gate_candidate_fail_rejected"
+from = "gate_candidate:fail"
+to = "end_rejected:in"
+` + branchingBoardEnds()
 }
 
 func toolStructuralDuplicateProducerBoardFixture(includeSecondProducer bool) string {
@@ -1225,7 +1285,22 @@ label = "Normalized report"
 direction = "output"
 kind = "work"
 acceptedMediaTypes = ["application/json"]
-`
+
+[[connection]]
+id = "edge_worker_done"
+from = "fmn_worker:port_worker_out"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_gate_review_pass_done"
+from = "gate_review:pass"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_gate_review_fail_rejected"
+from = "gate_review:fail"
+to = "end_rejected:in"
+` + branchingBoardEnds()
 }
 
 func toolStructuralLayoutFixture() string {

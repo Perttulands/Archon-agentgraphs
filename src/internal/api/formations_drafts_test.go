@@ -67,18 +67,45 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 		}
 	}
 
-	rec := serve(http.MethodGet, "/api/missions/untitled-mission/validation", "", "")
 	var validation struct {
 		Data struct {
 			Errors []formations.BoardFinding `json:"errors"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &validation); err != nil || rec.Code != http.StatusOK || len(validation.Data.Errors) != 2 {
-		t.Fatalf("validation = %d %s (%v), want unstaffed slot and incomplete gate", rec.Code, rec.Body.String(), err)
+	validate := func() []formations.BoardFinding {
+		t.Helper()
+		rec := serve(http.MethodGet, "/api/missions/untitled-mission/validation", "", "")
+		validation.Data.Errors = nil
+		if err := json.Unmarshal(rec.Body.Bytes(), &validation); err != nil || rec.Code != http.StatusOK {
+			t.Fatalf("validation = %d %s (%v)", rec.Code, rec.Body.String(), err)
+		}
+		return validation.Data.Errors
+	}
+	// The draft saves with its gate's routes leading nowhere; validation names
+	// them (form-o7p.10).
+	if errors := validate(); len(errors) != 4 || len(findingsWithCode(errors, formations.FindingRouteLeadsNowhere)) != 2 {
+		t.Fatalf("validation = %+v, want unstaffed slot, incomplete gate and two routes leading nowhere", errors)
+	}
+	// One End node takes any number of routes: both of the gate's routes end
+	// the path there.
+	if rec := patch(`{"createEnd":{"outcome":"done"}}`); rec.Code != http.StatusOK {
+		t.Fatalf("create End = %d %s", rec.Code, rec.Body.String())
+	}
+	board, _ = store.ReadBoard("untitled-mission")
+	if len(board.Ends) != 1 || board.Ends[0].Title != "Done" || board.Ends[0].Outcome != formations.EndOutcomeDone {
+		t.Fatalf("End nodes = %+v", board.Ends)
+	}
+	for _, port := range []string{"pass", "fail"} {
+		if rec := patch(`{"wireConnection":{"from":"` + gate.ID + `:` + port + `","to":"` + board.Ends[0].ID + `:in"}}`); rec.Code != http.StatusOK {
+			t.Fatalf("wire %s to the End node = %d %s", port, rec.Code, rec.Body.String())
+		}
+	}
+	if errors := validate(); len(errors) != 2 {
+		t.Fatalf("validation = %+v, want unstaffed slot and incomplete gate", errors)
 	}
 
 	board, _ = store.ReadBoard("untitled-mission")
-	rec = serve(http.MethodPost, "/api/runs", board.ETag, `{"mission":"untitled-mission","inputCardId":"`+mission.ID+`","expectedRev":`+jsonInt(board.Rev)+`,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":60}}`)
+	rec := serve(http.MethodPost, "/api/runs", board.ETag, `{"mission":"untitled-mission","inputCardId":"`+mission.ID+`","expectedRev":`+jsonInt(board.Rev)+`,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":60}}`)
 	var failure struct {
 		Error struct {
 			Code     string                    `json:"code"`
@@ -88,6 +115,16 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &failure); err != nil || rec.Code != http.StatusUnprocessableEntity || failure.Error.Code != RunAdmissionErrorCode || len(failure.Error.Findings) != 2 {
 		t.Fatalf("draft run start = %d %s (%v), want 422 with both findings", rec.Code, rec.Body.String(), err)
 	}
+}
+
+func findingsWithCode(findings []formations.BoardFinding, code string) []formations.BoardFinding {
+	var out []formations.BoardFinding
+	for _, finding := range findings {
+		if finding.Code == code {
+			out = append(out, finding)
+		}
+	}
+	return out
 }
 
 func jsonInt(value int) string {

@@ -29,7 +29,7 @@ test('Flow shows all 7 Scouting steps readable at 1440x900 without horizontal sc
   await expect(steps.nth(1)).toContainText('↺ back to 1 Map the territory')
   await expect(steps.nth(5)).toContainText('Decided by a judge')
   await expect(steps.nth(5).getByRole('list', { name: 'Judges of Adversarial review' })).toContainText('Brief critic')
-  await expect(steps.nth(6)).toContainText('→ run ends')
+  await expect(steps.nth(6)).toContainText('→ this path ends (done)')
 
   // A row opens its node window beside it, and the Flow view is remembered for the board.
   await steps.nth(4).getByRole('button', { name: '5 Draft the brief' }).click()

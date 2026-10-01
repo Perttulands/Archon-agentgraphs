@@ -90,7 +90,7 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
   ]
   const seat = (slot: typeof first, createdSeq: number) => ({
     runId: talkRunId, nodeId: peers.id, nodeTitle: 'Question peers', slotId: slot.id, slotLabel: slot.label, harness: slot.harness,
-    controller: false, createdSeq, sessionName: `form-${talkRunId}-${slot.id}`, state: 'live', columns: options.columns ?? 100, rows: 30,
+    controller: false, createdSeq, sessionName: `archon-${talkRunId}-${slot.id}`, state: 'live', columns: options.columns ?? 100, rows: 30,
     terminalUrl: `/api/runs/${talkRunId}/seats/${createdSeq}/terminal`, onCall: { keptSeq: 9, waitingOn },
   })
   const text = (value: string) => ({ text: value, bytes: value.length })

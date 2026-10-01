@@ -8,8 +8,8 @@ import { scouting, scoutingFixture } from './scouting-fixture'
 type Node = { id: string; title: string }
 type Box = { x: number; y: number; width: number; height: number }
 
-const board = scouting.mission as { inputCards: Node[]; formations: Node[]; gates: Node[]; connections: Array<{ from: string; to: string }> }
-const nodes: Node[] = [...board.inputCards, ...board.formations, ...board.gates]
+const board = scouting.mission as { inputCards: Node[]; formations: Node[]; gates: Node[]; ends: Node[]; connections: Array<{ from: string; to: string }> }
+const nodes: Node[] = [...board.inputCards, ...board.formations, ...board.gates, ...board.ends]
 const idOf = (title: string) => nodes.find(node => node.title === title)!.id
 const neighbours = (nodeId: string) => {
   const found = new Set<string>()
@@ -67,7 +67,7 @@ for (const [width, height] of [[1920, 1080], [2560, 1440]]) {
       await page.locator(`[data-node="${nodeId}"]`).getByText(title, { exact: true }).first().click()
       await expect(page.locator(`[data-window-id="node:${nodeId}"]`)).toBeVisible()
       for (const id of [nodeId, ...neighbours(nodeId)]) {
-        const card = page.locator(`.formation[data-node="${id}"], .gatecard[data-node="${id}"], .missioncard[data-node="${id}"]`).first()
+        const card = page.locator(`.formation[data-node="${id}"], .gatecard[data-node="${id}"], .missioncard[data-node="${id}"], .endcard[data-node="${id}"]`).first()
         expect(await clickable(card), `${title}: ${nodes.find(node => node.id === id)?.title} stays clickable`).toBe(true)
       }
     }

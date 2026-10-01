@@ -475,7 +475,12 @@ to = "fmn_research:port_research_in"
 id = "edge_research_ship"
 from = "fmn_research:port_research_out"
 to = "fmn_ship:port_ship_in"
-`
+
+[[connection]]
+id = "edge_ship_done"
+from = "fmn_ship:port_ship_out"
+to = "end_done:in"
+` + branchingBoardEnds()
 }
 
 func s4JoinBoardFixture() string {
@@ -566,7 +571,12 @@ to = "fmn_join:port_join_left"
 id = "edge_b_join"
 from = "fmn_b:port_b_out"
 to = "fmn_join:port_join_right"
-`
+
+[[connection]]
+id = "edge_join_done"
+from = "fmn_join:port_join_out"
+to = "end_done:in"
+` + branchingBoardEnds()
 }
 
 func s4NamedOutputBoardFixture() string {
@@ -652,5 +662,15 @@ to = "fmn_left:port_left_in"
 id = "edge_split_right"
 from = "fmn_split:port_split_right"
 to = "fmn_right:port_right_in"
-`
+
+[[connection]]
+id = "edge_left_done"
+from = "fmn_left:port_left_out"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_right_done"
+from = "fmn_right:port_right_out"
+to = "end_done:in"
+` + branchingBoardEnds()
 }

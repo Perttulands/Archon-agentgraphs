@@ -5,7 +5,7 @@ updatedAt = "2026-09-09T00:00:00Z"
 updatedBy = "agent:archon"
 
 [[entry]]
-id = "nte_delivery_board"
+id = "nte_delivery_mission"
 target = "mission"
 author = "agent:archon"
 createdAt = "2026-09-09T00:00:00Z"

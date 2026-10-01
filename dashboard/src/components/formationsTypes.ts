@@ -131,6 +131,7 @@ export interface BoardDocument {
   formations: FormationNode[]
   gates?: GateNode[]
   tools?: ToolNode[]
+  ends?: EndNode[]
   connections: BoardConnection[]
 }
 
@@ -172,6 +173,15 @@ export interface GateNode {
   checkValue?: string
   /** Reference file paths, such as the gate's rubric. */
   files?: string[]
+}
+
+export type EndOutcome = 'done' | 'rejected'
+
+/** Ends a path on purpose (form-o7p.10). Its only port is `in`, which takes any number of routes. */
+export interface EndNode {
+  id: string
+  title: string
+  outcome: EndOutcome
 }
 
 export interface CodeGateProfileDescriptor {

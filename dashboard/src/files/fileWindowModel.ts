@@ -51,7 +51,7 @@ export function artifactFileRequest(runId: string, name: string, context?: strin
     },
     rawUrl: artifactRawUrl(runId, name),
     // Artifacts live under the daemon's state directory.
-    path: `.formations/artifacts/${runId}/${name}`,
+    path: `.archon/artifacts/${runId}/${name}`,
     basePath: name,
     link: target => artifactFileRequest(runId, target, context),
     imageUrl: target => artifactRawUrl(runId, target),

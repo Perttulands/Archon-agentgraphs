@@ -49,8 +49,8 @@ import {
 } from './formationsRunState'
 import { chooseBoardRun, readRunLink, runChoiceLabel, runChoices, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
 import { chooseCurrentBoard, rememberBoardOnDevice } from './currentBoard'
-import { clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
-import { FormationSeats, GATE_SVG, PLAY_SVG, slotTooltip, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
+import { END_ROOM, clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
+import { END_SVG, FormationSeats, GATE_SVG, PLAY_SVG, slotTooltip, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
 import { useEscapeKey } from './useEscapeKey'
 import { ROSTER_MAX_WIDTH, ROSTER_MIN_WIDTH, useRosterPanel } from './useRosterPanel'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
@@ -76,6 +76,7 @@ import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget,
 import { gateWireNeedsLabel, loopConnectionIds, routeJudgeWire, routeLoopWires, routeOrthoWire, type LoopWire } from './formationsRouting'
 import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
+import { defaultEndTitle, endOutcomeMeaning } from './endNode'
 import { UndoHistory, WriteTracker, boardStep, combineUndo, nodeDeleteUndo, portRemoveUndo, quoted, restoreBlocker, undoOutcomeMessage, type UndoDraft, type UndoStep } from './formationsUndo'
 import { NOTE_CARDS, NoteLayer, NOTES_MODES, noteWindowAnchor, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
 import NoteWindow, { BOARD_NOTE_TARGET, noteWindowId } from './NoteWindow'
@@ -105,6 +106,8 @@ import type {
   BoardSummary,
   BoardValidation,
   CodeGateProfileDescriptor,
+  EndNode,
+  EndOutcome,
   FormationBrief,
   FormationNode,
   FormationPortDirection,
@@ -203,6 +206,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [tempWire, setTempWire] = useState<{ ax: number; ay: number; bx: number; by: number; kind: WirePath['kind']; moving: 'a' | 'b' } | null>(null)
   const [hoverPort, setHoverPort] = useState<string | null>(null)
   const [gateGhost, setGateGhost] = useState<{ x: number; y: number } | null>(null)
+  const [endGhost, setEndGhost] = useState<{ x: number; y: number } | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [missionEditor, setMissionEditor] = useState<MissionEditorState | null>(null)
   const [missionEditorSaving, setMissionEditorSaving] = useState(false)
@@ -581,8 +585,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return fallbackNodePosition(index)
   }, [displayLayoutByNode, dragPos])
 
-  const placementForNewNode = useCallback((x: number, y: number) => (
-    freeGridPosition({ x, y }, [...displayLayoutByNode.values()])
+  const placementForNewNode = useCallback((x: number, y: number, room?: { width: number; height: number }) => (
+    freeGridPosition({ x, y }, [...displayLayoutByNode.values()], room)
   ), [displayLayoutByNode])
 
   const nodeStates = useMemo(() => projectNodeStates(runEvents, activeRun), [runEvents, activeRun])
@@ -642,7 +646,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       if (laneDraft && laneDraft.connectionId === connectionId) return laneDraft.y
       return laneYFrom(layoutEdges.find(edge => edge.id === connectionId)?.lane)
     }
-    const titleOf = (nodeId: string) => [...(board.inputCards || []), ...board.formations, ...(board.gates || []), ...(board.tools || [])]
+    const titleOf = (nodeId: string) => [...(board.inputCards || []), ...board.formations, ...(board.gates || []), ...(board.tools || []), ...(board.ends || [])]
       .find(node => node.id === nodeId)?.title || nodeId
     const loopIds = loopConnectionIds(board.connections || [])
     const loops: LoopWire[] = []
@@ -1033,6 +1037,26 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return true
   }, [patchBoard, recordUndo])
 
+  // An End node is created at once, done unless asked; its outcome changes in place.
+  const createEndAt = useCallback(async (worldX: number, worldY: number, outcome: EndOutcome = 'done') => {
+    const placement = placementForNewNode(worldX, worldY, END_ROOM)
+    const before = boardRef.current
+    const result = await patchBoard({ createEnd: { outcome, title: defaultEndTitle(outcome), x: placement.x, y: placement.y } })
+    if (!before || !result) return
+    const created = findAddedByID(before.ends || [], result.board.ends || [])
+    if (created) recordUndo(`the new End node ${quoted(created.title, '')}`.trim(), boardStep({ deleteEnd: { id: created.id } }))
+  }, [patchBoard, placementForNewNode, recordUndo])
+
+  // Changing the outcome keeps a title the operator chose; a default title follows the outcome.
+  const setEndOutcome = useCallback(async (end: EndNode, outcome: EndOutcome): Promise<boolean> => {
+    const previous = boardRef.current?.ends?.find(item => item.id === end.id) || end
+    if (previous.outcome === outcome) return true
+    const title = previous.title === defaultEndTitle(previous.outcome) ? defaultEndTitle(outcome) : previous.title
+    if (!await patchBoard({ updateEnd: { id: end.id, outcome, title } })) return false
+    recordUndo(`the outcome of End node ${quoted(previous.title, 'untitled')}`, boardStep({ updateEnd: { id: end.id, outcome: previous.outcome, title: previous.title } }))
+    return true
+  }, [patchBoard, recordUndo])
+
   const createGateAt = useCallback((worldX: number, worldY: number) => {
     setGateEditor({ initial: newGateDraft(gateProfiles), x: worldX, y: worldY, saving: false })
   }, [gateProfiles])
@@ -1121,7 +1145,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const formation = current.formations.find(node => node.id === nodeId)
     const mission = current.inputCards?.find(node => node.id === nodeId)
     const gate = current.gates?.find(node => node.id === nodeId)
-    const previous = formation?.title ?? mission?.title ?? gate?.title
+    const end = current.ends?.find(node => node.id === nodeId)
+    const previous = formation?.title ?? mission?.title ?? gate?.title ?? end?.title
     if (previous === undefined) return false
     if (previous === title) return true
     const label = `the rename of ${quoted(previous, 'an untitled node')}`
@@ -1134,6 +1159,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     } else if (gate) {
       if (!await patchBoard({ updateGate: { id: nodeId, title } })) return false
       recordUndo(label, boardStep({ updateGate: { id: nodeId, title: previous } }))
+    } else if (end) {
+      if (!await patchBoard({ updateEnd: { id: nodeId, title } })) return false
+      recordUndo(label, boardStep({ updateEnd: { id: nodeId, title: previous } }))
     }
     return true
   }, [patchBoard, recordUndo])
@@ -1173,8 +1201,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     // A node whose restore the server would refuse is deleted only after the operator agrees it cannot be undone.
     const blocker = restoreBlocker(before, nodeId)
     if (blocker && !confirmed) {
-      const kind = patch.deleteFormation ? 'formation' : patch.deleteGate ? 'gate' : 'Input card'
-      const title = [...(before.inputCards || []), ...before.formations, ...(before.gates || [])].find(node => node.id === nodeId)?.title || ''
+      const kind = patch.deleteFormation ? 'formation' : patch.deleteGate ? 'gate' : patch.deleteEnd ? 'End node' : 'Input card'
+      const title = [...(before.inputCards || []), ...before.formations, ...(before.gates || []), ...(before.ends || [])].find(node => node.id === nodeId)?.title || ''
       setDeleteConfirm({ title, kind, reason: blocker, patch })
       return
     }
@@ -1213,6 +1241,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const deleteMissionOp = useCallback((mission: MissionNode) => {
     void deleteNodeOp(mission.id, { deleteInputCard: { id: mission.id } })
+  }, [deleteNodeOp])
+
+  const deleteEndOp = useCallback((end: EndNode) => {
+    void deleteNodeOp(end.id, { deleteEnd: { id: end.id } })
   }, [deleteNodeOp])
 
   const addPortOp = useCallback(async (formation: FormationNode, direction: FormationPortDirection) => {
@@ -1483,7 +1515,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const onViewportPointerDown = useCallback((event: ReactPointerEvent) => {
     if (event.button !== 0) return
     const target = event.target as HTMLElement
-    if (target.closest('.formation,.gatecard,.missioncard,.toolcard,.zoomctl,.run-banner')) return
+    if (target.closest('.formation,.gatecard,.missioncard,.toolcard,.endcard,.zoomctl,.run-banner')) return
     const pan = { startX: event.clientX, startY: event.clientY, originX: viewRef.current.x, originY: viewRef.current.y }
     interactionOwner.begin({
       kind: 'pan',
@@ -1584,7 +1616,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // The run bar's phrase centres its node, then opens the node's window beside the centred card.
   const locateAndOpenNode = useCallback((nodeId: string) => {
     const current = boardRef.current
-    const openable = Boolean(current && [...(current.inputCards || []), ...current.formations, ...(current.gates || [])].some(node => node.id === nodeId))
+    const openable = Boolean(current && [...(current.inputCards || []), ...current.formations, ...(current.gates || []), ...(current.ends || [])].some(node => node.id === nodeId))
     // In Flow, bring the step's row into view and open its window beside the row's title.
     const title = boardView === 'flow'
       ? document.querySelector<HTMLElement>(`[data-flow-node="${nodeId.replace(/["\\]/g, '\\$&')}"] .flow-title`)
@@ -1713,7 +1745,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         if (!drag.moved) {
           // A click without a drag opens the node where it can be read and edited.
           const current = boardRef.current
-          if (current && [...(current.inputCards || []), ...current.formations, ...(current.gates || [])].some(node => node.id === drag.id)) openNodeWindow(drag.id)
+          if (current && [...(current.inputCards || []), ...current.formations, ...(current.gates || []), ...(current.ends || [])].some(node => node.id === drag.id)) openNodeWindow(drag.id)
           return
         }
         const scale = viewRef.current.scale || 1
@@ -1784,7 +1816,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           } else {
             // Dropped on empty canvas inside the viewport → spawn a judge there (reference just-works).
             const rect = viewportRef.current?.getBoundingClientRect()
-            const overCard = (pointer.target as HTMLElement | null)?.closest?.('.formation,.gatecard,.missioncard,.toolcard,.ctxmenu,.pop')
+            const overCard = (pointer.target as HTMLElement | null)?.closest?.('.formation,.gatecard,.missioncard,.toolcard,.endcard,.ctxmenu,.pop')
             const inView = rect && pointer.clientX > rect.left && pointer.clientX < rect.right && pointer.clientY > rect.top && pointer.clientY < rect.bottom
             if (!overCard && inView) {
               const w = screenToWorld(pointer.clientX, pointer.clientY)
@@ -1946,6 +1978,26 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setGateGhost({ x: event.clientX, y: event.clientY })
   }, [createGateAt, interactionOwner, screenToWorld])
 
+  const beginEndToken = useCallback((event: ReactPointerEvent) => {
+    if (event.button !== 0) return
+    if (!boardRef.current) return
+    event.preventDefault()
+    interactionOwner.begin({
+      kind: 'gate',
+      pointerId: event.pointerId,
+      project: pointer => setEndGhost({ x: pointer.clientX, y: pointer.clientY }),
+      finalize: pointer => {
+        const rect = viewportRef.current?.getBoundingClientRect()
+        if (rect && pointer.clientX >= rect.left && pointer.clientX <= rect.right && pointer.clientY >= rect.top && pointer.clientY <= rect.bottom) {
+          const w = screenToWorld(pointer.clientX, pointer.clientY)
+          void createEndAt(w.x, w.y)
+        }
+      },
+      cancel: () => setEndGhost(null),
+    })
+    setEndGhost({ x: event.clientX, y: event.clientY })
+  }, [createEndAt, interactionOwner, screenToWorld])
+
   const gateHasJudge = useCallback((gateId: string): boolean => {
     return (boardRef.current?.connections || []).some(connection =>
       connection.from === `${gateId}:judge` || connection.to === `${gateId}:judge`)
@@ -2032,6 +2084,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     ])
   }, [deleteGateOp, detachJudge, gateHasJudge, openJudgePicker, openMenu])
 
+  const endMenu = useCallback((event: ReactMouseEvent<HTMLElement>, end: EndNode) => {
+    const other: EndOutcome = end.outcome === 'rejected' ? 'done' : 'rejected'
+    openMenu(event, 'End node actions', [
+      { label: other === 'rejected' ? 'End rejected instead' : 'End done instead', action: () => void setEndOutcome(end, other) },
+      { label: 'Delete End node', destructive: true, action: () => deleteEndOp(end) },
+    ])
+  }, [deleteEndOp, openMenu, setEndOutcome])
+
   const missionMenu = useCallback((event: ReactMouseEvent<HTMLElement>, mission: MissionNode) => {
     openMenu(event, 'Input card actions', [
       { label: 'Start mission', action: () => setStartMission(mission) },
@@ -2056,7 +2116,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const canvasMenu = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
-    if (target.closest('.formation,.gatecard,.missioncard,.toolcard,.ctxmenu,.pop,.run-banner,.zoomctl')) return
+    if (target.closest('.formation,.gatecard,.missioncard,.toolcard,.endcard,.ctxmenu,.pop,.run-banner,.zoomctl')) return
     if ((target as Element).closest?.('path')) return
     event.preventDefault()
     event.stopPropagation()
@@ -2072,9 +2132,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         { label: 'Peer formation', action: () => void createFormationAt('peer', 'New peers', w.x, w.y) },
         { label: 'Orchestrated formation', action: () => void createFormationAt('orchestrated', 'New desk', w.x, w.y) },
         { label: 'Gate', action: () => void createGateAt(w.x, w.y) },
+        { label: 'End node · done', action: () => void createEndAt(w.x, w.y, 'done') },
+        { label: 'End node · rejected', action: () => void createEndAt(w.x, w.y, 'rejected') },
       ],
     })
-  }, [createFormationAt, createGateAt, createMissionAt, screenToWorld])
+  }, [createEndAt, createFormationAt, createGateAt, createMissionAt, screenToWorld])
 
   // ----- render helpers -----
   const renderSlot = (formation: FormationNode, slot: FormationSlot, badge?: number) => {
@@ -2120,6 +2182,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       ...(board.formations || []).map(node => ({ id: node.id, title: node.title, kind: 'Formation' })),
       ...(board.gates || []).map(node => ({ id: node.id, title: node.title || 'Gate', kind: 'Gate' })),
       ...(board.tools || []).map(node => ({ id: node.id, title: node.title, kind: 'Tool' })),
+      ...(board.ends || []).map(node => ({ id: node.id, title: node.title, kind: 'End node' })),
     ]
   }, [board])
 
@@ -2380,6 +2443,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return board.formations?.find(node => node.id === nodeId)?.title
       || (gate ? gate.title || gate.kinds.map(gateKindLabel).join(' · ') || 'Gate' : '')
       || board.inputCards?.find(node => node.id === nodeId)?.title
+      || board.ends?.find(node => node.id === nodeId)?.title
       || ''
   })()
   const nodeAttempts = useMemo(() => projectNodeAttempts(runEvents), [runEvents])
@@ -2414,6 +2478,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     assignSlot,
     updateGate: (gate, draft) => updateGateFields(gate.id, draft),
     setGateFiles: (gate, files) => setGateFiles(gate.id, files),
+    setEndOutcome,
     attachJudge,
     detachJudge,
     openNode: openNodeWindow,
@@ -2423,7 +2488,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
       setInspectedNodeId(nodeId)
     },
-  }), [assignSlot, attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, renameNode, saveBrief, saveExecution, setGateFiles, updateGateFields, updateMissionFields])
+  }), [assignSlot, attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, renameNode, saveBrief, saveExecution, setEndOutcome, setGateFiles, updateGateFields, updateMissionFields])
 
   const cockpit = (
     <div className="fmx" data-testid="formations-view" data-cockpit="d7">
@@ -2450,6 +2515,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         <div className="gatetoken" title="Drag onto the canvas to drop a gate" data-testid="gate-token" onPointerDown={beginGateToken}>
           {GATE_SVG}
           Gate
+        </div>
+        <div className="gatetoken endtoken" title="Drag onto the canvas to end a path on purpose" data-testid="end-token" onPointerDown={beginEndToken}>
+          {END_SVG}
+          End
         </div>
         <div className="spacer" />
         <CanvasLegend />
@@ -2627,7 +2696,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 <div className="empty-title">No missions yet</div>
                 <div className="empty-copy">Create a mission from the top bar to start sketching it.</div>
               </div>
-            ) : (board.inputCards || []).length + board.formations.length + (board.gates || []).length + (board.tools || []).length === 0 ? (
+            ) : (board.inputCards || []).length + board.formations.length + (board.gates || []).length + (board.tools || []).length + (board.ends || []).length === 0 ? (
               <div className="empty-board" data-testid="formations-empty-board">
                 <div className="empty-title">This mission is empty</div>
                 <div className="empty-copy">Add an Input card, a formation, a Gate or a Tool to sketch the workflow.</div>
@@ -2891,6 +2960,50 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                       )
                     })}
                   </div>
+                </div>
+              )
+            })}
+
+            {(board?.ends || []).map((end, index) => {
+              const nodeIndex = index
+                + (board?.inputCards?.length || 0)
+                + (board?.formations?.length || 0)
+                + (board?.gates?.length || 0)
+                + (board?.tools?.length || 0)
+              const pos = positionOf(end.id, nodeIndex)
+              const state = nodeStates.get(end.id)
+              const inputEndpoint = `${end.id}:in`
+              const incoming = (board?.connections || []).filter(connection => connection.to === inputEndpoint)
+              // One route in can be picked up and moved like any wire end; with several, grab the wire itself.
+              const single = incoming.length === 1 ? incoming[0] : undefined
+              return (
+                <div
+                  key={end.id}
+                  className={`endcard end-${end.outcome}${state === 'done' || state === 'failed' ? ` ${state}` : ''}${locatedNodeId === end.id ? ' located' : ''}${noteByNode.has(end.id) ? ' has-note' : ''}${draftClass(end.id)}`}
+                  data-node={end.id}
+                  data-end={end.id}
+                  data-testid={`end-node-${end.id}`}
+                  title={endOutcomeMeaning(end.outcome)}
+                  style={{ left: pos.x, top: pos.y }}
+                  onPointerDown={event => beginNodeDrag(event, end.id, nodeIndex)}
+                  onContextMenu={event => endMenu(event, end)}
+                >
+                  {renderNotePin(end.id, end.title || 'End')}
+                  {renderDraftMarker(end.id)}
+                  <span
+                    className={`port pin${hoverPort === inputEndpoint ? ' snaptarget' : ''}${incoming.length ? ' has' : ''}`}
+                    data-port-in={inputEndpoint}
+                    data-reconnect-id={single?.id}
+                    data-reconnect-from={single?.from}
+                    title="Routes that end here; any number may"
+                    onPointerDown={single ? event => beginReconnect(event, single) : undefined}
+                    onMouseDown={single ? event => beginReconnect(event, single) : undefined}
+                  />
+                  <span className="eico">{END_SVG}</span>
+                  <span className="emeta">
+                    <span className="eeyebrow">End · {end.outcome}</span>
+                    {renderNodeTitle(end.title, 'etitle', 'End', 'span')}
+                  </span>
                 </div>
               )
             })}
@@ -3204,6 +3317,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       ) : null}
       {gateGhost ? (
         <div className="gateghost" style={{ left: gateGhost.x, top: gateGhost.y }}>{GATE_SVG}</div>
+      ) : null}
+      {endGhost ? (
+        <div className="gateghost endghost" style={{ left: endGhost.x, top: endGhost.y }}>{END_SVG}</div>
       ) : null}
     </div>
   )

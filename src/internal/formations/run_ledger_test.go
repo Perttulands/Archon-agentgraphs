@@ -281,7 +281,12 @@ effort = "medium"
 id = "edge_mission_research"
 from = "mis_showcase:out"
 to = "fmn_research:port_research_in"
-`
+
+[[connection]]
+id = "edge_research_done"
+from = "fmn_research:port_research_out"
+to = "end_done:in"
+` + branchingBoardEnds()
 }
 
 func readRunEvents(t *testing.T, path string) []RunEvent {

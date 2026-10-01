@@ -1,4 +1,4 @@
-import type { BoardDocument, FormationNode, GateNode, MissionNode, ToolNode } from '../components/formationsTypes'
+import type { BoardDocument, EndOutcome, FormationNode, GateNode, MissionNode, ToolNode } from '../components/formationsTypes'
 
 /**
  * A board as an ordered sequence: each mission's steps numbered in the order a
@@ -11,14 +11,14 @@ import type { BoardDocument, FormationNode, GateNode, MissionNode, ToolNode } fr
  * judge chain as a step, and numbers a node once, where it is first reached.
  */
 
-type Board = Pick<BoardDocument, 'connections' | 'formations'> & Partial<Pick<BoardDocument, 'inputCards' | 'gates' | 'tools'>>
+type Board = Pick<BoardDocument, 'connections' | 'formations'> & Partial<Pick<BoardDocument, 'inputCards' | 'gates' | 'tools' | 'ends'>>
 
 export type FlowTarget =
   | { kind: 'step'; nodeId: string; number: number | null; title: string; back: boolean }
-  /** An unwired output or pass: the run ends here. */
-  | { kind: 'end' }
-  /** An unwired fail: the run blocks here. */
-  | { kind: 'blocks' }
+  /** An End node: this path ends there, done or rejected. */
+  | { kind: 'end'; nodeId: string; title: string; outcome: EndOutcome }
+  /** A route not wired yet, which a draft may hold: it leads nowhere. */
+  | { kind: 'nowhere' }
 
 export type GateDecider = 'you' | 'judge' | 'code'
 
@@ -75,6 +75,7 @@ export function buildFlow(board: Board): FlowModel {
   const formationById = new Map(board.formations.map(node => [node.id, node]))
   const gateById = new Map(gates.map(node => [node.id, node]))
   const toolById = new Map(tools.map(node => [node.id, node]))
+  const endById = new Map((board.ends || []).map(node => [node.id, node]))
   const titleOf = (id: string) => formationById.get(id)?.title ?? gateById.get(id)?.title ?? toolById.get(id)?.title ?? missions.find(node => node.id === id)?.title ?? id
 
   const judgeOf = new Map<string, string>()
@@ -109,6 +110,8 @@ export function buildFlow(board: Board): FlowModel {
 
   const targets = (fromNumber: number, routes: typeof connections): FlowTarget[] => routes.map(route => {
     const nodeId = nodeOf(route.to)
+    const end = endById.get(nodeId)
+    if (end) return { kind: 'end', nodeId, title: end.title, outcome: end.outcome }
     const number = numbers.get(nodeId) ?? null
     return { kind: 'step', nodeId, number, title: titleOf(nodeId), back: number !== null && number <= fromNumber }
   })
@@ -124,14 +127,14 @@ export function buildFlow(board: Board): FlowModel {
         kind: 'gate', id, number, node: gate,
         deciders: DECIDERS.filter(([kind]) => gate.kinds.includes(kind)).map(([, decider]) => decider),
         judges: judgeChain(board, id).map(judge => formationById.get(judge)).filter((node): node is FormationNode => Boolean(node)),
-        pass: pass.length ? pass : [{ kind: 'end' }],
-        fail: fail.length ? fail : [{ kind: 'blocks' }],
+        pass: pass.length ? pass : [{ kind: 'nowhere' }],
+        fail: fail.length ? fail : [{ kind: 'nowhere' }],
       }
     }
     const next = targets(number, workRoutes(id))
     const formation = formationById.get(id)
-    if (formation) return { kind: 'formation', id, number, node: formation, next: next.length ? next : [{ kind: 'end' }] }
-    return { kind: 'tool', id, number, node: toolById.get(id) as ToolNode, next: next.length ? next : [{ kind: 'end' }] }
+    if (formation) return { kind: 'formation', id, number, node: formation, next: next.length ? next : [{ kind: 'nowhere' }] }
+    return { kind: 'tool', id, number, node: toolById.get(id) as ToolNode, next: next.length ? next : [{ kind: 'nowhere' }] }
   }
 
   const sections: FlowSection[] = missions.map((mission, index) => ({

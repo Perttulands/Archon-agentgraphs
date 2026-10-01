@@ -34,6 +34,8 @@ harness settings. Archon keeps only what is current.
 - A **gate** has a criterion and kinds `code`, `formation` and `human`, run in
   that order and stopping at the first failure. Its ports are `in`, `pass`,
   `fail` and `judge`.
+- An **End node** ends a path on purpose, with outcome `done` or `rejected`.
+  Its only port is `in`; any number of routes may lead into it.
 - A **judge chain** is the formations wired from a gate's `judge` port back to it.
   A **pushback edge** is a gate's `fail` wired back to work; it carries the
   verdict as feedback and starts a bounded next attempt.
@@ -174,6 +176,9 @@ archon $S formation wire "$M" "$GATE:fail" "$WORK:$WORK_IN" --json
 archon $S formation wire "$M" "$GATE:pass" "$NEXT:$NEXT_IN" --json
 ```
 
+Every `pass` and `fail` must lead somewhere: to work, another gate or an End
+node (next section).
+
 A judge's brief must require exactly one fenced `archon-verdict` block with
 exactly `verdict` (`pass` or `fail`), `reason` (string) and `evidence` (array of
 strings), besides its normal `archon-outputs` block. A missing, duplicate or
@@ -185,12 +190,30 @@ keeps the code kind.
 
 ### Ending paths
 
-A path ends where an output or a gate's `pass` has no outgoing wire. A run
-succeeds only when nothing else can still run: every formation has produced
-output since its last input, every gate has evaluated its last input, and no
-human request is open. So a pass with no route finishes only once every other
-reachable branch has run, and a fail with no route leaves a visible block. Wire
-every `fail` somewhere.
+Every route leads somewhere: each formation output and each gate `pass` and
+`fail` goes to a step, a gate or an **End node**. End a path on purpose with an
+End node, outcome `done` (the default) or `rejected`:
+
+```bash
+DONE=$(archon $S end create "$M" --json | jq -r .end.id)
+REJECTED=$(archon $S end create "$M" --outcome rejected --json | jq -r .end.id)
+archon $S formation wire "$M" "$NEXT:$NEXT_OUT" "$DONE:in" --json
+archon $S formation wire "$M" "$SIGNOFF:pass" "$DONE:in" --json
+archon $S formation wire "$M" "$SIGNOFF:fail" "$REJECTED:in" --json
+```
+
+Several routes may share one End node. `end update "$M" "$END" --title <t>
+--outcome <o>` and `end delete "$M" "$END"` change or remove one.
+
+A run finishes when every path has ended and nothing else can still run: every
+formation has produced output since its last input, every gate has evaluated
+its last input, and no human request is open. It succeeds unless a path ended
+at a `rejected` End node; then it fails (`run_failed`, code `path_rejected`)
+with the reason of the gate verdict that routed there. Other branches still
+run to their own ends first; a join that rejection starved of an input does not
+hold the run open. A route that leads nowhere is a validation error,
+"Brief sign-off's pass route leads nowhere: wire it to a step or an End node",
+and admission refuses the run.
 
 ### Step duration
 
@@ -229,8 +252,10 @@ archon $S mission arrange "$M" --json
 ```
 
 Reach zero errors before running. Findings name node IDs: unstaffed slots,
-incomplete gates, an unwired Input card, a mission with several Input cards,
-`duplicate_slot_id`. A rejected `mission run` prints the same findings (HTTP 422
+incomplete gates, routes that lead nowhere (`route_leads_nowhere`), an unwired
+Input card, a mission with several Input cards, `duplicate_slot_id`. Warnings
+name nodes no path from the Input card reaches (`unreachable_node`); wire a
+route into them or delete them. A rejected `mission run` prints the same findings (HTTP 422
 `RUN_ADMISSION_FAILED`) and records no run.
 
 To import an example mission or smoke-test routing on a lab daemon, read
@@ -330,7 +355,9 @@ status, then take
 `ARCHON_GATE_ID` and `ARCHON_REQUESTED_SEQ` from the same `.data.waitingGates`
 entry. `run gates "$ARCHON_RUN_ID"` lists them; `gate request "$ARCHON_RUN_ID"
 "$ARCHON_GATE_ID"` shows the question, the input and where each verdict leads:
-the targets, the attempt each would start and, only when the run set a cap, that
+the targets (an End node target means "this path ends (done)" or "(rejected)",
+`endsRun` says the run then ends, and `runFails` that it fails, now or once its other work ends), the
+attempt each would start and, only when the run set a cap, that
 cap (`maxAttempts`, `dispatches`) and a `limit` entry if taking the route would
 exceed it.
 

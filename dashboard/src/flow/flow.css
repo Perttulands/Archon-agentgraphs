@@ -56,6 +56,8 @@
 }
 .fmx .flow-routes.route-pass .flow-route { color: var(--sage); }
 .fmx .flow-routes.route-fail .flow-route { color: var(--terra-d); }
+/* A route a draft has not wired yet: the same warning as the canvas draft marker. */
+.fmx .flow-nowhere { color: var(--gold); font-style: italic; }
 .fmx .flow-link, .fmx .flow-note, .fmx .flow-file {
   border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
   text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px;

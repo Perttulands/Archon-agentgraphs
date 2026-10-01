@@ -861,7 +861,12 @@ to = "fmn_ship:port_ship_in"
 id = "edge_gate_fail_work"
 from = "gate_lint:fail"
 to = "fmn_work:port_work_in"
-`
+
+[[connection]]
+id = "edge_ship_done"
+from = "fmn_ship:port_ship_out"
+to = "end_done:in"
+` + branchingBoardEnds()
 }
 
 // attemptOutputExecutor returns different node output per attempt so a machine

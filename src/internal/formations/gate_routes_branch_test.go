@@ -1,6 +1,7 @@
 package formations
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -10,9 +11,9 @@ func branchOutputData(port string) map[string]any {
 	return formationOutputEventData(FormationExecutionResult{Status: "done", Text: "output", Outputs: map[string]FormationOutputPayload{port: {Text: "output"}}})
 }
 
-// Approving a gate with nothing downstream ends the run only when nothing
-// else can still run; with another branch still to run, nothing follows the
-// gate and the run goes on (form-n7u.7 review).
+// Approving a gate whose pass ends its path at an End node ends the run only
+// when nothing else can still run; with another branch still to run, the path
+// ends and the run goes on (form-n7u.7 review, form-o7p.10).
 func TestHumanGateRoutesOnABranchingBoardEndOnlyWhenNothingElseCanRun(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	createS4Persona(t, personas, "scout")
@@ -48,9 +49,13 @@ func TestHumanGateRoutesOnABranchingBoardEndOnlyWhenNothingElseCanRun(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
+	doneTarget := []GateRouteTarget{{NodeID: "end_done", Title: "Done", Kind: "end", Outcome: EndOutcomeDone}}
 	approve := HumanGateRoutes(frozen, events, "gate_review")[0]
-	if approve.EndsRun || !approve.NothingFollows || len(approve.Targets) != 0 {
-		t.Fatalf("approve with B and C still to run = %+v, want nothing follows", approve)
+	if approve.EndsRun || approve.RunFails || !reflect.DeepEqual(approve.Targets, doneTarget) {
+		t.Fatalf("approve with B and C still to run = %+v, want the path to end done while the run goes on", approve)
+	}
+	if reject := HumanGateRoutes(frozen, events, "gate_review")[1]; reject.EndsRun || reject.Targets[0].Outcome != EndOutcomeRejected {
+		t.Fatalf("reject with B and C still to run = %+v", reject)
 	}
 
 	// With B and C done, approving is the end of the run.
@@ -65,8 +70,11 @@ func TestHumanGateRoutesOnABranchingBoardEndOnlyWhenNothingElseCanRun(t *testing
 		done = append(done, event)
 	}
 	approve = HumanGateRoutes(frozen, done, "gate_review")[0]
-	if !approve.EndsRun || approve.NothingFollows {
+	if !approve.EndsRun || approve.RunFails {
 		t.Fatalf("approve with every branch done = %+v, want it to end the run", approve)
+	}
+	if reject := HumanGateRoutes(frozen, done, "gate_review")[1]; !reject.EndsRun || !reject.RunFails {
+		t.Fatalf("reject with every branch done = %+v, want it to end and fail the run", reject)
 	}
 
 	// Another gate still waiting for the operator keeps the run open.

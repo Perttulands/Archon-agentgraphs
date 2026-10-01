@@ -100,6 +100,15 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 	patch("createGate", map[string]any{"title": "Review", "kinds": []string{"human"}, "criterion": "Accept the lab result"})
 	gate := doc.Board.Gates[0].ID
 	patch("wireConnection", map[string]any{"from": work.ID + ":" + work.Outputs[0].ID, "to": gate + ":in"})
+	// Every route leads somewhere: the gate's pass ends the path done and its
+	// fail ends it rejected (form-o7p.10).
+	patch("createEnd", map[string]any{"outcome": "done"})
+	patch("createEnd", map[string]any{"outcome": "rejected"})
+	if len(doc.Board.Ends) != 2 || doc.Board.Ends[0].Title != "Done" || doc.Board.Ends[1].Outcome != "rejected" {
+		t.Fatalf("End nodes = %+v", doc.Board.Ends)
+	}
+	patch("wireConnection", map[string]any{"from": gate + ":pass", "to": doc.Board.Ends[0].ID + ":in"})
+	patch("wireConnection", map[string]any{"from": gate + ":fail", "to": doc.Board.Ends[1].ID + ":in"})
 	var layout struct {
 		Layout *formations.LayoutDocument `json:"layout"`
 	}

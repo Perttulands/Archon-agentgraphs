@@ -1328,7 +1328,7 @@ describe('FormationsCockpit reference parity', () => {
     const viewport = container.querySelector('.viewport') as HTMLElement
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
     const menu = await screen.findByRole('menu', { name: 'New' })
-    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Input card', 'Solo formation', 'Peer formation', 'Orchestrated formation', 'Gate'])
+    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Input card', 'Solo formation', 'Peer formation', 'Orchestrated formation', 'Gate', 'End node · done', 'End node · rejected'])
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Input card' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Add Input card' })
@@ -1638,11 +1638,11 @@ describe('FormationsCockpit reference parity', () => {
     expect(patches.filter(patch => !patch.url.endsWith('/layout'))).toEqual([])
   })
 
-  it('states routes in words, follows them to other windows, and says where an unwired pass ends the run', async () => {
+  it('states routes in words, follows them to other windows, and says a route not wired yet leads nowhere', async () => {
     await renderCockpit()
     const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
     const routes = within(within(review).getByRole('region', { name: 'Connections' })).getAllByRole('listitem').map(item => item.textContent)
-    expect(routes).toEqual(['Fed by 1 Frame', 'Judged by Judge', 'Pass → run ends here', 'Fail → the run blocks here'])
+    expect(routes).toEqual(['Fed by 1 Frame', 'Judged by Judge', 'Pass → leads nowhere: wire it to a step or an End node', 'Fail → leads nowhere: wire it to a step or an End node'])
     fireEvent.click(within(review).getByRole('button', { name: 'Judged by Judge' }))
     const judge = await screen.findByRole('dialog', { name: 'Formation · Judge' })
     expect(within(judge).getByText('Judge of 2 Review · solo')).toBeInTheDocument()
@@ -2067,7 +2067,7 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.contextMenu(container.querySelector('.viewport') as HTMLElement, { clientX: 300, clientY: 300 })
     const create = await screen.findByRole('menu', { name: 'New' })
-    expect(within(create).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Solo formation', 'Peer formation', 'Orchestrated formation', 'Gate'])
+    expect(within(create).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Solo formation', 'Peer formation', 'Orchestrated formation', 'Gate', 'End node · done', 'End node · rejected'])
   })
 
   it('offers one solo choice per staffed slot so no agent is dropped silently', async () => {
@@ -2817,8 +2817,8 @@ describe('FormationsCockpit reference parity', () => {
     expect(frame).toHaveTextContent('Next→ 2 Review')
     const review = within(flow).getByTestId('flow-step-gate_review')
     expect(review).toHaveTextContent('Decided by a code check')
-    expect(review).toHaveTextContent('Pass→ run ends')
-    expect(review).toHaveTextContent('Fail→ the run blocks')
+    expect(review).toHaveTextContent('Pass→ leads nowhere: wire it to a step or an End node')
+    expect(review).toHaveTextContent('Fail→ leads nowhere: wire it to a step or an End node')
     expect(within(review).getByRole('list', { name: 'Judges of Review' })).toHaveTextContent('Judge Judge')
     expect(within(flow).queryByTestId('flow-step-fmn_judge')).toBeNull()
 
@@ -2940,7 +2940,7 @@ describe('FormationsCockpit reference parity', () => {
       if (String(input) === '/api/runs/run_legacy/gates/gate_review/request') {
         return Promise.resolve({ ok: true, headers: { get: () => null }, text: () => Promise.resolve(''), json: () => Promise.resolve({ success: true, data: { request: {
           gateId: 'gate_review', requestedSeq: 4, criterion: 'Review the frame', input: { fromNodeId: 'fmn_frame', text: 'frame', truncated: false },
-          routes: [{ verdict: 'pass', targets: [], endsRun: true }, { verdict: 'fail', targets: [{ nodeId: 'fmn_frame', title: 'Frame', kind: 'formation', attempt: 2, maxAttempts: 2 }] }],
+          routes: [{ verdict: 'pass', targets: [{ nodeId: 'end_done', title: 'Done', kind: 'end', outcome: 'done' }], endsRun: true }, { verdict: 'fail', targets: [{ nodeId: 'fmn_frame', title: 'Frame', kind: 'formation', attempt: 2, maxAttempts: 2 }] }],
         } } }) })
       }
       return coordinator(input, init)

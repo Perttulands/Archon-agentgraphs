@@ -76,8 +76,8 @@ test('the answer window moves, names where the answer leads, and comes back from
   await page.goto('/')
   const answer = page.getByRole('dialog', { name: 'Answer gate Disconnected gate' })
   await expect(answer.getByRole('button', { name: 'Approve', exact: true })).toBeVisible()
-  await expect(answer.getByRole('list', { name: 'Where your answer leads' })).toContainText('Approve: nothing follows this gate.')
-  await expect(answer.getByRole('list', { name: 'Where your answer leads' })).toContainText('Send back blocks the run: this gate has no send-back route.')
+  await expect(answer.getByRole('list', { name: 'Where your answer leads' })).toContainText('Approve: this path ends (done); the run goes on with its other work.')
+  await expect(answer.getByRole('list', { name: 'Where your answer leads' })).toContainText('Send back: this path ends (rejected); the run goes on with its other work.')
 
   // It opens clear of the gate it answers.
   const gate = (await page.locator('[data-node="loose"]').boundingBox())!
