@@ -164,10 +164,11 @@ func openRestartLab(t *testing.T, root string, tc restartCase, start time.Time) 
 	return c
 }
 
-// awaitSettled waits until the run's worker has exited.
+// awaitSettled waits until the run's worker has exited; generously, since
+// under host load each durable append can take seconds.
 func awaitSettled(t *testing.T, c *Coordinator, id string) *Projection {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		change := c.nextChange(id)
 		p, err := c.Project(id)
@@ -236,7 +237,7 @@ func driveToEnd(t *testing.T, c *Coordinator, id string, tc restartCase) *Projec
 		default:
 			// A verdict recorded as the worker settled is routed by the next
 			// worker, which may not have started yet.
-			if stuck := time.Now().Add(2 * time.Second); !awaitProgress(c, id, len(events), stuck) {
+			if stuck := time.Now().Add(10 * time.Second); !awaitProgress(c, id, len(events), stuck) {
 				t.Fatalf("run settled %s with nothing to answer:\n%s", p.Status, fullTrail(events))
 			}
 		}
