@@ -32,7 +32,7 @@ func (s *Store) ArrangeLayout(slug string, opts WriteOptions) (*LayoutDocument, 
 		if err != nil {
 			return err
 		}
-		board, err := parseBoardForWrite(raw)
+		board, err := parseBoard(raw)
 		if err != nil {
 			return err
 		}

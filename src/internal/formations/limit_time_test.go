@@ -420,7 +420,7 @@ func TestALabStepTakesItsWorkTimeAndRecordsItsWarnings(t *testing.T) {
 		seconds, warn int
 		want          string
 	}{
-		{"warned and finished", 3, 2, RunStatusSucceeded},
+		{"warned and finished", 10, 9, RunStatusSucceeded},
 		{"stopped at its time", 1, 0, RunStatusBlocked},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

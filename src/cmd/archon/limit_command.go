@@ -162,7 +162,7 @@ func runLimitCreate(store *formations.Store, args []string, stdout, stderr io.Wr
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *flags.jsonOut, "mission", flags.fs.Arg(0))
 	}
 	target, err := resolveLimitTarget(board, *flags.target)
 	if err != nil {
@@ -199,7 +199,7 @@ func runLimitUpdate(store *formations.Store, args []string, stdout, stderr io.Wr
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *flags.jsonOut, "mission", flags.fs.Arg(0))
 	}
 	limitID, err := resolveLimitSelector(board, flags.fs.Arg(1))
 	if err != nil {
@@ -272,7 +272,7 @@ func runLimitDelete(store *formations.Store, args []string, stdout, stderr io.Wr
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	limitID, err := resolveLimitSelector(board, fs.Arg(1))
 	if err != nil {

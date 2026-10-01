@@ -81,7 +81,6 @@ type Event struct {
 }
 type Projection struct {
 	*formations.RunStatusProjection
-	ProjectionVersion string `json:"projectionVersion"`
 	// HumanChannel is the run's frozen mission channel: notify or session.
 	HumanChannel string        `json:"humanChannel"`
 	WaitingGates []GateRequest `json:"waitingGates"`
@@ -633,7 +632,7 @@ func (c *Coordinator) runHumanChannel(runID string, events []formations.RunEvent
 }
 
 func project(status *formations.RunStatusProjection, events []formations.RunEvent) *Projection {
-	p := &Projection{RunStatusProjection: status, ProjectionVersion: "standalone-trusted-v1", HumanChannel: formations.HumanChannelNotify, WaitingGates: []GateRequest{}, OnCallSeats: []OnCallSeat{}, Events: []Event{}}
+	p := &Projection{RunStatusProjection: status, HumanChannel: formations.HumanChannelNotify, WaitingGates: []GateRequest{}, OnCallSeats: []OnCallSeat{}, Events: []Event{}}
 	for _, raw := range events {
 		e := Event{Seq: raw.Seq, Type: raw.Type, NodeID: raw.NodeID, SlotID: raw.SlotID, GateID: raw.GateID, Attempt: raw.Attempt}
 		e.Status, _ = raw.Data["status"].(string)

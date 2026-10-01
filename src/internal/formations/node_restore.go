@@ -266,7 +266,7 @@ func planRestoredConnections(raw []byte, current *BoardDocument, nodeID string, 
 // once the restored node or port is in withTarget. Each must touch the target
 // and still fit; a connection ID already in use gets a fresh one.
 func planRestoredWires(withTarget []byte, current *BoardDocument, requested []BoardConnection, touches func(from, to string) bool, target string) ([]BoardConnection, error) {
-	board, err := parseBoardForWrite(withTarget)
+	board, err := parseBoard(withTarget)
 	if err != nil {
 		return nil, err
 	}

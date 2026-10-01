@@ -234,7 +234,7 @@ func (s *Store) DeleteLimit(slug string, req LimitDeleteRequest, opts WriteOptio
 		if err != nil {
 			return err
 		}
-		current, err := parseBoardForWrite(raw)
+		current, err := parseBoard(raw)
 		if err != nil {
 			return err
 		}
@@ -257,7 +257,7 @@ func (s *Store) DeleteLimit(slug string, req LimitDeleteRequest, opts WriteOptio
 		if err := definition.writeAtomic(nextRaw); err != nil {
 			return err
 		}
-		board, err := parseBoardForWrite(nextRaw)
+		board, err := parseBoard(nextRaw)
 		if err != nil {
 			return err
 		}
@@ -349,56 +349,6 @@ func decodeLimitNodes(document map[string]any) ([]LimitNode, error) {
 		nodes = append(nodes, node)
 	}
 	return nodes, nil
-}
-
-func parseLimitNodes(raw []byte) []LimitNode {
-	var limits []LimitNode
-	var current *LimitNode
-	active := false
-	for _, line := range splitLines(raw) {
-		trimmed := strings.TrimSpace(line.body)
-		section, isSection := tomlLineSectionName(line)
-		switch {
-		case isSection && strings.HasPrefix(trimmed, "[[") && section == "limit":
-			limits = append(limits, LimitNode{})
-			current = &limits[len(limits)-1]
-			active = true
-			continue
-		case isTOMLHeader(line):
-			active = false
-			continue
-		}
-		if line.valueContinuation || !active || current == nil {
-			continue
-		}
-		key, value, ok := tomlKeyValue(line.body)
-		if !ok {
-			continue
-		}
-		switch key {
-		case "id":
-			current.ID = value
-		case "title":
-			current.Title = value
-		case "target":
-			current.Target = value
-		case "rounds", "seconds", "warnSeconds", "tokens":
-			var number int
-			if _, err := fmt.Sscanf(value, "%d", &number); err == nil {
-				switch key {
-				case "rounds":
-					current.Rounds = &number
-				case "seconds":
-					current.Seconds = &number
-				case "tokens":
-					current.Tokens = &number
-				default:
-					current.WarnSeconds = &number
-				}
-			}
-		}
-	}
-	return limits
 }
 
 func findLimit(board *BoardDocument, limitID string) (LimitNode, bool) {

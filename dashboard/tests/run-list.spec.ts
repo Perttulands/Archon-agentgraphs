@@ -10,7 +10,7 @@ const artifactRoot = '/srv/scratch/archon-state/.archon/artifacts/run_browser'
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
 const projection = (runId: string, status: string, final: boolean, extra: Record<string, unknown>) => ({
   runId, status, final, missionSlug: 'browser', missionId: 'brd_browser', missionRev: 1, inputCardId: 'mission', eventCount: 7,
-  epoch: 0, resumeAllowed: false, projectionVersion: 'standalone-trusted-v1', humanChannel: 'notify', waitingGates: [], onCallSeats: [], events: [], ...extra,
+  epoch: 0, resumeAllowed: false, humanChannel: 'notify', waitingGates: [], onCallSeats: [], events: [], ...extra,
 })
 const runs = [
   projection('run_browser', 'succeeded', true, { startedAt: ago(90), updatedAt: ago(86), startedBy: 'agent:driver',

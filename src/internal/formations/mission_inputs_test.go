@@ -62,10 +62,6 @@ func TestMissionInputsRoundTripThroughTOMLAndAuthoring(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(reread.Missions[0].Inputs, want) {
 		t.Fatalf("reread inputs = %+v (%v)", reread.Missions[0].Inputs, err)
 	}
-	// The line reader of a file strict decoding refuses reads them too.
-	if got := parseMissionNodes([]byte(updated.TOML))[0].Inputs; !reflect.DeepEqual(got, want) {
-		t.Fatalf("line reader inputs = %+v, want %+v", got, want)
-	}
 
 	for _, bad := range [][]MissionInput{
 		{{Name: "Topic"}},

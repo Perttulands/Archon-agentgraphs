@@ -632,13 +632,12 @@ func TestUpdateToolRejectsMalformedUnknownBoardTOMLWithoutMutation(t *testing.T)
 			slug := "tool-update-malformed-source"
 			boardRaw := toolAuthoringBoardFixture(slug, 3, true, toolUpdateTargetBlock()) + test.tail
 			writeFixture(t, store.BoardPath(slug), boardRaw)
-			before, err := store.ReadBoard(slug)
-			if err != nil {
-				t.Fatalf("inspection must expose malformed unknown source before authoring rejection: %v", err)
+			if _, err := store.ReadBoard(slug); err == nil || !strings.Contains(err.Error(), InvalidDefinitionSourceCode) {
+				t.Fatalf("reading a malformed mission = %v, want %s", err, InvalidDefinitionSourceCode)
 			}
 			title := "Must not publish"
 
-			_, err = store.UpdateTool(slug, ToolUpdateRequest{ToolID: "tool_target", Title: &title}, toolAuthoringAbsentOptions(before))
+			_, err := store.UpdateTool(slug, ToolUpdateRequest{ToolID: "tool_target", Title: &title}, rawToolOptions(boardRaw, 3, nil))
 			if err == nil || !strings.Contains(err.Error(), "invalid_mission_source") {
 				t.Fatalf("malformed unknown board source error = %v, want invalid_mission_source", err)
 			}

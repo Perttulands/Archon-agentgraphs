@@ -673,7 +673,7 @@ func runFormationCreate(store *formations.Store, args []string, stdout, stderr i
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	createX, createY, err := resolveCreateCoordinates(store, slug, fs, *x, *y)
 	if err != nil {
@@ -1020,7 +1020,7 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	createX, createY, err := resolveCreateCoordinates(store, slug, fs, *x, *y)
 	if err != nil {
@@ -1075,7 +1075,7 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	gateID, err := resolveGateSelector(board, fs.Arg(1))
 	if err != nil {
@@ -1286,7 +1286,7 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	if err := secondInputCard(board, fs.Arg(0)); err != nil {
 		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
@@ -1343,7 +1343,7 @@ func runMissionInspect(store *formations.Store, args []string, stdout, stderr io
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeMissionInspect(stdout, stderr, board, fs.Arg(1), *jsonOut)
 }
@@ -1396,7 +1396,7 @@ func runMissionWire(store *formations.Store, args []string, stdout, stderr io.Wr
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	missionID, rest, err := inputCardArgs(board, fs.Arg(0), fs.Args()[1:], 2)
 	if err != nil {
@@ -1444,7 +1444,7 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	missionID, _, err := inputCardArgs(board, fs.Arg(0), fs.Args()[1:], 1)
 	if err != nil {
@@ -2185,7 +2185,7 @@ func runBoardInspect(store *formations.Store, args []string, stdout, stderr io.W
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeBoardInspect(stdout, board, *jsonOut)
 }
@@ -2369,7 +2369,7 @@ func runBoardValidate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	report := formations.ValidateRunAdmission(board, formations.NewPersonaStore(formations.DefaultAgentsDir()), formations.RunAdmissionScope{})
 	if *jsonOut {
@@ -2440,7 +2440,7 @@ func runFormationList(store *formations.Store, args []string, stdout, stderr io.
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeFormationList(stdout, board, *jsonOut)
 }
@@ -2488,7 +2488,7 @@ func runFormationInspect(store *formations.Store, args []string, stdout, stderr 
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeFormationInspect(stdout, stderr, board, fs.Arg(1), *jsonOut)
 }

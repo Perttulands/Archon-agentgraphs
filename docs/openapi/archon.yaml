@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Archon
-  version: standalone-trusted-v1
-  description: Trusted-network coordinator and authoring API. JSON uses the success/timestamp/data envelope except for the raw theme document,
+  version: "1"
+  description: Archon's coordinator and authoring API. JSON uses the success/timestamp/data envelope except for the raw theme document,
     with error details on failure. No authentication. Static cockpit serving is optional. Authoring request
     details follow internal/api.go and agents.go; run projections are sanitized, and run evidence routes serve
     capped, confined content (ADR-0017).
@@ -1057,7 +1057,6 @@ components:
       - epoch
       - eventCount
       - resumeAllowed
-      - projectionVersion
       - humanChannel
       - waitingGates
       - onCallSeats
@@ -1128,8 +1127,6 @@ components:
           type: string
           format: date-time
           description: When the run's ledger last changed; a final run ended then.
-        projectionVersion:
-          const: standalone-trusted-v1
         humanChannel:
           enum:
           - notify

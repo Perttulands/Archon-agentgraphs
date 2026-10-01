@@ -713,17 +713,17 @@ func TestToolSchemaMigrationRejectsUnsafeLegacyShapesBeforeProducingCandidate(t 
 		{
 			name:     "unpaired Gate judge send path missing return",
 			raw:      replaceToolSchemaMigrationFixture(t, base, toolSchemaMigrationJudgeReturnBlock, ""),
-			wantCode: "legacy_judge_channel_requires_migration",
+			wantCode: FindingInvalidJudgeRelationship,
 		},
 		{
 			name:     "unpaired Gate judge return",
 			raw:      withoutJudgeBlocks(toolSchemaMigrationJudgeSendBlock, toolSchemaMigrationJudgeMidBlock),
-			wantCode: "legacy_judge_channel_requires_migration",
+			wantCode: FindingInvalidJudgeRelationship,
 		},
 		{
 			name:     "judge chain lacks formation kind",
 			raw:      replaceToolSchemaMigrationFixture(t, base, `kinds = ["human", "formation"]`, `kinds = ["human"]`),
-			wantCode: "legacy_judge_channel_requires_migration",
+			wantCode: FindingInvalidJudgeRelationship,
 		},
 		{
 			name: "formation kind lacks complete judge chain",
@@ -732,7 +732,7 @@ func TestToolSchemaMigrationRejectsUnsafeLegacyShapesBeforeProducingCandidate(t 
 				toolSchemaMigrationJudgeMidBlock,
 				toolSchemaMigrationJudgeReturnBlock,
 			),
-			wantCode: "legacy_judge_channel_requires_migration",
+			wantCode: FindingInvalidJudgeRelationship,
 		},
 		{
 			name: "malformed later Gate formation discriminator",
@@ -753,7 +753,7 @@ id = "edge_later_judge_return"
 from = "fmn_judge_a:port_judge_a_out"
 to = "gate_later_malformed:judge"
 `,
-			wantCode: "legacy_judge_channel_requires_migration",
+			wantCode: InvalidDefinitionSourceCode,
 		},
 		{
 			name: "multiple Gate judge sends",
@@ -763,7 +763,7 @@ id = "edge_judge_second_send"
 from = "gate_review:judge"
 to = "fmn_feedback:port_feedback_in"
 `,
-			wantCode: "legacy_judge_channel_requires_migration",
+			wantCode: FindingInvalidJudgeRelationship,
 		},
 		{
 			name: "multiple Gate judge returns",
@@ -773,7 +773,7 @@ id = "edge_judge_second_return"
 from = "fmn_feedback:port_feedback_out"
 to = "gate_review:judge"
 `,
-			wantCode: "legacy_judge_channel_requires_migration",
+			wantCode: FindingInvalidJudgeRelationship,
 		},
 		{
 			name: "non-Formation judge hop",
@@ -794,12 +794,12 @@ id = "edge_judge_nonformation_return"
 from = "gate_nonformation_hop:pass"
 to = "gate_review:judge"
 `,
-			wantCode: "legacy_judge_channel_requires_migration",
+			wantCode: FindingInvalidJudgeRelationship,
 		},
 		{
 			name:     "disconnected judge chain",
 			raw:      replaceToolSchemaMigrationFixture(t, base, toolSchemaMigrationJudgeMidBlock, ""),
-			wantCode: "legacy_judge_channel_requires_migration",
+			wantCode: FindingInvalidJudgeRelationship,
 		},
 		{
 			name: "cyclic judge chain",
@@ -809,7 +809,7 @@ id = "edge_judge_cycle"
 from = "fmn_judge_b:port_judge_b_out"
 to = "fmn_judge_a:port_judge_a_in"
 `,
-			wantCode: "legacy_judge_channel_requires_migration",
+			wantCode: FindingInvalidJudgeRelationship,
 		},
 		{
 			name: "output-side judge endpoint cross-use",
@@ -819,7 +819,7 @@ id = "edge_judge_cross_use"
 from = "fmn_judge_a:port_judge_a_out"
 to = "fmn_feedback:port_feedback_in"
 `,
-			wantCode: "legacy_judge_channel_requires_migration",
+			wantCode: FindingInvalidJudgeRelationship,
 		},
 		{
 			name: "input-side judge endpoint cross-use",
@@ -829,7 +829,7 @@ id = "edge_judge_side_entry"
 from = "fmn_feedback:port_feedback_out"
 to = "fmn_judge_b:port_judge_b_in"
 `,
-			wantCode: "legacy_judge_channel_requires_migration",
+			wantCode: FindingInvalidJudgeRelationship,
 		},
 	}
 

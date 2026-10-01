@@ -435,11 +435,11 @@ func TestCreateToolRejectsMalformedOrOrphanedOwnedLayoutSourceWithoutMutation(t 
 			layoutRaw := "schema = 1\nmissionId = \"brd_tool-layout-owned-source\"\nmissionRev = 2\n\n" + test.tail
 			writeFixture(t, store.BoardPath(slug), boardRaw)
 			writeFixture(t, store.LayoutPath(slug), layoutRaw)
-			board, layout := toolAuthoringReadPair(t, store, slug)
+			requireUnreadableLayout(t, store, slug)
 
-			_, err := store.CreateTool(slug, toolAuthoringCreateRequest(ToolPlacement{}), toolAuthoringPresentOptions(board, layout))
-			if err == nil || !strings.Contains(err.Error(), "invalid_layout_owned_source") {
-				t.Fatalf("malformed/orphaned owned layout error = %v, want invalid_layout_owned_source", err)
+			_, err := store.CreateTool(slug, toolAuthoringCreateRequest(ToolPlacement{}), rawToolOptions(boardRaw, 2, &layoutRaw))
+			if err == nil || !strings.Contains(err.Error(), InvalidDefinitionSourceCode) {
+				t.Fatalf("malformed/orphaned owned layout error = %v, want %s", err, InvalidDefinitionSourceCode)
 			}
 			assertToolAuthoringPairUnchanged(t, store, slug, boardRaw, &layoutRaw)
 		})
@@ -463,11 +463,11 @@ func TestCreateToolRejectsMalformedUnknownLayoutValuesWithoutMutation(t *testing
 			layoutRaw := "schema = 1\nmissionId = \"brd_tool-layout-unknown-values\"\nmissionRev = 2\n" + test.tail
 			writeFixture(t, store.BoardPath(slug), boardRaw)
 			writeFixture(t, store.LayoutPath(slug), layoutRaw)
-			board, layout := toolAuthoringReadPair(t, store, slug)
+			requireUnreadableLayout(t, store, slug)
 
-			_, err := store.CreateTool(slug, toolAuthoringCreateRequest(ToolPlacement{}), toolAuthoringPresentOptions(board, layout))
-			if err == nil || !strings.Contains(err.Error(), "invalid_layout_owned_source") {
-				t.Fatalf("malformed unknown layout value error = %v, want invalid_layout_owned_source", err)
+			_, err := store.CreateTool(slug, toolAuthoringCreateRequest(ToolPlacement{}), rawToolOptions(boardRaw, 2, &layoutRaw))
+			if err == nil || !strings.Contains(err.Error(), InvalidDefinitionSourceCode) {
+				t.Fatalf("malformed unknown layout value error = %v, want %s", err, InvalidDefinitionSourceCode)
 			}
 			assertToolAuthoringPairUnchanged(t, store, slug, boardRaw, &layoutRaw)
 		})
@@ -489,12 +489,11 @@ func TestCreateToolRejectsMalformedUnknownBoardTOMLWithoutMutation(t *testing.T)
 			slug := "tool-create-malformed-source"
 			boardRaw := toolAuthoringBoardFixture(slug, 2, true, test.tail)
 			writeFixture(t, store.BoardPath(slug), boardRaw)
-			before, err := store.ReadBoard(slug)
-			if err != nil {
-				t.Fatalf("inspection must expose malformed unknown source before authoring rejection: %v", err)
+			if _, err := store.ReadBoard(slug); err == nil || !strings.Contains(err.Error(), InvalidDefinitionSourceCode) {
+				t.Fatalf("reading a malformed mission = %v, want %s", err, InvalidDefinitionSourceCode)
 			}
 
-			_, err = store.CreateTool(slug, toolAuthoringCreateRequest(ToolPlacement{}), toolAuthoringAbsentOptions(before))
+			_, err := store.CreateTool(slug, toolAuthoringCreateRequest(ToolPlacement{}), rawToolOptions(boardRaw, 2, nil))
 			if err == nil || !strings.Contains(err.Error(), "invalid_mission_source") {
 				t.Fatalf("malformed unknown board source error = %v, want invalid_mission_source", err)
 			}
@@ -530,11 +529,20 @@ func TestCreateToolRejectsMalformedDuplicateOrCompetingLayoutIdentityFieldsWitho
 			boardRaw := toolAuthoringBoardFixture(slug, 2, true, "")
 			writeFixture(t, store.BoardPath(slug), boardRaw)
 			writeFixture(t, store.LayoutPath(slug), test.layout)
-			board, layout := toolAuthoringReadPair(t, store, slug)
+			// A repeated key is not TOML and reads as such; a shape TOML
+			// accepts reads, and its identity is still wrong.
+			identityRaw, want := test.layout, "invalid_layout_identity"
+			options := rawToolOptions(boardRaw, 2, &identityRaw)
+			if _, err := store.ReadLayout(slug); err == nil {
+				board, layout := toolAuthoringReadPair(t, store, slug)
+				options = toolAuthoringPresentOptions(board, layout)
+			} else {
+				want = InvalidDefinitionSourceCode
+			}
 
-			_, err := store.CreateTool(slug, toolAuthoringCreateRequest(ToolPlacement{}), toolAuthoringPresentOptions(board, layout))
-			if err == nil || !strings.Contains(err.Error(), "invalid_layout_identity") {
-				t.Fatalf("reserved layout identity error = %v, want invalid_layout_identity", err)
+			_, err := store.CreateTool(slug, toolAuthoringCreateRequest(ToolPlacement{}), options)
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("reserved layout identity error = %v, want %s", err, want)
 			}
 			layoutRaw := test.layout
 			assertToolAuthoringPairUnchanged(t, store, slug, boardRaw, &layoutRaw)
@@ -1361,15 +1369,22 @@ func TestCreateToolRejectsMismatchedMalformedAndDuplicateLayoutIDs(t *testing.T)
 			boardRaw := toolAuthoringBoardFixture(slug, 2, true, "")
 			writeFixture(t, store.BoardPath(slug), boardRaw)
 			writeFixture(t, store.LayoutPath(slug), test.layout)
-			board, layout := toolAuthoringReadPair(t, store, slug)
-			_, err := store.CreateTool(slug, toolAuthoringCreateRequest(ToolPlacement{}), toolAuthoringPresentOptions(board, layout))
+			// An id that is not a TOML string does not read at all.
+			layoutRaw, want := test.layout, test.wantMarker
+			options := rawToolOptions(boardRaw, 2, &layoutRaw)
+			if _, err := store.ReadLayout(slug); err == nil {
+				board, layout := toolAuthoringReadPair(t, store, slug)
+				options = toolAuthoringPresentOptions(board, layout)
+			} else {
+				want = InvalidDefinitionSourceCode
+			}
+			_, err := store.CreateTool(slug, toolAuthoringCreateRequest(ToolPlacement{}), options)
 			if err == nil {
 				t.Fatal("invalid layout accepted")
 			}
-			if !strings.Contains(err.Error(), test.wantMarker) {
-				t.Fatalf("invalid layout error = %v, want marker %q", err, test.wantMarker)
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("invalid layout error = %v, want marker %q", err, want)
 			}
-			layoutRaw := test.layout
 			assertToolAuthoringPairUnchanged(t, store, slug, boardRaw, &layoutRaw)
 		})
 	}
@@ -1561,6 +1576,24 @@ func toolAuthoringReadPair(t *testing.T, store *Store, slug string) (*BoardDocum
 		t.Fatalf("read layout: %v", err)
 	}
 	return board, layout
+}
+
+// rawToolOptions are the write options of a caller who read the pair before
+// its file broke, from the raw files: strict reading refuses a malformed one.
+func rawToolOptions(boardRaw string, rev int, layoutRaw *string) ToolWriteOptions {
+	options := ToolWriteOptions{Board: WriteOptions{ExpectedETag: etag([]byte(boardRaw)), ExpectedRev: rev}, Layout: &LayoutWriteExpectation{State: "absent"}}
+	if layoutRaw != nil {
+		options.Layout = &LayoutWriteExpectation{State: "present", ETag: etag([]byte(*layoutRaw))}
+	}
+	return options
+}
+
+// requireUnreadableLayout fails unless strict reading refuses the layout.
+func requireUnreadableLayout(t *testing.T, store *Store, slug string) {
+	t.Helper()
+	if _, err := store.ReadLayout(slug); err == nil || !strings.Contains(err.Error(), InvalidDefinitionSourceCode) {
+		t.Fatalf("reading a malformed layout = %v, want %s", err, InvalidDefinitionSourceCode)
+	}
 }
 
 func toolAuthoringAbsentOptions(board *BoardDocument) ToolWriteOptions {

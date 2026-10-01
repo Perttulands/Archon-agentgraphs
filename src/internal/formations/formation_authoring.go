@@ -415,7 +415,7 @@ func (s *Store) createNode(
 			layout: expectedLayout,
 		},
 		build: func(current definitionPairState) (definitionPairState, error) {
-			board, err := parseBoardForWrite(current.board)
+			board, err := parseBoard(current.board)
 			if err != nil {
 				return definitionPairState{}, err
 			}
@@ -447,14 +447,14 @@ func (s *Store) createNode(
 			return next, nil
 		},
 		validate: func(_, candidate definitionPairState) error {
-			if _, err := parseBoardForWrite(candidate.board); err != nil {
+			if _, err := parseBoard(candidate.board); err != nil {
 				return err
 			}
-			_, err := parseLayoutForWrite(candidate.layout.raw)
+			_, err := parseLayout(candidate.layout.raw)
 			return err
 		},
 		cas: func(current definitionPairState) error {
-			board, err := parseBoardForWrite(current.board)
+			board, err := parseBoard(current.board)
 			if err != nil {
 				return err
 			}
@@ -468,11 +468,11 @@ func (s *Store) createNode(
 		return nil, nil, err
 	}
 
-	board, err := parseBoardForWrite(built.board)
+	board, err := parseBoard(built.board)
 	if err != nil {
 		return nil, nil, err
 	}
-	layout, err := parseLayoutForWrite(built.layout.raw)
+	layout, err := parseLayout(built.layout.raw)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -488,7 +488,7 @@ func buildCreateLayoutCandidate(current definitionPairContent, boardID string, b
 	if !current.present {
 		raw = []byte("schema = " + renderInt(CurrentLayoutSchema) + "\nmissionId = " + renderString(boardID) + "\nmissionRev = " + renderInt(boardRev) + "\nupdatedAt = " + renderString(updatedAt) + "\n")
 	}
-	layout, err := parseLayoutForWrite(raw)
+	layout, err := parseLayout(raw)
 	if err != nil {
 		return nil, err
 	}
@@ -550,7 +550,7 @@ func (s *Store) DeleteFormation(slug string, req FormationDeleteRequest, opts Wr
 		if err != nil {
 			return err
 		}
-		current, err := parseBoardForWrite(raw)
+		current, err := parseBoard(raw)
 		if err != nil {
 			return err
 		}
@@ -577,7 +577,7 @@ func (s *Store) DeleteFormation(slug string, req FormationDeleteRequest, opts Wr
 		if err := definition.writeAtomic(nextRaw); err != nil {
 			return err
 		}
-		board, err := parseBoardForWrite(nextRaw)
+		board, err := parseBoard(nextRaw)
 		if err != nil {
 			return err
 		}
@@ -615,7 +615,7 @@ func (s *Store) DeleteGate(slug string, req GateDeleteRequest, opts WriteOptions
 		if err != nil {
 			return err
 		}
-		current, err := parseBoardForWrite(raw)
+		current, err := parseBoard(raw)
 		if err != nil {
 			return err
 		}
@@ -642,7 +642,7 @@ func (s *Store) DeleteGate(slug string, req GateDeleteRequest, opts WriteOptions
 		if err := definition.writeAtomic(nextRaw); err != nil {
 			return err
 		}
-		board, err := parseBoardForWrite(nextRaw)
+		board, err := parseBoard(nextRaw)
 		if err != nil {
 			return err
 		}
@@ -680,7 +680,7 @@ func (s *Store) DeleteMission(slug string, req MissionDeleteRequest, opts WriteO
 		if err != nil {
 			return err
 		}
-		current, err := parseBoardForWrite(raw)
+		current, err := parseBoard(raw)
 		if err != nil {
 			return err
 		}
@@ -707,7 +707,7 @@ func (s *Store) DeleteMission(slug string, req MissionDeleteRequest, opts WriteO
 		if err := definition.writeAtomic(nextRaw); err != nil {
 			return err
 		}
-		board, err := parseBoardForWrite(nextRaw)
+		board, err := parseBoard(nextRaw)
 		if err != nil {
 			return err
 		}
@@ -1797,7 +1797,7 @@ func (s *Store) updateLayoutNodes(slug string, nodes []LayoutNode, board *BoardD
 		default:
 			return err
 		}
-		current, err := parseLayoutForWrite(raw)
+		current, err := parseLayout(raw)
 		if err != nil {
 			return err
 		}
@@ -1817,7 +1817,7 @@ func (s *Store) updateLayoutNodes(slug string, nodes []LayoutNode, board *BoardD
 		if err := definition.writeAtomic(nextRaw); err != nil {
 			return err
 		}
-		layout, err = parseLayoutForWrite(nextRaw)
+		layout, err = parseLayout(nextRaw)
 		return err
 	})
 	if err != nil {
@@ -1839,7 +1839,7 @@ func (s *Store) UpdateLayoutEdges(slug string, edges []LayoutEdge, opts WriteOpt
 		if err != nil {
 			return err
 		}
-		current, err := parseLayoutForWrite(raw)
+		current, err := parseLayout(raw)
 		if err != nil {
 			return err
 		}
@@ -1855,7 +1855,7 @@ func (s *Store) UpdateLayoutEdges(slug string, edges []LayoutEdge, opts WriteOpt
 		if err := definition.writeAtomic(nextRaw); err != nil {
 			return err
 		}
-		layout, err = parseLayoutForWrite(nextRaw)
+		layout, err = parseLayout(nextRaw)
 		return err
 	})
 	if err != nil {
@@ -1896,7 +1896,7 @@ func (s *Store) updateBoardDefinition(slug, updatedBy string, opts WriteOptions,
 		if err != nil {
 			return err
 		}
-		unchanged, err := parseBoardForWrite(raw)
+		unchanged, err := parseBoard(raw)
 		if err != nil {
 			return err
 		}
@@ -1906,13 +1906,13 @@ func (s *Store) updateBoardDefinition(slug, updatedBy string, opts WriteOptions,
 			next = unchanged
 			return nil
 		}
-		if _, err := parseBoardForWrite(nextRaw); err != nil {
+		if _, err := parseBoard(nextRaw); err != nil {
 			return err
 		}
 		if err := definition.writeAtomic(nextRaw); err != nil {
 			return err
 		}
-		next, err = parseBoardForWrite(nextRaw)
+		next, err = parseBoard(nextRaw)
 		return err
 	})
 	if err != nil {
@@ -2443,7 +2443,7 @@ func (s *Store) deleteLayoutNodes(slug, boardID string, boardRev int, nodeIDs ma
 		default:
 			return err
 		}
-		current, err := parseLayoutForWrite(raw)
+		current, err := parseLayout(raw)
 		if err != nil {
 			return err
 		}
@@ -2459,7 +2459,7 @@ func (s *Store) deleteLayoutNodes(slug, boardID string, boardRev int, nodeIDs ma
 		if err := definition.writeAtomic(nextRaw); err != nil {
 			return err
 		}
-		layout, err = parseLayoutForWrite(nextRaw)
+		layout, err = parseLayout(nextRaw)
 		return err
 	})
 	if err != nil {
@@ -3103,267 +3103,6 @@ func renderTOMLLines(lines []tomlLine) []byte {
 	return []byte(b.String())
 }
 
-func parseFormationNodes(raw []byte) []FormationNode {
-	var formations []FormationNode
-	var current *FormationNode
-	var active string
-	for _, line := range splitLines(raw) {
-		trimmed := strings.TrimSpace(line.body)
-		section, isSection := tomlLineSectionName(line)
-		isArraySection := strings.HasPrefix(trimmed, "[[")
-		switch {
-		case isSection && isArraySection && section == "formation":
-			formations = append(formations, FormationNode{})
-			current = &formations[len(formations)-1]
-			active = "formation"
-			continue
-		case isSection && isArraySection && section == "formation.input":
-			if current != nil {
-				current.Inputs = append(current.Inputs, FormationPort{})
-				active = "input"
-			}
-			continue
-		case isSection && isArraySection && section == "formation.output":
-			if current != nil {
-				current.Outputs = append(current.Outputs, FormationPort{})
-				active = "output"
-			}
-			continue
-		case isSection && isArraySection && section == "formation.slot":
-			if current != nil {
-				current.Slots = append(current.Slots, FormationSlot{})
-				active = "slot"
-			}
-			continue
-		case isSection && !isArraySection && section == "formation.brief":
-			if current != nil {
-				current.Brief = &FormationBrief{}
-				active = "brief"
-			}
-			continue
-		case isSection:
-			active = ""
-			continue
-		case isTOMLHeader(line):
-			active = ""
-			continue
-		}
-		if line.valueContinuation {
-			continue
-		}
-		if current == nil {
-			continue
-		}
-		key, value, ok := tomlKeyValue(line.body)
-		if !ok {
-			continue
-		}
-		switch active {
-		case "formation":
-			switch key {
-			case "id":
-				current.ID = value
-			case "type":
-				current.Type = value
-			case "title":
-				current.Title = value
-			}
-		case "input":
-			port := &current.Inputs[len(current.Inputs)-1]
-			switch key {
-			case "id":
-				port.ID = value
-			case "label":
-				port.Label = value
-			}
-		case "output":
-			port := &current.Outputs[len(current.Outputs)-1]
-			switch key {
-			case "id":
-				port.ID = value
-			case "label":
-				port.Label = value
-			}
-		case "slot":
-			slot := &current.Slots[len(current.Slots)-1]
-			switch key {
-			case "id":
-				slot.ID = value
-			case "label":
-				slot.Label = value
-			case "agentId":
-				slot.AgentID = value
-			case "harness":
-				slot.Harness = value
-			case "model":
-				slot.Model = value
-			case "effort":
-				slot.Effort = value
-			case "controller":
-				slot.Controller, _ = strconv.ParseBool(value)
-			}
-		case "brief":
-			switch key {
-			case "goal":
-				current.Brief.Goal = value
-			case "beadId":
-				current.Brief.BeadID = value
-			case "files":
-				current.Brief.Files = parseStringArray(value)
-			case "links":
-				current.Brief.Links = parseStringArray(value)
-			}
-		}
-	}
-	return formations
-}
-
-func parseBoardConnections(raw []byte) []BoardConnection {
-	var connections []BoardConnection
-	var current *BoardConnection
-	active := false
-	for _, line := range splitLines(raw) {
-		trimmed := strings.TrimSpace(line.body)
-		section, isSection := tomlLineSectionName(line)
-		isArraySection := strings.HasPrefix(trimmed, "[[")
-		switch {
-		case isSection && isArraySection && section == "connection":
-			connections = append(connections, BoardConnection{})
-			current = &connections[len(connections)-1]
-			active = true
-			continue
-		case isTOMLHeader(line):
-			active = false
-			continue
-		}
-		if line.valueContinuation {
-			continue
-		}
-		if !active || current == nil {
-			continue
-		}
-		key, literal, present, err := parseToolAssignment(line.body)
-		if err != nil || !present {
-			continue
-		}
-		switch key {
-		case "id", "from", "to":
-			value, err := parseToolString(literal)
-			if err != nil {
-				continue
-			}
-			switch key {
-			case "id":
-				current.ID = value
-			case "from":
-				current.From = value
-			case "to":
-				current.To = value
-			}
-		}
-	}
-	return connections
-}
-
-func parseGateNodes(raw []byte) []GateNode {
-	var gates []GateNode
-	var current *GateNode
-	active := false
-	for _, line := range splitLines(raw) {
-		trimmed := strings.TrimSpace(line.body)
-		section, isSection := tomlLineSectionName(line)
-		isArraySection := strings.HasPrefix(trimmed, "[[")
-		switch {
-		case isSection && isArraySection && section == "gate":
-			gates = append(gates, GateNode{})
-			current = &gates[len(gates)-1]
-			active = true
-			continue
-		case isTOMLHeader(line):
-			active = false
-			continue
-		}
-		if line.valueContinuation {
-			continue
-		}
-		if !active || current == nil {
-			continue
-		}
-		key, value, ok := tomlKeyValue(line.body)
-		if !ok {
-			continue
-		}
-		switch key {
-		case "id":
-			current.ID = value
-		case "title":
-			current.Title = value
-		case "kinds":
-			current.Kinds = parseStringArray(value)
-		case "criterion":
-			current.Criterion = value
-		case "check":
-			current.Check = value
-		case "checkVersion":
-			current.CheckVersion = value
-		case "checkValue":
-			current.CheckValue = value
-		case "files":
-			current.Files = parseStringArray(value)
-		}
-	}
-	return gates
-}
-
-func parseMissionNodes(raw []byte) []MissionNode {
-	var missions []MissionNode
-	var current *MissionNode
-	active := false
-	lines := splitLines(raw)
-	for index, line := range lines {
-		trimmed := strings.TrimSpace(line.body)
-		section, isSection := tomlLineSectionName(line)
-		isArraySection := strings.HasPrefix(trimmed, "[[")
-		switch {
-		case isSection && isArraySection && section == "inputCard":
-			missions = append(missions, MissionNode{})
-			current = &missions[len(missions)-1]
-			active = true
-			continue
-		case isTOMLHeader(line):
-			active = false
-			continue
-		}
-		if line.valueContinuation {
-			continue
-		}
-		if !active || current == nil {
-			continue
-		}
-		key, value, ok := tomlKeyValue(line.body)
-		if !ok {
-			continue
-		}
-		switch key {
-		case "id":
-			current.ID = value
-		case "title":
-			current.Title = value
-		case "goal":
-			current.Goal = value
-		case "files":
-			current.Files = parseStringArray(value)
-		case "inputHint":
-			current.InputHint = value
-		case "humanChannel":
-			current.HumanChannel = decodedHumanChannel(value)
-		case "inputs":
-			current.Inputs = decodedMissionInputsInLineRange(lines, index, tomlValueLineEnd(lines, index, len(lines)))
-		}
-	}
-	return missions
-}
-
 // decodedHumanChannel normalizes a stored channel. A value authoring would
 // reject is kept as written, so board validation can report it.
 func decodedHumanChannel(value string) string {
@@ -3373,52 +3112,6 @@ func decodedHumanChannel(value string) string {
 	return value
 }
 
-func parseLayoutNodes(raw []byte) []LayoutNode {
-	var nodes []LayoutNode
-	var current *LayoutNode
-	active := false
-	for _, line := range splitLines(raw) {
-		trimmed := strings.TrimSpace(line.body)
-		section, isSection := tomlLineSectionName(line)
-		isArraySection := strings.HasPrefix(trimmed, "[[")
-		switch {
-		case isSection && isArraySection && section == "node":
-			nodes = append(nodes, LayoutNode{})
-			current = &nodes[len(nodes)-1]
-			active = true
-			continue
-		case isTOMLHeader(line):
-			active = false
-			continue
-		}
-		if line.valueContinuation {
-			continue
-		}
-		if !active || current == nil {
-			continue
-		}
-		key, value, ok := tomlKeyValue(line.body)
-		if !ok {
-			continue
-		}
-		switch key {
-		case "id":
-			if identity, ok := parseLayoutStringField(line.body); ok {
-				current.ID = identity
-			}
-		case "x":
-			if coordinate, ok := parseLayoutCoordinate(value); ok {
-				current.X = coordinate
-			}
-		case "y":
-			if coordinate, ok := parseLayoutCoordinate(value); ok {
-				current.Y = coordinate
-			}
-		}
-	}
-	return nodes
-}
-
 func parseLayoutCoordinate(value string) (int, bool) {
 	coordinate, err := parseTOMLInteger(value)
 	if err != nil {
@@ -3426,48 +3119,6 @@ func parseLayoutCoordinate(value string) (int, bool) {
 	}
 	projected := int(coordinate)
 	return projected, int64(projected) == coordinate
-}
-
-func parseLayoutEdges(raw []byte) []LayoutEdge {
-	var edges []LayoutEdge
-	var current *LayoutEdge
-	active := false
-	for _, line := range splitLines(raw) {
-		trimmed := strings.TrimSpace(line.body)
-		section, isSection := tomlLineSectionName(line)
-		isArraySection := strings.HasPrefix(trimmed, "[[")
-		switch {
-		case isSection && isArraySection && section == "edge":
-			edges = append(edges, LayoutEdge{})
-			current = &edges[len(edges)-1]
-			active = true
-			continue
-		case isTOMLHeader(line):
-			active = false
-			continue
-		}
-		if line.valueContinuation {
-			continue
-		}
-		if !active || current == nil {
-			continue
-		}
-		key, _, ok := tomlKeyValue(line.body)
-		if !ok {
-			continue
-		}
-		switch key {
-		case "id":
-			if identity, ok := parseLayoutStringField(line.body); ok {
-				current.ID = identity
-			}
-		case "lane":
-			if lane, ok := parseLayoutStringField(line.body); ok {
-				current.Lane = lane
-			}
-		}
-	}
-	return edges
 }
 
 func parseLayoutStringField(line string) (string, bool) {

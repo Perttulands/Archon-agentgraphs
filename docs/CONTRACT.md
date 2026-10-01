@@ -52,7 +52,10 @@ link lost its target (or that does not parse) is listed with `broken`, "<link>
 is a symlink to <target>, which does not exist", and every other mission still
 lists, opens and runs; reading or starting the broken one answers the same
 words (HTTP 422 `BROKEN_LINK`, CLI code `broken_link`), and the cockpit lists
-it as "cannot be read", names it under the canvas and never opens it. A role
+it as "cannot be read", names it under the canvas and never opens it. A
+mission or layout file is read only as strict TOML of its schema: one that is
+not, such as a hand edit that repeats a key, is refused with
+`invalid_definition_source` naming the fault, never read leniently. A role
 card or run ledger that cannot be read is skipped and named: `agent list` and
 `run list` print a `warning:` line, `GET /api/agents` lists it under
 `unreadable`, and the daemon logs a skipped ledger at startup instead of
