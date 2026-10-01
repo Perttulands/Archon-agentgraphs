@@ -371,3 +371,59 @@ func TestRunWaitNamesTheMissionByItsTitle(t *testing.T) {
 		t.Fatalf("untitled mission = %q, want its slug", got.Mission)
 	}
 }
+
+// failingStep fails one step's dispatch, as a lost seat does, and runs the
+// others through a holding executor.
+type failingStep struct {
+	node  string
+	inner *holdingExecutor
+}
+
+func (e failingStep) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
+	if req.NodeID == e.node {
+		return formations.FormationExecutionResult{}, &formations.RunExecutionError{Code: "native_turn_failed", Message: "seat died", Boundary: "executor", NodeID: req.NodeID}
+	}
+	return e.inner.ExecuteFormation(req)
+}
+
+// A block the run's command recorded beside a waiting gate is announced once
+// the run settles: until then any-change stops its cursor below the block, so
+// the next wait reports the block as new (archon-o7p.11 review).
+func TestAnUnsettledBlockBesideAWaitingGateStaysNewForTheNextWait(t *testing.T) {
+	c := openGateLab(t, oneGateBesideABranch(), failingStep{node: "fmn_b", inner: newHoldingExecutor()})
+	id := startProof(t, c)
+	awaitSettled(t, c, id)
+	events := eventsOf(t, c, id)
+	asked, block := 0, 0
+	for _, event := range events {
+		switch event.Type {
+		case formations.RunEventHumanInputRequested:
+			asked = event.Seq
+		case formations.RunEventBlocked:
+			block = event.Seq
+		}
+	}
+	if asked == 0 || block <= asked {
+		t.Fatalf("want a gate asked, then B's block:\n%s", fullTrail(events))
+	}
+	board, _ := c.store.ReadRunBoard(id)
+	// The wait wakes on the run_blocked append, before the worker settles.
+	unsettled, err := projectWait(id, events, board, WaitUntilAnyChange, asked, false, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unsettled.Seq >= block || unsettled.Status == formations.RunStatusBlocked {
+		t.Fatalf("unsettled wait = seq %d status %s, want the cursor below the block at %d", unsettled.Seq, unsettled.Status, block)
+	}
+	settled, err := projectWait(id, events, board, WaitUntilNeedsYou, unsettled.Seq, true, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	announced := false
+	for _, ask := range settled.Asks {
+		announced = announced || ask.Kind == formations.NeedsYouKindBlocked && ask.New
+	}
+	if settled.Outcome != WaitOutcomeNeedsYou || !announced {
+		t.Fatalf("settled wait = %+v, want the block as a new ask", settled)
+	}
+}

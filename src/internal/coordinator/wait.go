@@ -212,8 +212,9 @@ func (c *Coordinator) wait(w http.ResponseWriter, r *http.Request) {
 
 // projectWait decides one wait from the ledger. A final run always answers.
 // Human gates and blocking escalations are asks as soon as the ledger records
-// them; a bare block is an ask only once the run has settled, since a verdict
-// records one on its way to the automatic resume.
+// them; a bare block is an ask only once the run has settled, since the
+// command that recorded it may still be recording its seats' cleanup and the
+// needs-you rule announces a block only then.
 func projectWait(runID string, events []formations.RunEvent, board *formations.BoardDocument, until string, since int, settled bool, now time.Time) (*RunWait, error) {
 	status, err := formations.ProjectRunEvents(runID, events)
 	if err != nil {
@@ -242,13 +243,15 @@ func projectWait(runID string, events []formations.RunEvent, board *formations.B
 	for _, ask := range result.Asks {
 		newAsk = newAsk || ask.New
 	}
-	if !status.Final && !settled && status.Status == formations.RunStatusBlocked && len(result.Asks) == 0 {
-		// A block recorded inside a command is either a verdict on its way to
-		// the automatic resume or a real block the settle will announce. Until
-		// the run settles the run is still executing, and in every mode the
-		// cursor stops below the block, so the next wait still reports it as
-		// new if it becomes an ask.
+	if !status.Final && !settled && status.Status == formations.RunStatusBlocked {
+		// A block the run's command recorded becomes an ask when the run
+		// settles. Until then the run is still executing, and in every mode,
+		// with a gate waiting or not, the cursor stops below the block, so the
+		// next wait reports the block as new.
 		result.Status = formations.RunStatusRunning
+		if len(formations.OpenHumanRequests(events)) > 0 {
+			result.Status = "waiting_human"
+		}
 		for i := len(events) - 1; i >= 0 && events[i].Seq > since; i-- {
 			if events[i].Type == formations.RunEventBlocked {
 				result.Seq = events[i].Seq - 1
