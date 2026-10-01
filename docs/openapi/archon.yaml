@@ -191,7 +191,12 @@ paths:
         name: mission
         schema:
           type: string
-        description: Only runs of this mission slug
+        description: Only the runs of the mission now under this slug or ID; none for a mission that does not exist, and none of a deleted mission that had the same slug.
+      - in: query
+        name: needs
+        schema:
+          const: you
+        description: Only open runs that need the operator, waiting at a human gate or blocked.
       responses:
         '200':
           description: Canonical run projections

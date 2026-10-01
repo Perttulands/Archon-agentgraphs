@@ -2485,6 +2485,7 @@ describe('FormationsCockpit reference parity', () => {
       })
       const listed = url.match(/^\/api\/runs\?mission=([^&]+)$/)
       if (listed) return reply(runs.filter(run => run.missionSlug === decodeURIComponent(listed[1])))
+      if (url === '/api/runs?needs=you') return reply(runs.filter(run => !run.final && (run.status === 'waiting_human' || run.status === 'blocked')))
       const runURL = url.match(/^\/api\/runs\/([^/?]+)(\/.*)?$/)
       if (runURL) {
         const run = runs.find(item => item.runId === runURL[1])
@@ -2602,6 +2603,28 @@ describe('FormationsCockpit reference parity', () => {
     expect(await screen.findByTestId('formations-error')).toHaveTextContent('Run run_01ARCHIVED belongs to an earlier mission "test-board" that was deleted')
     await waitFor(() => expect(screen.queryByTestId('run-banner')).toBeNull())
     expect(window.location.search).toBe('?mission=test-board')
+  })
+
+  it('counts the runs that need you on every mission and offers the next one', async () => {
+    const second = { ...makeBoard(), id: 'brd_second', slug: 'second-board', title: 'Second board', etag: 'second-etag' }
+    patches = installFetchMock({ boards: [makeBoard(), second] })
+    installRunsMock([
+      { runId: 'run_01HERE', status: 'waiting_human', final: false, missionSlug: 'test-board', missionId: 'brd_test', inputCardId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4, requestedAt: new Date().toISOString() }] },
+      { runId: 'run_01THERE', status: 'waiting_human', final: false, missionSlug: 'second-board', missionId: 'brd_second', inputCardId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4, requestedAt: new Date().toISOString() }] },
+    ], { run_01HERE: waitingEvents('run_01HERE'), run_01THERE: waitingEvents('run_01THERE') })
+    await renderCockpit()
+
+    const picker = screen.getByTestId('board-picker')
+    await waitFor(() => expect(within(picker).getAllByRole('option').map(option => option.textContent)).toEqual(['Test board · 1 needs you', 'Second board · 1 needs you']))
+    await waitFor(() => expect(document.title).toBe('(2) Test board · Archon'))
+    const banner = await screen.findByTestId('run-banner')
+    expect(within(banner).getByText('Waiting for your answer')).toHaveClass('badge', 'waiting_human')
+    expect(await screen.findByTestId('run-chip-gate_review')).toHaveTextContent('waiting for you')
+
+    fireEvent.click(within(banner).getByRole('button', { name: '1 more needs you' }))
+    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveValue('second-board'))
+    await waitFor(() => expect(window.location.search).toBe('?mission=second-board&run=run_01THERE'))
+    await waitFor(() => expect(document.title).toBe('(2) Second board · Archon'))
   })
 
   it('says when a linked run or board does not exist', async () => {

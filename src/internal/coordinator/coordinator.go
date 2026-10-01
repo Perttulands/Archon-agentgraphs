@@ -299,12 +299,21 @@ func (c *Coordinator) Handler() http.Handler {
 			failure(w, err)
 			return
 		}
+		// ?needs=you keeps the runs that need the operator: open runs waiting
+		// at a human gate or blocked (archon-n7u.29).
+		needsYou := r.URL.Query().Get("needs") == "you"
 		projections := make([]*Projection, 0, len(runs))
 		for _, run := range runs {
+			if needsYou && (run.Final || run.Status != formations.RunStatusBlocked && run.Status != formations.RunStatusRunning) {
+				continue
+			}
 			p, err := c.Project(run.RunID)
 			if err != nil {
 				failure(w, err)
 				return
+			}
+			if needsYou && p.Status != "waiting_human" && p.Status != formations.RunStatusBlocked {
+				continue
 			}
 			projections = append(projections, p)
 		}

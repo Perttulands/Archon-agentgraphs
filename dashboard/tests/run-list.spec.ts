@@ -76,3 +76,25 @@ for (const entry of ['list', 'link'] as const) {
     expect(fixture.writes).toEqual([])
   })
 }
+
+// Every run that needs the operator is counted on the mission picker and in
+// the page title, and waiting is the most visible state (archon-n7u.29).
+test('a run waiting for you is counted and stands out on the bar and the canvas', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await cockpitFixture(page, { waitingHuman: true })
+  const waiting = projection('run_browser', 'waiting_human', false, { startedAt: ago(12), updatedAt: ago(10), startedBy: 'agent:driver',
+    waitingGates: [{ gateId: 'loose', requestedSeq: 3, requestedAt: ago(10), askedSeats: [] }] })
+  await page.route('**/api/runs?needs=you', route => route.fulfill({ json: { success: true, data: [waiting] } }))
+  await page.goto('/?mission=browser')
+  await expect(page.getByTestId('board-picker').locator('option')).toHaveText(['Peer and judge · 1 needs you'])
+  await expect(page).toHaveTitle('(1) Peer and judge · Archon')
+  const badge = page.getByTestId('run-banner').locator('.badge')
+  await expect(badge).toHaveText('Waiting for your answer')
+  const [badgeColor, badgeBackground] = await badge.evaluate(element => [getComputedStyle(element).color, getComputedStyle(element).backgroundColor])
+  expect(badgeBackground).not.toBe('rgba(0, 0, 0, 0)')
+  expect(badgeColor).not.toBe(badgeBackground)
+  await expect(page.getByTestId('run-chip-loose')).toHaveText('waiting for you')
+  // The only run that needs you is the one shown, so nothing else is offered.
+  await expect(page.getByTestId('run-next-needs-you')).toHaveCount(0)
+  await page.screenshot({ path: test.info().outputPath('waiting.png') })
+})

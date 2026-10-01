@@ -30,6 +30,7 @@ import {
   fetchRunEscalations,
   fetchRunEvents,
   fetchBoardRuns,
+  fetchRunsNeedingYou,
   fetchRunStatus,
   missingLayoutForBoard,
   patchBoardNote,
@@ -50,6 +51,7 @@ import {
 } from './formationsRunState'
 import { chooseBoardRun, readRunLink, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
 import { RunList, RunRevisionNote, RunWhen } from './RunList'
+import { missionPickLabel, otherRunsNeedingYou, pageTitle, runsOfLiveMissions } from './needsYou'
 import { chooseCurrentBoard, rememberBoardOnDevice } from './currentBoard'
 import { END_ROOM, clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
 import { END_SVG, FormationSeats, GATE_SVG, PLAY_SVG, slotTooltip, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
@@ -185,6 +187,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const initialRunLink = useRef(readRunLink(window.location.search)).current
   const [pinnedRun, setPinnedRun] = useState({ slug: initialRunLink.board, runId: initialRunLink.run })
   const [boardRuns, setBoardRuns] = useState<RunStatusProjection[]>([])
+  // Every mission's runs that need the operator, for the picker counts and the page title.
+  const [needsYou, setNeedsYou] = useState<RunStatusProjection[]>([])
   // Link problems outlive the board loads that clear ordinary errors.
   const [linkError, setLinkError] = useState('')
   const activeRunRef = useRef<RunStatusProjection | null>(null)
@@ -544,6 +548,28 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setActiveRun(null)
     setRunEvents([])
   }, [activeRun?.missionId, activeRun?.missionSlug, activeRun?.runId, board?.id, board?.slug, pinnedRun.runId])
+
+  // Runs of any mission that need the operator (archon-n7u.29): counted on
+  // the mission picker and in the page title, and offered from the run bar.
+  useEffect(() => {
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const runs = await fetchRunsNeedingYou()
+        if (!cancelled) setNeedsYou(runs)
+      } catch {
+        /* keep the last counts; the next poll retries */
+      }
+    }
+    void poll()
+    const timer = active ? window.setInterval(poll, 5000) : undefined
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [active, activeRun?.status, activeRun?.runId])
+
+  useEffect(() => {
+    if (!active) return
+    document.title = pageTitle(runsOfLiveMissions(needsYou, boards), board?.title || '')
+  }, [active, board?.title, boards, needsYou])
 
   // The address bar names the board and a pinned run, so a reload keeps them.
   useEffect(() => {
@@ -2410,8 +2436,23 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   )
   const renderRunChip = (nodeId: string) => {
     const state = nodeStates.get(nodeId)
+    // Waiting for the operator is the most visible state on the canvas (archon-n7u.29).
+    if (nodeId === pendingHumanGateId && activeRun && !activeRun.final) return <span className="run-chip waiting" data-testid={`run-chip-${nodeId}`}>waiting for you</span>
     return state === 'blocked' || state === 'failed' ? <span className={`run-chip ${state}`} data-testid={`run-chip-${nodeId}`}>{state}</span> : null
   }
+  // The next run, of any mission, that needs the operator, offered from the run bar.
+  const nextNeedingYou = otherRunsNeedingYou(needsYou, activeRun?.runId || '', boards)
+  const showNeedingYou = nextNeedingYou.length ? (
+    <button type="button" className="run-next-needs-you" data-testid="run-next-needs-you"
+      title={`Show the ${nextNeedingYou[0].status === 'waiting_human' ? 'run waiting for your answer' : 'blocked run'} in ${boards.find(mission => mission.id === nextNeedingYou[0].missionId)?.title || nextNeedingYou[0].missionSlug}`}
+      onClick={() => {
+        const next = nextNeedingYou[0]
+        setPinnedRun({ slug: next.missionSlug, runId: next.runId })
+        if (next.missionSlug !== selectedSlug) selectBoard(next.missionSlug)
+      }}>
+      {nextNeedingYou.length} {activeRun && !activeRun.final && (activeRun.status === 'waiting_human' || activeRun.status === 'blocked') ? 'more ' : ''}need{nextNeedingYou.length === 1 ? 's' : ''} you
+    </button>
+  ) : null
   // The pending human gate's answer panel: in a floating window over the canvas, or in the gate's row in Flow.
   const answerKey = activeRun && pendingHumanGate ? `${activeRun.runId}:${pendingHumanGate.requestedSeq}` : ''
   const answerWindowOpen = Boolean(answerKey) && !(answerWindow.key === answerKey && answerWindow.closed)
@@ -2500,7 +2541,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           mission
           <select aria-label="Mission" value={selectedSlug} onChange={event => selectBoard(event.target.value)} data-testid="board-picker" disabled={boards.length === 0 || Boolean(boardDialog)}>
             {boards.length === 0 ? <option value="">No missions</option> : null}
-            {boards.map(summary => <option key={summary.slug} value={summary.slug}>{summary.title || summary.slug}</option>)}
+            {boards.map(summary => <option key={summary.slug} value={summary.slug}>{missionPickLabel(summary, needsYou)}</option>)}
           </select>
           {board ? <span className="rev">rev {board.rev}</span> : null}
         </div>
@@ -2634,18 +2675,21 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 <RunProduced />
                 <RunRevisionNote run={activeRun} currentRev={board?.rev} missionTitle={board?.title || ''} />
                 {runList}
+                {showNeedingYou}
                 {activeRun.cwd && <span className="run-cwd" title={activeRun.cwd}>{activeRun.cwd}</span>}
                 {activeRun.beadId && <span>{activeRun.beadId}</span>}
                 <RunBarActions run={activeRun} point={runPoint} pointTitle={runPointTitle} boardTitle={board?.title || ''}
                   titleOf={nodeId => (board ? nodeTitle(board, nodeId) : nodeId)}
                   pendingGate={pendingHumanGate} onResume={() => void resumeActiveRun()} onStop={abortActiveRun} />
               </div>
-            ) : boardRuns.length ? (
-              // No run is shown, but the mission's runs can be reopened to read what they produced.
+            ) : boardRuns.length || nextNeedingYou.length ? (
+              // No run is shown, but the mission's runs can be reopened to read what they
+              // produced, and runs of any mission that need you are a click away.
               <div className="run-banner idle" data-testid="run-banner-idle">
                 <span>run</span>
                 <span className="run-none">no open run</span>
                 {runList}
+                {showNeedingYou}
               </div>
             ) : null}
         <div className={`viewport${showFlow ? ' flow-mode' : ''}`} data-testid="formations-canvas" ref={viewportRef} onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>

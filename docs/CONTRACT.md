@@ -522,7 +522,15 @@ input, and its driver. Choosing one shows it, and a finished run shown can be
 put away. The run bar says when the shown run started, how long it took and who
 drives it; a run waiting at a gate says since when; and a run that ran an
 earlier revision of the mission says so and opens the mission as it ran in a
-file window. `/?mission=<slug>&run=<runId>`, the link that notifications carry,
+file window. Every run that needs the operator, waiting at a human gate or
+blocked, is counted (archon-n7u.29): on the mission picker beside each
+mission ("Scouting · 2 need you"), and in the page title for all missions
+("(3) Scouting · Archon"). When another run of any mission needs the operator,
+the run bar offers it ("1 more needs you"), the one waiting longest at a gate
+first, so after an answer or a stop the next is a click away. Waiting is the
+most visible state: the run bar's badge is filled gold, and the gate waiting
+for the answer has a gold ring and a "waiting for you" chip.
+`/?mission=<slug>&run=<runId>`, the link that notifications carry,
 opens that mission and keeps that run shown. The address bar keeps a chosen run
 across reloads, and an unknown linked mission or run is reported rather than
 silently replaced.
@@ -1187,7 +1195,8 @@ Input card fields, or judge chain) saves nothing: it answers 200 with the
 current mission, its revision and ETag unchanged, and a stale ETag still conflicts. Tool
 and note edits still save a revision. Runtime routes start/list/read runs
 (`GET /api/runs?mission=<slug>` lists the runs of the mission now under that
-slug or ID, and none for a mission that does not exist), read projected
+slug or ID, and none for a mission that does not exist; `needs=you` keeps the
+open runs waiting at a human gate or blocked), read projected
 events/escalations, stream SSE, abort, resume, read run evidence and record
 exact human verdicts. They all use the coordinator; no request-local executor
 exists.

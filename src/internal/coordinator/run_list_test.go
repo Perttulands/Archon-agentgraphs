@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -157,4 +158,56 @@ func listRuns(t *testing.T, c *Coordinator, path string) []Projection {
 		t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())
 	}
 	return body.Data
+}
+
+// ?needs=you lists the open runs that need the operator, across missions or
+// for one, so the cockpit can count them (archon-n7u.29).
+func TestRunListNeedsYouKeepsWaitingAndBlockedRuns(t *testing.T) {
+	c, executor, _ := fixture(t)
+	waiting := startRun(t, c)
+	<-executor.entered
+	executor.proceed <- struct{}{}
+	awaitState(t, c, waiting, "waiting_human")
+	ids := func(path string) []string {
+		var out []string
+		for _, run := range listRuns(t, c, path) {
+			out = append(out, run.RunID+":"+run.Status)
+		}
+		return out
+	}
+	if got := ids("/api/runs?needs=you"); len(got) != 1 || got[0] != waiting+":waiting_human" {
+		t.Fatalf("needs you = %v", got)
+	}
+	if got := ids("/api/runs?mission=proof&needs=you"); len(got) != 1 {
+		t.Fatalf("mission needs you = %v", got)
+	}
+	if got := ids("/api/runs?mission=other&needs=you"); len(got) != 0 {
+		t.Fatalf("other mission needs you = %v", got)
+	}
+	if w := post(t, c, "/api/runs/"+waiting+"/abort", `{"reason":"done","requestedBy":"operator:test"}`); w.Code != 200 {
+		t.Fatalf("abort %d %s", w.Code, w.Body.String())
+	}
+	if got := ids("/api/runs?needs=you"); len(got) != 0 {
+		t.Fatalf("a canceled run still needs you: %v", got)
+	}
+	// A run blocked on a spent limit needs the operator too.
+	w := post(t, c, "/api/runs", `{"inputs":{"brief":"one step only"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":1}}`)
+	var receipt struct {
+		Data struct {
+			RunID string `json:"runId"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &receipt); w.Code != 202 || err != nil {
+		t.Fatalf("start %d %s", w.Code, w.Body.String())
+	}
+	<-executor.entered
+	executor.proceed <- struct{}{}
+	seq := awaitState(t, c, receipt.Data.RunID, "waiting_human").WaitingGates[0].RequestedSeq
+	if w := post(t, c, "/api/runs/"+receipt.Data.RunID+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass"}`); w.Code != 202 {
+		t.Fatalf("verdict %d %s", w.Code, w.Body.String())
+	}
+	awaitState(t, c, receipt.Data.RunID, "blocked")
+	if got := ids("/api/runs?needs=you"); len(got) != 1 || got[0] != receipt.Data.RunID+":blocked" {
+		t.Fatalf("needs you after a limit block = %v", got)
+	}
 }
