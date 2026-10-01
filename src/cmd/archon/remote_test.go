@@ -382,7 +382,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		})},
 		// A Limit card caps a step or the whole mission (archon-o7p.8).
 		{args: with(fixed("limit", "create", "demo", "--target", "Worker", "--rounds", "3", "--title", "Worker cap")), creates: "limit"},
-		{args: with(fixed("limit", "create", "demo", "--target", "Work", "--rounds", "12")), creates: "limit"},
+		{args: with(fixed("limit", "create", "demo", "--target", "input", "--rounds", "12")), creates: "limit"},
 		{args: with(fixed("limit", "update", "demo", "Worker cap", "--rounds", "4", "--title", "Worker rounds"))},
 		{args: with(fixed("limit", "update", "demo", "Limit", "--rounds", ""))},
 		{args: with(fixed("limit", "delete", "demo", "Limit"))},

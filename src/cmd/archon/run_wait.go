@@ -404,6 +404,10 @@ func describeGateRoute(route formations.GateRoute) string {
 			parts = append(parts, "this path ends ("+target.Outcome+")")
 		}
 	}
+	if mission := route.MissionRounds; mission != nil && route.Limit == nil && route.RoundsNeeded > 0 && mission.Max-mission.Used <= route.RoundsNeeded {
+		// As the cockpit's answer panel says it, once the mission's rounds run short.
+		parts = append(parts, fmt.Sprintf("the mission has %d of %d rounds left", mission.Max-mission.Used, mission.Max))
+	}
 	where := strings.Join(parts, "; ")
 	switch {
 	case route.EndsRun && route.RunFails:

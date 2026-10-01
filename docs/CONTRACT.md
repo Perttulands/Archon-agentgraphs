@@ -890,8 +890,8 @@ change its outcome, and a finished run lights the End nodes its paths reached.
 <title>]` adds a Limit card covering a step, named by ID or title, or the Input
 card (`input`, or its ID) for the whole mission; it prints `created <id>`, or
 with `--json` `{mission, layout, limit}`. `archon limit update <mission>
-<limit> [--target] [--rounds] [--title]` changes it (`--rounds 0` clears the
-knob) and `archon limit delete <mission> <limit>` removes it. The patch
+<limit> [--target] [--rounds] [--title]` changes only what it names (`--rounds
+''` clears the knob, `--target ''` unwires the card) and `archon limit delete <mission> <limit>` removes it. The patch
 operations are `createLimit` (`title`, `target`, `rounds`, `x`, `y`),
 `updateLimit` (`id`, and any of `title`, `target`, `rounds`; an empty target
 unwires the card) and `deleteLimit` (`id`). A write naming a target that is

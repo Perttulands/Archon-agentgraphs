@@ -251,7 +251,7 @@ archon $S limit create "$M" --target input --rounds 20 --title "Mission cap" --j
 ```
 
 `limit update "$M" "$LIMIT" --rounds <n>|--target <t>|--title <t>` changes a
-card (`--rounds 0` clears the knob) and `limit delete "$M" "$LIMIT"` removes
+card (`--rounds ''` clears the knob) and `limit delete "$M" "$LIMIT"` removes
 it. Validation rejects a card wired to nothing, a second card on one target and
 a rounds value that is not a positive whole number (`invalid_limit`). At a
 spent limit the step does not start and the run blocks with `limit_reached`
