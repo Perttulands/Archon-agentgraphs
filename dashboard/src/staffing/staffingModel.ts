@@ -146,28 +146,43 @@ export interface Suggestion {
 
 type Rule = { test: RegExp; effort: string; phrase: string }
 
-/** Perttu's effort policy (2026-09-29) read from a role's or step's words; the first rule that matches decides. */
+/**
+ * A role's words, read only when its kind is one the policy does not name.
+ * max is never among them: it is chosen by hand for consequential reviews.
+ */
 const RULES: Rule[] = [
-  { test: /\b(final review\w*|release\w*|deploy\w*|audit\w*|consequential|gatekeeper)\b/i, effort: 'max', phrase: 'is a consequential review' },
-  { test: /\b(review|reviews|reviewer|critic|judge|verif\w*|architect\w*|design)\b/i, effort: 'xhigh', phrase: 'is review or architecture work' },
-  { test: /\b(build\w*|implement\w*|make|making|draft\w*|writ\w*|worker|execut\w*|integrat\w*|lead|controller)\b/i, effort: 'medium', phrase: 'makes things' },
-  { test: /\b(scout|triage|errand\w*|record\w*|runner|chore|fetch|lookup)\b/i, effort: 'low', phrase: 'runs errands' },
+  { test: /\b(review|reviews|reviewer|critic|judge|verdict|architect\w*|design|plan\w*|orchestrat\w*)\b/i, effort: 'xhigh', phrase: 'reads as review or architecture work' },
+  { test: /\b(build\w*|implement\w*|make|making|draft\w*|writ\w*|worker|execut\w*|integrat\w*|debug\w*|fix\w*)\b/i, effort: 'medium', phrase: 'reads as making things' },
+  { test: /\b(scout|triage|errand\w*|record\w*|runner|chore|fetch|lookup|verif\w*|observ\w*|operat\w*)\b/i, effort: 'low', phrase: 'reads as errands' },
 ]
 
-function because(subject: string, rule: Rule): Suggestion {
-  return { effort: rule.effort, reason: `${subject} ${rule.phrase}, so ${rule.effort}` }
+const article = (word: string) => (/^[aeiou]/i.test(word) ? 'an' : 'a')
+
+/** The effort the policy names for a role kind; never max, which is chosen by hand. */
+function kindEffort(catalog: Pick<StaffingCatalog, 'policy'>, kind: string): string | null {
+  const wanted = kind.trim().toLowerCase()
+  if (!wanted) return null
+  return catalog.policy.find(entry => (entry.kinds || []).includes(wanted))?.effort || null
 }
 
-/** The policy's suggestion for a role, else for the step it sits in. A role outranks its step. */
-export function suggestEffort(role: RoleEntry | undefined, stepTitle: string): Suggestion | null {
+function byRule(subject: string, words: string): Suggestion | null {
+  const rule = RULES.find(candidate => candidate.test.test(words))
+  return rule ? { effort: rule.effort, reason: `${subject} ${rule.phrase}, so ${rule.effort}` } : null
+}
+
+/**
+ * The policy's suggestion for a role, from its kind (Perttu's policy,
+ * 2026-10-01), else for the step it sits in. A role's name and summary are
+ * read only when its kind is one the policy does not name. Never max.
+ */
+export function suggestEffort(catalog: Pick<StaffingCatalog, 'policy'>, role: RoleEntry | undefined, stepTitle: string): Suggestion | null {
   if (role) {
-    for (const rule of RULES) if (rule.test.test(`${role.name} ${role.kind}`)) return because(role.name, rule)
-    for (const rule of RULES) if (role.summary && rule.test.test(role.summary)) return because(role.name, rule)
+    const effort = kindEffort(catalog, role.kind)
+    if (effort) return { effort, reason: `${role.name} is ${article(role.kind)} ${role.kind.trim().toLowerCase()}, so ${effort}` }
+    const read = byRule(role.name, `${role.name} ${role.kind}`) || (role.summary ? byRule(role.name, role.summary) : null)
+    if (read) return read
   }
-  if (stepTitle) {
-    for (const rule of RULES) if (rule.test.test(stepTitle)) return because(`The step “${stepTitle}”`, rule)
-  }
-  return null
+  return stepTitle ? byRule(`The step “${stepTitle}”`, stepTitle) : null
 }
 
 /** "low errands · medium making things · xhigh architecture and review · max consequential reviews". */
@@ -193,7 +208,7 @@ export interface Outcome {
   note?: string
   /** Refused, in plain words; nothing changes. */
   refused?: string
-  /** The policy's suggestion, offered when a role lands on an effort picked by hand. */
+  /** The policy's effort, offered when a role lands on a staffed slot that keeps another. */
   offer?: Suggestion
 }
 
@@ -201,33 +216,32 @@ export interface Outcome {
 export function freshStaffing(catalog: StaffingCatalog, context: SlotContext): Staffing {
   const harness = catalog.harnesses[0]?.id || 'claude-code'
   const model = firstModel(catalog, harness)
-  const suggestion = suggestEffort(undefined, context.step)
+  const suggestion = suggestEffort(catalog, undefined, context.step)
   return { role: '', harness, model, effort: suggestion ? clampEffort(catalog, harness, model, suggestion.effort) : 'low' }
 }
 
-export function roleSuggestion(context: SlotContext, role: RoleEntry | undefined): Suggestion | null {
-  return suggestEffort(role, context.step) || suggestEffort(undefined, context.label)
+export function roleSuggestion(catalog: StaffingCatalog, context: SlotContext, role: RoleEntry | undefined): Suggestion | null {
+  return suggestEffort(catalog, role, context.step) || suggestEffort(catalog, undefined, context.label)
 }
 
 /**
- * The one rule wherever a role lands. An effort he picked by hand in the
- * cockpit stays, and the policy's suggestion is offered on the slot; any other
- * effort moves to the policy. The note says why.
+ * The one rule wherever a role lands, with no memory of how the slot got its
+ * settings. A fresh slot, one that was empty, takes the policy's effort. A
+ * staffed slot keeps its harness, model and effort, and is offered the
+ * policy's effort in one click when it differs. The note says why.
  */
-export function withRole(catalog: StaffingCatalog, context: SlotContext, base: Staffing, role: RoleEntry | null, handPicked: boolean): Outcome {
+export function withRole(catalog: StaffingCatalog, context: SlotContext, base: Staffing, role: RoleEntry | null, fresh: boolean): Outcome {
   if (!role) return { next: { ...base, role: '' }, note: `Vanilla: no role. ${captionText(base)} stays.` }
-  const suggestion = roleSuggestion(context, role)
+  const suggestion = roleSuggestion(catalog, context, role)
   if (!suggestion) return { next: { ...base, role: role.id }, note: `${role.name}: the policy names no effort for this role, so ${base.effort} stays.` }
   const effort = clampEffort(catalog, base.harness, base.model, suggestion.effort)
   if (effort === base.effort) return { next: { ...base, role: role.id }, note: `Effort ${effort}: ${suggestion.reason}.` }
-  if (handPicked) {
-    return {
-      next: { ...base, role: role.id },
-      note: `${base.effort} stays: you picked it by hand. Policy suggests ${effort}: ${suggestion.reason}.`,
-      offer: { effort, reason: suggestion.reason },
-    }
+  if (fresh) return { next: { ...base, role: role.id, effort }, note: `Effort ${effort}: ${suggestion.reason}.` }
+  return {
+    next: { ...base, role: role.id },
+    note: `${captionText(base)} stays: the slot keeps its settings. Policy suggests ${effort}: ${suggestion.reason}.`,
+    offer: { effort, reason: suggestion.reason },
   }
-  return { next: { ...base, role: role.id, effort }, note: `Effort ${effort}: ${suggestion.reason}.` }
 }
 
 /** A model outside the catalog is accepted on the slot's harness, with a warning. */
@@ -455,7 +469,7 @@ export function parseWords(catalog: StaffingCatalog, input: string, base: Staffi
  * and harness first, then an effort typed by hand, then the role through
  * withRole, so a role lands the same way on every path.
  */
-export function applyParsed(catalog: StaffingCatalog, context: SlotContext, base: Staffing, parsed: Pick<Parsed, 'result' | 'roleTouched' | 'effortTyped' | 'harnessTyped' | 'offCatalog'>, handPicked: boolean): Outcome & { effortTyped: boolean } {
+export function applyParsed(catalog: StaffingCatalog, context: SlotContext, base: Staffing, parsed: Pick<Parsed, 'result' | 'roleTouched' | 'effortTyped' | 'harnessTyped' | 'offCatalog'>, fresh: boolean): Outcome & { effortTyped: boolean } {
   const wanted = parsed.result
   const notes: string[] = []
   let next: Staffing = { ...base }
@@ -475,10 +489,10 @@ export function applyParsed(catalog: StaffingCatalog, context: SlotContext, base
   if (parsed.roleTouched) {
     const role = wanted.role ? catalog.roles.find(entry => entry.id === wanted.role) || null : null
     if (role && parsed.effortTyped) {
-      // The effort typed with the role is the one he wants.
+      // The effort typed with the role is the one wanted.
       next = { ...next, role: role.id }
     } else {
-      const outcome = withRole(catalog, context, next, role, handPicked)
+      const outcome = withRole(catalog, context, next, role, fresh)
       next = outcome.next
       offer = outcome.offer
       if (outcome.note) notes.push(outcome.note)

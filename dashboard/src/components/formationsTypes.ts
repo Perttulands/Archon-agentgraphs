@@ -375,9 +375,11 @@ export interface LaunchableHarness {
 }
 
 /** One line of the effort policy the roster serves: which effort suits which work. */
+/** One line of the effort policy: the effort, its use, and the role kinds it is suggested for (none: chosen by hand). */
 export interface EffortPolicyEntry {
   effort: string
   use: string
+  kinds?: string[]
 }
 
 export interface PersonaCard {

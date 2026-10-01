@@ -72,6 +72,7 @@ import { slotStaffed } from '../nodeWindow/staffing'
 import { CanvasSlot } from '../staffing/CanvasSlot'
 import type { Part } from '../staffing/SlotFace'
 import { StaffingKeyHint, StaffingLayer } from '../staffing/StaffingLayer'
+import type { StaffingStage } from '../staffing/SentenceWindow'
 import { dropRole, moveStaffing, previewRole, staff, type StaffingHost } from '../staffing/staffingActions'
 import { captionText, roleName, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing, type StaffingCatalog } from '../staffing/staffingModel'
 import { StaffingStore, slotKey, type SlotRef } from '../staffing/staffingStore'
@@ -226,7 +227,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [locatedNodeId, setLocatedNodeId] = useState('')
   // Missions, formations and gates open in node windows, oldest first.
   const [nodeWindows, setNodeWindows] = useState<string[]>([])
-  const [ghost, setGhost] = useState<{ x: number; y: number; label: string } | null>(null)
+  // A dragged staffing's ghost follows the pointer, and waits beside a slot it is over (docked).
+  const [ghost, setGhost] = useState<{ x: number; y: number; label: string; docked: boolean } | null>(null)
   const [hoverSlot, setHoverSlot] = useState<string | null>(null)
   const [dragPos, setDragPos] = useState<{ id: string; x: number; y: number } | null>(null)
   const [wires, setWires] = useState<WirePath[]>([])
@@ -1197,6 +1199,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const source = slotOf(from)
     const target = slotOf(to)
     if (!source || !target) return 'That slot is no longer in this mission.'
+    // Identical staffings swap to the same thing: nothing is written and no undo step is made.
+    if (sameStaffing(staffingOf(source.slot), staffingOf(target.slot)) && sameStaffing(fromNext, toNext)) return null
     const restoreTarget = boardStep({ assignSlot: { formationId: to.formationId, slotId: to.slotId, ...slotSettings(staffingOf(target.slot)) } }, `the staffing of ${quoted(to.label, 'a slot')}`)
     const restoreSource = boardStep({ assignSlot: { formationId: from.formationId, slotId: from.slotId, ...slotSettings(staffingOf(source.slot)) } }, `the staffing of ${quoted(from.label, 'a slot')}`)
     try {
@@ -1842,9 +1846,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         if (!staffDrag.moved && Math.abs(pointer.clientX - staffDrag.startX) + Math.abs(pointer.clientY - staffDrag.startY) >= 6) staffDrag.moved = true
         const payload = staffDrag.payload
         if (!staffDrag.moved || !payload) return
-        setGhost({ x: pointer.clientX, y: pointer.clientY, label: ghostLabel(payload) })
         const key = slotKeyAt(pointer.clientX, pointer.clientY)
         const target = key ? refByKey(key) : null
+        const over = target ? document.querySelector(`.world .slot[data-slot-key="${CSS.escape(target.key)}"]`)?.getBoundingClientRect() : null
+        setGhost(over
+          ? { x: over.left, y: over.top + over.height / 2, label: ghostLabel(payload), docked: true }
+          : { x: pointer.clientX, y: pointer.clientY, label: ghostLabel(payload), docked: false })
         setHoverSlot(target ? target.key : null)
         if (hovered !== target?.key) leave()
         if (!target || (payload.kind === 'slot' && payload.from.key === target.key)) return
@@ -2544,6 +2551,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const rosterAgents = useMemo(() => agents.filter(agent => agent.assignable && !agent.unbound), [agents])
   const staffingCatalog = useMemo<StaffingCatalog>(() => ({ ...staffingTerms, roles: rolesOf(agents) }), [agents, staffingTerms])
   const staffingHost = useMemo<StaffingHost>(() => ({ catalog: staffingCatalog, save: saveStaffing, move: moveStaffingOp }), [moveStaffingOp, saveStaffing, staffingCatalog])
+  // The sentence window opens as node windows do: in the canvas, clear of the slot's card, its neighbours and open windows.
+  const staffingStage = useMemo<StaffingStage>(() => ({
+    workspace: windows.workspace,
+    windows: () => windows.openRects(),
+    scene: windows.scene,
+    keepClear: ref => nodeWindowKeepClear(ref.formationId, boardRef.current?.connections || []),
+  }), [windows])
   staffingHostRef.current = staffingHost
   const filteredRosterAgents = useMemo(() => {
     const needle = rosterSearch.trim().toLowerCase()
@@ -3552,10 +3566,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       ) : null}
 
       {menu ? <CanvasContextMenu menu={menu} onClose={closeMenu} /> : null}
-      {active ? <StaffingLayer store={staffingStore} host={staffingHost} savedOf={savedOf} /> : null}
+      {active ? <StaffingLayer store={staffingStore} host={staffingHost} savedOf={savedOf} stage={staffingStage} /> : null}
 
       {ghost ? (
-        <div className="fmx-ghost staffing-ghost" style={{ left: ghost.x, top: ghost.y }}>{ghost.label}</div>
+        <div className={`fmx-ghost staffing-ghost${ghost.docked ? ' docked' : ''}`} style={{ left: ghost.x, top: ghost.y }}>{ghost.label}</div>
       ) : null}
       {gateGhost ? (
         <div className="gateghost" style={{ left: gateGhost.x, top: gateGhost.y }}>{GATE_SVG}</div>

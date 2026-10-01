@@ -1,13 +1,17 @@
 /* Staffing is a sentence at the slot: "Worker 1 is [vanilla] on [Claude Code]
- * · [opus] · [low]". Each word is its own control. The first word is where he
- * types: free-order words ("cri ast", "sonnet high") fill the others as he
- * types, with an echo of how each was read. Enter staffs, Esc leaves the slot
+ * · [opus] · [low]". Each word is its own control. The first word is where the
+ * operator types: free-order words ("cri ast", "sonnet high") fill the others
+ * as they type, with an echo of how each was read. Enter staffs, Esc leaves the slot
  * as it was, and 1-6 set the effort. Clicking one word of a staffed slot opens
  * only that word, and the pick lands at once with its reason. This is variant
  * A, "Sentence", of the archon-n7u.56 prototypes (proto/staffing VariantA.tsx),
  * on the mission's own slots (archon-o7p.17). */
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { harnessName } from '../components/harnessIcons'
+import { measureElement } from '../windows/cockpitScene'
+import type { ViewScene } from '../windows/WindowManager'
+import type { WindowRect, Workspace } from '../windows/windowGeometry'
+import { placeOpeningWindow } from '../windows/windowPlacement'
 import type { Part } from './SlotFace'
 import { staff, type StaffingHost } from './staffingActions'
 import {
@@ -15,73 +19,95 @@ import {
   policyLine, policyWords, roleName, roleSuggestion, withEffort, withFreeModel, withHarness, withModel, withRole,
   type Outcome, type Parsed, type Staffing, type Suggestion,
 } from './staffingModel'
-import type { OpenSentence, StaffingStore } from './staffingStore'
+import type { OpenSentence, SlotRef, StaffingStore } from './staffingStore'
 
-const WIDTH = 470
-/** The tallest the window gets, a role grid of the whole catalog; it is placed so this always fits. */
-const MAX_HEIGHT = 520
+/** The size the window asks for: tall enough for a role grid of the whole catalog. */
+const SIZE = { width: 470, height: 520 }
+/** The least it shrinks to in a crowded view; its lists scroll. */
+const MINIMUM = { width: 470, height: 320 }
+
+/**
+ * Where the window may open, measured from the view that shows the slot, as
+ * floating windows are placed (windowPlacement.ts): the workspace, the windows
+ * already open, the view's cards, and what must stay readable beside the slot.
+ */
+export interface StaffingStage {
+  workspace: () => Workspace
+  windows: () => readonly WindowRect[]
+  scene: () => ViewScene
+  /** The slot's neighbours: its card, the cards wired to it, their links. */
+  keepClear: (ref: SlotRef) => readonly WindowRect[]
+}
+
+const CARDS = '.formation, .missioncard, .gatecard, .toolcard, .endcard'
+
+/** A view that does not describe itself: the viewport below the app bar, its cards, and the slot's own card kept clear. */
+export const viewportStage: StaffingStage = {
+  workspace: () => ({ bounds: { left: 8, top: 56, width: Math.max(0, window.innerWidth - 16), height: Math.max(0, window.innerHeight - 64) }, avoid: [] }),
+  windows: () => [],
+  scene: () => ({ landmarks: [...document.querySelectorAll(CARDS)].map(card => measureElement(card)).filter((rect): rect is WindowRect => rect !== null) }),
+  keepClear: () => [],
+}
 
 interface Row { id: string; label: string; hint?: string; tag?: string; disabled?: string; apply: () => void }
 
-type Rect = { left: number; top: number; right: number; bottom: number }
-const overlaps = (a: Rect, b: Rect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
-
-/** What the window opens beside: the slot's card, or the node window or inspector that holds the sentence. */
-function besideOf(anchor: Element): DOMRect {
-  return (anchor.closest('.formation, .fwin, .agx-inspector') || anchor).getBoundingClientRect()
-}
-
-/** The next empty slot after this one on the canvas: the one he is likely to staff next. */
-function nextEmptyRect(key: string): Rect | null {
+/** The next empty slot after this one on the canvas: the one likely to be staffed next. */
+function nextEmptySlot(key: string): Element | null {
   const slots = [...document.querySelectorAll<HTMLElement>('.world .slot[data-slot-key]')]
   const index = slots.findIndex(slot => slot.dataset.slotKey === key)
-  const next = [...slots.slice(index + 1), ...slots.slice(0, Math.max(0, index))].find(slot => slot.classList.contains('empty'))
-  return next ? besideOf(next) : null
+  return [...slots.slice(index + 1), ...slots.slice(0, Math.max(0, index))].find(slot => slot.classList.contains('empty')) || null
 }
 
-/** Placed once, tall enough for its largest list, beside what it staffs, on the side that keeps the next empty slot clear. */
-function placeWindow(anchor: Element, key: string): CSSProperties {
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  const slot = anchor.getBoundingClientRect()
-  const beside = besideOf(anchor)
-  const top = Math.max(56, Math.min(slot.top - 8, vh - MAX_HEIGHT - 12))
-  const next = nextEmptyRect(key)
-  const sides = [beside.right + 12, beside.left - 12 - WIDTH]
-  const box = (left: number): Rect => ({ left, top, right: left + WIDTH, bottom: top + MAX_HEIGHT })
-  const onScreen = (left: number) => left >= 8 && left + WIDTH <= vw - 8
-  const left = sides.find(side => onScreen(side) && !(next && overlaps(box(side), next)))
-    ?? sides.find(onScreen)
-    ?? Math.max(8, Math.min(beside.right + 12, vw - WIDTH - 8))
-  return { left, top, width: WIDTH, maxHeight: MAX_HEIGHT }
+/**
+ * Placed once, as a floating window opens: beside what it staffs (the slot, or
+ * the node window or inspector that holds the sentence), clear of the slot's
+ * card and its neighbours, the next empty slot and the windows already open.
+ */
+function placeWindow(anchor: Element, ref: SlotRef, stage: StaffingStage): CSSProperties {
+  const beside = anchor.closest('.fwin, .agx-inspector') || anchor
+  const card = anchor.closest('.formation')
+  const next = nextEmptySlot(ref.key)
+  const keepClear = [...stage.keepClear(ref), card, next]
+    .map(item => (item instanceof Element ? measureElement(item) : item))
+    .filter((rect): rect is WindowRect => Boolean(rect))
+  const rect = placeOpeningWindow(SIZE, MINIMUM, {
+    workspace: stage.workspace(),
+    anchor: measureElement(beside, true),
+    keepClear,
+    windows: stage.windows(),
+    ...stage.scene(),
+  })
+  return { left: rect.left, top: rect.top, width: rect.width, maxHeight: rect.height }
 }
 
 function partValue(staffing: Staffing, part: Part): string {
   return part === 'role' ? staffing.role : staffing[part]
 }
 
-export function SentenceWindow({ store, host, open, saved }: {
+export function SentenceWindow({ store, host, open, saved, stage = viewportStage }: {
   store: StaffingStore
   host: StaffingHost
   open: OpenSentence
   /** What the slot holds in the mission. */
   saved: Staffing | null
+  stage?: StaffingStage
 }) {
   const { ref } = open
   const { catalog } = host
   const current = store.current(ref.key, saved)
+  // A slot that was empty takes the policy when a role lands; a staffed one keeps its settings.
+  const fresh = !current
   const quick = Boolean(current) && Boolean(open.part)
   const [tokens, setTokens] = useState<Staffing>(() => current || freshStaffing(catalog, ref))
   const [tokenNote, setTokenNote] = useState<string | null>(null)
   const [tokenOffer, setTokenOffer] = useState<Suggestion | undefined>(undefined)
-  // Whether he chose the effort by hand in this sentence, or before it.
-  const [byHand, setByHand] = useState(() => Boolean(current) && store.effortByHand(ref.key, current?.effort || ''))
   const [text, setText] = useState('')
   const [list, setList] = useState<Part | null>(open.part)
   const [filter, setFilter] = useState('')
-  const [hi, setHi] = useState(0)
+  // The highlighted row; null is the slot's current value, so a reflex Enter changes nothing.
+  const [hi, setHi] = useState<number | null>(null)
   const [choosing, setChoosing] = useState(false)
-  const [style] = useState(() => placeWindow(open.anchor, ref.key))
+  const [style] = useState(() => placeWindow(open.anchor, ref, stage))
   const rootRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const committed = useRef(false)
@@ -89,11 +115,10 @@ export function SentenceWindow({ store, host, open, saved }: {
   // Free-order words typed into the first word, read against the sentence as it stands.
   const parsed: Parsed | null = useMemo(() => (text.trim() ? parseWords(catalog, text, tokens) : null), [catalog, text, tokens])
   const blocking = Boolean(parsed) && parsed!.issues.some(issue => issue.blocking)
-  const typed = useMemo(() => (parsed && !blocking ? applyParsed(catalog, ref, tokens, parsed, byHand) : null), [blocking, byHand, catalog, parsed, ref, tokens])
+  const typed = useMemo(() => (parsed && !blocking ? applyParsed(catalog, ref, tokens, parsed, fresh) : null), [blocking, catalog, fresh, parsed, ref, tokens])
   const draft = typed && !typed.refused ? typed.next : tokens
   const note = typed ? typed.note || null : tokenNote
   const offer = typed ? typed.offer : tokenOffer
-  const draftByHand = byHand || Boolean(typed?.effortTyped)
 
   // The slot shows the sentence as it is composed.
   useEffect(() => { store.setDraft(ref.key, draft) }, [draft, ref.key, store])
@@ -101,14 +126,14 @@ export function SentenceWindow({ store, host, open, saved }: {
   useEffect(() => { (list || choosing ? rootRef.current : inputRef.current)?.focus({ preventScroll: true }) }, [list, choosing])
 
   const cancel = () => { store.setDraft(ref.key, undefined); store.setOpen(null) }
-  const commit = (value: Staffing, why: string | null | undefined, meta: { effortByHand: boolean; offer?: Suggestion }) => {
+  const commit = (value: Staffing, why: string | null | undefined, offered?: Suggestion) => {
     committed.current = true
-    // A landing the policy decided always says why: the effort a new slot or a new role took from it.
-    const suggestion = roleSuggestion(ref, catalog.roles.find(role => role.id === value.role))
+    // A landing on the policy's effort says why: the effort a new slot or a new role took from it.
+    const suggestion = roleSuggestion(catalog, ref, catalog.roles.find(role => role.id === value.role))
     const decided = !current || current.effort !== value.effort || current.role !== value.role
-    const policy = decided && !meta.effortByHand && suggestion && suggestion.effort === value.effort ? `Effort ${suggestion.effort}: ${suggestion.reason}.` : ''
+    const policy = decided && suggestion && suggestion.effort === value.effort ? `Effort ${suggestion.effort}: ${suggestion.reason}.` : ''
     const words = [why || '', policy && !(why || '').includes(policy) ? policy : ''].filter(Boolean).join(' ')
-    void staff(store, host, ref, saved, value, { note: words || undefined, effortByHand: meta.effortByHand, offer: meta.offer })
+    void staff(store, host, ref, saved, value, { note: words || undefined, offer: offered && offered.effort !== value.effort ? offered : undefined })
     store.setOpen(null)
   }
 
@@ -124,35 +149,35 @@ export function SentenceWindow({ store, host, open, saved }: {
   })
 
   const roleEntry = catalog.roles.find(role => role.id === draft.role)
-  const suggestion = roleSuggestion(ref, roleEntry)
+  const suggestion = roleSuggestion(catalog, ref, roleEntry)
   const efforts = allEfforts(catalog)
 
   /** A pick from a word's list: in a quick edit it lands at once, with the reason the full sentence gives. */
-  const land = (outcome: Outcome, pickedEffort = false) => {
+  const land = (outcome: Outcome) => {
     if (outcome.refused) { setTokenNote(outcome.refused); return }
     setFilter('')
-    setHi(0)
+    setHi(null)
     setText('')
-    const nextByHand = pickedEffort || byHand
-    if (quick) { commit(outcome.next, outcome.note, { effortByHand: nextByHand, offer: outcome.offer }); return }
+    // The policy's offer stands until its effort is taken or the role changes.
+    const standing = outcome.offer || (offer && outcome.next.role === draft.role && outcome.next.effort !== offer.effort ? offer : undefined)
+    if (quick) { commit(outcome.next, outcome.note, standing); return }
     setTokens(outcome.next)
     setTokenNote(outcome.note || null)
-    setTokenOffer(outcome.offer)
-    setByHand(nextByHand)
+    setTokenOffer(standing)
     setList(null)
   }
 
-  const pickEffort = (effort: string) => land(withEffort(catalog, draft, effort), true)
-  const landRole = (role: typeof roleEntry | null) => land(withRole(catalog, ref, draft, role || null, draftByHand))
+  const pickEffort = (effort: string) => land(withEffort(catalog, draft, effort))
+  const landRole = (role: typeof roleEntry | null) => land(withRole(catalog, ref, draft, role || null, fresh))
 
   const rows = useMemo<Row[]>(() => {
     if (choosing && parsed?.ambiguous) {
       return parsed.ambiguous.roles.map(role => ({
-        id: `choice:${role.id}`, label: role.name, hint: role.summary, tag: roleSuggestion(ref, role)?.effort,
+        id: `choice:${role.id}`, label: role.name, hint: role.summary, tag: roleSuggestion(catalog, ref, role)?.effort,
         apply: () => {
           const resolved = { ...parsed, ambiguous: undefined, roleTouched: true, result: { ...parsed.result, role: role.id } }
-          const outcome = applyParsed(catalog, ref, tokens, resolved, byHand)
-          if (!outcome.refused) commit(outcome.next, outcome.note, { effortByHand: byHand || outcome.effortTyped, offer: outcome.offer })
+          const outcome = applyParsed(catalog, ref, tokens, resolved, fresh)
+          if (!outcome.refused) commit(outcome.next, outcome.note, outcome.offer)
         },
       }))
     }
@@ -165,7 +190,7 @@ export function SentenceWindow({ store, host, open, saved }: {
       const out: Row[] = []
       if (!f || 'vanilla'.startsWith(f)) out.push({ id: 'vanilla', label: 'vanilla', hint: 'no role: harness, model and effort only', apply: () => landRole(null) })
       for (const role of roles) {
-        out.push({ id: role.id, label: role.name, hint: role.summary || role.kind, tag: roleSuggestion(ref, role)?.effort, apply: () => landRole(role) })
+        out.push({ id: role.id, label: role.name, hint: role.summary || role.kind, tag: roleSuggestion(catalog, ref, role)?.effort, apply: () => landRole(role) })
       }
       return out
     }
@@ -191,16 +216,20 @@ export function SentenceWindow({ store, host, open, saved }: {
       const refusal = effortRefusal(catalog, draft.harness, draft.model, effort)
       return { id: effort, label: effort, hint: policyWords(catalog, effort), tag: suggestion?.effort === effort ? 'suggested' : undefined, disabled: refusal || undefined, apply: () => pickEffort(effort) }
     }).filter(row => !f || row.label.startsWith(f))
-  }, [choosing, parsed, list, filter, draft, catalog, ref, suggestion?.effort, tokens, byHand, efforts]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [choosing, parsed, list, filter, draft, catalog, ref, suggestion?.effort, tokens, fresh, efforts]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The effort list opens on the policy's suggestion, so Enter takes it; otherwise on the current effort.
-  useEffect(() => {
-    if (list !== 'effort') return
-    const suggested = rows.findIndex(row => row.tag === 'suggested' && !row.disabled)
-    setHi(suggested >= 0 ? suggested : Math.max(0, rows.findIndex(row => row.id === draft.effort)))
-  }, [list]) // eslint-disable-line react-hooks/exhaustive-deps
+  /** The row that holds the slot's value now: every list opens on it. */
+  const isCurrent = (row: Row): boolean => {
+    if (choosing || !list) return false
+    if (list === 'role') return (draft.role || 'vanilla') === row.id
+    if (list === 'model') return row.id === `${draft.harness}:${draft.model}`
+    return row.id === partValue(draft, list)
+  }
+  const currentRow = rows.findIndex(isCurrent)
+  const firstEnabled = Math.max(0, rows.findIndex(row => !row.disabled))
+  const active = hi ?? (currentRow >= 0 && !filter ? currentRow : firstEnabled)
 
-  const openList = (part: Part) => { setChoosing(false); setList(part); setFilter(''); setHi(0) }
+  const openList = (part: Part) => { setChoosing(false); setList(part); setFilter(''); setHi(null) }
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     event.stopPropagation()
@@ -220,12 +249,12 @@ export function SentenceWindow({ store, host, open, saved }: {
       if (key === 'ArrowDown' || key === 'ArrowUp' || (cols === 2 && (key === 'ArrowLeft' || key === 'ArrowRight'))) {
         event.preventDefault()
         const step = key === 'ArrowDown' ? cols : key === 'ArrowUp' ? -cols : key === 'ArrowRight' ? 1 : -1
-        let next = hi + step
-        if (!enabled.includes(next)) next = enabled[(enabled.indexOf(hi) + (step > 0 ? 1 : -1) + enabled.length) % enabled.length] ?? 0
+        let next = active + step
+        if (!enabled.includes(next)) next = enabled[(enabled.indexOf(active) + (step > 0 ? 1 : -1) + enabled.length) % enabled.length] ?? 0
         setHi(Math.max(0, Math.min(rows.length - 1, next)))
         return
       }
-      if (key === 'Enter') { event.preventDefault(); const row = rows[hi]; if (row && !row.disabled) row.apply(); return }
+      if (key === 'Enter') { event.preventDefault(); const row = rows[active]; if (row && !row.disabled) row.apply(); return }
       if (key === 'Backspace') { event.preventDefault(); if (filter) setFilter(filter.slice(0, -1)); else { setList(null); setChoosing(false) } return }
       if (key === 'Tab') { event.preventDefault(); setList(null); setChoosing(false); return }
       if (key.length === 1 && /\S/.test(key) && !event.ctrlKey && !event.metaKey) { event.preventDefault(); setFilter(filter + key); setHi(0) }
@@ -235,7 +264,7 @@ export function SentenceWindow({ store, host, open, saved }: {
       event.preventDefault()
       if (parsed?.ambiguous) { setChoosing(true); setHi(0); return }
       if (blocking) return
-      commit(draft, note, { effortByHand: draftByHand, offer })
+      commit(draft, note, offer)
       return
     }
     if (key === 'ArrowDown' && inInput && !text) { event.preventDefault(); openList('role') }
@@ -269,12 +298,15 @@ export function SentenceWindow({ store, host, open, saved }: {
           onClick={() => { if (!text) openList('role') }}
           data-token="role"
         />
-        <span className="staffing-lead">on</span>
-        {token('harness', harnessName(draft.harness) || draft.harness)}
-        <span className="staffing-sep">·</span>
-        {token('model', modelWords(draft.model))}
-        <span className="staffing-sep">·</span>
-        {token('effort', draft.effort)}
+        {/* What the slot runs wraps as one group, so the effort never leaves its model. */}
+        <span className="staffing-settings">
+          <span className="staffing-lead">on</span>
+          {token('harness', harnessName(draft.harness) || draft.harness)}
+          <span className="staffing-sep">·</span>
+          {token('model', modelWords(draft.model))}
+          <span className="staffing-sep">·</span>
+          {token('effort', draft.effort)}
+        </span>
       </div>
       {parsed ? (
         <div className="staffing-read" data-testid="staffing-read">
@@ -282,8 +314,8 @@ export function SentenceWindow({ store, host, open, saved }: {
           {parsed.issues.map((issue, index) => <div key={`i${index}`} className="staffing-issue">{issue.text}{parsed.ambiguous && /could be/.test(issue.text) ? ' ↵ shows them.' : ''}</div>)}
           {parsed.alternatives.map((alternative, index) => (
             <button key={`a${index}`} type="button" className="staffing-alt" onClick={() => {
-              const outcome = applyParsed(catalog, ref, tokens, { ...alternative, result: alternative.staffing, offCatalog: undefined }, byHand)
-              if (!outcome.refused) commit(outcome.next, outcome.note, { effortByHand: byHand || outcome.effortTyped, offer: outcome.offer })
+              const outcome = applyParsed(catalog, ref, tokens, { ...alternative, result: alternative.staffing, offCatalog: undefined }, fresh)
+              if (!outcome.refused) commit(outcome.next, outcome.note, outcome.offer)
             }}>instead: {alternative.label}</button>
           ))}
         </div>
@@ -296,9 +328,10 @@ export function SentenceWindow({ store, host, open, saved }: {
               <div
                 key={row.id}
                 role="option"
-                aria-selected={index === hi}
+                aria-selected={index === active}
                 aria-disabled={Boolean(row.disabled)}
-                className={`staffing-row${index === hi ? ' hi' : ''}${row.disabled ? ' disabled' : ''}${list && list !== 'role' && partValue(draft, list) === (row.id.split(':').pop() || row.id) ? ' current' : ''}${list === 'role' && (draft.role || 'vanilla') === row.id ? ' current' : ''}`}
+                aria-current={isCurrent(row) || undefined}
+                className={`staffing-row${index === active ? ' hi' : ''}${row.disabled ? ' disabled' : ''}${isCurrent(row) ? ' current' : ''}`}
                 onPointerEnter={() => !row.disabled && setHi(index)}
                 onClick={() => !row.disabled && row.apply()}
                 data-row={row.id}
@@ -311,13 +344,16 @@ export function SentenceWindow({ store, host, open, saved }: {
             ))}
             {rows.length === 0 ? <div className="staffing-row disabled"><span className="staffing-row-h">Nothing matches “{filter}”. Esc leaves the slot as it was.</span></div> : null}
           </div>
-          {list === 'role' && !choosing && rows[hi]?.hint ? <div className="staffing-list-ft">{rows[hi].hint}</div> : null}
+          {list === 'role' && !choosing && rows[active]?.hint ? <div className="staffing-list-ft">{rows[active].hint}</div> : null}
         </div>
       ) : null}
       <div className="staffing-policy" data-testid="staffing-policy">
         {note ? <span className="staffing-note">{note}</span>
           : suggestion ? <span>Policy suggests <b>{suggestion.effort}</b>: {suggestion.reason}.</span>
           : <span>Policy: {policyLine(catalog)}.</span>}
+        {offer && offer.effort !== draft.effort ? (
+          <button type="button" className="staffing-offer" data-testid="staffing-window-offer" onClick={() => { land(withEffort(catalog, draft, offer.effort)); inputRef.current?.focus({ preventScroll: true }) }}>use {offer.effort}</button>
+        ) : null}
         {offCatalog(catalog, draft) ? <div className="staffing-issue">{draft.model}: not in the catalog; the harness decides.</div> : null}
         {!effortsFor(catalog, draft.harness, draft.model).length ? <div className="staffing-issue">{harnessName(draft.harness) || draft.harness} is not a harness Archon starts.</div> : null}
       </div>

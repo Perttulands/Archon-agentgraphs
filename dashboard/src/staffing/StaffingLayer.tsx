@@ -3,7 +3,7 @@
  * slot and never takes a pointer or a drop. */
 import { useEffect, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { SentenceWindow } from './SentenceWindow'
+import { SentenceWindow, type StaffingStage } from './SentenceWindow'
 import type { StaffingHost } from './staffingActions'
 import type { Staffing } from './staffingModel'
 import { useStaffingVersion, type SlotRef, type Stamp, type StaffingStore } from './staffingStore'
@@ -55,11 +55,13 @@ function StampView({ stamp }: { stamp: Stamp }) {
   )
 }
 
-export function StaffingLayer({ store, host, savedOf }: {
+export function StaffingLayer({ store, host, savedOf, stage }: {
   store: StaffingStore
   host: StaffingHost
   /** What a slot holds in the mission now. */
   savedOf: (ref: SlotRef) => Staffing | null
+  /** Where the sentence window may open; the viewport when the view does not say. */
+  stage?: StaffingStage
 }) {
   useStaffingVersion(store)
   const { open, stamp } = store
@@ -82,7 +84,7 @@ export function StaffingLayer({ store, host, savedOf }: {
   }, [open, store])
   return createPortal(
     <div className="staffing-layer">
-      {open ? <SentenceWindow key={`${open.ref.key}:${open.part || ''}`} store={store} host={host} open={open} saved={savedOf(open.ref)} /> : null}
+      {open ? <SentenceWindow key={`${open.ref.key}:${open.part || ''}`} store={store} host={host} open={open} saved={savedOf(open.ref)} stage={stage} /> : null}
       {stamp ? <StampView key={stamp.id} stamp={stamp} /> : null}
     </div>,
     document.body,

@@ -3,7 +3,7 @@
  * staffing moved onto another. Each states the slot's staffing in full and is
  * one undo step. */
 import type { SlotRef, StaffingStore } from './staffingStore'
-import { roleName, withEffort, withRole, freshStaffing, type Staffing, type StaffingCatalog, type Suggestion } from './staffingModel'
+import { roleName, sameStaffing, withEffort, withRole, freshStaffing, type Staffing, type StaffingCatalog, type Suggestion } from './staffingModel'
 
 export interface StaffingHost {
   catalog: StaffingCatalog
@@ -17,12 +17,12 @@ export function staffingLabel(ref: SlotRef): string {
   return `the staffing of “${ref.label}”`
 }
 
-export function staff(store: StaffingStore, host: StaffingHost, ref: SlotRef, saved: Staffing | null, next: Staffing | null, meta: { note?: string; effortByHand?: boolean; offer?: Suggestion; label?: string } = {}): Promise<boolean> {
+export function staff(store: StaffingStore, host: StaffingHost, ref: SlotRef, saved: Staffing | null, next: Staffing | null, meta: { note?: string; offer?: Suggestion; label?: string } = {}): Promise<boolean> {
   const previous = store.current(ref.key, saved)
   return store.commit(ref, previous, next, meta, () => host.save(ref, next, meta.label || staffingLabel(ref)))
 }
 
-/** One input sets a slot's effort: a digit on a focused slot. It counts as picked by hand. */
+/** One input sets a slot's effort: a digit on a focused slot. */
 export function setEffort(store: StaffingStore, host: StaffingHost, ref: SlotRef, saved: Staffing | null, effort: string): void {
   const current = store.current(ref.key, saved)
   if (!current) {
@@ -35,7 +35,7 @@ export function setEffort(store: StaffingStore, host: StaffingHost, ref: SlotRef
     return
   }
   if (outcome.next.effort === current.effort) return
-  void staff(store, host, ref, saved, outcome.next, { effortByHand: true, label: `the effort of “${ref.label}”` })
+  void staff(store, host, ref, saved, outcome.next, { label: `the effort of “${ref.label}”` })
 }
 
 /** The standing offer, taken in one click: the policy's effort, with its reason. */
@@ -46,7 +46,7 @@ export function takeOffer(store: StaffingStore, host: StaffingHost, ref: SlotRef
   void staff(store, host, ref, saved, { ...current, effort: offer.effort }, { note: `Effort ${offer.effort}: ${offer.reason}.`, label: `the suggested effort of “${ref.label}”` })
 }
 
-/** A role dropped from the rail lands by the one rule; vanilla drops the role. An empty slot starts from its fresh staffing. */
+/** A role dropped from the rail lands by the one rule: an empty slot starts fresh and takes the policy, a staffed one keeps its settings. Vanilla drops the role. */
 export function dropRole(store: StaffingStore, host: StaffingHost, ref: SlotRef, saved: Staffing | null, roleId: string | null): void {
   const current = store.current(ref.key, saved)
   const base = current || freshStaffing(host.catalog, ref)
@@ -55,7 +55,7 @@ export function dropRole(store: StaffingStore, host: StaffingHost, ref: SlotRef,
     store.say(ref.key, `${roleId} is not a role you can staff.`, 'refused')
     return
   }
-  const outcome = withRole(host.catalog, ref, base, role, store.effortByHand(ref.key, base.effort))
+  const outcome = withRole(host.catalog, ref, base, role, !current)
   if (current && outcome.next.role === current.role && outcome.next.effort === current.effort) return
   void staff(store, host, ref, saved, outcome.next, { note: outcome.note, offer: outcome.offer })
 }
@@ -66,7 +66,7 @@ export function previewRole(store: StaffingStore, host: StaffingHost, ref: SlotR
   const base = current || freshStaffing(host.catalog, ref)
   const role = roleId ? host.catalog.roles.find(entry => entry.id === roleId) || null : null
   if (roleId && !role) return current
-  return withRole(host.catalog, ref, base, role, store.effortByHand(ref.key, base.effort)).next
+  return withRole(host.catalog, ref, base, role, !current).next
 }
 
 /** A wrong slot is fixed in one drag: the staffing moves, and a staffed target gives its own back. */
@@ -74,6 +74,11 @@ export async function moveStaffing(store: StaffingStore, host: StaffingHost, fro
   const moving = store.current(from.key, fromSaved)
   const displaced = store.current(to.key, toSaved)
   if (!moving || from.key === to.key || !host.move) return false
+  // Two slots that already run the same staffing are left alone: no edit, no undo step.
+  if (sameStaffing(moving, displaced)) {
+    store.say(to.key, `Nothing to swap: ${from.label} and ${to.label} already run the same.`, 'note')
+    return false
+  }
   const ok = await store.commitMove(from, displaced, to, moving, () => host.move!(from, displaced, to, moving))
   if (ok) store.say(to.key, displaced
     ? `Swapped: ${to.label} takes ${roleName(host.catalog, moving.role)}, ${from.label} takes ${roleName(host.catalog, displaced.role)}.`

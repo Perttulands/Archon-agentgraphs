@@ -20,7 +20,9 @@ export const catalog: StaffingCatalog = {
   ],
   roles,
   policy: [
-    { effort: 'low', use: 'errands' }, { effort: 'medium', use: 'making things' },
-    { effort: 'xhigh', use: 'architecture and review' }, { effort: 'max', use: 'consequential reviews' },
+    { effort: 'low', use: 'errands', kinds: ['verifier', 'scout', 'observer', 'operator'] },
+    { effort: 'medium', use: 'making things', kinds: ['builder', 'debugger'] },
+    { effort: 'xhigh', use: 'architecture and review', kinds: ['reviewer', 'judge', 'architect', 'planner', 'orchestrator'] },
+    { effort: 'max', use: 'consequential reviews' },
   ],
 }

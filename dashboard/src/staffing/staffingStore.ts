@@ -1,7 +1,6 @@
 /* What staffing shows while it happens: the sentence window that is open, the
  * draft a slot previews, the staffing still being saved, the landing to
- * replay, the efforts picked by hand, the policy's standing offers and the
- * note under a slot. The mission holds what each slot runs; this store holds
+ * replay, the policy's standing offers and the note under a slot. The mission holds what each slot runs; this store holds
  * only what the cockpit shows on the way there, so a slot re-renders on a
  * keystroke without the whole cockpit. */
 import { useSyncExternalStore } from 'react'
@@ -39,12 +38,10 @@ export interface Stamp {
   id: number
 }
 
-/** What a write needs to know besides the staffing: why, for the note, and whether the effort was picked by hand. */
+/** What a write needs to know besides the staffing: why, for the note, and the policy's offer. */
 export interface CommitMeta {
   note?: string
-  /** The effort was chosen by hand in the cockpit, so a role landing later keeps it. */
-  effortByHand?: boolean
-  /** The policy's suggestion, offered on the slot when a role landed on a hand-picked effort. */
+  /** The policy's effort, offered on the slot when a role landed on a staffed slot that keeps its own. */
   offer?: Suggestion
   /** The undo entry's words, such as "the effort of “Worker 1”". */
   label?: string
@@ -57,12 +54,11 @@ export class StaffingStore {
   private drafts = new Map<string, Staffing | null>()
   private pending = new Map<string, Staffing | null>()
   private landings = new Map<string, number>()
-  private handPicked = new Map<string, string>()
   private offers = new Map<string, Suggestion>()
   stamp: Stamp | null = null
   /** The empty slot N reached last, so N moves on even after Esc closed what it opened. */
   lastNext: string | null = null
-  /** The roles staffed lately, newest first: the role list offers them first. */
+  /** The roles staffed lately, newest first, once saved: the role list offers them first. */
   recentRoles: string[] = []
   private landingCount = 0
   private stampCount = 0
@@ -103,11 +99,6 @@ export class StaffingStore {
     return this.offers.get(key)
   }
 
-  /** Whether the slot's effort is one he picked by hand in the cockpit. */
-  effortByHand(key: string, effort: string): boolean {
-    return Boolean(effort) && this.handPicked.get(key) === effort
-  }
-
   setOpen(open: OpenSentence | null) {
     const previous = this.open
     if (previous && previous.ref.key !== open?.ref.key) this.drafts.delete(previous.ref.key)
@@ -138,9 +129,7 @@ export class StaffingStore {
     this.drafts.delete(key)
     this.pending.set(key, next)
     this.landings.set(key, ++this.landingCount)
-    if (next && meta.effortByHand) this.handPicked.set(key, next.effort)
-    if (next?.role) this.recentRoles = [next.role, ...this.recentRoles.filter(role => role !== next.role)].slice(0, 6)
-    // A standing offer goes only when he takes it, or the role or effort changes.
+    // A standing offer goes only when it is taken, or the role or effort changes.
     if (meta.offer) this.offers.set(key, meta.offer)
     else if (!previous || !next || previous.role !== next.role || previous.effort !== next.effort) this.offers.delete(key)
     this.stamp = meta.note ? { key, text: meta.note, tone: 'note', id: ++this.stampCount } : null
@@ -151,6 +140,8 @@ export class StaffingStore {
       this.landings.delete(key)
       this.offers.delete(key)
       this.stamp = { key, text: refused, tone: 'refused', id: ++this.stampCount }
+    } else if (next?.role) {
+      this.recentRoles = [next.role, ...this.recentRoles.filter(role => role !== next.role)].slice(0, 6)
     }
     this.emit()
     return !refused
@@ -163,7 +154,6 @@ export class StaffingStore {
       this.pending.set(ref.key, next)
       this.landings.set(ref.key, ++this.landingCount)
       this.offers.delete(ref.key)
-      this.handPicked.delete(ref.key)
     }
     this.stamp = null
     this.emit()

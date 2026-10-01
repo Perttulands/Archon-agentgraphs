@@ -31,9 +31,8 @@ describe('the staffing store', () => {
     expect(store.landed(ref.key)).toBe(1)
     await settle()
     expect(writes).toEqual([[ref.key, { ...vanilla, effort: 'xhigh' }]])
-    // Saved: the slot shows the mission's staffing again, and the effort counts as picked by hand.
+    // Saved: the slot shows the mission's staffing again.
     expect(store.shown(ref.key, vanilla)).toEqual(vanilla)
-    expect(store.effortByHand(ref.key, 'xhigh')).toBe(true)
   })
 
   it('says a refusal under the slot and shows what it held', async () => {
@@ -46,6 +45,18 @@ describe('the staffing store', () => {
     expect(store.landed(ref.key)).toBe(0)
   })
 
+  it('remembers a role as recent only once its save succeeds', async () => {
+    const store = new StaffingStore()
+    dropRole(store, recordingHost('the mission changed; reload and retry').host, ref, null, 'critic-judge')
+    expect(store.recentRoles).toEqual([])
+    await settle()
+    expect(store.recentRoles).toEqual([])
+    dropRole(store, recordingHost().host, ref, null, 'repo-scout')
+    expect(store.recentRoles).toEqual([])
+    await settle()
+    expect(store.recentRoles).toEqual(['repo-scout'])
+  })
+
   it('refuses an effort the harness does not take, in words, without writing', () => {
     const store = new StaffingStore()
     const { host, writes } = recordingHost()
@@ -56,19 +67,18 @@ describe('the staffing store', () => {
     expect(store.stamp?.text).toBe('Worker 1 is not staffed: open it to choose its agent first.')
   })
 
-  it('keeps a hand-picked effort when a role lands, offers the policy, and takes the offer in one click', async () => {
+  it('keeps a staffed slot\'s settings when a role lands, offers the policy, and takes the offer in one click', async () => {
     const store = new StaffingStore()
     const { host, writes } = recordingHost()
-    setEffort(store, host, ref, vanilla, 'high')
-    await settle()
-    const saved = { ...vanilla, effort: 'high' }
+    // However the slot got its effort, a role landing on it keeps it: there is no memory of hand picks.
+    const saved = { ...vanilla, model: 'sonnet', effort: 'high' }
     dropRole(store, host, ref, saved, 'critic-judge')
-    expect(store.stamp?.text).toBe('high stays: you picked it by hand. Policy suggests xhigh: Critic Judge is review or architecture work, so xhigh.')
+    expect(store.stamp?.text).toBe('Claude Code · sonnet · high stays: the slot keeps its settings. Policy suggests xhigh: Critic Judge is a reviewer, so xhigh.')
     await settle()
     const withRole = { ...saved, role: 'critic-judge' }
-    expect(writes[writes.length - 1]).toEqual([ref.key, withRole])
-    expect(store.offer(ref.key)).toEqual({ effort: 'xhigh', reason: 'Critic Judge is review or architecture work, so xhigh' })
-    // A model change keeps the offer; taking it writes the policy's effort and drops it.
+    expect(writes).toEqual([[ref.key, withRole]])
+    expect(store.offer(ref.key)).toEqual({ effort: 'xhigh', reason: 'Critic Judge is a reviewer, so xhigh' })
+    // Taking it writes the policy's effort and drops it.
     takeOffer(store, host, ref, withRole)
     await settle()
     expect(writes[writes.length - 1]).toEqual([ref.key, { ...withRole, effort: 'xhigh' }])
@@ -76,13 +86,18 @@ describe('the staffing store', () => {
     expect(store.recentRoles).toEqual(['critic-judge'])
   })
 
-  it('lands a role on an empty slot from its fresh staffing, by the policy', async () => {
+  it('lands a role on an empty slot from its fresh staffing, by the policy for its kind', async () => {
     const store = new StaffingStore()
     const { host, writes } = recordingHost()
-    dropRole(store, host, ref, null, 'repo-scout')
+    dropRole(store, host, ref, null, 'critic-judge')
     await settle()
-    expect(writes).toEqual([[ref.key, { role: 'repo-scout', harness: 'claude-code', model: 'opus', effort: 'low' }]])
-    expect(store.stamp?.text).toBe('Effort low: Repo Scout runs errands, so low.')
+    expect(writes).toEqual([[ref.key, { role: 'critic-judge', harness: 'claude-code', model: 'opus', effort: 'xhigh' }]])
+    expect(store.stamp?.text).toBe('Effort xhigh: Critic Judge is a reviewer, so xhigh.')
+    // A role whose kind the policy does not name is read from its name.
+    dropRole(store, host, other, null, 'repo-scout')
+    await settle()
+    expect(writes[writes.length - 1]).toEqual([other.key, { role: 'repo-scout', harness: 'claude-code', model: 'opus', effort: 'low' }])
+    expect(store.stamp?.text).toBe('Effort low: Repo Scout reads as errands, so low.')
   })
 
   it('moves a staffing onto another slot and swaps a staffed target back, as one edit', async () => {
@@ -95,5 +110,14 @@ describe('the staffing store', () => {
     await moveStaffing(store, host, other, critic, ref, null)
     expect(moves[moves.length - 1]).toEqual([other.key, null, ref.key, critic])
     expect(store.stamp?.text).toBe('Moved to Worker 1; Worker 2 is empty.')
+  })
+
+  it('leaves two slots that run the same staffing alone: no edit, no undo step, no swap', async () => {
+    const store = new StaffingStore()
+    const { host, moves } = recordingHost()
+    expect(await moveStaffing(store, host, ref, vanilla, other, { ...vanilla })).toBe(false)
+    expect(moves).toEqual([])
+    expect(store.landed(ref.key) + store.landed(other.key)).toBe(0)
+    expect(store.stamp?.text).toBe('Nothing to swap: Worker 1 and Worker 2 already run the same.')
   })
 })

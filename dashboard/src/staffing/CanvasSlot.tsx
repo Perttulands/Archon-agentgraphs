@@ -74,7 +74,7 @@ export function CanvasSlot({ store, host, slotRef, slot, saved, badge, classes, 
               type="button"
               className="slot-offer"
               data-testid="staffing-offer"
-              title={`${offer.reason}. Your ${current.effort} stays until you take it.`}
+              title={`${offer.reason}. The slot keeps ${current.effort} until you take it.`}
               onPointerDown={event => event.stopPropagation()}
               onClick={event => { event.stopPropagation(); takeOffer(store, host, slotRef, saved) }}
             >use {offer.effort}?</button>

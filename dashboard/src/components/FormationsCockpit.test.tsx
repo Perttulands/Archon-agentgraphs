@@ -2008,12 +2008,12 @@ describe('FormationsCockpit reference parity', () => {
     const staffing = within(frame).getByRole('region', { name: 'Staffing' })
     await waitFor(() => expect(sentencesIn(staffing)).toEqual(['Lead (controller) is Mason on Codex · gpt-6-astra · xhigh.', 'Worker is vanilla on Claude Code · opus · low.']))
 
-    // The role word opens the role list. Hazel lands by the policy (a lead makes things, so medium),
-    // and undo restores the slot's own model and effort exactly.
+    // The role word opens the role list. Hazel lands on a staffed slot, so the slot keeps its own
+    // harness, model and effort; undo restores the slot exactly.
     fireEvent.click(within(staffing).getByRole('button', { name: 'Change the role of Lead: Mason' }))
     const sentence = await screen.findByRole('dialog', { name: 'Staff Lead' })
     fireEvent.click(within(sentence).getByText('Hazel'))
-    await waitFor(() => expect(patches.find(patch => patch.body.assignSlot)?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: 'hazel', harness: 'openai-codex', model: 'gpt-6-astra', effort: 'medium' }))
+    await waitFor(() => expect(patches.find(patch => patch.body.assignSlot)?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: 'hazel', harness: 'openai-codex', model: 'gpt-6-astra', effort: 'xhigh' }))
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => {
       expect(patches.filter(patch => patch.body.assignSlot).slice(-1)[0]?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: 'mason', harness: 'openai-codex', model: 'gpt-6-astra', effort: 'xhigh' })

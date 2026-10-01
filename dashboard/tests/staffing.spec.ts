@@ -29,7 +29,7 @@ test('an empty slot staffs in two inputs, says so in place, and one Ctrl+Z empti
   // The sentence already says what Enter staffs: vanilla on the first harness and model, at the step's policy effort.
   await expect(sentence.getByRole('textbox', { name: /Role, or type/ })).toHaveAttribute('placeholder', 'vanilla')
   await expect(sentence.locator('[data-token]')).toHaveText(['', 'Claude Code', 'opus', 'medium'])
-  await expect(sentence.getByTestId('staffing-policy')).toContainText('The step “Execution” makes things, so medium.')
+  await expect(sentence.getByTestId('staffing-policy')).toContainText('The step “Execution” reads as making things, so medium.')
   // The slot previews the draft while it is composed.
   await expect(caption(page, 'slot-execution-worker')).toHaveAttribute('data-staffing', 'Claude Code · opus · medium')
   await expect(worker.locator('.slot-caption.pending')).toHaveCount(1)
@@ -60,7 +60,8 @@ test('the keyboard path: N reaches the empty slot, typed words fill the sentence
   await expect(sentence.locator('[data-token]')).toHaveText(['', 'Codex', 'gpt-6-astra', 'xhigh'])
   await expect(caption(page, 'slot-execution-worker')).toHaveAttribute('data-staffing', 'Critic Judge | Codex · gpt-6-astra · xhigh')
   await page.keyboard.press('Enter')
-  await expect(page.getByTestId('staffing-stamp')).toHaveText('Harness is now Codex: gpt-6-astra runs there, not on Claude Code. Effort xhigh: Critic Judge is review or architecture work, so xhigh.')
+  // An empty slot takes the policy for the role's kind.
+  await expect(page.getByTestId('staffing-stamp')).toHaveText('Harness is now Codex: gpt-6-astra runs there, not on Claude Code. Effort xhigh: Critic Judge is a reviewer, so xhigh.')
   await expect.poll(() => assignments(fixture.patches)).toEqual([{ formationId: 'execution', slotId: 'worker', agentId: 'critic', harness: 'openai-codex', model: 'gpt-6-astra', effort: 'xhigh' }])
   // N on a mission with no empty slot says so.
   await page.mouse.click(1000, 950)
@@ -68,20 +69,33 @@ test('the keyboard path: N reaches the empty slot, typed words fill the sentence
   await expect(page.getByTestId('staffing-stamp')).toHaveText('No empty slot in this mission.')
 })
 
-test('a word of a staffed slot opens only its list; the effort list offers the policy first and names what a harness refuses', async ({ page }) => {
+test('a word of a staffed slot opens only its list, on the slot\'s current value, and names what a harness refuses', async ({ page }) => {
   const fixture = await cockpitFixture(page, { roles })
   await page.goto('/')
   const reviewer = page.getByTestId('slot-peer-peer_1')
   await reviewer.locator('[data-part=effort]').click()
   const sentence = page.getByRole('dialog', { name: 'Staff Reviewer' })
   const list = sentence.getByRole('listbox', { name: 'Choose effort' })
-  // The role outranks its step: Codex builder makes things, so the list opens on medium.
+  // The role's kind decides the suggestion: Codex builder is a builder, so medium.
   await expect(list.getByRole('option')).toHaveText([/^low\s*errands/, /^medium\s*suggested\s*making things/, /^high/, /^xhigh\s*architecture and review/, /^max\s*consequential reviews/, /^ultra/])
   await expect(list.getByRole('option', { selected: true })).toHaveAttribute('data-row', 'medium')
-  await expect(sentence.getByTestId('staffing-policy')).toHaveText('Policy suggests medium: Codex builder makes things, so medium.')
+  await expect(sentence.getByTestId('staffing-policy')).toHaveText('Policy suggests medium: Codex builder is a builder, so medium.')
   await list.locator('[data-row="xhigh"]').click()
   await expect(caption(page, 'slot-peer-peer_1')).toHaveAttribute('data-staffing', 'Codex builder | Codex · default model · xhigh')
   await expect.poll(() => assignments(fixture.patches).at(-1)).toEqual({ formationId: 'peer', slotId: 'peer_1', agentId: 'codex', harness: 'openai-codex', model: '', effort: 'xhigh' })
+
+  // Every quick-edit list opens on what the slot holds, never on its first row or the suggestion,
+  // so a reflex Enter changes nothing.
+  for (const [part, row] of [['effort', 'xhigh'], ['harness', 'openai-codex'], ['model', 'openai-codex:'], ['role', 'codex']]) {
+    await reviewer.locator(`[data-part=${part}]`).click()
+    const open = page.getByRole('dialog', { name: 'Staff Reviewer' }).getByRole('listbox', { name: `Choose ${part}` })
+    await expect(open.getByRole('option', { selected: true })).toHaveAttribute('data-row', row)
+    await expect(open.locator('[aria-current="true"]')).toHaveAttribute('data-row', row)
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('dialog', { name: 'Staff Reviewer' })).toHaveCount(0)
+  }
+  await expect(caption(page, 'slot-peer-peer_1')).toHaveAttribute('data-staffing', 'Codex builder | Codex · default model · xhigh')
+  expect(assignments(fixture.patches)).toHaveLength(1)
 
   // Claude Code goes up to max: ultra is struck through with its reason, and its digit is refused in words.
   const controller = page.getByTestId('slot-execution-controller')
@@ -107,6 +121,8 @@ test('a known Codex model narrows the efforts offered to its own (archon-n7u.50)
   await reviewer.locator('[data-part=model]').click()
   const models = page.getByRole('dialog', { name: 'Staff Reviewer' }).getByRole('listbox', { name: 'Choose model' })
   await expect(models.getByRole('option')).toHaveText([/^gpt-6-astra/, /^gpt-5.6-sol/, /^gpt-5.5/, /^default model/, /^opus.*switches harness/, /^sonnet/, /^haiku/, /^fable/])
+  // A blank model is the harness default: that row is the current one.
+  await expect(models.locator('.staffing-row.current')).toHaveAttribute('data-row', 'openai-codex:')
   await models.locator('[data-row="openai-codex:gpt-5.5"]').click()
   await expect(caption(page, 'slot-peer-peer_1')).toHaveAttribute('data-staffing', 'Codex builder | Codex · gpt-5.5 · medium')
 
@@ -134,35 +150,46 @@ test('a known Codex model narrows the efforts offered to its own (archon-n7u.50)
   ])
 })
 
-test('a role landing follows the policy, but an effort picked by hand stays with a standing offer that one click takes', async ({ page }) => {
+test('a role landing on a staffed slot keeps its harness, model and effort, and offers the policy\'s effort in one click', async ({ page }) => {
   const fixture = await cockpitFixture(page, { roles })
   await page.goto('/')
-  // A seeded effort follows the policy as the role lands, and the note says why.
+  // The Judge slot is staffed: the critic lands on its settings, and the note says why.
   const judge = page.getByTestId('slot-judge-judge_1')
   await judge.locator('[data-part=role]').click()
   const grid = page.getByRole('dialog', { name: 'Staff Judge' }).getByRole('listbox', { name: 'Choose role' })
   await expect(grid.locator('[data-row="critic"]')).toContainText('xhigh')
   await grid.locator('[data-row="critic"]').click()
-  await expect(caption(page, 'slot-judge-judge_1')).toHaveAttribute('data-staffing', 'Critic Judge | Claude Code · default model · xhigh')
-  await expect(page.getByTestId('staffing-stamp')).toHaveText('Effort xhigh: Critic Judge is review or architecture work, so xhigh.')
-
-  // A hand-picked effort stays; the policy's suggestion waits on the slot.
-  const controller = page.getByTestId('slot-execution-controller')
-  await controller.focus()
-  await page.keyboard.press('3')
-  await expect(caption(page, 'slot-execution-controller')).toHaveAttribute('data-staffing', 'Claude controller | Claude Code · default model · high')
-  await controller.locator('[data-part=role]').click()
-  await page.getByRole('dialog', { name: 'Staff Controller' }).locator('[data-row="critic"]').click()
-  await expect(caption(page, 'slot-execution-controller')).toHaveAttribute('data-staffing', 'Critic Judge | Claude Code · default model · high')
-  await expect(page.getByTestId('staffing-stamp')).toHaveText('high stays: you picked it by hand. Policy suggests xhigh: Critic Judge is review or architecture work, so xhigh.')
-  const offer = controller.getByTestId('staffing-offer')
+  await expect(caption(page, 'slot-judge-judge_1')).toHaveAttribute('data-staffing', 'Critic Judge | Claude Code · default model · medium')
+  await expect(page.getByTestId('staffing-stamp')).toHaveText('Claude Code · default model · medium stays: the slot keeps its settings. Policy suggests xhigh: Critic Judge is a reviewer, so xhigh.')
+  const offer = judge.getByTestId('staffing-offer')
   await expect(offer).toHaveText('use xhigh?')
   await page.waitForTimeout(9500)
   await expect(offer).toBeVisible()
   await offer.click()
-  await expect(caption(page, 'slot-execution-controller')).toHaveAttribute('data-staffing', 'Critic Judge | Claude Code · default model · xhigh')
+  await expect(caption(page, 'slot-judge-judge_1')).toHaveAttribute('data-staffing', 'Critic Judge | Claude Code · default model · xhigh')
   await expect(offer).toHaveCount(0)
-  await expect.poll(() => assignments(fixture.patches).at(-1)).toEqual({ formationId: 'execution', slotId: 'controller', agentId: 'critic', harness: 'claude-code', model: '', effort: 'xhigh' })
+
+  // The whole sentence of a staffed slot offers it too, in the window, before anything is written.
+  const controller = page.getByTestId('slot-execution-controller')
+  await controller.focus()
+  await page.keyboard.press('3')
+  await expect(caption(page, 'slot-execution-controller')).toHaveAttribute('data-staffing', 'Claude controller | Claude Code · default model · high')
+  await controller.locator('.slot-ring').click()
+  const sentence = page.getByRole('dialog', { name: 'Staff Controller' })
+  await sentence.getByRole('textbox', { name: /Role, or type/ }).click()
+  await sentence.locator('[data-row="final"]').click()
+  await expect(sentence.locator('[data-token]')).toHaveText(['', 'Claude Code', 'default model', 'high'])
+  await sentence.getByTestId('staffing-window-offer').click()
+  await expect(sentence.locator('[data-token]')).toHaveText(['', 'Claude Code', 'default model', 'xhigh'])
+  await expect(sentence.getByTestId('staffing-window-offer')).toHaveCount(0)
+  await page.keyboard.press('Enter')
+  await expect(caption(page, 'slot-execution-controller')).toHaveAttribute('data-staffing', 'Final Reviewer | Claude Code · default model · xhigh')
+  await expect.poll(() => assignments(fixture.patches)).toEqual([
+    { formationId: 'judge', slotId: 'judge_1', agentId: 'critic', harness: 'claude-code', model: '', effort: 'medium' },
+    { formationId: 'judge', slotId: 'judge_1', agentId: 'critic', harness: 'claude-code', model: '', effort: 'xhigh' },
+    { formationId: 'execution', slotId: 'controller', agentId: 'claude', harness: 'claude-code', model: '', effort: 'high' },
+    { formationId: 'execution', slotId: 'controller', agentId: 'final', harness: 'claude-code', model: '', effort: 'xhigh' },
+  ])
 })
 
 test('Esc and a click away change nothing; mistakes are named before they are written', async ({ page }) => {
@@ -257,8 +284,11 @@ test('a role dragged from the rail lands by the same rule, previews on the slot,
   await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 15 })
   await expect(worker).toHaveClass(/snaptarget/)
   await expect(caption(page, 'slot-execution-worker')).toHaveAttribute('data-staffing', 'Repo Scout | Claude Code · opus · low')
+  // The ghost waits beside the slot, off the caption it previews.
+  const [ghost, preview] = [(await page.locator('.staffing-ghost').boundingBox())!, (await caption(page, 'slot-execution-worker').boundingBox())!]
+  expect(ghost.x + ghost.width <= preview.x || ghost.x >= preview.x + preview.width || ghost.y + ghost.height <= preview.y || ghost.y >= preview.y + preview.height).toBe(true)
   await page.mouse.up()
-  await expect(page.getByTestId('staffing-stamp')).toHaveText('Effort low: Repo Scout runs errands, so low.')
+  await expect(page.getByTestId('staffing-stamp')).toHaveText('Effort low: Repo Scout is a scout, so low.')
   await expect.poll(() => assignments(fixture.patches)).toEqual([{ formationId: 'execution', slotId: 'worker', agentId: 'scout', harness: 'claude-code', model: 'opus', effort: 'low' }])
 
   await page.mouse.move(from.x + 40, from.y + 10)
@@ -303,10 +333,46 @@ test('changing what a slot runs moves no other slot or card', async ({ page }) =
   expect(before).toHaveLength(10)
   await controller.locator('[data-part=role]').click()
   await page.getByRole('dialog', { name: 'Staff Controller' }).locator('[data-row="final"]').click()
-  // A final review is consequential: the policy puts it at max.
-  await expect(caption(page, 'slot-execution-controller')).toHaveAttribute('data-staffing', 'Final Reviewer | Claude Code · default model · max')
+  // A role landing on a staffed slot keeps its settings and offers the policy's effort beside the label.
+  await expect(caption(page, 'slot-execution-controller')).toHaveAttribute('data-staffing', 'Final Reviewer | Claude Code · default model · medium')
+  await expect(controller.getByTestId('staffing-offer')).toHaveText('use xhigh?')
   await page.waitForTimeout(700)
   expect(await rects()).toEqual(before)
+})
+
+test('the sentence opens as a node window does: beside its slot, clear of the slot\'s card and the cards wired to it', async ({ page }) => {
+  await cockpitFixture(page, { roles })
+  await page.goto('/')
+  const neighbours: Record<string, string[]> = { execution: ['execution', 'mission', 'gate'], peer: ['peer', 'gate'], judge: ['judge', 'gate'] }
+  for (const [slot, formation, label] of [['slot-execution-controller', 'execution', 'Controller'], ['slot-execution-worker', 'execution', 'Worker 1'], ['slot-peer-peer_1', 'peer', 'Reviewer'], ['slot-judge-judge_1', 'judge', 'Judge']]) {
+    await page.getByTestId(slot).locator('.slot-ring').click()
+    const sentence = page.getByRole('dialog', { name: `Staff ${label}` })
+    await expect(sentence).toBeVisible()
+    const box = (await sentence.boundingBox())!
+    for (const node of neighbours[formation]) {
+      const card = (await page.locator(`.world [data-node="${node}"]`).first().boundingBox())!
+      const apart = box.x + box.width <= card.x || box.x >= card.x + card.width || box.y + box.height <= card.y || box.y >= card.y + card.height
+      expect(apart, `${label}'s sentence covers ${node}`).toBe(true)
+    }
+    await page.keyboard.press('Escape')
+    await expect(sentence).toHaveCount(0)
+  }
+})
+
+test('a long role sentence wraps what the slot runs as one group, so the effort stays with its model', async ({ page }) => {
+  await cockpitFixture(page, { roles: [{ id: 'long', displayName: 'Wayfinding Opus critic and release gatekeeper', kind: 'reviewer' }], workers: [
+    { id: 'w1', label: 'Worker 1', agentId: 'long', harness: 'openai-codex', model: 'gpt-5.6-terra', effort: 'xhigh', controller: false },
+  ] })
+  await page.goto('/')
+  await page.getByTestId('slot-execution-w1').locator('.slot-ring').click()
+  const sentence = page.getByRole('dialog', { name: 'Staff Worker 1' })
+  const top = async (selector: string) => Math.round((await sentence.locator(selector).boundingBox())!.y)
+  const line = await top('[data-token=effort]')
+  expect(Math.abs(await top('[data-token=model]') - line)).toBeLessThanOrEqual(3)
+  expect(Math.abs(await top('[data-token=harness]') - line)).toBeLessThanOrEqual(3)
+  for (const token of ['harness', 'model', 'effort']) {
+    expect(await sentence.locator(`[data-token=${token}]`).evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
 })
 
 test('the node window\'s staffing words open the same sentence beside it', async ({ page }) => {
@@ -384,5 +450,12 @@ test('the Agents view counts roles in use in the rail\'s words', async ({ page }
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
   const roster = page.getByTestId('agents-view').getByRole('complementary', { name: 'Agent roster' })
   await expect(roster.locator('.roster-hd .s')).toHaveText('3 roles · 2 in use')
-  await expect(roster.getByRole('button', { name: /Inspect Builder/ }).locator('.r')).toContainText('in 2 slots')
+  // In use leads the row's words and is never cut off.
+  const words = roster.getByRole('button', { name: /Inspect Builder/ }).locator('.r')
+  await expect(words.locator('span').first()).toHaveText('in 2 slots')
+  expect(await words.evaluate(element => {
+    const line = element.getBoundingClientRect()
+    const inUse = element.querySelector('.in-use-words')!.getBoundingClientRect()
+    return inUse.right <= line.right && inUse.left >= line.left
+  })).toBe(true)
 })

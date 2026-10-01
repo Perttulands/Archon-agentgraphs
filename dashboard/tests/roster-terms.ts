@@ -15,9 +15,9 @@ export const harnesses = [
 ]
 
 export const effortPolicy = [
-  { effort: 'low', use: 'errands' },
-  { effort: 'medium', use: 'making things' },
-  { effort: 'xhigh', use: 'architecture and review' },
+  { effort: 'low', use: 'errands', kinds: ['verifier', 'scout', 'observer', 'operator'] },
+  { effort: 'medium', use: 'making things', kinds: ['builder', 'debugger'] },
+  { effort: 'xhigh', use: 'architecture and review', kinds: ['reviewer', 'judge', 'architect', 'planner', 'orchestrator'] },
   { effort: 'max', use: 'consequential reviews' },
 ]
 
@@ -38,7 +38,7 @@ export function assignedSettings(slotId: string, request: { agentId?: string; ha
   const harness = harnesses.find(entry => entry.id === harnessId)
   if (!harness) return { refused: `${name} harness "${harnessId}" cannot start seats; use claude-code or openai-codex` }
   if (/\s/.test(model)) return { refused: `${name} model "${model}" must be one model name without spaces` }
-  if (!effort) return { refused: `${name} needs an effort; the policy is low for errands, medium for making things, xhigh for architecture and review, max for consequential reviews` }
+  if (!effort) return { refused: `${name} needs an effort; the policy is low for errands (verifier, scout, observer, operator); medium for making things (builder, debugger); xhigh for architecture and review (reviewer, judge, architect, planner, orchestrator); max for consequential reviews, chosen by hand` }
   const known = (harness.models as Array<{ id: string; efforts?: string[] }>).find(entry => entry.id === model && entry.efforts)
   const efforts = known?.efforts || harness.efforts
   if (!efforts.includes(effort)) return { refused: `${name} effort "${effort}" is not one ${known ? model : harness.id} accepts; use ${efforts.join(', ')}` }
