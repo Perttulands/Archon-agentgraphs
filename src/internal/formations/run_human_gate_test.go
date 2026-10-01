@@ -816,3 +816,70 @@ func TestHumanGateVerdictRecordsWhoRelayedIt(t *testing.T) {
 		t.Fatalf("evidence decision = %+v", decision)
 	}
 }
+
+// One slot ID rule holds where a slot is authored, admitted and named by a
+// relayed verdict, so a slot a run admits can always relay its own gate
+// decision (archon-1ds).
+func TestSlotIDRuleIsTheSameForAuthoringAdmissionAndRelays(t *testing.T) {
+	longest := "w" + strings.Repeat("0", 63)
+	for id, want := range map[string]bool{longest: true, longest + "0": false, "slot.work": false, "_slot": false, "slot-work_1": true} {
+		if ValidSlotID(id) != want {
+			t.Fatalf("ValidSlotID(%q) = %t, want %t", id, !want, want)
+		}
+		if err := ValidateRelayedBy(id); (err == nil) != want {
+			t.Fatalf("ValidateRelayedBy(%q) = %v, want accepted %t", id, err, want)
+		}
+		if _, bad := firstBadSlotID([]FormationSlot{{ID: id}}); bad == want {
+			t.Fatalf("authoring a slot %q: refused %t, want %t", id, bad, !want)
+		}
+	}
+
+	start := func(t *testing.T, slotID string) (*RunEngine, *RunStatusProjection, error) {
+		t.Helper()
+		store, personas := s4RunFixture(t)
+		store.Now = fixedClock()
+		personas.Now = fixedClock()
+		createS4Persona(t, personas, "scout")
+		writeFixture(t, store.BoardPath("session-search"), strings.Replace(s5HumanGateBoardFixture(), `id = "slot_work"`, `id = "`+slotID+`"`, 1))
+		board, err := store.ReadBoard("session-search")
+		if err != nil {
+			t.Fatalf("read board: %v", err)
+		}
+		if err := CheckRunAdmission(board, personas, RunAdmissionScope{MissionID: "mis_showcase"}); err != nil {
+			return nil, nil, err
+		}
+		engine := NewRunEngine(store, personas, &fakeRunExecutor{})
+		status, err := engine.RunMission("session-search", RunStartRequest{
+			MissionID:         "mis_showcase",
+			Actor:             "agent:test",
+			ExpectedBoardETag: board.ETag,
+			ExpectedBoardRev:  board.Rev,
+		})
+		return engine, status, err
+	}
+
+	_, _, err := start(t, strings.Repeat("s", 88))
+	var admission *RunAdmissionError
+	if !errors.As(err, &admission) || !hasFindingCode(admission.Findings, FindingInvalidSlotID) {
+		t.Fatalf("admitting an 88-character slot id = %v, want an invalid_slot_id finding", err)
+	}
+
+	engine, status, err := start(t, longest)
+	if err != nil {
+		t.Fatalf("admit the longest slot id: %v", err)
+	}
+	if _, err := engine.RecordHumanGateVerdict(status.RunID, HumanGateVerdictRequest{
+		GateID: "gate_review", Verdict: "pass", Reason: "Ship it", Actor: "human:operator", RelayedBy: longest,
+	}); err != nil {
+		t.Fatalf("the admitted slot relays its own gate decision: %v", err)
+	}
+}
+
+func hasFindingCode(findings []BoardFinding, code string) bool {
+	for _, finding := range findings {
+		if finding.Code == code {
+			return true
+		}
+	}
+	return false
+}

@@ -1227,7 +1227,7 @@ func validateRestoredSlots(slots []FormationSlot) error {
 func firstBadSlotID(slots []FormationSlot) (string, bool) {
 	seen := make(map[string]bool, len(slots))
 	for _, slot := range slots {
-		if !validToolDefinitionID(slot.ID) || seen[slot.ID] {
+		if !ValidSlotID(slot.ID) || seen[slot.ID] {
 			return slot.ID, true
 		}
 		seen[slot.ID] = true

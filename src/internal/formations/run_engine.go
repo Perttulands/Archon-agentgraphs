@@ -155,15 +155,26 @@ type HumanGateVerdictRequest struct {
 	RelayedBy string
 }
 
-var relayedByPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+// slotIDPattern is what a slot ID may be, wherever it is written or named: a
+// letter or digit, then up to 63 letters, digits, underscores or hyphens. Its
+// seat's session is named after it and a relayed verdict names it
+// (archon-1ds).
+var slotIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
-// ValidateRelayedBy accepts no relay, or a slot ID: a letter or digit, then up
-// to 63 letters, digits, underscores or hyphens.
+// slotIDRule says what a slot ID may be, for messages.
+const slotIDRule = "a letter or digit, then up to 63 letters, digits, underscores or hyphens"
+
+// ValidSlotID reports whether id is a slot ID Archon can use.
+func ValidSlotID(id string) bool {
+	return slotIDPattern.MatchString(id)
+}
+
+// ValidateRelayedBy accepts no relay, or a slot ID.
 func ValidateRelayedBy(slotID string) error {
-	if slotID == "" || relayedByPattern.MatchString(slotID) {
+	if slotID == "" || ValidSlotID(slotID) {
 		return nil
 	}
-	return fmt.Errorf("%w: relayedBy %q must be a slot ID: a letter or digit, then up to 63 letters, digits, underscores or hyphens", ErrInvalidRelayedBy, slotID)
+	return fmt.Errorf("%w: relayedBy %q must be a slot ID: %s", ErrInvalidRelayedBy, slotID, slotIDRule)
 }
 
 type RunInputRef struct {

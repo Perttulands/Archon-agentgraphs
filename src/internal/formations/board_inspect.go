@@ -20,6 +20,7 @@ const (
 	FindingInvalidTool              = "invalid_tool"
 	FindingDuplicateNodeID          = "duplicate_node_id"
 	FindingDuplicateSlotID          = "duplicate_slot_id"
+	FindingInvalidSlotID            = "invalid_slot_id"
 	FindingDuplicateInputProducer   = "duplicate_input_producer"
 	FindingIncompatibleMedia        = "incompatible_media"
 	FindingIncompatiblePayloadKind  = "incompatible_payload_kind"
@@ -116,6 +117,7 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	}
 
 	report.Errors = append(report.Errors, duplicateSlotFindings(board.Formations)...)
+	report.Errors = append(report.Errors, invalidSlotIDFindings(board)...)
 	report.Errors = append(report.Errors, executionPolicyFindings(board)...)
 
 	seenNodeIDs := make(map[string]string, len(board.Missions)+len(board.Formations)+len(board.Gates)+len(board.Tools))
@@ -275,6 +277,25 @@ func duplicateSlotFindings(formations []FormationNode) []BoardFinding {
 				Code:    FindingDuplicateSlotID,
 				NodeID:  node,
 				Message: fmt.Sprintf("slot id %q is used by %s; give every slot in the mission its own id", slotID, described),
+			})
+		}
+	}
+	return findings
+}
+
+// invalidSlotIDFindings reports each slot whose ID breaks the slot ID rule a
+// hand-written mission may break: its seat could not relay a gate decision.
+func invalidSlotIDFindings(board *BoardDocument) []BoardFinding {
+	var findings []BoardFinding
+	for _, formation := range board.Formations {
+		for _, slot := range formation.Slots {
+			if slot.ID == "" || ValidSlotID(slot.ID) {
+				continue
+			}
+			findings = append(findings, BoardFinding{
+				Code:    FindingInvalidSlotID,
+				NodeID:  formation.ID,
+				Message: fmt.Sprintf("%s slot id %q is not a slot id Archon can use: %s; rename it in the mission file", possessive(nodeName(board, formation.ID)), slot.ID, slotIDRule),
 			})
 		}
 	}

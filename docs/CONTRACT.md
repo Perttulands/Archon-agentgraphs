@@ -696,8 +696,8 @@ is dispatched; branches not behind the gate run after the verdict, and a
 verdict that ends its path ends the run only once they have run. The
 cockpit shows a pending human gate's input with a response box, Approve and Send back.
 A verdict may carry `relayedBy`, the slot ID of the seat that typed the
-operator's confirmed decision (a letter or digit, then up to 63 letters, digits,
-underscores or hyphens): `archon gate approve|reject ... --relayed-by <slot-id>`.
+operator's confirmed decision (the slot ID rule: a letter or digit, then up to
+63 letters, digits, underscores or hyphens): `archon gate approve|reject ... --relayed-by <slot-id>`.
 It is stored on `human_verdict_recorded` and served beside `decidedBy` on the
 gate's recorded decision in the run evidence route; `decidedBy` stays
 `human:operator`. Any other value returns HTTP 400 and records nothing, and a
@@ -1013,7 +1013,12 @@ unique, because a seat's session is named after its run and slot and a relayed
 verdict names its slot. Authoring generates a fresh ID for each new slot, and
 restoring slots cannot take another formation's ID. A hand-written or imported
 mission that repeats one gets `duplicate_slot_id` on each formation holding it,
-from mission validation and run admission.
+from mission validation and run admission. A slot ID is a letter or digit, then
+up to 63 letters, digits, underscores or hyphens, wherever it is written or
+named: generated IDs fit, restoring slots refuses any other, and a hand-written
+one that breaks the rule gets the error `invalid_slot_id` on its formation from
+validation and admission, so every slot a run admits can relay its own gate
+decision (archon-1ds).
 `mission validate` lists every finding for the whole mission, admission checks
 included, as `ERROR`/`WARN` lines or `--json`, and exits 1 on any error.
 `mission run` and `formation run` print every admission finding when a start is
