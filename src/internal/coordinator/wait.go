@@ -159,6 +159,11 @@ func (c *Coordinator) wait(w http.ResponseWriter, r *http.Request) {
 		}
 		hold = time.Duration(n) * time.Second
 	}
+	// An unknown run answers before it is subscribed to, so it allocates nothing.
+	if _, err := c.store.ReadRunEvents(runID); err != nil {
+		failure(w, err)
+		return
+	}
 	timer := time.NewTimer(hold)
 	defer timer.Stop()
 	var board *formations.BoardDocument

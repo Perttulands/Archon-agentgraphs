@@ -55,6 +55,9 @@ type Store struct {
 	// OnRunEvent is called after a durable append. It must not block or read the store.
 	OnRunEvent func(RunEvent)
 
+	// ledgers keeps parsed run ledgers so reads parse only new lines.
+	ledgers ledgerCache
+
 	newToolDefinitionID                  func(string) string
 	deleteBoardAfterLayoutArchiveForTest func()
 	archiveDirectorySyncForTest          func() error

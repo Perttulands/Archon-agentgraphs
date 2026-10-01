@@ -18,7 +18,7 @@ func (s *Store) readRunPersonaBinding(runID, nodeID string, slot FormationSlot) 
 		return invalid("could not open run persona snapshot", err)
 	}
 	defer ledger.close()
-	events, err := readRunEventsFrom(ledger.file, runID)
+	events, err := s.readLedger(ledger, runID, false)
 	if err != nil || len(events) == 0 {
 		return invalid("could not read run persona snapshot identity", err)
 	}

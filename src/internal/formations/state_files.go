@@ -112,9 +112,16 @@ type ledgerEnvelope struct {
 // sequence numbers 1, 2, 3 and so on, RFC 3339 timestamps, an actor and type
 // on every event, and one run ID throughout (expectedRunID when given).
 func readLedgerLines(input io.Reader, expectedRunID string, visit func(line []byte) error) error {
+	return readLedgerLinesFrom(input, expectedRunID, 0, visit)
+}
+
+// readLedgerLinesFrom reads ledger lines that follow the first after events,
+// checking each as readLedgerLines does; the first line must carry seq
+// after+1.
+func readLedgerLinesFrom(input io.Reader, expectedRunID string, after int, visit func(line []byte) error) error {
 	reader := bufio.NewReaderSize(input, runEventMaxBytes+1)
 	runID := expectedRunID
-	count := 0
+	count := after
 	for {
 		line, err := readLedgerLine(reader)
 		if errors.Is(err, io.EOF) {

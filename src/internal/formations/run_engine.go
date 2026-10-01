@@ -1598,7 +1598,7 @@ func (s *Store) ReadRunBoard(runID string) (*BoardDocument, error) {
 		return nil, fmt.Errorf("%w: open run ledger: %v", ErrRunLedgerInvalid, err)
 	}
 	defer ledger.close()
-	events, err := readRunEventsFrom(ledger.file, runID)
+	events, err := s.readLedger(ledger, runID, false)
 	if err != nil {
 		return nil, err
 	}

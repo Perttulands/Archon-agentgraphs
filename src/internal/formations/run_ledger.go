@@ -342,7 +342,7 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent, check f
 	defer ledger.close()
 	var snapshot *BoardDocument
 	err = ledger.withLock(func() error {
-		events, err := readRunEventsFrom(ledger.file, runID)
+		events, err := s.readLedger(ledger, runID, true)
 		if err != nil {
 			return err
 		}
@@ -446,7 +446,7 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 	defer ledger.close()
 	var snapshot *BoardDocument
 	if err := ledger.withLock(func() error {
-		events, err := readRunEventsFrom(ledger.file, runID)
+		events, err := s.readLedger(ledger, runID, true)
 		if err != nil {
 			return err
 		}
@@ -694,7 +694,7 @@ func (s *Store) ReadRunEvents(runID string) ([]RunEvent, error) {
 	var events []RunEvent
 	err = ledger.withLock(func() error {
 		var readErr error
-		events, readErr = readRunEventsFrom(ledger.file, runID)
+		events, readErr = s.readLedger(ledger, runID, true)
 		return readErr
 	})
 	return events, err
@@ -942,7 +942,7 @@ func (s *Store) readRunGateBinding(runID, gateID string) (*RunGateBinding, error
 		return nil, fmt.Errorf("%w: open run ledger: %v", ErrRunLedgerInvalid, err)
 	}
 	defer ledger.close()
-	events, err := readRunEventsFrom(ledger.file, runID)
+	events, err := s.readLedger(ledger, runID, false)
 	if err != nil {
 		return nil, err
 	}

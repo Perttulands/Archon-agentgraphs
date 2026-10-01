@@ -777,6 +777,11 @@ func (c *Coordinator) stream(w http.ResponseWriter, r *http.Request) {
 		}
 		since = n
 	}
+	// An unknown run answers before it is subscribed to, so it allocates nothing.
+	if _, err := c.store.ReadRunEvents(r.PathValue("runId")); err != nil {
+		failure(w, err)
+		return
+	}
 	sent := false
 	for {
 		changed := c.nextChange(r.PathValue("runId")) // subscribe before reading, so no append is missed

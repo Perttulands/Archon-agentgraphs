@@ -1375,6 +1375,10 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   text, so it is served verbatim, as `gate request` serves it. `end` carries `status`, `seq`, `code`, `reason`, `endedBy` and the
   `stopped` steps. A bad `until`, `since` or `hold`, or a `since` past the
   run's last event, returns 400, an unknown run 404, and a stopping daemon 503.
+  Waits and streams read the daemon's parsed ledger, which parses only what
+  each append added, so fifty waiters on a large ledger answer within a
+  second of an event without holding up the run's appends; an unknown run
+  answers 404 before anything is kept for it.
 
 Artifact names are relative to the run's artifact directory, and a name with
 `..` or an empty component returns 404. Symlinks and hard links an agent left
