@@ -1216,7 +1216,9 @@ archon --server "$ARCHON_SERVER" run wait "$ARCHON_RUN_ID" --until needs-you
 archon --server "$ARCHON_SERVER" run list --json
 ```
 
-This allocates a workspace automatically. Add `--cwd "$ARCHON_CWD"` to work in
+`run list` prints one line per run, newest first: its ID, mission, status,
+Bead (`-` when none), start and last change, tab-separated; `--json` prints
+each run's full projection. This allocates a workspace automatically. Add `--cwd "$ARCHON_CWD"` to work in
 an existing project. For a session gate, inspect the asking seats before typing:
 
 ```bash

@@ -1651,9 +1651,7 @@ func runList(store *formations.Store, args []string, stdout, stderr io.Writer) i
 	if *jsonOut {
 		return writeJSON(stdout, map[string]any{"runs": runs})
 	}
-	for _, run := range runs {
-		fmt.Fprintf(stdout, "%s\t%s\t%s\t%d events\n", run.RunID, run.Status, run.BoardSlug, run.EventCount)
-	}
+	writeRunList(stdout, runListLines(runs))
 	return 0
 }
 

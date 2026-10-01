@@ -256,6 +256,9 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	if args[0]+" "+args[1] == "run gates" || args[0]+" "+args[1] == "run seats" || args[0]+" "+args[1] == "gate request" {
 		return printRemoteRunRead(args[0]+" "+args[1], raw, *jsonOut, stdout, stderr)
 	}
+	if args[0]+" "+args[1] == "run list" && !*jsonOut {
+		return writeRemoteRunList(raw, stdout, stderr)
+	}
 	fmt.Fprint(stdout, string(raw))
 	return 0
 }

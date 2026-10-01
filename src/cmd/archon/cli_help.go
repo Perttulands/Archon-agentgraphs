@@ -94,7 +94,7 @@ var nounHelps = []nounHelp{
 		{"retire", "<id> [--force]", "retire a role card"},
 	}},
 	{noun: "run", summary: "runs, through the daemon", about: "A run is one start of a mission or a single step. Read and drive runs with --server.", commands: []commandHelp{
-		{"list", "[--mission <mission>] [--json]", "list runs, or one mission's"},
+		{"list", "[--mission <mission>] [--json]", "list runs, or one mission's, newest first: one line per run with its ID, mission, status, Bead, start and last change. --json prints each run's full projection"},
 		{"status", "<runId> [--json]", "print a run's status"},
 		{"logs", "<runId> [--node <id>] [--follow] [--json]", "print a run's projection"},
 		{"follow", "<runId> [--since <seq>] [--node <id>] [--json]", "print the run as it changes until it is final"},
