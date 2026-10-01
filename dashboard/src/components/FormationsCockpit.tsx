@@ -151,28 +151,36 @@ type DragStaff = { payload: StaffPayload | null; slot?: { ref: SlotRef; part: Pa
 /**
  * Where a dragged staffing's ghost waits while it is over a slot: beside the
  * slot's card, level with the slot, on the side that covers the least of the
- * other cards, so the slot's preview and its neighbours stay readable.
+ * other cards, else just below or above the card; never on the slot, so its
+ * preview stays readable.
  */
 function dockedGhost(slot: Element, label: string): { x: number; y: number } {
   const box = slot.getBoundingClientRect()
   const card = (slot.closest('.formation') || slot).getBoundingClientRect()
+  const canvas = (slot.closest('[data-testid="formations-canvas"]') || document.documentElement).getBoundingClientRect()
   // The ghost's size at its 12px monospace label (staffing.css .staffing-ghost).
   const width = label.length * 7.3 + 24
   const height = 28
-  const top = box.top + box.height / 2 - height / 2
   const cards = [...document.querySelectorAll('.world .formation, .world .gatecard, .world .missioncard, .world .toolcard, .world .endcard, .world .note-sticky')]
     .map(element => element.getBoundingClientRect())
-  const covered = (left: number) => {
-    const offScreen = left < 0 || left + width > window.innerWidth ? 1e9 : 0
-    return offScreen + cards.reduce((sum, other) => {
-      const w = Math.min(left + width, other.right) - Math.max(left, other.left)
-      const h = Math.min(top + height, other.bottom) - Math.max(top, other.top)
+  const level = box.top + box.height / 2 - height / 2
+  const under = Math.min(Math.max(box.left, canvas.left + 4), canvas.right - width - 4)
+  const places = [
+    { x: card.right + 10, y: level },
+    { x: card.left - 10 - width, y: level },
+    { x: under, y: card.bottom + 8 },
+    { x: under, y: card.top - 8 - height },
+  ]
+  const cost = ({ x, y }: { x: number; y: number }) => {
+    const outside = x < canvas.left || x + width > canvas.right || y < canvas.top || y + height > canvas.bottom ? 1e9 : 0
+    return outside + cards.reduce((sum, other) => {
+      const w = Math.min(x + width, other.right) - Math.max(x, other.left)
+      const h = Math.min(y + height, other.bottom) - Math.max(y, other.top)
       return sum + (w > 0 && h > 0 ? w * h : 0)
     }, 0)
   }
-  const right = card.right + 10
-  const left = card.left - 10 - width
-  return { x: covered(left) < covered(right) ? left : right, y: top }
+  // The first place that covers least: beside the card before below or above it.
+  return places.reduce((best, place) => (cost(place) < cost(best) ? place : best))
 }
 
 function slotKeyAt(x: number, y: number): string | null {
