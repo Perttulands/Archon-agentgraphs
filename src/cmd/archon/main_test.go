@@ -2219,6 +2219,16 @@ func TestArchonS5GateApproveRoutesHumanGate(t *testing.T) {
 		t.Fatalf("waiting run = %+v, want non-final human wait", waiting)
 	}
 
+	// A daemon owning the state answers the verdict itself; the offline
+	// command, which would route it beside the daemon's worker, refuses.
+	release, err := holdStateLock(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "gate", "approve", waiting.RunID, "gate_review", "--response", "direction is right", "--json"); code == 0 || !strings.Contains(stderr, "a daemon owns this state directory") {
+		t.Fatalf("gate approve beside a daemon: code=%d stderr=%s", code, stderr)
+	}
+	release()
 	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "gate", "approve", waiting.RunID, "gate_review", "--response", "direction is right", "--json")
 	if code != 0 {
 		t.Fatalf("gate approve code=%d stderr=%s stdout=%s", code, stderr, stdout)

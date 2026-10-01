@@ -407,6 +407,21 @@ func (c *Coordinator) release(id string) {
 	}
 	c.workers.Done()
 }
+
+// releaseQuietly releases a reservation taken for bookkeeping, not to run the
+// run: nothing settled, so needs-you is not asked to look again.
+func (c *Coordinator) releaseQuietly(id string) {
+	c.mu.Lock()
+	state := c.state(id)
+	state.cancel()
+	state.busy = false
+	close(state.done)
+	close(state.changed)
+	state.changed = make(chan struct{})
+	c.mu.Unlock()
+	c.workers.Done()
+}
+
 func (c *Coordinator) nextChange(id string) <-chan struct{} {
 	c.mu.Lock()
 	defer c.mu.Unlock()

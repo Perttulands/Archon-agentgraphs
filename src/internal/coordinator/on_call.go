@@ -56,10 +56,8 @@ func (d *needsYouDispatcher) deliverSession(ctx context.Context, runID string, s
 			log.Printf("session channel: run %s seat %s: %v", runID, gone.Seat.SlotID, err)
 		}
 	}
-	if settled {
-		if err := c.engine.EndKeptSeatsNow(runID, plan.Answered, formations.SeatCauseAskAnswered, plan.Keeper); err != nil {
-			log.Printf("session channel: run %s: ending answered seats: %v", runID, err)
-		}
+	if settled && len(plan.Answered) > 0 {
+		d.endAnsweredSeats(ctx, runID)
 	}
 	for _, fallback := range plan.Fallbacks {
 		if _, err := c.engine.RecordHumanAskFallback(runID, fallback); err != nil {
@@ -79,6 +77,25 @@ func (d *needsYouDispatcher) deliverSession(ctx context.Context, runID string, s
 		}
 	}
 	return retry
+}
+
+// endAnsweredSeats ends the seats whose asks were all answered, holding the
+// run's command reservation as a worker does, so no worker starts on the run
+// while they end. A run that turned busy meanwhile ends them itself.
+func (d *needsYouDispatcher) endAnsweredSeats(ctx context.Context, runID string) {
+	c := d.c
+	if !c.acquire(runID) {
+		return
+	}
+	defer c.releaseQuietly(runID)
+	plan, err := c.engine.PlanRunOnCall(ctx, runID)
+	if err != nil {
+		log.Printf("session channel: run %s: %v", runID, err)
+		return
+	}
+	if err := c.engine.EndKeptSeatsNow(runID, plan.Answered, formations.SeatCauseAskAnswered, plan.Keeper); err != nil {
+		log.Printf("session channel: run %s: ending answered seats: %v", runID, err)
+	}
 }
 
 // deliverAsk writes one seat's brief, pastes its pointer and records the

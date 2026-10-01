@@ -8,7 +8,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/buildinfo"
@@ -1160,6 +1162,13 @@ func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Wr
 		fmt.Fprintln(stderr, "usage: archon gate approve|reject <runId> <gateId> [--reason|--response text] [--relayed-by slot-id] [--json]")
 		return 2
 	}
+	// Offline, this command is the run's worker, so no daemon may own the
+	// state meanwhile: its worker would route the same verdict.
+	release, err := holdStateLock(store.Workspace)
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))
+	}
+	defer release()
 	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
 	engine := newArchonRunEngine(store, personas, "archon")
 	if _, err := engine.RecordHumanGateVerdict(fs.Arg(0), formations.HumanGateVerdictRequest{
@@ -1182,6 +1191,27 @@ func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Wr
 	}
 	fmt.Fprintf(stdout, "%s\t%s\n", status.RunID, status.Status)
 	return 0
+}
+
+// errDaemonOwnsState refuses an offline command a running daemon would race.
+var errDaemonOwnsState = errors.New("a daemon owns this state directory: answer through it with --server")
+
+// holdStateLock takes the state directory's coordinator lock, as archond does,
+// for an offline command that runs a run's work. It fails while a daemon
+// holds the lock.
+func holdStateLock(workspace string) (func(), error) {
+	lock, err := os.OpenFile(filepath.Join(workspace, "coordinator.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		lock.Close()
+		return nil, errDaemonOwnsState
+	}
+	return func() {
+		_ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+		lock.Close()
+	}, nil
 }
 
 const (
