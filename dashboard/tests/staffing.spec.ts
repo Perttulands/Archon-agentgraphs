@@ -118,7 +118,20 @@ test('a known Codex model narrows the efforts offered to its own (archon-n7u.50)
   }
   await expect(efforts.locator('[data-row="xhigh"]')).toHaveAttribute('aria-disabled', 'false')
   await page.keyboard.press('Escape')
-  expect(assignments(fixture.patches)).toEqual([{ formationId: 'peer', slotId: 'peer_1', agentId: 'codex', harness: 'openai-codex', model: 'gpt-5.5', effort: 'medium' }])
+
+  // A model the catalog does not know keeps the harness's whole list.
+  await reviewer.locator('.slot-ring').click()
+  await page.keyboard.type('gpt-7-nova')
+  await page.keyboard.press('Enter')
+  await expect(caption(page, 'slot-peer-peer_1')).toHaveAttribute('data-staffing', 'Codex builder | Codex · gpt-7-nova · medium')
+  await reviewer.locator('[data-part=effort]').click()
+  const unknown = page.getByRole('dialog', { name: 'Staff Reviewer' }).getByRole('listbox', { name: 'Choose effort' })
+  for (const effort of ['max', 'ultra']) await expect(unknown.locator(`[data-row="${effort}"]`)).toHaveAttribute('aria-disabled', 'false')
+  await page.keyboard.press('Escape')
+  expect(assignments(fixture.patches)).toEqual([
+    { formationId: 'peer', slotId: 'peer_1', agentId: 'codex', harness: 'openai-codex', model: 'gpt-5.5', effort: 'medium' },
+    { formationId: 'peer', slotId: 'peer_1', agentId: 'codex', harness: 'openai-codex', model: 'gpt-7-nova', effort: 'medium' },
+  ])
 })
 
 test('a role landing follows the policy, but an effort picked by hand stays with a standing offer that one click takes', async ({ page }) => {
