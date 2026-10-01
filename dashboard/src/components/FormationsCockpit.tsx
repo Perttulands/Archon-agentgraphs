@@ -1,4 +1,5 @@
 import { StartMissionDialog, type RunInputs } from "./StartMissionDialog"
+import { inputCardOf, missionRunInputs } from "./missionInputs"
 /* FormationsCockpit — spatial board editor for Archon.
  *
  * Ported from the D7 prototype (Perttus_vision_for_agent_orchestration/03-formations.{html,js}):
@@ -1166,12 +1167,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return true
   }, [patchBoard, recordUndo])
 
-  const updateMissionFields = useCallback(async (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel'>>): Promise<boolean> => {
+  const updateMissionFields = useCallback(async (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel' | 'inputs'>>): Promise<boolean> => {
     const previous = boardRef.current?.inputCards?.find(mission => mission.id === missionId)
     if (!previous) return false
     if (!await patchBoard({ updateInputCard: { id: missionId, ...fields } })) return false
     // An absent field is restored as empty, which clears it.
-    recordUndo(`the edit of Input card ${quoted(previous.title, 'untitled')}`, boardStep({ updateInputCard: { id: missionId, ...Object.fromEntries(Object.keys(fields).map(key => [key, previous[key as keyof typeof fields] ?? (key === 'files' ? [] : '')])) } }))
+    recordUndo(`the edit of Input card ${quoted(previous.title, 'untitled')}`, boardStep({ updateInputCard: { id: missionId, ...Object.fromEntries(Object.keys(fields).map(key => [key, previous[key as keyof typeof fields] ?? (key === 'files' || key === 'inputs' ? [] : '')])) } }))
     return true
   }, [patchBoard, recordUndo])
 
@@ -1379,6 +1380,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [patchBoard, recordUndo])
 
   const [startMission, setStartMission] = useState<MissionNode | null>(null)
+  // ▶ on a formation asks for the mission's inputs before running it alone (archon-o7p.4).
+  const [startStep, setStartStep] = useState<FormationNode | null>(null)
 
   const runMission = useCallback(async (mission: MissionNode, inputs: RunInputs) => {
     const current = boardRef.current
@@ -1409,29 +1412,24 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     await runMission(mission, inputs)
   }, [runMission, updateMissionFields])
 
-  const runFormation = useCallback(async (formation: FormationNode) => {
+  const runFormation = useCallback(async (formation: FormationNode, inputs: RunInputs) => {
     const current = boardRef.current
     if (!current) return
-    try {
-      const result = await startRun(current.etag, { mission: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'agent:ui' })
-      setAdmissionFindings([])
-      const status = { ...result.status, runId: result.status.runId || result.runId }
-      const events = await fetchRunEvents(status.runId)
-      setRunEvents(events)
-      setActiveRun(status)
-      setEscalations([])
-      setPinnedRun({ slug: current.slug, runId: status.runId })
-      if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
-      else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
-      setError('')
-    } catch (err) {
-      if (err instanceof ApiRequestError && err.findings.length) {
-        setAdmissionFindings(err.findings)
-        setError('')
-        return
-      }
-      setError(err instanceof Error ? err.message : 'Failed to start run')
-    }
+    const result = await startRun(current.etag, { ...inputs, mission: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'agent:ui' })
+      .catch(err => {
+        if (err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
+        throw err
+      })
+    setAdmissionFindings([])
+    const status = { ...result.status, runId: result.status.runId || result.runId }
+    const events = await fetchRunEvents(status.runId)
+    setRunEvents(events)
+    setActiveRun(status)
+    setEscalations([])
+    setPinnedRun({ slug: current.slug, runId: status.runId })
+    if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
+    else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
+    setError('')
   }, [])
 
   const refreshRunEvents = useCallback(async (runId: string) => {
@@ -2017,13 +2015,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const formationMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode) => {
     openMenu(event, 'Formation actions', [
-      { label: 'Run formation', action: () => void runFormation(formation) },
+      { label: 'Run formation', action: () => setStartStep(formation) },
       { label: 'Add input port', action: () => void addPortOp(formation, 'input') },
       { label: 'Add output port', action: () => void addPortOp(formation, 'output') },
       ...formationTypeMenuItems(formation),
       { label: 'Delete formation', destructive: true, action: () => deleteFormationOp(formation) },
     ])
-  }, [addPortOp, deleteFormationOp, formationTypeMenuItems, openMenu, runFormation])
+  }, [addPortOp, deleteFormationOp, formationTypeMenuItems, openMenu])
 
   const slotMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode, slot: FormationSlot) => {
     const items: MenuItem[] = []
@@ -2725,6 +2723,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   </div>
                   {renderNodeTitle(mission.title, 'mtitle', 'Untitled mission', 'div')}
                   <div className={`mgoal${mission.goal ? '' : ' placeholder'}`}>{mission.goal || 'set the mission objective…'}</div>
+                  {mission.inputs?.length ? <div className="minputs" title="The inputs each run supplies; step briefs reference them as {name}">Inputs · {mission.inputs.map(input => input.name).join(' · ')}</div> : null}
                   <div className={`mchannel ${humanChannelOf(mission)}`} title="How this mission's human gates reach you">Human gates · {humanChannelLabel(humanChannelOf(mission))}</div>
                   <ReferencedFiles nodeId={mission.id} files={nodeFileRefs(board, mission.id)} max={2} onMore={openReferencedFilesMenu} className="card-refs" />
                   <div className="mstatus">{state ? state : ''}</div>
@@ -2803,7 +2802,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                       const rect = event.currentTarget.getBoundingClientRect()
                       setMenu({ label: 'Formation type', x: rect.left, y: rect.bottom + 4, items: formationTypeMenuItems(formation).slice(1) })
                     }} />
-                    <button className="frun" title="Run formation" onClick={() => void runFormation(formation)} data-testid={`run-formation-${formation.id}`}>{PLAY_SVG}</button>
+                    <button className="frun" title="Run formation" onClick={() => setStartStep(formation)} data-testid={`run-formation-${formation.id}`}>{PLAY_SVG}</button>
                   </div>
                   <ReferencedFiles nodeId={formation.id} files={nodeFileRefs(board, formation.id)} max={2} onMore={openReferencedFilesMenu} className="card-refs" />
                   <div className="fstatus">{state === 'running' || state === 'waiting' ? state : ''}</div>
@@ -3116,7 +3115,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         />
       ) : null}
 
-      {startMission && <StartMissionDialog title={startMission.title} inputHint={startMission.inputHint} humanChannel={humanChannelOf(startMission)} onStart={(inputs, channel) => startMissionRun(startMission, inputs, channel)} onClose={() => setStartMission(null)} />}
+      {startMission && <StartMissionDialog title={startMission.title} inputs={missionRunInputs(startMission)} humanChannel={humanChannelOf(startMission)} onStart={(inputs, channel) => startMissionRun(startMission, inputs, channel)} onClose={() => setStartMission(null)} />}
+      {startStep && <StartMissionDialog title={board?.title || 'this mission'} step={startStep.title || 'This formation'} inputs={missionRunInputs(inputCardOf(board))} onStart={inputs => runFormation(startStep, inputs)} onClose={() => setStartStep(null)} />}
 
       {deleteConfirm ? (
         <div

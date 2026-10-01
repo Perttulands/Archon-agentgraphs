@@ -259,6 +259,7 @@
 .fmx .missioncard .mgoal.placeholder{font-style:italic;color:var(--dimmer);}
 .fmx .missioncard .mchannel{font-size:9.5px;color:var(--dim);padding:6px 14px 0;letter-spacing:.03em;line-height:1.35;}
 .fmx .missioncard .mchannel.session{color:var(--ink2);}
+.fmx .missioncard .minputs{font-size:9.5px;color:var(--ink2);padding:6px 14px 0;letter-spacing:.03em;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .fmx .missioncard .mstatus{font-size:9.5px;color:var(--terra);padding:8px 14px 12px;letter-spacing:.03em;}
 .fmx .missioncard .mstatus:empty{padding:0 0 14px;}
 .fmx .missioncard .port.pout{right:-9px;top:50%;margin-top:-8px;border-color:var(--terra);}

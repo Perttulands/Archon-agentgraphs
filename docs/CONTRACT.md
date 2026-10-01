@@ -279,6 +279,17 @@ resume and restart substitute the same values. A single step's run takes the
 mission's inputs and the same checks, and its step receives them as the first
 step does. The mission goal remains prompt context.
 
+In the cockpit, Start mission and a formation's ▶ open one dialog
+(archon-o7p.4). It asks for each input, labelled by its name with its
+description as help: a text box for `text`, an absolute path for `file` and
+`folder`. A required input left blank blocks the start with a message under
+that field, and a refused start lists the daemon's findings in the dialog. It
+also takes the workspace, context paths and Bead. ▶ runs that step on its own
+(Run step), so it offers no human gate choice; a formation never starts without
+the mission's inputs. The Input card's window reads the declared inputs as the
+`{name}` references briefs use and edits them in place, one undo entry per
+save.
+
 Runs have no limits unless the launch sets them. `maxDispatch`, `maxAttempts`
 and `wallClockSeconds` are optional; an absent or zero limit means none, in
 admission and in the engine. A negative limit is rejected.
@@ -932,7 +943,7 @@ reference files, such as a gate's rubric, the way formation briefs do: `--file
 repeated for more. On update the given files replace the list, and `--file ''`
 clears it. Name each file by its absolute path. Clicking an
 Input card, formation or gate card opens its node window, where every field is
-read in full and edited in place: titles, the Input card's goal, input hint
+read in full and edited in place: titles, the Input card's goal, inputs, input hint
 and files, a formation's type, brief and staffing, and a gate's kinds,
 check, criterion, judge and files. Each save is one mission edit with undo. Ports, edges, layout and notes are
 unchanged.

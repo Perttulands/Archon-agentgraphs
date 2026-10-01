@@ -151,12 +151,29 @@ export interface BoardValidation {
   warnings: BoardFinding[]
 }
 
+/** A named value each run of the mission supplies (archon-o7p.3); step briefs reference it as {name}. */
+export interface MissionInput {
+  name: string
+  kind: 'text' | 'file' | 'folder'
+  required?: boolean
+  description?: string
+}
+
+/** One value a run supplied, in the mission's declared order. */
+export interface RunInput {
+  name: string
+  kind: MissionInput['kind']
+  value: string
+}
+
 export interface MissionNode {
   id: string
   title: string
   goal: string
-  /** What a run's brief should contain; Start mission shows it when set. */
+  /** Describes the implicit brief input of a mission that declares no inputs. */
   inputHint?: string
+  /** The inputs each run supplies; none declared means one required text input, brief. */
+  inputs?: MissionInput[]
   /** Reference file paths; the cockpit opens absolute ones. */
   files?: string[]
   /** How its human gates reach the operator (ADR-0019): absent or notify notifies, session asks the agents. A patch sends '' to clear it. */
@@ -195,6 +212,8 @@ export interface CodeGateProfileDescriptor {
 export interface RunStatusProjection {
   cwd?: string
   beadId?: string
+  /** The values the run supplied, in the mission's declared order. */
+  inputs?: RunInput[]
   runId: string
   status: string
   final: boolean

@@ -2315,10 +2315,27 @@ describe('FormationsCockpit reference parity', () => {
     expect(fetch).toHaveBeenCalledWith('/api/runs', expect.objectContaining({ body: expect.stringContaining('"cwd":"/work/project"') }))
     const call = vi.mocked(fetch).mock.calls.find(([url, init]) => url === '/api/runs' && init?.method === 'POST')
     const body = JSON.parse(String(call?.[1]?.body))
-    expect(body).toMatchObject({ cwd: '/work/project', brief: 'Implement the requested change', beadId: 'form-proof' })
+    expect(body).toMatchObject({ cwd: '/work/project', inputs: { brief: 'Implement the requested change' }, beadId: 'form-proof' })
+    expect(body).not.toHaveProperty('brief')
     // The run starts without limits (archon-o7p.7).
     expect(body).not.toHaveProperty('limits')
     expect(localStorage.getItem('archon.activeRun.test-board')).toBeNull()
+  })
+
+  it("asks for the mission's inputs before ▶ runs a formation on its own", async () => {
+    patches = installFetchMock({ runStatus: { status: 'succeeded', final: true }, runEvents: [] })
+    await renderCockpit()
+    fireEvent.click(screen.getByTestId('run-formation-fmn_frame'))
+    const dialog = await screen.findByRole('dialog', { name: 'Run step' })
+    expect(vi.mocked(fetch).mock.calls.some(([url, init]) => url === '/api/runs' && init?.method === 'POST')).toBe(false)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Run step' }))
+    expect(within(dialog).getByText('Fill in brief to start.')).toBeInTheDocument()
+    expect(vi.mocked(fetch).mock.calls.some(([url, init]) => url === '/api/runs' && init?.method === 'POST')).toBe(false)
+    fireEvent.change(within(dialog).getByLabelText('Brief'), { target: { value: 'Frame the problem' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Run step' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Run step' })).toBeNull())
+    const call = vi.mocked(fetch).mock.calls.find(([url, init]) => url === '/api/runs' && init?.method === 'POST')
+    expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ formationId: 'fmn_frame', inputs: { brief: 'Frame the problem' }, cwd: '', contextPaths: [] })
   })
 
   it('fits the canvas to its cards and keeps the zoom level numeric beside a formation-kind gate', async () => {

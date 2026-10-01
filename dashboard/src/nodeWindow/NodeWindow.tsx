@@ -27,6 +27,7 @@ import FloatingWindow from '../windows/FloatingWindow'
 import { nodeAnchor, nodeWindowKeepClear } from '../windows/cockpitScene'
 import type { WindowRect } from '../windows/windowGeometry'
 import { EditableField } from './EditableField'
+import { MissionInputsField } from './MissionInputsField'
 import { FormationDurationField } from './FormationDurationField'
 import { HumanChannelField } from '../humanChannel/HumanChannelField'
 import { humanChannelField, humanChannelOf } from '../humanChannel/humanChannel'
@@ -45,7 +46,7 @@ import './nodeWindow.css'
 
 export interface NodeWindowOps {
   rename: (nodeId: string, title: string) => Promise<boolean>
-  updateInputCard: (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel'>>) => Promise<boolean>
+  updateInputCard: (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel' | 'inputs'>>) => Promise<boolean>
   setBrief: (formationId: string, brief: FormationBrief) => Promise<boolean>
   setExecution: (formationId: string, timeoutSeconds: number) => Promise<boolean>
   changeType: (formation: FormationNode, type: FormationType, keepSlotId?: string) => void
@@ -185,9 +186,10 @@ function MissionFields({ mission, ops }: { mission: MissionNode; ops: NodeWindow
     <>
       <EditableField label="Goal" value={mission.goal} multiline markdown placeholder="No goal yet. Say what the mission should achieve."
         onSave={goal => ops.updateInputCard(mission.id, { goal })} />
+      <MissionInputsField inputs={mission.inputs} onSave={inputs => ops.updateInputCard(mission.id, { inputs })} />
       <EditableField label="Input hint" value={mission.inputHint || ''} multiline markdown
         placeholder="No input hint. Start mission explains what a brief is."
-        hint="What a run's brief should contain. Start mission shows it beside the brief."
+        hint="What a run's brief should contain, when the mission declares no inputs. Start mission shows it beside the brief."
         onSave={inputHint => ops.updateInputCard(mission.id, { inputHint })} />
       <FilesField files={mission.files} context={mission.title} onSave={files => ops.updateInputCard(mission.id, { files })} />
       <HumanChannelField channel={humanChannelOf(mission)}

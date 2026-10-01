@@ -65,3 +65,14 @@ button.nwin-route:hover { color: var(--accent); text-decoration-color: var(--acc
 .nwin-outcome:hover { color: var(--text-primary); border-color: var(--accent); }
 .nwin-outcome.end-done.on { border-color: var(--window-green); color: var(--window-green); background: color-mix(in srgb, var(--window-green) 12%, transparent); }
 .nwin-outcome.end-rejected.on { border-color: var(--color-error); color: var(--color-error); background: color-mix(in srgb, var(--color-error) 12%, transparent); }
+
+/* The Input card's declared inputs (archon-o7p.3). */
+.ninput-list code { color: var(--text-primary); }
+.ninput-description { color: var(--text-secondary); }
+.ninput-edit { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 6px 0; border: 0; border-bottom: 1px dashed var(--divider); }
+.ninput-row { display: flex; align-items: center; gap: 6px; }
+.ninput-row input:not([type="checkbox"]) { flex: 1; min-width: 0; }
+.ninput-row select { width: auto; border: 1px solid var(--divider); border-radius: 4px; background: var(--surface-secondary); color: var(--text-primary); padding: 6px; font: 12px var(--font-mono); }
+.ninput-required { display: flex; align-items: center; gap: 4px; color: var(--text-secondary); font-size: 11px; white-space: nowrap; }
+.ninput-required input { width: auto; }
+.nfield-actions.ninput-add { justify-content: flex-start; }
