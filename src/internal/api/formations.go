@@ -101,6 +101,7 @@ type formationsBoardPatchRequest struct {
 	UpdateEnd                    *formationsUpdateEndRequest             `json:"updateEnd"`
 	DeleteEnd                    *formationsDeleteEndRequest             `json:"deleteEnd"`
 	MutationOccurrences          int                                     `json:"-"`
+	MutationKeys                 []string                                `json:"-"`
 	ExpectedRev                  int                                     `json:"expectedRev"`
 	LayoutExpectation            *formationsToolLayoutExpectationRequest `json:"layoutExpectation"`
 	UpdatedBy                    string                                  `json:"updatedBy"`
@@ -143,6 +144,7 @@ func (request *formationsBoardPatchRequest) UnmarshalJSON(raw []byte) error {
 	}
 	*request = formationsBoardPatchRequest(decoded)
 	request.MutationOccurrences = presence.MutationOccurrences
+	request.MutationKeys = presence.MutationKeys
 	request.ToolOperationOccurrences = presence.ToolOperationOccurrences
 	request.ToolFrameInvalid = presence.ToolFrameInvalid
 	request.ToolFrameUnicodeInvalid = invalidToolSurrogate
@@ -314,6 +316,7 @@ type formationsCreateGateRequest struct {
 
 type boardPatchPresence struct {
 	MutationOccurrences          int
+	MutationKeys                 []string
 	ToolOperationOccurrences     int
 	ToolFrameInvalid             bool
 	ExpectedRevOccurrences       int
@@ -378,6 +381,7 @@ func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
 		for _, mutationKey := range boardPatchMutationKeys {
 			if strings.EqualFold(key, mutationKey) {
 				presence.MutationOccurrences++
+				presence.MutationKeys = append(presence.MutationKeys, key)
 				break
 			}
 		}
@@ -1018,6 +1022,12 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.patchToolBoard(w, r, &request) {
+		return
+	}
+	// One patch is one operation; a second is refused before anything is
+	// applied, never dropped (archon-n7u.46).
+	if request.MutationOccurrences > 1 {
+		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", fmt.Sprintf("a mission patch names one operation, and this one names %s: send them one at a time", joinAnd(request.MutationKeys)))
 		return
 	}
 	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
@@ -1830,4 +1840,12 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	default:
 		core.WriteError(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 	}
+}
+
+// joinAnd lists names as "a", "a and b" or "a, b and c".
+func joinAnd(names []string) string {
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }

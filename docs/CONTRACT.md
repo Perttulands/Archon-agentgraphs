@@ -1193,7 +1193,10 @@ validation and change polling. A mission read or edit answers `data.mission`
 applies); a run starts with `mission` and `inputCardId` (or `formationId`), its
 `inputs` and the other run fields. The
 Input card patch actions are `createInputCard`, `updateInputCard` and
-`deleteInputCard`. Agent routes
+`deleteInputCard`. A mission patch carries one operation: one naming two or
+more is refused whole with HTTP 400, "a mission patch names one operation, and
+this one names deleteInputCard and title: send them one at a time", and nothing
+changes. Agent routes
 list/create/read/patch persona cards; the roster also serves `harnesses` (each
 with the efforts it accepts) and `effortPolicy` (`{effort,use}` lines). Gate
 profiles expose the two code checks.
