@@ -147,7 +147,7 @@ paths:
         '422':
           description: Unprocessable write, such as a code check naming no registered profile. A Tool write returns INVALID_TOOL_MUTATION with a message naming the invalid field or reason. An assignSlot whose harness, model or effort no seat could start with, that leaves the effort unchosen, or that names an unknown role alone returns INVALID_SLOT_SETTINGS with a message naming the slot and the fix, including the effort policy when the effort is missing.
         '400':
-          description: Invalid mutation or retired inline verification/script gate. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (Input card beadId or brief beadId). An Input card humanChannel other than notify or session returns INVALID_HUMAN_CHANNEL naming the allowed values. makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. An invalid mission slug returns BAD_REQUEST 'Invalid formation slug'.
+          description: Invalid mutation. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (brief beadId). An Input card humanChannel other than notify or session returns INVALID_HUMAN_CHANNEL naming the allowed values. makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. An invalid mission slug returns BAD_REQUEST 'Invalid formation slug'.
       parameters:
       - in: header
         name: If-Match
@@ -701,7 +701,7 @@ paths:
         '200':
           description: Notes document in data.notes (schema 2) with mission (the mission thread) as an ordered entry list and elements
             as nodeId plus entries. Each entry has id, author (human:<name> or agent:<name>), createdAt, optional
-            editedAt and text. Schema 1 files load as one human entry per text. Returns ETag.
+            editedAt and text. Returns ETag.
     patch:
       responses:
         '200':
@@ -747,9 +747,6 @@ paths:
                 author:
                   type: string
                   pattern: ^(human|agent):[A-Za-z0-9][A-Za-z0-9._@-]*$
-                updatedBy:
-                  type: string
-                  description: Older name for author
       description: NotePatch. Appends a new entry by default; edit and delete change only the author's own
         entry, so a reply never erases another author's words.
   /api/missions/{mission}/layout:
@@ -1364,17 +1361,6 @@ components:
               type: integer
             updatedBy:
               type: string
-        removeVerification:
-          type: object
-          properties:
-            formationId:
-              type: string
-            replacementGateId:
-              type: string
-            expectedRev:
-              type: integer
-            updatedBy:
-              type: string
         addPort:
           type: object
           properties:
@@ -1582,8 +1568,8 @@ components:
           type: object
           required:
           - id
-          description: Sets only the fields present; an empty string clears one. A non-empty beadId must be
-            a safe Beads issue ID. inputHint says what a run brief should contain. humanChannel notify or an
+          description: Sets only the fields present; an empty string clears one. inputHint says what a run
+            brief should contain. humanChannel notify or an
             empty string removes the stored channel. ID, edges, layout and notes are unchanged.
           properties:
             id:
@@ -1591,8 +1577,6 @@ components:
             title:
               type: string
             goal:
-              type: string
-            beadId:
               type: string
             files:
               type: array
@@ -1681,8 +1665,6 @@ components:
               type: string
             goal:
               type: string
-            beadId:
-              type: string
             files:
               type: array
               description: Reference file paths, absolute or relative to a daemon file root; blank entries are dropped.
@@ -1711,8 +1693,7 @@ components:
           type: string
       description: Select one authoring mutation and supply expectedRev plus If-Match. Nested expectedRev/updatedBy
         fields are accepted for several operations. Tool operations require the exact top-level frame
-        and layoutExpectation; see formations_tools.go. setVerification and legacy gate command fields
-        are retired and rejected. removeVerification requires a replacement gate. updateGate, updateFormation,
+        and layoutExpectation. updateGate, updateFormation,
         setFormationType and updateInputCard share their store paths with archon gate update, formation rename,
         formation set-type and mission update.
     AgentCreate:
@@ -1736,10 +1717,6 @@ components:
           type: string
         sessionStem:
           type: string
-        launch:
-          type: string
-          description: Legacy launch string, kept only for a harness Archon cannot start (such as hermes).
-            claude-code and openai-codex seats start from harness, model and effort and ignore it.
         model:
           type: string
           description: Refused when non-empty. A new role carries no model; each slot sets its own.
@@ -1759,10 +1736,6 @@ components:
           type: string
         sessionStem:
           type: string
-        launch:
-          type: string
-          description: Legacy launch string for the default or added variant; ignored by claude-code and
-            openai-codex seats.
         variant:
           type: string
           description: Harness variant that model and effort change; defaults to the card's default harness.
@@ -1771,8 +1744,7 @@ components:
           type: array
           description: Model and effort for several variants in one edit; all apply or none do. Name each
             variant once, and not also through variant/model/effort (422 otherwise). Only the fields given are
-            validated. launch is accepted only for a harness Archon cannot start (such as hermes), whose
-            archon agent spawn runs it.
+            validated.
           items:
             type: object
             required: [id]
@@ -1782,8 +1754,6 @@ components:
               model:
                 type: string
               effort:
-                type: string
-              launch:
                 type: string
         model:
           type: string

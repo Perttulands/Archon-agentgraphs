@@ -29,7 +29,7 @@ Archon makes chaining agents and gates easy and great; that is all it does
 - `src/internal/daemon/` owns `archond` flags, executor wiring and startup.
   `src/cmd/archond/` only calls it.
 - `src/cmd/archon/` owns the CLI.
-- `dashboard/` owns the Archon board editor and Agents view.
+- `dashboard/` owns the Archon mission editor and Agents view.
 - `Perttus_vision_for_agent_orchestration/` retains vision and canvas references.
 
 ## Reuse CHROTE's proven code

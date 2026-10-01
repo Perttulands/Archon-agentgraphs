@@ -88,7 +88,7 @@ separate directory so replacing a release leaves missions and history intact.
 | `archond` | Run missions, manage agent seats, persist events and serve the UI. |
 | `share/archon/ui/` | Browser UI included in the release. |
 
-A formation is the name of an execution node. CHROTE is not required.
+A formation is a step: the team of agents that does it. CHROTE is not required.
 
 ## Try the UI
 
@@ -99,9 +99,9 @@ lab daemon. Lab lets you explore missions without launching agents.
 export ARCHON_STATE="${XDG_DATA_HOME:-$HOME/.local/share}/archon/state"
 export ARCHON_SHARE="$HOME/.local/lib/archon/current/share/archon"
 umask 077
-mkdir -p "$ARCHON_STATE/.formations/boards" "$ARCHON_STATE/.formations/notes"
-cp "$ARCHON_SHARE/examples/delivery.formation.toml" "$ARCHON_STATE/.formations/boards/"
-cp "$ARCHON_SHARE/examples/delivery.notes.toml" "$ARCHON_STATE/.formations/notes/"
+mkdir -p "$ARCHON_STATE/.archon/missions" "$ARCHON_STATE/.archon/notes"
+cp "$ARCHON_SHARE/examples/delivery.mission.toml" "$ARCHON_STATE/.archon/missions/"
+cp "$ARCHON_SHARE/examples/delivery.notes.toml" "$ARCHON_STATE/.archon/notes/"
 archon --workspace "$ARCHON_STATE" mission validate delivery --json
 archon --workspace "$ARCHON_STATE" mission arrange delivery --json
 archond --executor lab --state-dir "$ARCHON_STATE" --listen 127.0.0.1:8091
@@ -127,7 +127,7 @@ configuration, execution limits, approvals and recovery.
 
 The delivery example also expects Beads and the shared skills named in its
 briefs. Those tools and skills are not bundled here; only Archon's own skill is. Read and adapt the
-[mission](examples/delivery.formation.toml) and its
+[mission](examples/delivery.mission.toml) and its
 [notes](examples/delivery.notes.toml) before running it against a repository.
 The [minimal mission](docs/CONTRACT.md#definitions-and-storage) is a smaller
 starting point for your own workflow.
@@ -195,7 +195,7 @@ for the archive layout, checks and publication procedure.
 (cd dashboard && npm run test:unit && npm run build && npm run lint)
 ```
 
-For Vite development, set `FORMATIONS_API_URL` to the daemon URL and run
+For Vite development, set `ARCHON_API_URL` to the daemon URL and run
 `npm run dev` in `dashboard/`.
 
 | Source | Owns |
@@ -204,12 +204,12 @@ For Vite development, set `FORMATIONS_API_URL` to the daemon URL and run
 | `src/internal/coordinator/` | Admission, runtime commands and projections. |
 | `src/internal/api/` | Authoring HTTP and local adapters. |
 | `src/internal/daemon/` | `archond` flags, executor wiring and startup. |
-| `src/cmd/archon/`, `src/cmd/archond/`, `src/cmd/formationsd/` | CLI and daemon entrypoints. |
+| `src/cmd/archon/`, `src/cmd/archond/` | CLI and daemon entrypoints. |
 | `dashboard/` | Mission editor, agent staffing and terminal Peek. |
 
 Read the [runtime contract](docs/CONTRACT.md),
 [daily-capability decisions](docs/adr/0016-daily-capability.md) and
-[OpenAPI specification](docs/openapi/formations.yaml) before changing runtime
+[OpenAPI specification](docs/openapi/archon.yaml) before changing runtime
 behavior. Host deployment and CHROTE integration live outside this repository.
 Historical designs remain in [the archive](docs/archive/).
 

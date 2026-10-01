@@ -5,9 +5,10 @@ description: Author Archon missions and drive their runs through the archond dae
 
 # Archon
 
-This skill documents the Archon contract at commit 5cf6e7e (VERSION 0.1.0,
-2026-09-29): the reusable unit is a mission, each slot owns its harness, model
-and effort, run limits are optional, and drivers pull with `run wait`. It ships with that source.
+This skill documents the Archon contract of VERSION 0.1.0 as of 2026-10-01:
+the reusable unit is a mission, each slot owns its harness, model and effort,
+run limits are optional, drivers pull with `run wait`, and every surface uses
+current names only. It ships with that source.
 `archon --version` names the build on PATH. When that build is older, a flag or
 behaviour named here may differ: read the command's `-h` and trust the binary.
 
@@ -18,10 +19,9 @@ harness settings. Archon keeps only what is current.
 
 ## Vocabulary
 
-- A **mission** is one reusable `.formation.toml` graph with a slug and a
-  revision. Its **Input card** is the entry: a goal and an `out` port. Each run
-  supplies the input text, the brief. `archon board ...` is a deprecated alias
-  for one release, and some JSON fields still say `board`.
+- A **mission** is one reusable `<slug>.mission.toml` graph with a slug and a
+  revision. Its **Input card** is the entry: a goal and an `out` port
+  (`inputCard` in JSON and TOML). Each run supplies the input text, the brief.
 - A **formation** is a step. `solo` has one seat, `peer` has two or more seats
   that converse, and `orchestrated` has one controller directing its bound
   workers. These three are the only types.
@@ -43,14 +43,14 @@ harness settings. Archon keeps only what is current.
 ## Connect
 
 Take `<archon-server>` and `<state-dir>` from the operator's runbook or
-environment and set `FORM_SERVER` and `FORM_STATE`. The server is an HTTP URL
+environment and set `ARCHON_SERVER` and `ARCHON_STATE`. The server is an HTTP URL
 with a literal IP, with no trailing slash, credentials, query or fragment.
 Keep runtime state outside any checkout.
 
 - Runtime commands (`mission run`, `run ...`, `gate approve|reject`) always take
-  `--server "$FORM_SERVER"`.
+  `--server "$ARCHON_SERVER"`.
 - Authoring takes `--server` too, so an open cockpit shows each edit live.
-  `--workspace "$FORM_STATE"` authors the same files offline, for a state
+  `--workspace "$ARCHON_STATE"` authors the same files offline, for a state
   directory no daemon serves; runtime commands never run offline beside a
   daemon.
 - A `--server` failure is final; nothing falls back to a local runtime.
@@ -61,10 +61,10 @@ Keep runtime state outside any checkout.
 Read before you write: the mission, its notes and the role roster.
 
 ```bash
-archon --server "$FORM_SERVER" mission list --json
-archon --server "$FORM_SERVER" mission inspect "$M" --json
-archon --server "$FORM_SERVER" mission notes "$M" --json
-archon --server "$FORM_SERVER" agent list --json
+archon --server "$ARCHON_SERVER" mission list --json
+archon --server "$ARCHON_SERVER" mission inspect "$M" --json
+archon --server "$ARCHON_SERVER" mission notes "$M" --json
+archon --server "$ARCHON_SERVER" agent list --json
 ```
 
 Notes are the operator's intent, not seat instructions. Translate them into
@@ -77,14 +77,14 @@ read the change in parallel and a lead merges their findings."
 
 Take every ID from the JSON a command returns; never guess one. `mission
 create` (which adds the Input card), `formation create` and `gate create`
-return `{board, layout, mission|formation|gate}`; `board` there is the
+return `{mission, layout, inputCard|formation|gate}`; `mission` there is the
 mission's document. A new formation already has one input port, one
 output port and its slots.
 
 ```bash
-S="--server $FORM_SERVER"
+S="--server $ARCHON_SERVER"
 archon $S mission new "$M" --title "Reviewed change" --json
-INPUT=$(archon $S mission create "$M" --title "Change" --goal "Deliver a reviewed change" --json | jq -r .mission.id)
+INPUT=$(archon $S mission create "$M" --title "Change" --goal "Deliver a reviewed change" --json | jq -r .inputCard.id)
 WORK_JSON=$(archon $S formation create "$M" solo --title "Build" --json)
 WORK=$(jq -r .formation.id <<<"$WORK_JSON")
 WORK_IN=$(jq -r '.formation.inputs[0].id' <<<"$WORK_JSON")
@@ -97,7 +97,7 @@ archon $S mission wire "$M" "$WORK:$WORK_IN" --json
 
 Edit nodes in place so their edges survive: `formation rename`, `formation
 set-type <solo|peer|orchestrated>` (to solo with several staffed slots, add
-`--keep-slot <slot>`), `mission update "$M" --title|--goal|--bead|--input-hint` (the Input card),
+`--keep-slot <slot>`), `mission update "$M" --title|--goal|--input-hint|--file` (the Input card),
 `gate update`. An empty value clears a field; `gate update` changes only the
 flags given. `--input-hint` tells the operator what a run brief should contain.
 
@@ -174,9 +174,9 @@ archon $S formation wire "$M" "$GATE:fail" "$WORK:$WORK_IN" --json
 archon $S formation wire "$M" "$GATE:pass" "$NEXT:$NEXT_IN" --json
 ```
 
-A judge's brief must require exactly one fenced `chrote-verdict` block with
+A judge's brief must require exactly one fenced `archon-verdict` block with
 exactly `verdict` (`pass` or `fail`), `reason` (string) and `evidence` (array of
-strings), besides its normal `chrote-outputs` block. A missing, duplicate or
+strings), besides its normal `archon-outputs` block. A missing, duplicate or
 malformed verdict blocks the run without resume.
 
 Dropping a kind drops its configuration: `gate update "$M" "$GATE" --kinds
@@ -229,7 +229,7 @@ archon $S mission arrange "$M" --json
 ```
 
 Reach zero errors before running. Findings name node IDs: unstaffed slots,
-incomplete gates, an unwired Input card, a mission with several Input cards, `invalid_formation_type`,
+incomplete gates, an unwired Input card, a mission with several Input cards,
 `duplicate_slot_id`. A rejected `mission run` prints the same findings (HTTP 422
 `RUN_ADMISSION_FAILED`) and records no run.
 
@@ -239,15 +239,16 @@ To import an example mission or smoke-test routing on a lab daemon, read
 ## Run a mission
 
 ```bash
-FORM_START=$(archon $S mission run "$M" \
-  --brief "$FORM_BRIEF" --bead "$FORM_BEAD" \
+ARCHON_START=$(archon $S mission run "$M" \
+  --brief "$ARCHON_BRIEF" --bead "$ARCHON_BEAD" \
   --context-path /abs/prior-art --context-path /abs/notes.md --json)
-FORM_RUN_ID=$(jq -er .data.runId <<<"$FORM_START")
-archon $S run status "$FORM_RUN_ID" --json
+ARCHON_RUN_ID=$(jq -er .data.runId <<<"$ARCHON_START")
+archon $S run status "$ARCHON_RUN_ID" --json
 ```
 
 - `--brief` is a file path read locally, or literal text. It becomes the
-  Input card's output; the mission stays reusable.
+  Input card's output; the mission stays reusable. `--bead` names the run's
+  owning Bead; an Input card has none.
 - Omit `--cwd` and the daemon allocates a private workspace for the run. Pass
   `--cwd /abs/existing/dir` to work in an existing project.
 - `--context-path` names absolute existing files or directories the seats must
@@ -272,7 +273,7 @@ The driving agent pulls; Archon never pushes into your session. Start
 answer:
 
 ```bash
-archon $S run wait "$FORM_RUN_ID" --until needs-you
+archon $S run wait "$ARCHON_RUN_ID" --until needs-you
 ```
 
 It blocks until the run needs you, ends or changes, prints one paragraph
@@ -300,8 +301,8 @@ written for you, and exits. Act on the exit code:
   command is still settling waits for it on the daemon.
 - `--json` prints the same answer for machines: `outcome`, `seq`, `status`,
   `asks`, `end`, `changes` and `next` (the next command, with `--json`).
-- `run status "$FORM_RUN_ID" --json` returns one projection at once, and
-  `run follow "$FORM_RUN_ID" --json` streams a projection after each durable
+- `run status "$ARCHON_RUN_ID" --json` returns one projection at once, and
+  `run follow "$ARCHON_RUN_ID" --json` streams a projection after each durable
   change until the run is final. Prefer `run wait` for driving; interrupting
   any of them stops watching, not the run. `run logs` is the same sanitized
   view as status.
@@ -313,7 +314,7 @@ the run needs the operator: each `waitingGates` entry has `gateId` and
 `.data`; authoring JSON is not.
 
 Outputs: declared artifacts live under
-`$FORM_STATE/.formations/artifacts/<runId>/`, and the cockpit's Produced list
+`$ARCHON_STATE/.archon/artifacts/<runId>/`, and the cockpit's Produced list
 opens them. Check each `seat_cleanup` outcome (`ended`, `left_socket_changed`,
 `left_cleanup_failed`).
 
@@ -326,16 +327,16 @@ are working inside a seat, read [references/seat-output.md](references/seat-outp
 Decide only with the operator's authority. A `run wait` that exited 3 already
 printed both commands with the current `--requested-seq`. Otherwise read fresh
 status, then take
-`FORM_GATE_ID` and `FORM_REQUESTED_SEQ` from the same `.data.waitingGates`
-entry. `run gates "$FORM_RUN_ID"` lists them; `gate request "$FORM_RUN_ID"
-"$FORM_GATE_ID"` shows the question, the input and where each verdict leads:
+`ARCHON_GATE_ID` and `ARCHON_REQUESTED_SEQ` from the same `.data.waitingGates`
+entry. `run gates "$ARCHON_RUN_ID"` lists them; `gate request "$ARCHON_RUN_ID"
+"$ARCHON_GATE_ID"` shows the question, the input and where each verdict leads:
 the targets, the attempt each would start and, only when the run set a cap, that
 cap (`maxAttempts`, `dispatches`) and a `limit` entry if taking the route would
 exceed it.
 
 ```bash
-archon $S gate approve "$FORM_RUN_ID" "$FORM_GATE_ID" --requested-seq "$FORM_REQUESTED_SEQ" --response "$FORM_RESPONSE" --json
-archon $S gate reject  "$FORM_RUN_ID" "$FORM_GATE_ID" --requested-seq "$FORM_REQUESTED_SEQ" --response "$FORM_RESPONSE" --json
+archon $S gate approve "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" --requested-seq "$ARCHON_REQUESTED_SEQ" --response "$ARCHON_RESPONSE" --json
+archon $S gate reject  "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" --requested-seq "$ARCHON_REQUESTED_SEQ" --response "$ARCHON_RESPONSE" --json
 ```
 
 Run exactly one. On approve, a nonempty response travels with the gate's input
@@ -345,7 +346,7 @@ block right after a verdict is the normal handoff; the coordinator resumes.
 
 ## Stop and recover
 
-Abort a non-final run with `run abort "$FORM_RUN_ID" --reason "<why>" --json`;
+Abort a non-final run with `run abort "$ARCHON_RUN_ID" --reason "<why>" --json`;
 it cancels that run only and ends its seats. For a blocked run, a 409, a daemon
 restart or a lost seat, read [references/recovery.md](references/recovery.md).
 

@@ -1,4 +1,4 @@
-# Import the companion delivery.notes.toml into .formations/notes/.
+# Import the companion delivery.notes.toml into .archon/notes/.
 schema = 1
 id = "brd_delivery"
 slug = "delivery"
