@@ -18,7 +18,9 @@ archon --server "$ARCHON_SERVER" mission arrange delivery --json
 ```
 
 Read an imported mission's briefs and staffing before running it. The delivery
-template's Input card is `mis_delivery`.
+template's Input card is `mis_delivery`, and a run supplies its one input,
+`change`, with `--input change=...` or `--input-file change=<file>`; the target
+repository is the run's `--cwd` and the owning Bead its `--bead`.
 
 ## Lab runs
 
@@ -27,7 +29,7 @@ proves routing, not work, and writes each rendered brief to
 `<state-dir>/briefs/lab-*.md` as a seat would receive it.
 
 To pass a formation judge in lab, put exactly one synthetic block in an input
-the first step receives (for example `--input-file brief=<file>`):
+the first step receives (for example `--input-file change=<file>` for Delivery):
 
 ````text
 ```archon-verdict

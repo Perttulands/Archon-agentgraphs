@@ -168,7 +168,9 @@ reserved for stale mission revisions or ETags in these edits.
 
 The [delivery mission](../examples/delivery.mission.toml) and its
 [notes](../examples/delivery.notes.toml) add Plan, Beads, a Beads-review judge,
-orchestrated Execution and Final review. Six `delivery-*` preset roles staff it, each slot at `medium` effort.
+orchestrated Execution and Final review. A run supplies one input, `change`,
+which every step's brief references as `{change}`; the target repository is the
+run's cwd and the owning Bead its Bead. Six `delivery-*` preset roles staff it, each slot at `medium` effort.
 Execution uses a Claude controller and three Codex workers; Final review uses
 Astra. Failed Beads review returns directly to Beads. Final review produces a
 report, with no following gate. This graph has no human gate.
@@ -833,7 +835,7 @@ Read server URL and state directory from the host runbook or environment.
 credentials, query or fragment. Host forwarding reaches the cockpit over the
 tailnet. Source, binary, UI, state, socket and transcript paths are host values,
 never mission constants. Set `ARCHON_SOURCE`, `ARCHON_BIN`, `ARCHON_STATE`, `ARCHON_LISTEN`,
-`ARCHON_SERVER`, `ARCHON_CWD`, `ARCHON_BRIEF` and `ARCHON_BEAD` accordingly. Keep runtime
+`ARCHON_SERVER`, `ARCHON_CWD`, `ARCHON_CHANGE` and `ARCHON_BEAD` accordingly. Keep runtime
 state outside the source checkout. Use Go, Node/npm, Bash, curl and jq.
 
 Build and launch a scratch lab daemon, leaving its terminal open:
@@ -987,12 +989,13 @@ rejected. The cockpit tags incomplete nodes as drafts and highlights the nodes
 a rejected start names.
 
 For the delivery template the following starts a run without limits; add
-`--max-*` flags only when the run needs a cap. Lab briefs need the synthetic
-verdict described above. Real briefs describe the work to deliver.
+`--max-*` flags only when the run needs a cap. Its one input, `change`,
+describes the work to deliver; in a lab run it carries the synthetic verdict
+described above.
 
 ```bash
 ARCHON_START=$(archon --server "$ARCHON_SERVER" mission run delivery \
-  --input brief="$ARCHON_BRIEF" --bead "$ARCHON_BEAD" --json)
+  --input change="$ARCHON_CHANGE" --bead "$ARCHON_BEAD" --json)
 ARCHON_RUN_ID=$(printf '%s\n' "$ARCHON_START" | jq -er '.data.runId')
 archon --server "$ARCHON_SERVER" run status "$ARCHON_RUN_ID" --json
 archon --server "$ARCHON_SERVER" run logs "$ARCHON_RUN_ID" --json
