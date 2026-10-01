@@ -100,7 +100,7 @@ func (t realSeatTransport) Create(ctx context.Context, socket, name, cwd, root s
 			watch.Close()
 		}
 	}()
-	// The same renderer the persona's shown launch uses (DescribeLaunches).
+	// The same renderer agent spawn uses (HarnessVariant.SpawnCommand).
 	launch, err := v.LaunchCommand()
 	if err != nil {
 		return nil, err

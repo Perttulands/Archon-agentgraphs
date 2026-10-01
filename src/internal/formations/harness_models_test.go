@@ -113,6 +113,31 @@ func TestAMalformedCodexCacheIsRememberedUntilItChanges(t *testing.T) {
 	}
 }
 
+// A read that fails, as while Codex rewrites the cache, is not remembered: the
+// next request reads the file again.
+func TestAFailedCodexCacheReadIsTriedAgain(t *testing.T) {
+	dir := useCodexModels(t, false)
+	path := filepath.Join(dir, "models_cache.json")
+	if err := os.WriteFile(path, []byte(`{"models":[{"slug":"gpt-7","visibility":"list","priority":1}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.ReadFile(path); err == nil {
+		t.Skip("this user reads files whatever their mode")
+	}
+	if got := HarnessModels("openai-codex"); len(got) != 0 {
+		t.Fatalf("models from an unreadable cache = %+v", got)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := HarnessModels("openai-codex"); !reflect.DeepEqual(got, []HarnessModel{{ID: "gpt-7"}}) {
+		t.Fatalf("models once the cache reads = %+v", got)
+	}
+}
+
 // A known Codex model narrows the efforts a slot may take; an unknown one
 // keeps the harness's list (archon-n7u.50).
 func TestASlotsEffortIsCheckedAgainstItsModel(t *testing.T) {

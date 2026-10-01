@@ -521,8 +521,10 @@ func runAgentSpawn(store *formations.PersonaStore, args []string, stdout, stderr
 		return fail(stderr, err)
 	}
 	if binding, err := formations.ResolveAgentSession(*card, live, *harness); err == nil {
-		fmt.Fprintf(stdout, "%s already live as %s\n", card.ID, archonTmuxTargetSessionName(binding.SessionStem))
-		return 0
+		// A running session keeps the model and effort it started with; this spawn would state others.
+		fmt.Fprintf(stderr, "%s is already running as %s; it keeps the model and effort it started with, so this spawn's --effort %s was not applied. Stop that session to spawn %s again.\n",
+			card.ID, archonTmuxTargetSessionName(binding.SessionStem), variant.Effort, card.ID)
+		return 1
 	} else if !errors.Is(err, formations.ErrAgentSessionOffline) {
 		return fail(stderr, err)
 	}

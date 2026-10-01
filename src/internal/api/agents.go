@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/core"
@@ -92,7 +93,7 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		SessionStem  string   `json:"sessionStem"`
 		Source       string   `json:"source"`
 	}
-	if !decodeJSONBody(w, r, &req) {
+	if !decodeStrictJSONBody(w, r, &req, "INVALID_AGENT_CARD", unknownAgentField) {
 		return
 	}
 	card, err := h.store.CreatePersona(formations.CreatePersonaRequest{
@@ -129,7 +130,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		Summary          *string   `json:"summary"`
 		Capabilities     *[]string `json:"capabilities"`
 	}
-	if !decodeJSONBody(w, r, &req) {
+	if !decodeStrictJSONBody(w, r, &req, "INVALID_AGENT_CARD", unknownAgentField) {
 		return
 	}
 	edit := formations.EditPersonaRequest{
@@ -167,6 +168,15 @@ func (h *AgentsHandler) liveSessions() ([]formations.LiveAgentSession, error) {
 		return nil, nil
 	}
 	return h.liveness.LiveAgentSessions()
+}
+
+// unknownAgentField says why a role request cannot take a field: a role is
+// role text, so a model or effort belongs on each slot.
+func unknownAgentField(field string) string {
+	if field == "model" || field == "effort" {
+		return fmt.Sprintf("agent request field %q is not one a role takes: a role carries no model or effort; state them on each slot (formation assign --model --effort)", field)
+	}
+	return fmt.Sprintf("agent request field %q is not one Archon takes", field)
 }
 
 func writeAgentError(w http.ResponseWriter, err error) {

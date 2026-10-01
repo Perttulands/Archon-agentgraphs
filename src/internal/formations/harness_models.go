@@ -113,8 +113,9 @@ func codexModelsPath() string {
 
 // readCodexModels reads the Codex model cache, re-reading it only when the
 // file changes. A missing, unreadable or malformed cache means no known
-// models; a file that cannot be read or parsed is remembered as such until it
-// changes, so it is not read again on every request.
+// models. A file that does not parse is remembered as such until it changes,
+// so it is not parsed again on every request; a read that fails, as while
+// Codex rewrites the file, is tried again next time.
 func readCodexModels() []codexModel {
 	path := codexModelsPath()
 	info, err := os.Stat(path)
@@ -126,18 +127,18 @@ func readCodexModels() []codexModel {
 	if codexModelsCache.path == path && codexModelsCache.modTime.Equal(info.ModTime()) && codexModelsCache.size == info.Size() {
 		return codexModelsCache.models
 	}
-	models := parseCodexModels(path)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	models := parseCodexModels(raw)
 	codexModelsCache.path, codexModelsCache.modTime, codexModelsCache.size, codexModelsCache.models = path, info.ModTime(), info.Size(), models
 	return models
 }
 
 // parseCodexModels reads the models a Codex model cache lists, by priority;
-// nil when the file cannot be read or parsed.
-func parseCodexModels(path string) []codexModel {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
+// nil when it does not parse.
+func parseCodexModels(raw []byte) []codexModel {
 	var cache struct {
 		Models []struct {
 			Slug       string `json:"slug"`

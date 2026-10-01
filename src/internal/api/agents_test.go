@@ -250,6 +250,29 @@ func TestAgentsHandlerServesARoleAsRoleTextOnly(t *testing.T) {
 		t.Fatalf("card holds a model or effort:\n%s", raw)
 	}
 
+	// A model or effort sent anyway is refused by name, never dropped silently.
+	refusedCreate := httptest.NewRecorder()
+	handler.CreateAgent(refusedCreate, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"builder","kind":"builder","model":"opus"}`)))
+	if refusedCreate.Code != http.StatusUnprocessableEntity || !strings.Contains(refusedCreate.Body.String(), `"code":"INVALID_AGENT_CARD"`) || !strings.Contains(refusedCreate.Body.String(), `agent request field \"model\" is not one a role takes`) {
+		t.Fatalf("create with a model = %d %s", refusedCreate.Code, refusedCreate.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(agentsDir, "builder.toml")); !os.IsNotExist(err) {
+		t.Fatalf("a refused create wrote a card: %v", err)
+	}
+	refusedEdit := httptest.NewRequest(http.MethodPatch, "/api/agents/critic", bytes.NewBufferString(`{"summary":"Reviews.","effort":"xhigh"}`))
+	refusedEdit.SetPathValue("agentId", "critic")
+	refusedEdit.Header.Set("If-Match", edited.Header().Get("ETag"))
+	refused := httptest.NewRecorder()
+	handler.UpdateAgent(refused, refusedEdit)
+	if refused.Code != http.StatusUnprocessableEntity || !strings.Contains(refused.Body.String(), `agent request field \"effort\" is not one a role takes`) {
+		t.Fatalf("edit with an effort = %d %s", refused.Code, refused.Body.String())
+	}
+	unknown := httptest.NewRecorder()
+	handler.CreateAgent(unknown, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"builder","launch":"claude"}`)))
+	if unknown.Code != http.StatusUnprocessableEntity || !strings.Contains(unknown.Body.String(), `agent request field \"launch\" is not one Archon takes`) {
+		t.Fatalf("create with a launch = %d %s", unknown.Code, unknown.Body.String())
+	}
+
 	list := httptest.NewRecorder()
 	handler.ListAgents(list, httptest.NewRequest(http.MethodGet, "/api/agents", nil))
 	var roster struct {

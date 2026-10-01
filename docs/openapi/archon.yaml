@@ -872,7 +872,8 @@ paths:
         '201':
           description: Created persona card in data; returns ETag
         '422':
-          description: INVALID_AGENT_CARD when the card would lack a required field
+          description: INVALID_AGENT_CARD when the card would lack a required field, or the request names a field
+            the endpoint does not take, such as model or effort (a role carries neither); the message names it
       requestBody:
         required: true
         content:
@@ -899,7 +900,8 @@ paths:
         '200':
           description: Updated persona card in data; returns ETag
         '422':
-          description: INVALID_AGENT_CARD when the edited card would lack a required field
+          description: INVALID_AGENT_CARD when the edited card would lack a required field, or the request names a
+            field the endpoint does not take, such as model or effort; the message names it
         '428':
           description: Missing If-Match
         '409':

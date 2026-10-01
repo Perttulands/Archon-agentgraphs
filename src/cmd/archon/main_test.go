@@ -325,12 +325,10 @@ func TestArchonAgentSpawnUsesFakeTmuxWithoutDuplicateSession(t *testing.T) {
 	if !strings.Contains(stdout, "spawned scout as scout") || len(runner.spawned) != 1 {
 		t.Fatalf("spawn output=%s spawned=%#v", stdout, runner.spawned)
 	}
-	stdout, stderr, code = runArchon(t, runner, "agent", "spawn", "scout", "--effort", "medium")
-	if code != 0 {
-		t.Fatalf("second spawn failed: %d stderr=%s", code, stderr)
-	}
-	if !strings.Contains(stdout, "already live") || len(runner.spawned) != 1 {
-		t.Fatalf("second spawn output=%s spawned=%#v", stdout, runner.spawned)
+	// A running session keeps what it started with: a second spawn is refused, never silently ignored.
+	stdout, stderr, code = runArchon(t, runner, "agent", "spawn", "scout", "--effort", "xhigh")
+	if code != 1 || stdout != "" || !strings.Contains(stderr, "scout is already running as scout; it keeps the model and effort it started with, so this spawn's --effort xhigh was not applied") || len(runner.spawned) != 1 {
+		t.Fatalf("second spawn code=%d stdout=%s stderr=%s spawned=%#v", code, stdout, stderr, runner.spawned)
 	}
 }
 
@@ -368,12 +366,9 @@ func TestArchonAgentSpawnListAttachUseTmuxSessionPrefix(t *testing.T) {
 		t.Fatalf("attach calls = %#v, want prefixed tmux target", runner.attach)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "agent", "spawn", "scout", "--effort", "medium")
-	if code != 0 {
-		t.Fatalf("second spawn failed: %d stderr=%s", code, stderr)
-	}
-	if !strings.Contains(stdout, "already live as dogfood-scout") || len(runner.spawned) != 1 {
-		t.Fatalf("second spawn output=%s spawned=%#v, want prefixed liveness to prevent duplicate", stdout, runner.spawned)
+	_, stderr, code = runArchon(t, runner, "agent", "spawn", "scout", "--effort", "medium")
+	if code != 1 || !strings.Contains(stderr, "already running as dogfood-scout") || len(runner.spawned) != 1 {
+		t.Fatalf("second spawn code=%d stderr=%s spawned=%#v, want prefixed liveness to refuse a duplicate", code, stderr, runner.spawned)
 	}
 }
 
