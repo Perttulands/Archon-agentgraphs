@@ -189,6 +189,16 @@ func TestPlanOnCallFallsBackOnceWithAReason(t *testing.T) {
 	if plan := PlanOnCall(board, asked, true, present()); len(plan.Deliveries)+len(plan.Fallbacks) != 0 {
 		t.Fatalf("a delivered ask with its seat present owes nothing: %+v", plan)
 	}
+	// Seats the run's end took are not gone: its final event follows. After a
+	// resume, the run's next end is another matter.
+	ending := append(append([]RunEvent{}, asked...), RunEvent{Seq: 6, Type: RunEventSeatCleanup, NodeID: "work", SlotID: "work_a", Data: map[string]any{"outcome": SeatOutcomeEnded, "cause": SeatCauseRunFinal}})
+	if plan := PlanOnCall(board, ending, true, present(2)); len(plan.Deliveries)+len(plan.Fallbacks)+len(plan.Gone)+len(plan.Answered) != 0 {
+		t.Fatalf("an ending run planned %+v", plan)
+	}
+	resumed := append(append([]RunEvent{}, ending...), RunEvent{Seq: 7, Type: RunEventBlocked, Data: map[string]any{"resumeAllowed": true}}, RunEvent{Seq: 8, Type: RunEventResumed})
+	if got := codes(PlanOnCall(board, resumed, true, present(2))); got != "4:asked_seats_gone" {
+		t.Fatalf("after a resume the ask falls back again: %q", got)
+	}
 	fellBack := append(append([]RunEvent{}, asked...), RunEvent{Seq: 6, Type: RunEventHumanAskFallback, GateID: "g", Data: map[string]any{"requestedSeq": 4, "code": AskFallbackAskedSeatsGone}})
 	if got := codes(PlanOnCall(board, fellBack, true, present(2))); got != "" {
 		t.Fatalf("a fallback repeats: %q", got)

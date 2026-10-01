@@ -390,15 +390,16 @@ type SeatProbe func(KeptSeat) (bool, string)
 
 // PlanOnCall decides, from the ledger and a probe of the kept seats, which seats
 // to record gone or release and where each open ask goes. It plans nothing for a
-// notify-channel, blocked or final run: a blocked run keeps its seats and owes
-// its asks until it resumes.
+// notify-channel, blocked, final or ending run: a blocked run keeps its seats and
+// owes its asks until it resumes, and an ending run's seats ended for its final
+// event, which follows.
 func PlanOnCall(board *BoardDocument, events []RunEvent, keeper bool, probe SeatProbe) OnCallPlan {
 	var plan OnCallPlan
 	if len(events) == 0 || RunHumanChannel(board, events) != HumanChannelSession {
 		return plan
 	}
 	status, err := ProjectRunEvents(events[0].RunID, events)
-	if err != nil || status.Final || status.Status == RunStatusBlocked {
+	if err != nil || status.Final || status.Status == RunStatusBlocked || runEnding(events) {
 		return plan
 	}
 	present := map[int]KeptSeat{}
@@ -493,6 +494,22 @@ func PlanOnCall(board *BoardDocument, events []RunEvent, keeper bool, probe Seat
 		}
 	}
 	return plan
+}
+
+// runEnding reports whether the run's kept seats ended for its end since it last
+// resumed: its final event comes next, so a seat that ended then is not gone.
+func runEnding(events []RunEvent) bool {
+	for index := len(events) - 1; index >= 0; index-- {
+		switch event := events[index]; event.Type {
+		case RunEventResumed:
+			return false
+		case RunEventSeatCleanup:
+			if stringFromEventData(event, "cause") == SeatCauseRunFinal {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // askReceivers are the present kept seats of the asking formation's latest
