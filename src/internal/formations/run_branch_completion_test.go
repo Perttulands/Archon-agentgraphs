@@ -51,26 +51,54 @@ criterion = "Good enough"
 `
 }
 
-// mission -> A -> terminal human gate, and mission -> B -> C.
+// branchingBoardEnds are the Done and Rejected End nodes every branching
+// board ends its paths at (form-o7p.10).
+func branchingBoardEnds() string {
+	return `
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+`
+}
+
+// branchingBoardGateEnds wires a gate whose pass ends the path done and whose
+// fail ends it rejected.
+func branchingBoardGateEnds(gateID string) string {
+	return branchingBoardConnection("edge_"+gateID+"_pass", gateID+":pass", "end_done:in") +
+		branchingBoardConnection("edge_"+gateID+"_fail", gateID+":fail", "end_rejected:in")
+}
+
+// mission -> A -> human gate (pass Done, fail Rejected), and mission -> B -> C -> Done.
 func branchingGateBoardFixture() string {
 	return s4MissionOnlyBoardFixture() +
 		branchingBoardFormation("fmn_a", "A") + branchingBoardFormation("fmn_b", "B") + branchingBoardFormation("fmn_c", "C") +
-		branchingBoardHumanGate("gate_review") +
+		branchingBoardHumanGate("gate_review") + branchingBoardEnds() +
 		branchingBoardConnection("edge_m_a", "mis_showcase:out", "fmn_a:port_fmn_a_in") +
 		branchingBoardConnection("edge_a_gate", "fmn_a:port_fmn_a_out", "gate_review:in") +
+		branchingBoardGateEnds("gate_review") +
 		branchingBoardConnection("edge_m_b", "mis_showcase:out", "fmn_b:port_fmn_b_in") +
-		branchingBoardConnection("edge_b_c", "fmn_b:port_fmn_b_out", "fmn_c:port_fmn_c_in")
+		branchingBoardConnection("edge_b_c", "fmn_b:port_fmn_b_out", "fmn_c:port_fmn_c_in") +
+		branchingBoardConnection("edge_c_done", "fmn_c:port_fmn_c_out", "end_done:in")
 }
 
-// mission -> A -> terminal human gate 1, and mission -> B -> terminal human gate 2.
+// mission -> A -> human gate 1, and mission -> B -> human gate 2; each gate's
+// pass ends its path Done and its fail ends it Rejected.
 func twoTerminalGatesBoardFixture() string {
 	return s4MissionOnlyBoardFixture() +
 		branchingBoardFormation("fmn_a", "A") + branchingBoardFormation("fmn_b", "B") +
-		branchingBoardHumanGate("gate_one") + branchingBoardHumanGate("gate_two") +
+		branchingBoardHumanGate("gate_one") + branchingBoardHumanGate("gate_two") + branchingBoardEnds() +
 		branchingBoardConnection("edge_m_a", "mis_showcase:out", "fmn_a:port_fmn_a_in") +
 		branchingBoardConnection("edge_a_gate", "fmn_a:port_fmn_a_out", "gate_one:in") +
+		branchingBoardGateEnds("gate_one") +
 		branchingBoardConnection("edge_m_b", "mis_showcase:out", "fmn_b:port_fmn_b_in") +
-		branchingBoardConnection("edge_b_gate", "fmn_b:port_fmn_b_out", "gate_two:in")
+		branchingBoardConnection("edge_b_gate", "fmn_b:port_fmn_b_out", "gate_two:in") +
+		branchingBoardGateEnds("gate_two")
 }
 
 func startBranchingRun(t *testing.T, fixture string, executor FormationExecutor) (*Store, *PersonaStore, *RunEngine, *RunStatusProjection) {
@@ -139,6 +167,15 @@ func pendingHumanGates(t *testing.T, store *Store, runID string) []string {
 		}
 	}
 	return gates
+}
+
+func gateVerdictRecorded(events []RunEvent, gateID, routePort string) bool {
+	for _, event := range events {
+		if event.Type == RunEventGateVerdict && event.GateID == gateID && stringFromEventData(event, "routePort") == routePort {
+			return true
+		}
+	}
+	return false
 }
 
 func eventTypeTrail(events []RunEvent) string {
@@ -244,8 +281,8 @@ func TestATerminalJudgePassDoesNotSkipABlockedBranchOnResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !terminalPassReached(events) {
-		t.Fatalf("setup: the judge gate did not pass terminally: %s", eventTypeTrail(events))
+	if !gateVerdictRecorded(events, "gate_review", "pass") {
+		t.Fatalf("setup: the judge gate did not pass: %s", eventTypeTrail(events))
 	}
 	executor.calls = nil
 	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "agent:test", Mode: "redispatch", Reason: "seat lost; run ship again"})

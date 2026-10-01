@@ -110,6 +110,16 @@ y = 1008
 id = "gate_review"
 x = 784
 y = 1008
+
+[[node]]
+id = "end_done"
+x = 1120
+y = 1008
+
+[[node]]
+id = "end_rejected"
+x = 1456
+y = 1008
 `
 	writeFixture(t, store.BoardPath("tool-structural"), boardRaw)
 	writeFixture(t, store.LayoutPath("tool-structural"), layoutRaw)

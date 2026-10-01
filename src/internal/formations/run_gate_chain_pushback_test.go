@@ -111,7 +111,17 @@ to = "gate_signoff:in"
 id = "edge_signoff_fail_draft"
 from = "gate_signoff:fail"
 to = "fmn_draft:fmn_draft_in"
-`
+
+[[connection]]
+id = "edge_signoff_pass_done"
+from = "gate_signoff:pass"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_review_fail_rejected"
+from = "gate_review:fail"
+to = "end_rejected:in"
+` + branchingBoardEnds()
 	if strings.Contains(signoffKinds, "formation") {
 		board += formationBlock("fmn_signoff_judge", "Sign-off judge") + `
 [[connection]]
@@ -250,7 +260,9 @@ func TestAutomaticSendBackAfterGateChainSurvivesResume(t *testing.T) {
 	}
 }
 
-func TestTerminalPassWaitsForAPendingPushback(t *testing.T) {
+// A pass that ends its path does not end the run past a send-back no step has
+// acted on yet; once the revised work passes, nothing is unfinished.
+func TestAPassEndingItsPathWaitsForAPendingPushback(t *testing.T) {
 	store, _ := s4RunFixture(t)
 	writeFixture(t, store.BoardPath("session-search"), gateChainBoardFixture(`["human"]`))
 	board, err := store.ReadBoard("session-search")
@@ -260,19 +272,24 @@ func TestTerminalPassWaitsForAPendingPushback(t *testing.T) {
 	verdict := func(seq int, gateID, port string, routes ...string) RunEvent {
 		return RunEvent{Seq: seq, Type: RunEventGateVerdict, GateID: gateID, NodeID: gateID, Data: map[string]any{"routePort": port, "routedEdges": routes}}
 	}
+	evaluating := func(seq int, gateID string) RunEvent {
+		return RunEvent{Seq: seq, Type: RunEventGateEvaluating, GateID: gateID, NodeID: gateID}
+	}
 	sentBack := []RunEvent{
 		{Seq: 1, Type: RunEventStarted},
 		{Seq: 2, Type: RunEventNodeOutput, NodeID: "fmn_draft"},
 		verdict(3, "gate_review", "pass", "edge_review_pass_signoff"),
-		verdict(4, "gate_signoff", "fail", "edge_signoff_fail_draft"),
-		verdict(5, "gate_signoff", "pass"),
+		evaluating(4, "gate_signoff"),
+		verdict(5, "gate_signoff", "fail", "edge_signoff_fail_draft"),
+		evaluating(6, "gate_signoff"),
+		verdict(7, "gate_signoff", "pass", "edge_signoff_pass_done"),
 	}
-	if !pendingPushback(board, sentBack) || terminalPassReachedOnBoard(board, sentBack) {
-		t.Fatal("a terminal pass finished the run past an unserviced send-back")
+	if unfinished := unfinishedRunWork(board, sentBack, ""); !reflect.DeepEqual(unfinished, []string{"fmn_draft"}) {
+		t.Fatalf("unfinished = %v, want the sent-back draft", unfinished)
 	}
-	revised := append(append([]RunEvent{}, sentBack[:4]...), RunEvent{Seq: 5, Type: RunEventNodeOutput, NodeID: "fmn_draft"}, verdict(6, "gate_review", "pass", "edge_review_pass_signoff"), verdict(7, "gate_signoff", "pass"))
-	if pendingPushback(board, revised) || !terminalPassReachedOnBoard(board, revised) {
-		t.Fatal("a terminal pass after the revised work did not finish the run")
+	revised := append(append([]RunEvent{}, sentBack[:5]...), RunEvent{Seq: 6, Type: RunEventNodeOutput, NodeID: "fmn_draft"}, verdict(7, "gate_review", "pass", "edge_review_pass_signoff"), evaluating(8, "gate_signoff"), verdict(9, "gate_signoff", "pass", "edge_signoff_pass_done"))
+	if unfinished := unfinishedRunWork(board, revised, ""); len(unfinished) != 0 || rejectedRunPath(board, revised) != nil {
+		t.Fatalf("after the revised work passed: unfinished %v, rejected %+v", unfinished, rejectedRunPath(board, revised))
 	}
 }
 

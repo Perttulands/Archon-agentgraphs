@@ -73,6 +73,9 @@ func ValidateRunAdmission(board *BoardDocument, personas *PersonaStore, scope Ru
 		switch {
 		case selected == nil || finding.Code == FindingInvalidFormationType || finding.Code == FindingSeveralInputCards:
 			return true
+		case scope.FormationID != "" && finding.Code == FindingRouteLeadsNowhere:
+			// A single step's run ends with that step; its routes are not taken.
+			return false
 		case finding.NodeID == "":
 			return false
 		default:

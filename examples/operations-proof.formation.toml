@@ -81,6 +81,16 @@ title = "Operator verdict"
 kinds = ["human"]
 criterion = "The operations guide is usable and this producer-reviewer-integrator handoff is worth keeping. The operator must enter pass or fail after inspecting the guide and mission evidence."
 
+[[end]]
+id = "end_kept"
+title = "Kept"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
 [[connection]]
 id = "edge_0"
 from = "mis_operations:out"
@@ -100,3 +110,13 @@ to = "fmn_integrator:port_integrator_in"
 id = "edge_3"
 from = "fmn_integrator:port_integrator_out"
 to = "gate_operator:in"
+
+[[connection]]
+id = "edge_4"
+from = "gate_operator:pass"
+to = "end_kept:in"
+
+[[connection]]
+id = "edge_5"
+from = "gate_operator:fail"
+to = "end_rejected:in"

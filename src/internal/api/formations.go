@@ -95,6 +95,9 @@ type formationsBoardPatchRequest struct {
 	SetGateJudge                  *formationsSetGateJudgeRequest          `json:"setGateJudge"`
 	DetachGateJudge               *formationsDetachGateJudgeRequest       `json:"detachGateJudge"`
 	CreateMission                 *formationsCreateMissionRequest         `json:"createMission"`
+	CreateEnd                     *formationsCreateEndRequest             `json:"createEnd"`
+	UpdateEnd                     *formationsUpdateEndRequest             `json:"updateEnd"`
+	DeleteEnd                     *formationsDeleteEndRequest             `json:"deleteEnd"`
 	LegacyCommandFieldsPresent    bool                                    `json:"-"`
 	SetVerificationOccurrences    int                                     `json:"-"`
 	RemoveVerificationOccurrences int                                     `json:"-"`
@@ -175,6 +178,31 @@ type formationsDeleteGateRequest struct {
 	UpdatedBy   string `json:"updatedBy"`
 }
 
+// formationsCreateEndRequest adds an End node, which ends a path on purpose
+// with outcome done (the default) or rejected.
+type formationsCreateEndRequest struct {
+	Title       string `json:"title"`
+	Outcome     string `json:"outcome"`
+	X           int    `json:"x"`
+	Y           int    `json:"y"`
+	ExpectedRev int    `json:"expectedRev"`
+	UpdatedBy   string `json:"updatedBy"`
+}
+
+type formationsUpdateEndRequest struct {
+	ID          string  `json:"id"`
+	Title       *string `json:"title"`
+	Outcome     *string `json:"outcome"`
+	ExpectedRev int     `json:"expectedRev"`
+	UpdatedBy   string  `json:"updatedBy"`
+}
+
+type formationsDeleteEndRequest struct {
+	ID          string `json:"id"`
+	ExpectedRev int    `json:"expectedRev"`
+	UpdatedBy   string `json:"updatedBy"`
+}
+
 type formationsDeleteMissionRequest struct {
 	ID          string `json:"id"`
 	ExpectedRev int    `json:"expectedRev"`
@@ -188,6 +216,7 @@ type formationsRestoreNodeRequest struct {
 	Mission     *formations.MissionNode      `json:"mission"`
 	Formation   *formations.FormationNode    `json:"formation"`
 	Gate        *formations.GateNode         `json:"gate"`
+	End         *formations.EndNode          `json:"end"`
 	Connections []formations.BoardConnection `json:"connections"`
 	Index       *int                         `json:"index"`
 	X           int                          `json:"x"`
@@ -351,6 +380,9 @@ var boardPatchMutationKeys = []string{
 	"setGateJudge",
 	"detachGateJudge",
 	"createMission",
+	"createEnd",
+	"updateEnd",
+	"deleteEnd",
 }
 
 func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
@@ -1175,6 +1207,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Mission:     restore.Mission,
 			Formation:   restore.Formation,
 			Gate:        restore.Gate,
+			End:         restore.End,
 			Connections: restore.Connections,
 			Index:       restore.Index,
 			X:           restore.X,
@@ -1594,6 +1627,62 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		core.WriteSuccess(w, map[string]interface{}{"board": board})
 		return
 	}
+	if request.CreateEnd != nil {
+		end := request.CreateEnd
+		result, err := h.store.CreateEnd(slug, formations.EndCreateRequest{
+			Title:     end.Title,
+			Outcome:   end.Outcome,
+			X:         end.X,
+			Y:         end.Y,
+			UpdatedBy: patchUpdatedBy(request.UpdatedBy, end.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, end.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", result.Board.ETag)
+		core.WriteSuccess(w, result)
+		return
+	}
+	if request.UpdateEnd != nil {
+		update := request.UpdateEnd
+		board, err := h.store.UpdateEnd(slug, formations.EndUpdateRequest{
+			EndID:     update.ID,
+			Title:     update.Title,
+			Outcome:   update.Outcome,
+			UpdatedBy: patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, update.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", board.ETag)
+		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		return
+	}
+	if request.DeleteEnd != nil {
+		deleteRequest := request.DeleteEnd
+		result, err := h.store.DeleteEnd(slug, formations.EndDeleteRequest{
+			ID:        deleteRequest.ID,
+			UpdatedBy: patchUpdatedBy(request.UpdatedBy, deleteRequest.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, deleteRequest.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", result.Board.ETag)
+		core.WriteSuccess(w, result)
+		return
+	}
 	if request.CreateMission != nil {
 		mission := request.CreateMission
 		result, err := h.store.CreateMission(slug, formations.MissionCreateRequest{
@@ -1854,6 +1943,8 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusPreconditionRequired, "PRECONDITION_REQUIRED", "If-Match and revision preconditions are required")
 	case errors.Is(err, formations.ErrInvalidBeadID):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_BEAD_ID", fieldErrorMessage(err, formations.ErrInvalidBeadID))
+	case errors.Is(err, formations.ErrInvalidEndOutcome):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_END_OUTCOME", fieldErrorMessage(err, formations.ErrInvalidEndOutcome))
 	case errors.Is(err, formations.ErrInvalidHumanChannel):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_HUMAN_CHANNEL", fieldErrorMessage(err, formations.ErrInvalidHumanChannel))
 	case errors.Is(err, formations.ErrInvalidControllerRole):

@@ -67,12 +67,8 @@ func TestTmuxSeatsKeepAdmittedPersonaSettingsAcrossRestart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			writeFixture(t, store.BoardPath("session-search"), strings.ReplaceAll(s5HumanGateBoardFixture()+`
-[[connection]]
-id = "edge_gate_rework"
-from = "gate_review:fail"
-to = "fmn_work:port_work_in"
-`, "openai-codex", harness))
+			rework := strings.Replace(s5HumanGateBoardFixture(), "id = \"edge_gate_fail_rejected\"\nfrom = \"gate_review:fail\"\nto = \"end_rejected:in\"", "id = \"edge_gate_rework\"\nfrom = \"gate_review:fail\"\nto = \"fmn_work:port_work_in\"", 1)
+			writeFixture(t, store.BoardPath("session-search"), strings.ReplaceAll(rework, "openai-codex", harness))
 			cfg := tmuxTestConfig(t)
 			cfg.Harnesses = []string{harness}
 			client := &fakeTmuxHarnessClient{harness: harness, pane: tmuxPaneState{CurrentPath: cfg.Cwd}}

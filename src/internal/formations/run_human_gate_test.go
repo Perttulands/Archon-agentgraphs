@@ -239,7 +239,17 @@ to = "gate_review:in"
 id = "edge_gate_pass_ship"
 from = "gate_review:pass"
 to = "fmn_ship:port_ship_in"
-`
+
+[[connection]]
+id = "edge_ship_done"
+from = "fmn_ship:port_ship_out"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_gate_fail_rejected"
+from = "gate_review:fail"
+to = "end_rejected:in"
+` + branchingBoardEnds()
 }
 
 func s5HumanGateUnderfedJoinBoardFixture() string {
@@ -308,7 +318,17 @@ to = "gate_review:in"
 id = "edge_gate_pass_join"
 from = "gate_review:pass"
 to = "fmn_join:port_join_left"
-`
+
+[[connection]]
+id = "edge_join_done"
+from = "fmn_join:port_join_out"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_gate_fail_rejected"
+from = "gate_review:fail"
+to = "end_rejected:in"
+` + branchingBoardEnds()
 }
 
 func s5HumanGatePushbackBoardFixture() string {
@@ -378,7 +398,12 @@ to = "fmn_work:port_work_in"
 id = "edge_gate_pass_ship"
 from = "gate_review:pass"
 to = "fmn_ship:port_ship_in"
-`
+
+[[connection]]
+id = "edge_ship_done"
+from = "fmn_ship:port_ship_out"
+to = "end_done:in"
+` + branchingBoardEnds()
 }
 
 func TestS5HumanGateFailPushbackResumeReDispatchesWork(t *testing.T) {

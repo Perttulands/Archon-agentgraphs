@@ -64,6 +64,8 @@ func TestFormationsAPICreateGateWithoutKindsStartsAsRoutableHumanGate(t *testing
 	for _, body := range []string{
 		`{"createMission":{"title":"Work","goal":"Do it","beadId":"form-demo"}}`,
 		`{"createFormation":{"type":"solo","title":"Worker"}}`,
+		`{"createEnd":{"outcome":"done"}}`,
+		`{"createEnd":{"outcome":"rejected"}}`,
 	} {
 		if rec := patch(body); rec.Code != http.StatusOK {
 			t.Fatalf("%s = %d %s", body, rec.Code, rec.Body.String())
@@ -79,6 +81,8 @@ func TestFormationsAPICreateGateWithoutKindsStartsAsRoutableHumanGate(t *testing
 		`{"setBrief":{"formationId":"` + worker.ID + `","goal":"Produce the result"}}`,
 		`{"wireConnection":{"from":"` + mission.ID + `:out","to":"` + worker.ID + `:` + worker.Inputs[0].ID + `"}}`,
 		`{"wireConnection":{"from":"` + worker.ID + `:` + worker.Outputs[0].ID + `","to":"` + human.ID + `:in"}}`,
+		`{"wireConnection":{"from":"` + human.ID + `:pass","to":"` + board.Ends[0].ID + `:in"}}`,
+		`{"wireConnection":{"from":"` + human.ID + `:fail","to":"` + board.Ends[1].ID + `:in"}}`,
 	} {
 		if rec := patch(body); rec.Code != http.StatusOK {
 			t.Fatalf("%s = %d %s", body, rec.Code, rec.Body.String())

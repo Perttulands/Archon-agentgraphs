@@ -120,7 +120,7 @@ func TestLabJudgePushbackLoop(t *testing.T) {
 			store, personas := s4RunFixture(t)
 			createS4Persona(t, personas, "scout")
 			fixture := strings.Replace(s4JudgeChainRunBoardFixture(), `kinds = ["code", "formation"]`, `kinds = ["formation"]`, 1)
-			fixture += "\n[[connection]]\nid = \"edge_gate_fail_work\"\nfrom = \"gate_review:fail\"\nto = \"fmn_work:port_work_in\"\n"
+			fixture = strings.Replace(fixture, "id = \"edge_gate_fail_rejected\"\nfrom = \"gate_review:fail\"\nto = \"end_rejected:in\"", "id = \"edge_gate_fail_work\"\nfrom = \"gate_review:fail\"\nto = \"fmn_work:port_work_in\"", 1)
 			writeFixture(t, store.BoardPath("session-search"), fixture)
 			board, err := store.ReadBoard("session-search")
 			if err != nil {

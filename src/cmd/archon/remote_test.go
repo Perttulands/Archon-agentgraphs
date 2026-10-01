@@ -228,6 +228,8 @@ func assertCreatedOutput(t *testing.T, side string, kind string, stdout string, 
 		id = board.Gates[len(board.Gates)-1].ID
 	case "tool":
 		id = board.Tools[len(board.Tools)-1].ID
+	case "end":
+		id = board.Ends[len(board.Ends)-1].ID
 	}
 	if !jsonOut {
 		if stdout != "created "+id+"\n" {
@@ -266,6 +268,22 @@ func gateTitled(t *testing.T, board *formations.BoardDocument, title string) for
 	}
 	t.Fatalf("no gate %q in %+v", title, board.Gates)
 	return formations.GateNode{}
+}
+
+// nodeIDTitled finds a gate or End node by title, or names a missing one, so
+// script steps also build their arguments on the coverage test's stub board.
+func nodeIDTitled(board *formations.BoardDocument, title string) string {
+	for _, gate := range board.Gates {
+		if gate.Title == title {
+			return gate.ID
+		}
+	}
+	for _, end := range board.Ends {
+		if end.Title == title {
+			return end.ID
+		}
+	}
+	return "missing_" + title
 }
 
 // authoringScript uses every remote authoring command, including failures.
@@ -345,6 +363,26 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("gate", "update", "demo", "Signoff", "--title", "Sign-off", "--kinds", "human,code", "--check", "output_contains", "--check-version", "1", "--check-value", "done"))},
 		{args: with(fixed("gate", "update", "demo", "Sign-off", "--clear-check", "--kinds", "human"))},
 		{args: with(fixed("gate", "create", "demo", "--title", "Default")), creates: "gate"},
+		// End nodes end paths on purpose; one End node takes several routes (form-o7p.10).
+		{args: with(fixed("end", "create", "demo")), creates: "end"},
+		{args: with(fixed("end", "create", "demo", "--outcome", "rejected", "--title", "Rejected")), creates: "end"},
+		{args: with(fixed("end", "update", "demo", "Rejected", "--title", "Sent back"))},
+		{args: with(fixed("end", "create", "demo", "--title", "Scrap", "--outcome", "done")), creates: "end"},
+		{args: with(fixed("end", "update", "demo", "Scrap", "--outcome", "rejected"))},
+		{args: with(fixed("end", "delete", "demo", "Scrap"))},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"formation", "wire", "demo", nodeIDTitled(board, "Review") + ":pass", nodeIDTitled(board, "Done") + ":in"}
+		})},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"formation", "wire", "demo", nodeIDTitled(board, "Review") + ":fail", nodeIDTitled(board, "Sent back") + ":in"}
+		})},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"formation", "wire", "demo", nodeIDTitled(board, "Default") + ":fail", nodeIDTitled(board, "Sent back") + ":in"}
+		})},
+		{args: with(fixed("end", "create", "demo", "--outcome", "maybe")), errorOnly: true},
+		{args: with(fixed("end", "update", "demo", "Nobody", "--title", "Ghost")), errorOnly: true},
+		{args: with(fixed("end", "update", "demo", "Done", "--outcome", "later")), errorOnly: true},
+		{args: with(fixed("end", "delete", "demo", "Nobody")), errorOnly: true},
 		{args: with(fixed("mission", "update", "demo", "Work", "--goal", "Do it"))},
 		{args: with(fixed("mission", "update", "demo", "--goal", "Do it well"))},
 		{args: with(fixed("mission", "update", "demo", "Work", "--file", "docs/brief.md", "--file", "docs/context.md"))},
@@ -488,9 +526,22 @@ func TestRemoteAuthoringMatchesOfflineCommands(t *testing.T) {
 				}
 			}
 			board, err := remote.store.ReadBoard("demo")
-			// Mission to Worker, Worker to Review, and the Critic judge loop.
-			if err != nil || len(board.Missions) != 1 || len(board.Formations) != 2 || len(board.Gates) != 3 || len(board.Connections) != 4 || board.UpdatedBy != "agent:archon" {
+			// Mission to Worker, Worker to Review, the Critic judge loop, and three
+			// routes ending at two End nodes.
+			if err != nil || len(board.Missions) != 1 || len(board.Formations) != 2 || len(board.Gates) != 3 || len(board.Connections) != 7 || board.UpdatedBy != "agent:archon" {
 				t.Fatalf("remote board: %v missions %d formations %d gates %d connections %d by %s", err, len(board.Missions), len(board.Formations), len(board.Gates), len(board.Connections), board.UpdatedBy)
+			}
+			if len(board.Ends) != 2 || board.Ends[0].Title != "Done" || board.Ends[0].Outcome != formations.EndOutcomeDone || board.Ends[1].Title != "Sent back" || board.Ends[1].Outcome != formations.EndOutcomeRejected {
+				t.Fatalf("remote End nodes = %+v, want Done and Sent back (rejected)", board.Ends)
+			}
+			into := 0
+			for _, connection := range board.Connections {
+				if connection.To == board.Ends[1].ID+":in" {
+					into++
+				}
+			}
+			if into != 2 {
+				t.Fatalf("routes into Sent back = %d, want 2: %+v", into, board.Connections)
 			}
 			if mission := board.Missions[0]; strings.Join(mission.Files, ",") != "docs/brief.md,docs/context.md" || mission.HumanChannel != formations.HumanChannelSession {
 				t.Fatalf("remote mission files = %q, human channel = %q", mission.Files, mission.HumanChannel)

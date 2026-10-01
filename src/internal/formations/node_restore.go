@@ -12,7 +12,7 @@ import (
 // is malformed.
 var ErrInvalidNodeRestore = errors.New("invalid_node_restore")
 
-// NodeRestoreRequest puts back one deleted mission, formation or gate with its
+// NodeRestoreRequest puts back one deleted mission, formation, gate or End node with its
 // own IDs, fields, connections and layout position, as the board document
 // showed it before the delete. It is how the cockpit undoes a node delete.
 // Notes are keyed by node ID and survive the delete, so the restored node
@@ -21,6 +21,7 @@ type NodeRestoreRequest struct {
 	Mission     *MissionNode
 	Formation   *FormationNode
 	Gate        *GateNode
+	End         *EndNode
 	Connections []BoardConnection
 	// Index, when set, is the node's place among the board's nodes of its
 	// kind, so the definition reads in its old order; nil appends it.
@@ -110,15 +111,29 @@ func insertNodeBlock(raw []byte, section string, index int, block []byte, append
 // and editing that kind of node.
 func restoredNodeBlock(req NodeRestoreRequest) (string, string, func([]byte) []byte, error) {
 	count := 0
-	for _, present := range []bool{req.Mission != nil, req.Formation != nil, req.Gate != nil} {
+	for _, present := range []bool{req.Mission != nil, req.Formation != nil, req.Gate != nil, req.End != nil} {
 		if present {
 			count++
 		}
 	}
 	if count != 1 {
-		return "", "", nil, invalidNodeRestore("name exactly one Input card, formation or gate")
+		return "", "", nil, invalidNodeRestore("name exactly one Input card, formation, gate or End node")
 	}
 	switch {
+	case req.End != nil:
+		end := *req.End
+		if !validToolDefinitionID(end.ID) {
+			return "", "", nil, invalidNodeRestore("End node id %q is invalid", end.ID)
+		}
+		outcome, err := NormalizeEndOutcome(end.Outcome)
+		if err != nil {
+			return "", "", nil, err
+		}
+		end.Outcome = outcome
+		if strings.TrimSpace(end.Title) == "" {
+			end.Title = defaultEndTitle(outcome)
+		}
+		return end.ID, "end", func(raw []byte) []byte { return appendEndBlock(raw, end) }, nil
 	case req.Formation != nil:
 		formation := *req.Formation
 		if err := validateRestoredFormation(formation); err != nil {
@@ -281,7 +296,7 @@ func planRestoredWires(withTarget []byte, current *BoardDocument, requested []Bo
 			return nil, invalidNodeRestore("connection %s → %s does not touch %s", from, to, target)
 		}
 		candidate := BoardConnection{ID: wire.ID, From: from, To: to}
-		duplicate, err := validateConnectionCandidate(existing, board.Gates, candidate)
+		duplicate, err := validateConnectionCandidate(existing, board, candidate)
 		if errors.Is(err, ErrInputOccupied) {
 			return nil, invalidNodeRestore("%s is now fed by another wire", endpointLabel(board, to))
 		}
@@ -394,6 +409,11 @@ func nodeIDTaken(board *BoardDocument, id string) bool {
 			return true
 		}
 	}
+	for _, end := range board.Ends {
+		if end.ID == id {
+			return true
+		}
+	}
 	return false
 }
 
@@ -413,6 +433,11 @@ func endpointLabel(board *BoardDocument, endpoint string) string {
 	for _, gate := range board.Gates {
 		if gate.ID == nodeID {
 			title = gate.Title
+		}
+	}
+	for _, end := range board.Ends {
+		if end.ID == nodeID {
+			title = end.Title
 		}
 	}
 	for _, formation := range board.Formations {

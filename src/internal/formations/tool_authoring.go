@@ -998,6 +998,11 @@ func validateToolMutationBoard(board *BoardDocument, slug string) error {
 			return err
 		}
 	}
+	for _, end := range board.Ends {
+		if err := addNode(end.ID, "End"); err != nil {
+			return err
+		}
+	}
 	for _, tool := range board.Tools {
 		if err := addNode(tool.ID, "Tool"); err != nil {
 			return err
@@ -1022,7 +1027,7 @@ func validateToolMutationBoard(board *BoardDocument, slug string) error {
 		edgeIDs[connection.ID] = true
 	}
 	for _, finding := range ValidateBoard(board).Errors {
-		if finding.Code == FindingMissionCount || finding.Code == FindingGateNotRoutable {
+		if finding.Code == FindingMissionCount || finding.Code == FindingGateNotRoutable || finding.Code == FindingRouteLeadsNowhere {
 			continue
 		}
 		return fmt.Errorf("%s: %s", finding.Code, finding.Message)
@@ -1397,6 +1402,11 @@ func toolBoardPositions(board *BoardDocument, blocks []toolLayoutOwnedBlock) (ma
 			return nil, err
 		}
 	}
+	for _, end := range board.Ends {
+		if err := add(end.ID); err != nil {
+			return nil, err
+		}
+	}
 	for _, tool := range board.Tools {
 		if err := add(tool.ID); err != nil {
 			return nil, err
@@ -1583,6 +1593,9 @@ func toolBoardAuthorityIDs(board *BoardDocument) (map[string]bool, map[string]bo
 	}
 	for _, gate := range board.Gates {
 		nodes[gate.ID] = true
+	}
+	for _, end := range board.Ends {
+		nodes[end.ID] = true
 	}
 	for _, tool := range board.Tools {
 		nodes[tool.ID] = true

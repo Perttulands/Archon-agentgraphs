@@ -375,7 +375,17 @@ func TestToolSchemaMigrationAcceptsHumanOnlyAndSingleFormationJudgeTopologies(t 
 		toolSchemaMigrationJudgeMidBlock,
 		toolSchemaMigrationJudgeReturnBlock,
 	)
-	humanOnly = replaceToolSchemaMigrationFixture(t, humanOnly, `kinds = ["human", "formation"]`, `kinds = ["human"]`)
+	humanOnly = replaceToolSchemaMigrationFixture(t, humanOnly, `kinds = ["human", "formation"]`, `kinds = ["human"]`) + `
+[[connection]]
+id = "edge_judge_a_done"
+from = "fmn_judge_a:port_judge_a_out"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_judge_b_done"
+from = "fmn_judge_b:port_judge_b_out"
+to = "end_done:in"
+`
 
 	singleJudge := removeToolSchemaMigrationFixtureBlocks(
 		t,
@@ -387,6 +397,11 @@ func TestToolSchemaMigrationAcceptsHumanOnlyAndSingleFormationJudgeTopologies(t 
 id = "edge_judge_single_return"
 from = "fmn_judge_a:port_judge_a_out"
 to = "gate_review:judge"
+
+[[connection]]
+id = "edge_judge_b_done"
+from = "fmn_judge_b:port_judge_b_out"
+to = "end_done:in"
 `
 
 	tests := []struct {
@@ -627,15 +642,15 @@ func TestToolSchemaMigrationRejectsEveryOwnedFieldCollisionOnCanonicalSchemaTwo(
 		{name: "duplicate output role", raw: outputFieldsAfterLabel("role = \"data\"\nrole = \"data\"")},
 		{
 			name: "missing workflow connection channel",
-			raw:  replaceToolSchemaMigrationFixture(t, base, "channel = \"workflow\"\n", ""),
+			raw:  replaceToolSchemaMigrationFixture(t, base, "id = \"edge_start\"\nchannel = \"workflow\"\n", "id = \"edge_start\"\n"),
 		},
 		{
 			name: "wrong connection channel",
-			raw:  replaceToolSchemaMigrationFixture(t, base, `channel = "workflow"`, `channel = "judge"`),
+			raw:  replaceToolSchemaMigrationFixture(t, base, "id = \"edge_start\"\nchannel = \"workflow\"", "id = \"edge_start\"\nchannel = \"judge\""),
 		},
 		{
 			name: "duplicate connection channel",
-			raw:  replaceToolSchemaMigrationFixture(t, base, `channel = "workflow"`, "channel = \"workflow\"\nchannel = \"workflow\""),
+			raw:  replaceToolSchemaMigrationFixture(t, base, "id = \"edge_start\"\nchannel = \"workflow\"", "id = \"edge_start\"\nchannel = \"workflow\"\nchannel = \"workflow\""),
 		},
 		{
 			name: "missing judge connection channel",
@@ -1166,6 +1181,31 @@ id = "edge_judge_return"
 from = "fmn_judge_b:port_judge_b_out"
 to = "gate_review:judge"
 
+[[connection]]
+id = "edge_pass_done"
+from = "gate_review:pass"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_fail_rejected"
+from = "gate_review:fail"
+to = "end_rejected:in"
+
+[[connection]]
+id = "edge_feedback_done"
+from = "fmn_feedback:port_feedback_out"
+to = "end_done:in"
+
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
 [x_extension]
 note = "keep this table byte-for-byte"
 `
@@ -1212,6 +1252,22 @@ id = "edge_start"
 channel = "workflow"
 from = "mis_main:out"
 to = "fmn_work:port_work_in"
+
+[[connection]]
+id = "edge_work_done"
+channel = "workflow"
+from = "fmn_work:port_work_out"
+to = "end_done:in"
+
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
 
 [x_extension]
 note = "already canonical"
@@ -1275,5 +1331,27 @@ id = "edge_judge_return"
 channel = "judge"
 from = "fmn_judge:port_judge_out"
 to = "gate_review:judge"
+
+[[connection]]
+id = "edge_pass_done"
+channel = "workflow"
+from = "gate_review:pass"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_fail_rejected"
+channel = "workflow"
+from = "gate_review:fail"
+to = "end_rejected:in"
+
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
 `
 }

@@ -178,6 +178,24 @@ func TestConfiguredListenAddress(t *testing.T) {
 	l.Close()
 }
 
+// endNodes are the Done and Rejected End nodes test missions end their paths
+// at (form-o7p.10).
+const endNodes = `
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+`
+
+// endWire is a connection that ends a route at an End node.
+func endWire(id, from, end string) string {
+	return "[[connection]]\nid = \"" + id + "\"\nfrom = \"" + from + "\"\nto = \"" + end + ":in\"\n"
+}
+
 const testBoard = `schema = 1
 id = "brd_proof"
 slug = "proof"
@@ -233,10 +251,26 @@ to = "fmn_work:port_in"
 id = "edge_gate"
 from = "fmn_work:port_out"
 to = "gate_review:in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
 [[connection]]
 id = "edge_pass"
 from = "gate_review:pass"
 to = "fmn_after:port_after_in"
+[[connection]]
+id = "edge_fail"
+from = "gate_review:fail"
+to = "end_rejected:in"
+[[connection]]
+id = "edge_after_done"
+from = "fmn_after:port_after_out"
+to = "end_done:in"
 `
 
 // Limits are optional (form-o7p.7): a start without limits is admitted and its

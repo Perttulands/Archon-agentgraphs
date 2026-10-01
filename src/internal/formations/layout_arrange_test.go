@@ -28,7 +28,7 @@ func arrangeFixture(t *testing.T, path string, extra string) (*Store, string, ma
 	for _, node := range arranged.Nodes {
 		byID[node.ID] = node
 	}
-	if len(byID) != len(board.Missions)+len(board.Formations)+len(board.Gates)+len(board.Tools) {
+	if len(byID) != len(board.Missions)+len(board.Formations)+len(board.Gates)+len(board.Tools)+len(board.Ends) {
 		t.Fatalf("arranged %d nodes, want every node of %s: %+v", len(byID), board.Slug, arranged.Nodes)
 	}
 	return store, board.Slug, byID
@@ -149,6 +149,6 @@ to = "fmn_00_rework:port_rework_in"
 
 func TestArrangeLayoutFollowsDeliveryRunOrder(t *testing.T) {
 	_, _, byID := arrangeFixture(t, filepath.Join("..", "..", "..", "examples", "delivery.formation.toml"), "")
-	assertRunOrder(t, byID, []string{"mis_delivery", "fmn_plan", "fmn_beads", "gate_beads_review", "fmn_execution", "fmn_final_review"})
+	assertRunOrder(t, byID, []string{"mis_delivery", "fmn_plan", "fmn_beads", "gate_beads_review", "fmn_execution", "fmn_final_review", "end_delivered"})
 	assertJudgeBelow(t, byID, "gate_beads_review", "fmn_beads_reviewer")
 }

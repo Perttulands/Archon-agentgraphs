@@ -154,7 +154,7 @@ paths:
     patch:
       responses:
         '200':
-          description: Updated mission or compound authoring result; createFormation, createGate and createMission return {board, layout, formation|gate|mission}. Returns ETag. An edit that changes nothing returns the current mission with its revision and ETag unchanged.
+          description: Updated mission or compound authoring result; createFormation, createGate, createEnd and createMission return {board, layout, formation|gate|end|mission}; deleteEnd returns {board, layout, endId}. Returns ETag. An edit that changes nothing returns the current mission with its revision and ETag unchanged.
         '428':
           description: Missing preconditions
         '409':
@@ -1038,6 +1038,19 @@ components:
             discussion and finalization. An absent execution policy inherits the execution default
             resolved and frozen at run admission. Human-gate waiting is outside this duration;
             the remaining run deadline can shorten the invocation.
+    EndNode:
+      type: object
+      description: Ends a path on purpose. A run whose path ends at a rejected End node fails with
+        run_failed code path_rejected and the routing gate verdict's reason, once nothing else can run.
+      required: [id, title, outcome]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        outcome:
+          type: string
+          enum: [done, rejected]
     FormationNode:
       type: object
       description: An authored formation. Execution policy is optional; all other formation fields
@@ -1357,7 +1370,7 @@ components:
               type: string
         restoreNode:
           type: object
-          description: Undo a node delete. Name exactly one of mission (the Input card), formation or gate, as the mission
+          description: Undo a node delete. Name exactly one of mission (the Input card), formation, gate or end, as the mission
             document showed it before the delete, with the connections that touched it and its layout
             position. The node, its connections and its layout placement publish together or not at
             all, keeping every ID, so its notes and wire lanes apply again. A node ID already on the
@@ -1371,6 +1384,8 @@ components:
               $ref: '#/components/schemas/FormationNode'
             gate:
               type: object
+            end:
+              $ref: '#/components/schemas/EndNode'
             connections:
               type: array
               items:
@@ -1600,6 +1615,51 @@ components:
             removePreviousInput:
               type: boolean
               description: Remove the previous formation input atomically after rewiring, only if no other connection uses it. Used to undo a join.
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        createEnd:
+          type: object
+          description: Adds an End node, which ends a path on purpose. Wire routes into its in port with
+            wireConnection; any number may lead into one End node, and none leads out of it.
+          properties:
+            title:
+              type: string
+              description: Omitted or blank is Done or Rejected, after the outcome.
+            outcome:
+              type: string
+              enum: [done, rejected]
+              description: Omitted is done. Any other value returns 400 INVALID_END_OUTCOME.
+            x:
+              type: integer
+            y:
+              type: integer
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        updateEnd:
+          type: object
+          description: Changes only the fields given.
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+            outcome:
+              type: string
+              enum: [done, rejected]
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        deleteEnd:
+          type: object
+          description: Deletes an End node and the routes into it; restoreNode with end undoes it.
+          properties:
+            id:
+              type: string
             expectedRev:
               type: integer
             updatedBy:

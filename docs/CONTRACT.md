@@ -43,6 +43,7 @@ behavior.
 | Persona (role) | A TOML agent card with generic role text: a summary, capabilities and kind. It carries no model or effort for new work; a card's legacy harness variant settings are still read, for migration and the cockpit's role drag. Presets remain available; local cards can override them. |
 | Harness variant | A persona card's legacy `openai-codex` or `claude-code` settings, including session stem, model and effort. Seats start from slot settings, never from a variant's launch string. |
 | Gate | A criterion with one or more kinds: `code`, `formation`, `human`. Its ports are `in`, `pass`, `fail`, `judge`. |
+| End node | Ends a path on purpose (`[[end]]` in TOML: `id`, `title`, `outcome`). Its outcome is `done` or `rejected`. Its only port is `in`, which takes any number of routes; it leads nowhere. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
 | Judge chain | Formations wired from a gate's `judge` port and back to that same port. The final judge result decides the formation kind. |
 | Pushback edge | A gate's `fail` connection back to work, delivering feedback and starting the next attempt, capped only when the run set `maxAttempts`. There is no `retry_control` port. |
@@ -552,22 +553,52 @@ output block, without embedding a second verdict block in it.
 
 A fail edge delivers typed feedback containing gate ID, gate attempt, verdict,
 reason, evidence and original input text/reference. The next prompt renders
-this as a gate-feedback section. An unwired fail leaves a visible block.
+this as a gate-feedback section.
 A pushback also holds when the failing gate was fed by another gate's pass:
 resume never re-delivers an input a gate has already evaluated, so the pushback
-target runs first. A pass cannot finish a run while a fail verdict's target has
-not yet acted on its feedback. Nor can a pass with no route, from any gate
-kind. A run succeeds only when nothing else can still run: every formation has
-produced output since the last delivery it received (a node's output on a wired
-port, or a verdict's route, including a send-back), every gate has evaluated
-the last input it received, and no formation, gate or human request is still
-open. A formation reached only through a route no verdict took is not pending
+target runs first.
+
+### End nodes and how a run finishes
+
+Every route leads somewhere (form-o7p.10). Each formation output and each
+gate's `pass` and `fail` lead to a step, a gate or an End node; an End node
+ends that path on purpose with outcome `done` or `rejected`. Validation reports
+a route that leads nowhere as the error `route_leads_nowhere`, worded "Brief
+sign-off's pass route leads nowhere: wire it to a step or an End node" (or
+"Draft's output leads nowhere", naming the output's label when the step has
+several). Drafts with such routes save and stay editable; admission refuses a
+run whose path holds one, with the same words. A single step's run ignores that
+step's routes. Validation also warns, as `unreachable_node`, about each step,
+gate or End node no path from the Input card reaches: "No path from the Input
+card reaches step Orphan, so no run will get there; wire a route into it or
+delete it".
+
+A run finishes when every path has ended and nothing else can still run: every
+formation has produced output since the last delivery it received (a node's
+output on a wired port, or a verdict's route, including a send-back), every
+gate has evaluated the last input it received, and no formation, gate or human
+request is still open. A delivery to an End node is not work; it ends that
+path. A formation reached only through a route no verdict took is not pending
 work. Resume first runs whatever is still owed, including a send-back a gate
-routes during that resume. The same rule applies on first execution. A
-formation that can never receive a missing input blocks non-resumably with
-`reachable_node_starved`; any other work that remains blocks, resumably, with
-`run_work_unfinished` naming those nodes instead of succeeding. A human
-gate's answer panel says approving ends the run by the same rule.
+routes during that resume, and finishes the run when nothing is; the same rule
+applies on first execution and after a restart. A formation that can never
+receive a missing input blocks non-resumably with `reachable_node_starved`; any
+other work that remains blocks, resumably, with `run_work_unfinished` naming
+those nodes.
+
+A finished run succeeds unless a path ended at a rejected End node. Then it
+records `run_failed` with `code` `path_rejected`, the End node's `endId`, the
+routing gate's `gateId`, and as `reason` that gate verdict's reason (a human
+gate's response, a judge's or code check's reason); the operator who rejected
+is who ended it. A rejected path does not stop other branches: they run to
+their own ends first, and only then does the run fail. A rejected End reached
+from a step's output, with no gate, fails the run with the reason "the path
+ended at <title> (rejected)". A human gate's answer panel says whether a
+verdict ends its path, and whether the run then succeeds or fails, by the same
+rule.
+
+### Human verdicts
+
 A human kind waits for an explicit verdict naming the exact pending sequence;
 stale or duplicate decisions return HTTP 409. There is no default verdict.
 The verdict's `reason` is the operator's response, preserved verbatim including
@@ -580,8 +611,8 @@ feedback reason. Resume rebuilds the response from the verdict recorded for
 that exact request, so it survives restart. Recording the verdict blocks the run
 with code `resume_after_verdict` until the coordinator resumes it; that block is
 a pause, not a failure. Currently, while a human request waits, no other work
-is dispatched; branches not behind the gate run after the verdict, and
-approving a gate with no pass route ends the run only once they have run. The
+is dispatched; branches not behind the gate run after the verdict, and a
+verdict that ends its path ends the run only once they have run. The
 cockpit shows a pending human gate's input with a response box, Approve and Send back.
 A verdict may carry `relayedBy`, the slot ID of the seat that typed the
 operator's confirmed decision (a letter or digit, then up to 63 letters, digits,
@@ -816,9 +847,16 @@ wiring, places judge formations below their gate, and puts nodes the Input card
 does not reach after the main path. The same mission always arranges the same
 way.
 `mission new <slug>` creates an empty mission and `mission create <mission>`
-adds its Input card. `mission create`, `formation create` and `gate create`
-print `created <id>`, or with `--json` `{board, layout, mission|formation|gate}`
-naming the new node. `mission list` lists missions; `formation list <mission>`
+adds its Input card. `mission create`, `formation create`, `gate create` and
+`end create` print `created <id>`, or with `--json` `{board, layout,
+mission|formation|gate|end}` naming the new node. `archon end create <mission>
+[--outcome done|rejected] [--title <title>]` adds an End node (outcome `done`
+and title Done or Rejected by default; any other outcome is refused); wire a
+route into it with `archon formation wire <mission> <node:port> <end-id>:in`.
+`archon end update <mission> <end> [--title] [--outcome]` and `archon end
+delete <mission> <end>` change or remove one. The mission patch operations are
+`createEnd` (`title`, `outcome`, `x`, `y`), `updateEnd` (`id`, `title`,
+`outcome`) and `deleteEnd` (`id`). `mission list` lists missions; `formation list <mission>`
 lists its formations with their slots and staffing. `mission inspect <mission>`
 prints the whole mission, `mission inspect <mission> <input>` prints the Input
 card with its reachable chain, and `formation inspect <mission> <formation>`
@@ -848,8 +886,8 @@ Bead ID and files, a formation's type, brief and staffing, and a gate's kinds,
 check, criterion, judge and files. Each save is one mission edit with undo. Ports, edges, layout and notes are
 unchanged.
 Every canvas edit that changes the mission is one undo entry, and Ctrl+Z undoes
-the newest. Deleting an Input card, formation or gate is undone by HTTP
-`restoreNode`, which puts the node back with its IDs, fields, staffing, ports,
+the newest. Deleting an Input card, formation, gate or End node is undone by HTTP
+`restoreNode` (with `mission`, `formation`, `gate` or `end`), which puts the node back with its IDs, fields, staffing, ports,
 connections and position in one revision; its notes and wire lanes, kept by
 ID, apply again. Removing a port is undone by `restorePort`, which puts it back
 in its place with its connections. Undo waits for edits still being saved. When
@@ -1111,7 +1149,7 @@ With `--server`, Archon runs these authoring and read commands through the
 daemon, so an open cockpit sees the edits through its change polling: `mission
 new|list|inspect|notes|note|validate|arrange|create|update|wire`, `formation
 list|inspect|create|rename|set-type|assign|unassign|set-brief|add-input|add-output|wire|unwire`,
-`gate create|update|judge`, `tool create|update|delete|inspect` and `agent
+`gate create|update|judge`, `end create|update|delete`, `tool create|update|delete|inspect` and `agent
 list|inspect|new|edit`. They take the offline flags and print the offline
 output: unwrapped JSON without TOML, or the same text. Each command reads the
 document it changes, resolves formation, gate, mission and Tool selectors from
@@ -1251,11 +1289,11 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `title`, `kind`, and for a formation the `attempt` it would start, the
   run's `maxAttempts` (omitted when the run set none, so attempts are
   unlimited; the engine applies the same rule) and
-  `waitsForInputs` for a join still missing another input), `endsRun` for an
-  approval with nothing downstream when every reachable formation has output
-  and no other gate or step is open, `nothingFollows` for an approval with
-  nothing downstream while the run has other work, `unwired` for a send-back
-  with no route, `dispatches` (`used`, `max`) and `dispatchesNeeded` (judges
+  `waitsForInputs` for a join still missing another input; for an End node
+  kind `end` and its `outcome`), `endsRun` when every route of the verdict
+  ends its path at an End node and nothing else in the run can still run,
+  `runFails` when that finish fails the run (a rejected End node on this route,
+  or a path already rejected), `dispatches` (`used`, `max`) and `dispatchesNeeded` (judges
   included) when the route starts formations under a dispatch limit, and
   `limit` when a limit the route needs is already spent, so taking it blocks
   the run. When the frozen mission cannot be read, `routes` is omitted. An

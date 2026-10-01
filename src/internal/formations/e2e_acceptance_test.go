@@ -398,5 +398,15 @@ to = "gate_taste:in"
 id = "edge_gate_publish"
 from = "gate_taste:pass"
 to = "fmn_publish:port_publish_in"
-`
+
+[[connection]]
+id = "edge_publish_done"
+from = "fmn_publish:port_publish_out"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_taste_fail_rejected"
+from = "gate_taste:fail"
+to = "end_rejected:in"
+` + branchingBoardEnds()
 }

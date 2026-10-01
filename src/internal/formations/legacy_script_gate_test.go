@@ -58,7 +58,7 @@ func TestLegacyScriptGateInspectionIsReadOnlyAndValidationFailsLoud(t *testing.T
 			if !strings.Contains(string(encoded), `"boardETag"`) || strings.Contains(string(encoded), `"boardEtag"`) {
 				t.Fatalf("migration plan JSON = %s, want exact boardETag contract key", encoded)
 			}
-			if strings.Join(plan.IncomingEdgeIDs, ",") != "edge_work_gate" || strings.Join(plan.OutgoingEdgeIDs, ",") != "edge_gate_pass_ship" {
+			if strings.Join(plan.IncomingEdgeIDs, ",") != "edge_work_gate" || strings.Join(plan.OutgoingEdgeIDs, ",") != "edge_gate_fail_rejected,edge_gate_pass_ship" {
 				t.Fatalf("migration plan edges = incoming %v outgoing %v, want exact gate edges", plan.IncomingEdgeIDs, plan.OutgoingEdgeIDs)
 			}
 			if !strings.Contains(board.TOML, tt.command) {

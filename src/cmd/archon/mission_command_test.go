@@ -35,7 +35,7 @@ func TestArchonMissionHelpNamesEveryCommandAndTheBoardAlias(t *testing.T) {
 	if _, stderr, code := archon("mission", "frobnicate"); code != 2 || !strings.Contains(stderr, `unknown mission command "frobnicate"`) || !strings.Contains(stderr, "new <slug>") {
 		t.Fatalf("unknown mission verb code=%d stderr=%s, want the help", code, stderr)
 	}
-	if _, stderr, code := archon("list"); code != 2 || !strings.Contains(stderr, "<mission|formation|gate|tool|agent|run|peer>") || strings.Contains(stderr, "board") {
+	if _, stderr, code := archon("list"); code != 2 || !strings.Contains(stderr, "<mission|formation|gate|end|tool|agent|run|peer>") || strings.Contains(stderr, "board") {
 		t.Fatalf("top-level usage code=%d stderr=%s", code, stderr)
 	}
 }

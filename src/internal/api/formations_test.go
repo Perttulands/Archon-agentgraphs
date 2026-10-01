@@ -1960,6 +1960,20 @@ controller = true
 id = "edge_mission_work"
 from = "mis_showcase:out"
 to = "fmn_work:port_work_in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
+[[connection]]
+id = "edge_work_done"
+from = "fmn_work:port_work_out"
+to = "end_done:in"
 `
 }
 
@@ -2055,6 +2069,20 @@ controller = true
 id = "edge_mission_draft"
 from = "mis_poem:out"
 to = "fmn_draft:port_draft_in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
+[[connection]]
+id = "edge_draft_done"
+from = "fmn_draft:port_draft_out"
+to = "end_done:in"
 `
 }
 
@@ -2120,6 +2148,20 @@ to = "fmn_work:port_work_in"
 id = "edge_work_ship"
 from = "fmn_work:port_work_out"
 to = "fmn_ship:port_ship_in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
+[[connection]]
+id = "edge_ship_done"
+from = "fmn_ship:port_ship_out"
+to = "end_done:in"
 `
 }
 
@@ -2148,6 +2190,11 @@ to = "gate_lint:in"
 id = "edge_gate_ship"
 from = "gate_lint:pass"
 to = "fmn_ship:port_ship_in"
+
+[[connection]]
+id = "edge_lint_fail_rejected"
+from = "gate_lint:fail"
+to = "end_rejected:in"
 `, 1)
 }
 
@@ -2224,6 +2271,25 @@ to = "gate_review:in"
 id = "edge_gate_pass_ship"
 from = "gate_review:pass"
 to = "fmn_ship:port_ship_in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
+[[connection]]
+id = "edge_ship_done"
+from = "fmn_ship:port_ship_out"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_gate_fail_rejected"
+from = "gate_review:fail"
+to = "end_rejected:in"
 `
 }
 

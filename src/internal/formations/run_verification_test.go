@@ -872,7 +872,17 @@ to = "gate_review:judge"
 id = "edge_gate_pass_ship"
 from = "gate_review:pass"
 to = "fmn_ship:port_ship_in"
-`
+
+[[connection]]
+id = "edge_ship_done"
+from = "fmn_ship:port_ship_out"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_gate_fail_rejected"
+from = "gate_review:fail"
+to = "end_rejected:in"
+` + branchingBoardEnds()
 }
 
 func s4VerificationBoardFixture(onFail string) string {

@@ -382,20 +382,27 @@ func writeWaitAsk(b *strings.Builder, server, runID string, ask coordinator.Wait
 
 // describeGateRoute says where a verdict leads, as the cockpit's answer panel does.
 func describeGateRoute(route formations.GateRoute) string {
-	var where string
-	switch {
-	case len(route.Targets) > 0:
-		titles := make([]string, 0, len(route.Targets))
-		for _, target := range route.Targets {
-			titles = append(titles, strconv.Quote(firstWaitNonEmpty(target.Title, target.NodeID)))
+	var parts, steps []string
+	for _, target := range route.Targets {
+		if target.Kind == "end" {
+			continue
 		}
-		where = "goes to " + strings.Join(titles, ", ")
+		steps = append(steps, strconv.Quote(firstWaitNonEmpty(target.Title, target.NodeID)))
+	}
+	if len(steps) > 0 {
+		parts = append(parts, "goes to "+strings.Join(steps, ", "))
+	}
+	for _, target := range route.Targets {
+		if target.Kind == "end" {
+			parts = append(parts, "this path ends ("+target.Outcome+")")
+		}
+	}
+	where := strings.Join(parts, "; ")
+	switch {
+	case route.EndsRun && route.RunFails:
+		where += ", and nothing else can run, so the run fails"
 	case route.EndsRun:
-		where = "ends the run"
-	case route.NothingFollows:
-		where = "nothing follows this gate; the run goes on with its other work"
-	case route.Unwired:
-		where = "no route is wired, so the run blocks"
+		where += ", and nothing else can run, so the run succeeds"
 	}
 	limit := route.Limit
 	if where == "" || limit == nil {

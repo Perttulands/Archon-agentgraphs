@@ -78,6 +78,22 @@ to = "gate_review:in"
 id = "edge_pass"
 from = "gate_review:pass"
 to = "fmn_after:port_after_in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+[[connection]]
+id = "edge_fail"
+from = "gate_review:fail"
+to = "end_rejected:in"
+[[connection]]
+id = "edge_after_done"
+from = "fmn_after:port_after_out"
+to = "end_done:in"
 `
 
 // waitExecutor finishes each formation when the test lets it.
@@ -292,9 +308,10 @@ func TestDescribeGateRouteSaysWhereEachVerdictLeads(t *testing.T) {
 		route formations.GateRoute
 		want  string
 	}{
-		{formations.GateRoute{Verdict: "pass", EndsRun: true}, "ends the run"},
-		{formations.GateRoute{Verdict: "pass", NothingFollows: true}, "nothing follows this gate; the run goes on with its other work"},
-		{formations.GateRoute{Verdict: "fail", Unwired: true}, "no route is wired, so the run blocks"},
+		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "end_done", Title: "Done", Kind: "end", Outcome: "done"}}, EndsRun: true}, "this path ends (done), and nothing else can run, so the run succeeds"},
+		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "end_rejected", Title: "Rejected", Kind: "end", Outcome: "rejected"}}, EndsRun: true, RunFails: true}, "this path ends (rejected), and nothing else can run, so the run fails"},
+		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "end_done", Title: "Done", Kind: "end", Outcome: "done"}}}, "this path ends (done)"},
+		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}, {NodeID: "end_done", Title: "Done", Kind: "end", Outcome: "done"}}}, `goes to "Ship"; this path ends (done)`},
 		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}}, Limit: &formations.RunLimitReached{Kind: formations.RunLimitDispatches, Used: 3, Max: 3}}, `goes to "Ship", but the run has used all 3 of its dispatches, so it blocks instead`},
 		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_build", Title: "Build"}}, Limit: &formations.RunLimitReached{Kind: formations.RunLimitAttempts, NodeID: "fmn_build", Used: 2, Max: 2}}, `goes to "Build", but "Build" has used all 2 of its attempts, so the run blocks instead`},
 	} {

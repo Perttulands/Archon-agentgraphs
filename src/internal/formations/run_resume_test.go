@@ -529,8 +529,8 @@ func TestS5EngineResumeTerminalJudgeGatePassDoesNotReplayJudge(t *testing.T) {
 		}
 	}
 	before := readRunEvents(t, findOnlyRunLedger(t, store, "session-search"))
-	if !terminalPassReached(before) {
-		t.Fatalf("test setup did not create terminal pass verdict: %#v", before)
+	if !gateVerdictRecorded(before, "gate_review", "pass") {
+		t.Fatalf("test setup did not create a pass verdict: %#v", before)
 	}
 	executor := &fakeRunExecutor{}
 	engine := NewRunEngine(store, personas, executor)
@@ -562,7 +562,10 @@ func TestS5EngineResumeTerminalJudgeGatePassDoesNotReplayJudge(t *testing.T) {
 	}
 }
 
-func TestS5EngineResumeTerminalFailDoesNotBecomeGraphCompleteSuccess(t *testing.T) {
+// A restart between a fail routed to a rejected End and the run's end: the
+// resume reads the ended path from the ledger and fails the run with the
+// gate's reason, never success (form-n7u.54, form-o7p.10).
+func TestS5EngineResumeAfterARejectedPathFailsTheRunWithTheGatesReason(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	store.Now = fixedClock()
 	personas.Now = fixedClock()
@@ -588,8 +591,8 @@ func TestS5EngineResumeTerminalFailDoesNotBecomeGraphCompleteSuccess(t *testing.
 		{Type: RunEventNodeStarted, NodeID: "fmn_work", Attempt: 1, Data: map[string]any{"nodeKind": "formation"}},
 		{Type: RunEventNodeOutput, NodeID: "fmn_work", Data: formationOutputEventData(FormationExecutionResult{Status: "done", Text: "work output", Outputs: map[string]FormationOutputPayload{"port_work_out": {Text: "work output"}}})},
 		{Type: RunEventGateEvaluating, GateID: "gate_review", NodeID: "gate_review", Data: map[string]any{"gateId": "gate_review", "inputRef": workInput}},
-		{Type: RunEventGateVerdict, GateID: "gate_review", NodeID: "gate_review", Data: map[string]any{"verdict": "fail", "perKind": map[string]string{"code": "fail"}, "routePort": "none", "routedEdges": []string{}, "reason": "unwired fail", "inputRef": workInput}},
-		{Type: RunEventBlocked, NodeID: "gate_review", Data: map[string]any{"reason": "gate fail is unwired", "resumeAllowed": true, "resumePolicy": "explicit"}},
+		{Type: RunEventGateVerdict, GateID: "gate_review", NodeID: "gate_review", Data: map[string]any{"verdict": "fail", "perKind": map[string]string{"code": "fail"}, "routePort": "fail", "routedEdges": []string{"edge_gate_fail_rejected"}, "reason": "the work is wrong", "inputRef": workInput}},
+		{Type: RunEventBlocked, NodeID: "gate_review", Data: map[string]any{"reason": "crashed before the run ended", "resumeAllowed": true, "resumePolicy": "explicit"}},
 	} {
 		if err := store.AppendRunEvent(started.RunID, event); err != nil {
 			t.Fatalf("append %s/%s: %v", event.Type, event.NodeID, err)
@@ -600,12 +603,16 @@ func TestS5EngineResumeTerminalFailDoesNotBecomeGraphCompleteSuccess(t *testing.
 	if err != nil {
 		t.Fatalf("resume terminal fail: %v", err)
 	}
-	if status.Status == RunStatusSucceeded || status.Final {
-		t.Fatalf("status = %+v, unwired fail must not resume to success", status)
+	if status.Status != RunStatusFailed || !status.Final {
+		t.Fatalf("status = %+v, want the rejected path to fail the run", status)
 	}
 	events := readRunEvents(t, findOnlyRunLedger(t, store, "session-search"))
-	if last := events[len(events)-1]; last.Type == RunEventSucceeded {
-		t.Fatalf("last event = %+v, unwired fail must not append run_succeeded", last)
+	last := events[len(events)-1]
+	if last.Type != RunEventFailed || last.Data["reason"] != "the work is wrong" || last.Data["code"] != RunFailurePathRejected || last.Data["endId"] != "end_rejected" {
+		t.Fatalf("last event = %+v, want run_failed with the gate's reason", last)
+	}
+	if problem := RunEndProblem(events); problem == nil || problem.Reason.Text != "the work is wrong" || problem.Code != RunFailurePathRejected {
+		t.Fatalf("run end problem = %+v", problem)
 	}
 }
 
@@ -669,22 +676,28 @@ func TestS5EngineResumeHonorsMaxAttemptsFromOriginalRun(t *testing.T) {
 	}
 }
 
-func terminalSimpleGateBoardFixture() string {
-	return strings.Replace(s4GateBoardFixture(false), `
+// passEndsDone routes a fixture's gate_review pass straight to the Done End
+// node instead of ship.
+func passEndsDone(fixture string) string {
+	return strings.Replace(fixture, `
 [[connection]]
 id = "edge_gate_pass_ship"
 from = "gate_review:pass"
 to = "fmn_ship:port_ship_in"
-`, "", 1)
+`, `
+[[connection]]
+id = "edge_gate_pass_done"
+from = "gate_review:pass"
+to = "end_done:in"
+`, 1)
+}
+
+func terminalSimpleGateBoardFixture() string {
+	return passEndsDone(s4GateBoardFixture(false))
 }
 
 func terminalJudgePassBoardFixture() string {
-	return strings.Replace(s4JudgeChainRunBoardFixture(), `
-[[connection]]
-id = "edge_gate_pass_ship"
-from = "gate_review:pass"
-to = "fmn_ship:port_ship_in"
-`, "", 1)
+	return passEndsDone(s4JudgeChainRunBoardFixture())
 }
 
 func judgeOutputData(text, outputPort string) map[string]any {

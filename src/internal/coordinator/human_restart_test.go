@@ -53,7 +53,7 @@ func TestPendingHumanGateSurvivesRestart(t *testing.T) {
 				if w := post(t, c, path, `{"requestedSeq":999,"verdict":"pass"}`); w.Code != 409 {
 					t.Fatal(w.Code)
 				}
-				body := `{"requestedSeq":` + strconv.Itoa(seq) + `,"verdict":"` + verdict + `"}`
+				body := `{"requestedSeq":` + strconv.Itoa(seq) + `,"verdict":"` + verdict + `","reason":"not yet"}`
 				if w := post(t, c, path, body); w.Code != 202 {
 					t.Fatalf("%d %s", w.Code, w.Body.String())
 				}
@@ -62,7 +62,14 @@ func TestPendingHumanGateSurvivesRestart(t *testing.T) {
 					executor.proceed <- struct{}{}
 					awaitState(t, c, id, "succeeded")
 				} else {
-					awaitState(t, c, id, "blocked")
+					// The send-back ends this path rejected, which fails the run
+					// with the operator's reason (form-o7p.10).
+					awaitState(t, c, id, "failed")
+					events, _ := c.store.ReadRunEvents(id)
+					last := events[len(events)-1]
+					if last.Type != formations.RunEventFailed || last.Data["code"] != formations.RunFailurePathRejected || last.Data["reason"] != "not yet" {
+						t.Fatalf("last event = %+v, want run_failed with the operator's reason", last)
+					}
 				}
 				if w := post(t, c, path, body); w.Code != 409 {
 					t.Fatal(w.Code)

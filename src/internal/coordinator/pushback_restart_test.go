@@ -10,9 +10,9 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// pushbackProofBoard is mission -> A -> terminal human gate, and mission ->
-// work -> judge gate whose fail sends back to work and whose pass goes to
-// ship (form-n7u.53 review).
+// pushbackProofBoard is mission -> A -> human gate (pass Done, fail
+// Rejected), and mission -> work -> judge gate whose fail sends back to work
+// and whose pass goes to ship, which ends Done (form-n7u.53 review).
 func pushbackProofBoard() string {
 	board := strings.SplitN(branchingProofBoard(), "[[formation]]", 2)[0]
 	formation := func(id string) string {
@@ -49,7 +49,10 @@ id = "gate_judge"
 title = "Judge"
 kinds = ["formation"]
 criterion = "Judge the work"
-` + connection("edge_m_a", "mis_proof:out", "fmn_a:port_in") +
+` + endNodes + connection("edge_m_a", "mis_proof:out", "fmn_a:port_in") +
+		endWire("edge_review_pass", "gate_review:pass", "end_done") +
+		endWire("edge_review_fail", "gate_review:fail", "end_rejected") +
+		endWire("edge_ship_done", "fmn_ship:port_out", "end_done") +
 		connection("edge_a_gate", "fmn_a:port_out", "gate_review:in") +
 		connection("edge_m_work", "mis_proof:out", "fmn_work:port_in") +
 		connection("edge_work_judge", "fmn_work:port_out", "gate_judge:in") +

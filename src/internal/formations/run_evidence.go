@@ -276,6 +276,11 @@ func evidenceNodeDefinition(board *BoardDocument, nodeID string) *EvidenceNodeDe
 			definition.Title = gate.Title
 		}
 	}
+	for _, end := range board.Ends {
+		if end.ID == nodeID {
+			definition.Title = end.Title
+		}
+	}
 	for _, tool := range board.Tools {
 		if tool.ID == nodeID {
 			definition.Title = tool.Title

@@ -26,6 +26,9 @@ const (
 	FindingIncompatibleMedia                         = "incompatible_media"
 	FindingIncompatiblePayloadKind                   = "incompatible_payload_kind"
 	FindingInvalidJudgeRelationship                  = "invalid_judge_relationship"
+	FindingInvalidEnd                                = "invalid_end"
+	FindingRouteLeadsNowhere                         = "route_leads_nowhere"
+	FindingUnreachableNode                           = "unreachable_node"
 )
 
 // BoardFinding is a single structural problem located on the board. NodeID names
@@ -77,7 +80,7 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 		// A gate-fail edge into an occupied input is the sanctioned typed
 		// pushback route (ADR-0012); only non-pushback producers count toward
 		// the one-producer rule.
-		if isGateFailPushbackEndpoint(board.Gates, connection.From) {
+		if isGateFailPushbackEndpoint(board.Gates, connection.From) || isEndEndpoint(board, connection.To) {
 			continue
 		}
 		if first, exists := inputProducers[connection.To]; exists {
@@ -139,6 +142,27 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	for _, gate := range board.Gates {
 		seenNodeIDs[gate.ID] = "Gate"
 	}
+	for _, end := range board.Ends {
+		if firstKind, exists := seenNodeIDs[end.ID]; end.ID != "" && exists {
+			report.Errors = append(report.Errors, BoardFinding{
+				Code:    FindingDuplicateNodeID,
+				NodeID:  end.ID,
+				Message: fmt.Sprintf("End node id %q duplicates an existing %s node id", end.ID, firstKind),
+			})
+		} else if end.ID != "" {
+			seenNodeIDs[end.ID] = "End"
+		}
+		if _, err := NormalizeEndOutcome(end.Outcome); err != nil || end.Outcome == "" {
+			report.Errors = append(report.Errors, BoardFinding{
+				Code:    FindingInvalidEnd,
+				NodeID:  end.ID,
+				Message: fmt.Sprintf("End node %s has outcome %q; set it to done or rejected", nodeName(board, end.ID), end.Outcome),
+			})
+		}
+	}
+	report.Errors = append(report.Errors, routeLeadsNowhereFindings(board)...)
+	report.Warnings = append(report.Warnings, unreachableNodeFindings(board)...)
+
 	for _, tool := range board.Tools {
 		if firstKind, exists := seenNodeIDs[tool.ID]; tool.ID != "" && exists {
 			report.Errors = append(report.Errors, BoardFinding{
@@ -343,4 +367,95 @@ func sortFindings(findings []BoardFinding) {
 		}
 		return findings[i].Message < findings[j].Message
 	})
+}
+
+// routeLeadsNowhereFindings reports every formation output and gate pass or
+// fail port with no wire (form-o7p.10). Every route leads to a step, a gate
+// or an End node, so no path stops by accident. Judge formations report too:
+// their output returns the verdict to the gate's judge port.
+func routeLeadsNowhereFindings(board *BoardDocument) []BoardFinding {
+	wired := make(map[string]bool, len(board.Connections))
+	for _, connection := range board.Connections {
+		wired[connection.From] = true
+	}
+	var findings []BoardFinding
+	add := func(nodeID, route string) {
+		findings = append(findings, BoardFinding{
+			Code:    FindingRouteLeadsNowhere,
+			NodeID:  nodeID,
+			Message: fmt.Sprintf("%s's %s leads nowhere: wire it to a step or an End node", nodeName(board, nodeID), route),
+		})
+	}
+	for _, formation := range board.Formations {
+		for _, port := range formation.Outputs {
+			if wired[formation.ID+":"+port.ID] {
+				continue
+			}
+			route := "output"
+			if len(formation.Outputs) > 1 {
+				route = fmt.Sprintf("%q output", portLabel(port))
+			}
+			add(formation.ID, route)
+		}
+	}
+	for _, gate := range board.Gates {
+		for _, port := range []string{"pass", "fail"} {
+			if !wired[gate.ID+":"+port] {
+				add(gate.ID, port+" route")
+			}
+		}
+	}
+	return findings
+}
+
+// unreachableNodeFindings warns about every step, gate and End node that no
+// path from the Input card reaches, so a run would never get there. A judge
+// is reached through its gate's judge port.
+func unreachableNodeFindings(board *BoardDocument) []BoardFinding {
+	if len(board.Missions) == 0 {
+		return nil
+	}
+	reached := map[string]bool{}
+	for _, mission := range board.Missions {
+		for id := range reachableNodeIDs(board, mission.ID) {
+			reached[id] = true
+		}
+	}
+	var findings []BoardFinding
+	add := func(nodeID, kind string) {
+		if reached[nodeID] {
+			return
+		}
+		findings = append(findings, BoardFinding{
+			Code:    FindingUnreachableNode,
+			NodeID:  nodeID,
+			Message: fmt.Sprintf("No path from the Input card reaches %s %s, so no run will get there; wire a route into it or delete it", kind, nodeName(board, nodeID)),
+		})
+	}
+	for _, formation := range board.Formations {
+		add(formation.ID, "step")
+	}
+	for _, gate := range board.Gates {
+		add(gate.ID, "gate")
+	}
+	for _, end := range board.Ends {
+		add(end.ID, "End node")
+	}
+	return findings
+}
+
+// nodeName names a node for the operator by its title, or its ID when it has
+// none.
+func nodeName(board *BoardDocument, nodeID string) string {
+	if title := strings.TrimSpace(boardNodeTitle(board, nodeID)); title != "" {
+		return title
+	}
+	return nodeID
+}
+
+func portLabel(port FormationPort) string {
+	if strings.TrimSpace(port.Label) != "" {
+		return port.Label
+	}
+	return port.ID
 }

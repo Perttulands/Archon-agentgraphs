@@ -9,8 +9,8 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// branchingProofBoard is mission -> A -> terminal human gate, and
-// mission -> B -> C (form-n7u.53).
+// branchingProofBoard is mission -> A -> human gate (pass Done, fail
+// Rejected), and mission -> B -> C -> Done (form-n7u.53).
 func branchingProofBoard() string {
 	formation := func(id string) string {
 		return `
@@ -51,10 +51,13 @@ id = "gate_review"
 title = "Review"
 kinds = ["human"]
 criterion = "Good enough"
-` + connection("edge_m_a", "mis_proof:out", "fmn_a:port_in") +
+` + endNodes + connection("edge_m_a", "mis_proof:out", "fmn_a:port_in") +
 		connection("edge_a_gate", "fmn_a:port_out", "gate_review:in") +
+		endWire("edge_pass", "gate_review:pass", "end_done") +
+		endWire("edge_fail", "gate_review:fail", "end_rejected") +
 		connection("edge_m_b", "mis_proof:out", "fmn_b:port_in") +
-		connection("edge_b_c", "fmn_b:port_out", "fmn_c:port_in")
+		connection("edge_b_c", "fmn_b:port_out", "fmn_c:port_in") +
+		endWire("edge_c_done", "fmn_c:port_out", "end_done")
 }
 
 func openBranchingLab(t *testing.T, root string) *Coordinator {

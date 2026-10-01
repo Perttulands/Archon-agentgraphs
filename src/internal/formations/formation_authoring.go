@@ -1781,7 +1781,7 @@ func prepareWireTarget(raw []byte, current *BoardDocument, from, to string, join
 		if connection.From == from && connection.To == to {
 			return nil, "", ErrDuplicateConnection
 		}
-		if connection.To == to && !isGateFailPushbackEndpoint(current.Gates, from) && !isGateFailPushbackEndpoint(current.Gates, connection.From) {
+		if connection.To == to && !isEndEndpoint(current, to) && !isGateFailPushbackEndpoint(current.Gates, from) && !isGateFailPushbackEndpoint(current.Gates, connection.From) {
 			occupied = true
 		}
 	}
@@ -2402,7 +2402,7 @@ func judgeChainConnections(raw []byte, req GateJudgeRequest) ([]BoardConnection,
 	}
 	connections := []BoardConnection{}
 	addConnection := func(connection BoardConnection) error {
-		exists, err := validateConnectionCandidate(existing, board.Gates, connection)
+		exists, err := validateConnectionCandidate(existing, board, connection)
 		if err != nil {
 			return err
 		}
@@ -2447,15 +2447,20 @@ func judgeChainConnections(raw []byte, req GateJudgeRequest) ([]BoardConnection,
 	return connections, nil
 }
 
-func validateConnectionCandidate(existing []BoardConnection, gates []GateNode, candidate BoardConnection) (bool, error) {
+func validateConnectionCandidate(existing []BoardConnection, board *BoardDocument, candidate BoardConnection) (bool, error) {
 	if endpointNodeID(candidate.From) == endpointNodeID(candidate.To) {
 		return false, ErrSelfWire
+	}
+	var gates []GateNode
+	if board != nil {
+		gates = board.Gates
 	}
 	for _, connection := range existing {
 		if connection.From == candidate.From && connection.To == candidate.To {
 			return true, nil
 		}
 		if connection.To == candidate.To &&
+			!isEndEndpoint(board, candidate.To) &&
 			!isGateFailPushbackEndpoint(gates, candidate.From) &&
 			!isGateFailPushbackEndpoint(gates, connection.From) {
 			return false, ErrInputOccupied
@@ -3102,6 +3107,9 @@ func endpointAllowsDirection(raw []byte, endpoint, direction string) (string, bo
 	}
 	if _, _, ok := findMissionBlockByID(lines, nodeID); ok {
 		return nodeID, portID == "out" && direction == FormationPortOutput
+	}
+	if _, _, ok := findEndBlockByID(lines, nodeID); ok {
+		return nodeID, portID == EndPortIn && direction == FormationPortInput
 	}
 	if toolEndpointAllowsDirection(raw, nodeID, portID, direction) {
 		return nodeID, true
