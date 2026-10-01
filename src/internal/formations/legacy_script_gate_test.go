@@ -55,7 +55,7 @@ func TestLegacyScriptGateInspectionIsReadOnlyAndValidationFailsLoud(t *testing.T
 			if err != nil {
 				t.Fatalf("encode migration plan: %v", err)
 			}
-			if !strings.Contains(string(encoded), `"boardETag"`) || strings.Contains(string(encoded), `"boardEtag"`) {
+			if !strings.Contains(string(encoded), `"missionETag"`) || strings.Contains(string(encoded), `"missionEtag"`) {
 				t.Fatalf("migration plan JSON = %s, want exact boardETag contract key", encoded)
 			}
 			if strings.Join(plan.IncomingEdgeIDs, ",") != "edge_work_gate" || strings.Join(plan.OutgoingEdgeIDs, ",") != "edge_gate_pass_ship" {
@@ -283,9 +283,9 @@ func TestLegacyScriptGateEnvironmentCannotReenableGateProcessExecution(t *testin
 	store, personas := s4RunFixture(t)
 	createS4Persona(t, personas, "scout")
 	marker := filepath.Join(t.TempDir(), "legacy-gate-ran")
-	t.Setenv("CHROTE_FORMATIONS_SCRIPT_GATES", "allow")
-	t.Setenv("CHROTE_FORMATIONS_GATE_TIMEOUT_SECONDS", "1")
-	t.Setenv("CHROTE_FORMATIONS_GATE_OUTPUT_CAP_BYTES", "64")
+	t.Setenv("ARCHON_SCRIPT_GATES", "allow")
+	t.Setenv("ARCHON_GATE_TIMEOUT_SECONDS", "1")
+	t.Setenv("ARCHON_GATE_OUTPUT_CAP_BYTES", "64")
 	writeFixture(t, store.BoardPath("session-search"), legacyScriptGateBoardFixture(`commandShell = "touch `+filepath.ToSlash(marker)+`"`))
 	board, err := store.ReadBoard("session-search")
 	if err != nil {
@@ -620,7 +620,7 @@ func assertLegacyScriptGateMigrationError(t *testing.T, err error) {
 
 func assertNoRunArtifacts(t *testing.T, store *Store, slug string) {
 	t.Helper()
-	runDir := filepath.Join(store.Workspace, ".formations", "runs", slug)
+	runDir := filepath.Join(store.Workspace, ".archon", "runs", slug)
 	entries, err := os.ReadDir(runDir)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("read run artifacts: %v", err)

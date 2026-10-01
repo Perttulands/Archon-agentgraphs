@@ -17,9 +17,9 @@ describe('staffingSentence', () => {
       .toBe('Judge (controller) is Critic (critic) on openai-codex, default model, max effort.')
   })
 
-  it('reads a legacy slot\'s settings from its role until it is migrated', () => {
+  it('says a role slot without a harness has none, whatever its role card holds', () => {
     expect(staffingSentence({ id: 's', label: 'Judge', controller: false, agentId: 'critic' }, undefined, card))
-      .toBe('Judge is Critic (critic) on claude-code, model claude-opus-5, xhigh effort.')
+      .toBe('Judge is Critic (critic) with no harness.')
   })
 
   it('counts a vanilla slot as staffed, and an empty one as not', () => {

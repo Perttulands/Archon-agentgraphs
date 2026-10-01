@@ -23,9 +23,9 @@ func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
 	var received string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/formations/missions/proof":
-			w.Write([]byte(`{"success":true,"timestamp":"test","data":{"board":{"rev":9}}}`))
-		case "/api/formations/runs":
+		case "/api/missions/proof":
+			w.Write([]byte(`{"success":true,"timestamp":"test","data":{"mission":{"rev":9}}}`))
+		case "/api/runs":
 			buf := new(bytes.Buffer)
 			buf.ReadFrom(r.Body)
 			received = buf.String()
@@ -83,7 +83,7 @@ func TestRemoteRunInputsReadFilesAndLongLiteralBriefs(t *testing.T) {
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
-			fmt.Fprint(w, `{"data":{"board":{"rev":1}}}`)
+			fmt.Fprint(w, `{"data":{"mission":{"rev":1}}}`)
 			return
 		}
 		var got struct {
@@ -94,7 +94,7 @@ func TestRemoteRunInputsReadFilesAndLongLiteralBriefs(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Error(err)
 		}
-		if got.Cwd != cwd || got.Brief != brief || got.BeadID != "form-proof" {
+		if got.Cwd != cwd || got.Brief != brief || got.BeadID != "archon-proof" {
 			t.Errorf("run inputs: %+v", got)
 		}
 		fmt.Fprint(w, `{"data":{"runId":"run_proof"}}`)
@@ -102,7 +102,7 @@ func TestRemoteRunInputsReadFilesAndLongLiteralBriefs(t *testing.T) {
 	defer server.Close()
 	for _, input := range []string{brief, file} {
 		var out, stderr bytes.Buffer
-		if code := runRemote(server.URL, []string{"mission", "run", "proof", "--input", "mis_proof", "--cwd", cwd, "--brief", input, "--bead", "form-proof"}, &out, &stderr); code != 0 {
+		if code := runRemote(server.URL, []string{"mission", "run", "proof", "--input", "mis_proof", "--cwd", cwd, "--brief", input, "--bead", "archon-proof"}, &out, &stderr); code != 0 {
 			t.Fatalf("%d %s", code, stderr.String())
 		}
 	}
@@ -112,7 +112,7 @@ func TestRemoteGateVerdictSendsResponseText(t *testing.T) {
 	answer := "1. Use Postgres.\n2. Ship on Friday."
 	var got []map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/api/formations/runs/run_proof/gates/gate_review/verdict" {
+		if r.Method != "POST" || r.URL.Path != "/api/runs/run_proof/gates/gate_review/verdict" {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		var body map[string]any
@@ -126,7 +126,7 @@ func TestRemoteGateVerdictSendsResponseText(t *testing.T) {
 	defer server.Close()
 	for _, command := range [][]string{
 		{"gate", "approve", "run_proof", "gate_review", "--requested-seq", "7", "--response", answer, "--json"},
-		{"gate", "reject", "run_proof", "gate_review", "--requested-seq", "7", "--reason", answer, "--relayed-by", "slot_01M2QBT0QAHHN0T8KFWC9VVNRS"},
+		{"gate", "reject", "run_proof", "gate_review", "--requested-seq", "7", "--response", answer, "--relayed-by", "slot_01M2QBT0QAHHN0T8KFWC9VVNRS"},
 	} {
 		var out, stderr bytes.Buffer
 		if code := runRemote(server.URL, command, &out, &stderr); code != 0 {
@@ -158,7 +158,7 @@ func newAuthoringSides(t *testing.T) (offline, remote authoringSide, server *htt
 	t.Helper()
 	runner := &fakeTmux{live: map[string]bool{}}
 	offlineRoot := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", filepath.Join(offlineRoot, "agents"))
+	t.Setenv("ARCHON_AGENTS_DIR", filepath.Join(offlineRoot, "agents"))
 	offline = authoringSide{name: "offline", store: formations.NewStore(offlineRoot), run: func(args ...string) (string, string, int) {
 		return runArchon(t, runner, append([]string{"--workspace", offlineRoot}, args...)...)
 	}}
@@ -171,10 +171,9 @@ func newAuthoringSides(t *testing.T) (offline, remote authoringSide, server *htt
 	}
 	handler := c.Handler()
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// The CLI calls only the mission routes; /boards and ?board= are for
-		// older clients.
-		if strings.HasPrefix(r.URL.Path, "/api/formations/boards") || r.URL.Query().Has("board") {
-			t.Errorf("the CLI called the deprecated route %s %s", r.Method, r.URL)
+		// The CLI calls only the current routes.
+		if !strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/api/formations") || r.URL.Query().Has("board") {
+			t.Errorf("the CLI called an unknown route %s %s", r.Method, r.URL)
 		}
 		handler.ServeHTTP(w, r)
 	}))
@@ -220,7 +219,7 @@ func assertCreatedOutput(t *testing.T, side string, kind string, stdout string, 
 	t.Helper()
 	var id string
 	switch kind {
-	case "mission":
+	case "inputCard":
 		id = board.Missions[len(board.Missions)-1].ID
 	case "formation":
 		id = board.Formations[len(board.Formations)-1].ID
@@ -237,8 +236,8 @@ func assertCreatedOutput(t *testing.T, side string, kind string, stdout string, 
 	}
 	var result map[string]json.RawMessage
 	var node struct{ ID string }
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil || result["board"] == nil || result["layout"] == nil || json.Unmarshal(result[kind], &node) != nil || node.ID != id {
-		t.Fatalf("%s %s create JSON has no board, layout and %s %s:\n%s", side, kind, kind, id, stdout)
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil || result["mission"] == nil || result["layout"] == nil || json.Unmarshal(result[kind], &node) != nil || node.ID != id {
+		t.Fatalf("%s %s create JSON has no mission, layout and %s %s:\n%s", side, kind, kind, id, stdout)
 	}
 }
 
@@ -293,7 +292,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("agent", "edit", "scout-x", "--harness", "hermes", "--effort", "low")), errorOnly: true},
 		{args: with(fixed("agent", "edit", "scout-x", "--harness", "claude-code")), errorOnly: true},
 		{args: with(fixed("agent", "new", "bad-effort", "--harness", "claude-code", "--effort", "extreme")), errorOnly: true},
-		{args: with(fixed("mission", "create", "demo", "--title", "Work", "--goal", "Do it", "--file", "docs/brief.md", "--human-channel", "session")), creates: "mission"},
+		{args: with(fixed("mission", "create", "demo", "--title", "Work", "--goal", "Do it", "--file", "docs/brief.md", "--human-channel", "session")), creates: "inputCard"},
 		{args: with(fixed("formation", "create", "demo", "solo", "--title", "Worker")), creates: "formation"},
 		{args: with(fixed("formation", "create", "demo", "--title", "Judge")), creates: "formation"},
 		{args: with(fixed("formation", "rename", "demo", "Judge", "Critic"))},
@@ -308,7 +307,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--role", "codex-builder", "--harness", "openai-codex", "--effort", "medium"}
 		})},
-		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--goal", "Produce the result", "--bead", "form-demo", "--file", "src/a.go", "--link", "https://example.com/spec"))},
+		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--goal", "Produce the result", "--bead", "archon-demo", "--file", "src/a.go", "--link", "https://example.com/spec"))},
 		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "47"))},
 		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "0"))},
 		{args: with(fixed("formation", "set-brief", "demo", "Critic", "--goal", "Judge the result"))},
@@ -639,7 +638,7 @@ func TestRemoteAgentListShowsTheDaemonsLiveness(t *testing.T) {
 		live = append(live, formations.LiveAgentSession{Name: name, Status: "live"})
 	}
 	offlineRoot := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", filepath.Join(offlineRoot, "agents"))
+	t.Setenv("ARCHON_AGENTS_DIR", filepath.Join(offlineRoot, "agents"))
 	remoteRoot := t.TempDir()
 	c, err := coordinator.Open(remoteRoot, formations.NewPersonaStore(filepath.Join(remoteRoot, "agents")), func(*formations.Store) formations.FormationExecutor {
 		return formations.NewUnavailableFormationExecutor("test")

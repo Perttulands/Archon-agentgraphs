@@ -208,7 +208,7 @@ rev = 4
 updatedBy = "agent:test"
 updatedAt = "2026-07-20T00:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Inspect the Tool"
@@ -278,8 +278,8 @@ criterion = "Normalized report is acceptable"
 
 func archonToolParityLayoutFixture() string {
 	return `schema = 1
-boardId = "brd_tool_parity"
-boardRev = 4
+missionId = "brd_tool_parity"
+missionRev = 4
 updatedAt = "2026-07-20T00:00:00Z"
 
 [[node]]
@@ -311,7 +311,7 @@ slug = "tool-invalid"
 title = "Invalid Tool validation"
 rev = 1
 
-[[mission]]
+[[inputCard]]
 id = "mis_invalid"
 title = "Invalid Tool fixture"
 goal = "Inspect one invalid Tool"

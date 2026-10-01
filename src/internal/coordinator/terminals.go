@@ -132,7 +132,7 @@ func (c *Coordinator) projectSeat(ctx context.Context, record seatRecord) Seat {
 		status := c.terminalObserver.Probe(ctx, record.target)
 		seat.State, seat.Reason, seat.Columns, seat.Rows = status.State, status.Reason, status.Columns, status.Rows
 		if status.State == "live" {
-			seat.TerminalURL = fmt.Sprintf("/api/formations/runs/%s/seats/%d/terminal", url.PathEscape(seat.RunID), seat.CreatedSeq)
+			seat.TerminalURL = fmt.Sprintf("/api/runs/%s/seats/%d/terminal", url.PathEscape(seat.RunID), seat.CreatedSeq)
 		}
 	}
 	return seat

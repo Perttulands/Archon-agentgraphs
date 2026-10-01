@@ -19,7 +19,7 @@ export function evidenceNamesForBoard(board: BoardDocument | null | undefined): 
   const outputCounts = new Map<string, number>()
   const slots = new Map<string, Map<string, string>>()
   const relayers = new Map<string, string>()
-  for (const mission of board?.missions || []) titles.set(mission.id, mission.title)
+  for (const mission of board?.inputCards || []) titles.set(mission.id, mission.title)
   for (const gate of board?.gates || []) titles.set(gate.id, gate.title)
   for (const node of [...(board?.formations || []), ...(board?.tools || [])]) {
     titles.set(node.id, node.title)

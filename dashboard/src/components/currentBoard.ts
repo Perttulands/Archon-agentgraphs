@@ -1,13 +1,13 @@
 /**
  * The one current mission that Missions and Agents share. The address bar's
- * ?mission= (or a pre-rename ?board=) names it, so a reload, a view switch or a
+ * ?mission= names it, so a reload, a view switch or a
  * shared link keeps it; this device also remembers the last mission used, so a
  * fresh open with no query lands there instead of on whichever sorts first.
  */
 
 import { readRunLink, runLinkSearch } from './formationsRunDiscovery'
 
-const STORAGE_KEY = 'archon.currentBoard.v1'
+const STORAGE_KEY = 'archon.currentMission.v1'
 
 export function rememberedBoard(): string {
   try {
@@ -22,14 +22,14 @@ export function rememberBoardOnDevice(slug: string): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, slug)
   } catch {
-    // Storage may be unavailable; the address bar still carries the board.
+    // Storage may be unavailable; the address bar still carries the mission.
   }
 }
 
 /**
- * Chooses the board to open: the address bar's board, then the remembered
- * board, then the first board. `missingLinked` names an address-bar board that
- * no longer exists, so the caller can say so.
+ * Chooses the mission to open: the address bar's mission, then the remembered
+ * mission, then the first one. `missingLinked` names an address-bar mission
+ * that no longer exists, so the caller can say so.
  */
 export function chooseCurrentBoard(slugs: string[], search: string): { slug: string; missingLinked: string } {
   const linked = readRunLink(search).board
@@ -40,8 +40,8 @@ export function chooseCurrentBoard(slugs: string[], search: string): { slug: str
 }
 
 /**
- * Makes `slug` the current board on this device and in the address bar. A
- * pinned run belongs to its board, so ?run= survives only while the board
+ * Makes `slug` the current mission on this device and in the address bar. A
+ * pinned run belongs to its mission, so ?run= survives only while the mission
  * stays the same.
  */
 export function rememberCurrentBoard(slug: string): void {

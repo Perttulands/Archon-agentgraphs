@@ -1,4 +1,4 @@
-/* A node's or the board's note thread in a floating window: the whole thread,
+/* A node's or the mission's note thread in a floating window: the whole thread,
  * a reply box, and edit or delete of the operator's own entries. The draft
  * lives with the cockpit, so closing the window keeps it. */
 import { useEffect, useRef } from 'react'
@@ -7,7 +7,7 @@ import type { WindowRect } from '../windows/windowGeometry'
 import type { NoteEntry } from './formationsTypes'
 import { NoteThread } from './NoteThread'
 
-export const BOARD_NOTE_TARGET = 'board'
+export const BOARD_NOTE_TARGET = 'mission'
 
 export function noteWindowId(target: string): string {
   return `note:${target}`

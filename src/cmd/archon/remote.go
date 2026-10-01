@@ -125,8 +125,12 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	case "run list":
 		fs.StringVar(&missionFilter, "mission", "", "the mission whose runs to list")
 	}
-	reason := fs.String("reason", "", "operator reason; for gate approve|reject, the response text")
-	fs.StringVar(reason, "response", "", "alias of --reason for gate approve|reject")
+	reason := new(string)
+	if args[0] == "gate" && (args[1] == "approve" || args[1] == "reject") {
+		fs.StringVar(reason, "response", "", "the response: approve delivers it downstream with the gate input, reject sends it back as feedback")
+	} else {
+		fs.StringVar(reason, "reason", "", "operator reason")
+	}
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
 	relayedBy := fs.String("relayed-by", "", relayedByUsage)
 	// Runs have no limits unless the launch sets them (form-o7p.7).
@@ -137,7 +141,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	pos := fs.Args()
-	path := "/api/formations"
+	path := "/api"
 	method := "GET"
 	var body any
 	switch args[0] + " " + args[1] {
@@ -157,7 +161,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		var board struct {
 			Data struct {
-				Board formations.BoardDocument `json:"board"`
+				Board formations.BoardDocument `json:"mission"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(raw, &board); err != nil {
@@ -178,7 +182,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 				limits[key] = value
 			}
 		}
-		fields := map[string]any{"cwd": *cwd, "brief": briefText, "beadId": *bead, "board": pos[0], "missionId": inputCard, "expectedRev": board.Data.Board.Rev, "limits": limits}
+		fields := map[string]any{"cwd": *cwd, "brief": briefText, "beadId": *bead, "mission": pos[0], "inputCardId": inputCard, "expectedRev": board.Data.Board.Rev, "limits": limits}
 		if len(contextPaths) > 0 {
 			fields["contextPaths"] = contextPaths
 		}
@@ -241,8 +245,8 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		given := givenFlags(fs)
 		if given["response-file"] {
-			if given["response"] || given["reason"] {
-				return fail(stderr, errors.New("--response-file cannot be combined with --response or --reason"))
+			if given["response"] {
+				return fail(stderr, errors.New("--response-file cannot be combined with --response"))
 			}
 			raw, err := os.ReadFile(responseFile)
 			if err != nil {

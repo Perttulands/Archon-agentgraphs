@@ -53,7 +53,7 @@ func requireBoundaryCode(t *testing.T, err error, wantCode string) {
 	}
 }
 
-// Case 1: default-to-self. An empty CHROTE_FORMATIONS_AGENT_USER defaults the
+// Case 1: default-to-self. An empty ARCHON_AGENT_USER defaults the
 // expected agent-user to the service user, so a server already running on the
 // socket (owned by the service user) is accepted with no lazy-start.
 func TestTmuxExecutorDefaultsAgentUserToServiceUserAndAccepts(t *testing.T) {

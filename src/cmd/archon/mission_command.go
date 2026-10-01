@@ -6,13 +6,13 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// A mission is the reusable unit: one .formation.toml file whose Input card
+// A mission is the reusable unit: one .mission.toml file whose Input card
 // starts its runs. Internal names still say board; everything a person or
 // agent types or reads says mission.
 
 const missionHelp = `usage: archon mission <command> [arguments] [--json]
 
-A mission is one reusable .formation.toml file. Its Input card starts each run.
+A mission is one reusable .mission.toml file. Its Input card starts each run.
 
   new <slug> [--title <title>]             create an empty mission
   list                                     list the missions

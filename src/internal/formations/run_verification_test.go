@@ -23,7 +23,7 @@ func TestS4JudgeChainVerdictRoutesGate(t *testing.T) {
 	}
 	executor := &fakeRunExecutor{outputs: map[string]string{
 		"fmn_j1": "review notes",
-		"fmn_j2": "```chrote-verdict\n{\"verdict\":\"pass\",\"reason\":\"reviewed\",\"evidence\":[]}\n```",
+		"fmn_j2": "```archon-verdict\n{\"verdict\":\"pass\",\"reason\":\"reviewed\",\"evidence\":[]}\n```",
 	}}
 	engine := NewRunEngine(store, personas, executor)
 	engine.SetGateEvaluator(NewCodeGateEvaluator())
@@ -87,7 +87,7 @@ func TestLegacyInlineVerificationRejectsBeforeMissionAndFormationRunArtifacts(t 
 			if len(executor.calls) != 0 {
 				t.Fatalf("executor calls = %+v, want no execution before compatibility preflight", executor.calls)
 			}
-			runsDir := filepath.Join(store.Workspace, ".formations", "runs", "session-search")
+			runsDir := filepath.Join(store.Workspace, ".archon", "runs", "session-search")
 			entries, readErr := os.ReadDir(runsDir)
 			if readErr != nil && !os.IsNotExist(readErr) {
 				t.Fatalf("read runs directory: %v", readErr)
@@ -139,7 +139,7 @@ func TestLegacyInlineVerificationHeaderVariantsRemainVisibleAndFailBeforeRun(t *
 			if !errors.Is(err, ErrLegacyInlineVerificationRequiresMigration) {
 				t.Fatalf("run error = %v, want legacy migration rejection", err)
 			}
-			entries, readErr := os.ReadDir(filepath.Join(store.Workspace, ".formations", "runs", "session-search"))
+			entries, readErr := os.ReadDir(filepath.Join(store.Workspace, ".archon", "runs", "session-search"))
 			if readErr != nil && !os.IsNotExist(readErr) {
 				t.Fatalf("read run artifacts: %v", readErr)
 			}
@@ -249,7 +249,7 @@ func TestLegacyInlineVerificationKeyVariantsRemainVisibleAndFailBeforeRun(t *tes
 			if !errors.Is(err, ErrLegacyInlineVerificationRequiresMigration) {
 				t.Fatalf("run error = %v, want legacy migration rejection", err)
 			}
-			entries, readErr := os.ReadDir(filepath.Join(store.Workspace, ".formations", "runs", "session-search"))
+			entries, readErr := os.ReadDir(filepath.Join(store.Workspace, ".archon", "runs", "session-search"))
 			if readErr != nil && !os.IsNotExist(readErr) {
 				t.Fatalf("read run artifacts: %v", readErr)
 			}
@@ -275,7 +275,7 @@ func TestLegacyInlineVerificationResumeRejectsBeforeRunResumedAppend(t *testing.
 	if err := writeInitialRunEvent(filepath.Join(store.Workspace, ledger), RunEvent{
 		Timestamp: legacyRunEventTimestamp, RunID: runID, Seq: 1, Type: RunEventStarted, BoardID: "brd_01J9_sesssearch", BoardRev: 7,
 		MissionID: "mis_showcase", Actor: "agent:test", Data: map[string]any{
-			"boardSlug": "session-search", "snapshot": snapshot,
+			"missionSlug": "session-search", "snapshot": snapshot,
 			"bindingsSnapshot": runArtifactPath("session-search", runID, ".bindings.toml"),
 			"limits":           RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 		},
@@ -329,7 +329,7 @@ func TestLegacyInlineVerificationHumanVerdictRejectsBeforeLedgerMutation(t *test
 	if err := writeInitialRunEvent(filepath.Join(store.Workspace, ledger), RunEvent{
 		Timestamp: legacyRunEventTimestamp, RunID: runID, Seq: 1, Type: RunEventStarted, BoardID: "brd_01J9_sesssearch", BoardRev: 7,
 		MissionID: "mis_showcase", Actor: "agent:test", Data: map[string]any{
-			"boardSlug": "session-search", "snapshot": snapshot,
+			"missionSlug": "session-search", "snapshot": snapshot,
 			"bindingsSnapshot": runArtifactPath("session-search", runID, ".bindings.toml"),
 			"limits":           RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 		},
@@ -418,7 +418,7 @@ func TestLegacyInlineVerificationRawResumeAppendIsRejectedButCancelClosesRun(t *
 	if err := writeInitialRunEvent(ledger, RunEvent{
 		Timestamp: legacyRunEventTimestamp, RunID: runID, Seq: 1, Type: RunEventStarted, BoardID: "brd_01J9_sesssearch", BoardRev: 7,
 		MissionID: "mis_showcase", Actor: "agent:test", Data: map[string]any{
-			"boardSlug": "session-search", "snapshot": snapshot,
+			"missionSlug": "session-search", "snapshot": snapshot,
 			"bindingsSnapshot": runArtifactPath("session-search", runID, ".bindings.toml"),
 		},
 	}); err != nil {
@@ -486,7 +486,7 @@ func TestLegacyInlineVerificationTerminalContainmentIgnoresUnavailableSnapshot(t
 			if err := writeInitialRunEvent(ledger, RunEvent{
 				Timestamp: legacyRunEventTimestamp, RunID: runID, Seq: 1, Type: RunEventStarted, BoardID: "brd_01J9_sesssearch", BoardRev: 7,
 				MissionID: "mis_showcase", Actor: "agent:test", Data: map[string]any{
-					"boardSlug": "session-search", "snapshot": snapshot,
+					"missionSlug": "session-search", "snapshot": snapshot,
 					"bindingsSnapshot": runArtifactPath("session-search", runID, ".bindings.toml"),
 				},
 			}); err != nil {
@@ -521,13 +521,13 @@ func TestRunSnapshotReadRejectsNoncanonicalLedgerPath(t *testing.T) {
 	store.Now = fixedClock()
 	raw := s4MissionOnlyBoardFixture()
 	runID := newPrefixedID("run")
-	noncanonicalSnapshot := filepath.ToSlash(filepath.Join(".formations", "runs", "quarry", runID+".snapshot.toml"))
+	noncanonicalSnapshot := filepath.ToSlash(filepath.Join(".archon", "runs", "quarry", runID+".snapshot.toml"))
 	ledger := filepath.Join(store.Workspace, runArtifactPath("session-search", runID, ".ndjson"))
 	writeFixture(t, filepath.Join(store.Workspace, noncanonicalSnapshot), raw)
 	if err := writeInitialRunEvent(ledger, RunEvent{
 		Timestamp: legacyRunEventTimestamp, RunID: runID, Seq: 1, Type: RunEventStarted, BoardID: "brd_01J9_sesssearch", BoardRev: 7,
 		MissionID: "mis_showcase", Actor: "agent:test", Data: map[string]any{
-			"boardSlug": "session-search", "snapshot": noncanonicalSnapshot,
+			"missionSlug": "session-search", "snapshot": noncanonicalSnapshot,
 			"bindingsSnapshot": runArtifactPath("session-search", runID, ".bindings.toml"),
 		},
 	}); err != nil {
@@ -562,7 +562,7 @@ func TestRunSnapshotReadRejectsLedgerControlledIdentityBeforeMutation(t *testing
 			setup: func(t *testing.T, store *Store, requestedRunID string) RunEvent {
 				t.Helper()
 				outside := filepath.Join(filepath.Dir(store.Workspace), "outside")
-				runsRoot := filepath.Join(store.Workspace, ".formations", "runs")
+				runsRoot := filepath.Join(store.Workspace, ".archon", "runs")
 				slug, err := filepath.Rel(runsRoot, outside)
 				if err != nil {
 					t.Fatalf("derive traversal slug: %v", err)
@@ -680,7 +680,7 @@ func runStartedFixture(runID, boardSlug, snapshot string) RunEvent {
 	return RunEvent{
 		Timestamp: legacyRunEventTimestamp, RunID: runID, Seq: 1, Type: RunEventStarted, BoardID: "brd_01J9_sesssearch", BoardRev: 7,
 		MissionID: "mis_showcase", Actor: "agent:test", Data: map[string]any{
-			"boardSlug": boardSlug, "snapshot": snapshot,
+			"missionSlug": boardSlug, "snapshot": snapshot,
 			"bindingsSnapshot": runArtifactPath(boardSlug, runID, ".bindings.toml"),
 		},
 	}
@@ -721,7 +721,7 @@ func TestNewLegacyVerificationVerdictAppendIsRejectedButHistoricalEvidenceProjec
 	historicalLedger := filepath.Join(store.Workspace, runArtifactPath("session-search", historicalRunID, ".ndjson"))
 	if err := writeInitialRunEvent(historicalLedger, RunEvent{
 		Timestamp: legacyRunEventTimestamp, RunID: historicalRunID, Seq: 1, Type: RunEventStarted, BoardID: "brd_showcase", BoardRev: 7,
-		MissionID: "mis_showcase", Actor: "agent:test", Data: map[string]any{"boardSlug": "session-search"},
+		MissionID: "mis_showcase", Actor: "agent:test", Data: map[string]any{"missionSlug": "session-search"},
 	}); err != nil {
 		t.Fatalf("write historical start: %v", err)
 	}

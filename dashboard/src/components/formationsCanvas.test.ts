@@ -49,7 +49,7 @@ describe('formations canvas helpers', () => {
     // Mirrors an archon-authored board: missions left, a formation row, gates
     // in their own top row. Every position must survive display untouched.
     const board = {
-      missions: [{ id: 'mis_a' }, { id: 'mis_b' }],
+      inputCards: [{ id: 'mis_a' }, { id: 'mis_b' }],
       formations: [
         { id: 'fmn_orch', type: 'orchestrated', slots: [{}, {}, {}] },
         { id: 'fmn_peer', type: 'peer', slots: [{}, {}] },
@@ -71,7 +71,7 @@ describe('formations canvas helpers', () => {
 
   it('renders intentionally overlapping persisted coordinates verbatim', () => {
     const board = {
-      missions: [{ id: 'mis_a' }],
+      inputCards: [{ id: 'mis_a' }],
       formations: [
         { id: 'fmn_a', type: 'solo', slots: [{}] },
         { id: 'fmn_b', type: 'solo', slots: [{}] },
@@ -97,7 +97,7 @@ describe('formations canvas helpers', () => {
       title: 'Tool layout',
       rev: 2,
       etag: 'board-etag',
-      missions: [{ id: 'mis_a', title: 'Mission', goal: '', beadId: '' }],
+      inputCards: [{ id: 'mis_a', title: 'Mission', goal: '' }],
       formations: [{ id: 'fmn_a', type: 'solo', title: 'Formation', inputs: [], outputs: [], slots: [] }],
       gates: [{ id: 'gate_a', title: 'Gate', kinds: ['human'], criterion: '' }],
       tools: [canvasTool('tool_persisted'), canvasTool('tool_fallback')],

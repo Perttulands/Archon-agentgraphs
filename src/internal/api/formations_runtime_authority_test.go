@@ -22,13 +22,13 @@ func TestFormationsRuntimeAPIStartDefinitionErrorsPrecedeUnavailableAuthority(t 
 	}{
 		{
 			name:       "mission missing board",
-			body:       `{"board":"missing","missionId":"mis_missing"}`,
+			body:       `{"mission":"missing","inputCardId":"mis_missing"}`,
 			wantStatus: http.StatusNotFound,
 			wantCode:   "NOT_FOUND",
 		},
 		{
 			name:       "formation missing board",
-			body:       `{"board":"missing","formationId":"fmn_missing"}`,
+			body:       `{"mission":"missing","formationId":"fmn_missing"}`,
 			wantStatus: http.StatusNotFound,
 			wantCode:   "NOT_FOUND",
 		},
@@ -36,7 +36,7 @@ func TestFormationsRuntimeAPIStartDefinitionErrorsPrecedeUnavailableAuthority(t 
 			name:       "mission missing root",
 			slug:       "session-search",
 			board:      formationsAPIS5CascadeBoardFixture(),
-			body:       `{"board":"session-search","missionId":"mis_missing"}`,
+			body:       `{"mission":"session-search","inputCardId":"mis_missing"}`,
 			wantStatus: http.StatusNotFound,
 			wantCode:   "NOT_FOUND",
 		},
@@ -44,7 +44,7 @@ func TestFormationsRuntimeAPIStartDefinitionErrorsPrecedeUnavailableAuthority(t 
 			name:       "formation missing root",
 			slug:       "session-search",
 			board:      formationsAPIS5CascadeBoardFixture(),
-			body:       `{"board":"session-search","formationId":"fmn_missing"}`,
+			body:       `{"mission":"session-search","formationId":"fmn_missing"}`,
 			wantStatus: http.StatusNotFound,
 			wantCode:   "NOT_FOUND",
 		},
@@ -52,7 +52,7 @@ func TestFormationsRuntimeAPIStartDefinitionErrorsPrecedeUnavailableAuthority(t 
 			name:       "mission reachable legacy script gate",
 			slug:       "session-search",
 			board:      formationsAPILegacyScriptGateBoardFixture(),
-			body:       `{"board":"session-search","missionId":"mis_showcase"}`,
+			body:       `{"mission":"session-search","inputCardId":"mis_showcase"}`,
 			wantStatus: http.StatusUnprocessableEntity,
 			wantCode:   formations.LegacyScriptGateMigrationCode,
 		},
@@ -60,7 +60,7 @@ func TestFormationsRuntimeAPIStartDefinitionErrorsPrecedeUnavailableAuthority(t 
 			name:       "mission legacy inline verification",
 			slug:       "legacy-inline",
 			board:      formationsAPILegacyInlineVerificationFixture(),
-			body:       `{"board":"legacy-inline","missionId":"mis_main"}`,
+			body:       `{"mission":"legacy-inline","inputCardId":"mis_main"}`,
 			wantStatus: http.StatusUnprocessableEntity,
 			wantCode:   formations.LegacyInlineVerificationMigrationCode,
 		},
@@ -68,7 +68,7 @@ func TestFormationsRuntimeAPIStartDefinitionErrorsPrecedeUnavailableAuthority(t 
 			name:       "formation legacy inline verification",
 			slug:       "legacy-inline",
 			board:      formationsAPILegacyInlineVerificationFixture(),
-			body:       `{"board":"legacy-inline","formationId":"fmn_work"}`,
+			body:       `{"mission":"legacy-inline","formationId":"fmn_work"}`,
 			wantStatus: http.StatusUnprocessableEntity,
 			wantCode:   formations.LegacyInlineVerificationMigrationCode,
 		},
@@ -76,7 +76,7 @@ func TestFormationsRuntimeAPIStartDefinitionErrorsPrecedeUnavailableAuthority(t 
 			name:       "Mission reaches non-executing Tool",
 			slug:       "tool-parity",
 			board:      formationsAPIRuntimeToolBoardFixture(),
-			body:       `{"board":"tool-parity","missionId":"mis_main"}`,
+			body:       `{"mission":"tool-parity","inputCardId":"mis_main"}`,
 			wantStatus: http.StatusUnprocessableEntity,
 			wantCode:   "tool_execution_unavailable",
 		},
@@ -96,7 +96,7 @@ func TestFormationsRuntimeAPIStartDefinitionErrorsPrecedeUnavailableAuthority(t 
 			handler.RegisterRoutes(mux)
 
 			recorder := httptest.NewRecorder()
-			mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/formations/runs", strings.NewReader(test.body)))
+			mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/runs", strings.NewReader(test.body)))
 			if recorder.Code != test.wantStatus {
 				t.Errorf("status = %d, want %d: %s", recorder.Code, test.wantStatus, recorder.Body.String())
 			}
@@ -133,7 +133,7 @@ func TestFormationsRuntimeAPIMissionCASPrecedesToolPreflight(t *testing.T) {
 		{
 			name:  "stale ETag precedes unavailable Tool",
 			board: formationsAPIRuntimeToolBoardFixture(),
-			body:  `{"board":"tool-parity","missionId":"mis_main","expectedRev":4}`,
+			body:  `{"mission":"tool-parity","inputCardId":"mis_main","expectedRev":4}`,
 			ifMatch: func(*formations.BoardDocument) string {
 				return "stale-etag"
 			},
@@ -141,7 +141,7 @@ func TestFormationsRuntimeAPIMissionCASPrecedesToolPreflight(t *testing.T) {
 		{
 			name:  "stale revision precedes invalid Tool descriptor",
 			board: strings.Replace(formationsAPIRuntimeToolBoardFixture(), `mode = "strict"`, `mode = "normal"`, 1),
-			body:  `{"board":"tool-parity","missionId":"mis_main","expectedRev":5}`,
+			body:  `{"mission":"tool-parity","inputCardId":"mis_main","expectedRev":5}`,
 			ifMatch: func(board *formations.BoardDocument) string {
 				return board.ETag
 			},
@@ -162,7 +162,7 @@ func TestFormationsRuntimeAPIMissionCASPrecedesToolPreflight(t *testing.T) {
 			mux := http.NewServeMux()
 			handler.RegisterRoutes(mux)
 
-			request := httptest.NewRequest(http.MethodPost, "/api/formations/runs", strings.NewReader(test.body))
+			request := httptest.NewRequest(http.MethodPost, "/api/runs", strings.NewReader(test.body))
 			request.Header.Set("If-Match", test.ifMatch(board))
 			recorder := httptest.NewRecorder()
 			mux.ServeHTTP(recorder, request)
@@ -199,9 +199,9 @@ func TestFormationsRuntimeAPIResumeAbortAndVerdictReportMissingRun(t *testing.T)
 		path string
 		body string
 	}{
-		{"resume", "/api/formations/runs/run_missing/resume", `{}`},
-		{"abort", "/api/formations/runs/run_missing/abort", `{}`},
-		{"verdict", "/api/formations/runs/run_missing/gates/gate_missing/verdict", `{"verdict":"pass"}`},
+		{"resume", "/api/runs/run_missing/resume", `{}`},
+		{"abort", "/api/runs/run_missing/abort", `{}`},
+		{"verdict", "/api/runs/run_missing/gates/gate_missing/verdict", `{"verdict":"pass"}`},
 	}
 	for _, request := range requests {
 		t.Run(request.name, func(t *testing.T) {
@@ -220,7 +220,7 @@ func TestFormationsRuntimeAPIResumeAbortAndVerdictReportMissingRun(t *testing.T)
 	}
 
 	definitions := httptest.NewRecorder()
-	mux.ServeHTTP(definitions, httptest.NewRequest(http.MethodGet, "/api/formations/boards", nil))
+	mux.ServeHTTP(definitions, httptest.NewRequest(http.MethodGet, "/api/missions", nil))
 	if definitions.Code != http.StatusOK {
 		t.Fatalf("schema-1 definitions status = %d, want 200: %s", definitions.Code, definitions.Body.String())
 	}
@@ -231,17 +231,17 @@ func installRuntimeAuthorityAPITmuxTripwire(t *testing.T, workspace string) stri
 	binDir := t.TempDir()
 	capturePath := filepath.Join(t.TempDir(), "tmux-called")
 	fakeTmux := filepath.Join(binDir, "tmux")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$FORMATIONS_RUNTIME_AUTHORITY_TMUX_CAPTURE\"\nexit 99\n"
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$ARCHON_RUNTIME_AUTHORITY_TMUX_CAPTURE\"\nexit 99\n"
 	if err := os.WriteFile(fakeTmux, []byte(script), 0o755); err != nil {
 		t.Fatalf("write tmux tripwire: %v", err)
 	}
 	t.Setenv("PATH", binDir)
-	t.Setenv("FORMATIONS_RUNTIME_AUTHORITY_TMUX_CAPTURE", capturePath)
-	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "")
-	t.Setenv("CHROTE_FORMATIONS_TMUX_HARNESSES", "openai-codex")
-	t.Setenv("CHROTE_FORMATIONS_TMUX_SOCKET", filepath.Join(t.TempDir(), "default"))
-	t.Setenv("CHROTE_FORMATIONS_TMUX_CWD", workspace)
-	t.Setenv("CHROTE_FORMATIONS_TMUX_ROOTS", workspace)
+	t.Setenv("ARCHON_RUNTIME_AUTHORITY_TMUX_CAPTURE", capturePath)
+	t.Setenv("ARCHON_LAB_HARNESSES", "")
+	t.Setenv("ARCHON_TMUX_HARNESSES", "openai-codex")
+	t.Setenv("ARCHON_TMUX_SOCKET", filepath.Join(t.TempDir(), "default"))
+	t.Setenv("ARCHON_TMUX_CWD", workspace)
+	t.Setenv("ARCHON_TMUX_ROOTS", workspace)
 	return capturePath
 }
 
@@ -254,7 +254,7 @@ func assertRuntimeAuthorityAPIResponseIsPrivate(t *testing.T, body, workspace, p
 
 func assertNoRuntimeAuthorityAPIEffects(t *testing.T, workspace, tmuxCapture string) {
 	t.Helper()
-	if matches, err := filepath.Glob(filepath.Join(workspace, ".formations", "runs", "*")); err != nil || len(matches) != 0 {
+	if matches, err := filepath.Glob(filepath.Join(workspace, ".archon", "runs", "*")); err != nil || len(matches) != 0 {
 		t.Fatalf("runtime rejection left workspace artifacts: matches=%v err=%v", matches, err)
 	}
 	if raw, err := os.ReadFile(tmuxCapture); err == nil {

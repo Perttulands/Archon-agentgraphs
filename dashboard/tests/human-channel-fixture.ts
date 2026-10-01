@@ -1,32 +1,32 @@
 import { type Page } from '@playwright/test'
-import { wayfinding, wayfindingFixture } from './wayfinding-fixture'
+import { scouting, scoutingFixture } from './scouting-fixture'
 
-/* The Wayfinding board with a writable mission: updateMission patches apply
+/* The Scouting board with a writable mission: updateInputCard patches apply
  * and are recorded, so a spec can follow a human channel change and its undo.
- * Every other write is refused as in the Wayfinding fixture. */
+ * Every other write is refused as in the Scouting fixture. */
 
-export const missionId: string = wayfinding.board.missions[0].id
+export const inputCardId: string = scouting.mission.inputCards[0].id
 
-type Patch = { updateMission?: { id: string } & Record<string, unknown> }
+type Patch = { updateInputCard?: { id: string } & Record<string, unknown> }
 
 export async function humanChannelFixture(page: Page, options: { humanChannel?: 'session' } = {}) {
-  const fixture = await wayfindingFixture(page)
-  let board = structuredClone(wayfinding.board)
-  if (options.humanChannel) board.missions = board.missions.map((mission: { id: string }) => ({ ...mission, humanChannel: options.humanChannel }))
+  const fixture = await scoutingFixture(page)
+  let board = structuredClone(scouting.mission)
+  if (options.humanChannel) board.inputCards = board.inputCards.map((mission: { id: string }) => ({ ...mission, humanChannel: options.humanChannel }))
   const patches: Patch[] = []
-  // Routes added later answer first, so this one serves the board and takes its mission patches.
-  await page.route('**/api/formations/missions/wayfinding', async route => {
+  // Routes added later answer first, so this one serves the mission and takes its Input card patches.
+  await page.route('**/api/missions/scouting', async route => {
     const request = route.request()
-    if (request.method() === 'GET') return route.fulfill({ json: { success: true, data: { board } }, headers: { ETag: board.etag } })
+    if (request.method() === 'GET') return route.fulfill({ json: { success: true, data: { mission: board } }, headers: { ETag: board.etag } })
     const patch = request.postDataJSON() as Patch
-    if (request.method() !== 'PATCH' || !patch.updateMission) return route.fallback()
+    if (request.method() !== 'PATCH' || !patch.updateInputCard) return route.fallback()
     patches.push(patch)
-    const { id, ...fields } = patch.updateMission
+    const { id, ...fields } = patch.updateInputCard
     board = {
-      ...board, rev: board.rev + 1, etag: `wayfinding-${board.rev + 1}`,
-      missions: board.missions.map((mission: { id: string }) => mission.id === id ? { ...mission, ...fields } : mission),
+      ...board, rev: board.rev + 1, etag: `scouting-${board.rev + 1}`,
+      inputCards: board.inputCards.map((mission: { id: string }) => mission.id === id ? { ...mission, ...fields } : mission),
     }
-    return route.fulfill({ json: { success: true, data: { board } }, headers: { ETag: board.etag } })
+    return route.fulfill({ json: { success: true, data: { mission: board } }, headers: { ETag: board.etag } })
   })
   return { ...fixture, patches }
 }
@@ -38,8 +38,8 @@ export async function evidenceShot(page: Page, name: string) {
 }
 
 const byTitle = (title: string) => {
-  const node = [...wayfinding.board.formations, ...wayfinding.board.gates].find((item: { title: string }) => item.title === title)
-  if (!node) throw new Error(`Wayfinding has no ${title}`)
+  const node = [...scouting.mission.formations, ...scouting.mission.gates].find((item: { title: string }) => item.title === title)
+  if (!node) throw new Error(`Scouting has no ${title}`)
   return node as { id: string; slots?: Array<{ id: string; label: string; agentId: string; harness: string }> }
 }
 export const peers = byTitle('Question peers')
@@ -56,14 +56,14 @@ export const talkAgents = [
 ]
 
 /**
- * A session-channel Wayfinding run waiting at Answer questions. The gate asked
+ * A session-channel Scouting run waiting at Answer questions. The gate asked
  * both Question peers seats, which are kept on call; with `fallbackReason` the
  * ask fell back to a notification instead. Framing review was decided earlier,
  * relayed by the Map the territory seat.
  */
 export async function talkRunFixture(page: Page, options: { fallbackReason?: string; columns?: number; terminalText?: string } = {}) {
   const fixture = await humanChannelFixture(page, { humanChannel: 'session' })
-  await page.addInitScript(runId => localStorage.setItem('chrote-formations-active-run-wayfinding', runId), talkRunId)
+  await page.addInitScript(runId => localStorage.setItem('archon.activeRun.scouting', runId), talkRunId)
   const [first, second] = peers.slots!
   const asked = options.fallbackReason ? [] : [
     { nodeId: peers.id, slotId: first.id, createdSeq: 21, deliveredSeq: 12 },
@@ -71,7 +71,7 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
   ]
   const waitingOn = [{ gateId: answerGate.id, requestedSeq }]
   let run = {
-    runId: talkRunId, status: 'waiting_human', final: false, boardSlug: 'wayfinding', missionId, eventCount: 13, humanChannel: 'session',
+    runId: talkRunId, status: 'waiting_human', final: false, missionSlug: 'scouting', inputCardId, eventCount: 13, humanChannel: 'session',
     waitingGates: [{ gateId: answerGate.id, requestedSeq, askedSeats: asked, ...(options.fallbackReason ? { fallbackReason: options.fallbackReason } : {}) }],
     onCallSeats: asked.map(seat => ({ nodeId: seat.nodeId, slotId: seat.slotId, createdSeq: seat.createdSeq, keptSeq: 9, waitingOn })),
   }
@@ -91,18 +91,18 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
   const seat = (slot: typeof first, createdSeq: number) => ({
     runId: talkRunId, nodeId: peers.id, nodeTitle: 'Question peers', slotId: slot.id, slotLabel: slot.label, harness: slot.harness,
     controller: false, createdSeq, sessionName: `form-${talkRunId}-${slot.id}`, state: 'live', columns: options.columns ?? 100, rows: 30,
-    terminalUrl: `/api/formations/runs/${talkRunId}/seats/${createdSeq}/terminal`, onCall: { keptSeq: 9, waitingOn },
+    terminalUrl: `/api/runs/${talkRunId}/seats/${createdSeq}/terminal`, onCall: { keptSeq: 9, waitingOn },
   })
   const text = (value: string) => ({ text: value, bytes: value.length })
   const respond = (data: unknown) => ({ json: { success: true, data }, headers: { ETag: 'fixture-etag' } })
   await page.route('**/api/agents', route => route.fulfill(respond({ agents: talkAgents, count: talkAgents.length })))
-  await page.route('**/api/formations/runs**', route => {
+  await page.route('**/api/runs**', route => {
     const path = new URL(route.request().url()).pathname
     if (route.request().method() !== 'GET') return route.fallback()
-    if (path === '/api/formations/runs') return route.fulfill(respond([run]))
-    if (path === `/api/formations/runs/${talkRunId}`) return route.fulfill(respond(run))
-    if (path === `/api/formations/runs/${talkRunId}/events`) return route.fulfill(respond({ events }))
-    if (path === `/api/formations/runs/${talkRunId}/gates/${answerGate.id}/request`) return route.fulfill(respond({ request: {
+    if (path === '/api/runs') return route.fulfill(respond([run]))
+    if (path === `/api/runs/${talkRunId}`) return route.fulfill(respond(run))
+    if (path === `/api/runs/${talkRunId}/events`) return route.fulfill(respond({ events }))
+    if (path === `/api/runs/${talkRunId}/gates/${answerGate.id}/request`) return route.fulfill(respond({ request: {
       gateId: answerGate.id, requestedSeq, criterion: '',
       input: { fromNodeId: peers.id, text: '1. Who reads the brief first?\n2. Which sources are off limits?\n3. What does done look like?', truncated: false },
       // As the daemon derives them for a run admitted with 3 attempts and 20 dispatches, two of them used.
@@ -111,9 +111,9 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
         { verdict: 'fail', targets: [{ nodeId: peers.id, title: 'Question peers', kind: 'formation', attempt: 2, maxAttempts: 3 }], dispatches: { kind: 'dispatches', used: 2, max: 20 }, dispatchesNeeded: 1 },
       ],
     } }))
-    if (path === `/api/formations/runs/${talkRunId}/escalations`) return route.fulfill(respond({ escalations: [] }))
-    if (path === `/api/formations/runs/${talkRunId}/seats`) return route.fulfill(respond({ runId: talkRunId, available: true, seats: [seat(first, 21), seat(second, 22)] }))
-    if (path === `/api/formations/runs/${talkRunId}/evidence/nodes/${framingGate.id}`) return route.fulfill(respond({ evidence: {
+    if (path === `/api/runs/${talkRunId}/escalations`) return route.fulfill(respond({ escalations: [] }))
+    if (path === `/api/runs/${talkRunId}/seats`) return route.fulfill(respond({ runId: talkRunId, available: true, seats: [seat(first, 21), seat(second, 22)] }))
+    if (path === `/api/runs/${talkRunId}/evidence/nodes/${framingGate.id}`) return route.fulfill(respond({ evidence: {
       runId: talkRunId, nodeId: framingGate.id, kind: 'gate',
       evaluations: [{ seq: 4, kinds: ['human'], criterion: text('Pick a framing'), kindResults: [],
         humanRequests: [{ seq: 4, pending: false, decision: { seq: 5, verdict: 'pass', response: text('Framing 2, as we discussed.'), decidedBy: 'human:operator', relayedBy: territory.slots![0].id } }],

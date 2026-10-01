@@ -20,14 +20,14 @@ func TestConfiguredFormationExecutorFromEnvSelectsTmuxOnlyWhenHarnessesSet(t *te
 		t.Fatalf("executor without harness env = %T, want unavailableFormationExecutor", executor)
 	}
 
-	t.Setenv("CHROTE_FORMATIONS_TMUX_HARNESSES", "openai-codex")
+	t.Setenv("ARCHON_TMUX_HARNESSES", "openai-codex")
 	executor = NewConfiguredFormationExecutorFromEnv(nil, nil, "test-boundary")
 	if _, ok := executor.(*TmuxFormationExecutor); !ok {
 		t.Fatalf("executor with tmux harness env = %T, want *TmuxFormationExecutor", executor)
 	}
 
-	t.Setenv("CHROTE_FORMATIONS_TMUX_HARNESSES", "")
-	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "openai-codex")
+	t.Setenv("ARCHON_TMUX_HARNESSES", "")
+	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
 	executor = NewConfiguredFormationExecutorFromEnv(nil, nil, "test-boundary")
 	if _, ok := executor.(*TmuxFormationExecutor); ok {
 		t.Fatalf("executor with only lab harness env = %T, must not select tmux", executor)
@@ -42,8 +42,8 @@ func TestTmuxExecutorAcceptsConfiguredCockpitSocket(t *testing.T) {
 	// non-symlink socket that is ALSO the configured cockpit socket must now
 	// validate cleanly; safety moved from socket-refusal to session-scoping.
 	cfg := tmuxTestConfig(t)
-	t.Setenv("CHROTE_TERMINAL_USER_SOCKETS", "alice="+cfg.Socket)
-	t.Setenv("CHROTE_DEFAULT_TMUX_SOCKET", cfg.Socket)
+	t.Setenv("ARCHON_TERMINAL_USER_SOCKETS", "alice="+cfg.Socket)
+	t.Setenv("ARCHON_DEFAULT_TMUX_SOCKET", cfg.Socket)
 
 	if err := newTmuxFormationExecutorWithClient(nil, nil, cfg, &fakeTmuxHarnessClient{}).validateConfiguredBoundary(); err != nil {
 		t.Fatalf("configured cockpit socket validate error = %v, want accepted", err)
@@ -63,8 +63,8 @@ func TestTmuxExecutorAcceptsProductionDedicatedSocketOutsideTemp(t *testing.T) {
 	t.Setenv("TMUX", "")
 	t.Setenv("TMUX_TMPDIR", "")
 	t.Setenv("XDG_RUNTIME_DIR", "")
-	t.Setenv("CHROTE_DEFAULT_TMUX_SOCKET", "")
-	t.Setenv("CHROTE_TERMINAL_USER_SOCKETS", "")
+	t.Setenv("ARCHON_DEFAULT_TMUX_SOCKET", "")
+	t.Setenv("ARCHON_TERMINAL_USER_SOCKETS", "")
 
 	cfg := nonTempWorkspace(t)
 	if err := newTmuxFormationExecutorWithClient(nil, nil, cfg, &fakeTmuxHarnessClient{}).validateConfiguredBoundary(); err != nil {
@@ -597,7 +597,7 @@ func TestTmuxExecutorReusesExistingServer(t *testing.T) {
 func TestPickOwnedSessionNameFailsClosedOnForeignCollision(t *testing.T) {
 	cfg := tmuxTestConfig(t)
 	cfg.Mission = "proof"
-	client := &fakeTmuxHarnessClient{sessions: []string{"form-proof-run_x-slot_y"}}
+	client := &fakeTmuxHarnessClient{sessions: []string{"archon-proof-run_x-slot_y"}}
 	e := newTmuxFormationExecutorWithClient(nil, nil, cfg, client)
 	if err := e.validateConfiguredBoundary(); err != nil {
 		t.Fatal(err)
@@ -625,9 +625,9 @@ func TestTmuxExecutorParsesNamedOutputPayloadBlockForPortRouting(t *testing.T) {
 		sessions: []string{"tmux-scout"},
 		pane:     tmuxPaneState{CurrentPath: cfg.Cwd},
 		captures: []string{
-			"splitter produced two routed outputs\n```chrote-outputs\n{\"port_split_left\":{\"text\":\"LEFT-FROM-TMUX\"},\"port_split_right\":{\"text\":\"RIGHT-FROM-TMUX\"}}\n```\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=split.md>>>",
-			"left consumer saw LEFT-FROM-TMUX\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=left.md>>>",
-			"right consumer saw RIGHT-FROM-TMUX\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=right.md>>>",
+			"splitter produced two routed outputs\n```archon-outputs\n{\"port_split_left\":{\"text\":\"LEFT-FROM-TMUX\"},\"port_split_right\":{\"text\":\"RIGHT-FROM-TMUX\"}}\n```\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=split.md>>>",
+			"left consumer saw LEFT-FROM-TMUX\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=left.md>>>",
+			"right consumer saw RIGHT-FROM-TMUX\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=right.md>>>",
 		},
 	}
 	executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
@@ -645,8 +645,8 @@ func TestTmuxExecutorParsesNamedOutputPayloadBlockForPortRouting(t *testing.T) {
 	if status.Status != RunStatusSucceeded || !status.Final {
 		t.Fatalf("status = %+v, want succeeded final", status)
 	}
-	if len(client.sentPrompts) == 0 || !strings.Contains(client.sentPrompts[0], "```chrote-outputs") {
-		t.Fatalf("split prompt missing chrote-outputs contract:\n%s", client.sentPrompts[0])
+	if len(client.sentPrompts) == 0 || !strings.Contains(client.sentPrompts[0], "```archon-outputs") {
+		t.Fatalf("split prompt missing archon-outputs contract:\n%s", client.sentPrompts[0])
 	}
 	events := readRunEvents(t, findOnlyRunLedger(t, store, "session-search"))
 	splitOutput := findNodeOutputEvent(t, events, "fmn_split")
@@ -674,7 +674,7 @@ func TestTmuxExecutorReadsOutputRefArtifactForPortRouting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read board: %v", err)
 	}
-	leftArtifact := filepath.Join(store.Workspace, ".formations", "artifacts", "left-long.md")
+	leftArtifact := filepath.Join(store.Workspace, ".archon", "artifacts", "left-long.md")
 	leftArtifactRef, err := filepath.Rel(store.Workspace, leftArtifact)
 	if err != nil {
 		t.Fatalf("relative artifact ref: %v", err)
@@ -697,9 +697,9 @@ func TestTmuxExecutorReadsOutputRefArtifactForPortRouting(t *testing.T) {
 		sessions: []string{"tmux-scout"},
 		pane:     tmuxPaneState{CurrentPath: cfg.Cwd},
 		captures: []string{
-			"splitter wrote long payload artifact\n```chrote-outputs\n" + string(rawPayloads) + "\n```\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=split.md>>>",
-			"left consumer saw artifact payload\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=left.md>>>",
-			"right consumer saw RIGHT-FROM-TMUX\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=right.md>>>",
+			"splitter wrote long payload artifact\n```archon-outputs\n" + string(rawPayloads) + "\n```\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=split.md>>>",
+			"left consumer saw artifact payload\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=left.md>>>",
+			"right consumer saw RIGHT-FROM-TMUX\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=right.md>>>",
 		},
 	}
 	executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
@@ -747,7 +747,7 @@ func TestTmuxExecutorBlocksInvalidOutputRefArtifacts(t *testing.T) {
 			name: "missing_ref_file",
 			setupRef: func(t *testing.T, store *Store) string {
 				t.Helper()
-				return filepath.Join(store.Workspace, ".formations", "artifacts", "missing-left.md")
+				return filepath.Join(store.Workspace, ".archon", "artifacts", "missing-left.md")
 			},
 			wantCode: "unavailable_output_ref",
 		},
@@ -755,7 +755,7 @@ func TestTmuxExecutorBlocksInvalidOutputRefArtifacts(t *testing.T) {
 			name: "non_regular_ref_directory",
 			setupRef: func(t *testing.T, store *Store) string {
 				t.Helper()
-				dir := filepath.Join(store.Workspace, ".formations", "artifacts", "directory-ref")
+				dir := filepath.Join(store.Workspace, ".archon", "artifacts", "directory-ref")
 				if err := os.MkdirAll(dir, 0o755); err != nil {
 					t.Fatalf("create directory ref fixture: %v", err)
 				}
@@ -779,7 +779,7 @@ func TestTmuxExecutorBlocksInvalidOutputRefArtifacts(t *testing.T) {
 				t.Helper()
 				outside := filepath.Join(t.TempDir(), "outside-left.md")
 				writeFixture(t, outside, "SHOULD-NOT-ROUTE")
-				insideLink := filepath.Join(store.Workspace, ".formations", "artifacts", "linked-outside.md")
+				insideLink := filepath.Join(store.Workspace, ".archon", "artifacts", "linked-outside.md")
 				if err := os.MkdirAll(filepath.Dir(insideLink), 0o755); err != nil {
 					t.Fatalf("mkdir symlink parent: %v", err)
 				}
@@ -817,7 +817,7 @@ func TestTmuxExecutorBlocksInvalidOutputRefArtifacts(t *testing.T) {
 				sessions: []string{"tmux-scout"},
 				pane:     tmuxPaneState{CurrentPath: cfg.Cwd},
 				captures: []string{
-					"splitter referenced invalid artifact\n```chrote-outputs\n" + string(rawPayloads) + "\n```\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=split.md>>>",
+					"splitter referenced invalid artifact\n```archon-outputs\n" + string(rawPayloads) + "\n```\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=split.md>>>",
 				},
 			}
 			executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
@@ -869,7 +869,7 @@ func TestTmuxOrchestratedFormationGivesLeaderToolPacketWithoutPreDispatchingWork
 		sessions: []string{"tmux-lead", "tmux-worker-a", "tmux-worker-b"},
 		pane:     tmuxPaneState{CurrentPath: cfg.Cwd},
 		captures: []string{
-			"FINAL-SYNTHESIS: leader used tmux to prompt worker-a and inspect worker-b before finishing\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=final.md>>>",
+			"FINAL-SYNTHESIS: leader used tmux to prompt worker-a and inspect worker-b before finishing\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=final.md>>>",
 		},
 	}
 	executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
@@ -1075,10 +1075,10 @@ func TestExtractCapturedSlotTextRemovesWrappedPromptEcho(t *testing.T) {
 		"slot: slot_lead",
 		"orchestration phase: controller-synthesis",
 		"brief: hidden prompt body",
-		"When complete, emit exactly one sentinel line using the run value above: <<<CHROTE-DONE run-id=<the-run-value-above> status=ok artifact=<pat",
+		"When complete, emit exactly one sentinel line using the run value above: <<<ARCHON-DONE run-id=<the-run-value-above> status=ok artifact=<pat",
 		"h-or-ref>>>",
 		"FINAL-SYNTHESIS: safe final answer",
-		"<<<CHROTE-DONE run-id=run_test status=ok artifact=artifacts/final.md>>>",
+		"<<<ARCHON-DONE run-id=run_test status=ok artifact=artifacts/final.md>>>",
 	}, "\n")
 
 	text := extractCapturedSlotText(captured, "", "run_test")
@@ -1091,14 +1091,14 @@ func TestExtractCapturedSlotTextKeepsFinalTurnAfterTranscriptNoise(t *testing.T)
 	captured := strings.Join([]string{
 		"controller plan:",
 		"• Worker A: identify boundary",
-		"When complete, emit exactly one sentinel line using the run value above: <<<CHROTE-DONE run-id=<the-run-value-above> status=ok artifact=<path-or-ref>>>",
+		"When complete, emit exactly one sentinel line using the run value above: <<<ARCHON-DONE run-id=<the-run-value-above> status=ok artifact=<path-or-ref>>>",
 		"worker outputs:",
 		"• API/runtime boundary: Archon/Formations to tmux Codex.",
 		"────────────────────────────────────────────────────────────────────────────────────────────────",
 		"",
 		"• Runtime-mediated orchestrated control works at the smoke level.",
 		"  Worker dispatch and final synthesis returned through Codex sentinels.",
-		"<<<CHROTE-DONE run-id=run_final status=ok artifact=final-synthesis>>>",
+		"<<<ARCHON-DONE run-id=run_final status=ok artifact=final-synthesis>>>",
 	}, "\n")
 
 	text := extractCapturedSlotText(captured, "", "run_final")
@@ -1121,14 +1121,14 @@ func TestTmuxRenderedPromptDoesNotContainParseableActualRunSentinel(t *testing.T
 	if !strings.Contains(prompt, "run: "+runID+"\n") {
 		t.Fatalf("rendered prompt = %q, want run line with actual run id", prompt)
 	}
-	if forbidden := "<<<CHROTE-DONE run-id=" + runID; strings.Contains(prompt, forbidden) {
+	if forbidden := "<<<ARCHON-DONE run-id=" + runID; strings.Contains(prompt, forbidden) {
 		t.Fatalf("rendered prompt contains parseable actual-run sentinel prefix %q: %q", forbidden, prompt)
 	}
 	if sentinel, ok := ParseCompletionSentinel(prompt, runID); ok {
 		t.Fatalf("prompt echo parsed as completion sentinel: %+v", sentinel)
 	}
 
-	actual := fmt.Sprintf("agent output\n<<<CHROTE-DONE run-id=%s status=ok artifact=reports/actual.md>>>\n", runID)
+	actual := fmt.Sprintf("agent output\n<<<ARCHON-DONE run-id=%s status=ok artifact=reports/actual.md>>>\n", runID)
 	sentinel, ok := ParseCompletionSentinel(actual, runID)
 	if !ok || sentinel.RunID != runID || sentinel.Status != "ok" || sentinel.Artifact != "reports/actual.md" {
 		t.Fatalf("actual emitted sentinel parsed = %+v ok=%v, want matching completion", sentinel, ok)
@@ -1263,7 +1263,7 @@ func nonTempWorkspace(t *testing.T) TmuxExecutorConfig {
 		t.Fatalf("create non-temp socket dir: %v", err)
 	}
 	socket := filepath.Join(socketDir, "default")
-	if err := os.WriteFile(socket, []byte("dedicated formations tmux socket fixture"), 0o600); err != nil {
+	if err := os.WriteFile(socket, []byte("dedicated archon tmux socket fixture"), 0o600); err != nil {
 		t.Fatalf("write non-temp socket fixture: %v", err)
 	}
 	return TmuxExecutorConfig{
@@ -1280,16 +1280,16 @@ func nonTempWorkspace(t *testing.T) TmuxExecutorConfig {
 func clearExecutorEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
-		"CHROTE_FORMATIONS_LAB_HARNESSES",
-		"CHROTE_FORMATIONS_LAB_CWD",
-		"CHROTE_FORMATIONS_LAB_ROOTS",
-		"CHROTE_FORMATIONS_TMUX_HARNESSES",
-		"CHROTE_FORMATIONS_TMUX_SOCKET",
-		"CHROTE_FORMATIONS_TMUX_CWD",
-		"CHROTE_FORMATIONS_TMUX_ROOTS",
-		"CHROTE_FORMATIONS_TMUX_SESSION_PREFIX",
-		"CHROTE_FORMATIONS_TMUX_PROD_SMOKE",
-		"CHROTE_FORMATIONS_TMUX_DEDICATED",
+		"ARCHON_LAB_HARNESSES",
+		"ARCHON_LAB_CWD",
+		"ARCHON_LAB_ROOTS",
+		"ARCHON_TMUX_HARNESSES",
+		"ARCHON_TMUX_SOCKET",
+		"ARCHON_TMUX_CWD",
+		"ARCHON_TMUX_ROOTS",
+		"ARCHON_TMUX_SESSION_PREFIX",
+		"ARCHON_TMUX_PROD_SMOKE",
+		"ARCHON_TMUX_DEDICATED",
 	} {
 		t.Setenv(key, "")
 	}
@@ -1728,7 +1728,7 @@ func (f *fakeTmuxHarnessClient) CapturePane(_ context.Context, _, target string,
 		if artifact == "" {
 			artifact = "reports/tmux.md"
 		}
-		captured = fmt.Sprintf("agent output\n<<<CHROTE-DONE run-id=%s status=ok artifact=%s>>>\n", runIDFromPrompt(f.lastPrompt), artifact)
+		captured = fmt.Sprintf("agent output\n<<<ARCHON-DONE run-id=%s status=ok artifact=%s>>>\n", runIDFromPrompt(f.lastPrompt), artifact)
 	}
 	captured = withPromptOutputContract(captured, f.lastPrompt)
 	f.awaitingCapture = false
@@ -1749,7 +1749,7 @@ func runIDFromPrompt(prompt string) string {
 }
 
 func withPromptOutputContract(captured, prompt string) string {
-	if !strings.Contains(prompt, "formation output contract:") || strings.Contains(captured, "```chrote-outputs") {
+	if !strings.Contains(prompt, "formation output contract:") || strings.Contains(captured, "```archon-outputs") {
 		return captured
 	}
 	ports := outputPortsFromPrompt(prompt)
@@ -1758,7 +1758,7 @@ func withPromptOutputContract(captured, prompt string) string {
 	}
 	payloads := make(map[string]FormationOutputPayload, len(ports))
 	text := strings.TrimSpace(captured)
-	if sentinelAt := strings.Index(text, "<<<CHROTE-DONE "); sentinelAt >= 0 {
+	if sentinelAt := strings.Index(text, "<<<ARCHON-DONE "); sentinelAt >= 0 {
 		text = strings.TrimSpace(text[:sentinelAt])
 	}
 	for _, portID := range ports {
@@ -1768,8 +1768,8 @@ func withPromptOutputContract(captured, prompt string) string {
 	if err != nil {
 		return captured
 	}
-	block := "```chrote-outputs\n" + string(raw) + "\n```\n"
-	if sentinelAt := strings.Index(captured, "<<<CHROTE-DONE "); sentinelAt >= 0 {
+	block := "```archon-outputs\n" + string(raw) + "\n```\n"
+	if sentinelAt := strings.Index(captured, "<<<ARCHON-DONE "); sentinelAt >= 0 {
 		return strings.TrimRight(captured[:sentinelAt], "\n") + "\n" + block + captured[sentinelAt:]
 	}
 	return strings.TrimRight(captured, "\n") + "\n" + block

@@ -137,21 +137,6 @@ type WireDrag =
   | { kind: 'reconnect-source'; connection: BoardConnection }
   | { kind: 'judge'; gate: GateNode; moved: boolean; startX: number; startY: number }
 type LaneDrag = { connectionId: string; previousLane: string; moved: boolean }
-type LegacyVerificationState = {
-  boardSlug: string
-  boardRev: number
-  boardETag: string
-  formationId: string
-  verificationId: string
-  title: string
-  kinds: string[]
-  criterion: string
-  onFail: string
-  replacementGateIds: string[]
-  replacementGateId: string
-  pending: boolean
-  error: string
-}
 type MissionEditorState = { initial: MissionDraft; x: number; y: number }
 type GateEditorState = {
   initial: GateDraft
@@ -239,8 +224,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [noteEditing, setNoteEditing] = useState<Record<string, string>>({})
   const [noteAnchors, setNoteAnchors] = useState<ReadonlyMap<string, NoteAnchor>>(() => new Map())
   const noteAnchorsRef = useRef(noteAnchors)
-  const [legacyVerification, setLegacyVerification] = useState<LegacyVerificationState | null>(null)
-  const legacyVerificationOpen = legacyVerification !== null
   const [inspectedToolId, setInspectedToolId] = useState<string | null>(null)
   useEscapeKey(active && inspectedToolId !== null, () => setInspectedToolId(null))
   const [hiddenWireId, setHiddenWireId] = useState<string | null>(null)
@@ -306,11 +289,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const fittedBoardRef = useRef<string | null>(null)
   const judgeHoverRef = useRef<string | null>(null)
   const openJudgePickerRef = useRef<((gate: GateNode, x: number, y: number) => void) | null>(null)
-  const legacyVerificationTriggerRef = useRef<HTMLElement | null>(null)
-  const legacyVerificationInitialFocusRef = useRef<HTMLButtonElement | null>(null)
-  const legacyVerificationWasOpenRef = useRef(false)
-  const legacyVerificationPendingRef = useRef(false)
-  const legacyVerificationRequestRef = useRef<symbol | null>(null)
   const boardDialogReturnFocusRef = useRef<HTMLElement | null>(null)
 
   const closeBoardDialog = useCallback(() => {
@@ -338,28 +316,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [boardDialog, closeBoardDialog])
 
   useEffect(() => {
-    legacyVerificationRequestRef.current = null
-    legacyVerificationPendingRef.current = false
-    setLegacyVerification(null)
     setInspectedToolId(null)
     setInspectedNodeId(null)
     setEscalations([])
     setValidation(null)
     setAdmissionFindings([])
   }, [selectedSlug])
-
-  useLayoutEffect(() => {
-    if (legacyVerificationOpen) {
-      legacyVerificationWasOpenRef.current = true
-      legacyVerificationInitialFocusRef.current?.focus({ preventScroll: true })
-      return
-    }
-    if (!legacyVerificationWasOpenRef.current) return
-    legacyVerificationWasOpenRef.current = false
-    const trigger = legacyVerificationTriggerRef.current
-    legacyVerificationTriggerRef.current = null
-    if (trigger?.isConnected) trigger.focus({ preventScroll: true })
-  }, [legacyVerificationOpen])
 
   // ----- data loading -----
   useEffect(() => {
@@ -503,11 +465,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // browser appear. A run this browser started earlier is the last fallback.
   useEffect(() => {
     if (!selectedSlug) return
-    if (activeRunRef.current?.boardSlug && activeRunRef.current.boardSlug !== selectedSlug) {
+    if (activeRunRef.current?.missionSlug && activeRunRef.current.missionSlug !== selectedSlug) {
       setActiveRun(null)
       setRunEvents([])
     }
-    setBoardRuns(runs => (runs.some(run => run.boardSlug !== selectedSlug) ? [] : runs))
+    setBoardRuns(runs => (runs.some(run => run.missionSlug !== selectedSlug) ? [] : runs))
     const pinnedRunId = pinnedRun.slug === selectedSlug ? pinnedRun.runId : ''
     let cancelled = false
     const discover = async () => {
@@ -529,8 +491,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       try {
         const status = runStatusFromResponse(await fetchRunStatus(runId))
         if (cancelled) return
-        if (status.boardSlug && status.boardSlug !== selectedSlug) {
-          if (runId === pinnedRunId) dropPin(`Run ${runId} belongs to mission "${status.boardSlug}", not "${selectedSlug}"`)
+        if (status.missionSlug && status.missionSlug !== selectedSlug) {
+          if (runId === pinnedRunId) dropPin(`Run ${runId} belongs to mission "${status.missionSlug}", not "${selectedSlug}"`)
           return
         }
         try {
@@ -680,7 +642,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       if (laneDraft && laneDraft.connectionId === connectionId) return laneDraft.y
       return laneYFrom(layoutEdges.find(edge => edge.id === connectionId)?.lane)
     }
-    const titleOf = (nodeId: string) => [...(board.missions || []), ...board.formations, ...(board.gates || []), ...(board.tools || [])]
+    const titleOf = (nodeId: string) => [...(board.inputCards || []), ...board.formations, ...(board.gates || []), ...(board.tools || [])]
       .find(node => node.id === nodeId)?.title || nodeId
     const loopIds = loopConnectionIds(board.connections || [])
     const loops: LoopWire[] = []
@@ -1128,7 +1090,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [patchBoard, placementForNewNode, recordUndo])
 
   const createMissionAt = useCallback((x: number, y: number) => {
-    setMissionEditor({ initial: { title: boardRef.current?.title || 'Input', goal: '', beadId: '' }, x, y })
+    setMissionEditor({ initial: { title: boardRef.current?.title || 'Input', goal: '' }, x, y })
     setMissionEditorSaving(false)
   }, [])
 
@@ -1143,12 +1105,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setMissionEditorSaving(true)
     const placement = placementForNewNode(missionEditor.x, missionEditor.y)
     const result = await patchBoard({
-      createMission: { ...draft, title: draft.title || 'Input', x: placement.x, y: placement.y },
+      createInputCard: { ...draft, title: draft.title || 'Input', x: placement.x, y: placement.y },
     })
     setMissionEditorSaving(false)
     if (!result) return
-    const created = findAddedByID(before.missions || [], result.board.missions || [])
-    if (created) recordUndo(`the new Input card ${quoted(created.title, '')}`.trim(), boardStep({ deleteMission: { id: created.id } }))
+    const created = findAddedByID(before.inputCards || [], result.board.inputCards || [])
+    if (created) recordUndo(`the new Input card ${quoted(created.title, '')}`.trim(), boardStep({ deleteInputCard: { id: created.id } }))
     setMissionEditor(null)
   }, [missionEditor, missionEditorSaving, patchBoard, placementForNewNode, recordUndo])
 
@@ -1157,7 +1119,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const current = boardRef.current
     if (!current) return false
     const formation = current.formations.find(node => node.id === nodeId)
-    const mission = current.missions?.find(node => node.id === nodeId)
+    const mission = current.inputCards?.find(node => node.id === nodeId)
     const gate = current.gates?.find(node => node.id === nodeId)
     const previous = formation?.title ?? mission?.title ?? gate?.title
     if (previous === undefined) return false
@@ -1167,8 +1129,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       if (!await patchBoard({ updateFormation: { id: nodeId, title } })) return false
       recordUndo(label, boardStep({ updateFormation: { id: nodeId, title: previous } }))
     } else if (mission) {
-      if (!await patchBoard({ updateMission: { id: nodeId, title } })) return false
-      recordUndo(label, boardStep({ updateMission: { id: nodeId, title: previous } }))
+      if (!await patchBoard({ updateInputCard: { id: nodeId, title } })) return false
+      recordUndo(label, boardStep({ updateInputCard: { id: nodeId, title: previous } }))
     } else if (gate) {
       if (!await patchBoard({ updateGate: { id: nodeId, title } })) return false
       recordUndo(label, boardStep({ updateGate: { id: nodeId, title: previous } }))
@@ -1176,12 +1138,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return true
   }, [patchBoard, recordUndo])
 
-  const updateMissionFields = useCallback(async (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'beadId' | 'inputHint' | 'files' | 'humanChannel'>>): Promise<boolean> => {
-    const previous = boardRef.current?.missions?.find(mission => mission.id === missionId)
+  const updateMissionFields = useCallback(async (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel'>>): Promise<boolean> => {
+    const previous = boardRef.current?.inputCards?.find(mission => mission.id === missionId)
     if (!previous) return false
-    if (!await patchBoard({ updateMission: { id: missionId, ...fields } })) return false
+    if (!await patchBoard({ updateInputCard: { id: missionId, ...fields } })) return false
     // An absent field is restored as empty, which clears it.
-    recordUndo(`the edit of Input card ${quoted(previous.title, 'untitled')}`, boardStep({ updateMission: { id: missionId, ...Object.fromEntries(Object.keys(fields).map(key => [key, previous[key as keyof typeof fields] ?? (key === 'files' ? [] : '')])) } }))
+    recordUndo(`the edit of Input card ${quoted(previous.title, 'untitled')}`, boardStep({ updateInputCard: { id: missionId, ...Object.fromEntries(Object.keys(fields).map(key => [key, previous[key as keyof typeof fields] ?? (key === 'files' ? [] : '')])) } }))
     return true
   }, [patchBoard, recordUndo])
 
@@ -1212,7 +1174,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const blocker = restoreBlocker(before, nodeId)
     if (blocker && !confirmed) {
       const kind = patch.deleteFormation ? 'formation' : patch.deleteGate ? 'gate' : 'Input card'
-      const title = [...(before.missions || []), ...before.formations, ...(before.gates || [])].find(node => node.id === nodeId)?.title || ''
+      const title = [...(before.inputCards || []), ...before.formations, ...(before.gates || [])].find(node => node.id === nodeId)?.title || ''
       setDeleteConfirm({ title, kind, reason: blocker, patch })
       return
     }
@@ -1250,7 +1212,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [deleteNodeOp])
 
   const deleteMissionOp = useCallback((mission: MissionNode) => {
-    void deleteNodeOp(mission.id, { deleteMission: { id: mission.id } })
+    void deleteNodeOp(mission.id, { deleteInputCard: { id: mission.id } })
   }, [deleteNodeOp])
 
   const addPortOp = useCallback(async (formation: FormationNode, direction: FormationPortDirection) => {
@@ -1272,82 +1234,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!await patchBoard({ removePort: { formationId: formation.id, portId } })) return
     recordEntry(undo)
   }, [patchBoard, recordEntry])
-
-  const closeLegacyVerification = useCallback(() => {
-    if (legacyVerificationPendingRef.current) return
-    setLegacyVerification(null)
-  }, [])
-
-  useEffect(() => {
-    if (!active || !legacyVerificationOpen) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      closeLegacyVerification()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [active, closeLegacyVerification, legacyVerificationOpen])
-
-  const removeLegacyVerification = useCallback(async () => {
-    if (!legacyVerification?.replacementGateId || legacyVerificationPendingRef.current) return
-    const current = boardRef.current
-    if (!current || current.slug !== legacyVerification.boardSlug || current.rev !== legacyVerification.boardRev || current.etag !== legacyVerification.boardETag) {
-      setError('The mission changed while legacy verification was open. Reopen migration to continue.')
-      setLegacyVerification(open => open ? { ...open, error: 'Could not remove legacy verification. Reopen migration from the current mission and try again.' } : open)
-      return
-    }
-    legacyVerificationPendingRef.current = true
-    const request = Symbol('remove-legacy-verification')
-    legacyVerificationRequestRef.current = request
-    setLegacyVerification(open => open ? { ...open, pending: true, error: '' } : open)
-    const result = await patchBoard({
-      removeVerification: {
-        formationId: legacyVerification.formationId,
-        replacementGateId: legacyVerification.replacementGateId,
-      },
-    })
-    if (legacyVerificationRequestRef.current !== request) return
-    legacyVerificationRequestRef.current = null
-    legacyVerificationPendingRef.current = false
-    if (result) {
-      setLegacyVerification(null)
-      return
-    }
-    setLegacyVerification(open => open ? {
-      ...open,
-      pending: false,
-      error: 'Could not remove legacy verification. Review the current mission before trying again.',
-    } : open)
-  }, [legacyVerification, patchBoard])
-
-  const openLegacyVerification = useCallback((formation: FormationNode, trigger?: HTMLElement) => {
-    const current = boardRef.current
-    if (!formation.verification || !current) return
-    const outputEndpoints = new Set(formation.outputs.map(output => `${formation.id}:${output.id}`))
-    const replacementGateIds = (current.gates || [])
-      .filter(gate => current.connections.some(connection => outputEndpoints.has(connection.from) && connection.to === `${gate.id}:in`))
-      .map(gate => gate.id)
-    legacyVerificationTriggerRef.current = trigger || (document.activeElement instanceof HTMLElement ? document.activeElement : null)
-    legacyVerificationRequestRef.current = null
-    legacyVerificationPendingRef.current = false
-    setMenu(null)
-    setLegacyVerification({
-      boardSlug: current.slug,
-      boardRev: current.rev,
-      boardETag: current.etag,
-      formationId: formation.id,
-      verificationId: formation.verification.id || '',
-      title: formation.title,
-      kinds: formation.verification.kinds?.length ? [...formation.verification.kinds] : [],
-      criterion: formation.verification.criterion || '',
-      onFail: formation.verification.onFail || '',
-      replacementGateIds,
-      replacementGateId: '',
-      pending: false,
-      error: '',
-    })
-  }, [])
 
   /** Reconstruct the gate's judge chain from persisted `<gateId>:judge` edges. */
   const judgeChainOf = useCallback((gateId: string): string[] => {
@@ -1465,7 +1351,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const runMission = useCallback(async (mission: MissionNode, inputs: RunInputs) => {
     const current = boardRef.current
     if (!current) return
-      const result = await startRun(current.etag, { ...inputs, board: current.slug, missionId: mission.id, expectedRev: current.rev, actor: 'agent:ui' })
+      const result = await startRun(current.etag, { ...inputs, mission: current.slug, inputCardId: mission.id, expectedRev: current.rev, actor: 'agent:ui' })
         .catch(err => {
           if (err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
           throw err
@@ -1484,7 +1370,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   // A human channel changed in Start mission is saved first, with undo, so the run's frozen board carries it.
   const startMissionRun = useCallback(async (mission: MissionNode, inputs: RunInputs, channel: HumanChannel) => {
-    const current = boardRef.current?.missions?.find(item => item.id === mission.id)
+    const current = boardRef.current?.inputCards?.find(item => item.id === mission.id)
     if (current && humanChannelOf(current) !== channel && !await updateMissionFields(mission.id, { humanChannel: humanChannelField(channel) })) {
       throw new Error('The human channel was not saved, so the mission did not start.')
     }
@@ -1495,7 +1381,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const current = boardRef.current
     if (!current) return
     try {
-      const result = await startRun(current.etag, { board: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'agent:ui' })
+      const result = await startRun(current.etag, { mission: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'agent:ui' })
       setAdmissionFindings([])
       const status = { ...result.status, runId: result.status.runId || result.runId }
       const events = await fetchRunEvents(status.runId)
@@ -1698,7 +1584,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // The run bar's phrase centres its node, then opens the node's window beside the centred card.
   const locateAndOpenNode = useCallback((nodeId: string) => {
     const current = boardRef.current
-    const openable = Boolean(current && [...(current.missions || []), ...current.formations, ...(current.gates || [])].some(node => node.id === nodeId))
+    const openable = Boolean(current && [...(current.inputCards || []), ...current.formations, ...(current.gates || [])].some(node => node.id === nodeId))
     // In Flow, bring the step's row into view and open its window beside the row's title.
     const title = boardView === 'flow'
       ? document.querySelector<HTMLElement>(`[data-flow-node="${nodeId.replace(/["\\]/g, '\\$&')}"] .flow-title`)
@@ -1827,7 +1713,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         if (!drag.moved) {
           // A click without a drag opens the node where it can be read and edited.
           const current = boardRef.current
-          if (current && [...(current.missions || []), ...current.formations, ...(current.gates || [])].some(node => node.id === drag.id)) openNodeWindow(drag.id)
+          if (current && [...(current.inputCards || []), ...current.formations, ...(current.gates || [])].some(node => node.id === drag.id)) openNodeWindow(drag.id)
           return
         }
         const scale = viewRef.current.scale || 1
@@ -2082,13 +1968,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       { label: 'Run formation', action: () => void runFormation(formation) },
       { label: 'Add input port', action: () => void addPortOp(formation, 'input') },
       { label: 'Add output port', action: () => void addPortOp(formation, 'output') },
-      ...(formation.verification ? [
-        { label: 'Migrate legacy verification', action: () => openLegacyVerification(formation) },
-      ] : []),
       ...formationTypeMenuItems(formation),
       { label: 'Delete formation', destructive: true, action: () => deleteFormationOp(formation) },
     ])
-  }, [addPortOp, deleteFormationOp, formationTypeMenuItems, openLegacyVerification, openMenu, runFormation])
+  }, [addPortOp, deleteFormationOp, formationTypeMenuItems, openMenu, runFormation])
 
   const slotMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode, slot: FormationSlot) => {
     const items: MenuItem[] = []
@@ -2184,7 +2067,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       y: event.clientY,
       items: [
         // One mission per file: the Input card is offered only while the mission has none.
-        ...(boardRef.current?.missions?.length ? [] : [{ label: 'Input card', action: () => createMissionAt(w.x, w.y) }]),
+        ...(boardRef.current?.inputCards?.length ? [] : [{ label: 'Input card', action: () => createMissionAt(w.x, w.y) }]),
         { label: 'Solo formation', action: () => void createFormationAt('solo', 'New formation', w.x, w.y) },
         { label: 'Peer formation', action: () => void createFormationAt('peer', 'New peers', w.x, w.y) },
         { label: 'Orchestrated formation', action: () => void createFormationAt('orchestrated', 'New desk', w.x, w.y) },
@@ -2233,7 +2116,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const noteElements = useMemo(() => {
     if (!board) return []
     return [
-      ...(board.missions || []).map(node => ({ id: node.id, title: node.title, kind: 'Input card' })),
+      ...(board.inputCards || []).map(node => ({ id: node.id, title: node.title, kind: 'Input card' })),
       ...(board.formations || []).map(node => ({ id: node.id, title: node.title, kind: 'Formation' })),
       ...(board.gates || []).map(node => ({ id: node.id, title: node.title || 'Gate', kind: 'Gate' })),
       ...(board.tools || []).map(node => ({ id: node.id, title: node.title, kind: 'Tool' })),
@@ -2435,9 +2318,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const gateTalk = useGateTalk({ board, run: activeRun, events: runEvents, agents, gate: pendingHumanGate, focusWindow })
   const pendingGateUpstream = useMemo(() => {
     if (pendingGateInput.state !== 'ready') return pendingGateInput
-    const node = [...(board?.formations || []), ...(board?.gates || []), ...(board?.missions || [])].find(candidate => candidate.id === pendingGateInput.from)
+    const node = [...(board?.formations || []), ...(board?.gates || []), ...(board?.inputCards || [])].find(candidate => candidate.id === pendingGateInput.from)
     return { ...pendingGateInput, from: node?.title || pendingGateInput.from }
-  }, [board?.formations, board?.gates, board?.missions, pendingGateInput])
+  }, [board?.formations, board?.gates, board?.inputCards, pendingGateInput])
   const openEscalations = useMemo(
     () => (activeRun && !activeRun.final ? escalations : []),
     [activeRun, escalations],
@@ -2496,7 +2379,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const gate = board.gates?.find(node => node.id === nodeId)
     return board.formations?.find(node => node.id === nodeId)?.title
       || (gate ? gate.title || gate.kinds.map(gateKindLabel).join(' · ') || 'Gate' : '')
-      || board.missions?.find(node => node.id === nodeId)?.title
+      || board.inputCards?.find(node => node.id === nodeId)?.title
       || ''
   })()
   const nodeAttempts = useMemo(() => projectNodeAttempts(runEvents), [runEvents])
@@ -2509,8 +2392,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (formation) return { kind: 'formation' as const, id: formation.id, title: formation.title }
     const gate = board.gates?.find(node => node.id === inspectedNodeId)
     if (gate) return { kind: 'gate' as const, id: gate.id, title: gate.title || gate.kinds.map(gateKindLabel).join(' · ') || 'Gate' }
-    const mission = board.missions?.find(node => node.id === inspectedNodeId)
-    if (mission) return { kind: 'mission' as const, id: mission.id, title: mission.title }
+    const mission = board.inputCards?.find(node => node.id === inspectedNodeId)
+    if (mission) return { kind: 'inputCard' as const, id: mission.id, title: mission.title }
     return null
   }, [inspectedNodeId, board])
   const inspectableNodeId = useCallback((escalation: OpenEscalation): string => {
@@ -2518,13 +2401,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!candidate || !board) return ''
     const known = board.formations?.some(node => node.id === candidate)
       || board.gates?.some(node => node.id === candidate)
-      || board.missions?.some(node => node.id === candidate)
+      || board.inputCards?.some(node => node.id === candidate)
     return known ? candidate : ''
   }, [board])
 
   const nodeWindowOps = useMemo<NodeWindowOps>(() => ({
     rename: renameNode,
-    updateMission: updateMissionFields,
+    updateInputCard: updateMissionFields,
     setBrief: saveBrief,
     setExecution: saveExecution,
     changeType: changeFormationType,
@@ -2744,14 +2627,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 <div className="empty-title">No missions yet</div>
                 <div className="empty-copy">Create a mission from the top bar to start sketching it.</div>
               </div>
-            ) : (board.missions || []).length + board.formations.length + (board.gates || []).length + (board.tools || []).length === 0 ? (
+            ) : (board.inputCards || []).length + board.formations.length + (board.gates || []).length + (board.tools || []).length === 0 ? (
               <div className="empty-board" data-testid="formations-empty-board">
                 <div className="empty-title">This mission is empty</div>
                 <div className="empty-copy">Add an Input card, a formation, a Gate or a Tool to sketch the workflow.</div>
               </div>
             ) : null}
 
-            {(board?.missions || []).map((mission, index) => {
+            {(board?.inputCards || []).map((mission, index) => {
               const pos = positionOf(mission.id, index)
               const state = nodeStates.get(mission.id)
               return (
@@ -2782,7 +2665,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             })}
 
             {(board?.formations || []).map((formation, index) => {
-              const pos = positionOf(formation.id, index + (board?.missions?.length || 0))
+              const pos = positionOf(formation.id, index + (board?.inputCards?.length || 0))
               const state = nodeStates.get(formation.id)
               return (
                 <div
@@ -2856,30 +2739,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   <ReferencedFiles nodeId={formation.id} files={nodeFileRefs(board, formation.id)} max={2} onMore={openReferencedFilesMenu} className="card-refs" />
                   <div className="fstatus">{state === 'running' || state === 'waiting' ? state : ''}</div>
                   <div className="fbody" onPointerDown={event => beginNodeDrag(event, formation.id, index)}>{renderBody(formation)}</div>
-                  {formation.verification ? (
-                    <button
-                      type="button"
-                      className="verify-band legacy"
-                      data-gate={formation.verification.id}
-                      data-testid={`verify-band-${formation.id}`}
-                      aria-label={`Inspect legacy verification for ${formation.title}`}
-                      onClick={event => openLegacyVerification(formation, event.currentTarget)}
-                      onContextMenu={event => {
-                        const trigger = event.currentTarget
-                        openMenu(event, 'Legacy verification', [
-                          { label: 'Migrate legacy verification', action: () => openLegacyVerification(formation, trigger) },
-                        ])
-                      }}
-                    >
-                      <span className="vico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z" /><path d="M12 8v5M12 16h.01" /></svg></span>
-                      <span className="vlabel">legacy verify</span>
-                      <span className="vkinds">{[
-                        formation.verification.kinds?.length ? formation.verification.kinds.join(' · ') : 'checks not recorded',
-                        formation.verification.criterion || 'criterion not recorded',
-                        formation.verification.onFail || 'failure policy not recorded',
-                      ].join(' · ')}</span>
-                    </button>
-                  ) : null}
                   <ProducedFiles nodeId={formation.id} />
                   {formation.outputs.map((port, portIndex) => {
                     const endpoint = `${formation.id}:${port.id}`
@@ -2899,7 +2758,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             })}
 
             {(board?.gates || []).map((gate, index) => {
-              const nodeIndex = index + (board?.missions?.length || 0) + (board?.formations?.length || 0)
+              const nodeIndex = index + (board?.inputCards?.length || 0) + (board?.formations?.length || 0)
               const pos = positionOf(gate.id, nodeIndex)
               const state = nodeStates.get(gate.id)
               const inputEndpoint = `${gate.id}:in`
@@ -2958,7 +2817,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
             {(board?.tools || []).map((tool, index) => {
               const nodeIndex = index
-                + (board?.missions?.length || 0)
+                + (board?.inputCards?.length || 0)
                 + (board?.formations?.length || 0)
                 + (board?.gates?.length || 0)
               const pos = positionOf(tool.id, nodeIndex)
@@ -3089,7 +2948,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             title={noteTitleOf(target)}
             anchor={target === BOARD_NOTE_TARGET ? boardNotesAnchor : () => (showFlow ? nodeAnchor(target) : noteWindowAnchor(worldRef.current, target))}
             keepClear={target === BOARD_NOTE_TARGET ? undefined : () => nodeWindowKeepClear(target, board.connections)}
-            entries={(target === BOARD_NOTE_TARGET ? notes?.board : noteByNode.get(target)) || []}
+            entries={(target === BOARD_NOTE_TARGET ? notes?.mission : noteByNode.get(target)) || []}
             draft={noteDrafts[target] || ''}
             editingEntryId={noteEditing[target]}
             saving={noteSaving !== ''}
@@ -3144,7 +3003,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         />
       ) : null}
 
-      {startMission && <StartMissionDialog title={startMission.title} beadId={startMission.beadId} inputHint={startMission.inputHint} humanChannel={humanChannelOf(startMission)} onStart={(inputs, channel) => startMissionRun(startMission, inputs, channel)} onClose={() => setStartMission(null)} />}
+      {startMission && <StartMissionDialog title={startMission.title} inputHint={startMission.inputHint} humanChannel={humanChannelOf(startMission)} onStart={(inputs, channel) => startMissionRun(startMission, inputs, channel)} onClose={() => setStartMission(null)} />}
 
       {deleteConfirm ? (
         <div
@@ -3336,79 +3195,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           onSave={draft => void saveMissionEditor(draft)}
           onClose={closeMissionEditor}
         />
-      ) : null}
-
-      {legacyVerification ? (
-        <div
-          className="pop"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Legacy verification · ${legacyVerification.title}`}
-          aria-describedby="legacy-verification-warning"
-          aria-busy={legacyVerification.pending}
-          onPointerDown={event => event.stopPropagation()}
-        >
-          <div className="pop-head">
-            <span className="pt">Legacy verification · {legacyVerification.title}</span>
-            <button
-              ref={legacyVerificationInitialFocusRef}
-              className="x"
-              type="button"
-              aria-label="Close legacy verification"
-              disabled={legacyVerification.pending}
-              onClick={closeLegacyVerification}
-            >x</button>
-          </div>
-          <div className="pop-body">
-            <label>Checks</label>
-            <div className="legacy-value">{legacyVerification.kinds.length ? legacyVerification.kinds.join(' · ') : 'No checks recorded'}</div>
-            <label>Criterion</label>
-            <div className="legacy-value criterion">{legacyVerification.criterion || 'No criterion recorded'}</div>
-            <label>Legacy failure policy</label>
-            <div className="legacy-value">{legacyVerification.onFail || 'No failure policy recorded'}</div>
-            <p id="legacy-verification-warning" className="legacy-note">Inline verification is retired because its verdict cannot be tied safely to an exact Formation attempt and output. Create and wire an explicit Gate to make the check, result, and route visible, then remove this legacy block.</p>
-            {legacyVerification.replacementGateIds.length ? (
-              <>
-                <label htmlFor="legacy-replacement-gate">Replacement Gate</label>
-                <select
-                  id="legacy-replacement-gate"
-                  className="legacy-select"
-                  value={legacyVerification.replacementGateId}
-                  disabled={legacyVerification.pending}
-                  onChange={event => setLegacyVerification(current => current ? { ...current, replacementGateId: event.target.value, error: '' } : null)}
-                >
-                  <option value="" disabled>Choose a wired Gate…</option>
-                  {legacyVerification.replacementGateIds.map(gateId => (
-                    <option key={gateId} value={gateId}>{board?.gates?.find(gate => gate.id === gateId)?.title || gateId}</option>
-                  ))}
-                </select>
-              </>
-            ) : (
-              <p className="legacy-missing-gate">Wire an explicit Gate from a Formation output before removal.</p>
-            )}
-            {legacyVerification.pending ? <div className="legacy-note" role="status">Removing legacy verification…</div> : null}
-            {legacyVerification.error ? <div className="legacy-missing-gate" role="alert">{legacyVerification.error}</div> : null}
-            {runEvents.some(event => event.type === 'verification_verdict' && event.nodeId === legacyVerification.formationId) ? (
-              <div className="legacy-evidence">
-                <div className="legacy-evidence-title">Legacy verification evidence · non-authorizing</div>
-                {runEvents
-                  .filter(event => event.type === 'verification_verdict' && event.nodeId === legacyVerification.formationId)
-                  .map(event => <div key={event.seq}>seq {event.seq} · {typeof event.data?.verdict === 'string' ? event.data.verdict : 'verdict not recorded'}</div>)}
-              </div>
-            ) : null}
-            <div className="pop-actions">
-              <button className="cancel" type="button" disabled={legacyVerification.pending} onClick={closeLegacyVerification}>Keep for inspection</button>
-              <button
-                className="retire"
-                type="button"
-                disabled={legacyVerification.pending || !legacyVerification.replacementGateId}
-                onClick={() => void removeLegacyVerification()}
-              >
-                Remove legacy verification
-              </button>
-            </div>
-          </div>
-        </div>
       ) : null}
 
       {menu ? <CanvasContextMenu menu={menu} onClose={closeMenu} /> : null}

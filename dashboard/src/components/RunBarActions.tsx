@@ -169,7 +169,7 @@ function StopRunDialog({ run, point, pointTitle, boardTitle, titleOf, pendingGat
           if (stopped) onClose()
         }}>
           <p className="stop-run-what">
-            <strong>{boardTitle || run.boardSlug}</strong>{run.beadId ? ` · ${run.beadId}` : ''} · run <span title={run.runId}>{runName}</span>
+            <strong>{boardTitle || run.missionSlug}</strong>{run.beadId ? ` · ${run.beadId}` : ''} · run <span title={run.runId}>{runName}</span>
             {pointTitle && point ? <>, {point.kind === 'waiting' ? 'waiting for you at' : point.kind === 'running' ? 'running' : 'stopped at'} <strong>{pointTitle}</strong></> : null}
           </p>
           <ul className="stop-run-consequences" id="stop-run-consequences">

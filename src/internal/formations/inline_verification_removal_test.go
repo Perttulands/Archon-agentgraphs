@@ -49,8 +49,8 @@ from = "fmn_work:port_work_out"
 to = "gate_wired:in"
 `
 	const layoutRaw = `schema = 1
-boardId = "brd_verification_rejection"
-boardRev = 7
+missionId = "brd_verification_rejection"
+missionRev = 7
 updatedAt = "2026-06-03T16:02:00Z"
 
 [[node]]
@@ -192,8 +192,8 @@ from = "fmn_work:port_work_out"
 to = "gate_review:in"
 `)
 	writeFixture(t, store.LayoutPath(slug), `schema = 1
-boardId = "brd_verification_mixed"
-boardRev = 7
+missionId = "brd_verification_mixed"
+missionRev = 7
 updatedAt = "2026-06-03T16:02:00Z"
 
 [[node]]

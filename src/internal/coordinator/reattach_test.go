@@ -73,7 +73,7 @@ controller = false
 	if !before.ResumeAllowed || before.Final {
 		t.Fatal(before)
 	}
-	if w := post(t, c, "/api/formations/runs/"+id+"/resume", `{"mode":"reattach","reason":"inspect completed evidence"}`); w.Code != 202 {
+	if w := post(t, c, "/api/runs/"+id+"/resume", `{"mode":"reattach","reason":"inspect completed evidence"}`); w.Code != 202 {
 		t.Fatal(w.Body.String())
 	}
 	p := awaitState(t, c, id, "blocked")
@@ -94,7 +94,7 @@ controller = false
 			t.Fatalf("reattach changed old outcome: %+v", event)
 		}
 	}
-	if w := post(t, c, "/api/formations/runs/"+id+"/resume", `{"mode":"redispatch","reason":"old controller lost; new bounded attempt"}`); w.Code != 202 {
+	if w := post(t, c, "/api/runs/"+id+"/resume", `{"mode":"redispatch","reason":"old controller lost; new bounded attempt"}`); w.Code != 202 {
 		t.Fatal(w.Body.String())
 	}
 	awaitState(t, c, id, "waiting_human")

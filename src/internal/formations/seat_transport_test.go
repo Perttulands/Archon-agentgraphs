@@ -75,7 +75,7 @@ func TestSeatAdaptersReadinessStagingCompletionAndImmutableCleanup(t *testing.T)
 						return "", nil
 					case "send-keys":
 						submits++
-						final := "answer\n<<<CHROTE-DONE run-id=run_test status=ok artifact=report>>>"
+						final := "answer\n<<<ARCHON-DONE run-id=run_test status=ok artifact=report>>>"
 						return "", os.WriteFile(filepath.Join(root, "native.jsonl"), []byte(nativeFixture(h, root, loaded, final)), 0600)
 					case "kill-session":
 						killed = args[len(args)-1]
@@ -83,7 +83,7 @@ func TestSeatAdaptersReadinessStagingCompletionAndImmutableCleanup(t *testing.T)
 					}
 					return "", fmt.Errorf("unexpected command %v", args)
 				}}
-			seat, err := transport.Create(ctx, "socket", "form-proof-worker", root, root, HarnessVariant{ID: h, Model: "test-model"})
+			seat, err := transport.Create(ctx, "socket", "archon-proof-worker", root, root, HarnessVariant{ID: h, Model: "test-model"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -127,7 +127,7 @@ func TestClaudeNativeTurnIdentityAndEndTurn(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			root := t.TempDir()
 			pointer := seatPointer(filepath.Join(root, "brief.md"))
-			final := "answer\n<<<CHROTE-DONE run-id=run_test status=ok artifact=result>>>"
+			final := "answer\n<<<ARCHON-DONE run-id=run_test status=ok artifact=result>>>"
 			raw := nativeFixture("claude-code", root, pointer, final)
 			switch kind {
 			case "wrong cwd":
@@ -188,7 +188,7 @@ func TestWorkerObservationsUseNativeTurnsAndFailSettingsMismatch(t *testing.T) {
 	for _, kind := range []string{"complete", "never prompted", "incomplete", "missing", "mismatch"} {
 		t.Run(kind, func(t *testing.T) {
 			store, started := startS4DispatchRun(t)
-			final := "worker result\n<<<CHROTE-DONE run-id=" + started.RunID + " status=ok artifact=report>>>"
+			final := "worker result\n<<<ARCHON-DONE run-id=" + started.RunID + " status=ok artifact=report>>>"
 			turn := codexTranscriptTurn{Consumed: true, Complete: true, SessionID: "native-worker", TurnID: "turn", Text: final, Model: "test-model", Effort: "medium"}
 			want := workerOutcomeOutputCaptured
 			errs := map[string]error{}
@@ -246,8 +246,8 @@ func TestLatestWorkerTurnDoesNotReuseEarlierCompletion(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/complete=%v", h, complete), func(t *testing.T) {
 				root := t.TempDir()
 				pointer := seatPointer(filepath.Join(root, "worker.md"))
-				first := nativeFixture(h, root, pointer, "first\n<<<CHROTE-DONE run-id=run_test status=ok artifact=first>>>")
-				second := strings.ReplaceAll(nativeFixture(h, root, pointer, "second\n<<<CHROTE-DONE run-id=run_test status=ok artifact=second>>>"), "\"turn\"", "\"turn-two\"")
+				first := nativeFixture(h, root, pointer, "first\n<<<ARCHON-DONE run-id=run_test status=ok artifact=first>>>")
+				second := strings.ReplaceAll(nativeFixture(h, root, pointer, "second\n<<<ARCHON-DONE run-id=run_test status=ok artifact=second>>>"), "\"turn\"", "\"turn-two\"")
 				lines := splitJSONLines([]byte(second))
 				var tail [][]byte
 				if h == "openai-codex" {
@@ -470,7 +470,7 @@ func TestStageWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 					return "", fmt.Errorf("unexpected command %v", args)
 				},
 			}
-			seat := &nativeSeat{name: "form-proof-worker", sessionID: "$42", paneID: "%23", variant: HarnessVariant{ID: harness.id}, brief: "/state/briefs/proof.md"}
+			seat := &nativeSeat{name: "archon-proof-worker", sessionID: "$42", paneID: "%23", variant: HarnessVariant{ID: harness.id}, brief: "/state/briefs/proof.md"}
 			for _, paste := range []struct {
 				dispatch string
 				states   []string
@@ -553,7 +553,7 @@ func TestStageFindsThePointerAHarnessWrappedAmongCodexStars(t *testing.T) {
 				return "", fmt.Errorf("unexpected command %v", args)
 			},
 		}
-		seat := &nativeSeat{name: "form-proof-worker", sessionID: "$42", paneID: "%23", variant: HarnessVariant{ID: "openai-codex"}, brief: tc.brief}
+		seat := &nativeSeat{name: "archon-proof-worker", sessionID: "$42", paneID: "%23", variant: HarnessVariant{ID: "openai-codex"}, brief: tc.brief}
 		err := transport.Stage(ctx, "socket", seat, "first-brief", seatPointer(seat.brief))
 		cancel()
 		if !errors.Is(err, tc.want) || entered != (tc.want == nil) {
@@ -623,7 +623,7 @@ func TestReadyOnAReusedSeatWaitsForAnIdleEmptyInputNotTheBanner(t *testing.T) {
 				},
 			}
 			// The seat took its first peer turn; the facilitator dispatch reuses it.
-			seat := &nativeSeat{name: "form-proof-peer", sessionID: "$42", paneID: "%23", variant: HarnessVariant{ID: harness.id}, pointer: seatPointer("/state/briefs/first-turn.md")}
+			seat := &nativeSeat{name: "archon-proof-peer", sessionID: "$42", paneID: "%23", variant: HarnessVariant{ID: harness.id}, pointer: seatPointer("/state/briefs/first-turn.md")}
 			if err := transport.Ready(ctx, "socket", seat, harness.id); err != nil {
 				t.Fatalf("reused seat readiness: %v", err)
 			}

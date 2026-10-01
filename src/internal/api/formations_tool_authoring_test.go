@@ -26,7 +26,7 @@ type formationsAPIToolAuthoringHarness struct {
 type formationsAPIToolMutationEnvelope struct {
 	Success bool `json:"success"`
 	Data    struct {
-		Board  *formations.BoardDocument  `json:"board"`
+		Board  *formations.BoardDocument  `json:"mission"`
 		Layout *formations.LayoutDocument `json:"layout"`
 		Tool   formations.ToolNode        `json:"tool"`
 		ToolID string                     `json:"toolId"`
@@ -1402,8 +1402,8 @@ func newFormationsAPIToolAuthoringHarness(t *testing.T, withLayout bool) *format
 func formationsAPIToolAuthoringBoardFixture() string {
 	return strings.Replace(
 		formationsAPIToolParityBoardFixture(),
-		"\n\n[[mission]]",
-		"\n"+formationsAPIToolBoardSourceSentinel+"\n\n[[mission]]",
+		"\n\n[[inputCard]]",
+		"\n"+formationsAPIToolBoardSourceSentinel+"\n\n[[inputCard]]",
 		1,
 	)
 }
@@ -1429,7 +1429,7 @@ func (h *formationsAPIToolAuthoringHarness) validFrame(operation string) string 
 }
 
 func (h *formationsAPIToolAuthoringHarness) patch(body, ifMatch string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/"+h.slug, bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/"+h.slug, bytes.NewBufferString(body))
 	if ifMatch != "" {
 		req.Header.Set("If-Match", ifMatch)
 	}
@@ -1470,7 +1470,7 @@ func assertFormationsAPIToolMutationSuccess(
 	if err != nil {
 		t.Fatalf("read canonical Tool mutation board: %v", err)
 	}
-	assertFormationsAPIToolCanonicalJSON(t, "board", response.Data.Board, persistedBoard)
+	assertFormationsAPIToolCanonicalJSON(t, "mission", response.Data.Board, persistedBoard)
 	if response.Data.Board.UpdatedBy != "agent:api-test" {
 		t.Fatalf("Tool mutation updatedBy = %q, want sole top-level actor", response.Data.Board.UpdatedBy)
 	}
@@ -1495,7 +1495,7 @@ func assertFormationsAPIToolMutationSuccess(
 			t.Fatalf("Tool mutation response omitted present canonical layout")
 		}
 		if response.Data.Layout.BoardRev != response.Data.Board.Rev {
-			t.Fatalf("Tool mutation layout boardRev = %d, board rev = %d", response.Data.Layout.BoardRev, response.Data.Board.Rev)
+			t.Fatalf("Tool mutation layout missionRev = %d, board rev = %d", response.Data.Layout.BoardRev, response.Data.Board.Rev)
 		}
 		assertFormationsAPIToolCanonicalJSON(t, "layout", response.Data.Layout, persistedLayout)
 	} else {
@@ -1531,7 +1531,7 @@ func assertFormationsAPIToolCanonicalAbsentLayoutSuccess(
 	if err != nil {
 		t.Fatalf("read canonical mutation board: %v", err)
 	}
-	assertFormationsAPIToolCanonicalJSON(t, "board", response.Data.Board, persisted)
+	assertFormationsAPIToolCanonicalJSON(t, "mission", response.Data.Board, persisted)
 	if response.Data.Board.UpdatedBy != wantUpdatedBy || persisted.UpdatedBy != wantUpdatedBy {
 		t.Fatalf(
 			"mutation updatedBy = response %q persisted %q, want %q",
@@ -1571,7 +1571,7 @@ func assertFormationsAPIToolResultKeys(t *testing.T, body []byte, wantTool bool)
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		t.Fatalf("decode Tool mutation result shape: %v\n%s", err, body)
 	}
-	want := map[string]bool{"board": true, "layout": true}
+	want := map[string]bool{"mission": true, "layout": true}
 	if wantTool {
 		want["tool"] = true
 	} else {

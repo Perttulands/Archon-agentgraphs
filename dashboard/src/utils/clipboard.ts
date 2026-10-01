@@ -20,7 +20,7 @@ function fallbackCopyText(text: string): boolean {
   textarea.value = text
   textarea.setAttribute('readonly', '')
   textarea.setAttribute('aria-hidden', 'true')
-  textarea.setAttribute('data-chrote-clipboard-fallback', 'true')
+  textarea.setAttribute('data-archon-clipboard-fallback', 'true')
   Object.assign(textarea.style, {
     position: 'fixed', top: '0', left: '0', width: '1px', height: '1px',
     padding: '0', border: '0', opacity: '0', pointerEvents: 'none',

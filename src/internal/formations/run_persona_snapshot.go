@@ -32,17 +32,17 @@ func (s *Store) readRunPersonaBinding(runID, nodeID string, slot FormationSlot) 
 	var document struct {
 		Schema    int          `toml:"schema"`
 		RunID     string       `toml:"runId"`
-		BoardID   string       `toml:"boardId"`
-		BoardSlug string       `toml:"boardSlug"`
-		BoardRev  int          `toml:"boardRev"`
-		MissionID string       `toml:"missionId"`
+		BoardID   string       `toml:"missionId"`
+		BoardSlug string       `toml:"missionSlug"`
+		BoardRev  int          `toml:"missionRev"`
+		MissionID string       `toml:"inputCardId"`
 		Bindings  []runBinding `toml:"binding"`
 	}
 	if err := toml.Unmarshal(raw, &document); err != nil {
 		return invalid("invalid run persona snapshot", err)
 	}
 	started := events[0]
-	if document.RunID != runID || document.BoardID != started.BoardID || document.BoardSlug != stringFromEventData(started, "boardSlug") || document.BoardRev != started.BoardRev || document.MissionID != started.MissionID {
+	if document.RunID != runID || document.BoardID != started.BoardID || document.BoardSlug != stringFromEventData(started, "missionSlug") || document.BoardRev != started.BoardRev || document.MissionID != started.MissionID {
 		return invalid("run persona snapshot belongs to a different run or board", nil)
 	}
 	if document.Schema != 3 {

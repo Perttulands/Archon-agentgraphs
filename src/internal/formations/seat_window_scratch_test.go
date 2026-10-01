@@ -77,7 +77,7 @@ func TestScratchSeatWindowKeepsItsSizeForALoneViewer(t *testing.T) {
 	// The executor's standing server, then a seat created as realSeatTransport.Create
 	// creates one, with cat standing in for the harness.
 	tmux("new-session", "-d", "-s", "keeper", "exec cat")
-	ids := strings.Fields(tmux("new-session", "-d", "-P", "-F", "#{session_id} #{pane_id}", "-e", "TERM=xterm-256color", "-s", "form-scratch-slot", "-c", root, "exec cat"))
+	ids := strings.Fields(tmux("new-session", "-d", "-P", "-F", "#{session_id} #{pane_id}", "-e", "TERM=xterm-256color", "-s", "archon-scratch-slot", "-c", root, "exec cat"))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	control, err := openSeatControl(ctx, socket, ids[0])

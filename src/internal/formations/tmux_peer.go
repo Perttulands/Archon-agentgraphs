@@ -137,7 +137,7 @@ func (e *TmuxFormationExecutor) peerConversationInstructions(req FormationExecut
 	base := shellQuote(cli) + " --workspace " + shellQuote(e.store.Workspace) + " peer "
 	identity := fmt.Sprintf(" --run %s --node %s --attempt %d --slot %s", shellQuote(req.RunID), shellQuote(req.NodeID), req.Attempt, shellQuote(binding.Slot.ID))
 	lines := []string{
-		"All independent openings are now published. Work with the other peers through the shared conversation file: " + filepath.Join(e.store.Workspace, ".formations", "artifacts", req.RunID, path),
+		"All independent openings are now published. Work with the other peers through the shared conversation file: " + filepath.Join(e.store.Workspace, ".archon", "artifacts", req.RunID, path),
 		"The conversation's artifact reference, relative to this run's artifact directory, is " + path + ". Use that reference in your completion sentinel.",
 		"You are equal peers: there is no controller or prescribed turn order. Read, respond, investigate and propose as useful. Continue this turn while the conversation is open; a first message does not finish your participation.",
 		"Use the commands below for all writes. They append attributed, ordered records safely. Do not edit, overwrite or append to the journal directly and do not drive another peer's terminal.",

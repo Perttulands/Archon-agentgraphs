@@ -5,7 +5,7 @@ import RunBarActions, { DEFAULT_STOP_REASON, stopRunConsequences } from './RunBa
 import type { RunStatusProjection } from './formationsTypes'
 
 const run = (extra: Partial<RunStatusProjection> = {}): RunStatusProjection => ({
-  runId: 'run_01M3P6BC5ZZY875NVMVM810K49', status: 'waiting_human', final: false, boardSlug: 'runs-gate', missionId: 'mis_note', eventCount: 9, beadId: 'form-3yd.10', ...extra,
+  runId: 'run_01M3P6BC5ZZY875NVMVM810K49', status: 'waiting_human', final: false, missionSlug: 'runs-gate', inputCardId: 'mis_note', eventCount: 9, beadId: 'form-3yd.10', ...extra,
 })
 const titleOf = (nodeId: string) => ({ fmn_draft: 'Draft', gate_review: 'Operator review' } as Record<string, string>)[nodeId] || nodeId
 

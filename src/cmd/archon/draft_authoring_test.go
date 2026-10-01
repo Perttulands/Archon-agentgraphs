@@ -14,7 +14,7 @@ import (
 
 func TestArchonDraftAuthoringSavesAndAdmissionListsEveryProblem(t *testing.T) {
 	workspace := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", filepath.Join(t.TempDir(), "agents"))
+	t.Setenv("ARCHON_AGENTS_DIR", filepath.Join(t.TempDir(), "agents"))
 	runner := &fakeTmux{live: map[string]bool{}}
 	archon := func(args ...string) (string, string, int) {
 		return runArchon(t, runner, append([]string{"--workspace", workspace}, args...)...)
@@ -81,7 +81,7 @@ func TestArchonDraftAuthoringSavesAndAdmissionListsEveryProblem(t *testing.T) {
 
 func TestArchonGateCreateWithoutKindsIsARoutableHumanGate(t *testing.T) {
 	workspace := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", filepath.Join(t.TempDir(), "agents"))
+	t.Setenv("ARCHON_AGENTS_DIR", filepath.Join(t.TempDir(), "agents"))
 	runner := &fakeTmux{live: map[string]bool{}}
 	archon := func(args ...string) string {
 		t.Helper()
@@ -135,11 +135,11 @@ func TestRemoteAdmissionFindingsAndBoardValidation(t *testing.T) {
 	findings := `[{"code":"unstaffed_slot","nodeId":"fmn_plan","message":"formation \"fmn_plan\" slot \"Planner\" (slot_plan) needs an agent"},{"code":"gate_not_routable","nodeId":"gate_lint","message":"gate \"gate_lint\" needs forbidden text for code check output_absent@1"}]`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/formations/missions/draft":
-			w.Write([]byte(`{"success":true,"data":{"board":{"rev":4}}}`))
-		case "/api/formations/missions/draft/validation":
-			w.Write([]byte(`{"success":true,"data":{"boardRev":4,"errors":` + findings + `,"warnings":[]}}`))
-		case "/api/formations/runs":
+		case "/api/missions/draft":
+			w.Write([]byte(`{"success":true,"data":{"mission":{"rev":4}}}`))
+		case "/api/missions/draft/validation":
+			w.Write([]byte(`{"success":true,"data":{"missionRev":4,"errors":` + findings + `,"warnings":[]}}`))
+		case "/api/runs":
 			w.WriteHeader(422)
 			w.Write([]byte(`{"success":false,"error":{"code":"RUN_ADMISSION_FAILED","message":"The run needs 2 fixes before it can start","findings":` + findings + `}}`))
 		default:

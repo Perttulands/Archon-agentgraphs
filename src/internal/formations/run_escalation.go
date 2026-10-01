@@ -26,11 +26,11 @@ type OpenEscalation struct {
 func ParseEscalationSentinel(captured, runID string) (EscalationSentinel, bool) {
 	remaining := captured
 	for {
-		start := strings.Index(remaining, "<<<CHROTE-ESCALATE ")
+		start := strings.Index(remaining, "<<<ARCHON-ESCALATE ")
 		if start == -1 {
 			return EscalationSentinel{}, false
 		}
-		remaining = remaining[start+len("<<<CHROTE-ESCALATE "):]
+		remaining = remaining[start+len("<<<ARCHON-ESCALATE "):]
 		end := strings.Index(remaining, ">>>")
 		if end == -1 {
 			return EscalationSentinel{}, false

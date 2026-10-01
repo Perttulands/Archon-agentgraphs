@@ -27,13 +27,13 @@ var (
 	ErrSelfWire                   = errors.New("A node cannot be wired to itself")
 	ErrDuplicateConnection        = errors.New("This connection already exists")
 	ErrIncompatibleToolConnection = errors.New("Tool ports are incompatible with this connection")
-	ErrConflict                   = errors.New("formations conflict")
-	ErrAmbiguousSelector          = errors.New("ambiguous formations selector")
-	ErrInvalidSlug                = errors.New("invalid formations slug")
+	ErrConflict                   = errors.New("archon conflict")
+	ErrAmbiguousSelector          = errors.New("ambiguous archon selector")
+	ErrInvalidSlug                = errors.New("invalid archon slug")
 	ErrInvalidRunLimits           = errors.New("limits must be positive when set; omit a limit to run without it")
-	ErrNotFound                   = errors.New("formations file not found")
-	ErrPreconditionRequired       = errors.New("formations write precondition required")
-	ErrUnsupportedSchema          = errors.New("unsupported formations schema")
+	ErrNotFound                   = errors.New("archon file not found")
+	ErrPreconditionRequired       = errors.New("archon write precondition required")
+	ErrUnsupportedSchema          = errors.New("unsupported archon schema")
 	ErrInvalidToolMutation        = errors.New("invalid_tool_mutation")
 	ErrInvalidDefinitionSource    = errors.New(InvalidDefinitionSourceCode)
 	ErrInvalidGateKind            = errors.New("invalid_gate_kind")
@@ -70,7 +70,7 @@ type BoardDocument struct {
 	Rev         int               `json:"rev"`
 	UpdatedBy   string            `json:"updatedBy,omitempty"`
 	UpdatedAt   string            `json:"updatedAt,omitempty"`
-	Missions    []MissionNode     `json:"missions,omitempty"`
+	Missions    []MissionNode     `json:"inputCards,omitempty"`
 	Formations  []FormationNode   `json:"formations,omitempty"`
 	Gates       []GateNode        `json:"gates,omitempty"`
 	Tools       []ToolNode        `json:"tools,omitempty"`
@@ -89,8 +89,8 @@ type BoardSummary struct {
 
 type LayoutDocument struct {
 	Schema    int          `json:"schema"`
-	BoardID   string       `json:"boardId"`
-	BoardRev  int          `json:"boardRev"`
+	BoardID   string       `json:"missionId"`
+	BoardRev  int          `json:"missionRev"`
 	UpdatedAt string       `json:"updatedAt,omitempty"`
 	Nodes     []LayoutNode `json:"nodes,omitempty"`
 	Edges     []LayoutEdge `json:"edges,omitempty"`
@@ -99,7 +99,7 @@ type LayoutDocument struct {
 }
 
 type BoardChangeSignal struct {
-	Board      string `json:"board"`
+	Board      string `json:"mission"`
 	Changed    bool   `json:"changed"`
 	Signal     string `json:"signal,omitempty"`
 	ETag       string `json:"etag"`
@@ -155,11 +155,11 @@ func (s *Store) workspaceRoot() string {
 }
 
 func (s *Store) BoardPath(slug string) string {
-	return filepath.Join(s.workspaceRoot(), ".formations", "boards", slug+".formation.toml")
+	return filepath.Join(s.workspaceRoot(), ".archon", "missions", slug+".mission.toml")
 }
 
 func (s *Store) LayoutPath(slug string) string {
-	return filepath.Join(s.workspaceRoot(), ".formations", "layout", slug+".layout.toml")
+	return filepath.Join(s.workspaceRoot(), ".archon", "layout", slug+".layout.toml")
 }
 
 func (s *Store) ListBoards() ([]BoardSummary, error) {
@@ -600,8 +600,8 @@ func parseLayoutCompatibility(raw []byte) (*LayoutDocument, error) {
 	}
 	return &LayoutDocument{
 		Schema:    schema,
-		BoardID:   doc.stringValue("boardId"),
-		BoardRev:  doc.intValue("boardRev"),
+		BoardID:   doc.stringValue("missionId"),
+		BoardRev:  doc.intValue("missionRev"),
 		UpdatedAt: doc.stringValue("updatedAt"),
 		Nodes:     parseLayoutNodes(raw),
 		Edges:     parseLayoutEdges(raw),
@@ -636,7 +636,7 @@ func renderInt(v int) string {
 func renderBoard(slug, title, updatedBy string, updatedAt time.Time) []byte {
 	var b strings.Builder
 	b.WriteString("schema = " + renderInt(NewBoardSchema) + "\n")
-	b.WriteString("id = " + renderString(newPrefixedID("brd")) + "\n")
+	b.WriteString("id = " + renderString(newPrefixedID("msn")) + "\n")
 	b.WriteString("slug = " + renderString(slug) + "\n")
 	b.WriteString("title = " + renderString(title) + "\n")
 	b.WriteString("rev = 1\n")

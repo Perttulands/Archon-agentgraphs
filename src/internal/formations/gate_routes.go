@@ -165,7 +165,7 @@ func boardNodeKind(board *BoardDocument, nodeID string) string {
 	}
 	for _, mission := range board.Missions {
 		if mission.ID == nodeID {
-			return "mission"
+			return "inputCard"
 		}
 	}
 	for _, tool := range board.Tools {

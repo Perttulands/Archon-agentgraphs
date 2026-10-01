@@ -13,7 +13,7 @@ import (
 
 var (
 	ErrAgentSessionOffline   = errors.New("agent session offline")
-	ErrAlreadyExists         = errors.New("formations file already exists")
+	ErrAlreadyExists         = errors.New("archon file already exists")
 	ErrAmbiguousAgentBinding = errors.New("ambiguous agent binding")
 )
 
@@ -253,7 +253,7 @@ func NewPersonaStore(agentsDir string) *PersonaStore {
 }
 
 func DefaultAgentsDir() string {
-	if dir := strings.TrimSpace(os.Getenv("CHROTE_AGENTS_DIR")); dir != "" {
+	if dir := strings.TrimSpace(os.Getenv("ARCHON_AGENTS_DIR")); dir != "" {
 		return dir
 	}
 	home, err := os.UserHomeDir()

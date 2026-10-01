@@ -130,7 +130,7 @@ export interface RunProblem extends EvidenceProblem {
 export interface NodeEvidence {
   runId: string
   nodeId: string
-  kind: 'mission' | 'formation' | 'gate' | 'tool'
+  kind: 'inputCard' | 'formation' | 'gate' | 'tool'
   /** Display identity and topology from the board frozen at admission. */
   definition?: {
     title: string
@@ -163,7 +163,7 @@ export interface RunArtifactPreview extends RunArtifactEntry {
   text?: EvidenceText
 }
 
-const runPath = (runId: string) => `/api/formations/runs/${encodeURIComponent(runId)}`
+const runPath = (runId: string) => `/api/runs/${encodeURIComponent(runId)}`
 const artifactPath = (name: string) => name.split('/').map(encodeURIComponent).join('/')
 
 /**

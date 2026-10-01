@@ -26,7 +26,7 @@ func TestFormationsAPIReportsUnsafeBeadIDsByField(t *testing.T) {
 		mux.ServeHTTP(rec, req)
 		return rec
 	}
-	if rec := serve(http.MethodPost, "/api/formations/boards", "", `{"title":"Beads","slug":"beads"}`); rec.Code != http.StatusCreated {
+	if rec := serve(http.MethodPost, "/api/missions", "", `{"title":"Beads","slug":"beads"}`); rec.Code != http.StatusCreated {
 		t.Fatalf("create board = %d %s", rec.Code, rec.Body.String())
 	}
 	patch := func(body string) *httptest.ResponseRecorder {
@@ -35,9 +35,9 @@ func TestFormationsAPIReportsUnsafeBeadIDsByField(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return serve(http.MethodPatch, "/api/formations/boards/beads", board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{"))
+		return serve(http.MethodPatch, "/api/missions/beads", board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{"))
 	}
-	if rec := patch(`{"createMission":{"title":"Work"}}`); rec.Code != http.StatusOK {
+	if rec := patch(`{"createInputCard":{"title":"Work"}}`); rec.Code != http.StatusOK {
 		t.Fatalf("safe mission = %d %s", rec.Code, rec.Body.String())
 	}
 	if rec := patch(`{"createFormation":{"type":"solo","title":"Worker"}}`); rec.Code != http.StatusOK {
@@ -71,7 +71,7 @@ func TestFormationsAPIReportsUnsafeBeadIDsByField(t *testing.T) {
 	if after, err := store.ReadBoard("beads"); err != nil || after.ETag != before.ETag {
 		t.Fatalf("rejected Bead IDs changed the board: %v", err)
 	}
-	for _, path := range []string{"/api/formations/boards/bad..slug", "/api/formations/boards/bad%2Fpath"} {
+	for _, path := range []string{"/api/missions/bad..slug", "/api/missions/bad%2Fpath"} {
 		rec := serve(http.MethodPatch, path, before.ETag, `{"title":"x"}`)
 		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"message":"Invalid formation slug"`) {
 			t.Errorf("%s = %d %s, want Invalid formation slug", path, rec.Code, rec.Body.String())

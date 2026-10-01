@@ -59,7 +59,7 @@ func TestArchonToolCreatePublishesCanonicalPairWithoutReflowOrImplicitWiring(t *
 			if code != 0 || stderr != "" {
 				t.Fatalf("tool create code=%d stdout=%s stderr=%s", code, stdout, stderr)
 			}
-			assertArchonToolJSONRootKeys(t, stdout, "board", "layout", "tool")
+			assertArchonToolJSONRootKeys(t, stdout, "mission", "layout", "tool")
 
 			var result formations.ToolCreateResult
 			if err := json.Unmarshal([]byte(stdout), &result); err != nil {
@@ -280,7 +280,7 @@ func TestArchonToolUpdatePreservesPresentOrAbsentLayoutState(t *testing.T) {
 			if code != 0 || stderr != "" {
 				t.Fatalf("Tool update code=%d stdout=%s stderr=%s", code, stdout, stderr)
 			}
-			assertArchonToolJSONRootKeys(t, stdout, "board", "layout", "tool")
+			assertArchonToolJSONRootKeys(t, stdout, "mission", "layout", "tool")
 			var result formations.ToolUpdateResult
 			if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 				t.Fatalf("decode Tool update result: %v\n%s", err, stdout)
@@ -355,7 +355,7 @@ func TestArchonToolDeletePreservesPresentOrAbsentLayoutState(t *testing.T) {
 			if code != 0 || stderr != "" {
 				t.Fatalf("Tool delete code=%d stdout=%s stderr=%s", code, stdout, stderr)
 			}
-			assertArchonToolJSONRootKeys(t, stdout, "board", "layout", "toolId")
+			assertArchonToolJSONRootKeys(t, stdout, "mission", "layout", "toolId")
 			var result formations.ToolDeleteResult
 			if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 				t.Fatalf("decode Tool delete result: %v\n%s", err, stdout)
@@ -420,9 +420,9 @@ func TestArchonToolInspectIsReadOnlyAndSelectorSafe(t *testing.T) {
 			if err := json.Unmarshal([]byte(stdout), &topLevel); err != nil {
 				t.Fatalf("decode Tool inspect top level %q: %v\n%s", selector, err, stdout)
 			}
-			assertArchonToolExactJSONKeys(t, topLevel, "board", "tool")
+			assertArchonToolExactJSONKeys(t, topLevel, "mission", "tool")
 			var boardIdentity map[string]json.RawMessage
-			if err := json.Unmarshal(topLevel["board"], &boardIdentity); err != nil {
+			if err := json.Unmarshal(topLevel["mission"], &boardIdentity); err != nil {
 				t.Fatalf("decode Tool inspect board identity %q: %v\n%s", selector, err, stdout)
 			}
 			assertArchonToolExactJSONKeys(t, boardIdentity, "id", "slug", "title", "rev", "etag")
@@ -439,7 +439,7 @@ func TestArchonToolInspectIsReadOnlyAndSelectorSafe(t *testing.T) {
 			assertArchonToolPortProjectionKeys(t, toolProjection["inputs"], []string{"id", "name", "label", "direction", "kind", "acceptedMediaTypes", "required", "role"})
 			assertArchonToolPortProjectionKeys(t, toolProjection["outputs"], []string{"id", "name", "label", "direction", "kind", "acceptedMediaTypes"})
 			var response struct {
-				Board archonBoardIdentity `json:"board"`
+				Board archonBoardIdentity `json:"mission"`
 				Tool  formations.ToolNode `json:"tool"`
 			}
 			if err := json.Unmarshal([]byte(stdout), &response); err != nil {
@@ -1076,7 +1076,7 @@ func assertArchonToolPairFileIdentity(t *testing.T, harness *archonToolAuthoring
 	t.Helper()
 	after := snapshotArchonToolPairFileIdentity(t, harness)
 	for name, pair := range map[string][2]os.FileInfo{
-		"board":  {before.board, after.board},
+		"mission":  {before.board, after.board},
 		"layout": {before.layout, after.layout},
 	} {
 		if !os.SameFile(pair[0], pair[1]) || pair[0].Mode() != pair[1].Mode() || !pair[0].ModTime().Equal(pair[1].ModTime()) {

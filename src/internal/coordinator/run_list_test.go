@@ -6,15 +6,14 @@ import (
 	"testing"
 )
 
-// Runs list by ?mission=; ?board=, its name before the rename, still works for
-// one release and answers the same.
+// Runs list by ?mission=; an unknown ?board= filters nothing.
 func TestRunListFiltersByMission(t *testing.T) {
 	c, executor, _ := fixture(t)
 	id := startRun(t, c)
 	<-executor.entered
 	executor.proceed <- struct{}{}
 	awaitState(t, c, id, "waiting_human")
-	for path, want := range map[string]int{"/api/formations/runs": 1, "/api/formations/runs?mission=proof": 1, "/api/formations/runs?mission=other": 0, "/api/formations/runs?board=proof": 1, "/api/formations/runs?board=other": 0} {
+	for path, want := range map[string]int{"/api/runs": 1, "/api/runs?mission=proof": 1, "/api/runs?mission=other": 0, "/api/runs?board=other": 1} {
 		w := httptest.NewRecorder()
 		c.Handler().ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		var body struct {

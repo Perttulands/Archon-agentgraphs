@@ -84,7 +84,7 @@ func (e *judgeFailsOnceExecutor) ExecuteFormation(req formations.FormationExecut
 		verdict = "fail"
 	}
 	e.mu.Unlock()
-	result.Text = "```chrote-verdict\n{\"verdict\":\"" + verdict + "\",\"reason\":\"judged " + verdict + "\",\"evidence\":[]}\n```"
+	result.Text = "```archon-verdict\n{\"verdict\":\"" + verdict + "\",\"reason\":\"judged " + verdict + "\",\"evidence\":[]}\n```"
 	for port := range result.Outputs {
 		result.Outputs[port] = formations.FormationOutputPayload{Text: result.Text}
 	}

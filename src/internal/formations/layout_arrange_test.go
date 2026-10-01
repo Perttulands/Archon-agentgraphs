@@ -66,7 +66,7 @@ func TestArrangeLayoutFollowsScoutingRunOrder(t *testing.T) {
 		critic      = "fmn_01M2N9N1PXQ39NHQY46F0J0V63"
 		signoff     = "gate_01M2N9N1R4R184Y5G3R45BB5G1"
 	)
-	fixture := filepath.Join("testdata", "arrange", "scouting.formation.toml")
+	fixture := filepath.Join("testdata", "arrange", "scouting.mission.toml")
 	store, slug, byID := arrangeFixture(t, fixture, "")
 	assertRunOrder(t, byID, []string{mission, mapStep, framing, questions, answers, draft, adversarial, signoff})
 	assertJudgeBelow(t, byID, adversarial, critic)
@@ -117,8 +117,8 @@ title = "Unwired draft"
 		const adversarialGate = "title = \"Adversarial review\"\nkinds = [\"formation\"]\n"
 		const criticTitle = "title = \"Brief critic\"\n"
 		for label, arranged := range map[string]map[string]LayoutNode{
-			"the gate's rubric":       withFiles("gate.formation.toml", adversarialGate, adversarialGate+"files = [\"rubrics/review.md\"]\n"),
-			"the judge's brief files": withFiles("judge.formation.toml", criticTitle, criticTitle+"[formation.brief]\nfiles = [\"rubrics/review.md\"]\n"),
+			"the gate's rubric":       withFiles("gate.mission.toml", adversarialGate, adversarialGate+"files = [\"rubrics/review.md\"]\n"),
+			"the judge's brief files": withFiles("judge.mission.toml", criticTitle, criticTitle+"[formation.brief]\nfiles = [\"rubrics/review.md\"]\n"),
 		} {
 			// The gate's card, its chip row and the note gap all fit above the judge.
 			if want := arranged[adversarial].Y + 124 + arrangementFileRow + arrangementRowGap; arranged[critic].X != arranged[adversarial].X || arranged[critic].Y < want {
@@ -148,7 +148,7 @@ to = "fmn_00_rework:port_rework_in"
 }
 
 func TestArrangeLayoutFollowsDeliveryRunOrder(t *testing.T) {
-	_, _, byID := arrangeFixture(t, filepath.Join("..", "..", "..", "examples", "delivery.formation.toml"), "")
+	_, _, byID := arrangeFixture(t, filepath.Join("..", "..", "..", "examples", "delivery.mission.toml"), "")
 	assertRunOrder(t, byID, []string{"mis_delivery", "fmn_plan", "fmn_beads", "gate_beads_review", "fmn_execution", "fmn_final_review"})
 	assertJudgeBelow(t, byID, "gate_beads_review", "fmn_beads_reviewer")
 }

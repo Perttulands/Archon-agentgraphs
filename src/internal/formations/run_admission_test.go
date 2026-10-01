@@ -110,7 +110,7 @@ slug = "draft"
 title = "Draft"
 rev = 3
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Ship it"
@@ -276,7 +276,7 @@ func TestRunAdmissionReportsEveryProblemAtOnce(t *testing.T) {
 // that message.
 func TestRunAdmissionRefusesAFileWithSeveralInputCards(t *testing.T) {
 	store := NewStore(t.TempDir())
-	raw := strings.Replace(admissionDraftBoard, "[[formation]]", "[[mission]]\nid = \"mis_idle\"\ntitle = \"Idle\"\ngoal = \"\"\n\n[[formation]]", 1)
+	raw := strings.Replace(admissionDraftBoard, "[[formation]]", "[[inputCard]]\nid = \"mis_idle\"\ntitle = \"Idle\"\ngoal = \"\"\n\n[[formation]]", 1)
 	writeFixture(t, store.BoardPath("draft"), raw)
 	board, err := store.ReadBoard("draft")
 	if err != nil {
@@ -289,7 +289,7 @@ func TestRunAdmissionRefusesAFileWithSeveralInputCards(t *testing.T) {
 		t.Fatalf("validation errors = %+v, want one several_input_cards finding", whole.Errors)
 	}
 	message := findings[0].Message
-	for _, part := range []string{`mission "draft" holds 2 Input cards`, `"Main" (mis_main)`, `"Idle" (mis_idle)`, "draft.formation.toml", "new id, slug and title", "delete"} {
+	for _, part := range []string{`mission "draft" holds 2 Input cards`, `"Main" (mis_main)`, `"Idle" (mis_idle)`, "draft.mission.toml", "new id, slug and title", "delete"} {
 		if !strings.Contains(message, part) {
 			t.Fatalf("migration message %q lacks %q", message, part)
 		}

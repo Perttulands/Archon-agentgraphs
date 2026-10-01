@@ -4,7 +4,7 @@ import { seatSocketUrl, type RunSeat } from './seatApi'
 const seat: RunSeat = {
   runId: 'run_test', nodeId: 'fmn_test', nodeTitle: 'Test', slotId: 'slot_1', slotLabel: 'Controller',
   harness: 'claude-code', controller: true, createdSeq: 7, sessionName: 'test', state: 'live',
-  columns: 123, rows: 41, terminalUrl: '/api/formations/runs/run_test/seats/7/terminal',
+  columns: 123, rows: 41, terminalUrl: '/api/runs/run_test/seats/7/terminal',
 }
 describe('owned seat URL', () => {
   it('requires the exact run, creation sequence and native grid', () => {

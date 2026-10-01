@@ -206,7 +206,7 @@ func TestRuntimeStartsRejectSelectedDefinitionBeforeUnavailableAuthority(t *test
 			if executor.calls != 0 || evaluator.calls != 0 {
 				t.Fatalf("start effects = executor:%d evaluator:%d, want zero", executor.calls, evaluator.calls)
 			}
-			if matches := mustGlob(t, filepath.Join(workspace, ".formations", "runs", "*")); len(matches) != 0 {
+			if matches := mustGlob(t, filepath.Join(workspace, ".archon", "runs", "*")); len(matches) != 0 {
 				t.Fatalf("rejected start created run artifacts: %v", matches)
 			}
 		})
@@ -240,7 +240,7 @@ func TestRuntimeStoreUsesImmutableWorkspaceAfterAuthorityBinding(t *testing.T) {
 		}
 	}()
 	for i := 0; i < 100; i++ {
-		if got, want := store.BoardPath("bound"), filepath.Join(fixture.workspace, ".formations", "boards", "bound.formation.toml"); got != want {
+		if got, want := store.BoardPath("bound"), filepath.Join(fixture.workspace, ".archon", "missions", "bound.mission.toml"); got != want {
 			t.Fatalf("runtime board path = %q, want immutable authority-bound path %q", got, want)
 		}
 		if got, err := store.workspaceAbsolutePath(); err != nil || got != fixture.workspace {
@@ -260,12 +260,12 @@ func TestRuntimeStoreUsesImmutableWorkspaceAfterAuthorityBinding(t *testing.T) {
 func TestStoreRejectsSchema2LedgerBeforeLegacyProjection(t *testing.T) {
 	workspace := t.TempDir()
 	runID := "run_01KXNP6VY3227H78329V52CKF8"
-	ledger := filepath.Join(workspace, ".formations", "runs", "demo", runID+".ndjson")
+	ledger := filepath.Join(workspace, ".archon", "runs", "demo", runID+".ndjson")
 	if err := os.MkdirAll(filepath.Dir(ledger), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	raw := []byte(fmt.Sprintf(
-		`{"schema":2,"authoritySchema":2,"writerFence":1,"ts":"2026-07-18T00:00:00Z","runId":"%s","seq":1,"type":"run_started","actor":"agent:test","data":{"boardSlug":"demo"}}`+"\n",
+		`{"schema":2,"authoritySchema":2,"writerFence":1,"ts":"2026-07-18T00:00:00Z","runId":"%s","seq":1,"type":"run_started","actor":"agent:test","data":{"missionSlug":"demo"}}`+"\n",
 		runID,
 	))
 	if err := os.WriteFile(ledger, raw, 0o600); err != nil {

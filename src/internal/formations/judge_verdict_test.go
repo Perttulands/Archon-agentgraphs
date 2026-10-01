@@ -14,7 +14,7 @@ func judgeBlock(verdict, reason string, evidence ...string) string {
 		evidence = []string{}
 	}
 	raw, _ := json.Marshal(map[string]any{"verdict": verdict, "reason": reason, "evidence": evidence})
-	return "```chrote-verdict\n" + string(raw) + "\n```"
+	return "```archon-verdict\n" + string(raw) + "\n```"
 }
 
 func TestParseJudgeVerdict(t *testing.T) {
@@ -30,7 +30,7 @@ func TestParseJudgeVerdict(t *testing.T) {
 		"bare pass":     "pass",
 		"bare fail":     "fail",
 		"prose":         "looks good",
-		"missing close": "```chrote-verdict\n{}",
+		"missing close": "```archon-verdict\n{}",
 		"multiple":      judgeBlock("pass", "ok") + "\n" + judgeBlock("fail", "no"),
 		"malformed":     "{",
 		"missing key":   `{"verdict":"pass","reason":"ok"}`,
@@ -47,7 +47,7 @@ func TestParseJudgeVerdict(t *testing.T) {
 	for name, output := range invalid {
 		t.Run(name, func(t *testing.T) {
 			if strings.HasPrefix(output, "{") {
-				output = "```chrote-verdict\n" + output + "\n```"
+				output = "```archon-verdict\n" + output + "\n```"
 			}
 			if result, err := parseJudgeVerdict(output); err == nil {
 				t.Fatalf("accepted invalid output as %+v", result)
@@ -129,7 +129,7 @@ func TestLabJudgePushbackLoop(t *testing.T) {
 			cwd := t.TempDir()
 			firstVerdict := judgeBlock("fail", "add the missing test", "coverage report: retry untested")
 			if malformed {
-				firstVerdict = "```chrote-verdict\n{invalid JSON}\n```"
+				firstVerdict = "```archon-verdict\n{invalid JSON}\n```"
 			}
 			executor := &scriptedLabExecutor{lab: NewLabFormationExecutor(store, personas, LabExecutorConfig{Cwd: cwd, Roots: []string{cwd}, Harnesses: []string{"openai-codex"}}), responses: map[string]map[int]string{
 				"fmn_work": {1: "draft one", 2: "draft two with tests"},

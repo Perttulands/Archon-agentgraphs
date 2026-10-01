@@ -37,7 +37,7 @@ checkValue = "complaint text"
 		if err != nil {
 			t.Fatal(err)
 		}
-		req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{")))
+		req := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{")))
 		req.Header.Set("If-Match", board.ETag)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
@@ -47,7 +47,7 @@ checkValue = "complaint text"
 		t.Helper()
 		var response struct {
 			Data struct {
-				Board formations.BoardDocument `json:"board"`
+				Board formations.BoardDocument `json:"mission"`
 			} `json:"data"`
 		}
 		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &response) != nil || len(response.Data.Board.Gates) != 1 {

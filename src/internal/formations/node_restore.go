@@ -31,7 +31,7 @@ type NodeRestoreRequest struct {
 }
 
 type NodeRestoreResult struct {
-	Board  *BoardDocument  `json:"board"`
+	Board  *BoardDocument  `json:"mission"`
 	Layout *LayoutDocument `json:"layout"`
 	NodeID string          `json:"nodeId"`
 }
@@ -163,7 +163,7 @@ func restoredNodeBlock(req NodeRestoreRequest) (string, string, func([]byte) []b
 		}
 		mission.HumanChannel = channel
 		mission.Files = normalizeFileRefs(mission.Files)
-		return mission.ID, "mission", func(raw []byte) []byte { return appendMissionBlock(raw, mission) }, nil
+		return mission.ID, "inputCard", func(raw []byte) []byte { return appendMissionBlock(raw, mission) }, nil
 	}
 }
 

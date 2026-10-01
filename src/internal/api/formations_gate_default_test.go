@@ -26,7 +26,7 @@ func TestFormationsAPICreateGateWithoutKindsStartsAsRoutableHumanGate(t *testing
 		mux.ServeHTTP(rec, req)
 		return rec
 	}
-	if rec := serve(http.MethodPost, "/api/formations/boards", "", `{"title":"Gates","slug":"gates"}`); rec.Code != http.StatusCreated {
+	if rec := serve(http.MethodPost, "/api/missions", "", `{"title":"Gates","slug":"gates"}`); rec.Code != http.StatusCreated {
 		t.Fatalf("create board = %d %s", rec.Code, rec.Body.String())
 	}
 	patch := func(body string) *httptest.ResponseRecorder {
@@ -35,7 +35,7 @@ func TestFormationsAPICreateGateWithoutKindsStartsAsRoutableHumanGate(t *testing
 		if err != nil {
 			t.Fatal(err)
 		}
-		return serve(http.MethodPatch, "/api/formations/boards/gates", board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{"))
+		return serve(http.MethodPatch, "/api/missions/gates", board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{"))
 	}
 	createGate := func(body string) formations.GateNode {
 		t.Helper()
@@ -62,7 +62,7 @@ func TestFormationsAPICreateGateWithoutKindsStartsAsRoutableHumanGate(t *testing
 	}
 
 	for _, body := range []string{
-		`{"createMission":{"title":"Work","goal":"Do it","beadId":"form-demo"}}`,
+		`{"createInputCard":{"title":"Work","goal":"Do it","beadId":"archon-demo"}}`,
 		`{"createFormation":{"type":"solo","title":"Worker"}}`,
 	} {
 		if rec := patch(body); rec.Code != http.StatusOK {
@@ -84,7 +84,7 @@ func TestFormationsAPICreateGateWithoutKindsStartsAsRoutableHumanGate(t *testing
 			t.Fatalf("%s = %d %s", body, rec.Code, rec.Body.String())
 		}
 	}
-	rec = serve(http.MethodGet, "/api/formations/boards/gates/validation", "", "")
+	rec = serve(http.MethodGet, "/api/missions/gates/validation", "", "")
 	var validation struct {
 		Data struct {
 			Errors   []formations.BoardFinding `json:"errors"`
@@ -106,7 +106,7 @@ func TestFormationsAPIDetachGateJudgeLeavesJudgeOnlyGateHuman(t *testing.T) {
 	mux := http.NewServeMux()
 	NewFormationsHandlerWithStores(store, formations.NewPersonaStore(filepath.Join(t.TempDir(), "agents"))).RegisterRoutes(mux)
 	created := httptest.NewRecorder()
-	mux.ServeHTTP(created, httptest.NewRequest(http.MethodPost, "/api/formations/boards", bytes.NewBufferString(`{"title":"Judges","slug":"judges"}`)))
+	mux.ServeHTTP(created, httptest.NewRequest(http.MethodPost, "/api/missions", bytes.NewBufferString(`{"title":"Judges","slug":"judges"}`)))
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create board = %d %s", created.Code, created.Body.String())
 	}
@@ -116,13 +116,13 @@ func TestFormationsAPIDetachGateJudgeLeavesJudgeOnlyGateHuman(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/judges", bytes.NewBufferString(`{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{")))
+		req := httptest.NewRequest(http.MethodPatch, "/api/missions/judges", bytes.NewBufferString(`{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{")))
 		req.Header.Set("If-Match", board.ETag)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 		var response struct {
 			Data struct {
-				Board *formations.BoardDocument `json:"board"`
+				Board *formations.BoardDocument `json:"mission"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil || rec.Code != http.StatusOK || response.Data.Board == nil {

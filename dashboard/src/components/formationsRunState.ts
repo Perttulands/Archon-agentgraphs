@@ -77,7 +77,7 @@ export function runEventReportRef(event: RunEvent): string {
 }
 
 export function activeRunStorageKey(slug: string): string {
-  return `chrote-formations-active-run-${slug}`
+  return `archon.activeRun.${slug}`
 }
 
 export type NodeRunState = '' | 'running' | 'done' | 'blocked' | 'waiting' | 'failed'

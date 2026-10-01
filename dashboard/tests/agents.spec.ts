@@ -5,8 +5,8 @@ test.use({ viewport: { width: 1920, height: 1080 } })
 
 test('Missions and Agents share one current mission across view switches, reloads and fresh opens', async ({ page }) => {
   await agentsFixture(page)
-  await page.goto('/?mission=wayfinding')
-  await expect(page.getByTestId('board-picker')).toHaveValue('wayfinding')
+  await page.goto('/?mission=scouting')
+  await expect(page.getByTestId('board-picker')).toHaveValue('scouting')
   // No tab, label, button or accessible name calls the unit a board.
   const boardWords = () => page.evaluate(() => [document.body.innerText, ...[...document.querySelectorAll('[aria-label],[title],[placeholder]')]
     .flatMap(element => ['aria-label', 'title', 'placeholder'].map(name => element.getAttribute(name) || ''))].join('\n').match(/\bboards?\b/gi) || [])
@@ -14,7 +14,7 @@ test('Missions and Agents share one current mission across view switches, reload
 
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
   const agents = page.getByTestId('agents-view')
-  await expect(agents.getByRole('combobox', { name: 'Mission' })).toHaveValue('wayfinding')
+  await expect(agents.getByRole('combobox', { name: 'Mission' })).toHaveValue('scouting')
   expect(await boardWords()).toEqual([])
   await expect(agents.locator('section.formation .tt')).toHaveText(['Map'])
 
@@ -78,12 +78,11 @@ test('a persona\'s model and effort are shown and edited per harness variant, wi
   await expect(claude.getByTestId('seat-launch-claude-code')).toHaveText(`exec '/usr/local/bin/claude' --model 'claude-opus-5' --effort 'high' --dangerously-skip-permissions`)
   expect(fixture.patches).toEqual([{ variants: [{ id: 'claude-code', model: 'claude-opus-5', effort: 'high' }] }])
 
-  // A legacy launch string is read and explained, never offered as a field.
+  // A persona has no launch field anywhere; seats run the daemon's rendering.
   await agents.getByRole('button', { name: 'Inspect Brief critic' }).click()
   const critic = inspector.getByRole('form', { name: 'claude-code harness variant' })
   await expect(critic.getByLabel('claude-code model', { exact: true })).toHaveValue('claude-opus-5')
   await expect(critic.getByLabel('claude-code effort', { exact: true })).toHaveValue('low')
-  await expect(critic.locator('.ph-legacy')).toContainText('legacy launch string, claude. Seats do not use it')
   await inspector.getByRole('button', { name: 'Edit persona' }).click()
   const editor = page.getByTestId('persona-editor')
   await expect(editor.getByLabel('Agent display name')).toHaveValue('Brief critic')
@@ -95,7 +94,7 @@ test('a persona\'s model and effort are shown and edited per harness variant, wi
   expect(fixture.patches.at(-1)).toMatchObject({ displayName: 'Brief critic', variants: [{ id: 'claude-code', effort: '' }] })
 })
 
-test('a hermes persona keeps an editable launch command, the one archon agent spawn runs', async ({ page }) => {
+test('a hermes persona offers no settings: Archon cannot start it', async ({ page }) => {
   const fixture = await agentsFixture(page)
   await page.goto('/?mission=delivery')
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
@@ -105,12 +104,10 @@ test('a hermes persona keeps an editable launch command, the one archon agent sp
   await expect(inspector.getByText('Archon cannot start hermes seats.')).toBeVisible()
   await inspector.getByRole('button', { name: 'Edit persona' }).click()
   const editor = page.getByTestId('persona-editor')
-  const launch = editor.getByLabel('hermes launch command (archon agent spawn)')
-  await expect(launch).toHaveValue("hermes --profile '/profiles/old'")
+  await expect(editor.getByText('Archon cannot start hermes seats, so it takes no model or effort.')).toBeVisible()
+  await expect(editor.getByLabel('hermes launch command (archon agent spawn)')).toHaveCount(0)
   await expect(editor.getByLabel('hermes model', { exact: true })).toHaveCount(0)
-  await launch.fill("hermes --profile '/profiles/new'")
   await editor.getByRole('button', { name: 'Save agent override' }).click()
   await expect(editor).toHaveCount(0)
-  expect(fixture.patches.at(-1)).toMatchObject({ variants: [{ id: 'hermes', launch: "hermes --profile '/profiles/new'" }] })
-  await expect(inspector.getByLabel('hermes launch command (archon agent spawn)')).toHaveValue("hermes --profile '/profiles/new'")
+  expect(fixture.patches.at(-1)).not.toHaveProperty('variants')
 })

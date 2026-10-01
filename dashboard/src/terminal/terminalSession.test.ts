@@ -27,7 +27,7 @@ function sizeElements(width: number, height: number) {
   onScreen.height = height
 }
 
-const URL = 'ws://host/api/formations/runs/run_1/seats/7/terminal'
+const URL = 'ws://host/api/runs/run_1/seats/7/terminal'
 
 function start(overrides: Partial<Parameters<typeof createTerminalSession>[0]> = {}) {
   const states: TerminalConnectionState[] = []

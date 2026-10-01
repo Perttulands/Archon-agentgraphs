@@ -6,11 +6,10 @@ slug = "operations-proof"
 title = "Standalone operations proof"
 rev = 1
 
-[[mission]]
+[[inputCard]]
 id = "mis_operations"
 title = "Prove a useful operations handoff"
 goal = "Produce, independently review and integrate a usable standalone operations guide. End at a real operator gate. This is form-2fb work."
-beadId = "form-2fb"
 
 [[formation]]
 id = "fmn_producer"

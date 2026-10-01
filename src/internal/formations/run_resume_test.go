@@ -278,7 +278,7 @@ func TestS5EngineResumeOpenDispatchRecordsReattachErrorWithoutResend(t *testing.
 	if err != nil {
 		t.Fatalf("dispatch slot: %v", err)
 	}
-	if err := dispatcher.CompleteFromCapture(started.RunID, lease.DispatchID, "<<<CHROTE-DONE run-id=wrong status=ok artifact=fake>>>"); !errors.Is(err, ErrDispatchTimeout) {
+	if err := dispatcher.CompleteFromCapture(started.RunID, lease.DispatchID, "<<<ARCHON-DONE run-id=wrong status=ok artifact=fake>>>"); !errors.Is(err, ErrDispatchTimeout) {
 		t.Fatalf("complete with mismatched sentinel error = %v, want ErrDispatchTimeout", err)
 	}
 	if len(adapter.sent) != 1 {

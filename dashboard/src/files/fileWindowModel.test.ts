@@ -12,9 +12,9 @@ describe('file requests', () => {
     try {
       const request = referencedFileRequest('/srv/project/docs/rubric.md', 'Review gate')
       expect(request).toMatchObject({ id: 'file:/srv/project/docs/rubric.md', name: 'rubric.md', context: 'Review gate · /srv/project/docs/rubric.md', path: '/srv/project/docs/rubric.md' })
-      expect(request.rawUrl).toBe('/api/formations/files/raw?path=%2Fsrv%2Fproject%2Fdocs%2Frubric.md')
+      expect(request.rawUrl).toBe('/api/files/raw?path=%2Fsrv%2Fproject%2Fdocs%2Frubric.md')
       expect(await request.load()).toEqual({ kind: 'markdown', text: { text: '# Rubric', bytes: 8 } })
-      expect(calls).toEqual(['/api/formations/files/preview?path=%2Fsrv%2Fproject%2Fdocs%2Frubric.md'])
+      expect(calls).toEqual(['/api/files/preview?path=%2Fsrv%2Fproject%2Fdocs%2Frubric.md'])
       expect(request.link?.('srv/project/docs/scale.md').id).toBe('file:/srv/project/docs/scale.md')
       expect(referencedFileRequest('docs/rubric.md').link?.('docs/scale.md').id).toBe('file:docs/scale.md')
     } finally {

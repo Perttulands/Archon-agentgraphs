@@ -11,7 +11,7 @@ import type { BoardDocument, FormationNode, GateNode, MissionNode, ToolNode } fr
  * judge chain as a step, and numbers a node once, where it is first reached.
  */
 
-type Board = Pick<BoardDocument, 'connections' | 'formations'> & Partial<Pick<BoardDocument, 'missions' | 'gates' | 'tools'>>
+type Board = Pick<BoardDocument, 'connections' | 'formations'> & Partial<Pick<BoardDocument, 'inputCards' | 'gates' | 'tools'>>
 
 export type FlowTarget =
   | { kind: 'step'; nodeId: string; number: number | null; title: string; back: boolean }
@@ -69,7 +69,7 @@ const DECIDERS: Array<[string, GateDecider]> = [['human', 'you'], ['formation', 
 
 export function buildFlow(board: Board): FlowModel {
   const connections = board.connections || []
-  const missions = board.missions || []
+  const missions = board.inputCards || []
   const gates = board.gates || []
   const tools = board.tools || []
   const formationById = new Map(board.formations.map(node => [node.id, node]))

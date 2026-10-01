@@ -17,7 +17,7 @@ func TestFormationsAPIUnchangedEditAnswersTheCurrentBoard(t *testing.T) {
 	mux := http.NewServeMux()
 	NewFormationsHandlerWithStores(store, formations.NewPersonaStore(filepath.Join(t.TempDir(), "agents"))).RegisterRoutes(mux)
 	created := httptest.NewRecorder()
-	mux.ServeHTTP(created, httptest.NewRequest(http.MethodPost, "/api/formations/boards", bytes.NewBufferString(`{"title":"Same","slug":"same"}`)))
+	mux.ServeHTTP(created, httptest.NewRequest(http.MethodPost, "/api/missions", bytes.NewBufferString(`{"title":"Same","slug":"same"}`)))
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create board = %d %s", created.Code, created.Body.String())
 	}
@@ -27,7 +27,7 @@ func TestFormationsAPIUnchangedEditAnswersTheCurrentBoard(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/same", bytes.NewBufferString(`{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{")))
+		req := httptest.NewRequest(http.MethodPatch, "/api/missions/same", bytes.NewBufferString(`{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{")))
 		req.Header.Set("If-Match", board.ETag)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
@@ -52,7 +52,7 @@ func TestFormationsAPIUnchangedEditAnswersTheCurrentBoard(t *testing.T) {
 		rec, before := patch(body)
 		var response struct {
 			Data struct {
-				Board formations.BoardDocument `json:"board"`
+				Board formations.BoardDocument `json:"mission"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil || rec.Code != http.StatusOK {

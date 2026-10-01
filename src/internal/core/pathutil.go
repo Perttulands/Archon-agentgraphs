@@ -20,10 +20,10 @@ var (
 )
 
 // GetAllowedRoots returns the configured allowed roots
-// Reads from CHROTE_ROOTS env var, defaults to HOME,/code,/vault
+// Reads from ARCHON_ROOTS env var, defaults to HOME,/code,/vault
 func GetAllowedRoots() []string {
 	allowedRootsOnce.Do(func() {
-		if roots := os.Getenv("CHROTE_ROOTS"); roots != "" {
+		if roots := os.Getenv("ARCHON_ROOTS"); roots != "" {
 			allowedRoots = normalizeRoots(strings.Split(roots, ","))
 		} else {
 			allowedRoots = normalizeRoots(defaultAllowedRoots)
@@ -124,9 +124,9 @@ func FileExists(path string) bool {
 }
 
 // GetWorkDir returns the default working directory for new sessions
-// Reads from CHROTE_WORKDIR env var, defaults to first allowed root
+// Reads from ARCHON_WORKDIR env var, defaults to first allowed root
 func GetWorkDir() string {
-	if workdir := os.Getenv("CHROTE_WORKDIR"); workdir != "" {
+	if workdir := os.Getenv("ARCHON_WORKDIR"); workdir != "" {
 		return workdir
 	}
 	roots := GetAllowedRoots()
@@ -137,18 +137,18 @@ func GetWorkDir() string {
 }
 
 // GetLaunchScript returns the terminal launch script path
-// Reads from CHROTE_LAUNCH_SCRIPT env var, defaults to /usr/local/bin/terminal-launch.sh
+// Reads from ARCHON_LAUNCH_SCRIPT env var, defaults to /usr/local/bin/terminal-launch.sh
 func GetLaunchScript() string {
-	if script := os.Getenv("CHROTE_LAUNCH_SCRIPT"); script != "" {
+	if script := os.Getenv("ARCHON_LAUNCH_SCRIPT"); script != "" {
 		return script
 	}
 	return "/usr/local/bin/terminal-launch.sh"
 }
 
 // GetBvLaunchScript returns the beads viewer launch script path
-// Reads from CHROTE_BV_LAUNCH_SCRIPT env var, defaults to /usr/local/bin/bv-launch.sh
+// Reads from ARCHON_BV_LAUNCH_SCRIPT env var, defaults to /usr/local/bin/bv-launch.sh
 func GetBvLaunchScript() string {
-	if script := os.Getenv("CHROTE_BV_LAUNCH_SCRIPT"); script != "" {
+	if script := os.Getenv("ARCHON_BV_LAUNCH_SCRIPT"); script != "" {
 		return script
 	}
 	return "/usr/local/bin/bv-launch.sh"

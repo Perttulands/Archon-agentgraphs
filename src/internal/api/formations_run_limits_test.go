@@ -24,17 +24,17 @@ func TestFormationsHandlerRefusesNegativeRunLimits(t *testing.T) {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 	for _, body := range []string{
-		`{"board":"session-search","missionId":"mis_showcase","limits":{"maxAttempts":-1}}`,
-		`{"board":"session-search","missionId":"mis_showcase","limits":{"wallClockSeconds":-1}}`,
-		`{"board":"session-search","formationId":"fmn_work","limits":{"maxDispatch":-1}}`,
+		`{"mission":"session-search","inputCardId":"mis_showcase","limits":{"maxAttempts":-1}}`,
+		`{"mission":"session-search","inputCardId":"mis_showcase","limits":{"wallClockSeconds":-1}}`,
+		`{"mission":"session-search","formationId":"fmn_work","limits":{"maxDispatch":-1}}`,
 	} {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/formations/runs", bytes.NewBufferString(body)))
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(body)))
 		if rec.Code != http.StatusBadRequest || !bytes.Contains(rec.Body.Bytes(), []byte("INVALID_RUN_LIMITS")) || !bytes.Contains(rec.Body.Bytes(), []byte(formations.ErrInvalidRunLimits.Error())) {
 			t.Fatalf("%s: status %d body %s, want 400 INVALID_RUN_LIMITS", body, rec.Code, rec.Body.String())
 		}
 	}
-	if entries, err := os.ReadDir(filepath.Join(store.Workspace, ".formations", "runs", "session-search")); err == nil && len(entries) != 0 {
+	if entries, err := os.ReadDir(filepath.Join(store.Workspace, ".archon", "runs", "session-search")); err == nil && len(entries) != 0 {
 		t.Fatalf("refused starts wrote run artifacts: %v", entries)
 	}
 }

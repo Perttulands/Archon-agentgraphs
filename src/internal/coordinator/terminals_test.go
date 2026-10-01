@@ -58,7 +58,7 @@ func TestSeatProjectionPinsRunAttemptAndFrozenLabels(t *testing.T) {
 	list := func() SeatList {
 		t.Helper()
 		w := httptest.NewRecorder()
-		c.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/api/formations/runs/"+id+"/seats", nil))
+		c.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/api/runs/"+id+"/seats", nil))
 		if w.Code != 200 {
 			t.Fatal(w.Body.String())
 		}
@@ -110,7 +110,7 @@ func TestSeatProjectionPinsRunAttemptAndFrozenLabels(t *testing.T) {
 		t.Fatal(got)
 	}
 	w = httptest.NewRecorder()
-	c.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/api/formations/runs/"+id+"/seats/999/terminal", nil))
+	c.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/api/runs/"+id+"/seats/999/terminal", nil))
 	if w.Code != 404 {
 		t.Fatal(w.Code)
 	}

@@ -17,13 +17,13 @@ export interface RunInputs {
 /** What the brief field asks for when the mission gives no input hint of its own. */
 export const DEFAULT_BRIEF_HINT = 'The input this run works on: the request, sketch or task its first step receives. The mission stays reusable; each run takes its own brief.'
 
-export function StartMissionDialog({ title, beadId = '', inputHint = '', humanChannel = 'notify', onStart, onClose }: {
-  title: string; beadId?: string; inputHint?: string
+export function StartMissionDialog({ title, inputHint = '', humanChannel = 'notify', onStart, onClose }: {
+  title: string; inputHint?: string
   /** The mission's human channel; a different choice is saved on the mission before the run starts. */
   humanChannel?: HumanChannel
   onStart: (inputs: RunInputs, humanChannel: HumanChannel) => Promise<void>; onClose: () => void
 }) {
-  const [inputs, setInputs] = useState({ cwd: '', brief: '', beadId })
+  const [inputs, setInputs] = useState({ cwd: '', brief: '', beadId: '' })
   const [contextPaths, setContextPaths] = useState('')
   const [workspaceMode, setWorkspaceMode] = useState('automatic')
   const dialogRef = useRef<HTMLDivElement>(null)

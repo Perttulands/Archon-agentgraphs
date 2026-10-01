@@ -55,10 +55,10 @@ func TestConcurrentLabAdmissionInputsAndPerRunAbort(t *testing.T) {
 		t.Fatal(err)
 	}
 	ids := []string{}
-	for _, bead := range []string{"form-first", "form-second"} {
+	for _, bead := range []string{"archon-first", "archon-second"} {
 		cwd := t.TempDir()
-		raw, _ := json.Marshal(map[string]any{"board": "proof", "missionId": "mis_proof", "expectedRev": 1, "cwd": cwd, "brief": "brief for " + bead, "beadId": bead, "limits": formations.RunLimits{MaxDispatch: 4, MaxAttempts: 2, WallClockSeconds: 60}})
-		w := post(t, c, "/api/formations/runs", string(raw))
+		raw, _ := json.Marshal(map[string]any{"mission": "proof", "inputCardId": "mis_proof", "expectedRev": 1, "cwd": cwd, "brief": "brief for " + bead, "beadId": bead, "limits": formations.RunLimits{MaxDispatch: 4, MaxAttempts: 2, WallClockSeconds: 60}})
+		w := post(t, c, "/api/runs", string(raw))
 		if w.Code != 202 {
 			t.Fatalf("admission %s", w.Body.String())
 		}
@@ -85,7 +85,7 @@ func TestConcurrentLabAdmissionInputsAndPerRunAbort(t *testing.T) {
 		}
 	}
 	signal := c.nextChange(ids[1])
-	w := post(t, c, "/api/formations/runs/"+ids[0]+"/abort", `{"reason":"cancel first"}`)
+	w := post(t, c, "/api/runs/"+ids[0]+"/abort", `{"reason":"cancel first"}`)
 	if w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
@@ -175,7 +175,7 @@ func TestRestartLabNamesUnresolvedDispatchAndKeepsHistory(t *testing.T) {
 	if !strings.Contains(string(raw), lease.DispatchID) || len(events) != 4 {
 		t.Fatalf("lost open dispatch or history: %s", raw)
 	}
-	response := post(t, c, "/api/formations/runs/"+started.RunID+"/resume", `{"mode":"reattach"}`)
+	response := post(t, c, "/api/runs/"+started.RunID+"/resume", `{"mode":"reattach"}`)
 	if response.Code != 202 {
 		t.Fatal(response.Body.String())
 	}
@@ -205,12 +205,12 @@ func TestAbortRejectsReservedCommandWithoutAcknowledgingCancellation(t *testing.
 	if !c.acquire(id) {
 		t.Fatal("reserve command")
 	}
-	response := post(t, c, "/api/formations/runs/"+id+"/abort", `{"reason":"during another command"}`)
+	response := post(t, c, "/api/runs/"+id+"/abort", `{"reason":"during another command"}`)
 	c.release(id)
 	if response.Code != 409 {
 		t.Fatalf("acknowledged cancellation without worker: %d %s", response.Code, response.Body.String())
 	}
-	response = post(t, c, "/api/formations/runs/"+id+"/abort", `{"reason":"after command"}`)
+	response = post(t, c, "/api/runs/"+id+"/abort", `{"reason":"after command"}`)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}

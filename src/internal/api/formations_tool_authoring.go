@@ -407,7 +407,7 @@ func (h *FormationsHandler) patchToolBoard(w http.ResponseWriter, r *http.Reques
 		writeFormationsError(w, formations.ErrPreconditionRequired)
 		return true
 	}
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return true

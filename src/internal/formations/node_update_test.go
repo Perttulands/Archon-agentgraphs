@@ -13,7 +13,7 @@ slug = "rename"
 title = "Rename"
 rev = 4
 
-[[mission]]
+[[inputCard]]
 id = "mis_frame"
 title = "New mission"
 goal = ""
@@ -70,12 +70,12 @@ func nodeUpdateFixture(t *testing.T) (*Store, func() WriteOptions) {
 	store := NewStore(t.TempDir())
 	store.Now = fixedClock()
 	writeFixture(t, store.BoardPath("rename"), nodeUpdateBoardFixture)
-	writeFixture(t, store.LayoutPath("rename"), "schema = 1\nboardId = \"brd_rename\"\nboardRev = 4\n\n[[node]]\nid = \"fmn_map\"\nx = 320\ny = 80\n")
+	writeFixture(t, store.LayoutPath("rename"), "schema = 1\nmissionId = \"brd_rename\"\nmissionRev = 4\n\n[[node]]\nid = \"fmn_map\"\nx = 320\ny = 80\n")
 	board, err := store.ReadBoard("rename")
 	if err != nil {
 		t.Fatal(err)
 	}
-	notes, err := store.UpdateBoardNote("rename", BoardNotePatch{Target: "fmn_map", Text: "Keep the map narrow", UpdatedBy: "human:operator"}, NoteWriteOptions{ExpectedETag: "*"})
+	notes, err := store.UpdateBoardNote("rename", BoardNotePatch{Target: "fmn_map", Text: "Keep the map narrow", Author: "human:operator"}, NoteWriteOptions{ExpectedETag: "*"})
 	if err != nil || notes.BoardID != board.ID {
 		t.Fatalf("seed notes: %+v %v", notes, err)
 	}

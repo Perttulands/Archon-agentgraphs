@@ -18,7 +18,7 @@ slug = "legacy"
 title = "Legacy"
 rev = 5
 
-[[mission]]
+[[inputCard]]
 id = "mis_start"
 title = "Start"
 goal = "Go"

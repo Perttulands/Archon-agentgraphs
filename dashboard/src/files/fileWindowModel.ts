@@ -94,15 +94,15 @@ export function referencedFileRequest(ref: string, context?: string): FileReques
     name,
     context: context ? `${context} · ${ref}` : ref,
     load: async () => {
-      const { data } = await fetchApi<{ file?: FilePreview }>(`/api/formations/files/preview${filePath(ref)}`)
+      const { data } = await fetchApi<{ file?: FilePreview }>(`/api/files/preview${filePath(ref)}`)
       if (!data.file) throw new Error('the daemon returned no file')
       return { kind: data.file.kind, text: data.file.text }
     },
-    rawUrl: `/api/formations/files/raw${filePath(ref)}`,
+    rawUrl: `/api/files/raw${filePath(ref)}`,
     path: ref,
     basePath: ref,
     // Links resolve without a leading slash; beside an absolute reference they are absolute too.
     link: target => referencedFileRequest(absolute(target), context),
-    imageUrl: target => `/api/formations/files/raw${filePath(absolute(target))}`,
+    imageUrl: target => `/api/files/raw${filePath(absolute(target))}`,
   }
 }

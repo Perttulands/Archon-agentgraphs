@@ -49,7 +49,7 @@ func TestPendingHumanGateSurvivesRestart(t *testing.T) {
 				if len(events) != len(original)+extra {
 					t.Fatalf("restart added unexpected events: %+v", events)
 				}
-				path := "/api/formations/runs/" + id + "/gates/gate_review/verdict"
+				path := "/api/runs/" + id + "/gates/gate_review/verdict"
 				if w := post(t, c, path, `{"requestedSeq":999,"verdict":"pass"}`); w.Code != 409 {
 					t.Fatal(w.Code)
 				}

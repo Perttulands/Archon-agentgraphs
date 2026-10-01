@@ -1,18 +1,18 @@
 import { expect, test } from '@playwright/test'
-import { authoredBoard as wayfindingBoard, authoredText, nodeWindowsFixture } from './node-windows-fixture'
-import { wayfinding } from './wayfinding-fixture'
+import { authoredBoard as scoutingBoard, authoredText, nodeWindowsFixture } from './node-windows-fixture'
+import { scouting } from './scouting-fixture'
 
-test('every Wayfinding node reads in full in its window, with no edit dialog and no board write', async ({ page }) => {
+test('every Scouting node reads in full in its window, with no edit dialog and no board write', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   const fixture = await nodeWindowsFixture(page)
-  await page.goto('/?mission=wayfinding')
-  await expect(page.getByTestId(`mission-node-${wayfindingBoard.missions[0].id}`)).toBeVisible()
+  await page.goto('/?mission=scouting')
+  await expect(page.getByTestId(`mission-node-${scoutingBoard.inputCards[0].id}`)).toBeVisible()
   await page.getByRole('button', { name: 'FIT' }).click()
 
   const nodes = [
-    ...wayfindingBoard.missions.map(node => ({ label: `Input card · ${node.title}`, card: page.getByTestId(`mission-node-${node.id}`), text: node.goal, field: 'mission goal', title: node.title })),
-    ...wayfindingBoard.formations.map(node => ({ label: `Formation · ${node.title}`, card: page.getByTestId(`formation-node-${node.id}`).locator('.fhead .tt'), text: node.brief.goal, field: 'brief', title: node.title })),
-    ...wayfindingBoard.gates.map(node => ({ label: `Gate · ${node.title}`, card: page.getByTestId(`gate-node-${node.id}`).locator('.gt'), text: node.criterion, field: 'criterion', title: node.title })),
+    ...scoutingBoard.inputCards.map(node => ({ label: `Input card · ${node.title}`, card: page.getByTestId(`mission-node-${node.id}`), text: node.goal, field: 'mission goal', title: node.title })),
+    ...scoutingBoard.formations.map(node => ({ label: `Formation · ${node.title}`, card: page.getByTestId(`formation-node-${node.id}`).locator('.fhead .tt'), text: node.brief.goal, field: 'brief', title: node.title })),
+    ...scoutingBoard.gates.map(node => ({ label: `Gate · ${node.title}`, card: page.getByTestId(`gate-node-${node.id}`).locator('.gt'), text: node.criterion, field: 'criterion', title: node.title })),
   ]
   expect(nodes).toHaveLength(9)
   for (const node of nodes) {
@@ -34,14 +34,14 @@ test('every Wayfinding node reads in full in its window, with no edit dialog and
   }
 
   // Staffing and routes read as words, and a route opens the other node's window.
-  await page.getByTestId(`gate-node-${wayfindingBoard.gates[2].id}`).locator('.gt').click()
+  await page.getByTestId(`gate-node-${scoutingBoard.gates[2].id}`).locator('.gt').click()
   const review = page.getByRole('dialog', { name: 'Gate · Adversarial review' })
   await expect(review.getByRole('button', { name: 'Judged by Brief critic' })).toBeVisible()
   await expect(review.getByRole('button', { name: 'Fail ↺ back to 5 Draft the brief' })).toBeVisible()
 
   // The node's notes open in its note window rather than being copied into the node window.
-  const reviewId = wayfindingBoard.gates[2].id
-  const thread: { entries: { text: string }[] } = wayfinding.notes.elements.find((note: { nodeId: string }) => note.nodeId === reviewId)
+  const reviewId = scoutingBoard.gates[2].id
+  const thread: { entries: { text: string }[] } = scouting.notes.elements.find((note: { nodeId: string }) => note.nodeId === reviewId)
   await expect(review.getByRole('region', { name: 'Notes' })).toContainText(`${thread.entries.length} entries in the thread`)
   await review.getByRole('button', { name: 'Open notes' }).click()
   const notes = page.getByRole('dialog', { name: 'notes for Adversarial review' })

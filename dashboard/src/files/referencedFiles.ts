@@ -19,7 +19,7 @@ export function nodeFileRefs(board: BoardDocument | null, nodeId: string): Refer
     const formation = board.formations.find(node => node.id === id)
     return (formation?.brief?.files || []).map(ref => ({ ref, owner: formation?.title || id, ...(judge ? { judge } : {}) }))
   }
-  const mission = board.missions?.find(node => node.id === nodeId)
+  const mission = board.inputCards?.find(node => node.id === nodeId)
   if (mission) return (mission.files || []).map(ref => ({ ref, owner: mission.title }))
   const gate = board.gates?.find(node => node.id === nodeId)
   if (!gate) return formationFiles(nodeId)

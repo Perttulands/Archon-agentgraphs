@@ -133,25 +133,25 @@ func toolSchemaMigrationReadSchema(lines []tomlLine) (int, int, error) {
 		count++
 		parsedKey, literal, present, err := parseToolAssignment(line.body)
 		if err != nil || !present || parsedKey != "schema" {
-			return 0, -1, fmt.Errorf("invalid formations schema")
+			return 0, -1, fmt.Errorf("invalid archon schema")
 		}
 		if strings.HasPrefix(literal, "0x") || strings.HasPrefix(literal, "0o") || strings.HasPrefix(literal, "0b") {
-			return 0, -1, fmt.Errorf("invalid formations schema")
+			return 0, -1, fmt.Errorf("invalid archon schema")
 		}
 		schema, err = parseToolInteger(literal)
 		if err != nil {
-			return 0, -1, fmt.Errorf("invalid formations schema")
+			return 0, -1, fmt.Errorf("invalid archon schema")
 		}
 		schemaLine = index
 	}
 	if count != 1 {
-		return 0, -1, fmt.Errorf("formations schema fields = %d, want exactly one", count)
+		return 0, -1, fmt.Errorf("archon schema fields = %d, want exactly one", count)
 	}
 	if schema > int64(CurrentBoardSchema) {
 		return 0, -1, fmt.Errorf("%w: schema %d", ErrUnsupportedSchema, schema)
 	}
 	if schema != int64(NewBoardSchema) && schema != int64(CurrentBoardSchema) {
-		return 0, -1, fmt.Errorf("unsupported formations migration source schema %d", schema)
+		return 0, -1, fmt.Errorf("unsupported archon migration source schema %d", schema)
 	}
 	return int(schema), schemaLine, nil
 }

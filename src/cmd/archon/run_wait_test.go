@@ -25,7 +25,7 @@ id = "brd_proof"
 slug = "proof"
 title = "Proof"
 rev = 1
-[[mission]]
+[[inputCard]]
 id = "mis_proof"
 title = "Proof"
 goal = "Prove the wait"
@@ -231,7 +231,7 @@ func TestRunWaitReconnectsAcrossARestart(t *testing.T) {
 			fmt.Fprint(w, `{"success":false,"error":{"message":"coordinator is stopping"}}`)
 			return
 		}
-		fmt.Fprint(w, `{"success":true,"data":{"runId":"run_x","mission":"Proof","until":"final","outcome":"final","since":7,"seq":9,"status":"failed","final":true,"settled":true,"asks":[],"changes":[],"end":{"status":"failed","seq":9,"code":"coordinator_execution_failed","reason":"completed recovery requires a single-slot formation","endedBy":"archond","stopped":[{"id":"fmn_exec","title":"Execution"}]}}}`)
+		fmt.Fprint(w, `{"success":true,"data":{"runId":"run_x","missionTitle":"Proof","until":"final","outcome":"final","since":7,"seq":9,"status":"failed","final":true,"settled":true,"asks":[],"changes":[],"end":{"status":"failed","seq":9,"code":"coordinator_execution_failed","reason":"completed recovery requires a single-slot formation","endedBy":"archond","stopped":[{"id":"fmn_exec","title":"Execution"}]}}}`)
 	}))
 	defer server.Close()
 	out, stderr, code := runArchon(t, &fakeTmux{}, "--server", server.URL, "run", "wait", "run_x", "--until", "final", "--since", "7")
@@ -315,7 +315,7 @@ func TestRunWaitKeepsOneConnectionAcrossPolls(t *testing.T) {
 		if polls.Add(1) >= 5 {
 			outcome, final = "final", "true"
 		}
-		fmt.Fprintf(w, `{"success":true,"data":{"runId":"run_x","mission":"Proof","until":"final","outcome":%q,"since":3,"seq":3,"status":"succeeded","final":%s,"settled":true,"asks":[],"changes":[]}}`, outcome, final)
+		fmt.Fprintf(w, `{"success":true,"data":{"runId":"run_x","missionTitle":"Proof","until":"final","outcome":%q,"since":3,"seq":3,"status":"succeeded","final":%s,"settled":true,"asks":[],"changes":[]}}`, outcome, final)
 	}))
 	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
 		if state == http.StateNew {

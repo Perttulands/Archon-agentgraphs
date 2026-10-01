@@ -84,7 +84,7 @@ func TestS4MissionWithoutOutgoingWireFailsBeforeRun(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "wire the Input card to a step") {
 		t.Fatalf("run mission without outgoing wire error = %v, want wire-the-mission failure", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(store.Workspace, ".formations", "runs", "session-search")); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(filepath.Join(store.Workspace, ".archon", "runs", "session-search")); !os.IsNotExist(statErr) {
 		t.Fatalf("runs directory error = %v, want no run artifacts when mission cannot start", statErr)
 	}
 }
@@ -312,7 +312,7 @@ func createS4Persona(t *testing.T, personas *PersonaStore, id string) {
 
 func findOnlyRunLedger(t *testing.T, store *Store, slug string) string {
 	t.Helper()
-	matches, err := filepath.Glob(filepath.Join(store.Workspace, ".formations", "runs", slug, "*.ndjson"))
+	matches, err := filepath.Glob(filepath.Join(store.Workspace, ".archon", "runs", slug, "*.ndjson"))
 	if err != nil {
 		t.Fatalf("glob run ledger: %v", err)
 	}
@@ -388,7 +388,7 @@ rev = 7
 updatedBy = "agent:archon"
 updatedAt = "2026-06-03T16:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Ship a showcase"

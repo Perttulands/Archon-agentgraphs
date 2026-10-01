@@ -1022,7 +1022,7 @@ rev = 4
 updatedBy = "agent:test"
 updatedAt = "2026-07-19T10:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Normalize the report"
@@ -1101,7 +1101,7 @@ slug = "tool-duplicate-producer"
 title = "Tool duplicate producer validation"
 rev = 1
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Inspect duplicate Tool producers"
@@ -1166,7 +1166,7 @@ slug = "tool-structural"
 title = "Tool structural validation"
 rev = 4
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Inspect collisions"
@@ -1230,8 +1230,8 @@ acceptedMediaTypes = ["application/json"]
 
 func toolStructuralLayoutFixture() string {
 	return `schema = 1
-boardId = "brd_tool_structural"
-boardRev = 4
+missionId = "brd_tool_structural"
+missionRev = 4
 
 [[node]]
 id = "tool_normalize"

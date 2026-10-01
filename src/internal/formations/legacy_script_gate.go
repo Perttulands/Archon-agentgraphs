@@ -13,9 +13,9 @@ var ErrLegacyScriptGateRequiresFencedMigration = errors.New(LegacyScriptGateMigr
 
 type LegacyScriptGateMigrationInspection struct {
 	Schema          int      `json:"schema"`
-	BoardID         string   `json:"boardId"`
-	BoardRev        int      `json:"boardRev"`
-	BoardETag       string   `json:"boardETag"`
+	BoardID         string   `json:"missionId"`
+	BoardRev        int      `json:"missionRev"`
+	BoardETag       string   `json:"missionETag"`
 	GateID          string   `json:"gateId"`
 	SourceMode      string   `json:"sourceMode"`
 	SourceFields    []string `json:"sourceFields"`

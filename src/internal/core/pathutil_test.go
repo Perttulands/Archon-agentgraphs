@@ -17,10 +17,10 @@ func TestValidateProjectPath(t *testing.T) {
 
 	// Reset config and set test roots via env var
 	defer func() {
-		os.Unsetenv("CHROTE_ROOTS")
+		os.Unsetenv("ARCHON_ROOTS")
 		ResetConfigForTesting()
 	}()
-	os.Setenv("CHROTE_ROOTS", tempDir)
+	os.Setenv("ARCHON_ROOTS", tempDir)
 	ResetConfigForTesting()
 
 	// Create a subdirectory
@@ -87,10 +87,10 @@ func TestValidateProjectPath_ClearsErrorsCorrectly(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	defer func() {
-		os.Unsetenv("CHROTE_ROOTS")
+		os.Unsetenv("ARCHON_ROOTS")
 		ResetConfigForTesting()
 	}()
-	os.Setenv("CHROTE_ROOTS", tempDir)
+	os.Setenv("ARCHON_ROOTS", tempDir)
 	ResetConfigForTesting()
 
 	resolved, code, msg := ValidateProjectPath(tempDir)
@@ -122,10 +122,10 @@ func TestGetAllowedRoots_NormalizesEnvRoots(t *testing.T) {
 
 	defer func() {
 		_ = os.Chdir(cwd)
-		os.Unsetenv("CHROTE_ROOTS")
+		os.Unsetenv("ARCHON_ROOTS")
 		ResetConfigForTesting()
 	}()
-	os.Setenv("CHROTE_ROOTS", " , workspace/. , "+root+" , ")
+	os.Setenv("ARCHON_ROOTS", " , workspace/. , "+root+" , ")
 	ResetConfigForTesting()
 
 	absRoot, err := filepath.Abs(root)
@@ -140,17 +140,17 @@ func TestGetAllowedRoots_NormalizesEnvRoots(t *testing.T) {
 
 func TestValidateProjectPath_RootAllowedRootCoversFilesystemChildren(t *testing.T) {
 	defer func() {
-		os.Unsetenv("CHROTE_ROOTS")
+		os.Unsetenv("ARCHON_ROOTS")
 		ResetConfigForTesting()
 	}()
-	os.Setenv("CHROTE_ROOTS", "/")
+	os.Setenv("ARCHON_ROOTS", "/")
 	ResetConfigForTesting()
 
 	for _, path := range []string{"/workspace", "/projects"} {
 		t.Run(path, func(t *testing.T) {
 			_, code, msg := ValidateProjectPath(path)
 			if code == "FORBIDDEN" {
-				t.Fatalf("ValidateProjectPath(%q) code = FORBIDDEN, want allowed by CHROTE_ROOTS=/ before existence check; msg: %s", path, msg)
+				t.Fatalf("ValidateProjectPath(%q) code = FORBIDDEN, want allowed by ARCHON_ROOTS=/ before existence check; msg: %s", path, msg)
 			}
 		})
 	}
@@ -158,10 +158,10 @@ func TestValidateProjectPath_RootAllowedRootCoversFilesystemChildren(t *testing.
 
 func TestGetAllowedRoots_RootDominatesOtherRoots(t *testing.T) {
 	defer func() {
-		os.Unsetenv("CHROTE_ROOTS")
+		os.Unsetenv("ARCHON_ROOTS")
 		ResetConfigForTesting()
 	}()
-	os.Setenv("CHROTE_ROOTS", "/, /projects, /workspace/operator")
+	os.Setenv("ARCHON_ROOTS", "/, /projects, /workspace/operator")
 	ResetConfigForTesting()
 
 	got := GetAllowedRoots()

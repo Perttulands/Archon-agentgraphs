@@ -21,7 +21,7 @@ func TestFormationsHandlerReadsAndWritesBoardNotesWithETagFences(t *testing.T) {
 	handler.RegisterRoutes(mux)
 
 	get := httptest.NewRecorder()
-	mux.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/api/formations/boards/session-search/notes", nil))
+	mux.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/api/missions/session-search/notes", nil))
 	if get.Code != http.StatusOK {
 		t.Fatalf("GET notes status = %d, body=%s", get.Code, get.Body.String())
 	}
@@ -38,12 +38,12 @@ func TestFormationsHandlerReadsAndWritesBoardNotesWithETagFences(t *testing.T) {
 	}
 
 	missingFence := httptest.NewRecorder()
-	mux.ServeHTTP(missingFence, httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(`{"target":"board","text":"shared"}`)))
+	mux.ServeHTTP(missingFence, httptest.NewRequest(http.MethodPatch, "/api/missions/session-search/notes", bytes.NewBufferString(`{"target":"mission","text":"shared"}`)))
 	if missingFence.Code != http.StatusPreconditionRequired {
 		t.Fatalf("PATCH without If-Match status = %d, body=%s", missingFence.Code, missingFence.Body.String())
 	}
 
-	patch := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(`{"target":"board","text":"shared\nplan","updatedBy":"human:operator"}`))
+	patch := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search/notes", bytes.NewBufferString(`{"target":"mission","text":"shared\nplan","author":"human:operator"}`))
 	patch.Header.Set("If-Match", "*")
 	patched := httptest.NewRecorder()
 	mux.ServeHTTP(patched, patch)
@@ -62,7 +62,7 @@ func TestFormationsHandlerReadsAndWritesBoardNotesWithETagFences(t *testing.T) {
 		t.Fatalf("patched notes = %+v", current.Data.Notes)
 	}
 
-	stale := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(`{"target":"board","text":"stale","author":"human:operator"}`))
+	stale := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search/notes", bytes.NewBufferString(`{"target":"mission","text":"stale","author":"human:operator"}`))
 	stale.Header.Set("If-Match", "*")
 	staleResponse := httptest.NewRecorder()
 	mux.ServeHTTP(staleResponse, stale)
@@ -70,7 +70,7 @@ func TestFormationsHandlerReadsAndWritesBoardNotesWithETagFences(t *testing.T) {
 		t.Fatalf("stale PATCH status = %d, body=%s", staleResponse.Code, staleResponse.Body.String())
 	}
 
-	element := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(`{"target":"fmn_frame","text":"keep this narrow","author":"agent:archon"}`))
+	element := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search/notes", bytes.NewBufferString(`{"target":"fmn_frame","text":"keep this narrow","author":"agent:archon"}`))
 	element.Header.Set("If-Match", current.Data.Notes.ETag)
 	elementResponse := httptest.NewRecorder()
 	mux.ServeHTTP(elementResponse, element)
@@ -91,7 +91,7 @@ func TestFormationsHandlerReadsAndWritesBoardNotesWithETagFences(t *testing.T) {
 		`{"target":"fmn_frame","action":"delete","entryId":"nte_missing","author":"agent:archon"}`:                           http.StatusNotFound,
 		`{"target":"fmn_frame","text":"no author"}`:                                                                          http.StatusBadRequest,
 	} {
-		request := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(body))
+		request := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search/notes", bytes.NewBufferString(body))
 		request.Header.Set("If-Match", withReply.Data.Notes.ETag)
 		response := httptest.NewRecorder()
 		mux.ServeHTTP(response, request)
@@ -99,7 +99,7 @@ func TestFormationsHandlerReadsAndWritesBoardNotesWithETagFences(t *testing.T) {
 			t.Errorf("%s = %d %s, want %d", body, response.Code, response.Body.String(), want)
 		}
 	}
-	edit := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(`{"target":"fmn_frame","action":"edit","entryId":"`+agentEntry+`","text":"keep it narrower","author":"agent:archon"}`))
+	edit := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search/notes", bytes.NewBufferString(`{"target":"fmn_frame","action":"edit","entryId":"`+agentEntry+`","text":"keep it narrower","author":"agent:archon"}`))
 	edit.Header.Set("If-Match", withReply.Data.Notes.ETag)
 	edited := httptest.NewRecorder()
 	mux.ServeHTTP(edited, edit)
@@ -115,7 +115,7 @@ func TestFormationsHandlerRejectsUnknownBoardNoteTarget(t *testing.T) {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	request := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/notes", bytes.NewBufferString(`{"target":"fmn_missing","text":"nope","author":"human:ui"}`))
+	request := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search/notes", bytes.NewBufferString(`{"target":"fmn_missing","text":"nope","author":"human:ui"}`))
 	request.Header.Set("If-Match", "*")
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, request)

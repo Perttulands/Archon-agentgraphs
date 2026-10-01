@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { judgeChain, nodeRoutes, stepNumbers } from './boardRoutes'
 
 const port = (id: string, label = id) => ({ id, label })
-const formation = (id: string, title: string) => ({ id, title, type: 'solo', inputs: [port('in', 'Input')], outputs: [port('out', 'Output')], slots: [] })
+const formation = (id: string, title: string) => ({ id, title, type: 'solo' as const, inputs: [port('in', 'Input')], outputs: [port('out', 'Output')], slots: [] })
 const gate = (id: string, title: string, kinds = ['human']) => ({ id, title, kinds, criterion: '' })
 const wire = (from: string, to: string) => ({ id: `${from}->${to}`, from, to })
 
-// The Wayfinding shape: map, framing review, questions, answers, draft, an
+// The Scouting shape: map, framing review, questions, answers, draft, an
 // adversarial review judged by a critic, and a sign-off whose pass ends the run.
 const board = {
-  missions: [{ id: 'mission', title: 'Wayfinding', goal: '', beadId: '' }],
+  inputCards: [{ id: 'mission', title: 'Scouting', goal: '' }],
   formations: [formation('map', 'Map the territory'), formation('questions', 'Question peers'), formation('draft', 'Draft the brief'), formation('critic', 'Brief critic')],
   gates: [gate('framing', 'Framing review'), gate('answers', 'Answer questions'), gate('review', 'Adversarial review', ['formation']), gate('signoff', 'Brief sign-off')],
   connections: [

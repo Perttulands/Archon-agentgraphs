@@ -22,8 +22,8 @@ func TestDeleteToolPresentLayoutRemovesOwnedDefinitionAndFiltersLayoutAuthority(
 		t.Fatalf("nested connection delete fixture is not valid TOML: %v", err)
 	}
 	layoutRaw := `schema = 1 # preserve schema comment
-boardId = "brd_tool-delete-present"
-boardRev = 7 # preserve revision comment
+missionId = "brd_tool-delete-present"
+missionRev = 7 # preserve revision comment
 updatedAt = "2026-07-19T00:00:00Z" # preserve timestamp comment
 x_layout_owner = "keep"
 
@@ -226,7 +226,7 @@ note = "preserve this table exactly"`,
 		}
 		previous = index
 	}
-	if !strings.Contains(result.Layout.TOML, `boardRev = 8 # preserve revision comment`) ||
+	if !strings.Contains(result.Layout.TOML, `missionRev = 8 # preserve revision comment`) ||
 		!strings.Contains(result.Layout.TOML, `updatedAt = "2026-07-20T08:30:00Z" # preserve timestamp comment`) {
 		t.Fatalf("delete did not advance layout identity in place:\n%s", result.Layout.TOML)
 	}
@@ -556,7 +556,7 @@ func TestDeleteToolRequiresExactClosedPairCASWithoutMutation(t *testing.T) {
 			store := newToolAuthoringStore(t)
 			slug := "tool-delete-cas"
 			boardRaw := toolAuthoringBoardFixture(slug, 5, true, toolUpdateTargetBlock())
-			layoutRaw := "schema = 1\nboardId = \"brd_tool-delete-cas\"\nboardRev = 5\n\n[[node]]\nid = \"tool_target\"\nx = 112\ny = 224\n"
+			layoutRaw := "schema = 1\nmissionId = \"brd_tool-delete-cas\"\nmissionRev = 5\n\n[[node]]\nid = \"tool_target\"\nx = 112\ny = 224\n"
 			writeFixture(t, store.BoardPath(slug), boardRaw)
 			writeFixture(t, store.LayoutPath(slug), layoutRaw)
 			board, layout := toolAuthoringReadPair(t, store, slug)
@@ -606,21 +606,21 @@ func TestDeleteToolRejectsInvalidLayoutAuthorityWithoutMutation(t *testing.T) {
 		{
 			name: "layout board mismatch",
 			layout: func(string) string {
-				return "schema = 1\nboardId = \"brd_other\"\nboardRev = 3\n"
+				return "schema = 1\nmissionId = \"brd_other\"\nmissionRev = 3\n"
 			},
 			wantMarker: "does not match",
 		},
 		{
 			name: "duplicate layout node id",
 			layout: func(slug string) string {
-				return "schema = 1\nboardId = \"brd_" + slug + "\"\nboardRev = 3\n\n[[node]]\nid = \"tool_target\"\nx = 1\ny = 2\n\n[[node]]\nid = \"tool_target\"\nx = 3\ny = 4\n"
+				return "schema = 1\nmissionId = \"brd_" + slug + "\"\nmissionRev = 3\n\n[[node]]\nid = \"tool_target\"\nx = 1\ny = 2\n\n[[node]]\nid = \"tool_target\"\nx = 3\ny = 4\n"
 			},
 			wantMarker: "duplicate_layout_id",
 		},
 		{
 			name: "out of range retained coordinate",
 			layout: func(slug string) string {
-				return "schema = 1\nboardId = \"brd_" + slug + "\"\nboardRev = 3\n\n[[node]]\nid = \"mis_main\"\nx = 2147483648\ny = 4\n"
+				return "schema = 1\nmissionId = \"brd_" + slug + "\"\nmissionRev = 3\n\n[[node]]\nid = \"mis_main\"\nx = 2147483648\ny = 4\n"
 			},
 			wantMarker: "invalid_layout_coordinate",
 		},

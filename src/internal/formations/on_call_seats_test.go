@@ -148,7 +148,7 @@ func TestTmuxExecutorKeepsSoloSeatAndOnlyTheOrchestratedController(t *testing.T)
 		}
 	})
 	t.Run("orchestrated", func(t *testing.T) {
-		client := &fakeTmuxHarnessClient{captures: []string{"FINAL\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=final.md>>>"}}
+		client := &fakeTmuxHarnessClient{captures: []string{"FINAL\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=final.md>>>"}}
 		_, events := runKeptFormation(t, tmuxOrchestratedBoardFixture(), "fmn_orch", []string{"lead", "worker-a", "worker-b"}, client)
 		got := cleanupOutcomes(events)
 		if !strings.Contains(got, "slot_lead=kept_on_call") || !strings.Contains(got, "slot_worker_a=ended") || !strings.Contains(got, "slot_worker_b=ended") || len(client.killed) != 2 {

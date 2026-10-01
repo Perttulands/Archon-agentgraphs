@@ -13,7 +13,7 @@ title = "Clean board"
 rev = 3
 updatedAt = "2026-06-03T16:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Ship it"
@@ -299,7 +299,7 @@ onFail = "block"
 }
 
 func TestValidateBoardReportsMissionCountAndRunnability(t *testing.T) {
-	noMission := strings.Replace(cleanValidateBoardFixture(), `[[mission]]
+	noMission := strings.Replace(cleanValidateBoardFixture(), `[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Ship it"

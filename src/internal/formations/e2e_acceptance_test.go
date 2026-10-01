@@ -68,7 +68,7 @@ func TestCareerWebAcceptance(t *testing.T) {
 		t.Fatalf("artifact %s read err=%v len=%d, want real workspace artifact", artifactPath, err, len(raw))
 	}
 
-	recorded, err := store.RecordEscalationFromCapture(status.RunID, "fmn_frontend", "note\n<<<CHROTE-ESCALATE run-id="+status.RunID+" severity=needs-attention reason='frontend wants human taste'>>>")
+	recorded, err := store.RecordEscalationFromCapture(status.RunID, "fmn_frontend", "note\n<<<ARCHON-ESCALATE run-id="+status.RunID+" severity=needs-attention reason='frontend wants human taste'>>>")
 	if err != nil {
 		t.Fatalf("record escalation: %v", err)
 	}
@@ -203,7 +203,7 @@ func (e *careerDispatchExecutor) ExecuteFormation(req FormationExecution) (Forma
 	if err != nil {
 		return FormationExecutionResult{}, err
 	}
-	if err := e.dispatcher.CompleteFromCapture(req.RunID, lease.DispatchID, fmt.Sprintf("<<<CHROTE-DONE run-id=%s status=ok artifact=%s>>>", req.RunID, artifact)); err != nil {
+	if err := e.dispatcher.CompleteFromCapture(req.RunID, lease.DispatchID, fmt.Sprintf("<<<ARCHON-DONE run-id=%s status=ok artifact=%s>>>", req.RunID, artifact)); err != nil {
 		return FormationExecutionResult{}, err
 	}
 	return FormationExecutionResult{Status: "done", ReportRef: artifact, Text: text, Outputs: payloadsForFormationOutputs(req.Formation, text, artifact)}, nil
@@ -237,7 +237,7 @@ func createCareerPersona(t *testing.T, personas *PersonaStore, id, harness, capa
 
 func statusLedgerPath(t *testing.T, store *Store, runID string) string {
 	t.Helper()
-	matches, err := filepath.Glob(filepath.Join(store.Workspace, ".formations", "runs", "career-web", runID+".ndjson"))
+	matches, err := filepath.Glob(filepath.Join(store.Workspace, ".archon", "runs", "career-web", runID+".ndjson"))
 	if err != nil {
 		t.Fatalf("glob run ledger: %v", err)
 	}
@@ -296,7 +296,7 @@ rev = 7
 updatedBy = "agent:archon"
 updatedAt = "2026-06-03T16:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase_site"
 title = "showcase-site"
 goal = "I want a web experience that showcases my agentic-engineering work for an AI-company job search"

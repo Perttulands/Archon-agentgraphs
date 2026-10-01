@@ -83,7 +83,7 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
   const fileInput = useRef<HTMLInputElement>(null)
   const panel = useRef<HTMLElement>(null)
   const trimmed = response.trim()
-  // The run's frozen criterion wins over the board's current draft.
+  // The run's frozen criterion wins over the mission's current draft.
   const shownCriterion = (upstream.state === 'ready' && upstream.criterion) || criterion
   // Where each decision leads, from the run's frozen board (form-n7u.7).
   const routes = upstream.state === 'ready' ? upstream.routes : undefined

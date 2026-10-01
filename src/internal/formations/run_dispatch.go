@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	ErrDispatchDeadPane = errors.New("formations dispatch dead pane")
-	ErrDispatchTimeout  = errors.New("formations dispatch timeout")
+	ErrDispatchDeadPane = errors.New("archon dispatch dead pane")
+	ErrDispatchTimeout  = errors.New("archon dispatch timeout")
 )
 
 type DispatchAdapter interface {
@@ -196,11 +196,11 @@ func completionSentinels(captured, runID string) []CompletionSentinel {
 	remaining := captured
 	var sentinels []CompletionSentinel
 	for {
-		start := strings.Index(remaining, "<<<CHROTE-DONE ")
+		start := strings.Index(remaining, "<<<ARCHON-DONE ")
 		if start == -1 {
 			return sentinels
 		}
-		remaining = remaining[start+len("<<<CHROTE-DONE "):]
+		remaining = remaining[start+len("<<<ARCHON-DONE "):]
 		end := strings.Index(remaining, ">>>")
 		if end == -1 {
 			return sentinels

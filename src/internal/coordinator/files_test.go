@@ -30,7 +30,7 @@ func TestFileRoutesServeReferencesUnderConfiguredRoots(t *testing.T) {
 		t.Fatal(err)
 	}
 	route := func(kind, ref string) string {
-		return "/api/formations/files/" + kind + "?path=" + url.QueryEscape(ref)
+		return "/api/files/" + kind + "?path=" + url.QueryEscape(ref)
 	}
 
 	if w := getEvidence(c, route("preview", filepath.Join(root, "rubrics", "quality.md"))); w.Code != 403 {

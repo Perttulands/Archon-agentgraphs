@@ -57,7 +57,7 @@ func TestAuthoringEditsThatChangeNothingKeepRevisionAndETag(t *testing.T) {
 			return err
 		}},
 		{"set the same brief", func(opts WriteOptions) error {
-			_, err := store.SetFormationBrief("same", FormationBriefRequest{FormationID: worker.Formation.ID, Goal: "Produce the result", BeadID: "form-demo", Files: []string{"src/a.go"}, Links: []string{"https://example.com/spec"}}, opts)
+			_, err := store.SetFormationBrief("same", FormationBriefRequest{FormationID: worker.Formation.ID, Goal: "Produce the result", BeadID: "archon-demo", Files: []string{"src/a.go"}, Links: []string{"https://example.com/spec"}}, opts)
 			return err
 		}},
 		{"set a formation to its type", func(opts WriteOptions) error {

@@ -201,20 +201,17 @@ test('two floating windows open, resize, stack and stay off the zoom column', as
   await expect(run).toBeVisible()
 })
 
-test('an old ?board= link opens the same mission and run and becomes a ?mission= link', async ({ page }) => {
+test('a ?mission=&run= link opens that mission and run and keeps the link', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await cockpitFixture(page, { succeeded: true })
   const requests: string[] = []
   page.on('request', request => requests.push(new URL(request.url()).pathname + new URL(request.url()).search))
-  await page.goto('/?board=browser&run=run_browser&theme=dark')
+  await page.goto('/?mission=browser&run=run_browser&theme=dark')
   await expect(page.getByTestId('board-picker')).toHaveValue('browser')
   await expect(page.getByTestId('run-produced').getByRole('button')).toHaveText(['▤review.md', '+3'])
   await expect(page).toHaveURL(/\/\?mission=browser&run=run_browser&theme=dark$/)
-  await page.goto('/?board=browser')
-  await expect(page.getByTestId('board-picker')).toHaveValue('browser')
-  await expect(page).toHaveURL(/\/\?mission=browser(&run=run_browser)?$/)
-  expect(requests.filter(path => path.startsWith('/api/') && (path.startsWith('/api/formations/boards') || path.includes('board=')))).toEqual([])
-  expect(requests.some(path => path.startsWith('/api/formations/missions/browser'))).toBe(true)
+  expect(requests.some(path => path.startsWith('/api/missions/browser'))).toBe(true)
+  expect(requests.filter(path => path.startsWith('/api/formations'))).toEqual([])
 })
 
 test('a finished run opens what it produced from the run bar and cards in file windows side by side', async ({ page }) => {
@@ -233,7 +230,7 @@ test('a finished run opens what it produced from the run bar and cards in file w
   const review = page.getByRole('dialog', { name: 'file review.md' })
   await expect(review.getByRole('heading', { name: 'Peer review' })).toBeVisible()
   await expect(review.locator('strong', { hasText: 'revise' })).toBeVisible()
-  await expect(review.getByRole('link', { name: 'Open raw' })).toHaveAttribute('href', '/api/formations/runs/run_browser/artifacts/review.md')
+  await expect(review.getByRole('link', { name: 'Open raw' })).toHaveAttribute('href', '/api/runs/run_browser/artifacts/review.md')
   // Each window opens near where it was opened, clear of it and of the other: the card's chip by the card, the run bar's below the bar.
   const card = (await page.locator('[data-node="execution"]').boundingBox())!
   const opened = (await result.boundingBox())!
@@ -410,7 +407,7 @@ test('refresh follows the selected worker across attempts and never reconnects i
   const count = sockets.length
   await page.waitForTimeout(200)
   expect(sockets).toHaveLength(count)
-  current = current.map(s => s.slotId === 'worker' ? { ...s, createdSeq: 28, terminalUrl: '/api/formations/runs/run_browser/seats/28/terminal' } : s)
+  current = current.map(s => s.slotId === 'worker' ? { ...s, createdSeq: 28, terminalUrl: '/api/runs/run_browser/seats/28/terminal' } : s)
   // Refresh keeps the terminal on screen until the new projection arrives; the new attempt then gets its own.
   await page.getByRole('button', { name: 'Refresh seats' }).click()
   await expect.poll(() => sockets.at(-1)).toContain('/seats/28/terminal')

@@ -1,4 +1,4 @@
-/* Pure visual helpers for the Formations cockpit: type taglines, inline SVG
+/* Pure visual helpers for the Archon cockpit: type taglines, inline SVG
    glyphs, and agent initials/role/state. Extracted from FormationsCockpit so
    the component focuses on stateful canvas logic. The Agents view shares the
    roster grouping and seat layout so both tabs draw agents the same way. */
@@ -145,6 +145,6 @@ export function FormationSeats({ formation, renderSlot }: {
       </div>
     )
   }
-  // Solo, and any retired type: every slot stays visible so none is hidden.
+  // Solo: every slot stays visible so none is hidden.
   return <div className="solo-body">{slots.map(slot => seat(slot))}</div>
 }

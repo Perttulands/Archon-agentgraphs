@@ -96,7 +96,7 @@ func (s *Store) publishDefinitionPair(
 			name:      slug + layoutDefinitionKind.suffix,
 			path: filepath.Join(
 				s.workspaceRoot(),
-				".formations",
+				".archon",
 				layoutDefinitionKind.directory,
 				slug+layoutDefinitionKind.suffix,
 			),

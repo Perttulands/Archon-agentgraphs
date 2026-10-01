@@ -121,7 +121,7 @@ slug = "tool-eof"
 title = "Tool EOF migration"
 rev = 1
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 
@@ -164,7 +164,7 @@ slug = "tool-multiline-eof"
 title = "Tool multiline EOF migration"
 rev = 1
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 
@@ -1074,7 +1074,7 @@ updatedBy = "agent:test"
 updatedAt = "2026-07-19T12:00:00Z"
 x_owner = "keep" # unknown top-level field
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Review the work"
@@ -1179,7 +1179,7 @@ title = "Canonical schema two"
 rev = 9
 x_owner = "keep" # canonical extension
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Keep canonical bytes"
@@ -1225,7 +1225,7 @@ slug = "tool-schema-two-judge"
 title = "Canonical Formation judge"
 rev = 3
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Judge canonical work"

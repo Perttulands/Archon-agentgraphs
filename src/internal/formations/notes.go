@@ -14,8 +14,7 @@ import (
 
 const (
 	CurrentBoardNotesSchema = 2
-	legacyBoardNotesSchema  = 1
-	BoardNoteTarget         = "board"
+	BoardNoteTarget         = "mission"
 	MaxBoardNoteBytes       = 64 * 1024
 	maxBoardNotesBytes      = 512 * 1024
 
@@ -51,11 +50,11 @@ type ElementNote struct {
 
 type BoardNotesDocument struct {
 	Schema    int           `json:"schema"`
-	BoardID   string        `json:"boardId"`
+	BoardID   string        `json:"missionId"`
 	Rev       int           `json:"rev"`
 	UpdatedAt time.Time     `json:"updatedAt"`
 	UpdatedBy string        `json:"updatedBy,omitempty"`
-	Board     []NoteEntry   `json:"board"`
+	Board     []NoteEntry   `json:"mission"`
 	Elements  []ElementNote `json:"elements"`
 	ETag      string        `json:"etag"`
 	TOML      string        `json:"-"`
@@ -70,8 +69,6 @@ type BoardNotePatch struct {
 	EntryID string `json:"entryId,omitempty"`
 	Text    string `json:"text"`
 	Author  string `json:"author,omitempty"`
-	// UpdatedBy names the author for clients written before note threads.
-	UpdatedBy string `json:"updatedBy,omitempty"`
 }
 
 type NoteWriteOptions struct {
@@ -80,14 +77,11 @@ type NoteWriteOptions struct {
 
 type boardNotesSource struct {
 	Schema    int               `toml:"schema"`
-	BoardID   string            `toml:"boardId"`
+	BoardID   string            `toml:"missionId"`
 	Rev       int               `toml:"rev"`
 	UpdatedAt time.Time         `toml:"updatedAt"`
 	UpdatedBy string            `toml:"updatedBy"`
 	Entries   []noteEntrySource `toml:"entry"`
-	// Schema 1 held one text per target; it migrates to one human entry each.
-	Board    string                    `toml:"board"`
-	Elements []legacyElementNoteSource `toml:"element"`
 }
 
 type noteEntrySource struct {
@@ -99,13 +93,8 @@ type noteEntrySource struct {
 	Text      string     `toml:"text"`
 }
 
-type legacyElementNoteSource struct {
-	NodeID string `toml:"nodeId"`
-	Text   string `toml:"text"`
-}
-
 func (s *Store) NotesPath(slug string) string {
-	return filepath.Join(s.workspaceRoot(), ".formations", notesDefinitionKind.directory, slug+notesDefinitionKind.suffix)
+	return filepath.Join(s.workspaceRoot(), ".archon", notesDefinitionKind.directory, slug+notesDefinitionKind.suffix)
 }
 
 func (s *Store) ReadBoardNotes(slug string) (*BoardNotesDocument, error) {
@@ -232,9 +221,6 @@ func (s *Store) UpdateBoardNote(slug string, patch BoardNotePatch, opts NoteWrit
 
 func validateNotePatch(patch *BoardNotePatch) (string, error) {
 	author := strings.TrimSpace(patch.Author)
-	if author == "" {
-		author = strings.TrimSpace(patch.UpdatedBy)
-	}
 	if !noteAuthorPattern.MatchString(author) {
 		return "", fmt.Errorf("%w: note author %q must be human:<name> or agent:<name>", ErrInvalidNotePatch, author)
 	}
@@ -328,11 +314,11 @@ func parseBoardNotes(raw []byte) (*BoardNotesDocument, error) {
 	if err := toml.Unmarshal(raw, &source); err != nil {
 		return nil, invalidDefinitionSource(err)
 	}
-	if source.Schema > CurrentBoardNotesSchema {
+	if source.Schema != CurrentBoardNotesSchema {
 		return nil, fmt.Errorf("%w: notes schema %d", ErrUnsupportedSchema, source.Schema)
 	}
-	if source.Schema < legacyBoardNotesSchema || strings.TrimSpace(source.BoardID) == "" || source.Rev < 1 || source.UpdatedAt.IsZero() {
-		return nil, invalidDefinitionSource(errors.New("invalid board notes metadata"))
+	if strings.TrimSpace(source.BoardID) == "" || source.Rev < 1 || source.UpdatedAt.IsZero() {
+		return nil, invalidDefinitionSource(errors.New("invalid mission notes metadata"))
 	}
 	notes := &BoardNotesDocument{
 		Schema:    CurrentBoardNotesSchema,
@@ -344,19 +330,9 @@ func parseBoardNotes(raw []byte) (*BoardNotesDocument, error) {
 		Elements:  []ElementNote{},
 		ETag:      etag(raw),
 	}
-	var entries []noteEntrySource
-	if source.Schema == legacyBoardNotesSchema {
-		legacy, err := migrateLegacyNotes(source)
-		if err != nil {
-			return nil, err
-		}
-		entries = legacy
-	} else {
-		entries = source.Entries
-	}
 	seen := map[string]bool{}
 	threads := map[string][]NoteEntry{}
-	for _, entry := range entries {
+	for _, entry := range source.Entries {
 		switch {
 		case strings.TrimSpace(entry.ID) == "" || seen[entry.ID]:
 			return nil, invalidDefinitionSource(fmt.Errorf("note entry id %q is missing or repeated", entry.ID))
@@ -386,38 +362,10 @@ func parseBoardNotes(raw []byte) (*BoardNotesDocument, error) {
 	return notes, nil
 }
 
-// migrateLegacyNotes turns each schema-1 text into one human entry, dated when
-// the notes were last saved. The previous editor is kept when it was human.
-func migrateLegacyNotes(source boardNotesSource) ([]noteEntrySource, error) {
-	author := strings.TrimSpace(source.UpdatedBy)
-	if !strings.HasPrefix(author, "human:") || !noteAuthorPattern.MatchString(author) {
-		author = "human:operator"
-	}
-	var entries []noteEntrySource
-	add := func(target, text string) {
-		if text != "" {
-			entries = append(entries, noteEntrySource{ID: "migrated-" + target, Target: target, Author: author, CreatedAt: source.UpdatedAt, Text: text})
-		}
-	}
-	add(BoardNoteTarget, source.Board)
-	seen := map[string]bool{}
-	for _, note := range source.Elements {
-		if strings.TrimSpace(note.NodeID) == "" {
-			return nil, invalidDefinitionSource(errors.New("element note is missing nodeId"))
-		}
-		if seen[note.NodeID] {
-			return nil, invalidDefinitionSource(fmt.Errorf("duplicate element note %q", note.NodeID))
-		}
-		seen[note.NodeID] = true
-		add(note.NodeID, note.Text)
-	}
-	return entries, nil
-}
-
 func renderBoardNotes(notes *BoardNotesDocument) []byte {
 	var b strings.Builder
 	fmt.Fprintf(&b, "schema = %d\n", CurrentBoardNotesSchema)
-	fmt.Fprintf(&b, "boardId = %s\n", renderString(notes.BoardID))
+	fmt.Fprintf(&b, "missionId = %s\n", renderString(notes.BoardID))
 	fmt.Fprintf(&b, "rev = %d\n", notes.Rev)
 	fmt.Fprintf(&b, "updatedAt = %s\n", renderString(notes.UpdatedAt.UTC().Format(time.RFC3339Nano)))
 	fmt.Fprintf(&b, "updatedBy = %s\n", renderString(notes.UpdatedBy))

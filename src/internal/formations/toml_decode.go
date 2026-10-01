@@ -80,10 +80,10 @@ func decodeLayoutTOML(raw []byte) (layoutTOMLSource, error) {
 	if source.Schema, err = tomlInt(document, "schema"); err != nil {
 		return layoutTOMLSource{}, err
 	}
-	if source.BoardID, err = tomlString(document, "boardId"); err != nil {
+	if source.BoardID, err = tomlString(document, "missionId"); err != nil {
 		return layoutTOMLSource{}, err
 	}
-	if source.BoardRev, err = tomlInt(document, "boardRev"); err != nil {
+	if source.BoardRev, err = tomlInt(document, "missionRev"); err != nil {
 		return layoutTOMLSource{}, err
 	}
 	if source.UpdatedAt, err = tomlString(document, "updatedAt"); err != nil {
@@ -218,7 +218,7 @@ func tomlTableArray(table map[string]any, key string) ([]map[string]any, error) 
 }
 
 func decodeMissionNodes(document map[string]any) ([]MissionNode, error) {
-	tables, err := tomlTableArray(document, "mission")
+	tables, err := tomlTableArray(document, "inputCard")
 	if err != nil {
 		return nil, err
 	}

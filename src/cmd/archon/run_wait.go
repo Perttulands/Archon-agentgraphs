@@ -168,7 +168,7 @@ func (w *runWaiter) wait(timeout time.Duration) (*waitOutput, int, error) {
 // such as while it restarts.
 func (w *runWaiter) poll(hold time.Duration) (*coordinator.RunWait, bool, error) {
 	query := url.Values{"until": {w.until}, "since": {strconv.Itoa(w.since)}, "hold": {strconv.Itoa(int(hold / time.Second))}}
-	response, err := w.http.Get(w.client.server + "/api/formations/runs/" + url.PathEscape(w.runID) + "/wait?" + query.Encode())
+	response, err := w.http.Get(w.client.server + "/api/runs/" + url.PathEscape(w.runID) + "/wait?" + query.Encode())
 	if err != nil {
 		return nil, true, fmt.Errorf("daemon unreachable: %w", err)
 	}

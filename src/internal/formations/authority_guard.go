@@ -106,9 +106,9 @@ type RuntimeAuthorityGuardError struct {
 
 func (e *RuntimeAuthorityGuardError) Error() string {
 	if e == nil {
-		return "formations runtime authority guard rejected input"
+		return "archon runtime authority guard rejected input"
 	}
-	message := fmt.Sprintf("formations runtime authority guard rejected %s", e.Stage)
+	message := fmt.Sprintf("archon runtime authority guard rejected %s", e.Stage)
 	if e.RelativePath != "" {
 		message += " at " + e.RelativePath
 	}
@@ -182,9 +182,9 @@ type runtimeEventEnvelope struct {
 	Seq             *json.Number    `json:"seq,omitempty"`
 	Type            string          `json:"type"`
 	Actor           string          `json:"actor,omitempty"`
-	BoardID         string          `json:"boardId,omitempty"`
-	BoardRev        *json.Number    `json:"boardRev,omitempty"`
-	MissionID       string          `json:"missionId,omitempty"`
+	BoardID         string          `json:"missionId,omitempty"`
+	BoardRev        *json.Number    `json:"missionRev,omitempty"`
+	MissionID       string          `json:"inputCardId,omitempty"`
 	BeadID          string          `json:"beadId,omitempty"`
 	NodeID          string          `json:"nodeId,omitempty"`
 	SlotID          string          `json:"slotId,omitempty"`
@@ -216,8 +216,8 @@ var runtimeAuthorityClosedJSONKeys = map[reflect.Type]map[string]struct{}{
 		"policySchema", "policyRev", "priorPolicySha256", "state", "maxActiveRuns", "maxQueuedRuns",
 	),
 	reflect.TypeOf(runtimeEventEnvelope{}): runtimeAuthorityJSONKeySet(
-		"schema", "authoritySchema", "writerFence", "ts", "runId", "seq", "type", "actor", "boardId", "boardRev",
-		"missionId", "beadId", "nodeId", "slotId", "gateId", "edgeId", "epoch", "attempt", "data",
+		"schema", "authoritySchema", "writerFence", "ts", "runId", "seq", "type", "actor", "missionId", "missionRev",
+		"inputCardId", "beadId", "nodeId", "slotId", "gateId", "edgeId", "epoch", "attempt", "data",
 	),
 }
 
@@ -904,7 +904,7 @@ func classifyRuntimeAuthorityLedgerWithVisitor(input io.Reader, expectedAuthorit
 		if (schemaPresent && event.Schema == nil) || (authoritySchemaPresent && event.AuthoritySchema == nil) || (writerFencePresent && event.WriterFence == nil) {
 			return "", runtimeDecodeError{code: RuntimeAuthorityGuardMalformed, err: errors.New("event schema fields cannot be null")}
 		}
-		for _, field := range []string{"ts", "runId", "type", "actor", "boardId", "missionId", "beadId", "nodeId", "slotId", "gateId", "edgeId"} {
+		for _, field := range []string{"ts", "runId", "type", "actor", "missionId", "inputCardId", "beadId", "nodeId", "slotId", "gateId", "edgeId"} {
 			if runtimeJSONFieldIsNull(fields, field) {
 				return "", runtimeDecodeError{code: RuntimeAuthorityGuardMalformed, err: fmt.Errorf("event field %q cannot be null", field)}
 			}
@@ -914,7 +914,7 @@ func classifyRuntimeAuthorityLedgerWithVisitor(input io.Reader, expectedAuthorit
 			value   *json.Number
 			minimum uint64
 		}{
-			{name: "boardRev", value: event.BoardRev, minimum: 1},
+			{name: "missionRev", value: event.BoardRev, minimum: 1},
 			{name: "epoch", value: event.Epoch, minimum: 0},
 			{name: "attempt", value: event.Attempt, minimum: 1},
 		} {

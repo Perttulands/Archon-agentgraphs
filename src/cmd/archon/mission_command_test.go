@@ -12,7 +12,7 @@ import (
 func newMissionCommandWorkspace(t *testing.T) (string, func(args ...string) (string, string, int)) {
 	t.Helper()
 	workspace := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", filepath.Join(t.TempDir(), "agents"))
+	t.Setenv("ARCHON_AGENTS_DIR", filepath.Join(t.TempDir(), "agents"))
 	runner := &fakeTmux{live: map[string]bool{}}
 	return workspace, func(args ...string) (string, string, int) {
 		return runArchon(t, runner, append([]string{"--workspace", workspace}, args...)...)
@@ -66,7 +66,7 @@ func TestArchonMissionWireAndUpdateActOnTheInputCard(t *testing.T) {
 		t.Fatalf("mission create: %d %s", code, stderr)
 	}
 	var created struct {
-		Mission formations.MissionNode `json:"mission"`
+		Mission formations.MissionNode `json:"inputCard"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &created); err != nil {
 		t.Fatalf("decode create: %v %s", err, stdout)

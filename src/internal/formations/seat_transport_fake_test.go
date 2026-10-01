@@ -66,7 +66,7 @@ func (f *fakeTmuxHarnessClient) WaitTurn(ctx context.Context, s *nativeSeat, cwd
 		if err != nil {
 			return turn, err
 		}
-		if strings.Contains(text, "<<<CHROTE-DONE") {
+		if strings.Contains(text, "<<<ARCHON-DONE") {
 			turn.Text = text
 			turn.Complete = true
 			return turn, nil

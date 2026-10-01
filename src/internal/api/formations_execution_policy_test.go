@@ -22,7 +22,7 @@ func TestFormationExecutionPolicyHTTP(t *testing.T) {
 		}
 		body := fmt.Sprintf(`{"setExecution":{"formationId":"fmn_work","timeoutSeconds":%d},"expectedRev":%d}`, seconds, board.Rev)
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/budget", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPatch, "/api/missions/budget", strings.NewReader(body))
 		req.Header.Set("If-Match", board.ETag)
 		mux.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
@@ -38,7 +38,7 @@ func TestFormationExecutionPolicyHTTP(t *testing.T) {
 		}
 	}
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPatch, "/api/formations/boards/budget", strings.NewReader(`{"setExecution":{"formationId":"fmn_work","timeoutSeconds":-3}}`)))
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPatch, "/api/missions/budget", strings.NewReader(`{"setExecution":{"formationId":"fmn_work","timeoutSeconds":-3}}`)))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid policy status %d: %s", rec.Code, rec.Body.String())
 	}
@@ -48,7 +48,7 @@ func TestFormationExecutionPolicyHTTP(t *testing.T) {
 			t.Fatal(err)
 		}
 		body := fmt.Sprintf(`{"setExecution":%s,"expectedRev":%d}`, payload, board.Rev)
-		req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/budget", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPatch, "/api/missions/budget", strings.NewReader(body))
 		req.Header.Set("If-Match", board.ETag)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)

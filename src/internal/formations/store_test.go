@@ -149,8 +149,8 @@ func TestLayoutWriteDoesNotChangeBoardBytesOrBoardRevision(t *testing.T) {
 	store.Now = fixedClock()
 	writeFixture(t, store.BoardPath("session-search"), minimalBoard("session-search", 7))
 	writeFixture(t, store.LayoutPath("session-search"), `schema = 1
-boardId = "brd_01J9_sesssearch"
-boardRev = 7
+missionId = "brd_01J9_sesssearch"
+missionRev = 7
 updatedAt = "2026-06-03T16:02:00Z"
 
 [[node]]
@@ -253,14 +253,14 @@ func TestCreateBoardWritesMinimalDurableBoard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create board: %v", err)
 	}
-	if board.Schema != NewBoardSchema || board.Slug != "poems" || board.Title != "Poems" || board.Rev != 1 || !strings.HasPrefix(board.ID, "brd_") || board.ETag == "" {
+	if board.Schema != NewBoardSchema || board.Slug != "poems" || board.Title != "Poems" || board.Rev != 1 || !strings.HasPrefix(board.ID, "msn_") || board.ETag == "" {
 		t.Fatalf("created board = %+v, want durable board identity", board)
 	}
 	if board.UpdatedBy != "agent:test" || board.UpdatedAt != "2026-06-03T17:00:00Z" {
 		t.Fatalf("created board update metadata = %q/%q", board.UpdatedBy, board.UpdatedAt)
 	}
 	raw := readFile(t, store.BoardPath("poems"))
-	for _, want := range []string{`schema = 1`, `id = "brd_`, `slug = "poems"`, `title = "Poems"`, `rev = 1`, `updatedBy = "agent:test"`, `updatedAt = "2026-06-03T17:00:00Z"`} {
+	for _, want := range []string{`schema = 1`, `id = "msn_`, `slug = "poems"`, `title = "Poems"`, `rev = 1`, `updatedBy = "agent:test"`, `updatedAt = "2026-06-03T17:00:00Z"`} {
 		if !strings.Contains(raw, want) {
 			t.Fatalf("created board file missing %q:\n%s", want, raw)
 		}
@@ -381,8 +381,8 @@ legacyKey = "keep"
 func TestSchemaZeroLayoutInspectionNeverPublishesMigration(t *testing.T) {
 	store := NewStore(t.TempDir())
 	raw := `schema = 0
-boardId = "brd_schema_zero"
-boardRev = 1
+missionId = "brd_schema_zero"
+missionRev = 1
 updatedAt = "2026-06-03T16:02:00Z"
 layoutNote = "keep"
 `
@@ -443,8 +443,8 @@ func TestSchemaOneBoardInspectionNeverPublishesMigration(t *testing.T) {
 func TestSchemaOneLayoutInspectionNeverPublishesMigration(t *testing.T) {
 	store := NewStore(t.TempDir())
 	raw := `schema = 1
-boardId = "brd_inspect_only"
-boardRev = 1
+missionId = "brd_inspect_only"
+missionRev = 1
 updatedAt = "2026-06-03T16:02:00Z"
 layoutNote = "keep"
 `
@@ -498,8 +498,8 @@ rev = 1
 	}
 
 	writeFixture(t, store.LayoutPath("future-layout"), `schema = 2
-boardId = "brd_future"
-boardRev = 1
+missionId = "brd_future"
+missionRev = 1
 updatedAt = "2026-06-03T16:02:00Z"
 `)
 	if _, err := store.ReadLayout("future-layout"); !errors.Is(err, ErrUnsupportedSchema) {
@@ -726,8 +726,8 @@ customFuture = "keep me"
 
 	layoutTOML := readFile(t, store.LayoutPath("session-search"))
 	for _, want := range []string{
-		`boardId = "brd_01J9_sesssearch"`,
-		`boardRev = 8`,
+		`missionId = "brd_01J9_sesssearch"`,
+		`missionRev = 8`,
 		`[[node]]`,
 		`x = 840`,
 		`y = 135`,
@@ -737,7 +737,7 @@ customFuture = "keep me"
 		}
 	}
 	if result.Layout.BoardRev != 8 {
-		t.Fatalf("layout boardRev = %d, want 8", result.Layout.BoardRev)
+		t.Fatalf("layout missionRev = %d, want 8", result.Layout.BoardRev)
 	}
 	if len(result.Layout.Nodes) != 1 || result.Layout.Nodes[0].ID != result.Formation.ID {
 		t.Fatalf("layout nodes = %+v, want created formation node", result.Layout.Nodes)
@@ -892,7 +892,7 @@ slug = "arrange"
 title = "Arrange"
 rev = 4
 
-[[mission]]
+[[inputCard]]
 id = "mis_start"
 title = "Start"
 
@@ -917,8 +917,8 @@ from = "fmn_build:out"
 to = "gate_check:in"
 `)
 	writeFixture(t, store.LayoutPath("arrange"), `schema = 1
-boardId = "brd_arrange"
-boardRev = 4
+missionId = "brd_arrange"
+missionRev = 4
 
 [[node]]
 id = "mis_start"
@@ -982,7 +982,7 @@ slug = "arrange-tool"
 title = "Arrange Tool"
 rev = 4
 
-[[mission]]
+[[inputCard]]
 id = "mis_start"
 title = "Start"
 
@@ -1011,8 +1011,8 @@ from = "tool_normalize:port_tool_out"
 to = "fmn_finish:in"
 `
 	layoutRaw := `schema = 1
-boardId = "brd_arrange_tool"
-boardRev = 4
+missionId = "brd_arrange_tool"
+missionRev = 4
 
 [[node]]
 id = "mis_start"
@@ -1089,8 +1089,8 @@ title = "Check"
 kinds = ["human"]
 `)
 	writeFixture(t, store.LayoutPath("arrange-stale"), `schema = 1
-boardId = "brd_arrange_stale"
-boardRev = 4
+missionId = "brd_arrange_stale"
+missionRev = 4
 
 [[node]]
 id = "gate_check"
@@ -1114,7 +1114,7 @@ y = 300
 		t.Fatalf("read stale layout: %v", err)
 	}
 	if staleLayout.BoardRev == boardAfter.Rev {
-		t.Fatalf("definition edit unexpectedly refreshed layout boardRev = %d", staleLayout.BoardRev)
+		t.Fatalf("definition edit unexpectedly refreshed layout missionRev = %d", staleLayout.BoardRev)
 	}
 
 	arranged, err := store.ArrangeLayout("arrange-stale", WriteOptions{ExpectedETag: staleLayout.ETag})
@@ -1162,8 +1162,8 @@ id = "out"
 label = "Output"
 `)
 	writeFixture(t, store.LayoutPath("arrange-serial"), `schema = 1
-boardId = "brd_arrange_serial"
-boardRev = 3
+missionId = "brd_arrange_serial"
+missionRev = 3
 
 [[node]]
 id = "fmn_first"
@@ -1251,7 +1251,7 @@ y = 100
 		t.Fatalf("arrange layout: %v", arranged.err)
 	}
 	if arranged.layout.BoardRev != boardBefore.Rev {
-		t.Fatalf("arranged boardRev = %d, want serialized rev %d", arranged.layout.BoardRev, boardBefore.Rev)
+		t.Fatalf("arranged missionRev = %d, want serialized rev %d", arranged.layout.BoardRev, boardBefore.Rev)
 	}
 	wired := <-wireDone
 	if wired.err != nil {
@@ -1283,8 +1283,8 @@ func TestUpdateLayoutNodesWildcardOnlyRecreatesMissingLayoutSidecar(t *testing.T
 	store.Now = fixedClock()
 	writeFixture(t, store.BoardPath("session-search"), minimalBoard("session-search", 7))
 	writeFixture(t, store.LayoutPath("session-search"), `schema = 1
-boardId = "brd_session-search"
-boardRev = 7
+missionId = "brd_session-search"
+missionRev = 7
 updatedAt = "2026-06-03T16:02:00Z"
 
 [[node]]
@@ -1412,7 +1412,7 @@ rev = 7
 updatedAt = "2026-06-03T16:00:00Z"
 customFuture = "keep me"
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Build the page"
@@ -1478,8 +1478,8 @@ from = "gate_review:judge"
 to = "fmn_frame:port_frame_in"
 `)
 	writeFixture(t, store.LayoutPath("session-search"), `schema = 1
-boardId = "brd_01J9_sesssearch"
-boardRev = 7
+missionId = "brd_01J9_sesssearch"
+missionRev = 7
 updatedAt = "2026-06-03T16:02:00Z"
 
 [[node]]
@@ -2181,8 +2181,8 @@ func TestS3HandRouteWritesLayoutOnly(t *testing.T) {
 	}
 	boardBeforeLane := readFile(t, store.BoardPath("session-search"))
 	writeFixture(t, store.LayoutPath("session-search"), `schema = 1
-boardId = "brd_01J9_sesssearch"
-boardRev = 8
+missionId = "brd_01J9_sesssearch"
+missionRev = 8
 updatedAt = "2026-06-03T16:02:00Z"
 `)
 	layout, err := store.ReadLayout("session-search")
@@ -2239,7 +2239,7 @@ func TestS3GatePersistsKindsCriterionWithoutVerdictOrOnFail(t *testing.T) {
 	}
 	layout := result.Layout
 	if layout.BoardRev != after.Rev {
-		t.Fatalf("layout boardRev = %d, want %d", layout.BoardRev, after.Rev)
+		t.Fatalf("layout missionRev = %d, want %d", layout.BoardRev, after.Rev)
 	}
 	if len(layout.Nodes) != 1 || layout.Nodes[0].ID != after.Gates[0].ID || layout.Nodes[0].X != 410 || layout.Nodes[0].Y != 220 {
 		t.Fatalf("layout nodes = %+v, want created gate at 410,220", layout.Nodes)
@@ -2491,7 +2491,7 @@ func TestS3MissionCreateAcceptsProjectBeadIDAndSingleOut(t *testing.T) {
 		t.Fatalf("create mission: %v", err)
 	}
 	after := result.Board
-	if len(after.Missions) != 1 || !strings.HasPrefix(after.Missions[0].ID, "mis_") {
+	if len(after.Missions) != 1 || !strings.HasPrefix(after.Missions[0].ID, "inp_") {
 		t.Fatalf("missions = %+v, want one project-backed mission", after.Missions)
 	}
 	if result.Mission.ID != after.Missions[0].ID {
@@ -2506,7 +2506,7 @@ func TestS3MissionCreateAcceptsProjectBeadIDAndSingleOut(t *testing.T) {
 	}
 	layout := result.Layout
 	if layout.BoardRev != after.Rev {
-		t.Fatalf("layout boardRev = %d, want %d", layout.BoardRev, after.Rev)
+		t.Fatalf("layout missionRev = %d, want %d", layout.BoardRev, after.Rev)
 	}
 	if len(layout.Nodes) != 1 || layout.Nodes[0].ID != after.Missions[0].ID || layout.Nodes[0].X != 150 || layout.Nodes[0].Y != 90 {
 		t.Fatalf("layout nodes = %+v, want created mission at 150,90", layout.Nodes)
@@ -2523,7 +2523,7 @@ title = "Improve session search"
 rev = 7
 updatedAt = "2026-06-03T16:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Build it"

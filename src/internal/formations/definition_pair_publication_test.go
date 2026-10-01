@@ -169,7 +169,7 @@ func TestDefinitionPairValidatesPinnedCurrentAndCandidateBytesWhileBothLocksAreH
 		if string(candidate.board) != string(newBoard) || !candidate.layout.present || string(candidate.layout.raw) != string(newLayout) {
 			return fmt.Errorf("candidate pair = %#v, want exact supplied bytes", candidate)
 		}
-		assertPairMutexHeldForTest(t, store.BoardPath(slug)+".lock", "board")
+		assertPairMutexHeldForTest(t, store.BoardPath(slug)+".lock", "mission")
 		assertPairMutexHeldForTest(t, store.LayoutPath(slug)+".lock", "layout")
 		return nil
 	}
@@ -956,8 +956,8 @@ func TestDefinitionPairCanonicalPreflightReusesNoFollowSingleLinkSecurity(t *tes
 		member string
 		attack string
 	}{
-		{name: "board symlink", member: "board", attack: "symlink"},
-		{name: "board hardlink", member: "board", attack: "hardlink"},
+		{name: "board symlink", member: "mission", attack: "symlink"},
+		{name: "board hardlink", member: "mission", attack: "hardlink"},
 		{name: "layout symlink", member: "layout", attack: "symlink"},
 		{name: "layout hardlink", member: "layout", attack: "hardlink"},
 	}
@@ -1043,8 +1043,8 @@ func TestDefinitionPairLocksReuseNoFollowSingleLinkSecurity(t *testing.T) {
 		member string
 		attack string
 	}{
-		{name: "board lock symlink", member: "board", attack: "symlink"},
-		{name: "board lock hardlink", member: "board", attack: "hardlink"},
+		{name: "board lock symlink", member: "mission", attack: "symlink"},
+		{name: "board lock hardlink", member: "mission", attack: "hardlink"},
 		{name: "layout lock symlink", member: "layout", attack: "symlink"},
 		{name: "layout lock hardlink", member: "layout", attack: "hardlink"},
 	}
@@ -1147,12 +1147,12 @@ func TestDefinitionPairHoldsBothAdvisoryFlocksAgainstPeerProcessThroughFinalBoar
 }
 
 func TestDefinitionPairPeerProcessFlockHolder(t *testing.T) {
-	if os.Getenv("CHROTE_TEST_DEFINITION_PAIR_FLOCK_HOLDER") != "1" {
+	if os.Getenv("ARCHON_TEST_DEFINITION_PAIR_FLOCK_HOLDER") != "1" {
 		return
 	}
-	lockPath := os.Getenv("CHROTE_TEST_DEFINITION_PAIR_HELD_LOCK")
-	readyPath := os.Getenv("CHROTE_TEST_DEFINITION_PAIR_HOLDER_READY")
-	releasePath := os.Getenv("CHROTE_TEST_DEFINITION_PAIR_HOLDER_RELEASE")
+	lockPath := os.Getenv("ARCHON_TEST_DEFINITION_PAIR_HELD_LOCK")
+	readyPath := os.Getenv("ARCHON_TEST_DEFINITION_PAIR_HOLDER_READY")
+	releasePath := os.Getenv("ARCHON_TEST_DEFINITION_PAIR_HOLDER_RELEASE")
 	fd, err := syscall.Open(lockPath, syscall.O_RDWR|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		t.Fatalf("open foreign definition lock: %v", err)
@@ -1180,13 +1180,13 @@ func TestDefinitionPairPeerProcessFlockHolder(t *testing.T) {
 }
 
 func TestDefinitionPairPeerProcessFlockContender(t *testing.T) {
-	if os.Getenv("CHROTE_TEST_DEFINITION_PAIR_FLOCK_CONTENDER") != "1" {
+	if os.Getenv("ARCHON_TEST_DEFINITION_PAIR_FLOCK_CONTENDER") != "1" {
 		return
 	}
-	lockPath := os.Getenv("CHROTE_TEST_DEFINITION_PAIR_CONTENDED_LOCK")
-	armedPath := os.Getenv("CHROTE_TEST_DEFINITION_PAIR_CONTENDER_ARMED")
-	enteredPath := os.Getenv("CHROTE_TEST_DEFINITION_PAIR_CONTENDER_ENTERED")
-	releasePath := os.Getenv("CHROTE_TEST_DEFINITION_PAIR_CONTENDER_RELEASE")
+	lockPath := os.Getenv("ARCHON_TEST_DEFINITION_PAIR_CONTENDED_LOCK")
+	armedPath := os.Getenv("ARCHON_TEST_DEFINITION_PAIR_CONTENDER_ARMED")
+	enteredPath := os.Getenv("ARCHON_TEST_DEFINITION_PAIR_CONTENDER_ENTERED")
+	releasePath := os.Getenv("ARCHON_TEST_DEFINITION_PAIR_CONTENDER_RELEASE")
 	fd, err := syscall.Open(lockPath, syscall.O_RDWR|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		t.Fatalf("open contended definition lock: %v", err)
@@ -1238,15 +1238,15 @@ func blockDefinitionPairFlockContenderForTest(fd int, acquired chan<- error) {
 }
 
 func TestDefinitionPairPeerProcessFlockProbe(t *testing.T) {
-	if os.Getenv("CHROTE_TEST_DEFINITION_PAIR_FLOCK_PROBE") != "1" {
+	if os.Getenv("ARCHON_TEST_DEFINITION_PAIR_FLOCK_PROBE") != "1" {
 		return
 	}
 	for _, member := range []struct {
 		name string
 		path string
 	}{
-		{name: "board", path: os.Getenv("CHROTE_TEST_DEFINITION_PAIR_BOARD_LOCK")},
-		{name: "layout", path: os.Getenv("CHROTE_TEST_DEFINITION_PAIR_LAYOUT_LOCK")},
+		{name: "mission", path: os.Getenv("ARCHON_TEST_DEFINITION_PAIR_BOARD_LOCK")},
+		{name: "layout", path: os.Getenv("ARCHON_TEST_DEFINITION_PAIR_LAYOUT_LOCK")},
 	} {
 		fd, err := syscall.Open(member.path, syscall.O_RDWR|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 		if err != nil {
@@ -1299,7 +1299,7 @@ func pairBoardFixture(slug string, rev int, title string) []byte {
 }
 
 func pairLayoutFixture(boardRev int, marker string) []byte {
-	return []byte(fmt.Sprintf("schema = 1\nboardId = \"brd_pair\"\nboardRev = %d\nupdatedAt = %q\n", boardRev, marker))
+	return []byte(fmt.Sprintf("schema = 1\nmissionId = \"brd_pair\"\nmissionRev = %d\nupdatedAt = %q\n", boardRev, marker))
 }
 
 func assertPairFilesForTest(t *testing.T, store *Store, slug string, board []byte, layout definitionPairContent) {
@@ -1367,9 +1367,9 @@ func assertPeerProcessDefinitionFlocksBlockedForTest(t *testing.T, boardLock, la
 	t.Helper()
 	command := exec.Command(os.Args[0], "-test.run=^TestDefinitionPairPeerProcessFlockProbe$")
 	command.Env = append(os.Environ(),
-		"CHROTE_TEST_DEFINITION_PAIR_FLOCK_PROBE=1",
-		"CHROTE_TEST_DEFINITION_PAIR_BOARD_LOCK="+boardLock,
-		"CHROTE_TEST_DEFINITION_PAIR_LAYOUT_LOCK="+layoutLock,
+		"ARCHON_TEST_DEFINITION_PAIR_FLOCK_PROBE=1",
+		"ARCHON_TEST_DEFINITION_PAIR_BOARD_LOCK="+boardLock,
+		"ARCHON_TEST_DEFINITION_PAIR_LAYOUT_LOCK="+layoutLock,
 	)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("peer-process definition flock probe: %v\n%s", err, output)
@@ -1417,10 +1417,10 @@ func startPeerProcessDefinitionFlockHolderForTest(t *testing.T, lockPath string)
 	releasePath := filepath.Join(controlDir, "release")
 	command := exec.Command(os.Args[0], "-test.run=^TestDefinitionPairPeerProcessFlockHolder$")
 	command.Env = append(os.Environ(),
-		"CHROTE_TEST_DEFINITION_PAIR_FLOCK_HOLDER=1",
-		"CHROTE_TEST_DEFINITION_PAIR_HELD_LOCK="+lockPath,
-		"CHROTE_TEST_DEFINITION_PAIR_HOLDER_READY="+readyPath,
-		"CHROTE_TEST_DEFINITION_PAIR_HOLDER_RELEASE="+releasePath,
+		"ARCHON_TEST_DEFINITION_PAIR_FLOCK_HOLDER=1",
+		"ARCHON_TEST_DEFINITION_PAIR_HELD_LOCK="+lockPath,
+		"ARCHON_TEST_DEFINITION_PAIR_HOLDER_READY="+readyPath,
+		"ARCHON_TEST_DEFINITION_PAIR_HOLDER_RELEASE="+releasePath,
 	)
 	if err := command.Start(); err != nil {
 		t.Fatalf("start foreign definition flock holder: %v", err)
@@ -1746,7 +1746,7 @@ func (c *definitionPairMutexContendersForTest) releaseAndRequireEntry(t *testing
 		member  string
 		entered <-chan struct{}
 	}{
-		{member: "board", entered: c.boardEntered},
+		{member: "mission", entered: c.boardEntered},
 		{member: "layout", entered: c.layoutEntered},
 	} {
 		select {
@@ -1761,7 +1761,7 @@ func (c *definitionPairMutexContendersForTest) releaseAndRequireEntry(t *testing
 func (c *definitionPairMutexContendersForTest) enteredMember() string {
 	select {
 	case <-c.boardEntered:
-		return "board"
+		return "mission"
 	default:
 	}
 	select {
@@ -1812,7 +1812,7 @@ func newDefinitionPairFlockContendersForTest(controlRoot, boardLock, layoutLock 
 
 func (c *definitionPairFlockContendersForTest) arm() error {
 	c.armOnce.Do(func() {
-		c.board, c.armErr = startPeerProcessDefinitionFlockContenderForTest(c.controlRoot, "board", c.boardLock)
+		c.board, c.armErr = startPeerProcessDefinitionFlockContenderForTest(c.controlRoot, "mission", c.boardLock)
 		if c.armErr != nil {
 			return
 		}
@@ -1912,11 +1912,11 @@ func startPeerProcessDefinitionFlockContenderForTest(controlRoot, member, lockPa
 	}
 	contender.command = exec.Command(os.Args[0], "-test.run=^TestDefinitionPairPeerProcessFlockContender$")
 	contender.command.Env = append(os.Environ(),
-		"CHROTE_TEST_DEFINITION_PAIR_FLOCK_CONTENDER=1",
-		"CHROTE_TEST_DEFINITION_PAIR_CONTENDED_LOCK="+lockPath,
-		"CHROTE_TEST_DEFINITION_PAIR_CONTENDER_ARMED="+contender.armedPath,
-		"CHROTE_TEST_DEFINITION_PAIR_CONTENDER_ENTERED="+contender.enteredPath,
-		"CHROTE_TEST_DEFINITION_PAIR_CONTENDER_RELEASE="+contender.releasePath,
+		"ARCHON_TEST_DEFINITION_PAIR_FLOCK_CONTENDER=1",
+		"ARCHON_TEST_DEFINITION_PAIR_CONTENDED_LOCK="+lockPath,
+		"ARCHON_TEST_DEFINITION_PAIR_CONTENDER_ARMED="+contender.armedPath,
+		"ARCHON_TEST_DEFINITION_PAIR_CONTENDER_ENTERED="+contender.enteredPath,
+		"ARCHON_TEST_DEFINITION_PAIR_CONTENDER_RELEASE="+contender.releasePath,
 	)
 	if err := contender.command.Start(); err != nil {
 		return nil, err

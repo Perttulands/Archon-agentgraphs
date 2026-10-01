@@ -27,8 +27,8 @@ func (c *Coordinator) ConfigureFileRoots(paths []string) error {
 }
 
 func (c *Coordinator) registerFileRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/formations/files/preview", c.filePreview)
-	mux.HandleFunc("GET /api/formations/files/raw", c.fileRaw)
+	mux.HandleFunc("GET /api/files/preview", c.filePreview)
+	mux.HandleFunc("GET /api/files/raw", c.fileRaw)
 }
 
 func (c *Coordinator) configuredFileRoots() *formations.FileRoots {

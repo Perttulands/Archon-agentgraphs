@@ -22,13 +22,13 @@ export interface Route {
   text: string
 }
 
-type Board = Pick<BoardDocument, 'connections' | 'formations'> & Partial<Pick<BoardDocument, 'missions' | 'gates' | 'tools'>>
+type Board = Pick<BoardDocument, 'connections' | 'formations'> & Partial<Pick<BoardDocument, 'inputCards' | 'gates' | 'tools'>>
 
 const nodeOf = (endpoint: string) => endpoint.split(':')[0]
 const portOf = (endpoint: string) => endpoint.split(':').slice(1).join(':')
 
 export function nodeTitle(board: Board, nodeId: string): string {
-  const node = [...(board.missions || []), ...board.formations, ...(board.gates || []), ...(board.tools || [])].find(item => item.id === nodeId)
+  const node = [...(board.inputCards || []), ...board.formations, ...(board.gates || []), ...(board.tools || [])].find(item => item.id === nodeId)
   return node?.title || nodeId
 }
 
@@ -42,7 +42,7 @@ export function nodeRoutes(board: Board, nodeId: string, steps = stepNumbers(boa
   const connections = board.connections || []
   const named = (id: string) => (steps.has(id) ? `${steps.get(id)} ${nodeTitle(board, id)}` : nodeTitle(board, id))
   const routes: Route[] = []
-  const mission = (board.missions || []).find(node => node.id === nodeId)
+  const mission = (board.inputCards || []).find(node => node.id === nodeId)
   const formation = board.formations.find(node => node.id === nodeId)
   const gate = (board.gates || []).find(node => node.id === nodeId)
   const outgoing = connections.filter(connection => nodeOf(connection.from) === nodeId)

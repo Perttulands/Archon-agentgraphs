@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import delivery from '../../tests/fixtures/delivery.json'
-import wayfinding from '../../tests/fixtures/wayfinding.json'
+import scouting from '../../tests/fixtures/scouting.json'
 import type { BoardDocument } from '../components/formationsTypes'
 import { buildFlow, type FlowStep, type FlowTarget } from './flowModel'
 
@@ -12,11 +12,11 @@ const outline = (step: FlowStep) => step.kind === 'gate'
   : `${step.number} ${step.node.title} → ${words(step.next).join(', ')}`
 
 describe('the flow model', () => {
-  it('orders Wayfinding along its main path with gates inline, the judge nested and loops as back-references', () => {
-    const flow = buildFlow(wayfinding.board as unknown as BoardDocument)
+  it('orders Scouting along its main path with gates inline, the judge nested and loops as back-references', () => {
+    const flow = buildFlow(scouting.mission as unknown as BoardDocument)
     expect(flow.sections).toHaveLength(1)
     const [section] = flow.sections
-    expect(section.mission?.title).toBe('Wayfinding')
+    expect(section.mission?.title).toBe('Scouting')
     expect(words(section.start)).toEqual(['1 Map the territory'])
     expect(section.steps.map(outline)).toEqual([
       '1 Map the territory → 2 Framing review',
@@ -28,7 +28,7 @@ describe('the flow model', () => {
       '7 Brief sign-off [you] pass end fail ↺ 5 Draft the brief',
     ])
     // The judge is nested under its gate, not a step of its own.
-    const critic = wayfinding.board.formations.find(node => node.title === 'Brief critic')!
+    const critic = scouting.mission.formations.find(node => node.title === 'Brief critic')!
     expect(flow.numbers.has(critic.id)).toBe(false)
     expect(flow.judgeOf.get(critic.id)).toBe(section.steps[5].id)
     // Three loops: the run returns to map the territory, to question peers and to draft the brief.
@@ -37,7 +37,7 @@ describe('the flow model', () => {
   })
 
   it('orders Delivery with the Beads reviewer nested and the unwired final review as the end', () => {
-    const flow = buildFlow(delivery.board as unknown as BoardDocument)
+    const flow = buildFlow(delivery.mission as unknown as BoardDocument)
     expect(flow.sections.map(section => section.mission?.title ?? null)).toEqual(['Deliver the supplied brief'])
     expect(flow.sections[0].steps.map(outline)).toEqual([
       '1 Plan → 2 Beads',
@@ -50,7 +50,7 @@ describe('the flow model', () => {
 
   it('lists steps no mission reaches after the missions, and an unwired fail as a block', () => {
     const board = {
-      missions: [{ id: 'mis', title: 'Mission', goal: '', beadId: '' }],
+      inputCards: [{ id: 'mis', title: 'Mission', goal: '' }],
       formations: [
         { id: 'work', type: 'solo', title: 'Work', inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Output' }], slots: [] },
         { id: 'loose', type: 'solo', title: 'Loose', inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Output' }], slots: [] },

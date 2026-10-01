@@ -65,7 +65,7 @@ export function normalizeBoard(board: BoardDocument, etag = ''): BoardDocument {
   return {
     ...board,
     etag: etag || board.etag,
-    missions: board.missions || [],
+    inputCards: board.inputCards || [],
     // The server sends null for an empty port or slot list, as after removing a formation's only input.
     formations: (board.formations || []).map(formation => ({
       ...formation,
@@ -90,8 +90,8 @@ export function normalizeLayout(layout: LayoutDocument, etag = ''): LayoutDocume
 
 export function missingLayoutForBoard(board: BoardDocument): LayoutDocument {
   return {
-    boardId: board.id,
-    boardRev: board.rev,
+    missionId: board.id,
+    missionRev: board.rev,
     etag: '*',
     nodes: [],
     edges: [],
@@ -99,32 +99,32 @@ export function missingLayoutForBoard(board: BoardDocument): LayoutDocument {
 }
 
 export async function fetchBoardSummaries(): Promise<BoardSummary[]> {
-  const result = await fetchApi<{ boards: BoardSummary[] }>('/api/formations/missions')
-  return result.data.boards || []
+  const result = await fetchApi<{ missions: BoardSummary[] }>('/api/missions')
+  return result.data.missions || []
 }
 
 export async function fetchCodeGateProfiles(): Promise<CodeGateProfileDescriptor[]> {
-  const result = await fetchApi<{ profiles: CodeGateProfileDescriptor[] }>('/api/formations/gate-profiles')
+  const result = await fetchApi<{ profiles: CodeGateProfileDescriptor[] }>('/api/gate-profiles')
   return result.data.profiles || []
 }
 
 export async function fetchBoardDocument(slug: string): Promise<BoardDocument> {
-  const result = await fetchApi<{ board: BoardDocument }>(`/api/formations/missions/${encodeURIComponent(slug)}`)
-  return normalizeBoard(result.data.board, result.etag)
+  const result = await fetchApi<{ mission: BoardDocument }>(`/api/missions/${encodeURIComponent(slug)}`)
+  return normalizeBoard(result.data.mission, result.etag)
 }
 
 export async function fetchBoardValidation(slug: string): Promise<BoardValidation> {
-  const result = await fetchApi<Partial<BoardValidation>>(`/api/formations/missions/${encodeURIComponent(slug)}/validation`)
+  const result = await fetchApi<Partial<BoardValidation>>(`/api/missions/${encodeURIComponent(slug)}/validation`)
   return {
-    boardRev: result.data.boardRev ?? 0,
-    boardEtag: result.data.boardEtag || result.etag,
+    missionRev: result.data.missionRev ?? 0,
+    missionEtag: result.data.missionEtag || result.etag,
     errors: result.data.errors || [],
     warnings: result.data.warnings || [],
   }
 }
 
 export async function fetchBoardLayout(slug: string): Promise<LayoutDocument> {
-  const result = await fetchApi<{ layout: LayoutDocument }>(`/api/formations/missions/${encodeURIComponent(slug)}/layout`)
+  const result = await fetchApi<{ layout: LayoutDocument }>(`/api/missions/${encodeURIComponent(slug)}/layout`)
   return normalizeLayout(result.data.layout, result.etag)
 }
 
@@ -141,16 +141,16 @@ export async function fetchBoardWithLayout(slug: string): Promise<{ board: Board
 }
 
 export async function createBoard(title: string): Promise<BoardDocument> {
-  const result = await fetchApi<{ board: BoardDocument }>('/api/formations/missions', {
+  const result = await fetchApi<{ mission: BoardDocument }>('/api/missions', {
     method: 'POST',
     body: JSON.stringify({ title }),
   })
-  return normalizeBoard(result.data.board, result.etag)
+  return normalizeBoard(result.data.mission, result.etag)
 }
 
 export async function deleteBoard(slug: string, etag: string, rev: number): Promise<BoardDeletion> {
   const result = await fetchApi<{ deletion: BoardDeletion }>(
-    `/api/formations/missions/${encodeURIComponent(slug)}`,
+    `/api/missions/${encodeURIComponent(slug)}`,
     {
       method: 'DELETE',
       headers: { 'If-Match': etag },
@@ -163,20 +163,20 @@ export async function deleteBoard(slug: string, etag: string, rev: number): Prom
 function normalizeNotes(notes: BoardNotesDocument, etag: string): BoardNotesDocument {
   return {
     ...notes,
-    board: notes.board || [],
+    mission: notes.mission || [],
     elements: (notes.elements || []).map(element => ({ ...element, entries: element.entries || [] })),
     etag: etag || notes.etag,
   }
 }
 
 export async function fetchBoardNotes(slug: string): Promise<BoardNotesDocument> {
-  const result = await fetchApi<{ notes: BoardNotesDocument }>(`/api/formations/missions/${encodeURIComponent(slug)}/notes`)
+  const result = await fetchApi<{ notes: BoardNotesDocument }>(`/api/missions/${encodeURIComponent(slug)}/notes`)
   return normalizeNotes(result.data.notes, result.etag)
 }
 
 /** The cockpit writes notes as the operator, human:ui. */
 export async function patchBoardNote(slug: string, etag: string, patch: NotePatch): Promise<BoardNotesDocument> {
-  const result = await fetchApi<{ notes: BoardNotesDocument }>(`/api/formations/missions/${encodeURIComponent(slug)}/notes`, {
+  const result = await fetchApi<{ notes: BoardNotesDocument }>(`/api/missions/${encodeURIComponent(slug)}/notes`, {
     method: 'PATCH',
     headers: { 'If-Match': etag },
     body: JSON.stringify({ ...patch, author: 'human:ui' }),
@@ -217,7 +217,7 @@ export async function overrideAgentCard(agentID: string, etag: string, patch: {
 
 export async function fetchBoardChanged(slug: string, etag: string): Promise<boolean> {
   const result = await fetchApi<{ signal: { changed?: boolean } }>(
-    `/api/formations/missions/${encodeURIComponent(slug)}/changes?etag=${encodeURIComponent(etag)}`
+    `/api/missions/${encodeURIComponent(slug)}/changes?etag=${encodeURIComponent(etag)}`
   )
   return result.data.signal?.changed === true
 }
@@ -227,14 +227,20 @@ type PatchBoardResponse<TExtra extends object> = {
   layout?: LayoutDocument
 } & TExtra
 
+/** The PATCH response names the mission document `mission`. */
+type PatchMissionResponse<TExtra extends object> = {
+  mission: BoardDocument
+  layout?: LayoutDocument
+} & TExtra
+
 export async function patchBoardDocument<TExtra extends object = Record<string, never>>(
   slug: string,
   etag: string,
   rev: number,
   patch: Record<string, unknown>,
 ): Promise<PatchBoardResponse<TExtra>> {
-  const result = await fetchApi<PatchBoardResponse<TExtra>>(
-    `/api/formations/missions/${encodeURIComponent(slug)}`,
+  const result = await fetchApi<PatchMissionResponse<TExtra>>(
+    `/api/missions/${encodeURIComponent(slug)}`,
     {
       method: 'PATCH',
       headers: { 'If-Match': etag },
@@ -245,16 +251,17 @@ export async function patchBoardDocument<TExtra extends object = Record<string, 
       }),
     }
   )
+  const { mission, layout, ...extra } = result.data
   return {
-    ...result.data,
-    board: normalizeBoard(result.data.board, result.etag),
-    layout: result.data.layout ? normalizeLayout(result.data.layout) : undefined,
-  }
+    ...(extra as unknown as TExtra),
+    board: normalizeBoard(mission, result.etag),
+    layout: layout ? normalizeLayout(layout) : undefined,
+  } as PatchBoardResponse<TExtra>
 }
 
 export async function patchBoardLayout(slug: string, etag: string, patch: { nodes?: LayoutNode[]; edges?: LayoutEdge[]; arrange?: boolean }): Promise<LayoutDocument> {
   const result = await fetchApi<{ layout: LayoutDocument }>(
-    `/api/formations/missions/${encodeURIComponent(slug)}/layout`,
+    `/api/missions/${encodeURIComponent(slug)}/layout`,
     {
       method: 'PATCH',
       headers: { 'If-Match': etag },
@@ -264,8 +271,8 @@ export async function patchBoardLayout(slug: string, etag: string, patch: { node
   return normalizeLayout(result.data.layout, result.etag)
 }
 
-export async function startRun(etag: string, body: { board: string; missionId?: string; formationId?: string; expectedRev: number; actor: string } & Partial<RunInputs>): Promise<RunStartResult> {
-  const result = await fetchApi<{ runId: string }>('/api/formations/runs', {
+export async function startRun(etag: string, body: { mission: string; inputCardId?: string; formationId?: string; expectedRev: number; actor: string } & Partial<RunInputs>): Promise<RunStartResult> {
+  const result = await fetchApi<{ runId: string }>('/api/runs', {
     method: 'POST',
     headers: { 'If-Match': etag },
     // The cockpit starts runs without limits (form-o7p.7).
@@ -274,19 +281,19 @@ export async function startRun(etag: string, body: { board: string; missionId?: 
   return { runId: result.data.runId, status: runStatusFromResponse(await fetchRunStatus(result.data.runId)) }
 }
 
-/** Lists a board's runs from the daemon; a response without a run list yields none. */
+/** Lists a mission's runs from the daemon; a response without a run list yields none. */
 export async function fetchBoardRuns(slug: string): Promise<RunStatusProjection[]> {
-  const result = await fetchApi<RunStatusProjection[]>(`/api/formations/runs?mission=${encodeURIComponent(slug)}`)
-  return Array.isArray(result.data) ? result.data.filter(run => !run.boardSlug || run.boardSlug === slug) : []
+  const result = await fetchApi<RunStatusProjection[]>(`/api/runs?mission=${encodeURIComponent(slug)}`)
+  return Array.isArray(result.data) ? result.data.filter(run => run.missionSlug === slug) : []
 }
 
 export async function fetchRunStatus(runId: string): Promise<RunStatusProjection | RunStatusResult> {
-  const result = await fetchApi<RunStatusProjection | RunStatusResult>(`/api/formations/runs/${encodeURIComponent(runId)}`)
+  const result = await fetchApi<RunStatusProjection | RunStatusResult>(`/api/runs/${encodeURIComponent(runId)}`)
   return result.data
 }
 
 export async function fetchRunEvents(runId: string): Promise<RunEvent[]> {
-  const result = await fetchApi<{ events: Array<{ seq: number; type: string; nodeId?: string; slotId?: string; gateId?: string; attempt?: number; status?: string; verdict?: string; sessionName?: string; outcome?: string }> }>(`/api/formations/runs/${encodeURIComponent(runId)}/events`)
+  const result = await fetchApi<{ events: Array<{ seq: number; type: string; nodeId?: string; slotId?: string; gateId?: string; attempt?: number; status?: string; verdict?: string; sessionName?: string; outcome?: string }> }>(`/api/runs/${encodeURIComponent(runId)}/events`)
   return (result.data.events || []).map(event => ({
     seq: event.seq, type: event.type, runId, nodeId: event.nodeId, gateId: event.gateId, attempt: event.attempt,
     data: { slotId: event.slotId, status: event.status, verdict: event.verdict, sessionRef: event.sessionName, reason: event.outcome },
@@ -294,13 +301,13 @@ export async function fetchRunEvents(runId: string): Promise<RunEvent[]> {
 }
 
 export async function fetchRunEscalations(runId: string): Promise<OpenEscalation[]> {
-  const result = await fetchApi<{ escalations: OpenEscalation[] }>(`/api/formations/runs/${encodeURIComponent(runId)}/escalations`)
+  const result = await fetchApi<{ escalations: OpenEscalation[] }>(`/api/runs/${encodeURIComponent(runId)}/escalations`)
   return (result.data.escalations || []).sort((a, b) => a.seq - b.seq)
 }
 
 export async function abortRunRequest(runId: string, body: { reason: string; requestedBy: string }): Promise<RunStatusProjection | RunStatusResult> {
   const result = await fetchApi<RunStatusProjection | RunStatusResult>(
-    `/api/formations/runs/${encodeURIComponent(runId)}/abort`,
+    `/api/runs/${encodeURIComponent(runId)}/abort`,
     {
       method: 'POST',
       body: JSON.stringify(body),
@@ -311,7 +318,7 @@ export async function abortRunRequest(runId: string, body: { reason: string; req
 
 export async function resumeRunRequest(runId: string, body: { actor: string; mode: string; reason: string }): Promise<RunStatusProjection | RunStatusResult> {
   const result = await fetchApi<RunStatusProjection | RunStatusResult>(
-    `/api/formations/runs/${encodeURIComponent(runId)}/resume`,
+    `/api/runs/${encodeURIComponent(runId)}/resume`,
     {
       method: 'POST',
       body: JSON.stringify(body),
@@ -340,7 +347,7 @@ export interface GateRouteTarget {
   waitsForInputs?: boolean
 }
 
-/** Where one verdict leads on the run's frozen board (internal/formations/gate_routes.go). */
+/** Where one verdict leads on the run's frozen mission (internal/formations/gate_routes.go). */
 export interface GateRoute {
   verdict: 'pass' | 'fail'
   targets: GateRouteTarget[]
@@ -365,14 +372,14 @@ export interface HumanGateRequest {
 
 export async function fetchHumanGateRequest(runId: string, gateId: string): Promise<HumanGateRequest> {
   const result = await fetchApi<{ request: HumanGateRequest }>(
-    `/api/formations/runs/${encodeURIComponent(runId)}/gates/${encodeURIComponent(gateId)}/request`,
+    `/api/runs/${encodeURIComponent(runId)}/gates/${encodeURIComponent(gateId)}/request`,
   )
   return result.data.request
 }
 
 export async function recordGateVerdict(runId: string, gateId: string, body: { actor: string; verdict: 'pass' | 'fail'; reason: string; requestedSeq: number }): Promise<RunStatusProjection | RunStatusResult> {
   await fetchApi<{ runId: string }>(
-    `/api/formations/runs/${encodeURIComponent(runId)}/gates/${encodeURIComponent(gateId)}/verdict`,
+    `/api/runs/${encodeURIComponent(runId)}/gates/${encodeURIComponent(gateId)}/verdict`,
     {
       method: 'POST',
       body: JSON.stringify(body),

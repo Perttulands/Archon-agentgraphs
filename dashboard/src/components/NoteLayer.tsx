@@ -7,7 +7,7 @@ import { noteAuthor, noteTime } from './NoteThread'
 
 export type NotesMode = 'hidden' | 'preview' | 'full'
 export const NOTES_MODES: readonly NotesMode[] = ['hidden', 'preview', 'full']
-export const NOTES_MODE_KEY = 'chrote-formations-notes-mode'
+export const NOTES_MODE_KEY = 'archon.notesMode'
 
 export function readNotesMode(): NotesMode {
   try {

@@ -132,7 +132,7 @@ func isAgentSession(name string) bool {
 }
 
 func agentPrefixes() []string {
-	if raw := os.Getenv("CHROTE_AGENT_PREFIXES"); raw != "" {
+	if raw := os.Getenv("ARCHON_AGENT_PREFIXES"); raw != "" {
 		parts := strings.Split(raw, ",")
 		prefixes := make([]string, 0, len(parts))
 		for _, part := range parts {

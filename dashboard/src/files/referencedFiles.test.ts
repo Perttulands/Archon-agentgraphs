@@ -6,7 +6,7 @@ const port = (id: string) => [{ id, label: id }]
 
 const board: BoardDocument = {
   id: 'brd_refs', slug: 'refs', title: 'Refs', rev: 1, etag: 'e',
-  missions: [{ id: 'mis_a', title: 'Launch', goal: '', beadId: '', files: ['docs/sketch.md'] }],
+  inputCards: [{ id: 'mis_a', title: 'Launch', goal: '', files: ['docs/sketch.md'] }],
   formations: [
     { id: 'fmn_work', type: 'solo', title: 'Work', inputs: port('in'), outputs: port('out'), slots: [], brief: { goal: 'Do it', files: ['docs/design.md'] } },
     { id: 'fmn_first', type: 'solo', title: 'First judge', inputs: port('in1'), outputs: port('out1'), slots: [], brief: { files: ['rubrics/review.md', 'rubrics/first.md'] } },

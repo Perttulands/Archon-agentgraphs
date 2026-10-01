@@ -14,7 +14,6 @@ const judgeFormation = {
   inputs: [{ id: 'port_judge_in', label: 'Input' }],
   outputs: [{ id: 'port_judge_out', label: 'Output' }],
   slots: [{ id: 'slot_judge', label: 'Judge' }],
-  verification: undefined,
 }
 
 const formation = {
@@ -24,15 +23,14 @@ const formation = {
   inputs: [{ id: 'port_frame_in', label: 'Input' }],
   outputs: [{ id: 'port_frame_out', label: 'Output' }],
   slots: [
-    { id: 'slot_lead', label: 'Lead', controller: true, agentId: 'mason', harness: 'codex' },
+    { id: 'slot_lead', label: 'Lead', controller: true, agentId: 'mason', harness: 'codex', model: 'mason-model', effort: 'medium' },
     { id: 'slot_worker', label: 'Worker', controller: false },
   ],
-  verification: { id: 'ver_frame', kinds: ['code'], criterion: 'Tests pass', onFail: 'block' },
 }
 
 type TestGate = { id: string; title: string; kinds: string[]; criterion: string; check?: string; checkVersion?: string; checkValue?: string; files?: string[] }
 const gate: TestGate = { id: 'gate_review', title: 'Review', kinds: ['code'], criterion: 'Review the frame' }
-const mission = { id: 'mis_showcase', title: 'Showcase', goal: 'Build the page', beadId: 'home-7kc4.5' }
+const mission = { id: 'mis_showcase', title: 'Showcase', goal: 'Build the page' }
 const tool = {
   id: 'tool_normalize',
   title: 'Normalize report',
@@ -74,7 +72,7 @@ function makeBoard() {
     title: 'Test board',
     rev: 7,
     etag: 'board-etag',
-    missions: [mission],
+    inputCards: [mission],
     formations: [formation, judgeFormation],
     gates: [gate],
     tools: [] as typeof tool[],
@@ -103,8 +101,8 @@ function makeToolBoard() {
 
 const layout = {
   schema: 1,
-  boardId: 'brd_test',
-  boardRev: 7,
+  missionId: 'brd_test',
+  missionRev: 7,
   etag: 'layout-etag',
   nodes: [
     { id: 'mis_showcase', x: 100, y: 100 },
@@ -138,14 +136,12 @@ function installFetchMock(options: {
   freshCreateLayout?: boolean
   missionCreateFailure?: boolean
   wireFailure?: boolean
-  removalFailure?: boolean
-  removalGate?: Promise<void>
   boards?: TestBoard[]
   sameBoardRefreshes?: TestBoard[]
   runEvents?: TestRunEvent[]
   escalations?: TestEscalation[]
   runStatus?: TestRunStatus
-  boardNotes?: { board?: TestNoteEntry[]; elements?: Array<{ nodeId: string; entries: TestNoteEntry[] }> }
+  boardNotes?: { mission?: TestNoteEntry[]; elements?: Array<{ nodeId: string; entries: TestNoteEntry[] }> }
   notePatchConflict?: boolean
   agents?: typeof agents
   agentDetailGate?: Promise<void>
@@ -167,11 +163,11 @@ function installFetchMock(options: {
   let currentLayout = layout
   let boardNotes = {
     schema: 2,
-    boardId: board.id,
+    missionId: board.id,
     rev: options.boardNotes ? 1 : 0,
     updatedAt: '2026-08-18T13:00:00Z',
     updatedBy: 'human:test',
-    board: options.boardNotes?.board || [] as TestNoteEntry[],
+    mission: options.boardNotes?.mission || [] as TestNoteEntry[],
     elements: options.boardNotes?.elements || [] as Array<{ nodeId: string; entries: TestNoteEntry[] }>,
     etag: options.boardNotes ? 'notes-etag' : '*',
   }
@@ -201,7 +197,7 @@ function installFetchMock(options: {
       json: () => Promise.resolve({ success: false, error: { code: 'CONFLICT', message } }),
       text: () => Promise.resolve(message),
     })
-    if (method === 'POST' && url === '/api/formations/missions') {
+    if (method === 'POST' && url === '/api/missions') {
       const body = JSON.parse(String(init?.body)) as { title: string }
       const created = {
         ...makeBoard(),
@@ -210,28 +206,28 @@ function installFetchMock(options: {
         title: body.title,
         rev: 1,
         etag: 'created-board-etag',
-        missions: [],
+        inputCards: [],
         formations: [],
         gates: [],
         connections: [],
       }
       availableBoards = [...availableBoards, created]
       board = created
-      currentLayout = { schema: 1, boardId: created.id, boardRev: created.rev, etag: '*', nodes: [], edges: [] }
-      boardNotes = { ...boardNotes, boardId: created.id, rev: 0, board: [], elements: [], etag: '*' }
-      return respond({ board: created }, created.etag)
+      currentLayout = { schema: 1, missionId: created.id, missionRev: created.rev, etag: '*', nodes: [], edges: [] }
+      boardNotes = { ...boardNotes, missionId: created.id, rev: 0, mission: [], elements: [], etag: '*' }
+      return respond({ mission: created }, created.etag)
     }
-    if (method === 'DELETE' && url.includes('/api/formations/missions/')) {
+    if (method === 'DELETE' && url.includes('/api/missions/')) {
       availableBoards = availableBoards.filter(item => item.slug !== board.slug)
       return respond({ deletion: { id: board.id, slug: board.slug, title: board.title, archiveId: 'archive_test' } })
     }
-    if (method === 'GET' && /^\/api\/formations\/missions\/[^/]+\/notes$/.test(url)) {
+    if (method === 'GET' && /^\/api\/missions\/[^/]+\/notes$/.test(url)) {
       return respond({ notes: boardNotes }, boardNotes.etag)
     }
-    if (method === 'PATCH' && /^\/api\/formations\/missions\/[^/]+\/notes$/.test(url)) {
+    if (method === 'PATCH' && /^\/api\/missions\/[^/]+\/notes$/.test(url)) {
       if (options.notePatchConflict) return conflict('Shared notes changed; reload and retry')
       const body = JSON.parse(String(init?.body)) as { target: string; action: string; entryId?: string; text?: string; author: string }
-      const thread = body.target === 'board' ? boardNotes.board : boardNotes.elements.find(note => note.nodeId === body.target)?.entries || []
+      const thread = body.target === 'mission' ? boardNotes.mission : boardNotes.elements.find(note => note.nodeId === body.target)?.entries || []
       const nextThread = body.action === 'append'
         ? [...thread, noteEntry(`nte_new_${nextNoteID++}`, body.author, body.text || '')]
         : body.action === 'edit'
@@ -242,8 +238,8 @@ function installFetchMock(options: {
         rev: boardNotes.rev + 1,
         updatedBy: body.author,
         etag: `notes-etag-${boardNotes.rev + 1}`,
-        board: body.target === 'board' ? nextThread : boardNotes.board,
-        elements: body.target === 'board'
+        mission: body.target === 'mission' ? nextThread : boardNotes.mission,
+        elements: body.target === 'mission'
           ? boardNotes.elements
           : [...boardNotes.elements.filter(note => note.nodeId !== body.target), ...(nextThread.length ? [{ nodeId: body.target, entries: nextThread }] : [])],
       }
@@ -316,7 +312,7 @@ function installFetchMock(options: {
           formations = formations.map(item => item.id === nodeId ? { ...item, inputs: item.inputs.filter(port => port.id !== portId) } : item)
         }
         board = { ...board, formations, rev: board.rev + 1, connections: [...connections, { id: `edge_${board.rev}`, from: edit.from, to }] }
-        return respond({ board }, `board-${board.rev}`)
+        return respond({ mission: board }, `board-${board.rev}`)
       }
       if (conflictPending && body[conflictPending]) {
         conflictPending = undefined
@@ -329,7 +325,7 @@ function installFetchMock(options: {
       }
       // Deletes and restores mirror the store: a delete drops the node, its
       // connections and its layout node; a restore refuses a node already there.
-      const nodeKinds = [['deleteFormation', 'formations'], ['deleteGate', 'gates'], ['deleteMission', 'missions']] as const
+      const nodeKinds = [['deleteFormation', 'formations'], ['deleteGate', 'gates'], ['deleteInputCard', 'inputCards']] as const
       for (const [op, key] of nodeKinds) {
         if (!body[op]) continue
         const { id } = body[op] as { id: string }
@@ -341,22 +337,22 @@ function installFetchMock(options: {
         })
         board = { ...board, rev: board.rev + 1, [key]: nodes.filter(node => node.id !== id),
           connections: board.connections.filter(edge => edge.from.split(':')[0] !== id && edge.to.split(':')[0] !== id) }
-        currentLayout = { ...currentLayout, boardRev: board.rev, nodes: currentLayout.nodes.filter(node => node.id !== id) }
-        return respond({ board, layout: currentLayout }, `board-${board.rev}`)
+        currentLayout = { ...currentLayout, missionRev: board.rev, nodes: currentLayout.nodes.filter(node => node.id !== id) }
+        return respond({ mission: board, layout: currentLayout }, `board-${board.rev}`)
       }
       if (body.restoreNode) {
-        const restore = body.restoreNode as { mission?: { id: string }; formation?: { id: string }; gate?: { id: string }; connections: TestBoard['connections']; x: number; y: number }
-        const key = restore.mission ? 'missions' : restore.formation ? 'formations' : 'gates'
-        const node = (restore.mission || restore.formation || restore.gate)!
-        const taken = [...board.missions, ...board.formations, ...board.gates].some(item => item.id === node.id)
+        const restore = body.restoreNode as { inputCard?: { id: string }; formation?: { id: string }; gate?: { id: string }; connections: TestBoard['connections']; x: number; y: number }
+        const key = restore.inputCard ? 'inputCards' : restore.formation ? 'formations' : 'gates'
+        const node = (restore.inputCard || restore.formation || restore.gate)!
+        const taken = [...board.inputCards, ...board.formations, ...board.gates].some(item => item.id === node.id)
         if (taken || options.restoreFailure) return Promise.resolve({
           ok: false, status: 409, headers: { get: () => null },
           json: () => Promise.resolve({ success: false, error: { code: 'INVALID_NODE_RESTORE', message: `node "${node.id}" is already in the mission` } }),
           text: () => Promise.resolve(''),
         })
         board = { ...board, rev: board.rev + 1, [key]: [...(board[key] as unknown[]), node], connections: [...board.connections, ...restore.connections] } as TestBoard
-        currentLayout = { ...currentLayout, boardRev: board.rev, nodes: [...currentLayout.nodes, { id: node.id, x: restore.x, y: restore.y }] }
-        return respond({ board, layout: currentLayout, nodeId: node.id }, `board-${board.rev}`)
+        currentLayout = { ...currentLayout, missionRev: board.rev, nodes: [...currentLayout.nodes, { id: node.id, x: restore.x, y: restore.y }] }
+        return respond({ mission: board, layout: currentLayout, nodeId: node.id }, `board-${board.rev}`)
       }
       if (body.restorePort) {
         const { formationId, direction, port, index, connections } = body.restorePort as { formationId: string; direction: string; port: { id: string; label: string }; index: number; connections: TestBoard['connections'] }
@@ -365,7 +361,7 @@ function installFetchMock(options: {
           formations: board.formations.map(item => item.id !== formationId ? item : { ...item, [key]: [...item[key].slice(0, index), port, ...item[key].slice(index)] }),
           connections: [...board.connections, ...connections],
         }
-        return respond({ board }, `board-${board.rev}`)
+        return respond({ mission: board }, `board-${board.rev}`)
       }
       if (body.addPort) {
         // Mirrors the store: only input and output are directions (FormationPortInput/Output).
@@ -384,7 +380,7 @@ function installFetchMock(options: {
         board = { ...board, rev: board.rev + 1,
           formations: board.formations.map(item => item.id === formationId ? { ...item, [key]: [...item[key], port] } : item),
         }
-        return respond({ board }, `board-${board.rev}`)
+        return respond({ mission: board }, `board-${board.rev}`)
       }
       if (body.removePort) {
         const { formationId, portId } = body.removePort as { formationId: string; portId: string }
@@ -392,35 +388,34 @@ function installFetchMock(options: {
           formations: board.formations.map(item => item.id === formationId ? { ...item, inputs: item.inputs.filter(port => port.id !== portId), outputs: item.outputs.filter(port => port.id !== portId) } : item),
           connections: board.connections.filter(edge => edge.to !== `${formationId}:${portId}` && edge.from !== `${formationId}:${portId}`),
         }
-        return respond({ board }, `board-${board.rev}`)
+        return respond({ mission: board }, `board-${board.rev}`)
       }
       if (body.unwireConnection) {
         const { from, to } = body.unwireConnection as { from: string; to: string }
         board = { ...board, rev: board.rev + 1, connections: board.connections.filter(edge => edge.from !== from || edge.to !== to) }
-        return respond({ board }, `board-${board.rev}`)
+        return respond({ mission: board }, `board-${board.rev}`)
       }
       if (!url.endsWith('/layout') && typeof body.title === 'string') {
         board = { ...board, title: body.title, rev: board.rev + 1, etag: 'board-etag-2' }
         availableBoards = availableBoards.map(item => item.slug === board.slug ? board : item)
-        return respond({ board }, board.etag)
+        return respond({ mission: board }, board.etag)
       }
-      if (!url.endsWith('/layout') && body.createMission) {
+      if (!url.endsWith('/layout') && body.createInputCard) {
         if (options.missionCreateFailure) return reject('Mission create failed')
-        const requested = body.createMission as { title: string; goal: string; beadId: string; x: number; y: number }
+        const requested = body.createInputCard as { title: string; goal: string; x: number; y: number }
         const created = {
           id: 'mis_created',
           title: requested.title,
           goal: requested.goal,
-          beadId: requested.beadId,
         }
-        board = { ...board, rev: board.rev + 1, missions: [...board.missions, created] }
+        board = { ...board, rev: board.rev + 1, inputCards: [...board.inputCards, created] }
         currentLayout = {
           ...currentLayout,
-          boardRev: board.rev,
+          missionRev: board.rev,
           etag: 'layout-mission-etag',
           nodes: [...currentLayout.nodes, { id: created.id, x: requested.x, y: requested.y }],
         }
-        return respond({ board, layout: currentLayout }, 'board-etag-2')
+        return respond({ mission: board, layout: currentLayout }, 'board-etag-2')
       }
       if (!url.endsWith('/layout') && body.setFormationType) {
         type Slot = { id: string; label: string; controller?: boolean; agentId?: string; harness?: string }
@@ -438,40 +433,44 @@ function installFetchMock(options: {
             return { ...item, type, slots: next }
           }) as TestBoard['formations'],
         }
-        return respond({ board }, 'board-etag-2')
+        return respond({ mission: board }, 'board-etag-2')
       }
       if (!url.endsWith('/layout') && body.setBrief) {
         const { formationId, ...brief } = body.setBrief as { formationId: string; goal: string; beadId: string; files: string[]; links: string[] }
         board = { ...board, rev: board.rev + 1, formations: board.formations.map(item => item.id === formationId ? { ...item, brief } : item) as TestBoard['formations'] }
-        return respond({ board }, 'board-etag-2')
+        return respond({ mission: board }, 'board-etag-2')
       }
       if (!url.endsWith('/layout') && body.setExecution) {
         const { formationId, timeoutSeconds } = body.setExecution as { formationId: string; timeoutSeconds: number }
         board = { ...board, rev: board.rev + 1, formations: board.formations.map(item => item.id === formationId
           ? { ...item, execution: timeoutSeconds ? { timeoutSeconds } : undefined } : item) as TestBoard['formations'] }
-        return respond({ board }, 'board-etag-2')
+        return respond({ mission: board }, 'board-etag-2')
       }
       if (!url.endsWith('/layout') && body.assignSlot) {
-        const { formationId, slotId, agentId, harness } = body.assignSlot as { formationId: string; slotId: string; agentId: string; harness: string }
+        const { formationId, slotId, agentId, harness, model, effort } = body.assignSlot as { formationId: string; slotId: string; agentId: string; harness: string; model?: string; effort?: string }
+        // Mirrors the store's role drag: a patch naming only a role (and perhaps
+        // a harness) takes that role card's settings, as served above.
+        const roleDrag = Boolean(agentId) && model === undefined && effort === undefined
+        const settings = roleDrag ? { model: `${agentId}-model`, effort: 'medium' } : { model: model || undefined, effort: effort || undefined }
         board = {
           ...board,
           rev: board.rev + 1,
           formations: board.formations.map(item => item.id !== formationId ? item : {
             ...item,
-            slots: item.slots.map(slot => slot.id === slotId ? { ...slot, agentId: agentId || undefined, harness: harness || undefined } : slot),
+            slots: item.slots.map(slot => slot.id === slotId ? { ...slot, agentId: agentId || undefined, harness: harness || undefined, ...settings } : slot),
           }) as TestBoard['formations'],
         }
-        return respond({ board }, 'board-etag-2')
+        return respond({ mission: board }, 'board-etag-2')
       }
       if (!url.endsWith('/layout') && body.updateFormation) {
         const { id, title } = body.updateFormation as { id: string; title: string }
         board = { ...board, rev: board.rev + 1, formations: board.formations.map(item => item.id === id ? { ...item, title } : item) }
-        return respond({ board }, 'board-etag-2')
+        return respond({ mission: board }, 'board-etag-2')
       }
-      if (!url.endsWith('/layout') && body.updateMission) {
-        const { id, ...fields } = body.updateMission as { id: string; title?: string; goal?: string; beadId?: string }
-        board = { ...board, rev: board.rev + 1, missions: board.missions.map(item => item.id === id ? { ...item, ...fields } : item) }
-        return respond({ board }, 'board-etag-2')
+      if (!url.endsWith('/layout') && body.updateInputCard) {
+        const { id, ...fields } = body.updateInputCard as { id: string; title?: string; goal?: string; beadId?: string }
+        board = { ...board, rev: board.rev + 1, inputCards: board.inputCards.map(item => item.id === id ? { ...item, ...fields } : item) }
+        return respond({ mission: board }, 'board-etag-2')
       }
       if (!url.endsWith('/layout') && body.updateGate) {
         const requested = body.updateGate as Partial<TestGate> & { id: string }
@@ -487,7 +486,7 @@ function installFetchMock(options: {
           ? board.connections.filter(connection => connection.from !== `${id}:judge` && connection.to !== `${id}:judge`)
           : board.connections
         board = { ...board, rev: board.rev + 1, gates, connections }
-        return respond({ board }, 'board-etag-2')
+        return respond({ mission: board }, 'board-etag-2')
       }
       if (!url.endsWith('/layout') && body.detachGateJudge) {
         // Mirrors the store: drop formation, and a judge-only gate becomes human.
@@ -499,7 +498,7 @@ function installFetchMock(options: {
         })
         const connections = board.connections.filter(connection => connection.from !== `${gateId}:judge` && connection.to !== `${gateId}:judge`)
         board = { ...board, rev: board.rev + 1, gates, connections }
-        return respond({ board }, 'board-etag-2')
+        return respond({ mission: board }, 'board-etag-2')
       }
       if (!url.endsWith('/layout') && body.createFormation) {
         const requested = body.createFormation as { type: string; title: string; x: number; y: number }
@@ -510,25 +509,15 @@ function installFetchMock(options: {
           inputs: [{ id: 'port_created_in', label: 'Input' }],
           outputs: [{ id: 'port_created_out', label: 'Output' }],
           slots: [{ id: 'slot_created', label: 'Agent' }],
-          verification: undefined,
         }
         board = { ...board, rev: board.rev + 1, formations: [...board.formations, created] as TestBoard['formations'] }
         currentLayout = {
           ...currentLayout,
-          boardRev: board.rev,
+          missionRev: board.rev,
           etag: 'layout-formation-etag',
           nodes: [...currentLayout.nodes, { id: created.id, x: requested.x, y: requested.y }],
         }
-        return respond({ board, layout: currentLayout }, 'board-etag-2')
-      }
-      if (!url.endsWith('/layout') && body.removeVerification && options.removalFailure) {
-        return reject('Legacy verification migration failed')
-      }
-      if (!url.endsWith('/layout') && body.removeVerification && options.removalGate) {
-        return options.removalGate.then(() => {
-          board = { ...board, rev: board.rev + 1 }
-          return respond({ board }, 'board-etag-2')
-        })
+        return respond({ mission: board, layout: currentLayout }, 'board-etag-2')
       }
       if (options.freshCreateLayout && !url.endsWith('/layout') && body.createGate) {
         const requested = body.createGate as { title: string; kinds: string[]; criterion: string; check: string; checkVersion: string; checkValue: string }
@@ -536,17 +525,17 @@ function installFetchMock(options: {
         board = { ...board, rev: board.rev + 1, gates: [...board.gates, created] }
         currentLayout = {
           ...currentLayout,
-          boardRev: board.rev,
+          missionRev: board.rev,
           etag: 'layout-created-etag',
           nodes: [...currentLayout.nodes, { id: created.id, x: 1344, y: 784 }],
         }
-        return respond({ board, layout: currentLayout }, 'board-etag-2')
+        return respond({ mission: board, layout: currentLayout }, 'board-etag-2')
       }
       board = { ...board, rev: board.rev + 1 }
       if (url.endsWith('/layout')) return respond({ layout: currentLayout }, 'layout-etag-2')
-      return respond({ board }, 'board-etag-2')
+      return respond({ mission: board }, 'board-etag-2')
     }
-    if (url === '/api/formations/runs' && init?.method === 'POST' && options.runStartFindings) {
+    if (url === '/api/runs' && init?.method === 'POST' && options.runStartFindings) {
       const findings = options.runStartFindings
       return Promise.resolve({
         ok: false,
@@ -556,21 +545,21 @@ function installFetchMock(options: {
         text: () => Promise.resolve(''),
       })
     }
-    if (url === '/api/formations/runs' && init?.method === 'POST') return respond({ runId: 'run_legacy' })
-    if (/\/api\/formations\/runs\/[^/]+\/escalations$/.test(url)) return respond({ escalations: options.escalations || [] })
-    if (/\/api\/formations\/runs\/[^/]+\/events$/.test(url)) return respond({ events: options.runEvents || [] })
-    if (/\/api\/formations\/runs\/[^/]+$/.test(url)) {
+    if (url === '/api/runs' && init?.method === 'POST') return respond({ runId: 'run_legacy' })
+    if (/\/api\/runs\/[^/]+\/escalations$/.test(url)) return respond({ escalations: options.escalations || [] })
+    if (/\/api\/runs\/[^/]+\/events$/.test(url)) return respond({ events: options.runEvents || [] })
+    if (/\/api\/runs\/[^/]+$/.test(url)) {
       return respond({ status: {
         runId: 'run_legacy',
         status: options.runStatus?.status ?? 'succeeded',
         final: options.runStatus?.final ?? true,
         resumeAllowed: options.runStatus?.resumeAllowed ?? false,
-        boardSlug: board.slug,
-        missionId: mission.id,
+        missionSlug: board.slug,
+        inputCardId: mission.id,
         eventCount: options.runEvents?.length || 0,
       } })
     }
-    if (url === '/api/formations/gate-profiles') {
+    if (url === '/api/gate-profiles') {
       return respond({ profiles: [
         {
           profileId: 'output_absent',
@@ -588,15 +577,15 @@ function installFetchMock(options: {
         },
       ] })
     }
-    if (url === '/api/formations/missions') return respond({ boards: availableBoards.map(item => ({ id: item.id, slug: item.slug, title: item.title, rev: item.rev, etag: item.etag })) })
+    if (url === '/api/missions') return respond({ missions: availableBoards.map(item => ({ id: item.id, slug: item.slug, title: item.title, rev: item.rev, etag: item.etag })) })
     if (url.includes('/changes')) {
       const refreshedBoard = options.sameBoardRefreshes?.shift()
       if (!refreshedBoard) return respond({ signal: { changed: false } })
       board = refreshedBoard
-      currentLayout = { ...currentLayout, boardRev: refreshedBoard.rev }
+      currentLayout = { ...currentLayout, missionRev: refreshedBoard.rev }
       return respond({
         signal: {
-          board: refreshedBoard.slug,
+          mission: refreshedBoard.slug,
           changed: true,
           rev: refreshedBoard.rev,
           etag: refreshedBoard.etag,
@@ -605,13 +594,13 @@ function installFetchMock(options: {
     }
     if (url.endsWith('/layout')) return respond({ layout: currentLayout }, 'layout-etag')
     if (url.endsWith('/validation')) {
-      return respond({ boardRev: board.rev, boardEtag: board.etag, errors: options.validation?.errors || [], warnings: options.validation?.warnings || [] })
+      return respond({ missionRev: board.rev, missionEtag: board.etag, errors: options.validation?.errors || [], warnings: options.validation?.warnings || [] })
     }
-    if (url.includes('/api/formations/missions/')) {
+    if (url.includes('/api/missions/')) {
       const requested = url.includes(`/missions/${board.slug}`)
         ? board
         : availableBoards.find(item => url.includes(`/missions/${item.slug}`)) || board
-      return respond({ board: requested }, requested.etag)
+      return respond({ mission: requested }, requested.etag)
     }
     if (url === '/api/agents') return respond({ agents: availableAgents })
     return respond({})
@@ -622,7 +611,7 @@ function installFetchMock(options: {
 /** A mission saved before its Input card was added: the canvas offers the Input card. */
 function missionlessBoard() {
   const board = makeBoard()
-  return { ...board, missions: [], connections: board.connections.filter(edge => !edge.from.startsWith(`${mission.id}:`)) }
+  return { ...board, inputCards: [], connections: board.connections.filter(edge => !edge.from.startsWith(`${mission.id}:`)) }
 }
 
 async function renderCockpit() {
@@ -789,7 +778,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(patches).toEqual([])
   })
 
-  it('creates and selects a named blank board from the Formations top bar', async () => {
+  it('creates and selects a named blank mission from the top bar', async () => {
     patches = installFetchMock({ emptyBoards: true })
     render(<FormationsCockpit />)
     await screen.findByTestId('formations-empty-board')
@@ -802,7 +791,7 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveValue('release-plan'))
     expect(screen.getByTestId('board-picker')).toHaveTextContent('Release Plan')
     expect(screen.getByTestId('formations-empty-board')).toHaveTextContent('This mission is empty')
-    expect(recordedMutations).toContainEqual({ method: 'POST', url: '/api/formations/missions' })
+    expect(recordedMutations).toContainEqual({ method: 'POST', url: '/api/missions' })
   })
 
   it('renames the selected board through the top-bar board controls', async () => {
@@ -830,7 +819,7 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Archive mission' }))
     await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveTextContent('No missions'))
-    expect(recordedMutations).toContainEqual({ method: 'DELETE', url: '/api/formations/missions/test-board' })
+    expect(recordedMutations).toContainEqual({ method: 'DELETE', url: '/api/missions/test-board' })
   })
 
   it('restores board-dialog trigger focus after Escape', async () => {
@@ -855,7 +844,7 @@ describe('FormationsCockpit reference parity', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Create mission' })).toBeNull())
     expect(boardNote).toHaveValue('Draft made after dialog opened')
-    expect(recordedMutations.some(mutation => mutation.method === 'POST' && mutation.url === '/api/formations/missions')).toBe(false)
+    expect(recordedMutations.some(mutation => mutation.method === 'POST' && mutation.url === '/api/missions')).toBe(false)
   })
 
   it('rechecks note drafts before archiving from an open dialog', async () => {
@@ -875,7 +864,7 @@ describe('FormationsCockpit reference parity', () => {
   it('shows mixed-author note threads in note windows and replies without overwriting', async () => {
     patches = installFetchMock({
       boardNotes: {
-        board: [noteEntry('nte_board', 'human:ui', 'Preserve the API contract.')],
+        mission: [noteEntry('nte_board', 'human:ui', 'Preserve the API contract.')],
         elements: [{
           nodeId: 'fmn_frame',
           entries: [
@@ -983,7 +972,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(full).toHaveTextContent('In this step a single agent composes a research report.')
     expect(full).toHaveTextContent('Staffed Mason as the lead.')
     expect(within(full).getAllByRole('listitem')).toHaveLength(2)
-    expect(localStorage.getItem('chrote-formations-notes-mode')).toBe('full')
+    expect(localStorage.getItem('archon.notesMode')).toBe('full')
 
     fireEvent.click(within(switcher).getByRole('radio', { name: 'Hide notes' }))
     expect(screen.queryByRole('note', { name: 'Notes for Frame' })).toBeNull()
@@ -996,7 +985,7 @@ describe('FormationsCockpit reference parity', () => {
   })
 
   it('preserves a local note draft and offers an explicit reload after a repeated conflict', async () => {
-    patches = installFetchMock({ boardNotes: { board: [noteEntry('nte_server', 'agent:archon', 'Server version')] }, notePatchConflict: true })
+    patches = installFetchMock({ boardNotes: { mission: [noteEntry('nte_server', 'agent:archon', 'Server version')] }, notePatchConflict: true })
     await renderCockpit()
     fireEvent.click(screen.getByRole('button', { name: 'Mission notes' }))
     const boardWindow = await screen.findByRole('dialog', { name: 'mission notes' })
@@ -1332,7 +1321,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(recordedMutations).toEqual([])
   })
 
-  it('creates a Mission with no optional input and rejects only an unsafe Bead ID', async () => {
+  it('creates an Input card with no optional input, and it has no Bead ID field', async () => {
     patches = installFetchMock({ boards: [missionlessBoard()] })
     vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1)
     const { container, unmount } = await renderCockpit()
@@ -1344,23 +1333,16 @@ describe('FormationsCockpit reference parity', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Add Input card' })
     expect(menu).not.toBeInTheDocument()
-    expect(patches.filter(patch => patch.body.createMission)).toEqual([])
+    expect(patches.filter(patch => patch.body.createInputCard)).toEqual([])
 
-    fireEvent.change(screen.getByLabelText('Mission Bead ID'), { target: { value: 'Home-123' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add Input card' }))
-    expect(await screen.findByText('Enter a Beads issue ID such as ctx-ug7.25, or leave it blank.')).toBeInTheDocument()
-    expect(screen.getByLabelText('Mission Bead ID')).toHaveAttribute('aria-invalid', 'true')
-    expect(patches.filter(patch => patch.body.createMission)).toEqual([])
-
-    fireEvent.change(screen.getByLabelText('Mission Bead ID'), { target: { value: '' } })
+    expect(within(dialog).queryByLabelText('Mission Bead ID')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Add Input card' }))
 
     await waitFor(() => {
-      const create = patches.find(patch => patch.body.createMission)
-      expect(create?.body.createMission).toEqual({
+      const create = patches.find(patch => patch.body.createInputCard)
+      expect(create?.body.createInputCard).toEqual({
         title: 'Test board',
         goal: '',
-        beadId: '',
         x: 1260,
         y: 252,
       })
@@ -1370,7 +1352,7 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => {
-      expect(patches.some(patch => (patch.body.deleteMission as { id?: string } | undefined)?.id === 'mis_created')).toBe(true)
+      expect(patches.some(patch => (patch.body.deleteInputCard as { id?: string } | undefined)?.id === 'mis_created')).toBe(true)
     })
     await waitFor(() => expect(screen.queryByTestId('mission-node-mis_created')).toBeNull())
 
@@ -1380,7 +1362,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.queryByTestId('mission-node-mis_created')).toBeNull()
   })
 
-  it('creates a Mission with a project Bead ID when one is given', async () => {
+  it('creates an Input card with its title and goal trimmed', async () => {
     patches = installFetchMock({ boards: [missionlessBoard()] })
     const { container } = await renderCockpit()
     const viewport = container.querySelector('.viewport') as HTMLElement
@@ -1389,13 +1371,11 @@ describe('FormationsCockpit reference parity', () => {
     await screen.findByRole('dialog', { name: 'Add Input card' })
     fireEvent.change(screen.getByLabelText('Input card title'), { target: { value: '  Plan release  ' } })
     fireEvent.change(screen.getByLabelText('Mission goal'), { target: { value: '  Ship reduced candidate  ' } })
-    fireEvent.change(screen.getByLabelText('Mission Bead ID'), { target: { value: ' home-vdki.34.1 ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add Input card' }))
     await waitFor(() => {
-      expect(patches.find(patch => patch.body.createMission)?.body.createMission).toMatchObject({
+      expect(patches.find(patch => patch.body.createInputCard)?.body.createInputCard).toMatchObject({
         title: 'Plan release',
         goal: 'Ship reduced candidate',
-        beadId: 'home-vdki.34.1',
       })
     })
   })
@@ -1419,7 +1399,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add Input card' })).toBeNull())
 
-    expect(patches.filter(patch => patch.body.createMission)).toEqual([])
+    expect(patches.filter(patch => patch.body.createInputCard)).toEqual([])
   })
 
   it('retains the Mission draft after the API rejects creation', async () => {
@@ -1432,14 +1412,12 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.change(screen.getByLabelText('Input card title'), { target: { value: 'Plan release' } })
     fireEvent.change(screen.getByLabelText('Mission goal'), { target: { value: 'Ship reduced candidate' } })
-    fireEvent.change(screen.getByLabelText('Mission Bead ID'), { target: { value: 'ctx-ug7.25' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add Input card' }))
 
     expect(await screen.findByTestId('formations-error')).toHaveTextContent('Mission create failed')
     expect(screen.getByRole('dialog', { name: 'Add Input card' })).toBeInTheDocument()
     expect(screen.getByLabelText('Input card title')).toHaveValue('Plan release')
     expect(screen.getByLabelText('Mission goal')).toHaveValue('Ship reduced candidate')
-    expect(screen.getByLabelText('Mission Bead ID')).toHaveValue('ctx-ug7.25')
   })
 
   it('adopts a created gate layout without issuing a stale follow-up layout patch', async () => {
@@ -1637,7 +1615,6 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
     const mission = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Input card · Showcase')
     expect(within(mission).getByText('Build the page')).toBeInTheDocument()
-    expect(within(mission).getByText('home-7kc4.5')).toBeInTheDocument()
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
     expect(within(frame).getByText('Step 1 · Formation · orchestrated')).toBeInTheDocument()
     const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
@@ -1803,34 +1780,23 @@ describe('FormationsCockpit reference parity', () => {
     })
   })
 
-  it('edits a mission goal and Bead ID in its window, undoes it, and the change survives reload', async () => {
+  it('edits an Input card goal in its window, undoes it, and the change survives reload', async () => {
     const { unmount } = await renderCockpit()
     const win = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Input card · Showcase')
-
-    fireEvent.click(within(win).getByRole('button', { name: 'Edit bead' }))
-    fireEvent.change(within(win).getByRole('textbox', { name: 'Bead' }), { target: { value: 'Not A Bead' } })
-    fireEvent.click(within(win).getByRole('button', { name: 'Save bead' }))
-    expect(await within(win).findByText('Enter a Beads issue ID such as ctx-ug7.25, or leave it blank.')).toBeInTheDocument()
-    expect(patches.filter(patch => patch.body.updateMission)).toEqual([])
-    fireEvent.change(within(win).getByRole('textbox', { name: 'Bead' }), { target: { value: '' } })
-    fireEvent.click(within(win).getByRole('button', { name: 'Save bead' }))
-    await waitFor(() => expect(patches.find(patch => patch.body.updateMission)?.body.updateMission).toEqual({ id: 'mis_showcase', beadId: '' }))
+    // The Input card has no Bead; a run names its own.
+    expect(within(win).queryByRole('button', { name: 'Edit bead' })).toBeNull()
 
     fireEvent.click(within(win).getByRole('button', { name: 'Edit goal' }))
     fireEvent.change(within(win).getByRole('textbox', { name: 'Goal' }), { target: { value: 'Draft a framing for review' } })
     fireEvent.keyDown(within(win).getByRole('textbox', { name: 'Goal' }), { key: 'Enter', ctrlKey: true })
     await waitFor(() => {
-      expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', goal: 'Draft a framing for review' })
+      expect(patches.filter(patch => patch.body.updateInputCard).slice(-1)[0]?.body.updateInputCard).toEqual({ id: 'mis_showcase', goal: 'Draft a framing for review' })
     })
     await waitFor(() => expect(screen.getByTestId('mission-node-mis_showcase')).toHaveTextContent('Draft a framing for review'))
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => {
-      expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', goal: 'Build the page' })
-    })
-    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
-    await waitFor(() => {
-      expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', beadId: 'home-7kc4.5' })
+      expect(patches.filter(patch => patch.body.updateInputCard).slice(-1)[0]?.body.updateInputCard).toEqual({ id: 'mis_showcase', goal: 'Build the page' })
     })
 
     fireEvent.click(within(win).getByRole('button', { name: 'Edit goal' }))
@@ -1849,7 +1815,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(within(win).getByRole('button', { name: 'Edit input hint' }))
     fireEvent.change(within(win).getByRole('textbox', { name: 'Input hint' }), { target: { value: 'Paste the page sketch and its copy deck.' } })
     fireEvent.click(within(win).getByRole('button', { name: 'Save input hint' }))
-    await waitFor(() => expect(patches.find(patch => patch.body.updateMission)?.body.updateMission).toEqual({ id: 'mis_showcase', inputHint: 'Paste the page sketch and its copy deck.' }))
+    await waitFor(() => expect(patches.find(patch => patch.body.updateInputCard)?.body.updateInputCard).toEqual({ id: 'mis_showcase', inputHint: 'Paste the page sketch and its copy deck.' }))
     expect(await within(win).findByText('Paste the page sketch and its copy deck.')).toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId('run-mission-mis_showcase'))
@@ -1858,7 +1824,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(within(start).getByRole('button', { name: 'Cancel' }))
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
-    await waitFor(() => expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', inputHint: '' }))
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateInputCard).slice(-1)[0]?.body.updateInputCard).toEqual({ id: 'mis_showcase', inputHint: '' }))
   })
 
   it('switches a mission to talk with the agents from its window, shows it on the card, and undoes it', async () => {
@@ -1871,12 +1837,12 @@ describe('FormationsCockpit reference parity', () => {
     expect(channel).toHaveAccessibleDescription('A change applies to runs started afterwards; runs already going keep their channel.')
 
     fireEvent.click(within(channel).getByRole('radio', { name: /Talk with the agents/ }))
-    await waitFor(() => expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', humanChannel: 'session' }))
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateInputCard).slice(-1)[0]?.body.updateInputCard).toEqual({ id: 'mis_showcase', humanChannel: 'session' }))
     await waitFor(() => expect(card).toHaveTextContent('Human gates · Talk with the agents'))
     expect(within(channel).getByRole('radio', { name: /Talk with the agents/ })).toBeChecked()
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
-    await waitFor(() => expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', humanChannel: '' }))
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateInputCard).slice(-1)[0]?.body.updateInputCard).toEqual({ id: 'mis_showcase', humanChannel: '' }))
     await waitFor(() => expect(card).toHaveTextContent('Human gates · Notify me'))
     expect(within(channel).getByRole('radio', { name: /Notify me/ })).toBeChecked()
   })
@@ -1894,13 +1860,13 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Start mission' })).toBeNull())
     const calls = vi.mocked(fetch).mock.calls
     const saved = calls.findIndex(([, init]) => typeof init?.body === 'string' && init.body.includes('"humanChannel":"session"'))
-    const started = calls.findIndex(([url, init]) => url === '/api/formations/runs' && init?.method === 'POST')
+    const started = calls.findIndex(([url, init]) => url === '/api/runs' && init?.method === 'POST')
     expect(saved).toBeGreaterThanOrEqual(0)
     expect(started).toBeGreaterThan(saved)
     expect(screen.getByTestId('mission-node-mis_showcase')).toHaveTextContent('Human gates · Talk with the agents')
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
-    await waitFor(() => expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', humanChannel: '' }))
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateInputCard).slice(-1)[0]?.body.updateInputCard).toEqual({ id: 'mis_showcase', humanChannel: '' }))
 
     // An unchanged channel saves nothing before starting.
     const before = patches.length
@@ -1912,7 +1878,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.change(within(again).getByLabelText('Brief'), { target: { value: 'Again' } })
     fireEvent.click(within(again).getByRole('button', { name: 'Start mission' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Start mission' })).toBeNull())
-    expect(patches.slice(before).filter(patch => patch.body.updateMission)).toEqual([])
+    expect(patches.slice(before).filter(patch => patch.body.updateInputCard)).toEqual([])
   })
 
   it('edits the reference files of a mission and a gate in their windows, with undo', async () => {
@@ -1921,7 +1887,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(within(mission).getByRole('button', { name: 'Edit files' }))
     fireEvent.change(within(mission).getByRole('textbox', { name: 'Files' }), { target: { value: 'docs/sketch.md, docs/copy.md' } })
     fireEvent.click(within(mission).getByRole('button', { name: 'Save files' }))
-    await waitFor(() => expect(patches.find(patch => patch.body.updateMission)?.body.updateMission).toEqual({ id: 'mis_showcase', files: ['docs/sketch.md', 'docs/copy.md'] }))
+    await waitFor(() => expect(patches.find(patch => patch.body.updateInputCard)?.body.updateInputCard).toEqual({ id: 'mis_showcase', files: ['docs/sketch.md', 'docs/copy.md'] }))
     expect(await within(mission).findByRole('button', { name: 'Open file docs/copy.md' })).toBeInTheDocument()
 
     const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
@@ -1933,7 +1899,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => expect(patches.filter(patch => patch.body.updateGate).slice(-1)[0]?.body.updateGate).toEqual({ id: 'gate_review', files: [] }))
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
-    await waitFor(() => expect(patches.filter(patch => patch.body.updateMission).slice(-1)[0]?.body.updateMission).toEqual({ id: 'mis_showcase', files: [] }))
+    await waitFor(() => expect(patches.filter(patch => patch.body.updateInputCard).slice(-1)[0]?.body.updateInputCard).toEqual({ id: 'mis_showcase', files: [] }))
   })
 
   it('opens the node thread and referenced files from a node window without copying them', async () => {
@@ -2061,7 +2027,7 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => {
-      expect(patches.filter(patch => patch.body.assignSlot).slice(-1)[0]?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: 'mason', harness: 'codex', model: '', effort: '' })
+      expect(patches.filter(patch => patch.body.assignSlot).slice(-1)[0]?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: 'mason', harness: 'codex', model: 'mason-model', effort: 'medium' })
     })
   })
 
@@ -2104,43 +2070,12 @@ describe('FormationsCockpit reference parity', () => {
     expect(within(create).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Solo formation', 'Peer formation', 'Orchestrated formation', 'Gate'])
   })
 
-  it('shows every slot of a retired formation type and converts it from the type chip', async () => {
-    const legacyBoard = makeBoard()
-    legacyBoard.formations = [{
-      ...formation,
-      type: 'flow',
-      verification: undefined,
-      slots: [
-        { id: 'slot_plan', label: 'Plan', controller: false, agentId: 'mason', harness: 'codex' },
-        { id: 'slot_execute', label: 'Execute', controller: false },
-        { id: 'slot_push', label: 'Push', controller: false },
-      ],
-    }, judgeFormation] as TestBoard['formations']
-    patches = installFetchMock({
-      boards: [legacyBoard],
-      validation: { errors: [{ code: 'invalid_formation_type', nodeId: 'fmn_frame', message: 'formation "fmn_frame" has unsupported type "flow"; change it to solo, peer or orchestrated with formation set-type, or delete it' }], warnings: [] },
-    })
-    await renderCockpit()
-    for (const slot of ['slot_plan', 'slot_execute', 'slot_push']) {
-      expect(screen.getByTestId(`slot-fmn_frame-${slot}`)).toBeInTheDocument()
-    }
-    expect(await screen.findByTestId('draft-marker-fmn_frame')).toHaveAttribute('title', expect.stringContaining('formation set-type'))
-    fireEvent.click(screen.getByTestId('formation-type-fmn_frame'))
-    const menu = await screen.findByRole('menu', { name: 'Formation type' })
-    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Solo', 'Peer', 'Orchestrated'])
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Orchestrated' }))
-    await waitFor(() => {
-      expect(patches.find(patch => patch.body.setFormationType)?.body.setFormationType).toEqual({ id: 'fmn_frame', type: 'orchestrated' })
-    })
-    await waitFor(() => expect(screen.getByTestId('formation-type-fmn_frame')).toHaveTextContent('orchestrated'))
-  })
-
   it('offers one solo choice per staffed slot so no agent is dropped silently', async () => {
     const staffedBoard = makeBoard()
     staffedBoard.formations = [{
       ...formation,
       slots: [
-        { id: 'slot_lead', label: 'Lead', controller: true, agentId: 'mason', harness: 'codex' },
+        { id: 'slot_lead', label: 'Lead', controller: true, agentId: 'mason', harness: 'codex', model: 'mason-model', effort: 'medium' },
         { id: 'slot_worker', label: 'Worker', controller: false, agentId: 'hazel', harness: 'claude' },
       ],
     }, judgeFormation] as TestBoard['formations']
@@ -2242,7 +2177,7 @@ describe('FormationsCockpit reference parity', () => {
 
   it('restores a deleted formation and mission with their staffing, ports and brief', async () => {
     await renderCockpit()
-    for (const [testId, item, op] of [['formation-node-fmn_judge', 'Delete formation', 'formation'], ['mission-node-mis_showcase', 'Delete Input card', 'mission']] as const) {
+    for (const [testId, item, op] of [['formation-node-fmn_judge', 'Delete formation', 'formation'], ['mission-node-mis_showcase', 'Delete Input card', 'inputCard']] as const) {
       fireEvent.contextMenu(screen.getByTestId(testId))
       fireEvent.click(await screen.findByRole('menuitem', { name: item }))
       await waitFor(() => expect(screen.queryByTestId(testId)).toBeNull())
@@ -2310,25 +2245,6 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.queryByTestId('formations-error')).toBeNull()
   })
 
-  it('asks before deleting a formation with retired inline verification, which cannot be undone', async () => {
-    await renderCockpit()
-    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'))
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete formation' }))
-    const dialog = await screen.findByRole('alertdialog', { name: 'Delete formation' })
-    expect(dialog).toHaveTextContent('Frame cannot be put back after deleting, because it still carries retired inline verification. Ctrl+Z will not undo this delete.')
-    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
-    expect(patches.filter(patch => patch.body.deleteFormation)).toEqual([])
-
-    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'))
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete formation' }))
-    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete for good' }))
-    await waitFor(() => expect(screen.queryByTestId('formation-node-fmn_frame')).toBeNull())
-    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
-    await new Promise(resolve => setTimeout(resolve, 20))
-    expect(patches.filter(patch => patch.body.restoreNode)).toEqual([])
-  })
-
   it('undoes Remove this input by restoring the port in place with its wire', async () => {
     await renderCockpit()
     fireEvent.contextMenu(document.querySelector<HTMLElement>('[data-port-in="fmn_judge:port_judge_in"]')!.closest<HTMLElement>('.fio')!)
@@ -2382,185 +2298,6 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.queryByTestId('formations-error')).toBeNull()
   })
 
-  it('shows legacy inline verification as read-only migration input', async () => {
-    await renderCockpit()
-    const band = screen.getByRole('button', { name: 'Inspect legacy verification for Frame' })
-    expect(band).toBe(screen.getByTestId('verify-band-fmn_frame'))
-    band.focus()
-    fireEvent.click(band)
-    const dialog = await screen.findByRole('dialog', { name: 'Legacy verification · Frame' })
-		expect(dialog).toHaveAttribute('aria-modal', 'true')
-		expect(dialog).toHaveAccessibleDescription(/Inline verification is retired/)
-		expect(screen.getByRole('button', { name: 'Close legacy verification' })).toHaveFocus()
-		expect(dialog).toHaveTextContent('Tests pass')
-		expect(dialog).toHaveTextContent('Create and wire an explicit Gate')
-		expect(screen.queryByRole('button', { name: 'Save verification' })).toBeNull()
-		expect(screen.getByLabelText('Replacement Gate')).toHaveValue('')
-		expect(screen.getByRole('button', { name: 'Remove legacy verification' })).toBeDisabled()
-		fireEvent.change(screen.getByLabelText('Replacement Gate'), { target: { value: 'gate_review' } })
-		fireEvent.click(screen.getByRole('button', { name: 'Remove legacy verification' }))
-    await waitFor(() => {
-      const removal = patches.map(patch => patch.body.removeVerification as { formationId?: string; replacementGateId?: string } | undefined).find(Boolean)
-      expect(removal).toEqual({ formationId: 'fmn_frame', replacementGateId: 'gate_review' })
-    })
-    expect(patches.some(patch => patch.body.setVerification)).toBe(false)
-    await waitFor(() => expect(dialog).not.toBeInTheDocument())
-    expect(band).toHaveFocus()
-  })
-
-  it('restores the migration trigger after button and Escape dismissal', async () => {
-    await renderCockpit()
-    const band = screen.getByRole('button', { name: 'Inspect legacy verification for Frame' })
-
-    band.focus()
-    fireEvent.click(band)
-    const close = await screen.findByRole('button', { name: 'Close legacy verification' })
-    close.focus()
-    fireEvent.click(close)
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Legacy verification · Frame' })).toBeNull())
-    expect(band).toHaveFocus()
-
-    fireEvent.click(band)
-    await screen.findByRole('dialog', { name: 'Legacy verification · Frame' })
-    fireEvent.keyDown(window, { key: 'Escape' })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Legacy verification · Frame' })).toBeNull())
-    expect(band).toHaveFocus()
-  })
-
-  it('does not offer new inline verification authoring', async () => {
-    await renderCockpit()
-    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_judge'))
-    const menu = await screen.findByRole('menu', { name: 'Formation actions' })
-    expect(menu).not.toHaveTextContent('Add verification')
-  })
-
-  it('routes legacy removal through the migration dialog and keeps it open on failure', async () => {
-    patches = installFetchMock({ removalFailure: true })
-    await renderCockpit()
-    fireEvent.contextMenu(screen.getByTestId('formation-node-fmn_frame'))
-    const menu = await screen.findByRole('menu', { name: 'Formation actions' })
-    expect(menu).not.toHaveTextContent('Remove legacy verification')
-		fireEvent.click(screen.getByRole('menuitem', { name: 'Migrate legacy verification' }))
-		const dialog = await screen.findByRole('dialog', { name: 'Legacy verification · Frame' })
-		fireEvent.change(screen.getByLabelText('Replacement Gate'), { target: { value: 'gate_review' } })
-		fireEvent.click(screen.getByRole('button', { name: 'Remove legacy verification' }))
-    expect(await screen.findByTestId('formations-error')).toHaveTextContent('Legacy verification migration failed')
-    const localError = await within(dialog).findByRole('alert')
-    expect(localError).toHaveTextContent('Could not remove legacy verification')
-    expect(localError).not.toHaveTextContent('Legacy verification migration failed')
-    expect(dialog).toBeInTheDocument()
-  })
-
-  it('locks Gate selection and duplicate removal while migration is pending', async () => {
-    let releaseRemoval: (() => void) | undefined
-    const removalGate = new Promise<void>(resolve => { releaseRemoval = resolve })
-    patches = installFetchMock({ removalGate })
-    await renderCockpit()
-    const band = screen.getByRole('button', { name: 'Inspect legacy verification for Frame' })
-    band.focus()
-    fireEvent.click(band)
-    const dialog = await screen.findByRole('dialog', { name: 'Legacy verification · Frame' })
-    const replacement = within(dialog).getByLabelText('Replacement Gate')
-    const remove = within(dialog).getByRole('button', { name: 'Remove legacy verification' })
-    fireEvent.change(replacement, { target: { value: 'gate_review' } })
-    fireEvent.click(remove)
-
-    expect(await within(dialog).findByRole('status')).toHaveTextContent('Removing legacy verification')
-    expect(replacement).toBeDisabled()
-    expect(remove).toBeDisabled()
-    fireEvent.click(remove)
-    expect(patches.filter(patch => patch.body.removeVerification)).toHaveLength(1)
-
-    await act(async () => releaseRemoval?.())
-    await waitFor(() => expect(dialog).not.toBeInTheDocument())
-    expect(band).toHaveFocus()
-  })
-
-  it('renders partial legacy verification without inventing missing evidence', async () => {
-    const partialBoard = makeBoard()
-    partialBoard.formations = [
-      { ...formation, verification: { id: 'ver_partial' } as typeof formation.verification },
-      judgeFormation,
-    ]
-    patches = installFetchMock({ boards: [partialBoard] })
-    await renderCockpit()
-    const band = screen.getByTestId('verify-band-fmn_frame')
-    expect(band).toHaveTextContent('checks not recorded')
-    fireEvent.click(band)
-    const dialog = await screen.findByRole('dialog', { name: 'Legacy verification · Frame' })
-    expect(dialog).toHaveTextContent('No criterion recorded')
-		expect(dialog).toHaveTextContent('No failure policy recorded')
-	})
-
-	it('requires an explicit choice when multiple replacement Gates are wired', async () => {
-		const multiGateBoard = makeBoard()
-		multiGateBoard.gates = [
-			...multiGateBoard.gates,
-			{ id: 'gate_backup', title: 'Backup review', kinds: ['human'], criterion: 'Review again' },
-		]
-		multiGateBoard.connections = [
-			...multiGateBoard.connections,
-			{ id: 'edge_frame_backup', from: 'fmn_frame:port_frame_out', to: 'gate_backup:in' },
-		]
-		patches = installFetchMock({ boards: [multiGateBoard] })
-		await renderCockpit()
-		fireEvent.click(screen.getByTestId('verify-band-fmn_frame'))
-		await screen.findByRole('dialog', { name: 'Legacy verification · Frame' })
-		const replacement = screen.getByLabelText('Replacement Gate')
-		expect(replacement).toHaveValue('')
-		expect(screen.getByRole('button', { name: 'Remove legacy verification' })).toBeDisabled()
-		fireEvent.change(replacement, { target: { value: 'gate_backup' } })
-		fireEvent.click(screen.getByRole('button', { name: 'Remove legacy verification' }))
-		await waitFor(() => {
-			const removal = patches.map(patch => patch.body.removeVerification as { replacementGateId?: string } | undefined).find(Boolean)
-			expect(removal).toEqual(expect.objectContaining({ replacementGateId: 'gate_backup' }))
-		})
-	})
-
-	it('requires an explicitly wired replacement Gate before removal', async () => {
-    const unwiredBoard = makeBoard()
-    unwiredBoard.gates = []
-    unwiredBoard.connections = unwiredBoard.connections.filter(connection => !connection.to.startsWith('gate_review:') && !connection.from.startsWith('gate_review:'))
-    patches = installFetchMock({ boards: [unwiredBoard] })
-    await renderCockpit()
-    fireEvent.click(screen.getByTestId('verify-band-fmn_frame'))
-    const dialog = await screen.findByRole('dialog', { name: 'Legacy verification · Frame' })
-    expect(dialog).toHaveTextContent('Wire an explicit Gate from a Formation output before removal')
-    expect(screen.getByRole('button', { name: 'Remove legacy verification' })).toBeDisabled()
-    expect(patches.filter(patch => patch.body.removeVerification)).toEqual([])
-  })
-
-  it('closes a legacy migration dialog when the selected board changes', async () => {
-    const secondBoard = { ...makeBoard(), id: 'brd_second', slug: 'second-board', title: 'Second board', etag: 'second-etag' }
-    patches = installFetchMock({ boards: [makeBoard(), secondBoard] })
-    await renderCockpit()
-    const band = screen.getByTestId('verify-band-fmn_frame')
-    band.focus()
-    fireEvent.click(band)
-    const dialog = await screen.findByRole('dialog', { name: 'Legacy verification · Frame' })
-    within(dialog).getByLabelText('Replacement Gate').focus()
-    fireEvent.change(screen.getByTestId('board-picker'), { target: { value: 'second-board' } })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Legacy verification · Frame' })).toBeNull())
-    expect(screen.getByTestId('verify-band-fmn_frame')).toHaveFocus()
-    expect(patches.filter(patch => patch.body.removeVerification)).toEqual([])
-  })
-
-  it('labels historical verification verdicts as non-authorizing evidence', async () => {
-    localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
-    patches = installFetchMock({
-      runEvents: [
-        { runId: 'run_legacy', seq: 1, type: 'node_output', nodeId: 'fmn_frame' },
-        { runId: 'run_legacy', seq: 2, type: 'verification_verdict', nodeId: 'fmn_frame', verdict: 'fail' },
-      ],
-    })
-    await renderCockpit()
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/formations/runs/run_legacy/events', expect.anything()))
-    fireEvent.click(screen.getByTestId('verify-band-fmn_frame'))
-    const dialog = await screen.findByRole('dialog', { name: 'Legacy verification · Frame' })
-    expect(dialog).toHaveTextContent('Legacy verification evidence · non-authorizing')
-    expect(dialog).toHaveTextContent('seq 2 · fail')
-  })
-
   it('loads final evidence when a lab mission completes before its start response is read', async () => {
     patches = installFetchMock({
       runStatus: { status: 'succeeded', final: true },
@@ -2575,13 +2312,13 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.change(within(dialog).getByLabelText('Bead'), { target: { value: 'form-proof' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Start mission' }))
     await screen.findByTestId('inspect-node-fmn_frame')
-    expect(fetch).toHaveBeenCalledWith('/api/formations/runs', expect.objectContaining({ body: expect.stringContaining('"cwd":"/work/project"') }))
-    const call = vi.mocked(fetch).mock.calls.find(([url, init]) => url === '/api/formations/runs' && init?.method === 'POST')
+    expect(fetch).toHaveBeenCalledWith('/api/runs', expect.objectContaining({ body: expect.stringContaining('"cwd":"/work/project"') }))
+    const call = vi.mocked(fetch).mock.calls.find(([url, init]) => url === '/api/runs' && init?.method === 'POST')
     const body = JSON.parse(String(call?.[1]?.body))
     expect(body).toMatchObject({ cwd: '/work/project', brief: 'Implement the requested change', beadId: 'form-proof' })
     // The run starts without limits (form-o7p.7).
     expect(body).not.toHaveProperty('limits')
-    expect(localStorage.getItem('chrote-formations-active-run-test-board')).toBeNull()
+    expect(localStorage.getItem('archon.activeRun.test-board')).toBeNull()
   })
 
   it('fits the canvas to its cards and keeps the zoom level numeric beside a formation-kind gate', async () => {
@@ -2614,7 +2351,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.getByTestId('output-status-fmn_frame')).toHaveTextContent('no output yet')
     cleanup()
 
-    localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
+    localStorage.setItem('archon.activeRun.test-board', 'run_legacy')
     patches = installFetchMock({
       runStatus: { status: 'succeeded', final: true },
       runEvents: [
@@ -2630,7 +2367,7 @@ describe('FormationsCockpit reference parity', () => {
   })
 
   it('shows the node status with its output and slot evidence from the evidence routes', async () => {
-    localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
+    localStorage.setItem('archon.activeRun.test-board', 'run_legacy')
     patches = installFetchMock({
       runEvents: [
         { runId: 'run_legacy', seq: 1, type: 'node_started', nodeId: 'fmn_frame' },
@@ -2649,13 +2386,13 @@ describe('FormationsCockpit reference parity', () => {
     }
     globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      const data = url === '/api/formations/runs/run_legacy/evidence/nodes/fmn_frame' ? { evidence }
-        : url === '/api/formations/runs/run_legacy/evidence/artifacts' ? { artifacts: [], truncated: false } : null
+      const data = url === '/api/runs/run_legacy/evidence/nodes/fmn_frame' ? { evidence }
+        : url === '/api/runs/run_legacy/evidence/artifacts' ? { artifacts: [], truncated: false } : null
       if (!data) return projectionFetch(input, init)
       return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data }) } as unknown as Response)
     }) as typeof fetch
     await renderCockpit()
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/formations/runs/run_legacy/events', expect.anything()))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/runs/run_legacy/events', expect.anything()))
     fireEvent.click(await screen.findByTestId('inspect-node-fmn_frame'))
     const dialog = await screen.findByTestId('node-inspector')
     expect(within(dialog).getByTestId('node-evidence-state')).toHaveTextContent('done')
@@ -2666,7 +2403,7 @@ describe('FormationsCockpit reference parity', () => {
   })
 
   it('surfaces open escalations as a needs-you banner and marks the escalated node', async () => {
-    localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
+    localStorage.setItem('archon.activeRun.test-board', 'run_legacy')
     patches = installFetchMock({
       runStatus: { status: 'blocked', final: false, resumeAllowed: true },
       runEvents: [
@@ -2677,7 +2414,7 @@ describe('FormationsCockpit reference parity', () => {
       ],
     })
     await renderCockpit()
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/formations/runs/run_legacy/escalations', expect.anything()))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/runs/run_legacy/escalations', expect.anything()))
 
     const banner = await screen.findByTestId('escalations-banner')
     expect(banner).toHaveTextContent('Needs you')
@@ -2692,7 +2429,7 @@ describe('FormationsCockpit reference parity', () => {
   })
 
   it('shows the run state of a node in its window with a way into its evidence', async () => {
-    localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
+    localStorage.setItem('archon.activeRun.test-board', 'run_legacy')
     patches = installFetchMock({
       runStatus: { status: 'running', final: false },
       runEvents: [{ runId: 'run_legacy', seq: 1, type: 'gate_evaluating', nodeId: 'gate_review', gateId: 'gate_review' }],
@@ -2715,7 +2452,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(within(mission).queryByRole('region', { name: 'Run' })).toBeNull()
   })
 
-  type ListedRun = { runId: string; status: string; final: boolean; boardSlug: string; missionId: string; eventCount: number; waitingGates?: Array<{ gateId: string; requestedSeq: number }> }
+  type ListedRun = { runId: string; status: string; final: boolean; missionSlug: string; inputCardId: string; eventCount: number; waitingGates?: Array<{ gateId: string; requestedSeq: number }> }
   function installRunsMock(runs: ListedRun[], events: Record<string, TestRunEvent[]> = {}) {
     const verdicts: Array<{ url: string; body: Record<string, unknown> }> = []
     const base = globalThis.fetch
@@ -2728,9 +2465,9 @@ describe('FormationsCockpit reference parity', () => {
         json: () => Promise.resolve(status < 300 ? { success: true, data } : { success: false, error: { code: 'NOT_FOUND', message: 'Not Found' } }),
         text: () => Promise.resolve(''),
       })
-      const listed = url.match(/^\/api\/formations\/runs\?mission=([^&]+)$/)
-      if (listed) return reply(runs.filter(run => run.boardSlug === decodeURIComponent(listed[1])))
-      const runURL = url.match(/^\/api\/formations\/runs\/([^/?]+)(\/.*)?$/)
+      const listed = url.match(/^\/api\/runs\?mission=([^&]+)$/)
+      if (listed) return reply(runs.filter(run => run.missionSlug === decodeURIComponent(listed[1])))
+      const runURL = url.match(/^\/api\/runs\/([^/?]+)(\/.*)?$/)
       if (runURL) {
         const run = runs.find(item => item.runId === runURL[1])
         if (!run) return reply(null, 404)
@@ -2750,7 +2487,7 @@ describe('FormationsCockpit reference parity', () => {
   const waitingEvents = (runId: string): TestRunEvent[] => [{ runId, seq: 4, type: 'human_input_requested', nodeId: 'gate_review', gateId: 'gate_review' }]
 
   it('finds a run started outside this browser and answers its gate', async () => {
-    const runs = [{ runId: 'run_01CLI', status: 'waiting_human', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] }]
+    const runs = [{ runId: 'run_01CLI', status: 'waiting_human', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] }]
     const verdicts = installRunsMock(runs, { run_01CLI: waitingEvents('run_01CLI') })
     expect(localStorage.length).toBe(0)
     await renderCockpit()
@@ -2758,21 +2495,21 @@ describe('FormationsCockpit reference parity', () => {
     expect(await screen.findByTestId('run-banner')).toHaveTextContent('Waiting for your answer')
     const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
     await waitFor(() => expect(within(panel).getByText('Question for run_01CLI')).toBeInTheDocument())
-    expect(fetch).toHaveBeenCalledWith('/api/formations/runs?mission=test-board', expect.anything())
+    expect(fetch).toHaveBeenCalledWith('/api/runs?mission=test-board', expect.anything())
     expect(screen.queryByRole('combobox', { name: 'Choose run' })).toBeNull()
 
     fireEvent.change(within(panel).getByLabelText('Your response'), { target: { value: 'Postgres' } })
     await act(async () => { fireEvent.click(within(panel).getByRole('button', { name: 'Approve' })) })
-    await waitFor(() => expect(verdicts).toEqual([{ url: '/api/formations/runs/run_01CLI/gates/gate_review/verdict', body: { actor: 'agent:ui', verdict: 'pass', requestedSeq: 4, reason: 'Postgres' } }]))
+    await waitFor(() => expect(verdicts).toEqual([{ url: '/api/runs/run_01CLI/gates/gate_review/verdict', body: { actor: 'agent:ui', verdict: 'pass', requestedSeq: 4, reason: 'Postgres' } }]))
   })
 
   it('opens truncated gate input evidence for the selected run without submitting the draft', async () => {
-    installRunsMock([{ runId: 'run_01EVIDENCE', status: 'waiting_human', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] }], { run_01EVIDENCE: waitingEvents('run_01EVIDENCE') })
+    installRunsMock([{ runId: 'run_01EVIDENCE', status: 'waiting_human', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] }], { run_01EVIDENCE: waitingEvents('run_01EVIDENCE') })
     const fallback = vi.mocked(fetch).getMockImplementation()!
     const reply = (data: unknown) => new Response(JSON.stringify({ success: true, data }), { status: 200 })
     vi.mocked(fetch).mockImplementation(async (input, init) => {
       const url = String(input)
-      if (url === '/api/formations/runs/run_01EVIDENCE/gates/gate_review/request') return reply({ request: { gateId: 'gate_review', requestedSeq: 4, criterion: 'Review', input: { fromNodeId: 'fmn_frame', text: 'Part of the input', truncated: true } } })
+      if (url === '/api/runs/run_01EVIDENCE/gates/gate_review/request') return reply({ request: { gateId: 'gate_review', requestedSeq: 4, criterion: 'Review', input: { fromNodeId: 'fmn_frame', text: 'Part of the input', truncated: true } } })
       return fallback(input, init)
     })
     await renderCockpit()
@@ -2780,16 +2517,16 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.change(within(panel).getByLabelText('Your response'), { target: { value: 'Keep this draft' } })
     fireEvent.click(await within(panel).findByRole('button', { name: 'Open run evidence' }))
     expect(await screen.findByRole('dialog', { name: 'Run evidence · Review' })).toBeInTheDocument()
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/formations/runs/run_01EVIDENCE/evidence/nodes/gate_review', expect.anything()))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/runs/run_01EVIDENCE/evidence/nodes/gate_review', expect.anything()))
     expect(within(panel).getByLabelText('Your response')).toHaveValue('Keep this draft')
     expect(screen.getByTestId('run-banner').querySelector('.badge')).toHaveClass('waiting_human')
   })
 
   it('shows the open run that needs the operator and offers a run picker', async () => {
     installRunsMock([
-      { runId: 'run_01A', status: 'waiting_human', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] },
-      { runId: 'run_01B', status: 'running', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 2 },
-      { runId: 'run_01C', status: 'succeeded', final: true, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 9 },
+      { runId: 'run_01A', status: 'waiting_human', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] },
+      { runId: 'run_01B', status: 'running', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 2 },
+      { runId: 'run_01C', status: 'succeeded', final: true, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 9 },
     ], { run_01A: waitingEvents('run_01A') })
     await renderCockpit()
 
@@ -2812,8 +2549,8 @@ describe('FormationsCockpit reference parity', () => {
     const second = { ...makeBoard(), id: 'brd_second', slug: 'second-board', title: 'Second board', etag: 'second-etag' }
     patches = installFetchMock({ boards: [makeBoard(), second] })
     installRunsMock([
-      { runId: 'run_01LINK', status: 'waiting_human', final: false, boardSlug: 'second-board', missionId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] },
-      { runId: 'run_01NEWER', status: 'waiting_human', final: false, boardSlug: 'second-board', missionId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] },
+      { runId: 'run_01LINK', status: 'waiting_human', final: false, missionSlug: 'second-board', inputCardId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] },
+      { runId: 'run_01NEWER', status: 'waiting_human', final: false, missionSlug: 'second-board', inputCardId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] },
     ], { run_01LINK: waitingEvents('run_01LINK'), run_01NEWER: waitingEvents('run_01NEWER') })
 
     for (let load = 0; load < 2; load++) {
@@ -2827,32 +2564,9 @@ describe('FormationsCockpit reference parity', () => {
     }
   })
 
-  // Links made before the rename, such as older notifications, say ?board=.
-  it('opens a pre-rename ?board= link on the same mission and run and rewrites it to ?mission=', async () => {
-    const second = { ...makeBoard(), id: 'brd_second', slug: 'second-board', title: 'Second', etag: 'second-etag' }
-    patches = installFetchMock({ boards: [makeBoard(), second] })
-    installRunsMock([
-      { runId: 'run_01LINK', status: 'waiting_human', final: false, boardSlug: 'second-board', missionId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] },
-    ], { run_01LINK: waitingEvents('run_01LINK') })
-
-    window.history.replaceState(null, '', '/?theme=dark&board=second-board&run=run_01LINK')
-    const { unmount } = await renderCockpit()
-    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveValue('second-board'))
-    const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
-    await waitFor(() => expect(within(panel).getByText('Question for run_01LINK')).toBeInTheDocument())
-    await waitFor(() => expect(window.location.search).toBe('?mission=second-board&run=run_01LINK&theme=dark'))
-    expect(recordedFetches.some(url => url.includes('/api/formations/boards') || url.includes('board='))).toBe(false)
-    unmount()
-
-    window.history.replaceState(null, '', '/?board=second-board')
-    await renderCockpit()
-    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveValue('second-board'))
-    await waitFor(() => expect(window.location.search).toMatch(/^\?mission=second-board(&run=run_01LINK)?$/))
-  })
-
   it('says when a linked run or board does not exist', async () => {
     window.history.replaceState(null, '', '/?mission=test-board&run=run_01GONE')
-    installRunsMock([{ runId: 'run_01OPEN', status: 'running', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 2 }])
+    installRunsMock([{ runId: 'run_01OPEN', status: 'running', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 2 }])
     const { unmount } = await renderCockpit()
     expect(await screen.findByTestId('formations-error')).toHaveTextContent('Run run_01GONE from the link was not found')
     await waitFor(() => expect(screen.getByTestId('run-banner')).toHaveTextContent('Running'))
@@ -2866,7 +2580,7 @@ describe('FormationsCockpit reference parity', () => {
   })
 
   it('names where a blocked run stopped, rings that gate and locates it from the run bar', async () => {
-    installRunsMock([{ runId: 'run_01BLOCK', status: 'blocked', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 3 }], {
+    installRunsMock([{ runId: 'run_01BLOCK', status: 'blocked', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 3 }], {
       run_01BLOCK: [
         { runId: 'run_01BLOCK', seq: 1, type: 'gate_evaluating', nodeId: 'gate_review', gateId: 'gate_review' },
         { runId: 'run_01BLOCK', seq: 2, type: 'judge_attempt_failed', nodeId: 'gate_review', gateId: 'gate_review' },
@@ -2877,7 +2591,7 @@ describe('FormationsCockpit reference parity', () => {
     const problems = [
       { seq: 3, type: 'run_blocked', nodeIds: ['gate_review'], reason: { text: 'invalid judge result: missing verdict block', bytes: 42 }, resumeAllowed: false },
     ]
-    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) === '/api/formations/runs/run_01BLOCK/evidence/problems'
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) === '/api/runs/run_01BLOCK/evidence/problems'
       ? Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data: { problems } }) } as unknown as Response)
       : projection(input, init)) as typeof fetch
     await renderCockpit()
@@ -2895,7 +2609,7 @@ describe('FormationsCockpit reference parity', () => {
 
   it('shows what a finished run produced and opens it in a file window', async () => {
     window.history.replaceState(null, '', '/?mission=test-board&run=run_01DONE')
-    installRunsMock([{ runId: 'run_01DONE', status: 'succeeded', final: true, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 6 }], {
+    installRunsMock([{ runId: 'run_01DONE', status: 'succeeded', final: true, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 6 }], {
       run_01DONE: [
         { runId: 'run_01DONE', seq: 1, type: 'node_started', nodeId: 'fmn_frame', attempt: 1 },
         { runId: 'run_01DONE', seq: 2, type: 'node_output', nodeId: 'fmn_frame', status: 'done' },
@@ -2913,10 +2627,10 @@ describe('FormationsCockpit reference parity', () => {
       { attempt: 1, inputs: [], dispatches: [], output: { seq, text: text(body), ports: [{ portId: port, text: text(body), ref: artifact ? { artifact } : undefined }] } },
     ] } })
     const evidence: Record<string, unknown> = {
-      '/api/formations/runs/run_01DONE/evidence/nodes/fmn_frame': output('fmn_frame', 2, 'port_frame_out', '# Frame\n\nThe **problem**', 'frame.md'),
-      '/api/formations/runs/run_01DONE/evidence/nodes/fmn_judge': output('fmn_judge', 4, 'port_judge_out', 'verdict pass'),
-      '/api/formations/runs/run_01DONE/evidence/artifacts': { artifacts: [{ name: 'frame.md', size: 24, modifiedAt: '' }], truncated: false },
-      '/api/formations/runs/run_01DONE/evidence/artifacts/frame.md': { artifact: { name: 'frame.md', size: 24, modifiedAt: '', kind: 'markdown', text: text('# Frame\n\nThe **problem**') } },
+      '/api/runs/run_01DONE/evidence/nodes/fmn_frame': output('fmn_frame', 2, 'port_frame_out', '# Frame\n\nThe **problem**', 'frame.md'),
+      '/api/runs/run_01DONE/evidence/nodes/fmn_judge': output('fmn_judge', 4, 'port_judge_out', 'verdict pass'),
+      '/api/runs/run_01DONE/evidence/artifacts': { artifacts: [{ name: 'frame.md', size: 24, modifiedAt: '' }], truncated: false },
+      '/api/runs/run_01DONE/evidence/artifacts/frame.md': { artifact: { name: 'frame.md', size: 24, modifiedAt: '', kind: 'markdown', text: text('# Frame\n\nThe **problem**') } },
     }
     globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) in evidence
       ? Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data: evidence[String(input)] }) } as unknown as Response)
@@ -2947,7 +2661,7 @@ describe('FormationsCockpit reference parity', () => {
     if (edit === 'rewiring') currentBoard.connections = []
     patches = installFetchMock({ boards: [currentBoard] })
     window.history.replaceState(null, '', '/?mission=test-board&run=run_01HISTORY')
-    installRunsMock([{ runId: 'run_01HISTORY', status: 'succeeded', final: true, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 5 }], {
+    installRunsMock([{ runId: 'run_01HISTORY', status: 'succeeded', final: true, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 5 }], {
       run_01HISTORY: [
         { runId: 'run_01HISTORY', seq: 2, type: 'node_output', nodeId: 'fmn_frame' },
         { runId: 'run_01HISTORY', seq: 4, type: 'node_output', nodeId: 'fmn_judge' },
@@ -2991,14 +2705,14 @@ describe('FormationsCockpit reference parity', () => {
     const briefedJudge = { ...judgeFormation, brief: { goal: 'Judge the frame', files: ['rubrics/review.md', '/elsewhere/judge.md'] } }
     const missionWithFiles = { ...mission, files: ['docs/sketch.md'] }
     withFiles.gates = [rubricGate]
-    withFiles.missions = [missionWithFiles]
+    withFiles.inputCards = [missionWithFiles]
     withFiles.formations = [formation, briefedJudge]
     patches = installFetchMock({ boards: [withFiles] })
     const coordinator = globalThis.fetch
     const previews: string[] = []
     globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      if (!url.startsWith('/api/formations/files/preview')) return coordinator(input, init)
+      if (!url.startsWith('/api/files/preview')) return coordinator(input, init)
       previews.push(url)
       const outside = url.endsWith(encodeURIComponent('/elsewhere/judge.md'))
       return Promise.resolve({
@@ -3031,7 +2745,7 @@ describe('FormationsCockpit reference parity', () => {
     const outside = await screen.findByRole('dialog', { name: 'file judge.md' })
     expect(await within(outside).findByRole('alert')).toHaveTextContent('Cannot read judge.md: file is not readable here')
     expect(outside).toHaveTextContent('Judge (judge) · /elsewhere/judge.md')
-    expect(previews).toEqual(['/api/formations/files/preview?path=rubrics%2Freview.md', '/api/formations/files/preview?path=%2Felsewhere%2Fjudge.md'])
+    expect(previews).toEqual(['/api/files/preview?path=rubrics%2Freview.md', '/api/files/preview?path=%2Felsewhere%2Fjudge.md'])
 
     // The gate's window lists its own files, then the judge's brief files the gate does not already name.
     const review = await openNodeWindow(within(gateCard).getByText('Review the frame'), 'Gate · Review')
@@ -3045,8 +2759,8 @@ describe('FormationsCockpit reference parity', () => {
 
   it('reopens a finished run from the run bar and puts it away again', async () => {
     installRunsMock([
-      { runId: 'run_01M2A0OLDER', status: 'failed', final: true, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 3 },
-      { runId: 'run_01M2B0NEWER', status: 'succeeded', final: true, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 2 },
+      { runId: 'run_01M2A0OLDER', status: 'failed', final: true, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 3 },
+      { runId: 'run_01M2B0NEWER', status: 'succeeded', final: true, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 2 },
     ], {
       run_01M2B0NEWER: [
         { runId: 'run_01M2B0NEWER', seq: 1, type: 'node_output', nodeId: 'fmn_frame', status: 'done' },
@@ -3056,10 +2770,10 @@ describe('FormationsCockpit reference parity', () => {
     const projection = globalThis.fetch
     const text = (value: string) => ({ text: value, bytes: value.length })
     const evidence: Record<string, unknown> = {
-      '/api/formations/runs/run_01M2B0NEWER/evidence/nodes/fmn_frame': { evidence: { runId: 'run_01M2B0NEWER', nodeId: 'fmn_frame', kind: 'formation', attempts: [
+      '/api/runs/run_01M2B0NEWER/evidence/nodes/fmn_frame': { evidence: { runId: 'run_01M2B0NEWER', nodeId: 'fmn_frame', kind: 'formation', attempts: [
         { attempt: 1, inputs: [], dispatches: [], output: { seq: 1, text: text('# Frame'), ports: [{ portId: 'port_frame_out', text: text('# Frame'), ref: { artifact: 'frame.md' } }] } },
       ] } },
-      '/api/formations/runs/run_01M2B0NEWER/evidence/artifacts': { artifacts: [{ name: 'frame.md', size: 7, modifiedAt: '' }], truncated: false },
+      '/api/runs/run_01M2B0NEWER/evidence/artifacts': { artifacts: [{ name: 'frame.md', size: 7, modifiedAt: '' }], truncated: false },
     }
     globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) in evidence
       ? Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data: evidence[String(input)] }) } as unknown as Response)
@@ -3093,7 +2807,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Flow' }))
     const flow = await screen.findByTestId('flow-view')
     expect(screen.getByRole('radio', { name: 'Flow' })).toBeChecked()
-    expect(JSON.parse(localStorage.getItem('archon.boardView.v1') || '{}')).toEqual({ 'test-board': 'flow' })
+    expect(JSON.parse(localStorage.getItem('archon.missionView.v1') || '{}')).toEqual({ 'test-board': 'flow' })
 
     const mission = within(flow).getByRole('region', { name: 'Input card Showcase' })
     expect(mission).toHaveTextContent('Build the page')
@@ -3123,12 +2837,12 @@ describe('FormationsCockpit reference parity', () => {
     expect(await screen.findByTestId('flow-view')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('radio', { name: 'Canvas' }))
     await waitFor(() => expect(screen.queryByTestId('flow-view')).toBeNull())
-    expect(localStorage.getItem('archon.boardView.v1')).toBe('{}')
+    expect(localStorage.getItem('archon.missionView.v1')).toBe('{}')
   })
 
   it('shows each step state, attempt and block reason in Flow with a run selected', async () => {
     window.history.replaceState(null, '', '/?mission=test-board&run=run_01BLOCK')
-    installRunsMock([{ runId: 'run_01BLOCK', status: 'blocked', final: false, boardSlug: 'test-board', missionId: 'mis_showcase', eventCount: 5 }], {
+    installRunsMock([{ runId: 'run_01BLOCK', status: 'blocked', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 5 }], {
       run_01BLOCK: [
         { runId: 'run_01BLOCK', seq: 1, type: 'node_started', nodeId: 'fmn_frame', attempt: 1 },
         { runId: 'run_01BLOCK', seq: 2, type: 'node_started', nodeId: 'fmn_frame', attempt: 2 },
@@ -3141,10 +2855,10 @@ describe('FormationsCockpit reference parity', () => {
     const problems = [
       { seq: 5, type: 'run_blocked', nodeIds: ['gate_review'], reason: { text: 'invalid judge result: missing verdict block', bytes: 42 }, resumeAllowed: false },
     ]
-    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) === '/api/formations/runs/run_01BLOCK/evidence/problems'
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) === '/api/runs/run_01BLOCK/evidence/problems'
       ? Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data: { problems } }) } as unknown as Response)
       : projection(input, init)) as typeof fetch
-    localStorage.setItem('archon.boardView.v1', JSON.stringify({ 'test-board': 'flow' }))
+    localStorage.setItem('archon.missionView.v1', JSON.stringify({ 'test-board': 'flow' }))
     await renderCockpit()
 
     const flow = await screen.findByTestId('flow-view')
@@ -3158,8 +2872,8 @@ describe('FormationsCockpit reference parity', () => {
   })
 
   it('offers the waiting human gate its answer panel in its Flow row', async () => {
-    localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
-    localStorage.setItem('archon.boardView.v1', JSON.stringify({ 'test-board': 'flow' }))
+    localStorage.setItem('archon.activeRun.test-board', 'run_legacy')
+    localStorage.setItem('archon.missionView.v1', JSON.stringify({ 'test-board': 'flow' }))
     installFetchMock({
       runStatus: { status: 'waiting_human', final: false },
       runEvents: [
@@ -3176,7 +2890,7 @@ describe('FormationsCockpit reference parity', () => {
   })
 
   it('answers a pending human gate from its upstream output', async () => {
-    localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
+    localStorage.setItem('archon.activeRun.test-board', 'run_legacy')
     installFetchMock({
       runStatus: { status: 'waiting_human', final: false },
       runEvents: [
@@ -3190,10 +2904,10 @@ describe('FormationsCockpit reference parity', () => {
     ;(globalThis as Record<string, unknown>).fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       const reply = (data: unknown) => Promise.resolve({ ok: true, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data }), text: () => Promise.resolve('') })
-      if (url === '/api/formations/runs/run_legacy/gates/gate_review/request') {
+      if (url === '/api/runs/run_legacy/gates/gate_review/request') {
         return reply({ request: { gateId: 'gate_review', requestedSeq: 4, criterion: 'Review the frame', input: { fromNodeId: 'fmn_frame', fromPortId: 'port_frame_out', text: questions, truncated: false } } })
       }
-      if (url === '/api/formations/runs/run_legacy/gates/gate_review/verdict') {
+      if (url === '/api/runs/run_legacy/gates/gate_review/verdict') {
         verdicts.push(JSON.parse(String(init?.body)))
         return reply({ runId: 'run_legacy' })
       }
@@ -3213,7 +2927,7 @@ describe('FormationsCockpit reference parity', () => {
   })
 
   it('keeps the gate answer in a window the run bar brings back, never under the gate editor', async () => {
-    localStorage.setItem('chrote-formations-active-run-test-board', 'run_legacy')
+    localStorage.setItem('archon.activeRun.test-board', 'run_legacy')
     installFetchMock({
       runStatus: { status: 'waiting_human', final: false },
       runEvents: [
@@ -3223,7 +2937,7 @@ describe('FormationsCockpit reference parity', () => {
     })
     const coordinator = globalThis.fetch
     ;(globalThis as Record<string, unknown>).fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input) === '/api/formations/runs/run_legacy/gates/gate_review/request') {
+      if (String(input) === '/api/runs/run_legacy/gates/gate_review/request') {
         return Promise.resolve({ ok: true, headers: { get: () => null }, text: () => Promise.resolve(''), json: () => Promise.resolve({ success: true, data: { request: {
           gateId: 'gate_review', requestedSeq: 4, criterion: 'Review the frame', input: { fromNodeId: 'fmn_frame', text: 'frame', truncated: false },
           routes: [{ verdict: 'pass', targets: [], endsRun: true }, { verdict: 'fail', targets: [{ nodeId: 'fmn_frame', title: 'Frame', kind: 'formation', attempt: 2, maxAttempts: 2 }] }],
@@ -3290,7 +3004,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.contextMenu(screen.getByTestId('mission-node-mis_showcase'))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete Input card' }))
     await waitFor(() => {
-      const removal = patches.map(patch => patch.body.deleteMission as { id?: string } | undefined).find(Boolean)
+      const removal = patches.map(patch => patch.body.deleteInputCard as { id?: string } | undefined).find(Boolean)
       expect(removal).toEqual(expect.objectContaining({ id: 'mis_showcase' }))
     })
   })
@@ -3300,7 +3014,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(screen.getByTestId('arrange-layout'))
     await waitFor(() => {
       expect(patches).toContainEqual({
-        url: '/api/formations/missions/test-board/layout',
+        url: '/api/missions/test-board/layout',
         body: { arrange: true },
       })
     })
@@ -3338,7 +3052,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.pointerMove(window, { clientX: 336 })
     expect(roster.style.getPropertyValue('--roster-width')).toBe('336px')
     fireEvent.pointerUp(window, { clientX: 336 })
-    expect(localStorage.getItem('chrote-formations-roster-width')).toBe('336')
+    expect(localStorage.getItem('archon.rosterWidth')).toBe('336')
     fireEvent.keyDown(handle, { key: 'ArrowLeft' })
     expect(handle).toHaveAttribute('aria-valuenow', '320')
     fireEvent.pointerDown(handle, { button: 0, clientX: 320 })
@@ -3348,7 +3062,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Collapse agent roster' }))
     expect(roster).toHaveClass('collapsed')
     expect(screen.getByRole('button', { name: 'Expand agent roster' })).toHaveAttribute('aria-expanded', 'false')
-    expect(localStorage.getItem('chrote-formations-roster-collapsed')).toBe('true')
+    expect(localStorage.getItem('archon.rosterCollapsed')).toBe('true')
 
     unmount()
     await renderCockpit()
@@ -3357,7 +3071,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(roster.style.getPropertyValue('--roster-width')).toBe('480px')
     fireEvent.click(screen.getByRole('button', { name: 'Expand agent roster' }))
     expect(roster).not.toHaveClass('collapsed')
-    expect(localStorage.getItem('chrote-formations-roster-collapsed')).toBe('false')
+    expect(localStorage.getItem('archon.rosterCollapsed')).toBe('false')
   })
 
   it('closes a node window and the Tool dialog on Escape', async () => {

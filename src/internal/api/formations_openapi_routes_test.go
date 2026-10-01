@@ -3,47 +3,32 @@ package api
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
 
-// OpenAPI documents each mission route and marks every operation of the
-// former board route deprecated.
-func TestOpenAPIDocumentsMissionRoutesAndDeprecatesBoardRoutes(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "docs", "openapi", "formations.yaml"))
+// OpenAPI documents the current routes and names only: every route is under
+// /api without the old /formations prefix, nothing is deprecated, and no
+// path, field or parameter says board.
+func TestOpenAPIDocumentsOnlyCurrentRoutes(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "docs", "openapi", "archon.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	doc := string(raw)
-	block := func(path string) string {
-		t.Helper()
-		start := strings.Index(doc, "\n  "+path+":\n")
-		if start < 0 {
+	for _, path := range []string{"/api/missions", "/api/missions/{mission}", "/api/missions/{mission}/validation", "/api/missions/{mission}/changes",
+		"/api/missions/{mission}/notes", "/api/missions/{mission}/layout", "/api/runs", "/api/runs/{runId}"} {
+		if !strings.Contains(doc, "\n  "+path+":\n") {
 			t.Fatalf("OpenAPI lacks %s", path)
 		}
-		rest := doc[start+1:]
-		if end := strings.Index(rest[1:], "\n  /"); end >= 0 {
-			rest = rest[:end+1]
-		}
-		return rest
 	}
-	for _, suffix := range []string{"", "/{id}", "/{id}/validation", "/{id}/changes", "/{id}/notes", "/{id}/layout"} {
-		mission := block("/api/formations/missions" + strings.ReplaceAll(suffix, "{id}", "{mission}"))
-		board := block("/api/formations/boards" + strings.ReplaceAll(suffix, "{id}", "{board}"))
-		if strings.Contains(mission, "deprecated: true") {
-			t.Fatalf("mission route%s is marked deprecated:\n%s", suffix, mission)
-		}
-		for _, method := range []string{"get", "post", "patch", "delete"} {
-			if !strings.Contains(mission, "\n    "+method+":") {
-				continue
-			}
-			if !strings.Contains(board, "\n    "+method+":\n      deprecated: true\n") {
-				t.Fatalf("board route%s %s is not marked deprecated:\n%s", suffix, method, board)
-			}
+	for _, stale := range []string{"/api/formations", "deprecated: true"} {
+		if strings.Contains(doc, stale) {
+			t.Fatalf("OpenAPI still documents %q", stale)
 		}
 	}
-	runs := block("/api/formations/runs")
-	if !strings.Contains(runs, "name: mission") || !strings.Contains(runs, "name: board\n        deprecated: true") {
-		t.Fatalf("run list does not document ?mission= with ?board= deprecated:\n%s", runs)
+	if word := regexp.MustCompile(`(?i)\bboards?\b|board[A-Z]\w*`).FindString(doc); word != "" {
+		t.Fatalf("OpenAPI still says %q", word)
 	}
 }

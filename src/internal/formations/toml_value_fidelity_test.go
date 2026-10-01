@@ -15,7 +15,7 @@ rev = 7
 updatedBy = 'agent:#reader'
 updatedAt = "2026-07-21T12:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = 'mis_main'
 title = "Mission \"quoted\""
 goal = """
@@ -107,8 +107,8 @@ stays byte exact
 '''
 `
 	raw := `schema = 1
-boardId = 'brd_layout_#1'
-boardRev = 7
+missionId = 'brd_layout_#1'
+missionRev = 7
 updatedAt = '2026-07-21T12:00:00Z#source'
 ` + unknownLayout + `
 
@@ -337,8 +337,8 @@ kinds = ["human"]
 criterion = 42
 `
 	layoutRaw := `schema = 1
-boardId = "brd_invalid_pair"
-boardRev = 7
+missionId = "brd_invalid_pair"
+missionRev = 7
 updatedAt = "2026-07-21T12:00:00Z"
 future = '''layout # future'''
 `
@@ -362,9 +362,9 @@ future = '''layout # future'''
 	}
 
 	invalidLayout := `schema = 1
-boardId = "brd_invalid_layout"
-"board\u0049d" = 'brd_duplicate'
-boardRev = 7
+missionId = "brd_invalid_layout"
+"mission\u0049d" = 'brd_duplicate'
+missionRev = 7
 updatedAt = "2026-07-21T12:00:00Z"
 `
 	writeFixture(t, store.LayoutPath("invalid-layout"), invalidLayout)
@@ -437,7 +437,7 @@ title = "Invalid pair"
 rev = 7
 updatedAt = "2026-07-21T12:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_existing"
 title = "Existing Mission"
 goal = "Stay"
@@ -455,9 +455,9 @@ kinds = ["human"]
 criterion = "Stay"
 `
 			layoutRaw := `schema = 1
-boardId = "brd_invalid_pair"
-"board\u0049d" = 'brd_duplicate'
-boardRev = 7
+missionId = "brd_invalid_pair"
+"mission\u0049d" = 'brd_duplicate'
+missionRev = 7
 updatedAt = "2026-07-21T12:00:00Z"
 `
 			writeFixture(t, store.BoardPath("invalid-pair"), boardRaw)
@@ -502,7 +502,7 @@ func TestTOMLPairedCreatesValidateGeneratedCandidatesBeforePublication(t *testin
 		},
 		{
 			name:      "Mission table-array collision",
-			boardTail: "mission = []\n",
+			boardTail: "inputCard = []\n",
 			create: func(store *Store, opts WriteOptions) error {
 				_, err := store.CreateMission("candidate-validation", MissionCreateRequest{Title: "Must not persist"}, opts)
 				return err
@@ -530,8 +530,8 @@ rev = 7
 updatedAt = "2026-07-21T12:00:00Z"
 ` + test.boardTail
 			layoutRaw := `schema = 1
-boardId = "brd_candidate_validation"
-boardRev = 7
+missionId = "brd_candidate_validation"
+missionRev = 7
 updatedAt = "2026-07-21T12:00:00Z"
 ` + test.layoutTail
 			writeFixture(t, store.BoardPath("candidate-validation"), boardRaw)

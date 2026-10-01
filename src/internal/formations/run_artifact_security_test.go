@@ -143,10 +143,10 @@ func TestRunInspectionRejectsSymlinkedDescendantOfConfiguredWorkspace(t *testing
 	externalLedger := filepath.Join(externalRuns, "session-search", runID+".ndjson")
 	ledgerBefore := testRunLedgerBytes(t, testRunStartedEvent(runID, "session-search"))
 	writeFixture(t, externalLedger, string(ledgerBefore))
-	if err := os.MkdirAll(filepath.Join(workspace, ".formations"), 0o755); err != nil {
-		t.Fatalf("create workspace formations directory: %v", err)
+	if err := os.MkdirAll(filepath.Join(workspace, ".archon"), 0o755); err != nil {
+		t.Fatalf("create workspace archon directory: %v", err)
 	}
-	if err := os.Symlink(externalRuns, filepath.Join(workspace, ".formations", "runs")); err != nil {
+	if err := os.Symlink(externalRuns, filepath.Join(workspace, ".archon", "runs")); err != nil {
 		t.Fatalf("symlink external runs directory: %v", err)
 	}
 
@@ -415,7 +415,7 @@ func TestSchema2RunLedgerNeverFallsThroughLegacyProjection(t *testing.T) {
 	store, _ := s4RunFixture(t)
 	runID := newPrefixedID("run")
 	ledgerPath := filepath.Join(store.Workspace, runArtifactPath("session-search", runID, ".ndjson"))
-	raw := `{"schema":2,"authoritySchema":2,"writerFence":1,"ts":"2026-07-18T12:00:00Z","runId":"` + runID + `","seq":1,"type":"run_started","actor":"agent:test","boardId":"brd_01J9_sesssearch","boardRev":7,"missionId":"mis_showcase","data":{"boardSlug":"session-search"}}` + "\n"
+	raw := `{"schema":2,"authoritySchema":2,"writerFence":1,"ts":"2026-07-18T12:00:00Z","runId":"` + runID + `","seq":1,"type":"run_started","actor":"agent:test","missionId":"brd_01J9_sesssearch","missionRev":7,"inputCardId":"mis_showcase","data":{"missionSlug":"session-search"}}` + "\n"
 	writeFixture(t, ledgerPath, raw)
 
 	if _, err := store.ReadRunEvents(runID); !errors.Is(err, ErrRunLedgerInvalid) {
@@ -523,7 +523,7 @@ func testRunStartedEvent(runID, boardSlug string) RunEvent {
 		BoardRev:  7,
 		MissionID: "mis_showcase",
 		Data: map[string]any{
-			"boardSlug":        boardSlug,
+			"missionSlug":        boardSlug,
 			"snapshot":         runArtifactPath(boardSlug, runID, ".snapshot.toml"),
 			"bindingsSnapshot": runArtifactPath(boardSlug, runID, ".bindings.toml"),
 		},

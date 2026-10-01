@@ -80,7 +80,7 @@ func TestMissionHumanChannelRoundTripsAndStoresNotifyAsAbsent(t *testing.T) {
 func TestMissionHumanChannelWrittenByHandDecodesAndValidates(t *testing.T) {
 	raw := s4MissionOnlyBoardFixture() + `humanChannel = "notify"
 
-[[mission]]
+[[inputCard]]
 id = "mis_other"
 title = "Other"
 goal = ""

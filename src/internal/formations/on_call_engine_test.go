@@ -32,7 +32,7 @@ func (k *keepingExecutor) ExecuteFormation(req FormationExecution) (FormationExe
 	k.mu.Unlock()
 	for _, slot := range req.Formation.Slots {
 		if err := k.store.AppendRunEvent(req.RunID, RunEvent{Type: RunEventSeatCreated, NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{
-			"sessionName": "form-" + slot.ID, "sessionId": fmt.Sprintf("$%s-%d", slot.ID, req.Attempt), "paneId": fmt.Sprintf("%%%s-%d", slot.ID, req.Attempt), "harness": "openai-codex",
+			"sessionName": "archon-" + slot.ID, "sessionId": fmt.Sprintf("$%s-%d", slot.ID, req.Attempt), "paneId": fmt.Sprintf("%%%s-%d", slot.ID, req.Attempt), "harness": "openai-codex",
 		}}); err != nil {
 			return FormationExecutionResult{}, err
 		}
@@ -43,7 +43,7 @@ func (k *keepingExecutor) ExecuteFormation(req FormationExecution) (FormationExe
 		if err == nil && req.KeepSeatsOnCall && (req.Formation.Type != FormationTypeOrchestrated || slot.Controller) {
 			outcome = SeatOutcomeKeptOnCall
 		}
-		if appendErr := k.store.AppendRunEvent(req.RunID, RunEvent{Type: RunEventSeatCleanup, NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": "form-" + slot.ID, "outcome": outcome}}); appendErr != nil {
+		if appendErr := k.store.AppendRunEvent(req.RunID, RunEvent{Type: RunEventSeatCleanup, NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": "archon-" + slot.ID, "outcome": outcome}}); appendErr != nil {
 			return FormationExecutionResult{}, appendErr
 		}
 	}

@@ -76,7 +76,7 @@ func TestArchonNewRunStartDefinitionErrorsPrecedeUnavailableAuthority(t *testing
 		t.Run(test.name, func(t *testing.T) {
 			workspace := t.TempDir()
 			privateRoot := filepath.Join(t.TempDir(), "wsa_private_authority")
-			t.Setenv("CHROTE_FORMATIONS_DATA_ROOT", privateRoot)
+			t.Setenv("ARCHON_DATA_ROOT", privateRoot)
 			if test.board != "" {
 				writeArchonFile(t, formations.NewStore(workspace).BoardPath(test.slug), test.board)
 			}
@@ -120,7 +120,7 @@ to = "tool_normalize:port_tool_in"
 func TestArchonResumeAbortAndVerdictReportMissingRun(t *testing.T) {
 	workspace := t.TempDir()
 	privateRoot := filepath.Join(t.TempDir(), "wsa_private_authority")
-	t.Setenv("CHROTE_FORMATIONS_DATA_ROOT", privateRoot)
+	t.Setenv("ARCHON_DATA_ROOT", privateRoot)
 	tmuxCapture := installArchonRuntimeAuthorityTmuxTripwire(t, workspace)
 	runner := &fakeTmux{live: map[string]bool{}}
 	commands := []struct {
@@ -172,11 +172,11 @@ func installArchonRuntimeAuthorityTmuxTripwire(t *testing.T, workspace string) s
 	}
 	t.Setenv("PATH", binDir)
 	t.Setenv("ARCHON_RUNTIME_AUTHORITY_TMUX_CAPTURE", capturePath)
-	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "")
-	t.Setenv("CHROTE_FORMATIONS_TMUX_HARNESSES", "openai-codex")
-	t.Setenv("CHROTE_FORMATIONS_TMUX_SOCKET", filepath.Join(t.TempDir(), "default"))
-	t.Setenv("CHROTE_FORMATIONS_TMUX_CWD", workspace)
-	t.Setenv("CHROTE_FORMATIONS_TMUX_ROOTS", workspace)
+	t.Setenv("ARCHON_LAB_HARNESSES", "")
+	t.Setenv("ARCHON_TMUX_HARNESSES", "openai-codex")
+	t.Setenv("ARCHON_TMUX_SOCKET", filepath.Join(t.TempDir(), "default"))
+	t.Setenv("ARCHON_TMUX_CWD", workspace)
+	t.Setenv("ARCHON_TMUX_ROOTS", workspace)
 	return capturePath
 }
 
@@ -189,14 +189,14 @@ func assertArchonRuntimeAuthorityResponseIsPrivate(t *testing.T, body, workspace
 
 func assertNoArchonRuntimeAuthorityEffects(t *testing.T, workspace, tmuxCapture string, runner *fakeTmux) {
 	t.Helper()
-	if matches, err := filepath.Glob(filepath.Join(workspace, ".formations", "runs", "*")); err != nil || len(matches) != 0 {
+	if matches, err := filepath.Glob(filepath.Join(workspace, ".archon", "runs", "*")); err != nil || len(matches) != 0 {
 		t.Fatalf("command left run artifacts: matches=%v err=%v", matches, err)
 	}
 	if len(runner.spawned) != 0 || len(runner.attach) != 0 {
 		t.Fatalf("runtime rejection touched CLI tmux runner: spawned=%v attach=%v", runner.spawned, runner.attach)
 	}
 	if raw, err := os.ReadFile(tmuxCapture); err == nil {
-		t.Fatalf("runtime rejection reached formations tmux: %s", raw)
+		t.Fatalf("runtime rejection reached archon tmux: %s", raw)
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("inspect tmux tripwire: %v", err)
 	}

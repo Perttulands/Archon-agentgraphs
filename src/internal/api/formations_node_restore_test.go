@@ -20,7 +20,7 @@ id = "brd_undo"
 slug = "undo"
 rev = 1
 
-[[mission]]
+[[inputCard]]
 id = "mis_go"
 title = "Go"
 goal = ""
@@ -32,7 +32,7 @@ type = "orchestrated"
 title = "Plan"
 [formation.brief]
 goal = "Plan the change"
-beadId = "form-abc.1"
+beadId = "archon-abc.1"
 files = ["docs/plan.md"]
 links = []
 [formation.execution]
@@ -68,7 +68,7 @@ to = "fmn_plan:port_plan_in"
 		if err != nil {
 			t.Fatal(err)
 		}
-		req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/undo", strings.NewReader(fmt.Sprintf(`{%s,"expectedRev":%d}`, body, board.Rev)))
+		req := httptest.NewRequest(http.MethodPatch, "/api/missions/undo", strings.NewReader(fmt.Sprintf(`{%s,"expectedRev":%d}`, body, board.Rev)))
 		req.Header.Set("If-Match", board.ETag)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
@@ -76,13 +76,13 @@ to = "fmn_plan:port_plan_in"
 	}
 
 	get := httptest.NewRecorder()
-	mux.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/api/formations/boards/undo", nil))
+	mux.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/api/missions/undo", nil))
 	var read struct {
 		Data struct {
 			Board struct {
 				Formations  []json.RawMessage            `json:"formations"`
 				Connections []formations.BoardConnection `json:"connections"`
-			} `json:"board"`
+			} `json:"mission"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(get.Body.Bytes(), &read); err != nil || len(read.Data.Board.Formations) != 1 {
@@ -102,7 +102,7 @@ to = "fmn_plan:port_plan_in"
 	}
 	var restored struct {
 		Data struct {
-			Board  formations.BoardDocument  `json:"board"`
+			Board  formations.BoardDocument  `json:"mission"`
 			Layout formations.LayoutDocument `json:"layout"`
 			NodeID string                    `json:"nodeId"`
 		} `json:"data"`

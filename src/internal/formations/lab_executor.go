@@ -62,15 +62,15 @@ func NewConfiguredFormationExecutorFromEnv(store *Store, personas *PersonaStore,
 
 func LabExecutorConfigFromEnv() LabExecutorConfig {
 	capBytes := defaultLabOutputCapBytes
-	if raw := strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_LAB_OUTPUT_CAP_BYTES")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("ARCHON_LAB_OUTPUT_CAP_BYTES")); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
 			capBytes = parsed
 		}
 	}
 	return LabExecutorConfig{
-		Harnesses:      splitLabCSV(os.Getenv("CHROTE_FORMATIONS_LAB_HARNESSES")),
-		Cwd:            strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_LAB_CWD")),
-		Roots:          splitLabCSV(os.Getenv("CHROTE_FORMATIONS_LAB_ROOTS")),
+		Harnesses:      splitLabCSV(os.Getenv("ARCHON_LAB_HARNESSES")),
+		Cwd:            strings.TrimSpace(os.Getenv("ARCHON_LAB_CWD")),
+		Roots:          splitLabCSV(os.Getenv("ARCHON_LAB_ROOTS")),
 		OutputCapBytes: capBytes,
 	}
 }
@@ -149,7 +149,7 @@ func (e *LabFormationExecutor) executeFormation(ctx context.Context, req Formati
 		if err != nil {
 			return FormationExecutionResult{}, err
 		}
-		if err := dispatcher.CompleteFromCapture(req.RunID, lease.DispatchID, fmt.Sprintf("<<<CHROTE-DONE run-id=%s status=ok artifact=lab-%s.md>>>", req.RunID, slot.ID)); err != nil {
+		if err := dispatcher.CompleteFromCapture(req.RunID, lease.DispatchID, fmt.Sprintf("<<<ARCHON-DONE run-id=%s status=ok artifact=lab-%s.md>>>", req.RunID, slot.ID)); err != nil {
 			return FormationExecutionResult{}, err
 		}
 		outputs = append(outputs, e.renderSlotOutput(req, slot, *card, variant))
@@ -233,7 +233,7 @@ func (e *LabFormationExecutor) renderSlotOutput(req FormationExecution, slot For
 }
 
 // collapseRepeatedLabVerdicts keeps one copy of a lab judge fixture. Lab seats
-// echo their input, so a multi-seat formation repeats a chrote-verdict block
+// echo their input, so a multi-seat formation repeats a archon-verdict block
 // from the run brief once per seat, and a formation gate downstream would reject
 // the duplicates. Identical blocks collapse to the first; differing blocks stay,
 // so a real conflict still fails at the judge.
@@ -242,7 +242,7 @@ func collapseRepeatedLabVerdicts(text string) string {
 	type block struct{ start, end int }
 	var blocks []block
 	for i := 0; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) != "```chrote-verdict" {
+		if strings.TrimSpace(lines[i]) != "```archon-verdict" {
 			continue
 		}
 		for j := i + 1; j < len(lines); j++ {

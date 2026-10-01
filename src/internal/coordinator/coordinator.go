@@ -255,10 +255,10 @@ func Listen(address string) (net.Listener, error) {
 
 func (c *Coordinator) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/formations/runs/{runId}/seats", c.seats)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/seats/{createdSeq}/terminal", c.viewTerminal)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/gates/{gateId}/request", c.pendingGateRequest)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/wait", c.wait)
+	mux.HandleFunc("GET /api/runs/{runId}/seats", c.seats)
+	mux.HandleFunc("GET /api/runs/{runId}/seats/{createdSeq}/terminal", c.viewTerminal)
+	mux.HandleFunc("GET /api/runs/{runId}/gates/{gateId}/request", c.pendingGateRequest)
+	mux.HandleFunc("GET /api/runs/{runId}/wait", c.wait)
 	c.registerEvidenceRoutes(mux)
 	c.registerFileRoutes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -276,13 +276,9 @@ func (c *Coordinator) Handler() http.Handler {
 	liveness := c.agentLiveness
 	c.mu.Unlock()
 	api.NewAgentsHandlerWithStoreAndLiveness(c.personas, liveness).RegisterRoutes(mux)
-	mux.HandleFunc("GET /api/formations/runs", func(w http.ResponseWriter, r *http.Request) {
-		// An optional ?mission= filter lets a cockpit poll only its mission's
-		// runs; ?board= is its name before the rename, kept for one release.
+	mux.HandleFunc("GET /api/runs", func(w http.ResponseWriter, r *http.Request) {
+		// An optional ?mission= filter lets a cockpit poll only its mission's runs.
 		mission := r.URL.Query().Get("mission")
-		if mission == "" {
-			mission = r.URL.Query().Get("board")
-		}
 		runs, err := c.store.ListRuns(formations.RunListFilter{BoardSlug: mission})
 		if err != nil {
 			failure(w, err)
@@ -414,8 +410,8 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		BeadID       string               `json:"beadId"`
 		Actor        string               `json:"actor"`
 		FormationID  string               `json:"formationId"`
-		Board        string               `json:"board"`
-		MissionID    string               `json:"missionId"`
+		Board        string               `json:"mission"`
+		MissionID    string               `json:"inputCardId"`
 		ExpectedRev  int                  `json:"expectedRev"`
 		Limits       formations.RunLimits `json:"limits"`
 	}

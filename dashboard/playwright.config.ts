@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test'
 
-const port = Number(process.env.FORMATIONS_BROWSER_PORT || 8193)
+const port = Number(process.env.ARCHON_BROWSER_PORT || 8193)
 export default defineConfig({
   testDir: './tests',
   workers: 1,

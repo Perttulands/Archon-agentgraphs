@@ -92,13 +92,13 @@ func cleanup(seq int, node, slot, session, outcome string) RunEvent {
 func TestKeptSeatsFollowCleanupsAcrossAttemptsThatReuseSessionNames(t *testing.T) {
 	events := []RunEvent{
 		{Seq: 1, Type: RunEventStarted},
-		seatEvents(2, "work", "work_a", "form-run-work_a"),
-		cleanup(3, "work", "work_a", "form-run-work_a", SeatOutcomeKeptOnCall),
-		seatEvents(4, "after", "after_a", "form-run-after_a"),
-		cleanup(5, "after", "after_a", "form-run-after_a", SeatOutcomeEnded),
-		cleanup(6, "work", "work_a", "form-run-work_a", SeatOutcomeEnded),
-		seatEvents(7, "work", "work_a", "form-run-work_a"),
-		cleanup(8, "work", "work_a", "form-run-work_a", SeatOutcomeKeptOnCall),
+		seatEvents(2, "work", "work_a", "archon-run-work_a"),
+		cleanup(3, "work", "work_a", "archon-run-work_a", SeatOutcomeKeptOnCall),
+		seatEvents(4, "after", "after_a", "archon-run-after_a"),
+		cleanup(5, "after", "after_a", "archon-run-after_a", SeatOutcomeEnded),
+		cleanup(6, "work", "work_a", "archon-run-work_a", SeatOutcomeEnded),
+		seatEvents(7, "work", "work_a", "archon-run-work_a"),
+		cleanup(8, "work", "work_a", "archon-run-work_a", SeatOutcomeKeptOnCall),
 	}
 	seats := KeptSeats(events)
 	if len(seats) != 1 || seats[0].CreatedSeq != 7 || seats[0].KeptSeq != 8 || seats[0].SessionID != "$7" || seats[0].PaneID != "%7" || seats[0].Harness != "claude-code" {

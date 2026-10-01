@@ -5,7 +5,7 @@
 
 export type BoardView = 'canvas' | 'flow'
 
-const STORAGE_KEY = 'archon.boardView.v1'
+const STORAGE_KEY = 'archon.missionView.v1'
 
 function readViews(): Record<string, unknown> {
   try {

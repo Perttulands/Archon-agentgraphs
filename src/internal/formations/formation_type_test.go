@@ -13,7 +13,7 @@ slug = "types"
 title = "Types"
 rev = 3
 
-[[mission]]
+[[inputCard]]
 id = "mis_start"
 title = "Start"
 goal = "Go"
@@ -87,8 +87,8 @@ func formationTypeFixture(t *testing.T) (*Store, func() WriteOptions) {
 	store := NewStore(t.TempDir())
 	store.Now = fixedClock()
 	writeFixture(t, store.BoardPath("types"), formationTypeBoardFixture)
-	writeFixture(t, store.LayoutPath("types"), "schema = 1\nboardId = \"brd_types\"\nboardRev = 3\n\n[[node]]\nid = \"fmn_work\"\nx = 300\ny = 100\n")
-	if _, err := store.UpdateBoardNote("types", BoardNotePatch{Target: "fmn_work", Text: "Desk note", UpdatedBy: "human:operator"}, NoteWriteOptions{ExpectedETag: "*"}); err != nil {
+	writeFixture(t, store.LayoutPath("types"), "schema = 1\nmissionId = \"brd_types\"\nmissionRev = 3\n\n[[node]]\nid = \"fmn_work\"\nx = 300\ny = 100\n")
+	if _, err := store.UpdateBoardNote("types", BoardNotePatch{Target: "fmn_work", Text: "Desk note", Author: "human:operator"}, NoteWriteOptions{ExpectedETag: "*"}); err != nil {
 		t.Fatal(err)
 	}
 	return store, func() WriteOptions {

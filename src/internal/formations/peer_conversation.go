@@ -422,7 +422,7 @@ func (s *Store) openPeerDirectory(id PeerConversationID, create bool) (*runArtif
 		return nil, err
 	}
 	path := workspace
-	for _, component := range []string{".formations", "artifacts", id.RunID, "peer", id.NodeID, fmt.Sprintf("attempt-%d", id.Attempt)} {
+	for _, component := range []string{".archon", "artifacts", id.RunID, "peer", id.NodeID, fmt.Sprintf("attempt-%d", id.Attempt)} {
 		var next *os.File
 		if create {
 			next, err = openOrCreateRunArtifactDirectoryAt(current, component)

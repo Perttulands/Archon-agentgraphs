@@ -62,7 +62,7 @@ func post(t *testing.T, c *Coordinator, path string, body string) *httptest.Resp
 }
 func startRun(t *testing.T, c *Coordinator) string {
 	t.Helper()
-	w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"run the proof", "board":"proof","missionId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600,"redact":false}}`)
+	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"run the proof", "mission":"proof","inputCardId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600,"redact":false}}`)
 	if w.Code != 202 {
 		t.Fatalf("start %d %s", w.Code, w.Body.String())
 	}
@@ -128,7 +128,7 @@ func TestAdmissionSurvivesDisconnectAndHumanGateRequiresExactRequest(t *testing.
 		t.Fatalf("downstream %s ran before verdict", node)
 	default:
 	}
-	wrong := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":999,"verdict":"pass","reason":"stale"}`)
+	wrong := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":999,"verdict":"pass","reason":"stale"}`)
 	if wrong.Code != 409 {
 		t.Fatal(wrong.Code)
 	}
@@ -139,12 +139,12 @@ func TestAdmissionSurvivesDisconnectAndHumanGateRequiresExactRequest(t *testing.
 		}
 	}
 	list := httptest.NewRecorder()
-	c.Handler().ServeHTTP(list, httptest.NewRequest("GET", "/api/formations/runs", nil))
+	c.Handler().ServeHTTP(list, httptest.NewRequest("GET", "/api/runs", nil))
 	if !strings.Contains(list.Body.String(), `"status":"waiting_human"`) {
 		t.Fatal(list.Body.String())
 	}
 	body, _ := json.Marshal(map[string]any{"requestedSeq": p.WaitingGates[0].RequestedSeq, "verdict": "pass", "reason": "operator approves"})
-	w := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", string(body))
+	w := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", string(body))
 	if w.Code != 202 {
 		t.Fatalf("verdict %d %s", w.Code, w.Body.String())
 	}
@@ -161,7 +161,7 @@ func TestAdmissionSurvivesDisconnectAndHumanGateRequiresExactRequest(t *testing.
 	if !final.Final || len(final.WaitingGates) != 0 {
 		t.Fatal(final)
 	}
-	if w := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", string(body)); w.Code != 409 {
+	if w := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", string(body)); w.Code != 409 {
 		t.Fatal("duplicate verdict accepted")
 	}
 }
@@ -183,11 +183,11 @@ id = "brd_proof"
 slug = "proof"
 title = "Proof"
 rev = 1
-[[mission]]
+[[inputCard]]
 id = "mis_proof"
 title = "Proof"
 goal = "PRIVATE-OBJECTIVE"
-beadId = "form-2fb"
+beadId = "archon-2fb"
 [[formation]]
 id = "fmn_work"
 type = "solo"
@@ -246,7 +246,7 @@ to = "fmn_after:port_after_in"
 func TestAdmissionTakesARunWithoutLimits(t *testing.T) {
 	for _, body := range []string{`"limits":{"redact":false},`, `"limits":{"maxDispatch":0,"maxAttempts":0,"wallClockSeconds":0},`, ``} {
 		c, e, _ := fixture(t)
-		w := post(t, c, "/api/formations/runs", `{`+body+`"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof","missionId":"mis_proof","expectedRev":1}`)
+		w := post(t, c, "/api/runs", `{`+body+`"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 		if w.Code != 202 {
 			t.Fatalf("%s admission %d %s", body, w.Code, w.Body.String())
 		}
@@ -274,7 +274,7 @@ func TestAdmissionTakesARunWithoutLimits(t *testing.T) {
 	}
 	for _, limits := range []string{`{"maxDispatch":-1}`, `{"maxAttempts":-1}`, `{"wallClockSeconds":-1}`, `{"redact":true}`} {
 		c, _, _ := fixture(t)
-		w := post(t, c, "/api/formations/runs", `{"limits":`+limits+`,"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof","missionId":"mis_proof","expectedRev":1}`)
+		w := post(t, c, "/api/runs", `{"limits":`+limits+`,"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 		if w.Code != 400 {
 			t.Fatalf("limits %s admission %d %s, want 400", limits, w.Code, w.Body.String())
 		}
@@ -286,11 +286,11 @@ func TestAdmissionFreezesExecutorFormationDefault(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			c, e, _ := fixture(t)
 			e.formationTimeout = 127
-			selector := `"missionId":"mis_proof",`
+			selector := `"inputCardId":"mis_proof",`
 			if mode == "formation" {
 				selector = `"formationId":"fmn_work",`
 			}
-			w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof",`+selector+`"expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":1000,"formationTimeoutSeconds":999}}`)
+			w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof",`+selector+`"expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":1000,"formationTimeoutSeconds":999}}`)
 			if w.Code != 202 {
 				t.Fatalf("admission %d %s", w.Code, w.Body.String())
 			}

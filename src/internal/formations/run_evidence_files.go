@@ -264,7 +264,7 @@ func evidenceBriefDirectory(directory string, roots ...string) bool {
 	return false
 }
 
-// openRunArtifactsRoot opens <workspace>/.formations/artifacts/<runID>.
+// openRunArtifactsRoot opens <workspace>/.archon/artifacts/<runID>.
 func (s *Store) openRunArtifactsRoot(runID string) (*os.File, error) {
 	if !validRunID(runID) {
 		return nil, ErrNotFound
@@ -277,7 +277,7 @@ func (s *Store) openRunArtifactsRoot(runID string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, component := range []string{".formations", "artifacts", runID} {
+	for _, component := range []string{".archon", "artifacts", runID} {
 		next, err := openRuntimeAuthorityDirectoryAt(current, component)
 		_ = current.Close()
 		if err != nil {

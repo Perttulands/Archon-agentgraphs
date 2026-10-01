@@ -224,7 +224,7 @@ func TestPersonaSnapshotRejectsAlteredOrMismatchedBindings(t *testing.T) {
 			case "settings":
 				text = strings.Replace(text, `effort = "medium"`, `effort = "high"`, 1)
 			case "identity":
-				text = strings.Replace(text, `boardSlug = "session-search"`, `boardSlug = "other"`, 1)
+				text = strings.Replace(text, `missionSlug = "session-search"`, `missionSlug = "other"`, 1)
 			case "missing":
 				text = strings.Replace(text, `slotId = "slot_research"`, `slotId = "other"`, 1)
 			case "duplicate":
@@ -279,7 +279,7 @@ func TestPersonaSnapshotSizeRejectedBeforeRecordingRun(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), "persona snapshot exceeds byte limit") {
 				t.Fatalf("admission = %v", err)
 			}
-			if _, err := os.Stat(filepath.Join(store.Workspace, ".formations", "runs", "session-search")); !os.IsNotExist(err) {
+			if _, err := os.Stat(filepath.Join(store.Workspace, ".archon", "runs", "session-search")); !os.IsNotExist(err) {
 				t.Fatalf("run directory after rejected admission: %v", err)
 			}
 		})

@@ -42,7 +42,7 @@ import './nodeWindow.css'
 
 export interface NodeWindowOps {
   rename: (nodeId: string, title: string) => Promise<boolean>
-  updateMission: (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'beadId' | 'inputHint' | 'files' | 'humanChannel'>>) => Promise<boolean>
+  updateInputCard: (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel'>>) => Promise<boolean>
   setBrief: (formationId: string, brief: FormationBrief) => Promise<boolean>
   setExecution: (formationId: string, timeoutSeconds: number) => Promise<boolean>
   changeType: (formation: FormationNode, type: FormationType, keepSlotId?: string) => void
@@ -70,13 +70,13 @@ const RUN_STATE_WORDS: Record<NodeRunState, string> = {
 }
 
 type Located =
-  | { kind: 'mission'; node: MissionNode }
+  | { kind: 'inputCard'; node: MissionNode }
   | { kind: 'formation'; node: FormationNode }
   | { kind: 'gate'; node: GateNode }
 
-export function locateNode(board: Pick<BoardDocument, 'formations'> & Partial<Pick<BoardDocument, 'missions' | 'gates'>>, nodeId: string): Located | null {
-  const mission = board.missions?.find(node => node.id === nodeId)
-  if (mission) return { kind: 'mission', node: mission }
+export function locateNode(board: Pick<BoardDocument, 'formations'> & Partial<Pick<BoardDocument, 'inputCards' | 'gates'>>, nodeId: string): Located | null {
+  const mission = board.inputCards?.find(node => node.id === nodeId)
+  if (mission) return { kind: 'inputCard', node: mission }
   const formation = board.formations.find(node => node.id === nodeId)
   if (formation) return { kind: 'formation', node: formation }
   const gate = board.gates?.find(node => node.id === nodeId)
@@ -84,8 +84,8 @@ export function locateNode(board: Pick<BoardDocument, 'formations'> & Partial<Pi
   return null
 }
 
-const KIND_WORD = { mission: 'Input card', formation: 'Formation', gate: 'Gate' } as const
-const UNTITLED = { mission: 'Input', formation: 'Untitled formation', gate: 'Gate' } as const
+const KIND_WORD = { inputCard: 'Input card', formation: 'Formation', gate: 'Gate' } as const
+const UNTITLED = { inputCard: 'Input', formation: 'Untitled formation', gate: 'Gate' } as const
 
 /** The window's accessible name, which its close button and handles repeat. */
 export function nodeWindowLabel(located: Located): string {
@@ -115,7 +115,7 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
     : located.kind === 'gate' ? located.node.kinds.map(kind => (kind === 'formation' ? 'judge' : kind)).join(', ') || 'no kind'
       : ''
   const judged = flow.judgeOf.get(nodeId)
-  const eyebrow = located.kind === 'mission' ? 'Input card'
+  const eyebrow = located.kind === 'inputCard' ? 'Input card'
     : steps.has(nodeId) ? `Step ${steps.get(nodeId)} · ${KIND_WORD[located.kind]}${detail ? ` · ${detail}` : ''}`
       : judged ? `Judge of ${steps.has(judged) ? `${steps.get(judged)} ` : ''}${nodeTitle(board, judged)} · ${detail}`
         : `${KIND_WORD[located.kind]}${detail ? ` · ${detail}` : ''}`
@@ -133,7 +133,7 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
       <div className="nwin" data-testid={`node-window-${nodeId}`}>
         <div className="nwin-eyebrow">{eyebrow}</div>
         <EditableField label="Title" value={located.node.title} placeholder={UNTITLED[located.kind]} onSave={title => ops.rename(nodeId, title)} />
-        {located.kind === 'mission' ? <MissionFields mission={located.node} ops={ops} /> : null}
+        {located.kind === 'inputCard' ? <MissionFields mission={located.node} ops={ops} /> : null}
         {located.kind === 'formation' ? <FormationFields formation={located.node} agents={agents} ops={ops} /> : null}
         {located.kind === 'gate' ? <GateFields gate={located.node} board={board} profiles={profiles} ops={ops} /> : null}
         <section className="nwin-section" aria-label="Notes">
@@ -174,16 +174,14 @@ function MissionFields({ mission, ops }: { mission: MissionNode; ops: NodeWindow
   return (
     <>
       <EditableField label="Goal" value={mission.goal} multiline markdown placeholder="No goal yet. Say what the mission should achieve."
-        onSave={goal => ops.updateMission(mission.id, { goal })} />
+        onSave={goal => ops.updateInputCard(mission.id, { goal })} />
       <EditableField label="Input hint" value={mission.inputHint || ''} multiline markdown
         placeholder="No input hint. Start mission explains what a brief is."
         hint="What a run's brief should contain. Start mission shows it beside the brief."
-        onSave={inputHint => ops.updateMission(mission.id, { inputHint })} />
-      <EditableField label="Bead" value={mission.beadId} placeholder="No Bead" hint={BEAD_HINT} validate={beadProblem}
-        onSave={beadId => ops.updateMission(mission.id, { beadId })} />
-      <FilesField files={mission.files} context={mission.title} onSave={files => ops.updateMission(mission.id, { files })} />
+        onSave={inputHint => ops.updateInputCard(mission.id, { inputHint })} />
+      <FilesField files={mission.files} context={mission.title} onSave={files => ops.updateInputCard(mission.id, { files })} />
       <HumanChannelField channel={humanChannelOf(mission)}
-        onSave={channel => ops.updateMission(mission.id, { humanChannel: humanChannelField(channel) })} />
+        onSave={channel => ops.updateInputCard(mission.id, { humanChannel: humanChannelField(channel) })} />
     </>
   )
 }

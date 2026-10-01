@@ -353,7 +353,7 @@ func TestToolMutationValidationSentinelPreservesNonValidationIdentity(t *testing
 		store := newToolAuthoringStore(t)
 		slug := "tool-identity-malformed-layout"
 		boardRaw := toolAuthoringBoardFixture(slug, 5, true, "")
-		layoutRaw := "schema = 1\nboardId = [\n"
+		layoutRaw := "schema = 1\nmissionId = [\n"
 		writeFixture(t, store.BoardPath(slug), boardRaw)
 		writeFixture(t, store.LayoutPath(slug), layoutRaw)
 		board, err := store.ReadBoard(slug)

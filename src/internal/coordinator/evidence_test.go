@@ -44,18 +44,18 @@ func TestEvidenceRoutesServeNodeOutputsAndGateResponses(t *testing.T) {
 	executor.proceed <- struct{}{}
 	seq := awaitState(t, c, id, "waiting_human").WaitingGates[0].RequestedSeq
 	for _, invalid := range []string{`"-slot"`, `"slot work"`, `"` + strings.Repeat("s", 65) + `"`} {
-		if w := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass","relayedBy":`+invalid+`}`); w.Code != 400 || !strings.Contains(w.Body.String(), "relayedBy") {
+		if w := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass","relayedBy":`+invalid+`}`); w.Code != 400 || !strings.Contains(w.Body.String(), "relayedBy") {
 			t.Fatalf("relayedBy %s = %d %s", invalid, w.Code, w.Body.String())
 		}
 	}
-	if w := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass","reason":"use Postgres","relayedBy":"slot_work-1"}`); w.Code != 202 {
+	if w := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass","reason":"use Postgres","relayedBy":"slot_work-1"}`); w.Code != 202 {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 	<-executor.entered
 	executor.proceed <- struct{}{}
 	awaitState(t, c, id, "succeeded")
 
-	base := "/api/formations/runs/" + id + "/evidence/nodes/"
+	base := "/api/runs/" + id + "/evidence/nodes/"
 	w := getEvidence(c, base+"fmn_work")
 	work := decodeEvidence[formations.NodeEvidence](t, w, "evidence")
 	if work.Kind != "formation" || len(work.Attempts) != 1 || work.Attempts[0].Output == nil {
@@ -85,7 +85,7 @@ func TestEvidenceRoutesServeNodeOutputsAndGateResponses(t *testing.T) {
 		t.Fatalf("gate verdict = %s", w.Body.String())
 	}
 
-	for _, missing := range []string{base + "fmn_missing", "/api/formations/runs/run_missing/evidence/nodes/fmn_work", "/api/formations/runs/not-a-run/evidence/nodes/fmn_work"} {
+	for _, missing := range []string{base + "fmn_missing", "/api/runs/run_missing/evidence/nodes/fmn_work", "/api/runs/not-a-run/evidence/nodes/fmn_work"} {
 		if w := getEvidence(c, missing); w.Code != 404 {
 			t.Fatalf("%s: %d %s", missing, w.Code, w.Body.String())
 		}
@@ -106,7 +106,7 @@ func TestEvidenceRouteServesBlocksThatNameNoNode(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	w := getEvidence(c, "/api/formations/runs/"+id+"/evidence/problems")
+	w := getEvidence(c, "/api/runs/"+id+"/evidence/problems")
 	problems := decodeEvidence[[]formations.RunProblem](t, w, "problems")
 	if len(problems) != 2 {
 		t.Fatalf("problems = %s", w.Body.String())
@@ -114,7 +114,7 @@ func TestEvidenceRouteServesBlocksThatNameNoNode(t *testing.T) {
 	if block := problems[1]; block.Type != formations.RunEventBlocked || block.Reason.Text != "wall clock limit exceeded" || len(block.NodeIDs) != 0 || block.ResumeAllowed == nil || !*block.ResumeAllowed {
 		t.Fatalf("block = %s", w.Body.String())
 	}
-	for _, missing := range []string{"/api/formations/runs/run_missing/evidence/problems", "/api/formations/runs/not-a-run/evidence/problems"} {
+	for _, missing := range []string{"/api/runs/run_missing/evidence/problems", "/api/runs/not-a-run/evidence/problems"} {
 		if w := getEvidence(c, missing); w.Code != 404 {
 			t.Fatalf("%s: %d %s", missing, w.Code, w.Body.String())
 		}
@@ -127,14 +127,14 @@ func TestNodeEvidenceKeepsFrozenDefinitionAfterBoardEdits(t *testing.T) {
 	<-executor.entered
 	executor.proceed <- struct{}{}
 	seq := awaitState(t, c, id, "waiting_human").WaitingGates[0].RequestedSeq
-	if w := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass"}`); w.Code != 202 {
+	if w := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass"}`); w.Code != 202 {
 		t.Fatalf("verdict: %d %s", w.Code, w.Body.String())
 	}
 	<-executor.entered
 	executor.proceed <- struct{}{}
 	awaitState(t, c, id, "succeeded")
 
-	path := "/api/formations/runs/" + id + "/evidence/nodes/fmn_work"
+	path := "/api/runs/" + id + "/evidence/nodes/fmn_work"
 	before := decodeEvidence[formations.NodeEvidence](t, getEvidence(c, path), "evidence")
 	if before.Definition == nil || before.Definition.Title != "Work" || len(before.Definition.Outputs) != 1 || len(before.Definition.Outgoing) != 1 {
 		t.Fatalf("missing frozen definition: %+v", before.Definition)
@@ -166,7 +166,7 @@ func TestEvidenceRoutesCapBriefsArtifactsAndNodeText(t *testing.T) {
 	<-executor.entered
 	executor.proceed <- struct{}{}
 	awaitState(t, c, id, "waiting_human")
-	runPath := "/api/formations/runs/" + id
+	runPath := "/api/runs/" + id
 
 	long := strings.Repeat("y", formations.EvidenceTextMaxBytes+100)
 	if err := c.store.AppendRunEvent(id, formations.RunEvent{Type: formations.RunEventNodeOutput, NodeID: "fmn_after", Data: map[string]any{"status": "done", "text": long}}); err != nil {
@@ -207,7 +207,7 @@ func TestEvidenceRoutesCapBriefsArtifactsAndNodeText(t *testing.T) {
 		}
 	}
 
-	artifacts := filepath.Join(root, ".formations", "artifacts", id)
+	artifacts := filepath.Join(root, ".archon", "artifacts", id)
 	outside := t.TempDir()
 	write := func(path, content string) {
 		t.Helper()
@@ -290,7 +290,7 @@ func TestEvidenceRoutesCapBriefsArtifactsAndNodeText(t *testing.T) {
 			t.Fatalf("%s: %d %s", missing, w.Code, w.Body.String())
 		}
 	}
-	for _, unknown := range []string{"/api/formations/runs/run_missing/evidence/artifacts", "/api/formations/runs/run_missing/artifacts/report.md", "/api/formations/runs/run_missing/evidence/briefs/" + dispatchSeq} {
+	for _, unknown := range []string{"/api/runs/run_missing/evidence/artifacts", "/api/runs/run_missing/artifacts/report.md", "/api/runs/run_missing/evidence/briefs/" + dispatchSeq} {
 		if w := getEvidence(c, unknown); w.Code != 404 {
 			t.Fatalf("%s: %d %s", unknown, w.Code, w.Body.String())
 		}

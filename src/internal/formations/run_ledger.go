@@ -13,10 +13,10 @@ import (
 )
 
 var (
-	ErrRunFinal            = errors.New("formations run is final")
-	ErrRunLedgerInvalid    = errors.New("formations run ledger invalid")
-	ErrRunResumeNotAllowed = errors.New("formations run resume is not allowed")
-	ErrRunEpochBlocked     = errors.New("formations run epoch is blocked")
+	ErrRunFinal            = errors.New("archon run is final")
+	ErrRunLedgerInvalid    = errors.New("archon run ledger invalid")
+	ErrRunResumeNotAllowed = errors.New("archon run resume is not allowed")
+	ErrRunEpochBlocked     = errors.New("archon run epoch is blocked")
 )
 
 const (
@@ -93,7 +93,7 @@ func ValidateRunLimits(limits RunLimits) error {
 
 type RunStartResult struct {
 	RunID                string `json:"runId"`
-	BoardSlug            string `json:"boardSlug"`
+	BoardSlug            string `json:"missionSlug"`
 	LedgerPath           string `json:"ledgerPath"`
 	SnapshotPath         string `json:"snapshot"`
 	BindingsSnapshotPath string `json:"bindingsSnapshot"`
@@ -105,9 +105,9 @@ type RunEvent struct {
 	Seq       int            `json:"seq,omitempty"`
 	Type      string         `json:"type"`
 	Actor     string         `json:"actor,omitempty"`
-	BoardID   string         `json:"boardId,omitempty"`
-	BoardRev  int            `json:"boardRev,omitempty"`
-	MissionID string         `json:"missionId,omitempty"`
+	BoardID   string         `json:"missionId,omitempty"`
+	BoardRev  int            `json:"missionRev,omitempty"`
+	MissionID string         `json:"inputCardId,omitempty"`
 	BeadID    string         `json:"beadId,omitempty"`
 	NodeID    string         `json:"nodeId,omitempty"`
 	SlotID    string         `json:"slotId,omitempty"`
@@ -124,10 +124,10 @@ type RunStatusProjection struct {
 	RunID         string   `json:"runId"`
 	Status        string   `json:"status"`
 	Final         bool     `json:"final"`
-	BoardSlug     string   `json:"boardSlug"`
-	BoardID       string   `json:"boardId"`
-	BoardRev      int      `json:"boardRev"`
-	MissionID     string   `json:"missionId"`
+	BoardSlug     string   `json:"missionSlug"`
+	BoardID       string   `json:"missionId"`
+	BoardRev      int      `json:"missionRev"`
+	MissionID     string   `json:"inputCardId"`
 	BeadID        string   `json:"beadId"`
 	Epoch         int      `json:"epoch"`
 	EventCount    int      `json:"eventCount"`
@@ -294,12 +294,12 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 		Epoch:     0,
 		Attempt:   0,
 		Data: map[string]any{
-			"boardSlug":        slug,
-			"boardPath":        filepath.ToSlash(boardPath),
-			"boardRev":         board.Rev,
+			"missionSlug":        slug,
+			"missionPath":        filepath.ToSlash(boardPath),
+			"missionRev":         board.Rev,
 			"snapshot":         snapshotPath,
 			"bindingsSnapshot": bindingsPath,
-			"missionId":        mission.ID,
+			"inputCardId":        mission.ID,
 			"beadId":           req.BeadID,
 			"objective":        mission.Goal,
 			"cwd":              req.Cwd,
@@ -536,7 +536,7 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 func (s *Store) validateRunSnapshotIdentity(started RunEvent, expectedRunID string, ledger *runLedgerHandle) error {
 	snapshotPath := stringFromEventData(started, "snapshot")
 	bindingsSnapshotPath := stringFromEventData(started, "bindingsSnapshot")
-	boardSlug := stringFromEventData(started, "boardSlug")
+	boardSlug := stringFromEventData(started, "missionSlug")
 	if ledger == nil || ledger.directory == nil || started.Type != RunEventStarted || validateSlug(boardSlug) != nil || started.RunID != expectedRunID || ledger.runID != expectedRunID {
 		return ErrRunLedgerInvalid
 	}
@@ -560,7 +560,7 @@ func (s *Store) readRunSnapshot(started RunEvent, expectedRunID string, ledger *
 	if err != nil {
 		return nil, fmt.Errorf("%w: snapshot parse failed: %v", ErrRunLedgerInvalid, err)
 	}
-	boardSlug := stringFromEventData(started, "boardSlug")
+	boardSlug := stringFromEventData(started, "missionSlug")
 	if board.ID != started.BoardID || board.Slug != boardSlug || board.Rev != started.BoardRev {
 		return nil, ErrRunLedgerInvalid
 	}
@@ -585,7 +585,7 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 		ContextPaths: stringSliceFromAny(events[0].Data["contextPaths"]),
 		RunID:        runID,
 		Status:       RunStatusRunning,
-		BoardSlug:    stringFromEventData(events[0], "boardSlug"),
+		BoardSlug:    stringFromEventData(events[0], "missionSlug"),
 		BoardID:      events[0].BoardID,
 		BoardRev:     events[0].BoardRev,
 		MissionID:    events[0].MissionID,
@@ -828,10 +828,10 @@ func renderRunBindings(runID string, board *BoardDocument, mission MissionNode, 
 	var b strings.Builder
 	b.WriteString("schema = 3\n")
 	b.WriteString("runId = " + renderString(runID) + "\n")
-	b.WriteString("boardId = " + renderString(board.ID) + "\n")
-	b.WriteString("boardSlug = " + renderString(board.Slug) + "\n")
-	b.WriteString("boardRev = " + renderInt(board.Rev) + "\n")
-	b.WriteString("missionId = " + renderString(mission.ID) + "\n")
+	b.WriteString("missionId = " + renderString(board.ID) + "\n")
+	b.WriteString("missionSlug = " + renderString(board.Slug) + "\n")
+	b.WriteString("missionRev = " + renderInt(board.Rev) + "\n")
+	b.WriteString("inputCardId = " + renderString(mission.ID) + "\n")
 	b.WriteString("\n")
 	for _, binding := range bindings {
 		b.WriteString("[[binding]]\n")
@@ -966,7 +966,7 @@ func findMission(board *BoardDocument, missionID string) (MissionNode, bool) {
 }
 
 func runArtifactPath(slug, runID, suffix string) string {
-	return filepath.ToSlash(filepath.Join(".formations", "runs", slug, runID+suffix))
+	return filepath.ToSlash(filepath.Join(".archon", "runs", slug, runID+suffix))
 }
 
 func defaultRunActor(actor string) string {

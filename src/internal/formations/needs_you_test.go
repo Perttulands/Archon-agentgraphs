@@ -126,7 +126,7 @@ func TestNeedsYouProjectionTerminalRunHasNoAsks(t *testing.T) {
 func TestNeedsYouReconcileNotifiesOnceAndDedups(t *testing.T) {
 	store, started := startS4DispatchRun(t)
 	if _, err := store.RecordEscalationFromCapture(started.RunID, "fmn_work",
-		"<<<CHROTE-ESCALATE run-id="+started.RunID+" severity=stop reason='need a decision'>>>"); err != nil {
+		"<<<ARCHON-ESCALATE run-id="+started.RunID+" severity=stop reason='need a decision'>>>"); err != nil {
 		t.Fatalf("record blocking escalation: %v", err)
 	}
 
@@ -165,7 +165,7 @@ func TestNeedsYouReconcileNotifiesOnceAndDedups(t *testing.T) {
 func TestNeedsYouReconcileNilNotifierIsNoOp(t *testing.T) {
 	store, started := startS4DispatchRun(t)
 	if _, err := store.RecordEscalationFromCapture(started.RunID, "fmn_work",
-		"<<<CHROTE-ESCALATE run-id="+started.RunID+" severity=stop reason='need a decision'>>>"); err != nil {
+		"<<<ARCHON-ESCALATE run-id="+started.RunID+" severity=stop reason='need a decision'>>>"); err != nil {
 		t.Fatalf("record blocking escalation: %v", err)
 	}
 
@@ -185,7 +185,7 @@ func TestNeedsYouReconcileNilNotifierIsNoOp(t *testing.T) {
 func TestNeedsYouReconcileRetriesAfterSendFailure(t *testing.T) {
 	store, started := startS4DispatchRun(t)
 	if _, err := store.RecordEscalationFromCapture(started.RunID, "fmn_work",
-		"<<<CHROTE-ESCALATE run-id="+started.RunID+" severity=stop reason='need a decision'>>>"); err != nil {
+		"<<<ARCHON-ESCALATE run-id="+started.RunID+" severity=stop reason='need a decision'>>>"); err != nil {
 		t.Fatalf("record blocking escalation: %v", err)
 	}
 

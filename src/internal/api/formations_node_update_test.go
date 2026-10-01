@@ -20,7 +20,7 @@ slug = "rename"
 title = "Rename"
 rev = 2
 
-[[mission]]
+[[inputCard]]
 id = "mis_frame"
 title = "New mission"
 goal = ""
@@ -47,7 +47,7 @@ to = "fmn_map:port_map_in"
 		if err != nil {
 			t.Fatal(err)
 		}
-		req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/rename", bytes.NewBufferString(`{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{")))
+		req := httptest.NewRequest(http.MethodPatch, "/api/missions/rename", bytes.NewBufferString(`{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{")))
 		req.Header.Set("If-Match", board.ETag)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
@@ -57,7 +57,7 @@ to = "fmn_map:port_map_in"
 		t.Helper()
 		var response struct {
 			Data struct {
-				Board formations.BoardDocument `json:"board"`
+				Board formations.BoardDocument `json:"mission"`
 			} `json:"data"`
 		}
 		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &response) != nil {
@@ -70,22 +70,22 @@ to = "fmn_map:port_map_in"
 	if got.Formations[0].Title != "Map the territory" || len(got.Connections) != 1 {
 		t.Fatalf("formation rename = %+v", got)
 	}
-	got = board(patch(`{"updateMission":{"id":"mis_frame","goal":"Draft a framing"}}`))
+	got = board(patch(`{"updateInputCard":{"id":"mis_frame","goal":"Draft a framing"}}`))
 	if got.Missions[0].Title != "New mission" || got.Missions[0].Goal != "Draft a framing" {
 		t.Fatalf("mission update = %+v", got.Missions)
 	}
-	got = board(patch(`{"updateMission":{"id":"mis_frame","inputHint":"Link the sketch"}}`))
+	got = board(patch(`{"updateInputCard":{"id":"mis_frame","inputHint":"Link the sketch"}}`))
 	if got.Missions[0].InputHint != "Link the sketch" || got.Missions[0].Goal != "Draft a framing" {
 		t.Fatalf("mission input hint = %+v", got.Missions)
 	}
-	got = board(patch(`{"updateMission":{"id":"mis_frame","inputHint":""}}`))
+	got = board(patch(`{"updateInputCard":{"id":"mis_frame","inputHint":""}}`))
 	if got.Missions[0].InputHint != "" {
 		t.Fatalf("mission input hint clear = %+v", got.Missions)
 	}
 
 	before := readFormationsAPIFile(t, store.BoardPath("rename"))
 	for body, status := range map[string]int{
-		`{"updateMission":{"id":"mis_missing","title":"x"}}`:       http.StatusNotFound,
+		`{"updateInputCard":{"id":"mis_missing","title":"x"}}`:       http.StatusNotFound,
 		`{"updateFormation":{"id":"fmn_missing","title":"x"}}`:     http.StatusNotFound,
 	} {
 		if rec := patch(body); rec.Code != status {

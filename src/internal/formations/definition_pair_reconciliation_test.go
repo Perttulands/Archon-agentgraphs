@@ -138,7 +138,7 @@ func TestDefinitionPairCrashPointsExposeOnlyContractedBytePairs(t *testing.T) {
 
 			gotBoard := readFile(t, store.BoardPath(slug))
 			gotLayout := readFile(t, store.LayoutPath(slug))
-			assertPairCrashMemberForTest(t, "board", gotBoard, test.wantBoard, string(oldBoard), string(newBoard))
+			assertPairCrashMemberForTest(t, "mission", gotBoard, test.wantBoard, string(oldBoard), string(newBoard))
 			assertPairCrashMemberForTest(t, "layout", gotLayout, test.wantLayout, string(oldLayout), string(newLayout))
 			if gotBoard == string(newBoard) && gotLayout == string(oldLayout) {
 				t.Fatal("protocol exposed forbidden board-new/layout-old crash state")
@@ -206,13 +206,13 @@ func TestDefinitionPairFirstCanonicalMutationRepinsBothMembersBeforeWriting(t *t
 			oldLayoutPresent: true,
 			newLayoutPresent: true,
 			mutationStep:     pairStepPublishLayoutRenameForTest,
-			changedMember:    "board",
+			changedMember:    "mission",
 		},
 		{
 			name:             "present to absent layout unlink preserves a third board",
 			oldLayoutPresent: true,
 			mutationStep:     pairStepPublishLayoutUnlinkForTest,
-			changedMember:    "board",
+			changedMember:    "mission",
 		},
 		{
 			name:          "absent to absent board rename preserves a third layout",
@@ -252,7 +252,7 @@ func TestDefinitionPairFirstCanonicalMutationRepinsBothMembersBeforeWriting(t *t
 				}
 				hookReached = true
 				switch test.changedMember {
-				case "board":
+				case "mission":
 					writeFixture(t, store.BoardPath(slug), string(thirdBoard))
 				case "layout":
 					writeFixture(t, store.LayoutPath(slug), string(thirdLayout))
@@ -274,7 +274,7 @@ func TestDefinitionPairFirstCanonicalMutationRepinsBothMembersBeforeWriting(t *t
 				}
 			}
 
-			if test.changedMember == "board" {
+			if test.changedMember == "mission" {
 				assertPairFilesForTest(t, store, slug, thirdBoard, pairPresentContentForTest(oldLayoutRaw))
 			} else {
 				assertPairFilesForTest(t, store, slug, oldBoard, pairPresentContentForTest(thirdLayout))

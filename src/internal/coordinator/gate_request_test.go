@@ -25,7 +25,7 @@ func TestPendingGateRequestServesOnlyTheRoutedInput(t *testing.T) {
 		c.Handler().ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		return w
 	}
-	path := "/api/formations/runs/" + id + "/gates/gate_review/request"
+	path := "/api/runs/" + id + "/gates/gate_review/request"
 	for restart := 0; restart < 2; restart++ {
 		w := get(c, path)
 		if w.Code != 200 {
@@ -68,12 +68,12 @@ func TestPendingGateRequestServesOnlyTheRoutedInput(t *testing.T) {
 		}
 	}
 	defer c.Close()
-	for _, unknown := range []string{"/api/formations/runs/" + id + "/gates/gate_other/request", "/api/formations/runs/run_missing/gates/gate_review/request"} {
+	for _, unknown := range []string{"/api/runs/" + id + "/gates/gate_other/request", "/api/runs/run_missing/gates/gate_review/request"} {
 		if w := get(c, unknown); w.Code != 404 {
 			t.Fatalf("%s: %d %s", unknown, w.Code, w.Body.String())
 		}
 	}
-	if w := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass","reason":"use Postgres"}`); w.Code != 202 {
+	if w := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass","reason":"use Postgres"}`); w.Code != 202 {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 	<-executor.entered
@@ -91,7 +91,7 @@ func TestPendingGateRequestServesWithoutRoutesWhenTheBoardIsUnreadable(t *testin
 	<-executor.entered
 	executor.proceed <- struct{}{}
 	awaitState(t, c, id, "waiting_human")
-	snapshots, err := filepath.Glob(filepath.Join(root, ".formations", "runs", "*", id+".snapshot.toml"))
+	snapshots, err := filepath.Glob(filepath.Join(root, ".archon", "runs", "*", id+".snapshot.toml"))
 	if err != nil || len(snapshots) != 1 {
 		t.Fatalf("snapshots = %v, %v", snapshots, err)
 	}
@@ -99,7 +99,7 @@ func TestPendingGateRequestServesWithoutRoutesWhenTheBoardIsUnreadable(t *testin
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	c.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/api/formations/runs/"+id+"/gates/gate_review/request", nil))
+	c.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/api/runs/"+id+"/gates/gate_review/request", nil))
 	if w.Code != 200 || strings.Contains(w.Body.String(), `"routes"`) || !strings.Contains(w.Body.String(), "PRIVATE-OUTPUT") {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}

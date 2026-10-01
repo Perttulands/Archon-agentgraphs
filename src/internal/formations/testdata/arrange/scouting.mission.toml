@@ -132,7 +132,7 @@ id = "gate_01M2N9N1R4R184Y5G3R45BB5G1"
 title = "Brief sign-off"
 kinds = ["human"]
 
-[[mission]]
+[[inputCard]]
 id = "mis_01M2N9N1SG7J0D3YVRZY3V8TNT"
 title = "Scouting"
 

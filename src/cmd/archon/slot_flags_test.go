@@ -37,7 +37,7 @@ effort = "medium"
 // role; formation inspect prints them.
 func TestArchonFormationAssignSetsTheSlotsSettings(t *testing.T) {
 	workspace := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", t.TempDir())
+	t.Setenv("ARCHON_AGENTS_DIR", t.TempDir())
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("staff"), slotStaffingBoard)
 	runner := &fakeTmux{live: map[string]bool{}}

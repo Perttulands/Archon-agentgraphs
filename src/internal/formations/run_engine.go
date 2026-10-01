@@ -13,10 +13,10 @@ import (
 )
 
 var (
-	errRunStopped               = errors.New("formations run stopped")
-	ErrRunExecutorUnavailable   = errors.New("formations run executor unavailable")
-	ErrGateEvaluatorUnavailable = errors.New("formations gate evaluator unavailable")
-	ErrRunWallClockExceeded     = errors.New("formations run wall clock exceeded")
+	errRunStopped               = errors.New("archon run stopped")
+	ErrRunExecutorUnavailable   = errors.New("archon run executor unavailable")
+	ErrGateEvaluatorUnavailable = errors.New("archon gate evaluator unavailable")
+	ErrRunWallClockExceeded     = errors.New("archon run wall clock exceeded")
 )
 
 type FormationExecutor interface {
@@ -228,7 +228,7 @@ func (e *RunEngine) reconcileNeedsYou(runID string) {
 	if err != nil {
 		return
 	}
-	boardSlug := stringFromEventData(events[0], "boardSlug")
+	boardSlug := stringFromEventData(events[0], "missionSlug")
 	for _, ask := range asks {
 		if notified[ask.Seq] {
 			continue
@@ -396,7 +396,7 @@ func (e *RunEngine) PrepareFormationRun(slug, formationID string, req FormationR
 				"final":        true,
 				"mode":         "formation",
 				"formationId":  formation.ID,
-				"missionId":    mission.ID,
+				"inputCardId":    mission.ID,
 			},
 		}); err != nil {
 			return nil, err
@@ -963,12 +963,12 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 		Epoch:     0,
 		Attempt:   0,
 		Data: map[string]any{
-			"boardSlug":        slug,
-			"boardPath":        filepath.ToSlash(e.store.BoardPath(slug)),
-			"boardRev":         board.Rev,
+			"missionSlug":        slug,
+			"missionPath":        filepath.ToSlash(e.store.BoardPath(slug)),
+			"missionRev":         board.Rev,
 			"snapshot":         snapshotPath,
 			"bindingsSnapshot": bindingsPath,
-			"missionId":        mission.ID,
+			"inputCardId":        mission.ID,
 			"beadId":           beadID,
 			"objective":        mission.Goal,
 			"limits":           limits,
@@ -1648,7 +1648,7 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 		NodeID:    mission.ID,
 		MissionID: mission.ID,
 		Data: map[string]any{
-			"nodeKind":  "mission",
+			"nodeKind":  "inputCard",
 			"inputRefs": []RunInputRef{},
 			"reason":    "initial",
 		},

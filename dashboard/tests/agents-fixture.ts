@@ -2,7 +2,7 @@ import { type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/theme_default.json', import.meta.url), 'utf8'))
 
-// Three boards for the shared current board and a judged mission, and two
+// Three missions for the shared current mission and a judged mission, and two
 // personas whose settings the daemon validates and whose seat launch it
 // renders, as src/internal/formations/harness_launch.go does.
 
@@ -17,12 +17,12 @@ const mission = (goal: string) => ({ id: 'mission', title: 'Deliver', goal })
 const boards = {
   alpha: {
     id: 'brd_alpha', slug: 'alpha', title: 'Alpha scratch', rev: 1, etag: 'alpha-1',
-    missions: [mission('Scratch work')], formations: [solo('work', 'Work', 'builder', 'openai-codex')], gates: [],
+    inputCards: [mission('Scratch work')], formations: [solo('work', 'Work', 'builder', 'openai-codex')], gates: [],
     connections: [{ id: 'a1', from: 'mission:out', to: 'work:in' }],
   },
   delivery: {
     id: 'brd_delivery', slug: 'delivery', title: 'Delivery', rev: 4, etag: 'delivery-4',
-    missions: [mission('Ship the brief')],
+    inputCards: [mission('Ship the brief')],
     formations: [solo('build', 'Build', 'builder', 'openai-codex'), solo('judge', 'Beads reviewer', 'critic'), solo('recheck', 'Second opinion'), solo('ship', 'Ship', 'builder', 'openai-codex')],
     gates: [{ id: 'review', title: 'Beads review', kinds: ['formation'], criterion: 'The Beads pass lint.' }],
     connections: [
@@ -34,9 +34,9 @@ const boards = {
       { id: 'd6', from: 'review:pass', to: 'ship:in' },
     ],
   },
-  wayfinding: {
-    id: 'brd_wayfinding', slug: 'wayfinding', title: 'Wayfinding', rev: 2, etag: 'wayfinding-2',
-    missions: [mission('Map the terrain')], formations: [solo('map', 'Map', 'critic')], gates: [],
+  scouting: {
+    id: 'brd_scouting', slug: 'scouting', title: 'Scouting', rev: 2, etag: 'scouting-2',
+    inputCards: [mission('Map the terrain')], formations: [solo('map', 'Map', 'critic')], gates: [],
     connections: [{ id: 'w1', from: 'mission:out', to: 'map:in' }],
   },
 }
@@ -44,7 +44,7 @@ const layouts: Record<string, Array<{ id: string; x: number; y: number }>> = {
   alpha: [{ id: 'mission', x: 100, y: 100 }, { id: 'work', x: 420, y: 100 }],
   delivery: [{ id: 'mission', x: 100, y: 100 }, { id: 'build', x: 420, y: 100 }, { id: 'review', x: 760, y: 100 },
     { id: 'judge', x: 760, y: 420 }, { id: 'recheck', x: 1080, y: 420 }, { id: 'ship', x: 1100, y: 100 }],
-  wayfinding: [{ id: 'mission', x: 100, y: 100 }, { id: 'map', x: 420, y: 100 }],
+  scouting: [{ id: 'mission', x: 100, y: 100 }, { id: 'map', x: 420, y: 100 }],
 }
 
 export const harnesses = [
@@ -60,7 +60,7 @@ export const effortPolicy = [
   { effort: 'max', use: 'consequential reviews' },
 ]
 
-type Variant = { id: string; sessionStem: string; launch?: string; model?: string; effort?: string }
+type Variant = { id: string; sessionStem: string; model?: string; effort?: string }
 type Card = { id: string; displayName: string; kind: string; summary: string; tags: string[]; harnessDefault: string; harnessVariants: Variant[]; rev: number }
 
 const quote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`
@@ -79,11 +79,11 @@ function describe(variant: Variant) {
 export async function agentsFixture(page: Page) {
   const cards: Record<string, Card> = {
     critic: { id: 'critic', displayName: 'Brief critic', kind: 'judge', summary: 'Reviews the brief.', tags: ['review'], harnessDefault: 'claude-code', rev: 1,
-      harnessVariants: [{ id: 'claude-code', sessionStem: 'critic', launch: 'claude', model: 'claude-opus-5', effort: 'low' }] },
+      harnessVariants: [{ id: 'claude-code', sessionStem: 'critic', model: 'claude-opus-5', effort: 'low' }] },
     builder: { id: 'builder', displayName: 'Builder', kind: 'builder', summary: 'Builds the change.', tags: ['implement'], harnessDefault: 'openai-codex', rev: 1,
       harnessVariants: [{ id: 'openai-codex', sessionStem: 'builder' }, { id: 'claude-code', sessionStem: 'claude-builder' }] },
     spawner: { id: 'spawner', displayName: 'Hermes spawner', kind: 'specialist', summary: 'Runs through hermes.', tags: [], harnessDefault: 'hermes', rev: 1,
-      harnessVariants: [{ id: 'hermes', sessionStem: 'spawner', launch: "hermes --profile '/profiles/old'" }] },
+      harnessVariants: [{ id: 'hermes', sessionStem: 'spawner' }] },
   }
   const patches: unknown[] = []
   const read = (card: Card) => ({ ...card, etag: `${card.id}-${card.rev}`, harnessVariants: card.harnessVariants.map(describe) })
@@ -96,20 +96,20 @@ export async function agentsFixture(page: Page) {
     const respond = (data: unknown, etag = 'fixture-etag', status = 200) => route.fulfill({ status, json: { success: true, data }, headers: { ETag: etag } })
     const fail = (status: number, code: string, message: string) => route.fulfill({ status, json: { success: false, error: { code, message } } })
     if (path === '/api/theme') return route.fulfill({ json: defaultTheme })
-    if (path === '/api/formations/missions') return respond({ boards: Object.values(boards) })
-    const boardMatch = path.match(/^\/api\/formations\/missions\/([^/]+)(\/.*)?$/)
+    if (path === '/api/missions') return respond({ missions: Object.values(boards) })
+    const boardMatch = path.match(/^\/api\/missions\/([^/]+)(\/.*)?$/)
     if (boardMatch) {
       const board = boards[boardMatch[1] as keyof typeof boards]
-      if (!board) return fail(404, 'NOT_FOUND', 'Board not found')
+      if (!board) return fail(404, 'NOT_FOUND', 'Mission not found')
       const rest = boardMatch[2] || ''
-      if (rest === '/layout') return respond({ layout: { boardId: board.id, boardRev: board.rev, etag: `${board.slug}-layout`, nodes: layouts[board.slug], edges: [] } })
-      if (rest === '/notes') return respond({ notes: { schema: 2, boardId: board.id, rev: 1, board: [], elements: [], updatedAt: '2026-09-29T00:00:00Z', etag: 'notes-1' } })
+      if (rest === '/layout') return respond({ layout: { missionId: board.id, missionRev: board.rev, etag: `${board.slug}-layout`, nodes: layouts[board.slug], edges: [] } })
+      if (rest === '/notes') return respond({ notes: { schema: 2, missionId: board.id, rev: 1, mission: [], elements: [], updatedAt: '2026-09-29T00:00:00Z', etag: 'notes-1' } })
       if (rest === '/changes') return respond({ signal: { changed: false } })
-      if (rest === '/validation') return respond({ boardRev: board.rev, boardEtag: board.etag, errors: [], warnings: [] })
-      if (rest === '') return respond({ board }, board.etag)
+      if (rest === '/validation') return respond({ missionRev: board.rev, missionEtag: board.etag, errors: [], warnings: [] })
+      if (rest === '') return respond({ mission: board }, board.etag)
     }
-    if (path === '/api/formations/runs') return respond([])
-    if (path === '/api/formations/gate-profiles') return respond({ profiles: [] })
+    if (path === '/api/runs') return respond([])
+    if (path === '/api/gate-profiles') return respond({ profiles: [] })
     if (path === '/api/agents') {
       const agents = Object.values(cards).map(card => ({ id: card.id, displayName: card.displayName, kind: card.kind, tags: card.tags, harnessDefault: card.harnessDefault, liveness: 'offline', assignable: true }))
       return respond({ agents, count: agents.length, harnesses, effortPolicy })
@@ -132,10 +132,6 @@ export async function agentsFixture(page: Page) {
           named.add(variant.id)
           const harness = harnesses.find(candidate => candidate.id === variant.id)
           // Only the fields being changed are validated.
-          if (setting.launch !== undefined) {
-            if (harness) return fail(422, 'INVALID_AGENT_CARD', `agent "${card.id}" harness "${variant.id}" seats start from model and effort; a launch string would not be run`)
-            variant.launch = setting.launch.trim() || undefined
-          }
           if ((setting.model?.trim() || setting.effort?.trim()) && !harness) return fail(422, 'INVALID_AGENT_CARD', `agent "${card.id}" harness "${variant.id}" has no model or effort setting`)
           const effort = setting.effort?.trim() || ''
           if (harness && effort && !harness.efforts.includes(effort)) return fail(422, 'INVALID_AGENT_CARD', `agent "${card.id}" effort "${effort}" is not one ${harness.id} accepts; use ${harness.efforts.join(', ')}`)

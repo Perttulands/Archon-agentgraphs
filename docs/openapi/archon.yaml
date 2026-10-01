@@ -4,10 +4,10 @@ info:
   version: standalone-trusted-v1
   description: Trusted-network coordinator and authoring API. JSON uses the success/timestamp/data envelope except for the raw theme document,
     with error details on failure. No authentication. Static cockpit serving is optional. Authoring request
-    details follow internal/api/formations.go and agents.go; run projections are sanitized, and run evidence routes serve
+    details follow internal/api.go and agents.go; run projections are sanitized, and run evidence routes serve
     capped, confined content (ADR-0017).
 paths:
-  /api/formations/runs/{runId}/seats:
+  /api/runs/{runId}/seats:
     parameters:
     - in: path
       name: runId
@@ -21,7 +21,7 @@ paths:
           description: Enveloped data contains runId, available, optional reason, and seats. Each seat has runId, nodeId, nodeTitle, slotId, slotLabel, harness, the model (absent for the harness default) and effort it was started with, controller, createdSeq, sessionName and state (live, ended, missing, unavailable). Live seats include native columns/rows and terminalUrl; others include a reason. A seat kept on call for a session-channel human gate (ADR-0019) includes onCall with keptSeq and waitingOn, the pending gateId/requestedSeq asks it received. Private session/socket identities are omitted.
         '404':
           description: No such run
-  /api/formations/runs/{runId}/seats/{createdSeq}/terminal:
+  /api/runs/{runId}/seats/{createdSeq}/terminal:
     parameters:
     - in: path
       name: runId
@@ -82,15 +82,15 @@ paths:
       responses:
         '200':
           description: Coordinator is serving
-  /api/formations/missions:
+  /api/missions:
     get:
       responses:
         '200':
-          description: Mission summaries in data.boards
+          description: Mission summaries in data.missions
     post:
       responses:
         '201':
-          description: Created mission in data.board; returns ETag
+          description: Created mission in data.mission; returns ETag
       requestBody:
         required: true
         content:
@@ -108,22 +108,7 @@ paths:
                   description: Actor recorded on the new mission; defaults to agent:ui
               required:
               - title
-  /api/formations/boards:
-    get:
-      deprecated: true
-      summary: Former name of GET /api/formations/missions, kept for one release after the rename
-      description: Same handler, request and response as GET /api/formations/missions. New clients use the mission route.
-      responses:
-        default:
-          description: As GET /api/formations/missions
-    post:
-      deprecated: true
-      summary: Former name of POST /api/formations/missions, kept for one release after the rename
-      description: Same handler, request and response as POST /api/formations/missions. New clients use the mission route.
-      responses:
-        default:
-          description: As POST /api/formations/missions
-  /api/formations/missions/{mission}:
+  /api/missions/{mission}:
     parameters:
     - in: path
       name: mission
@@ -142,7 +127,7 @@ paths:
                   data:
                     type: object
                     properties:
-                      board:
+                      mission:
                         type: object
                         properties:
                           formations:
@@ -154,7 +139,7 @@ paths:
     patch:
       responses:
         '200':
-          description: Updated mission or compound authoring result; createFormation, createGate and createMission return {board, layout, formation|gate|mission}. Returns ETag. An edit that changes nothing returns the current mission with its revision and ETag unchanged.
+          description: Updated mission or compound authoring result; createFormation, createGate and createInputCard return {mission, layout, formation|gate|inputCard}. Returns ETag. An edit that changes nothing returns the current mission with its revision and ETag unchanged.
         '428':
           description: Missing preconditions
         '409':
@@ -199,35 +184,7 @@ paths:
                   minimum: 1
               required:
               - expectedRev
-  /api/formations/boards/{board}:
-    parameters:
-    - in: path
-      name: board
-      required: true
-      schema:
-        type: string
-    get:
-      deprecated: true
-      summary: Former name of GET /api/formations/missions/{mission}, kept for one release after the rename
-      description: Same handler, request and response as GET /api/formations/missions/{mission}. New clients use the mission route.
-      responses:
-        default:
-          description: As GET /api/formations/missions/{mission}
-    patch:
-      deprecated: true
-      summary: Former name of PATCH /api/formations/missions/{mission}, kept for one release after the rename
-      description: Same handler, request and response as PATCH /api/formations/missions/{mission}. New clients use the mission route.
-      responses:
-        default:
-          description: As PATCH /api/formations/missions/{mission}
-    delete:
-      deprecated: true
-      summary: Former name of DELETE /api/formations/missions/{mission}, kept for one release after the rename
-      description: Same handler, request and response as DELETE /api/formations/missions/{mission}. New clients use the mission route.
-      responses:
-        default:
-          description: As DELETE /api/formations/missions/{mission}
-  /api/formations/runs:
+  /api/runs:
     get:
       parameters:
       - in: query
@@ -235,12 +192,6 @@ paths:
         schema:
           type: string
         description: Only runs of this mission slug
-      - in: query
-        name: board
-        deprecated: true
-        schema:
-          type: string
-        description: Former name of mission, kept for one release after the rename
       responses:
         '200':
           description: Canonical run projections
@@ -271,21 +222,21 @@ paths:
               type: object
               additionalProperties: false
               required:
-              - board
+              - mission
               - expectedRev
               oneOf:
               - required:
-                - missionId
+                - inputCardId
                 - brief
               - required:
                 - formationId
               properties:
-                board:
+                mission:
                   type: string
-                  description: The mission's slug or ID. The field keeps its name from before the rename.
-                missionId:
+                  description: The mission's slug or ID.
+                inputCardId:
                   type: string
-                  description: The Input card to start from. The field keeps its name from before the rename.
+                  description: The Input card to start from.
                 cwd:
                   type: string
                   description: Absolute existing seat working directory; omitted or empty creates a private workspace under the configured run workspace root
@@ -355,7 +306,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AdmissionErrorEnvelope'
-  /api/formations/runs/{runId}:
+  /api/runs/{runId}:
     parameters:
     - $ref: '#/components/parameters/RunID'
     get:
@@ -368,7 +319,7 @@ paths:
                 $ref: '#/components/schemas/ProjectionEnvelope'
         '404':
           description: No such run
-  /api/formations/runs/{runId}/stream:
+  /api/runs/{runId}/stream:
     parameters:
     - $ref: '#/components/parameters/RunID'
     - in: header
@@ -386,7 +337,7 @@ paths:
             text/event-stream:
               schema:
                 type: string
-  /api/formations/runs/{runId}/abort:
+  /api/runs/{runId}/abort:
     parameters:
     - $ref: '#/components/parameters/RunID'
     post:
@@ -411,7 +362,7 @@ paths:
                 $ref: '#/components/schemas/ProjectionEnvelope'
         '409':
           description: Run final or another command for this run is settling
-  /api/formations/runs/{runId}/resume:
+  /api/runs/{runId}/resume:
     parameters:
     - $ref: '#/components/parameters/RunID'
     post:
@@ -440,7 +391,7 @@ paths:
           description: Run still executing after a five-second wait for its command
           final: null
           or not resumable: null
-  /api/formations/runs/{runId}/wait:
+  /api/runs/{runId}/wait:
     parameters:
     - $ref: '#/components/parameters/RunID'
     get:
@@ -470,14 +421,14 @@ paths:
           default: 30
       responses:
         '200':
-          description: Enveloped data contains runId, boardSlug, mission, until, outcome (final, needs-you, changed, pending), since, seq (the next since), status, final, resumeAllowed, settled, end (status, seq, code, reason, reasonTruncated, endedBy, stopped), asks (kind, seq, new, gateId, nodeId, title, criterion, reason, code, severity, resumeAllowed, input with fromNodeId, fromTitle, fromPortId, text capped at 4 KiB, bytes and truncated, routes) and changes (seq, type, nodeId, gateId, title, attempt, status, verdict; the latest 50, with changesOmitted). Texts are redacted like run evidence.
+          description: Enveloped data contains runId, missionSlug, missionTitle, until, outcome (final, needs-you, changed, pending), since, seq (the next since), status, final, resumeAllowed, settled, end (status, seq, code, reason, reasonTruncated, endedBy, stopped), asks (kind, seq, new, gateId, nodeId, title, criterion, reason, code, severity, resumeAllowed, input with fromNodeId, fromTitle, fromPortId, text capped at 4 KiB, bytes and truncated, routes) and changes (seq, type, nodeId, gateId, title, attempt, status, verdict; the latest 50, with changesOmitted). Texts are redacted like run evidence.
         '400':
           description: Bad until, since or hold, or since past the run's last event
         '404':
           description: No such run
         '503':
           description: The daemon is stopping; wait again with the same since
-  /api/formations/runs/{runId}/gates/{gateId}/request:
+  /api/runs/{runId}/gates/{gateId}/request:
     parameters:
     - $ref: '#/components/parameters/RunID'
     - in: path
@@ -495,7 +446,7 @@ paths:
           description: No such run, or no human request for this gate
         '409':
           description: The gate's latest human request is no longer pending
-  /api/formations/runs/{runId}/evidence/nodes/{nodeId}:
+  /api/runs/{runId}/evidence/nodes/{nodeId}:
     parameters:
     - $ref: '#/components/parameters/RunID'
     - in: path
@@ -508,10 +459,10 @@ paths:
       description: Texts are {text,bytes,truncated}, capped at 64 KiB each and 2 MiB per response, with secret patterns redacted. Kind results and verdicts list at most 100 evidence items and count the rest in evidenceOmitted. Structured fields omit native session, tmux session and pane IDs, sessionRef, digests, brief and prompt paths, report pointers and absolute artifact paths.
       responses:
         '200':
-          description: Enveloped data.evidence contains runId, nodeId, kind (mission, formation, gate, tool), attempts (inputs, dispatches, seatCleanups with slot and outcome, output with sorted ports), evaluations (criterion, input, kindResults, judgeFailures, humanRequests with a decision's verdict, response, decidedBy and relayedBy, verdict with perKind and routePort) and problems (blocks and errors).
+          description: Enveloped data.evidence contains runId, nodeId, kind (inputCard, formation, gate, tool), attempts (inputs, dispatches, seatCleanups with slot and outcome, output with sorted ports), evaluations (criterion, input, kindResults, judgeFailures, humanRequests with a decision's verdict, response, decidedBy and relayedBy, verdict with perKind and routePort) and problems (blocks and errors).
         '404':
           description: No such run, or the node is not in the run's frozen mission
-  /api/formations/runs/{runId}/evidence/problems:
+  /api/runs/{runId}/evidence/problems:
     parameters:
     - $ref: '#/components/parameters/RunID'
     get:
@@ -522,7 +473,7 @@ paths:
           description: Enveloped data.problems lists seq, type, code, reason, resumeAllowed and nodeIds (the node or gate, blocked node or gate and open dispatch nodes it names; empty for a block that names none, such as an exceeded wall clock).
         '404':
           description: No such run
-  /api/formations/runs/{runId}/evidence/briefs/{dispatchSeq}:
+  /api/runs/{runId}/evidence/briefs/{dispatchSeq}:
     parameters:
     - $ref: '#/components/parameters/RunID'
     - in: path
@@ -538,7 +489,7 @@ paths:
           description: Enveloped data.brief contains dispatchSeq, nodeId, slotId, attempt and text capped at 256 KiB. Only the path recorded by this run's slot_dispatch at that sequence, naming a direct child of the state directory's briefs, is read.
         '404':
           description: No such run, no slot_dispatch at that sequence, or no readable brief
-  /api/formations/runs/{runId}/evidence/artifacts:
+  /api/runs/{runId}/evidence/artifacts:
     parameters:
     - $ref: '#/components/parameters/RunID'
     get:
@@ -548,7 +499,7 @@ paths:
           description: Enveloped data.artifacts lists name (relative), size and modifiedAt, sorted by name; data.truncated is true past 500 entries or 8 levels. Symlinks, special files and hard-linked files are omitted.
         '404':
           description: No such run
-  /api/formations/runs/{runId}/evidence/artifacts/{name}:
+  /api/runs/{runId}/evidence/artifacts/{name}:
     parameters:
     - $ref: '#/components/parameters/RunID'
     - in: path
@@ -564,7 +515,7 @@ paths:
           description: Enveloped data.artifact contains name, size, modifiedAt, kind (markdown, json, text, image, pdf, binary) and, for textual kinds, text capped at 256 KiB.
         '404':
           description: No such run or artifact, or a name that leaves the run's artifact directory through .., a symlink or a hard link
-  /api/formations/runs/{runId}/artifacts/{name}:
+  /api/runs/{runId}/artifacts/{name}:
     parameters:
     - $ref: '#/components/parameters/RunID'
     - in: path
@@ -583,7 +534,7 @@ paths:
           description: No such run or artifact, or a name that leaves the run's artifact directory
         '413':
           description: Artifact exceeds 16 MiB
-  /api/formations/files/preview:
+  /api/files/preview:
     parameters:
     - in: query
       name: path
@@ -600,7 +551,7 @@ paths:
           description: Not readable here; the path is outside every --file-root, or the daemon may not read it
         '404':
           description: No such file, or a path that is not clean or reaches it through .., a symlink, a hard link or a non-regular file
-  /api/formations/files/raw:
+  /api/files/raw:
     parameters:
     - in: query
       name: path
@@ -620,7 +571,7 @@ paths:
           description: No such file, or a refused path
         '413':
           description: File exceeds 16 MiB
-  /api/formations/runs/{runId}/gates/{gateId}/verdict:
+  /api/runs/{runId}/gates/{gateId}/verdict:
     parameters:
     - $ref: '#/components/parameters/RunID'
     - in: path
@@ -673,7 +624,7 @@ paths:
           duplicate or stale human request: null
         '422':
           description: Run state does not permit a verdict, or the frozen gate definition or prerequisite evidence failed validation
-  /api/formations/missions/{mission}/validation:
+  /api/missions/{mission}/validation:
     parameters:
     - in: path
       name: mission
@@ -702,14 +653,14 @@ paths:
                   data:
                     type: object
                     required:
-                    - boardRev
-                    - boardEtag
+                    - missionRev
+                    - missionEtag
                     - errors
                     - warnings
                     properties:
-                      boardRev:
+                      missionRev:
                         type: integer
-                      boardEtag:
+                      missionEtag:
                         type: string
                       errors:
                         type: array
@@ -721,21 +672,7 @@ paths:
                           $ref: '#/components/schemas/MissionFinding'
         '404':
           description: No such mission
-  /api/formations/boards/{board}/validation:
-    parameters:
-    - in: path
-      name: board
-      required: true
-      schema:
-        type: string
-    get:
-      deprecated: true
-      summary: Former name of GET /api/formations/missions/{mission}/validation, kept for one release after the rename
-      description: Same handler, request and response as GET /api/formations/missions/{mission}/validation. New clients use the mission route.
-      responses:
-        default:
-          description: As GET /api/formations/missions/{mission}/validation
-  /api/formations/missions/{mission}/changes:
+  /api/missions/{mission}/changes:
     parameters:
     - in: path
       name: mission
@@ -752,21 +689,7 @@ paths:
         schema:
           type: string
         description: Previously observed mission ETag
-  /api/formations/boards/{board}/changes:
-    parameters:
-    - in: path
-      name: board
-      required: true
-      schema:
-        type: string
-    get:
-      deprecated: true
-      summary: Former name of GET /api/formations/missions/{mission}/changes, kept for one release after the rename
-      description: Same handler, request and response as GET /api/formations/missions/{mission}/changes. New clients use the mission route.
-      responses:
-        default:
-          description: As GET /api/formations/missions/{mission}/changes
-  /api/formations/missions/{mission}/notes:
+  /api/missions/{mission}/notes:
     parameters:
     - in: path
       name: mission
@@ -776,7 +699,7 @@ paths:
     get:
       responses:
         '200':
-          description: Notes document in data.notes (schema 2) with board (the mission thread) as an ordered entry list and elements
+          description: Notes document in data.notes (schema 2) with mission (the mission thread) as an ordered entry list and elements
             as nodeId plus entries. Each entry has id, author (human:<name> or agent:<name>), createdAt, optional
             editedAt and text. Schema 1 files load as one human entry per text. Returns ETag.
     patch:
@@ -809,7 +732,7 @@ paths:
               properties:
                 target:
                   type: string
-                  description: board (the mission thread, default) or an element ID
+                  description: mission (the mission thread, default) or an element ID
                 action:
                   enum:
                   - append
@@ -827,30 +750,9 @@ paths:
                 updatedBy:
                   type: string
                   description: Older name for author
-      description: BoardNotePatch. Appends a new entry by default; edit and delete change only the author's own
+      description: NotePatch. Appends a new entry by default; edit and delete change only the author's own
         entry, so a reply never erases another author's words.
-  /api/formations/boards/{board}/notes:
-    parameters:
-    - in: path
-      name: board
-      required: true
-      schema:
-        type: string
-    get:
-      deprecated: true
-      summary: Former name of GET /api/formations/missions/{mission}/notes, kept for one release after the rename
-      description: Same handler, request and response as GET /api/formations/missions/{mission}/notes. New clients use the mission route.
-      responses:
-        default:
-          description: As GET /api/formations/missions/{mission}/notes
-    patch:
-      deprecated: true
-      summary: Former name of PATCH /api/formations/missions/{mission}/notes, kept for one release after the rename
-      description: Same handler, request and response as PATCH /api/formations/missions/{mission}/notes. New clients use the mission route.
-      responses:
-        default:
-          description: As PATCH /api/formations/missions/{mission}/notes
-  /api/formations/missions/{mission}/layout:
+  /api/missions/{mission}/layout:
     parameters:
     - in: path
       name: mission
@@ -895,33 +797,12 @@ paths:
                   format: date-time
       description: Arrange alone, update node positions, update edge routing, or update timestamp metadata.
         See formationsLayoutPatchRequest for node/edge fields. Arrange cannot combine with other mutations.
-  /api/formations/boards/{board}/layout:
-    parameters:
-    - in: path
-      name: board
-      required: true
-      schema:
-        type: string
-    get:
-      deprecated: true
-      summary: Former name of GET /api/formations/missions/{mission}/layout, kept for one release after the rename
-      description: Same handler, request and response as GET /api/formations/missions/{mission}/layout. New clients use the mission route.
-      responses:
-        default:
-          description: As GET /api/formations/missions/{mission}/layout
-    patch:
-      deprecated: true
-      summary: Former name of PATCH /api/formations/missions/{mission}/layout, kept for one release after the rename
-      description: Same handler, request and response as PATCH /api/formations/missions/{mission}/layout. New clients use the mission route.
-      responses:
-        default:
-          description: As PATCH /api/formations/missions/{mission}/layout
-  /api/formations/gate-profiles:
+  /api/gate-profiles:
     get:
       responses:
         '200':
           description: 'Code profiles in data.profiles: output_contains@1 and output_absent@1 only'
-  /api/formations/runs/{runId}/events:
+  /api/runs/{runId}/events:
     parameters:
     - in: path
       name: runId
@@ -932,7 +813,7 @@ paths:
       responses:
         '200':
           description: Sanitized event identities in data.events, not raw ledger payloads
-  /api/formations/runs/{runId}/escalations:
+  /api/runs/{runId}/escalations:
     parameters:
     - in: path
       name: runId
@@ -1133,10 +1014,10 @@ components:
       - runId
       - status
       - final
-      - boardSlug
-      - boardId
-      - boardRev
+      - missionSlug
       - missionId
+      - missionRev
+      - inputCardId
       - beadId
       - epoch
       - eventCount
@@ -1159,13 +1040,13 @@ components:
           - canceled
         final:
           type: boolean
-        boardSlug:
+        missionSlug:
           type: string
-        boardId:
-          type: string
-        boardRev:
-          type: integer
         missionId:
+          type: string
+        missionRev:
+          type: integer
+        inputCardId:
           type: string
         beadId:
           type: string
@@ -1346,7 +1227,7 @@ components:
               type: integer
             updatedBy:
               type: string
-        deleteMission:
+        deleteInputCard:
           type: object
           properties:
             id:
@@ -1357,15 +1238,15 @@ components:
               type: string
         restoreNode:
           type: object
-          description: Undo a node delete. Name exactly one of mission (the Input card), formation or gate, as the mission
+          description: Undo a node delete. Name exactly one of inputCard, formation or gate, as the mission
             document showed it before the delete, with the connections that touched it and its layout
             position. The node, its connections and its layout placement publish together or not at
-            all, keeping every ID, so its notes and wire lanes apply again. A node ID already on the
-            board, a connection that no longer fits or a malformed field returns INVALID_NODE_RESTORE
+            all, keeping every ID, so its notes and wire lanes apply again. A node ID already in the
+            mission, a connection that no longer fits or a malformed field returns INVALID_NODE_RESTORE
             (409) or the field's own error, and nothing changes. A connection ID already in use gets a
-            fresh ID. The response carries board, layout and nodeId.
+            fresh ID. The response carries mission, layout and nodeId.
           properties:
-            mission:
+            inputCard:
               type: object
             formation:
               $ref: '#/components/schemas/FormationNode'
@@ -1385,7 +1266,7 @@ components:
             index:
               type: integer
               minimum: 0
-              description: The node's old place among the board's nodes of its kind; absent appends it.
+              description: The node's old place among the mission's nodes of its kind; absent appends it.
             x:
               type: integer
             y:
@@ -1697,7 +1578,7 @@ components:
               type: integer
             updatedBy:
               type: string
-        updateMission:
+        updateInputCard:
           type: object
           required:
           - id
@@ -1793,7 +1674,7 @@ components:
               type: integer
             updatedBy:
               type: string
-        createMission:
+        createInputCard:
           type: object
           properties:
             title:
@@ -1813,7 +1694,7 @@ components:
               - ''
               - notify
               - session
-              description: As on updateMission; omitted, empty or notify stores no channel.
+              description: As on updateInputCard; omitted, empty or notify stores no channel.
             x:
               type: integer
             y:
@@ -1832,7 +1713,7 @@ components:
         fields are accepted for several operations. Tool operations require the exact top-level frame
         and layoutExpectation; see formations_tools.go. setVerification and legacy gate command fields
         are retired and rejected. removeVerification requires a replacement gate. updateGate, updateFormation,
-        setFormationType and updateMission share their store paths with archon gate update, formation rename,
+        setFormationType and updateInputCard share their store paths with archon gate update, formation rename,
         formation set-type and mission update.
     AgentCreate:
       type: object

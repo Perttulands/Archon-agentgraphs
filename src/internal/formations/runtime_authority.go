@@ -2,7 +2,7 @@ package formations
 
 import "errors"
 
-var ErrRuntimeAuthorityNonAuthorizing = errors.New("formations runtime authority is non-authorizing")
+var ErrRuntimeAuthorityNonAuthorizing = errors.New("archon runtime authority is non-authorizing")
 
 type RuntimeAuthorityNonAuthorizingReason string
 

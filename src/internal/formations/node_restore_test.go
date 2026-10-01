@@ -15,11 +15,11 @@ slug = "restore"
 title = "Restore"
 rev = 3
 
-[[mission]]
+[[inputCard]]
 id = "mis_ship"
 title = "Ship it"
 goal = "Ship the widget"
-beadId = "form-abc.1"
+beadId = "archon-abc.1"
 files = ["docs/plan.md"]
 inputHint = "Name the widget"
 humanChannel = "session"
@@ -30,7 +30,7 @@ type = "orchestrated"
 title = "Build"
 [formation.brief]
 goal = "Build the widget"
-beadId = "form-abc.2"
+beadId = "archon-abc.2"
 files = ["src/widget.go", "docs/widget.md"]
 links = ["https://example.test/spec"]
 [formation.execution]
@@ -119,8 +119,8 @@ func nodeRestoreFixture(t *testing.T) *Store {
 	store.Now = fixedClock()
 	writeFixture(t, store.BoardPath("restore"), nodeRestoreBoardFixture)
 	writeFixture(t, store.LayoutPath("restore"), `schema = 1
-boardId = "brd_restore"
-boardRev = 3
+missionId = "brd_restore"
+missionRev = 3
 
 [[node]]
 id = "mis_ship"
@@ -147,7 +147,7 @@ id = "edge_pushback"
 lane = "y:40"
 `)
 	for _, target := range []string{"mis_ship", "fmn_build", "gate_tests", "fmn_judge"} {
-		if _, err := store.UpdateBoardNote("restore", BoardNotePatch{Target: target, Text: "About " + target, UpdatedBy: "human:operator"}, NoteWriteOptions{ExpectedETag: currentNotesETag(t, store)}); err != nil {
+		if _, err := store.UpdateBoardNote("restore", BoardNotePatch{Target: target, Text: "About " + target, Author: "human:operator"}, NoteWriteOptions{ExpectedETag: currentNotesETag(t, store)}); err != nil {
 			t.Fatalf("seed note on %s: %v", target, err)
 		}
 	}

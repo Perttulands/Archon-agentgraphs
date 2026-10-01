@@ -52,9 +52,9 @@ func TestBoardNotesRoundTripWithoutChangingExecutableBoard(t *testing.T) {
 
 	elementText := "Builder: keep this formation narrow."
 	afterElement, err := store.UpdateBoardNote("session-search", BoardNotePatch{
-		Target:    "fmn_frame",
-		Text:      elementText,
-		UpdatedBy: "agent:archon",
+		Target: "fmn_frame",
+		Text:   elementText,
+		Author: "agent:archon",
 	}, NoteWriteOptions{ExpectedETag: afterBoard.ETag})
 	if err != nil {
 		t.Fatalf("write element note: %v", err)
@@ -156,80 +156,6 @@ func TestBoardNoteThreadsAppendAndLimitEditsToTheAuthor(t *testing.T) {
 		if after := readFile(t, store.NotesPath("session-search")); after != before {
 			t.Fatalf("%s changed the notes file", name)
 		}
-	}
-}
-
-func TestBoardNotesMigrateSchemaOneTextsToHumanEntries(t *testing.T) {
-	store := NewStore(t.TempDir())
-	store.Now = fixedClock()
-	writeFixture(t, store.BoardPath("session-search"), notesBoardFixture()+`
-[[formation]]
-id = "fmn_peers"
-type = "peer"
-title = "Peers"
-`)
-	// The shape of the Scouting notes at rev 3: a board note and two element
-	// notes, last saved from the cockpit.
-	legacy := `schema = 1
-boardId = "brd_notes"
-rev = 3
-updatedAt = "2026-09-16T12:39:30.091445373Z"
-updatedBy = "human:ui"
-board = "The purpose is a workflow that clarifies a goal\nand avoids typical AI shortcomings"
-
-[[element]]
-nodeId = "fmn_peers"
-text = "Two peers reason about the goal and surface at most 10 questions"
-
-[[element]]
-nodeId = "fmn_frame"
-text = "Start by mapping the territory"
-`
-	writeFixture(t, store.NotesPath("session-search"), legacy)
-
-	notes, err := store.ReadBoardNotes("session-search")
-	if err != nil {
-		t.Fatalf("legacy notes do not load: %v", err)
-	}
-	wantThread := func(entries []NoteEntry, id, text string) {
-		t.Helper()
-		if len(entries) != 1 || entries[0].ID != id || entries[0].Author != "human:ui" || entries[0].Text != text || !entries[0].CreatedAt.Equal(notes.UpdatedAt) || entries[0].EditedAt != nil {
-			t.Fatalf("migrated thread = %+v, want one human:ui entry %q", entries, text)
-		}
-	}
-	if notes.Schema != CurrentBoardNotesSchema || notes.Rev != 3 || notes.ETag != etag([]byte(legacy)) {
-		t.Fatalf("migrated metadata = %+v", notes)
-	}
-	wantThread(notes.Board, "migrated-board", "The purpose is a workflow that clarifies a goal\nand avoids typical AI shortcomings")
-	wantThread(elementThread(notes, "fmn_frame"), "migrated-fmn_frame", "Start by mapping the territory")
-	wantThread(elementThread(notes, "fmn_peers"), "migrated-fmn_peers", "Two peers reason about the goal and surface at most 10 questions")
-	if got := readFile(t, store.NotesPath("session-search")); got != legacy {
-		t.Fatal("reading legacy notes rewrote the file")
-	}
-
-	replied, err := store.UpdateBoardNote("session-search", BoardNotePatch{Target: "fmn_peers", Text: "I will cap the questions at 10", Author: "agent:archon"}, NoteWriteOptions{ExpectedETag: notes.ETag})
-	if err != nil {
-		t.Fatalf("reply on migrated notes: %v", err)
-	}
-	reread, err := store.ReadBoardNotes("session-search")
-	if err != nil || reread.ETag != replied.ETag {
-		t.Fatalf("reread after migration write: %v", err)
-	}
-	if got := strings.Join(noteTexts(elementThread(reread, "fmn_peers")), "|"); got != "human:ui: Two peers reason about the goal and surface at most 10 questions|agent:archon: I will cap the questions at 10" {
-		t.Fatalf("migrated thread after reply = %q", got)
-	}
-	if reread.Board[0].Text != notes.Board[0].Text || elementThread(reread, "fmn_frame")[0].ID != "migrated-fmn_frame" {
-		t.Fatalf("migration changed other threads: %+v", reread)
-	}
-	raw := readFile(t, store.NotesPath("session-search"))
-	if !strings.HasPrefix(raw, "schema = 2\n") || strings.Contains(raw, "[[element]]") {
-		t.Fatalf("write did not store schema 2 entries:\n%s", raw)
-	}
-
-	agentLegacy := strings.Replace(legacy, `updatedBy = "human:ui"`, `updatedBy = "agent:archon"`, 1)
-	writeFixture(t, store.NotesPath("session-search"), agentLegacy)
-	if notes, err := store.ReadBoardNotes("session-search"); err != nil || notes.Board[0].Author != "human:operator" {
-		t.Fatalf("legacy notes last saved by an agent = %+v (%v), want human:operator entries", notes, err)
 	}
 }
 

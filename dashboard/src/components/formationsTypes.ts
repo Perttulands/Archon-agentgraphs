@@ -13,7 +13,7 @@ export interface BoardDeletion {
   archiveId: string
 }
 
-/** One authored message in a board or element note thread. */
+/** One authored message in a mission or element note thread. */
 export interface NoteEntry {
   id: string
   /** human:<name> or agent:<name> */
@@ -30,11 +30,11 @@ export interface ElementNote {
 
 export interface BoardNotesDocument {
   schema: number
-  boardId: string
+  missionId: string
   rev: number
   updatedAt: string
   updatedBy?: string
-  board: NoteEntry[]
+  mission: NoteEntry[]
   elements: ElementNote[]
   etag: string
 }
@@ -72,13 +72,6 @@ export interface FormationBrief {
   links?: string[]
 }
 
-export interface FormationVerification {
-  id?: string
-  kinds?: string[]
-  criterion?: string
-  onFail?: string
-}
-
 export type FormationType = 'solo' | 'peer' | 'orchestrated'
 
 export interface FormationExecutionPolicy {
@@ -88,16 +81,13 @@ export interface FormationExecutionPolicy {
 
 export interface FormationNode {
   id: string
-  /** A board saved before a type was retired can still carry it; the card
-   *  shows it so the operator can change it. */
-  type: FormationType | (string & {})
+  type: FormationType
   title: string
   brief?: FormationBrief
   execution?: FormationExecutionPolicy
   inputs: FormationPort[]
   outputs: FormationPort[]
   slots: FormationSlot[]
-  verification?: FormationVerification
 }
 
 export type ToolParameterValue = string | boolean | number
@@ -137,16 +127,16 @@ export interface BoardDocument {
   title: string
   rev: number
   etag: string
-  missions?: MissionNode[]
+  inputCards?: MissionNode[]
   formations: FormationNode[]
   gates?: GateNode[]
   tools?: ToolNode[]
   connections: BoardConnection[]
 }
 
-/** A located problem a run would hit. Authoring accepts drafts; board
+/** A located problem a run would hit. Authoring accepts drafts; mission
  * validation and run admission list these instead. nodeId names a node, a
- * connection, or nothing for board-level findings. */
+ * connection, or nothing for mission-level findings. */
 export interface BoardFinding {
   code: string
   nodeId: string
@@ -154,8 +144,8 @@ export interface BoardFinding {
 }
 
 export interface BoardValidation {
-  boardRev: number
-  boardEtag: string
+  missionRev: number
+  missionEtag: string
   errors: BoardFinding[]
   warnings: BoardFinding[]
 }
@@ -164,7 +154,6 @@ export interface MissionNode {
   id: string
   title: string
   goal: string
-  beadId: string
   /** What a run's brief should contain; Start mission shows it when set. */
   inputHint?: string
   /** Reference file paths, absolute or relative to a daemon file root. */
@@ -199,8 +188,8 @@ export interface RunStatusProjection {
   runId: string
   status: string
   final: boolean
-  boardSlug: string
-  missionId: string
+  missionSlug: string
+  inputCardId: string
   eventCount: number
   waitingGates?: WaitingGate[]
   resumeAllowed?: boolean
@@ -281,8 +270,8 @@ export interface LayoutEdge {
 }
 
 export interface LayoutDocument {
-  boardId: string
-  boardRev: number
+  missionId: string
+  missionRev: number
   etag: string
   nodes: LayoutNode[]
   edges?: LayoutEdge[]
@@ -324,8 +313,6 @@ export interface AgentProjection {
 export interface PersonaHarnessVariant {
   id: string
   sessionStem?: string
-  /** Legacy; claude-code and openai-codex seats ignore it. */
-  launch?: string
   model?: string
   effort?: string
   source?: string
@@ -357,8 +344,6 @@ export interface VariantSettingsPatch {
   id: string
   model?: string
   effort?: string
-  /** Only for a harness Archon cannot start: the command `archon agent spawn` runs. */
-  launch?: string
 }
 
 export interface PersonaCard {

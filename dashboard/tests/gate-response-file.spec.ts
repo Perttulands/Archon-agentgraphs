@@ -12,7 +12,7 @@ for (const [button, verdict] of [['Approve', 'pass'], ['Send back', 'fail']]) {
         payloads.push(route.request().postDataJSON())
         await route.fulfill({ status: 409, json: { success: false, error: { message: 'Fixture-only verdict captured' } } })
       })
-      await page.goto('/?mission=wayfinding')
+      await page.goto('/?mission=scouting')
       const panel = page.getByRole('dialog', { name: 'Answer gate Answer questions' })
       const chooser = page.waitForEvent('filechooser')
       await panel.getByRole('button', { name: 'Load response file', exact: true }).click()
@@ -43,7 +43,7 @@ test('unmodified imported text preserves BOM and CRLF in the actual verdict payl
     payloads.push(route.request().postDataJSON())
     await route.fulfill({ status: 409, json: { success: false, error: { message: 'Fixture-only verdict captured' } } })
   })
-  await page.goto('/?mission=wayfinding')
+  await page.goto('/?mission=scouting')
   const panel = page.getByRole('dialog', { name: 'Answer gate Answer questions' })
   const text = `\uFEFF${longAnswer.replace(/\n/g, '\r\n')}`
   await panel.getByLabel('Response file', { exact: true }).setInputFiles({ name: 'answer.txt', mimeType: 'text/plain', buffer: Buffer.from(text, 'utf8') })
@@ -61,7 +61,7 @@ for (const failure of ['read failure', 'invalid UTF-8']) {
         File.prototype.arrayBuffer = async () => { throw new Error('Fixture read failed') }
       })
     }
-    await page.goto('/?mission=wayfinding')
+    await page.goto('/?mission=scouting')
     const panel = page.getByRole('dialog', { name: 'Answer gate Answer questions' })
     const response = panel.getByLabel('Your response')
     await response.fill(longAnswer)

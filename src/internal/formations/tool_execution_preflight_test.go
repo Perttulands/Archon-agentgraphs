@@ -343,10 +343,10 @@ func assertToolExecutionPreflightNoEffects(t *testing.T, workspace string, execu
 	if executor.calls != 0 || evaluator.calls != 0 {
 		t.Fatalf("preflight effects = executor:%d evaluator:%d, want zero", executor.calls, evaluator.calls)
 	}
-	if matches := mustGlob(t, filepath.Join(workspace, ".formations", "runs", "*")); len(matches) != 0 {
+	if matches := mustGlob(t, filepath.Join(workspace, ".archon", "runs", "*")); len(matches) != 0 {
 		t.Fatalf("preflight rejection created run artifacts: %v", matches)
 	}
-	runsRoot := filepath.Join(workspace, ".formations", "runs")
+	runsRoot := filepath.Join(workspace, ".archon", "runs")
 	if _, err := os.Stat(runsRoot); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("preflight rejection created durable runs root %q: %v", runsRoot, err)
 	}
@@ -359,7 +359,7 @@ slug = "tool-preflight"
 title = "Tool execution preflight"
 rev = 1
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Prove Tool preflight ordering"

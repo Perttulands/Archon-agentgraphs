@@ -41,11 +41,11 @@ id = "brd_proof"
 slug = "proof"
 title = "Proof"
 rev = 1
-[[mission]]
+[[inputCard]]
 id = "mis_proof"
 title = "Proof"
 goal = "Branching proof"
-beadId = "form-n7u.53"
+beadId = "archon-n7u.53"
 ` + formation("fmn_a") + formation("fmn_b") + formation("fmn_c") + `
 [[gate]]
 id = "gate_review"
@@ -165,7 +165,7 @@ func TestRestartBetweenApprovalAndResumeRunsTheOtherBranchOnResume(t *testing.T)
 	if got := strings.Join(formationOrder(eventsOf(t, next, id), formations.RunEventNodeStarted), ","); got != "fmn_a" {
 		t.Fatalf("formations started before resume = %s, want fmn_a", got)
 	}
-	if w := post(t, next, "/api/formations/runs/"+id+"/resume", `{"mode":"reattach","reason":"continue after the approval"}`); w.Code != 202 {
+	if w := post(t, next, "/api/runs/"+id+"/resume", `{"mode":"reattach","reason":"continue after the approval"}`); w.Code != 202 {
 		t.Fatalf("resume %d %s", w.Code, w.Body.String())
 	}
 	awaitState(t, next, id, "succeeded")

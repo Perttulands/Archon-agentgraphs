@@ -46,11 +46,11 @@ func (f *fakeTmux) Attach(name string) error {
 
 func withoutArchonTmuxPrefix(t *testing.T) {
 	t.Helper()
-	t.Setenv("CHROTE_FORMATIONS_TMUX_SESSION_PREFIX", "")
+	t.Setenv("ARCHON_TMUX_SESSION_PREFIX", "")
 }
 
 func TestArchonTmuxCommandUsesConfiguredFormationSocketAndDropsAmbientTmux(t *testing.T) {
-	t.Setenv("CHROTE_FORMATIONS_TMUX_SOCKET", "/tmp/chrote-formations-test/default")
+	t.Setenv("ARCHON_TMUX_SOCKET", "/tmp/chrote-formations-test/default")
 	t.Setenv("TMUX", "/tmp/ambient,123,0")
 
 	args := archonTmuxArgs("new-session", "-d", "-s", "dogfood-scout")
@@ -74,7 +74,7 @@ func TestRealTmuxRunnerSpawnUsesConfiguredSocketAndDropsAmbientTmux(t *testing.T
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("ARCHON_TMUX_CAPTURE", capturePath)
-	t.Setenv("CHROTE_FORMATIONS_TMUX_SOCKET", "/tmp/chrote-formations-test/default")
+	t.Setenv("ARCHON_TMUX_SOCKET", "/tmp/chrote-formations-test/default")
 	t.Setenv("TMUX", "/tmp/ambient,123,0")
 
 	if err := (realTmuxRunner{}).Spawn("dogfood-scout", "printf hi"); err != nil {
@@ -98,7 +98,7 @@ func TestRealTmuxRunnerSpawnUsesConfiguredSocketAndDropsAmbientTmux(t *testing.T
 
 func TestArchonAgentNewListInspectAndEditUsePersonaStore(t *testing.T) {
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	runner := &fakeTmux{live: map[string]bool{}}
 
 	stdout, stderr, code := runArchon(t, runner, "agent", "new", "scout", "--kind", "specialist", "--harness", "claude-code", "--capable", "research,go", "--personality", "direct", "--json")
@@ -137,7 +137,7 @@ func TestArchonAgentNewListInspectAndEditUsePersonaStore(t *testing.T) {
 
 func TestArchonAgentEditOverridesBuiltInCodexPreset(t *testing.T) {
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	runner := &fakeTmux{live: map[string]bool{}}
 
 	stdout, stderr, code := runArchon(t, runner, "agent", "list", "--json")
@@ -177,7 +177,7 @@ func TestArchonAgentEditOverridesBuiltInCodexPreset(t *testing.T) {
 
 func TestArchonAgentNewDuplicateFailsWithoutChangingCard(t *testing.T) {
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	runner := &fakeTmux{live: map[string]bool{}}
 
 	if _, stderr, code := runArchon(t, runner, "agent", "new", "scout", "--kind", "specialist", "--harness", "claude-code"); code != 0 {
@@ -198,7 +198,7 @@ func TestArchonAgentNewDuplicateFailsWithoutChangingCard(t *testing.T) {
 func TestArchonAgentListShowsUnboundLiveSessionsButExcludesAssignable(t *testing.T) {
 	withoutArchonTmuxPrefix(t)
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	runner := &fakeTmux{live: map[string]bool{"scratch": true}}
 
 	if _, stderr, code := runArchon(t, runner, "agent", "new", "scout", "--kind", "specialist", "--harness", "claude-code"); code != 0 {
@@ -223,7 +223,7 @@ func TestArchonAgentListShowsUnboundLiveSessionsButExcludesAssignable(t *testing
 
 func TestArchonAgentNewFromHermesProfileRecordsItsSource(t *testing.T) {
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	source := filepath.Join(t.TempDir(), ".hermes", "profiles", "archon")
 	runner := &fakeTmux{live: map[string]bool{}}
 
@@ -241,7 +241,7 @@ func TestArchonAgentNewFromHermesProfileRecordsItsSource(t *testing.T) {
 func TestArchonAgentModelAndEffortDriveSpawn(t *testing.T) {
 	withoutArchonTmuxPrefix(t)
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	bin := t.TempDir()
 	for _, name := range []string{"claude", "codex"} {
 		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
@@ -356,7 +356,7 @@ func TestArchonAgentSpawnUsesFakeTmuxWithoutDuplicateSession(t *testing.T) {
 	withFakeHarnesses(t)
 	withoutArchonTmuxPrefix(t)
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	runner := &fakeTmux{live: map[string]bool{}}
 
 	if _, stderr, code := runArchon(t, runner, "agent", "new", "scout", "--kind", "specialist", "--harness", "claude-code"); code != 0 {
@@ -381,8 +381,8 @@ func TestArchonAgentSpawnUsesFakeTmuxWithoutDuplicateSession(t *testing.T) {
 func TestArchonAgentSpawnListAttachUseTmuxSessionPrefix(t *testing.T) {
 	withFakeHarnesses(t)
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
-	t.Setenv("CHROTE_FORMATIONS_TMUX_SESSION_PREFIX", "dogfood-")
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_TMUX_SESSION_PREFIX", "dogfood-")
 	runner := &fakeTmux{live: map[string]bool{}}
 
 	if _, stderr, code := runArchon(t, runner, "agent", "new", "scout", "--kind", "specialist", "--harness", "claude-code"); code != 0 {
@@ -425,7 +425,7 @@ func TestArchonAgentSpawnAndAttachUseExplicitHarnessStem(t *testing.T) {
 	withFakeHarnesses(t)
 	withoutArchonTmuxPrefix(t)
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	runner := &fakeTmux{live: map[string]bool{}}
 
 	if _, stderr, code := runArchon(t, runner, "agent", "new", "susie", "--kind", "specialist", "--harness", "claude-code"); code != 0 {
@@ -466,7 +466,7 @@ title = "Improve session search"
 rev = 7
 updatedAt = "2026-06-03T16:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Ship it"
@@ -618,8 +618,8 @@ title = "Existing"
 kinds = ["human"]
 `)
 	writeArchonFile(t, store.LayoutPath("session-search"), `schema = 1
-boardId = "brd_01J9_sesssearch"
-boardRev = 7
+missionId = "brd_01J9_sesssearch"
+missionRev = 7
 
 [[node]]
 id = "gate_existing"
@@ -741,7 +741,7 @@ func TestArchonLegacyScriptGateInspectionStartAndResumeBoundary(t *testing.T) {
 	t.Run("inspection and mission start", func(t *testing.T) {
 		workspace := t.TempDir()
 		agentsDir := t.TempDir()
-		t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+		t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 		personas := formations.NewPersonaStore(agentsDir)
 		if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
 			t.Fatalf("create persona: %v", err)
@@ -763,7 +763,7 @@ func TestArchonLegacyScriptGateInspectionStartAndResumeBoundary(t *testing.T) {
 		if code == 0 || !strings.Contains(stderr, formations.LegacyScriptGateMigrationCode) {
 			t.Fatalf("legacy mission run code=%d stderr=%s stdout=%s, want stable migration error", code, stderr, stdout)
 		}
-		if entries, err := os.ReadDir(filepath.Join(workspace, ".formations", "runs", "session-search")); err == nil && len(entries) != 0 {
+		if entries, err := os.ReadDir(filepath.Join(workspace, ".archon", "runs", "session-search")); err == nil && len(entries) != 0 {
 			t.Fatalf("rejected Archon mission run wrote artifacts: %v", entries)
 		} else if err != nil && !os.IsNotExist(err) {
 			t.Fatalf("read run artifacts: %v", err)
@@ -778,7 +778,7 @@ func TestArchonLegacyScriptGateInspectionStartAndResumeBoundary(t *testing.T) {
 	t.Run("resume", func(t *testing.T) {
 		workspace := t.TempDir()
 		agentsDir := t.TempDir()
-		t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+		t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 		personas := formations.NewPersonaStore(agentsDir)
 		if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
 			t.Fatalf("create persona: %v", err)
@@ -821,7 +821,7 @@ title = "Legacy inline verification"
 rev = 7
 updatedAt = "2026-06-03T16:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Ship it"
@@ -880,7 +880,7 @@ to = "gate_migrated:in"
 			t.Fatalf("command %v stderr missing stable migration code: %s", command, stderr)
 		}
 	}
-	runsDir := filepath.Join(workspace, ".formations", "runs", "legacy-inline")
+	runsDir := filepath.Join(workspace, ".archon", "runs", "legacy-inline")
 	entries, err := os.ReadDir(runsDir)
 	if err != nil && !os.IsNotExist(err) {
 		t.Fatalf("read runs directory: %v", err)
@@ -954,7 +954,7 @@ popup = "gate-config"
 terminalFocus = "pane-1"
 undoStack = "browser-only"
 
-[[mission]]
+[[inputCard]]
 id = "mis_poem"
 title = "Simple poem"
 goal = "Create a simple poem"
@@ -999,7 +999,7 @@ to = "gate_review:in"
 		t.Fatalf("board list code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
 	var list struct {
-		Boards []formations.BoardSummary `json:"boards"`
+		Boards []formations.BoardSummary `json:"missions"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &list); err != nil {
 		t.Fatalf("decode board list: %v\n%s", err, stdout)
@@ -1110,7 +1110,7 @@ func TestArchonBoardNewCreatesDurableBoardJSONAndText(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &board); err != nil {
 		t.Fatalf("decode board new JSON: %v\n%s", err, stdout)
 	}
-	if board.Slug != "poems" || board.Title != "Poems" || board.Rev != 1 || !strings.HasPrefix(board.ID, "brd_") || board.ETag == "" {
+	if board.Slug != "poems" || board.Title != "Poems" || board.Rev != 1 || !strings.HasPrefix(board.ID, "msn_") || board.ETag == "" {
 		t.Fatalf("board new JSON = %+v, want durable board identity", board)
 	}
 	if board.TOML != "" || strings.Contains(stdout, "toml") {
@@ -1134,7 +1134,7 @@ func TestArchonBoardNewCreatesDurableBoardJSONAndText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read text-created board: %v", err)
 	}
-	if drafts.Title != "Drafts" || drafts.Rev != 1 || !strings.HasPrefix(drafts.ID, "brd_") {
+	if drafts.Title != "Drafts" || drafts.Rev != 1 || !strings.HasPrefix(drafts.ID, "msn_") {
 		t.Fatalf("text-created board = %+v, want persisted board", drafts)
 	}
 }
@@ -1148,7 +1148,7 @@ slug = "arrange"
 title = "Arrange"
 rev = 2
 
-[[mission]]
+[[inputCard]]
 id = "mis_start"
 title = "Start"
 
@@ -1163,8 +1163,8 @@ from = "mis_start:out"
 to = "fmn_finish:in"
 `)
 	writeArchonFile(t, store.LayoutPath("arrange"), `schema = 1
-boardId = "brd_arrange"
-boardRev = 2
+missionId = "brd_arrange"
+missionRev = 2
 
 [[node]]
 id = "mis_start"
@@ -1287,7 +1287,7 @@ criterion = 42
 	if err := json.Unmarshal([]byte(stderr), &response); err != nil {
 		t.Fatalf("decode invalid definition error: %v\nstderr=%s", err, stderr)
 	}
-	if response.Code != "invalid_definition_source" || response.Boundary != "board" || response.Selector != "invalid-source" {
+	if response.Code != "invalid_definition_source" || response.Boundary != "mission" || response.Selector != "invalid-source" {
 		t.Fatalf("structured error = %+v, want stable invalid_definition_source board envelope", response)
 	}
 	if got := readArchonFile(t, store.BoardPath("invalid-source")); got != raw {
@@ -1306,9 +1306,9 @@ rev = 7
 updatedAt = "2026-07-21T12:00:00Z"
 `
 	layoutRaw := `schema = 1
-boardId = "brd_invalid_pair"
-"board\u0049d" = 'brd_duplicate'
-boardRev = 7
+missionId = "brd_invalid_pair"
+"mission\u0049d" = 'brd_duplicate'
+missionRev = 7
 updatedAt = "2026-07-21T12:00:00Z"
 `
 	writeArchonFile(t, store.BoardPath("invalid-pair"), boardRaw)
@@ -1329,7 +1329,7 @@ updatedAt = "2026-07-21T12:00:00Z"
 	if err := json.Unmarshal([]byte(stderr), &response); err != nil {
 		t.Fatalf("decode invalid layout error: %v\nstderr=%s", err, stderr)
 	}
-	if response.Code != "invalid_definition_source" || response.Boundary != "board" || response.Selector != "invalid-pair" {
+	if response.Code != "invalid_definition_source" || response.Boundary != "mission" || response.Selector != "invalid-pair" {
 		t.Fatalf("structured error = %+v, want stable invalid_definition_source board envelope", response)
 	}
 	if got := readArchonFile(t, store.BoardPath("invalid-pair")); got != boardRaw {
@@ -1352,7 +1352,7 @@ updatedAt = "2026-06-03T16:00:00Z"
 viewport = "browser-only"
 undoStack = "browser-only"
 
-[[mission]]
+[[inputCard]]
 id = "mis_poem"
 title = "Simple poem"
 goal = "Create a simple poem"
@@ -1425,8 +1425,8 @@ to = "fmn_polish:port_polish_in"
 		t.Fatalf("mission inspect code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
 	var inspect struct {
-		Board       archonBoardIdentity          `json:"board"`
-		Mission     formations.MissionNode       `json:"mission"`
+		Board       archonBoardIdentity          `json:"mission"`
+		Mission     formations.MissionNode       `json:"inputCard"`
 		Chain       []archonMissionChainNode     `json:"chain"`
 		Connections []formations.BoardConnection `json:"connections"`
 	}
@@ -1470,7 +1470,7 @@ updatedAt = "2026-07-20T00:00:00Z"
 viewport = "browser-only"
 undoStack = "browser-only"
 
-[[mission]]
+[[inputCard]]
 id = "mis_report"
 title = "Prepare report"
 goal = "Prepare a markdown report"
@@ -1574,8 +1574,8 @@ from = "tool_normalize:port_tool_output"
 to = "gate_review:in"
 `)
 	writeArchonFile(t, store.LayoutPath("reports"), `schema = 1
-boardId = "brd_reports"
-boardRev = 4
+missionId = "brd_reports"
+missionRev = 4
 updatedAt = "2026-07-20T00:00:00Z"
 
 [[node]]
@@ -1602,8 +1602,8 @@ y = 100
 		t.Fatalf("mission inspect code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
 	var inspect struct {
-		Board       archonBoardIdentity          `json:"board"`
-		Mission     formations.MissionNode       `json:"mission"`
+		Board       archonBoardIdentity          `json:"mission"`
+		Mission     formations.MissionNode       `json:"inputCard"`
 		Chain       []archonMissionChainNode     `json:"chain"`
 		Connections []formations.BoardConnection `json:"connections"`
 	}
@@ -1666,7 +1666,7 @@ y = 100
 	if got := readArchonFile(t, store.LayoutPath("reports")); got != layoutBefore {
 		t.Fatalf("mission inspect changed layout bytes:\n%s", got)
 	}
-	runsPath := filepath.Join(workspace, ".formations", "runs")
+	runsPath := filepath.Join(workspace, ".archon", "runs")
 	if entries, err := os.ReadDir(runsPath); err == nil {
 		if len(entries) != 0 {
 			t.Fatalf("mission inspect created run artifacts: %+v", entries)
@@ -1688,13 +1688,13 @@ slug = "poems"
 title = "Poems"
 rev = 1
 
-[[mission]]
+[[inputCard]]
 id = "mis_first"
 title = "Simple poem"
 goal = "One"
 beadId = "home-vdki.33.1"
 
-[[mission]]
+[[inputCard]]
 id = "mis_second"
 title = "Simple poem"
 goal = "Two"
@@ -1709,7 +1709,7 @@ beadId = "home-vdki.33.2"
 	if err := json.Unmarshal([]byte(stderr), &response); err != nil {
 		t.Fatalf("decode selector error: %v\nstderr=%s", err, stderr)
 	}
-	if response.Code != "ambiguous_selector" || response.Boundary != "mission" || response.Selector != "simple-poem" || !strings.Contains(response.Message, "ambiguous") {
+	if response.Code != "ambiguous_selector" || response.Boundary != "inputCard" || response.Selector != "simple-poem" || !strings.Contains(response.Message, "ambiguous") {
 		t.Fatalf("selector error = %+v, want structured ambiguous mission selector", response)
 	}
 }
@@ -1723,7 +1723,7 @@ slug = "poems"
 title = "Poems"
 rev = 1
 
-[[mission]]
+[[inputCard]]
 id = "mis_poem"
 title = "Simple poem"
 goal = "Create a simple poem"
@@ -2159,7 +2159,7 @@ label = "Input"
 		t.Fatalf("mission create JSON layout = %+v, want the created mission's node", created.Layout)
 	}
 	raw := readArchonFile(t, store.BoardPath("session-search"))
-	if !strings.Contains(raw, `[[mission]]`) || strings.Contains(raw, "beadId") || strings.Contains(raw, "chain") {
+	if !strings.Contains(raw, `[[inputCard]]`) || strings.Contains(raw, "beadId") || strings.Contains(raw, "chain") {
 		t.Fatalf("mission create persisted wrong fields:\n%s", raw)
 	}
 	if strings.Contains(raw, "x = 180") || strings.Contains(raw, "y = 95") {
@@ -2198,7 +2198,7 @@ label = "Input"
 func TestArchonS4MissionRunFormationRunStatusLogsFollowAbort(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 
 	personas := formations.NewPersonaStore(agentsDir)
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
@@ -2307,7 +2307,7 @@ func TestArchonS4MissionRunFormationRunStatusLogsFollowAbort(t *testing.T) {
 func TestArchonS4RunLogsFollowTailsUntilFinal(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	personas := formations.NewPersonaStore(agentsDir)
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
 		ID:      "scout",
@@ -2365,7 +2365,7 @@ func TestArchonS4RunLogsFollowTailsUntilFinal(t *testing.T) {
 func TestArchonS4RunLogsFollowJSONReturnsBlockedRun(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	personas := formations.NewPersonaStore(agentsDir)
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
 		ID:      "scout",
@@ -2433,7 +2433,7 @@ func TestArchonS4RunLogsFollowJSONReturnsBlockedRun(t *testing.T) {
 func TestArchonS5RunResumeCommandUsesEngine(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	personas := formations.NewPersonaStore(agentsDir)
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
 		t.Fatalf("create persona: %v", err)
@@ -2464,7 +2464,7 @@ func TestArchonS5RunResumeCommandUsesEngine(t *testing.T) {
 func TestArchonS5GateApproveRoutesHumanGate(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	personas := formations.NewPersonaStore(agentsDir)
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
 		t.Fatalf("create persona: %v", err)
@@ -2494,7 +2494,7 @@ func TestArchonS5GateApproveRoutesHumanGate(t *testing.T) {
 		t.Fatalf("waiting run = %+v, want non-final human wait", waiting)
 	}
 
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "gate", "approve", waiting.RunID, "gate_review", "--reason", "direction is right", "--json")
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "gate", "approve", waiting.RunID, "gate_review", "--response", "direction is right", "--json")
 	if code != 0 {
 		t.Fatalf("gate approve code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -2504,10 +2504,10 @@ func TestArchonS5GateApproveRoutesHumanGate(t *testing.T) {
 	}
 }
 
-func TestArchonGateApproveAcceptsResponseAlias(t *testing.T) {
+func TestArchonGateApproveRecordsTheResponse(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	personas := formations.NewPersonaStore(agentsDir)
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
 		t.Fatalf("create persona: %v", err)
@@ -2527,6 +2527,9 @@ func TestArchonGateApproveAcceptsResponseAlias(t *testing.T) {
 		t.Fatalf("start human waiting run: %v", err)
 	}
 	answer := "1. Use Postgres.\n2. Ship on Friday."
+	if _, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "gate", "approve", waiting.RunID, "gate_review", "--reason", answer); code != 2 || !strings.Contains(stderr, "flag provided but not defined: -reason") {
+		t.Fatalf("gate approve --reason: code=%d stderr=%s, want an unknown flag", code, stderr)
+	}
 	if _, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "gate", "approve", waiting.RunID, "gate_review", "--response", answer, "--relayed-by", "slot work", "--json"); code == 0 || !strings.Contains(stderr, `"invalid_relayed_by"`) {
 		t.Fatalf("invalid relayed-by: code=%d stderr=%s", code, stderr)
 	}
@@ -2556,10 +2559,10 @@ func TestArchonGateApproveAcceptsResponseAlias(t *testing.T) {
 func TestArchonS4ConfiguredLabPoemMissionReachesGateAndPolishesAfterApproval(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
-	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "openai-codex")
-	t.Setenv("CHROTE_FORMATIONS_LAB_CWD", workspace)
-	t.Setenv("CHROTE_FORMATIONS_LAB_ROOTS", workspace)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
+	t.Setenv("ARCHON_LAB_CWD", workspace)
+	t.Setenv("ARCHON_LAB_ROOTS", workspace)
 
 	personas := formations.NewPersonaStore(agentsDir)
 	for _, id := range []string{"lab-poet", "lab-poem-reviewer"} {
@@ -2617,7 +2620,7 @@ func TestArchonS4ConfiguredLabPoemMissionReachesGateAndPolishesAfterApproval(t *
 		t.Fatalf("draft report text = %q, want lab-poet output seeded by mission objective", draftReport.Text)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "gate", "approve", started.RunID, "gate_review", "--reason", "draft approved", "--json")
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "gate", "approve", started.RunID, "gate_review", "--response", "draft approved", "--json")
 	if code != 0 {
 		t.Fatalf("gate approve code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -2669,10 +2672,10 @@ func TestArchonS4ConfiguredLabPoemMissionReachesGateAndPolishesAfterApproval(t *
 func TestArchonPoemMissionRoundTripsThroughCLIAPIFileAndLedger(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
-	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "openai-codex")
-	t.Setenv("CHROTE_FORMATIONS_LAB_CWD", workspace)
-	t.Setenv("CHROTE_FORMATIONS_LAB_ROOTS", workspace)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
+	t.Setenv("ARCHON_LAB_CWD", workspace)
+	t.Setenv("ARCHON_LAB_ROOTS", workspace)
 
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("poems"), `schema = 1
@@ -2768,7 +2771,7 @@ rev = 1
 		}
 	}
 
-	approved := decodeArchonStatus(t, archon(workspaceArgs("gate", "approve", started.RunID, gate.ID, "--reason", "draft approved", "--json")...))
+	approved := decodeArchonStatus(t, archon(workspaceArgs("gate", "approve", started.RunID, gate.ID, "--response", "draft approved", "--json")...))
 	if approved.Status != formations.RunStatusBlocked || approved.Final || !approved.ResumeAllowed {
 		t.Fatalf("approved status = %+v, want resumable block before explicit resume", approved)
 	}
@@ -2784,10 +2787,10 @@ rev = 1
 	handler := chroteapi.NewFormationsHandlerWithStores(store, formations.NewPersonaStore(agentsDir))
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
-	apiBoard := decodeAPIBoard(t, requestArchonFormationsAPI(t, mux, http.MethodGet, "/api/formations/boards/poems", ""))
-	apiLayout := decodeAPILayout(t, requestArchonFormationsAPI(t, mux, http.MethodGet, "/api/formations/boards/poems/layout", ""))
-	apiStatus := decodeAPIStatus(t, requestArchonFormationsAPI(t, mux, http.MethodGet, "/api/formations/runs/"+started.RunID, ""))
-	apiEvents := decodeAPIEvents(t, requestArchonFormationsAPI(t, mux, http.MethodGet, "/api/formations/runs/"+started.RunID+"/events", ""))
+	apiBoard := decodeAPIBoard(t, requestArchonFormationsAPI(t, mux, http.MethodGet, "/api/missions/poems", ""))
+	apiLayout := decodeAPILayout(t, requestArchonFormationsAPI(t, mux, http.MethodGet, "/api/missions/poems/layout", ""))
+	apiStatus := decodeAPIStatus(t, requestArchonFormationsAPI(t, mux, http.MethodGet, "/api/runs/"+started.RunID, ""))
+	apiEvents := decodeAPIEvents(t, requestArchonFormationsAPI(t, mux, http.MethodGet, "/api/runs/"+started.RunID+"/events", ""))
 
 	if apiBoard.ID != afterAuthoring.ID || apiBoard.Slug != afterAuthoring.Slug || apiBoard.Rev != afterAuthoring.Rev {
 		t.Fatalf("api board identity = %+v, archon board = %+v", apiBoard, afterAuthoring)
@@ -2810,7 +2813,7 @@ rev = 1
 
 	boardRaw := readArchonFile(t, store.BoardPath("poems"))
 	layoutRaw := readArchonFile(t, store.LayoutPath("poems"))
-	runRaw := readArchonFile(t, filepath.Join(workspace, ".formations", "runs", "poems", started.RunID+".ndjson"))
+	runRaw := readArchonFile(t, filepath.Join(workspace, ".archon", "runs", "poems", started.RunID+".ndjson"))
 	if strings.Contains(boardRaw, "[[node]]") || strings.Contains(boardRaw, "x = 320") || strings.Contains(boardRaw, "y = 120") {
 		t.Fatalf("board file contains layout sidecar data:\n%s", boardRaw)
 	}
@@ -2835,7 +2838,7 @@ slug = "poems"
 title = "Poems"
 rev = 3
 
-[[mission]]
+[[inputCard]]
 id = "mis_poem"
 title = "Simple poem"
 goal = "Create a simple poem"
@@ -2860,8 +2863,8 @@ label = "Writer"
 controller = false
 `)
 	writeArchonFile(t, store.LayoutPath("poems"), `schema = 1
-boardId = "brd_poems"
-boardRev = 3
+missionId = "brd_poems"
+missionRev = 3
 
 [[node]]
 id = "mis_poem"
@@ -2896,7 +2899,7 @@ y = 120
 	}
 	assignRaw := requestAPI(
 		http.MethodPatch,
-		"/api/formations/boards/poems",
+		"/api/missions/poems",
 		`{"assignSlot":{"formationId":"fmn_draft","slotId":"slot_writer","agentId":"lab-poet","harness":"openai-codex","effort":"medium"},"expectedRev":3,"updatedBy":"agent:ui"}`,
 		board.ETag,
 	)
@@ -2911,7 +2914,7 @@ y = 120
 	}
 	wiredRaw := requestAPI(
 		http.MethodPatch,
-		"/api/formations/boards/poems",
+		"/api/missions/poems",
 		`{"wireConnection":{"from":"mis_poem:out","to":"fmn_draft:in"},"expectedRev":4,"updatedBy":"agent:ui"}`,
 		board.ETag,
 	)
@@ -2926,7 +2929,7 @@ y = 120
 	}
 	requestAPI(
 		http.MethodPatch,
-		"/api/formations/boards/poems/layout",
+		"/api/missions/poems/layout",
 		`{"nodes":[{"id":"fmn_draft","x":444,"y":222}]}`,
 		layout.ETag,
 	)
@@ -2957,9 +2960,9 @@ y = 120
 func TestArchonConfiguredLabExecutorUsesAutomaticMissionWorkspace(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
-	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "openai-codex")
-	t.Setenv("CHROTE_FORMATIONS_LAB_CWD", workspace)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
+	t.Setenv("ARCHON_LAB_CWD", workspace)
 
 	personas := formations.NewPersonaStore(agentsDir)
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
@@ -3002,7 +3005,7 @@ func TestArchonConfiguredLabExecutorUsesAutomaticMissionWorkspace(t *testing.T) 
 func TestArchonS5RunAskSurfacesOpenEscalations(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	personas := formations.NewPersonaStore(agentsDir)
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
 		t.Fatalf("create persona: %v", err)
@@ -3023,7 +3026,7 @@ func TestArchonS5RunAskSurfacesOpenEscalations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start run: %v", err)
 	}
-	if _, err := store.RecordEscalationFromCapture(started.RunID, "fmn_work", "<<<CHROTE-ESCALATE run-id="+started.RunID+" severity=needs-attention reason='found a better direction'>>>"); err != nil {
+	if _, err := store.RecordEscalationFromCapture(started.RunID, "fmn_work", "<<<ARCHON-ESCALATE run-id="+started.RunID+" severity=needs-attention reason='found a better direction'>>>"); err != nil {
 		t.Fatalf("record escalation: %v", err)
 	}
 
@@ -3146,7 +3149,7 @@ func TestArchonRunAskJSONIncludesDurableLedgerEvidence(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("append node_output: %v", err)
 	}
-	if recorded, err := store.RecordEscalationFromCapture(started.RunID, "fmn_work", "<<<CHROTE-ESCALATE run-id="+started.RunID+" severity=needs-attention reason='operator should review output'>>>"); err != nil || !recorded {
+	if recorded, err := store.RecordEscalationFromCapture(started.RunID, "fmn_work", "<<<ARCHON-ESCALATE run-id="+started.RunID+" severity=needs-attention reason='operator should review output'>>>"); err != nil || !recorded {
 		t.Fatalf("record escalation recorded=%v err=%v", recorded, err)
 	}
 	if err := store.AppendRunEvent(started.RunID, formations.RunEvent{
@@ -3350,11 +3353,11 @@ func decodeArchonRunList(t *testing.T, raw string) struct {
 }
 
 func decodeArchonBoardList(t *testing.T, raw string) struct {
-	Boards []formations.BoardSummary `json:"boards"`
+	Boards []formations.BoardSummary `json:"missions"`
 } {
 	t.Helper()
 	var list struct {
-		Boards []formations.BoardSummary `json:"boards"`
+		Boards []formations.BoardSummary `json:"missions"`
 	}
 	if err := json.Unmarshal([]byte(raw), &list); err != nil {
 		t.Fatalf("decode board list: %v\n%s", err, raw)
@@ -3386,7 +3389,7 @@ func decodeAPIBoard(t *testing.T, raw []byte) formations.BoardDocument {
 	t.Helper()
 	var response struct {
 		Data struct {
-			Board formations.BoardDocument `json:"board"`
+			Board formations.BoardDocument `json:"mission"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &response); err != nil {
@@ -3572,7 +3575,7 @@ slug = "` + slug + `"
 title = "` + slug + ` board"
 rev = 1
 
-[[mission]]
+[[inputCard]]
 id = "` + missionID + `"
 title = "Mission"
 goal = "Exercise durable run ledger"
@@ -3589,7 +3592,7 @@ rev = 7
 updatedBy = "agent:archon"
 updatedAt = "2026-06-03T16:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Ship a showcase"
@@ -3662,7 +3665,7 @@ slug = "session-search"
 title = "Improve session search"
 rev = 7
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Ship a showcase"
@@ -3733,7 +3736,7 @@ slug = "poems"
 title = "Poems"
 rev = 7
 
-[[mission]]
+[[inputCard]]
 id = "mis_poem"
 title = "Simple poem"
 goal = "Create a simple poem"
@@ -3818,7 +3821,7 @@ slug = "session-search"
 title = "Improve session search"
 rev = 7
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Ship a showcase"

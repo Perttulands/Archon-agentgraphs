@@ -18,9 +18,9 @@ func TestDefinitionReadsRejectExternalLinksWithoutMigration(t *testing.T) {
 		read      func(*Store) (string, error)
 	}{
 		{
-			name:      "board",
-			directory: "boards",
-			filename:  "private.formation.toml",
+			name:      "mission",
+			directory: "missions",
+			filename:  "private.mission.toml",
 			private: "id = \"brd_private\"\n" +
 				"slug = \"private\"\n" +
 				"title = \"Private authority record\"\n" +
@@ -38,8 +38,8 @@ func TestDefinitionReadsRejectExternalLinksWithoutMigration(t *testing.T) {
 			name:      "layout",
 			directory: "layout",
 			filename:  "private.layout.toml",
-			private: "boardId = \"brd_private\"\n" +
-				"boardRev = 1\n" +
+			private: "missionId = \"brd_private\"\n" +
+				"missionRev = 1\n" +
 				"updatedAt = \"2026-07-18T12:00:00Z\"\n" +
 				"privateAuthority = \"layout-secret-must-not-escape\"\n",
 			read: func(store *Store) (string, error) {
@@ -72,7 +72,7 @@ func TestDefinitionReadsRejectExternalLinksWithoutMigration(t *testing.T) {
 					t.Fatalf("write private record: %v", err)
 				}
 
-				definitionDirectory := filepath.Join(workspace, ".formations", definition.directory)
+				definitionDirectory := filepath.Join(workspace, ".archon", definition.directory)
 				definitionPath := filepath.Join(definitionDirectory, definition.filename)
 				switch attack {
 				case "final_symlink":
@@ -84,7 +84,7 @@ func TestDefinitionReadsRejectExternalLinksWithoutMigration(t *testing.T) {
 					}
 				case "parent_symlink":
 					if err := os.MkdirAll(filepath.Dir(definitionDirectory), 0o755); err != nil {
-						t.Fatalf("create formations directory: %v", err)
+						t.Fatalf("create archon directory: %v", err)
 					}
 					if err := os.Symlink(privateDirectory, definitionDirectory); err != nil {
 						t.Fatalf("symlink private definition directory: %v", err)
@@ -167,7 +167,7 @@ func TestDefinitionWritesRejectExternalLockLinksWithoutMutation(t *testing.T) {
 		update  func(*Store) error
 	}{
 		{
-			name:    "board",
+			name:    "mission",
 			path:    func(store *Store) string { return store.BoardPath("private") },
 			fixture: minimalBoard("private", 1),
 			update: func(store *Store) error {
@@ -187,8 +187,8 @@ func TestDefinitionWritesRejectExternalLockLinksWithoutMutation(t *testing.T) {
 			name: "layout",
 			path: func(store *Store) string { return store.LayoutPath("private") },
 			fixture: "schema = 1\n" +
-				"boardId = \"brd_private\"\n" +
-				"boardRev = 1\n" +
+				"missionId = \"brd_private\"\n" +
+				"missionRev = 1\n" +
 				"updatedAt = \"2026-07-18T12:00:00Z\"\n",
 			update: func(store *Store) error {
 				layout, err := store.ReadLayout("private")
@@ -306,7 +306,7 @@ func TestLegacyMigrationRepairsValidatedDefinitionDirectoryMode(t *testing.T) {
 		read func(*Store) error
 	}{
 		{
-			name: "board",
+			name: "mission",
 			path: func(store *Store) string { return store.BoardPath("legacy") },
 			raw:  minimalBoard("legacy", 1),
 			read: func(store *Store) error {
@@ -318,8 +318,8 @@ func TestLegacyMigrationRepairsValidatedDefinitionDirectoryMode(t *testing.T) {
 			name: "layout",
 			path: func(store *Store) string { return store.LayoutPath("legacy") },
 			raw: "schema = 1\n" +
-				"boardId = \"brd_legacy\"\n" +
-				"boardRev = 1\n" +
+				"missionId = \"brd_legacy\"\n" +
+				"missionRev = 1\n" +
 				"updatedAt = \"2026-07-18T12:00:00Z\"\n",
 			read: func(store *Store) error {
 				_, err := store.ReadLayout("legacy")
@@ -385,7 +385,7 @@ func TestMissingDefinitionReadsDoNotRepairDirectoryMode(t *testing.T) {
 		read      func(*Store) error
 	}{
 		{
-			name:      "board",
+			name:      "mission",
 			directory: boardDefinitionKind.directory,
 			read: func(store *Store) error {
 				_, err := store.ReadBoard("missing")
@@ -406,7 +406,7 @@ func TestMissingDefinitionReadsDoNotRepairDirectoryMode(t *testing.T) {
 		definition := definition
 		t.Run(definition.name, func(t *testing.T) {
 			store := NewStore(t.TempDir())
-			formationsDirectory := filepath.Join(store.workspaceRoot(), ".formations")
+			formationsDirectory := filepath.Join(store.workspaceRoot(), ".archon")
 			definitionDirectory := filepath.Join(formationsDirectory, definition.directory)
 			if err := os.MkdirAll(definitionDirectory, 0o755); err != nil {
 				t.Fatalf("create legacy definition directory: %v", err)
@@ -538,7 +538,7 @@ func TestLayoutAuthoringRejectsExternalLayoutLock(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "workspace"))
 	store.Now = fixedClock()
-	writeFixture(t, store.LayoutPath("private"), "schema = 1\nboardId = \"brd_private\"\nboardRev = 1\nupdatedAt = \"2026-07-18T12:00:00Z\"\n")
+	writeFixture(t, store.LayoutPath("private"), "schema = 1\nmissionId = \"brd_private\"\nmissionRev = 1\nupdatedAt = \"2026-07-18T12:00:00Z\"\n")
 	layout, err := store.ReadLayout("private")
 	if err != nil {
 		t.Fatalf("read layout precondition: %v", err)
@@ -629,7 +629,7 @@ func TestStartRunRejectsExternalBoardLinkBeforeSnapshot(t *testing.T) {
 	if info.Mode()&os.ModeSymlink == 0 {
 		t.Errorf("rejected run start replaced board link with mode %v", info.Mode())
 	}
-	runEntries, readErr := os.ReadDir(filepath.Join(store.Workspace, ".formations", "runs", "session-search"))
+	runEntries, readErr := os.ReadDir(filepath.Join(store.Workspace, ".archon", "runs", "session-search"))
 	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
 		t.Fatalf("read run artifacts after rejection: %v", readErr)
 	}

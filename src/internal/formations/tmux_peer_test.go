@@ -77,7 +77,7 @@ func (f *conversingSeats) WaitTurn(ctx context.Context, seat *nativeSeat, _, _ s
 	id := PeerConversationID{RunID: runID, NodeID: "fmn_peer", Attempt: 1}
 	finish := func(text string) (codexTranscriptTurn, error) {
 		turn.Complete = true
-		turn.Text = text + "\n<<<CHROTE-DONE run-id=" + runID + " status=ok artifact=peer-proof>>>"
+		turn.Text = text + "\n<<<ARCHON-DONE run-id=" + runID + " status=ok artifact=peer-proof>>>"
 		return turn, nil
 	}
 	if strings.Contains(prompt, "orchestration phase: peer-opening") {

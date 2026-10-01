@@ -24,7 +24,7 @@ func TestWireErrorsAndAtomicJoinHTTP(t *testing.T) {
 	board, _ := store.ReadBoard("join")
 	patch := func(body, etag string, rev int) *httptest.ResponseRecorder {
 		t.Helper()
-		req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/join", strings.NewReader(fmt.Sprintf(`{%s,"expectedRev":%d}`, body, rev)))
+		req := httptest.NewRequest(http.MethodPatch, "/api/missions/join", strings.NewReader(fmt.Sprintf(`{%s,"expectedRev":%d}`, body, rev)))
 		req.Header.Set("If-Match", etag)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
@@ -67,7 +67,7 @@ func TestWireErrorsAndAtomicJoinHTTP(t *testing.T) {
 		}
 		var response struct {
 			Data struct {
-				Board formations.BoardDocument `json:"board"`
+				Board formations.BoardDocument `json:"mission"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
@@ -87,7 +87,7 @@ func TestToolWireIncompatibilityHTTP(t *testing.T) {
 	board, _ := store.ReadBoard("tool-parity")
 	mux := http.NewServeMux()
 	NewFormationsHandlerWithStore(store).RegisterRoutes(mux)
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/tool-parity", strings.NewReader(fmt.Sprintf(`{"wireConnection":{"from":"mis_main:out","to":"tool_sink:port_sink_in","joinIfOccupied":true},"expectedRev":%d}`, board.Rev)))
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/tool-parity", strings.NewReader(fmt.Sprintf(`{"wireConnection":{"from":"mis_main:out","to":"tool_sink:port_sink_in","joinIfOccupied":true},"expectedRev":%d}`, board.Rev)))
 	req.Header.Set("If-Match", board.ETag)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)

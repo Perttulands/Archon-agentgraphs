@@ -72,7 +72,7 @@ describe('formations run-state helpers', () => {
   })
 
   const run = (status: string, extra: Partial<RunStatusProjection> = {}): RunStatusProjection => ({
-    runId: 'run_1', status, final: status === 'failed', boardSlug: 'wayfinding', missionId: 'mis_a', eventCount: 9, ...extra,
+    runId: 'run_1', status, final: status === 'failed', missionSlug: 'scouting', inputCardId: 'mis_a', eventCount: 9, ...extra,
   })
 
   it('names the gate a run waits at for the operator', () => {
@@ -178,14 +178,14 @@ describe('formations run-state helpers', () => {
       runId: 'run_flat',
       status: 'running',
       final: false,
-      boardSlug: 'session-search',
-      missionId: 'mis_showcase',
+      missionSlug: 'session-search',
+      inputCardId: 'mis_showcase',
       eventCount: 1,
     }
     const nested = { status: { ...flat, runId: 'run_nested', eventCount: 2 } }
 
     expect(runStatusFromResponse(flat).runId).toBe('run_flat')
     expect(runStatusFromResponse(nested).runId).toBe('run_nested')
-    expect(activeRunStorageKey('session-search')).toBe('chrote-formations-active-run-session-search')
+    expect(activeRunStorageKey('session-search')).toBe('archon.activeRun.session-search')
   })
 })

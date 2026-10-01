@@ -27,21 +27,21 @@ type FormationCreateRequest struct {
 }
 
 type FormationCreateResult struct {
-	Board     *BoardDocument  `json:"board"`
+	Board     *BoardDocument  `json:"mission"`
 	Layout    *LayoutDocument `json:"layout"`
 	Formation FormationNode   `json:"formation"`
 }
 
 type GateCreateResult struct {
-	Board  *BoardDocument  `json:"board"`
+	Board  *BoardDocument  `json:"mission"`
 	Layout *LayoutDocument `json:"layout"`
 	Gate   GateNode        `json:"gate"`
 }
 
 type MissionCreateResult struct {
-	Board   *BoardDocument  `json:"board"`
+	Board   *BoardDocument  `json:"mission"`
 	Layout  *LayoutDocument `json:"layout"`
-	Mission MissionNode     `json:"mission"`
+	Mission MissionNode     `json:"inputCard"`
 }
 
 type FormationDeleteRequest struct {
@@ -50,7 +50,7 @@ type FormationDeleteRequest struct {
 }
 
 type FormationDeleteResult struct {
-	Board       *BoardDocument  `json:"board"`
+	Board       *BoardDocument  `json:"mission"`
 	Layout      *LayoutDocument `json:"layout"`
 	FormationID string          `json:"formationId"`
 }
@@ -61,7 +61,7 @@ type GateDeleteRequest struct {
 }
 
 type GateDeleteResult struct {
-	Board  *BoardDocument  `json:"board"`
+	Board  *BoardDocument  `json:"mission"`
 	Layout *LayoutDocument `json:"layout"`
 	GateID string          `json:"gateId"`
 }
@@ -72,9 +72,9 @@ type MissionDeleteRequest struct {
 }
 
 type MissionDeleteResult struct {
-	Board     *BoardDocument  `json:"board"`
+	Board     *BoardDocument  `json:"mission"`
 	Layout    *LayoutDocument `json:"layout"`
-	MissionID string          `json:"missionId"`
+	MissionID string          `json:"inputCardId"`
 }
 
 type FormationSlotAssignmentRequest struct {
@@ -521,7 +521,7 @@ func (s *Store) createNode(
 func buildCreateLayoutCandidate(current definitionPairContent, boardID string, boardRev int, node LayoutNode, updatedAt string) ([]byte, error) {
 	raw := current.raw
 	if !current.present {
-		raw = []byte("schema = " + renderInt(CurrentLayoutSchema) + "\nboardId = " + renderString(boardID) + "\nboardRev = " + renderInt(boardRev) + "\nupdatedAt = " + renderString(updatedAt) + "\n")
+		raw = []byte("schema = " + renderInt(CurrentLayoutSchema) + "\nmissionId = " + renderString(boardID) + "\nmissionRev = " + renderInt(boardRev) + "\nupdatedAt = " + renderString(updatedAt) + "\n")
 	}
 	layout, err := parseLayoutForWrite(raw)
 	if err != nil {
@@ -531,8 +531,8 @@ func buildCreateLayoutCandidate(current definitionPairContent, boardID string, b
 	if layout.Schema < CurrentLayoutSchema {
 		doc.setScalar("schema", renderInt(CurrentLayoutSchema))
 	}
-	doc.setScalar("boardId", renderString(boardID))
-	doc.setScalar("boardRev", renderInt(boardRev))
+	doc.setScalar("missionId", renderString(boardID))
+	doc.setScalar("missionRev", renderInt(boardRev))
 	doc.setScalar("updatedAt", renderString(updatedAt))
 	return appendLayoutNodeBlock(doc.bytes(), node), nil
 }
@@ -1660,7 +1660,7 @@ func (s *Store) createMission(slug string, req MissionCreateRequest, opts WriteO
 		title = "Input"
 	}
 	mission := MissionNode{
-		ID:           newPrefixedID("mis"),
+		ID:           newPrefixedID("inp"),
 		Title:        title,
 		Goal:         req.Goal,
 		Files:        normalizeFileRefs(req.Files),
@@ -1891,7 +1891,7 @@ func (s *Store) updateLayoutNodes(slug string, nodes []LayoutNode, board *BoardD
 					return err
 				}
 			}
-			raw = []byte("schema = " + renderInt(CurrentLayoutSchema) + "\nboardId = " + renderString(board.ID) + "\nboardRev = " + renderInt(board.Rev) + "\nupdatedAt = " + renderString(s.now().Format(time.RFC3339)) + "\n")
+			raw = []byte("schema = " + renderInt(CurrentLayoutSchema) + "\nmissionId = " + renderString(board.ID) + "\nmissionRev = " + renderInt(board.Rev) + "\nupdatedAt = " + renderString(s.now().Format(time.RFC3339)) + "\n")
 			recreatingMissing = true
 		case errors.Is(err, ErrNotFound):
 			return ErrNotFound
@@ -1910,8 +1910,8 @@ func (s *Store) updateLayoutNodes(slug string, nodes []LayoutNode, board *BoardD
 			doc.setScalar("schema", renderInt(CurrentLayoutSchema))
 		}
 		if board != nil {
-			doc.setScalar("boardId", renderString(board.ID))
-			doc.setScalar("boardRev", renderInt(board.Rev))
+			doc.setScalar("missionId", renderString(board.ID))
+			doc.setScalar("missionRev", renderInt(board.Rev))
 		}
 		doc.setScalar("updatedAt", renderString(s.now().Format(time.RFC3339)))
 		nextRaw := patchLayoutNodeBlocks(doc.bytes(), nodes)
@@ -2169,7 +2169,7 @@ func deleteGateBlock(raw []byte, gateID string) ([]byte, bool) {
 }
 
 func deleteMissionBlock(raw []byte, missionID string) ([]byte, bool) {
-	return deleteTopLevelBlockByID(raw, "mission", missionID)
+	return deleteTopLevelBlockByID(raw, "inputCard", missionID)
 }
 
 func deleteTopLevelBlockByID(raw []byte, sectionName, id string) ([]byte, bool) {
@@ -2322,7 +2322,7 @@ func appendMissionBlock(raw []byte, mission MissionNode) []byte {
 	if text != "" {
 		b.WriteByte('\n')
 	}
-	b.WriteString("[[mission]]\n")
+	b.WriteString("[[inputCard]]\n")
 	b.WriteString("id = " + renderString(mission.ID) + "\n")
 	b.WriteString("title = " + renderString(mission.Title) + "\n")
 	b.WriteString("goal = " + renderString(mission.Goal) + "\n")
@@ -2525,8 +2525,8 @@ func (s *Store) deleteLayoutNodes(slug, boardID string, boardRev int, nodeIDs ma
 		if current.Schema < CurrentLayoutSchema {
 			doc.setScalar("schema", renderInt(CurrentLayoutSchema))
 		}
-		doc.setScalar("boardId", renderString(boardID))
-		doc.setScalar("boardRev", renderInt(boardRev))
+		doc.setScalar("missionId", renderString(boardID))
+		doc.setScalar("missionRev", renderInt(boardRev))
 		doc.setScalar("updatedAt", renderString(s.now().Format(time.RFC3339)))
 
 		nextRaw := deleteLayoutNodeBlocks(doc.bytes(), nodeIDs)
@@ -2985,7 +2985,7 @@ func findGateBlockByID(lines []tomlLine, gateID string) (int, int, bool) {
 func findMissionBlockByID(lines []tomlLine, missionID string) (int, int, bool) {
 	for i := 0; i < len(lines); i++ {
 		section, ok := tomlLineSectionName(lines[i])
-		if !ok || section != "mission" {
+		if !ok || section != "inputCard" {
 			continue
 		}
 		end := tomlBlockEnd(lines, i)
@@ -3468,7 +3468,7 @@ func parseMissionNodes(raw []byte) []MissionNode {
 		section, isSection := tomlLineSectionName(line)
 		isArraySection := strings.HasPrefix(trimmed, "[[")
 		switch {
-		case isSection && isArraySection && section == "mission":
+		case isSection && isArraySection && section == "inputCard":
 			missions = append(missions, MissionNode{})
 			current = &missions[len(missions)-1]
 			active = true

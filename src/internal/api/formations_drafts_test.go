@@ -29,7 +29,7 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 	}
 
 	for _, want := range []string{"untitled-mission", "untitled-mission-2"} {
-		rec := serve(http.MethodPost, "/api/formations/boards", "", `{"title":"  "}`)
+		rec := serve(http.MethodPost, "/api/missions", "", `{"title":"  "}`)
 		if rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), `"slug":"`+want+`"`) {
 			t.Fatalf("unnamed board create = %d %s, want %s", rec.Code, rec.Body.String(), want)
 		}
@@ -41,10 +41,10 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return serve(http.MethodPatch, "/api/formations/boards/untitled-mission", board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{"))
+		return serve(http.MethodPatch, "/api/missions/untitled-mission", board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{"))
 	}
 	for _, body := range []string{
-		`{"createMission":{"title":"","goal":""}}`,
+		`{"createInputCard":{"title":"","goal":""}}`,
 		`{"createFormation":{"type":"solo","title":""}}`,
 		`{"createGate":{"title":"","kinds":["code"],"criterion":"","check":"output_absent","checkVersion":"1","checkValue":""}}`,
 	} {
@@ -67,7 +67,7 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 		}
 	}
 
-	rec := serve(http.MethodGet, "/api/formations/boards/untitled-mission/validation", "", "")
+	rec := serve(http.MethodGet, "/api/missions/untitled-mission/validation", "", "")
 	var validation struct {
 		Data struct {
 			Errors []formations.BoardFinding `json:"errors"`
@@ -78,7 +78,7 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 	}
 
 	board, _ = store.ReadBoard("untitled-mission")
-	rec = serve(http.MethodPost, "/api/formations/runs", board.ETag, `{"board":"untitled-mission","missionId":"`+mission.ID+`","expectedRev":`+jsonInt(board.Rev)+`,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":60}}`)
+	rec = serve(http.MethodPost, "/api/runs", board.ETag, `{"mission":"untitled-mission","inputCardId":"`+mission.ID+`","expectedRev":`+jsonInt(board.Rev)+`,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":60}}`)
 	var failure struct {
 		Error struct {
 			Code     string                    `json:"code"`

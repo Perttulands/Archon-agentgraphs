@@ -218,7 +218,7 @@ func SeveralInputCardsFinding(board *BoardDocument) BoardFinding {
 	return BoardFinding{
 		Code: FindingSeveralInputCards,
 		Message: fmt.Sprintf("mission %q holds %d Input cards, %s; a mission has one, so no run can start from it. "+
-			"Split it: copy %s.formation.toml beside itself under a new slug and give the copy a new id, slug and title, "+
+			"Split it: copy %s.mission.toml beside itself under a new slug and give the copy a new id, slug and title, "+
 			"then delete from each file the Input cards, and the steps only they reach, that belong to the other",
 			board.Slug, len(board.Missions), strings.Join(cards, ", "), board.Slug),
 	}

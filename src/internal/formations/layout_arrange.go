@@ -63,7 +63,7 @@ func arrangedLayoutNodes(board *BoardDocument) []LayoutNode {
 	items := make(map[string]arrangementItem, len(board.Missions)+len(board.Formations)+len(board.Gates)+len(board.Tools))
 	missions := []string{}
 	for _, mission := range board.Missions {
-		items[mission.ID] = arrangementItem{id: mission.ID, kind: "mission", files: len(mission.Files) > 0}
+		items[mission.ID] = arrangementItem{id: mission.ID, kind: "inputCard", files: len(mission.Files) > 0}
 		missions = append(missions, mission.ID)
 	}
 	for _, formation := range board.Formations {
@@ -331,7 +331,7 @@ func arrangementDiscoveryOrder(roots []string, forward map[string][]string, dept
 func arrangementItemSize(item arrangementItem) (int, int) {
 	width, height := 300, 310
 	switch item.kind {
-	case "mission":
+	case "inputCard":
 		width, height = 236, 144
 	case "gate":
 		width, height = 300, 124

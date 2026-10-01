@@ -27,8 +27,8 @@ const (
 func TestGuardRuntimeAuthorityV1ValidDisabledFixtureIsNonAuthorizingAndReadOnly(t *testing.T) {
 	fixture := newRuntimeAuthorityFixture(t)
 	before := snapshotRuntimeAuthorityFixture(t, fixture.root, fixture.workspace)
-	t.Setenv("CHROTE_DATA_DIR", filepath.Join(t.TempDir(), "bait"))
-	t.Setenv("CHROTE_FORMATIONS_DATA_ROOT", filepath.Join(t.TempDir(), "bait-formations"))
+	t.Setenv("ARCHON_DATA_DIR", filepath.Join(t.TempDir(), "bait"))
+	t.Setenv("ARCHON_DATA_ROOT", filepath.Join(t.TempDir(), "bait-formations"))
 
 	result, err := GuardRuntimeAuthorityV1(fixture.root)
 	if err != nil {
@@ -60,8 +60,8 @@ func TestGuardRuntimeWorkspaceAuthorityV1MatchesOpenedWorkspaceIdentity(t *testi
 	fixture := newRuntimeAuthorityFixture(t)
 	bindRuntimeAuthorityFixtureToOpenedWorkspace(t, &fixture, fixture.workspace)
 	before := snapshotRuntimeAuthorityFixture(t, fixture.root, fixture.workspace)
-	t.Setenv("CHROTE_WORKDIR", filepath.Join(t.TempDir(), "workspace-bait"))
-	t.Setenv("CHROTE_ROOTS", filepath.Join(t.TempDir(), "roots-bait"))
+	t.Setenv("ARCHON_WORKDIR", filepath.Join(t.TempDir(), "workspace-bait"))
+	t.Setenv("ARCHON_ROOTS", filepath.Join(t.TempDir(), "roots-bait"))
 
 	result, err := GuardRuntimeWorkspaceAuthorityV1(filepath.Dir(fixture.root), fixture.workspace)
 	if err != nil {
@@ -1153,9 +1153,9 @@ func TestGuardRuntimeAuthorityV1RejectsInvalidOptionalEventHeaders(t *testing.T)
 		replacement string
 		wantCode    RuntimeAuthorityGuardCode
 	}{
-		{name: "null optional string", replacement: `"boardId":null,`, wantCode: RuntimeAuthorityGuardMalformed},
-		{name: "null optional number", replacement: `"boardRev":null,`, wantCode: RuntimeAuthorityGuardMalformed},
-		{name: "fractional board revision", replacement: `"boardRev":1.5,`, wantCode: RuntimeAuthorityGuardNoncanonical},
+		{name: "null optional string", replacement: `"missionId":null,`, wantCode: RuntimeAuthorityGuardMalformed},
+		{name: "null optional number", replacement: `"missionRev":null,`, wantCode: RuntimeAuthorityGuardMalformed},
+		{name: "fractional board revision", replacement: `"missionRev":1.5,`, wantCode: RuntimeAuthorityGuardNoncanonical},
 		{name: "negative epoch", replacement: `"epoch":-1,`, wantCode: RuntimeAuthorityGuardNoncanonical},
 		{name: "attempt above JSON-safe maximum", replacement: `"attempt":9007199254740992,`, wantCode: RuntimeAuthorityGuardOutOfRange},
 	}
@@ -1495,8 +1495,8 @@ func TestGuardRuntimeAuthorityV1UsesOnlyExplicitRoot(t *testing.T) {
 	fixture := newRuntimeAuthorityFixture(t)
 	missingParent := t.TempDir()
 	missingRoot := filepath.Join(missingParent, "missing-workspaces")
-	t.Setenv("CHROTE_DATA_DIR", fixture.root)
-	t.Setenv("CHROTE_FORMATIONS_DATA_ROOT", fixture.root)
+	t.Setenv("ARCHON_DATA_DIR", fixture.root)
+	t.Setenv("ARCHON_DATA_ROOT", fixture.root)
 	before := snapshotRuntimeAuthorityFixture(t, fixture.root, fixture.workspace, missingParent)
 
 	result, err := GuardRuntimeAuthorityV1(missingRoot)

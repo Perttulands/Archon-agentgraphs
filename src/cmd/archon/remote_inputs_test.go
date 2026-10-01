@@ -18,7 +18,7 @@ func TestRemoteRunListFiltersByMission(t *testing.T) {
 		t.Run(fmt.Sprint(args), func(t *testing.T) {
 			var query string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/api/formations/runs" {
+				if r.URL.Path != "/api/runs" {
 					t.Errorf("unexpected %s", r.URL)
 				}
 				query = r.URL.RawQuery
@@ -47,11 +47,11 @@ func TestRemoteMissionRunStartsFromTheInputCard(t *testing.T) {
 			var started string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == "GET" {
-					fmt.Fprint(w, `{"data":{"board":{"rev":3,"missions":[{"id":"mis_only","title":"Brief"}]}}}`)
+					fmt.Fprint(w, `{"data":{"mission":{"rev":3,"inputCards":[{"id":"mis_only","title":"Brief"}]}}}`)
 					return
 				}
 				var body struct {
-					MissionID string `json:"missionId"`
+					MissionID string `json:"inputCardId"`
 				}
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 					t.Error(err)
@@ -80,11 +80,11 @@ func TestRemoteMissionContextPaths(t *testing.T) {
 		t.Run(fmt.Sprint(paths), func(t *testing.T) {
 			starts := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == "GET" && r.URL.Path == "/api/formations/missions/proof" {
-					fmt.Fprint(w, `{"data":{"board":{"rev":3}}}`)
+				if r.Method == "GET" && r.URL.Path == "/api/missions/proof" {
+					fmt.Fprint(w, `{"data":{"mission":{"rev":3}}}`)
 					return
 				}
-				if r.Method != "POST" || r.URL.Path != "/api/formations/runs" {
+				if r.Method != "POST" || r.URL.Path != "/api/runs" {
 					t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 				}
 				starts++
@@ -139,7 +139,7 @@ func TestRemoteGateResponseFileIsVerbatim(t *testing.T) {
 				requests := 0
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					requests++
-					if r.Method != "POST" || r.URL.Path != "/api/formations/runs/run_proof/gates/gate_review/verdict" {
+					if r.Method != "POST" || r.URL.Path != "/api/runs/run_proof/gates/gate_review/verdict" {
 						t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 					}
 					var body struct {
@@ -189,8 +189,6 @@ func TestRemoteGateResponseFileErrorsNeverSend(t *testing.T) {
 		{"invalid UTF-8", []string{"--response-file", invalid}, "valid UTF-8"},
 		{"response conflict", []string{"--response-file", invalid, "--response", "answer"}, "cannot be combined"},
 		{"empty response conflict", []string{"--response=", "--response-file", invalid}, "cannot be combined"},
-		{"reason conflict", []string{"--reason", "answer", "--response-file", invalid}, "cannot be combined"},
-		{"empty reason conflict", []string{"--response-file", invalid, "--reason="}, "cannot be combined"},
 	}
 	if os.Geteuid() != 0 {
 		tests = append(tests, struct {

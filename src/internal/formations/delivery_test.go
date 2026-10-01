@@ -12,7 +12,7 @@ import (
 func TestDeliveryMissionLabPushback(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	for name, dest := range map[string]string{
-		"delivery.formation.toml": store.BoardPath("delivery"),
+		"delivery.mission.toml": store.BoardPath("delivery"),
 		"delivery.notes.toml":     store.NotesPath("delivery"),
 	} {
 		raw, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", name))
@@ -77,7 +77,7 @@ func TestDeliveryMissionLabPushback(t *testing.T) {
 				t.Fatal(err)
 			}
 			prompt := executor.lab.renderPrompt(call, slot, *card, variant)
-			required := append([]string{card.Summary, "target repository", "mission bead", "Git", "tmux", "chrote-outputs", "CHROTE-DONE"}, skills[call.NodeID]...)
+			required := append([]string{card.Summary, "target repository", "mission bead", "Git", "tmux", "archon-outputs", "ARCHON-DONE"}, skills[call.NodeID]...)
 			for _, port := range call.Formation.Inputs {
 				required = append(required, port.ID)
 			}

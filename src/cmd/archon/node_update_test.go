@@ -16,11 +16,11 @@ slug = "rename"
 title = "Rename"
 rev = 2
 
-[[mission]]
+[[inputCard]]
 id = "mis_frame"
 title = "New mission"
 goal = "Old goal"
-beadId = "form-3yd.10"
+beadId = "archon-3yd.10"
 
 [[formation]]
 id = "fmn_map"
@@ -83,7 +83,7 @@ label = "Input"
 	if _, stderr, code := archon("mission", "update", "rename", "mis_frame"); code != 2 || !strings.Contains(stderr, "Only the flags you give change it") {
 		t.Fatalf("update without fields: %d %s", code, stderr)
 	}
-	if _, stderr, code := archon("mission", "update", "rename", "mis_frame", "--bead", "form-1"); code != 2 || !strings.Contains(stderr, "flag provided but not defined: -bead") {
+	if _, stderr, code := archon("mission", "update", "rename", "mis_frame", "--bead", "archon-1"); code != 2 || !strings.Contains(stderr, "flag provided but not defined: -bead") {
 		t.Fatalf("mission update --bead: %d %s, want an unknown flag", code, stderr)
 	}
 	if _, stderr, code := archon("formation", "rename", "rename", "fmn_map"); code != 2 || !strings.Contains(stderr, "usage: archon formation rename") {

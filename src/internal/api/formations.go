@@ -39,8 +39,8 @@ func (h *FormationsHandler) SetNeedsYouNotifier(notifier formations.NeedsYouNoti
 }
 
 type formationsRunStartRequest struct {
-	Board       string               `json:"board"`
-	MissionID   string               `json:"missionId"`
+	Board       string               `json:"mission"`
+	MissionID   string               `json:"inputCardId"`
 	FormationID string               `json:"formationId"`
 	Actor       string               `json:"actor"`
 	Limits      formations.RunLimits `json:"limits"`
@@ -74,9 +74,9 @@ type formationsBoardPatchRequest struct {
 	DeleteFormation               *formationsDeleteFormationRequest       `json:"deleteFormation"`
 	UpdateFormation               *formationsUpdateFormationRequest       `json:"updateFormation"`
 	SetFormationType              *formationsSetFormationTypeRequest      `json:"setFormationType"`
-	UpdateMission                 *formationsUpdateMissionRequest         `json:"updateMission"`
+	UpdateMission                 *formationsUpdateMissionRequest         `json:"updateInputCard"`
 	DeleteGate                    *formationsDeleteGateRequest            `json:"deleteGate"`
-	DeleteMission                 *formationsDeleteMissionRequest         `json:"deleteMission"`
+	DeleteMission                 *formationsDeleteMissionRequest         `json:"deleteInputCard"`
 	RestoreNode                   *formationsRestoreNodeRequest           `json:"restoreNode"`
 	AssignSlot                    *formationsAssignSlotRequest            `json:"assignSlot"`
 	MakeController                *formationsMakeControllerRequest        `json:"makeController"`
@@ -94,7 +94,7 @@ type formationsBoardPatchRequest struct {
 	UpdateGate                    *formationsUpdateGateRequest            `json:"updateGate"`
 	SetGateJudge                  *formationsSetGateJudgeRequest          `json:"setGateJudge"`
 	DetachGateJudge               *formationsDetachGateJudgeRequest       `json:"detachGateJudge"`
-	CreateMission                 *formationsCreateMissionRequest         `json:"createMission"`
+	CreateMission                 *formationsCreateMissionRequest         `json:"createInputCard"`
 	LegacyCommandFieldsPresent    bool                                    `json:"-"`
 	SetVerificationOccurrences    int                                     `json:"-"`
 	RemoveVerificationOccurrences int                                     `json:"-"`
@@ -185,7 +185,7 @@ type formationsDeleteMissionRequest struct {
 // board document showed it, with the connections that touched it and its
 // layout position.
 type formationsRestoreNodeRequest struct {
-	Mission     *formations.MissionNode      `json:"mission"`
+	Mission     *formations.MissionNode      `json:"inputCard"`
 	Formation   *formations.FormationNode    `json:"formation"`
 	Gate        *formations.GateNode         `json:"gate"`
 	Connections []formations.BoardConnection `json:"connections"`
@@ -330,9 +330,9 @@ var boardPatchMutationKeys = []string{
 	"deleteFormation",
 	"updateFormation",
 	"setFormationType",
-	"updateMission",
+	"updateInputCard",
 	"deleteGate",
-	"deleteMission",
+	"deleteInputCard",
 	"restoreNode",
 	"assignSlot",
 	"makeController",
@@ -350,7 +350,7 @@ var boardPatchMutationKeys = []string{
 	"updateGate",
 	"setGateJudge",
 	"detachGateJudge",
-	"createMission",
+	"createInputCard",
 }
 
 func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
@@ -615,30 +615,26 @@ func (h *FormationsHandler) newRunEngine(boundary string) *formations.RunEngine 
 }
 
 func (h *FormationsHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/formations/gate-profiles", h.ListGateProfiles)
-	mux.HandleFunc("POST /api/formations/runs", h.StartRun)
-	mux.HandleFunc("GET /api/formations/runs/{runId}", h.GetRun)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/events", h.GetRunEvents)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/stream", h.StreamRunEvents)
-	mux.HandleFunc("POST /api/formations/runs/{runId}/resume", h.ResumeRun)
-	mux.HandleFunc("POST /api/formations/runs/{runId}/abort", h.AbortRun)
-	mux.HandleFunc("POST /api/formations/runs/{runId}/gates/{gateId}/verdict", h.RecordHumanGateVerdict)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/escalations", h.GetRunEscalations)
-	// Missions are served under /missions. The /boards routes are the same
-	// handlers, kept for one release after the rename and deprecated in OpenAPI.
-	for _, base := range []string{"/api/formations/missions", "/api/formations/boards"} {
-		mux.HandleFunc("GET "+base, h.ListBoards)
-		mux.HandleFunc("POST "+base, h.CreateBoard)
-		mux.HandleFunc("GET "+base+"/{board}/changes", h.GetBoardChanges)
-		mux.HandleFunc("GET "+base+"/{board}/validation", h.GetBoardValidation)
-		mux.HandleFunc("GET "+base+"/{board}", h.GetBoard)
-		mux.HandleFunc("PATCH "+base+"/{board}", h.PatchBoard)
-		mux.HandleFunc("DELETE "+base+"/{board}", h.DeleteBoard)
-		mux.HandleFunc("GET "+base+"/{board}/notes", h.GetBoardNotes)
-		mux.HandleFunc("PATCH "+base+"/{board}/notes", h.PatchBoardNotes)
-		mux.HandleFunc("GET "+base+"/{board}/layout", h.GetLayout)
-		mux.HandleFunc("PATCH "+base+"/{board}/layout", h.PatchLayout)
-	}
+	mux.HandleFunc("GET /api/gate-profiles", h.ListGateProfiles)
+	mux.HandleFunc("POST /api/runs", h.StartRun)
+	mux.HandleFunc("GET /api/runs/{runId}", h.GetRun)
+	mux.HandleFunc("GET /api/runs/{runId}/events", h.GetRunEvents)
+	mux.HandleFunc("GET /api/runs/{runId}/stream", h.StreamRunEvents)
+	mux.HandleFunc("POST /api/runs/{runId}/resume", h.ResumeRun)
+	mux.HandleFunc("POST /api/runs/{runId}/abort", h.AbortRun)
+	mux.HandleFunc("POST /api/runs/{runId}/gates/{gateId}/verdict", h.RecordHumanGateVerdict)
+	mux.HandleFunc("GET /api/runs/{runId}/escalations", h.GetRunEscalations)
+	mux.HandleFunc("GET /api/missions", h.ListBoards)
+	mux.HandleFunc("POST /api/missions", h.CreateBoard)
+	mux.HandleFunc("GET /api/missions/{mission}/changes", h.GetBoardChanges)
+	mux.HandleFunc("GET /api/missions/{mission}/validation", h.GetBoardValidation)
+	mux.HandleFunc("GET /api/missions/{mission}", h.GetBoard)
+	mux.HandleFunc("PATCH /api/missions/{mission}", h.PatchBoard)
+	mux.HandleFunc("DELETE /api/missions/{mission}", h.DeleteBoard)
+	mux.HandleFunc("GET /api/missions/{mission}/notes", h.GetBoardNotes)
+	mux.HandleFunc("PATCH /api/missions/{mission}/notes", h.PatchBoardNotes)
+	mux.HandleFunc("GET /api/missions/{mission}/layout", h.GetLayout)
+	mux.HandleFunc("PATCH /api/missions/{mission}/layout", h.PatchLayout)
 }
 
 func (h *FormationsHandler) ListGateProfiles(w http.ResponseWriter, _ *http.Request) {
@@ -893,7 +889,7 @@ func (h *FormationsHandler) ListBoards(w http.ResponseWriter, r *http.Request) {
 		writeFormationsError(w, err)
 		return
 	}
-	core.WriteSuccess(w, map[string]interface{}{"boards": boards})
+	core.WriteSuccess(w, map[string]interface{}{"missions": boards})
 }
 
 func (h *FormationsHandler) CreateBoard(w http.ResponseWriter, r *http.Request) {
@@ -941,7 +937,7 @@ func (h *FormationsHandler) CreateBoard(w http.ResponseWriter, r *http.Request) 
 	}
 	board.TOML = ""
 	w.Header().Set("ETag", board.ETag)
-	core.WriteJSON(w, http.StatusCreated, core.NewSuccessResponse(map[string]interface{}{"board": board}))
+	core.WriteJSON(w, http.StatusCreated, core.NewSuccessResponse(map[string]interface{}{"mission": board}))
 }
 
 func (h *FormationsHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) {
@@ -951,7 +947,7 @@ func (h *FormationsHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) 
 	if !decodeJSONBody(w, r, &request) {
 		return
 	}
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -968,7 +964,7 @@ func (h *FormationsHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *FormationsHandler) GetBoardNotes(w http.ResponseWriter, r *http.Request) {
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -987,7 +983,7 @@ func (h *FormationsHandler) PatchBoardNotes(w http.ResponseWriter, r *http.Reque
 	if !decodeJSONBody(w, r, &request) {
 		return
 	}
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -1004,7 +1000,7 @@ func (h *FormationsHandler) PatchBoardNotes(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *FormationsHandler) GetBoard(w http.ResponseWriter, r *http.Request) {
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -1015,13 +1011,13 @@ func (h *FormationsHandler) GetBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("ETag", board.ETag)
-	core.WriteSuccess(w, map[string]interface{}{"board": board})
+	core.WriteSuccess(w, map[string]interface{}{"mission": board})
 }
 
 // GetBoardValidation reports what the whole board still needs before its runs
 // can start, so the canvas can mark draft nodes.
 func (h *FormationsHandler) GetBoardValidation(w http.ResponseWriter, r *http.Request) {
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -1034,15 +1030,15 @@ func (h *FormationsHandler) GetBoardValidation(w http.ResponseWriter, r *http.Re
 	report := formations.ValidateRunAdmission(board, h.personas, formations.RunAdmissionScope{})
 	w.Header().Set("ETag", board.ETag)
 	core.WriteSuccess(w, map[string]interface{}{
-		"boardRev":  board.Rev,
-		"boardEtag": board.ETag,
+		"missionRev":  board.Rev,
+		"missionEtag": board.ETag,
 		"errors":    report.Errors,
 		"warnings":  report.Warnings,
 	})
 }
 
 func (h *FormationsHandler) GetBoardChanges(w http.ResponseWriter, r *http.Request) {
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -1075,7 +1071,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		writeFormationsError(w, formations.ErrLegacyScriptGateRequiresFencedMigration)
 		return
 	}
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -1208,7 +1204,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]any{"board": board})
+		core.WriteSuccess(w, map[string]any{"mission": board})
 		return
 	}
 	if request.AssignSlot != nil {
@@ -1231,7 +1227,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.MakeController != nil {
@@ -1249,7 +1245,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.SetExecution != nil {
@@ -1267,7 +1263,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.SetBrief != nil {
@@ -1288,7 +1284,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.ClearBrief != nil {
@@ -1305,7 +1301,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.SetVerification != nil {
@@ -1325,7 +1321,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.RemoveVerification != nil {
@@ -1343,7 +1339,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.AddPort != nil {
@@ -1362,7 +1358,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.RemovePort != nil {
@@ -1380,7 +1376,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.WireConnection != nil {
@@ -1399,7 +1395,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.RewireConnection != nil {
@@ -1420,7 +1416,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.UnwireConnection != nil {
@@ -1438,7 +1434,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.CreateGate != nil {
@@ -1486,7 +1482,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.SetFormationType != nil {
@@ -1506,7 +1502,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.UpdateMission != nil {
@@ -1528,7 +1524,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.UpdateGate != nil {
@@ -1553,7 +1549,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.SetGateJudge != nil {
@@ -1571,7 +1567,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.DetachGateJudge != nil {
@@ -1588,7 +1584,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.CreateMission != nil {
@@ -1625,11 +1621,11 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("ETag", board.ETag)
-	core.WriteSuccess(w, map[string]interface{}{"board": board})
+	core.WriteSuccess(w, map[string]interface{}{"mission": board})
 }
 
 func (h *FormationsHandler) GetLayout(w http.ResponseWriter, r *http.Request) {
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -1663,7 +1659,7 @@ func (h *FormationsHandler) PatchLayout(w http.ResponseWriter, r *http.Request) 
 	if !decodeJSONBody(w, r, &request) {
 		return
 	}
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -1825,7 +1821,7 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	case errors.Is(err, formations.ErrToolExecutionUnavailable):
 		core.WriteError(w, http.StatusUnprocessableEntity, formations.ToolExecutionUnavailableCode, "Tool execution is unavailable")
 	case errors.Is(err, formations.ErrRuntimeAuthorityNonAuthorizing):
-		core.WriteError(w, http.StatusServiceUnavailable, "RUNTIME_AUTHORITY_NON_AUTHORIZING", "Formations runtime authority is unavailable")
+		core.WriteError(w, http.StatusServiceUnavailable, "RUNTIME_AUTHORITY_NON_AUTHORIZING", "Archon runtime authority is unavailable")
 	case errors.Is(err, formations.ErrInvalidNodeRestore):
 		core.WriteError(w, http.StatusConflict, "INVALID_NODE_RESTORE", fieldErrorMessage(err, formations.ErrInvalidNodeRestore))
 	case errors.Is(err, formations.ErrInputOccupied):

@@ -28,12 +28,12 @@ const plan: NodeEvidence = {
 }
 
 const routes: Record<string, unknown> = {
-  '/api/formations/runs/run_1/evidence/nodes/fmn_final': { evidence: finalReview },
-  '/api/formations/runs/run_1/evidence/nodes/fmn_plan': { evidence: plan },
-  '/api/formations/runs/run_1/evidence/artifacts/final-review.md': { artifact: { name: 'final-review.md', size: 34, modifiedAt: '', kind: 'markdown', text: text('# Final review\n\nVerdict: **revise**. See [the log](logs/run.json).') } },
-  '/api/formations/runs/run_1/evidence/artifacts/logs/run.json': { artifact: { name: 'logs/run.json', size: 11, modifiedAt: '', kind: 'json', text: text('{"ok":true}') } },
-  '/api/formations/runs/run_1/evidence/artifacts/worker.log': { artifact: { name: 'worker.log', size: 300000, modifiedAt: '', kind: 'text', text: text('line one\nline two', { truncated: true, bytes: 300000 }) } },
-  '/api/formations/runs/run_1/evidence/artifacts/paper.pdf': { artifact: { name: 'paper.pdf', size: 900, modifiedAt: '', kind: 'pdf' } },
+  '/api/runs/run_1/evidence/nodes/fmn_final': { evidence: finalReview },
+  '/api/runs/run_1/evidence/nodes/fmn_plan': { evidence: plan },
+  '/api/runs/run_1/evidence/artifacts/final-review.md': { artifact: { name: 'final-review.md', size: 34, modifiedAt: '', kind: 'markdown', text: text('# Final review\n\nVerdict: **revise**. See [the log](logs/run.json).') } },
+  '/api/runs/run_1/evidence/artifacts/logs/run.json': { artifact: { name: 'logs/run.json', size: 11, modifiedAt: '', kind: 'json', text: text('{"ok":true}') } },
+  '/api/runs/run_1/evidence/artifacts/worker.log': { artifact: { name: 'worker.log', size: 300000, modifiedAt: '', kind: 'text', text: text('line one\nline two', { truncated: true, bytes: 300000 }) } },
+  '/api/runs/run_1/evidence/artifacts/paper.pdf': { artifact: { name: 'paper.pdf', size: 900, modifiedAt: '', kind: 'pdf' } },
 }
 
 const board = {
@@ -140,7 +140,7 @@ describe('produced files', () => {
     expect(await within(review).findByRole('heading', { name: 'Final review' })).toBeInTheDocument()
     expect(within(review).getByText('revise').tagName).toBe('STRONG')
     expect(review).toHaveTextContent('Final review · final-review.md')
-    expect(within(review).getByRole('link', { name: 'Open raw' })).toHaveAttribute('href', '/api/formations/runs/run_1/artifacts/final-review.md')
+    expect(within(review).getByRole('link', { name: 'Open raw' })).toHaveAttribute('href', '/api/runs/run_1/artifacts/final-review.md')
     expect(within(review).getByRole('button', { name: 'Copy path' })).toHaveAttribute('title', '.formations/artifacts/run_1/final-review.md')
 
     fireEvent.click(within(review).getByRole('button', { name: 'Source' }))
@@ -209,7 +209,7 @@ describe('produced files', () => {
   })
 
   it('refreshes a revised output in its existing moved window when the latest chip is opened', async () => {
-    const route = '/api/formations/runs/run_1/evidence/nodes/fmn_plan'
+    const route = '/api/runs/run_1/evidence/nodes/fmn_plan'
     const previous = routes[route]
     try {
       const { rerender } = render(<Cockpit produced={produced} final />)
@@ -246,7 +246,7 @@ describe('produced files', () => {
   })
 
   it('refreshes an artifact overwritten at the same path without replacing its window', async () => {
-    const route = '/api/formations/runs/run_1/evidence/artifacts/final-review.md'
+    const route = '/api/runs/run_1/evidence/artifacts/final-review.md'
     const previous = routes[route]
     try {
       render(<Cockpit produced={produced} final />)
@@ -273,7 +273,7 @@ describe('produced files', () => {
     const pdf = await screen.findByRole('dialog', { name: 'file paper.pdf' })
     const frame = await within(pdf).findByTitle('paper.pdf')
     expect(frame.tagName).toBe('IFRAME')
-    expect(frame).toHaveAttribute('src', '/api/formations/runs/run_1/artifacts/paper.pdf')
+    expect(frame).toHaveAttribute('src', '/api/runs/run_1/artifacts/paper.pdf')
   })
 
   it('shows what exists so far, and nothing before a run has produced anything', () => {

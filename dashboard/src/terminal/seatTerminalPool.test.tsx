@@ -65,7 +65,7 @@ vi.mock('./terminalSession', () => ({
 const themeState = vi.hoisted(() => ({ current: null as unknown }))
 vi.mock('../theme/ThemeContext', () => ({ useTheme: () => ({ theme: themeState.current }) }))
 
-const seat = (seq: number): PooledSeat => ({ url: `ws://host/api/formations/runs/run_1/seats/${seq}/terminal`, columns: 160, rows: 49 })
+const seat = (seq: number): PooledSeat => ({ url: `ws://host/api/runs/run_1/seats/${seq}/terminal`, columns: 160, rows: 49 })
 
 let pool: SeatTerminalPool
 

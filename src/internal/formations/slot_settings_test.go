@@ -216,7 +216,7 @@ func TestSeatsLaunchFromTheSlotsSettings(t *testing.T) {
 	if dispatch.Data["agentId"] != "" || !strings.Contains(client.lastPrompt, "agent: vanilla (no role)") {
 		t.Fatalf("dispatch = %+v prompt=%q, want a vanilla seat", dispatch.Data, client.lastPrompt)
 	}
-	raw := readFile(t, filepath.Join(store.Workspace, ".formations", "runs", "session-search", status.RunID+".bindings.toml"))
+	raw := readFile(t, filepath.Join(store.Workspace, ".archon", "runs", "session-search", status.RunID+".bindings.toml"))
 	if !strings.Contains(raw, "schema = 3") || strings.Contains(raw, "cardToml") || !strings.Contains(raw, `effort = "low"`) || !strings.Contains(raw, `model = "opus"`) {
 		t.Fatalf("bindings snapshot:\n%s", raw)
 	}

@@ -37,7 +37,7 @@ func TestShutdownRetainsWriterForAdmittedAuthoringRequest(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		c.Handler().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/api/formations/boards", body))
+		c.Handler().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/api/missions", body))
 	}()
 	<-body.entered
 	if err := c.Close(); err == nil {
@@ -86,7 +86,7 @@ func TestShutdownDetachesWithinBudgetAndRestartNamesDispatch(t *testing.T) {
 	dispatch := <-seat.entered
 	started := time.Now()
 	c.BeginShutdown()
-	if w := post(t, c, "/api/formations/runs", `{}`); w.Code != 503 {
+	if w := post(t, c, "/api/runs", `{}`); w.Code != 503 {
 		t.Fatalf("admission during shutdown: %d", w.Code)
 	}
 	if err := c.Close(); err != nil {

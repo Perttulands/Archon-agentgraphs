@@ -37,9 +37,9 @@ const (
 // driver must see it.
 type RunWait struct {
 	RunID     string `json:"runId"`
-	BoardSlug string `json:"boardSlug"`
+	BoardSlug string `json:"missionSlug"`
 	// Mission is the run's mission title on its frozen board, or the board's.
-	Mission string `json:"mission"`
+	Mission string `json:"missionTitle"`
 	Until   string `json:"until"`
 	Outcome string `json:"outcome"`
 	Since   int    `json:"since"`

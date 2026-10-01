@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test'
-import { wayfinding, wayfindingFixture } from './wayfinding-fixture'
+import { scouting, scoutingFixture } from './scouting-fixture'
 
 type Node = { id: string; title: string }
 
-test('Flow shows all 7 Wayfinding steps readable at 1440x900 without horizontal scroll', async ({ page }) => {
+test('Flow shows all 7 Scouting steps readable at 1440x900 without horizontal scroll', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  const fixture = await wayfindingFixture(page)
-  await page.goto('/?mission=wayfinding')
+  const fixture = await scoutingFixture(page)
+  await page.goto('/?mission=scouting')
   await expect(page.locator('.formation').first()).toBeVisible()
   await page.getByRole('radio', { name: 'Flow' }).click()
   const flow = page.getByTestId('flow-view')
@@ -37,22 +37,22 @@ test('Flow shows all 7 Wayfinding steps readable at 1440x900 without horizontal 
   await page.keyboard.press('Escape')
   await page.reload()
   await expect(page.getByTestId('flow-view')).toBeVisible()
-  const critic = wayfinding.board.formations.find((node: Node) => node.title === 'Brief critic')
+  const critic = scouting.mission.formations.find((node: Node) => node.title === 'Brief critic')
   await expect(page.getByTestId(`flow-step-${critic.id}`)).toHaveCount(0)
   expect(fixture.writes).toEqual([])
 })
 
 test('Flow opens windows beside the clicked title or route link, and its run point says it opens the step', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  const fixture = await wayfindingFixture(page)
-  const gate = wayfinding.board.gates.find((node: Node) => node.title === 'Adversarial review')
-  const run = { runId: 'run_wayfinding', status: 'blocked', final: false, resumeAllowed: false, boardSlug: 'wayfinding', missionId: wayfinding.board.missions[0].id, eventCount: 2 }
+  const fixture = await scoutingFixture(page)
+  const gate = scouting.mission.gates.find((node: Node) => node.title === 'Adversarial review')
+  const run = { runId: 'run_scouting', status: 'blocked', final: false, resumeAllowed: false, missionSlug: 'scouting', inputCardId: scouting.mission.inputCards[0].id, eventCount: 2 }
   const reply = (data: unknown) => ({ json: { success: true, data } })
   // A blocked run on Adversarial review, added after the fixture so these routes answer first.
-  await page.route(url => url.pathname.startsWith('/api/formations/runs'), route => {
+  await page.route(url => url.pathname.startsWith('/api/runs'), route => {
     const path = new URL(route.request().url()).pathname
-    if (path === '/api/formations/runs') return route.fulfill(reply([run]))
-    if (path === `/api/formations/runs/${run.runId}`) return route.fulfill(reply({ status: run }))
+    if (path === '/api/runs') return route.fulfill(reply([run]))
+    if (path === `/api/runs/${run.runId}`) return route.fulfill(reply({ status: run }))
     if (path.endsWith('/events')) return route.fulfill(reply({ events: [
       { runId: run.runId, seq: 1, type: 'gate_evaluating', nodeId: gate.id, gateId: gate.id },
       { runId: run.runId, seq: 2, type: 'run_blocked', nodeId: gate.id, gateId: gate.id },
@@ -63,7 +63,7 @@ test('Flow opens windows beside the clicked title or route link, and its run poi
     if (path.endsWith('/escalations')) return route.fulfill(reply({ escalations: [] }))
     return route.fulfill({ status: 404, json: { success: false, error: { message: `Fixture has no ${path}` } } })
   })
-  await page.goto('/?mission=wayfinding')
+  await page.goto('/?mission=scouting')
   await expect(page.locator('.formation').first()).toBeVisible()
   await page.getByRole('radio', { name: 'Flow' }).click()
   const flow = page.getByTestId('flow-view')

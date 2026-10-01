@@ -14,7 +14,7 @@ import (
 func TestArchonLocalRunsRefuseNegativeLimits(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
+	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	personas := formations.NewPersonaStore(agentsDir)
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
 		t.Fatalf("create persona: %v", err)
@@ -32,7 +32,7 @@ func TestArchonLocalRunsRefuseNegativeLimits(t *testing.T) {
 			t.Fatalf("%v: code=%d stderr=%s stdout=%s, want the limits message", args, code, stderr, stdout)
 		}
 	}
-	if entries, err := os.ReadDir(filepath.Join(workspace, ".formations", "runs", "session-search")); err == nil && len(entries) != 0 {
+	if entries, err := os.ReadDir(filepath.Join(workspace, ".archon", "runs", "session-search")); err == nil && len(entries) != 0 {
 		t.Fatalf("refused starts wrote run artifacts: %v", entries)
 	}
 }
