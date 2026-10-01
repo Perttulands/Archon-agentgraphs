@@ -63,6 +63,17 @@ describe('formations run-state helpers', () => {
     expect(failed.get('end_rejected')).toBe('failed')
   })
 
+  it('keeps a gate answered while the run is blocked waiting until the resume', () => {
+    const events: RunEvent[] = [
+      { runId: 'run_1', seq: 1, type: 'human_input_requested', gateId: 'gate_review', nodeId: 'gate_review' },
+      { runId: 'run_1', seq: 2, type: 'run_blocked', nodeId: 'fmn_b', data: { reason: 'seat died' } },
+      { runId: 'run_1', seq: 3, type: 'human_verdict_recorded', gateId: 'gate_review', nodeId: 'gate_review' },
+    ]
+    expect(projectNodeStates(events, null).get('gate_review')).toBe('waiting')
+    const resumed = projectNodeStates([...events, { runId: 'run_1', seq: 4, type: 'run_resumed', data: { resumeMode: 'reattach' } }], null)
+    expect(resumed.get('gate_review')).toBe('running')
+  })
+
   it('returns a blocked node to its prior state once the run resumes', () => {
     const answered: RunEvent[] = [
       { runId: 'run_1', seq: 1, type: 'human_input_requested', gateId: 'gate_review', nodeId: 'gate_review' },

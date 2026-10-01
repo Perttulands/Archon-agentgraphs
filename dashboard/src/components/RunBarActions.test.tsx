@@ -117,6 +117,15 @@ describe('RunBarActions', () => {
     ])
   })
 
+  it('says a gate routing your answer is not routed, not that agents work on it', () => {
+    const lines = stopRunConsequences(
+      run({ status: 'running' }),
+      [{ kind: 'running', nodeId: 'fmn_publish', gate: false }, { kind: 'running', nodeId: 'gate_review', gate: true, answered: true }],
+      nodeId => (nodeId === 'gate_review' ? 'Review' : 'Publish'), [],
+    )
+    expect(lines.slice(0, 2)).toEqual(['The agents working on Publish are interrupted.', 'Your answer at Review is not routed.'])
+  })
+
   it('offers Resume only when the run can resume, and says why it cannot', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
       ok: true, status: 200, headers: { get: () => '' },

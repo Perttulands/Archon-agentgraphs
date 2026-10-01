@@ -102,12 +102,20 @@ function projectRun(events: RunEvent[]): RunProjection {
   }
   // A block holds the node only until the run resumes.
   const beforeBlock = new Map<string, NodeRunState>()
+  // A gate answered while the run is blocked keeps waiting until the resume
+  // routes the answer.
+  let blocked = false
+  const answeredWhileBlocked = new Set<string>()
   for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
     if (event.type === 'run_resumed') {
       for (const [blockedId, prior] of beforeBlock) set(blockedId, prior, event.seq)
       beforeBlock.clear()
+      for (const gateId of answeredWhileBlocked) set(gateId, 'running', event.seq)
+      answeredWhileBlocked.clear()
+      blocked = false
       continue
     }
+    if (event.type === 'run_blocked') blocked = true
     // A finished run names the End nodes its paths reached (archon-o7p.10); the
     // rejected one a failure names turns failed below.
     if (event.type === 'run_succeeded' || event.type === 'run_failed') {
@@ -138,9 +146,11 @@ function projectRun(events: RunEvent[]): RunProjection {
       case 'node_waiting':
         set(nodeId, 'waiting', event.seq)
         break
-      // The operator answered; the run routes the verdict between steps.
+      // The operator answered; the run routes the verdict between steps, or
+      // once it resumes.
       case 'human_verdict_recorded':
-        set(nodeId, 'running', event.seq)
+        if (blocked) answeredWhileBlocked.add(nodeId)
+        else set(nodeId, 'running', event.seq)
         break
       case 'node_output': {
         const status = typeof event.data?.status === 'string' ? event.data.status : 'done'

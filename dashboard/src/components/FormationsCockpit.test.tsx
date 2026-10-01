@@ -748,7 +748,7 @@ describe('FormationsCockpit reference parity', () => {
     const toggle = screen.getByRole('button', { name: 'Legend' })
     fireEvent.click(toggle)
     const legend = screen.getByRole('dialog', { name: 'Canvas legend' })
-    for (const words of ['A gate sends work back to an earlier step', 'A judge chain: the gate asks a formation to decide', 'You decide', 'Waiting for your answer', 'Blocked or failed; the run bar says why', 'A pause after your answer', 'Claude Code', 'Codex', 'Hermes']) {
+    for (const words of ['A gate sends work back to an earlier step', 'A judge chain: the gate asks a formation to decide', 'You decide', 'Waiting for your answer', 'Blocked or failed; the run bar says why', 'Claude Code', 'Codex', 'Hermes']) {
       expect(legend).toHaveTextContent(words)
     }
     expect(legend.querySelector('path.wire.fail.loop')).not.toBeNull()

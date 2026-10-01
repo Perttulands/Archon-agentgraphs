@@ -105,8 +105,10 @@ function andList(names: string[]): string {
 /** What stopping this run ends, in the order the operator should read it. */
 export function stopRunConsequences(run: RunStatusProjection, points: RunPoint[], titleOf: (nodeId: string) => string, waitingGates: RunBarActionsProps['waitingGates']): string[] {
   const lines: string[] = []
-  const working = points.filter(point => point.kind === 'running').map(point => titleOf(point.nodeId) || point.nodeId)
+  const working = points.filter(point => point.kind === 'running' && !point.answered).map(point => titleOf(point.nodeId) || point.nodeId)
   if (working.length) lines.push(`The agents working on ${andList(working)} are interrupted.`)
+  const routing = points.filter(point => point.kind === 'running' && point.answered).map(point => titleOf(point.nodeId) || point.nodeId)
+  if (routing.length) lines.push(`Your answer at ${andList(routing)} is not routed.`)
   for (const gate of waitingGates) {
     lines.push(hasGateDraft(run.runId, gate.requestedSeq)
       ? `${gate.title} stops waiting for you, and your unsent answer is not sent.`
