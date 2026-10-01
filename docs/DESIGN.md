@@ -45,7 +45,8 @@ in parentheses appear only in JSON and TOML.
 
 ## Interaction grammar
 
-Settled. Each rule holds on every surface.
+Settled. Each rule holds on every surface; archon-o7p.18.14 brings the
+cockpit in line where it does not yet.
 
 - **Click** opens a card's node window beside the card, in the free space
   nearest it (CONTRACT, windows), and selects the card. A click on a wire
@@ -58,10 +59,11 @@ Settled. Each rule holds on every surface.
   each action's chord.
 - **Drag** starts after a small movement: 6 px for staffing drags, 3 px for
   moving a card. Plain clicks never nudge a card.
-- **A drop resolves or explains.** A wire or agent dropped on a card goes to
-  its obvious target (the card's free input, its first empty slot). When no
-  target fits, a short reason appears at the drop point for the toast's
-  duration. Nothing is dropped silently.
+- **A drop on a card resolves or explains.** A wire or agent dropped on a
+  card goes to its obvious target (the card's free input, its first empty
+  slot). When no target fits, a short reason appears at the drop point for the
+  toast's duration. Nothing is dropped silently. What a drop on empty canvas
+  creates is open (archon-o7p.18.7).
 - **Creating keeps every keystroke.** A create gesture puts the caret where
   typing goes, with any placeholder selected, so the first key typed after
   the gesture lands.
@@ -78,8 +80,8 @@ Until a pick lands, today's behaviour stands and the constraints apply.
 
 | Rule | Decided by | Constraint until then |
 | --- | --- | --- |
-| How operator and agent entries and edits are marked as theirs | archon-o7p.18.6 | Note entries are already styled apart. A mark is a word or weight before it is a colour; a new colour is an addition to the colour rule. |
-| States of a question and its answer | archon-o7p.18.5 | His original words stay readable beside the agent's replies. A question is never a text prefix. |
-| Draft versus built | archon-o7p.18.7, archon-o7p.18.6 | Drafts save with blanks; only validation and admission reject gaps. |
+| How operator and agent entries and edits are marked as theirs | archon-o7p.18.13 | Note entries are already styled apart. A mark is a word or weight before it is a colour; a new colour is an addition to the colour rule. |
+| States of a question and its answer | archon-o7p.18.5 | His original words stay readable beside the agent's replies. Once the pick lands, a question is never a text prefix; until then prototypes use today's "QUESTION:" prefix. |
+| Draft versus built | archon-o7p.18.7 | Drafts save with blanks; only validation and admission reject gaps. |
 | A change since your last look: marked, found, cleared | archon-o7p.18.6 | Covers nodes off-screen and effects outside the mission. |
-| Motion for arrival and change | archon-o7p.18.6 | No layout shift: nothing the operator reads moves when something is added. Motion only confirms. |
+| Motion for arrival and change | archon-o7p.18.13 | No layout shift: nothing the operator reads moves when something is added. Motion only confirms. |
