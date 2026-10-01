@@ -19,10 +19,11 @@ import { rectsOverlap, type WindowRect } from './windowGeometry'
  *
  * A popover is placed by the size it opens at (`openHeight`) and then given
  * the free room next to it, up to `height`, to grow into: downward, or upward
- * when it sits above its anchor. A list inside scrolls within that room. It
- * takes the nearest place that covers nothing, preferring places with room
- * for at least `minHeight`; each pixel of room it gives up counts as a little
- * distance, so it gives up room only to stay closer. Only a place within
+ * when it sits above its anchor. A list inside scrolls within that room. Where
+ * its full width finds no free place it narrows, down to `minWidth`. It takes
+ * the nearest place that covers nothing, preferring places with room for at
+ * least `minHeight`; each pixel of room or width it gives up counts as a
+ * little distance, so it gives them up only to stay closer. Only a place within
  * `reach` of the anchor counts as beside it. When no place within reach is
  * free even at its opening size, it takes the place within reach that covers
  * the least, so it never wanders across the view. Placement is pure: the same
@@ -40,6 +41,8 @@ export interface PopoverScene {
 
 export interface PopoverSize {
   width: number
+  /** The narrowest it may open, where its full width finds no free place; its full width when absent. */
+  minWidth?: number
   /** The height it opens at, before a list opens inside it. */
   openHeight: number
   /** The most it grows to, with a list open. */
@@ -67,6 +70,12 @@ export const POPOVER_REACH = 160
 
 /** How much distance one pixel of room given up is worth. */
 const ROOM_COST = 0.3
+
+/** How much distance one pixel of width given up is worth. */
+const WIDTH_COST = 0.6
+
+/** Each step a popover narrows by. */
+const NARROW_STEP = 60
 
 /** How much distance one pixel of room short of `minHeight` is worth. */
 const CRAMPED_COST = 1.5
@@ -108,7 +117,12 @@ function sideRank(rect: WindowRect, anchor: WindowRect): number {
 
 /** Where a popover of `size` opens in `scene`. */
 export function placePopover(size: PopoverSize, scene: PopoverScene, reach = POPOVER_REACH): PopoverPlace {
-  const { width, openHeight, height, minHeight } = size
+  const { width: fullWidth, openHeight, height, minHeight } = size
+  const minWidth = Math.min(fullWidth, size.minWidth ?? fullWidth)
+  const widths: number[] = []
+  for (let w = fullWidth; w > minWidth; w -= NARROW_STEP) widths.push(w)
+  widths.push(minWidth)
+  const width = fullWidth
   const { bounds, anchor } = scene
   const home = scene.home || null
   const near = grow(anchor, reach + Math.max(width, height))
@@ -139,11 +153,8 @@ export function placePopover(size: PopoverSize, scene: PopoverScene, reach = POP
     return Math.min(height, up ? bottom(open) - limit : limit - open.top)
   }
 
-  const xs = new Set<number>([anchor.left, right(anchor) - width, right(anchor) + POPOVER_GAP, anchor.left - POPOVER_GAP - width, bounds.left, right(bounds) - width])
   const ys = new Set<number>([anchor.top, bottom(anchor) - openHeight, bottom(anchor) + POPOVER_GAP, anchor.top - POPOVER_GAP - openHeight, bounds.top, bottom(bounds) - openHeight])
   for (const wall of walls) {
-    xs.add(right(wall) + 1)
-    xs.add(wall.left - 1 - width)
     ys.add(bottom(wall) + 1)
     ys.add(wall.top - 1 - openHeight)
   }
@@ -152,28 +163,36 @@ export function placePopover(size: PopoverSize, scene: PopoverScene, reach = POP
   let bestScore = 0
   let bestRank = 0
   let fallback: PopoverPlace | null = null
-  for (const x of xs) {
-    for (const y of ys) {
-      const open = { left: Math.round(x), top: Math.round(y), width, height: openHeight }
-      if (!fits(open)) continue
-      const distance = separation(open, anchor)
-      if (distance > reach) continue
-      const growsUp = bottom(open) <= anchor.top
-      const covered = cost(open)
-      if (covered > 0) {
-        if (!fallback || covered < fallback.covered || (covered === fallback.covered && distance < fallback.distance)) {
-          fallback = { rect: open, growsUp, distance, covered }
+  for (const w of widths) {
+    const narrowed = WIDTH_COST * (fullWidth - w)
+    const xs = new Set<number>([anchor.left, right(anchor) - w, right(anchor) + POPOVER_GAP, anchor.left - POPOVER_GAP - w, bounds.left, right(bounds) - w])
+    for (const wall of walls) {
+      xs.add(right(wall) + 1)
+      xs.add(wall.left - 1 - w)
+    }
+    for (const x of xs) {
+      for (const y of ys) {
+        const open = { left: Math.round(x), top: Math.round(y), width: w, height: openHeight }
+        if (!fits(open)) continue
+        const distance = separation(open, anchor)
+        if (distance > reach) continue
+        const growsUp = bottom(open) <= anchor.top
+        const covered = cost(open)
+        if (covered > 0) {
+          if (w === fullWidth && (!fallback || covered < fallback.covered || (covered === fallback.covered && distance < fallback.distance))) {
+            fallback = { rect: open, growsUp, distance, covered }
+          }
+          continue
         }
-        continue
-      }
-      const grown = Math.max(openHeight, room(open, growsUp))
-      const rect = growsUp ? { ...open, top: bottom(open) - grown, height: grown } : { ...open, height: grown }
-      const score = distance + ROOM_COST * (height - grown) + CRAMPED_COST * Math.max(0, minHeight - grown)
-      const rank = sideRank(open, anchor)
-      if (!best || score < bestScore - 0.5 || (Math.abs(score - bestScore) <= 0.5 && (rank < bestRank || (rank === bestRank && Math.abs(open.top - anchor.top) < Math.abs(best.rect.top - anchor.top))))) {
-        best = { rect, growsUp, distance, covered: 0 }
-        bestScore = score
-        bestRank = rank
+        const grown = Math.max(openHeight, room(open, growsUp))
+        const rect = growsUp ? { ...open, top: bottom(open) - grown, height: grown } : { ...open, height: grown }
+        const score = distance + narrowed + ROOM_COST * (height - grown) + CRAMPED_COST * Math.max(0, minHeight - grown)
+        const rank = sideRank(open, anchor)
+        if (!best || score < bestScore - 0.5 || (Math.abs(score - bestScore) <= 0.5 && (rank < bestRank || (rank === bestRank && Math.abs(open.top - anchor.top) < Math.abs(best.rect.top - anchor.top))))) {
+          best = { rect, growsUp, distance, covered: 0 }
+          bestScore = score
+          bestRank = rank
+        }
       }
     }
   }

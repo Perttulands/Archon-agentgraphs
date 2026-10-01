@@ -93,7 +93,8 @@ slot, or Enter on a focused one, opens a compact window reading `Worker 1 is
 160 px of it. It is placed by the size it opens at, in a free place that
 covers no card, operator note, open window or control, and a list opened in it
 grows into the free room there and scrolls, rather than the window moving
-away; vanilla stays above the scrolling role grid. Only when no free place of
+away; where 440 px finds no free place it narrows, down to 320 px, and lists
+the roles in one column. vanilla stays above the scrolling role grid. Only when no free place of
 its opening size lies within 160 px of the slot does it open, within that
 reach, where it covers the least. From a node window or the Agents view's slot
 inspector it drops from the word clicked, over that window if need be. `on <harness> · <model> · <effort>` wraps as one group.

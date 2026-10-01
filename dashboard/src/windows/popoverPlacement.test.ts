@@ -73,6 +73,18 @@ describe('a popover beside what it belongs to', () => {
     expect(place.distance).toBeLessThanOrEqual(8)
   })
 
+  it('narrows to drop inside a narrow window when every place beside it would cover a row of text', () => {
+    // A node window in Flow's gutter; Flow rows fill everything to its right.
+    const window = rect(245, 333, 323, 456)
+    const word = rect(347, 571, 106, 19)
+    const rows = [rect(518, 150, 1120, 220), rect(518, 382, 1120, 190), rect(518, 584, 1120, 190), rect(518, 786, 1120, 250)]
+    const place = placePopover({ ...size, width: 440, minWidth: 320 }, { bounds: rect(244, 138, 1668, 934), anchor: word, home: window, homeCovers: true, obstacles: rows })
+    expect(place.covered).toBe(0)
+    expect(place.rect.width).toBeLessThan(440)
+    expect(place.rect.width).toBeGreaterThanOrEqual(320)
+    expect(place.distance).toBeLessThanOrEqual(8)
+  })
+
   it('never opens beyond its reach: with no free room it takes the place within reach that covers least', () => {
     const slot = rect(900, 500, 180, 40)
     const crowd = [rect(240, 98, 1672, 400), rect(240, 560, 1672, 512), rect(240, 490, 640, 70), rect(1100, 490, 812, 70)]

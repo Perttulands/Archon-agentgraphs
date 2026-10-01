@@ -21,9 +21,11 @@ import type { OpenSentence, StaffingStore } from './staffingStore'
 /**
  * The window opens at the sentence's own height and grows, as a list opens,
  * into the free room it was placed beside: up to about eight rows, preferring
- * room for three. The list scrolls within that room.
+ * room for three. The list scrolls within that room. Where 440 px finds no
+ * free place it narrows, down to 320, and the role grid becomes one column.
  */
-const SIZE = { width: 440, openHeight: 142, height: 300, minHeight: 200 }
+const SIZE = { width: 440, minWidth: 320, openHeight: 142, height: 300, minHeight: 200 }
+const NARROW = 400
 
 interface Row { id: string; label: string; hint?: string; tag?: string; disabled?: string; apply: () => void }
 
@@ -58,6 +60,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
   const [choosing, setChoosing] = useState(false)
   // Placed once, beside what it staffs: the window never moves while it is open.
   const [style] = useState(() => popoverStyle(placeBeside(open.anchor, SIZE, stage)))
+  const narrow = Number(style.width) < NARROW
   const rootRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const committed = useRef(false)
@@ -196,8 +199,13 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
     const opened = shownList.current !== `${list}:${choosing}`
     shownList.current = `${list}:${choosing}`
     if (!listEl.contains(row)) return
-    if (opened) listEl.scrollTop = row.offsetTop - (listEl.clientHeight - row.offsetHeight) / 2
-    else if (row.offsetTop < listEl.scrollTop) listEl.scrollTop = row.offsetTop - 4
+    // Scroll to a whole row, so no row shows cut at the list's top edge.
+    const snap = (target: number) => {
+      const tops = [...listEl.querySelectorAll<HTMLElement>('.staffing-row')].map(item => item.offsetTop).filter(top => top <= target + 0.5)
+      listEl.scrollTop = Math.max(0, (tops.length ? Math.max(...tops) : 0) - 2)
+    }
+    if (opened) snap(row.offsetTop - (listEl.clientHeight - row.offsetHeight) / 2)
+    else if (row.offsetTop < listEl.scrollTop) snap(row.offsetTop)
     else if (row.offsetTop + row.offsetHeight > listEl.scrollTop + listEl.clientHeight) listEl.scrollTop = row.offsetTop + row.offsetHeight - listEl.clientHeight + 4
   }, [active, list, choosing])
 
@@ -215,7 +223,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
     }
     if (list || choosing) {
       const enabled = rows.map((row, index) => (row.disabled ? -1 : index)).filter(index => index >= 0)
-      const cols = list === 'role' && !choosing ? 2 : 1
+      const cols = list === 'role' && !choosing && !narrow ? 2 : 1
       if (key === 'ArrowDown' || key === 'ArrowUp' || (cols === 2 && (key === 'ArrowLeft' || key === 'ArrowRight'))) {
         event.preventDefault()
         // In the role grid vanilla spans the first row, so down from it is the first role.
@@ -273,7 +281,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
     </div>
   )
   return (
-    <div className="staffing-window" style={style} ref={rootRef} tabIndex={-1} onKeyDown={onKeyDown} role="dialog" aria-label={`Staff ${ref.label}`} data-testid="staffing-sentence">
+    <div className={`staffing-window${narrow ? ' narrow' : ''}`} style={style} ref={rootRef} tabIndex={-1} onKeyDown={onKeyDown} role="dialog" aria-label={`Staff ${ref.label}`} data-testid="staffing-sentence">
       <div className="staffing-sent">
         <span className="staffing-lead">{ref.label} is</span>
         <input
