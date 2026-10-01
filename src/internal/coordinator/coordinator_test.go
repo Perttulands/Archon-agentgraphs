@@ -22,9 +22,20 @@ type testExecutor struct {
 	proceed chan struct{}
 	// outputText replaces the default routed output text when set.
 	outputText string
+	mu         sync.Mutex
+	deadline   time.Time
+}
+
+func (e *testExecutor) lastDeadline() time.Time {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.deadline
 }
 
 func (e *testExecutor) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
+	e.mu.Lock()
+	e.deadline = req.Deadline
+	e.mu.Unlock()
 	e.entered <- req.NodeID
 	<-e.proceed
 	outputs := map[string]formations.FormationOutputPayload{}
@@ -316,8 +327,8 @@ func TestAdmissionRecordsNoLimitsAndRefusesLaunchLimits(t *testing.T) {
 	}
 }
 
-// Admission freezes no default step duration: a step without an authored one
-// has no deadline, and a caller cannot ask for a default either.
+// A step no Limit card times runs without a deadline, and a caller cannot ask
+// for a default either (archon-o7p.8).
 func TestAdmissionGivesStepsNoDefaultDuration(t *testing.T) {
 	for _, mode := range []string{"mission", "formation"} {
 		t.Run(mode, func(t *testing.T) {
@@ -353,18 +364,8 @@ func TestAdmissionGivesStepsNoDefaultDuration(t *testing.T) {
 			if _, recorded := events[0].Data["limits"]; recorded {
 				t.Fatalf("run_started recorded limits: %#v", events[0].Data["limits"])
 			}
-			started := false
-			for _, event := range events {
-				if event.Type != formations.RunEventNodeStarted || event.NodeID != "fmn_work" {
-					continue
-				}
-				started = true
-				if event.Data["executionDeadline"] != nil || event.Data["executionTimeoutSeconds"] != nil {
-					t.Fatalf("a step without a duration got a deadline: %#v", event.Data)
-				}
-			}
-			if !started {
-				t.Fatal("the step did not start")
+			if deadline := e.lastDeadline(); !deadline.IsZero() {
+				t.Fatalf("a step no time card covers got deadline %v", deadline)
 			}
 		})
 	}

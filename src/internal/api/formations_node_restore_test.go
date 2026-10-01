@@ -35,8 +35,6 @@ goal = "Plan the change"
 beadId = "archon-abc.1"
 files = ["docs/plan.md"]
 links = []
-[formation.execution]
-timeoutSeconds = 600
 [[formation.input]]
 id = "port_plan_in"
 label = "Input"

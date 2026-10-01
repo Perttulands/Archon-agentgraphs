@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // joinRejectBoard is Input -> A -> gate (pass -> J.a, fail -> Rejected) and
@@ -91,7 +92,7 @@ func TestARejectionUpstreamOfAJoinFailsTheRunWithTheGatesReason(t *testing.T) {
 				}
 				// The answer panel agrees with the engine: rejecting fails the run
 				// at once, since B has fed the join.
-				reject := HumanGateRoutes(frozen, events, "gate_review")[1]
+				reject := HumanGateRoutes(frozen, events, "gate_review", time.Time{})[1]
 				if !reject.EndsRun || !reject.RunFails {
 					t.Fatalf("reject route = %+v, want endsRun and runFails", reject)
 				}

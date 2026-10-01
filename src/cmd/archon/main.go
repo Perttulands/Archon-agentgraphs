@@ -192,8 +192,6 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 			return runFormationAssign(store, args[2:], stdout, stderr)
 		case "unassign":
 			return runFormationUnassign(store, args[2:], stdout, stderr)
-		case "set-execution":
-			return runFormationSetExecution(store, args[2:], stdout, stderr)
 		case "set-brief":
 			return runFormationSetBrief(store, args[2:], stdout, stderr)
 		case "rename":
@@ -2662,8 +2660,6 @@ func archonErrorCode(err error) string {
 		return "invalid_bead_id"
 	case errors.Is(err, formations.ErrInvalidHumanChannel):
 		return "invalid_human_channel"
-	case errors.Is(err, formations.ErrInvalidExecutionPolicy):
-		return "invalid_execution_policy"
 	case errors.Is(err, formations.ErrInvalidRelayedBy):
 		return "invalid_relayed_by"
 	case errors.Is(err, formations.ErrInvalidControllerRole):

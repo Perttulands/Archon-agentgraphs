@@ -201,7 +201,7 @@ func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 		{RunID: "run_x", Seq: 2, Type: formations.RunEventNodeStarted, NodeID: "fmn_work"},
 		{RunID: "run_x", Seq: 3, Type: formations.RunEventBlocked, NodeID: "fmn_work", Data: map[string]any{"reason": "seat lost", "code": "seat_lost", "resumeAllowed": true}},
 	}
-	busy, err := projectWait("run_x", events, nil, WaitUntilNeedsYou, 1, false)
+	busy, err := projectWait("run_x", events, nil, WaitUntilNeedsYou, 1, false, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 	}
 	// Any change reports the events below the block and stops there, and the
 	// run reads as still running, never as blocked, until it settles.
-	changed, err := projectWait("run_x", events, nil, WaitUntilAnyChange, 1, false)
+	changed, err := projectWait("run_x", events, nil, WaitUntilAnyChange, 1, false, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 		t.Fatalf("changed = %+v", changed)
 	}
 	// With nothing new below the block, any change stays pending.
-	held, err := projectWait("run_x", events, nil, WaitUntilAnyChange, 2, false)
+	held, err := projectWait("run_x", events, nil, WaitUntilAnyChange, 2, false, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 	}
 	// Once settled, the same cursor reports the block as a new ask in every mode.
 	for _, until := range []string{WaitUntilAnyChange, WaitUntilNeedsYou} {
-		got, err := projectWait("run_x", events, nil, until, 2, true)
+		got, err := projectWait("run_x", events, nil, until, 2, true, time.Time{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -235,7 +235,7 @@ func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 			t.Fatalf("%s settled = %+v", until, got)
 		}
 	}
-	settled, err := projectWait("run_x", events, nil, WaitUntilNeedsYou, 1, true)
+	settled, err := projectWait("run_x", events, nil, WaitUntilNeedsYou, 1, true, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestWaitServesGateTextVerbatimAndCapsTheInput(t *testing.T) {
 			"inputRef": map[string]any{"fromNodeId": "fmn_work", "text": "token: abc123\n" + long},
 		}},
 	}
-	got, err := projectWait("run_x", events, nil, WaitUntilNeedsYou, 0, true)
+	got, err := projectWait("run_x", events, nil, WaitUntilNeedsYou, 0, true, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}

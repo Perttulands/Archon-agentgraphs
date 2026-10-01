@@ -217,14 +217,13 @@ type MissionCreateRequest struct {
 }
 
 type FormationNode struct {
-	Execution *FormationExecutionPolicy `json:"execution,omitempty"`
-	ID        string                    `json:"id"`
-	Type      string                    `json:"type"`
-	Title     string                    `json:"title"`
-	Brief     *FormationBrief           `json:"brief,omitempty"`
-	Inputs    []FormationPort           `json:"inputs"`
-	Outputs   []FormationPort           `json:"outputs"`
-	Slots     []FormationSlot           `json:"slots"`
+	ID      string          `json:"id"`
+	Type    string          `json:"type"`
+	Title   string          `json:"title"`
+	Brief   *FormationBrief `json:"brief,omitempty"`
+	Inputs  []FormationPort `json:"inputs"`
+	Outputs []FormationPort `json:"outputs"`
+	Slots   []FormationSlot `json:"slots"`
 }
 
 type FormationPort struct {
@@ -3075,15 +3074,6 @@ func parseFormationNodes(raw []byte) []FormationNode {
 				active = "slot"
 			}
 			continue
-		case isSection && section == "formation.execution":
-			if current != nil {
-				current.Execution = &FormationExecutionPolicy{TimeoutSeconds: -1}
-				active = "execution"
-				if isArraySection {
-					active = ""
-				}
-			}
-			continue
 		case isSection && !isArraySection && section == "formation.brief":
 			if current != nil {
 				current.Brief = &FormationBrief{}
@@ -3108,20 +3098,8 @@ func parseFormationNodes(raw []byte) []FormationNode {
 			continue
 		}
 		switch active {
-		case "execution":
-			if key == "timeoutSeconds" {
-				n, err := strconv.Atoi(value)
-				if err != nil {
-					n = -1
-				}
-				current.Execution.TimeoutSeconds = n
-			}
 		case "formation":
 			switch key {
-			case "execution":
-				// A valid inline policy is handled by strict decoding. A malformed
-				// inline policy must remain visibly invalid in compatibility reads.
-				current.Execution = &FormationExecutionPolicy{TimeoutSeconds: -1}
 			case "id":
 				current.ID = value
 			case "type":

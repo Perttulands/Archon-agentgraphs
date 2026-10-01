@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -691,7 +692,12 @@ func (e *TmuxFormationExecutor) executeBoundSlot(req FormationExecution, binding
 	if err := e.appendAdapterSend(req.RunID, req.NodeID, slot.ID, lease.DispatchID, binding.SessionName, prompt, phase); err != nil {
 		return tmuxSlotOutput{}, err
 	}
+	consumed := make(chan struct{})
+	var consumedOnce sync.Once
+	stopWarnings := e.warnSeat(owned.ctx, req, slot.ID, seat, consumed)
+	defer stopWarnings()
 	turn, err := e.seatClient.WaitTurn(owned.ctx, seat, e.config.Cwd, pointer, func(turn codexTranscriptTurn) error {
+		defer consumedOnce.Do(func() { close(consumed) })
 		return e.store.AppendRunEvent(req.RunID, RunEvent{Type: "seat_prompt_consumed", NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": binding.SessionName, "nativeSessionId": turn.SessionID, "dispatchId": lease.DispatchID}})
 	})
 	if err != nil {
@@ -708,6 +714,29 @@ func (e *TmuxFormationExecutor) executeBoundSlot(req FormationExecution, binding
 	}
 	sentinel, _ := ParseCompletionSentinel(turn.Text, req.RunID)
 	return tmuxSlotOutput{SlotID: slot.ID, AgentID: slot.AgentID, Harness: binding.Variant.ID, SessionRef: "tmux:" + binding.SessionName, Artifact: sentinel.Artifact, Phase: phase, Text: extractCapturedSlotText(turn.Text, "", req.RunID)}, nil
+}
+
+// warnSeat pastes each time card's warning into the seat once its turn has
+// started, at the warning's time, as an operator's message would arrive
+// (archon-o7p.8). The ledger keeps each warning to once per seat.
+func (e *TmuxFormationExecutor) warnSeat(ctx context.Context, req FormationExecution, slotID string, seat *nativeSeat, started <-chan struct{}) func() {
+	if len(req.Warnings) == 0 {
+		return func() {}
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		awaitLimitWarnings(ctx, req.Warnings, started, func(warning LimitWarning) {
+			if e.store.claimLimitWarning(req, slotID, warning) {
+				_ = e.seatClient.Stage(ctx, e.config.Socket, seat, "warn-"+warning.LimitID+"-"+slotID, warning.Text)
+			}
+		})
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
 }
 
 func (e *TmuxFormationExecutor) resolveSlotBinding(ctx context.Context, req FormationExecution, slot FormationSlot, allowed map[string]bool, owned *ownedSessions) (tmuxSlotBinding, error) {

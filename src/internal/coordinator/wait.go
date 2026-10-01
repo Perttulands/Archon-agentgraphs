@@ -90,9 +90,11 @@ type WaitAsk struct {
 	Code      string `json:"code,omitempty"`
 	Severity  string `json:"severity,omitempty"`
 	// ResumeAllowed says whether run resume can continue a blocked ask.
-	ResumeAllowed bool                   `json:"resumeAllowed,omitempty"`
-	Input         *WaitInput             `json:"input,omitempty"`
-	Routes        []formations.GateRoute `json:"routes,omitempty"`
+	ResumeAllowed bool `json:"resumeAllowed,omitempty"`
+	// Limit is the spent Limit card a blocked ask resumes past with a grant.
+	Limit  *formations.RunLimitReached `json:"limit,omitempty"`
+	Input  *WaitInput                  `json:"input,omitempty"`
+	Routes []formations.GateRoute      `json:"routes,omitempty"`
 }
 
 // WaitInput is the start of what a human gate received.
@@ -180,7 +182,7 @@ func (c *Coordinator) wait(w http.ResponseWriter, r *http.Request) {
 		c.mu.Lock()
 		settled := !c.state(runID).busy
 		c.mu.Unlock()
-		result, err := projectWait(runID, events, board, until, since, settled)
+		result, err := projectWait(runID, events, board, until, since, settled, c.store.CurrentTime())
 		if err != nil {
 			failure(w, err)
 			return
@@ -207,7 +209,7 @@ func (c *Coordinator) wait(w http.ResponseWriter, r *http.Request) {
 // Human gates and blocking escalations are asks as soon as the ledger records
 // them; a bare block is an ask only once the run has settled, since a verdict
 // records one on its way to the automatic resume.
-func projectWait(runID string, events []formations.RunEvent, board *formations.BoardDocument, until string, since int, settled bool) (*RunWait, error) {
+func projectWait(runID string, events []formations.RunEvent, board *formations.BoardDocument, until string, since int, settled bool, now time.Time) (*RunWait, error) {
 	status, err := formations.ProjectRunEvents(runID, events)
 	if err != nil {
 		return nil, err
@@ -228,7 +230,7 @@ func projectWait(runID string, events []formations.RunEvent, board *formations.B
 			if ask.Kind == formations.NeedsYouKindBlocked && !settled {
 				continue
 			}
-			result.Asks = append(result.Asks, waitAsk(ask, events, board, since))
+			result.Asks = append(result.Asks, waitAsk(ask, events, board, since, now))
 		}
 	}
 	newAsk := false
@@ -283,7 +285,7 @@ func projectWait(runID string, events []formations.RunEvent, board *formations.B
 	return result, nil
 }
 
-func waitAsk(ask formations.NeedsYouAsk, events []formations.RunEvent, board *formations.BoardDocument, since int) WaitAsk {
+func waitAsk(ask formations.NeedsYouAsk, events []formations.RunEvent, board *formations.BoardDocument, since int, now time.Time) WaitAsk {
 	out := WaitAsk{Kind: ask.Kind, Seq: ask.Seq, New: ask.Seq > since, GateID: ask.GateID, NodeID: ask.NodeID, Severity: ask.Severity}
 	out.Title = waitTitle(board, firstNonEmpty(ask.GateID, ask.NodeID))
 	var event formations.RunEvent
@@ -301,12 +303,13 @@ func waitAsk(ask formations.NeedsYouAsk, events []formations.RunEvent, board *fo
 		excerpt, truncated := formations.CapEvidenceText(text, waitInputExcerptBytes)
 		out.Input = &WaitInput{FromNodeID: from, FromTitle: waitTitle(board, from), FromPortID: port, Text: excerpt, Bytes: len(text), Truncated: truncated}
 		if board != nil {
-			out.Routes = formations.HumanGateRoutes(board, events, ask.GateID)
+			out.Routes = formations.HumanGateRoutes(board, events, ask.GateID, now)
 		}
 	default:
 		out.Reason = ask.Ask
 		out.Code, _ = event.Data["code"].(string)
 		out.ResumeAllowed = ask.Kind == formations.NeedsYouKindBlocked && ask.ResumeAllowed
+		out.Limit = ask.Limit
 	}
 	return out
 }

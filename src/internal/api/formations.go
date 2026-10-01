@@ -65,7 +65,6 @@ type formationsHumanGateVerdictRequest struct {
 }
 
 type formationsBoardPatchRequest struct {
-	SetExecution                 *formationsSetExecutionRequest          `json:"setExecution"`
 	Title                        *string                                 `json:"title"`
 	CreateTool                   *formationsToolCreateRequest            `json:"createTool"`
 	UpdateTool                   *formationsToolUpdateRequest            `json:"updateTool"`
@@ -204,19 +203,23 @@ type formationsCreateLimitRequest struct {
 	Title       string `json:"title"`
 	Target      string `json:"target"`
 	Rounds      int    `json:"rounds"`
+	Seconds     int    `json:"seconds"`
+	WarnSeconds int    `json:"warnSeconds"`
 	X           int    `json:"x"`
 	Y           int    `json:"y"`
 	ExpectedRev int    `json:"expectedRev"`
 	UpdatedBy   string `json:"updatedBy"`
 }
 
-// formationsUpdateLimitRequest changes only the fields given; rounds 0 clears
-// the knob and an empty target unwires the card.
+// formationsUpdateLimitRequest changes only the fields given; a knob set to 0
+// is cleared and an empty target unwires the card.
 type formationsUpdateLimitRequest struct {
 	ID          string  `json:"id"`
 	Title       *string `json:"title"`
 	Target      *string `json:"target"`
 	Rounds      *int    `json:"rounds"`
+	Seconds     *int    `json:"seconds"`
+	WarnSeconds *int    `json:"warnSeconds"`
 	ExpectedRev int     `json:"expectedRev"`
 	UpdatedBy   string  `json:"updatedBy"`
 }
@@ -267,13 +270,6 @@ type formationsMakeControllerRequest struct {
 	SlotID      string `json:"slotId"`
 	ExpectedRev int    `json:"expectedRev"`
 	UpdatedBy   string `json:"updatedBy"`
-}
-
-type formationsSetExecutionRequest struct {
-	FormationID    string `json:"formationId"`
-	TimeoutSeconds *int   `json:"timeoutSeconds"`
-	ExpectedRev    int    `json:"expectedRev"`
-	UpdatedBy      string `json:"updatedBy"`
 }
 
 type formationsSetBriefRequest struct {
@@ -352,7 +348,6 @@ type boardPatchPresence struct {
 }
 
 var boardPatchMutationKeys = []string{
-	"setExecution",
 	"title",
 	"createTool",
 	"updateTool",
@@ -1218,24 +1213,6 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
-	if request.SetExecution != nil {
-		policy := request.SetExecution
-		if policy.TimeoutSeconds == nil {
-			writeFormationsError(w, fmt.Errorf("%w: timeoutSeconds is required", formations.ErrInvalidExecutionPolicy))
-			return
-		}
-		board, err := h.store.SetFormationExecutionPolicy(slug, formations.FormationExecutionPolicyRequest{
-			FormationID: policy.FormationID, TimeoutSeconds: *policy.TimeoutSeconds,
-			UpdatedBy: patchUpdatedBy(request.UpdatedBy, policy.UpdatedBy),
-		}, formations.WriteOptions{ExpectedETag: r.Header.Get("If-Match"), ExpectedRev: patchExpectedRev(request.ExpectedRev, policy.ExpectedRev)})
-		if err != nil {
-			writeFormationsError(w, err)
-			return
-		}
-		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"mission": board})
-		return
-	}
 	if request.SetBrief != nil {
 		brief := request.SetBrief
 		board, err := h.store.SetFormationBrief(slug, formations.FormationBriefRequest{
@@ -1572,12 +1549,14 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 	if request.CreateLimit != nil {
 		limit := request.CreateLimit
 		result, err := h.store.CreateLimit(slug, formations.LimitCreateRequest{
-			Title:     limit.Title,
-			Target:    limit.Target,
-			Rounds:    limit.Rounds,
-			X:         limit.X,
-			Y:         limit.Y,
-			UpdatedBy: patchUpdatedBy(request.UpdatedBy, limit.UpdatedBy),
+			Title:       limit.Title,
+			Target:      limit.Target,
+			Rounds:      limit.Rounds,
+			Seconds:     limit.Seconds,
+			WarnSeconds: limit.WarnSeconds,
+			X:           limit.X,
+			Y:           limit.Y,
+			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, limit.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
 			ExpectedRev:  patchExpectedRev(request.ExpectedRev, limit.ExpectedRev),
@@ -1593,11 +1572,13 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 	if request.UpdateLimit != nil {
 		update := request.UpdateLimit
 		board, err := h.store.UpdateLimit(slug, formations.LimitUpdateRequest{
-			LimitID:   update.ID,
-			Title:     update.Title,
-			Target:    update.Target,
-			Rounds:    update.Rounds,
-			UpdatedBy: patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
+			LimitID:     update.ID,
+			Title:       update.Title,
+			Target:      update.Target,
+			Rounds:      update.Rounds,
+			Seconds:     update.Seconds,
+			WarnSeconds: update.WarnSeconds,
+			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
 			ExpectedRev:  patchExpectedRev(request.ExpectedRev, update.ExpectedRev),
@@ -1844,8 +1825,6 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusForbidden, "NOTE_AUTHOR_MISMATCH", err.Error())
 	case errors.Is(err, formations.ErrUnsupportedFormationType):
 		core.WriteError(w, http.StatusBadRequest, "UNSUPPORTED_FORMATION_TYPE", err.Error())
-	case errors.Is(err, formations.ErrInvalidExecutionPolicy):
-		core.WriteError(w, http.StatusBadRequest, "INVALID_EXECUTION_POLICY", err.Error())
 	case errors.Is(err, formations.ErrInvalidTypeChange):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_TYPE_CHANGE", err.Error())
 	case errors.Is(err, formations.ErrSlotChoiceRequired):

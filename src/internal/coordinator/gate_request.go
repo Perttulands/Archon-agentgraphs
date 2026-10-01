@@ -76,7 +76,7 @@ func (c *Coordinator) pendingGateRequest(w http.ResponseWriter, r *http.Request)
 	// Routes are a courtesy: an unreadable frozen board leaves them out, and
 	// the cockpit falls back to the plain verbs.
 	if board, err := c.store.ReadRunBoard(runID); err == nil {
-		body.Routes = formations.HumanGateRoutes(board, events, gateID)
+		body.Routes = formations.HumanGateRoutes(board, events, gateID, c.store.CurrentTime())
 	} else {
 		log.Printf("run %s: gate %s routes unavailable: %v", runID, gateID, err)
 	}

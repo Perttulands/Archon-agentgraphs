@@ -3,6 +3,7 @@ package formations
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 // The runs-gate board of the UX pass: Draft feeds a human gate whose pass goes
@@ -84,7 +85,7 @@ func TestHumanGateRoutesNameDestinationsAndTheLastRound(t *testing.T) {
 			missionRounds: &RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "mis_note", Used: 2, Max: 2}},
 	}
 	for _, tc := range cases {
-		routes := HumanGateRoutes(tc.board, tc.events, "gate_review")
+		routes := HumanGateRoutes(tc.board, tc.events, "gate_review", time.Time{})
 		if len(routes) != 2 || routes[0].Verdict != "pass" || routes[1].Verdict != "fail" {
 			t.Fatalf("%s: routes = %+v", tc.name, routes)
 		}
@@ -106,7 +107,7 @@ func TestHumanGateRoutesNameDestinationsAndTheLastRound(t *testing.T) {
 // because the engine will start the draft again.
 func TestHumanGateRoutesNameNoLimitWithoutACard(t *testing.T) {
 	for _, attempts := range []int{1, 2, 5, 12} {
-		sendBack := HumanGateRoutes(gateRoutesBoard(), draftAttempts(attempts), "gate_review")[1]
+		sendBack := HumanGateRoutes(gateRoutesBoard(), draftAttempts(attempts), "gate_review", time.Time{})[1]
 		if sendBack.MissionRounds != nil || sendBack.Limit != nil || !reflect.DeepEqual(sendBack.Targets, []GateRouteTarget{{NodeID: "fmn_draft", Title: "Draft", Kind: "formation", Attempt: attempts + 1}}) {
 			t.Fatalf("send back after %d attempts without limits = %+v limit %+v", attempts, sendBack, sendBack.Limit)
 		}
@@ -125,9 +126,9 @@ func TestHumanGateRoutesAgreeWithTheEnginesRoundsRule(t *testing.T) {
 				if grant {
 					events = granted(events, "lim_draft")
 				}
-				sendBack := HumanGateRoutes(board, events, "gate_review")[1]
+				sendBack := HumanGateRoutes(board, events, "gate_review", time.Time{})[1]
 				draft, _ := findFormation(board.Formations, "fmn_draft")
-				engineRefuses := roundsSpentBefore(board, events, draft) != nil
+				engineRefuses := limitSpentBefore(board, events, draft, time.Time{}) != nil
 				if (sendBack.Limit != nil) != engineRefuses {
 					t.Fatalf("rounds %d after %d attempts, grant %v: panel limit %+v, engine refuses %v", rounds, attempts, grant, sendBack.Limit, engineRefuses)
 				}
@@ -162,13 +163,13 @@ func TestHumanGateRoutesNameAJoinThatWaitsAndCountJudges(t *testing.T) {
 	)
 	rounds := 20
 	board.Limits = []LimitNode{{ID: "lim_mission", Target: "mis_note", Rounds: &rounds}}
-	approve := HumanGateRoutes(board, draftAttempts(1), "gate_review")[0]
+	approve := HumanGateRoutes(board, draftAttempts(1), "gate_review", time.Time{})[0]
 	if len(approve.Targets) != 2 || !approve.Targets[0].WaitsForInputs || approve.RoundsNeeded != 2 {
 		t.Fatalf("approve = %+v", approve)
 	}
 	facts := draftAttempts(1)
 	facts = append(facts, RunEvent{Seq: len(facts) + 1, Type: RunEventNodeOutput, NodeID: "fmn_facts"})
-	if approve := HumanGateRoutes(board, facts, "gate_review")[0]; approve.Targets[0].WaitsForInputs {
+	if approve := HumanGateRoutes(board, facts, "gate_review", time.Time{})[0]; approve.Targets[0].WaitsForInputs {
 		t.Fatalf("approve once Facts delivered = %+v", approve)
 	}
 }
@@ -182,7 +183,7 @@ func TestHumanGateRoutesSayWhenAVerdictEndsTheRun(t *testing.T) {
 		BoardConnection{ID: "edge_pass", From: "gate_review:pass", To: "end_done:in"},
 		BoardConnection{ID: "edge_fail", From: "gate_review:fail", To: "end_rejected:in"},
 	)
-	routes := HumanGateRoutes(board, draftAttempts(1), "gate_review")
+	routes := HumanGateRoutes(board, draftAttempts(1), "gate_review", time.Time{})
 	if !routes[0].EndsRun || routes[0].RunFails || routes[0].MissionRounds != nil ||
 		!reflect.DeepEqual(routes[0].Targets, []GateRouteTarget{{NodeID: "end_done", Title: "Shipped", Kind: "end", Outcome: EndOutcomeDone}}) {
 		t.Fatalf("approve = %+v, want this path to end done and the run with it", routes[0])

@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 )
 
 func branchingBoardJudgeGate(id, judgeID string) string {
@@ -172,7 +173,7 @@ func TestApprovalRoutesAndTheEngineAgreeWhetherTheRunEnds(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			approve := HumanGateRoutes(board, events, tc.gate)[0]
+			approve := HumanGateRoutes(board, events, tc.gate, time.Time{})[0]
 			if approve.EndsRun != tc.endsRun || approve.RunFails {
 				t.Fatalf("routes say approve = %+v, want endsRun %v", approve, tc.endsRun)
 			}

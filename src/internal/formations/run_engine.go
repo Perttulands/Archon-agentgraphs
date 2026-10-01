@@ -90,6 +90,8 @@ type FormationExecution struct {
 	// PeerMessages is a peer step's Limit card rounds, its journal messages:
 	// used in earlier attempts of Max. Nil when no card caps the step.
 	PeerMessages *RunLimitReached
+	// Warnings are the time cards' warnings for this attempt's seats.
+	Warnings []LimitWarning
 }
 
 // LimitReachedError is how an executor stops a step at its Limit card; the
@@ -1676,7 +1678,8 @@ func (e *RunEngine) startFormationExecution(runID string, board *BoardDocument, 
 	if err != nil {
 		return err
 	}
-	spent := roundsSpentBefore(board, events, formation)
+	started := e.store.now()
+	spent := limitSpentBefore(board, events, formation, started)
 	if formation.Type == FormationTypePeer && spent == nil {
 		// A peer step's rounds are its journal messages, posted in earlier attempts.
 		if use := e.peerMessagesUse(board, events, FormationExecution{RunID: runID, NodeID: formation.ID, Attempt: event.Attempt}); use != nil && use.Used >= use.Max {
@@ -1689,16 +1692,7 @@ func (e *RunEngine) startFormationExecution(runID string, board *BoardDocument, 
 		}
 		return errRunStopped
 	}
-	seconds, err := formationExecutionSeconds(formation)
-	if err != nil {
-		return err
-	}
-	started := e.store.now()
 	event.Timestamp = started.Format(time.RFC3339Nano)
-	if seconds > 0 {
-		event.Data["executionTimeoutSeconds"] = seconds
-		event.Data["executionDeadline"] = started.Add(time.Duration(seconds) * time.Second).Format(time.RFC3339Nano)
-	}
 	return e.store.AppendRunEvent(runID, event)
 }
 
@@ -1724,11 +1718,11 @@ func (e *RunEngine) executeFormation(req FormationExecution) (FormationExecution
 	req.Cwd = stringFromEventData(events[0], "cwd")
 	req.ContextPaths = stringSliceFromAny(events[0].Data["contextPaths"])
 	req.MissionGoal = stringFromEventData(events[0], "objective")
+	board, err := e.readRunBoard(req.RunID)
+	if err != nil {
+		return FormationExecutionResult{}, err
+	}
 	if req.Formation.Type == FormationTypePeer {
-		board, err := e.readRunBoard(req.RunID)
-		if err != nil {
-			return FormationExecutionResult{}, err
-		}
 		req.PeerMessages = e.peerMessagesUse(board, events, req)
 	}
 	// Kept seats are reconsidered as a formation starts dispatching (ADR-0019).
@@ -1736,26 +1730,42 @@ func (e *RunEngine) executeFormation(req FormationExecution) (FormationExecution
 		return FormationExecutionResult{}, err
 	}
 	now := e.store.now()
-	budget, err := formationExecutionBudget(req, events, now)
-	if err != nil {
-		return FormationExecutionResult{}, err
+	// The time cards covering the step bound it from the ledger, so a restart or
+	// a resumed attempt gets only the time it has left (archon-o7p.8).
+	timeLimit, warnings := timeBudget(board, events, req.NodeID, now)
+	req.Warnings = warnings
+	timeSpent := func() error {
+		use := *timeLimit
+		if limit, ok := findLimit(board, use.LimitID); ok {
+			if events, err := e.store.ReadRunEvents(req.RunID); err == nil {
+				if current := timeUse(board, events, limit, e.store.now()); current != nil {
+					use = *current
+				}
+			}
+		}
+		// The step stops at the limit: it used all of the card's time.
+		use.Used = use.Max
+		return &LimitReachedError{Use: use}
 	}
-	req.Deadline = budget.deadline
-	if !req.Deadline.IsZero() && !now.Before(req.Deadline) {
-		return FormationExecutionResult{}, budget.cause
-	}
-	if !req.Deadline.IsZero() {
+	if timeLimit != nil {
+		req.Deadline = now.Add(time.Duration(timeLimit.Max-timeLimit.Used) * time.Second)
+		if !now.Before(req.Deadline) {
+			return FormationExecutionResult{}, timeSpent()
+		}
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeoutCause(ctx, req.Deadline.Sub(now), budget.cause)
+		ctx, cancel = context.WithTimeoutCause(ctx, req.Deadline.Sub(now), ErrFormationTimeoutExceeded)
 		defer cancel()
 	}
 	if executor, ok := e.executor.(ContextFormationExecutor); ok {
 		result, err := executor.ExecuteFormationContext(ctx, req)
 		if cause := context.Cause(ctx); cause != nil {
+			if timeLimit != nil && errors.Is(cause, ErrFormationTimeoutExceeded) {
+				return FormationExecutionResult{}, timeSpent()
+			}
 			return FormationExecutionResult{}, cause
 		}
-		if !req.Deadline.IsZero() && !e.store.now().Before(req.Deadline) {
-			return FormationExecutionResult{}, budget.cause
+		if !req.Deadline.IsZero() && (!e.store.now().Before(req.Deadline) || errors.Is(err, ErrFormationTimeoutExceeded)) {
+			return FormationExecutionResult{}, timeSpent()
 		}
 		return result, err
 	}
@@ -1764,7 +1774,7 @@ func (e *RunEngine) executeFormation(req FormationExecution) (FormationExecution
 	if e.executionContext != nil || req.Deadline.IsZero() {
 		result, err := e.executor.ExecuteFormation(req)
 		if !req.Deadline.IsZero() && !e.store.now().Before(req.Deadline) {
-			return FormationExecutionResult{}, budget.cause
+			return FormationExecutionResult{}, timeSpent()
 		}
 		return result, err
 	}
@@ -1780,10 +1790,13 @@ func (e *RunEngine) executeFormation(req FormationExecution) (FormationExecution
 	select {
 	case result := <-done:
 		if !e.store.now().Before(req.Deadline) {
-			return FormationExecutionResult{}, budget.cause
+			return FormationExecutionResult{}, timeSpent()
 		}
 		return result.result, result.err
 	case <-ctx.Done():
+		if timeLimit != nil && errors.Is(context.Cause(ctx), ErrFormationTimeoutExceeded) {
+			return FormationExecutionResult{}, timeSpent()
+		}
 		return FormationExecutionResult{}, context.Cause(ctx)
 	}
 }
@@ -2067,7 +2080,6 @@ func (e *RunEngine) evaluateGateKinds(runID string, board *BoardDocument, gates 
 				"resultEncoding": result.ResultEncoding,
 				"resultSha256":   result.ResultSHA256,
 				"gateBindingId":  result.GateBindingID,
-				"timeoutSeconds": 0,
 			},
 		}); err != nil {
 			return err
@@ -2626,8 +2638,6 @@ func executionFailureEvent(err error) executionFailureDetails {
 		}
 	}
 	switch {
-	case errors.Is(err, ErrFormationTimeoutExceeded):
-		return executionFailureDetails{Code: "formation_timeout_exceeded", Message: "formation execution time limit exceeded", Boundary: "limits"}
 	case errors.Is(err, ErrRunExecutorUnavailable):
 		return executionFailureDetails{Code: "missing_executor", Message: "formation executor unavailable", Boundary: "executor"}
 	default:

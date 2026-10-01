@@ -1,11 +1,13 @@
 package formations
 
+import "time"
+
 // Where a human gate's answer leads (archon-n7u.7). The operator decides with the
 // consequence in view: the steps each verdict delivers to on the run's frozen
 // board, whether a verdict ends the run, and whether a step the verdict starts
-// finds a Limit card's rounds spent, which blocks the run instead
-// (archon-o7p.8). The routes count rounds as the engine does
-// (roundsUse, roundsSpentBefore).
+// finds a Limit card's rounds or time spent, which blocks the run instead
+// (archon-o7p.8). The routes count as the engine does (roundsUse, timeUse,
+// limitSpentBefore).
 
 // GateRouteTarget is a step, gate or End node a verdict delivers to. A
 // formation also says which attempt it would start, its Limit card's rounds
@@ -21,6 +23,8 @@ type GateRouteTarget struct {
 	// Rounds is the step's Limit card use before the route starts it: Used
 	// of Max, Max counting grants.
 	Rounds *RunLimitReached `json:"rounds,omitempty"`
+	// Time is the step's time card use so far, in seconds.
+	Time *RunLimitReached `json:"time,omitempty"`
 	// WaitsForInputs marks a join that receives this and still waits for
 	// another input no step has delivered yet.
 	WaitsForInputs bool `json:"waitsForInputs,omitempty"`
@@ -35,7 +39,8 @@ type GateRouteTarget struct {
 // fails now; without, once the rest of its open work has ended. Limit is a
 // Limit card the route finds spent, so taking it blocks the run until a grant.
 // MissionRounds is the mission card's use so far and RoundsNeeded the step
-// starts the route makes, judges included, when a card caps the mission.
+// starts the route makes, judges included, when a card caps the mission's
+// rounds; MissionTime is the mission card's time use when it sets time.
 type GateRoute struct {
 	Verdict       string            `json:"verdict"`
 	Targets       []GateRouteTarget `json:"targets"`
@@ -44,14 +49,17 @@ type GateRoute struct {
 	Limit         *RunLimitReached  `json:"limit,omitempty"`
 	MissionRounds *RunLimitReached  `json:"missionRounds,omitempty"`
 	RoundsNeeded  int               `json:"roundsNeeded,omitempty"`
+	MissionTime   *RunLimitReached  `json:"missionTime,omitempty"`
 }
 
-// HumanGateRoutes reports the pass and fail routes of a gate as the run stands.
-func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string) []GateRoute {
-	var missionRounds *RunLimitReached
+// HumanGateRoutes reports the pass and fail routes of a gate as the run stands
+// at now.
+func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string, now time.Time) []GateRoute {
+	var missionRounds, missionTime *RunLimitReached
 	for _, mission := range board.Missions {
 		if limit, ok := limitCovering(board, mission.ID); ok {
 			missionRounds = roundsUse(board, events, limit)
+			missionTime = timeUse(board, events, limit, now)
 		}
 	}
 	routes := make([]GateRoute, 0, 2)
@@ -70,14 +78,15 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string) []G
 				needed++
 				target.Attempt = nodeLatestAttempt(events, nodeID) + 1
 				formation, _ := findFormation(board.Formations, nodeID)
-				if limit, ok := limitCovering(board, nodeID); ok && formation.Type != FormationTypePeer {
-					if use := roundsUse(board, events, limit); use != nil {
+				if limit, ok := limitCovering(board, nodeID); ok {
+					if use := roundsUse(board, events, limit); use != nil && formation.Type != FormationTypePeer {
 						target.Rounds = use
-						// The engine's own rule, so the panel says what the engine will do.
-						if route.Limit == nil && use.Used >= use.Max {
-							route.Limit = use
-						}
 					}
+					target.Time = timeUse(board, events, limit, now)
+				}
+				// The engine's own rule, so the panel says what the engine will do.
+				if route.Limit == nil {
+					route.Limit = limitSpentBefore(board, events, formation, now)
 				}
 				target.WaitsForInputs = formationWaitsForOtherInputs(board, events, nodeID, portID)
 			case "gate":
@@ -99,6 +108,12 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string) []G
 			route.MissionRounds, route.RoundsNeeded = missionRounds, needed
 			if route.Limit == nil && missionRounds.Used >= missionRounds.Max {
 				route.Limit = missionRounds
+			}
+		}
+		if needed > 0 && missionTime != nil {
+			route.MissionTime = missionTime
+			if route.Limit == nil && missionTime.Used >= missionTime.Max {
+				route.Limit = missionTime
 			}
 		}
 		routes = append(routes, route)

@@ -36,8 +36,8 @@ harness settings. Archon keeps only what is current.
   `fail` and `judge`.
 - An **End node** ends a path on purpose, with outcome `done` or `rejected`.
   Its only port is `in`; any number of routes may lead into it.
-- A **Limit card** caps the rounds of the step it covers, or of the whole
-  mission when it covers the Input card. It is the only run limit.
+- A **Limit card** caps the rounds and time of the step it covers, or of the
+  whole mission when it covers the Input card. It is the only run limit.
 - A **judge chain** is the formations wired from a gate's `judge` port back to it.
   A **pushback edge** is a gate's `fail` wired back to work; it carries the
   verdict as feedback and starts the next attempt, capped only by a Limit card.
@@ -219,43 +219,39 @@ hold the run open. A route that leads nowhere is a validation error,
 "Brief sign-off's pass route leads nowhere: wire it to a step or an End node",
 and admission refuses the run.
 
-### Step duration
-
-A step has no time limit unless the mission gives it a duration; Archon adds no
-default. A duration covers startup, the work and finalization, and expiry
-blocks the run with `formation_timeout_exceeded`, keeping the partial evidence.
-Give a step a duration only when it must stop by a known time, for example a
-peer conversation, which has no fixed round count and talks until every seat
-acknowledges one proposal.
-
-`formation set-execution "$M" "$FORMATION" --timeout-seconds <n>` sets it;
-`0` removes it. A run freezes the duration at admission.
-When a step runs long, check `run seats` (a seat's `waiting` says what it waits
-on) or open the seat; `run wait --until any-change` reports each `seat_state`.
-A step's duration does not bound a send-back loop; a Limit card does (next
-section).
-
 ### Limit cards
 
 A run has no limits unless the mission holds a **Limit card**, and nothing adds
 one for you: without a card a send-back loop continues until its gate passes or
-you stop the run. Add a card only when a loop needs a guard. It covers one
-target, a step or the Input card (the whole mission), and its `--rounds` counts
-how many times the step may run, send-backs and resumed re-runs included (for
-a peer step, how many journal messages its conversation may hold), or how many
-step runs the whole mission may make, judges included:
+you stop the run, and a step works as long as it takes. Add a card only when a
+loop or a step needs a guard. It covers one target, a step or the Input card
+(the whole mission), with two optional knobs:
+
+- `--rounds` counts how many times the step may run, send-backs and resumed
+  re-runs included (for a peer step, how many journal messages its
+  conversation may hold), or how many step runs the whole mission may make,
+  judges included.
+- `--time` (whole seconds as `45s`, `30m`, `1h30m`) counts wall time while the
+  step works, or while any step of the mission works. Waiting on a human gate
+  or a blocked run counts nothing, so a send-back resumes a step with the time
+  it has left. `--warn 5m` pastes a warning into the covered seats once when
+  that much time is left.
 
 ```bash
 archon $S limit create "$M" --target "$WORK" --rounds 3 --json
-archon $S limit create "$M" --target input --rounds 20 --title "Mission cap" --json
+archon $S limit create "$M" --target input --rounds 20 --time 2h --warn 10m --title "Mission cap" --json
 ```
 
-`limit update "$M" "$LIMIT" --rounds <n>|--target <t>|--title <t>` changes a
-card (`--rounds ''` clears the knob) and `limit delete "$M" "$LIMIT"` removes
-it. Validation rejects a card wired to nothing, a second card on one target and
-a rounds value that is not a positive whole number (`invalid_limit`). At a
-spent limit the step does not start and the run blocks with `limit_reached`
-and a plain reason, "Review used 3 of 3 rounds"; see Recover.
+`limit update "$M" "$LIMIT" --rounds <n>|--time <d>|--warn <d>|--target
+<t>|--title <t>` changes a card (an empty `--rounds`, `--time` or `--warn`
+clears that knob) and `limit delete "$M" "$LIMIT"` removes it. Validation
+rejects a card wired to nothing, a second card on one target, a value that is
+not a positive whole number and a warning without time or not shorter than it
+(`invalid_limit`). At a spent limit the step does not start, or stops when its
+time runs out, and the run blocks with `limit_reached` and a plain reason,
+"Review used 3 of 3 rounds" or "Review used 30 min of 30 min"; see Recover.
+When a step runs long, check `run seats` (a seat's `waiting` says what it waits
+on) or open the seat; `run wait --until any-change` reports each `seat_state`.
 
 ### Human channel
 

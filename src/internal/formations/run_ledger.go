@@ -18,7 +18,7 @@ var (
 	ErrRunResumeNotAllowed = errors.New("archon run resume is not allowed")
 	ErrRunEpochBlocked     = errors.New("archon run epoch is blocked")
 	// ErrRunGrantRequired refuses a resume without --grant at a spent limit.
-	ErrRunGrantRequired = errors.New("this run stopped at a spent limit: resume it with --grant to give one more allowance")
+	ErrRunGrantRequired = errors.New("this run stopped at a spent limit: resume it with --grant to give one more round or the card's time again")
 	// ErrRunNothingToGrant refuses --grant on a block no limit recorded.
 	ErrRunNothingToGrant = errors.New("this block is not a spent limit, so there is nothing to grant: resume without --grant")
 	// ErrHumanRequestNotPending refuses a verdict on a request that was
@@ -27,22 +27,24 @@ var (
 )
 
 const (
-	RunEventStarted              = "run_started"
-	RunEventResumed              = "run_resumed"
-	RunEventNodeWaiting          = "node_waiting"
-	RunEventNodeStarted          = "node_started"
-	RunEventOrchestrationTeam    = "orchestration_team"
-	RunEventWorkerObservation    = "worker_observation"
-	RunEventPeerPlane            = "peer_plane"
-	RunEventSlotDispatch         = "slot_dispatch"
-	RunEventAdapterSend          = "adapter_send"
-	RunEventSlotResult           = "slot_result"
-	RunEventNodeOutput           = "node_output"
-	RunEventGateEvaluating       = "gate_evaluating"
-	RunEventJudgeAttemptFailed   = "judge_attempt_failed"
-	RunEventGateKindResult       = "gate_kind_result"
-	RunEventGateVerdict          = "gate_verdict"
-	RunEventEscalationRaised     = "escalation_raised"
+	RunEventStarted            = "run_started"
+	RunEventResumed            = "run_resumed"
+	RunEventNodeWaiting        = "node_waiting"
+	RunEventNodeStarted        = "node_started"
+	RunEventOrchestrationTeam  = "orchestration_team"
+	RunEventWorkerObservation  = "worker_observation"
+	RunEventPeerPlane          = "peer_plane"
+	RunEventSlotDispatch       = "slot_dispatch"
+	RunEventAdapterSend        = "adapter_send"
+	RunEventSlotResult         = "slot_result"
+	RunEventNodeOutput         = "node_output"
+	RunEventGateEvaluating     = "gate_evaluating"
+	RunEventJudgeAttemptFailed = "judge_attempt_failed"
+	RunEventGateKindResult     = "gate_kind_result"
+	RunEventGateVerdict        = "gate_verdict"
+	RunEventEscalationRaised   = "escalation_raised"
+	// RunEventLimitWarning records a time card's warning pasted into a seat.
+	RunEventLimitWarning         = "limit_warning"
 	RunEventHumanInputRequested  = "human_input_requested"
 	RunEventHumanVerdictRecorded = "human_verdict_recorded"
 	RunEventError                = "error"
@@ -493,12 +495,20 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		}
 		if req.Grant {
 			// One more allowance of the knob the block spent, as the ledger
-			// records who gave it.
+			// records who gave it: one round, or the card's time again.
 			limit := runLimitReached(lifecycle, len(lifecycle)-1)
 			if limit == nil || limit.LimitID == "" {
 				return ErrRunNothingToGrant
 			}
-			data["grant"] = RunLimitGrant{LimitID: limit.LimitID, Kind: limit.Kind, Amount: 1}
+			amount := 1
+			if limit.Kind == LimitKindTime {
+				card, ok := findLimit(runSnapshot, limit.LimitID)
+				if !ok || card.Seconds == nil || *card.Seconds <= 0 {
+					return ErrRunNothingToGrant
+				}
+				amount = *card.Seconds
+			}
+			data["grant"] = RunLimitGrant{LimitID: limit.LimitID, Kind: limit.Kind, Amount: amount}
 		}
 		if openDispatches, ok := last.Data["openDispatches"]; ok {
 			data["openDispatches"] = openDispatches

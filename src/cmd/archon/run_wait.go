@@ -373,8 +373,8 @@ func writeWaitAsk(b *strings.Builder, server, runID string, ask coordinator.Wait
 		endSentence(b)
 		b.WriteString("\n")
 		switch {
-		case ask.ResumeAllowed && ask.Code == formations.RunBlockLimitReached:
-			fmt.Fprintf(b, "Give it one more round if the work deserves it, or stop it:\n  archon --server %s run resume %s --grant --reason 'why one more'\n  archon --server %s run abort %s --reason 'why'\n", server, runID, server, runID)
+		case ask.ResumeAllowed && ask.Limit != nil:
+			fmt.Fprintf(b, "Give it %s if the work deserves it, or stop it:\n  archon --server %s run resume %s --grant --reason 'why more'\n  archon --server %s run abort %s --reason 'why'\n", formations.GrantWords(*ask.Limit), server, runID, server, runID)
 		case ask.ResumeAllowed:
 			fmt.Fprintf(b, "Resume it once the cause is resolved:\n  archon --server %s run resume %s --reason 'what you resolved'\n", server, runID)
 		default:
@@ -391,8 +391,15 @@ func describeGateRoute(route formations.GateRoute) string {
 			continue
 		}
 		step := strconv.Quote(firstWaitNonEmpty(target.Title, target.NodeID))
+		var notes []string
 		if rounds := target.Rounds; rounds != nil && rounds.Used < rounds.Max {
-			step += fmt.Sprintf(" (round %d of %d)", rounds.Used+1, rounds.Max)
+			notes = append(notes, fmt.Sprintf("round %d of %d", rounds.Used+1, rounds.Max))
+		}
+		if clock := target.Time; clock != nil && clock.Used < clock.Max {
+			notes = append(notes, formations.LeftWords(*clock))
+		}
+		if len(notes) > 0 {
+			step += " (" + strings.Join(notes, ", ") + ")"
 		}
 		steps = append(steps, step)
 	}
@@ -408,6 +415,9 @@ func describeGateRoute(route formations.GateRoute) string {
 		// As the cockpit's answer panel says it, once the mission's rounds run short.
 		parts = append(parts, fmt.Sprintf("the mission has %d of %d rounds left", mission.Max-mission.Used, mission.Max))
 	}
+	if clock := route.MissionTime; clock != nil && route.Limit == nil && len(steps) > 0 {
+		parts = append(parts, "the mission has "+strings.Replace(formations.LeftWords(*clock), " left", " of working time left", 1))
+	}
 	where := strings.Join(parts, "; ")
 	switch {
 	case route.EndsRun && route.RunFails:
@@ -422,7 +432,7 @@ func describeGateRoute(route formations.GateRoute) string {
 		return where
 	}
 	who := "the mission"
-	if route.MissionRounds == nil || limit.LimitID != route.MissionRounds.LimitID {
+	if mission := firstMissionCard(route); mission == nil || limit.LimitID != mission.LimitID {
 		who = strconv.Quote(limit.NodeID)
 		for _, target := range route.Targets {
 			if target.NodeID == limit.NodeID && target.Title != "" {
@@ -430,15 +440,15 @@ func describeGateRoute(route formations.GateRoute) string {
 			}
 		}
 	}
-	return fmt.Sprintf("%s, but %s has used %s, so the run blocks instead until you grant one more", where, who, spentAllowance(*limit))
+	return fmt.Sprintf("%s, but %s has used %s, so the run blocks instead until you grant %s", where, who, formations.SpentWords(*limit), formations.GrantWords(*limit))
 }
 
-// spentAllowance words a spent limit: "its only round", "all 3 of its rounds".
-func spentAllowance(limit formations.RunLimitReached) string {
-	if limit.Max == 1 {
-		return "its only " + strings.TrimSuffix(limit.Kind, "s")
+// firstMissionCard is the mission's Limit card as a route reports it.
+func firstMissionCard(route formations.GateRoute) *formations.RunLimitReached {
+	if route.MissionRounds != nil {
+		return route.MissionRounds
 	}
-	return fmt.Sprintf("all %d of its %s", limit.Max, limit.Kind)
+	return route.MissionTime
 }
 
 func firstWaitNonEmpty(values ...string) string {

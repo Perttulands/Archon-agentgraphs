@@ -319,8 +319,8 @@ func renderNeedsYou(config NeedsYouConfig, ask formations.NeedsYouAsk, events []
 			reason = "not recorded"
 		}
 		fmt.Fprintf(&body, "Run %s on %s is blocked.\n\nReason: %s\n\n", ask.RunID, n.BoardTitle, reason)
-		if ask.ResumePolicy == formations.ResumePolicyGrant {
-			body.WriteString("Give it one more round if the work deserves it, or stop it:\n")
+		if ask.ResumePolicy == formations.ResumePolicyGrant && ask.Limit != nil {
+			fmt.Fprintf(&body, "Give it %s if the work deserves it, or stop it:\n", formations.GrantWords(*ask.Limit))
 			fmt.Fprintf(&body, "archon --server %s run resume %s --grant --reason 'why one more'\n", server, ask.RunID)
 			fmt.Fprintf(&body, "archon --server %s run abort %s --reason 'why'\n", server, ask.RunID)
 		} else if ask.ResumeAllowed {

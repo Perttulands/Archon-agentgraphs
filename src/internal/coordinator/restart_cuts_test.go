@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,9 +30,40 @@ import (
 type scriptedJudgeLab struct {
 	lab    formations.FormationExecutor
 	judges map[string][]string
+	// clock, when set, is the run's only clock: each step takes work[node]
+	// on it, stopping at its deadline as a real seat is stopped.
+	clock *workClock
+	work  map[string]time.Duration
+}
+
+// workClock moves only while a step works, so a run's counted time is the
+// same wherever a restart falls.
+type workClock struct {
+	mu sync.Mutex
+	at time.Time
+}
+
+func (c *workClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.at
+}
+
+func (c *workClock) set(at time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.at = at
 }
 
 func (e *scriptedJudgeLab) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
+	if e.clock != nil {
+		end := e.clock.now().Add(e.work[req.NodeID])
+		if !req.Deadline.IsZero() && !end.Before(req.Deadline) {
+			e.clock.set(req.Deadline)
+			return formations.FormationExecutionResult{}, formations.ErrFormationTimeoutExceeded
+		}
+		e.clock.set(end)
+	}
 	result, err := e.lab.ExecuteFormation(req)
 	script, judge := e.judges[req.NodeID]
 	if err != nil || !judge {
@@ -57,7 +89,10 @@ type restartCase struct {
 	judges map[string][]string
 	// session runs the gates on the session channel, with seats kept on call.
 	session bool
-	want    runOutcome
+	// work, when set, runs the case on a work clock: each step takes its
+	// node's work, for the Limit cards' time.
+	work map[string]time.Duration
+	want runOutcome
 }
 
 type runOutcome struct {
@@ -102,14 +137,23 @@ func outcomeOf(events []formations.RunEvent) runOutcome {
 	return outcome
 }
 
-func openRestartLab(t *testing.T, root string, tc restartCase) *Coordinator {
+// openRestartLab opens a daemon on root; a work-clock case's clock resumes at
+// start, the time of the last event the state holds.
+func openRestartLab(t *testing.T, root string, tc restartCase, start time.Time) *Coordinator {
 	t.Helper()
 	personas := formations.NewPersonaStore(filepath.Join(root, "agents"))
+	var clock *workClock
+	if tc.work != nil {
+		clock = &workClock{at: start}
+	}
 	c, err := Open(root, personas, func(store *formations.Store) formations.FormationExecutor {
+		if clock != nil {
+			store.Now = clock.now
+		}
 		if tc.session {
 			return &keeperExecutor{store: store}
 		}
-		return &scriptedJudgeLab{lab: formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: root}), judges: tc.judges}
+		return &scriptedJudgeLab{lab: formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: root}), judges: tc.judges, clock: clock, work: tc.work}
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -317,6 +361,36 @@ criterion = "Judge the work"
 			judges: map[string][]string{"fmn_judge": {"fail", "fail", "pass"}},
 			want:   runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_work": 3, "fmn_judge": 3}, Grants: 2},
 		},
+		{
+			// Work may work 70 s: its third try runs out after 10 s and waits
+			// for a grant of 70 s more, which its fourth try uses 30 of.
+			name:   "a step's time card stopping a judge loop until granted",
+			board:  strings.Replace(judgeLoopBoard(`target = "fmn_work"`), "rounds = 2", "seconds = 70", 1),
+			judges: map[string][]string{"fmn_judge": {"fail", "fail", "pass"}},
+			work:   map[string]time.Duration{"fmn_work": 30 * time.Second, "fmn_judge": 10 * time.Second},
+			want:   runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_work": 3, "fmn_judge": 3}, Grants: 1},
+		},
+		{
+			// The mission may work 95 s: A and B use 70 while the gate waits,
+			// the send-back's A runs out after 25 s, and the grant's A finishes.
+			name: "the mission's time card pausing at a gate and stopping a send-back",
+			board: gateBoard(gateBoardFormation("fmn_a") + gateBoardFormation("fmn_b") + gateBoardHumanGate("gate_review") + endNodes + `
+[[limit]]
+id = "lim_clock"
+title = "Clock"
+target = "mis_proof"
+seconds = 95
+` +
+				gateBoardConnection("edge_m_a", "mis_proof:out", "fmn_a:port_in") +
+				gateBoardConnection("edge_a_gate", "fmn_a:port_out", "gate_review:in") +
+				endWire("edge_pass", "gate_review:pass", "end_done") +
+				gateBoardConnection("edge_back", "gate_review:fail", "fmn_a:port_in") +
+				gateBoardConnection("edge_m_b", "mis_proof:out", "fmn_b:port_in") +
+				endWire("edge_b_done", "fmn_b:port_out", "end_done")),
+			verdicts: map[string][]string{"gate_review": {"fail", "pass"}},
+			work:     map[string]time.Duration{"fmn_a": 30 * time.Second, "fmn_b": 40 * time.Second},
+			want:     runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_a": 2, "fmn_b": 1}, Grants: 1},
+		},
 	}
 }
 
@@ -352,7 +426,8 @@ func TestARestartAfterAnyEventReachesTheSameOutcome(t *testing.T) {
 	for _, tc := range restartCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
-			c := openRestartLab(t, root, tc)
+			start := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+			c := openRestartLab(t, root, tc, start)
 			if err := os.MkdirAll(filepath.Dir(c.store.BoardPath("proof")), 0o700); err != nil {
 				t.Fatal(err)
 			}
@@ -387,7 +462,8 @@ func TestARestartAfterAnyEventReachesTheSameOutcome(t *testing.T) {
 					}
 					writeState(t, filepath.Join(next, ".archon", "runs", "proof", id+".ndjson"), bytes.Join(lines[:cut], nil))
 					writeState(t, filepath.Join(next, ".archon", "missions", "proof.mission.toml"), []byte(tc.board))
-					restarted := openRestartLab(t, next, tc)
+					resumeAt, _ := time.Parse(time.RFC3339Nano, events[cut-1].Timestamp)
+					restarted := openRestartLab(t, next, tc, resumeAt)
 					t.Cleanup(func() { restarted.Close() })
 					if err := restarted.RecoverInterruptedRuns(); err != nil {
 						t.Fatal(err)

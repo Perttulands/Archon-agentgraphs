@@ -313,12 +313,14 @@ func TestDescribeGateRouteSaysWhereEachVerdictLeads(t *testing.T) {
 		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "end_done", Title: "Done", Kind: "end", Outcome: "done"}}}, "this path ends (done)"},
 		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "end_rejected", Title: "Rejected", Kind: "end", Outcome: "rejected"}}, RunFails: true}, "this path ends (rejected), so the run fails once its other open work ends"},
 		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}, {NodeID: "end_done", Title: "Done", Kind: "end", Outcome: "done"}}}, `goes to "Ship"; this path ends (done)`},
-		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}}, MissionRounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 3, Max: 3}, Limit: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 3, Max: 3}}, `goes to "Ship", but the mission has used all 3 of its rounds, so the run blocks instead until you grant one more`},
-		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_build", Title: "Build", Rounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_build", NodeID: "fmn_build", Used: 2, Max: 2}}}, Limit: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_build", NodeID: "fmn_build", Used: 2, Max: 2}}, `goes to "Build", but "Build" has used all 2 of its rounds, so the run blocks instead until you grant one more`},
+		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}}, MissionRounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 3, Max: 3}, Limit: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 3, Max: 3}}, `goes to "Ship", but the mission has used all 3 of its rounds, so the run blocks instead until you grant one more round`},
+		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_build", Title: "Build", Rounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_build", NodeID: "fmn_build", Used: 2, Max: 2}}}, Limit: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_build", NodeID: "fmn_build", Used: 2, Max: 2}}, `goes to "Build", but "Build" has used all 2 of its rounds, so the run blocks instead until you grant one more round`},
 		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_build", Title: "Build", Rounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_build", NodeID: "fmn_build", Used: 1, Max: 3}}}}, `goes to "Build" (round 2 of 3)`},
 		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_plan", Title: "Plan"}}, MissionRounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 3, Max: 4}, RoundsNeeded: 1}, `goes to "Plan"; the mission has 1 of 4 rounds left`},
 		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_plan", Title: "Plan"}}, MissionRounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 1, Max: 4}, RoundsNeeded: 1}, `goes to "Plan"`},
-		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}}, MissionRounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 1, Max: 1}, Limit: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 1, Max: 1}}, `goes to "Ship", but the mission has used its only round, so the run blocks instead until you grant one more`},
+		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_plan", Title: "Plan", Time: &formations.RunLimitReached{Kind: "time", LimitID: "lim_plan", NodeID: "fmn_plan", Used: 300, Max: 1800}}}, MissionTime: &formations.RunLimitReached{Kind: "time", LimitID: "lim_mission", NodeID: "inp", Used: 600, Max: 3600}}, `goes to "Plan" (25 min of 30 min left); the mission has 50 min of 1 h of working time left`},
+		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_plan", Title: "Plan"}}, MissionTime: &formations.RunLimitReached{Kind: "time", LimitID: "lim_mission", NodeID: "inp", Used: 3600, Max: 3600}, Limit: &formations.RunLimitReached{Kind: "time", LimitID: "lim_mission", NodeID: "inp", Used: 3600, Max: 3600}}, `goes to "Plan", but the mission has used all 1 h of its time, so the run blocks instead until you grant 1 h more`},
+		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}}, MissionRounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 1, Max: 1}, Limit: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 1, Max: 1}}, `goes to "Ship", but the mission has used its only round, so the run blocks instead until you grant one more round`},
 	} {
 		if got := describeGateRoute(tt.route); got != tt.want {
 			t.Errorf("got %q want %q", got, tt.want)
@@ -354,15 +356,22 @@ func TestRunWaitKeepsOneConnectionAcrossPolls(t *testing.T) {
 
 // archon-o7p.8.1: a run stopped at a spent Limit card offers the grant.
 func TestRunWaitOffersAGrantAtASpentLimit(t *testing.T) {
-	ask := coordinator.WaitAsk{Kind: formations.NeedsYouKindBlocked, Seq: 9, New: true, Title: "Review", Reason: "Review used 3 of 3 rounds", Code: formations.RunBlockLimitReached, ResumeAllowed: true}
+	ask := coordinator.WaitAsk{Kind: formations.NeedsYouKindBlocked, Seq: 9, New: true, Title: "Review", Reason: "Review used 3 of 3 rounds", Code: formations.RunBlockLimitReached, ResumeAllowed: true,
+		Limit: &formations.RunLimitReached{Kind: formations.LimitKindRounds, LimitID: "lim_review", NodeID: "fmn_review", Used: 3, Max: 3}}
 	out := renderWait("http://127.0.0.1:1", &waitOutput{RunWait: coordinator.RunWait{RunID: "run_x", Mission: "Proof", Since: 3, Seq: 9, Status: "blocked", Asks: []coordinator.WaitAsk{ask}}, Next: "archon next"}, waitExitNeedsYou)
 	for _, want := range []string{
 		`The run is blocked at "Review" since #9: Review used 3 of 3 rounds (limit_reached).`,
-		"Give it one more round if the work deserves it, or stop it:\n  archon --server http://127.0.0.1:1 run resume run_x --grant --reason 'why one more'\n  archon --server http://127.0.0.1:1 run abort run_x --reason 'why'\n",
+		"Give it one more round if the work deserves it, or stop it:\n  archon --server http://127.0.0.1:1 run resume run_x --grant --reason 'why more'\n  archon --server http://127.0.0.1:1 run abort run_x --reason 'why'\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("out lacks %q:\n%s", want, out)
 		}
+	}
+	// A spent time card offers its time again.
+	ask.Reason, ask.Limit = "Review used 30 min of 30 min", &formations.RunLimitReached{Kind: formations.LimitKindTime, LimitID: "lim_review", NodeID: "fmn_review", Used: 1800, Max: 1800}
+	out = renderWait("http://127.0.0.1:1", &waitOutput{RunWait: coordinator.RunWait{RunID: "run_x", Mission: "Proof", Since: 3, Seq: 9, Status: "blocked", Asks: []coordinator.WaitAsk{ask}}, Next: "archon next"}, waitExitNeedsYou)
+	if !strings.Contains(out, "Give it 30 min more if the work deserves it, or stop it:") {
+		t.Fatalf("time grant:\n%s", out)
 	}
 }
 

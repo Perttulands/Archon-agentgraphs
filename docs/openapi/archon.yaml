@@ -352,9 +352,9 @@ paths:
                   type: string
                 grant:
                   type: boolean
-                  description: Gives the spent Limit card that blocked the run one more round, recorded on the
-                    run_resumed as grant {limitId, kind, amount}. Required while the run's resumePolicy is
-                    grant, refused otherwise.
+                  description: Gives the spent Limit card that blocked the run one more round, or its time
+                    again, recorded on the run_resumed as grant {limitId, kind, amount}. Required while the
+                    run's resumePolicy is grant, refused otherwise.
       responses:
         '202':
           description: Continuation admitted for this run
@@ -395,7 +395,7 @@ paths:
           default: 30
       responses:
         '200':
-          description: Enveloped data contains runId, missionSlug, missionTitle, until, outcome (final, needs-you, changed, pending), since, seq (the next since), status, final, resumeAllowed, settled, end (status, seq, code, reason, reasonTruncated, endedBy, stopped), asks (kind, seq, new, gateId, nodeId, title, criterion, reason, code, severity, resumeAllowed, input with fromNodeId, fromTitle, fromPortId, text capped at 4 KiB, bytes and truncated, routes) and changes (seq, type, nodeId, gateId, title, attempt, status, verdict; the latest 50, with changesOmitted). Texts are redacted like run evidence.
+          description: Enveloped data contains runId, missionSlug, missionTitle, until, outcome (final, needs-you, changed, pending), since, seq (the next since), status, final, resumeAllowed, settled, end (status, seq, code, reason, reasonTruncated, endedBy, stopped), asks (kind, seq, new, gateId, nodeId, title, criterion, reason, code, severity, resumeAllowed, limit (a blocked ask's spent Limit card), input with fromNodeId, fromTitle, fromPortId, text capped at 4 KiB, bytes and truncated, routes) and changes (seq, type, nodeId, gateId, title, attempt, status, verdict; the latest 50, with changesOmitted). Texts are redacted like run evidence.
         '400':
           description: Bad until, since or hold, or since past the run's last event
         '404':
@@ -878,18 +878,6 @@ components:
       schema:
         type: string
   schemas:
-    FormationExecutionPolicy:
-      type: object
-      required: [timeoutSeconds]
-      properties:
-        timeoutSeconds:
-          type: integer
-          minimum: 1
-          maximum: 9223372036
-          description: Total duration in seconds for one formation invocation, including preparation,
-            discussion and finalization. An absent execution policy inherits the execution default
-            resolved and frozen at run admission. Human-gate waiting is outside this duration;
-            the remaining run deadline can shorten the invocation.
     EndNode:
       type: object
       description: Ends a path on purpose. A run whose path ends at a rejected End node fails with
@@ -906,7 +894,8 @@ components:
     LimitNode:
       type: object
       description: A Limit card. It covers one target, a step or the Input card (the whole mission), and
-        caps its rounds; a run blocks with code limit_reached at a spent card until run resume --grant.
+        caps its rounds and time; a run blocks with code limit_reached at a spent card until run resume
+        --grant.
       required: [id, title, target]
       properties:
         id:
@@ -921,10 +910,19 @@ components:
           minimum: 1
           description: Step runs the target may make (journal messages for a peer step, every step run
             for the Input card). Omitted sets no rounds.
+        seconds:
+          type: integer
+          minimum: 1
+          description: Wall time the target may work, in seconds, counted while the step (or any step,
+            for the Input card) runs and the run is not blocked. Omitted sets no time.
+        warnSeconds:
+          type: integer
+          minimum: 1
+          description: Time left when the covered seats get a warning pasted once. Needs seconds and is
+            shorter than it.
     FormationNode:
       type: object
-      description: An authored formation. Execution policy is optional; all other formation fields
-        retain their existing authoring semantics.
+      description: An authored formation. A Limit card, not the formation, caps its rounds and time.
       properties:
         id:
           type: string
@@ -932,8 +930,6 @@ components:
           type: string
         title:
           type: string
-        execution:
-          $ref: '#/components/schemas/FormationExecutionPolicy'
     MissionFinding:
       type: object
       required:
@@ -1349,22 +1345,6 @@ components:
               type: integer
             updatedBy:
               type: string
-        setExecution:
-          type: object
-          required: [formationId, timeoutSeconds]
-          description: Set a formation's total execution duration. Zero removes its override and
-            restores inheritance from the run default. Applies only to new runs.
-          properties:
-            formationId:
-              type: string
-            timeoutSeconds:
-              type: integer
-              minimum: 0
-              maximum: 9223372036
-            expectedRev:
-              type: integer
-            updatedBy:
-              type: string
         clearBrief:
           type: object
           properties:
@@ -1532,6 +1512,14 @@ components:
               type: integer
               minimum: 0
               description: Omitted or 0 sets no rounds.
+            seconds:
+              type: integer
+              minimum: 0
+              description: Omitted or 0 sets no time.
+            warnSeconds:
+              type: integer
+              minimum: 0
+              description: Omitted or 0 sets no warning.
             x:
               type: integer
             y:
@@ -1542,8 +1530,8 @@ components:
               type: string
         updateLimit:
           type: object
-          description: Changes only the fields given. An empty target unwires the card and rounds 0 clears
-            the knob.
+          description: Changes only the fields given. An empty target unwires the card and a knob of 0
+            clears it.
           properties:
             id:
               type: string
@@ -1552,6 +1540,12 @@ components:
             target:
               type: string
             rounds:
+              type: integer
+              minimum: 0
+            seconds:
+              type: integer
+              minimum: 0
+            warnSeconds:
               type: integer
               minimum: 0
             expectedRev:

@@ -3,6 +3,7 @@ package formations
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 // branchOutputData is a node_output payload on one port, as the engine
@@ -49,11 +50,11 @@ func TestHumanGateRoutesOnABranchingBoardEndOnlyWhenNothingElseCanRun(t *testing
 		t.Fatal(err)
 	}
 	doneTarget := []GateRouteTarget{{NodeID: "end_done", Title: "Done", Kind: "end", Outcome: EndOutcomeDone}}
-	approve := HumanGateRoutes(frozen, events, "gate_review")[0]
+	approve := HumanGateRoutes(frozen, events, "gate_review", time.Time{})[0]
 	if approve.EndsRun || approve.RunFails || !reflect.DeepEqual(approve.Targets, doneTarget) {
 		t.Fatalf("approve with B and C still to run = %+v, want the path to end done while the run goes on", approve)
 	}
-	if reject := HumanGateRoutes(frozen, events, "gate_review")[1]; reject.EndsRun || reject.Targets[0].Outcome != EndOutcomeRejected {
+	if reject := HumanGateRoutes(frozen, events, "gate_review", time.Time{})[1]; reject.EndsRun || reject.Targets[0].Outcome != EndOutcomeRejected {
 		t.Fatalf("reject with B and C still to run = %+v", reject)
 	}
 
@@ -68,18 +69,18 @@ func TestHumanGateRoutesOnABranchingBoardEndOnlyWhenNothingElseCanRun(t *testing
 		event.Seq = len(done) + 1
 		done = append(done, event)
 	}
-	approve = HumanGateRoutes(frozen, done, "gate_review")[0]
+	approve = HumanGateRoutes(frozen, done, "gate_review", time.Time{})[0]
 	if !approve.EndsRun || approve.RunFails {
 		t.Fatalf("approve with every branch done = %+v, want it to end the run", approve)
 	}
-	if reject := HumanGateRoutes(frozen, done, "gate_review")[1]; !reject.EndsRun || !reject.RunFails {
+	if reject := HumanGateRoutes(frozen, done, "gate_review", time.Time{})[1]; !reject.EndsRun || !reject.RunFails {
 		t.Fatalf("reject with every branch done = %+v, want it to end and fail the run", reject)
 	}
 
 	// Another gate still waiting for the operator keeps the run open.
 	open := append([]RunEvent{}, done...)
 	open = append(open, RunEvent{Seq: len(open) + 1, Type: RunEventHumanInputRequested, NodeID: "gate_other", GateID: "gate_other"})
-	if approve := HumanGateRoutes(frozen, open, "gate_review")[0]; approve.EndsRun {
+	if approve := HumanGateRoutes(frozen, open, "gate_review", time.Time{})[0]; approve.EndsRun {
 		t.Fatalf("approve with another gate open = %+v", approve)
 	}
 }

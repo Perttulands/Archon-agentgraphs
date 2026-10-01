@@ -16,7 +16,10 @@ import (
 //
 // Rounds count how many times a step may run, send-backs included, or how many
 // steps the whole mission may run. A peer formation's rounds are its journal
-// messages.
+// messages. Time counts wall time while the covered work runs: the step's own
+// attempts, or any step of the mission; waiting on a human gate or a blocked
+// run counts nothing. A warning is pasted once into the covered seats when the
+// time left reaches the card's warnSeconds.
 
 // FindingInvalidLimit reports a Limit card that covers nothing, covers a node
 // it cannot, holds a value that is not a positive whole number, or shares its
@@ -29,6 +32,9 @@ const FindingEmptyLimit = "empty_limit"
 // LimitKindRounds is the rounds knob.
 const LimitKindRounds = "rounds"
 
+// LimitKindTime is the time knob, counted in whole seconds.
+const LimitKindTime = "time"
+
 // RunBlockLimitReached is the code of the block a spent limit records.
 const RunBlockLimitReached = "limit_reached"
 
@@ -38,22 +44,29 @@ const ResumePolicyGrant = "grant"
 // ErrInvalidLimit refuses a Limit card write with a malformed value or target.
 var ErrInvalidLimit = errors.New("invalid_limit")
 
-// LimitNode is a Limit card. Rounds is nil when the card sets no rounds; a
-// hand-written non-positive value is kept, so validation can name it.
+// LimitNode is a Limit card. A knob is nil when the card does not set it; a
+// hand-written non-positive value is kept, so validation can name it. Seconds
+// is the time knob and WarnSeconds how much of it is left when the covered
+// seats are warned.
 type LimitNode struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Target string `json:"target"`
-	Rounds *int   `json:"rounds,omitempty"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Target      string `json:"target"`
+	Rounds      *int   `json:"rounds,omitempty"`
+	Seconds     *int   `json:"seconds,omitempty"`
+	WarnSeconds *int   `json:"warnSeconds,omitempty"`
 }
 
+// LimitCreateRequest sets each knob that is not zero.
 type LimitCreateRequest struct {
-	Title     string
-	Target    string
-	Rounds    int
-	X         int
-	Y         int
-	UpdatedBy string
+	Title       string
+	Target      string
+	Rounds      int
+	Seconds     int
+	WarnSeconds int
+	X           int
+	Y           int
+	UpdatedBy   string
 }
 
 type LimitCreateResult struct {
@@ -62,13 +75,16 @@ type LimitCreateResult struct {
 	Limit  LimitNode       `json:"limit"`
 }
 
-// LimitUpdateRequest changes only the fields it sets. Rounds 0 clears the knob.
+// LimitUpdateRequest changes only the fields it sets. A knob set to 0 is
+// cleared.
 type LimitUpdateRequest struct {
-	LimitID   string
-	Title     *string
-	Target    *string
-	Rounds    *int
-	UpdatedBy string
+	LimitID     string
+	Title       *string
+	Target      *string
+	Rounds      *int
+	Seconds     *int
+	WarnSeconds *int
+	UpdatedBy   string
 }
 
 type LimitDeleteRequest struct {
@@ -94,14 +110,28 @@ func validLimitTarget(board *BoardDocument, nodeID string) bool {
 	return ok
 }
 
-func checkLimitWrite(board *BoardDocument, target string, rounds *int) error {
+func checkLimitWrite(board *BoardDocument, target string, rounds, seconds, warnSeconds *int) error {
 	if target != "" && !validLimitTarget(board, target) {
 		return fmt.Errorf("%w: %q is not a step or the Input card; a Limit card covers one of them", ErrInvalidLimit, target)
 	}
 	if rounds != nil && *rounds < 0 {
 		return fmt.Errorf("%w: rounds must be a positive whole number", ErrInvalidLimit)
 	}
+	if seconds != nil && *seconds < 0 {
+		return fmt.Errorf("%w: time must be a positive whole number of seconds", ErrInvalidLimit)
+	}
+	if warnSeconds != nil && *warnSeconds < 0 {
+		return fmt.Errorf("%w: the warning must be a positive whole number of seconds", ErrInvalidLimit)
+	}
 	return nil
+}
+
+// knob is a create request's knob: nil for zero, which sets nothing.
+func knob(value int) *int {
+	if value == 0 {
+		return nil
+	}
+	return &value
 }
 
 func (s *Store) CreateLimit(slug string, req LimitCreateRequest, opts WriteOptions) (*LimitCreateResult, error) {
@@ -111,17 +141,14 @@ func (s *Store) CreateLimit(slug string, req LimitCreateRequest, opts WriteOptio
 	if opts.ExpectedETag == "" || opts.ExpectedRev == 0 {
 		return nil, ErrPreconditionRequired
 	}
-	limit := LimitNode{ID: newPrefixedID("lim"), Title: strings.TrimSpace(req.Title), Target: strings.TrimSpace(req.Target)}
+	limit := LimitNode{ID: newPrefixedID("lim"), Title: strings.TrimSpace(req.Title), Target: strings.TrimSpace(req.Target),
+		Rounds: knob(req.Rounds), Seconds: knob(req.Seconds), WarnSeconds: knob(req.WarnSeconds)}
 	if limit.Title == "" {
 		limit.Title = defaultLimitTitle()
 	}
-	if req.Rounds != 0 {
-		rounds := req.Rounds
-		limit.Rounds = &rounds
-	}
 	board, layout, err := s.createNode(slug, opts, nodeCreateCandidate{
 		prepare: func(_ []byte, current *BoardDocument) error {
-			return checkLimitWrite(current, limit.Target, limit.Rounds)
+			return checkLimitWrite(current, limit.Target, limit.Rounds, limit.Seconds, limit.WarnSeconds)
 		},
 		appendBoardBlock: func(raw []byte) []byte { return appendLimitBlock(raw, limit) },
 		node:             LayoutNode{ID: limit.ID, X: req.X, Y: req.Y},
@@ -147,7 +174,7 @@ func (s *Store) UpdateLimit(slug string, req LimitUpdateRequest, opts WriteOptio
 		if req.Target != nil {
 			target = strings.TrimSpace(*req.Target)
 		}
-		if err := checkLimitWrite(current, target, req.Rounds); err != nil {
+		if err := checkLimitWrite(current, target, req.Rounds, req.Seconds, req.WarnSeconds); err != nil {
 			return nil, err
 		}
 		if req.Title != nil {
@@ -162,12 +189,19 @@ func (s *Store) UpdateLimit(slug string, req LimitUpdateRequest, opts WriteOptio
 			lines = setScalarInLineRange(lines, start+1, end, "target", renderString(target))
 			start, end, _ = findLimitBlockByID(lines, req.LimitID)
 		}
-		if req.Rounds != nil {
-			if *req.Rounds == 0 {
-				lines = removeScalarInLineRange(lines, start+1, end, "rounds")
-			} else {
-				lines = setScalarInLineRange(lines, start+1, end, "rounds", renderInt(*req.Rounds))
+		for _, knob := range []struct {
+			key   string
+			value *int
+		}{{"rounds", req.Rounds}, {"seconds", req.Seconds}, {"warnSeconds", req.WarnSeconds}} {
+			if knob.value == nil {
+				continue
 			}
+			if *knob.value == 0 {
+				lines = removeScalarInLineRange(lines, start+1, end, knob.key)
+			} else {
+				lines = setScalarInLineRange(lines, start+1, end, knob.key, renderInt(*knob.value))
+			}
+			start, end, _ = findLimitBlockByID(lines, req.LimitID)
 		}
 		return renderTOMLLines(lines), nil
 	})
@@ -246,6 +280,12 @@ func appendLimitBlock(raw []byte, limit LimitNode) []byte {
 	if limit.Rounds != nil {
 		b.WriteString("rounds = " + renderInt(*limit.Rounds) + "\n")
 	}
+	if limit.Seconds != nil {
+		b.WriteString("seconds = " + renderInt(*limit.Seconds) + "\n")
+	}
+	if limit.WarnSeconds != nil {
+		b.WriteString("warnSeconds = " + renderInt(*limit.WarnSeconds) + "\n")
+	}
 	return []byte(b.String())
 }
 
@@ -280,12 +320,17 @@ func decodeLimitNodes(document map[string]any) ([]LimitNode, error) {
 		if node.Target, err = tomlString(table, "target"); err != nil {
 			return nil, err
 		}
-		if _, present := table["rounds"]; present {
-			rounds, err := tomlInt(table, "rounds")
-			if err != nil {
-				return nil, err
+		for _, knob := range []struct {
+			key   string
+			value **int
+		}{{"rounds", &node.Rounds}, {"seconds", &node.Seconds}, {"warnSeconds", &node.WarnSeconds}} {
+			if _, present := table[knob.key]; present {
+				value, err := tomlInt(table, knob.key)
+				if err != nil {
+					return nil, err
+				}
+				*knob.value = &value
 			}
-			node.Rounds = &rounds
 		}
 		nodes = append(nodes, node)
 	}
@@ -323,10 +368,17 @@ func parseLimitNodes(raw []byte) []LimitNode {
 			current.Title = value
 		case "target":
 			current.Target = value
-		case "rounds":
-			var rounds int
-			if _, err := fmt.Sscanf(value, "%d", &rounds); err == nil {
-				current.Rounds = &rounds
+		case "rounds", "seconds", "warnSeconds":
+			var number int
+			if _, err := fmt.Sscanf(value, "%d", &number); err == nil {
+				switch key {
+				case "rounds":
+					current.Rounds = &number
+				case "seconds":
+					current.Seconds = &number
+				default:
+					current.WarnSeconds = &number
+				}
 			}
 		}
 	}
@@ -381,21 +433,44 @@ func limitFindings(board *BoardDocument) (errs, warnings []BoardFinding) {
 		if limit.Rounds != nil && *limit.Rounds <= 0 {
 			add(fmt.Sprintf("Limit %s holds rounds = %d: rounds must be a positive whole number", name, *limit.Rounds))
 		}
-		if limit.Rounds == nil {
+		if limit.Seconds != nil && *limit.Seconds <= 0 {
+			add(fmt.Sprintf("Limit %s holds seconds = %d: time must be a positive whole number of seconds", name, *limit.Seconds))
+		}
+		switch warn := limit.WarnSeconds; {
+		case warn == nil:
+		case *warn <= 0:
+			add(fmt.Sprintf("Limit %s holds warnSeconds = %d: the warning must be a positive whole number of seconds", name, *warn))
+		case limit.Seconds == nil:
+			add(fmt.Sprintf("Limit %s warns with %s left but sets no time: give it time, or clear the warning", name, durationWords(*warn)))
+		case *limit.Seconds > 0 && *warn >= *limit.Seconds:
+			add(fmt.Sprintf("Limit %s warns with %s left of %s, before any work: warn with less time left", name, durationWords(*warn), durationWords(*limit.Seconds)))
+		}
+		if limit.Rounds == nil && limit.Seconds == nil {
 			warnings = append(warnings, BoardFinding{Code: FindingEmptyLimit, NodeID: limit.ID,
-				Message: fmt.Sprintf("Limit %s sets no limit: give it rounds, or delete it", name)})
+				Message: fmt.Sprintf("Limit %s sets no limit: give it rounds or time, or delete it", name)})
 		}
 	}
 	return errs, warnings
 }
 
-// limitWords says what a Limit card allows, as Flow and node windows say it:
-// "at most 3 rounds".
-func limitWords(limit LimitNode) string {
-	if limit.Rounds == nil {
-		return "no limit set"
+// durationWords says whole seconds plainly: "45 s", "5 min", "1 h 30 min",
+// "1 min 30 s".
+func durationWords(seconds int) string {
+	if seconds < 60 {
+		return fmt.Sprintf("%d s", seconds)
 	}
-	return fmt.Sprintf("at most %s", plural(*limit.Rounds, "round"))
+	hours, minutes, rest := seconds/3600, seconds%3600/60, seconds%60
+	parts := []string{}
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%d h", hours))
+	}
+	if minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%d min", minutes))
+	}
+	if rest > 0 {
+		parts = append(parts, fmt.Sprintf("%d s", rest))
+	}
+	return strings.Join(parts, " ")
 }
 
 func plural(count int, noun string) string {

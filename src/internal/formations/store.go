@@ -423,6 +423,9 @@ func (s *Store) UpdateLayoutMetadata(slug string, patch LayoutMetadataPatch, opt
 	return next, nil
 }
 
+// CurrentTime is the store's clock, the one its ledger timestamps use.
+func (s *Store) CurrentTime() time.Time { return s.now() }
+
 func (s *Store) now() time.Time {
 	if s.Now == nil {
 		return time.Now().UTC()

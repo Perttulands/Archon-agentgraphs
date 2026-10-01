@@ -3,6 +3,7 @@ package formations
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 // End nodes end paths on purpose (archon-o7p.10). A run finishes when every path
@@ -107,7 +108,7 @@ func TestRejectingAGateWhoseFailEndsRejectedFailsTheRunWithItsReason(t *testing.
 					t.Fatal(err)
 				}
 				gate := pendingHumanGates(t, store, status.RunID)[0]
-				reject := HumanGateRoutes(frozen, events, gate)[1]
+				reject := HumanGateRoutes(frozen, events, gate, time.Time{})[1]
 				if !reject.EndsRun || len(reject.Targets) != 1 || reject.Targets[0].Outcome != EndOutcomeRejected {
 					t.Fatalf("reject route = %+v", reject)
 				}
@@ -147,7 +148,7 @@ func TestARejectedPathFailsTheRunOnlyAfterEveryOtherPathHasEnded(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Approving gate_two ends the last path; the run fails for gate_one.
-	if approve := HumanGateRoutes(frozen, events, "gate_two")[0]; !approve.EndsRun || !approve.RunFails {
+	if approve := HumanGateRoutes(frozen, events, "gate_two", time.Time{})[0]; !approve.EndsRun || !approve.RunFails {
 		t.Fatalf("approve gate_two = %+v, want it to end the run, which fails", approve)
 	}
 	engine = NewRunEngine(store, personas, executor)
