@@ -254,6 +254,10 @@ func (e *RunEngine) PreservePendingHumanGate(runID string) (bool, error) {
 // a run its worker was driving.
 const RunBlockCoordinatorInterrupted = "coordinator_interrupted"
 
+// RunBlockCoordinatorShutdown is the code of the block a shutdown, such as a
+// deploy, leaves on a run whose step it stopped.
+const RunBlockCoordinatorShutdown = "coordinator_shutdown"
+
 func (e *RunEngine) BlockInterruptedRun(runID string) error {
 	events, err := e.store.ReadRunEvents(runID)
 	if err != nil {

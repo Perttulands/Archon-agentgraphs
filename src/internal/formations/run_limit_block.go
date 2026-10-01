@@ -84,8 +84,9 @@ func roundsUsed(board *BoardDocument, events []RunEvent, limit LimitNode) int {
 }
 
 // cutShortByRestart reports whether the step started at index never produced
-// its output because the coordinator restarted, so the run started it again.
-// A run reaches the same limits wherever a restart falls.
+// its output because the coordinator stopped, by a crash or a shutdown such
+// as a deploy, so the run started it again. A run reaches the same limits
+// wherever a restart falls.
 func cutShortByRestart(events []RunEvent, index int) bool {
 	nodeID, interrupted := events[index].NodeID, false
 	for _, event := range events[index+1:] {
@@ -94,11 +95,18 @@ func cutShortByRestart(events []RunEvent, index int) bool {
 			return interrupted
 		case event.NodeID == nodeID && event.Type == RunEventNodeOutput:
 			return false
-		case event.Type == RunEventError && stringFromEventData(event, "code") == RunBlockCoordinatorInterrupted:
+		case coordinatorStopped(event):
 			interrupted = true
 		}
 	}
 	return interrupted
+}
+
+// coordinatorStopped reports the event a stopped coordinator leaves: the
+// error a restart records after a crash, or the block a shutdown records.
+func coordinatorStopped(event RunEvent) bool {
+	code := stringFromEventData(event, "code")
+	return event.Type == RunEventError && code == RunBlockCoordinatorInterrupted || event.Type == RunEventBlocked && code == RunBlockCoordinatorShutdown
 }
 
 // roundsUse is a rounds card's use, or nil when the card sets no rounds.
@@ -164,6 +172,12 @@ func timeUsed(board *BoardDocument, events []RunEvent, limit LimitNode, now time
 	}
 	for _, event := range events {
 		at, _ := time.Parse(time.RFC3339Nano, event.Timestamp)
+		if event.Type == RunEventError && stringFromEventData(event, "code") == RunBlockCoordinatorInterrupted {
+			// A restart after a crash records this when it comes up: the time
+			// since the last event before it was mostly downtime, and counts
+			// nothing.
+			last = time.Time{}
+		}
 		count(at)
 		covered := mission || event.NodeID == limit.Target
 		switch event.Type {

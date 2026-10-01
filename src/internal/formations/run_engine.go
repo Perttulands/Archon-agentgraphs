@@ -2823,7 +2823,7 @@ func (e *RunEngine) appendExecutionFailureAndBlock(runID, nodeID string, err err
 			return readErr
 		}
 		return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventBlocked, NodeID: nodeID, Data: map[string]any{
-			"reason": "coordinator shutdown; inspect dispatch evidence before resume", "resumeAllowed": true, "openDispatches": unresolvedDispatches(events),
+			"code": RunBlockCoordinatorShutdown, "reason": "coordinator shutdown; inspect dispatch evidence before resume", "resumeAllowed": true, "openDispatches": unresolvedDispatches(events),
 		}})
 	}
 	failure := executionFailureEvent(err)

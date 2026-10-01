@@ -209,8 +209,9 @@ func TestTimePausesOnlyForWaitingWork(t *testing.T) {
 	}
 }
 
-// A blocked run counts no time, and a restart gives a started step only the
-// time the ledger says it has left.
+// A blocked run counts no time, the downtime before a crash's restart counts
+// none either, and a restart gives a started step only the time the ledger
+// says it has left.
 func TestTimeCountsFromTheLedgerAcrossBlocksAndRestarts(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	createS4Persona(t, personas, "scout")
@@ -233,7 +234,13 @@ func TestTimeCountsFromTheLedgerAcrossBlocksAndRestarts(t *testing.T) {
 		t.Fatal(err)
 	}
 	clock = clock.Add(15 * time.Second)
-	// A restart blocks the run; the minutes it stays blocked count nothing.
+	// The seat works 15 s, as its last recorded event shows; then the daemon
+	// crashes, and the restart 10 min later blocks the run. Neither the
+	// downtime nor the minutes it stays blocked count.
+	if err := store.AppendRunEvent(started.RunID, RunEvent{Type: "seat_prompt_consumed", NodeID: formation.ID}); err != nil {
+		t.Fatal(err)
+	}
+	clock = clock.Add(10 * time.Minute)
 	if err := engine.BlockInterruptedRun(started.RunID); err != nil {
 		t.Fatal(err)
 	}

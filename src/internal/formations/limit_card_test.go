@@ -301,8 +301,9 @@ func TestValidationRejectsALimitCardWiredToNothingOrHoldingABadValue(t *testing.
 	}
 }
 
-// A start a restart cut short is not a round: the step's re-run is, so a run
-// reaches the same limits wherever a restart falls.
+// A start a restart cut short is not a round, after a crash or a shutdown
+// such as a deploy: the step's re-run is, so a run reaches the same limits
+// wherever a restart falls.
 func TestARestartCutShortStartIsNotARound(t *testing.T) {
 	board := &BoardDocument{Missions: []MissionNode{{ID: "mis"}}}
 	rounds := 9
@@ -312,6 +313,7 @@ func TestARestartCutShortStartIsNotARound(t *testing.T) {
 		return RunEvent{Type: RunEventNodeStarted, NodeID: node, Data: map[string]any{"nodeKind": "formation"}}
 	}
 	restart := RunEvent{Type: RunEventError, Data: map[string]any{"code": RunBlockCoordinatorInterrupted}}
+	shutdown := RunEvent{Type: RunEventBlocked, NodeID: "fmn_work", Data: map[string]any{"code": RunBlockCoordinatorShutdown}}
 	output := func(node string) RunEvent { return RunEvent{Type: RunEventNodeOutput, NodeID: node} }
 	for _, tc := range []struct {
 		name          string
@@ -324,6 +326,7 @@ func TestARestartCutShortStartIsNotARound(t *testing.T) {
 		{"a start cut short and re-run", []RunEvent{start("fmn_work"), restart, start("fmn_work"), output("fmn_work")}, 1, 1},
 		{"a start whose seat was reattached", []RunEvent{start("fmn_work"), restart, output("fmn_work")}, 1, 1},
 		{"a finished start before a restart", []RunEvent{start("fmn_work"), output("fmn_work"), restart, start("fmn_other")}, 1, 2},
+		{"a start a shutdown cut short and re-run", []RunEvent{start("fmn_work"), shutdown, {Type: RunEventResumed}, start("fmn_work"), output("fmn_work")}, 1, 1},
 	} {
 		if got := roundsUsed(board, tc.events, step); got != tc.step {
 			t.Errorf("%s: step rounds = %d, want %d", tc.name, got, tc.step)

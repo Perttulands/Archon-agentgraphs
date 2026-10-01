@@ -331,8 +331,10 @@ the ledger:
 - on the Input card, how many step runs the whole mission may make, judges
   included.
 
-A start a coordinator restart cut short before its output is not a round; the
-step's re-run is, so a run reaches the same limits wherever a restart falls.
+A start the coordinator cut short before its output, by a crash or by a
+shutdown such as a deploy (whose block has `code` `coordinator_shutdown`), is
+not a round; the step's re-run is, so a run reaches the same limits wherever a
+restart falls.
 
 Its `seconds` knob (the time knob) counts wall time, in whole seconds, from the
 ledger's timestamps, never time spent waiting:
@@ -345,8 +347,10 @@ ledger's timestamps, never time spent waiting:
   It keeps counting while another path works during a gate's wait and pauses
   while every open path only waits on a human gate.
 
-Neither counts while the run is blocked; an attempt still open when the run
-resumes counts on. The whole attempt counts: seat startup, preparation,
+Neither counts while the run is blocked, nor while the daemon was down after
+a crash: the time from the last event before the restart's interruption to the
+interruption counts nothing. An attempt still open when the run resumes counts
+on. The whole attempt counts: seat startup, preparation,
 collaboration and finalization. When a step is dispatched, the time its cards
 have left becomes its deadline, recomputed from the ledger, so a restart never
 gives an attempt more time. At the deadline the step's seats stop, keeping
