@@ -48,7 +48,8 @@ import {
   runStatusFromResponse,
   upsertRunEvent,
 } from './formationsRunState'
-import { chooseBoardRun, readRunLink, runChoiceLabel, runChoices, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
+import { chooseBoardRun, readRunLink, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
+import { RunList, RunRevisionNote, RunWhen } from './RunList'
 import { chooseCurrentBoard, rememberBoardOnDevice } from './currentBoard'
 import { END_ROOM, clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
 import { END_SVG, FormationSeats, GATE_SVG, PLAY_SVG, slotTooltip, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
@@ -530,6 +531,19 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const timer = active ? window.setInterval(discover, 5000) : undefined
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [active, pinnedRun, selectedSlug])
+
+  // A mission created again under a deleted one's slug does not take its runs
+  // (archon-n7u.15): a linked or remembered run of the earlier mission is put away.
+  useEffect(() => {
+    if (!board?.id || !activeRun?.missionId || activeRun.missionSlug !== board.slug || activeRun.missionId === board.id) return
+    if (pinnedRun.runId === activeRun.runId) {
+      setPinnedRun({ slug: '', runId: '' })
+      setLinkError(`Run ${activeRun.runId} belongs to an earlier mission "${board.slug}" that was deleted`)
+    }
+    window.localStorage.removeItem(activeRunStorageKey(board.slug))
+    setActiveRun(null)
+    setRunEvents([])
+  }, [activeRun?.missionId, activeRun?.missionSlug, activeRun?.runId, board?.id, board?.slug, pinnedRun.runId])
 
   // The address bar names the board and a pinned run, so a reload keeps them.
   useEffect(() => {
@@ -1386,7 +1400,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const runMission = useCallback(async (mission: MissionNode, inputs: RunInputs) => {
     const current = boardRef.current
     if (!current) return
-      const result = await startRun(current.etag, { ...inputs, mission: current.slug, inputCardId: mission.id, expectedRev: current.rev, actor: 'agent:ui' })
+      const result = await startRun(current.etag, { ...inputs, mission: current.slug, inputCardId: mission.id, expectedRev: current.rev, actor: 'human:ui' })
         .catch(err => {
           if (err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
           throw err
@@ -1415,7 +1429,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const runFormation = useCallback(async (formation: FormationNode, inputs: RunInputs) => {
     const current = boardRef.current
     if (!current) return
-    const result = await startRun(current.etag, { ...inputs, mission: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'agent:ui' })
+    const result = await startRun(current.etag, { ...inputs, mission: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'human:ui' })
       .catch(err => {
         if (err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
         throw err
@@ -2342,7 +2356,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     [board?.formations],
   )
   const runBadgeClass = activeRun ? activeRun.status : ''
-  const choices = useMemo(() => runChoices(boardRuns, activeRun), [activeRun, boardRuns])
   // Choosing a run pins it to the board; choosing none puts a finished run away.
   const chooseRun = (runId: string) => {
     setLinkError('')
@@ -2354,16 +2367,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setActiveRun(null)
     setRunEvents([])
   }
-  const runPicker = (shownRunId: string) => (
-    <select className="run-picker" aria-label="Choose run" value={shownRunId} onChange={event => chooseRun(event.target.value)}>
-      {!shownRunId ? <option value="">Recent runs…</option> : activeRun?.final ? <option value="">No run shown</option> : null}
-      {choices.open.length ? (
-        <optgroup label="Open">{choices.open.map(run => <option key={run.runId} value={run.runId}>{runChoiceLabel(run)}</option>)}</optgroup>
-      ) : null}
-      {choices.finished.length ? (
-        <optgroup label="Finished">{choices.finished.map(run => <option key={run.runId} value={run.runId}>{runChoiceLabel(run)}</option>)}</optgroup>
-      ) : null}
-    </select>
+  const runList = (
+    <RunList runs={boardRuns} shown={activeRun} missionTitle={board?.title || selectedSlug} onChoose={chooseRun} onPutAway={() => chooseRun('')} />
   )
   const pendingHumanGateId = useMemo(() => openHumanGateId(runEvents), [runEvents])
   const pendingHumanGate = useMemo(() => {
@@ -2620,24 +2625,27 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 <span>run</span>
                 <span className={`badge ${runBadgeClass}`}>{runStatusLabel(activeRun.status)}</span>
                 {/* Waiting at a gate on the canvas, the phrase brings up the answer, not the gate's editor. */}
+                <RunWhen run={activeRun} />
                 <RunPoint runId={activeRun.runId} point={runPoint} title={runPointTitle}
+                  since={runPoint?.kind === 'waiting' ? activeRun.waitingGates?.find(gate => gate.gateId === runPoint.nodeId)?.requestedAt : undefined}
                   titleOf={nodeId => (board ? nodeTitle(board, nodeId) : nodeId)}
                   onLocate={!showFlow && runPoint?.kind === 'waiting' && answerKey ? showAnswer : locateAndOpenNode}
                   action={showFlow ? 'Open the step' : runPoint?.kind === 'waiting' && answerKey ? 'Show it on the canvas with your answer' : 'Show it on the canvas and open it'} />
                 <RunProduced />
-                {activeRun.final || choices.open.length + choices.finished.length > 1 ? runPicker(activeRun.runId) : null}
+                <RunRevisionNote run={activeRun} currentRev={board?.rev} missionTitle={board?.title || ''} />
+                {runList}
                 {activeRun.cwd && <span className="run-cwd" title={activeRun.cwd}>{activeRun.cwd}</span>}
                 {activeRun.beadId && <span>{activeRun.beadId}</span>}
                 <RunBarActions run={activeRun} point={runPoint} pointTitle={runPointTitle} boardTitle={board?.title || ''}
                   titleOf={nodeId => (board ? nodeTitle(board, nodeId) : nodeId)}
                   pendingGate={pendingHumanGate} onResume={() => void resumeActiveRun()} onStop={abortActiveRun} />
               </div>
-            ) : choices.finished.length ? (
-              // No run is shown, but finished runs can be reopened to read what they produced.
+            ) : boardRuns.length ? (
+              // No run is shown, but the mission's runs can be reopened to read what they produced.
               <div className="run-banner idle" data-testid="run-banner-idle">
                 <span>run</span>
                 <span className="run-none">no open run</span>
-                {runPicker('')}
+                {runList}
               </div>
             ) : null}
         <div className={`viewport${showFlow ? ' flow-mode' : ''}`} data-testid="formations-canvas" ref={viewportRef} onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>

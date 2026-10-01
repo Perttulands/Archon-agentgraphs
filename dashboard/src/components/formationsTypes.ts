@@ -228,6 +228,14 @@ export interface RunStatusProjection {
   onCallSeats?: OnCallSeat[]
   /** Who failed or canceled a final run; why is in its run evidence problems. */
   endedBy?: string
+  /** The mission's identity and the revision the run froze. */
+  missionId?: string
+  missionRev?: number
+  /** The run's driver: the actor that started it. */
+  startedBy?: string
+  /** When the run started and when its ledger last changed; a final run ended then. */
+  startedAt?: string
+  updatedAt?: string
 }
 
 /** A seat that received a human gate's ask on a session-channel run. */
@@ -241,6 +249,8 @@ export interface AskedSeat {
 export interface WaitingGate {
   gateId: string
   requestedSeq: number
+  /** When the gate asked. */
+  requestedAt?: string
   /** Seats the ask was delivered to; empty until one receives it. */
   askedSeats?: AskedSeat[]
   /** Why the ask went to the notify command instead of the agents. */

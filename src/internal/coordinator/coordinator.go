@@ -29,6 +29,8 @@ import (
 type GateRequest struct {
 	GateID       string `json:"gateId"`
 	RequestedSeq int    `json:"requestedSeq"`
+	// RequestedAt is when the gate asked, so the operator sees how long it waits.
+	RequestedAt string `json:"requestedAt,omitempty"`
 	// AskedSeats lists the kept seats a session-channel ask reached.
 	AskedSeats []AskedSeat `json:"askedSeats"`
 	// FallbackReason says why the ask went to the notify command instead.
@@ -279,9 +281,20 @@ func (c *Coordinator) Handler() http.Handler {
 	c.mu.Unlock()
 	api.NewAgentsHandlerWithStoreAndLiveness(c.personas, liveness).RegisterRoutes(mux)
 	mux.HandleFunc("GET /api/runs", func(w http.ResponseWriter, r *http.Request) {
-		// An optional ?mission= filter lets a cockpit poll only its mission's runs.
-		mission := r.URL.Query().Get("mission")
-		runs, err := c.store.ListRuns(formations.RunListFilter{BoardSlug: mission})
+		// An optional ?mission= filter lets a cockpit poll only its mission's
+		// runs: those of the mission now under that slug or ID, not of a
+		// deleted mission that had the same slug (archon-n7u.15).
+		// A mission that does not exist has no runs.
+		filter := formations.RunListFilter{}
+		if mission := r.URL.Query().Get("mission"); mission != "" {
+			filter.MissionID = "-"
+			if slug, err := c.store.ResolveBoardSelector(mission); err == nil {
+				if board, err := c.store.ReadBoard(slug); err == nil {
+					filter.MissionID = board.ID
+				}
+			}
+		}
+		runs, err := c.store.ListRuns(filter)
 		if err != nil {
 			failure(w, err)
 			return
@@ -488,7 +501,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.FormationID != "" {
-		started, execute, err := c.engine.PrepareFormationRun(req.Board, req.FormationID, formations.FormationRunRequest{Actor: req.Actor, Personas: c.personas, Limits: req.Limits, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Cwd: req.Cwd, ContextPaths: req.ContextPaths, BeadID: req.BeadID, Inputs: req.Inputs})
+		started, execute, err := c.engine.PrepareFormationRun(req.Board, req.FormationID, formations.FormationRunRequest{Actor: runActor(req.Actor), Personas: c.personas, Limits: req.Limits, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Cwd: req.Cwd, ContextPaths: req.ContextPaths, BeadID: req.BeadID, Inputs: req.Inputs})
 		if err != nil {
 			failure(w, err)
 			return
@@ -511,7 +524,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		reply(w, 422, map[string]string{"error": "wire the Input card to a step"})
 		return
 	}
-	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, ContextPaths: req.ContextPaths, Inputs: req.Inputs, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: "operator:standalone", Personas: c.personas, Limits: req.Limits})
+	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, ContextPaths: req.ContextPaths, Inputs: req.Inputs, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: runActor(req.Actor), Personas: c.personas, Limits: req.Limits})
 	if err != nil {
 		failure(w, err)
 		return
@@ -522,6 +535,15 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 	startedWorker = true
 	c.launch(started.RunID, func() error { _, err := c.engine.ExecuteStartedMission(started.RunID); return err })
 	reply(w, http.StatusAccepted, map[string]string{"runId": started.RunID})
+}
+
+// runActor is who drives a run started over HTTP: the actor the start names,
+// or the standalone operator.
+func runActor(actor string) string {
+	if strings.TrimSpace(actor) == "" {
+		return "operator:standalone"
+	}
+	return actor
 }
 
 func (c *Coordinator) recordFailure(runID string, err error) {
@@ -619,7 +641,7 @@ func project(status *formations.RunStatusProjection, events []formations.RunEven
 			if waiting[event.GateID] != event.Seq {
 				continue
 			}
-			gate := GateRequest{GateID: event.GateID, RequestedSeq: event.Seq, AskedSeats: []AskedSeat{}}
+			gate := GateRequest{GateID: event.GateID, RequestedSeq: event.Seq, RequestedAt: event.Timestamp, AskedSeats: []AskedSeat{}}
 			if record := asks[event.Seq]; record != nil {
 				for createdSeq, delivered := range record.Delivered {
 					gate.AskedSeats = append(gate.AskedSeats, AskedSeat{NodeID: delivered.NodeID, SlotID: delivered.SlotID, CreatedSeq: createdSeq, DeliveredSeq: delivered.Seq})

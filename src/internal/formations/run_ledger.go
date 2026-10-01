@@ -136,10 +136,19 @@ type RunStatusProjection struct {
 	// EndedBy names who failed or canceled a final run; the reason itself is
 	// run evidence (ADR-0017), since it can quote private text.
 	EndedBy string `json:"endedBy,omitempty"`
+	// StartedBy is the run's driver: the actor that started it.
+	StartedBy string `json:"startedBy,omitempty"`
+	// StartedAt and UpdatedAt are the times of the run's first and latest
+	// ledger events; a final run ended at UpdatedAt.
+	StartedAt string `json:"startedAt,omitempty"`
+	UpdatedAt string `json:"updatedAt,omitempty"`
 }
 
+// RunListFilter selects runs. MissionID lists one mission's runs by its
+// identity, so a mission created again under a deleted one's slug starts with
+// none (archon-n7u.15).
 type RunListFilter struct {
-	BoardSlug string
+	MissionID string
 }
 
 type RunNodeReport struct {
@@ -581,6 +590,8 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 		BoardRev:     events[0].BoardRev,
 		MissionID:    events[0].MissionID,
 		BeadID:       events[0].BeadID,
+		StartedBy:    events[0].Actor,
+		StartedAt:    events[0].Timestamp,
 	}
 	for i, event := range events {
 		if event.Seq != i+1 {
@@ -588,6 +599,7 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 		}
 		status.EventCount++
 		status.Epoch = event.Epoch
+		status.UpdatedAt = event.Timestamp
 		switch event.Type {
 		case RunEventStarted, RunEventResumed:
 			status.Status = RunStatusRunning
@@ -678,7 +690,7 @@ func (s *Store) ListRuns(filter RunListFilter) ([]RunStatusProjection, error) {
 		if err != nil {
 			return nil, err
 		}
-		if filter.BoardSlug != "" && status.BoardSlug != filter.BoardSlug {
+		if filter.MissionID != "" && status.BoardID != filter.MissionID {
 			continue
 		}
 		runs = append(runs, *status)

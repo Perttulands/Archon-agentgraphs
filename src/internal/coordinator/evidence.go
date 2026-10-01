@@ -20,6 +20,7 @@ func (c *Coordinator) registerEvidenceRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/runs/{runId}/evidence/nodes/{nodeId}", c.nodeEvidence)
 	mux.HandleFunc("GET /api/runs/{runId}/evidence/problems", c.runProblems)
 	mux.HandleFunc("GET /api/runs/{runId}/evidence/briefs/{dispatchSeq}", c.briefEvidence)
+	mux.HandleFunc("GET /api/runs/{runId}/evidence/mission", c.missionEvidence)
 	mux.HandleFunc("GET /api/runs/{runId}/evidence/artifacts", c.artifactList)
 	mux.HandleFunc("GET /api/runs/{runId}/evidence/artifacts/{name...}", c.artifactPreview)
 	mux.HandleFunc("GET /api/runs/{runId}/artifacts/{name...}", c.artifactRaw)
@@ -57,6 +58,16 @@ func (c *Coordinator) briefEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, http.StatusOK, map[string]any{"brief": brief})
+}
+
+// missionEvidence serves the mission as the run froze it at admission.
+func (c *Coordinator) missionEvidence(w http.ResponseWriter, r *http.Request) {
+	mission, err := c.store.ReadRunMission(r.PathValue("runId"))
+	if err != nil {
+		evidenceFailure(w, err)
+		return
+	}
+	reply(w, http.StatusOK, map[string]any{"mission": mission})
 }
 
 func (c *Coordinator) artifactList(w http.ResponseWriter, r *http.Request) {

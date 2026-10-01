@@ -238,6 +238,7 @@ func remoteUsage(stderr io.Writer) int {
 func remoteRunStart(client *remoteClient, noun string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(noun+" run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	actor := fs.String("actor", "agent:archon", "who drives the run; the run list shows it")
 	run := registerRunStartFlags(fs)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -269,7 +270,7 @@ func remoteRunStart(client *remoteClient, noun string, args []string, stdout, st
 		return fail(stderr, err)
 	}
 	board := &mission.Data.Board
-	fields := map[string]any{"mission": fs.Arg(0), "expectedRev": board.Rev, "cwd": *run.cwd, "beadId": *run.bead, "inputs": inputs}
+	fields := map[string]any{"mission": fs.Arg(0), "expectedRev": board.Rev, "cwd": *run.cwd, "beadId": *run.bead, "inputs": inputs, "actor": *actor}
 	if noun == "formation" {
 		formationID, err := resolveFormationSelector(board, fs.Arg(1))
 		if err != nil {

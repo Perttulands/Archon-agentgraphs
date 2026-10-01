@@ -353,6 +353,11 @@ artifact contents, brief paths, native session IDs and arbitrary private event
 data. Projections and SSE stay sanitized; the run evidence routes under
 [HTTP contract](#http-contract) serve a run's outputs, gate results, human
 responses, briefs and artifacts to the operator.
+Run status also carries `startedBy`, the run's driver (the `actor` the start
+named, `operator:standalone` when it named none; the cockpit's starts name
+`human:ui`, and the CLI's run starts take `--actor`, default `agent:archon`), and `startedAt` and `updatedAt`, the
+times of its first and latest ledger events; a final run ended at
+`updatedAt`. Each waiting gate carries `requestedAt`, when it asked.
 `run logs` is the same sanitized projection as `run status`. `run follow` prints
 complete enveloped projections from SSE after durable changes, waits through
 human gates and closes only at finality. Interrupting that client stops viewing,
@@ -505,14 +510,22 @@ It writes each rendered brief to `<state-dir>/briefs/lab-*.md`, as a seat would
 receive it. It proves routing, not agent work or the truth of a review.
 
 The cockpit lists a mission's runs from the daemon, so runs started by the CLI,
-an agent or another browser appear. It shows the open run that most needs the
-operator: waiting for a human, then running, then blocked, newest first. A
-picker switches between open runs and the mission's ten most recent finished
-runs; when no run is open, the run bar still offers the finished ones, and a
-reopened finished run can be put away again. `/?mission=<slug>&run=<runId>`, the link that
-notifications carry, opens that mission and keeps that run shown. The address bar
-keeps a chosen run across reloads, and an unknown linked mission or run is
-reported rather than silently replaced.
+an agent or another browser appear. A mission lists only its own runs, by its
+identity: a mission created again under a deleted one's slug starts with none,
+and a link to a run of the deleted mission is reported and not shown
+(archon-n7u.15). It shows the open run that most needs the operator: waiting
+for a human, then running, then blocked, newest first. The run bar's Runs
+button lists every run of the mission (archon-o7p.2), open runs by attention
+and then finished runs newest first, each identified without its ID: its status,
+when it started, how long it took or has run, the start of its first text
+input, and its driver. Choosing one shows it, and a finished run shown can be
+put away. The run bar says when the shown run started, how long it took and who
+drives it; a run waiting at a gate says since when; and a run that ran an
+earlier revision of the mission says so and opens the mission as it ran in a
+file window. `/?mission=<slug>&run=<runId>`, the link that notifications carry,
+opens that mission and keeps that run shown. The address bar keeps a chosen run
+across reloads, and an unknown linked mission or run is reported rather than
+silently replaced.
 
 The cockpit shows what a run produced, read from the evidence routes. Each step's
 card lists its latest output as chips: artifact files its ports name, the text
@@ -520,8 +533,8 @@ of ports that name no file, and the seat's report when it adds something. The
 run bar's Produced list leads with a finished run's final steps (those whose
 outputs feed nothing), or a running run's latest step, and a menu holds the
 rest, including artifact files no output names. A chip opens the file in a
-floating file window, rendered by kind, with Open raw and Copy path (relative to
-the state directory) for artifacts; several can be open side by side.
+floating file window, rendered by kind, with Open raw and Copy path (the
+artifact's absolute path on the daemon host); several can be open side by side.
 Node, note and file windows open in the free space nearest what opened them:
 Flow's gutters, or the canvas above and below the graph, shrinking to half
 their remembered size at most to fit. A window leaves its own card or Flow row,
@@ -1173,7 +1186,8 @@ as it was (the same slot assignment, title, brief, type, controller, gate or
 Input card fields, or judge chain) saves nothing: it answers 200 with the
 current mission, its revision and ETag unchanged, and a stale ETag still conflicts. Tool
 and note edits still save a revision. Runtime routes start/list/read runs
-(`GET /api/runs?mission=<slug>` lists one mission's runs), read projected
+(`GET /api/runs?mission=<slug>` lists the runs of the mission now under that
+slug or ID, and none for a mission that does not exist), read projected
 events/escalations, stream SSE, abort, resume, read run evidence and record
 exact human verdicts. They all use the coordinator; no request-local executor
 exists.
@@ -1305,8 +1319,12 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   entries or 8 directory levels. A run without artifacts lists none.
 - `/api/runs/{runId}/evidence/artifacts/{name...}` returns
   `data.artifact` (`name`, `size`, `modifiedAt`, `kind` `markdown`, `json`,
-  `text`, `image`, `pdf` or `binary`), with `text` capped at 256 KiB for textual
-  kinds. A `.pdf` file that starts with `%PDF-` is `pdf`.
+  `text`, `image`, `pdf` or `binary`, and `path`, its absolute path on the
+  daemon host), with `text` capped at 256 KiB for textual kinds. A `.pdf` file
+  that starts with `%PDF-` is `pdf`.
+- `/api/runs/{runId}/evidence/mission` returns `data.mission`
+  (`missionRev`, `text` capped at 256 KiB): the mission's TOML as the run froze
+  it at admission, which later edits never change.
 - `/api/runs/{runId}/artifacts/{name...}` returns the artifact's bytes
   up to 16 MiB; larger files return 413. Text is `text/plain; charset=utf-8`
   and redacted, PNG, JPEG, GIF and WebP keep their image type, a `pdf` is an
@@ -1355,8 +1373,8 @@ there are followed, and only regular files are read. Output and input references
 directory or `ref.external` (its absolute path, which opens in a file window) elsewhere; engine references
 such as `ledger://` name no file and are omitted. Structured fields
 never carry native session IDs, tmux session or pane IDs, `sessionRef`, socket or
-prompt digests, brief or prompt paths, seat report pointers or absolute
-artifact paths, and worker pane captures are not served. Text is served as
+prompt digests, brief or prompt paths or seat report pointers, and worker pane
+captures are not served; an artifact's preview names its absolute path. Text is served as
 recorded apart from redaction, so it can mention host paths such as the cwd.
 
 ### Referenced files

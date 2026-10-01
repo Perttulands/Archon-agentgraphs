@@ -3,6 +3,7 @@ import {
   artifactRawUrl,
   fetchArtifactPreview,
   fetchNodeEvidence,
+  fetchRunMission,
   type ArtifactKind,
   type EvidenceText,
 } from '../evidence/runEvidenceApi'
@@ -17,6 +18,8 @@ export interface FilePreview {
   kind: FileKind
   /** The text of a textual file, capped by the daemon and marked when cut. */
   text?: EvidenceText
+  /** The absolute path the daemon read, which Copy path prefers. */
+  path?: string
 }
 
 export interface FileRequest {
@@ -47,10 +50,10 @@ export function artifactFileRequest(runId: string, name: string, context?: strin
     context: context ? `${context} · ${name}` : name,
     load: async () => {
       const preview = await fetchArtifactPreview(runId, name)
-      return { kind: preview.kind, text: preview.text }
+      return { kind: preview.kind, text: preview.text, path: preview.path }
     },
     rawUrl: artifactRawUrl(runId, name),
-    // Artifacts live under the daemon's state directory.
+    // Artifacts live under the daemon's state directory; the preview names the absolute path.
     path: `.archon/artifacts/${runId}/${name}`,
     basePath: name,
     link: target => artifactFileRequest(runId, target, context),
@@ -77,6 +80,19 @@ export function outputFileRequest(runId: string, nodeId: string, name: string, c
     },
     link: target => artifactFileRequest(runId, target, context),
     imageUrl: target => artifactRawUrl(runId, target),
+  }
+}
+
+/** The mission as a run froze it, which later edits never change. */
+export function runMissionFileRequest(runId: string, missionRev: number, missionTitle: string): FileRequest {
+  return {
+    id: `mission:${runId}`,
+    name: `${missionTitle || 'Mission'} as run ${runId.slice(-6)} ran it`,
+    context: `revision ${missionRev}`,
+    load: async () => {
+      const mission = await fetchRunMission(runId)
+      return { kind: 'text', text: mission.text }
+    },
   }
 }
 

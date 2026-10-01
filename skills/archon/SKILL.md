@@ -320,7 +320,11 @@ archon $S run status "$ARCHON_RUN_ID" --json
   time waiting at human gates. Each must be positive; omitting it means none. A
   spent cap blocks the run naming the limit (for example the attempts used of
   the maximum), and that block is not resumable.
-- A lost receipt: check `run list --json` before starting again.
+- `--actor <you>` names the run's driver (default `agent:archon`); run status
+  and the cockpit's run list show it as `startedBy`.
+- A lost receipt: check `run list --mission "$M" --json` before starting again.
+  It lists only that mission's runs, each with `status`, `startedBy`,
+  `startedAt`, `updatedAt` (a final run ended then) and `inputs`.
 
 ### Watch
 

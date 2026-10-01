@@ -263,6 +263,7 @@ paths:
                   type: string
                 actor:
                   type: string
+                  description: Who drives the run, shown as its startedBy; omitted means operator:standalone.
                 expectedRev:
                   type: integer
                   minimum: 1
@@ -496,6 +497,16 @@ paths:
           description: Enveloped data.brief contains dispatchSeq, nodeId, slotId, attempt and text capped at 256 KiB. Only the path recorded by this run's slot_dispatch at that sequence, naming a direct child of the state directory's briefs, is read.
         '404':
           description: No such run, no slot_dispatch at that sequence, or no readable brief
+  /api/runs/{runId}/evidence/mission:
+    parameters:
+    - $ref: '#/components/parameters/RunID'
+    get:
+      summary: Read the mission as the run froze it at admission
+      responses:
+        '200':
+          description: Enveloped data.mission contains missionRev and text, the frozen mission TOML capped at 256 KiB; later edits never change it.
+        '404':
+          description: No such run
   /api/runs/{runId}/evidence/artifacts:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -519,7 +530,7 @@ paths:
       summary: Preview one artifact
       responses:
         '200':
-          description: Enveloped data.artifact contains name, size, modifiedAt, kind (markdown, json, text, image, pdf, binary) and, for textual kinds, text capped at 256 KiB.
+          description: Enveloped data.artifact contains name, size, modifiedAt, kind (markdown, json, text, image, pdf, binary), path (its absolute path on the daemon host) and, for textual kinds, text capped at 256 KiB.
         '404':
           description: No such run or artifact, or a name that leaves the run's artifact directory through .., a symlink or a hard link
   /api/runs/{runId}/artifacts/{name}:
@@ -1095,6 +1106,17 @@ components:
           type: integer
         resumeAllowed:
           type: boolean
+        startedBy:
+          type: string
+          description: The run's driver, the actor its start named; operator:standalone when it named none.
+        startedAt:
+          type: string
+          format: date-time
+          description: When the run started (its first ledger event).
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the run's ledger last changed; a final run ended then.
         projectionVersion:
           const: standalone-trusted-v1
         humanChannel:
@@ -1116,6 +1138,10 @@ components:
                 type: string
               requestedSeq:
                 type: integer
+              requestedAt:
+                type: string
+                format: date-time
+                description: When the gate asked.
               askedSeats:
                 type: array
                 description: Kept seats a session-channel ask was pasted into, in delivery order.

@@ -1588,15 +1588,19 @@ func runList(store *formations.Store, args []string, stdout, stderr io.Writer) i
 		fmt.Fprintln(stderr, "usage: archon run list [--mission <mission>] [--json]")
 		return 2
 	}
-	boardSlug := ""
+	filter := formations.RunListFilter{}
 	if *boardSelector != "" {
 		resolved, err := store.ResolveBoardSelector(*boardSelector)
 		if err != nil {
 			return failSelector(stderr, err, *jsonOut, "mission", *boardSelector)
 		}
-		boardSlug = resolved
+		board, err := store.ReadBoard(resolved)
+		if err != nil {
+			return failSelector(stderr, err, *jsonOut, "mission", *boardSelector)
+		}
+		filter.MissionID = board.ID
 	}
-	runs, err := store.ListRuns(formations.RunListFilter{BoardSlug: boardSlug})
+	runs, err := store.ListRuns(filter)
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", "")
 	}
