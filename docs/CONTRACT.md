@@ -783,11 +783,15 @@ waits, the run keeps dispatching every step not behind it, one step at a time,
 and several requests can wait at once, each answered on its own and in any
 order. The daemon records a verdict at once, while other seats work, and the
 run routes it between steps: once the step running when it arrived has
-recorded its output and that output has moved on. Deliveries happen in ledger
-order, and replay after a restart makes them in the same order; a verdict
-recorded while a step worked waits for that step's output even when a restart
-cut the step short and it runs again, so a run reaches the same end, each step
-on the same inputs, wherever a restart falls. A send-back to a step still
+recorded its output and that output has moved on. A step's output moves on
+along its connections one at a time, and a code or judge gate it reaches is
+evaluated right there, its verdict routed before the output's later
+connections. Replay after a restart makes every delivery in that same order
+and writes nothing to the ledger, except that it finishes a gate evaluation
+the restart cut short, at the point the run would have; a verdict recorded
+while a step worked waits for that step's output even when a restart cut the
+step short and it runs again, so a run reaches the same end, each step on the
+same inputs and the same steps in the same order, wherever a restart falls. A send-back to a step still
 working its first attempt runs that step again once the attempt ends. When two
 deliveries reach one port before its step runs, nothing is lost: the newest
 work is the input, a send-back that meets unread work keeps that work as the

@@ -105,7 +105,23 @@ type restartCase struct {
 	midStepOptional bool
 	// wantInputs names text each step's runs must have received.
 	wantInputs map[string][]string
+	// invariants, when set, also checks every ledger the case ends with.
+	invariants func(*testing.T, *formations.BoardDocument, []formations.RunEvent)
 	want       runOutcome
+}
+
+// requireProjectedEnd fails unless the run projects the end its ledger
+// recorded: replay writes nothing that would read it otherwise.
+func requireProjectedEnd(t *testing.T, c *Coordinator, id string, events []formations.RunEvent) {
+	t.Helper()
+	status, err := c.store.ProjectRun(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := events[len(events)-1].Type
+	if want := strings.TrimPrefix(last, "run_"); !status.Final || status.Status != want {
+		t.Fatalf("the run ended %s but projects %s (final %v):\n%s", last, status.Status, status.Final, fullTrail(events))
+	}
 }
 
 // requireAnsweredMidStep fails unless each step answerWhile names had a
@@ -495,6 +511,40 @@ criterion = "Judge the work"
 			want:   runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_work": 2, "fmn_first": 2, "fmn_last": 2}},
 		},
 		{
+			// S1's output reaches the judge, then S2. The judge sends the work
+			// back at once, so S1 runs again before S2 runs, once, on the
+			// revised work; a restart during the judge keeps that order.
+			name: "a judge's send-back running before a step the same output feeds",
+			board: gateBoard(formation("fmn_s0") + formation("fmn_s1") + formation("fmn_s2") + formation("fmn_judge") + `
+[[gate]]
+id = "gate_judge"
+title = "Judge"
+kinds = ["formation"]
+criterion = "Judge the work"
+` + endNodes +
+				wire("edge_m_s0", "mis_proof:out", "fmn_s0:port_in") +
+				wire("edge_s0_s1", "fmn_s0:port_out", "fmn_s1:port_in") +
+				wire("edge_s1_gate", "fmn_s1:port_out", "gate_judge:in") +
+				wire("edge_gate_judge", "gate_judge:judge", "fmn_judge:port_in") +
+				wire("edge_judge_verdict", "fmn_judge:port_out", "gate_judge:judge") +
+				wire("edge_fail", "gate_judge:fail", "fmn_s1:port_in") +
+				endWire("edge_pass", "gate_judge:pass", "end_done") +
+				wire("edge_s1_s2", "fmn_s1:port_out", "fmn_s2:port_in") +
+				endWire("edge_s2_done", "fmn_s2:port_out", "end_done")),
+			judges: map[string][]string{"fmn_judge": {"fail", "pass"}},
+			want:   runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_s0": 1, "fmn_s1": 2, "fmn_judge": 2, "fmn_s2": 1}},
+		},
+		{
+			// The judge's send-back feeds one port of Join before S2 feeds the
+			// other; once Review approves Join's work the run succeeds, and
+			// continuing it after the verdict records no new wait.
+			name:     "a join a judge's route feeds before its other port",
+			board:    judgeFedJoinBoard(),
+			judges:   map[string][]string{"fmn_judge": {"fail"}},
+			verdicts: map[string][]string{"gate_review": {"pass"}},
+			want:     runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_s1": 1, "fmn_judge": 1, "fmn_s2": 1, "fmn_join": 1}},
+		},
+		{
 			// Work may run twice; the third try waits for a grant.
 			name:   "a step's Limit card stopping a judge loop until granted",
 			board:  judgeLoopBoard(`target = "fmn_work"`),
@@ -558,6 +608,32 @@ func rejectionIntoAFedPortBoard() string {
 
 // judgeLoopBoard is Work judged by a formation that sends it back on fail,
 // with a two-round Limit card on the given target, or four for the mission.
+// judgeFedJoinBoard: Input -> S1 -> Judge (fail into Join.port_in, pass
+// Done); Input -> S2 -> Join.port_b; Join -> Review (human; pass Done, fail
+// Rejected).
+func judgeFedJoinBoard() string {
+	join := strings.Replace(gateBoardFormation("fmn_join"), "[[formation.output]]", "[[formation.input]]\nid = \"port_b\"\nlabel = \"Second\"\n\n[[formation.output]]", 1)
+	wire := gateBoardConnection
+	return gateBoard(gateBoardFormation("fmn_s1") + gateBoardFormation("fmn_s2") + join + gateBoardFormation("fmn_judge") + gateBoardHumanGate("gate_review") + `
+[[gate]]
+id = "gate_judge"
+title = "Judge"
+kinds = ["formation"]
+criterion = "Judge the work"
+` + endNodes +
+		wire("edge_m_s1", "mis_proof:out", "fmn_s1:port_in") +
+		wire("edge_m_s2", "mis_proof:out", "fmn_s2:port_in") +
+		wire("edge_s1_judge", "fmn_s1:port_out", "gate_judge:in") +
+		wire("edge_gate_judge", "gate_judge:judge", "fmn_judge:port_in") +
+		wire("edge_judge_verdict", "fmn_judge:port_out", "gate_judge:judge") +
+		wire("edge_judge_fail", "gate_judge:fail", "fmn_join:port_in") +
+		endWire("edge_judge_pass", "gate_judge:pass", "end_done") +
+		wire("edge_s2_join", "fmn_s2:port_out", "fmn_join:port_b") +
+		wire("edge_join_review", "fmn_join:port_out", "gate_review:in") +
+		endWire("edge_review_pass", "gate_review:pass", "end_done") +
+		endWire("edge_review_fail", "gate_review:fail", "end_rejected"))
+}
+
 func judgeLoopBoard(target string) string {
 	rounds := "2"
 	if strings.Contains(target, "mis_proof") {
@@ -608,6 +684,16 @@ func checkRestartCuts(t *testing.T, tc restartCase) {
 	driveToEnd(t, c, id, tc)
 	events := eventsOf(t, c, id)
 	requireOnlyRestartErrors(t, events)
+	requireProjectedEnd(t, c, id, events)
+	board, err := c.store.ReadRunBoard(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tc.invariants != nil {
+		if tc.invariants(t, board, events); t.Failed() {
+			return
+		}
+	}
 	reference := outcomeOf(events)
 	if tc.want.Status != "" && reference.String() != tc.want.String() {
 		t.Fatalf("outcome = %s, want %s: %s", reference, tc.want, ledgerTrail(events))
@@ -631,7 +717,7 @@ func checkRestartCuts(t *testing.T, tc restartCase) {
 	}
 	lines := bytes.SplitAfter(ledger, []byte("\n"))
 	for cut := 1; cut < len(events); cut++ {
-		t.Run("after "+strconv.Itoa(cut)+" "+events[cut-1].Type, func(t *testing.T) {
+		cut := t.Run("after "+strconv.Itoa(cut)+" "+events[cut-1].Type, func(t *testing.T) {
 			next := t.TempDir()
 			for _, file := range []string{id + ".snapshot.toml", id + ".bindings.toml"} {
 				raw, err := os.ReadFile(filepath.Join(runs, file))
@@ -651,6 +737,10 @@ func checkRestartCuts(t *testing.T, tc restartCase) {
 			driveToEnd(t, restarted, id, tc)
 			events := eventsOf(t, restarted, id)
 			requireOnlyRestartErrors(t, events)
+			requireProjectedEnd(t, restarted, id, events)
+			if tc.invariants != nil {
+				tc.invariants(t, board, events)
+			}
 			got := outcomeOf(events)
 			if got.String() != reference.String() {
 				t.Fatalf("outcome = %s, without the restart %s:\n%s", got, reference, fullTrail(events))
@@ -660,6 +750,9 @@ func checkRestartCuts(t *testing.T, tc restartCase) {
 				t.Fatalf("inputs after the restart:\n%s\nwithout it:\n%s\n%s", got.inputsString(), reference.inputsString(), fullTrail(events))
 			}
 		})
+		if !cut {
+			return // one failing cut says enough
+		}
 	}
 }
 

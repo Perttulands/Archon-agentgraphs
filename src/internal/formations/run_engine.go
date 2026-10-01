@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 )
@@ -1134,15 +1133,10 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 	attempts := map[string]int{}
 	var queue []string
 
-	// The ledger's deliveries replay in ledger order, as the run made them, so
-	// a port two deliveries reached holds what it held live (archon-o7p.11).
+	// The ledger's deliveries replay in the order the run made them, so a
+	// port two deliveries reached holds what it held live and the queue holds
+	// what was waiting, in its order (archon-o7p.11, ledgerReplay).
 	if err := e.replayLedgerToReady(runID, board, gateByID, events, attempts, ready, queued, &queue); err != nil {
-		if errors.Is(err, errRunStopped) {
-			return nil
-		}
-		return err
-	}
-	if err := e.resumeIncompleteGateEvaluations(runID, board, gateByID, events, ready, queued, &queue); err != nil {
 		if errors.Is(err, errRunStopped) {
 			return nil
 		}
@@ -1266,49 +1260,6 @@ func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[strin
 		return err
 	}
 	return e.endWhenNothingCanRun(runID, board, completionEvents, finishReason)
-}
-
-func (e *RunEngine) resumeIncompleteGateEvaluations(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
-	pending := map[string]RunEvent{}
-	for _, event := range events {
-		gateID := event.GateID
-		if gateID == "" {
-			gateID = event.NodeID
-		}
-		if gateID == "" {
-			continue
-		}
-		switch event.Type {
-		case RunEventGateEvaluating:
-			pending[gateID] = event
-		case RunEventGateVerdict, RunEventHumanInputRequested, RunEventError:
-			delete(pending, gateID)
-		}
-	}
-	evaluations := make([]RunEvent, 0, len(pending))
-	for _, event := range pending {
-		evaluations = append(evaluations, event)
-	}
-	sort.Slice(evaluations, func(i, j int) bool { return evaluations[i].Seq < evaluations[j].Seq })
-	for _, evaluation := range evaluations {
-		gateID := evaluation.GateID
-		if gateID == "" {
-			gateID = evaluation.NodeID
-		}
-		gate, ok := gates[gateID]
-		if !ok {
-			return fmt.Errorf("%w: gate %q", ErrNotFound, gateID)
-		}
-		input := runInputRefFromAny(evaluation.Data["inputRef"])
-		prior, err := e.durableGateKindResultsForEvaluation(runID, gate, input, events, evaluation.Seq)
-		if err != nil {
-			return err
-		}
-		if err := e.evaluateGateKinds(runID, board, gates, gate, input, ready, queued, queue, prior); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (e *RunEngine) durableGateKindResultsForEvaluation(runID string, gate GateNode, input RunInputRef, events []RunEvent, evaluatingSeq int) (map[string]durableGateKindResult, error) {
@@ -1481,30 +1432,6 @@ func (e *RunEngine) finishRun(runID string, board *BoardDocument, events []RunEv
 	return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventSucceeded, Data: data})
 }
 
-func processedGateInputRefs(board *BoardDocument, events []RunEvent) map[string]bool {
-	processed := map[string]bool{}
-	outputOrdinals := map[string]int{}
-	for _, event := range events {
-		if event.Type == RunEventNodeOutput {
-			advanceOutputOrdinals(board, outputOrdinals, event)
-			continue
-		}
-		switch event.Type {
-		case RunEventGateEvaluating, RunEventGateVerdict, RunEventHumanInputRequested:
-		default:
-			continue
-		}
-		if event.Data == nil {
-			continue
-		}
-		input := runInputRefFromAny(event.Data["inputRef"])
-		if input.EdgeID != "" {
-			processed[gateInputReplayKey(input.EdgeID, gateInputOutputSeq(input, outputOrdinals))] = true
-		}
-	}
-	return processed
-}
-
 func advanceOutputOrdinals(board *BoardDocument, outputOrdinals map[string]int, event RunEvent) {
 	if board == nil || event.Type != RunEventNodeOutput {
 		return
@@ -1528,67 +1455,93 @@ func gateInputReplayKey(edgeID string, outputSeq int) string {
 	return fmt.Sprintf("%s#%d", edgeID, outputSeq)
 }
 
-func (e *RunEngine) replayNodeOutputToReady(runID string, board *BoardDocument, gates map[string]GateNode, event RunEvent, processedGateInputs map[string]bool, outputOrdinals map[string]int, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
-	// Judge chains are evaluated by their owning gate. Their outputs are
-	// durable evidence, never workflow inputs, including links between judges.
-	for _, gate := range board.Gates {
-		for _, judge := range judgeChainForGate(board, gate.ID) {
-			if judge.ID == event.NodeID {
-				return nil
-			}
-		}
-	}
-	for _, connection := range outgoingConnections(board.Connections, event.NodeID) {
-		_, fromPort := endpointParts(connection.From)
-		payload, ok := outputPayloadForPortFromEvent(event, fromPort)
-		if !ok {
-			if err := e.appendErrorAndBlock(runID, "missing_output_payload", fmt.Sprintf("node %s did not produce output for port %s", event.NodeID, fromPort), "engine", event.NodeID, "missing output payload"); err != nil {
-				return err
-			}
-			return errRunStopped
-		}
-		toNode, toPort := endpointParts(connection.To)
-		if toNode == "" || toPort == "" {
-			continue
-		}
-		outputOrdinals[connection.ID]++
-		outputSeq := outputOrdinals[connection.ID]
-		input := runInputRefForConnection(runID, connection, payload)
-		input.OutputSeq = outputSeq
-		if _, ok := gates[toNode]; ok {
-			key := gateInputReplayKey(connection.ID, outputSeq)
-			if processedGateInputs[key] {
-				continue
-			}
-			processedGateInputs[key] = true
-			if err := e.deliverConnection(runID, board, gates, connection, input, ready, queued, queue); err != nil {
-				return err
-			}
-			continue
-		}
-		formation, ok := findFormation(board.Formations, toNode)
-		if !ok {
-			continue
-		}
-		deliverToPort(ready, toNode, toPort, input)
-		if formationReady(formation, ready[toNode]) && !queued[toNode] {
-			queued[toNode] = true
-			*queue = append(*queue, toNode)
-		}
-	}
-	return nil
+// ledgerReplay rebuilds a run's ports and queue from its ledger in the order
+// the run made its deliveries (archon-o7p.11). A step's output reaches its
+// connections one at a time. A gate it reached was evaluated right then, so a
+// verdict that evaluation came to without asking a human is delivered there,
+// before the output's later connections, as live. A verdict a human gave is
+// delivered where the ledger recorded it. A step's output marks its own ports
+// read and takes it out of the queue, so the queue holds what was waiting, in
+// the order it was waiting. Replay only rebuilds state and never writes to the
+// ledger, with one exception: a gate evaluation the run had not started, or
+// had started and not finished, is done when replay reaches it, as the run
+// would have done it then.
+type ledgerReplay struct {
+	e           *RunEngine
+	runID       string
+	board       *BoardDocument
+	gates       map[string]GateNode
+	events      []RunEvent
+	evaluations []replayedEvaluation
+	// applied holds the verdicts delivered with their evaluation.
+	applied  map[int]bool
+	ordinals map[string]int
+	ready    map[string]map[string]RunInputRef
+	queued   map[string]bool
+	queue    *[]string
 }
 
-// replayLedgerToReady rebuilds the run's ports and queue from its ledger in
-// ledger order: each step's output and each gate verdict's routes are
-// delivered where the ledger recorded them, and a step's output marks its own
-// ports read and takes it out of the queue, so the queue holds what was
-// waiting, in the order it was waiting. It records each step's latest attempt.
+// replayedEvaluation is a gate_evaluating in the ledger and how it ended.
+type replayedEvaluation struct {
+	index  int
+	gateID string
+	input  string
+	// verdict is the index of the verdict the evaluation came to without
+	// asking a human, or -1.
+	verdict int
+	// settled marks an evaluation that asked a human or failed: replay
+	// delivers nothing for it.
+	settled bool
+	claimed bool
+}
+
+// replayedEvaluations lists the ledger's gate evaluations, keyed by the input
+// each took as node outputs number their deliveries at that point.
+func replayedEvaluations(board *BoardDocument, events []RunEvent) []replayedEvaluation {
+	ordinals := map[string]int{}
+	var evaluations []replayedEvaluation
+	for i, event := range events {
+		switch event.Type {
+		case RunEventNodeOutput:
+			advanceOutputOrdinals(board, ordinals, event)
+		case RunEventGateEvaluating:
+			gateID := eventGateID(event)
+			input := runInputRefFromAny(event.Data["inputRef"])
+			evaluation := replayedEvaluation{index: i, gateID: gateID, input: gateInputReplayKey(input.EdgeID, gateInputOutputSeq(input, ordinals)), verdict: -1}
+		ended:
+			for j := i + 1; j < len(events); j++ {
+				later := events[j]
+				if eventGateID(later) != gateID {
+					continue
+				}
+				switch later.Type {
+				case RunEventGateVerdict:
+					evaluation.verdict = j
+					break ended
+				case RunEventHumanInputRequested, RunEventError:
+					evaluation.settled = true
+					break ended
+				case RunEventGateEvaluating:
+					break ended
+				}
+			}
+			evaluations = append(evaluations, evaluation)
+		}
+	}
+	return evaluations
+}
+
+// eventGateID is the gate an event concerns.
+func eventGateID(event RunEvent) string {
+	if event.GateID != "" {
+		return event.GateID
+	}
+	return event.NodeID
+}
+
 func (e *RunEngine) replayLedgerToReady(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, attempts map[string]int, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
-	processedGateInputs := processedGateInputRefs(board, events)
-	evaluations := gateEvaluationKeys(board, events)
-	replayOutputOrdinals := map[string]int{}
-	outputOrdinals := map[string]int{}
+	r := &ledgerReplay{e: e, runID: runID, board: board, gates: gates, events: events, evaluations: replayedEvaluations(board, events),
+		applied: map[int]bool{}, ordinals: map[string]int{}, ready: ready, queued: queued, queue: queue}
 	for i, event := range events {
 		switch event.Type {
 		case RunEventNodeStarted:
@@ -1603,12 +1556,25 @@ func (e *RunEngine) replayLedgerToReady(runID string, board *BoardDocument, gate
 				queued[event.NodeID] = false
 				*queue = slices.DeleteFunc(*queue, func(nodeID string) bool { return nodeID == event.NodeID })
 			}
-			if err := e.replayNodeOutputToReady(runID, board, gates, event, processedGateInputs, replayOutputOrdinals, ready, queued, queue); err != nil {
+			advanceOutputOrdinals(board, r.ordinals, event)
+			if err := r.output(i, event); err != nil {
 				return err
 			}
-			advanceOutputOrdinals(board, outputOrdinals, event)
 		case RunEventGateVerdict:
-			if err := e.replayGateVerdictToReady(runID, board, gates, events, i, evaluations, outputOrdinals, ready, queued, queue); err != nil {
+			if r.applied[i] {
+				continue
+			}
+			if err := r.verdict(i); err != nil {
+				return err
+			}
+		}
+	}
+	// An evaluation no replayed delivery reached is finished last, oldest
+	// first, as before replay delivered in order.
+	for index := range r.evaluations {
+		if evaluation := &r.evaluations[index]; !evaluation.claimed && evaluation.verdict < 0 && !evaluation.settled {
+			evaluation.claimed = true
+			if err := r.finish(*evaluation); err != nil {
 				return err
 			}
 		}
@@ -1616,42 +1582,124 @@ func (e *RunEngine) replayLedgerToReady(runID string, board *BoardDocument, gate
 	return nil
 }
 
-// replayGateVerdictToReady delivers the routes of the gate verdict at index i.
-func (e *RunEngine) replayGateVerdictToReady(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, i int, evaluations gateEvaluationIndex, outputOrdinals map[string]int, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
-	event := events[i]
-	routePort := stringFromEventData(event, "routePort")
-	if routePort != "pass" && routePort != "fail" {
-		return nil
-	}
-	gateID := event.GateID
-	if gateID == "" {
-		gateID = event.NodeID
-	}
-	input := runInputRefFromAny(event.Data["inputRef"])
-	for _, route := range gateVerdictRoutes(board, event, gateID, routePort) {
-		// Every route is replayed; the resume loop runs only targets still
-		// owed this delivery (runWorkOwedTo), so a serviced pushback is not rerun.
-		nextInput := input
-		if routePort == "fail" {
-			nextInput = gateFailInput(runID, route, gateID, event.Attempt, input, stringFromEventData(event, "reason"), gateEvidenceRefsFromRunEventData(event.Data["evidence"]))
-		} else if routePort == "pass" {
-			var err error
-			if nextInput, err = gatePassInput(events, event, gateID, input); err != nil {
-				return err
+// output delivers the step output at index i to its connections in order.
+// Judge chains are evaluated by their owning gate: their outputs are durable
+// evidence, never workflow inputs, including links between judges.
+func (r *ledgerReplay) output(i int, event RunEvent) error {
+	for _, gate := range r.board.Gates {
+		for _, judge := range judgeChainForGate(r.board, gate.ID) {
+			if judge.ID == event.NodeID {
+				return nil
 			}
 		}
-		// A gate that already began evaluating this delivery has consumed it.
-		// Replaying it would re-run that gate on stale input ahead of any
-		// pushback that followed its verdict.
-		toNode, _ := endpointParts(route.To)
-		if _, isGate := gates[toNode]; isGate && evaluations.consumedAfter(i, toNode, gateInputReplayKey(nextInput.EdgeID, gateInputOutputSeq(nextInput, outputOrdinals))) {
-			continue
+	}
+	for _, connection := range outgoingConnections(r.board.Connections, event.NodeID) {
+		_, fromPort := endpointParts(connection.From)
+		payload, ok := outputPayloadForPortFromEvent(event, fromPort)
+		if !ok {
+			if err := r.e.appendErrorAndBlock(r.runID, "missing_output_payload", fmt.Sprintf("node %s did not produce output for port %s", event.NodeID, fromPort), "engine", event.NodeID, "missing output payload"); err != nil {
+				return err
+			}
+			return errRunStopped
 		}
-		if err := e.deliverConnection(runID, board, gates, route, nextInput, ready, queued, queue); err != nil {
+		input := runInputRefForConnection(r.runID, connection, payload)
+		input.OutputSeq = r.ordinals[connection.ID]
+		if err := r.deliver(i, connection, input); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// verdict delivers the routes of the gate verdict at index i.
+func (r *ledgerReplay) verdict(i int) error {
+	event := r.events[i]
+	routePort := stringFromEventData(event, "routePort")
+	if routePort != "pass" && routePort != "fail" {
+		return nil
+	}
+	gateID := eventGateID(event)
+	input := runInputRefFromAny(event.Data["inputRef"])
+	for _, route := range gateVerdictRoutes(r.board, event, gateID, routePort) {
+		// Every route is replayed; the drain runs only targets still owed this
+		// delivery (runWorkOwedTo), so a serviced pushback is not rerun.
+		next := input
+		if routePort == "fail" {
+			next = gateFailInput(r.runID, route, gateID, event.Attempt, input, stringFromEventData(event, "reason"), gateEvidenceRefsFromRunEventData(event.Data["evidence"]))
+		} else {
+			var err error
+			if next, err = gatePassInput(r.events, event, gateID, input); err != nil {
+				return err
+			}
+		}
+		if err := r.deliver(i, route, next); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// deliver replays one delivery made at index at. A step's port takes it, and
+// the step queues once all its ports are fed; replay records no node_waiting,
+// which the ledger already holds. A gate takes it through the evaluation the
+// ledger shows after at for this input.
+func (r *ledgerReplay) deliver(at int, connection BoardConnection, input RunInputRef) error {
+	toNode, toPort := endpointParts(connection.To)
+	if toNode == "" || toPort == "" {
+		return nil
+	}
+	input.ToPortID = toPort
+	if gate, ok := r.gates[toNode]; ok {
+		key := gateInputReplayKey(input.EdgeID, gateInputOutputSeq(input, r.ordinals))
+		for index := range r.evaluations {
+			evaluation := &r.evaluations[index]
+			if evaluation.claimed || evaluation.index <= at || evaluation.gateID != toNode || evaluation.input != key {
+				continue
+			}
+			evaluation.claimed = true
+			switch {
+			case evaluation.verdict >= 0:
+				r.applied[evaluation.verdict] = true
+				return r.verdict(evaluation.verdict)
+			case evaluation.settled:
+				return nil
+			default:
+				return r.finish(*evaluation)
+			}
+		}
+		// The run stopped before it evaluated this delivery: evaluate it now.
+		return r.e.evaluateGate(r.runID, r.board, r.gates, gate, input, r.ready, r.queued, r.queue)
+	}
+	if _, ok := findEnd(r.board, toNode); ok {
+		// The path ends here; runPaths reads it from the ledger.
+		return nil
+	}
+	formation, ok := findFormation(r.board.Formations, toNode)
+	if !ok {
+		return nil
+	}
+	deliverToPort(r.ready, toNode, toPort, input)
+	if formationReady(formation, r.ready[toNode]) && !r.queued[toNode] {
+		r.queued[toNode] = true
+		*r.queue = append(*r.queue, toNode)
+	}
+	return nil
+}
+
+// finish completes an evaluation the run started and did not finish, from
+// the kind results the ledger already holds.
+func (r *ledgerReplay) finish(evaluation replayedEvaluation) error {
+	gate, ok := r.gates[evaluation.gateID]
+	if !ok {
+		return fmt.Errorf("%w: gate %q", ErrNotFound, evaluation.gateID)
+	}
+	started := r.events[evaluation.index]
+	input := runInputRefFromAny(started.Data["inputRef"])
+	prior, err := r.e.durableGateKindResultsForEvaluation(r.runID, gate, input, r.events, started.Seq)
+	if err != nil {
+		return err
+	}
+	return r.e.evaluateGateKinds(r.runID, r.board, r.gates, gate, input, r.ready, r.queued, r.queue, prior)
 }
 
 type gateEvaluationKey struct {
