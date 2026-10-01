@@ -8,7 +8,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 	"unicode/utf8"
 )
@@ -88,19 +87,9 @@ func openReferencedFile(ref string) (*os.File, os.FileInfo, string, error) {
 		return nil, nil, "", fmt.Errorf("%w: %s", ErrRelativeFileRef, ref)
 	}
 	resolved := filepath.Clean(ref)
-	// O_NONBLOCK keeps a FIFO from blocking the open; it is refused below.
-	file, err := os.OpenFile(resolved, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	file, info, err := openRegularFile(resolved)
 	if err != nil {
 		return nil, nil, "", err
-	}
-	info, err := file.Stat()
-	if err != nil {
-		_ = file.Close()
-		return nil, nil, "", err
-	}
-	if !info.Mode().IsRegular() {
-		_ = file.Close()
-		return nil, nil, "", fmt.Errorf("%w: %s is not a regular file", ErrNotFound, resolved)
 	}
 	return file, info, resolved, nil
 }

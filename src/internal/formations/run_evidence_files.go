@@ -15,9 +15,9 @@ import (
 	"unicode/utf8"
 )
 
-// Evidence file reads open every component from the workspace root with
-// O_NOFOLLOW, using the run artifact helpers, so neither a request name nor a
-// symlink placed by an agent can leave the run's own directories.
+// Evidence reads name files under the run's artifact directory, and follow any
+// symlink an agent placed there (ADR-0021). Only regular files are read,
+// because a FIFO or device would never finish.
 
 type RunArtifactEntry struct {
 	Name       string `json:"name"`
@@ -50,8 +50,8 @@ type RunArtifactContent struct {
 	Body        []byte
 }
 
-// ListRunArtifacts lists regular single-link files under the run's artifact
-// directory, sorted by name. Truncated reports entries past the count or depth
+// ListRunArtifacts lists regular files under the run's artifact directory,
+// following symlinks, sorted by name. Truncated reports entries past the count or depth
 // caps. A run without an artifact directory has none.
 func (s *Store) ListRunArtifacts(runID string) ([]RunArtifactEntry, bool, error) {
 	if _, err := s.ReadRunEvents(runID); err != nil {
@@ -87,7 +87,7 @@ func listRunArtifactsAt(directory *os.File, prefix string, depth int, entries *[
 		if !validPathComponent(name) {
 			continue
 		}
-		child, err := openDirectoryAt(directory, name)
+		child, err := openFollowingAt(directory, name, true)
 		if err == nil {
 			if depth >= EvidenceArtifactListDepth {
 				_ = child.Close()
@@ -101,12 +101,12 @@ func listRunArtifactsAt(directory *os.File, prefix string, depth int, entries *[
 			}
 			continue
 		}
-		// Symlinks fail with ELOOP and are skipped; only a non-directory is
-		// tried as a regular single-link file.
+		// A dangling or looping symlink is skipped; a non-directory is listed
+		// when it is a regular file.
 		if !errors.Is(err, syscall.ENOTDIR) {
 			continue
 		}
-		file, err := openRunArtifactFileAt(directory, name, syscall.O_RDONLY, false)
+		file, err := openFollowingAt(directory, name, false)
 		if err != nil {
 			continue
 		}
@@ -192,9 +192,7 @@ func evidenceRawContent(name string, modifiedAt time.Time, body []byte) *RunArti
 	return content
 }
 
-// ReadRunBrief reads the brief a run's own dispatch recorded. The path comes
-// only from that slot_dispatch event and must name a direct child of
-// <workspace>/briefs.
+// ReadRunBrief reads the brief file a run's own slot_dispatch event recorded.
 func (s *Store) ReadRunBrief(runID string, dispatchSeq int) (*RunBriefEvidence, error) {
 	events, err := s.ReadRunEvents(runID)
 	if err != nil {
@@ -210,32 +208,14 @@ func (s *Store) ReadRunBrief(runID string, dispatchSeq int) (*RunBriefEvidence, 
 		return nil, fmt.Errorf("%w: dispatch %d", ErrNotFound, dispatchSeq)
 	}
 	briefPath := stringFromEventData(*dispatch, "briefPath")
-	workspace, err := s.workspaceAbsolutePath()
-	if err != nil {
-		return nil, err
-	}
-	if briefPath == "" || filepath.Clean(briefPath) != briefPath || !evidenceBriefDirectory(filepath.Dir(briefPath), s.workspaceRoot(), workspace) {
+	if briefPath == "" || !filepath.IsAbs(briefPath) {
 		return nil, fmt.Errorf("%w: dispatch %d brief", ErrNotFound, dispatchSeq)
 	}
-	root, err := openRunWorkspaceRoot(workspace)
-	if err != nil {
-		return nil, err
-	}
-	defer root.Close()
-	briefs, err := openDirectoryAt(root, "briefs")
-	if err != nil {
-		return nil, evidenceOpenError(err)
-	}
-	defer briefs.Close()
-	file, err := openRunArtifactFileAt(briefs, filepath.Base(briefPath), syscall.O_RDONLY, false)
+	file, info, err := openRegularFile(briefPath)
 	if err != nil {
 		return nil, evidenceOpenError(err)
 	}
 	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
 	head, err := io.ReadAll(io.LimitReader(file, EvidenceBriefMaxBytes+utf8.UTFMax))
 	if err != nil {
 		return nil, err
@@ -255,15 +235,6 @@ func (s *Store) ReadRunBrief(runID string, dispatchSeq int) (*RunBriefEvidence, 
 	}, nil
 }
 
-func evidenceBriefDirectory(directory string, roots ...string) bool {
-	for _, root := range roots {
-		if root != "" && directory == filepath.Join(filepath.Clean(root), "briefs") {
-			return true
-		}
-	}
-	return false
-}
-
 // openRunArtifactsRoot opens <workspace>/.formations/artifacts/<runID>.
 func (s *Store) openRunArtifactsRoot(runID string) (*os.File, error) {
 	if !validRunID(runID) {
@@ -278,7 +249,7 @@ func (s *Store) openRunArtifactsRoot(runID string) (*os.File, error) {
 		return nil, err
 	}
 	for _, component := range []string{".formations", "artifacts", runID} {
-		next, err := openDirectoryAt(current, component)
+		next, err := openFollowingAt(current, component, true)
 		_ = current.Close()
 		if err != nil {
 			return nil, evidenceOpenError(err)
@@ -302,14 +273,14 @@ func (s *Store) openRunArtifact(runID, name string) (*os.File, os.FileInfo, erro
 		return nil, nil, err
 	}
 	for _, component := range components[:len(components)-1] {
-		next, err := openDirectoryAt(current, component)
+		next, err := openFollowingAt(current, component, true)
 		_ = current.Close()
 		if err != nil {
 			return nil, nil, evidenceOpenError(err)
 		}
 		current = next
 	}
-	file, err := openRunArtifactFileAt(current, components[len(components)-1], syscall.O_RDONLY, false)
+	file, err := openFollowingAt(current, components[len(components)-1], false)
 	_ = current.Close()
 	if err != nil {
 		return nil, nil, evidenceOpenError(err)
@@ -318,6 +289,54 @@ func (s *Store) openRunArtifact(runID, name string) (*os.File, os.FileInfo, erro
 	if err != nil {
 		_ = file.Close()
 		return nil, nil, err
+	}
+	return file, info, nil
+}
+
+// openFollowingAt opens a child of directory, following a symlink. A file must
+// be regular.
+func openFollowingAt(directory *os.File, name string, wantDirectory bool) (*os.File, error) {
+	if directory == nil || !validPathComponent(name) {
+		return nil, &os.PathError{Op: "openat", Path: name, Err: syscall.EINVAL}
+	}
+	flags := syscall.O_RDONLY | syscall.O_CLOEXEC | syscall.O_NONBLOCK
+	if wantDirectory {
+		flags |= syscall.O_DIRECTORY
+	}
+	fd, err := syscall.Openat(int(directory.Fd()), name, flags, 0)
+	if err != nil {
+		return nil, &os.PathError{Op: "openat", Path: name, Err: err}
+	}
+	file := os.NewFile(uintptr(fd), name)
+	if file == nil {
+		_ = syscall.Close(fd)
+		return nil, errors.New("could not open run evidence")
+	}
+	if !wantDirectory {
+		info, err := file.Stat()
+		if err != nil || !info.Mode().IsRegular() {
+			_ = file.Close()
+			return nil, &os.PathError{Op: "openat", Path: name, Err: syscall.EINVAL}
+		}
+	}
+	return file, nil
+}
+
+// openRegularFile opens an absolute path, following symlinks, when it names a
+// regular file.
+func openRegularFile(path string) (*os.File, os.FileInfo, error) {
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() {
+		_ = file.Close()
+		return nil, nil, fmt.Errorf("%w: %s is not a regular file", ErrNotFound, path)
 	}
 	return file, info, nil
 }

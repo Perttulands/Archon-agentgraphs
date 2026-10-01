@@ -217,7 +217,9 @@ func TestNodeEvidenceCapsEachTextAndTheResponse(t *testing.T) {
 	}
 }
 
-func TestRunEvidenceReadsNodesArtifactsAndBriefsInsideTheRun(t *testing.T) {
+// Run evidence serves the run's artifacts and briefs, following any symlink or
+// hard link an agent left there (ADR-0021).
+func TestRunEvidenceReadsNodesArtifactsAndBriefs(t *testing.T) {
 	store, _, runID := startHumanGateRun(t)
 	evidence, err := store.ProjectNodeEvidence(runID, "gate_review")
 	if err != nil || evidence.Kind != "gate" || len(evidence.Evaluations) != 1 || !evidence.Evaluations[0].HumanRequests[0].Pending {
@@ -277,7 +279,7 @@ func TestRunEvidenceReadsNodesArtifactsAndBriefsInsideTheRun(t *testing.T) {
 	for _, artifact := range artifacts {
 		names = append(names, artifact.Name)
 	}
-	if got := strings.Join(names, ","); got != "big.txt,blob.bin,data.json,fake.pdf,huge.log,logs/run.log,paper.pdf,plan.md,shot.png" {
+	if got := strings.Join(names, ","); got != "big.txt,blob.bin,data.json,fake.pdf,hard.txt,huge.log,link.txt,linkdir/inner.txt,logs/run.log,paper.pdf,plan.md,shot.png" {
 		t.Fatalf("listed %s", got)
 	}
 
@@ -309,7 +311,16 @@ func TestRunEvidenceReadsNodesArtifactsAndBriefsInsideTheRun(t *testing.T) {
 	if _, err := store.ReadRunArtifact(runID, "huge.log"); !errors.Is(err, ErrEvidenceTooLarge) {
 		t.Fatalf("huge raw read err = %v", err)
 	}
-	for _, name := range []string{"link.txt", "linkdir/inner.txt", "hard.txt", "../" + runID + "/plan.md", "logs/../plan.md", "/etc/passwd", "", "logs//run.log", "missing.md", "logs"} {
+	for name, want := range map[string]string{"link.txt": "outside secret", "linkdir/inner.txt": "outside dir", "hard.txt": "outside secret"} {
+		if preview, err := store.PreviewRunArtifact(runID, name); err != nil || preview.Text == nil || preview.Text.Text != want {
+			t.Fatalf("preview %q = %+v, %v", name, preview, err)
+		}
+		if raw, err := store.ReadRunArtifact(runID, name); err != nil || string(raw.Body) != want {
+			t.Fatalf("raw %q = %+v, %v", name, raw, err)
+		}
+	}
+	// An artifact name addresses something inside the run's artifact directory.
+	for _, name := range []string{"../" + runID + "/plan.md", "logs/../plan.md", "/etc/passwd", "", "logs//run.log", "missing.md", "logs"} {
 		if _, err := store.PreviewRunArtifact(runID, name); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("preview %q err = %v, want ErrNotFound", name, err)
 		}
@@ -343,7 +354,12 @@ func TestRunEvidenceReadsNodesArtifactsAndBriefsInsideTheRun(t *testing.T) {
 	if err != nil || brief.NodeID != "fmn_work" || brief.SlotID != "slot_work" || brief.Text.Text != "brief: build\npassword=[REDACTED]\n" {
 		t.Fatalf("brief = %+v, %v", brief, err)
 	}
-	for _, path := range []string{filepath.Join(briefs, "seat-link.md"), filepath.Join(outside, "stolen.md"), briefs + "/../briefs/seat-good.md", "briefs/seat-good.md", ""} {
+	for _, path := range []string{filepath.Join(briefs, "seat-link.md"), filepath.Join(outside, "stolen.md")} {
+		if brief, err := store.ReadRunBrief(runID, dispatch(path)); err != nil || brief.Text.Text != "outside brief" {
+			t.Fatalf("brief at %q = %+v, %v", path, brief, err)
+		}
+	}
+	for _, path := range []string{"briefs/seat-good.md", "", filepath.Join(briefs, "missing.md"), briefs} {
 		if _, err := store.ReadRunBrief(runID, dispatch(path)); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("brief at %q err = %v, want ErrNotFound", path, err)
 		}

@@ -240,7 +240,7 @@ func TestEvidenceRoutesCapBriefsArtifactsAndNodeText(t *testing.T) {
 	w = getEvidence(c, runPath+"/evidence/artifacts")
 	list := decodeEvidence[[]formations.RunArtifactEntry](t, w, "artifacts")
 	truncated := decodeEvidence[bool](t, w, "truncated")
-	if len(list) != formations.EvidenceArtifactListMax || !truncated || list[0].Name != "big.log" || strings.Contains(w.Body.String(), "escape.txt") || strings.Contains(w.Body.String(), artifacts) {
+	if len(list) != formations.EvidenceArtifactListMax || !truncated || list[0].Name != "big.log" || !strings.Contains(w.Body.String(), `"escape.txt"`) || strings.Contains(w.Body.String(), artifacts) {
 		t.Fatalf("artifact list: %d entries, truncated %v, first %+v", len(list), truncated, list[0])
 	}
 
@@ -280,8 +280,11 @@ func TestEvidenceRoutesCapBriefsArtifactsAndNodeText(t *testing.T) {
 	if huge := getEvidence(c, runPath+"/artifacts/huge.log"); huge.Code != 413 {
 		t.Fatalf("huge raw artifact: %d", huge.Code)
 	}
+	// A symlink an agent left among the artifacts opens like any artifact.
+	if escape := getEvidence(c, runPath+"/artifacts/escape.txt"); escape.Code != 200 || escape.Body.String() != "OUTSIDE-SECRET" {
+		t.Fatalf("symlinked artifact: %d %s", escape.Code, escape.Body.String())
+	}
 	for _, missing := range []string{
-		"/artifacts/escape.txt", "/evidence/artifacts/escape.txt",
 		"/artifacts/..%2F..%2F..%2Fbriefs%2Fseat-evidence.md", "/evidence/artifacts/many%2F..%2F..%2Fsecret.txt",
 		"/artifacts/missing.md", "/evidence/artifacts/many",
 	} {

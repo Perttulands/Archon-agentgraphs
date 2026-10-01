@@ -13,7 +13,7 @@ import (
 
 // Run evidence routes serve a run's recorded content to the trusted operator
 // (ADR-0017). Projections and SSE stay sanitized; these reads are capped and
-// confined to the run's own ledger, artifact directory and dispatched briefs.
+// address the run's own ledger, artifact directory and dispatched briefs.
 // The pending-gate read route in gate_request.go is this API's view of a human
 // request still waiting for an answer.
 func (c *Coordinator) registerEvidenceRoutes(mux *http.ServeMux) {

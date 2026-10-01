@@ -1225,8 +1225,8 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
 - `/api/formations/runs/{runId}/evidence/briefs/{dispatchSeq}` returns
   `data.brief` (`dispatchSeq`, `nodeId`, `slotId`, `attempt`, `text` capped at
   256 KiB): the brief that this run's `slot_dispatch` at that sequence sent to
-  its seat. Only a path recorded by that event, naming a direct child of
-  `<state-dir>/briefs`, is read. Any other sequence returns 404.
+  its seat, read from the path that event recorded. Any other sequence
+  returns 404.
 - `/api/formations/runs/{runId}/evidence/artifacts` returns `data.artifacts`
   (`name`, `size`, `modifiedAt`), sorted by name relative to
   `<state-dir>/.formations/artifacts/<runId>`, and `data.truncated` past 500
@@ -1275,10 +1275,9 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `stopped` steps. A bad `until`, `since` or `hold`, or a `since` past the
   run's last event, returns 400, an unknown run 404, and a stopping daemon 503.
 
-Artifact names are relative; every component is opened from the state
-directory without following symlinks, and only regular files with one link are
-read, so names with `..`, symlinks and hard links cannot leave the run's
-directory. Output and input references appear as `ref.artifact` inside that
+Artifact names are relative to the run's artifact directory, and a name with
+`..` or an empty component returns 404. Symlinks and hard links an agent left
+there are followed, and only regular files are read. Output and input references appear as `ref.artifact` inside that
 directory or `ref.external` (a base name only) elsewhere; engine references
 such as `ledger://` name no file and are omitted. Structured fields
 never carry native session IDs, tmux session or pane IDs, `sessionRef`, socket or
