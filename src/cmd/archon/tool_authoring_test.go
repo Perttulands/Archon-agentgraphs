@@ -260,9 +260,9 @@ func TestArchonToolUpdatePreservesPresentOrAbsentLayoutState(t *testing.T) {
 			wantTitle:  "Renamed through Archon",
 		},
 		{
-			name:      "absent layout complete parameters only",
-			flags:     []string{"--params-json", `{"mode":"strict"}`},
-			wantTitle: "Normalize report",
+			name:      "absent layout title and complete parameters",
+			flags:     []string{"--title", "Renamed offline", "--params-json", `{"mode":"strict"}`},
+			wantTitle: "Renamed offline",
 		},
 	}
 

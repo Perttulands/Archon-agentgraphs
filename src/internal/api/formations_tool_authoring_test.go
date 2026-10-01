@@ -142,13 +142,13 @@ func TestFormationsHandlerToolCRUDPublishesCanonicalPairs(t *testing.T) {
 			},
 		},
 		{
-			name:               "absent params-only update",
-			operation:          `"updateTool":{"id":"tool_normalize","params":{"mode":"strict"}}`,
+			name:               "absent title and params update",
+			operation:          `"updateTool":{"id":"tool_normalize","title":"Renamed while absent","params":{"mode":"strict"}}`,
 			wantTool:           true,
 			wantNullLayoutJSON: true,
 			assertResult: func(t *testing.T, _ *formationsAPIToolAuthoringHarness, response formationsAPIToolMutationEnvelope) {
-				if response.Data.Tool.Title != "Normalize report" || response.Data.Tool.Params["mode"] != "strict" {
-					t.Fatalf("params-only update = %#v", response.Data.Tool)
+				if response.Data.Tool.Title != "Renamed while absent" || response.Data.Tool.Params["mode"] != "strict" {
+					t.Fatalf("title and params update = %#v", response.Data.Tool)
 				}
 			},
 		},

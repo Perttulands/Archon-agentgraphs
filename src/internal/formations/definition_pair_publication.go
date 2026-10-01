@@ -153,6 +153,10 @@ func publishDefinitionPairLocked(
 			return err
 		}
 	}
+	if equalDefinitionPairStateIdentity(definitionPairStateIdentityOf(current), definitionPairStateIdentityOf(request.candidate)) {
+		// A candidate identical to what is on disk publishes nothing.
+		return nil
+	}
 
 	stages, err := stageDefinitionPairRepresentations(board, layout, current, request.candidate, fault)
 	if err != nil {

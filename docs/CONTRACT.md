@@ -1208,9 +1208,10 @@ by its default session stem runs on `--socket`, and lists the socket's other
 sessions as unbound. The lab executor reports every agent offline.
 Revision and ETag checks protect edits. A mission edit that leaves the mission
 as it was (the same slot assignment, title, brief, type, controller, gate or
-Input card fields, or judge chain) saves nothing: it answers 200 with the
-current mission, its revision and ETag unchanged, and a stale ETag still conflicts. Tool
-and note edits still save a revision. Runtime routes start/list/read runs
+Input card fields, judge chain, or a Tool's title and parameters) saves
+nothing: it answers 200 with the current mission, its revision and ETag
+unchanged, and a stale ETag still conflicts. A note edit to the text its entry
+already has saves nothing in the same way (archon-62h). Runtime routes start/list/read runs
 (`GET /api/runs?mission=<slug>` lists the runs of the mission now under that
 slug or ID, and none for a mission that does not exist; `needs=you` keeps the
 open runs waiting at a human gate or blocked), read projected
