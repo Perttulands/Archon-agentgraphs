@@ -36,7 +36,9 @@ func (e *RunExecutionError) Unwrap() error {
 }
 
 type LabExecutorConfig struct {
-	Harnesses      []string
+	Harnesses []string
+	// Cwd is the working directory of the dispatch being executed: its run's
+	// recorded cwd. It is set per dispatch and never configured (archon-12qt).
 	Cwd            string
 	OutputCapBytes int
 }
@@ -68,7 +70,6 @@ func LabExecutorConfigFromEnv() LabExecutorConfig {
 	}
 	return LabExecutorConfig{
 		Harnesses:      splitLabCSV(os.Getenv("ARCHON_LAB_HARNESSES")),
-		Cwd:            strings.TrimSpace(os.Getenv("ARCHON_LAB_CWD")),
 		OutputCapBytes: capBytes,
 	}
 }
@@ -86,9 +87,7 @@ func (e *LabFormationExecutor) ExecuteFormation(req FormationExecution) (Formati
 
 func (e *LabFormationExecutor) ExecuteFormationContext(ctx context.Context, req FormationExecution) (FormationExecutionResult, error) {
 	copy := *e
-	if req.Cwd != "" {
-		copy.config.Cwd = req.Cwd
-	}
+	copy.config.Cwd = req.Cwd
 	return copy.executeFormation(ctx, req)
 }
 func (e *LabFormationExecutor) executeFormation(ctx context.Context, req FormationExecution) (FormationExecutionResult, error) {
@@ -163,14 +162,14 @@ func (e *LabFormationExecutor) executeFormation(ctx context.Context, req Formati
 
 func (e *LabFormationExecutor) validateConfiguredBoundary() error {
 	if strings.TrimSpace(e.config.Cwd) == "" {
-		return runExecutionError("missing_cwd", "lab executor cwd is not configured", "executor", nil)
+		return runExecutionError("missing_cwd", "the run records no working directory; start a new run", "executor", nil)
 	}
 	cwd, err := filepath.Abs(e.config.Cwd)
 	if err != nil {
-		return runExecutionError("invalid_cwd", "lab executor cwd is invalid", "executor", err)
+		return runExecutionError("invalid_cwd", "the run's working directory is invalid", "executor", err)
 	}
 	if info, err := os.Stat(cwd); err != nil || !info.IsDir() {
-		return runExecutionError("unavailable_cwd", "lab executor cwd is unavailable", "executor", err)
+		return runExecutionError("unavailable_cwd", fmt.Sprintf("the run's working directory %s is unavailable", cwd), "executor", err)
 	}
 	return nil
 }

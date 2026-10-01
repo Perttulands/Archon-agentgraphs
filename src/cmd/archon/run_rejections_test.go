@@ -126,7 +126,6 @@ func installArchonRuntimeTmuxTripwire(t *testing.T, workspace string) string {
 	t.Setenv("ARCHON_LAB_HARNESSES", "")
 	t.Setenv("ARCHON_TMUX_HARNESSES", "openai-codex")
 	t.Setenv("ARCHON_TMUX_SOCKET", filepath.Join(t.TempDir(), "default"))
-	t.Setenv("ARCHON_TMUX_CWD", workspace)
 	return capturePath
 }
 

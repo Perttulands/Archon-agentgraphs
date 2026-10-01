@@ -886,9 +886,11 @@ npm run build
 
 For real seats select `--executor tmux` and supply `--socket`, `--tmux-bin`,
 `--codex-transcripts`, `--claude-transcripts` from host configuration.
-`--cwd` is an optional daemon default for standalone formations. Missions use
-their explicit cwd or allocate an automatic workspace as described above.
-`--mission-label` is optional. The daemon sets no step time limit (see the
+The daemon has no default working directory: every run, a mission's or a
+single step's, works in the cwd its start names or an automatic workspace, as
+described above, and records it in `run_started`; completed-turn recovery
+checks the native turn against that recorded cwd. `--mission-label` is
+optional. The daemon sets no step time limit (see the
 Execution duration field below).
 Repeat `--listen` for each trusted interface. `--agents-dir` overrides cards;
 installed daemons find `../share/archon/ui` beside their `bin` directory.

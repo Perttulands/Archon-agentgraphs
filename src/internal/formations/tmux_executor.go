@@ -130,7 +130,9 @@ type TmuxExecutorConfig struct {
 	RecoveryTranscript, RecoveryBrief                            string
 	Harnesses                                                    []string
 	Socket                                                       string
-	Cwd                                                          string
+	// Cwd is the working directory of the dispatch being executed: its run's
+	// recorded cwd. It is set per dispatch and never configured (archon-12qt).
+	Cwd string
 	// AgentUser is the Unix user the executor expects to own the tmux server it
 	// drives (and therefore the user agents run as). Empty defaults to the service
 	// user the CHROTE process runs as, so single-user installs need zero config.
@@ -217,7 +219,6 @@ func TmuxExecutorConfigFromEnv() TmuxExecutorConfig {
 		CodexTranscriptRoot:  strings.TrimSpace(os.Getenv("ARCHON_CODEX_TRANSCRIPTS")),
 		ClaudeTranscriptRoot: strings.TrimSpace(os.Getenv("ARCHON_CLAUDE_TRANSCRIPTS")),
 		Socket:               strings.TrimSpace(os.Getenv("ARCHON_TMUX_SOCKET")),
-		Cwd:                  strings.TrimSpace(os.Getenv("ARCHON_TMUX_CWD")),
 		AgentUser:            strings.TrimSpace(os.Getenv("ARCHON_AGENT_USER")),
 		SessionPrefix:        strings.TrimSpace(os.Getenv("ARCHON_TMUX_SESSION_PREFIX")),
 		OutputCapBytes:       capBytes,
@@ -275,9 +276,7 @@ func (e *TmuxFormationExecutor) ExecuteFormation(req FormationExecution) (Format
 func (e *TmuxFormationExecutor) ExecuteFormationContext(parent context.Context, req FormationExecution) (FormationExecutionResult, error) {
 	// Boundary pinning and per-run state belong to this execution, not the shared factory.
 	copy := *e
-	if req.Cwd != "" {
-		copy.config.Cwd = req.Cwd
-	}
+	copy.config.Cwd = req.Cwd
 	return copy.executeFormationContext(parent, req)
 }
 
@@ -1410,14 +1409,14 @@ func (e *TmuxFormationExecutor) validateConfiguredBoundaryContext(ctx context.Co
 		return err
 	}
 	if strings.TrimSpace(e.config.Cwd) == "" {
-		return runExecutionError("missing_cwd", "tmux executor cwd is not configured", "executor", nil)
+		return runExecutionError("missing_cwd", "the run records no working directory; start a new run", "executor", nil)
 	}
 	cwd, err := filepath.Abs(e.config.Cwd)
 	if err != nil {
-		return runExecutionError("invalid_cwd", "tmux executor cwd is invalid", "executor", err)
+		return runExecutionError("invalid_cwd", "the run's working directory is invalid", "executor", err)
 	}
 	if info, err := os.Stat(cwd); err != nil || !info.IsDir() {
-		return runExecutionError("unavailable_cwd", "tmux executor cwd is unavailable", "executor", err)
+		return runExecutionError("unavailable_cwd", fmt.Sprintf("the run's working directory %s is unavailable", cwd), "executor", err)
 	}
 	e.config.Cwd = cwd
 	return nil

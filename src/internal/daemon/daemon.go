@@ -37,7 +37,6 @@ func Run(args []string) error {
 	executor := flags.String("executor", "tmux", "seat executor: tmux (real seats) or lab (deterministic)")
 	state := flags.String("state-dir", "", "private absolute runtime and definition workspace")
 	agentsDir := flags.String("agents-dir", "", "absolute persona card directory; defaults to <state-dir>/agents")
-	cwd := flags.String("cwd", "", "absolute agent work directory")
 	runWorkspaceRoot := flags.String("run-workspace-root", "", "absolute root for automatic mission workspaces; defaults to <state-dir>/workspaces")
 	socket := flags.String("socket", "", "existing absolute tmux socket")
 	tmux := flags.String("tmux-bin", "", "absolute guarded tmux wrapper")
@@ -81,9 +80,6 @@ func Run(args []string) error {
 		paths["agents-dir"] = *agentsDir
 	}
 	if *executor == "tmux" {
-		if *cwd != "" {
-			paths["cwd"] = *cwd
-		}
 		paths["socket"] = *socket
 		paths["tmux-bin"] = *tmux
 		paths["codex-transcripts"] = *codexTranscripts
@@ -107,9 +103,9 @@ func Run(args []string) error {
 	c, err := coordinator.Open(*state, personas, func(store *formations.Store) formations.FormationExecutor {
 		store.RunWorkspaceRoot = *runWorkspaceRoot
 		if *executor == "lab" {
-			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex", "claude-code"}, Cwd: *state})
+			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex", "claude-code"}})
 		}
-		return formations.NewTmuxFormationExecutor(store, personas, formations.TmuxExecutorConfig{Socket: *socket, Cwd: *cwd, StateDir: *state, CodexTranscriptRoot: *codexTranscripts, ClaudeTranscriptRoot: *claudeTranscripts, Mission: *mission, SessionPrefix: "archon-", Harnesses: []string{"openai-codex", "claude-code"}, OutputCapBytes: 1 << 20, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief, PeerCLI: bundledCLI()})
+		return formations.NewTmuxFormationExecutor(store, personas, formations.TmuxExecutorConfig{Socket: *socket, StateDir: *state, CodexTranscriptRoot: *codexTranscripts, ClaudeTranscriptRoot: *claudeTranscripts, Mission: *mission, SessionPrefix: "archon-", Harnesses: []string{"openai-codex", "claude-code"}, OutputCapBytes: 1 << 20, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief, PeerCLI: bundledCLI()})
 	})
 	if err != nil {
 		return err

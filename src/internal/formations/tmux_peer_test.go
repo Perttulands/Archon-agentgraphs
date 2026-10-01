@@ -301,7 +301,7 @@ func TestTmuxPeerKeepsEverySeatOnCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = executor.ExecuteFormationContext(context.Background(), FormationExecution{RunID: started.RunID, NodeID: "fmn_peer", Formation: board.Formations[0], Attempt: 1, KeepSeatsOnCall: true})
+	_, err = executor.ExecuteFormationContext(context.Background(), FormationExecution{RunID: started.RunID, NodeID: "fmn_peer", Formation: board.Formations[0], Attempt: 1, KeepSeatsOnCall: true, Cwd: executor.config.Cwd})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2363,7 +2363,6 @@ func TestArchonS4ConfiguredLabPoemMissionReachesGateAndPolishesAfterApproval(t *
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
-	t.Setenv("ARCHON_LAB_CWD", workspace)
 
 	personas := formations.NewPersonaStore(agentsDir)
 	for _, id := range []string{"lab-poet", "lab-poem-reviewer"} {
@@ -2475,7 +2474,6 @@ func TestArchonPoemMissionRoundTripsThroughCLIAPIFileAndLedger(t *testing.T) {
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
-	t.Setenv("ARCHON_LAB_CWD", workspace)
 
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("poems"), `schema = 1
@@ -2775,7 +2773,6 @@ func TestArchonConfiguredLabExecutorUsesAutomaticMissionWorkspace(t *testing.T) 
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
-	t.Setenv("ARCHON_LAB_CWD", workspace)
 
 	personas := formations.NewPersonaStore(agentsDir)
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
