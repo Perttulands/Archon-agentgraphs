@@ -1,3 +1,5 @@
+> Its runtime-authority seam is superseded by [ADR-0021](0021-archon-only-chains-agents-and-gates.md) (2026-10-01).
+
 > Decision record, reviewed 2026-09-14. Earlier product names and host assumptions
 > below record their original context. Archon is the standalone product;
 > [the current contract](../CONTRACT.md) defines its implemented behavior.

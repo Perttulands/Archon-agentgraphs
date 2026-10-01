@@ -1,5 +1,16 @@
 # Archon contract
 
+## Philosophy
+
+Archon makes chaining agents and gates easy and great, and that is all it does
+([ADR-0021](adr/0021-archon-only-chains-agents-and-gates.md)). Its sessions are
+tmux sessions with full access to everything, as in CHROTE: Archon adds no
+sandboxing, file confinement, blast-radius limits or authority checks, and
+safety lives in the configuration of the agents it runs. Archon keeps only what
+is current, with no legacy paths or backwards compatibility. Where this contract
+still describes a confinement or compatibility path, that path is scheduled for
+removal under ADR-0021.
+
 Archon builds and runs work graphs with agents and gates. `archond` owns
 execution and serves the Archon UI. The `archon` CLI authors the same
 definitions and sends runtime commands to the daemon. This is a trusted-operator

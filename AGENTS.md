@@ -7,6 +7,20 @@ runtime semantics, authoring, gates or operator instructions. Read
 `docs/adr/` holds earlier decisions and `examples/` holds runnable templates.
 `docs/archive/` preserves historical targets, not the running contract.
 
+## Product philosophy
+
+Archon makes chaining agents and gates easy and great; that is all it does
+([ADR-0021](docs/adr/0021-archon-only-chains-agents-and-gates.md)).
+
+- No security rituals: sessions are tmux sessions with full access, as in
+  CHROTE. Never add sandboxing, file confinement, blast-radius limits or
+  authority checks; safety lives in the agents' own configuration.
+- No legacy and no backwards compatibility: keep only what is current. Land
+  renames and reshapes whole, migrate live data once, and delete the old path.
+  Add no deprecated aliases or compatibility shims.
+- The `archon` skill is a sensible current version, iterated later, with no
+  eval harness, tests or CI around it.
+
 ## Project map
 
 - `src/internal/formations/` owns the model, persistence and run engine.

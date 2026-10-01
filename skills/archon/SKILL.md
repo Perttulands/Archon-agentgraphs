@@ -11,6 +11,11 @@ and effort, run limits are optional, and drivers pull with `run wait`. It ships 
 `archon --version` names the build on PATH. When that build is older, a flag or
 behaviour named here may differ: read the command's `-h` and trust the binary.
 
+Archon makes chaining agents and gates easy and great, and that is all it
+does. Seats are ordinary tmux agent sessions with full access, as in CHROTE;
+Archon adds no sandbox or confinement, so safety comes from the agents' own
+harness settings. Archon keeps only what is current.
+
 ## Vocabulary
 
 - A **mission** is one reusable `.formation.toml` graph with a slug and a

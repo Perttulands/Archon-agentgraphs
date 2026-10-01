@@ -1,3 +1,5 @@
+> Superseded by [ADR-0021](0021-archon-only-chains-agents-and-gates.md) (2026-10-01): Archon adds no file-root confinement; the cockpit opens any path, as CHROTE does.
+
 # Referenced file roots
 
 Accepted 2026-09-16. Implements the file-reference part of form-ged.5 under the
