@@ -61,6 +61,10 @@ test('a long roster\'s role list scrolls inside the staffing window, which stays
   const last = roles.getByRole('option', { name: /Roster agent 70/ })
   await last.scrollIntoViewIfNeeded()
   await expect(last).toBeInViewport()
+  // vanilla stays pinned at the top of the scrolled grid, one click away.
+  const [list, vanilla] = [(await roles.boundingBox())!, (await roles.locator('[data-row="vanilla"]').boundingBox())!]
+  expect(vanilla.y).toBeGreaterThanOrEqual(list.y - 1)
+  expect(vanilla.y + vanilla.height).toBeLessThanOrEqual(list.y + 40)
   await expectOnScreen(page, sentence)
   await last.click()
   await expect(sentence).toHaveCount(0)

@@ -194,8 +194,11 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
     if (!listEl || !row) return
     const opened = shownList.current !== `${list}:${choosing}`
     shownList.current = `${list}:${choosing}`
-    if (opened) listEl.scrollTop = row.offsetTop - (listEl.clientHeight - row.offsetHeight) / 2
-    else if (row.offsetTop < listEl.scrollTop) listEl.scrollTop = row.offsetTop - 4
+    // vanilla stays pinned at the top of the role grid; rows scroll under it.
+    const pinned = row.dataset.row === 'vanilla' ? 0 : listEl.querySelector<HTMLElement>('.staffing-grid > [data-row="vanilla"]')?.offsetHeight || 0
+    if (row.dataset.row === 'vanilla' && pinned === 0 && list === 'role') return
+    if (opened) listEl.scrollTop = row.offsetTop - pinned - (listEl.clientHeight - pinned - row.offsetHeight) / 2
+    else if (row.offsetTop - pinned < listEl.scrollTop) listEl.scrollTop = row.offsetTop - pinned - 4
     else if (row.offsetTop + row.offsetHeight > listEl.scrollTop + listEl.clientHeight) listEl.scrollTop = row.offsetTop + row.offsetHeight - listEl.clientHeight + 4
   }, [active, list, choosing])
 
@@ -216,7 +219,8 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
       const cols = list === 'role' && !choosing ? 2 : 1
       if (key === 'ArrowDown' || key === 'ArrowUp' || (cols === 2 && (key === 'ArrowLeft' || key === 'ArrowRight'))) {
         event.preventDefault()
-        const step = key === 'ArrowDown' ? cols : key === 'ArrowUp' ? -cols : key === 'ArrowRight' ? 1 : -1
+        // In the role grid vanilla spans the first row, so down from it is the first role.
+        const step = key === 'ArrowDown' ? (cols === 2 && rows[active]?.id === 'vanilla' ? 1 : cols) : key === 'ArrowUp' ? -cols : key === 'ArrowRight' ? 1 : -1
         let next = active + step
         if (!enabled.includes(next)) next = enabled[(enabled.indexOf(active) + (step > 0 ? 1 : -1) + enabled.length) % enabled.length] ?? 0
         setHi(Math.max(0, Math.min(rows.length - 1, next)))

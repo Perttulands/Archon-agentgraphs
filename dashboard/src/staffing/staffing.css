@@ -62,6 +62,9 @@
 .staffing-list.staffing-grid .staffing-row{grid-template-columns:minmax(0,1fr) auto;gap:4px;padding:1px 4px;font-size:11px;line-height:17px;}
 .staffing-list.staffing-grid .staffing-tag{font-size:9.5px;line-height:15px;padding:0 3px;}
 .staffing-list.staffing-grid .staffing-row .staffing-row-l{overflow:hidden;text-overflow:ellipsis;}
+/* vanilla spans the grid's first row and stays pinned there as the roles scroll, one click away. */
+.staffing-list.staffing-grid > .staffing-row[data-row="vanilla"]{grid-column:1/-1;position:sticky;top:0;z-index:1;background:var(--surface-secondary);}
+.staffing-list.staffing-grid > .staffing-row[data-row="vanilla"].hi{background:color-mix(in srgb,var(--accent) 18%,var(--surface-secondary));}
 /* In the grid the current role is marked by a bar, so its name keeps its whole width. */
 .staffing-list.staffing-grid .staffing-row.current .staffing-row-l::before{content:none;}
 .staffing-list.staffing-grid .staffing-row.current{box-shadow:inset 2px 0 0 var(--accent);}
