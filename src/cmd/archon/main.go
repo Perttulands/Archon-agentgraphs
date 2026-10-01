@@ -128,7 +128,7 @@ func main() {
 }
 
 // archonNouns are the nouns the CLI knows, offline and with --server.
-var archonNouns = map[string]bool{"mission": true, "formation": true, "gate": true, "end": true, "tool": true, "agent": true, "run": true, "peer": true}
+var archonNouns = map[string]bool{"mission": true, "formation": true, "gate": true, "end": true, "limit": true, "tool": true, "agent": true, "run": true, "peer": true}
 
 func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
@@ -144,7 +144,7 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 		return 2
 	}
 	if len(args) < 2 {
-		fmt.Fprintln(stderr, "usage: archon <mission|formation|gate|end|tool|agent|run|peer> <command>")
+		fmt.Fprintln(stderr, "usage: archon <mission|formation|gate|end|limit|tool|agent|run|peer> <command>")
 		fmt.Fprintln(stderr, "Run \"archon mission\" to list the mission commands.")
 		return 2
 	}
@@ -233,6 +233,8 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 		}
 	case "end":
 		return runEndCommand(formations.NewStore(config.Workspace), args[1], args[2:], stdout, stderr)
+	case "limit":
+		return runLimitCommand(formations.NewStore(config.Workspace), args[1], args[2:], stdout, stderr)
 	case "mission":
 		store := formations.NewStore(config.Workspace)
 		switch args[1] {
@@ -1140,6 +1142,9 @@ func runGateJudge(store *formations.Store, args []string, stdout, stderr io.Writ
 	return 0
 }
 
+// grantUsage describes run resume --grant, offline and remote (archon-o7p.8).
+const grantUsage = "give the step a spent Limit card stopped one more allowance (one more round); the ledger records the grant and who gave it"
+
 // relayedByUsage describes gate approve|reject --relayed-by, offline and remote.
 const relayedByUsage = "slot ID of the seat that typed the operator's confirmed decision; the decider stays human:operator"
 
@@ -1424,9 +1429,6 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 	fs.SetOutput(stderr)
 	missionSelector := fs.String("input", "", "the Input card to start from; needed only when the mission has several")
 	actor := fs.String("actor", "agent:archon", "run actor")
-	maxDispatch := fs.Int("max-dispatch", 0, "optional cap on the run's formation starts, judges included; unset means no limit")
-	maxAttempts := fs.Int("max-attempts", 0, "optional cap on each step's attempts; unset means no limit")
-	wallClockSeconds := fs.Int("wall-clock-seconds", 0, "optional run wall clock in seconds; unset means no limit")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
@@ -1464,11 +1466,6 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits: formations.RunLimits{
-			MaxDispatch:      *maxDispatch,
-			MaxAttempts:      *maxAttempts,
-			WallClockSeconds: *wallClockSeconds,
-		},
 	})
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", missionID)
@@ -1480,9 +1477,6 @@ func runFormationRun(store *formations.Store, args []string, stdout, stderr io.W
 	fs := flag.NewFlagSet("formation run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	actor := fs.String("actor", "agent:archon", "run actor")
-	maxDispatch := fs.Int("max-dispatch", 0, "optional cap on the run's formation starts, judges included; unset means no limit")
-	maxAttempts := fs.Int("max-attempts", 0, "optional cap on each step's attempts; unset means no limit")
-	wallClockSeconds := fs.Int("wall-clock-seconds", 0, "optional run wall clock in seconds; unset means no limit")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
@@ -1503,11 +1497,6 @@ func runFormationRun(store *formations.Store, args []string, stdout, stderr io.W
 	status, err := engine.RunFormation(slug, formationID, formations.FormationRunRequest{
 		Actor:    *actor,
 		Personas: personas,
-		Limits: formations.RunLimits{
-			MaxDispatch:      *maxDispatch,
-			MaxAttempts:      *maxAttempts,
-			WallClockSeconds: *wallClockSeconds,
-		},
 	})
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", formationID)
@@ -1697,12 +1686,13 @@ func runResume(store *formations.Store, args []string, stdout, stderr io.Writer)
 	actor := fs.String("actor", "agent:archon", "resume actor")
 	mode := fs.String("mode", "reattach", "resume mode")
 	reason := fs.String("reason", "", "resume reason")
+	grant := fs.Bool("grant", false, grantUsage)
 	jsonOut := fs.Bool("json", false, "write JSON")
-	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true, "grant": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon run resume <runId> [--reason text] [--json]")
+		fmt.Fprintln(stderr, "usage: archon run resume <runId> [--grant] [--reason text] [--json]")
 		return 2
 	}
 	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
@@ -1711,6 +1701,7 @@ func runResume(store *formations.Store, args []string, stdout, stderr io.Writer)
 		Actor:  *actor,
 		Mode:   *mode,
 		Reason: *reason,
+		Grant:  *grant,
 	})
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))

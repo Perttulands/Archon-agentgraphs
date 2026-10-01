@@ -24,7 +24,6 @@ func TestHumanGateRoutesOnABranchingBoardEndOnlyWhenNothingElseCanRun(t *testing
 	}
 	started, err := store.StartRun("session-search", RunStartRequest{
 		MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev, Personas: personas,
-		Limits: RunLimits{MaxDispatch: 10, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatal(err)

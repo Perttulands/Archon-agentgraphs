@@ -144,6 +144,7 @@ func (c *Coordinator) resume(w http.ResponseWriter, r *http.Request) {
 		Actor  string `json:"actor"`
 		Mode   string `json:"mode"`
 		Reason string `json:"reason"`
+		Grant  bool   `json:"grant"`
 	}
 	if !decode(w, r, &req) {
 		return
@@ -165,8 +166,19 @@ func (c *Coordinator) resume(w http.ResponseWriter, r *http.Request) {
 		reply(w, 409, map[string]string{"error": "run is not resumable"})
 		return
 	}
+	// A spent limit resumes only with a grant, and only it takes one (archon-o7p.8).
+	grantable := p.ResumePolicy == formations.ResumePolicyGrant
+	if grantable != req.Grant {
+		c.release(id)
+		message := formations.ErrRunNothingToGrant.Error()
+		if grantable {
+			message = formations.ErrRunGrantRequired.Error()
+		}
+		reply(w, 409, map[string]string{"error": message})
+		return
+	}
 	c.launch(id, func() error {
-		_, err := c.engine.ResumeRun(id, formations.RunResumeRequest{Actor: req.Actor, Mode: req.Mode, Reason: req.Reason})
+		_, err := c.engine.ResumeRun(id, formations.RunResumeRequest{Actor: req.Actor, Mode: req.Mode, Reason: req.Reason, Grant: req.Grant})
 		return err
 	})
 	reply(w, 202, p)

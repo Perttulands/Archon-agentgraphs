@@ -2168,7 +2168,7 @@ func TestArchonS5RunResumeCommandUsesEngine(t *testing.T) {
 	writeArchonFile(t, store.BoardPath("session-search"), archonS5CascadeBoardFixture())
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "run", "session-search", "--max-dispatch", "1", "--json")
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "run", "session-search", "--json")
 	if code != 0 {
 		t.Fatalf("mission run code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -2211,7 +2211,6 @@ func TestArchonS5GateApproveRoutesHumanGate(t *testing.T) {
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            formations.RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("start human waiting run: %v", err)
@@ -2247,7 +2246,7 @@ func TestArchonGateApproveRecordsTheResponse(t *testing.T) {
 	engine := formations.NewRunEngine(store, personas, archonTestRunExecutor{})
 	waiting, err := engine.RunMission("session-search", formations.RunStartRequest{
 		MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev,
-		Personas: personas, Limits: formations.RunLimits{MaxDispatch: 5, MaxAttempts: 2},
+		Personas: personas,
 	})
 	if err != nil {
 		t.Fatalf("start human waiting run: %v", err)

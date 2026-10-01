@@ -7,7 +7,7 @@ description: Author Archon missions and drive their runs through the archond dae
 
 This skill documents the Archon contract of VERSION 0.1.0 as of 2026-10-01:
 the reusable unit is a mission, each slot owns its harness, model and effort,
-run limits are optional, drivers pull with `run wait`, and every surface uses
+a Limit card is the only run limit, drivers pull with `run wait`, and every surface uses
 current names only. It ships with that source.
 `archon --version` names the build on PATH. When that build is older, a flag or
 behaviour named here may differ: read the command's `-h` and trust the binary.
@@ -36,9 +36,11 @@ harness settings. Archon keeps only what is current.
   `fail` and `judge`.
 - An **End node** ends a path on purpose, with outcome `done` or `rejected`.
   Its only port is `in`; any number of routes may lead into it.
+- A **Limit card** caps the rounds of the step it covers, or of the whole
+  mission when it covers the Input card. It is the only run limit.
 - A **judge chain** is the formations wired from a gate's `judge` port back to it.
   A **pushback edge** is a gate's `fail` wired back to work; it carries the
-  verdict as feedback and starts a bounded next attempt.
+  verdict as feedback and starts the next attempt, capped only by a Limit card.
 - A **run** snapshots the mission, its slots and any roles at admission. Later edits affect
   later runs only.
 
@@ -230,7 +232,30 @@ acknowledges one proposal.
 `0` removes it. A run freezes the duration at admission.
 When a step runs long, check `run seats` (a seat's `waiting` says what it waits
 on) or open the seat; `run wait --until any-change` reports each `seat_state`.
-A step's duration does not bound a send-back loop; see run limits below.
+A step's duration does not bound a send-back loop; a Limit card does (next
+section).
+
+### Limit cards
+
+A run has no limits unless the mission holds a **Limit card**, and nothing adds
+one for you: without a card a send-back loop continues until its gate passes or
+you stop the run. Add a card only when a loop needs a guard. It covers one
+target, a step or the Input card (the whole mission), and its `--rounds` counts
+how many times the step may run, send-backs and resumed re-runs included (for
+a peer step, how many journal messages its conversation may hold), or how many
+step runs the whole mission may make, judges included:
+
+```bash
+archon $S limit create "$M" --target "$WORK" --rounds 3 --json
+archon $S limit create "$M" --target input --rounds 20 --title "Mission cap" --json
+```
+
+`limit update "$M" "$LIMIT" --rounds <n>|--target <t>|--title <t>` changes a
+card (`--rounds 0` clears the knob) and `limit delete "$M" "$LIMIT"` removes
+it. Validation rejects a card wired to nothing, a second card on one target and
+a rounds value that is not a positive whole number (`invalid_limit`). At a
+spent limit the step does not start and the run blocks with `limit_reached`
+and a plain reason, "Review used 3 of 3 rounds"; see Recover.
 
 ### Human channel
 
@@ -277,16 +302,9 @@ archon $S run status "$ARCHON_RUN_ID" --json
 - `--context-path` names absolute existing files or directories the seats must
   inspect as prior art. They are read-only references, frozen as paths; repeat
   the flag for more.
-- A run has no limits unless the launch sets them, and nothing supplies them
-  for you. Without limits a send-back loop continues until its gate passes or
-  you stop the run with `run abort`.
-- Add a cap only when the mission needs one: `--max-attempts <n>` bounds
-  revisits to any one node, `--max-dispatch <n>` bounds formation starts across
-  the run (judges included; resume never refills them), and
-  `--wall-clock-seconds <n>` bounds agent work from the run's start, excluding
-  time waiting at human gates. Each must be positive; omitting it means none. A
-  spent cap blocks the run naming the limit (for example the attempts used of
-  the maximum), and that block is not resumable.
+- A run's only limits are the mission's Limit cards (above); a launch sets
+  none. Without a card a send-back loop continues until its gate passes or you
+  stop the run with `run abort`.
 - A lost receipt: check `run list --json` before starting again.
 
 ### Watch
@@ -357,9 +375,10 @@ entry. `run gates "$ARCHON_RUN_ID"` lists them; `gate request "$ARCHON_RUN_ID"
 "$ARCHON_GATE_ID"` shows the question, the input and where each verdict leads:
 the targets (an End node target means "this path ends (done)" or "(rejected)",
 `endsRun` says the run then ends, and `runFails` that it fails, now or once its other work ends), the
-attempt each would start and, only when the run set a cap, that
-cap (`maxAttempts`, `dispatches`) and a `limit` entry if taking the route would
-exceed it.
+attempt each would start and, only when a Limit card covers it, the step's
+`rounds` (`used`, `max`), the mission's `missionRounds` and `roundsNeeded`, and
+a `limit` entry when taking the route would find a card spent, so the run
+blocks until you grant one more.
 
 ```bash
 archon $S gate approve "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" --requested-seq "$ARCHON_REQUESTED_SEQ" --response "$ARCHON_RESPONSE" --json

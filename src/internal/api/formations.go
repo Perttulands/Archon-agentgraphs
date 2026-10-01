@@ -39,12 +39,11 @@ func (h *FormationsHandler) SetNeedsYouNotifier(notifier formations.NeedsYouNoti
 }
 
 type formationsRunStartRequest struct {
-	Board       string               `json:"mission"`
-	MissionID   string               `json:"inputCardId"`
-	FormationID string               `json:"formationId"`
-	Actor       string               `json:"actor"`
-	Limits      formations.RunLimits `json:"limits"`
-	ExpectedRev int                  `json:"expectedRev"`
+	Board       string `json:"mission"`
+	MissionID   string `json:"inputCardId"`
+	FormationID string `json:"formationId"`
+	Actor       string `json:"actor"`
+	ExpectedRev int    `json:"expectedRev"`
 }
 
 type formationsRunAbortRequest struct {
@@ -56,6 +55,7 @@ type formationsRunResumeRequest struct {
 	Actor  string `json:"actor"`
 	Mode   string `json:"mode"`
 	Reason string `json:"reason"`
+	Grant  bool   `json:"grant"`
 }
 
 type formationsHumanGateVerdictRequest struct {
@@ -96,6 +96,9 @@ type formationsBoardPatchRequest struct {
 	CreateEnd                    *formationsCreateEndRequest             `json:"createEnd"`
 	UpdateEnd                    *formationsUpdateEndRequest             `json:"updateEnd"`
 	DeleteEnd                    *formationsDeleteEndRequest             `json:"deleteEnd"`
+	CreateLimit                  *formationsCreateLimitRequest           `json:"createLimit"`
+	UpdateLimit                  *formationsUpdateLimitRequest           `json:"updateLimit"`
+	DeleteLimit                  *formationsDeleteLimitRequest           `json:"deleteLimit"`
 	MutationOccurrences          int                                     `json:"-"`
 	ExpectedRev                  int                                     `json:"expectedRev"`
 	LayoutExpectation            *formationsToolLayoutExpectationRequest `json:"layoutExpectation"`
@@ -195,6 +198,35 @@ type formationsDeleteEndRequest struct {
 	UpdatedBy   string `json:"updatedBy"`
 }
 
+// formationsCreateLimitRequest adds a Limit card covering a step or the Input
+// card (archon-o7p.8). A zero knob is not set.
+type formationsCreateLimitRequest struct {
+	Title       string `json:"title"`
+	Target      string `json:"target"`
+	Rounds      int    `json:"rounds"`
+	X           int    `json:"x"`
+	Y           int    `json:"y"`
+	ExpectedRev int    `json:"expectedRev"`
+	UpdatedBy   string `json:"updatedBy"`
+}
+
+// formationsUpdateLimitRequest changes only the fields given; rounds 0 clears
+// the knob and an empty target unwires the card.
+type formationsUpdateLimitRequest struct {
+	ID          string  `json:"id"`
+	Title       *string `json:"title"`
+	Target      *string `json:"target"`
+	Rounds      *int    `json:"rounds"`
+	ExpectedRev int     `json:"expectedRev"`
+	UpdatedBy   string  `json:"updatedBy"`
+}
+
+type formationsDeleteLimitRequest struct {
+	ID          string `json:"id"`
+	ExpectedRev int    `json:"expectedRev"`
+	UpdatedBy   string `json:"updatedBy"`
+}
+
 type formationsDeleteMissionRequest struct {
 	ID          string `json:"id"`
 	ExpectedRev int    `json:"expectedRev"`
@@ -209,6 +241,7 @@ type formationsRestoreNodeRequest struct {
 	Formation   *formations.FormationNode    `json:"formation"`
 	Gate        *formations.GateNode         `json:"gate"`
 	End         *formations.EndNode          `json:"end"`
+	Limit       *formations.LimitNode        `json:"limit"`
 	Connections []formations.BoardConnection `json:"connections"`
 	Index       *int                         `json:"index"`
 	X           int                          `json:"x"`
@@ -350,6 +383,9 @@ var boardPatchMutationKeys = []string{
 	"createEnd",
 	"updateEnd",
 	"deleteEnd",
+	"createLimit",
+	"updateLimit",
+	"deleteLimit",
 }
 
 func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
@@ -634,7 +670,6 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 		status, err := engine.RunFormation(slug, request.FormationID, formations.FormationRunRequest{
 			Actor:    request.Actor,
 			Personas: h.personas,
-			Limits:   request.Limits,
 		})
 		if err != nil {
 			writeFormationsError(w, err)
@@ -649,7 +684,6 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 		ExpectedBoardETag: r.Header.Get("If-Match"),
 		ExpectedBoardRev:  expectedRev,
 		Personas:          h.personas,
-		Limits:            request.Limits,
 	})
 	if err != nil {
 		writeFormationsError(w, err)
@@ -779,6 +813,7 @@ func (h *FormationsHandler) ResumeRun(w http.ResponseWriter, r *http.Request) {
 		Actor:  request.Actor,
 		Mode:   request.Mode,
 		Reason: request.Reason,
+		Grant:  request.Grant,
 	})
 	if err != nil {
 		writeFormationsError(w, err)
@@ -1103,6 +1138,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Formation:   restore.Formation,
 			Gate:        restore.Gate,
 			End:         restore.End,
+			Limit:       restore.Limit,
 			Connections: restore.Connections,
 			Index:       restore.Index,
 			X:           restore.X,
@@ -1533,6 +1569,64 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		core.WriteSuccess(w, result)
 		return
 	}
+	if request.CreateLimit != nil {
+		limit := request.CreateLimit
+		result, err := h.store.CreateLimit(slug, formations.LimitCreateRequest{
+			Title:     limit.Title,
+			Target:    limit.Target,
+			Rounds:    limit.Rounds,
+			X:         limit.X,
+			Y:         limit.Y,
+			UpdatedBy: patchUpdatedBy(request.UpdatedBy, limit.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, limit.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", result.Board.ETag)
+		core.WriteSuccess(w, result)
+		return
+	}
+	if request.UpdateLimit != nil {
+		update := request.UpdateLimit
+		board, err := h.store.UpdateLimit(slug, formations.LimitUpdateRequest{
+			LimitID:   update.ID,
+			Title:     update.Title,
+			Target:    update.Target,
+			Rounds:    update.Rounds,
+			UpdatedBy: patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, update.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", board.ETag)
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
+		return
+	}
+	if request.DeleteLimit != nil {
+		deleteRequest := request.DeleteLimit
+		result, err := h.store.DeleteLimit(slug, formations.LimitDeleteRequest{
+			ID:        deleteRequest.ID,
+			UpdatedBy: patchUpdatedBy(request.UpdatedBy, deleteRequest.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, deleteRequest.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", result.Board.ETag)
+		core.WriteSuccess(w, result)
+		return
+	}
 	if request.CreateMission != nil {
 		mission := request.CreateMission
 		result, err := h.store.CreateMission(slug, formations.MissionCreateRequest{
@@ -1742,8 +1836,6 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 			message = fieldErrorMessage(err, formations.ErrInvalidToolMutation)
 		}
 		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_TOOL_MUTATION", message)
-	case errors.Is(err, formations.ErrInvalidRunLimits):
-		core.WriteError(w, http.StatusBadRequest, "INVALID_RUN_LIMITS", err.Error())
 	case errors.Is(err, formations.ErrInvalidNotePatch):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_NOTE_PATCH", err.Error())
 	case errors.Is(err, formations.ErrNoteEntryNotFound):
@@ -1792,6 +1884,8 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusBadRequest, "INVALID_BEAD_ID", fieldErrorMessage(err, formations.ErrInvalidBeadID))
 	case errors.Is(err, formations.ErrInvalidEndOutcome):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_END_OUTCOME", fieldErrorMessage(err, formations.ErrInvalidEndOutcome))
+	case errors.Is(err, formations.ErrInvalidLimit):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_LIMIT", fieldErrorMessage(err, formations.ErrInvalidLimit))
 	case errors.Is(err, formations.ErrInvalidHumanChannel):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_HUMAN_CHANNEL", fieldErrorMessage(err, formations.ErrInvalidHumanChannel))
 	case errors.Is(err, formations.ErrInvalidControllerRole):

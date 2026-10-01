@@ -1,0 +1,406 @@
+package formations
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+)
+
+// Limit cards (archon-o7p.8). A run has no limits unless its mission holds a
+// Limit card. A card covers one target: a step (a formation) or the Input
+// card, which stands for the whole mission. Its knobs are optional; each one
+// set is enforced. At a limit the covered work stops and the run blocks with a
+// plain reason; the driver may grant one more allowance with run resume
+// --grant, and the ledger records the grant and who gave it.
+//
+// Rounds count how many times a step may run, send-backs included, or how many
+// steps the whole mission may run. A peer formation's rounds are its journal
+// messages.
+
+// FindingInvalidLimit reports a Limit card that covers nothing, covers a node
+// it cannot, holds a value that is not a positive whole number, or shares its
+// target with another card.
+const FindingInvalidLimit = "invalid_limit"
+
+// FindingEmptyLimit warns about a Limit card that sets no knob.
+const FindingEmptyLimit = "empty_limit"
+
+// LimitKindRounds is the rounds knob.
+const LimitKindRounds = "rounds"
+
+// RunBlockLimitReached is the code of the block a spent limit records.
+const RunBlockLimitReached = "limit_reached"
+
+// ResumePolicyGrant marks a block that resumes only with a grant.
+const ResumePolicyGrant = "grant"
+
+// ErrInvalidLimit refuses a Limit card write with a malformed value or target.
+var ErrInvalidLimit = errors.New("invalid_limit")
+
+// LimitNode is a Limit card. Rounds is nil when the card sets no rounds; a
+// hand-written non-positive value is kept, so validation can name it.
+type LimitNode struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Target string `json:"target"`
+	Rounds *int   `json:"rounds,omitempty"`
+}
+
+type LimitCreateRequest struct {
+	Title     string
+	Target    string
+	Rounds    int
+	X         int
+	Y         int
+	UpdatedBy string
+}
+
+type LimitCreateResult struct {
+	Board  *BoardDocument  `json:"mission"`
+	Layout *LayoutDocument `json:"layout"`
+	Limit  LimitNode       `json:"limit"`
+}
+
+// LimitUpdateRequest changes only the fields it sets. Rounds 0 clears the knob.
+type LimitUpdateRequest struct {
+	LimitID   string
+	Title     *string
+	Target    *string
+	Rounds    *int
+	UpdatedBy string
+}
+
+type LimitDeleteRequest struct {
+	ID        string
+	UpdatedBy string
+}
+
+type LimitDeleteResult struct {
+	Board   *BoardDocument  `json:"mission"`
+	Layout  *LayoutDocument `json:"layout"`
+	LimitID string          `json:"limitId"`
+}
+
+func defaultLimitTitle() string { return "Limit" }
+
+// validLimitTarget reports whether a Limit card may cover nodeID: a step or
+// the Input card.
+func validLimitTarget(board *BoardDocument, nodeID string) bool {
+	if _, ok := findFormation(board.Formations, nodeID); ok {
+		return true
+	}
+	_, ok := findMission(board, nodeID)
+	return ok
+}
+
+func checkLimitWrite(board *BoardDocument, target string, rounds *int) error {
+	if target != "" && !validLimitTarget(board, target) {
+		return fmt.Errorf("%w: %q is not a step or the Input card; a Limit card covers one of them", ErrInvalidLimit, target)
+	}
+	if rounds != nil && *rounds < 0 {
+		return fmt.Errorf("%w: rounds must be a positive whole number", ErrInvalidLimit)
+	}
+	return nil
+}
+
+func (s *Store) CreateLimit(slug string, req LimitCreateRequest, opts WriteOptions) (*LimitCreateResult, error) {
+	if err := validateSlug(slug); err != nil {
+		return nil, err
+	}
+	if opts.ExpectedETag == "" || opts.ExpectedRev == 0 {
+		return nil, ErrPreconditionRequired
+	}
+	limit := LimitNode{ID: newPrefixedID("lim"), Title: strings.TrimSpace(req.Title), Target: strings.TrimSpace(req.Target)}
+	if limit.Title == "" {
+		limit.Title = defaultLimitTitle()
+	}
+	if req.Rounds != 0 {
+		rounds := req.Rounds
+		limit.Rounds = &rounds
+	}
+	board, layout, err := s.createNode(slug, opts, nodeCreateCandidate{
+		prepare: func(_ []byte, current *BoardDocument) error {
+			return checkLimitWrite(current, limit.Target, limit.Rounds)
+		},
+		appendBoardBlock: func(raw []byte) []byte { return appendLimitBlock(raw, limit) },
+		node:             LayoutNode{ID: limit.ID, X: req.X, Y: req.Y},
+		updatedBy:        req.UpdatedBy,
+	}, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &LimitCreateResult{Board: board, Layout: layout, Limit: limit}, nil
+}
+
+func (s *Store) UpdateLimit(slug string, req LimitUpdateRequest, opts WriteOptions) (*BoardDocument, error) {
+	if req.LimitID == "" {
+		return nil, ErrNotFound
+	}
+	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, current *BoardDocument) ([]byte, error) {
+		lines := splitLines(raw)
+		start, end, ok := findLimitBlockByID(lines, req.LimitID)
+		if !ok {
+			return nil, ErrNotFound
+		}
+		var target string
+		if req.Target != nil {
+			target = strings.TrimSpace(*req.Target)
+		}
+		if err := checkLimitWrite(current, target, req.Rounds); err != nil {
+			return nil, err
+		}
+		if req.Title != nil {
+			title := strings.TrimSpace(*req.Title)
+			if title == "" {
+				title = defaultLimitTitle()
+			}
+			lines = setScalarInLineRange(lines, start+1, end, "title", renderString(title))
+			start, end, _ = findLimitBlockByID(lines, req.LimitID)
+		}
+		if req.Target != nil {
+			lines = setScalarInLineRange(lines, start+1, end, "target", renderString(target))
+			start, end, _ = findLimitBlockByID(lines, req.LimitID)
+		}
+		if req.Rounds != nil {
+			if *req.Rounds == 0 {
+				lines = removeScalarInLineRange(lines, start+1, end, "rounds")
+			} else {
+				lines = setScalarInLineRange(lines, start+1, end, "rounds", renderInt(*req.Rounds))
+			}
+		}
+		return renderTOMLLines(lines), nil
+	})
+}
+
+func (s *Store) DeleteLimit(slug string, req LimitDeleteRequest, opts WriteOptions) (*LimitDeleteResult, error) {
+	if err := validateSlug(slug); err != nil {
+		return nil, err
+	}
+	if req.ID == "" {
+		return nil, ErrNotFound
+	}
+	if opts.ExpectedETag == "" || opts.ExpectedRev == 0 {
+		return nil, ErrPreconditionRequired
+	}
+	var result *LimitDeleteResult
+	err := s.withBoardDefinitionLock(slug, func(definition *definitionFile) error {
+		raw, err := definition.readBytes()
+		if err != nil {
+			return err
+		}
+		current, err := parseBoardForWrite(raw)
+		if err != nil {
+			return err
+		}
+		if opts.ExpectedETag != current.ETag || opts.ExpectedRev != current.Rev {
+			return ErrConflict
+		}
+		if err := s.validateExistingLayoutSourceForWrite(slug); err != nil {
+			return err
+		}
+		doc := parseTOMLDocument(raw)
+		if req.UpdatedBy != "" {
+			doc.setScalar("updatedBy", renderString(req.UpdatedBy))
+		}
+		doc.setScalar("rev", renderInt(current.Rev+1))
+		doc.setScalar("updatedAt", renderString(s.now().Format(time.RFC3339)))
+		nextRaw, deleted := deleteTopLevelBlockByID(doc.bytes(), "limit", req.ID)
+		if !deleted {
+			return ErrNotFound
+		}
+		if err := definition.writeAtomic(nextRaw); err != nil {
+			return err
+		}
+		board, err := parseBoardForWrite(nextRaw)
+		if err != nil {
+			return err
+		}
+		layout, err := s.deleteLayoutNodes(slug, board.ID, board.Rev, map[string]bool{req.ID: true})
+		if err != nil {
+			return err
+		}
+		result = &LimitDeleteResult{Board: board, Layout: layout, LimitID: req.ID}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func appendLimitBlock(raw []byte, limit LimitNode) []byte {
+	var b strings.Builder
+	b.Write(raw)
+	text := string(raw)
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		b.WriteByte('\n')
+	}
+	if text != "" {
+		b.WriteByte('\n')
+	}
+	b.WriteString("[[limit]]\n")
+	b.WriteString("id = " + renderString(limit.ID) + "\n")
+	b.WriteString("title = " + renderString(limit.Title) + "\n")
+	b.WriteString("target = " + renderString(limit.Target) + "\n")
+	if limit.Rounds != nil {
+		b.WriteString("rounds = " + renderInt(*limit.Rounds) + "\n")
+	}
+	return []byte(b.String())
+}
+
+func findLimitBlockByID(lines []tomlLine, limitID string) (int, int, bool) {
+	for i := 0; i < len(lines); i++ {
+		section, ok := tomlLineSectionName(lines[i])
+		if !ok || section != "limit" {
+			continue
+		}
+		end := tomlBlockEnd(lines, i)
+		if scalarInBlock(lines, i+1, end, "id") == limitID {
+			return i, end, true
+		}
+	}
+	return 0, 0, false
+}
+
+func decodeLimitNodes(document map[string]any) ([]LimitNode, error) {
+	tables, err := tomlTableArray(document, "limit")
+	if err != nil || tables == nil {
+		return nil, err
+	}
+	nodes := make([]LimitNode, 0, len(tables))
+	for _, table := range tables {
+		var node LimitNode
+		if node.ID, err = tomlString(table, "id"); err != nil {
+			return nil, err
+		}
+		if node.Title, err = tomlString(table, "title"); err != nil {
+			return nil, err
+		}
+		if node.Target, err = tomlString(table, "target"); err != nil {
+			return nil, err
+		}
+		if _, present := table["rounds"]; present {
+			rounds, err := tomlInt(table, "rounds")
+			if err != nil {
+				return nil, err
+			}
+			node.Rounds = &rounds
+		}
+		nodes = append(nodes, node)
+	}
+	return nodes, nil
+}
+
+func parseLimitNodes(raw []byte) []LimitNode {
+	var limits []LimitNode
+	var current *LimitNode
+	active := false
+	for _, line := range splitLines(raw) {
+		trimmed := strings.TrimSpace(line.body)
+		section, isSection := tomlLineSectionName(line)
+		switch {
+		case isSection && strings.HasPrefix(trimmed, "[[") && section == "limit":
+			limits = append(limits, LimitNode{})
+			current = &limits[len(limits)-1]
+			active = true
+			continue
+		case isTOMLHeader(line):
+			active = false
+			continue
+		}
+		if line.valueContinuation || !active || current == nil {
+			continue
+		}
+		key, value, ok := tomlKeyValue(line.body)
+		if !ok {
+			continue
+		}
+		switch key {
+		case "id":
+			current.ID = value
+		case "title":
+			current.Title = value
+		case "target":
+			current.Target = value
+		case "rounds":
+			var rounds int
+			if _, err := fmt.Sscanf(value, "%d", &rounds); err == nil {
+				current.Rounds = &rounds
+			}
+		}
+	}
+	return limits
+}
+
+func findLimit(board *BoardDocument, limitID string) (LimitNode, bool) {
+	if board == nil {
+		return LimitNode{}, false
+	}
+	for _, limit := range board.Limits {
+		if limit.ID == limitID {
+			return limit, true
+		}
+	}
+	return LimitNode{}, false
+}
+
+// limitCovering is the Limit card that covers a step or the Input card.
+func limitCovering(board *BoardDocument, nodeID string) (LimitNode, bool) {
+	if board == nil || nodeID == "" {
+		return LimitNode{}, false
+	}
+	for _, limit := range board.Limits {
+		if limit.Target == nodeID {
+			return limit, true
+		}
+	}
+	return LimitNode{}, false
+}
+
+// limitFindings validates every Limit card: it covers one step or the Input
+// card, no other card covers the same target, and each knob it sets is a
+// positive whole number. A card that sets no knob limits nothing.
+func limitFindings(board *BoardDocument) (errs, warnings []BoardFinding) {
+	covered := map[string]string{}
+	for _, limit := range board.Limits {
+		name := nodeName(board, limit.ID)
+		add := func(message string) {
+			errs = append(errs, BoardFinding{Code: FindingInvalidLimit, NodeID: limit.ID, Message: message})
+		}
+		switch {
+		case strings.TrimSpace(limit.Target) == "":
+			add(fmt.Sprintf("Limit %s is wired to nothing: wire it to a step, or to the Input card for the whole mission", name))
+		case !validLimitTarget(board, limit.Target):
+			add(fmt.Sprintf("Limit %s covers %s, which is not a step or the Input card: wire it to a step, or to the Input card for the whole mission", name, limit.Target))
+		case covered[limit.Target] != "":
+			add(fmt.Sprintf("%s has two Limit cards, %s and %s: keep one", nodeName(board, limit.Target), nodeName(board, covered[limit.Target]), name))
+		default:
+			covered[limit.Target] = limit.ID
+		}
+		if limit.Rounds != nil && *limit.Rounds <= 0 {
+			add(fmt.Sprintf("Limit %s holds rounds = %d: rounds must be a positive whole number", name, *limit.Rounds))
+		}
+		if limit.Rounds == nil {
+			warnings = append(warnings, BoardFinding{Code: FindingEmptyLimit, NodeID: limit.ID,
+				Message: fmt.Sprintf("Limit %s sets no limit: give it rounds, or delete it", name)})
+		}
+	}
+	return errs, warnings
+}
+
+// limitWords says what a Limit card allows, as Flow and node windows say it:
+// "at most 3 rounds".
+func limitWords(limit LimitNode) string {
+	if limit.Rounds == nil {
+		return "no limit set"
+	}
+	return fmt.Sprintf("at most %s", plural(*limit.Rounds, "round"))
+}
+
+func plural(count int, noun string) string {
+	if count == 1 {
+		return fmt.Sprintf("1 %s", noun)
+	}
+	return fmt.Sprintf("%d %ss", count, noun)
+}

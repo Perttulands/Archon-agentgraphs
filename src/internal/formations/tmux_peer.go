@@ -62,9 +62,14 @@ func (e *TmuxFormationExecutor) executePeerFormation(parent context.Context, req
 	if err := e.appendPeerPlaneEvent(req, path, bindings); err != nil {
 		return FormationExecutionResult{}, err
 	}
+	e.watchPeerRounds(ctx, req, id, cancel)
 	_, err = e.executePeerPhase(req, bindings, "peer-conversation", func(binding tmuxSlotBinding) []string {
 		return e.peerConversationInstructions(req, binding, path)
 	}, owned, cancel)
+	if use := e.spentPeerRounds(req, id); use != nil {
+		// The Limit card stopped the conversation; the engine blocks the run.
+		return FormationExecutionResult{}, &LimitReachedError{Use: *use}
+	}
 	if err != nil {
 		return FormationExecutionResult{}, err
 	}
@@ -76,6 +81,49 @@ func (e *TmuxFormationExecutor) executePeerFormation(parent context.Context, req
 		return FormationExecutionResult{}, runExecutionError("peer_result_incomplete", "peers ended without an acknowledged result; inspect the retained conversation", "peer", nil)
 	}
 	return owned.finish(e.formationResultFromText(req, path, conversation.FinalText))
+}
+
+// watchPeerRounds ends the conversation phase once the journal holds every
+// message the step's Limit card allows (archon-o7p.8).
+func (e *TmuxFormationExecutor) watchPeerRounds(ctx context.Context, req FormationExecution, id PeerConversationID, cancel context.CancelFunc) {
+	if req.PeerMessages == nil {
+		return
+	}
+	go func() {
+		seq := 0
+		for {
+			state, err := e.store.WaitPeerConversation(ctx, id, seq)
+			if err != nil || state == nil || state.Status != "open" {
+				return
+			}
+			seq = state.LastSeq
+			if peerRoundsSpent(state) {
+				cancel()
+				return
+			}
+		}
+	}()
+}
+
+// peerRoundsSpent reports a conversation that used every message its cap
+// allows without reaching agreement.
+func peerRoundsSpent(state *PeerConversation) bool {
+	return state.MaxMessages > 0 && state.Messages >= state.MaxMessages && state.Status != "agreed"
+}
+
+// spentPeerRounds is the step's spent Limit card when the conversation ended
+// at its cap, read from the journal itself, or nil.
+func (e *TmuxFormationExecutor) spentPeerRounds(req FormationExecution, id PeerConversationID) *RunLimitReached {
+	if req.PeerMessages == nil {
+		return nil
+	}
+	state, err := e.store.ReadPeerConversation(id)
+	if err != nil || !peerRoundsSpent(state) {
+		return nil
+	}
+	use := *req.PeerMessages
+	use.Used += state.Messages
+	return &use
 }
 
 // Every seat may work concurrently, but no seat receives overlapping turns.
@@ -152,6 +200,9 @@ func (e *TmuxFormationExecutor) peerConversationInstructions(req FormationExecut
 		"Dissent with a proposal: " + base + "post" + identity + " --dissent --proposal <proposal-sequence> --text-file <your-reasons-file>",
 		"Any peer may propose. The proposer must also acknowledge. Every peer must acknowledge the same proposal for status agreed. If you disagree, explain why and work toward a revision. Agreement can be on an accurate account of unresolved tensions, alternatives and the decision the operator must make; do not manufacture consensus.",
 		"The proposed text must contain the ordinary declared output payloads described below, including remaining tensions. Once status is agreed, return a brief receipt and the normal completion sentinel using the conversation path as its artifact. The runtime routes the acknowledged proposal as the formation output.",
+	}
+	if limit := req.PeerMessages; limit != nil {
+		lines = append(lines, "The step's Limit card allows this conversation "+plural(limit.Max-limit.Used, "message")+" after the openings, counting proposals, acknowledgements and dissent. When they are spent the runtime stops the conversation and the run waits for the operator, so leave room to propose and acknowledge a result.")
 	}
 	if !req.Deadline.IsZero() {
 		lines = append(lines, "The entire formation deadline is "+req.Deadline.UTC().Format(time.RFC3339Nano)+". Preparation has already used part of this budget. Leave time to write and acknowledge the result and finish your turn. Near the deadline, stop opening new debate and preserve the result and tensions. The budget will not be extended; expiry without a valid result blocks visibly.")

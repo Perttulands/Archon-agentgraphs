@@ -133,11 +133,8 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	}
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
 	relayedBy := fs.String("relayed-by", "", relayedByUsage)
-	// Runs have no limits unless the launch sets them (archon-o7p.7).
-	maxDispatch := fs.Int("max-dispatch", 0, "optional cap on the run's formation starts, judges included; unset means no limit")
-	maxAttempts := fs.Int("max-attempts", 0, "optional cap on each step's attempts; unset means no limit")
-	wall := fs.Int("wall-clock-seconds", 0, "optional run wall clock in seconds; unset means no limit")
-	if err := fs.Parse(reorderFlags(args[2:], map[string]bool{"json": true})); err != nil {
+	grant := fs.Bool("grant", false, grantUsage)
+	if err := fs.Parse(reorderFlags(args[2:], map[string]bool{"json": true, "grant": true})); err != nil {
 		return 2
 	}
 	pos := fs.Args()
@@ -176,13 +173,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		path += "/runs"
 		method = "POST"
-		limits := map[string]any{}
-		for key, value := range map[string]int{"maxDispatch": *maxDispatch, "maxAttempts": *maxAttempts, "wallClockSeconds": *wall} {
-			if value != 0 {
-				limits[key] = value
-			}
-		}
-		fields := map[string]any{"cwd": *cwd, "brief": briefText, "beadId": *bead, "mission": pos[0], "inputCardId": inputCard, "expectedRev": board.Data.Board.Rev, "limits": limits}
+		fields := map[string]any{"cwd": *cwd, "brief": briefText, "beadId": *bead, "mission": pos[0], "inputCardId": inputCard, "expectedRev": board.Data.Board.Rev}
 		if len(contextPaths) > 0 {
 			fields["contextPaths"] = contextPaths
 		}
@@ -196,7 +187,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		if args[1] == "abort" {
 			body = map[string]any{"reason": *reason, "requestedBy": "operator:archon"}
 		} else {
-			body = map[string]any{"reason": *reason, "actor": "operator:archon", "mode": *mode}
+			body = map[string]any{"reason": *reason, "actor": "operator:archon", "mode": *mode, "grant": *grant}
 		}
 	case "run list":
 		path += "/runs"

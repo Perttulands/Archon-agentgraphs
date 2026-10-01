@@ -57,7 +57,7 @@ func TestConcurrentLabAdmissionInputsAndPerRunAbort(t *testing.T) {
 	ids := []string{}
 	for _, bead := range []string{"archon-first", "archon-second"} {
 		cwd := t.TempDir()
-		raw, _ := json.Marshal(map[string]any{"mission": "proof", "inputCardId": "mis_proof", "expectedRev": 1, "cwd": cwd, "brief": "brief for " + bead, "beadId": bead, "limits": formations.RunLimits{MaxDispatch: 4, MaxAttempts: 2, WallClockSeconds: 60}})
+		raw, _ := json.Marshal(map[string]any{"mission": "proof", "inputCardId": "mis_proof", "expectedRev": 1, "cwd": cwd, "brief": "brief for " + bead, "beadId": bead})
 		w := post(t, c, "/api/runs", string(raw))
 		if w.Code != 202 {
 			t.Fatalf("admission %s", w.Body.String())
@@ -144,7 +144,7 @@ func TestRestartLabNamesUnresolvedDispatchAndKeepsHistory(t *testing.T) {
 	if err := os.WriteFile(c.store.BoardPath("proof"), []byte(testBoard), 0600); err != nil {
 		t.Fatal(err)
 	}
-	started, err := c.store.StartRun("proof", formations.RunStartRequest{MissionID: "mis_proof", ExpectedBoardRev: 1, Personas: personas, Limits: formations.RunLimits{MaxDispatch: 4, MaxAttempts: 2, WallClockSeconds: 60}})
+	started, err := c.store.StartRun("proof", formations.RunStartRequest{MissionID: "mis_proof", ExpectedBoardRev: 1, Personas: personas})
 	if err != nil {
 		t.Fatal(err)
 	}

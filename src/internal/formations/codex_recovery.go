@@ -244,6 +244,10 @@ func (e *RunEngine) PreservePendingHumanGate(runID string) (bool, error) {
 // BlockInterruptedRun records every unresolved dispatch before any restart
 // recovery attempt. A failed recovery therefore remains visible and resumable.
 // A run interrupted between steps names none, and resuming it continues.
+// RunBlockCoordinatorInterrupted is the code of the block a restart leaves on
+// a run its worker was driving.
+const RunBlockCoordinatorInterrupted = "coordinator_interrupted"
+
 func (e *RunEngine) BlockInterruptedRun(runID string) error {
 	events, err := e.store.ReadRunEvents(runID)
 	if err != nil {
@@ -255,12 +259,12 @@ func (e *RunEngine) BlockInterruptedRun(runID string) error {
 		message, reason = "coordinator restarted between steps", "coordinator restarted between steps; resume to continue"
 	}
 	if err := e.store.AppendRunEvent(runID, RunEvent{Type: RunEventError, Data: map[string]any{
-		"code": "coordinator_interrupted", "message": message, "openDispatches": refs,
+		"code": RunBlockCoordinatorInterrupted, "message": message, "openDispatches": refs,
 	}}); err != nil {
 		return err
 	}
 	return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventBlocked, Data: map[string]any{
-		"code": "coordinator_interrupted", "reason": reason, "openDispatches": refs, "resumeAllowed": true,
+		"code": RunBlockCoordinatorInterrupted, "reason": reason, "openDispatches": refs, "resumeAllowed": true,
 	}})
 }
 

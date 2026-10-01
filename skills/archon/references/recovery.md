@@ -15,8 +15,7 @@ block with `code`, `reason`, `resumeAllowed` and the `nodeIds` it names.
 | `coordinator_interrupted` | The daemon restarted with the run in flight: open dispatches it names, or between steps. | Resume; with open dispatches and no completed evidence, `--mode redispatch`. |
 | `run_work_unfinished` | Work remains that the run still owes. | Resume. |
 | `reachable_node_starved` | A formation can never receive a missing input. | Not resumable. Fix the wiring and start a new run. |
-| `resume_attempts_exhausted`, `revise_loop_exhausted`, `max_dispatch_exceeded` | A limit is spent (`resumePolicy: limit_exhausted`, `limit` names it). | Not resumable. Start a new run with a larger cap, or none. |
-| `wall_clock_exceeded` | A dispatch ran past the run's wall clock. | The clock counts from the run's start, so start a new run with more time. |
+| `limit_reached` | A Limit card is spent: "Review used 3 of 3 rounds" (`resumePolicy: grant`, `limit` names the card). | With the operator's authority, `run resume "$ARCHON_RUN_ID" --grant --reason '<why one more>'` gives one more round; or `run abort`. A plain resume is refused. |
 | `formation_timeout_exceeded` | A step ran past its execution duration. | Inspect the partial evidence. `--mode redispatch` starts a fresh attempt with a fresh duration; `set-execution` changes later runs only. |
 | Malformed `archon-verdict` | The judge broke the verdict contract. | Not resumable. Fix the judge brief and start a new run. |
 | `persona_snapshot_invalid` | The run's frozen staffing cannot start a seat. | Start a new run. |

@@ -30,7 +30,6 @@ var (
 	ErrConflict                   = errors.New("archon conflict")
 	ErrAmbiguousSelector          = errors.New("ambiguous archon selector")
 	ErrInvalidSlug                = errors.New("invalid archon slug")
-	ErrInvalidRunLimits           = errors.New("limits must be positive when set; omit a limit to run without it")
 	ErrNotFound                   = errors.New("archon file not found")
 	ErrPreconditionRequired       = errors.New("archon write precondition required")
 	ErrUnsupportedSchema          = errors.New("unsupported archon schema")
@@ -74,6 +73,7 @@ type BoardDocument struct {
 	Gates       []GateNode        `json:"gates,omitempty"`
 	Tools       []ToolNode        `json:"tools,omitempty"`
 	Ends        []EndNode         `json:"ends,omitempty"`
+	Limits      []LimitNode       `json:"limits,omitempty"`
 	Connections []BoardConnection `json:"connections,omitempty"`
 	ETag        string            `json:"etag"`
 	TOML        string            `json:"toml,omitempty"`
@@ -519,6 +519,7 @@ func boardFromTOMLSource(raw []byte, source boardTOMLSource) (*BoardDocument, er
 		Gates:       source.Gates,
 		Tools:       tools,
 		Ends:        source.Ends,
+		Limits:      source.Limits,
 		Connections: source.Connections,
 		ETag:        etag(raw),
 		TOML:        string(raw),
@@ -549,6 +550,7 @@ func parseBoardCompatibility(raw []byte) (*BoardDocument, error) {
 		Gates:       parseGateNodes(raw),
 		Tools:       tools,
 		Ends:        parseEndNodes(raw),
+		Limits:      parseLimitNodes(raw),
 		Connections: parseBoardConnections(raw),
 		ETag:        etag(raw),
 		TOML:        string(raw),

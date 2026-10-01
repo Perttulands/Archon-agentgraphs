@@ -64,7 +64,7 @@ func TestArchonDraftAuthoringSavesAndAdmissionListsEveryProblem(t *testing.T) {
 		t.Fatalf("board validate %d:\n%s", code, stdout)
 	}
 
-	_, stderr, code = archon("mission", "run", "sketch", "--max-dispatch", "3", "--max-attempts", "1", "--wall-clock-seconds", "60", "--json")
+	_, stderr, code = archon("mission", "run", "sketch", "--json")
 	var failure archonErrorResponse
 	if err := json.Unmarshal([]byte(stderr), &failure); code != 1 || err != nil {
 		t.Fatalf("mission run %d %s (%v)", code, stderr, err)

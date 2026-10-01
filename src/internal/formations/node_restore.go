@@ -12,7 +12,7 @@ import (
 // is malformed.
 var ErrInvalidNodeRestore = errors.New("invalid_node_restore")
 
-// NodeRestoreRequest puts back one deleted mission, formation, gate or End node with its
+// NodeRestoreRequest puts back one deleted mission, formation, gate, End node or Limit card with its
 // own IDs, fields, connections and layout position, as the board document
 // showed it before the delete. It is how the cockpit undoes a node delete.
 // Notes are keyed by node ID and survive the delete, so the restored node
@@ -22,6 +22,7 @@ type NodeRestoreRequest struct {
 	Formation   *FormationNode
 	Gate        *GateNode
 	End         *EndNode
+	Limit       *LimitNode
 	Connections []BoardConnection
 	// Index, when set, is the node's place among the board's nodes of its
 	// kind, so the definition reads in its old order; nil appends it.
@@ -111,15 +112,27 @@ func insertNodeBlock(raw []byte, section string, index int, block []byte, append
 // and editing that kind of node.
 func restoredNodeBlock(req NodeRestoreRequest) (string, string, func([]byte) []byte, error) {
 	count := 0
-	for _, present := range []bool{req.Mission != nil, req.Formation != nil, req.Gate != nil, req.End != nil} {
+	for _, present := range []bool{req.Mission != nil, req.Formation != nil, req.Gate != nil, req.End != nil, req.Limit != nil} {
 		if present {
 			count++
 		}
 	}
 	if count != 1 {
-		return "", "", nil, invalidNodeRestore("name exactly one Input card, formation, gate or End node")
+		return "", "", nil, invalidNodeRestore("name exactly one Input card, formation, gate, End node or Limit card")
 	}
 	switch {
+	case req.Limit != nil:
+		limit := *req.Limit
+		if !validToolDefinitionID(limit.ID) {
+			return "", "", nil, invalidNodeRestore("Limit card id %q is invalid", limit.ID)
+		}
+		if limit.Rounds != nil && *limit.Rounds <= 0 {
+			return "", "", nil, fmt.Errorf("%w: rounds must be a positive whole number", ErrInvalidLimit)
+		}
+		if strings.TrimSpace(limit.Title) == "" {
+			limit.Title = defaultLimitTitle()
+		}
+		return limit.ID, "limit", func(raw []byte) []byte { return appendLimitBlock(raw, limit) }, nil
 	case req.End != nil:
 		end := *req.End
 		if !validToolDefinitionID(end.ID) {
@@ -402,6 +415,11 @@ func nodeIDTaken(board *BoardDocument, id string) bool {
 	}
 	for _, end := range board.Ends {
 		if end.ID == id {
+			return true
+		}
+	}
+	for _, limit := range board.Limits {
+		if limit.ID == id {
 			return true
 		}
 	}

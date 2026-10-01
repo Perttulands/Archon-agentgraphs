@@ -139,7 +139,7 @@ paths:
     patch:
       responses:
         '200':
-          description: Updated mission or compound authoring result; createFormation, createGate, createEnd and createInputCard return {mission, layout, formation|gate|end|inputCard}; deleteEnd returns {mission, layout, endId}. Returns ETag. An edit that changes nothing returns the current mission with its revision and ETag unchanged.
+          description: Updated mission or compound authoring result; createFormation, createGate, createEnd, createLimit and createInputCard return {mission, layout, formation|gate|end|limit|inputCard}; deleteEnd returns {mission, layout, endId} and deleteLimit {mission, layout, limitId}. Returns ETag. An edit that changes nothing returns the current mission with its revision and ETag unchanged.
         '428':
           description: Missing preconditions
         '409':
@@ -147,7 +147,7 @@ paths:
         '422':
           description: Unprocessable write, such as a code check naming no registered profile. A Tool write returns INVALID_TOOL_MUTATION with a message naming the invalid field or reason. An assignSlot whose harness, model or effort no seat could start with, that leaves the effort unchosen, or that names an unknown role alone returns INVALID_SLOT_SETTINGS with a message naming the slot and the fix, including the effort policy when the effort is missing.
         '400':
-          description: Invalid mutation. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (brief beadId). An Input card humanChannel other than notify or session returns INVALID_HUMAN_CHANNEL naming the allowed values. makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. An invalid mission slug returns BAD_REQUEST 'Invalid mission slug'.
+          description: Invalid mutation. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (brief beadId). An Input card humanChannel other than notify or session returns INVALID_HUMAN_CHANNEL naming the allowed values. makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. A Limit card write naming a target that is not a step or the Input card, or a negative rounds value, returns INVALID_LIMIT. An invalid mission slug returns BAD_REQUEST 'Invalid mission slug'.
       parameters:
       - in: header
         name: If-Match
@@ -259,36 +259,6 @@ paths:
                 expectedRev:
                   type: integer
                   minimum: 1
-                limits:
-                  type: object
-                  additionalProperties: false
-                  description: Optional. A run has no limits unless the launch sets them; an absent or zero
-                    limit means none, and a negative limit is rejected.
-                  properties:
-                    maxDispatch:
-                      type: integer
-                      minimum: 0
-                      description: Cap on the run's formation starts, judges included. Absent or 0 means no limit.
-                    maxAttempts:
-                      type: integer
-                      minimum: 0
-                      description: Cap on each step's attempts. Absent or 0 means no limit.
-                    wallClockSeconds:
-                      type: integer
-                      minimum: 0
-                      description: Time the run's agent work may take from its start. Waits at human gates, from
-                        each request to its verdict, do not count. Absent or 0 means no limit.
-                    formationTimeoutSeconds:
-                      type: integer
-                      minimum: 1
-                      maximum: 9223372036
-                      readOnly: true
-                      description: Server-owned execution default for formations without an authored duration.
-                        Resolved at admission and frozen with the run; clients need not supply it.
-                    redact:
-                      type: boolean
-                      const: false
-                      default: false
       responses:
         '202':
           description: Admitted and durable; execution continues independently of HTTP
@@ -380,6 +350,11 @@ paths:
                   type: string
                 reason:
                   type: string
+                grant:
+                  type: boolean
+                  description: Gives the spent Limit card that blocked the run one more round, recorded on the
+                    run_resumed as grant {limitId, kind, amount}. Required while the run's resumePolicy is
+                    grant, refused otherwise.
       responses:
         '202':
           description: Continuation admitted for this run
@@ -388,9 +363,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProjectionEnvelope'
         '409':
-          description: Run still executing after a five-second wait for its command
-          final: null
-          or not resumable: null
+          description: Run still executing after a five-second wait for its command, final, not
+            resumable, stopped at a spent limit without grant, or given a grant at any other block
   /api/runs/{runId}/wait:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -470,7 +444,7 @@ paths:
       description: Oldest first, with texts capped at 64 KiB each and 2 MiB per response, spent on the latest first, and secret patterns redacted.
       responses:
         '200':
-          description: Enveloped data.problems lists seq, type, code, reason, resumeAllowed and nodeIds (the node or gate, blocked node or gate and open dispatch nodes it names; empty for a block that names none, such as an exceeded wall clock).
+          description: Enveloped data.problems lists seq, type, code, reason, resumeAllowed and nodeIds (the node or gate, blocked node or gate and open dispatch nodes it names; empty for a block that names none, such as a coordinator restart between steps).
         '404':
           description: No such run
   /api/runs/{runId}/evidence/briefs/{dispatchSeq}:
@@ -929,6 +903,24 @@ components:
         outcome:
           type: string
           enum: [done, rejected]
+    LimitNode:
+      type: object
+      description: A Limit card. It covers one target, a step or the Input card (the whole mission), and
+        caps its rounds; a run blocks with code limit_reached at a spent card until run resume --grant.
+      required: [id, title, target]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        target:
+          type: string
+          description: The step or Input card the card covers; empty while unwired.
+        rounds:
+          type: integer
+          minimum: 1
+          description: Step runs the target may make (journal messages for a peer step, every step run
+            for the Input card). Omitted sets no rounds.
     FormationNode:
       type: object
       description: An authored formation. Execution policy is optional; all other formation fields
@@ -1072,6 +1064,10 @@ components:
           type: integer
         resumeAllowed:
           type: boolean
+        resumePolicy:
+          type: string
+          enum: [grant]
+          description: grant while the run waits at a spent Limit card, which resumes only with grant.
         projectionVersion:
           const: standalone-trusted-v1
         humanChannel:
@@ -1248,7 +1244,7 @@ components:
               type: string
         restoreNode:
           type: object
-          description: Undo a node delete. Name exactly one of inputCard, formation, gate or end, as the mission
+          description: Undo a node delete. Name exactly one of inputCard, formation, gate, end or limit, as the mission
             document showed it before the delete, with the connections that touched it and its layout
             position. The node, its connections and its layout placement publish together or not at
             all, keeping every ID, so its notes and wire lanes apply again. A node ID already in the
@@ -1264,6 +1260,8 @@ components:
               type: object
             end:
               $ref: '#/components/schemas/EndNode'
+            limit:
+              $ref: '#/components/schemas/LimitNode'
             connections:
               type: array
               items:
@@ -1517,6 +1515,55 @@ components:
             outcome:
               type: string
               enum: [done, rejected]
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        createLimit:
+          type: object
+          description: Adds a Limit card. An empty target leaves it unwired, a draft that validation reports.
+          properties:
+            title:
+              type: string
+              description: Omitted or blank is Limit.
+            target:
+              type: string
+            rounds:
+              type: integer
+              minimum: 0
+              description: Omitted or 0 sets no rounds.
+            x:
+              type: integer
+            y:
+              type: integer
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        updateLimit:
+          type: object
+          description: Changes only the fields given. An empty target unwires the card and rounds 0 clears
+            the knob.
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+            target:
+              type: string
+            rounds:
+              type: integer
+              minimum: 0
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        deleteLimit:
+          type: object
+          description: Deletes a Limit card; restoreNode with limit undoes it.
+          properties:
+            id:
+              type: string
             expectedRev:
               type: integer
             updatedBy:

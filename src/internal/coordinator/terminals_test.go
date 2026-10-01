@@ -15,7 +15,7 @@ import (
 
 func TestSeatProjectionPinsRunAttemptAndFrozenLabels(t *testing.T) {
 	c, _, root := fixture(t)
-	started, err := c.store.StartRun("proof", formations.RunStartRequest{MissionID: "mis_proof", ExpectedBoardRev: 1, Personas: c.personas, Limits: formations.RunLimits{MaxDispatch: 4, MaxAttempts: 2}})
+	started, err := c.store.StartRun("proof", formations.RunStartRequest{MissionID: "mis_proof", ExpectedBoardRev: 1, Personas: c.personas})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestSeatProjectionPinsRunAttemptAndFrozenLabels(t *testing.T) {
 		t.Fatal(w.Code)
 	}
 	// A different run cannot borrow an event sequence from this run.
-	other, err := c.store.StartRun("proof", formations.RunStartRequest{MissionID: "mis_proof", ExpectedBoardRev: 1, Personas: c.personas, Limits: formations.RunLimits{MaxDispatch: 4, MaxAttempts: 2}})
+	other, err := c.store.StartRun("proof", formations.RunStartRequest{MissionID: "mis_proof", ExpectedBoardRev: 1, Personas: c.personas})
 	if err != nil {
 		t.Fatal(err)
 	}

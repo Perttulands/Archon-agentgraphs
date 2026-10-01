@@ -64,6 +64,8 @@ type runOutcome struct {
 	Status  string
 	EndIDs  []string
 	Outputs map[string]int
+	// Grants counts the Limit card grants the run needed.
+	Grants int
 }
 
 func (o runOutcome) String() string {
@@ -72,7 +74,7 @@ func (o runOutcome) String() string {
 		nodes = append(nodes, fmt.Sprintf("%s×%d", node, count))
 	}
 	sort.Strings(nodes)
-	return fmt.Sprintf("%s at %v after %s", o.Status, o.EndIDs, strings.Join(nodes, " "))
+	return fmt.Sprintf("%s at %v after %s with %d grants", o.Status, o.EndIDs, strings.Join(nodes, " "), o.Grants)
 }
 
 func outcomeOf(events []formations.RunEvent) runOutcome {
@@ -82,6 +84,10 @@ func outcomeOf(events []formations.RunEvent) runOutcome {
 		case formations.RunEventNodeOutput:
 			if strings.HasPrefix(event.NodeID, "fmn_") {
 				outcome.Outputs[event.NodeID]++
+			}
+		case formations.RunEventResumed:
+			if _, granted := event.Data["grant"]; granted {
+				outcome.Grants++
 			}
 		case formations.RunEventSucceeded, formations.RunEventFailed, formations.RunEventCanceled:
 			outcome.Status = strings.TrimPrefix(event.Type, "run_")
@@ -161,7 +167,9 @@ func driveToEnd(t *testing.T, c *Coordinator, id string, tc restartCase) *Projec
 					break
 				}
 			}
-			if w := post(t, c, "/api/runs/"+id+"/resume", `{"mode":"`+mode+`","reason":"continue after a restart"}`); w.Code != 202 {
+			// A spent Limit card resumes only with a grant (archon-o7p.8).
+			grant := strconv.FormatBool(p.ResumePolicy == formations.ResumePolicyGrant)
+			if w := post(t, c, "/api/runs/"+id+"/resume", `{"mode":"`+mode+`","reason":"continue after a restart","grant":`+grant+`}`); w.Code != 202 {
 				t.Fatalf("resume %d %s: %s", w.Code, w.Body.String(), ledgerTrail(events))
 			}
 		case len(p.WaitingGates) > 0:
@@ -211,7 +219,7 @@ func requireOnlyRestartErrors(t *testing.T, events []formations.RunEvent) {
 		if event.Type != formations.RunEventError {
 			continue
 		}
-		if code, _ := event.Data["code"].(string); code != "coordinator_interrupted" && code != "dispatch_reattach_failed" {
+		if code, _ := event.Data["code"].(string); code != "coordinator_interrupted" && code != "dispatch_reattach_failed" && code != formations.RunBlockLimitReached {
 			t.Fatalf("unexpected error %s: %s", code, ledgerTrail(events))
 		}
 	}
@@ -294,7 +302,50 @@ criterion = "Judge the work"
 			judges: map[string][]string{"fmn_last": {"fail", "pass"}},
 			want:   runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_work": 2, "fmn_first": 2, "fmn_last": 2}},
 		},
+		{
+			// Work may run twice; the third try waits for a grant.
+			name:   "a step's Limit card stopping a judge loop until granted",
+			board:  judgeLoopBoard(`target = "fmn_work"`),
+			judges: map[string][]string{"fmn_judge": {"fail", "fail", "pass"}},
+			want:   runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_work": 3, "fmn_judge": 3}, Grants: 1},
+		},
+		{
+			// The mission may run four steps: Work and its judge twice. Work's
+			// third try and its judge each wait for a grant.
+			name:   "the mission's Limit card stopping a judge loop until granted",
+			board:  judgeLoopBoard(`target = "mis_proof"`),
+			judges: map[string][]string{"fmn_judge": {"fail", "fail", "pass"}},
+			want:   runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_work": 3, "fmn_judge": 3}, Grants: 2},
+		},
 	}
+}
+
+// judgeLoopBoard is Work judged by a formation that sends it back on fail,
+// with a two-round Limit card on the given target, or four for the mission.
+func judgeLoopBoard(target string) string {
+	rounds := "2"
+	if strings.Contains(target, "mis_proof") {
+		rounds = "4"
+	}
+	return gateBoard(gateBoardFormation("fmn_work") + gateBoardFormation("fmn_judge") + `
+[[gate]]
+id = "gate_judge"
+title = "Judge"
+kinds = ["formation"]
+criterion = "Judge the work"
+
+[[limit]]
+id = "lim_cap"
+title = "Cap"
+` + target + `
+rounds = ` + rounds + `
+` + endNodes +
+		gateBoardConnection("edge_m_work", "mis_proof:out", "fmn_work:port_in") +
+		gateBoardConnection("edge_work_judge", "fmn_work:port_out", "gate_judge:in") +
+		gateBoardConnection("edge_gate_judge", "gate_judge:judge", "fmn_judge:port_in") +
+		gateBoardConnection("edge_judge_verdict", "fmn_judge:port_out", "gate_judge:judge") +
+		gateBoardConnection("edge_judge_fail", "gate_judge:fail", "fmn_work:port_in") +
+		endWire("edge_judge_pass", "gate_judge:pass", "end_done"))
 }
 
 func TestARestartAfterAnyEventReachesTheSameOutcome(t *testing.T) {

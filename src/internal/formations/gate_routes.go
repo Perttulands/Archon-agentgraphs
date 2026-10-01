@@ -2,23 +2,25 @@ package formations
 
 // Where a human gate's answer leads (archon-n7u.7). The operator decides with the
 // consequence in view: the steps each verdict delivers to on the run's frozen
-// board, whether a verdict ends the run, and whether the step a verdict starts
-// would take the last of a limit or find it already spent, which blocks the run
-// instead (archon-n7u.6). The routes follow routeGateVerdict and the engine's
-// attempt and dispatch counting.
+// board, whether a verdict ends the run, and whether a step the verdict starts
+// finds a Limit card's rounds spent, which blocks the run instead
+// (archon-o7p.8). The routes count rounds as the engine does
+// (roundsUse, roundsSpentBefore).
 
 // GateRouteTarget is a step, gate or End node a verdict delivers to. A
-// formation also says which attempt it would start, the run's attempt limit
-// (maxAttempts, omitted when the run set none and attempts are unlimited), and
-// whether it still waits for other inputs. An End node says its outcome: the
-// path ends there, done or rejected.
+// formation also says which attempt it would start, its Limit card's rounds
+// used so far when one caps it (omitted otherwise), and whether it still waits
+// for other inputs. An End node says its outcome: the path ends there, done or
+// rejected.
 type GateRouteTarget struct {
-	NodeID      string `json:"nodeId"`
-	Title       string `json:"title"`
-	Kind        string `json:"kind"`
-	Outcome     string `json:"outcome,omitempty"`
-	Attempt     int    `json:"attempt,omitempty"`
-	MaxAttempts int    `json:"maxAttempts,omitempty"`
+	NodeID  string `json:"nodeId"`
+	Title   string `json:"title"`
+	Kind    string `json:"kind"`
+	Outcome string `json:"outcome,omitempty"`
+	Attempt int    `json:"attempt,omitempty"`
+	// Rounds is the step's Limit card use before the route starts it: Used
+	// of Max, Max counting grants.
+	Rounds *RunLimitReached `json:"rounds,omitempty"`
 	// WaitsForInputs marks a join that receives this and still waits for
 	// another input no step has delivered yet.
 	WaitsForInputs bool `json:"waitsForInputs,omitempty"`
@@ -31,28 +33,31 @@ type GateRouteTarget struct {
 // RunFails marks a verdict after which the run fails when it ends: one of its
 // End nodes is rejected, or a rejected path already ended. With EndsRun it
 // fails now; without, once the rest of its open work has ended. Limit is a
-// limit the route finds spent, so taking it blocks the run. Dispatches is the run's dispatch use so far and DispatchesNeeded the
-// formation starts the route makes, judges included, under a dispatch limit.
+// Limit card the route finds spent, so taking it blocks the run until a grant.
+// MissionRounds is the mission card's use so far and RoundsNeeded the step
+// starts the route makes, judges included, when a card caps the mission.
 type GateRoute struct {
-	Verdict          string            `json:"verdict"`
-	Targets          []GateRouteTarget `json:"targets"`
-	EndsRun          bool              `json:"endsRun,omitempty"`
-	RunFails         bool              `json:"runFails,omitempty"`
-	Limit            *RunLimitReached  `json:"limit,omitempty"`
-	Dispatches       *RunLimitReached  `json:"dispatches,omitempty"`
-	DispatchesNeeded int               `json:"dispatchesNeeded,omitempty"`
+	Verdict       string            `json:"verdict"`
+	Targets       []GateRouteTarget `json:"targets"`
+	EndsRun       bool              `json:"endsRun,omitempty"`
+	RunFails      bool              `json:"runFails,omitempty"`
+	Limit         *RunLimitReached  `json:"limit,omitempty"`
+	MissionRounds *RunLimitReached  `json:"missionRounds,omitempty"`
+	RoundsNeeded  int               `json:"roundsNeeded,omitempty"`
 }
 
 // HumanGateRoutes reports the pass and fail routes of a gate as the run stands.
 func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string) []GateRoute {
-	limits := RunLimits{}
-	if len(events) > 0 && events[0].Type == RunEventStarted {
-		limits = runLimitsFromEvent(events[0])
+	var missionRounds *RunLimitReached
+	for _, mission := range board.Missions {
+		if limit, ok := limitCovering(board, mission.ID); ok {
+			missionRounds = roundsUse(board, events, limit)
+		}
 	}
-	consumed := formationStartsBefore(events, len(events))
 	routes := make([]GateRoute, 0, 2)
 	for _, verdict := range []string{"pass", "fail"} {
 		route := GateRoute{Verdict: verdict, Targets: []GateRouteTarget{}}
+		needed := 0
 		connections := outgoingConnectionsFromPort(board.Connections, gateID, verdict)
 		for _, connection := range connections {
 			nodeID, portID := endpointParts(connection.To)
@@ -62,17 +67,22 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string) []G
 			target := GateRouteTarget{NodeID: nodeID, Title: boardNodeTitle(board, nodeID), Kind: boardNodeKind(board, nodeID)}
 			switch target.Kind {
 			case "formation":
-				route.DispatchesNeeded++
-				target.Attempt = nodeAttemptsBefore(events, len(events), nodeID) + 1
-				target.MaxAttempts = limits.MaxAttempts
-				// The engine's own rule, so the panel says what the engine will do.
-				if route.Limit == nil && attemptsExhausted(limits, target.Attempt) {
-					route.Limit = &RunLimitReached{Kind: RunLimitAttempts, NodeID: nodeID, Used: target.Attempt - 1, Max: target.MaxAttempts}
+				needed++
+				target.Attempt = nodeLatestAttempt(events, nodeID) + 1
+				formation, _ := findFormation(board.Formations, nodeID)
+				if limit, ok := limitCovering(board, nodeID); ok && formation.Type != FormationTypePeer {
+					if use := roundsUse(board, events, limit); use != nil {
+						target.Rounds = use
+						// The engine's own rule, so the panel says what the engine will do.
+						if route.Limit == nil && use.Used >= use.Max {
+							route.Limit = use
+						}
+					}
 				}
 				target.WaitsForInputs = formationWaitsForOtherInputs(board, events, nodeID, portID)
 			case "gate":
-				// A judge gate dispatches each formation of its judge chain.
-				route.DispatchesNeeded += len(judgeChainForGate(board, nodeID))
+				// A judge gate starts each formation of its judge chain.
+				needed += len(judgeChainForGate(board, nodeID))
 			case "end":
 				if end, ok := findEnd(board, nodeID); ok {
 					target.Outcome = end.Outcome
@@ -85,15 +95,26 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string) []G
 			route.RunFails = route.RunFails || target.Outcome == EndOutcomeRejected
 		}
 		route.EndsRun = routeEndsRun(board, events, gateID, route.Targets, route.RunFails)
-		if route.DispatchesNeeded > 0 && limits.MaxDispatch > 0 {
-			route.Dispatches = &RunLimitReached{Kind: RunLimitDispatches, Used: consumed, Max: limits.MaxDispatch}
-			if route.Limit == nil && consumed >= limits.MaxDispatch {
-				route.Limit = route.Dispatches
+		if needed > 0 && missionRounds != nil {
+			route.MissionRounds, route.RoundsNeeded = missionRounds, needed
+			if route.Limit == nil && missionRounds.Used >= missionRounds.Max {
+				route.Limit = missionRounds
 			}
 		}
 		routes = append(routes, route)
 	}
 	return routes
+}
+
+// nodeLatestAttempt is the node's latest recorded attempt.
+func nodeLatestAttempt(events []RunEvent, nodeID string) int {
+	attempts := 0
+	for _, event := range events {
+		if event.Type == RunEventNodeStarted && event.NodeID == nodeID && event.Attempt > attempts {
+			attempts = event.Attempt
+		}
+	}
+	return attempts
 }
 
 // routeEndsRun reports whether a verdict whose routes all lead to End nodes
@@ -192,6 +213,11 @@ func boardNodeKind(board *BoardDocument, nodeID string) string {
 			return "end"
 		}
 	}
+	for _, limit := range board.Limits {
+		if limit.ID == nodeID {
+			return "limit"
+		}
+	}
 	return ""
 }
 
@@ -219,6 +245,11 @@ func boardNodeTitle(board *BoardDocument, nodeID string) string {
 	for _, end := range board.Ends {
 		if end.ID == nodeID {
 			return end.Title
+		}
+	}
+	for _, limit := range board.Limits {
+		if limit.ID == nodeID {
+			return limit.Title
 		}
 	}
 	return ""

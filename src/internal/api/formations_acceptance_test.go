@@ -35,7 +35,6 @@ func TestFormationsRunProjectionParity(t *testing.T) {
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            formations.RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("start human waiting run: %v", err)

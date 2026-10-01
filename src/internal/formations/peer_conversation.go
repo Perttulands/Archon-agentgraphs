@@ -29,6 +29,9 @@ var (
 	ErrPeerDeadlineExceeded    = errors.New("peer conversation deadline exceeded")
 	ErrPeerConversationInvalid = errors.New("invalid peer conversation")
 	ErrPeerProposalConflict    = errors.New("peer proposal is no longer current or is contested")
+	// ErrPeerRoundsSpent refuses a post once the step's Limit card has no
+	// rounds left: a peer step's rounds are its journal messages.
+	ErrPeerRoundsSpent = errors.New("the peers have used every round their Limit card allows: stop posting and end your turn")
 )
 
 // PeerConversationID isolates every execution, including rework of the same node.
@@ -45,6 +48,9 @@ type peerConversationHeader struct {
 	// Deadline is the step's deadline; zero when the step has no duration.
 	Deadline     time.Time `json:"deadline,omitzero"`
 	Participants []string  `json:"participants"`
+	// MaxMessages is how many messages this conversation may hold, the rounds
+	// its step's Limit card has left; zero means no limit (archon-o7p.8).
+	MaxMessages int `json:"maxMessages,omitempty"`
 }
 
 type PeerEntry struct {
@@ -76,6 +82,10 @@ type PeerConversation struct {
 	Proposal     *PeerProposal `json:"proposal,omitempty"`
 	FinalText    string        `json:"finalText,omitempty"`
 	Reason       string        `json:"reason,omitempty"`
+	// Messages counts the posts after the openings: messages, proposals,
+	// acknowledgements and dissent. MaxMessages caps them when set.
+	Messages    int `json:"messages"`
+	MaxMessages int `json:"maxMessages,omitempty"`
 }
 
 type PeerAppendRequest struct {
@@ -94,6 +104,9 @@ func (s *Store) CreatePeerConversation(req FormationExecution, participants []st
 	id := PeerConversationID{RunID: req.RunID, NodeID: req.NodeID, Attempt: req.Attempt}
 	now := s.now().UTC()
 	header := peerConversationHeader{Schema: 1, PeerConversationID: id, StartedAt: now, Deadline: deadline.UTC(), Participants: slices.Clone(participants)}
+	if limit := req.PeerMessages; limit != nil {
+		header.MaxMessages = limit.Max - limit.Used
+	}
 	if err := validatePeerHeader(header, id); err != nil {
 		return "", err
 	}
@@ -252,6 +265,9 @@ func (s *Store) appendPeerConversationAt(directory *runArtifactDirectory, id Pee
 		if request.Kind == "closed" && !close {
 			return fmt.Errorf("%w: only the executor closes a conversation", ErrPeerConversationInvalid)
 		}
+		if request.Kind != "closed" && state.MaxMessages > 0 && state.Messages >= state.MaxMessages {
+			return ErrPeerRoundsSpent
+		}
 		if err := applyPeerEntry(state, entry); err != nil {
 			return err
 		}
@@ -297,7 +313,7 @@ func readPeerConversationUnlocked(directory *runArtifactDirectory, id PeerConver
 	if err := validatePeerHeader(header, id); err != nil {
 		return nil, err
 	}
-	state := &PeerConversation{PeerConversationID: id, ArtifactPath: peerArtifactPath(id), StartedAt: header.StartedAt, Deadline: header.Deadline, Participants: header.Participants, Entries: []PeerEntry{}, Status: "open"}
+	state := &PeerConversation{PeerConversationID: id, ArtifactPath: peerArtifactPath(id), StartedAt: header.StartedAt, Deadline: header.Deadline, Participants: header.Participants, Entries: []PeerEntry{}, Status: "open", MaxMessages: header.MaxMessages}
 	for scanner.Scan() {
 		var entry PeerEntry
 		if err := decodePeerRecord(scanner.Bytes(), &entry); err != nil {
@@ -371,6 +387,9 @@ func applyPeerEntry(state *PeerConversation, entry PeerEntry) error {
 		default:
 			return fmt.Errorf("%w: unknown message kind %q", ErrPeerConversationInvalid, entry.Kind)
 		}
+	}
+	if entry.Kind != "opening" && entry.Kind != "closed" {
+		state.Messages++
 	}
 	state.LastSeq = entry.Seq
 	state.Entries = append(state.Entries, entry)

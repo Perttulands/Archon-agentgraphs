@@ -208,7 +208,7 @@ func TestUnfinishedRunWorkReadsDeliveriesAndOpenNodesFromTheLedger(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: source.ETag, ExpectedBoardRev: source.Rev, Personas: personas, Limits: RunLimits{MaxDispatch: 10, MaxAttempts: 3}})
+	started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: source.ETag, ExpectedBoardRev: source.Rev, Personas: personas})
 	if err != nil {
 		t.Fatal(err)
 	}

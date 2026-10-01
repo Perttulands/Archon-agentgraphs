@@ -150,7 +150,6 @@ func startGateChainRun(t *testing.T, signoffKinds string, executor *chainScriptE
 	}
 	status, err := NewRunEngine(store, personas, executor).RunMission("session-search", RunStartRequest{
 		MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev,
-		Limits: RunLimits{MaxDispatch: 20, MaxAttempts: 5},
 	})
 	if err != nil {
 		t.Fatal(err)

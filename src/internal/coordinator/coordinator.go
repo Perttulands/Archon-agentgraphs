@@ -415,27 +415,21 @@ func (c *Coordinator) nextChange(id string) <-chan struct{} {
 
 func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Cwd          string               `json:"cwd"`
-		ContextPaths []string             `json:"contextPaths"`
-		Brief        string               `json:"brief"`
-		BeadID       string               `json:"beadId"`
-		Actor        string               `json:"actor"`
-		FormationID  string               `json:"formationId"`
-		Board        string               `json:"mission"`
-		MissionID    string               `json:"inputCardId"`
-		ExpectedRev  int                  `json:"expectedRev"`
-		Limits       formations.RunLimits `json:"limits"`
+		Cwd          string   `json:"cwd"`
+		ContextPaths []string `json:"contextPaths"`
+		Brief        string   `json:"brief"`
+		BeadID       string   `json:"beadId"`
+		Actor        string   `json:"actor"`
+		FormationID  string   `json:"formationId"`
+		Board        string   `json:"mission"`
+		MissionID    string   `json:"inputCardId"`
+		ExpectedRev  int      `json:"expectedRev"`
 	}
 	if !decode(w, r, &req) {
 		return
 	}
 	if req.Board == "" || (req.MissionID == "") == (req.FormationID == "") || req.ExpectedRev <= 0 {
 		reply(w, 400, map[string]string{"error": "mission, inputCardId and expectedRev required"})
-		return
-	}
-	// Limits are optional (archon-o7p.7): an absent or zero limit means none.
-	if err := formations.ValidateRunLimits(req.Limits); err != nil {
-		reply(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
 	if req.MissionID != "" {
@@ -495,7 +489,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.FormationID != "" {
-		started, execute, err := c.engine.PrepareFormationRun(req.Board, req.FormationID, formations.FormationRunRequest{Actor: req.Actor, Personas: c.personas, Limits: req.Limits, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match")})
+		started, execute, err := c.engine.PrepareFormationRun(req.Board, req.FormationID, formations.FormationRunRequest{Actor: req.Actor, Personas: c.personas, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match")})
 		if err != nil {
 			failure(w, err)
 			return
@@ -518,7 +512,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		reply(w, 422, map[string]string{"error": "wire the Input card to a step"})
 		return
 	}
-	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, ContextPaths: req.ContextPaths, Brief: req.Brief, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: "operator:standalone", Personas: c.personas, Limits: req.Limits})
+	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, ContextPaths: req.ContextPaths, Brief: req.Brief, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: "operator:standalone", Personas: c.personas})
 	if err != nil {
 		failure(w, err)
 		return

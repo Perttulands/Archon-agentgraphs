@@ -142,6 +142,20 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 			})
 		}
 	}
+	for _, limit := range board.Limits {
+		if firstKind, exists := seenNodeIDs[limit.ID]; limit.ID != "" && exists {
+			report.Errors = append(report.Errors, BoardFinding{
+				Code:    FindingDuplicateNodeID,
+				NodeID:  limit.ID,
+				Message: fmt.Sprintf("Limit card id %q duplicates an existing %s node id", limit.ID, firstKind),
+			})
+		} else if limit.ID != "" {
+			seenNodeIDs[limit.ID] = "Limit"
+		}
+	}
+	limitErrors, limitWarnings := limitFindings(board)
+	report.Errors = append(report.Errors, limitErrors...)
+	report.Warnings = append(report.Warnings, limitWarnings...)
 	report.Errors = append(report.Errors, routeLeadsNowhereFindings(board)...)
 	report.Warnings = append(report.Warnings, unreachableNodeFindings(board)...)
 

@@ -146,8 +146,7 @@ func TestFormationBudgetUsesOriginalStartAfterRestart(t *testing.T) {
 	store.Now = func() time.Time { return clock }
 	executor := &budgetRecordingExecutor{clock: &clock}
 	engine := NewRunEngine(store, personas, executor)
-	limits := RunLimits{MaxDispatch: 5}
-	started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Personas: personas, Limits: limits})
+	started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Personas: personas})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,20 +155,20 @@ func TestFormationBudgetUsesOriginalStartAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	formation, _ := findFormation(board.Formations, "fmn_research")
-	if err := engine.startFormationExecution(started.RunID, formation, limits, RunEvent{Type: RunEventNodeStarted, NodeID: formation.ID, Attempt: 1, Data: map[string]any{"nodeKind": "formation"}}); err != nil {
+	if err := engine.startFormationExecution(started.RunID, board, formation, RunEvent{Type: RunEventNodeStarted, NodeID: formation.ID, Attempt: 1, Data: map[string]any{"nodeKind": "formation"}}); err != nil {
 		t.Fatal(err)
 	}
 	clock = clock.Add(15 * time.Second)
 	engine = NewRunEngine(store, personas, executor)
 	req := FormationExecution{RunID: started.RunID, NodeID: formation.ID, Formation: formation, Attempt: 1}
-	if _, err := engine.executeFormation(req, runLimitsFromEvent(mustEvents(t, store, started.RunID)[0])); err != nil {
+	if _, err := engine.executeFormation(req); err != nil {
 		t.Fatal(err)
 	}
 	if executor.left[formation.ID] != 22*time.Second {
 		t.Fatalf("remaining %v", executor.left)
 	}
 	clock = clock.Add(30 * time.Second)
-	if _, err := engine.executeFormation(req, limits); !errors.Is(err, ErrFormationTimeoutExceeded) {
+	if _, err := engine.executeFormation(req); !errors.Is(err, ErrFormationTimeoutExceeded) {
 		t.Fatalf("expired result=%v", err)
 	}
 	if len(executor.calls) != 1 {
@@ -178,29 +177,13 @@ func TestFormationBudgetUsesOriginalStartAfterRestart(t *testing.T) {
 	direct := &fakeRunExecutor{}
 	engine = NewRunEngine(store, personas, direct)
 	engine.SetExecutionContext(func(string) context.Context { return context.Background() })
-	if _, err := engine.executeFormation(req, limits); !errors.Is(err, ErrFormationTimeoutExceeded) {
+	if _, err := engine.executeFormation(req); !errors.Is(err, ErrFormationTimeoutExceeded) {
 		t.Fatalf("expired direct execution: %v", err)
 	}
 	if len(direct.calls) != 0 {
 		t.Fatal("expired allocation invoked a coordinator-owned executor")
 	}
 }
-func TestFormationBudgetComposesWithRunDeadline(t *testing.T) {
-	start := time.Date(2026, 9, 17, 9, 0, 0, 0, time.UTC)
-	events := []RunEvent{{Type: RunEventStarted, Timestamp: start.Format(time.RFC3339Nano)}, {Type: RunEventNodeStarted, NodeID: "work", Attempt: 1, Timestamp: start.Add(10 * time.Second).Format(time.RFC3339Nano)}}
-	for _, tc := range []struct {
-		formation, run, left int
-		cause                error
-	}{{37, 20, 5, ErrRunWallClockExceeded}, {7, 100, 2, ErrFormationTimeoutExceeded}} {
-		req := FormationExecution{NodeID: "work", Attempt: 1, Formation: FormationNode{Execution: &FormationExecutionPolicy{TimeoutSeconds: tc.formation}}}
-		now := start.Add(15 * time.Second)
-		budget, err := formationExecutionBudget(req, events, RunLimits{WallClockSeconds: tc.run}, now)
-		if err != nil || budget.deadline.Sub(now) != time.Duration(tc.left)*time.Second || !errors.Is(budget.cause, tc.cause) {
-			t.Fatalf("budget=%+v error=%v", budget, err)
-		}
-	}
-}
-
 func TestDirectExecutorBudgetHonorsOverrideAndExistingDeadline(t *testing.T) {
 	now := time.Date(2026, 9, 17, 9, 0, 0, 0, time.UTC)
 	for _, tc := range []struct {
@@ -276,28 +259,20 @@ func (c *budgetTmuxClient) Create(ctx context.Context, socket, name, cwd, root s
 	return c.fakeTmuxHarnessClient.Create(ctx, socket, name, cwd, root, variant)
 }
 func TestTmuxReceivesAuthoredBudgetWithoutDefaultCap(t *testing.T) {
-	for _, runSeconds := range []int{0, 17} {
-		t.Run(fmt.Sprint(runSeconds), func(t *testing.T) {
-			store, personas := s4RunFixture(t)
-			createS4Persona(t, personas, "scout")
-			writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
-			if _, err := setTestExecutionPolicy(t, store, "fmn_research", 83); err != nil {
-				t.Fatal(err)
-			}
-			cfg := tmuxTestConfig(t)
-			client := &budgetTmuxClient{fakeTmuxHarnessClient: &fakeTmuxHarnessClient{pane: tmuxPaneState{CurrentPath: cfg.Cwd}}}
-			executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
-			status, err := NewRunEngine(store, personas, executor).RunFormation("session-search", "fmn_research", FormationRunRequest{Limits: RunLimits{WallClockSeconds: runSeconds}})
-			if err != nil || status.Status != RunStatusSucceeded {
-				t.Fatalf("status %+v %v", status, err)
-			}
-			want := 83 * time.Second
-			if runSeconds > 0 {
-				want = time.Duration(runSeconds) * time.Second
-			}
-			if client.left > want || client.left < want-time.Second {
-				t.Fatalf("seat received %v, want %v", client.left, want)
-			}
-		})
+	store, personas := s4RunFixture(t)
+	createS4Persona(t, personas, "scout")
+	writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
+	if _, err := setTestExecutionPolicy(t, store, "fmn_research", 83); err != nil {
+		t.Fatal(err)
+	}
+	cfg := tmuxTestConfig(t)
+	client := &budgetTmuxClient{fakeTmuxHarnessClient: &fakeTmuxHarnessClient{pane: tmuxPaneState{CurrentPath: cfg.Cwd}}}
+	executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
+	status, err := NewRunEngine(store, personas, executor).RunFormation("session-search", "fmn_research", FormationRunRequest{})
+	if err != nil || status.Status != RunStatusSucceeded {
+		t.Fatalf("status %+v %v", status, err)
+	}
+	if want := 83 * time.Second; client.left > want || client.left < want-time.Second {
+		t.Fatalf("seat received %v, want %v", client.left, want)
 	}
 }

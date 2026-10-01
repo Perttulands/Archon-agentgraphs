@@ -68,7 +68,6 @@ to = "fmn_work:port_work_in"
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            RunLimits{MaxDispatch: 4},
 	}); err != nil {
 		t.Fatalf("run mission: %v", err)
 	}
@@ -103,7 +102,6 @@ func TestS4RunNodeReportProjectionFromLedgerOnly(t *testing.T) {
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            RunLimits{MaxDispatch: 4},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)

@@ -190,7 +190,7 @@ func TestSeatsLaunchFromTheSlotsSettings(t *testing.T) {
 	cfg.Harnesses = []string{"claude-code"}
 	client := &fakeTmuxHarnessClient{harness: "claude-code", pane: tmuxPaneState{CurrentPath: cfg.Cwd}}
 	// No persona store: a vanilla slot needs none.
-	status, err := NewRunEngine(store, nil, newTmuxFormationExecutorWithClient(store, nil, cfg, client)).RunFormation("session-search", "fmn_research", FormationRunRequest{Limits: RunLimits{MaxDispatch: 1}})
+	status, err := NewRunEngine(store, nil, newTmuxFormationExecutorWithClient(store, nil, cfg, client)).RunFormation("session-search", "fmn_research", FormationRunRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestSeatsLaunchFromTheSlotsSettings(t *testing.T) {
 	createS4Persona(t, personas, "scout")
 	writeFixture(t, store.BoardPath("session-search"), vanillaSlotBoard("agentId = \"scout\"\nharness = \"claude-code\"\neffort = \"max\"\n"))
 	client = &fakeTmuxHarnessClient{harness: "claude-code", pane: tmuxPaneState{CurrentPath: cfg.Cwd}}
-	status, err = NewRunEngine(store, personas, newTmuxFormationExecutorWithClient(store, personas, cfg, client)).RunFormation("session-search", "fmn_research", FormationRunRequest{Limits: RunLimits{MaxDispatch: 1}})
+	status, err = NewRunEngine(store, personas, newTmuxFormationExecutorWithClient(store, personas, cfg, client)).RunFormation("session-search", "fmn_research", FormationRunRequest{})
 	if err != nil || status.Status != RunStatusSucceeded {
 		t.Fatalf("role run = %+v (%v)", status, err)
 	}

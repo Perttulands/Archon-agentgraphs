@@ -17,6 +17,10 @@ var (
 	ErrRunLedgerInvalid    = errors.New("archon run ledger invalid")
 	ErrRunResumeNotAllowed = errors.New("archon run resume is not allowed")
 	ErrRunEpochBlocked     = errors.New("archon run epoch is blocked")
+	// ErrRunGrantRequired refuses a resume without --grant at a spent limit.
+	ErrRunGrantRequired = errors.New("this run stopped at a spent limit: resume it with --grant to give one more allowance")
+	// ErrRunNothingToGrant refuses --grant on a block no limit recorded.
+	ErrRunNothingToGrant = errors.New("this block is not a spent limit, so there is nothing to grant: resume without --grant")
 	// ErrHumanRequestNotPending refuses a verdict on a request that was
 	// answered, or replaced by a newer request on the same gate.
 	ErrHumanRequestNotPending = errors.New("human gate request is no longer pending")
@@ -64,31 +68,17 @@ type RunStartRequest struct {
 	ExpectedBoardETag string
 	ExpectedBoardRev  int
 	Personas          *PersonaStore
-	Limits            RunLimits
 }
 
 type RunResumeRequest struct {
 	Actor  string
 	Mode   string
 	Reason string
+	// Grant gives the Limit card a spent limit stopped one more allowance;
+	// a block at a spent limit resumes only with it (archon-o7p.8).
+	Grant bool
 	// Set only after explicit completed-turn evidence validation by the engine.
 	CompletedDispatchID string
-}
-
-type RunLimits struct {
-	MaxDispatch      int `json:"maxDispatch"`
-	MaxAttempts      int `json:"maxAttempts,omitempty"`
-	WallClockSeconds int `json:"wallClockSeconds"`
-}
-
-// ValidateRunLimits refuses a negative limit. Limits are optional (archon-o7p.7):
-// an absent or zero limit means none. Every run start calls this, locally and
-// through the daemon, so each refuses -1 with the same message.
-func ValidateRunLimits(limits RunLimits) error {
-	if limits.MaxDispatch < 0 || limits.MaxAttempts < 0 || limits.WallClockSeconds < 0 {
-		return ErrInvalidRunLimits
-	}
-	return nil
 }
 
 type RunStartResult struct {
@@ -132,6 +122,9 @@ type RunStatusProjection struct {
 	Epoch         int      `json:"epoch"`
 	EventCount    int      `json:"eventCount"`
 	ResumeAllowed bool     `json:"resumeAllowed"`
+	// ResumePolicy is how a blocked run resumes: grant at a spent limit,
+	// which resumes only with run resume --grant (archon-o7p.8).
+	ResumePolicy string `json:"resumePolicy,omitempty"`
 	// EndedBy names who failed or canceled a final run; the reason itself is
 	// run evidence (ADR-0017), since it can quote private text.
 	EndedBy string `json:"endedBy,omitempty"`
@@ -303,7 +296,6 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 			"contextPaths":     req.ContextPaths,
 			"brief":            req.Brief,
 			"briefSha256":      etag([]byte(req.Brief)),
-			"limits":           req.Limits,
 		},
 	}
 	if err := writeInitialRunEventAt(runDirectory, runID, event); err != nil {
@@ -479,6 +471,13 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		if last.Type != RunEventBlocked || !runBlockResumeAllowed(lifecycle, len(lifecycle)-1) {
 			return ErrRunResumeNotAllowed
 		}
+		needsGrant := runBlockNeedsGrant(lifecycle, len(lifecycle)-1)
+		switch {
+		case needsGrant && !req.Grant:
+			return ErrRunGrantRequired
+		case req.Grant && !needsGrant:
+			return ErrRunNothingToGrant
+		}
 		actor := defaultRunActor(req.Actor)
 		mode := strings.TrimSpace(req.Mode)
 		if mode == "" {
@@ -491,6 +490,15 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		}
 		if reason := strings.TrimSpace(req.Reason); reason != "" {
 			data["reason"] = reason
+		}
+		if req.Grant {
+			// One more allowance of the knob the block spent, as the ledger
+			// records who gave it.
+			limit := runLimitReached(lifecycle, len(lifecycle)-1)
+			if limit == nil || limit.LimitID == "" {
+				return ErrRunNothingToGrant
+			}
+			data["grant"] = RunLimitGrant{LimitID: limit.LimitID, Kind: limit.Kind, Amount: 1}
 		}
 		if openDispatches, ok := last.Data["openDispatches"]; ok {
 			data["openDispatches"] = openDispatches
@@ -600,10 +608,15 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 			status.Status = RunStatusRunning
 			status.Final = false
 			status.ResumeAllowed = false
+			status.ResumePolicy = ""
 		case RunEventBlocked:
 			status.Status = RunStatusBlocked
 			status.Final = false
 			status.ResumeAllowed = runBlockResumeAllowed(events, i)
+			status.ResumePolicy = ""
+			if runBlockNeedsGrant(events, i) {
+				status.ResumePolicy = ResumePolicyGrant
+			}
 		case RunEventCanceled:
 			status.Status = RunStatusCanceled
 			status.Final = true
@@ -619,6 +632,9 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 			status.Final = true
 			status.ResumeAllowed = false
 		}
+	}
+	if status.Final {
+		status.ResumePolicy = ""
 	}
 	// Honesty safety net: a run can only project succeeded when every reachable
 	// required node reached a terminal state. If the ledger still shows a node

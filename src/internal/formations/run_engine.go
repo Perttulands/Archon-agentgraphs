@@ -17,7 +17,6 @@ var (
 	errRunStopped               = errors.New("archon run stopped")
 	ErrRunExecutorUnavailable   = errors.New("archon run executor unavailable")
 	ErrGateEvaluatorUnavailable = errors.New("archon gate evaluator unavailable")
-	ErrRunWallClockExceeded     = errors.New("archon run wall clock exceeded")
 )
 
 type FormationExecutor interface {
@@ -69,7 +68,6 @@ type FormationRunRequest struct {
 	ExpectedBoardETag string
 	Actor             string
 	Personas          *PersonaStore
-	Limits            RunLimits
 }
 
 type FormationExecution struct {
@@ -89,6 +87,19 @@ type FormationExecution struct {
 	// KeepSeatsOnCall keeps the formation's seats running when it finishes,
 	// because its work reaches a human gate on a session-channel run.
 	KeepSeatsOnCall bool
+	// PeerMessages is a peer step's Limit card rounds, its journal messages:
+	// used in earlier attempts of Max. Nil when no card caps the step.
+	PeerMessages *RunLimitReached
+}
+
+// LimitReachedError is how an executor stops a step at its Limit card; the
+// engine blocks the run there, resumable with a grant.
+type LimitReachedError struct {
+	Use RunLimitReached
+}
+
+func (e *LimitReachedError) Error() string {
+	return fmt.Sprintf("limit reached: %s used %d of %d %s", e.Use.NodeID, e.Use.Used, e.Use.Max, e.Use.Kind)
 }
 
 type FormationExecutionResult struct {
@@ -248,9 +259,6 @@ func (e *RunEngine) RunMission(slug string, req RunStartRequest) (*RunStatusProj
 	if e == nil || e.store == nil {
 		return nil, fmt.Errorf("%w: run engine store required", ErrNotFound)
 	}
-	if err := ValidateRunLimits(req.Limits); err != nil {
-		return nil, err
-	}
 	board, err := e.store.ReadBoard(slug)
 	if err != nil {
 		return nil, err
@@ -290,8 +298,7 @@ func (e *RunEngine) ExecuteStartedMission(runID string) (*RunStatusProjection, e
 	if !ok {
 		return nil, fmt.Errorf("%w: mission %q", ErrNotFound, events[0].MissionID)
 	}
-	limits := runLimitsFromEvent(events[0])
-	if err := e.executeSnapshot(runID, runBoard, mission, limits); err != nil {
+	if err := e.executeSnapshot(runID, runBoard, mission); err != nil {
 		return nil, err
 	}
 	return e.projectAndNotify(runID)
@@ -310,9 +317,6 @@ func (e *RunEngine) RunFormation(slug, formationID string, req FormationRunReque
 func (e *RunEngine) PrepareFormationRun(slug, formationID string, req FormationRunRequest) (*RunStartResult, func() (*RunStatusProjection, error), error) {
 	if e == nil || e.store == nil {
 		return nil, nil, fmt.Errorf("%w: run engine store required", ErrNotFound)
-	}
-	if err := ValidateRunLimits(req.Limits); err != nil {
-		return nil, nil, err
 	}
 	board, err := e.store.ReadBoard(slug)
 	if err != nil {
@@ -333,12 +337,12 @@ func (e *RunEngine) PrepareFormationRun(slug, formationID string, req FormationR
 	if personas == nil {
 		personas = e.personas
 	}
-	started, mission, seedInput, err := e.startFormationRun(slug, board, formation, req.Actor, personas, req.Limits)
+	started, mission, seedInput, err := e.startFormationRun(slug, board, formation, req.Actor, personas)
 	if err != nil {
 		return nil, nil, err
 	}
 	return started, func() (*RunStatusProjection, error) {
-		if err := e.startFormationExecution(started.RunID, formation, req.Limits, RunEvent{
+		if err := e.startFormationExecution(started.RunID, board, formation, RunEvent{
 			Type:    RunEventNodeStarted,
 			NodeID:  formation.ID,
 			Attempt: 1,
@@ -362,7 +366,7 @@ func (e *RunEngine) PrepareFormationRun(slug, formationID string, req FormationR
 			Brief:     formationBriefValue(formation),
 			Inputs:    []RunInputRef{seedInput},
 			Attempt:   1,
-		}, req.Limits)
+		})
 		if err != nil {
 			if blockErr := e.appendExecutionFailureAndBlock(started.RunID, formation.ID, err); blockErr != nil {
 				return nil, blockErr
@@ -505,7 +509,7 @@ func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusPro
 	if !ok {
 		return nil, fmt.Errorf("%w: mission %q", ErrNotFound, started.MissionID)
 	}
-	if err := e.resumeSnapshot(runID, board, mission, runLimitsFromEvent(started), events, "resume"); err != nil {
+	if err := e.resumeSnapshot(runID, board, mission, events, "resume"); err != nil {
 		return nil, err
 	}
 	return e.projectAndNotify(runID)
@@ -538,7 +542,7 @@ func (e *RunEngine) ContinueRun(runID string) (*RunStatusProjection, error) {
 	if !ok {
 		return nil, fmt.Errorf("%w: mission %q", ErrNotFound, events[0].MissionID)
 	}
-	if err := e.resumeSnapshot(runID, board, mission, runLimitsFromEvent(events[0]), events, "continue"); err != nil {
+	if err := e.resumeSnapshot(runID, board, mission, events, "continue"); err != nil {
 		return nil, err
 	}
 	return e.projectAndNotify(runID)
@@ -927,7 +931,7 @@ func (e *RunEngine) appendOpenDispatchReattachFailure(runID string, refs []openD
 	})
 }
 
-func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formation FormationNode, actor string, personas *PersonaStore, limits RunLimits) (*RunStartResult, MissionNode, RunInputRef, error) {
+func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formation FormationNode, actor string, personas *PersonaStore) (*RunStartResult, MissionNode, RunInputRef, error) {
 	bindings, err := resolveRunBindings(board, personas)
 	if err != nil {
 		return nil, MissionNode{}, RunInputRef{}, err
@@ -994,7 +998,6 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 			"inputCardId":      mission.ID,
 			"beadId":           beadID,
 			"objective":        mission.Goal,
-			"limits":           limits,
 			"mode":             "formation",
 			"formationId":      formation.ID,
 		},
@@ -1012,7 +1015,7 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 // resumeSnapshot rebuilds the run's deliveries from its ledger and runs
 // whatever is still owed. reason names why the run continues: resume after a
 // block, or continue after a verdict.
-func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission MissionNode, limits RunLimits, events []RunEvent, reason string) error {
+func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission MissionNode, events []RunEvent, reason string) error {
 	gateByID := map[string]GateNode{}
 	for _, gate := range board.Gates {
 		gateByID[gate.ID] = gate
@@ -1034,20 +1037,20 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		if event.Type != RunEventNodeOutput {
 			continue
 		}
-		if err := e.replayNodeOutputToReady(runID, board, gateByID, event, limits, processedGateInputs, replayOutputOrdinals, ready, queued, &queue); err != nil {
+		if err := e.replayNodeOutputToReady(runID, board, gateByID, event, processedGateInputs, replayOutputOrdinals, ready, queued, &queue); err != nil {
 			if errors.Is(err, errRunStopped) {
 				return nil
 			}
 			return err
 		}
 	}
-	if err := e.resumeIncompleteGateEvaluations(runID, board, gateByID, events, limits, ready, queued, &queue); err != nil {
+	if err := e.resumeIncompleteGateEvaluations(runID, board, gateByID, events, ready, queued, &queue); err != nil {
 		if errors.Is(err, errRunStopped) {
 			return nil
 		}
 		return err
 	}
-	if err := e.replayGateVerdictsToReady(runID, board, gateByID, events, limits, ready, queued, &queue); err != nil {
+	if err := e.replayGateVerdictsToReady(runID, board, gateByID, events, ready, queued, &queue); err != nil {
 		if errors.Is(err, errRunStopped) {
 			return nil
 		}
@@ -1056,15 +1059,14 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 	// A run interrupted before its Input card delivered the brief, its first
 	// output, starts there.
 	if !slices.ContainsFunc(events, func(event RunEvent) bool { return event.Type == RunEventNodeOutput }) {
-		if err := e.deliverInputCard(runID, board, gateByID, mission, limits, ready, queued, &queue); err != nil {
+		if err := e.deliverInputCard(runID, board, gateByID, mission, ready, queued, &queue); err != nil {
 			if errors.Is(err, errRunStopped) {
 				return nil
 			}
 			return err
 		}
 	}
-	exhausted := RunBlockResumeAttemptsExhausted
-	return e.drainRun(runID, board, gateByID, limits, attempts, ready, queued, &queue, reason, exhausted, reason)
+	return e.drainRun(runID, board, gateByID, attempts, ready, queued, &queue, reason, reason)
 }
 
 // drainRun runs the queued steps one at a time, then ends the run by the one
@@ -1073,10 +1075,9 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 // meanwhile (archon-o7p.11). Replay queues every formation the ledger ever
 // fed; a step runs only while the ledger, read as it stands now, still owes
 // it a delivery, so a send-back routed during this drain runs again
-// (archon-n7u.53). startReason is recorded on each node_started, exhausted is
-// the block code when a step would pass the run's attempt limit, and
-// finishReason, when set, is recorded on run_succeeded.
-func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[string]GateNode, limits RunLimits, attempts map[string]int, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string, startReason, exhausted, finishReason string) error {
+// (archon-n7u.53). startReason is recorded on each node_started, and
+// finishReason, when set, on run_succeeded.
+func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[string]GateNode, attempts map[string]int, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string, startReason, finishReason string) error {
 	formationByID := map[string]FormationNode{}
 	for _, formation := range board.Formations {
 		formationByID[formation.ID] = formation
@@ -1088,7 +1089,7 @@ func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[strin
 		return err
 	}
 	for {
-		if err := e.routeRecordedVerdicts(runID, board, gates, limits, ready, queued, queue); err != nil {
+		if err := e.routeRecordedVerdicts(runID, board, gates, ready, queued, queue); err != nil {
 			return stopped(err)
 		}
 		if len(*queue) == 0 {
@@ -1116,12 +1117,8 @@ func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[strin
 			continue
 		}
 		nextAttempt := attempts[nodeID] + 1
-		if attemptsExhausted(limits, nextAttempt) {
-			message := strings.ReplaceAll(exhausted, "_", " ")
-			return e.appendErrorAndBlock(runID, exhausted, message, "engine", nodeID, message)
-		}
 		attempts[nodeID] = nextAttempt
-		if err := e.startFormationExecution(runID, formation, limits, RunEvent{
+		if err := e.startFormationExecution(runID, board, formation, RunEvent{
 			Type:    RunEventNodeStarted,
 			NodeID:  nodeID,
 			Attempt: nextAttempt,
@@ -1143,7 +1140,7 @@ func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[strin
 			Inputs:          inputs,
 			Attempt:         nextAttempt,
 			KeepSeatsOnCall: RunHumanChannel(board, current) == HumanChannelSession && FormationKeepsSeatsOnCall(board, nodeID),
-		}, limits)
+		})
 		if err != nil {
 			return e.appendExecutionFailureAndBlock(runID, nodeID, err)
 		}
@@ -1160,10 +1157,10 @@ func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[strin
 		}); err != nil {
 			return err
 		}
-		if err := e.routeRecordedVerdicts(runID, board, gates, limits, ready, queued, queue); err != nil {
+		if err := e.routeRecordedVerdicts(runID, board, gates, ready, queued, queue); err != nil {
 			return stopped(err)
 		}
-		if err := e.deliverFormationOutput(runID, board, gates, nodeID, result, limits, ready, queued, queue); err != nil {
+		if err := e.deliverFormationOutput(runID, board, gates, nodeID, result, ready, queued, queue); err != nil {
 			return stopped(err)
 		}
 	}
@@ -1174,7 +1171,7 @@ func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[strin
 	return e.endWhenNothingCanRun(runID, board, completionEvents, finishReason)
 }
 
-func (e *RunEngine) resumeIncompleteGateEvaluations(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+func (e *RunEngine) resumeIncompleteGateEvaluations(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
 	pending := map[string]RunEvent{}
 	for _, event := range events {
 		gateID := event.GateID
@@ -1210,7 +1207,7 @@ func (e *RunEngine) resumeIncompleteGateEvaluations(runID string, board *BoardDo
 		if err != nil {
 			return err
 		}
-		if err := e.evaluateGateKinds(runID, board, gates, gate, input, limits, ready, queued, queue, prior); err != nil {
+		if err := e.evaluateGateKinds(runID, board, gates, gate, input, ready, queued, queue, prior); err != nil {
 			return err
 		}
 	}
@@ -1434,7 +1431,7 @@ func gateInputReplayKey(edgeID string, outputSeq int) string {
 	return fmt.Sprintf("%s#%d", edgeID, outputSeq)
 }
 
-func (e *RunEngine) replayNodeOutputToReady(runID string, board *BoardDocument, gates map[string]GateNode, event RunEvent, limits RunLimits, processedGateInputs map[string]bool, outputOrdinals map[string]int, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+func (e *RunEngine) replayNodeOutputToReady(runID string, board *BoardDocument, gates map[string]GateNode, event RunEvent, processedGateInputs map[string]bool, outputOrdinals map[string]int, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
 	// Judge chains are evaluated by their owning gate. Their outputs are
 	// durable evidence, never workflow inputs, including links between judges.
 	for _, gate := range board.Gates {
@@ -1467,7 +1464,7 @@ func (e *RunEngine) replayNodeOutputToReady(runID string, board *BoardDocument, 
 				continue
 			}
 			processedGateInputs[key] = true
-			if err := e.deliverConnection(runID, board, gates, connection, input, limits, ready, queued, queue); err != nil {
+			if err := e.deliverConnection(runID, board, gates, connection, input, ready, queued, queue); err != nil {
 				return err
 			}
 			continue
@@ -1488,7 +1485,7 @@ func (e *RunEngine) replayNodeOutputToReady(runID string, board *BoardDocument, 
 	return nil
 }
 
-func (e *RunEngine) replayGateVerdictsToReady(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+func (e *RunEngine) replayGateVerdictsToReady(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
 	evaluations := gateEvaluationKeys(board, events)
 	outputOrdinals := map[string]int{}
 	for i, event := range events {
@@ -1527,7 +1524,7 @@ func (e *RunEngine) replayGateVerdictsToReady(runID string, board *BoardDocument
 			if _, isGate := gates[toNode]; isGate && evaluations.consumedAfter(i, toNode, gateInputReplayKey(nextInput.EdgeID, gateInputOutputSeq(nextInput, outputOrdinals))) {
 				continue
 			}
-			if err := e.deliverConnection(runID, board, gates, route, nextInput, limits, ready, queued, queue); err != nil {
+			if err := e.deliverConnection(runID, board, gates, route, nextInput, ready, queued, queue); err != nil {
 				return err
 			}
 		}
@@ -1609,7 +1606,7 @@ func (s *Store) ReadRunBoard(runID string) (*BoardDocument, error) {
 	return s.readRunSnapshot(events[0], runID, ledger)
 }
 
-func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission MissionNode, limits RunLimits) error {
+func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission MissionNode) error {
 	gateByID := map[string]GateNode{}
 	for _, gate := range board.Gates {
 		gateByID[gate.ID] = gate
@@ -1618,18 +1615,18 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 	queued := map[string]bool{}
 	attempts := map[string]int{}
 	var queue []string
-	if err := e.deliverInputCard(runID, board, gateByID, mission, limits, ready, queued, &queue); err != nil {
+	if err := e.deliverInputCard(runID, board, gateByID, mission, ready, queued, &queue); err != nil {
 		if errors.Is(err, errRunStopped) {
 			return nil
 		}
 		return err
 	}
-	return e.drainRun(runID, board, gateByID, limits, attempts, ready, queued, &queue, "initial", RunBlockReviseLoopExhausted, "")
+	return e.drainRun(runID, board, gateByID, attempts, ready, queued, &queue, "initial", "")
 }
 
 // deliverInputCard records the Input card's output, the run's brief, and
 // delivers it to the steps it is wired to.
-func (e *RunEngine) deliverInputCard(runID string, board *BoardDocument, gates map[string]GateNode, mission MissionNode, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+func (e *RunEngine) deliverInputCard(runID string, board *BoardDocument, gates map[string]GateNode, mission MissionNode, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
 	if err := e.store.AppendRunEvent(runID, RunEvent{
 		Type:      RunEventNodeStarted,
 		NodeID:    mission.ID,
@@ -1665,31 +1662,32 @@ func (e *RunEngine) deliverInputCard(runID string, board *BoardDocument, gates m
 	}); err != nil {
 		return err
 	}
-	return e.deliverOutputPayloads(runID, board, gates, mission.ID, missionOutputs, limits, ready, queued, queue)
+	return e.deliverOutputPayloads(runID, board, gates, mission.ID, missionOutputs, ready, queued, queue)
 }
 
-// startFormationExecution reserves one run-wide execution before the executor
-// can launch seats. The durable start also counts failed or interrupted work;
-// neither resume nor a new engine instance replenishes the budget. The run's
-// coordinator worker serializes this read and append with other executions.
-func (e *RunEngine) startFormationExecution(runID string, formation FormationNode, limits RunLimits, event RunEvent) error {
-	if limits.MaxDispatch > 0 {
-		events, err := e.store.ReadRunEvents(runID)
-		if err != nil {
+// startFormationExecution records a step's start before the executor can
+// launch seats, once the run's Limit cards allow it (archon-o7p.8): a spent
+// rounds limit blocks the run instead, resumable only with a grant. Every
+// start counts, failed or interrupted work included, so neither resume nor a
+// new engine replenishes an allowance; only a grant does. The run's worker
+// serializes this read and append with other executions.
+func (e *RunEngine) startFormationExecution(runID string, board *BoardDocument, formation FormationNode, event RunEvent) error {
+	events, err := e.store.ReadRunEvents(runID)
+	if err != nil {
+		return err
+	}
+	spent := roundsSpentBefore(board, events, formation)
+	if formation.Type == FormationTypePeer && spent == nil {
+		// A peer step's rounds are its journal messages, posted in earlier attempts.
+		if use := e.peerMessagesUse(board, events, FormationExecution{RunID: runID, NodeID: formation.ID, Attempt: event.Attempt}); use != nil && use.Used >= use.Max {
+			spent = use
+		}
+	}
+	if spent != nil {
+		if err := e.appendLimitBlock(runID, board, formation.ID, *spent); err != nil {
 			return err
 		}
-		consumed := 0
-		for _, previous := range events {
-			if previous.Type == RunEventNodeStarted && stringFromEventData(previous, "nodeKind") == "formation" {
-				consumed++
-			}
-		}
-		if consumed >= limits.MaxDispatch {
-			if err := e.appendErrorAndBlock(runID, "max_dispatch_exceeded", "max dispatch exceeded", "engine", event.NodeID, "max dispatch exceeded"); err != nil {
-				return err
-			}
-			return errRunStopped
-		}
+		return errRunStopped
 	}
 	seconds, err := formationExecutionSeconds(formation)
 	if err != nil {
@@ -1704,7 +1702,7 @@ func (e *RunEngine) startFormationExecution(runID string, formation FormationNod
 	return e.store.AppendRunEvent(runID, event)
 }
 
-func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (FormationExecutionResult, error) {
+func (e *RunEngine) executeFormation(req FormationExecution) (FormationExecutionResult, error) {
 	if e.executor == nil {
 		return FormationExecutionResult{}, ErrRunExecutorUnavailable
 	}
@@ -1726,12 +1724,19 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 	req.Cwd = stringFromEventData(events[0], "cwd")
 	req.ContextPaths = stringSliceFromAny(events[0].Data["contextPaths"])
 	req.MissionGoal = stringFromEventData(events[0], "objective")
+	if req.Formation.Type == FormationTypePeer {
+		board, err := e.readRunBoard(req.RunID)
+		if err != nil {
+			return FormationExecutionResult{}, err
+		}
+		req.PeerMessages = e.peerMessagesUse(board, events, req)
+	}
 	// Kept seats are reconsidered as a formation starts dispatching (ADR-0019).
 	if err := e.reconsiderKeptSeats(req.RunID, req.NodeID); err != nil {
 		return FormationExecutionResult{}, err
 	}
 	now := e.store.now()
-	budget, err := formationExecutionBudget(req, events, limits, now)
+	budget, err := formationExecutionBudget(req, events, now)
 	if err != nil {
 		return FormationExecutionResult{}, err
 	}
@@ -1783,57 +1788,6 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 	}
 }
 
-// wallClockDeadline is when a run's wall clock runs out: its start plus the
-// limit, extended by the time the run waited for the operator. A wait runs
-// from a human gate's request to the verdict recorded for that gate, and time
-// while several requests wait counts once. A request still waiting extends the
-// deadline to now, so waiting never runs the clock out. The ledger's
-// timestamps carry every wait across restarts. The limit bounds agent work.
-func wallClockDeadline(events []RunEvent, limitSeconds int, now time.Time) (time.Time, error) {
-	if len(events) == 0 {
-		return time.Time{}, ErrRunLedgerInvalid
-	}
-	started, err := time.Parse(time.RFC3339Nano, events[0].Timestamp)
-	if err != nil {
-		return time.Time{}, err
-	}
-	deadline := started.Add(time.Duration(limitSeconds) * time.Second)
-	waiting := map[string]bool{}
-	var since time.Time
-	extend := func(until time.Time) {
-		if until.After(since) {
-			deadline = deadline.Add(until.Sub(since))
-		}
-	}
-	for _, event := range events {
-		switch event.Type {
-		case RunEventHumanInputRequested:
-			if len(waiting) == 0 {
-				if since, err = time.Parse(time.RFC3339Nano, event.Timestamp); err != nil {
-					return time.Time{}, err
-				}
-			}
-			waiting[event.GateID] = true
-		case RunEventHumanVerdictRecorded:
-			if !waiting[event.GateID] {
-				continue
-			}
-			delete(waiting, event.GateID)
-			if len(waiting) == 0 {
-				answered, err := time.Parse(time.RFC3339Nano, event.Timestamp)
-				if err != nil {
-					return time.Time{}, err
-				}
-				extend(answered)
-			}
-		}
-	}
-	if len(waiting) > 0 {
-		extend(now)
-	}
-	return deadline, nil
-}
-
 func (e *RunEngine) ensureFormationOutputPayloads(runID string, formation FormationNode, result FormationExecutionResult) error {
 	expected := make(map[string]bool, len(formation.Outputs))
 	for _, output := range formation.Outputs {
@@ -1856,7 +1810,7 @@ func (e *RunEngine) ensureFormationOutputPayloads(runID string, formation Format
 	return nil
 }
 
-func (e *RunEngine) deliverOutputPayloads(runID string, board *BoardDocument, gates map[string]GateNode, fromNodeID string, outputs map[string]FormationOutputPayload, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+func (e *RunEngine) deliverOutputPayloads(runID string, board *BoardDocument, gates map[string]GateNode, fromNodeID string, outputs map[string]FormationOutputPayload, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
 	for _, connection := range outgoingConnections(board.Connections, fromNodeID) {
 		_, fromPort := endpointParts(connection.From)
 		payload, ok := outputs[fromPort]
@@ -1867,15 +1821,15 @@ func (e *RunEngine) deliverOutputPayloads(runID string, board *BoardDocument, ga
 			return errRunStopped
 		}
 		input := runInputRefForConnection(runID, connection, payload)
-		if err := e.deliverConnection(runID, board, gates, connection, input, limits, ready, queued, queue); err != nil {
+		if err := e.deliverConnection(runID, board, gates, connection, input, ready, queued, queue); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (e *RunEngine) deliverFormationOutput(runID string, board *BoardDocument, gates map[string]GateNode, fromNodeID string, result FormationExecutionResult, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
-	return e.deliverOutputPayloads(runID, board, gates, fromNodeID, result.Outputs, limits, ready, queued, queue)
+func (e *RunEngine) deliverFormationOutput(runID string, board *BoardDocument, gates map[string]GateNode, fromNodeID string, result FormationExecutionResult, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+	return e.deliverOutputPayloads(runID, board, gates, fromNodeID, result.Outputs, ready, queued, queue)
 }
 
 func runInputRefForConnection(runID string, connection BoardConnection, payload FormationOutputPayload) RunInputRef {
@@ -1951,14 +1905,14 @@ func outputPayloadFromAny(value any) FormationOutputPayload {
 	}
 }
 
-func (e *RunEngine) deliverConnection(runID string, board *BoardDocument, gates map[string]GateNode, connection BoardConnection, input RunInputRef, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+func (e *RunEngine) deliverConnection(runID string, board *BoardDocument, gates map[string]GateNode, connection BoardConnection, input RunInputRef, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
 	toNode, toPort := endpointParts(connection.To)
 	if toNode == "" || toPort == "" {
 		return nil
 	}
 	input.ToPortID = toPort
 	if gate, ok := gates[toNode]; ok {
-		return e.evaluateGate(runID, board, gates, gate, input, limits, ready, queued, queue)
+		return e.evaluateGate(runID, board, gates, gate, input, ready, queued, queue)
 	}
 	if _, ok := findEnd(board, toNode); ok {
 		// The path ends here; runPaths reads it from the ledger.
@@ -1982,7 +1936,7 @@ func (e *RunEngine) deliverConnection(runID string, board *BoardDocument, gates 
 	return e.appendWaiting(runID, formation, ready[toNode])
 }
 
-func (e *RunEngine) evaluateGate(runID string, board *BoardDocument, gates map[string]GateNode, gate GateNode, input RunInputRef, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+func (e *RunEngine) evaluateGate(runID string, board *BoardDocument, gates map[string]GateNode, gate GateNode, input RunInputRef, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
 	judgeChain := judgeChainForGate(board, gate.ID)
 	if err := e.store.AppendRunEvent(runID, RunEvent{
 		Type:   RunEventGateEvaluating,
@@ -1997,7 +1951,7 @@ func (e *RunEngine) evaluateGate(runID string, board *BoardDocument, gates map[s
 	}); err != nil {
 		return err
 	}
-	return e.evaluateGateKinds(runID, board, gates, gate, input, limits, ready, queued, queue, nil)
+	return e.evaluateGateKinds(runID, board, gates, gate, input, ready, queued, queue, nil)
 }
 
 type durableGateKindResult struct {
@@ -2005,7 +1959,7 @@ type durableGateKindResult struct {
 	Result GateEvaluationResult
 }
 
-func (e *RunEngine) evaluateGateKinds(runID string, board *BoardDocument, gates map[string]GateNode, gate GateNode, input RunInputRef, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string, prior map[string]durableGateKindResult) error {
+func (e *RunEngine) evaluateGateKinds(runID string, board *BoardDocument, gates map[string]GateNode, gate GateNode, input RunInputRef, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string, prior map[string]durableGateKindResult) error {
 	result := GateEvaluationResult{
 		Verdict:        "pass",
 		PerKind:        map[string]string{},
@@ -2051,7 +2005,7 @@ func (e *RunEngine) evaluateGateKinds(runID string, board *BoardDocument, gates 
 		result.KindResultSeqs = map[string]int{"code": codeResultSeq}
 		if codeVerdict == "fail" {
 			markLaterGateKindsNotRun(gate.Kinds, result.PerKind, "code")
-			return e.routeGateEvaluation(runID, board, gates, gate, input, "fail", result, limits, ready, queued, queue)
+			return e.routeGateEvaluation(runID, board, gates, gate, input, "fail", result, ready, queued, queue)
 		}
 	}
 	if hasGateKind(gate.Kinds, "formation") {
@@ -2068,7 +2022,7 @@ func (e *RunEngine) evaluateGateKinds(runID string, board *BoardDocument, gates 
 				Kinds:     []string{"formation"},
 				Criterion: gate.Criterion,
 				Input:     input,
-			}, judgeChainForGate(board, gate.ID), limits)
+			}, judgeChainForGate(board, gate.ID))
 			if err != nil {
 				return err
 			}
@@ -2089,7 +2043,7 @@ func (e *RunEngine) evaluateGateKinds(runID string, board *BoardDocument, gates 
 		result.KindResultSeqs["formation"] = formationResultSeq
 		if formationResult.Verdict == "fail" {
 			markLaterGateKindsNotRun(gate.Kinds, result.PerKind, "formation")
-			return e.routeGateEvaluation(runID, board, gates, gate, input, "fail", result, limits, ready, queued, queue)
+			return e.routeGateEvaluation(runID, board, gates, gate, input, "fail", result, ready, queued, queue)
 		}
 	}
 	if hasGateKind(gate.Kinds, "human") {
@@ -2122,7 +2076,7 @@ func (e *RunEngine) evaluateGateKinds(runID string, board *BoardDocument, gates 
 		// other branch (archon-o7p.11).
 		return nil
 	}
-	return e.routeGateEvaluation(runID, board, gates, gate, input, "pass", result, limits, ready, queued, queue)
+	return e.routeGateEvaluation(runID, board, gates, gate, input, "pass", result, ready, queued, queue)
 }
 
 func (e *RunEngine) appendGateKindResult(runID string, gate GateNode, kind string, input RunInputRef, result GateEvaluationResult) (int, error) {
@@ -2174,7 +2128,7 @@ func markLaterGateKindsNotRun(kinds []string, perKind map[string]string, failedK
 	}
 }
 
-func (e *RunEngine) routeGateEvaluation(runID string, board *BoardDocument, gates map[string]GateNode, gate GateNode, input RunInputRef, verdict string, result GateEvaluationResult, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+func (e *RunEngine) routeGateEvaluation(runID string, board *BoardDocument, gates map[string]GateNode, gate GateNode, input RunInputRef, verdict string, result GateEvaluationResult, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
 	attempt, err := e.gateAttempt(runID, gate.ID)
 	if err != nil {
 		return err
@@ -2210,7 +2164,7 @@ func (e *RunEngine) routeGateEvaluation(runID string, board *BoardDocument, gate
 		if verdict == "fail" {
 			nextInput = gateFailInput(runID, route, gate.ID, attempt, input, result.Reason, result.Evidence)
 		}
-		if err := e.deliverConnection(runID, board, gates, route, nextInput, limits, ready, queued, queue); err != nil {
+		if err := e.deliverConnection(runID, board, gates, route, nextInput, ready, queued, queue); err != nil {
 			return err
 		}
 	}
@@ -2242,7 +2196,7 @@ func unroutedHumanVerdicts(events []RunEvent) []RunEvent {
 // routed yet, oldest first, as a code or judge verdict routes. The run's
 // worker calls it between steps, so a verdict recorded while a seat worked is
 // routed once that step has recorded its output (archon-o7p.11).
-func (e *RunEngine) routeRecordedVerdicts(runID string, board *BoardDocument, gates map[string]GateNode, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+func (e *RunEngine) routeRecordedVerdicts(runID string, board *BoardDocument, gates map[string]GateNode, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
 	for {
 		events, err := e.store.ReadRunEvents(runID)
 		if err != nil {
@@ -2252,7 +2206,7 @@ func (e *RunEngine) routeRecordedVerdicts(runID string, board *BoardDocument, ga
 		if len(pending) == 0 {
 			return nil
 		}
-		if err := e.routeHumanVerdict(runID, board, gates, events, pending[0], limits, ready, queued, queue); err != nil {
+		if err := e.routeHumanVerdict(runID, board, gates, events, pending[0], ready, queued, queue); err != nil {
 			return err
 		}
 	}
@@ -2261,7 +2215,7 @@ func (e *RunEngine) routeRecordedVerdicts(runID string, board *BoardDocument, ga
 // routeHumanVerdict records the gate verdict for one recorded human verdict
 // and delivers its routes: a pass carries the request's input with the
 // operator's response, a fail sends that input back as feedback.
-func (e *RunEngine) routeHumanVerdict(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, recorded RunEvent, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+func (e *RunEngine) routeHumanVerdict(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, recorded RunEvent, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
 	gate, ok := gates[recorded.GateID]
 	if !ok {
 		return fmt.Errorf("%w: gate %q", ErrNotFound, recorded.GateID)
@@ -2321,7 +2275,7 @@ func (e *RunEngine) routeHumanVerdict(runID string, board *BoardDocument, gates 
 		} else if next, err = gatePassInput(events, verdictEvent, gate.ID, input); err != nil {
 			return err
 		}
-		if err := e.deliverConnection(runID, board, gates, route, next, limits, ready, queued, queue); err != nil {
+		if err := e.deliverConnection(runID, board, gates, route, next, ready, queued, queue); err != nil {
 			return err
 		}
 	}
@@ -2470,7 +2424,7 @@ func callGateEvaluator(evaluator GateEvaluator, req GateEvaluation) (result Gate
 // produced output for this evaluation, after the gate's latest
 // gate_evaluating, is not run again: resuming after a crash inside the chain
 // continues from the first judge without output (archon-n7u.57).
-func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chain []FormationNode, limits RunLimits) (string, error) {
+func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chain []FormationNode) (string, error) {
 	events, err := e.store.ReadRunEvents(req.RunID)
 	if err != nil {
 		return "", err
@@ -2501,7 +2455,7 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 			payload, _ = outputPayloadForPortFromEvent(output, fromPortID)
 		} else {
 			replaying = false
-			if err := e.startFormationExecution(req.RunID, formation, limits, RunEvent{
+			if err := e.startFormationExecution(req.RunID, board, formation, RunEvent{
 				Type:    RunEventNodeStarted,
 				NodeID:  formation.ID,
 				Attempt: attempt,
@@ -2522,7 +2476,7 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 				Brief:     formationBriefValue(formation),
 				Inputs:    []RunInputRef{input},
 				Attempt:   attempt,
-			}, limits)
+			})
 			if err != nil {
 				if blockErr := e.appendExecutionFailureAndBlock(req.RunID, formation.ID, err); blockErr != nil {
 					return "", blockErr
@@ -2577,11 +2531,6 @@ func (e *RunEngine) appendErrorAndBlockWithDetails(runID, code, message, boundar
 		"nodeId":      nodeID,
 		"recoverable": true,
 	}
-	// A spent limit stays spent: resuming would only block again (archon-n7u.6).
-	limit := isRunLimitCode(code)
-	if limit {
-		data["recoverable"] = false
-	}
 	if slotID != "" {
 		data["slotId"] = slotID
 	}
@@ -2600,11 +2549,6 @@ func (e *RunEngine) appendErrorAndBlockWithDetails(runID, code, message, boundar
 	// error and the block (archon-o7p.11).
 	block := runBlockedEvent(blockReason, nodeID, "", slotID, openDispatchesForBlock(nodeID, slotID, dispatchID))
 	block.Data["code"] = code
-	if limit {
-		block.Data["resumeAllowed"] = false
-		block.Data["resumePolicy"] = "limit_exhausted"
-		delete(block.Data, "nextEpoch")
-	}
 	return e.store.AppendRunEvent(runID, block)
 }
 
@@ -2641,6 +2585,14 @@ type executionFailureDetails struct {
 }
 
 func (e *RunEngine) appendExecutionFailureAndBlock(runID, nodeID string, err error) error {
+	var limit *LimitReachedError
+	if errors.As(err, &limit) {
+		board, readErr := e.readRunBoard(runID)
+		if readErr != nil {
+			return readErr
+		}
+		return e.appendLimitBlock(runID, board, nodeID, limit.Use)
+	}
 	if errors.Is(err, ErrCoordinatorShutdown) {
 		events, readErr := e.store.ReadRunEvents(runID)
 		if readErr != nil {
@@ -2676,8 +2628,6 @@ func executionFailureEvent(err error) executionFailureDetails {
 	switch {
 	case errors.Is(err, ErrFormationTimeoutExceeded):
 		return executionFailureDetails{Code: "formation_timeout_exceeded", Message: "formation execution time limit exceeded", Boundary: "limits"}
-	case errors.Is(err, ErrRunWallClockExceeded):
-		return executionFailureDetails{Code: "wall_clock_exceeded", Message: "wall clock limit exceeded", Boundary: "limits"}
 	case errors.Is(err, ErrRunExecutorUnavailable):
 		return executionFailureDetails{Code: "missing_executor", Message: "formation executor unavailable", Boundary: "executor"}
 	default:
@@ -2766,32 +2716,6 @@ func (e *RunEngine) appendStarvedBlock(runID string, starved []starvedFormation)
 			"nextEpoch":      1,
 		},
 	})
-}
-
-// attemptsExhausted reports whether starting a node's nextAttempt would go
-// past the run's attempt limit. A run that set no maxAttempts has no attempt
-// limit (archon-o7p.7). The engine and the gate answer panel (HumanGateRoutes)
-// both ask this, so the panel says what the engine will do.
-func attemptsExhausted(limits RunLimits, nextAttempt int) bool {
-	return limits.MaxAttempts > 0 && nextAttempt > limits.MaxAttempts
-}
-
-func runLimitsFromEvent(event RunEvent) RunLimits {
-	if event.Data == nil {
-		return RunLimits{}
-	}
-	switch limits := event.Data["limits"].(type) {
-	case RunLimits:
-		return limits
-	case map[string]any:
-		return RunLimits{
-			MaxDispatch:      intFromRunEventData(limits["maxDispatch"]),
-			MaxAttempts:      intFromRunEventData(limits["maxAttempts"]),
-			WallClockSeconds: intFromRunEventData(limits["wallClockSeconds"]),
-		}
-	default:
-		return RunLimits{}
-	}
 }
 
 func intFromRunEventData(value any) int {

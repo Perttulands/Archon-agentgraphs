@@ -66,7 +66,7 @@ func TestRunStartReturnsEveryAdmissionFindingAs422(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := func(expectedRev int) *httptest.ResponseRecorder {
-		return post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"sketch","mission":"draft","inputCardId":"mis_draft","expectedRev":`+strconv.Itoa(expectedRev)+`,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600}}`)
+		return post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"sketch","mission":"draft","inputCardId":"mis_draft","expectedRev":`+strconv.Itoa(expectedRev)+`}`)
 	}
 
 	if stale := start(3); stale.Code != 409 {
@@ -162,7 +162,7 @@ func TestRunStartRefusesAFileWithSeveralInputCards(t *testing.T) {
 		}
 	}
 	for _, target := range []string{`"inputCardId":"mis_draft"`, `"formationId":"fmn_plan"`} {
-		w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"sketch","mission":"draft",`+target+`,"expectedRev":4,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600}}`)
+		w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"sketch","mission":"draft",`+target+`,"expectedRev":4}`)
 		var body struct {
 			Error struct {
 				Findings []formations.BoardFinding `json:"findings"`

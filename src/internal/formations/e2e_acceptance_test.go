@@ -34,7 +34,6 @@ func TestCareerWebAcceptance(t *testing.T) {
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            RunLimits{MaxDispatch: 4, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)

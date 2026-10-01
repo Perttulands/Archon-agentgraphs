@@ -20,17 +20,17 @@ func TestResumeRedispatchAbandonsOpenDispatchAndReattachFailureBlocks(t *testing
 			personas.Now = time.Now
 			createS4Persona(t, personas, "scout")
 			writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
+			if kind == "redispatch budget exhausted" {
+				// The step may run once; the redispatch would be its second round.
+				addLimit(t, store, "fmn_research", 1)
+			}
 			board, err := store.ReadBoard("session-search")
 			if err != nil {
 				t.Fatal(err)
 			}
-			limit := 10
-			if kind == "redispatch budget exhausted" {
-				limit = 1
-			}
 			started, err := store.StartRun("session-search", RunStartRequest{
 				MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev,
-				Personas: personas, Limits: RunLimits{MaxDispatch: limit, MaxAttempts: 3, WallClockSeconds: 600},
+				Personas: personas,
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -99,7 +99,7 @@ func TestResumeRedispatchAbandonsOpenDispatchAndReattachFailureBlocks(t *testing
 				if len(unresolvedDispatches(events)) != 0 {
 					t.Fatal("original dispatch must still be abandoned")
 				}
-				if got := lastEventOfType(t, events, RunEventError).Data["code"]; got != "max_dispatch_exceeded" {
+				if got := lastEventOfType(t, events, RunEventError).Data["code"]; got != RunBlockLimitReached {
 					t.Fatalf("error = %v", got)
 				}
 				return

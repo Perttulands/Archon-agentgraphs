@@ -111,7 +111,7 @@ func runKeptFormation(t *testing.T, board, formationID string, personas []string
 	cfg := tmuxTestConfig(t)
 	client.pane = tmuxPaneState{CurrentPath: cfg.Cwd}
 	executor := newTmuxFormationExecutorWithClient(store, personaStore, cfg, &keptSeatFake{fakeTmuxHarnessClient: client, frames: map[string][]string{}})
-	started, _, err := NewRunEngine(store, personaStore, executor).PrepareFormationRun("session-search", formationID, FormationRunRequest{Actor: "agent:test", Limits: RunLimits{MaxDispatch: 5, MaxAttempts: 1}})
+	started, _, err := NewRunEngine(store, personaStore, executor).PrepareFormationRun("session-search", formationID, FormationRunRequest{Actor: "agent:test"})
 	if err != nil {
 		t.Fatal(err)
 	}

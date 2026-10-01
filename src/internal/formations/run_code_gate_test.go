@@ -166,7 +166,6 @@ func TestCodeGateRejectsTamperedCanonicalResultBeforeDurabilityOrRoute(t *testin
 		MissionID:         "mis_showcase",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -265,7 +264,6 @@ func TestCodeGatePassRoutesExactSelectedToolOutputAndProvenance(t *testing.T) {
 		input,
 		"pass",
 		result,
-		RunLimits{},
 		ready,
 		queued,
 		&queue,
@@ -304,7 +302,6 @@ func TestMixedCodeFormationGateRunsCodeFirstAndRecordsBothKindResults(t *testing
 		MissionID:         "mis_showcase",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -374,7 +371,6 @@ func TestMixedCodeHumanGateReusesDurableCodeResultInAggregateVerdict(t *testing.
 		MissionID:         "mis_showcase",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -439,7 +435,6 @@ func TestMixedCodeFormationHumanGateFreezesBothPriorKindResultSequences(t *testi
 		MissionID:         "mis_showcase",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -509,7 +504,6 @@ func TestResumeReusesDurableCodeKindResultAfterCrashWindow(t *testing.T) {
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("start run: %v", err)
@@ -617,7 +611,6 @@ func TestHumanVerdictRejectsTamperedPriorCodeResultBeforeMutation(t *testing.T) 
 		MissionID:         "mis_showcase",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -670,7 +663,6 @@ func TestResumeRejectsTamperedDurableCodeResultBeforeMutation(t *testing.T) {
 		MissionID:         "mis_showcase",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -929,7 +921,6 @@ func TestCodeGateEvaluatorLoopsUntilLintPasses(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -982,7 +973,6 @@ func TestGateEvaluatorPanicBecomesErrorWithoutVerdictOrRoute(t *testing.T) {
 		MissionID:         "mis_showcase",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -1026,7 +1016,6 @@ func TestCodeGateExhaustionBecomesErrorWithoutVerdictOrRoute(t *testing.T) {
 		MissionID:         "mis_showcase",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -1077,7 +1066,6 @@ func TestCodeGateAdmissionRequiresExplicitProfileTuple(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 2},
 	})
 	if err == nil || !strings.Contains(err.Error(), FindingInvalidCodeGateProfile) {
 		t.Fatalf("run mission error = %v, want %s", err, FindingInvalidCodeGateProfile)
@@ -1110,7 +1098,6 @@ func TestCodeGateEvaluatorUnknownProfileBlocks(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 2},
 	})
 	if err == nil || !strings.Contains(err.Error(), FindingInvalidCodeGateProfile) {
 		t.Fatalf("run mission error = %v, want %s", err, FindingInvalidCodeGateProfile)
@@ -1145,7 +1132,6 @@ func TestCodeGateEvaluatorOutputAbsentProfile(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)

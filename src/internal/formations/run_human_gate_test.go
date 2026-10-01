@@ -28,7 +28,6 @@ func TestS5HumanGateRequestsInputAndWaits(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -73,7 +72,6 @@ func TestS5HumanGateVerdictIsRoutedWhenTheRunContinues(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -142,7 +140,6 @@ func TestS5HumanGatePassToUnderfedJoinBlocksWithoutFinalSuccess(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -425,7 +422,6 @@ func TestS5HumanGateFailPushbackReDispatchesWork(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 3},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -523,7 +519,6 @@ func startHumanGateRun(t *testing.T) (*Store, *PersonaStore, string) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 3},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -779,7 +774,6 @@ func TestHumanGateVerdictRecordsWhoRelayedIt(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)

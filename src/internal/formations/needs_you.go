@@ -47,6 +47,8 @@ type NeedsYouAsk struct {
 	// Status is the run status a blocked or final ask reports.
 	Status        string
 	ResumeAllowed bool
+	// ResumePolicy is grant when the block is a spent limit (archon-o7p.8).
+	ResumePolicy string
 }
 
 // NeedsYouNotification is the message contract handed to a notifier. Subject
@@ -174,7 +176,7 @@ func ProjectSettledNeedsYouAsks(events []RunEvent) ([]NeedsYouAsk, error) {
 	if status.Status == RunStatusBlocked && !explained && last.Seq > 0 && last.Type != RunEventResumed {
 		asks = append(asks, NeedsYouAsk{
 			RunID: status.RunID, Seq: last.Seq, Kind: NeedsYouKindBlocked, NodeID: needsYouNodeID(last), GateID: last.GateID,
-			Ask: stringFromEventData(last, "reason"), Blocks: true, Status: status.Status, ResumeAllowed: status.ResumeAllowed,
+			Ask: stringFromEventData(last, "reason"), Blocks: true, Status: status.Status, ResumeAllowed: status.ResumeAllowed, ResumePolicy: status.ResumePolicy,
 		})
 		sort.Slice(asks, func(i, j int) bool { return asks[i].Seq < asks[j].Seq })
 	}

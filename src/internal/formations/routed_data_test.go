@@ -49,7 +49,6 @@ func TestInlineOutputPayloadsRouteSecretShapedTextVerbatim(t *testing.T) {
 			executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
 			status, err := NewRunEngine(store, personas, executor).RunMission("session-search", RunStartRequest{
 				MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev,
-				Limits: RunLimits{MaxDispatch: 5, MaxAttempts: 1},
 			})
 			if err != nil || status.Status != RunStatusSucceeded {
 				t.Fatalf("status %+v %v", status, err)

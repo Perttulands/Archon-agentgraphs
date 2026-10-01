@@ -27,7 +27,7 @@ type executionBudget struct {
 	cause    error
 }
 
-func formationExecutionBudget(req FormationExecution, events []RunEvent, limits RunLimits, now time.Time) (executionBudget, error) {
+func formationExecutionBudget(req FormationExecution, events []RunEvent, now time.Time) (executionBudget, error) {
 	var budget executionBudget
 	seconds, err := formationExecutionSeconds(req.Formation)
 	if err != nil {
@@ -57,15 +57,6 @@ func formationExecutionBudget(req FormationExecution, events []RunEvent, limits 
 			}
 		}
 		budget.cause = ErrFormationTimeoutExceeded
-	}
-	if limits.WallClockSeconds > 0 {
-		deadline, err := wallClockDeadline(events, limits.WallClockSeconds, now)
-		if err != nil {
-			return budget, err
-		}
-		if budget.deadline.IsZero() || !budget.deadline.Before(deadline) {
-			budget.deadline, budget.cause = deadline, ErrRunWallClockExceeded
-		}
 	}
 	return budget, nil
 }

@@ -32,8 +32,9 @@ decisions; [examples](../examples/) provide reusable missions.
 | End node | Ends a path on purpose (`[[end]]` in TOML: `id`, `title`, `outcome`). Its outcome is `done` or `rejected`. Its only port is `in`, which takes any number of routes; it leads nowhere. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
 | Judge chain | Formations wired from a gate's `judge` port and back to that same port. The final judge result decides the formation kind. |
-| Pushback edge | A gate's `fail` connection back to work, delivering feedback and starting the next attempt, capped only when the run set `maxAttempts`. There is no `retry_control` port. |
-| Run | One admitted mission or isolated formation, with definition and persona snapshots, inputs and any limits the launch set. Later edits affect later runs. |
+| Limit card | Caps the rounds of the step it covers, or of the whole mission when it covers the Input card (`[[limit]]` in TOML, `limits` in JSON: `id`, `title`, `target`, `rounds`). A run has no limits without one. |
+| Pushback edge | A gate's `fail` connection back to work, delivering feedback and starting the next attempt, capped only by a Limit card. There is no `retry_control` port. |
+| Run | One admitted mission or isolated formation, with definition and persona snapshots and inputs. Later edits affect later runs. |
 | Ledger | Private append-only NDJSON events, ordered by sequence. It records dispatch, results, routing and recovery evidence. |
 | Projection | A sanitized view derived from the ledger, shared by HTTP, Archon and the cockpit. |
 
@@ -233,33 +234,40 @@ context.
 The run's `beadId` is optional but should identify the owning task. An Input
 card has no Bead ID; a formation brief may name its own.
 
-Runs have no limits unless the launch sets them. `maxDispatch`, `maxAttempts`
-and `wallClockSeconds` are optional; an absent or zero limit means none, in
-admission and in the engine. A negative limit is rejected.
-Neither `archon mission run` nor the cockpit's Start mission dialog supplies a
-limit: a run started without one loops through send-backs until a gate passes
-or its driver stops it. Set `--max-dispatch`, `--max-attempts` or
-`--wall-clock-seconds` to cap a run; each set limit is enforced and named when
-it blocks the run, as below. Dispatch
-limits bound formation execution steps, including judge steps. Each durable
-formation start consumes one dispatch before any seat launches, including failed
-or interrupted execution. Human approval, resume, restart and redispatch do not
-replenish that run-wide allowance; reattaching completed evidence consumes no
-new dispatch. Attempts bound revisits to a node. The wall clock bounds agent
-work. Every formation dispatch must finish within `wallClockSeconds` of the run's start, not counting time the
-run spent waiting for the operator. A wait runs from a human gate's
-`human_input_requested` to the `human_verdict_recorded` for that gate, and time
-while several requests wait counts once. The waits come from the ledger's
-timestamps, so they survive restarts, and a request still waiting never runs
-the clock out. A dispatch that exceeds it blocks the run with
-`wall_clock_exceeded`. Formation allocations also bound real agent execution.
-Limit exhaustion and unresolved execution leave visible blocks rather than
-claiming success. A block that exhausts attempts or dispatches
-(`resume_attempts_exhausted`, `revise_loop_exhausted`,
-`max_dispatch_exceeded`) records `resumeAllowed: false` and `resumePolicy:
-limit_exhausted`, because resuming could only block again; its run evidence
-names the limit as `limit` (`kind` `attempts` or `dispatches`, `nodeId`,
-`used`, `max`).
+Runs have no limits unless the mission holds a Limit card (archon-o7p.8). A
+run without one loops through send-backs until a gate passes or its driver
+stops it; neither a launch nor the daemon sets a limit. A Limit card covers one
+target: a step (a formation), or the Input card for the whole mission. Its
+`rounds` knob counts, from the ledger:
+
+- on a step, how many times the step may run, send-backs and resumed re-runs
+  included;
+- on a peer step, how many journal messages its conversation may hold after
+  the openings, proposals, acknowledgements and dissent included, summed over
+  its attempts;
+- on the Input card, how many step runs the whole mission may make, judges
+  included.
+
+A start a coordinator restart cut short before its output is not a round; the
+step's re-run is, so a run reaches the same limits wherever a restart falls. A
+step covered by its own card and the mission's card stops at whichever is
+spent first. Before a step starts, the engine checks its card and then the
+mission's; at a spent limit the step does not start, and the run blocks with
+`code` `limit_reached`, the plain reason ("Review used 3 of 3 rounds", "The
+mission used 20 of 20 rounds, 1 of them granted"), `resumePolicy` `grant` and
+the limit as `limit` (`kind` `rounds`, `limitId`, `nodeId` the card's target,
+`used`, `max` counting grants, `granted`). A peer conversation that reaches
+its message count without an agreed result is stopped: its seats are told the
+cap in their brief, posts past it are refused with "the peers have used every
+round their Limit card allows", and the run blocks the same way, keeping the
+journal.
+
+`archon run resume <run> --grant` (API `grant: true`) gives the stopped limit
+one more round and resumes: the `run_resumed` records `grant` (`limitId`,
+`kind`, `amount` 1) with the actor, and the run status's `resumePolicy` says
+`grant` while such a block waits. A resume without `--grant` at a spent limit,
+or with it at any other block, is refused with 409 and nothing is recorded.
+There is no automatic loop detection.
 
 A step has no time limit unless its formation authors `[formation.execution]`
 with a positive `timeoutSeconds`; the daemon imposes no default. That
@@ -267,8 +275,8 @@ allocation covers the whole attempt: seat startup, preparation, collaboration
 and finalization. The run's mission snapshot freezes it, so later mission edits
 affect later runs. Each `node_started` of a step with a duration records the
 duration and absolute `executionDeadline`; restarting does not give the same
-attempt more time. Explicit redispatch starts a new counted attempt. The earlier
-of that deadline and the run's remaining wall clock governs execution. Formation
+attempt more time. Explicit redispatch starts a new counted attempt. That
+deadline governs execution. Formation
 expiry blocks with `formation_timeout_exceeded`, retaining partial evidence. A
 downstream human gate waits after the formation finishes and spends no
 formation time.
@@ -667,7 +675,8 @@ will block at a formation gate.
 A peer formation collects one independent opening from every configured seat
 before sharing them. Those same seats then converse concurrently through an
 append-only journal scoped to the run, formation and attempt. There is no fixed
-turn order, round count or facilitator. The seats use the supplied local
+turn order or facilitator, and no message count unless a Limit card covers the
+step (see Execution). The seats use the supplied local
 `archon --workspace <state> peer` commands to read, post, wait, propose and
 acknowledge; direct file writes are outside the protocol.
 
@@ -876,7 +885,25 @@ delete <mission> <end>` change or remove one. The mission patch operations are
 `outcome`) and `deleteEnd` (`id`). On the canvas, drag the End token from the
 top bar or right-click the canvas (End node · done or rejected); an End card
 takes any number of wires into its one port, its window and right-click menu
-change its outcome, and a finished run lights the End nodes its paths reached. `mission list` lists missions; `formation list <mission>`
+change its outcome, and a finished run lights the End nodes its paths reached.
+`archon limit create <mission> --target <step|input> [--rounds <n>] [--title
+<title>]` adds a Limit card covering a step, named by ID or title, or the Input
+card (`input`, or its ID) for the whole mission; it prints `created <id>`, or
+with `--json` `{mission, layout, limit}`. `archon limit update <mission>
+<limit> [--target] [--rounds] [--title]` changes it (`--rounds 0` clears the
+knob) and `archon limit delete <mission> <limit>` removes it. The patch
+operations are `createLimit` (`title`, `target`, `rounds`, `x`, `y`),
+`updateLimit` (`id`, and any of `title`, `target`, `rounds`; an empty target
+unwires the card) and `deleteLimit` (`id`). A write naming a target that is
+not a step or the Input card, or a negative rounds value, is refused with
+`INVALID_LIMIT` (HTTP 400); an unwired card saves as a draft.
+Validation reports, as the error `invalid_limit`, a card wired to nothing
+("Limit Cap is wired to nothing: wire it to a step, or to the Input card for
+the whole mission"), a target that is not a step or the Input card, a second
+card on one target ("Review has two Limit cards, Cap and Guard: keep one") and
+a rounds value that is not a positive whole number; it warns, as
+`empty_limit`, about a card that sets no knob. Admission refuses a run whose
+mission holds an invalid card, with the same words. `mission list` lists missions; `formation list <mission>`
 lists its formations with their slots and staffing. `mission inspect <mission>`
 prints the whole mission, `mission inspect <mission> <input>` prints the Input
 card with its reachable chain, and `formation inspect <mission> <formation>`
@@ -907,7 +934,7 @@ check, criterion, judge and files. Each save is one mission edit with undo. Port
 unchanged.
 Every canvas edit that changes the mission is one undo entry, and Ctrl+Z undoes
 the newest. Deleting an Input card, formation, gate or End node is undone by HTTP
-`restoreNode` (with `inputCard`, `formation`, `gate` or `end`), which puts the node back with its IDs, fields, staffing, ports,
+`restoreNode` (with `inputCard`, `formation`, `gate`, `end` or `limit`), which puts the node back with its IDs, fields, staffing, ports,
 connections and position in one revision; its notes and wire lanes, kept by
 ID, apply again. Removing a port is undone by `restorePort`, which puts it back
 in its place with its connections. Undo waits for edits still being saved. When
@@ -944,9 +971,9 @@ included, as `ERROR`/`WARN` lines or `--json`, and exits 1 on any error.
 rejected. The cockpit tags incomplete nodes as drafts and highlights the nodes
 a rejected start names.
 
-For the delivery template the following starts a run without limits; add
-`--max-*` flags only when the run needs a cap. Lab briefs need the synthetic
-verdict described above. Real briefs describe the work to deliver.
+For the delivery template the following starts a run; a Limit card on the
+mission caps its loops when it needs one. Lab briefs need the synthetic verdict
+described above. Real briefs describe the work to deliver.
 
 ```bash
 ARCHON_START=$(archon --server "$ARCHON_SERVER" mission run delivery \
@@ -1045,7 +1072,7 @@ archon --server "$ARCHON_SERVER" run resume "$ARCHON_RUN_ID" --mode redispatch -
 ```
 
 The abandoned dispatch is recorded as a `slot_result` with status `abandoned`;
-the node's next attempt counts against `maxAttempts` when the run set one. A failed reattach never
+the node's next attempt is one more round for a Limit card that covers it. A failed reattach never
 finishes the run: it records `dispatch_reattach_failed` with the reason and
 leaves the run blocked and resumable.
 
@@ -1247,13 +1274,13 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   every block and error of the run and the `run_failed` or `run_canceled` that
   ended it, oldest first: `seq`, `type`, `code`, `reason`, `resumeAllowed` and
   `nodeIds`, the nodes it names (its node or gate, the blocked node or gate,
-  and nodes with open dispatches). A block that names no node, such as an
-  exceeded wall clock, has empty `nodeIds` and its reason. A run end that names
+  and nodes with open dispatches). A block that names no node, such as a
+  coordinator restart between steps, has empty `nodeIds` and its reason. A run end that names
   no node lists the nodes it stopped: formations without output and gates
   without a verdict. A run end carries `actor`, who ended it (`archond` for a
   coordinator failure, whose cause is its `reason` and code its `code`). A
-  block the run later resumed carries `resumedSeq`; a limit block carries
-  `limit`. Node evidence `problems` include the same run end for the nodes it
+  block the run later resumed carries `resumedSeq`; a spent Limit card's
+  block carries `limit`. Node evidence `problems` include the same run end for the nodes it
   stopped. The 2 MiB budget is spent on the latest first.
 - `/api/runs/{runId}/evidence/briefs/{dispatchSeq}` returns
   `data.brief` (`dispatchSeq`, `nodeId`, `slotId`, `attempt`, `text` capped at
@@ -1282,18 +1309,18 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `criterion` and the routed input: `fromNodeId`, `fromPortId`, `text` capped at
   64 KiB, and `truncated`. `routes` says where each verdict leads on the
   run's frozen mission: `verdict` (`pass`, `fail`), `targets` (`nodeId`,
-  `title`, `kind`, and for a formation the `attempt` it would start, the
-  run's `maxAttempts` (omitted when the run set none, so attempts are
-  unlimited; the engine applies the same rule) and
+  `title`, `kind`, and for a formation the `attempt` it would start, its
+  Limit card's `rounds` so far (`used`, `max`; omitted without a card, by the
+  engine's own rule) and
   `waitsForInputs` for a join still missing another input; for an End node
   kind `end` and its `outcome`), `endsRun` when every route of the verdict
   ends its path at an End node and nothing else in the run can still run,
   `runFails` when the run fails once it ends, at once with `endsRun` or else
   after its other open work (a rejected End node on this route, or a path
-  already rejected), `dispatches` (`used`, `max`) and `dispatchesNeeded` (judges
-  included) when the route starts formations under a dispatch limit, and
-  `limit` when a limit the route needs is already spent, so taking it blocks
-  the run. When the frozen mission cannot be read, `routes` is omitted. An
+  already rejected), `missionRounds` (the mission card's use) and
+  `roundsNeeded` (the step runs the route starts, judges included) when a
+  Limit card covers the mission, and `limit` when a card the route needs is
+  already spent, so taking it blocks the run until a grant. When the frozen mission cannot be read, `routes` is omitted. An
   unknown run or gate returns 404; a decided request
   returns 409. After the verdict, the gate's node evidence holds the same input
   with the response.

@@ -186,51 +186,6 @@ func TestS5BlockedEpochRejectsContinuationUntilResume(t *testing.T) {
 	}
 }
 
-func TestEngineResumeDoesNotReplenishDispatchBudget(t *testing.T) {
-	store, personas := s4RunFixture(t)
-	createS4Persona(t, personas, "scout")
-	writeFixture(t, store.BoardPath("session-search"), s4CascadeBoardFixture())
-	executor := &fakeRunExecutor{}
-	engine := NewRunEngine(store, personas, executor)
-	status, err := engine.RunMission("session-search", RunStartRequest{
-		MissionID: "mis_showcase", Limits: RunLimits{MaxDispatch: 1, MaxAttempts: 2},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.Status != RunStatusBlocked || len(executor.calls) != 1 {
-		t.Fatalf("initial status/calls = %+v/%d", status, len(executor.calls))
-	}
-	// A spent dispatch budget cannot progress, so the block is not resumable,
-	// even from a fresh engine that models restarting the daemon (archon-n7u.6).
-	if status.ResumeAllowed {
-		t.Fatalf("dispatch-limit block projects resumeAllowed: %+v", status)
-	}
-	for attempt := 1; attempt <= 2; attempt++ {
-		engine = NewRunEngine(store, personas, executor)
-		if _, err := engine.ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach", Reason: "continue after dispatch limit"}); !errors.Is(err, ErrRunResumeNotAllowed) {
-			t.Fatalf("resume after dispatch limit error = %v, want ErrRunResumeNotAllowed", err)
-		}
-		if len(executor.calls) != 1 {
-			t.Fatalf("calls after rejected resume = %d", len(executor.calls))
-		}
-	}
-	events := readRunEvents(t, findOnlyRunLedger(t, store, "session-search"))
-	block := lastEventOfType(t, events, RunEventBlocked)
-	if block.Data["resumeAllowed"] != false || block.Data["code"] != "max_dispatch_exceeded" || block.Data["resumePolicy"] != "limit_exhausted" {
-		t.Fatalf("dispatch-limit block = %+v", block.Data)
-	}
-	if got := lastEventOfType(t, events, RunEventError).Data["recoverable"]; got != false {
-		t.Fatalf("dispatch-limit error recoverable = %v", got)
-	}
-	if got := eventNodeOrder(events, RunEventNodeStarted); !reflect.DeepEqual(got, []string{"mis_showcase", "fmn_frame"}) {
-		t.Fatalf("started nodes = %v", got)
-	}
-	if got := lastEventOfType(t, events, RunEventError).Data["code"]; got != "max_dispatch_exceeded" {
-		t.Fatalf("block code = %v", got)
-	}
-}
-
 func TestS5EngineResumeRejectsRunsThatAreNotBlocked(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	store.Now = fixedClock()
@@ -248,7 +203,6 @@ func TestS5EngineResumeRejectsRunsThatAreNotBlocked(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 10, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -374,7 +328,6 @@ func TestS5EngineResumeOpenDispatchRoutesReattachedOutputThroughGate(t *testing.
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 1},
 	})
 	if err != nil {
 		t.Fatalf("start run: %v", err)
@@ -450,7 +403,6 @@ func TestS5EngineResumeReplaysNewerGateInputOnSameEdge(t *testing.T) {
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 3},
 	})
 	if err != nil {
 		t.Fatalf("start run: %v", err)
@@ -505,7 +457,6 @@ func TestS5EngineResumeTerminalJudgeGatePassDoesNotReplayJudge(t *testing.T) {
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("start run: %v", err)
@@ -581,7 +532,6 @@ func TestS5EngineResumeAfterARejectedPathFailsTheRunWithTheGatesReason(t *testin
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            RunLimits{MaxDispatch: 4, MaxAttempts: 1},
 	})
 	if err != nil {
 		t.Fatalf("start run: %v", err)
@@ -613,66 +563,6 @@ func TestS5EngineResumeAfterARejectedPathFailsTheRunWithTheGatesReason(t *testin
 	}
 	if problem := RunEndProblem(events); problem == nil || problem.Reason.Text != "the work is wrong" || problem.Code != RunFailurePathRejected {
 		t.Fatalf("run end problem = %+v", problem)
-	}
-}
-
-func TestS5EngineResumeHonorsMaxAttemptsFromOriginalRun(t *testing.T) {
-	store, personas := s4RunFixture(t)
-	store.Now = fixedClock()
-	personas.Now = fixedClock()
-	createS4Persona(t, personas, "scout")
-	writeFixture(t, store.BoardPath("session-search"), s4CascadeBoardFixture())
-	board, err := store.ReadBoard("session-search")
-	if err != nil {
-		t.Fatalf("read board: %v", err)
-	}
-	started, err := store.StartRun("session-search", RunStartRequest{
-		MissionID:         "mis_showcase",
-		Actor:             "agent:test",
-		ExpectedBoardETag: board.ETag,
-		ExpectedBoardRev:  board.Rev,
-		Personas:          personas,
-		Limits:            RunLimits{MaxAttempts: 1, MaxDispatch: 10},
-	})
-	if err != nil {
-		t.Fatalf("start run: %v", err)
-	}
-	for _, event := range []RunEvent{
-		{Type: RunEventNodeStarted, NodeID: "fmn_frame", Attempt: 1},
-		{Type: RunEventNodeOutput, NodeID: "fmn_frame", Data: formationOutputEventData(FormationExecutionResult{
-			Status: "done",
-			Text:   "frame output",
-			Outputs: map[string]FormationOutputPayload{
-				"port_frame_out": {Text: "frame output"},
-			},
-		})},
-		{Type: RunEventNodeStarted, NodeID: "fmn_research", Attempt: 1},
-		{Type: RunEventBlocked, NodeID: "fmn_research", Data: map[string]any{"resumeAllowed": true, "resumePolicy": "explicit", "reason": "resume limit check"}},
-	} {
-		if err := store.AppendRunEvent(started.RunID, event); err != nil {
-			t.Fatalf("append %s: %v", event.Type, err)
-		}
-	}
-
-	executor := &fakeRunExecutor{}
-	engine := NewRunEngine(store, personas, executor)
-	status, err := engine.ResumeRun(started.RunID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "operator resume"})
-	if err != nil {
-		t.Fatalf("resume run: %v", err)
-	}
-	if status.Status != RunStatusBlocked || status.ResumeAllowed {
-		t.Fatalf("status = %+v, want a block that cannot resume after exhausted attempts", status)
-	}
-	if _, err := engine.ResumeRun(started.RunID, RunResumeRequest{Actor: "agent:test", Mode: "reattach"}); !errors.Is(err, ErrRunResumeNotAllowed) {
-		t.Fatalf("second resume error = %v, want ErrRunResumeNotAllowed", err)
-	}
-	if len(executor.calls) != 0 {
-		t.Fatalf("executor calls = %v, want no blind re-run after max attempts exhausted", executor.nodeIDs())
-	}
-	events := readRunEvents(t, findOnlyRunLedger(t, store, "session-search"))
-	errEvent := lastEventOfType(t, events, RunEventError)
-	if errEvent.NodeID != "fmn_research" || errEvent.Data["code"] != "resume_attempts_exhausted" {
-		t.Fatalf("resume limit error = %+v, want resume_attempts_exhausted for fmn_research", errEvent)
 	}
 }
 

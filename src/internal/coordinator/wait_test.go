@@ -3,6 +3,7 @@ package coordinator
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -269,13 +270,19 @@ func TestWaitServesGateTextVerbatimAndCapsTheInput(t *testing.T) {
 }
 
 // The reviewer's probe: a driver looping any-change waits over a run that a
-// gate approval pushes into its dispatch limit. Every loop must end with the
-// block as a new ask, never a changed answer that skips it and then hangs,
-// and a verdict sent the moment the gate is reported must be accepted.
+// gate approval pushes into the mission's Limit card. Every loop must end
+// with the block as a new ask, never a changed answer that skips it and then
+// hangs, and a verdict sent the moment the gate is reported must be accepted.
 func TestAnyChangeLoopReportsALimitBlockAndItsGateVerdictIsAccepted(t *testing.T) {
 	for round := 0; round < 5; round++ {
 		c, e, _ := fixture(t)
-		w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"probe","mission":"proof","inputCardId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":1,"maxAttempts":1,"wallClockSeconds":600}}`)
+		// The mission may run one step: Work. Approving starts After, which
+		// finds the mission's rounds spent.
+		limited := testBoard + "[[limit]]\nid = \"lim_mission\"\ntitle = \"Cap\"\ntarget = \"mis_proof\"\nrounds = 1\n"
+		if err := os.WriteFile(c.store.BoardPath("proof"), []byte(limited), 0600); err != nil {
+			t.Fatal(err)
+		}
+		w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"probe","mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 		if w.Code != 202 {
 			t.Fatalf("start %d %s", w.Code, w.Body.String())
 		}
@@ -326,7 +333,7 @@ func TestAnyChangeLoopReportsALimitBlockAndItsGateVerdictIsAccepted(t *testing.T
 // command that recorded it instead of answering 409.
 func TestResumeWaitsForTheCommandThatRecordedTheEscalation(t *testing.T) {
 	c, _, _ := fixture(t)
-	started, err := c.store.StartRun("proof", formations.RunStartRequest{MissionID: "mis_proof", ExpectedBoardRev: 1, Personas: c.personas, Limits: formations.RunLimits{MaxDispatch: 3, MaxAttempts: 1, WallClockSeconds: 600}})
+	started, err := c.store.StartRun("proof", formations.RunStartRequest{MissionID: "mis_proof", ExpectedBoardRev: 1, Personas: c.personas})
 	if err != nil {
 		t.Fatal(err)
 	}

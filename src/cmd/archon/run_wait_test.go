@@ -313,8 +313,10 @@ func TestDescribeGateRouteSaysWhereEachVerdictLeads(t *testing.T) {
 		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "end_done", Title: "Done", Kind: "end", Outcome: "done"}}}, "this path ends (done)"},
 		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "end_rejected", Title: "Rejected", Kind: "end", Outcome: "rejected"}}, RunFails: true}, "this path ends (rejected), so the run fails once its other open work ends"},
 		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}, {NodeID: "end_done", Title: "Done", Kind: "end", Outcome: "done"}}}, `goes to "Ship"; this path ends (done)`},
-		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}}, Limit: &formations.RunLimitReached{Kind: formations.RunLimitDispatches, Used: 3, Max: 3}}, `goes to "Ship", but the run has used all 3 of its dispatches, so it blocks instead`},
-		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_build", Title: "Build"}}, Limit: &formations.RunLimitReached{Kind: formations.RunLimitAttempts, NodeID: "fmn_build", Used: 2, Max: 2}}, `goes to "Build", but "Build" has used all 2 of its attempts, so the run blocks instead`},
+		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}}, MissionRounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 3, Max: 3}, Limit: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 3, Max: 3}}, `goes to "Ship", but the mission has used all 3 of its rounds, so the run blocks instead until you grant one more`},
+		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_build", Title: "Build", Rounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_build", NodeID: "fmn_build", Used: 2, Max: 2}}}, Limit: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_build", NodeID: "fmn_build", Used: 2, Max: 2}}, `goes to "Build", but "Build" has used all 2 of its rounds, so the run blocks instead until you grant one more`},
+		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_build", Title: "Build", Rounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_build", NodeID: "fmn_build", Used: 1, Max: 3}}}}, `goes to "Build" (round 2 of 3)`},
+		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}}, MissionRounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 1, Max: 1}, Limit: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 1, Max: 1}}, `goes to "Ship", but the mission has used its only round, so the run blocks instead until you grant one more`},
 	} {
 		if got := describeGateRoute(tt.route); got != tt.want {
 			t.Errorf("got %q want %q", got, tt.want)
@@ -345,6 +347,20 @@ func TestRunWaitKeepsOneConnectionAcrossPolls(t *testing.T) {
 	}
 	if polls.Load() != 5 || conns.Load() != 1 {
 		t.Fatalf("%d polls opened %d connections", polls.Load(), conns.Load())
+	}
+}
+
+// archon-o7p.8.1: a run stopped at a spent Limit card offers the grant.
+func TestRunWaitOffersAGrantAtASpentLimit(t *testing.T) {
+	ask := coordinator.WaitAsk{Kind: formations.NeedsYouKindBlocked, Seq: 9, New: true, Title: "Review", Reason: "Review used 3 of 3 rounds", Code: formations.RunBlockLimitReached, ResumeAllowed: true}
+	out := renderWait("http://127.0.0.1:1", &waitOutput{RunWait: coordinator.RunWait{RunID: "run_x", Mission: "Proof", Since: 3, Seq: 9, Status: "blocked", Asks: []coordinator.WaitAsk{ask}}, Next: "archon next"}, waitExitNeedsYou)
+	for _, want := range []string{
+		`The run is blocked at "Review" since #9: Review used 3 of 3 rounds (limit_reached).`,
+		"Give it one more round if the work deserves it, or stop it:\n  archon --server http://127.0.0.1:1 run resume run_x --grant --reason 'why one more'\n  archon --server http://127.0.0.1:1 run abort run_x --reason 'why'\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("out lacks %q:\n%s", want, out)
+		}
 	}
 }
 

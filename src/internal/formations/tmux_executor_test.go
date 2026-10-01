@@ -632,7 +632,6 @@ func TestTmuxExecutorParsesNamedOutputPayloadBlockForPortRouting(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 1},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -723,7 +722,6 @@ func testTmuxOutputRefRouting(t *testing.T, location string) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 1},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -813,7 +811,6 @@ func TestTmuxExecutorBlocksInvalidOutputRefArtifacts(t *testing.T) {
 				Actor:             "agent:test",
 				ExpectedBoardETag: board.ETag,
 				ExpectedBoardRev:  board.Rev,
-				Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 1},
 			})
 			if err != nil {
 				t.Fatalf("run mission: %v", err)
@@ -861,8 +858,7 @@ func TestTmuxOrchestratedFormationGivesLeaderToolPacketWithoutPreDispatchingWork
 	executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
 	engine := NewRunEngine(store, personas, executor)
 	status, err := engine.RunFormation("session-search", "fmn_orch", FormationRunRequest{
-		Actor:  "agent:test",
-		Limits: RunLimits{MaxDispatch: 6, MaxAttempts: 1},
+		Actor: "agent:test",
 	})
 	if err != nil {
 		t.Fatalf("run orchestrated formation: %v", err)
@@ -968,8 +964,7 @@ func TestTmuxOrchestratedFormationRejectsInvalidSlotShapeBeforeDispatch(t *testi
 			executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
 			engine := NewRunEngine(store, personas, executor)
 			status, err := engine.RunFormation("session-search", "fmn_orch", FormationRunRequest{
-				Actor:  "agent:test",
-				Limits: RunLimits{MaxDispatch: 6, MaxAttempts: 1},
+				Actor: "agent:test",
 			})
 			if err != nil {
 				t.Fatalf("run orchestrated formation: %v", err)
@@ -1194,8 +1189,7 @@ func runTmuxFormationForTestWithConfig(t *testing.T, client *fakeTmuxHarnessClie
 	executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
 	engine := NewRunEngine(store, personas, executor)
 	status, err := engine.RunFormation("session-search", "fmn_research", FormationRunRequest{
-		Actor:  "agent:test",
-		Limits: RunLimits{MaxDispatch: 5, MaxAttempts: 1},
+		Actor: "agent:test",
 	})
 	if err != nil {
 		t.Fatalf("run tmux formation: %v", err)

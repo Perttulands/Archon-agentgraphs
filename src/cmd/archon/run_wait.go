@@ -372,9 +372,12 @@ func writeWaitAsk(b *strings.Builder, server, runID string, ask coordinator.Wait
 		}
 		endSentence(b)
 		b.WriteString("\n")
-		if ask.ResumeAllowed {
+		switch {
+		case ask.ResumeAllowed && ask.Code == formations.RunBlockLimitReached:
+			fmt.Fprintf(b, "Give it one more round if the work deserves it, or stop it:\n  archon --server %s run resume %s --grant --reason 'why one more'\n  archon --server %s run abort %s --reason 'why'\n", server, runID, server, runID)
+		case ask.ResumeAllowed:
 			fmt.Fprintf(b, "Resume it once the cause is resolved:\n  archon --server %s run resume %s --reason 'what you resolved'\n", server, runID)
-		} else {
+		default:
 			fmt.Fprintf(b, "It cannot resume. Stop it and start a new run:\n  archon --server %s run abort %s --reason 'why'\n", server, runID)
 		}
 	}
@@ -387,7 +390,11 @@ func describeGateRoute(route formations.GateRoute) string {
 		if target.Kind == "end" {
 			continue
 		}
-		steps = append(steps, strconv.Quote(firstWaitNonEmpty(target.Title, target.NodeID)))
+		step := strconv.Quote(firstWaitNonEmpty(target.Title, target.NodeID))
+		if rounds := target.Rounds; rounds != nil && rounds.Used < rounds.Max {
+			step += fmt.Sprintf(" (round %d of %d)", rounds.Used+1, rounds.Max)
+		}
+		steps = append(steps, step)
 	}
 	if len(steps) > 0 {
 		parts = append(parts, "goes to "+strings.Join(steps, ", "))
@@ -410,16 +417,24 @@ func describeGateRoute(route formations.GateRoute) string {
 	if where == "" || limit == nil {
 		return where
 	}
-	if limit.Kind == formations.RunLimitAttempts {
-		title := limit.NodeID
+	who := "the mission"
+	if route.MissionRounds == nil || limit.LimitID != route.MissionRounds.LimitID {
+		who = strconv.Quote(limit.NodeID)
 		for _, target := range route.Targets {
 			if target.NodeID == limit.NodeID && target.Title != "" {
-				title = target.Title
+				who = strconv.Quote(target.Title)
 			}
 		}
-		return fmt.Sprintf("%s, but %q has used all %d of its attempts, so the run blocks instead", where, title, limit.Max)
 	}
-	return fmt.Sprintf("%s, but the run has used all %d of its dispatches, so it blocks instead", where, limit.Max)
+	return fmt.Sprintf("%s, but %s has used %s, so the run blocks instead until you grant one more", where, who, spentAllowance(*limit))
+}
+
+// spentAllowance words a spent limit: "its only round", "all 3 of its rounds".
+func spentAllowance(limit formations.RunLimitReached) string {
+	if limit.Max == 1 {
+		return "its only " + strings.TrimSuffix(limit.Kind, "s")
+	}
+	return fmt.Sprintf("all %d of its %s", limit.Max, limit.Kind)
 }
 
 func firstWaitNonEmpty(values ...string) string {

@@ -225,7 +225,6 @@ func TestNeedsYouRunMissionAutoNotifiesHumanGate(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)

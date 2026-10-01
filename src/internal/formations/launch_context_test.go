@@ -17,7 +17,7 @@ func TestLaunchContextSurvivesAdmissionAndAVerdictIntoEverySeatPrompt(t *testing
 		t.Fatal(err)
 	}
 	first := &fakeRunExecutor{}
-	status, err := NewRunEngine(store, personas, first).RunMission("session-search", RunStartRequest{MissionID: "mis_showcase", ContextPaths: paths, Limits: RunLimits{MaxDispatch: 5, MaxAttempts: 2}})
+	status, err := NewRunEngine(store, personas, first).RunMission("session-search", RunStartRequest{MissionID: "mis_showcase", ContextPaths: paths})
 	if err != nil {
 		t.Fatal(err)
 	}

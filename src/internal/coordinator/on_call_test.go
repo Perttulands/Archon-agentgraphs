@@ -157,7 +157,7 @@ humanChannel = "session"`, 1)
 
 func startProof(t *testing.T, c *Coordinator) string {
 	t.Helper()
-	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"run the proof","mission":"proof","inputCardId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":10,"maxAttempts":3,"wallClockSeconds":600}}`)
+	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"run the proof","mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 	if w.Code != 202 {
 		t.Fatalf("start %d %s", w.Code, w.Body.String())
 	}

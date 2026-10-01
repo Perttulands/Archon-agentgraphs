@@ -116,7 +116,6 @@ func startBranchingRun(t *testing.T, fixture string, executor FormationExecutor)
 	engine := NewRunEngine(store, personas, executor)
 	status, err := engine.RunMission("session-search", RunStartRequest{
 		MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev,
-		Limits: RunLimits{MaxDispatch: 10, MaxAttempts: 3},
 	})
 	if err != nil {
 		t.Fatal(err)

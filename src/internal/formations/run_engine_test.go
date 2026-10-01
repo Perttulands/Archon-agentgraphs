@@ -26,7 +26,6 @@ func TestS4MissionRunCascadesReachableChain(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 10, WallClockSeconds: 60},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -107,7 +106,6 @@ func TestS4JoinWaitsUntilAllInputsReady(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 10, WallClockSeconds: 60},
 	}); err != nil {
 		t.Fatalf("run mission: %v", err)
 	}
@@ -155,7 +153,6 @@ func TestS4NamedOutputPortsRouteDistinctPayloads(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 10, WallClockSeconds: 60},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -214,7 +211,6 @@ func TestS4MissingNamedOutputPayloadBlocksInsteadOfBroadcasting(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 10, WallClockSeconds: 60},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -247,7 +243,6 @@ func TestS4SingleOutputWithoutNamedPayloadBlocksInsteadOfBroadcastingText(t *tes
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 10, WallClockSeconds: 60},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)

@@ -89,7 +89,6 @@ func startKeepingRun(t *testing.T, board string, executor *keepingExecutor) (*Ru
 	engine := NewRunEngine(store, personas, executor)
 	status, err := engine.RunMission("session-search", RunStartRequest{
 		MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: document.ETag, ExpectedBoardRev: document.Rev,
-		Limits: RunLimits{MaxDispatch: 20, MaxAttempts: 5},
 	})
 	if err != nil {
 		t.Fatal(err)
