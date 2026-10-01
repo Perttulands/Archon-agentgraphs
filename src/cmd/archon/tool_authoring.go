@@ -30,8 +30,7 @@ type archonToolInspectResponse struct {
 }
 
 func runToolCreate(store archonToolStore, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("tool create", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("tool create", stderr)
 	profileID := fs.String("profile-id", "", "exact host Tool profile id")
 	profileVersion := fs.String("profile-version", "", "exact host Tool profile version")
 	title := fs.String("title", "", "Tool title")
@@ -46,7 +45,7 @@ func runToolCreate(store archonToolStore, args []string, stdout, stderr io.Write
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon tool create <mission> --profile-id <id> --profile-version <version> --title <title> --params-json <object> [--x n --y n|--predecessor-node-id <id>|--successor-node-id <id>] [--json]")
+		fmt.Fprintln(stderr, commandUsage("tool create"))
 		return 2
 	}
 
@@ -82,8 +81,7 @@ func runToolCreate(store archonToolStore, args []string, stdout, stderr io.Write
 }
 
 func runToolUpdate(store archonToolStore, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("tool update", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("tool update", stderr)
 	title := fs.String("title", "", "replacement Tool title")
 	paramsJSON := fs.String("params-json", "", "complete replacement Tool parameter JSON object")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
@@ -92,7 +90,7 @@ func runToolUpdate(store archonToolStore, args []string, stdout, stderr io.Write
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon tool update <mission> <tool> [--title <title>] [--params-json <object>] [--json]")
+		fmt.Fprintln(stderr, commandUsage("tool update"))
 		return 2
 	}
 
@@ -129,15 +127,14 @@ func runToolUpdate(store archonToolStore, args []string, stdout, stderr io.Write
 }
 
 func runToolDelete(store archonToolStore, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("tool delete", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("tool delete", stderr)
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon tool delete <mission> <tool> [--json]")
+		fmt.Fprintln(stderr, commandUsage("tool delete"))
 		return 2
 	}
 	snapshot, err := readArchonToolWriteSnapshot(store, fs.Arg(0))
@@ -170,14 +167,13 @@ func writeToolResult(stdout io.Writer, jsonOut bool, result any, board *formatio
 }
 
 func runToolInspect(store archonToolStore, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("tool inspect", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("tool inspect", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon tool inspect <mission> <tool> [--json]")
+		fmt.Fprintln(stderr, commandUsage("tool inspect"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))

@@ -15,13 +15,6 @@ import (
 // Mission inputs (archon-o7p.3): the named values a mission's runs supply,
 // declared on its Input card and given at run start with --input.
 
-const missionInputUsage = "usage: archon mission input <mission> [--json]\n" +
-	"       archon mission input <mission> <name> [--kind text|file|folder] [--required | --optional] [--description <text>] [--json]\n" +
-	"       archon mission input <mission> <name> --delete [--json]\n" +
-	"Without a name, lists the inputs a run supplies (a mission that declares none takes one required text input, brief).\n" +
-	"With a name, declares that input or changes it: a new input is optional text unless the flags say otherwise, and only the flags you give change an existing one.\n" +
-	"Step briefs reference an input as {name}; runs supply it with: archon mission run <mission> --input name=value."
-
 // missionInputChange is what one mission input command asks for.
 type missionInputChange struct {
 	name        string
@@ -122,8 +115,7 @@ func missionInputLine(input formations.MissionInput) string {
 }
 
 func runMissionInput(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mission input", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("mission input", stderr)
 	read := missionInputFlags(fs)
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
@@ -135,7 +127,7 @@ func runMissionInput(store *formations.Store, args []string, stdout, stderr io.W
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 		}
-		fmt.Fprintln(stderr, missionInputUsage)
+		fmt.Fprintln(stderr, commandUsage("mission input"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -183,7 +175,7 @@ func remoteMissionInput(c *remoteClient, args []string, stdout, stderr io.Writer
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 		}
-		fmt.Fprintln(stderr, missionInputUsage)
+		fmt.Fprintln(stderr, commandUsage("mission input"))
 		return 2
 	}
 	if fs.NArg() == 1 {

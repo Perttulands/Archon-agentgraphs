@@ -60,7 +60,9 @@ Keep runtime state outside any checkout.
   directory no daemon serves; runtime commands never run offline beside a
   daemon. There is no default: a command with neither flag says so and stops.
 - A `--server` failure is final; nothing falls back to a local runtime.
-- Read leaf help with `-h`, adding `--server` for the daemon's form.
+- `archon -h` lists the nouns, `archon <noun> -h` a noun's commands and
+  `archon <noun> <command> -h` a command's usage and flags; add `--server` for
+  the daemon's form.
 
 ## Author a mission
 

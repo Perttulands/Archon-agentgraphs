@@ -143,17 +143,21 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") && config.Server != "" {
 		return remoteVersion(config.Server, stdout, stderr)
 	}
-	if len(args) >= 1 && args[0] == "mission" && (len(args) == 1 || isHelpArg(args[1])) {
-		fmt.Fprint(stderr, missionHelp)
-		return 2
-	}
-	if len(args) < 2 {
-		fmt.Fprintln(stderr, "usage: archon <mission|formation|gate|end|tool|agent|run|peer> <command>")
-		fmt.Fprintln(stderr, "Run \"archon mission\" to list the mission commands.")
+	// Help reads the same with or without a workspace or server.
+	if len(args) == 0 || len(args) == 1 && isHelpArg(args[0]) {
+		writeArchonHelp(stderr)
 		return 2
 	}
 	if !archonNouns[args[0]] {
+		if len(args) < 2 {
+			writeArchonHelp(stderr)
+			return 2
+		}
 		fmt.Fprintf(stderr, "unknown archon noun %q\n", args[0])
+		return 2
+	}
+	if help, _ := helpForNoun(args[0]); len(args) == 1 || isHelpArg(args[1]) {
+		writeNounHelp(stderr, help)
 		return 2
 	}
 	if config.Server != "" {
@@ -184,8 +188,7 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 		case "retire":
 			return runAgentRetire(store, args[2:], stdout, stderr)
 		default:
-			fmt.Fprintf(stderr, "unknown agent command %q\n", args[1])
-			return 2
+			return offlineUnavailable(stderr, "agent", args[1])
 		}
 	case "formation":
 		store := formations.NewStore(config.Workspace)
@@ -219,8 +222,7 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 		case "run":
 			return runFormationRun(formations.NewStore(config.Workspace), args[2:], stdout, stderr)
 		default:
-			fmt.Fprintf(stderr, "unknown formation command %q\n", args[1])
-			return 2
+			return offlineUnavailable(stderr, "formation", args[1])
 		}
 	case "gate":
 		store := formations.NewStore(config.Workspace)
@@ -236,8 +238,7 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 		case "reject":
 			return runGateVerdict(formations.NewStore(config.Workspace), args[2:], stdout, stderr, "fail")
 		default:
-			fmt.Fprintf(stderr, "unknown gate command %q\n", args[1])
-			return 2
+			return offlineUnavailable(stderr, "gate", args[1])
 		}
 	case "end":
 		return runEndCommand(formations.NewStore(config.Workspace), args[1], args[2:], stdout, stderr)
@@ -269,9 +270,7 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 		case "run":
 			return runMissionRun(formations.NewStore(config.Workspace), args[2:], stdout, stderr)
 		default:
-			fmt.Fprintf(stderr, "unknown mission command %q\n\n", args[1])
-			fmt.Fprint(stderr, missionHelp)
-			return 2
+			return offlineUnavailable(stderr, "mission", args[1])
 		}
 	case "tool":
 		store := formations.NewStore(config.Workspace)
@@ -285,8 +284,7 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 		case "inspect":
 			return runToolInspect(store, args[2:], stdout, stderr)
 		default:
-			fmt.Fprintf(stderr, "unknown tool command %q\n", args[1])
-			return 2
+			return offlineUnavailable(stderr, "tool", args[1])
 		}
 	case "run":
 		store := formations.NewStore(config.Workspace)
@@ -308,8 +306,7 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 		case "ask":
 			return runAsk(store, args[2:], stdout, stderr)
 		default:
-			fmt.Fprintf(stderr, "unknown run command %q\n", args[1])
-			return 2
+			return offlineUnavailable(stderr, "run", args[1])
 		}
 	default:
 		fmt.Fprintf(stderr, "unknown archon noun %q\n", args[0])
@@ -377,8 +374,7 @@ func parseGlobalArgs(args []string, stderr io.Writer) (archonConfig, []string, b
 }
 
 func runAgentList(store *formations.PersonaStore, args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
-	fs := flag.NewFlagSet("agent list", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("agent list", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	capable := fs.String("capable", "", "filter by bare capability")
 	assignable := fs.Bool("assignable", false, "show assignable agents only")
@@ -416,14 +412,13 @@ func writeAgentList(stdout io.Writer, roster formations.AgentRoster, jsonOut boo
 }
 
 func runAgentInspect(store *formations.PersonaStore, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("agent inspect", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("agent inspect", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon agent inspect <id> [--json]")
+		fmt.Fprintln(stderr, commandUsage("agent inspect"))
 		return 2
 	}
 	card, err := store.ReadPersona(fs.Arg(0))
@@ -446,8 +441,7 @@ func writeAgentInspect(stdout io.Writer, card *formations.PersonaCard, jsonOut b
 }
 
 func runAgentNew(store *formations.PersonaStore, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("agent new", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("agent new", stderr)
 	f := newAgentNewFlags(fs, stderr)
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
@@ -482,8 +476,7 @@ func runAgentNew(store *formations.PersonaStore, args []string, stdout, stderr i
 }
 
 func runAgentEdit(store *formations.PersonaStore, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("agent edit", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("agent edit", stderr)
 	f := newAgentEditFlags(fs, stderr)
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
@@ -550,14 +543,13 @@ func runAgentEdit(store *formations.PersonaStore, args []string, stdout, stderr 
 }
 
 func runAgentSpawn(store *formations.PersonaStore, args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
-	fs := flag.NewFlagSet("agent spawn", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("agent spawn", stderr)
 	harness := fs.String("harness", "", "harness variant")
 	if err := fs.Parse(reorderFlags(args, nil)); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon agent spawn <id> [--harness <h>]")
+		fmt.Fprintln(stderr, commandUsage("agent spawn"))
 		return 2
 	}
 	card, err := store.ReadPersona(fs.Arg(0))
@@ -594,14 +586,13 @@ func runAgentSpawn(store *formations.PersonaStore, args []string, stdout, stderr
 }
 
 func runAgentAttach(store *formations.PersonaStore, args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
-	fs := flag.NewFlagSet("agent attach", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("agent attach", stderr)
 	harness := fs.String("harness", "", "harness variant")
 	if err := fs.Parse(reorderFlags(args, nil)); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon agent attach <id> [--harness <h>]")
+		fmt.Fprintln(stderr, commandUsage("agent attach"))
 		return 2
 	}
 	card, err := store.ReadPersona(fs.Arg(0))
@@ -623,14 +614,13 @@ func runAgentAttach(store *formations.PersonaStore, args []string, stdout, stder
 }
 
 func runAgentRetire(store *formations.PersonaStore, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("agent retire", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("agent retire", stderr)
 	force := fs.Bool("force", false, "retire even if future reference scans warn")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"force": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon agent retire <id> [--force]")
+		fmt.Fprintln(stderr, commandUsage("agent retire"))
 		return 2
 	}
 	if !*force {
@@ -650,8 +640,7 @@ func runAgentRetire(store *formations.PersonaStore, args []string, stdout, stder
 }
 
 func runFormationCreate(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("formation create", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("formation create", stderr)
 	title := fs.String("title", "", "formation title")
 	x := fs.Int("x", 120, "layout x")
 	y := fs.Int("y", 120, "layout y")
@@ -661,7 +650,7 @@ func runFormationCreate(store *formations.Store, args []string, stdout, stderr i
 		return 2
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		fmt.Fprintln(stderr, "usage: archon formation create <mission> [solo|peer|orchestrated] [--title <title>] [--json]")
+		fmt.Fprintln(stderr, commandUsage("formation create"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -719,8 +708,7 @@ func resolveCreateCoordinates(store *formations.Store, slug string, fs *flag.Fla
 }
 
 func runFormationAssign(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("formation assign", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("formation assign", stderr)
 	f := newSlotAssignFlags(fs, stderr)
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
@@ -746,8 +734,7 @@ func runFormationAssign(store *formations.Store, args []string, stdout, stderr i
 }
 
 func runFormationUnassign(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("formation unassign", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("formation unassign", stderr)
 	slotID := fs.String("slot", "", "slot id")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
@@ -755,7 +742,7 @@ func runFormationUnassign(store *formations.Store, args []string, stdout, stderr
 		return 2
 	}
 	if fs.NArg() != 2 || *slotID == "" {
-		fmt.Fprintln(stderr, "usage: archon formation unassign <mission> <formation> --slot <slot> [--json]")
+		fmt.Fprintln(stderr, commandUsage("formation unassign"))
 		return 2
 	}
 	slug, board, formationID, err := resolveFormationCommandTarget(store, fs.Arg(0), fs.Arg(1))
@@ -779,15 +766,14 @@ func runFormationUnassign(store *formations.Store, args []string, stdout, stderr
 }
 
 func runFormationRename(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("formation rename", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("formation rename", stderr)
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 3 {
-		fmt.Fprintln(stderr, "usage: archon formation rename <mission> <formation> <title> [--json]")
+		fmt.Fprintln(stderr, commandUsage("formation rename"))
 		fmt.Fprintln(stderr, "An empty title clears it. The ID, ports, slots, brief, edges, layout and notes stay unchanged.")
 		return 2
 	}
@@ -813,8 +799,7 @@ func runFormationRename(store *formations.Store, args []string, stdout, stderr i
 }
 
 func runFormationSetType(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("formation set-type", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("formation set-type", stderr)
 	keepSlot := fs.String("keep-slot", "", "slot id or label to keep when changing to solo")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
@@ -822,7 +807,7 @@ func runFormationSetType(store *formations.Store, args []string, stdout, stderr 
 		return 2
 	}
 	if fs.NArg() != 3 {
-		fmt.Fprintln(stderr, "usage: archon formation set-type <mission> <formation> <solo|peer|orchestrated> [--keep-slot <slot>] [--json]")
+		fmt.Fprintln(stderr, commandUsage("formation set-type"))
 		fmt.Fprintln(stderr, "solo keeps one slot, peer has at least two, orchestrated has one controller and a worker; added slots are empty. Changing to solo with several staffed slots needs --keep-slot.")
 		return 2
 	}
@@ -863,8 +848,7 @@ func runFormationSetType(store *formations.Store, args []string, stdout, stderr 
 }
 
 func runFormationSetBrief(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("formation set-brief", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("formation set-brief", stderr)
 	goal := fs.String("goal", "", "brief goal")
 	beadID := fs.String("bead", "", "project Beads id")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
@@ -877,7 +861,7 @@ func runFormationSetBrief(store *formations.Store, args []string, stdout, stderr
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon formation set-brief <mission> <formation> --goal <goal> [--bead <beads-id>] [--file <path>] [--link <url>] [--json]")
+		fmt.Fprintln(stderr, commandUsage("formation set-brief"))
 		return 2
 	}
 	slug, board, formationID, err := resolveFormationCommandTarget(store, fs.Arg(0), fs.Arg(1))
@@ -909,8 +893,7 @@ func runFormationAddPort(store *formations.Store, args []string, stdout, stderr 
 	if direction == formations.FormationPortOutput {
 		name = "formation add-output"
 	}
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags(name, stderr)
 	label := fs.String("label", "", "port label")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
@@ -918,7 +901,7 @@ func runFormationAddPort(store *formations.Store, args []string, stdout, stderr 
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintf(stderr, "usage: archon %s <mission> <formation> --label <label> [--json]\n", name)
+		fmt.Fprintln(stderr, commandUsage(name))
 		return 2
 	}
 	slug, board, formationID, err := resolveFormationCommandTarget(store, fs.Arg(0), fs.Arg(1))
@@ -947,8 +930,7 @@ func runFormationWire(store *formations.Store, args []string, stdout, stderr io.
 	if remove {
 		name = "formation unwire"
 	}
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags(name, stderr)
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	join := new(bool)
 	if !remove {
@@ -959,7 +941,7 @@ func runFormationWire(store *formations.Store, args []string, stdout, stderr io.
 		return 2
 	}
 	if fs.NArg() != 3 {
-		fmt.Fprintf(stderr, "usage: archon %s <mission> <from-node:port> <to-node:port> [--json]\n", name)
+		fmt.Fprintln(stderr, commandUsage(name))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -998,8 +980,7 @@ func runFormationWire(store *formations.Store, args []string, stdout, stderr io.
 }
 
 func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("gate create", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("gate create", stderr)
 	title := fs.String("title", "Review gate", "gate title")
 	kinds := fs.String("kinds", "", "comma-separated gate kinds: code, formation, human (default human)")
 	criterion := fs.String("criterion", "", "gate criterion")
@@ -1016,7 +997,7 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon gate create <mission> [--kinds code,formation,human] [--title text] [--criterion text] [--check id --check-version version --check-value value] [--file path]... [--x n] [--y n] [--json]")
+		fmt.Fprintln(stderr, commandUsage("gate create"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -1051,8 +1032,7 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 }
 
 func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("gate update", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("gate update", stderr)
 	title := fs.String("title", "", "gate title")
 	kinds := fs.String("kinds", "", "comma-separated gate kinds")
 	criterion := fs.String("criterion", "", "gate criterion")
@@ -1071,7 +1051,7 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	given := map[string]bool{}
 	fs.Visit(func(current *flag.Flag) { given[current.Name] = true })
 	if fs.NArg() != 2 || *clearCheck && (given["check"] || given["check-version"] || given["check-value"]) {
-		fmt.Fprintln(stderr, "usage: archon gate update <mission> <gate> [--title text] [--kinds code,formation,human] [--criterion text] [--check id] [--check-version version] [--check-value value | --clear-check] [--file path]... [--json]")
+		fmt.Fprintln(stderr, commandUsage("gate update"))
 		fmt.Fprintln(stderr, "Only the flags you give change the gate; an empty value clears that field. Dropping formation detaches the judge chain and dropping code clears the check.")
 		return 2
 	}
@@ -1130,8 +1110,7 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 }
 
 func runGateJudge(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("gate judge", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("gate judge", stderr)
 	chain := fs.String("chain", "", "comma-separated formation chain")
 	detach := fs.Bool("detach", false, "detach judge")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
@@ -1140,7 +1119,7 @@ func runGateJudge(store *formations.Store, args []string, stdout, stderr io.Writ
 		return 2
 	}
 	if fs.NArg() != 2 || (!*detach && *chain == "") {
-		fmt.Fprintln(stderr, "usage: archon gate judge <mission> <gate> --chain f1,f2 | --detach [--json]")
+		fmt.Fprintln(stderr, commandUsage("gate judge"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -1185,8 +1164,11 @@ func runGateJudge(store *formations.Store, args []string, stdout, stderr io.Writ
 const relayedByUsage = "slot ID of the seat that typed the operator's confirmed decision; the decider stays human:operator"
 
 func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Writer, verdict string) int {
-	fs := flag.NewFlagSet("gate verdict", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	name := "gate approve"
+	if verdict == "fail" {
+		name = "gate reject"
+	}
+	fs := commandFlags(name, stderr)
 	reason := fs.String("response", "", "the response: approve delivers it downstream with the gate input, reject sends it back as feedback")
 	actor := fs.String("actor", "human:operator", "deciding actor")
 	relayedBy := fs.String("relayed-by", "", relayedByUsage)
@@ -1195,7 +1177,7 @@ func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Wr
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon gate approve|reject <runId> <gateId> [--reason|--response text] [--relayed-by slot-id] [--json]")
+		fmt.Fprintln(stderr, commandUsage("gate approve"))
 		return 2
 	}
 	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
@@ -1217,15 +1199,7 @@ func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Wr
 	return 0
 }
 
-const (
-	humanChannelUsage  = "how human gates reach the operator: notify (the default) or session"
-	missionCreateUsage = "usage: archon mission create <mission> [--title <title>] [--goal <goal>] [--bead <beads-id>] [--file <path>]... [--human-channel notify|session] [--x n] [--y n] [--json]\n" +
-		"Adds the Input card to a mission that has none. To create a mission, run: archon mission new <slug>"
-	missionUpdateUsage = "usage: archon mission update <mission> [<input>] [--title text] [--goal text] [--file path]... [--input-hint text] [--human-channel notify|session] [--json]\n" +
-		"Changes the mission's Input card; <input> may be left out when there is one. Only the flags you give change it; an empty value clears that field."
-	missionWireUsage = "usage: archon mission wire <mission> [<input>] <to-node:port> [--json]\n" +
-		"Wires the mission's Input card to a step; <input> may be left out when there is one."
-)
+const humanChannelUsage = "how human gates reach the operator: notify (the default) or session"
 
 // missionUpdateGiven reports whether a mission update names any field to change.
 func missionUpdateGiven(given map[string]bool) bool {
@@ -1238,8 +1212,7 @@ func missionUpdateGiven(given map[string]bool) bool {
 }
 
 func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mission create", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("mission create", stderr)
 	title := fs.String("title", "", "mission title")
 	goal := fs.String("goal", "", "mission goal")
 	var files stringList
@@ -1253,7 +1226,7 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, missionCreateUsage)
+		fmt.Fprintln(stderr, commandUsage("mission create"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -1288,8 +1261,7 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 }
 
 func runMissionList(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mission list", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("mission list", stderr)
 	fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
@@ -1297,13 +1269,12 @@ func runMissionList(store *formations.Store, args []string, stdout, stderr io.Wr
 	if fs.NArg() == 0 {
 		return runBoardList(store, args, stdout, stderr)
 	}
-	fmt.Fprintln(stderr, "usage: archon mission list [--json]")
+	fmt.Fprintln(stderr, commandUsage("mission list"))
 	return 2
 }
 
 func runMissionInspect(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mission inspect", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("mission inspect", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
@@ -1312,7 +1283,7 @@ func runMissionInspect(store *formations.Store, args []string, stdout, stderr io
 		return runBoardInspect(store, args, stdout, stderr)
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, missionInspectUsage)
+		fmt.Fprintln(stderr, commandUsage("mission inspect"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -1358,15 +1329,14 @@ func writeMissionInspect(stdout, stderr io.Writer, board *formations.BoardDocume
 }
 
 func runMissionWire(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mission wire", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("mission wire", stderr)
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 2 && fs.NArg() != 3 {
-		fmt.Fprintln(stderr, missionWireUsage)
+		fmt.Fprintln(stderr, commandUsage("mission wire"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -1399,8 +1369,7 @@ func runMissionWire(store *formations.Store, args []string, stdout, stderr io.Wr
 }
 
 func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mission update", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("mission update", stderr)
 	title := fs.String("title", "", "mission title")
 	goal := fs.String("goal", "", "mission goal")
 	var files stringList
@@ -1415,7 +1384,7 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	given := map[string]bool{}
 	fs.Visit(func(current *flag.Flag) { given[current.Name] = true })
 	if (fs.NArg() != 1 && fs.NArg() != 2) || !missionUpdateGiven(given) {
-		fmt.Fprintln(stderr, missionUpdateUsage)
+		fmt.Fprintln(stderr, commandUsage("mission update"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -1502,14 +1471,8 @@ func (f *runStartFlags) checkCwd() error {
 	return nil
 }
 
-const (
-	missionRunUsage   = "usage: archon mission run <mission> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--max-dispatch n] [--max-attempts n] [--wall-clock-seconds n] [--json]\nList the inputs a run supplies with: archon mission input <mission>"
-	formationRunUsage = "usage: archon formation run <mission> <formation> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--json]\nA single step takes the mission's inputs, as a mission run does."
-)
-
 func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mission run", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("mission run", stderr)
 	actor := fs.String("actor", "agent:archon", "run actor")
 	run := registerRunStartFlags(fs)
 	jsonOut := fs.Bool("json", false, "write JSON")
@@ -1517,7 +1480,7 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, missionRunUsage)
+		fmt.Fprintln(stderr, commandUsage("mission run"))
 		return 2
 	}
 	inputs, err := run.inputs.collect()
@@ -1567,8 +1530,7 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 }
 
 func runFormationRun(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("formation run", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("formation run", stderr)
 	actor := fs.String("actor", "agent:archon", "run actor")
 	run := registerRunStartFlags(fs)
 	jsonOut := fs.Bool("json", false, "write JSON")
@@ -1576,7 +1538,7 @@ func runFormationRun(store *formations.Store, args []string, stdout, stderr io.W
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, formationRunUsage)
+		fmt.Fprintln(stderr, commandUsage("formation run"))
 		return 2
 	}
 	inputs, err := run.inputs.collect()
@@ -1617,15 +1579,14 @@ func runFormationRun(store *formations.Store, args []string, stdout, stderr io.W
 }
 
 func runList(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("run list", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("run list", stderr)
 	boardSelector := fs.String("mission", "", "list only this mission's runs")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 0 {
-		fmt.Fprintln(stderr, "usage: archon run list [--mission <mission>] [--json]")
+		fmt.Fprintln(stderr, commandUsage("run list"))
 		return 2
 	}
 	filter := formations.RunListFilter{}
@@ -1654,14 +1615,13 @@ func runList(store *formations.Store, args []string, stdout, stderr io.Writer) i
 }
 
 func runStatus(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("run status", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("run status", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon run status <runId> [--json]")
+		fmt.Fprintln(stderr, commandUsage("run status"))
 		return 2
 	}
 	status, err := store.ProjectRun(fs.Arg(0))
@@ -1676,8 +1636,7 @@ func runStatus(store *formations.Store, args []string, stdout, stderr io.Writer)
 }
 
 func runLogs(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("run logs", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("run logs", stderr)
 	nodeID := fs.String("node", "", "node id filter")
 	follow := fs.Bool("follow", false, "follow the ledger")
 	jsonOut := fs.Bool("json", false, "write JSON")
@@ -1685,7 +1644,7 @@ func runLogs(store *formations.Store, args []string, stdout, stderr io.Writer) i
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon run logs <runId> [--node <id>] [--follow] [--json]")
+		fmt.Fprintln(stderr, commandUsage("run logs"))
 		return 2
 	}
 	runID := fs.Arg(0)
@@ -1744,8 +1703,7 @@ func runLogs(store *formations.Store, args []string, stdout, stderr io.Writer) i
 }
 
 func runFollow(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("run follow", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("run follow", stderr)
 	nodeID := fs.String("node", "", "node id filter")
 	since := fs.Int("since", 0, "only emit events with seq greater than this value")
 	jsonOut := fs.Bool("json", false, "write NDJSON")
@@ -1753,7 +1711,7 @@ func runFollow(store *formations.Store, args []string, stdout, stderr io.Writer)
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon run follow <runId> [--since <seq>] [--node <id>] [--json]")
+		fmt.Fprintln(stderr, commandUsage("run follow"))
 		return 2
 	}
 	if *since < 0 {
@@ -1797,8 +1755,7 @@ func isBlockedResumable(status *formations.RunStatusProjection) bool {
 }
 
 func runResume(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("run resume", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("run resume", stderr)
 	actor := fs.String("actor", "agent:archon", "resume actor")
 	mode := fs.String("mode", "reattach", "resume mode")
 	reason := fs.String("reason", "", "resume reason")
@@ -1807,7 +1764,7 @@ func runResume(store *formations.Store, args []string, stdout, stderr io.Writer)
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon run resume <runId> [--reason text] [--json]")
+		fmt.Fprintln(stderr, commandUsage("run resume"))
 		return 2
 	}
 	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
@@ -1828,8 +1785,7 @@ func runResume(store *formations.Store, args []string, stdout, stderr io.Writer)
 }
 
 func runAbort(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("run abort", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("run abort", stderr)
 	reason := fs.String("reason", "operator abort", "abort reason")
 	requestedBy := fs.String("requested-by", "agent:archon", "requesting actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
@@ -1837,7 +1793,7 @@ func runAbort(store *formations.Store, args []string, stdout, stderr io.Writer) 
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon run abort <runId> [--reason <reason>] [--requested-by <actor>] [--json]")
+		fmt.Fprintln(stderr, commandUsage("run abort"))
 		return 2
 	}
 	runID := fs.Arg(0)
@@ -1864,14 +1820,13 @@ func runAbort(store *formations.Store, args []string, stdout, stderr io.Writer) 
 }
 
 func runAsk(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("run ask", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("run ask", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() < 1 {
-		fmt.Fprintln(stderr, "usage: archon run ask <runId> [question]")
+		fmt.Fprintln(stderr, commandUsage("run ask"))
 		return 2
 	}
 	runID := fs.Arg(0)
@@ -2106,8 +2061,7 @@ func identityFromBoard(board *formations.BoardDocument) archonBoardIdentity {
 }
 
 func runBoardNew(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mission new", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("mission new", stderr)
 	title := fs.String("title", "", "mission title")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
@@ -2115,7 +2069,7 @@ func runBoardNew(store *formations.Store, args []string, stdout, stderr io.Write
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon mission new <slug> [--title <title>] [--json]")
+		fmt.Fprintln(stderr, commandUsage("mission new"))
 		return 2
 	}
 	board, err := store.CreateBoard(formations.BoardCreateRequest{
@@ -2135,8 +2089,7 @@ func runBoardNew(store *formations.Store, args []string, stdout, stderr io.Write
 }
 
 func runBoardList(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mission list", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("mission list", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
@@ -2160,14 +2113,13 @@ func writeBoardList(stdout io.Writer, boards []formations.BoardSummary, jsonOut 
 }
 
 func runBoardInspect(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mission inspect", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("mission inspect", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon mission inspect <mission> [--json]")
+		fmt.Fprintln(stderr, commandUsage("mission inspect"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -2192,14 +2144,13 @@ func writeBoardInspect(stdout io.Writer, board *formations.BoardDocument, jsonOu
 }
 
 func runBoardNotes(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mission notes", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("mission notes", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon mission notes <mission> [--json]")
+		fmt.Fprintln(stderr, commandUsage("mission notes"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -2243,8 +2194,7 @@ func writeBoardNotesText(stdout io.Writer, slug string, notes *formations.BoardN
 }
 
 func runBoardNote(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mission note", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("mission note", stderr)
 	selector, patch, jsonOut, code := parseBoardNote(fs, args, stderr)
 	if code != 0 {
 		return code
@@ -2280,7 +2230,7 @@ func parseBoardNote(fs *flag.FlagSet, args []string, stderr io.Writer) (string, 
 	}
 	given := givenFlags(fs)
 	if fs.NArg() != 1 || boolCount(given["text"], *file != "", *clear) != 1 || *clear && *entry == "" {
-		fmt.Fprintln(stderr, "usage: archon mission note <mission> [--node <element-id>] (--text <text> | --file <path>) [--entry <id>] [--author <human|agent>:<name>] [--json]")
+		fmt.Fprintln(stderr, commandUsage("mission note"))
 		fmt.Fprintln(stderr, "       archon mission note <mission> [--node <element-id>] --clear --entry <id>")
 		fmt.Fprintln(stderr, "A note appends to the thread. --entry edits or, with --clear, deletes one of your own entries; others' entries cannot be changed.")
 		return "", formations.BoardNotePatch{}, *jsonOut, 2
@@ -2347,14 +2297,13 @@ func boolCount(values ...bool) int {
 }
 
 func runBoardValidate(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mission validate", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("mission validate", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon mission validate <mission> [--json]")
+		fmt.Fprintln(stderr, commandUsage("mission validate"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -2377,8 +2326,8 @@ func runBoardValidate(store *formations.Store, args []string, stdout, stderr io.
 		}
 	} else {
 		fmt.Fprintf(stdout, "%s	%d errors	%d warnings\n", board.Slug, len(report.Errors), len(report.Warnings))
-		writeFindingsText(stdout, "ERROR", report.Errors)
-		writeFindingsText(stdout, "WARN", report.Warnings)
+		writeFindingsText(stdout, "ERROR", report.Errors, board)
+		writeFindingsText(stdout, "WARN", report.Warnings, board)
 	}
 	if len(report.Errors) > 0 {
 		return 1
@@ -2387,14 +2336,13 @@ func runBoardValidate(store *formations.Store, args []string, stdout, stderr io.
 }
 
 func runBoardArrange(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mission arrange", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("mission arrange", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon mission arrange <mission> [--json]")
+		fmt.Fprintln(stderr, commandUsage("mission arrange"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -2420,14 +2368,13 @@ func runBoardArrange(store *formations.Store, args []string, stdout, stderr io.W
 }
 
 func runFormationList(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("formation list", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("formation list", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon formation list <mission> [--json]")
+		fmt.Fprintln(stderr, commandUsage("formation list"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -2469,14 +2416,13 @@ func formationSummary(formation formations.FormationNode) string {
 }
 
 func runFormationInspect(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("formation inspect", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("formation inspect", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon formation inspect <mission> <formation> [--json]")
+		fmt.Fprintln(stderr, commandUsage("formation inspect"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -2667,17 +2613,39 @@ func fail(stderr io.Writer, err error) int {
 	var admission *formations.RunAdmissionError
 	if errors.As(err, &admission) {
 		fmt.Fprintf(stderr, "run admission found %d problem(s)\n", len(admission.Findings))
-		writeFindingsText(stderr, "ERROR", admission.Findings)
+		writeFindingsText(stderr, "ERROR", admission.Findings, nil)
 		return 1
 	}
 	fmt.Fprintln(stderr, archonErrorMessage(err))
 	return 1
 }
 
-func writeFindingsText(w io.Writer, level string, findings []formations.BoardFinding) {
+// writeFindingsText prints one finding per line. Given the mission, it names
+// each node by title and ID (archon-n7u.33).
+func writeFindingsText(w io.Writer, level string, findings []formations.BoardFinding, board *formations.BoardDocument) {
 	for _, finding := range findings {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", level, finding.Code, finding.NodeID, finding.Message)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", level, finding.Code, findingWhere(board, finding.NodeID), finding.Message)
 	}
+}
+
+// findingWhere is the node a finding is about: its title and ID, a
+// connection's ends, or the mission itself.
+func findingWhere(board *formations.BoardDocument, nodeID string) string {
+	if nodeID == "" {
+		return "mission"
+	}
+	if board == nil {
+		return nodeID
+	}
+	if title := strings.TrimSpace(board.NodeTitle(nodeID)); title != "" {
+		return title + " (" + nodeID + ")"
+	}
+	for _, connection := range board.Connections {
+		if connection.ID == nodeID {
+			return "connection " + nodeID + " (" + connection.From + " -> " + connection.To + ")"
+		}
+	}
+	return nodeID
 }
 
 func failJSON(stderr io.Writer, err error, jsonOut bool, boundary, selector string) int {

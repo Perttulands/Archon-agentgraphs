@@ -488,6 +488,11 @@ func fileReferenceFindings(board *BoardDocument) []BoardFinding {
 	return findings
 }
 
+// NodeTitle is the title of the mission's node with that ID, or "".
+func (b *BoardDocument) NodeTitle(nodeID string) string {
+	return boardNodeTitle(b, nodeID)
+}
+
 // nodeName names a node for the operator by its title, or its ID when it has
 // none.
 func nodeName(board *BoardDocument, nodeID string) string {

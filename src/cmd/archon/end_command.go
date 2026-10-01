@@ -12,13 +12,7 @@ import (
 // purpose: wire a step's output or a gate's pass or fail route to its input
 // (<end-id>:in) with archon formation wire.
 
-const (
-	endCreateUsage = "usage: archon end create <mission> [--outcome done|rejected] [--title text] [--x n] [--y n] [--json]\n" +
-		"An End node ends a path on purpose. Wire a route into it with: archon formation wire <mission> <node:port> <end-id>:in"
-	endUpdateUsage = "usage: archon end update <mission> <end> [--outcome done|rejected] [--title text] [--json]"
-	endDeleteUsage = "usage: archon end delete <mission> <end> [--json]"
-	endOutcomeHelp = "how the path ends: done, or rejected, which fails the run with the gate's reason"
-)
+const endOutcomeHelp = "how the path ends: done, or rejected, which fails the run with the gate's reason"
 
 func runEndCommand(store *formations.Store, verb string, args []string, stdout, stderr io.Writer) int {
 	switch verb {
@@ -29,14 +23,12 @@ func runEndCommand(store *formations.Store, verb string, args []string, stdout, 
 	case "delete":
 		return runEndDelete(store, args, stdout, stderr)
 	default:
-		fmt.Fprintf(stderr, "unknown end command %q\n%s\n%s\n%s\n", verb, endCreateUsage, endUpdateUsage, endDeleteUsage)
-		return 2
+		return unknownCommand(stderr, "end", verb)
 	}
 }
 
 func runEndCreate(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("end create", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("end create", stderr)
 	outcome := fs.String("outcome", formations.EndOutcomeDone, endOutcomeHelp)
 	title := fs.String("title", "", "End node title (default Done or Rejected)")
 	x := fs.Int("x", 0, "layout x coordinate")
@@ -47,7 +39,7 @@ func runEndCreate(store *formations.Store, args []string, stdout, stderr io.Writ
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, endCreateUsage)
+		fmt.Fprintln(stderr, commandUsage("end create"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -76,8 +68,7 @@ func runEndCreate(store *formations.Store, args []string, stdout, stderr io.Writ
 }
 
 func endUpdateFlags(name string, stderr io.Writer) (*flag.FlagSet, *string, *string, *string, *bool) {
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags(name, stderr)
 	outcome := fs.String("outcome", "", endOutcomeHelp)
 	title := fs.String("title", "", "End node title")
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
@@ -91,7 +82,7 @@ func runEndUpdate(store *formations.Store, args []string, stdout, stderr io.Writ
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, endUpdateUsage)
+		fmt.Fprintln(stderr, commandUsage("end update"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -127,15 +118,14 @@ func runEndUpdate(store *formations.Store, args []string, stdout, stderr io.Writ
 }
 
 func runEndDelete(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("end delete", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("end delete", stderr)
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, endDeleteUsage)
+		fmt.Fprintln(stderr, commandUsage("end delete"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -191,7 +181,7 @@ func remoteEndCreate(c *remoteClient, args []string, stdout, stderr io.Writer) i
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, endCreateUsage)
+		fmt.Fprintln(stderr, commandUsage("end create"))
 		return 2
 	}
 	data, _, err := c.patchBoard(fs.Arg(0), *updatedBy, func(board *formations.BoardDocument) (string, map[string]any, error) {
@@ -214,7 +204,7 @@ func remoteEndUpdate(c *remoteClient, args []string, stdout, stderr io.Writer) i
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, endUpdateUsage)
+		fmt.Fprintln(stderr, commandUsage("end update"))
 		return 2
 	}
 	given := givenFlags(fs)
@@ -243,7 +233,7 @@ func remoteEndDelete(c *remoteClient, args []string, stdout, stderr io.Writer) i
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, endDeleteUsage)
+		fmt.Fprintln(stderr, commandUsage("end delete"))
 		return 2
 	}
 	data, _, err := c.patchBoard(fs.Arg(0), *updatedBy, func(board *formations.BoardDocument) (string, map[string]any, error) {

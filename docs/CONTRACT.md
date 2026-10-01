@@ -927,8 +927,12 @@ archon --workspace "$ARCHON_STATE" mission arrange delivery --json
 
 Author through the cockpit, or with Archon's mission, formation, gate, tool and
 agent nouns offline (`--workspace`) or through the daemon (`--server`).
-`archon mission` lists the mission commands; read command-specific help with
-`-h`, including `--server` when using the daemon. Preserve an operator's draft
+Every noun and command explains itself (archon-n7u.33): `archon -h` lists the
+nouns, `archon <noun>`, `archon <noun> -h` and `archon <noun> help` list a
+noun's commands, and `archon <noun> <command> -h` prints the command's usage,
+what it does and its flags, offline and with `--server`. A noun's unknown
+command is named and its commands listed; a command that needs the daemon says
+so offline, and one that works only offline says so with `--server`. Preserve an operator's draft
 and notes, staff its slots, write executable briefs, wire exact port IDs, then
 validate and arrange. The `archon` skill gives agents the authoring, run and
 recovery recipe for this contract. Its source is `skills/archon/` in this
@@ -1033,7 +1037,9 @@ one that breaks the rule gets the error `invalid_slot_id` on its formation from
 validation and admission, so every slot a run admits can relay its own gate
 decision (archon-1ds).
 `mission validate` lists every finding for the whole mission, admission checks
-included, as `ERROR`/`WARN` lines or `--json`, and exits 1 on any error.
+included, as `ERROR`/`WARN` lines naming each node by title and ID (`Draft
+(fmn_draft)`, or a connection with its ends) or `--json`, and exits 1 on any
+error.
 `mission run` and `formation run` print every admission finding when a start is
 rejected. The cockpit tags incomplete nodes as drafts and highlights the nodes
 a rejected start names.
