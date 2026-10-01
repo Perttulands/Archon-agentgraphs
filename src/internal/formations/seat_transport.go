@@ -35,6 +35,9 @@ type nativeSeat struct {
 	created time.Time
 	// wait is what the seat is waiting on now, for seat_state events.
 	wait seatWait
+	// sent marks a seat that has taken a brief from Archon: it is past its
+	// startup, so a trust dialog's words on its screen are never the dialog.
+	sent bool
 }
 
 func (s *nativeSeat) close() {
@@ -188,6 +191,15 @@ func seatTrustDialog(harness, text string) bool {
 	return false
 }
 
+// strayTrustDialog reports a trust dialog to answer after startup: the seat
+// has taken no brief yet and its cursor is in no input line, as on the dialog
+// itself. Words that only quote the dialog, such as an agent showing this
+// file while the operator drafts below, never count, so Archon never presses
+// a key into an input line (archon-4ve5).
+func strayTrustDialog(s *nativeSeat, screen string, inInput bool) bool {
+	return !s.sent && !inInput && seatTrustDialog(s.variant.ID, screen)
+}
+
 // answerTrustDialog trusts the seat's folder. This executor is for explicitly
 // trusted local workspaces, so a first-use trust dialog belongs to bootstrap.
 func (t realSeatTransport) answerTrustDialog(ctx context.Context, socket string, s *nativeSeat, harness string) error {
@@ -248,12 +260,12 @@ func (t realSeatTransport) WaitInputClear(ctx context.Context, socket string, s 
 	defer s.setWaiting("")
 	trustAnswered := false
 	for {
-		clear, screen, err := t.inputClear(ctx, socket, s)
+		clear, screen, inInput, err := t.inputClear(ctx, socket, s)
 		if err != nil || clear {
 			return err
 		}
 		// Codex 0.159 can draw its trust dialog after its ready prompt.
-		if !trustAnswered && seatTrustDialog(s.variant.ID, screen) {
+		if !trustAnswered && strayTrustDialog(s, screen, inInput) {
 			if err := t.answerTrustDialog(ctx, socket, s, s.variant.ID); err != nil {
 				return err
 			}
@@ -273,29 +285,31 @@ func (t realSeatTransport) WaitInputClear(ctx context.Context, socket string, s 
 
 // inputClear reads the cursor, the screen with its styles, and the cursor
 // again; a cursor that moved in between means the pane is changing. It returns
-// the screen without its styles.
-func (t realSeatTransport) inputClear(ctx context.Context, socket string, s *nativeSeat) (bool, string, error) {
+// the screen without its styles, and whether the cursor sits in an input line
+// (seatTypedText) or may: a changing pane counts as one.
+func (t realSeatTransport) inputClear(ctx context.Context, socket string, s *nativeSeat) (clear bool, plain string, inInput bool, err error) {
 	const cursor = "#{cursor_x} #{cursor_y} #{pane_dead}"
 	before, err := t.run(ctx, socket, nil, "display-message", "-p", "-t", s.paneID, cursor)
 	if err != nil {
-		return false, "", err
+		return false, "", false, err
 	}
 	screen, err := t.run(ctx, socket, nil, "capture-pane", "-p", "-e", "-t", s.paneID)
 	if err != nil {
-		return false, "", err
+		return false, "", false, err
 	}
 	after, err := t.run(ctx, socket, nil, "display-message", "-p", "-t", s.paneID, cursor)
 	if err != nil {
-		return false, "", err
+		return false, "", false, err
 	}
 	var x, y, dead int
 	if _, err := fmt.Sscanf(after, "%d %d %d", &x, &y, &dead); err != nil {
-		return false, "", fmt.Errorf("seat cursor unavailable: %q", strings.TrimSpace(after))
+		return false, "", false, fmt.Errorf("seat cursor unavailable: %q", strings.TrimSpace(after))
 	}
 	if dead == 1 {
-		return false, "", runExecutionError("dead_pane", "owned seat exited while waiting to paste", "adapter", ErrDispatchDeadPane)
+		return false, "", false, runExecutionError("dead_pane", "owned seat exited while waiting to paste", "adapter", ErrDispatchDeadPane)
 	}
-	return before == after && seatInputClear(s.variant.ID, screen, x, y), ansiSGR.ReplaceAllString(screen, ""), nil
+	_, inInput = seatTypedText(s.variant.ID, screen, x, y)
+	return before == after && seatInputClear(s.variant.ID, screen, x, y), ansiSGR.ReplaceAllString(screen, ""), inInput || before != after, nil
 }
 
 func (t realSeatTransport) Stage(ctx context.Context, socket string, s *nativeSeat, dispatch, pointer string) error {
@@ -313,19 +327,25 @@ func (t realSeatTransport) Stage(ctx context.Context, socket string, s *nativeSe
 	// and indent anywhere, even inside the brief path. A trust dialog Codex
 	// draws over the paste is answered first.
 	rendered := renderedText(pointer)
-	for answered := false; ; answered = true {
+	for looked := false; ; looked = true {
 		shown := false
 		if err := t.waitSeatPane(ctx, socket, s, func(text string) bool {
 			shown = strings.Contains(renderedText(text), rendered)
-			return shown || !answered && seatTrustDialog(s.variant.ID, text)
+			return shown || !looked && !s.sent && seatTrustDialog(s.variant.ID, text)
 		}); err != nil {
 			return err
 		}
 		if shown {
 			break
 		}
-		if err := t.answerTrustDialog(ctx, socket, s, s.variant.ID); err != nil {
+		screen, _, inInput, err := t.seatInput(ctx, socket, s)
+		if err != nil {
 			return err
+		}
+		if strayTrustDialog(s, screen, inInput) {
+			if err := t.answerTrustDialog(ctx, socket, s, s.variant.ID); err != nil {
+				return err
+			}
 		}
 	}
 	settle := time.NewTimer(tmuxPasteSettleDelay)
@@ -368,9 +388,10 @@ func (t realSeatTransport) submitStaged(ctx context.Context, socket string, s *n
 			return err
 		}
 		if found && typed == "" {
+			s.sent = true
 			return nil
 		}
-		dialog := seatTrustDialog(s.variant.ID, screen)
+		dialog := strayTrustDialog(s, screen, found)
 		if dialog && answers < seatSubmitPresses {
 			if err := t.answerTrustDialog(ctx, socket, s, s.variant.ID); err != nil {
 				return err
@@ -408,7 +429,7 @@ func (t realSeatTransport) submitStaged(ctx context.Context, socket string, s *n
 
 // seatInput reads the screen and what the seat's input line holds, as
 // seatTypedText reads it, between two cursor reads; a cursor that moved in
-// between means the pane is changing, and nothing is found.
+// between means the pane is changing, and nothing is read.
 func (t realSeatTransport) seatInput(ctx context.Context, socket string, s *nativeSeat) (screen, typed string, found bool, err error) {
 	const cursor = "#{cursor_x} #{cursor_y} #{pane_dead}"
 	before, err := t.run(ctx, socket, nil, "display-message", "-p", "-t", s.paneID, cursor)
@@ -430,10 +451,11 @@ func (t realSeatTransport) seatInput(ctx context.Context, socket string, s *nati
 	if dead == 1 {
 		return "", "", false, runExecutionError("dead_pane", "owned seat exited while its brief was sent", "adapter", ErrDispatchDeadPane)
 	}
-	screen = ansiSGR.ReplaceAllString(styled, "")
 	if before != after {
-		return screen, "", false, nil
+		// The pane is changing: nothing is read from it.
+		return "", "", false, nil
 	}
+	screen = ansiSGR.ReplaceAllString(styled, "")
 	typed, found = seatTypedText(s.variant.ID, styled, x, y)
 	return screen, typed, found, nil
 }

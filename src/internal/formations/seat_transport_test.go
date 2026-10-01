@@ -637,6 +637,43 @@ func TestStageSendsThePastedBriefUntilTheHarnessTakesIt(t *testing.T) {
 	}
 }
 
+// A working seat whose screen quotes the trust dialog's words, with the
+// operator's unsent draft in its input line: waiting to paste or sending never
+// presses a key into the draft (rv-engine3's probe, archon-4ve5).
+func TestTrustWordsOnScreenNeverSendTheOperatorsDraft(t *testing.T) {
+	for _, tc := range []struct{ harness, fixture string }{
+		{"claude-code", "claude-typed-under-quoted-trust"},
+		{"openai-codex", "codex-typed-under-quoted-trust"},
+	} {
+		for _, sent := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s sent %v", tc.harness, sent), func(t *testing.T) {
+				// Long enough for a trust answer's settle delay to pass.
+				ctx, cancel := context.WithTimeout(context.Background(), 2*tmuxPasteSettleDelay)
+				defer cancel()
+				pane := &stagingPane{t: t, harness: tc.harness, screen: tc.fixture, events: make(chan struct{}, 1), screens: map[string][]string{}}
+				transport := realSeatTransport{
+					control: func(context.Context, string, string) (*seatControl, error) {
+						return &seatControl{events: pane.events}, nil
+					},
+					command: pane.command,
+				}
+				seat := &nativeSeat{name: "archon-proof-worker", sessionID: "$42", paneID: "%23", variant: HarnessVariant{ID: tc.harness}, sent: sent}
+				if err := transport.WaitInputClear(ctx, "socket", seat); !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("waited with %v", err)
+				}
+				sending, stop := context.WithTimeout(context.Background(), 2*tmuxPasteSettleDelay)
+				defer stop()
+				if err := transport.submitStaged(sending, "socket", seat, "unrelated text"); !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("sent with %v", err)
+				}
+				if _, keys := pane.current(); len(keys) > 0 {
+					t.Fatalf("pressed %s into the operator's draft", strings.Join(keys, ","))
+				}
+			})
+		}
+	}
+}
+
 // Codex 0.159 asks "Trust this folder?" in a new wording, sometimes after it
 // first drew its ready prompt; readiness and the wait to paste both answer it.
 func TestCodex0159TrustDialogIsAnswered(t *testing.T) {

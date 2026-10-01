@@ -178,7 +178,7 @@ func (e *TmuxFormationExecutor) PasteAsk(ctx context.Context, seat KeptSeat, poi
 
 // nativeKeptSeat addresses a kept seat for the seat transport; close it after.
 func (e *TmuxFormationExecutor) nativeKeptSeat(seat KeptSeat) *nativeSeat {
-	return &nativeSeat{name: seat.SessionName, sessionID: seat.SessionID, paneID: seat.PaneID, socket: e.config.Socket, variant: HarnessVariant{ID: seat.Harness}}
+	return &nativeSeat{name: seat.SessionName, sessionID: seat.SessionID, paneID: seat.PaneID, socket: e.config.Socket, variant: HarnessVariant{ID: seat.Harness}, sent: true}
 }
 
 // waitKeptSeat polls done until it holds or ctx ends. A transient read error
