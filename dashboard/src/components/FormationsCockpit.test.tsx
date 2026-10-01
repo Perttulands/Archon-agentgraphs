@@ -1885,16 +1885,16 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
     const mission = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Input card · Showcase')
     fireEvent.click(within(mission).getByRole('button', { name: 'Edit files' }))
-    fireEvent.change(within(mission).getByRole('textbox', { name: 'Files' }), { target: { value: 'docs/sketch.md, docs/copy.md' } })
+    fireEvent.change(within(mission).getByRole('textbox', { name: 'Files' }), { target: { value: '/work/docs/sketch.md, /work/docs/copy.md' } })
     fireEvent.click(within(mission).getByRole('button', { name: 'Save files' }))
-    await waitFor(() => expect(patches.find(patch => patch.body.updateInputCard)?.body.updateInputCard).toEqual({ id: 'mis_showcase', files: ['docs/sketch.md', 'docs/copy.md'] }))
-    expect(await within(mission).findByRole('button', { name: 'Open file docs/copy.md' })).toBeInTheDocument()
+    await waitFor(() => expect(patches.find(patch => patch.body.updateInputCard)?.body.updateInputCard).toEqual({ id: 'mis_showcase', files: ['/work/docs/sketch.md', '/work/docs/copy.md'] }))
+    expect(await within(mission).findByRole('button', { name: 'Open file /work/docs/copy.md' })).toBeInTheDocument()
 
     const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
     fireEvent.click(within(review).getByRole('button', { name: 'Edit files' }))
-    fireEvent.change(within(review).getByRole('textbox', { name: 'Files' }), { target: { value: 'rubrics/review.md' } })
+    fireEvent.change(within(review).getByRole('textbox', { name: 'Files' }), { target: { value: '/work/rubrics/review.md' } })
     fireEvent.click(within(review).getByRole('button', { name: 'Save files' }))
-    await waitFor(() => expect(patches.find(patch => patch.body.updateGate)?.body.updateGate).toEqual({ id: 'gate_review', files: ['rubrics/review.md'] }))
+    await waitFor(() => expect(patches.find(patch => patch.body.updateGate)?.body.updateGate).toEqual({ id: 'gate_review', files: ['/work/rubrics/review.md'] }))
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => expect(patches.filter(patch => patch.body.updateGate).slice(-1)[0]?.body.updateGate).toEqual({ id: 'gate_review', files: [] }))
@@ -1940,10 +1940,10 @@ describe('FormationsCockpit reference parity', () => {
     expect((await within(frame).findByText('Unknowns')).tagName).toBe('LI')
 
     fireEvent.click(within(frame).getByRole('button', { name: 'Edit files' }))
-    fireEvent.change(within(frame).getByRole('textbox', { name: 'Files' }), { target: { value: 'docs/a.md, docs/b.md' } })
+    fireEvent.change(within(frame).getByRole('textbox', { name: 'Files' }), { target: { value: '/work/docs/a.md, /work/docs/b.md' } })
     fireEvent.click(within(frame).getByRole('button', { name: 'Save files' }))
     await waitFor(() => {
-      expect(patches.filter(patch => patch.body.setBrief).slice(-1)[0]?.body.setBrief).toEqual({ formationId: 'fmn_frame', goal: 'Map the territory.\n\n- Known facts\n- Unknowns', beadId: '', files: ['docs/a.md', 'docs/b.md'], links: [] })
+      expect(patches.filter(patch => patch.body.setBrief).slice(-1)[0]?.body.setBrief).toEqual({ formationId: 'fmn_frame', goal: 'Map the territory.\n\n- Known facts\n- Unknowns', beadId: '', files: ['/work/docs/a.md', '/work/docs/b.md'], links: [] })
     })
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
