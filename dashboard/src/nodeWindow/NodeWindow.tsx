@@ -33,6 +33,7 @@ import { humanChannelField, humanChannelOf } from '../humanChannel/humanChannel'
 import { buildFlow } from '../flow/flowModel'
 import { judgeChain, nodeRoutes, nodeTitle } from './boardRoutes'
 import { slotStaffed, staffingSentence } from './staffing'
+import { roleNamer } from '../staffing/staffingModel'
 import { usePersonaCards } from './usePersonaCards'
 import './nodeWindow.css'
 
@@ -280,7 +281,7 @@ function SlotStaffing({ formation, slot, agents, card, ops }: {
   const slotName = slot.label || slot.id
   return (
     <div className="nslot">
-      <p className="nslot-words">{staffingSentence(slot, agent, card)}</p>
+      <p className="nslot-words">{staffingSentence(slot, roleNamer(agents))}</p>
       <div className="nslot-controls">
         <select aria-label={`Persona for ${slotName}`} value={slot.agentId || ''}
           onChange={event => {

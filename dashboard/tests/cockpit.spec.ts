@@ -161,14 +161,16 @@ test('two floating windows open, resize, stack and stay off the zoom column', as
   expect(before.y >= peerHead.y + peerHead.height || before.y + before.height <= peerHead.y
     || before.x >= peerHead.x + peerHead.width || before.x + before.width <= peerHead.x).toBe(true)
 
-  const corner = (await run.locator('[data-handle="se"]').boundingBox())!
+  // Grow it from the corner that has room: its opposite corner stays put.
+  const room = { left: before.x - 300, top: before.y - 200 }
+  const corner = (await run.locator('[data-handle="nw"]').boundingBox())!
   await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2)
   await page.mouse.down()
-  await page.mouse.move(1600, 1100, { steps: 8 })
+  await page.mouse.move(room.left, room.top, { steps: 8 })
   await page.mouse.up()
   const after = (await run.boundingBox())!
-  expect(after.x).toBeCloseTo(before.x, 0)
-  expect(after.y).toBeCloseTo(before.y, 0)
+  expect(after.x + after.width).toBeCloseTo(before.x + before.width, 0)
+  expect(after.y + after.height).toBeCloseTo(before.y + before.height, 0)
   expect(after.width * after.height).toBeGreaterThan(before.width * before.height)
 
   // The peer's header stays uncovered even after the run window grew.

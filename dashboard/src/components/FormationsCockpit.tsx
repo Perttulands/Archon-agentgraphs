@@ -19,7 +19,7 @@ import {
   abortRunRequest,
   createBoard,
   deleteBoard,
-  fetchAgents,
+  fetchAgentRoster,
   fetchBoardChanged,
   fetchBoardNotes,
   fetchBoardSummaries,
@@ -50,7 +50,7 @@ import {
 import { chooseBoardRun, readRunLink, runChoiceLabel, runChoices, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
 import { chooseCurrentBoard, rememberBoardOnDevice } from './currentBoard'
 import { END_ROOM, clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
-import { END_SVG, FormationSeats, GATE_SVG, PLAY_SVG, slotTooltip, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
+import { END_SVG, FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, byRoleName, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
 import { useEscapeKey } from './useEscapeKey'
 import { ROSTER_MAX_WIDTH, ROSTER_MIN_WIDTH, useRosterPanel } from './useRosterPanel'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
@@ -64,7 +64,9 @@ import RunPoint from './RunPoint'
 import RunBarActions from './RunBarActions'
 import GateAnswerWindow, { GATE_ANSWER_WINDOW_ID, cardRects } from './GateAnswerWindow'
 import { nodeTitle } from '../nodeWindow/boardRoutes'
-import { slotStaffed } from '../nodeWindow/staffing'
+import { slotStaffed, slotTooltip } from '../nodeWindow/staffing'
+import { SlotCaption, SlotFace } from '../staffing/SlotFace'
+import { offCatalog, roleNamer, rolesOf, staffingOf, type StaffingCatalog } from '../staffing/staffingModel'
 import CanvasLegend from './CanvasLegend'
 import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
 import { ProducedFiles, RunProduced, RunProducedProvider } from '../files/ProducedFiles'
@@ -106,6 +108,7 @@ import type {
   BoardSummary,
   BoardValidation,
   CodeGateProfileDescriptor,
+  EffortPolicyEntry,
   EndNode,
   EndOutcome,
   FormationBrief,
@@ -114,6 +117,7 @@ import type {
   FormationSlot,
   FormationType,
   GateNode,
+  LaunchableHarness,
   LayoutDocument,
   LayoutEdge,
   LayoutNode,
@@ -173,6 +177,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [board, setBoard] = useState<BoardDocument | null>(null)
   const [layout, setLayout] = useState<LayoutDocument | null>(null)
   const [agents, setAgents] = useState<AgentProjection[]>([])
+  // The harnesses with their models and the effort policy, as the roster serves them.
+  const [staffingTerms, setStaffingTerms] = useState<{ harnesses: LaunchableHarness[]; policy: EffortPolicyEntry[] }>({ harnesses: [], policy: [] })
   const [rosterSearch, setRosterSearch] = useState('')
   const [view, setView] = useState<ViewTransform>({ x: 40, y: 40, scale: 1 })
   const [error, setError] = useState('')
@@ -458,7 +464,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   useEffect(() => {
     if (!active) return
     let cancelled = false
-    const load = () => fetchAgents().then(list => !cancelled && setAgents(list)).catch(() => undefined)
+    const load = () => fetchAgentRoster().then(roster => {
+      if (cancelled) return
+      setAgents(roster.agents)
+      setStaffingTerms(current => JSON.stringify(current) === JSON.stringify({ harnesses: roster.harnesses, policy: roster.effortPolicy })
+        ? current : { harnesses: roster.harnesses, policy: roster.effortPolicy })
+    }).catch(() => undefined)
     load()
     const timer = window.setInterval(load, 8000)
     return () => { cancelled = true; window.clearInterval(timer) }
@@ -2140,10 +2151,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   // ----- render helpers -----
   const renderSlot = (formation: FormationNode, slot: FormationSlot, badge?: number) => {
-    const filled = !!slot.agentId
+    const staffing = staffingOf(slot)
     const key = `${formation.id}:${slot.id}`
     const runState = nodeStates.get(formation.id)
-    const classes = ['slot', filled ? 'filled' : 'empty', slot.controller ? 'ctrl' : '', hoverSlot === key ? 'snaptarget' : '', runState === 'running' ? 'active' : '', runState === 'done' ? 'active done' : '']
+    const classes = ['slot', staffing ? 'filled' : 'empty', slot.controller ? 'ctrl' : '', hoverSlot === key ? 'snaptarget' : '', runState === 'running' ? 'active' : '', runState === 'done' ? 'active done' : '']
     return (
       <div
         key={slot.id}
@@ -2151,18 +2162,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         data-fid={formation.id}
         data-sid={slot.id}
         data-testid={`slot-${formation.id}-${slot.id}`}
-        title={slotTooltip(slot)}
-        onPointerDown={filled ? event => beginStaff(event, slot.agentId as string, slot.harness || '', { formationId: formation.id, slotId: slot.id }) : undefined}
+        title={slotTooltip(slot, roleName)}
+        onPointerDown={slot.agentId ? event => beginStaff(event, slot.agentId as string, slot.harness || '', { formationId: formation.id, slotId: slot.id }) : undefined}
         onContextMenu={event => slotMenu(event, formation, slot)}
       >
-        <div className="slot-ring">
-          {badge ? <span className="badge">{badge}</span> : null}
-          {filled
-            ? <span className="face">{harnessGlyph(slot.harness) ?? initials(slot.agentId as string)}</span>
-            : <span className="plus">+</span>}
-        </div>
-        <div className="slot-label">{slot.label}</div>
-        {filled ? <div className="who">{slot.agentId}</div> : null}
+        <SlotFace label={slot.label} badge={badge} staffing={staffing}
+          marks={staffing && offCatalog(staffingCatalog, staffing) ? <span className="slot-warn">model not in catalog</span> : null}
+          caption={<SlotCaption shown={staffing} saved={staffing} drafting={false} roleName={roleName} />} />
       </div>
     )
   }
@@ -2331,6 +2337,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }
 
   const rosterAgents = useMemo(() => agents.filter(agent => agent.assignable && !agent.unbound), [agents])
+  const roleName = useMemo(() => roleNamer(agents), [agents])
+  const staffingCatalog = useMemo<StaffingCatalog>(() => ({ ...staffingTerms, roles: rolesOf(agents) }), [agents, staffingTerms])
   const filteredRosterAgents = useMemo(() => {
     const needle = rosterSearch.trim().toLowerCase()
     if (!needle) return rosterAgents
@@ -2338,7 +2346,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       agent.id, agent.displayName || '', agent.kind || '', agent.harnessDefault || '', ...(agent.tags || []),
     ].some(value => value.toLowerCase().includes(needle)))
   }, [rosterAgents, rosterSearch])
-  const rosterSections = useMemo(() => groupRosterByHarness(filteredRosterAgents), [filteredRosterAgents])
+  const rosterRoles = useMemo(() => [...filteredRosterAgents].sort(byRoleName), [filteredRosterAgents])
   const deployedAgentCount = useMemo(
     () => new Set((board?.formations || []).flatMap(f => f.slots.map(s => s.agentId).filter(Boolean))).size,
     [board?.formations],
@@ -2581,10 +2589,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             {rosterAgents.length === 0
               ? <div className="roster-empty">No assignable catalog agents. Create a persona in the Agents view to staff formations.</div>
               : filteredRosterAgents.length === 0 ? <div className="roster-empty" role="status">No agents match this filter.</div>
-              : rosterSections.map(section => (
-                <section className="roster-group" key={section.id} data-provider={section.id}>
-                  <div className="roster-group-label">{section.label}</div>
-                  {section.agents.map(agent => {
+              : (
+                <section className="roster-group">
+                  <div className="roster-group-label">Roles</div>
+                  {rosterRoles.map(agent => {
                     const deployed = (board?.formations || []).some(f => f.slots.some(s => s.agentId === agent.id))
                     return (
                       <div
@@ -2594,7 +2602,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                         data-testid={`roster-agent-${agent.id}`}
                         onPointerDown={event => beginStaff(event, agent.id, agent.harnessDefault || '')}
                       >
-                        <span className="av">{harnessGlyph(agent.harnessDefault) ?? initials(agent.id)}</span>
+                        <span className="av">{initials(agent.displayName || agent.id)}</span>
                         <div className="ri">
                           <div className="n">{agent.displayName || agent.id}</div>
                           <div className="r">{agentRole(agent)}{agent.preset ? ` · ${agent.customized ? 'custom' : 'preset'}` : ''}{agentState(agent) === 'idle' ? ' · idle' : ''}</div>
@@ -2611,7 +2619,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                     )
                   })}
                 </section>
-              ))}
+              )}
           </div>
         </aside>
 
@@ -3112,7 +3120,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           agent={agentEditor.agent}
           returnFocus={agentEditor.trigger}
           onClose={() => setAgentEditor(null)}
-          onSaved={async () => setAgents(await fetchAgents())}
+          onSaved={async () => setAgents((await fetchAgentRoster()).agents)}
         />
       ) : null}
 

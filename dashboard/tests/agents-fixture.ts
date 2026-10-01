@@ -1,5 +1,6 @@
 import { type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { harnesses, rosterAnswer } from './roster-terms'
 const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/theme_default.json', import.meta.url), 'utf8'))
 
 // Three missions for the shared current mission and a judged mission, and two
@@ -46,19 +47,6 @@ const layouts: Record<string, Array<{ id: string; x: number; y: number }>> = {
     { id: 'judge', x: 760, y: 420 }, { id: 'recheck', x: 1080, y: 420 }, { id: 'ship', x: 1100, y: 100 }],
   scouting: [{ id: 'mission', x: 100, y: 100 }, { id: 'map', x: 420, y: 100 }],
 }
-
-export const harnesses = [
-  { id: 'claude-code', executable: 'claude', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium' },
-  { id: 'openai-codex', executable: 'codex', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'medium' },
-]
-
-/** The effort policy the daemon serves with the roster (slot_settings.go). */
-export const effortPolicy = [
-  { effort: 'low', use: 'errands' },
-  { effort: 'medium', use: 'making things' },
-  { effort: 'xhigh', use: 'architecture and review' },
-  { effort: 'max', use: 'consequential reviews' },
-]
 
 type Variant = { id: string; sessionStem: string; model?: string; effort?: string }
 type Card = { id: string; displayName: string; kind: string; summary: string; tags: string[]; harnessDefault: string; harnessVariants: Variant[]; rev: number }
@@ -111,8 +99,8 @@ export async function agentsFixture(page: Page) {
     if (path === '/api/runs') return respond([])
     if (path === '/api/gate-profiles') return respond({ profiles: [] })
     if (path === '/api/agents') {
-      const agents = Object.values(cards).map(card => ({ id: card.id, displayName: card.displayName, kind: card.kind, tags: card.tags, harnessDefault: card.harnessDefault, liveness: 'offline', assignable: true }))
-      return respond({ agents, count: agents.length, harnesses, effortPolicy })
+      const agents = Object.values(cards).map(card => ({ id: card.id, displayName: card.displayName, kind: card.kind, summary: card.summary, tags: card.tags, harnessDefault: card.harnessDefault, liveness: 'offline', assignable: true }))
+      return respond(rosterAnswer(agents))
     }
     const agentMatch = path.match(/^\/api\/agents\/([^/]+)$/)
     if (agentMatch) {

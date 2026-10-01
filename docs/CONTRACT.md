@@ -69,6 +69,14 @@ roster serves as `effortPolicy`: `low` for errands, `medium` for making
 things, `xhigh` for architecture and review, `max` for consequential reviews.
 One role may staff several slots, each with its own settings.
 
+The cockpit shows every slot as a row: its harness mark and label, then its
+role (or `vanilla`) over `<Harness> · <model> · <effort>`, as in `Claude Code ·
+opus · low`, with a blank model reading `default` on the card and `default
+model` in sentences. A model outside the catalog is marked `model not in
+catalog`. The node window, Flow, and the Agents view's slot tiles and slot
+inspector say the same, for example `Worker 1 is vanilla on Claude Code · opus
+· low.` Rosters list roles by name; roles carry no harness.
+
 A new role carries no model or effort: `POST /api/agents` and `archon agent
 new` refuse them with `INVALID_AGENT_CARD`, and the New agent form no longer
 asks for them. An existing card's variant settings are edited per

@@ -214,9 +214,8 @@ describe('AgentsView', () => {
     expect(within(screen.getByRole('complementary', { name: 'Agent roster' })).getByText('2 · 1 live · 2 on mission')).toBeInTheDocument()
     expect(screen.getByText('Escalate Fail')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /assign Review slot/i }))
-    expect(await screen.findByText('missing harness variant openai-codex')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /assign coder/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Review: not staffed' }))
+    fireEvent.click(await screen.findByRole('button', { name: /assign coder/i }))
 
     await waitFor(() => expect(patches).toHaveLength(1))
     expect(headerValue(patches[0].headers, 'If-Match')).toBe('board-etag')
@@ -226,8 +225,8 @@ describe('AgentsView', () => {
       assignSlot: { formationId: 'authoring', slotId: 'reviewer', agentId: 'coder', harness: 'openai-codex' },
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /inspect Lead slot assigned to Susie/i }))
-    fireEvent.click(await screen.findByRole('button', { name: /unassign Susie/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Lead (controller): Susie on Claude Code · default model · medium' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Empty Lead' }))
 
     await waitFor(() => expect(patches).toHaveLength(2))
     expect(patches[1].body).toMatchObject({
@@ -518,14 +517,15 @@ describe('AgentsView', () => {
 
     render(<AgentsView />)
 
-    fireEvent.click(await screen.findByRole('button', { name: /assign Review slot/i }))
+    // A staffed slot's harness makes each role's detail matter for eligibility.
+    fireEvent.click(await screen.findByRole('button', { name: 'Inspect Critic (controller): coder on Codex · gpt-6-astra · xhigh' }))
 
     expect(await screen.findByRole('button', { name: /assign Good/i })).toBeEnabled()
     expect(screen.getByText('failed detail load')).toBeInTheDocument()
     expect(screen.queryByText('Agent eligibility request failed')).not.toBeInTheDocument()
   })
 
-  it('groups personas by harness with harness marks and states only what differs from offline', async () => {
+  it('lists roles by name, not by harness, and states only what differs from offline', async () => {
     const board = emptyBoard()
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
@@ -563,12 +563,12 @@ describe('AgentsView', () => {
 
     expect(await screen.findByText('Attached Live')).toBeInTheDocument()
     const roster = screen.getByRole('complementary', { name: 'Agent roster' })
-    expect(Array.from(roster.querySelectorAll('.roster-group-label')).map(label => label.textContent)).toEqual(['Codex', 'Claude', 'Other', 'Unbound'])
-
+    expect(Array.from(roster.querySelectorAll('.roster-group-label')).map(label => label.textContent)).toEqual(['Roles', 'Unbound'])
+    // Roles carry no harness: no harness mark, and alphabetical whatever the default harness.
+    expect(Array.from(roster.querySelectorAll('.roster-group:first-child .ragent .n')).map(name => name.textContent)).toEqual(['Ambiguous One', 'Attached Live', 'Offline One', 'Retired One'])
     const codexRow = within(roster).getByRole('button', { name: /inspect Attached Live/i })
-    expect(codexRow.querySelector('.av svg')).not.toBeNull()
-    expect(within(codexRow).queryByText('AT')).not.toBeInTheDocument()
-    expect(within(roster).getByRole('button', { name: /inspect Ambiguous One/i }).querySelector('.av svg')).not.toBeNull()
+    expect(codexRow.querySelector('.av svg')).toBeNull()
+    expect(within(codexRow).getByText('AT')).toBeInTheDocument()
 
     expect(within(roster).getAllByText('live')).toHaveLength(2)
     expect(within(roster).getByText('ambiguous')).toBeInTheDocument()
@@ -725,8 +725,8 @@ function missionBoard(): BoardDocument {
         inputs: [{ id: 'in', label: 'Input' }],
         outputs: [{ id: 'out', label: 'Output' }],
         slots: [
-          { id: 'lead', label: 'Lead', controller: true, agentId: 'susie', harness: 'claude-code' },
-          { id: 'reviewer', label: 'Review', controller: false, harness: 'openai-codex' },
+          { id: 'lead', label: 'Lead', controller: true, agentId: 'susie', harness: 'claude-code', effort: 'medium' },
+          { id: 'reviewer', label: 'Review', controller: false },
         ],
       },
       {
@@ -735,7 +735,7 @@ function missionBoard(): BoardDocument {
         title: 'Fix Pass',
         inputs: [{ id: 'in', label: 'Input' }],
         outputs: [{ id: 'out', label: 'Output' }],
-        slots: [{ id: 'builder', label: 'Builder', controller: true, harness: 'openai-codex' }],
+        slots: [{ id: 'builder', label: 'Builder', controller: true }],
       },
       {
         id: 'escalate-fail',
@@ -743,7 +743,7 @@ function missionBoard(): BoardDocument {
         title: 'Escalate Fail',
         inputs: [{ id: 'in', label: 'Input' }],
         outputs: [{ id: 'out', label: 'Output' }],
-        slots: [{ id: 'critic', label: 'Critic', controller: true, agentId: 'coder', harness: 'openai-codex' }],
+        slots: [{ id: 'critic', label: 'Critic', controller: true, agentId: 'coder', harness: 'openai-codex', model: 'gpt-6-astra', effort: 'xhigh' }],
       },
     ],
     gates: [{ id: 'human-review', title: 'Human Review', kinds: ['human'], criterion: 'Approve the branch.' }],
@@ -776,7 +776,8 @@ function judgedBoard(): BoardDocument {
     id, type: 'solo' as const, title,
     inputs: [{ id: 'in', label: 'Input' }],
     outputs: [{ id: 'out', label: 'Output' }],
-    slots: [{ id: 'agent', label: 'Agent', controller: true, harness: 'claude-code', ...(agentId ? { agentId } : {}) }],
+    // A staffed slot states its harness and effort; an open slot has neither.
+    slots: [{ id: 'agent', label: 'Agent', controller: true, ...(agentId ? { agentId, harness: 'claude-code', effort: 'medium' } : {}) }],
   })
   return {
     id: 'judged', slug: 'judged', title: 'Judged', rev: 3, etag: 'judged-etag',

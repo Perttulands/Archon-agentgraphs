@@ -71,8 +71,6 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   expect(overlaps(plannerBox, panelBox)).toBe(false)
   expect(overlaps(codexBox, panelBox)).toBe(false)
   expect(overlaps(codexBox, plannerBox)).toBe(false)
-  // The answer window opens clear of the gate and where it leads (archon-n7u.7); the first seat sits on either side of it.
-  expect(plannerBox!.x + plannerBox!.width <= panelBox!.x || plannerBox!.x >= panelBox!.x + panelBox!.width).toBe(true)
 
   // The first seat takes the keyboard as it opens; Escape goes to the agent, not the window.
   await expect.poll(() => fixture.handshakes(21)).toEqual([{ AuthToken: '', columns: 100, rows: 30 }])

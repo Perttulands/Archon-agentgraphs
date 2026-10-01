@@ -6,7 +6,7 @@ import { Fragment } from 'react'
 import type { ReactNode } from 'react'
 import type { NodeRunState } from './formationsRunState'
 import type { AgentProjection, BoardConnection, FormationNode, FormationSlot } from './formationsTypes'
-import { harnessIcon, harnessIdFor, type HarnessId } from './harnessIcons'
+import { harnessIcon } from './harnessIcons'
 
 export function formationSummary(formation: FormationNode): string {
   return formation.brief?.goal?.replace(/\s+/g, ' ').trim() || 'Set a brief to describe this work.'
@@ -43,21 +43,6 @@ export function harnessGlyph(harness: string | undefined | null): JSX.Element | 
   return harnessIcon(harness)
 }
 
-const HARNESS_NAMES: Record<HarnessId, string> = {
-  'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi', hermes: 'Hermes', terminal: '',
-}
-
-/** A harness in words: "Claude Code" for claude-code; one without a glyph keeps its own name. */
-export function harnessName(harness: string | undefined | null): string {
-  const id = harnessIdFor(harness)
-  return id ? HARNESS_NAMES[id] || harness || '' : ''
-}
-
-/** A slot in words, for its tooltip: "delivery-planner · Claude Code", or how to staff an open slot. */
-export function slotTooltip(slot: FormationSlot): string {
-  if (!slot.agentId) return `${slot.label}: open slot. Drag a persona here to staff it.`
-  return [slot.agentId, harnessName(slot.harness) || 'no harness set'].join(' · ')
-}
 export const PLAY_SVG = (
   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z" /></svg>
 )
@@ -66,8 +51,10 @@ export function initials(id: string): string {
   const cleaned = id.replace(/[^a-zA-Z0-9]/g, '')
   return (cleaned.slice(0, 2) || '?').toUpperCase()
 }
+/** What a roster row is: an unbound session, or a role of its kind. Roles carry no harness. */
 export function agentRole(agent: AgentProjection): string {
-  return agent.harnessDefault || (agent.unbound ? 'unbound' : 'agent')
+  if (agent.unbound) return 'unbound'
+  return agent.kind || 'role'
 }
 export function agentState(agent: AgentProjection): 'on' | 'idle' {
   return agent.liveness === 'live' || agent.assignable ? 'on' : 'idle'
@@ -109,23 +96,9 @@ export function rosterCountLabel(total: number | string, counts: { live?: number
   ].filter(Boolean).join(' · ')
 }
 
-export interface RosterSection<T> {
-  id: 'codex' | 'claude' | 'other'
-  label: string
-  agents: T[]
-}
-
-/* Roster sidebars list Codex agents, then Claude, then everything else. */
-export function groupRosterByHarness<T extends { harnessDefault?: string }>(agents: T[]): RosterSection<T>[] {
-  const codex = agents.filter(agent => (agent.harnessDefault || '').toLowerCase().includes('codex'))
-  const claude = agents.filter(agent => (agent.harnessDefault || '').toLowerCase().includes('claude'))
-  const other = agents.filter(agent => !codex.includes(agent) && !claude.includes(agent))
-  const sections: RosterSection<T>[] = [
-    { id: 'codex', label: 'Codex', agents: codex },
-    { id: 'claude', label: 'Claude', agents: claude },
-    { id: 'other', label: 'Other', agents: other },
-  ]
-  return sections.filter(section => section.agents.length > 0)
+/* Rosters list roles by name; roles carry no harness, so nothing groups them by one. */
+export function byRoleName<T extends { id: string; displayName?: string }>(a: T, b: T): number {
+  return (a.displayName || a.id).localeCompare(b.displayName || b.id)
 }
 
 /* Seat arrangement for each formation type. Callers draw the seats: the

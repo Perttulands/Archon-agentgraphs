@@ -184,11 +184,6 @@ export async function patchBoardNote(slug: string, etag: string, patch: NotePatc
   return normalizeNotes(result.data.notes, result.etag)
 }
 
-export async function fetchAgents(): Promise<AgentProjection[]> {
-  const result = await fetchApi<{ agents: AgentProjection[] }>('/api/agents')
-  return result.data.agents || []
-}
-
 export async function fetchAgentCard(agentID: string): Promise<PersonaCard> {
   const result = await fetchApi<PersonaCard>(`/api/agents/${encodeURIComponent(agentID)}`)
   return { ...result.data, etag: result.etag || result.data.etag }

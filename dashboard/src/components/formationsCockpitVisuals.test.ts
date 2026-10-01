@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formationSummary, inputFeedLabel, agentRole, agentState, groupRosterByHarness, initials, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
+import { formationSummary, inputFeedLabel, agentRole, agentState, byRoleName, initials, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
 import type { AgentProjection, FormationNode } from './formationsTypes'
 
 const agent = (over: Partial<AgentProjection> & { assignable: boolean }): AgentProjection => ({ id: 'a', ...over })
@@ -13,10 +13,10 @@ describe('initials', () => {
 })
 
 describe('agentRole', () => {
-  it('prefers the default harness, then unbound, then a generic agent label', () => {
-    expect(agentRole(agent({ assignable: true, harnessDefault: 'openai-codex' }))).toBe('openai-codex')
+  it('names a role by its kind, never a harness, and an unbound session as one', () => {
+    expect(agentRole(agent({ assignable: true, harnessDefault: 'openai-codex', kind: 'reviewer' }))).toBe('reviewer')
     expect(agentRole(agent({ assignable: false, unbound: true }))).toBe('unbound')
-    expect(agentRole(agent({ assignable: true }))).toBe('agent')
+    expect(agentRole(agent({ assignable: true, harnessDefault: 'claude-code' }))).toBe('role')
   })
 })
 
@@ -56,20 +56,14 @@ describe('inputFeedLabel', () => {
   })
 })
 
-describe('groupRosterByHarness', () => {
-  it('lists Codex, then Claude, then other harnesses, and omits empty groups', () => {
+describe('byRoleName', () => {
+  it('lists roles by name whatever their default harness', () => {
     const roster = [
-      agent({ id: 'claude-one', assignable: true, harnessDefault: 'claude-code' }),
-      agent({ id: 'hermes-one', assignable: true, harnessDefault: 'hermes' }),
-      agent({ id: 'codex-one', assignable: true, harnessDefault: 'openai-codex' }),
+      agent({ id: 'claude-one', displayName: 'Zed', assignable: true, harnessDefault: 'claude-code' }),
+      agent({ id: 'codex-one', displayName: 'Ada', assignable: true, harnessDefault: 'openai-codex' }),
       agent({ id: 'bare', assignable: true }),
     ]
-    expect(groupRosterByHarness(roster).map(section => [section.id, section.agents.map(next => next.id)])).toEqual([
-      ['codex', ['codex-one']],
-      ['claude', ['claude-one']],
-      ['other', ['hermes-one', 'bare']],
-    ])
-    expect(groupRosterByHarness(roster.slice(0, 1)).map(section => section.label)).toEqual(['Claude'])
+    expect([...roster].sort(byRoleName).map(next => next.id)).toEqual(['codex-one', 'bare', 'claude-one'])
   })
 })
 

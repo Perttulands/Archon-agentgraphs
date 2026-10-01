@@ -68,9 +68,9 @@
 .agx .formation.state-failed,.agx .gatecard.state-failed { box-shadow:0 0 0 1.5px var(--terra-d); }
 .agx .gatecard.state-running { box-shadow:0 0 0 1.5px var(--terra); }
 
-.agx .slot { border:0; padding:0; background:transparent; color:inherit; font:inherit; cursor:pointer; }
-.agx .slot:hover .slot-ring { box-shadow:0 0 0 2px var(--accent-light); }
-.agx .slot.selected .slot-ring { box-shadow:0 0 0 2px var(--terra),0 0 0 6px var(--accent-light); }
+.agx .slot { width:100%; background:transparent; color:inherit; font:inherit; cursor:pointer; }
+.agx .slot:hover { background:color-mix(in srgb,var(--surface-secondary) 70%,transparent); border-color:var(--line); }
+.agx .slot.selected { border-color:var(--terra); background:color-mix(in srgb,var(--terra) 9%,transparent); }
 
 /* ===== INSPECTOR ===== */
 .agx-inspector { width:320px; flex:0 0 auto; min-height:0; display:flex; flex-direction:column; border-left:1px solid var(--line); background:var(--card); }

@@ -1,31 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import { formationTypeChoices } from '../components/FormationTypeChip'
-import type { FormationNode, PersonaCard } from '../components/formationsTypes'
+import type { FormationNode } from '../components/formationsTypes'
 import { slotStaffed, staffingSentence } from './staffing'
 
-const card = {
-  id: 'critic', displayName: 'Critic', kind: 'judge', tags: [], harnessDefault: 'claude-code', etag: 'e',
-  harnessVariants: [{ id: 'claude-code', sessionStem: 'critic', model: 'claude-opus-5', effort: 'xhigh' }],
-} as unknown as PersonaCard
+const roleName = (id: string) => (id === 'critic' ? 'Critic' : id)
 
 describe('staffingSentence', () => {
   it('reads a slot\'s own harness, model and effort, and a slot without a role as vanilla', () => {
-    expect(staffingSentence({ id: 's', label: 'Worker', controller: false, harness: 'claude-code', model: 'opus', effort: 'low' }, undefined, undefined))
-      .toBe('Worker is a vanilla agent on claude-code, model opus, low effort.')
-    // The slot's settings win over the role card's.
-    expect(staffingSentence({ id: 's', label: 'Judge', controller: true, agentId: 'critic', harness: 'openai-codex', effort: 'max' }, undefined, card))
-      .toBe('Judge (controller) is Critic (critic) on openai-codex, default model, max effort.')
+    expect(staffingSentence({ id: 's', label: 'Worker', controller: false, harness: 'claude-code', model: 'opus', effort: 'low' }, roleName))
+      .toBe('Worker is vanilla on Claude Code · opus · low.')
+    expect(staffingSentence({ id: 's', label: 'Judge', controller: true, agentId: 'critic', harness: 'openai-codex', effort: 'max' }, roleName))
+      .toBe('Judge (controller) is Critic on Codex · default model · max.')
   })
 
-  it('says a role slot without a harness has none, whatever its role card holds', () => {
-    expect(staffingSentence({ id: 's', label: 'Judge', controller: false, agentId: 'critic' }, undefined, card))
-      .toBe('Judge is Critic (critic) with no harness.')
+  it('says a role slot without a harness or effort has none', () => {
+    expect(staffingSentence({ id: 's', label: 'Judge', controller: false, agentId: 'critic' }, roleName))
+      .toBe('Judge is Critic on no harness · default model · no effort.')
   })
 
   it('counts a vanilla slot as staffed, and an empty one as not', () => {
     expect(slotStaffed({ id: 's', label: 'A', controller: false, harness: 'claude-code', effort: 'low' })).toBe(true)
     expect(slotStaffed({ id: 's', label: 'A', controller: false })).toBe(false)
-    expect(staffingSentence({ id: 's', label: 'A', controller: false }, undefined, undefined)).toBe('A is not staffed.')
+    expect(staffingSentence({ id: 's', label: 'A', controller: false }, roleName)).toBe('A is not staffed.')
   })
 })
 

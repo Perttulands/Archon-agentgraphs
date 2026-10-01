@@ -17,12 +17,15 @@ import {
   FormationSeats,
   GATE_SVG,
   agentRole,
+  byRoleName,
   formationSummary,
-  groupRosterByHarness,
   harnessGlyph,
   initials,
   rosterCountLabel,
 } from './formationsCockpitVisuals'
+import { slotStaffed, slotTitle, staffingSentence } from '../nodeWindow/staffing'
+import { SlotCaption, SlotFace } from '../staffing/SlotFace'
+import { captionText, modelWords, offCatalog, roleNamer, staffingOf } from '../staffing/staffingModel'
 import { GateKindChips } from './GateEditorDialog'
 import PersonaEditorDialog from './PersonaEditorDialog'
 import { boardsRunHref, useMissionRun, type MissionRunState } from './useMissionRun'
@@ -326,7 +329,7 @@ export default function AgentsView() {
     for (const formation of reachableFormations) {
       for (const slot of formation.slots || []) {
         total += 1
-        if (slot.agentId) staffed += 1
+        if (slotStaffed(slot)) staffed += 1
       }
     }
     return { total, staffed, open: Math.max(total - staffed, 0) }
@@ -351,8 +354,7 @@ export default function AgentsView() {
     ].some(value => value.toLowerCase().includes(needle)))
   }, [agents, search])
 
-  const personas = filteredAgents.filter(agent => !agent.unbound)
-  const personaSections = groupRosterByHarness(personas)
+  const personas = filteredAgents.filter(agent => !agent.unbound).sort(byRoleName)
   const unbound = filteredAgents.filter(agent => agent.unbound)
 
   const selectedSlot = useMemo(() => {
@@ -698,18 +700,17 @@ export default function AgentsView() {
                 {search.trim() ? 'No personas match this filter.' : 'No personas yet. Use New agent to create one.'}
               </div>
             )}
-            {personaSections.map(section => (
+            {personas.length > 0 && (
               <RosterGroup
-                key={section.id}
-                id={section.id}
-                label={section.label}
-                agents={section.agents}
+                id="roles"
+                label="Roles"
+                agents={personas}
                 details={details}
                 assignmentsByAgent={assignmentsByAgent}
                 selectedAgentId={selectedAgentId}
                 onInspect={inspectAgent}
               />
-            ))}
+            )}
             {unbound.length > 0 && (
               <RosterGroup
                 id="unbound"
@@ -771,6 +772,7 @@ export default function AgentsView() {
                     via={reachableViaByFormation.get(item.id)}
                     viaGateTitle={(board?.gates || []).find(gate => gate.id === item.via?.gateId)?.title || item.via?.gateId || ''}
                     agents={agents}
+                    harnesses={harnesses}
                     nodeState={nodeStates.get(item.id) || ''}
                     selectedSlot={selectedSlot}
                     onSlotClick={inspectSlot}
@@ -879,7 +881,7 @@ function RosterGroup({
             aria-pressed={selected}
             onClick={() => onInspect(agent)}
           >
-            <span className="av">{harnessGlyph(agent.harnessDefault) ?? initials(name)}</span>
+            <span className="av">{initials(name)}</span>
             <span className="ri">
               <span className="n">{name}</span>
               <StatusWords agent={agent} status={status} />
@@ -939,6 +941,7 @@ function FormationStaffingCard({
   via,
   viaGateTitle,
   agents,
+  harnesses,
   nodeState,
   selectedSlot,
   onSlotClick,
@@ -947,12 +950,13 @@ function FormationStaffingCard({
   via?: BranchProvenance
   viaGateTitle: string
   agents: RosterAgent[]
+  harnesses: LaunchableHarness[]
   nodeState: string
   selectedSlot: { formation: FormationNode; slot: FormationSlot } | null
   onSlotClick: (formation: FormationNode, slot: FormationSlot) => void
 }) {
   if (!formation) return null
-  const open = formation.slots.filter(slot => !slot.agentId).length
+  const open = formation.slots.filter(slot => !slotStaffed(slot)).length
   const fallbackLabel = via?.branch === 'fail'
     ? `fallback on ${viaGateTitle || via.gateId} fail`
     : via?.branch === 'judge' ? `judges ${viaGateTitle || via.gateId}` : ''
@@ -977,6 +981,7 @@ function FormationStaffingCard({
               slot={slot}
               badge={badge}
               agents={agents}
+              harnesses={harnesses}
               nodeState={nodeState}
               selected={selectedSlot?.formation.id === formation.id && selectedSlot.slot.id === slot.id}
               onClick={onSlotClick}
@@ -993,6 +998,7 @@ function StaffingSeat({
   slot,
   badge,
   agents,
+  harnesses,
   nodeState,
   selected,
   onClick,
@@ -1001,15 +1007,16 @@ function StaffingSeat({
   slot: FormationSlot
   badge?: number
   agents: RosterAgent[]
+  harnesses: LaunchableHarness[]
   nodeState: string
   selected: boolean
   onClick: (formation: FormationNode, slot: FormationSlot) => void
 }) {
-  const assigned = slot.agentId ? agents.find(agent => agent.id === slot.agentId) : null
-  const assignedName = assigned?.displayName || slot.agentId || ''
+  const staffing = staffingOf(slot)
+  const roleName = roleNamer(agents as FormationAgentProjection[])
   const classes = [
     'slot',
-    slot.agentId ? 'filled' : 'empty',
+    staffing ? 'filled' : 'empty',
     slot.controller ? 'ctrl' : '',
     nodeState === 'running' ? 'active' : '',
     nodeState === 'done' ? 'active done' : '',
@@ -1019,18 +1026,14 @@ function StaffingSeat({
     <button
       type="button"
       className={classes.filter(Boolean).join(' ')}
-      aria-label={slot.agentId ? `Inspect ${slot.label} slot assigned to ${assignedName}` : `Assign ${slot.label} slot`}
+      aria-label={`Inspect ${slotTitle(slot)}: ${staffing ? `${staffing.role ? roleName(staffing.role) : 'vanilla'} on ${captionText(staffing)}` : 'not staffed'}`}
       aria-pressed={selected}
+      data-testid={`agents-slot-${formation.id}-${slot.id}`}
       onClick={() => onClick(formation, slot)}
     >
-      <span className="slot-ring">
-        {badge ? <span className="badge">{badge}</span> : null}
-        {slot.agentId
-          ? <span className="face">{harnessGlyph(slot.harness || assigned?.harnessDefault) ?? initials(slot.agentId)}</span>
-          : <span className="plus">+</span>}
-      </span>
-      <span className="slot-label">{slot.label}</span>
-      {slot.agentId ? <span className="who">{slot.agentId}</span> : null}
+      <SlotFace label={slot.label} badge={badge} staffing={staffing}
+        marks={staffing && offCatalog({ harnesses, roles: [], policy: [] }, staffing) ? <span className="slot-warn">model not in catalog</span> : null}
+        caption={<SlotCaption shown={staffing} saved={staffing} drafting={false} roleName={roleName} />} />
     </button>
   )
 }
@@ -1306,19 +1309,23 @@ function SlotInspector({
   onUnassign: (formation: FormationNode, slot: FormationSlot) => void
   onClose: () => void
 }) {
-  const assigned = slot.agentId ? agents.find(agent => agent.id === slot.agentId) : null
+  const staffing = staffingOf(slot)
+  const roleName = roleNamer(agents as FormationAgentProjection[])
   return (
     <InspectorPanel title={slot.label} meta={`slot · ${formation.title}`} onClose={onClose}>
       <section className="note-section">
+        <p className="agx-staffing-words" data-testid="slot-staffing-words">{staffingSentence(slot, roleName)}</p>
         <KeyValues rows={[
           ['Controller', slot.controller ? 'yes' : 'no'],
-          ['Harness', slot.harness || 'default'],
-          ['Current', assigned?.displayName || slot.agentId || 'open'],
+          ['Role', staffing ? (staffing.role ? roleName(staffing.role) : 'vanilla') : ''],
+          ['Harness', staffing ? captionText(staffing).split(' · ')[0] : ''],
+          ['Model', staffing ? modelWords(staffing.model) : ''],
+          ['Effort', staffing ? staffing.effort || 'no effort' : ''],
         ]} />
-        {slot.agentId && (
+        {slotStaffed(slot) && (
           <div className="pop-actions">
             <button className="retire" type="button" onClick={() => onUnassign(formation, slot)}>
-              Unassign {assigned?.displayName || slot.agentId}
+              Empty {slot.label}
             </button>
           </div>
         )}
@@ -1338,7 +1345,7 @@ function SlotInspector({
                 aria-label={`Assign ${name}`}
                 onClick={() => eligibility.eligible && onAssign(formation, slot, agent, eligibility.harness)}
               >
-                <span className="av">{harnessGlyph(eligibility.eligible ? eligibility.harness : agent.harnessDefault) ?? initials(name)}</span>
+                <span className="av">{initials(name)}</span>
                 <span className="ri">
                   <span className="n">{name}</span>
                   <span className="r">{eligibility.eligible ? eligibility.harness : eligibility.reason}</span>

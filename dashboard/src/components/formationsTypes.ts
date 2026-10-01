@@ -311,6 +311,8 @@ export interface AgentProjection {
   id: string
   displayName?: string
   kind?: string
+  /** The role text's one-line summary. */
+  summary?: string
   tags?: string[]
   harnessDefault?: string
   assignable: boolean
@@ -336,11 +338,19 @@ export interface PersonaHarnessVariant {
 }
 
 /** A harness whose seats Archon starts from model and effort (GET /api/agents data.harnesses). */
+/** A model a harness is known to run, with the efforts it accepts when the daemon host knows them. */
+export interface HarnessModel {
+  id: string
+  efforts?: string[]
+}
+
 export interface LaunchableHarness {
   id: string
   executable: string
   efforts: string[]
   defaultEffort: string
+  /** The models the daemon offers for this harness, the one a new slot takes first. */
+  models?: HarnessModel[]
 }
 
 /** One line of the effort policy the roster serves: which effort suits which work. */

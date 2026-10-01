@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { rosterAnswer } from './roster-terms'
 import { authoredBoard, nodeWindowsFixture } from './node-windows-fixture'
 
 test('roster search matches names, IDs, harnesses and tags and clears without writes', async ({ page }) => {
@@ -7,7 +8,7 @@ test('roster search matches names, IDs, harnesses and tags and clears without wr
     { id: 'scout-id', displayName: 'Evidence Finder', harnessDefault: 'openai-codex', tags: ['research'], kind: 'specialist', assignable: true },
     { id: 'critic-id', displayName: 'Brief Critic', harnessDefault: 'claude-code', tags: ['review'], kind: 'judge', assignable: true },
   ]
-  await page.route('**/api/agents', route => route.fulfill({ json: { success: true, data: { agents, count: agents.length } } }))
+  await page.route('**/api/agents', route => route.fulfill({ json: { success: true, data: rosterAnswer(agents) } }))
   await page.goto('/?mission=scouting')
   const roster = page.getByTestId('agent-roster')
   await expect(roster.locator('.ragent')).toHaveCount(2)

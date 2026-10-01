@@ -1,5 +1,6 @@
 import { type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { rosterAnswer } from './roster-terms'
 const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/theme_default.json', import.meta.url), 'utf8'))
 
 const ports = { inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Result' }] }
@@ -88,8 +89,12 @@ const succeededEvidence: Record<string, unknown> = {
   '/api/runs/run_browser/evidence/artifacts/logs/worker.log': { artifact: { name: 'logs/worker.log', size: 40, modifiedAt: '2026-09-16T00:00:00Z', kind: 'text', text: evidenceText('worker started\nworker finished') } },
 }
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; join?: boolean; extraAgents?: number } = {}) {
+export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean } = {}) {
   const currentBoard = structuredClone(board)
+  if (options.vanillaWorker) {
+    // A slot with no role is a vanilla agent; this one runs a model the catalog names.
+    currentBoard.formations[0].slots[1] = { id: 'worker', label: 'Worker 1', harness: 'claude-code', model: 'opus', effort: 'low', controller: false }
+  }
   if (options.waitingHuman) {
     // The answered gate's routes lead somewhere, as admission requires (archon-o7p.10).
     currentBoard.ends = [{ id: 'end_done', title: 'Done', outcome: 'done' }, { id: 'end_rejected', title: 'Rejected', outcome: 'rejected' }]
@@ -241,13 +246,13 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     }
     if (path.endsWith('/changes')) return respond({ signal: { changed: false } })
     if (path === '/api/gate-profiles') return respond({ profiles: [] })
-    if (path === '/api/agents') return respond({ agents: [
-      { id: 'claude', displayName: 'Claude controller', harnessDefault: 'claude-code', assignable: true, liveness: 'live', tags: [], kind: 'controller' },
-      { id: 'codex', displayName: 'Codex builder', harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' },
+    if (path === '/api/agents') return respond(rosterAnswer([
+      { id: 'claude', displayName: 'Claude controller', summary: 'Directs the workers.', harnessDefault: 'claude-code', assignable: true, liveness: 'live', tags: [], kind: 'controller' },
+      { id: 'codex', displayName: 'Codex builder', summary: 'Builds the change.', harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' },
       // A large roster, as on a real host, makes long staffing menus.
       ...Array.from({ length: options.extraAgents || 0 }, (_, index) => ({ id: `agent-${index + 1}`, displayName: `Roster agent ${index + 1}`,
         harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' })),
-    ] })
+    ]))
     if (path === '/api/agents/codex') return respond({ id: 'codex', displayName: 'Codex builder', kind: 'builder', summary: 'Builds the change.', tags: [],
       harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'codex', launch: 'codex', effectiveEffort: 'medium',
         efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],

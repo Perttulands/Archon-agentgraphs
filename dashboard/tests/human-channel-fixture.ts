@@ -1,4 +1,5 @@
 import { type Page } from '@playwright/test'
+import { rosterAnswer } from './roster-terms'
 import { scouting, scoutingFixture } from './scouting-fixture'
 
 /* The Scouting board with a writable mission: updateInputCard patches apply
@@ -95,7 +96,7 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
   })
   const text = (value: string) => ({ text: value, bytes: value.length })
   const respond = (data: unknown) => ({ json: { success: true, data }, headers: { ETag: 'fixture-etag' } })
-  await page.route('**/api/agents', route => route.fulfill(respond({ agents: talkAgents, count: talkAgents.length })))
+  await page.route('**/api/agents', route => route.fulfill(respond(rosterAnswer(talkAgents))))
   await page.route('**/api/runs**', route => {
     const path = new URL(route.request().url()).pathname
     if (route.request().method() !== 'GET') return route.fallback()
