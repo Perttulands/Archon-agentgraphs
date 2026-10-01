@@ -930,9 +930,11 @@ gate, asking formation, slot, the seat's created sequence, session name and
 brief path. An ask falls back once, recorded as `human_ask_fallback` with a code
 and reason, when no kept seat can receive it (`lab_executor`,
 `no_asking_formation`, `no_receivable_seat`) or when every seat that received it
-is gone while the request waits (`asked_seats_gone`). If a paste may have
-changed a seat's input but submission fails or cannot be verified, the ask
-falls back with `delivery_uncertain`. Automatic delivery stops for that
+is gone while the request waits (`asked_seats_gone`). An ask is sent as a
+brief is: Enter again while the input line holds only the ask, never while it
+holds anything else. If a paste may have changed a seat's input but the ask is
+not seen leaving the input line in time, or a tmux command fails, the ask
+falls back with `delivery_uncertain`. Automatic delivery then stops for that
 request without clearing the input or pressing Enter again. The operator can
 answer in the cockpit or inspect the seat. The fallback records the affected
 seat's immutable `seatCreatedSeq`. Later asks also skip that seat, including

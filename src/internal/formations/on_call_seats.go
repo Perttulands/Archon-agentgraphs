@@ -32,7 +32,9 @@ type keptSeatTransport interface {
 	DescribeSeat(ctx context.Context, socket, paneID string) (sessionID string, dead bool, err error)
 	CaptureSeat(ctx context.Context, socket, paneID string) (string, error)
 	PasteSeat(ctx context.Context, socket, paneID, buffer, text string) error
-	SubmitSeat(ctx context.Context, socket, paneID string) error
+	// SubmitStaged sends the pasted text as a brief is sent and confirms the
+	// harness took it (submitStaged).
+	SubmitStaged(ctx context.Context, socket string, s *nativeSeat, text string) error
 	KillSeat(ctx context.Context, socket, sessionID string) error
 }
 
@@ -64,9 +66,15 @@ func (t realSeatTransport) PasteSeat(ctx context.Context, socket, paneID, buffer
 	return err
 }
 
-func (t realSeatTransport) SubmitSeat(ctx context.Context, socket, paneID string) error {
-	_, err := t.run(ctx, socket, nil, "send-keys", "-t", paneID, "Enter")
-	return err
+func (t realSeatTransport) SubmitStaged(ctx context.Context, socket string, s *nativeSeat, text string) error {
+	if s.control == nil {
+		control, err := t.openControl(ctx, socket, s.sessionID)
+		if err != nil {
+			return err
+		}
+		s.control = control
+	}
+	return t.submitStaged(ctx, socket, s, text)
 }
 
 func (t realSeatTransport) KillSeat(ctx context.Context, socket, sessionID string) error {
@@ -139,7 +147,8 @@ func (e *TmuxFormationExecutor) AwaitKeptSeatIdle(ctx context.Context, seat Kept
 }
 
 // PasteAsk pastes the pointer once the agent is idle with an empty input line,
-// waits for it to render and submits it. An operator typing into the seat, or
+// waits for it to render and sends it as a brief is sent, confirming the
+// harness took it (archon-sw75). An operator typing into the seat, or
 // an agent still working, makes it return an error for a retry soon after.
 // Once a paste starts, any failure is terminal for automatic delivery: even
 // a tmux command error cannot prove it left the input unchanged.
@@ -151,8 +160,8 @@ func (e *TmuxFormationExecutor) PasteAsk(ctx context.Context, seat KeptSeat, poi
 	attempt, cancel := context.WithTimeout(ctx, keptSeatPasteWait)
 	defer cancel()
 	native := e.nativeKeptSeat(seat)
+	defer native.close()
 	err = e.seatClient.WaitInputClear(attempt, e.config.Socket, native)
-	native.close()
 	if err != nil {
 		return fmt.Errorf("seat %s is not ready for an ask: %w", seat.SlotID, err)
 	}
@@ -180,7 +189,7 @@ func (e *TmuxFormationExecutor) PasteAsk(ctx context.Context, seat KeptSeat, poi
 		return ctx.Err()
 	case <-settle.C:
 	}
-	return transport.SubmitSeat(ctx, e.config.Socket, seat.PaneID)
+	return transport.SubmitStaged(ctx, e.config.Socket, native, pointer)
 }
 
 // nativeKeptSeat addresses a kept seat for the seat transport; close it after.
