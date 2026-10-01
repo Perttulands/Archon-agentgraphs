@@ -873,7 +873,7 @@ func tmuxPaneShowsHarnessReady(harnessID, captured string) bool {
 		line = strings.TrimSpace(line)
 		switch harnessID {
 		case "openai-codex":
-			if strings.Contains(tail, "Do you trust") || strings.Contains(tail, "Yes, continue") || strings.Contains(tail, "loading") {
+			if seatTrustDialog(harnessID, tail) || strings.Contains(tail, "Do you trust") || strings.Contains(tail, "Yes, continue") || strings.Contains(tail, "loading") {
 				return false
 			}
 			if strings.Contains(captured, "OpenAI Codex") && strings.HasPrefix(line, "›") {

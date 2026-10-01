@@ -1,0 +1,25 @@
+cursor 19 7
+[91m ▐[40m▛███▛█[39m[49m   [1mClaude[0m [1mCode[0m [37mv2.1.287[39m
+[91m▝▜[40m█████[49m█▀[39m  [37mHaiku[39m [37m4.5[39m [37m·[39m [37mClaude[39m [37mMax[39m
+[91m ▝▝[39m   [91m▝▝[39m   [37m/work/c1[39m
+
+
+[37m────────────────────────────────────────────────────────────────────────────────
+[39m❯ Read the file /work/c1/brief.md and execute it exactly; it is
+  your whole brief.
+[37m────────────────────────────────────────────────────────────────────────────────
+[39m  [37mHaiku 4.5[39m
+  [91m⏵⏵ bypass permissions on[37m (shift+tab[39m [37mto cycle)[39m
+  [37mtmux[39m [37mfocus-events[39m [37moff[39m [37m·[39m [37madd[39m [37m'set[39m [37m-g[39m [37mfocus-events[39m [37mon'[39m [37mto[39m [37m~/.tmux.conf[39m [37mand[39m [37mre…[39m
+
+
+
+
+
+
+
+
+
+
+
+

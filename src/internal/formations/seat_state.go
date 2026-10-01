@@ -17,6 +17,10 @@ const (
 	// SeatStateWaitingForIdleInput: the brief waits to be pasted because the
 	// agent is busy or the input line holds text the operator has not sent.
 	SeatStateWaitingForIdleInput = "waiting_for_idle_input"
+	// SeatStateBriefNotTaken: the pasted brief has not left the input line,
+	// because Enter did not send it or the operator added text Archon never
+	// sends.
+	SeatStateBriefNotTaken = "brief_not_taken"
 	// SeatStateTurnEndedWithoutSentinel: after an operator turn, the agent
 	// ended a turn without this run's completion sentinel.
 	SeatStateTurnEndedWithoutSentinel = "turn_ended_without_sentinel"
@@ -35,6 +39,7 @@ var seatStateObservation = 60 * time.Second
 var seatStateDetails = map[string]string{
 	SeatStateNotReady:                 "the seat has not reached its ready prompt; open the seat to see its screen",
 	SeatStateWaitingForIdleInput:      "the brief waits to be pasted: the agent is busy or the input line holds unsent text",
+	SeatStateBriefNotTaken:            "the brief is pasted but not sent: Enter did not send it, or the input line also holds text Archon does not send; open the seat to see its screen",
 	SeatStateTurnEndedWithoutSentinel: "the agent ended a turn without the completion sentinel after an operator turn; ask it to finish or send the sentinel",
 	SeatStateBackgroundWork:           "the agent ended its turn with background work that has not resumed",
 }

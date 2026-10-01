@@ -514,8 +514,14 @@ dispatch or idle. The runtime pastes a brief only while the agent is idle and it
 input line is empty, waiting within the step's time limit if it has one (a long wait is
 recorded as `waiting_for_idle_input`, below), so a brief never lands
 mid-turn or on the operator's unsent text. It submits the brief once its pointer
-shows in the input line, however the harness wraps it. Archon agents must not
-type into seats or manage their sessions.
+shows in the input line, however the harness wraps it, and confirms the harness
+took it: the input line no longer holds the pointer. While the input line still
+holds exactly the pointer, Enter is pressed again after a moment, up to five
+presses; Enter is never pressed while the input line holds anything else, such
+as text the operator added (recorded as `brief_not_taken`, below). A first-use
+folder trust dialog is answered whenever it shows before the brief is sent, as
+Codex 0.159 can draw it after its ready prompt. Archon agents must not type into
+seats or manage their sessions.
 
 Sessions are named `archon-<run>-<slot>`, with the `--mission-label` value
 before the run ID when it is set.
@@ -554,6 +560,8 @@ dispatched), and records it again with state `working` when the wait ends:
 - `seat_not_ready`: the harness has not reached its ready prompt;
 - `waiting_for_idle_input`: the brief waits to be pasted because the agent is
   busy or the input line holds text the operator has not sent;
+- `brief_not_taken`: the brief is pasted but not sent, because Enter did not
+  send it or the input line also holds text Archon does not send;
 - `turn_ended_without_sentinel`: after an operator turn, the agent ended a
   turn without this run's sentinel;
 - `background_work_pending`: Claude ended its turn with background work that
