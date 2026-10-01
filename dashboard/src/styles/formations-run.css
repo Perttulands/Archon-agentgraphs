@@ -11,6 +11,9 @@
 @keyframes run-located{0%,45%{outline:2px solid var(--terra);outline-offset:7px;}100%{outline:2px solid transparent;outline-offset:2px;}}
 @media (prefers-reduced-motion:reduce){.fmx .formation.located,.fmx .missioncard.located,.fmx .gatecard.located{animation:none;outline:2px solid var(--terra);outline-offset:7px;}}
 
+/* Every gate waiting and step running at once (archon-o7p.11), each its own phrase. */
+.fmx .run-banner .run-points{display:flex;align-items:center;gap:2px;min-width:0;flex:0 1 auto;}
+.fmx .run-banner .run-point-sep{color:var(--dim);flex-shrink:0;}
 .fmx .run-banner button.run-point{flex:0 1 auto;min-width:0;max-width:min(640px,50vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;text-transform:none;letter-spacing:.02em;font-size:11px;color:var(--ink);background:transparent;border-color:transparent;padding:4px 8px;}
 .fmx .run-banner button.run-point:hover:not(:disabled){border-color:var(--terra);}
 .fmx .run-banner button.run-point:disabled{cursor:default;}

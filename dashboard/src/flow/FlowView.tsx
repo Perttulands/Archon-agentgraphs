@@ -25,8 +25,10 @@ export interface FlowRun {
   runId: string
   states: ReadonlyMap<string, NodeRunState>
   attempts: ReadonlyMap<string, number>
-  point: RunPointModel | null
-  pointTitle: string
+  /** Every gate waiting and step running or stopped now (archon-o7p.11). */
+  points: RunPointModel[]
+  /** Brings a waiting gate's answer into its row. */
+  onAnswer?: (gateId: string) => void
 }
 
 const STATE_WORDS: Record<NodeRunState, string> = {
@@ -189,10 +191,12 @@ function FlowRow({ step, run, notes, answerPanel, staffing, onOpenNode, onOpenNo
         <div className="flow-status" aria-label={`Run state of ${title}`}>
           <span className={`flow-state state-${state || 'idle'}`}>{STATE_WORDS[state || '']}</span>
           {(run.attempts.get(step.id) || 0) > 1 ? <span className="flow-attempt">attempt {run.attempts.get(step.id)}</span> : null}
-          {run.point && run.point.nodeId === step.id && run.point.kind !== 'running'
-            ? <RunPoint runId={run.runId} point={run.point} title={run.pointTitle} action="Open the step"
-              onLocate={nodeId => onOpenNode(nodeId, controlAnchor(document.querySelector(`[data-flow-node="${step.id}"] .flow-status [data-testid="run-point"]`) || document.body))} />
-            : null}
+          {run.points.filter(point => point.nodeId === step.id && point.kind !== 'running').map(point => (
+            <RunPoint key={point.kind} runId={run.runId} point={point} title={title}
+              action={point.kind === 'waiting' && run.onAnswer ? 'Answer it here' : 'Open the step'}
+              onLocate={point.kind === 'waiting' && run.onAnswer ? run.onAnswer
+                : nodeId => onOpenNode(nodeId, controlAnchor(document.querySelector(`[data-flow-node="${step.id}"] .flow-status [data-testid="run-point"]`) || document.body))} />
+          ))}
           <ProducedFiles nodeId={step.id} className="flow-produced" />
         </div>
       ) : null}

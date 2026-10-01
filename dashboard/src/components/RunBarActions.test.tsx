@@ -15,8 +15,8 @@ function renderBar(props: Partial<Parameters<typeof RunBarActions>[0]> = {}) {
   render(
     <div className="fmx">
       <div className="run-banner">
-        <RunBarActions run={run()} point={{ kind: 'waiting', nodeId: 'gate_review', gate: true }} pointTitle="Operator review" boardTitle="Runs gate"
-          titleOf={titleOf} pendingGate={{ title: 'Operator review', requestedSeq: 9 }} onResume={onResume} onStop={onStop} {...props} />
+        <RunBarActions run={run()} points={[{ kind: 'waiting', nodeId: 'gate_review', gate: true }]} boardTitle="Runs gate"
+          titleOf={titleOf} waitingGates={[{ title: 'Operator review', requestedSeq: 9 }]} onResume={onResume} onStop={onStop} {...props} />
       </div>
     </div>,
   )
@@ -107,7 +107,7 @@ describe('RunBarActions', () => {
   it('names the kept seats that end and the agents interrupted', () => {
     const lines = stopRunConsequences(
       run({ status: 'running', onCallSeats: [{ nodeId: 'fmn_draft', slotId: 'writer', createdSeq: 4, keptSeq: 6, waitingOn: [] }] }),
-      { kind: 'running', nodeId: 'fmn_publish', gate: false }, 'Publish', titleOf, null,
+      [{ kind: 'running', nodeId: 'fmn_publish', gate: false }], nodeId => titleOf(nodeId) === nodeId ? 'Publish' : titleOf(nodeId), [],
     )
     expect(lines).toEqual([
       'The agents working on Publish are interrupted.',
@@ -123,17 +123,30 @@ describe('RunBarActions', () => {
         { seq: 20, type: 'run_blocked', code: 'resume_attempts_exhausted', nodeIds: ['fmn_draft'], reason: { text: 'resume attempts exhausted', bytes: 25 }, resumeAllowed: false, limit: { kind: 'attempts', nodeId: 'fmn_draft', used: 3, max: 3 } },
       ] } }),
     } as unknown as Response)))
-    const { onResume } = renderBar({ run: run({ status: 'blocked', resumeAllowed: true }), pendingGate: null })
+    const { onResume } = renderBar({ run: run({ status: 'blocked', resumeAllowed: true }), waitingGates: [] })
     fireEvent.click(screen.getByRole('button', { name: 'Resume run' }))
     expect(onResume).toHaveBeenCalled()
     expect(screen.queryByTestId('run-not-resumable')).toBeNull()
     cleanup()
 
-    renderBar({ run: run({ status: 'blocked', resumeAllowed: false }), pendingGate: null })
+    renderBar({ run: run({ status: 'blocked', resumeAllowed: false }), waitingGates: [] })
     expect(screen.queryByRole('button', { name: 'Resume run' })).toBeNull()
     await waitFor(() => expect(screen.getByTestId('run-not-resumable')).toHaveTextContent('Can’t resume: Draft used 3 of 3 attempts.'))
     expect(screen.getByTestId('run-not-resumable')).not.toHaveTextContent(/new run/)
     expect(screen.getByRole('button', { name: 'Stop run' })).toBeInTheDocument()
+  })
+
+  it('names every step a stop interrupts and every gate that stops waiting (archon-o7p.11)', () => {
+    renderBar({
+      points: [{ kind: 'waiting', nodeId: 'gate_review', gate: true }, { kind: 'waiting', nodeId: 'gate_two', gate: true }, { kind: 'running', nodeId: 'fmn_draft', gate: false }],
+      waitingGates: [{ title: 'Operator review', requestedSeq: 9 }, { title: 'gate_two', requestedSeq: 12 }],
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Stop run' }))
+    const dialog = screen.getByRole('alertdialog')
+    expect(dialog).toHaveTextContent('run …810K49, waiting for you at Operator review · waiting for you at gate_two · running Draft')
+    expect(dialog).toHaveTextContent('The agents working on Draft are interrupted.')
+    expect(dialog).toHaveTextContent('Operator review stops waiting for you.')
+    expect(dialog).toHaveTextContent('gate_two stops waiting for you.')
   })
 
   it('shows nothing for a finished run', () => {

@@ -4,7 +4,6 @@ import RunPoint from './RunPoint'
 
 const text = (value: string) => ({ text: value, bytes: value.length })
 const problems = [
-  { seq: 6, type: 'run_blocked', code: 'resume_after_verdict', nodeIds: ['gate_framing'], reason: text('human gate verdict recorded; resume required'), resumeAllowed: true },
   { seq: 10, type: 'error', code: 'invalid_judge_result', nodeIds: ['gate_adversarial'], reason: text('missing verdict block') },
   { seq: 11, type: 'run_blocked', nodeIds: ['gate_adversarial'], reason: text('invalid judge result: missing or unterminated archon-verdict block'), resumeAllowed: false },
   { seq: 14, type: 'run_blocked', nodeIds: ['fmn_map'], reason: text('coordinator restarted; completed-turn evidence required'), resumeAllowed: true },
@@ -75,10 +74,10 @@ describe('RunPoint', () => {
     expect(screen.getByTestId('run-point')).toBeDisabled()
   })
 
-  it('calls the block after an answer a pause', async () => {
-    render(<RunPoint runId="run_1" point={{ kind: 'blocked', nodeId: 'gate_framing', gate: true, blockSeq: 6 }} title="Framing review" onLocate={() => {}} />)
-    await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent('paused at Framing review after your answer'))
-    expect(screen.getByTestId('run-point')).toHaveClass('paused')
+  it('says the run is routing an answer the operator gave', () => {
+    render(<RunPoint runId="run_1" point={{ kind: 'running', nodeId: 'gate_framing', gate: true, answered: true }} title="Framing review" onLocate={() => {}} />)
+    expect(screen.getByTestId('run-point')).toHaveTextContent(/^routing your answer at Framing review$/)
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   it('names the limit a block exhausted', async () => {

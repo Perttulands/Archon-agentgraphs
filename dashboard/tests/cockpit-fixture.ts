@@ -88,13 +88,19 @@ const succeededEvidence: Record<string, unknown> = {
   '/api/runs/run_browser/evidence/artifacts/logs/worker.log': { artifact: { name: 'logs/worker.log', size: 40, modifiedAt: '2026-09-16T00:00:00Z', kind: 'text', text: evidenceText('worker started\nworker finished') } },
 }
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; join?: boolean; extraAgents?: number } = {}) {
+export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number } = {}) {
   const currentBoard = structuredClone(board)
   if (options.waitingHuman) {
     // The answered gate's routes lead somewhere, as admission requires (archon-o7p.10).
     currentBoard.ends = [{ id: 'end_done', title: 'Done', outcome: 'done' }, { id: 'end_rejected', title: 'Rejected', outcome: 'rejected' }]
     currentBoard.connections = [...currentBoard.connections,
       { id: 'loose-pass', from: 'loose:pass', to: 'end_done:in' }, { id: 'loose-fail', from: 'loose:fail', to: 'end_rejected:in' }]
+  }
+  // A second human gate waits at the same time (archon-o7p.11).
+  if (options.secondGate) {
+    currentBoard.gates = [...currentBoard.gates, { id: 'second', title: 'Second look', kinds: ['human'], criterion: 'A second operator look' }]
+    currentBoard.connections = [...currentBoard.connections, { id: 'second-in', from: 'execution:out', to: 'second:in' },
+      { id: 'second-pass', from: 'second:pass', to: 'end_done:in' }, { id: 'second-fail', from: 'second:fail', to: 'end_rejected:in' }]
   }
   if (options.join) {
     currentBoard.formations = ['a', 'b', 'c', 'sink'].map(id => ({ ...structuredClone(board.formations[2]), id, title: id === 'sink' ? 'Join' : `Solo ${id.toUpperCase()}` }))
@@ -106,6 +112,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
   let nodes = positions.map(p => ({ ...p, x: p.x + (options.far ? 1800 : 0) }))
   if (options.join) nodes = [{ id: 'a', x: 100, y: 80 }, { id: 'b', x: 100, y: 350 }, { id: 'c', x: 100, y: 620 }, { id: 'sink', x: 650, y: 350 }]
   if (options.waitingHuman) nodes = [...nodes, { id: 'end_done', x: 504, y: 672 }, { id: 'end_rejected', x: 504, y: 784 }]
+  if (options.secondGate) nodes = [...nodes, { id: 'second', x: 112, y: 920 }]
   const endsOf = () => (currentBoard.ends ||= [])
   let seatsFetches = 0
   let themeFetches = 0
@@ -252,13 +259,19 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
       harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'codex', launch: 'codex', effectiveEffort: 'medium',
         efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
         seatLaunch: `exec '/usr/local/bin/codex' -c 'model_reasoning_effort="medium"' -c check_for_update_on_startup=false --dangerously-bypass-approvals-and-sandbox` }], etag: 'codex-card' })
-    if (path === '/api/runs/run_browser' && options.waitingHuman) return respond({ runId: 'run_browser', status: 'waiting_human', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 3, cwd: runCwd, waitingGates: [{ gateId: 'loose', requestedSeq: 3 }] })
+    if (path === '/api/runs/run_browser' && options.waitingHuman) return respond({ runId: 'run_browser', status: 'waiting_human', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: options.secondGate ? 4 : 3, cwd: runCwd,
+      waitingGates: [{ gateId: 'loose', requestedSeq: 3 }, ...(options.secondGate ? [{ gateId: 'second', requestedSeq: 4 }] : [])] })
     if (path === '/api/runs/run_browser' && options.succeeded) return respond({ runId: 'run_browser', status: 'succeeded', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 7, cwd: runCwd })
     if (options.succeeded && path in succeededEvidence) return respond(succeededEvidence[path])
     if (path === '/api/runs/run_browser' && options.blockedAtJudge) return respond({ runId: 'run_browser', status: 'blocked', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 8, cwd: runCwd })
     if (path === '/api/runs/run_browser') return respond({ runId: 'run_browser', status: 'running', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 2, cwd: runCwd })
     if (path.endsWith('/events') && options.waitingHuman) return respond({ events: [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' },
-      { seq: 3, type: 'human_input_requested', nodeId: 'loose', gateId: 'loose' }] })
+      { seq: 3, type: 'human_input_requested', nodeId: 'loose', gateId: 'loose' },
+      ...(options.secondGate ? [{ seq: 4, type: 'human_input_requested', nodeId: 'second', gateId: 'second' }] : [])] })
+    if (path === '/api/runs/run_browser/gates/second/request') return respond({ request: { gateId: 'second', requestedSeq: 4, criterion: 'A second operator look',
+      input: { fromNodeId: 'execution', fromPortId: 'out', truncated: false, text: 'Execution so far.' },
+      routes: [{ verdict: 'pass', targets: [{ nodeId: 'end_done', title: 'Done', kind: 'end', outcome: 'done' }] },
+        { verdict: 'fail', targets: [{ nodeId: 'end_rejected', title: 'Rejected', kind: 'end', outcome: 'rejected' }] }] } })
     if (path.endsWith('/events') && options.blockedAtJudge) return respond({ events: blockedAtJudgeEvents })
     if (path.endsWith('/events') && options.succeeded) return respond({ events: succeededEvents })
     if (path.endsWith('/events')) return respond({ events: [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' }] })

@@ -13,7 +13,7 @@ import { StartMissionDialog, type RunInputs } from "./StartMissionDialog"
  * context menus, on-canvas editors/terminals, and undo are tracked for follow passes
  * (bead home-f7as).
  */
-import { type CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, Fragment, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiRequestError,
   abortRunRequest,
@@ -40,10 +40,10 @@ import {
 } from './formationsApi'
 import {
   activeRunStorageKey,
-  openHumanGateId,
+  openHumanGateIds,
   projectNodeAttempts,
   projectNodeStates,
-  runCurrentPoint,
+  runCurrentPoints,
   runStatusFromResponse,
   upsertRunEvent,
 } from './formationsRunState'
@@ -194,6 +194,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [peeks, setPeeks] = useState<string[]>([])
   // The gate answer window, per pending request: closed by the operator, or reopened from the run bar with focus.
   const [answerWindow, setAnswerWindow] = useState<{ key: string; closed: boolean; focus: number }>({ key: '', closed: false, focus: 0 })
+  // The waiting gate the operator chose to answer; the oldest waiting gate otherwise (archon-o7p.11).
+  const [answerGateId, setAnswerGateId] = useState('')
   // The card the run bar's phrase last located, marked briefly on the canvas.
   const [locatedNodeId, setLocatedNodeId] = useState('')
   // Missions, formations and gates open in node windows, oldest first.
@@ -590,7 +592,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   ), [displayLayoutByNode])
 
   const nodeStates = useMemo(() => projectNodeStates(runEvents, activeRun), [runEvents, activeRun])
-  const runPoint = useMemo(() => runCurrentPoint(runEvents, activeRun), [runEvents, activeRun])
+  // Every gate waiting and step running now; the first most needs the operator.
+  const runPoints = useMemo(() => runCurrentPoints(runEvents, activeRun), [runEvents, activeRun])
   const outputNodeIds = useMemo(() => new Set(runEvents.filter(event => event.type === 'node_output' && event.nodeId).map(event => event.nodeId)), [runEvents])
   // What the run's steps produced, for their cards, node windows and the run bar.
   const runProduced = useRunProduced(activeRun?.runId || '', runEvents, Boolean(activeRun?.final))
@@ -2367,16 +2370,21 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       ) : null}
     </select>
   )
-  const pendingHumanGateId = useMemo(() => openHumanGateId(runEvents), [runEvents])
+  // Several gates can wait at once; the answer shows the chosen one, else the oldest.
+  const waitingGateIds = useMemo(() => (activeRun?.waitingGates?.length
+    ? activeRun.waitingGates.map(gate => gate.gateId)
+    : openHumanGateIds(runEvents)), [activeRun?.waitingGates, runEvents])
+  const pendingHumanGateId = waitingGateIds.includes(answerGateId) ? answerGateId : waitingGateIds[0] || ''
+  const requestedSeqOf = useCallback((gateId: string) => activeRun?.waitingGates?.find(gate => gate.gateId === gateId)?.requestedSeq
+    || [...runEvents].reverse().find(event => event.type === 'human_input_requested' && event.gateId === gateId)?.seq
+    || 0, [activeRun?.waitingGates, runEvents])
   const pendingHumanGate = useMemo(() => {
     if (!pendingHumanGateId) return null
-    const requestedSeq = activeRun?.waitingGates?.find(gate => gate.gateId === pendingHumanGateId)?.requestedSeq
-      || [...runEvents].reverse().find(event => event.type === 'human_input_requested' && event.gateId === pendingHumanGateId)?.seq
-      || 0
+    const requestedSeq = requestedSeqOf(pendingHumanGateId)
     if (!requestedSeq) return null
     const gate = board?.gates?.find(node => node.id === pendingHumanGateId)
     return { gateId: pendingHumanGateId, requestedSeq, title: gate?.title || pendingHumanGateId, criterion: gate?.criterion || '' }
-  }, [activeRun?.waitingGates, board?.gates, pendingHumanGateId, runEvents])
+  }, [board?.gates, pendingHumanGateId, requestedSeqOf])
   const pendingGateInput = useHumanGateUpstream(activeRun?.runId || '', pendingHumanGate)
   const gateTalk = useGateTalk({ board, run: activeRun, events: runEvents, agents, gate: pendingHumanGate, focusWindow })
   const pendingGateUpstream = useMemo(() => {
@@ -2412,11 +2420,18 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // The pending human gate's answer panel: in a floating window over the canvas, or in the gate's row in Flow.
   const answerKey = activeRun && pendingHumanGate ? `${activeRun.runId}:${pendingHumanGate.requestedSeq}` : ''
   const answerWindowOpen = Boolean(answerKey) && !(answerWindow.key === answerKey && answerWindow.closed)
+  // Brings a waiting gate's answer up: its window on the canvas, its row in Flow.
   const showAnswer = useCallback((gateId: string) => {
+    setAnswerGateId(gateId)
+    if (boardView === 'flow') {
+      document.querySelector<HTMLElement>(`[data-flow-node="${gateId.replace(/["\\]/g, '\\$&')}"]`)?.scrollIntoView?.({ block: 'center' })
+      return
+    }
     locateNode(gateId)
-    setAnswerWindow(current => ({ key: answerKey, closed: false, focus: current.focus + 1 }))
+    const key = activeRun ? `${activeRun.runId}:${requestedSeqOf(gateId)}` : ''
+    setAnswerWindow(current => ({ key, closed: false, focus: current.focus + 1 }))
     focusWindow(GATE_ANSWER_WINDOW_ID)
-  }, [answerKey, focusWindow, locateNode])
+  }, [activeRun, boardView, focusWindow, locateNode, requestedSeqOf])
   const answerPanelFor = (framed: boolean) => activeRun && !activeRun.final && pendingHumanGate ? (
     <HumanGateAnswerPanel
       key={`${activeRun.runId}:${pendingHumanGate.requestedSeq}`}
@@ -2436,8 +2451,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   ) : null
   const answerPanel = answerPanelFor(false)
   const showFlow = boardView === 'flow' && Boolean(board)
-  const runPointTitle = (() => {
-    const nodeId = runPoint?.nodeId
+  const pointTitle = (nodeId: string | undefined) => {
     if (!nodeId || !board) return ''
     const gate = board.gates?.find(node => node.id === nodeId)
     return board.formations?.find(node => node.id === nodeId)?.title
@@ -2445,11 +2459,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       || board.inputCards?.find(node => node.id === nodeId)?.title
       || board.ends?.find(node => node.id === nodeId)?.title
       || ''
-  })()
+  }
   const nodeAttempts = useMemo(() => projectNodeAttempts(runEvents), [runEvents])
   const flowRun = useMemo<FlowRun | null>(() => (activeRun
-    ? { runId: activeRun.runId, states: nodeStates, attempts: nodeAttempts, point: runPoint, pointTitle: runPointTitle }
-    : null), [activeRun, nodeAttempts, nodeStates, runPoint, runPointTitle])
+    ? { runId: activeRun.runId, states: nodeStates, attempts: nodeAttempts, points: runPoints, onAnswer: setAnswerGateId }
+    : null), [activeRun, nodeAttempts, nodeStates, runPoints])
   const inspectedNode = useMemo(() => {
     if (!inspectedNodeId || !board) return null
     const formation = board.formations?.find(node => node.id === inspectedNodeId)
@@ -2621,18 +2635,27 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               <div className="run-banner" data-testid="run-banner">
                 <span>run</span>
                 <span className={`badge ${runBadgeClass}`}>{runStatusLabel(activeRun.status)}</span>
-                {/* Waiting at a gate on the canvas, the phrase brings up the answer, not the gate's editor. */}
-                <RunPoint runId={activeRun.runId} point={runPoint} title={runPointTitle}
-                  titleOf={nodeId => (board ? nodeTitle(board, nodeId) : nodeId)}
-                  onLocate={!showFlow && runPoint?.kind === 'waiting' && answerKey ? showAnswer : locateAndOpenNode}
-                  action={showFlow ? 'Open the step' : runPoint?.kind === 'waiting' && answerKey ? 'Show it on the canvas with your answer' : 'Show it on the canvas and open it'} />
+                {/* Every gate waiting and step running, at once (archon-o7p.11). A waiting
+                    gate's phrase brings up its answer, not the gate's editor. */}
+                <span className="run-points" data-testid="run-points">
+                  {runPoints.map((point, index) => (
+                    <Fragment key={`${point.kind}:${point.nodeId}`}>
+                      {index ? <span className="run-point-sep" aria-hidden="true">·</span> : null}
+                      <RunPoint runId={activeRun.runId} point={point} title={pointTitle(point.nodeId)}
+                        titleOf={nodeId => (board ? nodeTitle(board, nodeId) : nodeId)}
+                        onLocate={point.kind === 'waiting' ? showAnswer : locateAndOpenNode}
+                        action={point.kind === 'waiting' ? (showFlow ? 'Show its answer in Flow' : 'Show it on the canvas with your answer') : showFlow ? 'Open the step' : 'Show it on the canvas and open it'} />
+                    </Fragment>
+                  ))}
+                </span>
                 <RunProduced />
                 {activeRun.final || choices.open.length + choices.finished.length > 1 ? runPicker(activeRun.runId) : null}
                 {activeRun.cwd && <span className="run-cwd" title={activeRun.cwd}>{activeRun.cwd}</span>}
                 {activeRun.beadId && <span>{activeRun.beadId}</span>}
-                <RunBarActions run={activeRun} point={runPoint} pointTitle={runPointTitle} boardTitle={board?.title || ''}
-                  titleOf={nodeId => (board ? nodeTitle(board, nodeId) : nodeId)}
-                  pendingGate={pendingHumanGate} onResume={() => void resumeActiveRun()} onStop={abortActiveRun} />
+                <RunBarActions run={activeRun} points={runPoints} boardTitle={board?.title || ''}
+                  titleOf={nodeId => pointTitle(nodeId) || nodeId}
+                  waitingGates={waitingGateIds.map(gateId => ({ title: pointTitle(gateId) || gateId, requestedSeq: requestedSeqOf(gateId) }))}
+                  onResume={() => void resumeActiveRun()} onStop={abortActiveRun} />
               </div>
             ) : choices.finished.length ? (
               // No run is shown, but finished runs can be reopened to read what they produced.

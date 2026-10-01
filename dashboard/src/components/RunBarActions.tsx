@@ -15,13 +15,12 @@ export { DEFAULT_STOP_REASON }
 
 export interface RunBarActionsProps {
   run: RunStatusProjection
-  point: RunPoint | null
-  /** The point's node title. */
-  pointTitle: string
+  /** Every gate waiting and step running or stopped now, the first most needing the operator. */
+  points: RunPoint[]
   boardTitle: string
   titleOf: (nodeId: string) => string
-  /** The human request the run waits on, if any. */
-  pendingGate: { title: string; requestedSeq: number } | null
+  /** The human requests the run waits on; several can wait at once (archon-o7p.11). */
+  waitingGates: { title: string; requestedSeq: number }[]
   onResume: () => void
   /** Resolves once the run is canceled, false when the stop failed. */
   onStop: (reason: string) => Promise<boolean>
@@ -43,7 +42,7 @@ function useBlockFact(runId: string, active: boolean, titleOf: (nodeId: string) 
   return fact.limit ? runLimitPhrase(fact.limit, titleOf) : fact.reason
 }
 
-export default function RunBarActions({ run, point, pointTitle, boardTitle, titleOf, pendingGate, onResume, onStop }: RunBarActionsProps) {
+export default function RunBarActions({ run, points, boardTitle, titleOf, waitingGates, onResume, onStop }: RunBarActionsProps) {
   const [confirming, setConfirming] = useState(false)
   const stopButton = useRef<HTMLButtonElement>(null)
   const returnFocus = useRef(false)
@@ -66,7 +65,7 @@ export default function RunBarActions({ run, point, pointTitle, boardTitle, titl
       ) : null}
       <button type="button" ref={stopButton} className="run-stop" aria-haspopup="dialog" onClick={() => setConfirming(true)}>Stop run</button>
       {confirming ? (
-        <StopRunDialog run={run} point={point} pointTitle={pointTitle} boardTitle={boardTitle} titleOf={titleOf} pendingGate={pendingGate}
+        <StopRunDialog run={run} points={points} boardTitle={boardTitle} titleOf={titleOf} waitingGates={waitingGates}
           onStop={onStop}
           onClose={() => {
             returnFocus.current = true
@@ -77,14 +76,20 @@ export default function RunBarActions({ run, point, pointTitle, boardTitle, titl
   )
 }
 
+/** Names in a sentence: "A", "A and B", "A, B and C". */
+function andList(names: string[]): string {
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0] || ''
+}
+
 /** What stopping this run ends, in the order the operator should read it. */
-export function stopRunConsequences(run: RunStatusProjection, point: RunPoint | null, pointTitle: string, titleOf: (nodeId: string) => string, pendingGate: RunBarActionsProps['pendingGate']): string[] {
+export function stopRunConsequences(run: RunStatusProjection, points: RunPoint[], titleOf: (nodeId: string) => string, waitingGates: RunBarActionsProps['waitingGates']): string[] {
   const lines: string[] = []
-  if (point?.kind === 'running') lines.push(`The agents working on ${pointTitle || point.nodeId} are interrupted.`)
-  if (pendingGate) {
-    lines.push(hasGateDraft(run.runId, pendingGate.requestedSeq)
-      ? `${pendingGate.title} stops waiting for you, and your unsent answer is not sent.`
-      : `${pendingGate.title} stops waiting for you.`)
+  const working = points.filter(point => point.kind === 'running').map(point => titleOf(point.nodeId) || point.nodeId)
+  if (working.length) lines.push(`The agents working on ${andList(working)} are interrupted.`)
+  for (const gate of waitingGates) {
+    lines.push(hasGateDraft(run.runId, gate.requestedSeq)
+      ? `${gate.title} stops waiting for you, and your unsent answer is not sent.`
+      : `${gate.title} stops waiting for you.`)
   }
   const seats = run.onCallSeats || []
   if (seats.length) {
@@ -135,14 +140,18 @@ function ModalLayer({ onEscape, children }: { onEscape: () => void; children: Re
   )
 }
 
-function StopRunDialog({ run, point, pointTitle, boardTitle, titleOf, pendingGate, onStop, onClose }: Omit<RunBarActionsProps, 'onResume'> & { onClose: () => void }) {
+function StopRunDialog({ run, points, boardTitle, titleOf, waitingGates, onStop, onClose }: Omit<RunBarActionsProps, 'onResume'> & { onClose: () => void }) {
   const [reason, setReason] = useState('')
   const [stopping, setStopping] = useState(false)
   const keepButton = useRef<HTMLButtonElement>(null)
   // Keep running is the safe default, so Enter on an opened dialog stops nothing.
   useLayoutEffect(() => { keepButton.current?.focus() }, [])
   const runName = `…${run.runId.slice(-6)}`
-  const consequences = stopRunConsequences(run, point, pointTitle, titleOf, pendingGate)
+  const consequences = stopRunConsequences(run, points, titleOf, waitingGates)
+  const where = points.map(point => {
+    const title = titleOf(point.nodeId) || point.nodeId
+    return title ? `${point.kind === 'waiting' ? 'waiting for you at' : point.kind === 'running' ? 'running' : 'stopped at'} ${title}` : ''
+  }).filter(Boolean).join(' · ')
   return (
     <ModalLayer onEscape={() => { if (!stopping) onClose() }}>
       <div className="pop stop-run" role="alertdialog" aria-modal="true" aria-labelledby="stop-run-title" aria-describedby="stop-run-consequences"
@@ -170,7 +179,7 @@ function StopRunDialog({ run, point, pointTitle, boardTitle, titleOf, pendingGat
         }}>
           <p className="stop-run-what">
             <strong>{boardTitle || run.missionSlug}</strong>{run.beadId ? ` · ${run.beadId}` : ''} · run <span title={run.runId}>{runName}</span>
-            {pointTitle && point ? <>, {point.kind === 'waiting' ? 'waiting for you at' : point.kind === 'running' ? 'running' : 'stopped at'} <strong>{pointTitle}</strong></> : null}
+            {where ? <>, <strong>{where}</strong></> : null}
           </p>
           <ul className="stop-run-consequences" id="stop-run-consequences">
             {consequences.map(line => <li key={line}>{line}</li>)}
