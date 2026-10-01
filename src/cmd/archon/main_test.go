@@ -2565,7 +2565,6 @@ func TestArchonS4ConfiguredLabPoemMissionReachesGateAndPolishesAfterApproval(t *
 	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
 	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "lab-fake")
 	t.Setenv("CHROTE_FORMATIONS_LAB_CWD", workspace)
-	t.Setenv("CHROTE_FORMATIONS_LAB_ROOTS", workspace)
 
 	personas := formations.NewPersonaStore(agentsDir)
 	for _, id := range []string{"lab-poet", "lab-poem-reviewer"} {
@@ -2678,7 +2677,6 @@ func TestArchonPoemMissionRoundTripsThroughCLIAPIFileAndLedger(t *testing.T) {
 	t.Setenv("CHROTE_AGENTS_DIR", agentsDir)
 	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "openai-codex")
 	t.Setenv("CHROTE_FORMATIONS_LAB_CWD", workspace)
-	t.Setenv("CHROTE_FORMATIONS_LAB_ROOTS", workspace)
 
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("poems"), `schema = 1
@@ -3000,8 +2998,8 @@ func TestArchonConfiguredLabExecutorUsesAutomaticMissionWorkspace(t *testing.T) 
 	if eventsContainErrorCode(events, "missing_executor") || eventsContainReason(events, "formation executor unavailable") {
 		t.Fatalf("configured but incomplete lab executor reported generic missing executor: %+v", events)
 	}
-	if eventsContainErrorCode(events, "missing_root") {
-		t.Fatalf("automatic workspace did not supply its execution root: %+v", events)
+	if eventsContainErrorCode(events, "unavailable_cwd") {
+		t.Fatalf("automatic workspace was not usable as the cwd: %+v", events)
 	}
 }
 

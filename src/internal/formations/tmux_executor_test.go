@@ -85,19 +85,12 @@ func TestTmuxExecutorRejectsSocketSymlink(t *testing.T) {
 }
 
 func TestTmuxExecutorNonTempWorkspaceUsesOrdinaryValidationCodes(t *testing.T) {
-	// The /tmp workspace boundary is removed: a missing non-/tmp cwd or root is
-	// now an ordinary configuration error, not session_target_attachment_audit_unavailable.
+	// A missing non-/tmp cwd is an ordinary configuration error, not
+	// session_target_attachment_audit_unavailable.
 	t.Run("missing cwd", func(t *testing.T) {
 		cfg := tmuxTestConfig(t)
 		cfg.Cwd = "/nonexistent-test-root/path-that-does-not-exist"
-		cfg.Roots = []string{cfg.Cwd}
 		assertBoundaryCode(t, cfg, "unavailable_cwd")
-	})
-
-	t.Run("missing root", func(t *testing.T) {
-		cfg := tmuxTestConfig(t)
-		cfg.Roots = []string{cfg.Cwd, "/nonexistent-test-root/path-that-does-not-exist"}
-		assertBoundaryCode(t, cfg, "unavailable_root")
 	})
 }
 
@@ -666,7 +659,15 @@ func TestTmuxExecutorParsesNamedOutputPayloadBlockForPortRouting(t *testing.T) {
 	}
 }
 
+// A seat may name an output ref anywhere on disk (ADR-0021): in the workspace
+// by a relative path, outside it, or through a symlink.
 func TestTmuxExecutorReadsOutputRefArtifactForPortRouting(t *testing.T) {
+	for _, location := range []string{"workspace", "outside", "symlink"} {
+		t.Run(location, func(t *testing.T) { testTmuxOutputRefRouting(t, location) })
+	}
+}
+
+func testTmuxOutputRefRouting(t *testing.T, location string) {
 	store, personas := s4RunFixture(t)
 	store.Now = fixedClock()
 	personas.Now = fixedClock()
@@ -683,7 +684,22 @@ func TestTmuxExecutorReadsOutputRefArtifactForPortRouting(t *testing.T) {
 	}
 	leftArtifactRef = filepath.ToSlash(leftArtifactRef)
 	longLeft := "LEFT-ARTIFACT-BEGIN\n" + strings.Repeat("long routed artifact line with preserved spacing 0123456789\n", 80) + "LEFT-ARTIFACT-END"
-	writeFixture(t, leftArtifact, longLeft)
+	switch location {
+	case "workspace":
+		writeFixture(t, leftArtifact, longLeft)
+	case "outside":
+		leftArtifactRef = filepath.Join(t.TempDir(), "left-long.md")
+		writeFixture(t, leftArtifactRef, longLeft)
+	case "symlink":
+		outside := filepath.Join(t.TempDir(), "left-long.md")
+		writeFixture(t, outside, longLeft)
+		if err := os.MkdirAll(filepath.Dir(leftArtifact), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, leftArtifact); err != nil {
+			t.Fatal(err)
+		}
+	}
 	payloads := map[string]FormationOutputPayload{
 		"port_split_left":  {Text: "LEFT-SUMMARY", Ref: leftArtifactRef},
 		"port_split_right": {Text: "RIGHT-FROM-TMUX"},
@@ -694,7 +710,6 @@ func TestTmuxExecutorReadsOutputRefArtifactForPortRouting(t *testing.T) {
 	}
 	cfg := tmuxTestConfig(t)
 	cfg.Cwd = store.Workspace
-	cfg.Roots = []string{store.Workspace}
 	client := &fakeTmuxHarnessClient{
 		sessions: []string{"tmux-scout"},
 		pane:     tmuxPaneState{CurrentPath: cfg.Cwd},
@@ -765,33 +780,6 @@ func TestTmuxExecutorBlocksInvalidOutputRefArtifacts(t *testing.T) {
 			},
 			wantCode: "invalid_output_ref",
 		},
-		{
-			name: "outside_configured_roots",
-			setupRef: func(t *testing.T, store *Store) string {
-				t.Helper()
-				outside := filepath.Join(t.TempDir(), "outside-left.md")
-				writeFixture(t, outside, "SHOULD-NOT-ROUTE")
-				return outside
-			},
-			wantCode: "output_ref_outside_root",
-		},
-		{
-			name: "symlink_escape",
-			setupRef: func(t *testing.T, store *Store) string {
-				t.Helper()
-				outside := filepath.Join(t.TempDir(), "outside-left.md")
-				writeFixture(t, outside, "SHOULD-NOT-ROUTE")
-				insideLink := filepath.Join(store.Workspace, ".formations", "artifacts", "linked-outside.md")
-				if err := os.MkdirAll(filepath.Dir(insideLink), 0o755); err != nil {
-					t.Fatalf("mkdir symlink parent: %v", err)
-				}
-				if err := os.Symlink(outside, insideLink); err != nil {
-					t.Fatalf("create symlink escape fixture: %v", err)
-				}
-				return insideLink
-			},
-			wantCode: "output_ref_outside_root",
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store, personas := s4RunFixture(t)
@@ -814,7 +802,6 @@ func TestTmuxExecutorBlocksInvalidOutputRefArtifacts(t *testing.T) {
 			}
 			cfg := tmuxTestConfig(t)
 			cfg.Cwd = store.Workspace
-			cfg.Roots = []string{store.Workspace}
 			client := &fakeTmuxHarnessClient{
 				sessions: []string{"tmux-scout"},
 				pane:     tmuxPaneState{CurrentPath: cfg.Cwd},
@@ -1230,7 +1217,6 @@ func tmuxTestConfig(t *testing.T) TmuxExecutorConfig {
 		Harnesses:      []string{"openai-codex"},
 		Socket:         socket,
 		Cwd:            root,
-		Roots:          []string{root},
 		SessionPrefix:  "tmux-",
 		OutputCapBytes: defaultTmuxOutputCapBytes,
 	}
@@ -1271,7 +1257,6 @@ func nonTempWorkspace(t *testing.T) TmuxExecutorConfig {
 		Harnesses:      []string{"openai-codex"},
 		Socket:         socket,
 		Cwd:            workspace,
-		Roots:          []string{workspace},
 		SessionPrefix:  "tmux-",
 		OutputCapBytes: defaultTmuxOutputCapBytes,
 	}
@@ -1282,11 +1267,9 @@ func clearExecutorEnv(t *testing.T) {
 	for _, key := range []string{
 		"CHROTE_FORMATIONS_LAB_HARNESSES",
 		"CHROTE_FORMATIONS_LAB_CWD",
-		"CHROTE_FORMATIONS_LAB_ROOTS",
 		"CHROTE_FORMATIONS_TMUX_HARNESSES",
 		"CHROTE_FORMATIONS_TMUX_SOCKET",
 		"CHROTE_FORMATIONS_TMUX_CWD",
-		"CHROTE_FORMATIONS_TMUX_ROOTS",
 		"CHROTE_FORMATIONS_TMUX_SESSION_PREFIX",
 		"CHROTE_FORMATIONS_TMUX_PROD_SMOKE",
 		"CHROTE_FORMATIONS_TMUX_DEDICATED",

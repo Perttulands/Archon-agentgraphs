@@ -247,8 +247,8 @@ these references before allocating a workspace, records their ordered list in
 `run_started`, and projects it in run status. Every seat, including the first
 formation and later attempts, is instructed to inspect this context before
 claiming no prior art. The paths are frozen for the run; their contents are not
-snapshotted. They are reference inputs, not additional file-serving roots or
-permission to modify the referenced projects.
+snapshotted. They are reference inputs, not permission to modify the
+referenced projects.
 
 Rejected admission removes any newly allocated empty workspace. Admitted runs
 retain their workspace and outputs after completion, cancellation or failure.
@@ -597,11 +597,11 @@ Real formations must emit all and only their declared output IDs in one block:
 {"port_out":{"text":"Short result"}}
 ```
 
-A payload can also include `ref` naming a text artifact created under the
-prompt's artifact directory or another configured root. Use its full absolute
+A payload can also include `ref` naming a text file anywhere on disk,
+preferably under the prompt's artifact directory. Use its full absolute
 filesystem path. A legacy relative `ref` resolves against the state workspace,
-not the run artifact directory. Invalid, missing,
-oversized or escaped references block routing. Free-form answer text is not
+not the run artifact directory. A missing, unreadable, non-text or oversized
+reference blocks routing. Free-form answer text is not
 routed. Finish with the exact run ID substituted in the sentinel:
 
 ```text

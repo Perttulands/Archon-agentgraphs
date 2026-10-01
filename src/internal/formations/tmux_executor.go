@@ -131,7 +131,6 @@ type TmuxExecutorConfig struct {
 	Harnesses                                                    []string
 	Socket                                                       string
 	Cwd                                                          string
-	Roots                                                        []string
 	// AgentUser is the Unix user the executor expects to own the tmux server it
 	// drives (and therefore the user agents run as). Empty defaults to the service
 	// user the CHROTE process runs as, so single-user installs need zero config.
@@ -219,7 +218,6 @@ func TmuxExecutorConfigFromEnv() TmuxExecutorConfig {
 		ClaudeTranscriptRoot: strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_CLAUDE_TRANSCRIPTS")),
 		Socket:               strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_SOCKET")),
 		Cwd:                  strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_CWD")),
-		Roots:                splitLabCSV(os.Getenv("CHROTE_FORMATIONS_TMUX_ROOTS")),
 		AgentUser:            strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_AGENT_USER")),
 		SessionPrefix:        strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_SESSION_PREFIX")),
 		OutputCapBytes:       capBytes,
@@ -279,7 +277,6 @@ func (e *TmuxFormationExecutor) ExecuteFormationContext(parent context.Context, 
 	copy := *e
 	if req.Cwd != "" {
 		copy.config.Cwd = req.Cwd
-		copy.config.Roots = append(append([]string{}, e.config.Roots...), req.Cwd)
 	}
 	return copy.executeFormationContext(parent, req)
 }
@@ -444,33 +441,20 @@ func (e *TmuxFormationExecutor) materializeOutputRefs(outputs map[string]Formati
 	return nil
 }
 
+// readOutputRefArtifact reads the file a seat named as an output's ref,
+// anywhere on disk. Only a regular text file within the output cap is read.
 func (e *TmuxFormationExecutor) readOutputRefArtifact(ref string) (string, error) {
 	path, err := e.resolveOutputRefPath(ref)
 	if err != nil {
 		return "", err
 	}
-	info, err := os.Lstat(path)
+	// O_NONBLOCK keeps a FIFO from blocking the open; it is refused below.
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		return "", runExecutionError("unavailable_output_ref", fmt.Sprintf("output ref %q is not stat-able", ref), "executor", err)
-	}
-	if !info.Mode().IsRegular() {
-		return "", runExecutionError("invalid_output_ref", fmt.Sprintf("output ref %q is not a regular file", ref), "executor", nil)
-	}
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		code := "unavailable_output_ref"
-		if errors.Is(err, syscall.ELOOP) {
-			code = "output_ref_outside_root"
-		}
-		return "", runExecutionError(code, fmt.Sprintf("output ref %q is not readable", ref), "executor", err)
-	}
-	file := os.NewFile(uintptr(fd), path)
-	if file == nil {
-		syscall.Close(fd)
-		return "", runExecutionError("unavailable_output_ref", fmt.Sprintf("output ref %q could not be opened", ref), "executor", nil)
+		return "", runExecutionError("unavailable_output_ref", fmt.Sprintf("output ref %q is not readable", ref), "executor", err)
 	}
 	defer file.Close()
-	info, err = file.Stat()
+	info, err := file.Stat()
 	if err != nil {
 		return "", runExecutionError("unavailable_output_ref", fmt.Sprintf("output ref %q is not stat-able", ref), "executor", err)
 	}
@@ -494,6 +478,8 @@ func (e *TmuxFormationExecutor) readOutputRefArtifact(ref string) (string, error
 	return string(raw), nil
 }
 
+// resolveOutputRefPath makes a ref absolute; a relative ref resolves against
+// the state workspace.
 func (e *TmuxFormationExecutor) resolveOutputRefPath(ref string) (string, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
@@ -502,10 +488,8 @@ func (e *TmuxFormationExecutor) resolveOutputRefPath(ref string) (string, error)
 	if strings.ContainsRune(ref, 0) || strings.Contains(ref, "://") {
 		return "", runExecutionError("invalid_output_ref", fmt.Sprintf("unsupported output ref %q", ref), "executor", nil)
 	}
-	var candidate string
-	if filepath.IsAbs(ref) {
-		candidate = filepath.Clean(ref)
-	} else {
+	candidate := filepath.Clean(ref)
+	if !filepath.IsAbs(ref) {
 		base := e.config.Cwd
 		if e.store != nil && strings.TrimSpace(e.store.workspaceRoot()) != "" {
 			base = e.store.workspaceRoot()
@@ -516,24 +500,7 @@ func (e *TmuxFormationExecutor) resolveOutputRefPath(ref string) (string, error)
 	if err != nil {
 		return "", runExecutionError("invalid_output_ref", fmt.Sprintf("output ref %q is invalid", ref), "executor", err)
 	}
-	if !e.pathWithinRoots(candidate) {
-		return "", runExecutionError("output_ref_outside_root", fmt.Sprintf("output ref %q is outside configured roots", ref), "executor", nil)
-	}
-	resolved, err := filepath.EvalSymlinks(candidate)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", runExecutionError("unavailable_output_ref", fmt.Sprintf("output ref %q does not exist", ref), "executor", err)
-		}
-		return "", runExecutionError("unavailable_output_ref", fmt.Sprintf("output ref %q could not be resolved", ref), "executor", err)
-	}
-	resolved, err = filepath.Abs(resolved)
-	if err != nil {
-		return "", runExecutionError("invalid_output_ref", fmt.Sprintf("output ref %q is invalid", ref), "executor", err)
-	}
-	if !e.pathWithinRoots(resolved) {
-		return "", runExecutionError("output_ref_outside_root", fmt.Sprintf("output ref %q resolves outside configured roots", ref), "executor", nil)
-	}
-	return resolved, nil
+	return candidate, nil
 }
 
 func outputContractExtraLines(formation FormationNode) []string {
@@ -563,7 +530,7 @@ func outputContractExtraLines(formation FormationNode) []string {
 		"Do not rely on free-form answer text for routing; it is display-only. Missing or unknown output ids block the run.",
 		"Use text for a short, non-secret routed payload or summary.",
 		"For longer payloads, create a text artifact under the artifact directory shown below and put its full absolute filesystem path in ref; CHROTE reads that file for routing. A bare filename does not resolve against the run artifact directory. Omit ref for a text-only payload.",
-		"Do not point ref at arbitrary host files or secrets. Invalid, unreadable, out-of-root, symlink-escaped, non-text, or oversized refs block the run.",
+		"A missing, unreadable, non-text or oversized ref blocks the run.",
 		"Before the CHROTE-DONE sentinel, you MUST emit a fresh ```chrote-outputs fenced JSON block for this run. Do not omit the fence.",
 	)
 	return lines
@@ -1450,9 +1417,6 @@ func (e *TmuxFormationExecutor) validateConfiguredBoundaryContext(ctx context.Co
 	if strings.TrimSpace(e.config.Cwd) == "" {
 		return runExecutionError("missing_cwd", "tmux executor cwd is not configured", "executor", nil)
 	}
-	if len(e.config.Roots) == 0 {
-		return runExecutionError("missing_root", "tmux executor root is not configured", "executor", nil)
-	}
 	cwd, err := filepath.Abs(e.config.Cwd)
 	if err != nil {
 		return runExecutionError("invalid_cwd", "tmux executor cwd is invalid", "executor", err)
@@ -1461,25 +1425,6 @@ func (e *TmuxFormationExecutor) validateConfiguredBoundaryContext(ctx context.Co
 		return runExecutionError("unavailable_cwd", "tmux executor cwd is unavailable", "executor", err)
 	}
 	e.config.Cwd = cwd
-	roots := make([]string, 0, len(e.config.Roots))
-	cwdInsideRoot := false
-	for _, root := range e.config.Roots {
-		absRoot, err := filepath.Abs(root)
-		if err != nil {
-			return runExecutionError("invalid_root", "tmux executor root is invalid", "executor", err)
-		}
-		if info, err := os.Stat(absRoot); err != nil || !info.IsDir() {
-			return runExecutionError("unavailable_root", "tmux executor root is unavailable", "executor", err)
-		}
-		if pathWithinRoot(cwd, absRoot) {
-			cwdInsideRoot = true
-		}
-		roots = append(roots, absRoot)
-	}
-	if !cwdInsideRoot {
-		return runExecutionError("cwd_outside_root", "tmux executor cwd is outside configured roots", "executor", nil)
-	}
-	e.config.Roots = roots
 	return nil
 }
 
@@ -1605,19 +1550,10 @@ func (e *TmuxFormationExecutor) renderPromptWithContext(req FormationExecution, 
 	if len(req.Formation.Outputs) > 0 && e.store != nil {
 		artifactDir := filepath.Join(e.store.workspaceRoot(), ".formations", "artifacts", req.RunID)
 		b.WriteString("artifact directory for long routed outputs: " + artifactDir + "\n")
-		b.WriteString("If you use ref in chrote-outputs, create the file first under that artifact directory or another configured root path. Do not point ref at arbitrary host files or secrets.\n")
+		b.WriteString("If you use ref in chrote-outputs, create the file first, preferably under that artifact directory.\n")
 	}
 	b.WriteString("When complete, emit exactly one sentinel line using the run value above: <<<CHROTE-DONE run-id=<the-run-value-above> status=ok artifact=<path-or-ref>>>\n")
 	return b.String()
-}
-
-func (e *TmuxFormationExecutor) pathWithinRoots(path string) bool {
-	for _, root := range e.config.Roots {
-		if pathWithinRoot(path, root) {
-			return true
-		}
-	}
-	return false
 }
 
 func withSlot(err error, nodeID, slotID, dispatchID string) error {

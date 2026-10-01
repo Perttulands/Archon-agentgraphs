@@ -73,7 +73,7 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 	root := t.TempDir()
 	personas := formations.NewPersonaStore(filepath.Join(root, "agents"))
 	c, err := Open(root, personas, func(store *formations.Store) formations.FormationExecutor {
-		return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: root, Roots: []string{root}})
+		return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: root})
 	})
 	if err != nil {
 		t.Fatal(err)

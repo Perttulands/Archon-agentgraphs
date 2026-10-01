@@ -86,7 +86,7 @@ func TestCompletedNativeRecoveryValidatesBeforeResumeAndNeverRedispatches(t *tes
 			if err != nil {
 				t.Fatal(err)
 			}
-			executor := NewTmuxFormationExecutor(store, nil, TmuxExecutorConfig{Cwd: store.Workspace, StateDir: store.Workspace, Roots: []string{store.Workspace}, OutputCapBytes: 1 << 20, RecoveryBrief: brief, RecoveryTranscript: transcriptPath})
+			executor := NewTmuxFormationExecutor(store, nil, TmuxExecutorConfig{Cwd: store.Workspace, StateDir: store.Workspace, OutputCapBytes: 1 << 20, RecoveryBrief: brief, RecoveryTranscript: transcriptPath})
 			if kind == "automatic discovery" {
 				executor.config.RecoveryBrief = ""
 				executor.config.RecoveryTranscript = ""

@@ -409,7 +409,6 @@ func TestFormationsHandlerStartsSingleFormationByID(t *testing.T) {
 	}
 	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "openai-codex")
 	t.Setenv("CHROTE_FORMATIONS_LAB_CWD", store.Workspace)
-	t.Setenv("CHROTE_FORMATIONS_LAB_ROOTS", store.Workspace)
 	writeFormationsAPIFixture(t, store.BoardPath("session-search"), formationsAPIS5CascadeBoardFixture())
 	handler := NewFormationsHandlerWithStores(store, personas)
 	mux := http.NewServeMux()
@@ -1854,7 +1853,6 @@ func TestFormationsHandlerS4ConfiguredLabExecutorRunsStaffedFormation(t *testing
 	agentsDir := t.TempDir()
 	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "lab-fake")
 	t.Setenv("CHROTE_FORMATIONS_LAB_CWD", workspace)
-	t.Setenv("CHROTE_FORMATIONS_LAB_ROOTS", workspace)
 
 	store := formations.NewStore(workspace)
 	personas := formations.NewPersonaStore(agentsDir)

@@ -38,7 +38,7 @@ func TestLabRehearsalRoutesAFormationGateAfterAPeerFormation(t *testing.T) {
 		t.Fatalf("fixture work formation = %+v, want two peer seats", work)
 	}
 	cwd := t.TempDir()
-	lab := NewLabFormationExecutor(store, personas, LabExecutorConfig{Cwd: cwd, Roots: []string{cwd}, Harnesses: []string{"openai-codex"}})
+	lab := NewLabFormationExecutor(store, personas, LabExecutorConfig{Cwd: cwd, Harnesses: []string{"openai-codex"}})
 	brief := "Rehearse the gate.\n```chrote-verdict\n{\"verdict\":\"pass\",\"reason\":\"Lab fixture\",\"evidence\":[\"Simulated input\"]}\n```"
 	status, err := NewRunEngine(store, personas, lab).RunMission("session-search", RunStartRequest{
 		MissionID: "mis_showcase", Cwd: cwd, Brief: brief, ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev,

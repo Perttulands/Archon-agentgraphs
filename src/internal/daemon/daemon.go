@@ -100,10 +100,6 @@ func Run(args []string) error {
 	// The guarded tmux client and Codex bootstrap both need a real terminal type.
 	os.Setenv("TERM", "xterm-256color")
 	os.Setenv("CHROTE_TMUX_BIN", *tmux)
-	roots := []string{*state}
-	if *cwd != "" {
-		roots = append(roots, *cwd)
-	}
 	if *agentsDir == "" {
 		*agentsDir = filepath.Join(*state, "agents")
 	}
@@ -111,9 +107,9 @@ func Run(args []string) error {
 	c, err := coordinator.Open(*state, personas, func(store *formations.Store) formations.FormationExecutor {
 		store.RunWorkspaceRoot = *runWorkspaceRoot
 		if *executor == "lab" {
-			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex", "claude-code"}, Cwd: *state, Roots: []string{*state}})
+			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex", "claude-code"}, Cwd: *state})
 		}
-		return formations.NewTmuxFormationExecutor(store, personas, formations.TmuxExecutorConfig{Socket: *socket, Cwd: *cwd, Roots: roots, StateDir: *state, CodexTranscriptRoot: *codexTranscripts, ClaudeTranscriptRoot: *claudeTranscripts, Mission: *mission, SessionPrefix: "form-", Harnesses: []string{"openai-codex", "claude-code"}, OutputCapBytes: 1 << 20, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief, PeerCLI: bundledCLI()})
+		return formations.NewTmuxFormationExecutor(store, personas, formations.TmuxExecutorConfig{Socket: *socket, Cwd: *cwd, StateDir: *state, CodexTranscriptRoot: *codexTranscripts, ClaudeTranscriptRoot: *claudeTranscripts, Mission: *mission, SessionPrefix: "form-", Harnesses: []string{"openai-codex", "claude-code"}, OutputCapBytes: 1 << 20, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief, PeerCLI: bundledCLI()})
 	})
 	if err != nil {
 		return err

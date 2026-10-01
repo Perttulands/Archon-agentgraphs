@@ -39,7 +39,7 @@ func TestDeliveryMissionLabPushback(t *testing.T) {
 	}
 	cwd := t.TempDir()
 	executor := &scriptedLabExecutor{
-		lab: NewLabFormationExecutor(store, personas, LabExecutorConfig{Cwd: cwd, Roots: []string{cwd}, Harnesses: []string{"claude-code", "openai-codex"}}),
+		lab: NewLabFormationExecutor(store, personas, LabExecutorConfig{Cwd: cwd, Harnesses: []string{"claude-code", "openai-codex"}}),
 		responses: map[string]map[int]string{
 			"fmn_plan":           {1: "plan.md: implement the target brief"},
 			"fmn_beads":          {1: "task-one: draft graph; plan.md", 2: "task-one: linked graph with verification; plan.md"},

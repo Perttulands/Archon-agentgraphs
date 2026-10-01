@@ -17,7 +17,7 @@ func TestMissionAdmissionWithoutCwdExecutesInItsProjectedWorkspace(t *testing.T)
 	e := &pausedLab{entered: make(chan formations.FormationExecution, 8), finish: make(chan struct{})}
 	c, err := Open(root, personas, func(store *formations.Store) formations.FormationExecutor {
 		e.store = store
-		e.lab = formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Cwd: root, Roots: []string{root}, Harnesses: []string{"openai-codex"}})
+		e.lab = formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Cwd: root, Harnesses: []string{"openai-codex"}})
 		return e
 	})
 	if err != nil {

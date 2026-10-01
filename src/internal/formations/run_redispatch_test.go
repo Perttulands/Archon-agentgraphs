@@ -59,7 +59,7 @@ func TestResumeRedispatchAbandonsOpenDispatchAndReattachFailureBlocks(t *testing
 				t.Fatal(err)
 			}
 			if kind == "reattach failure" {
-				executor := NewTmuxFormationExecutor(store, personas, TmuxExecutorConfig{Cwd: store.Workspace, StateDir: store.Workspace, Roots: []string{store.Workspace}, OutputCapBytes: 1 << 20, RecoveryBrief: filepath.Join(store.Workspace, "missing.md"), RecoveryTranscript: filepath.Join(store.Workspace, "missing.jsonl")})
+				executor := NewTmuxFormationExecutor(store, personas, TmuxExecutorConfig{Cwd: store.Workspace, StateDir: store.Workspace, OutputCapBytes: 1 << 20, RecoveryBrief: filepath.Join(store.Workspace, "missing.md"), RecoveryTranscript: filepath.Join(store.Workspace, "missing.jsonl")})
 				status, err := NewRunEngine(store, personas, executor).ResumeRun(started.RunID, RunResumeRequest{Mode: "reattach", Actor: "agent:test"})
 				if err != nil {
 					t.Fatalf("reattach failure must not be an error: %v", err)
@@ -80,7 +80,7 @@ func TestResumeRedispatchAbandonsOpenDispatchAndReattachFailureBlocks(t *testing
 				}
 				return
 			}
-			lab := NewLabFormationExecutor(store, personas, LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: store.Workspace, Roots: []string{store.Workspace}})
+			lab := NewLabFormationExecutor(store, personas, LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: store.Workspace})
 			status, err := NewRunEngine(store, personas, lab).ResumeRun(started.RunID, RunResumeRequest{Mode: "redispatch", Actor: "agent:test", Reason: "seat died; run the node again"})
 			if err != nil {
 				t.Fatal(err)

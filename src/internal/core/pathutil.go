@@ -57,64 +57,10 @@ func normalizeRoots(parts []string) []string {
 	return roots
 }
 
-// IsPathUnderRoot reports whether an absolute path is equal to root or a child of root.
-// A filesystem root (/) allows every absolute path beneath it.
-func IsPathUnderRoot(path, root string) bool {
-	if path == "" || root == "" || !filepath.IsAbs(path) {
-		return false
-	}
-
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return false
-	}
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return false
-	}
-
-	absPath = filepath.Clean(absPath)
-	absRoot = filepath.Clean(absRoot)
-	if absRoot == string(os.PathSeparator) {
-		return true
-	}
-	return absPath == absRoot || strings.HasPrefix(absPath, absRoot+string(os.PathSeparator))
-}
-
 // ResetConfigForTesting resets the cached config (for testing only)
 func ResetConfigForTesting() {
 	allowedRootsOnce = sync.Once{}
 	allowedRoots = nil
-}
-
-// ValidateProjectPath ensures a path is within allowed roots
-func ValidateProjectPath(inputPath string) (string, string, string) {
-	if inputPath == "" {
-		return "", "BAD_REQUEST", "Missing required parameter: path"
-	}
-
-	resolved, err := filepath.Abs(inputPath)
-	if err != nil {
-		return "", "BAD_REQUEST", "Invalid path: " + err.Error()
-	}
-
-	isAllowed := false
-	for _, root := range GetAllowedRoots() {
-		if IsPathUnderRoot(resolved, root) {
-			isAllowed = true
-			break
-		}
-	}
-
-	if !isAllowed {
-		return "", "FORBIDDEN", "Project path not in allowed roots: " + resolved + ". Allowed: " + strings.Join(GetAllowedRoots(), ", ")
-	}
-
-	if _, err := os.Stat(resolved); os.IsNotExist(err) {
-		return "", "NOT_FOUND", "Project path does not exist: " + resolved
-	}
-
-	return resolved, "", ""
 }
 
 // FileExists checks if a file exists

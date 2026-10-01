@@ -95,7 +95,7 @@ func (e *judgeFailsOnceExecutor) open(t *testing.T, root string) *Coordinator {
 	personas := formations.NewPersonaStore(filepath.Join(root, "agents"))
 	c, err := Open(root, personas, func(store *formations.Store) formations.FormationExecutor {
 		e.mu.Lock()
-		e.lab = formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: root, Roots: []string{root}})
+		e.lab = formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: root})
 		e.mu.Unlock()
 		return e
 	})

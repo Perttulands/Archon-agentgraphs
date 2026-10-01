@@ -38,7 +38,6 @@ func (e *RunExecutionError) Unwrap() error {
 type LabExecutorConfig struct {
 	Harnesses      []string
 	Cwd            string
-	Roots          []string
 	OutputCapBytes int
 }
 
@@ -70,7 +69,6 @@ func LabExecutorConfigFromEnv() LabExecutorConfig {
 	return LabExecutorConfig{
 		Harnesses:      splitLabCSV(os.Getenv("CHROTE_FORMATIONS_LAB_HARNESSES")),
 		Cwd:            strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_LAB_CWD")),
-		Roots:          splitLabCSV(os.Getenv("CHROTE_FORMATIONS_LAB_ROOTS")),
 		OutputCapBytes: capBytes,
 	}
 }
@@ -90,7 +88,6 @@ func (e *LabFormationExecutor) ExecuteFormationContext(ctx context.Context, req 
 	copy := *e
 	if req.Cwd != "" {
 		copy.config.Cwd = req.Cwd
-		copy.config.Roots = append(append([]string{}, e.config.Roots...), req.Cwd)
 	}
 	return copy.executeFormation(ctx, req)
 }
@@ -168,9 +165,6 @@ func (e *LabFormationExecutor) validateConfiguredBoundary() error {
 	if strings.TrimSpace(e.config.Cwd) == "" {
 		return runExecutionError("missing_cwd", "lab executor cwd is not configured", "executor", nil)
 	}
-	if len(e.config.Roots) == 0 {
-		return runExecutionError("missing_root", "lab executor root is not configured", "executor", nil)
-	}
 	cwd, err := filepath.Abs(e.config.Cwd)
 	if err != nil {
 		return runExecutionError("invalid_cwd", "lab executor cwd is invalid", "executor", err)
@@ -178,19 +172,7 @@ func (e *LabFormationExecutor) validateConfiguredBoundary() error {
 	if info, err := os.Stat(cwd); err != nil || !info.IsDir() {
 		return runExecutionError("unavailable_cwd", "lab executor cwd is unavailable", "executor", err)
 	}
-	for _, root := range e.config.Roots {
-		absRoot, err := filepath.Abs(root)
-		if err != nil {
-			return runExecutionError("invalid_root", "lab executor root is invalid", "executor", err)
-		}
-		if info, err := os.Stat(absRoot); err != nil || !info.IsDir() {
-			return runExecutionError("unavailable_root", "lab executor root is unavailable", "executor", err)
-		}
-		if pathWithinRoot(cwd, absRoot) {
-			return nil
-		}
-	}
-	return runExecutionError("cwd_outside_root", "lab executor cwd is outside configured roots", "executor", nil)
+	return nil
 }
 
 func (e *LabFormationExecutor) allowedHarnesses() map[string]bool {
@@ -316,12 +298,4 @@ func splitLabCSV(raw string) []string {
 		}
 	}
 	return values
-}
-
-func pathWithinRoot(path, root string) bool {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return false
-	}
-	return rel == "." || (!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != "..")
 }

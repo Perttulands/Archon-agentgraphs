@@ -35,7 +35,6 @@ func (e *TmuxFormationExecutor) readCompletedFormationDispatch(req FormationReat
 	}
 	if cwd := stringFromEventData(events[0], "cwd"); cwd != "" {
 		c.Cwd = cwd
-		c.Roots = append(append([]string{}, c.Roots...), cwd)
 	}
 	e.config = c
 	dispatch := NewSlotDispatcher(e.store, nil).dispatchEvent(req.RunID, req.DispatchID)

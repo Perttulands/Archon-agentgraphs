@@ -706,7 +706,7 @@ func TestLabBriefCarriesHumanGateResponse(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("record pass verdict: %v", err)
 	}
-	lab := NewLabFormationExecutor(store, personas, LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: store.Workspace, Roots: []string{store.Workspace}})
+	lab := NewLabFormationExecutor(store, personas, LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: store.Workspace})
 	status, err := NewRunEngine(store, personas, lab).ResumeRun(runID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "approved"})
 	if err != nil {
 		t.Fatalf("resume: %v", err)

@@ -59,7 +59,7 @@ controller = false
 		t.Fatal(err)
 	}
 	c, err = Open(root, c.personas, func(store *formations.Store) formations.FormationExecutor {
-		return &reattachThenLab{TmuxFormationExecutor: formations.NewTmuxFormationExecutor(store, c.personas, formations.TmuxExecutorConfig{}), lab: formations.NewLabFormationExecutor(store, c.personas, formations.LabExecutorConfig{Cwd: root, Roots: []string{root}, Harnesses: []string{"openai-codex"}})}
+		return &reattachThenLab{TmuxFormationExecutor: formations.NewTmuxFormationExecutor(store, c.personas, formations.TmuxExecutorConfig{}), lab: formations.NewLabFormationExecutor(store, c.personas, formations.LabExecutorConfig{Cwd: root, Harnesses: []string{"openai-codex"}})}
 	})
 	if err != nil {
 		t.Fatal(err)

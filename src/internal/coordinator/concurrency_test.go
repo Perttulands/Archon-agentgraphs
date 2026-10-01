@@ -40,7 +40,7 @@ func TestConcurrentLabAdmissionInputsAndPerRunAbort(t *testing.T) {
 	e := &pausedLab{entered: make(chan formations.FormationExecution, 8), finish: make(chan struct{})}
 	c, err := Open(root, personas, func(store *formations.Store) formations.FormationExecutor {
 		e.store = store
-		e.lab = formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Cwd: root, Roots: []string{root}, Harnesses: []string{"openai-codex"}})
+		e.lab = formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Cwd: root, Harnesses: []string{"openai-codex"}})
 		return e
 	})
 	if err != nil {
@@ -130,7 +130,7 @@ func TestRestartLabNamesUnresolvedDispatchAndKeepsHistory(t *testing.T) {
 	personas := formations.NewPersonaStore(filepath.Join(root, "agents"))
 	open := func() *Coordinator {
 		c, err := Open(root, personas, func(store *formations.Store) formations.FormationExecutor {
-			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Cwd: root, Roots: []string{root}})
+			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Cwd: root})
 		})
 		if err != nil {
 			t.Fatal(err)

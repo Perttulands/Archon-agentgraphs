@@ -24,7 +24,7 @@ func TestAHumanGateWaitPastTheWallClockSurvivesARestartAndTheRunGoesOn(t *testin
 		t.Helper()
 		c, err := Open(root, personas, func(store *formations.Store) formations.FormationExecutor {
 			store.Now = now
-			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: root, Roots: []string{root}})
+			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: root})
 		})
 		if err != nil {
 			t.Fatal(err)

@@ -39,7 +39,7 @@ func TestLabPersonaSnapshotSurvivesEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lab := NewLabFormationExecutor(store, personas, LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: store.Workspace, Roots: []string{store.Workspace}})
+	lab := NewLabFormationExecutor(store, personas, LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: store.Workspace})
 	status, err = NewRunEngine(store, personas, lab).ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach", Reason: "approved"})
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +157,7 @@ func TestIncompletePersonaSnapshotsBlockNewSeats(t *testing.T) {
 			createS4Persona(t, personas, "scout")
 			writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
 			client := &fakeTmuxHarnessClient{}
-			var executor FormationExecutor = NewLabFormationExecutor(store, personas, LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: store.Workspace, Roots: []string{store.Workspace}})
+			var executor FormationExecutor = NewLabFormationExecutor(store, personas, LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: store.Workspace})
 			if harness == "tmux" {
 				executor = newTmuxFormationExecutorWithClient(store, personas, tmuxTestConfig(t), client)
 			}

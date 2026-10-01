@@ -131,7 +131,7 @@ func TestLabJudgePushbackLoop(t *testing.T) {
 			if malformed {
 				firstVerdict = "```chrote-verdict\n{invalid JSON}\n```"
 			}
-			executor := &scriptedLabExecutor{lab: NewLabFormationExecutor(store, personas, LabExecutorConfig{Cwd: cwd, Roots: []string{cwd}, Harnesses: []string{"openai-codex"}}), responses: map[string]map[int]string{
+			executor := &scriptedLabExecutor{lab: NewLabFormationExecutor(store, personas, LabExecutorConfig{Cwd: cwd, Harnesses: []string{"openai-codex"}}), responses: map[string]map[int]string{
 				"fmn_work": {1: "draft one", 2: "draft two with tests"},
 				"fmn_j1":   {1: "first review", 2: "second review"},
 				"fmn_j2":   {1: firstVerdict, 2: judgeBlock("pass", "tests cover retry", "test report: green")},
