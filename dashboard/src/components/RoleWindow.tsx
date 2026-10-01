@@ -32,7 +32,7 @@ export default function RoleWindow({ role, formations, anchor, onOpenNode, onEdi
       kind="role"
       title={`Role · ${name}`}
       label={`role ${name}`}
-      defaultSize={{ width: 380, height: 320 }}
+      defaultSize={{ width: 400, height: 420 }}
       anchor={anchor}
       anchorKind="control"
       className="role-window"

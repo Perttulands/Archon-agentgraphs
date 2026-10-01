@@ -2774,7 +2774,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                         <span className="av">{initials(agent.displayName || agent.id)}</span>
                         <div className="ri">
                           <div className="n">{agent.displayName || agent.id}</div>
-                          <div className="r">{[agentRole(agent), agent.preset ? (agent.customized ? 'custom' : 'preset') : '', agentState(agent) === 'idle' ? 'idle' : ''].filter(Boolean).join(' · ')}{inUse ? <span className="in-use-words"> · {inSlotsWords(inUse)}</span> : null}</div>
+                          {/* In use comes first, so a narrow rail never cuts it off. */}
+                          <div className="r">{inUse ? <span className="in-use-words">{inSlotsWords(inUse)} · </span> : null}{[agentRole(agent), agent.preset ? (agent.customized ? 'custom' : 'preset') : '', agentState(agent) === 'idle' ? 'idle' : ''].filter(Boolean).join(' · ')}</div>
                         </div>
                         <button
                           type="button"

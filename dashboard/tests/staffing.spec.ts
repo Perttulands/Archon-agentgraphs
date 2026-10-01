@@ -337,8 +337,8 @@ test('the rail states in words which roles are in use and opens a role in a wind
   const roster = page.getByTestId('agent-roster')
   await expect(page.getByTestId('roster-count')).toHaveText('6 roles · 2 in use')
   const codex = page.getByTestId('roster-agent-codex')
-  await expect(codex.locator('.r')).toHaveText('builder · in 2 slots')
-  await expect(page.getByTestId('roster-agent-claude').locator('.r')).toHaveText('controller · in 2 slots')
+  await expect(codex.locator('.r')).toHaveText('in 2 slots · builder')
+  await expect(page.getByTestId('roster-agent-claude').locator('.r')).toHaveText('in 2 slots · controller')
   await expect(page.getByTestId('roster-agent-scout').locator('.r')).toHaveText('scout')
   // In use is said, not shown by dimming the row.
   expect(await codex.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
