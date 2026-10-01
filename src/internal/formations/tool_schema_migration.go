@@ -5,10 +5,7 @@ import (
 	"strings"
 )
 
-const (
-	legacyFailRouteMigrationCode    = "legacy_fail_route_requires_migration"
-	legacyJudgeChannelMigrationCode = "legacy_judge_channel_requires_migration"
-)
+const legacyJudgeChannelMigrationCode = "legacy_judge_channel_requires_migration"
 
 type toolSchemaMigrationPort struct {
 	end       int
@@ -65,9 +62,6 @@ func migrateBoardToToolSchema(raw []byte) ([]byte, error) {
 
 	scan, err := toolSchemaMigrationScanBoard(lines)
 	if err != nil {
-		return nil, err
-	}
-	if err := toolSchemaMigrationRejectLegacyFailRoutes(scan); err != nil {
 		return nil, err
 	}
 	judgeConnections, err := toolSchemaMigrationJudgeConnections(scan)
@@ -315,25 +309,6 @@ func toolSchemaMigrationRecordOwner(owners map[string]string, ambiguous map[stri
 		return
 	}
 	owners[endpoint] = formationID
-}
-
-func toolSchemaMigrationRejectLegacyFailRoutes(scan *toolSchemaMigrationScan) error {
-	for _, connection := range scan.connections {
-		fromNode, fromPort, ok := splitEndpoint(connection.from)
-		if !ok || fromPort != "fail" || !scan.gateIDs[fromNode] {
-			continue
-		}
-		if _, isFormationInput := scan.inputOwners[connection.to]; !isFormationInput {
-			continue
-		}
-		return fmt.Errorf(
-			"%s: connection %q routes Gate fail into legacy Formation work input %q",
-			legacyFailRouteMigrationCode,
-			connection.id,
-			connection.to,
-		)
-	}
-	return nil
 }
 
 func toolSchemaMigrationJudgeConnections(scan *toolSchemaMigrationScan) (map[int]bool, error) {
