@@ -273,6 +273,7 @@ func TestCodeGatePassRoutesExactSelectedToolOutputAndProvenance(t *testing.T) {
 	got := ready["fmn_ship"]["port_ship_in"]
 	want := input
 	want.ToPortID = "port_ship_in"
+	want.unread = true // it waits in the port until Ship runs on it
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("routed input = %+v, want exact selected Tool output/provenance %+v", got, want)
 	}

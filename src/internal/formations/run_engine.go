@@ -184,6 +184,9 @@ type RunInputRef struct {
 	Text        string        `json:"text,omitempty"`
 	ReportRef   string        `json:"reportRef,omitempty"`
 	ArtifactRef string        `json:"artifactRef,omitempty"`
+	// unread marks a delivery in a formation's port that the formation has
+	// not yet run on (deliverToPort); it never leaves the engine.
+	unread bool
 }
 
 func NewRunEngine(store *Store, personas *PersonaStore, executor FormationExecutor) *RunEngine {
@@ -447,11 +450,18 @@ func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusPro
 	if len(events) == 0 {
 		return nil, ErrRunLedgerInvalid
 	}
-	lifecycle := lifecycleLedger(events)
-	if len(lifecycle) == 0 {
+	// This command appended the latest run_resumed; another writer, such as a
+	// verdict, may have appended since, so the event is found by its type.
+	var resumeEvent RunEvent
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type == RunEventResumed {
+			resumeEvent = events[i]
+			break
+		}
+	}
+	if resumeEvent.Seq == 0 {
 		return nil, ErrRunLedgerInvalid
 	}
-	resumeEvent := lifecycle[len(lifecycle)-1]
 	if recovered != nil {
 		if err := NewSlotDispatcher(e.store, nil).CompleteFromCapture(runID, recoveredRef.DispatchID, recovered.Text); err != nil {
 			return nil, err
@@ -1028,31 +1038,17 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 	ready := map[string]map[string]RunInputRef{}
 	queued := map[string]bool{}
 	attempts := map[string]int{}
-	processedGateInputs := processedGateInputRefs(board, events)
-	replayOutputOrdinals := map[string]int{}
 	var queue []string
 
-	for _, event := range events {
-		if event.Type == RunEventNodeStarted && event.Attempt > attempts[event.NodeID] {
-			attempts[event.NodeID] = event.Attempt
-		}
-		if event.Type != RunEventNodeOutput {
-			continue
-		}
-		if err := e.replayNodeOutputToReady(runID, board, gateByID, event, processedGateInputs, replayOutputOrdinals, ready, queued, &queue); err != nil {
-			if errors.Is(err, errRunStopped) {
-				return nil
-			}
-			return err
-		}
-	}
-	if err := e.resumeIncompleteGateEvaluations(runID, board, gateByID, events, ready, queued, &queue); err != nil {
+	// The ledger's deliveries replay in ledger order, as the run made them, so
+	// a port two deliveries reached holds what it held live (archon-o7p.11).
+	if err := e.replayLedgerToReady(runID, board, gateByID, events, attempts, ready, queued, &queue); err != nil {
 		if errors.Is(err, errRunStopped) {
 			return nil
 		}
 		return err
 	}
-	if err := e.replayGateVerdictsToReady(runID, board, gateByID, events, ready, queued, &queue); err != nil {
+	if err := e.resumeIncompleteGateEvaluations(runID, board, gateByID, events, ready, queued, &queue); err != nil {
 		if errors.Is(err, errRunStopped) {
 			return nil
 		}
@@ -1072,13 +1068,13 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 }
 
 // drainRun runs the queued steps one at a time, then ends the run by the one
-// completion rule. Before each step, and after each step records its output
-// but before that output is delivered, it routes the human verdicts recorded
-// meanwhile (archon-o7p.11). Replay queues every formation the ledger ever
-// fed; a step runs only while the ledger, read as it stands now, still owes
-// it a delivery, so a send-back routed during this drain runs again
-// (archon-n7u.53). startReason is recorded on each node_started, and
-// finishReason, when set, on run_succeeded.
+// completion rule. Before each step, and once a step's output is delivered,
+// it routes the human verdicts recorded meanwhile (archon-o7p.11), so every
+// delivery happens in ledger order, as replay makes it. Replay queues every
+// formation the ledger ever fed; a step runs only while the ledger, read as
+// it stands now, still owes it a delivery, so a send-back routed during this
+// drain runs again (archon-n7u.53). startReason is recorded on each
+// node_started, and finishReason, when set, on run_succeeded.
 func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[string]GateNode, attempts map[string]int, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string, startReason, finishReason string) error {
 	formationByID := map[string]FormationNode{}
 	for _, formation := range board.Formations {
@@ -1091,11 +1087,18 @@ func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[strin
 		return err
 	}
 	for {
-		if err := e.routeRecordedVerdicts(runID, board, gates, ready, queued, queue); err != nil {
+		if err := e.routeRecordedVerdicts(runID, board, gates, ready, queued, queue, false); err != nil {
 			return stopped(err)
 		}
 		if len(*queue) == 0 {
-			break
+			// Nothing else will run: a verdict still waiting on a step that
+			// cannot run again is routed now, so none is lost.
+			if err := e.routeRecordedVerdicts(runID, board, gates, ready, queued, queue, true); err != nil {
+				return stopped(err)
+			}
+			if len(*queue) == 0 {
+				break
+			}
 		}
 		nodeID := (*queue)[0]
 		*queue = (*queue)[1:]
@@ -1159,9 +1162,7 @@ func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[strin
 		}); err != nil {
 			return err
 		}
-		if err := e.routeRecordedVerdicts(runID, board, gates, ready, queued, queue); err != nil {
-			return stopped(err)
-		}
+		markPortsRead(ready, nodeID)
 		if err := e.deliverFormationOutput(runID, board, gates, nodeID, result, ready, queued, queue); err != nil {
 			return stopped(err)
 		}
@@ -1475,10 +1476,7 @@ func (e *RunEngine) replayNodeOutputToReady(runID string, board *BoardDocument, 
 		if !ok {
 			continue
 		}
-		if ready[toNode] == nil {
-			ready[toNode] = map[string]RunInputRef{}
-		}
-		ready[toNode][toPort] = input
+		deliverToPort(ready, toNode, toPort, input)
 		if formationReady(formation, ready[toNode]) && !queued[toNode] {
 			queued[toNode] = true
 			*queue = append(*queue, toNode)
@@ -1487,48 +1485,76 @@ func (e *RunEngine) replayNodeOutputToReady(runID string, board *BoardDocument, 
 	return nil
 }
 
-func (e *RunEngine) replayGateVerdictsToReady(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+// replayLedgerToReady rebuilds the run's ports and queue from its ledger in
+// ledger order: each step's output and each gate verdict's routes are
+// delivered where the ledger recorded them, and a step's output marks its own
+// ports read and takes it out of the queue, so the queue holds what was
+// waiting, in the order it was waiting. It records each step's latest attempt.
+func (e *RunEngine) replayLedgerToReady(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, attempts map[string]int, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+	processedGateInputs := processedGateInputRefs(board, events)
 	evaluations := gateEvaluationKeys(board, events)
+	replayOutputOrdinals := map[string]int{}
 	outputOrdinals := map[string]int{}
 	for i, event := range events {
-		if event.Type == RunEventNodeOutput {
-			advanceOutputOrdinals(board, outputOrdinals, event)
-			continue
-		}
-		if event.Type != RunEventGateVerdict {
-			continue
-		}
-		routePort := stringFromEventData(event, "routePort")
-		if routePort != "pass" && routePort != "fail" {
-			continue
-		}
-		gateID := event.GateID
-		if gateID == "" {
-			gateID = event.NodeID
-		}
-		input := runInputRefFromAny(event.Data["inputRef"])
-		for _, route := range gateVerdictRoutes(board, event, gateID, routePort) {
-			// Every route is replayed; the resume loop runs only targets still
-			// owed this delivery (runWorkOwedTo), so a serviced pushback is not rerun.
-			nextInput := input
-			if routePort == "fail" {
-				nextInput = gateFailInput(runID, route, gateID, event.Attempt, input, stringFromEventData(event, "reason"), gateEvidenceRefsFromRunEventData(event.Data["evidence"]))
-			} else if routePort == "pass" {
-				var err error
-				if nextInput, err = gatePassInput(events, event, gateID, input); err != nil {
-					return err
-				}
+		switch event.Type {
+		case RunEventNodeStarted:
+			if event.Attempt > attempts[event.NodeID] {
+				attempts[event.NodeID] = event.Attempt
 			}
-			// A gate that already began evaluating this delivery has consumed it.
-			// Replaying it would re-run that gate on stale input ahead of any
-			// pushback that followed its verdict.
-			toNode, _ := endpointParts(route.To)
-			if _, isGate := gates[toNode]; isGate && evaluations.consumedAfter(i, toNode, gateInputReplayKey(nextInput.EdgeID, gateInputOutputSeq(nextInput, outputOrdinals))) {
-				continue
+		case RunEventNodeOutput:
+			// The step ran: it left the queue then, and a later delivery
+			// queues it again behind what was already waiting, as live.
+			markPortsRead(ready, event.NodeID)
+			if queued[event.NodeID] {
+				queued[event.NodeID] = false
+				*queue = slices.DeleteFunc(*queue, func(nodeID string) bool { return nodeID == event.NodeID })
 			}
-			if err := e.deliverConnection(runID, board, gates, route, nextInput, ready, queued, queue); err != nil {
+			if err := e.replayNodeOutputToReady(runID, board, gates, event, processedGateInputs, replayOutputOrdinals, ready, queued, queue); err != nil {
 				return err
 			}
+			advanceOutputOrdinals(board, outputOrdinals, event)
+		case RunEventGateVerdict:
+			if err := e.replayGateVerdictToReady(runID, board, gates, events, i, evaluations, outputOrdinals, ready, queued, queue); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// replayGateVerdictToReady delivers the routes of the gate verdict at index i.
+func (e *RunEngine) replayGateVerdictToReady(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, i int, evaluations gateEvaluationIndex, outputOrdinals map[string]int, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+	event := events[i]
+	routePort := stringFromEventData(event, "routePort")
+	if routePort != "pass" && routePort != "fail" {
+		return nil
+	}
+	gateID := event.GateID
+	if gateID == "" {
+		gateID = event.NodeID
+	}
+	input := runInputRefFromAny(event.Data["inputRef"])
+	for _, route := range gateVerdictRoutes(board, event, gateID, routePort) {
+		// Every route is replayed; the resume loop runs only targets still
+		// owed this delivery (runWorkOwedTo), so a serviced pushback is not rerun.
+		nextInput := input
+		if routePort == "fail" {
+			nextInput = gateFailInput(runID, route, gateID, event.Attempt, input, stringFromEventData(event, "reason"), gateEvidenceRefsFromRunEventData(event.Data["evidence"]))
+		} else if routePort == "pass" {
+			var err error
+			if nextInput, err = gatePassInput(events, event, gateID, input); err != nil {
+				return err
+			}
+		}
+		// A gate that already began evaluating this delivery has consumed it.
+		// Replaying it would re-run that gate on stale input ahead of any
+		// pushback that followed its verdict.
+		toNode, _ := endpointParts(route.To)
+		if _, isGate := gates[toNode]; isGate && evaluations.consumedAfter(i, toNode, gateInputReplayKey(nextInput.EdgeID, gateInputOutputSeq(nextInput, outputOrdinals))) {
+			continue
+		}
+		if err := e.deliverConnection(runID, board, gates, route, nextInput, ready, queued, queue); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1931,10 +1957,7 @@ func (e *RunEngine) deliverConnection(runID string, board *BoardDocument, gates 
 		// The path ends here; runPaths reads it from the ledger.
 		return nil
 	}
-	if ready[toNode] == nil {
-		ready[toNode] = map[string]RunInputRef{}
-	}
-	ready[toNode][toPort] = input
+	deliverToPort(ready, toNode, toPort, input)
 	formation, ok := findFormation(board.Formations, toNode)
 	if !ok {
 		return nil
@@ -2204,24 +2227,47 @@ func unroutedHumanVerdicts(events []RunEvent) []RunEvent {
 	return verdicts
 }
 
-// routeRecordedVerdicts routes every recorded human verdict the run has not
+// routeRecordedVerdicts routes the recorded human verdicts the run has not
 // routed yet, oldest first, as a code or judge verdict routes. The run's
-// worker calls it between steps, so a verdict recorded while a seat worked is
-// routed once that step has recorded its output (archon-o7p.11).
-func (e *RunEngine) routeRecordedVerdicts(runID string, board *BoardDocument, gates map[string]GateNode, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+// worker calls it between steps. A verdict recorded while a step worked waits
+// until that step's output is delivered, as live; a restart that cut the step
+// short routes it after the step's re-run, at the same point (archon-o7p.11).
+// all routes every waiting verdict, for when nothing else can run.
+func (e *RunEngine) routeRecordedVerdicts(runID string, board *BoardDocument, gates map[string]GateNode, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string, all bool) error {
 	for {
 		events, err := e.store.ReadRunEvents(runID)
 		if err != nil {
 			return err
 		}
-		pending := unroutedHumanVerdicts(events)
-		if len(pending) == 0 {
+		var next *RunEvent
+		for _, verdict := range unroutedHumanVerdicts(events) {
+			if all || !verdictWaitsOnAStep(events, verdict) {
+				next = &verdict
+				break
+			}
+		}
+		if next == nil {
 			return nil
 		}
-		if err := e.routeHumanVerdict(runID, board, gates, events, pending[0], ready, queued, queue); err != nil {
+		if err := e.routeHumanVerdict(runID, board, gates, events, *next, ready, queued, queue); err != nil {
 			return err
 		}
 	}
+}
+
+// verdictWaitsOnAStep reports whether a step was working when the verdict was
+// recorded and has recorded no output since.
+func verdictWaitsOnAStep(events []RunEvent, verdict RunEvent) bool {
+	working := map[string]bool{}
+	for _, event := range events {
+		switch {
+		case event.Type == RunEventNodeStarted && event.Seq < verdict.Seq && stringFromEventData(event, "nodeKind") == "formation":
+			working[event.NodeID] = true
+		case event.Type == RunEventNodeOutput:
+			delete(working, event.NodeID)
+		}
+	}
+	return len(working) > 0
 }
 
 // routeHumanVerdict records the gate verdict for one recorded human verdict
@@ -2757,26 +2803,9 @@ func runInputRefFromAny(value any) RunInputRef {
 	if !ok {
 		return RunInputRef{}
 	}
-	var feedback *GateFeedback
-	if fields, ok := raw["feedback"].(map[string]any); ok {
-		feedback = &GateFeedback{
-			GateID: stringFromAny(fields["gateId"]), GateAttempt: intFromRunEventData(fields["gateAttempt"]),
-			Verdict: stringFromAny(fields["verdict"]), Reason: stringFromAny(fields["reason"]),
-			Evidence:    gateEvidenceRefsFromRunEventData(fields["evidence"]),
-			OriginalRef: stringFromAny(fields["originalRef"]), OriginalText: stringFromAny(fields["originalText"]),
-		}
-	}
-	var response *GateResponse
-	if fields, ok := raw["response"].(map[string]any); ok {
-		response = &GateResponse{
-			GateID: stringFromAny(fields["gateId"]), GateAttempt: intFromRunEventData(fields["gateAttempt"]),
-			RequestedSeq: intFromRunEventData(fields["requestedSeq"]),
-			DecidedBy:    stringFromAny(fields["decidedBy"]), Text: stringFromAny(fields["text"]),
-		}
-	}
 	return RunInputRef{
-		Feedback:    feedback,
-		Response:    response,
+		Feedback:    gateFeedbackFromAny(raw["feedback"]),
+		Response:    gateResponseFromAny(raw["response"]),
 		EdgeID:      stringFromAny(raw["edgeId"]),
 		FromNodeID:  stringFromAny(raw["fromNodeId"]),
 		FromPortID:  stringFromAny(raw["fromPortId"]),
@@ -2979,6 +3008,7 @@ func orderedInputs(formation FormationNode, ready map[string]RunInputRef) []RunI
 	inputs := make([]RunInputRef, 0, len(formation.Inputs))
 	for _, input := range formation.Inputs {
 		if ref, ok := ready[input.ID]; ok {
+			ref.unread = false
 			inputs = append(inputs, ref)
 		}
 	}

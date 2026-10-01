@@ -649,8 +649,17 @@ waits, the run keeps dispatching every step not behind it, one step at a time,
 and several requests can wait at once, each answered on its own and in any
 order. The daemon records a verdict at once, while other seats work, and the
 run routes it between steps: once the step running when it arrived has
-recorded its output, before that output moves on. A send-back to a step still
-working its first attempt runs that step again once the attempt ends. A run
+recorded its output and that output has moved on. Deliveries happen in ledger
+order, and replay after a restart makes them in the same order; a verdict
+recorded while a step worked waits for that step's output even when a restart
+cut the step short and it runs again, so a run reaches the same end, each step
+on the same inputs, wherever a restart falls. A send-back to a step still
+working its first attempt runs that step again once the attempt ends. When two
+deliveries reach one port before its step runs, nothing is lost: the newest
+work is the input, a send-back that meets unread work keeps that work as the
+input, and every gate feedback and human response the step has not run on
+travels with it, newest first (`feedback.earlier`, `response.earlier`); the
+prompt shows the work and each of them. A run
 whose only open work is waiting gates waits, with no block, and a verdict that
 ends its path ends the run only once every other path has ended. A verdict is
 also accepted on a blocked run, which routes it when it resumes, and a blocked
@@ -1098,9 +1107,10 @@ archon --server "$ARCHON_SERVER" run resume "$ARCHON_RUN_ID" --reason "Recovery 
 A run that only waits on its gates survives restart waiting, with each
 request's original `requestedSeq`; approve or reject using the same exact
 request sequence after restart. A run that was between steps, with work still
-owed or a recorded verdict not yet routed, is blocked at startup ("coordinator
-restarted between steps; resume to continue"), and resuming continues it while
-its gates keep waiting.
+owed, a recorded verdict not yet routed, or a gate that received a newer input
+than the one it asked about, is blocked at startup ("coordinator restarted
+between steps; resume to continue"), and resuming continues it while its gates
+keep waiting.
 
 When a seat died mid-turn and its completed evidence cannot be found, abandon
 the open dispatch and run the node again as a fresh bounded attempt:
@@ -1121,6 +1131,10 @@ evidence, restart with `--resume-run`, `--completed-transcript` and
 transcript and original brief. Validation checks the original digest, pointer,
 cwd, session, model/effort and completed turn before continuation. Keep original
 artifacts intact. Do not run offline runtime mutations alongside the daemon.
+An offline `gate approve|reject` routes its verdict and runs what follows, as
+the daemon's worker does, so it takes the state directory's coordinator lock
+and refuses while a daemon owns it ("a daemon owns this state directory:
+answer through it with --server").
 
 ### Needs-you notifications
 

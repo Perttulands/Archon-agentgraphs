@@ -34,6 +34,9 @@ type scriptedJudgeLab struct {
 	// on it, stopping at its deadline as a real seat is stopped.
 	clock *workClock
 	work  map[string]time.Duration
+	// onStart, when set, runs as each step starts, as an operator acting
+	// while the step's seat works.
+	onStart func(req formations.FormationExecution)
 }
 
 // workClock moves only while a step works, so a run's counted time is the
@@ -56,6 +59,9 @@ func (c *workClock) set(at time.Time) {
 }
 
 func (e *scriptedJudgeLab) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
+	if e.onStart != nil {
+		e.onStart(req)
+	}
 	if e.clock != nil {
 		end := e.clock.now().Add(e.work[req.NodeID])
 		if !req.Deadline.IsZero() && !end.Before(req.Deadline) {
@@ -92,7 +98,53 @@ type restartCase struct {
 	// work, when set, runs the case on a work clock: each step takes its
 	// node's work, for the Limit cards' time.
 	work map[string]time.Duration
-	want runOutcome
+	// answerWhile answers a gate's waiting request, by the verdict script,
+	// as the named step starts: an operator deciding while a seat works.
+	answerWhile map[string][]string
+	// midStepOptional stops answerWhile from requiring a verdict mid-step.
+	midStepOptional bool
+	// wantInputs names text each step's runs must have received.
+	wantInputs map[string][]string
+	want       runOutcome
+}
+
+// requireAnsweredMidStep fails unless each step answerWhile names had a
+// verdict recorded while it ran.
+func requireAnsweredMidStep(t *testing.T, tc restartCase, events []formations.RunEvent) {
+	t.Helper()
+	if tc.midStepOptional {
+		return
+	}
+	for node := range tc.answerWhile {
+		running, answered := false, false
+		for _, event := range events {
+			switch {
+			case event.Type == formations.RunEventNodeStarted && event.NodeID == node:
+				running = true
+			case event.Type == formations.RunEventNodeOutput && event.NodeID == node:
+				running = false
+			case event.Type == formations.RunEventHumanVerdictRecorded && running:
+				answered = true
+			}
+		}
+		if !answered {
+			t.Fatalf("no verdict was recorded while %s worked:\n%s", node, fullTrail(events))
+		}
+	}
+}
+
+// scriptedVerdict is the verdict the case's script gives the gate's request.
+func scriptedVerdict(tc restartCase, events []formations.RunEvent, gateID string, requestedSeq int) string {
+	ordinal := 0
+	for _, event := range events {
+		if event.Type == formations.RunEventHumanInputRequested && event.GateID == gateID && event.Seq <= requestedSeq {
+			ordinal++
+		}
+	}
+	if script := tc.verdicts[gateID]; ordinal-1 < len(script) {
+		return script[ordinal-1]
+	}
+	return "pass"
 }
 
 type runOutcome struct {
@@ -101,6 +153,9 @@ type runOutcome struct {
 	Outputs map[string]int
 	// Grants counts the Limit card grants the run needed.
 	Grants int
+	// Inputs lists, per step, what each run of it that produced output ran
+	// on: every input's source, text, feedback and responses, in order.
+	Inputs map[string][]string
 }
 
 func (o runOutcome) String() string {
@@ -112,13 +167,51 @@ func (o runOutcome) String() string {
 	return fmt.Sprintf("%s at %v after %s with %d grants", o.Status, o.EndIDs, strings.Join(nodes, " "), o.Grants)
 }
 
+// inputsString lists what each step ran on, for comparing two runs.
+func (o runOutcome) inputsString() string {
+	nodes := make([]string, 0, len(o.Inputs))
+	for node := range o.Inputs {
+		nodes = append(nodes, node)
+	}
+	sort.Strings(nodes)
+	var b strings.Builder
+	for _, node := range nodes {
+		for i, inputs := range o.Inputs[node] {
+			fmt.Fprintf(&b, "%s run %d: %s\n", node, i+1, inputs)
+		}
+	}
+	return b.String()
+}
+
+// inputSummary is one run's inputs as its node_started recorded them.
+func inputSummary(started formations.RunEvent) string {
+	raw, _ := started.Data["inputRefs"].([]any)
+	parts := make([]string, 0, len(raw))
+	for _, item := range raw {
+		fields, _ := item.(map[string]any)
+		part := fmt.Sprintf("[from %v to %v: %q", fields["fromNodeId"], fields["toPortId"], fields["text"])
+		for feedback, _ := fields["feedback"].(map[string]any); feedback != nil; feedback, _ = feedback["earlier"].(map[string]any) {
+			part += fmt.Sprintf(" feedback %v %v %q", feedback["gateId"], feedback["verdict"], feedback["reason"])
+		}
+		for response, _ := fields["response"].(map[string]any); response != nil; response, _ = response["earlier"].(map[string]any) {
+			part += fmt.Sprintf(" response %v %q", response["gateId"], response["text"])
+		}
+		parts = append(parts, part+"]")
+	}
+	return strings.Join(parts, " ")
+}
+
 func outcomeOf(events []formations.RunEvent) runOutcome {
-	outcome := runOutcome{Outputs: map[string]int{}}
+	outcome := runOutcome{Outputs: map[string]int{}, Inputs: map[string][]string{}}
+	started := map[string]formations.RunEvent{}
 	for _, event := range events {
 		switch event.Type {
+		case formations.RunEventNodeStarted:
+			started[event.NodeID] = event
 		case formations.RunEventNodeOutput:
 			if strings.HasPrefix(event.NodeID, "fmn_") {
 				outcome.Outputs[event.NodeID]++
+				outcome.Inputs[event.NodeID] = append(outcome.Inputs[event.NodeID], inputSummary(started[event.NodeID]))
 			}
 		case formations.RunEventResumed:
 			if _, granted := event.Data["grant"]; granted {
@@ -146,6 +239,24 @@ func openRestartLab(t *testing.T, root string, tc restartCase, start time.Time) 
 	if tc.work != nil {
 		clock = &workClock{at: start}
 	}
+	var c *Coordinator
+	onStart := func(req formations.FormationExecution) {
+		if c == nil {
+			return
+		}
+		for _, gateID := range tc.answerWhile[req.NodeID] {
+			events, err := c.store.ReadRunEvents(req.RunID)
+			if err != nil {
+				return
+			}
+			for _, request := range formations.OpenHumanRequests(events) {
+				if request.GateID == gateID {
+					verdict := scriptedVerdict(tc, events, gateID, request.Seq)
+					post(t, c, "/api/runs/"+req.RunID+"/gates/"+gateID+"/verdict", `{"requestedSeq":`+strconv.Itoa(request.Seq)+`,"verdict":"`+verdict+`","reason":"scripted `+verdict+`"}`)
+				}
+			}
+		}
+	}
 	c, err := Open(root, personas, func(store *formations.Store) formations.FormationExecutor {
 		if clock != nil {
 			store.Now = clock.now
@@ -153,7 +264,7 @@ func openRestartLab(t *testing.T, root string, tc restartCase, start time.Time) 
 		if tc.session {
 			return &keeperExecutor{store: store}
 		}
-		return &scriptedJudgeLab{lab: formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: root}), judges: tc.judges, clock: clock, work: tc.work}
+		return &scriptedJudgeLab{lab: formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: root}), judges: tc.judges, clock: clock, work: tc.work, onStart: onStart}
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -171,14 +282,16 @@ func awaitSettled(t *testing.T, c *Coordinator, id string) *Projection {
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		change := c.nextChange(id)
-		p, err := c.Project(id)
-		if err != nil {
-			t.Fatal(err)
-		}
 		c.mu.Lock()
 		busy := c.state(id).busy
 		c.mu.Unlock()
 		if !busy {
+			// Projected after the worker is seen gone, so it shows all the
+			// worker recorded.
+			p, err := c.Project(id)
+			if err != nil {
+				t.Fatal(err)
+			}
 			return p
 		}
 		select {
@@ -218,21 +331,22 @@ func driveToEnd(t *testing.T, c *Coordinator, id string, tc restartCase) *Projec
 				t.Fatalf("resume %d %s: %s", w.Code, w.Body.String(), ledgerTrail(events))
 			}
 		case len(p.WaitingGates) > 0:
-			for _, gate := range p.WaitingGates {
-				ordinal := 0
-				for _, event := range events {
-					if event.Type == formations.RunEventHumanInputRequested && event.GateID == gate.GateID && event.Seq <= gate.RequestedSeq {
-						ordinal++
-					}
+			// One answer per settle, oldest request first: the run routes it
+			// before the next is given, so a step that answers a gate as it
+			// starts never races the driver.
+			gate := p.WaitingGates[0]
+			for _, waiting := range p.WaitingGates {
+				if waiting.RequestedSeq < gate.RequestedSeq {
+					gate = waiting
 				}
-				verdict := "pass"
-				if script := tc.verdicts[gate.GateID]; ordinal-1 < len(script) {
-					verdict = script[ordinal-1]
-				}
-				w := post(t, c, "/api/runs/"+id+"/gates/"+gate.GateID+"/verdict", `{"requestedSeq":`+strconv.Itoa(gate.RequestedSeq)+`,"verdict":"`+verdict+`","reason":"scripted `+verdict+`"}`)
-				if w.Code != 202 {
-					t.Fatalf("verdict %d %s: %s", w.Code, w.Body.String(), ledgerTrail(events))
-				}
+			}
+			verdict := scriptedVerdict(tc, events, gate.GateID, gate.RequestedSeq)
+			w := post(t, c, "/api/runs/"+id+"/gates/"+gate.GateID+"/verdict", `{"requestedSeq":`+strconv.Itoa(gate.RequestedSeq)+`,"verdict":"`+verdict+`","reason":"scripted `+verdict+`"}`)
+			if w.Code != 202 {
+				t.Fatalf("verdict %d %s: %s", w.Code, w.Body.String(), ledgerTrail(events))
+			}
+			if !awaitProgress(c, id, len(events), time.Now().Add(10*time.Second)) {
+				t.Fatalf("the verdict recorded nothing:\n%s", fullTrail(events))
 			}
 		default:
 			// A verdict recorded as the worker settled is routed by the next
@@ -304,6 +418,39 @@ humanChannel = "session"`, 1),
 				endWire("edge_b_done", "fmn_b:port_out", "end_done")),
 			verdicts: map[string][]string{"gate_review": {"fail", "pass"}},
 			want:     runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_a": 2, "fmn_b": 1}},
+		},
+		{
+			// The operator sends A back while B works; A runs again after B.
+			name: "a gate sending its step back while its branch works",
+			board: gateBoard(formation("fmn_a") + formation("fmn_b") + gate("gate_review") + endNodes +
+				wire("edge_m_a", "mis_proof:out", "fmn_a:port_in") +
+				wire("edge_a_gate", "fmn_a:port_out", "gate_review:in") +
+				endWire("edge_pass", "gate_review:pass", "end_done") +
+				wire("edge_back", "gate_review:fail", "fmn_a:port_in") +
+				wire("edge_m_b", "mis_proof:out", "fmn_b:port_in") +
+				endWire("edge_b_done", "fmn_b:port_out", "end_done")),
+			verdicts:    map[string][]string{"gate_review": {"fail", "pass"}},
+			answerWhile: map[string][]string{"fmn_b": {"gate_review"}},
+			want:        runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_a": 2, "fmn_b": 1}},
+		},
+		{
+			// The review's probe: Review rejects A into F's port while P, which
+			// also feeds that port, works. F runs once on P's work with the
+			// rejection, live and after any restart.
+			name:        "a rejection into a port the working step also feeds",
+			board:       rejectionIntoAFedPortBoard(),
+			verdicts:    map[string][]string{"gate_review": {"fail"}},
+			answerWhile: map[string][]string{"fmn_p": {"gate_review"}},
+			wantInputs:  map[string][]string{"fmn_f": {"[from fmn_p to port_in", "feedback gate_review fail"}},
+			want:        runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_a": 1, "fmn_p": 1, "fmn_f": 1}},
+		},
+		{
+			// Both gates are answered while C works: One passes, Two rejects.
+			name:        "two gates answered while another step works",
+			board:       twoGatesBesideABranch(),
+			verdicts:    map[string][]string{"gate_two": {"fail"}},
+			answerWhile: map[string][]string{"fmn_c": {"gate_one", "gate_two"}},
+			want:        runOutcome{Status: "failed", EndIDs: []string{"end_done", "end_rejected"}, Outputs: map[string]int{"fmn_a": 1, "fmn_b": 1, "fmn_c": 1}},
 		},
 		{
 			name: "a judge sending work back while a gate waits",
@@ -395,6 +542,20 @@ seconds = 95
 	}
 }
 
+// rejectionIntoAFedPortBoard is Input -> A -> Review (pass Done, fail into
+// F's input) beside Input -> P -> F -> Done, so a rejection and P's work can
+// both reach F's one port before F runs (the o7p.11 review's probe).
+func rejectionIntoAFedPortBoard() string {
+	return gateBoard(gateBoardFormation("fmn_a") + gateBoardFormation("fmn_p") + gateBoardFormation("fmn_f") + gateBoardHumanGate("gate_review") + endNodes +
+		gateBoardConnection("edge_m_a", "mis_proof:out", "fmn_a:port_in") +
+		gateBoardConnection("edge_a_gate", "fmn_a:port_out", "gate_review:in") +
+		endWire("edge_pass", "gate_review:pass", "end_done") +
+		gateBoardConnection("edge_fail_f", "gate_review:fail", "fmn_f:port_in") +
+		gateBoardConnection("edge_m_p", "mis_proof:out", "fmn_p:port_in") +
+		gateBoardConnection("edge_p_f", "fmn_p:port_out", "fmn_f:port_in") +
+		endWire("edge_f_done", "fmn_f:port_out", "end_done"))
+}
+
 // judgeLoopBoard is Work judged by a formation that sends it back on fail,
 // with a two-round Limit card on the given target, or four for the mission.
 func judgeLoopBoard(target string) string {
@@ -425,57 +586,78 @@ rounds = ` + rounds + `
 
 func TestARestartAfterAnyEventReachesTheSameOutcome(t *testing.T) {
 	for _, tc := range restartCases() {
-		t.Run(tc.name, func(t *testing.T) {
-			root := t.TempDir()
-			start := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
-			c := openRestartLab(t, root, tc, start)
-			if err := os.MkdirAll(filepath.Dir(c.store.BoardPath("proof")), 0o700); err != nil {
+		t.Run(tc.name, func(t *testing.T) { checkRestartCuts(t, tc) })
+	}
+}
+
+// checkRestartCuts runs tc's mission to its end, then restarts it after every
+// event and requires the same outcome, each step having run on the same
+// inputs. A case without a want only compares the restarts with the run.
+func checkRestartCuts(t *testing.T, tc restartCase) {
+	t.Helper()
+	root := t.TempDir()
+	start := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	c := openRestartLab(t, root, tc, start)
+	if err := os.MkdirAll(filepath.Dir(c.store.BoardPath("proof")), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(c.store.BoardPath("proof"), []byte(tc.board), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	id := startProof(t, c)
+	driveToEnd(t, c, id, tc)
+	events := eventsOf(t, c, id)
+	requireOnlyRestartErrors(t, events)
+	reference := outcomeOf(events)
+	if tc.want.Status != "" && reference.String() != tc.want.String() {
+		t.Fatalf("outcome = %s, want %s: %s", reference, tc.want, ledgerTrail(events))
+	}
+	requireAnsweredMidStep(t, tc, events)
+	for node, texts := range tc.wantInputs {
+		runs := strings.Join(reference.Inputs[node], "\n")
+		for _, text := range texts {
+			if !strings.Contains(runs, text) {
+				t.Fatalf("%s ran on %s, missing %q", node, runs, text)
+			}
+		}
+	}
+	runs := filepath.Join(root, ".archon", "runs", "proof")
+	ledger, err := os.ReadFile(filepath.Join(runs, id+".ndjson"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	lines := bytes.SplitAfter(ledger, []byte("\n"))
+	for cut := 1; cut < len(events); cut++ {
+		t.Run("after "+strconv.Itoa(cut)+" "+events[cut-1].Type, func(t *testing.T) {
+			next := t.TempDir()
+			for _, file := range []string{id + ".snapshot.toml", id + ".bindings.toml"} {
+				raw, err := os.ReadFile(filepath.Join(runs, file))
+				if err != nil {
+					t.Fatal(err)
+				}
+				writeState(t, filepath.Join(next, ".archon", "runs", "proof", file), raw)
+			}
+			writeState(t, filepath.Join(next, ".archon", "runs", "proof", id+".ndjson"), bytes.Join(lines[:cut], nil))
+			writeState(t, filepath.Join(next, ".archon", "missions", "proof.mission.toml"), []byte(tc.board))
+			resumeAt, _ := time.Parse(time.RFC3339Nano, events[cut-1].Timestamp)
+			restarted := openRestartLab(t, next, tc, resumeAt)
+			t.Cleanup(func() { restarted.Close() })
+			if err := restarted.RecoverInterruptedRuns(); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(c.store.BoardPath("proof"), []byte(tc.board), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			id := startProof(t, c)
-			driveToEnd(t, c, id, tc)
-			events := eventsOf(t, c, id)
+			driveToEnd(t, restarted, id, tc)
+			events := eventsOf(t, restarted, id)
 			requireOnlyRestartErrors(t, events)
-			if got := outcomeOf(events); got.String() != tc.want.String() {
-				t.Fatalf("outcome = %s, want %s: %s", got, tc.want, ledgerTrail(events))
+			got := outcomeOf(events)
+			if got.String() != reference.String() {
+				t.Fatalf("outcome = %s, without the restart %s:\n%s", got, reference, fullTrail(events))
 			}
-			runs := filepath.Join(root, ".archon", "runs", "proof")
-			ledger, err := os.ReadFile(filepath.Join(runs, id+".ndjson"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := c.Close(); err != nil {
-				t.Fatal(err)
-			}
-			lines := bytes.SplitAfter(ledger, []byte("\n"))
-			for cut := 1; cut < len(events); cut++ {
-				t.Run("after "+strconv.Itoa(cut)+" "+events[cut-1].Type, func(t *testing.T) {
-					next := t.TempDir()
-					for _, file := range []string{id + ".snapshot.toml", id + ".bindings.toml"} {
-						raw, err := os.ReadFile(filepath.Join(runs, file))
-						if err != nil {
-							t.Fatal(err)
-						}
-						writeState(t, filepath.Join(next, ".archon", "runs", "proof", file), raw)
-					}
-					writeState(t, filepath.Join(next, ".archon", "runs", "proof", id+".ndjson"), bytes.Join(lines[:cut], nil))
-					writeState(t, filepath.Join(next, ".archon", "missions", "proof.mission.toml"), []byte(tc.board))
-					resumeAt, _ := time.Parse(time.RFC3339Nano, events[cut-1].Timestamp)
-					restarted := openRestartLab(t, next, tc, resumeAt)
-					t.Cleanup(func() { restarted.Close() })
-					if err := restarted.RecoverInterruptedRuns(); err != nil {
-						t.Fatal(err)
-					}
-					driveToEnd(t, restarted, id, tc)
-					events := eventsOf(t, restarted, id)
-					requireOnlyRestartErrors(t, events)
-					if got := outcomeOf(events); got.String() != tc.want.String() {
-						t.Fatalf("outcome = %s, want %s:\n%s", got, tc.want, fullTrail(events))
-					}
-				})
+			// Each step ran on what it ran on without the restart.
+			if got.inputsString() != reference.inputsString() {
+				t.Fatalf("inputs after the restart:\n%s\nwithout it:\n%s\n%s", got.inputsString(), reference.inputsString(), fullTrail(events))
 			}
 		})
 	}

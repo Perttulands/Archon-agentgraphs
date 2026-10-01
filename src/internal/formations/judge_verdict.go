@@ -94,6 +94,9 @@ type GateFeedback struct {
 	Evidence     []GateEvidenceRef `json:"evidence"`
 	OriginalRef  string            `json:"originalRef"`
 	OriginalText string            `json:"originalText"`
+	// Earlier is feedback that reached the same port before this, which the
+	// formation had not run on yet (archon-o7p.11).
+	Earlier *GateFeedback `json:"earlier,omitempty"`
 }
 
 // GateResponse is the operator's text on a passed human gate. It travels with
@@ -104,6 +107,9 @@ type GateResponse struct {
 	RequestedSeq int    `json:"requestedSeq"`
 	DecidedBy    string `json:"decidedBy"`
 	Text         string `json:"text"`
+	// Earlier is a response that reached the same port before this, which the
+	// formation had not run on yet (archon-o7p.11).
+	Earlier *GateResponse `json:"earlier,omitempty"`
 }
 
 // gatePassInput rebuilds a human pass route from the ledger. The gate verdict

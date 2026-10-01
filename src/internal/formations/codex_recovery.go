@@ -232,9 +232,13 @@ func (e *RunEngine) PreservePendingHumanGate(runID string) (bool, error) {
 			return false, err
 		}
 	}
+	// A gate waiting on the operator is no work owed, unless it has received
+	// a newer input since it asked: evaluating that input comes first, and it
+	// replaces the request.
 	deciding := openHumanDecisions(events)
+	owed := runPaths(board, events).owed
 	for _, nodeID := range runFinishState(board, events, "").runnable {
-		if !slices.Contains(deciding, nodeID) {
+		if !slices.Contains(deciding, nodeID) || slices.Contains(owed, nodeID) {
 			return false, nil
 		}
 	}

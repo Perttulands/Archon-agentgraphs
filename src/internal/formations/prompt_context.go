@@ -36,17 +36,20 @@ func renderBriefAndInputs(b *strings.Builder, req FormationExecution, card Perso
 		b.WriteString("brief link: " + link + "\n")
 	}
 	for _, input := range req.Inputs {
-		if feedback := input.Feedback; feedback != nil {
+		// Work that reached the port with a send-back is shown with it, and
+		// every feedback and response the port kept follows (archon-o7p.11).
+		if input.Text != "" && (input.Feedback == nil || input.Text != input.Feedback.OriginalText) {
+			b.WriteString("input: " + input.Text + "\n")
+		}
+		for feedback := input.Feedback; feedback != nil; feedback = feedback.Earlier {
 			fmt.Fprintf(b, "\ngate feedback from %s, attempt %d:\nverdict: %s\nreason: %s\n", feedback.GateID, feedback.GateAttempt, feedback.Verdict, feedback.Reason)
 			for _, evidence := range feedback.Evidence {
 				b.WriteString("evidence: " + evidence.Text + "\n")
 			}
 			b.WriteString("original input ref: " + feedback.OriginalRef + "\n")
 			b.WriteString("original input: " + feedback.OriginalText + "\n\n")
-		} else if input.Text != "" {
-			b.WriteString("input: " + input.Text + "\n")
 		}
-		if response := input.Response; response != nil {
+		for response := input.Response; response != nil; response = response.Earlier {
 			fmt.Fprintf(b, "\nhuman response from %s, attempt %d:\nverdict: pass\ndecided by: %s\nresponse:\n%s\n\n", response.GateID, response.GateAttempt, response.DecidedBy, response.Text)
 		}
 	}
