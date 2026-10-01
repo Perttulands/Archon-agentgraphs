@@ -370,74 +370,117 @@ func (e *RunEngine) PrepareFormationRun(slug, formationID string, req FormationR
 	if personas == nil {
 		personas = e.personas
 	}
-	started, mission, seedInput, err := e.startFormationRun(slug, board, formation, personas, req)
+	started, err := e.startFormationRun(slug, board, formation, personas, req)
 	if err != nil {
 		return nil, nil, err
 	}
 	return started, func() (*RunStatusProjection, error) {
-		if err := e.startFormationExecution(started.RunID, board, formation, RunEvent{
+		events, err := e.store.ReadRunEvents(started.RunID)
+		if err != nil {
+			return nil, err
+		}
+		if err := e.runSingleFormation(started.RunID, board, events, "single-formation"); err != nil {
+			return nil, err
+		}
+		return e.projectAndNotify(started.RunID)
+	}, nil
+}
+
+// runSingleFormation goes on with a single step's run: once the step's latest
+// attempt has its output the run succeeds; otherwise the step runs as its next
+// attempt on the run's inputs, as the run's first attempt did. Resume, a Limit
+// card grant included, continues a blocked single-step run here
+// (archon-y8br). reason is recorded on node_started.
+func (e *RunEngine) runSingleFormation(runID string, board *BoardDocument, events []RunEvent, reason string) error {
+	started := events[0]
+	formationID := stringFromEventData(started, "formationId")
+	formation, ok := findFormation(board.Formations, formationID)
+	if !ok {
+		return fmt.Errorf("%w: formation %q", ErrNotFound, formationID)
+	}
+	attempt, output := 0, false
+	for _, event := range events {
+		if event.NodeID != formation.ID {
+			continue
+		}
+		switch event.Type {
+		case RunEventNodeStarted:
+			attempt, output = max(attempt, event.Attempt), false
+		case RunEventNodeOutput:
+			output = true
+		}
+	}
+	if !output {
+		attempt++
+		seedInput := formationRunSeed(board, formation, RunInputsFromEventData(started.Data["inputs"]), stringFromEventData(started, "objective"))
+		if err := e.startFormationExecution(runID, board, formation, RunEvent{
 			Type:    RunEventNodeStarted,
 			NodeID:  formation.ID,
-			Attempt: 1,
+			Attempt: attempt,
 			Data: map[string]any{
 				"nodeKind":  "formation",
 				"inputRefs": []RunInputRef{seedInput},
-				"reason":    "single-formation",
+				"reason":    reason,
 				"brief":     formationBriefEventData(formationBriefValue(formation)),
 			},
 		}); err != nil {
 			if errors.Is(err, errRunStopped) {
-				return e.projectAndNotify(started.RunID)
+				return nil
 			}
-			return nil, err
+			return err
 		}
 		result, err := e.executeFormation(FormationExecution{
-			RunID:     started.RunID,
+			RunID:     runID,
 			NodeID:    formation.ID,
 			Title:     formation.Title,
 			Formation: formation,
 			Brief:     formationBriefValue(formation),
 			Inputs:    []RunInputRef{seedInput},
-			Attempt:   1,
+			Attempt:   attempt,
 		})
 		if err != nil {
-			if blockErr := e.appendExecutionFailureAndBlock(started.RunID, formation.ID, err); blockErr != nil {
-				return nil, blockErr
-			}
-			return e.projectAndNotify(started.RunID)
+			return e.appendExecutionFailureAndBlock(runID, formation.ID, err)
 		}
 		if result.Status == "" {
 			result.Status = "done"
 		}
-		if err := e.ensureFormationOutputPayloads(started.RunID, formation, result); err != nil {
+		if err := e.ensureFormationOutputPayloads(runID, formation, result); err != nil {
 			if errors.Is(err, errRunStopped) {
-				return e.projectAndNotify(started.RunID)
+				return nil
 			}
-			return nil, err
+			return err
 		}
-		if err := e.store.AppendRunEvent(started.RunID, RunEvent{
+		if err := e.store.AppendRunEvent(runID, RunEvent{
 			Type:   RunEventNodeOutput,
 			NodeID: formation.ID,
 			Data:   formationOutputEventData(result),
 		}); err != nil {
-			return nil, err
+			return err
 		}
-		if err := e.store.AppendRunEvent(started.RunID, RunEvent{
-			Type: RunEventSucceeded,
-			Data: map[string]any{
-				"summaryRef":   "",
-				"outputRefs":   []string{},
-				"artifactRefs": []string{},
-				"final":        true,
-				"mode":         "formation",
-				"formationId":  formation.ID,
-				"inputCardId":  mission.ID,
-			},
-		}); err != nil {
-			return nil, err
-		}
-		return e.projectAndNotify(started.RunID)
-	}, nil
+	}
+	return e.store.AppendRunEvent(runID, RunEvent{
+		Type: RunEventSucceeded,
+		Data: map[string]any{
+			"summaryRef":   "",
+			"outputRefs":   []string{},
+			"artifactRefs": []string{},
+			"final":        true,
+			"mode":         "formation",
+			"formationId":  formation.ID,
+			"inputCardId":  started.MissionID,
+		},
+	})
+}
+
+// formationRunSeed is what a single step's run hands its step: the run's
+// inputs, as a mission's first step receives them, or the step's brief when
+// the run supplied none.
+func formationRunSeed(board *BoardDocument, formation FormationNode, inputs []RunInput, goal string) RunInputRef {
+	seed := RenderRunInputs(board, inputs)
+	if seed == "" {
+		seed = goal
+	}
+	return RunInputRef{Ref: "brief://" + formation.ID, Text: seed}
 }
 
 func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusProjection, error) {
@@ -544,15 +587,24 @@ func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusPro
 	if events, err = e.store.ReadRunEvents(runID); err != nil {
 		return nil, err
 	}
-	started := events[0]
-	mission, ok := findMission(board, started.MissionID)
-	if !ok {
-		return nil, fmt.Errorf("%w: mission %q", ErrNotFound, started.MissionID)
-	}
-	if err := e.resumeSnapshot(runID, board, mission, events, "resume"); err != nil {
+	if err := e.continueSnapshot(runID, board, events, "resume"); err != nil {
 		return nil, err
 	}
 	return e.projectAndNotify(runID)
+}
+
+// continueSnapshot runs what a run still owes from its root: a mission's
+// Input card, or a single step's run's step.
+func (e *RunEngine) continueSnapshot(runID string, board *BoardDocument, events []RunEvent, reason string) error {
+	started := events[0]
+	if stringFromEventData(started, "mode") == "formation" {
+		return e.runSingleFormation(runID, board, events, reason)
+	}
+	mission, ok := findMission(board, started.MissionID)
+	if !ok {
+		return fmt.Errorf("%w: mission %q", ErrNotFound, started.MissionID)
+	}
+	return e.resumeSnapshot(runID, board, mission, events, reason)
 }
 
 // ContinueRun goes on with a run that is neither blocked nor final: it routes
@@ -578,11 +630,7 @@ func (e *RunEngine) ContinueRun(runID string) (*RunStatusProjection, error) {
 	if err != nil {
 		return nil, err
 	}
-	mission, ok := findMission(board, events[0].MissionID)
-	if !ok {
-		return nil, fmt.Errorf("%w: mission %q", ErrNotFound, events[0].MissionID)
-	}
-	if err := e.resumeSnapshot(runID, board, mission, events, "continue"); err != nil {
+	if err := e.continueSnapshot(runID, board, events, "continue"); err != nil {
 		return nil, err
 	}
 	return e.projectAndNotify(runID)
@@ -971,10 +1019,10 @@ func (e *RunEngine) appendOpenDispatchReattachFailure(runID string, refs []openD
 	})
 }
 
-func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formation FormationNode, personas *PersonaStore, req FormationRunRequest) (*RunStartResult, MissionNode, RunInputRef, error) {
+func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formation FormationNode, personas *PersonaStore, req FormationRunRequest) (*RunStartResult, error) {
 	bindings, err := resolveRunBindings(board, personas)
 	if err != nil {
-		return nil, MissionNode{}, RunInputRef{}, err
+		return nil, err
 	}
 	goal := ""
 	if formation.Brief != nil {
@@ -995,27 +1043,27 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 	bindingsPath := runArtifactPath(slug, runID, ".bindings.toml")
 	boardRaw := []byte(board.TOML)
 	if int64(len(boardRaw)) > runRecordMaxBytes {
-		return nil, MissionNode{}, RunInputRef{}, fmt.Errorf("%w: run snapshot exceeds byte limit", ErrRunLedgerInvalid)
+		return nil, fmt.Errorf("%w: run snapshot exceeds byte limit", ErrRunLedgerInvalid)
 	}
 	bindingsRaw := []byte(renderRunBindings(runID, board, mission, bindings, nil))
 	if int64(len(bindingsRaw)) > runRecordMaxBytes {
-		return nil, MissionNode{}, RunInputRef{}, fmt.Errorf("%w: run persona snapshot exceeds byte limit", ErrRunLedgerInvalid)
+		return nil, fmt.Errorf("%w: run persona snapshot exceeds byte limit", ErrRunLedgerInvalid)
 	}
 	runDirectory, err := e.store.openRunArtifactDirectory(slug, true)
 	if err != nil {
-		return nil, MissionNode{}, RunInputRef{}, err
+		return nil, err
 	}
 	defer runDirectory.close()
 	if err := writeRunArtifactExclusiveAt(runDirectory, runID+".snapshot.toml", boardRaw); err != nil {
-		return nil, MissionNode{}, RunInputRef{}, err
+		return nil, err
 	}
 	if err := writeRunArtifactExclusiveAt(runDirectory, runID+".bindings.toml", bindingsRaw); err != nil {
-		return nil, MissionNode{}, RunInputRef{}, err
+		return nil, err
 	}
 	cwd := req.Cwd
 	if cwd == "" {
 		if cwd, err = e.store.allocateRunWorkspace(runID); err != nil {
-			return nil, MissionNode{}, RunInputRef{}, err
+			return nil, err
 		}
 	}
 	started := &RunStartResult{
@@ -1058,18 +1106,9 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 			// Remove only our newly allocated empty folder, never existing contents.
 			err = errors.Join(err, os.Remove(cwd))
 		}
-		return nil, MissionNode{}, RunInputRef{}, err
+		return nil, err
 	}
-	// The step receives the run's inputs, as a mission's first step does.
-	seed := RenderRunInputs(board, inputs)
-	if seed == "" {
-		seed = goal
-	}
-	seedInput := RunInputRef{
-		Ref:  "brief://" + formation.ID,
-		Text: seed,
-	}
-	return started, mission, seedInput, nil
+	return started, nil
 }
 
 // resumeSnapshot rebuilds the run's deliveries from its ledger and runs

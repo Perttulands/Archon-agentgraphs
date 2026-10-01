@@ -332,3 +332,68 @@ func TestARestartCutShortStartIsNotARound(t *testing.T) {
 		}
 	}
 }
+
+// failingRunExecutor fails its first failures dispatches, then works as
+// fakeRunExecutor does.
+type failingRunExecutor struct {
+	fakeRunExecutor
+	failures int
+}
+
+func (f *failingRunExecutor) ExecuteFormation(req FormationExecution) (FormationExecutionResult, error) {
+	if f.failures > 0 {
+		f.failures--
+		f.calls = append(f.calls, req)
+		return FormationExecutionResult{}, runExecutionError("seat_exited", "the seat exited before its output", "adapter", nil)
+	}
+	return f.fakeRunExecutor.ExecuteFormation(req)
+}
+
+// A single step's run resumes as a mission run does (archon-y8br): its step
+// runs again as the next attempt on the same inputs, a spent Limit card stops
+// it until a grant, and its output ends the run.
+func TestABlockedSingleStepRunResumes(t *testing.T) {
+	for _, limited := range []bool{false, true} {
+		t.Run(map[bool]string{false: "after a failure", true: "with a grant"}[limited], func(t *testing.T) {
+			store, personas := s4RunFixture(t)
+			createS4Persona(t, personas, "scout")
+			writeFixture(t, store.BoardPath("session-search"), s4GateBoardFixture(true))
+			if limited {
+				addLimit(t, store, "fmn_work", 1)
+			}
+			executor := &failingRunExecutor{failures: 1}
+			status, err := NewRunEngine(store, personas, executor).RunFormation("session-search", "fmn_work", FormationRunRequest{Actor: "agent:test", Inputs: map[string]string{"brief": "Find the sessions"}})
+			if err != nil || status.Status != RunStatusBlocked || !status.ResumeAllowed {
+				t.Fatalf("first attempt = %+v, %v; want a resumable block", status, err)
+			}
+			// A fresh engine replays the ledger, as after a restart.
+			engine := NewRunEngine(store, personas, executor)
+			status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "try again"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if limited {
+				if status.Status != RunStatusBlocked || status.ResumePolicy != ResumePolicyGrant {
+					t.Fatalf("resume at a spent limit = %+v, want a block that takes a grant", status)
+				}
+				if status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:perttu", Mode: "reattach", Grant: true}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if status.Status != RunStatusSucceeded {
+				t.Fatalf("resumed = %+v, want succeeded", status)
+			}
+			events := mustEvents(t, store, status.RunID)
+			if got := nodeStartedAttempts(events, "fmn_work"); !reflect.DeepEqual(got, []int{1, 2}) {
+				t.Fatalf("work attempts = %v, want the failed one and one more", got)
+			}
+			if len(executor.calls) != 2 || !reflect.DeepEqual(executor.calls[0].Inputs, executor.calls[1].Inputs) || executor.calls[1].Inputs[0].Text != "Find the sessions" {
+				t.Fatalf("calls = %+v, want the same inputs twice", executor.calls)
+			}
+			last := events[len(events)-1]
+			if last.Type != RunEventSucceeded || last.Data["mode"] != "formation" || last.Data["inputCardId"] != "single_fmn_work" {
+				t.Fatalf("last event = %+v", last)
+			}
+		})
+	}
+}

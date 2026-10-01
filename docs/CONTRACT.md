@@ -1265,6 +1265,10 @@ the node's next attempt is one more round for a Limit card that covers it. A fai
 finishes the run: it records `dispatch_reattach_failed` with the reason and
 leaves the run blocked and resumable.
 
+A single step's run resumes as a mission run does, a Limit card grant
+included: once its step's latest attempt has its output the run succeeds,
+otherwise the step runs again as its next attempt on the run's inputs.
+
 Resume does not manufacture missing completion or resend an uncertain task.
 An unresolved dispatch can block again. For explicitly selected completed native
 evidence, restart with `--resume-run`, `--completed-transcript` and
