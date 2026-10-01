@@ -7,8 +7,8 @@ changes it; a variant that needs more proposes the addition in its set.
 
 ## Where it lives
 
-- **Tokens and doctrine** are CHROTE's: `/srv/chrote/DESIGN-SYSTEM.md` on the
-  host. JetBrains Mono is the only font. The palette is monochrome plus one
+- **Tokens and doctrine** are CHROTE's: `DESIGN-SYSTEM.md` in the CHROTE
+  repository. JetBrains Mono is the only font. The palette is monochrome plus one
   accent, and colour carries meaning only. Nothing moves under the pointer,
   words come before icons, each surface has one primary action, and nothing
   asks a question in a dialog. Motion survives only where it confirms an
