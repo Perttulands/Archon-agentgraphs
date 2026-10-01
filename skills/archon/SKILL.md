@@ -203,6 +203,8 @@ acknowledges one proposal.
 
 `formation set-execution "$M" "$FORMATION" --timeout-seconds <n>` sets it;
 `0` removes it. A run freezes the duration at admission.
+When a step runs long, check `run seats` (a seat's `waiting` says what it waits
+on) or open the seat; `run wait --until any-change` reports each `seat_state`.
 A step's duration does not bound a send-back loop; see run limits below.
 
 ### Human channel

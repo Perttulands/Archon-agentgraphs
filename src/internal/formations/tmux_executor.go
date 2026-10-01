@@ -693,6 +693,8 @@ func (e *TmuxFormationExecutor) executeBoundSlot(req FormationExecution, binding
 	if err := dispatchContextError(owned.ctx); err != nil {
 		return tmuxSlotOutput{}, err
 	}
+	stopWatching := e.watchSeatState(owned.ctx, req.RunID, req.NodeID, slot.ID, lease.DispatchID, seat)
+	defer stopWatching()
 	if err := e.seatClient.Stage(owned.ctx, e.config.Socket, seat, lease.DispatchID, pointer); err != nil {
 		return tmuxSlotOutput{}, runSlotExecutionError("dispatch_failed", redactPromptFromLedgerText(err.Error(), prompt), "adapter", err, req.NodeID, slot.ID, lease.DispatchID)
 	}
@@ -754,7 +756,7 @@ func (e *TmuxFormationExecutor) resolveSlotBinding(ctx context.Context, req Form
 // A slot already provisioned in this execution reuses its own session.
 func (e *TmuxFormationExecutor) provisionOwnedSession(ctx context.Context, owned *ownedSessions, runID string, slot FormationSlot, variant HarnessVariant) (string, error) {
 	if name, ok := owned.name(slot.ID); ok {
-		if err := e.seatClient.Ready(ctx, e.config.Socket, owned.seats[slot.ID], variant.ID); err != nil {
+		if err := e.readySeat(ctx, runID, owned.req.NodeID, slot.ID, owned.seats[slot.ID], variant.ID); err != nil {
 			return "", err
 		}
 		return name, nil
@@ -790,12 +792,12 @@ func (e *TmuxFormationExecutor) provisionOwnedSession(ctx context.Context, owned
 	if err := e.store.AppendRunEvent(runID, RunEvent{Type: "seat_created", NodeID: owned.req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": name, "sessionId": seat.sessionID, "paneId": seat.paneID, "socketIdentity": socketIdentity, "harness": variant.ID, "model": variant.Model, "effort": variant.effectiveEffort()}}); err != nil {
 		return "", err
 	}
-	if err := e.seatClient.Ready(ctx, e.config.Socket, seat, variant.ID); err != nil {
+	if err := e.readySeat(ctx, runID, owned.req.NodeID, slot.ID, seat, variant.ID); err != nil {
 		var executionErr *RunExecutionError
 		if errors.As(err, &executionErr) {
 			return "", err
 		}
-		return "", runExecutionError("session_startup_timeout", err.Error(), "adapter", err)
+		return "", runExecutionError("session_startup_failed", err.Error(), "adapter", err)
 	}
 	return name, nil
 }
@@ -1681,9 +1683,18 @@ func tmuxPaneShowsAgentWorking(harness, captured string) bool {
 	return strings.Contains(captured, "esc to interrupt") || harness == "claude-code" && claudeWorkingLine.MatchString(captured)
 }
 
+// tmuxCommandTimeout bounds one tmux command. A single command answers in
+// milliseconds; one that hangs means the tmux server is wedged, and the
+// dispatch fails visibly instead of waiting forever. This bounds a command, not
+// a step: waits for a seat run across many commands.
+var tmuxCommandTimeout = 30 * time.Second
+
 func runTmuxCommand(ctx context.Context, socket string, stdin *strings.Reader, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, tmuxCommandTimeout)
+	defer cancel()
 	allArgs := append([]string{"-S", socket}, args...)
 	cmd := exec.CommandContext(ctx, core.TmuxBin(), allArgs...)
+	cmd.WaitDelay = time.Second
 	if stdin != nil {
 		cmd.Stdin = stdin
 	}
@@ -1691,6 +1702,13 @@ func runTmuxCommand(ctx context.Context, socket string, stdin *strings.Reader, a
 	cmd.Stderr = &stderr
 	output, err := cmd.Output()
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			command := ""
+			if len(args) > 0 {
+				command = args[0]
+			}
+			return "", fmt.Errorf("tmux %s did not finish within %s; the tmux server may be wedged", command, tmuxCommandTimeout)
+		}
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
 			message = err.Error()

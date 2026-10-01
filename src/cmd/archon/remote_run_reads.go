@@ -74,6 +74,9 @@ func printRemoteRunRead(command string, raw []byte, jsonOut bool, stdout, stderr
 			if seat.Reason != "" {
 				fmt.Fprintf(stdout, "  reason: %s\n", seat.Reason)
 			}
+			if seat.Waiting != nil {
+				fmt.Fprintf(stdout, "  waiting %s since %s: %s\n", seat.Waiting.State, seat.Waiting.Since, seat.Waiting.Detail)
+			}
 			if seat.OnCall != nil {
 				fmt.Fprintln(stdout, "  on call")
 				for _, ask := range seat.OnCall.WaitingOn {

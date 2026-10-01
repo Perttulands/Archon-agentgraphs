@@ -397,7 +397,8 @@ the ledger event.
 
 `run gates <run>` lists pending gate IDs, request sequences and asking seats.
 `gate request <run> <gate>` reads the question and routed input. `run seats <run>`
-lists the public seat projection, including session names and on-call requests.
+lists the public seat projection, including session names, on-call requests and
+what a seat is waiting on.
 These three commands print readable text by default and the daemon envelope
 with `--json`. Match a gate's `askedSeats[].createdSeq` to a seat's `createdSeq`,
 then match its `sessionName` to `tmux list-panes` on the daemon host's configured
@@ -416,7 +417,8 @@ Orchestrated controllers also get their bound workers and may direct only those
 workers. The operator may type into any live seat at any time, through the seat
 terminal or in CHROTE, and talk to the agent normally, whether it is working a
 dispatch or idle. The runtime pastes a brief only while the agent is idle and its
-input line is empty, waiting within the step's duration if it has one, so a brief never lands
+input line is empty, waiting within the step's duration if it has one (a long wait is
+recorded as `waiting_for_idle_input`, below), so a brief never lands
 mid-turn or on the operator's unsent text. It submits the brief once its pointer
 shows in the input line, however the harness wraps it. Archon agents must not
 type into seats or manage their sessions.
@@ -445,6 +447,26 @@ Claude only when the agent left no background work that resumes the
 conversation; otherwise the dispatch waits, within the step's duration if it has one. The dispatch
 still fails loudly when the seat ends, when the model or effort changes, or when
 the harness moves to another conversation (`/clear`, `/new` or `/resume`).
+
+A step without a duration never times out, so a seat that waits on something
+Archon cannot end on its own is recorded instead, never blocked or failed.
+Once such a wait has lasted a minute, the ledger records `seat_state` (`nodeId`,
+`slotId`, `data.state`, `data.detail`, `data.since` and `data.dispatchId` once
+dispatched), and records it again with state `working` when the wait ends:
+
+- `seat_not_ready`: the harness has not reached its ready prompt;
+- `waiting_for_idle_input`: the brief waits to be pasted because the agent is
+  busy or the input line holds text the operator has not sent;
+- `turn_ended_without_sentinel`: after an operator turn, the agent ended a
+  turn without this run's sentinel;
+- `background_work_pending`: Claude ended its turn with background work that
+  has not resumed the conversation.
+
+`run seats` shows a seat's current wait as `waiting` (`state`, `detail`,
+`since`, `seq`) until the seat records anything else, and `run wait --until
+any-change` reports each `seat_state` as a change with its `slotId`, `state`
+and `detail`. Each tmux command is bounded at 30 seconds, so a wedged tmux
+server fails the dispatch with that reason instead of waiting forever.
 The `lab` executor creates no tmux sessions and echoes deterministic inputs.
 It writes each rendered brief to `<state-dir>/briefs/lab-*.md`, as a seat would
 receive it. It proves routing, not agent work or the truth of a review.

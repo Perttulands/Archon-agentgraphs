@@ -34,6 +34,17 @@ type Seat struct {
 	TerminalURL string `json:"terminalUrl,omitempty"`
 	// OnCall is set while the seat is kept on call for a human gate's ask.
 	OnCall *SeatOnCall `json:"onCall,omitempty"`
+	// Waiting is set while the seat waits on something Archon cannot end on
+	// its own, recorded by a seat_state event: open the seat to see it.
+	Waiting *SeatWaiting `json:"waiting,omitempty"`
+}
+
+// SeatWaiting is a seat's current recorded wait.
+type SeatWaiting struct {
+	State  string `json:"state"`
+	Detail string `json:"detail,omitempty"`
+	Since  string `json:"since,omitempty"`
+	Seq    int    `json:"seq"`
 }
 
 // SeatOnCall describes a kept seat: when it was kept and the pending asks it received.
@@ -74,6 +85,7 @@ func (c *Coordinator) seatRecords(runID string) ([]seatRecord, map[int]bool, err
 		return nil, nil, err
 	}
 	latest := map[[2]string]seatRecord{}
+	waiting := seatWaits(events)
 	sequences := map[int]bool{}
 	text := func(event formations.RunEvent, key string) string { value, _ := event.Data[key].(string); return value }
 	for _, event := range events {
@@ -113,12 +125,34 @@ func (c *Coordinator) seatRecords(runID string) ([]seatRecord, map[int]bool, err
 		}
 	}
 	records := make([]seatRecord, 0, len(latest))
-	for _, record := range latest {
+	for key, record := range latest {
 		record.seat.OnCall = onCall[record.seat.CreatedSeq]
+		if !record.ended {
+			record.seat.Waiting = waiting[key]
+		}
 		records = append(records, record)
 	}
 	sort.Slice(records, func(i, j int) bool { return records[i].seat.CreatedSeq < records[j].seat.CreatedSeq })
 	return records, sequences, nil
+}
+
+// seatWaits is each seat's current recorded wait, by node and slot. A wait
+// lasts until the seat records anything else.
+func seatWaits(events []formations.RunEvent) map[[2]string]*SeatWaiting {
+	waiting := map[[2]string]*SeatWaiting{}
+	for _, event := range events {
+		if event.SlotID == "" {
+			continue
+		}
+		key := [2]string{event.NodeID, event.SlotID}
+		delete(waiting, key)
+		if state, _ := event.Data["state"].(string); event.Type == formations.RunEventSeatState && state != formations.SeatStateWorking {
+			detail, _ := event.Data["detail"].(string)
+			since, _ := event.Data["since"].(string)
+			waiting[key] = &SeatWaiting{State: state, Detail: detail, Since: since, Seq: event.Seq}
+		}
+	}
+	return waiting
 }
 
 func (c *Coordinator) projectSeat(ctx context.Context, record seatRecord) Seat {

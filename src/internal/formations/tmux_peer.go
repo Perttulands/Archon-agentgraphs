@@ -91,7 +91,7 @@ func (e *TmuxFormationExecutor) executePeerPhase(req FormationExecution, binding
 	for index, binding := range bindings {
 		extra := instructions(binding)
 		go func(index int, binding tmuxSlotBinding, extra []string) {
-			if err := e.seatClient.Ready(owned.ctx, e.config.Socket, owned.seats[binding.Slot.ID], binding.Variant.ID); err != nil {
+			if err := e.readySeat(owned.ctx, req.RunID, req.NodeID, binding.Slot.ID, owned.seats[binding.Slot.ID], binding.Variant.ID); err != nil {
 				outcomes <- outcome{index: index, err: withSlot(err, req.NodeID, binding.Slot.ID, "")}
 				return
 			}

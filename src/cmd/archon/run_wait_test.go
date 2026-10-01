@@ -83,7 +83,6 @@ to = "fmn_after:port_after_in"
 // waitExecutor finishes each formation when the test lets it.
 type waitExecutor struct{ proceed chan struct{} }
 
-
 func (e *waitExecutor) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
 	<-e.proceed
 	outputs := map[string]formations.FormationOutputPayload{}
@@ -342,5 +341,10 @@ func TestRunWaitWordsStatusesAndEscalationsPlainly(t *testing.T) {
 	changed := renderWait("s", &waitOutput{RunWait: coordinator.RunWait{RunID: "run_x", Mission: "Proof", Since: 3, Seq: 4, Status: "waiting_human", Changes: []coordinator.WaitChange{{Seq: 4, Type: "node_output"}}}, Next: "n"}, waitExitChanged)
 	if !strings.Contains(changed, "It is now waiting for a human verdict.") {
 		t.Fatalf("changed:\n%s", changed)
+	}
+	// A seat's recorded wait reads as what it waits on.
+	stalled := describeWaitChange(coordinator.WaitChange{Seq: 5, Type: formations.RunEventSeatState, Title: "Work", SlotID: "slot_work", State: formations.SeatStateNotReady, Detail: "the seat has not reached its ready prompt"})
+	if stalled != `seat_state "Work" slot slot_work seat_not_ready: the seat has not reached its ready prompt` {
+		t.Fatalf("seat_state change = %q", stalled)
 	}
 }

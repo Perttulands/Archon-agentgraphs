@@ -23,6 +23,10 @@ type codexTranscriptTurn struct {
 	// OperatorTurns counts what someone other than the dispatch did in the seat
 	// after the pointer: typed or queued messages and interrupts.
 	OperatorTurns int
+	// Waiting says why an incomplete turn is parked, when the transcript shows
+	// it: a turn that ended without the sentinel after an operator turn, or
+	// Claude background work that has not resumed. Empty while the agent works.
+	Waiting string
 }
 
 // readCodexTurn reads one dispatch from a Codex rollout: the exact workspace and
@@ -107,6 +111,7 @@ func readCodexTurnReader(reader io.Reader, cwd, pointer, runID string) (codexTra
 				return turn, errors.New("the Codex model changed during the dispatch (/model)")
 			case p.Role == "assistant" && (p.Channel == "final" || p.Phase == "final_answer"):
 				turn.Text = text
+				turn.Waiting = ""
 			}
 		}
 		if record.Type == "event_msg" && p.Type == "turn_aborted" && turn.Consumed {
@@ -127,6 +132,7 @@ func readCodexTurnReader(reader io.Reader, cwd, pointer, runID string) (codexTra
 			// The operator took a turn, so an answer without the sentinel may be a
 			// reply to them; wait for the dispatch's own completion.
 			turn.Text = ""
+			turn.Waiting = SeatStateTurnEndedWithoutSentinel
 		}
 	}
 	if err := scanner.Err(); err != nil {

@@ -33,6 +33,8 @@ type nativeSeat struct {
 	control *seatControl
 	watch   *filewatch.Watcher
 	created time.Time
+	// wait is what the seat is waiting on now, for seat_state events.
+	wait seatWait
 }
 
 func (s *nativeSeat) close() {
@@ -137,6 +139,8 @@ func (t realSeatTransport) Ready(ctx context.Context, socket string, s *nativeSe
 	if s.pointer != "" {
 		return t.WaitInputClear(ctx, socket, s)
 	}
+	s.setWaiting(SeatStateNotReady)
+	defer s.setWaiting("")
 	trustAnswered := false
 	for {
 		text, err := t.run(ctx, socket, nil, "capture-pane", "-p", "-J", "-t", s.paneID, "-S", "-80")
@@ -215,6 +219,8 @@ func (t realSeatTransport) WaitInputClear(ctx context.Context, socket string, s 
 		}
 		s.control = control
 	}
+	s.setWaiting(SeatStateWaitingForIdleInput)
+	defer s.setWaiting("")
 	for {
 		clear, err := t.inputClear(ctx, socket, s)
 		if err != nil || clear {
@@ -342,8 +348,10 @@ func (t realSeatTransport) WaitTurn(ctx context.Context, s *nativeSeat, cwd, poi
 	}
 	ticker := time.NewTicker(replacementCheckInterval)
 	defer ticker.Stop()
+	defer s.setWaiting("")
 	recorded, check := false, false
 	for {
+		s.setWaiting(turn.Waiting)
 		if turn.Consumed && !recorded {
 			if err := consumed(turn); err != nil {
 				return turn, err

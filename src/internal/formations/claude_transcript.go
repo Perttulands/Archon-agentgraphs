@@ -121,6 +121,7 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer, runID string) (codexTr
 			continue
 		}
 		turn.Text = text
+		turn.Waiting = ""
 		// Some Claude versions omit stop_reason in persisted messages. In that
 		// format the last assistant text plus the exact run sentinel is the end
 		// signal. An explicit tool_use or max_tokens is never completion.
@@ -138,6 +139,13 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer, runID string) (codexTr
 		if stop == "end_turn" && turn.OperatorTurns == 0 && !background {
 			turn.Complete = true
 			return turn, nil
+		}
+		// Otherwise the dispatch waits on: say why, so it is visible.
+		if stop == "end_turn" {
+			turn.Waiting = SeatStateTurnEndedWithoutSentinel
+			if turn.OperatorTurns == 0 {
+				turn.Waiting = SeatStateBackgroundWork
+			}
 		}
 	}
 	return turn, scanner.Err()

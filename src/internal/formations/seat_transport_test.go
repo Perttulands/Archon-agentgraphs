@@ -493,12 +493,24 @@ func TestStageWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 				t.Fatalf("pastes = %v, want one per staging", pasted)
 			}
 
-			// A pane that stays busy is waited on until the caller cancels.
+			// A pane that stays busy is waited on until the caller cancels, and
+			// the seat says what it waits on meanwhile, for seat_state events.
 			states = []string{"busy-empty"}
-			short, stop := context.WithTimeout(ctx, 100*time.Millisecond)
+			short, stop := context.WithTimeout(ctx, 300*time.Millisecond)
 			defer stop()
-			if err := transport.Stage(short, "socket", seat, "stuck", seatPointer(seat.brief)); !errors.Is(err, context.DeadlineExceeded) || len(pasted) != 2 {
+			staged := make(chan error, 1)
+			go func() { staged <- transport.Stage(short, "socket", seat, "stuck", seatPointer(seat.brief)) }()
+			for state, _ := seat.waiting(); state != SeatStateWaitingForIdleInput; state, _ = seat.waiting() {
+				if short.Err() != nil {
+					t.Fatalf("the waiting seat never said %s", SeatStateWaitingForIdleInput)
+				}
+				time.Sleep(time.Millisecond)
+			}
+			if err := <-staged; !errors.Is(err, context.DeadlineExceeded) || len(pasted) != 2 {
 				t.Fatalf("busy pane: %v, pastes %v", err, pasted)
+			}
+			if state, _ := seat.waiting(); state != "" {
+				t.Fatalf("seat still says %s after the wait ended", state)
 			}
 		})
 	}

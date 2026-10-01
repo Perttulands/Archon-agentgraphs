@@ -445,5 +445,11 @@ func describeWaitChange(change coordinator.WaitChange) string {
 	if change.Verdict != "" {
 		fmt.Fprintf(&b, " verdict %s", change.Verdict)
 	}
+	if change.State != "" {
+		fmt.Fprintf(&b, " slot %s %s", change.SlotID, change.State)
+		if change.Detail != "" {
+			fmt.Fprintf(&b, ": %s", change.Detail)
+		}
+	}
 	return b.String()
 }

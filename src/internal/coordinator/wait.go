@@ -106,9 +106,13 @@ type WaitInput struct {
 }
 
 type WaitChange struct {
-	Seq     int    `json:"seq"`
-	Type    string `json:"type"`
-	NodeID  string `json:"nodeId,omitempty"`
+	Seq    int    `json:"seq"`
+	Type   string `json:"type"`
+	NodeID string `json:"nodeId,omitempty"`
+	SlotID string `json:"slotId,omitempty"`
+	// State and Detail describe a seat_state change: what the seat waits on.
+	State   string `json:"state,omitempty"`
+	Detail  string `json:"detail,omitempty"`
 	GateID  string `json:"gateId,omitempty"`
 	Title   string `json:"title,omitempty"`
 	Attempt int    `json:"attempt,omitempty"`
@@ -262,7 +266,11 @@ func projectWait(runID string, events []formations.RunEvent, board *formations.B
 		if event.Seq <= since || event.Seq > result.Seq {
 			continue
 		}
-		change := WaitChange{Seq: event.Seq, Type: event.Type, NodeID: event.NodeID, GateID: event.GateID, Attempt: event.Attempt}
+		change := WaitChange{Seq: event.Seq, Type: event.Type, NodeID: event.NodeID, SlotID: event.SlotID, GateID: event.GateID, Attempt: event.Attempt}
+		if event.Type == formations.RunEventSeatState {
+			change.State, _ = event.Data["state"].(string)
+			change.Detail, _ = event.Data["detail"].(string)
+		}
 		change.Title = waitTitle(board, firstNonEmpty(event.NodeID, event.GateID))
 		change.Status, _ = event.Data["status"].(string)
 		change.Verdict, _ = event.Data["verdict"].(string)
