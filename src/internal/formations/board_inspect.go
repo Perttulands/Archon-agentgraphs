@@ -27,6 +27,8 @@ const (
 	FindingInvalidEnd               = "invalid_end"
 	FindingRouteLeadsNowhere        = "route_leads_nowhere"
 	FindingUnreachableNode          = "unreachable_node"
+	FindingMissingFile              = "missing_file"
+	FindingRelativeFile             = "relative_file"
 )
 
 // BoardFinding is a single structural problem located on the board. NodeID names
@@ -35,6 +37,8 @@ type BoardFinding struct {
 	Code    string `json:"code"`
 	NodeID  string `json:"nodeId"`
 	Message string `json:"message"`
+	// Path is the reference file a missing_file or relative_file finding names.
+	Path string `json:"path,omitempty"`
 }
 
 // BoardValidationReport separates blocking errors from advisory warnings.
@@ -145,6 +149,7 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	report.Errors = append(report.Errors, routeLeadsNowhereFindings(board)...)
 	report.Errors = append(report.Errors, missionInputFindings(board)...)
 	report.Warnings = append(report.Warnings, unreachableNodeFindings(board)...)
+	report.Warnings = append(report.Warnings, fileReferenceFindings(board)...)
 
 	for _, tool := range board.Tools {
 		if firstKind, exists := seenNodeIDs[tool.ID]; tool.ID != "" && exists {
@@ -423,6 +428,41 @@ func unreachableNodeFindings(board *BoardDocument) []BoardFinding {
 	}
 	for _, end := range board.Ends {
 		add(end.ID, "End node")
+	}
+	return findings
+}
+
+// fileReferenceFindings warns about each reference file, on an Input card, a
+// gate or a formation's brief, that names no file Archon can open: a relative
+// path, which authoring refuses but a hand-written mission may hold, or a file
+// that does not exist. A file may still appear before a run reads it, so these
+// warn rather than block (archon-n7u.26).
+func fileReferenceFindings(board *BoardDocument) []BoardFinding {
+	var findings []BoardFinding
+	check := func(nodeID string, files []string) {
+		for _, ref := range files {
+			code, problem := FileRefProblem(ref)
+			if code == "" {
+				continue
+			}
+			findings = append(findings, BoardFinding{
+				Code:    code,
+				NodeID:  nodeID,
+				Path:    ref,
+				Message: fmt.Sprintf("%s file %s %s", possessive(nodeName(board, nodeID)), ref, problem),
+			})
+		}
+	}
+	for _, mission := range board.Missions {
+		check(mission.ID, mission.Files)
+	}
+	for _, formation := range board.Formations {
+		if formation.Brief != nil {
+			check(formation.ID, formation.Brief.Files)
+		}
+	}
+	for _, gate := range board.Gates {
+		check(gate.ID, gate.Files)
 	}
 	return findings
 }

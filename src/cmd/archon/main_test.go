@@ -1009,6 +1009,31 @@ func TestArchonRefusesARelativeReferenceFile(t *testing.T) {
 	}
 }
 
+func TestArchonWarnsAboutAReferenceFileThatDoesNotExist(t *testing.T) {
+	workspace := t.TempDir()
+	present := filepath.Join(t.TempDir(), "rubric.md")
+	if err := os.WriteFile(present, []byte("# Rubric\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(t.TempDir(), "later.md")
+	runner := &fakeTmux{live: map[string]bool{}}
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "new", "refs"); code != 0 {
+		t.Fatalf("mission new: %s", stderr)
+	}
+	_, stderr, code := runArchon(t, runner, "--workspace", workspace, "gate", "create", "refs", "--title", "Review", "--file", present, "--file", missing)
+	if code != 0 || strings.Contains(stderr, present) || !strings.Contains(stderr, "warning: file "+missing+" does not exist") {
+		t.Fatalf("gate create code=%d stderr=%q, want a warning for the missing file only", code, stderr)
+	}
+	board, err := formations.NewStore(workspace).ReadBoard("refs")
+	if err != nil || len(board.Gates) != 1 || len(board.Gates[0].Files) != 2 {
+		t.Fatalf("board = %+v (%v), want the gate saved with both files", board, err)
+	}
+	stdout, _, _ := runArchon(t, runner, "--workspace", workspace, "mission", "validate", "refs")
+	if !strings.Contains(stdout, "Review's file "+missing+" does not exist") {
+		t.Fatalf("validate = %q, want the missing file named", stdout)
+	}
+}
+
 func TestArchonBoardInspectFailsLoudOnAmbiguousSelector(t *testing.T) {
 	workspace := t.TempDir()
 	store := formations.NewStore(workspace)

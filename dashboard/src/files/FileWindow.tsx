@@ -30,7 +30,7 @@ export default function FileWindow({ request, place, onOpen, onClose }: {
       keepClear={place ? () => place.keepClear : undefined}
       anchorKind={place?.anchorKind}
       className="file-window"
-      actions={<FileActions request={request} preview={preview} mode={mode} onMode={setMode} />}
+      actions={<FileActions request={request} preview={preview} error={error} mode={mode} onMode={setMode} />}
       onClose={onClose}
     >
       <FileView request={request} preview={preview} error={error} mode={mode} onOpen={onOpen} />

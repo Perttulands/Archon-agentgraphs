@@ -606,6 +606,7 @@ func remoteMissionCreate(c *remoteClient, args []string, stdout, stderr io.Write
 	if err != nil {
 		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
+	warnFileRefs(stderr, files)
 	result, err := decodeRemote[formations.MissionCreateResult](data, "")
 	if err != nil || result.Board == nil || result.Layout == nil {
 		return fail(stderr, fmt.Errorf("coordinator response has no created mission"))
@@ -655,6 +656,7 @@ func remoteMissionUpdate(c *remoteClient, args []string, stdout, stderr io.Write
 	if err != nil {
 		return remoteFail(stderr, err, *jsonOut, "inputCard", fs.Arg(1))
 	}
+	warnFileRefs(stderr, files)
 	return writeRemoteBoard(stdout, stderr, data, *jsonOut, fmt.Sprintf("updated Input card %s", missionID))
 }
 
@@ -861,6 +863,7 @@ func remoteFormationSetBrief(c *remoteClient, args []string, stdout, stderr io.W
 	if err != nil {
 		return remoteFail(stderr, err, *jsonOut, "formation", fs.Arg(1))
 	}
+	warnFileRefs(stderr, files)
 	return writeRemoteBoard(stdout, stderr, data, *jsonOut, fmt.Sprintf("updated brief for %s", formationID))
 }
 
@@ -954,6 +957,7 @@ func remoteGateCreate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 	if err != nil {
 		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
+	warnFileRefs(stderr, files)
 	result, err := decodeRemote[formations.GateCreateResult](data, "")
 	if err != nil || result.Board == nil || result.Layout == nil {
 		return fail(stderr, fmt.Errorf("coordinator response has no created gate"))
@@ -1008,6 +1012,7 @@ func remoteGateUpdate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 	if err != nil {
 		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
+	warnFileRefs(stderr, files)
 	return writeRemoteBoard(stdout, stderr, data, *jsonOut, "updated gate")
 }
 

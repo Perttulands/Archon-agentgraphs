@@ -1,4 +1,5 @@
-import type { BoardDocument } from '../components/formationsTypes'
+import { createContext, useContext } from 'react'
+import type { BoardDocument, BoardFinding } from '../components/formationsTypes'
 import { judgeChain } from '../nodeWindow/boardRoutes'
 
 // The files a board node references: a mission's or a gate's files and a
@@ -30,4 +31,29 @@ export function nodeFileRefs(board: BoardDocument | null, nodeId: string): Refer
     }
   }
   return files
+}
+
+// Why a referenced file cannot be opened, by its path as authored, from the
+// mission's validation: a file that does not exist or a relative path. Its
+// chip and its line in the node window say so (archon-n7u.26).
+export type FileProblems = ReadonlyMap<string, string>
+
+const FILE_PROBLEMS: Record<string, string> = {
+  missing_file: 'does not exist',
+  relative_file: 'is relative: use an absolute path',
+}
+
+export function fileProblems(findings: readonly BoardFinding[]): Map<string, string> {
+  const problems = new Map<string, string>()
+  for (const finding of findings) {
+    const problem = FILE_PROBLEMS[finding.code]
+    if (problem && finding.path) problems.set(finding.path, problem)
+  }
+  return problems
+}
+
+export const FileProblemsContext = createContext<FileProblems>(new Map())
+
+export function useFileProblems(): FileProblems {
+  return useContext(FileProblemsContext)
 }

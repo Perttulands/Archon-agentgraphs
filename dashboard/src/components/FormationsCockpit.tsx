@@ -73,7 +73,7 @@ import CanvasLegend from './CanvasLegend'
 import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
 import { ProducedFiles, RunProduced, RunProducedProvider } from '../files/ProducedFiles'
 import { ReferencedFiles, type HiddenReferencedFile } from '../files/ReferencedFiles'
-import { nodeFileRefs } from '../files/referencedFiles'
+import { FileProblemsContext, fileProblems, nodeFileRefs } from '../files/referencedFiles'
 import { producedNames, summarizeProduced, useRunProduced } from '../files/produced'
 import { useHumanGateUpstream } from './useHumanGateUpstream'
 import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom } from './formationsCockpitDom'
@@ -2429,6 +2429,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     () => findingsByNode(board, validation ? [...validation.errors, ...validation.warnings] : []),
     [board, validation],
   )
+  const referencedFileProblems = useMemo(() => fileProblems(validation?.warnings ?? []), [validation])
   const blockedFindings = useMemo(() => findingsByNode(board, admissionFindings), [board, admissionFindings])
   const draftClass = (nodeId: string) => `${draftFindings.has(nodeId) ? ' is-draft' : ''}${blockedFindings.has(nodeId) ? ' admission-blocked' : ''}`
   const renderDraftMarker = (nodeId: string) => (
@@ -3377,7 +3378,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   )
   return (
     <FileWindowsProvider stack={windows}>
-      <RunProducedProvider value={producedValue}>{cockpit}</RunProducedProvider>
+      <FileProblemsContext.Provider value={referencedFileProblems}>
+        <RunProducedProvider value={producedValue}>{cockpit}</RunProducedProvider>
+      </FileProblemsContext.Provider>
     </FileWindowsProvider>
   )
 }

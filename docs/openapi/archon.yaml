@@ -984,6 +984,9 @@ components:
           description: Node or connection ID; empty for a mission-level finding
         message:
           type: string
+        path:
+          type: string
+          description: The reference file a missing_file or relative_file warning names
     AdmissionErrorEnvelope:
       type: object
       required:

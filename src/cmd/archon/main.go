@@ -320,6 +320,19 @@ func newArchonRunEngine(store *formations.Store, personas *formations.PersonaSto
 	return engine
 }
 
+// warnFileRefs flags, once a write has saved them, the reference files that
+// do not exist yet, as the cockpit flags their chips (archon-n7u.26).
+func warnFileRefs(stderr io.Writer, files []string) {
+	for _, ref := range files {
+		if ref = strings.TrimSpace(ref); ref == "" {
+			continue
+		}
+		if _, problem := formations.FileRefProblem(ref); problem != "" {
+			fmt.Fprintf(stderr, "warning: file %s %s\n", ref, problem)
+		}
+	}
+}
+
 // needsWorkspace reports whether an offline command reads or writes a state
 // directory. Agent cards live in their own directory, run wait answers that it
 // needs the daemon, and help needs nothing.
@@ -879,6 +892,7 @@ func runFormationSetBrief(store *formations.Store, args []string, stdout, stderr
 	if err != nil {
 		return failDefinitionWrite(stderr, err, *jsonOut, "formation", fs.Arg(1))
 	}
+	warnFileRefs(stderr, files)
 	result.TOML = ""
 	if *jsonOut {
 		return writeJSON(stdout, result)
@@ -1029,6 +1043,7 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 	if err != nil {
 		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
+	warnFileRefs(stderr, files)
 	return writeCreated(stdout, *jsonOut, result, result.Board, result.Layout, result.Gate.ID)
 }
 
@@ -1102,6 +1117,7 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	if err != nil {
 		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
+	warnFileRefs(stderr, files)
 	result.TOML = ""
 	if *jsonOut {
 		return writeJSON(stdout, result)
@@ -1264,6 +1280,7 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 	if err != nil {
 		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
+	warnFileRefs(stderr, files)
 	return writeCreated(stdout, *jsonOut, result, result.Board, result.Layout, result.Mission.ID)
 }
 
@@ -1431,6 +1448,7 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	if err != nil {
 		return failDefinitionWrite(stderr, err, *jsonOut, "inputCard", fs.Arg(1))
 	}
+	warnFileRefs(stderr, files)
 	result.TOML = ""
 	if *jsonOut {
 		return writeJSON(stdout, result)

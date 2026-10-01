@@ -47,14 +47,21 @@ const FILE_ROW = 30
 const reserved = (node: Node, kind: 'inputCard' | 'gate' | 'formation') =>
   (kind === 'inputCard' ? 144 : kind === 'gate' ? 124 : node.type === 'peer' ? 340 : node.type === 'orchestrated' ? 440 : 310) + FILE_ROW
 
+// What the daemon's validation says of boardWithFiles: the sketch's path is
+// relative (FindingRelativeFile in src/internal/formations/board_inspect.go).
+function fileWarnings(board: ReturnType<typeof boardWithFiles>) {
+  return [{ code: 'relative_file', nodeId: board.inputCards[0].id, path: 'sketch.md', message: "Scouting's file sketch.md is relative: use an absolute path" }]
+}
+
 test('a gate\'s rubric and its judge\'s brief file open from the gate on Scouting', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.addInitScript(() => localStorage.clear())
   const board = boardWithFiles()
-  const fixture = await scoutingFixture(page, { mission: board })
+  const fixture = await scoutingFixture(page, { mission: board, warnings: fileWarnings(board) })
   await page.route('**/api/files/preview?**', servePreview)
   await page.goto('/?mission=scouting')
-  await expect(page.getByRole('note')).toHaveCount(scouting.notes.elements.length)
+  // The notes, and the draft marker the sketch's warning puts on the Input card.
+  await expect(page.getByRole('note')).toHaveCount(scouting.notes.elements.length + 1)
 
   const cards: Array<[Node, 'inputCard' | 'gate' | 'formation']> = [
     [board.inputCards[0], 'inputCard'],
@@ -93,12 +100,21 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Scoutin
   await expect(scoring.getByRole('heading', { name: 'Scoring guide' })).toBeVisible()
   await expect(scoring).toContainText('/home/operator/private/scoring.md')
 
+  // A file Archon cannot open is flagged on its chip and in its node window
+  // (archon-n7u.26), and its window offers no raw view or download.
+  const missionCard = page.getByTestId(`mission-node-${board.inputCards[0].id}`)
+  await expect(missionCard.getByRole('button', { name: 'Open sketch.md, which is relative: use an absolute path' })).toHaveClass(/missing/)
+  await expect(gate.getByRole('button', { name: `Open ${RUBRIC}` })).not.toHaveClass(/missing/)
+
   // A file link in a node window opens its file near that window, clear of it.
-  await page.getByTestId(`mission-node-${board.inputCards[0].id}`).locator('.mtitle').click()
+  await missionCard.locator('.mtitle').click()
   const missionWindow = page.getByRole('dialog', { name: 'Input card · Scouting' })
+  await expect(missionWindow.locator('.nwin-file-problem')).toHaveText('is relative: use an absolute path')
   await missionWindow.getByRole('button', { name: 'Open file sketch.md' }).click()
   const sketch = page.getByRole('dialog', { name: 'file sketch.md' })
   await expect(sketch.getByRole('alert')).toContainText('a relative file reference has no base: use an absolute path')
+  await expect(sketch.getByRole('link', { name: 'Open raw' })).toHaveCount(0)
+  await expect(sketch.getByRole('link', { name: 'Download' })).toHaveCount(0)
   const besideWindow = gapBetween((await sketch.boundingBox())!, (await missionWindow.boundingBox())!)
   expect(besideWindow).toBeGreaterThanOrEqual(0)
   expect(besideWindow).toBeLessThanOrEqual(240)

@@ -10,6 +10,8 @@
 .ref-glyph { flex-shrink: 0; color: var(--text-dim); }
 .ref-chip.judge .ref-glyph { color: var(--accent); }
 .ref-chip.more { flex-shrink: 0; color: var(--text-secondary); }
+.ref-chip.missing { border-style: dashed; border-color: var(--color-error); color: var(--color-error); }
+.ref-chip.missing .ref-glyph { color: var(--color-error); font-weight: 700; }
 
 /* On a card the chips keep to one row, so the card's height stays what Arrange reserves. */
 .fmx .card-refs { flex-wrap: nowrap; overflow: hidden; }

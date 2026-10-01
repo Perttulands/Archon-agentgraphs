@@ -125,7 +125,7 @@ type TestBoard = ReturnType<typeof makeBoard>
 type TestRunEvent = { runId: string; seq: number; type: string; nodeId?: string; gateId?: string; attempt?: number; data?: Record<string, unknown>; slotId?: string; status?: string; verdict?: string; sessionName?: string; outcome?: string }
 type TestEscalation = { runId: string; seq: number; nodeId?: string; gateId?: string; severity: string; reason: string; source: string; trigger: string; blocks: boolean }
 type TestRunStatus = { status?: string; final?: boolean; resumeAllowed?: boolean }
-type TestFinding = { code: string; nodeId: string; message: string }
+type TestFinding = { code: string; nodeId: string; message: string; path?: string }
 type TestNoteEntry = { id: string; author: string; createdAt: string; editedAt?: string; text: string }
 const noteEntry = (id: string, author: string, text: string): TestNoteEntry => ({ id, author, createdAt: '2026-09-16T12:00:00Z', text })
 let recordedMutations: RecordedMutation[] = []
@@ -2819,6 +2819,56 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(within(judgeFiles).getByRole('button', { name: 'Open file judge.md' }))
     expect(await screen.findByRole('dialog', { name: 'file judge.md' })).toHaveTextContent('Judge (judge) · judge.md')
     expect(recordedMutations).toEqual([])
+  })
+
+  it('flags a referenced file that does not exist on its chip and in its node window, and offers no raw view of it', async () => {
+    const withFiles = makeBoard()
+    withFiles.gates = [{ ...gate, files: ['/srv/rubrics/review.md', '/srv/rubrics/later.md'] }]
+    withFiles.inputCards = [{ ...mission, files: ['plans/brief.md'] }]
+    patches = installFetchMock({
+      boards: [withFiles],
+      validation: {
+        errors: [],
+        warnings: [
+          { code: 'missing_file', nodeId: 'gate_review', path: '/srv/rubrics/later.md', message: "Review the frame's file /srv/rubrics/later.md does not exist" },
+          { code: 'relative_file', nodeId: 'mis_showcase', path: 'plans/brief.md', message: "Showcase's file plans/brief.md is relative: use an absolute path" },
+        ],
+      },
+    })
+    const coordinator = globalThis.fetch
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (!url.startsWith('/api/files/preview')) return coordinator(input, init)
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        headers: { get: () => null },
+        json: () => Promise.resolve({ success: false, error: { code: 'Not Found', message: 'file not found' } }),
+      } as unknown as Response)
+    }) as typeof fetch
+    await renderCockpit()
+
+    const gateCard = screen.getByTestId('gate-node-gate_review')
+    const gateRefs = within(gateCard).getByRole('group', { name: 'Referenced files' })
+    await waitFor(() => expect(within(gateRefs).getByRole('button', { name: '1 more referenced file' })).toHaveClass('missing'))
+    expect(within(gateRefs).getByRole('button', { name: 'Open /srv/rubrics/review.md' })).not.toHaveClass('missing')
+    const relative = within(screen.getByTestId('mission-node-mis_showcase')).getByRole('button', { name: 'Open plans/brief.md, which is relative: use an absolute path' })
+    expect(relative).toHaveClass('missing')
+    expect(relative).toHaveTextContent('!brief.md')
+    fireEvent.click(within(gateRefs).getByRole('button', { name: '1 more referenced file' }))
+    const more = await screen.findByRole('menu', { name: 'Referenced files' })
+    expect(within(more).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['/srv/rubrics/later.md · does not exist'])
+
+    fireEvent.click(within(more).getByRole('menuitem', { name: '/srv/rubrics/later.md · does not exist' }))
+    const missing = await screen.findByRole('dialog', { name: 'file later.md' })
+    expect(await within(missing).findByRole('alert')).toHaveTextContent('Cannot read later.md: file not found')
+    expect(within(missing).queryByRole('link', { name: 'Open raw' })).toBeNull()
+    expect(within(missing).queryByRole('link', { name: 'Download' })).toBeNull()
+    expect(within(missing).getByRole('button', { name: 'Copy path' })).toBeInTheDocument()
+
+    const review = await openNodeWindow(within(gateCard).getByText('Review the frame'), 'Gate · Review')
+    const lines = [...review.querySelectorAll('.nwin-file-problem')]
+    expect(lines.map(line => line.closest('li')?.textContent)).toEqual(['/srv/rubrics/later.mddoes not exist'])
   })
 
   it('reopens a finished run from the run bar and puts it away again', async () => {

@@ -1419,5 +1419,16 @@ The cockpit shows each referenced file as a chip on its card: a mission's and a
 gate's files and a formation's brief files. A gate's card also shows the brief
 files of the formations judging it. A card shows the first few chips and lists
 the rest under +N. A chip opens the file in a floating file window, and a file
-the daemon cannot read opens with the daemon's reason and its path. Arrange
-reserves a chip row under a card that has referenced files.
+the daemon cannot read opens with the daemon's reason and its path, offering
+Copy path but no Open raw or Download. Arrange reserves a chip row under a card
+that has referenced files.
+
+A reference that names nothing the daemon can open is flagged where it is
+authored and on its chip (archon-n7u.26). Mission validation warns, with the
+file as `path`, `missing_file` for a file that does not exist ("Review's file
+/srv/rubrics/quality.md does not exist") and `relative_file` for a
+hand-written relative path ("... is relative: use an absolute path"). A file may
+still appear before a run reads it, so neither blocks a run. The CLI's `--file`
+writes print `warning: file <path> does not exist` once saved; the cockpit
+flags the chip, its line in the node window and its Flow chip, as of the
+mission's latest validation.

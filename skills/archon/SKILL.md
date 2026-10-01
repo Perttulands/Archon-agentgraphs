@@ -139,7 +139,8 @@ instructions stay in the step's brief, never in a role. Missions and gates take 
 repeat `--file <path>` on `mission create|update` and `gate create|update`; on
 update the list is replaced and `--file ''` clears it. Use absolute paths:
 authoring refuses a relative one (`relative_file_reference`), since it has no
-base for the cockpit or a seat.
+base for the cockpit or a seat. A file that does not exist yet is saved with a
+`warning:` line, and `mission validate` warns `missing_file` until it exists.
 
 ### Harness, model and effort
 

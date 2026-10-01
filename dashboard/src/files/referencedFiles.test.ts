@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BoardDocument } from '../components/formationsTypes'
-import { nodeFileRefs } from './referencedFiles'
+import { fileProblems, nodeFileRefs } from './referencedFiles'
 
 const port = (id: string) => [{ id, label: id }]
 
@@ -38,5 +38,18 @@ describe('referenced files of a node', () => {
       { ref: 'rubrics/first.md', owner: 'First judge', judge: true },
       { ref: 'rubrics/second.md', owner: 'Second judge', judge: true },
     ])
+  })
+})
+
+describe('file problems from validation', () => {
+  it('keys a missing or relative file by its path and ignores other findings', () => {
+    expect(fileProblems([
+      { code: 'missing_file', nodeId: 'gate_review', path: '/srv/rubrics/later.md', message: "Review's file /srv/rubrics/later.md does not exist" },
+      { code: 'relative_file', nodeId: 'fmn_work', path: 'docs/design.md', message: "Work's file docs/design.md is relative: use an absolute path" },
+      { code: 'unreachable_node', nodeId: 'fmn_orphan', message: 'No path from the Input card reaches step Orphan' },
+    ])).toEqual(new Map([
+      ['/srv/rubrics/later.md', 'does not exist'],
+      ['docs/design.md', 'is relative: use an absolute path'],
+    ]))
   })
 })

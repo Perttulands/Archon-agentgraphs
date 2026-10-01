@@ -22,7 +22,7 @@ import type {
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { ProducedFiles } from '../files/ProducedFiles'
 import { referencedFileRequest } from '../files/fileWindowModel'
-import { nodeFileRefs } from '../files/referencedFiles'
+import { nodeFileRefs, useFileProblems } from '../files/referencedFiles'
 import FloatingWindow from '../windows/FloatingWindow'
 import { nodeAnchor, nodeWindowKeepClear } from '../windows/cockpitScene'
 import type { WindowRect } from '../windows/windowGeometry'
@@ -256,6 +256,7 @@ function FilesField({ files, context, hint = 'Separate files with commas.', onSa
 
 function FileList({ files, context, label }: { files: string[]; context: string; label?: string }) {
   const fileWindows = useFileWindows()
+  const problems = useFileProblems()
   return (
     <ul className="nwin-list" aria-label={label}>
       {files.map(file => (
@@ -263,6 +264,7 @@ function FileList({ files, context, label }: { files: string[]; context: string;
           {fileWindows
             ? <button type="button" className="nwin-route" aria-label={`Open file ${file}`} onClick={event => fileWindows.open(referencedFileRequest(file, context), fileAnchor(event.currentTarget))}>{file}</button>
             : file}
+          {problems.has(file) ? <span className="nwin-file-problem">{problems.get(file)}</span> : null}
         </li>
       ))}
     </ul>

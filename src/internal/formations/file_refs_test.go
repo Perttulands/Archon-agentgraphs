@@ -256,3 +256,65 @@ func TestMissionAndGateFileReferencesRoundTrip(t *testing.T) {
 		t.Fatalf("cleared references left a files key:\n%s", readFile(t, store.BoardPath("refs")))
 	}
 }
+
+// Validation warns about each reference file that names nothing Archon can
+// open, with its path, so the cockpit can flag that file's chip
+// (archon-n7u.26). An existing file raises nothing.
+func TestValidationFlagsMissingAndRelativeFileReferences(t *testing.T) {
+	root := t.TempDir()
+	present := filepath.Join(root, "brief.md")
+	writeFixture(t, present, "# Brief\n")
+	missing := filepath.Join(root, "rubric.md")
+	store := NewStore(filepath.Join(root, "state"))
+	writeFixture(t, store.BoardPath("refs"), `schema = 1
+id = "brd_refs"
+slug = "refs"
+title = "Refs"
+rev = 1
+
+[[inputCard]]
+id = "inp_refs"
+title = "Deliver"
+files = ["`+present+`"]
+
+[[formation]]
+id = "fmn_draft"
+type = "solo"
+title = "Draft"
+[formation.brief]
+goal = "Draft it"
+files = ["notes/plan.md"]
+
+[[gate]]
+id = "gte_review"
+title = "Review"
+kinds = ["human"]
+files = ["`+missing+`"]
+`)
+	board, err := store.ReadBoard("refs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []BoardFinding
+	for _, finding := range ValidateBoard(board).Warnings {
+		if finding.Path != "" {
+			got = append(got, finding)
+		}
+	}
+	want := []BoardFinding{
+		{Code: FindingRelativeFile, NodeID: "fmn_draft", Path: "notes/plan.md", Message: "Draft's file notes/plan.md is relative: use an absolute path"},
+		{Code: FindingMissingFile, NodeID: "gte_review", Path: missing, Message: "Review's file " + missing + " does not exist"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("file findings = %+v, want %+v", got, want)
+	}
+	for _, finding := range want {
+		found := false
+		for _, candidate := range got {
+			found = found || candidate == finding
+		}
+		if !found {
+			t.Fatalf("file findings = %+v, want %+v among them", got, finding)
+		}
+	}
+}
