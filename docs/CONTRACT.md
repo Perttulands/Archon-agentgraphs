@@ -1311,11 +1311,12 @@ evidence, restart with `--resume-run`, `--completed-transcript` and
 `--completed-brief` together, naming the blocked resumable run, absolute native
 transcript and original brief. Validation checks the original digest, pointer,
 cwd, session, model/effort and completed turn before continuation. Keep original
-artifacts intact. Do not run offline runtime mutations alongside the daemon.
-An offline `gate approve|reject` routes its verdict and runs what follows, as
-the daemon's worker does, so it takes the state directory's coordinator lock
-and refuses while a daemon owns it ("a daemon owns this state directory:
-answer through it with --server").
+artifacts intact. Do not run offline runtime mutations alongside the daemon:
+an offline `mission run`, `formation run`, `run resume`, `run abort` and `gate
+approve|reject` start, continue or stop a run as the daemon's worker does, so
+each takes the state directory's coordinator lock and refuses while a daemon
+owns it ("a daemon owns this state directory: run this through it with
+--server").
 
 ### Needs-you notifications
 

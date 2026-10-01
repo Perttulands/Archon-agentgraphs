@@ -79,17 +79,24 @@ func (d *needsYouDispatcher) deliverSession(ctx context.Context, runID string, s
 	return retry
 }
 
-// endAnsweredSeats ends the seats whose asks were all answered, holding the
-// run's command reservation as a worker does, so no worker starts on the run
-// while they end. A run that turned busy meanwhile ends them itself.
+// endAnsweredSeats ends the seats whose asks were all answered. It first
+// waits for their agents to go idle, holding nothing, then ends them holding
+// the run's command reservation as a worker does, so no worker starts on the
+// run while they end, while abort and resume wait only briefly. A run that
+// turned busy meanwhile ends them itself.
 func (d *needsYouDispatcher) endAnsweredSeats(ctx context.Context, runID string) {
 	c := d.c
+	plan, err := c.engine.PlanRunOnCall(ctx, runID)
+	if err != nil {
+		log.Printf("session channel: run %s: %v", runID, err)
+		return
+	}
+	c.engine.AwaitKeptSeatsIdle(plan.Answered, plan.Keeper)
 	if !c.acquire(runID) {
 		return
 	}
 	defer c.releaseQuietly(runID)
-	plan, err := c.engine.PlanRunOnCall(ctx, runID)
-	if err != nil {
+	if plan, err = c.engine.PlanRunOnCall(ctx, runID); err != nil {
 		log.Printf("session channel: run %s: %v", runID, err)
 		return
 	}

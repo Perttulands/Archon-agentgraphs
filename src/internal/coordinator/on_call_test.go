@@ -37,6 +37,23 @@ type keeperExecutor struct {
 	holds  map[string]chan struct{}
 	pastes []string
 	ended  []string
+	// idle, when set, holds AwaitKeptSeatIdle until it closes, as an agent
+	// still finishing its turn; idling hears each wait begin.
+	idle, idling chan struct{}
+}
+
+func (k *keeperExecutor) AwaitKeptSeatIdle(ctx context.Context, _ formations.KeptSeat) {
+	if k.idle == nil {
+		return
+	}
+	select {
+	case k.idling <- struct{}{}:
+	default:
+	}
+	select {
+	case <-k.idle:
+	case <-ctx.Done():
+	}
 }
 
 func (k *keeperExecutor) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
@@ -921,5 +938,40 @@ func TestNotifyChannelAsksStillReachTheNotifyCommand(t *testing.T) {
 	}
 	if pastes, _ := keeper.snapshot(); len(pastes) != 0 || !strings.Contains(ledgerTrail(eventsOf(t, c, id)), "created slot_work, ended slot_work, ask gate_review") {
 		t.Fatalf("notify run pasted %v, trail %s", pastes, ledgerTrail(eventsOf(t, c, id)))
+	}
+}
+
+// Ending an answered seat waits for its agent to go idle before it takes the
+// run's command, so an abort meanwhile answers at once instead of 409.
+func TestAbortAnswersWhileAnAnsweredSeatGoesIdle(t *testing.T) {
+	keeper := &keeperExecutor{idle: make(chan struct{}), idling: make(chan struct{}, 1)}
+	board := strings.Replace(twoGatesBesideABranch(), `goal = "Concurrent gates"`, "goal = \"Concurrent gates\"\nhumanChannel = \"session\"", 1)
+	c, _ := onCallFixture(t, board, keeper, nil)
+	// The agent finishes before the daemon closes.
+	t.Cleanup(func() { close(keeper.idle) })
+	id := startProof(t, c)
+	p := awaitProjection(t, c, id, func(p *Projection) bool {
+		if len(p.WaitingGates) != 2 {
+			return false
+		}
+		for _, gate := range p.WaitingGates {
+			if len(gate.AskedSeats) != 1 {
+				return false
+			}
+		}
+		return true
+	})
+	for _, gate := range p.WaitingGates {
+		if gate.GateID == "gate_one" {
+			verdict(t, c, id, "gate_one", gate.RequestedSeq, true, "")
+		}
+	}
+	select {
+	case <-keeper.idling:
+	case <-time.After(testPatience):
+		t.Fatal("the answered seat was never waited on")
+	}
+	if w := post(t, c, "/api/runs/"+id+"/abort", `{"reason":"operator stop","requestedBy":"operator"}`); w.Code != 200 {
+		t.Fatalf("abort while the answered seat goes idle: %d %s", w.Code, w.Body.String())
 	}
 }

@@ -2346,8 +2346,16 @@ func TestArchonS5GateApproveRoutesHumanGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "gate", "approve", waiting.RunID, "gate_review", "--response", "direction is right", "--json"); code == 0 || !strings.Contains(stderr, "a daemon owns this state directory") {
-		t.Fatalf("gate approve beside a daemon: code=%d stderr=%s", code, stderr)
+	for _, args := range [][]string{
+		{"gate", "approve", waiting.RunID, "gate_review", "--response", "direction is right"},
+		{"run", "resume", waiting.RunID},
+		{"run", "abort", waiting.RunID},
+		{"mission", "run", "session-search", "--input", "brief=again"},
+	} {
+		args = append([]string{"--workspace", workspace}, append(args, "--json")...)
+		if _, stderr, code := runArchon(t, runner, args...); code == 0 || !strings.Contains(stderr, "a daemon owns this state directory") {
+			t.Fatalf("%v beside a daemon: code=%d stderr=%s", args, code, stderr)
+		}
 	}
 	release()
 	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "gate", "approve", waiting.RunID, "gate_review", "--response", "direction is right", "--json")

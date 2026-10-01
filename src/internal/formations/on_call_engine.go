@@ -52,6 +52,33 @@ func (e *RunEngine) endKeptSeats(runID, cause string, selected func(KeptSeat) bo
 	return e.EndKeptSeatsNow(runID, seats, cause, keeper)
 }
 
+// KeptSeatIdler waits for a kept seat's agent to go idle, so a caller can wait
+// before it takes anything a verdict or resume needs.
+type KeptSeatIdler interface {
+	AwaitKeptSeatIdle(ctx context.Context, seat KeptSeat)
+}
+
+// AwaitKeptSeatsIdle waits, up to EndKeptSeat's own idle wait, for the given
+// seats' agents to go idle, in parallel. EndKeptSeat then finds them idle at
+// once, so a caller holding the run's command meanwhile holds it briefly.
+func (e *RunEngine) AwaitKeptSeatsIdle(seats []KeptSeat, keeper SeatKeeper) {
+	idler, ok := keeper.(KeptSeatIdler)
+	if !ok {
+		return
+	}
+	var wg sync.WaitGroup
+	for _, seat := range seats {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), keptSeatIdleWait+15*time.Second)
+			defer cancel()
+			idler.AwaitKeptSeatIdle(ctx, seat)
+		}()
+	}
+	wg.Wait()
+}
+
 // EndKeptSeatsNow ends the given seats and records seat_cleanup for each.
 func (e *RunEngine) EndKeptSeatsNow(runID string, seats []KeptSeat, cause string, keeper SeatKeeper) error {
 	if len(seats) == 0 {

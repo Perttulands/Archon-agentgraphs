@@ -117,18 +117,25 @@ func (e *TmuxFormationExecutor) EndKeptSeat(ctx context.Context, seat KeptSeat) 
 	if present, outcome := e.ProbeKeptSeat(ctx, seat); !present {
 		return outcome, ""
 	}
-	// A seat left at shutdown may be mid-turn on work the run no longer wants.
-	if !seat.Left {
-		idle, cancel := context.WithTimeout(ctx, keptSeatIdleWait)
-		native := e.nativeKeptSeat(seat)
-		_ = e.seatClient.WaitInputClear(idle, e.config.Socket, native)
-		native.close()
-		cancel()
-	}
+	e.AwaitKeptSeatIdle(ctx, seat)
 	if err := e.keptTransport().KillSeat(ctx, e.config.Socket, seat.SessionID); err != nil {
 		return SeatOutcomeLeftCleanupFailed, redactLedgerText(err.Error())
 	}
 	return SeatOutcomeEnded, ""
+}
+
+// AwaitKeptSeatIdle waits up to keptSeatIdleWait for the seat's agent to go
+// idle, so its closing reply stays readable. A seat left at shutdown may be
+// mid-turn on work the run no longer wants, and is not waited on.
+func (e *TmuxFormationExecutor) AwaitKeptSeatIdle(ctx context.Context, seat KeptSeat) {
+	if seat.Left {
+		return
+	}
+	idle, cancel := context.WithTimeout(ctx, keptSeatIdleWait)
+	defer cancel()
+	native := e.nativeKeptSeat(seat)
+	defer native.close()
+	_ = e.seatClient.WaitInputClear(idle, e.config.Socket, native)
 }
 
 // PasteAsk pastes the pointer once the agent is idle with an empty input line,
