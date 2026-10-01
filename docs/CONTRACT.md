@@ -38,7 +38,9 @@ decisions; [examples](../examples/) provide reusable missions.
 | Ledger | Private append-only NDJSON events, ordered by sequence. It records dispatch, results, routing and recovery evidence. |
 | Projection | A sanitized view derived from the ledger, shared by HTTP, Archon and the cockpit. |
 
-The private `<state-dir>` is also Archon's `--workspace`. It contains
+The private `<state-dir>` is also Archon's `--workspace`. Offline commands have
+no default workspace: without `--workspace` or `--server` they say so and stop.
+It contains
 `.archon/missions/*.mission.toml`, `.archon/notes/*.notes.toml`,
 `.archon/layout/*.layout.toml`, `.archon/runs` ledgers and snapshots,
 `.archon/artifacts`, and `briefs`. Persona cards default to `<state-dir>/agents`;

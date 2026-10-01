@@ -958,6 +958,41 @@ func TestArchonBoardNewRequiresSlugAndDefaultsTitle(t *testing.T) {
 	}
 }
 
+func TestArchonOfflineCommandsNeedAWorkspaceOrServer(t *testing.T) {
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	runner := &fakeTmux{live: map[string]bool{}}
+
+	for _, args := range [][]string{
+		{"mission", "new", "poems"},
+		{"mission", "list"},
+		{"formation", "list", "poems"},
+		{"gate", "create", "poems"},
+		{"end", "create", "poems"},
+		{"tool", "inspect", "poems", "tool"},
+		{"run", "list"},
+		{"peer", "read"},
+	} {
+		_, stderr, code := runArchon(t, runner, args...)
+		want := "archon " + args[0] + " " + args[1] + " needs --workspace <state-dir> or --server <url>: there is no default workspace"
+		if code != 2 || !strings.Contains(stderr, want) {
+			t.Fatalf("%v code=%d stderr=%q, want %q", args, code, stderr, want)
+		}
+	}
+	if entries, err := os.ReadDir(cwd); err != nil || len(entries) != 0 {
+		t.Fatalf("offline commands without a workspace wrote %v (%v) into the working directory", entries, err)
+	}
+
+	_, stderr, code := runArchon(t, runner, "--workspace", "", "mission", "list")
+	if code != 2 || !strings.Contains(stderr, "there is no default workspace") {
+		t.Fatalf("empty --workspace code=%d stderr=%q", code, stderr)
+	}
+	_, stderr, code = runArchon(t, runner, "run", "wait", "run_x")
+	if code != 2 || !strings.Contains(stderr, "run wait needs --server") {
+		t.Fatalf("run wait without server code=%d stderr=%q", code, stderr)
+	}
+}
+
 func TestArchonBoardInspectFailsLoudOnAmbiguousSelector(t *testing.T) {
 	workspace := t.TempDir()
 	store := formations.NewStore(workspace)

@@ -147,7 +147,7 @@ Use the returned run ID with `run status`, `run logs`, `run follow`,
 `run wait` or `run abort`. An agent driving the run leaves `run wait` running
 in the background: it returns when the run needs an answer, ends or changes,
 and prints the command that answers it. Runtime commands always use `--server`; local authoring uses
-`--workspace`. A run keeps a snapshot of its mission and personas, so later
+`--workspace`, and there is no default workspace. A run keeps a snapshot of its mission and personas, so later
 edits apply to later runs. Recovery records unresolved work explicitly;
 inspect a blocked run before deciding how to continue it.
 

@@ -57,7 +57,7 @@ Keep runtime state outside any checkout.
 - Authoring takes `--server` too, so an open cockpit shows each edit live.
   `--workspace "$ARCHON_STATE"` authors the same files offline, for a state
   directory no daemon serves; runtime commands never run offline beside a
-  daemon.
+  daemon. There is no default: a command with neither flag says so and stops.
 - A `--server` failure is final; nothing falls back to a local runtime.
 - Read leaf help with `-h`, adding `--server` for the daemon's form.
 

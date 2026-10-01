@@ -156,6 +156,10 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 	if config.Server != "" {
 		return runRemote(config.Server, args, stdout, stderr)
 	}
+	if config.Workspace == "" && needsWorkspace(args) {
+		fmt.Fprintf(stderr, "archon %s %s needs --workspace <state-dir> or --server <url>: there is no default workspace\n", args[0], args[1])
+		return 2
+	}
 	switch args[0] {
 	case "peer":
 		return runPeerCommand(formations.NewStore(config.Workspace), args[1:], stdout, stderr)
@@ -316,8 +320,23 @@ func newArchonRunEngine(store *formations.Store, personas *formations.PersonaSto
 	return engine
 }
 
+// needsWorkspace reports whether an offline command reads or writes a state
+// directory. Agent cards live in their own directory, run wait answers that it
+// needs the daemon, and help needs nothing.
+func needsWorkspace(args []string) bool {
+	if args[0] == "agent" || (args[0] == "run" && args[1] == "wait") {
+		return false
+	}
+	for _, arg := range args[2:] {
+		if arg == "-h" || arg == "--help" || arg == "-help" {
+			return false
+		}
+	}
+	return true
+}
+
 func parseGlobalArgs(args []string, stderr io.Writer) (archonConfig, []string, bool) {
-	config := archonConfig{Workspace: core.GetWorkDir()}
+	var config archonConfig
 	for len(args) > 0 {
 		switch args[0] {
 		case "--workspace":
