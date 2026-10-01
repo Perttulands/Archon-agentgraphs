@@ -40,10 +40,13 @@ decisions; [examples](../examples/) provide reusable missions.
 
 The private `<state-dir>` is also Archon's `--workspace`. Offline commands have
 no default workspace: without `--workspace` or `--server` they say so and stop.
-It contains
-`.archon/missions/*.mission.toml`, `.archon/notes/*.notes.toml`,
+It contains `.archon/missions/*.mission.toml`, `.archon/notes/*.notes.toml`,
 `.archon/layout/*.layout.toml`, `.archon/runs` ledgers and snapshots,
-`.archon/artifacts`, and `briefs`. Persona cards default to `<state-dir>/agents`;
+`.archon/artifacts`, and `briefs`. Any of these directories may be a symlink,
+for example to another disk, and so may a mission, notes or layout file, for
+example a mission kept in a repository: Archon reads and writes through the
+link and keeps it, and deleting the mission removes the link, not the file it
+points at. Persona cards default to `<state-dir>/agents`;
 daemon `--agents-dir` can select another absolute directory. Match offline
 persona authoring to that directory with `ARCHON_AGENTS_DIR` when using an
 override.
@@ -894,7 +897,7 @@ described at the end of this section. The cockpit opens any file a mission,
 brief or gate references by absolute path (see Referenced files).
 
 In another terminal use the compiled Archon. Import means copying mission and
-notes TOML; there is no import command:
+notes TOML, or symlinking them; there is no import command:
 
 ```bash
 export PATH="$ARCHON_BIN:$PATH"

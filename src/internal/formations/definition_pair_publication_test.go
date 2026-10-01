@@ -950,22 +950,12 @@ func TestDefinitionPairValidationFailureCannotReachStagingOrCanonicalMutation(t 
 	assertPairFilesForTest(t, store, slug, oldBoard, pairPresentContentForTest(oldLayout))
 }
 
-func TestDefinitionPairCanonicalPreflightReusesNoFollowSingleLinkSecurity(t *testing.T) {
-	tests := []struct {
-		name   string
-		member string
-		attack string
-	}{
-		{name: "board symlink", member: "mission", attack: "symlink"},
-		{name: "board hardlink", member: "mission", attack: "hardlink"},
-		{name: "layout symlink", member: "layout", attack: "symlink"},
-		{name: "layout hardlink", member: "layout", attack: "hardlink"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+func TestDefinitionPairPublishesThroughSymlinkedMissionAndLayout(t *testing.T) {
+	for _, member := range []string{"mission", "layout"} {
+		t.Run(member, func(t *testing.T) {
 			root := t.TempDir()
 			store := NewStore(filepath.Join(root, "workspace"))
-			slug := "pair-security"
+			slug := "pair-linked"
 			oldBoard := pairBoardFixture(slug, 1, "Old")
 			oldLayout := pairLayoutFixture(1, "old")
 			newBoard := pairBoardFixture(slug, 2, "New")
@@ -973,143 +963,34 @@ func TestDefinitionPairCanonicalPreflightReusesNoFollowSingleLinkSecurity(t *tes
 			writeFixture(t, store.BoardPath(slug), string(oldBoard))
 			writeFixture(t, store.LayoutPath(slug), string(oldLayout))
 
-			canonical := store.BoardPath(slug)
-			privateRaw := oldBoard
-			if test.member == "layout" {
-				canonical = store.LayoutPath(slug)
-				privateRaw = oldLayout
+			linked, raw, want := store.BoardPath(slug), oldBoard, newBoard
+			if member == "layout" {
+				linked, raw, want = store.LayoutPath(slug), oldLayout, newLayout
 			}
-			if err := os.Remove(canonical); err != nil {
-				t.Fatalf("remove canonical %s: %v", test.member, err)
+			shared := filepath.Join(root, "repository", filepath.Base(linked))
+			writeFixture(t, shared, string(raw))
+			if err := os.Remove(linked); err != nil {
+				t.Fatalf("remove %s: %v", member, err)
 			}
-			victim := filepath.Join(root, "host-private-"+test.member)
-			if err := os.WriteFile(victim, privateRaw, 0o600); err != nil {
-				t.Fatalf("write private %s: %v", test.member, err)
-			}
-			switch test.attack {
-			case "symlink":
-				if err := os.Symlink(victim, canonical); err != nil {
-					t.Fatalf("symlink private %s: %v", test.member, err)
-				}
-			case "hardlink":
-				if err := os.Link(victim, canonical); err != nil {
-					t.Fatalf("hardlink private %s: %v", test.member, err)
-				}
-			}
-
-			var steps []string
-			request := definitionPairRequestForTest(oldBoard, oldLayout, newBoard, pairPresentContentForTest(newLayout))
-			if err := store.publishDefinitionPair(slug, request, func(step string) error {
-				steps = append(steps, step)
-				return nil
-			}); err == nil {
-				t.Fatalf("pair publication accepted %s %s", test.member, test.attack)
-			}
-			for _, step := range steps {
-				if strings.HasPrefix(step, "stage:") || strings.HasPrefix(step, "publish:") {
-					t.Fatalf("rejected %s reached %q; steps=%v", test.attack, step, steps)
-				}
-			}
-			if got := readFile(t, victim); got != string(privateRaw) {
-				t.Fatalf("rejected %s mutated private %s bytes: %q", test.attack, test.member, got)
-			}
-			info, err := os.Lstat(canonical)
-			if err != nil {
-				t.Fatalf("lstat rejected canonical: %v", err)
-			}
-			if test.attack == "symlink" && info.Mode()&os.ModeSymlink == 0 {
-				t.Fatalf("rejected symlink was replaced with mode %v", info.Mode())
-			}
-			if test.attack == "hardlink" {
-				victimInfo, err := os.Stat(victim)
-				if err != nil {
-					t.Fatalf("stat private target: %v", err)
-				}
-				canonicalInfo, err := os.Stat(canonical)
-				if err != nil {
-					t.Fatalf("stat canonical hardlink: %v", err)
-				}
-				if !os.SameFile(victimInfo, canonicalInfo) {
-					t.Fatal("rejected hardlink binding was replaced")
-				}
-			}
-		})
-	}
-}
-
-func TestDefinitionPairLocksReuseNoFollowSingleLinkSecurity(t *testing.T) {
-	tests := []struct {
-		name   string
-		member string
-		attack string
-	}{
-		{name: "board lock symlink", member: "mission", attack: "symlink"},
-		{name: "board lock hardlink", member: "mission", attack: "hardlink"},
-		{name: "layout lock symlink", member: "layout", attack: "symlink"},
-		{name: "layout lock hardlink", member: "layout", attack: "hardlink"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			root := t.TempDir()
-			store := NewStore(filepath.Join(root, "workspace"))
-			slug := "pair-lock-security"
-			oldBoard := pairBoardFixture(slug, 1, "Old")
-			oldLayout := pairLayoutFixture(1, "old")
-			newBoard := pairBoardFixture(slug, 2, "New")
-			newLayout := pairLayoutFixture(2, "new")
-			writeFixture(t, store.BoardPath(slug), string(oldBoard))
-			writeFixture(t, store.LayoutPath(slug), string(oldLayout))
-
-			lockPath := store.BoardPath(slug) + ".lock"
-			if test.member == "layout" {
-				lockPath = store.LayoutPath(slug) + ".lock"
-			}
-			victim := filepath.Join(root, "host-private-"+test.member+"-lock")
-			victimRaw := "private lock authority\n"
-			if err := os.WriteFile(victim, []byte(victimRaw), 0o600); err != nil {
-				t.Fatalf("write private lock: %v", err)
-			}
-			switch test.attack {
-			case "symlink":
-				if err := os.Symlink(victim, lockPath); err != nil {
-					t.Fatalf("symlink private lock: %v", err)
-				}
-			case "hardlink":
-				if err := os.Link(victim, lockPath); err != nil {
-					t.Fatalf("hardlink private lock: %v", err)
-				}
+			if err := os.Symlink(shared, linked); err != nil {
+				t.Fatalf("symlink %s: %v", member, err)
 			}
 
 			request := definitionPairRequestForTest(oldBoard, oldLayout, newBoard, pairPresentContentForTest(newLayout))
-			if err := store.publishDefinitionPair(slug, request, nil); err == nil {
-				t.Fatalf("pair publication accepted %s", test.name)
+			if err := store.publishDefinitionPair(slug, request, nil); err != nil {
+				t.Fatalf("publish through symlinked %s: %v", member, err)
 			}
-			assertPairFilesForTest(t, store, slug, oldBoard, pairPresentContentForTest(oldLayout))
-			if got := readFile(t, victim); got != victimRaw {
-				t.Fatalf("rejected lock substitution mutated private bytes: %q", got)
+			info, err := os.Lstat(linked)
+			if err != nil || info.Mode()&os.ModeSymlink == 0 {
+				t.Fatalf("symlinked %s after publication: %v %v, want the link kept", member, info, err)
 			}
-			victimInfo, err := os.Stat(victim)
-			if err != nil {
-				t.Fatalf("stat private lock: %v", err)
+			if got := readFile(t, shared); got != string(want) {
+				t.Fatalf("linked %s = %q, want the published content %q", member, got, want)
 			}
-			if got := victimInfo.Mode().Perm(); got != 0o600 {
-				t.Fatalf("rejected lock substitution changed private mode to %04o", got)
-			}
-			linkInfo, err := os.Lstat(lockPath)
-			if err != nil {
-				t.Fatalf("lstat rejected lock binding: %v", err)
-			}
-			if test.attack == "symlink" && linkInfo.Mode()&os.ModeSymlink == 0 {
-				t.Fatalf("rejected lock symlink was replaced with mode %v", linkInfo.Mode())
-			}
-			if test.attack == "hardlink" {
-				lockInfo, err := os.Stat(lockPath)
-				if err != nil {
-					t.Fatalf("stat rejected lock hardlink: %v", err)
-				}
-				if !os.SameFile(victimInfo, lockInfo) {
-					t.Fatal("rejected lock hardlink was replaced")
-				}
+			assertPairFilesForTest(t, store, slug, newBoard, pairPresentContentForTest(newLayout))
+			entries, err := os.ReadDir(filepath.Dir(shared))
+			if err != nil || len(entries) != 1 {
+				t.Fatalf("repository holds %v (%v), want only the linked %s", entries, err, member)
 			}
 		})
 	}

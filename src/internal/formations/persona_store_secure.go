@@ -10,7 +10,8 @@ import (
 )
 
 // Role cards and their directory may be symlinks, for example into a dotfiles
-// repository; they are followed. A card must be a regular file.
+// repository; they are followed, and a symlinked card is written through its
+// link. A card must be a regular file.
 func (s *PersonaStore) openPersonaDirectory(create bool) (*os.File, error) {
 	if create {
 		if err := os.MkdirAll(s.AgentsDir, sharedDirMode); err != nil {
@@ -68,7 +69,7 @@ func (s *PersonaStore) withPersonaLock(id string, fn func() error) error {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	fd, err := syscall.Openat(int(directory.Fd()), lockName, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC|syscall.O_NONBLOCK, uint32(sharedFileMode.Perm()))
+	fd, err := syscall.Openat(int(directory.Fd()), lockName, syscall.O_CREAT|syscall.O_RDWR|syscall.O_CLOEXEC|syscall.O_NONBLOCK, uint32(sharedFileMode.Perm()))
 	if err != nil {
 		return fmt.Errorf("open persona lock %q: %w", lockName, err)
 	}
@@ -145,10 +146,22 @@ func (s *PersonaStore) writePersonaAtomic(id string, raw []byte) error {
 	if err != nil {
 		return err
 	}
-	defer directory.Close()
 	name := id + ".toml"
+	target, linked, err := followLink(filepath.Join(s.AgentsDir, name))
+	if err != nil {
+		_ = directory.Close()
+		return err
+	}
+	if linked {
+		_ = directory.Close()
+		if directory, err = openDirectory(filepath.Dir(target)); err != nil {
+			return err
+		}
+		name = filepath.Base(target)
+	}
+	defer directory.Close()
 	temporaryName := "." + name + ".tmp-" + newPrefixedID("persona")
-	fd, err := syscall.Openat(int(directory.Fd()), temporaryName, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, uint32(sharedFileMode.Perm()))
+	fd, err := syscall.Openat(int(directory.Fd()), temporaryName, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|syscall.O_CLOEXEC, uint32(sharedFileMode.Perm()))
 	if err != nil {
 		return err
 	}

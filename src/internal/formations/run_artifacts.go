@@ -62,9 +62,8 @@ func (s *Store) workspaceAbsolutePath() (string, error) {
 }
 
 func openRunWorkspaceRoot(workspace string) (*os.File, error) {
-	// The configured workspace itself may be a compatibility symlink. Pin that
-	// opened root once; openRunsDirectory fences every descendant with
-	// O_NOFOLLOW relative to this descriptor.
+	// The workspace and every state directory under it may be symlinks; they
+	// are followed. Later opens are relative to this descriptor.
 	fd, err := syscall.Open(workspace, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NONBLOCK|syscall.O_DIRECTORY, 0)
 	if err != nil {
 		return nil, &os.PathError{Op: "open", Path: workspace, Err: err}
@@ -158,7 +157,7 @@ func openRunArtifactFileAt(directory *os.File, name string, flags int, create bo
 	if directory == nil || !validPathComponent(name) {
 		return nil, &os.PathError{Op: "openat", Path: name, Err: syscall.EINVAL}
 	}
-	flags |= syscall.O_CLOEXEC | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
+	flags |= syscall.O_CLOEXEC | syscall.O_NONBLOCK
 	if create {
 		flags |= syscall.O_CREAT
 	}
@@ -179,11 +178,6 @@ func openRunArtifactFileAt(directory *os.File, name string, flags int, create bo
 	if !info.Mode().IsRegular() {
 		_ = file.Close()
 		return nil, errors.New("run artifact is not a regular file")
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Nlink != 1 {
-		_ = file.Close()
-		return nil, errors.New("run artifact must have exactly one link")
 	}
 	if create {
 		if err := syscall.Fchmod(fd, uint32(sharedFileMode.Perm())); err != nil {

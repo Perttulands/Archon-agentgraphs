@@ -4,7 +4,8 @@ Read with the main [Archon skill](../SKILL.md).
 
 ## Import an example mission
 
-There is no import command: copy the TOML into the state directory. The
+There is no import command: copy the TOML into the state directory, or
+symlink a mission kept in a repository so edits write through to it. The
 examples ship with Archon, in `examples/` of the source checkout or
 `$ARCHON_SHARE/examples/` of an installed release
 (`<prefix>/lib/archon/current/share/archon`). Set `EXAMPLES` to that directory:
