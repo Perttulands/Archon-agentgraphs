@@ -74,7 +74,11 @@ opus · low`, with a blank model reading `default` on the card and `default
 model` in sentences. A model outside the catalog is marked `model not in
 catalog`. The node window, Flow, and the Agents view's slot tiles and slot
 inspector say the same, for example `Worker 1 is vanilla on Claude Code · opus
-· low.` Rosters list roles by name; roles carry no harness.
+· low.` Rosters list roles by name; roles carry no harness. Both rosters count
+in the same words, across every formation of the mission: `25 roles · 6 in
+use` (the Agents view adds its live sessions), and a role in use says `in 2
+slots`. Clicking a role in the Missions rail opens it in a window beside the
+rail, with its role text and the slots it staffs.
 
 Staffing in the cockpit is that sentence, edited where the slot is. Clicking a
 slot, or Enter on a focused one, opens a window beside its card reading `Worker

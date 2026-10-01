@@ -105,7 +105,7 @@ describe('AgentsView', () => {
     expect(screen.getByText('judged by First judge → Second judge')).toBeInTheDocument()
     expect(screen.getByText('3/4 slots staffed · 1 open')).toBeInTheDocument()
     expect(screen.queryByText(/ready/)).not.toBeInTheDocument()
-    expect(within(screen.getByRole('complementary', { name: 'Agent roster' })).getByText('2 · 2 on mission')).toBeInTheDocument()
+    expect(within(screen.getByRole('complementary', { name: 'Agent roster' })).getByText('2 roles · 2 in use')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Inspect Critic' }))
     const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
@@ -207,7 +207,7 @@ describe('AgentsView', () => {
 
     expect(await screen.findByText('Authoring')).toBeInTheDocument()
     expect(screen.getByText('Fix Pass')).toBeInTheDocument()
-    expect(within(screen.getByRole('complementary', { name: 'Agent roster' })).getByText('2 · 1 live · 2 on mission')).toBeInTheDocument()
+    expect(within(screen.getByRole('complementary', { name: 'Agent roster' })).getByText('2 roles · 2 in use · 1 live')).toBeInTheDocument()
     expect(screen.getByText('Escalate Fail')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Inspect Review: not staffed' }))

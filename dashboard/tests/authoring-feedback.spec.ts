@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { rosterAnswer } from './roster-terms'
 import { authoredBoard, nodeWindowsFixture } from './node-windows-fixture'
 
-test('roster search matches names, IDs, harnesses and tags and clears without writes', async ({ page }) => {
+test('roster search matches names, IDs, kinds and tags and clears without writes', async ({ page }) => {
   const fixture = await nodeWindowsFixture(page)
   const agents = [
     { id: 'scout-id', displayName: 'Evidence Finder', harnessDefault: 'openai-codex', tags: ['research'], kind: 'specialist', assignable: true },
@@ -13,15 +13,18 @@ test('roster search matches names, IDs, harnesses and tags and clears without wr
   const roster = page.getByTestId('agent-roster')
   await expect(roster.locator('.ragent')).toHaveCount(2)
   const filter = roster.getByRole('searchbox', { name: 'Filter agents' })
-  for (const query of [' Evidence ', 'SCOUT-ID', 'openai', 'research', 'specialist']) {
+  // Roles carry no harness, so a harness name finds none.
+  for (const query of [' Evidence ', 'SCOUT-ID', 'research', 'specialist']) {
     await filter.fill(query)
     await expect(roster.locator('.ragent')).toHaveCount(1)
     await expect(roster.getByTestId('roster-agent-scout-id')).toBeVisible()
-    await expect(roster.getByRole('status')).toHaveText('1 of 2 agents')
+    await expect(roster.getByRole('status')).toHaveText('1 of 2 roles')
   }
   await page.screenshot({ path: test.info().outputPath('roster.png') })
+  await filter.fill('openai')
+  await expect(roster.locator('.ragent')).toHaveCount(0)
   await filter.fill('no-such-persona')
-  await expect(roster.getByText('No agents match this filter.')).toBeVisible()
+  await expect(roster.getByText('No roles match this filter.')).toBeVisible()
   await expect(roster.locator('.ragent')).toHaveCount(0)
   await roster.getByRole('button', { name: 'Clear agent filter' }).click()
   await expect(filter).toHaveValue('')

@@ -20,8 +20,9 @@ import {
   byRoleName,
   formationSummary,
   harnessGlyph,
+  inSlotsWords,
   initials,
-  rosterCountLabel,
+  rolesInUseLabel,
 } from './formationsCockpitVisuals'
 import { slotStaffed, slotTitle, staffingSentence } from '../nodeWindow/staffing'
 import { harnessName } from './harnessIcons'
@@ -250,7 +251,7 @@ export function agentStatus(agent: RosterAgent, deployedSlots: number, details?:
   if (agent.unbound) chips.push('no persona')
   if (!agent.unbound && details?.card?.status === 'retired') chips.push('retired')
   if (!agent.unbound && !agent.assignable && details?.card?.status !== 'retired') chips.push('not assignable')
-  if (deployedSlots > 0) chips.push(`in ${deployedSlots} slot${deployedSlots === 1 ? '' : 's'}`)
+  if (deployedSlots > 0) chips.push(inSlotsWords(deployedSlots))
   if (agent.attached) chips.push('attached')
   return { liveness: rawLiveness, chips, deployedSlots }
 }
@@ -316,9 +317,10 @@ export default function AgentsView() {
       .filter((formation): formation is FormationNode => Boolean(formation))
   }, [board, reachableItems])
 
+  // Roles in use are counted across the whole mission, as the Missions rail counts them.
   const assignmentsByAgent = useMemo(() => {
     const map = new Map<string, Array<{ formation: FormationNode; slot: FormationSlot }>>()
-    for (const formation of reachableFormations) {
+    for (const formation of board?.formations || []) {
       for (const slot of formation.slots || []) {
         if (!slot.agentId) continue
         const list = map.get(slot.agentId) || []
@@ -327,7 +329,7 @@ export default function AgentsView() {
       }
     }
     return map
-  }, [reachableFormations])
+  }, [board?.formations])
 
   const slotCounts = useMemo(() => {
     let total = 0
@@ -355,7 +357,6 @@ export default function AgentsView() {
       agent.id,
       agent.displayName || '',
       agent.kind || '',
-      agent.harnessDefault || '',
       ...(agent.tags || []),
     ].some(value => value.toLowerCase().includes(needle)))
   }, [agents, search])
@@ -626,7 +627,7 @@ export default function AgentsView() {
   }, [])
 
   const selectedAgentId = selection?.kind === 'agent' || selection?.kind === 'unbound' ? selection.agentId : ''
-  const rosterSummary = rosterCountLabel(loading ? '…' : rosterCounts.total, { live: rosterCounts.live, placed: rosterCounts.deployed, scope: 'mission' })
+  const rosterSummary = rolesInUseLabel(loading ? '…' : rosterCounts.assignable, rosterCounts.deployed, rosterCounts.live)
 
   return (
     <div className="fmx agx" data-testid="agents-view">
@@ -674,7 +675,7 @@ export default function AgentsView() {
             <div className="t">Agents</div>
             <span
               className="s"
-              title={`${rosterCounts.total} agents · ${rosterCounts.live} live · ${rosterCounts.assignable} assignable · ${rosterCounts.deployed} staffed on this mission`}
+              title={`${rosterCounts.assignable} roles you can staff; ${rosterCounts.deployed} of them staff slots in this mission; ${rosterCounts.live} live sessions`}
             >
               {rosterSummary}
             </span>

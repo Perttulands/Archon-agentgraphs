@@ -91,7 +91,7 @@
 .fmx .ragent{display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:grab;transition:background .12s;position:relative;touch-action:none;}
 .fmx .ragent:hover{background:var(--accent-light);}
 .fmx .ragent:active{cursor:grabbing;}
-.fmx .ragent.deployed{opacity:.55;}
+.fmx .ragent .in-use-words{color:var(--terra);}
 .fmx .ragent.unbound{opacity:.7;}
 .fmx .av{width:26px;height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;background:var(--paper2);border:1px solid var(--line);color:var(--ink2);flex-shrink:0;font-size:11px;font-weight:700;text-transform:uppercase;}
 .fmx .av svg{width:16px;height:16px;}

@@ -43,7 +43,7 @@ test('a mission is not ready while a slot in its judge chain is open', async ({ 
   await expect(agents.locator('.missioncard')).not.toContainText('ready')
   await expect(agents.locator('.gatecard')).toContainText('judged by Beads reviewer → Second opinion')
   await expect(agents.locator('section.formation', { hasText: 'Second opinion' })).toContainText('judges Beads review')
-  await expect(agents.getByRole('complementary', { name: 'Agent roster' }).locator('.roster-hd .s')).toContainText('2 on mission')
+  await expect(agents.getByRole('complementary', { name: 'Agent roster' }).locator('.roster-hd .s')).toHaveText('3 roles · 2 in use')
 
   await agents.getByRole('button', { name: 'Inspect Brief critic' }).click()
   const inspector = agents.getByRole('complementary', { name: 'Inspector' })

@@ -50,7 +50,7 @@ import {
 import { chooseBoardRun, readRunLink, runChoiceLabel, runChoices, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
 import { chooseCurrentBoard, rememberBoardOnDevice } from './currentBoard'
 import { END_ROOM, clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
-import { END_SVG, FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, byRoleName, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
+import { END_SVG, FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, byRoleName, inSlotsWords, initials, inputFeedLabel, outputRowStatus, roleUses, rolesInUseLabel } from './formationsCockpitVisuals'
 import { useEscapeKey } from './useEscapeKey'
 import { ROSTER_MAX_WIDTH, ROSTER_MIN_WIDTH, useRosterPanel } from './useRosterPanel'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
@@ -87,6 +87,7 @@ import { defaultEndTitle, endOutcomeMeaning } from './endNode'
 import { UndoHistory, WriteTracker, boardStep, combineUndo, nodeDeleteUndo, portRemoveUndo, quoted, restoreBlocker, undoOutcomeMessage, type UndoDraft, type UndoStep } from './formationsUndo'
 import { NOTE_CARDS, NoteLayer, NOTES_MODES, noteWindowAnchor, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
 import NoteWindow, { BOARD_NOTE_TARGET, noteWindowId } from './NoteWindow'
+import RoleWindow, { roleWindowId } from './RoleWindow'
 import { FormationTypeChip, formationTypeChoices } from './FormationTypeChip'
 import { MissionEditorDialog } from './MissionEditorDialog'
 import type { MissionDraft } from './MissionEditorDialog'
@@ -140,7 +141,7 @@ import type {
 
 /** A staffing drag: a role from the rail, or a slot's staffing; a press without a move on a slot opens its sentence. */
 type StaffPayload = { kind: 'role'; roleId: string } | { kind: 'slot'; from: SlotRef }
-type DragStaff = { payload: StaffPayload | null; slot?: { ref: SlotRef; part: Part | null; anchor: HTMLElement }; startX: number; startY: number; moved: boolean }
+type DragStaff = { payload: StaffPayload | null; slot?: { ref: SlotRef; part: Part | null; anchor: HTMLElement }; click?: () => void; startX: number; startY: number; moved: boolean }
 /** The slot under the pointer, looking through notes, ghosts and anything else on top. */
 function slotKeyAt(x: number, y: number): string | null {
   for (const element of document.elementsFromPoint?.(x, y) || [document.elementFromPoint(x, y)].filter(Boolean) as Element[]) {
@@ -280,6 +281,15 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const openNoteWindow = useCallback((target: string) => {
     setNoteWindows(current => current.includes(target) ? current : [...current, target])
     focusWindow(noteWindowId(target))
+  }, [focusWindow])
+  // Roles opened from the rail, each in its own window beside the row it opened from.
+  const [roleWindows, setRoleWindows] = useState<string[]>([])
+  const roleWindowAnchors = useRef(new Map<string, WindowRect>())
+  const openRoleWindow = useCallback((roleId: string, row: Element) => {
+    const rect = measureElement(row)
+    if (rect) roleWindowAnchors.current.set(roleId, rect)
+    setRoleWindows(current => current.includes(roleId) ? current : [...current, roleId])
+    focusWindow(roleWindowId(roleId))
   }, [focusWindow])
   // Where a node window opens beside, when the control that opened it says: a Flow title or route link.
   const nodeWindowAnchors = useRef(new Map<string, WindowRect>())
@@ -1771,7 +1781,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   // A drag after 6 px of movement: the slot under the pointer previews the drop,
   // a drop on a slot staffs it, and a drop anywhere else changes nothing.
-  const beginStaff = useCallback((event: ReactPointerEvent, start: Pick<DragStaff, 'payload' | 'slot'>) => {
+  const beginStaff = useCallback((event: ReactPointerEvent, start: Pick<DragStaff, 'payload' | 'slot' | 'click'>) => {
     if (event.button !== 0) return
     event.stopPropagation()
     const staffDrag: DragStaff = { ...start, startX: event.clientX, startY: event.clientY, moved: false }
@@ -1810,8 +1820,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         leave()
         const payload = staffDrag.payload
         if (!staffDrag.moved) {
-          // A click: a slot opens its sentence, the word clicked if it has one.
+          // A click: a slot opens its sentence, the word clicked if it has one; a rail row opens its role.
           if (staffDrag.slot) store.setOpen({ ref: staffDrag.slot.ref, part: staffDrag.slot.part, anchor: staffDrag.slot.anchor })
+          else staffDrag.click?.()
           return
         }
         if (!payload) return
@@ -2500,14 +2511,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const needle = rosterSearch.trim().toLowerCase()
     if (!needle) return rosterAgents
     return rosterAgents.filter(agent => [
-      agent.id, agent.displayName || '', agent.kind || '', agent.harnessDefault || '', ...(agent.tags || []),
+      agent.id, agent.displayName || '', agent.kind || '', ...(agent.tags || []),
     ].some(value => value.toLowerCase().includes(needle)))
   }, [rosterAgents, rosterSearch])
   const rosterRoles = useMemo(() => [...filteredRosterAgents].sort(byRoleName), [filteredRosterAgents])
-  const deployedAgentCount = useMemo(
-    () => new Set((board?.formations || []).flatMap(f => f.slots.map(s => s.agentId).filter(Boolean))).size,
-    [board?.formations],
-  )
+  // Roles in use are said in words, counted across the whole mission as the Agents view counts them.
+  const rolesInUse = useMemo(() => roleUses(board?.formations || []), [board?.formations])
   const runBadgeClass = activeRun ? activeRun.status : ''
   const choices = useMemo(() => runChoices(boardRuns, activeRun), [activeRun, boardRuns])
   // Choosing a run pins it to the board; choosing none puts a finished run away.
@@ -2713,9 +2722,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           style={{ '--roster-width': `${roster.width}px` } as CSSProperties}
         >
           <div className="roster-hd">
-            <div className="t">Agents</div>
-            <span className="s" data-testid="roster-count" title={`${rosterAgents.length} catalog agents · ${deployedAgentCount} placed in this mission`}>
-              {rosterCountLabel(rosterAgents.length, { placed: deployedAgentCount, scope: 'canvas' })}
+            <div className="t">Roles</div>
+            <span className="s" data-testid="roster-count" title={`${rosterAgents.length} roles you can staff; ${rolesInUse.size} of them staff slots in this mission`}>
+              {rolesInUseLabel(rosterAgents.length, rolesInUse.size)}
             </span>
             <button type="button" className="roster-toggle" aria-expanded={!roster.collapsed}
               aria-label={roster.collapsed ? 'Expand agent roster' : 'Collapse agent roster'} onClick={roster.toggle}>
@@ -2724,11 +2733,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           </div>
           <div className="board-roster-filter">
             <div className="board-roster-filter-input">
-              <input type="search" aria-label="Filter agents" placeholder="filter agents" value={rosterSearch}
+              <input type="search" aria-label="Filter agents" placeholder="filter roles" value={rosterSearch}
                 onChange={event => setRosterSearch(event.target.value)} />
               {rosterSearch ? <button type="button" aria-label="Clear agent filter" onClick={() => setRosterSearch('')}>Clear</button> : null}
             </div>
-            {rosterSearch.trim() ? <p role="status">{filteredRosterAgents.length} of {rosterAgents.length} agents</p> : null}
+            {rosterSearch.trim() ? <p role="status">{filteredRosterAgents.length} of {rosterAgents.length} roles</p> : null}
           </div>
           <div
             className="roster-resize"
@@ -2744,25 +2753,28 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           />
           <div className="roster-list">
             {rosterAgents.length === 0
-              ? <div className="roster-empty">No assignable catalog agents. Create a persona in the Agents view to staff formations.</div>
-              : filteredRosterAgents.length === 0 ? <div className="roster-empty" role="status">No agents match this filter.</div>
+              ? <div className="roster-empty">No roles to staff with. Create one in the Agents view; a slot can also run with no role.</div>
+              : filteredRosterAgents.length === 0 ? <div className="roster-empty" role="status">No roles match this filter.</div>
               : (
                 <section className="roster-group">
-                  <div className="roster-group-label">Roles</div>
                   {rosterRoles.map(agent => {
-                    const deployed = (board?.formations || []).some(f => f.slots.some(s => s.agentId === agent.id))
+                    const inUse = rolesInUse.get(agent.id) || 0
                     return (
                       <div
                         key={agent.id}
-                        className={`ragent${deployed ? ' deployed' : ''}${agent.unbound ? ' unbound' : ''}`}
+                        className={`ragent${inUse ? ' in-use' : ''}${agent.unbound ? ' unbound' : ''}`}
                         data-agent={agent.id}
                         data-testid={`roster-agent-${agent.id}`}
-                        onPointerDown={event => beginStaff(event, { payload: { kind: 'role', roleId: agent.id } })}
+                        title={`${agent.displayName || agent.id}: drag onto a slot to give it this role, or click to read it`}
+                        onPointerDown={event => {
+                          const row = event.currentTarget
+                          beginStaff(event, { payload: { kind: 'role', roleId: agent.id }, click: () => openRoleWindow(agent.id, row) })
+                        }}
                       >
                         <span className="av">{initials(agent.displayName || agent.id)}</span>
                         <div className="ri">
                           <div className="n">{agent.displayName || agent.id}</div>
-                          <div className="r">{agentRole(agent)}{agent.preset ? ` · ${agent.customized ? 'custom' : 'preset'}` : ''}{agentState(agent) === 'idle' ? ' · idle' : ''}</div>
+                          <div className="r">{[agentRole(agent), agent.preset ? (agent.customized ? 'custom' : 'preset') : '', agentState(agent) === 'idle' ? 'idle' : ''].filter(Boolean).join(' · ')}{inUse ? <span className="in-use-words"> · {inSlotsWords(inUse)}</span> : null}</div>
                         </div>
                         <button
                           type="button"
@@ -3242,6 +3254,16 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             onClose={() => setNoteWindows(current => current.filter(open => open !== target))}
           />
         )) : null}
+        {board ? roleWindows.map(roleId => {
+          const role = agents.find(agent => agent.id === roleId)
+          return role ? (
+            <RoleWindow key={`role-${roleId}`} role={role} formations={board.formations}
+              anchor={() => roleWindowAnchors.current.get(roleId) || null}
+              onOpenNode={openNodeWindow}
+              onEdit={trigger => setAgentEditor({ agent: role, trigger })}
+              onClose={() => setRoleWindows(current => current.filter(open => open !== roleId))} />
+          ) : null
+        }) : null}
         {board ? nodeWindows.map(nodeId => (
           <Suspense key={`node-${nodeId}`} fallback={null}>
             <NodeWindow nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps} noteCount={noteByNode.get(nodeId)?.length || 0}

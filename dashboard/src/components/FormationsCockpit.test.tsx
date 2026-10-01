@@ -1068,7 +1068,7 @@ describe('FormationsCockpit reference parity', () => {
 
     const roster = screen.getByLabelText('Agent roster')
     // Roles carry no harness: one list by name, not Codex and Claude groups.
-    expect(Array.from(roster.querySelectorAll('.roster-group-label')).map(label => label.textContent)).toEqual(['Roles'])
+    expect(roster.querySelectorAll('.roster-group-label')).toHaveLength(0)
     expect(Array.from(roster.querySelectorAll('.ragent .n')).map(name => name.textContent)).toEqual(['Claude Existing', 'Codex Builder', 'Codex Debugger', 'Codex Judge', 'Codex Orchestrator', 'Codex Planner', 'Codex Reviewer', 'Codex Scout'])
     for (const role of ['Scout', 'Planner', 'Builder', 'Judge', 'Orchestrator', 'Debugger', 'Reviewer']) {
       expect(within(roster).getByText(`Codex ${role}`)).toBeInTheDocument()
@@ -1091,7 +1091,7 @@ describe('FormationsCockpit reference parity', () => {
   it('shows only assignable persona cards in the formation staffing roster', async () => {
     await renderCockpit()
     const roster = screen.getByTestId('agent-roster')
-    expect(screen.getByTestId('roster-count')).toHaveTextContent(/^2 · 1 on canvas$/)
+    expect(screen.getByTestId('roster-count')).toHaveTextContent(/^2 roles · 1 in use$/)
     expect(roster).toHaveTextContent('Mason')
     expect(roster).toHaveTextContent('Hazel')
     expect(roster).not.toHaveTextContent('scratch')

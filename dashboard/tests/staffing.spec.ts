@@ -328,3 +328,48 @@ test('the Agents view slot inspector staffs through the same sentence', async ({
   await expect(inspector.getByTestId('slot-staffing-words')).toHaveText('Second opinion (controller) is Brief critic on Claude Code · opus · xhigh.')
   expect(fixture.boardPatches).toEqual([{ assignSlot: { formationId: 'recheck', slotId: 'recheck_seat', agentId: 'critic', harness: 'claude-code', model: 'opus', effort: 'xhigh' } }])
 })
+
+// archon-n7u.38: the rail says which roles are in use, labels every count in the
+// Agents view's words, and opens a role in place.
+test('the rail states in words which roles are in use and opens a role in a window beside it', async ({ page }) => {
+  await cockpitFixture(page, { roles })
+  await page.goto('/')
+  const roster = page.getByTestId('agent-roster')
+  await expect(page.getByTestId('roster-count')).toHaveText('6 roles · 2 in use')
+  const codex = page.getByTestId('roster-agent-codex')
+  await expect(codex.locator('.r')).toHaveText('builder · in 2 slots')
+  await expect(page.getByTestId('roster-agent-claude').locator('.r')).toHaveText('controller · in 2 slots')
+  await expect(page.getByTestId('roster-agent-scout').locator('.r')).toHaveText('scout')
+  // In use is said, not shown by dimming the row.
+  expect(await codex.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
+
+  await codex.click()
+  const role = page.getByRole('dialog', { name: 'role Codex builder' })
+  await expect(role).toContainText('builder')
+  await expect(role).toContainText('Builds the change.')
+  await expect(role.getByRole('region', { name: 'Slots this role staffs' }).locator('li')).toHaveText([
+    'Execution · Worker 1Codex · default model · medium',
+    'Peer review · ReviewerCodex · default model · medium',
+  ])
+  const [row, window] = [(await codex.boundingBox())!, (await role.boundingBox())!]
+  expect(window.x).toBeGreaterThanOrEqual(row.x + row.width - 1)
+  await role.getByRole('button', { name: 'Open Peer review' }).click()
+  await expect(page.getByRole('dialog', { name: 'Formation · Peer review' })).toBeVisible()
+  await role.getByRole('button', { name: 'Edit role' }).click()
+  await expect(page.getByTestId('persona-editor')).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  await page.getByTestId('roster-agent-scout').click()
+  await expect(page.getByRole('dialog', { name: 'role Repo Scout' })).toContainText('Not in use. Drag it onto a slot, or pick it in a slot’s sentence.')
+  await expect(roster).toBeVisible()
+})
+
+test('the Agents view counts roles in use in the rail\'s words', async ({ page }) => {
+  await agentsFixture(page)
+  await page.goto('/?mission=delivery')
+  await expect(page.getByTestId('roster-count')).toHaveText('3 roles · 2 in use')
+  await page.getByRole('button', { name: 'Agents', exact: true }).click()
+  const roster = page.getByTestId('agents-view').getByRole('complementary', { name: 'Agent roster' })
+  await expect(roster.locator('.roster-hd .s')).toHaveText('3 roles · 2 in use')
+  await expect(roster.getByRole('button', { name: /Inspect Builder/ }).locator('.r')).toContainText('in 2 slots')
+})

@@ -34,7 +34,8 @@ test('the canvas, Flow and the node window show every slot\'s harness, model and
 
   // The roster lists roles by name; roles carry no harness.
   const roster = page.getByTestId('agent-roster')
-  await expect(roster.locator('.roster-group-label')).toHaveText(['Roles'])
+  await expect(roster.locator('.roster-hd .t')).toHaveText('Roles')
+  await expect(roster.locator('.roster-group-label')).toHaveCount(0)
   await expect(roster.locator('.ragent .n')).toHaveText(['Claude controller', 'Codex builder'])
   await expect(roster.locator('.ragent .av svg')).toHaveCount(0)
 

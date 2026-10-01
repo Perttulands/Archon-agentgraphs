@@ -356,12 +356,12 @@ test('the phone roster count stays inside its header column', async ({ page }) =
   await cockpitFixture(page, { run: true })
   await page.goto('/')
   const count = page.getByTestId('roster-count')
-  await expect(count).toHaveText(/on canvas/)
+  await expect(count).toHaveText(/roles · \d+ in use/)
   const header = (await page.locator('.roster-hd').boundingBox())!
   const pill = (await count.boundingBox())!
-  const label = (await page.locator('.roster-group-label').first().boundingBox())!
+  const firstRole = (await page.locator('.ragent').first().boundingBox())!
   expect(pill.x + pill.width).toBeLessThanOrEqual(header.x + header.width)
-  expect(pill.x + pill.width).toBeLessThanOrEqual(label.x)
+  expect(pill.x + pill.width).toBeLessThanOrEqual(firstRole.x)
   expect(await count.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
 })
 

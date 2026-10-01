@@ -85,15 +85,25 @@ export function outputRowStatus(runSelected: boolean, state: NodeRunState | unde
   }
 }
 
-/* Roster header count. The Missions tab counts agents placed anywhere on the
-   canvas and the Agents tab counts agents staffed from the selected Input
-   card, so the label names its scope rather than sharing one word for both. */
-export function rosterCountLabel(total: number | string, counts: { live?: number; placed: number; scope: 'canvas' | 'mission' }): string {
-  return [
-    String(total),
-    counts.live ? `${counts.live} live` : '',
-    counts.placed ? `${counts.placed} on ${counts.scope}` : '',
-  ].filter(Boolean).join(' · ')
+/* Both rosters count roles the same way: how many there are, and how many staff
+   a slot of this mission (every formation on it), with the live sessions where
+   the view shows them. */
+export function rolesInUseLabel(roles: number | string, inUse: number, live = 0): string {
+  return [`${roles} role${roles === 1 ? '' : 's'}`, `${inUse} in use`, live ? `${live} live` : ''].filter(Boolean).join(' · ')
+}
+
+/** How many slots of these formations each role staffs. */
+export function roleUses(formations: FormationNode[]): Map<string, number> {
+  const uses = new Map<string, number>()
+  for (const formation of formations) {
+    for (const slot of formation.slots) if (slot.agentId) uses.set(slot.agentId, (uses.get(slot.agentId) || 0) + 1)
+  }
+  return uses
+}
+
+/** "in 2 slots": a role in use, said in words rather than by dimming it. */
+export function inSlotsWords(count: number): string {
+  return count ? `in ${count} slot${count === 1 ? '' : 's'}` : ''
 }
 
 /* Rosters list roles by name; roles carry no harness, so nothing groups them by one. */
