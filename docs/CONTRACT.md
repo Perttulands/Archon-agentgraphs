@@ -542,7 +542,10 @@ A judge must emit exactly one fenced block with exactly these keys:
 `verdict` is `pass` or `fail`, `reason` a string, and `evidence` an array of
 strings. Missing, duplicate, extra or malformed fields/blocks block the run
 with `resumeAllowed: false`; neither branch runs. A judge also emits its ordinary
-output block, without embedding a second verdict block in it.
+output block, without embedding a second verdict block in it. A chain's judges
+run in order, each judging the one before; resuming a chain a crash or a lost
+seat interrupted runs only the judges that have not yet answered the gate's
+current evaluation.
 
 A fail edge delivers typed feedback containing gate ID, gate attempt, verdict,
 reason, evidence and original input text/reference. The next prompt renders

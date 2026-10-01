@@ -252,6 +252,48 @@ humanChannel = "session"`, 1),
 			verdicts: map[string][]string{"gate_review": {"fail", "pass"}},
 			want:     runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_a": 2, "fmn_b": 1}},
 		},
+		{
+			name: "a judge sending work back while a gate waits",
+			board: gateBoard(formation("fmn_a") + formation("fmn_work") + formation("fmn_judge") + formation("fmn_ship") + gate("gate_review") + `
+[[gate]]
+id = "gate_judge"
+title = "Judge"
+kinds = ["formation"]
+criterion = "Judge the work"
+` + endNodes +
+				wire("edge_m_a", "mis_proof:out", "fmn_a:port_in") +
+				wire("edge_a_gate", "fmn_a:port_out", "gate_review:in") +
+				endWire("edge_review_pass", "gate_review:pass", "end_done") +
+				endWire("edge_review_fail", "gate_review:fail", "end_rejected") +
+				wire("edge_m_work", "mis_proof:out", "fmn_work:port_in") +
+				wire("edge_work_judge", "fmn_work:port_out", "gate_judge:in") +
+				wire("edge_gate_judge", "gate_judge:judge", "fmn_judge:port_in") +
+				wire("edge_judge_verdict", "fmn_judge:port_out", "gate_judge:judge") +
+				wire("edge_judge_fail", "gate_judge:fail", "fmn_work:port_in") +
+				wire("edge_judge_pass", "gate_judge:pass", "fmn_ship:port_in") +
+				endWire("edge_ship_done", "fmn_ship:port_out", "end_done")),
+			judges: map[string][]string{"fmn_judge": {"fail", "pass"}},
+			want:   runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_a": 1, "fmn_work": 2, "fmn_judge": 2, "fmn_ship": 1}},
+		},
+		{
+			name: "a two-judge chain sending work back",
+			board: gateBoard(formation("fmn_work") + formation("fmn_first") + formation("fmn_last") + `
+[[gate]]
+id = "gate_judge"
+title = "Judge"
+kinds = ["formation"]
+criterion = "Judge the work"
+` + endNodes +
+				wire("edge_m_work", "mis_proof:out", "fmn_work:port_in") +
+				wire("edge_work_judge", "fmn_work:port_out", "gate_judge:in") +
+				wire("edge_gate_first", "gate_judge:judge", "fmn_first:port_in") +
+				wire("edge_first_last", "fmn_first:port_out", "fmn_last:port_in") +
+				wire("edge_last_verdict", "fmn_last:port_out", "gate_judge:judge") +
+				wire("edge_judge_fail", "gate_judge:fail", "fmn_work:port_in") +
+				endWire("edge_judge_pass", "gate_judge:pass", "end_done")),
+			judges: map[string][]string{"fmn_last": {"fail", "pass"}},
+			want:   runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_work": 2, "fmn_first": 2, "fmn_last": 2}},
+		},
 	}
 }
 

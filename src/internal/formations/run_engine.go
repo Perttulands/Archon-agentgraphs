@@ -2465,63 +2465,88 @@ func callGateEvaluator(evaluator GateEvaluator, req GateEvaluation) (result Gate
 	return evaluator.EvaluateGate(req)
 }
 
+// runJudgeChain runs the gate's judges in order, each judging the previous
+// judge's output, and returns the last judge's text. A judge that already
+// produced output for this evaluation, after the gate's latest
+// gate_evaluating, is not run again: resuming after a crash inside the chain
+// continues from the first judge without output (archon-n7u.57).
 func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chain []FormationNode, limits RunLimits) (string, error) {
-	attempt, err := e.gateAttempt(req.RunID, req.GateID)
+	events, err := e.store.ReadRunEvents(req.RunID)
 	if err != nil {
 		return "", err
 	}
+	attempt, evaluating := 0, 0
+	for _, event := range events {
+		if event.Type == RunEventGateEvaluating && event.GateID == req.GateID {
+			attempt, evaluating = attempt+1, event.Seq
+		}
+	}
+	answered := map[string]RunEvent{}
+	for _, event := range events[evaluating:] {
+		if _, seen := answered[event.NodeID]; event.Type == RunEventNodeOutput && !seen {
+			answered[event.NodeID] = event
+		}
+	}
 	input := req.Input
 	var finalText string
+	replaying := true
 	for _, formation := range chain {
-		if err := e.startFormationExecution(req.RunID, formation, limits, RunEvent{
-			Type:    RunEventNodeStarted,
-			NodeID:  formation.ID,
-			Attempt: attempt,
-			Data: map[string]any{
-				"nodeKind":  "formation",
-				"inputRefs": []RunInputRef{input},
-				"reason":    "judge",
-				"brief":     formationBriefEventData(formationBriefValue(formation)),
-			},
-		}); err != nil {
-			return "", err
-		}
-		result, err := e.executeFormation(FormationExecution{
-			RunID:     req.RunID,
-			NodeID:    formation.ID,
-			Title:     formation.Title,
-			Formation: formation,
-			Brief:     formationBriefValue(formation),
-			Inputs:    []RunInputRef{input},
-			Attempt:   attempt,
-		}, limits)
-		if err != nil {
-			if blockErr := e.appendExecutionFailureAndBlock(req.RunID, formation.ID, err); blockErr != nil {
-				return "", blockErr
-			}
-			return "", errRunStopped
-		}
-		if result.Status == "" {
-			result.Status = "done"
-		}
-		if err := e.ensureFormationOutputPayloads(req.RunID, formation, result); err != nil {
-			return "", err
-		}
-		data := formationOutputEventData(result)
-		data["reason"] = "judge"
-		if err := e.store.AppendRunEvent(req.RunID, RunEvent{
-			Type:   RunEventNodeOutput,
-			NodeID: formation.ID,
-			Data:   data,
-		}); err != nil {
-			return "", err
-		}
-		finalText = result.Text
 		if len(formation.Outputs) == 0 {
 			return "", fmt.Errorf("%w: judge formation %q has no output port", ErrConflict, formation.ID)
 		}
 		fromPortID := formation.Outputs[0].ID
-		payload := result.Outputs[fromPortID]
+		var payload FormationOutputPayload
+		if output, ok := answered[formation.ID]; ok && replaying {
+			finalText = stringFromEventData(output, "text")
+			payload, _ = outputPayloadForPortFromEvent(output, fromPortID)
+		} else {
+			replaying = false
+			if err := e.startFormationExecution(req.RunID, formation, limits, RunEvent{
+				Type:    RunEventNodeStarted,
+				NodeID:  formation.ID,
+				Attempt: attempt,
+				Data: map[string]any{
+					"nodeKind":  "formation",
+					"inputRefs": []RunInputRef{input},
+					"reason":    "judge",
+					"brief":     formationBriefEventData(formationBriefValue(formation)),
+				},
+			}); err != nil {
+				return "", err
+			}
+			result, err := e.executeFormation(FormationExecution{
+				RunID:     req.RunID,
+				NodeID:    formation.ID,
+				Title:     formation.Title,
+				Formation: formation,
+				Brief:     formationBriefValue(formation),
+				Inputs:    []RunInputRef{input},
+				Attempt:   attempt,
+			}, limits)
+			if err != nil {
+				if blockErr := e.appendExecutionFailureAndBlock(req.RunID, formation.ID, err); blockErr != nil {
+					return "", blockErr
+				}
+				return "", errRunStopped
+			}
+			if result.Status == "" {
+				result.Status = "done"
+			}
+			if err := e.ensureFormationOutputPayloads(req.RunID, formation, result); err != nil {
+				return "", err
+			}
+			data := formationOutputEventData(result)
+			data["reason"] = "judge"
+			if err := e.store.AppendRunEvent(req.RunID, RunEvent{
+				Type:   RunEventNodeOutput,
+				NodeID: formation.ID,
+				Data:   data,
+			}); err != nil {
+				return "", err
+			}
+			finalText = result.Text
+			payload = result.Outputs[fromPortID]
+		}
 		input = RunInputRef{
 			FromNodeID:  formation.ID,
 			FromPortID:  fromPortID,

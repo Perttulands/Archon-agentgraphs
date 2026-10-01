@@ -3,6 +3,8 @@ package formations
 import (
 	"errors"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -132,5 +134,31 @@ func TestOnlyOneOfTwoRacingVerdictsLands(t *testing.T) {
 	}
 	if landed != 1 || recorded != 1 {
 		t.Fatalf("landed %d, recorded %d; want one", landed, recorded)
+	}
+}
+
+// archon-n7u.57: a judge chain resumed after its second judge failed runs that
+// judge alone; the first judge's answer for this evaluation stands.
+func TestAResumedJudgeChainRunsOnlyTheJudgesWithoutAnAnswer(t *testing.T) {
+	fixture := strings.Replace(s4JudgeChainRunBoardFixture(), `kinds = ["code", "formation"]`, `kinds = ["formation"]`, 1)
+	executor := &seatLossOnceExecutor{failNodeID: "fmn_j2"}
+	executor.outputs = map[string]string{"fmn_j1": "review notes", "fmn_j2": judgeBlock("pass", "reviewed")}
+	store, _, engine, status := startBranchingRun(t, fixture, executor)
+	if status.Status != RunStatusBlocked || !status.ResumeAllowed {
+		t.Fatalf("status = %+v, want the second judge's block", status)
+	}
+	executor.calls = nil
+	status, err := engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "agent:test", Mode: "redispatch", Reason: "the second judge lost its seat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := executor.nodeIDs(); len(got) == 0 || got[0] != "fmn_j2" || slices.Contains(got, "fmn_j1") {
+		t.Fatalf("nodes after the resume = %v, want the second judge first and the first never", got)
+	}
+	if judged := executor.calls[0]; len(judged.Inputs) != 1 || judged.Inputs[0].FromNodeID != "fmn_j1" || judged.Inputs[0].Text != "review notes" {
+		t.Fatalf("the second judge judged %+v, want the first judge's answer", judged.Inputs)
+	}
+	if status.Status != RunStatusSucceeded {
+		t.Fatalf("status = %+v: %s", status, eventTypeTrail(mustEvents(t, store, status.RunID)))
 	}
 }
