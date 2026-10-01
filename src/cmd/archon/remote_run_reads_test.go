@@ -97,10 +97,13 @@ func TestRemoteLaunchWorkingDirectoryForwarding(t *testing.T) {
 	for _, cwdArgs := range [][]string{nil, {"--cwd", ""}, {"--cwd", "/operator/chosen/project"}} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == "GET" {
-				fmt.Fprint(w, `{"data":{"mission":{"rev":3}}}`)
+				fmt.Fprint(w, `{"data":{"mission":{"rev":3,"inputCards":[{"id":"mis_proof"}]}}}`)
 				return
 			}
-			var body map[string]any
+			var body struct {
+				Cwd    string            `json:"cwd"`
+				Inputs map[string]string `json:"inputs"`
+			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Error(err)
 			}
@@ -108,12 +111,12 @@ func TestRemoteLaunchWorkingDirectoryForwarding(t *testing.T) {
 			if len(cwdArgs) > 0 {
 				want = cwdArgs[1]
 			}
-			if body["cwd"] != want || body["brief"] != "Build the project" {
+			if body.Cwd != want || body.Inputs["brief"] != "Build the project" {
 				t.Errorf("unexpected admission body: %+v", body)
 			}
 			fmt.Fprint(w, `{"data":{"runId":"run_proof"}}`)
 		}))
-		args := append([]string{"mission", "run", "proof", "--input", "mis_proof", "--brief", "Build the project"}, cwdArgs...)
+		args := append([]string{"mission", "run", "proof", "--input", "brief=Build the project"}, cwdArgs...)
 		var out, stderr bytes.Buffer
 		if code := runRemote(server.URL, args, &out, &stderr); code != 0 {
 			t.Fatalf("%d %s", code, &stderr)

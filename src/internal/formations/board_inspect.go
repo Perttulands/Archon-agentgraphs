@@ -20,6 +20,7 @@ const (
 	FindingInvalidTool              = "invalid_tool"
 	FindingDuplicateNodeID          = "duplicate_node_id"
 	FindingDuplicateSlotID          = "duplicate_slot_id"
+	FindingInvalidSlotID            = "invalid_slot_id"
 	FindingDuplicateInputProducer   = "duplicate_input_producer"
 	FindingIncompatibleMedia        = "incompatible_media"
 	FindingIncompatiblePayloadKind  = "incompatible_payload_kind"
@@ -27,6 +28,8 @@ const (
 	FindingInvalidEnd               = "invalid_end"
 	FindingRouteLeadsNowhere        = "route_leads_nowhere"
 	FindingUnreachableNode          = "unreachable_node"
+	FindingMissingFile              = "missing_file"
+	FindingRelativeFile             = "relative_file"
 )
 
 // BoardFinding is a single structural problem located on the board. NodeID names
@@ -35,6 +38,8 @@ type BoardFinding struct {
 	Code    string `json:"code"`
 	NodeID  string `json:"nodeId"`
 	Message string `json:"message"`
+	// Path is the reference file a missing_file or relative_file finding names.
+	Path string `json:"path,omitempty"`
 }
 
 // BoardValidationReport separates blocking errors from advisory warnings.
@@ -112,6 +117,7 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	}
 
 	report.Errors = append(report.Errors, duplicateSlotFindings(board.Formations)...)
+	report.Errors = append(report.Errors, invalidSlotIDFindings(board)...)
 
 	seenNodeIDs := make(map[string]string, len(board.Missions)+len(board.Formations)+len(board.Gates)+len(board.Tools))
 	for _, mission := range board.Missions {
@@ -156,7 +162,9 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	report.Errors = append(report.Errors, limitErrors...)
 	report.Warnings = append(report.Warnings, limitWarnings...)
 	report.Errors = append(report.Errors, routeLeadsNowhereFindings(board)...)
+	report.Errors = append(report.Errors, missionInputFindings(board)...)
 	report.Warnings = append(report.Warnings, unreachableNodeFindings(board)...)
+	report.Warnings = append(report.Warnings, fileReferenceFindings(board)...)
 
 	for _, tool := range board.Tools {
 		if firstKind, exists := seenNodeIDs[tool.ID]; tool.ID != "" && exists {
@@ -282,6 +290,25 @@ func duplicateSlotFindings(formations []FormationNode) []BoardFinding {
 				Code:    FindingDuplicateSlotID,
 				NodeID:  node,
 				Message: fmt.Sprintf("slot id %q is used by %s; give every slot in the mission its own id", slotID, described),
+			})
+		}
+	}
+	return findings
+}
+
+// invalidSlotIDFindings reports each slot whose ID breaks the slot ID rule a
+// hand-written mission may break: its seat could not relay a gate decision.
+func invalidSlotIDFindings(board *BoardDocument) []BoardFinding {
+	var findings []BoardFinding
+	for _, formation := range board.Formations {
+		for _, slot := range formation.Slots {
+			if slot.ID == "" || ValidSlotID(slot.ID) {
+				continue
+			}
+			findings = append(findings, BoardFinding{
+				Code:    FindingInvalidSlotID,
+				NodeID:  formation.ID,
+				Message: fmt.Sprintf("%s slot id %q is not a slot id Archon can use: %s; rename it in the mission file", possessive(nodeName(board, formation.ID)), slot.ID, slotIDRule),
 			})
 		}
 	}
@@ -437,6 +464,46 @@ func unreachableNodeFindings(board *BoardDocument) []BoardFinding {
 		add(end.ID, "End node")
 	}
 	return findings
+}
+
+// fileReferenceFindings warns about each reference file, on an Input card, a
+// gate or a formation's brief, that names no file Archon can open: a relative
+// path, which authoring refuses but a hand-written mission may hold, or a file
+// that does not exist. A file may still appear before a run reads it, so these
+// warn rather than block (archon-n7u.26).
+func fileReferenceFindings(board *BoardDocument) []BoardFinding {
+	var findings []BoardFinding
+	check := func(nodeID string, files []string) {
+		for _, ref := range files {
+			code, problem := FileRefProblem(ref)
+			if code == "" {
+				continue
+			}
+			findings = append(findings, BoardFinding{
+				Code:    code,
+				NodeID:  nodeID,
+				Path:    ref,
+				Message: fmt.Sprintf("%s file %s %s", possessive(nodeName(board, nodeID)), ref, problem),
+			})
+		}
+	}
+	for _, mission := range board.Missions {
+		check(mission.ID, mission.Files)
+	}
+	for _, formation := range board.Formations {
+		if formation.Brief != nil {
+			check(formation.ID, formation.Brief.Files)
+		}
+	}
+	for _, gate := range board.Gates {
+		check(gate.ID, gate.Files)
+	}
+	return findings
+}
+
+// NodeTitle is the title of the mission's node with that ID, or "".
+func (b *BoardDocument) NodeTitle(nodeID string) string {
+	return boardNodeTitle(b, nodeID)
 }
 
 // nodeName names a node for the operator by its title, or its ID when it has

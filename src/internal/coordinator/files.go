@@ -52,7 +52,7 @@ func (c *Coordinator) fileRaw(w http.ResponseWriter, r *http.Request) {
 func fileFailure(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, formations.ErrRelativeFileRef):
-		reply(w, http.StatusBadRequest, map[string]string{"error": "a relative file reference has no base here; name the file by its absolute path"})
+		reply(w, http.StatusBadRequest, map[string]string{"error": "a relative file reference has no base: use an absolute path"})
 	case errors.Is(err, os.ErrPermission):
 		reply(w, http.StatusForbidden, map[string]string{"error": "the daemon's user may not read this file"})
 	case errors.Is(err, formations.ErrNotFound), errors.Is(err, os.ErrNotExist):

@@ -10,29 +10,6 @@ import (
 // starts its runs. Internal names still say board; everything a person or
 // agent types or reads says mission.
 
-const missionHelp = `usage: archon mission <command> [arguments] [--json]
-
-A mission is one reusable .mission.toml file. Its Input card starts each run.
-
-  new <slug> [--title <title>]             create an empty mission
-  list                                     list the missions
-  inspect <mission>                        print the whole mission
-  inspect <mission> <input>                print an Input card and the steps it reaches
-  notes <mission>                          print the mission's note threads
-  note <mission> [--node <id>] --text <t>  add to a note thread (see "archon mission note")
-  validate <mission>                       list every finding that would stop a run
-  arrange <mission>                        lay the canvas out along the run
-  create <mission> [--title --goal ...]    add the Input card to a mission that has none
-  update <mission> [<input>] --goal <g>    change the Input card (see "archon mission update")
-  wire <mission> [<input>] <node:port>     wire the Input card to the first step
-  run <mission> [--brief <text>]           start a run
-
-<input> may be left out when the mission has one Input card.
-`
-
-const missionInspectUsage = "usage: archon mission inspect <mission> [<input>] [--json]\n" +
-	"With <input>, prints that Input card and the steps it reaches."
-
 func isHelpArg(arg string) bool {
 	return arg == "help" || arg == "--help" || arg == "-h" || arg == "-help"
 }

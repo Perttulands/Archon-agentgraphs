@@ -3,6 +3,7 @@ import { fetchRunProblems, type RunProblem } from '../evidence/runEvidenceApi'
 import { runPointPhrase, type RunPoint as RunPointModel } from './formationsRunState'
 import { runEndPhrase, runEndProblem, runLimitPhrase } from './runOutcome'
 import type { RunLimitUse } from './formationsApi'
+import { shortTime } from './runList'
 import '../styles/formations-run.css'
 
 // One of the run bar's current points: a node a run waits at, runs or stopped
@@ -20,10 +21,12 @@ interface Explanation {
   end?: RunProblem
 }
 
-export default function RunPoint({ runId, point, title, onLocate, titleOf, inputCard, action = 'Show it on the canvas' }: {
+export default function RunPoint({ runId, point, title, since, onLocate, titleOf, inputCard, action = 'Show it on the canvas' }: {
   runId: string
   point: RunPointModel | null
   title: string
+  /** When the gate a waiting run waits at asked. */
+  since?: string
   onLocate: (nodeId: string) => void
   /** A node's title on the board, for a limit that names another node. */
   titleOf?: (nodeId: string) => string
@@ -64,14 +67,16 @@ export default function RunPoint({ runId, point, title, onLocate, titleOf, input
     ? runEndPhrase(point.kind as 'failed' | 'canceled', where, known.end)
     : runPointPhrase(point, title, limit || known?.reason)
   if (!phrase || phrase === point.kind) return null
+  const waited = point.kind === 'waiting' ? shortTime(since) : ''
+  const shown = waited ? `${phrase} since ${waited}` : phrase
   return (
     <button
       type="button"
       className={`run-point ${point.kind}`}
       data-testid="run-point"
-      title={point.nodeId ? `${phrase}. ${action}.` : phrase}
+      title={point.nodeId ? `${shown}. ${action}.` : shown}
       disabled={!point.nodeId}
       onClick={() => onLocate(point.nodeId)}
-    >{phrase}</button>
+    >{shown}</button>
   )
 }

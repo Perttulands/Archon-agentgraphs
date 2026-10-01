@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/api"
+	"github.com/Perttulands/Archon-agentgraphs/internal/buildinfo"
 	"github.com/Perttulands/Archon-agentgraphs/internal/core"
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 	"github.com/Perttulands/Archon-agentgraphs/internal/terminal"
@@ -29,6 +30,8 @@ import (
 type GateRequest struct {
 	GateID       string `json:"gateId"`
 	RequestedSeq int    `json:"requestedSeq"`
+	// RequestedAt is when the gate asked, so the operator sees how long it waits.
+	RequestedAt string `json:"requestedAt,omitempty"`
 	// AskedSeats lists the kept seats a session-channel ask reached.
 	AskedSeats []AskedSeat `json:"askedSeats"`
 	// FallbackReason says why the ask went to the notify command instead.
@@ -273,7 +276,9 @@ func (c *Coordinator) Handler() http.Handler {
 	c.registerEvidenceRoutes(mux)
 	c.registerFileRoutes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, 200, map[string]string{"status": "ok", "runtime": "standalone-trusted-v1"})
+		// The build is how a deploy proves which source is running (archon-1ea).
+		version, commit := buildinfo.Current()
+		reply(w, 200, map[string]string{"status": "ok", "version": version, "commit": commit})
 	})
 	// Route ownership: internal/api wins both board reads and all authoring routes.
 	// Its injected runtime delegates POST runs to coordinator admission (limits,
@@ -288,19 +293,39 @@ func (c *Coordinator) Handler() http.Handler {
 	c.mu.Unlock()
 	api.NewAgentsHandlerWithStoreAndLiveness(c.personas, liveness).RegisterRoutes(mux)
 	mux.HandleFunc("GET /api/runs", func(w http.ResponseWriter, r *http.Request) {
-		// An optional ?mission= filter lets a cockpit poll only its mission's runs.
-		mission := r.URL.Query().Get("mission")
-		runs, err := c.store.ListRuns(formations.RunListFilter{BoardSlug: mission})
+		// An optional ?mission= filter lets a cockpit poll only its mission's
+		// runs: those of the mission now under that slug or ID, not of a
+		// deleted mission that had the same slug (archon-n7u.15).
+		// A mission that does not exist has no runs.
+		filter := formations.RunListFilter{}
+		if mission := r.URL.Query().Get("mission"); mission != "" {
+			filter.MissionID = "-"
+			if slug, err := c.store.ResolveBoardSelector(mission); err == nil {
+				if board, err := c.store.ReadBoard(slug); err == nil {
+					filter.MissionID = board.ID
+				}
+			}
+		}
+		runs, err := c.store.ListRuns(filter)
 		if err != nil {
 			failure(w, err)
 			return
 		}
+		// ?needs=you keeps the runs that need the operator: open runs waiting
+		// at a human gate or blocked (archon-n7u.29).
+		needsYou := r.URL.Query().Get("needs") == "you"
 		projections := make([]*Projection, 0, len(runs))
 		for _, run := range runs {
+			if needsYou && (run.Final || run.Status != formations.RunStatusBlocked && run.Status != formations.RunStatusRunning) {
+				continue
+			}
 			p, err := c.Project(run.RunID)
 			if err != nil {
 				failure(w, err)
 				return
+			}
+			if needsYou && p.Status != "waiting_human" && p.Status != formations.RunStatusBlocked {
+				continue
 			}
 			projections = append(projections, p)
 		}
@@ -430,15 +455,15 @@ func (c *Coordinator) nextChange(id string) <-chan struct{} {
 
 func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Cwd          string   `json:"cwd"`
-		ContextPaths []string `json:"contextPaths"`
-		Brief        string   `json:"brief"`
-		BeadID       string   `json:"beadId"`
-		Actor        string   `json:"actor"`
-		FormationID  string   `json:"formationId"`
-		Board        string   `json:"mission"`
-		MissionID    string   `json:"inputCardId"`
-		ExpectedRev  int      `json:"expectedRev"`
+		Cwd          string            `json:"cwd"`
+		ContextPaths []string          `json:"contextPaths"`
+		Inputs       map[string]string `json:"inputs"`
+		BeadID       string            `json:"beadId"`
+		Actor        string            `json:"actor"`
+		FormationID  string            `json:"formationId"`
+		Board        string            `json:"mission"`
+		MissionID    string            `json:"inputCardId"`
+		ExpectedRev  int               `json:"expectedRev"`
 	}
 	if !decode(w, r, &req) {
 		return
@@ -447,22 +472,24 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		reply(w, 400, map[string]string{"error": "mission, inputCardId and expectedRev required"})
 		return
 	}
-	if req.MissionID != "" {
-		if err := formations.ValidateRunContextPaths(req.ContextPaths); err != nil {
-			reply(w, 400, map[string]string{"error": err.Error()})
+	// A single step takes the same run fields as a mission (archon-o7p.3).
+	if err := formations.ValidateRunContextPaths(req.ContextPaths); err != nil {
+		reply(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
+	if req.Cwd != "" {
+		info, err := os.Stat(req.Cwd)
+		if !filepath.IsAbs(req.Cwd) || err != nil || !info.IsDir() {
+			reply(w, 400, map[string]string{"error": "cwd must be omitted or an absolute existing directory"})
 			return
 		}
-		if req.Cwd != "" {
-			info, err := os.Stat(req.Cwd)
-			if !filepath.IsAbs(req.Cwd) || err != nil || !info.IsDir() {
-				reply(w, 400, map[string]string{"error": "cwd must be omitted or an absolute existing directory"})
-				return
-			}
-		}
-		if strings.TrimSpace(req.Brief) == "" || req.BeadID != "" && !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`).MatchString(req.BeadID) {
-			reply(w, 400, map[string]string{"error": "nonempty brief and safe beadId required"})
-			return
-		}
+	}
+	if req.BeadID != "" && !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`).MatchString(req.BeadID) {
+		reply(w, 400, map[string]string{"error": "beadId must be a safe Beads issue id"})
+		return
+	}
+	if req.Inputs == nil {
+		req.Inputs = map[string]string{}
 	}
 	c.admissions.Lock()
 	defer c.admissions.Unlock()
@@ -487,7 +514,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		failure(w, formations.ErrConflict)
 		return
 	}
-	if err := formations.CheckRunAdmission(board, c.personas, formations.RunAdmissionScope{MissionID: req.MissionID, FormationID: req.FormationID}); err != nil {
+	if err := formations.CheckRunAdmission(board, c.personas, formations.RunAdmissionScope{MissionID: req.MissionID, FormationID: req.FormationID, Inputs: req.Inputs}); err != nil {
 		var admission *formations.RunAdmissionError
 		if errors.As(err, &admission) {
 			api.WriteRunAdmissionError(w, admission)
@@ -504,7 +531,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.FormationID != "" {
-		started, execute, err := c.engine.PrepareFormationRun(req.Board, req.FormationID, formations.FormationRunRequest{Actor: req.Actor, Personas: c.personas, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match")})
+		started, execute, err := c.engine.PrepareFormationRun(req.Board, req.FormationID, formations.FormationRunRequest{Actor: runActor(req.Actor), Personas: c.personas, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Cwd: req.Cwd, ContextPaths: req.ContextPaths, BeadID: req.BeadID, Inputs: req.Inputs})
 		if err != nil {
 			failure(w, err)
 			return
@@ -527,7 +554,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		reply(w, 422, map[string]string{"error": "wire the Input card to a step"})
 		return
 	}
-	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, ContextPaths: req.ContextPaths, Brief: req.Brief, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: "operator:standalone", Personas: c.personas})
+	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, ContextPaths: req.ContextPaths, Inputs: req.Inputs, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: runActor(req.Actor), Personas: c.personas})
 	if err != nil {
 		failure(w, err)
 		return
@@ -538,6 +565,15 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 	startedWorker = true
 	c.launch(started.RunID, func() error { _, err := c.engine.ExecuteStartedMission(started.RunID); return err })
 	reply(w, http.StatusAccepted, map[string]string{"runId": started.RunID})
+}
+
+// runActor is who drives a run started over HTTP: the actor the start names,
+// or the standalone operator.
+func runActor(actor string) string {
+	if strings.TrimSpace(actor) == "" {
+		return "operator:standalone"
+	}
+	return actor
 }
 
 func (c *Coordinator) recordFailure(runID string, err error) {
@@ -625,7 +661,7 @@ func project(status *formations.RunStatusProjection, events []formations.RunEven
 	asks := formations.HumanAskRecords(events)
 	if !status.Final {
 		for _, event := range formations.OpenHumanRequests(events) {
-			gate := GateRequest{GateID: event.GateID, RequestedSeq: event.Seq, AskedSeats: []AskedSeat{}}
+			gate := GateRequest{GateID: event.GateID, RequestedSeq: event.Seq, RequestedAt: event.Timestamp, AskedSeats: []AskedSeat{}}
 			if record := asks[event.Seq]; record != nil {
 				for createdSeq, delivered := range record.Delivered {
 					gate.AskedSeats = append(gate.AskedSeats, AskedSeat{NodeID: delivered.NodeID, SlotID: delivered.SlotID, CreatedSeq: createdSeq, DeliveredSeq: delivered.Seq})
@@ -836,7 +872,7 @@ func decode(w http.ResponseWriter, r *http.Request, target any) bool {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		reply(w, 400, map[string]string{"error": "invalid JSON request"})
+		reply(w, 400, map[string]string{"error": "invalid JSON request: " + strings.TrimPrefix(err.Error(), "json: ")})
 		return false
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
@@ -853,7 +889,12 @@ func failure(w http.ResponseWriter, err error) {
 	if errors.Is(err, formations.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
 		code = 404
 	}
-	reply(w, code, map[string]string{"error": http.StatusText(code)})
+	message := http.StatusText(code)
+	if errors.Is(err, formations.ErrBrokenLink) {
+		// A mission linked from elsewhere whose file has moved says where.
+		message = err.Error()
+	}
+	reply(w, code, map[string]string{"error": message})
 }
 func reply(w http.ResponseWriter, code int, value any) {
 	if code >= 400 {

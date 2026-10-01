@@ -163,7 +163,7 @@ func TestWaitAnswersStoppingDaemonsWithRetry(t *testing.T) {
 		if got.code != 503 {
 			t.Fatalf("%d %s", got.code, got.body)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("wait held through shutdown")
 	}
 }
@@ -282,7 +282,7 @@ func TestAnyChangeLoopReportsALimitBlockAndItsGateVerdictIsAccepted(t *testing.T
 		if err := os.WriteFile(c.store.BoardPath("proof"), []byte(limited), 0600); err != nil {
 			t.Fatal(err)
 		}
-		w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"probe","mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
+		w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"probe"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 		if w.Code != 202 {
 			t.Fatalf("start %d %s", w.Code, w.Body.String())
 		}

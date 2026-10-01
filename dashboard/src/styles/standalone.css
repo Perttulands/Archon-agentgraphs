@@ -53,6 +53,11 @@ body,
   font-size: 12px; font-weight: 700; letter-spacing: 0.16em;
 }
 
+.archon-build {
+  align-self: center; margin-left: auto; padding: 0 6px; color: var(--text-dim);
+  font: 10.5px/1 var(--font-mono); letter-spacing: 0.02em;
+}
+
 .formations-app-nav button {
   border: 1px solid var(--divider); border-radius: 3px; background: transparent;
   color: var(--text-secondary); padding: 6px 12px; font-size: 11px; cursor: pointer;

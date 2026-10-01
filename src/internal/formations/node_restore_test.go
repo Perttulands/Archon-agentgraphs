@@ -225,7 +225,7 @@ func TestRestoreNodePutsBackEachDeletedNodeExactly(t *testing.T) {
 				t.Fatal(err)
 			}
 			position, _ := layoutPosition(t, store, id)
-			req := NodeRestoreRequest{Connections: touching(before, id), X: position.X, Y: position.Y, UpdatedBy: "agent:ui"}
+			req := NodeRestoreRequest{Connections: touching(before, id), X: position.X, Y: position.Y, UpdatedBy: "human:ui"}
 			index := 0
 			for i, mission := range before.Missions {
 				if mission.ID == id {

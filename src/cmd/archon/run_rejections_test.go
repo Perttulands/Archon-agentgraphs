@@ -20,19 +20,12 @@ func TestArchonRunStartReportsDefinitionErrorsWithoutEffects(t *testing.T) {
 	}{
 		{
 			name:     "mission missing board",
-			args:     []string{"mission", "run", "missing", "--input", "mis_missing", "--json"},
+			args:     []string{"mission", "run", "missing", "--input", "brief=Go", "--json"},
 			wantCode: "not_found",
 		},
 		{
 			name:     "formation missing board",
 			args:     []string{"formation", "run", "missing", "fmn_missing", "--json"},
-			wantCode: "not_found",
-		},
-		{
-			name:     "mission missing root",
-			slug:     "session-search",
-			board:    archonS4BoardFixture(),
-			args:     []string{"mission", "run", "session-search", "--input", "mis_missing", "--json"},
 			wantCode: "not_found",
 		},
 		{
@@ -46,7 +39,7 @@ func TestArchonRunStartReportsDefinitionErrorsWithoutEffects(t *testing.T) {
 			name:     "Mission reaches non-executing Tool",
 			slug:     "tool-parity",
 			board:    archonRuntimeToolBoardFixture(),
-			args:     []string{"mission", "run", "tool-parity", "--input", "mis_main", "--json"},
+			args:     []string{"mission", "run", "tool-parity", "--input", "brief=Go", "--json"},
 			wantCode: "tool_execution_unavailable",
 		},
 	}
@@ -133,7 +126,6 @@ func installArchonRuntimeTmuxTripwire(t *testing.T, workspace string) string {
 	t.Setenv("ARCHON_LAB_HARNESSES", "")
 	t.Setenv("ARCHON_TMUX_HARNESSES", "openai-codex")
 	t.Setenv("ARCHON_TMUX_SOCKET", filepath.Join(t.TempDir(), "default"))
-	t.Setenv("ARCHON_TMUX_CWD", workspace)
 	return capturePath
 }
 

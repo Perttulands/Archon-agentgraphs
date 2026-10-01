@@ -48,8 +48,22 @@ func TestDeliveryMissionLabPushback(t *testing.T) {
 			"fmn_final_review":   {1: "final-review.md: pass; diff, closure and plan checked"},
 		},
 	}
+	// Delivery takes its specifics as inputs: the change, with the repository
+	// as cwd and the owning Bead as the run's Bead (archon-o7p.5).
+	if report := ValidateRunAdmission(board, nil, RunAdmissionScope{}); len(report.Errors) != 0 {
+		t.Fatalf("delivery validation: %+v", report.Errors)
+	}
+	if got := MissionRunInputs(board); len(got) != 1 || got[0].Name != "change" || !got[0].Required || got[0].Kind != MissionInputText {
+		t.Fatalf("delivery inputs = %+v, want one required text input, change", got)
+	}
+	for _, formation := range board.Formations {
+		if formation.Brief == nil || !strings.Contains(formation.Brief.Goal, "{change}") {
+			t.Fatalf("%s brief does not reference the change", formation.ID)
+		}
+	}
+	change := "Add CSV export to the report page.\nKeep the current columns."
 	engine := NewRunEngine(store, personas, executor)
-	status, err := engine.RunMission("delivery", RunStartRequest{Cwd: cwd, MissionID: "mis_delivery", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev})
+	status, err := engine.RunMission("delivery", RunStartRequest{Cwd: cwd, MissionID: "mis_delivery", BeadID: "proj-42", Inputs: map[string]string{"change": change}, ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +91,10 @@ func TestDeliveryMissionLabPushback(t *testing.T) {
 				t.Fatal(err)
 			}
 			prompt := executor.lab.renderPrompt(call, slot, *card, variant)
-			required := append([]string{card.Summary, "target repository", "mission bead", "Git", "tmux", "archon-outputs", "ARCHON-DONE"}, skills[call.NodeID]...)
+			required := append([]string{card.Summary, "target repository", "mission bead: proj-42", "The change being delivered:\n\n" + change + "\n\n", "Git", "tmux", "archon-outputs", "ARCHON-DONE"}, skills[call.NodeID]...)
+			if strings.Contains(prompt, "{change}") {
+				t.Errorf("%s prompt kept the {change} reference", call.NodeID)
+			}
 			for _, port := range call.Formation.Inputs {
 				required = append(required, port.ID)
 			}

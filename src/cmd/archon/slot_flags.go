@@ -11,13 +11,14 @@ import (
 
 // formation assign takes the same staffing flags offline and with --server.
 
+// formationAssignUsage adds the effort policy and each harness's efforts to
+// the command's usage.
 func formationAssignUsage() string {
 	efforts := []string{}
 	for _, harness := range formations.LaunchableHarnesses() {
 		efforts = append(efforts, harness.ID+" takes "+strings.Join(harness.Efforts, ", "))
 	}
-	return "usage: archon formation assign <mission> <formation> --slot <slot> --harness <claude-code|openai-codex> --effort <effort> [--model <model>] [--role <persona>] [--json]\n" +
-		"A slot owns its harness, model and effort; --role adds optional role text, and a slot without one is a vanilla agent.\n" +
+	return commandUsage("formation assign") + "\n" +
 		"Choose the effort by the policy: " + formations.EffortPolicyText() + ". " + strings.Join(efforts, "; ") + ".\n" +
 		"A blank --model means the harness default model."
 }

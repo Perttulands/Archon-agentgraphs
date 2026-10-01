@@ -64,6 +64,7 @@
 }
 .fmx .flow-link:hover, .fmx .flow-note:hover, .fmx .flow-file:hover { color: var(--terra); text-decoration-color: var(--terra); }
 .fmx .flow-file { margin-right: 10px; }
+.fmx .flow-file.missing, .fmx .flow-file.missing:hover { color: var(--terra-d); text-decoration-style: dashed; text-decoration-color: var(--terra-d); }
 .fmx .flow-note-author { font-weight: 700; }
 .fmx .flow-note.note-agent .flow-note-author { color: var(--sage); }
 .fmx .flow-note-more { color: var(--dim); }

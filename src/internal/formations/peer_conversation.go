@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -435,8 +436,18 @@ func peerArtifactPath(id PeerConversationID) string {
 	return filepath.Join("peer", id.NodeID, fmt.Sprintf("attempt-%d", id.Attempt), peerConversationFile)
 }
 
+// withPeerLock serializes the seats' peer commands, which run in separate
+// processes, by locking the attempt's directory: a lock file beside the journal
+// would show among the run's produced artifacts (archon-dbk).
 func withPeerLock(directory *runArtifactDirectory, fn func() error) error {
-	return withRunArtifactLock(directory, peerConversationFile, directory.path+"/"+peerConversationFile, fn)
+	mutex := mutexFor(directory.path + "/" + peerConversationFile)
+	mutex.Lock()
+	defer mutex.Unlock()
+	if err := syscall.Flock(int(directory.file.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("%w: lock journal: %v", ErrPeerConversationInvalid, err)
+	}
+	defer syscall.Flock(int(directory.file.Fd()), syscall.LOCK_UN) //nolint:errcheck // best-effort unlock on return
+	return fn()
 }
 
 func (s *Store) openPeerDirectory(id PeerConversationID, create bool) (*runArtifactDirectory, error) {

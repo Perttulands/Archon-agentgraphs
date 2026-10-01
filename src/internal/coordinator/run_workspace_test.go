@@ -35,7 +35,7 @@ func TestMissionAdmissionWithoutCwdExecutesInItsProjectedWorkspace(t *testing.T)
 		t.Fatal(err)
 	}
 	for _, cwd := range []any{nil, ""} {
-		body := map[string]any{"mission": "proof", "inputCardId": "mis_proof", "expectedRev": 1, "brief": "work in an automatic workspace", "contextPaths": contextPaths}
+		body := map[string]any{"mission": "proof", "inputCardId": "mis_proof", "expectedRev": 1, "inputs": map[string]string{"brief": "work in an automatic workspace"}, "contextPaths": contextPaths}
 		if cwd != nil {
 			body["cwd"] = cwd
 		}
@@ -65,7 +65,7 @@ func TestMissionAdmissionWithoutCwdExecutesInItsProjectedWorkspace(t *testing.T)
 			if info, err := os.Stat(req.Cwd); err != nil || !info.IsDir() {
 				t.Fatalf("seat directory missing: %v", err)
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(testPatience):
 			t.Fatal("seat did not execute")
 		}
 		p, err := c.Project(id)

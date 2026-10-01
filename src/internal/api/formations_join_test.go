@@ -43,7 +43,7 @@ func TestWireErrorsAndAtomicJoinHTTP(t *testing.T) {
 		{"occupied", `"wireConnection":{"from":"b:out","to":"sink:in"}`, "INPUT_OCCUPIED", "Input already has a feed", 409, false},
 		{"duplicate", `"wireConnection":{"from":"a:out","to":"sink:in","joinIfOccupied":true}`, "DUPLICATE_CONNECTION", "already exists", 409, false},
 		{"self", `"wireConnection":{"from":"sink:out","to":"sink:in","joinIfOccupied":true}`, "SELF_WIRE", "itself", 422, false},
-		{"stale", `"wireConnection":{"from":"b:out","to":"sink:in","joinIfOccupied":true}`, "CONFLICT", "reload and retry", 409, true},
+		{"stale", `"wireConnection":{"from":"b:out","to":"sink:in","joinIfOccupied":true}`, "CONFLICT", "reload it and retry", 409, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			etag := board.ETag

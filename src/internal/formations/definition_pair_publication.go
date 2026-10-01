@@ -91,15 +91,15 @@ func (s *Store) publishDefinitionPair(
 		if err != nil {
 			return definitionPathError(err)
 		}
-		layout := &definitionFile{
-			directory: layoutDirectory,
-			name:      slug + layoutDefinitionKind.suffix,
-			path: filepath.Join(
-				s.workspaceRoot(),
-				".archon",
-				layoutDefinitionKind.directory,
-				slug+layoutDefinitionKind.suffix,
-			),
+		layoutName := slug + layoutDefinitionKind.suffix
+		layout, err := newDefinitionFile(layoutDirectory, layoutName, filepath.Join(
+			s.workspaceRoot(),
+			".archon",
+			layoutDefinitionKind.directory,
+			layoutName,
+		))
+		if err != nil {
+			return definitionPathError(err)
 		}
 		defer layout.close()
 
@@ -152,6 +152,10 @@ func publishDefinitionPairLocked(
 		if err := request.cas(cloneDefinitionPairState(current)); err != nil {
 			return err
 		}
+	}
+	if equalDefinitionPairStateIdentity(definitionPairStateIdentityOf(current), definitionPairStateIdentityOf(request.candidate)) {
+		// A candidate identical to what is on disk publishes nothing.
+		return nil
 	}
 
 	stages, err := stageDefinitionPairRepresentations(board, layout, current, request.candidate, fault)

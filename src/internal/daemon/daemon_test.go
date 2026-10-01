@@ -76,6 +76,14 @@ func TestRemovedFileRootAndSeatTimeoutFlagsAreUnknown(t *testing.T) {
 	}
 }
 
+// Every run records its cwd, so a configured default cwd had no use left
+// (archon-12qt).
+func TestRemovedCwdFlagIsUnknown(t *testing.T) {
+	if err := Run([]string{"--cwd", "/srv/project"}); err == nil || !strings.Contains(err.Error(), "flag provided but not defined: -cwd") {
+		t.Fatalf("--cwd = %v, want an unknown flag", err)
+	}
+}
+
 func TestRunWorkspaceRootFlagRequiresAnAbsolutePath(t *testing.T) {
 	if err := Run([]string{"--executor", "lab", "--state-dir", t.TempDir(), "--run-workspace-root", "relative/work"}); err == nil || !strings.Contains(err.Error(), "--run-workspace-root requires an absolute path") {
 		t.Fatalf("relative --run-workspace-root = %v, want a rejection", err)

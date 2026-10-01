@@ -23,16 +23,15 @@ func runPeerCommand(store *formations.Store, args []string, stdout, stderr io.Wr
 // They do not admit runs, deliver prompts or manage seats.
 func runPeer(ctx context.Context, store *formations.Store, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: archon --workspace <state-dir> peer <read|wait|post|propose|ack> --run <id> --node <id> --attempt <n> [--slot <id>]")
+		help, _ := helpForNoun("peer")
+		writeNounHelp(stderr, help)
 		return 2
 	}
 	command := args[0]
 	if command != "read" && command != "wait" && command != "post" && command != "propose" && command != "ack" {
-		fmt.Fprintf(stderr, "unknown peer command %q\n", command)
-		return 2
+		return unknownCommand(stderr, "peer", command)
 	}
-	fs := flag.NewFlagSet("peer "+command, flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("peer "+command, stderr)
 	runID := fs.String("run", "", "run ID")
 	nodeID := fs.String("node", "", "formation ID")
 	attempt := fs.Int("attempt", 0, "formation attempt")

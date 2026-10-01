@@ -71,13 +71,13 @@ type BoardDocument struct {
 	Rev         int               `json:"rev"`
 	UpdatedBy   string            `json:"updatedBy,omitempty"`
 	UpdatedAt   string            `json:"updatedAt,omitempty"`
-	Missions    []MissionNode     `json:"inputCards,omitempty"`
-	Formations  []FormationNode   `json:"formations,omitempty"`
-	Gates       []GateNode        `json:"gates,omitempty"`
-	Tools       []ToolNode        `json:"tools,omitempty"`
-	Ends        []EndNode         `json:"ends,omitempty"`
-	Limits      []LimitNode       `json:"limits,omitempty"`
-	Connections []BoardConnection `json:"connections,omitempty"`
+	Missions    []MissionNode     `json:"inputCards"`
+	Formations  []FormationNode   `json:"formations"`
+	Gates       []GateNode        `json:"gates"`
+	Tools       []ToolNode        `json:"tools"`
+	Ends        []EndNode         `json:"ends"`
+	Limits      []LimitNode       `json:"limits"`
+	Connections []BoardConnection `json:"connections"`
 	ETag        string            `json:"etag"`
 	TOML        string            `json:"toml,omitempty"`
 }
@@ -88,6 +88,9 @@ type BoardSummary struct {
 	Title string `json:"title"`
 	Rev   int    `json:"rev"`
 	ETag  string `json:"etag"`
+	// Broken says why the mission file cannot be read, such as a symlink whose
+	// target has moved; the other fields are then empty but the slug.
+	Broken string `json:"broken,omitempty"`
 }
 
 type LayoutDocument struct {
@@ -95,8 +98,8 @@ type LayoutDocument struct {
 	BoardID   string       `json:"missionId"`
 	BoardRev  int          `json:"missionRev"`
 	UpdatedAt string       `json:"updatedAt,omitempty"`
-	Nodes     []LayoutNode `json:"nodes,omitempty"`
-	Edges     []LayoutEdge `json:"edges,omitempty"`
+	Nodes     []LayoutNode `json:"nodes"`
+	Edges     []LayoutEdge `json:"edges"`
 	ETag      string       `json:"etag"`
 	TOML      string       `json:"toml,omitempty"`
 }
@@ -172,7 +175,10 @@ func (s *Store) ListBoards() ([]BoardSummary, error) {
 		slug := strings.TrimSuffix(name, boardDefinitionKind.suffix)
 		board, err := s.ReadBoard(slug)
 		if err != nil {
-			return nil, err
+			// One mission that cannot be read is listed as broken, so every
+			// other mission still lists, resolves and opens.
+			boards = append(boards, BoardSummary{Slug: slug, Broken: err.Error()})
+			continue
 		}
 		boards = append(boards, BoardSummary{
 			ID:    board.ID,

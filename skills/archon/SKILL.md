@@ -9,8 +9,9 @@ This skill documents the Archon contract of VERSION 0.1.0 as of 2026-10-01:
 the reusable unit is a mission, each slot owns its harness, model and effort,
 a Limit card is the only run limit, drivers pull with `run wait`, and every surface uses
 current names only. It ships with that source.
-`archon --version` names the build on PATH. When that build is older, a flag or
-behaviour named here may differ: read the command's `-h` and trust the binary.
+`archon --version` names the build on PATH, and `archon --server "$ARCHON_SERVER"
+version` the daemon's too. When a build is older, a flag or behaviour named
+here may differ: read the command's `-h` and trust the binary.
 
 Archon makes chaining agents and gates easy and great, and that is all it
 does. Seats are ordinary tmux agent sessions with full access, as in CHROTE;
@@ -20,8 +21,11 @@ harness settings. Archon keeps only what is current.
 ## Vocabulary
 
 - A **mission** is one reusable `<slug>.mission.toml` graph with a slug and a
-  revision. Its **Input card** is the entry: a goal and an `out` port
-  (`inputCard` in JSON and TOML). Each run supplies the input text, the brief.
+  revision. Its **Input card** is the entry: a goal, the mission's declared
+  **inputs** and an `out` port (`inputCard` in JSON and TOML).
+- An **input** is a named value each run supplies (`text`, `file` or
+  `folder`, required or optional). Step briefs reference it as `{name}`. A
+  mission that declares none takes one required text input, `brief`.
 - A **formation** is a step. `solo` has one seat, `peer` has two or more seats
   that converse, and `orchestrated` has one controller directing its bound
   workers. These three are the only types.
@@ -52,14 +56,16 @@ environment and set `ARCHON_SERVER` and `ARCHON_STATE`. The server is an HTTP UR
 with a literal IP, with no trailing slash, credentials, query or fragment.
 Keep runtime state outside any checkout.
 
-- Runtime commands (`mission run`, `run ...`, `gate approve|reject`) always take
+- Runtime commands (`mission run`, `formation run`, `run ...`, `gate approve|reject`) always take
   `--server "$ARCHON_SERVER"`.
 - Authoring takes `--server` too, so an open cockpit shows each edit live.
   `--workspace "$ARCHON_STATE"` authors the same files offline, for a state
   directory no daemon serves; runtime commands never run offline beside a
-  daemon.
+  daemon. There is no default: a command with neither flag says so and stops.
 - A `--server` failure is final; nothing falls back to a local runtime.
-- Read leaf help with `-h`, adding `--server` for the daemon's form.
+- `archon -h` lists the nouns, `archon <noun> -h` a noun's commands and
+  `archon <noun> <command> -h` a command's usage and flags; add `--server` for
+  the daemon's form.
 
 ## Author a mission
 
@@ -104,7 +110,32 @@ Edit nodes in place so their edges survive: `formation rename`, `formation
 set-type <solo|peer|orchestrated>` (to solo with several staffed slots, add
 `--keep-slot <slot>`), `mission update "$M" --title|--goal|--input-hint|--file` (the Input card),
 `gate update`. An empty value clears a field; `gate update` changes only the
-flags given. `--input-hint` tells the operator what a run brief should contain.
+flags given. `--input-hint` describes the implicit `brief` input of a mission
+that declares no inputs.
+
+### Inputs
+
+Declare what a run must supply instead of baking run specifics into briefs, and
+reference each input from the briefs that need it:
+
+```bash
+archon $S mission input "$M" change --required --description "What to deliver and why" --json
+archon $S mission input "$M" spec --kind file --description "An existing spec to follow" --json
+archon $S formation set-brief "$M" "$WORK" --goal "Deliver {change}. Follow {spec}." --json
+archon $S mission input "$M"
+```
+
+`mission input "$M" <name>` declares an input or changes only the flags given
+(`--kind text|file|folder`, `--required` or `--optional`, `--description`);
+`--delete` removes it. Without a name it lists what a run supplies, one line
+each: name, kind, required or optional, description. Names are a lowercase
+letter then lowercase letters, digits or underscores. Each seat's brief gets the
+value in place of `{name}`, or `(not supplied)` for an optional input left out;
+a reference to an undeclared name is the validation error
+`unknown_input_reference`. To show a seat a literal `{name}`, write `{{name}}`;
+it is never a reference. The first step also receives the inputs from the
+Input card: the implicit `brief` unchanged, or one `name: value` line per
+input.
 
 ### Briefs belong to steps
 
@@ -112,8 +143,10 @@ Write what a step does in its formation brief (`formation set-brief --goal`,
 `--file` for reference files). A role is reusable and generic; mission-specific
 instructions stay in the step's brief, never in a role. Missions and gates take reference files too:
 repeat `--file <path>` on `mission create|update` and `gate create|update`; on
-update the list is replaced and `--file ''` clears it. Use absolute paths: the
-cockpit opens any file by absolute path, and a relative one has no base there.
+update the list is replaced and `--file ''` clears it. Use absolute paths:
+authoring refuses a relative one (`relative_file_reference`), since it has no
+base for the cockpit or a seat. A file that does not exist yet is saved with a
+`warning:` line, and `mission validate` warns `missing_file` until it exists.
 
 ### Harness, model and effort
 
@@ -284,16 +317,24 @@ To import an example mission or smoke-test routing on a lab daemon, read
 ## Run a mission
 
 ```bash
+archon $S mission input "$M"
 ARCHON_START=$(archon $S mission run "$M" \
-  --brief "$ARCHON_BRIEF" --bead "$ARCHON_BEAD" \
-  --context-path /abs/prior-art --context-path /abs/notes.md --json)
+  --input change="Add CSV export to the report page" --input-file spec=/abs/spec.md \
+  --bead "$ARCHON_BEAD" --context-path /abs/prior-art --json)
 ARCHON_RUN_ID=$(jq -er .data.runId <<<"$ARCHON_START")
 archon $S run status "$ARCHON_RUN_ID" --json
 ```
 
-- `--brief` is a file path read locally, or literal text. It becomes the
-  Input card's output; the mission stays reusable. `--bead` names the run's
-  owning Bead; an Input card has none.
+- Supply every input by name: `--input name=value` sends the value as written,
+  and `--input-file name=path` sends a local UTF-8 file's text. A `file` or
+  `folder` input takes an absolute path to an existing file or directory on the
+  daemon's host. A mission without declared inputs takes `--input brief=...`.
+  Admission names each input that is missing, unknown or not a usable path
+  (`missing_input`, `unknown_input`, `invalid_input`) and records no run. Run
+  status shows the values as `inputs`.
+- `--bead` names the run's owning Bead; an Input card has none.
+- `formation run "$M" <formation>` runs one step on its own with the same
+  inputs and run flags; its step receives the inputs as a first step does.
 - Omit `--cwd` and the daemon allocates a private workspace for the run. Pass
   `--cwd /abs/existing/dir` to work in an existing project.
 - `--context-path` names absolute existing files or directories the seats must
@@ -302,7 +343,11 @@ archon $S run status "$ARCHON_RUN_ID" --json
 - A run's only limits are the mission's Limit cards (above); a launch sets
   none. Without a card a send-back loop continues until its gate passes or you
   stop the run with `run abort`.
-- A lost receipt: check `run list --json` before starting again.
+- `--actor <you>` names the run's driver (default `agent:archon`); run status
+  and the cockpit's run list show it as `startedBy`.
+- A lost receipt: check `run list --mission "$M" --json` before starting again.
+  It lists only that mission's runs, each with `status`, `startedBy`,
+  `startedAt`, `updatedAt` (a final run ended then) and `inputs`.
 
 ### Watch
 

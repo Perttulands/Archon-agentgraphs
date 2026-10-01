@@ -1,7 +1,9 @@
 /* Start mission: styled fields with a hint under each. */
 .fmx .pop.start-mission{width:min(560px,calc(100vw - 40px));left:calc(50% - min(280px,50vw - 20px));top:90px;}
 .fmx .pop.start-mission .pop-body{max-height:calc(100vh - 180px);}
-.fmx .pop.start-mission textarea{min-height:140px;}
+.fmx .pop.start-mission textarea{min-height:88px;}
+.fmx .pop.start-mission #start-input-brief{min-height:140px;}
+.fmx .pop.start-mission .start-mission-problems{margin:4px 0 0;padding-left:18px;}
 .fmx .pop.start-mission .field-note{color:var(--ink2);font-size:11px;}
 .fmx .pop.start-mission .field-note .start-mission-hint{--archon-markdown-font-size:11px;color:var(--ink2);}
 .fmx .pop.start-mission .field-note .start-mission-hint>*{margin:4px 0 0;}

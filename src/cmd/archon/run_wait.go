@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -34,12 +33,10 @@ const (
 	waitExcerptBytes = 1500
 )
 
-const runWaitUsage = "usage: archon --server <url> run wait <runId> [--until needs-you|final|any-change] [--since <seq>] [--timeout <duration>] [--reconnect <duration>] [--json]"
-
 // runWaitOffline refuses: only the daemon knows when a run has settled.
 func runWaitOffline(stderr io.Writer) int {
 	fmt.Fprintln(stderr, "run wait needs --server: only the Archon daemon knows when a run has settled")
-	fmt.Fprintln(stderr, runWaitUsage)
+	fmt.Fprintln(stderr, commandUsage("run wait"))
 	return 2
 }
 
@@ -56,8 +53,7 @@ type waitOutput struct {
 }
 
 func runWaitRemote(c *remoteClient, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("run wait", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("run wait", stderr)
 	until := fs.String("until", coordinator.WaitUntilNeedsYou, "needs-you, final or any-change")
 	since := fs.Int("since", 0, "ledger sequence already seen; pass the seq the last wait printed")
 	timeout := fs.Duration("timeout", 0, "give up after this long (0 waits until the run answers)")
@@ -67,7 +63,7 @@ func runWaitRemote(c *remoteClient, args []string, stdout, stderr io.Writer) int
 		return 2
 	}
 	if fs.NArg() != 1 || !coordinator.ValidWaitUntil(*until) || *since < 0 || *timeout < 0 || *reconnect < 0 {
-		fmt.Fprintln(stderr, runWaitUsage)
+		fmt.Fprintln(stderr, commandUsage("run wait"))
 		return 2
 	}
 	runID := fs.Arg(0)

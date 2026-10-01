@@ -157,7 +157,7 @@ humanChannel = "session"`, 1)
 
 func startProof(t *testing.T, c *Coordinator) string {
 	t.Helper()
-	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"run the proof","mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
+	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"run the proof"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 	if w.Code != 202 {
 		t.Fatalf("start %d %s", w.Code, w.Body.String())
 	}
@@ -175,7 +175,7 @@ func startProof(t *testing.T, c *Coordinator) string {
 // awaitProjection waits until the run's projection satisfies ok.
 func awaitProjection(t *testing.T, c *Coordinator, id string, ok func(*Projection) bool) *Projection {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	for {
 		p, err := c.Project(id)
 		if err != nil {

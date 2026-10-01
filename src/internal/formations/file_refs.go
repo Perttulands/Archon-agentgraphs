@@ -19,7 +19,33 @@ import (
 // is redacted like run evidence.
 
 // ErrRelativeFileRef marks a reference with no base to resolve against.
-var ErrRelativeFileRef = errors.New("relative file reference")
+// Authoring refuses one where it is written, and the file routes cannot open
+// one (archon-ka59).
+var ErrRelativeFileRef = errors.New("relative_file_reference")
+
+// FileRefProblem says why a reference file names nothing Archon can open, as
+// a finding code and the words that follow the path, or "" for an existing
+// file.
+func FileRefProblem(ref string) (string, string) {
+	if !filepath.IsAbs(ref) {
+		return FindingRelativeFile, "is relative: use an absolute path"
+	}
+	if _, err := os.Stat(ref); errors.Is(err, os.ErrNotExist) {
+		return FindingMissingFile, "does not exist"
+	}
+	return "", ""
+}
+
+// checkFileRefs refuses a relative reference file, so what is authored is what
+// the cockpit opens and what a seat reads.
+func checkFileRefs(files []string) error {
+	for _, ref := range files {
+		if ref = strings.TrimSpace(ref); ref != "" && !filepath.IsAbs(ref) {
+			return fmt.Errorf("%w: file %q is relative: use an absolute path", ErrRelativeFileRef, ref)
+		}
+	}
+	return nil
+}
 
 // ReferencedFilePreview is the start of a referenced file, classified like a
 // run artifact preview. Path is the absolute path that was read.

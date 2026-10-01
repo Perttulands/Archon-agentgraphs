@@ -283,3 +283,32 @@ id = "slot_frame"
 label = "Builder"
 `
 }
+
+// Editing an entry to the text it already has saves nothing: the revision,
+// ETag and file bytes stay put, so the cockpit's notes ETag is not raced, and
+// a stale ETag still conflicts (archon-62h).
+func TestBoardNoteEditThatChangesNothingSavesNothing(t *testing.T) {
+	store := NewStore(t.TempDir())
+	store.Now = fixedClock()
+	writeFixture(t, store.BoardPath("session-search"), notesBoardFixture())
+	created, err := store.UpdateBoardNote("session-search", BoardNotePatch{Target: BoardNoteTarget, Text: "Keep the scope tight", Author: "agent:archon"}, NoteWriteOptions{ExpectedETag: "*"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := readFile(t, store.NotesPath("session-search"))
+	entry := created.Board[0]
+
+	same, err := store.UpdateBoardNote("session-search", BoardNotePatch{Target: BoardNoteTarget, Action: NoteActionEdit, EntryID: entry.ID, Text: "Keep the scope tight", Author: "agent:archon"}, NoteWriteOptions{ExpectedETag: created.ETag})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if same.Rev != created.Rev || same.ETag != created.ETag || same.Board[0].EditedAt != nil {
+		t.Fatalf("an unchanged edit saved: rev %d etag %s editedAt %v, want rev %d etag %s", same.Rev, same.ETag, same.Board[0].EditedAt, created.Rev, created.ETag)
+	}
+	if got := readFile(t, store.NotesPath("session-search")); got != raw {
+		t.Fatalf("an unchanged edit rewrote the notes:\n%s", got)
+	}
+	if _, err := store.UpdateBoardNote("session-search", BoardNotePatch{Target: BoardNoteTarget, Action: NoteActionEdit, EntryID: entry.ID, Text: "Keep the scope tight", Author: "agent:archon"}, NoteWriteOptions{ExpectedETag: "stale"}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("an unchanged edit with a stale ETag = %v, want ErrConflict", err)
+	}
+}

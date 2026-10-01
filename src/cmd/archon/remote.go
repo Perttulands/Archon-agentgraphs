@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -13,10 +12,10 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
+	"github.com/Perttulands/Archon-agentgraphs/internal/buildinfo"
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
@@ -88,6 +87,32 @@ func (c *remoteClient) raw(method, path string, value any) ([]byte, error) {
 	return raw, nil
 }
 
+// remoteVersion prints this CLI's build and the daemon's, as /healthz reports
+// it (archon-1ea).
+func remoteVersion(server string, stdout, stderr io.Writer) int {
+	fmt.Fprintln(stdout, buildinfo.String())
+	client, err := newRemoteClient(server)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	raw, err := client.raw(http.MethodGet, "/healthz", nil)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	var health struct {
+		Data struct {
+			Version string `json:"version"`
+			Commit  string `json:"commit"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &health); err != nil || health.Data.Version == "" {
+		return fail(stderr, fmt.Errorf("the daemon at %s reports no build", server))
+	}
+	fmt.Fprintf(stdout, "daemon %s: Archon %s (%s)\n", server, health.Data.Version, health.Data.Commit)
+	return 0
+}
+
 // An explicit server selects HTTP for the entire command. Failure never falls
 // through to an offline engine or a local ledger.
 func runRemote(server string, args []string, stdout, stderr io.Writer) int {
@@ -102,38 +127,32 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	if args[0]+" "+args[1] == "run wait" {
 		return runWaitRemote(client, args[2:], stdout, stderr)
 	}
+	if args[0]+" "+args[1] == "mission run" || args[0]+" "+args[1] == "formation run" {
+		return remoteRunStart(client, args[0], args[2:], stdout, stderr)
+	}
 	request := client.raw
-	fs := flag.NewFlagSet(args[0]+" "+args[1], flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	name := args[0] + " " + args[1]
+	verdict := name == "gate approve" || name == "gate reject"
+	// Each command defines only the flags it reads, so -h lists what applies.
+	fs := commandFlags(name, stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
-	cwd := fs.String("cwd", "", "absolute existing run directory; omit to create a daemon-managed workspace")
-	brief := fs.String("brief", "", "brief file path or literal text")
-	bead := fs.String("bead", "", "run Beads id")
-	var contextPaths stringList
-	if args[0]+" "+args[1] == "mission run" {
-		fs.Var(&contextPaths, "context-path", "context path for the mission; repeat for more")
-	}
-	var responseFile string
-	if args[0] == "gate" && (args[1] == "approve" || args[1] == "reject") {
+	var responseFile, missionFilter string
+	mode, reason, relayedBy, seq, grant := new(string), new(string), new(string), new(int), new(bool)
+	switch {
+	case verdict:
+		fs.StringVar(reason, "response", "", "the response: approve delivers it downstream with the gate input, reject sends it back as feedback")
 		fs.StringVar(&responseFile, "response-file", "", "local UTF-8 file containing the complete verbatim response")
-	}
-	mode := fs.String("mode", "reattach", "resume mode")
-	var inputCard, missionFilter string
-	switch args[0] + " " + args[1] {
-	case "mission run":
-		fs.StringVar(&inputCard, "input", "", "the Input card to start from; needed only when the mission has several")
-	case "run list":
+		fs.IntVar(seq, "requested-seq", 0, "exact pending human request sequence")
+		fs.StringVar(relayedBy, "relayed-by", "", relayedByUsage)
+	case name == "run resume":
+		fs.StringVar(mode, "mode", "reattach", "resume mode: reattach or redispatch")
+		fs.StringVar(reason, "reason", "", "operator reason")
+		fs.BoolVar(grant, "grant", false, grantUsage)
+	case name == "run abort":
+		fs.StringVar(reason, "reason", "", "operator reason")
+	case name == "run list":
 		fs.StringVar(&missionFilter, "mission", "", "the mission whose runs to list")
 	}
-	reason := new(string)
-	if args[0] == "gate" && (args[1] == "approve" || args[1] == "reject") {
-		fs.StringVar(reason, "response", "", "the response: approve delivers it downstream with the gate input, reject sends it back as feedback")
-	} else {
-		fs.StringVar(reason, "reason", "", "operator reason")
-	}
-	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
-	relayedBy := fs.String("relayed-by", "", relayedByUsage)
-	grant := fs.Bool("grant", false, grantUsage)
 	if err := fs.Parse(reorderFlags(args[2:], map[string]bool{"json": true, "grant": true})); err != nil {
 		return 2
 	}
@@ -142,45 +161,9 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	method := "GET"
 	var body any
 	switch args[0] + " " + args[1] {
-	case "mission run":
-		if len(pos) != 1 {
-			return remoteUsage(stderr)
-		}
-		briefText := *brief
-		if data, err := os.ReadFile(*brief); err == nil {
-			briefText = string(data)
-		} else if !os.IsNotExist(err) && !errors.Is(err, syscall.ENAMETOOLONG) {
-			return fail(stderr, err)
-		}
-		raw, err := request("GET", path+"/missions/"+url.PathEscape(pos[0]), nil)
-		if err != nil {
-			return fail(stderr, err)
-		}
-		var board struct {
-			Data struct {
-				Board formations.BoardDocument `json:"mission"`
-			} `json:"data"`
-		}
-		if err := json.Unmarshal(raw, &board); err != nil {
-			return fail(stderr, err)
-		}
-		if inputCard == "" {
-			id, err := runInputCard(&board.Data.Board, pos[0])
-			if err != nil {
-				return failJSON(stderr, err, *jsonOut, "run", "")
-			}
-			inputCard = id
-		}
-		path += "/runs"
-		method = "POST"
-		fields := map[string]any{"cwd": *cwd, "brief": briefText, "beadId": *bead, "mission": pos[0], "inputCardId": inputCard, "expectedRev": board.Data.Board.Rev}
-		if len(contextPaths) > 0 {
-			fields["contextPaths"] = contextPaths
-		}
-		body = fields
 	case "run abort", "run resume":
 		if len(pos) != 1 {
-			return remoteUsage(stderr)
+			return remoteUsage(stderr, args[0]+" "+args[1])
 		}
 		path += "/runs/" + url.PathEscape(pos[0]) + "/" + args[1]
 		method = "POST"
@@ -196,7 +179,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 	case "run status", "run logs", "run gates", "run seats":
 		if len(pos) != 1 {
-			return remoteUsage(stderr)
+			return remoteUsage(stderr, args[0]+" "+args[1])
 		}
 		path += "/runs/" + url.PathEscape(pos[0])
 		if args[1] == "seats" {
@@ -204,12 +187,12 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 	case "gate request":
 		if len(pos) != 2 {
-			return remoteUsage(stderr)
+			return remoteUsage(stderr, args[0]+" "+args[1])
 		}
 		path += "/runs/" + url.PathEscape(pos[0]) + "/gates/" + url.PathEscape(pos[1]) + "/request"
 	case "run follow":
 		if len(pos) != 1 {
-			return remoteUsage(stderr)
+			return remoteUsage(stderr, args[0]+" "+args[1])
 		}
 		response, err := client.http.Get(server + path + "/runs/" + url.PathEscape(pos[0]) + "/stream")
 		if err != nil {
@@ -232,7 +215,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "gate approve", "gate reject":
 		if len(pos) != 2 || *seq <= 0 {
-			return remoteUsage(stderr)
+			return remoteUsage(stderr, args[0]+" "+args[1])
 		}
 		given := givenFlags(fs)
 		if given["response-file"] {
@@ -260,8 +243,11 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		body = fields
 	default:
-		fmt.Fprintln(stderr, "command unavailable through the standalone coordinator")
-		return 2
+		if _, ok := helpForCommand(args[0] + " " + args[1]); ok {
+			fmt.Fprintf(stderr, "archon %s %s works offline only: run it with --workspace <state-dir>\n", args[0], args[1])
+			return 2
+		}
+		return unknownCommand(stderr, args[0], args[1])
 	}
 	raw, err := request(method, path, body)
 	if err != nil {
@@ -273,7 +259,68 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	fmt.Fprint(stdout, string(raw))
 	return 0
 }
-func remoteUsage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "use mission, formation, gate and agent authoring and read commands, mission run <mission> [--input <input>] [--context-path path ...], run status|logs|follow|wait|seats|gates <run>, gate request <run> <gate>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text | --response-file path] [--relayed-by slot-id]")
+func remoteUsage(stderr io.Writer, name string) int {
+	fmt.Fprintln(stderr, commandUsage(name))
 	return 2
+}
+
+// remoteRunStart starts a mission run or a single step's run through the
+// daemon. Both take the same run fields and the mission's inputs.
+func remoteRunStart(client *remoteClient, noun string, args []string, stdout, stderr io.Writer) int {
+	fs := commandFlags(noun+" run", stderr)
+	actor := fs.String("actor", "agent:archon", "who drives the run; the run list shows it")
+	run := registerRunStartFlags(fs)
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
+	}
+	usage, positionals := commandUsage("mission run"), 1
+	if noun == "formation" {
+		usage, positionals = commandUsage("formation run"), 2
+	}
+	if fs.NArg() != positionals {
+		fmt.Fprintln(stderr, usage)
+		return 2
+	}
+	inputs, err := run.inputs.collect()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	raw, err := client.raw("GET", "/api/missions/"+url.PathEscape(fs.Arg(0)), nil)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	var mission struct {
+		Data struct {
+			Board formations.BoardDocument `json:"mission"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &mission); err != nil {
+		return fail(stderr, err)
+	}
+	board := &mission.Data.Board
+	fields := map[string]any{"mission": fs.Arg(0), "expectedRev": board.Rev, "cwd": *run.cwd, "beadId": *run.bead, "inputs": inputs, "actor": *actor}
+	if noun == "formation" {
+		formationID, err := resolveFormationSelector(board, fs.Arg(1))
+		if err != nil {
+			return failSelector(stderr, err, *jsonOut, "formation", fs.Arg(1))
+		}
+		fields["formationId"] = formationID
+	} else {
+		inputCard, err := runInputCard(board, fs.Arg(0))
+		if err != nil {
+			return failJSON(stderr, err, *jsonOut, "run", "")
+		}
+		fields["inputCardId"] = inputCard
+	}
+	if len(run.contextPaths) > 0 {
+		fields["contextPaths"] = run.contextPaths
+	}
+	raw, err = client.raw("POST", "/api/runs", fields)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	fmt.Fprint(stdout, string(raw))
+	return 0
 }

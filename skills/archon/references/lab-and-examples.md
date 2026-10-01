@@ -4,7 +4,10 @@ Read with the main [Archon skill](../SKILL.md).
 
 ## Import an example mission
 
-There is no import command: copy the TOML into the state directory. The
+There is no import command: copy the TOML into the state directory, or
+symlink a mission kept in a repository so edits write through to it. If the
+repository file moves, `mission list` shows the link as broken and names its
+target; the other missions keep working. The
 examples ship with Archon, in `examples/` of the source checkout or
 `$ARCHON_SHARE/examples/` of an installed release
 (`<prefix>/lib/archon/current/share/archon`). Set `EXAMPLES` to that directory:
@@ -18,7 +21,9 @@ archon --server "$ARCHON_SERVER" mission arrange delivery --json
 ```
 
 Read an imported mission's briefs and staffing before running it. The delivery
-template's Input card is `mis_delivery`.
+template's Input card is `mis_delivery`, and a run supplies its one input,
+`change`, with `--input change=...` or `--input-file change=<file>`; the target
+repository is the run's `--cwd` and the owning Bead its `--bead`.
 
 ## Lab runs
 
@@ -26,8 +31,8 @@ A daemon started with `--executor lab` echoes inputs and launches no agents. It
 proves routing, not work, and writes each rendered brief to
 `<state-dir>/briefs/lab-*.md` as a seat would receive it.
 
-To pass a formation judge in lab, put exactly one synthetic block in the run
-brief:
+To pass a formation judge in lab, put exactly one synthetic block in an input
+the first step receives (for example `--input-file change=<file>` for Delivery):
 
 ````text
 ```archon-verdict

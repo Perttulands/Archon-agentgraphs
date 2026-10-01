@@ -512,6 +512,11 @@ func (s *Store) buildToolUpdateCandidate(
 	if err != nil {
 		return definitionPairState{}, ToolNode{}, err
 	}
+	if bytes.Equal(nextBoardRaw, current.board) {
+		// An update that leaves the Tool as it was saves nothing, so the
+		// revision and ETag stay put (archon-62h).
+		return current, updated, nil
+	}
 	doc := parseTOMLDocument(nextBoardRaw)
 	updatedAt := s.now().Format(time.RFC3339)
 	if req.UpdatedBy != "" {

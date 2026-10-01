@@ -146,7 +146,7 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 	}
 	start := func() string {
 		t.Helper()
-		client.request("POST", "/api/runs", etag, map[string]any{"cwd": c.store.Workspace, "brief": "run the proof", "mission": board.Slug, "inputCardId": mission, "expectedRev": board.Rev}, 202, &receipt)
+		client.request("POST", "/api/runs", etag, map[string]any{"cwd": c.store.Workspace, "inputs": map[string]string{"brief": "run the proof"}, "mission": board.Slug, "inputCardId": mission, "expectedRev": board.Rev}, 202, &receipt)
 		return receipt.RunID
 	}
 	id := start()
@@ -188,7 +188,7 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 		if initial.Status != "waiting_human" {
 			t.Fatal(initial)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("stream did not send waiting projection")
 	}
 	client.request("POST", "/api/runs/"+id+"/gates/"+gate+"/verdict", "", map[string]any{"requestedSeq": p.WaitingGates[0].RequestedSeq, "verdict": "pass"}, 202, nil)
@@ -214,7 +214,7 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 		t.Fatal(canceled)
 	}
 	// The isolated-formation button uses the same admission and snapshot ETag.
-	isolated := map[string]any{"mission": board.Slug, "formationId": work.ID, "expectedRev": board.Rev}
+	isolated := map[string]any{"mission": board.Slug, "formationId": work.ID, "expectedRev": board.Rev, "inputs": map[string]string{"brief": "run the step"}}
 	client.request("POST", "/api/runs", "stale-etag", isolated, 409, nil)
 	client.request("POST", "/api/runs", etag, isolated, 202, &receipt)
 	awaitState(t, c, receipt.RunID, "succeeded")
@@ -261,14 +261,14 @@ func TestAbortCancelsOwnedSeatAndHoldsAdmissionUntilCleanup(t *testing.T) {
 	id := startRun(t, c)
 	select {
 	case <-executor.entered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("executor not entered")
 	}
 	responses := make(chan *httptest.ResponseRecorder, 1)
 	go func() { responses <- post(t, c, "/api/runs/"+id+"/abort", `{"reason":"stop owned seat"}`) }()
 	select {
 	case <-executor.canceled:
-	case <-time.After(5 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("abort did not cancel seat")
 	}
 	if c.acquire(id) {

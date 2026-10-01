@@ -16,15 +16,10 @@ import (
 // limits unless a card sets one.
 
 const (
-	limitCreateUsage = "usage: archon limit create <mission> --target <step|input> [--rounds n] [--time 30m] [--warn 5m] [--title text] [--x n] [--y n] [--json]\n" +
-		"A Limit card caps the step it covers, or the whole mission when it covers the Input card. At the limit the run blocks; run resume --grant gives one more round, or the card's time again."
-	limitUpdateUsage = "usage: archon limit update <mission> <limit> [--target <step|input>] [--rounds n] [--time 30m] [--warn 5m] [--title text] [--json]\n" +
-		"Only the flags you give change; an empty --rounds, --time or --warn clears that knob and an empty --target unwires the card."
-	limitDeleteUsage = "usage: archon limit delete <mission> <limit> [--json]"
-	limitTargetHelp  = "the step it covers by ID or title, or input (the Input card) for the whole mission"
-	limitRoundsHelp  = "how many times the step may run, send-backs included (a peer step: its journal messages), or how many steps the whole mission may run"
-	limitTimeHelp    = "how long the step, or every step of the mission, may work in whole seconds, such as 45s, 30m or 1h30m; waiting on a human gate does not count"
-	limitWarnHelp    = "how much time is left when the covered seats are warned, such as 5m"
+	limitTargetHelp = "the step it covers by ID or title, or input (the Input card) for the whole mission"
+	limitRoundsHelp = "how many times the step may run, send-backs included (a peer step: its journal messages), or how many steps the whole mission may run"
+	limitTimeHelp   = "how long the step, or every step of the mission, may work in whole seconds, such as 45s, 30m or 1h30m; waiting on a human gate does not count"
+	limitWarnHelp   = "how much time is left when the covered seats are warned, such as 5m"
 )
 
 func runLimitCommand(store *formations.Store, verb string, args []string, stdout, stderr io.Writer) int {
@@ -36,8 +31,7 @@ func runLimitCommand(store *formations.Store, verb string, args []string, stdout
 	case "delete":
 		return runLimitDelete(store, args, stdout, stderr)
 	default:
-		fmt.Fprintf(stderr, "unknown limit command %q\n%s\n%s\n%s\n", verb, limitCreateUsage, limitUpdateUsage, limitDeleteUsage)
-		return 2
+		return unknownCommand(stderr, "limit", verb)
 	}
 }
 
@@ -55,8 +49,7 @@ type limitFlags struct {
 }
 
 func newLimitFlags(name string, stderr io.Writer) limitFlags {
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags(name, stderr)
 	return limitFlags{
 		fs:        fs,
 		target:    fs.String("target", "", limitTargetHelp),
@@ -145,7 +138,7 @@ func runLimitCreate(store *formations.Store, args []string, stdout, stderr io.Wr
 		return 2
 	}
 	if flags.fs.NArg() != 1 {
-		fmt.Fprintln(stderr, limitCreateUsage)
+		fmt.Fprintln(stderr, commandUsage("limit create"))
 		return 2
 	}
 	rounds, seconds, warn, err := limitKnobs(flags)
@@ -183,7 +176,7 @@ func runLimitUpdate(store *formations.Store, args []string, stdout, stderr io.Wr
 		return 2
 	}
 	if flags.fs.NArg() != 2 {
-		fmt.Fprintln(stderr, limitUpdateUsage)
+		fmt.Fprintln(stderr, commandUsage("limit update"))
 		return 2
 	}
 	if _, _, _, err := limitKnobs(flags); err != nil {
@@ -249,15 +242,14 @@ func limitUpdate(board *formations.BoardDocument, flags limitFlags) (formations.
 }
 
 func runLimitDelete(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("limit delete", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags("limit delete", stderr)
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, limitDeleteUsage)
+		fmt.Fprintln(stderr, commandUsage("limit delete"))
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -301,7 +293,7 @@ func remoteLimitCreate(c *remoteClient, args []string, stdout, stderr io.Writer)
 		return 2
 	}
 	if flags.fs.NArg() != 1 {
-		fmt.Fprintln(stderr, limitCreateUsage)
+		fmt.Fprintln(stderr, commandUsage("limit create"))
 		return 2
 	}
 	rounds, seconds, warn, err := limitKnobs(flags)
@@ -332,7 +324,7 @@ func remoteLimitUpdate(c *remoteClient, args []string, stdout, stderr io.Writer)
 		return 2
 	}
 	if flags.fs.NArg() != 2 {
-		fmt.Fprintln(stderr, limitUpdateUsage)
+		fmt.Fprintln(stderr, commandUsage("limit update"))
 		return 2
 	}
 	if _, _, _, err := limitKnobs(flags); err != nil {
@@ -379,7 +371,7 @@ func remoteLimitDelete(c *remoteClient, args []string, stdout, stderr io.Writer)
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, limitDeleteUsage)
+		fmt.Fprintln(stderr, commandUsage("limit delete"))
 		return 2
 	}
 	data, _, err := c.patchBoard(fs.Arg(0), *updatedBy, func(board *formations.BoardDocument) (string, map[string]any, error) {

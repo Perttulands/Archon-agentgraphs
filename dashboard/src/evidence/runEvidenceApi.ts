@@ -162,6 +162,8 @@ export type ArtifactKind = 'markdown' | 'json' | 'text' | 'image' | 'pdf' | 'bin
 export interface RunArtifactPreview extends RunArtifactEntry {
   kind: ArtifactKind
   text?: EvidenceText
+  /** The file's absolute path on the daemon host, for Copy path. */
+  path?: string
 }
 
 const runPath = (runId: string) => `/api/runs/${encodeURIComponent(runId)}`
@@ -194,6 +196,18 @@ export async function fetchArtifactPreview(runId: string, name: string): Promise
   const { data } = await fetchApi<{ artifact?: RunArtifactPreview }>(`${runPath(runId)}/evidence/artifacts/${artifactPath(name)}`)
   if (!data.artifact) throw new Error('the daemon returned no artifact')
   return data.artifact
+}
+
+/** The mission a run froze at admission, as TOML (archon-o7p.2). */
+export interface RunMissionEvidence {
+  missionRev: number
+  text: EvidenceText
+}
+
+export async function fetchRunMission(runId: string): Promise<RunMissionEvidence> {
+  const { data } = await fetchApi<{ mission?: RunMissionEvidence }>(`${runPath(runId)}/evidence/mission`)
+  if (!data.mission) throw new Error('the daemon returned no mission')
+  return data.mission
 }
 
 /** The start of any file by absolute path, as the file routes read it. */

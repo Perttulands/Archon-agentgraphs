@@ -34,8 +34,10 @@ func (e *TmuxFormationExecutor) readCompletedFormationDispatch(req FormationReat
 	if err != nil {
 		return FormationExecutionResult{}, err
 	}
-	if cwd := stringFromEventData(events[0], "cwd"); cwd != "" {
-		c.Cwd = cwd
+	// Recovery checks the completed turn against the run's recorded cwd.
+	c.Cwd = stringFromEventData(events[0], "cwd")
+	if c.Cwd == "" {
+		return FormationExecutionResult{}, fmt.Errorf("run %s records no working directory, so its completed turn cannot be checked", req.RunID)
 	}
 	e.config = c
 	dispatch := NewSlotDispatcher(e.store, nil).dispatchEvent(req.RunID, req.DispatchID)

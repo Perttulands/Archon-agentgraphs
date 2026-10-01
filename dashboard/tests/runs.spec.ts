@@ -12,7 +12,7 @@ async function cancelableRun(page: Page) {
   const aborts: unknown[] = []
   let canceled = false
   const waiting = { runId: 'run_browser', status: 'waiting_human', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 3, beadId: 'archon-mnf', waitingGates: [{ gateId: 'loose', requestedSeq: 3 }], onCallSeats: [] }
-  const ended = () => ({ ...waiting, status: 'canceled', final: true, eventCount: 4, waitingGates: [], endedBy: 'agent:ui' })
+  const ended = () => ({ ...waiting, status: 'canceled', final: true, eventCount: 4, waitingGates: [], endedBy: 'human:ui' })
   const events = [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_output', nodeId: 'execution' }, { seq: 3, type: 'human_input_requested', nodeId: 'loose', gateId: 'loose' }]
   await page.route('**/api/runs/run_browser**', async route => {
     const path = new URL(route.request().url()).pathname
@@ -26,7 +26,7 @@ async function cancelableRun(page: Page) {
     if (path.endsWith('/events')) return respond({ events: canceled ? [...events, { seq: 4, type: 'run_canceled' }] : events })
     if (path.endsWith('/evidence/problems')) {
       const reason = (aborts[aborts.length - 1] as { reason?: string } | undefined)?.reason || ''
-      return respond({ problems: canceled ? [{ seq: 4, type: 'run_canceled', nodeIds: ['loose'], reason: text(reason), actor: 'agent:ui' }] : [] })
+      return respond({ problems: canceled ? [{ seq: 4, type: 'run_canceled', nodeIds: ['loose'], reason: text(reason), actor: 'human:ui' }] : [] })
     }
     return route.fallback()
   })
@@ -65,7 +65,7 @@ test('Stop asks first, Escape keeps the run, and the canceled run says who stopp
   await stop.click()
   await page.getByLabel('Why (optional)').fill('The brief was wrong')
   await page.getByRole('alertdialog').getByRole('button', { name: 'Stop run' }).click()
-  await expect.poll(() => aborts).toEqual([{ reason: 'The brief was wrong', requestedBy: 'agent:ui' }])
+  await expect.poll(() => aborts).toEqual([{ reason: 'The brief was wrong', requestedBy: 'human:ui' }])
   await expect(page.getByTestId('run-point')).toHaveText('canceled at Disconnected gate by the operator in the cockpit: The brief was wrong')
   await expect(page.getByRole('button', { name: 'Stop run' })).toHaveCount(0)
 })

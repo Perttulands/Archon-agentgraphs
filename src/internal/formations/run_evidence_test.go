@@ -117,7 +117,7 @@ func TestRunProblemsServeBlocksThatNameNoNode(t *testing.T) {
 		{Seq: 2, Type: RunEventError, Data: map[string]any{"code": "coordinator_interrupted", "message": "coordinator restarted with open dispatches", "openDispatches": []any{map[string]any{"dispatchId": "dsp_1", "nodeId": "fmn_map", "slotId": "slot_scout"}}}},
 		{Seq: 3, Type: RunEventBlocked, Data: map[string]any{"reason": "coordinator restarted; completed-turn evidence required", "openDispatches": []any{map[string]any{"nodeId": "fmn_map"}}, "resumeAllowed": true}},
 		{Seq: 4, Type: RunEventResumed},
-		{Seq: 5, Type: RunEventError, Data: map[string]any{"code": "wall_clock_exceeded", "message": "wall clock limit exceeded", "nodeId": ""}},
+		{Seq: 5, Type: RunEventError, Data: map[string]any{"code": "seat_exited", "message": "the seat exited before its output", "nodeId": ""}},
 		{Seq: 6, Type: RunEventBlocked, Data: map[string]any{"reason": "wall clock limit exceeded", "openDispatches": []map[string]any{}, "resumeAllowed": true}},
 	}
 
@@ -138,7 +138,7 @@ func TestRunProblemsServeBlocksThatNameNoNode(t *testing.T) {
 	if clock.Seq != 6 || clock.Type != RunEventBlocked || clock.Reason.Text != "wall clock limit exceeded" || len(clock.NodeIDs) != 0 {
 		t.Fatalf("wall clock block = %+v", clock)
 	}
-	if problems[2].Code != "wall_clock_exceeded" || problems[2].Reason.Text != "wall clock limit exceeded" {
+	if problems[2].Code != "seat_exited" || problems[2].Reason.Text != "the seat exited before its output" {
 		t.Fatalf("wall clock error = %+v", problems[2])
 	}
 	raw, err := json.Marshal(clock)

@@ -39,39 +39,29 @@ func TestRemoteRunListFiltersByMission(t *testing.T) {
 	}
 }
 
-// A mission has one Input card, so a remote start need not name it; --input
-// picks one explicitly.
+// A mission has one Input card, so a remote start never names it; --input
+// supplies the mission's inputs by name (archon-o7p.3).
 func TestRemoteMissionRunStartsFromTheInputCard(t *testing.T) {
-	for _, extra := range [][]string{nil, {"--input", "mis_named"}} {
-		t.Run(fmt.Sprint(extra), func(t *testing.T) {
-			var started string
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == "GET" {
-					fmt.Fprint(w, `{"data":{"mission":{"rev":3,"inputCards":[{"id":"mis_only","title":"Brief"}]}}}`)
-					return
-				}
-				var body struct {
-					MissionID string `json:"inputCardId"`
-				}
-				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-					t.Error(err)
-				}
-				started = body.MissionID
-				fmt.Fprint(w, `{"data":{"runId":"run_proof"}}`)
-			}))
-			defer server.Close()
-			args := append([]string{"--server", server.URL, "mission", "run", "proof", "--brief", "Go", "--json"}, extra...)
-			if _, stderr, code := runArchon(t, &fakeTmux{}, args...); code != 0 {
-				t.Fatalf("code %d: %s", code, stderr)
-			}
-			want := "mis_only"
-			if extra != nil {
-				want = "mis_named"
-			}
-			if started != want {
-				t.Fatalf("started from %q, want %q", started, want)
-			}
-		})
+	var body struct {
+		MissionID string            `json:"inputCardId"`
+		Inputs    map[string]string `json:"inputs"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			fmt.Fprint(w, `{"data":{"mission":{"rev":3,"inputCards":[{"id":"mis_only","title":"Brief"}]}}}`)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		fmt.Fprint(w, `{"data":{"runId":"run_proof"}}`)
+	}))
+	defer server.Close()
+	if _, stderr, code := runArchon(t, &fakeTmux{}, "--server", server.URL, "mission", "run", "proof", "--input", "brief=Go", "--input", "topic=a=b", "--json"); code != 0 {
+		t.Fatalf("code %d: %s", code, stderr)
+	}
+	if body.MissionID != "mis_only" || !reflect.DeepEqual(body.Inputs, map[string]string{"brief": "Go", "topic": "a=b"}) {
+		t.Fatalf("started %+v, want mis_only with both inputs", body)
 	}
 }
 
@@ -81,7 +71,7 @@ func TestRemoteMissionContextPaths(t *testing.T) {
 			starts := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == "GET" && r.URL.Path == "/api/missions/proof" {
-					fmt.Fprint(w, `{"data":{"mission":{"rev":3}}}`)
+					fmt.Fprint(w, `{"data":{"mission":{"rev":3,"inputCards":[{"id":"mis_proof"}]}}}`)
 					return
 				}
 				if r.Method != "POST" || r.URL.Path != "/api/runs" {
@@ -112,7 +102,7 @@ func TestRemoteMissionContextPaths(t *testing.T) {
 				fmt.Fprint(w, `{"data":{"runId":"run_proof"}}`)
 			}))
 			defer server.Close()
-			args := []string{"--server", server.URL, "mission", "run", "proof", "--input", "mis_proof", "--brief", "Use supplied context", "--json"}
+			args := []string{"--server", server.URL, "mission", "run", "proof", "--input", "brief=Use supplied context", "--json"}
 			for i, path := range paths {
 				if i%2 == 0 {
 					args = append(args, "--context-path", path)

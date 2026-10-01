@@ -39,11 +39,15 @@ func (h *FormationsHandler) SetNeedsYouNotifier(notifier formations.NeedsYouNoti
 }
 
 type formationsRunStartRequest struct {
-	Board       string `json:"mission"`
-	MissionID   string `json:"inputCardId"`
-	FormationID string `json:"formationId"`
-	Actor       string `json:"actor"`
-	ExpectedRev int    `json:"expectedRev"`
+	Board        string            `json:"mission"`
+	MissionID    string            `json:"inputCardId"`
+	FormationID  string            `json:"formationId"`
+	Actor        string            `json:"actor"`
+	ExpectedRev  int               `json:"expectedRev"`
+	Cwd          string            `json:"cwd"`
+	ContextPaths []string          `json:"contextPaths"`
+	BeadID       string            `json:"beadId"`
+	Inputs       map[string]string `json:"inputs"`
 }
 
 type formationsRunAbortRequest struct {
@@ -99,6 +103,7 @@ type formationsBoardPatchRequest struct {
 	UpdateLimit                  *formationsUpdateLimitRequest           `json:"updateLimit"`
 	DeleteLimit                  *formationsDeleteLimitRequest           `json:"deleteLimit"`
 	MutationOccurrences          int                                     `json:"-"`
+	MutationKeys                 []string                                `json:"-"`
 	ExpectedRev                  int                                     `json:"expectedRev"`
 	LayoutExpectation            *formationsToolLayoutExpectationRequest `json:"layoutExpectation"`
 	UpdatedBy                    string                                  `json:"updatedBy"`
@@ -141,6 +146,7 @@ func (request *formationsBoardPatchRequest) UnmarshalJSON(raw []byte) error {
 	}
 	*request = formationsBoardPatchRequest(decoded)
 	request.MutationOccurrences = presence.MutationOccurrences
+	request.MutationKeys = presence.MutationKeys
 	request.ToolOperationOccurrences = presence.ToolOperationOccurrences
 	request.ToolFrameInvalid = presence.ToolFrameInvalid
 	request.ToolFrameUnicodeInvalid = invalidToolSurrogate
@@ -339,6 +345,7 @@ type formationsCreateGateRequest struct {
 
 type boardPatchPresence struct {
 	MutationOccurrences          int
+	MutationKeys                 []string
 	ToolOperationOccurrences     int
 	ToolFrameInvalid             bool
 	ExpectedRevOccurrences       int
@@ -405,6 +412,7 @@ func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
 		for _, mutationKey := range boardPatchMutationKeys {
 			if strings.EqualFold(key, mutationKey) {
 				presence.MutationOccurrences++
+				presence.MutationKeys = append(presence.MutationKeys, key)
 				break
 			}
 		}
@@ -500,8 +508,10 @@ type formationsUpdateMissionRequest struct {
 	Files        *[]string `json:"files"`
 	InputHint    *string   `json:"inputHint"`
 	HumanChannel *string   `json:"humanChannel"`
-	ExpectedRev  int       `json:"expectedRev"`
-	UpdatedBy    string    `json:"updatedBy"`
+	// Inputs, when present, replace the declared inputs; an empty list clears them.
+	Inputs      *[]formations.MissionInput `json:"inputs"`
+	ExpectedRev int                        `json:"expectedRev"`
+	UpdatedBy   string                     `json:"updatedBy"`
 }
 
 // formationsUpdateGateRequest sets only the fields present in the JSON object.
@@ -648,7 +658,10 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 		writeFormationsError(w, formations.ErrConflict)
 		return
 	}
-	if err := formations.CheckRunAdmission(board, h.personas, formations.RunAdmissionScope{MissionID: request.MissionID, FormationID: request.FormationID}); err != nil {
+	if request.Inputs == nil {
+		request.Inputs = map[string]string{}
+	}
+	if err := formations.CheckRunAdmission(board, h.personas, formations.RunAdmissionScope{MissionID: request.MissionID, FormationID: request.FormationID, Inputs: request.Inputs}); err != nil {
 		writeFormationsError(w, err)
 		return
 	}
@@ -663,8 +676,12 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		status, err := engine.RunFormation(slug, request.FormationID, formations.FormationRunRequest{
-			Actor:    request.Actor,
-			Personas: h.personas,
+			Actor:        request.Actor,
+			Personas:     h.personas,
+			Cwd:          request.Cwd,
+			ContextPaths: request.ContextPaths,
+			BeadID:       request.BeadID,
+			Inputs:       request.Inputs,
 		})
 		if err != nil {
 			writeFormationsError(w, err)
@@ -675,6 +692,10 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 	}
 	status, err := engine.RunMission(slug, formations.RunStartRequest{
 		MissionID:         request.MissionID,
+		Cwd:               request.Cwd,
+		ContextPaths:      request.ContextPaths,
+		BeadID:            request.BeadID,
+		Inputs:            request.Inputs,
 		Actor:             request.Actor,
 		ExpectedBoardETag: r.Header.Get("If-Match"),
 		ExpectedBoardRev:  expectedRev,
@@ -878,7 +899,7 @@ func (h *FormationsHandler) CreateBoard(w http.ResponseWriter, r *http.Request) 
 	}
 	updatedBy := strings.TrimSpace(request.UpdatedBy)
 	if updatedBy == "" {
-		updatedBy = "agent:ui"
+		updatedBy = "human:ui"
 	}
 	title := strings.TrimSpace(request.Title)
 	slug := strings.TrimSpace(request.Slug)
@@ -1032,6 +1053,12 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.patchToolBoard(w, r, &request) {
+		return
+	}
+	// One patch is one operation; a second is refused before anything is
+	// applied, never dropped (archon-n7u.46).
+	if request.MutationOccurrences > 1 {
+		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", fmt.Sprintf("a mission patch names one operation, and this one names %s: send them one at a time", joinAnd(request.MutationKeys)))
 		return
 	}
 	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
@@ -1418,6 +1445,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Files:        update.Files,
 			InputHint:    update.InputHint,
 			HumanChannel: update.HumanChannel,
+			Inputs:       update.Inputs,
 			UpdatedBy:    patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
@@ -1848,7 +1876,7 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	case errors.Is(err, formations.ErrIncompatibleToolConnection):
 		core.WriteError(w, http.StatusUnprocessableEntity, "INCOMPATIBLE_TOOL_CONNECTION", err.Error())
 	case errors.Is(err, formations.ErrConflict):
-		core.WriteError(w, http.StatusConflict, "CONFLICT", "Formation definition changed; reload and retry")
+		core.WriteError(w, http.StatusConflict, "CONFLICT", "The mission changed since it was read; reload it and retry")
 	case errors.Is(err, formations.ErrAlreadyExists):
 		core.WriteError(w, http.StatusConflict, "MISSION_EXISTS", "A mission with that name already exists")
 	case errors.Is(err, formations.ErrAmbiguousSelector):
@@ -1867,6 +1895,12 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusBadRequest, "INVALID_LIMIT", fieldErrorMessage(err, formations.ErrInvalidLimit))
 	case errors.Is(err, formations.ErrInvalidHumanChannel):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_HUMAN_CHANNEL", fieldErrorMessage(err, formations.ErrInvalidHumanChannel))
+	case errors.Is(err, formations.ErrInvalidMissionInput):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_MISSION_INPUT", fieldErrorMessage(err, formations.ErrInvalidMissionInput))
+	case errors.Is(err, formations.ErrBrokenLink):
+		core.WriteError(w, http.StatusUnprocessableEntity, "BROKEN_LINK", err.Error())
+	case errors.Is(err, formations.ErrRelativeFileRef):
+		core.WriteError(w, http.StatusBadRequest, "RELATIVE_FILE_REFERENCE", fieldErrorMessage(err, formations.ErrRelativeFileRef))
 	case errors.Is(err, formations.ErrInvalidControllerRole):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_CONTROLLER_ROLE", fieldErrorMessage(err, formations.ErrInvalidControllerRole))
 	case errors.Is(err, formations.ErrInvalidPortDirection):
@@ -1882,4 +1916,12 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	default:
 		core.WriteError(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 	}
+}
+
+// joinAnd lists names as "a", "a and b" or "a, b and c".
+func joinAnd(names []string) string {
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }

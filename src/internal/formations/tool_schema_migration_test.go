@@ -114,6 +114,26 @@ func TestToolSchemaMigrationNormalizesSafeLegacyGraphOnceWithoutOwningRevision(t
 	}
 }
 
+// A gate's fail route into a formation input is an ordinary pushback edge, so
+// a mission holding one migrates like any other, the edge on the workflow
+// channel (archon-zw4f).
+func TestToolSchemaMigrationKeepsAGateFailPushbackIntoAFormationInput(t *testing.T) {
+	raw := []byte(toolSchemaMigrationLegacyFixture() + `
+[[connection]]
+id = "edge_send_back"
+from = "gate_review:fail"
+to = "fmn_feedback:port_feedback_in"
+`)
+	migrated, err := migrateBoardToToolSchema(raw)
+	if err != nil {
+		t.Fatalf("migrate a mission with a gate fail pushback: %v", err)
+	}
+	assertToolSchemaMigrationConnectionChannel(t, migrated, "edge_send_back", "workflow")
+	if _, err := parseBoard(migrated); err != nil {
+		t.Fatalf("parse migrated mission: %v", err)
+	}
+}
+
 func TestToolSchemaMigrationSeparatesOwnedEOFInsertionsAfterUnterminatedLine(t *testing.T) {
 	raw := []byte(`schema = 1
 id = "brd_tool_eof"
@@ -690,16 +710,6 @@ func TestToolSchemaMigrationRejectsUnsafeLegacyShapesBeforeProducingCandidate(t 
 		wantError error
 		wantCode  string
 	}{
-		{
-			name: "Gate fail into legacy work input",
-			raw: base + `
-[[connection]]
-id = "edge_legacy_fail"
-from = "gate_review:fail"
-to = "fmn_feedback:port_feedback_in"
-`,
-			wantCode: "legacy_fail_route_requires_migration",
-		},
 		{
 			name:     "unpaired Gate judge send path missing return",
 			raw:      replaceToolSchemaMigrationFixture(t, base, toolSchemaMigrationJudgeReturnBlock, ""),

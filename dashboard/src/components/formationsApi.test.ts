@@ -14,9 +14,10 @@ import {
   normalizeLayout,
   patchBoardDocument,
   patchBoardNote,
+  renameMission,
   startRun,
 } from './formationsApi'
-import type { BoardDocument, LayoutDocument, ToolNode } from './formationsTypes'
+import type { LayoutDocument, ToolNode } from './formationsTypes'
 
 function jsonResponse(body: unknown, options: { ok?: boolean; status?: number; etag?: string } = {}): Response {
   return {
@@ -28,6 +29,9 @@ function jsonResponse(body: unknown, options: { ok?: boolean; status?: number; e
     json: () => Promise.resolve(body),
   } as Response
 }
+
+// The lists the daemon sends on every mission, empty or not (archon-n7u.49).
+const EMPTY_LISTS = { inputCards: [], formations: [], gates: [], tools: [], ends: [], connections: [] }
 
 describe('formations API helpers', () => {
   afterEach(() => {
@@ -44,7 +48,7 @@ describe('formations API helpers', () => {
       error: { code: 'RUN_ADMISSION_FAILED', message: 'The run needs 2 fixes before it can start', findings },
     }, { ok: false, status: 422 }))) as unknown as typeof fetch)
 
-    const failure = await startRun('etag', { mission: 'draft', inputCardId: 'mis_main', expectedRev: 2, actor: 'agent:ui' }).catch(err => err)
+    const failure = await startRun('etag', { mission: 'draft', inputCardId: 'mis_main', expectedRev: 2, actor: 'human:ui' }).catch(err => err)
 
     expect(failure).toBeInstanceOf(ApiRequestError)
     expect(failure).toMatchObject({ status: 422, code: 'RUN_ADMISSION_FAILED', message: 'The run needs 2 fixes before it can start', findings })
@@ -109,45 +113,11 @@ describe('formations API helpers', () => {
     await expect(fetchApi('/api/missions')).rejects.toBeInstanceOf(ApiRequestError)
   })
 
-  it('turns a formation null port or slot list into an empty one, as after removing its only input', () => {
-    const board = normalizeBoard({
-      id: 'brd_1', slug: 'ports', title: 'Ports', rev: 2, etag: 'e',
-      formations: [{ id: 'fmn', type: 'solo', title: 'Plan', inputs: null, outputs: [{ id: 'out', label: 'Output' }], slots: null }],
-      connections: [],
-    } as unknown as BoardDocument)
-    expect(board.formations[0]).toEqual({ id: 'fmn', type: 'solo', title: 'Plan', inputs: [], outputs: [{ id: 'out', label: 'Output' }], slots: [] })
-  })
-
-  it('normalizes optional board and layout arrays at the API boundary', () => {
-    const board = normalizeBoard({
-      id: 'brd_1',
-      slug: 'session-search',
-      title: 'Session search',
-      rev: 1,
-      etag: 'board-etag',
-      formations: [],
-      connections: [],
-    } as BoardDocument, 'response-etag')
-    const layout = normalizeLayout({
-      missionId: 'brd_1',
-      missionRev: 1,
-      etag: 'layout-etag',
-      nodes: [],
-    } as LayoutDocument, 'layout-response-etag')
-
-    expect(board).toMatchObject({
-      etag: 'response-etag',
-      inputCards: [],
-      gates: [],
-      tools: [],
-      formations: [],
-      connections: [],
-    })
-    expect(layout).toMatchObject({
-      etag: 'layout-response-etag',
-      nodes: [],
-      edges: [],
-    })
+  it('takes the response ETag and keeps the lists the daemon always sends', () => {
+    const served = { id: 'brd_1', slug: 'session-search', title: 'Session search', rev: 1, etag: 'board-etag', ...EMPTY_LISTS }
+    expect(normalizeBoard(served, 'response-etag')).toEqual({ ...served, etag: 'response-etag' })
+    const layout: LayoutDocument = { missionId: 'brd_1', missionRev: 1, etag: 'layout-etag', nodes: [], edges: [] }
+    expect(normalizeLayout(layout, 'layout-response-etag')).toEqual({ ...layout, etag: 'layout-response-etag' })
   })
 
   it('preserves the exact Tool projection at the API boundary', () => {
@@ -202,8 +172,7 @@ describe('formations API helpers', () => {
             title: 'Session search',
             rev: 1,
             etag: 'board-etag',
-            formations: [],
-            connections: [],
+            ...EMPTY_LISTS,
           },
         },
       }, { etag: 'response-etag' }))
@@ -225,7 +194,7 @@ describe('formations API helpers', () => {
       calls.push({ url: String(input), init })
       return Promise.resolve(jsonResponse({
         success: true,
-        data: { mission: { id: 'brd_new', slug: 'release-plan', title: 'Release Plan', rev: 1, etag: 'created-etag' } },
+        data: { mission: { id: 'brd_new', slug: 'release-plan', title: 'Release Plan', rev: 1, etag: 'created-etag', ...EMPTY_LISTS } },
       }, { status: 201, etag: 'created-etag' }))
     }) as unknown as typeof fetch)
 
@@ -236,7 +205,7 @@ describe('formations API helpers', () => {
     })
     expect(calls[0].url).toBe('/api/missions')
     expect(calls[0].init?.method).toBe('POST')
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ title: 'Release Plan' })
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ title: 'Release Plan', updatedBy: 'human:ui' })
   })
 
   it('loads a fresh board with a synthetic empty layout when no sidecar exists yet', async () => {
@@ -247,7 +216,7 @@ describe('formations API helpers', () => {
       }
       return Promise.resolve(jsonResponse({
         success: true,
-        data: { mission: { id: 'brd_new', slug: 'release-plan', title: 'Release Plan', rev: 1, etag: 'created-etag' } },
+        data: { mission: { id: 'brd_new', slug: 'release-plan', title: 'Release Plan', rev: 1, etag: 'created-etag', ...EMPTY_LISTS } },
       }, { etag: 'created-etag' }))
     }) as unknown as typeof fetch)
 
@@ -339,14 +308,14 @@ describe('formations API helpers', () => {
             title: 'Session search',
             rev: 2,
             etag: 'board-etag-2',
-            formations: [],
-            connections: [],
+            ...EMPTY_LISTS,
           },
           layout: {
             missionId: 'brd_1',
             missionRev: 2,
             etag: 'layout-etag-2',
             nodes: [],
+            edges: [],
           },
         },
       }, { etag: 'board-response-etag' }))
@@ -359,11 +328,37 @@ describe('formations API helpers', () => {
     expect(calls[0].init?.headers).toMatchObject({ 'If-Match': 'board-etag' })
     expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
       expectedRev: 1,
-      updatedBy: 'agent:ui',
+      updatedBy: 'human:ui',
       renameFormation: { id: 'fmn_1', title: 'Next' },
     })
     expect(result.board.etag).toBe('board-response-etag')
     expect(result.layout?.edges).toEqual([])
+  })
+
+  it('renames a mission as it is now, after edits elsewhere, and reads it again once if another lands in between', async () => {
+    // The daemon's mission moves on: an edit elsewhere since the dialog opened, then one more mid-rename.
+    let served = { id: 'brd_1', slug: 'scouting', title: 'Scouting', rev: 7, etag: 'etag-7', ...EMPTY_LISTS }
+    let editsMidRename = 1
+    const patches: Array<{ ifMatch: string; body: Record<string, unknown> }> = []
+    vi.stubGlobal('fetch', vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method !== 'PATCH') return Promise.resolve(jsonResponse({ success: true, data: { mission: served } }, { etag: served.etag }))
+      const ifMatch = (init.headers as Record<string, string>)['If-Match']
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>
+      patches.push({ ifMatch, body })
+      if (editsMidRename-- > 0) served = { ...served, rev: served.rev + 1, etag: `etag-${served.rev + 1}` }
+      if (ifMatch !== served.etag || body.expectedRev !== served.rev) {
+        return Promise.resolve(jsonResponse({ success: false, error: { code: 'CONFLICT', message: 'The mission changed since it was read; reload it and retry' } }, { ok: false, status: 409 }))
+      }
+      served = { ...served, title: String(body.title), rev: served.rev + 1, etag: `etag-${served.rev + 1}` }
+      return Promise.resolve(jsonResponse({ success: true, data: { mission: served } }, { etag: served.etag }))
+    }) as unknown as typeof fetch)
+
+    const result = await renameMission('scouting', 'Field scouting')
+    expect(result.board).toMatchObject({ title: 'Field scouting', rev: 9, etag: 'etag-9' })
+    expect(patches.map(patch => [patch.ifMatch, patch.body.expectedRev])).toEqual([['etag-7', 7], ['etag-8', 8]])
+
+    editsMidRename = 2
+    await expect(renameMission('scouting', 'Scouting again')).rejects.toThrow('Field scouting kept changing while it was renamed; press Save to rename it as it is now')
   })
 
   it('starts runs with the board ETag precondition', async () => {
@@ -386,12 +381,12 @@ describe('formations API helpers', () => {
       }))
     }) as unknown as typeof fetch)
 
-    await startRun('board-etag', { mission: 'session-search', inputCardId: 'mis_showcase', expectedRev: 1, actor: 'agent:ui' })
+    await startRun('board-etag', { mission: 'session-search', inputCardId: 'mis_showcase', expectedRev: 1, actor: 'human:ui' })
 
     expect(calls[0].url).toBe('/api/runs')
     expect(calls[0].init?.method).toBe('POST')
     expect(calls[0].init?.headers).toMatchObject({ 'If-Match': 'board-etag' })
     // No default limits: the run has none (archon-o7p.7).
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ mission: 'session-search', inputCardId: 'mis_showcase', expectedRev: 1, actor: 'agent:ui' })
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ mission: 'session-search', inputCardId: 'mis_showcase', expectedRev: 1, actor: 'human:ui' })
   })
 })

@@ -120,7 +120,7 @@ func runKeptFormation(t *testing.T, board, formationID string, personas []string
 		t.Fatal(err)
 	}
 	formation, _ := findFormation(document.Formations, formationID)
-	if _, err := executor.ExecuteFormationContext(context.Background(), FormationExecution{RunID: started.RunID, NodeID: formationID, Formation: formation, Attempt: 1, KeepSeatsOnCall: true}); err != nil {
+	if _, err := executor.ExecuteFormationContext(context.Background(), FormationExecution{RunID: started.RunID, NodeID: formationID, Formation: formation, Attempt: 1, KeepSeatsOnCall: true, Cwd: cfg.Cwd}); err != nil {
 		t.Fatalf("execute %s: %v", formationID, err)
 	}
 	return store, mustEvents(t, store, started.RunID)

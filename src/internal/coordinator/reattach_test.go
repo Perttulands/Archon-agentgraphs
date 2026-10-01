@@ -38,7 +38,7 @@ controller = false
 	if err := os.WriteFile(c.store.BoardPath("proof"), []byte(board), 0600); err != nil {
 		t.Fatal(err)
 	}
-	started, err := c.store.StartRun("proof", formations.RunStartRequest{MissionID: "mis_proof", ExpectedBoardRev: 1, Personas: c.personas, Cwd: root, Brief: "recover"})
+	started, err := c.store.StartRun("proof", formations.RunStartRequest{MissionID: "mis_proof", ExpectedBoardRev: 1, Personas: c.personas, Cwd: root, Inputs: map[string]string{"brief": "recover"}})
 	if err != nil {
 		t.Fatal(err)
 	}

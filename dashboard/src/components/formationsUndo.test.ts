@@ -82,7 +82,7 @@ describe('UndoHistory', () => {
     const history = historyOn()
     history.record({ board: 'b', label: 'the rename', steps: [boardStep({ rename: true })] })
     let attempts = 0
-    const { value, calls } = runner(async () => { if (attempts++ === 0) throw new Conflict('Formation definition changed; reload and retry') })
+    const { value, calls } = runner(async () => { if (attempts++ === 0) throw new Conflict('The mission changed since it was read; reload it and retry') })
     expect((await history.undo(value)).status).toBe('undone')
     expect(attempts).toBe(2)
     expect(calls.reloads).toBe(1)

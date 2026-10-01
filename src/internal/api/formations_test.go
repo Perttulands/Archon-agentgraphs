@@ -322,7 +322,7 @@ func TestFormationsHandlerS5ResumeVerdictAndEscalations(t *testing.T) {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"mission":"session-search","inputCardId":"mis_showcase"}`))
+	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"inputs":{"brief":"run it"},"mission":"session-search","inputCardId":"mis_showcase"}`))
 	startRec := httptest.NewRecorder()
 	mux.ServeHTTP(startRec, startReq)
 	if startRec.Code != http.StatusOK {
@@ -407,13 +407,12 @@ func TestFormationsHandlerStartsSingleFormationByID(t *testing.T) {
 		t.Fatalf("create persona: %v", err)
 	}
 	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
-	t.Setenv("ARCHON_LAB_CWD", store.Workspace)
 	writeFormationsAPIFixture(t, store.BoardPath("session-search"), formationsAPIS5CascadeBoardFixture())
 	handler := NewFormationsHandlerWithStores(store, personas)
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"mission":"session-search","formationId":"fmn_work","actor":"agent:test"}`))
+	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"inputs":{"brief":"run it"},"mission":"session-search","formationId":"fmn_work","actor":"agent:test"}`))
 	startRec := httptest.NewRecorder()
 	mux.ServeHTTP(startRec, startReq)
 	if startRec.Code != http.StatusOK {
@@ -1303,7 +1302,7 @@ func TestFormationsHandlerS4RunLifecycleAndSSE(t *testing.T) {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"mission":"session-search","inputCardId":"mis_showcase","actor":"agent:test"}`))
+	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"inputs":{"brief":"run it"},"mission":"session-search","inputCardId":"mis_showcase","actor":"agent:test"}`))
 	startReq.Header.Set("If-Match", board.ETag)
 	startRec := httptest.NewRecorder()
 	mux.ServeHTTP(startRec, startReq)
@@ -1412,7 +1411,6 @@ func TestFormationsHandlerS4ConfiguredLabExecutorRunsStaffedFormation(t *testing
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
-	t.Setenv("ARCHON_LAB_CWD", workspace)
 
 	store := formations.NewStore(workspace)
 	personas := formations.NewPersonaStore(agentsDir)
@@ -1430,7 +1428,7 @@ func TestFormationsHandlerS4ConfiguredLabExecutorRunsStaffedFormation(t *testing
 	}
 
 	handler := NewFormationsHandlerWithStores(store, personas)
-	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"mission":"poems","inputCardId":"mis_poem","actor":"agent:test"}`))
+	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"inputs":{"brief":"run it"},"mission":"poems","inputCardId":"mis_poem","actor":"agent:test"}`))
 	startReq.Header.Set("If-Match", board.ETag)
 	startRec := httptest.NewRecorder()
 	handler.StartRun(startRec, startReq)

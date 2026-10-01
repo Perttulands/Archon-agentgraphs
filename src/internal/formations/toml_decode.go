@@ -255,9 +255,56 @@ func decodeMissionNodes(document map[string]any) ([]MissionNode, error) {
 			return nil, err
 		}
 		node.HumanChannel = decodedHumanChannel(node.HumanChannel)
+		if node.Inputs, err = decodeMissionInputs(table); err != nil {
+			return nil, err
+		}
 		nodes = append(nodes, node)
 	}
 	return nodes, nil
+}
+
+// decodeMissionInputs reads an Input card's declared inputs as written; mission
+// validation reports a bad name, kind or duplicate.
+func decodeMissionInputs(table map[string]any) ([]MissionInput, error) {
+	tables, err := tomlTableArray(table, "inputs")
+	if err != nil || tables == nil {
+		return nil, err
+	}
+	inputs := make([]MissionInput, 0, len(tables))
+	for _, item := range tables {
+		var input MissionInput
+		if input.Name, err = tomlString(item, "name"); err != nil {
+			return nil, err
+		}
+		if input.Kind, err = tomlString(item, "kind"); err != nil {
+			return nil, err
+		}
+		if input.Required, err = tomlBool(item, "required"); err != nil {
+			return nil, err
+		}
+		if input.Description, err = tomlString(item, "description"); err != nil {
+			return nil, err
+		}
+		if input.Kind == "" {
+			input.Kind = MissionInputText
+		}
+		inputs = append(inputs, input)
+	}
+	return inputs, nil
+}
+
+// decodedMissionInputsInLineRange reads the inputs assignment spanning lines
+// [start, end) for the line-based reader of a file strict decoding refused.
+func decodedMissionInputsInLineRange(lines []tomlLine, start, end int) []MissionInput {
+	values, ok := decodedValuesInLineRange(lines, start, end)
+	if !ok {
+		return nil
+	}
+	inputs, err := decodeMissionInputs(values)
+	if err != nil {
+		return nil
+	}
+	return inputs
 }
 
 func decodeFormationNodes(document map[string]any) ([]FormationNode, error) {

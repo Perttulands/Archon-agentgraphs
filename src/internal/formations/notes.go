@@ -195,9 +195,17 @@ func (s *Store) UpdateBoardNote(slug string, patch BoardNotePatch, opts NoteWrit
 			next.Rev = current.Rev + 1
 			next.UpdatedAt = s.now().UTC()
 			next.UpdatedBy = author
-			entries, err := applyNotePatch(next.thread(patch.Target), patch, author, next.UpdatedAt)
+			entries, changed, err := applyNotePatch(next.thread(patch.Target), patch, author, next.UpdatedAt)
 			if err != nil {
 				return err
+			}
+			if !changed {
+				// An edit to the text it already has saves nothing, so the
+				// revision and ETag stay put (archon-62h).
+				unchanged := cloneBoardNotes(current)
+				unchanged.TOML = ""
+				updated = unchanged
+				return nil
 			}
 			next.setThread(patch.Target, entries)
 			if boardNotesSize(next) > maxBoardNotesBytes {
@@ -247,26 +255,31 @@ func validateNotePatch(patch *BoardNotePatch) (string, error) {
 	return author, nil
 }
 
-func applyNotePatch(entries []NoteEntry, patch BoardNotePatch, author string, now time.Time) ([]NoteEntry, error) {
+// applyNotePatch returns the thread after the patch and whether it changed: an
+// edit to the text an entry already has changes nothing.
+func applyNotePatch(entries []NoteEntry, patch BoardNotePatch, author string, now time.Time) ([]NoteEntry, bool, error) {
 	if patch.Action == NoteActionAppend {
-		return append(entries, NoteEntry{ID: newPrefixedID("nte"), Author: author, CreatedAt: now, Text: patch.Text}), nil
+		return append(entries, NoteEntry{ID: newPrefixedID("nte"), Author: author, CreatedAt: now, Text: patch.Text}), true, nil
 	}
 	for i, entry := range entries {
 		if entry.ID != patch.EntryID {
 			continue
 		}
 		if entry.Author != author {
-			return nil, fmt.Errorf("%w: entry %q is by %s", ErrNoteAuthorMismatch, entry.ID, entry.Author)
+			return nil, false, fmt.Errorf("%w: entry %q is by %s", ErrNoteAuthorMismatch, entry.ID, entry.Author)
 		}
 		if patch.Action == NoteActionDelete {
-			return append(entries[:i:i], entries[i+1:]...), nil
+			return append(entries[:i:i], entries[i+1:]...), true, nil
+		}
+		if entry.Text == patch.Text {
+			return entries, false, nil
 		}
 		edited := now
 		entries[i].Text = patch.Text
 		entries[i].EditedAt = &edited
-		return entries, nil
+		return entries, true, nil
 	}
-	return nil, fmt.Errorf("%w: %q on %s", ErrNoteEntryNotFound, patch.EntryID, patch.Target)
+	return nil, false, fmt.Errorf("%w: %q on %s", ErrNoteEntryNotFound, patch.EntryID, patch.Target)
 }
 
 func (notes *BoardNotesDocument) thread(target string) []NoteEntry {

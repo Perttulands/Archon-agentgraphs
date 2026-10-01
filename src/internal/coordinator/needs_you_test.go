@@ -51,7 +51,7 @@ func (n *recordingNotifier) snapshot() ([]formations.NeedsYouNotification, int) 
 
 func awaitNotifications(t *testing.T, n *recordingNotifier, want int) []formations.NeedsYouNotification {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	for {
 		sent, _ := n.snapshot()
 		if len(sent) >= want {
@@ -239,7 +239,7 @@ func TestNeedsYouSendNeverHoldsShutdown(t *testing.T) {
 	<-executor.entered
 	executor.proceed <- struct{}{}
 	awaitState(t, c, id, "waiting_human")
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	for _, tries := notifier.snapshot(); tries == 0; _, tries = notifier.snapshot() {
 		if time.Now().After(deadline) {
 			t.Fatal("send never started")

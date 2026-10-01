@@ -25,11 +25,12 @@ import type {
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { ProducedFiles } from '../files/ProducedFiles'
 import { referencedFileRequest } from '../files/fileWindowModel'
-import { nodeFileRefs } from '../files/referencedFiles'
+import { nodeFileRefs, relativeFileProblem, useFileProblems } from '../files/referencedFiles'
 import FloatingWindow from '../windows/FloatingWindow'
 import { nodeAnchor, nodeWindowKeepClear } from '../windows/cockpitScene'
 import type { WindowRect } from '../windows/windowGeometry'
 import { EditableField } from './EditableField'
+import { MissionInputsField } from './MissionInputsField'
 import { HumanChannelField } from '../humanChannel/HumanChannelField'
 import { humanChannelField, humanChannelOf } from '../humanChannel/humanChannel'
 import { buildFlow } from '../flow/flowModel'
@@ -47,7 +48,7 @@ import './nodeWindow.css'
 
 export interface NodeWindowOps {
   rename: (nodeId: string, title: string) => Promise<boolean>
-  updateInputCard: (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel'>>) => Promise<boolean>
+  updateInputCard: (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel' | 'inputs'>>) => Promise<boolean>
   setBrief: (formationId: string, brief: FormationBrief) => Promise<boolean>
   changeType: (formation: FormationNode, type: FormationType, keepSlotId?: string) => void
   assignSlot: (formation: FormationNode, slot: FormationSlot, agentId: string, harness: string) => void
@@ -208,9 +209,10 @@ function MissionFields({ mission, ops }: { mission: MissionNode; ops: NodeWindow
     <>
       <EditableField label="Goal" value={mission.goal} multiline markdown placeholder="No goal yet. Say what the mission should achieve."
         onSave={goal => ops.updateInputCard(mission.id, { goal })} />
+      <MissionInputsField inputs={mission.inputs} onSave={inputs => ops.updateInputCard(mission.id, { inputs })} />
       <EditableField label="Input hint" value={mission.inputHint || ''} multiline markdown
         placeholder="No input hint. Start mission explains what a brief is."
-        hint="What a run's brief should contain. Start mission shows it beside the brief."
+        hint="What a run's brief should contain, when the mission declares no inputs. Start mission shows it beside the brief."
         onSave={inputHint => ops.updateInputCard(mission.id, { inputHint })} />
       <FilesField files={mission.files} context={mission.title} onSave={files => ops.updateInputCard(mission.id, { files })} />
       <HumanChannelField channel={humanChannelOf(mission)}
@@ -267,7 +269,7 @@ function FilesField({ files, context, hint = 'Separate files with commas.', onSa
   onSave: (files: string[]) => Promise<boolean>
 }) {
   return (
-    <EditableField label="Files" value={(files || []).join(', ')} placeholder="No files" hint={hint} onSave={value => onSave(splitList(value))}>
+    <EditableField label="Files" value={(files || []).join(', ')} placeholder="No files" hint={hint} validate={relativeFileProblem} onSave={value => onSave(splitList(value))}>
       {files?.length ? <FileList files={files} context={context} /> : null}
     </EditableField>
   )
@@ -275,6 +277,7 @@ function FilesField({ files, context, hint = 'Separate files with commas.', onSa
 
 function FileList({ files, context, label }: { files: string[]; context: string; label?: string }) {
   const fileWindows = useFileWindows()
+  const problems = useFileProblems()
   return (
     <ul className="nwin-list" aria-label={label}>
       {files.map(file => (
@@ -282,6 +285,7 @@ function FileList({ files, context, label }: { files: string[]; context: string;
           {fileWindows
             ? <button type="button" className="nwin-route" aria-label={`Open file ${file}`} onClick={event => fileWindows.open(referencedFileRequest(file, context), fileAnchor(event.currentTarget))}>{file}</button>
             : file}
+          {problems.has(file) ? <span className="nwin-file-problem">{problems.get(file)}</span> : null}
         </li>
       ))}
     </ul>

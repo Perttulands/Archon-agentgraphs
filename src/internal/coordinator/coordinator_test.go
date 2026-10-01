@@ -76,7 +76,7 @@ func post(t *testing.T, c *Coordinator, path string, body string) *httptest.Resp
 }
 func startRun(t *testing.T, c *Coordinator) string {
 	t.Helper()
-	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"run the proof", "mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
+	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"run the proof"}, "mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 	if w.Code != 202 {
 		t.Fatalf("start %d %s", w.Code, w.Body.String())
 	}
@@ -92,7 +92,7 @@ func startRun(t *testing.T, c *Coordinator) string {
 }
 func awaitState(t *testing.T, c *Coordinator, id, state string) *Projection {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 	defer cancel()
 	for {
 		change := c.nextChange(id)
@@ -126,7 +126,7 @@ func TestAdmissionSurvivesDisconnectAndHumanGateRequiresExactRequest(t *testing.
 		if node != "fmn_work" {
 			t.Fatal(node)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("seat not dispatched")
 	}
 	e.proceed <- struct{}{}
@@ -167,7 +167,7 @@ func TestAdmissionSurvivesDisconnectAndHumanGateRequiresExactRequest(t *testing.
 		if node != "fmn_after" {
 			t.Fatal(node)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("continuation not dispatched")
 	}
 	e.proceed <- struct{}{}
@@ -294,7 +294,7 @@ to = "end_done:in"
 // request has no such field.
 func TestAdmissionRecordsNoLimitsAndRefusesLaunchLimits(t *testing.T) {
 	c, e, _ := fixture(t)
-	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
+	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"proof"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 	if w.Code != 202 {
 		t.Fatalf("admission %d %s", w.Code, w.Body.String())
 	}
@@ -308,7 +308,7 @@ func TestAdmissionRecordsNoLimitsAndRefusesLaunchLimits(t *testing.T) {
 	}
 	select {
 	case <-e.entered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("execution did not start")
 	}
 	events, err := c.store.ReadRunEvents(receipt.Data.RunID)
@@ -320,7 +320,7 @@ func TestAdmissionRecordsNoLimitsAndRefusesLaunchLimits(t *testing.T) {
 	}
 	for _, limits := range []string{`{}`, `{"maxDispatch":3}`, `{"wallClockSeconds":60}`} {
 		c, _, _ := fixture(t)
-		w := post(t, c, "/api/runs", `{"limits":`+limits+`,"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
+		w := post(t, c, "/api/runs", `{"limits":`+limits+`,"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"proof"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 		if w.Code != 400 {
 			t.Fatalf("limits %s admission %d %s, want 400", limits, w.Code, w.Body.String())
 		}
@@ -337,10 +337,10 @@ func TestAdmissionGivesStepsNoDefaultDuration(t *testing.T) {
 			if mode == "formation" {
 				selector = `"formationId":"fmn_work",`
 			}
-			if w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof",`+selector+`"expectedRev":1,"limits":{"formationTimeoutSeconds":999}}`); w.Code != 400 {
+			if w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"proof"},"mission":"proof",`+selector+`"expectedRev":1,"limits":{"formationTimeoutSeconds":999}}`); w.Code != 400 {
 				t.Fatalf("a default step duration was accepted: %d %s", w.Code, w.Body.String())
 			}
-			w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof",`+selector+`"expectedRev":1}`)
+			w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"proof"},"mission":"proof",`+selector+`"expectedRev":1}`)
 			if w.Code != 202 {
 				t.Fatalf("admission %d %s", w.Code, w.Body.String())
 			}
@@ -354,7 +354,7 @@ func TestAdmissionGivesStepsNoDefaultDuration(t *testing.T) {
 			}
 			select {
 			case <-e.entered:
-			case <-time.After(5 * time.Second):
+			case <-time.After(testPatience):
 				t.Fatal("execution did not start")
 			}
 			events, err := c.store.ReadRunEvents(receipt.Data.RunID)

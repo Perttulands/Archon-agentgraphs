@@ -13,7 +13,7 @@ export function runActorLabel(actor = ''): string {
   switch (actor) {
     case '':
       return ''
-    case 'agent:ui':
+    case 'human:ui':
       return 'the operator in the cockpit'
     case 'agent:archon':
     case 'operator:archon':

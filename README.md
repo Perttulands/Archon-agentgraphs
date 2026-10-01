@@ -133,20 +133,21 @@ The [minimal mission](docs/CONTRACT.md#definitions-and-storage) is a smaller
 starting point for your own workflow.
 
 With a configured daemon and a prepared delivery mission, start a run from
-another terminal. Replace the working directory, brief and Bead below with
-your task's values.
+another terminal. `archon --server http://127.0.0.1:8091 mission input delivery`
+lists the inputs a run supplies; Delivery takes one, `change`. Replace the
+working directory, change and Bead below with your task's values.
 
 ```bash
 archon --server http://127.0.0.1:8091 mission run delivery \
   --cwd /absolute/path/to/your/repository \
-  --brief /absolute/path/to/your/brief.md --bead your-project-123 --json
+  --input-file change=/absolute/path/to/your/change.md --bead your-project-123 --json
 ```
 
 Use the returned run ID with `run status`, `run logs`, `run follow`,
 `run wait` or `run abort`. An agent driving the run leaves `run wait` running
 in the background: it returns when the run needs an answer, ends or changes,
 and prints the command that answers it. Runtime commands always use `--server`; local authoring uses
-`--workspace`. A run keeps a snapshot of its mission and personas, so later
+`--workspace`, and there is no default workspace. A run keeps a snapshot of its mission and personas, so later
 edits apply to later runs. Recovery records unresolved work explicitly;
 inspect a blocked run before deciding how to continue it.
 
