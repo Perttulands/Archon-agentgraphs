@@ -2824,7 +2824,8 @@ describe('FormationsCockpit reference parity', () => {
   it('flags a referenced file that does not exist on its chip and in its node window, and offers no raw view of it', async () => {
     const withFiles = makeBoard()
     withFiles.gates = [{ ...gate, files: ['/srv/rubrics/review.md', '/srv/rubrics/later.md'] }]
-    withFiles.inputCards = [{ ...mission, files: ['plans/brief.md'] }]
+    const relativeMission = { ...mission, files: ['plans/brief.md'] }
+    withFiles.inputCards = [relativeMission]
     patches = installFetchMock({
       boards: [withFiles],
       validation: {

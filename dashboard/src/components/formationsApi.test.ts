@@ -340,7 +340,7 @@ describe('formations API helpers', () => {
     let served = { id: 'brd_1', slug: 'scouting', title: 'Scouting', rev: 7, etag: 'etag-7', ...EMPTY_LISTS }
     let editsMidRename = 1
     const patches: Array<{ ifMatch: string; body: Record<string, unknown> }> = []
-    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    vi.stubGlobal('fetch', vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method !== 'PATCH') return Promise.resolve(jsonResponse({ success: true, data: { mission: served } }, { etag: served.etag }))
       const ifMatch = (init.headers as Record<string, string>)['If-Match']
       const body = JSON.parse(String(init.body)) as Record<string, unknown>
