@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -472,9 +473,11 @@ func TestSeatTypedTextReadsTheInputLine(t *testing.T) {
 
 // stagingPane plays a seat's screens for Stage from real captures: each
 // command that changes the pane moves to the next screen, and tmux reports it.
+// The test plays the operator from its own goroutine.
 type stagingPane struct {
 	t       *testing.T
 	harness string
+	mu      sync.Mutex
 	screens map[string][]string
 	screen  string
 	events  chan struct{}
@@ -482,15 +485,24 @@ type stagingPane struct {
 }
 
 func (p *stagingPane) show(screen string) {
+	p.mu.Lock()
 	p.screen = screen
+	p.mu.Unlock()
 	select {
 	case p.events <- struct{}{}:
 	default:
 	}
 }
 
+func (p *stagingPane) current() (string, []string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.screen, slices.Clone(p.keys)
+}
+
 func (p *stagingPane) command(_ context.Context, _ string, _ *strings.Reader, args ...string) (string, error) {
-	screen, x, y := paneFixture(p.t, p.screen)
+	current, _ := p.current()
+	screen, x, y := paneFixture(p.t, current)
 	switch args[0] {
 	case "display-message":
 		return fmt.Sprintf("%d %d 0", x, y), nil
@@ -503,12 +515,17 @@ func (p *stagingPane) command(_ context.Context, _ string, _ *strings.Reader, ar
 		return "", nil
 	case "paste-buffer", "send-keys":
 		key := "paste"
+		p.mu.Lock()
 		if args[0] == "send-keys" {
 			key = args[len(args)-1]
 			p.keys = append(p.keys, key)
 		}
-		if next := p.screens[p.screen+" "+key]; len(next) > 0 {
-			p.screens[p.screen+" "+key] = next[1:]
+		next := p.screens[current+" "+key]
+		if len(next) > 0 {
+			p.screens[current+" "+key] = next[1:]
+		}
+		p.mu.Unlock()
+		if len(next) > 0 {
 			p.show(next[0])
 		}
 		return "", nil
@@ -602,16 +619,16 @@ func TestStageSendsThePastedBriefUntilTheHarnessTakesIt(t *testing.T) {
 					time.Sleep(time.Millisecond)
 				}
 				time.Sleep(4 * seatSubmitRetry)
-				if len(pane.keys) != 0 {
-					t.Fatalf("pressed %v on the operator's text", pane.keys)
+				if _, keys := pane.current(); len(keys) != 0 {
+					t.Fatalf("pressed %v on the operator's text", keys)
 				}
 				tc.operator(pane)
 			}
 			if err := <-staged; err != nil {
 				t.Fatal(err)
 			}
-			if got := strings.Join(pane.keys, ","); got != tc.keys {
-				t.Fatalf("keys %q, want %q", got, tc.keys)
+			if _, keys := pane.current(); strings.Join(keys, ",") != tc.keys {
+				t.Fatalf("keys %q, want %q", strings.Join(keys, ","), tc.keys)
 			}
 			if state, _ := seat.waiting(); state != "" {
 				t.Fatalf("seat still says %s", state)
@@ -642,8 +659,8 @@ func TestCodex0159TrustDialogIsAnswered(t *testing.T) {
 			} else {
 				err = transport.WaitInputClear(ctx, "socket", seat)
 			}
-			if err != nil || strings.Join(pane.keys, ",") != "Enter" || pane.screen != "codex-0159-ready-before-trust-dialog" {
-				t.Fatalf("err %v, keys %v, screen %s", err, pane.keys, pane.screen)
+			if screen, keys := pane.current(); err != nil || strings.Join(keys, ",") != "Enter" || screen != "codex-0159-ready-before-trust-dialog" {
+				t.Fatalf("err %v, keys %v, screen %s", err, keys, screen)
 			}
 		})
 	}
