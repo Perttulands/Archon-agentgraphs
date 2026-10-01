@@ -49,8 +49,7 @@
 .staffing-list-wrap>.staffing-listbox{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
 .staffing-listbox>.staffing-list{flex:1 1 auto;}
 .staffing-list-hd{padding:6px 12px 2px;font-size:10px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.staffing-list{position:relative;padding:2px 6px 6px;min-height:0;overflow:auto;scrollbar-width:thin;scroll-snap-type:y proximity;scroll-padding-top:2px;}
-.staffing-list .staffing-row{scroll-snap-align:start;}
+.staffing-list{position:relative;padding:2px 6px 6px;min-height:0;overflow:auto;scrollbar-width:thin;}
 .staffing-row{display:grid;grid-template-columns:auto auto 1fr;align-items:baseline;gap:10px;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:13px;}
 .staffing-row .staffing-row-l{color:var(--text-primary);white-space:nowrap;}
 .staffing-row .staffing-row-h{color:var(--text-dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
