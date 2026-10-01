@@ -69,12 +69,12 @@ type BoardDocument struct {
 	Rev         int               `json:"rev"`
 	UpdatedBy   string            `json:"updatedBy,omitempty"`
 	UpdatedAt   string            `json:"updatedAt,omitempty"`
-	Missions    []MissionNode     `json:"inputCards,omitempty"`
-	Formations  []FormationNode   `json:"formations,omitempty"`
-	Gates       []GateNode        `json:"gates,omitempty"`
-	Tools       []ToolNode        `json:"tools,omitempty"`
-	Ends        []EndNode         `json:"ends,omitempty"`
-	Connections []BoardConnection `json:"connections,omitempty"`
+	Missions    []MissionNode     `json:"inputCards"`
+	Formations  []FormationNode   `json:"formations"`
+	Gates       []GateNode        `json:"gates"`
+	Tools       []ToolNode        `json:"tools"`
+	Ends        []EndNode         `json:"ends"`
+	Connections []BoardConnection `json:"connections"`
 	ETag        string            `json:"etag"`
 	TOML        string            `json:"toml,omitempty"`
 }
@@ -92,8 +92,8 @@ type LayoutDocument struct {
 	BoardID   string       `json:"missionId"`
 	BoardRev  int          `json:"missionRev"`
 	UpdatedAt string       `json:"updatedAt,omitempty"`
-	Nodes     []LayoutNode `json:"nodes,omitempty"`
-	Edges     []LayoutEdge `json:"edges,omitempty"`
+	Nodes     []LayoutNode `json:"nodes"`
+	Edges     []LayoutEdge `json:"edges"`
 	ETag      string       `json:"etag"`
 	TOML      string       `json:"toml,omitempty"`
 }

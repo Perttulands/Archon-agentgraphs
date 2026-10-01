@@ -200,6 +200,7 @@
         "criterion": "The proposed Beads pass bd lint, link to their parent and required dependencies, and define clear, scoped, verifiable goals that deliver the plan."
       }
     ],
+    "tools": [],
     "connections": [
       {
         "id": "edge_mission_plan",

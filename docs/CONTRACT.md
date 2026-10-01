@@ -1190,7 +1190,10 @@ theme document described below, JSON responses use
 under `/api/missions` includes list/create/read/patch/delete, notes, layout,
 validation and change polling. A mission read or edit answers `data.mission`
 (with `layout` and the created or changed node, such as `inputCard`, where it
-applies); a run starts with `mission` and `inputCardId` (or `formationId`), its
+applies). A mission always carries its lists as arrays, empty or not:
+`inputCards`, `formations`, `gates`, `tools`, `ends` and `connections`, each
+formation's `inputs`, `outputs` and `slots`, each gate's `kinds` and each
+Tool's ports; a layout carries `nodes` and `edges` the same way; a run starts with `mission` and `inputCardId` (or `formationId`), its
 `inputs` and the other run fields. The
 Input card patch actions are `createInputCard`, `updateInputCard` and
 `deleteInputCard`. A mission patch carries one operation: one naming two or

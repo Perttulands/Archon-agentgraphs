@@ -61,31 +61,14 @@ export async function fetchApi<T>(endpoint: string, init?: RequestInit): Promise
   return { data: result.data, etag: response.headers.get('ETag') || '' }
 }
 
+// The daemon always sends a mission's and a layout's lists as arrays, empty or
+// not (archon-n7u.49); a document only takes the ETag its response carried.
 export function normalizeBoard(board: BoardDocument, etag = ''): BoardDocument {
-  return {
-    ...board,
-    etag: etag || board.etag,
-    inputCards: board.inputCards || [],
-    // The server sends null for an empty port or slot list, as after removing a formation's only input.
-    formations: (board.formations || []).map(formation => ({
-      ...formation,
-      inputs: formation.inputs || [],
-      outputs: formation.outputs || [],
-      slots: formation.slots || [],
-    })),
-    gates: board.gates || [],
-    tools: board.tools || [],
-    connections: board.connections || [],
-  }
+  return { ...board, etag: etag || board.etag }
 }
 
 export function normalizeLayout(layout: LayoutDocument, etag = ''): LayoutDocument {
-  return {
-    ...layout,
-    etag: etag || layout.etag,
-    nodes: layout.nodes || [],
-    edges: layout.edges || [],
-  }
+  return { ...layout, etag: etag || layout.etag }
 }
 
 export function missingLayoutForBoard(board: BoardDocument): LayoutDocument {

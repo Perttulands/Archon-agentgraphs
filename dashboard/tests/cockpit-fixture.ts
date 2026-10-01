@@ -9,6 +9,7 @@ export const board: {
   missions: Array<{ id: string; title: string; goal: string; beadId: string }>
   formations: Array<{ id: string; type: string; title: string; brief?: { goal: string }; inputs: Array<{ id: string; label: string }>; outputs: Array<{ id: string; label: string }>; slots: Array<Record<string, unknown>> }>
   gates: Array<{ id: string; title: string; kinds: string[]; criterion: string }>
+  tools: unknown[]
   ends?: EndNode[]
   connections: Array<{ id: string; from: string; to: string }>
 } = {
@@ -25,6 +26,8 @@ export const board: {
   ],
   gates: [{ id: 'gate', title: 'Review gate', kinds: ['formation'], criterion: 'Evidence supports acceptance' },
     { id: 'loose', title: 'Disconnected gate', kinds: ['human'], criterion: 'Operator approval' }],
+  tools: [],
+  ends: [],
   connections: [
     { id: 'start', from: 'mission:out', to: 'execution:in' },
     { id: 'review', from: 'execution:out', to: 'gate:in' },

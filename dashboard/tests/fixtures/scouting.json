@@ -179,6 +179,7 @@
         "criterion": "Sign off the brief. Approve to end the run with this brief as the result. Send back with what to change."
       }
     ],
+    "tools": [],
     "connections": [
       {
         "id": "edge_01M2N3KSVZ2T9H2Y33XGH1M376",

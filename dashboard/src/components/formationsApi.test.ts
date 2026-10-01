@@ -16,7 +16,7 @@ import {
   patchBoardNote,
   startRun,
 } from './formationsApi'
-import type { BoardDocument, LayoutDocument, ToolNode } from './formationsTypes'
+import type { LayoutDocument, ToolNode } from './formationsTypes'
 
 function jsonResponse(body: unknown, options: { ok?: boolean; status?: number; etag?: string } = {}): Response {
   return {
@@ -28,6 +28,9 @@ function jsonResponse(body: unknown, options: { ok?: boolean; status?: number; e
     json: () => Promise.resolve(body),
   } as Response
 }
+
+// The lists the daemon sends on every mission, empty or not (archon-n7u.49).
+const EMPTY_LISTS = { inputCards: [], formations: [], gates: [], tools: [], ends: [], connections: [] }
 
 describe('formations API helpers', () => {
   afterEach(() => {
@@ -109,45 +112,11 @@ describe('formations API helpers', () => {
     await expect(fetchApi('/api/missions')).rejects.toBeInstanceOf(ApiRequestError)
   })
 
-  it('turns a formation null port or slot list into an empty one, as after removing its only input', () => {
-    const board = normalizeBoard({
-      id: 'brd_1', slug: 'ports', title: 'Ports', rev: 2, etag: 'e',
-      formations: [{ id: 'fmn', type: 'solo', title: 'Plan', inputs: null, outputs: [{ id: 'out', label: 'Output' }], slots: null }],
-      connections: [],
-    } as unknown as BoardDocument)
-    expect(board.formations[0]).toEqual({ id: 'fmn', type: 'solo', title: 'Plan', inputs: [], outputs: [{ id: 'out', label: 'Output' }], slots: [] })
-  })
-
-  it('normalizes optional board and layout arrays at the API boundary', () => {
-    const board = normalizeBoard({
-      id: 'brd_1',
-      slug: 'session-search',
-      title: 'Session search',
-      rev: 1,
-      etag: 'board-etag',
-      formations: [],
-      connections: [],
-    } as BoardDocument, 'response-etag')
-    const layout = normalizeLayout({
-      missionId: 'brd_1',
-      missionRev: 1,
-      etag: 'layout-etag',
-      nodes: [],
-    } as LayoutDocument, 'layout-response-etag')
-
-    expect(board).toMatchObject({
-      etag: 'response-etag',
-      inputCards: [],
-      gates: [],
-      tools: [],
-      formations: [],
-      connections: [],
-    })
-    expect(layout).toMatchObject({
-      etag: 'layout-response-etag',
-      nodes: [],
-      edges: [],
-    })
+  it('takes the response ETag and keeps the lists the daemon always sends', () => {
+    const served = { id: 'brd_1', slug: 'session-search', title: 'Session search', rev: 1, etag: 'board-etag', ...EMPTY_LISTS }
+    expect(normalizeBoard(served, 'response-etag')).toEqual({ ...served, etag: 'response-etag' })
+    const layout: LayoutDocument = { missionId: 'brd_1', missionRev: 1, etag: 'layout-etag', nodes: [], edges: [] }
+    expect(normalizeLayout(layout, 'layout-response-etag')).toEqual({ ...layout, etag: 'layout-response-etag' })
   })
 
   it('preserves the exact Tool projection at the API boundary', () => {
@@ -202,8 +171,7 @@ describe('formations API helpers', () => {
             title: 'Session search',
             rev: 1,
             etag: 'board-etag',
-            formations: [],
-            connections: [],
+            ...EMPTY_LISTS,
           },
         },
       }, { etag: 'response-etag' }))
@@ -225,7 +193,7 @@ describe('formations API helpers', () => {
       calls.push({ url: String(input), init })
       return Promise.resolve(jsonResponse({
         success: true,
-        data: { mission: { id: 'brd_new', slug: 'release-plan', title: 'Release Plan', rev: 1, etag: 'created-etag' } },
+        data: { mission: { id: 'brd_new', slug: 'release-plan', title: 'Release Plan', rev: 1, etag: 'created-etag', ...EMPTY_LISTS } },
       }, { status: 201, etag: 'created-etag' }))
     }) as unknown as typeof fetch)
 
@@ -247,7 +215,7 @@ describe('formations API helpers', () => {
       }
       return Promise.resolve(jsonResponse({
         success: true,
-        data: { mission: { id: 'brd_new', slug: 'release-plan', title: 'Release Plan', rev: 1, etag: 'created-etag' } },
+        data: { mission: { id: 'brd_new', slug: 'release-plan', title: 'Release Plan', rev: 1, etag: 'created-etag', ...EMPTY_LISTS } },
       }, { etag: 'created-etag' }))
     }) as unknown as typeof fetch)
 
@@ -339,14 +307,14 @@ describe('formations API helpers', () => {
             title: 'Session search',
             rev: 2,
             etag: 'board-etag-2',
-            formations: [],
-            connections: [],
+            ...EMPTY_LISTS,
           },
           layout: {
             missionId: 'brd_1',
             missionRev: 2,
             etag: 'layout-etag-2',
             nodes: [],
+            edges: [],
           },
         },
       }, { etag: 'board-response-etag' }))

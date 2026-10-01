@@ -80,7 +80,7 @@ func TestArchonToolCreatePublishesCanonicalPairWithoutReflowOrImplicitWiring(t *
 			if result.Board.Rev != beforeBoard.Rev+1 || result.Layout.BoardRev != result.Board.Rev {
 				t.Fatalf("created pair revisions = board %d layout %d, want board %d", result.Board.Rev, result.Layout.BoardRev, beforeBoard.Rev+1)
 			}
-			if !reflect.DeepEqual(result.Board.Connections, beforeBoard.Connections) {
+			if !sameList(result.Board.Connections, beforeBoard.Connections) {
 				t.Fatalf("Tool create implicitly changed connections:\n before=%#v\n after=%#v", beforeBoard.Connections, result.Board.Connections)
 			}
 			if beforeLayout != nil {
@@ -204,7 +204,7 @@ func TestArchonToolCreatePlacementUnionIsStoreValidatedAndNeverReflowsExistingNo
 			assertArchonToolRetainedLayoutNodes(t, beforeLayout, result.Layout, nil)
 			wantNodes := append(append([]formations.LayoutNode(nil), beforeLayout.Nodes...), position)
 			assertArchonToolLayoutInventory(t, result.Layout, wantNodes, beforeLayout.Edges)
-			if !reflect.DeepEqual(result.Board.Connections, beforeBoard.Connections) {
+			if !sameList(result.Board.Connections, beforeBoard.Connections) {
 				t.Fatalf("placement hints implicitly wired the Tool:\n before=%#v\n after=%#v", beforeBoard.Connections, result.Board.Connections)
 			}
 			assertArchonToolCanonicalPair(t, harness, result.Board, result.Layout)
@@ -1242,7 +1242,7 @@ func assertArchonToolLayoutInventory(
 	if !reflect.DeepEqual(layout.Nodes, wantNodes) {
 		t.Fatalf("Tool layout nodes/order = %#v, want %#v", layout.Nodes, wantNodes)
 	}
-	if !reflect.DeepEqual(layout.Edges, wantEdges) {
+	if !sameList(layout.Edges, wantEdges) {
 		t.Fatalf("Tool layout edges/order = %#v, want %#v", layout.Edges, wantEdges)
 	}
 	seenNodes := make(map[string]bool, len(layout.Nodes))
@@ -1259,4 +1259,13 @@ func assertArchonToolLayoutInventory(
 		}
 		seenEdges[edge.ID] = true
 	}
+}
+
+// sameList compares lists as JSON carries them: an empty list is served as []
+// whether or not the document held one (archon-n7u.49).
+func sameList[T any](got, want []T) bool {
+	if len(got) == 0 && len(want) == 0 {
+		return true
+	}
+	return reflect.DeepEqual(got, want)
 }
