@@ -117,6 +117,8 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrInvalidMissionInput
 	case "RELATIVE_FILE_REFERENCE":
 		return formations.ErrRelativeFileRef
+	case "BROKEN_LINK":
+		return formations.ErrBrokenLink
 	case "INVALID_EXECUTION_POLICY":
 		return formations.ErrInvalidExecutionPolicy
 	case "INVALID_TOOL_MUTATION":
@@ -1087,6 +1089,9 @@ func remoteAgentList(c *remoteClient, args []string, stdout, stderr io.Writer) i
 	agents, err := decodeRemote[[]formations.AgentProjection](data, "agents")
 	if err != nil {
 		return fail(stderr, err)
+	}
+	if unreadable, err := decodeRemote[[]formations.Unreadable](data, "unreadable"); err == nil {
+		warnUnreadable(stderr, "role card", *unreadable)
 	}
 	return writeAgentList(stdout, formations.AgentRoster{Agents: *agents}, *jsonOut)
 }

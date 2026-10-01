@@ -86,7 +86,7 @@ paths:
     get:
       responses:
         '200':
-          description: Mission summaries in data.missions
+          description: Mission summaries in data.missions. A mission file that cannot be read, such as a symlink whose target moved, is listed with only its slug and broken, the reason; the others list as usual.
     post:
       responses:
         '201':
@@ -856,7 +856,8 @@ paths:
             data.harnesses, the harnesses whose seats Archon starts, each with the efforts it accepts and its
             defaultEffort, and data.effortPolicy, the {effort,use} lines that guide a slot's effort (low for
             errands, medium for making things, xhigh for architecture and review, max for consequential
-            reviews). No live-session provider is wired by the daemon.
+            reviews). A card that cannot be read is left out and named in data.unreadable ({name, reason}).
+            No live-session provider is wired by the daemon.
         '422':
           description: INVALID_AGENT_CARD when a stored card lacks a required field; the message names the card and field
       parameters:

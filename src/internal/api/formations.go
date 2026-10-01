@@ -1823,6 +1823,8 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusBadRequest, "INVALID_HUMAN_CHANNEL", fieldErrorMessage(err, formations.ErrInvalidHumanChannel))
 	case errors.Is(err, formations.ErrInvalidMissionInput):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_MISSION_INPUT", fieldErrorMessage(err, formations.ErrInvalidMissionInput))
+	case errors.Is(err, formations.ErrBrokenLink):
+		core.WriteError(w, http.StatusUnprocessableEntity, "BROKEN_LINK", err.Error())
 	case errors.Is(err, formations.ErrRelativeFileRef):
 		core.WriteError(w, http.StatusBadRequest, "RELATIVE_FILE_REFERENCE", fieldErrorMessage(err, formations.ErrRelativeFileRef))
 	case errors.Is(err, formations.ErrInvalidControllerRole):

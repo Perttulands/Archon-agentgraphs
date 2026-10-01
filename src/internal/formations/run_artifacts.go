@@ -408,20 +408,23 @@ func (s *Store) openRunLedger(runID string, writable bool) (*runLedgerHandle, er
 	return match, nil
 }
 
-func (s *Store) listRunIDs() ([]string, error) {
-	runs, _, err := s.openRunsDirectory(false)
+// listRunIDs finds every run ledger. A run directory or ledger that cannot be
+// opened is named in the unreadable list instead of failing the listing.
+func (s *Store) listRunIDs() ([]string, []Unreadable, error) {
+	runs, workspace, err := s.openRunsDirectory(false)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return []string{}, nil
+			return []string{}, nil, nil
 		}
-		return nil, fmt.Errorf("%w: open run root: %v", ErrRunLedgerInvalid, err)
+		return nil, nil, fmt.Errorf("%w: open run root: %v", ErrRunLedgerInvalid, err)
 	}
 	defer runs.Close()
 	seen := map[string]string{}
+	var unreadable []Unreadable
 	for {
 		slugs, done, readErr := readDirectoryNameBatch(runs, directoryBatchSize)
 		if readErr != nil {
-			return nil, fmt.Errorf("%w: enumerate run directories: %v", ErrRunLedgerInvalid, readErr)
+			return nil, nil, fmt.Errorf("%w: enumerate run directories: %v", ErrRunLedgerInvalid, readErr)
 		}
 		for _, slug := range slugs {
 			if validateSlug(slug) != nil {
@@ -429,16 +432,16 @@ func (s *Store) listRunIDs() ([]string, error) {
 			}
 			directory, openErr := openDirectoryAt(runs, slug)
 			if openErr != nil {
-				if errors.Is(openErr, syscall.ELOOP) || errors.Is(openErr, syscall.ENOTDIR) || errors.Is(openErr, os.ErrNotExist) {
-					continue
+				if !errors.Is(openErr, syscall.ENOTDIR) {
+					unreadable = append(unreadable, Unreadable{Name: filepath.Join(".archon", "runs", slug), Reason: openErr.Error()})
 				}
-				return nil, fmt.Errorf("%w: open run directory: %v", ErrRunLedgerInvalid, openErr)
+				continue
 			}
 			for {
 				names, namesDone, namesErr := readDirectoryNameBatch(directory, directoryBatchSize)
 				if namesErr != nil {
-					_ = directory.Close()
-					return nil, fmt.Errorf("%w: enumerate run artifacts: %v", ErrRunLedgerInvalid, namesErr)
+					unreadable = append(unreadable, Unreadable{Name: filepath.Join(".archon", "runs", slug), Reason: namesErr.Error()})
+					break
 				}
 				for _, name := range names {
 					if !strings.HasSuffix(name, ".ndjson") {
@@ -450,13 +453,17 @@ func (s *Store) listRunIDs() ([]string, error) {
 					}
 					file, fileErr := openRunArtifactFileAt(directory, name, syscall.O_RDONLY, false)
 					if fileErr != nil {
-						_ = directory.Close()
-						return nil, fmt.Errorf("%w: open run ledger: %v", ErrRunLedgerInvalid, fileErr)
+						reason := fileErr.Error()
+						if _, linked, linkErr := followLink(filepath.Join(workspace, ".archon", "runs", slug, name)); linked && linkErr != nil {
+							reason = linkErr.Error()
+						}
+						unreadable = append(unreadable, Unreadable{Name: runID, Reason: reason})
+						continue
 					}
 					_ = file.Close()
 					if previous, ok := seen[runID]; ok {
-						_ = directory.Close()
-						return nil, fmt.Errorf("%w: run id %q appears in multiple ledgers: %s and %s", ErrRunLedgerInvalid, runID, previous, slug)
+						unreadable = append(unreadable, Unreadable{Name: runID, Reason: fmt.Sprintf("run id %q appears in multiple ledgers: %s and %s", runID, previous, slug)})
+						continue
 					}
 					seen[runID] = slug
 				}
@@ -475,7 +482,7 @@ func (s *Store) listRunIDs() ([]string, error) {
 		runIDs = append(runIDs, runID)
 	}
 	sort.Strings(runIDs)
-	return runIDs, nil
+	return runIDs, unreadable, nil
 }
 
 func withRunArtifactLock(directory *runArtifactDirectory, ledgerName, lockKey string, fn func() error) error {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { chooseCurrentBoard, rememberBoardOnDevice, rememberCurrentBoard, rememberedBoard } from './currentBoard'
+import { chooseCurrentBoard, openableSlugs, rememberBoardOnDevice, rememberCurrentBoard, rememberedBoard } from './currentBoard'
 
 describe('current board', () => {
   beforeEach(() => {
@@ -17,6 +17,13 @@ describe('current board', () => {
     expect(chooseCurrentBoard(slugs, '?mission=gone')).toEqual({ slug: 'scouting', missingLinked: 'gone' })
     expect(chooseCurrentBoard(['alpha'], '')).toEqual({ slug: 'alpha', missingLinked: '' })
     expect(chooseCurrentBoard([], '')).toEqual({ slug: '', missingLinked: '' })
+  })
+
+  it('never opens a mission that cannot be read, even a remembered or linked one', () => {
+    const summaries = [{ slug: 'alpha' }, { slug: 'moved', broken: 'its symlink target is gone' }]
+    expect(openableSlugs(summaries)).toEqual(['alpha'])
+    rememberBoardOnDevice('moved')
+    expect(chooseCurrentBoard(openableSlugs(summaries), '?mission=moved')).toEqual({ slug: 'alpha', missingLinked: 'moved' })
   })
 
   it('records the board in the address bar and keeps a run pin only on its own board', () => {

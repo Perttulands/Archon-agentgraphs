@@ -170,7 +170,7 @@ func TestMissingDefinitionReadsDoNotRepairDirectoryMode(t *testing.T) {
 	}
 }
 
-func TestListBoardsRejectsDefinitionShapedDirectory(t *testing.T) {
+func TestListBoardsListsADefinitionShapedDirectoryAsBroken(t *testing.T) {
 	store := NewStore(t.TempDir())
 	if err := os.MkdirAll(store.BoardPath("directory"), 0o755); err != nil {
 		t.Fatalf("create definition-shaped directory: %v", err)
@@ -180,8 +180,9 @@ func TestListBoardsRejectsDefinitionShapedDirectory(t *testing.T) {
 	formationsModeBefore := definitionPathModeForTest(t, formationsDirectory)
 	definitionDirectoryModeBefore := definitionPathModeForTest(t, definitionDirectory)
 
-	if _, err := store.ListBoards(); err == nil {
-		t.Fatal("list boards silently ignored definition-shaped directory")
+	boards, err := store.ListBoards()
+	if err != nil || len(boards) != 1 || boards[0].Slug != "directory" || !strings.Contains(boards[0].Broken, "is not a regular file") {
+		t.Fatalf("list = %+v (%v), want the directory listed as broken, not hidden", boards, err)
 	}
 	if got := definitionPathModeForTest(t, formationsDirectory); got != formationsModeBefore {
 		t.Errorf("wrong-type definition read changed .formations mode from %v to %v", formationsModeBefore, got)
@@ -379,4 +380,106 @@ func assertSymlinkForTest(t *testing.T, path string) {
 	if info.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("%s has mode %v, want it still a symlink", path, info.Mode())
 	}
+}
+
+// One mission whose link has lost its target is listed as broken with the
+// link and its target, and every other mission still lists, resolves, opens
+// and runs (archon-4m4j review).
+func TestABrokenMissionLinkLeavesEveryOtherMissionWorking(t *testing.T) {
+	store, personas := s4RunFixture(t)
+	store.Now = fixedClock()
+	personas.Now = fixedClock()
+	if _, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Capabilities: []string{"research"}, Harness: "openai-codex"}); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
+	repository := filepath.Join(filepath.Dir(store.Workspace), "repository")
+	shared := filepath.Join(repository, "shared.mission.toml")
+	writeFixture(t, shared, minimalBoard("shared", 1))
+	link := store.BoardPath("shared")
+	if err := os.Symlink(shared, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(shared, shared+".moved"); err != nil {
+		t.Fatal(err)
+	}
+
+	boards, err := store.ListBoards()
+	if err != nil || len(boards) != 2 {
+		t.Fatalf("list = %+v (%v), want both missions", boards, err)
+	}
+	want := link + " is a symlink to " + shared + ", which does not exist"
+	if boards[0].Slug != "session-search" || boards[0].Broken != "" || boards[1].Slug != "shared" || boards[1].Broken != want || boards[1].ID != "" {
+		t.Fatalf("list = %+v, want session-search intact and shared broken: %q", boards, want)
+	}
+	slug, err := store.ResolveBoardSelector("session-search")
+	if err != nil || slug != "session-search" {
+		t.Fatalf("resolve the intact mission = %q, %v", slug, err)
+	}
+	board, err := store.ReadBoard(slug)
+	if err != nil {
+		t.Fatalf("open the intact mission: %v", err)
+	}
+	if _, err := store.StartRun(slug, RunStartRequest{MissionID: "mis_showcase", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev, Personas: personas}); err != nil {
+		t.Fatalf("run the intact mission: %v", err)
+	}
+	broken, err := store.ResolveBoardSelector("shared")
+	if err != nil || broken != "shared" {
+		t.Fatalf("resolve the broken mission = %q, %v", broken, err)
+	}
+	if _, err := store.ReadBoard("shared"); !errors.Is(err, ErrBrokenLink) || err.Error() != want {
+		t.Fatalf("open the broken mission = %v, want %q", err, want)
+	}
+}
+
+// A role card or run ledger that cannot be read is named and skipped, and the
+// rest still list (archon-4m4j review).
+func TestUnreadableRoleCardsAndRunLedgersAreSkippedAndNamed(t *testing.T) {
+	root := t.TempDir()
+	agents := filepath.Join(root, "agents")
+	personas := NewPersonaStore(agents)
+	if _, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(root, "dotfiles", "critic.toml")
+	if err := os.Symlink(gone, filepath.Join(agents, "critic.toml")); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, filepath.Join(agents, "garbled.toml"), "[card\n")
+	cards, unreadable, err := personas.ListPersonasSkipping()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasPersonaID(cards, "scout") || hasPersonaID(cards, "critic") || hasPersonaID(cards, "garbled") || len(unreadable) != 2 ||
+		unreadable[0].Name != "critic" || !strings.Contains(unreadable[0].Reason, "is a symlink to "+gone+", which does not exist") || unreadable[1].Name != "garbled" {
+		t.Fatalf("cards %d, unreadable %+v; want scout listed and critic and garbled named", len(cards), unreadable)
+	}
+	if listed, err := personas.ListPersonas(); err != nil || !hasPersonaID(listed, "scout") {
+		t.Fatalf("ListPersonas = %v, want the readable cards", err)
+	}
+
+	store := NewStore(filepath.Join(root, "state"))
+	store.Now = fixedClock()
+	good := newPrefixedID("run")
+	writeFixture(t, filepath.Join(store.Workspace, runArtifactPath("session-search", good, ".ndjson")), string(testRunLedgerBytes(t, testRunStartedEvent(good, "session-search"))))
+	lost := newPrefixedID("run")
+	if err := os.Symlink(filepath.Join(root, "elsewhere", lost+".ndjson"), filepath.Join(store.Workspace, runArtifactPath("session-search", lost, ".ndjson"))); err != nil {
+		t.Fatal(err)
+	}
+	runs, skipped, err := store.ListRunsSkipping(RunListFilter{})
+	if err != nil || len(runs) != 1 || runs[0].RunID != good || len(skipped) != 1 || skipped[0].Name != lost || !strings.Contains(skipped[0].Reason, "is a symlink to "+filepath.Join(root, "elsewhere", lost+".ndjson")+", which does not exist") {
+		t.Fatalf("runs %+v, skipped %+v (%v); want the readable run listed and the lost ledger named", runs, skipped, err)
+	}
+	if listed, err := store.ListRuns(RunListFilter{}); err != nil || len(listed) != 1 {
+		t.Fatalf("ListRuns = %+v (%v), want the readable run", listed, err)
+	}
+}
+
+func hasPersonaID(cards []PersonaCard, id string) bool {
+	for _, card := range cards {
+		if card.ID == id {
+			return true
+		}
+	}
+	return false
 }

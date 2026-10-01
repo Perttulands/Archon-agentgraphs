@@ -833,7 +833,12 @@ func failure(w http.ResponseWriter, err error) {
 	if errors.Is(err, formations.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
 		code = 404
 	}
-	reply(w, code, map[string]string{"error": http.StatusText(code)})
+	message := http.StatusText(code)
+	if errors.Is(err, formations.ErrBrokenLink) {
+		// A mission linked from elsewhere whose file has moved says where.
+		message = err.Error()
+	}
+	reply(w, code, map[string]string{"error": message})
 }
 func reply(w http.ResponseWriter, code int, value any) {
 	if code >= 400 {

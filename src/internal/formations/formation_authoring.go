@@ -336,7 +336,7 @@ func (s *Store) ResolveBoardSelector(selector string) (string, error) {
 	}
 	matches := []BoardSummary{}
 	for _, board := range boards {
-		if board.ID == selector || board.Slug == selector {
+		if board.ID != "" && board.ID == selector || board.Slug == selector {
 			matches = append(matches, board)
 		}
 	}

@@ -164,6 +164,11 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 		return runRemote(config.Server, args, stdout, stderr)
 	}
 	if config.Workspace == "" && needsWorkspace(args) {
+		if args[0] == "peer" {
+			// Peer commands work on the state directory itself, never through the daemon.
+			fmt.Fprintf(stderr, "archon peer %s needs --workspace <state-dir>: there is no default workspace\n", args[1])
+			return 2
+		}
 		fmt.Fprintf(stderr, "archon %s %s needs --workspace <state-dir> or --server <url>: there is no default workspace\n", args[0], args[1])
 		return 2
 	}
@@ -320,6 +325,13 @@ func newArchonRunEngine(store *formations.Store, personas *formations.PersonaSto
 	return engine
 }
 
+// warnUnreadable names each entry a listing skipped because it cannot be read.
+func warnUnreadable(stderr io.Writer, noun string, unreadable []formations.Unreadable) {
+	for _, entry := range unreadable {
+		fmt.Fprintf(stderr, "warning: %s %s is not listed: %s\n", noun, entry.Name, entry.Reason)
+	}
+}
+
 // warnFileRefs flags, once a write has saved them, the reference files that
 // do not exist yet, as the cockpit flags their chips (archon-n7u.26).
 func warnFileRefs(stderr io.Writer, files []string) {
@@ -381,10 +393,11 @@ func runAgentList(store *formations.PersonaStore, args []string, stdout, stderr 
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true, "assignable": true})); err != nil {
 		return 2
 	}
-	cards, err := store.ListPersonas()
+	cards, unreadable, err := store.ListPersonasSkipping()
 	if err != nil {
 		return fail(stderr, err)
 	}
+	warnUnreadable(stderr, "role card", unreadable)
 	live, err := liveFromRunner(runner)
 	if err != nil {
 		return fail(stderr, err)
@@ -1601,10 +1614,11 @@ func runList(store *formations.Store, args []string, stdout, stderr io.Writer) i
 		}
 		filter.MissionID = board.ID
 	}
-	runs, err := store.ListRuns(filter)
+	runs, unreadable, err := store.ListRunsSkipping(filter)
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", "")
 	}
+	warnUnreadable(stderr, "run", unreadable)
 	if *jsonOut {
 		return writeJSON(stdout, map[string]any{"runs": runs})
 	}
@@ -2107,6 +2121,10 @@ func writeBoardList(stdout io.Writer, boards []formations.BoardSummary, jsonOut 
 		return writeJSON(stdout, map[string]interface{}{"missions": boards})
 	}
 	for _, board := range boards {
+		if board.Broken != "" {
+			fmt.Fprintf(stdout, "%s\tbroken: %s\n", board.Slug, board.Broken)
+			continue
+		}
 		fmt.Fprintf(stdout, "%s\t%s\t%d\n", board.Slug, board.Title, board.Rev)
 	}
 	return 0
@@ -2748,6 +2766,8 @@ func archonErrorCode(err error) string {
 		return "invalid_mission_input"
 	case errors.Is(err, formations.ErrRelativeFileRef):
 		return "relative_file_reference"
+	case errors.Is(err, formations.ErrBrokenLink):
+		return "broken_link"
 	case errors.Is(err, formations.ErrInvalidExecutionPolicy):
 		return "invalid_execution_policy"
 	case errors.Is(err, formations.ErrInvalidRelayedBy):

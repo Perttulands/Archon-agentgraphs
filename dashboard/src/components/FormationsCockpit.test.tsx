@@ -152,6 +152,8 @@ function installFetchMock(options: {
   conflictOnce?: string
   /** addPort answers only once this settles, so an edit is in flight. */
   addPortGate?: Promise<void>
+  /** Missions the daemon lists as broken, after the readable ones. */
+  brokenMissions?: Array<{ slug: string; broken: string }>
 } = {}) {
   let conflictPending = options.conflictOnce
   const patches: RecordedPatch[] = []
@@ -577,7 +579,7 @@ function installFetchMock(options: {
         },
       ] })
     }
-    if (url === '/api/missions') return respond({ missions: availableBoards.map(item => ({ id: item.id, slug: item.slug, title: item.title, rev: item.rev, etag: item.etag })) })
+    if (url === '/api/missions') return respond({ missions: [...availableBoards.map(item => ({ id: item.id, slug: item.slug, title: item.title, rev: item.rev, etag: item.etag })), ...(options.brokenMissions || []).map(item => ({ id: '', slug: item.slug, title: '', rev: 0, etag: '', broken: item.broken }))] })
     if (url.includes('/changes')) {
       const refreshedBoard = options.sameBoardRefreshes?.shift()
       if (!refreshedBoard) return respond({ signal: { changed: false } })
@@ -792,6 +794,29 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.getByTestId('board-picker')).toHaveTextContent('Release Plan')
     expect(screen.getByTestId('formations-empty-board')).toHaveTextContent('This mission is empty')
     expect(recordedMutations).toContainEqual({ method: 'POST', url: '/api/missions' })
+  })
+
+  it('lists a mission that cannot be read as broken, says why, and opens the others', async () => {
+    const reason = '/state/.archon/missions/moved.mission.toml is a symlink to /repo/moved.mission.toml, which does not exist'
+    window.history.replaceState(null, '', '/?mission=moved')
+    patches = installFetchMock({ brokenMissions: [{ slug: 'moved', broken: reason }] })
+    render(<FormationsCockpit />)
+    await screen.findByTestId('formation-node-fmn_frame')
+    const picker = screen.getByTestId('board-picker')
+    expect(picker).toHaveValue('test-board')
+    const option = within(picker).getByRole('option', { name: 'moved · cannot be read' })
+    expect(option).toBeDisabled()
+    expect(option).toHaveAttribute('title', reason)
+    expect(screen.getByTestId('formations-error')).toHaveTextContent(`Mission "moved" from the link cannot be read: ${reason}`)
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('names every broken mission while nothing else is wrong', async () => {
+    const reason = '/state/.archon/missions/moved.mission.toml is a symlink to /repo/moved.mission.toml, which does not exist'
+    patches = installFetchMock({ brokenMissions: [{ slug: 'moved', broken: reason }] })
+    render(<FormationsCockpit />)
+    await screen.findByTestId('formation-node-fmn_frame')
+    expect(screen.getByTestId('broken-missions')).toHaveTextContent(`A mission cannot be read: moved: ${reason}`)
   })
 
   it('renames the selected board through the top-bar board controls', async () => {

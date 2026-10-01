@@ -85,6 +85,9 @@ type BoardSummary struct {
 	Title string `json:"title"`
 	Rev   int    `json:"rev"`
 	ETag  string `json:"etag"`
+	// Broken says why the mission file cannot be read, such as a symlink whose
+	// target has moved; the other fields are then empty but the slug.
+	Broken string `json:"broken,omitempty"`
 }
 
 type LayoutDocument struct {
@@ -169,7 +172,10 @@ func (s *Store) ListBoards() ([]BoardSummary, error) {
 		slug := strings.TrimSuffix(name, boardDefinitionKind.suffix)
 		board, err := s.ReadBoard(slug)
 		if err != nil {
-			return nil, err
+			// One mission that cannot be read is listed as broken, so every
+			// other mission still lists, resolves and opens.
+			boards = append(boards, BoardSummary{Slug: slug, Broken: err.Error()})
+			continue
 		}
 		boards = append(boards, BoardSummary{
 			ID:    board.ID,

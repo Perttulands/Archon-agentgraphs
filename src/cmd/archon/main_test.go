@@ -971,7 +971,6 @@ func TestArchonOfflineCommandsNeedAWorkspaceOrServer(t *testing.T) {
 		{"end", "create", "poems"},
 		{"tool", "inspect", "poems", "tool"},
 		{"run", "list"},
-		{"peer", "read"},
 	} {
 		_, stderr, code := runArchon(t, runner, args...)
 		want := "archon " + args[0] + " " + args[1] + " needs --workspace <state-dir> or --server <url>: there is no default workspace"
@@ -983,6 +982,10 @@ func TestArchonOfflineCommandsNeedAWorkspaceOrServer(t *testing.T) {
 		t.Fatalf("offline commands without a workspace wrote %v (%v) into the working directory", entries, err)
 	}
 
+	// Peer commands only work offline, so they name only --workspace.
+	if _, stderr, code := runArchon(t, runner, "peer", "read"); code != 2 || stderr != "archon peer read needs --workspace <state-dir>: there is no default workspace\n" {
+		t.Fatalf("peer read without a workspace code=%d stderr=%q", code, stderr)
+	}
 	_, stderr, code := runArchon(t, runner, "--workspace", "", "mission", "list")
 	if code != 2 || !strings.Contains(stderr, "there is no default workspace") {
 		t.Fatalf("empty --workspace code=%d stderr=%q", code, stderr)
@@ -1031,6 +1034,48 @@ func TestArchonWarnsAboutAReferenceFileThatDoesNotExist(t *testing.T) {
 	stdout, _, _ := runArchon(t, runner, "--workspace", workspace, "mission", "validate", "refs")
 	if !strings.Contains(stdout, "Review's file "+missing+" does not exist") {
 		t.Fatalf("validate = %q, want the missing file named", stdout)
+	}
+}
+
+// A mission whose symlink lost its target is listed as broken, and the other
+// missions still list and open; a lost role card is named beside the roster
+// (archon-4m4j review).
+func TestArchonListsABrokenMissionLinkAndKeepsTheRest(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "state")
+	agents := filepath.Join(root, "agents")
+	t.Setenv("ARCHON_AGENTS_DIR", agents)
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeTmux{live: map[string]bool{}}
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "new", "intact"); code != 0 {
+		t.Fatalf("mission new: %s", stderr)
+	}
+	link := formations.NewStore(workspace).BoardPath("moved")
+	gone := filepath.Join(root, "repository", "moved.mission.toml")
+	if err := os.Symlink(gone, link); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "list")
+	if code != 0 || !strings.Contains(stdout, "intact\tintact\t1") || !strings.Contains(stdout, "moved\tbroken: "+link+" is a symlink to "+gone+", which does not exist") {
+		t.Fatalf("mission list code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "inspect", "intact", "--json"); code != 0 {
+		t.Fatalf("inspect the intact mission code=%d stderr=%s", code, stderr)
+	}
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "inspect", "moved"); code == 0 || !strings.Contains(stderr, link+" is a symlink to "+gone+", which does not exist") {
+		t.Fatalf("inspect the broken mission code=%d stderr=%s", code, stderr)
+	}
+	if err := os.MkdirAll(agents, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "dotfiles", "critic.toml"), filepath.Join(agents, "critic.toml")); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, code = runArchon(t, runner, "agent", "list")
+	if code != 0 || !strings.Contains(stdout, "codex-builder") || !strings.Contains(stderr, "warning: role card critic is not listed: ") {
+		t.Fatalf("agent list code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 }
 

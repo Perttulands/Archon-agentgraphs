@@ -57,8 +57,31 @@ func openDirectory(path string) (*os.File, error) {
 	return directory, nil
 }
 
+// ErrBrokenLink marks a symlink whose target cannot be opened.
+var ErrBrokenLink = errors.New("broken_link")
+
+// BrokenLinkError names a symlink, where it points and what is wrong there,
+// such as a mission linked from a repository whose file has moved.
+type BrokenLinkError struct {
+	Path, Target, Problem string
+}
+
+func (e *BrokenLinkError) Error() string {
+	return fmt.Sprintf("%s is a symlink to %s, which %s", e.Path, e.Target, e.Problem)
+}
+
+func (e *BrokenLinkError) Unwrap() error { return ErrBrokenLink }
+
+// Unreadable is an entry a listing skipped, and why, so one bad file never
+// hides the rest (archon-4m4j).
+type Unreadable struct {
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
+}
+
 // followLink returns the file a symlink at path ends at, and whether path is a
-// symlink. A missing path, or one that is not a link, is returned as is.
+// symlink. A missing path, or one that is not a link, is returned as is; a link
+// whose target cannot be reached is a *BrokenLinkError.
 func followLink(path string) (string, bool, error) {
 	info, err := os.Lstat(path)
 	if err != nil || info.Mode()&os.ModeSymlink == 0 {
@@ -66,7 +89,17 @@ func followLink(path string) (string, bool, error) {
 	}
 	target, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		return "", true, err
+		named, _ := os.Readlink(path)
+		problem := "cannot be reached: " + err.Error()
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			problem = "does not exist"
+		case errors.Is(err, syscall.ELOOP):
+			problem = "loops back on itself"
+		case errors.Is(err, os.ErrPermission):
+			problem = "the daemon's user may not reach"
+		}
+		return "", true, &BrokenLinkError{Path: path, Target: named, Problem: problem}
 	}
 	return target, true, nil
 }

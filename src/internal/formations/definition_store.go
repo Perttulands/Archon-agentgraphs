@@ -459,6 +459,9 @@ func (f *definitionFile) restoreArchived(archiveName string) error {
 }
 
 func definitionPathError(err error) error {
+	if errors.Is(err, ErrBrokenLink) {
+		return err
+	}
 	if errors.Is(err, os.ErrNotExist) {
 		return ErrNotFound
 	}

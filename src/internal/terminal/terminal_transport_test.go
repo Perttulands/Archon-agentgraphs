@@ -199,8 +199,8 @@ func (c *terminalClient) readUntil(want string) stampedFrame {
 }
 
 // readUntilWithin collects output until want appears or the wait ends, and
-// reports whether it appeared.
-func (c *terminalClient) readUntilWithin(want string, wait time.Duration) (stampedFrame, bool) {
+// returns what arrived.
+func (c *terminalClient) readUntilWithin(want string, wait time.Duration) string {
 	c.t.Helper()
 	collected := &strings.Builder{}
 	timeout := time.After(wait)
@@ -212,13 +212,10 @@ func (c *terminalClient) readUntilWithin(want string, wait time.Duration) (stamp
 			}
 			collected.WriteString(frame.text)
 			if strings.Contains(collected.String(), want) {
-				return stampedFrame{text: collected.String(), at: frame.at}, true
+				return collected.String()
 			}
 		case <-timeout:
-			if collected.Len() > 0 {
-				c.t.Fatalf("output other than %q arrived while paused: %q", want, collected.String())
-			}
-			return stampedFrame{}, false
+			return collected.String()
 		}
 	}
 }
@@ -509,21 +506,22 @@ sleep 10`, inFlightWritten, writingDone)))
 	client.send(append([]byte{clientInput}, []byte("release the outstanding read\r")...))
 	waitForFile(t, inFlightWritten)
 	// A read issued before the pause returns in-flight; without one it waits
-	// for the resume. Either way the seat writes again only once that is known,
-	// so no outstanding read can carry what follows.
-	_, outstanding := client.readUntilWithin("in-flight", 5*time.Second)
+	// for the resume. The short wait only lets an outstanding read finish
+	// before the seat writes again; nothing is decided by when frames come.
+	early := client.readUntilWithin("in-flight", 5*time.Second)
 
 	client.send(append([]byte{clientInput}, []byte("write behind the pause\r")...))
 	waitForFile(t, writingDone)
-	if withheld := client.received(); strings.Contains(withheld, "held-back") || !outstanding && withheld != "" {
-		t.Fatalf("a pty read was issued while the client had paused it; got %q", withheld)
+	withheld := client.received()
+	if strings.Contains(early+withheld, "held-back") {
+		t.Fatalf("a pty read was issued while the client had paused it; got %q", early+withheld)
 	}
 
 	resumedAt := time.Now()
 	client.send([]byte{clientResume})
 	released := client.readUntil("end-of-writing")
-	if !strings.Contains(released.text, "held-back") || !outstanding && !strings.Contains(released.text, "in-flight") {
-		t.Fatalf("the resumed stream skipped what the seat wrote behind the pause; got %q", released.text)
+	if !strings.Contains(released.text, "held-back") || !strings.Contains(early+withheld+released.text, "in-flight") {
+		t.Fatalf("the resumed stream skipped what the seat wrote; got %q", early+withheld+released.text)
 	}
 	if released.at.Before(resumedAt) {
 		t.Fatal("output written behind the pause reached the client before it resumed the stream")

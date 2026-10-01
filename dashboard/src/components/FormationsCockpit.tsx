@@ -53,7 +53,7 @@ import {
 import { chooseBoardRun, readRunLink, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
 import { RunList, RunRevisionNote, RunWhen } from './RunList'
 import { missionPickLabel, otherRunsNeedingYou, pageTitle, runsOfLiveMissions } from './needsYou'
-import { chooseCurrentBoard, rememberBoardOnDevice } from './currentBoard'
+import { chooseCurrentBoard, openableSlugs, rememberBoardOnDevice } from './currentBoard'
 import { END_ROOM, clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
 import { END_SVG, FormationSeats, GATE_SVG, PLAY_SVG, slotTooltip, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
 import { useEscapeKey } from './useEscapeKey'
@@ -342,9 +342,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         if (cancelled) return
         setBoards(list)
         if (list[0]) {
-          const { slug, missingLinked } = chooseCurrentBoard(list.map(item => item.slug), window.location.search)
+          const { slug, missingLinked } = chooseCurrentBoard(openableSlugs(list), window.location.search)
           if (missingLinked) {
-            setLinkError(`Mission "${missingLinked}" from the link was not found`)
+            const broken = list.find(item => item.slug === missingLinked)?.broken
+            setLinkError(broken ? `Mission "${missingLinked}" from the link cannot be read: ${broken}` : `Mission "${missingLinked}" from the link was not found`)
             setPinnedRun({ slug: '', runId: '' })
           }
           setSelectedSlug(current => current || slug)
@@ -2431,6 +2432,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     [board, validation],
   )
   const referencedFileProblems = useMemo(() => fileProblems(validation?.warnings ?? []), [validation])
+  const brokenMissions = useMemo(() => boards.filter(summary => summary.broken), [boards])
   const blockedFindings = useMemo(() => findingsByNode(board, admissionFindings), [board, admissionFindings])
   const draftClass = (nodeId: string) => `${draftFindings.has(nodeId) ? ' is-draft' : ''}${blockedFindings.has(nodeId) ? ' admission-blocked' : ''}`
   const renderDraftMarker = (nodeId: string) => (
@@ -2543,7 +2545,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           mission
           <select aria-label="Mission" value={selectedSlug} onChange={event => selectBoard(event.target.value)} data-testid="board-picker" disabled={boards.length === 0 || Boolean(boardDialog)}>
             {boards.length === 0 ? <option value="">No missions</option> : null}
-            {boards.map(summary => <option key={summary.slug} value={summary.slug}>{missionPickLabel(summary, needsYou)}</option>)}
+            {boards.map(summary => <option key={summary.slug} value={summary.slug} disabled={Boolean(summary.broken)} title={summary.broken}>{missionPickLabel(summary, needsYou)}</option>)}
           </select>
           {board ? <span className="rev">rev {board.rev}</span> : null}
         </div>
@@ -3095,7 +3097,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             <button onClick={() => void arrangeBoard()} title="Arrange cards by graph flow (persists layout, Ctrl+Z to undo)" data-testid="arrange-layout">ARRANGE</button>
             <button onClick={() => fitView({ smooth: true })} title="Fit">FIT</button>
           </div>
-          {error || linkError ? <div className="errbar" data-testid="formations-error">{error || linkError}</div> : null}
+          {error || linkError ? <div className="errbar" data-testid="formations-error">{error || linkError}</div>
+            : brokenMissions.length ? (
+              <div className="errbar" data-testid="broken-missions" role="status">
+                {brokenMissions.length === 1 ? 'A mission cannot be read' : `${brokenMissions.length} missions cannot be read`}: {brokenMissions.map(summary => `${summary.slug}: ${summary.broken}`).join('; ')}
+              </div>
+            ) : null}
           <AdmissionFindingsPanel
             findings={admissionFindings}
             titleOf={nodeId => noteElements.find(element => element.id === nodeId)?.title || nodeId}

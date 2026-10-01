@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -65,5 +66,51 @@ title = "Review"
 		if !strings.Contains(layout.Body.String(), list) {
 			t.Fatalf("layout lacks %s: %s", list, layout.Body.String())
 		}
+	}
+}
+
+// A mission whose symlink lost its target is listed as broken, with the link
+// and target, and reading it says so; the other missions read as before
+// (archon-4m4j review). A role card in the same state is named beside a roster
+// that still lists.
+func TestBrokenLinksAreNamedAndEverythingElseStillServes(t *testing.T) {
+	root := t.TempDir()
+	store := formations.NewStore(filepath.Join(root, "state"))
+	writeFormationsAPIFixture(t, store.BoardPath("intact"), "schema = 1\nid = \"brd_intact\"\nslug = \"intact\"\ntitle = \"Intact\"\nrev = 1\n")
+	if err := os.MkdirAll(filepath.Join(root, "repository"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(root, "repository", "moved.mission.toml")
+	if err := os.Symlink(gone, store.BoardPath("moved")); err != nil {
+		t.Fatal(err)
+	}
+	agents := filepath.Join(root, "agents")
+	if err := os.MkdirAll(agents, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "dotfiles", "critic.toml"), filepath.Join(agents, "critic.toml")); err != nil {
+		t.Fatal(err)
+	}
+	personas := formations.NewPersonaStore(agents)
+	mux := http.NewServeMux()
+	NewFormationsHandlerWithStores(store, personas).RegisterRoutes(mux)
+	NewAgentsHandlerWithStore(personas).RegisterRoutes(mux)
+	get := func(path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		return rec
+	}
+	broken := store.BoardPath("moved") + " is a symlink to " + gone + ", which does not exist"
+	if rec := get("/api/missions"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"slug":"intact"`) || !strings.Contains(rec.Body.String(), `"broken":"`+broken+`"`) {
+		t.Fatalf("list = %d %s, want intact and moved, moved broken", rec.Code, rec.Body.String())
+	}
+	if rec := get("/api/missions/intact"); rec.Code != http.StatusOK {
+		t.Fatalf("intact mission = %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := get("/api/missions/moved"); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), `"code":"BROKEN_LINK"`) || !strings.Contains(rec.Body.String(), broken) {
+		t.Fatalf("broken mission = %d %s, want 422 BROKEN_LINK naming the link", rec.Code, rec.Body.String())
+	}
+	if rec := get("/api/agents"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"unreadable":[{"name":"critic"`) || !strings.Contains(rec.Body.String(), `"agents":[`) {
+		t.Fatalf("roster = %d %s, want the roster with critic named unreadable", rec.Code, rec.Body.String())
 	}
 }

@@ -46,7 +46,16 @@ It contains `.archon/missions/*.mission.toml`, `.archon/notes/*.notes.toml`,
 for example to another disk, and so may a mission, notes or layout file, for
 example a mission kept in a repository: Archon reads and writes through the
 link and keeps it, and deleting the mission removes the link, not the file it
-points at. Persona cards default to `<state-dir>/agents`;
+points at. One file that cannot be read never hides the rest: a mission whose
+link lost its target (or that does not parse) is listed with `broken`, "<link>
+is a symlink to <target>, which does not exist", and every other mission still
+lists, opens and runs; reading or starting the broken one answers the same
+words (HTTP 422 `BROKEN_LINK`, CLI code `broken_link`), and the cockpit lists
+it as "cannot be read", names it under the canvas and never opens it. A role
+card or run ledger that cannot be read is skipped and named: `agent list` and
+`run list` print a `warning:` line, `GET /api/agents` lists it under
+`unreadable`, and the daemon logs a skipped ledger at startup instead of
+refusing to start. Persona cards default to `<state-dir>/agents`;
 daemon `--agents-dir` can select another absolute directory. Match offline
 persona authoring to that directory with `ARCHON_AGENTS_DIR` when using an
 override.

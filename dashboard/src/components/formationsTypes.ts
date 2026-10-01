@@ -4,6 +4,8 @@ export interface BoardSummary {
   title: string
   rev: number
   etag: string
+  /** Why the mission file cannot be read, such as a symlink whose target moved. */
+  broken?: string
 }
 
 export interface BoardDeletion {

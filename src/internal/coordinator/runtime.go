@@ -161,9 +161,14 @@ func (c *Coordinator) resume(w http.ResponseWriter, r *http.Request) {
 // RecoverInterruptedRuns is called before listening, under the directory lock.
 // It never adopts old seats. Only completed native evidence can continue a run.
 func (c *Coordinator) RecoverInterruptedRuns() error {
-	runs, err := c.store.ListRuns(formations.RunListFilter{})
+	runs, unreadable, err := c.store.ListRunsSkipping(formations.RunListFilter{})
 	if err != nil {
 		return err
+	}
+	// A ledger that cannot be read is named and left alone; it never stops
+	// the daemon starting or hides the other runs.
+	for _, entry := range unreadable {
+		log.Printf("run %s: not read at startup: %s", entry.Name, entry.Reason)
 	}
 	for _, run := range runs {
 		if run.Final || run.Status == formations.RunStatusBlocked && !run.ResumeAllowed {
