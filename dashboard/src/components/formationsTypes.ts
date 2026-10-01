@@ -167,7 +167,7 @@ export interface MissionNode {
   beadId: string
   /** What a run's brief should contain; Start mission shows it when set. */
   inputHint?: string
-  /** Reference file paths, absolute or relative to a daemon file root. */
+  /** Reference file paths; the cockpit opens absolute ones. */
   files?: string[]
   /** How its human gates reach the operator (ADR-0019): absent or notify notifies, session asks the agents. A patch sends '' to clear it. */
   humanChannel?: '' | 'notify' | 'session'

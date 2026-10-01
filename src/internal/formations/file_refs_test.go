@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -18,31 +19,28 @@ func writeFileRef(t *testing.T, path, content string) {
 	}
 }
 
-func TestFileRootsServeReferencesOnlyUnderTheirRoots(t *testing.T) {
+// A referenced file opens wherever its absolute path points, as in CHROTE:
+// no roots, and symlinks and hard links are followed. Secrets in text are
+// redacted as in run evidence.
+func TestReferencedFilesOpenAnyAbsolutePath(t *testing.T) {
 	base := t.TempDir()
 	project := filepath.Join(base, "project")
-	notes := filepath.Join(base, "notes")
-	outside := filepath.Join(base, "outside")
+	elsewhere := filepath.Join(base, "elsewhere")
 	writeFileRef(t, filepath.Join(project, "docs", "rubric.md"), "# Rubric\n\napi_key = hunter2\n")
 	writeFileRef(t, filepath.Join(project, "logo.png"), "\x89PNG\r\n")
 	writeFileRef(t, filepath.Join(project, "design.pdf"), "%PDF-1.7\n%\xe2\xe3\xcf\xd3\n")
-	writeFileRef(t, filepath.Join(notes, "context.txt"), "notes root\n")
-	writeFileRef(t, filepath.Join(outside, "secret.md"), "outside\n")
-	if err := os.Symlink(filepath.Join(outside, "secret.md"), filepath.Join(project, "docs", "link.md")); err != nil {
+	writeFileRef(t, filepath.Join(elsewhere, "notes.md"), "elsewhere\n")
+	if err := os.Symlink(filepath.Join(elsewhere, "notes.md"), filepath.Join(project, "docs", "link.md")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(project, "escape")); err != nil {
+	if err := os.Symlink(elsewhere, filepath.Join(project, "jump")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Link(filepath.Join(outside, "secret.md"), filepath.Join(project, "hardlink.md")); err != nil {
-		t.Fatal(err)
-	}
-	roots, err := NewFileRoots([]string{project, notes})
-	if err != nil {
+	if err := os.Link(filepath.Join(elsewhere, "notes.md"), filepath.Join(project, "hardlink.md")); err != nil {
 		t.Fatal(err)
 	}
 
-	preview, err := roots.Preview(filepath.Join(project, "docs", "rubric.md"))
+	preview, err := PreviewReferencedFile(filepath.Join(project, "docs", "rubric.md"))
 	if err != nil {
 		t.Fatalf("preview rubric: %v", err)
 	}
@@ -50,40 +48,46 @@ func TestFileRootsServeReferencesOnlyUnderTheirRoots(t *testing.T) {
 		!strings.Contains(preview.Text.Text, "# Rubric") || strings.Contains(preview.Text.Text, "hunter2") {
 		t.Fatalf("rubric preview = %+v", preview)
 	}
-	if relative, err := roots.Preview("context.txt"); err != nil || relative.Path != filepath.Join(notes, "context.txt") || relative.Text.Text != "notes root\n" {
-		t.Fatalf("relative reference under the second root = %+v, %v", relative, err)
+	for _, ref := range []string{
+		filepath.Join(elsewhere, "notes.md"),
+		filepath.Join(project, "docs", "link.md"),
+		filepath.Join(project, "jump", "notes.md"),
+		filepath.Join(project, "hardlink.md"),
+		project + "/../elsewhere/notes.md",
+	} {
+		if got, err := PreviewReferencedFile(ref); err != nil || got.Text == nil || got.Text.Text != "elsewhere\n" {
+			t.Errorf("preview %q = %+v, %v", ref, got, err)
+		}
+		if got, err := ReadReferencedFile(ref); err != nil || string(got.Body) != "elsewhere\n" {
+			t.Errorf("read %q = %+v, %v", ref, got, err)
+		}
 	}
-	if image, err := roots.Read(filepath.Join(project, "logo.png")); err != nil || image.ContentType != "image/png" {
+	if image, err := ReadReferencedFile(filepath.Join(project, "logo.png")); err != nil || image.ContentType != "image/png" {
 		t.Fatalf("image read = %+v, %v", image, err)
 	}
-	if pdf, err := roots.Preview("design.pdf"); err != nil || pdf.Kind != "pdf" || pdf.Text != nil {
+	if pdf, err := PreviewReferencedFile(filepath.Join(project, "design.pdf")); err != nil || pdf.Kind != "pdf" || pdf.Text != nil {
 		t.Fatalf("pdf preview = %+v, %v", pdf, err)
 	}
-	if pdf, err := roots.Read("design.pdf"); err != nil || pdf.ContentType != "application/pdf" || string(pdf.Body) != "%PDF-1.7\n%\xe2\xe3\xcf\xd3\n" {
-		t.Fatalf("pdf read = %+v, %v", pdf, err)
-	}
-	if raw, err := roots.Read("docs/rubric.md"); err != nil || raw.ContentType != "text/plain; charset=utf-8" || strings.Contains(string(raw.Body), "hunter2") {
+	if raw, err := ReadReferencedFile(filepath.Join(project, "docs", "rubric.md")); err != nil || raw.ContentType != "text/plain; charset=utf-8" || strings.Contains(string(raw.Body), "hunter2") {
 		t.Fatalf("raw rubric = %+v, %v", raw, err)
 	}
 
+	fifo := filepath.Join(project, "pipe")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for ref, want := range map[string]error{
-		filepath.Join(outside, "secret.md"):           ErrFileOutsideRoots,
-		"/etc/passwd":                                 ErrFileOutsideRoots,
-		project + "/../outside/secret.md":             ErrNotFound,
-		"../outside/secret.md":                        ErrNotFound,
-		"docs/../../outside/secret.md":                ErrNotFound,
-		filepath.Join(project, "docs", "link.md"):     ErrNotFound,
-		filepath.Join(project, "escape", "secret.md"): ErrNotFound,
-		filepath.Join(project, "hardlink.md"):         ErrNotFound,
-		filepath.Join(project, "docs"):                ErrNotFound,
-		project:                                       ErrNotFound,
-		"missing.md":                                  ErrNotFound,
-		"":                                            ErrNotFound,
+		"docs/rubric.md":                         ErrRelativeFileRef,
+		filepath.Join(project, "docs"):           ErrNotFound,
+		fifo:                                     ErrNotFound,
+		filepath.Join(project, "missing.md"):     os.ErrNotExist,
+		"":                                       ErrNotFound,
+		filepath.Join(project, "docs") + "\x00x": ErrNotFound,
 	} {
-		if _, err := roots.Preview(ref); !errors.Is(err, want) {
+		if _, err := PreviewReferencedFile(ref); !errors.Is(err, want) {
 			t.Errorf("preview %q error = %v, want %v", ref, err, want)
 		}
-		if _, err := roots.Read(ref); !errors.Is(err, want) {
+		if _, err := ReadReferencedFile(ref); !errors.Is(err, want) {
 			t.Errorf("read %q error = %v, want %v", ref, err, want)
 		}
 	}
@@ -97,26 +101,13 @@ func TestFileRootsServeReferencesOnlyUnderTheirRoots(t *testing.T) {
 		t.Fatal(err)
 	}
 	file.Close()
-	if _, err := roots.Read(large); !errors.Is(err, ErrEvidenceTooLarge) {
+	if _, err := ReadReferencedFile(large); !errors.Is(err, ErrEvidenceTooLarge) {
 		t.Fatalf("raw read past the cap = %v, want ErrEvidenceTooLarge", err)
 	}
 	long := filepath.Join(project, "long.md")
 	writeFileRef(t, long, strings.Repeat("A line of the rubric.\n", EvidenceArtifactPreviewMaxBytes/10))
-	if preview, err := roots.Preview(long); err != nil || preview.Text == nil || !preview.Text.Truncated || len(preview.Text.Text) > EvidenceArtifactPreviewMaxBytes {
+	if preview, err := PreviewReferencedFile(long); err != nil || preview.Text == nil || !preview.Text.Truncated || len(preview.Text.Text) > EvidenceArtifactPreviewMaxBytes {
 		t.Fatalf("preview past the cap = %v, want a truncated preview", err)
-	}
-
-	none, err := NewFileRoots(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := none.Preview("docs/rubric.md"); !errors.Is(err, ErrFileOutsideRoots) {
-		t.Fatalf("relative reference with no roots = %v, want ErrFileOutsideRoots", err)
-	}
-	for _, bad := range []string{"relative/root", project + "/../project", filepath.Join(project, "docs", "rubric.md"), filepath.Join(base, "missing")} {
-		if _, err := NewFileRoots([]string{bad}); err == nil {
-			t.Errorf("NewFileRoots(%q) accepted a bad root", bad)
-		}
 	}
 }
 

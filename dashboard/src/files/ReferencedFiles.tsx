@@ -4,8 +4,8 @@ import type { ReferencedFile } from './referencedFiles'
 import './referenced.css'
 
 // Chips for the files a node references, on its card: the first few, and a +N
-// button that lists the rest. Each chip opens its file in a file window, and a
-// file outside the daemon's roots opens as not readable there, with its path.
+// button that lists the rest. Each chip opens its file in a file window; a file
+// the daemon cannot read opens with the daemon's reason and its path.
 
 export interface HiddenReferencedFile {
   label: string

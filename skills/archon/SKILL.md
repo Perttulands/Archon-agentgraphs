@@ -107,8 +107,8 @@ Write what a step does in its formation brief (`formation set-brief --goal`,
 `--file` for reference files). A role is reusable and generic; mission-specific
 instructions stay in the step's brief, never in a role. Missions and gates take reference files too:
 repeat `--file <path>` on `mission create|update` and `gate create|update`; on
-update the list is replaced and `--file ''` clears it. The daemon serves a file
-only under its `--file-root` directories.
+update the list is replaced and `--file ''` clears it. Use absolute paths: the
+cockpit opens any file by absolute path, and a relative one has no base there.
 
 ### Harness, model and effort
 

@@ -10,17 +10,35 @@ type Box = { x: number; y: number; width: number; height: number }
 const gapBetween = (win: Box, box: Box) =>
   Math.max(win.x - (box.x + box.width), box.x - (win.x + win.width), win.y - (box.y + box.height), box.y - (win.y + win.height))
 
+const RUBRIC = '/srv/projects/wayfinding/rubrics/adversarial-review.md'
+
 // Wayfinding with the reference files an operator would attach: a rubric on
 // the adversarial review gate, a scoring guide in its judge's brief, and a
-// sketch on the mission.
+// sketch on the mission named by a relative path.
 function boardWithFiles() {
   const board = structuredClone(wayfinding.board)
   const byTitle = (nodes: Node[], title: string) => nodes.find(node => node.title === title)!
-  byTitle(board.missions, 'Wayfinding').files = ['/srv/projects/wayfinding/sketch.md']
-  byTitle(board.gates, 'Adversarial review').files = ['rubrics/adversarial-review.md']
+  byTitle(board.missions, 'Wayfinding').files = ['sketch.md']
+  byTitle(board.gates, 'Adversarial review').files = [RUBRIC]
   const critic = byTitle(board.formations, 'Brief critic')
   critic.brief = { ...critic.brief, files: ['/home/operator/private/scoring.md'] }
   return board
+}
+
+// The daemon's file routes: any absolute path opens (ADR-0021); a relative
+// path has no base and returns 400 (src/internal/coordinator/files.go).
+const FILES: Record<string, string> = {
+  [RUBRIC]: '# Adversarial review rubric\n\nFail a brief whose recommendation would fit any project.',
+  '/home/operator/private/scoring.md': '# Scoring guide\n\nScore each brief from one to five.',
+}
+const servePreview = (route: import('@playwright/test').Route) => {
+  const path = new URL(route.request().url()).searchParams.get('path') || ''
+  if (!path.startsWith('/')) {
+    return route.fulfill({ status: 400, json: { success: false, error: { code: 'Bad Request', message: 'a relative file reference has no base here; name the file by its absolute path' } } })
+  }
+  const text = FILES[path]
+  if (text === undefined) return route.fulfill({ status: 404, json: { success: false, error: { code: 'Not Found', message: 'file not found' } } })
+  return route.fulfill({ json: { success: true, data: { file: { path, name: path.split('/').pop(), size: text.length, modifiedAt: '', kind: 'markdown', text: { text, bytes: text.length } } } } })
 }
 
 // The room Arrange reserves for each card (arrangementItemSize in
@@ -34,14 +52,7 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Wayfind
   await page.addInitScript(() => localStorage.clear())
   const board = boardWithFiles()
   const fixture = await wayfindingFixture(page, { board })
-  await page.route('**/api/formations/files/preview?**', route => {
-    const path = new URL(route.request().url()).searchParams.get('path') || ''
-    if (path !== 'rubrics/adversarial-review.md') {
-      return route.fulfill({ status: 403, json: { success: false, error: { code: 'Forbidden', message: "file is not readable here: it is outside the daemon's file roots" } } })
-    }
-    const text = '# Adversarial review rubric\n\nFail a brief whose recommendation would fit any project.'
-    return route.fulfill({ json: { success: true, data: { file: { path, name: 'adversarial-review.md', size: text.length, modifiedAt: '', kind: 'markdown', text: { text, bytes: text.length } } } } })
-  })
+  await page.route('**/api/formations/files/preview?**', servePreview)
   await page.goto('/?mission=wayfinding')
   await expect(page.getByRole('note')).toHaveCount(wayfinding.notes.elements.length)
 
@@ -59,10 +70,10 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Wayfind
   }
 
   const gate = page.locator(`[data-node="${cards[1][0].id}"]`)
-  await gate.getByRole('button', { name: 'Open rubrics/adversarial-review.md' }).click()
+  await gate.getByRole('button', { name: `Open ${RUBRIC}` }).click()
   const rubric = page.getByRole('dialog', { name: 'file adversarial-review.md' })
   await expect(rubric.getByRole('heading', { name: 'Adversarial review rubric' })).toBeVisible()
-  await expect(rubric).toContainText('Adversarial review · rubrics/adversarial-review.md')
+  await expect(rubric).toContainText(`Adversarial review · ${RUBRIC}`)
   // A chip opens its file beside the card, not the card's node window.
   await expect(page.getByRole('dialog', { name: 'Gate · Adversarial review' })).toHaveCount(0)
   // It opens in the free space nearest the gate: clear of it and of every card, a short way off.
@@ -77,16 +88,17 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Wayfind
 
   await gate.getByRole('button', { name: '1 more referenced file' }).click()
   await page.getByRole('menuitem', { name: '/home/operator/private/scoring.md · judge Brief critic' }).click()
-  const outside = page.getByRole('dialog', { name: 'file scoring.md' })
-  await expect(outside.getByRole('alert')).toContainText('file is not readable here')
-  await expect(outside).toContainText('/home/operator/private/scoring.md')
+  // A file anywhere on disk opens: Archon confines no files.
+  const scoring = page.getByRole('dialog', { name: 'file scoring.md' })
+  await expect(scoring.getByRole('heading', { name: 'Scoring guide' })).toBeVisible()
+  await expect(scoring).toContainText('/home/operator/private/scoring.md')
 
   // A file link in a node window opens its file near that window, clear of it.
   await page.getByTestId(`mission-node-${board.missions[0].id}`).locator('.mtitle').click()
   const missionWindow = page.getByRole('dialog', { name: 'Input card · Wayfinding' })
-  await missionWindow.getByRole('button', { name: 'Open file /srv/projects/wayfinding/sketch.md' }).click()
+  await missionWindow.getByRole('button', { name: 'Open file sketch.md' }).click()
   const sketch = page.getByRole('dialog', { name: 'file sketch.md' })
-  await expect(sketch.getByRole('alert')).toContainText('file is not readable here')
+  await expect(sketch.getByRole('alert')).toContainText('a relative file reference has no base here; name the file by its absolute path')
   const besideWindow = gapBetween((await sketch.boundingBox())!, (await missionWindow.boundingBox())!)
   expect(besideWindow).toBeGreaterThanOrEqual(0)
   expect(besideWindow).toBeLessThanOrEqual(240)
@@ -97,7 +109,7 @@ test('a file opened from a Flow row leaves that row\'s number, title, labels and
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.addInitScript(() => localStorage.clear())
   await wayfindingFixture(page, { board: boardWithFiles() })
-  await page.route('**/api/formations/files/preview?**', route => route.fulfill({ status: 403, json: { success: false, error: { code: 'Forbidden', message: "file is not readable here: it is outside the daemon's file roots" } } }))
+  await page.route('**/api/formations/files/preview?**', servePreview)
   await page.goto('/?mission=wayfinding')
   await page.getByRole('radio', { name: 'Flow' }).click()
   const gate = page.locator(`.flow-step[data-flow-node="${wayfinding.board.gates.find((node: Node) => node.title === 'Adversarial review').id}"]`)
@@ -128,10 +140,10 @@ test('refused copying leaves a selectable path beside the file download action',
   const fixture = await wayfindingFixture(page, { board: boardWithFiles() })
   const text = '# Adversarial review rubric\n\nA complete downloadable document.'
   await page.route('**/api/formations/files/preview?**', route => route.fulfill({ json: { success: true, data: { file: {
-    path: 'rubrics/adversarial-review.md', name: 'adversarial-review.md', size: text.length, kind: 'markdown', text: { text, bytes: text.length },
+    path: RUBRIC, name: 'adversarial-review.md', size: text.length, kind: 'markdown', text: { text, bytes: text.length },
   } } } }))
   await page.goto('/?mission=wayfinding')
-  await page.getByRole('button', { name: 'Open rubrics/adversarial-review.md', exact: true }).click()
+  await page.getByRole('button', { name: `Open ${RUBRIC}`, exact: true }).click()
   const file = page.getByRole('dialog', { name: 'file adversarial-review.md' })
   await expect(file.getByRole('link', { name: 'Download', exact: true })).toHaveAttribute('download', 'adversarial-review.md')
   await file.getByRole('button', { name: 'Copy path', exact: true }).click()
@@ -142,7 +154,7 @@ test('refused copying leaves a selectable path beside the file download action',
   const manual = file.getByRole('textbox', { name: 'Path to copy manually' })
   await expect(manual).toBeVisible()
   await manual.focus()
-  expect(await manual.evaluate(input => (input as HTMLInputElement).selectionEnd! - (input as HTMLInputElement).selectionStart!)).toBe('rubrics/adversarial-review.md'.length)
+  expect(await manual.evaluate(input => (input as HTMLInputElement).selectionEnd! - (input as HTMLInputElement).selectionStart!)).toBe(RUBRIC.length)
   await file.getByRole('button', { name: 'Copy path', exact: true }).click()
   await expect(file.getByRole('button', { name: 'Copying…', exact: true })).toBeFocused()
   await page.evaluate(() => {

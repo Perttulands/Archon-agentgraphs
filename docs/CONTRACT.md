@@ -776,9 +776,8 @@ installed daemons find `../share/archon/ui` beside their `bin` directory.
 Set `--ui-dir ''` to disable the cockpit, or an absolute path to select another
 build. These are daemon flags, not model settings. Set harness, model and effort on each slot.
 `--notify-command` and `--cockpit-url` configure needs-you notifications,
-described at the end of this section. Repeat `--file-root <absolute-dir>` for
-each directory whose files missions, briefs and gates may reference; the
-cockpit reads referenced files only under those roots (see Referenced files).
+described at the end of this section. The cockpit opens any file a mission,
+brief or gate references by absolute path (see Referenced files).
 
 In another terminal use the compiled Archon. Import means copying mission and
 notes TOML; there is no import command:
@@ -841,7 +840,7 @@ the notify command on either channel. Input cards and gates carry
 reference files, such as a gate's rubric, the way formation briefs do: `--file
 <path>` on `mission create|update` and `gate create|update` (API `files`),
 repeated for more. On update the given files replace the list, and `--file ''`
-clears it. A path is absolute or relative to a daemon file root. Clicking an
+clears it. Name each file by its absolute path. Clicking an
 Input card, formation or gate card opens its node window, where every field is
 read in full and edited in place: titles, the Input card's goal, input hint,
 Bead ID and files, a formation's type, brief and staffing, and a gate's kinds,
@@ -1288,11 +1287,10 @@ recorded apart from redaction, so it can mention host paths such as the cwd.
 
 ### Referenced files
 
-[ADR-0018](adr/0018-referenced-file-roots.md) records these routes. The daemon
-reads referenced files only under its `--file-root` directories; with none, every
-reference is outside them. The `path` query is a reference as authored: an
-absolute clean path is read under the deepest root containing it, and a relative
-path is tried under each root in order.
+Archon confines no files ([ADR-0021](adr/0021-archon-only-chains-agents-and-gates.md)).
+The daemon opens any file a reference names by absolute path, following
+symlinks, as CHROTE's file viewer does. The `path` query is the reference as
+authored. A relative path has no base and returns 400.
 
 - `GET /api/formations/files/preview?path=<ref>` returns `data.file` (`path`
   read, `name`, `size`, `modifiedAt`, `kind` as for artifacts), with `text`
@@ -1300,15 +1298,13 @@ path is tried under each root in order.
 - `GET /api/formations/files/raw?path=<ref>` returns the bytes up to 16 MiB with
   the raw artifact route's content types and headers; larger files return 413.
 
-A path outside every root, or one the daemon may not read, returns 403 and is
-not readable here. Every component below the root opens without following
-symlinks, and only regular files with one link are read, so `..`, symlinks,
-hard links and non-regular files return 404. Served text is redacted like run
-evidence.
+A file the daemon's user may not read returns 403. A missing path, a
+directory or another non-regular file returns 404, because reading a FIFO or
+device would never finish. Served text is redacted like run evidence.
 
 The cockpit shows each referenced file as a chip on its card: a mission's and a
 gate's files and a formation's brief files. A gate's card also shows the brief
 files of the formations judging it. A card shows the first few chips and lists
 the rest under +N. A chip opens the file in a floating file window, and a file
-the daemon will not read opens as not readable here, with its path. Arrange
+the daemon cannot read opens with the daemon's reason and its path. Arrange
 reserves a chip row under a card that has referenced files.

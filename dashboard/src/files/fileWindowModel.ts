@@ -83,8 +83,8 @@ export function outputFileRequest(runId: string, nodeId: string, name: string, c
 const filePath = (ref: string) => `?path=${encodeURIComponent(ref)}`
 
 /**
- * A file a mission, brief or gate references, read under the daemon's file
- * roots (ADR-0018). A reference outside them fails as not readable here.
+ * A file a mission, brief or gate references. The daemon reads any absolute
+ * path (ADR-0021); a relative one has no base and fails with the daemon's reason.
  */
 export function referencedFileRequest(ref: string, context?: string): FileRequest {
   const name = ref.split('/').filter(Boolean).pop() || ref

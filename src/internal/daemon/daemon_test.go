@@ -70,9 +70,13 @@ func TestNotifyFlagsRequireAnExecutableAndAPlainCockpitURL(t *testing.T) {
 	}
 }
 
-func TestFileRootFlagRequiresAnAbsolutePath(t *testing.T) {
-	if err := Run([]string{"--file-root", "relative/docs"}); err == nil || !strings.Contains(err.Error(), "--file-root requires an absolute path") {
-		t.Fatalf("relative --file-root = %v, want a rejection", err)
+// Archon confines no files and imposes no default step time limit (ADR-0021),
+// so the flags that did are gone, with no alias left behind.
+func TestRemovedFileRootAndSeatTimeoutFlagsAreUnknown(t *testing.T) {
+	for _, args := range [][]string{{"--file-root", "/srv/project"}, {"--seat-timeout", "45m"}} {
+		if err := Run(args); err == nil || !strings.Contains(err.Error(), "flag provided but not defined: "+strings.TrimPrefix(args[0], "-")) {
+			t.Fatalf("%v = %v, want an unknown flag", args, err)
+		}
 	}
 }
 

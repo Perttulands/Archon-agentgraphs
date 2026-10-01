@@ -10,35 +10,16 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// Referenced files (mission, formation brief and gate files) are served only
-// under the daemon's --file-root directories, with the run evidence
-// confinement and headers. Without roots every reference is outside them.
-
-// ConfigureFileRoots is startup configuration; it replaces any earlier roots.
-func (c *Coordinator) ConfigureFileRoots(paths []string) error {
-	roots, err := formations.NewFileRoots(paths)
-	if err != nil {
-		return err
-	}
-	c.mu.Lock()
-	c.fileRoots = roots
-	c.mu.Unlock()
-	return nil
-}
+// Referenced files (mission, formation brief and gate files) open by absolute
+// path anywhere the daemon can read, as in CHROTE (ADR-0021).
 
 func (c *Coordinator) registerFileRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/formations/files/preview", c.filePreview)
 	mux.HandleFunc("GET /api/formations/files/raw", c.fileRaw)
 }
 
-func (c *Coordinator) configuredFileRoots() *formations.FileRoots {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.fileRoots
-}
-
 func (c *Coordinator) filePreview(w http.ResponseWriter, r *http.Request) {
-	preview, err := c.configuredFileRoots().Preview(r.URL.Query().Get("path"))
+	preview, err := formations.PreviewReferencedFile(r.URL.Query().Get("path"))
 	if err != nil {
 		fileFailure(w, err)
 		return
@@ -49,7 +30,7 @@ func (c *Coordinator) filePreview(w http.ResponseWriter, r *http.Request) {
 // fileRaw serves a referenced file like a raw run artifact: never active
 // content, text as text/plain, only known image types kept.
 func (c *Coordinator) fileRaw(w http.ResponseWriter, r *http.Request) {
-	content, err := c.configuredFileRoots().Read(r.URL.Query().Get("path"))
+	content, err := formations.ReadReferencedFile(r.URL.Query().Get("path"))
 	if err != nil {
 		fileFailure(w, err)
 		return
@@ -69,10 +50,10 @@ func (c *Coordinator) fileRaw(w http.ResponseWriter, r *http.Request) {
 
 func fileFailure(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, formations.ErrFileOutsideRoots):
-		reply(w, http.StatusForbidden, map[string]string{"error": "file is not readable here: it is outside the daemon's file roots"})
+	case errors.Is(err, formations.ErrRelativeFileRef):
+		reply(w, http.StatusBadRequest, map[string]string{"error": "a relative file reference has no base here; name the file by its absolute path"})
 	case errors.Is(err, os.ErrPermission):
-		reply(w, http.StatusForbidden, map[string]string{"error": "file is not readable here: the daemon may not read it"})
+		reply(w, http.StatusForbidden, map[string]string{"error": "the daemon's user may not read this file"})
 	case errors.Is(err, formations.ErrNotFound), errors.Is(err, os.ErrNotExist):
 		reply(w, http.StatusNotFound, map[string]string{"error": "file not found"})
 	case errors.Is(err, formations.ErrEvidenceTooLarge):

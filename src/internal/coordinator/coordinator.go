@@ -104,7 +104,6 @@ type Coordinator struct {
 	terminalObserver *terminal.Observer
 	needsYou         *needsYouDispatcher
 	agentLiveness    api.AgentLivenessProvider
-	fileRoots        *formations.FileRoots
 	// channels caches each run's frozen human channel; guarded by mu.
 	channels map[string]string
 }
