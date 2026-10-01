@@ -2,17 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { rectsOverlap, type WindowRect, type Workspace } from './windowGeometry'
 import { TITLE_STRIP, placeOpeningWindow, placementCandidateCount, type PlacementScene } from './windowPlacement'
 import { FLOATING_WINDOW_MINIMUM } from './floatingWindowSize'
-import scenes from './fixtures/wayfindingScenes.json'
+import scenes from './fixtures/scoutingScenes.json'
 
 // The fixtures were measured from the real cockpit (archond with the lab
-// executor, Wayfinding as it opens) at 1920x1080 and 2560x1440: the workspace
+// executor, Scouting as it opens) at 1920x1080 and 2560x1440: the workspace
 // and avoided zones, the content under the windows, and for every node the
 // anchor and the boxes a window about it keeps clear, as cockpitScene.ts
 // measures them. The canvas is fitted to the screen, the zoom it opens at.
 
 interface MeasuredNode { title: string; anchor: WindowRect | null; keepClear: WindowRect[] }
 interface MeasuredScene { workspace: Workspace; landmarks: WindowRect[]; content: WindowRect[]; nodes: Record<string, MeasuredNode> }
-type SceneName = 'wayfinding-canvas-1920' | 'wayfinding-flow-1920' | 'wayfinding-canvas-2560' | 'wayfinding-flow-2560'
+type SceneName = 'scouting-canvas-1920' | 'scouting-flow-1920' | 'scouting-canvas-2560' | 'scouting-flow-2560'
 const measured = scenes as unknown as Record<SceneName, MeasuredScene>
 
 const NODE = { width: 540, height: 620 }
@@ -73,53 +73,53 @@ function expectReadable(name: SceneName, nodeIds: string[], opened: WindowRect[]
 
 const overlapsAny = (rect: WindowRect, others: WindowRect[]) => others.some(other => rectsOverlap(rect, other))
 
-describe('window placement on Wayfinding as it opens', () => {
+describe('window placement on Scouting as it opens', () => {
   it('opens Map the territory on the canvas at 1920 in the empty canvas, clear of the graph', () => {
-    const [map] = openInTurn('wayfinding-canvas-1920', [MAP])
-    expectReadable('wayfinding-canvas-1920', [MAP], [map])
+    const [map] = openInTurn('scouting-canvas-1920', [MAP])
+    expectReadable('scouting-canvas-1920', [MAP], [map])
     // The report's window sat on Framing review and Question peers; this one covers no card, note or wire label.
-    expect(overlapsAny(map, measured['wayfinding-canvas-1920'].content)).toBe(false)
+    expect(overlapsAny(map, measured['scouting-canvas-1920'].content)).toBe(false)
   })
 
   it('opens three windows in sequence on the canvas at 1920 without covering their steps, neighbours or each other', () => {
     const ids = [MAP, DRAFT, SIGN_OFF]
-    const opened = openInTurn('wayfinding-canvas-1920', ids)
-    expectReadable('wayfinding-canvas-1920', ids, opened)
+    const opened = openInTurn('scouting-canvas-1920', ids)
+    expectReadable('scouting-canvas-1920', ids, opened)
     // The next click the report aimed, at Adversarial review, lands on its card.
-    for (const rect of opened) expect(overlapsAny(rect, measured['wayfinding-canvas-1920'].nodes[ADVERSARIAL].keepClear.slice(0, 1))).toBe(false)
+    for (const rect of opened) expect(overlapsAny(rect, measured['scouting-canvas-1920'].nodes[ADVERSARIAL].keepClear.slice(0, 1))).toBe(false)
     for (const [index, rect] of opened.entries()) expect(overlapsAny(rect, opened.slice(0, index))).toBe(false)
   })
 
   it('opens three windows in sequence on the canvas at 2560 beside one another in free space', () => {
     const ids = [MAP, DRAFT, SIGN_OFF]
-    const opened = openInTurn('wayfinding-canvas-2560', ids)
-    expectReadable('wayfinding-canvas-2560', ids, opened)
+    const opened = openInTurn('scouting-canvas-2560', ids)
+    expectReadable('scouting-canvas-2560', ids, opened)
     for (const [index, rect] of opened.entries()) expect(overlapsAny(rect, opened.slice(0, index))).toBe(false)
     // The Map window no longer blocks a click on Question peers.
-    expect(overlapsAny(opened[0], measured['wayfinding-canvas-2560'].nodes[PEERS].keepClear)).toBe(false)
+    expect(overlapsAny(opened[0], measured['scouting-canvas-2560'].nodes[PEERS].keepClear)).toBe(false)
   })
 
   it('opens Flow windows at 1920 clear of each row\'s number, title, labels and links', () => {
     const ids = [MAP, FRAMING, PEERS]
-    const opened = openInTurn('wayfinding-flow-1920', ids)
-    expectReadable('wayfinding-flow-1920', ids, opened)
+    const opened = openInTurn('scouting-flow-1920', ids)
+    expectReadable('scouting-flow-1920', ids, opened)
     // The gutters are narrower than a window, so the first takes the right edge of the column, where row text ends.
-    const column = measured['wayfinding-flow-1920'].content[0]
+    const column = measured['scouting-flow-1920'].content[0]
     expect(opened[0].left).toBeGreaterThan(column.left + column.width / 2)
     expect(rectsOverlap(opened[0], opened[1])).toBe(false)
   })
 
   it('opens Flow windows at 2560 in the gutters, off the column', () => {
     const ids = [MAP, FRAMING, PEERS]
-    const opened = openInTurn('wayfinding-flow-2560', ids)
-    expectReadable('wayfinding-flow-2560', ids, opened)
-    for (const rect of opened) expect(overlapsAny(rect, measured['wayfinding-flow-2560'].content)).toBe(false)
+    const opened = openInTurn('scouting-flow-2560', ids)
+    expectReadable('scouting-flow-2560', ids, opened)
+    for (const rect of opened) expect(overlapsAny(rect, measured['scouting-flow-2560'].content)).toBe(false)
     for (const [index, rect] of opened.entries()) expect(overlapsAny(rect, opened.slice(0, index))).toBe(false)
   })
 
   it('opens a note window and a file window beside a node window, clear of the node and its neighbours', () => {
-    const scene = measured['wayfinding-canvas-1920']
-    const [map] = openInTurn('wayfinding-canvas-1920', [MAP])
+    const scene = measured['scouting-canvas-1920']
+    const [map] = openInTurn('scouting-canvas-1920', [MAP])
     const node = scene.nodes[MAP]
     const base: PlacementScene = { workspace: scene.workspace, anchor: node.anchor, keepClear: node.keepClear, landmarks: scene.landmarks, content: scene.content }
     const note = placeOpeningWindow(NOTE, FLOATING_WINDOW_MINIMUM.note, { ...base, windows: [map] })
@@ -144,8 +144,8 @@ describe('window placement rules', () => {
   })
 
   it('opens run bar files right below the bar on a crowded canvas, over cards but never over a window', () => {
-    // Wayfinding at 100% fills the canvas: no free space lies near the run bar.
-    const scene = measured['wayfinding-canvas-1920']
+    // Scouting at 100% fills the canvas: no free space lies near the run bar.
+    const scene = measured['scouting-canvas-1920']
     const crowded = { ...scene, landmarks: [...scene.landmarks, { left: 244, top: 138, width: 1668, height: 300 }] }
     const chip = { left: 440, top: 100, width: 90, height: 24 }
     const bar = { left: 236, top: 90, width: 1684, height: 40 }
@@ -214,7 +214,7 @@ describe('window placement rules', () => {
   })
 
   it('weighs only what is within reach of the workspace, so a long Flow costs no more than a short one', () => {
-    const scene = measured['wayfinding-flow-1920']
+    const scene = measured['scouting-flow-1920']
     const node = scene.nodes[FRAMING]
     const rowsTall = 230
     // Eighty rows: the measured ones and seventy-two more below, scrolled out of view.

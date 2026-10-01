@@ -31,12 +31,16 @@ label = "Input"
 id = "slot_a"
 label = "Peer A"
 agentId = "codex-builder"
+harness = "openai-codex"
+effort = "medium"
 [[formation.slot]]
 id = "slot_b"
 label = "Peer B"
 agentId = "codex-reviewer"
+harness = "openai-codex"
+effort = "medium"
 
-[[mission]]
+[[inputCard]]
 id = "mis_start"
 title = "Start"
 goal = ""
@@ -55,7 +59,7 @@ to = "fmn_work:port_in"
 		if err != nil {
 			t.Fatal(err)
 		}
-		req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/types", bytes.NewBufferString(`{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{")))
+		req := httptest.NewRequest(http.MethodPatch, "/api/missions/types", bytes.NewBufferString(`{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{")))
 		req.Header.Set("If-Match", board.ETag)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
@@ -65,7 +69,7 @@ to = "fmn_work:port_in"
 		t.Helper()
 		var response struct {
 			Data struct {
-				Board formations.BoardDocument `json:"board"`
+				Board formations.BoardDocument `json:"mission"`
 			} `json:"data"`
 		}
 		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &response) != nil {

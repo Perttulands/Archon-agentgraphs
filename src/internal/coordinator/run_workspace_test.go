@@ -35,12 +35,12 @@ func TestMissionAdmissionWithoutCwdExecutesInItsProjectedWorkspace(t *testing.T)
 		t.Fatal(err)
 	}
 	for _, cwd := range []any{nil, ""} {
-		body := map[string]any{"board": "proof", "missionId": "mis_proof", "expectedRev": 1, "brief": "work in an automatic workspace", "contextPaths": contextPaths, "limits": formations.RunLimits{MaxDispatch: 3, MaxAttempts: 1, WallClockSeconds: 60}}
+		body := map[string]any{"mission": "proof", "inputCardId": "mis_proof", "expectedRev": 1, "brief": "work in an automatic workspace", "contextPaths": contextPaths, "limits": formations.RunLimits{MaxDispatch: 3, MaxAttempts: 1, WallClockSeconds: 60}}
 		if cwd != nil {
 			body["cwd"] = cwd
 		}
 		raw, _ := json.Marshal(body)
-		w := post(t, c, "/api/formations/runs", string(raw))
+		w := post(t, c, "/api/runs", string(raw))
 		if w.Code != 202 {
 			t.Fatalf("admission: %d %s", w.Code, w.Body.String())
 		}
@@ -74,7 +74,7 @@ func TestMissionAdmissionWithoutCwdExecutesInItsProjectedWorkspace(t *testing.T)
 		}
 		e.finish <- struct{}{}
 		awaitState(t, c, id, "waiting_human")
-		w = post(t, c, "/api/formations/runs/"+id+"/abort", `{"reason":"test complete"}`)
+		w = post(t, c, "/api/runs/"+id+"/abort", `{"reason":"test complete"}`)
 		if w.Code != 200 {
 			t.Fatalf("abort: %d %s", w.Code, w.Body.String())
 		}

@@ -105,6 +105,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_join"
@@ -129,6 +130,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_a"

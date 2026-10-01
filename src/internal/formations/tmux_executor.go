@@ -96,7 +96,7 @@ type expectedAgentUser struct {
 func (e *TmuxFormationExecutor) resolveExpectedAgentUser() (expectedAgentUser, error) {
 	serviceUID, err := formationServiceUID()
 	if err != nil {
-		return expectedAgentUser{}, runExecutionError("agent_user_unresolved", "formations executor could not resolve the service user", "executor", err)
+		return expectedAgentUser{}, runExecutionError("agent_user_unresolved", "archon executor could not resolve the service user", "executor", err)
 	}
 	name := strings.TrimSpace(e.config.AgentUser)
 	if name == "" {
@@ -104,7 +104,7 @@ func (e *TmuxFormationExecutor) resolveExpectedAgentUser() (expectedAgentUser, e
 	}
 	agentUID, err := formationLookupUID(name)
 	if err != nil {
-		return expectedAgentUser{}, runExecutionError("agent_user_unresolved", fmt.Sprintf("configured formations agent-user %q could not be resolved", name), "executor", err)
+		return expectedAgentUser{}, runExecutionError("agent_user_unresolved", fmt.Sprintf("configured archon agent-user %q could not be resolved", name), "executor", err)
 	}
 	return expectedAgentUser{uid: agentUID, self: agentUID == serviceUID, name: name}, nil
 }
@@ -120,7 +120,7 @@ func (e *TmuxFormationExecutor) verifyServerOwner(expected expectedAgentUser) er
 		return runExecutionError("agent_user_owner_unverified", fmt.Sprintf("could not determine the owner of tmux socket %s", e.config.Socket), "executor", err)
 	}
 	if ownerUID != expected.uid {
-		return runExecutionError("agent_user_owner_mismatch", fmt.Sprintf("tmux socket %s is owned by uid %d but formations agents must run as uid %d (configured agent-user)", e.config.Socket, ownerUID, expected.uid), "executor", nil)
+		return runExecutionError("agent_user_owner_mismatch", fmt.Sprintf("tmux socket %s is owned by uid %d but archon agents must run as uid %d (configured agent-user)", e.config.Socket, ownerUID, expected.uid), "executor", nil)
 	}
 	return nil
 }
@@ -205,21 +205,21 @@ func (o *ownedSessions) record(slotID, name string) {
 
 func TmuxExecutorConfigFromEnv() TmuxExecutorConfig {
 	capBytes := defaultTmuxOutputCapBytes
-	if raw := strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_OUTPUT_CAP_BYTES")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("ARCHON_TMUX_OUTPUT_CAP_BYTES")); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
 			capBytes = parsed
 		}
 	}
 	return TmuxExecutorConfig{
-		Harnesses:            splitLabCSV(os.Getenv("CHROTE_FORMATIONS_TMUX_HARNESSES")),
-		StateDir:             strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_STATE_DIR")),
-		Mission:              strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_MISSION_LABEL")),
-		CodexTranscriptRoot:  strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_CODEX_TRANSCRIPTS")),
-		ClaudeTranscriptRoot: strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_CLAUDE_TRANSCRIPTS")),
-		Socket:               strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_SOCKET")),
-		Cwd:                  strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_CWD")),
-		AgentUser:            strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_AGENT_USER")),
-		SessionPrefix:        strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_SESSION_PREFIX")),
+		Harnesses:            splitLabCSV(os.Getenv("ARCHON_TMUX_HARNESSES")),
+		StateDir:             strings.TrimSpace(os.Getenv("ARCHON_STATE_DIR")),
+		Mission:              strings.TrimSpace(os.Getenv("ARCHON_MISSION_LABEL")),
+		CodexTranscriptRoot:  strings.TrimSpace(os.Getenv("ARCHON_CODEX_TRANSCRIPTS")),
+		ClaudeTranscriptRoot: strings.TrimSpace(os.Getenv("ARCHON_CLAUDE_TRANSCRIPTS")),
+		Socket:               strings.TrimSpace(os.Getenv("ARCHON_TMUX_SOCKET")),
+		Cwd:                  strings.TrimSpace(os.Getenv("ARCHON_TMUX_CWD")),
+		AgentUser:            strings.TrimSpace(os.Getenv("ARCHON_AGENT_USER")),
+		SessionPrefix:        strings.TrimSpace(os.Getenv("ARCHON_TMUX_SESSION_PREFIX")),
 		OutputCapBytes:       capBytes,
 	}
 }
@@ -368,7 +368,7 @@ func (e *TmuxFormationExecutor) executeOrchestratedFormation(ctx context.Context
 		seat := baseline.seat
 		leaderExtra = append(leaderExtra, fmt.Sprintf("Worker slot %s: append its complete task after the required run context already in %s, then paste ONLY this exact pointer into its existing owned pane %s: %s", baseline.binding.Slot.ID, seat.brief, seat.paneID, seat.pointer))
 	}
-	leaderExtra = append(leaderExtra, "Preserve the seeded run cwd, mission goal and Bead context in every worker brief. For every worker task include the run id and require the CHROTE-DONE sentinel in its final answer. Use load-buffer/paste-buffer with bracketed paste, wait for staging, then send Enter once. Never create, adopt, or kill any sessions. Finish after all worker turns complete. Worker completion is independently read from native transcripts.")
+	leaderExtra = append(leaderExtra, "Preserve the seeded run cwd, mission goal and Bead context in every worker brief. For every worker task include the run id and require the ARCHON-DONE sentinel in its final answer. Use load-buffer/paste-buffer with bracketed paste, wait for staging, then send Enter once. Never create, adopt, or kill any sessions. Finish after all worker turns complete. Worker completion is independently read from native transcripts.")
 	leaderExtra = append(leaderExtra, outputContractExtraLines(req.Formation)...)
 	leader, leaderErr := e.executeSlot(req, controller, allowed, dispatcher, "leader-agentic", leaderExtra, owned)
 	// Observe the workers whether or not the leader finished: a leader that timed
@@ -479,8 +479,7 @@ func (e *TmuxFormationExecutor) readOutputRefArtifact(ref string) (string, error
 	return string(raw), nil
 }
 
-// resolveOutputRefPath makes a ref absolute; a relative ref resolves against
-// the state workspace.
+// resolveOutputRefPath accepts an absolute ref anywhere on disk.
 func (e *TmuxFormationExecutor) resolveOutputRefPath(ref string) (string, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
@@ -489,19 +488,10 @@ func (e *TmuxFormationExecutor) resolveOutputRefPath(ref string) (string, error)
 	if strings.ContainsRune(ref, 0) || strings.Contains(ref, "://") {
 		return "", runExecutionError("invalid_output_ref", fmt.Sprintf("unsupported output ref %q", ref), "executor", nil)
 	}
-	candidate := filepath.Clean(ref)
 	if !filepath.IsAbs(ref) {
-		base := e.config.Cwd
-		if e.store != nil && strings.TrimSpace(e.store.workspaceRoot()) != "" {
-			base = e.store.workspaceRoot()
-		}
-		candidate = filepath.Join(base, filepath.FromSlash(ref))
+		return "", runExecutionError("invalid_output_ref", fmt.Sprintf("output ref %q must be an absolute path", ref), "executor", nil)
 	}
-	candidate, err := filepath.Abs(candidate)
-	if err != nil {
-		return "", runExecutionError("invalid_output_ref", fmt.Sprintf("output ref %q is invalid", ref), "executor", err)
-	}
-	return candidate, nil
+	return filepath.Clean(ref), nil
 }
 
 func outputContractExtraLines(formation FormationNode) []string {
@@ -512,7 +502,7 @@ func outputContractExtraLines(formation FormationNode) []string {
 		"formation output contract:",
 		"Every formation output must be emitted through exactly one fenced JSON block before the sentinel. Keep JSON string values short; terminal wrapping corrupts long JSON strings.",
 		"Required routing payload shape:",
-		"```chrote-outputs",
+		"```archon-outputs",
 		"{",
 	}
 	for i, output := range formation.Outputs {
@@ -532,13 +522,13 @@ func outputContractExtraLines(formation FormationNode) []string {
 		"Use text for a short, non-secret routed payload or summary.",
 		"For longer payloads, create a text artifact under the artifact directory shown below and put its full absolute filesystem path in ref; CHROTE reads that file for routing. A bare filename does not resolve against the run artifact directory. Omit ref for a text-only payload.",
 		"A missing, unreadable, non-text or oversized ref blocks the run.",
-		"Before the CHROTE-DONE sentinel, you MUST emit a fresh ```chrote-outputs fenced JSON block for this run. Do not omit the fence.",
+		"Before the ARCHON-DONE sentinel, you MUST emit a fresh ```archon-outputs fenced JSON block for this run. Do not omit the fence.",
 	)
 	return lines
 }
 
 func parseChroteOutputs(text string) (string, map[string]FormationOutputPayload, error) {
-	start := strings.LastIndex(text, "```chrote-outputs")
+	start := strings.LastIndex(text, "```archon-outputs")
 	if start == -1 {
 		if clean, outputs, ok := parseBareChroteOutputs(text); ok {
 			return clean, outputs, nil
@@ -548,22 +538,22 @@ func parseChroteOutputs(text string) (string, map[string]FormationOutputPayload,
 	afterStart := text[start:]
 	newline := strings.Index(afterStart, "\n")
 	if newline == -1 {
-		return "", nil, fmt.Errorf("chrote-outputs fence is missing JSON body")
+		return "", nil, fmt.Errorf("archon-outputs fence is missing JSON body")
 	}
 	jsonStart := start + newline + 1
 	afterJSONStart := text[jsonStart:]
 	endRel := strings.Index(afterJSONStart, "```")
 	if endRel == -1 {
-		return "", nil, fmt.Errorf("chrote-outputs fence is missing closing fence")
+		return "", nil, fmt.Errorf("archon-outputs fence is missing closing fence")
 	}
 	jsonText := strings.TrimSpace(afterJSONStart[:endRel])
 	raw, err := decodeChroteOutputsJSON(jsonText)
 	if err != nil {
-		return "", nil, fmt.Errorf("chrote-outputs JSON is invalid: %w", err)
+		return "", nil, fmt.Errorf("archon-outputs JSON is invalid: %w", err)
 	}
 	outputs := outputPayloadsFromAny(raw)
 	if len(outputs) == 0 {
-		return "", nil, fmt.Errorf("chrote-outputs JSON must contain at least one output payload")
+		return "", nil, fmt.Errorf("archon-outputs JSON must contain at least one output payload")
 	}
 	end := jsonStart + endRel + len("```")
 	clean := strings.TrimSpace(text[:start] + text[end:])
@@ -822,7 +812,7 @@ func (e *TmuxFormationExecutor) pickOwnedSessionName(ctx context.Context, runID,
 	} else {
 		mission += "-" + runID
 	}
-	candidate := "form-" + sanitizeSessionComponent(mission) + "-" + sanitizeSessionComponent(slotID)
+	candidate := "archon-" + sanitizeSessionComponent(mission) + "-" + sanitizeSessionComponent(slotID)
 	if !safeTmuxSessionName(candidate) || taken[candidate] {
 		return "", runExecutionError("session_name_collision", "owned tmux session name is already present or invalid", "executor", nil)
 	}
@@ -1298,7 +1288,7 @@ func extractCapturedSlotText(captured, prompt, runID string) string {
 		} else {
 			text = beforeLatest
 		}
-	} else if sentinelAt := strings.LastIndex(text, "<<<CHROTE-DONE "); sentinelAt >= 0 {
+	} else if sentinelAt := strings.LastIndex(text, "<<<ARCHON-DONE "); sentinelAt >= 0 {
 		text = text[:sentinelAt]
 	}
 	if markerAt := strings.LastIndex(text, "When complete, emit exactly one sentinel line"); markerAt >= 0 {
@@ -1310,7 +1300,7 @@ func extractCapturedSlotText(captured, prompt, runID string) string {
 	text = textAfterLastTranscriptSeparator(text)
 	lines := make([]string, 0, len(strings.Split(text, "\n")))
 	for _, line := range strings.Split(text, "\n") {
-		if strings.Contains(line, "<<<CHROTE-DONE ") || strings.Contains(line, "run-id=<the-run-value-above>") {
+		if strings.Contains(line, "<<<ARCHON-DONE ") || strings.Contains(line, "run-id=<the-run-value-above>") {
 			continue
 		}
 		lines = append(lines, line)
@@ -1345,23 +1335,23 @@ func lastMatchingCompletionSentinelBounds(captured, runID string) (int, int) {
 	lastStart := -1
 	lastEnd := -1
 	for {
-		startRel := strings.Index(remaining, "<<<CHROTE-DONE ")
+		startRel := strings.Index(remaining, "<<<ARCHON-DONE ")
 		if startRel == -1 {
 			return lastStart, lastEnd
 		}
 		start := offset + startRel
-		afterStart := remaining[startRel+len("<<<CHROTE-DONE "):]
+		afterStart := remaining[startRel+len("<<<ARCHON-DONE "):]
 		endRel := strings.Index(afterStart, ">>>")
 		if endRel == -1 {
 			return lastStart, lastEnd
 		}
 		fields := parseSentinelFields(afterStart[:endRel])
-		end := start + len("<<<CHROTE-DONE ") + endRel + len(">>>")
+		end := start + len("<<<ARCHON-DONE ") + endRel + len(">>>")
 		if fields["run-id"] == runID {
 			lastStart = start
 			lastEnd = end
 		}
-		consumed := startRel + len("<<<CHROTE-DONE ") + endRel + len(">>>")
+		consumed := startRel + len("<<<ARCHON-DONE ") + endRel + len(">>>")
 		offset += consumed
 		remaining = remaining[consumed:]
 	}
@@ -1462,7 +1452,7 @@ func (e *TmuxFormationExecutor) ensureServer(parent context.Context, expected ex
 		return nil
 	}
 	if !expected.self {
-		return runExecutionError("agent_user_server_absent", fmt.Sprintf("formations tmux server is not running on %s; a server owned by the configured agent-user %q must be provisioned before dispatch (refusing to lazy-start a wrong-owner server)", e.config.Socket, expected.name), "executor", nil)
+		return runExecutionError("agent_user_server_absent", fmt.Sprintf("archon tmux server is not running on %s; a server owned by the configured agent-user %q must be provisioned before dispatch (refusing to lazy-start a wrong-owner server)", e.config.Socket, expected.name), "executor", nil)
 	}
 	keeper := e.config.SessionPrefix + tmuxKeeperSuffix
 	if !safeTmuxSessionName(keeper) {
@@ -1553,11 +1543,11 @@ func (e *TmuxFormationExecutor) renderPromptWithContext(req FormationExecution, 
 		}
 	}
 	if len(req.Formation.Outputs) > 0 && e.store != nil {
-		artifactDir := filepath.Join(e.store.workspaceRoot(), ".formations", "artifacts", req.RunID)
+		artifactDir := filepath.Join(e.store.workspaceRoot(), ".archon", "artifacts", req.RunID)
 		b.WriteString("artifact directory for long routed outputs: " + artifactDir + "\n")
-		b.WriteString("If you use ref in chrote-outputs, create the file first, preferably under that artifact directory.\n")
+		b.WriteString("If you use ref in archon-outputs, create the file first, preferably under that artifact directory.\n")
 	}
-	b.WriteString("When complete, emit exactly one sentinel line using the run value above: <<<CHROTE-DONE run-id=<the-run-value-above> status=ok artifact=<path-or-ref>>>\n")
+	b.WriteString("When complete, emit exactly one sentinel line using the run value above: <<<ARCHON-DONE run-id=<the-run-value-above> status=ok artifact=<path-or-ref>>>\n")
 	return b.String()
 }
 
@@ -1720,14 +1710,14 @@ func runTmuxCommand(ctx context.Context, socket string, stdin *strings.Reader, a
 
 func safeTmuxBufferName(dispatchID string) string {
 	var b strings.Builder
-	b.WriteString("chrote-")
+	b.WriteString("archon-")
 	for _, r := range dispatchID {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
 			b.WriteRune(r)
 		}
 	}
-	if b.Len() == len("chrote-") {
-		return "chrote-dispatch"
+	if b.Len() == len("archon-") {
+		return "archon-dispatch"
 	}
 	return b.String()
 }

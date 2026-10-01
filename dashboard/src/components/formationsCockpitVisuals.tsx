@@ -1,4 +1,4 @@
-/* Pure visual helpers for the Formations cockpit: type taglines, inline SVG
+/* Pure visual helpers for the Archon cockpit: type taglines, inline SVG
    glyphs, and agent initials/role/state. Extracted from FormationsCockpit so
    the component focuses on stateful canvas logic. The Agents view shares the
    roster grouping and seat layout so both tabs draw agents the same way. */
@@ -26,6 +26,14 @@ export const GATE_SVG = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
     <path d="M4 20V6h3.5v2.5h3V6h3v2.5h3V6H20v14" />
     <path d="M9.5 20v-4a2.5 2.5 0 015 0v4" />
+  </svg>
+)
+
+/** An End node's mark: the final-state bullseye, a ring around a filled stop. */
+export const END_SVG = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+    <circle cx="12" cy="12" r="8.5" />
+    <circle cx="12" cy="12" r="4.2" fill="currentColor" stroke="none" />
   </svg>
 )
 
@@ -145,6 +153,6 @@ export function FormationSeats({ formation, renderSlot }: {
       </div>
     )
   }
-  // Solo, and any retired type: every slot stays visible so none is hidden.
+  // Solo: every slot stays visible so none is hidden.
   return <div className="solo-body">{slots.map(slot => seat(slot))}</div>
 }

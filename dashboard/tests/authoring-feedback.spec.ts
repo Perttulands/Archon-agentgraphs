@@ -8,7 +8,7 @@ test('roster search matches names, IDs, harnesses and tags and clears without wr
     { id: 'critic-id', displayName: 'Brief Critic', harnessDefault: 'claude-code', tags: ['review'], kind: 'judge', assignable: true },
   ]
   await page.route('**/api/agents', route => route.fulfill({ json: { success: true, data: { agents, count: agents.length } } }))
-  await page.goto('/?mission=wayfinding')
+  await page.goto('/?mission=scouting')
   const roster = page.getByTestId('agent-roster')
   await expect(roster.locator('.ragent')).toHaveCount(2)
   const filter = roster.getByRole('searchbox', { name: 'Filter agents' })
@@ -38,15 +38,15 @@ test('brief shortcuts and a confirmed save receipt accompany the note purpose he
   const fixture = await nodeWindowsFixture(page)
   let board = structuredClone(authoredBoard)
   let saves = 0
-  await page.route('**/api/formations/missions/wayfinding', async route => {
+  await page.route('**/api/missions/scouting', async route => {
     if (route.request().method() === 'PATCH') {
       const patch = route.request().postDataJSON().setBrief
       board = { ...board, rev: board.rev + 1, formations: board.formations.map((formation: { id: string }) => formation.id === patch.formationId ? { ...formation, brief: { goal: patch.goal } } : formation) }
       saves++
     }
-    await route.fulfill({ json: { success: true, data: { board } }, headers: { ETag: 'edited-fixture' } })
+    await route.fulfill({ json: { success: true, data: { mission: board } }, headers: { ETag: 'edited-fixture' } })
   })
-  await page.goto('/?mission=wayfinding')
+  await page.goto('/?mission=scouting')
   await page.getByRole('radio', { name: 'Flow', exact: true }).click()
   await page.getByRole('button', { name: '1 Map the territory', exact: true }).click()
   const win = page.getByRole('dialog', { name: 'Formation · Map the territory' })

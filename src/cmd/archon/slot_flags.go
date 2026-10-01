@@ -23,15 +23,14 @@ func formationAssignUsage() string {
 }
 
 type slotAssignFlags struct {
-	slot, role, agent, harness, model, effort, updatedBy *string
-	jsonOut                                              *bool
+	slot, role, harness, model, effort, updatedBy *string
+	jsonOut                                       *bool
 }
 
 func newSlotAssignFlags(fs *flag.FlagSet, stderr io.Writer) slotAssignFlags {
 	flags := slotAssignFlags{
 		slot:      fs.String("slot", "", "slot id"),
 		role:      fs.String("role", "", "optional role (persona id); omit it for a vanilla agent"),
-		agent:     fs.String("agent", "", "same as --role (older name)"),
 		harness:   fs.String("harness", "", "harness the seat runs: claude-code or openai-codex"),
 		model:     fs.String("model", "", "model the seat runs; blank means the harness default model"),
 		effort:    fs.String("effort", "", "reasoning effort; policy: "+formations.EffortPolicyText()),
@@ -49,12 +48,6 @@ func newSlotAssignFlags(fs *flag.FlagSet, stderr io.Writer) slotAssignFlags {
 // required, so staffing always states its effort.
 func (f slotAssignFlags) resolve(fs *flag.FlagSet, stderr io.Writer) (role string, ok bool) {
 	role = *f.role
-	if role == "" {
-		role = *f.agent
-	} else if *f.agent != "" && *f.agent != role {
-		fmt.Fprintln(stderr, "--agent is the older name for --role; give one of them")
-		return "", false
-	}
 	if fs.NArg() != 2 || *f.slot == "" || *f.harness == "" || *f.effort == "" {
 		fmt.Fprintln(stderr, formationAssignUsage())
 		return "", false

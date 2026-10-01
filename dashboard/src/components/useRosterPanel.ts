@@ -4,8 +4,8 @@ import { useCallback, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import '../styles/formations-roster.css'
 
-export const ROSTER_WIDTH_KEY = 'chrote-formations-roster-width'
-export const ROSTER_COLLAPSED_KEY = 'chrote-formations-roster-collapsed'
+export const ROSTER_WIDTH_KEY = 'archon.rosterWidth'
+export const ROSTER_COLLAPSED_KEY = 'archon.rosterCollapsed'
 export const ROSTER_DEFAULT_WIDTH = 236
 export const ROSTER_MIN_WIDTH = 180
 export const ROSTER_MAX_WIDTH = 480

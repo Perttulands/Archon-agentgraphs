@@ -121,8 +121,6 @@ type CreateDraft = {
   harness: string
   sessionStem: string
   summary: string
-  /** Only for a harness Archon cannot start: what `archon agent spawn` runs. */
-  launch: string
   source: string
   capabilities: string
 }
@@ -140,7 +138,6 @@ const EMPTY_CREATE: CreateDraft = {
   harness: 'claude-code',
   sessionStem: '',
   summary: '',
-  launch: '',
   source: '',
   capabilities: '',
 }
@@ -270,7 +267,7 @@ export default function AgentsView() {
   const [noteDraft, setNoteDraft] = useState('')
   const [editingPersona, setEditingPersona] = useState<{ agent: RosterAgent; trigger: HTMLElement | null } | null>(null)
 
-  const selectedMission = board?.missions?.find(mission => mission.id === selectedMissionId) || null
+  const selectedMission = board?.inputCards?.find(mission => mission.id === selectedMissionId) || null
   // Boards is the run console; this tab only reports the mission's run.
   const missionRun = useMissionRun(board?.slug || '', selectedMission?.id || '')
   const nodeStates = useMemo(() => projectNodeStates(missionRun.events, missionRun.run), [missionRun.events, missionRun.run])
@@ -385,8 +382,8 @@ export default function AgentsView() {
       setBoard(nextBoard)
       setLayout(nextLayout)
       setSelectedMissionId(current => {
-        if (current && nextBoard.missions?.some(mission => mission.id === current)) return current
-        return nextBoard.missions?.[0]?.id || ''
+        if (current && nextBoard.inputCards?.some(mission => mission.id === current)) return current
+        return nextBoard.inputCards?.[0]?.id || ''
       })
       setBoardError('')
       setError('')
@@ -533,9 +530,7 @@ export default function AgentsView() {
   const createPersona = useCallback(async (event: FormEvent) => {
     event.preventDefault()
     const capabilities = splitCommaList(createDraft.capabilities)
-    // A new role carries no model or effort; only a harness Archon cannot start
-    // keeps a launch command.
-    const launchable = harnesses.some(harness => harness.id === createDraft.harness.trim())
+    // A new role carries no model or effort.
     try {
       const result = await fetchApi<PersonaCard>('/api/agents', {
         method: 'POST',
@@ -546,7 +541,6 @@ export default function AgentsView() {
           harness: createDraft.harness.trim(),
           sessionStem: createDraft.sessionStem.trim(),
           summary: createDraft.summary.trim(),
-          ...(launchable ? {} : { launch: createDraft.launch.trim() }),
           source: createDraft.source.trim(),
           capabilities,
         }),
@@ -660,10 +654,10 @@ export default function AgentsView() {
             aria-label="Input card"
             value={selectedMissionId}
             onChange={event => setSelectedMissionId(event.target.value)}
-            disabled={boardLoading || !board?.missions?.length}
+            disabled={boardLoading || !board?.inputCards?.length}
           >
-            {!board?.missions?.length && <option value="">No Input card</option>}
-            {(board?.missions || []).map(mission => (
+            {!board?.inputCards?.length && <option value="">No Input card</option>}
+            {(board?.inputCards || []).map(mission => (
               <option key={mission.id} value={mission.id}>{mission.title}</option>
             ))}
           </select>
@@ -1252,7 +1246,7 @@ function VariantEditor({ agentId, variant, isDefault, fallbackStem, onSave }: {
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<{ error: string; saved: boolean }>({ error: '', saved: false })
   // A save here or an edit elsewhere changes the card; show what it now holds.
-  useEffect(() => setDraft(variantDraft(variant)), [variant.model, variant.effort, variant.launch]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setDraft(variantDraft(variant)), [variant.model, variant.effort]) // eslint-disable-line react-hooks/exhaustive-deps
   const changes = variantChanges(variant, draft)
   const launchable = isLaunchable(variant)
   const idPrefix = `agx-variant-${variant.id}`
@@ -1419,8 +1413,7 @@ function CreatePersonaPopover({
   onClose: () => void
 }) {
   const set = (key: keyof CreateDraft, value: string) => onDraft({ ...draft, [key]: value })
-  // A harness Archon starts takes its model and effort from each slot; any
-  // other harness keeps a launch command for archon agent spawn.
+  // A harness Archon starts takes its model and effort from each slot.
   const launchable = harnesses.some(next => next.id === draft.harness)
   const changeHarness = (harness: string) => onDraft({ ...draft, harness })
   return (
@@ -1447,13 +1440,9 @@ function CreatePersonaPopover({
             A role carries no model or effort. Each slot that uses it sets them.
           </p>
         ) : (
-          <>
-            <p className="ph-none agx-create-none">
-              Archon cannot start {draft.harness} seats, so it takes no model or effort. <code>archon agent spawn</code> runs its launch command; leave it blank to derive it from Source.
-            </p>
-            <label htmlFor="agx-create-launch">Launch command (archon agent spawn)</label>
-            <input id="agx-create-launch" className="f" value={draft.launch} spellCheck={false} onChange={event => set('launch', event.target.value)} />
-          </>
+          <p className="ph-none agx-create-none">
+            Archon cannot start {draft.harness} seats, so it takes no model or effort.
+          </p>
         )}
         <label htmlFor="agx-create-stem">Session stem</label>
         <input id="agx-create-stem" className="f" value={draft.sessionStem} onChange={event => set('sessionStem', event.target.value)} />

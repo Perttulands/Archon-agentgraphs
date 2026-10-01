@@ -27,7 +27,7 @@ func (s *Store) FindFreeLayoutPosition(slug string, desiredX, desiredY int) (Lay
 	switch {
 	case err == nil:
 		if layout.BoardID != board.ID {
-			return LayoutNode{}, fmt.Errorf("%w: layout board %q does not match %q", ErrConflict, layout.BoardID, board.ID)
+			return LayoutNode{}, fmt.Errorf("%w: layout mission %q does not match %q", ErrConflict, layout.BoardID, board.ID)
 		}
 	case errors.Is(err, ErrNotFound):
 		layout = nil
@@ -68,6 +68,9 @@ func FreeLayoutPosition(board *BoardDocument, layout *LayoutDocument, desiredX, 
 	}
 	for _, tool := range board.Tools {
 		appendPosition(tool.ID)
+	}
+	for _, end := range board.Ends {
+		appendPosition(end.ID)
 	}
 
 	x := maxInt(layoutPlacementMin, snapLayoutPosition(desiredX))

@@ -17,7 +17,7 @@ func TestFormationsHandlerCreatesNamedBlankBoardWithDerivedSlug(t *testing.T) {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/formations/boards", bytes.NewBufferString(`{"title":"  Release Plan  "}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/missions", bytes.NewBufferString(`{"title":"  Release Plan  "}`))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -27,7 +27,7 @@ func TestFormationsHandlerCreatesNamedBlankBoardWithDerivedSlug(t *testing.T) {
 	var response struct {
 		Success bool `json:"success"`
 		Data    struct {
-			Board formations.BoardDocument `json:"board"`
+			Board formations.BoardDocument `json:"mission"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
@@ -54,11 +54,11 @@ func TestFormationsHandlerRejectsDuplicateDerivedBoardSlug(t *testing.T) {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/formations/boards", bytes.NewBufferString(`{"title":"Release plan"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/missions", bytes.NewBufferString(`{"title":"Release plan"}`))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	assertFormationsAPIToolError(t, rec, http.StatusConflict, "BOARD_EXISTS")
+	assertFormationsAPIToolError(t, rec, http.StatusConflict, "MISSION_EXISTS")
 }
 
 func TestFormationsHandlerDeletesBoardIntoArchive(t *testing.T) {
@@ -71,14 +71,14 @@ func TestFormationsHandlerDeletesBoardIntoArchive(t *testing.T) {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	blindReq := httptest.NewRequest(http.MethodDelete, "/api/formations/boards/release-plan", bytes.NewBufferString(`{"expectedRev":1}`))
+	blindReq := httptest.NewRequest(http.MethodDelete, "/api/missions/release-plan", bytes.NewBufferString(`{"expectedRev":1}`))
 	blindRec := httptest.NewRecorder()
 	mux.ServeHTTP(blindRec, blindReq)
 	if blindRec.Code != http.StatusPreconditionRequired {
 		t.Fatalf("blind status = %d, want 428: %s", blindRec.Code, blindRec.Body.String())
 	}
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/formations/boards/release-plan", bytes.NewBufferString(`{"expectedRev":1}`))
+	req := httptest.NewRequest(http.MethodDelete, "/api/missions/release-plan", bytes.NewBufferString(`{"expectedRev":1}`))
 	req.Header.Set("If-Match", board.ETag)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -112,7 +112,7 @@ func TestFormationsHandlerReturnsSyntheticEmptyLayoutForFreshBoard(t *testing.T)
 	handler := NewFormationsHandlerWithStore(store)
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
-	req := httptest.NewRequest(http.MethodGet, "/api/formations/boards/fresh/layout", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/missions/fresh/layout", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {

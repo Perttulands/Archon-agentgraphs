@@ -15,31 +15,15 @@ func preflightMissionDefinition(board *BoardDocument, missionID string) error {
 	if err := preflightExecutionPolicies(board, selected); err != nil {
 		return err
 	}
-	if err := preflightMissionMigrations(board, missionID, selected); err != nil {
-		return err
-	}
 	if err := preflightSelectedCodeGates(board, selected); err != nil {
 		return err
 	}
 	return preflightSelectedTools(board, selected)
 }
 
-func preflightMissionMigrations(board *BoardDocument, missionID string, selected map[string]bool) error {
-	if err := rejectLegacyInlineVerificationForNodes(board, selected); err != nil {
-		return err
-	}
-	if err := rejectLegacyScriptGateForMission(board, missionID); err != nil {
-		return err
-	}
-	return nil
-}
-
 func preflightIsolatedFormationDefinition(board *BoardDocument, formationID string) error {
 	selected := map[string]bool{formationID: true}
 	if err := preflightExecutionPolicies(board, selected); err != nil {
-		return err
-	}
-	if err := rejectLegacyInlineVerificationForNodes(board, selected); err != nil {
 		return err
 	}
 	if err := preflightSelectedCodeGates(board, selected); err != nil {

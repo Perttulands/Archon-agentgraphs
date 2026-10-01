@@ -122,7 +122,7 @@ func TestOperatorTurnsNeitherCompleteNorFailADispatch(t *testing.T) {
 		// The agent backgrounds a command and ends its turn without the sentinel;
 		// Claude Code resumes when the command reports, so that turn is not final.
 		turn, line, err := fixtureOutcome(t, "claude-code", "claude-background-then-operator", "midturn")
-		if err != nil || !turn.Complete || line != lineOf(t, "claude-background-then-operator", "<<<CHROTE-DONE run-id=run_fixture") {
+		if err != nil || !turn.Complete || line != lineOf(t, "claude-background-then-operator", "<<<ARCHON-DONE run-id=run_fixture") {
 			t.Fatalf("turn %+v at line %d, err %v; want completion only at the sentinel", turn, line, err)
 		}
 	})

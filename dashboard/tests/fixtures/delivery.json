@@ -1,17 +1,16 @@
 {
-  "_source": "examples/delivery.formation.toml as the daemon serves it, for flow model tests.",
-  "board": {
+  "_source": "the delivery example mission as the daemon serves it, for flow model tests.",
+  "mission": {
     "id": "brd_delivery",
     "slug": "delivery",
     "title": "Delivery",
     "rev": 1,
     "etag": "delivery-1",
-    "missions": [
+    "inputCards": [
       {
         "id": "mis_delivery",
         "title": "Deliver the supplied brief",
-        "goal": "Reusable delivery template. The run supplies the target repository as cwd, the brief and the Bead id as prompt context (mission bead). Plan the change, draft Beads in that repository, review them with bounded pushback, execute with a Claude controller and three Codex workers, then produce an independent Astra review report. Use the run artifact directory for the plan and report.",
-        "beadId": ""
+        "goal": "Reusable delivery template. The run supplies the target repository as cwd, the brief and the Bead id as prompt context (mission bead). Plan the change, draft Beads in that repository, review them with bounded pushback, execute with a Claude controller and three Codex workers, then produce an independent Astra review report. Use the run artifact directory for the plan and report."
       }
     ],
     "formations": [
@@ -20,7 +19,7 @@
         "type": "solo",
         "title": "Plan",
         "brief": {
-          "goal": "The run supplies the target repository as cwd, the brief and the Bead id as prompt context (mission bead). Read its repository instructions and owning Bead. Use the brainstorm skill to turn the supplied brief on port_plan_in into a concrete plan with scope, dependencies and verifiable outcomes. The mission has settled the delivery workflow; plan the target change within the supplied intent. Write plan.md only under the run artifact directory shown in this prompt. Return its path and a summary on port_plan_out, together with the target brief and mission Bead reference needed downstream. Do not edit repository source or the Beads store. No Git operations. No tmux operations, new agents or service changes. No Git operations outside your assigned scope; commit only verified work if a scoped commit is authorized.  Follow the supplied chrote-outputs contract using the named output port, then emit the CHROTE-DONE sentinel for this run. "
+          "goal": "The run supplies the target repository as cwd, the brief and the Bead id as prompt context (mission bead). Read its repository instructions and owning Bead. Use the brainstorm skill to turn the supplied brief on port_plan_in into a concrete plan with scope, dependencies and verifiable outcomes. The mission has settled the delivery workflow; plan the target change within the supplied intent. Write plan.md only under the run artifact directory shown in this prompt. Return its path and a summary on port_plan_out, together with the target brief and mission Bead reference needed downstream. Do not edit repository source or the Beads store. No Git operations. No tmux operations, new agents or service changes. No Git operations outside your assigned scope; commit only verified work if a scoped commit is authorized.  Follow the supplied archon-outputs contract using the named output port, then emit the ARCHON-DONE sentinel for this run. "
         },
         "inputs": [
           {
@@ -50,7 +49,7 @@
         "type": "solo",
         "title": "Beads",
         "brief": {
-          "goal": "The run supplies the target repository as cwd, the brief and the Bead id as prompt context (mission bead). Read its repository instructions and owning Bead. Use the beads-drafting skill. Input port_beads_in carries the plan path and summary, or gate feedback with the previous draft. Read the plan. Run bd where in the run cwd and use the target repository's own Beads store. Draft the smallest graph under the supplied mission Bead, with parent links, dependencies, file scopes and verifiable acceptance criteria. On retry, inspect the original draft and fix the gate reason and evidence in the existing Beads; do not create a duplicate graph. Preserve the plan path in every handoff. Output the Bead ids, their summary and the plan path on port_beads_out. You may change only those Beads in that store; no source edits or Git operations. No tmux operations, new agents or service changes. No Git operations outside your assigned scope; commit only verified work if a scoped commit is authorized.  Follow the supplied chrote-outputs contract using the named output port, then emit the CHROTE-DONE sentinel for this run. "
+          "goal": "The run supplies the target repository as cwd, the brief and the Bead id as prompt context (mission bead). Read its repository instructions and owning Bead. Use the beads-drafting skill. Input port_beads_in carries the plan path and summary, or gate feedback with the previous draft. Read the plan. Run bd where in the run cwd and use the target repository's own Beads store. Draft the smallest graph under the supplied mission Bead, with parent links, dependencies, file scopes and verifiable acceptance criteria. On retry, inspect the original draft and fix the gate reason and evidence in the existing Beads; do not create a duplicate graph. Preserve the plan path in every handoff. Output the Bead ids, their summary and the plan path on port_beads_out. You may change only those Beads in that store; no source edits or Git operations. No tmux operations, new agents or service changes. No Git operations outside your assigned scope; commit only verified work if a scoped commit is authorized.  Follow the supplied archon-outputs contract using the named output port, then emit the ARCHON-DONE sentinel for this run. "
         },
         "inputs": [
           {
@@ -80,7 +79,7 @@
         "type": "solo",
         "title": "Beads reviewer",
         "brief": {
-          "goal": "The run supplies the target repository as cwd, the brief and the Bead id as prompt context (mission bead). Read its repository instructions and owning Bead. Use the review-beads skill. Input port_beads_reviewer_in carries the gate criterion and Bead ids, summary and plan path. Read the plan and every proposed Bead in the target repository's store; use bd where in the run cwd and run bd lint for the proposed Beads. Check every Bead links to its parent and its required dependencies, and judge whether each goal and acceptance criterion is clear, scoped and verifiable. Read only: write no files, modify no Beads, perform no Git or tmux operations and launch no agents. Return exactly one fenced chrote-verdict JSON block with exactly verdict (pass or fail), reason (string) and evidence (array of strings). State actionable corrections on fail. Also emit the chrote-outputs block with a short verdict summary on port_beads_reviewer_out, without duplicating the chrote-verdict block.  Follow the supplied chrote-outputs contract using the named output port, then emit the CHROTE-DONE sentinel for this run. "
+          "goal": "The run supplies the target repository as cwd, the brief and the Bead id as prompt context (mission bead). Read its repository instructions and owning Bead. Use the review-beads skill. Input port_beads_reviewer_in carries the gate criterion and Bead ids, summary and plan path. Read the plan and every proposed Bead in the target repository's store; use bd where in the run cwd and run bd lint for the proposed Beads. Check every Bead links to its parent and its required dependencies, and judge whether each goal and acceptance criterion is clear, scoped and verifiable. Read only: write no files, modify no Beads, perform no Git or tmux operations and launch no agents. Return exactly one fenced archon-verdict JSON block with exactly verdict (pass or fail), reason (string) and evidence (array of strings). State actionable corrections on fail. Also emit the archon-outputs block with a short verdict summary on port_beads_reviewer_out, without duplicating the archon-verdict block.  Follow the supplied archon-outputs contract using the named output port, then emit the ARCHON-DONE sentinel for this run. "
         },
         "inputs": [
           {
@@ -110,7 +109,7 @@
         "type": "orchestrated",
         "title": "Execution",
         "brief": {
-          "goal": "The run supplies the target repository as cwd, the brief and the Bead id as prompt context (mission bead). Read its repository instructions and owning Bead. Use the beads-driven-development skill. Input port_execution_in carries the approved Bead ids, summary and plan path. Read the plan and approved graph in the target repository's own store. The controller alone steers the three bound openai-codex workers using native tmux on the socket and session names supplied in its prompt, per ADR-0011. Use these existing bound workers for the skill's delegation; do not launch replacement agents. Give each worker an explicit Bead, file scope, verification and handoff contract. Workers execute only their assigned Beads, use the beads skill for status and evidence, and return results to the controller; workers perform no tmux operations. The controller may prompt and inspect only its bound workers; never adopt or kill any session, and never kill-server. The runtime owns cleanup. Edit only files owned by approved Beads in the target repository and their store, plus evidence under the run artifact directory. No Git operations outside assigned scopes; commit only verified work and stage only owned files. Verify each acceptance criterion before closing its Bead; do not close the mission Bead before final review. Output the commits, closed Bead ids, verification evidence, remaining findings and plan path on port_execution_out.  Follow the supplied chrote-outputs contract using the named output port, then emit the CHROTE-DONE sentinel for this run. "
+          "goal": "The run supplies the target repository as cwd, the brief and the Bead id as prompt context (mission bead). Read its repository instructions and owning Bead. Use the beads-driven-development skill. Input port_execution_in carries the approved Bead ids, summary and plan path. Read the plan and approved graph in the target repository's own store. The controller alone steers the three bound openai-codex workers using native tmux on the socket and session names supplied in its prompt, per ADR-0011. Use these existing bound workers for the skill's delegation; do not launch replacement agents. Give each worker an explicit Bead, file scope, verification and handoff contract. Workers execute only their assigned Beads, use the beads skill for status and evidence, and return results to the controller; workers perform no tmux operations. The controller may prompt and inspect only its bound workers; never adopt or kill any session, and never kill-server. The runtime owns cleanup. Edit only files owned by approved Beads in the target repository and their store, plus evidence under the run artifact directory. No Git operations outside assigned scopes; commit only verified work and stage only owned files. Verify each acceptance criterion before closing its Bead; do not close the mission Bead before final review. Output the commits, closed Bead ids, verification evidence, remaining findings and plan path on port_execution_out.  Follow the supplied archon-outputs contract using the named output port, then emit the ARCHON-DONE sentinel for this run. "
         },
         "inputs": [
           {
@@ -164,7 +163,7 @@
         "type": "solo",
         "title": "Final review",
         "brief": {
-          "goal": "The run supplies the target repository as cwd, the brief and the Bead id as prompt context (mission bead). Read its repository instructions and owning Bead. Use the code-review skill. Input port_final_review_in carries delivered commits, closed Bead ids, verification evidence, findings and the plan path. Independently review the delivered diff, the Beads closure evidence and the plan against the target brief and repository instructions. Write final-review.md only under the run artifact directory shown in this prompt. Report ranked findings with file references and evidence, or an explicit pass with the checks performed. Output the report path and summary on port_final_review_out. The target repository and Beads store are read-only; no fixes, Bead mutations or Git operations. No tmux operations, new agents or service changes. No Git operations outside your assigned scope; commit only verified work if a scoped commit is authorized. No gate follows this report; the run ends.  Follow the supplied chrote-outputs contract using the named output port, then emit the CHROTE-DONE sentinel for this run. "
+          "goal": "The run supplies the target repository as cwd, the brief and the Bead id as prompt context (mission bead). Read its repository instructions and owning Bead. Use the code-review skill. Input port_final_review_in carries delivered commits, closed Bead ids, verification evidence, findings and the plan path. Independently review the delivered diff, the Beads closure evidence and the plan against the target brief and repository instructions. Write final-review.md only under the run artifact directory shown in this prompt. Report ranked findings with file references and evidence, or an explicit pass with the checks performed. Output the report path and summary on port_final_review_out. The target repository and Beads store are read-only; no fixes, Bead mutations or Git operations. No tmux operations, new agents or service changes. No Git operations outside your assigned scope; commit only verified work if a scoped commit is authorized. No gate follows this report; the path ends (done) with it.  Follow the supplied archon-outputs contract using the named output port, then emit the ARCHON-DONE sentinel for this run. "
         },
         "inputs": [
           {
@@ -241,6 +240,18 @@
         "id": "edge_delivered",
         "from": "fmn_execution:port_execution_out",
         "to": "fmn_final_review:port_final_review_in"
+      },
+      {
+        "id": "edge_reported",
+        "from": "fmn_final_review:port_final_review_out",
+        "to": "end_delivered:in"
+      }
+    ],
+    "ends": [
+      {
+        "id": "end_delivered",
+        "title": "Delivered",
+        "outcome": "done"
       }
     ]
   }

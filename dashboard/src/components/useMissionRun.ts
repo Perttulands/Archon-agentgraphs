@@ -21,7 +21,7 @@ const noRun: MissionRunState = { run: null, openCount: 0, events: [], blockReaso
 
 /** The mission's open run needing attention most, otherwise its newest run. */
 export function chooseMissionRun(runs: RunStatusProjection[], missionId: string): { run: RunStatusProjection | null; openCount: number } {
-  const mine = runs.filter(run => run.missionId === missionId)
+  const mine = runs.filter(run => run.inputCardId === missionId)
   const open = openRunsByAttention(mine)
   if (open.length) return { run: open[0], openCount: open.length }
   const newest = [...mine].sort((a, b) => (a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0))[0] || null

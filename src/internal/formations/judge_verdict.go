@@ -16,10 +16,10 @@ func parseJudgeVerdict(text string) (GateEvaluationResult, error) {
 	blocks, inside, closed := 0, false, false
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "```chrote-verdict") {
+		if strings.HasPrefix(line, "```archon-verdict") {
 			blocks++
-			if line != "```chrote-verdict" || inside || blocks != 1 {
-				return GateEvaluationResult{}, fmt.Errorf("expected exactly one chrote-verdict block")
+			if line != "```archon-verdict" || inside || blocks != 1 {
+				return GateEvaluationResult{}, fmt.Errorf("expected exactly one archon-verdict block")
 			}
 			inside = true
 			continue
@@ -33,7 +33,7 @@ func parseJudgeVerdict(text string) (GateEvaluationResult, error) {
 		}
 	}
 	if blocks != 1 || inside || !closed {
-		return GateEvaluationResult{}, fmt.Errorf("missing or unterminated chrote-verdict block")
+		return GateEvaluationResult{}, fmt.Errorf("missing or unterminated archon-verdict block")
 	}
 	if err := jsonstrict.ValidateUnicode([]byte(body.String())); err != nil {
 		return GateEvaluationResult{}, err

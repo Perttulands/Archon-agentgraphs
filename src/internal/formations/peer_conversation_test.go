@@ -26,7 +26,7 @@ func peerTestStore(t *testing.T) (*Store, PeerConversationID) {
 
 func peerTestRun(t *testing.T, store *Store, runID string) {
 	t.Helper()
-	path := filepath.Join(store.Workspace, ".formations", "runs", "peer-tests", runID+".ndjson")
+	path := filepath.Join(store.Workspace, ".archon", "runs", "peer-tests", runID+".ndjson")
 	if err := writeInitialRunEvent(path, RunEvent{RunID: runID, Seq: 1, Type: RunEventStarted, Timestamp: store.now().Format(time.RFC3339Nano), Actor: "test"}); err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func createPeerTestConversation(t *testing.T, store *Store, id PeerConversationI
 	if err != nil {
 		t.Fatal(err)
 	}
-	return filepath.Join(store.Workspace, ".formations", "artifacts", id.RunID, path)
+	return filepath.Join(store.Workspace, ".archon", "artifacts", id.RunID, path)
 }
 
 func peerAppend(t *testing.T, store *Store, id PeerConversationID, request PeerAppendRequest) *PeerConversation {
@@ -70,7 +70,7 @@ func TestPeerConversationAgreementRequiresEveryParticipantAndCurrentProposal(t *
 	if _, err := store.AppendPeerConversation(id, PeerAppendRequest{SlotID: "slot_b", Kind: "ack", ProposalSeq: first}); !errors.Is(err, ErrPeerProposalConflict) {
 		t.Fatalf("contested proposal accepted: %v", err)
 	}
-	finalText := "Agreed findings. Unresolved tension: deadline evidence conflicts.\n```chrote-outputs\n{\"out\":{\"text\":\"Ask the operator to settle the deadline\"}}\n```"
+	finalText := "Agreed findings. Unresolved tension: deadline evidence conflicts.\n```archon-outputs\n{\"out\":{\"text\":\"Ask the operator to settle the deadline\"}}\n```"
 	state = peerAppend(t, store, id, PeerAppendRequest{SlotID: "slot_c", Kind: "proposal", Text: finalText})
 	latest := state.LastSeq
 	if len(state.Proposal.Acknowledged) != 0 || state.Proposal.Contested {

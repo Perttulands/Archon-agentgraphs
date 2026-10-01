@@ -12,8 +12,8 @@ func updateGateFixture(t *testing.T) (*Store, func() WriteOptions) {
 	store.Now = fixedClock()
 	writeFixture(t, store.BoardPath("session-search"), s4JudgeChainRunBoardFixture())
 	writeFixture(t, store.LayoutPath("session-search"), `schema = 1
-boardId = "brd_01J9_sesssearch"
-boardRev = 7
+missionId = "brd_01J9_sesssearch"
+missionRev = 7
 
 [[node]]
 id = "gate_review"
@@ -79,7 +79,7 @@ func TestUpdateGateSetsAndClearsEachField(t *testing.T) {
 func TestUpdateGateConvertsCodeGateToHuman(t *testing.T) {
 	store := NewStore(t.TempDir())
 	store.Now = fixedClock()
-	// The shape of Wayfinding's "Review gate": a code gate whose check value holds prose.
+	// The shape of Scouting's "Review gate": a code gate whose check value holds prose.
 	writeFixture(t, store.BoardPath("session-search"), s4MissionOnlyBoardFixture()+`
 [[gate]]
 id = "gate_review"

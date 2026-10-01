@@ -9,19 +9,14 @@ import '../styles/persona-harness.css'
 export const HARNESS_DEFAULT_MODEL = 'harness default'
 export const DEFAULT_EFFORT = 'medium'
 
-/**
- * Model and effort being edited (blank means the harness default model and
- * medium), or, for a harness Archon cannot start, the launch string that
- * `archon agent spawn` runs.
- */
+/** Model and effort being edited; blank means the harness default model and medium. */
 export interface VariantDraft {
   model: string
   effort: string
-  launch: string
 }
 
 export function variantDraft(variant: PersonaHarnessVariant): VariantDraft {
-  return { model: variant.model || '', effort: normalEffort(variant.effort), launch: variant.launch || '' }
+  return { model: variant.model || '', effort: normalEffort(variant.effort) }
 }
 
 /** Seats start from model and effort only for a harness Archon renders. */
@@ -38,11 +33,7 @@ function normalEffort(effort: string | undefined): string {
 /** The patch for what changed, or null when the draft matches the card. */
 export function variantChanges(variant: PersonaHarnessVariant, draft: VariantDraft): VariantSettingsPatch | null {
   const patch: VariantSettingsPatch = { id: variant.id }
-  if (!isLaunchable(variant)) {
-    const launch = draft.launch.trim()
-    if (launch !== (variant.launch || '')) patch.launch = launch
-    return patch.launch === undefined ? null : patch
-  }
+  if (!isLaunchable(variant)) return null
   const model = draft.model.trim()
   if (model !== (variant.model || '')) patch.model = model
   if (normalEffort(draft.effort) !== normalEffort(variant.effort)) patch.effort = normalEffort(draft.effort)
@@ -70,11 +61,7 @@ export function EffortSelect({ id, efforts, value, onChange, disabled, label = '
   )
 }
 
-/**
- * Model and effort inputs for one variant. A harness Archon cannot start takes
- * neither; its launch string is what `archon agent spawn` runs, so it stays
- * editable there.
- */
+/** Model and effort inputs for one variant. A harness Archon cannot start takes neither. */
 export function VariantSettingsFields({ idPrefix, harness, efforts, draft, onDraft, disabled }: {
   idPrefix: string
   harness: string
@@ -86,16 +73,7 @@ export function VariantSettingsFields({ idPrefix, harness, efforts, draft, onDra
   if (!efforts?.length) {
     return (
       <div className="ph-fields">
-        <p className="ph-none ph-wide">Archon cannot start {harness} seats, so it takes no model or effort. <code>archon agent spawn</code> runs this launch command.</p>
-        <label htmlFor={`${idPrefix}-launch`}>Launch</label>
-        <input
-          id={`${idPrefix}-launch`}
-          aria-label={`${harness} launch command (archon agent spawn)`}
-          value={draft.launch}
-          spellCheck={false}
-          disabled={disabled}
-          onChange={event => onDraft({ ...draft, launch: event.target.value })}
-        />
+        <p className="ph-none ph-wide">Archon cannot start {harness} seats, so it takes no model or effort.</p>
       </div>
     )
   }
@@ -124,9 +102,8 @@ export function VariantSettingsFields({ idPrefix, harness, efforts, draft, onDra
   )
 }
 
-/** What a slot starts as when this role is dragged onto it (the daemon's rendering), and why a legacy launch string is not it. Each slot's own settings decide what its seat runs. */
+/** What a slot starts as when this role is dragged onto it (the daemon's rendering). Each slot's own settings decide what its seat runs. */
 export function SeatLaunch({ variant, label = 'A slot this role is dragged onto starts as' }: { variant: PersonaHarnessVariant; label?: string }) {
-  const launchable = isLaunchable(variant)
   return (
     <div className="ph-launch">
       {variant.seatLaunch ? (
@@ -136,12 +113,6 @@ export function SeatLaunch({ variant, label = 'A slot this role is dragged onto 
         </>
       ) : null}
       {variant.seatLaunchError ? <p className="ph-warn">{seatLaunchProblem(variant)}</p> : null}
-      {variant.launch && launchable ? (
-        <p className="ph-legacy">
-          This card also holds a legacy launch string, <code>{variant.launch}</code>. Seats do not use it: each slot's own harness, model and effort decide what its
-          seat runs.
-        </p>
-      ) : null}
     </div>
   )
 }

@@ -7,7 +7,7 @@ import { noteAuthor, noteTime } from './NoteThread'
 
 export type NotesMode = 'hidden' | 'preview' | 'full'
 export const NOTES_MODES: readonly NotesMode[] = ['hidden', 'preview', 'full']
-export const NOTES_MODE_KEY = 'chrote-formations-notes-mode'
+export const NOTES_MODE_KEY = 'archon.notesMode'
 
 export function readNotesMode(): NotesMode {
   try {
@@ -41,7 +41,7 @@ export interface NodeNotes {
 }
 
 /** The cards a note thread can belong to. */
-export const NOTE_CARDS = '.formation[data-node],.gatecard[data-node],.missioncard[data-node],.toolcard[data-node]'
+export const NOTE_CARDS = '.formation[data-node],.gatecard[data-node],.missioncard[data-node],.toolcard[data-node],.endcard[data-node]'
 
 /**
  * Where a node's idea sits on screen, in viewport pixels: its card and the

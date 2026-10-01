@@ -30,7 +30,7 @@ updatedAt = "2026-06-03T16:00:00Z"
 	handler.RegisterRoutes(mux)
 
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/formations/boards", nil))
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/missions", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
@@ -43,7 +43,7 @@ updatedAt = "2026-06-03T16:00:00Z"
 				Slug  string `json:"slug"`
 				Title string `json:"title"`
 				Rev   int    `json:"rev"`
-			} `json:"boards"`
+			} `json:"missions"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
@@ -67,7 +67,7 @@ func TestFormationsHandlerListsRegisteredCodeGateProfiles(t *testing.T) {
 	handler.RegisterRoutes(mux)
 
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/formations/gate-profiles", nil))
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/gate-profiles", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
@@ -116,9 +116,9 @@ updatedAt = "2026-06-03T16:00:00Z"
 	}
 
 	handler := NewFormationsHandlerWithStore(store)
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"title":"stale edit","expectedRev":7,"updatedBy":"agent:test"}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"title":"stale edit","expectedRev":7,"updatedBy":"agent:test"}`))
 	req.Header.Set("If-Match", board.ETag)
-	req.SetPathValue("board", "session-search")
+	req.SetPathValue("mission", "session-search")
 	rec := httptest.NewRecorder()
 
 	handler.PatchBoard(rec, req)
@@ -146,8 +146,8 @@ criterion = 42
 	writeFormationsAPIFixture(t, store.BoardPath("invalid-source"), raw)
 
 	handler := NewFormationsHandlerWithStore(store)
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/invalid-source", bytes.NewBufferString(`{"title":"must not persist","expectedRev":7}`))
-	req.SetPathValue("board", "invalid-source")
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/invalid-source", bytes.NewBufferString(`{"title":"must not persist","expectedRev":7}`))
+	req.SetPathValue("mission", "invalid-source")
 	digest := sha256.Sum256([]byte(raw))
 	req.Header.Set("If-Match", hex.EncodeToString(digest[:]))
 	rec := httptest.NewRecorder()
@@ -170,22 +170,22 @@ rev = 7
 updatedAt = "2026-06-03T16:00:00Z"
 `)
 	writeFormationsAPIFixture(t, store.LayoutPath("session-search"), `schema = 1
-boardId = "brd_01J9_sesssearch"
-boardRev = 7
+missionId = "brd_01J9_sesssearch"
+missionRev = 7
 updatedAt = "2026-06-03T16:02:00Z"
 `)
 	handler := NewFormationsHandlerWithStore(store)
 
-	boardReq := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"title":"blind edit"}`))
-	boardReq.SetPathValue("board", "session-search")
+	boardReq := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"title":"blind edit"}`))
+	boardReq.SetPathValue("mission", "session-search")
 	boardRec := httptest.NewRecorder()
 	handler.PatchBoard(boardRec, boardReq)
 	if boardRec.Code != http.StatusPreconditionRequired {
 		t.Fatalf("board status = %d, want %d: %s", boardRec.Code, http.StatusPreconditionRequired, boardRec.Body.String())
 	}
 
-	layoutReq := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/layout", bytes.NewBufferString(`{}`))
-	layoutReq.SetPathValue("board", "session-search")
+	layoutReq := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search/layout", bytes.NewBufferString(`{}`))
+	layoutReq.SetPathValue("mission", "session-search")
 	layoutRec := httptest.NewRecorder()
 	handler.PatchLayout(layoutRec, layoutReq)
 	if layoutRec.Code != http.StatusPreconditionRequired {
@@ -214,8 +214,8 @@ rev = 7
 updatedAt = "2026-06-03T16:00:00Z"
 `)
 	handler := NewFormationsHandlerWithStore(store)
-	req := httptest.NewRequest(http.MethodGet, "/api/formations/boards/session-search/changes?etag="+board.ETag, nil)
-	req.SetPathValue("board", "session-search")
+	req := httptest.NewRequest(http.MethodGet, "/api/missions/session-search/changes?etag="+board.ETag, nil)
+	req.SetPathValue("mission", "session-search")
 	rec := httptest.NewRecorder()
 
 	handler.GetBoardChanges(rec, req)
@@ -235,7 +235,7 @@ updatedAt = "2026-06-03T16:00:00Z"
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode response: %v\n%s", err, rec.Body.String())
 	}
-	if !response.Data.Signal.Changed || response.Data.Signal.Signal != "board.changed" {
+	if !response.Data.Signal.Changed || response.Data.Signal.Signal != "mission.changed" {
 		t.Fatalf("signal = %+v, want board.changed changed signal", response.Data.Signal)
 	}
 }
@@ -259,7 +259,7 @@ customFuture = "keep me"
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"createFormation":{"type":"peer","title":"Research huddle","x":840,"y":135},"expectedRev":7,"updatedBy":"agent:test"}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"createFormation":{"type":"peer","title":"Research huddle","x":840,"y":135},"expectedRev":7,"updatedBy":"agent:test"}`))
 	req.Header.Set("If-Match", board.ETag)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -273,10 +273,10 @@ customFuture = "keep me"
 			Board struct {
 				Rev        int                        `json:"rev"`
 				Formations []formations.FormationNode `json:"formations"`
-			} `json:"board"`
+			} `json:"mission"`
 			Formation formations.FormationNode `json:"formation"`
 			Layout    struct {
-				BoardRev int                     `json:"boardRev"`
+				BoardRev int                     `json:"missionRev"`
 				Nodes    []formations.LayoutNode `json:"nodes"`
 			} `json:"layout"`
 		} `json:"data"`
@@ -301,7 +301,7 @@ customFuture = "keep me"
 		t.Fatalf("board file did not preserve unknown fields or leaked layout:\n%s", raw)
 	}
 
-	postReq := httptest.NewRequest(http.MethodPost, "/api/formations/boards/session-search/formations", bytes.NewBufferString(`{"type":"peer"}`))
+	postReq := httptest.NewRequest(http.MethodPost, "/api/missions/session-search/formations", bytes.NewBufferString(`{"type":"peer"}`))
 	postRec := httptest.NewRecorder()
 	mux.ServeHTTP(postRec, postReq)
 	if postRec.Code != http.StatusNotFound {
@@ -322,7 +322,7 @@ func TestFormationsHandlerS5ResumeVerdictAndEscalations(t *testing.T) {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	startReq := httptest.NewRequest(http.MethodPost, "/api/formations/runs", bytes.NewBufferString(`{"board":"session-search","missionId":"mis_showcase","limits":{"maxDispatch":1}}`))
+	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"mission":"session-search","inputCardId":"mis_showcase","limits":{"maxDispatch":1}}`))
 	startRec := httptest.NewRecorder()
 	mux.ServeHTTP(startRec, startReq)
 	if startRec.Code != http.StatusOK {
@@ -333,7 +333,7 @@ func TestFormationsHandlerS5ResumeVerdictAndEscalations(t *testing.T) {
 		t.Fatalf("started = %+v, want blocked run", started)
 	}
 
-	resumeReq := httptest.NewRequest(http.MethodPost, "/api/formations/runs/"+started.RunID+"/resume", bytes.NewBufferString(`{"reason":"continue","actor":"agent:test"}`))
+	resumeReq := httptest.NewRequest(http.MethodPost, "/api/runs/"+started.RunID+"/resume", bytes.NewBufferString(`{"reason":"continue","actor":"agent:test"}`))
 	resumeRec := httptest.NewRecorder()
 	mux.ServeHTTP(resumeRec, resumeReq)
 	if resumeRec.Code != http.StatusOK {
@@ -365,10 +365,10 @@ func TestFormationsHandlerS5ResumeVerdictAndEscalations(t *testing.T) {
 	if humanStarted.Status != formations.RunStatusRunning {
 		t.Fatalf("human started = %+v, want running human wait", humanStarted)
 	}
-	if _, err := store.RecordEscalationFromCapture(humanStarted.RunID, "fmn_work", "<<<CHROTE-ESCALATE run-id="+humanStarted.RunID+" severity=needs-attention reason='found a better direction'>>>"); err != nil {
+	if _, err := store.RecordEscalationFromCapture(humanStarted.RunID, "fmn_work", "<<<ARCHON-ESCALATE run-id="+humanStarted.RunID+" severity=needs-attention reason='found a better direction'>>>"); err != nil {
 		t.Fatalf("record escalation: %v", err)
 	}
-	verdictReq := httptest.NewRequest(http.MethodPost, "/api/formations/runs/"+humanStarted.RunID+"/gates/gate_review/verdict", bytes.NewBufferString(`{"verdict":"pass","reason":"direction is right","actor":"human:operator"}`))
+	verdictReq := httptest.NewRequest(http.MethodPost, "/api/runs/"+humanStarted.RunID+"/gates/gate_review/verdict", bytes.NewBufferString(`{"verdict":"pass","reason":"direction is right","actor":"human:operator"}`))
 	verdictRec := httptest.NewRecorder()
 	mux.ServeHTTP(verdictRec, verdictReq)
 	if verdictRec.Code != http.StatusOK {
@@ -379,7 +379,7 @@ func TestFormationsHandlerS5ResumeVerdictAndEscalations(t *testing.T) {
 		t.Fatalf("approved = %+v, want blocked when public verdict path lacks executor", approved)
 	}
 
-	escalationsReq := httptest.NewRequest(http.MethodGet, "/api/formations/runs/"+humanStarted.RunID+"/escalations", nil)
+	escalationsReq := httptest.NewRequest(http.MethodGet, "/api/runs/"+humanStarted.RunID+"/escalations", nil)
 	escalationsRec := httptest.NewRecorder()
 	mux.ServeHTTP(escalationsRec, escalationsReq)
 	if escalationsRec.Code != http.StatusOK {
@@ -407,14 +407,14 @@ func TestFormationsHandlerStartsSingleFormationByID(t *testing.T) {
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
 		t.Fatalf("create persona: %v", err)
 	}
-	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "openai-codex")
-	t.Setenv("CHROTE_FORMATIONS_LAB_CWD", store.Workspace)
+	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
+	t.Setenv("ARCHON_LAB_CWD", store.Workspace)
 	writeFormationsAPIFixture(t, store.BoardPath("session-search"), formationsAPIS5CascadeBoardFixture())
 	handler := NewFormationsHandlerWithStores(store, personas)
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	startReq := httptest.NewRequest(http.MethodPost, "/api/formations/runs", bytes.NewBufferString(`{"board":"session-search","formationId":"fmn_work","actor":"agent:test","limits":{"maxDispatch":1,"maxAttempts":1}}`))
+	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"mission":"session-search","formationId":"fmn_work","actor":"agent:test","limits":{"maxDispatch":1,"maxAttempts":1}}`))
 	startRec := httptest.NewRecorder()
 	mux.ServeHTTP(startRec, startReq)
 	if startRec.Code != http.StatusOK {
@@ -447,12 +447,12 @@ func TestFormationsHandlerStartRunRequiresExactlyOneTargetAndHonorsFormationPrec
 		name string
 		body string
 	}{
-		{name: "missing target", body: `{"board":"session-search"}`},
-		{name: "ambiguous target", body: `{"board":"session-search","missionId":"mis_showcase","formationId":"fmn_work"}`},
+		{name: "missing target", body: `{"mission":"session-search"}`},
+		{name: "ambiguous target", body: `{"mission":"session-search","inputCardId":"mis_showcase","formationId":"fmn_work"}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/api/formations/runs", bytes.NewBufferString(tc.body))
+			req := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(tc.body))
 			rec := httptest.NewRecorder()
 			mux.ServeHTTP(rec, req)
 			if rec.Code != http.StatusBadRequest {
@@ -461,92 +461,13 @@ func TestFormationsHandlerStartRunRequiresExactlyOneTargetAndHonorsFormationPrec
 		})
 	}
 
-	staleReq := httptest.NewRequest(http.MethodPost, "/api/formations/runs", bytes.NewBufferString(`{"board":"session-search","formationId":"fmn_work","expectedRev":7}`))
+	staleReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"mission":"session-search","formationId":"fmn_work","expectedRev":7}`))
 	staleReq.Header.Set("If-Match", "stale-etag")
 	staleRec := httptest.NewRecorder()
 	mux.ServeHTTP(staleRec, staleReq)
 	if staleRec.Code != http.StatusConflict {
 		t.Fatalf("stale status = %d, want %d: %s", staleRec.Code, http.StatusConflict, staleRec.Body.String())
 	}
-}
-
-func TestFormationsHandlerLegacyScriptGateInspectionStartAndResumeBoundary(t *testing.T) {
-	t.Run("inspection and mission start", func(t *testing.T) {
-		store := formations.NewStore(t.TempDir())
-		personas := formations.NewPersonaStore(t.TempDir())
-		if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
-			t.Fatalf("create persona: %v", err)
-		}
-		writeFormationsAPIFixture(t, store.BoardPath("session-search"), formationsAPILegacyScriptGateBoardFixture())
-		handler := NewFormationsHandlerWithStores(store, personas)
-		mux := http.NewServeMux()
-		handler.RegisterRoutes(mux)
-
-		inspectRec := httptest.NewRecorder()
-		mux.ServeHTTP(inspectRec, httptest.NewRequest(http.MethodGet, "/api/formations/boards/session-search", nil))
-		if inspectRec.Code != http.StatusOK || !strings.Contains(inspectRec.Body.String(), `"legacyScriptMigration"`) || !strings.Contains(inspectRec.Body.String(), `"sourceMode":"argv"`) {
-			t.Fatalf("legacy inspection status=%d body=%s", inspectRec.Code, inspectRec.Body.String())
-		}
-
-		startRec := httptest.NewRecorder()
-		mux.ServeHTTP(startRec, httptest.NewRequest(http.MethodPost, "/api/formations/runs", bytes.NewBufferString(`{"board":"session-search","missionId":"mis_showcase","actor":"agent:test"}`)))
-		if startRec.Code != http.StatusUnprocessableEntity || !strings.Contains(startRec.Body.String(), `"code":"legacy_script_gate_requires_fenced_migration"`) {
-			t.Fatalf("legacy mission start status=%d body=%s, want 422 stable code", startRec.Code, startRec.Body.String())
-		}
-		if entries, err := os.ReadDir(filepath.Join(store.Workspace, ".formations", "runs", "session-search")); err == nil && len(entries) != 0 {
-			t.Fatalf("rejected API start wrote run artifacts: %v", entries)
-		} else if err != nil && !os.IsNotExist(err) {
-			t.Fatalf("read run artifacts: %v", err)
-		}
-
-		formationRec := httptest.NewRecorder()
-		mux.ServeHTTP(formationRec, httptest.NewRequest(http.MethodPost, "/api/formations/runs", bytes.NewBufferString(`{"board":"session-search","formationId":"fmn_work","actor":"agent:test"}`)))
-		if formationRec.Code != http.StatusOK || strings.Contains(formationRec.Body.String(), formations.LegacyScriptGateMigrationCode) {
-			t.Fatalf("isolated formation status=%d body=%s, want root-scoped non-migration result", formationRec.Code, formationRec.Body.String())
-		}
-	})
-
-	t.Run("resume", func(t *testing.T) {
-		store := formations.NewStore(t.TempDir())
-		personas := formations.NewPersonaStore(t.TempDir())
-		if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
-			t.Fatalf("create persona: %v", err)
-		}
-		cleanBoard := strings.Replace(formationsAPILegacyScriptGateBoardFixture(), `commandArgv = ["npm", "run", "lint"]`+"\n"+`commandCwd = "dashboard"`+"\n", "", 1)
-		writeFormationsAPIFixture(t, store.BoardPath("session-search"), cleanBoard)
-		board, err := store.ReadBoard("session-search")
-		if err != nil {
-			t.Fatalf("read board: %v", err)
-		}
-		started, err := store.StartRun("session-search", formations.RunStartRequest{MissionID: "mis_showcase", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev, Personas: personas})
-		if err != nil {
-			t.Fatalf("start historical run: %v", err)
-		}
-		if err := store.AppendRunEvent(started.RunID, formations.RunEvent{Type: formations.RunEventBlocked, Data: map[string]any{"resumeAllowed": true}}); err != nil {
-			t.Fatalf("block historical run: %v", err)
-		}
-		writeFormationsAPIFixture(t, filepath.Join(store.Workspace, started.SnapshotPath), formationsAPILegacyScriptGateBoardFixture())
-		ledgerPath := filepath.Join(store.Workspace, started.LedgerPath)
-		before, err := os.ReadFile(ledgerPath)
-		if err != nil {
-			t.Fatalf("read ledger before resume: %v", err)
-		}
-		handler := NewFormationsHandlerWithStores(store, personas)
-		mux := http.NewServeMux()
-		handler.RegisterRoutes(mux)
-		resumeRec := httptest.NewRecorder()
-		mux.ServeHTTP(resumeRec, httptest.NewRequest(http.MethodPost, "/api/formations/runs/"+started.RunID+"/resume", bytes.NewBufferString(`{"actor":"agent:test"}`)))
-		if resumeRec.Code != http.StatusUnprocessableEntity || !strings.Contains(resumeRec.Body.String(), `"code":"legacy_script_gate_requires_fenced_migration"`) {
-			t.Fatalf("legacy resume status=%d body=%s, want 422 stable code", resumeRec.Code, resumeRec.Body.String())
-		}
-		after, err := os.ReadFile(ledgerPath)
-		if err != nil {
-			t.Fatalf("read ledger after resume: %v", err)
-		}
-		if !bytes.Equal(after, before) {
-			t.Fatalf("rejected API resume changed ledger bytes")
-		}
-	})
 }
 
 func TestFormationsHandlerS3DeletesGateAndMissionThroughBoardPatch(t *testing.T) {
@@ -559,7 +480,7 @@ title = "Improve session search"
 rev = 7
 updatedAt = "2026-06-03T16:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Build"
@@ -595,8 +516,8 @@ from = "fmn_frame:port_frame_out"
 to = "gate_review:in"
 `)
 	writeFormationsAPIFixture(t, store.LayoutPath("session-search"), `schema = 1
-boardId = "brd_01J9_sesssearch"
-boardRev = 7
+missionId = "brd_01J9_sesssearch"
+missionRev = 7
 updatedAt = "2026-06-03T16:02:00Z"
 
 [[node]]
@@ -615,9 +536,9 @@ y = 80
 	}
 	handler := NewFormationsHandlerWithStore(store)
 
-	gateReq := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"deleteGate":{"id":"gate_review"},"expectedRev":7,"updatedBy":"agent:test"}`))
+	gateReq := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"deleteGate":{"id":"gate_review"},"expectedRev":7,"updatedBy":"agent:test"}`))
 	gateReq.Header.Set("If-Match", board.ETag)
-	gateReq.SetPathValue("board", "session-search")
+	gateReq.SetPathValue("mission", "session-search")
 	gateRec := httptest.NewRecorder()
 	handler.PatchBoard(gateRec, gateReq)
 	if gateRec.Code != http.StatusOK {
@@ -626,7 +547,7 @@ y = 80
 	var gateResponse struct {
 		Success bool `json:"success"`
 		Data    struct {
-			Board  formations.BoardDocument  `json:"board"`
+			Board  formations.BoardDocument  `json:"mission"`
 			Layout formations.LayoutDocument `json:"layout"`
 		} `json:"data"`
 	}
@@ -637,9 +558,9 @@ y = 80
 		t.Fatalf("delete gate board = %+v, want gate and touched wire removed", gateResponse.Data.Board)
 	}
 
-	missionReq := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"deleteMission":{"id":"mis_showcase"},"expectedRev":8,"updatedBy":"agent:test"}`))
+	missionReq := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"deleteInputCard":{"id":"mis_showcase"},"expectedRev":8,"updatedBy":"agent:test"}`))
 	missionReq.Header.Set("If-Match", gateRec.Header().Get("ETag"))
-	missionReq.SetPathValue("board", "session-search")
+	missionReq.SetPathValue("mission", "session-search")
 	missionRec := httptest.NewRecorder()
 	handler.PatchBoard(missionRec, missionReq)
 	if missionRec.Code != http.StatusOK {
@@ -648,7 +569,7 @@ y = 80
 	var missionResponse struct {
 		Success bool `json:"success"`
 		Data    struct {
-			Board  formations.BoardDocument  `json:"board"`
+			Board  formations.BoardDocument  `json:"mission"`
 			Layout formations.LayoutDocument `json:"layout"`
 		} `json:"data"`
 	}
@@ -694,7 +615,7 @@ updatedAt = "2026-06-03T16:00:00Z"
 	handler.RegisterRoutes(mux)
 
 	getRec := httptest.NewRecorder()
-	mux.ServeHTTP(getRec, httptest.NewRequest(http.MethodGet, "/api/formations/boards/"+created.Board.ID, nil))
+	mux.ServeHTTP(getRec, httptest.NewRequest(http.MethodGet, "/api/missions/"+created.Board.ID, nil))
 	if getRec.Code != http.StatusOK {
 		t.Fatalf("GET by board id status = %d, want %d: %s", getRec.Code, http.StatusOK, getRec.Body.String())
 	}
@@ -706,7 +627,7 @@ updatedAt = "2026-06-03T16:00:00Z"
 	if err != nil {
 		t.Fatalf("read layout: %v", err)
 	}
-	patchReq := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/"+created.Board.ID+"/layout", bytes.NewBufferString(`{"nodes":[{"id":"`+created.Formation.ID+`","x":910,"y":220}]}`))
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/missions/"+created.Board.ID+"/layout", bytes.NewBufferString(`{"nodes":[{"id":"`+created.Formation.ID+`","x":910,"y":220}]}`))
 	patchReq.Header.Set("If-Match", layout.ETag)
 	patchRec := httptest.NewRecorder()
 	mux.ServeHTTP(patchRec, patchReq)
@@ -734,7 +655,7 @@ slug = "arrange"
 title = "Arrange"
 rev = 2
 
-[[mission]]
+[[inputCard]]
 id = "mis_start"
 title = "Start"
 
@@ -749,8 +670,8 @@ from = "mis_start:out"
 to = "fmn_finish:in"
 `)
 	writeFormationsAPIFixture(t, store.LayoutPath("arrange"), `schema = 1
-boardId = "brd_arrange"
-boardRev = 2
+missionId = "brd_arrange"
+missionRev = 2
 
 [[node]]
 id = "mis_start"
@@ -769,7 +690,7 @@ y = 100
 	handler := NewFormationsHandlerWithStore(store)
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/arrange/layout", bytes.NewBufferString(`{"arrange":true}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/arrange/layout", bytes.NewBufferString(`{"arrange":true}`))
 	req.Header.Set("If-Match", layout.ETag)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -809,7 +730,7 @@ title = "Research huddle"
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search/layout", bytes.NewBufferString(`{"nodes":[{"id":"fmn_01J9_research","x":260,"y":180}]}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search/layout", bytes.NewBufferString(`{"nodes":[{"id":"fmn_01J9_research","x":260,"y":180}]}`))
 	req.Header.Set("If-Match", "*")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -821,7 +742,7 @@ title = "Research huddle"
 		Success bool `json:"success"`
 		Data    struct {
 			Layout struct {
-				BoardRev int                     `json:"boardRev"`
+				BoardRev int                     `json:"missionRev"`
 				Nodes    []formations.LayoutNode `json:"nodes"`
 			} `json:"layout"`
 		} `json:"data"`
@@ -833,7 +754,7 @@ title = "Research huddle"
 		t.Fatalf("layout nodes = %+v, want recreated moved position", response.Data.Layout.Nodes)
 	}
 	if response.Data.Layout.BoardRev != 7 {
-		t.Fatalf("layout boardRev = %d, want 7", response.Data.Layout.BoardRev)
+		t.Fatalf("layout missionRev = %d, want 7", response.Data.Layout.BoardRev)
 	}
 	if got := readFormationsAPIFile(t, store.BoardPath("session-search")); got != boardBefore {
 		t.Fatalf("layout move dirtied board definition:\n%s", got)
@@ -869,7 +790,7 @@ updatedAt = "2026-06-03T16:00:00Z"
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	staleReq := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"deleteFormation":{"id":"`+created.Formation.ID+`"},"expectedRev":7,"updatedBy":"agent:test"}`))
+	staleReq := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"deleteFormation":{"id":"`+created.Formation.ID+`"},"expectedRev":7,"updatedBy":"agent:test"}`))
 	staleReq.Header.Set("If-Match", before.ETag)
 	staleRec := httptest.NewRecorder()
 	mux.ServeHTTP(staleRec, staleReq)
@@ -877,7 +798,7 @@ updatedAt = "2026-06-03T16:00:00Z"
 		t.Fatalf("stale delete status = %d, want %d: %s", staleRec.Code, http.StatusConflict, staleRec.Body.String())
 	}
 
-	freshReq := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"deleteFormation":{"id":"`+created.Formation.ID+`"},"expectedRev":8,"updatedBy":"agent:test"}`))
+	freshReq := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"deleteFormation":{"id":"`+created.Formation.ID+`"},"expectedRev":8,"updatedBy":"agent:test"}`))
 	freshReq.Header.Set("If-Match", created.Board.ETag)
 	freshRec := httptest.NewRecorder()
 	mux.ServeHTTP(freshRec, freshReq)
@@ -890,7 +811,7 @@ updatedAt = "2026-06-03T16:00:00Z"
 			Board struct {
 				Rev        int                        `json:"rev"`
 				Formations []formations.FormationNode `json:"formations"`
-			} `json:"board"`
+			} `json:"mission"`
 			Layout struct {
 				Nodes []formations.LayoutNode `json:"nodes"`
 			} `json:"layout"`
@@ -932,7 +853,7 @@ controller = false
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"assignSlot":{"formationId":"fmn_frame","slotId":"slot_peer_a","agentId":"conductor","harness":"openai-codex","effort":"high"},"expectedRev":7,"updatedBy":"agent:test"}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"assignSlot":{"formationId":"fmn_frame","slotId":"slot_peer_a","agentId":"conductor","harness":"openai-codex","effort":"high"},"expectedRev":7,"updatedBy":"agent:test"}`))
 	req.Header.Set("If-Match", board.ETag)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -949,7 +870,7 @@ controller = false
 			Board struct {
 				Rev        int                        `json:"rev"`
 				Formations []formations.FormationNode `json:"formations"`
-			} `json:"board"`
+			} `json:"mission"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
@@ -961,271 +882,6 @@ controller = false
 	}
 }
 
-func TestS3BriefPersistsAndInlineVerificationAPIWriteFailsWithoutMutation(t *testing.T) {
-	store := formations.NewStore(t.TempDir())
-	store.Now = fixedFormationsAPIClock()
-	writeFormationsAPIFixture(t, store.BoardPath("session-search"), `schema = 1
-id = "brd_01J9_sesssearch"
-slug = "session-search"
-title = "Improve session search"
-rev = 7
-updatedAt = "2026-06-03T16:00:00Z"
-
-[[formation]]
-id = "fmn_ship"
-type = "solo"
-title = "Ship"
-`)
-	board, err := store.ReadBoard("session-search")
-	if err != nil {
-		t.Fatalf("read board: %v", err)
-	}
-	handler := NewFormationsHandlerWithStore(store)
-	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux)
-
-	briefReq := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"setBrief":{"formationId":"fmn_ship","goal":"Ship the change","beadId":"srv-abc.2","files":["src/SessionPanel.tsx"],"links":["https://example.com/spec"]},"expectedRev":7,"updatedBy":"agent:test"}`))
-	briefReq.Header.Set("If-Match", board.ETag)
-	briefRec := httptest.NewRecorder()
-	mux.ServeHTTP(briefRec, briefReq)
-	if briefRec.Code != http.StatusOK {
-		t.Fatalf("brief status = %d, want %d: %s", briefRec.Code, http.StatusOK, briefRec.Body.String())
-	}
-	withBrief, err := store.ReadBoard("session-search")
-	if err != nil {
-		t.Fatalf("read brief board: %v", err)
-	}
-	rawBeforeVerification := readFormationsAPIFile(t, store.BoardPath("session-search"))
-
-	verifyReq := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"setVerification":{"formationId":"fmn_ship","kinds":["code"],"criterion":"Tests pass.","onFail":"block"},"expectedRev":8,"updatedBy":"agent:test"}`))
-	verifyReq.Header.Set("If-Match", withBrief.ETag)
-	verifyRec := httptest.NewRecorder()
-	mux.ServeHTTP(verifyRec, verifyReq)
-	if verifyRec.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("verification status = %d, want %d: %s", verifyRec.Code, http.StatusUnprocessableEntity, verifyRec.Body.String())
-	}
-	if !bytes.Contains(verifyRec.Body.Bytes(), []byte(`"code":"legacy_inline_verification_requires_migration"`)) {
-		t.Fatalf("verification response missing stable migration code: %s", verifyRec.Body.String())
-	}
-	after, err := store.ReadBoard("session-search")
-	if err != nil {
-		t.Fatalf("read board after rejected verification: %v", err)
-	}
-	if after.Rev != withBrief.Rev || after.ETag != withBrief.ETag {
-		t.Fatalf("rejected verification changed board identity: before rev/etag=%d/%s after=%d/%s", withBrief.Rev, withBrief.ETag, after.Rev, after.ETag)
-	}
-	if rawAfter := readFormationsAPIFile(t, store.BoardPath("session-search")); rawAfter != rawBeforeVerification {
-		t.Fatalf("rejected verification changed board bytes\nbefore:\n%s\nafter:\n%s", rawBeforeVerification, rawAfter)
-	}
-}
-
-func TestFormationsHandlerRejectsLegacyInlineVerificationRunsBeforeArtifacts(t *testing.T) {
-	store := formations.NewStore(t.TempDir())
-	store.Now = fixedFormationsAPIClock()
-	legacyRaw := formationsAPILegacyInlineVerificationFixture()
-	writeFormationsAPIFixture(t, store.BoardPath("legacy-inline"), legacyRaw)
-	handler := NewFormationsHandlerWithStore(store)
-	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux)
-
-	for _, body := range []string{
-		`{"board":"legacy-inline","missionId":"mis_main","actor":"agent:test"}`,
-		`{"board":"legacy-inline","formationId":"fmn_work","actor":"agent:test"}`,
-	} {
-		req := httptest.NewRequest(http.MethodPost, "/api/formations/runs", bytes.NewBufferString(body))
-		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, req)
-		if rec.Code != http.StatusUnprocessableEntity {
-			t.Fatalf("start status = %d, want %d: %s", rec.Code, http.StatusUnprocessableEntity, rec.Body.String())
-		}
-		if !bytes.Contains(rec.Body.Bytes(), []byte(`"code":"legacy_inline_verification_requires_migration"`)) {
-			t.Fatalf("start response missing stable migration code: %s", rec.Body.String())
-		}
-	}
-	runsDir := filepath.Join(store.Workspace, ".formations", "runs", "legacy-inline")
-	entries, err := os.ReadDir(runsDir)
-	if err != nil && !os.IsNotExist(err) {
-		t.Fatalf("read runs directory: %v", err)
-	}
-	if len(entries) != 0 {
-		t.Fatalf("run artifacts = %+v, want none before API rejection", entries)
-	}
-
-	cleanRaw := strings.Replace(legacyRaw, `[formation.verification]
-id = "ver_work"
-kinds = ["code"]
-criterion = "Tests pass"
-onFail = "block"
-
-`, "", 1)
-	writeFormationsAPIFixture(t, store.BoardPath("legacy-inline"), cleanRaw)
-	cleanBoard, err := store.ReadBoard("legacy-inline")
-	if err != nil {
-		t.Fatalf("read clean compatibility board: %v", err)
-	}
-	started, err := store.StartRun("legacy-inline", formations.RunStartRequest{
-		MissionID: "mis_main", Actor: "agent:test", ExpectedBoardETag: cleanBoard.ETag, ExpectedBoardRev: cleanBoard.Rev,
-	})
-	if err != nil {
-		t.Fatalf("start historical compatibility run: %v", err)
-	}
-	if err := store.AppendRunEvent(started.RunID, formations.RunEvent{Type: formations.RunEventBlocked, Data: map[string]any{
-		"reason": "legacy interruption", "resumeAllowed": true, "resumePolicy": "explicit",
-	}}); err != nil {
-		t.Fatalf("block historical compatibility run: %v", err)
-	}
-	writeFormationsAPIFixture(t, filepath.Join(store.Workspace, started.SnapshotPath), legacyRaw)
-	ledgerPath := filepath.Join(store.Workspace, started.LedgerPath)
-	beforeResume := readFormationsAPIFile(t, ledgerPath)
-	resumeReq := httptest.NewRequest(http.MethodPost, "/api/formations/runs/"+started.RunID+"/resume", bytes.NewBufferString(`{"actor":"agent:test","mode":"reattach"}`))
-	resumeRec := httptest.NewRecorder()
-	mux.ServeHTTP(resumeRec, resumeReq)
-	if resumeRec.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("resume status = %d, want %d: %s", resumeRec.Code, http.StatusUnprocessableEntity, resumeRec.Body.String())
-	}
-	if !bytes.Contains(resumeRec.Body.Bytes(), []byte(`"code":"legacy_inline_verification_requires_migration"`)) {
-		t.Fatalf("resume response missing stable migration code: %s", resumeRec.Body.String())
-	}
-	if afterResume := readFormationsAPIFile(t, ledgerPath); afterResume != beforeResume {
-		t.Fatalf("rejected API resume changed ledger\nbefore:\n%s\nafter:\n%s", beforeResume, afterResume)
-	}
-	abortReq := httptest.NewRequest(http.MethodPost, "/api/formations/runs/"+started.RunID+"/abort", bytes.NewBufferString(`{"reason":"retire legacy run","requestedBy":"human:operator"}`))
-	abortRec := httptest.NewRecorder()
-	mux.ServeHTTP(abortRec, abortReq)
-	if abortRec.Code != http.StatusOK || !bytes.Contains(abortRec.Body.Bytes(), []byte(`"status":"canceled"`)) || !bytes.Contains(abortRec.Body.Bytes(), []byte(`"final":true`)) {
-		t.Fatalf("abort legacy run status=%d body=%s, want final canceled", abortRec.Code, abortRec.Body.String())
-	}
-}
-
-func TestFormationsHandlerInspectsAndExplicitlyMigratesLegacyInlineVerification(t *testing.T) {
-	store := formations.NewStore(t.TempDir())
-	store.Now = fixedFormationsAPIClock()
-	writeFormationsAPIFixture(t, store.BoardPath("legacy-inline"), formationsAPILegacyInlineVerificationFixture())
-	handler := NewFormationsHandlerWithStore(store)
-	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux)
-
-	inspectRec := httptest.NewRecorder()
-	mux.ServeHTTP(inspectRec, httptest.NewRequest(http.MethodGet, "/api/formations/boards/legacy-inline", nil))
-	if inspectRec.Code != http.StatusOK || !bytes.Contains(inspectRec.Body.Bytes(), []byte(`"verification"`)) || !bytes.Contains(inspectRec.Body.Bytes(), []byte(`"criterion":"Tests pass"`)) {
-		t.Fatalf("legacy inspection status=%d body=%s, want readable verification", inspectRec.Code, inspectRec.Body.String())
-	}
-	before, err := store.ReadBoard("legacy-inline")
-	if err != nil {
-		t.Fatalf("read legacy board: %v", err)
-	}
-	rawBefore := readFormationsAPIFile(t, store.BoardPath("legacy-inline"))
-
-	missingReq := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/legacy-inline", bytes.NewBufferString(`{"removeVerification":{"formationId":"fmn_work"},"expectedRev":7,"updatedBy":"agent:test"}`))
-	missingReq.Header.Set("If-Match", before.ETag)
-	missingRec := httptest.NewRecorder()
-	mux.ServeHTTP(missingRec, missingReq)
-	if missingRec.Code != http.StatusUnprocessableEntity || !bytes.Contains(missingRec.Body.Bytes(), []byte(`"code":"legacy_inline_verification_requires_migration"`)) {
-		t.Fatalf("missing replacement status=%d body=%s, want stable migration rejection", missingRec.Code, missingRec.Body.String())
-	}
-	if rawAfter := readFormationsAPIFile(t, store.BoardPath("legacy-inline")); rawAfter != rawBefore {
-		t.Fatalf("missing replacement changed board\nbefore:\n%s\nafter:\n%s", rawBefore, rawAfter)
-	}
-
-	removeReq := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/legacy-inline", bytes.NewBufferString(`{"removeVerification":{"formationId":"fmn_work","replacementGateId":"gate_migrated"},"expectedRev":7,"updatedBy":"agent:test"}`))
-	removeReq.Header.Set("If-Match", before.ETag)
-	removeRec := httptest.NewRecorder()
-	mux.ServeHTTP(removeRec, removeReq)
-	if removeRec.Code != http.StatusOK {
-		t.Fatalf("explicit migration status=%d body=%s", removeRec.Code, removeRec.Body.String())
-	}
-	after, err := store.ReadBoard("legacy-inline")
-	if err != nil {
-		t.Fatalf("read migrated board: %v", err)
-	}
-	if after.Formations[0].Verification != nil || len(after.Gates) != 1 || after.Gates[0].ID != "gate_migrated" || !hasAPIConnection(after.Connections, "fmn_work:port_work_out", "gate_migrated:in") {
-		t.Fatalf("explicit migration changed more than the legacy block: %+v", after)
-	}
-}
-
-func TestFormationsHandlerRejectsAmbiguousInlineVerificationPatchesBeforeMutation(t *testing.T) {
-	tests := []struct {
-		name       string
-		body       string
-		wantStatus int
-		wantCode   string
-	}{
-		{
-			name:       "null set verification mixed with title",
-			body:       `{"setVerification":null,"title":"Must not change","expectedRev":7}`,
-			wantStatus: http.StatusUnprocessableEntity,
-			wantCode:   formations.LegacyInlineVerificationMigrationCode,
-		},
-		{
-			name:       "case variant set verification",
-			body:       `{"SetVerification":{"formationId":"fmn_work","kinds":["code"],"criterion":"Tests pass","onFail":"block"},"expectedRev":7}`,
-			wantStatus: http.StatusUnprocessableEntity,
-			wantCode:   formations.LegacyInlineVerificationMigrationCode,
-		},
-		{
-			name:       "duplicate set verification ending in null before another mutation",
-			body:       `{"setVerification":{"formationId":"fmn_work"},"setVerification":null,"createMission":{"title":"Must not exist","goal":"No mutation","beadId":"ctx-ug7.17"},"expectedRev":7}`,
-			wantStatus: http.StatusUnprocessableEntity,
-			wantCode:   formations.LegacyInlineVerificationMigrationCode,
-		},
-		{
-			name:       "remove verification mixed with title",
-			body:       `{"title":"Must not change","removeVerification":{"formationId":"fmn_work","replacementGateId":"gate_migrated"},"expectedRev":7}`,
-			wantStatus: http.StatusUnprocessableEntity,
-			wantCode:   formations.LegacyInlineVerificationMigrationCode,
-		},
-		{
-			name:       "duplicate remove verification ending in null",
-			body:       `{"removeVerification":{"formationId":"fmn_work","replacementGateId":"gate_migrated"},"removeVerification":null,"title":"Must not change","expectedRev":7}`,
-			wantStatus: http.StatusUnprocessableEntity,
-			wantCode:   formations.LegacyInlineVerificationMigrationCode,
-		},
-		{
-			name:       "case variant null remove verification",
-			body:       `{"RemoveVerification":null,"expectedRev":7}`,
-			wantStatus: http.StatusUnprocessableEntity,
-			wantCode:   formations.LegacyInlineVerificationMigrationCode,
-		},
-		{
-			name:       "trailing inline verification JSON",
-			body:       `{"title":"Must not change","expectedRev":7} {"setVerification":{"formationId":"fmn_work"}}`,
-			wantStatus: http.StatusBadRequest,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			store := formations.NewStore(t.TempDir())
-			store.Now = fixedFormationsAPIClock()
-			writeFormationsAPIFixture(t, store.BoardPath("legacy-inline"), formationsAPILegacyInlineVerificationFixture())
-			before, err := store.ReadBoard("legacy-inline")
-			if err != nil {
-				t.Fatalf("read legacy board: %v", err)
-			}
-			rawBefore := readFormationsAPIFile(t, store.BoardPath("legacy-inline"))
-			handler := NewFormationsHandlerWithStore(store)
-			mux := http.NewServeMux()
-			handler.RegisterRoutes(mux)
-
-			req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/legacy-inline", bytes.NewBufferString(test.body))
-			req.Header.Set("If-Match", before.ETag)
-			rec := httptest.NewRecorder()
-			mux.ServeHTTP(rec, req)
-			if rec.Code != test.wantStatus {
-				t.Fatalf("status = %d body=%s, want %d", rec.Code, rec.Body.String(), test.wantStatus)
-			}
-			if test.wantCode != "" && !strings.Contains(rec.Body.String(), `"code":"`+test.wantCode+`"`) {
-				t.Fatalf("body=%s, want stable code %s", rec.Body.String(), test.wantCode)
-			}
-			if rawAfter := readFormationsAPIFile(t, store.BoardPath("legacy-inline")); rawAfter != rawBefore {
-				t.Fatalf("rejected patch changed board\nbefore:\n%s\nafter:\n%s", rawBefore, rawAfter)
-			}
-			if _, err := os.Stat(store.LayoutPath("legacy-inline")); !os.IsNotExist(err) {
-				t.Fatalf("rejected patch created layout: %v", err)
-			}
-		})
-	}
-}
-
 func formationsAPILegacyInlineVerificationFixture() string {
 	return `schema = 1
 id = "brd_legacy_inline"
@@ -1234,7 +890,7 @@ title = "Legacy inline verification"
 rev = 7
 updatedAt = "2026-06-03T16:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Ship it"
@@ -1316,7 +972,7 @@ label = "Input"
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"wireConnection":{"from":"fmn_frame:port_frame_out","to":"fmn_ship:port_ship_in"},"expectedRev":7,"updatedBy":"agent:test"}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"wireConnection":{"from":"fmn_frame:port_frame_out","to":"fmn_ship:port_ship_in"},"expectedRev":7,"updatedBy":"agent:test"}`))
 	req.Header.Set("If-Match", board.ETag)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -1387,7 +1043,7 @@ to = "fmn_ship:port_ship_in"
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"rewireConnection":{"from":"fmn_frame:port_frame_out","previousTo":"fmn_research:port_research_in","to":"fmn_ship:port_ship_in"},"expectedRev":7,"updatedBy":"agent:test"}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"rewireConnection":{"from":"fmn_frame:port_frame_out","previousTo":"fmn_research:port_research_in","to":"fmn_ship:port_ship_in"},"expectedRev":7,"updatedBy":"agent:test"}`))
 	req.Header.Set("If-Match", board.ETag)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -1421,7 +1077,7 @@ updatedAt = "2026-06-03T16:00:00Z"
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"createGate":{"title":"Review gate","kinds":["code","human"],"criterion":"Research is sound.","x":420,"y":280},"expectedRev":7,"updatedBy":"agent:test"}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"createGate":{"title":"Review gate","kinds":["code","human"],"criterion":"Research is sound.","x":420,"y":280},"expectedRev":7,"updatedBy":"agent:test"}`))
 	req.Header.Set("If-Match", board.ETag)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -1436,7 +1092,7 @@ updatedAt = "2026-06-03T16:00:00Z"
 	}
 	var response struct {
 		Data struct {
-			Board  formations.BoardDocument  `json:"board"`
+			Board  formations.BoardDocument  `json:"mission"`
 			Layout formations.LayoutDocument `json:"layout"`
 		} `json:"data"`
 	}
@@ -1470,7 +1126,7 @@ rev = 7
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"createGate":{"title":"Lint","kinds":["code"],"criterion":"Lint passes","check":"output_contains","checkVersion":"1","checkValue":"LINT OK","x":420,"y":280},"expectedRev":7,"updatedBy":"agent:test"}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"createGate":{"title":"Lint","kinds":["code"],"criterion":"Lint passes","check":"output_contains","checkVersion":"1","checkValue":"LINT OK","x":420,"y":280},"expectedRev":7,"updatedBy":"agent:test"}`))
 	req.Header.Set("If-Match", board.ETag)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -1519,7 +1175,7 @@ rev = 7
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"createGate":{"title":"Lint","kinds":["code"],"check":"unknown","checkVersion":"1","checkValue":"LINT OK"},"expectedRev":7}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"createGate":{"title":"Lint","kinds":["code"],"check":"unknown","checkVersion":"1","checkValue":"LINT OK"},"expectedRev":7}`))
 	req.Header.Set("If-Match", board.ETag)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -1529,101 +1185,6 @@ rev = 7
 	}
 	if after := readFormationsAPIFile(t, store.BoardPath("session-search")); after != before {
 		t.Fatalf("unknown profile changed board bytes\n--- before ---\n%s\n--- after ---\n%s", before, after)
-	}
-}
-
-func TestS3GateRejectsLegacyScriptCommandAuthoringWithoutMutation(t *testing.T) {
-	store := formations.NewStore(t.TempDir())
-	writeFormationsAPIFixture(t, store.BoardPath("session-search"), `schema = 1
-id = "brd_01J9_sesssearch"
-slug = "session-search"
-title = "Improve session search"
-rev = 7
-`)
-	board, err := store.ReadBoard("session-search")
-	if err != nil {
-		t.Fatalf("read board: %v", err)
-	}
-	before := readFormationsAPIFile(t, store.BoardPath("session-search"))
-	handler := NewFormationsHandlerWithStore(store)
-	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux)
-
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"createGate":{"title":"Legacy lint","kinds":["code"],"criterion":"Lint passes","commandArgv":["npm","run","lint"],"commandCwd":"dashboard"},"expectedRev":7}`))
-	req.Header.Set("If-Match", board.ETag)
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), `"code":"legacy_script_gate_requires_fenced_migration"`) {
-		t.Fatalf("legacy gate create status = %d body=%s, want 422 stable code", rec.Code, rec.Body.String())
-	}
-	if after := readFormationsAPIFile(t, store.BoardPath("session-search")); after != before {
-		t.Fatalf("rejected API gate create changed board bytes\n--- before ---\n%s\n--- after ---\n%s", before, after)
-	}
-
-	req = httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"createGate":{"title":"Legacy lint","kinds":["code"],"criterion":"Lint passes","commandShell":""},"expectedRev":7}`))
-	req.Header.Set("If-Match", board.ETag)
-	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), `"code":"legacy_script_gate_requires_fenced_migration"`) {
-		t.Fatalf("empty legacy field status = %d body=%s, want 422 stable code", rec.Code, rec.Body.String())
-	}
-	if after := readFormationsAPIFile(t, store.BoardPath("session-search")); after != before {
-		t.Fatalf("rejected empty API gate field changed board bytes")
-	}
-
-	for _, tc := range []struct {
-		name string
-		body string
-	}{
-		{name: "null field", body: `{"createGate":{"title":"Legacy lint","kinds":["code"],"criterion":"Lint passes","command":null},"expectedRev":7}`},
-		{name: "duplicate ending in null", body: `{"createGate":{"title":"Legacy lint","kinds":["code"],"criterion":"Lint passes","commandShell":"printf ok","commandShell":null},"expectedRev":7}`},
-		{name: "case variant empty field", body: `{"createGate":{"title":"Legacy lint","kinds":["code"],"criterion":"Lint passes","CommandShell":""},"expectedRev":7}`},
-		{name: "case variant null field", body: `{"createGate":{"title":"Legacy lint","kinds":["code"],"criterion":"Lint passes","COMMAND":null},"expectedRev":7}`},
-		{name: "duplicate create gate ending in null", body: `{"createGate":{"title":"Legacy lint","commandShell":"printf ok"},"createGate":null,"title":"Must not change","expectedRev":7}`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(tc.body))
-			req.Header.Set("If-Match", board.ETag)
-			rec := httptest.NewRecorder()
-			mux.ServeHTTP(rec, req)
-			if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), `"code":"legacy_script_gate_requires_fenced_migration"`) {
-				t.Fatalf("legacy field status = %d body=%s, want 422 stable code", rec.Code, rec.Body.String())
-			}
-			if after := readFormationsAPIFile(t, store.BoardPath("session-search")); after != before {
-				t.Fatalf("rejected API legacy field changed board bytes")
-			}
-		})
-	}
-
-	req = httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"title":"Must not change","expectedRev":7} {"createGate":{"command":"legacy"}}`))
-	req.Header.Set("If-Match", board.ETag)
-	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("trailing JSON status = %d body=%s, want 400", rec.Code, rec.Body.String())
-	}
-	if after := readFormationsAPIFile(t, store.BoardPath("session-search")); after != before {
-		t.Fatalf("trailing JSON changed board bytes")
-	}
-
-	writeFormationsAPIFixture(t, store.LayoutPath("session-search"), `schema = 1
-boardId = "brd_01J9_sesssearch"
-boardRev = 7
-updatedAt = "2026-06-03T16:00:00Z"
-`)
-	beforeLayout := readFormationsAPIFile(t, store.LayoutPath("session-search"))
-	req = httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"createFormation":{"type":"solo","title":"Must not be created"},"createGate":{"title":"Legacy lint","commandShell":"touch should-not-run"},"expectedRev":7}`))
-	req.Header.Set("If-Match", board.ETag)
-	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), `"code":"legacy_script_gate_requires_fenced_migration"`) {
-		t.Fatalf("mixed legacy patch status = %d body=%s, want 422 stable code", rec.Code, rec.Body.String())
-	}
-	if after := readFormationsAPIFile(t, store.BoardPath("session-search")); after != before {
-		t.Fatalf("rejected mixed API patch changed board bytes")
-	}
-	if after := readFormationsAPIFile(t, store.LayoutPath("session-search")); after != beforeLayout {
-		t.Fatalf("rejected mixed API patch changed layout bytes")
 	}
 }
 
@@ -1663,7 +1224,7 @@ label = "Output"
 	handler := NewFormationsHandlerWithStore(store)
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"setGateJudge":{"gateId":"gate_review","chain":["fmn_j1"]},"expectedRev":7,"updatedBy":"agent:test"}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"setGateJudge":{"gateId":"gate_review","chain":["fmn_j1"]},"expectedRev":7,"updatedBy":"agent:test"}`))
 	req.Header.Set("If-Match", board.ETag)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -1692,19 +1253,19 @@ updatedAt = "2026-06-03T16:00:00Z"
 	handler := NewFormationsHandlerWithStore(store)
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
-	req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/session-search", bytes.NewBufferString(`{"createMission":{"title":"Showcase","goal":"Build it","beadId":"chlab-123","x":196,"y":308},"expectedRev":7,"updatedBy":"agent:test"}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/missions/session-search", bytes.NewBufferString(`{"createInputCard":{"title":"Showcase","goal":"Build it","beadId":"chlab-123","x":196,"y":308},"expectedRev":7,"updatedBy":"agent:test"}`))
 	req.Header.Set("If-Match", board.ETag)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("mission status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
-	if !bytes.Contains(rec.Body.Bytes(), []byte(`"beadId":"chlab-123"`)) || bytes.Contains(rec.Body.Bytes(), []byte("chain")) {
+	if bytes.Contains(rec.Body.Bytes(), []byte(`"beadId"`)) || bytes.Contains(rec.Body.Bytes(), []byte("chain")) {
 		t.Fatalf("mission response wrong: %s", rec.Body.String())
 	}
 	var response struct {
 		Data struct {
-			Board  formations.BoardDocument  `json:"board"`
+			Board  formations.BoardDocument  `json:"mission"`
 			Layout formations.LayoutDocument `json:"layout"`
 		} `json:"data"`
 	}
@@ -1743,7 +1304,7 @@ func TestFormationsHandlerS4RunLifecycleAndSSE(t *testing.T) {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	startReq := httptest.NewRequest(http.MethodPost, "/api/formations/runs", bytes.NewBufferString(`{"board":"session-search","missionId":"mis_showcase","actor":"agent:test","limits":{"maxDispatch":4,"maxAttempts":2}}`))
+	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"mission":"session-search","inputCardId":"mis_showcase","actor":"agent:test","limits":{"maxDispatch":4,"maxAttempts":2}}`))
 	startReq.Header.Set("If-Match", board.ETag)
 	startRec := httptest.NewRecorder()
 	mux.ServeHTTP(startRec, startReq)
@@ -1763,7 +1324,7 @@ func TestFormationsHandlerS4RunLifecycleAndSSE(t *testing.T) {
 		t.Fatalf("start response = %+v, want fail-loud blocked run id", startResponse.Data)
 	}
 
-	statusReq := httptest.NewRequest(http.MethodGet, "/api/formations/runs/"+startResponse.Data.RunID, nil)
+	statusReq := httptest.NewRequest(http.MethodGet, "/api/runs/"+startResponse.Data.RunID, nil)
 	statusReq.SetPathValue("runId", startResponse.Data.RunID)
 	statusRec := httptest.NewRecorder()
 	handler.GetRun(statusRec, statusReq)
@@ -1774,7 +1335,7 @@ func TestFormationsHandlerS4RunLifecycleAndSSE(t *testing.T) {
 		t.Fatalf("status response missing blocked projection: %s", statusRec.Body.String())
 	}
 
-	eventsReq := httptest.NewRequest(http.MethodGet, "/api/formations/runs/"+startResponse.Data.RunID+"/events", nil)
+	eventsReq := httptest.NewRequest(http.MethodGet, "/api/runs/"+startResponse.Data.RunID+"/events", nil)
 	eventsReq.SetPathValue("runId", startResponse.Data.RunID)
 	eventsRec := httptest.NewRecorder()
 	handler.GetRunEvents(eventsRec, eventsReq)
@@ -1791,7 +1352,7 @@ func TestFormationsHandlerS4RunLifecycleAndSSE(t *testing.T) {
 		t.Fatalf("events response includes fake success: %s", eventsRec.Body.String())
 	}
 
-	streamReq := httptest.NewRequest(http.MethodGet, "/api/formations/runs/"+startResponse.Data.RunID+"/stream?since=0", nil)
+	streamReq := httptest.NewRequest(http.MethodGet, "/api/runs/"+startResponse.Data.RunID+"/stream?since=0", nil)
 	streamReq.SetPathValue("runId", startResponse.Data.RunID)
 	streamRec := httptest.NewRecorder()
 	handler.StreamRunEvents(streamRec, streamReq)
@@ -1805,7 +1366,7 @@ func TestFormationsHandlerS4RunLifecycleAndSSE(t *testing.T) {
 		t.Fatalf("stream response missing replayed SSE events:\n%s", streamRec.Body.String())
 	}
 
-	lastEventReq := httptest.NewRequest(http.MethodGet, "/api/formations/runs/"+startResponse.Data.RunID+"/stream", nil)
+	lastEventReq := httptest.NewRequest(http.MethodGet, "/api/runs/"+startResponse.Data.RunID+"/stream", nil)
 	lastEventReq.SetPathValue("runId", startResponse.Data.RunID)
 	lastEventReq.Header.Set("Last-Event-ID", "3")
 	lastEventRec := httptest.NewRecorder()
@@ -1817,7 +1378,7 @@ func TestFormationsHandlerS4RunLifecycleAndSSE(t *testing.T) {
 		t.Fatalf("Last-Event-ID replay body = %s, want events after seq 3 only", lastEventRec.Body.String())
 	}
 
-	invalidReplayReq := httptest.NewRequest(http.MethodGet, "/api/formations/runs/"+startResponse.Data.RunID+"/stream", nil)
+	invalidReplayReq := httptest.NewRequest(http.MethodGet, "/api/runs/"+startResponse.Data.RunID+"/stream", nil)
 	invalidReplayReq.SetPathValue("runId", startResponse.Data.RunID)
 	invalidReplayReq.Header.Set("Last-Event-ID", "not-a-seq")
 	invalidReplayRec := httptest.NewRecorder()
@@ -1836,7 +1397,7 @@ func TestFormationsHandlerS4RunLifecycleAndSSE(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start open run: %v", err)
 	}
-	abortReq := httptest.NewRequest(http.MethodPost, "/api/formations/runs/"+openRun.RunID+"/abort", bytes.NewBufferString(`{"reason":"operator stop","requestedBy":"agent:test"}`))
+	abortReq := httptest.NewRequest(http.MethodPost, "/api/runs/"+openRun.RunID+"/abort", bytes.NewBufferString(`{"reason":"operator stop","requestedBy":"agent:test"}`))
 	abortReq.SetPathValue("runId", openRun.RunID)
 	abortRec := httptest.NewRecorder()
 	handler.AbortRun(abortRec, abortReq)
@@ -1851,15 +1412,15 @@ func TestFormationsHandlerS4RunLifecycleAndSSE(t *testing.T) {
 func TestFormationsHandlerS4ConfiguredLabExecutorRunsStaffedFormation(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "lab-fake")
-	t.Setenv("CHROTE_FORMATIONS_LAB_CWD", workspace)
+	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
+	t.Setenv("ARCHON_LAB_CWD", workspace)
 
 	store := formations.NewStore(workspace)
 	personas := formations.NewPersonaStore(agentsDir)
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
 		ID:      "lab-poet",
 		Kind:    "specialist",
-		Harness: "lab-fake",
+		Harness: "openai-codex",
 	}); err != nil {
 		t.Fatalf("create persona: %v", err)
 	}
@@ -1870,7 +1431,7 @@ func TestFormationsHandlerS4ConfiguredLabExecutorRunsStaffedFormation(t *testing
 	}
 
 	handler := NewFormationsHandlerWithStores(store, personas)
-	startReq := httptest.NewRequest(http.MethodPost, "/api/formations/runs", bytes.NewBufferString(`{"board":"poems","missionId":"mis_poem","actor":"agent:test","limits":{"maxDispatch":3,"maxAttempts":1}}`))
+	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"mission":"poems","inputCardId":"mis_poem","actor":"agent:test","limits":{"maxDispatch":3,"maxAttempts":1}}`))
 	startReq.Header.Set("If-Match", board.ETag)
 	startRec := httptest.NewRecorder()
 	handler.StartRun(startRec, startReq)
@@ -1898,9 +1459,9 @@ func TestFormationsHandlerS4ConfiguredLabExecutorRunsStaffedFormation(t *testing
 func TestFormationsHandlerRejectsOversizedJSONBody(t *testing.T) {
 	store := formations.NewStore(t.TempDir())
 	handler := NewFormationsHandlerWithStore(store)
-	body := `{"board":"session-search","missionId":"mis_showcase","actor":"` + strings.Repeat("x", 2*1024*1024) + `"}`
+	body := `{"mission":"session-search","inputCardId":"mis_showcase","actor":"` + strings.Repeat("x", 2*1024*1024) + `"}`
 
-	req := httptest.NewRequest(http.MethodPost, "/api/formations/runs", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 	handler.StartRun(rec, req)
 
@@ -1928,7 +1489,7 @@ rev = 7
 updatedBy = "agent:archon"
 updatedAt = "2026-06-03T16:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Ship a showcase"
@@ -1953,11 +1514,26 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_work"
 from = "mis_showcase:out"
 to = "fmn_work:port_work_in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
+[[connection]]
+id = "edge_work_done"
+from = "fmn_work:port_work_out"
+to = "end_done:in"
 `
 }
 
@@ -2023,7 +1599,7 @@ slug = "poems"
 title = "Poems"
 rev = 7
 
-[[mission]]
+[[inputCard]]
 id = "mis_poem"
 title = "Simple poem"
 goal = "Create a simple poem"
@@ -2046,13 +1622,28 @@ label = "Output"
 id = "slot_writer"
 label = "Writer"
 agentId = "lab-poet"
-harness = "lab-fake"
+harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_draft"
 from = "mis_poem:out"
 to = "fmn_draft:port_draft_in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
+[[connection]]
+id = "edge_draft_done"
+from = "fmn_draft:port_draft_out"
+to = "end_done:in"
 `
 }
 
@@ -2063,7 +1654,7 @@ slug = "session-search"
 title = "Improve session search"
 rev = 7
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Ship a showcase"
@@ -2088,6 +1679,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_ship"
@@ -2108,6 +1700,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_work"
@@ -2118,6 +1711,20 @@ to = "fmn_work:port_work_in"
 id = "edge_work_ship"
 from = "fmn_work:port_work_out"
 to = "fmn_ship:port_ship_in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
+[[connection]]
+id = "edge_ship_done"
+from = "fmn_ship:port_ship_out"
+to = "end_done:in"
 `
 }
 
@@ -2146,6 +1753,11 @@ to = "gate_lint:in"
 id = "edge_gate_ship"
 from = "gate_lint:pass"
 to = "fmn_ship:port_ship_in"
+
+[[connection]]
+id = "edge_lint_fail_rejected"
+from = "gate_lint:fail"
+to = "end_rejected:in"
 `, 1)
 }
 
@@ -2156,7 +1768,7 @@ slug = "human-search"
 title = "Human gate search"
 rev = 7
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Ship a showcase"
@@ -2181,6 +1793,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[gate]]
 id = "gate_review"
@@ -2207,6 +1820,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_work"
@@ -2222,6 +1836,25 @@ to = "gate_review:in"
 id = "edge_gate_pass_ship"
 from = "gate_review:pass"
 to = "fmn_ship:port_ship_in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+
+[[connection]]
+id = "edge_ship_done"
+from = "fmn_ship:port_ship_out"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_gate_fail_rejected"
+from = "gate_review:fail"
+to = "end_rejected:in"
 `
 }
 

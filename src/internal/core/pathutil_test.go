@@ -42,10 +42,10 @@ func TestGetAllowedRoots_NormalizesEnvRoots(t *testing.T) {
 
 	defer func() {
 		_ = os.Chdir(cwd)
-		os.Unsetenv("CHROTE_ROOTS")
+		os.Unsetenv("ARCHON_ROOTS")
 		ResetConfigForTesting()
 	}()
-	os.Setenv("CHROTE_ROOTS", " , workspace/. , "+root+" , ")
+	os.Setenv("ARCHON_ROOTS", " , workspace/. , "+root+" , ")
 	ResetConfigForTesting()
 
 	absRoot, err := filepath.Abs(root)
@@ -60,10 +60,10 @@ func TestGetAllowedRoots_NormalizesEnvRoots(t *testing.T) {
 
 func TestGetAllowedRoots_RootDominatesOtherRoots(t *testing.T) {
 	defer func() {
-		os.Unsetenv("CHROTE_ROOTS")
+		os.Unsetenv("ARCHON_ROOTS")
 		ResetConfigForTesting()
 	}()
-	os.Setenv("CHROTE_ROOTS", "/, /projects, /workspace/operator")
+	os.Setenv("ARCHON_ROOTS", "/, /projects, /workspace/operator")
 	ResetConfigForTesting()
 
 	got := GetAllowedRoots()

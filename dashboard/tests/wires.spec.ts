@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { wayfinding, wayfindingFixture } from './wayfinding-fixture'
+import { scouting, scoutingFixture } from './scouting-fixture'
 
 type Point = { x: number; y: number }
 type Segment = [Point, Point]
@@ -27,21 +27,21 @@ function shared([a1, a2]: Segment, [b1, b2]: Segment): boolean {
   return false
 }
 
-test('Wayfinding loops are labelled back-references and no two share a channel segment', async ({ page }) => {
+test('Scouting loops are labelled back-references and no two share a channel segment', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.addInitScript(() => localStorage.clear())
-  const fixture = await wayfindingFixture(page)
-  await page.goto('/?mission=wayfinding')
+  const fixture = await scoutingFixture(page)
+  await page.goto('/?mission=scouting')
 
-  const titleOf = (nodeId: string) => [...wayfinding.board.formations, ...wayfinding.board.gates].find((node: { id: string }) => node.id === nodeId)?.title
-  const loops = (wayfinding.board.connections as Array<{ id: string; from: string; to: string }>).filter(connection => connection.from.endsWith(':fail'))
+  const titleOf = (nodeId: string) => [...scouting.mission.formations, ...scouting.mission.gates].find((node: { id: string }) => node.id === nodeId)?.title
+  const loops = (scouting.mission.connections as Array<{ id: string; from: string; to: string }>).filter(connection => connection.from.endsWith(':fail'))
   expect(loops).toHaveLength(4)
   await expect(page.locator('path.wire.loop')).toHaveCount(4)
   for (const loop of loops) {
     await expect(page.getByTestId(`formation-wire-${loop.id}`)).toHaveClass(/\bloop\b/)
     await expect(page.getByTestId(`wire-label-${loop.id}`)).toHaveText(`↺ ${titleOf(loop.to.split(':')[0])}`)
   }
-  const judge = (wayfinding.board.connections as Array<{ id: string; from: string }>).find(connection => connection.from.endsWith(':judge'))!
+  const judge = (scouting.mission.connections as Array<{ id: string; from: string }>).find(connection => connection.from.endsWith(':judge'))!
   await expect(page.getByTestId(`wire-label-${judge.id}`)).toHaveText('judges Adversarial review')
 
   await page.getByTitle('Fit', { exact: true }).click()
@@ -60,7 +60,7 @@ test('Wayfinding loops are labelled back-references and no two share a channel s
   // Legend and slot words are one look away.
   await page.getByRole('button', { name: 'Legend' }).click()
   await expect(page.getByRole('dialog', { name: 'Canvas legend' })).toContainText('A gate sends work back to an earlier step')
-  await page.screenshot({ path: test.info().outputPath('wayfinding-loops.png') })
+  await page.screenshot({ path: test.info().outputPath('scouting-loops.png') })
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog', { name: 'Canvas legend' })).toHaveCount(0)
   expect(fixture.writes).toEqual([])

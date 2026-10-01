@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify a real release's installer, command aliases, UI and persisted runs."""
+"""Verify a real release's installer, commands, UI and persisted runs."""
 import hashlib
 import json
 import os
@@ -64,7 +64,6 @@ def check_skill(skill):
     for page in skill.rglob('*.md'):
         for target in re.findall(r'\]\(([^)#:]+\.md)\)', page.read_text()):
             assert (page.parent / target).is_file(), f'{page.name} links to missing {target}'
-    assert not (skill.parent / 'eval').exists(), 'the skill eval is source-only'
 
 
 def main():
@@ -94,19 +93,19 @@ def main():
         assert sentinel.read_text() == 'keep this data\n'
         version, commit = (bundle / 'VERSION').read_text().strip(), (bundle / 'COMMIT').read_text().strip()
         check_skill(prefix / 'lib/archon/current/share/archon/skills/archon')
-        for command in ('archon', 'archond', 'formationsd'):
+        for command in ('archon', 'archond'):
             result = run(str(prefix / 'bin' / command), '--version', cwd='/')
             assert version in result and commit in result, result
-        # Existing unversioned board and ledger format remain usable across aliases.
-        board_dir = state / '.formations/boards'
-        board_dir.mkdir(parents=True)
-        board_dir.joinpath('hello.formation.toml').write_text('''schema = 1
+        # A mission runs on the installed daemon and its history survives a restart.
+        mission_dir = state / '.archon/missions'
+        mission_dir.mkdir(parents=True)
+        mission_dir.joinpath('hello.mission.toml').write_text('''schema = 1
 id = "brd_hello"
 slug = "hello"
 title = "Hello"
 rev = 1
-[[mission]]
-id = "mis_hello"
+[[inputCard]]
+id = "inp_hello"
 title = "Hello"
 goal = "Return the supplied input"
 [[formation]]
@@ -126,15 +125,16 @@ id = "slot_work"
 label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 controller = true
 [[connection]]
 id = "edge_start"
-from = "mis_hello:out"
+from = "inp_hello:out"
 to = "fmn_work:port_in"
 ''')
         cli = str(prefix / 'bin/archon')
-        run(cli, '--workspace', str(state), 'board', 'validate', 'hello', '--json')
-        process, url = daemon(prefix / 'bin/formationsd', state)
+        run(cli, '--workspace', str(state), 'mission', 'validate', 'hello', '--json')
+        process, url = daemon(prefix / 'bin/archond', state)
         try:
             assert json.loads(get(url + '/healthz'))['data']['status'] == 'ok'
             html = get(url + '/').decode()
@@ -142,8 +142,8 @@ to = "fmn_work:port_in"
             for asset in re.findall(r'(?:src|href)="(/assets/[^\"]+)"', html):
                 assert len(get(url + asset)) > 0
             receipt = json.loads(run(cli, '--server', url, 'mission', 'run', 'hello',
-                                     '--mission', 'mis_hello', '--cwd', str(root),
-                                     '--brief', 'Archon release compatibility smoke', '--json'))
+                                     '--cwd', str(root),
+                                     '--brief', 'Archon release smoke', '--json'))
             run_id = receipt['data']['runId']
             follow = run(cli, '--server', url, 'run', 'follow', run_id, '--json', timeout=20)
             assert 'succeeded' in follow, follow
@@ -153,7 +153,7 @@ to = "fmn_work:port_in"
         try:
             status = json.loads(run(cli, '--server', url, 'run', 'status', run_id, '--json'))
             assert status['data']['status'] == 'succeeded', status
-            assert run_id.encode() in get(url + '/api/formations/runs')
+            assert run_id.encode() in get(url + '/api/runs')
         finally:
             stop(process)
         # Reject a corrupted bundle before it replaces a managed installation.
@@ -176,7 +176,7 @@ to = "fmn_work:port_in"
         assert failed.returncode != 0 and os.readlink(current_link) == 'releases/operator-files'
         assert (operator_dir / 'keep').read_text() == 'operator files'
         assert sentinel.read_text() == 'keep this data\n'
-        print(f'PASS {archive.name}: install, upgrade, reinstall, checksum rejection, unmanaged-file protection, UI, command aliases, persisted run, agent skill')
+        print(f'PASS {archive.name}: install, upgrade, reinstall, checksum rejection, unmanaged-file protection, UI, commands, persisted run, agent skill')
 
 
 if __name__ == '__main__':

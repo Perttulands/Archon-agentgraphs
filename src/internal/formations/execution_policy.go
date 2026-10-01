@@ -64,7 +64,7 @@ func executionPolicyFindings(board *BoardDocument) []BoardFinding {
 			invalid[node.ID] = true
 		}
 	}
-	// Compatibility parsing keeps older drafts readable. It must not turn a
+	// Lenient parsing keeps malformed drafts readable. It must not turn a
 	// mistyped new policy into no time limit or coerce a quoted number.
 	if source, err := decodeTOMLMap([]byte(board.TOML)); err == nil {
 		if tables, err := tomlTableArray(source, "formation"); err == nil {

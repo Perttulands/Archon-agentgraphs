@@ -91,7 +91,6 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		Personality  string   `json:"personality"`
 		Harness      string   `json:"harness"`
 		SessionStem  string   `json:"sessionStem"`
-		Launch       string   `json:"launch"`
 		Model        string   `json:"model"`
 		Effort       string   `json:"effort"`
 		Source       string   `json:"source"`
@@ -112,7 +111,6 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		Personality:  req.Personality,
 		Harness:      req.Harness,
 		SessionStem:  req.SessionStem,
-		Launch:       req.Launch,
 		Model:        req.Model,
 		Effort:       req.Effort,
 		Source:       req.Source,
@@ -133,7 +131,6 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		RemoveCapability string                       `json:"removeCapability"`
 		AddHarness       string                       `json:"addHarness"`
 		SessionStem      *string                      `json:"sessionStem"`
-		Launch           *string                      `json:"launch"`
 		Source           string                       `json:"source"`
 		Note             string                       `json:"note"`
 		Retire           bool                         `json:"retire"`
@@ -166,9 +163,6 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		if req.SessionStem != nil {
 			edit.SessionStem = *req.SessionStem
 		}
-		if req.Launch != nil {
-			edit.Launch = *req.Launch
-		}
 		if req.Model != nil {
 			edit.Model = *req.Model
 		}
@@ -177,7 +171,6 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		edit.SetSessionStem = req.SessionStem
-		edit.SetLaunch = req.Launch
 		edit.Variant = req.Variant
 		edit.SetModel = req.Model
 		edit.SetEffort = req.Effort

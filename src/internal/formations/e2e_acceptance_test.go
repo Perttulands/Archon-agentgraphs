@@ -68,7 +68,7 @@ func TestCareerWebAcceptance(t *testing.T) {
 		t.Fatalf("artifact %s read err=%v len=%d, want real workspace artifact", artifactPath, err, len(raw))
 	}
 
-	recorded, err := store.RecordEscalationFromCapture(status.RunID, "fmn_frontend", "note\n<<<CHROTE-ESCALATE run-id="+status.RunID+" severity=needs-attention reason='frontend wants human taste'>>>")
+	recorded, err := store.RecordEscalationFromCapture(status.RunID, "fmn_frontend", "note\n<<<ARCHON-ESCALATE run-id="+status.RunID+" severity=needs-attention reason='frontend wants human taste'>>>")
 	if err != nil {
 		t.Fatalf("record escalation: %v", err)
 	}
@@ -203,7 +203,7 @@ func (e *careerDispatchExecutor) ExecuteFormation(req FormationExecution) (Forma
 	if err != nil {
 		return FormationExecutionResult{}, err
 	}
-	if err := e.dispatcher.CompleteFromCapture(req.RunID, lease.DispatchID, fmt.Sprintf("<<<CHROTE-DONE run-id=%s status=ok artifact=%s>>>", req.RunID, artifact)); err != nil {
+	if err := e.dispatcher.CompleteFromCapture(req.RunID, lease.DispatchID, fmt.Sprintf("<<<ARCHON-DONE run-id=%s status=ok artifact=%s>>>", req.RunID, artifact)); err != nil {
 		return FormationExecutionResult{}, err
 	}
 	return FormationExecutionResult{Status: "done", ReportRef: artifact, Text: text, Outputs: payloadsForFormationOutputs(req.Formation, text, artifact)}, nil
@@ -237,7 +237,7 @@ func createCareerPersona(t *testing.T, personas *PersonaStore, id, harness, capa
 
 func statusLedgerPath(t *testing.T, store *Store, runID string) string {
 	t.Helper()
-	matches, err := filepath.Glob(filepath.Join(store.Workspace, ".formations", "runs", "career-web", runID+".ndjson"))
+	matches, err := filepath.Glob(filepath.Join(store.Workspace, ".archon", "runs", "career-web", runID+".ndjson"))
 	if err != nil {
 		t.Fatalf("glob run ledger: %v", err)
 	}
@@ -296,7 +296,7 @@ rev = 7
 updatedBy = "agent:archon"
 updatedAt = "2026-06-03T16:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase_site"
 title = "showcase-site"
 goal = "I want a web experience that showcases my agentic-engineering work for an AI-company job search"
@@ -325,6 +325,7 @@ label = "Design lead"
 agentId = "design-lead"
 harness = "claude-code"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_frontend"
@@ -349,6 +350,7 @@ label = "Frontend"
 agentId = "frontend-codex"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[gate]]
 id = "gate_taste"
@@ -378,6 +380,7 @@ label = "Publisher"
 agentId = "frontend-codex"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_design"
@@ -398,5 +401,15 @@ to = "gate_taste:in"
 id = "edge_gate_publish"
 from = "gate_taste:pass"
 to = "fmn_publish:port_publish_in"
-`
+
+[[connection]]
+id = "edge_publish_done"
+from = "fmn_publish:port_publish_out"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_taste_fail_rejected"
+from = "gate_taste:fail"
+to = "end_rejected:in"
+` + branchingBoardEnds()
 }

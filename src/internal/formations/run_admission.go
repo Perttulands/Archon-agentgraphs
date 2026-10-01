@@ -73,6 +73,9 @@ func ValidateRunAdmission(board *BoardDocument, personas *PersonaStore, scope Ru
 		switch {
 		case selected == nil || finding.Code == FindingInvalidFormationType || finding.Code == FindingSeveralInputCards:
 			return true
+		case scope.FormationID != "" && finding.Code == FindingRouteLeadsNowhere:
+			// A single step's run ends with that step; its routes are not taken.
+			return false
 		case finding.NodeID == "":
 			return false
 		default:
@@ -160,8 +163,6 @@ func formationAdmissionFindings(formation FormationNode, personas *PersonaStore,
 		case err == nil:
 		case errors.Is(err, ErrInvalidSlotSettings):
 			add(FindingInvalidSlotSettings, "formation %q %s", formation.ID, strings.TrimPrefix(err.Error(), ErrInvalidSlotSettings.Error()+": "))
-		case errors.Is(err, errRoleBinding):
-			add(FindingUnavailablePersona, "formation %q slot %s cannot bind role %q: %s", formation.ID, slotName(slot), slot.AgentID, strings.TrimPrefix(err.Error(), errRoleBinding.Error()+": "))
 		case errors.Is(err, ErrNotFound):
 			add(FindingUnavailablePersona, "formation %q slot %s names unknown role %q", formation.ID, slotName(slot), slot.AgentID)
 		default:

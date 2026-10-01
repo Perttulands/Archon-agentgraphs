@@ -8,20 +8,15 @@ import (
 )
 
 func TestPendingHumanGateSurvivesRestart(t *testing.T) {
-	for _, legacy := range []bool{false, true} {
+	{
 		for _, verdict := range []string{"pass", "fail"} {
-			t.Run(strconv.FormatBool(legacy)+"/"+verdict, func(t *testing.T) {
+			t.Run(verdict, func(t *testing.T) {
 				c, executor, root := fixture(t)
 				id := startRun(t, c)
 				<-executor.entered
 				executor.proceed <- struct{}{}
 				before := awaitState(t, c, id, "waiting_human")
 				seq := before.WaitingGates[0].RequestedSeq
-				if legacy {
-					if err := c.engine.BlockInterruptedRun(id); err != nil {
-						t.Fatal(err)
-					}
-				}
 				original, _ := c.store.ReadRunEvents(id)
 				for i := 0; i < 2; i++ {
 					if err := c.Close(); err != nil {
@@ -42,18 +37,14 @@ func TestPendingHumanGateSurvivesRestart(t *testing.T) {
 				}
 				defer c.Close()
 				events, _ := c.store.ReadRunEvents(id)
-				extra := 0
-				if legacy {
-					extra = 1
-				}
-				if len(events) != len(original)+extra {
+				if len(events) != len(original) {
 					t.Fatalf("restart added unexpected events: %+v", events)
 				}
-				path := "/api/formations/runs/" + id + "/gates/gate_review/verdict"
+				path := "/api/runs/" + id + "/gates/gate_review/verdict"
 				if w := post(t, c, path, `{"requestedSeq":999,"verdict":"pass"}`); w.Code != 409 {
 					t.Fatal(w.Code)
 				}
-				body := `{"requestedSeq":` + strconv.Itoa(seq) + `,"verdict":"` + verdict + `"}`
+				body := `{"requestedSeq":` + strconv.Itoa(seq) + `,"verdict":"` + verdict + `","reason":"not yet"}`
 				if w := post(t, c, path, body); w.Code != 202 {
 					t.Fatalf("%d %s", w.Code, w.Body.String())
 				}
@@ -62,7 +53,14 @@ func TestPendingHumanGateSurvivesRestart(t *testing.T) {
 					executor.proceed <- struct{}{}
 					awaitState(t, c, id, "succeeded")
 				} else {
-					awaitState(t, c, id, "blocked")
+					// The send-back ends this path rejected, which fails the run
+					// with the operator's reason (form-o7p.10).
+					awaitState(t, c, id, "failed")
+					events, _ := c.store.ReadRunEvents(id)
+					last := events[len(events)-1]
+					if last.Type != formations.RunEventFailed || last.Data["code"] != formations.RunFailurePathRejected || last.Data["reason"] != "not yet" {
+						t.Fatalf("last event = %+v, want run_failed with the operator's reason", last)
+					}
 				}
 				if w := post(t, c, path, body); w.Code != 409 {
 					t.Fatal(w.Code)

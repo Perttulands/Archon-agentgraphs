@@ -1,7 +1,7 @@
 import { type Page } from '@playwright/test'
-import { wayfinding, wayfindingFixture } from './wayfinding-fixture'
+import { scouting, scoutingFixture } from './scouting-fixture'
 
-/* The Wayfinding fixture with long authored text in place of its trimmed briefs,
+/* The Scouting fixture with long authored text in place of its trimmed briefs,
  * goal and criteria, and persona cards for its staffing, so a spec can tell
  * whether every word of a node can be read in its window. */
 
@@ -21,16 +21,16 @@ export function authoredText(title: string, field: string): string {
 const slotModel = (harness: string) => harness === 'openai-codex' ? 'gpt-5.5' : 'opus'
 
 export const authoredBoard = {
-  ...wayfinding.board,
-  missions: wayfinding.board.missions.map((mission: Node) => ({ ...mission, goal: authoredText(mission.title, 'mission goal'), beadId: 'form-3yd.10' })),
+  ...scouting.mission,
+  inputCards: scouting.mission.inputCards.map((mission: Node) => ({ ...mission, goal: authoredText(mission.title, 'mission goal') })),
   // Each staffed slot carries the settings its role card below had when the
   // daemon migrated it: slots own their harness, model and effort.
-  formations: wayfinding.board.formations.map((formation: Node & { slots: Array<{ agentId?: string; harness?: string }> }) => ({
+  formations: scouting.mission.formations.map((formation: Node & { slots: Array<{ agentId?: string; harness?: string }> }) => ({
     ...formation,
     brief: { goal: authoredText(formation.title, 'brief') },
     slots: formation.slots.map(slot => slot.agentId ? { ...slot, model: slotModel(slot.harness || ''), effort: 'medium' } : slot),
   })),
-  gates: wayfinding.board.gates.map((gate: Node) => ({ ...gate, criterion: authoredText(gate.title, 'criterion') })),
+  gates: scouting.mission.gates.map((gate: Node) => ({ ...gate, criterion: authoredText(gate.title, 'criterion') })),
 }
 
 const agents = ['codex-scout', 'delivery-planner', 'codex-planner', 'codex-judge'].map(id => ({
@@ -43,12 +43,12 @@ const agents = ['codex-scout', 'delivery-planner', 'codex-planner', 'codex-judge
   kind: 'specialist',
 }))
 
-/** Serves the authored Wayfinding board with its notes, and records every write. */
+/** Serves the authored Scouting mission with its notes, and records every write. */
 export async function nodeWindowsFixture(page: Page) {
-  // Routes added later answer first, so these replace the board and agents of the Wayfinding fixture.
-  const fixture = await wayfindingFixture(page)
+  // Routes added later answer first, so these replace the mission and agents of the Scouting fixture.
+  const fixture = await scoutingFixture(page)
   const respond = (data: unknown) => ({ json: { success: true, data }, headers: { ETag: 'fixture-etag' } })
-  await page.route('**/api/formations/missions/wayfinding', route => route.fulfill(respond({ board: authoredBoard })))
+  await page.route('**/api/missions/scouting', route => route.fulfill(respond({ mission: authoredBoard })))
   await page.route('**/api/agents', route => route.fulfill(respond({ agents, count: agents.length })))
   for (const agent of agents) {
     const model = slotModel(agent.harnessDefault)

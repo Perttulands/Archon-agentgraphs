@@ -42,7 +42,7 @@ func TestFormationsAPIReportsControllerRoleAndPortDirectionByField(t *testing.T)
 		mux.ServeHTTP(rec, req)
 		return rec
 	}
-	if rec := serve(http.MethodPost, "/api/formations/boards", "", `{"title":"Fields","slug":"fields"}`); rec.Code != http.StatusCreated {
+	if rec := serve(http.MethodPost, "/api/missions", "", `{"title":"Fields","slug":"fields"}`); rec.Code != http.StatusCreated {
 		t.Fatalf("create board = %d %s", rec.Code, rec.Body.String())
 	}
 	patch := func(body string) *httptest.ResponseRecorder {
@@ -51,7 +51,7 @@ func TestFormationsAPIReportsControllerRoleAndPortDirectionByField(t *testing.T)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return serve(http.MethodPatch, "/api/formations/boards/fields", board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{"))
+		return serve(http.MethodPatch, "/api/missions/fields", board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{"))
 	}
 	for _, body := range []string{`{"createFormation":{"type":"solo","title":"Solo"}}`, `{"createFormation":{"type":"orchestrated","title":"Lead"}}`} {
 		if rec := patch(body); rec.Code != http.StatusOK {
@@ -94,10 +94,10 @@ func TestFormationsAPIReportsControllerRoleAndPortDirectionByField(t *testing.T)
 	if rec := patch(`{"makeController":{"formationId":"` + lead.ID + `","slotId":"` + lead.Slots[len(lead.Slots)-1].ID + `"}}`); rec.Code != http.StatusOK {
 		t.Fatalf("orchestrated controller = %d %s", rec.Code, rec.Body.String())
 	}
-	for _, path := range []string{"/api/formations/boards/bad..slug", "/api/formations/boards/bad%2Fpath"} {
+	for _, path := range []string{"/api/missions/bad..slug", "/api/missions/bad%2Fpath"} {
 		rec := serve(http.MethodPatch, path, board.ETag, `{"title":"x"}`)
-		if response := decodeAPIError(t, rec); rec.Code != http.StatusBadRequest || response.Error.Message != "Invalid formation slug" {
-			t.Errorf("%s = %d %s, want Invalid formation slug", path, rec.Code, rec.Body.String())
+		if response := decodeAPIError(t, rec); rec.Code != http.StatusBadRequest || response.Error.Message != "Invalid mission slug" {
+			t.Errorf("%s = %d %s, want Invalid mission slug", path, rec.Code, rec.Body.String())
 		}
 	}
 }

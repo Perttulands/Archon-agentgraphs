@@ -19,7 +19,7 @@ func evidenceEvent(seq int, eventType, nodeID string, data map[string]any) RunEv
 }
 
 func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
-	artifacts := "/ws/.formations/artifacts/run_1"
+	artifacts := "/ws/.archon/artifacts/run_1"
 	events := []RunEvent{
 		evidenceEvent(1, RunEventNodeStarted, "fmn_work", map[string]any{"reason": "initial", "inputRefs": []any{
 			map[string]any{"edgeId": "edge_in", "fromNodeId": "mis_a", "fromPortId": "out", "toPortId": "port_in", "text": "Build it", "ref": artifacts + "/brief.md"},
@@ -28,10 +28,10 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 			"agentId": "codex-builder", "harness": "openai-codex", "dispatchId": "dsp_1", "briefPath": "/ws/briefs/seat-1.md",
 			"sessionRef": "tmux:SESSION-REF", "promptSha256": "PROMPT-DIGEST", "promptRef": "PROMPT-REF",
 		}},
-		{Seq: 3, Type: "seat_created", NodeID: "fmn_work", SlotID: "slot_work", Data: map[string]any{"sessionId": "$TMUX-SESSION", "paneId": "%TMUX-PANE", "sessionName": "form-run_1-slot_work"}},
+		{Seq: 3, Type: "seat_created", NodeID: "fmn_work", SlotID: "slot_work", Data: map[string]any{"sessionId": "$TMUX-SESSION", "paneId": "%TMUX-PANE", "sessionName": "archon-run_1-slot_work"}},
 		{Seq: 4, Type: "seat_prompt_consumed", NodeID: "fmn_work", SlotID: "slot_work", Data: map[string]any{"nativeSessionId": "NATIVE-SESSION", "dispatchId": "dsp_1"}},
 		{Seq: 5, Type: RunEventSlotResult, NodeID: "fmn_work", SlotID: "slot_work", Data: map[string]any{"dispatchId": "dsp_1", "status": "ok", "sentinel": map[string]any{"artifact": artifacts + "/plan.md"}}},
-		{Seq: 51, Type: "seat_cleanup", NodeID: "fmn_work", SlotID: "slot_work", Data: map[string]any{"sessionName": "form-run_1-slot_work", "outcome": "left_cleanup_failed", "detail": "kill-session $TMUX-SESSION failed"}},
+		{Seq: 51, Type: "seat_cleanup", NodeID: "fmn_work", SlotID: "slot_work", Data: map[string]any{"sessionName": "archon-run_1-slot_work", "outcome": "left_cleanup_failed", "detail": "kill-session $TMUX-SESSION failed"}},
 		evidenceEvent(6, RunEventNodeOutput, "fmn_work", map[string]any{
 			"status": "done", "text": "Summary with token=hunter2", "reportRef": "tmux://run_1/fmn_work/report",
 			"outputs": map[string]any{
@@ -104,7 +104,7 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, private := range []string{"SESSION-REF", "TMUX-SESSION", "TMUX-PANE", "NATIVE-SESSION", "PROMPT-DIGEST", "PROMPT-REF", "/ws/briefs", "tmux://", artifacts, "dsp_1", "hunter2", "form-run_1-slot_work"} {
+	for _, private := range []string{"SESSION-REF", "TMUX-SESSION", "TMUX-PANE", "NATIVE-SESSION", "PROMPT-DIGEST", "PROMPT-REF", "/ws/briefs", "tmux://", artifacts, "dsp_1", "hunter2", "archon-run_1-slot_work"} {
 		if strings.Contains(string(raw), private) {
 			t.Fatalf("node evidence leaked %q: %s", private, raw)
 		}
@@ -234,7 +234,7 @@ func TestRunEvidenceReadsNodesArtifactsAndBriefs(t *testing.T) {
 	if artifacts, truncated, err := store.ListRunArtifacts(runID); err != nil || len(artifacts) != 0 || truncated {
 		t.Fatalf("run without artifacts = %+v, %v, %v", artifacts, truncated, err)
 	}
-	root := filepath.Join(store.Workspace, ".formations", "artifacts", runID)
+	root := filepath.Join(store.Workspace, ".archon", "artifacts", runID)
 	outside := t.TempDir()
 	mustWrite := func(path, content string) {
 		t.Helper()
@@ -382,14 +382,13 @@ func TestNodeEvidenceRedactsAndCapsFrozenDisplayNames(t *testing.T) {
 }
 
 // A ref outside the artifact directory projects its absolute path so the
-// cockpit can open it; a relative ref resolves against the state workspace.
+// cockpit can open it.
 func TestEvidenceRefProjectsExternalRefsByAbsolutePath(t *testing.T) {
-	roots := []string{"/state/.formations/artifacts/run_1"}
+	roots := []string{"/state/.archon/artifacts/run_1"}
 	for ref, want := range map[string]EvidenceRef{
-		"/state/.formations/artifacts/run_1/plan.md": {Artifact: "plan.md"},
+		"/state/.archon/artifacts/run_1/plan.md":     {Artifact: "plan.md"},
 		"/srv/project/notes.md":                      {External: "/srv/project/notes.md"},
-		".formations/artifacts/run_1/nested/a.md":    {Artifact: "nested/a.md"},
-		"docs/notes.md":                              {External: "/state/docs/notes.md"},
+		"/state/.archon/artifacts/run_1/nested/a.md": {Artifact: "nested/a.md"},
 	} {
 		if got := evidenceRef(ref, roots); got == nil || *got != want {
 			t.Errorf("evidenceRef(%q) = %+v, want %+v", ref, got, want)

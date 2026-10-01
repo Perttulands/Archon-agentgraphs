@@ -9,8 +9,8 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// branchingProofBoard is mission -> A -> terminal human gate, and
-// mission -> B -> C (form-n7u.53).
+// branchingProofBoard is mission -> A -> human gate (pass Done, fail
+// Rejected), and mission -> B -> C -> Done (form-n7u.53).
 func branchingProofBoard() string {
 	formation := func(id string) string {
 		return `
@@ -29,6 +29,7 @@ id = "slot_` + id + `"
 label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 controller = true
 `
 	}
@@ -40,21 +41,24 @@ id = "brd_proof"
 slug = "proof"
 title = "Proof"
 rev = 1
-[[mission]]
+[[inputCard]]
 id = "mis_proof"
 title = "Proof"
 goal = "Branching proof"
-beadId = "form-n7u.53"
+beadId = "archon-n7u.53"
 ` + formation("fmn_a") + formation("fmn_b") + formation("fmn_c") + `
 [[gate]]
 id = "gate_review"
 title = "Review"
 kinds = ["human"]
 criterion = "Good enough"
-` + connection("edge_m_a", "mis_proof:out", "fmn_a:port_in") +
+` + endNodes + connection("edge_m_a", "mis_proof:out", "fmn_a:port_in") +
 		connection("edge_a_gate", "fmn_a:port_out", "gate_review:in") +
+		endWire("edge_pass", "gate_review:pass", "end_done") +
+		endWire("edge_fail", "gate_review:fail", "end_rejected") +
 		connection("edge_m_b", "mis_proof:out", "fmn_b:port_in") +
-		connection("edge_b_c", "fmn_b:port_out", "fmn_c:port_in")
+		connection("edge_b_c", "fmn_b:port_out", "fmn_c:port_in") +
+		endWire("edge_c_done", "fmn_c:port_out", "end_done")
 }
 
 func openBranchingLab(t *testing.T, root string) *Coordinator {
@@ -164,7 +168,7 @@ func TestRestartBetweenApprovalAndResumeRunsTheOtherBranchOnResume(t *testing.T)
 	if got := strings.Join(formationOrder(eventsOf(t, next, id), formations.RunEventNodeStarted), ","); got != "fmn_a" {
 		t.Fatalf("formations started before resume = %s, want fmn_a", got)
 	}
-	if w := post(t, next, "/api/formations/runs/"+id+"/resume", `{"mode":"reattach","reason":"continue after the approval"}`); w.Code != 202 {
+	if w := post(t, next, "/api/runs/"+id+"/resume", `{"mode":"reattach","reason":"continue after the approval"}`); w.Code != 202 {
 		t.Fatalf("resume %d %s", w.Code, w.Body.String())
 	}
 	awaitState(t, next, id, "succeeded")

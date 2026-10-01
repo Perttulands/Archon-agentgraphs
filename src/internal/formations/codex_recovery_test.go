@@ -17,7 +17,7 @@ func TestCompletedNativeRecoveryValidatesBeforeResumeAndNeverRedispatches(t *tes
 			if err != nil {
 				t.Fatal(err)
 			}
-			writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
+			writeFixture(t, store.BoardPath("session-search"), strings.Replace(s4RunBoardFixture(), "controller = true\neffort = \"medium\"", "controller = true\nmodel = \"gpt-6-astra\"\neffort = \"xhigh\"", 1))
 			started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Personas: personas, Cwd: store.Workspace})
 			if err != nil {
 				t.Fatal(err)
@@ -42,7 +42,7 @@ func TestCompletedNativeRecoveryValidatesBeforeResumeAndNeverRedispatches(t *tes
 			if err != nil {
 				t.Fatal(err)
 			}
-			final := "```chrote-outputs\n" + string(outputs) + "\n```\n<<<CHROTE-DONE run-id=" + started.RunID + " status=ok artifact=guide.md>>>"
+			final := "```archon-outputs\n" + string(outputs) + "\n```\n<<<ARCHON-DONE run-id=" + started.RunID + " status=ok artifact=guide.md>>>"
 			pointer := "Read the file " + brief + " and execute it exactly; it is your whole brief."
 			nativeID := "native-one"
 			if kind == "wrong native session" {

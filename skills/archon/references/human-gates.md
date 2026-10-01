@@ -23,9 +23,9 @@ kept seat can take the ask, it falls back once to the notify command
 ## Find the asking seat
 
 ```bash
-archon --server "$FORM_SERVER" run gates "$FORM_RUN_ID"
-archon --server "$FORM_SERVER" gate request "$FORM_RUN_ID" "$FORM_GATE_ID"
-archon --server "$FORM_SERVER" run seats "$FORM_RUN_ID"
+archon --server "$ARCHON_SERVER" run gates "$ARCHON_RUN_ID"
+archon --server "$ARCHON_SERVER" gate request "$ARCHON_RUN_ID" "$ARCHON_GATE_ID"
+archon --server "$ARCHON_SERVER" run seats "$ARCHON_RUN_ID"
 ```
 
 Match a gate's `askedSeats[].createdSeq` to a seat's `createdSeq`; its
@@ -46,8 +46,8 @@ Record it with your own slot ID as the relay, using the command in your gate
 brief:
 
 ```bash
-archon --server "$FORM_SERVER" gate approve "$RUN" "$GATE" --requested-seq "$SEQ" --relayed-by "$SLOT" --response "$RESPONSE"
-archon --server "$FORM_SERVER" gate reject  "$RUN" "$GATE" --requested-seq "$SEQ" --relayed-by "$SLOT" --response "$RESPONSE"
+archon --server "$ARCHON_SERVER" gate approve "$RUN" "$GATE" --requested-seq "$SEQ" --relayed-by "$SLOT" --response "$RESPONSE"
+archon --server "$ARCHON_SERVER" gate reject  "$RUN" "$GATE" --requested-seq "$SEQ" --relayed-by "$SLOT" --response "$RESPONSE"
 ```
 
 The record keeps `decidedBy: human:operator` and stores your slot in

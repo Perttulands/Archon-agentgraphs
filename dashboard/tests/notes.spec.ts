@@ -1,22 +1,22 @@
 import { expect, test } from '@playwright/test'
-import { wayfinding, wayfindingFixture } from './wayfinding-fixture'
+import { scouting, scoutingFixture } from './scouting-fixture'
 
 const CARDS = '.formation[data-node], .gatecard[data-node], .missioncard[data-node], .toolcard[data-node]'
 
 type Entry = { id: string; author: string; text: string }
 const titleOf = (nodeId: string): string => [
-  ...wayfinding.board.missions, ...wayfinding.board.formations, ...wayfinding.board.gates,
+  ...scouting.mission.inputCards, ...scouting.mission.formations, ...scouting.mission.gates,
 ].find((node: { id: string }) => node.id === nodeId)?.title
-const elementNotes: { nodeId: string; entries: Entry[] }[] = wayfinding.notes.elements
+const elementNotes: { nodeId: string; entries: Entry[] }[] = scouting.notes.elements
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.addInitScript(() => localStorage.clear())
 })
 
-test('no card covers any note preview on Wayfinding', async ({ page }) => {
-  const fixture = await wayfindingFixture(page)
-  await page.goto('/?mission=wayfinding')
+test('no card covers any note preview on Scouting', async ({ page }) => {
+  const fixture = await scoutingFixture(page)
+  await page.goto('/?mission=scouting')
   await expect(page.getByRole('note')).toHaveCount(elementNotes.length)
   await page.getByTitle('Fit', { exact: true }).click()
   await page.waitForTimeout(500)
@@ -37,9 +37,9 @@ test('no card covers any note preview on Wayfinding', async ({ page }) => {
   expect(fixture.writes).toEqual([])
 })
 
-test('full note text on Wayfinding reads on the canvas and in note windows, with no notepad', async ({ page }) => {
-  await wayfindingFixture(page)
-  await page.goto('/?mission=wayfinding')
+test('full note text on Scouting reads on the canvas and in note windows, with no notepad', async ({ page }) => {
+  await scoutingFixture(page)
+  await page.goto('/?mission=scouting')
   await expect(page.getByRole('complementary', { name: 'Shared board notepad' })).toHaveCount(0)
   await page.getByRole('radio', { name: 'Full notes' }).click()
 
@@ -57,13 +57,13 @@ test('full note text on Wayfinding reads on the canvas and in note windows, with
 
   await page.getByRole('button', { name: 'Mission notes' }).click()
   const boardWindow = page.getByRole('dialog', { name: 'mission notes' })
-  for (const entry of wayfinding.notes.board as Entry[]) await expect(boardWindow).toContainText(entry.text)
+  for (const entry of scouting.notes.mission as Entry[]) await expect(boardWindow).toContainText(entry.text)
   await expect(noteWindow).toBeVisible()
 })
 
 test('a note window opens beside its node, leaving the card and its note in view', async ({ page }) => {
-  await wayfindingFixture(page)
-  await page.goto('/?mission=wayfinding')
+  await scoutingFixture(page)
+  await page.goto('/?mission=scouting')
   await expect(page.getByRole('note')).toHaveCount(elementNotes.length)
   await page.getByTitle('Fit', { exact: true }).click()
   await page.waitForTimeout(500)

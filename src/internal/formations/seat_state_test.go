@@ -53,7 +53,7 @@ func TestSeatWaitsAreRecordedWithoutBlockingTheStep(t *testing.T) {
 	cfg := tmuxTestConfig(t)
 	fake := &fakeTmuxHarnessClient{
 		pane:     tmuxPaneState{CurrentPath: cfg.Cwd},
-		captures: []string{"done\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=out.md>>>"},
+		captures: []string{"done\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=out.md>>>"},
 	}
 	executor := newTmuxFormationExecutorWithClient(store, personas, cfg, fake)
 	executor.seatClient = &waitingSeats{fakeTmuxHarnessClient: fake, hold: 300 * time.Millisecond}

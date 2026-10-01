@@ -131,7 +131,7 @@ export interface RunProblem extends EvidenceProblem {
 export interface NodeEvidence {
   runId: string
   nodeId: string
-  kind: 'mission' | 'formation' | 'gate' | 'tool'
+  kind: 'inputCard' | 'formation' | 'gate' | 'tool'
   /** Display identity and topology from the board frozen at admission. */
   definition?: {
     title: string
@@ -164,7 +164,7 @@ export interface RunArtifactPreview extends RunArtifactEntry {
   text?: EvidenceText
 }
 
-const runPath = (runId: string) => `/api/formations/runs/${encodeURIComponent(runId)}`
+const runPath = (runId: string) => `/api/runs/${encodeURIComponent(runId)}`
 const artifactPath = (name: string) => name.split('/').map(encodeURIComponent).join('/')
 
 /**
@@ -207,7 +207,7 @@ export async function fetchArtifactPreview(runId: string, name: string): Promise
 
 /** The start of any file by absolute path, as the file routes read it. */
 export async function fetchReferencedPreview(path: string): Promise<RunArtifactPreview> {
-  const { data } = await fetchApi<{ file?: RunArtifactPreview }>(`/api/formations/files/preview?path=${encodeURIComponent(path)}`)
+  const { data } = await fetchApi<{ file?: RunArtifactPreview }>(`/api/files/preview?path=${encodeURIComponent(path)}`)
   if (!data.file) throw new Error('the daemon returned no file')
   return data.file
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BoardDocument, LayoutNode, ToolNode } from './formationsTypes'
-import { GRID, clampScale, defaultPosition, displayLayoutFor, endpointNodeId, freeGridPosition, screenPointToWorld, snapToGrid, visibleWirePath, zoomTransform } from './formationsCanvas'
+import { END_ROOM, GRID, clampScale, defaultPosition, displayLayoutFor, endpointNodeId, freeGridPosition, screenPointToWorld, snapToGrid, visibleWirePath, zoomTransform } from './formationsCanvas'
 
 function canvasTool(id: string): ToolNode {
   return {
@@ -49,7 +49,7 @@ describe('formations canvas helpers', () => {
     // Mirrors an archon-authored board: missions left, a formation row, gates
     // in their own top row. Every position must survive display untouched.
     const board = {
-      missions: [{ id: 'mis_a' }, { id: 'mis_b' }],
+      inputCards: [{ id: 'mis_a' }, { id: 'mis_b' }],
       formations: [
         { id: 'fmn_orch', type: 'orchestrated', slots: [{}, {}, {}] },
         { id: 'fmn_peer', type: 'peer', slots: [{}, {}] },
@@ -71,7 +71,7 @@ describe('formations canvas helpers', () => {
 
   it('renders intentionally overlapping persisted coordinates verbatim', () => {
     const board = {
-      missions: [{ id: 'mis_a' }],
+      inputCards: [{ id: 'mis_a' }],
       formations: [
         { id: 'fmn_a', type: 'solo', slots: [{}] },
         { id: 'fmn_b', type: 'solo', slots: [{}] },
@@ -97,7 +97,7 @@ describe('formations canvas helpers', () => {
       title: 'Tool layout',
       rev: 2,
       etag: 'board-etag',
-      missions: [{ id: 'mis_a', title: 'Mission', goal: '', beadId: '' }],
+      inputCards: [{ id: 'mis_a', title: 'Mission', goal: '' }],
       formations: [{ id: 'fmn_a', type: 'solo', title: 'Formation', inputs: [], outputs: [], slots: [] }],
       gates: [{ id: 'gate_a', title: 'Gate', kinds: ['human'], criterion: '' }],
       tools: [canvasTool('tool_persisted'), canvasTool('tool_fallback')],
@@ -123,6 +123,14 @@ describe('formations canvas helpers', () => {
     const occupied = [{ x: 224, y: 168 }, { x: 560, y: 168 }]
     expect(freeGridPosition({ x: 220, y: 160 }, occupied)).toEqual({ x: 896, y: 168 })
     expect(occupied).toEqual([{ x: 224, y: 168 }, { x: 560, y: 168 }])
+  })
+
+  it('places a new End node near where it was asked for, below the card in the way', () => {
+    const occupied = [{ x: 224, y: 168 }, { x: 560, y: 168 }]
+    // Clear space just right of the second card takes the End node as asked.
+    expect(freeGridPosition({ x: 896, y: 168 }, occupied, END_ROOM)).toEqual({ x: 896, y: 168 })
+    // Over a card it steps down past that card, not a whole column across.
+    expect(freeGridPosition({ x: 560, y: 168 }, occupied, END_ROOM)).toEqual({ x: 560, y: 504 })
   })
 
   it('extracts node ids from stable endpoint addresses', () => {

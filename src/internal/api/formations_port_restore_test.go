@@ -20,7 +20,7 @@ id = "brd_ports"
 slug = "ports"
 rev = 1
 
-[[mission]]
+[[inputCard]]
 id = "mis_go"
 title = "Go"
 goal = ""
@@ -57,7 +57,7 @@ to = "fmn_plan:port_a"
 		if err != nil {
 			t.Fatal(err)
 		}
-		req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/ports", strings.NewReader(fmt.Sprintf(`{%s,"expectedRev":%d}`, body, board.Rev)))
+		req := httptest.NewRequest(http.MethodPatch, "/api/missions/ports", strings.NewReader(fmt.Sprintf(`{%s,"expectedRev":%d}`, body, board.Rev)))
 		req.Header.Set("If-Match", board.ETag)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
@@ -74,7 +74,7 @@ to = "fmn_plan:port_a"
 	}
 	var response struct {
 		Data struct {
-			Board formations.BoardDocument `json:"board"`
+			Board formations.BoardDocument `json:"mission"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {

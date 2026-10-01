@@ -1,8 +1,7 @@
 # Release packaging
 
 Archon releases target Linux on `amd64` and `arm64`. Each archive contains the
-CLI, daemon and UI built from the same Git commit. The daemon compatibility
-command `formationsd` contains the same binary as `archond`.
+CLI, daemon and UI built from the same Git commit.
 
 ## Build and verify
 
@@ -35,7 +34,6 @@ Each archive has one top-level directory matching its filename without
 ```text
 bin/archon
 bin/archond
-bin/formationsd
 share/archon/ui/
 share/archon/examples/
 share/archon/docs/
@@ -73,7 +71,6 @@ For a chosen prefix, the installed layout is:
 ```text
 bin/archon -> ../lib/archon/current/bin/archon
 bin/archond -> ../lib/archon/current/bin/archond
-bin/formationsd -> ../lib/archon/current/bin/formationsd
 lib/archon/current -> releases/<version>-<commit>-<platform>
 lib/archon/releases/<version>-<commit>-<platform>/
 ```

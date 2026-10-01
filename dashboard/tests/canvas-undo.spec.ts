@@ -50,7 +50,7 @@ test('a failed undo is reported once and Ctrl+Z moves on to older history', asyn
   await expect(page.getByTestId('mission-node-mission')).toHaveCount(0)
 
   // Someone else puts a node with the same ID back first, so this undo can no longer apply.
-  fixture.board().missions.push({ id: 'mission', title: 'Delivery', goal: '', beadId: '' })
+  fixture.board().inputCards.push({ id: 'mission', title: 'Delivery', goal: '' })
   await page.keyboard.press('Control+z')
   await expect(page.getByTestId('formations-error')).toHaveText(
     'Could not undo the delete of Input card “Delivery”: node "mission" is already in the mission. It was removed from the undo history.')
@@ -68,7 +68,7 @@ test('Ctrl+Z during an edit in flight undoes that edit, and a stale revision is 
   const addHeld = new Promise<void>(resolve => { releaseAdd = resolve })
   let staleOnce = true
   // Registered after the fixture, so it sees board writes first.
-  await page.route('**/api/formations/missions/browser', async route => {
+  await page.route('**/api/missions/browser', async route => {
     const body = route.request().method() === 'PATCH' ? route.request().postDataJSON() : null
     if (body?.addPort) await addHeld
     if (body?.restoreNode && staleOnce) {

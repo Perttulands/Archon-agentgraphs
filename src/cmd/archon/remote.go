@@ -118,11 +118,19 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		fs.StringVar(&responseFile, "response-file", "", "local UTF-8 file containing the complete verbatim response")
 	}
 	mode := fs.String("mode", "reattach", "resume mode")
-	mission := fs.String("input", "", "the Input card to start from; needed only when the mission has several")
-	fs.StringVar(mission, "mission", "", "run list: the mission whose runs to list; mission run: older name for --input")
-	boardFilter := fs.String("board", "", "run list: older name for --mission")
-	reason := fs.String("reason", "", "operator reason; for gate approve|reject, the response text")
-	fs.StringVar(reason, "response", "", "alias of --reason for gate approve|reject")
+	var inputCard, missionFilter string
+	switch args[0] + " " + args[1] {
+	case "mission run":
+		fs.StringVar(&inputCard, "input", "", "the Input card to start from; needed only when the mission has several")
+	case "run list":
+		fs.StringVar(&missionFilter, "mission", "", "the mission whose runs to list")
+	}
+	reason := new(string)
+	if args[0] == "gate" && (args[1] == "approve" || args[1] == "reject") {
+		fs.StringVar(reason, "response", "", "the response: approve delivers it downstream with the gate input, reject sends it back as feedback")
+	} else {
+		fs.StringVar(reason, "reason", "", "operator reason")
+	}
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
 	relayedBy := fs.String("relayed-by", "", relayedByUsage)
 	// Runs have no limits unless the launch sets them (form-o7p.7).
@@ -133,7 +141,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	pos := fs.Args()
-	path := "/api/formations"
+	path := "/api"
 	method := "GET"
 	var body any
 	switch args[0] + " " + args[1] {
@@ -153,18 +161,18 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		var board struct {
 			Data struct {
-				Board formations.BoardDocument `json:"board"`
+				Board formations.BoardDocument `json:"mission"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(raw, &board); err != nil {
 			return fail(stderr, err)
 		}
-		if *mission == "" {
+		if inputCard == "" {
 			id, err := runInputCard(&board.Data.Board, pos[0])
 			if err != nil {
 				return failJSON(stderr, err, *jsonOut, "run", "")
 			}
-			*mission = id
+			inputCard = id
 		}
 		path += "/runs"
 		method = "POST"
@@ -174,7 +182,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 				limits[key] = value
 			}
 		}
-		fields := map[string]any{"cwd": *cwd, "brief": briefText, "beadId": *bead, "board": pos[0], "missionId": *mission, "expectedRev": board.Data.Board.Rev, "limits": limits}
+		fields := map[string]any{"cwd": *cwd, "brief": briefText, "beadId": *bead, "mission": pos[0], "inputCardId": inputCard, "expectedRev": board.Data.Board.Rev, "limits": limits}
 		if len(contextPaths) > 0 {
 			fields["contextPaths"] = contextPaths
 		}
@@ -192,12 +200,8 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 	case "run list":
 		path += "/runs"
-		filter := *mission
-		if filter == "" {
-			filter = *boardFilter
-		}
-		if filter != "" {
-			path += "?mission=" + url.QueryEscape(filter)
+		if missionFilter != "" {
+			path += "?mission=" + url.QueryEscape(missionFilter)
 		}
 	case "run status", "run logs", "run gates", "run seats":
 		if len(pos) != 1 {
@@ -241,8 +245,8 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		given := givenFlags(fs)
 		if given["response-file"] {
-			if given["response"] || given["reason"] {
-				return fail(stderr, errors.New("--response-file cannot be combined with --response or --reason"))
+			if given["response"] {
+				return fail(stderr, errors.New("--response-file cannot be combined with --response"))
 			}
 			raw, err := os.ReadFile(responseFile)
 			if err != nil {

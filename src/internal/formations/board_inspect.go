@@ -9,32 +9,32 @@ import (
 // Finding codes reported by ValidateBoard. They are stable strings so CLI and
 // API consumers can branch on them.
 const (
-	FindingDanglingConnection                        = "dangling_connection"
-	FindingGateNotRoutable                           = "gate_not_routable"
-	FindingInvalidCodeGateProfile                    = "invalid_code_gate_profile"
-	FindingInvalidFormationType                      = "invalid_formation_type"
-	FindingInvalidHumanChannel                       = "invalid_human_channel"
-	FindingLegacyScriptGate                          = LegacyScriptGateMigrationCode
-	FindingLegacyInlineVerificationRequiresMigration = LegacyInlineVerificationMigrationCode
-	FindingMissionCount                              = "mission_count"
-	FindingSeveralInputCards                         = "several_input_cards"
-	FindingMissionNotRunnable                        = "mission_not_runnable"
-	FindingInvalidTool                               = "invalid_tool"
-	FindingDuplicateNodeID                           = "duplicate_node_id"
-	FindingDuplicateSlotID                           = "duplicate_slot_id"
-	FindingDuplicateInputProducer                    = "duplicate_input_producer"
-	FindingIncompatibleMedia                         = "incompatible_media"
-	FindingIncompatiblePayloadKind                   = "incompatible_payload_kind"
-	FindingInvalidJudgeRelationship                  = "invalid_judge_relationship"
+	FindingDanglingConnection       = "dangling_connection"
+	FindingGateNotRoutable          = "gate_not_routable"
+	FindingInvalidCodeGateProfile   = "invalid_code_gate_profile"
+	FindingInvalidFormationType     = "invalid_formation_type"
+	FindingInvalidHumanChannel      = "invalid_human_channel"
+	FindingMissionCount             = "mission_count"
+	FindingSeveralInputCards        = "several_input_cards"
+	FindingMissionNotRunnable       = "mission_not_runnable"
+	FindingInvalidTool              = "invalid_tool"
+	FindingDuplicateNodeID          = "duplicate_node_id"
+	FindingDuplicateSlotID          = "duplicate_slot_id"
+	FindingDuplicateInputProducer   = "duplicate_input_producer"
+	FindingIncompatibleMedia        = "incompatible_media"
+	FindingIncompatiblePayloadKind  = "incompatible_payload_kind"
+	FindingInvalidJudgeRelationship = "invalid_judge_relationship"
+	FindingInvalidEnd               = "invalid_end"
+	FindingRouteLeadsNowhere        = "route_leads_nowhere"
+	FindingUnreachableNode          = "unreachable_node"
 )
 
 // BoardFinding is a single structural problem located on the board. NodeID names
 // the offending node, or the edge id for connection problems.
 type BoardFinding struct {
-	Code    string                               `json:"code"`
-	NodeID  string                               `json:"nodeId"`
-	Message string                               `json:"message"`
-	Details *LegacyScriptGateMigrationInspection `json:"details,omitempty"`
+	Code    string `json:"code"`
+	NodeID  string `json:"nodeId"`
+	Message string `json:"message"`
 }
 
 // BoardValidationReport separates blocking errors from advisory warnings.
@@ -77,7 +77,7 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 		// A gate-fail edge into an occupied input is the sanctioned typed
 		// pushback route (ADR-0012); only non-pushback producers count toward
 		// the one-producer rule.
-		if isGateFailPushbackEndpoint(board.Gates, connection.From) {
+		if isGateFailPushbackEndpoint(board.Gates, connection.From) || isEndEndpoint(board, connection.To) {
 			continue
 		}
 		if first, exists := inputProducers[connection.To]; exists {
@@ -92,14 +92,6 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	}
 
 	for _, gate := range board.Gates {
-		if gateHasLegacyScriptCommand(gate) {
-			report.Errors = append(report.Errors, BoardFinding{
-				Code:    FindingLegacyScriptGate,
-				NodeID:  gate.ID,
-				Message: legacyScriptGateMigrationError(gate.ID).Error(),
-				Details: gate.LegacyScriptMigration,
-			})
-		}
 		if gaps := gateRouteGaps(board, gate); len(gaps) > 0 {
 			report.Errors = append(report.Errors, BoardFinding{
 				Code:    FindingGateNotRoutable,
@@ -117,13 +109,6 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 				Message: fmt.Sprintf("formation %q has unsupported type %q; change it to solo, peer or orchestrated with formation set-type, or delete it", formation.ID, formation.Type),
 			})
 		}
-		if formation.Verification != nil {
-			report.Errors = append(report.Errors, BoardFinding{
-				Code:    FindingLegacyInlineVerificationRequiresMigration,
-				NodeID:  formation.ID,
-				Message: fmt.Sprintf("formation %q uses retired inline verification; create and wire an explicit Gate, then remove the legacy verification", formation.ID),
-			})
-		}
 	}
 
 	report.Errors = append(report.Errors, duplicateSlotFindings(board.Formations)...)
@@ -139,6 +124,27 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	for _, gate := range board.Gates {
 		seenNodeIDs[gate.ID] = "Gate"
 	}
+	for _, end := range board.Ends {
+		if firstKind, exists := seenNodeIDs[end.ID]; end.ID != "" && exists {
+			report.Errors = append(report.Errors, BoardFinding{
+				Code:    FindingDuplicateNodeID,
+				NodeID:  end.ID,
+				Message: fmt.Sprintf("End node id %q duplicates an existing %s node id", end.ID, firstKind),
+			})
+		} else if end.ID != "" {
+			seenNodeIDs[end.ID] = "End"
+		}
+		if _, err := NormalizeEndOutcome(end.Outcome); err != nil || end.Outcome == "" {
+			report.Errors = append(report.Errors, BoardFinding{
+				Code:    FindingInvalidEnd,
+				NodeID:  end.ID,
+				Message: fmt.Sprintf("End node %s has outcome %q; set it to done or rejected", nodeName(board, end.ID), end.Outcome),
+			})
+		}
+	}
+	report.Errors = append(report.Errors, routeLeadsNowhereFindings(board)...)
+	report.Warnings = append(report.Warnings, unreachableNodeFindings(board)...)
+
 	for _, tool := range board.Tools {
 		if firstKind, exists := seenNodeIDs[tool.ID]; tool.ID != "" && exists {
 			report.Errors = append(report.Errors, BoardFinding{
@@ -218,7 +224,7 @@ func SeveralInputCardsFinding(board *BoardDocument) BoardFinding {
 	return BoardFinding{
 		Code: FindingSeveralInputCards,
 		Message: fmt.Sprintf("mission %q holds %d Input cards, %s; a mission has one, so no run can start from it. "+
-			"Split it: copy %s.formation.toml beside itself under a new slug and give the copy a new id, slug and title, "+
+			"Split it: copy %s.mission.toml beside itself under a new slug and give the copy a new id, slug and title, "+
 			"then delete from each file the Input cards, and the steps only they reach, that belong to the other",
 			board.Slug, len(board.Missions), strings.Join(cards, ", "), board.Slug),
 	}
@@ -343,4 +349,103 @@ func sortFindings(findings []BoardFinding) {
 		}
 		return findings[i].Message < findings[j].Message
 	})
+}
+
+// routeLeadsNowhereFindings reports every formation output and gate pass or
+// fail port with no wire (form-o7p.10). Every route leads to a step, a gate
+// or an End node, so no path stops by accident. Judge formations report too:
+// their output returns the verdict to the gate's judge port.
+func routeLeadsNowhereFindings(board *BoardDocument) []BoardFinding {
+	wired := make(map[string]bool, len(board.Connections))
+	for _, connection := range board.Connections {
+		wired[connection.From] = true
+	}
+	var findings []BoardFinding
+	add := func(nodeID, route string) {
+		findings = append(findings, BoardFinding{
+			Code:    FindingRouteLeadsNowhere,
+			NodeID:  nodeID,
+			Message: fmt.Sprintf("%s %s leads nowhere: wire it to a step or an End node", possessive(nodeName(board, nodeID)), route),
+		})
+	}
+	for _, formation := range board.Formations {
+		for _, port := range formation.Outputs {
+			if wired[formation.ID+":"+port.ID] {
+				continue
+			}
+			route := "output"
+			if len(formation.Outputs) > 1 {
+				route = fmt.Sprintf("%q output", portLabel(port))
+			}
+			add(formation.ID, route)
+		}
+	}
+	for _, gate := range board.Gates {
+		for _, port := range []string{"pass", "fail"} {
+			if !wired[gate.ID+":"+port] {
+				add(gate.ID, port+" route")
+			}
+		}
+	}
+	return findings
+}
+
+// unreachableNodeFindings warns about every step, gate and End node that no
+// path from the Input card reaches, so a run would never get there. A judge
+// is reached through its gate's judge port.
+func unreachableNodeFindings(board *BoardDocument) []BoardFinding {
+	if len(board.Missions) == 0 {
+		return nil
+	}
+	reached := map[string]bool{}
+	for _, mission := range board.Missions {
+		for id := range reachableNodeIDs(board, mission.ID) {
+			reached[id] = true
+		}
+	}
+	var findings []BoardFinding
+	add := func(nodeID, kind string) {
+		if reached[nodeID] {
+			return
+		}
+		findings = append(findings, BoardFinding{
+			Code:    FindingUnreachableNode,
+			NodeID:  nodeID,
+			Message: fmt.Sprintf("No path from the Input card reaches %s %s, so no run will get there; wire a route into it or delete it", kind, nodeName(board, nodeID)),
+		})
+	}
+	for _, formation := range board.Formations {
+		add(formation.ID, "step")
+	}
+	for _, gate := range board.Gates {
+		add(gate.ID, "gate")
+	}
+	for _, end := range board.Ends {
+		add(end.ID, "End node")
+	}
+	return findings
+}
+
+// nodeName names a node for the operator by its title, or its ID when it has
+// none.
+func nodeName(board *BoardDocument, nodeID string) string {
+	if title := strings.TrimSpace(boardNodeTitle(board, nodeID)); title != "" {
+		return title
+	}
+	return nodeID
+}
+
+// possessive is "Brief sign-off's", or "Research notes'" for a name ending in s.
+func possessive(name string) string {
+	if strings.HasSuffix(name, "s") || strings.HasSuffix(name, "S") {
+		return name + "'"
+	}
+	return name + "'s"
+}
+
+func portLabel(port FormationPort) string {
+	if strings.TrimSpace(port.Label) != "" {
+		return port.Label
+	}
+	return port.ID
 }

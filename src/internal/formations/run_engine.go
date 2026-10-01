@@ -7,16 +7,17 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 )
 
 var (
-	errRunStopped               = errors.New("formations run stopped")
-	ErrRunExecutorUnavailable   = errors.New("formations run executor unavailable")
-	ErrGateEvaluatorUnavailable = errors.New("formations gate evaluator unavailable")
-	ErrRunWallClockExceeded     = errors.New("formations run wall clock exceeded")
+	errRunStopped               = errors.New("archon run stopped")
+	ErrRunExecutorUnavailable   = errors.New("archon run executor unavailable")
+	ErrGateEvaluatorUnavailable = errors.New("archon gate evaluator unavailable")
+	ErrRunWallClockExceeded     = errors.New("archon run wall clock exceeded")
 )
 
 type FormationExecutor interface {
@@ -228,7 +229,7 @@ func (e *RunEngine) reconcileNeedsYou(runID string) {
 	if err != nil {
 		return
 	}
-	boardSlug := stringFromEventData(events[0], "boardSlug")
+	boardSlug := stringFromEventData(events[0], "missionSlug")
 	for _, ask := range asks {
 		if notified[ask.Seq] {
 			continue
@@ -255,9 +256,6 @@ func (e *RunEngine) RunMission(slug string, req RunStartRequest) (*RunStatusProj
 	mission, ok := findMission(board, req.MissionID)
 	if !ok {
 		return nil, fmt.Errorf("%w: Input card %q", ErrNotFound, req.MissionID)
-	}
-	if err := preflightMissionMigrations(board, mission.ID, reachableNodeIDs(board, mission.ID)); err != nil {
-		return nil, err
 	}
 	if len(outgoingConnections(board.Connections, mission.ID)) == 0 {
 		return nil, fmt.Errorf("%w: wire the Input card to a step", ErrConflict)
@@ -394,7 +392,7 @@ func (e *RunEngine) PrepareFormationRun(slug, formationID string, req FormationR
 				"final":        true,
 				"mode":         "formation",
 				"formationId":  formation.ID,
-				"missionId":    mission.ID,
+				"inputCardId":  mission.ID,
 			},
 		}); err != nil {
 			return nil, err
@@ -631,10 +629,7 @@ func (e *RunEngine) RecordHumanGateVerdict(runID string, req HumanGateVerdictReq
 	if !ok {
 		return nil, fmt.Errorf("%w: gate %q", ErrNotFound, req.GateID)
 	}
-	if err := rejectLegacyScriptGateForRun(board, events[0], nil); err != nil {
-		return nil, err
-	}
-	if err := rejectLegacyInlineVerification(board); err != nil {
+	if err := validateRunRoot(board, events[0]); err != nil {
 		return nil, err
 	}
 	if err := e.validateHumanRequestKindResults(runID, gate, requestEvent, events); err != nil {
@@ -905,10 +900,9 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 		beadID = formation.Brief.BeadID
 	}
 	mission := MissionNode{
-		ID:     "single_" + formation.ID,
-		Title:  "Single formation: " + formation.Title,
-		Goal:   goal,
-		BeadID: beadID,
+		ID:    "single_" + formation.ID,
+		Title: "Single formation: " + formation.Title,
+		Goal:  goal,
 	}
 	runID := newPrefixedID("run")
 	ledgerPath := runArtifactPath(slug, runID, ".ndjson")
@@ -949,17 +943,17 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 		BoardID:   board.ID,
 		BoardRev:  board.Rev,
 		MissionID: mission.ID,
-		BeadID:    mission.BeadID,
+		BeadID:    beadID,
 		Epoch:     0,
 		Attempt:   0,
 		Data: map[string]any{
-			"boardSlug":        slug,
-			"boardPath":        filepath.ToSlash(e.store.BoardPath(slug)),
-			"boardRev":         board.Rev,
+			"missionSlug":      slug,
+			"missionPath":      filepath.ToSlash(e.store.BoardPath(slug)),
+			"missionRev":       board.Rev,
 			"snapshot":         snapshotPath,
 			"bindingsSnapshot": bindingsPath,
-			"missionId":        mission.ID,
-			"beadId":           mission.BeadID,
+			"inputCardId":      mission.ID,
+			"beadId":           beadID,
 			"objective":        mission.Goal,
 			"limits":           limits,
 			"mode":             "formation",
@@ -1022,7 +1016,6 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		return err
 	}
 
-	ranAny := false
 	for len(queue) > 0 {
 		nodeID := queue[0]
 		queue = queue[1:]
@@ -1082,7 +1075,6 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		if err != nil {
 			return e.appendExecutionFailureAndBlock(runID, nodeID, err)
 		}
-		ranAny = true
 		if result.Status == "" {
 			result.Status = "done"
 		}
@@ -1107,23 +1099,11 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		}
 	}
 
-	if starved := starvedFormations(formationByID, ready); len(starved) > 0 {
-		return e.appendStarvedBlock(runID, starved)
-	}
 	completionEvents, err := e.store.ReadRunEvents(runID)
 	if err != nil {
 		return err
 	}
-	if unfinished := unfinishedRunWork(board, completionEvents, ""); len(unfinished) > 0 {
-		return e.appendUnfinishedWorkBlock(runID, unfinished)
-	}
-	if !ranAny {
-		if terminalPassReachedOnBoard(board, completionEvents) || (latestGateVerdictAllowsGraphCompletion(completionEvents) && runGraphComplete(board, mission.ID, completedFormationsFromEvents(completionEvents)) && !pendingPushback(board, completionEvents)) {
-			return e.appendResumeSucceeded(runID)
-		}
-		return e.appendErrorAndBlock(runID, "resume_no_work", "no resumable work found", "engine", "", "no resumable work found")
-	}
-	return e.appendResumeSucceeded(runID)
+	return e.endWhenNothingCanRun(runID, board, completionEvents, "resume")
 }
 
 func (e *RunEngine) resumeIncompleteGateEvaluations(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
@@ -1265,102 +1245,73 @@ func (e *RunEngine) gateKindResultFromEvent(runID string, gate GateNode, input R
 	return result, nil
 }
 
-func (e *RunEngine) appendResumeSucceeded(runID string) error {
+// endWhenNothingCanRun applies the one completion rule (runFinishState) once
+// the engine has run everything queued: work that can still run blocks the
+// run resumably; a rejected path fails it, even when its rejection starved a
+// join; formations starved with no rejection block it as a wiring gap; and
+// otherwise it succeeds.
+func (e *RunEngine) endWhenNothingCanRun(runID string, board *BoardDocument, events []RunEvent, reason string) error {
+	finish := runFinishState(board, events, "")
+	switch {
+	case len(finish.runnable) > 0:
+		return e.appendUnfinishedWorkBlock(runID, finish.runnable)
+	case finish.rejected == nil && len(finish.starved) > 0:
+		return e.appendStarvedBlock(runID, finish.starved)
+	}
+	return e.finishRun(runID, board, events, reason)
+}
+
+// RunFailurePathRejected is the run_failed code of a run whose path ended at
+// a rejected End node; the failure's reason is the gate verdict's reason.
+const RunFailurePathRejected = "path_rejected"
+
+// finishRun ends a run in which every path has ended and nothing else can run
+// (unfinishedRunWork is empty). A path that ended at a rejected End node
+// fails the run with the reason of the gate verdict that routed there;
+// otherwise the run succeeds. reason, when set, says how the run got here,
+// such as resume.
+func (e *RunEngine) finishRun(runID string, board *BoardDocument, events []RunEvent, reason string) error {
 	if err := e.EndKeptSeats(runID); err != nil {
 		return err
 	}
-	return e.store.AppendRunEvent(runID, RunEvent{
-		Type: RunEventSucceeded,
-		Data: map[string]any{
-			"summaryRef":   "",
-			"outputRefs":   []string{},
-			"artifactRefs": []string{},
-			"final":        true,
-			"reason":       "resume",
-		},
-	})
-}
-
-func completedFormationsFromEvents(events []RunEvent) map[string]bool {
-	completed := map[string]bool{}
-	for _, event := range events {
-		if event.Type == RunEventNodeOutput && event.NodeID != "" {
-			completed[event.NodeID] = true
+	// endIds lists every End node a path ended at, so a run view can show where.
+	endIDs := []string{}
+	for _, path := range runPaths(board, events).ended {
+		if !slices.Contains(endIDs, path.EndID) {
+			endIDs = append(endIDs, path.EndID)
 		}
 	}
-	return completed
-}
-
-func terminalPassReached(events []RunEvent) bool {
-	return terminalPassReachedOnBoard(nil, events)
-}
-
-func terminalPassReachedOnBoard(board *BoardDocument, events []RunEvent) bool {
-	for i := len(events) - 1; i >= 0; i-- {
-		event := events[i]
-		if event.Type != RunEventGateVerdict {
-			continue
+	if rejected := rejectedRunPath(board, events); rejected != nil {
+		failure := rejected.Reason
+		if failure == "" {
+			failure = fmt.Sprintf("the path ended at %s (rejected)", nodeName(board, rejected.EndID))
 		}
-		if stringFromEventData(event, "routePort") != "pass" {
-			return false
-		}
-		gateID := event.GateID
-		if gateID == "" {
-			gateID = event.NodeID
-		}
-		if board != nil {
-			return len(gateVerdictRoutes(board, event, gateID, "pass")) == 0 && !pendingPushback(board, events)
-		}
-		return len(stringSliceFromAny(event.Data["routedEdges"])) == 0
+		return e.store.AppendRunEvent(runID, RunEvent{
+			Type:   RunEventFailed,
+			Actor:  rejected.Actor,
+			NodeID: rejected.EndID,
+			GateID: rejected.GateID,
+			Data: map[string]any{
+				"code":   RunFailurePathRejected,
+				"reason": failure,
+				"endId":  rejected.EndID,
+				"gateId": rejected.GateID,
+				"endIds": endIDs,
+				"final":  true,
+			},
+		})
 	}
-	return false
-}
-
-func latestGateVerdictAllowsGraphCompletion(events []RunEvent) bool {
-	for i := len(events) - 1; i >= 0; i-- {
-		event := events[i]
-		if event.Type != RunEventGateVerdict {
-			continue
-		}
-		return stringFromEventData(event, "routePort") == "pass"
+	data := map[string]any{
+		"summaryRef":   "",
+		"outputRefs":   []string{},
+		"artifactRefs": []string{},
+		"endIds":       endIDs,
+		"final":        true,
 	}
-	return true
-}
-
-func runGraphComplete(board *BoardDocument, startNodeID string, completed map[string]bool) bool {
-	formationIDs := map[string]bool{}
-	for _, formation := range board.Formations {
-		formationIDs[formation.ID] = true
+	if reason != "" {
+		data["reason"] = reason
 	}
-	visited := map[string]bool{}
-	queue := []string{startNodeID}
-	reachableFormations := map[string]bool{}
-	for len(queue) > 0 {
-		nodeID := queue[0]
-		queue = queue[1:]
-		if visited[nodeID] {
-			continue
-		}
-		visited[nodeID] = true
-		if formationIDs[nodeID] {
-			reachableFormations[nodeID] = true
-		}
-		for _, connection := range outgoingConnections(board.Connections, nodeID) {
-			toNode, _ := endpointParts(connection.To)
-			if toNode != "" && !visited[toNode] {
-				queue = append(queue, toNode)
-			}
-		}
-	}
-	if len(reachableFormations) == 0 {
-		return false
-	}
-	for id := range reachableFormations {
-		if !completed[id] {
-			return false
-		}
-	}
-	return true
+	return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventSucceeded, Data: data})
 }
 
 func processedGateInputRefs(board *BoardDocument, events []RunEvent) map[string]bool {
@@ -1476,7 +1427,7 @@ func (e *RunEngine) replayGateVerdictsToReady(runID string, board *BoardDocument
 			continue
 		}
 		routePort := stringFromEventData(event, "routePort")
-		if routePort == "" || routePort == "none" {
+		if routePort != "pass" && routePort != "fail" {
 			continue
 		}
 		gateID := event.GateID
@@ -1549,39 +1500,6 @@ func (keys gateEvaluationIndex) consumedAfter(index int, gateID, input string) b
 	return false
 }
 
-// pendingPushback reports a fail verdict whose routed target has not acted on
-// it yet: a formation without a later output or a gate without a later
-// evaluation. A pass must not finish the run past such a delivery.
-func pendingPushback(board *BoardDocument, events []RunEvent) bool {
-	for i, event := range events {
-		if event.Type != RunEventGateVerdict || stringFromEventData(event, "routePort") != "fail" {
-			continue
-		}
-		gateID := event.GateID
-		if gateID == "" {
-			gateID = event.NodeID
-		}
-		for _, route := range gateVerdictRoutes(board, event, gateID, "fail") {
-			target, _ := endpointParts(route.To)
-			serviced := false
-			for _, later := range events[i+1:] {
-				laterGate := later.GateID
-				if laterGate == "" {
-					laterGate = later.NodeID
-				}
-				if later.Type == RunEventNodeOutput && later.NodeID == target || later.Type == RunEventGateEvaluating && laterGate == target {
-					serviced = true
-					break
-				}
-			}
-			if !serviced {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func gateVerdictRoutes(board *BoardDocument, event RunEvent, gateID, routePort string) []BoardConnection {
 	routed := map[string]bool{}
 	for _, id := range stringSliceFromAny(event.Data["routedEdges"]) {
@@ -1638,7 +1556,7 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 		NodeID:    mission.ID,
 		MissionID: mission.ID,
 		Data: map[string]any{
-			"nodeKind":  "mission",
+			"nodeKind":  "inputCard",
 			"inputRefs": []RunInputRef{},
 			"reason":    "initial",
 		},
@@ -1755,28 +1673,11 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 		}
 	}
 
-	if starved := starvedFormations(formationByID, ready); len(starved) > 0 {
-		return e.appendStarvedBlock(runID, starved)
-	}
 	finalEvents, err := e.store.ReadRunEvents(runID)
 	if err != nil {
 		return err
 	}
-	if unfinished := unfinishedRunWork(board, finalEvents, ""); len(unfinished) > 0 {
-		return e.appendUnfinishedWorkBlock(runID, unfinished)
-	}
-	if err := e.EndKeptSeats(runID); err != nil {
-		return err
-	}
-	return e.store.AppendRunEvent(runID, RunEvent{
-		Type: RunEventSucceeded,
-		Data: map[string]any{
-			"summaryRef":   "",
-			"outputRefs":   []string{},
-			"artifactRefs": []string{},
-			"final":        true,
-		},
-	})
+	return e.endWhenNothingCanRun(runID, board, finalEvents, "")
 }
 
 // startFormationExecution reserves one run-wide execution before the executor
@@ -1865,7 +1766,7 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 		}
 		return result, err
 	}
-	// Coordinator-owned legacy executors run synchronously so a timeout cannot
+	// Coordinator-owned executors without context support run synchronously so a timeout cannot
 	// leave a hidden writer behind after the coordinator releases its lock.
 	if e.executionContext != nil || req.Deadline.IsZero() {
 		result, err := e.executor.ExecuteFormation(req)
@@ -2070,6 +1971,10 @@ func (e *RunEngine) deliverConnection(runID string, board *BoardDocument, gates 
 	input.ToPortID = toPort
 	if gate, ok := gates[toNode]; ok {
 		return e.evaluateGate(runID, board, gates, gate, input, limits, ready, queued, queue)
+	}
+	if _, ok := findEnd(board, toNode); ok {
+		// The path ends here; runPaths reads it from the ledger.
+		return nil
 	}
 	if ready[toNode] == nil {
 		ready[toNode] = map[string]RunInputRef{}
@@ -2296,9 +2201,6 @@ func (e *RunEngine) routeGateEvaluation(runID string, board *BoardDocument, gate
 	}
 	routePort := verdict
 	routes := outgoingConnectionsFromPort(board.Connections, gate.ID, routePort)
-	if verdict == "fail" && len(routes) == 0 {
-		routePort = "none"
-	}
 	if err := e.store.AppendRunEvent(runID, RunEvent{
 		Type:    RunEventGateVerdict,
 		Attempt: attempt,
@@ -2323,12 +2225,6 @@ func (e *RunEngine) routeGateEvaluation(runID string, board *BoardDocument, gate
 	}); err != nil {
 		return err
 	}
-	if routePort == "none" {
-		if err := e.appendRunBlocked(runID, "gate fail is unwired", "", gate.ID); err != nil {
-			return err
-		}
-		return errRunStopped
-	}
 	for _, route := range routes {
 		nextInput := input
 		if verdict == "fail" {
@@ -2348,9 +2244,6 @@ func (e *RunEngine) routeGateVerdict(runID string, board *BoardDocument, gate Ga
 	}
 	routes := outgoingConnectionsFromPort(board.Connections, gate.ID, verdict)
 	routePort := verdict
-	if verdict == "fail" && len(routes) == 0 {
-		routePort = "none"
-	}
 	result := gateResultFromHumanRequest(requestEvent, verdict, reason)
 	if err := e.store.AppendRunEvent(runID, RunEvent{
 		Type:    RunEventGateVerdict,
@@ -2376,12 +2269,6 @@ func (e *RunEngine) routeGateVerdict(runID string, board *BoardDocument, gate Ga
 		},
 	}); err != nil {
 		return nil, err
-	}
-	if routePort == "none" {
-		if err := e.appendRunBlocked(runID, "gate fail is unwired", "", gate.ID); err != nil {
-			return nil, err
-		}
-		return e.store.ProjectRun(runID)
 	}
 
 	pause := runBlockedEvent("human gate verdict recorded; resume required", "", gate.ID, "", nil)
@@ -2771,31 +2658,6 @@ type starvedFormation struct {
 	ID      string
 	Title   string
 	Missing []string
-}
-
-// starvedFormations returns the reachable formations that received at least one
-// input but can never become runnable because a required input was never
-// produced. A formation that completed has all its inputs filled (it only runs
-// when formationReady), so it is excluded; one that was never reached has no
-// entry in ready and is excluded too. The result is sorted by ID so the run
-// ledger is deterministic.
-func starvedFormations(formationByID map[string]FormationNode, ready map[string]map[string]RunInputRef) []starvedFormation {
-	var starved []starvedFormation
-	for id, formation := range formationByID {
-		fed := ready[id]
-		if len(fed) == 0 || formationReady(formation, fed) {
-			continue
-		}
-		missing := make([]string, 0, len(formation.Inputs))
-		for _, input := range formation.Inputs {
-			if _, ok := fed[input.ID]; !ok {
-				missing = append(missing, input.ID)
-			}
-		}
-		starved = append(starved, starvedFormation{ID: id, Title: formation.Title, Missing: missing})
-	}
-	sort.Slice(starved, func(i, j int) bool { return starved[i].ID < starved[j].ID })
-	return starved
 }
 
 // appendUnfinishedWorkBlock refuses success while unfinishedRunWork names

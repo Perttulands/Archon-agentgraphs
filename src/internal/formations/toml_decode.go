@@ -17,6 +17,7 @@ type boardTOMLSource struct {
 	Missions    []MissionNode
 	Formations  []FormationNode
 	Gates       []GateNode
+	Ends        []EndNode
 	Connections []BoardConnection
 }
 
@@ -65,6 +66,9 @@ func decodeBoardTOML(raw []byte) (boardTOMLSource, error) {
 	if source.Gates, err = decodeGateNodes(document); err != nil {
 		return boardTOMLSource{}, err
 	}
+	if source.Ends, err = decodeEndNodes(document); err != nil {
+		return boardTOMLSource{}, err
+	}
 	if source.Connections, err = decodeBoardConnections(document); err != nil {
 		return boardTOMLSource{}, err
 	}
@@ -80,10 +84,10 @@ func decodeLayoutTOML(raw []byte) (layoutTOMLSource, error) {
 	if source.Schema, err = tomlInt(document, "schema"); err != nil {
 		return layoutTOMLSource{}, err
 	}
-	if source.BoardID, err = tomlString(document, "boardId"); err != nil {
+	if source.BoardID, err = tomlString(document, "missionId"); err != nil {
 		return layoutTOMLSource{}, err
 	}
-	if source.BoardRev, err = tomlInt(document, "boardRev"); err != nil {
+	if source.BoardRev, err = tomlInt(document, "missionRev"); err != nil {
 		return layoutTOMLSource{}, err
 	}
 	if source.UpdatedAt, err = tomlString(document, "updatedAt"); err != nil {
@@ -218,7 +222,7 @@ func tomlTableArray(table map[string]any, key string) ([]map[string]any, error) 
 }
 
 func decodeMissionNodes(document map[string]any) ([]MissionNode, error) {
-	tables, err := tomlTableArray(document, "mission")
+	tables, err := tomlTableArray(document, "inputCard")
 	if err != nil {
 		return nil, err
 	}
@@ -235,9 +239,6 @@ func decodeMissionNodes(document map[string]any) ([]MissionNode, error) {
 			return nil, err
 		}
 		if node.Goal, err = tomlString(table, "goal"); err != nil {
-			return nil, err
-		}
-		if node.BeadID, err = tomlString(table, "beadId"); err != nil {
 			return nil, err
 		}
 		if node.Files, err = tomlStringArray(table, "files"); err != nil {
@@ -301,16 +302,6 @@ func decodeFormationNodes(document map[string]any) ([]FormationNode, error) {
 		}
 		if present {
 			node.Brief, err = decodeFormationBrief(brief)
-			if err != nil {
-				return nil, err
-			}
-		}
-		verification, present, err := tomlTable(table, "verification")
-		if err != nil {
-			return nil, err
-		}
-		if present {
-			node.Verification, err = decodeFormationVerification(verification)
 			if err != nil {
 				return nil, err
 			}
@@ -397,24 +388,6 @@ func decodeFormationBrief(table map[string]any) (*FormationBrief, error) {
 	return &brief, nil
 }
 
-func decodeFormationVerification(table map[string]any) (*FormationVerification, error) {
-	var verification FormationVerification
-	var err error
-	if verification.ID, err = tomlString(table, "id"); err != nil {
-		return nil, err
-	}
-	if verification.Kinds, err = tomlStringArray(table, "kinds"); err != nil {
-		return nil, err
-	}
-	if verification.Criterion, err = tomlString(table, "criterion"); err != nil {
-		return nil, err
-	}
-	if verification.OnFail, err = tomlString(table, "onFail"); err != nil {
-		return nil, err
-	}
-	return &verification, nil
-}
-
 func decodeGateNodes(document map[string]any) ([]GateNode, error) {
 	tables, err := tomlTableArray(document, "gate")
 	if err != nil {
@@ -425,7 +398,7 @@ func decodeGateNodes(document map[string]any) ([]GateNode, error) {
 	}
 	nodes := make([]GateNode, 0, len(tables))
 	for _, table := range tables {
-		node := GateNode{legacyCommandFields: make(map[string]int)}
+		var node GateNode
 		if node.ID, err = tomlString(table, "id"); err != nil {
 			return nil, err
 		}
@@ -449,23 +422,6 @@ func decodeGateNodes(document map[string]any) ([]GateNode, error) {
 		}
 		if node.Files, err = tomlStringArray(table, "files"); err != nil {
 			return nil, err
-		}
-		if node.Command, err = tomlString(table, "command"); err != nil {
-			return nil, err
-		}
-		if node.CommandArgv, err = tomlStringArray(table, "commandArgv"); err != nil {
-			return nil, err
-		}
-		if node.CommandCWD, err = tomlString(table, "commandCwd"); err != nil {
-			return nil, err
-		}
-		if node.CommandShell, err = tomlString(table, "commandShell"); err != nil {
-			return nil, err
-		}
-		for _, key := range []string{"command", "commandArgv", "commandCwd", "commandShell"} {
-			if _, present := table[key]; present {
-				node.legacyCommandFields[key] = 1
-			}
 		}
 		nodes = append(nodes, node)
 	}

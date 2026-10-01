@@ -3,9 +3,8 @@ package formations
 // Limit blocks (form-n7u.6). A run that exhausts its attempts or dispatches
 // blocks, and resuming it cannot progress: the engine counts every recorded
 // start, and neither resume nor a new engine replenishes the allowance. Such a
-// block names the limit it hit and is not resumable. Ledgers written before
-// the engine recorded that still carry resumeAllowed, so the limit is derived
-// from the block's code and the ledger's counts, the same way for every reader.
+// block records resumeAllowed false, and every reader derives the limit it hit
+// from the block's code and the ledger's counts.
 
 // Codes of the blocks that exhaust a run limit.
 const (
@@ -71,13 +70,7 @@ func runLimitReached(events []RunEvent, index int) *RunLimitReached {
 	if code == RunBlockMaxDispatchExceeded {
 		return &RunLimitReached{Kind: RunLimitDispatches, NodeID: nodeID, Used: formationStartsBefore(events, index), Max: limits.MaxDispatch}
 	}
-	max := limits.MaxAttempts
-	if max == 0 {
-		// Only a ledger from before form-o7p.7 records an attempt block without
-		// maxAttempts: the engine then allowed one attempt when the run set none.
-		max = 1
-	}
-	return &RunLimitReached{Kind: RunLimitAttempts, NodeID: nodeID, Used: nodeAttemptsBefore(events, index, nodeID), Max: max}
+	return &RunLimitReached{Kind: RunLimitAttempts, NodeID: nodeID, Used: nodeAttemptsBefore(events, index, nodeID), Max: limits.MaxAttempts}
 }
 
 // formationStartsBefore counts the dispatches the run consumed before index,
@@ -103,8 +96,7 @@ func nodeAttemptsBefore(events []RunEvent, index int, nodeID string) int {
 	return attempts
 }
 
-// runBlockResumeAllowed reports whether the block at index may be resumed:
-// it allows it and it did not exhaust a limit.
+// runBlockResumeAllowed reports whether the block at index may be resumed.
 func runBlockResumeAllowed(events []RunEvent, index int) bool {
-	return boolFromEventData(events[index], "resumeAllowed") && runLimitReached(events, index) == nil
+	return boolFromEventData(events[index], "resumeAllowed")
 }

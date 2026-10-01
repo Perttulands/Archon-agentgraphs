@@ -27,21 +27,21 @@ type FormationCreateRequest struct {
 }
 
 type FormationCreateResult struct {
-	Board     *BoardDocument  `json:"board"`
+	Board     *BoardDocument  `json:"mission"`
 	Layout    *LayoutDocument `json:"layout"`
 	Formation FormationNode   `json:"formation"`
 }
 
 type GateCreateResult struct {
-	Board  *BoardDocument  `json:"board"`
+	Board  *BoardDocument  `json:"mission"`
 	Layout *LayoutDocument `json:"layout"`
 	Gate   GateNode        `json:"gate"`
 }
 
 type MissionCreateResult struct {
-	Board   *BoardDocument  `json:"board"`
+	Board   *BoardDocument  `json:"mission"`
 	Layout  *LayoutDocument `json:"layout"`
-	Mission MissionNode     `json:"mission"`
+	Mission MissionNode     `json:"inputCard"`
 }
 
 type FormationDeleteRequest struct {
@@ -50,7 +50,7 @@ type FormationDeleteRequest struct {
 }
 
 type FormationDeleteResult struct {
-	Board       *BoardDocument  `json:"board"`
+	Board       *BoardDocument  `json:"mission"`
 	Layout      *LayoutDocument `json:"layout"`
 	FormationID string          `json:"formationId"`
 }
@@ -61,7 +61,7 @@ type GateDeleteRequest struct {
 }
 
 type GateDeleteResult struct {
-	Board  *BoardDocument  `json:"board"`
+	Board  *BoardDocument  `json:"mission"`
 	Layout *LayoutDocument `json:"layout"`
 	GateID string          `json:"gateId"`
 }
@@ -72,9 +72,9 @@ type MissionDeleteRequest struct {
 }
 
 type MissionDeleteResult struct {
-	Board     *BoardDocument  `json:"board"`
+	Board     *BoardDocument  `json:"mission"`
 	Layout    *LayoutDocument `json:"layout"`
-	MissionID string          `json:"missionId"`
+	MissionID string          `json:"inputCardId"`
 }
 
 type FormationSlotAssignmentRequest struct {
@@ -110,20 +110,6 @@ type FormationBriefClearRequest struct {
 	UpdatedBy   string
 }
 
-type FormationVerificationRequest struct {
-	FormationID string
-	Kinds       []string
-	Criterion   string
-	OnFail      string
-	UpdatedBy   string
-}
-
-type FormationVerificationRemovalRequest struct {
-	FormationID       string
-	ReplacementGateID string
-	UpdatedBy         string
-}
-
 type FormationPortRequest struct {
 	FormationID string
 	Direction   string
@@ -154,41 +140,31 @@ type FormationRewireRequest struct {
 }
 
 type GateCreateRequest struct {
-	Title                      string
-	Kinds                      []string
-	Criterion                  string
-	Check                      string
-	CheckVersion               string
-	CheckValue                 string
-	Files                      []string
-	Command                    string // legacy inspection-only compatibility input
-	CommandArgv                []string
-	CommandCWD                 string
-	CommandShell               string
-	LegacyCommandFieldsPresent bool
-	X                          int
-	Y                          int
-	UpdatedBy                  string
+	Title        string
+	Kinds        []string
+	Criterion    string
+	Check        string
+	CheckVersion string
+	CheckValue   string
+	Files        []string
+	X            int
+	Y            int
+	UpdatedBy    string
 }
 
 // GateUpdateRequest changes only the fields it sets. A nil field or nil Kinds
 // keeps the stored value; an empty string clears it. Kinds, when set, must name
 // at least one of code, formation and human.
 type GateUpdateRequest struct {
-	GateID                     string
-	Title                      *string
-	Kinds                      []string
-	Criterion                  *string
-	Check                      *string
-	CheckVersion               *string
-	CheckValue                 *string
-	Files                      *[]string // replaces the file references; empty clears them
-	Command                    string    // legacy inspection-only compatibility input
-	CommandArgv                []string
-	CommandCWD                 string
-	CommandShell               string
-	LegacyCommandFieldsPresent bool
-	UpdatedBy                  string
+	GateID       string
+	Title        *string
+	Kinds        []string
+	Criterion    *string
+	Check        *string
+	CheckVersion *string
+	CheckValue   *string
+	Files        *[]string // replaces the file references; empty clears them
+	UpdatedBy    string
 }
 
 // FormationUpdateRequest changes only the fields it sets. An empty title clears it.
@@ -218,7 +194,6 @@ type MissionUpdateRequest struct {
 	MissionID    string
 	Title        *string
 	Goal         *string
-	BeadID       *string
 	Files        *[]string // replaces the file references; empty clears them
 	InputHint    *string
 	HumanChannel *string
@@ -234,7 +209,6 @@ type GateJudgeRequest struct {
 type MissionCreateRequest struct {
 	Title        string
 	Goal         string
-	BeadID       string
 	Files        []string
 	HumanChannel string
 	X            int
@@ -243,15 +217,14 @@ type MissionCreateRequest struct {
 }
 
 type FormationNode struct {
-	Execution    *FormationExecutionPolicy `json:"execution,omitempty"`
-	ID           string                    `json:"id"`
-	Type         string                    `json:"type"`
-	Title        string                    `json:"title"`
-	Brief        *FormationBrief           `json:"brief,omitempty"`
-	Inputs       []FormationPort           `json:"inputs"`
-	Outputs      []FormationPort           `json:"outputs"`
-	Slots        []FormationSlot           `json:"slots"`
-	Verification *FormationVerification    `json:"verification,omitempty"`
+	Execution *FormationExecutionPolicy `json:"execution,omitempty"`
+	ID        string                    `json:"id"`
+	Type      string                    `json:"type"`
+	Title     string                    `json:"title"`
+	Brief     *FormationBrief           `json:"brief,omitempty"`
+	Inputs    []FormationPort           `json:"inputs"`
+	Outputs   []FormationPort           `json:"outputs"`
+	Slots     []FormationSlot           `json:"slots"`
 }
 
 type FormationPort struct {
@@ -280,13 +253,6 @@ type FormationBrief struct {
 	Links  []string `json:"links,omitempty"`
 }
 
-type FormationVerification struct {
-	ID        string   `json:"id"`
-	Kinds     []string `json:"kinds"`
-	Criterion string   `json:"criterion"`
-	OnFail    string   `json:"onFail"`
-}
-
 type BoardConnection struct {
 	ID   string `json:"id"`
 	From string `json:"from"`
@@ -309,20 +275,13 @@ type GateNode struct {
 	CheckVersion string `json:"checkVersion,omitempty"`
 	CheckValue   string `json:"checkValue,omitempty"`
 	// Files are reference files, such as the gate's rubric, as paths.
-	Files                 []string                             `json:"files,omitempty"`
-	Command               string                               `json:"command,omitempty"` // legacy inspection-only metadata
-	CommandArgv           []string                             `json:"commandArgv,omitempty"`
-	CommandCWD            string                               `json:"commandCwd,omitempty"`
-	CommandShell          string                               `json:"commandShell,omitempty"`
-	LegacyScriptMigration *LegacyScriptGateMigrationInspection `json:"legacyScriptMigration,omitempty"`
-	legacyCommandFields   map[string]int
+	Files []string `json:"files,omitempty"`
 }
 
 type MissionNode struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Goal   string `json:"goal"`
-	BeadID string `json:"beadId"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Goal  string `json:"goal"`
 	// Files are reference files for the mission, as paths.
 	Files []string `json:"files,omitempty"`
 	// InputHint tells whoever starts the mission what its run brief should contain.
@@ -524,7 +483,7 @@ func (s *Store) createNode(
 func buildCreateLayoutCandidate(current definitionPairContent, boardID string, boardRev int, node LayoutNode, updatedAt string) ([]byte, error) {
 	raw := current.raw
 	if !current.present {
-		raw = []byte("schema = " + renderInt(CurrentLayoutSchema) + "\nboardId = " + renderString(boardID) + "\nboardRev = " + renderInt(boardRev) + "\nupdatedAt = " + renderString(updatedAt) + "\n")
+		raw = []byte("schema = " + renderInt(CurrentLayoutSchema) + "\nmissionId = " + renderString(boardID) + "\nmissionRev = " + renderInt(boardRev) + "\nupdatedAt = " + renderString(updatedAt) + "\n")
 	}
 	layout, err := parseLayoutForWrite(raw)
 	if err != nil {
@@ -534,8 +493,8 @@ func buildCreateLayoutCandidate(current definitionPairContent, boardID string, b
 	if layout.Schema < CurrentLayoutSchema {
 		doc.setScalar("schema", renderInt(CurrentLayoutSchema))
 	}
-	doc.setScalar("boardId", renderString(boardID))
-	doc.setScalar("boardRev", renderInt(boardRev))
+	doc.setScalar("missionId", renderString(boardID))
+	doc.setScalar("missionRev", renderInt(boardRev))
 	doc.setScalar("updatedAt", renderString(updatedAt))
 	return appendLayoutNodeBlock(doc.bytes(), node), nil
 }
@@ -835,7 +794,7 @@ func assignmentSettings(req FormationSlotAssignmentRequest) (SlotSettings, error
 		}
 	}
 	if effort == "" && model == "" && role != "" {
-		// The legacy role drag: the role's current settings become the slot's.
+		// The role drag: the role's current settings become the slot's.
 		if req.Personas == nil {
 			return SlotSettings{}, fmt.Errorf("%w: persona store required to read role %q", ErrNotFound, role)
 		}
@@ -941,101 +900,6 @@ func (s *Store) ClearFormationBrief(slug string, req FormationBriefClearRequest,
 	})
 }
 
-func (s *Store) SetFormationVerification(slug string, req FormationVerificationRequest, opts WriteOptions) (*BoardDocument, error) {
-	return nil, fmt.Errorf(
-		"%w: formation %q cannot author retired inline verification; create and wire an explicit Gate instead",
-		ErrLegacyInlineVerificationRequiresMigration,
-		req.FormationID,
-	)
-}
-
-func (s *Store) RemoveFormationVerification(slug string, req FormationVerificationRemovalRequest, opts WriteOptions) (*BoardDocument, error) {
-	if req.FormationID == "" {
-		return nil, ErrNotFound
-	}
-	if req.ReplacementGateID == "" {
-		return nil, fmt.Errorf("%w: replacement Gate is required before removing inline verification", ErrLegacyInlineVerificationRequiresMigration)
-	}
-	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, board *BoardDocument) ([]byte, error) {
-		formation, formationOK := findFormation(board.Formations, req.FormationID)
-		_, gateOK := findGate(board.Gates, req.ReplacementGateID)
-		if !formationOK || !gateOK || !formationOutputWiresToGate(board.Connections, formation, req.ReplacementGateID) {
-			return nil, fmt.Errorf(
-				"%w: replacement Gate %q must exist and be wired from formation %q before removing inline verification",
-				ErrLegacyInlineVerificationRequiresMigration,
-				req.ReplacementGateID,
-				req.FormationID,
-			)
-		}
-		lines := splitLines(raw)
-		formationStart, formationEnd, ok := findFormationBlockByID(lines, req.FormationID)
-		if !ok {
-			return nil, ErrNotFound
-		}
-		verificationSections := 0
-		verificationFamilySections := 0
-		for i := formationStart + 1; i < formationEnd; i++ {
-			section, sectionOK := tomlLineSectionName(lines[i])
-			if !sectionOK {
-				continue
-			}
-			if section == "formation.verification" {
-				verificationSections++
-			}
-			if tomlSectionIsOrDescendsFrom(section, "formation.verification") {
-				verificationFamilySections++
-			}
-		}
-		if verificationSections > 1 {
-			return nil, fmt.Errorf(
-				"%w: formation %q has %d inline verification sections; repair the source before migration",
-				ErrLegacyInlineVerificationRequiresMigration,
-				req.FormationID,
-				verificationSections,
-			)
-		}
-		if verificationFamilySections == 0 {
-			if formation.Verification != nil {
-				return nil, fmt.Errorf(
-					"%w: formation %q uses a non-section inline verification representation; repair the source before migration",
-					ErrLegacyInlineVerificationRequiresMigration,
-					req.FormationID,
-				)
-			}
-			return nil, ErrNotFound
-		}
-		// A TOML child table is part of its parent table even when another
-		// formation section appears between them. Remove the entire semantic
-		// verification family so retired authority cannot survive invisibly.
-		for i := formationEnd - 1; i > formationStart; i-- {
-			section, sectionOK := tomlLineSectionName(lines[i])
-			if !sectionOK || !tomlSectionIsOrDescendsFrom(section, "formation.verification") {
-				continue
-			}
-			end := tomlBlockEnd(lines, i)
-			if end > formationEnd {
-				end = formationEnd
-			}
-			lines = append(lines[:i], lines[end:]...)
-			formationEnd -= end - i
-		}
-		nextRaw := renderTOMLLines(lines)
-		nextBoard, err := parseBoardForWrite(nextRaw)
-		if err != nil {
-			return nil, err
-		}
-		nextFormation, nextFormationOK := findFormation(nextBoard.Formations, req.FormationID)
-		if !nextFormationOK || nextFormation.Verification != nil {
-			return nil, fmt.Errorf(
-				"%w: formation %q still contains inline verification after removal",
-				ErrLegacyInlineVerificationRequiresMigration,
-				req.FormationID,
-			)
-		}
-		return nextRaw, nil
-	})
-}
-
 func formationOutputWiresToGate(connections []BoardConnection, formation FormationNode, gateID string) bool {
 	for _, output := range formation.Outputs {
 		from := formation.ID + ":" + output.ID
@@ -1054,9 +918,6 @@ func (s *Store) CreateGate(slug string, req GateCreateRequest, opts WriteOptions
 }
 
 func (s *Store) createGate(slug string, req GateCreateRequest, opts WriteOptions, fault func(string) error) (*GateCreateResult, error) {
-	if err := rejectLegacyScriptGateWrite(req.LegacyCommandFieldsPresent, req.Command, req.CommandArgv, req.CommandCWD, req.CommandShell); err != nil {
-		return nil, err
-	}
 	if err := validateSlug(slug); err != nil {
 		return nil, err
 	}
@@ -1113,9 +974,6 @@ func (s *Store) createGate(slug string, req GateCreateRequest, opts WriteOptions
 func (s *Store) UpdateGate(slug string, req GateUpdateRequest, opts WriteOptions) (*BoardDocument, error) {
 	if req.GateID == "" {
 		return nil, ErrNotFound
-	}
-	if err := rejectLegacyScriptGateWrite(req.LegacyCommandFieldsPresent, req.Command, req.CommandArgv, req.CommandCWD, req.CommandShell); err != nil {
-		return nil, err
 	}
 	var kinds []string
 	if req.Kinds != nil {
@@ -1463,15 +1321,12 @@ func renderSlotBlock(slot FormationSlot) []tomlLine {
 	return lines
 }
 
-// UpdateMission edits a mission's title, goal, Bead ID and input hint. Its ID,
+// UpdateMission edits an Input card's title, goal, files and input hint. Its ID,
 // out port, edges, layout and notes stay as they are. An empty input hint
 // removes the key, so clearing an absent hint changes nothing.
 func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteOptions) (*BoardDocument, error) {
 	if req.MissionID == "" {
 		return nil, ErrNotFound
-	}
-	if req.BeadID != nil && *req.BeadID != "" && !isSafeBeadsIssueID(*req.BeadID) {
-		return nil, invalidBeadID("Input card beadId", *req.BeadID)
 	}
 	var humanChannel string
 	if req.HumanChannel != nil {
@@ -1486,7 +1341,7 @@ func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteO
 		for _, field := range []struct {
 			key   string
 			value *string
-		}{{"title", req.Title}, {"goal", req.Goal}, {"beadId", req.BeadID}} {
+		}{{"title", req.Title}, {"goal", req.Goal}} {
 			if field.value == nil {
 				continue
 			}
@@ -1651,9 +1506,6 @@ func (s *Store) CreateMission(slug string, req MissionCreateRequest, opts WriteO
 }
 
 func (s *Store) createMission(slug string, req MissionCreateRequest, opts WriteOptions, fault func(string) error) (*MissionCreateResult, error) {
-	if req.BeadID != "" && !isSafeBeadsIssueID(req.BeadID) {
-		return nil, invalidBeadID("Input card beadId", req.BeadID)
-	}
 	humanChannel, err := NormalizeHumanChannel(req.HumanChannel)
 	if err != nil {
 		return nil, err
@@ -1669,10 +1521,9 @@ func (s *Store) createMission(slug string, req MissionCreateRequest, opts WriteO
 		title = "Input"
 	}
 	mission := MissionNode{
-		ID:           newPrefixedID("mis"),
+		ID:           newPrefixedID("inp"),
 		Title:        title,
 		Goal:         req.Goal,
-		BeadID:       req.BeadID,
 		Files:        normalizeFileRefs(req.Files),
 		HumanChannel: humanChannel,
 	}
@@ -1781,7 +1632,7 @@ func prepareWireTarget(raw []byte, current *BoardDocument, from, to string, join
 		if connection.From == from && connection.To == to {
 			return nil, "", ErrDuplicateConnection
 		}
-		if connection.To == to && !isGateFailPushbackEndpoint(current.Gates, from) && !isGateFailPushbackEndpoint(current.Gates, connection.From) {
+		if connection.To == to && !isEndEndpoint(current, to) && !isGateFailPushbackEndpoint(current.Gates, from) && !isGateFailPushbackEndpoint(current.Gates, connection.From) {
 			occupied = true
 		}
 	}
@@ -1901,7 +1752,7 @@ func (s *Store) updateLayoutNodes(slug string, nodes []LayoutNode, board *BoardD
 					return err
 				}
 			}
-			raw = []byte("schema = " + renderInt(CurrentLayoutSchema) + "\nboardId = " + renderString(board.ID) + "\nboardRev = " + renderInt(board.Rev) + "\nupdatedAt = " + renderString(s.now().Format(time.RFC3339)) + "\n")
+			raw = []byte("schema = " + renderInt(CurrentLayoutSchema) + "\nmissionId = " + renderString(board.ID) + "\nmissionRev = " + renderInt(board.Rev) + "\nupdatedAt = " + renderString(s.now().Format(time.RFC3339)) + "\n")
 			recreatingMissing = true
 		case errors.Is(err, ErrNotFound):
 			return ErrNotFound
@@ -1920,8 +1771,8 @@ func (s *Store) updateLayoutNodes(slug string, nodes []LayoutNode, board *BoardD
 			doc.setScalar("schema", renderInt(CurrentLayoutSchema))
 		}
 		if board != nil {
-			doc.setScalar("boardId", renderString(board.ID))
-			doc.setScalar("boardRev", renderInt(board.Rev))
+			doc.setScalar("missionId", renderString(board.ID))
+			doc.setScalar("missionRev", renderInt(board.Rev))
 		}
 		doc.setScalar("updatedAt", renderString(s.now().Format(time.RFC3339)))
 		nextRaw := patchLayoutNodeBlocks(doc.bytes(), nodes)
@@ -2179,7 +2030,7 @@ func deleteGateBlock(raw []byte, gateID string) ([]byte, bool) {
 }
 
 func deleteMissionBlock(raw []byte, missionID string) ([]byte, bool) {
-	return deleteTopLevelBlockByID(raw, "mission", missionID)
+	return deleteTopLevelBlockByID(raw, "inputCard", missionID)
 }
 
 func deleteTopLevelBlockByID(raw []byte, sectionName, id string) ([]byte, bool) {
@@ -2332,11 +2183,10 @@ func appendMissionBlock(raw []byte, mission MissionNode) []byte {
 	if text != "" {
 		b.WriteByte('\n')
 	}
-	b.WriteString("[[mission]]\n")
+	b.WriteString("[[inputCard]]\n")
 	b.WriteString("id = " + renderString(mission.ID) + "\n")
 	b.WriteString("title = " + renderString(mission.Title) + "\n")
 	b.WriteString("goal = " + renderString(mission.Goal) + "\n")
-	b.WriteString("beadId = " + renderString(mission.BeadID) + "\n")
 	if len(mission.Files) > 0 {
 		b.WriteString("files = " + renderStringArray(mission.Files) + "\n")
 	}
@@ -2402,7 +2252,7 @@ func judgeChainConnections(raw []byte, req GateJudgeRequest) ([]BoardConnection,
 	}
 	connections := []BoardConnection{}
 	addConnection := func(connection BoardConnection) error {
-		exists, err := validateConnectionCandidate(existing, board.Gates, connection)
+		exists, err := validateConnectionCandidate(existing, board, connection)
 		if err != nil {
 			return err
 		}
@@ -2447,15 +2297,20 @@ func judgeChainConnections(raw []byte, req GateJudgeRequest) ([]BoardConnection,
 	return connections, nil
 }
 
-func validateConnectionCandidate(existing []BoardConnection, gates []GateNode, candidate BoardConnection) (bool, error) {
+func validateConnectionCandidate(existing []BoardConnection, board *BoardDocument, candidate BoardConnection) (bool, error) {
 	if endpointNodeID(candidate.From) == endpointNodeID(candidate.To) {
 		return false, ErrSelfWire
+	}
+	var gates []GateNode
+	if board != nil {
+		gates = board.Gates
 	}
 	for _, connection := range existing {
 		if connection.From == candidate.From && connection.To == candidate.To {
 			return true, nil
 		}
 		if connection.To == candidate.To &&
+			!isEndEndpoint(board, candidate.To) &&
 			!isGateFailPushbackEndpoint(gates, candidate.From) &&
 			!isGateFailPushbackEndpoint(gates, connection.From) {
 			return false, ErrInputOccupied
@@ -2536,8 +2391,8 @@ func (s *Store) deleteLayoutNodes(slug, boardID string, boardRev int, nodeIDs ma
 		if current.Schema < CurrentLayoutSchema {
 			doc.setScalar("schema", renderInt(CurrentLayoutSchema))
 		}
-		doc.setScalar("boardId", renderString(boardID))
-		doc.setScalar("boardRev", renderInt(boardRev))
+		doc.setScalar("missionId", renderString(boardID))
+		doc.setScalar("missionRev", renderInt(boardRev))
 		doc.setScalar("updatedAt", renderString(s.now().Format(time.RFC3339)))
 
 		nextRaw := deleteLayoutNodeBlocks(doc.bytes(), nodeIDs)
@@ -2996,7 +2851,7 @@ func findGateBlockByID(lines []tomlLine, gateID string) (int, int, bool) {
 func findMissionBlockByID(lines []tomlLine, missionID string) (int, int, bool) {
 	for i := 0; i < len(lines); i++ {
 		section, ok := tomlLineSectionName(lines[i])
-		if !ok || section != "mission" {
+		if !ok || section != "inputCard" {
 			continue
 		}
 		end := tomlBlockEnd(lines, i)
@@ -3102,6 +2957,9 @@ func endpointAllowsDirection(raw []byte, endpoint, direction string) (string, bo
 	}
 	if _, _, ok := findMissionBlockByID(lines, nodeID); ok {
 		return nodeID, portID == "out" && direction == FormationPortOutput
+	}
+	if _, _, ok := findEndBlockByID(lines, nodeID); ok {
+		return nodeID, portID == EndPortIn && direction == FormationPortInput
 	}
 	if toolEndpointAllowsDirection(raw, nodeID, portID, direction) {
 		return nodeID, true
@@ -3232,22 +3090,6 @@ func parseFormationNodes(raw []byte) []FormationNode {
 				active = "brief"
 			}
 			continue
-		case isSection && !isArraySection && section == "formation.verification":
-			if current != nil {
-				current.Verification = &FormationVerification{}
-				active = "verification"
-			}
-			continue
-		case isSection && tomlSectionIsOrDescendsFrom(section, "formation.verification"):
-			if current != nil {
-				// Any descendant implicitly creates the verification parent in
-				// TOML. Its presence alone must retain the migration fence.
-				if current.Verification == nil {
-					current.Verification = &FormationVerification{}
-				}
-				active = ""
-			}
-			continue
 		case isSection:
 			active = ""
 			continue
@@ -3286,12 +3128,6 @@ func parseFormationNodes(raw []byte) []FormationNode {
 				current.Type = value
 			case "title":
 				current.Title = value
-			case "verification":
-				applyFormationVerificationField(current, "", value)
-			default:
-				if strings.HasPrefix(key, "verification.") {
-					applyFormationVerificationField(current, strings.TrimPrefix(key, "verification."), value)
-				}
 			}
 		case "input":
 			port := &current.Inputs[len(current.Inputs)-1]
@@ -3338,27 +3174,9 @@ func parseFormationNodes(raw []byte) []FormationNode {
 			case "links":
 				current.Brief.Links = parseStringArray(value)
 			}
-		case "verification":
-			applyFormationVerificationField(current, key, value)
 		}
 	}
 	return formations
-}
-
-func applyFormationVerificationField(formation *FormationNode, key, value string) {
-	if formation.Verification == nil {
-		formation.Verification = &FormationVerification{}
-	}
-	switch key {
-	case "id":
-		formation.Verification.ID = value
-	case "kinds":
-		formation.Verification.Kinds = parseStringArray(value)
-	case "criterion":
-		formation.Verification.Criterion = value
-	case "onFail":
-		formation.Verification.OnFail = value
-	}
 }
 
 func parseBoardConnections(raw []byte) []BoardConnection {
@@ -3418,7 +3236,7 @@ func parseGateNodes(raw []byte) []GateNode {
 		isArraySection := strings.HasPrefix(trimmed, "[[")
 		switch {
 		case isSection && isArraySection && section == "gate":
-			gates = append(gates, GateNode{legacyCommandFields: map[string]int{}})
+			gates = append(gates, GateNode{})
 			current = &gates[len(gates)-1]
 			active = true
 			continue
@@ -3453,18 +3271,6 @@ func parseGateNodes(raw []byte) []GateNode {
 			current.CheckValue = value
 		case "files":
 			current.Files = parseStringArray(value)
-		case "command":
-			current.legacyCommandFields[key]++
-			current.Command = value
-		case "commandArgv":
-			current.legacyCommandFields[key]++
-			current.CommandArgv = parseStringArray(value)
-		case "commandCwd":
-			current.legacyCommandFields[key]++
-			current.CommandCWD = value
-		case "commandShell":
-			current.legacyCommandFields[key]++
-			current.CommandShell = value
 		}
 	}
 	return gates
@@ -3479,7 +3285,7 @@ func parseMissionNodes(raw []byte) []MissionNode {
 		section, isSection := tomlLineSectionName(line)
 		isArraySection := strings.HasPrefix(trimmed, "[[")
 		switch {
-		case isSection && isArraySection && section == "mission":
+		case isSection && isArraySection && section == "inputCard":
 			missions = append(missions, MissionNode{})
 			current = &missions[len(missions)-1]
 			active = true
@@ -3505,8 +3311,6 @@ func parseMissionNodes(raw []byte) []MissionNode {
 			current.Title = value
 		case "goal":
 			current.Goal = value
-		case "beadId":
-			current.BeadID = value
 		case "files":
 			current.Files = parseStringArray(value)
 		case "inputHint":

@@ -1,15 +1,15 @@
 import { expect, test } from '@playwright/test'
-import { wayfinding, wayfindingFixture } from './wayfinding-fixture'
+import { scouting, scoutingFixture } from './scouting-fixture'
 
 type Node = { id: string; title: string }
 
 test('the canvas never scrolls natively: card clicks and keyboard focus leave the zoom column at the right edge', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
-  const fixture = await wayfindingFixture(page)
-  await page.goto('/?mission=wayfinding')
+  const fixture = await scoutingFixture(page)
+  await page.goto('/?mission=scouting')
   const canvas = page.getByTestId('formations-canvas')
   await expect(page.locator('.formation').first()).toBeVisible()
-  // Zoom in until the Wayfinding chain runs off both sides of the canvas.
+  // Zoom in until the Scouting chain runs off both sides of the canvas.
   for (let step = 0; step < 4; step++) await page.getByTitle('Zoom in').click()
 
   const expectUnscrolled = async (after: string) => {
@@ -20,8 +20,8 @@ test('the canvas never scrolls natively: card clicks and keyboard focus leave th
   }
 
   const cards = [
-    ...wayfinding.board.formations.map((node: Node) => ({ title: node.title, card: page.getByTestId(`formation-node-${node.id}`).locator('.fhead') })),
-    ...wayfinding.board.gates.map((node: Node) => ({ title: node.title, card: page.getByTestId(`gate-node-${node.id}`) })),
+    ...scouting.mission.formations.map((node: Node) => ({ title: node.title, card: page.getByTestId(`formation-node-${node.id}`).locator('.fhead') })),
+    ...scouting.mission.gates.map((node: Node) => ({ title: node.title, card: page.getByTestId(`gate-node-${node.id}`) })),
   ]
   const canvasBox = (await canvas.boundingBox())!
   let partlyOffScreen = 0
@@ -40,7 +40,7 @@ test('the canvas never scrolls natively: card clicks and keyboard focus leave th
   expect(partlyOffScreen, 'cards clicked while partly off screen').toBeGreaterThan(0)
 
   // Keyboard focus on card controls, including ones off screen, never scrolls the canvas either.
-  const critic = wayfinding.board.formations.find((node: Node) => node.title === 'Brief critic')
+  const critic = scouting.mission.formations.find((node: Node) => node.title === 'Brief critic')
   await page.getByTestId(`formation-type-${critic.id}`).focus()
   await expectUnscrolled('focusing an off-screen type chip')
   for (let tab = 0; tab < 12; tab++) {

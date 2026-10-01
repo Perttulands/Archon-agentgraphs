@@ -18,7 +18,7 @@ function respond(data: unknown, status = 200) {
 const text = (value: string, extra: Partial<{ bytes: number; truncated: boolean }> = {}) => ({ text: value, bytes: value.length, ...extra })
 
 const routes: Record<string, unknown> = {
-  '/api/formations/runs/run_1/evidence/nodes/fmn_plan': {
+  '/api/runs/run_1/evidence/nodes/fmn_plan': {
     evidence: {
       runId: 'run_1', nodeId: 'fmn_plan', kind: 'formation',
       attempts: [{
@@ -32,7 +32,7 @@ const routes: Record<string, unknown> = {
       }],
     },
   },
-  '/api/formations/runs/run_1/evidence/nodes/gate_review': {
+  '/api/runs/run_1/evidence/nodes/gate_review': {
     evidence: {
       runId: 'run_1', nodeId: 'gate_review', kind: 'gate',
       evaluations: [{
@@ -44,10 +44,10 @@ const routes: Record<string, unknown> = {
       }],
     },
   },
-  '/api/formations/files/preview?path=%2Fsrv%2Fproject%2Fbeads.md': {
+  '/api/files/preview?path=%2Fsrv%2Fproject%2Fbeads.md': {
     file: { path: '/srv/project/beads.md', name: 'beads.md', size: 12, modifiedAt: '', kind: 'markdown', text: text('# Beads plan') },
   },
-  '/api/formations/runs/run_1/evidence/nodes/fmn_map': {
+  '/api/runs/run_1/evidence/nodes/fmn_map': {
     evidence: {
       runId: 'run_1', nodeId: 'fmn_map', kind: 'formation',
       attempts: [{
@@ -62,7 +62,7 @@ const routes: Record<string, unknown> = {
       }],
     },
   },
-  '/api/formations/runs/run_1/evidence/nodes/gate_framing': {
+  '/api/runs/run_1/evidence/nodes/gate_framing': {
     evidence: {
       runId: 'run_1', nodeId: 'gate_framing', kind: 'gate',
       evaluations: [{
@@ -74,15 +74,15 @@ const routes: Record<string, unknown> = {
       problems: [
         { seq: 12, type: 'run_blocked', code: 'resume_after_verdict', reason: text('human gate verdict recorded; resume required'), resumeAllowed: true },
         { seq: 30, type: 'run_blocked', reason: text('human gate verdict recorded; resume required'), resumeAllowed: true },
-        { seq: 40, type: 'error', code: 'invalid_judge_result', reason: text('missing or unterminated chrote-verdict block') },
-        { seq: 41, type: 'run_blocked', reason: text('invalid judge result: missing or unterminated chrote-verdict block'), resumeAllowed: false },
+        { seq: 40, type: 'error', code: 'invalid_judge_result', reason: text('missing or unterminated archon-verdict block') },
+        { seq: 41, type: 'run_blocked', reason: text('invalid judge result: missing or unterminated archon-verdict block'), resumeAllowed: false },
       ],
     },
   },
-  '/api/formations/runs/run_1/evidence/artifacts': { artifacts: [{ name: 'plan.md', size: 4606, modifiedAt: '2026-09-09T01:21:00Z' }, { name: 'logs/run.json', size: 9, modifiedAt: '2026-09-09T01:22:00Z' }], truncated: false },
-  '/api/formations/runs/run_1/evidence/artifacts/plan.md': { artifact: { name: 'plan.md', size: 4606, modifiedAt: '2026-09-09T01:21:00Z', kind: 'markdown', text: text('# Plan: stamp the build\n\nSee [the log](logs/run.json).') } },
-  '/api/formations/runs/run_1/evidence/artifacts/logs/run.json': { artifact: { name: 'logs/run.json', size: 9, modifiedAt: '2026-09-09T01:22:00Z', kind: 'json', text: text('{"ok":true}') } },
-  '/api/formations/runs/run_1/evidence/briefs/5': { brief: { dispatchSeq: 5, nodeId: 'fmn_plan', slotId: 'plan', attempt: 1, text: text('brief: plan the change\nartifact directory: …') } },
+  '/api/runs/run_1/evidence/artifacts': { artifacts: [{ name: 'plan.md', size: 4606, modifiedAt: '2026-09-09T01:21:00Z' }, { name: 'logs/run.json', size: 9, modifiedAt: '2026-09-09T01:22:00Z' }], truncated: false },
+  '/api/runs/run_1/evidence/artifacts/plan.md': { artifact: { name: 'plan.md', size: 4606, modifiedAt: '2026-09-09T01:21:00Z', kind: 'markdown', text: text('# Plan: stamp the build\n\nSee [the log](logs/run.json).') } },
+  '/api/runs/run_1/evidence/artifacts/logs/run.json': { artifact: { name: 'logs/run.json', size: 9, modifiedAt: '2026-09-09T01:22:00Z', kind: 'json', text: text('{"ok":true}') } },
+  '/api/runs/run_1/evidence/briefs/5': { brief: { dispatchSeq: 5, nodeId: 'fmn_plan', slotId: 'plan', attempt: 1, text: text('brief: plan the change\nartifact directory: …') } },
 }
 
 describe('RunEvidence', () => {
@@ -135,8 +135,8 @@ describe('RunEvidence', () => {
 
   it('names steps, ports and slots, keeps the IDs behind a disclosure and prints an output once', async () => {
     const board = {
-      id: 'brd_way', slug: 'wayfinding', title: 'Wayfinding', rev: 1, etag: 'e', connections: [],
-      missions: [{ id: 'mis_way', title: 'Wayfinding', goal: 'Digest', beadId: '' }],
+      id: 'brd_way', slug: 'scouting', title: 'Scouting', rev: 1, etag: 'e', connections: [],
+      inputCards: [{ id: 'mis_way', title: 'Scouting', goal: 'Digest' }],
       formations: [{ id: 'fmn_map', type: 'solo', title: 'Map the territory', slots: [{ id: 'slot_scout', label: 'Scout', controller: true }],
         inputs: [{ id: 'port_map_in', label: 'Brief' }], outputs: [{ id: 'port_map_out', label: 'Map' }, { id: 'port_map_copy', label: 'Copy' }] }],
       gates: [{ id: 'gate_framing', title: 'Framing review', kinds: ['human'], criterion: 'Pick a framing' }],
@@ -149,7 +149,7 @@ describe('RunEvidence', () => {
     expect(within(output).getByTestId('node-output-port-port_map_out')).toHaveTextContent(/^Map/)
     expect(within(output).getByTestId('node-output-port-port_map_copy')).toHaveTextContent('Same text as Map.')
     const attempt = screen.getByTestId('node-attempt-1')
-    expect(attempt).toHaveTextContent('Input from Wayfinding')
+    expect(attempt).toHaveTextContent('Input from Scouting')
     expect(attempt).toHaveTextContent('Scout')
     const [kept, gone] = [...attempt.querySelectorAll('.node-dispatch')].filter(row => row.textContent?.includes('seat cleanup'))
     expect(kept).toHaveTextContent('seat cleanup · kept on call')
@@ -165,7 +165,7 @@ describe('RunEvidence', () => {
     expect(within(ids).getByText('Map the territory').nextSibling).toHaveTextContent('fmn_map')
     expect(within(ids).getByText('Scout').nextSibling).toHaveTextContent('slot_scout')
     expect(within(ids).getByText('Map').nextSibling).toHaveTextContent('port_map_out')
-    expect(within(ids).getByText('Connection from Wayfinding').nextSibling).toHaveTextContent('edge_start')
+    expect(within(ids).getByText('Connection from Scouting').nextSibling).toHaveTextContent('edge_start')
 
     cleanup()
     render(<RunEvidence runId="run_1" nodeId="gate_framing" title="Framing review" state="done" board={board} onClose={() => {}} />)
@@ -196,7 +196,7 @@ describe('RunEvidence', () => {
     expect(failures.querySelectorAll('.node-evidence-verdict.fail')).toHaveLength(2)
     expect(failures).toHaveTextContent('#40 · error · invalid_judge_result')
     expect(failures).toHaveTextContent('#41 · blocked · not resumable')
-    expect(failures).toHaveTextContent('invalid judge result: missing or unterminated chrote-verdict block')
+    expect(failures).toHaveTextContent('invalid judge result: missing or unterminated archon-verdict block')
     expect(failures).not.toHaveTextContent('resume required')
   })
 
@@ -206,7 +206,7 @@ describe('RunEvidence', () => {
     fireEvent.click(within(await screen.findByTestId('run-artifacts')).getByRole('button', { name: 'plan.md' }))
     const document = await screen.findByTestId('evidence-document')
     expect(within(document).getByRole('heading', { name: 'Plan: stamp the build' })).toBeInTheDocument()
-    expect(within(document).getByRole('link', { name: 'open raw' })).toHaveAttribute('href', '/api/formations/runs/run_1/artifacts/plan.md')
+    expect(within(document).getByRole('link', { name: 'open raw' })).toHaveAttribute('href', '/api/runs/run_1/artifacts/plan.md')
 
     fireEvent.click(within(document).getByRole('link', { name: 'the log' }))
     await waitFor(() => expect(screen.getByTestId('evidence-document')).toHaveTextContent('logs/run.json'))

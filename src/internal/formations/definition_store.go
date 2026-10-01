@@ -18,7 +18,7 @@ type definitionKind struct {
 }
 
 var (
-	boardDefinitionKind  = definitionKind{directory: "boards", suffix: ".formation.toml"}
+	boardDefinitionKind  = definitionKind{directory: "missions", suffix: ".mission.toml"}
 	layoutDefinitionKind = definitionKind{directory: "layout", suffix: ".layout.toml"}
 	notesDefinitionKind  = definitionKind{directory: "notes", suffix: ".notes.toml"}
 )
@@ -80,7 +80,7 @@ func (s *Store) openDefinition(kind definitionKind, slug string, createDirectory
 	return &definitionFile{
 		directory: directory,
 		name:      name,
-		path:      filepath.Join(s.workspaceRoot(), ".formations", kind.directory, name),
+		path:      filepath.Join(s.workspaceRoot(), ".archon", kind.directory, name),
 	}, nil
 }
 
@@ -106,9 +106,9 @@ func (s *Store) openDefinitionDirectoryWithLeafParentSync(
 	current := os.NewFile(uintptr(fd), workspace)
 	if current == nil {
 		_ = syscall.Close(fd)
-		return nil, errors.New("could not open formations workspace")
+		return nil, errors.New("could not open archon workspace")
 	}
-	components := []string{".formations", kind.directory}
+	components := []string{".archon", kind.directory}
 	for index, component := range components {
 		next, openErr := openDefinitionDirectoryAt(current, component, create)
 		if openErr == nil && index == len(components)-1 && beforeParentSync != nil {
@@ -287,7 +287,7 @@ func openDefinitionRegularFileAt(directory *os.File, name string, flags int, cre
 	file := os.NewFile(uintptr(fd), name)
 	if file == nil {
 		_ = syscall.Close(fd)
-		return nil, errors.New("could not open formations definition")
+		return nil, errors.New("could not open archon definition")
 	}
 	info, err := file.Stat()
 	if err != nil {
@@ -297,7 +297,7 @@ func openDefinitionRegularFileAt(directory *os.File, name string, flags int, cre
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !info.Mode().IsRegular() || !ok || stat.Nlink != 1 {
 		_ = file.Close()
-		return nil, errors.New("formations definition must be a regular single-link file")
+		return nil, errors.New("archon definition must be a regular single-link file")
 	}
 	if createExclusive {
 		if err := syscall.Fchmod(fd, uint32(sharedFileMode.Perm())); err != nil {
@@ -411,5 +411,5 @@ func definitionPathError(err error) error {
 	if errors.Is(err, os.ErrNotExist) {
 		return ErrNotFound
 	}
-	return fmt.Errorf("formations definition path rejected: %w", err)
+	return fmt.Errorf("archon definition path rejected: %w", err)
 }

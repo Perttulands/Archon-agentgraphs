@@ -25,14 +25,14 @@ func TestFormationsHandlerUsesExistingBoardWireAndArrangeSurfacesForTools(t *tes
 	handler.RegisterRoutes(mux)
 
 	getRec := httptest.NewRecorder()
-	mux.ServeHTTP(getRec, httptest.NewRequest(http.MethodGet, "/api/formations/boards/tool-parity", nil))
+	mux.ServeHTTP(getRec, httptest.NewRequest(http.MethodGet, "/api/missions/tool-parity", nil))
 	if getRec.Code != http.StatusOK {
 		t.Fatalf("GET Tool board status = %d, want %d: %s", getRec.Code, http.StatusOK, getRec.Body.String())
 	}
 	var getResponse struct {
 		Success bool `json:"success"`
 		Data    struct {
-			Board formations.BoardDocument `json:"board"`
+			Board formations.BoardDocument `json:"mission"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(getRec.Body.Bytes(), &getResponse); err != nil {
@@ -51,7 +51,7 @@ func TestFormationsHandlerUsesExistingBoardWireAndArrangeSurfacesForTools(t *tes
 
 	wireReq := httptest.NewRequest(
 		http.MethodPatch,
-		"/api/formations/boards/tool-parity",
+		"/api/missions/tool-parity",
 		bytes.NewBufferString(`{"wireConnection":{"from":"tool_normalize:port_tool_out","to":"tool_sink:port_sink_in"},"expectedRev":4,"updatedBy":"agent:test"}`),
 	)
 	wireReq.Header.Set("If-Match", getResponse.Data.Board.ETag)
@@ -63,7 +63,7 @@ func TestFormationsHandlerUsesExistingBoardWireAndArrangeSurfacesForTools(t *tes
 	var wireResponse struct {
 		Success bool `json:"success"`
 		Data    struct {
-			Board formations.BoardDocument `json:"board"`
+			Board formations.BoardDocument `json:"mission"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(wireRec.Body.Bytes(), &wireResponse); err != nil {
@@ -91,7 +91,7 @@ func TestFormationsHandlerUsesExistingBoardWireAndArrangeSurfacesForTools(t *tes
 
 	unwireReq := httptest.NewRequest(
 		http.MethodPatch,
-		"/api/formations/boards/tool-parity",
+		"/api/missions/tool-parity",
 		bytes.NewBufferString(fmt.Sprintf(
 			`{"unwireConnection":{"from":"tool_normalize:port_tool_out","to":"tool_sink:port_sink_in"},"expectedRev":%d,"updatedBy":"agent:test"}`,
 			wired.Rev,
@@ -106,7 +106,7 @@ func TestFormationsHandlerUsesExistingBoardWireAndArrangeSurfacesForTools(t *tes
 	var unwireResponse struct {
 		Success bool `json:"success"`
 		Data    struct {
-			Board formations.BoardDocument `json:"board"`
+			Board formations.BoardDocument `json:"mission"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(unwireRec.Body.Bytes(), &unwireResponse); err != nil {
@@ -124,7 +124,7 @@ func TestFormationsHandlerUsesExistingBoardWireAndArrangeSurfacesForTools(t *tes
 
 	gateWireReq := httptest.NewRequest(
 		http.MethodPatch,
-		"/api/formations/boards/tool-parity",
+		"/api/missions/tool-parity",
 		bytes.NewBufferString(fmt.Sprintf(
 			`{"wireConnection":{"from":"tool_normalize:port_tool_out","to":"gate_review:in"},"expectedRev":%d,"updatedBy":"agent:test"}`,
 			unwired.Rev,
@@ -139,7 +139,7 @@ func TestFormationsHandlerUsesExistingBoardWireAndArrangeSurfacesForTools(t *tes
 	var gateWireResponse struct {
 		Success bool `json:"success"`
 		Data    struct {
-			Board formations.BoardDocument `json:"board"`
+			Board formations.BoardDocument `json:"mission"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(gateWireRec.Body.Bytes(), &gateWireResponse); err != nil {
@@ -156,7 +156,7 @@ func TestFormationsHandlerUsesExistingBoardWireAndArrangeSurfacesForTools(t *tes
 		t.Fatalf("read Tool layout before arrange: %v", err)
 	}
 	boardBytesBeforeArrange := readFormationsAPIFile(t, store.BoardPath("tool-parity"))
-	arrangeReq := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/tool-parity/layout", bytes.NewBufferString(`{"arrange":true}`))
+	arrangeReq := httptest.NewRequest(http.MethodPatch, "/api/missions/tool-parity/layout", bytes.NewBufferString(`{"arrange":true}`))
 	arrangeReq.Header.Set("If-Match", layout.ETag)
 	arrangeRec := httptest.NewRecorder()
 	mux.ServeHTTP(arrangeRec, arrangeReq)
@@ -249,7 +249,7 @@ rev = 4
 updatedBy = "agent:test"
 updatedAt = "2026-07-20T00:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Inspect the Tool"
@@ -319,8 +319,8 @@ criterion = "Normalized report is acceptable"
 
 func formationsAPIToolParityLayoutFixture() string {
 	return `schema = 1
-boardId = "brd_tool_parity"
-boardRev = 4
+missionId = "brd_tool_parity"
+missionRev = 4
 updatedAt = "2026-07-20T00:00:00Z"
 
 [[node]]

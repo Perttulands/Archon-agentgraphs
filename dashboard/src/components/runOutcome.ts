@@ -1,3 +1,4 @@
+import { endPathWords } from './endNode'
 import type { GateRoute, GateRouteTarget, RunLimitUse } from './formationsApi'
 import type { EvidenceProblem } from '../evidence/runEvidenceApi'
 
@@ -112,18 +113,22 @@ export function gateRouteWords(verdict: 'pass' | 'fail', route: GateRoute | unde
       last: false,
     }
   }
-  if (route.endsRun) return { button: `${verb} and end the run`, outcome: `${verb} ends the run.`, blocks: false, last: false }
-  if (route.nothingFollows) return { button: verb, outcome: `${verb}: nothing follows this gate.`, blocks: false, last: false }
-  if (route.unwired || !route.targets.length) {
-    return verdict === 'fail'
-      ? { button: verb, outcome: 'Send back blocks the run: this gate has no send-back route.', blocks: true, last: false }
-      : { button: verb, outcome: '', blocks: false, last: false }
+  if (!route.targets.length) return { button: verb, outcome: '', blocks: false, last: false }
+  // Every route leads somewhere (form-o7p.10); an End node target ends this path.
+  const steps = route.targets.filter(target => target.kind !== 'end')
+  const ends = route.targets.filter(target => target.kind === 'end').map(target => endPathWords(target.outcome))
+  if (!steps.length) {
+    const ended = ends.join(' and ')
+    if (route.endsRun && route.runFails) return { button: `${verb} and fail the run`, outcome: `${verb}: ${ended}, and with nothing else to run, the run fails.`, blocks: false, last: false }
+    if (route.endsRun) return { button: `${verb} and end the run`, outcome: `${verb}: ${ended}, and with nothing else to run, the run succeeds.`, blocks: false, last: false }
+    if (route.runFails) return { button: verb, outcome: `${verb}: ${ended}, so the run fails once its other open work ends.`, blocks: false, last: false }
+    return { button: verb, outcome: `${verb}: ${ended}; the run goes on with its other work.`, blocks: false, last: false }
   }
-  const to = titles(route.targets)
+  const to = titles(steps)
   const button = verdict === 'pass' ? `${verb} → ${to}` : `${verb} to ${to}`
   let last = false
   // What each destination does with the answer, with its attempt when it has run before.
-  const clauses = route.targets.map(target => {
+  const clauses = steps.map(target => {
     const name = target.title || target.nodeId
     let attempt = ''
     if (target.attempt && target.maxAttempts && target.attempt >= 2) {
@@ -146,5 +151,7 @@ export function gateRouteWords(verdict: 'pass' | 'fail', route: GateRoute | unde
       notes.push(`the run has ${left} of ${route.dispatches.max} dispatches left`)
     }
   }
-  return { button, outcome: `${verb}: ${[...clauses, ...notes].join('; ')}.`, blocks: false, last }
+  // A rejected path already ended, or this route ends one: the run fails once its work ends.
+  if (route.runFails) notes.push('the run fails once its other open work ends')
+  return { button, outcome: `${verb}: ${[...clauses, ...ends, ...notes].join('; ')}.`, blocks: false, last }
 }

@@ -3,7 +3,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { DEFAULT_THEME, themeCss } from './src/theme/theme'
 
-const apiTarget = process.env.FORMATIONS_API_URL
+const apiTarget = process.env.ARCHON_API_URL
 
 export default defineConfig({
   plugins: [react(), {

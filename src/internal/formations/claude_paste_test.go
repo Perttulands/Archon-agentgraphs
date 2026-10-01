@@ -32,7 +32,7 @@ func TestClaudeNativePastedPointerRecognition(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			user := map[string]any{"type": "user", "uuid": "pointer-message", "origin": map[string]string{"kind": tt.origin}, "cwd": tt.cwd, "sessionId": tt.session, "isMeta": tt.meta, "message": map[string]any{"role": "user", "content": tt.text}}
-			assistant := map[string]any{"type": "assistant", "cwd": "/work", "sessionId": "session", "message": map[string]any{"role": "assistant", "model": "claude-opus-5", "stop_reason": "end_turn", "content": []map[string]string{{"type": "text", "text": "<<<CHROTE-DONE run-id=run_fixture status=ok artifact=none>>>"}}}}
+			assistant := map[string]any{"type": "assistant", "cwd": "/work", "sessionId": "session", "message": map[string]any{"role": "assistant", "model": "claude-opus-5", "stop_reason": "end_turn", "content": []map[string]string{{"type": "text", "text": "<<<ARCHON-DONE run-id=run_fixture status=ok artifact=none>>>"}}}}
 			a, _ := json.Marshal(user)
 			b, _ := json.Marshal(assistant)
 			path := filepath.Join(t.TempDir(), "native.jsonl")

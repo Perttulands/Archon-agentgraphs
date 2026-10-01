@@ -168,7 +168,7 @@ func (w *runWaiter) wait(timeout time.Duration) (*waitOutput, int, error) {
 // such as while it restarts.
 func (w *runWaiter) poll(hold time.Duration) (*coordinator.RunWait, bool, error) {
 	query := url.Values{"until": {w.until}, "since": {strconv.Itoa(w.since)}, "hold": {strconv.Itoa(int(hold / time.Second))}}
-	response, err := w.http.Get(w.client.server + "/api/formations/runs/" + url.PathEscape(w.runID) + "/wait?" + query.Encode())
+	response, err := w.http.Get(w.client.server + "/api/runs/" + url.PathEscape(w.runID) + "/wait?" + query.Encode())
 	if err != nil {
 		return nil, true, fmt.Errorf("daemon unreachable: %w", err)
 	}
@@ -382,20 +382,29 @@ func writeWaitAsk(b *strings.Builder, server, runID string, ask coordinator.Wait
 
 // describeGateRoute says where a verdict leads, as the cockpit's answer panel does.
 func describeGateRoute(route formations.GateRoute) string {
-	var where string
-	switch {
-	case len(route.Targets) > 0:
-		titles := make([]string, 0, len(route.Targets))
-		for _, target := range route.Targets {
-			titles = append(titles, strconv.Quote(firstWaitNonEmpty(target.Title, target.NodeID)))
+	var parts, steps []string
+	for _, target := range route.Targets {
+		if target.Kind == "end" {
+			continue
 		}
-		where = "goes to " + strings.Join(titles, ", ")
+		steps = append(steps, strconv.Quote(firstWaitNonEmpty(target.Title, target.NodeID)))
+	}
+	if len(steps) > 0 {
+		parts = append(parts, "goes to "+strings.Join(steps, ", "))
+	}
+	for _, target := range route.Targets {
+		if target.Kind == "end" {
+			parts = append(parts, "this path ends ("+target.Outcome+")")
+		}
+	}
+	where := strings.Join(parts, "; ")
+	switch {
+	case route.EndsRun && route.RunFails:
+		where += ", and nothing else can run, so the run fails"
 	case route.EndsRun:
-		where = "ends the run"
-	case route.NothingFollows:
-		where = "nothing follows this gate; the run goes on with its other work"
-	case route.Unwired:
-		where = "no route is wired, so the run blocks"
+		where += ", and nothing else can run, so the run succeeds"
+	case route.RunFails:
+		where += ", so the run fails once its other open work ends"
 	}
 	limit := route.Limit
 	if where == "" || limit == nil {

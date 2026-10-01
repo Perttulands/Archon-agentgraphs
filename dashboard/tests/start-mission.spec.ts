@@ -1,18 +1,18 @@
 import { expect, test } from '@playwright/test'
-import { wayfindingFixture } from './wayfinding-fixture'
+import { scoutingFixture } from './scouting-fixture'
 
 test('pending launch keeps focus on enabled dialog controls', async ({ page }) => {
-  const fixture = await wayfindingFixture(page)
+  const fixture = await scoutingFixture(page)
   let release!: () => void
   const pending = new Promise<void>(resolve => { release = resolve })
   let submissions = 0
-  await page.route('**/api/formations/runs', async route => {
+  await page.route('**/api/runs', async route => {
     if (route.request().method() !== 'POST') return route.fallback()
     submissions++
     await pending
     await route.fulfill({ status: 409, json: { success: false, error: { message: 'Fixture-only pending launch ended' } } })
   })
-  await page.goto('/?mission=wayfinding')
+  await page.goto('/?mission=scouting')
   await page.getByTitle('Start mission', { exact: true }).first().click()
   const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
   await dialog.getByLabel('Workspace', { exact: true }).selectOption('existing')
@@ -38,8 +38,8 @@ test('pending launch keeps focus on enabled dialog controls', async ({ page }) =
 })
 
 test('launch keeps keyboard focus inside and restores its opener after dismissal', async ({ page }) => {
-  const fixture = await wayfindingFixture(page)
-  await page.goto('/?mission=wayfinding')
+  const fixture = await scoutingFixture(page)
+  await page.goto('/?mission=scouting')
   const opener = page.getByTitle('Start mission', { exact: true }).first()
   await opener.click()
   const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
@@ -65,8 +65,8 @@ test('launch keeps keyboard focus inside and restores its opener after dismissal
 })
 
 test('the dialog asks for no launch limits', async ({ page }) => {
-  const fixture = await wayfindingFixture(page)
-  await page.goto('/?mission=wayfinding')
+  const fixture = await scoutingFixture(page)
+  await page.goto('/?mission=scouting')
   await page.getByTitle('Start mission', { exact: true }).first().click()
   const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
   await expect(dialog.getByLabel('Brief', { exact: true })).toBeVisible()
@@ -78,14 +78,14 @@ test('the dialog asks for no launch limits', async ({ page }) => {
 
 for (const switchFromExisting of [false, true]) {
   test(`automatic workspace submits no path${switchFromExisting ? ' after changing modes' : ' by default'}`, async ({ page }) => {
-    const fixture = await wayfindingFixture(page)
+    const fixture = await scoutingFixture(page)
     const submissions: Record<string, unknown>[] = []
-    await page.route('**/api/formations/runs', async route => {
+    await page.route('**/api/runs', async route => {
       if (route.request().method() !== 'POST') return route.fallback()
       submissions.push(route.request().postDataJSON())
       await route.fulfill({ status: 409, json: { success: false, error: { message: 'Fixture-only payload captured' } } })
     })
-    await page.goto('/?mission=wayfinding')
+    await page.goto('/?mission=scouting')
     await page.getByTitle('Start mission', { exact: true }).first().click()
     const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
     const workspace = dialog.getByLabel('Workspace', { exact: true })
@@ -116,14 +116,14 @@ for (const switchFromExisting of [false, true]) {
 
 for (const mode of ['automatic', 'existing']) {
   test(`context paths survive workspace switches and submit in ${mode} mode`, async ({ page }) => {
-    const fixture = await wayfindingFixture(page)
+    const fixture = await scoutingFixture(page)
     const payloads: Record<string, unknown>[] = []
-    await page.route('**/api/formations/runs', async route => {
+    await page.route('**/api/runs', async route => {
       if (route.request().method() !== 'POST') return route.fallback()
       payloads.push(route.request().postDataJSON())
       await route.fulfill({ status: 409, json: { success: false, error: { message: 'Fixture-only payload captured' } } })
     })
-    await page.goto('/?mission=wayfinding')
+    await page.goto('/?mission=scouting')
     await page.getByTitle('Start mission', { exact: true }).first().click()
     const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
     await dialog.getByLabel('Brief', { exact: true }).fill('Inspect the supplied context')

@@ -14,8 +14,8 @@ import (
 // path anywhere the daemon can read, as in CHROTE (ADR-0021).
 
 func (c *Coordinator) registerFileRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/formations/files/preview", c.filePreview)
-	mux.HandleFunc("GET /api/formations/files/raw", c.fileRaw)
+	mux.HandleFunc("GET /api/files/preview", c.filePreview)
+	mux.HandleFunc("GET /api/files/raw", c.fileRaw)
 }
 
 func (c *Coordinator) filePreview(w http.ResponseWriter, r *http.Request) {

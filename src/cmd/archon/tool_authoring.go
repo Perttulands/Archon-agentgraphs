@@ -25,7 +25,7 @@ type archonToolWriteSnapshot struct {
 }
 
 type archonToolInspectResponse struct {
-	Board archonBoardIdentity `json:"board"`
+	Board archonBoardIdentity `json:"mission"`
 	Tool  formations.ToolNode `json:"tool"`
 }
 
@@ -65,7 +65,7 @@ func runToolCreate(store archonToolStore, args []string, stdout, stderr io.Write
 	}
 	snapshot, err := readArchonToolWriteSnapshot(store, fs.Arg(0))
 	if err != nil {
-		return failJSON(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	result, err := store.CreateTool(snapshot.slug, formations.ToolCreateRequest{
 		ProfileID:      *profileID,
@@ -110,7 +110,7 @@ func runToolUpdate(store archonToolStore, args []string, stdout, stderr io.Write
 	}
 	snapshot, err := readArchonToolWriteSnapshot(store, fs.Arg(0))
 	if err != nil {
-		return failJSON(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	toolID, err := resolveToolSelector(snapshot.board, fs.Arg(1))
 	if err != nil {
@@ -142,7 +142,7 @@ func runToolDelete(store archonToolStore, args []string, stdout, stderr io.Write
 	}
 	snapshot, err := readArchonToolWriteSnapshot(store, fs.Arg(0))
 	if err != nil {
-		return failJSON(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	toolID, err := resolveToolSelector(snapshot.board, fs.Arg(1))
 	if err != nil {
@@ -182,11 +182,11 @@ func runToolInspect(store archonToolStore, args []string, stdout, stderr io.Writ
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return failJSON(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeToolInspect(stdout, stderr, board, fs.Arg(1), *jsonOut)
 }

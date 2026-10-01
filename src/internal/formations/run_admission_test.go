@@ -44,7 +44,7 @@ func TestDraftAuthoringSavesBlankAndPartialFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	if got, ok := findMission(reloaded, mission.Mission.ID); !ok || got.BeadID != "" || got.Title != "Input" {
+	if got, ok := findMission(reloaded, mission.Mission.ID); !ok || got.Title != "Input" {
 		t.Fatalf("reloaded mission = %+v, want draft with default title and no Bead", got)
 	}
 	if got, ok := findGate(reloaded.Gates, partialGate.Gate.ID); !ok || got.Check != "output_absent" || got.CheckVersion != "1" || got.CheckValue != "" {
@@ -61,10 +61,6 @@ func TestDraftAuthoringSavesBlankAndPartialFields(t *testing.T) {
 		name  string
 		write func() error
 	}{
-		{"unsafe Bead ID", func() error {
-			_, err := store.CreateMission("sketch", MissionCreateRequest{BeadID: "Home-123"}, current())
-			return err
-		}},
 		{"unknown profile tuple", func() error {
 			_, err := store.CreateGate("sketch", GateCreateRequest{Check: "no_such_profile", CheckVersion: "1"}, current())
 			return err
@@ -114,7 +110,7 @@ slug = "draft"
 title = "Draft"
 rev = 3
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Ship it"
@@ -148,10 +144,13 @@ id = "slot_lead"
 label = "Lead"
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 [[formation.slot]]
 id = "slot_worker"
 label = "Worker"
 agentId = "nobody-here"
+harness = "claude-code"
+effort = "medium"
 
 [[formation]]
 id = "fmn_sketch"
@@ -235,8 +234,22 @@ func TestRunAdmissionReportsEveryProblemAtOnce(t *testing.T) {
 			t.Errorf("finding %s = %q, want message containing %q", key, got[key], substring)
 		}
 	}
-	if len(report.Errors) != len(want) {
-		t.Errorf("mission-scoped errors = %+v, want exactly %d findings", report.Errors, len(want))
+	// Every route on the run path leads somewhere (form-o7p.10): admission
+	// names each one that leads nowhere.
+	var nowhere []string
+	for _, finding := range findBoardFindings(report.Errors, FindingRouteLeadsNowhere) {
+		nowhere = append(nowhere, finding.NodeID+": "+finding.Message)
+	}
+	wantNowhere := []string{
+		"gate_lint: Lint's fail route leads nowhere: wire it to a step or an End node",
+		"gate_review: Review's fail route leads nowhere: wire it to a step or an End node",
+		"gate_review: Review's pass route leads nowhere: wire it to a step or an End node",
+	}
+	if strings.Join(nowhere, "\n") != strings.Join(wantNowhere, "\n") {
+		t.Errorf("route_leads_nowhere findings = %q, want %q", nowhere, wantNowhere)
+	}
+	if len(report.Errors) != len(want)+len(wantNowhere) {
+		t.Errorf("mission-scoped errors = %+v, want exactly %d findings", report.Errors, len(want)+len(wantNowhere))
 	}
 	for _, finding := range append(report.Errors, report.Warnings...) {
 		if finding.NodeID == "gate_unwired" || (finding.NodeID == "fmn_sketch" && finding.Code == FindingUnstaffedSlot) {
@@ -277,7 +290,7 @@ func TestRunAdmissionReportsEveryProblemAtOnce(t *testing.T) {
 // that message.
 func TestRunAdmissionRefusesAFileWithSeveralInputCards(t *testing.T) {
 	store := NewStore(t.TempDir())
-	raw := strings.Replace(admissionDraftBoard, "[[formation]]", "[[mission]]\nid = \"mis_idle\"\ntitle = \"Idle\"\ngoal = \"\"\n\n[[formation]]", 1)
+	raw := strings.Replace(admissionDraftBoard, "[[formation]]", "[[inputCard]]\nid = \"mis_idle\"\ntitle = \"Idle\"\ngoal = \"\"\n\n[[formation]]", 1)
 	writeFixture(t, store.BoardPath("draft"), raw)
 	board, err := store.ReadBoard("draft")
 	if err != nil {
@@ -290,7 +303,7 @@ func TestRunAdmissionRefusesAFileWithSeveralInputCards(t *testing.T) {
 		t.Fatalf("validation errors = %+v, want one several_input_cards finding", whole.Errors)
 	}
 	message := findings[0].Message
-	for _, part := range []string{`mission "draft" holds 2 Input cards`, `"Main" (mis_main)`, `"Idle" (mis_idle)`, "draft.formation.toml", "new id, slug and title", "delete"} {
+	for _, part := range []string{`mission "draft" holds 2 Input cards`, `"Main" (mis_main)`, `"Idle" (mis_idle)`, "draft.mission.toml", "new id, slug and title", "delete"} {
 		if !strings.Contains(message, part) {
 			t.Fatalf("migration message %q lacks %q", message, part)
 		}
@@ -312,12 +325,15 @@ func TestRunAdmissionRefusesAFileWithSeveralInputCards(t *testing.T) {
 func TestRunAdmissionAcceptsCompleteRunPath(t *testing.T) {
 	store := NewStore(t.TempDir())
 	raw := admissionDraftBoard
-	raw = strings.Replace(raw, "id = \"slot_plan\"\nlabel = \"Planner\"", "id = \"slot_plan\"\nlabel = \"Planner\"\nagentId = \"codex-builder\"\nharness = \"openai-codex\"", 1)
+	raw = strings.Replace(raw, "id = \"slot_plan\"\nlabel = \"Planner\"", "id = \"slot_plan\"\nlabel = \"Planner\"\nagentId = \"codex-builder\"\nharness = \"openai-codex\"\neffort = \"medium\"", 1)
 	raw = strings.Replace(raw, "checkVersion = \"1\"", "checkVersion = \"1\"\ncheckValue = \"error\"", 1)
-	raw = strings.Replace(raw, "harness = \"openai-codex\"\n[[formation.slot]]\nid = \"slot_worker\"", "harness = \"openai-codex\"\ncontroller = true\n[[formation.slot]]\nid = \"slot_worker\"", 1)
-	raw = strings.Replace(raw, `agentId = "nobody-here"`, "agentId = \"codex-builder\"\nharness = \"openai-codex\"", 1)
+	raw = strings.Replace(raw, "effort = \"medium\"\n[[formation.slot]]\nid = \"slot_worker\"", "effort = \"medium\"\ncontroller = true\n[[formation.slot]]\nid = \"slot_worker\"", 1)
+	raw = strings.Replace(raw, `agentId = "nobody-here"`, "agentId = \"codex-builder\"\nharness = \"openai-codex\"\neffort = \"medium\"", 1)
 	raw = strings.Replace(raw, `type = "flow"`, `type = "solo"`, 1)
 	raw = strings.Replace(raw, "[[connection]]\nid = \"edge_review\"\nfrom = \"fmn_build:port_build_out\"\nto = \"gate_review:in\"\n", "", 1)
+	raw += branchingBoardEnds() +
+		branchingBoardConnection("edge_build_done", "fmn_build:port_build_out", "end_done:in") +
+		branchingBoardConnection("edge_lint_rejected", "gate_lint:fail", "end_rejected:in")
 	writeFixture(t, store.BoardPath("draft"), raw)
 	board, err := store.ReadBoard("draft")
 	if err != nil {

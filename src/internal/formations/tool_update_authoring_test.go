@@ -14,8 +14,8 @@ func TestUpdateToolPresentLayoutChangesOnlyAuthoredFieldsAndFiltersStaleAuthorit
 	boardRaw := toolUpdateConnectedBoardFixture(slug, 7)
 	boardRaw = strings.Replace(boardRaw, "schema = 2\n", "schema = 2 # preserve schema source\nx_board_owner = 'keep exact' # preserve root extension\n", 1)
 	layoutRaw := `schema = 1 # preserve schema comment
-boardId = "brd_tool-update-present"
-boardRev = 7 # preserve revision comment
+missionId = "brd_tool-update-present"
+missionRev = 7 # preserve revision comment
 updatedAt = "2026-07-19T00:00:00Z" # preserve timestamp comment
 x_layout_owner = "keep"
 
@@ -177,7 +177,7 @@ note = "preserve this table exactly"`,
 		}
 		previous = index
 	}
-	if !strings.Contains(result.Layout.TOML, `boardRev = 8 # preserve revision comment`) ||
+	if !strings.Contains(result.Layout.TOML, `missionRev = 8 # preserve revision comment`) ||
 		!strings.Contains(result.Layout.TOML, `updatedAt = "2026-07-20T08:30:00Z" # preserve timestamp comment`) {
 		t.Fatalf("update did not advance layout identity in place:\n%s", result.Layout.TOML)
 	}
@@ -281,8 +281,8 @@ func TestUpdateToolPreservesPlacedTargetCoordinatesExactly(t *testing.T) {
 	slug := "tool-update-placed"
 	boardRaw := toolAuthoringBoardFixture(slug, 3, true, toolUpdateTargetBlock())
 	layoutRaw := `schema = 1
-boardId = "brd_tool-update-placed"
-boardRev = 3
+missionId = "brd_tool-update-placed"
+missionRev = 3
 
 # the user placed this Tool; UPDATE must never reflow it
 [[node]]
@@ -498,7 +498,7 @@ func TestUpdateToolRequiresExactClosedPairCASWithoutMutation(t *testing.T) {
 			store := newToolAuthoringStore(t)
 			slug := "tool-update-cas"
 			boardRaw := toolAuthoringBoardFixture(slug, 5, true, toolUpdateTargetBlock())
-			layoutRaw := "schema = 1\nboardId = \"brd_tool-update-cas\"\nboardRev = 5\n\n[[node]]\nid = \"tool_target\"\nx = 112\ny = 224\n"
+			layoutRaw := "schema = 1\nmissionId = \"brd_tool-update-cas\"\nmissionRev = 5\n\n[[node]]\nid = \"tool_target\"\nx = 112\ny = 224\n"
 			writeFixture(t, store.BoardPath(slug), boardRaw)
 			writeFixture(t, store.LayoutPath(slug), layoutRaw)
 			board, layout := toolAuthoringReadPair(t, store, slug)
@@ -565,7 +565,7 @@ func TestUpdateToolRejectsInvalidBoardOrLayoutAuthorityWithoutMutation(t *testin
 			name:  "layout board mismatch",
 			board: func(slug string) string { return toolAuthoringBoardFixture(slug, 3, true, toolUpdateTargetBlock()) },
 			layout: func(string) *string {
-				value := "schema = 1\nboardId = \"brd_other\"\nboardRev = 3\n"
+				value := "schema = 1\nmissionId = \"brd_other\"\nmissionRev = 3\n"
 				return &value
 			},
 			wantMarker: "does not match",
@@ -574,7 +574,7 @@ func TestUpdateToolRejectsInvalidBoardOrLayoutAuthorityWithoutMutation(t *testin
 			name:  "duplicate layout node id",
 			board: func(slug string) string { return toolAuthoringBoardFixture(slug, 3, true, toolUpdateTargetBlock()) },
 			layout: func(slug string) *string {
-				value := "schema = 1\nboardId = \"brd_" + slug + "\"\nboardRev = 3\n\n[[node]]\nid = \"tool_target\"\nx = 1\ny = 2\n\n[[node]]\nid = \"tool_target\"\nx = 3\ny = 4\n"
+				value := "schema = 1\nmissionId = \"brd_" + slug + "\"\nmissionRev = 3\n\n[[node]]\nid = \"tool_target\"\nx = 1\ny = 2\n\n[[node]]\nid = \"tool_target\"\nx = 3\ny = 4\n"
 				return &value
 			},
 			wantMarker: "duplicate_layout_id",
@@ -638,8 +638,8 @@ func TestUpdateToolRejectsMalformedUnknownBoardTOMLWithoutMutation(t *testing.T)
 			title := "Must not publish"
 
 			_, err = store.UpdateTool(slug, ToolUpdateRequest{ToolID: "tool_target", Title: &title}, toolAuthoringAbsentOptions(before))
-			if err == nil || !strings.Contains(err.Error(), "invalid_board_source") {
-				t.Fatalf("malformed unknown board source error = %v, want invalid_board_source", err)
+			if err == nil || !strings.Contains(err.Error(), "invalid_mission_source") {
+				t.Fatalf("malformed unknown board source error = %v, want invalid_mission_source", err)
 			}
 			assertToolAuthoringPairUnchanged(t, store, slug, boardRaw, nil)
 		})

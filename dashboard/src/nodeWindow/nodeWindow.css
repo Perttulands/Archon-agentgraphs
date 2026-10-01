@@ -59,3 +59,9 @@ button.nwin-route:hover { color: var(--accent); text-decoration-color: var(--acc
 .nwin-state.state-blocked, .nwin-state.state-waiting { color: var(--window-orange); }
 .nwin-state.state-failed { color: var(--color-error); }
 .nwin-state.state-done { color: var(--window-green); }
+/* End node outcome (form-o7p.10): done in green, rejected in the error red. */
+.nwin-outcomes { display: flex; gap: 6px; }
+.nwin-outcome { padding: 5px 14px; border-radius: 999px; border: 1px solid var(--divider); background: transparent; color: var(--text-secondary); font: inherit; font-size: 11.5px; cursor: pointer; }
+.nwin-outcome:hover { color: var(--text-primary); border-color: var(--accent); }
+.nwin-outcome.end-done.on { border-color: var(--window-green); color: var(--window-green); background: color-mix(in srgb, var(--window-green) 12%, transparent); }
+.nwin-outcome.end-rejected.on { border-color: var(--color-error); color: var(--color-error); background: color-mix(in srgb, var(--color-error) 12%, transparent); }

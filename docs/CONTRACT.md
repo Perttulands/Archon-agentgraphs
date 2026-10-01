@@ -7,9 +7,8 @@ Archon makes chaining agents and gates easy and great, and that is all it does
 tmux sessions with full access to everything, as in CHROTE: Archon adds no
 sandboxing, file confinement, blast-radius limits or authority checks, and
 safety lives in the configuration of the agents it runs. Archon keeps only what
-is current, with no legacy paths or backwards compatibility. Where this contract
-still describes a confinement or compatibility path, that path is scheduled for
-removal under ADR-0021.
+is current, with no backwards compatibility: when a name or format changes, the
+deploy migrates live data once and the old path is deleted.
 
 Archon builds and runs work graphs with agents and gates. `archond` owns
 execution and serves the Archon UI. The `archon` CLI authors the same
@@ -19,30 +18,18 @@ history. Host deployment, forwarding and CHROTE integration live outside this
 repository. [ADR-0016](adr/0016-daily-capability.md) records the daily-capability
 decisions; [examples](../examples/) provide reusable missions.
 
-## Names and compatibility
-
-Archon ships the `archon` CLI, `archond` daemon and browser UI together.
-`formationsd` remains a compatibility entrypoint for the same daemon. Existing
-`.formations` storage, `/api/formations` routes, `form-` session names, browser
-preferences and `CHROTE_*` configuration/protocol identifiers retain their exact
-spelling. Existing mission files and run history need no migration. A formation
-remains the domain name for an execution node. The reusable unit was called a
-board until 2026-09; file formats, JSON fields and code identifiers still say
-`board`, while everything a person or agent reads or types says mission.
-Historical designs use the earlier product names; they do not define current
-behavior.
-
 ## Definitions and storage
 
 | Noun | Meaning |
 | --- | --- |
-| Mission | The reusable unit: one schema-1 TOML graph file with a stable ID, slug and revision. Its TOML and JSON still use the word `board`. |
-| Input card | The mission's entry node (`[[mission]]` in TOML) with the mission's goal, input hint and `out` port. A run supplies its input text. A mission has one Input card. |
-| Formation | An execution node. `solo` has one seat; `peer` has peer seats; `orchestrated` has a controller directing its bound workers. |
+| Mission | The reusable unit: one schema-1 TOML graph file, `<slug>.mission.toml`, with a stable ID, slug and revision. |
+| Input card | The mission's entry node (`[[inputCard]]` in TOML, `inputCards` in JSON) with the mission's goal, input hint and `out` port. A run supplies its input text. A mission has one Input card. |
+| Formation | A step: the team of agents that does it. `solo` has one seat; `peer` has peer seats; `orchestrated` has a controller directing its bound workers. |
 | Slot | A position in a formation that owns what its seat runs: a harness (`claude-code` or `openai-codex`), a model (blank means the harness default) and an effort, plus an optional role (`agentId`, a persona). A slot without a role is a vanilla agent, such as `claude-code · opus · low`. A seat is the slot's runtime agent session. |
-| Persona (role) | A TOML agent card with generic role text: a summary, capabilities and kind. It carries no model or effort for new work; a card's legacy harness variant settings are still read, for migration and the cockpit's role drag. Presets remain available; local cards can override them. |
-| Harness variant | A persona card's legacy `openai-codex` or `claude-code` settings, including session stem, model and effort. Seats start from slot settings, never from a variant's launch string. |
+| Persona (role) | A TOML agent card with generic role text: a summary, capabilities and kind. A new card carries no model or effort; an existing card's harness variant settings are read by the cockpit's role drag and `archon agent spawn`. Presets remain available; local cards can override them. |
+| Harness variant | A persona card's `openai-codex` or `claude-code` settings: session stem, model and effort. Seats start from slot settings. |
 | Gate | A criterion with one or more kinds: `code`, `formation`, `human`. Its ports are `in`, `pass`, `fail`, `judge`. |
+| End node | Ends a path on purpose (`[[end]]` in TOML: `id`, `title`, `outcome`). Its outcome is `done` or `rejected`. Its only port is `in`, which takes any number of routes; it leads nowhere. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
 | Judge chain | Formations wired from a gate's `judge` port and back to that same port. The final judge result decides the formation kind. |
 | Pushback edge | A gate's `fail` connection back to work, delivering feedback and starting the next attempt, capped only when the run set `maxAttempts`. There is no `retry_control` port. |
@@ -51,16 +38,17 @@ behavior.
 | Projection | A sanitized view derived from the ledger, shared by HTTP, Archon and the cockpit. |
 
 The private `<state-dir>` is also Archon's `--workspace`. It contains
-`.formations/boards/*.formation.toml`, `.formations/notes/*.notes.toml`, layouts,
-`.formations/runs` ledgers and snapshots, `.formations/artifacts`, and `briefs`.
-Persona cards default to `<state-dir>/agents`; daemon `--agents-dir` can select
-another absolute directory. Match offline persona authoring to that directory
-with `CHROTE_AGENTS_DIR` when using an override.
+`.archon/missions/*.mission.toml`, `.archon/notes/*.notes.toml`,
+`.archon/layout/*.layout.toml`, `.archon/runs` ledgers and snapshots,
+`.archon/artifacts`, and `briefs`. Persona cards default to `<state-dir>/agents`;
+daemon `--agents-dir` can select another absolute directory. Match offline
+persona authoring to that directory with `ARCHON_AGENTS_DIR` when using an
+override.
 
 A slot owns its harness, model and effort. Staff it with `archon formation
 assign <mission> <formation> --slot <slot> --harness <h> --effort <e>
-[--model <m>] [--role <persona>]` (`--agent` is the older name for `--role`),
-or the `assignSlot` board patch with `agentId`, `harness`, `model` and
+[--model <m>] [--role <persona>]`,
+or the `assignSlot` mission patch with `agentId`, `harness`, `model` and
 `effort`. Staffing always states its effort: the CLI requires `--harness` and
 `--effort`, and a patch without an effort is refused with
 `INVALID_SLOT_SETTINGS` (HTTP 422, CLI code `invalid_slot_settings`), except a
@@ -74,19 +62,9 @@ roster serves as `effortPolicy`: `low` for errands, `medium` for making
 things, `xhigh` for architecture and review, `max` for consequential reviews.
 One role may staff several slots, each with its own settings.
 
-Slots written before slots owned their settings name a role and no model or
-effort. archond migrates them at startup, and `archon mission migrate-slots
-[<mission>] [--dry-run] [--json]` does the same offline: each such slot takes
-its role's current effective harness, model and effort (a blank variant effort
-is `medium`), so every seat launches exactly as before. The command prints each
-staffed slot's seat launch before and after; the daemon logs each migrated slot
-and any slot it left alone, such as one whose role is missing. A board write
-records `updatedBy = "archon:slot-settings-migration"`. Until a slot is
-migrated, admission still reads its settings from its role.
-
 A new role carries no model or effort: `POST /api/agents` and `archon agent
 new` refuse them with `INVALID_AGENT_CARD`, and the New agent form no longer
-asks for them. An existing card's legacy variant settings are still edited per
+asks for them. An existing card's variant settings are edited per
 harness variant in the Agents view inspector and persona editor, with `model`,
 `effort` and `variant` (or a `variants` list) on `PATCH /api/agents`, or with
 `archon agent edit --model --effort` (`edit --harness` picks the variant); the
@@ -97,12 +75,9 @@ blank model or effort clears it to the harness default model or `medium`.
 Persona reads carry each variant's `effectiveEffort` and `seatLaunch`, the
 command a seat with those settings runs, rendered by the seat launcher from the harness CLI on the
 reader's PATH (the daemon's for HTTP); `seatLaunchError` says why a variant
-cannot start. `archon agent spawn` runs the same command. A card's `launch`
-string is legacy: new cards get none, seats and spawn ignore it for
-`claude-code` and `openai-codex`, and it is kept only for a harness Archon
-cannot start, such as `hermes`, whose `agent spawn` still runs it; the editor,
-the New agent form and a `variants` entry's `launch` edit it for such a harness
-only. One edit names each variant once.
+cannot start. `archon agent spawn` runs the same command, and refuses a harness
+Archon cannot start, such as `hermes`. Cards hold no launch string. One edit
+names each variant once.
 
 Notes are operator intent, not
 automatically executable briefs. Read mission and element notes, then translate
@@ -117,10 +92,11 @@ rather than rewriting someone else's note. The cockpit writes as `human:ui`. It
 shows notes on the canvas in their own layer above the cards, as a preview of
 each thread's latest entry, the full thread, or hidden, with the operator's and
 agents' entries styled apart. A card's note pin or sticky, or Mission notes, opens
-a thread in a floating window to reply, and to edit or delete your own entries. Notes files written before threads (schema 1) still load, each text as
-one human entry, and are saved as schema 2 on the next write.
+a thread in a floating window to reply, and to edit or delete your own entries.
+Notes files are schema 2: `missionId`, `rev`, and one `[[entry]]` per entry
+with its `target` (`mission` for the mission's own thread, or a node ID).
 
-A minimal mission file, `hello.formation.toml`, has an Input card and one staffed
+A minimal mission file, `hello.mission.toml`, has an Input card and one staffed
 formation:
 
 ```toml
@@ -130,8 +106,8 @@ slug = "hello"
 title = "Hello"
 rev = 1
 
-[[mission]]
-id = "mis_hello"
+[[inputCard]]
+id = "inp_hello"
 title = "Hello"
 goal = "Return the supplied input"
 
@@ -158,13 +134,13 @@ controller = true
 
 [[connection]]
 id = "edge_start"
-from = "mis_hello:out"
+from = "inp_hello:out"
 to = "fmn_work:port_in"
 ```
 
 Authoring accepts drafts through the cockpit, HTTP and Archon. Mission, Input
 card, formation, gate, note and persona fields may be blank or partial: a title,
-goal, Input card Bead ID, criterion or code check value can be left out. Blank
+goal, criterion or code check value can be left out. Blank
 values take defaults where a node needs one: a formation becomes `solo`, a
 persona kind becomes `specialist`, an Input card without a title becomes
 `Input`, and a mission named in neither title nor slug becomes `Untitled
@@ -189,7 +165,7 @@ other connection uses it. Wiring errors use `INPUT_OCCUPIED`, `SELF_WIRE`,
 `DUPLICATE_CONNECTION` or `INCOMPATIBLE_TOOL_CONNECTION`; `CONFLICT` remains
 reserved for stale mission revisions or ETags in these edits.
 
-The [delivery mission](../examples/delivery.formation.toml) and its
+The [delivery mission](../examples/delivery.mission.toml) and its
 [notes](../examples/delivery.notes.toml) add Plan, Beads, a Beads-review judge,
 orchestrated Execution and Final review. Six `delivery-*` preset roles staff it, each slot at `medium` effort.
 Execution uses a Claude controller and three Codex workers; Final review uses
@@ -216,11 +192,9 @@ execution and completed-turn recovery use that snapshot after edits, retries
 and restarts, and refuse a snapshot whose settings disagree with the frozen
 slot. An omitted model freezes the choice to use the harness default, which
 remains unpinned; give the slot a model to retain an exact model setting.
-Schema-2 bindings, from runs admitted before slots owned their settings, keep
-working from their frozen persona card's variant. Older schema-1 bindings have
-only paths and hashes. Their history remains readable, but seat execution and
-recovery block with `persona_snapshot_incomplete` instead of substituting
-today's persona. Start a new run to use current staffing.
+Bindings are schema 3; a snapshot in any other schema, or one whose settings
+disagree with its frozen slot, blocks seat execution with
+`persona_snapshot_invalid`. Start a new run to use current staffing.
 
 Admission first checks that `expectedRev` and any `If-Match` name the current
 mission revision (HTTP 409 otherwise). It then builds one report of every
@@ -256,7 +230,8 @@ For an existing project, supply `cwd` as an absolute existing directory.
 `brief` must be nonempty. Archon reads an existing brief file or sends the argument as literal
 text. The brief becomes the Input card's output; the mission goal remains prompt
 context.
-`beadId` is optional in the API but should identify the owning task.
+The run's `beadId` is optional but should identify the owning task. An Input
+card has no Bead ID; a formation brief may name its own.
 
 Runs have no limits unless the launch sets them. `maxDispatch`, `maxAttempts`
 and `wallClockSeconds` are optional; an absent or zero limit means none, in
@@ -284,11 +259,7 @@ claiming success. A block that exhausts attempts or dispatches
 `max_dispatch_exceeded`) records `resumeAllowed: false` and `resumePolicy:
 limit_exhausted`, because resuming could only block again; its run evidence
 names the limit as `limit` (`kind` `attempts` or `dispatches`, `nodeId`,
-`used`, `max`). Older ledgers that recorded such a block as resumable project
-the same way and reject a resume. Ledgers written before limits became
-optional replay as recorded: their limits stay in `run_started`. The engine
-then gave a run without `maxAttempts` one attempt per node, so an attempt
-block in such a ledger names `max` 1.
+`used`, `max`).
 
 A step has no time limit unless its formation authors `[formation.execution]`
 with a positive `timeoutSeconds`; the daemon imposes no default. That
@@ -307,7 +278,9 @@ The projection reports `running`, `waiting_human`, `blocked`, `succeeded`,
 is not a completed delivery. A failed or canceled run names who ended it in
 `endedBy`; why is in its run evidence problems. Events expose node, slot and gate identities,
 attempt, status/verdict, session display name and cleanup outcome where
-applicable.
+applicable. `run_succeeded` and `run_failed` list in `endIds` the End nodes the
+run's paths reached; a `run_failed` with code `path_rejected` names the
+rejected End node as its `nodeId` and the routing gate as its `gateId`.
 Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
 `seat_created`, `seat_prompt_consumed`, `slot_result`, `seat_cleanup`,
 `gate_kind_result`, `gate_verdict`, and a run outcome. Malformed judges emit
@@ -335,7 +308,7 @@ needs the driver, ends or changes, then prints one paragraph for the agent and
 exits. Leave it running in the background and react when it returns:
 
 ```bash
-archon --server "$FORM_SERVER" run wait "$FORM_RUN_ID" --until needs-you
+archon --server "$ARCHON_SERVER" run wait "$ARCHON_RUN_ID" --until needs-you
 ```
 
 `--until` takes `needs-you` (the default), `final` or `any-change`:
@@ -369,7 +342,7 @@ A verdict or resume sent while the command that recorded the ask is still
 settling the run waits for that command, up to five seconds, instead of
 answering 409, so a driver can answer the moment a wait returns.
 
-`--json` prints the daemon's answer (`runId`, `mission`, `until`, `outcome`,
+`--json` prints the daemon's answer (`runId`, `missionSlug`, `missionTitle`, `until`, `outcome`,
 `since`, `seq`, `status`, `final`, `resumeAllowed`, `settled`, `end`, `asks`,
 `changes`) with `next`, the next wait command (absent for a final run), and on
 a lost daemon `error`. `outcome` is `final`, `needs-you` or `changed` from the
@@ -423,7 +396,8 @@ mid-turn or on the operator's unsent text. It submits the brief once its pointer
 shows in the input line, however the harness wraps it. Archon agents must not
 type into seats or manage their sessions.
 
-Sessions are named `form-<run>-<slot>`, optionally prefixed by `--mission-label`.
+Sessions are named `archon-<run>-<slot>`, with the `--mission-label` value
+before the run ID when it is set.
 The runtime creates and cleans up seats by immutable session ID through the
 configured guarded wrapper. The daemon's launch environment must include any
 host-required cleanup override and reason. Wrapper path alone is insufficient.
@@ -477,10 +451,7 @@ operator: waiting for a human, then running, then blocked, newest first. A
 picker switches between open runs and the mission's ten most recent finished
 runs; when no run is open, the run bar still offers the finished ones, and a
 reopened finished run can be put away again. `/?mission=<slug>&run=<runId>`, the link that
-notifications carry, opens that mission and keeps that run shown. A link from
-before the rename, `/?board=<slug>` with or without `run=`, opens the same
-mission and run, and the address bar is rewritten to `?mission=` with its other
-parameters kept. The address bar
+notifications carry, opens that mission and keeps that run shown. The address bar
 keeps a chosen run across reloads, and an unknown linked mission or run is
 reported rather than silently replaced.
 
@@ -530,7 +501,7 @@ mode.
 Each new `seat_created` records its immutable tmux session/pane IDs and a private
 socket/server identity. Linux socket peer credentials, process start time and
 boot identity distinguish the original server from a replacement, even when
-session IDs are reused. A legacy seat without that proof is unavailable for
+session IDs are reused. A seat without that proof is unavailable for
 Peek. A renamed session is still identified by its recorded immutable ID.
 Missing, ended and unavailable seats remain visible with their actual state.
 A seat whose tmux server has exited is unavailable, because the original server
@@ -562,7 +533,7 @@ Use a judge formation to execute checks such as Beads lint or code review.
 
 A judge must emit exactly one fenced block with exactly these keys:
 
-```chrote-verdict
+```archon-verdict
 {"verdict":"pass","reason":"Required checks passed","evidence":["check report reference"]}
 ```
 
@@ -573,22 +544,54 @@ output block, without embedding a second verdict block in it.
 
 A fail edge delivers typed feedback containing gate ID, gate attempt, verdict,
 reason, evidence and original input text/reference. The next prompt renders
-this as a gate-feedback section. An unwired fail leaves a visible block.
+this as a gate-feedback section.
 A pushback also holds when the failing gate was fed by another gate's pass:
 resume never re-delivers an input a gate has already evaluated, so the pushback
-target runs first. A pass cannot finish a run while a fail verdict's target has
-not yet acted on its feedback. Nor can a pass with no route, from any gate
-kind. A run succeeds only when nothing else can still run: every formation has
-produced output since the last delivery it received (a node's output on a wired
-port, or a verdict's route, including a send-back), every gate has evaluated
-the last input it received, and no formation, gate or human request is still
-open. A formation reached only through a route no verdict took is not pending
+target runs first.
+
+### End nodes and how a run finishes
+
+Every route leads somewhere (form-o7p.10). Each formation output and each
+gate's `pass` and `fail` lead to a step, a gate or an End node; an End node
+ends that path on purpose with outcome `done` or `rejected`. Validation reports
+a route that leads nowhere as the error `route_leads_nowhere`, worded "Brief
+sign-off's pass route leads nowhere: wire it to a step or an End node" (or
+"Draft's output leads nowhere", naming the output's label when the step has
+several). Drafts with such routes save and stay editable; admission refuses a
+run whose path holds one, with the same words. A single step's run ignores that
+step's routes. Validation also warns, as `unreachable_node`, about each step,
+gate or End node no path from the Input card reaches: "No path from the Input
+card reaches step Orphan, so no run will get there; wire a route into it or
+delete it".
+
+A run finishes when every path has ended and nothing else can still run: every
+formation has produced output since the last delivery it received (a node's
+output on a wired port, or a verdict's route, including a send-back), every
+gate has evaluated the last input it received, and no formation, gate or human
+request is still open. A delivery to an End node is not work; it ends that
+path. A formation reached only through a route no verdict took is not pending
 work. Resume first runs whatever is still owed, including a send-back a gate
-routes during that resume. The same rule applies on first execution. A
-formation that can never receive a missing input blocks non-resumably with
-`reachable_node_starved`; any other work that remains blocks, resumably, with
-`run_work_unfinished` naming those nodes instead of succeeding. A human
-gate's answer panel says approving ends the run by the same rule.
+routes during that resume, and finishes the run when nothing is; the same rule
+applies on first execution and after a restart. A formation that received
+some of its inputs but can never receive the rest is starved, not work that can
+still run: once nothing else can run, a rejected path fails the run as below
+(the rejection is why the join never ran), and without one the run blocks
+non-resumably with `reachable_node_starved`. Any other work that remains blocks,
+resumably, with `run_work_unfinished` naming those nodes.
+
+A finished run succeeds unless a path ended at a rejected End node. Then it
+records `run_failed` with `code` `path_rejected`, the End node's `endId`, the
+routing gate's `gateId`, and as `reason` that gate verdict's reason (a human
+gate's response, a judge's or code check's reason); the operator who rejected
+is who ended it. A rejected path does not stop other branches: they run to
+their own ends first, and only then does the run fail. A rejected End reached
+from a step's output, with no gate, fails the run with the reason "the path
+ended at <title> (rejected)". A human gate's answer panel says whether a
+verdict ends its path, and whether the run then succeeds or fails, by the same
+rule.
+
+### Human verdicts
+
 A human kind waits for an explicit verdict naming the exact pending sequence;
 stale or duplicate decisions return HTTP 409. There is no default verdict.
 The verdict's `reason` is the operator's response, preserved verbatim including
@@ -601,8 +604,8 @@ feedback reason. Resume rebuilds the response from the verdict recorded for
 that exact request, so it survives restart. Recording the verdict blocks the run
 with code `resume_after_verdict` until the coordinator resumes it; that block is
 a pause, not a failure. Currently, while a human request waits, no other work
-is dispatched; branches not behind the gate run after the verdict, and
-approving a gate with no pass route ends the run only once they have run. The
+is dispatched; branches not behind the gate run after the verdict, and a
+verdict that ends its path ends the run only once they have run. The
 cockpit shows a pending human gate's input with a response box, Approve and Send back.
 A verdict may carry `relayedBy`, the slot ID of the seat that typed the
 operator's confirmed decision (a letter or digit, then up to 63 letters, digits,
@@ -615,25 +618,25 @@ decision "via" the slot's agent.
 
 Real formations must emit all and only their declared output IDs in one block:
 
-```chrote-outputs
+```archon-outputs
 {"port_out":{"text":"Short result"}}
 ```
 
 A payload can also include `ref` naming a text file anywhere on disk,
 preferably under the prompt's artifact directory. Use its full absolute
-filesystem path. A legacy relative `ref` resolves against the state workspace,
-not the run artifact directory. A missing, unreadable, non-text or oversized
-reference blocks routing. Routed data is never redacted: inline payload text,
-a ref file's text, controller plans and peer openings reach the next step
-exactly as the seat wrote them. Redaction applies only to text Archon displays
-to a person (run evidence, file windows). Free-form answer text is not
+filesystem path; a relative `ref` is refused with `invalid_output_ref`. A
+missing, unreadable, non-text or oversized reference blocks routing. Routed
+data is never redacted: inline payload text, a ref file's text, controller
+plans and peer openings reach the next step exactly as the seat wrote them.
+Redaction applies only to text Archon displays to a person (run evidence, file
+windows). Free-form answer text is not
 routed. Finish with the exact run ID substituted in the sentinel:
 
 ```text
-<<<CHROTE-DONE run-id=<run-id> status=ok artifact=<path-or-ref>>>
+<<<ARCHON-DONE run-id=<run-id> status=ok artifact=<path-or-ref>>>
 ```
 
-For a lab judge smoke test, put one synthetic `chrote-verdict` block in the run
+For a lab judge smoke test, put one synthetic `archon-verdict` block in the run
 brief. The lab echo carries it to the judge parser. Peer and orchestrated
 formations echo it once per seat; the lab keeps one copy of identical blocks,
 so the fixture reaches a judge downstream of them, while differing blocks
@@ -761,7 +764,7 @@ For long answers, the operator may give an explicit verdict and name a UTF-8
 file as the exact response. The seat uses `--response-file FILE` instead of
 `--response`, recording the complete file text verbatim and unabridged. A file
 alone does not imply a verdict. The CLI rejects invalid UTF-8, unreadable files
-and combinations with `--response` or its `--reason` alias before any request.
+and combinations with `--response` before any request.
 The cockpit can load a local UTF-8 file into its editable answer box; import
 failures leave the current draft intact. An unedited import retains all file
 text. Editing follows the browser textarea's normal newline behavior.
@@ -769,26 +772,26 @@ text. Editing follows the browser textarea's normal newline behavior.
 ## Operator procedure
 
 Read server URL and state directory from the host runbook or environment.
-`<formations-server>` must be an HTTP URL with a literal IP, no trailing slash,
+`<archon-server>` must be an HTTP URL with a literal IP, no trailing slash,
 credentials, query or fragment. Host forwarding reaches the cockpit over the
 tailnet. Source, binary, UI, state, socket and transcript paths are host values,
-never mission constants. Set `FORM_SOURCE`, `FORM_BIN`, `FORM_STATE`, `FORM_LISTEN`,
-`FORM_SERVER`, `FORM_CWD`, `FORM_BRIEF` and `FORM_BEAD` accordingly. Keep runtime
+never mission constants. Set `ARCHON_SOURCE`, `ARCHON_BIN`, `ARCHON_STATE`, `ARCHON_LISTEN`,
+`ARCHON_SERVER`, `ARCHON_CWD`, `ARCHON_BRIEF` and `ARCHON_BEAD` accordingly. Keep runtime
 state outside the source checkout. Use Go, Node/npm, Bash, curl and jq.
 
 Build and launch a scratch lab daemon, leaving its terminal open:
 
 ```bash
 umask 077
-mkdir -p "$FORM_BIN"
-cd "$FORM_SOURCE/src"
-go build -o "$FORM_BIN/archon" ./cmd/archon
-go build -o "$FORM_BIN/archond" ./cmd/archond
-cd "$FORM_SOURCE/dashboard"
+mkdir -p "$ARCHON_BIN"
+cd "$ARCHON_SOURCE/src"
+go build -o "$ARCHON_BIN/archon" ./cmd/archon
+go build -o "$ARCHON_BIN/archond" ./cmd/archond
+cd "$ARCHON_SOURCE/dashboard"
 npm ci
 npm run build
-"$FORM_BIN/archond" --executor lab --state-dir "$FORM_STATE" \
-  --listen "$FORM_LISTEN" --ui-dir "$FORM_SOURCE/dashboard/dist"
+"$ARCHON_BIN/archond" --executor lab --state-dir "$ARCHON_STATE" \
+  --listen "$ARCHON_LISTEN" --ui-dir "$ARCHON_SOURCE/dashboard/dist"
 ```
 
 For real seats select `--executor tmux` and supply `--socket`, `--tmux-bin`,
@@ -809,16 +812,16 @@ In another terminal use the compiled Archon. Import means copying mission and
 notes TOML; there is no import command:
 
 ```bash
-export PATH="$FORM_BIN:$PATH"
-curl --noproxy '*' --fail --silent --show-error "$FORM_SERVER/healthz"
-mkdir -p "$FORM_STATE/.formations/boards" "$FORM_STATE/.formations/notes"
-cp "$FORM_SOURCE/examples/delivery.formation.toml" "$FORM_STATE/.formations/boards/"
-cp "$FORM_SOURCE/examples/delivery.notes.toml" "$FORM_STATE/.formations/notes/"
-archon --workspace "$FORM_STATE" mission list --json
-archon --workspace "$FORM_STATE" mission inspect delivery --json
-archon --workspace "$FORM_STATE" mission notes delivery --json
-archon --workspace "$FORM_STATE" mission validate delivery --json
-archon --workspace "$FORM_STATE" mission arrange delivery --json
+export PATH="$ARCHON_BIN:$PATH"
+curl --noproxy '*' --fail --silent --show-error "$ARCHON_SERVER/healthz"
+mkdir -p "$ARCHON_STATE/.archon/missions" "$ARCHON_STATE/.archon/notes"
+cp "$ARCHON_SOURCE/examples/delivery.mission.toml" "$ARCHON_STATE/.archon/missions/"
+cp "$ARCHON_SOURCE/examples/delivery.notes.toml" "$ARCHON_STATE/.archon/notes/"
+archon --workspace "$ARCHON_STATE" mission list --json
+archon --workspace "$ARCHON_STATE" mission inspect delivery --json
+archon --workspace "$ARCHON_STATE" mission notes delivery --json
+archon --workspace "$ARCHON_STATE" mission validate delivery --json
+archon --workspace "$ARCHON_STATE" mission arrange delivery --json
 ```
 
 Author through the cockpit, or with Archon's mission, formation, gate, tool and
@@ -841,9 +844,19 @@ wiring, places judge formations below their gate, and puts nodes the Input card
 does not reach after the main path. The same mission always arranges the same
 way.
 `mission new <slug>` creates an empty mission and `mission create <mission>`
-adds its Input card. `mission create`, `formation create` and `gate create`
-print `created <id>`, or with `--json` `{board, layout, mission|formation|gate}`
-naming the new node. `mission list` lists missions; `formation list <mission>`
+adds its Input card. `mission create`, `formation create`, `gate create` and
+`end create` print `created <id>`, or with `--json` `{mission, layout,
+inputCard|formation|gate|end}` naming the new node. `archon end create <mission>
+[--outcome done|rejected] [--title <title>]` adds an End node (outcome `done`
+and title Done or Rejected by default; any other outcome is refused); wire a
+route into it with `archon formation wire <mission> <node:port> <end-id>:in`.
+`archon end update <mission> <end> [--title] [--outcome]` and `archon end
+delete <mission> <end>` change or remove one. The mission patch operations are
+`createEnd` (`title`, `outcome`, `x`, `y`), `updateEnd` (`id`, `title`,
+`outcome`) and `deleteEnd` (`id`). On the canvas, drag the End token from the
+top bar or right-click the canvas (End node · done or rejected); an End card
+takes any number of wires into its one port, its window and right-click menu
+change its outcome, and a finished run lights the End nodes its paths reached. `mission list` lists missions; `formation list <mission>`
 lists its formations with their slots and staffing. `mission inspect <mission>`
 prints the whole mission, `mission inspect <mission> <input>` prints the Input
 card with its reachable chain, and `formation inspect <mission> <formation>`
@@ -851,7 +864,7 @@ one formation with its slots, ports, brief and the connections at its ports,
 then one line per slot with its staffing (`vanilla · claude-code · opus · low`).
 Nodes keep their IDs when edited: `archon formation rename <mission> <formation>
 <title>`, `archon mission update <mission> [<input>]` with `--title`, `--goal`,
-`--bead` or `--input-hint`, and `archon gate update --title` change only what
+`--file`, `--human-channel` or `--input-hint`, and `archon gate update --title` change only what
 they name, and an empty value clears a field. `<input>` names the Input card
 and may be left out when the mission has one. The Input card's input hint says
 what a run brief should contain; Start mission shows it. Its `humanChannel`
@@ -868,26 +881,24 @@ reference files, such as a gate's rubric, the way formation briefs do: `--file
 repeated for more. On update the given files replace the list, and `--file ''`
 clears it. Name each file by its absolute path. Clicking an
 Input card, formation or gate card opens its node window, where every field is
-read in full and edited in place: titles, the Input card's goal, input hint,
-Bead ID and files, a formation's type, brief and staffing, and a gate's kinds,
+read in full and edited in place: titles, the Input card's goal, input hint
+and files, a formation's type, brief and staffing, and a gate's kinds,
 check, criterion, judge and files. Each save is one mission edit with undo. Ports, edges, layout and notes are
 unchanged.
 Every canvas edit that changes the mission is one undo entry, and Ctrl+Z undoes
-the newest. Deleting an Input card, formation or gate is undone by HTTP
-`restoreNode`, which puts the node back with its IDs, fields, staffing, ports,
+the newest. Deleting an Input card, formation, gate or End node is undone by HTTP
+`restoreNode` (with `inputCard`, `formation`, `gate` or `end`), which puts the node back with its IDs, fields, staffing, ports,
 connections and position in one revision; its notes and wire lanes, kept by
 ID, apply again. Removing a port is undone by `restorePort`, which puts it back
 in its place with its connections. Undo waits for edits still being saved. When
 another editor changed the mission first, undo reloads it and tries once more.
 An undo the mission no longer allows is reported once and dropped from the
-history, so older entries stay reachable. Deleting a node that carries retired
-authoring, such as inline verification or a legacy script gate, asks first,
-because it cannot be undone.
+history, so older entries stay reachable.
 The formation window's Execution duration field sets the total seconds for one
 formation invocation, including preparation and finalization. Leave it blank
 for no time limit. The authored field is
 `execution.timeoutSeconds`, set with `setExecution` or `archon formation
-set-execution <board> <formation> --timeout-seconds <n>`; zero clears it. The admitted
+set-execution <mission> <formation> --timeout-seconds <n>`; zero clears it. The admitted
 run freezes the effective duration, so later edits apply to new runs. Saving or
 clearing a duration has its own undo entry.
 `archon formation set-type <mission> <formation> <solo|peer|orchestrated>` and the
@@ -901,10 +912,7 @@ restores the previous slots exactly.
 
 Solo, peer and orchestrated are the only formation types. Creating or changing
 to any other type fails with `UNSUPPORTED_FORMATION_TYPE`, listing the three.
-A mission saved with a retired type, such as the former `flow`, still loads and
-shows every slot. Mission validation and run admission report
-`invalid_formation_type` for that node until `formation set-type` converts it
-or it is deleted; nothing rewrites it silently. Every slot ID in a mission is
+Every slot ID in a mission is
 unique, because a seat's session is named after its run and slot and a relayed
 verdict names its slot. Authoring generates a fresh ID for each new slot, and
 restoring slots cannot take another formation's ID. A hand-written or imported
@@ -916,75 +924,54 @@ included, as `ERROR`/`WARN` lines or `--json`, and exits 1 on any error.
 rejected. The cockpit tags incomplete nodes as drafts and highlights the nodes
 a rejected start names.
 
-#### Missions and the former board commands
-
-`archon board new|list|inspect|notes|note|validate|arrange` still works for one
-release. Each runs the `archon mission` command of the same name, with the same
-output and exit code, after printing `archon board is deprecated and will be
-removed in a later release; use: archon mission <verb>` on stderr. Before the
-rename, `archon mission` verbs acted on the entry node inside a board. They now
-map as follows, so no script silently gets a different answer:
-
-| Command before the rename | Now |
-| --- | --- |
-| `mission create <board>` | Adds the Input card to a mission that has none. On a mission that has one it fails, naming `archon mission update` and `archon mission new`. |
-| `mission list <board>` | Fails with exit 2, naming `archon mission inspect <mission>`. `mission list` with no argument lists missions. |
-| `mission inspect <board> <mission>` | Unchanged: the Input card and its reachable chain. `mission inspect <mission>` prints the whole mission. |
-| `mission wire <board> <mission> <to>` | Unchanged; `mission wire <mission> <to>` wires the only Input card. |
-| `mission update <board> <mission> ...` | Unchanged; `mission update <mission> ...` changes the only Input card. |
-| `mission run <board> --mission <id>` | Unchanged; `--input <id>` is the new name for `--mission`, and either may be left out when the mission has one Input card. |
-
-`archon run list --mission <mission>` replaces `--board`, which still works.
-
 For the delivery template the following starts a run without limits; add
 `--max-*` flags only when the run needs a cap. Lab briefs need the synthetic
 verdict described above. Real briefs describe the work to deliver.
 
 ```bash
-FORM_START=$(archon --server "$FORM_SERVER" mission run delivery \
-  --brief "$FORM_BRIEF" --bead "$FORM_BEAD" --json)
-FORM_RUN_ID=$(printf '%s\n' "$FORM_START" | jq -er '.data.runId')
-archon --server "$FORM_SERVER" run status "$FORM_RUN_ID" --json
-archon --server "$FORM_SERVER" run logs "$FORM_RUN_ID" --json
-archon --server "$FORM_SERVER" run follow "$FORM_RUN_ID" --json
-archon --server "$FORM_SERVER" run wait "$FORM_RUN_ID" --until needs-you
-archon --server "$FORM_SERVER" run list --json
+ARCHON_START=$(archon --server "$ARCHON_SERVER" mission run delivery \
+  --brief "$ARCHON_BRIEF" --bead "$ARCHON_BEAD" --json)
+ARCHON_RUN_ID=$(printf '%s\n' "$ARCHON_START" | jq -er '.data.runId')
+archon --server "$ARCHON_SERVER" run status "$ARCHON_RUN_ID" --json
+archon --server "$ARCHON_SERVER" run logs "$ARCHON_RUN_ID" --json
+archon --server "$ARCHON_SERVER" run follow "$ARCHON_RUN_ID" --json
+archon --server "$ARCHON_SERVER" run wait "$ARCHON_RUN_ID" --until needs-you
+archon --server "$ARCHON_SERVER" run list --json
 ```
 
-This allocates a workspace automatically. Add `--cwd "$FORM_CWD"` to work in
+This allocates a workspace automatically. Add `--cwd "$ARCHON_CWD"` to work in
 an existing project. For a session gate, inspect the asking seats before typing:
 
 ```bash
-archon --server "$FORM_SERVER" run gates "$FORM_RUN_ID"
-archon --server "$FORM_SERVER" gate request "$FORM_RUN_ID" "$FORM_GATE_ID"
-archon --server "$FORM_SERVER" run seats "$FORM_RUN_ID"
-tmux -S "$FORM_TMUX_SOCKET" list-panes -a -F '#{session_name} #{pane_id}'
+archon --server "$ARCHON_SERVER" run gates "$ARCHON_RUN_ID"
+archon --server "$ARCHON_SERVER" gate request "$ARCHON_RUN_ID" "$ARCHON_GATE_ID"
+archon --server "$ARCHON_SERVER" run seats "$ARCHON_RUN_ID"
+tmux -S "$ARCHON_TMUX_SOCKET" list-panes -a -F '#{session_name} #{pane_id}'
 ```
 
-To stop a selected non-final run, set `FORM_RUN_ID` to its ID:
+To stop a selected non-final run, set `ARCHON_RUN_ID` to its ID:
 
 ```bash
-archon --server "$FORM_SERVER" run abort "$FORM_RUN_ID" --reason "Operator stopped this run" --json
+archon --server "$ARCHON_SERVER" run abort "$ARCHON_RUN_ID" --reason "Operator stopped this run" --json
 ```
 
-For a graph with a human gate, inspect fresh status. Set `FORM_GATE_ID` to the
-pending gate and `FORM_RESPONSE` to the operator's answer. `--response` is an
-alias of `--reason`. Choose exactly one verdict command, only when authorized to
+For a graph with a human gate, inspect fresh status. Set `ARCHON_GATE_ID` to the
+pending gate and `ARCHON_RESPONSE` to the operator's answer. Choose exactly one verdict command, only when authorized to
 decide that gate:
 
 ```bash
-FORM_STATUS=$(archon --server "$FORM_SERVER" run status "$FORM_RUN_ID" --json)
-FORM_REQUESTED_SEQ=$(printf '%s\n' "$FORM_STATUS" | jq -er --arg gate "$FORM_GATE_ID" \
+ARCHON_STATUS=$(archon --server "$ARCHON_SERVER" run status "$ARCHON_RUN_ID" --json)
+ARCHON_REQUESTED_SEQ=$(printf '%s\n' "$ARCHON_STATUS" | jq -er --arg gate "$ARCHON_GATE_ID" \
   '.data.waitingGates[] | select(.gateId == $gate) | .requestedSeq')
-archon --server "$FORM_SERVER" gate approve "$FORM_RUN_ID" "$FORM_GATE_ID" \
-  --requested-seq "$FORM_REQUESTED_SEQ" --response "$FORM_RESPONSE" --json
+archon --server "$ARCHON_SERVER" gate approve "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" \
+  --requested-seq "$ARCHON_REQUESTED_SEQ" --response "$ARCHON_RESPONSE" --json
 ```
 
 For rejection, substitute this command for approval:
 
 ```bash
-archon --server "$FORM_SERVER" gate reject "$FORM_RUN_ID" "$FORM_GATE_ID" \
-  --requested-seq "$FORM_REQUESTED_SEQ" --response "$FORM_RESPONSE" --json
+archon --server "$ARCHON_SERVER" gate reject "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" \
+  --requested-seq "$ARCHON_REQUESTED_SEQ" --response "$ARCHON_RESPONSE" --json
 ```
 
 Restart the daemon with the same state directory and configuration. Before
@@ -1018,20 +1005,17 @@ deployment and live restart verification in the owning host repository.
 Inspect list/status after restart. For a resumable block whose cause is resolved:
 
 ```bash
-archon --server "$FORM_SERVER" run resume "$FORM_RUN_ID" --reason "Recovery evidence inspected" --json
+archon --server "$ARCHON_SERVER" run resume "$ARCHON_RUN_ID" --reason "Recovery evidence inspected" --json
 ```
 
 An idle human request with no unresolved dispatch survives restart with its
-original `requestedSeq`. Startup also repairs the older interruption block
-immediately following that request, by appending an audited resume event;
-it retains the original request and evidence. Other blocks are not repaired.
-Approve or reject using the same exact request sequence after restart.
+original `requestedSeq`. Approve or reject using the same exact request sequence after restart.
 
 When a seat died mid-turn and its completed evidence cannot be found, abandon
 the open dispatch and run the node again as a fresh bounded attempt:
 
 ```bash
-archon --server "$FORM_SERVER" run resume "$FORM_RUN_ID" --mode redispatch --reason "Seat lost; run the node again" --json
+archon --server "$ARCHON_SERVER" run resume "$ARCHON_RUN_ID" --mode redispatch --reason "Seat lost; run the node again" --json
 ```
 
 The abandoned dispatch is recorded as a `slot_result` with status `abandoned`;
@@ -1061,10 +1045,10 @@ the command only after its recorded fallback (see [Human gates on the session
 channel](#human-gates-on-the-session-channel)); the daemon delivers those asks
 with or without a notify command.
 
-A notification carries `runId`, `boardSlug`, `boardTitle`, `seq`, `kind`,
+A notification carries `runId`, `missionSlug`, `missionTitle`, `seq`, `kind`,
 `runStatus`, `nodeId`, `gateId`, `gateTitle`, `ask`, `severity`, `blocks`,
-`boardUrl`, a one-line `text`, and a complete plain-text `subject` and `body`.
-The `board*` fields name the mission; `boardUrl` is its cockpit link,
+`missionUrl`, a one-line `text`, and a complete plain-text `subject` and `body`.
+`missionUrl` is the mission's cockpit link,
 `/?mission=<slug>` with `&run=<runId>` when the run is known. The kinds are:
 
 - `human_gate`, keyed by the request sequence. The body carries the criterion,
@@ -1103,15 +1087,15 @@ script, sender and address with the host deployment.
 
 ## HTTP contract
 
-[OpenAPI](openapi/formations.yaml) lists the served routes. Except for the raw
+[OpenAPI](openapi/archon.yaml) lists the served routes. Except for the raw
 theme document described below, JSON responses use
 `{success,timestamp,data}`; errors carry an error object. Mission authoring
-under `/api/formations/missions` includes list/create/read/patch/delete, notes,
-layout, validation and change polling. The `/api/formations/boards` routes, the
-same handlers under the name used before the rename, answer identically for one
-release and are marked deprecated in OpenAPI; the cockpit and Archon call only
-the mission routes. Request and response fields keep their names, such as
-`board` and `missionId` when starting a run and `data.board` in responses. Agent routes
+under `/api/missions` includes list/create/read/patch/delete, notes, layout,
+validation and change polling. A mission read or edit answers `data.mission`
+(with `layout` and the created or changed node, such as `inputCard`, where it
+applies); a run starts with `mission` and `inputCardId` (or `formationId`). The
+Input card patch actions are `createInputCard`, `updateInputCard` and
+`deleteInputCard`. Agent routes
 list/create/read/patch persona cards; the roster also serves `harnesses` (each
 with the efforts it accepts) and `effortPolicy` (`{effort,use}` lines). Gate
 profiles expose the two code checks.
@@ -1123,8 +1107,7 @@ as it was (the same slot assignment, title, brief, type, controller, gate or
 Input card fields, or judge chain) saves nothing: it answers 200 with the
 current mission, its revision and ETag unchanged, and a stale ETag still conflicts. Tool
 and note edits still save a revision. Runtime routes start/list/read runs
-(`GET /api/formations/runs?mission=<slug>` lists one mission's runs; `?board=`
-still works for one release), read projected
+(`GET /api/runs?mission=<slug>` lists one mission's runs), read projected
 events/escalations, stream SSE, abort, resume, read run evidence and record
 exact human verdicts. They all use the coordinator; no request-local executor
 exists.
@@ -1136,7 +1119,7 @@ With `--server`, Archon runs these authoring and read commands through the
 daemon, so an open cockpit sees the edits through its change polling: `mission
 new|list|inspect|notes|note|validate|arrange|create|update|wire`, `formation
 list|inspect|create|rename|set-type|assign|unassign|set-brief|add-input|add-output|wire|unwire`,
-`gate create|update|judge`, `tool create|update|delete|inspect` and `agent
+`gate create|update|judge`, `end create|update|delete`, `tool create|update|delete|inspect` and `agent
 list|inspect|new|edit`. They take the offline flags and print the offline
 output: unwrapped JSON without TOML, or the same text. Each command reads the
 document it changes, resolves formation, gate, mission and Tool selectors from
@@ -1153,22 +1136,20 @@ retried up to three times. Differences from offline use:
   daemon's `{success,timestamp,data}` envelope, except `run gates`, `run seats`
   and `gate request`, which require `--json` for that format, and `run wait`,
   which prints its paragraph or its own JSON (see [Waiting on a run](#waiting-on-a-run)); `mission list` and
-  `mission inspect` print offline JSON like the other reads. `formation
-  remove-verification|run`, `run ask` and `agent spawn|attach|retire` remain
-  offline only.
+  `mission inspect` print offline JSON like the other reads. `formation run`,
+  `run ask` and `agent spawn|attach|retire` remain offline only.
 
-`GET /api/formations/missions/{mission}/validation` returns
-`{boardRev,boardEtag,errors,warnings}` for the whole mission, the same report as
+`GET /api/missions/{mission}/validation` returns
+`{missionRev,missionEtag,errors,warnings}` for the whole mission, the same report as
 `mission validate`.
 
-One mission per file. A file saved when a board could hold several mission
-nodes still loads and stays editable. Validation reports it with one
-`several_input_cards` error that names each Input card and says how to split
-the file: copy it beside itself under a new slug with a new id, slug and title,
-then delete from each file the Input cards, and the steps only they reach, that
-belong to the other. Admission refuses every run from such a file, mission or
-single formation, with the same message. Files with one Input card, their runs
-and their ledgers load and replay unchanged.
+One mission per file, with one Input card. A file holding several Input cards
+loads and stays editable, but validation reports one `several_input_cards`
+error that names each Input card and says how to split the file: copy it beside
+itself under a new slug with a new id, slug and title, then delete from each
+file the Input cards, and the steps only they reach, that belong to the other.
+Admission refuses every run from such a file, mission or single formation, with
+the same message.
 
 `GET /api/theme` returns the raw CHROTE schema-1 theme document with no response
 envelope. Optional `--theme-file <absolute-path>` selects a host-owned file,
@@ -1181,7 +1162,7 @@ execution. The dashboard keeps its complete default palette and reports a failed
 theme request; it applies the theme once per page load. No theme-art routes,
 picker or polling are provided. Host paths and deployment belong to the host.
 
-`GET /api/formations/runs/{runId}/seats` returns an enveloped
+`GET /api/runs/{runId}/seats` returns an enveloped
 `{runId,available,reason?,seats}`. Each latest seat per node/slot includes
 `runId`, `nodeId`, `nodeTitle`, `slotId`, `slotLabel`, `harness`, the `model` (absent for the harness default) and `effort` the seat was started with, `controller`,
 `createdSeq`, `sessionName` and `state` (`live`, `ended`, `missing`, `unavailable`).
@@ -1191,7 +1172,7 @@ includes `onCall` with `keptSeq` and `waitingOn`, the pending
 `{gateId,requestedSeq}` asks it received. No private session IDs,
 socket paths or socket identities are exposed in this projection.
 
-`GET /api/formations/runs/{runId}/seats/{createdSeq}/terminal` upgrades to a
+`GET /api/runs/{runId}/seats/{createdSeq}/terminal` upgrades to a
 WebSocket with subprotocol `tty`, after resolving that exact run and attempt.
 Unknown seats return 404, replaced attempts or non-live seats 409, and unavailable
 configuration or shutdown 503. The frames are CHROTE's. The opening JSON frame
@@ -1218,8 +1199,8 @@ sanitized ledger projection. The same trusted-network access boundary applies.
 `{text,bytes,truncated}`: `bytes` is the full size, `truncated` marks a cut on
 a UTF-8 boundary, and the ledger's secret patterns are redacted.
 
-- `/api/formations/runs/{runId}/evidence/nodes/{nodeId}` returns
-  `data.evidence` for a node of the run's frozen mission, with `kind` `mission` (the Input card),
+- `/api/runs/{runId}/evidence/nodes/{nodeId}` returns
+  `data.evidence` for a node of the run's frozen mission, with `kind` `inputCard`,
   `formation`, `gate` or `tool`. Its `definition` contains the frozen `title`,
   `outputs` (`id`, `label`) and `outgoing` connections (`id`, `from`, `to`).
   Produced-output names and ordering use this run metadata even after the
@@ -1235,7 +1216,7 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   a kind result or verdict lists at most 100 evidence items and counts the rest
   in `evidenceOmitted`; one response carries at most 2 MiB of text, after which
   texts are empty and truncated. An unknown node returns 404.
-- `/api/formations/runs/{runId}/evidence/problems` returns `data.problems`,
+- `/api/runs/{runId}/evidence/problems` returns `data.problems`,
   every block and error of the run and the `run_failed` or `run_canceled` that
   ended it, oldest first: `seq`, `type`, `code`, `reason`, `resumeAllowed` and
   `nodeIds`, the nodes it names (its node or gate, the blocked node or gate,
@@ -1247,20 +1228,20 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   block the run later resumed carries `resumedSeq`; a limit block carries
   `limit`. Node evidence `problems` include the same run end for the nodes it
   stopped. The 2 MiB budget is spent on the latest first.
-- `/api/formations/runs/{runId}/evidence/briefs/{dispatchSeq}` returns
+- `/api/runs/{runId}/evidence/briefs/{dispatchSeq}` returns
   `data.brief` (`dispatchSeq`, `nodeId`, `slotId`, `attempt`, `text` capped at
   256 KiB): the brief that this run's `slot_dispatch` at that sequence sent to
   its seat, read from the path that event recorded. Any other sequence
   returns 404.
-- `/api/formations/runs/{runId}/evidence/artifacts` returns `data.artifacts`
+- `/api/runs/{runId}/evidence/artifacts` returns `data.artifacts`
   (`name`, `size`, `modifiedAt`), sorted by name relative to
-  `<state-dir>/.formations/artifacts/<runId>`, and `data.truncated` past 500
+  `<state-dir>/.archon/artifacts/<runId>`, and `data.truncated` past 500
   entries or 8 directory levels. A run without artifacts lists none.
-- `/api/formations/runs/{runId}/evidence/artifacts/{name...}` returns
+- `/api/runs/{runId}/evidence/artifacts/{name...}` returns
   `data.artifact` (`name`, `size`, `modifiedAt`, `kind` `markdown`, `json`,
   `text`, `image`, `pdf` or `binary`), with `text` capped at 256 KiB for textual
   kinds. A `.pdf` file that starts with `%PDF-` is `pdf`.
-- `/api/formations/runs/{runId}/artifacts/{name...}` returns the artifact's bytes
+- `/api/runs/{runId}/artifacts/{name...}` returns the artifact's bytes
   up to 16 MiB; larger files return 413. Text is `text/plain; charset=utf-8`
   and redacted, PNG, JPEG, GIF and WebP keep their image type, a `pdf` is an
   inline `application/pdf`, and anything else is an `application/octet-stream`
@@ -1268,7 +1249,7 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox` and
   `Cache-Control: no-store`, and support ranges. The file window is a reader,
   so HTML is served as text and nothing a file contains runs in the cockpit.
-- `/api/formations/runs/{runId}/gates/{gateId}/request` is the evidence API's
+- `/api/runs/{runId}/gates/{gateId}/request` is the evidence API's
   view of a human request still waiting for an answer. For the gate's latest
   request, while it is pending, it returns `gateId`, `requestedSeq`, the frozen
   `criterion` and the routed input: `fromNodeId`, `fromPortId`, `text` capped at
@@ -1277,18 +1258,19 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `title`, `kind`, and for a formation the `attempt` it would start, the
   run's `maxAttempts` (omitted when the run set none, so attempts are
   unlimited; the engine applies the same rule) and
-  `waitsForInputs` for a join still missing another input), `endsRun` for an
-  approval with nothing downstream when every reachable formation has output
-  and no other gate or step is open, `nothingFollows` for an approval with
-  nothing downstream while the run has other work, `unwired` for a send-back
-  with no route, `dispatches` (`used`, `max`) and `dispatchesNeeded` (judges
+  `waitsForInputs` for a join still missing another input; for an End node
+  kind `end` and its `outcome`), `endsRun` when every route of the verdict
+  ends its path at an End node and nothing else in the run can still run,
+  `runFails` when the run fails once it ends, at once with `endsRun` or else
+  after its other open work (a rejected End node on this route, or a path
+  already rejected), `dispatches` (`used`, `max`) and `dispatchesNeeded` (judges
   included) when the route starts formations under a dispatch limit, and
   `limit` when a limit the route needs is already spent, so taking it blocks
   the run. When the frozen mission cannot be read, `routes` is omitted. An
   unknown run or gate returns 404; a decided request
   returns 409. After the verdict, the gate's node evidence holds the same input
   with the response.
-- `/api/formations/runs/{runId}/wait?until=&since=&hold=` holds the request
+- `/api/runs/{runId}/wait?until=&since=&hold=` holds the request
   until the run is final, has an ask after `since` (`needs-you`,
   `any-change`) or has any event after `since` (`any-change`), for at most
   `hold` seconds (0 to 60, default 30). It returns `data` as `run wait --json`
@@ -1318,10 +1300,10 @@ The daemon opens any file a reference names by absolute path, following
 symlinks, as CHROTE's file viewer does. The `path` query is the reference as
 authored. A relative path has no base and returns 400.
 
-- `GET /api/formations/files/preview?path=<ref>` returns `data.file` (`path`
+- `GET /api/files/preview?path=<ref>` returns `data.file` (`path`
   read, `name`, `size`, `modifiedAt`, `kind` as for artifacts), with `text`
   capped at 256 KiB for textual kinds.
-- `GET /api/formations/files/raw?path=<ref>` returns the bytes up to 16 MiB with
+- `GET /api/files/raw?path=<ref>` returns the bytes up to 16 MiB with
   the raw artifact route's content types and headers; larger files return 413.
 
 A file the daemon's user may not read returns 403. A missing path, a

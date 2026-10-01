@@ -1,4 +1,4 @@
-/* Pure DOM/geometry helpers for the Formations cockpit: hit-testing wire ports
+/* Pure DOM/geometry helpers for the Archon cockpit: hit-testing wire ports
    under the pointer, classifying connections, parsing hand-routed lanes, and
    small input utilities. Extracted from FormationsCockpit. */
 import type { BoardConnection } from './formationsTypes'
@@ -49,7 +49,7 @@ export function connectionKind(connection: BoardConnection): 'wire' | 'pass' | '
   return 'wire'
 }
 
-/** Parse a hand-routed lane persisted as `y:<worldY>` (legacy `auto`/`manual` → none). */
+/** Parse a hand-routed lane persisted as `y:<worldY>`; any other value is no lane. */
 export function laneYFrom(lane: string | undefined): number | null {
   if (!lane || !lane.startsWith('y:')) return null
   const value = Number(lane.slice(2))

@@ -2,9 +2,7 @@ import type { RunStatusProjection } from './formationsTypes'
 
 // A mission's runs come from the daemon, so runs started by the CLI, an agent or
 // another browser appear too. The address bar carries ?mission=&run= so a link
-// from a notification opens that run and a reload keeps it. Links made before
-// the rename say ?board=; they still open, and the address bar is rewritten to
-// ?mission= with the other parameters kept.
+// from a notification opens that run and a reload keeps it.
 
 export interface RunLink {
   board: string
@@ -13,16 +11,16 @@ export interface RunLink {
 
 export function readRunLink(search: string): RunLink {
   const params = new URLSearchParams(search)
-  return { board: params.get('mission') || params.get('board') || '', run: params.get('run') || '' }
+  return { board: params.get('mission') || '', run: params.get('run') || '' }
 }
 
 /**
  * Returns the search string for a mission and run: ?mission= and ?run= first,
- * then every unrelated parameter in its order. A pre-rename ?board= is dropped.
+ * then every unrelated parameter in its order.
  */
 export function runLinkSearch(search: string, link: RunLink): string {
   const rest = new URLSearchParams(search)
-  for (const name of ['mission', 'board', 'run']) rest.delete(name)
+  for (const name of ['mission', 'run']) rest.delete(name)
   const params = new URLSearchParams()
   if (link.board) params.set('mission', link.board)
   if (link.run) params.set('run', link.run)
@@ -81,7 +79,7 @@ export function chooseBoardRun(input: {
   if (input.pinnedRunId) return input.pinnedRunId
   const open = openRunsByAttention(input.runs)
   if (open.length) return open[0].runId
-  if (input.current && (!input.current.boardSlug || input.current.boardSlug === input.slug)) return input.current.runId
+  if (input.current && (!input.current.missionSlug || input.current.missionSlug === input.slug)) return input.current.runId
   return ''
 }
 

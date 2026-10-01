@@ -39,8 +39,8 @@ func (h *FormationsHandler) SetNeedsYouNotifier(notifier formations.NeedsYouNoti
 }
 
 type formationsRunStartRequest struct {
-	Board       string               `json:"board"`
-	MissionID   string               `json:"missionId"`
+	Board       string               `json:"mission"`
+	MissionID   string               `json:"inputCardId"`
 	FormationID string               `json:"formationId"`
 	Actor       string               `json:"actor"`
 	Limits      formations.RunLimits `json:"limits"`
@@ -65,50 +65,48 @@ type formationsHumanGateVerdictRequest struct {
 }
 
 type formationsBoardPatchRequest struct {
-	SetExecution                  *formationsSetExecutionRequest          `json:"setExecution"`
-	Title                         *string                                 `json:"title"`
-	CreateTool                    *formationsToolCreateRequest            `json:"createTool"`
-	UpdateTool                    *formationsToolUpdateRequest            `json:"updateTool"`
-	DeleteTool                    *formationsToolDeleteRequest            `json:"deleteTool"`
-	CreateFormation               *formationsCreateFormationRequest       `json:"createFormation"`
-	DeleteFormation               *formationsDeleteFormationRequest       `json:"deleteFormation"`
-	UpdateFormation               *formationsUpdateFormationRequest       `json:"updateFormation"`
-	SetFormationType              *formationsSetFormationTypeRequest      `json:"setFormationType"`
-	UpdateMission                 *formationsUpdateMissionRequest         `json:"updateMission"`
-	DeleteGate                    *formationsDeleteGateRequest            `json:"deleteGate"`
-	DeleteMission                 *formationsDeleteMissionRequest         `json:"deleteMission"`
-	RestoreNode                   *formationsRestoreNodeRequest           `json:"restoreNode"`
-	AssignSlot                    *formationsAssignSlotRequest            `json:"assignSlot"`
-	MakeController                *formationsMakeControllerRequest        `json:"makeController"`
-	SetBrief                      *formationsSetBriefRequest              `json:"setBrief"`
-	ClearBrief                    *formationsClearBriefRequest            `json:"clearBrief"`
-	SetVerification               *formationsSetVerificationRequest       `json:"setVerification"`
-	RemoveVerification            *formationsRemoveVerificationRequest    `json:"removeVerification"`
-	AddPort                       *formationsAddPortRequest               `json:"addPort"`
-	RemovePort                    *formationsRemovePortRequest            `json:"removePort"`
-	RestorePort                   *formationsRestorePortRequest           `json:"restorePort"`
-	WireConnection                *formationsWireConnectionRequest        `json:"wireConnection"`
-	UnwireConnection              *formationsWireConnectionRequest        `json:"unwireConnection"`
-	RewireConnection              *formationsRewireConnectionRequest      `json:"rewireConnection"`
-	CreateGate                    *formationsCreateGateRequest            `json:"createGate"`
-	UpdateGate                    *formationsUpdateGateRequest            `json:"updateGate"`
-	SetGateJudge                  *formationsSetGateJudgeRequest          `json:"setGateJudge"`
-	DetachGateJudge               *formationsDetachGateJudgeRequest       `json:"detachGateJudge"`
-	CreateMission                 *formationsCreateMissionRequest         `json:"createMission"`
-	LegacyCommandFieldsPresent    bool                                    `json:"-"`
-	SetVerificationOccurrences    int                                     `json:"-"`
-	RemoveVerificationOccurrences int                                     `json:"-"`
-	MutationOccurrences           int                                     `json:"-"`
-	ExpectedRev                   int                                     `json:"expectedRev"`
-	LayoutExpectation             *formationsToolLayoutExpectationRequest `json:"layoutExpectation"`
-	UpdatedBy                     string                                  `json:"updatedBy"`
-	ToolOperationOccurrences      int                                     `json:"-"`
-	ToolFrameInvalid              bool                                    `json:"-"`
-	ToolFrameUnicodeInvalid       bool                                    `json:"-"`
-	ExpectedRevOccurrences        int                                     `json:"-"`
-	LayoutExpectationOccurrences  int                                     `json:"-"`
-	UpdatedByOccurrences          int                                     `json:"-"`
-	UpdatedByNull                 bool                                    `json:"-"`
+	SetExecution                 *formationsSetExecutionRequest          `json:"setExecution"`
+	Title                        *string                                 `json:"title"`
+	CreateTool                   *formationsToolCreateRequest            `json:"createTool"`
+	UpdateTool                   *formationsToolUpdateRequest            `json:"updateTool"`
+	DeleteTool                   *formationsToolDeleteRequest            `json:"deleteTool"`
+	CreateFormation              *formationsCreateFormationRequest       `json:"createFormation"`
+	DeleteFormation              *formationsDeleteFormationRequest       `json:"deleteFormation"`
+	UpdateFormation              *formationsUpdateFormationRequest       `json:"updateFormation"`
+	SetFormationType             *formationsSetFormationTypeRequest      `json:"setFormationType"`
+	UpdateMission                *formationsUpdateMissionRequest         `json:"updateInputCard"`
+	DeleteGate                   *formationsDeleteGateRequest            `json:"deleteGate"`
+	DeleteMission                *formationsDeleteMissionRequest         `json:"deleteInputCard"`
+	RestoreNode                  *formationsRestoreNodeRequest           `json:"restoreNode"`
+	AssignSlot                   *formationsAssignSlotRequest            `json:"assignSlot"`
+	MakeController               *formationsMakeControllerRequest        `json:"makeController"`
+	SetBrief                     *formationsSetBriefRequest              `json:"setBrief"`
+	ClearBrief                   *formationsClearBriefRequest            `json:"clearBrief"`
+	AddPort                      *formationsAddPortRequest               `json:"addPort"`
+	RemovePort                   *formationsRemovePortRequest            `json:"removePort"`
+	RestorePort                  *formationsRestorePortRequest           `json:"restorePort"`
+	WireConnection               *formationsWireConnectionRequest        `json:"wireConnection"`
+	UnwireConnection             *formationsWireConnectionRequest        `json:"unwireConnection"`
+	RewireConnection             *formationsRewireConnectionRequest      `json:"rewireConnection"`
+	CreateGate                   *formationsCreateGateRequest            `json:"createGate"`
+	UpdateGate                   *formationsUpdateGateRequest            `json:"updateGate"`
+	SetGateJudge                 *formationsSetGateJudgeRequest          `json:"setGateJudge"`
+	DetachGateJudge              *formationsDetachGateJudgeRequest       `json:"detachGateJudge"`
+	CreateMission                *formationsCreateMissionRequest         `json:"createInputCard"`
+	CreateEnd                    *formationsCreateEndRequest             `json:"createEnd"`
+	UpdateEnd                    *formationsUpdateEndRequest             `json:"updateEnd"`
+	DeleteEnd                    *formationsDeleteEndRequest             `json:"deleteEnd"`
+	MutationOccurrences          int                                     `json:"-"`
+	ExpectedRev                  int                                     `json:"expectedRev"`
+	LayoutExpectation            *formationsToolLayoutExpectationRequest `json:"layoutExpectation"`
+	UpdatedBy                    string                                  `json:"updatedBy"`
+	ToolOperationOccurrences     int                                     `json:"-"`
+	ToolFrameInvalid             bool                                    `json:"-"`
+	ToolFrameUnicodeInvalid      bool                                    `json:"-"`
+	ExpectedRevOccurrences       int                                     `json:"-"`
+	LayoutExpectationOccurrences int                                     `json:"-"`
+	UpdatedByOccurrences         int                                     `json:"-"`
+	UpdatedByNull                bool                                    `json:"-"`
 }
 
 func (request *formationsBoardPatchRequest) UnmarshalJSON(raw []byte) error {
@@ -127,11 +125,11 @@ func (request *formationsBoardPatchRequest) UnmarshalJSON(raw []byte) error {
 	type requestFields formationsBoardPatchRequest
 	var decoded requestFields
 	if presence.ToolOperationOccurrences == 0 {
-		legacy := struct {
+		fields := struct {
 			*requestFields
 			LayoutExpectation json.RawMessage `json:"layoutExpectation"`
 		}{requestFields: &decoded}
-		if err := json.Unmarshal(raw, &legacy); err != nil {
+		if err := json.Unmarshal(raw, &fields); err != nil {
 			return err
 		}
 	} else {
@@ -140,9 +138,6 @@ func (request *formationsBoardPatchRequest) UnmarshalJSON(raw []byte) error {
 		}
 	}
 	*request = formationsBoardPatchRequest(decoded)
-	request.LegacyCommandFieldsPresent = presence.LegacyCommandFieldsPresent
-	request.SetVerificationOccurrences = presence.SetVerificationOccurrences
-	request.RemoveVerificationOccurrences = presence.RemoveVerificationOccurrences
 	request.MutationOccurrences = presence.MutationOccurrences
 	request.ToolOperationOccurrences = presence.ToolOperationOccurrences
 	request.ToolFrameInvalid = presence.ToolFrameInvalid
@@ -175,6 +170,31 @@ type formationsDeleteGateRequest struct {
 	UpdatedBy   string `json:"updatedBy"`
 }
 
+// formationsCreateEndRequest adds an End node, which ends a path on purpose
+// with outcome done (the default) or rejected.
+type formationsCreateEndRequest struct {
+	Title       string `json:"title"`
+	Outcome     string `json:"outcome"`
+	X           int    `json:"x"`
+	Y           int    `json:"y"`
+	ExpectedRev int    `json:"expectedRev"`
+	UpdatedBy   string `json:"updatedBy"`
+}
+
+type formationsUpdateEndRequest struct {
+	ID          string  `json:"id"`
+	Title       *string `json:"title"`
+	Outcome     *string `json:"outcome"`
+	ExpectedRev int     `json:"expectedRev"`
+	UpdatedBy   string  `json:"updatedBy"`
+}
+
+type formationsDeleteEndRequest struct {
+	ID          string `json:"id"`
+	ExpectedRev int    `json:"expectedRev"`
+	UpdatedBy   string `json:"updatedBy"`
+}
+
 type formationsDeleteMissionRequest struct {
 	ID          string `json:"id"`
 	ExpectedRev int    `json:"expectedRev"`
@@ -185,9 +205,10 @@ type formationsDeleteMissionRequest struct {
 // board document showed it, with the connections that touched it and its
 // layout position.
 type formationsRestoreNodeRequest struct {
-	Mission     *formations.MissionNode      `json:"mission"`
+	Mission     *formations.MissionNode      `json:"inputCard"`
 	Formation   *formations.FormationNode    `json:"formation"`
 	Gate        *formations.GateNode         `json:"gate"`
+	End         *formations.EndNode          `json:"end"`
 	Connections []formations.BoardConnection `json:"connections"`
 	Index       *int                         `json:"index"`
 	X           int                          `json:"x"`
@@ -238,22 +259,6 @@ type formationsClearBriefRequest struct {
 	UpdatedBy   string `json:"updatedBy"`
 }
 
-type formationsSetVerificationRequest struct {
-	FormationID string   `json:"formationId"`
-	Kinds       []string `json:"kinds"`
-	Criterion   string   `json:"criterion"`
-	OnFail      string   `json:"onFail"`
-	ExpectedRev int      `json:"expectedRev"`
-	UpdatedBy   string   `json:"updatedBy"`
-}
-
-type formationsRemoveVerificationRequest struct {
-	FormationID       string `json:"formationId"`
-	ReplacementGateID string `json:"replacementGateId"`
-	ExpectedRev       int    `json:"expectedRev"`
-	UpdatedBy         string `json:"updatedBy"`
-}
-
 type formationsAddPortRequest struct {
 	FormationID string `json:"formationId"`
 	Direction   string `json:"direction"`
@@ -297,10 +302,6 @@ type formationsCreateGateRequest struct {
 	CheckVersion string   `json:"checkVersion"`
 	CheckValue   string   `json:"checkValue"`
 	Files        []string `json:"files"`
-	Command      string   `json:"command"`
-	CommandArgv  []string `json:"commandArgv"`
-	CommandCWD   string   `json:"commandCwd"`
-	CommandShell string   `json:"commandShell"`
 	X            int      `json:"x"`
 	Y            int      `json:"y"`
 	ExpectedRev  int      `json:"expectedRev"`
@@ -308,16 +309,13 @@ type formationsCreateGateRequest struct {
 }
 
 type boardPatchPresence struct {
-	LegacyCommandFieldsPresent    bool
-	SetVerificationOccurrences    int
-	RemoveVerificationOccurrences int
-	MutationOccurrences           int
-	ToolOperationOccurrences      int
-	ToolFrameInvalid              bool
-	ExpectedRevOccurrences        int
-	LayoutExpectationOccurrences  int
-	UpdatedByOccurrences          int
-	UpdatedByNull                 bool
+	MutationOccurrences          int
+	ToolOperationOccurrences     int
+	ToolFrameInvalid             bool
+	ExpectedRevOccurrences       int
+	LayoutExpectationOccurrences int
+	UpdatedByOccurrences         int
+	UpdatedByNull                bool
 }
 
 var boardPatchMutationKeys = []string{
@@ -330,16 +328,14 @@ var boardPatchMutationKeys = []string{
 	"deleteFormation",
 	"updateFormation",
 	"setFormationType",
-	"updateMission",
+	"updateInputCard",
 	"deleteGate",
-	"deleteMission",
+	"deleteInputCard",
 	"restoreNode",
 	"assignSlot",
 	"makeController",
 	"setBrief",
 	"clearBrief",
-	"setVerification",
-	"removeVerification",
 	"addPort",
 	"removePort",
 	"restorePort",
@@ -350,7 +346,10 @@ var boardPatchMutationKeys = []string{
 	"updateGate",
 	"setGateJudge",
 	"detachGateJudge",
-	"createMission",
+	"createInputCard",
+	"createEnd",
+	"updateEnd",
+	"deleteEnd",
 }
 
 func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
@@ -360,7 +359,7 @@ func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
 		return boardPatchPresence{}, err
 	}
 	if delimiter, ok := opening.(json.Delim); !ok || delimiter != '{' {
-		return boardPatchPresence{}, fmt.Errorf("board patch must be a JSON object")
+		return boardPatchPresence{}, fmt.Errorf("mission patch must be a JSON object")
 	}
 	presence := boardPatchPresence{}
 	for decoder.More() {
@@ -370,7 +369,7 @@ func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
 		}
 		key, ok := keyToken.(string)
 		if !ok {
-			return boardPatchPresence{}, fmt.Errorf("board patch key must be a string")
+			return boardPatchPresence{}, fmt.Errorf("mission patch key must be a string")
 		}
 		for _, mutationKey := range boardPatchMutationKeys {
 			if strings.EqualFold(key, mutationKey) {
@@ -383,20 +382,6 @@ func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
 		}
 		if !isExactToolFrameKey(key) {
 			presence.ToolFrameInvalid = true
-		}
-		if strings.EqualFold(key, "createGate") || strings.EqualFold(key, "updateGate") {
-			legacyFieldsPresent, err := scanLegacyGateCommandFields(decoder)
-			if err != nil {
-				return boardPatchPresence{}, err
-			}
-			presence.LegacyCommandFieldsPresent = presence.LegacyCommandFieldsPresent || legacyFieldsPresent
-			continue
-		}
-		if strings.EqualFold(key, "setVerification") {
-			presence.SetVerificationOccurrences++
-		}
-		if strings.EqualFold(key, "removeVerification") {
-			presence.RemoveVerificationOccurrences++
 		}
 		var value json.RawMessage
 		if err := decoder.Decode(&value); err != nil {
@@ -417,54 +402,9 @@ func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
 		return boardPatchPresence{}, err
 	}
 	if delimiter, ok := closing.(json.Delim); !ok || delimiter != '}' {
-		return boardPatchPresence{}, fmt.Errorf("board patch object is not closed")
+		return boardPatchPresence{}, fmt.Errorf("mission patch object is not closed")
 	}
 	return presence, nil
-}
-
-func scanLegacyGateCommandFields(decoder *json.Decoder) (bool, error) {
-	opening, err := decoder.Token()
-	if err != nil {
-		return false, err
-	}
-	delimiter, isContainer := opening.(json.Delim)
-	if !isContainer {
-		return false, nil
-	}
-	if delimiter != '{' {
-		if err := skipJSONContainer(decoder, delimiter); err != nil {
-			return false, err
-		}
-		return false, nil
-	}
-	found := false
-	for decoder.More() {
-		keyToken, err := decoder.Token()
-		if err != nil {
-			return false, err
-		}
-		key, ok := keyToken.(string)
-		if !ok {
-			return false, fmt.Errorf("createGate key must be a string")
-		}
-		for _, legacyField := range []string{"command", "commandArgv", "commandCwd", "commandShell"} {
-			if strings.EqualFold(key, legacyField) {
-				found = true
-				break
-			}
-		}
-		if err := skipJSONValue(decoder); err != nil {
-			return false, err
-		}
-	}
-	closing, err := decoder.Token()
-	if err != nil {
-		return false, err
-	}
-	if closeDelimiter, ok := closing.(json.Delim); !ok || closeDelimiter != '}' {
-		return false, fmt.Errorf("createGate object is not closed")
-	}
-	return found, nil
 }
 
 func skipJSONValue(decoder *json.Decoder) error {
@@ -526,7 +466,6 @@ type formationsUpdateMissionRequest struct {
 	ID           string    `json:"id"`
 	Title        *string   `json:"title"`
 	Goal         *string   `json:"goal"`
-	BeadID       *string   `json:"beadId"`
 	Files        *[]string `json:"files"`
 	InputHint    *string   `json:"inputHint"`
 	HumanChannel *string   `json:"humanChannel"`
@@ -575,7 +514,6 @@ type formationsRewireConnectionRequest struct {
 type formationsCreateMissionRequest struct {
 	Title        string   `json:"title"`
 	Goal         string   `json:"goal"`
-	BeadID       string   `json:"beadId"`
 	Files        []string `json:"files"`
 	HumanChannel string   `json:"humanChannel"`
 	X            int      `json:"x"`
@@ -617,30 +555,26 @@ func (h *FormationsHandler) newRunEngine(boundary string) *formations.RunEngine 
 }
 
 func (h *FormationsHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/formations/gate-profiles", h.ListGateProfiles)
-	mux.HandleFunc("POST /api/formations/runs", h.StartRun)
-	mux.HandleFunc("GET /api/formations/runs/{runId}", h.GetRun)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/events", h.GetRunEvents)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/stream", h.StreamRunEvents)
-	mux.HandleFunc("POST /api/formations/runs/{runId}/resume", h.ResumeRun)
-	mux.HandleFunc("POST /api/formations/runs/{runId}/abort", h.AbortRun)
-	mux.HandleFunc("POST /api/formations/runs/{runId}/gates/{gateId}/verdict", h.RecordHumanGateVerdict)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/escalations", h.GetRunEscalations)
-	// Missions are served under /missions. The /boards routes are the same
-	// handlers, kept for one release after the rename and deprecated in OpenAPI.
-	for _, base := range []string{"/api/formations/missions", "/api/formations/boards"} {
-		mux.HandleFunc("GET "+base, h.ListBoards)
-		mux.HandleFunc("POST "+base, h.CreateBoard)
-		mux.HandleFunc("GET "+base+"/{board}/changes", h.GetBoardChanges)
-		mux.HandleFunc("GET "+base+"/{board}/validation", h.GetBoardValidation)
-		mux.HandleFunc("GET "+base+"/{board}", h.GetBoard)
-		mux.HandleFunc("PATCH "+base+"/{board}", h.PatchBoard)
-		mux.HandleFunc("DELETE "+base+"/{board}", h.DeleteBoard)
-		mux.HandleFunc("GET "+base+"/{board}/notes", h.GetBoardNotes)
-		mux.HandleFunc("PATCH "+base+"/{board}/notes", h.PatchBoardNotes)
-		mux.HandleFunc("GET "+base+"/{board}/layout", h.GetLayout)
-		mux.HandleFunc("PATCH "+base+"/{board}/layout", h.PatchLayout)
-	}
+	mux.HandleFunc("GET /api/gate-profiles", h.ListGateProfiles)
+	mux.HandleFunc("POST /api/runs", h.StartRun)
+	mux.HandleFunc("GET /api/runs/{runId}", h.GetRun)
+	mux.HandleFunc("GET /api/runs/{runId}/events", h.GetRunEvents)
+	mux.HandleFunc("GET /api/runs/{runId}/stream", h.StreamRunEvents)
+	mux.HandleFunc("POST /api/runs/{runId}/resume", h.ResumeRun)
+	mux.HandleFunc("POST /api/runs/{runId}/abort", h.AbortRun)
+	mux.HandleFunc("POST /api/runs/{runId}/gates/{gateId}/verdict", h.RecordHumanGateVerdict)
+	mux.HandleFunc("GET /api/runs/{runId}/escalations", h.GetRunEscalations)
+	mux.HandleFunc("GET /api/missions", h.ListBoards)
+	mux.HandleFunc("POST /api/missions", h.CreateBoard)
+	mux.HandleFunc("GET /api/missions/{mission}/changes", h.GetBoardChanges)
+	mux.HandleFunc("GET /api/missions/{mission}/validation", h.GetBoardValidation)
+	mux.HandleFunc("GET /api/missions/{mission}", h.GetBoard)
+	mux.HandleFunc("PATCH /api/missions/{mission}", h.PatchBoard)
+	mux.HandleFunc("DELETE /api/missions/{mission}", h.DeleteBoard)
+	mux.HandleFunc("GET /api/missions/{mission}/notes", h.GetBoardNotes)
+	mux.HandleFunc("PATCH /api/missions/{mission}/notes", h.PatchBoardNotes)
+	mux.HandleFunc("GET /api/missions/{mission}/layout", h.GetLayout)
+	mux.HandleFunc("PATCH /api/missions/{mission}/layout", h.PatchLayout)
 }
 
 func (h *FormationsHandler) ListGateProfiles(w http.ResponseWriter, _ *http.Request) {
@@ -895,7 +829,7 @@ func (h *FormationsHandler) ListBoards(w http.ResponseWriter, r *http.Request) {
 		writeFormationsError(w, err)
 		return
 	}
-	core.WriteSuccess(w, map[string]interface{}{"boards": boards})
+	core.WriteSuccess(w, map[string]interface{}{"missions": boards})
 }
 
 func (h *FormationsHandler) CreateBoard(w http.ResponseWriter, r *http.Request) {
@@ -943,7 +877,7 @@ func (h *FormationsHandler) CreateBoard(w http.ResponseWriter, r *http.Request) 
 	}
 	board.TOML = ""
 	w.Header().Set("ETag", board.ETag)
-	core.WriteJSON(w, http.StatusCreated, core.NewSuccessResponse(map[string]interface{}{"board": board}))
+	core.WriteJSON(w, http.StatusCreated, core.NewSuccessResponse(map[string]interface{}{"mission": board}))
 }
 
 func (h *FormationsHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) {
@@ -953,7 +887,7 @@ func (h *FormationsHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) 
 	if !decodeJSONBody(w, r, &request) {
 		return
 	}
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -970,7 +904,7 @@ func (h *FormationsHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *FormationsHandler) GetBoardNotes(w http.ResponseWriter, r *http.Request) {
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -989,7 +923,7 @@ func (h *FormationsHandler) PatchBoardNotes(w http.ResponseWriter, r *http.Reque
 	if !decodeJSONBody(w, r, &request) {
 		return
 	}
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -1006,7 +940,7 @@ func (h *FormationsHandler) PatchBoardNotes(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *FormationsHandler) GetBoard(w http.ResponseWriter, r *http.Request) {
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -1017,13 +951,13 @@ func (h *FormationsHandler) GetBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("ETag", board.ETag)
-	core.WriteSuccess(w, map[string]interface{}{"board": board})
+	core.WriteSuccess(w, map[string]interface{}{"mission": board})
 }
 
 // GetBoardValidation reports what the whole board still needs before its runs
 // can start, so the canvas can mark draft nodes.
 func (h *FormationsHandler) GetBoardValidation(w http.ResponseWriter, r *http.Request) {
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -1036,15 +970,15 @@ func (h *FormationsHandler) GetBoardValidation(w http.ResponseWriter, r *http.Re
 	report := formations.ValidateRunAdmission(board, h.personas, formations.RunAdmissionScope{})
 	w.Header().Set("ETag", board.ETag)
 	core.WriteSuccess(w, map[string]interface{}{
-		"boardRev":  board.Rev,
-		"boardEtag": board.ETag,
-		"errors":    report.Errors,
-		"warnings":  report.Warnings,
+		"missionRev":  board.Rev,
+		"missionEtag": board.ETag,
+		"errors":      report.Errors,
+		"warnings":    report.Warnings,
 	})
 }
 
 func (h *FormationsHandler) GetBoardChanges(w http.ResponseWriter, r *http.Request) {
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -1065,19 +999,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 	if h.patchToolBoard(w, r, &request) {
 		return
 	}
-	if request.SetVerificationOccurrences > 0 {
-		writeFormationsError(w, formations.ErrLegacyInlineVerificationRequiresMigration)
-		return
-	}
-	if request.RemoveVerificationOccurrences > 0 && (request.RemoveVerificationOccurrences != 1 || request.MutationOccurrences != 1 || request.RemoveVerification == nil) {
-		writeFormationsError(w, formations.ErrLegacyInlineVerificationRequiresMigration)
-		return
-	}
-	if request.LegacyCommandFieldsPresent {
-		writeFormationsError(w, formations.ErrLegacyScriptGateRequiresFencedMigration)
-		return
-	}
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -1175,6 +1097,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Mission:     restore.Mission,
 			Formation:   restore.Formation,
 			Gate:        restore.Gate,
+			End:         restore.End,
 			Connections: restore.Connections,
 			Index:       restore.Index,
 			X:           restore.X,
@@ -1210,7 +1133,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]any{"board": board})
+		core.WriteSuccess(w, map[string]any{"mission": board})
 		return
 	}
 	if request.AssignSlot != nil {
@@ -1233,7 +1156,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.MakeController != nil {
@@ -1251,7 +1174,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.SetExecution != nil {
@@ -1269,7 +1192,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.SetBrief != nil {
@@ -1290,7 +1213,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.ClearBrief != nil {
@@ -1307,45 +1230,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
-		return
-	}
-	if request.SetVerification != nil {
-		verification := request.SetVerification
-		board, err := h.store.SetFormationVerification(slug, formations.FormationVerificationRequest{
-			FormationID: verification.FormationID,
-			Kinds:       verification.Kinds,
-			Criterion:   verification.Criterion,
-			OnFail:      verification.OnFail,
-			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, verification.UpdatedBy),
-		}, formations.WriteOptions{
-			ExpectedETag: r.Header.Get("If-Match"),
-			ExpectedRev:  patchExpectedRev(request.ExpectedRev, verification.ExpectedRev),
-		})
-		if err != nil {
-			writeFormationsError(w, err)
-			return
-		}
-		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
-		return
-	}
-	if request.RemoveVerification != nil {
-		verification := request.RemoveVerification
-		board, err := h.store.RemoveFormationVerification(slug, formations.FormationVerificationRemovalRequest{
-			FormationID:       verification.FormationID,
-			ReplacementGateID: verification.ReplacementGateID,
-			UpdatedBy:         patchUpdatedBy(request.UpdatedBy, verification.UpdatedBy),
-		}, formations.WriteOptions{
-			ExpectedETag: r.Header.Get("If-Match"),
-			ExpectedRev:  patchExpectedRev(request.ExpectedRev, verification.ExpectedRev),
-		})
-		if err != nil {
-			writeFormationsError(w, err)
-			return
-		}
-		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.AddPort != nil {
@@ -1364,7 +1249,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.RemovePort != nil {
@@ -1382,7 +1267,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.WireConnection != nil {
@@ -1401,7 +1286,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.RewireConnection != nil {
@@ -1422,7 +1307,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.UnwireConnection != nil {
@@ -1440,27 +1325,22 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.CreateGate != nil {
 		gate := request.CreateGate
 		result, err := h.store.CreateGate(slug, formations.GateCreateRequest{
-			Title:                      gate.Title,
-			Kinds:                      gate.Kinds,
-			Criterion:                  gate.Criterion,
-			Check:                      gate.Check,
-			CheckVersion:               gate.CheckVersion,
-			CheckValue:                 gate.CheckValue,
-			Files:                      gate.Files,
-			Command:                    gate.Command,
-			CommandArgv:                gate.CommandArgv,
-			CommandCWD:                 gate.CommandCWD,
-			CommandShell:               gate.CommandShell,
-			LegacyCommandFieldsPresent: request.LegacyCommandFieldsPresent,
-			X:                          gate.X,
-			Y:                          gate.Y,
-			UpdatedBy:                  patchUpdatedBy(request.UpdatedBy, gate.UpdatedBy),
+			Title:        gate.Title,
+			Kinds:        gate.Kinds,
+			Criterion:    gate.Criterion,
+			Check:        gate.Check,
+			CheckVersion: gate.CheckVersion,
+			CheckValue:   gate.CheckValue,
+			Files:        gate.Files,
+			X:            gate.X,
+			Y:            gate.Y,
+			UpdatedBy:    patchUpdatedBy(request.UpdatedBy, gate.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
 			ExpectedRev:  patchExpectedRev(request.ExpectedRev, gate.ExpectedRev),
@@ -1488,7 +1368,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.SetFormationType != nil {
@@ -1508,7 +1388,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.UpdateMission != nil {
@@ -1517,7 +1397,6 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			MissionID:    update.ID,
 			Title:        update.Title,
 			Goal:         update.Goal,
-			BeadID:       update.BeadID,
 			Files:        update.Files,
 			InputHint:    update.InputHint,
 			HumanChannel: update.HumanChannel,
@@ -1531,22 +1410,21 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.UpdateGate != nil {
 		update := request.UpdateGate
 		board, err := h.store.UpdateGate(slug, formations.GateUpdateRequest{
-			GateID:                     update.ID,
-			Title:                      update.Title,
-			Kinds:                      update.Kinds,
-			Criterion:                  update.Criterion,
-			Check:                      update.Check,
-			CheckVersion:               update.CheckVersion,
-			CheckValue:                 update.CheckValue,
-			Files:                      update.Files,
-			LegacyCommandFieldsPresent: request.LegacyCommandFieldsPresent,
-			UpdatedBy:                  patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
+			GateID:       update.ID,
+			Title:        update.Title,
+			Kinds:        update.Kinds,
+			Criterion:    update.Criterion,
+			Check:        update.Check,
+			CheckVersion: update.CheckVersion,
+			CheckValue:   update.CheckValue,
+			Files:        update.Files,
+			UpdatedBy:    patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
 			ExpectedRev:  patchExpectedRev(request.ExpectedRev, update.ExpectedRev),
@@ -1556,7 +1434,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.SetGateJudge != nil {
@@ -1574,7 +1452,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
 	if request.DetachGateJudge != nil {
@@ -1591,7 +1469,63 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"board": board})
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
+		return
+	}
+	if request.CreateEnd != nil {
+		end := request.CreateEnd
+		result, err := h.store.CreateEnd(slug, formations.EndCreateRequest{
+			Title:     end.Title,
+			Outcome:   end.Outcome,
+			X:         end.X,
+			Y:         end.Y,
+			UpdatedBy: patchUpdatedBy(request.UpdatedBy, end.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, end.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", result.Board.ETag)
+		core.WriteSuccess(w, result)
+		return
+	}
+	if request.UpdateEnd != nil {
+		update := request.UpdateEnd
+		board, err := h.store.UpdateEnd(slug, formations.EndUpdateRequest{
+			EndID:     update.ID,
+			Title:     update.Title,
+			Outcome:   update.Outcome,
+			UpdatedBy: patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, update.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", board.ETag)
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
+		return
+	}
+	if request.DeleteEnd != nil {
+		deleteRequest := request.DeleteEnd
+		result, err := h.store.DeleteEnd(slug, formations.EndDeleteRequest{
+			ID:        deleteRequest.ID,
+			UpdatedBy: patchUpdatedBy(request.UpdatedBy, deleteRequest.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, deleteRequest.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", result.Board.ETag)
+		core.WriteSuccess(w, result)
 		return
 	}
 	if request.CreateMission != nil {
@@ -1599,7 +1533,6 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		result, err := h.store.CreateMission(slug, formations.MissionCreateRequest{
 			Title:        mission.Title,
 			Goal:         mission.Goal,
-			BeadID:       mission.BeadID,
 			Files:        mission.Files,
 			HumanChannel: mission.HumanChannel,
 			X:            mission.X,
@@ -1629,11 +1562,11 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("ETag", board.ETag)
-	core.WriteSuccess(w, map[string]interface{}{"board": board})
+	core.WriteSuccess(w, map[string]interface{}{"mission": board})
 }
 
 func (h *FormationsHandler) GetLayout(w http.ResponseWriter, r *http.Request) {
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -1667,7 +1600,7 @@ func (h *FormationsHandler) PatchLayout(w http.ResponseWriter, r *http.Request) 
 	if !decodeJSONBody(w, r, &request) {
 		return
 	}
-	slug, err := h.store.ResolveBoardSelector(r.PathValue("board"))
+	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
 	if err != nil {
 		writeFormationsError(w, err)
 		return
@@ -1841,7 +1774,7 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	case errors.Is(err, formations.ErrConflict):
 		core.WriteError(w, http.StatusConflict, "CONFLICT", "Formation definition changed; reload and retry")
 	case errors.Is(err, formations.ErrAlreadyExists):
-		core.WriteError(w, http.StatusConflict, "BOARD_EXISTS", "A mission with that name already exists")
+		core.WriteError(w, http.StatusConflict, "MISSION_EXISTS", "A mission with that name already exists")
 	case errors.Is(err, formations.ErrAmbiguousSelector):
 		core.WriteError(w, http.StatusBadRequest, "AMBIGUOUS_SELECTOR", err.Error())
 	case errors.Is(err, formations.ErrNotFound), errors.Is(err, formations.ErrNoteTargetNotFound):
@@ -1852,6 +1785,8 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusPreconditionRequired, "PRECONDITION_REQUIRED", "If-Match and revision preconditions are required")
 	case errors.Is(err, formations.ErrInvalidBeadID):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_BEAD_ID", fieldErrorMessage(err, formations.ErrInvalidBeadID))
+	case errors.Is(err, formations.ErrInvalidEndOutcome):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_END_OUTCOME", fieldErrorMessage(err, formations.ErrInvalidEndOutcome))
 	case errors.Is(err, formations.ErrInvalidHumanChannel):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_HUMAN_CHANNEL", fieldErrorMessage(err, formations.ErrInvalidHumanChannel))
 	case errors.Is(err, formations.ErrInvalidControllerRole):
@@ -1863,13 +1798,9 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	case errors.Is(err, formations.ErrInvalidSlotSettings):
 		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_SLOT_SETTINGS", fieldErrorMessage(err, formations.ErrInvalidSlotSettings))
 	case errors.Is(err, formations.ErrInvalidSlug):
-		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid formation slug")
+		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid mission slug")
 	case errors.Is(err, formations.ErrUnsupportedSchema):
 		core.WriteError(w, http.StatusUnprocessableEntity, "UNSUPPORTED_SCHEMA", err.Error())
-	case errors.Is(err, formations.ErrLegacyScriptGateRequiresFencedMigration):
-		core.WriteError(w, http.StatusUnprocessableEntity, formations.LegacyScriptGateMigrationCode, err.Error())
-	case errors.Is(err, formations.ErrLegacyInlineVerificationRequiresMigration):
-		core.WriteError(w, http.StatusUnprocessableEntity, formations.LegacyInlineVerificationMigrationCode, err.Error())
 	default:
 		core.WriteError(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 	}

@@ -271,6 +271,11 @@ func evidenceNodeDefinition(board *BoardDocument, nodeID string) *EvidenceNodeDe
 			definition.Title = gate.Title
 		}
 	}
+	for _, end := range board.Ends {
+		if end.ID == nodeID {
+			definition.Title = end.Title
+		}
+	}
 	for _, tool := range board.Tools {
 		if tool.ID == nodeID {
 			definition.Title = tool.Title
@@ -297,7 +302,7 @@ func evidenceNotFound(err error) error {
 func evidenceNodeKind(board *BoardDocument, nodeID string) string {
 	for _, mission := range board.Missions {
 		if mission.ID == nodeID {
-			return "mission"
+			return "inputCard"
 		}
 	}
 	for _, formation := range board.Formations {
@@ -321,9 +326,9 @@ func evidenceNodeKind(board *BoardDocument, nodeID string) string {
 // runArtifactRoots are the textual forms a recorded ref can use for the run's
 // artifact directory: the configured workspace and its absolute form.
 func (s *Store) runArtifactRoots(runID string) []string {
-	roots := []string{filepath.Clean(filepath.Join(s.workspaceRoot(), ".formations", "artifacts", runID))}
+	roots := []string{filepath.Clean(filepath.Join(s.workspaceRoot(), ".archon", "artifacts", runID))}
 	if workspace, err := s.workspaceAbsolutePath(); err == nil {
-		roots = append(roots, filepath.Join(workspace, ".formations", "artifacts", runID))
+		roots = append(roots, filepath.Join(workspace, ".archon", "artifacts", runID))
 	}
 	return roots
 }
@@ -706,19 +711,13 @@ func evidenceItems(raw any, capper *evidenceCapper) ([]EvidenceItem, int) {
 
 // evidenceRef reports a recorded ref by artifact name when it lies in the
 // run's artifact directory, otherwise by its absolute path, which the cockpit
-// opens in a file window. A relative ref resolves against the state workspace,
-// as the executor resolved it: the artifact roots are
-// <workspace>/.formations/artifacts/<run>. A reference with a scheme, such as
-// the engine's ledger:// and brief://, names no file.
+// opens in a file window. Output refs are absolute. A reference with a scheme,
+// such as the engine's ledger:// and brief://, names no file.
 func evidenceRef(ref string, artifactRoots []string) *EvidenceRef {
 	if strings.TrimSpace(ref) == "" || strings.Contains(ref, "://") {
 		return nil
 	}
 	clean := filepath.Clean(ref)
-	if !filepath.IsAbs(clean) && len(artifactRoots) > 0 {
-		workspace := filepath.Dir(filepath.Dir(filepath.Dir(artifactRoots[len(artifactRoots)-1])))
-		clean = filepath.Join(workspace, clean)
-	}
 	if filepath.IsAbs(clean) {
 		for _, root := range artifactRoots {
 			relative, err := filepath.Rel(root, clean)

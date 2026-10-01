@@ -109,7 +109,6 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
       .map(variant => variantChanges(variant, editor.drafts[variant.id] || variantDraft(variant)))
       .filter((patch): patch is VariantSettingsPatch => Boolean(patch))
     try {
-      // The card's legacy launch string is left as it is; seats never run it.
       await overrideAgentCard(agent.id, editor.etag, {
         displayName: editor.displayName.trim(),
         kind: editor.kind.trim(),

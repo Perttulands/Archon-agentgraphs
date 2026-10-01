@@ -1,19 +1,18 @@
 {
-  "_source": "The Wayfinding board (form-3yd.10): structure from src/internal/formations/testdata/arrange/wayfinding.formation.toml with its Arrange layout. Briefs, criteria and the mission goal are trimmed from the live board at rev 37. Notes are the live threads at rev 11 plus two operator replies added so several nodes carry both human:ui and agent entries.",
-  "board": {
+  "_source": "The Scouting mission (form-3yd.10): structure from the arrange testdata mission scouting with its Arrange layout. Briefs, criteria and the mission goal are trimmed from the live mission at rev 37. Notes are the live threads at rev 11 plus two operator replies added so several nodes carry both human:ui and agent entries. Its sign-off pass ends at a Done End node (form-o7p.10).",
+  "mission": {
     "schema": 1,
     "id": "brd_01M2N3A879JPHQFNRXH3K5CQGM",
-    "slug": "wayfinding",
-    "title": "Wayfinding",
+    "slug": "scouting",
+    "title": "Scouting",
     "rev": 37,
-    "updatedBy": "agent:claude-wayfinding",
+    "updatedBy": "agent:claude-scouting",
     "updatedAt": "2026-09-16T14:24:24Z",
-    "missions": [
+    "inputCards": [
       {
         "id": "mis_01M2N9N1SG7J0D3YVRZY3V8TNT",
-        "title": "Wayfinding",
-        "goal": "Turn the operator's raw sketch of an outcome into a brief they sign off. Guard against solving the wrong problem, unverified claims and generic output.",
-        "beadId": ""
+        "title": "Scouting",
+        "goal": "Turn the operator's raw sketch of an outcome into a brief they sign off. Guard against solving the wrong problem, unverified claims and generic output."
       }
     ],
     "formations": [
@@ -142,7 +141,7 @@
           }
         ],
         "brief": {
-          "goal": "Review the draft brief adversarially on the other harness. Spot-check at least three claims against their evidence and return exactly one chrote-verdict block."
+          "goal": "Review the draft brief adversarially on the other harness. Spot-check at least three claims against their evidence and return exactly one archon-verdict block."
         }
       }
     ],
@@ -245,15 +244,27 @@
         "id": "edge_01M2N9NGVNSHE0R1Q9V7M7VQGZ",
         "from": "gate_01M2N9N1R4R184Y5G3R45BB5G1:fail",
         "to": "fmn_01M2N9N1N69CYV5KYCSQ2M1DPD:port_01M2N9N1N6NQ2XGB78NEGTSPJR"
+      },
+      {
+        "id": "edge_signoff_done",
+        "from": "gate_01M2N9N1R4R184Y5G3R45BB5G1:pass",
+        "to": "end_scouting_done:in"
       }
     ],
-    "etag": "wayfinding-board"
+    "etag": "scouting-board",
+    "ends": [
+      {
+        "id": "end_scouting_done",
+        "title": "Done",
+        "outcome": "done"
+      }
+    ]
   },
   "layout": {
     "schema": 1,
-    "boardId": "brd_01M2N3A879JPHQFNRXH3K5CQGM",
-    "boardRev": 37,
-    "etag": "wayfinding-layout",
+    "missionId": "brd_01M2N3A879JPHQFNRXH3K5CQGM",
+    "missionRev": 37,
+    "etag": "scouting-layout",
     "nodes": [
       {
         "id": "mis_01M2N9N1SG7J0D3YVRZY3V8TNT",
@@ -299,17 +310,22 @@
         "id": "gate_01M2N9N1R4R184Y5G3R45BB5G1",
         "x": 2828,
         "y": 112
+      },
+      {
+        "id": "end_scouting_done",
+        "x": 3220,
+        "y": 112
       }
     ],
     "edges": []
   },
   "notes": {
     "schema": 2,
-    "boardId": "brd_01M2N3A879JPHQFNRXH3K5CQGM",
+    "missionId": "brd_01M2N3A879JPHQFNRXH3K5CQGM",
     "rev": 13,
     "updatedAt": "2026-09-16T15:04:30Z",
     "updatedBy": "human:ui",
-    "board": [
+    "mission": [
       {
         "id": "migrated-board",
         "author": "human:ui",
@@ -318,9 +334,9 @@
       },
       {
         "id": "nte_01M2N9Z90CZY6FVP2SG0EFAN9Q",
-        "author": "agent:claude-wayfinding",
+        "author": "agent:claude-scouting",
         "createdAt": "2026-09-16T14:29:44.076656682Z",
-        "text": "Wayfinding v1 is wired from your sketch (Claude coordinator). Route: Map the territory → Framing review (you) → Question peers → Answer questions (you) → Draft the brief → Adversarial review (Codex judge) → Brief sign-off (you). Guards: map before solutions, evidence or labelled assumptions, peers draft independently, at most 10 ranked questions each tied to a decision, a cross-harness judge that fails generic advice, and your final sign-off. Every human pause emails you. Each node has a note explaining its design. Please review the board and reply here before the first run. For that run I need your raw sketch (the mission input) and the directory the agents should work in."
+        "text": "Scouting v1 is wired from your sketch (Claude coordinator). Route: Map the territory → Framing review (you) → Question peers → Answer questions (you) → Draft the brief → Adversarial review (Codex judge) → Brief sign-off (you). Guards: map before solutions, evidence or labelled assumptions, peers draft independently, at most 10 ranked questions each tied to a decision, a cross-harness judge that fails generic advice, and your final sign-off. Every human pause emails you. Each node has a note explaining its design. Please review the board and reply here before the first run. For that run I need your raw sketch (the mission input) and the directory the agents should work in."
       }
     ],
     "elements": [
@@ -335,7 +351,7 @@
           },
           {
             "id": "nte_01M2N9Z8YC9CVGNCY5Q3NX1EMJ",
-            "author": "agent:claude-wayfinding",
+            "author": "agent:claude-scouting",
             "createdAt": "2026-09-16T14:29:44.012601978Z",
             "text": "Built from your note: this is step 1, mapping the territory before anyone proposes a solution. codex-scout writes territory-map.md with the sketch quoted verbatim, facts that each cite evidence (file, command output or URL), constraints, prior art, stakeholders, unknowns, and 2-4 candidate framings. It must not recommend a framing; you choose at Framing review. A send-back returns here with your corrections."
           }
@@ -352,7 +368,7 @@
           },
           {
             "id": "nte_01M2N9Z8YYX60BVB7DF5JP5R3F",
-            "author": "agent:claude-wayfinding",
+            "author": "agent:claude-scouting",
             "createdAt": "2026-09-16T14:29:44.030671034Z",
             "text": "Built from your note: one Claude (delivery-planner) and one Codex (codex-planner). Each drafts questions independently before they compare, to avoid echo. They reconcile into at most 10 questions ranked by impact. Every question names the decision it unlocks and the default assumed if you skip it. Disagreements between the two, and any conflict between your framing and the map's evidence, are recorded, not smoothed over."
           }
@@ -363,7 +379,7 @@
         "entries": [
           {
             "id": "nte_01M2N9Z8ZGWE5P2P57999GVWG8",
-            "author": "agent:claude-wayfinding",
+            "author": "agent:claude-scouting",
             "createdAt": "2026-09-16T14:29:44.048264409Z",
             "text": "New. Claude (delivery-planner) writes brief.md from the map, your framing decision and your answers: goal in your words, checkable success criteria, non-goals, constraints, options with trade-offs (including rejected framings), a recommendation tied to evidence, risks, and open assumptions, with your answers verbatim in an appendix. Contradictions between your answers and the map are called out. Review and sign-off send-backs return here."
           }
@@ -374,7 +390,7 @@
         "entries": [
           {
             "id": "nte_01M2N9Z8YP13109HPAXQXSHM6N",
-            "author": "agent:claude-wayfinding",
+            "author": "agent:claude-scouting",
             "createdAt": "2026-09-16T14:29:44.022346819Z",
             "text": "Converted from the code gate to a human gate, as your criterion asked, and the check value was cleared. You read the candidate framings and approve with the framing you choose, typed in the response box. That response travels to the question peers. Send back if the map got something wrong. Each pause emails you."
           }
@@ -385,7 +401,7 @@
         "entries": [
           {
             "id": "nte_01M2N9Z8Z7B24NQQ4PJMYS1VEC",
-            "author": "agent:claude-wayfinding",
+            "author": "agent:claude-scouting",
             "createdAt": "2026-09-16T14:29:44.039696086Z",
             "text": "New human gate. The panel and the email show the ranked questions. Answer by number in the response box; anything unanswered takes its stated default. Approve sends your answers to the brief writer. Send back if the questions miss what matters."
           }
@@ -396,7 +412,7 @@
         "entries": [
           {
             "id": "nte_01M2N9Z8ZRWKPGX9KN0X5N5P93",
-            "author": "agent:claude-wayfinding",
+            "author": "agent:claude-scouting",
             "createdAt": "2026-09-16T14:29:44.056907405Z",
             "text": "New judge gate. Its judge, Brief critic, runs on Codex (codex-judge), the harness that did not write the draft. It spot-checks at least three claims against their evidence and fails unsupported claims, generic recommendations, goal drift, ignored answers, or missing criteria, non-goals or risks. Fail returns to Draft the brief with evidence."
           },
@@ -413,7 +429,7 @@
         "entries": [
           {
             "id": "nte_01M2N9Z901PSEWK95H7ER289F3",
-            "author": "agent:claude-wayfinding",
+            "author": "agent:claude-scouting",
             "createdAt": "2026-09-16T14:29:44.065539726Z",
             "text": "New human gate: the final sign-off. The panel and the email show the full brief. Approve ends the run with this brief as the result. Send back with what to change, and the draft is revised and reviewed again. Note: send-back here currently hits engine bug form-epa, which is being fixed before your first real run."
           },
@@ -426,6 +442,6 @@
         ]
       }
     ],
-    "etag": "wayfinding-notes"
+    "etag": "scouting-notes"
   }
 }

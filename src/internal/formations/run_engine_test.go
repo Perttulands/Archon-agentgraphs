@@ -84,7 +84,7 @@ func TestS4MissionWithoutOutgoingWireFailsBeforeRun(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "wire the Input card to a step") {
 		t.Fatalf("run mission without outgoing wire error = %v, want wire-the-mission failure", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(store.Workspace, ".formations", "runs", "session-search")); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(filepath.Join(store.Workspace, ".archon", "runs", "session-search")); !os.IsNotExist(statErr) {
 		t.Fatalf("runs directory error = %v, want no run artifacts when mission cannot start", statErr)
 	}
 }
@@ -312,7 +312,7 @@ func createS4Persona(t *testing.T, personas *PersonaStore, id string) {
 
 func findOnlyRunLedger(t *testing.T, store *Store, slug string) string {
 	t.Helper()
-	matches, err := filepath.Glob(filepath.Join(store.Workspace, ".formations", "runs", slug, "*.ndjson"))
+	matches, err := filepath.Glob(filepath.Join(store.Workspace, ".archon", "runs", slug, "*.ndjson"))
 	if err != nil {
 		t.Fatalf("glob run ledger: %v", err)
 	}
@@ -388,7 +388,7 @@ rev = 7
 updatedBy = "agent:archon"
 updatedAt = "2026-06-03T16:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Ship a showcase"
@@ -417,6 +417,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_research"
@@ -437,6 +438,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_ship"
@@ -457,6 +459,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_frame"
@@ -472,7 +475,12 @@ to = "fmn_research:port_research_in"
 id = "edge_research_ship"
 from = "fmn_research:port_research_out"
 to = "fmn_ship:port_ship_in"
-`
+
+[[connection]]
+id = "edge_ship_done"
+from = "fmn_ship:port_ship_out"
+to = "end_done:in"
+` + branchingBoardEnds()
 }
 
 func s4JoinBoardFixture() string {
@@ -496,6 +504,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_b"
@@ -516,6 +525,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_join"
@@ -540,6 +550,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_a"
@@ -560,7 +571,12 @@ to = "fmn_join:port_join_left"
 id = "edge_b_join"
 from = "fmn_b:port_b_out"
 to = "fmn_join:port_join_right"
-`
+
+[[connection]]
+id = "edge_join_done"
+from = "fmn_join:port_join_out"
+to = "end_done:in"
+` + branchingBoardEnds()
 }
 
 func s4NamedOutputBoardFixture() string {
@@ -588,6 +604,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_left"
@@ -608,6 +625,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_right"
@@ -628,6 +646,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_split"
@@ -643,5 +662,15 @@ to = "fmn_left:port_left_in"
 id = "edge_split_right"
 from = "fmn_split:port_split_right"
 to = "fmn_right:port_right_in"
-`
+
+[[connection]]
+id = "edge_left_done"
+from = "fmn_left:port_left_out"
+to = "end_done:in"
+
+[[connection]]
+id = "edge_right_done"
+from = "fmn_right:port_right_out"
+to = "end_done:in"
+` + branchingBoardEnds()
 }

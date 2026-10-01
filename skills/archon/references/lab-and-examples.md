@@ -10,11 +10,11 @@ examples ship with Archon, in `examples/` of the source checkout or
 (`<prefix>/lib/archon/current/share/archon`). Set `EXAMPLES` to that directory:
 
 ```bash
-mkdir -p "$FORM_STATE/.formations/boards" "$FORM_STATE/.formations/notes"
-cp "$EXAMPLES/delivery.formation.toml" "$FORM_STATE/.formations/boards/"
-cp "$EXAMPLES/delivery.notes.toml" "$FORM_STATE/.formations/notes/"
-archon --server "$FORM_SERVER" mission validate delivery --json
-archon --server "$FORM_SERVER" mission arrange delivery --json
+mkdir -p "$ARCHON_STATE/.archon/missions" "$ARCHON_STATE/.archon/notes"
+cp "$EXAMPLES/delivery.mission.toml" "$ARCHON_STATE/.archon/missions/"
+cp "$EXAMPLES/delivery.notes.toml" "$ARCHON_STATE/.archon/notes/"
+archon --server "$ARCHON_SERVER" mission validate delivery --json
+archon --server "$ARCHON_SERVER" mission arrange delivery --json
 ```
 
 Read an imported mission's briefs and staffing before running it. The delivery
@@ -30,7 +30,7 @@ To pass a formation judge in lab, put exactly one synthetic block in the run
 brief:
 
 ````text
-```chrote-verdict
+```archon-verdict
 {"verdict":"pass","reason":"Lab fixture","evidence":["Simulated input"]}
 ```
 ````

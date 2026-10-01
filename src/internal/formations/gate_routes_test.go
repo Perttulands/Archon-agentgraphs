@@ -62,7 +62,7 @@ func TestHumanGateRoutesNameDestinationsAndTheLastAttempt(t *testing.T) {
 			t.Fatalf("%s: routes = %+v", tc.name, routes)
 		}
 		approve, sendBack := routes[0], routes[1]
-		if approve.EndsRun || approve.Unwired || !reflect.DeepEqual(approve.Targets, []GateRouteTarget{{NodeID: "fmn_publish", Title: "Publish", Kind: "formation", Attempt: 1, MaxAttempts: 3}}) {
+		if approve.EndsRun || !reflect.DeepEqual(approve.Targets, []GateRouteTarget{{NodeID: "fmn_publish", Title: "Publish", Kind: "formation", Attempt: 1, MaxAttempts: 3}}) {
 			t.Fatalf("%s: approve = %+v", tc.name, approve)
 		}
 		if !reflect.DeepEqual(sendBack.Targets, []GateRouteTarget{tc.sendBack}) || !reflect.DeepEqual(sendBack.Limit, tc.limit) {
@@ -80,7 +80,7 @@ func TestHumanGateRoutesNameDestinationsAndTheLastAttempt(t *testing.T) {
 func TestHumanGateRoutesNameNoLimitWhenTheRunSetNone(t *testing.T) {
 	for _, attempts := range []int{1, 2, 5, 12} {
 		events := draftAttempts(0, attempts)
-		events[0].Data = map[string]any{"limits": map[string]any{"redact": false}}
+		events[0].Data = map[string]any{"limits": map[string]any{}}
 		sendBack := HumanGateRoutes(gateRoutesBoard(), events, "gate_review")[1]
 		if sendBack.Dispatches != nil || sendBack.Limit != nil || !reflect.DeepEqual(sendBack.Targets, []GateRouteTarget{{NodeID: "fmn_draft", Title: "Draft", Kind: "formation", Attempt: attempts + 1}}) {
 			t.Fatalf("send back after %d attempts without limits = %+v limit %+v", attempts, sendBack, sendBack.Limit)
@@ -135,14 +135,22 @@ func TestHumanGateRoutesNameAJoinThatWaitsAndCountJudges(t *testing.T) {
 	}
 }
 
-func TestHumanGateRoutesSayWhenApprovingEndsTheRun(t *testing.T) {
+// A verdict whose routes all lead to End nodes ends its path; with nothing
+// else to run it ends the run, which a rejected End fails (form-o7p.10).
+func TestHumanGateRoutesSayWhenAVerdictEndsTheRun(t *testing.T) {
 	board := gateRoutesBoard()
-	board.Connections = board.Connections[:2]
+	board.Ends = []EndNode{{ID: "end_done", Title: "Shipped", Outcome: EndOutcomeDone}, {ID: "end_rejected", Title: "Rejected", Outcome: EndOutcomeRejected}}
+	board.Connections = append(board.Connections[:2],
+		BoardConnection{ID: "edge_pass", From: "gate_review:pass", To: "end_done:in"},
+		BoardConnection{ID: "edge_fail", From: "gate_review:fail", To: "end_rejected:in"},
+	)
 	routes := HumanGateRoutes(board, draftAttempts(20, 1), "gate_review")
-	if !routes[0].EndsRun || len(routes[0].Targets) != 0 || routes[0].Dispatches != nil {
-		t.Fatalf("approve = %+v, want it to end the run", routes[0])
+	if !routes[0].EndsRun || routes[0].RunFails || routes[0].Dispatches != nil ||
+		!reflect.DeepEqual(routes[0].Targets, []GateRouteTarget{{NodeID: "end_done", Title: "Shipped", Kind: "end", Outcome: EndOutcomeDone}}) {
+		t.Fatalf("approve = %+v, want this path to end done and the run with it", routes[0])
 	}
-	if !routes[1].Unwired || routes[1].EndsRun {
-		t.Fatalf("send back = %+v, want unwired", routes[1])
+	if !routes[1].EndsRun || !routes[1].RunFails ||
+		!reflect.DeepEqual(routes[1].Targets, []GateRouteTarget{{NodeID: "end_rejected", Title: "Rejected", Kind: "end", Outcome: EndOutcomeRejected}}) {
+		t.Fatalf("send back = %+v, want this path to end rejected and fail the run", routes[1])
 	}
 }

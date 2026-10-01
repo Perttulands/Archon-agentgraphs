@@ -44,6 +44,23 @@ describe('formations run-state helpers', () => {
     expect(states.get('fmn_work')).toBe('done')
   })
 
+  it('marks the End nodes a finished run reached, and the rejected one its failure names', () => {
+    const succeeded = projectNodeStates([
+      { runId: 'run_1', seq: 1, type: 'node_output', nodeId: 'fmn_work', data: { status: 'done' } },
+      { runId: 'run_1', seq: 2, type: 'run_succeeded', data: { final: true, endIds: ['end_done', 'end_shipped'] } },
+    ], null)
+    expect(succeeded.get('end_done')).toBe('done')
+    expect(succeeded.get('end_shipped')).toBe('done')
+    expect(succeeded.get('end_rejected')).toBeUndefined()
+
+    const failed = projectNodeStates([
+      { runId: 'run_1', seq: 1, type: 'gate_verdict', gateId: 'gate_review', nodeId: 'gate_review', data: { verdict: 'fail' } },
+      { runId: 'run_1', seq: 2, type: 'run_failed', nodeId: 'end_rejected', gateId: 'gate_review', data: { code: 'path_rejected', reason: 'no', endId: 'end_rejected', endIds: ['end_done', 'end_rejected'], final: true } },
+    ], null)
+    expect(failed.get('end_done')).toBe('done')
+    expect(failed.get('end_rejected')).toBe('failed')
+  })
+
   it('returns a blocked node to its prior state once the run resumes', () => {
     const answered: RunEvent[] = [
       { runId: 'run_1', seq: 1, type: 'human_input_requested', gateId: 'gate_review', nodeId: 'gate_review' },
@@ -72,7 +89,7 @@ describe('formations run-state helpers', () => {
   })
 
   const run = (status: string, extra: Partial<RunStatusProjection> = {}): RunStatusProjection => ({
-    runId: 'run_1', status, final: status === 'failed', boardSlug: 'wayfinding', missionId: 'mis_a', eventCount: 9, ...extra,
+    runId: 'run_1', status, final: status === 'failed', missionSlug: 'scouting', inputCardId: 'mis_a', eventCount: 9, ...extra,
   })
 
   it('names the gate a run waits at for the operator', () => {
@@ -147,6 +164,17 @@ describe('formations run-state helpers', () => {
     expect(runCurrentPoint(events, null)).toBeNull()
   })
 
+  it('names the rejected End node a path-rejected run failed at', () => {
+    const events: RunEvent[] = [
+      { runId: 'run_1', seq: 1, type: 'node_output', nodeId: 'fmn_work', data: { status: 'done' } },
+      { runId: 'run_1', seq: 2, type: 'gate_verdict', nodeId: 'gate_review', gateId: 'gate_review', data: { verdict: 'fail' } },
+      { runId: 'run_1', seq: 3, type: 'run_failed', nodeId: 'end_rejected', gateId: 'gate_review', data: { reason: 'the brief misses the audience', endIds: ['end_rejected'] } },
+    ]
+    const point = runCurrentPoint(events, run('failed'))
+    expect(point).toEqual({ kind: 'failed', nodeId: 'end_rejected', gate: false })
+    expect(runPointPhrase(point!, 'Rejected')).toBe('failed at Rejected')
+  })
+
   it('names the gate or node a canceled run stopped', () => {
     const atGate: RunEvent[] = [
       { runId: 'run_1', seq: 1, type: 'node_started', nodeId: 'fmn_draft', attempt: 1 },
@@ -178,14 +206,14 @@ describe('formations run-state helpers', () => {
       runId: 'run_flat',
       status: 'running',
       final: false,
-      boardSlug: 'session-search',
-      missionId: 'mis_showcase',
+      missionSlug: 'session-search',
+      inputCardId: 'mis_showcase',
       eventCount: 1,
     }
     const nested = { status: { ...flat, runId: 'run_nested', eventCount: 2 } }
 
     expect(runStatusFromResponse(flat).runId).toBe('run_flat')
     expect(runStatusFromResponse(nested).runId).toBe('run_nested')
-    expect(activeRunStorageKey('session-search')).toBe('chrote-formations-active-run-session-search')
+    expect(activeRunStorageKey('session-search')).toBe('archon.activeRun.session-search')
   })
 })

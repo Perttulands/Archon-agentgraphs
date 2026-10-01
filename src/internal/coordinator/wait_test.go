@@ -20,7 +20,7 @@ type waitResponse struct {
 func waitRequest(t *testing.T, c *Coordinator, id, query string) waitResponse {
 	t.Helper()
 	w := httptest.NewRecorder()
-	c.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/api/formations/runs/"+id+"/wait?"+query, nil))
+	c.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/api/runs/"+id+"/wait?"+query, nil))
 	response := waitResponse{code: w.Code, body: w.Body.String()}
 	if w.Code == 200 {
 		var envelope struct {
@@ -105,7 +105,7 @@ func TestWaitReturnsTheGateTheRunNeedsWithinASecond(t *testing.T) {
 
 	// Any change after the cursor answers with the events since it.
 	changes := waitAsync(t, c, id, "until=any-change&hold=10&since="+strconv.Itoa(r.Seq))
-	if w := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(ask.Seq)+`,"verdict":"pass"}`); w.Code != 202 {
+	if w := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(ask.Seq)+`,"verdict":"pass"}`); w.Code != 202 {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 	changed := <-changes
@@ -137,7 +137,7 @@ func TestWaitSaysWhoEndedACanceledRunAndWhy(t *testing.T) {
 	e.proceed <- struct{}{}
 	awaitState(t, c, id, "waiting_human")
 	final := waitAsync(t, c, id, "until=final&hold=10")
-	if w := post(t, c, "/api/formations/runs/"+id+"/abort", `{"reason":"wrong brief","requestedBy":"operator:archon"}`); w.Code >= 300 {
+	if w := post(t, c, "/api/runs/"+id+"/abort", `{"reason":"wrong brief","requestedBy":"operator:archon"}`); w.Code >= 300 {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 	got := <-final
@@ -196,7 +196,7 @@ func TestWaitRejectsBadRequests(t *testing.T) {
 // resume, is not an ask until the run settles, and the cursor stays below it.
 func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 	events := []formations.RunEvent{
-		{RunID: "run_x", Seq: 1, Type: formations.RunEventStarted, Data: map[string]any{"boardSlug": "proof"}},
+		{RunID: "run_x", Seq: 1, Type: formations.RunEventStarted, Data: map[string]any{"missionSlug": "proof"}},
 		{RunID: "run_x", Seq: 2, Type: formations.RunEventNodeStarted, NodeID: "fmn_work"},
 		{RunID: "run_x", Seq: 3, Type: formations.RunEventBlocked, NodeID: "fmn_work", Data: map[string]any{"reason": "seat lost", "code": "seat_lost", "resumeAllowed": true}},
 	}
@@ -252,7 +252,7 @@ func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 func TestWaitServesGateTextVerbatimAndCapsTheInput(t *testing.T) {
 	long := strings.Repeat("x", waitInputExcerptBytes+10)
 	events := []formations.RunEvent{
-		{RunID: "run_x", Seq: 1, Type: formations.RunEventStarted, Data: map[string]any{"boardSlug": "proof"}},
+		{RunID: "run_x", Seq: 1, Type: formations.RunEventStarted, Data: map[string]any{"missionSlug": "proof"}},
 		{RunID: "run_x", Seq: 2, Type: formations.RunEventHumanInputRequested, GateID: "gate_review", NodeID: "gate_review", Data: map[string]any{
 			"prompt":   "Check with password=hunter2",
 			"inputRef": map[string]any{"fromNodeId": "fmn_work", "text": "token: abc123\n" + long},
@@ -275,7 +275,7 @@ func TestWaitServesGateTextVerbatimAndCapsTheInput(t *testing.T) {
 func TestAnyChangeLoopReportsALimitBlockAndItsGateVerdictIsAccepted(t *testing.T) {
 	for round := 0; round < 5; round++ {
 		c, e, _ := fixture(t)
-		w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"probe","board":"proof","missionId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":1,"maxAttempts":1,"wallClockSeconds":600}}`)
+		w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"probe","mission":"proof","inputCardId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":1,"maxAttempts":1,"wallClockSeconds":600}}`)
 		if w.Code != 202 {
 			t.Fatalf("start %d %s", w.Code, w.Body.String())
 		}
@@ -307,7 +307,7 @@ func TestAnyChangeLoopReportsALimitBlockAndItsGateVerdictIsAccepted(t *testing.T
 				case formations.NeedsYouKindHumanGate:
 					// Answer at once, as a driver does; the verdict must not race
 					// the command that is still settling the run.
-					if v := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(ask.Seq)+`,"verdict":"pass"}`); v.Code != 202 {
+					if v := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(ask.Seq)+`,"verdict":"pass"}`); v.Code != 202 {
 						t.Fatalf("round %d: verdict right after needs-you: %d %s", round, v.Code, v.Body.String())
 					}
 				case formations.NeedsYouKindBlocked:
@@ -334,7 +334,7 @@ func TestResumeWaitsForTheCommandThatRecordedTheEscalation(t *testing.T) {
 	if !c.acquire(id) { // the command that captures the escalation
 		t.Fatal("reserve")
 	}
-	if _, err := c.store.RecordEscalationFromCapture(id, "fmn_work", `<<<CHROTE-ESCALATE run-id=`+id+` severity=stop reason="credentials missing">>>`); err != nil {
+	if _, err := c.store.RecordEscalationFromCapture(id, "fmn_work", `<<<ARCHON-ESCALATE run-id=`+id+` severity=stop reason="credentials missing">>>`); err != nil {
 		t.Fatal(err)
 	}
 	got := waitRequest(t, c, id, "until=needs-you&hold=0")
@@ -342,7 +342,7 @@ func TestResumeWaitsForTheCommandThatRecordedTheEscalation(t *testing.T) {
 		t.Fatalf("wait = %+v", got.result)
 	}
 	go func() { time.Sleep(200 * time.Millisecond); c.release(id) }()
-	if w := post(t, c, "/api/formations/runs/"+id+"/resume", `{"reason":"credentials added"}`); w.Code != 202 {
+	if w := post(t, c, "/api/runs/"+id+"/resume", `{"reason":"credentials added"}`); w.Code != 202 {
 		t.Fatalf("resume right after the escalation: %d %s", w.Code, w.Body.String())
 	}
 }

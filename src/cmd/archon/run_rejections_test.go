@@ -20,7 +20,7 @@ func TestArchonRunStartReportsDefinitionErrorsWithoutEffects(t *testing.T) {
 	}{
 		{
 			name:     "mission missing board",
-			args:     []string{"mission", "run", "missing", "--mission", "mis_missing", "--json"},
+			args:     []string{"mission", "run", "missing", "--input", "mis_missing", "--json"},
 			wantCode: "not_found",
 		},
 		{
@@ -32,7 +32,7 @@ func TestArchonRunStartReportsDefinitionErrorsWithoutEffects(t *testing.T) {
 			name:     "mission missing root",
 			slug:     "session-search",
 			board:    archonS4BoardFixture(),
-			args:     []string{"mission", "run", "session-search", "--mission", "mis_missing", "--json"},
+			args:     []string{"mission", "run", "session-search", "--input", "mis_missing", "--json"},
 			wantCode: "not_found",
 		},
 		{
@@ -43,31 +43,10 @@ func TestArchonRunStartReportsDefinitionErrorsWithoutEffects(t *testing.T) {
 			wantCode: "not_found",
 		},
 		{
-			name:     "mission reachable legacy script gate",
-			slug:     "session-search",
-			board:    archonLegacyScriptGateBoardFixture(),
-			args:     []string{"mission", "run", "session-search", "--json"},
-			wantCode: formations.LegacyScriptGateMigrationCode,
-		},
-		{
-			name:     "mission legacy inline verification",
-			slug:     "session-search",
-			board:    archonLegacyInlineVerificationRunFixture(),
-			args:     []string{"mission", "run", "session-search", "--json"},
-			wantCode: formations.LegacyInlineVerificationMigrationCode,
-		},
-		{
-			name:     "formation legacy inline verification",
-			slug:     "session-search",
-			board:    archonLegacyInlineVerificationRunFixture(),
-			args:     []string{"formation", "run", "session-search", "fmn_work", "--json"},
-			wantCode: formations.LegacyInlineVerificationMigrationCode,
-		},
-		{
 			name:     "Mission reaches non-executing Tool",
 			slug:     "tool-parity",
 			board:    archonRuntimeToolBoardFixture(),
-			args:     []string{"mission", "run", "tool-parity", "--mission", "mis_main", "--json"},
+			args:     []string{"mission", "run", "tool-parity", "--input", "mis_main", "--json"},
 			wantCode: "tool_execution_unavailable",
 		},
 	}
@@ -140,16 +119,6 @@ func TestArchonResumeAbortAndVerdictReportMissingRun(t *testing.T) {
 	}
 }
 
-func archonLegacyInlineVerificationRunFixture() string {
-	return strings.Replace(archonS4BoardFixture(), `[[formation.input]]`, `[formation.verification]
-id = "ver_work"
-kinds = ["code"]
-criterion = "Tests pass"
-onFail = "block"
-
-[[formation.input]]`, 1)
-}
-
 func installArchonRuntimeTmuxTripwire(t *testing.T, workspace string) string {
 	t.Helper()
 	binDir := t.TempDir()
@@ -161,23 +130,23 @@ func installArchonRuntimeTmuxTripwire(t *testing.T, workspace string) string {
 	}
 	t.Setenv("PATH", binDir)
 	t.Setenv("ARCHON_RUNTIME_TMUX_CAPTURE", capturePath)
-	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "")
-	t.Setenv("CHROTE_FORMATIONS_TMUX_HARNESSES", "openai-codex")
-	t.Setenv("CHROTE_FORMATIONS_TMUX_SOCKET", filepath.Join(t.TempDir(), "default"))
-	t.Setenv("CHROTE_FORMATIONS_TMUX_CWD", workspace)
+	t.Setenv("ARCHON_LAB_HARNESSES", "")
+	t.Setenv("ARCHON_TMUX_HARNESSES", "openai-codex")
+	t.Setenv("ARCHON_TMUX_SOCKET", filepath.Join(t.TempDir(), "default"))
+	t.Setenv("ARCHON_TMUX_CWD", workspace)
 	return capturePath
 }
 
 func assertNoArchonRuntimeEffects(t *testing.T, workspace, tmuxCapture string, runner *fakeTmux) {
 	t.Helper()
-	if matches, err := filepath.Glob(filepath.Join(workspace, ".formations", "runs", "*")); err != nil || len(matches) != 0 {
+	if matches, err := filepath.Glob(filepath.Join(workspace, ".archon", "runs", "*")); err != nil || len(matches) != 0 {
 		t.Fatalf("command left run artifacts: matches=%v err=%v", matches, err)
 	}
 	if len(runner.spawned) != 0 || len(runner.attach) != 0 {
 		t.Fatalf("runtime rejection touched CLI tmux runner: spawned=%v attach=%v", runner.spawned, runner.attach)
 	}
 	if raw, err := os.ReadFile(tmuxCapture); err == nil {
-		t.Fatalf("runtime rejection reached formations tmux: %s", raw)
+		t.Fatalf("runtime rejection reached archon tmux: %s", raw)
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("inspect tmux tripwire: %v", err)
 	}

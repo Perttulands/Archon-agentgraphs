@@ -14,7 +14,7 @@ func judgeBlock(verdict, reason string, evidence ...string) string {
 		evidence = []string{}
 	}
 	raw, _ := json.Marshal(map[string]any{"verdict": verdict, "reason": reason, "evidence": evidence})
-	return "```chrote-verdict\n" + string(raw) + "\n```"
+	return "```archon-verdict\n" + string(raw) + "\n```"
 }
 
 func TestParseJudgeVerdict(t *testing.T) {
@@ -30,7 +30,7 @@ func TestParseJudgeVerdict(t *testing.T) {
 		"bare pass":     "pass",
 		"bare fail":     "fail",
 		"prose":         "looks good",
-		"missing close": "```chrote-verdict\n{}",
+		"missing close": "```archon-verdict\n{}",
 		"multiple":      judgeBlock("pass", "ok") + "\n" + judgeBlock("fail", "no"),
 		"malformed":     "{",
 		"missing key":   `{"verdict":"pass","reason":"ok"}`,
@@ -47,7 +47,7 @@ func TestParseJudgeVerdict(t *testing.T) {
 	for name, output := range invalid {
 		t.Run(name, func(t *testing.T) {
 			if strings.HasPrefix(output, "{") {
-				output = "```chrote-verdict\n" + output + "\n```"
+				output = "```archon-verdict\n" + output + "\n```"
 			}
 			if result, err := parseJudgeVerdict(output); err == nil {
 				t.Fatalf("accepted invalid output as %+v", result)
@@ -120,7 +120,7 @@ func TestLabJudgePushbackLoop(t *testing.T) {
 			store, personas := s4RunFixture(t)
 			createS4Persona(t, personas, "scout")
 			fixture := strings.Replace(s4JudgeChainRunBoardFixture(), `kinds = ["code", "formation"]`, `kinds = ["formation"]`, 1)
-			fixture += "\n[[connection]]\nid = \"edge_gate_fail_work\"\nfrom = \"gate_review:fail\"\nto = \"fmn_work:port_work_in\"\n"
+			fixture = strings.Replace(fixture, "id = \"edge_gate_fail_rejected\"\nfrom = \"gate_review:fail\"\nto = \"end_rejected:in\"", "id = \"edge_gate_fail_work\"\nfrom = \"gate_review:fail\"\nto = \"fmn_work:port_work_in\"", 1)
 			writeFixture(t, store.BoardPath("session-search"), fixture)
 			board, err := store.ReadBoard("session-search")
 			if err != nil {
@@ -129,7 +129,7 @@ func TestLabJudgePushbackLoop(t *testing.T) {
 			cwd := t.TempDir()
 			firstVerdict := judgeBlock("fail", "add the missing test", "coverage report: retry untested")
 			if malformed {
-				firstVerdict = "```chrote-verdict\n{invalid JSON}\n```"
+				firstVerdict = "```archon-verdict\n{invalid JSON}\n```"
 			}
 			executor := &scriptedLabExecutor{lab: NewLabFormationExecutor(store, personas, LabExecutorConfig{Cwd: cwd, Harnesses: []string{"openai-codex"}}), responses: map[string]map[int]string{
 				"fmn_work": {1: "draft one", 2: "draft two with tests"},
@@ -213,7 +213,7 @@ func TestLabJudgePushbackLoop(t *testing.T) {
 			if !matchedDispatch {
 				t.Fatal("missing second work dispatch")
 			}
-			for _, text := range []string{"gate feedback from gate_review, attempt 1:", "reason: add the missing test", "evidence: coverage report: retry untested", "original input: draft one", "mission bead: " + board.Missions[0].BeadID} {
+			for _, text := range []string{"gate feedback from gate_review, attempt 1:", "reason: add the missing test", "evidence: coverage report: retry untested", "original input: draft one"} {
 				if !strings.Contains(prompt, text) {
 					t.Errorf("second dispatched lab prompt missing %q: %s", text, prompt)
 				}

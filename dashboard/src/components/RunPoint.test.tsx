@@ -6,7 +6,7 @@ const text = (value: string) => ({ text: value, bytes: value.length })
 const problems = [
   { seq: 6, type: 'run_blocked', code: 'resume_after_verdict', nodeIds: ['gate_framing'], reason: text('human gate verdict recorded; resume required'), resumeAllowed: true },
   { seq: 10, type: 'error', code: 'invalid_judge_result', nodeIds: ['gate_adversarial'], reason: text('missing verdict block') },
-  { seq: 11, type: 'run_blocked', nodeIds: ['gate_adversarial'], reason: text('invalid judge result: missing or unterminated chrote-verdict block'), resumeAllowed: false },
+  { seq: 11, type: 'run_blocked', nodeIds: ['gate_adversarial'], reason: text('invalid judge result: missing or unterminated archon-verdict block'), resumeAllowed: false },
   { seq: 14, type: 'run_blocked', nodeIds: ['fmn_map'], reason: text('coordinator restarted; completed-turn evidence required'), resumeAllowed: true },
   { seq: 17, type: 'error', code: 'wall_clock_exceeded', nodeIds: [], reason: text('wall clock limit exceeded') },
   { seq: 18, type: 'run_blocked', nodeIds: [], reason: text('wall clock limit exceeded'), resumeAllowed: true },
@@ -19,7 +19,7 @@ let served: unknown[] = problems
 describe('RunPoint', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
-      const found = String(input) === '/api/formations/runs/run_1/evidence/problems'
+      const found = String(input) === '/api/runs/run_1/evidence/problems'
       return Promise.resolve({
         ok: found,
         status: found ? 200 : 404,
@@ -59,8 +59,8 @@ describe('RunPoint', () => {
   it('names the blocked node with the recorded reason', async () => {
     render(<RunPoint runId="run_1" point={{ kind: 'blocked', nodeId: 'gate_adversarial', gate: true, blockSeq: 11 }} title="Adversarial review" onLocate={() => {}} />)
     expect(screen.getByTestId('run-point')).toHaveTextContent(/^blocked at Adversarial review$/)
-    await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent('blocked at Adversarial review: invalid judge result: missing or unterminated chrote-verdict block'))
-    expect(fetch).toHaveBeenCalledWith('/api/formations/runs/run_1/evidence/problems', expect.anything())
+    await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent('blocked at Adversarial review: invalid judge result: missing or unterminated archon-verdict block'))
+    expect(fetch).toHaveBeenCalledWith('/api/runs/run_1/evidence/problems', expect.anything())
     expect(screen.getByTestId('run-point')).toHaveClass('blocked')
   })
 

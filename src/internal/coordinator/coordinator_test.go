@@ -65,7 +65,7 @@ func post(t *testing.T, c *Coordinator, path string, body string) *httptest.Resp
 }
 func startRun(t *testing.T, c *Coordinator) string {
 	t.Helper()
-	w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"run the proof", "board":"proof","missionId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600}}`)
+	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"run the proof", "mission":"proof","inputCardId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600}}`)
 	if w.Code != 202 {
 		t.Fatalf("start %d %s", w.Code, w.Body.String())
 	}
@@ -131,7 +131,7 @@ func TestAdmissionSurvivesDisconnectAndHumanGateRequiresExactRequest(t *testing.
 		t.Fatalf("downstream %s ran before verdict", node)
 	default:
 	}
-	wrong := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":999,"verdict":"pass","reason":"stale"}`)
+	wrong := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":999,"verdict":"pass","reason":"stale"}`)
 	if wrong.Code != 409 {
 		t.Fatal(wrong.Code)
 	}
@@ -142,12 +142,12 @@ func TestAdmissionSurvivesDisconnectAndHumanGateRequiresExactRequest(t *testing.
 		}
 	}
 	list := httptest.NewRecorder()
-	c.Handler().ServeHTTP(list, httptest.NewRequest("GET", "/api/formations/runs", nil))
+	c.Handler().ServeHTTP(list, httptest.NewRequest("GET", "/api/runs", nil))
 	if !strings.Contains(list.Body.String(), `"status":"waiting_human"`) {
 		t.Fatal(list.Body.String())
 	}
 	body, _ := json.Marshal(map[string]any{"requestedSeq": p.WaitingGates[0].RequestedSeq, "verdict": "pass", "reason": "operator approves"})
-	w := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", string(body))
+	w := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", string(body))
 	if w.Code != 202 {
 		t.Fatalf("verdict %d %s", w.Code, w.Body.String())
 	}
@@ -164,7 +164,7 @@ func TestAdmissionSurvivesDisconnectAndHumanGateRequiresExactRequest(t *testing.
 	if !final.Final || len(final.WaitingGates) != 0 {
 		t.Fatal(final)
 	}
-	if w := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", string(body)); w.Code != 409 {
+	if w := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", string(body)); w.Code != 409 {
 		t.Fatal("duplicate verdict accepted")
 	}
 }
@@ -181,16 +181,34 @@ func TestConfiguredListenAddress(t *testing.T) {
 	l.Close()
 }
 
+// endNodes are the Done and Rejected End nodes test missions end their paths
+// at (form-o7p.10).
+const endNodes = `
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+`
+
+// endWire is a connection that ends a route at an End node.
+func endWire(id, from, end string) string {
+	return "[[connection]]\nid = \"" + id + "\"\nfrom = \"" + from + "\"\nto = \"" + end + ":in\"\n"
+}
+
 const testBoard = `schema = 1
 id = "brd_proof"
 slug = "proof"
 title = "Proof"
 rev = 1
-[[mission]]
+[[inputCard]]
 id = "mis_proof"
 title = "Proof"
 goal = "PRIVATE-OBJECTIVE"
-beadId = "form-2fb"
+beadId = "archon-2fb"
 [[formation]]
 id = "fmn_work"
 type = "solo"
@@ -207,6 +225,7 @@ label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 [[gate]]
 id = "gate_review"
 title = "Review"
@@ -228,6 +247,7 @@ label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 [[connection]]
 id = "edge_start"
 from = "mis_proof:out"
@@ -236,10 +256,26 @@ to = "fmn_work:port_in"
 id = "edge_gate"
 from = "fmn_work:port_out"
 to = "gate_review:in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
 [[connection]]
 id = "edge_pass"
 from = "gate_review:pass"
 to = "fmn_after:port_after_in"
+[[connection]]
+id = "edge_fail"
+from = "gate_review:fail"
+to = "end_rejected:in"
+[[connection]]
+id = "edge_after_done"
+from = "fmn_after:port_after_out"
+to = "end_done:in"
 `
 
 // Limits are optional (form-o7p.7): a start without limits is admitted and its
@@ -247,7 +283,7 @@ to = "fmn_after:port_after_in"
 func TestAdmissionTakesARunWithoutLimits(t *testing.T) {
 	for _, body := range []string{`"limits":{},`, `"limits":{"maxDispatch":0,"maxAttempts":0,"wallClockSeconds":0},`, ``} {
 		c, e, _ := fixture(t)
-		w := post(t, c, "/api/formations/runs", `{`+body+`"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof","missionId":"mis_proof","expectedRev":1}`)
+		w := post(t, c, "/api/runs", `{`+body+`"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 		if w.Code != 202 {
 			t.Fatalf("%s admission %d %s", body, w.Code, w.Body.String())
 		}
@@ -275,7 +311,7 @@ func TestAdmissionTakesARunWithoutLimits(t *testing.T) {
 	}
 	for _, limits := range []string{`{"maxDispatch":-1}`, `{"maxAttempts":-1}`, `{"wallClockSeconds":-1}`} {
 		c, _, _ := fixture(t)
-		w := post(t, c, "/api/formations/runs", `{"limits":`+limits+`,"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof","missionId":"mis_proof","expectedRev":1}`)
+		w := post(t, c, "/api/runs", `{"limits":`+limits+`,"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 		if w.Code != 400 {
 			t.Fatalf("limits %s admission %d %s, want 400", limits, w.Code, w.Body.String())
 		}
@@ -288,14 +324,14 @@ func TestAdmissionGivesStepsNoDefaultDuration(t *testing.T) {
 	for _, mode := range []string{"mission", "formation"} {
 		t.Run(mode, func(t *testing.T) {
 			c, e, _ := fixture(t)
-			selector := `"missionId":"mis_proof",`
+			selector := `"inputCardId":"mis_proof",`
 			if mode == "formation" {
 				selector = `"formationId":"fmn_work",`
 			}
-			if w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof",`+selector+`"expectedRev":1,"limits":{"formationTimeoutSeconds":999}}`); w.Code != 400 {
+			if w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof",`+selector+`"expectedRev":1,"limits":{"formationTimeoutSeconds":999}}`); w.Code != 400 {
 				t.Fatalf("a default step duration was accepted: %d %s", w.Code, w.Body.String())
 			}
-			w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof",`+selector+`"expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1}}`)
+			w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof",`+selector+`"expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1}}`)
 			if w.Code != 202 {
 				t.Fatalf("admission %d %s", w.Code, w.Body.String())
 			}

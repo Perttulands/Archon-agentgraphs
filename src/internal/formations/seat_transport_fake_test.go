@@ -9,7 +9,7 @@ import (
 // The schedule fake supplies native turns at the transport boundary. Parser
 // tests independently exercise actual JSONL records for each harness.
 func (f *fakeTmuxHarnessClient) Create(ctx context.Context, socket, name, cwd, root string, v HarnessVariant) (*nativeSeat, error) {
-	if err := f.CreateSession(ctx, socket, name, cwd, v.Launch); err != nil {
+	if err := f.CreateSession(ctx, socket, name, cwd, ""); err != nil {
 		return nil, err
 	}
 	f.seatVariants = append(f.seatVariants, v)
@@ -66,7 +66,7 @@ func (f *fakeTmuxHarnessClient) WaitTurn(ctx context.Context, s *nativeSeat, cwd
 		if err != nil {
 			return turn, err
 		}
-		if strings.Contains(text, "<<<CHROTE-DONE") {
+		if strings.Contains(text, "<<<ARCHON-DONE") {
 			turn.Text = text
 			turn.Complete = true
 			return turn, nil

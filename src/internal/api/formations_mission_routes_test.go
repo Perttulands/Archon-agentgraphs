@@ -6,16 +6,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"testing"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// Authoring is served under /api/formations/missions. The /boards routes, its
-// name before the rename, stay for one release and answer identically.
-func TestFormationsAPIServesMissionsAndKeepsBoardRoutes(t *testing.T) {
+// Authoring is served under /api/missions only. The old /api/formations and
+// /boards routes are gone and answer 404.
+func TestFormationsAPIServesMissionsOnly(t *testing.T) {
 	store := formations.NewStore(t.TempDir())
 	personas := formations.NewPersonaStore(filepath.Join(t.TempDir(), "agents"))
 	mux := http.NewServeMux()
@@ -29,19 +28,6 @@ func TestFormationsAPIServesMissionsAndKeepsBoardRoutes(t *testing.T) {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 		return rec
-	}
-	timestamp := regexp.MustCompile(`"timestamp":"[^"]*"`)
-	same := func(path string) {
-		t.Helper()
-		mission := serve(http.MethodGet, "/api/formations/missions"+path, "", "")
-		board := serve(http.MethodGet, "/api/formations/boards"+path, "", "")
-		if mission.Code != board.Code || timestamp.ReplaceAllString(mission.Body.String(), "") != timestamp.ReplaceAllString(board.Body.String(), "") ||
-			mission.Header().Get("ETag") != board.Header().Get("ETag") {
-			t.Fatalf("GET %s: missions %d %s\nboards %d %s", path, mission.Code, mission.Body.String(), board.Code, board.Body.String())
-		}
-		if mission.Code != http.StatusOK {
-			t.Fatalf("GET %s = %d %s", path, mission.Code, mission.Body.String())
-		}
 	}
 	dataKeys := func(rec *httptest.ResponseRecorder) []string {
 		t.Helper()
@@ -58,65 +44,41 @@ func TestFormationsAPIServesMissionsAndKeepsBoardRoutes(t *testing.T) {
 		sort.Strings(keys)
 		return keys
 	}
-	current := func(slug string) *formations.BoardDocument {
-		t.Helper()
-		board, err := store.ReadBoard(slug)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return board
-	}
 
-	// Each write answers the same way under both names.
-	var createKeys []string
-	for _, base := range []string{"/api/formations/missions", "/api/formations/boards"} {
-		rec := serve(http.MethodPost, base, "", `{"title":"Routes via `+base[len("/api/formations/"):]+`"}`)
-		if rec.Code != http.StatusCreated {
-			t.Fatalf("POST %s = %d %s", base, rec.Code, rec.Body.String())
-		}
-		if keys := dataKeys(rec); createKeys == nil {
-			createKeys = keys
-		} else if !equalStrings(keys, createKeys) {
-			t.Fatalf("POST %s keys %v, want %v", base, keys, createKeys)
+	rec := serve(http.MethodPost, "/api/missions", "", `{"title":"Routes"}`)
+	if rec.Code != http.StatusCreated || !equalStrings(dataKeys(rec), []string{"mission"}) {
+		t.Fatalf("POST /api/missions = %d %s", rec.Code, rec.Body.String())
+	}
+	board, err := store.ReadBoard("routes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec = serve(http.MethodPatch, "/api/missions/routes", board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`,"updatedBy":"agent:test","createFormation":{"type":"solo","title":"Step"}}`)
+	if rec.Code != http.StatusOK || !equalStrings(dataKeys(rec), []string{"formation", "layout", "mission"}) {
+		t.Fatalf("PATCH /api/missions/routes = %d %s", rec.Code, rec.Body.String())
+	}
+	notes := serve(http.MethodGet, "/api/missions/routes/notes", "", "")
+	rec = serve(http.MethodPatch, "/api/missions/routes/notes", notes.Header().Get("ETag"), `{"target":"mission","action":"append","text":"why","author":"agent:test"}`)
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"mission":[{`)) {
+		t.Fatalf("PATCH notes = %d %s", rec.Code, rec.Body.String())
+	}
+	board, err = store.ReadBoard("routes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/missions", "/api/missions/routes", "/api/missions/routes/validation", "/api/missions/routes/notes", "/api/missions/routes/layout", "/api/missions/routes/changes?etag=" + board.ETag} {
+		if rec := serve(http.MethodGet, path, "", ""); rec.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d %s", path, rec.Code, rec.Body.String())
 		}
 	}
-	slug := "routes-via-missions"
-	for _, base := range []string{"/api/formations/missions/", "/api/formations/boards/"} {
-		board := current(slug)
-		rec := serve(http.MethodPatch, base+slug, board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`,"updatedBy":"agent:test","createFormation":{"type":"solo","title":"Step via `+base[len("/api/formations/"):len(base)-1]+`"}}`)
-		if rec.Code != http.StatusOK || !equalStrings(dataKeys(rec), []string{"board", "formation", "layout"}) {
-			t.Fatalf("PATCH %s = %d %s", base, rec.Code, rec.Body.String())
-		}
-		notes := serve(http.MethodGet, base+slug+"/notes", "", "")
-		rec = serve(http.MethodPatch, base+slug+"/notes", notes.Header().Get("ETag"), `{"target":"board","action":"append","text":"via `+base+`","author":"agent:test"}`)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("PATCH %snotes = %d %s", base, rec.Code, rec.Body.String())
-		}
-		layout := serve(http.MethodGet, base+slug+"/layout", "", "")
-		rec = serve(http.MethodPatch, base+slug+"/layout", layout.Header().Get("ETag"), `{"arrange":true}`)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("PATCH %slayout = %d %s", base, rec.Code, rec.Body.String())
+	for _, path := range []string{"/api/formations/missions", "/api/formations/boards", "/api/formations/boards/routes", "/api/formations/missions/routes"} {
+		if rec := serve(http.MethodGet, path, "", ""); rec.Code != http.StatusNotFound {
+			t.Fatalf("GET %s = %d, want 404", path, rec.Code)
 		}
 	}
-	if board := current(slug); len(board.Formations) != 2 {
-		t.Fatalf("formations after both PATCH routes = %+v", board.Formations)
-	}
-
-	// Each read answers identically.
-	board := current(slug)
-	for _, path := range []string{"", "/" + slug, "/" + slug + "/validation", "/" + slug + "/notes", "/" + slug + "/layout", "/" + slug + "/changes?etag=" + board.ETag} {
-		same(path)
-	}
-
-	for _, base := range []string{"/api/formations/missions/", "/api/formations/boards/"} {
-		target := "routes-via-boards"
-		if base == "/api/formations/missions/" {
-			target = slug
-		}
-		rec := serve(http.MethodDelete, base+target, current(target).ETag, `{"expectedRev":`+jsonInt(current(target).Rev)+`}`)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("DELETE %s%s = %d %s", base, target, rec.Code, rec.Body.String())
-		}
+	rec = serve(http.MethodDelete, "/api/missions/routes", board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("DELETE /api/missions/routes = %d %s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 
 // vanillaSlotBoard is s4RunBoardFixture with a slot that has no role.
 func vanillaSlotBoard(settings string) string {
-	return strings.Replace(s4RunBoardFixture(), "agentId = \"scout\"\nharness = \"openai-codex\"\n", settings, 1)
+	return strings.Replace(s4RunBoardFixture(), "agentId = \"scout\"\nharness = \"openai-codex\"\ncontroller = true\neffort = \"medium\"\n", settings+"controller = true\n", 1)
 }
 
 func stubHarnessCLIs(t *testing.T) string {
@@ -216,7 +216,7 @@ func TestSeatsLaunchFromTheSlotsSettings(t *testing.T) {
 	if dispatch.Data["agentId"] != "" || !strings.Contains(client.lastPrompt, "agent: vanilla (no role)") {
 		t.Fatalf("dispatch = %+v prompt=%q, want a vanilla seat", dispatch.Data, client.lastPrompt)
 	}
-	raw := readFile(t, filepath.Join(store.Workspace, ".formations", "runs", "session-search", status.RunID+".bindings.toml"))
+	raw := readFile(t, filepath.Join(store.Workspace, ".archon", "runs", "session-search", status.RunID+".bindings.toml"))
 	if !strings.Contains(raw, "schema = 3") || strings.Contains(raw, "cardToml") || !strings.Contains(raw, `effort = "low"`) || !strings.Contains(raw, `model = "opus"`) {
 		t.Fatalf("bindings snapshot:\n%s", raw)
 	}

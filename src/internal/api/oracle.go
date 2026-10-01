@@ -77,8 +77,7 @@ type agentSnapshot struct {
 	ContextPct int
 }
 
-// OracleHandler handles agent-observability API endpoints. The route name is
-// kept as /api/oracle for compatibility with the existing dashboard code.
+// OracleHandler handles the agent-observability endpoints under /api/oracle.
 type OracleHandler struct {
 	tmuxRunner oracleTmuxRunner
 
@@ -132,7 +131,7 @@ func isAgentSession(name string) bool {
 }
 
 func agentPrefixes() []string {
-	if raw := os.Getenv("CHROTE_AGENT_PREFIXES"); raw != "" {
+	if raw := os.Getenv("ARCHON_AGENT_PREFIXES"); raw != "" {
 		parts := strings.Split(raw, ",")
 		prefixes := make([]string, 0, len(parts))
 		for _, part := range parts {

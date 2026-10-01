@@ -35,6 +35,7 @@ func TestS4RunStartAppendsSeq1AndSnapshots(t *testing.T) {
 
 	started, err := store.StartRun("session-search", RunStartRequest{
 		MissionID:         "mis_showcase",
+		BeadID:            "home-7kc4.7",
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
@@ -249,7 +250,7 @@ rev = 7
 updatedBy = "agent:archon"
 updatedAt = "2026-06-03T16:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Ship a showcase"
@@ -274,12 +275,18 @@ label = "Researcher"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_research"
 from = "mis_showcase:out"
 to = "fmn_research:port_research_in"
-`
+
+[[connection]]
+id = "edge_research_done"
+from = "fmn_research:port_research_out"
+to = "end_done:in"
+` + branchingBoardEnds()
 }
 
 func readRunEvents(t *testing.T, path string) []RunEvent {

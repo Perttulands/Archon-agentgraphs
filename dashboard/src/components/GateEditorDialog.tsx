@@ -130,7 +130,7 @@ export function GateKindsFields({ draft, onChange, profiles, hasJudgeChain, disa
       {draft.kinds.includes('code') ? (
         <>
           <label htmlFor={`${idPrefix}-profile`}>Evaluator profile</label>
-          <select id={`${idPrefix}-profile`} className="legacy-select" aria-label="Evaluator profile" value={draft.profileKey} disabled={disabled}
+          <select id={`${idPrefix}-profile`} className="profile-select" aria-label="Evaluator profile" value={draft.profileKey} disabled={disabled}
             onChange={event => { const profileKey = event.target.value; onChange(current => ({ ...current, profileKey })) }}>
             <option value="">Choose later</option>
             {unknownProfile ? <option value={draft.profileKey}>{draft.profileKey} (unregistered)</option> : null}

@@ -248,7 +248,7 @@ func (d *needsYouDispatcher) deliver(ctx context.Context, runID string, live boo
 
 // renderNeedsYou writes the complete plain-text message for one ask.
 func renderNeedsYou(config NeedsYouConfig, ask formations.NeedsYouAsk, events []formations.RunEvent, runStatus string, board *formations.BoardDocument) formations.NeedsYouNotification {
-	slug, _ := events[0].Data["boardSlug"].(string)
+	slug, _ := events[0].Data["missionSlug"].(string)
 	n := formations.NeedsYouNotification{
 		RunID: ask.RunID, BoardSlug: slug, BoardTitle: slug, Seq: ask.Seq, Kind: ask.Kind, RunStatus: runStatus,
 		NodeID: ask.NodeID, GateID: ask.GateID, Ask: ask.Ask, Severity: ask.Severity, Blocks: ask.Blocks,
@@ -356,6 +356,11 @@ func nodeTitle(board *formations.BoardDocument, id string) string {
 			}
 		}
 		for _, node := range board.Missions {
+			if node.ID == id && node.Title != "" {
+				return node.Title
+			}
+		}
+		for _, node := range board.Ends {
 			if node.ID == id && node.Title != "" {
 				return node.Title
 			}

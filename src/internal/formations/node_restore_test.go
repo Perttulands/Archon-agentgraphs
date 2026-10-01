@@ -15,11 +15,11 @@ slug = "restore"
 title = "Restore"
 rev = 3
 
-[[mission]]
+[[inputCard]]
 id = "mis_ship"
 title = "Ship it"
 goal = "Ship the widget"
-beadId = "form-abc.1"
+beadId = "archon-abc.1"
 files = ["docs/plan.md"]
 inputHint = "Name the widget"
 humanChannel = "session"
@@ -30,7 +30,7 @@ type = "orchestrated"
 title = "Build"
 [formation.brief]
 goal = "Build the widget"
-beadId = "form-abc.2"
+beadId = "archon-abc.2"
 files = ["src/widget.go", "docs/widget.md"]
 links = ["https://example.test/spec"]
 [formation.execution]
@@ -53,12 +53,14 @@ label = "Orchestrator"
 controller = true
 agentId = "codex-orchestrator"
 harness = "openai-codex"
+effort = "medium"
 [[formation.slot]]
 id = "slot_build_worker"
 label = "Worker"
 controller = false
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 
 [[formation]]
 id = "fmn_judge"
@@ -117,8 +119,8 @@ func nodeRestoreFixture(t *testing.T) *Store {
 	store.Now = fixedClock()
 	writeFixture(t, store.BoardPath("restore"), nodeRestoreBoardFixture)
 	writeFixture(t, store.LayoutPath("restore"), `schema = 1
-boardId = "brd_restore"
-boardRev = 3
+missionId = "brd_restore"
+missionRev = 3
 
 [[node]]
 id = "mis_ship"
@@ -145,7 +147,7 @@ id = "edge_pushback"
 lane = "y:40"
 `)
 	for _, target := range []string{"mis_ship", "fmn_build", "gate_tests", "fmn_judge"} {
-		if _, err := store.UpdateBoardNote("restore", BoardNotePatch{Target: target, Text: "About " + target, UpdatedBy: "human:operator"}, NoteWriteOptions{ExpectedETag: currentNotesETag(t, store)}); err != nil {
+		if _, err := store.UpdateBoardNote("restore", BoardNotePatch{Target: target, Text: "About " + target, Author: "human:operator"}, NoteWriteOptions{ExpectedETag: currentNotesETag(t, store)}); err != nil {
 			t.Fatalf("seed note on %s: %v", target, err)
 		}
 	}
@@ -312,12 +314,8 @@ func TestRestoreNodeRefusesWithoutWritingWhenTheBoardNoLongerFits(t *testing.T) 
 			{ID: "edge_twice", From: "fmn_build:port_build_out", To: "fmn_judge:port_judge_in"},
 		}}, ErrInvalidNodeRestore},
 		"retired type":       {NodeRestoreRequest{Formation: &FormationNode{ID: "fmn_old", Type: "flow"}}, ErrUnsupportedFormationType},
-		"unsafe bead":        {NodeRestoreRequest{Mission: &MissionNode{ID: "mis_new", BeadID: "../x"}}, ErrInvalidBeadID},
 		"gate without kinds": {NodeRestoreRequest{Gate: &GateNode{ID: "gate_new", Kinds: []string{}}}, ErrInvalidGateKind},
 		"check without code": {NodeRestoreRequest{Gate: &GateNode{ID: "gate_new", Kinds: []string{"human"}, CheckValue: "PASS"}}, ErrInvalidCodeGateProfile},
-		"legacy script":      {NodeRestoreRequest{Gate: &GateNode{ID: "gate_new", Kinds: []string{"code"}, Command: "make test"}}, ErrLegacyScriptGateRequiresFencedMigration},
-		"inline verification": {NodeRestoreRequest{Formation: &FormationNode{ID: "fmn_v", Type: "solo",
-			Verification: &FormationVerification{ID: "ver", Kinds: []string{"human"}}}}, ErrLegacyInlineVerificationRequiresMigration},
 		"taken slot": {NodeRestoreRequest{Formation: &FormationNode{ID: "fmn_copy", Type: "solo",
 			Slots: []FormationSlot{{ID: "slot_judge", Label: "Agent"}}}}, ErrInvalidNodeRestore},
 	}

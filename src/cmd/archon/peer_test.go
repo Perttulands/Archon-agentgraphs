@@ -23,7 +23,7 @@ func peerCLIFixture(t *testing.T) (*formations.Store, formations.PeerConversatio
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeArchonFile(t, filepath.Join(store.Workspace, ".formations", "runs", "peer-cli", id.RunID+".ndjson"), string(raw)+"\n")
+	writeArchonFile(t, filepath.Join(store.Workspace, ".archon", "runs", "peer-cli", id.RunID+".ndjson"), string(raw)+"\n")
 	_, err = store.CreatePeerConversation(formations.FormationExecution{RunID: id.RunID, NodeID: id.NodeID, Attempt: id.Attempt}, []string{"slot_a", "slot_b"}, map[string]string{"slot_a": "Opening A", "slot_b": "Opening B"}, store.Now().Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +75,7 @@ func TestArchonPeerCommandsExchangeMessagesAndAgree(t *testing.T) {
 	if !state.Proposal.Contested || state.Status != "open" {
 		t.Fatalf("dissent not retained: %+v", state)
 	}
-	final := "We agree the deadline is unresolved.\n```chrote-outputs\n{\"out\":{\"text\":\"Ask the operator which deadline to use\"}}\n```"
+	final := "We agree the deadline is unresolved.\n```archon-outputs\n{\"out\":{\"text\":\"Ask the operator which deadline to use\"}}\n```"
 	if err := os.WriteFile(messagePath, []byte(final), 0600); err != nil {
 		t.Fatal(err)
 	}

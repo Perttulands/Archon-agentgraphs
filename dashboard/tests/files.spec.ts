@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { wayfinding, wayfindingFixture } from './wayfinding-fixture'
+import { scouting, scoutingFixture } from './scouting-fixture'
 
 const CARDS = '.formation[data-node], .gatecard[data-node], .missioncard[data-node], .toolcard[data-node]'
 
@@ -10,15 +10,15 @@ type Box = { x: number; y: number; width: number; height: number }
 const gapBetween = (win: Box, box: Box) =>
   Math.max(win.x - (box.x + box.width), box.x - (win.x + win.width), win.y - (box.y + box.height), box.y - (win.y + win.height))
 
-const RUBRIC = '/srv/projects/wayfinding/rubrics/adversarial-review.md'
+const RUBRIC = '/srv/projects/scouting/rubrics/adversarial-review.md'
 
-// Wayfinding with the reference files an operator would attach: a rubric on
+// Scouting with the reference files an operator would attach: a rubric on
 // the adversarial review gate, a scoring guide in its judge's brief, and a
 // sketch on the mission named by a relative path.
 function boardWithFiles() {
-  const board = structuredClone(wayfinding.board)
+  const board = structuredClone(scouting.mission)
   const byTitle = (nodes: Node[], title: string) => nodes.find(node => node.title === title)!
-  byTitle(board.missions, 'Wayfinding').files = ['sketch.md']
+  byTitle(board.inputCards, 'Scouting').files = ['sketch.md']
   byTitle(board.gates, 'Adversarial review').files = [RUBRIC]
   const critic = byTitle(board.formations, 'Brief critic')
   critic.brief = { ...critic.brief, files: ['/home/operator/private/scoring.md'] }
@@ -44,20 +44,20 @@ const servePreview = (route: import('@playwright/test').Route) => {
 // The room Arrange reserves for each card (arrangementItemSize in
 // src/internal/formations/layout_arrange.go), with its file chip row.
 const FILE_ROW = 30
-const reserved = (node: Node, kind: 'mission' | 'gate' | 'formation') =>
-  (kind === 'mission' ? 144 : kind === 'gate' ? 124 : node.type === 'peer' ? 340 : node.type === 'orchestrated' ? 440 : 310) + FILE_ROW
+const reserved = (node: Node, kind: 'inputCard' | 'gate' | 'formation') =>
+  (kind === 'inputCard' ? 144 : kind === 'gate' ? 124 : node.type === 'peer' ? 340 : node.type === 'orchestrated' ? 440 : 310) + FILE_ROW
 
-test('a gate\'s rubric and its judge\'s brief file open from the gate on Wayfinding', async ({ page }) => {
+test('a gate\'s rubric and its judge\'s brief file open from the gate on Scouting', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.addInitScript(() => localStorage.clear())
   const board = boardWithFiles()
-  const fixture = await wayfindingFixture(page, { board })
-  await page.route('**/api/formations/files/preview?**', servePreview)
-  await page.goto('/?mission=wayfinding')
-  await expect(page.getByRole('note')).toHaveCount(wayfinding.notes.elements.length)
+  const fixture = await scoutingFixture(page, { mission: board })
+  await page.route('**/api/files/preview?**', servePreview)
+  await page.goto('/?mission=scouting')
+  await expect(page.getByRole('note')).toHaveCount(scouting.notes.elements.length)
 
-  const cards: Array<[Node, 'mission' | 'gate' | 'formation']> = [
-    [board.missions[0], 'mission'],
+  const cards: Array<[Node, 'inputCard' | 'gate' | 'formation']> = [
+    [board.inputCards[0], 'inputCard'],
     [board.gates.find((gate: Node) => gate.title === 'Adversarial review'), 'gate'],
     [board.formations.find((formation: Node) => formation.title === 'Brief critic'), 'formation'],
   ]
@@ -94,8 +94,8 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Wayfind
   await expect(scoring).toContainText('/home/operator/private/scoring.md')
 
   // A file link in a node window opens its file near that window, clear of it.
-  await page.getByTestId(`mission-node-${board.missions[0].id}`).locator('.mtitle').click()
-  const missionWindow = page.getByRole('dialog', { name: 'Input card · Wayfinding' })
+  await page.getByTestId(`mission-node-${board.inputCards[0].id}`).locator('.mtitle').click()
+  const missionWindow = page.getByRole('dialog', { name: 'Input card · Scouting' })
   await missionWindow.getByRole('button', { name: 'Open file sketch.md' }).click()
   const sketch = page.getByRole('dialog', { name: 'file sketch.md' })
   await expect(sketch.getByRole('alert')).toContainText('a relative file reference has no base here; name the file by its absolute path')
@@ -108,11 +108,11 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Wayfind
 test('a file opened from a Flow row leaves that row\'s number, title, labels and links clickable', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.addInitScript(() => localStorage.clear())
-  await wayfindingFixture(page, { board: boardWithFiles() })
-  await page.route('**/api/formations/files/preview?**', servePreview)
-  await page.goto('/?mission=wayfinding')
+  await scoutingFixture(page, { mission: boardWithFiles() })
+  await page.route('**/api/files/preview?**', servePreview)
+  await page.goto('/?mission=scouting')
   await page.getByRole('radio', { name: 'Flow' }).click()
-  const gate = page.locator(`.flow-step[data-flow-node="${wayfinding.board.gates.find((node: Node) => node.title === 'Adversarial review').id}"]`)
+  const gate = page.locator(`.flow-step[data-flow-node="${scouting.mission.gates.find((node: Node) => node.title === 'Adversarial review').id}"]`)
   await gate.scrollIntoViewIfNeeded()
   const chip = gate.getByRole('button', { name: 'adversarial-review.md' })
   await chip.click()
@@ -137,12 +137,12 @@ test('refused copying leaves a selectable path beside the file download action',
     }) } })
     Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false })
   })
-  const fixture = await wayfindingFixture(page, { board: boardWithFiles() })
+  const fixture = await scoutingFixture(page, { mission: boardWithFiles() })
   const text = '# Adversarial review rubric\n\nA complete downloadable document.'
-  await page.route('**/api/formations/files/preview?**', route => route.fulfill({ json: { success: true, data: { file: {
+  await page.route('**/api/files/preview?**', route => route.fulfill({ json: { success: true, data: { file: {
     path: RUBRIC, name: 'adversarial-review.md', size: text.length, kind: 'markdown', text: { text, bytes: text.length },
   } } } }))
-  await page.goto('/?mission=wayfinding')
+  await page.goto('/?mission=scouting')
   await page.getByRole('button', { name: `Open ${RUBRIC}`, exact: true }).click()
   const file = page.getByRole('dialog', { name: 'file adversarial-review.md' })
   await expect(file.getByRole('link', { name: 'Download', exact: true })).toHaveAttribute('download', 'adversarial-review.md')

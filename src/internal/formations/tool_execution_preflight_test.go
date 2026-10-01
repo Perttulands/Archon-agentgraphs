@@ -46,8 +46,7 @@ func TestToolExecutionPreflightResolvesTheSelectedRootBeforeMigration(t *testing
 			if !errors.Is(err, ErrNotFound) {
 				t.Fatalf("start error = %v, want exact-root ErrNotFound", err)
 			}
-			if errors.Is(err, ErrLegacyInlineVerificationRequiresMigration) ||
-				errors.Is(err, ErrToolExecutionUnavailable) {
+			if errors.Is(err, ErrToolExecutionUnavailable) {
 				t.Fatalf("later preflight boundary masked exact root: %v", err)
 			}
 			assertToolExecutionPreflightNoEffects(t, store.Workspace, executor, evaluator)
@@ -64,24 +63,6 @@ func TestToolExecutionPreflightUsesApprovedSelectedMissionOrder(t *testing.T) {
 		want        error
 		wantText    string
 	}{
-		{
-			name: "reachable inline migration precedes Tool",
-			board: toolExecutionPreflightHeader() +
-				toolExecutionPreflightFormation("fmn_legacy", true) +
-				validTool +
-				toolExecutionPreflightConnection("edge_start", "workflow", "mis_main:out", "fmn_legacy:port_fmn_legacy_in") +
-				toolExecutionPreflightConnection("edge_tool", "workflow", "fmn_legacy:port_fmn_legacy_out", "tool_valid:port_tool_valid_in"),
-			want: ErrLegacyInlineVerificationRequiresMigration,
-		},
-		{
-			name: "reachable script Gate migration precedes Tool",
-			board: toolExecutionPreflightHeader() +
-				toolExecutionPreflightGate("gate_legacy", true, "code") +
-				validTool +
-				toolExecutionPreflightConnection("edge_start", "workflow", "mis_main:out", "gate_legacy:in") +
-				toolExecutionPreflightConnection("edge_tool", "workflow", "gate_legacy:pass", "tool_valid:port_tool_valid_in"),
-			want: ErrLegacyScriptGateRequiresFencedMigration,
-		},
 		{
 			name: "all reachable descriptors validate before unavailable",
 			board: toolExecutionPreflightHeader() +
@@ -339,10 +320,10 @@ func assertToolExecutionPreflightNoEffects(t *testing.T, workspace string, execu
 	if executor.calls != 0 || evaluator.calls != 0 {
 		t.Fatalf("preflight effects = executor:%d evaluator:%d, want zero", executor.calls, evaluator.calls)
 	}
-	if matches := mustGlob(t, filepath.Join(workspace, ".formations", "runs", "*")); len(matches) != 0 {
+	if matches := mustGlob(t, filepath.Join(workspace, ".archon", "runs", "*")); len(matches) != 0 {
 		t.Fatalf("preflight rejection created run artifacts: %v", matches)
 	}
-	runsRoot := filepath.Join(workspace, ".formations", "runs")
+	runsRoot := filepath.Join(workspace, ".archon", "runs")
 	if _, err := os.Stat(runsRoot); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("preflight rejection created durable runs root %q: %v", runsRoot, err)
 	}
@@ -355,7 +336,7 @@ slug = "tool-preflight"
 title = "Tool execution preflight"
 rev = 1
 
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Prove Tool preflight ordering"

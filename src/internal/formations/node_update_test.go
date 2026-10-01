@@ -13,7 +13,7 @@ slug = "rename"
 title = "Rename"
 rev = 4
 
-[[mission]]
+[[inputCard]]
 id = "mis_frame"
 title = "New mission"
 goal = ""
@@ -36,6 +36,7 @@ id = "slot_map"
 label = "Scout"
 agentId = "codex-scout"
 harness = "openai-codex"
+effort = "medium"
 
 [[formation]]
 id = "fmn_peers"
@@ -69,12 +70,12 @@ func nodeUpdateFixture(t *testing.T) (*Store, func() WriteOptions) {
 	store := NewStore(t.TempDir())
 	store.Now = fixedClock()
 	writeFixture(t, store.BoardPath("rename"), nodeUpdateBoardFixture)
-	writeFixture(t, store.LayoutPath("rename"), "schema = 1\nboardId = \"brd_rename\"\nboardRev = 4\n\n[[node]]\nid = \"fmn_map\"\nx = 320\ny = 80\n")
+	writeFixture(t, store.LayoutPath("rename"), "schema = 1\nmissionId = \"brd_rename\"\nmissionRev = 4\n\n[[node]]\nid = \"fmn_map\"\nx = 320\ny = 80\n")
 	board, err := store.ReadBoard("rename")
 	if err != nil {
 		t.Fatal(err)
 	}
-	notes, err := store.UpdateBoardNote("rename", BoardNotePatch{Target: "fmn_map", Text: "Keep the map narrow", UpdatedBy: "human:operator"}, NoteWriteOptions{ExpectedETag: "*"})
+	notes, err := store.UpdateBoardNote("rename", BoardNotePatch{Target: "fmn_map", Text: "Keep the map narrow", Author: "human:operator"}, NoteWriteOptions{ExpectedETag: "*"})
 	if err != nil || notes.BoardID != board.ID {
 		t.Fatalf("seed notes: %+v %v", notes, err)
 	}
@@ -99,7 +100,7 @@ func withoutNodeFields(board *BoardDocument) BoardDocument {
 	}
 	copy.Missions = append([]MissionNode(nil), board.Missions...)
 	for i := range copy.Missions {
-		copy.Missions[i].Title, copy.Missions[i].Goal, copy.Missions[i].BeadID = "", "", ""
+		copy.Missions[i].Title, copy.Missions[i].Goal = "", ""
 	}
 	return copy
 }
@@ -162,16 +163,16 @@ func TestUpdateMissionSetsAndClearsEachField(t *testing.T) {
 		return got
 	}
 
-	got := mission(MissionUpdateRequest{Title: stringPtr("Frame the goal"), Goal: stringPtr("Draft a framing"), BeadID: stringPtr("form-3yd.10")})
-	if got.Title != "Frame the goal" || got.Goal != "Draft a framing" || got.BeadID != "form-3yd.10" {
+	got := mission(MissionUpdateRequest{Title: stringPtr("Frame the goal"), Goal: stringPtr("Draft a framing")})
+	if got.Title != "Frame the goal" || got.Goal != "Draft a framing" {
 		t.Fatalf("set all = %+v", got)
 	}
 	got = mission(MissionUpdateRequest{Goal: stringPtr("Draft a sharper framing")})
-	if got.Title != "Frame the goal" || got.Goal != "Draft a sharper framing" || got.BeadID != "form-3yd.10" {
+	if got.Title != "Frame the goal" || got.Goal != "Draft a sharper framing" {
 		t.Fatalf("goal only = %+v, want other fields untouched", got)
 	}
-	got = mission(MissionUpdateRequest{Title: stringPtr(""), Goal: stringPtr(""), BeadID: stringPtr("")})
-	if got.Title != "" || got.Goal != "" || got.BeadID != "" {
+	got = mission(MissionUpdateRequest{Title: stringPtr(""), Goal: stringPtr("")})
+	if got.Title != "" || got.Goal != "" {
 		t.Fatalf("clear all = %+v", got)
 	}
 }
@@ -213,10 +214,6 @@ func TestNodeUpdatesRejectMalformedOrMissingTargetsWithoutMutation(t *testing.T)
 		write func() error
 		want  error
 	}{
-		"unsafe Bead ID": {func() error {
-			_, err := store.UpdateMission("rename", MissionUpdateRequest{MissionID: "mis_frame", BeadID: stringPtr("../escape")}, current())
-			return err
-		}, ErrInvalidBeadID},
 		"missing mission": {func() error {
 			_, err := store.UpdateMission("rename", MissionUpdateRequest{MissionID: "mis_missing", Title: &title}, current())
 			return err

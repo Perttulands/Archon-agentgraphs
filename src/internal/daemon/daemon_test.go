@@ -20,10 +20,8 @@ func TestBundleDiscoveryDoesNotDependOnWorkingDirectory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ui, "index.html"), []byte("Archon"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, command := range []string{"archond", "formationsd"} {
-		if got := uiBeside(filepath.Join(root, "bin", command)); got != ui {
-			t.Fatalf("%s resolves %q, want %q", command, got, ui)
-		}
+	if got := uiBeside(filepath.Join(root, "bin", "archond")); got != ui {
+		t.Fatalf("archond resolves %q, want %q", got, ui)
 	}
 }
 
@@ -42,10 +40,8 @@ func TestSessionAsksNameTheArchonCLIBesideTheDaemon(t *testing.T) {
 	if err := os.Chmod(cli, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for _, command := range []string{"archond", "formationsd"} {
-		if got := cliBeside(filepath.Join(bin, command)); got != cli {
-			t.Fatalf("%s names %q, want %q", command, got, cli)
-		}
+	if got := cliBeside(filepath.Join(bin, "archond")); got != cli {
+		t.Fatalf("archond names %q, want %q", got, cli)
 	}
 }
 

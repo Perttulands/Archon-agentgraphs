@@ -20,7 +20,7 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// Main is shared by archond and its formationsd compatibility command.
+// Main runs archond.
 func Main() {
 	if err := Run(os.Args[1:]); err != nil && !errors.Is(err, flag.ErrHelp) {
 		fmt.Fprintln(os.Stderr, err)
@@ -99,7 +99,7 @@ func Run(args []string) error {
 	}
 	// The guarded tmux client and Codex bootstrap both need a real terminal type.
 	os.Setenv("TERM", "xterm-256color")
-	os.Setenv("CHROTE_TMUX_BIN", *tmux)
+	os.Setenv("ARCHON_TMUX_BIN", *tmux)
 	if *agentsDir == "" {
 		*agentsDir = filepath.Join(*state, "agents")
 	}
@@ -109,13 +109,12 @@ func Run(args []string) error {
 		if *executor == "lab" {
 			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex", "claude-code"}, Cwd: *state})
 		}
-		return formations.NewTmuxFormationExecutor(store, personas, formations.TmuxExecutorConfig{Socket: *socket, Cwd: *cwd, StateDir: *state, CodexTranscriptRoot: *codexTranscripts, ClaudeTranscriptRoot: *claudeTranscripts, Mission: *mission, SessionPrefix: "form-", Harnesses: []string{"openai-codex", "claude-code"}, OutputCapBytes: 1 << 20, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief, PeerCLI: bundledCLI()})
+		return formations.NewTmuxFormationExecutor(store, personas, formations.TmuxExecutorConfig{Socket: *socket, Cwd: *cwd, StateDir: *state, CodexTranscriptRoot: *codexTranscripts, ClaudeTranscriptRoot: *claudeTranscripts, Mission: *mission, SessionPrefix: "archon-", Harnesses: []string{"openai-codex", "claude-code"}, OutputCapBytes: 1 << 20, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief, PeerCLI: bundledCLI()})
 	})
 	if err != nil {
 		return err
 	}
 	defer c.Close()
-	migrateSlotSettings(c.Store(), personas)
 	if *executor == "tmux" {
 		if err := c.ConfigureTerminals(*socket, *tmux); err != nil {
 			return err

@@ -18,7 +18,7 @@ func TestValidateBoardReportsASlotIDUsedTwice(t *testing.T) {
 	}
 	for _, node := range []string{"fmn_work", "fmn_ship"} {
 		if !hasBoardFinding(findings, node, `slot id "slot_work" is used by formations "fmn_work" and "fmn_ship"`) {
-			t.Errorf("no finding on %s naming both formations: %+v", node, findings)
+			t.Errorf("no finding on %s naming both archon: %+v", node, findings)
 		}
 	}
 

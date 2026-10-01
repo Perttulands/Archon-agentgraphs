@@ -40,7 +40,7 @@ controller = false
 		if err != nil {
 			t.Fatal(err)
 		}
-		req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/staff", bytes.NewBufferString(`{"assignSlot":`+assign+`,"expectedRev":`+itoa(board.Rev)+`}`))
+		req := httptest.NewRequest(http.MethodPatch, "/api/missions/staff", bytes.NewBufferString(`{"assignSlot":`+assign+`,"expectedRev":`+itoa(board.Rev)+`}`))
 		req.Header.Set("If-Match", board.ETag)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
@@ -53,7 +53,7 @@ controller = false
 		}
 		var response struct {
 			Data struct {
-				Board formations.BoardDocument `json:"board"`
+				Board formations.BoardDocument `json:"mission"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {

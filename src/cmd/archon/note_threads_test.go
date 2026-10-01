@@ -22,20 +22,22 @@ id = "fmn_map"
 type = "solo"
 title = "Map"
 `)
-	writeArchonFile(t, store.NotesPath("threads"), `schema = 1
-boardId = "brd_threads"
+	writeArchonFile(t, store.NotesPath("threads"), `schema = 2
+missionId = "brd_threads"
 rev = 1
 updatedAt = "2026-09-16T12:00:00Z"
 updatedBy = "human:ui"
-board = ""
 
-[[element]]
-nodeId = "fmn_map"
+[[entry]]
+id = "migrated-fmn_map"
+target = "fmn_map"
+author = "human:ui"
+createdAt = "2026-09-16T12:00:00Z"
 text = "Start by mapping the territory"
 `)
 	runner := &fakeTmux{live: map[string]bool{}}
 	archon := func(args ...string) (string, string, int) {
-		return runArchon(t, runner, append([]string{"--workspace", workspace, "board"}, args...)...)
+		return runArchon(t, runner, append([]string{"--workspace", workspace, "mission"}, args...)...)
 	}
 	thread := func() []formations.NoteEntry {
 		t.Helper()
@@ -62,7 +64,7 @@ text = "Start by mapping the territory"
 	if _, stderr, code := archon("note", "threads", "--node", "fmn_map", "--entry", entries[1].ID, "--text", "Mapped three areas"); code != 0 {
 		t.Fatalf("editing own entry: %d %s", code, stderr)
 	}
-	if stdout, stderr, code := archon("note", "threads", "--node", "fmn_map", "--text", "Operator follow-up", "--updated-by", "human:ui"); code != 0 || !strings.Contains(stdout, "added note") {
+	if stdout, stderr, code := archon("note", "threads", "--node", "fmn_map", "--text", "Operator follow-up", "--author", "human:ui"); code != 0 || !strings.Contains(stdout, "added note") {
 		t.Fatalf("--updated-by as author: %d %s %s", code, stdout, stderr)
 	}
 	stdout, _, _ = archon("notes", "threads")

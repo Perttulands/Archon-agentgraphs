@@ -16,7 +16,7 @@ func TestRunTmuxCommandBoundsOneHungCommand(t *testing.T) {
 	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexec sleep 30\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("CHROTE_TMUX_BIN", bin)
+	t.Setenv("ARCHON_TMUX_BIN", bin)
 	previous := tmuxCommandTimeout
 	tmuxCommandTimeout = 200 * time.Millisecond
 	defer func() { tmuxCommandTimeout = previous }()

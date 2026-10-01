@@ -71,7 +71,7 @@ func TestCreateToolMigratesSchemaOneAndDerivesExactDescriptorShape(t *testing.T)
 	}
 	retainedSpans := []string{
 		`x_owner = "keep" # unknown top-level field`,
-		`[[mission]]
+		`[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Review the work"
@@ -108,8 +108,8 @@ func TestCreateToolExactPlacementPreservesRetainedLayoutSourceAndFiltersInertBlo
 	slug := "tool-exact-placement"
 	boardRaw := toolAuthoringBoardFixture(slug, 3, true, "")
 	layoutRaw := `schema = 1 # keep schema comment
-boardId = "brd_tool-exact-placement"
-boardRev = 3 # old revision comment
+missionId = "brd_tool-exact-placement"
+missionRev = 3 # old revision comment
 updatedAt = "2026-07-19T00:00:00Z"
 
 # retained node comment
@@ -155,7 +155,7 @@ y = 29`
 		t.Fatalf("retained node source changed:\n%s", result.Layout.TOML)
 	}
 	if result.Layout.BoardRev != result.Board.Rev {
-		t.Fatalf("layout boardRev = %d, want %d", result.Layout.BoardRev, result.Board.Rev)
+		t.Fatalf("layout missionRev = %d, want %d", result.Layout.BoardRev, result.Board.Rev)
 	}
 }
 
@@ -208,8 +208,8 @@ func TestCreateToolPresentLayoutPreservesAuthoritativeSpansAndRelativeOrder(t *t
 	slug := "tool-layout-source"
 	boardRaw := toolAuthoringBoardFixture(slug, 5, true, toolAuthoringConnectedToolsTail())
 	layoutRaw := `schema = 1 # preserve top comment
-boardId = "brd_tool-layout-source"
-boardRev = 5 # preserve revision comment
+missionId = "brd_tool-layout-source"
+missionRev = 5 # preserve revision comment
 updatedAt = "2026-07-19T00:00:00Z"
 
 [[edge]]
@@ -318,8 +318,8 @@ func TestCreateToolFiltersOwnedLayoutSubtreesWithoutReattachingStaleDescendants(
 	slug := "tool-layout-owned-subtrees"
 	boardRaw := toolAuthoringBoardFixture(slug, 3, true, "")
 	layoutRaw := `schema = 1
-boardId = "brd_tool-layout-owned-subtrees"
-boardRev = 3
+missionId = "brd_tool-layout-owned-subtrees"
+missionRev = 3
 
 [[node]]
 id = "stale_node"
@@ -373,8 +373,8 @@ func TestCreateToolPreservesCommentLeadingRetainedBlockAfterFlatStaleBlock(t *te
 	slug := "tool-layout-leading-comment"
 	boardRaw := toolAuthoringBoardFixture(slug, 3, true, "")
 	layoutRaw := `schema = 1
-boardId = "brd_tool-layout-leading-comment"
-boardRev = 3
+missionId = "brd_tool-layout-leading-comment"
+missionRev = 3
 
 [[node]]
 id = "stale_node"
@@ -432,7 +432,7 @@ func TestCreateToolRejectsMalformedOrOrphanedOwnedLayoutSourceWithoutMutation(t 
 			store := newToolAuthoringStore(t)
 			slug := "tool-layout-owned-source"
 			boardRaw := toolAuthoringBoardFixture(slug, 2, true, "")
-			layoutRaw := "schema = 1\nboardId = \"brd_tool-layout-owned-source\"\nboardRev = 2\n\n" + test.tail
+			layoutRaw := "schema = 1\nmissionId = \"brd_tool-layout-owned-source\"\nmissionRev = 2\n\n" + test.tail
 			writeFixture(t, store.BoardPath(slug), boardRaw)
 			writeFixture(t, store.LayoutPath(slug), layoutRaw)
 			board, layout := toolAuthoringReadPair(t, store, slug)
@@ -460,7 +460,7 @@ func TestCreateToolRejectsMalformedUnknownLayoutValuesWithoutMutation(t *testing
 		t.Run(test.name, func(t *testing.T) {
 			store := newToolAuthoringStore(t)
 			boardRaw := toolAuthoringBoardFixture(slug, 2, true, "")
-			layoutRaw := "schema = 1\nboardId = \"brd_tool-layout-unknown-values\"\nboardRev = 2\n" + test.tail
+			layoutRaw := "schema = 1\nmissionId = \"brd_tool-layout-unknown-values\"\nmissionRev = 2\n" + test.tail
 			writeFixture(t, store.BoardPath(slug), boardRaw)
 			writeFixture(t, store.LayoutPath(slug), layoutRaw)
 			board, layout := toolAuthoringReadPair(t, store, slug)
@@ -495,8 +495,8 @@ func TestCreateToolRejectsMalformedUnknownBoardTOMLWithoutMutation(t *testing.T)
 			}
 
 			_, err = store.CreateTool(slug, toolAuthoringCreateRequest(ToolPlacement{}), toolAuthoringAbsentOptions(before))
-			if err == nil || !strings.Contains(err.Error(), "invalid_board_source") {
-				t.Fatalf("malformed unknown board source error = %v, want invalid_board_source", err)
+			if err == nil || !strings.Contains(err.Error(), "invalid_mission_source") {
+				t.Fatalf("malformed unknown board source error = %v, want invalid_mission_source", err)
 			}
 			assertToolAuthoringPairUnchanged(t, store, slug, boardRaw, nil)
 		})
@@ -509,20 +509,20 @@ func TestCreateToolRejectsMalformedDuplicateOrCompetingLayoutIdentityFieldsWitho
 		name   string
 		layout string
 	}{
-		{name: "duplicate boardId first mismatched last correct", layout: "schema = 1\nboardId = \"brd_other\"\nboardId = \"brd_tool-layout-reserved-fields\"\nboardRev = 2\n"},
-		{name: "duplicate schema first wrong last correct", layout: "schema = 2\nschema = 1\nboardId = \"brd_tool-layout-reserved-fields\"\nboardRev = 2\n"},
-		{name: "duplicate boardRev", layout: "schema = 1\nboardId = \"brd_tool-layout-reserved-fields\"\nboardRev = 1\nboardRev = 2\n"},
-		{name: "duplicate updatedAt", layout: "schema = 1\nboardId = \"brd_tool-layout-reserved-fields\"\nboardRev = 2\nupdatedAt = \"first\"\nupdatedAt = \"second\"\n"},
-		{name: "missing schema", layout: "boardId = \"brd_tool-layout-reserved-fields\"\nboardRev = 2\n"},
-		{name: "missing boardId", layout: "schema = 1\nboardRev = 2\n"},
-		{name: "schema leading zero", layout: "schema = 01\nboardId = \"brd_tool-layout-reserved-fields\"\nboardRev = 2\n"},
-		{name: "unquoted boardId", layout: "schema = 1\nboardId = brd_tool-layout-reserved-fields\nboardRev = 2\n"},
-		{name: "hex boardRev", layout: "schema = 1\nboardId = \"brd_tool-layout-reserved-fields\"\nboardRev = 0x2\n"},
-		{name: "unquoted updatedAt", layout: "schema = 1\nboardId = \"brd_tool-layout-reserved-fields\"\nboardRev = 2\nupdatedAt = invalid-timestamp\n"},
-		{name: "dotted schema root", layout: "schema = 1\nschema.extension = 1\nboardId = \"brd_tool-layout-reserved-fields\"\nboardRev = 2\n"},
-		{name: "dotted boardId root", layout: "schema = 1\nboardId = \"brd_tool-layout-reserved-fields\"\nboardId.extension = \"x\"\nboardRev = 2\n"},
-		{name: "dotted boardRev root", layout: "schema = 1\nboardId = \"brd_tool-layout-reserved-fields\"\nboardRev = 2\nboardRev.extension = 3\n"},
-		{name: "dotted updatedAt root", layout: "schema = 1\nboardId = \"brd_tool-layout-reserved-fields\"\nboardRev = 2\nupdatedAt.extension = \"x\"\n"},
+		{name: "duplicate boardId first mismatched last correct", layout: "schema = 1\nmissionId = \"brd_other\"\nmissionId = \"brd_tool-layout-reserved-fields\"\nmissionRev = 2\n"},
+		{name: "duplicate schema first wrong last correct", layout: "schema = 2\nschema = 1\nmissionId = \"brd_tool-layout-reserved-fields\"\nmissionRev = 2\n"},
+		{name: "duplicate boardRev", layout: "schema = 1\nmissionId = \"brd_tool-layout-reserved-fields\"\nmissionRev = 1\nmissionRev = 2\n"},
+		{name: "duplicate updatedAt", layout: "schema = 1\nmissionId = \"brd_tool-layout-reserved-fields\"\nmissionRev = 2\nupdatedAt = \"first\"\nupdatedAt = \"second\"\n"},
+		{name: "missing schema", layout: "missionId = \"brd_tool-layout-reserved-fields\"\nmissionRev = 2\n"},
+		{name: "missing boardId", layout: "schema = 1\nmissionRev = 2\n"},
+		{name: "schema leading zero", layout: "schema = 01\nmissionId = \"brd_tool-layout-reserved-fields\"\nmissionRev = 2\n"},
+		{name: "unquoted boardId", layout: "schema = 1\nmissionId = brd_tool-layout-reserved-fields\nmissionRev = 2\n"},
+		{name: "hex boardRev", layout: "schema = 1\nmissionId = \"brd_tool-layout-reserved-fields\"\nmissionRev = 0x2\n"},
+		{name: "unquoted updatedAt", layout: "schema = 1\nmissionId = \"brd_tool-layout-reserved-fields\"\nmissionRev = 2\nupdatedAt = invalid-timestamp\n"},
+		{name: "dotted schema root", layout: "schema = 1\nschema.extension = 1\nmissionId = \"brd_tool-layout-reserved-fields\"\nmissionRev = 2\n"},
+		{name: "dotted missionId root", layout: "schema = 1\nmissionId = \"brd_tool-layout-reserved-fields\"\nmissionId.extension = \"x\"\nmissionRev = 2\n"},
+		{name: "dotted missionRev root", layout: "schema = 1\nmissionId = \"brd_tool-layout-reserved-fields\"\nmissionRev = 2\nmissionRev.extension = 3\n"},
+		{name: "dotted updatedAt root", layout: "schema = 1\nmissionId = \"brd_tool-layout-reserved-fields\"\nmissionRev = 2\nupdatedAt.extension = \"x\"\n"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -547,8 +547,8 @@ func TestCreateToolPreservesUnknownValidTopLevelLayoutFields(t *testing.T) {
 	slug := "tool-layout-unknown-root"
 	boardRaw := toolAuthoringBoardFixture(slug, 2, true, "")
 	layoutRaw := `schema = 1
-boardId = "brd_tool-layout-unknown-root"
-boardRev = 2
+missionId = "brd_tool-layout-unknown-root"
+missionRev = 2
 x_owner = { note = "keep", rank = 7 } # unknown valid root
 `
 	writeFixture(t, store.BoardPath(slug), boardRaw)
@@ -577,8 +577,8 @@ func TestCreateToolProjectsRetainedLiteralStringLayoutIdentity(t *testing.T) {
 	slug := "tool-layout-literal-identity"
 	boardRaw := toolAuthoringBoardFixture(slug, 2, true, toolAuthoringConnectedToolsTail())
 	layoutRaw := `schema = 1
-boardId = "brd_tool-layout-literal-identity"
-boardRev = 2
+missionId = "brd_tool-layout-literal-identity"
+missionRev = 2
 
 [[node]]
 id = 'mis_main'
@@ -620,8 +620,8 @@ func TestCreateToolHeuristicUsesLockedPredecessorAndSuccessorWithoutMovingOrWiri
 	boardRaw := toolAuthoringBoardFixture(slug, 4, true,
 		toolStructuralJSONNormalizeToolBlock("tool_existing", "Existing", "port_existing_in", "port_existing_out"))
 	layoutRaw := `schema = 1
-boardId = "brd_tool-hints"
-boardRev = 4
+missionId = "brd_tool-hints"
+missionRev = 4
 
 [[node]]
 id = "mis_main"
@@ -680,8 +680,8 @@ func TestCreateToolHeuristicCoversEmptyAndSingleHintModes(t *testing.T) {
 			writeFixture(t, store.BoardPath(slug), toolAuthoringBoardFixture(slug, 4, true,
 				toolStructuralJSONNormalizeToolBlock("tool_existing", "Existing", "port_existing_in", "port_existing_out")))
 			writeFixture(t, store.LayoutPath(slug), `schema = 1
-boardId = "brd_tool-single-hint"
-boardRev = 4
+missionId = "brd_tool-single-hint"
+missionRev = 4
 
 [[node]]
 id = "mis_main"
@@ -732,8 +732,8 @@ func TestCreateToolNeverAdoptsStaleSameIDLayoutEntry(t *testing.T) {
 	slug := "tool-stale-layout"
 	writeFixture(t, store.BoardPath(slug), toolAuthoringBoardFixture(slug, 2, true, ""))
 	writeFixture(t, store.LayoutPath(slug), `schema = 1
-boardId = "brd_tool-stale-layout"
-boardRev = 2
+missionId = "brd_tool-stale-layout"
+missionRev = 2
 
 [[node]]
 id = "mis_main"
@@ -855,7 +855,7 @@ func TestCreateToolHonorsExactBoardAndLayoutPreconditions(t *testing.T) {
 			store := newToolAuthoringStore(t)
 			slug := "tool-create-cas"
 			boardRaw := toolAuthoringBoardFixture(slug, 2, true, "")
-			layoutRaw := "schema = 1\nboardId = \"brd_tool-create-cas\"\nboardRev = 2\n"
+			layoutRaw := "schema = 1\nmissionId = \"brd_tool-create-cas\"\nmissionRev = 2\n"
 			writeFixture(t, store.BoardPath(slug), boardRaw)
 			writeFixture(t, store.LayoutPath(slug), layoutRaw)
 			board, layout := toolAuthoringReadPair(t, store, slug)
@@ -906,7 +906,7 @@ func TestCreateToolRequiresOneClosedLayoutExpectation(t *testing.T) {
 			store := newToolAuthoringStore(t)
 			slug := "tool-create-precondition"
 			boardRaw := toolAuthoringBoardFixture(slug, 2, true, "")
-			layoutRaw := "schema = 1\nboardId = \"brd_tool-create-precondition\"\nboardRev = 2\n"
+			layoutRaw := "schema = 1\nmissionId = \"brd_tool-create-precondition\"\nmissionRev = 2\n"
 			writeFixture(t, store.BoardPath(slug), boardRaw)
 			writeFixture(t, store.LayoutPath(slug), layoutRaw)
 			board, layout := toolAuthoringReadPair(t, store, slug)
@@ -1094,7 +1094,7 @@ func TestCreateToolRejectsOutOfSigned32BitPersistedCoordinatesWithoutMutation(t 
 			store := newToolAuthoringStore(t)
 			slug := "tool-persisted-coordinate-range"
 			boardRaw := toolAuthoringBoardFixture(slug, 2, true, "")
-			layoutRaw := "schema = 1\nboardId = \"brd_tool-persisted-coordinate-range\"\nboardRev = 2\n\n[[node]]\nid = \"mis_main\"\n" + test.coordinate + "\n"
+			layoutRaw := "schema = 1\nmissionId = \"brd_tool-persisted-coordinate-range\"\nmissionRev = 2\n\n[[node]]\nid = \"mis_main\"\n" + test.coordinate + "\n"
 			writeFixture(t, store.BoardPath(slug), boardRaw)
 			writeFixture(t, store.LayoutPath(slug), layoutRaw)
 			board, layout := toolAuthoringReadPair(t, store, slug)
@@ -1133,7 +1133,7 @@ func TestCreateToolProjectsFullTOMLIntegerCoordinatesWithoutRewritingSource(t *t
 			store := newToolAuthoringStore(t)
 			slug := "tool-persisted-coordinate-decimal"
 			boardRaw := toolAuthoringBoardFixture(slug, 2, true, "")
-			layoutRaw := "schema = 1\nboardId = \"brd_tool-persisted-coordinate-decimal\"\nboardRev = 2\n\n[[node]]\nid = \"mis_main\"\n" + test.coordinate + "\n"
+			layoutRaw := "schema = 1\nmissionId = \"brd_tool-persisted-coordinate-decimal\"\nmissionRev = 2\n\n[[node]]\nid = \"mis_main\"\n" + test.coordinate + "\n"
 			writeFixture(t, store.BoardPath(slug), boardRaw)
 			writeFixture(t, store.LayoutPath(slug), layoutRaw)
 			board, layout := toolAuthoringReadPair(t, store, slug)
@@ -1163,8 +1163,8 @@ func TestCreateToolHeuristicUsesCheckedMathAtSigned32PersistedBoundaries(t *test
 	boardRaw := toolAuthoringBoardFixture(slug, 4, true,
 		toolStructuralJSONNormalizeToolBlock("tool_existing", "Existing", "port_existing_in", "port_existing_out"))
 	layoutRaw := `schema = 1
-boardId = "brd_tool-persisted-coordinate-boundary"
-boardRev = 4
+missionId = "brd_tool-persisted-coordinate-boundary"
+missionRev = 4
 
 [[node]]
 id = "mis_main"
@@ -1199,8 +1199,8 @@ func TestCreateToolRejectsHeuristicStepOutsideSigned32WithoutMutation(t *testing
 	slug := "tool-persisted-coordinate-step"
 	boardRaw := toolAuthoringBoardFixture(slug, 2, true, "")
 	layoutRaw := `schema = 1
-boardId = "brd_tool-persisted-coordinate-step"
-boardRev = 2
+missionId = "brd_tool-persisted-coordinate-step"
+missionRev = 2
 
 [[node]]
 id = "mis_main"
@@ -1233,7 +1233,7 @@ func TestCreateToolNoFreeHeuristicPositionRemainsConflict(t *testing.T) {
 	slug := "tool-no-free-position"
 	var boardTail strings.Builder
 	var layoutRaw strings.Builder
-	layoutRaw.WriteString("schema = 1\nboardId = \"brd_" + slug + "\"\nboardRev = 5\n")
+	layoutRaw.WriteString("schema = 1\nmissionId = \"brd_" + slug + "\"\nmissionRev = 5\n")
 	x, y := layoutPlacementMin, layoutPlacementMin
 	for index := 0; index < layoutPlacementMaxAttempts; index++ {
 		toolID := fmt.Sprintf("tool_occupied_%02d", index)
@@ -1275,8 +1275,8 @@ func TestCreateToolPreservesOpaqueEdgeFieldsNamedXAndY(t *testing.T) {
 	slug := "tool-layout-edge-extension"
 	boardRaw := toolAuthoringBoardFixture(slug, 5, true, toolAuthoringConnectedToolsTail())
 	layoutRaw := `schema = 1
-boardId = "brd_tool-layout-edge-extension"
-boardRev = 5
+missionId = "brd_tool-layout-edge-extension"
+missionRev = 5
 
 [[edge]]
 id = "edge_existing"
@@ -1312,8 +1312,8 @@ func TestCreateToolLeavesMissingRetainedCoordinatesAbsent(t *testing.T) {
 	slug := "tool-missing-retained-coordinates"
 	boardRaw := toolAuthoringBoardFixture(slug, 2, true, "")
 	layoutRaw := `schema = 1
-boardId = "brd_tool-missing-retained-coordinates"
-boardRev = 2
+missionId = "brd_tool-missing-retained-coordinates"
+missionRev = 2
 
 [[node]]
 id = "mis_main"
@@ -1340,47 +1340,19 @@ id = "mis_main"
 	}
 }
 
-func TestCreateToolRejectsSchemaMigrationHazardWithoutMutation(t *testing.T) {
-	store := newToolAuthoringStore(t)
-	slug := "tool-migration-hazard"
-	boardRaw := `schema = 1
-id = "brd_tool-migration-hazard"
-slug = "tool-migration-hazard"
-title = "Migration hazard"
-rev = 3
-
-[[gate]]
-id = "gate_legacy"
-title = "Legacy"
-kinds = ["code"]
-criterion = "Run"
-command = "./unsafe.sh"
-`
-	writeFixture(t, store.BoardPath(slug), boardRaw)
-	board, err := store.ReadBoard(slug)
-	if err != nil {
-		t.Fatalf("read migration source: %v", err)
-	}
-	if _, err := store.CreateTool(slug, toolAuthoringCreateRequest(ToolPlacement{}), toolAuthoringAbsentOptions(board)); err == nil ||
-		!strings.Contains(err.Error(), LegacyScriptGateMigrationCode) {
-		t.Fatalf("migration hazard error = %v, want stable legacy script fence", err)
-	}
-	assertToolAuthoringPairUnchanged(t, store, slug, boardRaw, nil)
-}
-
 func TestCreateToolRejectsMismatchedMalformedAndDuplicateLayoutIDs(t *testing.T) {
 	tests := []struct {
 		name       string
 		layout     string
 		wantMarker string
 	}{
-		{name: "board mismatch", wantMarker: ErrConflict.Error(), layout: "schema = 1\nboardId = \"brd_other\"\nboardRev = 2\n"},
-		{name: "missing node id", wantMarker: "invalid_layout_id", layout: "schema = 1\nboardId = \"brd_tool-layout-invalid\"\nboardRev = 2\n\n[[node]]\nx = 1\ny = 2\n"},
-		{name: "malformed node id", wantMarker: "invalid_layout_id", layout: "schema = 1\nboardId = \"brd_tool-layout-invalid\"\nboardRev = 2\n\n[[node]]\nid = []\nx = 1\ny = 2\n"},
-		{name: "missing edge id", wantMarker: "invalid_layout_id", layout: "schema = 1\nboardId = \"brd_tool-layout-invalid\"\nboardRev = 2\n\n[[edge]]\nlane = \"a\"\n"},
-		{name: "malformed edge id", wantMarker: "invalid_layout_id", layout: "schema = 1\nboardId = \"brd_tool-layout-invalid\"\nboardRev = 2\n\n[[edge]]\nid = []\nlane = \"a\"\n"},
-		{name: "duplicate node id", wantMarker: "duplicate_layout_id", layout: "schema = 1\nboardId = \"brd_tool-layout-invalid\"\nboardRev = 2\n\n[[node]]\nid = \"mis_main\"\nx = 1\ny = 2\n\n[[node]]\nid = \"mis_main\"\nx = 3\ny = 4\n"},
-		{name: "duplicate edge id", wantMarker: "duplicate_layout_id", layout: "schema = 1\nboardId = \"brd_tool-layout-invalid\"\nboardRev = 2\n\n[[edge]]\nid = \"edge_stale\"\nlane = \"a\"\n\n[[edge]]\nid = \"edge_stale\"\nlane = \"b\"\n"},
+		{name: "board mismatch", wantMarker: ErrConflict.Error(), layout: "schema = 1\nmissionId = \"brd_other\"\nmissionRev = 2\n"},
+		{name: "missing node id", wantMarker: "invalid_layout_id", layout: "schema = 1\nmissionId = \"brd_tool-layout-invalid\"\nmissionRev = 2\n\n[[node]]\nx = 1\ny = 2\n"},
+		{name: "malformed node id", wantMarker: "invalid_layout_id", layout: "schema = 1\nmissionId = \"brd_tool-layout-invalid\"\nmissionRev = 2\n\n[[node]]\nid = []\nx = 1\ny = 2\n"},
+		{name: "missing edge id", wantMarker: "invalid_layout_id", layout: "schema = 1\nmissionId = \"brd_tool-layout-invalid\"\nmissionRev = 2\n\n[[edge]]\nlane = \"a\"\n"},
+		{name: "malformed edge id", wantMarker: "invalid_layout_id", layout: "schema = 1\nmissionId = \"brd_tool-layout-invalid\"\nmissionRev = 2\n\n[[edge]]\nid = []\nlane = \"a\"\n"},
+		{name: "duplicate node id", wantMarker: "duplicate_layout_id", layout: "schema = 1\nmissionId = \"brd_tool-layout-invalid\"\nmissionRev = 2\n\n[[node]]\nid = \"mis_main\"\nx = 1\ny = 2\n\n[[node]]\nid = \"mis_main\"\nx = 3\ny = 4\n"},
+		{name: "duplicate edge id", wantMarker: "duplicate_layout_id", layout: "schema = 1\nmissionId = \"brd_tool-layout-invalid\"\nmissionRev = 2\n\n[[edge]]\nid = \"edge_stale\"\nlane = \"a\"\n\n[[edge]]\nid = \"edge_stale\"\nlane = \"b\"\n"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1529,7 +1501,7 @@ func toolAuthoringBoardFixture(slug string, rev int, includeMission bool, tail s
 	raw := fmt.Sprintf("schema = 2\nid = %q\nslug = %q\ntitle = \"Tool authoring\"\nrev = %d\n", "brd_"+slug, slug, rev)
 	if includeMission {
 		raw += `
-[[mission]]
+[[inputCard]]
 id = "mis_main"
 title = "Main"
 goal = "Author a Tool"

@@ -48,10 +48,10 @@ func TestS4SlotDispatchLeaseRecordedBeforeSend(t *testing.T) {
 
 func TestS4CompletionSentinelRequiresMatchingRunID(t *testing.T) {
 	runID := "run_test"
-	if sentinel, ok := ParseCompletionSentinel("agent says <<<CHROTE-DONE run-id=wrong status=ok artifact=loot.txt>>>", runID); ok || sentinel.RunID != "" {
+	if sentinel, ok := ParseCompletionSentinel("agent says <<<ARCHON-DONE run-id=wrong status=ok artifact=loot.txt>>>", runID); ok || sentinel.RunID != "" {
 		t.Fatalf("mismatched sentinel parsed = %+v ok=%v, want ignored", sentinel, ok)
 	}
-	sentinel, ok := ParseCompletionSentinel("tail\n<<<CHROTE-DONE run-id=run_test status=ok artifact=report.md>>>\n", runID)
+	sentinel, ok := ParseCompletionSentinel("tail\n<<<ARCHON-DONE run-id=run_test status=ok artifact=report.md>>>\n", runID)
 	if !ok {
 		t.Fatal("matching sentinel was not parsed")
 	}
@@ -62,15 +62,15 @@ func TestS4CompletionSentinelRequiresMatchingRunID(t *testing.T) {
 
 func TestS4CompletionSentinelReturnsLatestMatchingRunID(t *testing.T) {
 	sentinel, ok := ParseCompletionSentinel(strings.Join([]string{
-		"<<<CHROTE-DONE run-id=run_test status=ok artifact=first.md>>>",
+		"<<<ARCHON-DONE run-id=run_test status=ok artifact=first.md>>>",
 		"ignored output",
-		"<<<CHROTE-DONE run-id=wrong status=ok artifact=wrong.md>>>",
-		"<<<CHROTE-DONE run-id=run_test status=ok artifact=second.md>>>",
+		"<<<ARCHON-DONE run-id=wrong status=ok artifact=wrong.md>>>",
+		"<<<ARCHON-DONE run-id=run_test status=ok artifact=second.md>>>",
 	}, "\n"), "run_test")
 	if !ok || sentinel.Artifact != "second.md" {
 		t.Fatalf("latest sentinel = %+v ok=%v, want second.md", sentinel, ok)
 	}
-	if count := countCompletionSentinels("<<<CHROTE-DONE run-id=run_test status=ok artifact=one.md>>>\n<<<CHROTE-DONE run-id=run_test status=ok artifact=two.md>>>", "run_test"); count != 2 {
+	if count := countCompletionSentinels("<<<ARCHON-DONE run-id=run_test status=ok artifact=one.md>>>\n<<<ARCHON-DONE run-id=run_test status=ok artifact=two.md>>>", "run_test"); count != 2 {
 		t.Fatalf("completion sentinel count = %d, want 2", count)
 	}
 }
@@ -125,7 +125,7 @@ func TestS4DeadPaneAndIdleTimeoutRecordLoudError(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dispatch slot: %v", err)
 		}
-		err = dispatcher.CompleteFromCapture(started.RunID, lease.DispatchID, "<<<CHROTE-DONE run-id=wrong status=ok artifact=fake>>>")
+		err = dispatcher.CompleteFromCapture(started.RunID, lease.DispatchID, "<<<ARCHON-DONE run-id=wrong status=ok artifact=fake>>>")
 		if !errors.Is(err, ErrDispatchTimeout) {
 			t.Fatalf("complete from mismatched capture error = %v, want ErrDispatchTimeout", err)
 		}
@@ -147,7 +147,7 @@ func TestS4CompletionForUnknownDispatchFailsLoud(t *testing.T) {
 	store, started := startS4DispatchRun(t)
 	dispatcher := NewSlotDispatcher(store, &fakeDispatchAdapter{})
 
-	err := dispatcher.CompleteFromCapture(started.RunID, "dsp_unknown", "<<<CHROTE-DONE run-id="+started.RunID+" status=ok artifact=report.md>>>")
+	err := dispatcher.CompleteFromCapture(started.RunID, "dsp_unknown", "<<<ARCHON-DONE run-id="+started.RunID+" status=ok artifact=report.md>>>")
 	if err == nil || !strings.Contains(err.Error(), "unknown dispatch") {
 		t.Fatalf("complete unknown dispatch error = %v, want unknown dispatch failure", err)
 	}

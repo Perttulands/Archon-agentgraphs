@@ -294,7 +294,7 @@ func TestMixedCodeFormationGateRunsCodeFirstAndRecordsBothKindResults(t *testing
 	executor := &fakeRunExecutor{outputs: map[string]string{
 		"fmn_work": "LINT OK",
 		"fmn_j1":   "review notes",
-		"fmn_j2":   "```chrote-verdict\n{\"verdict\":\"pass\",\"reason\":\"reviewed\",\"evidence\":[]}\n```",
+		"fmn_j2":   "```archon-verdict\n{\"verdict\":\"pass\",\"reason\":\"reviewed\",\"evidence\":[]}\n```",
 	}}
 	evaluator := &countingCodeGateEvaluator{}
 	engine := NewRunEngine(store, personas, executor)
@@ -810,6 +810,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[gate]]
 id = "gate_lint"
@@ -839,6 +840,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_work"
@@ -859,7 +861,12 @@ to = "fmn_ship:port_ship_in"
 id = "edge_gate_fail_work"
 from = "gate_lint:fail"
 to = "fmn_work:port_work_in"
-`
+
+[[connection]]
+id = "edge_ship_done"
+from = "fmn_ship:port_ship_out"
+to = "end_done:in"
+` + branchingBoardEnds()
 }
 
 // attemptOutputExecutor returns different node output per attempt so a machine
@@ -1076,7 +1083,7 @@ func TestCodeGateAdmissionRequiresExplicitProfileTuple(t *testing.T) {
 	if len(executor.calls) != 0 || evaluator.calls != 0 {
 		t.Fatalf("rejected start effects = executor:%d evaluator:%d, want zero", len(executor.calls), evaluator.calls)
 	}
-	if runs := mustGlob(t, filepath.Join(store.Workspace, ".formations", "runs", "*")); len(runs) != 0 {
+	if runs := mustGlob(t, filepath.Join(store.Workspace, ".archon", "runs", "*")); len(runs) != 0 {
 		t.Fatalf("missing profile tuple created run artifacts: %v", runs)
 	}
 }
@@ -1106,7 +1113,7 @@ func TestCodeGateEvaluatorUnknownProfileBlocks(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), FindingInvalidCodeGateProfile) {
 		t.Fatalf("run mission error = %v, want %s", err, FindingInvalidCodeGateProfile)
 	}
-	if runs := mustGlob(t, filepath.Join(store.Workspace, ".formations", "runs", "*")); len(runs) != 0 {
+	if runs := mustGlob(t, filepath.Join(store.Workspace, ".archon", "runs", "*")); len(runs) != 0 {
 		t.Fatalf("unknown profile created run artifacts: %v", runs)
 	}
 }

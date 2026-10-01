@@ -151,7 +151,7 @@ describe('routeJudgeWire (reference routeJudge brackets)', () => {
 })
 
 describe('loop wires', () => {
-  // Wayfinding after Arrange: one row of cards, two gates failing back to Draft the brief.
+  // Scouting after Arrange: one row of cards, two gates failing back to Draft the brief.
   const connections = [
     { id: 'start', from: 'mis:out', to: 'map:in' },
     { id: 'map-framing', from: 'map:out', to: 'framing:in' },

@@ -31,7 +31,7 @@ func TestFileRoutesServeAnyAbsolutePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	route := func(kind, ref string) string {
-		return "/api/formations/files/" + kind + "?path=" + url.QueryEscape(ref)
+		return "/api/files/" + kind + "?path=" + url.QueryEscape(ref)
 	}
 
 	w := getEvidence(c, route("preview", filepath.Join(project, "rubrics", "quality.md")))

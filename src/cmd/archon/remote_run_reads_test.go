@@ -17,9 +17,9 @@ func TestRemoteRunReads(t *testing.T) {
 		path, body string
 		text       []string
 	}{
-		{"seats", []string{"run", "seats", "run_proof"}, "/api/formations/runs/run_proof/seats", `{"success":true,"data":{"runId":"run_proof","available":true,"seats":[{"nodeId":"fmn_work","slotId":"slot_lead","createdSeq":4,"sessionName":"form-run_proof-slot_lead","state":"live","onCall":{"keptSeq":8,"waitingOn":[{"gateId":"gate_review","requestedSeq":9}]}}]}}`, []string{"seat 4 node fmn_work slot slot_lead state live session form-run_proof-slot_lead", "on call", "waiting gate gate_review requested-seq 9"}},
-		{"gates", []string{"run", "gates", "run_proof"}, "/api/formations/runs/run_proof", `{"success":true,"data":{"runId":"run_proof","status":"waiting_human","events":[{"seq":9}],"waitingGates":[{"gateId":"gate_review","requestedSeq":9,"askedSeats":[{"nodeId":"fmn_work","slotId":"slot_lead","createdSeq":4,"deliveredSeq":10}],"fallbackReason":"seat gone"}]}}`, []string{"gate gate_review requested-seq 9", "asked node fmn_work slot slot_lead created-seq 4 delivered-seq 10", "fallback: seat gone"}},
-		{"request", []string{"gate", "request", "run_proof", "gate_review"}, "/api/formations/runs/run_proof/gates/gate_review/request", `{"success":true,"data":{"request":{"gateId":"gate_review","requestedSeq":9,"criterion":"Accept the plan?","input":{"fromNodeId":"fmn_work","fromPortId":"port_out","text":"The plan.\nSecond line.","truncated":true}}}}`, []string{"gate gate_review requested-seq 9", "criterion: Accept the plan?", "input from fmn_work:port_out", "The plan.\nSecond line.", "[input truncated]"}},
+		{"seats", []string{"run", "seats", "run_proof"}, "/api/runs/run_proof/seats", `{"success":true,"data":{"runId":"run_proof","available":true,"seats":[{"nodeId":"fmn_work","slotId":"slot_lead","createdSeq":4,"sessionName":"archon-run_proof-slot_lead","state":"live","onCall":{"keptSeq":8,"waitingOn":[{"gateId":"gate_review","requestedSeq":9}]}}]}}`, []string{"seat 4 node fmn_work slot slot_lead state live session archon-run_proof-slot_lead", "on call", "waiting gate gate_review requested-seq 9"}},
+		{"gates", []string{"run", "gates", "run_proof"}, "/api/runs/run_proof", `{"success":true,"data":{"runId":"run_proof","status":"waiting_human","events":[{"seq":9}],"waitingGates":[{"gateId":"gate_review","requestedSeq":9,"askedSeats":[{"nodeId":"fmn_work","slotId":"slot_lead","createdSeq":4,"deliveredSeq":10}],"fallbackReason":"seat gone"}]}}`, []string{"gate gate_review requested-seq 9", "asked node fmn_work slot slot_lead created-seq 4 delivered-seq 10", "fallback: seat gone"}},
+		{"request", []string{"gate", "request", "run_proof", "gate_review"}, "/api/runs/run_proof/gates/gate_review/request", `{"success":true,"data":{"request":{"gateId":"gate_review","requestedSeq":9,"criterion":"Accept the plan?","input":{"fromNodeId":"fmn_work","fromPortId":"port_out","text":"The plan.\nSecond line.","truncated":true}}}}`, []string{"gate gate_review requested-seq 9", "criterion: Accept the plan?", "input from fmn_work:port_out", "The plan.\nSecond line.", "[input truncated]"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -97,7 +97,7 @@ func TestRemoteLaunchWorkingDirectoryForwarding(t *testing.T) {
 	for _, cwdArgs := range [][]string{nil, {"--cwd", ""}, {"--cwd", "/operator/chosen/project"}} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == "GET" {
-				fmt.Fprint(w, `{"data":{"board":{"rev":3}}}`)
+				fmt.Fprint(w, `{"data":{"mission":{"rev":3}}}`)
 				return
 			}
 			var body map[string]any
@@ -113,7 +113,7 @@ func TestRemoteLaunchWorkingDirectoryForwarding(t *testing.T) {
 			}
 			fmt.Fprint(w, `{"data":{"runId":"run_proof"}}`)
 		}))
-		args := append([]string{"mission", "run", "proof", "--mission", "mis_proof", "--brief", "Build the project"}, cwdArgs...)
+		args := append([]string{"mission", "run", "proof", "--input", "mis_proof", "--brief", "Build the project"}, cwdArgs...)
 		var out, stderr bytes.Buffer
 		if code := runRemote(server.URL, args, &out, &stderr); code != 0 {
 			t.Fatalf("%d %s", code, &stderr)
@@ -130,9 +130,9 @@ func TestRemoteStatusAndFollowPreserveProjection(t *testing.T) {
 			t.Errorf("unexpected method %s", r.Method)
 		}
 		switch r.URL.Path {
-		case "/api/formations/runs/run_proof":
+		case "/api/runs/run_proof":
 			fmt.Fprint(w, waiting)
-		case "/api/formations/runs/run_proof/stream":
+		case "/api/runs/run_proof/stream":
 			w.Header().Set("Content-Type", "text/event-stream")
 			fmt.Fprintf(w, ": keepalive\n\nevent: projection\ndata: %s\n\nevent: projection\ndata: %s\n\n", waiting, final)
 		default:

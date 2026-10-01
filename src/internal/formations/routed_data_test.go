@@ -41,9 +41,9 @@ func TestInlineOutputPayloadsRouteSecretShapedTextVerbatim(t *testing.T) {
 				sessions: []string{"tmux-scout"},
 				pane:     tmuxPaneState{CurrentPath: cfg.Cwd},
 				captures: []string{
-					"splitter\n```chrote-outputs\n" + string(rawPayloads) + "\n```\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=split.md>>>",
-					"left done\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=left.md>>>",
-					"right done\n<<<CHROTE-DONE run-id=run_missing status=ok artifact=right.md>>>",
+					"splitter\n```archon-outputs\n" + string(rawPayloads) + "\n```\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=split.md>>>",
+					"left done\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=left.md>>>",
+					"right done\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=right.md>>>",
 				},
 			}
 			executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
@@ -68,7 +68,7 @@ func TestInlineOutputPayloadsRouteSecretShapedTextVerbatim(t *testing.T) {
 // Captured seat text feeds controller plans and peer openings, so it is never
 // redacted either.
 func TestCapturedSlotTextIsNotRedacted(t *testing.T) {
-	captured := "plan: call with api_key=abc123 and sk-abcdefghijklmnop\npassword: hunter2\n<<<CHROTE-DONE run-id=run_x status=ok artifact=a.md>>>"
+	captured := "plan: call with api_key=abc123 and sk-abcdefghijklmnop\npassword: hunter2\n<<<ARCHON-DONE run-id=run_x status=ok artifact=a.md>>>"
 	got := extractCapturedSlotText(captured, "", "run_x")
 	if got != "plan: call with api_key=abc123 and sk-abcdefghijklmnop\npassword: hunter2" {
 		t.Fatalf("captured text = %q", got)

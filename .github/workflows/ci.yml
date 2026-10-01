@@ -27,7 +27,6 @@ jobs:
           go test ./...
           go build ./cmd/archon
           go build ./cmd/archond
-          go build ./cmd/formationsd
       - name: Dashboard tests and build
         working-directory: dashboard
         run: |

@@ -167,13 +167,13 @@ export function combineUndo(label: string, ...parts: Array<UndoDraft | null | un
 
 export const boardStep = (patch: Record<string, unknown>, what?: string): UndoStep => (what ? { board: patch, what } : { board: patch })
 
-type NodeKind = 'mission' | 'formation' | 'gate'
+type NodeKind = 'inputCard' | 'formation' | 'gate' | 'end'
 
-/** What undo messages call each node kind; the mission node is the Input card. */
-const KIND_WORD: Record<NodeKind, string> = { mission: 'Input card', formation: 'formation', gate: 'gate' }
+/** What undo messages call each node kind; the Input card is the mission's entry. */
+const KIND_WORD: Record<NodeKind, string> = { inputCard: 'Input card', formation: 'formation', gate: 'gate', end: 'End node' }
 
 function nodeOf(board: BoardDocument, id: string): { kind: NodeKind; node: object; title: string; index: number } | null {
-  const lists: Array<[NodeKind, Array<{ id: string; title: string }>]> = [['mission', board.missions || []], ['formation', board.formations], ['gate', board.gates || []]]
+  const lists: Array<[NodeKind, Array<{ id: string; title: string }>]> = [['inputCard', board.inputCards || []], ['formation', board.formations], ['gate', board.gates || []], ['end', board.ends || []]]
   for (const [kind, nodes] of lists) {
     const index = nodes.findIndex(item => item.id === id)
     if (index >= 0) return { kind, node: nodes[index], title: nodes[index].title, index }
@@ -189,25 +189,14 @@ export function quoted(title: string, fallback: string) {
   return title ? `“${title}”` : fallback
 }
 
-const FORMATION_TYPES = ['solo', 'peer', 'orchestrated']
-const LEGACY_SCRIPT_FIELDS = ['command', 'commandArgv', 'commandCwd', 'commandShell', 'legacyScriptMigration']
-
 /**
  * Why restoring this node after a delete would be refused, or null when it
- * can be undone. It mirrors the store's restore rules: retired authoring
- * (inline verification, a retired formation type, a legacy script gate) and
- * gate fields that creating or editing a gate would not accept.
+ * can be undone. It mirrors the store's restore rules: gate fields that
+ * creating or editing a gate would not accept.
  */
 export function restoreBlocker(board: BoardDocument, nodeId: string): string | null {
-  const formation = board.formations.find(item => item.id === nodeId)
-  if (formation) {
-    if (formation.verification) return 'it still carries retired inline verification'
-    if (!FORMATION_TYPES.includes(formation.type)) return `its type “${formation.type}” is retired`
-    return null
-  }
-  const gate = board.gates?.find(item => item.id === nodeId) as (Record<string, unknown> & { kinds?: string[]; check?: string; checkVersion?: string; checkValue?: string }) | undefined
+  const gate = board.gates?.find(item => item.id === nodeId)
   if (gate) {
-    if (LEGACY_SCRIPT_FIELDS.some(field => gate[field] !== undefined && gate[field] !== '')) return 'it is a legacy script gate'
     if (!gate.kinds?.length) return 'it names no gate kind'
     if (!gate.kinds.includes('code') && `${gate.check || ''}${gate.checkVersion || ''}${gate.checkValue || ''}`.trim()) return 'it has a code check without the code kind'
   }
@@ -217,7 +206,7 @@ export function restoreBlocker(board: BoardDocument, nodeId: string): string | n
 /**
  * The undo of deleting a node, captured from the board before the delete: the
  * node as the server sent it, every connection touching it, where it sat on the
- * canvas and its place among the board's nodes of its kind.
+ * canvas and its place among the mission's nodes of its kind.
  */
 export function nodeDeleteUndo(board: BoardDocument, nodeId: string, position: { x: number; y: number }): UndoDraft | null {
   const found = nodeOf(board, nodeId)

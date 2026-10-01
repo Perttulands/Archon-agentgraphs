@@ -143,10 +143,10 @@ func TestRunInspectionRejectsSymlinkedDescendantOfConfiguredWorkspace(t *testing
 	externalLedger := filepath.Join(externalRuns, "session-search", runID+".ndjson")
 	ledgerBefore := testRunLedgerBytes(t, testRunStartedEvent(runID, "session-search"))
 	writeFixture(t, externalLedger, string(ledgerBefore))
-	if err := os.MkdirAll(filepath.Join(workspace, ".formations"), 0o755); err != nil {
-		t.Fatalf("create workspace formations directory: %v", err)
+	if err := os.MkdirAll(filepath.Join(workspace, ".archon"), 0o755); err != nil {
+		t.Fatalf("create workspace archon directory: %v", err)
 	}
-	if err := os.Symlink(externalRuns, filepath.Join(workspace, ".formations", "runs")); err != nil {
+	if err := os.Symlink(externalRuns, filepath.Join(workspace, ".archon", "runs")); err != nil {
 		t.Fatalf("symlink external runs directory: %v", err)
 	}
 
@@ -464,7 +464,7 @@ func testRunStartedEvent(runID, boardSlug string) RunEvent {
 		BoardRev:  7,
 		MissionID: "mis_showcase",
 		Data: map[string]any{
-			"boardSlug":        boardSlug,
+			"missionSlug":      boardSlug,
 			"snapshot":         runArtifactPath(boardSlug, runID, ".snapshot.toml"),
 			"bindingsSnapshot": runArtifactPath(boardSlug, runID, ".bindings.toml"),
 		},

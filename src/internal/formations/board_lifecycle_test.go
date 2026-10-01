@@ -14,8 +14,8 @@ func TestDeleteBoardArchivesDefinitionAndLayoutWithPreconditions(t *testing.T) {
 	store.Now = fixedClock()
 	boardRaw := minimalBoard("poems", 7)
 	layoutRaw := `schema = 1
-boardId = "brd_01J9_sesssearch"
-boardRev = 7
+missionId = "brd_01J9_sesssearch"
+missionRev = 7
 updatedAt = "2026-06-03T16:02:00Z"
 `
 	writeFixture(t, store.BoardPath("poems"), boardRaw)
@@ -76,8 +76,8 @@ func TestDeleteBoardHoldsLayoutLockThroughBoardArchive(t *testing.T) {
 	store := NewStore(t.TempDir())
 	writeFixture(t, store.BoardPath("poems"), minimalBoard("poems", 7))
 	writeFixture(t, store.LayoutPath("poems"), `schema = 1
-boardId = "brd_01J9_sesssearch"
-boardRev = 7
+missionId = "brd_01J9_sesssearch"
+missionRev = 7
 updatedAt = "2026-06-03T16:00:00Z"
 `)
 	board, err := store.ReadBoard("poems")
@@ -126,8 +126,8 @@ func TestDeleteBoardReportsLayoutArchiveSyncUncertaintyAndRemainsRetryable(t *te
 	store := NewStore(t.TempDir())
 	boardRaw := minimalBoard("poems", 7)
 	layoutRaw := `schema = 1
-boardId = "brd_01J9_sesssearch"
-boardRev = 7
+missionId = "brd_01J9_sesssearch"
+missionRev = 7
 updatedAt = "2026-06-03T16:00:00Z"
 `
 	writeFixture(t, store.BoardPath("poems"), boardRaw)

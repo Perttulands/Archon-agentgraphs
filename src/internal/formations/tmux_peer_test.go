@@ -77,7 +77,7 @@ func (f *conversingSeats) WaitTurn(ctx context.Context, seat *nativeSeat, _, _ s
 	id := PeerConversationID{RunID: runID, NodeID: "fmn_peer", Attempt: 1}
 	finish := func(text string) (codexTranscriptTurn, error) {
 		turn.Complete = true
-		turn.Text = text + "\n<<<CHROTE-DONE run-id=" + runID + " status=ok artifact=peer-proof>>>"
+		turn.Text = text + "\n<<<ARCHON-DONE run-id=" + runID + " status=ok artifact=peer-proof>>>"
 		return turn, nil
 	}
 	if strings.Contains(prompt, "orchestration phase: peer-opening") {
@@ -185,7 +185,7 @@ func peerConversationExecutorFixture(t *testing.T, mode string) (*Store, *Person
 	for _, id := range []string{"peer-a", "peer-b", "peer-c"} {
 		createS4Persona(t, personas, id)
 	}
-	board := tmuxPeerBoardFixture() + "\n[[formation.slot]]\nid = \"slot_peer_c\"\nlabel = \"Peer C\"\nagentId = \"peer-c\"\nharness = \"openai-codex\"\n"
+	board := tmuxPeerBoardFixture() + "\n[[formation.slot]]\nid = \"slot_peer_c\"\nlabel = \"Peer C\"\nagentId = \"peer-c\"\nharness = \"openai-codex\"\neffort = \"medium\"\n"
 	writeFixture(t, store.BoardPath("session-search"), board)
 	cfg := tmuxTestConfig(t)
 	executor := newTmuxFormationExecutorWithClient(store, personas, cfg, &fakeTmuxHarnessClient{})

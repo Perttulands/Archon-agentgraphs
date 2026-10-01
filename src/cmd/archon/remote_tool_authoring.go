@@ -23,11 +23,11 @@ func (c *remoteClient) patchTool(selector, updatedBy string, build func(*formati
 		}
 		data, _, err := c.call("GET", boardPath(board.Slug, "layout"), nil, "")
 		if err != nil {
-			return nil, &remoteSelectorError{boundary: "board", selector: selector, err: err}
+			return nil, &remoteSelectorError{boundary: "mission", selector: selector, err: err}
 		}
 		layout, err := decodeRemote[formations.LayoutDocument](data, "layout")
 		if err != nil {
-			return nil, &remoteSelectorError{boundary: "board", selector: selector, err: err}
+			return nil, &remoteSelectorError{boundary: "mission", selector: selector, err: err}
 		}
 		// The daemon reports a missing layout with ETag "*".
 		expectation := map[string]any{"state": formations.LayoutWriteAbsent}
@@ -201,7 +201,7 @@ func remoteToolInspect(c *remoteClient, args []string, stdout, stderr io.Writer)
 	}
 	board, err := c.readBoard(fs.Arg(0))
 	if err != nil {
-		return remoteToolFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteToolFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeToolInspect(stdout, stderr, board, fs.Arg(1), *jsonOut)
 }

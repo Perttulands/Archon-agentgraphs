@@ -72,7 +72,7 @@ func openRunWorkspaceRoot(workspace string) (*os.File, error) {
 	root := os.NewFile(uintptr(fd), workspace)
 	if root == nil {
 		_ = syscall.Close(fd)
-		return nil, errors.New("could not open formations run workspace")
+		return nil, errors.New("could not open archon run workspace")
 	}
 	return root, nil
 }
@@ -107,7 +107,7 @@ func (s *Store) openRunsDirectory(create bool) (*os.File, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	for _, component := range []string{".formations", "runs"} {
+	for _, component := range []string{".archon", "runs"} {
 		var next *os.File
 		if create {
 			next, err = openOrCreateRunArtifactDirectoryAt(current, component)
@@ -149,7 +149,7 @@ func (s *Store) openRunArtifactDirectory(slug string, create bool) (*runArtifact
 	}
 	return &runArtifactDirectory{
 		file: directory,
-		path: filepath.Join(workspace, ".formations", "runs", slug),
+		path: filepath.Join(workspace, ".archon", "runs", slug),
 		slug: slug,
 	}, nil
 }
@@ -388,7 +388,7 @@ func (s *Store) openRunLedger(runID string, writable bool) (*runLedgerHandle, er
 			}
 			directory := &runArtifactDirectory{
 				file: directoryFile,
-				path: filepath.Join(workspace, ".formations", "runs", slug),
+				path: filepath.Join(workspace, ".archon", "runs", slug),
 				slug: slug,
 			}
 			candidate := &runLedgerHandle{

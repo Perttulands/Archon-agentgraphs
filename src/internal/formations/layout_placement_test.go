@@ -15,7 +15,7 @@ slug = "placement"
 title = "Placement"
 rev = 3
 
-[[mission]]
+[[inputCard]]
 id = "mis_brief"
 title = "Brief"
 
@@ -30,8 +30,8 @@ title = "Review"
 kinds = ["human"]
 `)
 	writeFixture(t, store.LayoutPath("placement"), `schema = 1
-boardId = "brd_placement"
-boardRev = 3
+missionId = "brd_placement"
+missionRev = 3
 
 [[node]]
 id = "fmn_build"
@@ -58,8 +58,8 @@ rev = 1
 
 ` + toolStructuralJSONNormalizeToolBlock("tool_normalize", "Normalize report", "port_tool_in", "port_tool_out")
 	layoutRaw := `schema = 1
-boardId = "brd_tool_placement"
-boardRev = 1
+missionId = "brd_tool_placement"
+missionRev = 1
 
 [[node]]
 id = "tool_normalize"
@@ -93,8 +93,8 @@ func TestFindFreeLayoutPositionAppendsToolToLegacyFallbackInventory(t *testing.T
 	store := NewStore(t.TempDir())
 	boardRaw := toolStructuralIsolatedNodesFixture()
 	layoutRaw := `schema = 1
-boardId = "brd_tool_structural"
-boardRev = 4
+missionId = "brd_tool_structural"
+missionRev = 4
 
 [[node]]
 id = "mis_main"
@@ -109,6 +109,16 @@ y = 1008
 [[node]]
 id = "gate_review"
 x = 784
+y = 1008
+
+[[node]]
+id = "end_done"
+x = 1120
+y = 1008
+
+[[node]]
+id = "end_rejected"
+x = 1456
 y = 1008
 `
 	writeFixture(t, store.BoardPath("tool-structural"), boardRaw)
@@ -136,8 +146,8 @@ func TestFindFreeLayoutPositionRejectsLayoutForAnotherBoard(t *testing.T) {
 	store := NewStore(t.TempDir())
 	writeFixture(t, store.BoardPath("placement"), minimalBoard("placement", 3))
 	writeFixture(t, store.LayoutPath("placement"), `schema = 1
-boardId = "brd_other"
-boardRev = 3
+missionId = "brd_other"
+missionRev = 3
 `)
 
 	if _, err := store.FindFreeLayoutPosition("placement", 112, 112); !errors.Is(err, ErrConflict) {
@@ -150,7 +160,7 @@ func TestFindFreeLayoutPositionFailsWhenBoundedSearchIsFull(t *testing.T) {
 	var board strings.Builder
 	board.WriteString("schema = 1\nid = \"brd_full\"\nslug = \"full\"\ntitle = \"Full\"\nrev = 1\n")
 	var layout strings.Builder
-	layout.WriteString("schema = 1\nboardId = \"brd_full\"\nboardRev = 1\n")
+	layout.WriteString("schema = 1\nmissionId = \"brd_full\"\nmissionRev = 1\n")
 	x, y := 112, 112
 	for index := 0; index < 24; index++ {
 		id := fmt.Sprintf("gate_%02d", index)

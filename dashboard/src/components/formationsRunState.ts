@@ -77,7 +77,7 @@ export function runEventReportRef(event: RunEvent): string {
 }
 
 export function activeRunStorageKey(slug: string): string {
-  return `chrote-formations-active-run-${slug}`
+  return `archon.activeRun.${slug}`
 }
 
 export type NodeRunState = '' | 'running' | 'done' | 'blocked' | 'waiting' | 'failed'
@@ -108,6 +108,12 @@ function projectRun(events: RunEvent[]): RunProjection {
       for (const [blockedId, prior] of beforeBlock) set(blockedId, prior, event.seq)
       beforeBlock.clear()
       continue
+    }
+    // A finished run names the End nodes its paths reached (form-o7p.10); the
+    // rejected one a failure names turns failed below.
+    if (event.type === 'run_succeeded' || event.type === 'run_failed') {
+      const endIds: unknown[] = Array.isArray(event.data?.endIds) ? event.data.endIds : []
+      for (const endId of endIds) if (typeof endId === 'string') set(endId, 'done', event.seq)
     }
     const nodeId = event.nodeId || event.gateId
     if (!nodeId) {

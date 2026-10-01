@@ -5,7 +5,7 @@ import "testing"
 func TestS5EscalationSentinelRecordsLedgerAndProjection(t *testing.T) {
 	store, started := startS4DispatchRun(t)
 
-	recorded, err := store.RecordEscalationFromCapture(started.RunID, "fmn_work", "noise\n<<<CHROTE-ESCALATE run-id="+started.RunID+" severity=needs-attention reason='found a better direction'>>>\nmore")
+	recorded, err := store.RecordEscalationFromCapture(started.RunID, "fmn_work", "noise\n<<<ARCHON-ESCALATE run-id="+started.RunID+" severity=needs-attention reason='found a better direction'>>>\nmore")
 	if err != nil {
 		t.Fatalf("record escalation: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestS5EscalationSentinelRecordsLedgerAndProjection(t *testing.T) {
 func TestS5EscalationSentinelIgnoresOtherRunIDs(t *testing.T) {
 	store, started := startS4DispatchRun(t)
 
-	recorded, err := store.RecordEscalationFromCapture(started.RunID, "fmn_work", "<<<CHROTE-ESCALATE run-id=run_other severity=needs-attention reason='wrong run'>>>")
+	recorded, err := store.RecordEscalationFromCapture(started.RunID, "fmn_work", "<<<ARCHON-ESCALATE run-id=run_other severity=needs-attention reason='wrong run'>>>")
 	if err != nil {
 		t.Fatalf("record wrong-run escalation: %v", err)
 	}

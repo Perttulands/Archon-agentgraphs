@@ -4,7 +4,7 @@ import { askingFormationTitle, gateTalk, talkSeatStatus } from './talkModel'
 
 const ports = { inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Output' }] }
 const board = {
-  id: 'brd', slug: 'b', title: 'B', rev: 1, etag: 'e', missions: [], tools: [],
+  id: 'brd', slug: 'b', title: 'B', rev: 1, etag: 'e', inputCards: [], tools: [],
   formations: [
     { id: 'peers', type: 'peer', title: 'Question peers', ...ports, slots: [
       { id: 'slot_a', label: 'Peer', controller: false, agentId: 'delivery-planner', harness: 'claude-code' },
@@ -25,7 +25,7 @@ const board = {
 } as unknown as BoardDocument
 const agents = [{ id: 'delivery-planner', displayName: 'Delivery Planner', assignable: true }]
 const run = (waiting: NonNullable<RunStatusProjection['waitingGates']>[number], humanChannel?: 'notify' | 'session'): RunStatusProjection => ({
-  runId: 'run_1', status: 'waiting_human', final: false, boardSlug: 'b', missionId: 'm', eventCount: 9, humanChannel, waitingGates: [waiting],
+  runId: 'run_1', status: 'waiting_human', final: false, missionSlug: 'b', inputCardId: 'm', eventCount: 9, humanChannel, waitingGates: [waiting],
 })
 
 describe('talking with the agents a gate asked', () => {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { noteAuthor } from '../components/NoteThread'
 import RunPoint from '../components/RunPoint'
+import { endPathWords, endTitleSuffix } from '../components/endNode'
 import type { NodeRunState, RunPoint as RunPointModel } from '../components/formationsRunState'
 import type { AgentProjection, BoardDocument, FormationNode, MissionNode, NoteEntry } from '../components/formationsTypes'
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
@@ -204,13 +205,18 @@ function Routes({ label, targets, onOpenNode }: { label: string; targets: FlowTa
     <p className={`flow-line flow-routes route-${label.toLowerCase()}`}>
       <span className="flow-label">{label}</span>
       {targets.map((target, index) => (
-        <span key={target.kind === 'step' ? target.nodeId : target.kind} className="flow-route">
+        <span key={target.kind === 'nowhere' ? target.kind : target.nodeId} className="flow-route">
           {index ? ', ' : null}
           {target.kind === 'step' ? (
             <button type="button" className="flow-link" onClick={event => onOpenNode(target.nodeId, controlAnchor(event.currentTarget))}>
               {target.back ? '↺ back to ' : '→ '}{target.number !== null ? `${target.number} ` : ''}{target.title}
             </button>
-          ) : target.kind === 'end' ? '→ run ends' : '→ the run blocks'}
+          ) : target.kind === 'end' ? (
+            <button type="button" className={`flow-link flow-end end-${target.outcome}`} title={target.title}
+              onClick={event => onOpenNode(target.nodeId, controlAnchor(event.currentTarget))}>
+              → {endPathWords(target.outcome)}{endTitleSuffix(target.title, target.outcome)}
+            </button>
+          ) : <span className="flow-nowhere">→ leads nowhere: wire it to a step or an End node</span>}
         </span>
       ))}
     </p>

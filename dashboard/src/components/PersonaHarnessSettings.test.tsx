@@ -6,16 +6,13 @@ const claude = { id: 'claude-code', efforts: ['low', 'medium', 'high', 'xhigh', 
 
 describe('persona harness settings', () => {
   it('patches only what changed, and treats an unset effort and medium as the same', () => {
-    expect(variantChanges({ ...claude, effort: 'medium' }, { model: '', effort: '', launch: '' })).toBeNull()
+    expect(variantChanges({ ...claude, effort: 'medium' }, { model: '', effort: '' })).toBeNull()
     expect(variantChanges(claude, variantDraft({ ...claude, effort: 'medium' }))).toBeNull()
-    expect(variantChanges({ ...claude, model: 'claude-opus-5' }, { model: ' claude-opus-5 ', effort: '', launch: '' })).toBeNull()
-    expect(variantChanges(claude, { model: ' claude-opus-5 ', effort: 'low', launch: '' })).toEqual({ id: 'claude-code', model: 'claude-opus-5', effort: 'low' })
-    expect(variantChanges({ ...claude, model: 'm', effort: 'max' }, { model: '', effort: 'medium', launch: '' })).toEqual({ id: 'claude-code', model: '', effort: '' })
-    // A seat launch string is never sent for a harness Archon starts; for hermes it is the only setting.
-    expect(variantChanges({ ...claude, launch: 'claude' }, { model: '', effort: '', launch: 'other' })).toBeNull()
-    const hermes = { id: 'hermes', launch: 'hermes --profile a' }
-    expect(variantChanges(hermes, { model: 'x', effort: 'low', launch: 'hermes --profile a' })).toBeNull()
-    expect(variantChanges(hermes, { model: '', effort: '', launch: ' hermes --profile b ' })).toEqual({ id: 'hermes', launch: 'hermes --profile b' })
+    expect(variantChanges({ ...claude, model: 'claude-opus-5' }, { model: ' claude-opus-5 ', effort: '' })).toBeNull()
+    expect(variantChanges(claude, { model: ' claude-opus-5 ', effort: 'low' })).toEqual({ id: 'claude-code', model: 'claude-opus-5', effort: 'low' })
+    expect(variantChanges({ ...claude, model: 'm', effort: 'max' }, { model: '', effort: 'medium' })).toEqual({ id: 'claude-code', model: '', effort: '' })
+    // A harness Archon cannot start takes no settings at all.
+    expect(variantChanges({ id: 'hermes' }, { model: 'x', effort: 'low' })).toBeNull()
   })
 
   it('names the defaults in words', () => {
@@ -30,21 +27,17 @@ describe('persona harness settings', () => {
     expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['medium (default)', 'low', 'high', 'xhigh', 'max', 'ultra (not accepted by this harness)'])
   })
 
-  it('says a legacy launch string is not what seats run, and why a variant cannot start', () => {
-    const { rerender } = render(<SeatLaunch variant={{ ...claude, launch: 'claude --effort="max"', seatLaunch: "exec '/bin/claude' --effort 'medium'" }} />)
+  it('shows the seat command the daemon renders, and why a variant cannot start', () => {
+    const { rerender } = render(<SeatLaunch variant={{ ...claude, seatLaunch: "exec '/bin/claude' --effort 'medium'" }} />)
     expect(screen.getByTestId('seat-launch-claude-code')).toHaveTextContent("exec '/bin/claude' --effort 'medium'")
-    expect(screen.getByText(/legacy launch string/)).toHaveTextContent("Seats do not use it: each slot's own harness, model and effort decide what its seat runs.")
-    rerender(<SeatLaunch variant={{ id: 'hermes', launch: 'hermes --profile x', seatLaunchError: 'unsupported seat harness "hermes"' }} />)
+    rerender(<SeatLaunch variant={{ id: 'hermes', seatLaunchError: 'unsupported seat harness "hermes"' }} />)
     expect(screen.getByText('Archon cannot start hermes seats.')).toBeInTheDocument()
-    expect(screen.queryByText(/legacy launch string/)).toBeNull()
   })
 
-  it('keeps a hermes launch command editable and says what runs it', () => {
-    const drafts: unknown[] = []
-    render(<VariantSettingsFields idPrefix="h" harness="hermes" draft={{ model: '', effort: '', launch: 'hermes --profile a' }} onDraft={draft => drafts.push(draft)} />)
-    expect(screen.getByText(/Archon cannot start hermes seats, so it takes no model or effort/)).toHaveTextContent('archon agent spawn runs this launch command')
-    const launch = screen.getByLabelText('hermes launch command (archon agent spawn)')
-    expect(launch).toHaveValue('hermes --profile a')
+  it('offers no settings for a harness Archon cannot start', () => {
+    render(<VariantSettingsFields idPrefix="h" harness="hermes" draft={{ model: '', effort: '' }} onDraft={() => undefined} />)
+    expect(screen.getByText('Archon cannot start hermes seats, so it takes no model or effort.')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).toBeNull()
     expect(screen.queryByLabelText('hermes model')).toBeNull()
   })
 })

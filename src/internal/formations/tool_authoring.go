@@ -46,7 +46,7 @@ type ToolCreateRequest struct {
 }
 
 type ToolCreateResult struct {
-	Board  *BoardDocument  `json:"board"`
+	Board  *BoardDocument  `json:"mission"`
 	Layout *LayoutDocument `json:"layout"`
 	Tool   ToolNode        `json:"tool"`
 }
@@ -59,7 +59,7 @@ type ToolUpdateRequest struct {
 }
 
 type ToolUpdateResult struct {
-	Board  *BoardDocument  `json:"board"`
+	Board  *BoardDocument  `json:"mission"`
 	Layout *LayoutDocument `json:"layout"`
 	Tool   ToolNode        `json:"tool"`
 }
@@ -70,7 +70,7 @@ type ToolDeleteRequest struct {
 }
 
 type ToolDeleteResult struct {
-	Board  *BoardDocument  `json:"board"`
+	Board  *BoardDocument  `json:"mission"`
 	Layout *LayoutDocument `json:"layout"`
 	ToolID string          `json:"toolId"`
 }
@@ -710,7 +710,7 @@ func patchToolUpdate(raw []byte, before, after ToolNode, req ToolUpdateRequest) 
 func validateToolMutationBoardSource(raw []byte) error {
 	var document map[string]any
 	if err := toml.Unmarshal(raw, &document); err != nil {
-		return fmt.Errorf("invalid_board_source: malformed board TOML: %w", err)
+		return fmt.Errorf("invalid_mission_source: malformed mission TOML: %w", err)
 	}
 	return nil
 }
@@ -950,10 +950,10 @@ func validateToolMutationBoard(board *BoardDocument, slug string) error {
 		return fmt.Errorf("Tool mutation requires mission file schema %d", CurrentBoardSchema)
 	}
 	if !validToolDefinitionID(board.ID) {
-		return fmt.Errorf("invalid_board_id: board id %q is invalid", board.ID)
+		return fmt.Errorf("invalid_mission_id: mission id %q is invalid", board.ID)
 	}
 	if board.Slug != slug || board.Rev <= 0 {
-		return fmt.Errorf("invalid_board_identity: board slug/revision does not match mutation target")
+		return fmt.Errorf("invalid_mission_identity: mission slug/revision does not match mutation target")
 	}
 
 	nodeIDs := make(map[string]string, len(board.Missions)+len(board.Formations)+len(board.Gates)+len(board.Tools))
@@ -998,6 +998,11 @@ func validateToolMutationBoard(board *BoardDocument, slug string) error {
 			return err
 		}
 	}
+	for _, end := range board.Ends {
+		if err := addNode(end.ID, "End"); err != nil {
+			return err
+		}
+	}
 	for _, tool := range board.Tools {
 		if err := addNode(tool.ID, "Tool"); err != nil {
 			return err
@@ -1022,7 +1027,7 @@ func validateToolMutationBoard(board *BoardDocument, slug string) error {
 		edgeIDs[connection.ID] = true
 	}
 	for _, finding := range ValidateBoard(board).Errors {
-		if finding.Code == FindingMissionCount || finding.Code == FindingGateNotRoutable {
+		if finding.Code == FindingMissionCount || finding.Code == FindingGateNotRoutable || finding.Code == FindingRouteLeadsNowhere {
 			continue
 		}
 		return fmt.Errorf("%s: %s", finding.Code, finding.Message)
@@ -1068,7 +1073,7 @@ func validateToolMutationLayout(raw []byte, layout *LayoutDocument, boardID stri
 		return nil, fmt.Errorf("invalid_layout_schema: Tool mutation requires layout schema %d", CurrentLayoutSchema)
 	}
 	if layout.BoardID != boardID {
-		return nil, fmt.Errorf("%w: layout board %q does not match %q", ErrConflict, layout.BoardID, boardID)
+		return nil, fmt.Errorf("%w: layout mission %q does not match %q", ErrConflict, layout.BoardID, boardID)
 	}
 	return blocks, nil
 }
@@ -1077,7 +1082,7 @@ func parseToolLayoutOwnedBlocks(raw []byte) ([]toolLayoutOwnedBlock, error) {
 	lines := splitLines(raw)
 	seen := map[string]map[string]bool{"node": {}, "edge": {}}
 	var blocks []toolLayoutOwnedBlock
-	reservedCounts := map[string]int{"schema": 0, "boardId": 0, "boardRev": 0, "updatedAt": 0}
+	reservedCounts := map[string]int{"schema": 0, "missionId": 0, "missionRev": 0, "updatedAt": 0}
 	active := -1
 	rootFields := false
 	topLevel := true
@@ -1192,11 +1197,11 @@ func parseToolLayoutOwnedBlocks(raw []byte) ([]toolLayoutOwnedBlock, error) {
 	if err := finishActive(len(lines)); err != nil {
 		return nil, err
 	}
-	if reservedCounts["schema"] != 1 || reservedCounts["boardId"] != 1 {
+	if reservedCounts["schema"] != 1 || reservedCounts["missionId"] != 1 {
 		return nil, fmt.Errorf(
-			"invalid_layout_identity: schema fields = %d, boardId fields = %d; want exactly one each",
+			"invalid_layout_identity: schema fields = %d, missionId fields = %d; want exactly one each",
 			reservedCounts["schema"],
-			reservedCounts["boardId"],
+			reservedCounts["missionId"],
 		)
 	}
 	var document map[string]any
@@ -1221,12 +1226,12 @@ func validateToolLayoutReservedField(field, raw string) error {
 		return fmt.Errorf("invalid_layout_identity: malformed %s field", field)
 	}
 	switch field {
-	case "schema", "boardRev":
+	case "schema", "missionRev":
 		value, err := strconv.ParseInt(literal, 10, 64)
 		if err != nil || strconv.FormatInt(value, 10) != literal {
 			return fmt.Errorf("invalid_layout_identity: malformed %s integer", field)
 		}
-	case "boardId", "updatedAt":
+	case "missionId", "updatedAt":
 		value, ok := parseTOMLBasicString(literal)
 		if !ok || !validToolString(value) {
 			return fmt.Errorf("invalid_layout_identity: malformed %s string", field)
@@ -1397,6 +1402,11 @@ func toolBoardPositions(board *BoardDocument, blocks []toolLayoutOwnedBlock) (ma
 			return nil, err
 		}
 	}
+	for _, end := range board.Ends {
+		if err := add(end.ID); err != nil {
+			return nil, err
+		}
+	}
 	for _, tool := range board.Tools {
 		if err := add(tool.ID); err != nil {
 			return nil, err
@@ -1516,7 +1526,7 @@ func updatePresentToolLayoutAuthority(raw []byte, board *BoardDocument, excluded
 	}
 	nodeIDs, edgeIDs := toolBoardAuthorityIDs(board)
 	filtered := filterToolLayoutBlocks(raw, blocks, nodeIDs, edgeIDs, excludedNodeID)
-	filtered = setToolLayoutScalarPreservingLeadingTrivia(filtered, "boardRev", renderInt(board.Rev))
+	filtered = setToolLayoutScalarPreservingLeadingTrivia(filtered, "missionRev", renderInt(board.Rev))
 	filtered = setToolLayoutScalarPreservingLeadingTrivia(filtered, "updatedAt", renderString(updatedAt))
 	return filtered, nil
 }
@@ -1584,6 +1594,9 @@ func toolBoardAuthorityIDs(board *BoardDocument) (map[string]bool, map[string]bo
 	for _, gate := range board.Gates {
 		nodes[gate.ID] = true
 	}
+	for _, end := range board.Ends {
+		nodes[end.ID] = true
+	}
 	for _, tool := range board.Tools {
 		nodes[tool.ID] = true
 	}
@@ -1596,8 +1609,8 @@ func toolBoardAuthorityIDs(board *BoardDocument) (map[string]bool, map[string]bo
 
 func renderNewToolLayout(board *BoardDocument, position LayoutNode, updatedAt string) []byte {
 	raw := []byte("schema = " + renderInt(CurrentLayoutSchema) + "\n" +
-		"boardId = " + renderString(board.ID) + "\n" +
-		"boardRev = " + renderInt(board.Rev) + "\n" +
+		"missionId = " + renderString(board.ID) + "\n" +
+		"missionRev = " + renderInt(board.Rev) + "\n" +
 		"updatedAt = " + renderString(updatedAt) + "\n")
 	return appendLayoutNodeBlock(raw, position)
 }

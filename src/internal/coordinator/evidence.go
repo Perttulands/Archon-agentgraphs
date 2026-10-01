@@ -17,12 +17,12 @@ import (
 // The pending-gate read route in gate_request.go is this API's view of a human
 // request still waiting for an answer.
 func (c *Coordinator) registerEvidenceRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/formations/runs/{runId}/evidence/nodes/{nodeId}", c.nodeEvidence)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/evidence/problems", c.runProblems)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/evidence/briefs/{dispatchSeq}", c.briefEvidence)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/evidence/artifacts", c.artifactList)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/evidence/artifacts/{name...}", c.artifactPreview)
-	mux.HandleFunc("GET /api/formations/runs/{runId}/artifacts/{name...}", c.artifactRaw)
+	mux.HandleFunc("GET /api/runs/{runId}/evidence/nodes/{nodeId}", c.nodeEvidence)
+	mux.HandleFunc("GET /api/runs/{runId}/evidence/problems", c.runProblems)
+	mux.HandleFunc("GET /api/runs/{runId}/evidence/briefs/{dispatchSeq}", c.briefEvidence)
+	mux.HandleFunc("GET /api/runs/{runId}/evidence/artifacts", c.artifactList)
+	mux.HandleFunc("GET /api/runs/{runId}/evidence/artifacts/{name...}", c.artifactPreview)
+	mux.HandleFunc("GET /api/runs/{runId}/artifacts/{name...}", c.artifactRaw)
 }
 
 func (c *Coordinator) nodeEvidence(w http.ResponseWriter, r *http.Request) {

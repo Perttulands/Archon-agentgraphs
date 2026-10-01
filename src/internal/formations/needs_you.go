@@ -53,8 +53,8 @@ type NeedsYouAsk struct {
 // and Body are a complete plain-text message; Text is the one-line summary.
 type NeedsYouNotification struct {
 	RunID      string `json:"runId"`
-	BoardSlug  string `json:"boardSlug,omitempty"`
-	BoardTitle string `json:"boardTitle,omitempty"`
+	BoardSlug  string `json:"missionSlug,omitempty"`
+	BoardTitle string `json:"missionTitle,omitempty"`
 	Seq        int    `json:"seq"`
 	Kind       string `json:"kind"`
 	RunStatus  string `json:"runStatus,omitempty"`
@@ -64,7 +64,7 @@ type NeedsYouNotification struct {
 	Ask        string `json:"ask"`
 	Severity   string `json:"severity,omitempty"`
 	Blocks     bool   `json:"blocks"`
-	BoardURL   string `json:"boardUrl,omitempty"`
+	BoardURL   string `json:"missionUrl,omitempty"`
 	Text       string `json:"text"`
 	Subject    string `json:"subject,omitempty"`
 	Body       string `json:"body,omitempty"`
@@ -234,7 +234,7 @@ func needsYouText(n NeedsYouNotification) string {
 		ask = "a decision is needed"
 	}
 	var b strings.Builder
-	b.WriteString("Formations needs you: ")
+	b.WriteString("Archon needs you: ")
 	b.WriteString(ask)
 	b.WriteString(" — run ")
 	b.WriteString(n.RunID)

@@ -1,13 +1,13 @@
 # Recover a run
 
 Read with the main [Archon skill](../SKILL.md). All commands take `--server
-"$FORM_SERVER"`. Preserve briefs, transcripts and artifacts while you inspect.
+"$ARCHON_SERVER"`. Preserve briefs, transcripts and artifacts while you inspect.
 
 ## Read the block
 
-Start from fresh `run status "$FORM_RUN_ID" --json`: `status`, `final`,
+Start from fresh `run status "$ARCHON_RUN_ID" --json`: `status`, `final`,
 `resumeAllowed` and `resumePolicy`. The run evidence route
-`GET $FORM_SERVER/api/formations/runs/<runId>/evidence/problems` lists every
+`GET $ARCHON_SERVER/api/runs/<runId>/evidence/problems` lists every
 block with `code`, `reason`, `resumeAllowed` and the `nodeIds` it names.
 
 | Code | Meaning | Next move |
@@ -18,8 +18,8 @@ block with `code`, `reason`, `resumeAllowed` and the `nodeIds` it names.
 | `resume_attempts_exhausted`, `revise_loop_exhausted`, `max_dispatch_exceeded` | A limit is spent (`resumePolicy: limit_exhausted`, `limit` names it). | Not resumable. Start a new run with a larger cap, or none. |
 | `wall_clock_exceeded` | A dispatch ran past the run's wall clock. | The clock counts from the run's start, so start a new run with more time. |
 | `formation_timeout_exceeded` | A step ran past its execution duration. | Inspect the partial evidence. `--mode redispatch` starts a fresh attempt with a fresh duration; `set-execution` changes later runs only. |
-| Malformed `chrote-verdict` | The judge broke the verdict contract. | Not resumable. Fix the judge brief and start a new run. |
-| `persona_snapshot_incomplete` | An old run lacks a full persona snapshot. | Start a new run. |
+| Malformed `archon-verdict` | The judge broke the verdict contract. | Not resumable. Fix the judge brief and start a new run. |
+| `persona_snapshot_invalid` | The run's frozen staffing cannot start a seat. | Start a new run. |
 
 A failed or canceled run names who ended it in `endedBy`.
 
@@ -28,7 +28,7 @@ A failed or canceled run names who ended it in `endedBy`.
 For a resumable block whose cause is resolved:
 
 ```bash
-archon --server "$FORM_SERVER" run resume "$FORM_RUN_ID" --reason "Recovery evidence inspected" --json
+archon --server "$ARCHON_SERVER" run resume "$ARCHON_RUN_ID" --reason "Recovery evidence inspected" --json
 ```
 
 Resume runs whatever is still owed and never re-delivers an input a gate has
@@ -38,7 +38,7 @@ When a seat died mid-turn and no completed evidence exists, abandon the open
 dispatch and run the node again as a new counted attempt:
 
 ```bash
-archon --server "$FORM_SERVER" run resume "$FORM_RUN_ID" --mode redispatch --reason "Seat lost; run the node again" --json
+archon --server "$ARCHON_SERVER" run resume "$ARCHON_RUN_ID" --mode redispatch --reason "Seat lost; run the node again" --json
 ```
 
 ## HTTP 409

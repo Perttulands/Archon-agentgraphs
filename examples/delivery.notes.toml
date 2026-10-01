@@ -1,12 +1,12 @@
 schema = 2
-boardId = "brd_delivery"
+missionId = "brd_delivery"
 rev = 1
 updatedAt = "2026-09-09T00:00:00Z"
 updatedBy = "agent:archon"
 
 [[entry]]
-id = "nte_delivery_board"
-target = "board"
+id = "nte_delivery_mission"
+target = "mission"
 author = "agent:archon"
 createdAt = "2026-09-09T00:00:00Z"
 text = "Delivery template: Plan -> Beads -> Beads review -> Execution -> Final review. The review gate sends failed drafts back to Beads with actionable feedback. The run supplies cwd, brief and mission Bead; the plan and report live in the run artifact directory. Before starting, inspect personas, briefs and limits. The execution controller steers only its three bound workers. The final report is the endpoint; review it before accepting the mission."
@@ -23,7 +23,7 @@ id = "nte_delivery_beads_reviewer"
 target = "fmn_beads_reviewer"
 author = "agent:archon"
 createdAt = "2026-09-09T00:00:00Z"
-text = "Read-only Claude judge uses review-beads and bd lint. Change its persona or review brief, preserving the structured chrote-verdict contract and judge connections."
+text = "Read-only Claude judge uses review-beads and bd lint. Change its persona or review brief, preserving the structured archon-verdict contract and judge connections."
 
 [[entry]]
 id = "nte_delivery_execution"

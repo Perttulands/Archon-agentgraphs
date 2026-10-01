@@ -28,7 +28,7 @@ func arrangeFixture(t *testing.T, path string, extra string) (*Store, string, ma
 	for _, node := range arranged.Nodes {
 		byID[node.ID] = node
 	}
-	if len(byID) != len(board.Missions)+len(board.Formations)+len(board.Gates)+len(board.Tools) {
+	if len(byID) != len(board.Missions)+len(board.Formations)+len(board.Gates)+len(board.Tools)+len(board.Ends) {
 		t.Fatalf("arranged %d nodes, want every node of %s: %+v", len(byID), board.Slug, arranged.Nodes)
 	}
 	return store, board.Slug, byID
@@ -54,7 +54,7 @@ func assertJudgeBelow(t *testing.T, byID map[string]LayoutNode, gateID, judgeID 
 	}
 }
 
-func TestArrangeLayoutFollowsWayfindingRunOrder(t *testing.T) {
+func TestArrangeLayoutFollowsScoutingRunOrder(t *testing.T) {
 	const (
 		mission     = "mis_01M2N9N1SG7J0D3YVRZY3V8TNT"
 		mapStep     = "fmn_01M2N3G4PQCK21EXT7NC5CC3R9"
@@ -66,7 +66,7 @@ func TestArrangeLayoutFollowsWayfindingRunOrder(t *testing.T) {
 		critic      = "fmn_01M2N9N1PXQ39NHQY46F0J0V63"
 		signoff     = "gate_01M2N9N1R4R184Y5G3R45BB5G1"
 	)
-	fixture := filepath.Join("testdata", "arrange", "wayfinding.formation.toml")
+	fixture := filepath.Join("testdata", "arrange", "scouting.mission.toml")
 	store, slug, byID := arrangeFixture(t, fixture, "")
 	assertRunOrder(t, byID, []string{mission, mapStep, framing, questions, answers, draft, adversarial, signoff})
 	assertJudgeBelow(t, byID, adversarial, critic)
@@ -117,8 +117,8 @@ title = "Unwired draft"
 		const adversarialGate = "title = \"Adversarial review\"\nkinds = [\"formation\"]\n"
 		const criticTitle = "title = \"Brief critic\"\n"
 		for label, arranged := range map[string]map[string]LayoutNode{
-			"the gate's rubric":       withFiles("gate.formation.toml", adversarialGate, adversarialGate+"files = [\"rubrics/review.md\"]\n"),
-			"the judge's brief files": withFiles("judge.formation.toml", criticTitle, criticTitle+"[formation.brief]\nfiles = [\"rubrics/review.md\"]\n"),
+			"the gate's rubric":       withFiles("gate.mission.toml", adversarialGate, adversarialGate+"files = [\"rubrics/review.md\"]\n"),
+			"the judge's brief files": withFiles("judge.mission.toml", criticTitle, criticTitle+"[formation.brief]\nfiles = [\"rubrics/review.md\"]\n"),
 		} {
 			// The gate's card, its chip row and the note gap all fit above the judge.
 			if want := arranged[adversarial].Y + 124 + arrangementFileRow + arrangementRowGap; arranged[critic].X != arranged[adversarial].X || arranged[critic].Y < want {
@@ -148,7 +148,7 @@ to = "fmn_00_rework:port_rework_in"
 }
 
 func TestArrangeLayoutFollowsDeliveryRunOrder(t *testing.T) {
-	_, _, byID := arrangeFixture(t, filepath.Join("..", "..", "..", "examples", "delivery.formation.toml"), "")
-	assertRunOrder(t, byID, []string{"mis_delivery", "fmn_plan", "fmn_beads", "gate_beads_review", "fmn_execution", "fmn_final_review"})
+	_, _, byID := arrangeFixture(t, filepath.Join("..", "..", "..", "examples", "delivery.mission.toml"), "")
+	assertRunOrder(t, byID, []string{"mis_delivery", "fmn_plan", "fmn_beads", "gate_beads_review", "fmn_execution", "fmn_final_review", "end_delivered"})
 	assertJudgeBelow(t, byID, "gate_beads_review", "fmn_beads_reviewer")
 }

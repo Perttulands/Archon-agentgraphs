@@ -38,19 +38,19 @@ type archonBoardIdentity struct {
 }
 
 type archonFormationListResponse struct {
-	Board      archonBoardIdentity        `json:"board"`
+	Board      archonBoardIdentity        `json:"mission"`
 	Formations []formations.FormationNode `json:"formations"`
 }
 
 type archonFormationInspectResponse struct {
-	Board       archonBoardIdentity          `json:"board"`
+	Board       archonBoardIdentity          `json:"mission"`
 	Formation   formations.FormationNode     `json:"formation"`
 	Connections []formations.BoardConnection `json:"connections"`
 }
 
 type archonMissionInspectResponse struct {
-	Board       archonBoardIdentity          `json:"board"`
-	Mission     formations.MissionNode       `json:"mission"`
+	Board       archonBoardIdentity          `json:"mission"`
+	Mission     formations.MissionNode       `json:"inputCard"`
 	Chain       []archonMissionChainNode     `json:"chain"`
 	Connections []formations.BoardConnection `json:"connections"`
 }
@@ -127,6 +127,9 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, realTmuxRunner{}))
 }
 
+// archonNouns are the nouns the CLI knows, offline and with --server.
+var archonNouns = map[string]bool{"mission": true, "formation": true, "gate": true, "end": true, "tool": true, "agent": true, "run": true, "peer": true}
+
 func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
 		fmt.Fprintln(stdout, buildinfo.String())
@@ -136,22 +139,18 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 	if !ok {
 		return 2
 	}
-	if len(args) >= 1 && (args[0] == "mission" || args[0] == "board") && (len(args) == 1 || isHelpArg(args[1])) {
+	if len(args) >= 1 && args[0] == "mission" && (len(args) == 1 || isHelpArg(args[1])) {
 		fmt.Fprint(stderr, missionHelp)
 		return 2
 	}
 	if len(args) < 2 {
-		fmt.Fprintln(stderr, "usage: archon <mission|formation|gate|tool|agent|run|peer> <command>")
+		fmt.Fprintln(stderr, "usage: archon <mission|formation|gate|end|tool|agent|run|peer> <command>")
 		fmt.Fprintln(stderr, "Run \"archon mission\" to list the mission commands.")
 		return 2
 	}
-	if args[0] == "board" {
-		if !boardAliasVerbs[args[1]] {
-			fmt.Fprintf(stderr, "unknown board command %q; archon board is a deprecated alias, see \"archon mission\"\n", args[1])
-			return 2
-		}
-		fmt.Fprintf(stderr, "archon board is deprecated and will be removed in a later release; use: archon mission %s\n", args[1])
-		args = append([]string{"mission"}, args[1:]...)
+	if !archonNouns[args[0]] {
+		fmt.Fprintf(stderr, "unknown archon noun %q\n", args[0])
+		return 2
 	}
 	if config.Server != "" {
 		return runRemote(config.Server, args, stdout, stderr)
@@ -201,8 +200,6 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 			return runFormationRename(store, args[2:], stdout, stderr)
 		case "set-type":
 			return runFormationSetType(store, args[2:], stdout, stderr)
-		case "remove-verification":
-			return runFormationRemoveVerification(store, args[2:], stdout, stderr)
 		case "add-input":
 			return runFormationAddPort(store, args[2:], stdout, stderr, formations.FormationPortInput)
 		case "add-output":
@@ -234,6 +231,8 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 			fmt.Fprintf(stderr, "unknown gate command %q\n", args[1])
 			return 2
 		}
+	case "end":
+		return runEndCommand(formations.NewStore(config.Workspace), args[1], args[2:], stdout, stderr)
 	case "mission":
 		store := formations.NewStore(config.Workspace)
 		switch args[1] {
@@ -247,8 +246,6 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 			return runBoardValidate(store, args[2:], stdout, stderr)
 		case "arrange":
 			return runBoardArrange(store, args[2:], stdout, stderr)
-		case "migrate-slots":
-			return runBoardMigrateSlots(store, args[2:], stdout, stderr)
 		case "create":
 			return runMissionCreate(store, args[2:], stdout, stderr)
 		case "list":
@@ -487,15 +484,11 @@ func runAgentEdit(store *formations.PersonaStore, args []string, stdout, stderr 
 	}
 	if *f.addHarness != "" {
 		edit.SessionStem = *f.sessionStem
-		edit.Launch = *f.launch
 		edit.Model = *f.model
 		edit.Effort = *f.effort
 	} else {
 		if setFlags["session-stem"] {
 			edit.SetSessionStem = f.sessionStem
-		}
-		if setFlags["launch"] {
-			edit.SetLaunch = f.launch
 		}
 		edit.Variant = *f.harness
 		if setFlags["model"] {
@@ -635,7 +628,7 @@ func runFormationCreate(store *formations.Store, args []string, stdout, stderr i
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
@@ -643,7 +636,7 @@ func runFormationCreate(store *formations.Store, args []string, stdout, stderr i
 	}
 	createX, createY, err := resolveCreateCoordinates(store, slug, fs, *x, *y)
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	result, err := store.CreateFormation(slug, formations.FormationCreateRequest{
 		Type:      fs.Arg(1), // blank creates a solo formation
@@ -653,7 +646,7 @@ func runFormationCreate(store *formations.Store, args []string, stdout, stderr i
 		UpdatedBy: *updatedBy,
 	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeCreated(stdout, *jsonOut, result, result.Board, result.Layout, result.Formation.ID)
 }
@@ -872,39 +865,6 @@ func runFormationSetBrief(store *formations.Store, args []string, stdout, stderr
 	return 0
 }
 
-func runFormationRemoveVerification(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("formation remove-verification", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	replacementGate := fs.String("replacement-gate", "", "explicit Gate already wired from the Formation")
-	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
-	jsonOut := fs.Bool("json", false, "write JSON")
-	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
-		return 2
-	}
-	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon formation remove-verification <mission> <formation> --replacement-gate <gate> [--json]")
-		return 2
-	}
-	slug, board, formationID, err := resolveFormationCommandTarget(store, fs.Arg(0), fs.Arg(1))
-	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "formation", fs.Arg(1))
-	}
-	result, err := store.RemoveFormationVerification(slug, formations.FormationVerificationRemovalRequest{
-		FormationID:       formationID,
-		ReplacementGateID: *replacementGate,
-		UpdatedBy:         *updatedBy,
-	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
-	if err != nil {
-		return failJSON(stderr, err, *jsonOut, "formation", formationID)
-	}
-	result.TOML = ""
-	if *jsonOut {
-		return writeJSON(stdout, result)
-	}
-	fmt.Fprintf(stdout, "removed legacy inline verification from %s\n", formationID)
-	return 0
-}
-
 func runFormationAddPort(store *formations.Store, args []string, stdout, stderr io.Writer, direction string) int {
 	name := "formation add-input"
 	if direction == formations.FormationPortOutput {
@@ -965,11 +925,11 @@ func runFormationWire(store *formations.Store, args []string, stdout, stderr io.
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	request := formations.FormationWireRequest{
 		JoinIfOccupied: *join,
@@ -984,7 +944,7 @@ func runFormationWire(store *formations.Store, args []string, stdout, stderr io.
 		result, err = store.WireFormationPorts(slug, request, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	}
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	result.TOML = ""
 	if *jsonOut {
@@ -1007,10 +967,6 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 	check := fs.String("check", "", "registered code Gate profile id")
 	checkVersion := fs.String("check-version", "", "exact code Gate profile version")
 	checkValue := fs.String("check-value", "", "code Gate profile value parameter")
-	command := fs.String("command", "", "retired legacy Gate field; new writes fail with a migration error")
-	commandArgv := fs.String("command-argv", "", "retired legacy Gate argv; new writes fail with a migration error")
-	commandCWD := fs.String("command-cwd", "", "retired legacy Gate cwd; new writes fail with a migration error")
-	commandShell := fs.String("command-shell", "", "retired legacy Gate shell command; new writes fail with a migration error")
 	var files stringList
 	fs.Var(&files, "file", "reference file path; repeat for more")
 	x := fs.Int("x", 0, "layout x coordinate")
@@ -1026,7 +982,7 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
@@ -1034,27 +990,22 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 	}
 	createX, createY, err := resolveCreateCoordinates(store, slug, fs, *x, *y)
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	result, err := store.CreateGate(slug, formations.GateCreateRequest{
-		Title:                      *title,
-		Kinds:                      splitCSV(*kinds),
-		Criterion:                  *criterion,
-		Check:                      *check,
-		CheckVersion:               *checkVersion,
-		CheckValue:                 *checkValue,
-		Files:                      files,
-		Command:                    *command,
-		CommandArgv:                splitCSV(*commandArgv),
-		CommandCWD:                 *commandCWD,
-		CommandShell:               *commandShell,
-		LegacyCommandFieldsPresent: legacyGateCommandFlagPresent(fs),
-		X:                          createX,
-		Y:                          createY,
-		UpdatedBy:                  *updatedBy,
+		Title:        *title,
+		Kinds:        splitCSV(*kinds),
+		Criterion:    *criterion,
+		Check:        *check,
+		CheckVersion: *checkVersion,
+		CheckValue:   *checkValue,
+		Files:        files,
+		X:            createX,
+		Y:            createY,
+		UpdatedBy:    *updatedBy,
 	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeCreated(stdout, *jsonOut, result, result.Board, result.Layout, result.Gate.ID)
 }
@@ -1068,10 +1019,6 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	check := fs.String("check", "", "registered code Gate profile id")
 	checkVersion := fs.String("check-version", "", "exact code Gate profile version")
 	checkValue := fs.String("check-value", "", "code Gate profile value parameter")
-	command := fs.String("command", "", "retired legacy Gate field; new writes fail with a migration error")
-	commandArgv := fs.String("command-argv", "", "retired legacy Gate argv; new writes fail with a migration error")
-	commandCWD := fs.String("command-cwd", "", "retired legacy Gate cwd; new writes fail with a migration error")
-	commandShell := fs.String("command-shell", "", "retired legacy Gate shell command; new writes fail with a migration error")
 	clearCheck := fs.Bool("clear-check", false, "clear the code check profile, version and value")
 	var files stringList
 	fs.Var(&files, "file", "reference file path, replacing the current ones; repeat for more, or give an empty value to clear")
@@ -1090,7 +1037,7 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
@@ -1101,13 +1048,8 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 		return failSelector(stderr, err, *jsonOut, "gate", fs.Arg(1))
 	}
 	update := formations.GateUpdateRequest{
-		GateID:                     gateID,
-		Command:                    *command,
-		CommandArgv:                splitCSV(*commandArgv),
-		CommandCWD:                 *commandCWD,
-		CommandShell:               *commandShell,
-		LegacyCommandFieldsPresent: legacyGateCommandFlagPresent(fs),
-		UpdatedBy:                  *updatedBy,
+		GateID:    gateID,
+		UpdatedBy: *updatedBy,
 	}
 	if given["kinds"] {
 		update.Kinds = append([]string{}, splitCSV(*kinds)...)
@@ -1136,7 +1078,7 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	}
 	result, err := store.UpdateGate(slug, update, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	result.TOML = ""
 	if *jsonOut {
@@ -1144,17 +1086,6 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	}
 	fmt.Fprintln(stdout, "updated gate")
 	return 0
-}
-
-func legacyGateCommandFlagPresent(fs *flag.FlagSet) bool {
-	present := false
-	fs.Visit(func(current *flag.Flag) {
-		switch current.Name {
-		case "command", "command-argv", "command-cwd", "command-shell":
-			present = true
-		}
-	})
-	return present
 }
 
 func runGateJudge(store *formations.Store, args []string, stdout, stderr io.Writer) int {
@@ -1173,11 +1104,11 @@ func runGateJudge(store *formations.Store, args []string, stdout, stderr io.Writ
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	gateID, err := resolveGateSelector(board, fs.Arg(1))
 	if err != nil {
@@ -1195,7 +1126,7 @@ func runGateJudge(store *formations.Store, args []string, stdout, stderr io.Writ
 		result, err = store.SetGateJudgeChain(slug, request, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	}
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	result.TOML = ""
 	if *jsonOut {
@@ -1215,8 +1146,7 @@ const relayedByUsage = "slot ID of the seat that typed the operator's confirmed 
 func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Writer, verdict string) int {
 	fs := flag.NewFlagSet("gate verdict", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	reason := fs.String("reason", "", "operator response; approve delivers it downstream with the gate input, reject sends it back as feedback")
-	fs.StringVar(reason, "response", "", "alias of --reason")
+	reason := fs.String("response", "", "the response: approve delivers it downstream with the gate input, reject sends it back as feedback")
 	actor := fs.String("actor", "human:operator", "deciding actor")
 	relayedBy := fs.String("relayed-by", "", relayedByUsage)
 	jsonOut := fs.Bool("json", false, "write JSON")
@@ -1258,7 +1188,7 @@ const (
 
 // missionUpdateGiven reports whether a mission update names any field to change.
 func missionUpdateGiven(given map[string]bool) bool {
-	for _, name := range []string{"title", "goal", "bead", "file", "input-hint", "human-channel"} {
+	for _, name := range []string{"title", "goal", "file", "input-hint", "human-channel"} {
 		if given[name] {
 			return true
 		}
@@ -1271,7 +1201,6 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 	fs.SetOutput(stderr)
 	title := fs.String("title", "", "mission title")
 	goal := fs.String("goal", "", "mission goal")
-	beadID := fs.String("bead", "", "project Beads id")
 	var files stringList
 	fs.Var(&files, "file", "reference file path; repeat for more")
 	humanChannel := fs.String("human-channel", "", humanChannelUsage)
@@ -1288,7 +1217,7 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
@@ -1299,12 +1228,11 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	createX, createY, err := resolveCreateCoordinates(store, slug, fs, *x, *y)
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	result, err := store.CreateMission(slug, formations.MissionCreateRequest{
 		Title:        *title,
 		Goal:         *goal,
-		BeadID:       *beadID,
 		Files:        files,
 		HumanChannel: *humanChannel,
 		X:            createX,
@@ -1312,7 +1240,7 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 		UpdatedBy:    *updatedBy,
 	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeCreated(stdout, *jsonOut, result, result.Board, result.Layout, result.Mission.ID)
 }
@@ -1320,16 +1248,12 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 func runMissionList(store *formations.Store, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("mission list", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	jsonOut := fs.Bool("json", false, "write JSON")
+	fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() == 0 {
 		return runBoardList(store, args, stdout, stderr)
-	}
-	if fs.NArg() == 1 {
-		failJSON(stderr, missionListTakesNoArgument(fs.Arg(0)), *jsonOut, "mission", fs.Arg(0))
-		return 2
 	}
 	fmt.Fprintln(stderr, "usage: archon mission list [--json]")
 	return 2
@@ -1351,7 +1275,7 @@ func runMissionInspect(store *formations.Store, args []string, stdout, stderr io
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
@@ -1365,11 +1289,11 @@ func runMissionInspect(store *formations.Store, args []string, stdout, stderr io
 func writeMissionInspect(stdout, stderr io.Writer, board *formations.BoardDocument, selector string, jsonOut bool) int {
 	missionID, err := resolveMissionSelector(board, selector)
 	if err != nil {
-		return failSelector(stderr, err, jsonOut, "mission", selector)
+		return failSelector(stderr, err, jsonOut, "inputCard", selector)
 	}
 	mission, ok := missionByID(board, missionID)
 	if !ok {
-		return failSelector(stderr, fmt.Errorf("%w: mission %q", formations.ErrNotFound, missionID), jsonOut, "mission", missionID)
+		return failSelector(stderr, fmt.Errorf("%w: mission %q", formations.ErrNotFound, missionID), jsonOut, "inputCard", missionID)
 	}
 	chain, connections, err := missionReachableChain(board, missionID)
 	if err != nil {
@@ -1402,7 +1326,7 @@ func runMissionWire(store *formations.Store, args []string, stdout, stderr io.Wr
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
@@ -1410,7 +1334,7 @@ func runMissionWire(store *formations.Store, args []string, stdout, stderr io.Wr
 	}
 	missionID, rest, err := inputCardArgs(board, fs.Arg(0), fs.Args()[1:], 2)
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(1))
+		return failSelector(stderr, err, *jsonOut, "inputCard", fs.Arg(1))
 	}
 	target := rest[0]
 	result, err := store.WireFormationPorts(slug, formations.FormationWireRequest{
@@ -1419,7 +1343,7 @@ func runMissionWire(store *formations.Store, args []string, stdout, stderr io.Wr
 		UpdatedBy: *updatedBy,
 	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	result.TOML = ""
 	if *jsonOut {
@@ -1434,7 +1358,6 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	fs.SetOutput(stderr)
 	title := fs.String("title", "", "mission title")
 	goal := fs.String("goal", "", "mission goal")
-	beadID := fs.String("bead", "", "project Beads id")
 	var files stringList
 	fs.Var(&files, "file", "reference file path, replacing the current ones; repeat for more, or give an empty value to clear")
 	inputHint := fs.String("input-hint", "", "what a run brief for this mission should contain")
@@ -1452,7 +1375,7 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
@@ -1460,7 +1383,7 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	missionID, _, err := inputCardArgs(board, fs.Arg(0), fs.Args()[1:], 1)
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(1))
+		return failSelector(stderr, err, *jsonOut, "inputCard", fs.Arg(1))
 	}
 	update := formations.MissionUpdateRequest{MissionID: missionID, UpdatedBy: *updatedBy}
 	if given["title"] {
@@ -1468,9 +1391,6 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	if given["goal"] {
 		update.Goal = goal
-	}
-	if given["bead"] {
-		update.BeadID = beadID
 	}
 	if given["file"] {
 		refs := []string(files)
@@ -1484,7 +1404,7 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	result, err := store.UpdateMission(slug, update, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(1))
+		return failDefinitionWrite(stderr, err, *jsonOut, "inputCard", fs.Arg(1))
 	}
 	result.TOML = ""
 	if *jsonOut {
@@ -1498,7 +1418,6 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 	fs := flag.NewFlagSet("mission run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	missionSelector := fs.String("input", "", "the Input card to start from; needed only when the mission has several")
-	fs.StringVar(missionSelector, "mission", "", "older name for --input")
 	actor := fs.String("actor", "agent:archon", "run actor")
 	maxDispatch := fs.Int("max-dispatch", 0, "optional cap on the run's formation starts, judges included; unset means no limit")
 	maxAttempts := fs.Int("max-attempts", 0, "optional cap on each step's attempts; unset means no limit")
@@ -1513,11 +1432,11 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return failJSON(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	missionID := *missionSelector
 	if missionID == "" {
@@ -1525,7 +1444,7 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 			return failJSON(stderr, err, *jsonOut, "run", "")
 		}
 	} else if resolved, err := resolveMissionSelector(board, missionID); err != nil {
-		return failSelector(stderr, err, *jsonOut, "mission", missionID)
+		return failSelector(stderr, err, *jsonOut, "inputCard", missionID)
 	} else {
 		missionID = resolved
 	}
@@ -1595,7 +1514,6 @@ func runList(store *formations.Store, args []string, stdout, stderr io.Writer) i
 	fs := flag.NewFlagSet("run list", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	boardSelector := fs.String("mission", "", "list only this mission's runs")
-	fs.StringVar(boardSelector, "board", "", "older name for --mission")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
@@ -2096,7 +2014,7 @@ func runBoardNew(store *formations.Store, args []string, stdout, stderr io.Write
 		UpdatedBy: *updatedBy,
 	})
 	if err != nil {
-		return failJSON(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board.TOML = ""
 	if *jsonOut {
@@ -2123,7 +2041,7 @@ func runBoardList(store *formations.Store, args []string, stdout, stderr io.Writ
 // writeBoardList prints board summaries for board list, offline and remote.
 func writeBoardList(stdout io.Writer, boards []formations.BoardSummary, jsonOut bool) int {
 	if jsonOut {
-		return writeJSON(stdout, map[string]interface{}{"boards": boards})
+		return writeJSON(stdout, map[string]interface{}{"missions": boards})
 	}
 	for _, board := range boards {
 		fmt.Fprintf(stdout, "%s\t%s\t%d\n", board.Slug, board.Title, board.Rev)
@@ -2144,7 +2062,7 @@ func runBoardInspect(store *formations.Store, args []string, stdout, stderr io.W
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
@@ -2176,7 +2094,7 @@ func runBoardNotes(store *formations.Store, args []string, stdout, stderr io.Wri
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	notes, err := store.ReadBoardNotes(slug)
 	if err != nil {
@@ -2223,7 +2141,7 @@ func runBoardNote(store *formations.Store, args []string, stdout, stderr io.Writ
 	}
 	slug, err := store.ResolveBoardSelector(selector)
 	if err != nil {
-		return failSelector(stderr, err, jsonOut, "board", selector)
+		return failSelector(stderr, err, jsonOut, "mission", selector)
 	}
 	current, err := store.ReadBoardNotes(slug)
 	if err != nil {
@@ -2231,7 +2149,7 @@ func runBoardNote(store *formations.Store, args []string, stdout, stderr io.Writ
 	}
 	updated, err := store.UpdateBoardNote(slug, patch, formations.NoteWriteOptions{ExpectedETag: current.ETag})
 	if err != nil {
-		return failJSON(stderr, err, jsonOut, "board", selector)
+		return failJSON(stderr, err, jsonOut, "mission", selector)
 	}
 	return writeBoardNoteResult(stdout, slug, patch, updated, jsonOut)
 }
@@ -2246,7 +2164,6 @@ func parseBoardNote(fs *flag.FlagSet, args []string, stderr io.Writer) (string, 
 	entry := fs.String("entry", "", "your own entry to edit (with --text or --file) or delete (with --clear)")
 	clear := fs.Bool("clear", false, "delete the entry named by --entry")
 	author := fs.String("author", "agent:archon", "note author, human:<name> or agent:<name>")
-	updatedBy := fs.String("updated-by", "", "older name for --author")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"clear": true, "json": true})); err != nil {
 		return "", formations.BoardNotePatch{}, false, 2
@@ -2261,9 +2178,6 @@ func parseBoardNote(fs *flag.FlagSet, args []string, stderr io.Writer) (string, 
 	patch := formations.BoardNotePatch{Target: strings.TrimSpace(*node), Text: *text, Author: *author}
 	if patch.Target == "" {
 		patch.Target = formations.BoardNoteTarget
-	}
-	if given["updated-by"] && !given["author"] {
-		patch.Author = *updatedBy
 	}
 	if *file != "" {
 		raw, err := os.ReadFile(*file)
@@ -2304,8 +2218,7 @@ func writeBoardNoteResult(stdout io.Writer, slug string, patch formations.BoardN
 	return 0
 }
 
-// noteTargetLabel names a note thread in text output: the mission's own thread
-// is stored under the target "board" but reads as "mission".
+// noteTargetLabel names a note thread in text output.
 func noteTargetLabel(target string) string {
 	if target == formations.BoardNoteTarget {
 		return "mission"
@@ -2336,7 +2249,7 @@ func runBoardValidate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
@@ -2345,7 +2258,7 @@ func runBoardValidate(store *formations.Store, args []string, stdout, stderr io.
 	report := formations.ValidateRunAdmission(board, formations.NewPersonaStore(formations.DefaultAgentsDir()), formations.RunAdmissionScope{})
 	if *jsonOut {
 		code := writeJSON(stdout, map[string]interface{}{
-			"board":    identityFromBoard(board),
+			"mission":  identityFromBoard(board),
 			"errors":   report.Errors,
 			"warnings": report.Warnings,
 		})
@@ -2376,7 +2289,7 @@ func runBoardArrange(store *formations.Store, args []string, stdout, stderr io.W
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	expectedETag := "*"
 	if current, err := store.ReadLayout(slug); err == nil {
@@ -2386,7 +2299,7 @@ func runBoardArrange(store *formations.Store, args []string, stdout, stderr io.W
 	}
 	layout, err := store.ArrangeLayout(slug, formations.WriteOptions{ExpectedETag: expectedETag})
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	layout.TOML = ""
 	if *jsonOut {
@@ -2409,7 +2322,7 @@ func runFormationList(store *formations.Store, args []string, stdout, stderr io.
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
@@ -2458,7 +2371,7 @@ func runFormationInspect(store *formations.Store, args []string, stdout, stderr 
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
 	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failSelector(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
@@ -2534,7 +2447,7 @@ func liveForCard(card formations.PersonaCard, runner tmuxRunner) ([]formations.L
 }
 
 func archonTmuxSessionPrefix() string {
-	return strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_SESSION_PREFIX"))
+	return strings.TrimSpace(os.Getenv("ARCHON_TMUX_SESSION_PREFIX"))
 }
 
 func archonTmuxTargetSessionName(stem string) string {
@@ -2606,7 +2519,7 @@ func (realTmuxRunner) Attach(name string) error {
 }
 
 func archonTmuxArgs(args ...string) []string {
-	socket := strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_SOCKET"))
+	socket := strings.TrimSpace(os.Getenv("ARCHON_TMUX_SOCKET"))
 	if socket == "" {
 		return append([]string(nil), args...)
 	}
@@ -2769,10 +2682,6 @@ func archonErrorCode(err error) string {
 		return "precondition_required"
 	case errors.Is(err, formations.ErrUnsupportedSchema):
 		return "unsupported_schema"
-	case errors.Is(err, formations.ErrLegacyScriptGateRequiresFencedMigration):
-		return formations.LegacyScriptGateMigrationCode
-	case errors.Is(err, formations.ErrLegacyInlineVerificationRequiresMigration):
-		return formations.LegacyInlineVerificationMigrationCode
 	case errors.Is(err, formations.ErrRunFinal):
 		return "run_final"
 	case errors.Is(err, formations.ErrRunLedgerInvalid):
@@ -2946,7 +2855,7 @@ func resolveMissionSelector(board *formations.BoardDocument, selector string) (s
 			Title: mission.Title,
 		})
 	}
-	return resolveGraphSelector("mission", selector, candidates)
+	return resolveGraphSelector("Input card", selector, candidates)
 }
 
 type graphSelectorCandidate struct {
@@ -3045,7 +2954,7 @@ func chainNodeByID(board *formations.BoardDocument, nodeID string, depth int) (a
 		if mission.ID == nodeID {
 			return archonMissionChainNode{
 				ID:    mission.ID,
-				Kind:  "mission",
+				Kind:  "inputCard",
 				Title: mission.Title,
 				Depth: depth,
 			}, true
@@ -3057,6 +2966,16 @@ func chainNodeByID(board *formations.BoardDocument, nodeID string, depth int) (a
 				ID:    tool.ID,
 				Kind:  "tool",
 				Title: tool.Title,
+				Depth: depth,
+			}, true
+		}
+	}
+	for _, end := range board.Ends {
+		if end.ID == nodeID {
+			return archonMissionChainNode{
+				ID:    end.ID,
+				Kind:  "end",
+				Title: end.Title,
 				Depth: depth,
 			}, true
 		}

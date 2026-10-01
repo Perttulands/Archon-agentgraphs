@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -32,13 +30,14 @@ label = "B"
 agentId = "delivery-final-reviewer"
 harness = "openai-codex"
 controller = false
+effort = "medium"
 `
 
 // formation assign states a slot's harness, model and effort, with an optional
 // role; formation inspect prints them.
 func TestArchonFormationAssignSetsTheSlotsSettings(t *testing.T) {
 	workspace := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", t.TempDir())
+	t.Setenv("ARCHON_AGENTS_DIR", t.TempDir())
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("staff"), slotStaffingBoard)
 	runner := &fakeTmux{live: map[string]bool{}}
@@ -102,36 +101,11 @@ func TestArchonFormationAssignSetsTheSlotsSettings(t *testing.T) {
 	}
 }
 
-// mission migrate-slots reports every staffed slot's launch before and after,
-// and --dry-run writes nothing.
-func TestArchonBoardMigrateSlotsReportsIdenticalLaunches(t *testing.T) {
-	bin := t.TempDir()
-	for _, name := range []string{"claude", "codex"} {
-		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Setenv("PATH", bin)
-	workspace := t.TempDir()
-	t.Setenv("CHROTE_AGENTS_DIR", t.TempDir())
-	store := formations.NewStore(workspace)
-	writeArchonFile(t, store.BoardPath("staff"), slotStaffingBoard)
+// Slots own their settings; there is no slot migration command.
+func TestArchonMissionMigrateSlotsIsUnknown(t *testing.T) {
 	runner := &fakeTmux{live: map[string]bool{}}
-
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "migrate-slots", "--dry-run")
-	wantLaunch := "exec '" + filepath.Join(bin, "codex") + "' --model 'gpt-6-astra' -c 'model_reasoning_effort=\"medium\"' -c check_for_update_on_startup=false --dangerously-bypass-approvals-and-sandbox"
-	if code != 0 || !strings.Contains(stdout, "would-migrate\tstaff/fmn_work\tslot_b\tdelivery-final-reviewer · openai-codex · gpt-6-astra · medium\n  before: "+wantLaunch+"\n  after:  "+wantLaunch+"\n  identical: true\n") {
-		t.Fatalf("dry run code=%d stdout=%s stderr=%s", code, stdout, stderr)
-	}
-	if raw := readArchonFile(t, store.BoardPath("staff")); raw != slotStaffingBoard {
-		t.Fatalf("dry run wrote the board:\n%s", raw)
-	}
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "mission", "migrate-slots", "staff", "--json")
-	var report formations.SlotMigrationReport
-	if code != 0 || json.Unmarshal([]byte(stdout), &report) != nil || len(report.Slots) != 1 || report.Slots[0].Outcome != formations.SlotMigrationMigrated || !report.Slots[0].Identical || report.Boards[0].RevTo != 2 {
-		t.Fatalf("migrate code=%d stdout=%s stderr=%s", code, stdout, stderr)
-	}
-	if raw := readArchonFile(t, store.BoardPath("staff")); !strings.Contains(raw, `model = "gpt-6-astra"`) || !strings.Contains(raw, `effort = "medium"`) {
-		t.Fatalf("migrated board:\n%s", raw)
+	_, stderr, code := runArchon(t, runner, "--workspace", t.TempDir(), "mission", "migrate-slots")
+	if code != 2 || !strings.HasPrefix(stderr, "unknown mission command \"migrate-slots\"") {
+		t.Fatalf("migrate-slots code=%d stderr=%s", code, stderr)
 	}
 }

@@ -43,12 +43,12 @@ func TestFormationsRunProjectionParity(t *testing.T) {
 	if started.Status != formations.RunStatusRunning || started.Final {
 		t.Fatalf("started = %+v, want running while human gate waits", started)
 	}
-	if _, err := store.RecordEscalationFromCapture(started.RunID, "fmn_work", "<<<CHROTE-ESCALATE run-id="+started.RunID+" severity=needs-attention reason='operator taste needed'>>>"); err != nil {
+	if _, err := store.RecordEscalationFromCapture(started.RunID, "fmn_work", "<<<ARCHON-ESCALATE run-id="+started.RunID+" severity=needs-attention reason='operator taste needed'>>>"); err != nil {
 		t.Fatalf("record escalation: %v", err)
 	}
 
 	verdictRec := httptest.NewRecorder()
-	mux.ServeHTTP(verdictRec, httptest.NewRequest(http.MethodPost, "/api/formations/runs/"+started.RunID+"/gates/gate_review/verdict", bytes.NewBufferString(`{"verdict":"pass","reason":"ship it","actor":"human:operator"}`)))
+	mux.ServeHTTP(verdictRec, httptest.NewRequest(http.MethodPost, "/api/runs/"+started.RunID+"/gates/gate_review/verdict", bytes.NewBufferString(`{"verdict":"pass","reason":"ship it","actor":"human:operator"}`)))
 	if verdictRec.Code != http.StatusOK {
 		t.Fatalf("verdict status = %d, want %d: %s", verdictRec.Code, http.StatusOK, verdictRec.Body.String())
 	}
@@ -58,7 +58,7 @@ func TestFormationsRunProjectionParity(t *testing.T) {
 	}
 
 	statusRec := httptest.NewRecorder()
-	mux.ServeHTTP(statusRec, httptest.NewRequest(http.MethodGet, "/api/formations/runs/"+started.RunID, nil))
+	mux.ServeHTTP(statusRec, httptest.NewRequest(http.MethodGet, "/api/runs/"+started.RunID, nil))
 	if statusRec.Code != http.StatusOK {
 		t.Fatalf("status code = %d, want %d: %s", statusRec.Code, http.StatusOK, statusRec.Body.String())
 	}
@@ -68,7 +68,7 @@ func TestFormationsRunProjectionParity(t *testing.T) {
 	}
 
 	resumeRec := httptest.NewRecorder()
-	mux.ServeHTTP(resumeRec, httptest.NewRequest(http.MethodPost, "/api/formations/runs/"+started.RunID+"/resume", bytes.NewBufferString(`{"reason":"gate approved","actor":"agent:test"}`)))
+	mux.ServeHTTP(resumeRec, httptest.NewRequest(http.MethodPost, "/api/runs/"+started.RunID+"/resume", bytes.NewBufferString(`{"reason":"gate approved","actor":"agent:test"}`)))
 	if resumeRec.Code != http.StatusOK {
 		t.Fatalf("resume status = %d, want %d: %s", resumeRec.Code, http.StatusOK, resumeRec.Body.String())
 	}
@@ -78,7 +78,7 @@ func TestFormationsRunProjectionParity(t *testing.T) {
 	}
 
 	eventsRec := httptest.NewRecorder()
-	mux.ServeHTTP(eventsRec, httptest.NewRequest(http.MethodGet, "/api/formations/runs/"+started.RunID+"/events", nil))
+	mux.ServeHTTP(eventsRec, httptest.NewRequest(http.MethodGet, "/api/runs/"+started.RunID+"/events", nil))
 	if eventsRec.Code != http.StatusOK {
 		t.Fatalf("events status = %d, want %d: %s", eventsRec.Code, http.StatusOK, eventsRec.Body.String())
 	}
@@ -99,7 +99,7 @@ func TestFormationsRunProjectionParity(t *testing.T) {
 	}
 
 	escalationsRec := httptest.NewRecorder()
-	mux.ServeHTTP(escalationsRec, httptest.NewRequest(http.MethodGet, "/api/formations/runs/"+started.RunID+"/escalations", nil))
+	mux.ServeHTTP(escalationsRec, httptest.NewRequest(http.MethodGet, "/api/runs/"+started.RunID+"/escalations", nil))
 	if escalationsRec.Code != http.StatusOK {
 		t.Fatalf("escalations status = %d, want %d: %s", escalationsRec.Code, http.StatusOK, escalationsRec.Body.String())
 	}

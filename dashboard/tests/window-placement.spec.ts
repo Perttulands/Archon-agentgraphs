@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { cockpitFixture } from './cockpit-fixture'
-import { wayfinding, wayfindingFixture } from './wayfinding-fixture'
+import { scouting, scoutingFixture } from './scouting-fixture'
 
 // Floating windows open clear of the step being read, its neighbours and each
 // other (form-n7u.4), on the canvas and in Flow, at 1920 and 2560 wide.
@@ -8,8 +8,8 @@ import { wayfinding, wayfindingFixture } from './wayfinding-fixture'
 type Node = { id: string; title: string }
 type Box = { x: number; y: number; width: number; height: number }
 
-const board = wayfinding.board as { missions: Node[]; formations: Node[]; gates: Node[]; connections: Array<{ from: string; to: string }> }
-const nodes: Node[] = [...board.missions, ...board.formations, ...board.gates]
+const board = scouting.mission as { inputCards: Node[]; formations: Node[]; gates: Node[]; ends: Node[]; connections: Array<{ from: string; to: string }> }
+const nodes: Node[] = [...board.inputCards, ...board.formations, ...board.gates, ...board.ends]
 const idOf = (title: string) => nodes.find(node => node.title === title)!.id
 const neighbours = (nodeId: string) => {
   const found = new Set<string>()
@@ -56,8 +56,8 @@ for (const [width, height] of [[1920, 1080], [2560, 1440]]) {
   test(`canvas windows at ${width} open clear of their card, its neighbours and each other`, async ({ page }) => {
     await page.setViewportSize({ width, height })
     await page.addInitScript(() => localStorage.clear())
-    await wayfindingFixture(page)
-    await page.goto('/?mission=wayfinding')
+    await scoutingFixture(page)
+    await page.goto('/?mission=scouting')
     await expect(page.locator('.formation').first()).toBeVisible()
     await page.getByTitle('Fit', { exact: true }).click()
     await page.waitForTimeout(400)
@@ -67,7 +67,7 @@ for (const [width, height] of [[1920, 1080], [2560, 1440]]) {
       await page.locator(`[data-node="${nodeId}"]`).getByText(title, { exact: true }).first().click()
       await expect(page.locator(`[data-window-id="node:${nodeId}"]`)).toBeVisible()
       for (const id of [nodeId, ...neighbours(nodeId)]) {
-        const card = page.locator(`.formation[data-node="${id}"], .gatecard[data-node="${id}"], .missioncard[data-node="${id}"]`).first()
+        const card = page.locator(`.formation[data-node="${id}"], .gatecard[data-node="${id}"], .missioncard[data-node="${id}"], .endcard[data-node="${id}"]`).first()
         expect(await clickable(card), `${title}: ${nodes.find(node => node.id === id)?.title} stays clickable`).toBe(true)
       }
     }
@@ -87,8 +87,8 @@ for (const [width, height] of [[1920, 1080], [2560, 1440]]) {
   test(`Flow windows at ${width} leave each row's number, title and links clickable`, async ({ page }) => {
     await page.setViewportSize({ width, height })
     await page.addInitScript(() => localStorage.clear())
-    await wayfindingFixture(page)
-    await page.goto('/?mission=wayfinding')
+    await scoutingFixture(page)
+    await page.goto('/?mission=scouting')
     await page.getByRole('radio', { name: 'Flow' }).click()
     const flow = page.getByTestId('flow-view')
     await expect(flow).toBeVisible()

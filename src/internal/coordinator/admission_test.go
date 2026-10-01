@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,7 +17,7 @@ id = "brd_draft"
 slug = "draft"
 title = "Draft"
 rev = 4
-[[mission]]
+[[inputCard]]
 id = "mis_draft"
 title = "Draft"
 goal = "Sketch"
@@ -65,7 +66,7 @@ func TestRunStartReturnsEveryAdmissionFindingAs422(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := func(expectedRev int) *httptest.ResponseRecorder {
-		return post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"sketch","board":"draft","missionId":"mis_draft","expectedRev":`+strconv.Itoa(expectedRev)+`,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600}}`)
+		return post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"sketch","mission":"draft","inputCardId":"mis_draft","expectedRev":`+strconv.Itoa(expectedRev)+`,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600}}`)
 	}
 
 	if stale := start(3); stale.Code != 409 {
@@ -86,25 +87,28 @@ func TestRunStartReturnsEveryAdmissionFindingAs422(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{
-		"fmn_plan":    formations.FindingUnstaffedSlot,
-		"gate_lint":   formations.FindingGateNotRoutable,
-		"gate_review": formations.FindingGateNotRoutable,
+	// The draft's dangling routes are admission findings too (form-o7p.10).
+	want := []string{
+		"fmn_plan " + formations.FindingUnstaffedSlot,
+		"gate_lint " + formations.FindingGateNotRoutable,
+		"gate_lint " + formations.FindingRouteLeadsNowhere,
+		"gate_review " + formations.FindingGateNotRoutable,
+		"gate_review " + formations.FindingRouteLeadsNowhere,
+		"gate_review " + formations.FindingRouteLeadsNowhere,
 	}
-	got := map[string]string{}
+	got := []string{}
 	for _, finding := range body.Error.Findings {
 		if finding.Message == "" {
 			t.Fatalf("finding without message: %+v", finding)
 		}
-		got[finding.NodeID] = finding.Code
+		got = append(got, finding.NodeID+" "+finding.Code)
 	}
-	if body.Success || body.Error.Code != "RUN_ADMISSION_FAILED" || body.Error.Message != "The run needs 3 fixes before it can start" || len(got) != len(want) {
+	sort.Strings(got)
+	if body.Success || body.Error.Code != "RUN_ADMISSION_FAILED" || body.Error.Message != "The run needs 6 fixes before it can start" || strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("422 body = %s, want every finding", w.Body.String())
 	}
-	for node, code := range want {
-		if got[node] != code {
-			t.Fatalf("finding for %s = %q, want %q in %s", node, got[node], code, w.Body.String())
-		}
+	if !strings.Contains(w.Body.String(), "Review's pass route leads nowhere: wire it to a step or an End node") {
+		t.Fatalf("422 body = %s, want the plain dangling-route message", w.Body.String())
 	}
 	runs, err := c.store.ListRuns(formations.RunListFilter{})
 	if err != nil || len(runs) != 0 {
@@ -112,18 +116,18 @@ func TestRunStartReturnsEveryAdmissionFindingAs422(t *testing.T) {
 	}
 
 	validation := httptest.NewRecorder()
-	c.Handler().ServeHTTP(validation, httptest.NewRequest("GET", "/api/formations/boards/draft/validation", nil))
+	c.Handler().ServeHTTP(validation, httptest.NewRequest("GET", "/api/missions/draft/validation", nil))
 	var report struct {
 		Data struct {
-			BoardRev int                       `json:"boardRev"`
+			BoardRev int                       `json:"missionRev"`
 			Errors   []formations.BoardFinding `json:"errors"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(validation.Body.Bytes(), &report); err != nil || validation.Code != 200 {
 		t.Fatalf("validation route = %d %s (%v)", validation.Code, validation.Body.String(), err)
 	}
-	if report.Data.BoardRev != 4 || len(report.Data.Errors) != 3 {
-		t.Fatalf("validation route body = %s, want the same three findings", validation.Body.String())
+	if report.Data.BoardRev != 4 || len(report.Data.Errors) != len(want) {
+		t.Fatalf("validation route body = %s, want the same six findings", validation.Body.String())
 	}
 }
 
@@ -132,12 +136,12 @@ func TestRunStartReturnsEveryAdmissionFindingAs422(t *testing.T) {
 // HTTP with the same message, on the mission route and the former board route.
 func TestRunStartRefusesAFileWithSeveralInputCards(t *testing.T) {
 	c, _, _ := fixture(t)
-	legacy := strings.Replace(draftBoard, "[[formation]]", "[[mission]]\nid = \"mis_other\"\ntitle = \"Other\"\ngoal = \"\"\n[[formation]]", 1)
+	legacy := strings.Replace(draftBoard, "[[formation]]", "[[inputCard]]\nid = \"mis_other\"\ntitle = \"Other\"\ngoal = \"\"\n[[formation]]", 1)
 	if err := os.WriteFile(c.store.BoardPath("draft"), []byte(legacy), 0600); err != nil {
 		t.Fatal(err)
 	}
 	var message string
-	for _, route := range []string{"/api/formations/missions/draft/validation", "/api/formations/boards/draft/validation"} {
+	for _, route := range []string{"/api/missions/draft/validation", "/api/missions/draft/validation"} {
 		validation := httptest.NewRecorder()
 		c.Handler().ServeHTTP(validation, httptest.NewRequest("GET", route, nil))
 		var report struct {
@@ -157,8 +161,8 @@ func TestRunStartRefusesAFileWithSeveralInputCards(t *testing.T) {
 			t.Fatalf("%s findings %s, want the migration message", route, validation.Body.String())
 		}
 	}
-	for _, target := range []string{`"missionId":"mis_draft"`, `"formationId":"fmn_plan"`} {
-		w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"sketch","board":"draft",`+target+`,"expectedRev":4,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600}}`)
+	for _, target := range []string{`"inputCardId":"mis_draft"`, `"formationId":"fmn_plan"`} {
+		w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"sketch","mission":"draft",`+target+`,"expectedRev":4,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600}}`)
 		var body struct {
 			Error struct {
 				Findings []formations.BoardFinding `json:"findings"`

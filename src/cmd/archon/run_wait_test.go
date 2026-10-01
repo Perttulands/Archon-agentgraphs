@@ -25,7 +25,7 @@ id = "brd_proof"
 slug = "proof"
 title = "Proof"
 rev = 1
-[[mission]]
+[[inputCard]]
 id = "mis_proof"
 title = "Proof"
 goal = "Prove the wait"
@@ -45,6 +45,7 @@ label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 [[gate]]
 id = "gate_review"
 title = "Review"
@@ -66,6 +67,7 @@ label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 [[connection]]
 id = "edge_start"
 from = "mis_proof:out"
@@ -78,6 +80,22 @@ to = "gate_review:in"
 id = "edge_pass"
 from = "gate_review:pass"
 to = "fmn_after:port_after_in"
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+[[end]]
+id = "end_rejected"
+title = "Rejected"
+outcome = "rejected"
+[[connection]]
+id = "edge_fail"
+from = "gate_review:fail"
+to = "end_rejected:in"
+[[connection]]
+id = "edge_after_done"
+from = "fmn_after:port_after_out"
+to = "end_done:in"
 `
 
 // waitExecutor finishes each formation when the test lets it.
@@ -109,7 +127,7 @@ func startWaitDaemon(t *testing.T) (*httptest.Server, *waitExecutor, string) {
 	}
 	server := httptest.NewServer(c.Handler())
 	t.Cleanup(func() { close(e.proceed); server.Close(); c.Close() })
-	out, stderr, code := runArchon(t, &fakeTmux{}, "--server", server.URL, "mission", "run", "proof", "--mission", "mis_proof", "--brief", "prove it", "--cwd", root)
+	out, stderr, code := runArchon(t, &fakeTmux{}, "--server", server.URL, "mission", "run", "proof", "--input", "mis_proof", "--brief", "prove it", "--cwd", root)
 	if code != 0 {
 		t.Fatalf("start %d %s %s", code, out, stderr)
 	}
@@ -227,7 +245,7 @@ func TestRunWaitReconnectsAcrossARestart(t *testing.T) {
 			fmt.Fprint(w, `{"success":false,"error":{"message":"coordinator is stopping"}}`)
 			return
 		}
-		fmt.Fprint(w, `{"success":true,"data":{"runId":"run_x","mission":"Proof","until":"final","outcome":"final","since":7,"seq":9,"status":"failed","final":true,"settled":true,"asks":[],"changes":[],"end":{"status":"failed","seq":9,"code":"coordinator_execution_failed","reason":"completed recovery requires a single-slot formation","endedBy":"archond","stopped":[{"id":"fmn_exec","title":"Execution"}]}}}`)
+		fmt.Fprint(w, `{"success":true,"data":{"runId":"run_x","missionTitle":"Proof","until":"final","outcome":"final","since":7,"seq":9,"status":"failed","final":true,"settled":true,"asks":[],"changes":[],"end":{"status":"failed","seq":9,"code":"coordinator_execution_failed","reason":"completed recovery requires a single-slot formation","endedBy":"archond","stopped":[{"id":"fmn_exec","title":"Execution"}]}}}`)
 	}))
 	defer server.Close()
 	out, stderr, code := runArchon(t, &fakeTmux{}, "--server", server.URL, "run", "wait", "run_x", "--until", "final", "--since", "7")
@@ -290,9 +308,11 @@ func TestDescribeGateRouteSaysWhereEachVerdictLeads(t *testing.T) {
 		route formations.GateRoute
 		want  string
 	}{
-		{formations.GateRoute{Verdict: "pass", EndsRun: true}, "ends the run"},
-		{formations.GateRoute{Verdict: "pass", NothingFollows: true}, "nothing follows this gate; the run goes on with its other work"},
-		{formations.GateRoute{Verdict: "fail", Unwired: true}, "no route is wired, so the run blocks"},
+		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "end_done", Title: "Done", Kind: "end", Outcome: "done"}}, EndsRun: true}, "this path ends (done), and nothing else can run, so the run succeeds"},
+		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "end_rejected", Title: "Rejected", Kind: "end", Outcome: "rejected"}}, EndsRun: true, RunFails: true}, "this path ends (rejected), and nothing else can run, so the run fails"},
+		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "end_done", Title: "Done", Kind: "end", Outcome: "done"}}}, "this path ends (done)"},
+		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "end_rejected", Title: "Rejected", Kind: "end", Outcome: "rejected"}}, RunFails: true}, "this path ends (rejected), so the run fails once its other open work ends"},
+		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}, {NodeID: "end_done", Title: "Done", Kind: "end", Outcome: "done"}}}, `goes to "Ship"; this path ends (done)`},
 		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}}, Limit: &formations.RunLimitReached{Kind: formations.RunLimitDispatches, Used: 3, Max: 3}}, `goes to "Ship", but the run has used all 3 of its dispatches, so it blocks instead`},
 		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_build", Title: "Build"}}, Limit: &formations.RunLimitReached{Kind: formations.RunLimitAttempts, NodeID: "fmn_build", Used: 2, Max: 2}}, `goes to "Build", but "Build" has used all 2 of its attempts, so the run blocks instead`},
 	} {
@@ -311,7 +331,7 @@ func TestRunWaitKeepsOneConnectionAcrossPolls(t *testing.T) {
 		if polls.Add(1) >= 5 {
 			outcome, final = "final", "true"
 		}
-		fmt.Fprintf(w, `{"success":true,"data":{"runId":"run_x","mission":"Proof","until":"final","outcome":%q,"since":3,"seq":3,"status":"succeeded","final":%s,"settled":true,"asks":[],"changes":[]}}`, outcome, final)
+		fmt.Fprintf(w, `{"success":true,"data":{"runId":"run_x","missionTitle":"Proof","until":"final","outcome":%q,"since":3,"seq":3,"status":"succeeded","final":%s,"settled":true,"asks":[],"changes":[]}}`, outcome, final)
 	}))
 	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
 		if state == http.StateNew {

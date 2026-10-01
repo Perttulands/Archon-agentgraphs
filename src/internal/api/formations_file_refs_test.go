@@ -16,7 +16,7 @@ func TestFormationsAPIMissionAndGateFileReferences(t *testing.T) {
 	mux := http.NewServeMux()
 	NewFormationsHandlerWithStores(store, formations.NewPersonaStore(filepath.Join(t.TempDir(), "agents"))).RegisterRoutes(mux)
 	created := httptest.NewRecorder()
-	mux.ServeHTTP(created, httptest.NewRequest(http.MethodPost, "/api/formations/boards", bytes.NewBufferString(`{"title":"Refs","slug":"refs"}`)))
+	mux.ServeHTTP(created, httptest.NewRequest(http.MethodPost, "/api/missions", bytes.NewBufferString(`{"title":"Refs","slug":"refs"}`)))
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create board = %d %s", created.Code, created.Body.String())
 	}
@@ -26,7 +26,7 @@ func TestFormationsAPIMissionAndGateFileReferences(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		req := httptest.NewRequest(http.MethodPatch, "/api/formations/boards/refs", bytes.NewBufferString(`{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{")))
+		req := httptest.NewRequest(http.MethodPatch, "/api/missions/refs", bytes.NewBufferString(`{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{")))
 		req.Header.Set("If-Match", board.ETag)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
@@ -43,7 +43,7 @@ func TestFormationsAPIMissionAndGateFileReferences(t *testing.T) {
 		return board.Missions[0].Files, board.Gates[0].Files
 	}
 
-	patch(`{"createMission":{"title":"Work","files":["docs/brief.md"]}}`)
+	patch(`{"createInputCard":{"title":"Work","files":["docs/brief.md"]}}`)
 	patch(`{"createGate":{"title":"Review","files":["rubrics/quality.md","rubrics/style.md"]}}`)
 	if mission, gate := files(); strings.Join(mission, ",") != "docs/brief.md" || strings.Join(gate, ",") != "rubrics/quality.md,rubrics/style.md" {
 		t.Fatalf("created files: mission %q gate %q", mission, gate)
@@ -51,12 +51,12 @@ func TestFormationsAPIMissionAndGateFileReferences(t *testing.T) {
 	board, _ := store.ReadBoard("refs")
 	missionID, gateID := board.Missions[0].ID, board.Gates[0].ID
 
-	patch(`{"updateMission":{"id":"` + missionID + `","files":["docs/next.md"]}}`)
+	patch(`{"updateInputCard":{"id":"` + missionID + `","files":["docs/next.md"]}}`)
 	patch(`{"updateGate":{"id":"` + gateID + `","criterion":"Scores at least 3"}}`)
 	if mission, gate := files(); strings.Join(mission, ",") != "docs/next.md" || strings.Join(gate, ",") != "rubrics/quality.md,rubrics/style.md" {
 		t.Fatalf("after replacing mission files and an unrelated gate edit: mission %q gate %q", mission, gate)
 	}
-	patch(`{"updateMission":{"id":"` + missionID + `","files":[]}}`)
+	patch(`{"updateInputCard":{"id":"` + missionID + `","files":[]}}`)
 	patch(`{"updateGate":{"id":"` + gateID + `","files":[]}}`)
 	if mission, gate := files(); len(mission) != 0 || len(gate) != 0 {
 		t.Fatalf("cleared files: mission %q gate %q", mission, gate)

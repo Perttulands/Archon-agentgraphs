@@ -195,7 +195,7 @@ func TestAgentsHandlerOverridesBuiltInCodexPresetThroughSharedWriter(t *testing.
 		t.Fatalf("get preset = %d %s", getRec.Code, getRec.Body.String())
 	}
 
-	patchReq := httptest.NewRequest(http.MethodPatch, "/api/agents/codex-planner", bytes.NewBufferString(`{"displayName":"Delivery Planner","summary":"Plans the selected delivery","capabilities":["planning","tickets"],"sessionStem":"planner-main","launch":"codex --yolo --model gpt-5.6-codex"}`))
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/agents/codex-planner", bytes.NewBufferString(`{"displayName":"Delivery Planner","summary":"Plans the selected delivery","capabilities":["planning","tickets"],"sessionStem":"planner-main"}`))
 	patchReq.SetPathValue("agentId", "codex-planner")
 	patchReq.Header.Set("If-Match", getRec.Header().Get("ETag"))
 	patchRec := httptest.NewRecorder()
@@ -268,7 +268,7 @@ func TestAgentsHandlerCreatesAndEditsModelAndEffortAndShowsTheSeatLaunch(t *test
 	}
 	claude := decode(created).DefaultVariant()
 	want := "exec '" + filepath.Join(bin, "claude") + "' --model 'claude-opus-5' --effort 'medium' --dangerously-skip-permissions"
-	if claude.Launch != "" || claude.Model != "claude-opus-5" || claude.Effort != "" || claude.EffectiveEffort != "medium" || claude.SeatLaunch != want {
+	if claude.Model != "claude-opus-5" || claude.Effort != "" || claude.EffectiveEffort != "medium" || claude.SeatLaunch != want {
 		t.Fatalf("created variant = %+v, want seat launch %s", claude, want)
 	}
 
@@ -308,9 +308,6 @@ func TestAgentsHandlerCreatesAndEditsModelAndEffortAndShowsTheSeatLaunch(t *test
 	}
 	if rec := patch(`{"variants":[{"id":"claude-code","effort":"low"}],"variant":"claude-code","model":"other"}`, both.Header().Get("ETag")); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "edited twice") {
 		t.Fatalf("variant named twice = %d %s", rec.Code, rec.Body.String())
-	}
-	if rec := patch(`{"variants":[{"id":"claude-code","launch":"claude --effort max"}]}`, both.Header().Get("ETag")); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "would not be run") {
-		t.Fatalf("launch on a launchable variant = %d %s", rec.Code, rec.Body.String())
 	}
 	if raw := readAgentFixture(t, agentsDir, "critic"); strings.Contains(raw, `effort = "low"`) {
 		t.Fatalf("an edit with one invalid variant was partly written:\n%s", raw)

@@ -1,13 +1,11 @@
 package formations
 
 import (
-	"errors"
 	"reflect"
-	"strings"
 	"testing"
 )
 
-func TestS4GateRoutesPassAndUnwiredFailBlocks(t *testing.T) {
+func TestS4GateRoutesPassAndAFailEndingRejectedFailsTheRun(t *testing.T) {
 	t.Run("pass routes through pass wire", func(t *testing.T) {
 		store, personas := s4RunFixture(t)
 		store.Now = fixedClock()
@@ -45,7 +43,7 @@ func TestS4GateRoutesPassAndUnwiredFailBlocks(t *testing.T) {
 		}
 	})
 
-	t.Run("unwired fail records run_blocked", func(t *testing.T) {
+	t.Run("a fail routed to a rejected End fails the run with the gate's reason", func(t *testing.T) {
 		store, personas := s4RunFixture(t)
 		store.Now = fixedClock()
 		personas.Now = fixedClock()
@@ -69,19 +67,20 @@ func TestS4GateRoutesPassAndUnwiredFailBlocks(t *testing.T) {
 		if err != nil {
 			t.Fatalf("run mission: %v", err)
 		}
-		if status.Status != RunStatusBlocked || status.Final {
-			t.Fatalf("status = %+v, want blocked non-final", status)
+		if status.Status != RunStatusFailed || !status.Final {
+			t.Fatalf("status = %+v, want failed final", status)
 		}
 		if got, want := executor.nodeIDs(), []string{"fmn_work"}; !reflect.DeepEqual(got, want) {
 			t.Fatalf("executor nodes = %v, want only pre-gate work", got)
 		}
 		events := readRunEvents(t, findOnlyRunLedger(t, store, "session-search"))
-		if events[len(events)-1].Type != RunEventBlocked {
-			t.Fatalf("last event = %s, want run_blocked", events[len(events)-1].Type)
+		last := events[len(events)-1]
+		if last.Type != RunEventFailed || last.Data["code"] != RunFailurePathRejected || last.Data["reason"] != "fake fail" || last.Data["endId"] != "end_rejected" || last.Data["gateId"] != "gate_review" {
+			t.Fatalf("last event = %+v, want run_failed with the gate's reason", last)
 		}
 		verdict := eventOfType(t, events, RunEventGateVerdict)
-		if verdict.Data["verdict"] != "fail" || verdict.Data["routePort"] != "none" {
-			t.Fatalf("gate verdict = %+v, want unwired fail route none", verdict)
+		if verdict.Data["verdict"] != "fail" || verdict.Data["routePort"] != "fail" {
+			t.Fatalf("gate verdict = %+v, want the fail route", verdict)
 		}
 	})
 }
@@ -125,36 +124,6 @@ func TestS4GateFailWirePushesBackWithAttemptLimit(t *testing.T) {
 	if errEvent.Data["reason"] != "revise loop exhausted" {
 		t.Fatalf("error data = %#v, want revise loop exhausted", errEvent.Data)
 	}
-}
-
-func TestS4GateEvaluationRejectsPersistedCommandArgvBeforeEvaluator(t *testing.T) {
-	store, personas := s4RunFixture(t)
-	store.Now = fixedClock()
-	personas.Now = fixedClock()
-	createS4Persona(t, personas, "scout")
-	writeFixture(t, store.BoardPath("session-search"), strings.Replace(s4GateBoardFixture(false), `criterion = "Good enough to ship"`, `criterion = "touch should-not-run"`+"\n"+`commandArgv = ["npm", "run", "lint"]`+"\n"+`commandCwd = "dashboard"`, 1))
-	board, err := store.ReadBoard("session-search")
-	if err != nil {
-		t.Fatalf("read board: %v", err)
-	}
-	evaluator := &fakeGateEvaluator{verdicts: []string{"pass"}}
-	engine := NewRunEngine(store, personas, &fakeRunExecutor{})
-	engine.SetGateEvaluator(evaluator)
-
-	_, err = engine.RunMission("session-search", RunStartRequest{
-		MissionID:         "mis_showcase",
-		Actor:             "agent:test",
-		ExpectedBoardETag: board.ETag,
-		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
-	})
-	if !errors.Is(err, ErrLegacyScriptGateRequiresFencedMigration) {
-		t.Fatalf("run mission error = %v, want ErrLegacyScriptGateRequiresFencedMigration", err)
-	}
-	if len(evaluator.calls) != 0 {
-		t.Fatalf("gate calls = %+v, want none before migration", evaluator.calls)
-	}
-	assertNoRunArtifacts(t, store, "session-search")
 }
 
 func TestS4RunLimitsRecordAndStop(t *testing.T) {
@@ -248,8 +217,16 @@ func nodeStartedAttempts(events []RunEvent, nodeID string) []int {
 	return attempts
 }
 
+// s4GateBoardFixture is mission -> work -> code gate whose pass goes to ship,
+// which ends Done. The gate's fail sends work back when pushback is set and
+// otherwise ends the path Rejected.
 func s4GateBoardFixture(pushback bool) string {
-	failWire := ""
+	failWire := `
+[[connection]]
+id = "edge_gate_fail_rejected"
+from = "gate_review:fail"
+to = "end_rejected:in"
+`
 	if pushback {
 		failWire = `
 [[connection]]
@@ -278,6 +255,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[gate]]
 id = "gate_review"
@@ -307,6 +285,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_work"
@@ -322,5 +301,10 @@ to = "gate_review:in"
 id = "edge_gate_pass_ship"
 from = "gate_review:pass"
 to = "fmn_ship:port_ship_in"
-` + failWire
+
+[[connection]]
+id = "edge_ship_done"
+from = "fmn_ship:port_ship_out"
+to = "end_done:in"
+` + branchingBoardEnds() + failWire
 }

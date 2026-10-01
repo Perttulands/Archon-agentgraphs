@@ -49,7 +49,7 @@ func (k *keeperExecutor) ExecuteFormation(req formations.FormationExecution) (fo
 	}
 	for _, slot := range req.Formation.Slots {
 		if err := k.store.AppendRunEvent(req.RunID, formations.RunEvent{Type: formations.RunEventSeatCreated, NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{
-			"sessionName": "form-" + slot.ID, "sessionId": fmt.Sprintf("$%s-%d", slot.ID, req.Attempt), "paneId": fmt.Sprintf("%%%s-%d", slot.ID, req.Attempt), "harness": "claude-code",
+			"sessionName": "archon-" + slot.ID, "sessionId": fmt.Sprintf("$%s-%d", slot.ID, req.Attempt), "paneId": fmt.Sprintf("%%%s-%d", slot.ID, req.Attempt), "harness": "claude-code",
 		}}); err != nil {
 			return formations.FormationExecutionResult{}, err
 		}
@@ -59,7 +59,7 @@ func (k *keeperExecutor) ExecuteFormation(req formations.FormationExecution) (fo
 		if req.KeepSeatsOnCall && (req.Formation.Type != formations.FormationTypeOrchestrated || slot.Controller) {
 			outcome = formations.SeatOutcomeKeptOnCall
 		}
-		if err := k.store.AppendRunEvent(req.RunID, formations.RunEvent{Type: formations.RunEventSeatCleanup, NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": "form-" + slot.ID, "outcome": outcome}}); err != nil {
+		if err := k.store.AppendRunEvent(req.RunID, formations.RunEvent{Type: formations.RunEventSeatCleanup, NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": "archon-" + slot.ID, "outcome": outcome}}); err != nil {
 			return formations.FormationExecutionResult{}, err
 		}
 	}
@@ -144,13 +144,13 @@ func onCallFixture(t *testing.T, board string, executor formations.FormationExec
 }
 
 func sessionBoard(board string) string {
-	return strings.Replace(board, `beadId = "form-2fb"`, `beadId = "form-2fb"
+	return strings.Replace(board, `beadId = "archon-2fb"`, `beadId = "archon-2fb"
 humanChannel = "session"`, 1)
 }
 
 func startProof(t *testing.T, c *Coordinator) string {
 	t.Helper()
-	w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"run the proof","board":"proof","missionId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":10,"maxAttempts":3,"wallClockSeconds":600}}`)
+	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"run the proof","mission":"proof","inputCardId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":10,"maxAttempts":3,"wallClockSeconds":600}}`)
 	if w.Code != 202 {
 		t.Fatalf("start %d %s", w.Code, w.Body.String())
 	}
@@ -230,7 +230,7 @@ func verdict(t *testing.T, c *Coordinator, id, gate string, seq int, pass bool, 
 		decision = "pass"
 	}
 	body := `{"requestedSeq":` + strconv.Itoa(seq) + `,"verdict":"` + decision + `","reason":"confirmed with the operator","relayedBy":"` + relayedBy + `"}`
-	if w := post(t, c, "/api/formations/runs/"+id+"/gates/"+gate+"/verdict", body); w.Code != 202 {
+	if w := post(t, c, "/api/runs/"+id+"/gates/"+gate+"/verdict", body); w.Code != 202 {
 		t.Fatalf("verdict %d %s", w.Code, w.Body.String())
 	}
 }
@@ -291,7 +291,7 @@ func TestSessionAskReachesTheKeptWorkSeatWithoutANotifyCommand(t *testing.T) {
 		}
 	}
 	seats := httptest.NewRecorder()
-	c.Handler().ServeHTTP(seats, httptest.NewRequest("GET", "/api/formations/runs/"+id+"/seats", nil))
+	c.Handler().ServeHTTP(seats, httptest.NewRequest("GET", "/api/runs/"+id+"/seats", nil))
 	if !strings.Contains(seats.Body.String(), `"onCall":{"keptSeq":`) || !strings.Contains(seats.Body.String(), `"waitingOn":[{"gateId":"gate_review","requestedSeq":`+strconv.Itoa(gate.RequestedSeq)+`}]`) {
 		t.Fatalf("seats = %s", seats.Body.String())
 	}
@@ -312,11 +312,11 @@ id = "brd_proof"
 slug = "proof"
 title = "Proof"
 rev = 1
-[[mission]]
+[[inputCard]]
 id = "mis_proof"
 title = "Proof"
 goal = "PRIVATE-OBJECTIVE"
-beadId = "form-2fb"
+beadId = "archon-2fb"
 humanChannel = "session"
 [[formation]]
 id = "fmn_peers"
@@ -333,11 +333,13 @@ id = "peer_a"
 label = "Peer A"
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 [[formation.slot]]
 id = "peer_b"
 label = "Peer B"
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 [[formation]]
 id = "fmn_team"
 type = "orchestrated"
@@ -354,11 +356,13 @@ label = "Lead"
 agentId = "codex-builder"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 [[formation.slot]]
 id = "team_worker"
 label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 [[gate]]
 id = "gate_peers"
 title = "Peer questions"
@@ -385,7 +389,19 @@ to = "gate_peers:in"
 id = "edge_team_gate"
 from = "fmn_team:port_team_out"
 to = "gate_team:in"
-`
+[[connection]]
+id = "edge_peers_fail"
+from = "gate_peers:fail"
+to = "end_rejected:in"
+[[connection]]
+id = "edge_team_pass"
+from = "gate_team:pass"
+to = "end_done:in"
+[[connection]]
+id = "edge_team_fail"
+from = "gate_team:fail"
+to = "end_rejected:in"
+` + endNodes
 
 func TestSessionAskReachesEveryPeerSeatWithARetryAndOnlyTheOrchestratedController(t *testing.T) {
 	keeper := &keeperExecutor{refuse: map[string]int{"peer_b": 2}}
@@ -552,11 +568,11 @@ id = "brd_proof"
 slug = "proof"
 title = "Proof"
 rev = 1
-[[mission]]
+[[inputCard]]
 id = "mis_proof"
 title = "Proof"
 goal = "PRIVATE-OBJECTIVE"
-beadId = "form-2fb"
+beadId = "archon-2fb"
 humanChannel = "session"
 [[formation]]
 id = "fmn_work"
@@ -574,6 +590,7 @@ label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 [[gate]]
 id = "gate_one"
 title = "First look"
@@ -596,7 +613,19 @@ to = "gate_one:in"
 id = "edge_two"
 from = "gate_one:pass"
 to = "gate_two:in"
-`
+[[connection]]
+id = "edge_one_fail"
+from = "gate_one:fail"
+to = "end_rejected:in"
+[[connection]]
+id = "edge_two_pass"
+from = "gate_two:pass"
+to = "end_done:in"
+[[connection]]
+id = "edge_two_fail"
+from = "gate_two:fail"
+to = "end_rejected:in"
+` + endNodes
 
 func TestSessionSeatStaysForTheNextHumanGateAndEndsBeforeTheRunSucceeds(t *testing.T) {
 	keeper := &keeperExecutor{}
@@ -672,11 +701,13 @@ func TestUncertainSeatFallsBackForTheNextHumanGateAfterRestart(t *testing.T) {
 
 func TestHealthyPeerReceivesTheNextHumanGateAfterUncertainPaste(t *testing.T) {
 	board := strings.Replace(twoGateBoard, `type = "solo"`, `type = "peer"`, 1)
-	board = strings.Replace(board, `controller = true`, `[[formation.slot]]
+	board = strings.Replace(board, "controller = true\neffort = \"medium\"", `effort = "medium"
+[[formation.slot]]
 id = "slot_other"
 label = "Other peer"
 agentId = "codex-builder"
-harness = "openai-codex"`, 1)
+harness = "openai-codex"
+effort = "medium"`, 1)
 	keeper := &keeperExecutor{uncertain: map[string]bool{"slot_work": true}}
 	c, root := onCallFixture(t, board, keeper, nil)
 	id := startProof(t, c)
@@ -746,7 +777,7 @@ func TestKeptSeatsEndBeforeAWaitingRunIsCanceledOrFails(t *testing.T) {
 		c, _ := onCallFixture(t, sessionBoard(testBoard), keeper, nil)
 		id := startProof(t, c)
 		awaitProjection(t, c, id, func(p *Projection) bool { return len(p.WaitingGates) == 1 && len(p.WaitingGates[0].AskedSeats) == 1 })
-		if w := post(t, c, "/api/formations/runs/"+id+"/abort", `{"reason":"operator stop","requestedBy":"operator"}`); w.Code != 200 {
+		if w := post(t, c, "/api/runs/"+id+"/abort", `{"reason":"operator stop","requestedBy":"operator"}`); w.Code != 200 {
 			t.Fatalf("abort %d %s", w.Code, w.Body.String())
 		}
 		if got := ledgerTrail(eventsOf(t, c, id)); !strings.HasSuffix(got, "delivered slot_work, ended slot_work run_final, run_canceled") {
@@ -856,7 +887,7 @@ func TestACrashBeforeABlockedRunIsCanceledLeavesItBlockedThroughRestart(t *testi
 		t.Fatalf("restart announced the block again: %+v", again)
 	}
 
-	if w := post(t, next, "/api/formations/runs/"+id+"/abort", `{"reason":"operator stop","requestedBy":"operator"}`); w.Code != 200 {
+	if w := post(t, next, "/api/runs/"+id+"/abort", `{"reason":"operator stop","requestedBy":"operator"}`); w.Code != 200 {
 		t.Fatalf("abort %d %s", w.Code, w.Body.String())
 	}
 	if got := ledgerTrail(eventsOf(t, next, id)); !strings.HasSuffix(got, "run_blocked, ended slot_work run_final, run_canceled") {

@@ -13,10 +13,10 @@ import (
 )
 
 var (
-	ErrRunFinal            = errors.New("formations run is final")
-	ErrRunLedgerInvalid    = errors.New("formations run ledger invalid")
-	ErrRunResumeNotAllowed = errors.New("formations run resume is not allowed")
-	ErrRunEpochBlocked     = errors.New("formations run epoch is blocked")
+	ErrRunFinal            = errors.New("archon run is final")
+	ErrRunLedgerInvalid    = errors.New("archon run ledger invalid")
+	ErrRunResumeNotAllowed = errors.New("archon run resume is not allowed")
+	ErrRunEpochBlocked     = errors.New("archon run epoch is blocked")
 )
 
 const (
@@ -35,7 +35,6 @@ const (
 	RunEventJudgeAttemptFailed   = "judge_attempt_failed"
 	RunEventGateKindResult       = "gate_kind_result"
 	RunEventGateVerdict          = "gate_verdict"
-	RunEventVerificationVerdict  = "verification_verdict"
 	RunEventEscalationRaised     = "escalation_raised"
 	RunEventHumanInputRequested  = "human_input_requested"
 	RunEventHumanVerdictRecorded = "human_verdict_recorded"
@@ -91,7 +90,7 @@ func ValidateRunLimits(limits RunLimits) error {
 
 type RunStartResult struct {
 	RunID                string `json:"runId"`
-	BoardSlug            string `json:"boardSlug"`
+	BoardSlug            string `json:"missionSlug"`
 	LedgerPath           string `json:"ledgerPath"`
 	SnapshotPath         string `json:"snapshot"`
 	BindingsSnapshotPath string `json:"bindingsSnapshot"`
@@ -103,9 +102,9 @@ type RunEvent struct {
 	Seq       int            `json:"seq,omitempty"`
 	Type      string         `json:"type"`
 	Actor     string         `json:"actor,omitempty"`
-	BoardID   string         `json:"boardId,omitempty"`
-	BoardRev  int            `json:"boardRev,omitempty"`
-	MissionID string         `json:"missionId,omitempty"`
+	BoardID   string         `json:"missionId,omitempty"`
+	BoardRev  int            `json:"missionRev,omitempty"`
+	MissionID string         `json:"inputCardId,omitempty"`
 	BeadID    string         `json:"beadId,omitempty"`
 	NodeID    string         `json:"nodeId,omitempty"`
 	SlotID    string         `json:"slotId,omitempty"`
@@ -122,10 +121,10 @@ type RunStatusProjection struct {
 	RunID         string   `json:"runId"`
 	Status        string   `json:"status"`
 	Final         bool     `json:"final"`
-	BoardSlug     string   `json:"boardSlug"`
-	BoardID       string   `json:"boardId"`
-	BoardRev      int      `json:"boardRev"`
-	MissionID     string   `json:"missionId"`
+	BoardSlug     string   `json:"missionSlug"`
+	BoardID       string   `json:"missionId"`
+	BoardRev      int      `json:"missionRev"`
+	MissionID     string   `json:"inputCardId"`
 	BeadID        string   `json:"beadId"`
 	Epoch         int      `json:"epoch"`
 	EventCount    int      `json:"eventCount"`
@@ -162,7 +161,6 @@ type runBinding struct {
 	CardTOML    string `toml:"cardToml"`
 	Model       string `toml:"model"`
 	Effort      string `toml:"effort"`
-	Launch      string `toml:"launch"`
 	Source      string `toml:"source"`
 }
 
@@ -213,9 +211,6 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 	mission, ok := findMission(board, req.MissionID)
 	if !ok {
 		return nil, fmt.Errorf("%w: Input card %q", ErrNotFound, req.MissionID)
-	}
-	if req.BeadID != "" {
-		mission.BeadID = req.BeadID
 	}
 	if err := preflightMissionDefinition(board, mission.ID); err != nil {
 		return nil, err
@@ -289,17 +284,17 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 		BoardID:   board.ID,
 		BoardRev:  board.Rev,
 		MissionID: mission.ID,
-		BeadID:    mission.BeadID,
+		BeadID:    req.BeadID,
 		Epoch:     0,
 		Attempt:   0,
 		Data: map[string]any{
-			"boardSlug":        slug,
-			"boardPath":        filepath.ToSlash(boardPath),
-			"boardRev":         board.Rev,
+			"missionSlug":      slug,
+			"missionPath":      filepath.ToSlash(boardPath),
+			"missionRev":       board.Rev,
 			"snapshot":         snapshotPath,
 			"bindingsSnapshot": bindingsPath,
-			"missionId":        mission.ID,
-			"beadId":           mission.BeadID,
+			"inputCardId":      mission.ID,
+			"beadId":           req.BeadID,
 			"objective":        mission.Goal,
 			"cwd":              req.Cwd,
 			"contextPaths":     req.ContextPaths,
@@ -327,9 +322,6 @@ func (s *Store) AppendRunEvent(runID string, event RunEvent) error {
 }
 
 func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*BoardDocument, error) {
-	if event.Type == RunEventVerificationVerdict {
-		return nil, fmt.Errorf("%w: new verification_verdict events are retired; use an explicit Gate", ErrLegacyInlineVerificationRequiresMigration)
-	}
 	ledger, err := s.openRunLedger(runID, true)
 	if err != nil {
 		return nil, err
@@ -363,10 +355,7 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 			if err != nil {
 				return err
 			}
-			if err := rejectLegacyScriptGateForRun(validatedSnapshot, first, &event); err != nil {
-				return err
-			}
-			if err := rejectLegacyInlineVerification(validatedSnapshot); err != nil {
+			if err := validateRunRoot(validatedSnapshot, first); err != nil {
 				return err
 			}
 		}
@@ -459,10 +448,7 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		if err != nil {
 			return err
 		}
-		if err := rejectLegacyScriptGateForRun(runSnapshot, first, nil); err != nil {
-			return err
-		}
-		if err := rejectLegacyInlineVerification(runSnapshot); err != nil {
+		if err := validateRunRoot(runSnapshot, first); err != nil {
 			return err
 		}
 		if last.Type != RunEventBlocked || !runBlockResumeAllowed(lifecycle, len(lifecycle)-1) {
@@ -523,7 +509,7 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 func (s *Store) validateRunSnapshotIdentity(started RunEvent, expectedRunID string, ledger *runLedgerHandle) error {
 	snapshotPath := stringFromEventData(started, "snapshot")
 	bindingsSnapshotPath := stringFromEventData(started, "bindingsSnapshot")
-	boardSlug := stringFromEventData(started, "boardSlug")
+	boardSlug := stringFromEventData(started, "missionSlug")
 	if ledger == nil || ledger.directory == nil || started.Type != RunEventStarted || validateSlug(boardSlug) != nil || started.RunID != expectedRunID || ledger.runID != expectedRunID {
 		return ErrRunLedgerInvalid
 	}
@@ -547,7 +533,7 @@ func (s *Store) readRunSnapshot(started RunEvent, expectedRunID string, ledger *
 	if err != nil {
 		return nil, fmt.Errorf("%w: snapshot parse failed: %v", ErrRunLedgerInvalid, err)
 	}
-	boardSlug := stringFromEventData(started, "boardSlug")
+	boardSlug := stringFromEventData(started, "missionSlug")
 	if board.ID != started.BoardID || board.Slug != boardSlug || board.Rev != started.BoardRev {
 		return nil, ErrRunLedgerInvalid
 	}
@@ -572,7 +558,7 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 		ContextPaths: stringSliceFromAny(events[0].Data["contextPaths"]),
 		RunID:        runID,
 		Status:       RunStatusRunning,
-		BoardSlug:    stringFromEventData(events[0], "boardSlug"),
+		BoardSlug:    stringFromEventData(events[0], "missionSlug"),
 		BoardID:      events[0].BoardID,
 		BoardRev:     events[0].BoardRev,
 		MissionID:    events[0].MissionID,
@@ -612,7 +598,7 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 	// Honesty safety net: a run can only project succeeded when every reachable
 	// required node reached a terminal state. If the ledger still shows a node
 	// whose last lifecycle event is node_waiting, the success is a lie (e.g. a
-	// stray/legacy run_succeeded over a starved join); project blocked instead so
+	// stray run_succeeded over a starved join); project blocked instead so
 	// CLI, API, and UI never report finished work that never ran.
 	if status.Status == RunStatusSucceeded {
 		if waiting := unresolvedWaitingNodes(events); len(waiting) > 0 {
@@ -798,7 +784,6 @@ func resolveRunBindings(board *BoardDocument, personas *PersonaStore) ([]runBind
 				SessionStem: settings.SessionStem,
 				Model:       settings.Model,
 				Effort:      settings.Effort,
-				Launch:      settings.Launch,
 				Source:      settings.Source,
 			}
 			if card != nil {
@@ -816,10 +801,10 @@ func renderRunBindings(runID string, board *BoardDocument, mission MissionNode, 
 	var b strings.Builder
 	b.WriteString("schema = 3\n")
 	b.WriteString("runId = " + renderString(runID) + "\n")
-	b.WriteString("boardId = " + renderString(board.ID) + "\n")
-	b.WriteString("boardSlug = " + renderString(board.Slug) + "\n")
-	b.WriteString("boardRev = " + renderInt(board.Rev) + "\n")
-	b.WriteString("missionId = " + renderString(mission.ID) + "\n")
+	b.WriteString("missionId = " + renderString(board.ID) + "\n")
+	b.WriteString("missionSlug = " + renderString(board.Slug) + "\n")
+	b.WriteString("missionRev = " + renderInt(board.Rev) + "\n")
+	b.WriteString("inputCardId = " + renderString(mission.ID) + "\n")
 	b.WriteString("\n")
 	for _, binding := range bindings {
 		b.WriteString("[[binding]]\n")
@@ -835,9 +820,6 @@ func renderRunBindings(runID string, board *BoardDocument, mission MissionNode, 
 		}
 		b.WriteString("model = " + renderString(binding.Model) + "\n")
 		b.WriteString("effort = " + renderString(binding.Effort) + "\n")
-		if binding.Launch != "" {
-			b.WriteString("launch = " + renderString(binding.Launch) + "\n")
-		}
 		if binding.Source != "" {
 			b.WriteString("source = " + renderString(binding.Source) + "\n")
 		}
@@ -957,7 +939,7 @@ func findMission(board *BoardDocument, missionID string) (MissionNode, bool) {
 }
 
 func runArtifactPath(slug, runID, suffix string) string {
-	return filepath.ToSlash(filepath.Join(".formations", "runs", slug, runID+suffix))
+	return filepath.ToSlash(filepath.Join(".archon", "runs", slug, runID+suffix))
 }
 
 func defaultRunActor(actor string) string {
@@ -1069,4 +1051,28 @@ func runEndActor(event RunEvent) string {
 		}
 	}
 	return event.Actor
+}
+
+// validateRunRoot checks that a run's frozen snapshot holds the root its
+// run_started names: the formation of an isolated formation run, or the Input
+// card of a mission run.
+func validateRunRoot(board *BoardDocument, started RunEvent) error {
+	if board == nil {
+		return nil
+	}
+	switch mode := stringFromEventData(started, "mode"); mode {
+	case "formation":
+		formationID := stringFromEventData(started, "formationId")
+		if _, ok := findFormation(board.Formations, formationID); !ok || started.MissionID != "single_"+formationID {
+			return ErrRunLedgerInvalid
+		}
+		return nil
+	case "":
+		if _, ok := findMission(board, started.MissionID); !ok {
+			return ErrRunLedgerInvalid
+		}
+		return nil
+	default:
+		return ErrRunLedgerInvalid
+	}
 }

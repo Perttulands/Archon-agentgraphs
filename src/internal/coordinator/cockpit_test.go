@@ -83,15 +83,15 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 	defer server.Close()
 	client := cockpitClient{t, server}
 	var doc struct {
-		Board *formations.BoardDocument `json:"board"`
+		Board *formations.BoardDocument `json:"mission"`
 	}
-	etag := client.request("POST", "/api/formations/boards", "", map[string]any{"title": "Cockpit proof"}, 201, &doc)
-	base := "/api/formations/boards/" + doc.Board.Slug
+	etag := client.request("POST", "/api/missions", "", map[string]any{"title": "Cockpit proof"}, 201, &doc)
+	base := "/api/missions/" + doc.Board.Slug
 	patch := func(operation string, value any) {
 		t.Helper()
 		etag = client.request("PATCH", base, etag, map[string]any{operation: value, "expectedRev": doc.Board.Rev}, 200, &doc)
 	}
-	patch("createMission", map[string]any{"title": "Proof", "goal": "Return a bounded lab result", "beadId": "form-proof"})
+	patch("createInputCard", map[string]any{"title": "Proof", "goal": "Return a bounded lab result", "beadId": "archon-proof"})
 	mission := doc.Board.Missions[0].ID
 	patch("createFormation", map[string]any{"type": "solo", "title": "Work"})
 	work := doc.Board.Formations[0]
@@ -100,6 +100,15 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 	patch("createGate", map[string]any{"title": "Review", "kinds": []string{"human"}, "criterion": "Accept the lab result"})
 	gate := doc.Board.Gates[0].ID
 	patch("wireConnection", map[string]any{"from": work.ID + ":" + work.Outputs[0].ID, "to": gate + ":in"})
+	// Every route leads somewhere: the gate's pass ends the path done and its
+	// fail ends it rejected (form-o7p.10).
+	patch("createEnd", map[string]any{"outcome": "done"})
+	patch("createEnd", map[string]any{"outcome": "rejected"})
+	if len(doc.Board.Ends) != 2 || doc.Board.Ends[0].Title != "Done" || doc.Board.Ends[1].Outcome != "rejected" {
+		t.Fatalf("End nodes = %+v", doc.Board.Ends)
+	}
+	patch("wireConnection", map[string]any{"from": gate + ":pass", "to": doc.Board.Ends[0].ID + ":in"})
+	patch("wireConnection", map[string]any{"from": gate + ":fail", "to": doc.Board.Ends[1].ID + ":in"})
 	var layout struct {
 		Layout *formations.LayoutDocument `json:"layout"`
 	}
@@ -112,7 +121,7 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 		Notes *formations.BoardNotesDocument `json:"notes"`
 	}
 	notesETag := client.request("GET", base+"/notes", "", nil, 200, &notes)
-	notesETag = client.request("PATCH", base+"/notes", notesETag, map[string]string{"target": "board", "text": "Operator brief", "author": "human:ui"}, 200, &notes)
+	notesETag = client.request("PATCH", base+"/notes", notesETag, map[string]string{"target": "mission", "text": "Operator brief", "author": "human:ui"}, 200, &notes)
 	client.request("PATCH", base+"/notes", notesETag, map[string]string{"target": work.ID, "text": "Work note", "author": "agent:archon"}, 200, &notes)
 	// Offline Archon's shared package sees HTTP edits, and HTTP sees its writes.
 	offline := formations.NewStore(root)
@@ -130,19 +139,19 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 		t.Fatal("offline edit not visible")
 	}
 	client.request("GET", "/api/agents", "", nil, 200, nil)
-	client.request("GET", "/api/formations/boards", "", nil, 200, nil)
-	client.request("GET", "/api/formations/gate-profiles", "", nil, 200, nil)
+	client.request("GET", "/api/missions", "", nil, 200, nil)
+	client.request("GET", "/api/gate-profiles", "", nil, 200, nil)
 	var receipt struct {
 		RunID string `json:"runId"`
 	}
 	start := func() string {
 		t.Helper()
-		client.request("POST", "/api/formations/runs", etag, map[string]any{"cwd": c.store.Workspace, "brief": "run the proof", "board": board.Slug, "missionId": mission, "expectedRev": board.Rev, "limits": formations.RunLimits{MaxDispatch: 6, MaxAttempts: 2, WallClockSeconds: 30}}, 202, &receipt)
+		client.request("POST", "/api/runs", etag, map[string]any{"cwd": c.store.Workspace, "brief": "run the proof", "mission": board.Slug, "inputCardId": mission, "expectedRev": board.Rev, "limits": formations.RunLimits{MaxDispatch: 6, MaxAttempts: 2, WallClockSeconds: 30}}, 202, &receipt)
 		return receipt.RunID
 	}
 	id := start()
 	p := awaitState(t, c, id, "waiting_human")
-	response, err := server.Client().Get(server.URL + "/api/formations/runs/" + id + "/stream")
+	response, err := server.Client().Get(server.URL + "/api/runs/" + id + "/stream")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +191,7 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("stream did not send waiting projection")
 	}
-	client.request("POST", "/api/formations/runs/"+id+"/gates/"+gate+"/verdict", "", map[string]any{"requestedSeq": p.WaitingGates[0].RequestedSeq, "verdict": "pass"}, 202, nil)
+	client.request("POST", "/api/runs/"+id+"/gates/"+gate+"/verdict", "", map[string]any{"requestedSeq": p.WaitingGates[0].RequestedSeq, "verdict": "pass"}, 202, nil)
 	var final Projection
 	for p := range projections {
 		final = p
@@ -195,19 +204,19 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 	}
 	awaitState(t, c, id, "succeeded")
 	for _, suffix := range []string{"", "/events", "/escalations"} {
-		client.request("GET", "/api/formations/runs/"+id+suffix, "", nil, 200, nil)
+		client.request("GET", "/api/runs/"+id+suffix, "", nil, 200, nil)
 	}
 	second := start()
 	awaitState(t, c, second, "waiting_human")
 	var canceled Projection
-	client.request("POST", "/api/formations/runs/"+second+"/abort", "", map[string]string{"reason": "operator stop"}, 200, &canceled)
+	client.request("POST", "/api/runs/"+second+"/abort", "", map[string]string{"reason": "operator stop"}, 200, &canceled)
 	if !canceled.Final || canceled.Status != "canceled" {
 		t.Fatal(canceled)
 	}
 	// The isolated-formation button uses the same admission and snapshot ETag.
-	isolated := map[string]any{"board": board.Slug, "formationId": work.ID, "expectedRev": board.Rev, "limits": formations.RunLimits{MaxDispatch: 6, MaxAttempts: 2, WallClockSeconds: 30}}
-	client.request("POST", "/api/formations/runs", "stale-etag", isolated, 409, nil)
-	client.request("POST", "/api/formations/runs", etag, isolated, 202, &receipt)
+	isolated := map[string]any{"mission": board.Slug, "formationId": work.ID, "expectedRev": board.Rev, "limits": formations.RunLimits{MaxDispatch: 6, MaxAttempts: 2, WallClockSeconds: 30}}
+	client.request("POST", "/api/runs", "stale-etag", isolated, 409, nil)
+	client.request("POST", "/api/runs", etag, isolated, 202, &receipt)
 	awaitState(t, c, receipt.RunID, "succeeded")
 
 }
@@ -256,7 +265,7 @@ func TestAbortCancelsOwnedSeatAndHoldsAdmissionUntilCleanup(t *testing.T) {
 		t.Fatal("executor not entered")
 	}
 	responses := make(chan *httptest.ResponseRecorder, 1)
-	go func() { responses <- post(t, c, "/api/formations/runs/"+id+"/abort", `{"reason":"stop owned seat"}`) }()
+	go func() { responses <- post(t, c, "/api/runs/"+id+"/abort", `{"reason":"stop owned seat"}`) }()
 	select {
 	case <-executor.canceled:
 	case <-time.After(5 * time.Second):

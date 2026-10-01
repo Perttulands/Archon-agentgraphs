@@ -1,5 +1,5 @@
 {
- "wayfinding-canvas-1920": {
+ "scouting-canvas-1920": {
   "workspace": {
    "bounds": {
     "left": 244,
@@ -160,7 +160,7 @@
   ],
   "nodes": {
    "mis_01M2N9N1SG7J0D3YVRZY3V8TNT": {
-    "title": "Wayfinding",
+    "title": "Scouting",
     "anchor": {
      "left": 268,
      "top": 482,
@@ -668,7 +668,7 @@
    }
   }
  },
- "wayfinding-flow-1920": {
+ "scouting-flow-1920": {
   "workspace": {
    "bounds": {
     "left": 244,
@@ -1050,7 +1050,7 @@
   ],
   "nodes": {
    "mis_01M2N9N1SG7J0D3YVRZY3V8TNT": {
-    "title": "Wayfinding",
+    "title": "Scouting",
     "anchor": {
      "left": 535,
      "top": 167,
@@ -2200,7 +2200,7 @@
    }
   }
  },
- "wayfinding-canvas-2560": {
+ "scouting-canvas-2560": {
   "workspace": {
    "bounds": {
     "left": 244,
@@ -2361,7 +2361,7 @@
   ],
   "nodes": {
    "mis_01M2N9N1SG7J0D3YVRZY3V8TNT": {
-    "title": "Wayfinding",
+    "title": "Scouting",
     "anchor": {
      "left": 288,
      "top": 609,
@@ -2869,7 +2869,7 @@
    }
   }
  },
- "wayfinding-flow-2560": {
+ "scouting-flow-2560": {
   "workspace": {
    "bounds": {
     "left": 244,
@@ -3251,7 +3251,7 @@
   ],
   "nodes": {
    "mis_01M2N9N1SG7J0D3YVRZY3V8TNT": {
-    "title": "Wayfinding",
+    "title": "Scouting",
     "anchor": {
      "left": 855,
      "top": 167,

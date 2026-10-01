@@ -11,10 +11,10 @@ const text = (value: string) => ({ text: value, bytes: value.length })
 async function cancelableRun(page: Page) {
   const aborts: unknown[] = []
   let canceled = false
-  const waiting = { runId: 'run_browser', status: 'waiting_human', final: false, boardSlug: 'browser', missionId: 'mission', eventCount: 3, beadId: 'form-mnf', waitingGates: [{ gateId: 'loose', requestedSeq: 3 }], onCallSeats: [] }
+  const waiting = { runId: 'run_browser', status: 'waiting_human', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 3, beadId: 'form-mnf', waitingGates: [{ gateId: 'loose', requestedSeq: 3 }], onCallSeats: [] }
   const ended = () => ({ ...waiting, status: 'canceled', final: true, eventCount: 4, waitingGates: [], endedBy: 'agent:ui' })
   const events = [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_output', nodeId: 'execution' }, { seq: 3, type: 'human_input_requested', nodeId: 'loose', gateId: 'loose' }]
-  await page.route('**/api/formations/runs/run_browser**', async route => {
+  await page.route('**/api/runs/run_browser**', async route => {
     const path = new URL(route.request().url()).pathname
     const respond = (data: unknown) => route.fulfill({ json: { success: true, data } })
     if (path.endsWith('/abort')) {
@@ -22,7 +22,7 @@ async function cancelableRun(page: Page) {
       canceled = true
       return respond(ended())
     }
-    if (path === '/api/formations/runs/run_browser') return respond(canceled ? ended() : waiting)
+    if (path === '/api/runs/run_browser') return respond(canceled ? ended() : waiting)
     if (path.endsWith('/events')) return respond({ events: canceled ? [...events, { seq: 4, type: 'run_canceled' }] : events })
     if (path.endsWith('/evidence/problems')) {
       const reason = (aborts[aborts.length - 1] as { reason?: string } | undefined)?.reason || ''
@@ -76,8 +76,8 @@ test('the answer window moves, names where the answer leads, and comes back from
   await page.goto('/')
   const answer = page.getByRole('dialog', { name: 'Answer gate Disconnected gate' })
   await expect(answer.getByRole('button', { name: 'Approve', exact: true })).toBeVisible()
-  await expect(answer.getByRole('list', { name: 'Where your answer leads' })).toContainText('Approve: nothing follows this gate.')
-  await expect(answer.getByRole('list', { name: 'Where your answer leads' })).toContainText('Send back blocks the run: this gate has no send-back route.')
+  await expect(answer.getByRole('list', { name: 'Where your answer leads' })).toContainText('Approve: this path ends (done); the run goes on with its other work.')
+  await expect(answer.getByRole('list', { name: 'Where your answer leads' })).toContainText('Send back: this path ends (rejected); the run goes on with its other work.')
 
   // It opens clear of the gate it answers.
   const gate = (await page.locator('[data-node="loose"]').boundingBox())!

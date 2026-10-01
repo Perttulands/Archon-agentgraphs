@@ -149,8 +149,8 @@ func TestLayoutWriteDoesNotChangeBoardBytesOrBoardRevision(t *testing.T) {
 	store.Now = fixedClock()
 	writeFixture(t, store.BoardPath("session-search"), minimalBoard("session-search", 7))
 	writeFixture(t, store.LayoutPath("session-search"), `schema = 1
-boardId = "brd_01J9_sesssearch"
-boardRev = 7
+missionId = "brd_01J9_sesssearch"
+missionRev = 7
 updatedAt = "2026-06-03T16:02:00Z"
 
 [[node]]
@@ -253,14 +253,14 @@ func TestCreateBoardWritesMinimalDurableBoard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create board: %v", err)
 	}
-	if board.Schema != NewBoardSchema || board.Slug != "poems" || board.Title != "Poems" || board.Rev != 1 || !strings.HasPrefix(board.ID, "brd_") || board.ETag == "" {
+	if board.Schema != NewBoardSchema || board.Slug != "poems" || board.Title != "Poems" || board.Rev != 1 || !strings.HasPrefix(board.ID, "msn_") || board.ETag == "" {
 		t.Fatalf("created board = %+v, want durable board identity", board)
 	}
 	if board.UpdatedBy != "agent:test" || board.UpdatedAt != "2026-06-03T17:00:00Z" {
 		t.Fatalf("created board update metadata = %q/%q", board.UpdatedBy, board.UpdatedAt)
 	}
 	raw := readFile(t, store.BoardPath("poems"))
-	for _, want := range []string{`schema = 1`, `id = "brd_`, `slug = "poems"`, `title = "Poems"`, `rev = 1`, `updatedBy = "agent:test"`, `updatedAt = "2026-06-03T17:00:00Z"`} {
+	for _, want := range []string{`schema = 1`, `id = "msn_`, `slug = "poems"`, `title = "Poems"`, `rev = 1`, `updatedBy = "agent:test"`, `updatedAt = "2026-06-03T17:00:00Z"`} {
 		if !strings.Contains(raw, want) {
 			t.Fatalf("created board file missing %q:\n%s", want, raw)
 		}
@@ -381,8 +381,8 @@ legacyKey = "keep"
 func TestSchemaZeroLayoutInspectionNeverPublishesMigration(t *testing.T) {
 	store := NewStore(t.TempDir())
 	raw := `schema = 0
-boardId = "brd_schema_zero"
-boardRev = 1
+missionId = "brd_schema_zero"
+missionRev = 1
 updatedAt = "2026-06-03T16:02:00Z"
 layoutNote = "keep"
 `
@@ -443,8 +443,8 @@ func TestSchemaOneBoardInspectionNeverPublishesMigration(t *testing.T) {
 func TestSchemaOneLayoutInspectionNeverPublishesMigration(t *testing.T) {
 	store := NewStore(t.TempDir())
 	raw := `schema = 1
-boardId = "brd_inspect_only"
-boardRev = 1
+missionId = "brd_inspect_only"
+missionRev = 1
 updatedAt = "2026-06-03T16:02:00Z"
 layoutNote = "keep"
 `
@@ -498,8 +498,8 @@ rev = 1
 	}
 
 	writeFixture(t, store.LayoutPath("future-layout"), `schema = 2
-boardId = "brd_future"
-boardRev = 1
+missionId = "brd_future"
+missionRev = 1
 updatedAt = "2026-06-03T16:02:00Z"
 `)
 	if _, err := store.ReadLayout("future-layout"); !errors.Is(err, ErrUnsupportedSchema) {
@@ -575,7 +575,7 @@ func TestOrdinaryNonToolWritersPreserveSchemaOne(t *testing.T) {
 	assertSchemaOne("create gate", current)
 
 	mission, err := store.CreateMission(slug, MissionCreateRequest{
-		Goal: "Exercise schema preservation", BeadID: "home-7kc4.5", X: 500, Y: 100, UpdatedBy: "agent:test",
+		Goal: "Exercise schema preservation", X: 500, Y: 100, UpdatedBy: "agent:test",
 	}, WriteOptions{ExpectedETag: current.ETag, ExpectedRev: current.Rev})
 	if err != nil {
 		t.Fatalf("create mission: %v", err)
@@ -636,7 +636,7 @@ func TestBoardChangeSignalDetectsExternalEdit(t *testing.T) {
 	if !signal.Changed {
 		t.Fatalf("Changed = false, want true")
 	}
-	if signal.Signal != "board.changed" {
+	if signal.Signal != "mission.changed" {
 		t.Fatalf("Signal = %q, want board.changed", signal.Signal)
 	}
 	if signal.ETag == board.ETag {
@@ -726,8 +726,8 @@ customFuture = "keep me"
 
 	layoutTOML := readFile(t, store.LayoutPath("session-search"))
 	for _, want := range []string{
-		`boardId = "brd_01J9_sesssearch"`,
-		`boardRev = 8`,
+		`missionId = "brd_01J9_sesssearch"`,
+		`missionRev = 8`,
 		`[[node]]`,
 		`x = 840`,
 		`y = 135`,
@@ -737,7 +737,7 @@ customFuture = "keep me"
 		}
 	}
 	if result.Layout.BoardRev != 8 {
-		t.Fatalf("layout boardRev = %d, want 8", result.Layout.BoardRev)
+		t.Fatalf("layout missionRev = %d, want 8", result.Layout.BoardRev)
 	}
 	if len(result.Layout.Nodes) != 1 || result.Layout.Nodes[0].ID != result.Formation.ID {
 		t.Fatalf("layout nodes = %+v, want created formation node", result.Layout.Nodes)
@@ -892,7 +892,7 @@ slug = "arrange"
 title = "Arrange"
 rev = 4
 
-[[mission]]
+[[inputCard]]
 id = "mis_start"
 title = "Start"
 
@@ -917,8 +917,8 @@ from = "fmn_build:out"
 to = "gate_check:in"
 `)
 	writeFixture(t, store.LayoutPath("arrange"), `schema = 1
-boardId = "brd_arrange"
-boardRev = 4
+missionId = "brd_arrange"
+missionRev = 4
 
 [[node]]
 id = "mis_start"
@@ -982,7 +982,7 @@ slug = "arrange-tool"
 title = "Arrange Tool"
 rev = 4
 
-[[mission]]
+[[inputCard]]
 id = "mis_start"
 title = "Start"
 
@@ -1011,8 +1011,8 @@ from = "tool_normalize:port_tool_out"
 to = "fmn_finish:in"
 `
 	layoutRaw := `schema = 1
-boardId = "brd_arrange_tool"
-boardRev = 4
+missionId = "brd_arrange_tool"
+missionRev = 4
 
 [[node]]
 id = "mis_start"
@@ -1089,8 +1089,8 @@ title = "Check"
 kinds = ["human"]
 `)
 	writeFixture(t, store.LayoutPath("arrange-stale"), `schema = 1
-boardId = "brd_arrange_stale"
-boardRev = 4
+missionId = "brd_arrange_stale"
+missionRev = 4
 
 [[node]]
 id = "gate_check"
@@ -1114,7 +1114,7 @@ y = 300
 		t.Fatalf("read stale layout: %v", err)
 	}
 	if staleLayout.BoardRev == boardAfter.Rev {
-		t.Fatalf("definition edit unexpectedly refreshed layout boardRev = %d", staleLayout.BoardRev)
+		t.Fatalf("definition edit unexpectedly refreshed layout missionRev = %d", staleLayout.BoardRev)
 	}
 
 	arranged, err := store.ArrangeLayout("arrange-stale", WriteOptions{ExpectedETag: staleLayout.ETag})
@@ -1162,8 +1162,8 @@ id = "out"
 label = "Output"
 `)
 	writeFixture(t, store.LayoutPath("arrange-serial"), `schema = 1
-boardId = "brd_arrange_serial"
-boardRev = 3
+missionId = "brd_arrange_serial"
+missionRev = 3
 
 [[node]]
 id = "fmn_first"
@@ -1251,7 +1251,7 @@ y = 100
 		t.Fatalf("arrange layout: %v", arranged.err)
 	}
 	if arranged.layout.BoardRev != boardBefore.Rev {
-		t.Fatalf("arranged boardRev = %d, want serialized rev %d", arranged.layout.BoardRev, boardBefore.Rev)
+		t.Fatalf("arranged missionRev = %d, want serialized rev %d", arranged.layout.BoardRev, boardBefore.Rev)
 	}
 	wired := <-wireDone
 	if wired.err != nil {
@@ -1283,8 +1283,8 @@ func TestUpdateLayoutNodesWildcardOnlyRecreatesMissingLayoutSidecar(t *testing.T
 	store.Now = fixedClock()
 	writeFixture(t, store.BoardPath("session-search"), minimalBoard("session-search", 7))
 	writeFixture(t, store.LayoutPath("session-search"), `schema = 1
-boardId = "brd_session-search"
-boardRev = 7
+missionId = "brd_session-search"
+missionRev = 7
 updatedAt = "2026-06-03T16:02:00Z"
 
 [[node]]
@@ -1412,7 +1412,7 @@ rev = 7
 updatedAt = "2026-06-03T16:00:00Z"
 customFuture = "keep me"
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Build the page"
@@ -1437,6 +1437,7 @@ label = "Lead"
 controller = true
 agentId = "mason"
 harness = "codex"
+effort = "medium"
 
 [[formation.slot]]
 id = "slot_worker"
@@ -1477,8 +1478,8 @@ from = "gate_review:judge"
 to = "fmn_frame:port_frame_in"
 `)
 	writeFixture(t, store.LayoutPath("session-search"), `schema = 1
-boardId = "brd_01J9_sesssearch"
-boardRev = 7
+missionId = "brd_01J9_sesssearch"
+missionRev = 7
 updatedAt = "2026-06-03T16:02:00Z"
 
 [[node]]
@@ -1518,34 +1519,10 @@ lane = "220"
 		t.Fatalf("brief block still present after clear:\n%s", got)
 	}
 
-	rawBeforeRemoval := readFile(t, store.BoardPath("session-search"))
-	_, err = store.RemoveFormationVerification("session-search", FormationVerificationRemovalRequest{
-		FormationID: "fmn_frame",
-		UpdatedBy:   "agent:test",
-	}, WriteOptions{ExpectedETag: clearedBrief.ETag, ExpectedRev: clearedBrief.Rev})
-	if err == nil || !strings.Contains(err.Error(), "legacy_inline_verification_requires_migration") {
-		t.Fatalf("remove without replacement Gate error = %v, want migration rejection", err)
-	}
-	if rawAfterRejection := readFile(t, store.BoardPath("session-search")); rawAfterRejection != rawBeforeRemoval {
-		t.Fatalf("rejected compatibility removal changed board\nbefore:\n%s\nafter:\n%s", rawBeforeRemoval, rawAfterRejection)
-	}
-
-	removedVerification, err := store.RemoveFormationVerification("session-search", FormationVerificationRemovalRequest{
-		FormationID:       "fmn_frame",
-		ReplacementGateID: "gate_review",
-		UpdatedBy:         "agent:test",
-	}, WriteOptions{ExpectedETag: clearedBrief.ETag, ExpectedRev: clearedBrief.Rev})
-	if err != nil {
-		t.Fatalf("remove verification inverse: %v", err)
-	}
-	if removedVerification.Formations[0].Verification != nil {
-		t.Fatalf("verification after removal = %+v, want removed", removedVerification.Formations[0].Verification)
-	}
-
 	deletedGate, err := store.DeleteGate("session-search", GateDeleteRequest{
 		ID:        "gate_review",
 		UpdatedBy: "agent:test",
-	}, WriteOptions{ExpectedETag: removedVerification.ETag, ExpectedRev: removedVerification.Rev})
+	}, WriteOptions{ExpectedETag: clearedBrief.ETag, ExpectedRev: clearedBrief.Rev})
 	if err != nil {
 		t.Fatalf("delete gate inverse: %v", err)
 	}
@@ -1712,7 +1689,7 @@ controller = false
 	}
 }
 
-func TestS3BriefPersistsAndInlineVerificationWriterFailsWithoutMutation(t *testing.T) {
+func TestS3BriefPersists(t *testing.T) {
 	store := NewStore(t.TempDir())
 	store.Now = fixedClock()
 	writeFixture(t, store.BoardPath("session-search"), `schema = 1
@@ -1732,7 +1709,7 @@ title = "Ship"
 	if err != nil {
 		t.Fatalf("read board: %v", err)
 	}
-	withBrief, err := store.SetFormationBrief("session-search", FormationBriefRequest{
+	_, err = store.SetFormationBrief("session-search", FormationBriefRequest{
 		FormationID: "fmn_ship",
 		Goal:        "Ship the change",
 		BeadID:      "srv-abc.2",
@@ -1743,32 +1720,15 @@ title = "Ship"
 	if err != nil {
 		t.Fatalf("set brief: %v", err)
 	}
-	rawBeforeVerification := readFile(t, store.BoardPath("session-search"))
-	_, err = store.SetFormationVerification("session-search", FormationVerificationRequest{
-		FormationID: "fmn_ship",
-		Kinds:       []string{"code", "human"},
-		Criterion:   "Tests pass and the handoff is clear.",
-		OnFail:      "pushback",
-		UpdatedBy:   "agent:test",
-	}, WriteOptions{ExpectedETag: withBrief.ETag, ExpectedRev: withBrief.Rev})
-	if err == nil || !strings.Contains(err.Error(), "legacy_inline_verification_requires_migration") {
-		t.Fatalf("set verification error = %v, want stable migration rejection", err)
-	}
 	after, err := store.ReadBoard("session-search")
 	if err != nil {
-		t.Fatalf("read board after rejected verification: %v", err)
+		t.Fatalf("read board after brief: %v", err)
 	}
 	formation := after.Formations[0]
 	if formation.Brief == nil || formation.Brief.Goal != "Ship the change" || formation.Brief.BeadID != "srv-abc.2" {
 		t.Fatalf("brief = %+v, want goal and project bead", formation.Brief)
 	}
-	if formation.Verification != nil {
-		t.Fatalf("verification = %+v, want retired writer to leave it absent", formation.Verification)
-	}
 	raw := readFile(t, store.BoardPath("session-search"))
-	if raw != rawBeforeVerification {
-		t.Fatalf("rejected verification write changed board\nbefore:\n%s\nafter:\n%s", rawBeforeVerification, raw)
-	}
 	for _, want := range []string{
 		`customFuture = "keep me"`,
 		`[formation.brief]`,
@@ -1779,192 +1739,6 @@ title = "Ship"
 		if !strings.Contains(raw, want) {
 			t.Fatalf("board TOML missing %q:\n%s", want, raw)
 		}
-	}
-}
-
-func TestRemoveFormationVerificationRejectsDuplicateLegacySectionsWithoutMutation(t *testing.T) {
-	store := NewStore(t.TempDir())
-	store.Now = fixedClock()
-	writeFixture(t, store.BoardPath("duplicate-verification"), `schema = 1
-id = "brd_duplicate_verification"
-slug = "duplicate-verification"
-title = "Duplicate verification"
-rev = 7
-updatedAt = "2026-06-03T16:00:00Z"
-
-[[formation]]
-id = "fmn_work"
-type = "solo"
-title = "Work"
-
-[[formation.output]]
-id = "port_work_out"
-label = "Output"
-
-[formation.verification]
-id = "ver_first"
-kinds = ["code"]
-criterion = "First check"
-onFail = "block"
-
-[formation.verification]
-id = "ver_second"
-kinds = ["human"]
-criterion = "Second check"
-onFail = "pushback"
-
-[[gate]]
-id = "gate_review"
-title = "Review"
-kinds = ["human"]
-criterion = "Review the work"
-
-[[connection]]
-id = "edge_work_review"
-from = "fmn_work:port_work_out"
-to = "gate_review:in"
-`)
-	before, err := store.ReadBoard("duplicate-verification")
-	if err != nil {
-		t.Fatalf("read duplicate verification board: %v", err)
-	}
-	rawBefore := readFile(t, store.BoardPath("duplicate-verification"))
-
-	_, err = store.RemoveFormationVerification("duplicate-verification", FormationVerificationRemovalRequest{
-		FormationID:       "fmn_work",
-		ReplacementGateID: "gate_review",
-		UpdatedBy:         "agent:test",
-	}, WriteOptions{ExpectedETag: before.ETag, ExpectedRev: before.Rev})
-	if err == nil || !strings.Contains(err.Error(), LegacyInlineVerificationMigrationCode) {
-		t.Fatalf("duplicate verification removal error = %v, want migration rejection", err)
-	}
-	if rawAfter := readFile(t, store.BoardPath("duplicate-verification")); rawAfter != rawBefore {
-		t.Fatalf("duplicate verification rejection changed board\nbefore:\n%s\nafter:\n%s", rawBefore, rawAfter)
-	}
-}
-
-func TestRemoveFormationVerificationDeletesSemanticDescendantTables(t *testing.T) {
-	store := NewStore(t.TempDir())
-	store.Now = fixedClock()
-	writeFixture(t, store.BoardPath("verification-descendant"), `schema = 1
-id = "brd_verification_descendant"
-slug = "verification-descendant"
-title = "Verification descendant"
-rev = 7
-updatedAt = "2026-06-03T16:00:00Z"
-
-[[formation]]
-id = "fmn_work"
-type = "solo"
-title = "Work"
-
-[[formation.output]]
-id = "port_work_out"
-label = "Output"
-
-[formation.verification]
-id = "ver_work"
-kinds = ["code"]
-criterion = "Check the work"
-onFail = "block"
-
-[formation.brief]
-goal = "Preserve this sibling section"
-
-[formation.verification.extra]
-futureField = "must leave with its retired parent"
-
-[[gate]]
-id = "gate_review"
-title = "Review"
-kinds = ["human"]
-criterion = "Review the work"
-
-[[connection]]
-id = "edge_work_review"
-from = "fmn_work:port_work_out"
-to = "gate_review:in"
-`)
-	before, err := store.ReadBoard("verification-descendant")
-	if err != nil {
-		t.Fatalf("read verification descendant board: %v", err)
-	}
-	if verification := before.Formations[0].Verification; verification == nil || verification.ID != "ver_work" || verification.Criterion != "Check the work" {
-		t.Fatalf("legacy verification inspection = %+v, want populated parent fields preserved", verification)
-	}
-
-	after, err := store.RemoveFormationVerification("verification-descendant", FormationVerificationRemovalRequest{
-		FormationID:       "fmn_work",
-		ReplacementGateID: "gate_review",
-		UpdatedBy:         "agent:test",
-	}, WriteOptions{ExpectedETag: before.ETag, ExpectedRev: before.Rev})
-	if err != nil {
-		t.Fatalf("remove verification with descendant table: %v", err)
-	}
-	if after.Formations[0].Verification != nil {
-		t.Fatalf("verification after removal = %+v, want removed", after.Formations[0].Verification)
-	}
-	raw := readFile(t, store.BoardPath("verification-descendant"))
-	if strings.Contains(raw, "formation.verification") || strings.Contains(raw, "futureField") {
-		t.Fatalf("retired verification descendant survived explicit removal:\n%s", raw)
-	}
-	if !strings.Contains(raw, `id = "gate_review"`) {
-		t.Fatalf("replacement Gate was not preserved:\n%s", raw)
-	}
-	if !strings.Contains(raw, `goal = "Preserve this sibling section"`) {
-		t.Fatalf("unrelated Formation section was not preserved:\n%s", raw)
-	}
-}
-
-func TestRemoveFormationVerificationMigratesDescendantOnlyRepresentation(t *testing.T) {
-	store := NewStore(t.TempDir())
-	store.Now = fixedClock()
-	raw := strings.Replace(
-		s4VerificationBoardFixture("block"),
-		"[formation.verification]",
-		"[formation.verification.extra]",
-		1,
-	)
-	raw += `
-[[gate]]
-id = "gate_review"
-title = "Review"
-kinds = ["human"]
-criterion = "Review the work"
-
-[[connection]]
-id = "edge_work_review"
-from = "fmn_work:port_work_out"
-to = "gate_review:in"
-`
-	writeFixture(t, store.BoardPath("session-search"), raw)
-	before, err := store.ReadBoard("session-search")
-	if err != nil {
-		t.Fatalf("read descendant-only verification board: %v", err)
-	}
-	formation, ok := findFormation(before.Formations, "fmn_work")
-	if !ok || formation.Verification == nil {
-		t.Fatalf("descendant-only verification inspection = %+v, want visible migration fence", formation.Verification)
-	}
-
-	after, err := store.RemoveFormationVerification("session-search", FormationVerificationRemovalRequest{
-		FormationID:       "fmn_work",
-		ReplacementGateID: "gate_review",
-		UpdatedBy:         "agent:test",
-	}, WriteOptions{ExpectedETag: before.ETag, ExpectedRev: before.Rev})
-	if err != nil {
-		t.Fatalf("remove descendant-only verification: %v", err)
-	}
-	afterFormation, ok := findFormation(after.Formations, "fmn_work")
-	if !ok || afterFormation.Verification != nil {
-		t.Fatalf("verification after descendant-only removal = %+v, want removed", afterFormation.Verification)
-	}
-	afterRaw := readFile(t, store.BoardPath("session-search"))
-	if strings.Contains(afterRaw, "formation.verification") {
-		t.Fatalf("descendant-only verification survived explicit migration:\n%s", afterRaw)
-	}
-	if !strings.Contains(afterRaw, `id = "gate_review"`) {
-		t.Fatalf("replacement Gate was not preserved:\n%s", afterRaw)
 	}
 }
 
@@ -2180,8 +1954,8 @@ func TestS3HandRouteWritesLayoutOnly(t *testing.T) {
 	}
 	boardBeforeLane := readFile(t, store.BoardPath("session-search"))
 	writeFixture(t, store.LayoutPath("session-search"), `schema = 1
-boardId = "brd_01J9_sesssearch"
-boardRev = 8
+missionId = "brd_01J9_sesssearch"
+missionRev = 8
 updatedAt = "2026-06-03T16:02:00Z"
 `)
 	layout, err := store.ReadLayout("session-search")
@@ -2238,7 +2012,7 @@ func TestS3GatePersistsKindsCriterionWithoutVerdictOrOnFail(t *testing.T) {
 	}
 	layout := result.Layout
 	if layout.BoardRev != after.Rev {
-		t.Fatalf("layout boardRev = %d, want %d", layout.BoardRev, after.Rev)
+		t.Fatalf("layout missionRev = %d, want %d", layout.BoardRev, after.Rev)
 	}
 	if len(layout.Nodes) != 1 || layout.Nodes[0].ID != after.Gates[0].ID || layout.Nodes[0].X != 410 || layout.Nodes[0].Y != 220 {
 		t.Fatalf("layout nodes = %+v, want created gate at 410,220", layout.Nodes)
@@ -2482,7 +2256,6 @@ func TestS3MissionCreateAcceptsProjectBeadIDAndSingleOut(t *testing.T) {
 	result, err := store.CreateMission("session-search", MissionCreateRequest{
 		Title:     "Showcase site",
 		Goal:      "Build the showcase",
-		BeadID:    "home-vdki.34.1",
 		X:         150,
 		Y:         90,
 		UpdatedBy: "agent:test",
@@ -2491,7 +2264,7 @@ func TestS3MissionCreateAcceptsProjectBeadIDAndSingleOut(t *testing.T) {
 		t.Fatalf("create mission: %v", err)
 	}
 	after := result.Board
-	if len(after.Missions) != 1 || !strings.HasPrefix(after.Missions[0].ID, "mis_") || after.Missions[0].BeadID != "home-vdki.34.1" {
+	if len(after.Missions) != 1 || !strings.HasPrefix(after.Missions[0].ID, "inp_") {
 		t.Fatalf("missions = %+v, want one project-backed mission", after.Missions)
 	}
 	if result.Mission.ID != after.Missions[0].ID {
@@ -2506,32 +2279,10 @@ func TestS3MissionCreateAcceptsProjectBeadIDAndSingleOut(t *testing.T) {
 	}
 	layout := result.Layout
 	if layout.BoardRev != after.Rev {
-		t.Fatalf("layout boardRev = %d, want %d", layout.BoardRev, after.Rev)
+		t.Fatalf("layout missionRev = %d, want %d", layout.BoardRev, after.Rev)
 	}
 	if len(layout.Nodes) != 1 || layout.Nodes[0].ID != after.Missions[0].ID || layout.Nodes[0].X != 150 || layout.Nodes[0].Y != 90 {
 		t.Fatalf("layout nodes = %+v, want created mission at 150,90", layout.Nodes)
-	}
-}
-
-func TestS3MissionCreateRejectsUnsafeBeadID(t *testing.T) {
-	for _, beadID := range []string{"nohyphen", "Home-123", "chlab/123", "../home-pfyv", "home-pfyv\n"} {
-		t.Run(beadID, func(t *testing.T) {
-			store := NewStore(t.TempDir())
-			store.Now = fixedClock()
-			writeFixture(t, store.BoardPath("session-search"), minimalBoard("session-search", 7))
-			before, err := store.ReadBoard("session-search")
-			if err != nil {
-				t.Fatalf("read board: %v", err)
-			}
-			if _, err := store.CreateMission("session-search", MissionCreateRequest{
-				Title:     "Showcase site",
-				Goal:      "Build the showcase",
-				BeadID:    beadID,
-				UpdatedBy: "agent:test",
-			}, WriteOptions{ExpectedETag: before.ETag, ExpectedRev: before.Rev}); !errors.Is(err, ErrInvalidBeadID) {
-				t.Fatalf("create mission beadId %q error = %v, want ErrInvalidBeadID", beadID, err)
-			}
-		})
 	}
 }
 
@@ -2545,7 +2296,7 @@ title = "Improve session search"
 rev = 7
 updatedAt = "2026-06-03T16:00:00Z"
 
-[[mission]]
+[[inputCard]]
 id = "mis_showcase"
 title = "Showcase"
 goal = "Build it"

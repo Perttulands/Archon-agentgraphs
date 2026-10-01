@@ -52,6 +52,9 @@ var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
 	"gate create":             remoteGateCreate,
 	"gate update":             remoteGateUpdate,
 	"gate judge":              remoteGateJudge,
+	"end create":              remoteEndCreate,
+	"end update":              remoteEndUpdate,
+	"end delete":              remoteEndDelete,
 	"tool create":             remoteToolCreate,
 	"tool update":             remoteToolUpdate,
 	"tool delete":             remoteToolDelete,
@@ -91,7 +94,7 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrIncompatibleToolConnection
 	case "CONFLICT":
 		return formations.ErrConflict
-	case "BOARD_EXISTS", "AGENT_EXISTS":
+	case "MISSION_EXISTS", "AGENT_EXISTS":
 		return formations.ErrAlreadyExists
 	case "AMBIGUOUS_SELECTOR":
 		return formations.ErrAmbiguousSelector
@@ -131,10 +134,6 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrPreconditionRequired
 	case "UNSUPPORTED_SCHEMA":
 		return formations.ErrUnsupportedSchema
-	case formations.LegacyScriptGateMigrationCode:
-		return formations.ErrLegacyScriptGateRequiresFencedMigration
-	case formations.LegacyInlineVerificationMigrationCode:
-		return formations.ErrLegacyInlineVerificationRequiresMigration
 	}
 	return nil
 }
@@ -190,7 +189,7 @@ func remoteFail(stderr io.Writer, err error, jsonOut bool, boundary, selector st
 }
 
 func boardPath(selector string, rest ...string) string {
-	path := "/api/formations/missions/" + url.PathEscape(selector)
+	path := "/api/missions/" + url.PathEscape(selector)
 	for _, part := range rest {
 		path += "/" + part
 	}
@@ -218,9 +217,9 @@ func decodeRemote[T any](data json.RawMessage, key string) (*T, error) {
 func (c *remoteClient) readBoard(selector string) (*formations.BoardDocument, error) {
 	data, _, err := c.call("GET", boardPath(selector), nil, "")
 	if err != nil {
-		return nil, &remoteSelectorError{boundary: "board", selector: selector, err: err}
+		return nil, &remoteSelectorError{boundary: "mission", selector: selector, err: err}
 	}
-	return decodeRemote[formations.BoardDocument](data, "board")
+	return decodeRemote[formations.BoardDocument](data, "mission")
 }
 
 // patchBoard applies one board operation. build resolves selectors against
@@ -284,9 +283,9 @@ func remoteSelect(boundary, selector string, resolve func(*formations.BoardDocum
 	return id, nil
 }
 
-// writeRemoteBoard prints a {"board": ...} response like the offline command.
+// writeRemoteBoard prints a {"mission": ...} response like the offline command.
 func writeRemoteBoard(stdout, stderr io.Writer, data json.RawMessage, jsonOut bool, text string) int {
-	board, err := decodeRemote[formations.BoardDocument](data, "board")
+	board, err := decodeRemote[formations.BoardDocument](data, "mission")
 	if err != nil {
 		return fail(stderr, err)
 	}
@@ -310,11 +309,11 @@ func remoteBoardNew(c *remoteClient, args []string, stdout, stderr io.Writer) in
 		fmt.Fprintln(stderr, "usage: archon mission new <slug> [--title <title>] [--json]")
 		return 2
 	}
-	data, _, err := c.call("POST", "/api/formations/missions", map[string]any{"slug": fs.Arg(0), "title": *title, "updatedBy": *updatedBy}, "")
+	data, _, err := c.call("POST", "/api/missions", map[string]any{"slug": fs.Arg(0), "title": *title, "updatedBy": *updatedBy}, "")
 	if err != nil {
-		return failJSON(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
-	board, err := decodeRemote[formations.BoardDocument](data, "board")
+	board, err := decodeRemote[formations.BoardDocument](data, "mission")
 	if err != nil {
 		return fail(stderr, err)
 	}
@@ -332,11 +331,11 @@ func remoteBoardList(c *remoteClient, args []string, stdout, stderr io.Writer) i
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
-	data, _, err := c.call("GET", "/api/formations/missions", nil, "")
+	data, _, err := c.call("GET", "/api/missions", nil, "")
 	if err != nil {
 		return fail(stderr, err)
 	}
-	boards, err := decodeRemote[[]formations.BoardSummary](data, "boards")
+	boards, err := decodeRemote[[]formations.BoardSummary](data, "missions")
 	if err != nil {
 		return fail(stderr, err)
 	}
@@ -355,7 +354,7 @@ func remoteFormationList(c *remoteClient, args []string, stdout, stderr io.Write
 	}
 	board, err := c.readBoard(fs.Arg(0))
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeFormationList(stdout, board, *jsonOut)
 }
@@ -372,7 +371,7 @@ func remoteBoardInspect(c *remoteClient, args []string, stdout, stderr io.Writer
 	}
 	board, err := c.readBoard(fs.Arg(0))
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeBoardInspect(stdout, board, *jsonOut)
 }
@@ -389,7 +388,7 @@ func remoteFormationInspect(c *remoteClient, args []string, stdout, stderr io.Wr
 	}
 	board, err := c.readBoard(fs.Arg(0))
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeFormationInspect(stdout, stderr, board, fs.Arg(1), *jsonOut)
 }
@@ -406,7 +405,7 @@ func remoteBoardNotes(c *remoteClient, args []string, stdout, stderr io.Writer) 
 	}
 	board, err := c.readBoard(fs.Arg(0))
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	data, _, err := c.call("GET", boardPath(board.Slug, "notes"), nil, "")
 	if err != nil {
@@ -430,7 +429,7 @@ func remoteBoardNote(c *remoteClient, args []string, stdout, stderr io.Writer) i
 	}
 	board, err := c.readBoard(selector)
 	if err != nil {
-		return remoteFail(stderr, err, jsonOut, "board", selector)
+		return remoteFail(stderr, err, jsonOut, "mission", selector)
 	}
 	var data json.RawMessage
 	for attempt := 1; ; attempt++ {
@@ -444,7 +443,7 @@ func remoteBoardNote(c *remoteClient, args []string, stdout, stderr io.Writer) i
 		}
 	}
 	if err != nil {
-		return failJSON(stderr, err, jsonOut, "board", selector)
+		return failJSON(stderr, err, jsonOut, "mission", selector)
 	}
 	updated, err := decodeRemote[formations.BoardNotesDocument](data, "notes")
 	if err != nil {
@@ -465,7 +464,7 @@ func remoteBoardValidate(c *remoteClient, args []string, stdout, stderr io.Write
 	}
 	board, err := c.readBoard(fs.Arg(0))
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	slug := board.Slug
 	if slug == "" {
@@ -484,7 +483,7 @@ func remoteBoardValidate(c *remoteClient, args []string, stdout, stderr io.Write
 	}
 	if *jsonOut {
 		if code := writeJSON(stdout, map[string]interface{}{
-			"board":    identityFromBoard(board),
+			"mission":  identityFromBoard(board),
 			"errors":   report.Errors,
 			"warnings": report.Warnings,
 		}); code != 0 {
@@ -513,7 +512,7 @@ func remoteBoardArrange(c *remoteClient, args []string, stdout, stderr io.Writer
 	}
 	board, err := c.readBoard(fs.Arg(0))
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	var data json.RawMessage
 	for attempt := 1; ; attempt++ {
@@ -527,7 +526,7 @@ func remoteBoardArrange(c *remoteClient, args []string, stdout, stderr io.Writer
 		}
 	}
 	if err != nil {
-		return failDefinitionWrite(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	layout, err := decodeRemote[formations.LayoutDocument](data, "layout")
 	if err != nil {
@@ -543,16 +542,12 @@ func remoteBoardArrange(c *remoteClient, args []string, stdout, stderr io.Writer
 
 func remoteMissionList(c *remoteClient, args []string, stdout, stderr io.Writer) int {
 	fs := remoteFlags("mission list", stderr)
-	jsonOut := fs.Bool("json", false, "write JSON")
+	fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() == 0 {
 		return remoteBoardList(c, args, stdout, stderr)
-	}
-	if fs.NArg() == 1 {
-		failJSON(stderr, missionListTakesNoArgument(fs.Arg(0)), *jsonOut, "mission", fs.Arg(0))
-		return 2
 	}
 	fmt.Fprintln(stderr, "usage: archon mission list [--json]")
 	return 2
@@ -573,7 +568,7 @@ func remoteMissionInspect(c *remoteClient, args []string, stdout, stderr io.Writ
 	}
 	board, err := c.readBoard(fs.Arg(0))
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeMissionInspect(stdout, stderr, board, fs.Arg(1), *jsonOut)
 }
@@ -582,7 +577,6 @@ func remoteMissionCreate(c *remoteClient, args []string, stdout, stderr io.Write
 	fs := remoteFlags("mission create", stderr)
 	title := fs.String("title", "", "mission title")
 	goal := fs.String("goal", "", "mission goal")
-	beadID := fs.String("bead", "", "project Beads id")
 	var files stringList
 	fs.Var(&files, "file", "reference file path; repeat for more")
 	humanChannel := fs.String("human-channel", "", humanChannelUsage)
@@ -602,10 +596,10 @@ func remoteMissionCreate(c *remoteClient, args []string, stdout, stderr io.Write
 			return "", nil, &remoteSelectorError{boundary: "mission", selector: fs.Arg(0), err: err}
 		}
 		createX, createY, err := c.freePosition(board, fs, *x, *y)
-		return "createMission", map[string]any{"title": *title, "goal": *goal, "beadId": *beadID, "files": []string(files), "humanChannel": *humanChannel, "x": createX, "y": createY}, err
+		return "createInputCard", map[string]any{"title": *title, "goal": *goal, "files": []string(files), "humanChannel": *humanChannel, "x": createX, "y": createY}, err
 	})
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	result, err := decodeRemote[formations.MissionCreateResult](data, "")
 	if err != nil || result.Board == nil || result.Layout == nil {
@@ -618,7 +612,6 @@ func remoteMissionUpdate(c *remoteClient, args []string, stdout, stderr io.Write
 	fs := remoteFlags("mission update", stderr)
 	title := fs.String("title", "", "mission title")
 	goal := fs.String("goal", "", "mission goal")
-	beadID := fs.String("bead", "", "project Beads id")
 	var files stringList
 	fs.Var(&files, "file", "reference file path, replacing the current ones; repeat for more, or give an empty value to clear")
 	inputHint := fs.String("input-hint", "", "what a run brief for this mission should contain")
@@ -637,14 +630,14 @@ func remoteMissionUpdate(c *remoteClient, args []string, stdout, stderr io.Write
 	data, _, err := c.patchBoard(fs.Arg(0), *updatedBy, func(board *formations.BoardDocument) (string, map[string]any, error) {
 		id, _, err := inputCardArgs(board, fs.Arg(0), fs.Args()[1:], 1)
 		if err != nil {
-			err = &remoteSelectorError{boundary: "mission", selector: fs.Arg(1), err: err}
+			err = &remoteSelectorError{boundary: "inputCard", selector: fs.Arg(1), err: err}
 		}
 		missionID = id
 		fields := map[string]any{"id": id}
 		for flagName, field := range map[string]struct {
 			key   string
 			value *string
-		}{"title": {"title", title}, "goal": {"goal", goal}, "bead": {"beadId", beadID}, "input-hint": {"inputHint", inputHint}, "human-channel": {"humanChannel", humanChannel}} {
+		}{"title": {"title", title}, "goal": {"goal", goal}, "input-hint": {"inputHint", inputHint}, "human-channel": {"humanChannel", humanChannel}} {
 			if given[flagName] {
 				fields[field.key] = *field.value
 			}
@@ -652,10 +645,10 @@ func remoteMissionUpdate(c *remoteClient, args []string, stdout, stderr io.Write
 		if given["file"] {
 			fields["files"] = append([]string{}, files...)
 		}
-		return "updateMission", fields, err
+		return "updateInputCard", fields, err
 	})
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(1))
+		return remoteFail(stderr, err, *jsonOut, "inputCard", fs.Arg(1))
 	}
 	return writeRemoteBoard(stdout, stderr, data, *jsonOut, fmt.Sprintf("updated Input card %s", missionID))
 }
@@ -675,13 +668,13 @@ func remoteMissionWire(c *remoteClient, args []string, stdout, stderr io.Writer)
 	data, _, err := c.patchBoard(fs.Arg(0), *updatedBy, func(board *formations.BoardDocument) (string, map[string]any, error) {
 		id, _, err := inputCardArgs(board, fs.Arg(0), fs.Args()[1:], 2)
 		if err != nil {
-			return "", nil, &remoteSelectorError{boundary: "mission", selector: fs.Arg(1), err: err}
+			return "", nil, &remoteSelectorError{boundary: "inputCard", selector: fs.Arg(1), err: err}
 		}
 		missionID = id
 		return "wireConnection", map[string]any{"from": id + ":out", "to": target}, nil
 	})
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeRemoteBoard(stdout, stderr, data, *jsonOut, fmt.Sprintf("wired Input card %s -> %s", missionID, target))
 }
@@ -705,7 +698,7 @@ func remoteFormationCreate(c *remoteClient, args []string, stdout, stderr io.Wri
 		return "createFormation", map[string]any{"type": fs.Arg(1), "title": *title, "x": createX, "y": createY}, err
 	})
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	result, err := decodeRemote[formations.FormationCreateResult](data, "")
 	if err != nil || result.Board == nil || result.Layout == nil {
@@ -812,7 +805,7 @@ func remoteFormationAssign(c *remoteClient, args []string, stdout, stderr io.Wri
 	if err != nil {
 		return remoteFail(stderr, err, *f.jsonOut, "formation", fs.Arg(1))
 	}
-	board, err := decodeRemote[formations.BoardDocument](data, "board")
+	board, err := decodeRemote[formations.BoardDocument](data, "mission")
 	if err != nil {
 		return fail(stderr, err)
 	}
@@ -917,27 +910,13 @@ func remoteFormationWire(remove bool) remoteAuthoringCommand {
 			return operation, map[string]any{"from": fs.Arg(1), "to": fs.Arg(2), "joinIfOccupied": *join}, nil
 		})
 		if err != nil {
-			return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+			return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 		}
 		text := fmt.Sprintf("wired %s -> %s", fs.Arg(1), fs.Arg(2))
 		if remove {
 			text = fmt.Sprintf("removed connection %s -> %s", fs.Arg(1), fs.Arg(2))
 		}
 		return writeRemoteBoard(stdout, stderr, data, *jsonOut, text)
-	}
-}
-
-// legacyGateCommandFields forwards retired command flags so the daemon returns
-// the same migration error as the offline command.
-func legacyGateCommandFields(fs *flag.FlagSet, fields map[string]any, command, argv, cwd, shell string) {
-	given := givenFlags(fs)
-	for flagName, field := range map[string]struct {
-		key   string
-		value any
-	}{"command": {"command", command}, "command-argv": {"commandArgv", splitCSV(argv)}, "command-cwd": {"commandCwd", cwd}, "command-shell": {"commandShell", shell}} {
-		if given[flagName] {
-			fields[field.key] = field.value
-		}
 	}
 }
 
@@ -949,10 +928,6 @@ func remoteGateCreate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 	check := fs.String("check", "", "registered code Gate profile id")
 	checkVersion := fs.String("check-version", "", "exact code Gate profile version")
 	checkValue := fs.String("check-value", "", "code Gate profile value parameter")
-	command := fs.String("command", "", "retired legacy Gate field; new writes fail with a migration error")
-	commandArgv := fs.String("command-argv", "", "retired legacy Gate argv; new writes fail with a migration error")
-	commandCWD := fs.String("command-cwd", "", "retired legacy Gate cwd; new writes fail with a migration error")
-	commandShell := fs.String("command-shell", "", "retired legacy Gate shell command; new writes fail with a migration error")
 	var files stringList
 	fs.Var(&files, "file", "reference file path; repeat for more")
 	x := fs.Int("x", 0, "layout x coordinate")
@@ -969,11 +944,10 @@ func remoteGateCreate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 	data, _, err := c.patchBoard(fs.Arg(0), *updatedBy, func(board *formations.BoardDocument) (string, map[string]any, error) {
 		createX, createY, err := c.freePosition(board, fs, *x, *y)
 		fields := map[string]any{"title": *title, "kinds": splitCSV(*kinds), "criterion": *criterion, "check": *check, "checkVersion": *checkVersion, "checkValue": *checkValue, "files": []string(files), "x": createX, "y": createY}
-		legacyGateCommandFields(fs, fields, *command, *commandArgv, *commandCWD, *commandShell)
 		return "createGate", fields, err
 	})
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	result, err := decodeRemote[formations.GateCreateResult](data, "")
 	if err != nil || result.Board == nil || result.Layout == nil {
@@ -990,10 +964,6 @@ func remoteGateUpdate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 	check := fs.String("check", "", "registered code Gate profile id")
 	checkVersion := fs.String("check-version", "", "exact code Gate profile version")
 	checkValue := fs.String("check-value", "", "code Gate profile value parameter")
-	command := fs.String("command", "", "retired legacy Gate field; new writes fail with a migration error")
-	commandArgv := fs.String("command-argv", "", "retired legacy Gate argv; new writes fail with a migration error")
-	commandCWD := fs.String("command-cwd", "", "retired legacy Gate cwd; new writes fail with a migration error")
-	commandShell := fs.String("command-shell", "", "retired legacy Gate shell command; new writes fail with a migration error")
 	clearCheck := fs.Bool("clear-check", false, "clear the code check profile, version and value")
 	var files stringList
 	fs.Var(&files, "file", "reference file path, replacing the current ones; repeat for more, or give an empty value to clear")
@@ -1028,11 +998,10 @@ func remoteGateUpdate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 		if given["file"] {
 			fields["files"] = append([]string{}, files...)
 		}
-		legacyGateCommandFields(fs, fields, *command, *commandArgv, *commandCWD, *commandShell)
 		return "updateGate", fields, err
 	})
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeRemoteBoard(stdout, stderr, data, *jsonOut, "updated gate")
 }
@@ -1060,7 +1029,7 @@ func remoteGateJudge(c *remoteClient, args []string, stdout, stderr io.Writer) i
 		return "setGateJudge", map[string]any{"gateId": id, "chain": splitCSV(*chain)}, err
 	})
 	if err != nil {
-		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
+		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	text := fmt.Sprintf("updated judge for %s", gateID)
 	if *detach {
@@ -1184,9 +1153,6 @@ func remoteAgentEdit(c *remoteClient, args []string, stdout, stderr io.Writer) i
 	}
 	if *f.addHarness != "" || given["session-stem"] {
 		body["sessionStem"] = *f.sessionStem
-	}
-	if *f.addHarness != "" || given["launch"] {
-		body["launch"] = *f.launch
 	}
 	if *f.addHarness == "" && *f.harness != "" {
 		body["variant"] = *f.harness

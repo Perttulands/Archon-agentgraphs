@@ -94,7 +94,7 @@ func createNodeCases() []createNodeCase {
 			name: "mission",
 			create: func(store *Store, slug string, opts WriteOptions) createOutcome {
 				result, err := store.CreateMission(slug, MissionCreateRequest{
-					Title: "Mission", Goal: "Ship it", BeadID: "home-7kc4.5", X: 500, Y: 100, UpdatedBy: "agent:test",
+					Title: "Mission", Goal: "Ship it", X: 500, Y: 100, UpdatedBy: "agent:test",
 				}, opts)
 				if err != nil {
 					return createOutcome{err: err}
@@ -103,7 +103,7 @@ func createNodeCases() []createNodeCase {
 			},
 			createWithFault: func(store *Store, slug string, opts WriteOptions, fault func(string) error) createOutcome {
 				result, err := store.createMission(slug, MissionCreateRequest{
-					Title: "Mission", Goal: "Ship it", BeadID: "home-7kc4.5", X: 500, Y: 100, UpdatedBy: "agent:test",
+					Title: "Mission", Goal: "Ship it", X: 500, Y: 100, UpdatedBy: "agent:test",
 				}, opts, fault)
 				if err != nil {
 					return createOutcome{err: err}

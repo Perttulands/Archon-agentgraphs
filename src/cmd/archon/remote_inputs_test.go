@@ -12,13 +12,13 @@ import (
 	"testing"
 )
 
-// run list --mission (or the older --board) asks the daemon for ?mission=.
+// run list --mission asks the daemon for ?mission=.
 func TestRemoteRunListFiltersByMission(t *testing.T) {
-	for _, args := range [][]string{{"--mission", "proof"}, {"--board", "proof"}, nil} {
+	for _, args := range [][]string{{"--mission", "proof"}, nil} {
 		t.Run(fmt.Sprint(args), func(t *testing.T) {
 			var query string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/api/formations/runs" {
+				if r.URL.Path != "/api/runs" {
 					t.Errorf("unexpected %s", r.URL)
 				}
 				query = r.URL.RawQuery
@@ -40,18 +40,18 @@ func TestRemoteRunListFiltersByMission(t *testing.T) {
 }
 
 // A mission has one Input card, so a remote start need not name it; --input
-// and the older --mission still pick one explicitly.
+// picks one explicitly.
 func TestRemoteMissionRunStartsFromTheInputCard(t *testing.T) {
-	for _, extra := range [][]string{nil, {"--input", "mis_named"}, {"--mission", "mis_named"}} {
+	for _, extra := range [][]string{nil, {"--input", "mis_named"}} {
 		t.Run(fmt.Sprint(extra), func(t *testing.T) {
 			var started string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == "GET" {
-					fmt.Fprint(w, `{"data":{"board":{"rev":3,"missions":[{"id":"mis_only","title":"Brief"}]}}}`)
+					fmt.Fprint(w, `{"data":{"mission":{"rev":3,"inputCards":[{"id":"mis_only","title":"Brief"}]}}}`)
 					return
 				}
 				var body struct {
-					MissionID string `json:"missionId"`
+					MissionID string `json:"inputCardId"`
 				}
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 					t.Error(err)
@@ -80,11 +80,11 @@ func TestRemoteMissionContextPaths(t *testing.T) {
 		t.Run(fmt.Sprint(paths), func(t *testing.T) {
 			starts := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == "GET" && r.URL.Path == "/api/formations/missions/proof" {
-					fmt.Fprint(w, `{"data":{"board":{"rev":3}}}`)
+				if r.Method == "GET" && r.URL.Path == "/api/missions/proof" {
+					fmt.Fprint(w, `{"data":{"mission":{"rev":3}}}`)
 					return
 				}
-				if r.Method != "POST" || r.URL.Path != "/api/formations/runs" {
+				if r.Method != "POST" || r.URL.Path != "/api/runs" {
 					t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 				}
 				starts++
@@ -112,7 +112,7 @@ func TestRemoteMissionContextPaths(t *testing.T) {
 				fmt.Fprint(w, `{"data":{"runId":"run_proof"}}`)
 			}))
 			defer server.Close()
-			args := []string{"--server", server.URL, "mission", "run", "proof", "--mission", "mis_proof", "--brief", "Use supplied context", "--json"}
+			args := []string{"--server", server.URL, "mission", "run", "proof", "--input", "mis_proof", "--brief", "Use supplied context", "--json"}
 			for i, path := range paths {
 				if i%2 == 0 {
 					args = append(args, "--context-path", path)
@@ -139,7 +139,7 @@ func TestRemoteGateResponseFileIsVerbatim(t *testing.T) {
 				requests := 0
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					requests++
-					if r.Method != "POST" || r.URL.Path != "/api/formations/runs/run_proof/gates/gate_review/verdict" {
+					if r.Method != "POST" || r.URL.Path != "/api/runs/run_proof/gates/gate_review/verdict" {
 						t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 					}
 					var body struct {
@@ -189,8 +189,6 @@ func TestRemoteGateResponseFileErrorsNeverSend(t *testing.T) {
 		{"invalid UTF-8", []string{"--response-file", invalid}, "valid UTF-8"},
 		{"response conflict", []string{"--response-file", invalid, "--response", "answer"}, "cannot be combined"},
 		{"empty response conflict", []string{"--response=", "--response-file", invalid}, "cannot be combined"},
-		{"reason conflict", []string{"--reason", "answer", "--response-file", invalid}, "cannot be combined"},
-		{"empty reason conflict", []string{"--response-file", invalid, "--reason="}, "cannot be combined"},
 	}
 	if os.Geteuid() != 0 {
 		tests = append(tests, struct {

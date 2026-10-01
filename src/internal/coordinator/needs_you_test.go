@@ -117,7 +117,7 @@ func TestNeedsYouMailsSettledAsksOnceAndSkipsTransientBlocks(t *testing.T) {
 
 	// The verdict appends a resume-required block and the coordinator resumes
 	// at once. That block settles as success, so it must never be announced.
-	if w := post(t, c, "/api/formations/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass","reason":"use Postgres"}`); w.Code != 202 {
+	if w := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass","reason":"use Postgres"}`); w.Code != 202 {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 	<-executor.entered
@@ -156,7 +156,7 @@ func TestNeedsYouStartupSkipsOldFinalRunsAndRetriesFailedSends(t *testing.T) {
 	<-executor.entered
 	executor.proceed <- struct{}{}
 	seq := awaitState(t, c, finished, "waiting_human").WaitingGates[0].RequestedSeq
-	if w := post(t, c, "/api/formations/runs/"+finished+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass"}`); w.Code != 202 {
+	if w := post(t, c, "/api/runs/"+finished+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass"}`); w.Code != 202 {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 	<-executor.entered
@@ -261,7 +261,7 @@ func TestNeedsYouSendNeverHoldsShutdown(t *testing.T) {
 func TestRenderNeedsYouCapsInputAndUsesPlaceholders(t *testing.T) {
 	long := strings.Repeat("q", pendingGateInputMaxBytes+10)
 	events := []formations.RunEvent{
-		{Seq: 1, RunID: "run_x", Type: formations.RunEventStarted, Data: map[string]any{"boardSlug": "proof"}},
+		{Seq: 1, RunID: "run_x", Type: formations.RunEventStarted, Data: map[string]any{"missionSlug": "proof"}},
 		{Seq: 2, RunID: "run_x", Type: formations.RunEventHumanInputRequested, GateID: "gate_review", Data: map[string]any{"prompt": "Answer", "inputRef": map[string]any{"fromNodeId": "fmn_work", "text": long}}},
 	}
 	n := renderNeedsYou(NeedsYouConfig{}, formations.NeedsYouAsk{RunID: "run_x", Seq: 2, Kind: formations.NeedsYouKindHumanGate, GateID: "gate_review"}, events, "waiting_human", nil)

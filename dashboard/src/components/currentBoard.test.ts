@@ -9,12 +9,12 @@ describe('current board', () => {
   afterEach(() => window.history.replaceState(null, '', '/'))
 
   it('opens the linked board, then the last used board, then the first board', () => {
-    const slugs = ['alpha', 'delivery', 'wayfinding']
+    const slugs = ['alpha', 'delivery', 'scouting']
     expect(chooseCurrentBoard(slugs, '')).toEqual({ slug: 'alpha', missingLinked: '' })
-    rememberBoardOnDevice('wayfinding')
-    expect(chooseCurrentBoard(slugs, '')).toEqual({ slug: 'wayfinding', missingLinked: '' })
+    rememberBoardOnDevice('scouting')
+    expect(chooseCurrentBoard(slugs, '')).toEqual({ slug: 'scouting', missingLinked: '' })
     expect(chooseCurrentBoard(slugs, '?mission=delivery')).toEqual({ slug: 'delivery', missingLinked: '' })
-    expect(chooseCurrentBoard(slugs, '?mission=gone')).toEqual({ slug: 'wayfinding', missingLinked: 'gone' })
+    expect(chooseCurrentBoard(slugs, '?mission=gone')).toEqual({ slug: 'scouting', missingLinked: 'gone' })
     expect(chooseCurrentBoard(['alpha'], '')).toEqual({ slug: 'alpha', missingLinked: '' })
     expect(chooseCurrentBoard([], '')).toEqual({ slug: '', missingLinked: '' })
   })
@@ -24,15 +24,13 @@ describe('current board', () => {
     rememberCurrentBoard('delivery')
     expect(window.location.search).toBe('?mission=delivery&run=run_1&x=1')
     expect(window.location.hash).toBe('#top')
-    rememberCurrentBoard('wayfinding')
-    expect(window.location.search).toBe('?mission=wayfinding&x=1')
-    expect(rememberedBoard()).toBe('wayfinding')
+    rememberCurrentBoard('scouting')
+    expect(window.location.search).toBe('?mission=scouting&x=1')
+    expect(rememberedBoard()).toBe('scouting')
   })
 
-  it('opens a pre-rename ?board= link and rewrites it to ?mission=, keeping the run', () => {
-    window.history.replaceState(null, '', '/?board=delivery&run=run_1&x=1')
-    expect(chooseCurrentBoard(['alpha', 'delivery'], window.location.search)).toEqual({ slug: 'delivery', missingLinked: '' })
-    rememberCurrentBoard('delivery')
-    expect(window.location.search).toBe('?mission=delivery&run=run_1&x=1')
+  it('reads only ?mission=, so a ?board= link names no mission', () => {
+    window.history.replaceState(null, '', '/?board=delivery&run=run_1')
+    expect(chooseCurrentBoard(['alpha', 'delivery'], window.location.search)).toEqual({ slug: 'alpha', missingLinked: '' })
   })
 })

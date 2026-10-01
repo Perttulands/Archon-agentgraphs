@@ -4,7 +4,7 @@ import type { BoardDocument } from './formationsTypes'
 
 const board: BoardDocument = {
   id: 'brd', slug: 'board', title: 'Board', rev: 3, etag: 'e3',
-  missions: [{ id: 'mis', title: 'Ship', goal: 'Ship it', beadId: '' }],
+  inputCards: [{ id: 'mis', title: 'Ship', goal: 'Ship it' }],
   formations: [{
     id: 'fmn', type: 'solo', title: 'Plan', brief: { goal: 'Plan it' },
     inputs: [{ id: 'in_a', label: 'Input' }, { id: 'in_b', label: 'Rework' }],
@@ -159,9 +159,30 @@ describe('delete and port undo capture', () => {
     })
     expect(nodeDeleteUndo(board, 'gate', { x: 1, y: 2 })?.label).toBe('the delete of gate untitled')
     expect(nodeDeleteUndo(board, 'mis', { x: 1, y: 2 })?.steps).toEqual([
-      boardStep({ restoreNode: { mission: board.missions![0], connections: [board.connections[0]], index: 0, x: 1, y: 2 } }),
+      boardStep({ restoreNode: { inputCard: board.inputCards![0], connections: [board.connections[0]], index: 0, x: 1, y: 2 } }),
     ])
     expect(nodeDeleteUndo(board, 'missing', { x: 0, y: 0 })).toBeNull()
+  })
+
+  it('captures an End node with every route into it, for restoreNode end', () => {
+    const ended: BoardDocument = {
+      ...board,
+      ends: [{ id: 'end_other', title: 'Other', outcome: 'done' }, { id: 'end_no', title: 'Rejected', outcome: 'rejected' }],
+      connections: [
+        ...board.connections,
+        { id: 'edge_pass', from: 'gate:pass', to: 'end_no:in' },
+        { id: 'edge_fail', from: 'gate:fail', to: 'end_no:in' },
+      ],
+    }
+    expect(nodeDeleteUndo(ended, 'end_no', { x: 840.6, y: 168 })).toEqual({
+      label: 'the delete of End node “Rejected”',
+      steps: [boardStep({ restoreNode: {
+        end: { id: 'end_no', title: 'Rejected', outcome: 'rejected' },
+        connections: [{ id: 'edge_pass', from: 'gate:pass', to: 'end_no:in' }, { id: 'edge_fail', from: 'gate:fail', to: 'end_no:in' }],
+        index: 1, x: 841, y: 168,
+      } })],
+    })
+    expect(restoreBlocker(ended, 'end_no')).toBeNull()
   })
 
   it('captures a removed port with its direction, place and connections', () => {
@@ -179,16 +200,10 @@ describe('delete and port undo capture', () => {
     expect(restoreBlocker(board, 'fmn')).toBeNull()
     expect(restoreBlocker(board, 'gate')).toBeNull()
     expect(restoreBlocker(board, 'mis')).toBeNull()
-    const legacy = structuredClone(board) as BoardDocument
-    Object.assign(legacy.formations[0], { verification: { id: 'v', kinds: ['code'], criterion: 'Tests pass', onFail: 'block' } })
-    expect(restoreBlocker(legacy, 'fmn')).toBe('it still carries retired inline verification')
-    legacy.formations[0] = { ...board.formations[0], type: 'flow' as never }
-    expect(restoreBlocker(legacy, 'fmn')).toBe('its type “flow” is retired')
-    Object.assign(legacy.gates![0], { command: 'make test' })
-    expect(restoreBlocker(legacy, 'gate')).toBe('it is a legacy script gate')
-    legacy.gates![0] = { ...board.gates![0], kinds: [] }
-    expect(restoreBlocker(legacy, 'gate')).toBe('it names no gate kind')
-    legacy.gates![0] = { ...board.gates![0], checkValue: 'PASS' }
-    expect(restoreBlocker(legacy, 'gate')).toBe('it has a code check without the code kind')
+    const edited = structuredClone(board) as BoardDocument
+    edited.gates![0] = { ...board.gates![0], kinds: [] }
+    expect(restoreBlocker(edited, 'gate')).toBe('it names no gate kind')
+    edited.gates![0] = { ...board.gates![0], checkValue: 'PASS' }
+    expect(restoreBlocker(edited, 'gate')).toBe('it has a code check without the code kind')
   })
 })

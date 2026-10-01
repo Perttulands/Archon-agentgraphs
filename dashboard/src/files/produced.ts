@@ -93,7 +93,7 @@ export function summarizeProduced(
   return { primary, others }
 }
 
-/** Names are frozen with the run; older evidence falls back to stable IDs. */
+/** Names are frozen with the run; a step without a definition reads as its ID. */
 export function producedNames(produced: readonly NodeProduced[]) {
   const definitions = new Map(produced.map(step => [step.nodeId, step.definition]))
   return {

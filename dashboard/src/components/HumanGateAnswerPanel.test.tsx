@@ -38,11 +38,11 @@ describe('HumanGateAnswerPanel', () => {
 
   it('says when approving ends the run and when a send-back would block it for good', () => {
     renderPanel(undefined, { state: 'ready', from: 'Draft', text: 'draft 3', truncated: false, criterion: '', routes: [
-      { verdict: 'pass', targets: [], endsRun: true },
+      { verdict: 'pass', targets: [{ nodeId: 'end_done', title: 'Done', kind: 'end', outcome: 'done' }], endsRun: true },
       { verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 4, maxAttempts: 3 }], limit: { kind: 'attempts', nodeId: 'fmn_draft', used: 3, max: 3 } },
     ] })
     expect(screen.getByRole('button', { name: 'Approve and end the run' })).toBeInTheDocument()
-    expect(screen.getByText('Approve ends the run.')).toBeInTheDocument()
+    expect(screen.getByText('Approve: this path ends (done), and with nothing else to run, the run succeeds.')).toBeInTheDocument()
     expect(screen.getByText('Send back blocks the run: Draft used 3 of 3 attempts. It cannot resume.')).toHaveClass('blocks')
     expect(screen.getByRole('button', { name: 'Send back to Draft' })).toHaveClass('blocks')
   })
