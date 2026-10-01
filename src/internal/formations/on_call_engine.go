@@ -45,6 +45,10 @@ func (e *RunEngine) endKeptSeats(runID, cause string, selected func(KeptSeat) bo
 			seats = append(seats, seat)
 		}
 	}
+	if selected == nil {
+		// The run's end also ends the seats a daemon shutdown left running.
+		seats = append(seats, LeftSeats(events)...)
+	}
 	return e.EndKeptSeatsNow(runID, seats, cause, keeper)
 }
 
@@ -108,9 +112,9 @@ func (e *RunEngine) RecordKeptSeatCleanup(runID string, seat KeptSeat, outcome, 
 }
 
 // reconsiderKeptSeats runs when a formation is about to dispatch. The
-// formation's own kept seats end before its new attempt creates seats with the
-// same names; seats whose asks were all answered end too, and seats found gone
-// are recorded.
+// formation's own kept seats, and those a daemon shutdown left running, end
+// before its new attempt creates seats with the same names; seats whose asks
+// were all answered end too, and seats found gone are recorded.
 func (e *RunEngine) reconsiderKeptSeats(runID, dispatching string) error {
 	plan, err := e.PlanRunOnCall(context.Background(), runID)
 	if err != nil || plan.Keeper == nil {
@@ -124,6 +128,15 @@ func (e *RunEngine) reconsiderKeptSeats(runID, dispatching string) error {
 	var attempt []KeptSeat
 	for _, seat := range plan.Kept {
 		if seat.NodeID == dispatching && !plan.isGone(seat) {
+			attempt = append(attempt, seat)
+		}
+	}
+	events, err := e.store.ReadRunEvents(runID)
+	if err != nil {
+		return err
+	}
+	for _, seat := range LeftSeats(events) {
+		if seat.NodeID == dispatching {
 			attempt = append(attempt, seat)
 		}
 	}
@@ -362,7 +375,7 @@ func requestStillOpen(events []RunEvent, request RunEvent) bool {
 }
 
 func seatStillKept(events []RunEvent, seat KeptSeat) bool {
-	for _, kept := range KeptSeats(events) {
+	for _, kept := range ownedSeats(events) {
 		if kept.CreatedSeq == seat.CreatedSeq {
 			return true
 		}

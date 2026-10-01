@@ -437,7 +437,9 @@ configured guarded wrapper. The daemon's launch environment must include any
 host-required cleanup override and reason. Wrapper path alone is insufficient.
 Check every `seat_cleanup` outcome: `ended`, `left_socket_changed` or
 `left_cleanup_failed`. Shutdown records `left_shutdown` when it detaches from
-an owned seat without ending it. Success does not erase a cleanup failure.
+an owned seat without ending it, so the restarted daemon can reattach. The run
+still owns that seat: its step's next attempt (cause `new_attempt`) or the
+run's end, cancel included (cause `run_final`), ends it at once. Success does not erase a cleanup failure.
 On a session-channel run `kept_on_call` leaves a finished formation's seat
 running for its human gate. That seat's later cleanup records `ended`, `gone`,
 `left_socket_changed` or `left_cleanup_failed`, and the ledger keeps the

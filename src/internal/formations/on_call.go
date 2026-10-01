@@ -26,6 +26,10 @@ const (
 	SeatOutcomeGone              = "gone"
 	SeatOutcomeLeftSocketChanged = "left_socket_changed"
 	SeatOutcomeLeftCleanupFailed = "left_cleanup_failed"
+	// SeatOutcomeLeftShutdown leaves a working seat running across a daemon
+	// shutdown, for the restarted daemon to reattach. The run still owns it:
+	// its step's next attempt or the run's end ends it (archon-itk).
+	SeatOutcomeLeftShutdown = "left_shutdown"
 
 	// Why a kept seat ended.
 	SeatCauseAskAnswered = "ask_answered"
@@ -66,7 +70,7 @@ func AskFallbackReason(code string) string {
 // ledger; the keeper only acts on one recorded seat at a time.
 type SeatKeeper interface {
 	// EndKeptSeat waits up to a minute for the agent to go idle, then ends the
-	// seat by its recorded identity. It returns the seat_cleanup outcome and a
+	// seat by its recorded identity; a seat left at shutdown ends at once. It returns the seat_cleanup outcome and a
 	// detail for anything other than ended.
 	EndKeptSeat(ctx context.Context, seat KeptSeat) (outcome, detail string)
 	// ProbeKeptSeat reports whether the seat still runs on the server it was
@@ -90,6 +94,9 @@ type KeptSeat struct {
 	PaneID         string `json:"paneId"`
 	SocketIdentity string `json:"socketIdentity,omitempty"`
 	Harness        string `json:"harness,omitempty"`
+	// Left marks a seat left running at a daemon shutdown rather than kept on
+	// call; it takes no asks and ends without waiting for idle.
+	Left bool `json:"left,omitempty"`
 }
 
 // RunHumanChannel is the channel of a run's frozen mission: session or notify.
@@ -197,6 +204,31 @@ func latestGateEvaluationBefore(events []RunEvent, gateID string, before int) (R
 
 // KeptSeats lists the run's seats kept on call and not ended since, oldest first.
 func KeptSeats(events []RunEvent) []KeptSeat {
+	var kept []KeptSeat
+	for _, seat := range ownedSeats(events) {
+		if !seat.Left {
+			kept = append(kept, seat)
+		}
+	}
+	return kept
+}
+
+// LeftSeats lists the seats a daemon shutdown left running whose run has not
+// ended them since, oldest first.
+func LeftSeats(events []RunEvent) []KeptSeat {
+	var left []KeptSeat
+	for _, seat := range ownedSeats(events) {
+		if seat.Left {
+			left = append(left, seat)
+		}
+	}
+	return left
+}
+
+// ownedSeats lists the run's seats still running outside an execution: kept
+// on call, or left at a daemon shutdown (Left). A later cleanup of a seat
+// replaces what an earlier one recorded.
+func ownedSeats(events []RunEvent) []KeptSeat {
 	seats := map[int]KeptSeat{}
 	ended := map[int]bool{}
 	for _, event := range events {
@@ -221,11 +253,16 @@ func KeptSeats(events []RunEvent) []KeptSeat {
 			if match == 0 {
 				continue
 			}
-			if stringFromEventData(event, "outcome") == SeatOutcomeKeptOnCall {
+			switch stringFromEventData(event, "outcome") {
+			case SeatOutcomeKeptOnCall:
 				seat := seats[match]
-				seat.KeptSeq = event.Seq
+				seat.KeptSeq, seat.Left = event.Seq, false
 				seats[match] = seat
-			} else {
+			case SeatOutcomeLeftShutdown:
+				seat := seats[match]
+				seat.KeptSeq, seat.Left = event.Seq, true
+				seats[match] = seat
+			default:
 				ended[match] = true
 			}
 		}

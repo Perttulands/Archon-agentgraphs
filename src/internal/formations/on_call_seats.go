@@ -111,17 +111,20 @@ func (e *TmuxFormationExecutor) ProbeKeptSeat(ctx context.Context, seat KeptSeat
 }
 
 // EndKeptSeat waits up to a minute for the agent to go idle, then kills the
-// seat's session by its immutable ID. Idle is the check every paste waits on,
+// seat's session by its immutable ID; a seat left at shutdown ends at once. Idle is the check every paste waits on,
 // so an agent still replying after its gate command keeps its closing words.
 func (e *TmuxFormationExecutor) EndKeptSeat(ctx context.Context, seat KeptSeat) (string, string) {
 	if present, outcome := e.ProbeKeptSeat(ctx, seat); !present {
 		return outcome, ""
 	}
-	idle, cancel := context.WithTimeout(ctx, keptSeatIdleWait)
-	native := e.nativeKeptSeat(seat)
-	_ = e.seatClient.WaitInputClear(idle, e.config.Socket, native)
-	native.close()
-	cancel()
+	// A seat left at shutdown may be mid-turn on work the run no longer wants.
+	if !seat.Left {
+		idle, cancel := context.WithTimeout(ctx, keptSeatIdleWait)
+		native := e.nativeKeptSeat(seat)
+		_ = e.seatClient.WaitInputClear(idle, e.config.Socket, native)
+		native.close()
+		cancel()
+	}
 	if err := e.keptTransport().KillSeat(ctx, e.config.Socket, seat.SessionID); err != nil {
 		return SeatOutcomeLeftCleanupFailed, redactLedgerText(err.Error())
 	}

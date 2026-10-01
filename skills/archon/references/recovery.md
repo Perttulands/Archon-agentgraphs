@@ -54,8 +54,9 @@ else decided first, or the gate has since evaluated a newer input.
 
 The daemon restarts with the same state directory. At startup it recovers
 eligible completed native evidence and records a block naming any unresolved
-dispatch. It never adopts or cleans up old seats, except seats kept on call for
-a human gate. A run that only waited on its gates survives waiting, each
+dispatch. At startup it neither adopts nor cleans up old seats. A seat the
+shutdown left working stays the run's: aborting the run, or resuming so the
+step runs again, ends it; seats kept on call for a human gate stay on call. A run that only waited on its gates survives waiting, each
 request with its original `requestedSeq`: read fresh status and decide that
 exact request. A run that was between steps is blocked; its gates still take
 verdicts. Then inspect `run list` and `run status` and resume as above.

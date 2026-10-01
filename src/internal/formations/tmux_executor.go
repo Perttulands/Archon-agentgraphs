@@ -902,7 +902,7 @@ func (e *TmuxFormationExecutor) teardownOwnedSessions(owned *ownedSessions) {
 	for slot, seat := range owned.seats {
 		if shutdownRequested(owned.ctx) && !errors.Is(context.Cause(owned.ctx), context.Canceled) {
 			seat.close()
-			_ = e.store.AppendRunEvent(owned.req.RunID, RunEvent{Type: "seat_cleanup", NodeID: owned.req.NodeID, SlotID: slot, Data: map[string]any{"sessionName": seat.name, "outcome": "left_shutdown"}})
+			_ = e.store.AppendRunEvent(owned.req.RunID, RunEvent{Type: "seat_cleanup", NodeID: owned.req.NodeID, SlotID: slot, Data: map[string]any{"sessionName": seat.name, "outcome": SeatOutcomeLeftShutdown}})
 			continue
 		}
 		if owned.keepOnCall && (owned.req.Formation.Type != FormationTypeOrchestrated || slotIsController(owned.req.Formation, slot)) {
