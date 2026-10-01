@@ -168,7 +168,7 @@ id = "fmn_peers"
 type = "peer"
 title = "Peers"
 `)
-	// The shape of the Wayfinding notes at rev 3: a board note and two element
+	// The shape of the Scouting notes at rev 3: a board note and two element
 	// notes, last saved from the cockpit.
 	legacy := `schema = 1
 boardId = "brd_notes"

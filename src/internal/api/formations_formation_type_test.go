@@ -31,10 +31,14 @@ label = "Input"
 id = "slot_a"
 label = "Peer A"
 agentId = "codex-builder"
+harness = "openai-codex"
+effort = "medium"
 [[formation.slot]]
 id = "slot_b"
 label = "Peer B"
 agentId = "codex-reviewer"
+harness = "openai-codex"
+effort = "medium"
 
 [[mission]]
 id = "mis_start"

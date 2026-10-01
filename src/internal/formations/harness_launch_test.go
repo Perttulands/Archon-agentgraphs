@@ -103,18 +103,6 @@ func TestVariantEditsNameEachVariantOnceAndCheckOnlyWhatChanges(t *testing.T) {
 		t.Fatalf("default variant = %+v", v)
 	}
 
-	// A harness Archon cannot start keeps an editable launch string; one it starts refuses it.
-	launch := "hermes --profile new"
-	card, err = s.EditPersona("mixed", EditPersonaRequest{ExpectedETag: card.ETag, SetVariants: []VariantSettings{{ID: "hermes", Launch: &launch}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hermes, _ := card.SelectHarnessVariant("hermes"); hermes.Launch != launch {
-		t.Fatalf("hermes launch = %q", hermes.Launch)
-	}
-	if _, err := s.EditPersona("mixed", EditPersonaRequest{ExpectedETag: card.ETag, SetVariants: []VariantSettings{{ID: "claude-code", Launch: &launch}}}); !errors.Is(err, ErrInvalidAgentCard) || !strings.Contains(err.Error(), "would not be run") {
-		t.Fatalf("claude launch error = %v", err)
-	}
 }
 
 func TestSeatLaunchIsTheRenderedCardSettings(t *testing.T) {
@@ -126,9 +114,9 @@ func TestSeatLaunchIsTheRenderedCardSettings(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 	card := PersonaCard{ID: "p", HarnessDefault: "claude-code", HarnessVariants: []HarnessVariant{
-		{ID: "claude-code", Launch: `claude --effort="max"`},
+		{ID: "claude-code"},
 		{ID: "openai-codex", Model: "gpt-6-sol", Effort: "high"},
-		{ID: "hermes", Launch: "hermes --profile x"},
+		{ID: "hermes"},
 	}}
 	card.DescribeLaunches()
 	claude, codex, hermes := card.HarnessVariants[0], card.HarnessVariants[1], card.HarnessVariants[2]
@@ -147,8 +135,8 @@ func TestSeatLaunchIsTheRenderedCardSettings(t *testing.T) {
 	if command, err := card.HarnessVariants[0].SpawnCommand(); err != nil || command != claude.SeatLaunch {
 		t.Fatalf("claude spawn = %q, %v; want the seat launch", command, err)
 	}
-	if command, err := card.HarnessVariants[2].SpawnCommand(); err != nil || command != "hermes --profile x" {
-		t.Fatalf("hermes spawn = %q, %v; want its launch string", command, err)
+	if command, err := card.HarnessVariants[2].SpawnCommand(); err == nil || command != "" || !strings.Contains(err.Error(), `Archon cannot start harness "hermes"`) {
+		t.Fatalf("hermes spawn = %q, %v; want a plain refusal", command, err)
 	}
 
 	t.Setenv("PATH", t.TempDir())
@@ -193,7 +181,7 @@ func TestPersonaHarnessSettingsRoundTrip(t *testing.T) {
 func TestHarnessLaunchAndMismatch(t *testing.T) {
 	for _, harness := range []string{"openai-codex", "claude-code"} {
 		t.Run(harness, func(t *testing.T) {
-			v := HarnessVariant{ID: harness, Model: "test-model", Launch: "ignored --effort max"}
+			v := HarnessVariant{ID: harness, Model: "test-model"}
 			launch, err := v.RenderLaunch("test-harness")
 			if err != nil {
 				t.Fatal(err)

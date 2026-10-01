@@ -185,7 +185,7 @@ func peerConversationExecutorFixture(t *testing.T, mode string) (*Store, *Person
 	for _, id := range []string{"peer-a", "peer-b", "peer-c"} {
 		createS4Persona(t, personas, id)
 	}
-	board := tmuxPeerBoardFixture() + "\n[[formation.slot]]\nid = \"slot_peer_c\"\nlabel = \"Peer C\"\nagentId = \"peer-c\"\nharness = \"openai-codex\"\n"
+	board := tmuxPeerBoardFixture() + "\n[[formation.slot]]\nid = \"slot_peer_c\"\nlabel = \"Peer C\"\nagentId = \"peer-c\"\nharness = \"openai-codex\"\neffort = \"medium\"\n"
 	writeFixture(t, store.BoardPath("session-search"), board)
 	cfg := tmuxTestConfig(t)
 	cfg.TimeoutSeconds = 20

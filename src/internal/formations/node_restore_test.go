@@ -53,12 +53,14 @@ label = "Orchestrator"
 controller = true
 agentId = "codex-orchestrator"
 harness = "openai-codex"
+effort = "medium"
 [[formation.slot]]
 id = "slot_build_worker"
 label = "Worker"
 controller = false
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 
 [[formation]]
 id = "fmn_judge"
@@ -312,7 +314,6 @@ func TestRestoreNodeRefusesWithoutWritingWhenTheBoardNoLongerFits(t *testing.T) 
 			{ID: "edge_twice", From: "fmn_build:port_build_out", To: "fmn_judge:port_judge_in"},
 		}}, ErrInvalidNodeRestore},
 		"retired type":       {NodeRestoreRequest{Formation: &FormationNode{ID: "fmn_old", Type: "flow"}}, ErrUnsupportedFormationType},
-		"unsafe bead":        {NodeRestoreRequest{Mission: &MissionNode{ID: "mis_new", BeadID: "../x"}}, ErrInvalidBeadID},
 		"gate without kinds": {NodeRestoreRequest{Gate: &GateNode{ID: "gate_new", Kinds: []string{}}}, ErrInvalidGateKind},
 		"check without code": {NodeRestoreRequest{Gate: &GateNode{ID: "gate_new", Kinds: []string{"human"}, CheckValue: "PASS"}}, ErrInvalidCodeGateProfile},
 		"legacy script":      {NodeRestoreRequest{Gate: &GateNode{ID: "gate_new", Kinds: []string{"code"}, Command: "make test"}}, ErrLegacyScriptGateRequiresFencedMigration},

@@ -160,8 +160,6 @@ func formationAdmissionFindings(formation FormationNode, personas *PersonaStore,
 		case err == nil:
 		case errors.Is(err, ErrInvalidSlotSettings):
 			add(FindingInvalidSlotSettings, "formation %q %s", formation.ID, strings.TrimPrefix(err.Error(), ErrInvalidSlotSettings.Error()+": "))
-		case errors.Is(err, errRoleBinding):
-			add(FindingUnavailablePersona, "formation %q slot %s cannot bind role %q: %s", formation.ID, slotName(slot), slot.AgentID, strings.TrimPrefix(err.Error(), errRoleBinding.Error()+": "))
 		case errors.Is(err, ErrNotFound):
 			add(FindingUnavailablePersona, "formation %q slot %s names unknown role %q", formation.ID, slotName(slot), slot.AgentID)
 		default:

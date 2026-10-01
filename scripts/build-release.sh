@@ -42,7 +42,6 @@ for arch in "${arches[@]}"; do
   for command in archon archond; do
     (cd "$root/src" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "$ldflags" -o "$bundle/bin/$command" "./cmd/$command")
   done
-  cp "$bundle/bin/archond" "$bundle/bin/formationsd"
   cp -R "$root/dashboard/dist" "$bundle/share/archon/ui"
   cp -R "$root/examples" "$root/docs" "$bundle/share/archon/"
   mkdir -p "$bundle/share/archon/skills"

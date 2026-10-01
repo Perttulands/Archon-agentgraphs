@@ -1,11 +1,11 @@
-# The Wayfinding board structure (form-3yd.10, rev 37) without its briefs and
+# The Scouting board structure (form-3yd.10, rev 37) without its briefs and
 # criteria, for arrangement tests.
 schema = 1
 id = "brd_01M2N3A879JPHQFNRXH3K5CQGM"
-slug = "wayfinding"
-title = "Wayfinding"
+slug = "scouting"
+title = "Scouting"
 rev = 37
-updatedBy = "agent:claude-wayfinding"
+updatedBy = "agent:claude-scouting"
 updatedAt = "2026-09-16T14:24:24Z"
 
 [[formation]]
@@ -99,6 +99,7 @@ label = "Agent"
 controller = false
 harness = "claude-code"
 agentId = "delivery-planner"
+effort = "medium"
 
 [[gate]]
 id = "gate_01M2N9N1PEPTXX7XV5QW96681W"
@@ -124,6 +125,7 @@ label = "Agent"
 controller = false
 harness = "openai-codex"
 agentId = "codex-judge"
+effort = "medium"
 
 [[gate]]
 id = "gate_01M2N9N1R4R184Y5G3R45BB5G1"
@@ -132,7 +134,7 @@ kinds = ["human"]
 
 [[mission]]
 id = "mis_01M2N9N1SG7J0D3YVRZY3V8TNT"
-title = "Wayfinding"
+title = "Scouting"
 
 [[connection]]
 id = "edge_01M2N9N1T1EVD80G1CNG34ZG3J"

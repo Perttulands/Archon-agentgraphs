@@ -318,8 +318,8 @@ func TestLegacyInlineVerificationHumanVerdictRejectsBeforeLedgerMutation(t *test
 	personas.Now = fixedClock()
 	raw := strings.Replace(
 		s5HumanGateBoardFixture(),
-		"controller = true\n\n[[gate]]",
-		"controller = true\n\n[formation.verification]\nid = \"ver_work\"\nkinds = [\"code\"]\ncriterion = \"Work is ready\"\nonFail = \"block\"\n\n[[gate]]",
+		"controller = true\neffort = \"medium\"\n\n[[gate]]",
+		"controller = true\neffort = \"medium\"\n\n[formation.verification]\nid = \"ver_work\"\nkinds = [\"code\"]\ncriterion = \"Work is ready\"\nonFail = \"block\"\n\n[[gate]]",
 		1,
 	)
 	runID := newPrefixedID("run")
@@ -773,6 +773,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[gate]]
 id = "gate_review"
@@ -802,6 +803,7 @@ label = "Judge"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_j2"
@@ -822,6 +824,7 @@ label = "Judge"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_ship"
@@ -842,6 +845,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_work"
@@ -896,6 +900,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [formation.verification]
 id = "ver_work"
@@ -922,6 +927,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_work"

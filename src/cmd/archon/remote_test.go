@@ -37,7 +37,7 @@ func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
 		}
 	}))
 	var out, stderr bytes.Buffer
-	if code := runRemote(server.URL, []string{"mission", "run", "proof", "--mission", "mis_proof", "--json"}, &out, &stderr); code != 0 {
+	if code := runRemote(server.URL, []string{"mission", "run", "proof", "--input", "mis_proof", "--json"}, &out, &stderr); code != 0 {
 		t.Fatalf("%d %s", code, stderr.String())
 	}
 	// No limit flags sends no limits (form-o7p.7).
@@ -45,7 +45,7 @@ func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
 		t.Fatalf("request %s output %s", received, out.String())
 	}
 	out.Reset()
-	if code := runRemote(server.URL, []string{"mission", "run", "proof", "--mission", "mis_proof", "--max-attempts", "4", "--max-dispatch", "9", "--wall-clock-seconds", "600", "--json"}, &out, &stderr); code != 0 {
+	if code := runRemote(server.URL, []string{"mission", "run", "proof", "--input", "mis_proof", "--max-attempts", "4", "--max-dispatch", "9", "--wall-clock-seconds", "600", "--json"}, &out, &stderr); code != 0 {
 		t.Fatalf("%d %s", code, stderr.String())
 	}
 	if !strings.Contains(received, `"limits":{"maxAttempts":4,"maxDispatch":9,"redact":false,"wallClockSeconds":600}`) {
@@ -102,7 +102,7 @@ func TestRemoteRunInputsReadFilesAndLongLiteralBriefs(t *testing.T) {
 	defer server.Close()
 	for _, input := range []string{brief, file} {
 		var out, stderr bytes.Buffer
-		if code := runRemote(server.URL, []string{"mission", "run", "proof", "--mission", "mis_proof", "--cwd", cwd, "--brief", input, "--bead", "form-proof"}, &out, &stderr); code != 0 {
+		if code := runRemote(server.URL, []string{"mission", "run", "proof", "--input", "mis_proof", "--cwd", cwd, "--brief", input, "--bead", "form-proof"}, &out, &stderr); code != 0 {
 			t.Fatalf("%d %s", code, stderr.String())
 		}
 	}
@@ -293,27 +293,27 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("agent", "edit", "scout-x", "--harness", "hermes", "--effort", "low")), errorOnly: true},
 		{args: with(fixed("agent", "edit", "scout-x", "--harness", "claude-code")), errorOnly: true},
 		{args: with(fixed("agent", "new", "bad-effort", "--harness", "claude-code", "--effort", "extreme")), errorOnly: true},
-		{args: with(fixed("mission", "create", "demo", "--title", "Work", "--goal", "Do it", "--bead", "form-demo", "--file", "docs/brief.md", "--human-channel", "session")), creates: "mission"},
+		{args: with(fixed("mission", "create", "demo", "--title", "Work", "--goal", "Do it", "--file", "docs/brief.md", "--human-channel", "session")), creates: "mission"},
 		{args: with(fixed("formation", "create", "demo", "solo", "--title", "Worker")), creates: "formation"},
 		{args: with(fixed("formation", "create", "demo", "--title", "Judge")), creates: "formation"},
 		{args: with(fixed("formation", "rename", "demo", "Judge", "Critic"))},
 		{args: with(fixed("formation", "add-input", "demo", "Worker", "--label", "Extra"))},
 		{args: with(fixed("formation", "add-output", "demo", "Worker", "--label", "Report"))},
 		{args: with(func(board *formations.BoardDocument) []string {
-			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--agent", "scout-x", "--harness", "openai-codex", "--effort", "medium"}
+			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--role", "scout-x", "--harness", "openai-codex", "--effort", "medium"}
 		})},
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"formation", "unassign", "demo", "Worker", "--slot", worker(board).Slots[0].ID}
 		})},
 		{args: with(func(board *formations.BoardDocument) []string {
-			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--agent", "codex-builder", "--harness", "openai-codex", "--effort", "medium"}
+			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--role", "codex-builder", "--harness", "openai-codex", "--effort", "medium"}
 		})},
 		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--goal", "Produce the result", "--bead", "form-demo", "--file", "src/a.go", "--link", "https://example.com/spec"))},
 		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "47"))},
 		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "0"))},
 		{args: with(fixed("formation", "set-brief", "demo", "Critic", "--goal", "Judge the result"))},
 		{args: with(func(board *formations.BoardDocument) []string {
-			return []string{"formation", "assign", "demo", "Critic", "--slot", formationTitled(t, board, "Critic").Slots[0].ID, "--agent", "codex-judge", "--harness", "openai-codex", "--effort", "xhigh"}
+			return []string{"formation", "assign", "demo", "Critic", "--slot", formationTitled(t, board, "Critic").Slots[0].ID, "--role", "codex-judge", "--harness", "openai-codex", "--effort", "xhigh"}
 		})},
 		{args: with(fixed("formation", "set-type", "demo", "Critic", "peer"))},
 		{args: with(func(board *formations.BoardDocument) []string {
@@ -395,7 +395,6 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("gate", "update", "demo", "Nobody", "--title", "Ghost")), errorOnly: true},
 		{args: with(fixed("mission", "wire", "demo", "Nobody", "x:y")), errorOnly: true},
 		{args: with(fixed("mission", "new", "demo")), errorOnly: true},
-		{args: with(fixed("mission", "create", "demo", "--bead", "Home-123")), errorOnly: true},
 		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--bead", "chlab/123")), errorOnly: true},
 		{args: with(fixed("gate", "create", "demo", "--command", "make test")), errorOnly: true},
 		{args: with(fixed("gate", "create", "demo", "--check", "output_contains", "--check-version", "1", "--check-value", "done")), errorOnly: true},
@@ -699,7 +698,7 @@ func TestRepeatedAuthoringEditsKeepTheRevisionOfflineAndRemote(t *testing.T) {
 		}
 		slot := board.Formations[0].Slots[0].ID
 		for _, args := range [][]string{
-			{"formation", "assign", "same", "Worker", "--slot", slot, "--agent", "codex-builder", "--harness", "openai-codex", "--effort", "medium"},
+			{"formation", "assign", "same", "Worker", "--slot", slot, "--role", "codex-builder", "--harness", "openai-codex", "--effort", "medium"},
 			{"formation", "rename", "same", "Worker", "Worker"},
 			{"formation", "set-brief", "same", "Worker", "--goal", "Produce the result"},
 			{"formation", "set-type", "same", "Worker", "solo"},

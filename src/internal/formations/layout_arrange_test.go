@@ -54,7 +54,7 @@ func assertJudgeBelow(t *testing.T, byID map[string]LayoutNode, gateID, judgeID 
 	}
 }
 
-func TestArrangeLayoutFollowsWayfindingRunOrder(t *testing.T) {
+func TestArrangeLayoutFollowsScoutingRunOrder(t *testing.T) {
 	const (
 		mission     = "mis_01M2N9N1SG7J0D3YVRZY3V8TNT"
 		mapStep     = "fmn_01M2N3G4PQCK21EXT7NC5CC3R9"
@@ -66,7 +66,7 @@ func TestArrangeLayoutFollowsWayfindingRunOrder(t *testing.T) {
 		critic      = "fmn_01M2N9N1PXQ39NHQY46F0J0V63"
 		signoff     = "gate_01M2N9N1R4R184Y5G3R45BB5G1"
 	)
-	fixture := filepath.Join("testdata", "arrange", "wayfinding.formation.toml")
+	fixture := filepath.Join("testdata", "arrange", "scouting.formation.toml")
 	store, slug, byID := arrangeFixture(t, fixture, "")
 	assertRunOrder(t, byID, []string{mission, mapStep, framing, questions, answers, draft, adversarial, signoff})
 	assertJudgeBelow(t, byID, adversarial, critic)

@@ -218,7 +218,6 @@ type MissionUpdateRequest struct {
 	MissionID    string
 	Title        *string
 	Goal         *string
-	BeadID       *string
 	Files        *[]string // replaces the file references; empty clears them
 	InputHint    *string
 	HumanChannel *string
@@ -234,7 +233,6 @@ type GateJudgeRequest struct {
 type MissionCreateRequest struct {
 	Title        string
 	Goal         string
-	BeadID       string
 	Files        []string
 	HumanChannel string
 	X            int
@@ -322,7 +320,6 @@ type MissionNode struct {
 	ID     string `json:"id"`
 	Title  string `json:"title"`
 	Goal   string `json:"goal"`
-	BeadID string `json:"beadId"`
 	// Files are reference files for the mission, as paths.
 	Files []string `json:"files,omitempty"`
 	// InputHint tells whoever starts the mission what its run brief should contain.
@@ -835,7 +832,7 @@ func assignmentSettings(req FormationSlotAssignmentRequest) (SlotSettings, error
 		}
 	}
 	if effort == "" && model == "" && role != "" {
-		// The legacy role drag: the role's current settings become the slot's.
+		// The role drag: the role's current settings become the slot's.
 		if req.Personas == nil {
 			return SlotSettings{}, fmt.Errorf("%w: persona store required to read role %q", ErrNotFound, role)
 		}
@@ -1463,15 +1460,12 @@ func renderSlotBlock(slot FormationSlot) []tomlLine {
 	return lines
 }
 
-// UpdateMission edits a mission's title, goal, Bead ID and input hint. Its ID,
+// UpdateMission edits an Input card's title, goal, files and input hint. Its ID,
 // out port, edges, layout and notes stay as they are. An empty input hint
 // removes the key, so clearing an absent hint changes nothing.
 func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteOptions) (*BoardDocument, error) {
 	if req.MissionID == "" {
 		return nil, ErrNotFound
-	}
-	if req.BeadID != nil && *req.BeadID != "" && !isSafeBeadsIssueID(*req.BeadID) {
-		return nil, invalidBeadID("Input card beadId", *req.BeadID)
 	}
 	var humanChannel string
 	if req.HumanChannel != nil {
@@ -1486,7 +1480,7 @@ func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteO
 		for _, field := range []struct {
 			key   string
 			value *string
-		}{{"title", req.Title}, {"goal", req.Goal}, {"beadId", req.BeadID}} {
+		}{{"title", req.Title}, {"goal", req.Goal}} {
 			if field.value == nil {
 				continue
 			}
@@ -1651,9 +1645,6 @@ func (s *Store) CreateMission(slug string, req MissionCreateRequest, opts WriteO
 }
 
 func (s *Store) createMission(slug string, req MissionCreateRequest, opts WriteOptions, fault func(string) error) (*MissionCreateResult, error) {
-	if req.BeadID != "" && !isSafeBeadsIssueID(req.BeadID) {
-		return nil, invalidBeadID("Input card beadId", req.BeadID)
-	}
 	humanChannel, err := NormalizeHumanChannel(req.HumanChannel)
 	if err != nil {
 		return nil, err
@@ -1672,7 +1663,6 @@ func (s *Store) createMission(slug string, req MissionCreateRequest, opts WriteO
 		ID:           newPrefixedID("mis"),
 		Title:        title,
 		Goal:         req.Goal,
-		BeadID:       req.BeadID,
 		Files:        normalizeFileRefs(req.Files),
 		HumanChannel: humanChannel,
 	}
@@ -2336,7 +2326,6 @@ func appendMissionBlock(raw []byte, mission MissionNode) []byte {
 	b.WriteString("id = " + renderString(mission.ID) + "\n")
 	b.WriteString("title = " + renderString(mission.Title) + "\n")
 	b.WriteString("goal = " + renderString(mission.Goal) + "\n")
-	b.WriteString("beadId = " + renderString(mission.BeadID) + "\n")
 	if len(mission.Files) > 0 {
 		b.WriteString("files = " + renderStringArray(mission.Files) + "\n")
 	}
@@ -3505,8 +3494,6 @@ func parseMissionNodes(raw []byte) []MissionNode {
 			current.Title = value
 		case "goal":
 			current.Goal = value
-		case "beadId":
-			current.BeadID = value
 		case "files":
 			current.Files = parseStringArray(value)
 		case "inputHint":

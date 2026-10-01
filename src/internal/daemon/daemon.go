@@ -20,7 +20,7 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// Main is shared by archond and its formationsd compatibility command.
+// Main runs archond.
 func Main() {
 	if err := Run(os.Args[1:]); err != nil && !errors.Is(err, flag.ErrHelp) {
 		fmt.Fprintln(os.Stderr, err)
@@ -131,7 +131,6 @@ func Run(args []string) error {
 	if err := c.ConfigureFileRoots(fileRoots); err != nil {
 		return err
 	}
-	migrateSlotSettings(c.Store(), personas)
 	if *executor == "tmux" {
 		if err := c.ConfigureTerminals(*socket, *tmux); err != nil {
 			return err

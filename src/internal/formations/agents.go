@@ -51,7 +51,6 @@ type PersonaCard struct {
 type HarnessVariant struct {
 	ID          string `json:"id"`
 	SessionStem string `json:"sessionStem,omitempty"`
-	Launch      string `json:"launch,omitempty"`
 	Model       string `json:"model,omitempty"`
 	Effort      string `json:"effort,omitempty"`
 	Source      string `json:"source,omitempty"`
@@ -77,7 +76,6 @@ type CreatePersonaRequest struct {
 	Personality  string
 	Harness      string
 	SessionStem  string
-	Launch       string
 	Model        string
 	Effort       string
 	Source       string
@@ -88,7 +86,6 @@ type EditPersonaRequest struct {
 	RemoveCapability string
 	AddHarness       string
 	SessionStem      string
-	Launch           string
 	Model            string
 	Effort           string
 	Source           string
@@ -100,7 +97,6 @@ type EditPersonaRequest struct {
 	SetSummary       *string
 	SetCapabilities  *[]string
 	SetSessionStem   *string
-	SetLaunch        *string
 	SetModel         *string
 	SetEffort        *string
 	// Variant names the harness variant SetModel and SetEffort change; blank
@@ -110,14 +106,12 @@ type EditPersonaRequest struct {
 	SetVariants []VariantSettings
 }
 
-// VariantSettings sets one harness variant's model and effort, or the launch
-// string of a harness Archon cannot start (the only command `agent spawn` has
-// for it); a nil field is left as it is and a blank one is cleared.
+// VariantSettings sets one harness variant's model and effort; a nil field is
+// left as it is and a blank one is cleared.
 type VariantSettings struct {
 	ID     string  `json:"id"`
 	Model  *string `json:"model,omitempty"`
 	Effort *string `json:"effort,omitempty"`
-	Launch *string `json:"launch,omitempty"`
 }
 
 // variantEdits resolves each edit's variant and refuses one edit naming a
@@ -157,14 +151,6 @@ func applyVariantSettings(raw string, card *PersonaCard, setting VariantSettings
 	}
 	if err := validateHarnessSettings(card.ID, target.ID, trimmed(setting.Model), trimmed(setting.Effort)); err != nil {
 		return "", err
-	}
-	if setting.Launch != nil {
-		if _, ok := launchableHarness(target.ID); ok {
-			return "", fmt.Errorf("%w: agent %q harness %q seats start from model and effort; a launch string would not be run", ErrInvalidAgentCard, card.ID, target.ID)
-		}
-		if raw, err = setHarnessVariantScalar(raw, target.ID, "launch", strings.TrimSpace(*setting.Launch)); err != nil {
-			return "", err
-		}
 	}
 	// Blank removes the setting: the harness default model, the default effort.
 	for _, field := range []struct {
@@ -370,15 +356,10 @@ func (s *PersonaStore) CreatePersona(req CreatePersonaRequest) (*PersonaCard, er
 		if sessionStem == "" {
 			sessionStem = req.ID
 		}
-		launch := req.Launch
-		if launch == "" {
-			launch = inferLaunch(harness, req.Source)
-		}
 		tags := normalizeTags(req.Capabilities)
 		if req.Personality != "" {
 			tags = appendUnique(tags, "personality:"+req.Personality)
 		}
-		req.Launch = launch
 		raw := renderPersona(req, harness, sessionStem, tags)
 		if err := s.writePersonaAtomic(req.ID, []byte(raw)); err != nil {
 			return err
@@ -460,12 +441,6 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 				return err
 			}
 		}
-		if req.SetLaunch != nil {
-			next, err = setHarnessVariantScalar(next, card.HarnessDefault, "launch", strings.TrimSpace(*req.SetLaunch))
-			if err != nil {
-				return err
-			}
-		}
 		settings, err := variantEdits(card, req)
 		if err != nil {
 			return err
@@ -496,14 +471,9 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 			if stem == "" {
 				stem = req.AddHarness + "-" + id
 			}
-			launch := req.Launch
-			if launch == "" {
-				launch = inferLaunch(req.AddHarness, req.Source)
-			}
 			next = appendHarnessVariant(next, HarnessVariant{
 				ID:          req.AddHarness,
 				SessionStem: stem,
-				Launch:      launch,
 				Model:       strings.TrimSpace(req.Model),
 				Effort:      strings.TrimSpace(req.Effort),
 				Source:      req.Source,
@@ -820,8 +790,6 @@ func setVariantField(v *HarnessVariant, key, value string) {
 		v.ID = value
 	case "session_stem":
 		v.SessionStem = value
-	case "launch":
-		v.Launch = value
 	case "model":
 		v.Model = value
 	case "effort":
@@ -863,9 +831,6 @@ func renderPersona(req CreatePersonaRequest, harness, sessionStem string, tags [
 	b.WriteString("[[harness.variant]]\n")
 	b.WriteString("id = " + renderString(harness) + "\n")
 	b.WriteString("session_stem = " + renderString(sessionStem) + "\n")
-	if req.Launch != "" {
-		b.WriteString("launch = " + renderString(req.Launch) + "\n")
-	}
 	if req.Model != "" {
 		b.WriteString("model = " + renderString(req.Model) + "\n")
 	}
@@ -884,9 +849,6 @@ func appendHarnessVariant(raw string, variant HarnessVariant) string {
 	b.WriteString("\n\n[[harness.variant]]\n")
 	b.WriteString("id = " + renderString(variant.ID) + "\n")
 	b.WriteString("session_stem = " + renderString(variant.SessionStem) + "\n")
-	if variant.Launch != "" {
-		b.WriteString("launch = " + renderString(variant.Launch) + "\n")
-	}
 	if variant.Model != "" {
 		b.WriteString("model = " + renderString(variant.Model) + "\n")
 	}
@@ -1116,15 +1078,6 @@ func inferHarness(source string) string {
 	default:
 		return ""
 	}
-}
-
-// inferLaunch supplies a launch string only for a harness Archon cannot render;
-// claude-code and openai-codex start from the card's model and effort instead.
-func inferLaunch(harness, source string) string {
-	if harness == "hermes" && source != "" {
-		return "hermes --profile " + shellQuote(source)
-	}
-	return ""
 }
 
 func shellQuote(value string) string {

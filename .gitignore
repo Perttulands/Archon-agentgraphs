@@ -16,7 +16,6 @@ dashboard/playwright-report/
 /archon
 /src/archon
 /src/archond
-/src/formationsd
 /dist/
 
 /.beads/interactions.jsonl

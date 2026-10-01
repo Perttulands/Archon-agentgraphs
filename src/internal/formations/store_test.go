@@ -575,7 +575,7 @@ func TestOrdinaryNonToolWritersPreserveSchemaOne(t *testing.T) {
 	assertSchemaOne("create gate", current)
 
 	mission, err := store.CreateMission(slug, MissionCreateRequest{
-		Goal: "Exercise schema preservation", BeadID: "home-7kc4.5", X: 500, Y: 100, UpdatedBy: "agent:test",
+		Goal: "Exercise schema preservation", X: 500, Y: 100, UpdatedBy: "agent:test",
 	}, WriteOptions{ExpectedETag: current.ETag, ExpectedRev: current.Rev})
 	if err != nil {
 		t.Fatalf("create mission: %v", err)
@@ -1437,6 +1437,7 @@ label = "Lead"
 controller = true
 agentId = "mason"
 harness = "codex"
+effort = "medium"
 
 [[formation.slot]]
 id = "slot_worker"
@@ -2482,7 +2483,6 @@ func TestS3MissionCreateAcceptsProjectBeadIDAndSingleOut(t *testing.T) {
 	result, err := store.CreateMission("session-search", MissionCreateRequest{
 		Title:     "Showcase site",
 		Goal:      "Build the showcase",
-		BeadID:    "home-vdki.34.1",
 		X:         150,
 		Y:         90,
 		UpdatedBy: "agent:test",
@@ -2491,7 +2491,7 @@ func TestS3MissionCreateAcceptsProjectBeadIDAndSingleOut(t *testing.T) {
 		t.Fatalf("create mission: %v", err)
 	}
 	after := result.Board
-	if len(after.Missions) != 1 || !strings.HasPrefix(after.Missions[0].ID, "mis_") || after.Missions[0].BeadID != "home-vdki.34.1" {
+	if len(after.Missions) != 1 || !strings.HasPrefix(after.Missions[0].ID, "mis_") {
 		t.Fatalf("missions = %+v, want one project-backed mission", after.Missions)
 	}
 	if result.Mission.ID != after.Missions[0].ID {
@@ -2510,28 +2510,6 @@ func TestS3MissionCreateAcceptsProjectBeadIDAndSingleOut(t *testing.T) {
 	}
 	if len(layout.Nodes) != 1 || layout.Nodes[0].ID != after.Missions[0].ID || layout.Nodes[0].X != 150 || layout.Nodes[0].Y != 90 {
 		t.Fatalf("layout nodes = %+v, want created mission at 150,90", layout.Nodes)
-	}
-}
-
-func TestS3MissionCreateRejectsUnsafeBeadID(t *testing.T) {
-	for _, beadID := range []string{"nohyphen", "Home-123", "chlab/123", "../home-pfyv", "home-pfyv\n"} {
-		t.Run(beadID, func(t *testing.T) {
-			store := NewStore(t.TempDir())
-			store.Now = fixedClock()
-			writeFixture(t, store.BoardPath("session-search"), minimalBoard("session-search", 7))
-			before, err := store.ReadBoard("session-search")
-			if err != nil {
-				t.Fatalf("read board: %v", err)
-			}
-			if _, err := store.CreateMission("session-search", MissionCreateRequest{
-				Title:     "Showcase site",
-				Goal:      "Build the showcase",
-				BeadID:    beadID,
-				UpdatedBy: "agent:test",
-			}, WriteOptions{ExpectedETag: before.ETag, ExpectedRev: before.Rev}); !errors.Is(err, ErrInvalidBeadID) {
-				t.Fatalf("create mission beadId %q error = %v, want ErrInvalidBeadID", beadID, err)
-			}
-		})
 	}
 }
 

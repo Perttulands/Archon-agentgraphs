@@ -28,6 +28,7 @@ id = "slot_` + id + `"
 label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
+effort = "medium"
 controller = true
 `
 }

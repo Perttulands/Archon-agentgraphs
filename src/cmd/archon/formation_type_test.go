@@ -28,11 +28,15 @@ id = "slot_lead"
 label = "Lead"
 controller = true
 agentId = "codex-builder"
+harness = "openai-codex"
+effort = "medium"
 [[formation.slot]]
 id = "slot_worker"
 label = "Worker"
 controller = false
 agentId = "codex-reviewer"
+harness = "openai-codex"
+effort = "medium"
 `)
 	runner := &fakeTmux{live: map[string]bool{}}
 	archon := func(args ...string) (string, string, int) {

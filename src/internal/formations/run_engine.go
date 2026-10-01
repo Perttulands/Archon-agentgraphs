@@ -916,10 +916,9 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 		beadID = formation.Brief.BeadID
 	}
 	mission := MissionNode{
-		ID:     "single_" + formation.ID,
-		Title:  "Single formation: " + formation.Title,
-		Goal:   goal,
-		BeadID: beadID,
+		ID:    "single_" + formation.ID,
+		Title: "Single formation: " + formation.Title,
+		Goal:  goal,
 	}
 	runID := newPrefixedID("run")
 	ledgerPath := runArtifactPath(slug, runID, ".ndjson")
@@ -960,7 +959,7 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 		BoardID:   board.ID,
 		BoardRev:  board.Rev,
 		MissionID: mission.ID,
-		BeadID:    mission.BeadID,
+		BeadID:    beadID,
 		Epoch:     0,
 		Attempt:   0,
 		Data: map[string]any{
@@ -970,7 +969,7 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 			"snapshot":         snapshotPath,
 			"bindingsSnapshot": bindingsPath,
 			"missionId":        mission.ID,
-			"beadId":           mission.BeadID,
+			"beadId":           beadID,
 			"objective":        mission.Goal,
 			"limits":           limits,
 			"mode":             "formation",

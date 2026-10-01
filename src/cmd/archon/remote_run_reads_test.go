@@ -113,7 +113,7 @@ func TestRemoteLaunchWorkingDirectoryForwarding(t *testing.T) {
 			}
 			fmt.Fprint(w, `{"data":{"runId":"run_proof"}}`)
 		}))
-		args := append([]string{"mission", "run", "proof", "--mission", "mis_proof", "--brief", "Build the project"}, cwdArgs...)
+		args := append([]string{"mission", "run", "proof", "--input", "mis_proof", "--brief", "Build the project"}, cwdArgs...)
 		var out, stderr bytes.Buffer
 		if code := runRemote(server.URL, args, &out, &stderr); code != 0 {
 			t.Fatalf("%d %s", code, &stderr)

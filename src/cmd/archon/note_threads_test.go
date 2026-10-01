@@ -35,7 +35,7 @@ text = "Start by mapping the territory"
 `)
 	runner := &fakeTmux{live: map[string]bool{}}
 	archon := func(args ...string) (string, string, int) {
-		return runArchon(t, runner, append([]string{"--workspace", workspace, "board"}, args...)...)
+		return runArchon(t, runner, append([]string{"--workspace", workspace, "mission"}, args...)...)
 	}
 	thread := func() []formations.NoteEntry {
 		t.Helper()

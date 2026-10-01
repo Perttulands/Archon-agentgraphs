@@ -42,9 +42,6 @@ func TestArchonDraftAuthoringSavesAndAdmissionListsEveryProblem(t *testing.T) {
 	if _, _, code := archon("gate", "create", "sketch", "--check", "no_such_profile", "--check-version", "1"); code == 0 {
 		t.Fatal("unknown code check profile saved")
 	}
-	if _, _, code := archon("mission", "create", "sketch", "--bead", "Home-123"); code == 0 {
-		t.Fatal("unsafe Bead ID saved")
-	}
 
 	store := formations.NewStore(workspace)
 	board, err := store.ReadBoard("sketch")
@@ -95,7 +92,7 @@ func TestArchonGateCreateWithoutKindsIsARoutableHumanGate(t *testing.T) {
 		return stdout
 	}
 	archon("mission", "new", "review")
-	archon("mission", "create", "review", "--title", "Work", "--goal", "Do it", "--bead", "form-demo")
+	archon("mission", "create", "review", "--title", "Work", "--goal", "Do it")
 	var created struct {
 		Formation formations.FormationNode `json:"formation"`
 		Gate      formations.GateNode      `json:"gate"`
@@ -125,7 +122,7 @@ func TestArchonGateCreateWithoutKindsIsARoutableHumanGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	gate := board.Gates[0]
-	archon("formation", "assign", "review", worker.ID, "--slot", worker.Slots[0].ID, "--agent", "codex-builder", "--harness", "openai-codex", "--effort", "medium")
+	archon("formation", "assign", "review", worker.ID, "--slot", worker.Slots[0].ID, "--role", "codex-builder", "--harness", "openai-codex", "--effort", "medium")
 	archon("formation", "set-brief", "review", worker.ID, "--goal", "Produce the result")
 	archon("mission", "wire", "review", "Work", worker.ID+":"+worker.Inputs[0].ID)
 	archon("formation", "wire", "review", worker.ID+":"+worker.Outputs[0].ID, gate.ID+":in")
@@ -153,7 +150,7 @@ func TestRemoteAdmissionFindingsAndBoardValidation(t *testing.T) {
 	defer server.Close()
 
 	var out, stderr bytes.Buffer
-	if code := runRemote(server.URL, []string{"mission", "run", "draft", "--mission", "mis_draft", "--cwd", t.TempDir(), "--brief", "sketch"}, &out, &stderr); code != 1 {
+	if code := runRemote(server.URL, []string{"mission", "run", "draft", "--input", "mis_draft", "--cwd", t.TempDir(), "--brief", "sketch"}, &out, &stderr); code != 1 {
 		t.Fatalf("remote mission run code %d stderr %s", code, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "ERROR\tunstaffed_slot\tfmn_plan\t") || !strings.Contains(stderr.String(), "ERROR\tgate_not_routable\tgate_lint\t") {

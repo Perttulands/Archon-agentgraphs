@@ -32,7 +32,7 @@ base="$prefix/lib/archon"
 release_id="$version-$commit-$platform"
 destination="$base/releases/$release_id"
 # Refuse to replace an unrelated binary or directory, including a foreign link.
-for command in archon archond formationsd; do
+for command in archon archond; do
   target="$prefix/bin/$command"
   expected="../lib/archon/current/bin/$command"
   if [[ -e $target || -L $target ]]; then
@@ -77,7 +77,7 @@ link="$base/.current.$$"
 ln -s "releases/$release_id" "$link"
 mv -Tf -- "$link" "$base/current"
 link=''
-for command in archon archond formationsd; do
+for command in archon archond; do
   [[ -L $prefix/bin/$command ]] || ln -s "../lib/archon/current/bin/$command" "$prefix/bin/$command"
 done
 printf 'Installed Archon %s to %s\nAdd %s/bin to PATH.\n' "$version" "$prefix" "$prefix"

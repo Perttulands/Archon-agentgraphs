@@ -67,6 +67,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 `, id, title)
 	}
 	board := s4MissionOnlyBoardFixture() + formationBlock("fmn_draft", "Draft") + formationBlock("fmn_review_judge", "Adversarial reviewer") + `

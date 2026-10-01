@@ -45,14 +45,8 @@ label = "Input"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if board.Formations[0].Title != "Map the territory" || board.Missions[0].Title != "Frame the goal" || board.Missions[0].Goal != "" || board.Missions[0].BeadID != "form-3yd.10" {
+	if board.Formations[0].Title != "Map the territory" || board.Missions[0].Title != "Frame the goal" || board.Missions[0].Goal != "" {
 		t.Fatalf("after updates: formation %+v mission %+v", board.Formations[0], board.Missions[0])
-	}
-	if _, stderr, code := archon("mission", "update", "rename", "Frame the goal", "--bead", ""); code != 0 {
-		t.Fatalf("clear bead by mission title: %d %s", code, stderr)
-	}
-	if board, _ := store.ReadBoard("rename"); board.Missions[0].BeadID != "" {
-		t.Fatalf("bead not cleared: %+v", board.Missions[0])
 	}
 	if _, stderr, code := archon("mission", "update", "rename", "mis_frame", "--input-hint", "Paste the operator's sketch"); code != 0 {
 		t.Fatalf("set input hint: %d %s", code, stderr)
@@ -89,8 +83,8 @@ label = "Input"
 	if _, stderr, code := archon("mission", "update", "rename", "mis_frame"); code != 2 || !strings.Contains(stderr, "Only the flags you give change it") {
 		t.Fatalf("update without fields: %d %s", code, stderr)
 	}
-	if _, _, code := archon("mission", "update", "rename", "mis_frame", "--bead", "Home-123"); code == 0 {
-		t.Fatal("unsafe Bead ID accepted")
+	if _, stderr, code := archon("mission", "update", "rename", "mis_frame", "--bead", "form-1"); code != 2 || !strings.Contains(stderr, "flag provided but not defined: -bead") {
+		t.Fatalf("mission update --bead: %d %s, want an unknown flag", code, stderr)
 	}
 	if _, stderr, code := archon("formation", "rename", "rename", "fmn_map"); code != 2 || !strings.Contains(stderr, "usage: archon formation rename") {
 		t.Fatalf("rename without title: %d %s", code, stderr)

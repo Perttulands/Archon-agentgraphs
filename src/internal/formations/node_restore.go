@@ -157,9 +157,6 @@ func restoredNodeBlock(req NodeRestoreRequest) (string, string, func([]byte) []b
 		if !validToolDefinitionID(mission.ID) {
 			return "", "", nil, invalidNodeRestore("Input card id %q is invalid", mission.ID)
 		}
-		if mission.BeadID != "" && !isSafeBeadsIssueID(mission.BeadID) {
-			return "", "", nil, invalidBeadID("Input card beadId", mission.BeadID)
-		}
 		channel, err := NormalizeHumanChannel(mission.HumanChannel)
 		if err != nil {
 			return "", "", nil, err

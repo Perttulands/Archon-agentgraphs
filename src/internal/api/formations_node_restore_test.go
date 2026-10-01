@@ -49,6 +49,7 @@ label = "Orchestrator"
 controller = true
 agentId = "codex-planner"
 harness = "openai-codex"
+effort = "medium"
 [[formation.slot]]
 id = "slot_worker"
 label = "Agent"

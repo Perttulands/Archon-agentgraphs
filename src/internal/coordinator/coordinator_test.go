@@ -204,6 +204,7 @@ label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 [[gate]]
 id = "gate_review"
 title = "Review"
@@ -225,6 +226,7 @@ label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 [[connection]]
 id = "edge_start"
 from = "mis_proof:out"

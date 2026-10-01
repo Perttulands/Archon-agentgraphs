@@ -44,16 +44,13 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 		return serve(http.MethodPatch, "/api/formations/boards/untitled-mission", board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{"))
 	}
 	for _, body := range []string{
-		`{"createMission":{"title":"","goal":"","beadId":""}}`,
+		`{"createMission":{"title":"","goal":""}}`,
 		`{"createFormation":{"type":"solo","title":""}}`,
 		`{"createGate":{"title":"","kinds":["code"],"criterion":"","check":"output_absent","checkVersion":"1","checkValue":""}}`,
 	} {
 		if rec := patch(body); rec.Code != http.StatusOK {
 			t.Fatalf("draft patch %s = %d %s, want saved", body, rec.Code, rec.Body.String())
 		}
-	}
-	if rec := patch(`{"createMission":{"beadId":"../escape"}}`); rec.Code != http.StatusBadRequest {
-		t.Fatalf("unsafe Bead ID = %d %s, want rejected", rec.Code, rec.Body.String())
 	}
 
 	board, err := store.ReadBoard("untitled-mission")

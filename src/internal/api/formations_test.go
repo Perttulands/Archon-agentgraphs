@@ -1700,7 +1700,7 @@ updatedAt = "2026-06-03T16:00:00Z"
 	if rec.Code != http.StatusOK {
 		t.Fatalf("mission status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
-	if !bytes.Contains(rec.Body.Bytes(), []byte(`"beadId":"chlab-123"`)) || bytes.Contains(rec.Body.Bytes(), []byte("chain")) {
+	if bytes.Contains(rec.Body.Bytes(), []byte(`"beadId"`)) || bytes.Contains(rec.Body.Bytes(), []byte("chain")) {
 		t.Fatalf("mission response wrong: %s", rec.Body.String())
 	}
 	var response struct {
@@ -1852,7 +1852,7 @@ func TestFormationsHandlerS4RunLifecycleAndSSE(t *testing.T) {
 func TestFormationsHandlerS4ConfiguredLabExecutorRunsStaffedFormation(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
-	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "lab-fake")
+	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "openai-codex")
 	t.Setenv("CHROTE_FORMATIONS_LAB_CWD", workspace)
 	t.Setenv("CHROTE_FORMATIONS_LAB_ROOTS", workspace)
 
@@ -1861,7 +1861,7 @@ func TestFormationsHandlerS4ConfiguredLabExecutorRunsStaffedFormation(t *testing
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
 		ID:      "lab-poet",
 		Kind:    "specialist",
-		Harness: "lab-fake",
+		Harness: "openai-codex",
 	}); err != nil {
 		t.Fatalf("create persona: %v", err)
 	}
@@ -1955,6 +1955,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_work"
@@ -2048,8 +2049,9 @@ label = "Output"
 id = "slot_writer"
 label = "Writer"
 agentId = "lab-poet"
-harness = "lab-fake"
+harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_draft"
@@ -2090,6 +2092,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_ship"
@@ -2110,6 +2113,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_work"
@@ -2183,6 +2187,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[gate]]
 id = "gate_review"
@@ -2209,6 +2214,7 @@ label = "Worker"
 agentId = "scout"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_work"

@@ -1306,6 +1306,7 @@ label = "Lead"
 controller = true
 agentId = "lead"
 harness = "openai-codex"
+effort = "medium"
 
 [[formation.slot]]
 id = "slot_worker_a"
@@ -1313,6 +1314,7 @@ label = "Worker A"
 controller = false
 agentId = "worker-a"
 harness = "openai-codex"
+effort = "medium"
 
 [[formation.slot]]
 id = "slot_worker_b"
@@ -1320,6 +1322,7 @@ label = "Worker B"
 controller = false
 agentId = "worker-b"
 harness = "openai-codex"
+effort = "medium"
 `)
 }
 
@@ -1363,6 +1366,7 @@ label = "Worker A"
 controller = false
 agentId = "worker-a"
 harness = "openai-codex"
+effort = "medium"
 
 [[formation.slot]]
 id = "slot_worker_b"
@@ -1370,6 +1374,7 @@ label = "Worker B"
 controller = false
 agentId = "worker-b"
 harness = "openai-codex"
+effort = "medium"
 `)
 }
 
@@ -1380,6 +1385,7 @@ label = "Lead"
 controller = true
 agentId = "lead"
 harness = "openai-codex"
+effort = "medium"
 `)
 }
 
@@ -1390,6 +1396,7 @@ label = "Lead"
 controller = true
 agentId = "lead"
 harness = "openai-codex"
+effort = "medium"
 
 [[formation.slot]]
 id = "slot_co_lead"
@@ -1397,6 +1404,7 @@ label = "Co-Lead"
 controller = true
 agentId = "co-lead"
 harness = "openai-codex"
+effort = "medium"
 
 [[formation.slot]]
 id = "slot_worker_a"
@@ -1404,6 +1412,7 @@ label = "Worker A"
 controller = false
 agentId = "worker-a"
 harness = "openai-codex"
+effort = "medium"
 `)
 }
 
@@ -1439,6 +1448,7 @@ label = "Peer A"
 controller = false
 agentId = "peer-a"
 harness = "openai-codex"
+effort = "medium"
 
 [[formation.slot]]
 id = "slot_peer_b"
@@ -1446,6 +1456,7 @@ label = "Peer B"
 controller = false
 agentId = "peer-b"
 harness = "openai-codex"
+effort = "medium"
 `
 }
 

@@ -13,7 +13,7 @@ import (
 
 const (
 	agentNewUsage  = "usage: archon agent new <id> [--kind <kind>] [--harness <h>] [--capable a,b] [--personality p] [--from <path>] [--json]\nA role carries no model or effort; each slot that uses it sets them (archon formation assign)."
-	agentEditUsage = "usage: archon agent edit <id> [--display-name n] [--kind k] [--summary s] [--capable a,b] [--session-stem s] [--harness h] [--model m] [--effort e] [--launch command] [--add-capability t|--remove-capability t|--add-harness h|--note text] [--json]"
+	agentEditUsage = "usage: archon agent edit <id> [--display-name n] [--kind k] [--summary s] [--capable a,b] [--session-stem s] [--harness h] [--model m] [--effort e] [--add-capability t|--remove-capability t|--add-harness h|--note text] [--json]"
 )
 
 type agentNewFlags struct {
@@ -48,7 +48,7 @@ func (f agentNewFlags) refusedSettings(stderr io.Writer) bool {
 }
 
 type agentEditFlags struct {
-	addCapability, removeCapability, addHarness, sessionStem, launch  *string
+	addCapability, removeCapability, addHarness, sessionStem          *string
 	displayName, kind, summary, capable, note, harness, model, effort *string
 	jsonOut                                                           *bool
 }
@@ -57,9 +57,8 @@ func newAgentEditFlags(fs *flag.FlagSet, stderr io.Writer) agentEditFlags {
 	flags := agentEditFlags{
 		addCapability:    fs.String("add-capability", "", "add bare capability"),
 		removeCapability: fs.String("remove-capability", "", "remove bare capability"),
-		addHarness:       fs.String("add-harness", "", "add a harness variant; --model, --effort, --session-stem and --launch then set it"),
+		addHarness:       fs.String("add-harness", "", "add a harness variant; --model, --effort and --session-stem then set it"),
 		sessionStem:      fs.String("session-stem", "", "default or added-harness session stem"),
-		launch:           fs.String("launch", "", "legacy launch command, kept only for harnesses Archon cannot start (such as hermes); claude-code and openai-codex seats ignore it"),
 		displayName:      fs.String("display-name", "", "replace display name"),
 		kind:             fs.String("kind", "", "replace role kind"),
 		summary:          fs.String("summary", "", "replace summary"),
@@ -86,7 +85,7 @@ func agentSettingsFlags(fs *flag.FlagSet) (model, effort *string) {
 func agentUsage(fs *flag.FlagSet, stderr io.Writer, usage string) {
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, usage)
-		fmt.Fprintln(stderr, "Seats start from the harness, model and effort; a launch string is not used for claude-code or openai-codex.")
+		fmt.Fprintln(stderr, "Seats start from the harness, model and effort.")
 		fs.PrintDefaults()
 	}
 }

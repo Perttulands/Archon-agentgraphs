@@ -27,8 +27,8 @@ func TestLabRehearsalRoutesAFormationGateAfterAPeerFormation(t *testing.T) {
 	createS4Persona(t, personas, "scout")
 	fixture := strings.Replace(s4JudgeChainRunBoardFixture(), `kinds = ["code", "formation"]`, `kinds = ["formation"]`, 1)
 	fixture = strings.Replace(fixture, "id = \"fmn_work\"\ntype = \"solo\"", "id = \"fmn_work\"\ntype = \"peer\"", 1)
-	fixture = strings.Replace(fixture, "[[formation.slot]]\nid = \"slot_work\"\nlabel = \"Worker\"\nagentId = \"scout\"\nharness = \"openai-codex\"\ncontroller = true\n",
-		"[[formation.slot]]\nid = \"slot_work\"\nlabel = \"Peer one\"\nagentId = \"scout\"\nharness = \"openai-codex\"\ncontroller = false\n\n[[formation.slot]]\nid = \"slot_work_two\"\nlabel = \"Peer two\"\nagentId = \"scout\"\nharness = \"openai-codex\"\ncontroller = false\n", 1)
+	fixture = strings.Replace(fixture, "[[formation.slot]]\nid = \"slot_work\"\nlabel = \"Worker\"\nagentId = \"scout\"\nharness = \"openai-codex\"\ncontroller = true\neffort = \"medium\"\n",
+		"[[formation.slot]]\nid = \"slot_work\"\nlabel = \"Peer one\"\nagentId = \"scout\"\nharness = \"openai-codex\"\neffort = \"medium\"\ncontroller = false\n\n[[formation.slot]]\nid = \"slot_work_two\"\nlabel = \"Peer two\"\nagentId = \"scout\"\nharness = \"openai-codex\"\neffort = \"medium\"\ncontroller = false\n", 1)
 	writeFixture(t, store.BoardPath("session-search"), fixture)
 	board, err := store.ReadBoard("session-search")
 	if err != nil {

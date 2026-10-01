@@ -325,7 +325,7 @@ func arrangementDiscoveryOrder(roots []string, forward map[string][]string, dept
 }
 
 // arrangementItemSize is the room a card takes on the canvas. Heights are the
-// cockpit's rendered heights (form-ged.10 card text, measured on Wayfinding and
+// cockpit's rendered heights (form-ged.10 card text, measured on Scouting and
 // Delivery) plus a run-tools row and, when the card has referenced files, their
 // chip row, so stacked cards never overlap.
 func arrangementItemSize(item arrangementItem) (int, int) {

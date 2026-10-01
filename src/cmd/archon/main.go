@@ -142,7 +142,7 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 	if !ok {
 		return 2
 	}
-	if len(args) >= 1 && (args[0] == "mission" || args[0] == "board") && (len(args) == 1 || isHelpArg(args[1])) {
+	if len(args) >= 1 && args[0] == "mission" && (len(args) == 1 || isHelpArg(args[1])) {
 		fmt.Fprint(stderr, missionHelp)
 		return 2
 	}
@@ -150,14 +150,6 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 		fmt.Fprintln(stderr, "usage: archon <mission|formation|gate|tool|agent|run|peer> <command>")
 		fmt.Fprintln(stderr, "Run \"archon mission\" to list the mission commands.")
 		return 2
-	}
-	if args[0] == "board" {
-		if !boardAliasVerbs[args[1]] {
-			fmt.Fprintf(stderr, "unknown board command %q; archon board is a deprecated alias, see \"archon mission\"\n", args[1])
-			return 2
-		}
-		fmt.Fprintf(stderr, "archon board is deprecated and will be removed in a later release; use: archon mission %s\n", args[1])
-		args = append([]string{"mission"}, args[1:]...)
 	}
 	if config.Server != "" {
 		return runRemote(config.Server, args, stdout, stderr)
@@ -253,8 +245,6 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 			return runBoardValidate(store, args[2:], stdout, stderr)
 		case "arrange":
 			return runBoardArrange(store, args[2:], stdout, stderr)
-		case "migrate-slots":
-			return runBoardMigrateSlots(store, args[2:], stdout, stderr)
 		case "create":
 			return runMissionCreate(store, args[2:], stdout, stderr)
 		case "list":
@@ -493,15 +483,11 @@ func runAgentEdit(store *formations.PersonaStore, args []string, stdout, stderr 
 	}
 	if *f.addHarness != "" {
 		edit.SessionStem = *f.sessionStem
-		edit.Launch = *f.launch
 		edit.Model = *f.model
 		edit.Effort = *f.effort
 	} else {
 		if setFlags["session-stem"] {
 			edit.SetSessionStem = f.sessionStem
-		}
-		if setFlags["launch"] {
-			edit.SetLaunch = f.launch
 		}
 		edit.Variant = *f.harness
 		if setFlags["model"] {
@@ -1267,7 +1253,7 @@ const (
 
 // missionUpdateGiven reports whether a mission update names any field to change.
 func missionUpdateGiven(given map[string]bool) bool {
-	for _, name := range []string{"title", "goal", "bead", "file", "input-hint", "human-channel"} {
+	for _, name := range []string{"title", "goal", "file", "input-hint", "human-channel"} {
 		if given[name] {
 			return true
 		}
@@ -1280,7 +1266,6 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 	fs.SetOutput(stderr)
 	title := fs.String("title", "", "mission title")
 	goal := fs.String("goal", "", "mission goal")
-	beadID := fs.String("bead", "", "project Beads id")
 	var files stringList
 	fs.Var(&files, "file", "reference file path; repeat for more")
 	humanChannel := fs.String("human-channel", "", humanChannelUsage)
@@ -1313,7 +1298,6 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 	result, err := store.CreateMission(slug, formations.MissionCreateRequest{
 		Title:        *title,
 		Goal:         *goal,
-		BeadID:       *beadID,
 		Files:        files,
 		HumanChannel: *humanChannel,
 		X:            createX,
@@ -1329,16 +1313,12 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 func runMissionList(store *formations.Store, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("mission list", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	jsonOut := fs.Bool("json", false, "write JSON")
+	fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() == 0 {
 		return runBoardList(store, args, stdout, stderr)
-	}
-	if fs.NArg() == 1 {
-		failJSON(stderr, missionListTakesNoArgument(fs.Arg(0)), *jsonOut, "mission", fs.Arg(0))
-		return 2
 	}
 	fmt.Fprintln(stderr, "usage: archon mission list [--json]")
 	return 2
@@ -1443,7 +1423,6 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	fs.SetOutput(stderr)
 	title := fs.String("title", "", "mission title")
 	goal := fs.String("goal", "", "mission goal")
-	beadID := fs.String("bead", "", "project Beads id")
 	var files stringList
 	fs.Var(&files, "file", "reference file path, replacing the current ones; repeat for more, or give an empty value to clear")
 	inputHint := fs.String("input-hint", "", "what a run brief for this mission should contain")
@@ -1478,9 +1457,6 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	if given["goal"] {
 		update.Goal = goal
 	}
-	if given["bead"] {
-		update.BeadID = beadID
-	}
 	if given["file"] {
 		refs := []string(files)
 		update.Files = &refs
@@ -1507,7 +1483,6 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 	fs := flag.NewFlagSet("mission run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	missionSelector := fs.String("input", "", "the Input card to start from; needed only when the mission has several")
-	fs.StringVar(missionSelector, "mission", "", "older name for --input")
 	actor := fs.String("actor", "agent:archon", "run actor")
 	maxDispatch := fs.Int("max-dispatch", 0, "optional cap on the run's formation starts, judges included; unset means no limit")
 	maxAttempts := fs.Int("max-attempts", 0, "optional cap on each step's attempts; unset means no limit")
@@ -1604,7 +1579,6 @@ func runList(store *formations.Store, args []string, stdout, stderr io.Writer) i
 	fs := flag.NewFlagSet("run list", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	boardSelector := fs.String("mission", "", "list only this mission's runs")
-	fs.StringVar(boardSelector, "board", "", "older name for --mission")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2

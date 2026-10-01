@@ -29,7 +29,7 @@ func TestCodexPersonaPresetsAreAvailableWithoutPersistedCards(t *testing.T) {
 			t.Fatalf("preset projection = %+v", card)
 		}
 		variant := card.DefaultVariant()
-		if variant.ID != "openai-codex" || variant.SessionStem != card.ID || variant.Launch != "" {
+		if variant.ID != "openai-codex" || variant.SessionStem != card.ID {
 			t.Fatalf("preset harness = %+v", variant)
 		}
 	}
@@ -79,13 +79,11 @@ func TestEditingCodexPresetMaterializesLocalOverride(t *testing.T) {
 	summary := "Builds in the selected workspace"
 	capabilities := []string{"implement", "test", "refactor"}
 	stem := "codex-builder-main"
-	launch := "codex --yolo --model gpt-5.6-codex"
 	updated, err := store.EditPersona("codex-builder", EditPersonaRequest{
 		SetDisplayName:  &name,
 		SetSummary:      &summary,
 		SetCapabilities: &capabilities,
 		SetSessionStem:  &stem,
-		SetLaunch:       &launch,
 		ExpectedETag:    builtin.ETag,
 	})
 	if err != nil {
@@ -98,7 +96,7 @@ func TestEditingCodexPresetMaterializesLocalOverride(t *testing.T) {
 		t.Fatalf("capabilities = %v, want %v", updated.Tags, capabilities)
 	}
 	variant := updated.DefaultVariant()
-	if variant.SessionStem != stem || variant.Launch != launch {
+	if variant.SessionStem != stem {
 		t.Fatalf("updated harness = %+v", variant)
 	}
 	if _, err := os.Stat(store.PersonaPath("codex-builder")); err != nil {

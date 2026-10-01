@@ -37,6 +37,7 @@ label = "Lead"
 controller = false
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 [[formation.slot]]
 id = "slot_reviewer"
 label = "Reviewer"
@@ -44,6 +45,7 @@ controller = true
 agentId = "codex-reviewer"
 harness = "openai-codex"
 reviewNote = "keep this unknown key"
+effort = "medium"
 [[formation.slot]]
 id = "slot_spare"
 label = "Spare"

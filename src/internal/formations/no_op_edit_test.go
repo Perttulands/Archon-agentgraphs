@@ -20,7 +20,7 @@ func TestAuthoringEditsThatChangeNothingKeepRevisionAndETag(t *testing.T) {
 		}
 		return WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev}
 	}
-	mission, err := store.CreateMission("same", MissionCreateRequest{Title: "Work", Goal: "Do it", BeadID: "form-demo"}, current())
+	mission, err := store.CreateMission("same", MissionCreateRequest{Title: "Work", Goal: "Do it"}, current())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestAuthoringEditsThatChangeNothingKeepRevisionAndETag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	title, goal, bead, criterion := "Renamed", "Do it well", "form-other", "Looks right"
+	title, goal, criterion := "Renamed", "Do it well", "Looks right"
 	kinds := []string{"code", "human"}
 	check, version, value := "output_contains", "1", "DONE"
 
@@ -73,7 +73,7 @@ func TestAuthoringEditsThatChangeNothingKeepRevisionAndETag(t *testing.T) {
 			return err
 		}},
 		{"update a mission with its fields", func(opts WriteOptions) error {
-			_, err := store.UpdateMission("same", MissionUpdateRequest{MissionID: mission.Mission.ID, Title: &title, Goal: &goal, BeadID: &bead}, opts)
+			_, err := store.UpdateMission("same", MissionUpdateRequest{MissionID: mission.Mission.ID, Title: &title, Goal: &goal}, opts)
 			return err
 		}},
 		{"attach the same judge chain", func(opts WriteOptions) error {

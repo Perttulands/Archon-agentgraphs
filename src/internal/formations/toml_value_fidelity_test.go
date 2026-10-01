@@ -204,6 +204,7 @@ harness = '''
 claude-code
 OLD_HARNESS_CONTINUATION_SHOULD_GO
 '''
+effort = "medium"
 ` + unknownSlot + `
 [[gate]]
 id = 'gate_review'
@@ -412,7 +413,7 @@ func TestTOMLPairedWritesRejectInvalidLayoutBeforeBoardMutation(t *testing.T) {
 		{
 			name: "create Mission",
 			run: func(store *Store, opts WriteOptions) error {
-				_, err := store.CreateMission("invalid-pair", MissionCreateRequest{Title: "Must not persist", BeadID: "ctx-ug7.31"}, opts)
+				_, err := store.CreateMission("invalid-pair", MissionCreateRequest{Title: "Must not persist"}, opts)
 				return err
 			},
 		},
@@ -503,7 +504,7 @@ func TestTOMLPairedCreatesValidateGeneratedCandidatesBeforePublication(t *testin
 			name:      "Mission table-array collision",
 			boardTail: "mission = []\n",
 			create: func(store *Store, opts WriteOptions) error {
-				_, err := store.CreateMission("candidate-validation", MissionCreateRequest{Title: "Must not persist", BeadID: "ctx-ug7.31"}, opts)
+				_, err := store.CreateMission("candidate-validation", MissionCreateRequest{Title: "Must not persist"}, opts)
 				return err
 			},
 		},

@@ -526,7 +526,6 @@ type formationsUpdateMissionRequest struct {
 	ID           string    `json:"id"`
 	Title        *string   `json:"title"`
 	Goal         *string   `json:"goal"`
-	BeadID       *string   `json:"beadId"`
 	Files        *[]string `json:"files"`
 	InputHint    *string   `json:"inputHint"`
 	HumanChannel *string   `json:"humanChannel"`
@@ -575,7 +574,6 @@ type formationsRewireConnectionRequest struct {
 type formationsCreateMissionRequest struct {
 	Title        string   `json:"title"`
 	Goal         string   `json:"goal"`
-	BeadID       string   `json:"beadId"`
 	Files        []string `json:"files"`
 	HumanChannel string   `json:"humanChannel"`
 	X            int      `json:"x"`
@@ -1517,7 +1515,6 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			MissionID:    update.ID,
 			Title:        update.Title,
 			Goal:         update.Goal,
-			BeadID:       update.BeadID,
 			Files:        update.Files,
 			InputHint:    update.InputHint,
 			HumanChannel: update.HumanChannel,
@@ -1599,7 +1596,6 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		result, err := h.store.CreateMission(slug, formations.MissionCreateRequest{
 			Title:        mission.Title,
 			Goal:         mission.Goal,
-			BeadID:       mission.BeadID,
 			Files:        mission.Files,
 			HumanChannel: mission.HumanChannel,
 			X:            mission.X,

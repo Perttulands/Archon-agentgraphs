@@ -70,13 +70,9 @@ to = "fmn_map:port_map_in"
 	if got.Formations[0].Title != "Map the territory" || len(got.Connections) != 1 {
 		t.Fatalf("formation rename = %+v", got)
 	}
-	got = board(patch(`{"updateMission":{"id":"mis_frame","goal":"Draft a framing","beadId":"form-3yd.10"}}`))
-	if got.Missions[0].Title != "New mission" || got.Missions[0].Goal != "Draft a framing" || got.Missions[0].BeadID != "form-3yd.10" {
+	got = board(patch(`{"updateMission":{"id":"mis_frame","goal":"Draft a framing"}}`))
+	if got.Missions[0].Title != "New mission" || got.Missions[0].Goal != "Draft a framing" {
 		t.Fatalf("mission update = %+v", got.Missions)
-	}
-	got = board(patch(`{"updateMission":{"id":"mis_frame","beadId":""}}`))
-	if got.Missions[0].BeadID != "" || got.Missions[0].Goal != "Draft a framing" {
-		t.Fatalf("mission bead clear = %+v", got.Missions)
 	}
 	got = board(patch(`{"updateMission":{"id":"mis_frame","inputHint":"Link the sketch"}}`))
 	if got.Missions[0].InputHint != "Link the sketch" || got.Missions[0].Goal != "Draft a framing" {
@@ -89,7 +85,6 @@ to = "fmn_map:port_map_in"
 
 	before := readFormationsAPIFile(t, store.BoardPath("rename"))
 	for body, status := range map[string]int{
-		`{"updateMission":{"id":"mis_frame","beadId":"Home-123"}}`: http.StatusBadRequest,
 		`{"updateMission":{"id":"mis_missing","title":"x"}}`:       http.StatusNotFound,
 		`{"updateFormation":{"id":"fmn_missing","title":"x"}}`:     http.StatusNotFound,
 	} {

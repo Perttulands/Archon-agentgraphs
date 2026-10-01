@@ -118,9 +118,13 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		fs.StringVar(&responseFile, "response-file", "", "local UTF-8 file containing the complete verbatim response")
 	}
 	mode := fs.String("mode", "reattach", "resume mode")
-	mission := fs.String("input", "", "the Input card to start from; needed only when the mission has several")
-	fs.StringVar(mission, "mission", "", "run list: the mission whose runs to list; mission run: older name for --input")
-	boardFilter := fs.String("board", "", "run list: older name for --mission")
+	var inputCard, missionFilter string
+	switch args[0] + " " + args[1] {
+	case "mission run":
+		fs.StringVar(&inputCard, "input", "", "the Input card to start from; needed only when the mission has several")
+	case "run list":
+		fs.StringVar(&missionFilter, "mission", "", "the mission whose runs to list")
+	}
 	reason := fs.String("reason", "", "operator reason; for gate approve|reject, the response text")
 	fs.StringVar(reason, "response", "", "alias of --reason for gate approve|reject")
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
@@ -159,12 +163,12 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		if err := json.Unmarshal(raw, &board); err != nil {
 			return fail(stderr, err)
 		}
-		if *mission == "" {
+		if inputCard == "" {
 			id, err := runInputCard(&board.Data.Board, pos[0])
 			if err != nil {
 				return failJSON(stderr, err, *jsonOut, "run", "")
 			}
-			*mission = id
+			inputCard = id
 		}
 		path += "/runs"
 		method = "POST"
@@ -174,7 +178,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 				limits[key] = value
 			}
 		}
-		fields := map[string]any{"cwd": *cwd, "brief": briefText, "beadId": *bead, "board": pos[0], "missionId": *mission, "expectedRev": board.Data.Board.Rev, "limits": limits}
+		fields := map[string]any{"cwd": *cwd, "brief": briefText, "beadId": *bead, "board": pos[0], "missionId": inputCard, "expectedRev": board.Data.Board.Rev, "limits": limits}
 		if len(contextPaths) > 0 {
 			fields["contextPaths"] = contextPaths
 		}
@@ -192,12 +196,8 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 	case "run list":
 		path += "/runs"
-		filter := *mission
-		if filter == "" {
-			filter = *boardFilter
-		}
-		if filter != "" {
-			path += "?mission=" + url.QueryEscape(filter)
+		if missionFilter != "" {
+			path += "?mission=" + url.QueryEscape(missionFilter)
 		}
 	case "run status", "run logs", "run gates", "run seats":
 		if len(pos) != 1 {

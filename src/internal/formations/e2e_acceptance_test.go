@@ -325,6 +325,7 @@ label = "Design lead"
 agentId = "design-lead"
 harness = "claude-code"
 controller = true
+effort = "medium"
 
 [[formation]]
 id = "fmn_frontend"
@@ -349,6 +350,7 @@ label = "Frontend"
 agentId = "frontend-codex"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[gate]]
 id = "gate_taste"
@@ -378,6 +380,7 @@ label = "Publisher"
 agentId = "frontend-codex"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 
 [[connection]]
 id = "edge_mission_design"

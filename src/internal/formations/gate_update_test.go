@@ -79,7 +79,7 @@ func TestUpdateGateSetsAndClearsEachField(t *testing.T) {
 func TestUpdateGateConvertsCodeGateToHuman(t *testing.T) {
 	store := NewStore(t.TempDir())
 	store.Now = fixedClock()
-	// The shape of Wayfinding's "Review gate": a code gate whose check value holds prose.
+	// The shape of Scouting's "Review gate": a code gate whose check value holds prose.
 	writeFixture(t, store.BoardPath("session-search"), s4MissionOnlyBoardFixture()+`
 [[gate]]
 id = "gate_review"

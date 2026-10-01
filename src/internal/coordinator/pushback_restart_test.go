@@ -32,6 +32,7 @@ id = "slot_` + id + `"
 label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 controller = true
 `
 	}

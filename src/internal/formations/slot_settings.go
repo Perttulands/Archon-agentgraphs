@@ -12,10 +12,6 @@ import (
 // could start with, or staffing that leaves the effort unchosen.
 var ErrInvalidSlotSettings = errors.New("invalid slot settings")
 
-// errRoleBinding marks a legacy slot whose role has no harness variant to take
-// its settings from.
-var errRoleBinding = errors.New("role binding")
-
 // EffortPolicyEntry is one line of the effort policy: which effort suits which
 // kind of work.
 type EffortPolicyEntry struct {
@@ -54,13 +50,6 @@ func (slot FormationSlot) Staffed() bool {
 	return slot.AgentID != "" || slot.Harness != "" || slot.Model != "" || slot.Effort != ""
 }
 
-// legacyStaffing reports a slot written before slots owned their settings: it
-// names a role and has no model or effort of its own, so the role's harness
-// variant still supplies them until the slot is migrated.
-func (slot FormationSlot) legacyStaffing() bool {
-	return slot.AgentID != "" && slot.Model == "" && slot.Effort == ""
-}
-
 // SlotSettings is what a staffed slot's seat runs.
 type SlotSettings struct {
 	// Role is the slot's optional persona; blank means a vanilla agent.
@@ -68,19 +57,15 @@ type SlotSettings struct {
 	Harness string `json:"harness"`
 	Model   string `json:"model,omitempty"`
 	Effort  string `json:"effort"`
-	// FromRole says the settings came from the role's harness variant, because
-	// the slot predates slots owning them and has not been migrated.
-	FromRole bool `json:"fromRole,omitempty"`
-	// SessionStem, Launch and Source are carried from the role's variant for the
-	// run record; seats never run the launch string.
+	// SessionStem and Source are carried from the role's variant for the run
+	// record.
 	SessionStem string `json:"-"`
-	Launch      string `json:"-"`
 	Source      string `json:"-"`
 }
 
 // Variant is the harness variant a seat for these settings starts from.
 func (s SlotSettings) Variant() HarnessVariant {
-	return HarnessVariant{ID: s.Harness, SessionStem: s.SessionStem, Model: s.Model, Effort: s.Effort, Launch: s.Launch, Source: s.Source}
+	return HarnessVariant{ID: s.Harness, SessionStem: s.SessionStem, Model: s.Model, Effort: s.Effort, Source: s.Source}
 }
 
 // LaunchCommand is the seat command these settings start, as HarnessVariant
@@ -91,9 +76,7 @@ func (s SlotSettings) LaunchCommand() (string, error) {
 
 // ResolveSlotSettings returns what a staffed slot runs and its role card, if
 // it has one. A slot's own harness, model and effort are authoritative; its
-// role only adds role text. A legacy slot (a role and no model or effort of its
-// own) takes its role's current effective settings, which is also the rule the
-// slot migration writes down.
+// role only adds role text.
 func ResolveSlotSettings(slot FormationSlot, personas *PersonaStore) (SlotSettings, *PersonaCard, error) {
 	if !slot.Staffed() {
 		return SlotSettings{}, nil, fmt.Errorf("%w: slot %s is not staffed", ErrInvalidSlotSettings, slotName(slot))
@@ -109,13 +92,6 @@ func ResolveSlotSettings(slot FormationSlot, personas *PersonaStore) (SlotSettin
 		}
 		card = read
 	}
-	if slot.legacyStaffing() {
-		settings, err := roleSettings(card, slot.Harness)
-		if err != nil {
-			return SlotSettings{}, nil, fmt.Errorf("%w: %w", errRoleBinding, err)
-		}
-		return settings, card, nil
-	}
 	if err := validateSlotSettings(slotName(slot), slot.Harness, slot.Model, slot.Effort); err != nil {
 		return SlotSettings{}, nil, err
 	}
@@ -129,10 +105,9 @@ func ResolveSlotSettings(slot FormationSlot, personas *PersonaStore) (SlotSettin
 	return settings, card, nil
 }
 
-// roleSettings reads a role's current effective settings from its legacy
-// harness variant: the variant's harness and model, and its effort or the
-// default effort. It is the migration rule for slots that predate slot-owned
-// settings.
+// roleSettings reads a role's current effective settings from its harness
+// variant: the variant's harness and model, and its effort or the default
+// effort. The cockpit's role drag writes them onto a slot.
 func roleSettings(card *PersonaCard, harness string) (SlotSettings, error) {
 	variant, err := card.SelectHarnessVariant(harness)
 	if err != nil {
@@ -143,9 +118,7 @@ func roleSettings(card *PersonaCard, harness string) (SlotSettings, error) {
 		Harness:     variant.ID,
 		Model:       variant.Model,
 		Effort:      variant.effectiveEffort(),
-		FromRole:    true,
 		SessionStem: variant.SessionStem,
-		Launch:      variant.Launch,
 		Source:      variant.Source,
 	}, nil
 }
@@ -177,8 +150,8 @@ func validateSlotSettings(slot, harnessID, model, effort string) error {
 }
 
 // RefuseRoleSettings refuses a model or effort on a new role card. Slots own
-// what their seats run; a role is only role text. Existing cards' legacy
-// model and effort are still read, for migration and the role drag.
+// what their seats run; a role is only role text. Existing cards' model and
+// effort are still read for the role drag.
 func RefuseRoleSettings(model, effort string) error {
 	if strings.TrimSpace(model) == "" && strings.TrimSpace(effort) == "" {
 		return nil
@@ -213,13 +186,6 @@ func (slot FormationSlot) StaffingSummary() string {
 	role := slot.AgentID
 	if role == "" {
 		role = "vanilla"
-	}
-	if slot.legacyStaffing() {
-		parts := []string{role}
-		if slot.Harness != "" {
-			parts = append(parts, slot.Harness)
-		}
-		return strings.Join(append(parts, "model and effort from the role"), " · ")
 	}
 	model := slot.Model
 	if model == "" {

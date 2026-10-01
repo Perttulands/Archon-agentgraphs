@@ -20,7 +20,7 @@ func TestArchonNewRunStartDefinitionErrorsPrecedeUnavailableAuthority(t *testing
 	}{
 		{
 			name:     "mission missing board",
-			args:     []string{"mission", "run", "missing", "--mission", "mis_missing", "--json"},
+			args:     []string{"mission", "run", "missing", "--input", "mis_missing", "--json"},
 			wantCode: "not_found",
 		},
 		{
@@ -32,7 +32,7 @@ func TestArchonNewRunStartDefinitionErrorsPrecedeUnavailableAuthority(t *testing
 			name:     "mission missing root",
 			slug:     "session-search",
 			board:    archonS4BoardFixture(),
-			args:     []string{"mission", "run", "session-search", "--mission", "mis_missing", "--json"},
+			args:     []string{"mission", "run", "session-search", "--input", "mis_missing", "--json"},
 			wantCode: "not_found",
 		},
 		{
@@ -67,7 +67,7 @@ func TestArchonNewRunStartDefinitionErrorsPrecedeUnavailableAuthority(t *testing
 			name:     "Mission reaches non-executing Tool",
 			slug:     "tool-parity",
 			board:    archonRuntimeAuthorityToolBoardFixture(),
-			args:     []string{"mission", "run", "tool-parity", "--mission", "mis_main", "--json"},
+			args:     []string{"mission", "run", "tool-parity", "--input", "mis_main", "--json"},
 			wantCode: "tool_execution_unavailable",
 		},
 	}

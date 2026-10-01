@@ -122,7 +122,7 @@ to = "fmn_work:port_work_in"
 				t.Fatal(err)
 			}
 			seat := lastEventOfType(t, events, "seat_created")
-			if seat.NodeID != "fmn_ship" || seat.Data["model"] != "model-before" || seat.Data["effort"] != "low" {
+			if seat.NodeID != "fmn_ship" || seat.Data["model"] != "" || seat.Data["effort"] != "medium" {
 				t.Fatalf("resumed seat settings = %+v", seat)
 			}
 			if !strings.Contains(client.lastPrompt, "admitted summary") || strings.Contains(client.lastPrompt, "edited summary") {
@@ -143,14 +143,15 @@ to = "fmn_work:port_work_in"
 				t.Fatal(err)
 			}
 			seat = lastEventOfType(t, events, "seat_created")
-			if seat.Data["model"] != newModel || seat.Data["effort"] != newEffort || !strings.Contains(client.lastPrompt, newSummary) {
+			if seat.Data["model"] != "" || seat.Data["effort"] != "medium" || !strings.Contains(client.lastPrompt, newSummary) {
 				t.Fatalf("new run did not use new persona: %+v", seat)
 			}
 		})
 	}
 }
 
-func TestIncompletePersonaSnapshotsBlockNewSeats(t *testing.T) {
+// Only the current snapshot schema is read; an older one cannot start a seat.
+func TestOlderPersonaSnapshotSchemasBlockNewSeats(t *testing.T) {
 	for _, harness := range []string{"lab", "tmux"} {
 		t.Run(harness, func(t *testing.T) {
 			store, personas := s4RunFixture(t)
@@ -191,11 +192,11 @@ func TestIncompletePersonaSnapshotsBlockNewSeats(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := lastEventOfType(t, events, RunEventError).Data["code"]; got != "persona_snapshot_incomplete" {
+			if got := lastEventOfType(t, events, RunEventError).Data["code"]; got != "persona_snapshot_invalid" {
 				t.Fatalf("error = %v", got)
 			}
 			if len(client.created) != 0 || len(eventNodeOrder(events, RunEventSlotDispatch)) != 0 {
-				t.Fatal("incomplete snapshot launched a seat")
+				t.Fatal("an older snapshot launched a seat")
 			}
 		})
 	}
@@ -232,7 +233,7 @@ func TestPersonaSnapshotRejectsAlteredOrMismatchedBindings(t *testing.T) {
 			if err := os.WriteFile(path, []byte(text), 0600); err != nil {
 				t.Fatal(err)
 			}
-			_, _, err = store.readRunPersonaBinding(started.RunID, "fmn_research", FormationSlot{ID: "slot_research", AgentID: "scout", Harness: "openai-codex"})
+			_, _, err = store.readRunPersonaBinding(started.RunID, "fmn_research", FormationSlot{ID: "slot_research", AgentID: "scout", Harness: "openai-codex", Effort: "medium"})
 			var executionErr *RunExecutionError
 			if !errors.As(err, &executionErr) || executionErr.Code != "persona_snapshot_invalid" {
 				t.Fatalf("snapshot mutation error = %v", err)
@@ -252,7 +253,7 @@ func TestPersonaSnapshotPreservesUnpinnedModelAndResolvesEffort(t *testing.T) {
 	if err := os.Remove(personas.PersonaPath("scout")); err != nil {
 		t.Fatal(err)
 	}
-	card, variant, err := store.readRunPersonaBinding(started.RunID, "fmn_research", FormationSlot{ID: "slot_research", AgentID: "scout", Harness: "openai-codex"})
+	card, variant, err := store.readRunPersonaBinding(started.RunID, "fmn_research", FormationSlot{ID: "slot_research", AgentID: "scout", Harness: "openai-codex", Effort: "medium"})
 	if err != nil {
 		t.Fatal(err)
 	}

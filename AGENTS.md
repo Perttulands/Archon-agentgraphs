@@ -27,8 +27,7 @@ Archon makes chaining agents and gates easy and great; that is all it does
 - `src/internal/coordinator/` owns admission, runtime commands and projections.
 - `src/internal/api/` owns authoring HTTP and local adapters.
 - `src/internal/daemon/` owns `archond` flags, executor wiring and startup.
-  `src/cmd/archond/` and the compatibility entrypoint `src/cmd/formationsd/`
-  only call it.
+  `src/cmd/archond/` only calls it.
 - `src/cmd/archon/` owns the CLI.
 - `dashboard/` owns the Archon board editor and Agents view.
 - `Perttus_vision_for_agent_orchestration/` retains vision and canvas references.
@@ -61,7 +60,7 @@ listen addresses through flags or environment, with placeholders in examples.
 ## Validation
 
 ```bash
-cd src && go test ./... && go build ./cmd/archon && go build ./cmd/archond && go build ./cmd/formationsd
+cd src && go test ./... && go build ./cmd/archon && go build ./cmd/archond
 cd ../dashboard && npm ci && npm run test:unit && npm run build && npm run lint
 ```
 

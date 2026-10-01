@@ -32,6 +32,7 @@ id = "slot_worker"
 label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 controller = false
 [[gate]]`, 1)
 	if err := os.WriteFile(c.store.BoardPath("proof"), []byte(board), 0600); err != nil {

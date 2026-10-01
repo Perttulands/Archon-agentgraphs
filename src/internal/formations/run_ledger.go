@@ -164,7 +164,6 @@ type runBinding struct {
 	CardTOML    string `toml:"cardToml"`
 	Model       string `toml:"model"`
 	Effort      string `toml:"effort"`
-	Launch      string `toml:"launch"`
 	Source      string `toml:"source"`
 }
 
@@ -215,9 +214,6 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 	mission, ok := findMission(board, req.MissionID)
 	if !ok {
 		return nil, fmt.Errorf("%w: Input card %q", ErrNotFound, req.MissionID)
-	}
-	if req.BeadID != "" {
-		mission.BeadID = req.BeadID
 	}
 	if err := preflightMissionDefinition(board, mission.ID); err != nil {
 		return nil, err
@@ -294,7 +290,7 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 		BoardID:   board.ID,
 		BoardRev:  board.Rev,
 		MissionID: mission.ID,
-		BeadID:    mission.BeadID,
+		BeadID:    req.BeadID,
 		Epoch:     0,
 		Attempt:   0,
 		Data: map[string]any{
@@ -304,7 +300,7 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 			"snapshot":         snapshotPath,
 			"bindingsSnapshot": bindingsPath,
 			"missionId":        mission.ID,
-			"beadId":           mission.BeadID,
+			"beadId":           req.BeadID,
 			"objective":        mission.Goal,
 			"cwd":              req.Cwd,
 			"contextPaths":     req.ContextPaths,
@@ -815,7 +811,6 @@ func resolveRunBindings(board *BoardDocument, personas *PersonaStore) ([]runBind
 				SessionStem: settings.SessionStem,
 				Model:       settings.Model,
 				Effort:      settings.Effort,
-				Launch:      settings.Launch,
 				Source:      settings.Source,
 			}
 			if card != nil {
@@ -852,9 +847,6 @@ func renderRunBindings(runID string, board *BoardDocument, mission MissionNode, 
 		}
 		b.WriteString("model = " + renderString(binding.Model) + "\n")
 		b.WriteString("effort = " + renderString(binding.Effort) + "\n")
-		if binding.Launch != "" {
-			b.WriteString("launch = " + renderString(binding.Launch) + "\n")
-		}
 		if binding.Source != "" {
 			b.WriteString("source = " + renderString(binding.Source) + "\n")
 		}

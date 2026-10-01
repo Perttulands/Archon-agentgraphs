@@ -213,7 +213,7 @@ func TestLabJudgePushbackLoop(t *testing.T) {
 			if !matchedDispatch {
 				t.Fatal("missing second work dispatch")
 			}
-			for _, text := range []string{"gate feedback from gate_review, attempt 1:", "reason: add the missing test", "evidence: coverage report: retry untested", "original input: draft one", "mission bead: " + board.Missions[0].BeadID} {
+			for _, text := range []string{"gate feedback from gate_review, attempt 1:", "reason: add the missing test", "evidence: coverage report: retry untested", "original input: draft one"} {
 				if !strings.Contains(prompt, text) {
 					t.Errorf("second dispatched lab prompt missing %q: %s", text, prompt)
 				}

@@ -44,7 +44,7 @@ func TestDraftAuthoringSavesBlankAndPartialFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	if got, ok := findMission(reloaded, mission.Mission.ID); !ok || got.BeadID != "" || got.Title != "Input" {
+	if got, ok := findMission(reloaded, mission.Mission.ID); !ok || got.Title != "Input" {
 		t.Fatalf("reloaded mission = %+v, want draft with default title and no Bead", got)
 	}
 	if got, ok := findGate(reloaded.Gates, partialGate.Gate.ID); !ok || got.Check != "output_absent" || got.CheckVersion != "1" || got.CheckValue != "" {
@@ -61,10 +61,6 @@ func TestDraftAuthoringSavesBlankAndPartialFields(t *testing.T) {
 		name  string
 		write func() error
 	}{
-		{"unsafe Bead ID", func() error {
-			_, err := store.CreateMission("sketch", MissionCreateRequest{BeadID: "Home-123"}, current())
-			return err
-		}},
 		{"unknown profile tuple", func() error {
 			_, err := store.CreateGate("sketch", GateCreateRequest{Check: "no_such_profile", CheckVersion: "1"}, current())
 			return err
@@ -148,10 +144,13 @@ id = "slot_lead"
 label = "Lead"
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 [[formation.slot]]
 id = "slot_worker"
 label = "Worker"
 agentId = "nobody-here"
+harness = "claude-code"
+effort = "medium"
 
 [[formation]]
 id = "fmn_sketch"
@@ -312,10 +311,10 @@ func TestRunAdmissionRefusesAFileWithSeveralInputCards(t *testing.T) {
 func TestRunAdmissionAcceptsCompleteRunPath(t *testing.T) {
 	store := NewStore(t.TempDir())
 	raw := admissionDraftBoard
-	raw = strings.Replace(raw, "id = \"slot_plan\"\nlabel = \"Planner\"", "id = \"slot_plan\"\nlabel = \"Planner\"\nagentId = \"codex-builder\"\nharness = \"openai-codex\"", 1)
+	raw = strings.Replace(raw, "id = \"slot_plan\"\nlabel = \"Planner\"", "id = \"slot_plan\"\nlabel = \"Planner\"\nagentId = \"codex-builder\"\nharness = \"openai-codex\"\neffort = \"medium\"", 1)
 	raw = strings.Replace(raw, "checkVersion = \"1\"", "checkVersion = \"1\"\ncheckValue = \"error\"", 1)
-	raw = strings.Replace(raw, "harness = \"openai-codex\"\n[[formation.slot]]\nid = \"slot_worker\"", "harness = \"openai-codex\"\ncontroller = true\n[[formation.slot]]\nid = \"slot_worker\"", 1)
-	raw = strings.Replace(raw, `agentId = "nobody-here"`, "agentId = \"codex-builder\"\nharness = \"openai-codex\"", 1)
+	raw = strings.Replace(raw, "effort = \"medium\"\n[[formation.slot]]\nid = \"slot_worker\"", "effort = \"medium\"\ncontroller = true\n[[formation.slot]]\nid = \"slot_worker\"", 1)
+	raw = strings.Replace(raw, `agentId = "nobody-here"`, "agentId = \"codex-builder\"\nharness = \"openai-codex\"\neffort = \"medium\"", 1)
 	raw = strings.Replace(raw, `type = "flow"`, `type = "solo"`, 1)
 	raw = strings.Replace(raw, "[[connection]]\nid = \"edge_review\"\nfrom = \"fmn_build:port_build_out\"\nto = \"gate_review:in\"\n", "", 1)
 	writeFixture(t, store.BoardPath("draft"), raw)

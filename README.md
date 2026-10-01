@@ -77,8 +77,7 @@ archond --version
 ```
 
 The installer defaults to `$HOME/.local`. Use `--prefix /absolute/path` to
-choose another location. It installs `bin/archon`, `bin/archond` and the
-`formationsd` compatibility command, with complete releases under
+choose another location. It installs `bin/archon` and `bin/archond`, with complete releases under
 `lib/archon/releases/` and a `lib/archon/current` link.
 The daemon finds the installed UI automatically. Keep runtime state in a
 separate directory so replacing a release leaves missions and history intact.
@@ -89,9 +88,7 @@ separate directory so replacing a release leaves missions and history intact.
 | `archond` | Run missions, manage agent seats, persist events and serve the UI. |
 | `share/archon/ui/` | Browser UI included in the release. |
 
-Archon was previously called Formations. Existing `formationsd` commands,
-`.formations` storage and `/api/formations` routes still work. A formation is
-also the name of an execution node. CHROTE is not required.
+A formation is the name of an execution node. CHROTE is not required.
 
 ## Try the UI
 
@@ -126,9 +123,7 @@ and authenticate those CLIs. Start the daemon with `--executor tmux` and your
 absolute paths for `--socket`, `--tmux-bin`, `--codex-transcripts` and
 `--claude-transcripts`. The daemon creates seats on demand when a formation
 runs. See the [operator procedure](docs/CONTRACT.md#operator-procedure) for
-configuration, execution limits, approvals and recovery. The short
-[Wayfinding guide](docs/wayfinding.md) covers launch context, watching a run,
-finding asking seats and answering gates with text or a file.
+configuration, execution limits, approvals and recovery.
 
 The delivery example also expects Beads and the shared skills named in its
 briefs. Those tools and skills are not bundled here; only Archon's own skill is. Read and adapt the

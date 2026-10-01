@@ -10,7 +10,7 @@ import (
 
 // vanillaSlotBoard is s4RunBoardFixture with a slot that has no role.
 func vanillaSlotBoard(settings string) string {
-	return strings.Replace(s4RunBoardFixture(), "agentId = \"scout\"\nharness = \"openai-codex\"\n", settings, 1)
+	return strings.Replace(s4RunBoardFixture(), "agentId = \"scout\"\nharness = \"openai-codex\"\ncontroller = true\neffort = \"medium\"\n", settings+"controller = true\n", 1)
 }
 
 func stubHarnessCLIs(t *testing.T) string {

@@ -39,6 +39,7 @@ id = "slot_plan"
 label = "Plan"
 agentId = "codex-planner"
 harness = "openai-codex"
+effort = "medium"
 [[formation.slot]]
 id = "slot_execute"
 label = "Execute"

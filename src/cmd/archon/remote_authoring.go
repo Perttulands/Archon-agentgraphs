@@ -543,16 +543,12 @@ func remoteBoardArrange(c *remoteClient, args []string, stdout, stderr io.Writer
 
 func remoteMissionList(c *remoteClient, args []string, stdout, stderr io.Writer) int {
 	fs := remoteFlags("mission list", stderr)
-	jsonOut := fs.Bool("json", false, "write JSON")
+	fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() == 0 {
 		return remoteBoardList(c, args, stdout, stderr)
-	}
-	if fs.NArg() == 1 {
-		failJSON(stderr, missionListTakesNoArgument(fs.Arg(0)), *jsonOut, "mission", fs.Arg(0))
-		return 2
 	}
 	fmt.Fprintln(stderr, "usage: archon mission list [--json]")
 	return 2
@@ -582,7 +578,6 @@ func remoteMissionCreate(c *remoteClient, args []string, stdout, stderr io.Write
 	fs := remoteFlags("mission create", stderr)
 	title := fs.String("title", "", "mission title")
 	goal := fs.String("goal", "", "mission goal")
-	beadID := fs.String("bead", "", "project Beads id")
 	var files stringList
 	fs.Var(&files, "file", "reference file path; repeat for more")
 	humanChannel := fs.String("human-channel", "", humanChannelUsage)
@@ -602,7 +597,7 @@ func remoteMissionCreate(c *remoteClient, args []string, stdout, stderr io.Write
 			return "", nil, &remoteSelectorError{boundary: "mission", selector: fs.Arg(0), err: err}
 		}
 		createX, createY, err := c.freePosition(board, fs, *x, *y)
-		return "createMission", map[string]any{"title": *title, "goal": *goal, "beadId": *beadID, "files": []string(files), "humanChannel": *humanChannel, "x": createX, "y": createY}, err
+		return "createMission", map[string]any{"title": *title, "goal": *goal, "files": []string(files), "humanChannel": *humanChannel, "x": createX, "y": createY}, err
 	})
 	if err != nil {
 		return remoteFail(stderr, err, *jsonOut, "board", fs.Arg(0))
@@ -618,7 +613,6 @@ func remoteMissionUpdate(c *remoteClient, args []string, stdout, stderr io.Write
 	fs := remoteFlags("mission update", stderr)
 	title := fs.String("title", "", "mission title")
 	goal := fs.String("goal", "", "mission goal")
-	beadID := fs.String("bead", "", "project Beads id")
 	var files stringList
 	fs.Var(&files, "file", "reference file path, replacing the current ones; repeat for more, or give an empty value to clear")
 	inputHint := fs.String("input-hint", "", "what a run brief for this mission should contain")
@@ -644,7 +638,7 @@ func remoteMissionUpdate(c *remoteClient, args []string, stdout, stderr io.Write
 		for flagName, field := range map[string]struct {
 			key   string
 			value *string
-		}{"title": {"title", title}, "goal": {"goal", goal}, "bead": {"beadId", beadID}, "input-hint": {"inputHint", inputHint}, "human-channel": {"humanChannel", humanChannel}} {
+		}{"title": {"title", title}, "goal": {"goal", goal}, "input-hint": {"inputHint", inputHint}, "human-channel": {"humanChannel", humanChannel}} {
 			if given[flagName] {
 				fields[field.key] = *field.value
 			}
@@ -1184,9 +1178,6 @@ func remoteAgentEdit(c *remoteClient, args []string, stdout, stderr io.Writer) i
 	}
 	if *f.addHarness != "" || given["session-stem"] {
 		body["sessionStem"] = *f.sessionStem
-	}
-	if *f.addHarness != "" || given["launch"] {
-		body["launch"] = *f.launch
 	}
 	if *f.addHarness == "" && *f.harness != "" {
 		body["variant"] = *f.harness

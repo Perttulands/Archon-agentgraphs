@@ -333,11 +333,13 @@ id = "peer_a"
 label = "Peer A"
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 [[formation.slot]]
 id = "peer_b"
 label = "Peer B"
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 [[formation]]
 id = "fmn_team"
 type = "orchestrated"
@@ -354,11 +356,13 @@ label = "Lead"
 agentId = "codex-builder"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 [[formation.slot]]
 id = "team_worker"
 label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
+effort = "medium"
 [[gate]]
 id = "gate_peers"
 title = "Peer questions"
@@ -574,6 +578,7 @@ label = "Worker"
 agentId = "codex-builder"
 harness = "openai-codex"
 controller = true
+effort = "medium"
 [[gate]]
 id = "gate_one"
 title = "First look"
@@ -672,11 +677,13 @@ func TestUncertainSeatFallsBackForTheNextHumanGateAfterRestart(t *testing.T) {
 
 func TestHealthyPeerReceivesTheNextHumanGateAfterUncertainPaste(t *testing.T) {
 	board := strings.Replace(twoGateBoard, `type = "solo"`, `type = "peer"`, 1)
-	board = strings.Replace(board, `controller = true`, `[[formation.slot]]
+	board = strings.Replace(board, "controller = true\neffort = \"medium\"", `effort = "medium"
+[[formation.slot]]
 id = "slot_other"
 label = "Other peer"
 agentId = "codex-builder"
-harness = "openai-codex"`, 1)
+harness = "openai-codex"
+effort = "medium"`, 1)
 	keeper := &keeperExecutor{uncertain: map[string]bool{"slot_work": true}}
 	c, root := onCallFixture(t, board, keeper, nil)
 	id := startProof(t, c)

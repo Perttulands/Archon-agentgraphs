@@ -19,17 +19,20 @@ func newMissionCommandWorkspace(t *testing.T) (string, func(args ...string) (str
 	}
 }
 
-func TestArchonMissionHelpNamesEveryCommandAndTheBoardAlias(t *testing.T) {
+func TestArchonMissionHelpNamesEveryCommand(t *testing.T) {
 	_, archon := newMissionCommandWorkspace(t)
-	for _, args := range [][]string{{"mission"}, {"mission", "help"}, {"mission", "--help"}, {"board"}} {
+	for _, args := range [][]string{{"mission"}, {"mission", "help"}, {"mission", "--help"}} {
 		stdout, stderr, code := archon(args...)
 		if code != 2 || stdout != "" {
 			t.Fatalf("%v code=%d stdout=%q, want help on stderr", args, code, stdout)
 		}
-		for _, verb := range []string{"new <slug>", "list", "inspect <mission>", "notes", "note", "validate", "arrange", "create", "update", "wire", "run", `"archon board <command>" is a deprecated alias`} {
+		for _, verb := range []string{"new <slug>", "list", "inspect <mission>", "notes", "note", "validate", "arrange", "create", "update", "wire", "run"} {
 			if !strings.Contains(stderr, verb) {
 				t.Fatalf("%v help lacks %q:\n%s", args, verb, stderr)
 			}
+		}
+		if strings.Contains(stderr, "board") {
+			t.Fatalf("%v help mentions board:\n%s", args, stderr)
 		}
 	}
 	if _, stderr, code := archon("mission", "frobnicate"); code != 2 || !strings.Contains(stderr, `unknown mission command "frobnicate"`) || !strings.Contains(stderr, "new <slug>") {
@@ -40,43 +43,18 @@ func TestArchonMissionHelpNamesEveryCommandAndTheBoardAlias(t *testing.T) {
 	}
 }
 
-// Each archon board command still works for one release, answers exactly as
-// the archon mission command of the same name, and says which one to use.
-func TestArchonBoardAliasRunsTheMissionCommandWithADeprecationNote(t *testing.T) {
+// There is no archon board command: the noun is mission.
+func TestArchonBoardIsAnUnknownNoun(t *testing.T) {
 	_, archon := newMissionCommandWorkspace(t)
-	stdout, stderr, code := archon("board", "new", "poems", "--title", "Poems")
-	if code != 0 || stdout != "created poems\n" || stderr != "archon board is deprecated and will be removed in a later release; use: archon mission new\n" {
-		t.Fatalf("board new code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
-	if _, stderr, code := archon("mission", "create", "poems", "--title", "Brief"); code != 0 {
-		t.Fatalf("mission create: %d %s", code, stderr)
-	}
-	if _, stderr, code := archon("mission", "note", "poems", "--text", "Why this exists"); code != 0 {
-		t.Fatalf("mission note: %d %s", code, stderr)
-	}
-	for _, command := range [][]string{
-		{"list"}, {"list", "--json"},
-		{"inspect", "poems"}, {"inspect", "poems", "--json"},
-		{"notes", "poems"}, {"validate", "poems"}, {"validate", "poems", "--json"},
-		{"arrange", "poems"},
-	} {
-		wantOut, wantErr, wantCode := archon(append([]string{"mission"}, command...)...)
-		gotOut, gotErr, gotCode := archon(append([]string{"board"}, command...)...)
-		note := "archon board is deprecated and will be removed in a later release; use: archon mission " + command[0] + "\n"
-		if gotOut != wantOut || gotCode != wantCode || gotErr != note+wantErr {
-			t.Fatalf("board %v = (%d, %q, %q), want mission's (%d, %q, %q) after the note", command, gotCode, gotOut, gotErr, wantCode, wantOut, wantErr)
+	for _, args := range [][]string{{"board", "new", "poems"}, {"board", "list"}, {"board", "help"}} {
+		stdout, stderr, code := archon(args...)
+		if code != 2 || stdout != "" || stderr != "unknown archon noun \"board\"\n" {
+			t.Fatalf("%v code=%d stdout=%q stderr=%q", args, code, stdout, stderr)
 		}
-	}
-	if _, stderr, code := archon("board", "note", "poems", "--text", "Still works"); code != 0 || !strings.HasPrefix(stderr, "archon board is deprecated") {
-		t.Fatalf("board note code=%d stderr=%q", code, stderr)
-	}
-	if _, stderr, code := archon("board", "create", "poems"); code != 2 || !strings.Contains(stderr, `unknown board command "create"`) {
-		t.Fatalf("board create code=%d stderr=%q, want unknown: board never had create", code, stderr)
 	}
 }
 
-// With one Input card, wire and update act on it without naming it; the old
-// forms that name it keep working.
+// With one Input card, wire and update act on it without naming it, or name it.
 func TestArchonMissionWireAndUpdateActOnTheInputCard(t *testing.T) {
 	workspace, archon := newMissionCommandWorkspace(t)
 	archon("mission", "new", "poems")
@@ -158,13 +136,14 @@ func TestArchonMissionCommandsAskWhichInputCardWhenThereAreSeveral(t *testing.T)
 	}
 }
 
-func TestArchonRunListFiltersByMissionAndKeepsTheBoardFlag(t *testing.T) {
+func TestArchonRunListFiltersByMission(t *testing.T) {
 	_, archon := newMissionCommandWorkspace(t)
 	archon("mission", "new", "poems")
-	for _, flag := range []string{"--mission", "--board"} {
-		if stdout, stderr, code := archon("run", "list", flag, "poems", "--json"); code != 0 || !strings.Contains(stdout, `"runs"`) {
-			t.Fatalf("run list %s code=%d stdout=%s stderr=%s", flag, code, stdout, stderr)
-		}
+	if stdout, stderr, code := archon("run", "list", "--mission", "poems", "--json"); code != 0 || !strings.Contains(stdout, `"runs"`) {
+		t.Fatalf("run list --mission code=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if _, stderr, code := archon("run", "list", "--board", "poems"); code != 2 || !strings.Contains(stderr, "flag provided but not defined: -board") {
+		t.Fatalf("run list --board code=%d stderr=%q", code, stderr)
 	}
 	if _, stderr, code := archon("run", "list", "--mission", "nowhere"); code == 0 || stderr == "" {
 		t.Fatalf("run list for a missing mission code=%d stderr=%q", code, stderr)

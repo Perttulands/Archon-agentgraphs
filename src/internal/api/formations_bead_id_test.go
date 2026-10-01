@@ -37,7 +37,7 @@ func TestFormationsAPIReportsUnsafeBeadIDsByField(t *testing.T) {
 		}
 		return serve(http.MethodPatch, "/api/formations/boards/beads", board.ETag, `{"expectedRev":`+jsonInt(board.Rev)+`,`+strings.TrimPrefix(body, "{"))
 	}
-	if rec := patch(`{"createMission":{"title":"Work","beadId":"form-3yd.4"}}`); rec.Code != http.StatusOK {
+	if rec := patch(`{"createMission":{"title":"Work"}}`); rec.Code != http.StatusOK {
 		t.Fatalf("safe mission = %d %s", rec.Code, rec.Body.String())
 	}
 	if rec := patch(`{"createFormation":{"type":"solo","title":"Worker"}}`); rec.Code != http.StatusOK {
@@ -52,8 +52,6 @@ func TestFormationsAPIReportsUnsafeBeadIDsByField(t *testing.T) {
 		t.Fatal(err)
 	}
 	for body, field := range map[string]string{
-		`{"createMission":{"title":"Other","beadId":"Home-123"}}`:                                          `Input card beadId \"Home-123\"`,
-		`{"updateMission":{"id":"` + board.Missions[0].ID + `","beadId":"../escape"}}`:                     `Input card beadId \"../escape\"`,
 		`{"setBrief":{"formationId":"` + board.Formations[0].ID + `","goal":"Work","beadId":"chlab/123"}}`: `brief beadId \"chlab/123\"`,
 	} {
 		rec := patch(body)

@@ -237,9 +237,6 @@ func decodeMissionNodes(document map[string]any) ([]MissionNode, error) {
 		if node.Goal, err = tomlString(table, "goal"); err != nil {
 			return nil, err
 		}
-		if node.BeadID, err = tomlString(table, "beadId"); err != nil {
-			return nil, err
-		}
 		if node.Files, err = tomlStringArray(table, "files"); err != nil {
 			return nil, err
 		}

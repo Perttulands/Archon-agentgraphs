@@ -53,39 +53,20 @@ func TestCreatePersonaWritesOneIDSpineAndDefaultSessionStem(t *testing.T) {
 	}
 }
 
-// Seats start from harness, model and effort, so a launchable harness gets no
-// launch string that would read as the command it runs.
-func TestCreatePersonaWritesNoLaunchForLaunchableHarnesses(t *testing.T) {
+// Seats start from harness, model and effort, so a card holds no launch string.
+func TestCreatePersonaWritesNoLaunchString(t *testing.T) {
 	for _, harness := range []string{"openai-codex", "claude-code"} {
 		store := NewPersonaStore(t.TempDir())
 		card, err := store.CreatePersona(CreatePersonaRequest{ID: "worker", Kind: "specialist", Harness: harness})
 		if err != nil {
 			t.Fatalf("create %s persona: %v", harness, err)
 		}
-		if got := card.DefaultVariant().Launch; got != "" {
-			t.Fatalf("%s launch = %q, want none", harness, got)
+		if card.DefaultVariant().SessionStem != "worker" {
+			t.Fatalf("%s variant = %+v", harness, card.DefaultVariant())
 		}
 		if raw := readFile(t, store.PersonaPath("worker")); strings.Contains(raw, "launch") {
 			t.Fatalf("%s persona TOML has a launch string:\n%s", harness, raw)
 		}
-	}
-}
-
-func TestCreatePersonaExplicitOpenAICodexLaunchIsHonored(t *testing.T) {
-	store := NewPersonaStore(t.TempDir())
-	explicitLaunch := "codex --dangerously-bypass-approvals-and-sandbox"
-
-	card, err := store.CreatePersona(CreatePersonaRequest{
-		ID:      "codexer",
-		Kind:    "specialist",
-		Harness: "openai-codex",
-		Launch:  explicitLaunch,
-	})
-	if err != nil {
-		t.Fatalf("create openai-codex persona with explicit launch: %v", err)
-	}
-	if got := card.DefaultVariant().Launch; got != explicitLaunch {
-		t.Fatalf("openai-codex explicit launch = %q, want %q", got, explicitLaunch)
 	}
 }
 
@@ -184,8 +165,8 @@ func TestEditPersonaAddOpenAICodexCarriesSettingsNotLaunch(t *testing.T) {
 	if len(card.HarnessVariants) != 2 {
 		t.Fatalf("harness variants = %d, want 2", len(card.HarnessVariants))
 	}
-	if added := card.HarnessVariants[1]; added.Launch != "" || added.Model != "gpt-6-sol" || added.Effort != "ultra" {
-		t.Fatalf("added openai-codex variant = %+v, want model and effort and no launch", added)
+	if added := card.HarnessVariants[1]; added.Model != "gpt-6-sol" || added.Effort != "ultra" {
+		t.Fatalf("added openai-codex variant = %+v, want model and effort", added)
 	}
 	current, err := store.ReadPersona("susie")
 	if err != nil {

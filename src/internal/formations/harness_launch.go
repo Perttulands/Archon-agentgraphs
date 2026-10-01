@@ -74,7 +74,7 @@ func (v HarnessVariant) effectiveEffort() string {
 	return strings.TrimSpace(v.Effort)
 }
 
-// RenderLaunch makes card settings authoritative over legacy launch strings.
+// RenderLaunch renders the seat command from the variant's model and effort.
 // The executable is supplied by the adapter after resolving it on PATH.
 func (v HarnessVariant) RenderLaunch(executable string) (string, error) {
 	command := "exec " + shellQuote(executable)
@@ -115,14 +115,13 @@ func (v HarnessVariant) LaunchCommand() (string, error) {
 	return v.RenderLaunch(bin)
 }
 
-// SpawnCommand is what `archon agent spawn` runs: the seat command for a
-// harness Archon renders, else the card's launch string for a harness it
-// cannot (such as hermes), which may be empty.
+// SpawnCommand is what `archon agent spawn` runs: the seat command, which
+// Archon renders only for the harnesses it starts.
 func (v HarnessVariant) SpawnCommand() (string, error) {
-	if _, ok := launchableHarness(v.ID); ok {
-		return v.LaunchCommand()
+	if _, ok := launchableHarness(v.ID); !ok {
+		return "", fmt.Errorf("Archon cannot start harness %q; use claude-code or openai-codex", v.ID)
 	}
-	return v.Launch, nil
+	return v.LaunchCommand()
 }
 
 // DescribeLaunches fills each variant's resolved effort, the efforts its
