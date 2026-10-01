@@ -18,11 +18,12 @@ import {
 import { placeBeside, popoverStyle, viewportStage, type StaffingStage } from './staffingPlacement'
 import type { OpenSentence, StaffingStore } from './staffingStore'
 
-/** The window's size: the sentence and a short list, which scrolls. */
-const WIDTH = 440
-const HEIGHT = 330
-/** The least it shortens to where the room beside its slot is tight; its list shows three rows. */
-const MIN_HEIGHT = 260
+/**
+ * The window opens at the sentence's own height and grows, as a list opens,
+ * into the free room it was placed beside: up to about eight rows, preferring
+ * room for three. The list scrolls within that room.
+ */
+const SIZE = { width: 440, openHeight: 142, height: 300, minHeight: 200 }
 
 interface Row { id: string; label: string; hint?: string; tag?: string; disabled?: string; apply: () => void }
 
@@ -56,7 +57,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
   const [hi, setHi] = useState<number | null>(null)
   const [choosing, setChoosing] = useState(false)
   // Placed once, beside what it staffs: the window never moves while it is open.
-  const [style] = useState(() => popoverStyle(placeBeside(open.anchor, WIDTH, HEIGHT, MIN_HEIGHT, stage), open.anchor))
+  const [style] = useState(() => popoverStyle(placeBeside(open.anchor, SIZE, stage)))
   const rootRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const committed = useRef(false)
@@ -190,15 +191,13 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
   const shownList = useRef<string>('')
   useEffect(() => {
     const listEl = listRef.current
-    const row = listEl?.querySelector<HTMLElement>('.staffing-row.hi')
+    const row = rootRef.current?.querySelector<HTMLElement>('.staffing-row.hi')
     if (!listEl || !row) return
     const opened = shownList.current !== `${list}:${choosing}`
     shownList.current = `${list}:${choosing}`
-    // vanilla stays pinned at the top of the role grid; rows scroll under it.
-    const pinned = row.dataset.row === 'vanilla' ? 0 : listEl.querySelector<HTMLElement>('.staffing-grid > [data-row="vanilla"]')?.offsetHeight || 0
-    if (row.dataset.row === 'vanilla' && pinned === 0 && list === 'role') return
-    if (opened) listEl.scrollTop = row.offsetTop - pinned - (listEl.clientHeight - pinned - row.offsetHeight) / 2
-    else if (row.offsetTop - pinned < listEl.scrollTop) listEl.scrollTop = row.offsetTop - pinned - 4
+    if (!listEl.contains(row)) return
+    if (opened) listEl.scrollTop = row.offsetTop - (listEl.clientHeight - row.offsetHeight) / 2
+    else if (row.offsetTop < listEl.scrollTop) listEl.scrollTop = row.offsetTop - 4
     else if (row.offsetTop + row.offsetHeight > listEl.scrollTop + listEl.clientHeight) listEl.scrollTop = row.offsetTop + row.offsetHeight - listEl.clientHeight + 4
   }, [active, list, choosing])
 
@@ -254,6 +253,25 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
   )
 
   const roleWords = draft.role ? roleName(catalog, draft.role) : 'vanilla'
+  const grid = list === 'role' && !choosing
+  const option = (row: Row, index: number) => (
+    <div
+      key={row.id}
+      role="option"
+      aria-selected={index === active}
+      aria-disabled={Boolean(row.disabled)}
+      aria-current={isCurrent(row) || undefined}
+      className={`staffing-row${index === active ? ' hi' : ''}${row.disabled ? ' disabled' : ''}${isCurrent(row) ? ' current' : ''}`}
+      onPointerEnter={() => !row.disabled && setHi(index)}
+      onClick={() => !row.disabled && row.apply()}
+      data-row={row.id}
+      title={row.hint}
+    >
+      <span className="staffing-row-l">{row.label}</span>
+      {row.tag ? <span className={`staffing-tag${row.tag === 'suggested' ? ' sugg' : row.tag === 'warning' ? ' warn' : ''}`}>{row.tag}</span> : null}
+      {grid ? null : <span className="staffing-row-h">{row.disabled || row.hint}</span>}
+    </div>
+  )
   return (
     <div className="staffing-window" style={style} ref={rootRef} tabIndex={-1} onKeyDown={onKeyDown} role="dialog" aria-label={`Staff ${ref.label}`} data-testid="staffing-sentence">
       <div className="staffing-sent">
@@ -294,32 +312,20 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
       ) : null}
       {list || choosing ? (
         <div className="staffing-list-wrap">
-          <div className="staffing-list-hd">{choosing ? `“${parsed?.ambiguous?.word}” could be:` : filter ? `filter: ${filter}` : list === 'role' ? 'roles: type to filter, 1–6 effort' : list === 'effort' ? 'effort: ↵ takes the highlighted one' : 'type to filter'}</div>
-          <div ref={listRef} className={list === 'role' && !choosing ? 'staffing-list staffing-grid' : 'staffing-list'} role="listbox" aria-label={choosing ? 'Roles that match' : `Choose ${list}`}>
-            {rows.map((row, index) => (
-              <div
-                key={row.id}
-                role="option"
-                aria-selected={index === active}
-                aria-disabled={Boolean(row.disabled)}
-                aria-current={isCurrent(row) || undefined}
-                className={`staffing-row${index === active ? ' hi' : ''}${row.disabled ? ' disabled' : ''}${isCurrent(row) ? ' current' : ''}`}
-                onPointerEnter={() => !row.disabled && setHi(index)}
-                onClick={() => !row.disabled && row.apply()}
-                data-row={row.id}
-                title={row.hint}
-              >
-                <span className="staffing-row-l">{row.label}</span>
-                {row.tag ? <span className={`staffing-tag${row.tag === 'suggested' ? ' sugg' : row.tag === 'warning' ? ' warn' : ''}`}>{row.tag}</span> : null}
-                {list === 'role' && !choosing ? null : <span className="staffing-row-h">{row.disabled || row.hint}</span>}
-              </div>
-            ))}
-            {rows.length === 0 ? <div className="staffing-row disabled"><span className="staffing-row-h">Nothing matches “{filter}”. Esc leaves the slot as it was.</span></div> : null}
+          <div className="staffing-list-hd">{choosing ? `“${parsed?.ambiguous?.word}” could be:` : filter ? `filter: ${filter}` : list === 'role' ? 'roles: type to filter, 1–6 effort' : list === 'effort' && suggestion ? `effort: ${suggestion.effort} suggested, as ${suggestion.reason}` : list === 'effort' ? 'effort: ↵ takes the highlighted one' : 'type to filter'}</div>
+          {/* vanilla stays above the scrolling grid, one click away whatever the grid shows. */}
+          <div className="staffing-listbox" role="listbox" aria-label={choosing ? 'Roles that match' : `Choose ${list}`}>
+            {grid && rows[0]?.id === 'vanilla' ? <div className="staffing-pinned">{option(rows[0], 0)}</div> : null}
+            <div ref={listRef} className={grid ? 'staffing-list staffing-grid' : 'staffing-list'}>
+              {rows.map((row, index) => (grid && index === 0 && row.id === 'vanilla' ? null : option(row, index)))}
+              {rows.length === 0 ? <div className="staffing-row disabled"><span className="staffing-row-h">Nothing matches “{filter}”. Esc leaves the slot as it was.</span></div> : null}
+            </div>
           </div>
-          {list === 'role' && !choosing && rows[active]?.hint ? <div className="staffing-list-ft">{rows[active].hint}</div> : null}
+          {grid && rows[active]?.hint ? <div className="staffing-list-ft">{rows[active].hint}</div> : null}
         </div>
       ) : null}
-      <div className="staffing-policy" data-testid="staffing-policy">
+      {/* While a list is open the policy speaks through its rows and header; a note still shows. */}
+      <div className={`staffing-policy${(list || choosing) && !note ? ' quiet' : ''}`} data-testid="staffing-policy">
         {note ? <span className="staffing-note">{note}</span>
           : suggestion ? <span>Policy suggests <b>{suggestion.effort}</b>: {suggestion.reason}.</span>
           : <span>Policy: {policyLine(catalog)}.</span>}
@@ -329,7 +335,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
         {offCatalog(catalog, draft) ? <div className="staffing-issue">{draft.model}: not in the catalog; the harness decides.</div> : null}
         {!effortsFor(catalog, draft.harness, draft.model).length ? <div className="staffing-issue">{harnessName(draft.harness) || draft.harness} is not a harness Archon starts.</div> : null}
       </div>
-      <div className="staffing-keys">↵ staffs · Esc leaves it as it was · 1–6 effort · type words in any order</div>
+      {list || choosing ? null : <div className="staffing-keys">↵ staffs · Esc leaves it as it was · 1–6 effort · type words in any order</div>}
     </div>
   )
 }

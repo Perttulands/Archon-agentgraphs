@@ -284,9 +284,16 @@ test('a role dragged from the rail lands by the same rule, previews on the slot,
   await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 15 })
   await expect(worker).toHaveClass(/snaptarget/)
   await expect(caption(page, 'slot-execution-worker')).toHaveAttribute('data-staffing', 'Repo Scout | Claude Code · opus · low')
-  // The ghost waits beside the slot, off the caption it previews.
-  const [ghost, preview] = [(await page.locator('.staffing-ghost').boundingBox())!, (await caption(page, 'slot-execution-worker').boundingBox())!]
-  expect(ghost.x + ghost.width <= preview.x || ghost.x >= preview.x + preview.width || ghost.y + ghost.height <= preview.y || ghost.y >= preview.y + preview.height).toBe(true)
+  // The ghost waits beside the slot, off the caption it previews, and still does after a zoom mid-drag.
+  const offPreview = async () => {
+    const [ghost, preview] = [(await page.locator('.staffing-ghost').boundingBox())!, (await caption(page, 'slot-execution-worker').boundingBox())!]
+    return ghost.x + ghost.width <= preview.x || ghost.x >= preview.x + preview.width || ghost.y + ghost.height <= preview.y || ghost.y >= preview.y + preview.height
+  }
+  expect(await offPreview()).toBe(true)
+  for (let step = 0; step < 4; step++) { await page.mouse.wheel(0, -100); await page.waitForTimeout(120) }
+  const zoomed = (await worker.boundingBox())!
+  await page.mouse.move(zoomed.x + zoomed.width / 2, zoomed.y + zoomed.height / 2, { steps: 4 })
+  expect(await offPreview()).toBe(true)
   await page.mouse.up()
   await expect(page.getByTestId('staffing-stamp')).toHaveText('Effort low: scouting falls under errands.')
   await expect.poll(() => assignments(fixture.patches)).toEqual([{ formationId: 'execution', slotId: 'worker', agentId: 'scout', harness: 'claude-code', model: 'opus', effort: 'low' }])
@@ -412,6 +419,35 @@ test('a model outside the catalog opens its list on itself, so a reflex Enter ch
   await page.keyboard.press('Enter')
   await expect(caption(page, 'slot-execution-w1')).toHaveAttribute('data-staffing', 'Codex builder | Codex · gpt-7-nova · medium')
   expect(assignments(fixture.patches)).toEqual([])
+})
+
+// rv-slots4: the note is placed once the sentence that staffed the slot has closed, so it takes the free
+// place beside the slot that the window held, rather than avoiding a window that is gone.
+test('a note for words typed in the open sentence lands right beside the slot, where the window was', async ({ page }) => {
+  await cockpitFixture(page, { roles })
+  await page.goto('/')
+  const judge = page.getByTestId('slot-judge-judge_1')
+  await judge.locator('.slot-ring').click()
+  const sentence = page.getByRole('dialog', { name: 'Staff Judge' })
+  await page.waitForTimeout(200)
+  const window = (await sentence.boundingBox())!
+  await page.keyboard.type('gpt-7-nova')
+  await page.keyboard.press('Enter')
+  const stamp = page.getByTestId('staffing-stamp')
+  await expect(stamp).toHaveText('gpt-7-nova: not in the catalog; the harness decides.')
+  const [note, slot] = [(await stamp.boundingBox())!, (await judge.boundingBox())!]
+  const gap = Math.hypot(Math.max(0, slot.x - (note.x + note.width), note.x - (slot.x + slot.width)), Math.max(0, slot.y - (note.y + note.height), note.y - (slot.y + slot.height)))
+  expect(gap).toBeLessThanOrEqual(20)
+  const tookWindowsPlace = note.x < window.x + window.width && window.x < note.x + note.width && note.y < window.y + window.height && window.y < note.y + note.height
+  expect(tookWindowsPlace).toBe(true)
+  const covered = await stamp.evaluate(element => {
+    const n = element.getBoundingClientRect()
+    return [...document.querySelectorAll('.world [data-node], .note-sticky')].filter(card => {
+      const b = card.getBoundingClientRect()
+      return n.left < b.right && b.left < n.right && n.top < b.bottom && b.top < n.bottom
+    }).length
+  })
+  expect(covered).toBe(0)
 })
 
 test('the landing note sits right beside its slot and covers no card or operator note', async ({ page }) => {

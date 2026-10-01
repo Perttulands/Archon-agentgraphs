@@ -3,7 +3,7 @@
  * no card, operator note, open window or control (windows/popoverPlacement.ts). */
 import type { CSSProperties } from 'react'
 import { measureElement } from '../windows/cockpitScene'
-import { placePopover, type PopoverPlace } from '../windows/popoverPlacement'
+import { placePopover, type PopoverPlace, type PopoverSize } from '../windows/popoverPlacement'
 import type { ViewScene } from '../windows/WindowManager'
 import type { WindowRect, Workspace } from '../windows/windowGeometry'
 
@@ -30,12 +30,12 @@ const contains = (outer: WindowRect, inner: WindowRect) =>
   inner.left >= outer.left && inner.top >= outer.top && inner.left + inner.width <= outer.left + outer.width && inner.top + inner.height <= outer.top + outer.height
 
 /**
- * Where a popover of `width` by up to `height` opens beside `anchor`: a slot
- * (whose card is never covered) or a word in a window or the inspector (which
- * the popover may drop down over, as a list does). `also` names more to keep
- * clear, such as the open sentence window for a note.
+ * Where a popover of `size` opens beside `anchor`: a slot (whose card is never
+ * covered) or a word in a window or the inspector (which the popover may drop
+ * down over, as a list does). `also` names more to keep clear, such as a
+ * sentence window still open beside a note.
  */
-export function placeBeside(anchor: Element, width: number, height: number, minHeight: number, stage: StaffingStage, also: readonly WindowRect[] = []): PopoverPlace {
+export function placeBeside(anchor: Element, size: PopoverSize, stage: StaffingStage, also: readonly WindowRect[] = []): PopoverPlace {
   const anchorRect = measureElement(anchor, true)!
   const holder = anchor.closest('.fwin, .agx-inspector')
   const card = holder ? null : anchor.closest('.formation, section.formation')
@@ -45,7 +45,7 @@ export function placeBeside(anchor: Element, width: number, height: number, minH
   // The window the anchor sits in is its home, not an obstacle; cards it hides are not on screen.
   const windows = stage.windows().filter(rect => !contains(rect, centre))
   const landmarks = (stage.scene().landmarks || []).filter(rect => !(holder && home && contains(home, rect)))
-  return placePopover(width, height, minHeight, {
+  return placePopover(size, {
     bounds: workspace.bounds,
     anchor: anchorRect,
     home,
@@ -54,11 +54,10 @@ export function placeBeside(anchor: Element, width: number, height: number, minH
   })
 }
 
-/** The style that holds a placed popover; one placed above its anchor grows upward, toward it. */
-export function popoverStyle(place: PopoverPlace, anchor: Element): CSSProperties {
+/** The style that holds a placed popover within the room it was given; one above its anchor grows upward, toward it. */
+export function popoverStyle(place: PopoverPlace): CSSProperties {
   const { rect } = place
-  const above = rect.top + rect.height <= anchor.getBoundingClientRect().top
-  return above
+  return place.growsUp
     ? { left: rect.left, bottom: window.innerHeight - (rect.top + rect.height), width: rect.width, maxHeight: rect.height }
     : { left: rect.left, top: rect.top, width: rect.width, maxHeight: rect.height }
 }

@@ -1,7 +1,7 @@
 /* The floating layer staffing draws over a view: the open sentence window and
  * the note that says why a staffing landed as it did. A note never covers a
  * slot and never takes a pointer or a drop. */
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { SentenceWindow } from './SentenceWindow'
 import { placeBeside, viewportStage, type StaffingStage } from './staffingPlacement'
@@ -18,8 +18,10 @@ const STAMP_WIDTH = 360
 
 /**
  * Beside the slot, the way the sentence window is placed: clear of every card,
- * operator note, open window and the sentence itself. A note about a drop
- * that missed sits beside the point where it was dropped.
+ * operator note, open window and a sentence still open. Measured once the
+ * view has settled, so a sentence that closed as it staffed the slot is gone
+ * and does not push the note away. A note about a drop that missed sits beside
+ * the point where it was dropped.
  */
 function stampPlace(stamp: Stamp, height: number, stage: StaffingStage): CSSProperties | null {
   const sentence = [...document.querySelectorAll('.staffing-window')].map(element => element.getBoundingClientRect())
@@ -27,7 +29,7 @@ function stampPlace(stamp: Stamp, height: number, stage: StaffingStage): CSSProp
   if (stamp.key) {
     const slot = slotElement(stamp.key)
     if (!slot) return null
-    const place = placeBeside(slot, STAMP_WIDTH, height, height, stage, sentence)
+    const place = placeBeside(slot, { width: STAMP_WIDTH, openHeight: height, height, minHeight: height }, stage, sentence)
     return { left: place.rect.left, top: place.rect.top, width: STAMP_WIDTH }
   }
   if (!stamp.point) return null
@@ -38,7 +40,9 @@ function stampPlace(stamp: Stamp, height: number, stage: StaffingStage): CSSProp
 
 function StampView({ stamp, stage }: { stamp: Stamp; stage: StaffingStage }) {
   const height = stamp.text.length > 90 ? 58 : stamp.text.length > 45 ? 42 : 28
-  const [style] = useState(() => stampPlace(stamp, height, stage))
+  const [style, setStyle] = useState<CSSProperties | null>(null)
+  // After this render commits: a sentence that closed with the landing is out of the DOM by then.
+  useLayoutEffect(() => setStyle(stampPlace(stamp, height, stage)), []) // eslint-disable-line react-hooks/exhaustive-deps
   if (!style) return null
   return (
     <div className={`staffing-stamp ${stamp.tone}`} style={style} role="status" data-testid="staffing-stamp">

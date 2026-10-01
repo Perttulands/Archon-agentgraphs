@@ -57,14 +57,14 @@ test('a long roster\'s role list scrolls inside the staffing window, which stays
   await page.screenshot({ path: test.info().outputPath('long-role-list.png') })
 
   // The list scrolls inside the window, which stays where it opened.
-  expect(await roles.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true)
+  expect(await roles.locator('.staffing-list').evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true)
   const last = roles.getByRole('option', { name: /Roster agent 70/ })
   await last.scrollIntoViewIfNeeded()
   await expect(last).toBeInViewport()
-  // vanilla stays pinned at the top of the scrolled grid, one click away.
-  const [list, vanilla] = [(await roles.boundingBox())!, (await roles.locator('[data-row="vanilla"]').boundingBox())!]
-  expect(vanilla.y).toBeGreaterThanOrEqual(list.y - 1)
-  expect(vanilla.y + vanilla.height).toBeLessThanOrEqual(list.y + 40)
+  // vanilla stays above the scrolled grid, whole and one click away; no role shows above it.
+  const [grid, vanilla] = [(await roles.locator('.staffing-list').boundingBox())!, (await roles.locator('[data-row="vanilla"]').boundingBox())!]
+  expect(vanilla.y + vanilla.height).toBeLessThanOrEqual(grid.y + 1)
+  await expect(roles.locator('[data-row="vanilla"]')).toBeInViewport({ ratio: 1 })
   await expectOnScreen(page, sentence)
   await last.click()
   await expect(sentence).toHaveCount(0)

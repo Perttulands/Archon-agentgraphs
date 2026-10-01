@@ -146,7 +146,7 @@ import type {
 
 /** A staffing drag: a role from the rail, or a slot's staffing; a press without a move on a slot opens its sentence. */
 type StaffPayload = { kind: 'role'; roleId: string } | { kind: 'slot'; from: SlotRef }
-type DragStaff = { payload: StaffPayload | null; slot?: { ref: SlotRef; part: Part | null; anchor: HTMLElement }; click?: () => void; startX: number; startY: number; moved: boolean; scene?: GhostScene }
+type DragStaff = { payload: StaffPayload | null; slot?: { ref: SlotRef; part: Part | null; anchor: HTMLElement }; click?: () => void; startX: number; startY: number; moved: boolean; scene?: GhostScene; sceneView?: string }
 /** The canvas as a drag starts: the cards and notes a ghost keeps off, each slot's box and its card's, and the canvas. Measured once per drag. */
 type GhostScene = { cards: DOMRect[]; slots: Map<string, { box: DOMRect; card: DOMRect }>; canvas: DOMRect }
 
@@ -1897,8 +1897,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         const key = slotKeyAt(pointer.clientX, pointer.clientY)
         const target = key ? refByKey(key) : null
         const label = ghostLabel(payload)
-        // Nothing on the canvas moves during a drag, so it is measured once, as the drag starts.
-        staffDrag.scene ??= ghostScene()
+        // The canvas is measured as the drag starts, and again only when the view pans or zooms under it.
+        const view = viewRef.current
+        const viewKey = `${view.x},${view.y},${view.scale}`
+        if (!staffDrag.scene || staffDrag.sceneView !== viewKey) {
+          staffDrag.scene = ghostScene()
+          staffDrag.sceneView = viewKey
+        }
         const docked = target ? dockedGhost(staffDrag.scene, target.key, label) : null
         setGhost(docked ? { ...docked, label, docked: true } : { x: pointer.clientX, y: pointer.clientY, label, docked: false })
         setHoverSlot(target ? target.key : null)

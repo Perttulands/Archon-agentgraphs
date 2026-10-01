@@ -90,10 +90,13 @@ rail, with its role text and the slots it staffs.
 Staffing in the cockpit is that sentence, edited where the slot is. Clicking a
 slot, or Enter on a focused one, opens a compact window reading `Worker 1 is
 [vanilla] on [Claude Code] · [opus] · [low]` right beside the slot, within
-160 px of it, covering no card, operator note, open window or control; it
-shortens, and its lists scroll, rather than move away. From a node window or
-the Agents view's slot inspector it drops from the word clicked, over that
-window if need be. `on <harness> · <model> · <effort>` wraps as one group.
+160 px of it. It is placed by the size it opens at, in a free place that
+covers no card, operator note, open window or control, and a list opened in it
+grows into the free room there and scrolls, rather than the window moving
+away; vanilla stays above the scrolling role grid. Only when no free place of
+its opening size lies within 160 px of the slot does it open, within that
+reach, where it covers the least. From a node window or the Agents view's slot
+inspector it drops from the word clicked, over that window if need be. `on <harness> · <model> · <effort>` wraps as one group.
 Each word opens its own list on the slot's current value, a model outside the
 catalog included, so a reflex Enter changes nothing, and clicking one word of a
 staffed slot opens only that list, where a pick lands at once. An empty slot opens as vanilla on the first harness and its
@@ -114,8 +117,8 @@ in the open sentence (picked, typed as in `high cri`, or set by digit) keeps
 that effort; when the policy suggests another, the window offers `use xhigh`
 and the slot `use xhigh?`, one click each, until it is taken or the role or
 effort changes. Nothing outside the open sentence remembers how an effort was
-chosen. A note right beside the slot, placed as the window is and covering no
-card or operator note, says why each landing came out as it did.
+chosen. A note right beside the slot, placed as the window is once the window
+has closed, says why each landing came out as it did.
 Dragging a role from the rail onto a slot lands it by the same rule, its ghost
 waiting beside the slot so the slot's preview stays readable; dragging a
 staffed slot onto another moves its staffing there and swaps a staffed
@@ -131,7 +134,7 @@ or any field they do not take with `INVALID_AGENT_CARD` (HTTP 422) naming it;
 persona reads carry none; and the Agents view edits a role's text, never its
 settings. `archon agent spawn <id> --effort <e> [--model <m>]` starts a role's
 own session, and refuses one already running, which keeps what it started
-with. It states its settings as a slot does: the effort must be one the harness accepts
+with, naming each setting it did not apply. It states its settings as a slot does: the effort must be one the harness accepts
 (`claude-code` takes `low`, `medium`, `high`, `xhigh` or `max`; `openai-codex`
 also takes `ultra`, though a Codex model may accept fewer), a blank model means
 the harness default, and a harness Archon cannot start, such as `hermes`, is

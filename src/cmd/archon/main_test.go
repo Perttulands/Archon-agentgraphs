@@ -325,10 +325,15 @@ func TestArchonAgentSpawnUsesFakeTmuxWithoutDuplicateSession(t *testing.T) {
 	if !strings.Contains(stdout, "spawned scout as scout") || len(runner.spawned) != 1 {
 		t.Fatalf("spawn output=%s spawned=%#v", stdout, runner.spawned)
 	}
-	// A running session keeps what it started with: a second spawn is refused, never silently ignored.
+	// A running session keeps what it started with: a second spawn is refused, never silently ignored,
+	// and names every setting it did not apply.
 	stdout, stderr, code = runArchon(t, runner, "agent", "spawn", "scout", "--effort", "xhigh")
-	if code != 1 || stdout != "" || !strings.Contains(stderr, "scout is already running as scout; it keeps the model and effort it started with, so this spawn's --effort xhigh was not applied") || len(runner.spawned) != 1 {
+	if code != 1 || stdout != "" || !strings.Contains(stderr, "scout is already running as scout; it keeps the harness, model and effort it started with, so this spawn's --effort xhigh was not applied") || len(runner.spawned) != 1 {
 		t.Fatalf("second spawn code=%d stdout=%s stderr=%s spawned=%#v", code, stdout, stderr, runner.spawned)
+	}
+	_, stderr, code = runArchon(t, runner, "agent", "spawn", "scout", "--effort", "high", "--model", "opus", "--harness", "claude-code")
+	if code != 1 || !strings.Contains(stderr, "so this spawn's --effort high --model opus --harness claude-code were not applied") || len(runner.spawned) != 1 {
+		t.Fatalf("spawn with every flag code=%d stderr=%s", code, stderr)
 	}
 }
 

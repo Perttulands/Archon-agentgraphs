@@ -1887,5 +1887,6 @@ components:
           type: array
           items:
             type: string
-      description: Persona editor fields. Model and effort edit one harness variant (variant, else the
-        default harness). Source is harness provenance, not replacement card content.
+      description: Persona editor fields; a role is role text, so there is no model or effort to edit (a request
+        naming either, or any field not listed here, is refused with 422 INVALID_AGENT_CARD). Source is harness
+        provenance, not replacement card content.
