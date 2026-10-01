@@ -171,14 +171,14 @@ func canonicalToolParameterObject(parameters map[string]any) ([]byte, error) {
 		if index > 0 {
 			canonical.WriteByte(',')
 		}
-		writeRuntimeCanonicalJSONString(&canonical, name)
+		writeCanonicalJSONString(&canonical, name)
 		canonical.WriteByte(':')
 		switch value := parameters[name].(type) {
 		case string:
 			if !validToolString(value) {
 				return nil, fmt.Errorf("parameter %q is not a valid UTF-8 NUL-free string", name)
 			}
-			writeRuntimeCanonicalJSONString(&canonical, value)
+			writeCanonicalJSONString(&canonical, value)
 		case bool:
 			canonical.WriteString(strconv.FormatBool(value))
 		case int64:
@@ -366,4 +366,36 @@ func toolMediaSubset(producer, consumer []string) bool {
 		}
 	}
 	return true
+}
+
+// writeCanonicalJSONString writes value as a JSON string with minimal escapes.
+func writeCanonicalJSONString(output *bytes.Buffer, value string) {
+	const hexDigits = "0123456789abcdef"
+	output.WriteByte('"')
+	for _, character := range value {
+		switch character {
+		case '"', '\\':
+			output.WriteByte('\\')
+			output.WriteRune(character)
+		case '\b':
+			output.WriteString(`\b`)
+		case '\t':
+			output.WriteString(`\t`)
+		case '\n':
+			output.WriteString(`\n`)
+		case '\f':
+			output.WriteString(`\f`)
+		case '\r':
+			output.WriteString(`\r`)
+		default:
+			if character < 0x20 {
+				output.WriteString(`\u00`)
+				output.WriteByte(hexDigits[byte(character)>>4])
+				output.WriteByte(hexDigits[byte(character)&0x0f])
+			} else {
+				output.WriteRune(character)
+			}
+		}
+	}
+	output.WriteByte('"')
 }

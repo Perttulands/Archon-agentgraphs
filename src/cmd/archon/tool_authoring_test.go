@@ -1044,15 +1044,8 @@ func (h *archonToolAuthoringHarness) run(t *testing.T, args ...string) (string, 
 	t.Helper()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	runtimeStoreCalls := 0
 	allArgs := append([]string{"--workspace", h.workspace}, args...)
-	code := runWithRuntimeStoreFactory(allArgs, &stdout, &stderr, h.runner, func(workspace string) *formations.Store {
-		runtimeStoreCalls++
-		return formations.NewStore(workspace)
-	})
-	if runtimeStoreCalls != 0 {
-		t.Fatalf("Tool definition command reached runtime Store factory %d time(s)", runtimeStoreCalls)
-	}
+	code := run(allArgs, &stdout, &stderr, h.runner)
 	if h.runner.liveSessionCalls != 0 || len(h.runner.spawned) != 0 || len(h.runner.attach) != 0 {
 		t.Fatalf("Tool definition command reached tmux: live=%d spawned=%v attach=%v", h.runner.liveSessionCalls, h.runner.spawned, h.runner.attach)
 	}

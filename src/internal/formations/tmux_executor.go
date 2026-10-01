@@ -293,9 +293,6 @@ func (e *TmuxFormationExecutor) executeFormationContext(parent context.Context, 
 		return FormationExecutionResult{}, err
 	}
 	defer cancel()
-	if err := e.store.RequireRuntimeAuthority(); err != nil {
-		return FormationExecutionResult{}, err
-	}
 	if err := e.validateConfiguredBoundaryContext(ctx); err != nil {
 		return FormationExecutionResult{}, err
 	}

@@ -98,9 +98,6 @@ func (e *LabFormationExecutor) executeFormation(ctx context.Context, req Formati
 	if e == nil || e.store == nil {
 		return FormationExecutionResult{}, runExecutionError("missing_executor", "lab executor store is not configured", "executor", ErrRunExecutorUnavailable)
 	}
-	if err := e.store.RequireRuntimeAuthority(); err != nil {
-		return FormationExecutionResult{}, err
-	}
 	if err := e.validateConfiguredBoundary(); err != nil {
 		return FormationExecutionResult{}, err
 	}

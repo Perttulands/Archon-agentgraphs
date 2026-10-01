@@ -47,8 +47,7 @@ func TestToolExecutionPreflightResolvesTheSelectedRootBeforeMigration(t *testing
 				t.Fatalf("start error = %v, want exact-root ErrNotFound", err)
 			}
 			if errors.Is(err, ErrLegacyInlineVerificationRequiresMigration) ||
-				errors.Is(err, ErrToolExecutionUnavailable) ||
-				errors.Is(err, ErrRuntimeAuthorityNonAuthorizing) {
+				errors.Is(err, ErrToolExecutionUnavailable) {
 				t.Fatalf("later preflight boundary masked exact root: %v", err)
 			}
 			assertToolExecutionPreflightNoEffects(t, store.Workspace, executor, evaluator)
@@ -102,7 +101,7 @@ func TestToolExecutionPreflightUsesApprovedSelectedMissionOrder(t *testing.T) {
 			wantText: `Tool "tool_invalid" parameter "mode": is outside the allowed enum`,
 		},
 		{
-			name: "engine capability fence precedes media and authority",
+			name: "engine capability fence precedes media",
 			board: toolExecutionPreflightHeader() +
 				validTool +
 				toolExecutionPreflightConnection("edge_tool", "workflow", "mis_main:out", "tool_valid:port_tool_valid_in"),
@@ -133,7 +132,7 @@ func TestToolExecutionPreflightUsesApprovedSelectedMissionOrder(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), test.wantText) {
 					t.Fatalf("start error = %v, want descriptor detail %q", err, test.wantText)
 				}
-				if errors.Is(err, ErrToolExecutionUnavailable) || errors.Is(err, ErrRuntimeAuthorityNonAuthorizing) {
+				if errors.Is(err, ErrToolExecutionUnavailable) {
 					t.Fatalf("later fence masked invalid reachable descriptor: %v", err)
 				}
 			}
@@ -190,14 +189,11 @@ func TestToolExecutionPreflightTraversesEveryMissionBranchButNotIsolatedDownstre
 }
 
 // TestToolExecutionPreflightExcludesUnreachableInvalidTool proves the reachable-set
-// scoping still holds now that RequireRuntimeAuthority authorizes: a disconnected
-// invalid Tool sitting outside the Mission root is not validated by the preflight,
-// so the start proceeds past the fence without ErrToolExecutionUnavailable or an
-// invalid-Tool finding. A reachable invalid Tool still trips the fence — see the
-// reachable branches of
+// scoping: a disconnected invalid Tool outside the Mission root is not validated
+// by the preflight, so the start proceeds without ErrToolExecutionUnavailable or
+// an invalid-Tool finding. A reachable invalid Tool still trips the preflight; see
+// the reachable branches of
 // TestToolExecutionPreflightTraversesEveryMissionBranchButNotIsolatedDownstream.
-// The prior authority-terminal cases here only proved the retired fail-closed
-// no-effects posture, which no longer exists.
 func TestToolExecutionPreflightExcludesUnreachableInvalidTool(t *testing.T) {
 	board := toolExecutionPreflightHeader() +
 		toolExecutionPreflightFormation("fmn_work", false) +
@@ -329,7 +325,7 @@ func TestCodeGatePreflightRejectsRegisteredProcessAndEffectfulProfilesBeforeRunM
 func newToolExecutionPreflightHarness(t *testing.T, board string) (*Store, *RunEngine, *countingFormationExecutor, *countingGateEvaluator) {
 	t.Helper()
 	workspace := t.TempDir()
-	store := NewRuntimeStore(workspace, filepath.Join(t.TempDir(), "missing-formations-authority"))
+	store := NewStore(workspace)
 	writeFixture(t, store.BoardPath("tool-preflight"), board)
 	executor := &countingFormationExecutor{}
 	evaluator := &countingGateEvaluator{}

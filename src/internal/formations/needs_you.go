@@ -313,7 +313,7 @@ func (s *Store) NeedsYouNotifiedSeqs(runID string) (map[int]bool, error) {
 }
 
 func readNeedsYouNotified(directory *runArtifactDirectory, runID string) (map[int]bool, error) {
-	raw, err := readRunArtifactAt(directory, needsYouNotifiedArtifactName(runID), runtimeAuthorityMaxRecordBytes)
+	raw, err := readRunArtifactAt(directory, needsYouNotifiedArtifactName(runID), runRecordMaxBytes)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return map[int]bool{}, nil
@@ -334,9 +334,6 @@ func readNeedsYouNotified(directory *runArtifactDirectory, runID string) (map[in
 // MarkNeedsYouNotified durably records that the ask at seq has been delivered,
 // so a restart never re-announces it. It is idempotent.
 func (s *Store) MarkNeedsYouNotified(runID string, seq int) error {
-	if err := s.RequireRuntimeAuthority(); err != nil {
-		return err
-	}
 	handle, err := s.openRunLedger(runID, false)
 	if err != nil {
 		return err
@@ -361,5 +358,5 @@ func (s *Store) MarkNeedsYouNotified(runID string, seq int) error {
 	if err != nil {
 		return err
 	}
-	return writeRunArtifactAtomicAt(handle.directory, needsYouNotifiedArtifactName(runID), out, int(runtimeAuthorityMaxRecordBytes))
+	return writeRunArtifactAtomicAt(handle.directory, needsYouNotifiedArtifactName(runID), out, int(runRecordMaxBytes))
 }

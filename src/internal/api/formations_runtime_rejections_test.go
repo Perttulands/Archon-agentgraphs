@@ -11,7 +11,7 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-func TestFormationsRuntimeAPIStartDefinitionErrorsPrecedeUnavailableAuthority(t *testing.T) {
+func TestFormationsRuntimeAPIStartReportsDefinitionErrorsWithoutEffects(t *testing.T) {
 	tests := []struct {
 		name       string
 		slug       string
@@ -85,12 +85,11 @@ func TestFormationsRuntimeAPIStartDefinitionErrorsPrecedeUnavailableAuthority(t 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			workspace := t.TempDir()
-			privateRoot := filepath.Join(t.TempDir(), "wsa_private_authority")
-			store := formations.NewRuntimeStore(workspace, privateRoot)
+			store := formations.NewStore(workspace)
 			if test.board != "" {
 				writeFormationsAPIFixture(t, store.BoardPath(test.slug), test.board)
 			}
-			tmuxCapture := installRuntimeAuthorityAPITmuxTripwire(t, workspace)
+			tmuxCapture := installRuntimeAPITmuxTripwire(t, workspace)
 			handler := NewFormationsHandlerWithStore(store)
 			mux := http.NewServeMux()
 			handler.RegisterRoutes(mux)
@@ -104,11 +103,7 @@ func TestFormationsRuntimeAPIStartDefinitionErrorsPrecedeUnavailableAuthority(t 
 			if !strings.Contains(body, `"code":"`+test.wantCode+`"`) {
 				t.Errorf("response lacks selected-definition code %q: %s", test.wantCode, body)
 			}
-			if strings.Contains(body, `"code":"RUNTIME_AUTHORITY_NON_AUTHORIZING"`) {
-				t.Errorf("runtime authority masked selected-definition error: %s", body)
-			}
-			assertRuntimeAuthorityAPIResponseIsPrivate(t, body, workspace, privateRoot)
-			assertNoRuntimeAuthorityAPIEffects(t, workspace, tmuxCapture)
+			assertNoRuntimeAPIEffects(t, workspace, tmuxCapture)
 		})
 	}
 }
@@ -150,14 +145,13 @@ func TestFormationsRuntimeAPIMissionCASPrecedesToolPreflight(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			workspace := t.TempDir()
-			privateRoot := filepath.Join(t.TempDir(), "wsa_private_authority")
-			store := formations.NewRuntimeStore(workspace, privateRoot)
+			store := formations.NewStore(workspace)
 			writeFormationsAPIFixture(t, store.BoardPath("tool-parity"), test.board)
 			board, err := store.ReadBoard("tool-parity")
 			if err != nil {
 				t.Fatalf("read Tool preflight board: %v", err)
 			}
-			tmuxCapture := installRuntimeAuthorityAPITmuxTripwire(t, workspace)
+			tmuxCapture := installRuntimeAPITmuxTripwire(t, workspace)
 			handler := NewFormationsHandlerWithStore(store)
 			mux := http.NewServeMux()
 			handler.RegisterRoutes(mux)
@@ -172,25 +166,20 @@ func TestFormationsRuntimeAPIMissionCASPrecedesToolPreflight(t *testing.T) {
 			body := recorder.Body.String()
 			if !strings.Contains(body, `"code":"CONFLICT"`) ||
 				strings.Contains(body, formations.ToolExecutionUnavailableCode) ||
-				strings.Contains(body, formations.FindingInvalidTool) ||
-				strings.Contains(body, "RUNTIME_AUTHORITY_NON_AUTHORIZING") {
-				t.Fatalf("authoritative conflict was masked: %s", body)
+				strings.Contains(body, formations.FindingInvalidTool) {
+				t.Fatalf("the mission conflict was masked: %s", body)
 			}
-			assertRuntimeAuthorityAPIResponseIsPrivate(t, body, workspace, privateRoot)
-			assertNoRuntimeAuthorityAPIEffects(t, workspace, tmuxCapture)
+			assertNoRuntimeAPIEffects(t, workspace, tmuxCapture)
 		})
 	}
 }
 
-// The runtime authority guard now authorizes (trust model), so resume/abort/verdict
-// against a missing run are no longer fenced up front — they proceed past the guard
-// and report the run as not found. The response must still stay private and cause
-// no runtime effects.
+// Resume, abort and verdict against a missing run report it as not found and
+// cause no runtime effects.
 func TestFormationsRuntimeAPIResumeAbortAndVerdictReportMissingRun(t *testing.T) {
 	workspace := t.TempDir()
-	privateRoot := filepath.Join(t.TempDir(), "wsa_private_authority")
-	tmuxCapture := installRuntimeAuthorityAPITmuxTripwire(t, workspace)
-	handler := NewFormationsHandlerWithStore(formations.NewRuntimeStore(workspace, privateRoot))
+	tmuxCapture := installRuntimeAPITmuxTripwire(t, workspace)
+	handler := NewFormationsHandlerWithStore(formations.NewStore(workspace))
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
@@ -214,8 +203,7 @@ func TestFormationsRuntimeAPIResumeAbortAndVerdictReportMissingRun(t *testing.T)
 			if !strings.Contains(body, `"code":"NOT_FOUND"`) {
 				t.Fatalf("response lacks not-found code: %s", body)
 			}
-			assertRuntimeAuthorityAPIResponseIsPrivate(t, body, workspace, privateRoot)
-			assertNoRuntimeAuthorityAPIEffects(t, workspace, tmuxCapture)
+			assertNoRuntimeAPIEffects(t, workspace, tmuxCapture)
 		})
 	}
 
@@ -226,17 +214,17 @@ func TestFormationsRuntimeAPIResumeAbortAndVerdictReportMissingRun(t *testing.T)
 	}
 }
 
-func installRuntimeAuthorityAPITmuxTripwire(t *testing.T, workspace string) string {
+func installRuntimeAPITmuxTripwire(t *testing.T, workspace string) string {
 	t.Helper()
 	binDir := t.TempDir()
 	capturePath := filepath.Join(t.TempDir(), "tmux-called")
 	fakeTmux := filepath.Join(binDir, "tmux")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$FORMATIONS_RUNTIME_AUTHORITY_TMUX_CAPTURE\"\nexit 99\n"
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$FORMATIONS_RUNTIME_API_TMUX_CAPTURE\"\nexit 99\n"
 	if err := os.WriteFile(fakeTmux, []byte(script), 0o755); err != nil {
 		t.Fatalf("write tmux tripwire: %v", err)
 	}
 	t.Setenv("PATH", binDir)
-	t.Setenv("FORMATIONS_RUNTIME_AUTHORITY_TMUX_CAPTURE", capturePath)
+	t.Setenv("FORMATIONS_RUNTIME_API_TMUX_CAPTURE", capturePath)
 	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "")
 	t.Setenv("CHROTE_FORMATIONS_TMUX_HARNESSES", "openai-codex")
 	t.Setenv("CHROTE_FORMATIONS_TMUX_SOCKET", filepath.Join(t.TempDir(), "default"))
@@ -245,14 +233,7 @@ func installRuntimeAuthorityAPITmuxTripwire(t *testing.T, workspace string) stri
 	return capturePath
 }
 
-func assertRuntimeAuthorityAPIResponseIsPrivate(t *testing.T, body, workspace, privateRoot string) {
-	t.Helper()
-	if strings.Contains(body, workspace) || strings.Contains(body, privateRoot) || strings.Contains(body, "wsa_") {
-		t.Fatalf("response leaked private authority identity: %s", body)
-	}
-}
-
-func assertNoRuntimeAuthorityAPIEffects(t *testing.T, workspace, tmuxCapture string) {
+func assertNoRuntimeAPIEffects(t *testing.T, workspace, tmuxCapture string) {
 	t.Helper()
 	if matches, err := filepath.Glob(filepath.Join(workspace, ".formations", "runs", "*")); err != nil || len(matches) != 0 {
 		t.Fatalf("runtime rejection left workspace artifacts: matches=%v err=%v", matches, err)

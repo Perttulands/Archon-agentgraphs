@@ -37,21 +37,21 @@ func (r *interposingLedgerReadSeeker) Seek(offset int64, whence int) (int64, err
 	return 0, nil
 }
 
-func TestRunLedgerClassificationAndLegacyDecodeConsumeSameBytes(t *testing.T) {
+func TestRunLedgerValidationAndDecodeConsumeSameBytes(t *testing.T) {
 	runID := newPrefixedID("run")
 	legacy := testRunLedgerBytes(t, testRunStartedEvent(runID, "session-search"))
-	schema2 := []byte(`{"schema":2,"authoritySchema":2,"writerFence":1,"ts":"2026-07-18T12:00:00Z","runId":"` + runID + `","seq":1,"type":"run_failed","actor":"agent:test"}` + "\n")
-	ledger := &interposingLedgerReadSeeker{passes: [][]byte{legacy, schema2}}
+	other := []byte(`{"ts":"2026-07-18T12:00:00Z","runId":"` + runID + `","seq":1,"type":"run_failed","actor":"agent:test"}` + "\n")
+	ledger := &interposingLedgerReadSeeker{passes: [][]byte{legacy, other}}
 
-	events, err := classifyAndReadRunEvents(ledger, runID)
+	events, err := readRunEventsFrom(ledger, runID)
 	if err != nil {
-		t.Fatalf("classify and decode interposed ledger: %v", err)
+		t.Fatalf("validate and decode interposed ledger: %v", err)
 	}
 	if ledger.seeks != 1 {
-		t.Fatalf("ledger rewind count = %d, want one classification/decode pass", ledger.seeks)
+		t.Fatalf("ledger rewind count = %d, want one validation and decode pass", ledger.seeks)
 	}
 	if len(events) != 1 || events[0].Type != RunEventStarted {
-		t.Fatalf("decoded events = %#v, want exact legacy bytes classified on first pass", events)
+		t.Fatalf("decoded events = %#v, want the bytes validated on the first pass", events)
 	}
 }
 
@@ -306,7 +306,7 @@ func TestRunLedgerReaderBoundsEachEvent(t *testing.T) {
 	runID := newPrefixedID("run")
 	ledgerPath := filepath.Join(store.Workspace, runArtifactPath("session-search", runID, ".ndjson"))
 	events := testLegacyRunEvents(runID, "session-search")
-	events[0].Data["oversized"] = strings.Repeat("x", runtimeAuthorityMaxEventBytes)
+	events[0].Data["oversized"] = strings.Repeat("x", runEventMaxBytes)
 	writeFixture(t, ledgerPath, string(testRunLedgerBytes(t, events...)))
 
 	if _, err := store.ReadRunEvents(runID); !errors.Is(err, ErrRunLedgerInvalid) {
@@ -320,7 +320,7 @@ func TestRunSnapshotReaderIsBoundedBeforeAuthorizingAppend(t *testing.T) {
 	runID := newPrefixedID("run")
 	snapshotPath := runArtifactPath("session-search", runID, ".snapshot.toml")
 	ledgerPath := filepath.Join(store.Workspace, runArtifactPath("session-search", runID, ".ndjson"))
-	oversizedBoard := s4MissionOnlyBoardFixture() + "\n# " + strings.Repeat("x", int(runtimeAuthorityMaxRecordBytes)) + "\n"
+	oversizedBoard := s4MissionOnlyBoardFixture() + "\n# " + strings.Repeat("x", int(runRecordMaxBytes)) + "\n"
 	writeFixture(t, filepath.Join(store.Workspace, snapshotPath), oversizedBoard)
 	ledgerBefore := testRunLedgerBytes(t, testRunStartedEvent(runID, "session-search"))
 	writeFixture(t, ledgerPath, string(ledgerBefore))
@@ -408,65 +408,6 @@ func TestRunSnapshotReaderRejectsHardlinkBeforeAuthorizingAppend(t *testing.T) {
 	}
 	if got := readFile(t, ledgerPath); got != string(ledgerBefore) {
 		t.Fatalf("hardlinked snapshot rejection mutated ledger")
-	}
-}
-
-func TestSchema2RunLedgerNeverFallsThroughLegacyProjection(t *testing.T) {
-	store, _ := s4RunFixture(t)
-	runID := newPrefixedID("run")
-	ledgerPath := filepath.Join(store.Workspace, runArtifactPath("session-search", runID, ".ndjson"))
-	raw := `{"schema":2,"authoritySchema":2,"writerFence":1,"ts":"2026-07-18T12:00:00Z","runId":"` + runID + `","seq":1,"type":"run_started","actor":"agent:test","boardId":"brd_01J9_sesssearch","boardRev":7,"missionId":"mis_showcase","data":{"boardSlug":"session-search"}}` + "\n"
-	writeFixture(t, ledgerPath, raw)
-
-	if _, err := store.ReadRunEvents(runID); !errors.Is(err, ErrRunLedgerInvalid) {
-		t.Fatalf("schema-2 legacy read error = %v, want non-authorizing ErrRunLedgerInvalid", err)
-	}
-	if _, err := store.ReadRunEvents(runID); !errors.Is(err, ErrRuntimeAuthorityNonAuthorizing) {
-		t.Fatalf("schema-2 legacy read error = %v, want ErrRuntimeAuthorityNonAuthorizing", err)
-	}
-	if _, err := store.ProjectRun(runID); !errors.Is(err, ErrRunLedgerInvalid) {
-		t.Fatalf("schema-2 legacy projection error = %v, want non-authorizing ErrRunLedgerInvalid", err)
-	}
-}
-
-func TestAuthorityShapedRunLedgersFailTypedNonAuthorizing(t *testing.T) {
-	tests := []struct {
-		name  string
-		lines func(runID string) string
-	}{
-		{
-			name: "future schema",
-			lines: func(runID string) string {
-				return `{"schema":3,"authoritySchema":2,"writerFence":1,"ts":"2026-07-18T12:00:00Z","runId":"` + runID + `","seq":1,"type":"run_started","actor":"agent:test"}` + "\n"
-			},
-		},
-		{
-			name: "mixed schema",
-			lines: func(runID string) string {
-				legacy := testRunLedgerBytes(t, testRunStartedEvent(runID, "session-search"))
-				schema2 := `{"schema":2,"authoritySchema":2,"writerFence":1,"ts":"2026-07-18T12:00:01Z","runId":"` + runID + `","seq":2,"type":"run_failed","actor":"agent:test"}` + "\n"
-				return string(legacy) + schema2
-			},
-		},
-		{
-			name: "unknown envelope key",
-			lines: func(runID string) string {
-				return `{"ts":"2026-07-18T12:00:00Z","runId":"` + runID + `","seq":1,"type":"run_started","actor":"agent:test","unknownAuthorityField":2}` + "\n"
-			},
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			store, _ := s4RunFixture(t)
-			runID := newPrefixedID("run")
-			ledgerPath := filepath.Join(store.Workspace, runArtifactPath("session-search", runID, ".ndjson"))
-			writeFixture(t, ledgerPath, test.lines(runID))
-
-			_, err := store.ReadRunEvents(runID)
-			if !errors.Is(err, ErrRunLedgerInvalid) || !errors.Is(err, ErrRuntimeAuthorityNonAuthorizing) {
-				t.Fatalf("authority-shaped ledger error = %v, want invalid and typed non-authorizing", err)
-			}
-		})
 	}
 }
 

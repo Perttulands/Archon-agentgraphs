@@ -128,12 +128,6 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
-	return runWithRuntimeStoreFactory(args, stdout, stderr, runner, func(workspace string) *formations.Store {
-		return formations.NewRuntimeStore(workspace, "")
-	})
-}
-
-func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner tmuxRunner, runtimeStore func(string) *formations.Store) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
 		fmt.Fprintln(stdout, buildinfo.String())
 		return 0
@@ -218,7 +212,7 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 		case "unwire":
 			return runFormationWire(store, args[2:], stdout, stderr, true)
 		case "run":
-			return runFormationRun(runtimeStore(config.Workspace), args[2:], stdout, stderr)
+			return runFormationRun(formations.NewStore(config.Workspace), args[2:], stdout, stderr)
 		default:
 			fmt.Fprintf(stderr, "unknown formation command %q\n", args[1])
 			return 2
@@ -233,9 +227,9 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 		case "judge":
 			return runGateJudge(store, args[2:], stdout, stderr)
 		case "approve":
-			return runGateVerdict(runtimeStore(config.Workspace), args[2:], stdout, stderr, "pass")
+			return runGateVerdict(formations.NewStore(config.Workspace), args[2:], stdout, stderr, "pass")
 		case "reject":
-			return runGateVerdict(runtimeStore(config.Workspace), args[2:], stdout, stderr, "fail")
+			return runGateVerdict(formations.NewStore(config.Workspace), args[2:], stdout, stderr, "fail")
 		default:
 			fmt.Fprintf(stderr, "unknown gate command %q\n", args[1])
 			return 2
@@ -266,7 +260,7 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 		case "update":
 			return runMissionUpdate(store, args[2:], stdout, stderr)
 		case "run":
-			return runMissionRun(runtimeStore(config.Workspace), args[2:], stdout, stderr)
+			return runMissionRun(formations.NewStore(config.Workspace), args[2:], stdout, stderr)
 		default:
 			fmt.Fprintf(stderr, "unknown mission command %q\n\n", args[1])
 			fmt.Fprint(stderr, missionHelp)
@@ -301,9 +295,9 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 		case "wait":
 			return runWaitOffline(stderr)
 		case "resume":
-			return runResume(runtimeStore(config.Workspace), args[2:], stdout, stderr)
+			return runResume(formations.NewStore(config.Workspace), args[2:], stdout, stderr)
 		case "abort":
-			return runAbort(runtimeStore(config.Workspace), args[2:], stdout, stderr)
+			return runAbort(formations.NewStore(config.Workspace), args[2:], stdout, stderr)
 		case "ask":
 			return runAsk(store, args[2:], stdout, stderr)
 		default:
@@ -1232,9 +1226,6 @@ func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Wr
 	if fs.NArg() != 2 {
 		fmt.Fprintln(stderr, "usage: archon gate approve|reject <runId> <gateId> [--reason|--response text] [--relayed-by slot-id] [--json]")
 		return 2
-	}
-	if err := store.RequireRuntimeAuthority(); err != nil {
-		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))
 	}
 	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
 	engine := newArchonRunEngine(store, personas, "archon")
@@ -2742,8 +2733,6 @@ func archonErrorCode(err error) string {
 		return formations.InvalidDefinitionSourceCode
 	case errors.Is(err, formations.ErrToolExecutionUnavailable):
 		return formations.ToolExecutionUnavailableCode
-	case errors.Is(err, formations.ErrRuntimeAuthorityNonAuthorizing):
-		return "runtime_authority_non_authorizing"
 	case errors.Is(err, formations.ErrAmbiguousSelector):
 		return "ambiguous_selector"
 	case errors.Is(err, formations.ErrNotFound):

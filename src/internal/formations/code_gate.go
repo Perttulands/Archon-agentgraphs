@@ -145,7 +145,7 @@ func codeGateSHA256(content string) string {
 func codeGateParametersCanonical(value string) string {
 	var canonical bytes.Buffer
 	canonical.WriteString(`{"value":`)
-	writeRuntimeCanonicalJSONString(&canonical, value)
+	writeCanonicalJSONString(&canonical, value)
 	canonical.WriteByte('}')
 	return canonical.String()
 }
@@ -340,17 +340,17 @@ func canonicalCodeGateResult(verdict, reason string, evidence []GateEvidenceRef)
 			canonical.WriteByte(',')
 		}
 		canonical.WriteString(`{"kind":`)
-		writeRuntimeCanonicalJSONString(&canonical, reference.Kind)
+		writeCanonicalJSONString(&canonical, reference.Kind)
 		if reference.Text != "" {
 			canonical.WriteString(`,"text":`)
-			writeRuntimeCanonicalJSONString(&canonical, reference.Text)
+			writeCanonicalJSONString(&canonical, reference.Text)
 		}
 		canonical.WriteByte('}')
 	}
 	canonical.WriteString(`],"reason":`)
-	writeRuntimeCanonicalJSONString(&canonical, reason)
+	writeCanonicalJSONString(&canonical, reason)
 	canonical.WriteString(`,"verdict":`)
-	writeRuntimeCanonicalJSONString(&canonical, verdict)
+	writeCanonicalJSONString(&canonical, verdict)
 	canonical.WriteByte('}')
 	return canonical.String(), nil
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-func TestArchonNewRunStartDefinitionErrorsPrecedeUnavailableAuthority(t *testing.T) {
+func TestArchonRunStartReportsDefinitionErrorsWithoutEffects(t *testing.T) {
 	tests := []struct {
 		name     string
 		slug     string
@@ -52,21 +52,21 @@ func TestArchonNewRunStartDefinitionErrorsPrecedeUnavailableAuthority(t *testing
 		{
 			name:     "mission legacy inline verification",
 			slug:     "session-search",
-			board:    archonRuntimeAuthorityLegacyInlineVerificationFixture(),
+			board:    archonLegacyInlineVerificationRunFixture(),
 			args:     []string{"mission", "run", "session-search", "--json"},
 			wantCode: formations.LegacyInlineVerificationMigrationCode,
 		},
 		{
 			name:     "formation legacy inline verification",
 			slug:     "session-search",
-			board:    archonRuntimeAuthorityLegacyInlineVerificationFixture(),
+			board:    archonLegacyInlineVerificationRunFixture(),
 			args:     []string{"formation", "run", "session-search", "fmn_work", "--json"},
 			wantCode: formations.LegacyInlineVerificationMigrationCode,
 		},
 		{
 			name:     "Mission reaches non-executing Tool",
 			slug:     "tool-parity",
-			board:    archonRuntimeAuthorityToolBoardFixture(),
+			board:    archonRuntimeToolBoardFixture(),
 			args:     []string{"mission", "run", "tool-parity", "--mission", "mis_main", "--json"},
 			wantCode: "tool_execution_unavailable",
 		},
@@ -75,12 +75,10 @@ func TestArchonNewRunStartDefinitionErrorsPrecedeUnavailableAuthority(t *testing
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			workspace := t.TempDir()
-			privateRoot := filepath.Join(t.TempDir(), "wsa_private_authority")
-			t.Setenv("CHROTE_FORMATIONS_DATA_ROOT", privateRoot)
 			if test.board != "" {
 				writeArchonFile(t, formations.NewStore(workspace).BoardPath(test.slug), test.board)
 			}
-			tmuxCapture := installArchonRuntimeAuthorityTmuxTripwire(t, workspace)
+			tmuxCapture := installArchonRuntimeTmuxTripwire(t, workspace)
 			runner := &fakeTmux{live: map[string]bool{}}
 			command := append([]string{"--workspace", workspace}, test.args...)
 			var stdout, stderr bytes.Buffer
@@ -94,16 +92,12 @@ func TestArchonNewRunStartDefinitionErrorsPrecedeUnavailableAuthority(t *testing
 			if !strings.Contains(body, `"code": "`+test.wantCode+`"`) {
 				t.Errorf("stderr lacks selected-definition code %q: %s", test.wantCode, body)
 			}
-			if strings.Contains(body, `"code": "runtime_authority_non_authorizing"`) {
-				t.Errorf("runtime authority masked selected-definition error: %s", body)
-			}
-			assertArchonRuntimeAuthorityResponseIsPrivate(t, body, workspace, privateRoot)
-			assertNoArchonRuntimeAuthorityEffects(t, workspace, tmuxCapture, runner)
+			assertNoArchonRuntimeEffects(t, workspace, tmuxCapture, runner)
 		})
 	}
 }
 
-func archonRuntimeAuthorityToolBoardFixture() string {
+func archonRuntimeToolBoardFixture() string {
 	return archonToolParityBoardFixture() + `
 [[connection]]
 id = "edge_mission_tool"
@@ -113,15 +107,11 @@ to = "tool_normalize:port_tool_in"
 `
 }
 
-// The runtime authority guard now authorizes (trust model), so resume/abort/verdict
-// against a missing run are no longer fenced up front — they proceed past the guard
-// and report the run as not found. The structured error must stay private (no host
-// paths or authority IDs) and cause no runtime effects.
+// Resume, abort and verdict against a missing run report it as not found and
+// cause no runtime effects.
 func TestArchonResumeAbortAndVerdictReportMissingRun(t *testing.T) {
 	workspace := t.TempDir()
-	privateRoot := filepath.Join(t.TempDir(), "wsa_private_authority")
-	t.Setenv("CHROTE_FORMATIONS_DATA_ROOT", privateRoot)
-	tmuxCapture := installArchonRuntimeAuthorityTmuxTripwire(t, workspace)
+	tmuxCapture := installArchonRuntimeTmuxTripwire(t, workspace)
 	runner := &fakeTmux{live: map[string]bool{}}
 	commands := []struct {
 		name string
@@ -145,13 +135,12 @@ func TestArchonResumeAbortAndVerdictReportMissingRun(t *testing.T) {
 			if !strings.Contains(body, `"code": "not_found"`) {
 				t.Fatalf("stderr lacks not-found code: %s", body)
 			}
-			assertArchonRuntimeAuthorityResponseIsPrivate(t, body, workspace, privateRoot)
-			assertNoArchonRuntimeAuthorityEffects(t, workspace, tmuxCapture, runner)
+			assertNoArchonRuntimeEffects(t, workspace, tmuxCapture, runner)
 		})
 	}
 }
 
-func archonRuntimeAuthorityLegacyInlineVerificationFixture() string {
+func archonLegacyInlineVerificationRunFixture() string {
 	return strings.Replace(archonS4BoardFixture(), `[[formation.input]]`, `[formation.verification]
 id = "ver_work"
 kinds = ["code"]
@@ -161,17 +150,17 @@ onFail = "block"
 [[formation.input]]`, 1)
 }
 
-func installArchonRuntimeAuthorityTmuxTripwire(t *testing.T, workspace string) string {
+func installArchonRuntimeTmuxTripwire(t *testing.T, workspace string) string {
 	t.Helper()
 	binDir := t.TempDir()
 	capturePath := filepath.Join(t.TempDir(), "tmux-called")
 	fakeTmux := filepath.Join(binDir, "tmux")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$ARCHON_RUNTIME_AUTHORITY_TMUX_CAPTURE\"\nexit 99\n"
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$ARCHON_RUNTIME_TMUX_CAPTURE\"\nexit 99\n"
 	if err := os.WriteFile(fakeTmux, []byte(script), 0o755); err != nil {
 		t.Fatalf("write tmux tripwire: %v", err)
 	}
 	t.Setenv("PATH", binDir)
-	t.Setenv("ARCHON_RUNTIME_AUTHORITY_TMUX_CAPTURE", capturePath)
+	t.Setenv("ARCHON_RUNTIME_TMUX_CAPTURE", capturePath)
 	t.Setenv("CHROTE_FORMATIONS_LAB_HARNESSES", "")
 	t.Setenv("CHROTE_FORMATIONS_TMUX_HARNESSES", "openai-codex")
 	t.Setenv("CHROTE_FORMATIONS_TMUX_SOCKET", filepath.Join(t.TempDir(), "default"))
@@ -180,14 +169,7 @@ func installArchonRuntimeAuthorityTmuxTripwire(t *testing.T, workspace string) s
 	return capturePath
 }
 
-func assertArchonRuntimeAuthorityResponseIsPrivate(t *testing.T, body, workspace, privateRoot string) {
-	t.Helper()
-	if strings.Contains(body, workspace) || strings.Contains(body, privateRoot) || strings.Contains(body, "wsa_") {
-		t.Fatalf("stderr leaked private authority identity: %s", body)
-	}
-}
-
-func assertNoArchonRuntimeAuthorityEffects(t *testing.T, workspace, tmuxCapture string, runner *fakeTmux) {
+func assertNoArchonRuntimeEffects(t *testing.T, workspace, tmuxCapture string, runner *fakeTmux) {
 	t.Helper()
 	if matches, err := filepath.Glob(filepath.Join(workspace, ".formations", "runs", "*")); err != nil || len(matches) != 0 {
 		t.Fatalf("command left run artifacts: matches=%v err=%v", matches, err)

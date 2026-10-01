@@ -130,7 +130,7 @@ func (s *Store) openDefinitionDirectoryWithLeafParentSync(
 }
 
 func openDefinitionDirectoryAt(parent *os.File, name string, create bool) (*os.File, error) {
-	directory, err := openRuntimeAuthorityDirectoryAt(parent, name)
+	directory, err := openDirectoryAt(parent, name)
 	if err != nil && (!create || !errors.Is(err, os.ErrNotExist)) {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func openDefinitionDirectoryAt(parent *os.File, name string, create bool) (*os.F
 		if err := syscall.Mkdirat(int(parent.Fd()), name, definitionDirectoryMode); err != nil && !errors.Is(err, syscall.EEXIST) {
 			return nil, &os.PathError{Op: "mkdirat", Path: name, Err: err}
 		}
-		directory, err = openRuntimeAuthorityDirectoryAt(parent, name)
+		directory, err = openDirectoryAt(parent, name)
 		if err != nil {
 			return nil, err
 		}
@@ -273,7 +273,7 @@ func openDefinitionLockAt(directory *os.File, name string) (*os.File, error) {
 }
 
 func openDefinitionRegularFileAt(directory *os.File, name string, flags int, createExclusive bool) (*os.File, error) {
-	if directory == nil || !runtimeAuthorityPathComponent(name) {
+	if directory == nil || !validPathComponent(name) {
 		return nil, &os.PathError{Op: "openat", Path: name, Err: syscall.EINVAL}
 	}
 	flags |= syscall.O_CLOEXEC | syscall.O_NOFOLLOW | syscall.O_NONBLOCK

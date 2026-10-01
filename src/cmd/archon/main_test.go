@@ -3237,10 +3237,7 @@ func runArchon(t *testing.T, runner *fakeTmux, args ...string) (string, string, 
 	t.Helper()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	// Historic CLI behavior tests use the explicit schema-1 compatibility
-	// library seam. Production run() is separately covered and always installs
-	// the non-authorizing runtime boundary.
-	code := runWithRuntimeStoreFactory(args, &stdout, &stderr, runner, formations.NewStore)
+	code := run(args, &stdout, &stderr, runner)
 	return stdout.String(), stderr.String(), code
 }
 

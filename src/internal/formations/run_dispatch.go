@@ -64,9 +64,6 @@ func (d *SlotDispatcher) DispatchSlot(runID string, req SlotDispatchRequest) (Sl
 	if d == nil || d.store == nil {
 		return SlotDispatchLease{}, fmt.Errorf("%w: dispatch store required", ErrNotFound)
 	}
-	if err := d.store.RequireRuntimeAuthority(); err != nil {
-		return SlotDispatchLease{}, err
-	}
 	dispatchID := newDispatchID(runID, req.NodeID, req.SlotID, req.Attempt)
 	lease := SlotDispatchLease{
 		RunID:      runID,
@@ -122,9 +119,6 @@ func (d *SlotDispatcher) DispatchSlot(runID string, req SlotDispatchRequest) (Sl
 func (d *SlotDispatcher) CompleteFromCapture(runID, dispatchID, captured string) error {
 	if d == nil || d.store == nil {
 		return fmt.Errorf("%w: dispatch store required", ErrNotFound)
-	}
-	if err := d.store.RequireRuntimeAuthority(); err != nil {
-		return err
 	}
 	sentinel, ok := ParseCompletionSentinel(captured, runID)
 	if !ok {

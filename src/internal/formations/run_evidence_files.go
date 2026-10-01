@@ -84,10 +84,10 @@ func listRunArtifactsAt(directory *os.File, prefix string, depth int, entries *[
 			*truncated = true
 			return nil
 		}
-		if !runtimeAuthorityPathComponent(name) {
+		if !validPathComponent(name) {
 			continue
 		}
-		child, err := openRuntimeAuthorityDirectoryAt(directory, name)
+		child, err := openDirectoryAt(directory, name)
 		if err == nil {
 			if depth >= EvidenceArtifactListDepth {
 				_ = child.Close()
@@ -222,7 +222,7 @@ func (s *Store) ReadRunBrief(runID string, dispatchSeq int) (*RunBriefEvidence, 
 		return nil, err
 	}
 	defer root.Close()
-	briefs, err := openRuntimeAuthorityDirectoryAt(root, "briefs")
+	briefs, err := openDirectoryAt(root, "briefs")
 	if err != nil {
 		return nil, evidenceOpenError(err)
 	}
@@ -278,7 +278,7 @@ func (s *Store) openRunArtifactsRoot(runID string) (*os.File, error) {
 		return nil, err
 	}
 	for _, component := range []string{".formations", "artifacts", runID} {
-		next, err := openRuntimeAuthorityDirectoryAt(current, component)
+		next, err := openDirectoryAt(current, component)
 		_ = current.Close()
 		if err != nil {
 			return nil, evidenceOpenError(err)
@@ -302,7 +302,7 @@ func (s *Store) openRunArtifact(runID, name string) (*os.File, os.FileInfo, erro
 		return nil, nil, err
 	}
 	for _, component := range components[:len(components)-1] {
-		next, err := openRuntimeAuthorityDirectoryAt(current, component)
+		next, err := openDirectoryAt(current, component)
 		_ = current.Close()
 		if err != nil {
 			return nil, nil, evidenceOpenError(err)
@@ -331,7 +331,7 @@ func evidenceArtifactComponents(name string) ([]string, bool) {
 		return nil, false
 	}
 	for _, component := range components {
-		if !runtimeAuthorityPathComponent(component) {
+		if !validPathComponent(component) {
 			return nil, false
 		}
 	}

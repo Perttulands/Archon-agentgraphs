@@ -196,14 +196,15 @@ Execution uses a Claude controller and three Codex workers; Final review uses
 Astra. Failed Beads review returns directly to Beads. Final review produces a
 report, with no following gate. This graph has no human gate.
 
-## Execution and authority
+## Execution
 
-Runtime authority enforcement is deliberately disabled.
-`RequireRuntimeAuthority` returns nil, so the trusted operator's runtime effects
-proceed. The seam remains, but schema-2 certification and same-UID isolation are
-not implemented. Do not interpret the archived authority target as a runtime
-restriction or security guarantee. Listeners have no authentication; configure
-only trusted interfaces and the host's network perimeter.
+Archon checks no runtime authority: whoever reaches the daemon or runs the CLI
+starts, resumes, aborts and decides runs. Listeners have no authentication;
+configure only trusted interfaces and the host's network perimeter.
+
+A run ledger is read only when it is a valid event sequence: one JSON event per
+line, numbered from 1 without gaps, each with a timestamp, type, actor and the
+run's own ID.
 
 One coordinator locks a state directory. Many runs execute concurrently within
 it. Admission validates the graph and inputs, snapshots definitions, durably

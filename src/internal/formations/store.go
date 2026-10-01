@@ -56,7 +56,6 @@ type Store struct {
 	// OnRunEvent is called after a durable append. It must not block or read the store.
 	OnRunEvent func(RunEvent)
 
-	runtimeAuthority                     *runtimeAuthorityBoundary
 	newToolDefinitionID                  func(string) string
 	deleteBoardAfterLayoutArchiveForTest func()
 	archiveDirectorySyncForTest          func() error
@@ -133,8 +132,7 @@ type WriteOptions struct {
 	ExpectedRev  int
 }
 
-// NewStore constructs the schema-1 compatibility and offline-definition store.
-// Production runtime wiring must use NewRuntimeStore.
+// NewStore constructs the store for a workspace.
 func NewStore(workspace string) *Store {
 	return &Store{
 		Workspace: workspace,
@@ -147,9 +145,6 @@ func NewStore(workspace string) *Store {
 func (s *Store) workspaceRoot() string {
 	if s == nil {
 		return ""
-	}
-	if s.runtimeAuthority != nil {
-		return s.runtimeAuthority.configuredWorkspace
 	}
 	return s.Workspace
 }

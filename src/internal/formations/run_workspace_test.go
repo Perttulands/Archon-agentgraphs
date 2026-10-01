@@ -67,7 +67,7 @@ func TestRunAdmissionRemovesOnlyItsUnusedAutomaticWorkspace(t *testing.T) {
 		t.Fatalf("invalid admission allocated workspace root: %v", err)
 	}
 	req.MissionID = "mis_showcase"
-	req.Brief = strings.Repeat("x", runtimeAuthorityMaxEventBytes)
+	req.Brief = strings.Repeat("x", runEventMaxBytes)
 	if _, err := store.StartRun("session-search", req); err == nil {
 		t.Fatal("oversized admission accepted")
 	}

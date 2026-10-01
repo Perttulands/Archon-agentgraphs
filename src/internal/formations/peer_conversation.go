@@ -409,7 +409,7 @@ func decodePeerRecord(raw []byte, value any) error {
 }
 
 func peerPathID(id string) bool {
-	return len(id) <= 128 && runtimeAuthorityPathComponent(id) && !strings.Contains(id, "..")
+	return len(id) <= 128 && validPathComponent(id) && !strings.Contains(id, "..")
 }
 
 func peerArtifactPath(id PeerConversationID) string {
@@ -438,7 +438,7 @@ func (s *Store) openPeerDirectory(id PeerConversationID, create bool) (*runArtif
 		if create {
 			next, err = openOrCreateRunArtifactDirectoryAt(current, component)
 		} else {
-			next, err = openRuntimeAuthorityDirectoryAt(current, component)
+			next, err = openDirectoryAt(current, component)
 		}
 		current.Close()
 		if err != nil {

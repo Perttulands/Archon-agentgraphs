@@ -1828,8 +1828,6 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_DEFINITION_SOURCE", err.Error())
 	case errors.Is(err, formations.ErrToolExecutionUnavailable):
 		core.WriteError(w, http.StatusUnprocessableEntity, formations.ToolExecutionUnavailableCode, "Tool execution is unavailable")
-	case errors.Is(err, formations.ErrRuntimeAuthorityNonAuthorizing):
-		core.WriteError(w, http.StatusServiceUnavailable, "RUNTIME_AUTHORITY_NON_AUTHORIZING", "Formations runtime authority is unavailable")
 	case errors.Is(err, formations.ErrInvalidNodeRestore):
 		core.WriteError(w, http.StatusConflict, "INVALID_NODE_RESTORE", fieldErrorMessage(err, formations.ErrInvalidNodeRestore))
 	case errors.Is(err, formations.ErrInputOccupied):

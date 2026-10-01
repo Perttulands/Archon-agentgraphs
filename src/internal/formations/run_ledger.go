@@ -221,9 +221,6 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 	if err := preflightMissionDefinition(board, mission.ID); err != nil {
 		return nil, err
 	}
-	if err := s.RequireRuntimeAuthority(); err != nil {
-		return nil, err
-	}
 	bindings, err := resolveRunBindings(board, req.Personas)
 	if err != nil {
 		return nil, err
@@ -238,11 +235,11 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 	snapshotPath := runArtifactPath(slug, runID, ".snapshot.toml")
 	bindingsPath := runArtifactPath(slug, runID, ".bindings.toml")
 
-	if int64(len(boardRaw)) > runtimeAuthorityMaxRecordBytes {
+	if int64(len(boardRaw)) > runRecordMaxBytes {
 		return nil, fmt.Errorf("%w: run snapshot exceeds byte limit", ErrRunLedgerInvalid)
 	}
 	bindingsRaw := []byte(renderRunBindings(runID, board, mission, bindings, gateBindings))
-	if int64(len(bindingsRaw)) > runtimeAuthorityMaxRecordBytes {
+	if int64(len(bindingsRaw)) > runRecordMaxBytes {
 		return nil, fmt.Errorf("%w: run persona snapshot exceeds byte limit", ErrRunLedgerInvalid)
 	}
 	runDirectory, err := s.openRunArtifactDirectory(slug, true)
@@ -326,17 +323,11 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 }
 
 func (s *Store) AppendRunEvent(runID string, event RunEvent) error {
-	if err := s.RequireRuntimeAuthority(); err != nil {
-		return err
-	}
 	_, err := s.appendRunEventWithSnapshot(runID, event)
 	return err
 }
 
 func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*BoardDocument, error) {
-	if err := s.RequireRuntimeAuthority(); err != nil {
-		return nil, err
-	}
 	if event.Type == RunEventVerificationVerdict {
 		return nil, fmt.Errorf("%w: new verification_verdict events are retired; use an explicit Gate", ErrLegacyInlineVerificationRequiresMigration)
 	}
@@ -347,7 +338,7 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 	defer ledger.close()
 	var snapshot *BoardDocument
 	err = ledger.withLock(func() error {
-		events, err := classifyAndReadRunEvents(ledger.file, runID)
+		events, err := readRunEventsFrom(ledger.file, runID)
 		if err != nil {
 			return err
 		}
@@ -436,17 +427,11 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 }
 
 func (s *Store) ResumeRun(runID string, req RunResumeRequest) (*RunStatusProjection, error) {
-	if err := s.RequireRuntimeAuthority(); err != nil {
-		return nil, err
-	}
 	status, _, err := s.resumeRunWithSnapshot(runID, req)
 	return status, err
 }
 
 func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunStatusProjection, *BoardDocument, error) {
-	if err := s.RequireRuntimeAuthority(); err != nil {
-		return nil, nil, err
-	}
 	ledger, err := s.openRunLedger(runID, true)
 	if err != nil {
 		return nil, nil, err
@@ -454,7 +439,7 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 	defer ledger.close()
 	var snapshot *BoardDocument
 	if err := ledger.withLock(func() error {
-		events, err := classifyAndReadRunEvents(ledger.file, runID)
+		events, err := readRunEventsFrom(ledger.file, runID)
 		if err != nil {
 			return err
 		}
@@ -555,7 +540,7 @@ func (s *Store) readRunSnapshot(started RunEvent, expectedRunID string, ledger *
 	if err := s.validateRunSnapshotIdentity(started, expectedRunID, ledger); err != nil {
 		return nil, err
 	}
-	snapshotRaw, err := readRunArtifactAt(ledger.directory, expectedRunID+".snapshot.toml", runtimeAuthorityMaxRecordBytes)
+	snapshotRaw, err := readRunArtifactAt(ledger.directory, expectedRunID+".snapshot.toml", runRecordMaxBytes)
 	if err != nil {
 		return nil, fmt.Errorf("%w: snapshot read failed: %v", ErrRunLedgerInvalid, err)
 	}
@@ -673,7 +658,7 @@ func (s *Store) ReadRunEvents(runID string) ([]RunEvent, error) {
 	var events []RunEvent
 	err = ledger.withLock(func() error {
 		var readErr error
-		events, readErr = classifyAndReadRunEvents(ledger.file, runID)
+		events, readErr = readRunEventsFrom(ledger.file, runID)
 		return readErr
 	})
 	return events, err
@@ -773,7 +758,7 @@ func readRunEventsFile(path string) ([]RunEvent, error) {
 		return nil, err
 	}
 	absolute = filepath.Clean(absolute)
-	directoryFile, err := openRuntimeAuthorityRoot(filepath.Dir(absolute))
+	directoryFile, err := openAbsoluteDirectory(filepath.Dir(absolute))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrNotFound
@@ -790,7 +775,7 @@ func readRunEventsFile(path string) ([]RunEvent, error) {
 	}
 	defer file.Close()
 	runID := strings.TrimSuffix(filepath.Base(absolute), ".ndjson")
-	return classifyAndReadRunEvents(file, runID)
+	return readRunEventsFrom(file, runID)
 }
 
 // resolveRunBindings freezes what every staffed slot on the board runs: its
@@ -925,7 +910,7 @@ func (s *Store) readRunGateBinding(runID, gateID string) (*RunGateBinding, error
 		return nil, fmt.Errorf("%w: open run ledger: %v", ErrRunLedgerInvalid, err)
 	}
 	defer ledger.close()
-	events, err := classifyAndReadRunEvents(ledger.file, runID)
+	events, err := readRunEventsFrom(ledger.file, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -935,7 +920,7 @@ func (s *Store) readRunGateBinding(runID, gateID string) (*RunGateBinding, error
 	if err := s.validateRunSnapshotIdentity(events[0], runID, ledger); err != nil {
 		return nil, err
 	}
-	raw, err := readRunArtifactAt(ledger.directory, runID+".bindings.toml", runtimeAuthorityMaxRecordBytes)
+	raw, err := readRunArtifactAt(ledger.directory, runID+".bindings.toml", runRecordMaxBytes)
 	if err != nil {
 		return nil, fmt.Errorf("%w: bindings read failed: %v", ErrRunLedgerInvalid, err)
 	}

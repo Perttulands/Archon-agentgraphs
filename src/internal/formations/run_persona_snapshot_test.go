@@ -265,7 +265,7 @@ func TestPersonaSnapshotSizeRejectedBeforeRecordingRun(t *testing.T) {
 	for _, mode := range []string{"mission", "formation"} {
 		t.Run(mode, func(t *testing.T) {
 			store, personas := s4RunFixture(t)
-			_, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Summary: strings.Repeat("x", int(runtimeAuthorityMaxRecordBytes)), Harness: "openai-codex"})
+			_, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Summary: strings.Repeat("x", int(runRecordMaxBytes)), Harness: "openai-codex"})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -407,9 +407,6 @@ func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusPro
 	if e == nil || e.store == nil {
 		return nil, fmt.Errorf("%w: run engine store required", ErrNotFound)
 	}
-	if err := e.store.RequireRuntimeAuthority(); err != nil {
-		return nil, err
-	}
 	beforeEvents, err := e.store.ReadRunEvents(runID)
 	if err != nil {
 		return nil, err
@@ -613,9 +610,6 @@ func (e *RunEngine) RecordHumanGateVerdict(runID string, req HumanGateVerdictReq
 		return nil, fmt.Errorf("%w: run engine store required", ErrNotFound)
 	}
 	if err := ValidateRelayedBy(req.RelayedBy); err != nil {
-		return nil, err
-	}
-	if err := e.store.RequireRuntimeAuthority(); err != nil {
 		return nil, err
 	}
 	events, err := e.store.ReadRunEvents(runID)
@@ -900,9 +894,6 @@ func (e *RunEngine) appendOpenDispatchReattachFailure(runID string, refs []openD
 }
 
 func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formation FormationNode, actor string, personas *PersonaStore, limits RunLimits) (*RunStartResult, MissionNode, RunInputRef, error) {
-	if err := e.store.RequireRuntimeAuthority(); err != nil {
-		return nil, MissionNode{}, RunInputRef{}, err
-	}
 	bindings, err := resolveRunBindings(board, personas)
 	if err != nil {
 		return nil, MissionNode{}, RunInputRef{}, err
@@ -924,11 +915,11 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 	snapshotPath := runArtifactPath(slug, runID, ".snapshot.toml")
 	bindingsPath := runArtifactPath(slug, runID, ".bindings.toml")
 	boardRaw := []byte(board.TOML)
-	if int64(len(boardRaw)) > runtimeAuthorityMaxRecordBytes {
+	if int64(len(boardRaw)) > runRecordMaxBytes {
 		return nil, MissionNode{}, RunInputRef{}, fmt.Errorf("%w: run snapshot exceeds byte limit", ErrRunLedgerInvalid)
 	}
 	bindingsRaw := []byte(renderRunBindings(runID, board, mission, bindings, nil))
-	if int64(len(bindingsRaw)) > runtimeAuthorityMaxRecordBytes {
+	if int64(len(bindingsRaw)) > runRecordMaxBytes {
 		return nil, MissionNode{}, RunInputRef{}, fmt.Errorf("%w: run persona snapshot exceeds byte limit", ErrRunLedgerInvalid)
 	}
 	runDirectory, err := e.store.openRunArtifactDirectory(slug, true)
@@ -1617,7 +1608,7 @@ func (s *Store) ReadRunBoard(runID string) (*BoardDocument, error) {
 		return nil, fmt.Errorf("%w: open run ledger: %v", ErrRunLedgerInvalid, err)
 	}
 	defer ledger.close()
-	events, err := classifyAndReadRunEvents(ledger.file, runID)
+	events, err := readRunEventsFrom(ledger.file, runID)
 	if err != nil {
 		return nil, err
 	}

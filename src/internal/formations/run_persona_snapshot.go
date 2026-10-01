@@ -20,14 +20,14 @@ func (s *Store) readRunPersonaBinding(runID, nodeID string, slot FormationSlot) 
 		return invalid("could not open run persona snapshot", err)
 	}
 	defer ledger.close()
-	events, err := classifyAndReadRunEvents(ledger.file, runID)
+	events, err := readRunEventsFrom(ledger.file, runID)
 	if err != nil || len(events) == 0 {
 		return invalid("could not read run persona snapshot identity", err)
 	}
 	if err := s.validateRunSnapshotIdentity(events[0], runID, ledger); err != nil {
 		return invalid("invalid run persona snapshot identity", err)
 	}
-	raw, err := readRunArtifactAt(ledger.directory, runID+".bindings.toml", runtimeAuthorityMaxRecordBytes)
+	raw, err := readRunArtifactAt(ledger.directory, runID+".bindings.toml", runRecordMaxBytes)
 	if err != nil {
 		return invalid("could not read run persona snapshot", err)
 	}

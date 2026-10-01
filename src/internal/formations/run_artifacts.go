@@ -46,7 +46,7 @@ func (h *runLedgerHandle) close() {
 }
 
 func validRunID(runID string) bool {
-	return strings.HasPrefix(runID, "run_") && runtimeAuthorityPathComponent(runID) && !strings.Contains(runID, "..")
+	return strings.HasPrefix(runID, "run_") && validPathComponent(runID) && !strings.Contains(runID, "..")
 }
 
 func (s *Store) workspaceAbsolutePath() (string, error) {
@@ -78,7 +78,7 @@ func openRunWorkspaceRoot(workspace string) (*os.File, error) {
 }
 
 func openOrCreateRunArtifactDirectoryAt(parent *os.File, name string) (*os.File, error) {
-	directory, err := openRuntimeAuthorityDirectoryAt(parent, name)
+	directory, err := openDirectoryAt(parent, name)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func openOrCreateRunArtifactDirectoryAt(parent *os.File, name string) (*os.File,
 		if err := syscall.Mkdirat(int(parent.Fd()), name, runArtifactDirectoryMode); err != nil && !errors.Is(err, syscall.EEXIST) {
 			return nil, &os.PathError{Op: "mkdirat", Path: name, Err: err}
 		}
-		directory, err = openRuntimeAuthorityDirectoryAt(parent, name)
+		directory, err = openDirectoryAt(parent, name)
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +112,7 @@ func (s *Store) openRunsDirectory(create bool) (*os.File, string, error) {
 		if create {
 			next, err = openOrCreateRunArtifactDirectoryAt(current, component)
 		} else {
-			next, err = openRuntimeAuthorityDirectoryAt(current, component)
+			next, err = openDirectoryAt(current, component)
 		}
 		_ = current.Close()
 		if err != nil {
@@ -139,7 +139,7 @@ func (s *Store) openRunArtifactDirectory(slug string, create bool) (*runArtifact
 	if create {
 		directory, err = openOrCreateRunArtifactDirectoryAt(runs, slug)
 	} else {
-		directory, err = openRuntimeAuthorityDirectoryAt(runs, slug)
+		directory, err = openDirectoryAt(runs, slug)
 	}
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -155,7 +155,7 @@ func (s *Store) openRunArtifactDirectory(slug string, create bool) (*runArtifact
 }
 
 func openRunArtifactFileAt(directory *os.File, name string, flags int, create bool) (*os.File, error) {
-	if directory == nil || !runtimeAuthorityPathComponent(name) {
+	if directory == nil || !validPathComponent(name) {
 		return nil, &os.PathError{Op: "openat", Path: name, Err: syscall.EINVAL}
 	}
 	flags |= syscall.O_CLOEXEC | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
@@ -229,7 +229,7 @@ func writeRunArtifactExclusiveAt(directory *runArtifactDirectory, name string, r
 }
 
 func writeRunArtifactAtomicAt(directory *runArtifactDirectory, name string, raw []byte, maximumBytes int) error {
-	if directory == nil || directory.file == nil || !runtimeAuthorityPathComponent(name) || maximumBytes < 0 || len(raw) > maximumBytes {
+	if directory == nil || directory.file == nil || !validPathComponent(name) || maximumBytes < 0 || len(raw) > maximumBytes {
 		return fmt.Errorf("%w: run artifact exceeds byte limit", ErrRunLedgerInvalid)
 	}
 	validateTarget := func() error {
@@ -350,7 +350,7 @@ func (s *Store) openRunLedger(runID string, writable bool) (*runLedgerHandle, er
 
 	var match *runLedgerHandle
 	for {
-		names, done, readErr := readRuntimeAuthorityDirectoryNameBatch(runs, runtimeAuthorityDirectoryBatchSize)
+		names, done, readErr := readDirectoryNameBatch(runs, directoryBatchSize)
 		if readErr != nil {
 			if match != nil {
 				match.close()
@@ -361,7 +361,7 @@ func (s *Store) openRunLedger(runID string, writable bool) (*runLedgerHandle, er
 			if validateSlug(slug) != nil {
 				continue
 			}
-			directoryFile, openErr := openRuntimeAuthorityDirectoryAt(runs, slug)
+			directoryFile, openErr := openDirectoryAt(runs, slug)
 			if openErr != nil {
 				if errors.Is(openErr, syscall.ELOOP) || errors.Is(openErr, syscall.ENOTDIR) || errors.Is(openErr, os.ErrNotExist) {
 					continue
@@ -425,7 +425,7 @@ func (s *Store) listRunIDs() ([]string, error) {
 	defer runs.Close()
 	seen := map[string]string{}
 	for {
-		slugs, done, readErr := readRuntimeAuthorityDirectoryNameBatch(runs, runtimeAuthorityDirectoryBatchSize)
+		slugs, done, readErr := readDirectoryNameBatch(runs, directoryBatchSize)
 		if readErr != nil {
 			return nil, fmt.Errorf("%w: enumerate run directories: %v", ErrRunLedgerInvalid, readErr)
 		}
@@ -433,7 +433,7 @@ func (s *Store) listRunIDs() ([]string, error) {
 			if validateSlug(slug) != nil {
 				continue
 			}
-			directory, openErr := openRuntimeAuthorityDirectoryAt(runs, slug)
+			directory, openErr := openDirectoryAt(runs, slug)
 			if openErr != nil {
 				if errors.Is(openErr, syscall.ELOOP) || errors.Is(openErr, syscall.ENOTDIR) || errors.Is(openErr, os.ErrNotExist) {
 					continue
@@ -441,7 +441,7 @@ func (s *Store) listRunIDs() ([]string, error) {
 				return nil, fmt.Errorf("%w: open run directory: %v", ErrRunLedgerInvalid, openErr)
 			}
 			for {
-				names, namesDone, namesErr := readRuntimeAuthorityDirectoryNameBatch(directory, runtimeAuthorityDirectoryBatchSize)
+				names, namesDone, namesErr := readDirectoryNameBatch(directory, directoryBatchSize)
 				if namesErr != nil {
 					_ = directory.Close()
 					return nil, fmt.Errorf("%w: enumerate run artifacts: %v", ErrRunLedgerInvalid, namesErr)
@@ -485,7 +485,7 @@ func (s *Store) listRunIDs() ([]string, error) {
 }
 
 func withRunArtifactLock(directory *runArtifactDirectory, ledgerName, lockKey string, fn func() error) error {
-	if directory == nil || directory.file == nil || !runtimeAuthorityPathComponent(ledgerName) {
+	if directory == nil || directory.file == nil || !validPathComponent(ledgerName) {
 		return ErrRunLedgerInvalid
 	}
 	lockName := ledgerName + ".lock"
@@ -512,7 +512,7 @@ func (h *runLedgerHandle) withLock(fn func() error) error {
 	return withRunArtifactLock(h.directory, h.runID+".ndjson", h.path+".lock", fn)
 }
 
-func classifyAndReadRunEvents(file io.ReadSeeker, expectedRunID string) ([]RunEvent, error) {
+func readRunEventsFrom(file io.ReadSeeker, expectedRunID string) ([]RunEvent, error) {
 	if file == nil {
 		return nil, ErrRunLedgerInvalid
 	}
@@ -520,37 +520,18 @@ func classifyAndReadRunEvents(file io.ReadSeeker, expectedRunID string) ([]RunEv
 		return nil, fmt.Errorf("%w: seek run ledger: %v", ErrRunLedgerInvalid, err)
 	}
 	events := make([]RunEvent, 0)
-	class, err := classifyRuntimeAuthorityLedgerWithVisitor(file, runtimeAuthoritySchema, expectedRunID, func(line []byte) error {
+	err := readLedgerLines(file, expectedRunID, func(line []byte) error {
 		var event RunEvent
 		if err := json.Unmarshal(line, &event); err != nil {
-			return runtimeDecodeError{code: RuntimeAuthorityGuardMalformed, err: err}
+			return err
 		}
 		events = append(events, event)
 		return nil
 	})
 	if err != nil {
-		if runtimeAuthorityClassifierRequiresAuthority(err) {
-			return nil, fmt.Errorf("%w: %w: classify run ledger: %v", ErrRunLedgerInvalid, ErrRuntimeAuthorityNonAuthorizing, err)
-		}
-		return nil, fmt.Errorf("%w: classify run ledger: %v", ErrRunLedgerInvalid, err)
-	}
-	if class != RuntimeAuthoritySchema1Inspection {
-		return nil, fmt.Errorf("%w: %w: schema-2 ledger", ErrRunLedgerInvalid, ErrRuntimeAuthorityNonAuthorizing)
+		return nil, fmt.Errorf("%w: %v", ErrRunLedgerInvalid, err)
 	}
 	return events, nil
-}
-
-func runtimeAuthorityClassifierRequiresAuthority(err error) bool {
-	var decodeErr runtimeDecodeError
-	if !errors.As(err, &decodeErr) {
-		return false
-	}
-	switch decodeErr.code {
-	case RuntimeAuthorityGuardUnknownKey, RuntimeAuthorityGuardUnsupportedSchema, RuntimeAuthorityGuardMixedSchema:
-		return true
-	default:
-		return false
-	}
 }
 
 func appendRunEventToFile(file *os.File, directory *os.File, event RunEvent) error {
@@ -561,7 +542,7 @@ func appendRunEventToFile(file *os.File, directory *os.File, event RunEvent) err
 	if err != nil {
 		return err
 	}
-	if len(raw) > runtimeAuthorityMaxEventBytes {
+	if len(raw) > runEventMaxBytes {
 		return fmt.Errorf("%w: run event exceeds byte limit", ErrRunLedgerInvalid)
 	}
 	raw = append(raw, '\n')
@@ -611,7 +592,7 @@ func openOrCreateAbsoluteDirectory(path string) (*runArtifactDirectory, error) {
 	if !filepath.IsAbs(clean) || clean != path {
 		return nil, ErrRunLedgerInvalid
 	}
-	current, err := openRuntimeAuthorityRoot(string(filepath.Separator))
+	current, err := openAbsoluteDirectory(string(filepath.Separator))
 	if err != nil {
 		return nil, err
 	}
@@ -621,7 +602,7 @@ func openOrCreateAbsoluteDirectory(path string) (*runArtifactDirectory, error) {
 	}
 	components := strings.Split(trimmed, string(filepath.Separator))
 	for index, component := range components {
-		next, openErr := openRuntimeAuthorityDirectoryAt(current, component)
+		next, openErr := openDirectoryAt(current, component)
 		if openErr != nil && !errors.Is(openErr, os.ErrNotExist) {
 			_ = current.Close()
 			return nil, openErr
@@ -632,7 +613,7 @@ func openOrCreateAbsoluteDirectory(path string) (*runArtifactDirectory, error) {
 				_ = current.Close()
 				return nil, err
 			}
-			next, openErr = openRuntimeAuthorityDirectoryAt(current, component)
+			next, openErr = openDirectoryAt(current, component)
 			if openErr != nil {
 				_ = current.Close()
 				return nil, openErr
