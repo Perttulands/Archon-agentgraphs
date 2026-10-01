@@ -34,7 +34,7 @@ const FILES: Record<string, string> = {
 const servePreview = (route: import('@playwright/test').Route) => {
   const path = new URL(route.request().url()).searchParams.get('path') || ''
   if (!path.startsWith('/')) {
-    return route.fulfill({ status: 400, json: { success: false, error: { code: 'Bad Request', message: 'a relative file reference has no base here; name the file by its absolute path' } } })
+    return route.fulfill({ status: 400, json: { success: false, error: { code: 'Bad Request', message: 'a relative file reference has no base: use an absolute path' } } })
   }
   const text = FILES[path]
   if (text === undefined) return route.fulfill({ status: 404, json: { success: false, error: { code: 'Not Found', message: 'file not found' } } })
@@ -98,7 +98,7 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Scoutin
   const missionWindow = page.getByRole('dialog', { name: 'Input card · Scouting' })
   await missionWindow.getByRole('button', { name: 'Open file sketch.md' }).click()
   const sketch = page.getByRole('dialog', { name: 'file sketch.md' })
-  await expect(sketch.getByRole('alert')).toContainText('a relative file reference has no base here; name the file by its absolute path')
+  await expect(sketch.getByRole('alert')).toContainText('a relative file reference has no base: use an absolute path')
   const besideWindow = gapBetween((await sketch.boundingBox())!, (await missionWindow.boundingBox())!)
   expect(besideWindow).toBeGreaterThanOrEqual(0)
   expect(besideWindow).toBeLessThanOrEqual(240)

@@ -115,6 +115,8 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrInvalidHumanChannel
 	case "INVALID_MISSION_INPUT":
 		return formations.ErrInvalidMissionInput
+	case "RELATIVE_FILE_REFERENCE":
+		return formations.ErrRelativeFileRef
 	case "INVALID_EXECUTION_POLICY":
 		return formations.ErrInvalidExecutionPolicy
 	case "INVALID_TOOL_MUTATION":

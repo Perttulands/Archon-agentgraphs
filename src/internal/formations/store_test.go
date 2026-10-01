@@ -1713,7 +1713,7 @@ title = "Ship"
 		FormationID: "fmn_ship",
 		Goal:        "Ship the change",
 		BeadID:      "srv-abc.2",
-		Files:       []string{"src/SessionPanel.tsx"},
+		Files:       []string{"/work/src/SessionPanel.tsx"},
 		Links:       []string{"https://example.com/spec"},
 		UpdatedBy:   "agent:test",
 	}, WriteOptions{ExpectedETag: before.ETag, ExpectedRev: before.Rev})
@@ -1733,7 +1733,7 @@ title = "Ship"
 		`customFuture = "keep me"`,
 		`[formation.brief]`,
 		`beadId = "srv-abc.2"`,
-		`files = ["src/SessionPanel.tsx"]`,
+		`files = ["/work/src/SessionPanel.tsx"]`,
 		`links = ["https://example.com/spec"]`,
 	} {
 		if !strings.Contains(raw, want) {

@@ -862,6 +862,9 @@ func (s *Store) SetFormationBrief(slug string, req FormationBriefRequest, opts W
 	if req.FormationID == "" {
 		return nil, ErrNotFound
 	}
+	if err := checkFileRefs(req.Files); err != nil {
+		return nil, err
+	}
 	if req.BeadID != "" && !isSafeBeadsIssueID(req.BeadID) {
 		return nil, invalidBeadID("brief beadId", req.BeadID)
 	}
@@ -928,6 +931,9 @@ func (s *Store) createGate(slug string, req GateCreateRequest, opts WriteOptions
 	if err := validateCodeGateAuthoring(req.Check, req.CheckVersion); err != nil {
 		return nil, err
 	}
+	if err := checkFileRefs(req.Files); err != nil {
+		return nil, err
+	}
 	if opts.ExpectedETag == "" || opts.ExpectedRev == 0 {
 		return nil, ErrPreconditionRequired
 	}
@@ -978,6 +984,11 @@ func (s *Store) createGate(slug string, req GateCreateRequest, opts WriteOptions
 func (s *Store) UpdateGate(slug string, req GateUpdateRequest, opts WriteOptions) (*BoardDocument, error) {
 	if req.GateID == "" {
 		return nil, ErrNotFound
+	}
+	if req.Files != nil {
+		if err := checkFileRefs(*req.Files); err != nil {
+			return nil, err
+		}
 	}
 	var kinds []string
 	if req.Kinds != nil {
@@ -1332,6 +1343,11 @@ func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteO
 	if req.MissionID == "" {
 		return nil, ErrNotFound
 	}
+	if req.Files != nil {
+		if err := checkFileRefs(*req.Files); err != nil {
+			return nil, err
+		}
+	}
 	var humanChannel string
 	if req.HumanChannel != nil {
 		channel, err := NormalizeHumanChannel(*req.HumanChannel)
@@ -1528,6 +1544,9 @@ func (s *Store) CreateMission(slug string, req MissionCreateRequest, opts WriteO
 func (s *Store) createMission(slug string, req MissionCreateRequest, opts WriteOptions, fault func(string) error) (*MissionCreateResult, error) {
 	humanChannel, err := NormalizeHumanChannel(req.HumanChannel)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkFileRefs(req.Files); err != nil {
 		return nil, err
 	}
 	if err := validateSlug(slug); err != nil {

@@ -222,7 +222,6 @@ func TestConfiguredWorkspaceSymlinkStillSupportsDefinitionPersistence(t *testing
 	}
 }
 
-
 // A mission kept in a repository can be shared into the state directory as a
 // symlink (archon-4m4j): it is read through the link and written through it,
 // so the repository's file changes and the link stays a link.

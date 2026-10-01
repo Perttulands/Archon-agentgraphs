@@ -2670,7 +2670,7 @@ func failJSON(stderr io.Writer, err error, jsonOut bool, boundary, selector stri
 }
 
 func failDefinitionWrite(stderr io.Writer, err error, jsonOut bool, boundary, selector string) int {
-	if errors.Is(err, formations.ErrInvalidDefinitionSource) || errors.Is(err, formations.ErrInvalidSlotSettings) || errors.Is(err, formations.ErrInvalidMissionInput) || errors.Is(err, formations.ErrInputOccupied) || errors.Is(err, formations.ErrSelfWire) || errors.Is(err, formations.ErrDuplicateConnection) || errors.Is(err, formations.ErrIncompatibleToolConnection) {
+	if errors.Is(err, formations.ErrInvalidDefinitionSource) || errors.Is(err, formations.ErrInvalidSlotSettings) || errors.Is(err, formations.ErrInvalidMissionInput) || errors.Is(err, formations.ErrRelativeFileRef) || errors.Is(err, formations.ErrInputOccupied) || errors.Is(err, formations.ErrSelfWire) || errors.Is(err, formations.ErrDuplicateConnection) || errors.Is(err, formations.ErrIncompatibleToolConnection) {
 		return failJSON(stderr, err, jsonOut, boundary, selector)
 	}
 	return fail(stderr, err)
@@ -2757,6 +2757,8 @@ func archonErrorCode(err error) string {
 		return "invalid_human_channel"
 	case errors.Is(err, formations.ErrInvalidMissionInput):
 		return "invalid_mission_input"
+	case errors.Is(err, formations.ErrRelativeFileRef):
+		return "relative_file_reference"
 	case errors.Is(err, formations.ErrInvalidExecutionPolicy):
 		return "invalid_execution_policy"
 	case errors.Is(err, formations.ErrInvalidRelayedBy):

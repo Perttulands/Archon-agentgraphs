@@ -2784,7 +2784,7 @@ describe('FormationsCockpit reference parity', () => {
         status: relative ? 400 : 200,
         headers: { get: () => null },
         json: () => Promise.resolve(relative
-          ? { success: false, error: { code: 'Bad Request', message: 'a relative file reference has no base here; name the file by its absolute path' } }
+          ? { success: false, error: { code: 'Bad Request', message: 'a relative file reference has no base: use an absolute path' } }
           : { success: true, data: { file: { path: '/srv/rubrics/review.md', name: 'review.md', size: 16, modifiedAt: '', kind: 'markdown', text: { text: '# Review rubric', bytes: 15 } } } }),
       } as unknown as Response)
     }) as typeof fetch
@@ -2807,7 +2807,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(within(more).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['/srv/rubrics/scale.md', 'judge.md · judge Judge'])
     fireEvent.click(within(more).getByRole('menuitem', { name: 'judge.md · judge Judge' }))
     const unresolved = await screen.findByRole('dialog', { name: 'file judge.md' })
-    expect(await within(unresolved).findByRole('alert')).toHaveTextContent('Cannot read judge.md: a relative file reference has no base here')
+    expect(await within(unresolved).findByRole('alert')).toHaveTextContent('Cannot read judge.md: a relative file reference has no base')
     expect(unresolved).toHaveTextContent('Judge (judge) · judge.md')
     expect(previews).toEqual(['/api/files/preview?path=%2Fsrv%2Frubrics%2Freview.md', '/api/files/preview?path=judge.md'])
 

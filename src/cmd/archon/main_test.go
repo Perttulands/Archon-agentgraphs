@@ -993,6 +993,22 @@ func TestArchonOfflineCommandsNeedAWorkspaceOrServer(t *testing.T) {
 	}
 }
 
+func TestArchonRefusesARelativeReferenceFile(t *testing.T) {
+	workspace := t.TempDir()
+	runner := &fakeTmux{live: map[string]bool{}}
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "new", "refs"); code != 0 {
+		t.Fatalf("mission new: %s", stderr)
+	}
+	_, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "create", "refs", "--title", "Work", "--file", "docs/brief.md", "--json")
+	if code == 0 || !strings.Contains(stderr, `"code": "relative_file_reference"`) || !strings.Contains(stderr, `is relative: use an absolute path`) {
+		t.Fatalf("relative --file code=%d stderr=%s, want relative_file_reference", code, stderr)
+	}
+	_, stderr, code = runArchon(t, runner, "--workspace", workspace, "gate", "create", "refs", "--title", "Review", "--file", "rubric.md")
+	if code == 0 || !strings.Contains(stderr, `file "rubric.md" is relative: use an absolute path`) {
+		t.Fatalf("relative gate --file code=%d stderr=%s", code, stderr)
+	}
+}
+
 func TestArchonBoardInspectFailsLoudOnAmbiguousSelector(t *testing.T) {
 	workspace := t.TempDir()
 	store := formations.NewStore(workspace)
@@ -1629,7 +1645,7 @@ controller = false
 		t.Fatalf("assign persisted runtime session data:\n%s", raw)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "set-brief", "session-search", "fmn_frame", "--goal", "Frame the goal", "--bead", "home-7kc4.5", "--file", "src/SessionPanel.tsx", "--link", "https://example.com/spec", "--json")
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "set-brief", "session-search", "fmn_frame", "--goal", "Frame the goal", "--bead", "home-7kc4.5", "--file", "/work/src/SessionPanel.tsx", "--link", "https://example.com/spec", "--json")
 	if code != 0 {
 		t.Fatalf("formation set-brief code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -1637,7 +1653,7 @@ controller = false
 	for _, want := range []string{
 		`goal = "Frame the goal"`,
 		`beadId = "home-7kc4.5"`,
-		`files = ["src/SessionPanel.tsx"]`,
+		`files = ["/work/src/SessionPanel.tsx"]`,
 		`links = ["https://example.com/spec"]`,
 	} {
 		if !strings.Contains(raw, want) {

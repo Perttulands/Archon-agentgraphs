@@ -972,7 +972,10 @@ the notify command on either channel. Input cards and gates carry
 reference files, such as a gate's rubric, the way formation briefs do: `--file
 <path>` on `mission create|update` and `gate create|update` (API `files`),
 repeated for more. On update the given files replace the list, and `--file ''`
-clears it. Name each file by its absolute path. Clicking an
+clears it. Name each file by its absolute path: a relative path has no base, so
+authoring refuses it, on these and on `formation set-brief --file`, with
+`RELATIVE_FILE_REFERENCE` (HTTP 400, CLI code `relative_file_reference`),
+worded `file "rubric.md" is relative: use an absolute path`. Clicking an
 Input card, formation or gate card opens its node window, where every field is
 read in full and edited in place: titles, the Input card's goal, inputs, input hint
 and files, a formation's type, brief and staffing, and a gate's kinds,
@@ -1399,7 +1402,8 @@ recorded apart from redaction, so it can mention host paths such as the cwd.
 Archon confines no files ([ADR-0021](adr/0021-archon-only-chains-agents-and-gates.md)).
 The daemon opens any file a reference names by absolute path, following
 symlinks, as CHROTE's file viewer does. The `path` query is the reference as
-authored. A relative path has no base and returns 400.
+authored. A relative path has no base: authoring refuses one, and a
+hand-written one returns 400, "use an absolute path".
 
 - `GET /api/files/preview?path=<ref>` returns `data.file` (`path`
   read, `name`, `size`, `modifiedAt`, `kind` as for artifacts), with `text`
