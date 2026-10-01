@@ -1282,7 +1282,7 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
 Artifact names are relative to the run's artifact directory, and a name with
 `..` or an empty component returns 404. Symlinks and hard links an agent left
 there are followed, and only regular files are read. Output and input references appear as `ref.artifact` inside that
-directory or `ref.external` (a base name only) elsewhere; engine references
+directory or `ref.external` (its absolute path, which opens in a file window) elsewhere; engine references
 such as `ledger://` name no file and are omitted. Structured fields
 never carry native session IDs, tmux session or pane IDs, `sessionRef`, socket or
 prompt digests, brief or prompt paths, seat report pointers or absolute

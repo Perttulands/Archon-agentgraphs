@@ -62,10 +62,12 @@ func TestEvidenceRoutesServeNodeOutputsAndGateResponses(t *testing.T) {
 		t.Fatalf("work evidence = %s", w.Body.String())
 	}
 	output := work.Attempts[0].Output
-	if output.Text.Text != "PRIVATE-CAPTURE" || len(output.Ports) != 1 || output.Ports[0].Text.Text != "PRIVATE-OUTPUT" || output.Ports[0].Ref.External != "raw" {
+	if output.Text.Text != "PRIVATE-CAPTURE" || len(output.Ports) != 1 || output.Ports[0].Text.Text != "PRIVATE-OUTPUT" || output.Ports[0].Ref.External != "/private/raw" {
 		t.Fatalf("work output = %s", w.Body.String())
 	}
-	for _, private := range []string{"/private/", "sessionRef", "nativeSessionId", "paneId", "promptSha256", "briefPath", "reportRef"} {
+	// An output ref outside the artifact directory shows its absolute path, which
+	// opens in a file window; other private paths stay out.
+	for _, private := range []string{"/private/report", "sessionRef", "nativeSessionId", "paneId", "promptSha256", "briefPath", "reportRef"} {
 		if strings.Contains(w.Body.String(), private) {
 			t.Fatalf("node evidence leaked %q: %s", private, w.Body.String())
 		}

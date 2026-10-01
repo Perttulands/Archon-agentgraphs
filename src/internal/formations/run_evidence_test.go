@@ -71,7 +71,7 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 	for _, port := range output.Ports {
 		ports = append(ports, port.PortID)
 	}
-	if strings.Join(ports, ",") != "port_a,port_x,port_z" || output.Ports[0].Ref.Artifact != "nested/plan.md" || *output.Ports[1].Ref != (EvidenceRef{External: "notes.txt"}) || output.Ports[2].Ref != nil {
+	if strings.Join(ports, ",") != "port_a,port_x,port_z" || output.Ports[0].Ref.Artifact != "nested/plan.md" || *output.Ports[1].Ref != (EvidenceRef{External: "/etc/private/notes.txt"}) || output.Ports[2].Ref != nil {
 		t.Fatalf("ports = %+v", output.Ports)
 	}
 	if len(work.Problems) != 1 || work.Problems[0].Reason.Text != "seat timed out" || work.Problems[0].ResumeAllowed == nil || !*work.Problems[0].ResumeAllowed {
@@ -104,7 +104,7 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, private := range []string{"SESSION-REF", "TMUX-SESSION", "TMUX-PANE", "NATIVE-SESSION", "PROMPT-DIGEST", "PROMPT-REF", "/ws/briefs", "tmux://", artifacts, "/etc/private", "dsp_1", "hunter2", "form-run_1-slot_work"} {
+	for _, private := range []string{"SESSION-REF", "TMUX-SESSION", "TMUX-PANE", "NATIVE-SESSION", "PROMPT-DIGEST", "PROMPT-REF", "/ws/briefs", "tmux://", artifacts, "dsp_1", "hunter2", "form-run_1-slot_work"} {
 		if strings.Contains(string(raw), private) {
 			t.Fatalf("node evidence leaked %q: %s", private, raw)
 		}
@@ -378,5 +378,24 @@ func TestNodeEvidenceRedactsAndCapsFrozenDisplayNames(t *testing.T) {
 	evidence := projectNodeEvidence("run_1", "fmn_work", "formation", nil, true, nil, definition)
 	if strings.Contains(evidence.Definition.Title, "sk-abcdefghijklmnop") || len(evidence.Definition.Outputs[0].Label) != EvidenceTextMaxBytes {
 		t.Fatalf("unbounded or unredacted display metadata: title=%q labelBytes=%d", evidence.Definition.Title, len(evidence.Definition.Outputs[0].Label))
+	}
+}
+
+// A ref outside the artifact directory projects its absolute path so the
+// cockpit can open it; a relative ref resolves against the state workspace.
+func TestEvidenceRefProjectsExternalRefsByAbsolutePath(t *testing.T) {
+	roots := []string{"/state/.formations/artifacts/run_1"}
+	for ref, want := range map[string]EvidenceRef{
+		"/state/.formations/artifacts/run_1/plan.md": {Artifact: "plan.md"},
+		"/srv/project/notes.md":                      {External: "/srv/project/notes.md"},
+		".formations/artifacts/run_1/nested/a.md":    {Artifact: "nested/a.md"},
+		"docs/notes.md":                              {External: "/state/docs/notes.md"},
+	} {
+		if got := evidenceRef(ref, roots); got == nil || *got != want {
+			t.Errorf("evidenceRef(%q) = %+v, want %+v", ref, got, want)
+		}
+	}
+	if got := evidenceRef("ledger://run_1/3", roots); got != nil {
+		t.Errorf("a scheme ref names no file: %+v", got)
 	}
 }

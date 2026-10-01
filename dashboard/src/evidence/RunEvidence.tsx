@@ -5,12 +5,13 @@ import { problemHeadline } from '../components/runOutcome'
 import type { BoardDocument } from '../components/formationsTypes'
 import { evidenceNamesForBoard, type EvidenceNames } from './evidenceNames'
 import { useFileWindows } from '../files/FileWindows'
-import { artifactFileRequest } from '../files/fileWindowModel'
+import { artifactFileRequest, referencedFileRequest } from '../files/fileWindowModel'
 import Markdown from './Markdown'
 import TextLines, { prettyJson } from './TextLines'
 import {
   artifactRawUrl,
   fetchArtifactPreview,
+  fetchReferencedPreview,
   fetchNodeEvidence,
   fetchRunArtifacts,
   fetchRunBrief,
@@ -73,14 +74,17 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   }, [runId, nodeId, state])
 
   // In the cockpit an artifact opens in its own file window; elsewhere it opens in place.
+  // A name with a leading slash is a ref outside the artifact directory, by absolute path.
   const files = useFileWindows()
   const openArtifact = useCallback((name: string) => {
     setDocumentError('')
+    const absolute = name.startsWith('/')
     if (files) {
-      files.open(artifactFileRequest(runId, name, title))
+      files.open(absolute ? referencedFileRequest(name, title) : artifactFileRequest(runId, name, title))
       return
     }
-    fetchArtifactPreview(runId, name).then(preview => setOpenDocument({ kind: 'artifact', preview }), reason => setDocumentError(`${name}: ${errorText(reason)}`))
+    const preview = absolute ? fetchReferencedPreview(name) : fetchArtifactPreview(runId, name)
+    preview.then(preview => setOpenDocument({ kind: 'artifact', preview }), reason => setDocumentError(`${name}: ${errorText(reason)}`))
   }, [files, runId, title])
 
   const pauses = (evidence?.problems || []).filter(isHumanVerdictPause)
@@ -395,9 +399,11 @@ function RefLink({ runId, value, onOpenArtifact }: { runId: string; value?: Evid
       </span>
     )
   }
+  const path = value.external
+  if (!path) return null
   return (
     <span className="evidence-ref">
-      <span className="evidence-meta" title="Outside the run's artifact directory; read it on the host">{value.external} · file on the host</span>
+      <button type="button" className="evidence-link" title={`Open ${path}`} onClick={event => { event.preventDefault(); onOpenArtifact(path) }}>{path}</button>
     </span>
   )
 }

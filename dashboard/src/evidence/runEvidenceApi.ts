@@ -11,6 +11,7 @@ export interface EvidenceText {
 
 export interface EvidenceRef {
   artifact?: string
+  /** The absolute path of a ref outside the run's artifact directory. */
   external?: string
 }
 
@@ -202,6 +203,13 @@ export async function fetchArtifactPreview(runId: string, name: string): Promise
   const { data } = await fetchApi<{ artifact?: RunArtifactPreview }>(`${runPath(runId)}/evidence/artifacts/${artifactPath(name)}`)
   if (!data.artifact) throw new Error('the daemon returned no artifact')
   return data.artifact
+}
+
+/** The start of any file by absolute path, as the file routes read it. */
+export async function fetchReferencedPreview(path: string): Promise<RunArtifactPreview> {
+  const { data } = await fetchApi<{ file?: RunArtifactPreview }>(`/api/formations/files/preview?path=${encodeURIComponent(path)}`)
+  if (!data.file) throw new Error('the daemon returned no file')
+  return data.file
 }
 
 /** The raw artifact URL, for a new tab or an image source. */

@@ -43,6 +43,7 @@ type EvidenceText struct {
 // External is only the base name of a file elsewhere.
 type EvidenceRef struct {
 	Artifact string `json:"artifact,omitempty"`
+	// External is the absolute path of a ref outside the artifact directory.
 	External string `json:"external,omitempty"`
 }
 
@@ -704,13 +705,20 @@ func evidenceItems(raw any, capper *evidenceCapper) ([]EvidenceItem, int) {
 }
 
 // evidenceRef reports a recorded ref by artifact name when it lies in the
-// run's artifact directory, otherwise by base name only. A reference with a
-// scheme, such as the engine's ledger:// and brief://, names no file.
+// run's artifact directory, otherwise by its absolute path, which the cockpit
+// opens in a file window. A relative ref resolves against the state workspace,
+// as the executor resolved it: the artifact roots are
+// <workspace>/.formations/artifacts/<run>. A reference with a scheme, such as
+// the engine's ledger:// and brief://, names no file.
 func evidenceRef(ref string, artifactRoots []string) *EvidenceRef {
 	if strings.TrimSpace(ref) == "" || strings.Contains(ref, "://") {
 		return nil
 	}
 	clean := filepath.Clean(ref)
+	if !filepath.IsAbs(clean) && len(artifactRoots) > 0 {
+		workspace := filepath.Dir(filepath.Dir(filepath.Dir(artifactRoots[len(artifactRoots)-1])))
+		clean = filepath.Join(workspace, clean)
+	}
 	if filepath.IsAbs(clean) {
 		for _, root := range artifactRoots {
 			relative, err := filepath.Rel(root, clean)
@@ -719,7 +727,7 @@ func evidenceRef(ref string, artifactRoots []string) *EvidenceRef {
 			}
 		}
 	}
-	return &EvidenceRef{External: filepath.Base(clean)}
+	return &EvidenceRef{External: clean}
 }
 
 func stringsFromEventData(raw any) []string {

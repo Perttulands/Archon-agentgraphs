@@ -37,12 +37,15 @@ const routes: Record<string, unknown> = {
       runId: 'run_1', nodeId: 'gate_review', kind: 'gate',
       evaluations: [{
         seq: 20, attempt: 1, kinds: ['formation', 'human'], criterion: text('Beads pass lint'),
-        input: { fromNodeId: 'fmn_beads', fromPortId: 'port_beads_out', text: text('beads text'), ref: { external: 'beads.md' } },
+        input: { fromNodeId: 'fmn_beads', fromPortId: 'port_beads_out', text: text('beads text'), ref: { external: '/srv/project/beads.md' } },
         kindResults: [{ seq: 22, kind: 'formation', verdict: 'pass', reason: text('All children link to the parent'), evidence: [{ kind: 'formation', text: text('bd lint: no warnings') }], evidenceOmitted: 3 }],
         humanRequests: [{ seq: 23, pending: false, decision: { seq: 24, verdict: 'pass', response: text('Ship it on Friday'), decidedBy: 'human:operator' } }],
         verdict: { seq: 25, verdict: 'pass', reason: text('Judge and operator agree'), perKind: { formation: 'pass', human: 'pass' }, routePort: 'pass', evidence: [] },
       }],
     },
+  },
+  '/api/formations/files/preview?path=%2Fsrv%2Fproject%2Fbeads.md': {
+    file: { path: '/srv/project/beads.md', name: 'beads.md', size: 12, modifiedAt: '', kind: 'markdown', text: text('# Beads plan') },
   },
   '/api/formations/runs/run_1/evidence/nodes/fmn_map': {
     evidence: {
@@ -122,7 +125,9 @@ describe('RunEvidence', () => {
     expect(evaluation).toHaveTextContent('bd lint: no warnings')
     expect(evaluation).toHaveTextContent('3 more items not shown')
     expect(evaluation).toHaveTextContent('Ship it on Friday')
-    expect(evaluation).toHaveTextContent('beads.md · file on the host')
+    // A ref outside the artifact directory shows its absolute path and opens.
+    fireEvent.click(within(evaluation).getByRole('button', { name: '/srv/project/beads.md' }))
+    expect(await screen.findByTestId('evidence-document')).toHaveTextContent('Beads plan')
     expect(evaluation).toHaveTextContent('judge · pass')
     expect(evaluation).toHaveTextContent('Criterion · judge · human')
     expect(evaluation.textContent).not.toMatch(/formation/)
@@ -237,6 +242,23 @@ describe('RunEvidence', () => {
     expect(await within(file).findByRole('heading', { name: 'Plan: stamp the build' })).toBeInTheDocument()
     expect(file).toHaveTextContent('Plan · plan.md')
     expect(screen.queryByTestId('evidence-document')).toBeNull()
+  })
+
+  it('opens a ref outside the artifact directory in a file window by its absolute path', async () => {
+    function WithWindows() {
+      const stack = useWindowManager()
+      return (
+        <FileWindowsProvider stack={stack}>
+          <RunEvidence runId="run_1" nodeId="gate_review" title="Review" state="done" onClose={() => {}} />
+          <WindowManagerProvider stack={stack}><FileWindowsLayer /></WindowManagerProvider>
+        </FileWindowsProvider>
+      )
+    }
+    render(<WithWindows />)
+    fireEvent.click(within(await screen.findByTestId('gate-evaluation-20')).getByRole('button', { name: '/srv/project/beads.md' }))
+    const file = await screen.findByRole('dialog', { name: 'file beads.md' })
+    expect(await within(file).findByRole('heading', { name: 'Beads plan' })).toBeInTheDocument()
+    expect(file).toHaveTextContent('/srv/project/beads.md')
   })
 
   it('says when evidence is unavailable', async () => {
