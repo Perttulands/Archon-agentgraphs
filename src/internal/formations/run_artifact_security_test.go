@@ -523,7 +523,7 @@ func testRunStartedEvent(runID, boardSlug string) RunEvent {
 		BoardRev:  7,
 		MissionID: "mis_showcase",
 		Data: map[string]any{
-			"missionSlug":        boardSlug,
+			"missionSlug":      boardSlug,
 			"snapshot":         runArtifactPath(boardSlug, runID, ".snapshot.toml"),
 			"bindingsSnapshot": runArtifactPath(boardSlug, runID, ".bindings.toml"),
 		},

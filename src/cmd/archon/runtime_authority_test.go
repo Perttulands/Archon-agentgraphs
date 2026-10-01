@@ -43,27 +43,6 @@ func TestArchonNewRunStartDefinitionErrorsPrecedeUnavailableAuthority(t *testing
 			wantCode: "not_found",
 		},
 		{
-			name:     "mission reachable legacy script gate",
-			slug:     "session-search",
-			board:    archonLegacyScriptGateBoardFixture(),
-			args:     []string{"mission", "run", "session-search", "--json"},
-			wantCode: formations.LegacyScriptGateMigrationCode,
-		},
-		{
-			name:     "mission legacy inline verification",
-			slug:     "session-search",
-			board:    archonRuntimeAuthorityLegacyInlineVerificationFixture(),
-			args:     []string{"mission", "run", "session-search", "--json"},
-			wantCode: formations.LegacyInlineVerificationMigrationCode,
-		},
-		{
-			name:     "formation legacy inline verification",
-			slug:     "session-search",
-			board:    archonRuntimeAuthorityLegacyInlineVerificationFixture(),
-			args:     []string{"formation", "run", "session-search", "fmn_work", "--json"},
-			wantCode: formations.LegacyInlineVerificationMigrationCode,
-		},
-		{
 			name:     "Mission reaches non-executing Tool",
 			slug:     "tool-parity",
 			board:    archonRuntimeAuthorityToolBoardFixture(),

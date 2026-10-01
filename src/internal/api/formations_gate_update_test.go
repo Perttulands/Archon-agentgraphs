@@ -74,7 +74,6 @@ checkValue = "complaint text"
 		`{"updateGate":{"id":"gate_review","kinds":[]}}`:                   `"code":"INVALID_GATE_KIND"`,
 		`{"updateGate":{"id":"gate_review","kinds":["robot"]}}`:            `"code":"INVALID_GATE_KIND"`,
 		`{"updateGate":{"id":"gate_review","check":"output_contains"}}`:    `"code":"invalid_code_gate_profile"`,
-		`{"updateGate":{"id":"gate_review","commandShell":"./gate.sh"}}`:   `"code":"` + formations.LegacyScriptGateMigrationCode + `"`,
 		`{"updateGate":{"id":"gate_missing","title":"Nothing to rename"}}`: `"code":"NOT_FOUND"`,
 	} {
 		rec := patch(body)

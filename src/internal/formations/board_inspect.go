@@ -9,32 +9,29 @@ import (
 // Finding codes reported by ValidateBoard. They are stable strings so CLI and
 // API consumers can branch on them.
 const (
-	FindingDanglingConnection                        = "dangling_connection"
-	FindingGateNotRoutable                           = "gate_not_routable"
-	FindingInvalidCodeGateProfile                    = "invalid_code_gate_profile"
-	FindingInvalidFormationType                      = "invalid_formation_type"
-	FindingInvalidHumanChannel                       = "invalid_human_channel"
-	FindingLegacyScriptGate                          = LegacyScriptGateMigrationCode
-	FindingLegacyInlineVerificationRequiresMigration = LegacyInlineVerificationMigrationCode
-	FindingMissionCount                              = "mission_count"
-	FindingSeveralInputCards                         = "several_input_cards"
-	FindingMissionNotRunnable                        = "mission_not_runnable"
-	FindingInvalidTool                               = "invalid_tool"
-	FindingDuplicateNodeID                           = "duplicate_node_id"
-	FindingDuplicateSlotID                           = "duplicate_slot_id"
-	FindingDuplicateInputProducer                    = "duplicate_input_producer"
-	FindingIncompatibleMedia                         = "incompatible_media"
-	FindingIncompatiblePayloadKind                   = "incompatible_payload_kind"
-	FindingInvalidJudgeRelationship                  = "invalid_judge_relationship"
+	FindingDanglingConnection       = "dangling_connection"
+	FindingGateNotRoutable          = "gate_not_routable"
+	FindingInvalidCodeGateProfile   = "invalid_code_gate_profile"
+	FindingInvalidFormationType     = "invalid_formation_type"
+	FindingInvalidHumanChannel      = "invalid_human_channel"
+	FindingMissionCount             = "mission_count"
+	FindingSeveralInputCards        = "several_input_cards"
+	FindingMissionNotRunnable       = "mission_not_runnable"
+	FindingInvalidTool              = "invalid_tool"
+	FindingDuplicateNodeID          = "duplicate_node_id"
+	FindingDuplicateSlotID          = "duplicate_slot_id"
+	FindingDuplicateInputProducer   = "duplicate_input_producer"
+	FindingIncompatibleMedia        = "incompatible_media"
+	FindingIncompatiblePayloadKind  = "incompatible_payload_kind"
+	FindingInvalidJudgeRelationship = "invalid_judge_relationship"
 )
 
 // BoardFinding is a single structural problem located on the board. NodeID names
 // the offending node, or the edge id for connection problems.
 type BoardFinding struct {
-	Code    string                               `json:"code"`
-	NodeID  string                               `json:"nodeId"`
-	Message string                               `json:"message"`
-	Details *LegacyScriptGateMigrationInspection `json:"details,omitempty"`
+	Code    string `json:"code"`
+	NodeID  string `json:"nodeId"`
+	Message string `json:"message"`
 }
 
 // BoardValidationReport separates blocking errors from advisory warnings.
@@ -92,14 +89,6 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	}
 
 	for _, gate := range board.Gates {
-		if gateHasLegacyScriptCommand(gate) {
-			report.Errors = append(report.Errors, BoardFinding{
-				Code:    FindingLegacyScriptGate,
-				NodeID:  gate.ID,
-				Message: legacyScriptGateMigrationError(gate.ID).Error(),
-				Details: gate.LegacyScriptMigration,
-			})
-		}
 		if gaps := gateRouteGaps(board, gate); len(gaps) > 0 {
 			report.Errors = append(report.Errors, BoardFinding{
 				Code:    FindingGateNotRoutable,
@@ -115,13 +104,6 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 				Code:    FindingInvalidFormationType,
 				NodeID:  formation.ID,
 				Message: fmt.Sprintf("formation %q has unsupported type %q; change it to solo, peer or orchestrated with formation set-type, or delete it", formation.ID, formation.Type),
-			})
-		}
-		if formation.Verification != nil {
-			report.Errors = append(report.Errors, BoardFinding{
-				Code:    FindingLegacyInlineVerificationRequiresMigration,
-				NodeID:  formation.ID,
-				Message: fmt.Sprintf("formation %q uses retired inline verification; create and wire an explicit Gate, then remove the legacy verification", formation.ID),
 			})
 		}
 	}

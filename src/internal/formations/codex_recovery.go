@@ -194,9 +194,8 @@ func (e *RunEngine) ValidateCompletedRecovery(runID string) error {
 	return err
 }
 
-// PreservePendingHumanGate recognizes an idle human decision at startup. Older
-// coordinators added an interruption block even with no dispatch; repair only
-// that exact suffix, retaining the original request and all audit evidence.
+// PreservePendingHumanGate recognizes an idle human decision at startup, so a
+// restart leaves it waiting rather than blocking the run.
 func (e *RunEngine) PreservePendingHumanGate(runID string) (bool, error) {
 	events, err := e.store.ReadRunEvents(runID)
 	if err != nil {
@@ -235,23 +234,7 @@ func (e *RunEngine) PreservePendingHumanGate(runID string) (bool, error) {
 	if err := e.validateHumanRequestKindResults(runID, gate, request, events); err != nil {
 		return false, err
 	}
-	if last.Type != RunEventBlocked {
-		return true, nil
-	}
-	if len(events) < 3 || !boolFromEventData(last, "resumeAllowed") ||
-		stringFromEventData(last, "reason") != "coordinator restarted; completed-turn evidence required" {
-		return false, nil
-	}
-	previous := events[len(events)-2]
-	if previous.Type != RunEventError || stringFromEventData(previous, "code") != "coordinator_interrupted" ||
-		events[len(events)-3].Seq != request.Seq {
-		return false, nil
-	}
-	err = e.store.AppendRunEvent(runID, RunEvent{Type: RunEventResumed, Actor: "coordinator", Data: map[string]any{
-		"resumeMode": "pending-human-repair", "resumedFromSeq": last.Seq,
-		"requestedSeq": request.Seq, "reason": "preserve pending human decision after legacy restart block",
-	}})
-	return err == nil, err
+	return last.Type != RunEventBlocked, nil
 }
 
 // BlockInterruptedRun records every unresolved dispatch before any restart

@@ -256,9 +256,6 @@ func (e *RunEngine) RunMission(slug string, req RunStartRequest) (*RunStatusProj
 	if !ok {
 		return nil, fmt.Errorf("%w: Input card %q", ErrNotFound, req.MissionID)
 	}
-	if err := preflightMissionMigrations(board, mission.ID, reachableNodeIDs(board, mission.ID)); err != nil {
-		return nil, err
-	}
 	if len(outgoingConnections(board.Connections, mission.ID)) == 0 {
 		return nil, fmt.Errorf("%w: wire the Input card to a step", ErrConflict)
 	}
@@ -396,7 +393,7 @@ func (e *RunEngine) PrepareFormationRun(slug, formationID string, req FormationR
 				"final":        true,
 				"mode":         "formation",
 				"formationId":  formation.ID,
-				"inputCardId":    mission.ID,
+				"inputCardId":  mission.ID,
 			},
 		}); err != nil {
 			return nil, err
@@ -639,10 +636,7 @@ func (e *RunEngine) RecordHumanGateVerdict(runID string, req HumanGateVerdictReq
 	if !ok {
 		return nil, fmt.Errorf("%w: gate %q", ErrNotFound, req.GateID)
 	}
-	if err := rejectLegacyScriptGateForRun(board, events[0], nil); err != nil {
-		return nil, err
-	}
-	if err := rejectLegacyInlineVerification(board); err != nil {
+	if err := validateRunRoot(board, events[0]); err != nil {
 		return nil, err
 	}
 	if err := e.validateHumanRequestKindResults(runID, gate, requestEvent, events); err != nil {
@@ -963,12 +957,12 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 		Epoch:     0,
 		Attempt:   0,
 		Data: map[string]any{
-			"missionSlug":        slug,
-			"missionPath":        filepath.ToSlash(e.store.BoardPath(slug)),
-			"missionRev":         board.Rev,
+			"missionSlug":      slug,
+			"missionPath":      filepath.ToSlash(e.store.BoardPath(slug)),
+			"missionRev":       board.Rev,
 			"snapshot":         snapshotPath,
 			"bindingsSnapshot": bindingsPath,
-			"inputCardId":        mission.ID,
+			"inputCardId":      mission.ID,
 			"beadId":           beadID,
 			"objective":        mission.Goal,
 			"limits":           limits,
@@ -1881,7 +1875,7 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 		}
 		return result, err
 	}
-	// Coordinator-owned legacy executors run synchronously so a timeout cannot
+	// Coordinator-owned executors without context support run synchronously so a timeout cannot
 	// leave a hidden writer behind after the coordinator releases its lock.
 	if e.executionContext != nil || req.Deadline.IsZero() {
 		result, err := e.executor.ExecuteFormation(req)

@@ -110,20 +110,6 @@ type FormationBriefClearRequest struct {
 	UpdatedBy   string
 }
 
-type FormationVerificationRequest struct {
-	FormationID string
-	Kinds       []string
-	Criterion   string
-	OnFail      string
-	UpdatedBy   string
-}
-
-type FormationVerificationRemovalRequest struct {
-	FormationID       string
-	ReplacementGateID string
-	UpdatedBy         string
-}
-
 type FormationPortRequest struct {
 	FormationID string
 	Direction   string
@@ -154,41 +140,31 @@ type FormationRewireRequest struct {
 }
 
 type GateCreateRequest struct {
-	Title                      string
-	Kinds                      []string
-	Criterion                  string
-	Check                      string
-	CheckVersion               string
-	CheckValue                 string
-	Files                      []string
-	Command                    string // legacy inspection-only compatibility input
-	CommandArgv                []string
-	CommandCWD                 string
-	CommandShell               string
-	LegacyCommandFieldsPresent bool
-	X                          int
-	Y                          int
-	UpdatedBy                  string
+	Title        string
+	Kinds        []string
+	Criterion    string
+	Check        string
+	CheckVersion string
+	CheckValue   string
+	Files        []string
+	X            int
+	Y            int
+	UpdatedBy    string
 }
 
 // GateUpdateRequest changes only the fields it sets. A nil field or nil Kinds
 // keeps the stored value; an empty string clears it. Kinds, when set, must name
 // at least one of code, formation and human.
 type GateUpdateRequest struct {
-	GateID                     string
-	Title                      *string
-	Kinds                      []string
-	Criterion                  *string
-	Check                      *string
-	CheckVersion               *string
-	CheckValue                 *string
-	Files                      *[]string // replaces the file references; empty clears them
-	Command                    string    // legacy inspection-only compatibility input
-	CommandArgv                []string
-	CommandCWD                 string
-	CommandShell               string
-	LegacyCommandFieldsPresent bool
-	UpdatedBy                  string
+	GateID       string
+	Title        *string
+	Kinds        []string
+	Criterion    *string
+	Check        *string
+	CheckVersion *string
+	CheckValue   *string
+	Files        *[]string // replaces the file references; empty clears them
+	UpdatedBy    string
 }
 
 // FormationUpdateRequest changes only the fields it sets. An empty title clears it.
@@ -241,15 +217,14 @@ type MissionCreateRequest struct {
 }
 
 type FormationNode struct {
-	Execution    *FormationExecutionPolicy `json:"execution,omitempty"`
-	ID           string                    `json:"id"`
-	Type         string                    `json:"type"`
-	Title        string                    `json:"title"`
-	Brief        *FormationBrief           `json:"brief,omitempty"`
-	Inputs       []FormationPort           `json:"inputs"`
-	Outputs      []FormationPort           `json:"outputs"`
-	Slots        []FormationSlot           `json:"slots"`
-	Verification *FormationVerification    `json:"verification,omitempty"`
+	Execution *FormationExecutionPolicy `json:"execution,omitempty"`
+	ID        string                    `json:"id"`
+	Type      string                    `json:"type"`
+	Title     string                    `json:"title"`
+	Brief     *FormationBrief           `json:"brief,omitempty"`
+	Inputs    []FormationPort           `json:"inputs"`
+	Outputs   []FormationPort           `json:"outputs"`
+	Slots     []FormationSlot           `json:"slots"`
 }
 
 type FormationPort struct {
@@ -278,13 +253,6 @@ type FormationBrief struct {
 	Links  []string `json:"links,omitempty"`
 }
 
-type FormationVerification struct {
-	ID        string   `json:"id"`
-	Kinds     []string `json:"kinds"`
-	Criterion string   `json:"criterion"`
-	OnFail    string   `json:"onFail"`
-}
-
 type BoardConnection struct {
 	ID   string `json:"id"`
 	From string `json:"from"`
@@ -307,19 +275,13 @@ type GateNode struct {
 	CheckVersion string `json:"checkVersion,omitempty"`
 	CheckValue   string `json:"checkValue,omitempty"`
 	// Files are reference files, such as the gate's rubric, as paths.
-	Files                 []string                             `json:"files,omitempty"`
-	Command               string                               `json:"command,omitempty"` // legacy inspection-only metadata
-	CommandArgv           []string                             `json:"commandArgv,omitempty"`
-	CommandCWD            string                               `json:"commandCwd,omitempty"`
-	CommandShell          string                               `json:"commandShell,omitempty"`
-	LegacyScriptMigration *LegacyScriptGateMigrationInspection `json:"legacyScriptMigration,omitempty"`
-	legacyCommandFields   map[string]int
+	Files []string `json:"files,omitempty"`
 }
 
 type MissionNode struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Goal   string `json:"goal"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Goal  string `json:"goal"`
 	// Files are reference files for the mission, as paths.
 	Files []string `json:"files,omitempty"`
 	// InputHint tells whoever starts the mission what its run brief should contain.
@@ -938,101 +900,6 @@ func (s *Store) ClearFormationBrief(slug string, req FormationBriefClearRequest,
 	})
 }
 
-func (s *Store) SetFormationVerification(slug string, req FormationVerificationRequest, opts WriteOptions) (*BoardDocument, error) {
-	return nil, fmt.Errorf(
-		"%w: formation %q cannot author retired inline verification; create and wire an explicit Gate instead",
-		ErrLegacyInlineVerificationRequiresMigration,
-		req.FormationID,
-	)
-}
-
-func (s *Store) RemoveFormationVerification(slug string, req FormationVerificationRemovalRequest, opts WriteOptions) (*BoardDocument, error) {
-	if req.FormationID == "" {
-		return nil, ErrNotFound
-	}
-	if req.ReplacementGateID == "" {
-		return nil, fmt.Errorf("%w: replacement Gate is required before removing inline verification", ErrLegacyInlineVerificationRequiresMigration)
-	}
-	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, board *BoardDocument) ([]byte, error) {
-		formation, formationOK := findFormation(board.Formations, req.FormationID)
-		_, gateOK := findGate(board.Gates, req.ReplacementGateID)
-		if !formationOK || !gateOK || !formationOutputWiresToGate(board.Connections, formation, req.ReplacementGateID) {
-			return nil, fmt.Errorf(
-				"%w: replacement Gate %q must exist and be wired from formation %q before removing inline verification",
-				ErrLegacyInlineVerificationRequiresMigration,
-				req.ReplacementGateID,
-				req.FormationID,
-			)
-		}
-		lines := splitLines(raw)
-		formationStart, formationEnd, ok := findFormationBlockByID(lines, req.FormationID)
-		if !ok {
-			return nil, ErrNotFound
-		}
-		verificationSections := 0
-		verificationFamilySections := 0
-		for i := formationStart + 1; i < formationEnd; i++ {
-			section, sectionOK := tomlLineSectionName(lines[i])
-			if !sectionOK {
-				continue
-			}
-			if section == "formation.verification" {
-				verificationSections++
-			}
-			if tomlSectionIsOrDescendsFrom(section, "formation.verification") {
-				verificationFamilySections++
-			}
-		}
-		if verificationSections > 1 {
-			return nil, fmt.Errorf(
-				"%w: formation %q has %d inline verification sections; repair the source before migration",
-				ErrLegacyInlineVerificationRequiresMigration,
-				req.FormationID,
-				verificationSections,
-			)
-		}
-		if verificationFamilySections == 0 {
-			if formation.Verification != nil {
-				return nil, fmt.Errorf(
-					"%w: formation %q uses a non-section inline verification representation; repair the source before migration",
-					ErrLegacyInlineVerificationRequiresMigration,
-					req.FormationID,
-				)
-			}
-			return nil, ErrNotFound
-		}
-		// A TOML child table is part of its parent table even when another
-		// formation section appears between them. Remove the entire semantic
-		// verification family so retired authority cannot survive invisibly.
-		for i := formationEnd - 1; i > formationStart; i-- {
-			section, sectionOK := tomlLineSectionName(lines[i])
-			if !sectionOK || !tomlSectionIsOrDescendsFrom(section, "formation.verification") {
-				continue
-			}
-			end := tomlBlockEnd(lines, i)
-			if end > formationEnd {
-				end = formationEnd
-			}
-			lines = append(lines[:i], lines[end:]...)
-			formationEnd -= end - i
-		}
-		nextRaw := renderTOMLLines(lines)
-		nextBoard, err := parseBoardForWrite(nextRaw)
-		if err != nil {
-			return nil, err
-		}
-		nextFormation, nextFormationOK := findFormation(nextBoard.Formations, req.FormationID)
-		if !nextFormationOK || nextFormation.Verification != nil {
-			return nil, fmt.Errorf(
-				"%w: formation %q still contains inline verification after removal",
-				ErrLegacyInlineVerificationRequiresMigration,
-				req.FormationID,
-			)
-		}
-		return nextRaw, nil
-	})
-}
-
 func formationOutputWiresToGate(connections []BoardConnection, formation FormationNode, gateID string) bool {
 	for _, output := range formation.Outputs {
 		from := formation.ID + ":" + output.ID
@@ -1051,9 +918,6 @@ func (s *Store) CreateGate(slug string, req GateCreateRequest, opts WriteOptions
 }
 
 func (s *Store) createGate(slug string, req GateCreateRequest, opts WriteOptions, fault func(string) error) (*GateCreateResult, error) {
-	if err := rejectLegacyScriptGateWrite(req.LegacyCommandFieldsPresent, req.Command, req.CommandArgv, req.CommandCWD, req.CommandShell); err != nil {
-		return nil, err
-	}
 	if err := validateSlug(slug); err != nil {
 		return nil, err
 	}
@@ -1110,9 +974,6 @@ func (s *Store) createGate(slug string, req GateCreateRequest, opts WriteOptions
 func (s *Store) UpdateGate(slug string, req GateUpdateRequest, opts WriteOptions) (*BoardDocument, error) {
 	if req.GateID == "" {
 		return nil, ErrNotFound
-	}
-	if err := rejectLegacyScriptGateWrite(req.LegacyCommandFieldsPresent, req.Command, req.CommandArgv, req.CommandCWD, req.CommandShell); err != nil {
-		return nil, err
 	}
 	var kinds []string
 	if req.Kinds != nil {
@@ -3221,22 +3082,6 @@ func parseFormationNodes(raw []byte) []FormationNode {
 				active = "brief"
 			}
 			continue
-		case isSection && !isArraySection && section == "formation.verification":
-			if current != nil {
-				current.Verification = &FormationVerification{}
-				active = "verification"
-			}
-			continue
-		case isSection && tomlSectionIsOrDescendsFrom(section, "formation.verification"):
-			if current != nil {
-				// Any descendant implicitly creates the verification parent in
-				// TOML. Its presence alone must retain the migration fence.
-				if current.Verification == nil {
-					current.Verification = &FormationVerification{}
-				}
-				active = ""
-			}
-			continue
 		case isSection:
 			active = ""
 			continue
@@ -3275,12 +3120,6 @@ func parseFormationNodes(raw []byte) []FormationNode {
 				current.Type = value
 			case "title":
 				current.Title = value
-			case "verification":
-				applyFormationVerificationField(current, "", value)
-			default:
-				if strings.HasPrefix(key, "verification.") {
-					applyFormationVerificationField(current, strings.TrimPrefix(key, "verification."), value)
-				}
 			}
 		case "input":
 			port := &current.Inputs[len(current.Inputs)-1]
@@ -3327,27 +3166,9 @@ func parseFormationNodes(raw []byte) []FormationNode {
 			case "links":
 				current.Brief.Links = parseStringArray(value)
 			}
-		case "verification":
-			applyFormationVerificationField(current, key, value)
 		}
 	}
 	return formations
-}
-
-func applyFormationVerificationField(formation *FormationNode, key, value string) {
-	if formation.Verification == nil {
-		formation.Verification = &FormationVerification{}
-	}
-	switch key {
-	case "id":
-		formation.Verification.ID = value
-	case "kinds":
-		formation.Verification.Kinds = parseStringArray(value)
-	case "criterion":
-		formation.Verification.Criterion = value
-	case "onFail":
-		formation.Verification.OnFail = value
-	}
 }
 
 func parseBoardConnections(raw []byte) []BoardConnection {
@@ -3407,7 +3228,7 @@ func parseGateNodes(raw []byte) []GateNode {
 		isArraySection := strings.HasPrefix(trimmed, "[[")
 		switch {
 		case isSection && isArraySection && section == "gate":
-			gates = append(gates, GateNode{legacyCommandFields: map[string]int{}})
+			gates = append(gates, GateNode{})
 			current = &gates[len(gates)-1]
 			active = true
 			continue
@@ -3442,18 +3263,6 @@ func parseGateNodes(raw []byte) []GateNode {
 			current.CheckValue = value
 		case "files":
 			current.Files = parseStringArray(value)
-		case "command":
-			current.legacyCommandFields[key]++
-			current.Command = value
-		case "commandArgv":
-			current.legacyCommandFields[key]++
-			current.CommandArgv = parseStringArray(value)
-		case "commandCwd":
-			current.legacyCommandFields[key]++
-			current.CommandCWD = value
-		case "commandShell":
-			current.legacyCommandFields[key]++
-			current.CommandShell = value
 		}
 	}
 	return gates

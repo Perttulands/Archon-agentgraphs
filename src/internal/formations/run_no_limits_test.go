@@ -2,6 +2,8 @@ package formations
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -127,16 +129,14 @@ func TestRunStartsRefuseNegativeLimits(t *testing.T) {
 	}
 }
 
-// A ledger written before form-o7p.7 by a run that set no maxAttempts blocked
-// after one attempt, because the engine then allowed one attempt by default.
-// Its block still names that limit as 1 of 1.
-func TestLegacyAttemptBlockWithoutMaxAttemptsNamesTheImplicitSingleAttempt(t *testing.T) {
-	events := limitLedger(map[string]any{"maxDispatch": float64(0), "wallClockSeconds": float64(0), "redact": false},
-		RunEvent{Type: RunEventNodeStarted, NodeID: "fmn_work", Attempt: 1, Data: map[string]any{"nodeKind": "formation"}},
-		RunEvent{Type: RunEventError, NodeID: "fmn_work", Data: map[string]any{"code": RunBlockReviseLoopExhausted, "recoverable": false}},
-		RunEvent{Type: RunEventBlocked, NodeID: "fmn_work", Data: map[string]any{"reason": "revise loop exhausted", "blockedNodeId": "fmn_work", "resumeAllowed": false}},
-	)
-	if got, want := runLimitReached(events, len(events)-1), (&RunLimitReached{Kind: RunLimitAttempts, NodeID: "fmn_work", Used: 1, Max: 1}); !reflect.DeepEqual(got, want) {
-		t.Fatalf("legacy limit = %+v, want %+v", got, want)
+func assertNoRunArtifacts(t *testing.T, store *Store, slug string) {
+	t.Helper()
+	runDir := filepath.Join(store.Workspace, ".archon", "runs", slug)
+	entries, err := os.ReadDir(runDir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("read run artifacts: %v", err)
+	}
+	if err == nil && len(entries) != 0 {
+		t.Fatalf("run artifacts = %v, want none", entries)
 	}
 }

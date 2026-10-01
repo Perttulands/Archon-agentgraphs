@@ -675,11 +675,7 @@ func TestTmuxExecutorReadsOutputRefArtifactForPortRouting(t *testing.T) {
 		t.Fatalf("read board: %v", err)
 	}
 	leftArtifact := filepath.Join(store.Workspace, ".archon", "artifacts", "left-long.md")
-	leftArtifactRef, err := filepath.Rel(store.Workspace, leftArtifact)
-	if err != nil {
-		t.Fatalf("relative artifact ref: %v", err)
-	}
-	leftArtifactRef = filepath.ToSlash(leftArtifactRef)
+	leftArtifactRef := leftArtifact
 	longLeft := "LEFT-ARTIFACT-BEGIN\n" + strings.Repeat("long routed artifact line with preserved spacing 0123456789\n", 80) + "LEFT-ARTIFACT-END"
 	writeFixture(t, leftArtifact, longLeft)
 	payloads := map[string]FormationOutputPayload{
@@ -1916,3 +1912,15 @@ func TestWorkerOutcomeMappersDistinguishMissingSession(t *testing.T) {
 // A completion capture that fails for a reason other than a missing target is
 // the capture_failed defensive outcome: recorded as an anomaly on an otherwise
 // successful run, never silence and never a run failure.
+
+// An output ref names an absolute path; a relative one is refused rather than
+// resolved against some base directory.
+func TestOutputRefMustBeAbsolute(t *testing.T) {
+	store, personas := s4RunFixture(t)
+	executor := newTmuxFormationExecutorWithClient(store, personas, tmuxTestConfig(t), &fakeTmuxHarnessClient{})
+	_, err := executor.resolveOutputRefPath(".archon/artifacts/report.md")
+	var execErr *RunExecutionError
+	if !errors.As(err, &execErr) || execErr.Code != "invalid_output_ref" || !strings.Contains(err.Error(), "must be an absolute path") {
+		t.Fatalf("relative ref error = %v, want invalid_output_ref", err)
+	}
+}

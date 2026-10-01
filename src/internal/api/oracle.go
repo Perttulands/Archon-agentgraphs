@@ -77,8 +77,7 @@ type agentSnapshot struct {
 	ContextPct int
 }
 
-// OracleHandler handles agent-observability API endpoints. The route name is
-// kept as /api/oracle for compatibility with the existing dashboard code.
+// OracleHandler handles the agent-observability endpoints under /api/oracle.
 type OracleHandler struct {
 	tmuxRunner oracleTmuxRunner
 

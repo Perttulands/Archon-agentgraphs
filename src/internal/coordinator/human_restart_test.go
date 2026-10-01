@@ -8,20 +8,15 @@ import (
 )
 
 func TestPendingHumanGateSurvivesRestart(t *testing.T) {
-	for _, legacy := range []bool{false, true} {
+	{
 		for _, verdict := range []string{"pass", "fail"} {
-			t.Run(strconv.FormatBool(legacy)+"/"+verdict, func(t *testing.T) {
+			t.Run(verdict, func(t *testing.T) {
 				c, executor, root := fixture(t)
 				id := startRun(t, c)
 				<-executor.entered
 				executor.proceed <- struct{}{}
 				before := awaitState(t, c, id, "waiting_human")
 				seq := before.WaitingGates[0].RequestedSeq
-				if legacy {
-					if err := c.engine.BlockInterruptedRun(id); err != nil {
-						t.Fatal(err)
-					}
-				}
 				original, _ := c.store.ReadRunEvents(id)
 				for i := 0; i < 2; i++ {
 					if err := c.Close(); err != nil {
@@ -42,11 +37,7 @@ func TestPendingHumanGateSurvivesRestart(t *testing.T) {
 				}
 				defer c.Close()
 				events, _ := c.store.ReadRunEvents(id)
-				extra := 0
-				if legacy {
-					extra = 1
-				}
-				if len(events) != len(original)+extra {
+				if len(events) != len(original) {
 					t.Fatalf("restart added unexpected events: %+v", events)
 				}
 				path := "/api/runs/" + id + "/gates/gate_review/verdict"

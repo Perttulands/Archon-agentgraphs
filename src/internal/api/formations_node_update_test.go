@@ -85,8 +85,8 @@ to = "fmn_map:port_map_in"
 
 	before := readFormationsAPIFile(t, store.BoardPath("rename"))
 	for body, status := range map[string]int{
-		`{"updateInputCard":{"id":"mis_missing","title":"x"}}`:       http.StatusNotFound,
-		`{"updateFormation":{"id":"fmn_missing","title":"x"}}`:     http.StatusNotFound,
+		`{"updateInputCard":{"id":"mis_missing","title":"x"}}`: http.StatusNotFound,
+		`{"updateFormation":{"id":"fmn_missing","title":"x"}}`: http.StatusNotFound,
 	} {
 		if rec := patch(body); rec.Code != status {
 			t.Errorf("%s = %d %s, want %d", body, rec.Code, rec.Body.String(), status)

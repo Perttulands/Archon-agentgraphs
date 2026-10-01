@@ -131,10 +131,6 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrPreconditionRequired
 	case "UNSUPPORTED_SCHEMA":
 		return formations.ErrUnsupportedSchema
-	case formations.LegacyScriptGateMigrationCode:
-		return formations.ErrLegacyScriptGateRequiresFencedMigration
-	case formations.LegacyInlineVerificationMigrationCode:
-		return formations.ErrLegacyInlineVerificationRequiresMigration
 	}
 	return nil
 }
@@ -484,7 +480,7 @@ func remoteBoardValidate(c *remoteClient, args []string, stdout, stderr io.Write
 	}
 	if *jsonOut {
 		if code := writeJSON(stdout, map[string]interface{}{
-			"mission":    identityFromBoard(board),
+			"mission":  identityFromBoard(board),
 			"errors":   report.Errors,
 			"warnings": report.Warnings,
 		}); code != 0 {
@@ -921,20 +917,6 @@ func remoteFormationWire(remove bool) remoteAuthoringCommand {
 	}
 }
 
-// legacyGateCommandFields forwards retired command flags so the daemon returns
-// the same migration error as the offline command.
-func legacyGateCommandFields(fs *flag.FlagSet, fields map[string]any, command, argv, cwd, shell string) {
-	given := givenFlags(fs)
-	for flagName, field := range map[string]struct {
-		key   string
-		value any
-	}{"command": {"command", command}, "command-argv": {"commandArgv", splitCSV(argv)}, "command-cwd": {"commandCwd", cwd}, "command-shell": {"commandShell", shell}} {
-		if given[flagName] {
-			fields[field.key] = field.value
-		}
-	}
-}
-
 func remoteGateCreate(c *remoteClient, args []string, stdout, stderr io.Writer) int {
 	fs := remoteFlags("gate create", stderr)
 	title := fs.String("title", "Review gate", "gate title")
@@ -943,10 +925,6 @@ func remoteGateCreate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 	check := fs.String("check", "", "registered code Gate profile id")
 	checkVersion := fs.String("check-version", "", "exact code Gate profile version")
 	checkValue := fs.String("check-value", "", "code Gate profile value parameter")
-	command := fs.String("command", "", "retired legacy Gate field; new writes fail with a migration error")
-	commandArgv := fs.String("command-argv", "", "retired legacy Gate argv; new writes fail with a migration error")
-	commandCWD := fs.String("command-cwd", "", "retired legacy Gate cwd; new writes fail with a migration error")
-	commandShell := fs.String("command-shell", "", "retired legacy Gate shell command; new writes fail with a migration error")
 	var files stringList
 	fs.Var(&files, "file", "reference file path; repeat for more")
 	x := fs.Int("x", 0, "layout x coordinate")
@@ -963,7 +941,6 @@ func remoteGateCreate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 	data, _, err := c.patchBoard(fs.Arg(0), *updatedBy, func(board *formations.BoardDocument) (string, map[string]any, error) {
 		createX, createY, err := c.freePosition(board, fs, *x, *y)
 		fields := map[string]any{"title": *title, "kinds": splitCSV(*kinds), "criterion": *criterion, "check": *check, "checkVersion": *checkVersion, "checkValue": *checkValue, "files": []string(files), "x": createX, "y": createY}
-		legacyGateCommandFields(fs, fields, *command, *commandArgv, *commandCWD, *commandShell)
 		return "createGate", fields, err
 	})
 	if err != nil {
@@ -984,10 +961,6 @@ func remoteGateUpdate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 	check := fs.String("check", "", "registered code Gate profile id")
 	checkVersion := fs.String("check-version", "", "exact code Gate profile version")
 	checkValue := fs.String("check-value", "", "code Gate profile value parameter")
-	command := fs.String("command", "", "retired legacy Gate field; new writes fail with a migration error")
-	commandArgv := fs.String("command-argv", "", "retired legacy Gate argv; new writes fail with a migration error")
-	commandCWD := fs.String("command-cwd", "", "retired legacy Gate cwd; new writes fail with a migration error")
-	commandShell := fs.String("command-shell", "", "retired legacy Gate shell command; new writes fail with a migration error")
 	clearCheck := fs.Bool("clear-check", false, "clear the code check profile, version and value")
 	var files stringList
 	fs.Var(&files, "file", "reference file path, replacing the current ones; repeat for more, or give an empty value to clear")
@@ -1022,7 +995,6 @@ func remoteGateUpdate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 		if given["file"] {
 			fields["files"] = append([]string{}, files...)
 		}
-		legacyGateCommandFields(fs, fields, *command, *commandArgv, *commandCWD, *commandShell)
 		return "updateGate", fields, err
 	})
 	if err != nil {

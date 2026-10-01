@@ -659,11 +659,6 @@ func TestToolSchemaMigrationRejectsEveryOwnedFieldCollisionOnCanonicalSchemaTwo(
 
 func TestToolSchemaMigrationRejectsUnsafeLegacyShapesBeforeProducingCandidate(t *testing.T) {
 	base := toolSchemaMigrationLegacyFixture()
-	gateCriterion := `criterion = "Review the work" # criterion comment`
-	formationBoundary := `label = "Work result" # output label
-
-[[formation]]
-id = "fmn_feedback"`
 	withoutJudgeBlocks := func(blocks ...string) string {
 		return removeToolSchemaMigrationFixtureBlocks(t, base, blocks...)
 	}
@@ -680,40 +675,6 @@ id = "fmn_feedback"`
 		wantError error
 		wantCode  string
 	}{
-		{
-			name:      "legacy command presence",
-			raw:       replaceToolSchemaMigrationFixture(t, base, gateCriterion, gateCriterion+"\ncommand = \"printf unsafe\""),
-			wantError: ErrLegacyScriptGateRequiresFencedMigration,
-		},
-		{
-			name:      "legacy argv presence even empty",
-			raw:       replaceToolSchemaMigrationFixture(t, base, gateCriterion, gateCriterion+"\ncommandArgv = []"),
-			wantError: ErrLegacyScriptGateRequiresFencedMigration,
-		},
-		{
-			name:      "legacy cwd presence even empty",
-			raw:       replaceToolSchemaMigrationFixture(t, base, gateCriterion, gateCriterion+"\ncommandCwd = \"\""),
-			wantError: ErrLegacyScriptGateRequiresFencedMigration,
-		},
-		{
-			name:      "legacy shell presence even empty",
-			raw:       replaceToolSchemaMigrationFixture(t, base, gateCriterion, gateCriterion+"\ncommandShell = \"\""),
-			wantError: ErrLegacyScriptGateRequiresFencedMigration,
-		},
-		{
-			name: "retired inline verification",
-			raw: replaceToolSchemaMigrationFixture(t, base, formationBoundary, `label = "Work result" # output label
-
-[formation.verification]
-id = "ver_legacy"
-kinds = ["human"]
-criterion = "Legacy hidden check"
-onFail = "pushback"
-
-[[formation]]
-id = "fmn_feedback"`),
-			wantError: ErrLegacyInlineVerificationRequiresMigration,
-		},
 		{
 			name: "Gate fail into legacy work input",
 			raw: base + `

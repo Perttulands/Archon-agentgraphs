@@ -316,9 +316,6 @@ func TestRestoreNodeRefusesWithoutWritingWhenTheBoardNoLongerFits(t *testing.T) 
 		"retired type":       {NodeRestoreRequest{Formation: &FormationNode{ID: "fmn_old", Type: "flow"}}, ErrUnsupportedFormationType},
 		"gate without kinds": {NodeRestoreRequest{Gate: &GateNode{ID: "gate_new", Kinds: []string{}}}, ErrInvalidGateKind},
 		"check without code": {NodeRestoreRequest{Gate: &GateNode{ID: "gate_new", Kinds: []string{"human"}, CheckValue: "PASS"}}, ErrInvalidCodeGateProfile},
-		"legacy script":      {NodeRestoreRequest{Gate: &GateNode{ID: "gate_new", Kinds: []string{"code"}, Command: "make test"}}, ErrLegacyScriptGateRequiresFencedMigration},
-		"inline verification": {NodeRestoreRequest{Formation: &FormationNode{ID: "fmn_v", Type: "solo",
-			Verification: &FormationVerification{ID: "ver", Kinds: []string{"human"}}}}, ErrLegacyInlineVerificationRequiresMigration},
 		"taken slot": {NodeRestoreRequest{Formation: &FormationNode{ID: "fmn_copy", Type: "solo",
 			Slots: []FormationSlot{{ID: "slot_judge", Label: "Agent"}}}}, ErrInvalidNodeRestore},
 	}

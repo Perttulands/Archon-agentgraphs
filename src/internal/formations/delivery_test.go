@@ -13,7 +13,7 @@ func TestDeliveryMissionLabPushback(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	for name, dest := range map[string]string{
 		"delivery.mission.toml": store.BoardPath("delivery"),
-		"delivery.notes.toml":     store.NotesPath("delivery"),
+		"delivery.notes.toml":   store.NotesPath("delivery"),
 	} {
 		raw, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", name))
 		if err != nil {

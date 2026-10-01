@@ -35,7 +35,6 @@ const (
 	RunEventJudgeAttemptFailed   = "judge_attempt_failed"
 	RunEventGateKindResult       = "gate_kind_result"
 	RunEventGateVerdict          = "gate_verdict"
-	RunEventVerificationVerdict  = "verification_verdict"
 	RunEventEscalationRaised     = "escalation_raised"
 	RunEventHumanInputRequested  = "human_input_requested"
 	RunEventHumanVerdictRecorded = "human_verdict_recorded"
@@ -294,12 +293,12 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 		Epoch:     0,
 		Attempt:   0,
 		Data: map[string]any{
-			"missionSlug":        slug,
-			"missionPath":        filepath.ToSlash(boardPath),
-			"missionRev":         board.Rev,
+			"missionSlug":      slug,
+			"missionPath":      filepath.ToSlash(boardPath),
+			"missionRev":       board.Rev,
 			"snapshot":         snapshotPath,
 			"bindingsSnapshot": bindingsPath,
-			"inputCardId":        mission.ID,
+			"inputCardId":      mission.ID,
 			"beadId":           req.BeadID,
 			"objective":        mission.Goal,
 			"cwd":              req.Cwd,
@@ -334,9 +333,6 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 	if err := s.RequireRuntimeAuthority(); err != nil {
 		return nil, err
 	}
-	if event.Type == RunEventVerificationVerdict {
-		return nil, fmt.Errorf("%w: new verification_verdict events are retired; use an explicit Gate", ErrLegacyInlineVerificationRequiresMigration)
-	}
 	ledger, err := s.openRunLedger(runID, true)
 	if err != nil {
 		return nil, err
@@ -370,10 +366,7 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 			if err != nil {
 				return err
 			}
-			if err := rejectLegacyScriptGateForRun(validatedSnapshot, first, &event); err != nil {
-				return err
-			}
-			if err := rejectLegacyInlineVerification(validatedSnapshot); err != nil {
+			if err := validateRunRoot(validatedSnapshot, first); err != nil {
 				return err
 			}
 		}
@@ -472,10 +465,7 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		if err != nil {
 			return err
 		}
-		if err := rejectLegacyScriptGateForRun(runSnapshot, first, nil); err != nil {
-			return err
-		}
-		if err := rejectLegacyInlineVerification(runSnapshot); err != nil {
+		if err := validateRunRoot(runSnapshot, first); err != nil {
 			return err
 		}
 		if last.Type != RunEventBlocked || !runBlockResumeAllowed(lifecycle, len(lifecycle)-1) {
@@ -625,7 +615,7 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 	// Honesty safety net: a run can only project succeeded when every reachable
 	// required node reached a terminal state. If the ledger still shows a node
 	// whose last lifecycle event is node_waiting, the success is a lie (e.g. a
-	// stray/legacy run_succeeded over a starved join); project blocked instead so
+	// stray run_succeeded over a starved join); project blocked instead so
 	// CLI, API, and UI never report finished work that never ran.
 	if status.Status == RunStatusSucceeded {
 		if waiting := unresolvedWaitingNodes(events); len(waiting) > 0 {
@@ -1078,4 +1068,28 @@ func runEndActor(event RunEvent) string {
 		}
 	}
 	return event.Actor
+}
+
+// validateRunRoot checks that a run's frozen snapshot holds the root its
+// run_started names: the formation of an isolated formation run, or the Input
+// card of a mission run.
+func validateRunRoot(board *BoardDocument, started RunEvent) error {
+	if board == nil {
+		return nil
+	}
+	switch mode := stringFromEventData(started, "mode"); mode {
+	case "formation":
+		formationID := stringFromEventData(started, "formationId")
+		if _, ok := findFormation(board.Formations, formationID); !ok || started.MissionID != "single_"+formationID {
+			return ErrRunLedgerInvalid
+		}
+		return nil
+	case "":
+		if _, ok := findMission(board, started.MissionID); !ok {
+			return ErrRunLedgerInvalid
+		}
+		return nil
+	default:
+		return ErrRunLedgerInvalid
+	}
 }

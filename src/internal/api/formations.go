@@ -65,50 +65,45 @@ type formationsHumanGateVerdictRequest struct {
 }
 
 type formationsBoardPatchRequest struct {
-	SetExecution                  *formationsSetExecutionRequest          `json:"setExecution"`
-	Title                         *string                                 `json:"title"`
-	CreateTool                    *formationsToolCreateRequest            `json:"createTool"`
-	UpdateTool                    *formationsToolUpdateRequest            `json:"updateTool"`
-	DeleteTool                    *formationsToolDeleteRequest            `json:"deleteTool"`
-	CreateFormation               *formationsCreateFormationRequest       `json:"createFormation"`
-	DeleteFormation               *formationsDeleteFormationRequest       `json:"deleteFormation"`
-	UpdateFormation               *formationsUpdateFormationRequest       `json:"updateFormation"`
-	SetFormationType              *formationsSetFormationTypeRequest      `json:"setFormationType"`
-	UpdateMission                 *formationsUpdateMissionRequest         `json:"updateInputCard"`
-	DeleteGate                    *formationsDeleteGateRequest            `json:"deleteGate"`
-	DeleteMission                 *formationsDeleteMissionRequest         `json:"deleteInputCard"`
-	RestoreNode                   *formationsRestoreNodeRequest           `json:"restoreNode"`
-	AssignSlot                    *formationsAssignSlotRequest            `json:"assignSlot"`
-	MakeController                *formationsMakeControllerRequest        `json:"makeController"`
-	SetBrief                      *formationsSetBriefRequest              `json:"setBrief"`
-	ClearBrief                    *formationsClearBriefRequest            `json:"clearBrief"`
-	SetVerification               *formationsSetVerificationRequest       `json:"setVerification"`
-	RemoveVerification            *formationsRemoveVerificationRequest    `json:"removeVerification"`
-	AddPort                       *formationsAddPortRequest               `json:"addPort"`
-	RemovePort                    *formationsRemovePortRequest            `json:"removePort"`
-	RestorePort                   *formationsRestorePortRequest           `json:"restorePort"`
-	WireConnection                *formationsWireConnectionRequest        `json:"wireConnection"`
-	UnwireConnection              *formationsWireConnectionRequest        `json:"unwireConnection"`
-	RewireConnection              *formationsRewireConnectionRequest      `json:"rewireConnection"`
-	CreateGate                    *formationsCreateGateRequest            `json:"createGate"`
-	UpdateGate                    *formationsUpdateGateRequest            `json:"updateGate"`
-	SetGateJudge                  *formationsSetGateJudgeRequest          `json:"setGateJudge"`
-	DetachGateJudge               *formationsDetachGateJudgeRequest       `json:"detachGateJudge"`
-	CreateMission                 *formationsCreateMissionRequest         `json:"createInputCard"`
-	LegacyCommandFieldsPresent    bool                                    `json:"-"`
-	SetVerificationOccurrences    int                                     `json:"-"`
-	RemoveVerificationOccurrences int                                     `json:"-"`
-	MutationOccurrences           int                                     `json:"-"`
-	ExpectedRev                   int                                     `json:"expectedRev"`
-	LayoutExpectation             *formationsToolLayoutExpectationRequest `json:"layoutExpectation"`
-	UpdatedBy                     string                                  `json:"updatedBy"`
-	ToolOperationOccurrences      int                                     `json:"-"`
-	ToolFrameInvalid              bool                                    `json:"-"`
-	ToolFrameUnicodeInvalid       bool                                    `json:"-"`
-	ExpectedRevOccurrences        int                                     `json:"-"`
-	LayoutExpectationOccurrences  int                                     `json:"-"`
-	UpdatedByOccurrences          int                                     `json:"-"`
-	UpdatedByNull                 bool                                    `json:"-"`
+	SetExecution                 *formationsSetExecutionRequest          `json:"setExecution"`
+	Title                        *string                                 `json:"title"`
+	CreateTool                   *formationsToolCreateRequest            `json:"createTool"`
+	UpdateTool                   *formationsToolUpdateRequest            `json:"updateTool"`
+	DeleteTool                   *formationsToolDeleteRequest            `json:"deleteTool"`
+	CreateFormation              *formationsCreateFormationRequest       `json:"createFormation"`
+	DeleteFormation              *formationsDeleteFormationRequest       `json:"deleteFormation"`
+	UpdateFormation              *formationsUpdateFormationRequest       `json:"updateFormation"`
+	SetFormationType             *formationsSetFormationTypeRequest      `json:"setFormationType"`
+	UpdateMission                *formationsUpdateMissionRequest         `json:"updateInputCard"`
+	DeleteGate                   *formationsDeleteGateRequest            `json:"deleteGate"`
+	DeleteMission                *formationsDeleteMissionRequest         `json:"deleteInputCard"`
+	RestoreNode                  *formationsRestoreNodeRequest           `json:"restoreNode"`
+	AssignSlot                   *formationsAssignSlotRequest            `json:"assignSlot"`
+	MakeController               *formationsMakeControllerRequest        `json:"makeController"`
+	SetBrief                     *formationsSetBriefRequest              `json:"setBrief"`
+	ClearBrief                   *formationsClearBriefRequest            `json:"clearBrief"`
+	AddPort                      *formationsAddPortRequest               `json:"addPort"`
+	RemovePort                   *formationsRemovePortRequest            `json:"removePort"`
+	RestorePort                  *formationsRestorePortRequest           `json:"restorePort"`
+	WireConnection               *formationsWireConnectionRequest        `json:"wireConnection"`
+	UnwireConnection             *formationsWireConnectionRequest        `json:"unwireConnection"`
+	RewireConnection             *formationsRewireConnectionRequest      `json:"rewireConnection"`
+	CreateGate                   *formationsCreateGateRequest            `json:"createGate"`
+	UpdateGate                   *formationsUpdateGateRequest            `json:"updateGate"`
+	SetGateJudge                 *formationsSetGateJudgeRequest          `json:"setGateJudge"`
+	DetachGateJudge              *formationsDetachGateJudgeRequest       `json:"detachGateJudge"`
+	CreateMission                *formationsCreateMissionRequest         `json:"createInputCard"`
+	MutationOccurrences          int                                     `json:"-"`
+	ExpectedRev                  int                                     `json:"expectedRev"`
+	LayoutExpectation            *formationsToolLayoutExpectationRequest `json:"layoutExpectation"`
+	UpdatedBy                    string                                  `json:"updatedBy"`
+	ToolOperationOccurrences     int                                     `json:"-"`
+	ToolFrameInvalid             bool                                    `json:"-"`
+	ToolFrameUnicodeInvalid      bool                                    `json:"-"`
+	ExpectedRevOccurrences       int                                     `json:"-"`
+	LayoutExpectationOccurrences int                                     `json:"-"`
+	UpdatedByOccurrences         int                                     `json:"-"`
+	UpdatedByNull                bool                                    `json:"-"`
 }
 
 func (request *formationsBoardPatchRequest) UnmarshalJSON(raw []byte) error {
@@ -127,11 +122,11 @@ func (request *formationsBoardPatchRequest) UnmarshalJSON(raw []byte) error {
 	type requestFields formationsBoardPatchRequest
 	var decoded requestFields
 	if presence.ToolOperationOccurrences == 0 {
-		legacy := struct {
+		fields := struct {
 			*requestFields
 			LayoutExpectation json.RawMessage `json:"layoutExpectation"`
 		}{requestFields: &decoded}
-		if err := json.Unmarshal(raw, &legacy); err != nil {
+		if err := json.Unmarshal(raw, &fields); err != nil {
 			return err
 		}
 	} else {
@@ -140,9 +135,6 @@ func (request *formationsBoardPatchRequest) UnmarshalJSON(raw []byte) error {
 		}
 	}
 	*request = formationsBoardPatchRequest(decoded)
-	request.LegacyCommandFieldsPresent = presence.LegacyCommandFieldsPresent
-	request.SetVerificationOccurrences = presence.SetVerificationOccurrences
-	request.RemoveVerificationOccurrences = presence.RemoveVerificationOccurrences
 	request.MutationOccurrences = presence.MutationOccurrences
 	request.ToolOperationOccurrences = presence.ToolOperationOccurrences
 	request.ToolFrameInvalid = presence.ToolFrameInvalid
@@ -238,22 +230,6 @@ type formationsClearBriefRequest struct {
 	UpdatedBy   string `json:"updatedBy"`
 }
 
-type formationsSetVerificationRequest struct {
-	FormationID string   `json:"formationId"`
-	Kinds       []string `json:"kinds"`
-	Criterion   string   `json:"criterion"`
-	OnFail      string   `json:"onFail"`
-	ExpectedRev int      `json:"expectedRev"`
-	UpdatedBy   string   `json:"updatedBy"`
-}
-
-type formationsRemoveVerificationRequest struct {
-	FormationID       string `json:"formationId"`
-	ReplacementGateID string `json:"replacementGateId"`
-	ExpectedRev       int    `json:"expectedRev"`
-	UpdatedBy         string `json:"updatedBy"`
-}
-
 type formationsAddPortRequest struct {
 	FormationID string `json:"formationId"`
 	Direction   string `json:"direction"`
@@ -297,10 +273,6 @@ type formationsCreateGateRequest struct {
 	CheckVersion string   `json:"checkVersion"`
 	CheckValue   string   `json:"checkValue"`
 	Files        []string `json:"files"`
-	Command      string   `json:"command"`
-	CommandArgv  []string `json:"commandArgv"`
-	CommandCWD   string   `json:"commandCwd"`
-	CommandShell string   `json:"commandShell"`
 	X            int      `json:"x"`
 	Y            int      `json:"y"`
 	ExpectedRev  int      `json:"expectedRev"`
@@ -308,16 +280,13 @@ type formationsCreateGateRequest struct {
 }
 
 type boardPatchPresence struct {
-	LegacyCommandFieldsPresent    bool
-	SetVerificationOccurrences    int
-	RemoveVerificationOccurrences int
-	MutationOccurrences           int
-	ToolOperationOccurrences      int
-	ToolFrameInvalid              bool
-	ExpectedRevOccurrences        int
-	LayoutExpectationOccurrences  int
-	UpdatedByOccurrences          int
-	UpdatedByNull                 bool
+	MutationOccurrences          int
+	ToolOperationOccurrences     int
+	ToolFrameInvalid             bool
+	ExpectedRevOccurrences       int
+	LayoutExpectationOccurrences int
+	UpdatedByOccurrences         int
+	UpdatedByNull                bool
 }
 
 var boardPatchMutationKeys = []string{
@@ -338,8 +307,6 @@ var boardPatchMutationKeys = []string{
 	"makeController",
 	"setBrief",
 	"clearBrief",
-	"setVerification",
-	"removeVerification",
 	"addPort",
 	"removePort",
 	"restorePort",
@@ -384,20 +351,6 @@ func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
 		if !isExactToolFrameKey(key) {
 			presence.ToolFrameInvalid = true
 		}
-		if strings.EqualFold(key, "createGate") || strings.EqualFold(key, "updateGate") {
-			legacyFieldsPresent, err := scanLegacyGateCommandFields(decoder)
-			if err != nil {
-				return boardPatchPresence{}, err
-			}
-			presence.LegacyCommandFieldsPresent = presence.LegacyCommandFieldsPresent || legacyFieldsPresent
-			continue
-		}
-		if strings.EqualFold(key, "setVerification") {
-			presence.SetVerificationOccurrences++
-		}
-		if strings.EqualFold(key, "removeVerification") {
-			presence.RemoveVerificationOccurrences++
-		}
 		var value json.RawMessage
 		if err := decoder.Decode(&value); err != nil {
 			return boardPatchPresence{}, err
@@ -420,51 +373,6 @@ func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
 		return boardPatchPresence{}, fmt.Errorf("board patch object is not closed")
 	}
 	return presence, nil
-}
-
-func scanLegacyGateCommandFields(decoder *json.Decoder) (bool, error) {
-	opening, err := decoder.Token()
-	if err != nil {
-		return false, err
-	}
-	delimiter, isContainer := opening.(json.Delim)
-	if !isContainer {
-		return false, nil
-	}
-	if delimiter != '{' {
-		if err := skipJSONContainer(decoder, delimiter); err != nil {
-			return false, err
-		}
-		return false, nil
-	}
-	found := false
-	for decoder.More() {
-		keyToken, err := decoder.Token()
-		if err != nil {
-			return false, err
-		}
-		key, ok := keyToken.(string)
-		if !ok {
-			return false, fmt.Errorf("createGate key must be a string")
-		}
-		for _, legacyField := range []string{"command", "commandArgv", "commandCwd", "commandShell"} {
-			if strings.EqualFold(key, legacyField) {
-				found = true
-				break
-			}
-		}
-		if err := skipJSONValue(decoder); err != nil {
-			return false, err
-		}
-	}
-	closing, err := decoder.Token()
-	if err != nil {
-		return false, err
-	}
-	if closeDelimiter, ok := closing.(json.Delim); !ok || closeDelimiter != '}' {
-		return false, fmt.Errorf("createGate object is not closed")
-	}
-	return found, nil
 }
 
 func skipJSONValue(decoder *json.Decoder) error {
@@ -1032,8 +940,8 @@ func (h *FormationsHandler) GetBoardValidation(w http.ResponseWriter, r *http.Re
 	core.WriteSuccess(w, map[string]interface{}{
 		"missionRev":  board.Rev,
 		"missionEtag": board.ETag,
-		"errors":    report.Errors,
-		"warnings":  report.Warnings,
+		"errors":      report.Errors,
+		"warnings":    report.Warnings,
 	})
 }
 
@@ -1057,18 +965,6 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.patchToolBoard(w, r, &request) {
-		return
-	}
-	if request.SetVerificationOccurrences > 0 {
-		writeFormationsError(w, formations.ErrLegacyInlineVerificationRequiresMigration)
-		return
-	}
-	if request.RemoveVerificationOccurrences > 0 && (request.RemoveVerificationOccurrences != 1 || request.MutationOccurrences != 1 || request.RemoveVerification == nil) {
-		writeFormationsError(w, formations.ErrLegacyInlineVerificationRequiresMigration)
-		return
-	}
-	if request.LegacyCommandFieldsPresent {
-		writeFormationsError(w, formations.ErrLegacyScriptGateRequiresFencedMigration)
 		return
 	}
 	slug, err := h.store.ResolveBoardSelector(r.PathValue("mission"))
@@ -1304,44 +1200,6 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		core.WriteSuccess(w, map[string]interface{}{"mission": board})
 		return
 	}
-	if request.SetVerification != nil {
-		verification := request.SetVerification
-		board, err := h.store.SetFormationVerification(slug, formations.FormationVerificationRequest{
-			FormationID: verification.FormationID,
-			Kinds:       verification.Kinds,
-			Criterion:   verification.Criterion,
-			OnFail:      verification.OnFail,
-			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, verification.UpdatedBy),
-		}, formations.WriteOptions{
-			ExpectedETag: r.Header.Get("If-Match"),
-			ExpectedRev:  patchExpectedRev(request.ExpectedRev, verification.ExpectedRev),
-		})
-		if err != nil {
-			writeFormationsError(w, err)
-			return
-		}
-		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"mission": board})
-		return
-	}
-	if request.RemoveVerification != nil {
-		verification := request.RemoveVerification
-		board, err := h.store.RemoveFormationVerification(slug, formations.FormationVerificationRemovalRequest{
-			FormationID:       verification.FormationID,
-			ReplacementGateID: verification.ReplacementGateID,
-			UpdatedBy:         patchUpdatedBy(request.UpdatedBy, verification.UpdatedBy),
-		}, formations.WriteOptions{
-			ExpectedETag: r.Header.Get("If-Match"),
-			ExpectedRev:  patchExpectedRev(request.ExpectedRev, verification.ExpectedRev),
-		})
-		if err != nil {
-			writeFormationsError(w, err)
-			return
-		}
-		w.Header().Set("ETag", board.ETag)
-		core.WriteSuccess(w, map[string]interface{}{"mission": board})
-		return
-	}
 	if request.AddPort != nil {
 		addPort := request.AddPort
 		board, err := h.store.AddFormationPort(slug, formations.FormationPortRequest{
@@ -1440,21 +1298,16 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 	if request.CreateGate != nil {
 		gate := request.CreateGate
 		result, err := h.store.CreateGate(slug, formations.GateCreateRequest{
-			Title:                      gate.Title,
-			Kinds:                      gate.Kinds,
-			Criterion:                  gate.Criterion,
-			Check:                      gate.Check,
-			CheckVersion:               gate.CheckVersion,
-			CheckValue:                 gate.CheckValue,
-			Files:                      gate.Files,
-			Command:                    gate.Command,
-			CommandArgv:                gate.CommandArgv,
-			CommandCWD:                 gate.CommandCWD,
-			CommandShell:               gate.CommandShell,
-			LegacyCommandFieldsPresent: request.LegacyCommandFieldsPresent,
-			X:                          gate.X,
-			Y:                          gate.Y,
-			UpdatedBy:                  patchUpdatedBy(request.UpdatedBy, gate.UpdatedBy),
+			Title:        gate.Title,
+			Kinds:        gate.Kinds,
+			Criterion:    gate.Criterion,
+			Check:        gate.Check,
+			CheckVersion: gate.CheckVersion,
+			CheckValue:   gate.CheckValue,
+			Files:        gate.Files,
+			X:            gate.X,
+			Y:            gate.Y,
+			UpdatedBy:    patchUpdatedBy(request.UpdatedBy, gate.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
 			ExpectedRev:  patchExpectedRev(request.ExpectedRev, gate.ExpectedRev),
@@ -1530,16 +1383,15 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 	if request.UpdateGate != nil {
 		update := request.UpdateGate
 		board, err := h.store.UpdateGate(slug, formations.GateUpdateRequest{
-			GateID:                     update.ID,
-			Title:                      update.Title,
-			Kinds:                      update.Kinds,
-			Criterion:                  update.Criterion,
-			Check:                      update.Check,
-			CheckVersion:               update.CheckVersion,
-			CheckValue:                 update.CheckValue,
-			Files:                      update.Files,
-			LegacyCommandFieldsPresent: request.LegacyCommandFieldsPresent,
-			UpdatedBy:                  patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
+			GateID:       update.ID,
+			Title:        update.Title,
+			Kinds:        update.Kinds,
+			Criterion:    update.Criterion,
+			Check:        update.Check,
+			CheckVersion: update.CheckVersion,
+			CheckValue:   update.CheckValue,
+			Files:        update.Files,
+			UpdatedBy:    patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
 			ExpectedRev:  patchExpectedRev(request.ExpectedRev, update.ExpectedRev),
@@ -1860,10 +1712,6 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid formation slug")
 	case errors.Is(err, formations.ErrUnsupportedSchema):
 		core.WriteError(w, http.StatusUnprocessableEntity, "UNSUPPORTED_SCHEMA", err.Error())
-	case errors.Is(err, formations.ErrLegacyScriptGateRequiresFencedMigration):
-		core.WriteError(w, http.StatusUnprocessableEntity, formations.LegacyScriptGateMigrationCode, err.Error())
-	case errors.Is(err, formations.ErrLegacyInlineVerificationRequiresMigration):
-		core.WriteError(w, http.StatusUnprocessableEntity, formations.LegacyInlineVerificationMigrationCode, err.Error())
 	default:
 		core.WriteError(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 	}

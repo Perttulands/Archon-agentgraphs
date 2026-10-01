@@ -1340,34 +1340,6 @@ id = "mis_main"
 	}
 }
 
-func TestCreateToolRejectsSchemaMigrationHazardWithoutMutation(t *testing.T) {
-	store := newToolAuthoringStore(t)
-	slug := "tool-migration-hazard"
-	boardRaw := `schema = 1
-id = "brd_tool-migration-hazard"
-slug = "tool-migration-hazard"
-title = "Migration hazard"
-rev = 3
-
-[[gate]]
-id = "gate_legacy"
-title = "Legacy"
-kinds = ["code"]
-criterion = "Run"
-command = "./unsafe.sh"
-`
-	writeFixture(t, store.BoardPath(slug), boardRaw)
-	board, err := store.ReadBoard(slug)
-	if err != nil {
-		t.Fatalf("read migration source: %v", err)
-	}
-	if _, err := store.CreateTool(slug, toolAuthoringCreateRequest(ToolPlacement{}), toolAuthoringAbsentOptions(board)); err == nil ||
-		!strings.Contains(err.Error(), LegacyScriptGateMigrationCode) {
-		t.Fatalf("migration hazard error = %v, want stable legacy script fence", err)
-	}
-	assertToolAuthoringPairUnchanged(t, store, slug, boardRaw, nil)
-}
-
 func TestCreateToolRejectsMismatchedMalformedAndDuplicateLayoutIDs(t *testing.T) {
 	tests := []struct {
 		name       string

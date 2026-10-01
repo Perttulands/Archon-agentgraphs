@@ -46,8 +46,7 @@ func TestToolExecutionPreflightResolvesTheSelectedRootBeforeMigration(t *testing
 			if !errors.Is(err, ErrNotFound) {
 				t.Fatalf("start error = %v, want exact-root ErrNotFound", err)
 			}
-			if errors.Is(err, ErrLegacyInlineVerificationRequiresMigration) ||
-				errors.Is(err, ErrToolExecutionUnavailable) ||
+			if errors.Is(err, ErrToolExecutionUnavailable) ||
 				errors.Is(err, ErrRuntimeAuthorityNonAuthorizing) {
 				t.Fatalf("later preflight boundary masked exact root: %v", err)
 			}
@@ -65,24 +64,6 @@ func TestToolExecutionPreflightUsesApprovedSelectedMissionOrder(t *testing.T) {
 		want        error
 		wantText    string
 	}{
-		{
-			name: "reachable inline migration precedes Tool",
-			board: toolExecutionPreflightHeader() +
-				toolExecutionPreflightFormation("fmn_legacy", true) +
-				validTool +
-				toolExecutionPreflightConnection("edge_start", "workflow", "mis_main:out", "fmn_legacy:port_fmn_legacy_in") +
-				toolExecutionPreflightConnection("edge_tool", "workflow", "fmn_legacy:port_fmn_legacy_out", "tool_valid:port_tool_valid_in"),
-			want: ErrLegacyInlineVerificationRequiresMigration,
-		},
-		{
-			name: "reachable script Gate migration precedes Tool",
-			board: toolExecutionPreflightHeader() +
-				toolExecutionPreflightGate("gate_legacy", true, "code") +
-				validTool +
-				toolExecutionPreflightConnection("edge_start", "workflow", "mis_main:out", "gate_legacy:in") +
-				toolExecutionPreflightConnection("edge_tool", "workflow", "gate_legacy:pass", "tool_valid:port_tool_valid_in"),
-			want: ErrLegacyScriptGateRequiresFencedMigration,
-		},
 		{
 			name: "all reachable descriptors validate before unavailable",
 			board: toolExecutionPreflightHeader() +

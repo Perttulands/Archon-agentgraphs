@@ -76,26 +76,6 @@ func TestRuntimeStartsRejectSelectedDefinitionBeforeUnavailableAuthority(t *test
 			},
 		},
 		{
-			name:    "store legacy inline verification",
-			slug:    "session-search",
-			board:   s4VerificationBoardFixture("block"),
-			wantErr: ErrLegacyInlineVerificationRequiresMigration,
-			start: func(store *Store, _ *RunEngine) error {
-				_, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase"})
-				return err
-			},
-		},
-		{
-			name:    "store reachable legacy script Gate",
-			slug:    "session-search",
-			board:   legacyScriptGateBoardFixture(`commandArgv = ["npm", "run", "lint"]`),
-			wantErr: ErrLegacyScriptGateRequiresFencedMigration,
-			start: func(store *Store, _ *RunEngine) error {
-				_, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase"})
-				return err
-			},
-		},
-		{
 			name:    "engine mission missing definition",
 			slug:    "missing",
 			wantErr: ErrNotFound,
@@ -125,26 +105,6 @@ func TestRuntimeStartsRejectSelectedDefinitionBeforeUnavailableAuthority(t *test
 			},
 		},
 		{
-			name:    "engine mission legacy inline verification",
-			slug:    "session-search",
-			board:   s4VerificationBoardFixture("block"),
-			wantErr: ErrLegacyInlineVerificationRequiresMigration,
-			start: func(_ *Store, engine *RunEngine) error {
-				_, err := engine.RunMission("session-search", RunStartRequest{MissionID: "mis_showcase"})
-				return err
-			},
-		},
-		{
-			name:    "engine mission reachable legacy script Gate",
-			slug:    "session-search",
-			board:   legacyScriptGateBoardFixture(`commandArgv = ["npm", "run", "lint"]`),
-			wantErr: ErrLegacyScriptGateRequiresFencedMigration,
-			start: func(_ *Store, engine *RunEngine) error {
-				_, err := engine.RunMission("session-search", RunStartRequest{MissionID: "mis_showcase"})
-				return err
-			},
-		},
-		{
 			name:      "engine formation malformed definition",
 			slug:      "malformed",
 			board:     malformedRuntimeStartBoardFixture(),
@@ -161,16 +121,6 @@ func TestRuntimeStartsRejectSelectedDefinitionBeforeUnavailableAuthority(t *test
 			wantErr: ErrNotFound,
 			start: func(_ *Store, engine *RunEngine) error {
 				_, err := engine.RunFormation("session-search", "fmn_missing", FormationRunRequest{})
-				return err
-			},
-		},
-		{
-			name:    "engine formation legacy inline verification",
-			slug:    "session-search",
-			board:   s4VerificationBoardFixture("block"),
-			wantErr: ErrLegacyInlineVerificationRequiresMigration,
-			start: func(_ *Store, engine *RunEngine) error {
-				_, err := engine.RunFormation("session-search", "fmn_work", FormationRunRequest{})
 				return err
 			},
 		},

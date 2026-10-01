@@ -199,8 +199,6 @@ func runWithRuntimeStoreFactory(args []string, stdout, stderr io.Writer, runner 
 			return runFormationRename(store, args[2:], stdout, stderr)
 		case "set-type":
 			return runFormationSetType(store, args[2:], stdout, stderr)
-		case "remove-verification":
-			return runFormationRemoveVerification(store, args[2:], stdout, stderr)
 		case "add-input":
 			return runFormationAddPort(store, args[2:], stdout, stderr, formations.FormationPortInput)
 		case "add-output":
@@ -864,39 +862,6 @@ func runFormationSetBrief(store *formations.Store, args []string, stdout, stderr
 	return 0
 }
 
-func runFormationRemoveVerification(store *formations.Store, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("formation remove-verification", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	replacementGate := fs.String("replacement-gate", "", "explicit Gate already wired from the Formation")
-	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
-	jsonOut := fs.Bool("json", false, "write JSON")
-	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
-		return 2
-	}
-	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon formation remove-verification <mission> <formation> --replacement-gate <gate> [--json]")
-		return 2
-	}
-	slug, board, formationID, err := resolveFormationCommandTarget(store, fs.Arg(0), fs.Arg(1))
-	if err != nil {
-		return failSelector(stderr, err, *jsonOut, "formation", fs.Arg(1))
-	}
-	result, err := store.RemoveFormationVerification(slug, formations.FormationVerificationRemovalRequest{
-		FormationID:       formationID,
-		ReplacementGateID: *replacementGate,
-		UpdatedBy:         *updatedBy,
-	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
-	if err != nil {
-		return failJSON(stderr, err, *jsonOut, "formation", formationID)
-	}
-	result.TOML = ""
-	if *jsonOut {
-		return writeJSON(stdout, result)
-	}
-	fmt.Fprintf(stdout, "removed legacy inline verification from %s\n", formationID)
-	return 0
-}
-
 func runFormationAddPort(store *formations.Store, args []string, stdout, stderr io.Writer, direction string) int {
 	name := "formation add-input"
 	if direction == formations.FormationPortOutput {
@@ -999,10 +964,6 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 	check := fs.String("check", "", "registered code Gate profile id")
 	checkVersion := fs.String("check-version", "", "exact code Gate profile version")
 	checkValue := fs.String("check-value", "", "code Gate profile value parameter")
-	command := fs.String("command", "", "retired legacy Gate field; new writes fail with a migration error")
-	commandArgv := fs.String("command-argv", "", "retired legacy Gate argv; new writes fail with a migration error")
-	commandCWD := fs.String("command-cwd", "", "retired legacy Gate cwd; new writes fail with a migration error")
-	commandShell := fs.String("command-shell", "", "retired legacy Gate shell command; new writes fail with a migration error")
 	var files stringList
 	fs.Var(&files, "file", "reference file path; repeat for more")
 	x := fs.Int("x", 0, "layout x coordinate")
@@ -1029,21 +990,16 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	result, err := store.CreateGate(slug, formations.GateCreateRequest{
-		Title:                      *title,
-		Kinds:                      splitCSV(*kinds),
-		Criterion:                  *criterion,
-		Check:                      *check,
-		CheckVersion:               *checkVersion,
-		CheckValue:                 *checkValue,
-		Files:                      files,
-		Command:                    *command,
-		CommandArgv:                splitCSV(*commandArgv),
-		CommandCWD:                 *commandCWD,
-		CommandShell:               *commandShell,
-		LegacyCommandFieldsPresent: legacyGateCommandFlagPresent(fs),
-		X:                          createX,
-		Y:                          createY,
-		UpdatedBy:                  *updatedBy,
+		Title:        *title,
+		Kinds:        splitCSV(*kinds),
+		Criterion:    *criterion,
+		Check:        *check,
+		CheckVersion: *checkVersion,
+		CheckValue:   *checkValue,
+		Files:        files,
+		X:            createX,
+		Y:            createY,
+		UpdatedBy:    *updatedBy,
 	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
 		return failDefinitionWrite(stderr, err, *jsonOut, "mission", fs.Arg(0))
@@ -1060,10 +1016,6 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	check := fs.String("check", "", "registered code Gate profile id")
 	checkVersion := fs.String("check-version", "", "exact code Gate profile version")
 	checkValue := fs.String("check-value", "", "code Gate profile value parameter")
-	command := fs.String("command", "", "retired legacy Gate field; new writes fail with a migration error")
-	commandArgv := fs.String("command-argv", "", "retired legacy Gate argv; new writes fail with a migration error")
-	commandCWD := fs.String("command-cwd", "", "retired legacy Gate cwd; new writes fail with a migration error")
-	commandShell := fs.String("command-shell", "", "retired legacy Gate shell command; new writes fail with a migration error")
 	clearCheck := fs.Bool("clear-check", false, "clear the code check profile, version and value")
 	var files stringList
 	fs.Var(&files, "file", "reference file path, replacing the current ones; repeat for more, or give an empty value to clear")
@@ -1093,13 +1045,8 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 		return failSelector(stderr, err, *jsonOut, "gate", fs.Arg(1))
 	}
 	update := formations.GateUpdateRequest{
-		GateID:                     gateID,
-		Command:                    *command,
-		CommandArgv:                splitCSV(*commandArgv),
-		CommandCWD:                 *commandCWD,
-		CommandShell:               *commandShell,
-		LegacyCommandFieldsPresent: legacyGateCommandFlagPresent(fs),
-		UpdatedBy:                  *updatedBy,
+		GateID:    gateID,
+		UpdatedBy: *updatedBy,
 	}
 	if given["kinds"] {
 		update.Kinds = append([]string{}, splitCSV(*kinds)...)
@@ -1136,17 +1083,6 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	}
 	fmt.Fprintln(stdout, "updated gate")
 	return 0
-}
-
-func legacyGateCommandFlagPresent(fs *flag.FlagSet) bool {
-	present := false
-	fs.Visit(func(current *flag.Flag) {
-		switch current.Name {
-		case "command", "command-argv", "command-cwd", "command-shell":
-			present = true
-		}
-	})
-	return present
 }
 
 func runGateJudge(store *formations.Store, args []string, stdout, stderr io.Writer) int {
@@ -2322,7 +2258,7 @@ func runBoardValidate(store *formations.Store, args []string, stdout, stderr io.
 	report := formations.ValidateRunAdmission(board, formations.NewPersonaStore(formations.DefaultAgentsDir()), formations.RunAdmissionScope{})
 	if *jsonOut {
 		code := writeJSON(stdout, map[string]interface{}{
-			"mission":    identityFromBoard(board),
+			"mission":  identityFromBoard(board),
 			"errors":   report.Errors,
 			"warnings": report.Warnings,
 		})
@@ -2748,10 +2684,6 @@ func archonErrorCode(err error) string {
 		return "precondition_required"
 	case errors.Is(err, formations.ErrUnsupportedSchema):
 		return "unsupported_schema"
-	case errors.Is(err, formations.ErrLegacyScriptGateRequiresFencedMigration):
-		return formations.LegacyScriptGateMigrationCode
-	case errors.Is(err, formations.ErrLegacyInlineVerificationRequiresMigration):
-		return formations.LegacyInlineVerificationMigrationCode
 	case errors.Is(err, formations.ErrRunFinal):
 		return "run_final"
 	case errors.Is(err, formations.ErrRunLedgerInvalid):

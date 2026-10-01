@@ -1076,8 +1076,8 @@ func assertArchonToolPairFileIdentity(t *testing.T, harness *archonToolAuthoring
 	t.Helper()
 	after := snapshotArchonToolPairFileIdentity(t, harness)
 	for name, pair := range map[string][2]os.FileInfo{
-		"mission":  {before.board, after.board},
-		"layout": {before.layout, after.layout},
+		"mission": {before.board, after.board},
+		"layout":  {before.layout, after.layout},
 	} {
 		if !os.SameFile(pair[0], pair[1]) || pair[0].Mode() != pair[1].Mode() || !pair[0].ModTime().Equal(pair[1].ModTime()) {
 			t.Fatalf("rejected Tool command changed %s file identity: before=%v after=%v", name, pair[0], pair[1])

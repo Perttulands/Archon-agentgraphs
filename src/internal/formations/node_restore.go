@@ -130,9 +130,6 @@ func restoredNodeBlock(req NodeRestoreRequest) (string, string, func([]byte) []b
 		if !validToolDefinitionID(gate.ID) {
 			return "", "", nil, invalidNodeRestore("gate id %q is invalid", gate.ID)
 		}
-		if err := rejectLegacyScriptGateWrite(false, gate.Command, gate.CommandArgv, gate.CommandCWD, gate.CommandShell); err != nil {
-			return "", "", nil, err
-		}
 		// The field rules of CreateGate and UpdateGate: at least one kind, a
 		// registered profile when one is named, and code check fields only on a
 		// gate with the code kind.
@@ -173,9 +170,6 @@ func validateRestoredFormation(formation FormationNode) error {
 	}
 	if err := validateFormationType(formation.Type); err != nil {
 		return err
-	}
-	if formation.Verification != nil {
-		return fmt.Errorf("%w: formation %q carries retired inline verification, which cannot be authored again", ErrLegacyInlineVerificationRequiresMigration, formation.ID)
 	}
 	if formation.Brief != nil && formation.Brief.BeadID != "" && !isSafeBeadsIssueID(formation.Brief.BeadID) {
 		return invalidBeadID("brief beadId", formation.Brief.BeadID)

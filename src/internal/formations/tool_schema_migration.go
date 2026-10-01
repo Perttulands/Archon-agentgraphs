@@ -62,14 +62,6 @@ func migrateBoardToToolSchema(raw []byte) ([]byte, error) {
 	if schema == NewBoardSchema && len(board.Tools) != 0 {
 		return nil, fmt.Errorf("board schema %d cannot contain Tool definitions", schema)
 	}
-	for _, gate := range board.Gates {
-		if gateHasLegacyScriptCommand(gate) {
-			return nil, legacyScriptGateMigrationError(gate.ID)
-		}
-	}
-	if err := rejectLegacyInlineVerification(board); err != nil {
-		return nil, err
-	}
 
 	scan, err := toolSchemaMigrationScanBoard(lines)
 	if err != nil {

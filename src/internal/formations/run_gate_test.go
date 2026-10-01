@@ -1,9 +1,7 @@
 package formations
 
 import (
-	"errors"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -125,36 +123,6 @@ func TestS4GateFailWirePushesBackWithAttemptLimit(t *testing.T) {
 	if errEvent.Data["reason"] != "revise loop exhausted" {
 		t.Fatalf("error data = %#v, want revise loop exhausted", errEvent.Data)
 	}
-}
-
-func TestS4GateEvaluationRejectsPersistedCommandArgvBeforeEvaluator(t *testing.T) {
-	store, personas := s4RunFixture(t)
-	store.Now = fixedClock()
-	personas.Now = fixedClock()
-	createS4Persona(t, personas, "scout")
-	writeFixture(t, store.BoardPath("session-search"), strings.Replace(s4GateBoardFixture(false), `criterion = "Good enough to ship"`, `criterion = "touch should-not-run"`+"\n"+`commandArgv = ["npm", "run", "lint"]`+"\n"+`commandCwd = "dashboard"`, 1))
-	board, err := store.ReadBoard("session-search")
-	if err != nil {
-		t.Fatalf("read board: %v", err)
-	}
-	evaluator := &fakeGateEvaluator{verdicts: []string{"pass"}}
-	engine := NewRunEngine(store, personas, &fakeRunExecutor{})
-	engine.SetGateEvaluator(evaluator)
-
-	_, err = engine.RunMission("session-search", RunStartRequest{
-		MissionID:         "mis_showcase",
-		Actor:             "agent:test",
-		ExpectedBoardETag: board.ETag,
-		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
-	})
-	if !errors.Is(err, ErrLegacyScriptGateRequiresFencedMigration) {
-		t.Fatalf("run mission error = %v, want ErrLegacyScriptGateRequiresFencedMigration", err)
-	}
-	if len(evaluator.calls) != 0 {
-		t.Fatalf("gate calls = %+v, want none before migration", evaluator.calls)
-	}
-	assertNoRunArtifacts(t, store, "session-search")
 }
 
 func TestS4RunLimitsRecordAndStop(t *testing.T) {

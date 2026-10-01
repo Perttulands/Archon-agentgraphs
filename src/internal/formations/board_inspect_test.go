@@ -239,27 +239,6 @@ func TestValidateBoardRequiresExactProfileForMixedCodeFormationGate(t *testing.T
 	}
 }
 
-func TestValidateBoardScriptCommandForms(t *testing.T) {
-	shellBoard := strings.Replace(cleanValidateBoardFixture(), `kinds = ["human"]`, `kinds = ["code"]`, 1)
-	shellBoard = strings.Replace(shellBoard, `criterion = "Run the gate"`, `criterion = "Run the gate"`+"\n"+`commandShell = "./gate.sh"`, 1)
-	report := ValidateBoard(mustParseValidateBoardFixture(t, shellBoard))
-	migrations := findBoardFindings(report.Errors, FindingLegacyScriptGate)
-	if len(migrations) != 1 || migrations[0].Details == nil || migrations[0].Details.SourceMode != "shell" {
-		t.Fatalf("commandShell migration findings = %+v, want one shell plan", migrations)
-	}
-	unroutable := findBoardFindings(report.Errors, FindingGateNotRoutable)
-	if len(unroutable) != 1 || unroutable[0].NodeID != "gate_review" {
-		t.Fatalf("commandShell unroutable findings = %+v, want separate gate_review finding", unroutable)
-	}
-
-	legacyOnly := strings.Replace(cleanValidateBoardFixture(), `criterion = "Run the gate"`, `criterion = "Run the gate"`+"\n"+`command = "./gate.sh"`, 1)
-	report = ValidateBoard(mustParseValidateBoardFixture(t, legacyOnly))
-	migrations = findBoardFindings(report.Errors, FindingLegacyScriptGate)
-	if len(migrations) != 1 || migrations[0].Details == nil || migrations[0].Details.SourceMode != "legacy_string" {
-		t.Fatalf("legacy command migration findings = %+v, want one legacy_string plan", migrations)
-	}
-}
-
 func TestValidateBoardReportsInvalidFormationType(t *testing.T) {
 	raw := cleanValidateBoardFixture() + `
 [[formation]]
@@ -271,30 +250,6 @@ title = "Bogus"
 	bad := findBoardFindings(report.Errors, FindingInvalidFormationType)
 	if len(bad) != 1 || bad[0].NodeID != "fmn_bogus" {
 		t.Fatalf("invalid-formation-type errors = %+v, want fmn_bogus", bad)
-	}
-}
-
-func TestValidateBoardReportsLegacyInlineVerificationAsMigrationRequired(t *testing.T) {
-	raw := strings.Replace(cleanValidateBoardFixture(), `[[formation.output]]
-id = "port_work_out"
-label = "Output"
-`, `[[formation.output]]
-id = "port_work_out"
-label = "Output"
-
-[formation.verification]
-id = "ver_work"
-kinds = ["code"]
-criterion = "Tests pass"
-onFail = "block"
-`, 1)
-	report := ValidateBoard(mustParseValidateBoardFixture(t, raw))
-	legacy := findBoardFindings(report.Errors, "legacy_inline_verification_requires_migration")
-	if len(legacy) != 1 || legacy[0].NodeID != "fmn_work" {
-		t.Fatalf("legacy inline verification findings = %+v, want fmn_work migration error", legacy)
-	}
-	if !strings.Contains(legacy[0].Message, "explicit Gate") {
-		t.Fatalf("legacy inline verification message = %q, want explicit Gate guidance", legacy[0].Message)
 	}
 }
 

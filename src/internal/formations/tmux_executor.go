@@ -515,20 +515,10 @@ func (e *TmuxFormationExecutor) resolveOutputRefPath(ref string) (string, error)
 	if strings.ContainsRune(ref, 0) || strings.Contains(ref, "://") {
 		return "", runExecutionError("invalid_output_ref", fmt.Sprintf("unsupported output ref %q", ref), "executor", nil)
 	}
-	var candidate string
-	if filepath.IsAbs(ref) {
-		candidate = filepath.Clean(ref)
-	} else {
-		base := e.config.Cwd
-		if e.store != nil && strings.TrimSpace(e.store.workspaceRoot()) != "" {
-			base = e.store.workspaceRoot()
-		}
-		candidate = filepath.Join(base, filepath.FromSlash(ref))
+	if !filepath.IsAbs(ref) {
+		return "", runExecutionError("invalid_output_ref", fmt.Sprintf("output ref %q must be an absolute path", ref), "executor", nil)
 	}
-	candidate, err := filepath.Abs(candidate)
-	if err != nil {
-		return "", runExecutionError("invalid_output_ref", fmt.Sprintf("output ref %q is invalid", ref), "executor", err)
-	}
+	candidate := filepath.Clean(ref)
 	if !e.pathWithinRoots(candidate) {
 		return "", runExecutionError("output_ref_outside_root", fmt.Sprintf("output ref %q is outside configured roots", ref), "executor", nil)
 	}

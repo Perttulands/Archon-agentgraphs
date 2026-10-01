@@ -1325,18 +1325,6 @@ func TestFormationsHandlerToolGrammarDoesNotChangeLegacyPatchSemantics(t *testin
 		}
 	})
 
-	t.Run("command Gate keeps legacy migration rejection", func(t *testing.T) {
-		harness := newFormationsAPIToolAuthoringHarness(t, true)
-		beforeBoard := readFormationsAPIFile(t, harness.store.BoardPath(harness.slug))
-		beforeLayout := readFormationsAPIFile(t, harness.store.LayoutPath(harness.slug))
-		body := fmt.Sprintf(
-			`{"createGate":{"title":"Legacy lint","kinds":["code"],"criterion":"Lint passes","command":"printf unsafe"},"expectedRev":%d}`,
-			harness.board.Rev,
-		)
-		recorder := harness.patch(body, harness.board.ETag)
-		assertFormationsAPIToolError(t, recorder, http.StatusUnprocessableEntity, formations.LegacyScriptGateMigrationCode)
-		assertFormationsAPIToolPairBytes(t, harness, beforeBoard, beforeLayout)
-	})
 }
 
 func TestFormationsHandlerMapsDefinitionPublicationUncertaintySafely(t *testing.T) {

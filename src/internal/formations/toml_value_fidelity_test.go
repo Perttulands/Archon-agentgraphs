@@ -84,12 +84,6 @@ criterion = 'Coverage #1 passes'
 	if !equalStrings(formation.Brief.Links, wantLinks) {
 		t.Fatalf("brief links = %#v, want %#v", formation.Brief.Links, wantLinks)
 	}
-	if formation.Verification == nil || formation.Verification.Criterion != "First # criterion line\nSecond criterion line\n" || formation.Verification.OnFail != "block" {
-		t.Fatalf("verification = %+v, want TOML-decoded multiline fields", formation.Verification)
-	}
-	if !equalStrings(formation.Verification.Kinds, []string{"code", "human"}) {
-		t.Fatalf("verification kinds = %#v", formation.Verification.Kinds)
-	}
 	if len(board.Gates) != 1 || board.Gates[0].Criterion != "Coverage #1 passes" || !equalStrings(board.Gates[0].Kinds, []string{"human", "code"}) {
 		t.Fatalf("decoded gates = %+v", board.Gates)
 	}

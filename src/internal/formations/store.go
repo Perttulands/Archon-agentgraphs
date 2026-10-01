@@ -526,7 +526,6 @@ func boardFromTOMLSource(raw []byte, source boardTOMLSource) (*BoardDocument, er
 		ETag:        etag(raw),
 		TOML:        string(raw),
 	}
-	populateLegacyScriptGateMigrationInspections(board)
 	return board, nil
 }
 
@@ -556,7 +555,6 @@ func parseBoardCompatibility(raw []byte) (*BoardDocument, error) {
 		ETag:        etag(raw),
 		TOML:        string(raw),
 	}
-	populateLegacyScriptGateMigrationInspections(board)
 	return board, nil
 }
 

@@ -89,7 +89,7 @@ func formationExecutionBudget(req FormationExecution, events []RunEvent, limits 
 	return budget, nil
 }
 
-// Direct legacy executor calls have no engine-provided deadline. Give those
+// Direct executor calls have no engine-provided deadline. Give those
 // calls one allocation from the configured default or authored policy. Normal
 // admitted runs arrive with their ledger-derived deadline and retain it.
 func withFormationDeadline(parent context.Context, req *FormationExecution, now time.Time, fallback int) (context.Context, context.CancelFunc, error) {
