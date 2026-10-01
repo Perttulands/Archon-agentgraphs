@@ -21,9 +21,11 @@ import { rectsOverlap, type WindowRect } from './windowGeometry'
  * the free room next to it, up to `height`, to grow into: downward, or upward
  * when it sits above its anchor. A list inside scrolls within that room. Where
  * its full width finds no free place it narrows, down to `minWidth`. It takes
- * the nearest place that covers nothing, preferring places with room for at
- * least `minHeight`; each pixel of room or width it gives up counts as a
- * little distance, so it gives them up only to stay closer. Only a place within
+ * the nearest place that covers nothing with room for at least `minHeight`
+ * (the whole of a short list), and only where none has that room, the one
+ * that comes closest; `short` says how much room is missing, so the view can
+ * make room. Each pixel of room above `minHeight` or of width it gives up
+ * counts as a little distance, so it gives them up only to stay closer. Only a place within
  * `reach` of the anchor counts as beside it. When no place within reach is
  * free even at its opening size, it takes the place within reach that covers
  * the least, so it never wanders across the view. Placement is pure: the same
@@ -60,6 +62,8 @@ export interface PopoverPlace {
   distance: number
   /** Pixels of obstacles (and of a card home) it covers; zero unless nothing within reach is free. */
   covered: number
+  /** How far its room falls short of `minHeight`: what the view would have to make room for. */
+  short: number
 }
 
 /** Room left between a popover and what it opens beside. */
@@ -71,14 +75,21 @@ export const POPOVER_REACH = 160
 /** How much distance one pixel of room given up is worth. */
 const ROOM_COST = 0.3
 
+/**
+ * What a corner place costs, one that shares neither the anchor's rows nor its
+ * columns: it reads as belonging to whatever is nearer it, so a place straight
+ * above, below or beside the anchor is preferred unless it is much farther.
+ */
+const DIAGONAL_COST = 60
+
 /** How much distance one pixel of width given up is worth. */
 const WIDTH_COST = 0.6
 
 /** Each step a popover narrows by. */
 const NARROW_STEP = 60
 
-/** How much distance one pixel of room short of `minHeight` is worth. */
-const CRAMPED_COST = 1.5
+/** How much distance one pixel of room short of `minHeight` is worth: room for the whole short list outweighs any distance within reach. */
+const CRAMPED_COST = 20
 
 const right = (rect: WindowRect) => rect.left + rect.width
 const bottom = (rect: WindowRect) => rect.top + rect.height
@@ -180,16 +191,19 @@ export function placePopover(size: PopoverSize, scene: PopoverScene, reach = POP
         const covered = cost(open)
         if (covered > 0) {
           if (w === fullWidth && (!fallback || covered < fallback.covered || (covered === fallback.covered && distance < fallback.distance))) {
-            fallback = { rect: open, growsUp, distance, covered }
+            fallback = { rect: open, growsUp, distance, covered, short: Math.max(0, minHeight - openHeight) }
           }
           continue
         }
         const grown = Math.max(openHeight, room(open, growsUp))
         const rect = growsUp ? { ...open, top: bottom(open) - grown, height: grown } : { ...open, height: grown }
-        const score = distance + narrowed + ROOM_COST * (height - grown) + CRAMPED_COST * Math.max(0, minHeight - grown)
+        const across = open.left < right(anchor) && right(open) > anchor.left
+        const level = open.top < bottom(anchor) && bottom(open) > anchor.top
+        const diagonal = across || level ? 0 : DIAGONAL_COST
+        const score = distance + narrowed + diagonal + ROOM_COST * (height - grown) + CRAMPED_COST * Math.max(0, minHeight - grown)
         const rank = sideRank(open, anchor)
         if (!best || score < bestScore - 0.5 || (Math.abs(score - bestScore) <= 0.5 && (rank < bestRank || (rank === bestRank && Math.abs(open.top - anchor.top) < Math.abs(best.rect.top - anchor.top))))) {
-          best = { rect, growsUp, distance, covered: 0 }
+          best = { rect, growsUp, distance, covered: 0, short: Math.max(0, minHeight - grown) }
           bestScore = score
           bestRank = rank
         }
@@ -205,5 +219,5 @@ export function placePopover(size: PopoverSize, scene: PopoverScene, reach = POP
     width,
     height: openHeight,
   }
-  return { rect, growsUp: false, distance: separation(rect, anchor), covered: cost(rect) }
+  return { rect, growsUp: false, distance: separation(rect, anchor), covered: cost(rect), short: Math.max(0, minHeight - openHeight) }
 }

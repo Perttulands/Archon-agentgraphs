@@ -13,6 +13,8 @@ export interface StaffingStage {
   windows: () => readonly WindowRect[]
   /** Cards and operator notes (landmarks) and the rest of the view (content). */
   scene: () => ViewScene
+  /** Pans the view by (dx, dy) to make room beside a slot, resolving once it has moved; a view that cannot pan leaves it out. */
+  makeRoom?: (dx: number, dy: number) => Promise<void>
 }
 
 const CARDS = '.formation, .missioncard, .gatecard, .toolcard, .endcard, .note-sticky'

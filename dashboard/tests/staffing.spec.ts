@@ -477,6 +477,80 @@ test('the landing note sits right beside its slot and covers no card or operator
   }
 })
 
+// rv-slots4, Delightful: a list shows only whole rows at every scroll position, and the six efforts are always whole.
+test('lists show only whole rows at every scroll position, and the six efforts are always whole', async ({ page }) => {
+  await cockpitFixture(page, { roles, extraAgents: 30 })
+  await page.goto('/')
+  const wholeRows = () => page.locator('.staffing-window .staffing-list').evaluate(list => {
+    const l = list.getBoundingClientRect()
+    return [...list.querySelectorAll('.staffing-row')].filter(row => {
+      const b = row.getBoundingClientRect()
+      return b.bottom > l.top + 0.5 && b.top < l.bottom - 0.5 && (b.top < l.top - 0.5 || b.bottom > l.bottom + 0.5)
+    }).map(row => (row as HTMLElement).dataset.row)
+  })
+  await page.getByTestId('slot-execution-controller').locator('[data-part=role]').click()
+  const grid = page.locator('.staffing-window .staffing-list')
+  await expect(grid).toBeVisible()
+  expect(await wholeRows()).toEqual([])
+  const box = (await grid.boundingBox())!
+  for (let notch = 0; notch < 4; notch++) {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, 100)
+    await page.waitForTimeout(120)
+    expect(await wholeRows(), `after ${notch + 1} wheel notches`).toEqual([])
+    // vanilla stays whole above the grid.
+    const vanilla = (await page.locator('.staffing-window [data-row="vanilla"]').boundingBox())!
+    expect(vanilla.y + vanilla.height).toBeLessThanOrEqual(box.y + 1)
+  }
+  await page.keyboard.press('Escape')
+
+  const efforts = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']
+  const effortsWhole = () => page.locator('.staffing-window .staffing-list').evaluate((list, names) => {
+    const l = list.getBoundingClientRect()
+    return names.filter(name => {
+      const row = list.querySelector(`[data-row="${name}"]`)
+      if (!row) return false
+      const b = row.getBoundingClientRect()
+      return b.top >= l.top - 0.5 && b.bottom <= l.bottom + 0.5
+    })
+  }, efforts)
+  await page.getByTestId('slot-execution-worker').locator('[data-part=effort]').click()
+  expect(await effortsWhole()).toEqual(efforts)
+  await page.keyboard.press('Escape')
+  await page.getByTestId('formation-node-execution').locator('.fhead .tt').click()
+  const staffing = page.getByRole('dialog', { name: 'Formation · Execution' }).getByRole('region', { name: 'Staffing' })
+  await staffing.getByRole('button', { name: 'Change the effort of Worker 1: medium' }).click()
+  expect(await effortsWhole()).toEqual(efforts)
+})
+
+test('the sentence and its landing note are each tied to their slot by a tether', async ({ page }) => {
+  await cockpitFixture(page, { roles })
+  await page.goto('/')
+  const judge = page.getByTestId('slot-judge-judge_1')
+  const touches = async (popover: string) => page.evaluate(([slotId, popoverSel]) => {
+    const tether = document.querySelector('[data-testid="staffing-tether"]')
+    if (!tether) return 'no tether'
+    const [from, to] = [...tether.querySelectorAll('circle')].map(c => [Number(c.getAttribute('cx')), Number(c.getAttribute('cy'))])
+    const onEdge = (point: number[], el: Element) => {
+      const b = el.getBoundingClientRect()
+      const inside = point[0] >= b.left - 1 && point[0] <= b.right + 1 && point[1] >= b.top - 1 && point[1] <= b.bottom + 1
+      const edge = Math.min(Math.abs(point[0] - b.left), Math.abs(point[0] - b.right), Math.abs(point[1] - b.top), Math.abs(point[1] - b.bottom))
+      return inside && edge <= 1
+    }
+    return onEdge(from, document.querySelector(`[data-testid="${slotId}"]`)!) && onEdge(to, document.querySelector(popoverSel)!) ? 'tied' : 'loose'
+  }, ['slot-judge-judge_1', popover])
+  await judge.locator('.slot-ring').click()
+  await expect(page.getByRole('dialog', { name: 'Staff Judge' })).toBeVisible()
+  await expect.poll(() => touches('.staffing-window')).toBe('tied')
+  await expect(judge).toHaveClass(/staffing-open/)
+  await page.locator('.staffing-window input.staffing-first').click()
+  await page.locator('.staffing-window [data-row="critic"]').click()
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('staffing-stamp')).toBeVisible()
+  await expect.poll(() => touches('[data-testid="staffing-stamp"]')).toBe('tied')
+  await expect(judge).toHaveClass(/staffing-noted/)
+})
+
 test('a long role sentence wraps what the slot runs as one group, so the effort stays with its model', async ({ page }) => {
   await cockpitFixture(page, { roles: [{ id: 'long', displayName: 'Wayfinding Opus critic and release gatekeeper', kind: 'reviewer' }], workers: [
     { id: 'w1', label: 'Worker 1', agentId: 'long', harness: 'openai-codex', model: 'gpt-5.6-terra', effort: 'xhigh', controller: false },

@@ -2610,6 +2610,21 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     workspace: windows.workspace,
     windows: () => windows.openRects(),
     scene: windows.scene,
+    // A short glide, as quick as the window's own appearance, so the slot stays plainly the one clicked.
+    makeRoom: (dx, dy) => new Promise<void>(resolve => {
+      if (!dx && !dy) { resolve(); return }
+      const instant = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      const from = viewRef.current
+      const start = performance.now()
+      const step = (now: number) => {
+        const k = instant ? 1 : Math.min(1, (now - start) / 140)
+        const eased = 1 - (1 - k) ** 3
+        setView({ ...from, x: Math.round(from.x + dx * eased), y: Math.round(from.y + dy * eased) })
+        if (k < 1) requestAnimationFrame(step)
+        else resolve()
+      }
+      requestAnimationFrame(step)
+    }),
   }), [windows])
   staffingHostRef.current = staffingHost
   const filteredRosterAgents = useMemo(() => {

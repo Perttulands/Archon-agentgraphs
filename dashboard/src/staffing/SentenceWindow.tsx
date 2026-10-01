@@ -6,7 +6,7 @@
  * only that word, and the pick lands at once with its reason. This is variant
  * A, "Sentence", of the archon-n7u.56 prototypes (proto/staffing VariantA.tsx),
  * on the mission's own slots (archon-o7p.17). */
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { harnessName } from '../components/harnessIcons'
 import type { Part } from './SlotFace'
 import { staff, type StaffingHost } from './staffingActions'
@@ -16,18 +16,28 @@ import {
   type EffortHold, type Outcome, type Parsed, type Staffing, type Suggestion,
 } from './staffingModel'
 import { placeBeside, popoverStyle, viewportStage, type StaffingStage } from './staffingPlacement'
+import { Tether } from './Tether'
 import type { OpenSentence, StaffingStore } from './staffingStore'
 
 /**
  * The window opens at the sentence's own height and grows, as a list opens,
- * into the free room it was placed beside: up to about eight rows, preferring
- * room for three. The list scrolls within that room. Where 440 px finds no
- * free place it narrows, down to 320, and the role grid becomes one column.
+ * into the free room it was placed beside: up to about eight rows, and at
+ * least room for the six efforts whole. The list scrolls within that room,
+ * a whole row at a time. Where 440 px finds no free place it narrows, down to
+ * 320, and the role grid becomes one column.
  */
-const SIZE = { width: 440, minWidth: 320, openHeight: 142, height: 300, minHeight: 200 }
+const SIZE = { width: 440, minWidth: 320, openHeight: 142, height: 300, minHeight: 224 }
 const NARROW = 400
 
 interface Row { id: string; label: string; hint?: string; tag?: string; disabled?: string; apply: () => void }
+
+/** A list's lines of rows (a grid puts two rows on a line) and the pitch between them. */
+function rowLines(listEl: HTMLElement): { pitch: number; lines: number } {
+  const rows = [...listEl.querySelectorAll<HTMLElement>('.staffing-row')]
+  const tops = [...new Set(rows.map(row => row.offsetTop))].sort((a, b) => a - b)
+  const pitch = tops.length > 1 ? tops[1] - tops[0] : rows[0]?.offsetHeight || 22
+  return { pitch: Math.max(1, pitch), lines: Math.max(1, tops.length) }
+}
 
 function partValue(staffing: Staffing, part: Part): string {
   return part === 'role' ? staffing.role : staffing[part]
@@ -58,9 +68,42 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
   // The highlighted row; null is the slot's current value, so a reflex Enter changes nothing.
   const [hi, setHi] = useState<number | null>(null)
   const [choosing, setChoosing] = useState(false)
-  // Placed once, beside what it staffs: the window never moves while it is open.
-  const [style] = useState(() => popoverStyle(placeBeside(open.anchor, SIZE, stage)))
+  // Placed once, beside what it staffs: the window never moves while it is open. Where the room beside a
+  // canvas slot is too short for the six efforts, the canvas first pans a little to make that room.
+  const canMakeRoom = Boolean(stage.makeRoom) && Boolean(open.anchor.closest('.world'))
+  const [placed, setPlaced] = useState<CSSProperties | null>(() => {
+    const first = placeBeside(open.anchor, SIZE, stage)
+    return first.short > 0 && canMakeRoom ? null : popoverStyle(first)
+  })
+  useEffect(() => {
+    if (placed || !stage.makeRoom) return
+    const first = placeBeside(open.anchor, SIZE, stage)
+    const slot = open.anchor.getBoundingClientRect()
+    const { bounds } = stage.workspace()
+    // Room below grows as the canvas moves up; room above as it moves down. The slot stays on the canvas.
+    const dy = first.growsUp
+      ? Math.min(first.short, bounds.top + bounds.height - 8 - slot.bottom)
+      : -Math.min(first.short, slot.top - bounds.top - 8)
+    let current = true
+    void stage.makeRoom(0, dy).then(() => requestAnimationFrame(() => {
+      if (current) setPlaced(popoverStyle(placeBeside(open.anchor, SIZE, stage)))
+    }))
+    return () => { current = false }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Until it is placed it waits out of sight, so it can already take focus and typing.
+  const style: CSSProperties = placed || { left: -10000, top: 0, width: SIZE.width, maxHeight: SIZE.height, opacity: 0, pointerEvents: 'none' }
   const narrow = Number(style.width) < NARROW
+  // The tether from the slot to the window, measured as the window settles and as a list opens in it.
+  type Box = { left: number; top: number; right: number; bottom: number }
+  const [tether, setTether] = useState<{ slot: Box; popover: Box } | null>(null)
+  useLayoutEffect(() => {
+    const win = rootRef.current
+    if (!placed || !win) return
+    const box = (element: Element): Box => { const r = element.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom } }
+    const next = { slot: box(open.anchor), popover: box(win) }
+    const same = (a: Box, b: Box) => Math.abs(a.left - b.left) + Math.abs(a.top - b.top) + Math.abs(a.right - b.right) + Math.abs(a.bottom - b.bottom) < 1
+    if (!tether || !same(tether.slot, next.slot) || !same(tether.popover, next.popover)) setTether(next)
+  })
   const rootRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const committed = useRef(false)
@@ -189,25 +232,60 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
 
   const openList = (part: Part) => { setChoosing(false); setList(part); setFilter(''); setHi(null) }
 
-  // A list opens with the highlighted row in its middle, and keeps it in view as arrows move it.
+  // A list shows only whole rows: its height is a whole number of rows that fit the room the window was
+  // given, it scrolls a row at a time, and it opens with the highlighted row in its middle.
   const listRef = useRef<HTMLDivElement | null>(null)
   const shownList = useRef<string>('')
+  const [listHeight, setListHeight] = useState<number | null>(null)
+  useLayoutEffect(() => {
+    const win = rootRef.current
+    const listEl = listRef.current
+    if (!win || !listEl) { if (listHeight !== null) setListHeight(null); return }
+    const { pitch, lines } = rowLines(listEl)
+    const others = win.offsetHeight - listEl.offsetHeight
+    const fit = Math.max(1, Math.min(lines, Math.floor((Number(style.maxHeight) - others) / pitch)))
+    if (fit * pitch !== listHeight) setListHeight(fit * pitch)
+  })
   useEffect(() => {
     const listEl = listRef.current
     const row = rootRef.current?.querySelector<HTMLElement>('.staffing-row.hi')
-    if (!listEl || !row) return
+    if (!listEl || !row || listHeight === null) return
     const opened = shownList.current !== `${list}:${choosing}`
     shownList.current = `${list}:${choosing}`
     if (!listEl.contains(row)) return
-    // Scroll to a whole row, so no row shows cut at the list's top edge.
-    const snap = (target: number) => {
-      const tops = [...listEl.querySelectorAll<HTMLElement>('.staffing-row')].map(item => item.offsetTop).filter(top => top <= target + 0.5)
-      listEl.scrollTop = Math.max(0, (tops.length ? Math.max(...tops) : 0) - 2)
+    const { pitch } = rowLines(listEl)
+    const shown = Math.round(listEl.clientHeight / pitch)
+    if (opened) listEl.scrollTop = Math.max(0, row.offsetTop - Math.floor((shown - 1) / 2) * pitch)
+    else if (row.offsetTop < listEl.scrollTop) listEl.scrollTop = row.offsetTop
+    else if (row.offsetTop + pitch > listEl.scrollTop + listEl.clientHeight) listEl.scrollTop = row.offsetTop + pitch - shown * pitch
+  }, [active, list, choosing, listHeight])
+  useEffect(() => {
+    const listEl = listRef.current
+    if (!listEl) return
+    let pending = 0
+    // A wheel notch moves two rows; a trackpad gathers its small steps into rows.
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      pending += event.deltaMode === 1 ? event.deltaY * 40 : event.deltaY
+      const steps = Math.trunc(pending / 50)
+      if (!steps) return
+      pending -= steps * 50
+      const { pitch } = rowLines(listEl)
+      listEl.scrollTop = Math.round((listEl.scrollTop + steps * pitch) / pitch) * pitch
     }
-    if (opened) snap(row.offsetTop - (listEl.clientHeight - row.offsetHeight) / 2)
-    else if (row.offsetTop < listEl.scrollTop) snap(row.offsetTop)
-    else if (row.offsetTop + row.offsetHeight > listEl.scrollTop + listEl.clientHeight) listEl.scrollTop = row.offsetTop + row.offsetHeight - listEl.clientHeight + 4
-  }, [active, list, choosing])
+    // A drag on the scrollbar settles on a whole row.
+    const onScrollEnd = () => {
+      const { pitch } = rowLines(listEl)
+      const snapped = Math.round(listEl.scrollTop / pitch) * pitch
+      if (Math.abs(snapped - listEl.scrollTop) > 0.5) listEl.scrollTop = snapped
+    }
+    listEl.addEventListener('wheel', onWheel, { passive: false })
+    listEl.addEventListener('scrollend', onScrollEnd)
+    return () => {
+      listEl.removeEventListener('wheel', onWheel)
+      listEl.removeEventListener('scrollend', onScrollEnd)
+    }
+  }, [list, choosing])
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     event.stopPropagation()
@@ -281,69 +359,72 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
     </div>
   )
   return (
-    <div className={`staffing-window${narrow ? ' narrow' : ''}`} style={style} ref={rootRef} tabIndex={-1} onKeyDown={onKeyDown} role="dialog" aria-label={`Staff ${ref.label}`} data-testid="staffing-sentence">
-      <div className="staffing-sent">
-        <span className="staffing-lead">{ref.label} is</span>
-        <input
-          ref={inputRef}
-          className={`staffing-first${text ? ' typing' : ''}${list === 'role' ? ' open' : ''}${!current || current.role !== draft.role ? ' changed' : ''}`}
-          value={text}
-          size={Math.max(7, (text || roleWords).length)}
-          placeholder={roleWords}
-          spellCheck={false}
-          aria-label="Role, or type role, harness, model and effort in any order"
-          onChange={event => { setText(event.target.value); setChoosing(false) }}
-          onClick={() => { if (!text) openList('role') }}
-          data-token="role"
-        />
-        {/* What the slot runs wraps as one group, so the effort never leaves its model. */}
-        <span className="staffing-settings">
-          <span className="staffing-lead">on</span>
-          {token('harness', harnessName(draft.harness) || draft.harness)}
-          <span className="staffing-sep">·</span>
-          {token('model', modelWords(draft.model))}
-          <span className="staffing-sep">·</span>
-          {token('effort', draft.effort)}
-        </span>
-      </div>
-      {parsed ? (
-        <div className="staffing-read" data-testid="staffing-read">
-          {parsed.read.map((read, index) => <span key={index} className="staffing-read-w"><b>{read.word}</b> {read.as}</span>)}
-          {parsed.issues.map((issue, index) => <div key={`i${index}`} className="staffing-issue">{issue.text}{parsed.ambiguous && /could be/.test(issue.text) ? ' ↵ shows them.' : ''}</div>)}
-          {parsed.alternatives.map((alternative, index) => (
-            <button key={`a${index}`} type="button" className="staffing-alt" onClick={() => {
-              const outcome = applyParsed(catalog, ref, tokens, { ...alternative, result: alternative.staffing, offCatalog: undefined }, hold)
-              if (!outcome.refused) commit(outcome.next, outcome.note, outcome.offer)
-            }}>instead: {alternative.label}</button>
-          ))}
+    <>
+      <Tether slot={tether?.slot ?? null} popover={tether?.popover ?? null} />
+      <div className={`staffing-window${narrow ? ' narrow' : ''}`} style={style} ref={rootRef} tabIndex={-1} onKeyDown={onKeyDown} role="dialog" aria-label={`Staff ${ref.label}`} data-testid="staffing-sentence">
+        <div className="staffing-sent">
+          <span className="staffing-lead">{ref.label} is</span>
+          <input
+            ref={inputRef}
+            className={`staffing-first${text ? ' typing' : ''}${list === 'role' ? ' open' : ''}${!current || current.role !== draft.role ? ' changed' : ''}`}
+            value={text}
+            size={Math.max(7, (text || roleWords).length)}
+            placeholder={roleWords}
+            spellCheck={false}
+            aria-label="Role, or type role, harness, model and effort in any order"
+            onChange={event => { setText(event.target.value); setChoosing(false) }}
+            onClick={() => { if (!text) openList('role') }}
+            data-token="role"
+          />
+          {/* What the slot runs wraps as one group, so the effort never leaves its model. */}
+          <span className="staffing-settings">
+            <span className="staffing-lead">on</span>
+            {token('harness', harnessName(draft.harness) || draft.harness)}
+            <span className="staffing-sep">·</span>
+            {token('model', modelWords(draft.model))}
+            <span className="staffing-sep">·</span>
+            {token('effort', draft.effort)}
+          </span>
         </div>
-      ) : null}
-      {list || choosing ? (
-        <div className="staffing-list-wrap">
-          <div className="staffing-list-hd">{choosing ? `“${parsed?.ambiguous?.word}” could be:` : filter ? `filter: ${filter}` : list === 'role' ? 'roles: type to filter, 1–6 effort' : list === 'effort' && suggestion ? `effort: ${suggestion.effort} suggested, as ${suggestion.reason}` : list === 'effort' ? 'effort: ↵ takes the highlighted one' : 'type to filter'}</div>
-          {/* vanilla stays above the scrolling grid, one click away whatever the grid shows. */}
-          <div className="staffing-listbox" role="listbox" aria-label={choosing ? 'Roles that match' : `Choose ${list}`}>
-            {grid && rows[0]?.id === 'vanilla' ? <div className="staffing-pinned">{option(rows[0], 0)}</div> : null}
-            <div ref={listRef} className={grid ? 'staffing-list staffing-grid' : 'staffing-list'}>
-              {rows.map((row, index) => (grid && index === 0 && row.id === 'vanilla' ? null : option(row, index)))}
-              {rows.length === 0 ? <div className="staffing-row disabled"><span className="staffing-row-h">Nothing matches “{filter}”. Esc leaves the slot as it was.</span></div> : null}
-            </div>
+        {parsed ? (
+          <div className="staffing-read" data-testid="staffing-read">
+            {parsed.read.map((read, index) => <span key={index} className="staffing-read-w"><b>{read.word}</b> {read.as}</span>)}
+            {parsed.issues.map((issue, index) => <div key={`i${index}`} className="staffing-issue">{issue.text}{parsed.ambiguous && /could be/.test(issue.text) ? ' ↵ shows them.' : ''}</div>)}
+            {parsed.alternatives.map((alternative, index) => (
+              <button key={`a${index}`} type="button" className="staffing-alt" onClick={() => {
+                const outcome = applyParsed(catalog, ref, tokens, { ...alternative, result: alternative.staffing, offCatalog: undefined }, hold)
+                if (!outcome.refused) commit(outcome.next, outcome.note, outcome.offer)
+              }}>instead: {alternative.label}</button>
+            ))}
           </div>
-          {grid && rows[active]?.hint ? <div className="staffing-list-ft">{rows[active].hint}</div> : null}
-        </div>
-      ) : null}
-      {/* While a list is open the policy speaks through its rows and header; a note still shows. */}
-      <div className={`staffing-policy${(list || choosing) && !note ? ' quiet' : ''}`} data-testid="staffing-policy">
-        {note ? <span className="staffing-note">{note}</span>
-          : suggestion ? <span>Policy suggests <b>{suggestion.effort}</b>: {suggestion.reason}.</span>
-          : <span>Policy: {policyLine(catalog)}.</span>}
-        {offer && offer.effort !== draft.effort ? (
-          <button type="button" className="staffing-offer" data-testid="staffing-window-offer" onClick={() => { land(withEffort(catalog, draft, offer.effort)); inputRef.current?.focus({ preventScroll: true }) }}>use {offer.effort}</button>
         ) : null}
-        {offCatalog(catalog, draft) ? <div className="staffing-issue">{draft.model}: not in the catalog; the harness decides.</div> : null}
-        {!effortsFor(catalog, draft.harness, draft.model).length ? <div className="staffing-issue">{harnessName(draft.harness) || draft.harness} is not a harness Archon starts.</div> : null}
+        {list || choosing ? (
+          <div className="staffing-list-wrap">
+            <div className="staffing-list-hd">{choosing ? `“${parsed?.ambiguous?.word}” could be:` : filter ? `filter: ${filter}` : list === 'role' ? 'roles: type to filter, 1–6 effort' : list === 'effort' && suggestion ? `effort: ${suggestion.effort} suggested, as ${suggestion.reason}` : list === 'effort' ? 'effort: ↵ takes the highlighted one' : 'type to filter'}</div>
+            {/* vanilla stays above the scrolling grid, one click away whatever the grid shows. */}
+            <div className="staffing-listbox" role="listbox" aria-label={choosing ? 'Roles that match' : `Choose ${list}`}>
+              {grid && rows[0]?.id === 'vanilla' ? <div className="staffing-pinned">{option(rows[0], 0)}</div> : null}
+              <div ref={listRef} className={grid ? 'staffing-list staffing-grid' : 'staffing-list'} style={listHeight === null ? undefined : { height: listHeight, flex: 'none' }}>
+                {rows.map((row, index) => (grid && index === 0 && row.id === 'vanilla' ? null : option(row, index)))}
+                {rows.length === 0 ? <div className="staffing-row disabled"><span className="staffing-row-h">Nothing matches “{filter}”. Esc leaves the slot as it was.</span></div> : null}
+              </div>
+            </div>
+            {grid && rows[active]?.hint ? <div className="staffing-list-ft">{rows[active].hint}</div> : null}
+          </div>
+        ) : null}
+        {/* While a list is open the policy speaks through its rows and header; a note still shows. */}
+        <div className={`staffing-policy${(list || choosing) && !note ? ' quiet' : ''}`} data-testid="staffing-policy">
+          {note ? <span className="staffing-note">{note}</span>
+            : suggestion ? <span>Policy suggests <b>{suggestion.effort}</b>: {suggestion.reason}.</span>
+            : <span>Policy: {policyLine(catalog)}.</span>}
+          {offer && offer.effort !== draft.effort ? (
+            <button type="button" className="staffing-offer" data-testid="staffing-window-offer" onClick={() => { land(withEffort(catalog, draft, offer.effort)); inputRef.current?.focus({ preventScroll: true }) }}>use {offer.effort}</button>
+          ) : null}
+          {offCatalog(catalog, draft) ? <div className="staffing-issue">{draft.model}: not in the catalog; the harness decides.</div> : null}
+          {!effortsFor(catalog, draft.harness, draft.model).length ? <div className="staffing-issue">{harnessName(draft.harness) || draft.harness} is not a harness Archon starts.</div> : null}
+        </div>
+        {list || choosing ? null : <div className="staffing-keys">↵ staffs · Esc leaves it as it was · 1–6 effort · type words in any order</div>}
       </div>
-      {list || choosing ? null : <div className="staffing-keys">↵ staffs · Esc leaves it as it was · 1–6 effort · type words in any order</div>}
-    </div>
+    </>
   )
 }

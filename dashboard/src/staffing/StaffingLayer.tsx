@@ -1,10 +1,11 @@
 /* The floating layer staffing draws over a view: the open sentence window and
  * the note that says why a staffing landed as it did. A note never covers a
  * slot and never takes a pointer or a drop. */
-import { useEffect, useLayoutEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { SentenceWindow } from './SentenceWindow'
 import { placeBeside, viewportStage, type StaffingStage } from './staffingPlacement'
+import { Tether } from './Tether'
 import type { StaffingHost } from './staffingActions'
 import type { Staffing } from './staffingModel'
 import { useStaffingVersion, type SlotRef, type Stamp, type StaffingStore } from './staffingStore'
@@ -38,16 +39,29 @@ function stampPlace(stamp: Stamp, height: number, stage: StaffingStage): CSSProp
   return { left, top, width: STAMP_WIDTH }
 }
 
+type Box = { left: number; top: number; right: number; bottom: number }
+const boxOf = (element: Element): Box => { const r = element.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom } }
+
 function StampView({ stamp, stage }: { stamp: Stamp; stage: StaffingStage }) {
   const height = stamp.text.length > 90 ? 58 : stamp.text.length > 45 ? 42 : 28
   const [style, setStyle] = useState<CSSProperties | null>(null)
+  const [tether, setTether] = useState<{ slot: Box; popover: Box } | null>(null)
+  const ref = useRef<HTMLDivElement | null>(null)
   // After this render commits: a sentence that closed with the landing is out of the DOM by then.
   useLayoutEffect(() => setStyle(stampPlace(stamp, height, stage)), []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Once placed, a tether ties the note to its slot.
+  useLayoutEffect(() => {
+    const slot = stamp.key ? slotElement(stamp.key) : null
+    if (style && slot && ref.current) setTether({ slot: boxOf(slot), popover: boxOf(ref.current) })
+  }, [style]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!style) return null
   return (
-    <div className={`staffing-stamp ${stamp.tone}`} style={style} role="status" data-testid="staffing-stamp">
-      <span>{stamp.text}</span>
-    </div>
+    <>
+      <Tether slot={tether?.slot ?? null} popover={tether?.popover ?? null} />
+      <div ref={ref} className={`staffing-stamp ${stamp.tone}`} style={style} role="status" data-testid="staffing-stamp">
+        <span>{stamp.text}</span>
+      </div>
+    </>
   )
 }
 

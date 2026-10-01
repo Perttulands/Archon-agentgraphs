@@ -46,7 +46,9 @@ export function CanvasSlot({ store, host, slotRef, slot, saved, badge, classes, 
       setEffort(store, host, slotRef, saved, efforts[digit - 1])
     }
   }
-  const all = ['slot', 'staffable', shown ? 'filled' : 'empty', slot.controller ? 'ctrl' : '', open ? 'staffing-open' : '', ...classes]
+  // While its landing note shows, the slot is marked as the one the note speaks of.
+  const noted = store.stamp?.key === key
+  const all = ['slot', 'staffable', shown ? 'filled' : 'empty', slot.controller ? 'ctrl' : '', open ? 'staffing-open' : '', noted ? 'staffing-noted' : '', ...classes]
   const slotWords = shown ? staffingSentence({ ...slot, agentId: shown.role, harness: shown.harness, model: shown.model, effort: shown.effort }, names) : `${slot.label}: not staffed`
   return (
     <div
