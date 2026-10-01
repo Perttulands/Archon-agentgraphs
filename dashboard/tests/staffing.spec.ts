@@ -576,7 +576,8 @@ test('the node window\'s staffing words open the same sentence beside it', async
   await staffing.getByRole('button', { name: 'Change the effort of Worker 1: medium' }).click()
   const sentence = page.getByRole('dialog', { name: 'Staff Worker 1' })
   await expect(sentence.getByRole('listbox', { name: 'Choose effort' })).toBeVisible()
-  // It drops from the word clicked, over its own window if need be, never over the word.
+  // It drops from the word clicked, over its own window if need be, never over the word (measured once it has appeared).
+  await sentence.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)))
   const [word, box] = [(await staffing.getByRole('button', { name: 'Change the effort of Worker 1: medium' }).boundingBox())!, (await sentence.boundingBox())!]
   const gap = Math.hypot(Math.max(0, word.x - (box.x + box.width), box.x - (word.x + word.width)), Math.max(0, word.y - (box.y + box.height), box.y - (word.y + word.height)))
   expect(gap).toBeLessThanOrEqual(12)
