@@ -601,8 +601,10 @@ A payload can also include `ref` naming a text file anywhere on disk,
 preferably under the prompt's artifact directory. Use its full absolute
 filesystem path. A legacy relative `ref` resolves against the state workspace,
 not the run artifact directory. A missing, unreadable, non-text or oversized
-reference blocks routing. The file's text is routed exactly as written; redaction
-applies only to what Archon displays. Free-form answer text is not
+reference blocks routing. Routed data is never redacted: inline payload text,
+a ref file's text, controller plans and peer openings reach the next step
+exactly as the seat wrote them. Redaction applies only to text Archon displays
+to a person (run evidence, file windows). Free-form answer text is not
 routed. Finish with the exact run ID substituted in the sentinel:
 
 ```text
@@ -1242,7 +1244,8 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   inline `application/pdf`, and anything else is an `application/octet-stream`
   attachment. Responses carry
   `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox` and
-  `Cache-Control: no-store`, and support ranges.
+  `Cache-Control: no-store`, and support ranges. The file window is a reader,
+  so HTML is served as text and nothing a file contains runs in the cockpit.
 - `/api/formations/runs/{runId}/gates/{gateId}/request` is the evidence API's
   view of a human request still waiting for an answer. For the gate's latest
   request, while it is pending, it returns `gateId`, `requestedSeq`, the frozen
@@ -1271,8 +1274,8 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   the hold ended first; a pending answer keeps `seq` at `since`. Asks carry
   their gate or step `title`, a human gate's `criterion`, `input` (the start of
   the text, capped at 4 KiB, with `bytes` and `truncated`) and `routes`, and a
-  block's `reason`, `code` and `resumeAllowed`; texts are redacted like run
-  evidence. `end` carries `status`, `seq`, `code`, `reason`, `endedBy` and the
+  block's `reason`, `code` and `resumeAllowed`. A driver agent consumes this
+  text, so it is served verbatim, as `gate request` serves it. `end` carries `status`, `seq`, `code`, `reason`, `endedBy` and the
   `stopped` steps. A bad `until`, `since` or `hold`, or a `since` past the
   run's last event, returns 400, an unknown run 404, and a stopping daemon 503.
 

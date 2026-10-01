@@ -247,8 +247,9 @@ func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 	}
 }
 
-// A wait serves gate text as run evidence does: secrets redacted, input capped.
-func TestWaitRedactsAndCapsTheGateInput(t *testing.T) {
+// A driver agent consumes wait text, so the gate criterion and input are
+// verbatim (no redaction) and only the input is capped.
+func TestWaitServesGateTextVerbatimAndCapsTheInput(t *testing.T) {
 	long := strings.Repeat("x", waitInputExcerptBytes+10)
 	events := []formations.RunEvent{
 		{RunID: "run_x", Seq: 1, Type: formations.RunEventStarted, Data: map[string]any{"boardSlug": "proof"}},
@@ -262,7 +263,7 @@ func TestWaitRedactsAndCapsTheGateInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	ask := got.Asks[0]
-	if strings.Contains(ask.Criterion, "hunter2") || strings.Contains(ask.Input.Text, "abc123") || !ask.Input.Truncated || len(ask.Input.Text) != waitInputExcerptBytes || ask.Input.Bytes <= waitInputExcerptBytes {
+	if ask.Criterion != "Check with password=hunter2" || !strings.HasPrefix(ask.Input.Text, "token: abc123\n") || !ask.Input.Truncated || len(ask.Input.Text) != waitInputExcerptBytes || ask.Input.Bytes <= waitInputExcerptBytes {
 		t.Fatalf("criterion %q input bytes %d truncated %v", ask.Criterion, len(ask.Input.Text), ask.Input.Truncated)
 	}
 }

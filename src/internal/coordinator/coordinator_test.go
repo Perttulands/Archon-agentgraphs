@@ -20,6 +20,8 @@ import (
 type testExecutor struct {
 	entered chan string
 	proceed chan struct{}
+	// outputText replaces the default routed output text when set.
+	outputText string
 }
 
 func (e *testExecutor) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
@@ -27,7 +29,11 @@ func (e *testExecutor) ExecuteFormation(req formations.FormationExecution) (form
 	<-e.proceed
 	outputs := map[string]formations.FormationOutputPayload{}
 	for _, port := range req.Formation.Outputs {
-		outputs[port.ID] = formations.FormationOutputPayload{Text: "PRIVATE-OUTPUT", Ref: "/private/raw"}
+		text := "PRIVATE-OUTPUT"
+		if e.outputText != "" {
+			text = e.outputText
+		}
+		outputs[port.ID] = formations.FormationOutputPayload{Text: text, Ref: "/private/raw"}
 	}
 	return formations.FormationExecutionResult{Status: "done", Text: "PRIVATE-CAPTURE", ReportRef: "/private/report", Outputs: outputs}, nil
 }

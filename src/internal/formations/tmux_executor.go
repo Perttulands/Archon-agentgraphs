@@ -1313,7 +1313,9 @@ func extractCapturedSlotText(captured, prompt, runID string) string {
 		}
 		lines = append(lines, line)
 	}
-	return redactLedgerText(strings.TrimSpace(strings.Join(lines, "\n")))
+	// Captured text is routed data: inline payloads, controller plans and peer
+	// openings parse from it, so it is never redacted (display redacts).
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
 func textAfterLastTranscriptSeparator(text string) string {

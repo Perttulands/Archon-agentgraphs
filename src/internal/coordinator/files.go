@@ -27,8 +27,9 @@ func (c *Coordinator) filePreview(w http.ResponseWriter, r *http.Request) {
 	reply(w, http.StatusOK, map[string]any{"file": preview})
 }
 
-// fileRaw serves a referenced file like a raw run artifact: never active
-// content, text as text/plain, only known image types kept.
+// fileRaw serves a referenced file like a raw run artifact. The file window is
+// a reader: never active content, text as text/plain, only known image types
+// kept.
 func (c *Coordinator) fileRaw(w http.ResponseWriter, r *http.Request) {
 	content, err := formations.ReadReferencedFile(r.URL.Query().Get("path"))
 	if err != nil {

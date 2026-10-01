@@ -119,3 +119,29 @@ func TestPendingGateTextIsCappedAtARuneBoundary(t *testing.T) {
 		t.Fatalf("truncated=%v len=%d valid=%v", truncated, len(text), utf8.ValidString(text))
 	}
 }
+
+// A driver agent reads gate request and run wait text, so both serve the
+// routed input exactly as the step produced it, secret-shaped text included.
+func TestGateRequestAndWaitServeRoutedTextVerbatim(t *testing.T) {
+	const routed = "use api_key=abc123 and sk-abcdefghijklmnop; password: string is a type; \"quoted\""
+	c, executor, _ := fixture(t)
+	executor.outputText = routed
+	id := startRun(t, c)
+	<-executor.entered
+	executor.proceed <- struct{}{}
+	awaitState(t, c, id, "waiting_human")
+	w := httptest.NewRecorder()
+	c.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/api/formations/runs/"+id+"/gates/gate_review/request", nil))
+	var body struct {
+		Data struct {
+			Request PendingGateRequest `json:"request"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.Data.Request.Input.Text != routed {
+		t.Fatalf("gate request input = %q, %v; want %q", body.Data.Request.Input.Text, err, routed)
+	}
+	got := waitRequest(t, c, id, "until=needs-you&hold=1")
+	if got.code != 200 || len(got.result.Asks) == 0 || got.result.Asks[0].Input == nil || got.result.Asks[0].Input.Text != routed {
+		t.Fatalf("wait = %d %s", got.code, got.body)
+	}
+}

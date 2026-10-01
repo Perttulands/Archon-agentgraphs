@@ -217,12 +217,6 @@ func redactEvidenceText(text string) string {
 	return credentialAssignmentPattern.ReplaceAllString(redacted, "$1=[REDACTED]")
 }
 
-// RedactEvidenceText applies the ledger's secret patterns, as the run
-// evidence routes serve text.
-func RedactEvidenceText(text string) string {
-	return redactEvidenceText(text)
-}
-
 // evidenceCapper caps each text and spends a shared response budget.
 type evidenceCapper struct {
 	remaining int

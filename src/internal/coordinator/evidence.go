@@ -77,9 +77,10 @@ func (c *Coordinator) artifactPreview(w http.ResponseWriter, r *http.Request) {
 	reply(w, http.StatusOK, map[string]any{"artifact": preview})
 }
 
-// artifactRaw serves an artifact for a browser tab. It never serves active
-// content: text is plain, only known image types keep their type, and the
-// sandbox policy applies to anything a browser would still render.
+// artifactRaw serves an artifact for a browser tab. The file window is a
+// reader, so it never serves active content: text is plain, only known image
+// types keep their type, and the sandbox policy applies to anything a browser
+// would still render.
 func (c *Coordinator) artifactRaw(w http.ResponseWriter, r *http.Request) {
 	content, err := c.store.ReadRunArtifact(r.PathValue("runId"), r.PathValue("name"))
 	if err != nil {
