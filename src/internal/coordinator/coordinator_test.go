@@ -59,7 +59,7 @@ func post(t *testing.T, c *Coordinator, path string, body string) *httptest.Resp
 }
 func startRun(t *testing.T, c *Coordinator) string {
 	t.Helper()
-	w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"run the proof", "board":"proof","missionId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600,"redact":false}}`)
+	w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"run the proof", "board":"proof","missionId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600}}`)
 	if w.Code != 202 {
 		t.Fatalf("start %d %s", w.Code, w.Body.String())
 	}
@@ -239,7 +239,7 @@ to = "fmn_after:port_after_in"
 // Limits are optional (form-o7p.7): a start without limits is admitted and its
 // ledger records none, and a negative limit is refused.
 func TestAdmissionTakesARunWithoutLimits(t *testing.T) {
-	for _, body := range []string{`"limits":{"redact":false},`, `"limits":{"maxDispatch":0,"maxAttempts":0,"wallClockSeconds":0},`, ``} {
+	for _, body := range []string{`"limits":{},`, `"limits":{"maxDispatch":0,"maxAttempts":0,"wallClockSeconds":0},`, ``} {
 		c, e, _ := fixture(t)
 		w := post(t, c, "/api/formations/runs", `{`+body+`"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof","missionId":"mis_proof","expectedRev":1}`)
 		if w.Code != 202 {
@@ -267,7 +267,7 @@ func TestAdmissionTakesARunWithoutLimits(t *testing.T) {
 			t.Fatalf("%s recorded limits = %#v, want none", body, limits)
 		}
 	}
-	for _, limits := range []string{`{"maxDispatch":-1}`, `{"maxAttempts":-1}`, `{"wallClockSeconds":-1}`, `{"redact":true}`} {
+	for _, limits := range []string{`{"maxDispatch":-1}`, `{"maxAttempts":-1}`, `{"wallClockSeconds":-1}`} {
 		c, _, _ := fixture(t)
 		w := post(t, c, "/api/formations/runs", `{"limits":`+limits+`,"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof","missionId":"mis_proof","expectedRev":1}`)
 		if w.Code != 400 {

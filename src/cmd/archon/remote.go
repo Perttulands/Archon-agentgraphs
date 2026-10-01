@@ -168,7 +168,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		path += "/runs"
 		method = "POST"
-		limits := map[string]any{"redact": false}
+		limits := map[string]any{}
 		for key, value := range map[string]int{"maxDispatch": *maxDispatch, "maxAttempts": *maxAttempts, "wallClockSeconds": *wall} {
 			if value != 0 {
 				limits[key] = value

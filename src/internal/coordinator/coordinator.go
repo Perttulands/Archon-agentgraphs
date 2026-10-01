@@ -421,8 +421,8 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	if req.Board == "" || (req.MissionID == "") == (req.FormationID == "") || req.ExpectedRev <= 0 || req.Limits.Redact {
-		reply(w, 400, map[string]string{"error": "board, missionId and expectedRev required; redacted execution is not supported"})
+	if req.Board == "" || (req.MissionID == "") == (req.FormationID == "") || req.ExpectedRev <= 0 {
+		reply(w, 400, map[string]string{"error": "board, missionId and expectedRev required"})
 		return
 	}
 	// Limits are optional (form-o7p.7): an absent or zero limit means none.

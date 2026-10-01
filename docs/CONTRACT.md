@@ -260,7 +260,7 @@ context.
 
 Runs have no limits unless the launch sets them. `maxDispatch`, `maxAttempts`
 and `wallClockSeconds` are optional; an absent or zero limit means none, in
-admission and in the engine. A negative limit, or `redact` true, is rejected.
+admission and in the engine. A negative limit is rejected.
 Neither `archon mission run` nor the cockpit's Start mission dialog supplies a
 limit: a run started without one loops through send-backs until a gate passes
 or its driver stops it. Set `--max-dispatch`, `--max-attempts` or

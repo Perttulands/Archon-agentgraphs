@@ -2860,7 +2860,6 @@ func runLimitsFromEvent(event RunEvent) RunLimits {
 			MaxDispatch:      intFromRunEventData(limits["maxDispatch"]),
 			MaxAttempts:      intFromRunEventData(limits["maxAttempts"]),
 			WallClockSeconds: intFromRunEventData(limits["wallClockSeconds"]),
-			Redact:           boolFromAny(limits["redact"]),
 		}
 	default:
 		return RunLimits{}
@@ -2878,11 +2877,6 @@ func intFromRunEventData(value any) int {
 	default:
 		return 0
 	}
-}
-
-func boolFromAny(value any) bool {
-	v, _ := value.(bool)
-	return v
 }
 
 func latestHumanRequest(events []RunEvent, gateID string) (RunEvent, bool) {

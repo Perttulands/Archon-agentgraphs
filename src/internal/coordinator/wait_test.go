@@ -274,7 +274,7 @@ func TestWaitRedactsAndCapsTheGateInput(t *testing.T) {
 func TestAnyChangeLoopReportsALimitBlockAndItsGateVerdictIsAccepted(t *testing.T) {
 	for round := 0; round < 5; round++ {
 		c, e, _ := fixture(t)
-		w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"probe","board":"proof","missionId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":1,"maxAttempts":1,"wallClockSeconds":600,"redact":false}}`)
+		w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"probe","board":"proof","missionId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":1,"maxAttempts":1,"wallClockSeconds":600}}`)
 		if w.Code != 202 {
 			t.Fatalf("start %d %s", w.Code, w.Body.String())
 		}
