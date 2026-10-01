@@ -309,7 +309,9 @@ The projection reports `running`, `waiting_human`, `blocked`, `succeeded`,
 is not a completed delivery. A failed or canceled run names who ended it in
 `endedBy`; why is in its run evidence problems. Events expose node, slot and gate identities,
 attempt, status/verdict, session display name and cleanup outcome where
-applicable.
+applicable. `run_succeeded` and `run_failed` list in `endIds` the End nodes the
+run's paths reached; a `run_failed` with code `path_rejected` names the
+rejected End node as its `nodeId` and the routing gate as its `gateId`.
 Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
 `seat_created`, `seat_prompt_consumed`, `slot_result`, `seat_cleanup`,
 `gate_kind_result`, `gate_verdict`, and a run outcome. Malformed judges emit
