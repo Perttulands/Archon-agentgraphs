@@ -115,6 +115,19 @@ func (v HarnessVariant) LaunchCommand() (string, error) {
 	return v.RenderLaunch(bin)
 }
 
+// SeatLaunchCommand is the command a seat working in cwd runs: LaunchCommand,
+// and for Codex that folder trusted for this launch only. Codex 0.159 asks
+// "Trust this folder?" in every new folder and saves the answer in the
+// operator's ~/.codex/config.toml; the override starts the seat without the
+// dialog and writes nothing there (archon-m1yg).
+func (v HarnessVariant) SeatLaunchCommand(cwd string) (string, error) {
+	command, err := v.LaunchCommand()
+	if err != nil || v.ID != "openai-codex" {
+		return command, err
+	}
+	return command + " -c " + shellQuote("projects={"+renderString(cwd)+"={trust_level=\"trusted\"}}"), nil
+}
+
 // SpawnCommand is what `archon agent spawn` runs: the seat command, which
 // Archon renders only for the harnesses it starts.
 func (v HarnessVariant) SpawnCommand() (string, error) {

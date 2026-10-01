@@ -111,8 +111,9 @@ func (t realSeatTransport) Create(ctx context.Context, socket, name, cwd, root s
 			watch.Close()
 		}
 	}()
-	// The same renderer the persona's shown launch uses (DescribeLaunches).
-	launch, err := v.LaunchCommand()
+	// The same renderer the persona's shown launch uses (DescribeLaunches),
+	// with the seat's folder trusted for Codex.
+	launch, err := v.SeatLaunchCommand(cwd)
 	if err != nil {
 		return nil, err
 	}

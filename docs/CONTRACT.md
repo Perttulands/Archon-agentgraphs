@@ -548,10 +548,14 @@ shows in the input line, however the harness wraps it, and confirms the harness
 took it: the input line no longer holds the pointer. While the input line still
 holds exactly the pointer, Enter is pressed again after a moment, up to five
 presses; Enter is never pressed while the input line holds anything else, such
-as text the operator added (recorded as `brief_not_taken`, below). A first-use
-folder trust dialog is answered whenever it shows before the brief is sent, as
-Codex 0.159 can draw it after its ready prompt. Archon agents must not type into
-seats or manage their sessions.
+as text the operator added (recorded as `brief_not_taken`, below). A Codex
+seat starts with its folder trusted for its launch only (`-c
+'projects={"<cwd>"={trust_level="trusted"}}'`), so it shows no trust dialog
+and Archon never writes the operator's `~/.codex/config.toml`. Should a
+first-use trust dialog show anyway, it is answered while the seat has taken no
+brief and its cursor is in no input line, as on the dialog; words on screen
+that only quote it never are. Archon agents must not type into seats or manage
+their sessions.
 
 Sessions are named `archon-<run>-<slot>`, with the `--mission-label` value
 before the run ID when it is set.

@@ -117,6 +117,11 @@ func TestSeatAdaptersReadinessStagingCompletionAndImmutableCleanup(t *testing.T)
 			if !strings.Contains(createdLaunch, "medium") {
 				t.Fatalf("launch=%s", createdLaunch)
 			}
+			// A Codex seat's folder is trusted for its launch only (archon-m1yg).
+			trusted := shellQuote(`projects={"` + root + `"={trust_level="trusted"}}`)
+			if strings.Contains(createdLaunch, trusted) != (h == "openai-codex") {
+				t.Fatalf("launch=%s, trust override %s", createdLaunch, trusted)
+			}
 			if err := transport.End(ctx, "socket", seat); err != nil {
 				t.Fatal(err)
 			}
