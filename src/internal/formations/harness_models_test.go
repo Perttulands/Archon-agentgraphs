@@ -76,6 +76,43 @@ func TestTheCodexCacheIsReadAgainWhenItChanges(t *testing.T) {
 	}
 }
 
+// A malformed cache is read once: it means no known models until the file
+// changes, however often the models are asked for.
+func TestAMalformedCodexCacheIsRememberedUntilItChanges(t *testing.T) {
+	dir := useCodexModels(t, false)
+	path := filepath.Join(dir, "models_cache.json")
+	valid := `{"models":[{"slug":"gpt-7","visibility":"list","priority":1}]}`
+	malformed := strings.Repeat("{", len(valid))
+	if err := os.WriteFile(path, []byte(malformed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stamp := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if err := os.Chtimes(path, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	if got := HarnessModels("openai-codex"); len(got) != 0 {
+		t.Fatalf("models from a malformed cache = %+v", got)
+	}
+	// Same size and modification time: the remembered failure answers, and the file is not read again.
+	if err := os.WriteFile(path, []byte(valid), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	if got := HarnessModels("openai-codex"); len(got) != 0 {
+		t.Fatalf("models before the cache changed = %+v, want the remembered failure", got)
+	}
+	// A new modification time reads it again.
+	later := stamp.Add(time.Minute)
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+	if got := HarnessModels("openai-codex"); !reflect.DeepEqual(got, []HarnessModel{{ID: "gpt-7"}}) {
+		t.Fatalf("models after the cache changed = %+v", got)
+	}
+}
+
 // A known Codex model narrows the efforts a slot may take; an unknown one
 // keeps the harness's list (archon-n7u.50).
 func TestASlotsEffortIsCheckedAgainstItsModel(t *testing.T) {

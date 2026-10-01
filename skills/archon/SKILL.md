@@ -158,14 +158,14 @@ full rather than leaving a choice to them. A role adds only its text, so one ste
 settings never change another's. `formation inspect` prints each slot's
 staffing, for example `vanilla · claude-code · opus · low`.
 
-Choose effort by the step's job, with purpose:
+Choose effort by the step's job, with purpose. The role's kind names it:
 
-| Job | Effort |
-| --- | --- |
-| Architecture, design and review | `xhigh` |
-| Consequential review (release gate, irreversible change) | `max` |
-| Making things | `medium` |
-| Errands | `low` |
+| Job | Role kinds | Effort |
+| --- | --- | --- |
+| Architecture, design and review | `reviewer`, `judge`, `architect`, `planner`, `orchestrator` | `xhigh` |
+| Consequential review (release gate, irreversible change) | chosen by hand | `max` |
+| Making things | `builder`, `debugger` | `medium` |
+| Errands | `verifier`, `scout`, `observer`, `operator` | `low` |
 
 ### Fan out and join
 

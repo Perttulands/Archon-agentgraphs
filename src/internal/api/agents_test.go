@@ -261,7 +261,12 @@ func TestAgentsHandlerServesARoleAsRoleTextOnly(t *testing.T) {
 	if err := json.Unmarshal(list.Body.Bytes(), &roster); err != nil || len(roster.Data.Harnesses) != 2 || roster.Data.Harnesses[0].ID != "claude-code" || roster.Data.Harnesses[0].DefaultEffort != "medium" {
 		t.Fatalf("roster harnesses = %+v (%v) from %s", roster.Data.Harnesses, err, list.Body.String())
 	}
-	wantPolicy := []formations.EffortPolicyEntry{{Effort: "low", Use: "errands"}, {Effort: "medium", Use: "making things"}, {Effort: "xhigh", Use: "architecture and review"}, {Effort: "max", Use: "consequential reviews"}}
+	wantPolicy := []formations.EffortPolicyEntry{
+		{Effort: "low", Use: "errands", Kinds: []string{"verifier", "scout", "observer", "operator"}},
+		{Effort: "medium", Use: "making things", Kinds: []string{"builder", "debugger"}},
+		{Effort: "xhigh", Use: "architecture and review", Kinds: []string{"reviewer", "judge", "architect", "planner", "orchestrator"}},
+		{Effort: "max", Use: "consequential reviews"},
+	}
 	if fmt.Sprint(roster.Data.EffortPolicy) != fmt.Sprint(wantPolicy) {
 		t.Fatalf("roster effort policy = %+v, want %+v", roster.Data.EffortPolicy, wantPolicy)
 	}

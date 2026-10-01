@@ -90,7 +90,7 @@ func TestAssigningASlotStatesItsSettings(t *testing.T) {
 		req  FormationSlotAssignmentRequest
 		want string
 	}{
-		{"no effort", FormationSlotAssignmentRequest{Harness: "claude-code", Model: "opus"}, "needs an effort; the policy is low for errands, medium for making things, xhigh for architecture and review, max for consequential reviews"},
+		{"no effort", FormationSlotAssignmentRequest{Harness: "claude-code", Model: "opus"}, "needs an effort; the policy is low for errands (verifier, scout, observer, operator); medium for making things (builder, debugger); xhigh for architecture and review (reviewer, judge, architect, planner, orchestrator); max for consequential reviews, chosen by hand"},
 		{"no harness", FormationSlotAssignmentRequest{Effort: "low"}, "needs a harness: claude-code or openai-codex"},
 		{"ultra on claude", FormationSlotAssignmentRequest{Harness: "claude-code", Effort: "ultra"}, `effort "ultra" is not one claude-code accepts; use low, medium, high, xhigh, max`},
 		{"a harness that cannot start seats", FormationSlotAssignmentRequest{Harness: "hermes", Effort: "low"}, `harness "hermes" cannot start seats`},

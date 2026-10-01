@@ -13,35 +13,50 @@ import (
 var ErrInvalidSlotSettings = errors.New("invalid slot settings")
 
 // EffortPolicyEntry is one line of the effort policy: which effort suits which
-// kind of work.
+// kind of work, and the role kinds it suggests that effort for. An entry with
+// no kinds is never suggested; it is chosen by hand.
 type EffortPolicyEntry struct {
-	Effort string `json:"effort"`
-	Use    string `json:"use"`
+	Effort string   `json:"effort"`
+	Use    string   `json:"use"`
+	Kinds  []string `json:"kinds,omitempty"`
 }
 
-// effortPolicy is Perttu's effort policy (2026-09-29). It guides the choice;
+// effortPolicy is Perttu's effort policy (2026-10-01). It guides the choice;
 // the slot still states its own effort, and any effort its harness accepts is
-// valid.
+// valid. max is never suggested: it is chosen by hand for consequential
+// reviews.
 var effortPolicy = []EffortPolicyEntry{
-	{Effort: "low", Use: "errands"},
-	{Effort: "medium", Use: "making things"},
-	{Effort: "xhigh", Use: "architecture and review"},
+	{Effort: "low", Use: "errands", Kinds: []string{"verifier", "scout", "observer", "operator"}},
+	{Effort: "medium", Use: "making things", Kinds: []string{"builder", "debugger"}},
+	{Effort: "xhigh", Use: "architecture and review", Kinds: []string{"reviewer", "judge", "architect", "planner", "orchestrator"}},
 	{Effort: "max", Use: "consequential reviews"},
 }
 
 // EffortPolicy returns the effort policy for readers such as the agents API
 // and CLI usage.
 func EffortPolicy() []EffortPolicyEntry {
-	return slices.Clone(effortPolicy)
+	policy := slices.Clone(effortPolicy)
+	for i := range policy {
+		policy[i].Kinds = slices.Clone(policy[i].Kinds)
+	}
+	return policy
 }
 
-// EffortPolicyText reads the policy as one clause: "low for errands, ...".
+// EffortPolicyText reads the policy as one line: "low for errands (verifier,
+// scout, observer, operator); ...; max for consequential reviews, chosen by
+// hand".
 func EffortPolicyText() string {
 	parts := make([]string, 0, len(effortPolicy))
 	for _, entry := range effortPolicy {
-		parts = append(parts, entry.Effort+" for "+entry.Use)
+		part := entry.Effort + " for " + entry.Use
+		if len(entry.Kinds) > 0 {
+			part += " (" + strings.Join(entry.Kinds, ", ") + ")"
+		} else {
+			part += ", chosen by hand"
+		}
+		parts = append(parts, part)
 	}
-	return strings.Join(parts, ", ")
+	return strings.Join(parts, "; ")
 }
 
 // Staffed reports whether the slot names anything to run: a harness, a model,

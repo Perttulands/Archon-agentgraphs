@@ -851,9 +851,11 @@ paths:
           description: Roster in data.agents and data.count, including presets and overrides, and
             data.harnesses, the harnesses whose seats Archon starts, each with the efforts it accepts, its
             defaultEffort and its known models ({id, efforts?}; claude-code's aliases, and the Codex models the
-            daemon host's models_cache.json lists, each with the efforts that model accepts), and data.effortPolicy, the {effort,use} lines that guide a slot's effort (low for
-            errands, medium for making things, xhigh for architecture and review, max for consequential
-            reviews). No live-session provider is wired by the daemon.
+            daemon host's models_cache.json lists, each with the efforts that model accepts), and data.effortPolicy, the {effort,use,kinds?} lines that guide a slot's effort by the role kinds each suits (low for
+            errands: verifier, scout, observer, operator; medium for making things: builder, debugger; xhigh for
+            architecture and review: reviewer, judge, architect, planner, orchestrator; max for consequential
+            reviews, with no kinds: chosen by hand, never suggested). No live-session provider is wired by the
+            daemon.
         '422':
           description: INVALID_AGENT_CARD when a stored card lacks a required field; the message names the card and field
       parameters:

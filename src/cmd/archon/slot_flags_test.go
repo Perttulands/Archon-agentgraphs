@@ -52,7 +52,7 @@ func TestArchonFormationAssignSetsTheSlotsSettings(t *testing.T) {
 		{"formation", "assign", "staff", "Work", "--slot", "slot_a", "--role", "delivery-worker"},
 	} {
 		_, stderr, code := archon(args...)
-		if code != 2 || !strings.Contains(stderr, "--harness <claude-code|openai-codex> --effort <effort>") || !strings.Contains(stderr, "low for errands, medium for making things, xhigh for architecture and review, max for consequential reviews") {
+		if code != 2 || !strings.Contains(stderr, "--harness <claude-code|openai-codex> --effort <effort>") || !strings.Contains(stderr, "low for errands (verifier, scout, observer, operator); medium for making things (builder, debugger); xhigh for architecture and review (reviewer, judge, architect, planner, orchestrator); max for consequential reviews, chosen by hand") {
 			t.Fatalf("%v: code=%d stderr=%s, want usage with the effort policy", args, code, stderr)
 		}
 	}
