@@ -162,7 +162,7 @@ func TestWaitAnswersStoppingDaemonsWithRetry(t *testing.T) {
 		if got.code != 503 {
 			t.Fatalf("%d %s", got.code, got.body)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("wait held through shutdown")
 	}
 }

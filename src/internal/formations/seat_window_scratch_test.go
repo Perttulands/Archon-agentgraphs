@@ -32,7 +32,7 @@ func TestScratchSeatWindowKeepsItsSizeForALoneViewer(t *testing.T) {
 	socket := filepath.Join(root, "socket")
 	tmux := func(args ...string) string {
 		t.Helper()
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 		defer cancel()
 		out, err := runTmuxCommand(ctx, socket, nil, args...)
 		if err != nil {
@@ -43,13 +43,13 @@ func TestScratchSeatWindowKeepsItsSizeForALoneViewer(t *testing.T) {
 	// Ending every session ends the scratch server; host guards may refuse
 	// kill-server. Registered before the server starts, so setup cannot leak it.
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 		defer cancel()
 		out, _ := runTmuxCommand(ctx, socket, nil, "list-sessions", "-F", "#{session_id}")
 		for _, session := range strings.Fields(out) {
 			_, _ = runTmuxCommand(ctx, socket, nil, "kill-session", "-t", session)
 		}
-		deadline := time.Now().Add(3 * time.Second)
+		deadline := time.Now().Add(testPatience)
 		for {
 			conn, err := net.Dial("unix", socket)
 			if err != nil {
@@ -65,7 +65,7 @@ func TestScratchSeatWindowKeepsItsSizeForALoneViewer(t *testing.T) {
 	})
 	waitUntil := func(what string, done func() bool) {
 		t.Helper()
-		deadline := time.Now().Add(3 * time.Second)
+		deadline := time.Now().Add(testPatience)
 		for !done() {
 			if time.Now().After(deadline) {
 				t.Fatalf("%s not reached", what)
@@ -78,7 +78,7 @@ func TestScratchSeatWindowKeepsItsSizeForALoneViewer(t *testing.T) {
 	// creates one, with cat standing in for the harness.
 	tmux("new-session", "-d", "-s", "keeper", "exec cat")
 	ids := strings.Fields(tmux("new-session", "-d", "-P", "-F", "#{session_id} #{pane_id}", "-e", "TERM=xterm-256color", "-s", "archon-scratch-slot", "-c", root, "exec cat"))
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 	defer cancel()
 	control, err := openSeatControl(ctx, socket, ids[0])
 	if err != nil {

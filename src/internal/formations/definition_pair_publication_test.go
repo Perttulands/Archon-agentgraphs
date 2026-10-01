@@ -273,7 +273,7 @@ func TestDefinitionPairAcquiresBoardThenLayoutAndHoldsBothThroughPublication(t *
 		select {
 		case <-publishDone:
 			publicationDrained = true
-		case <-time.After(2 * time.Second):
+		case <-time.After(testPatience):
 			t.Error("cleanup timed out draining pair publication")
 		}
 	})
@@ -324,7 +324,7 @@ func TestDefinitionPairAcquiresBoardThenLayoutAndHoldsBothThroughPublication(t *
 	select {
 	case err = <-publishDone:
 		publicationDrained = true
-	case <-time.After(2 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("pair publication did not return after releasing the foreign layout flock")
 	}
 	if err != nil {
@@ -1046,7 +1046,7 @@ func TestDefinitionPairPeerProcessFlockHolder(t *testing.T) {
 	if err := os.WriteFile(readyPath, []byte("ready\n"), 0o600); err != nil {
 		t.Fatalf("publish foreign flock readiness: %v", err)
 	}
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	for {
 		if _, err := os.Stat(releasePath); err == nil {
 			return
@@ -1099,7 +1099,7 @@ func TestDefinitionPairPeerProcessFlockContender(t *testing.T) {
 	if err := os.WriteFile(enteredPath, []byte("entered\n"), 0o600); err != nil {
 		t.Fatalf("publish definition flock contender entry: %v", err)
 	}
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	for {
 		if _, err := os.Stat(releasePath); err == nil {
 			return
@@ -1341,7 +1341,7 @@ func (h *peerProcessDefinitionFlockHolderForTest) releaseAndWait() error {
 	select {
 	case <-h.done:
 		return h.waitErr
-	case <-time.After(2 * time.Second):
+	case <-time.After(testPatience):
 		_ = h.command.Process.Kill()
 		<-h.done
 		if h.waitErr != nil {
@@ -1353,7 +1353,7 @@ func (h *peerProcessDefinitionFlockHolderForTest) releaseAndWait() error {
 
 func waitForDefinitionPairPathForTest(t *testing.T, path string, process *peerProcessDefinitionFlockHolderForTest, description string) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	for {
 		if _, err := os.Stat(path); err == nil {
 			return
@@ -1404,7 +1404,7 @@ func (c *definitionPairBoardOwnerEpochContendersForTest) arm() error {
 		go c.contendMutex()
 		select {
 		case <-c.mutexArmed:
-		case <-time.After(2 * time.Second):
+		case <-time.After(testPatience):
 			c.armErr = errors.New("timed out arming pre-validation board mutex contender")
 			return
 		}
@@ -1460,7 +1460,7 @@ func (c *definitionPairBoardOwnerEpochContendersForTest) releaseAndRequireEntry(
 	t.Helper()
 	select {
 	case <-c.mutexEntered:
-	case <-time.After(2 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("pre-validation board mutex contender did not enter after publication")
 	}
 	if c.flock == nil {
@@ -1573,7 +1573,7 @@ func (c *definitionPairMutexContendersForTest) arm() error {
 		for _, armed := range []<-chan struct{}{c.boardArmed, c.layoutArmed} {
 			select {
 			case <-armed:
-			case <-time.After(2 * time.Second):
+			case <-time.After(testPatience):
 				c.armErr = errors.New("timed out arming definition-pair mutex contender")
 				return
 			}
@@ -1632,7 +1632,7 @@ func (c *definitionPairMutexContendersForTest) releaseAndRequireEntry(t *testing
 	} {
 		select {
 		case <-contender.entered:
-		case <-time.After(2 * time.Second):
+		case <-time.After(testPatience):
 			t.Fatalf("%s definition-pair mutex contender did not enter after publication", contender.member)
 		}
 	}
@@ -1658,12 +1658,12 @@ func waitForDefinitionPairPublicationForTest(t *testing.T, done <-chan error, co
 	select {
 	case err := <-done:
 		return err
-	case <-time.After(5 * time.Second):
+	case <-time.After(testPatience):
 		entered := contenders.enteredBeforeTerminal()
 		contenders.forceRelease()
 		select {
 		case <-done:
-		case <-time.After(2 * time.Second):
+		case <-time.After(testPatience):
 		}
 		if entered != "" {
 			t.Fatalf("publication deadlocked after %s mutex contender entered during the owner epoch", entered)
@@ -1830,7 +1830,7 @@ func (c *peerProcessDefinitionFlockContenderForTest) waitForEntry() error {
 }
 
 func (c *peerProcessDefinitionFlockContenderForTest) waitForPath(path, action string) error {
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	for {
 		if _, err := os.Stat(path); err == nil {
 			return nil
@@ -1859,7 +1859,7 @@ func (c *peerProcessDefinitionFlockContenderForTest) wait() error {
 	select {
 	case <-c.finished:
 		return c.waitErr
-	case <-time.After(2 * time.Second):
+	case <-time.After(testPatience):
 		_ = c.command.Process.Kill()
 		<-c.finished
 		return errors.New("timed out waiting for contender process exit")
@@ -1868,7 +1868,7 @@ func (c *peerProcessDefinitionFlockContenderForTest) wait() error {
 
 func waitForDefinitionPairMutexHeldForTest(t *testing.T, lockPath, description string) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	for {
 		if pairMutexHeldForTest(lockPath) {
 			return
@@ -1895,7 +1895,7 @@ func waitForDefinitionPairForeignOwnerBlockForTest(
 	forbiddenPhase <-chan string,
 	publishDone <-chan error,
 ) (bool, error) {
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	buffer := make([]byte, 64<<10)
 	var snapshot string
 	for {
@@ -1932,7 +1932,7 @@ func waitForDefinitionPairForeignOwnerBlockForTest(
 }
 
 func waitForDefinitionPairGoroutineBlocksForTest(function, blockedState, blockedFrame string, want int) error {
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	buffer := make([]byte, 64<<10)
 	var snapshot string
 	for {

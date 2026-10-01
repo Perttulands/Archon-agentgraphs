@@ -65,7 +65,7 @@ func TestMissionAdmissionWithoutCwdExecutesInItsProjectedWorkspace(t *testing.T)
 			if info, err := os.Stat(req.Cwd); err != nil || !info.IsDir() {
 				t.Fatalf("seat directory missing: %v", err)
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(testPatience):
 			t.Fatal("seat did not execute")
 		}
 		p, err := c.Project(id)

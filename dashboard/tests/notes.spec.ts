@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { scouting, scoutingFixture } from './scouting-fixture'
+import { transitionsSettled } from './settled'
 
 const CARDS = '.formation[data-node], .gatecard[data-node], .missioncard[data-node], .toolcard[data-node]'
 
@@ -19,7 +20,7 @@ test('no card covers any note preview on Scouting', async ({ page }) => {
   await page.goto('/?mission=scouting')
   await expect(page.getByRole('note')).toHaveCount(elementNotes.length)
   await page.getByTitle('Fit', { exact: true }).click()
-  await page.waitForTimeout(500)
+  await transitionsSettled(page)
 
   for (const { nodeId } of elementNotes) {
     const sticky = page.getByRole('note', { name: `Notes for ${titleOf(nodeId)}` })
@@ -66,7 +67,7 @@ test('a note window opens beside its node, leaving the card and its note in view
   await page.goto('/?mission=scouting')
   await expect(page.getByRole('note')).toHaveCount(elementNotes.length)
   await page.getByTitle('Fit', { exact: true }).click()
-  await page.waitForTimeout(500)
+  await transitionsSettled(page)
 
   // The first step has room on its right; the last sits at the board's right edge.
   for (const { nodeId } of [elementNotes[0], elementNotes[elementNotes.length - 1]]) {

@@ -2922,7 +2922,7 @@ func TestArchonRunFollowJSONEmitsNDJSONUntilFinal(t *testing.T) {
 	var result runResult
 	select {
 	case result = <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("run follow --json did not terminate after final ledger event")
 	}
 	if result.code != 0 {

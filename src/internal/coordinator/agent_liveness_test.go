@@ -62,7 +62,7 @@ func TestTmuxSessionLivenessReadsSessionNames(t *testing.T) {
 	}
 	socket := filepath.Join(t.TempDir(), "socket")
 	tmux := func(args ...string) (string, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 		defer cancel()
 		out, err := exec.CommandContext(ctx, bin, append([]string{"-S", socket}, args...)...).CombinedOutput()
 		return strings.TrimSpace(string(out)), err
@@ -78,7 +78,7 @@ func TestTmuxSessionLivenessReadsSessionNames(t *testing.T) {
 		for _, session := range strings.Fields(out) {
 			tmux("kill-session", "-t", session)
 		}
-		deadline := time.Now().Add(3 * time.Second)
+		deadline := time.Now().Add(testPatience)
 		for {
 			conn, err := net.Dial("unix", socket)
 			if err != nil {

@@ -51,7 +51,7 @@ func TestShutdownRetainsWriterForAdmittedAuthoringRequest(t *testing.T) {
 	<-done
 	select {
 	case <-c.shutdownDone:
-	case <-time.After(time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("authoring did not release shutdown")
 	}
 }
@@ -161,7 +161,7 @@ func TestShutdownTimeoutRetainsWriterUntilWorkerReturns(t *testing.T) {
 	e.proceed <- struct{}{}
 	select {
 	case <-c.shutdownDone:
-	case <-time.After(time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("worker never settled")
 	}
 	next, err := Open(root, c.personas, func(*formations.Store) formations.FormationExecutor { return e })

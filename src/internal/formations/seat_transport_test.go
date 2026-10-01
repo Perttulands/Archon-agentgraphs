@@ -34,7 +34,7 @@ func TestSeatAdaptersReadinessStagingCompletionAndImmutableCleanup(t *testing.T)
 				}
 			}
 			t.Setenv("PATH", root)
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 			defer cancel()
 			events := make(chan struct{}, 10)
 			for i := 0; i < 5; i++ {
@@ -284,7 +284,7 @@ func TestLatestWorkerTurnDoesNotReuseEarlierCompletion(t *testing.T) {
 func TestSeatTrustBootstrapFinishesBeforeReadiness(t *testing.T) {
 	for _, h := range []string{"claude-code", "openai-codex"} {
 		t.Run(h, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 			defer cancel()
 			events := make(chan struct{}, 8)
 			for i := 0; i < 8; i++ {
@@ -430,7 +430,7 @@ func TestSeatInputClearReadsCapturedPanes(t *testing.T) {
 func TestStageWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 	for _, harness := range []struct{ id, name string }{{"claude-code", "claude"}, {"openai-codex", "codex"}} {
 		t.Run(harness.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 			defer cancel()
 			events := make(chan struct{}, 64)
 			var states []string
@@ -599,7 +599,7 @@ func TestWorkingCheckReadsClaudesSpinner(t *testing.T) {
 func TestReadyOnAReusedSeatWaitsForAnIdleEmptyInputNotTheBanner(t *testing.T) {
 	for _, harness := range []struct{ id, name string }{{"claude-code", "claude"}, {"openai-codex", "codex"}} {
 		t.Run(harness.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 			defer cancel()
 			// After a long first turn the banner has scrolled out of Ready's capture.
 			history, err := os.ReadFile(filepath.Join("testdata", "panes", harness.name+"-ready-capture-after-long-output.txt"))

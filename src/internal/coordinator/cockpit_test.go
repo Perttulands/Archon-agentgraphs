@@ -188,7 +188,7 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 		if initial.Status != "waiting_human" {
 			t.Fatal(initial)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("stream did not send waiting projection")
 	}
 	client.request("POST", "/api/runs/"+id+"/gates/"+gate+"/verdict", "", map[string]any{"requestedSeq": p.WaitingGates[0].RequestedSeq, "verdict": "pass"}, 202, nil)
@@ -261,14 +261,14 @@ func TestAbortCancelsOwnedSeatAndHoldsAdmissionUntilCleanup(t *testing.T) {
 	id := startRun(t, c)
 	select {
 	case <-executor.entered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("executor not entered")
 	}
 	responses := make(chan *httptest.ResponseRecorder, 1)
 	go func() { responses <- post(t, c, "/api/runs/"+id+"/abort", `{"reason":"stop owned seat"}`) }()
 	select {
 	case <-executor.canceled:
-	case <-time.After(5 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("abort did not cancel seat")
 	}
 	if c.acquire(id) {

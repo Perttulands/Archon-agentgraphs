@@ -81,7 +81,7 @@ func startRun(t *testing.T, c *Coordinator) string {
 }
 func awaitState(t *testing.T, c *Coordinator, id, state string) *Projection {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 	defer cancel()
 	for {
 		change := c.nextChange(id)
@@ -115,7 +115,7 @@ func TestAdmissionSurvivesDisconnectAndHumanGateRequiresExactRequest(t *testing.
 		if node != "fmn_work" {
 			t.Fatal(node)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("seat not dispatched")
 	}
 	e.proceed <- struct{}{}
@@ -156,7 +156,7 @@ func TestAdmissionSurvivesDisconnectAndHumanGateRequiresExactRequest(t *testing.
 		if node != "fmn_after" {
 			t.Fatal(node)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("continuation not dispatched")
 	}
 	e.proceed <- struct{}{}
@@ -297,7 +297,7 @@ func TestAdmissionTakesARunWithoutLimits(t *testing.T) {
 		}
 		select {
 		case <-e.entered:
-		case <-time.After(5 * time.Second):
+		case <-time.After(testPatience):
 			t.Fatal("execution did not start")
 		}
 		events, err := c.store.ReadRunEvents(receipt.Data.RunID)
@@ -345,7 +345,7 @@ func TestAdmissionGivesStepsNoDefaultDuration(t *testing.T) {
 			}
 			select {
 			case <-e.entered:
-			case <-time.After(5 * time.Second):
+			case <-time.After(testPatience):
 				t.Fatal("execution did not start")
 			}
 			events, err := c.store.ReadRunEvents(receipt.Data.RunID)

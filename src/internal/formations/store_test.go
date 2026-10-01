@@ -1207,7 +1207,7 @@ y = 100
 	}()
 
 	boardLock := mutexFor(store.BoardPath("arrange-serial") + ".lock")
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	for {
 		if !boardLock.TryLock() {
 			break
@@ -2062,7 +2062,7 @@ func TestCreateGateHoldsBoardLockUntilCoherentLayoutResult(t *testing.T) {
 	// not advance -- so a reader can never observe a board node before its
 	// layout placement is durable.
 	boardLock := mutexFor(store.BoardPath("session-search") + ".lock")
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	boardLockHeld := false
 	for {
 		if !boardLock.TryLock() {

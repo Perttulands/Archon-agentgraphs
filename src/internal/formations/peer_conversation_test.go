@@ -257,7 +257,7 @@ func TestPeerConversationDeadlineCancellationAndRestart(t *testing.T) {
 func TestPeerConversationWaitWakesForAppendAndCanBeCanceled(t *testing.T) {
 	store, id := peerTestStore(t)
 	createPeerTestConversation(t, store, id, store.now().Add(time.Minute))
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 	defer cancel()
 	type result struct {
 		state *PeerConversation
