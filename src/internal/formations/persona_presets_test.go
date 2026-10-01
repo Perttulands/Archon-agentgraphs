@@ -122,7 +122,8 @@ func TestStaleCodexPresetEditDoesNotMaterializeOverride(t *testing.T) {
 	}
 }
 
-func TestPersonaStoreRejectsSymlinkAndFIFOCardSubstitution(t *testing.T) {
+// A role card or the agents directory may be a symlink; a FIFO card is refused.
+func TestPersonaStoreFollowsSymlinkedCardsAndRefusesFIFOCards(t *testing.T) {
 	dir := t.TempDir()
 	external := filepath.Join(t.TempDir(), "external.toml")
 	externalRaw := renderPersona(CreatePersonaRequest{
@@ -138,11 +139,15 @@ func TestPersonaStoreRejectsSymlinkAndFIFOCardSubstitution(t *testing.T) {
 		t.Fatalf("symlink card: %v", err)
 	}
 	store := NewPersonaStore(dir)
-	if _, err := store.ReadPersona("codex-builder"); err == nil {
-		t.Fatal("ReadPersona followed substituted symlink")
+	if card, err := store.ReadPersona("codex-builder"); err != nil || card.Summary != "external secret" {
+		t.Fatalf("ReadPersona through a symlinked card = %+v, %v", card, err)
 	}
-	if got, err := os.ReadFile(external); err != nil || string(got) != externalRaw {
-		t.Fatalf("external file changed: %q, err=%v", got, err)
+	linkedDir := filepath.Join(t.TempDir(), "agents")
+	if err := os.Symlink(dir, linkedDir); err != nil {
+		t.Fatal(err)
+	}
+	if card, err := NewPersonaStore(linkedDir).ReadPersona("codex-builder"); err != nil || card.Summary != "external secret" {
+		t.Fatalf("ReadPersona through a symlinked agents directory = %+v, %v", card, err)
 	}
 
 	if err := os.Remove(filepath.Join(dir, "codex-builder.toml")); err != nil {

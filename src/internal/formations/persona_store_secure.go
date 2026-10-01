@@ -9,13 +9,15 @@ import (
 	"syscall"
 )
 
+// Role cards and their directory may be symlinks, for example into a dotfiles
+// repository; they are followed. A card must be a regular file.
 func (s *PersonaStore) openPersonaDirectory(create bool) (*os.File, error) {
 	if create {
 		if err := os.MkdirAll(s.AgentsDir, sharedDirMode); err != nil {
 			return nil, err
 		}
 	}
-	fd, err := syscall.Open(s.AgentsDir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	fd, err := syscall.Open(s.AgentsDir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +98,7 @@ func (s *PersonaStore) readPersonaRaw(id string) ([]byte, error) {
 	}
 	defer directory.Close()
 	name := id + ".toml"
-	fd, err := syscall.Openat(int(directory.Fd()), name, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
+	fd, err := syscall.Openat(int(directory.Fd()), name, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +121,7 @@ func (s *PersonaStore) personaExists(id string) (bool, error) {
 	}
 	defer directory.Close()
 	name := id + ".toml"
-	fd, err := syscall.Openat(int(directory.Fd()), name, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
+	fd, err := syscall.Openat(int(directory.Fd()), name, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
