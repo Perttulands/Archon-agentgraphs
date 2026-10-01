@@ -31,7 +31,7 @@ decisions; [examples](../examples/) provide reusable missions.
 | Gate | A criterion with one or more kinds: `code`, `formation`, `human`. Its ports are `in`, `pass`, `fail`, `judge`. |
 | End node | Ends a path on purpose (`[[end]]` in TOML: `id`, `title`, `outcome`). Its outcome is `done` or `rejected`. Its only port is `in`, which takes any number of routes; it leads nowhere. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
-| Judge chain | Formations wired from a gate's `judge` port and back to that same port. The final judge result decides the formation kind. |
+| Judge chain | Formations wired from a gate's `judge` port and back to that same port: from the step the port feeds, each step returns to the port, which completes the chain, or hands on to the first step it feeds. A chain that leaves the steps (through a Tool or gate), loops or never returns is no chain, so validation names the gate incomplete; the engine and the cockpit share this rule. The final judge result decides the formation kind. |
 | Limit card | Caps the rounds and time of the step it covers, or of the whole mission when it covers the Input card (`[[limit]]` in TOML, `limits` in JSON: `id`, `title`, `target`, `rounds`, `seconds`, `warnSeconds`). A run has no limits without one. |
 | Pushback edge | A gate's `fail` connection back to work, delivering feedback and starting the next attempt, capped only by a Limit card. There is no `retry_control` port. |
 | Run | One admitted mission or isolated formation, with definition and persona snapshots and inputs. Later edits affect later runs. |

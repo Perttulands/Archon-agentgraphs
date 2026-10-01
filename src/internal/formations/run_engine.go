@@ -2861,6 +2861,13 @@ func formationIDs(formations []FormationNode) []string {
 	return ids
 }
 
+// judgeChainForGate is the gate's judge chain: the steps wired from its judge
+// port, each to the next, and back to that port (archon-n7u.51). From the step
+// the judge port feeds, each step either returns to the port, which completes
+// the chain, or hands on to the first step it feeds. A chain that leaves the
+// steps, loops or never returns is no chain, so validation names the gate
+// incomplete; the cockpit's judgeChain follows the same rule
+// (testdata/judge_chains.json).
 func judgeChainForGate(board *BoardDocument, gateID string) []FormationNode {
 	entries := outgoingConnectionsFromPort(board.Connections, gateID, "judge")
 	if len(entries) == 0 {
@@ -2877,13 +2884,13 @@ func judgeChainForGate(board *BoardDocument, gateID string) []FormationNode {
 		visited[currentNode] = true
 		formation, ok := formationByID[currentNode]
 		if !ok {
-			return chain
+			return nil
 		}
 		chain = append(chain, formation)
 		var nextNode string
 		for _, connection := range outgoingConnections(board.Connections, currentNode) {
-			toNode, _ := endpointParts(connection.To)
-			if toNode == gateID && strings.HasSuffix(connection.To, ":judge") {
+			toNode, toPort := endpointParts(connection.To)
+			if toNode == gateID && toPort == "judge" {
 				return chain
 			}
 			if _, ok := formationByID[toNode]; ok && nextNode == "" {
@@ -2892,7 +2899,7 @@ func judgeChainForGate(board *BoardDocument, gateID string) []FormationNode {
 		}
 		currentNode = nextNode
 	}
-	return chain
+	return nil
 }
 
 func outgoingConnectionsFromPort(connections []BoardConnection, nodeID, portID string) []BoardConnection {

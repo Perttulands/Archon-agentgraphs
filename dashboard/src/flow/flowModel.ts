@@ -47,22 +47,30 @@ export interface FlowModel {
 const nodeOf = (endpoint: string) => endpoint.split(':')[0]
 const portOf = (endpoint: string) => endpoint.split(':').slice(1).join(':')
 
-/** The formations wired from a gate's judge port back to it, in order. */
+/**
+ * The gate's judge chain: the steps wired from its judge port, each to the
+ * next, and back to that port. From the step the judge port feeds, each step
+ * either returns to the port, which completes the chain, or hands on to the
+ * first step it feeds. A chain that leaves the steps, loops or never returns
+ * is no chain. The engine's judgeChainForGate follows the same rule; both are
+ * tested against src/internal/formations/testdata/judge_chains.json.
+ */
 export function judgeChain(board: Board, gateId: string): string[] {
   const connections = board.connections || []
   const socket = `${gateId}:judge`
   const send = connections.find(connection => connection.from === socket)
   if (!send) return []
+  const steps = new Set(board.formations.map(node => node.id))
   const chain: string[] = []
   let current = nodeOf(send.to)
-  while (current && !chain.includes(current) && current !== gateId) {
+  while (current && !chain.includes(current)) {
+    if (!steps.has(current)) return []
     chain.push(current)
-    const onward = connections.find(connection => nodeOf(connection.from) === current && connection.to !== socket)
-    const returns = connections.some(connection => nodeOf(connection.from) === current && connection.to === socket)
-    if (returns || !onward) break
-    current = nodeOf(onward.to)
+    const outgoing = connections.filter(connection => nodeOf(connection.from) === current)
+    if (outgoing.some(connection => connection.to === socket)) return chain
+    current = outgoing.map(connection => nodeOf(connection.to)).find(node => steps.has(node)) ?? ''
   }
-  return chain
+  return []
 }
 
 const DECIDERS: Array<[string, GateDecider]> = [['human', 'you'], ['formation', 'judge'], ['code', 'code']]

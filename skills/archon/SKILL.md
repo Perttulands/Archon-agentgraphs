@@ -38,7 +38,8 @@ harness settings. Archon keeps only what is current.
   Its only port is `in`; any number of routes may lead into it.
 - A **Limit card** caps the rounds and time of the step it covers, or of the
   whole mission when it covers the Input card. It is the only run limit.
-- A **judge chain** is the formations wired from a gate's `judge` port back to it.
+- A **judge chain** is the formations wired from a gate's `judge` port back to it,
+  step to step; a Tool or gate inside it, or no way back, makes it no chain.
   A **pushback edge** is a gate's `fail` wired back to work; it carries the
   verdict as feedback and starts the next attempt, capped only by a Limit card.
 - A **run** snapshots the mission, its slots and any roles at admission. Later edits affect
