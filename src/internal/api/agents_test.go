@@ -217,103 +217,37 @@ func TestAgentsHandlerOverridesBuiltInCodexPresetThroughSharedWriter(t *testing.
 	}
 }
 
-func TestAgentsHandlerCreatesAndEditsModelAndEffortAndShowsTheSeatLaunch(t *testing.T) {
-	bin := t.TempDir()
-	for _, name := range []string{"claude", "codex"} {
-		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Setenv("PATH", bin)
+// A role is role text (ADR-0021): agent routes neither take nor serve a
+// model, an effort or a seat launch; each slot states its own.
+func TestAgentsHandlerServesARoleAsRoleTextOnly(t *testing.T) {
 	agentsDir := t.TempDir()
 	handler := NewAgentsHandler(agentsDir, fakeAgentLiveness{})
-	decode := func(rec *httptest.ResponseRecorder) formations.PersonaCard {
-		t.Helper()
-		var response struct {
-			Data formations.PersonaCard `json:"data"`
-		}
-		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-			t.Fatalf("decode %s: %v", rec.Body.String(), err)
-		}
-		return response.Data
+	created := httptest.NewRecorder()
+	handler.CreateAgent(created, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"critic","kind":"reviewer","harness":"claude-code","summary":"Reviews against acceptance."}`)))
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", created.Code, created.Body.String())
 	}
-	patch := func(body, etag string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(http.MethodPatch, "/api/agents/critic", bytes.NewBufferString(body))
-		req.SetPathValue("agentId", "critic")
-		req.Header.Set("If-Match", etag)
-		rec := httptest.NewRecorder()
-		handler.UpdateAgent(rec, req)
-		return rec
-	}
-
-	// A new role carries no model or effort; slots own them.
-	for _, body := range []string{`{"id":"critic","harness":"claude-code","effort":"low"}`, `{"id":"critic","harness":"claude-code","model":"claude-opus-5"}`} {
-		bad := httptest.NewRecorder()
-		handler.CreateAgent(bad, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(body)))
-		if bad.Code != http.StatusUnprocessableEntity || !strings.Contains(bad.Body.String(), "a new role carries no model or effort") {
-			t.Fatalf("role settings create %s = %d %s", body, bad.Code, bad.Body.String())
-		}
-	}
-
-	bare := httptest.NewRecorder()
-	handler.CreateAgent(bare, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"critic","harness":"claude-code"}`)))
-	if bare.Code != http.StatusCreated {
-		t.Fatalf("create = %d %s", bare.Code, bare.Body.String())
-	}
-	// A legacy card's model can still be edited; the role drag and agent spawn
-	// read it.
-	created := patch(`{"model":"claude-opus-5"}`, bare.Header().Get("ETag"))
-	if created.Code != http.StatusOK {
-		t.Fatalf("legacy model edit = %d %s", created.Code, created.Body.String())
-	}
-	claude := decode(created).DefaultVariant()
-	want := "exec '" + filepath.Join(bin, "claude") + "' --model 'claude-opus-5' --effort 'medium' --dangerously-skip-permissions"
-	if claude.Model != "claude-opus-5" || claude.Effort != "" || claude.EffectiveEffort != "medium" || claude.SeatLaunch != want {
-		t.Fatalf("created variant = %+v, want seat launch %s", claude, want)
-	}
-
-	added := patch(`{"addHarness":"openai-codex","model":"gpt-6-sol","effort":"ultra"}`, created.Header().Get("ETag"))
-	if added.Code != http.StatusOK {
-		t.Fatalf("add harness = %d %s", added.Code, added.Body.String())
-	}
-	edited := patch(`{"variant":"openai-codex","effort":"xhigh","model":""}`, added.Header().Get("ETag"))
+	req := httptest.NewRequest(http.MethodPatch, "/api/agents/critic", bytes.NewBufferString(`{"addHarness":"openai-codex","sessionStem":"codex-critic"}`))
+	req.SetPathValue("agentId", "critic")
+	req.Header.Set("If-Match", created.Header().Get("ETag"))
+	edited := httptest.NewRecorder()
+	handler.UpdateAgent(edited, req)
 	if edited.Code != http.StatusOK {
-		t.Fatalf("edit variant = %d %s", edited.Code, edited.Body.String())
+		t.Fatalf("add harness = %d %s", edited.Code, edited.Body.String())
 	}
-	card := decode(edited)
-	codex, _ := card.SelectHarnessVariant("openai-codex")
-	if codex.Model != "" || codex.Effort != "xhigh" || !strings.Contains(codex.SeatLaunch, `model_reasoning_effort="xhigh"`) || strings.Contains(codex.SeatLaunch, "--model") {
-		t.Fatalf("edited codex variant = %+v", codex)
+	read := httptest.NewRequest(http.MethodGet, "/api/agents/critic", nil)
+	read.SetPathValue("agentId", "critic")
+	got := httptest.NewRecorder()
+	handler.GetAgent(got, read)
+	for _, body := range []string{created.Body.String(), edited.Body.String(), got.Body.String()} {
+		for _, word := range []string{`"model"`, `"effort"`, "effectiveEffort", "seatLaunch", `"efforts"`} {
+			if strings.Contains(body, word) {
+				t.Fatalf("agent answer carries %s: %s", word, body)
+			}
+		}
 	}
-	if card.DefaultVariant().Model != "claude-opus-5" {
-		t.Fatalf("default variant changed: %+v", card.DefaultVariant())
-	}
-	if rec := patch(`{"variant":"openai-codex","effort":"extreme"}`, edited.Header().Get("ETag")); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "ultra") {
-		t.Fatalf("invalid codex effort = %d %s", rec.Code, rec.Body.String())
-	}
-	both := patch(`{"variants":[{"id":"claude-code","effort":"high"},{"id":"openai-codex","model":"gpt-6-luna"}]}`, edited.Header().Get("ETag"))
-	if both.Code != http.StatusOK {
-		t.Fatalf("edit both variants = %d %s", both.Code, both.Body.String())
-	}
-	card = decode(both)
-	codex, _ = card.SelectHarnessVariant("openai-codex")
-	if claude := card.DefaultVariant(); claude.Effort != "high" || claude.Model != "claude-opus-5" || codex.Model != "gpt-6-luna" || codex.Effort != "xhigh" {
-		t.Fatalf("edited both variants = %+v / %+v", claude, codex)
-	}
-	if rec := patch(`{"variants":[{"id":"claude-code","effort":"low"},{"id":"openai-codex","effort":"nope"}]}`, both.Header().Get("ETag")); rec.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("one invalid variant = %d %s", rec.Code, rec.Body.String())
-	}
-	if claude := decode(both).DefaultVariant(); claude.Effort != "high" {
-		t.Fatalf("partially applied edit: %+v", claude)
-	}
-	if rec := patch(`{"variants":[{"id":"claude-code","effort":"low"}],"variant":"claude-code","model":"other"}`, both.Header().Get("ETag")); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "edited twice") {
-		t.Fatalf("variant named twice = %d %s", rec.Code, rec.Body.String())
-	}
-	if raw := readAgentFixture(t, agentsDir, "critic"); strings.Contains(raw, `effort = "low"`) {
-		t.Fatalf("an edit with one invalid variant was partly written:\n%s", raw)
-	}
-	if raw := readAgentFixture(t, agentsDir, "critic"); strings.Contains(raw, "launch") || strings.Contains(raw, "seatLaunch") || strings.Contains(raw, "extreme") {
-		t.Fatalf("card stores derived or rejected values:\n%s", raw)
+	if raw := readAgentFixture(t, agentsDir, "critic"); strings.Contains(raw, "model") || strings.Contains(raw, "effort") {
+		t.Fatalf("card holds a model or effort:\n%s", raw)
 	}
 
 	list := httptest.NewRecorder()

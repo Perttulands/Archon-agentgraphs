@@ -870,8 +870,7 @@ paths:
         '201':
           description: Created persona card in data; returns ETag
         '422':
-          description: INVALID_AGENT_CARD when the request gives a model or effort; a new role carries neither,
-            and each slot that uses it sets them
+          description: INVALID_AGENT_CARD when the card would lack a required field
       requestBody:
         required: true
         content:
@@ -888,11 +887,9 @@ paths:
     get:
       responses:
         '200':
-          description: Persona card in data; returns ETag. Each harnessVariants entry has its stored model and
-            effort, effectiveEffort (medium when effort is unset), efforts (the values its harness accepts), and
-            seatLaunch, the command a seat for that variant runs, rendered by the seat launcher on the daemon's
-            PATH; seatLaunchError says why a variant cannot start (an unsupported harness, or its CLI missing
-            from PATH). Create and patch return the same.
+          description: Persona card in data; returns ETag. A role is role text; its harnessVariants name a
+            harness, session stem and source, and carry no model or effort (each slot states its own). Create and
+            patch return the same.
         '422':
           description: INVALID_AGENT_CARD when the stored card lacks a required field; the message names the card and field
     patch:
@@ -900,8 +897,7 @@ paths:
         '200':
           description: Updated persona card in data; returns ETag
         '422':
-          description: INVALID_AGENT_CARD when model or effort is not one the harness accepts, or variant names
-            no harness variant of the card
+          description: INVALID_AGENT_CARD when the edited card would lack a required field
         '428':
           description: Missing If-Match
         '409':
@@ -1858,12 +1854,6 @@ components:
           type: string
         sessionStem:
           type: string
-        model:
-          type: string
-          description: Refused when non-empty. A new role carries no model; each slot sets its own.
-        effort:
-          type: string
-          description: Refused when non-empty. A new role carries no effort; each slot sets its own.
         source:
           type: string
     AgentPatch:
@@ -1877,31 +1867,6 @@ components:
           type: string
         sessionStem:
           type: string
-        variant:
-          type: string
-          description: Harness variant that model and effort change; defaults to the card's default harness.
-            With addHarness, model and effort set the added variant instead.
-        variants:
-          type: array
-          description: Model and effort for several variants in one edit; all apply or none do. Name each
-            variant once, and not also through variant/model/effort (422 otherwise). Only the fields given are
-            validated.
-          items:
-            type: object
-            required: [id]
-            properties:
-              id:
-                type: string
-              model:
-                type: string
-              effort:
-                type: string
-        model:
-          type: string
-          description: Model for the variant; an empty string clears it to the harness default model.
-        effort:
-          type: string
-          description: Effort the variant's harness accepts; an empty string clears it to medium.
         source:
           type: string
         note:

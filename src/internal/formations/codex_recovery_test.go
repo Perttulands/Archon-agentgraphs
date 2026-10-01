@@ -13,7 +13,7 @@ func TestCompletedNativeRecoveryValidatesBeforeResumeAndNeverRedispatches(t *tes
 	for _, kind := range []string{"valid file output", "automatic discovery", "wrong native session", "changed brief", "incomplete turn", "no unresolved dispatch", "two unresolved dispatches", "wrong model", "wrong effort"} {
 		t.Run(kind, func(t *testing.T) {
 			store, personas := s4RunFixture(t)
-			card, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "builder", Harness: "openai-codex", Model: "gpt-6-astra", Effort: "xhigh"})
+			card, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "builder", Harness: "openai-codex"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -22,8 +22,9 @@ func TestCompletedNativeRecoveryValidatesBeforeResumeAndNeverRedispatches(t *tes
 			if err != nil {
 				t.Fatal(err)
 			}
-			model, effort := "edited-model", "low"
-			if _, err := personas.EditPersona("scout", EditPersonaRequest{ExpectedETag: card.ETag, SetModel: &model, SetEffort: &effort}); err != nil {
+			// The role changes after the run started; the run keeps its frozen slot.
+			summary := "edited after the run started"
+			if _, err := personas.EditPersona("scout", EditPersonaRequest{ExpectedETag: card.ETag, SetSummary: &summary}); err != nil {
 				t.Fatal(err)
 			}
 			brief := filepath.Join(store.Workspace, "briefs", "brief.md")

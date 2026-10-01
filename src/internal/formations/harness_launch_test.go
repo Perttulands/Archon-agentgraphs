@@ -9,103 +9,43 @@ import (
 	"testing"
 )
 
-func TestPersonaEffortIsValidatedPerHarness(t *testing.T) {
+// A role is role text: a new card states no model or effort, and a card that
+// still holds them reads, and serves, without them (ADR-0021).
+func TestARoleCardCarriesNoModelOrEffort(t *testing.T) {
 	s := NewPersonaStore(t.TempDir())
-	if _, err := s.CreatePersona(CreatePersonaRequest{ID: "claude", Harness: "claude-code", Effort: "ultra"}); !errors.Is(err, ErrInvalidAgentCard) || !strings.Contains(err.Error(), "low, medium, high, xhigh, max") {
-		t.Fatalf("claude ultra error = %v, want the efforts claude-code accepts", err)
-	}
-	if _, err := s.CreatePersona(CreatePersonaRequest{ID: "codex", Harness: "openai-codex", Model: "two words"}); !errors.Is(err, ErrInvalidAgentCard) {
-		t.Fatalf("model with a space error = %v", err)
-	}
-	if _, err := s.CreatePersona(CreatePersonaRequest{ID: "hermes", Harness: "hermes", Model: "any"}); !errors.Is(err, ErrInvalidAgentCard) {
-		t.Fatalf("hermes model error = %v", err)
-	}
-	if _, err := os.Stat(s.PersonaPath("claude")); !os.IsNotExist(err) {
-		t.Fatalf("rejected persona was written: %v", err)
-	}
-	card, err := s.CreatePersona(CreatePersonaRequest{ID: "codex", Harness: "openai-codex", Effort: "ultra"})
+	card, err := s.CreatePersona(CreatePersonaRequest{ID: "worker", Kind: "builder", Harness: "openai-codex"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	card, err = s.EditPersona(card.ID, EditPersonaRequest{ExpectedETag: card.ETag, AddHarness: "claude-code", Model: "claude-opus-5", Effort: "max"})
+	if raw := readFile(t, s.PersonaPath(card.ID)); strings.Contains(raw, "model") || strings.Contains(raw, "effort") {
+		t.Fatalf("new card holds a model or effort:\n%s", raw)
+	}
+	legacy := "schema = 1\n\n[card]\nid = \"old\"\nkind = \"reviewer\"\n\n[harness]\ndefault = \"claude-code\"\n\n" +
+		"[[harness.variant]]\nid = \"claude-code\"\nsession_stem = \"old\"\nmodel = \"claude-opus-5\"\neffort = \"xhigh\"\n"
+	if err := os.WriteFile(s.PersonaPath("old"), []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old, err := s.ReadPersona("old")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Model and effort edit the named variant; the default harness is untouched.
-	low := "low"
-	card, err = s.EditPersona(card.ID, EditPersonaRequest{ExpectedETag: card.ETag, Variant: "claude-code", SetEffort: &low})
+	raw, err := json.Marshal(old.HarnessVariants)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claude, _ := card.SelectHarnessVariant("claude-code"); claude.Effort != "low" || claude.Model != "claude-opus-5" {
-		t.Fatalf("claude variant = %+v", claude)
+	if v := old.DefaultVariant(); v.Model != "" || v.Effort != "" || strings.Contains(string(raw), "claude-opus-5") || strings.Contains(string(raw), "xhigh") {
+		t.Fatalf("legacy card read with settings: %+v\n%s", v, raw)
 	}
-	if codex := card.DefaultVariant(); codex.Effort != "ultra" {
-		t.Fatalf("default variant changed: %+v", codex)
-	}
-	ultra := "ultra"
-	if _, err := s.EditPersona(card.ID, EditPersonaRequest{ExpectedETag: card.ETag, Variant: "claude-code", SetEffort: &ultra}); !errors.Is(err, ErrInvalidAgentCard) {
-		t.Fatalf("claude ultra edit error = %v", err)
-	}
-	if _, err := s.EditPersona(card.ID, EditPersonaRequest{ExpectedETag: card.ETag, Variant: "hermes", SetEffort: &low}); !errors.Is(err, ErrInvalidAgentCard) || !strings.Contains(err.Error(), `no harness variant "hermes"`) {
-		t.Fatalf("missing variant error = %v", err)
-	}
-
-	// Blank clears the setting from the card: the harness default model and medium.
-	blank := ""
-	card, err = s.EditPersona(card.ID, EditPersonaRequest{ExpectedETag: card.ETag, Variant: "claude-code", SetModel: &blank, SetEffort: &blank})
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, err := os.ReadFile(s.PersonaPath(card.ID))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), "claude-opus-5") || strings.Count(string(raw), "effort = ") != 1 {
-		t.Fatalf("cleared settings remain:\n%s", raw)
-	}
-	if claude, _ := card.SelectHarnessVariant("claude-code"); claude.Model != "" || claude.effectiveEffort() != "medium" {
-		t.Fatalf("cleared claude variant = %+v", claude)
-	}
-}
-
-func TestVariantEditsNameEachVariantOnceAndCheckOnlyWhatChanges(t *testing.T) {
-	s := NewPersonaStore(t.TempDir())
-	raw := "schema = 1\n\n[card]\nid = \"mixed\"\nkind = \"specialist\"\n\n[harness]\ndefault = \"claude-code\"\n\n" +
-		"[[harness.variant]]\nid = \"claude-code\"\nsession_stem = \"mixed\"\neffort = \"extreme\"\n\n" +
-		"[[harness.variant]]\nid = \"hermes\"\nsession_stem = \"hermes-mixed\"\nlaunch = \"hermes --profile old\"\n"
-	if err := os.WriteFile(s.PersonaPath("mixed"), []byte(raw), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	card, err := s.ReadPersona("mixed")
-	if err != nil {
-		t.Fatal(err)
-	}
-	low, high, model := "low", "high", "claude-opus-5"
-	for name, req := range map[string]EditPersonaRequest{
-		"a variant listed twice":            {SetVariants: []VariantSettings{{ID: "claude-code", Effort: &low}, {ID: "claude-code", Effort: &high}}},
-		"the default named blank and by id": {SetVariants: []VariantSettings{{ID: "", Effort: &low}, {ID: "claude-code", Model: &model}}},
-		"the list and variant/model/effort": {SetVariants: []VariantSettings{{ID: "claude-code", Effort: &low}}, Variant: "claude-code", SetModel: &model},
-	} {
-		req.ExpectedETag = card.ETag
-		if _, err := s.EditPersona("mixed", req); !errors.Is(err, ErrInvalidAgentCard) || !strings.Contains(err.Error(), `"claude-code" is edited twice`) {
-			t.Fatalf("%s: error = %v", name, err)
+	for _, preset := range personaPresetCatalog {
+		card, _ := builtinPresetPersona(preset.ID)
+		if v := card.DefaultVariant(); v.Model != "" || v.Effort != "" {
+			t.Fatalf("preset %s carries settings: %+v", preset.ID, v)
 		}
 	}
-
-	// The hand-edited effort is invalid, but a model-only edit does not touch it.
-	card, err = s.EditPersona("mixed", EditPersonaRequest{ExpectedETag: card.ETag, SetModel: &model})
-	if err != nil {
-		t.Fatalf("model-only edit beside an invalid effort: %v", err)
-	}
-	if v := card.DefaultVariant(); v.Model != model || v.Effort != "extreme" {
-		t.Fatalf("default variant = %+v", v)
-	}
-
 }
 
-func TestSeatLaunchIsTheRenderedCardSettings(t *testing.T) {
+// agent spawn states what a role's own session runs, as a slot does.
+func TestSpawnRunsTheSettingsItStates(t *testing.T) {
 	bin := t.TempDir()
 	for _, name := range []string{"claude", "codex"} {
 		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
@@ -113,68 +53,24 @@ func TestSeatLaunchIsTheRenderedCardSettings(t *testing.T) {
 		}
 	}
 	t.Setenv("PATH", bin)
-	card := PersonaCard{ID: "p", HarnessDefault: "claude-code", HarnessVariants: []HarnessVariant{
-		{ID: "claude-code"},
-		{ID: "openai-codex", Model: "gpt-6-sol", Effort: "high"},
-		{ID: "hermes"},
-	}}
-	card.DescribeLaunches()
-	claude, codex, hermes := card.HarnessVariants[0], card.HarnessVariants[1], card.HarnessVariants[2]
-	if want := "exec '" + filepath.Join(bin, "claude") + "' --effort 'medium' --dangerously-skip-permissions"; claude.SeatLaunch != want || claude.EffectiveEffort != "medium" || claude.SeatLaunchError != "" {
-		t.Fatalf("claude = %+v, want seat launch %s", claude, want)
+	command, err := HarnessVariant{ID: "openai-codex", SessionStem: "w", Model: "gpt-6-sol", Effort: "high"}.SpawnCommand()
+	if err != nil || !strings.Contains(command, "--model 'gpt-6-sol'") || !strings.Contains(command, `model_reasoning_effort="high"`) {
+		t.Fatalf("codex spawn = %q, %v", command, err)
 	}
-	if !strings.Contains(codex.SeatLaunch, "--model 'gpt-6-sol'") || !strings.Contains(codex.SeatLaunch, `model_reasoning_effort="high"`) || codex.EffectiveEffort != "high" {
-		t.Fatalf("codex = %+v", codex)
-	}
-	if strings.Join(claude.Efforts, ",") != "low,medium,high,xhigh,max" || strings.Join(codex.Efforts, ",") != "low,medium,high,xhigh,max,ultra" {
-		t.Fatalf("efforts = %v / %v", claude.Efforts, codex.Efforts)
-	}
-	if hermes.SeatLaunch != "" || !strings.Contains(hermes.SeatLaunchError, `unsupported seat harness "hermes"`) || hermes.EffectiveEffort != "" || hermes.Efforts != nil {
-		t.Fatalf("hermes = %+v", hermes)
-	}
-	if command, err := card.HarnessVariants[0].SpawnCommand(); err != nil || command != claude.SeatLaunch {
-		t.Fatalf("claude spawn = %q, %v; want the seat launch", command, err)
-	}
-	if command, err := card.HarnessVariants[2].SpawnCommand(); err == nil || command != "" || !strings.Contains(err.Error(), `Archon cannot start harness "hermes"`) {
+	if command, err := (HarnessVariant{ID: "hermes"}).SpawnCommand(); err == nil || command != "" || !strings.Contains(err.Error(), `Archon cannot start harness "hermes"`) {
 		t.Fatalf("hermes spawn = %q, %v; want a plain refusal", command, err)
 	}
-
-	t.Setenv("PATH", t.TempDir())
-	card.DescribeLaunches()
-	if claude := card.HarnessVariants[0]; claude.SeatLaunch != "exec 'claude' --effort 'medium' --dangerously-skip-permissions" || !strings.Contains(claude.SeatLaunchError, "claude is not on PATH") {
-		t.Fatalf("claude without PATH = %+v", claude)
+	for _, check := range []struct{ harness, model, effort, want string }{
+		{"claude-code", "opus", "ultra", `agent "w" effort "ultra" is not one claude-code accepts`},
+		{"claude-code", "opus", "", `agent "w" needs an effort; the policy is`},
+		{"hermes", "", "low", `agent "w" harness "hermes" cannot start seats`},
+	} {
+		if err := ValidateSpawnSettings("w", check.harness, check.model, check.effort); !errors.Is(err, ErrInvalidSlotSettings) || !strings.Contains(err.Error(), check.want) {
+			t.Errorf("%+v: error = %v, want %q", check, err, check.want)
+		}
 	}
-}
-
-func TestPersonaHarnessSettingsRoundTrip(t *testing.T) {
-	s := NewPersonaStore(t.TempDir())
-	card, err := s.CreatePersona(CreatePersonaRequest{ID: "worker", Kind: "builder", Harness: "openai-codex", Model: "test-model", Effort: "high"})
-	if err != nil {
+	if err := ValidateSpawnSettings("w", "claude-code", "opus", "low"); err != nil {
 		t.Fatal(err)
-	}
-	card, err = s.ReadPersona(card.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var decoded PersonaCard
-	raw, err := json.Marshal(card)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		t.Fatal(err)
-	}
-	v := decoded.DefaultVariant()
-	if v.Model != "test-model" || v.Effort != "high" {
-		t.Fatalf("settings lost: %+v", v)
-	}
-	model, effort := "second-model", "medium"
-	card, err = s.EditPersona(card.ID, EditPersonaRequest{ExpectedETag: card.ETag, SetModel: &model, SetEffort: &effort})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v := card.DefaultVariant(); v.Model != model || v.Effort != effort {
-		t.Fatalf("settings not edited: %+v", v)
 	}
 }
 

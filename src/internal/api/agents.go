@@ -76,7 +76,6 @@ func (h *AgentsHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	card.TOML = ""
-	card.DescribeLaunches()
 	w.Header().Set("ETag", card.ETag)
 	core.WriteSuccess(w, card)
 }
@@ -91,15 +90,9 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		Personality  string   `json:"personality"`
 		Harness      string   `json:"harness"`
 		SessionStem  string   `json:"sessionStem"`
-		Model        string   `json:"model"`
-		Effort       string   `json:"effort"`
 		Source       string   `json:"source"`
 	}
 	if !decodeJSONBody(w, r, &req) {
-		return
-	}
-	if err := formations.RefuseRoleSettings(req.Model, req.Effort); err != nil {
-		writeAgentError(w, err)
 		return
 	}
 	card, err := h.store.CreatePersona(formations.CreatePersonaRequest{
@@ -111,8 +104,6 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		Personality:  req.Personality,
 		Harness:      req.Harness,
 		SessionStem:  req.SessionStem,
-		Model:        req.Model,
-		Effort:       req.Effort,
 		Source:       req.Source,
 	})
 	if err != nil {
@@ -120,28 +111,23 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	card.TOML = ""
-	card.DescribeLaunches()
 	w.Header().Set("ETag", card.ETag)
 	core.WriteJSON(w, http.StatusCreated, core.NewSuccessResponse(card))
 }
 
 func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		AddCapability    string                       `json:"addCapability"`
-		RemoveCapability string                       `json:"removeCapability"`
-		AddHarness       string                       `json:"addHarness"`
-		SessionStem      *string                      `json:"sessionStem"`
-		Source           string                       `json:"source"`
-		Note             string                       `json:"note"`
-		Retire           bool                         `json:"retire"`
-		DisplayName      *string                      `json:"displayName"`
-		Kind             *string                      `json:"kind"`
-		Summary          *string                      `json:"summary"`
-		Capabilities     *[]string                    `json:"capabilities"`
-		Variant          string                       `json:"variant"`
-		Variants         []formations.VariantSettings `json:"variants"`
-		Model            *string                      `json:"model"`
-		Effort           *string                      `json:"effort"`
+		AddCapability    string    `json:"addCapability"`
+		RemoveCapability string    `json:"removeCapability"`
+		AddHarness       string    `json:"addHarness"`
+		SessionStem      *string   `json:"sessionStem"`
+		Source           string    `json:"source"`
+		Note             string    `json:"note"`
+		Retire           bool      `json:"retire"`
+		DisplayName      *string   `json:"displayName"`
+		Kind             *string   `json:"kind"`
+		Summary          *string   `json:"summary"`
+		Capabilities     *[]string `json:"capabilities"`
 	}
 	if !decodeJSONBody(w, r, &req) {
 		return
@@ -163,18 +149,8 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		if req.SessionStem != nil {
 			edit.SessionStem = *req.SessionStem
 		}
-		if req.Model != nil {
-			edit.Model = *req.Model
-		}
-		if req.Effort != nil {
-			edit.Effort = *req.Effort
-		}
 	} else {
 		edit.SetSessionStem = req.SessionStem
-		edit.Variant = req.Variant
-		edit.SetModel = req.Model
-		edit.SetEffort = req.Effort
-		edit.SetVariants = req.Variants
 	}
 	card, err := h.store.EditPersona(r.PathValue("agentId"), edit)
 	if err != nil {
@@ -182,7 +158,6 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	card.TOML = ""
-	card.DescribeLaunches()
 	w.Header().Set("ETag", card.ETag)
 	core.WriteSuccess(w, card)
 }

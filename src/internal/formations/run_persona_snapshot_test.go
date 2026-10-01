@@ -63,7 +63,7 @@ func TestTmuxSeatsKeepAdmittedPersonaSettingsAcrossRestart(t *testing.T) {
 	for _, harness := range []string{"openai-codex", "claude-code"} {
 		t.Run(harness, func(t *testing.T) {
 			store, personas := s4RunFixture(t)
-			card, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Summary: "admitted summary", Harness: harness, Model: "model-before", Effort: "low"})
+			card, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Summary: "admitted summary", Harness: harness})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -81,8 +81,8 @@ func TestTmuxSeatsKeepAdmittedPersonaSettingsAcrossRestart(t *testing.T) {
 			if status.Status != RunStatusRunning {
 				t.Fatalf("waiting status = %+v", status)
 			}
-			newSummary, newModel, newEffort := "edited summary", "model-after", "high"
-			_, err = personas.EditPersona("scout", EditPersonaRequest{ExpectedETag: card.ETag, SetSummary: &newSummary, SetModel: &newModel, SetEffort: &newEffort})
+			newSummary := "edited summary"
+			_, err = personas.EditPersona("scout", EditPersonaRequest{ExpectedETag: card.ETag, SetSummary: &newSummary})
 			if err != nil {
 				t.Fatal(err)
 			}

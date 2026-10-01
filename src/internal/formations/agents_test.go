@@ -152,28 +152,29 @@ func TestEditPersonaAddsHarnessVariantAndNote(t *testing.T) {
 	}
 }
 
-func TestEditPersonaAddOpenAICodexCarriesSettingsNotLaunch(t *testing.T) {
+// A role's harness variant names only its own session; a role carries no
+// model or effort, and a card that still holds them reads without them.
+func TestEditPersonaAddHarnessNamesOnlyItsSession(t *testing.T) {
 	store := NewPersonaStore(t.TempDir())
-	writeFixture(t, store.PersonaPath("susie"), minimalPersona("susie", "specialist", []string{"design"}))
+	writeFixture(t, store.PersonaPath("susie"), minimalPersona("susie", "specialist", []string{"design"})+"model = \"claude-opus-5\"\neffort = \"low\"\n")
 
 	card := editPersonaWithFreshETag(t, store, "susie", EditPersonaRequest{
 		AddHarness:  "openai-codex",
 		SessionStem: "codex-susie",
-		Model:       " gpt-6-sol ",
-		Effort:      "ultra",
 	})
 	if len(card.HarnessVariants) != 2 {
 		t.Fatalf("harness variants = %d, want 2", len(card.HarnessVariants))
 	}
-	if added := card.HarnessVariants[1]; added.Model != "gpt-6-sol" || added.Effort != "ultra" {
-		t.Fatalf("added openai-codex variant = %+v, want model and effort", added)
+	for _, variant := range card.HarnessVariants {
+		if variant.Model != "" || variant.Effort != "" {
+			t.Fatalf("variant %+v carries a model or effort", variant)
+		}
 	}
-	current, err := store.ReadPersona("susie")
-	if err != nil {
-		t.Fatal(err)
+	if added := card.HarnessVariants[1]; added.ID != "openai-codex" || added.SessionStem != "codex-susie" {
+		t.Fatalf("added variant = %+v", added)
 	}
-	if _, err := store.EditPersona("susie", EditPersonaRequest{ExpectedETag: current.ETag, AddHarness: "hermes", Effort: "high"}); !errors.Is(err, ErrInvalidAgentCard) {
-		t.Fatalf("hermes variant with effort error = %v, want ErrInvalidAgentCard", err)
+	if raw := readFile(t, store.PersonaPath("susie")); strings.Count(raw, "model =") != 1 || strings.Contains(raw, "gpt") {
+		t.Fatalf("the added variant wrote a model:\n%s", raw)
 	}
 }
 

@@ -27,8 +27,8 @@ decisions; [examples](../examples/) provide reusable missions.
 | Input | A named value each run of the mission supplies: a name, a description, a kind (`text`, `file` or `folder`) and whether it is required. Step briefs reference it as `{name}`. A mission that declares none has one implicit required text input, `brief`. |
 | Formation | A step: the team of agents that does it. `solo` has one seat; `peer` has peer seats; `orchestrated` has a controller directing its bound workers. |
 | Slot | A position in a formation that owns what its seat runs: a harness (`claude-code` or `openai-codex`), a model (blank means the harness default) and an effort, plus an optional role (`agentId`, a persona). A slot without a role is a vanilla agent, such as `claude-code · opus · low`. A seat is the slot's runtime agent session. |
-| Persona (role) | A TOML agent card with generic role text: a summary, capabilities and kind. A new card carries no model or effort; an existing card's harness variant settings are read only by `archon agent spawn`, never by a slot. Presets remain available; local cards can override them. |
-| Harness variant | A persona card's `openai-codex` or `claude-code` settings: session stem, model and effort. Seats start from slot settings. |
+| Persona (role) | A TOML agent card with role text only: a summary, capabilities and kind. It carries no model or effort; each slot that uses it states its own. Presets remain available; local cards can override them. |
+| Harness variant | A persona card's `openai-codex` or `claude-code` entry: the session stem and source of the role's own session. |
 | Gate | A criterion with one or more kinds: `code`, `formation`, `human`. Its ports are `in`, `pass`, `fail`, `judge`. |
 | End node | Ends a path on purpose (`[[end]]` in TOML: `id`, `title`, `outcome`). Its outcome is `done` or `rejected`. Its only port is `in`, which takes any number of routes; it leads nowhere. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
@@ -105,22 +105,15 @@ Each staffing is one undo entry; a move is one entry for both slots. The node
 window's staffing words and the Agents view's slot inspector open the same
 window.
 
-A new role carries no model or effort: `POST /api/agents` and `archon agent
-new` refuse them with `INVALID_AGENT_CARD`, and the New agent form no longer
-asks for them. An existing card's variant settings are edited per
-harness variant in the Agents view inspector and persona editor, with `model`,
-`effort` and `variant` (or a `variants` list) on `PATCH /api/agents`, or with
-`archon agent edit --model --effort` (`edit --harness` picks the variant);
-`archon agent spawn` reads them. Effort must be one the
-harness accepts: `claude-code` takes `low`, `medium`, `high`, `xhigh` or `max`;
-`openai-codex` also takes `ultra`, though a Codex model may accept fewer. A
-blank model or effort clears it to the harness default model or `medium`.
-Persona reads carry each variant's `effectiveEffort` and `seatLaunch`, the
-command a seat with those settings runs, rendered by the seat launcher from the harness CLI on the
-reader's PATH (the daemon's for HTTP); `seatLaunchError` says why a variant
-cannot start. `archon agent spawn` runs the same command, and refuses a harness
-Archon cannot start, such as `hermes`. Cards hold no launch string. One edit
-names each variant once.
+A role is role text only. `POST` and `PATCH /api/agents`, `archon agent new`
+and `archon agent edit` take no model or effort, persona reads carry none, and
+the Agents view edits a role's text, never its settings. `archon agent spawn
+<id> --effort <e> [--model <m>]` starts a role's own session and states its
+settings as a slot does: the effort must be one the harness accepts
+(`claude-code` takes `low`, `medium`, `high`, `xhigh` or `max`; `openai-codex`
+also takes `ultra`, though a Codex model may accept fewer), a blank model means
+the harness default, and a harness Archon cannot start, such as `hermes`, is
+refused. Cards hold no launch string.
 
 Notes are operator intent, not
 automatically executable briefs. Read mission and element notes, then translate

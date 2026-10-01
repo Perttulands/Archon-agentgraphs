@@ -108,22 +108,35 @@ func ResolveSlotSettings(slot FormationSlot, personas *PersonaStore) (SlotSettin
 // validateSlotSettings checks that a seat can start from these settings. The
 // effort is required, so staffing always states it.
 func validateSlotSettings(slot, harnessID, model, effort string) error {
+	return validateRunSettings("slot "+slot, harnessID, model, effort)
+}
+
+// ValidateSpawnSettings checks what `archon agent spawn` starts a role's
+// session with; a role card carries no model or effort, so the spawn states
+// them.
+func ValidateSpawnSettings(agentID, harnessID, model, effort string) error {
+	return validateRunSettings(fmt.Sprintf("agent %q", agentID), harnessID, model, effort)
+}
+
+// validateRunSettings checks a harness, model and effort a session starts
+// with; subject names what is checked, such as `slot "Worker" (w1)`.
+func validateRunSettings(subject, harnessID, model, effort string) error {
 	harnessIDs := make([]string, 0, len(launchableHarnesses))
 	for _, harness := range launchableHarnesses {
 		harnessIDs = append(harnessIDs, harness.ID)
 	}
 	if harnessID == "" {
-		return fmt.Errorf("%w: slot %s needs a harness: %s", ErrInvalidSlotSettings, slot, strings.Join(harnessIDs, " or "))
+		return fmt.Errorf("%w: %s needs a harness: %s", ErrInvalidSlotSettings, subject, strings.Join(harnessIDs, " or "))
 	}
 	harness, ok := launchableHarness(harnessID)
 	if !ok {
-		return fmt.Errorf("%w: slot %s harness %q cannot start seats; use %s", ErrInvalidSlotSettings, slot, harnessID, strings.Join(harnessIDs, " or "))
+		return fmt.Errorf("%w: %s harness %q cannot start seats; use %s", ErrInvalidSlotSettings, subject, harnessID, strings.Join(harnessIDs, " or "))
 	}
 	if strings.IndexFunc(model, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
-		return fmt.Errorf("%w: slot %s model %q must be one model name without spaces", ErrInvalidSlotSettings, slot, model)
+		return fmt.Errorf("%w: %s model %q must be one model name without spaces", ErrInvalidSlotSettings, subject, model)
 	}
 	if effort == "" {
-		return fmt.Errorf("%w: slot %s needs an effort; the policy is %s", ErrInvalidSlotSettings, slot, EffortPolicyText())
+		return fmt.Errorf("%w: %s needs an effort; the policy is %s", ErrInvalidSlotSettings, subject, EffortPolicyText())
 	}
 	// A model whose levels the host knows narrows the harness's efforts.
 	efforts, accepts := harness.Efforts, harness.ID
@@ -131,18 +144,9 @@ func validateSlotSettings(slot, harnessID, model, effort string) error {
 		efforts, accepts = known, model
 	}
 	if !slices.Contains(efforts, effort) {
-		return fmt.Errorf("%w: slot %s effort %q is not one %s accepts; use %s", ErrInvalidSlotSettings, slot, effort, accepts, strings.Join(efforts, ", "))
+		return fmt.Errorf("%w: %s effort %q is not one %s accepts; use %s", ErrInvalidSlotSettings, subject, effort, accepts, strings.Join(efforts, ", "))
 	}
 	return nil
-}
-
-// RefuseRoleSettings refuses a model or effort on a new role card. Slots own
-// what their seats run; a role is only role text.
-func RefuseRoleSettings(model, effort string) error {
-	if strings.TrimSpace(model) == "" && strings.TrimSpace(effort) == "" {
-		return nil
-	}
-	return fmt.Errorf("%w: a new role carries no model or effort; set them on each slot that uses it (archon formation assign ... --harness --model --effort --role)", ErrInvalidAgentCard)
 }
 
 // roleName names a seat's role in lab output: the persona id, or "vanilla"
