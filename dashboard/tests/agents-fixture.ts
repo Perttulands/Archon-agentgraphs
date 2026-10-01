@@ -1,11 +1,10 @@
 import { type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { assignedSettings, harnesses, rosterAnswer } from './roster-terms'
+import { assignedSettings, rosterAnswer } from './roster-terms'
 const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/theme_default.json', import.meta.url), 'utf8'))
 
-// Three missions for the shared current mission and a judged mission, and two
-// personas whose settings the daemon validates and whose seat launch it
-// renders, as src/internal/formations/harness_launch.go does.
+// Three missions for the shared current mission and a judged mission, and
+// three roles, each role text only.
 
 const ports = { inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Result' }] }
 const solo = (id: string, title: string, agentId?: string, harness = 'claude-code') => ({
@@ -48,26 +47,14 @@ const layouts: Record<string, Array<{ id: string; x: number; y: number }>> = {
   scouting: [{ id: 'mission', x: 100, y: 100 }, { id: 'map', x: 420, y: 100 }],
 }
 
-type Variant = { id: string; sessionStem: string; model?: string; effort?: string }
+// A role is role text: its variants name only the harness of its own session.
+type Variant = { id: string; sessionStem: string }
 type Card = { id: string; displayName: string; kind: string; summary: string; tags: string[]; harnessDefault: string; harnessVariants: Variant[]; rev: number }
-
-const quote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`
-/** The seat launcher's rendering (HarnessVariant.RenderLaunch) with the CLI on the daemon's PATH. */
-function describe(variant: Variant) {
-  const harness = harnesses.find(next => next.id === variant.id)
-  if (!harness) return { ...variant, seatLaunchError: `unsupported seat harness "${variant.id}"` }
-  const effort = variant.effort || 'medium'
-  let seatLaunch = `exec ${quote(`/usr/local/bin/${harness.executable}`)}${variant.model ? ` --model ${quote(variant.model)}` : ''}`
-  seatLaunch += variant.id === 'openai-codex'
-    ? ` -c ${quote(`model_reasoning_effort="${effort}"`)} -c check_for_update_on_startup=false --dangerously-bypass-approvals-and-sandbox`
-    : ` --effort ${quote(effort)} --dangerously-skip-permissions`
-  return { ...variant, effectiveEffort: effort, efforts: harness.efforts, seatLaunch }
-}
 
 export async function agentsFixture(page: Page) {
   const cards: Record<string, Card> = {
     critic: { id: 'critic', displayName: 'Brief critic', kind: 'judge', summary: 'Reviews the brief.', tags: ['review'], harnessDefault: 'claude-code', rev: 1,
-      harnessVariants: [{ id: 'claude-code', sessionStem: 'critic', model: 'claude-opus-5', effort: 'low' }] },
+      harnessVariants: [{ id: 'claude-code', sessionStem: 'critic' }] },
     builder: { id: 'builder', displayName: 'Builder', kind: 'builder', summary: 'Builds the change.', tags: ['implement'], harnessDefault: 'openai-codex', rev: 1,
       harnessVariants: [{ id: 'openai-codex', sessionStem: 'builder' }, { id: 'claude-code', sessionStem: 'claude-builder' }] },
     spawner: { id: 'spawner', displayName: 'Hermes spawner', kind: 'specialist', summary: 'Runs through hermes.', tags: [], harnessDefault: 'hermes', rev: 1,
@@ -77,7 +64,7 @@ export async function agentsFixture(page: Page) {
   const boardPatches: unknown[] = []
   // Each test edits its own copy of the missions.
   const missions = structuredClone(boards)
-  const read = (card: Card) => ({ ...card, etag: `${card.id}-${card.rev}`, harnessVariants: card.harnessVariants.map(describe) })
+  const read = (card: Card) => ({ ...card, etag: `${card.id}-${card.rev}` })
 
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url())
@@ -128,21 +115,6 @@ export async function agentsFixture(page: Page) {
         const body = route.request().postDataJSON()
         patches.push(body)
         const next = structuredClone(card)
-        const settings = [...(body.variants || []), ...(body.model !== undefined || body.effort !== undefined ? [{ id: body.variant || '', model: body.model, effort: body.effort }] : [])]
-        const named = new Set<string>()
-        for (const setting of settings) {
-          const variant = next.harnessVariants.find(candidate => candidate.id === (setting.id || next.harnessDefault))
-          if (!variant) return fail(422, 'INVALID_AGENT_CARD', `agent "${card.id}" has no harness variant "${setting.id}"`)
-          if (named.has(variant.id)) return fail(422, 'INVALID_AGENT_CARD', `agent "${card.id}" harness variant "${variant.id}" is edited twice in one change; name each variant once`)
-          named.add(variant.id)
-          const harness = harnesses.find(candidate => candidate.id === variant.id)
-          // Only the fields being changed are validated.
-          if ((setting.model?.trim() || setting.effort?.trim()) && !harness) return fail(422, 'INVALID_AGENT_CARD', `agent "${card.id}" harness "${variant.id}" has no model or effort setting`)
-          const effort = setting.effort?.trim() || ''
-          if (harness && effort && !harness.efforts.includes(effort)) return fail(422, 'INVALID_AGENT_CARD', `agent "${card.id}" effort "${effort}" is not one ${harness.id} accepts; use ${harness.efforts.join(', ')}`)
-          if (setting.model !== undefined) variant.model = setting.model.trim() || undefined
-          if (setting.effort !== undefined) variant.effort = setting.effort.trim() || undefined
-        }
         for (const key of ['displayName', 'kind', 'summary'] as const) if (typeof body[key] === 'string') next[key] = body[key]
         if (typeof body.sessionStem === 'string') next.harnessVariants.find(variant => variant.id === next.harnessDefault)!.sessionStem = body.sessionStem
         next.rev++

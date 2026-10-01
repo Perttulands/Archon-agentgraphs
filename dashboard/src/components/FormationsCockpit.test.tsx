@@ -258,16 +258,8 @@ function installFetchMock(options: {
       const agent = availableAgents.find(candidate => candidate.id === id)
       if (!agent) return reject('Agent not found')
       const harness = agent.harnessDefault || 'claude-code'
-      // As the daemon reads a card: no launch string, plus the derived seat launch.
-      const defaultVariant = {
-        id: harness,
-        model: `${agent.id}-model`,
-        effort: 'medium',
-        sessionStem: agent.id,
-        effectiveEffort: 'medium',
-        efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
-        seatLaunch: `exec '/usr/bin/${harness === 'openai-codex' ? 'codex' : 'claude'}' --model '${agent.id}-model'`,
-      }
+      // As the daemon reads a card: role text, with no launch, model or effort.
+      const defaultVariant = { id: harness, sessionStem: agent.id }
       if (method === 'PATCH') {
         const payload = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>
         const updated = {

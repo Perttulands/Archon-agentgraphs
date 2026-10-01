@@ -18,7 +18,6 @@ import type {
   EffortPolicyEntry,
   LaunchableHarness,
   PersonaCard,
-  VariantSettingsPatch,
   RunEvent,
   RunStartResult,
   RunStatusProjection,
@@ -200,7 +199,6 @@ export async function overrideAgentCard(agentID: string, etag: string, patch: {
   summary?: string
   capabilities?: string[]
   sessionStem?: string
-  variants?: VariantSettingsPatch[]
 }): Promise<PersonaCard> {
   const result = await fetchApi<PersonaCard>(`/api/agents/${encodeURIComponent(agentID)}`, {
     method: 'PATCH',

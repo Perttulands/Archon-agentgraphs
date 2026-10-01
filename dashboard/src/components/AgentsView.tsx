@@ -19,7 +19,6 @@ import {
   agentRole,
   byRoleName,
   formationSummary,
-  harnessGlyph,
   inSlotsWords,
   initials,
   rolesInUseLabel,
@@ -46,17 +45,7 @@ import type {
   LayoutDocument,
   MissionNode,
   PersonaHarnessVariant,
-  VariantSettingsPatch,
 } from './formationsTypes'
-import {
-  isLaunchable,
-  SeatLaunch,
-  VariantSettingsFields,
-  variantChanges,
-  variantDraft,
-  variantSettingsSummary,
-  type VariantDraft,
-} from './PersonaHarnessSettings'
 
 interface PersonaNote {
   ts: string
@@ -525,7 +514,6 @@ export default function AgentsView() {
   const createPersona = useCallback(async (event: FormEvent) => {
     event.preventDefault()
     const capabilities = splitCommaList(createDraft.capabilities)
-    // A new role carries no model or effort.
     try {
       const result = await fetchApi<PersonaCard>('/api/agents', {
         method: 'POST',
@@ -550,31 +538,7 @@ export default function AgentsView() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Agent create request failed')
     }
-  }, [createDraft, harnesses, loadAgents])
-
-  /** Saves one variant's model and effort; resolves to an error message, or '' on success. */
-  const saveVariantSettings = useCallback(async (agentId: string, patch: VariantSettingsPatch): Promise<string> => {
-    const cached = details[agentId]
-    if (!cached?.card || !cached.etag) return 'Persona detail unavailable; reload and retry'
-    try {
-      const result = await fetchApi<PersonaCard>(`/api/agents/${encodeURIComponent(agentId)}`, {
-        method: 'PATCH',
-        headers: { 'If-Match': cached.etag },
-        body: JSON.stringify({ variants: [patch] }),
-      })
-      setDetails(current => ({
-        ...current,
-        [agentId]: { card: { ...result.data, etag: result.etag || result.data.etag }, etag: result.etag || result.data.etag || '' },
-      }))
-      return ''
-    } catch (err) {
-      if (err instanceof ApiRequestError && err.status === 409) {
-        await loadAgentDetail(agentId, true).catch(() => undefined)
-        return 'This persona changed elsewhere and was reloaded. Check the settings, then save again.'
-      }
-      return err instanceof Error ? err.message : 'Persona update failed'
-    }
-  }, [details, loadAgentDetail])
+  }, [createDraft, loadAgents])
 
   const saveNote = useCallback(async (agentId: string) => {
     const note = noteDraft.trim()
@@ -786,7 +750,6 @@ export default function AgentsView() {
               noteDraft={noteDraft}
               onNoteDraft={setNoteDraft}
               onSaveNote={saveNote}
-              onSaveVariant={saveVariantSettings}
               onStaff={openStaffing}
               onEmpty={emptySlot}
               onCreateFromUnbound={createFromUnbound}
@@ -815,7 +778,6 @@ export default function AgentsView() {
       {createOpen && (
         <CreatePersonaPopover
           draft={createDraft}
-          harnesses={harnesses}
           onDraft={setCreateDraft}
           onSubmit={createPersona}
           onClose={() => setCreateOpen(false)}
@@ -1092,7 +1054,6 @@ function Inspector({
   noteDraft,
   onNoteDraft,
   onSaveNote,
-  onSaveVariant,
   onStaff,
   onEmpty,
   onCreateFromUnbound,
@@ -1107,7 +1068,6 @@ function Inspector({
   noteDraft: string
   onNoteDraft: (value: string) => void
   onSaveNote: (agentId: string) => void
-  onSaveVariant: (agentId: string, patch: VariantSettingsPatch) => Promise<string>
   onStaff: (formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => void
   onEmpty: (formation: FormationNode, slot: FormationSlot) => void
   onCreateFromUnbound: (agent: RosterAgent) => void
@@ -1141,8 +1101,6 @@ function Inspector({
     const detail = details[selection.agentId]
     const card = detail?.card
     const assignments = assignmentsByAgent.get(selection.agentId) || []
-    const harness = card?.harnessDefault || agent?.harnessDefault || ''
-    const defaultVariant = card?.harnessVariants.find(variant => variant.id === card.harnessDefault)
     const states = [
       agent?.liveness || 'offline',
       card?.status || '',
@@ -1153,9 +1111,9 @@ function Inspector({
       <InspectorPanel title={card?.displayName || agent?.displayName || selection.agentId} meta={card?.kind || agent?.kind || 'agent'} onClose={onClose}>
         <section className="note-section">
           <div className="agx-identity">
-            <span className="av">{harnessGlyph(harness) ?? initials(selection.agentId)}</span>
+            <span className="av">{initials(card?.displayName || agent?.displayName || selection.agentId)}</span>
             <span className="ri">
-              <span className="n">{harness || 'no default harness'}</span>
+              <span className="n">{inSlotsWords(assignments.length) || 'in no slot on this mission'}</span>
               <span className="r">{states.map(state => <span key={state} className={`is-${state}`}>{state}</span>)}</span>
             </span>
             {agent ? (
@@ -1164,7 +1122,6 @@ function Inspector({
           </div>
           {card?.summary && <p className="agx-summary">{card.summary}</p>}
           <KeyValues rows={[
-            ['Runs', defaultVariant ? variantSettingsSummary(defaultVariant) : ''],
             ['Session', agent?.sessionId || ''],
             ['Context', typeof agent?.contextPct === 'number' ? `${agent.contextPct}%` : ''],
             ['Bead', agent?.beadId || ''],
@@ -1172,30 +1129,20 @@ function Inspector({
           <TagList tags={card?.tags || agent?.tags || []} />
         </section>
         <section className="note-section">
-          <h3>Harness variants</h3>
-          {card && card.harnessVariants.length === 0 && <p className="note-empty">No harness variants recorded.</p>}
-          {!card && !detail?.error && <p className="note-empty">Loading persona card…</p>}
-          {card?.harnessVariants.map(variant => (
-            <VariantEditor
-              key={`${card.id}:${variant.id}`}
-              agentId={card.id}
-              variant={variant}
-              isDefault={variant.id === card.harnessDefault}
-              fallbackStem={card.id}
-              onSave={onSaveVariant}
-            />
-          ))}
-        </section>
-        <section className="note-section">
           <h3>Slots on this mission</h3>
           {assignments.length === 0 && <p className="note-empty">No slots on this mission.</p>}
+          {/* A role is role text; each slot it staffs says what that seat runs. */}
           <div className="tool-detail-list">
-            {assignments.map(({ formation, slot }) => (
-              <div className="tool-detail-row" key={`${formation.id}:${slot.id}`}>
-                <span>{formation.title}</span>
-                <strong>{slot.label}{slot.controller && slot.label.toLowerCase() !== 'controller' ? ' · controller' : ''}</strong>
-              </div>
-            ))}
+            {assignments.map(({ formation, slot }) => {
+              const staffing = staffingOf(slot)
+              const label = `${slot.label}${slot.controller && slot.label.toLowerCase() !== 'controller' && formation.type !== 'solo' ? ' · controller' : ''}`
+              return (
+                <div className="tool-detail-row agx-role-slot" key={`${formation.id}:${slot.id}`}>
+                  <span>{formation.title}{slot.label !== formation.title ? <> · <strong>{label}</strong></> : null}</span>
+                  <span className="agx-role-slot-runs">{staffing ? captionText(staffing) : ''}</span>
+                </div>
+              )
+            })}
           </div>
         </section>
         <form
@@ -1232,61 +1179,6 @@ function Inspector({
     <InspectorPanel title="Slot" meta="no longer in this mission" onClose={onClose}>
       <p className="note-empty">This slot was removed from the mission.</p>
     </InspectorPanel>
-  )
-}
-
-/** One harness variant in the persona inspector: its settings, editable in place, and what its seats run. */
-function VariantEditor({ agentId, variant, isDefault, fallbackStem, onSave }: {
-  agentId: string
-  variant: PersonaHarnessVariant
-  isDefault: boolean
-  fallbackStem: string
-  onSave: (agentId: string, patch: VariantSettingsPatch) => Promise<string>
-}) {
-  const [draft, setDraft] = useState<VariantDraft>(() => variantDraft(variant))
-  const [saving, setSaving] = useState(false)
-  const [status, setStatus] = useState<{ error: string; saved: boolean }>({ error: '', saved: false })
-  // A save here or an edit elsewhere changes the card; show what it now holds.
-  useEffect(() => setDraft(variantDraft(variant)), [variant.model, variant.effort]) // eslint-disable-line react-hooks/exhaustive-deps
-  const changes = variantChanges(variant, draft)
-  const launchable = isLaunchable(variant)
-  const idPrefix = `agx-variant-${variant.id}`
-
-  const save = async (event: FormEvent) => {
-    event.preventDefault()
-    if (!changes || saving) return
-    setSaving(true)
-    const error = await onSave(agentId, changes)
-    setSaving(false)
-    setStatus({ error, saved: !error })
-  }
-
-  return (
-    <form className="ph-variant" aria-label={`${variant.id} harness variant`} onSubmit={save}>
-      <div className="ph-head">
-        <strong>{variant.id}</strong>
-        {isDefault ? <span className="ph-default">default</span> : null}
-        <span>session {variant.sessionStem || fallbackStem}</span>
-      </div>
-      <VariantSettingsFields
-        idPrefix={idPrefix}
-        harness={variant.id}
-        efforts={variant.efforts}
-        draft={draft}
-        onDraft={next => { setDraft(next); setStatus({ error: '', saved: false }) }}
-        disabled={saving}
-      />
-      <div className="ph-actions">
-        {status.saved && !changes ? <span className="ph-saved" role="status">Saved</span> : null}
-        {changes ? <button type="button" className="board-action" disabled={saving} onClick={() => { setDraft(variantDraft(variant)); setStatus({ error: '', saved: false }) }}>Revert</button> : null}
-        <button className="primary" type="submit" disabled={!changes || saving} aria-label={`Save ${variant.id} ${launchable ? 'model and effort' : 'launch command'}`}>
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-      </div>
-      {status.error ? <p className="ph-error" role="alert">{status.error}</p> : null}
-      <SeatLaunch variant={variant} />
-      {variant.source ? <div className="ph-head"><span>source</span><code>{variant.source}</code></div> : null}
-    </form>
   )
 }
 
@@ -1377,21 +1269,16 @@ function MissionRunState({ board, missionRun }: { board: BoardDocument; missionR
 
 function CreatePersonaPopover({
   draft,
-  harnesses,
   onDraft,
   onSubmit,
   onClose,
 }: {
   draft: CreateDraft
-  harnesses: LaunchableHarness[]
   onDraft: (draft: CreateDraft) => void
   onSubmit: (event: FormEvent) => void
   onClose: () => void
 }) {
   const set = (key: keyof CreateDraft, value: string) => onDraft({ ...draft, [key]: value })
-  // A harness Archon starts takes its model and effort from each slot.
-  const launchable = harnesses.some(next => next.id === draft.harness)
-  const changeHarness = (harness: string) => onDraft({ ...draft, harness })
   return (
     <div className="pop agx-pop" role="dialog" aria-label="Create persona">
       <div className="pop-head">
@@ -1405,21 +1292,6 @@ function CreatePersonaPopover({
         <input id="agx-create-display" className="f" value={draft.displayName} onChange={event => set('displayName', event.target.value)} />
         <label htmlFor="agx-create-kind">Kind</label>
         <input id="agx-create-kind" className="f" value={draft.kind} onChange={event => set('kind', event.target.value)} />
-        <label htmlFor="agx-create-harness">Harness</label>
-        <select id="agx-create-harness" className="f" value={draft.harness} onChange={event => changeHarness(event.target.value)}>
-          <option value="claude-code">claude-code</option>
-          <option value="openai-codex">openai-codex</option>
-          <option value="hermes">hermes</option>
-        </select>
-        {launchable ? (
-          <p className="ph-none agx-create-none">
-            A role carries no model or effort. Each slot that uses it sets them.
-          </p>
-        ) : (
-          <p className="ph-none agx-create-none">
-            Archon cannot start {draft.harness} seats, so it takes no model or effort.
-          </p>
-        )}
         <label htmlFor="agx-create-stem">Session stem</label>
         <input id="agx-create-stem" className="f" value={draft.sessionStem} onChange={event => set('sessionStem', event.target.value)} />
         <label htmlFor="agx-create-summary">Summary</label>
