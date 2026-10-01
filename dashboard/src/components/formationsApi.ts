@@ -332,13 +332,13 @@ export async function resumeRunRequest(runId: string, body: { actor: string; mod
 }
 
 /**
- * A Limit card's rounds or time as a run used them (internal/formations
+ * A Limit card's rounds, time or tokens as a run used them (internal/formations
  * RunLimitReached): `used` of `max`, `max` counting the card's allowance and
  * every grant; time in whole seconds. `nodeId` is what the card covers: a
  * step, or the Input card for the whole mission.
  */
 export interface RunLimitUse {
-  kind: 'rounds' | 'time'
+  kind: 'rounds' | 'time' | 'tokens'
   limitId: string
   nodeId: string
   used: number

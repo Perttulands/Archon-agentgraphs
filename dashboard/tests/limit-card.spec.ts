@@ -1,9 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 import { cockpitFixture, limitReason, timeLimitReason } from './cockpit-fixture'
 
-// Limit cards (archon-o7p.8.1, .8.2): created from the Limit token and the
+// Limit cards (archon-o7p.8.1, .8.2, .9): created from the Limit token and the
 // canvas menu, wired by dragging their tether handle onto a step or the Input
-// card, their rounds, time and warning edited in their window, deleted and
+// card, their rounds, time, warning and tokens edited in their window, deleted and
 // restored, each step with undo; Flow states the limit on what it covers, and a
 // run blocked at a spent card offers one more round or the card's time again.
 
@@ -46,7 +46,7 @@ test('Limit cards are created, wired, edited, deleted and restored on the canvas
   await expect(card).toContainText('Covers Execution')
   await expect(card).toContainText('sets no limit yet')
   // A card that sets no rounds is a draft, with its finding.
-  await expect(page.getByTestId(`draft-marker-${cap.id}`)).toHaveAttribute('title', 'Limit Limit sets no limit: give it rounds or time, or delete it')
+  await expect(page.getByTestId(`draft-marker-${cap.id}`)).toHaveAttribute('title', 'Limit Limit sets no limit: give it rounds, time or tokens, or delete it')
   const window = page.getByRole('dialog', { name: 'Limit card · Limit' })
   await expect(window).toBeVisible()
   await expect(window.getByLabel('Covers')).toHaveValue('execution')
@@ -232,6 +232,41 @@ test('a Limit card\'s time and warning are set in its window and read on the car
   await expect(card).not.toContainText('warns at')
   await page.keyboard.press('Control+z')
   await expect.poll(() => fixture.board().limits![0].seconds).toBeUndefined()
+  await expect(card).toContainText('sets no limit yet')
+})
+
+test('a Limit card\'s tokens are set in its window, read on the card and in Flow with how they count, and undo', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await page.addInitScript(() => localStorage.clear())
+  const fixture = await cockpitFixture(page)
+  await page.goto('/?mission=browser')
+  await expect(page.getByTestId('formation-node-execution')).toBeVisible()
+  await drag(page, await center(page, '[data-testid="limit-token"]'), await center(page, '[data-testid="formation-node-execution"]'))
+  await expect(page.locator('.limitcard')).toHaveCount(1)
+  const cap = fixture.board().limits![0]
+  const card = page.getByTestId(`limit-node-${cap.id}`)
+  const window = page.getByRole('dialog', { name: 'Limit card · Limit' })
+  await expect(window).toBeVisible()
+
+  await window.getByRole('button', { name: 'Edit tokens' }).click()
+  await window.getByRole('textbox', { name: 'Tokens' }).fill('lots')
+  await window.getByRole('button', { name: 'Save tokens' }).click()
+  await expect(window.getByRole('alert')).toHaveText('Enter a positive whole number of tokens, or leave it blank for no limit.')
+  await window.getByRole('textbox', { name: 'Tokens' }).fill('50000')
+  await window.getByRole('button', { name: 'Save tokens' }).click()
+  await expect(card).toContainText('at most 50,000 tokens')
+  expect(fixture.board().limits![0]).toMatchObject({ tokens: 50000 })
+  await expect(page.getByTestId(`draft-marker-${cap.id}`)).toHaveCount(0)
+  await expect(window.getByTestId(`limit-meaning-${cap.id}`)).toHaveText('Execution may spend at most 50,000 tokens over all its attempts. When they are spent the step stops and the run blocks until you grant 50,000 tokens more. Tokens are approximate: input not read from the cache, cache writes included, plus output, subagents included.')
+  await shot(page, 'limit-card-tokens-window.png')
+  await window.getByRole('button', { name: /close/i }).first().click()
+
+  await page.getByRole('radio', { name: 'Flow' }).click()
+  await expect(page.getByTestId('flow-step-execution')).toContainText('LimitLimit: at most 50,000 tokens')
+  await page.getByRole('radio', { name: 'Canvas' }).click()
+
+  await page.keyboard.press('Control+z')
+  await expect.poll(() => fixture.board().limits![0].tokens).toBeUndefined()
   await expect(card).toContainText('sets no limit yet')
 })
 

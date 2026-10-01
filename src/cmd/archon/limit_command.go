@@ -12,14 +12,15 @@ import (
 )
 
 // archon limit create|update|delete (archon-o7p.8). A Limit card covers a step,
-// or the Input card for the whole mission, and caps its rounds. A run has no
-// limits unless a card sets one.
+// or the Input card for the whole mission, and caps its rounds, time or tokens.
+// A run has no limits unless a card sets one.
 
 const (
 	limitTargetHelp = "the step it covers by ID or title, or input (the Input card) for the whole mission"
 	limitRoundsHelp = "how many times the step may run, send-backs included (a peer step: its journal messages), or how many steps the whole mission may run"
 	limitTimeHelp   = "how long the step, or every step of the mission, may work in whole seconds, such as 45s, 30m or 1h30m; waiting on a human gate does not count"
 	limitWarnHelp   = "how much time is left when the covered seats are warned, such as 5m"
+	limitTokensHelp = "how many tokens the step, or every step of the mission, may spend, approximately: input not read from the cache, cache writes included, plus output, subagents included"
 )
 
 func runLimitCommand(store *formations.Store, verb string, args []string, stdout, stderr io.Writer) int {
@@ -43,6 +44,7 @@ type limitFlags struct {
 	rounds    *string
 	time      *string
 	warn      *string
+	tokens    *string
 	title     *string
 	updatedBy *string
 	jsonOut   *bool
@@ -56,24 +58,25 @@ func newLimitFlags(name string, stderr io.Writer) limitFlags {
 		rounds:    fs.String("rounds", "", limitRoundsHelp),
 		time:      fs.String("time", "", limitTimeHelp),
 		warn:      fs.String("warn", "", limitWarnHelp),
+		tokens:    fs.String("tokens", "", limitTokensHelp),
 		title:     fs.String("title", "", "Limit card title (default Limit)"),
 		updatedBy: fs.String("updated-by", "agent:archon", "update actor"),
 		jsonOut:   fs.Bool("json", false, "write JSON"),
 	}
 }
 
-// parseLimitRounds reads --rounds: empty clears (0), otherwise a positive
-// whole number.
-func parseLimitRounds(value string) (int, error) {
+// parseLimitCount reads --rounds or --tokens: empty clears (0), otherwise a
+// positive whole number.
+func parseLimitCount(flag, value string) (int, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return 0, nil
 	}
-	rounds, err := strconv.Atoi(value)
-	if err != nil || rounds <= 0 {
-		return 0, fmt.Errorf("%w: --rounds %q must be a positive whole number", formations.ErrInvalidLimit, value)
+	count, err := strconv.Atoi(value)
+	if err != nil || count <= 0 {
+		return 0, fmt.Errorf("%w: --%s %q must be a positive whole number", formations.ErrInvalidLimit, flag, value)
 	}
-	return rounds, nil
+	return count, nil
 }
 
 // parseLimitSeconds reads --time or --warn: empty clears (0), otherwise a
@@ -90,15 +93,23 @@ func parseLimitSeconds(flag, value string) (int, error) {
 	return int(duration / time.Second), nil
 }
 
-// limitKnobs reads the three knobs from the flags.
-func limitKnobs(flags limitFlags) (rounds, seconds, warn int, err error) {
-	if rounds, err = parseLimitRounds(*flags.rounds); err != nil {
+// limitKnobValues are the knobs the flags give; 0 is unset.
+type limitKnobValues struct {
+	rounds, seconds, warn, tokens int
+}
+
+// limitKnobs reads the knobs from the flags.
+func limitKnobs(flags limitFlags) (knobs limitKnobValues, err error) {
+	if knobs.rounds, err = parseLimitCount("rounds", *flags.rounds); err != nil {
 		return
 	}
-	if seconds, err = parseLimitSeconds("time", *flags.time); err != nil {
+	if knobs.seconds, err = parseLimitSeconds("time", *flags.time); err != nil {
 		return
 	}
-	warn, err = parseLimitSeconds("warn", *flags.warn)
+	if knobs.warn, err = parseLimitSeconds("warn", *flags.warn); err != nil {
+		return
+	}
+	knobs.tokens, err = parseLimitCount("tokens", *flags.tokens)
 	return
 }
 
@@ -141,7 +152,7 @@ func runLimitCreate(store *formations.Store, args []string, stdout, stderr io.Wr
 		fmt.Fprintln(stderr, commandUsage("limit create"))
 		return 2
 	}
-	rounds, seconds, warn, err := limitKnobs(flags)
+	knobs, err := limitKnobs(flags)
 	if err != nil {
 		return failJSON(stderr, err, *flags.jsonOut, "limit", "")
 	}
@@ -162,7 +173,7 @@ func runLimitCreate(store *formations.Store, args []string, stdout, stderr io.Wr
 		return failDefinitionWrite(stderr, err, *flags.jsonOut, "mission", flags.fs.Arg(0))
 	}
 	result, err := store.CreateLimit(slug, formations.LimitCreateRequest{
-		Title: *flags.title, Target: target, Rounds: rounds, Seconds: seconds, WarnSeconds: warn, X: createX, Y: createY, UpdatedBy: *flags.updatedBy,
+		Title: *flags.title, Target: target, Rounds: knobs.rounds, Seconds: knobs.seconds, WarnSeconds: knobs.warn, Tokens: knobs.tokens, X: createX, Y: createY, UpdatedBy: *flags.updatedBy,
 	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
 		return failDefinitionWrite(stderr, err, *flags.jsonOut, "mission", flags.fs.Arg(0))
@@ -179,7 +190,7 @@ func runLimitUpdate(store *formations.Store, args []string, stdout, stderr io.Wr
 		fmt.Fprintln(stderr, commandUsage("limit update"))
 		return 2
 	}
-	if _, _, _, err := limitKnobs(flags); err != nil {
+	if _, err := limitKnobs(flags); err != nil {
 		return failJSON(stderr, err, *flags.jsonOut, "limit", flags.fs.Arg(1))
 	}
 	slug, err := store.ResolveBoardSelector(flags.fs.Arg(0))
@@ -225,18 +236,21 @@ func limitUpdate(board *formations.BoardDocument, flags limitFlags) (formations.
 		}
 		update.Target = &target
 	}
-	rounds, seconds, warn, err := limitKnobs(flags)
+	knobs, err := limitKnobs(flags)
 	if err != nil {
 		return update, err
 	}
 	if given["rounds"] {
-		update.Rounds = &rounds
+		update.Rounds = &knobs.rounds
 	}
 	if given["time"] {
-		update.Seconds = &seconds
+		update.Seconds = &knobs.seconds
 	}
 	if given["warn"] {
-		update.WarnSeconds = &warn
+		update.WarnSeconds = &knobs.warn
+	}
+	if given["tokens"] {
+		update.Tokens = &knobs.tokens
 	}
 	return update, nil
 }
@@ -296,7 +310,7 @@ func remoteLimitCreate(c *remoteClient, args []string, stdout, stderr io.Writer)
 		fmt.Fprintln(stderr, commandUsage("limit create"))
 		return 2
 	}
-	rounds, seconds, warn, err := limitKnobs(flags)
+	knobs, err := limitKnobs(flags)
 	if err != nil {
 		return failJSON(stderr, err, *flags.jsonOut, "limit", "")
 	}
@@ -306,7 +320,7 @@ func remoteLimitCreate(c *remoteClient, args []string, stdout, stderr io.Writer)
 			return "", nil, err
 		}
 		createX, createY, err := c.freePosition(board, flags.fs, *x, *y)
-		return "createLimit", map[string]any{"title": *flags.title, "target": target, "rounds": rounds, "seconds": seconds, "warnSeconds": warn, "x": createX, "y": createY}, err
+		return "createLimit", map[string]any{"title": *flags.title, "target": target, "rounds": knobs.rounds, "seconds": knobs.seconds, "warnSeconds": knobs.warn, "tokens": knobs.tokens, "x": createX, "y": createY}, err
 	})
 	if err != nil {
 		return remoteFail(stderr, err, *flags.jsonOut, "mission", flags.fs.Arg(0))
@@ -327,7 +341,7 @@ func remoteLimitUpdate(c *remoteClient, args []string, stdout, stderr io.Writer)
 		fmt.Fprintln(stderr, commandUsage("limit update"))
 		return 2
 	}
-	if _, _, _, err := limitKnobs(flags); err != nil {
+	if _, err := limitKnobs(flags); err != nil {
 		return failJSON(stderr, err, *flags.jsonOut, "limit", flags.fs.Arg(1))
 	}
 	data, _, err := c.patchBoard(flags.fs.Arg(0), *flags.updatedBy, func(board *formations.BoardDocument) (string, map[string]any, error) {
@@ -354,6 +368,9 @@ func remoteLimitUpdate(c *remoteClient, args []string, stdout, stderr io.Writer)
 		}
 		if update.WarnSeconds != nil {
 			fields["warnSeconds"] = *update.WarnSeconds
+		}
+		if update.Tokens != nil {
+			fields["tokens"] = *update.Tokens
 		}
 		return "updateLimit", fields, nil
 	})

@@ -1175,7 +1175,7 @@ func runGateJudge(store *formations.Store, args []string, stdout, stderr io.Writ
 }
 
 // grantUsage describes run resume --grant, offline and remote (archon-o7p.8).
-const grantUsage = "give the step a spent Limit card stopped one more allowance (one more round); the ledger records the grant and who gave it"
+const grantUsage = "give the step a spent Limit card stopped one more allowance (one more round, or the card's time or tokens again); the ledger records the grant and who gave it"
 
 // relayedByUsage describes gate approve|reject --relayed-by, offline and remote.
 const relayedByUsage = "slot ID of the seat that typed the operator's confirmed decision; the decider stays human:operator"

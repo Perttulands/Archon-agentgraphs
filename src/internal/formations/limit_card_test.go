@@ -267,11 +267,12 @@ func TestValidationRejectsALimitCardWiredToNothingOrHoldingABadValue(t *testing.
 		{"wired to a gate", "[[limit]]\nid = \"lim_a\"\ntitle = \"Cap\"\ntarget = \"gate_review\"\nrounds = 3\n", FindingInvalidLimit, "Limit Cap covers gate_review, which is not a step or the Input card: wire it to a step, or to the Input card for the whole mission"},
 		{"zero rounds", "[[limit]]\nid = \"lim_a\"\ntitle = \"Cap\"\ntarget = \"fmn_work\"\nrounds = 0\n", FindingInvalidLimit, "Limit Cap holds rounds = 0: rounds must be a positive whole number"},
 		{"two cards on one step", "[[limit]]\nid = \"lim_a\"\ntitle = \"Cap\"\ntarget = \"fmn_work\"\nrounds = 3\n\n[[limit]]\nid = \"lim_b\"\ntitle = \"Second cap\"\ntarget = \"fmn_work\"\nrounds = 5\n", FindingInvalidLimit, "Work has two Limit cards, Cap and Second cap: keep one"},
-		{"no knob", "[[limit]]\nid = \"lim_a\"\ntitle = \"Cap\"\ntarget = \"fmn_work\"\n", FindingEmptyLimit, "Limit Cap sets no limit: give it rounds or time, or delete it"},
+		{"no knob", "[[limit]]\nid = \"lim_a\"\ntitle = \"Cap\"\ntarget = \"fmn_work\"\n", FindingEmptyLimit, "Limit Cap sets no limit: give it rounds, time or tokens, or delete it"},
 		{"zero time", "[[limit]]\nid = \"lim_a\"\ntitle = \"Cap\"\ntarget = \"fmn_work\"\nseconds = 0\n", FindingInvalidLimit, "Limit Cap holds seconds = 0: time must be a positive whole number of seconds"},
 		{"a warning without time", "[[limit]]\nid = \"lim_a\"\ntitle = \"Cap\"\ntarget = \"fmn_work\"\nrounds = 3\nwarnSeconds = 300\n", FindingInvalidLimit, "Limit Cap warns with 5 min left but sets no time: give it time, or clear the warning"},
 		{"a warning before any work", "[[limit]]\nid = \"lim_a\"\ntitle = \"Cap\"\ntarget = \"fmn_work\"\nseconds = 300\nwarnSeconds = 300\n", FindingInvalidLimit, "Limit Cap warns with 5 min left of 5 min, before any work: warn with less time left"},
 		{"a negative warning", "[[limit]]\nid = \"lim_a\"\ntitle = \"Cap\"\ntarget = \"fmn_work\"\nseconds = 300\nwarnSeconds = -1\n", FindingInvalidLimit, "Limit Cap holds warnSeconds = -1: the warning must be a positive whole number of seconds"},
+		{"zero tokens", "[[limit]]\nid = \"lim_a\"\ntitle = \"Cap\"\ntarget = \"fmn_work\"\ntokens = 0\n", FindingInvalidLimit, "Limit Cap holds tokens = 0: tokens must be a positive whole number"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			board, err := parseBoard([]byte(base + "\n" + tc.toml))

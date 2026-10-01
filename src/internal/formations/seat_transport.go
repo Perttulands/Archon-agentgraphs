@@ -53,6 +53,9 @@ type seatTransport interface {
 	WaitInputClear(context.Context, string, *nativeSeat) error
 	WaitTurn(context.Context, *nativeSeat, string, string, func(codexTranscriptTurn) error) (codexTranscriptTurn, error)
 	Snapshot(context.Context, *nativeSeat, string, string) (codexTranscriptTurn, error)
+	// TranscriptPath is the native transcript that took the pointer, or ""
+	// before one has.
+	TranscriptPath(*nativeSeat, string, string) (string, error)
 	End(context.Context, string, *nativeSeat) error
 }
 
@@ -84,6 +87,11 @@ func (realSeatTransport) Snapshot(parent context.Context, s *nativeSeat, cwd, po
 	}
 	turn, _, err := findSeatTurn(s, cwd, pointer)
 	return turn, err
+}
+
+func (realSeatTransport) TranscriptPath(s *nativeSeat, cwd, pointer string) (string, error) {
+	_, selected, err := findSeatTurn(s, cwd, pointer)
+	return selected, err
 }
 
 func (t realSeatTransport) Create(ctx context.Context, socket, name, cwd, root string, v HarnessVariant) (*nativeSeat, error) {

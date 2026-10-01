@@ -13,8 +13,9 @@ import (
 // replay and every reader agree: rounds count a step's starts, or every step
 // start of the run for a card on the Input card; time counts the wall time
 // while the step, or any step for the mission, is running and the run is not
-// blocked. A grant, recorded on the run_resumed that gives it, adds one more
-// allowance: a round, or the card's time again. At the limit the run blocks
+// blocked; tokens count the token_usage the executor recorded for the step,
+// or for every step. A grant, recorded on the run_resumed that gives it, adds
+// one more allowance: a round, or the card's time or tokens again. At the limit the run blocks
 // with the limit on the block itself, resumable only with a grant.
 
 // RunLimitReached is a Limit card's knob as the run used it: Used of Max, Max
@@ -110,12 +111,12 @@ func roundsUse(board *BoardDocument, events []RunEvent, limit LimitNode) *RunLim
 }
 
 // limitSpentBefore is the limit that starting the step now would pass: the
-// step's own card first, then the mission's, rounds before time. Nil means the
-// step may start. A peer step's own rounds are its journal messages, not its
-// starts.
+// step's own card first, then the mission's, rounds before time before
+// tokens. Nil means the step may start. A peer step's own rounds are its
+// journal messages, not its starts.
 func limitSpentBefore(board *BoardDocument, events []RunEvent, formation FormationNode, now time.Time) *RunLimitReached {
 	spent := func(limit LimitNode, rounds bool) *RunLimitReached {
-		uses := []*RunLimitReached{timeUse(board, events, limit, now)}
+		uses := []*RunLimitReached{timeUse(board, events, limit, now), tokensUse(board, events, limit)}
 		if rounds {
 			uses = append([]*RunLimitReached{roundsUse(board, events, limit)}, uses...)
 		}
@@ -216,16 +217,7 @@ type LimitWarning struct {
 func timeBudget(board *BoardDocument, events []RunEvent, nodeID string, now time.Time) (*RunLimitReached, []LimitWarning) {
 	var first *RunLimitReached
 	var warnings []LimitWarning
-	cards := []LimitNode{}
-	if limit, ok := limitCovering(board, nodeID); ok {
-		cards = append(cards, limit)
-	}
-	for _, mission := range board.Missions {
-		if limit, ok := limitCovering(board, mission.ID); ok {
-			cards = append(cards, limit)
-		}
-	}
-	for _, limit := range cards {
+	for _, limit := range coveringLimits(board, nodeID) {
 		use := timeUse(board, events, limit, now)
 		if use == nil {
 			continue
@@ -285,7 +277,7 @@ func (e *RunEngine) peerMessagesUse(board *BoardDocument, events []RunEvent, req
 
 // limitReason says what a spent limit used, plainly: "Review used 3 of 3
 // rounds", "The mission used 20 of 20 rounds, 1 of them granted", "Review
-// used 30 min of 30 min".
+// used 30 min of 30 min", "Review used 51,230 of 50,000 tokens".
 func limitReason(board *BoardDocument, use RunLimitReached) string {
 	who := nodeName(board, use.NodeID)
 	if _, ok := findMission(board, use.NodeID); ok {
@@ -295,6 +287,13 @@ func limitReason(board *BoardDocument, use RunLimitReached) string {
 		reason := fmt.Sprintf("%s used %s of %s", who, durationWords(use.Used), durationWords(use.Max))
 		if use.Granted > 0 {
 			reason += fmt.Sprintf(", %s of it granted", durationWords(use.Granted))
+		}
+		return reason
+	}
+	if use.Kind == LimitKindTokens {
+		reason := fmt.Sprintf("%s used %s of %s", who, strings.TrimSuffix(tokenWords(use.Used), " tokens"), tokenWords(use.Max))
+		if use.Granted > 0 {
+			reason += fmt.Sprintf(", %s of them granted", strings.TrimSuffix(tokenWords(use.Granted), " tokens"))
 		}
 		return reason
 	}
@@ -341,10 +340,13 @@ func runLimitReached(events []RunEvent, index int) *RunLimitReached {
 }
 
 // GrantWords says what a grant gives a spent limit: "one more round", or the
-// card's time again, "5 min more".
+// card's time or tokens again, "5 min more", "50,000 tokens more".
 func GrantWords(limit RunLimitReached) string {
-	if limit.Kind == LimitKindTime {
+	switch limit.Kind {
+	case LimitKindTime:
 		return durationWords(limit.Max-limit.Granted) + " more"
+	case LimitKindTokens:
+		return tokenWords(limit.Max-limit.Granted) + " more"
 	}
 	return "one more round"
 }
@@ -355,6 +357,8 @@ func SpentWords(limit RunLimitReached) string {
 	switch {
 	case limit.Kind == LimitKindTime:
 		return "all " + durationWords(limit.Max) + " of its time"
+	case limit.Kind == LimitKindTokens:
+		return "all " + tokenWords(limit.Max) + " it may spend"
 	case limit.Max == 1:
 		return "its only " + strings.TrimSuffix(limit.Kind, "s")
 	default:

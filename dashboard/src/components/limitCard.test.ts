@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { BoardDocument, LimitNode } from './formationsTypes'
 import {
   durationInput, durationWords, grantWords, leftWords, limitCoverage, limitCoversWords, limitKnobWords, limitLine, limitMeaning, limitSummary, limitUsePhrase,
-  limitWarnWords, limitsCovering, parseDuration, roundsProblem, spentAllowance, tetherLine, timeProblem, warnProblem,
+  limitWarnWords, limitsCovering, parseDuration, roundsProblem, spentAllowance, tetherLine, timeProblem, tokenWords, tokensProblem, warnProblem,
 } from './limitCard'
 
 const step = (id: string, title: string, type = 'solo') => ({ id, type, title, inputs: [], outputs: [], slots: [] })
@@ -51,7 +51,27 @@ describe('Limit card words', () => {
     expect(limitMeaning(board, card('fmn_peers', 40))).toContain('Peer review may hold at most 40 journal messages over all its attempts')
     expect(limitMeaning(board, card('mis', 20))).toContain('The whole mission may make at most 20 step runs, judges included.')
     expect(limitMeaning(board, card('', 3))).toBe('Wired to nothing: drag its handle onto a step, or onto the Input card for the whole mission.')
-    expect(limitMeaning(board, card('fmn_review'))).toBe('It sets no limit yet: give it rounds or time, or delete it.')
+    expect(limitMeaning(board, card('fmn_review'))).toBe('It sets no limit yet: give it rounds, time or tokens, or delete it.')
+  })
+
+  it('states a tokens knob, alone and beside the others, with how it counts (archon-o7p.9)', () => {
+    const tokens = (target: string, extra: Partial<LimitNode> = {}): LimitNode => ({ ...card(target), tokens: 50000, ...extra })
+    expect(tokenWords(1)).toBe('1 token')
+    expect(tokenWords(1234567)).toBe('1,234,567 tokens')
+    expect(limitKnobWords(board, tokens('fmn_review'))).toBe('at most 50,000 tokens')
+    expect(limitKnobWords(board, tokens('fmn_review', { rounds: 3, seconds: 1800 }))).toBe('at most 3 rounds · 30 min · 50,000 tokens')
+    expect(limitSummary(board, tokens('fmn_review'))).toBe('Cap: at most 50,000 tokens')
+    expect(limitSummary(board, tokens('fmn_review', { rounds: 3, seconds: 1800, warnSeconds: 300 }))).toBe('Cap: at most 3 rounds, 30 min of work and 50,000 tokens, warns at 5 min left')
+    expect(limitSummary(board, tokens('mis', { rounds: 20 }))).toBe('Cap: the whole mission may make at most 20 step runs and spend at most 50,000 tokens')
+    expect(limitMeaning(board, tokens('fmn_review'))).toBe('Review may spend at most 50,000 tokens over all its attempts. When they are spent the step stops and the run blocks until you grant 50,000 tokens more. Tokens are approximate: input not read from the cache, cache writes included, plus output, subagents included.')
+    expect(limitMeaning(board, tokens('mis'))).toContain('The whole mission may spend at most 50,000 tokens, counted over every step, judges included.')
+    const spent = { kind: 'tokens' as const, limitId: 'lim_cap', nodeId: 'fmn_review', used: 51230, max: 100000, granted: 50000 }
+    expect(limitUsePhrase(spent, 'Review')).toBe('Review used 51,230 of 100,000 tokens, 50,000 of them granted')
+    expect(spentAllowance(spent)).toBe('all 100,000 tokens it may spend')
+    expect(grantWords(spent)).toBe('50,000 tokens more')
+    expect(tokensProblem('')).toBe('')
+    expect(tokensProblem('50000')).toBe('')
+    for (const value of ['0', '-1', '2.5', 'lots']) expect(tokensProblem(value)).not.toBe('')
   })
 
   it('accepts blank or a positive whole number of rounds', () => {

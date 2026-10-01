@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { formationTypeChoices } from '../components/FormationTypeChip'
 import { END_OUTCOMES, defaultEndTitle, endOutcomeMeaning } from '../components/endNode'
-import { durationInput, durationWords, limitCoverage, limitKnobWords, limitMeaning, limitsCovering, parseDuration, roundsProblem, timeProblem, warnProblem } from '../components/limitCard'
+import { TOKENS_DEFINITION, durationInput, durationWords, limitCoverage, limitKnobWords, limitMeaning, limitsCovering, parseDuration, roundsProblem, timeProblem, tokenWords, tokensProblem, warnProblem } from '../components/limitCard'
 import { GateKindChips, GateKindsFields, draftFromGate, type GateDraft } from '../components/GateEditorDialog'
 import { isSafeBeadsIssueID } from '../components/formationsBeadId'
 import { splitList } from '../components/formationsCockpitDom'
@@ -67,7 +67,7 @@ export interface NodeWindowOps {
 }
 
 /** One change to a Limit card: its target, or one knob in whole seconds or rounds. */
-export type LimitChange = { target?: string; rounds?: number; seconds?: number; warnSeconds?: number }
+export type LimitChange = { target?: string; rounds?: number; seconds?: number; warnSeconds?: number; tokens?: number }
 
 const BEAD_HINT = 'A Beads issue ID such as ctx-ug7.25, or blank.'
 const beadProblem = (value: string) => (value && !isSafeBeadsIssueID(value) ? `Enter a Beads issue ID such as ctx-ug7.25, or leave it blank.` : '')
@@ -381,7 +381,7 @@ function LimitFields({ limit, board, steps, ops }: { limit: LimitNode; board: Bo
       <EditableField label="Rounds" value={limit.rounds ? String(limit.rounds) : ''} placeholder="No rounds set"
         hint="A step's runs, a peer step's journal messages, or the whole mission's step runs. Leave it blank for no limit."
         validate={roundsProblem} onSave={value => ops.setLimit(limit, { rounds: value ? Number(value) : 0 })}>
-        {limit.rounds ? limitKnobWords(board, { ...limit, seconds: undefined }) : undefined}
+        {limit.rounds ? limitKnobWords(board, { ...limit, seconds: undefined, tokens: undefined }) : undefined}
       </EditableField>
       <EditableField label="Time" value={durationInput(limit.seconds)} placeholder="No time set"
         hint="How long the work may run, such as 45s, 30m or 1h30m. Waiting on a human gate does not count. Leave it blank for no time limit."
@@ -392,6 +392,11 @@ function LimitFields({ limit, board, steps, ops }: { limit: LimitNode; board: Bo
         hint="How much time is left when Archon pastes a warning into the seats, such as 5m. It must be shorter than the time. Leave it blank for no warning."
         validate={value => warnProblem(value, limit.seconds)} onSave={value => ops.setLimit(limit, { warnSeconds: parseDuration(value) || 0 })}>
         {limit.warnSeconds ? `warns at ${durationWords(limit.warnSeconds)} left` : undefined}
+      </EditableField>
+      <EditableField label="Tokens" value={limit.tokens ? String(limit.tokens) : ''} placeholder="No tokens set"
+        hint={`How many tokens the work may spend. ${TOKENS_DEFINITION} Leave it blank for no limit.`}
+        validate={tokensProblem} onSave={value => ops.setLimit(limit, { tokens: value ? Number(value) : 0 })}>
+        {limit.tokens ? tokenWords(limit.tokens) : undefined}
       </EditableField>
       <p className="nfield-note limit-meaning" data-testid={`limit-meaning-${limit.id}`}>{limitMeaning(board, limit)}</p>
     </>

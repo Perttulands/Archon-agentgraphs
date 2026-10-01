@@ -1114,7 +1114,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const createLimitAt = useCallback(async (worldX: number, worldY: number, target = '') => {
     const placement = placementForNewNode(worldX, worldY, LIMIT_ROOM)
     const before = boardRef.current
-    const result = await patchBoard({ createLimit: { title: 'Limit', target, rounds: 0, seconds: 0, warnSeconds: 0, x: placement.x, y: placement.y } })
+    const result = await patchBoard({ createLimit: { title: 'Limit', target, rounds: 0, seconds: 0, warnSeconds: 0, tokens: 0, x: placement.x, y: placement.y } })
     if (!before || !result) return
     const created = findAddedByID(before.limits || [], result.board.limits || [])
     if (!created) return
@@ -1138,7 +1138,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (change.rounds !== undefined) restore.rounds = previous.rounds || 0
     if (change.seconds !== undefined) restore.seconds = previous.seconds || 0
     if (change.warnSeconds !== undefined) restore.warnSeconds = previous.warnSeconds || 0
-    const what = change.target !== undefined ? 'target' : change.rounds !== undefined ? 'rounds' : change.seconds !== undefined ? 'time' : 'warning'
+    if (change.tokens !== undefined) restore.tokens = previous.tokens || 0
+    const what = change.target !== undefined ? 'target' : change.rounds !== undefined ? 'rounds' : change.seconds !== undefined ? 'time' : change.tokens !== undefined ? 'tokens' : 'warning'
     recordUndo(`the ${what} of Limit card ${quoted(previous.title, 'untitled')}`, boardStep({ updateLimit: restore }))
     return true
   }, [applyBoardPatch, recordUndo])

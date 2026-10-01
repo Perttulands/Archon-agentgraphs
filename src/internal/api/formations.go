@@ -211,6 +211,7 @@ type formationsCreateLimitRequest struct {
 	Rounds      int    `json:"rounds"`
 	Seconds     int    `json:"seconds"`
 	WarnSeconds int    `json:"warnSeconds"`
+	Tokens      int    `json:"tokens"`
 	X           int    `json:"x"`
 	Y           int    `json:"y"`
 	ExpectedRev int    `json:"expectedRev"`
@@ -226,6 +227,7 @@ type formationsUpdateLimitRequest struct {
 	Rounds      *int    `json:"rounds"`
 	Seconds     *int    `json:"seconds"`
 	WarnSeconds *int    `json:"warnSeconds"`
+	Tokens      *int    `json:"tokens"`
 	ExpectedRev int     `json:"expectedRev"`
 	UpdatedBy   string  `json:"updatedBy"`
 }
@@ -1582,6 +1584,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Rounds:      limit.Rounds,
 			Seconds:     limit.Seconds,
 			WarnSeconds: limit.WarnSeconds,
+			Tokens:      limit.Tokens,
 			X:           limit.X,
 			Y:           limit.Y,
 			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, limit.UpdatedBy),
@@ -1606,6 +1609,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Rounds:      update.Rounds,
 			Seconds:     update.Seconds,
 			WarnSeconds: update.WarnSeconds,
+			Tokens:      update.Tokens,
 			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),

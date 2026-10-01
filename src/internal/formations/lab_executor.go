@@ -106,6 +106,9 @@ func (e *LabFormationExecutor) executeFormation(ctx context.Context, req Formati
 	if err := e.work(ctx, req); err != nil {
 		return FormationExecutionResult{}, err
 	}
+	if err := e.spendTokens(req); err != nil {
+		return FormationExecutionResult{}, err
+	}
 	allowed := e.allowedHarnesses()
 	dispatcher := NewSlotDispatcher(e.store, nil)
 	outputs := make([]string, 0, len(req.Formation.Slots))
@@ -203,6 +206,37 @@ func (e *LabFormationExecutor) work(ctx context.Context, req FormationExecution)
 	case <-timer.C:
 		return nil
 	}
+}
+
+// labTokensPattern is how a lab brief makes a step spend tokens: a line
+// "archon-lab-tokens: 40000" in the step's brief goal.
+var labTokensPattern = regexp.MustCompile(`archon-lab-tokens:\s*(\S+)`)
+
+// spendTokens records the step's lab tokens when a Limit card's tokens cover
+// it, as a seat's transcript would count them, and stops the step when they
+// reach its budget.
+func (e *LabFormationExecutor) spendTokens(req FormationExecution) error {
+	match := labTokensPattern.FindStringSubmatch(req.Brief.Goal)
+	if match == nil || req.TokenBudget <= 0 {
+		return nil
+	}
+	tokens, err := strconv.Atoi(match[1])
+	if err != nil || tokens <= 0 {
+		return runExecutionError("invalid_lab_tokens", fmt.Sprintf("lab tokens %q is not a positive whole number", match[1]), "executor", err)
+	}
+	slotID := ""
+	if len(req.Formation.Slots) > 0 {
+		slotID = req.Formation.Slots[0].ID
+	}
+	if err := e.store.AppendRunEvent(req.RunID, RunEvent{Type: RunEventTokenUsage, NodeID: req.NodeID, SlotID: slotID, Attempt: req.Attempt, Data: map[string]any{
+		"tokens": tokens, "usage": TokenUsage{Input: tokens},
+	}}); err != nil {
+		return err
+	}
+	if tokens >= req.TokenBudget {
+		return ErrTokenBudgetSpent
+	}
+	return nil
 }
 
 func (e *LabFormationExecutor) validateConfiguredBoundary() error {

@@ -40,8 +40,8 @@ harness settings. Archon keeps only what is current.
   `fail` and `judge`.
 - An **End node** ends a path on purpose, with outcome `done` or `rejected`.
   Its only port is `in`; any number of routes may lead into it.
-- A **Limit card** caps the rounds and time of the step it covers, or of the
-  whole mission when it covers the Input card. It is the only run limit.
+- A **Limit card** caps the rounds, time and tokens of the step it covers, or
+  of the whole mission when it covers the Input card. It is the only run limit.
 - A **judge chain** is the formations wired from a gate's `judge` port back to it,
   step to step; a Tool or gate inside it, or no way back, makes it no chain.
   A **pushback edge** is a gate's `fail` wired back to work; it carries the
@@ -259,7 +259,7 @@ A run has no limits unless the mission holds a **Limit card**, and nothing adds
 one for you: without a card a send-back loop continues until its gate passes or
 you stop the run, and a step works as long as it takes. Add a card only when a
 loop or a step needs a guard. It covers one target, a step or the Input card
-(the whole mission), with two optional knobs:
+(the whole mission), with three optional knobs:
 
 - `--rounds` counts how many times the step may run, send-backs and resumed
   re-runs included (for a peer step, how many journal messages its
@@ -270,20 +270,25 @@ loop or a step needs a guard. It covers one target, a step or the Input card
   or a blocked run counts nothing, so a send-back resumes a step with the time
   it has left. `--warn 5m` pastes a warning into the covered seats once when
   that much time is left.
+- `--tokens` counts what the covered seats spend, approximately: input not
+  read from the cache, cache writes included, plus output, subagents
+  included, per dispatch. At the budget the working step stops; a count can
+  pass it by what the seats spent in the last two seconds.
 
 ```bash
 archon $S limit create "$M" --target "$WORK" --rounds 3 --json
 archon $S limit create "$M" --target input --rounds 20 --time 2h --warn 10m --title "Mission cap" --json
 ```
 
-`limit update "$M" "$LIMIT" --rounds <n>|--time <d>|--warn <d>|--target
-<t>|--title <t>` changes a card (an empty `--rounds`, `--time` or `--warn`
-clears that knob) and `limit delete "$M" "$LIMIT"` removes it. Validation
+`limit update "$M" "$LIMIT" --rounds <n>|--time <d>|--warn <d>|--tokens
+<n>|--target <t>|--title <t>` changes a card (an empty `--rounds`, `--time`,
+`--warn` or `--tokens` clears that knob) and `limit delete "$M" "$LIMIT"` removes it. Validation
 rejects a card wired to nothing, a second card on one target, a value that is
 not a positive whole number and a warning without time or not shorter than it
 (`invalid_limit`). At a spent limit the step does not start, or stops when its
 time runs out, and the run blocks with `limit_reached` and a plain reason,
-"Review used 3 of 3 rounds" or "Review used 30 min of 30 min"; see Recover.
+"Review used 3 of 3 rounds", "Review used 30 min of 30 min" or "Review used
+51,230 of 50,000 tokens"; see Recover.
 When a step runs long, check `run seats` (a seat's `waiting` says what it waits
 on) or open the seat; `run wait --until any-change` reports each `seat_state`.
 

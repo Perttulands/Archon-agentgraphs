@@ -101,6 +101,13 @@ type FormationExecution struct {
 	PeerMessages *RunLimitReached
 	// Warnings are the time cards' warnings for this attempt's seats.
 	Warnings []LimitWarning
+	// TokenBudget is how many tokens the attempt may spend before its seats
+	// stop, from the Limit card covering it with the fewest left; 0 when no
+	// card sets tokens. An executor that has a budget records each dispatch's
+	// token_usage and reports ErrTokenBudgetSpent when it stops the seats.
+	TokenBudget int
+	// tokens is the attempt's live count, kept by the executor.
+	tokens *tokenMeter
 }
 
 // LimitReachedError is how an executor stops a step at its Limit card; the
@@ -1864,6 +1871,26 @@ func (e *RunEngine) executeFormation(req FormationExecution) (FormationExecution
 		use.Used = use.Max
 		return &LimitReachedError{Use: use}
 	}
+	// The tokens cards give the attempt what they have left (archon-o7p.9).
+	tokenLimit := tokenBudget(board, events, req.NodeID)
+	if tokenLimit != nil {
+		req.TokenBudget = tokenLimit.Max - tokenLimit.Used
+	}
+	tokensSpent := func(err error) error {
+		if tokenLimit == nil || !errors.Is(err, ErrTokenBudgetSpent) {
+			return err
+		}
+		use := *tokenLimit
+		if limit, ok := findLimit(board, use.LimitID); ok {
+			if events, readErr := e.store.ReadRunEvents(req.RunID); readErr == nil {
+				if current := tokensUse(board, events, limit); current != nil {
+					use = *current
+				}
+			}
+		}
+		use.Used = max(use.Used, use.Max)
+		return &LimitReachedError{Use: use}
+	}
 	if timeLimit != nil {
 		req.Deadline = now.Add(time.Duration(timeLimit.Max-timeLimit.Used) * time.Second)
 		if !now.Before(req.Deadline) {
@@ -1884,7 +1911,7 @@ func (e *RunEngine) executeFormation(req FormationExecution) (FormationExecution
 		if !req.Deadline.IsZero() && (!e.store.now().Before(req.Deadline) || errors.Is(err, ErrFormationTimeoutExceeded)) {
 			return FormationExecutionResult{}, timeSpent()
 		}
-		return result, err
+		return result, tokensSpent(err)
 	}
 	// Coordinator-owned executors without context support run synchronously so a timeout cannot
 	// leave a hidden writer behind after the coordinator releases its lock.
@@ -1893,7 +1920,7 @@ func (e *RunEngine) executeFormation(req FormationExecution) (FormationExecution
 		if !req.Deadline.IsZero() && !e.store.now().Before(req.Deadline) {
 			return FormationExecutionResult{}, timeSpent()
 		}
-		return result, err
+		return result, tokensSpent(err)
 	}
 	type executionResult struct {
 		result FormationExecutionResult
@@ -1909,7 +1936,7 @@ func (e *RunEngine) executeFormation(req FormationExecution) (FormationExecution
 		if !e.store.now().Before(req.Deadline) {
 			return FormationExecutionResult{}, timeSpent()
 		}
-		return result.result, result.err
+		return result.result, tokensSpent(result.err)
 	case <-ctx.Done():
 		if timeLimit != nil && errors.Is(context.Cause(ctx), ErrFormationTimeoutExceeded) {
 			return FormationExecutionResult{}, timeSpent()

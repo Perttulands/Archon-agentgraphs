@@ -1467,6 +1467,8 @@ func (p *fakeWorkerPane) next() string {
 }
 
 type fakeTmuxHarnessClient struct {
+	// transcripts names each seat's native transcript, for token counts.
+	transcripts          map[string]string
 	harness              string
 	sessions             []string
 	pane                 tmuxPaneState

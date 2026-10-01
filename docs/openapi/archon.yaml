@@ -365,8 +365,8 @@ paths:
                   type: string
                 grant:
                   type: boolean
-                  description: Gives the spent Limit card that blocked the run one more round, or its time
-                    again, recorded on the run_resumed as grant {limitId, kind, amount}. Required while the
+                  description: Gives the spent Limit card that blocked the run one more round, or its time or
+                    tokens again, recorded on the run_resumed as grant {limitId, kind, amount}. Required while the
                     run's resumePolicy is grant, refused otherwise.
       responses:
         '202':
@@ -922,8 +922,8 @@ components:
     LimitNode:
       type: object
       description: A Limit card. It covers one target, a step or the Input card (the whole mission), and
-        caps its rounds and time; a run blocks with code limit_reached at a spent card until run resume
-        --grant.
+        caps its rounds, time and tokens; a run blocks with code limit_reached at a spent card until run
+        resume --grant.
       required: [id, title, target]
       properties:
         id:
@@ -948,9 +948,15 @@ components:
           minimum: 1
           description: Time left when the covered seats get a warning pasted once. Needs seconds and is
             shorter than it.
+        tokens:
+          type: integer
+          minimum: 1
+          description: Tokens the target may spend, counted approximately per dispatch from its pointer
+            as input not read from the cache (cache writes included) plus output, subagents included, for
+            the step (or every step, for the Input card). Omitted sets no tokens.
     FormationNode:
       type: object
-      description: An authored formation. A Limit card, not the formation, caps its rounds and time.
+      description: An authored formation. A Limit card, not the formation, caps its rounds, time and tokens.
       properties:
         id:
           type: string
@@ -1583,6 +1589,10 @@ components:
               type: integer
               minimum: 0
               description: Omitted or 0 sets no warning.
+            tokens:
+              type: integer
+              minimum: 0
+              description: Omitted or 0 sets no tokens.
             x:
               type: integer
             y:
@@ -1609,6 +1619,9 @@ components:
               type: integer
               minimum: 0
             warnSeconds:
+              type: integer
+              minimum: 0
+            tokens:
               type: integer
               minimum: 0
             expectedRev:

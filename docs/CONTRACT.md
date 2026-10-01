@@ -33,7 +33,7 @@ decisions; [examples](../examples/) provide reusable missions.
 | End node | Ends a path on purpose (`[[end]]` in TOML: `id`, `title`, `outcome`). Its outcome is `done` or `rejected`. Its only port is `in`, which takes any number of routes; it leads nowhere. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
 | Judge chain | Formations wired from a gate's `judge` port and back to that same port: from the step the port feeds, each step returns to the port, which completes the chain, or hands on to the first step it feeds. A chain that leaves the steps (through a Tool or gate), loops or never returns is no chain, so validation names the gate incomplete; the engine and the cockpit share this rule. The final judge result decides the formation kind. |
-| Limit card | Caps the rounds and time of the step it covers, or of the whole mission when it covers the Input card (`[[limit]]` in TOML, `limits` in JSON: `id`, `title`, `target`, `rounds`, `seconds`, `warnSeconds`). A run has no limits without one. |
+| Limit card | Caps the rounds, time and tokens of the step it covers, or of the whole mission when it covers the Input card (`[[limit]]` in TOML, `limits` in JSON: `id`, `title`, `target`, `rounds`, `seconds`, `warnSeconds`, `tokens`). A run has no limits without one. |
 | Pushback edge | A gate's `fail` connection back to work, delivering feedback and starting the next attempt, capped only by a Limit card. There is no `retry_control` port. |
 | Run | One admitted mission or isolated formation, with definition and persona snapshots and inputs. Later edits affect later runs. |
 | Ledger | Private append-only NDJSON events, ordered by sequence. It records dispatch, results, routing and recovery evidence. |
@@ -320,7 +320,7 @@ Runs have no limits unless the mission holds a Limit card (archon-o7p.8). A
 run without one loops through send-backs until a gate passes or its driver
 stops it; neither a launch nor the daemon sets a limit. A Limit card covers one
 target: a step (a formation), or the Input card for the whole mission. Each
-knob it sets is enforced; both are optional. Its `rounds` knob counts, from
+knob it sets is enforced; all are optional. Its `rounds` knob counts, from
 the ledger:
 
 - on a step, how many times the step may run, send-backs and resumed re-runs
@@ -361,13 +361,36 @@ seats working when it fires, once in the run. Each warning is recorded as
 `limit_warning` (`limitId`, `nodeId`, `slotId`, `attempt`, `text`); the lab
 executor records them without seats.
 
+Its `tokens` knob (archon-o7p.9) counts what the covered seats spend: on a
+step, every dispatch of its attempts, and on the Input card, every dispatch of
+the run, judges included. The count is approximate and the same for both
+harnesses: input the model did not read from its cache, writing to the cache
+included, plus every output token, reasoning included, subagents included,
+counted for each dispatch from its pointer. For Claude Code that is
+`input_tokens + cache_creation_input_tokens + output_tokens` of each assistant
+message after the pointer, once per message id, in the session file and the
+subagent files beside it; for Codex it is how much the session's
+`total_token_usage` grew from its last count before the pointer,
+`input_tokens - cached_input_tokens + output_tokens`. An orchestrated step's
+workers count from the pointers its controller pastes. When a dispatch ends
+or is stopped the executor records `token_usage` (`nodeId`, `slotId`,
+`attempt`, `dispatchId`, `tokens`, `usage` with `input`, `cacheWrite`,
+`cacheRead` and `output`), and the knob counts those records, so replay and
+later attempts read the ledger, not transcripts; only a run whose step a
+tokens knob covers records them. While a step works, its seats' transcripts
+are counted every two seconds, and when the attempt reaches what its cards
+have left the step's seats stop, so a count can pass the budget by what the
+seats spent in between. A lab step whose brief holds `archon-lab-tokens: N`
+spends N tokens.
+
 A step covered by its own card and the mission's card stops at whichever is
 spent first. Before a step starts, the engine checks its card and then the
-mission's, rounds before time; at a spent limit the step does not start, and
-when time runs out the running step stops. The run blocks with `code`
-`limit_reached`, the plain reason ("Review used 3 of 3 rounds", "The mission
-used 20 of 20 rounds, 1 of them granted", "Review used 30 min of 30 min"),
-`resumePolicy` `grant` and the limit as `limit` (`kind` `rounds` or `time`,
+mission's, rounds before time before tokens; at a spent limit the step does
+not start, and when time or tokens run out the running step stops. The run
+blocks with `code` `limit_reached`, the plain reason ("Review used 3 of 3
+rounds", "The mission used 20 of 20 rounds, 1 of them granted", "Review used
+30 min of 30 min", "Review used 51,230 of 50,000 tokens"), `resumePolicy`
+`grant` and the limit as `limit` (`kind` `rounds`, `time` or `tokens`,
 `limitId`, `nodeId` the card's target, `used`, `max` counting grants,
 `granted`; time in seconds). A peer conversation that reaches
 its message count without an agreed result is stopped: its seats are told the
@@ -376,9 +399,9 @@ round their Limit card allows", and the run blocks the same way, keeping the
 journal.
 
 `archon run resume <run> --grant` (API `grant: true`) gives the stopped limit
-one more allowance and resumes: one more round, or the card's time again. The
-`run_resumed` records `grant` (`limitId`, `kind`, `amount`: 1 round, or the
-card's seconds) with the actor, and the run status's `resumePolicy` says
+one more allowance and resumes: one more round, or the card's time or tokens
+again. The `run_resumed` records `grant` (`limitId`, `kind`, `amount`: 1
+round, or the card's seconds or tokens) with the actor, and the run status's `resumePolicy` says
 `grant` while such a block waits. A resume without `--grant` at a spent limit,
 or with it at any other block, is refused with 409 and nothing is recorded.
 There is no automatic loop detection.
@@ -1046,15 +1069,15 @@ top bar or right-click the canvas (End node · done or rejected); an End card
 takes any number of wires into its one port, its window and right-click menu
 change its outcome, and a finished run lights the End nodes its paths reached.
 `archon limit create <mission> --target <step|input> [--rounds <n>] [--time
-<duration>] [--warn <duration>] [--title <title>]` adds a Limit card covering a step, named by ID or title, or the Input
+<duration>] [--warn <duration>] [--tokens <n>] [--title <title>]` adds a Limit card covering a step, named by ID or title, or the Input
 card (`input`, or its ID) for the whole mission; it prints `created <id>`, or
 with `--json` `{mission, layout, limit}`. `archon limit update <mission>
-<limit> [--target] [--rounds] [--time] [--warn] [--title]` changes only what
-it names (an empty `--rounds`, `--time` or `--warn` clears that knob, `--target
+<limit> [--target] [--rounds] [--time] [--warn] [--tokens] [--title]` changes only what
+it names (an empty `--rounds`, `--time`, `--warn` or `--tokens` clears that knob, `--target
 ''` unwires the card) and `archon limit delete <mission> <limit>` removes it. The patch
 operations are `createLimit` (`title`, `target`, `rounds`, `seconds`,
-`warnSeconds`, `x`, `y`), `updateLimit` (`id`, and any of `title`, `target`,
-`rounds`, `seconds`, `warnSeconds`; an empty target unwires the card and a knob
+`warnSeconds`, `tokens`, `x`, `y`), `updateLimit` (`id`, and any of `title`, `target`,
+`rounds`, `seconds`, `warnSeconds`, `tokens`; an empty target unwires the card and a knob
 of 0 clears it) and `deleteLimit` (`id`). `--time` and `--warn` take whole
 seconds as a duration such as `45s`, `30m` or `1h30m`. A write naming a target
 that is not a step or the Input card, or a negative knob, is refused with
@@ -1063,7 +1086,7 @@ Validation reports, as the error `invalid_limit`, a card wired to nothing
 ("Limit Cap is wired to nothing: wire it to a step, or to the Input card for
 the whole mission"), a target that is not a step or the Input card, a second
 card on one target ("Review has two Limit cards, Cap and Guard: keep one"),
-a rounds or seconds value that is not a positive whole number, and a warning
+a rounds, seconds or tokens value that is not a positive whole number, and a warning
 without time or not shorter than the time ("Limit Clock warns with 5 min left
 of 5 min, before any work: warn with less time left"); it warns, as
 `empty_limit`, about a card that sets no knob. Admission refuses a run whose
@@ -1072,16 +1095,18 @@ Limit token from the top bar onto a step or the Input card, or onto empty
 canvas, or right-click the canvas (Limit card); a new card sets no limit and
 opens its window. The card states its knobs ("at most 3 rounds", "at most 40
 journal messages" on a peer step, "at most 20 step runs" for the whole mission,
-"at most 30 min of work", "at most 3 rounds · 30 min") and its warning ("warns
-at 5 min left"), says what it covers, and has a dashed tether to its target;
-drag its handle onto a step or the Input card to rewire it. Its window edits
-the title, target, rounds, time (such as 45s, 30m or 1h30m) and warning; its
+"at most 30 min of work", "at most 3 rounds · 30 min", "at most 50,000
+tokens") and its warning ("warns at 5 min left"), says what it covers, and has
+a dashed tether to its target; drag its handle onto a step or the Input card to
+rewire it. Its window edits the title, target, rounds, time (such as 45s, 30m
+or 1h30m), warning and tokens, and says how tokens count and that the count is
+approximate; its
 right-click menu covers the whole mission, unwires it or deletes it; and every
 edit has its own undo entry. Flow and the covered node's window state the
 limit in words ("the whole mission may work at most 2 h"), and a step's window
 lists the time warnings its seats were given. A run stopped at a spent card
 offers a grant in place of Resume that says what it gives: Grant one more
-round, or the card's time again, Grant 30 min more. `mission list` lists missions; `formation list <mission>`
+round, or the card's time or tokens again, Grant 30 min more. `mission list` lists missions; `formation list <mission>`
 lists its formations with their slots and staffing. `mission inspect <mission>`
 prints the whole mission, `mission inspect <mission> <input>` prints the Input
 card with its reachable chain, and `formation inspect <mission> <formation>`

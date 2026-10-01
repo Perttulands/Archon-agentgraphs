@@ -74,8 +74,8 @@ var nounHelps = []nounHelp{
 		{"delete", "<mission> <end> [--json]", "remove an End node"},
 	}},
 	{noun: "limit", summary: "Limit cards, which cap a step or the whole mission", about: "A Limit card caps the step it covers, or the whole mission when it covers the Input card. At the limit the run blocks until run resume --grant.", commands: []commandHelp{
-		{"create", "<mission> --target <step|input> [--rounds n] [--time 30m] [--warn 5m] [--title text] [--x n] [--y n] [--json]", "add a Limit card. At the limit the run blocks; run resume --grant gives one more round, or the card's time again"},
-		{"update", "<mission> <limit> [--target <step|input>] [--rounds n] [--time 30m] [--warn 5m] [--title text] [--json]", "change a Limit card. Only the flags you give change; an empty --rounds, --time or --warn clears that knob and an empty --target unwires the card"},
+		{"create", "<mission> --target <step|input> [--rounds n] [--time 30m] [--warn 5m] [--tokens n] [--title text] [--x n] [--y n] [--json]", "add a Limit card. At the limit the run blocks; run resume --grant gives one more round, or the card's time or tokens again. Tokens are approximate: input not read from the cache, cache writes included, plus output, subagents included"},
+		{"update", "<mission> <limit> [--target <step|input>] [--rounds n] [--time 30m] [--warn 5m] [--tokens n] [--title text] [--json]", "change a Limit card. Only the flags you give change; an empty --rounds, --time, --warn or --tokens clears that knob and an empty --target unwires the card"},
 		{"delete", "<mission> <limit> [--json]", "remove a Limit card"},
 	}},
 	{noun: "tool", summary: "Tool nodes", about: "A Tool node runs a registered profile on its input.", commands: []commandHelp{
@@ -101,7 +101,7 @@ var nounHelps = []nounHelp{
 		{"wait", "<runId> [--until needs-you|final|any-change] [--since <seq>] [--timeout <duration>] [--reconnect <duration>] [--json]", "block until the run needs you, ends or changes. Needs --server"},
 		{"gates", "<runId> [--json]", "list a run's waiting gates and the seats they asked. Needs --server"},
 		{"seats", "<runId> [--json]", "list a run's seats, their session names and what each waits on. Needs --server"},
-		{"resume", "<runId> [--mode reattach|redispatch] [--grant] [--reason text] [--actor actor] [--json]", "resume a blocked run. --grant gives a step its spent Limit card stopped one more round, or the card's time again"},
+		{"resume", "<runId> [--mode reattach|redispatch] [--grant] [--reason text] [--actor actor] [--json]", "resume a blocked run. --grant gives a step its spent Limit card stopped one more round, or the card's time or tokens again"},
 		{"abort", "<runId> [--reason <reason>] [--requested-by <actor>] [--json]", "stop a run"},
 		{"ask", "<runId> [question] [--json]", "summarize what a run has done, offline"},
 	}},

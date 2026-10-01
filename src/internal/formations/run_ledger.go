@@ -18,7 +18,7 @@ var (
 	ErrRunResumeNotAllowed = errors.New("archon run resume is not allowed")
 	ErrRunEpochBlocked     = errors.New("archon run epoch is blocked")
 	// ErrRunGrantRequired refuses a resume without --grant at a spent limit.
-	ErrRunGrantRequired = errors.New("this run stopped at a spent limit: resume it with --grant to give one more round or the card's time again")
+	ErrRunGrantRequired = errors.New("this run stopped at a spent limit: resume it with --grant to give one more round or the card's time or tokens again")
 	// ErrRunNothingToGrant refuses --grant on a block no limit recorded.
 	ErrRunNothingToGrant = errors.New("this block is not a spent limit, so there is nothing to grant: resume without --grant")
 	// ErrHumanRequestNotPending refuses a verdict on a request that was
@@ -521,18 +521,23 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		}
 		if req.Grant {
 			// One more allowance of the knob the block spent, as the ledger
-			// records who gave it: one round, or the card's time again.
+			// records who gave it: one round, or the card's time or tokens
+			// again.
 			limit := runLimitReached(lifecycle, len(lifecycle)-1)
 			if limit == nil || limit.LimitID == "" {
 				return ErrRunNothingToGrant
 			}
 			amount := 1
-			if limit.Kind == LimitKindTime {
+			if limit.Kind == LimitKindTime || limit.Kind == LimitKindTokens {
 				card, ok := findLimit(runSnapshot, limit.LimitID)
-				if !ok || card.Seconds == nil || *card.Seconds <= 0 {
+				knob := card.Seconds
+				if limit.Kind == LimitKindTokens {
+					knob = card.Tokens
+				}
+				if !ok || knob == nil || *knob <= 0 {
 					return ErrRunNothingToGrant
 				}
-				amount = *card.Seconds
+				amount = *knob
 			}
 			data["grant"] = RunLimitGrant{LimitID: limit.LimitID, Kind: limit.Kind, Amount: amount}
 		}

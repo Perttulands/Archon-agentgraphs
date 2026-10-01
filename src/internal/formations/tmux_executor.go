@@ -296,6 +296,21 @@ func (e *TmuxFormationExecutor) executeFormationContext(parent context.Context, 
 	if len(req.Formation.Slots) == 0 {
 		return FormationExecutionResult{}, runExecutionError("missing_slot", fmt.Sprintf("formation %q has no slots to dispatch", req.NodeID), "executor", nil)
 	}
+	if req.TokenBudget <= 0 {
+		return e.executeFormationKind(ctx, req)
+	}
+	// The attempt's seats stop once their tokens reach its budget (archon-o7p.9).
+	ctx, stopTokens := context.WithCancelCause(ctx)
+	defer stopTokens(nil)
+	req.tokens = newTokenMeter(req.TokenBudget, func() { stopTokens(ErrTokenBudgetSpent) })
+	result, err := e.executeFormationKind(ctx, req)
+	if errors.Is(context.Cause(ctx), ErrTokenBudgetSpent) {
+		return FormationExecutionResult{}, ErrTokenBudgetSpent
+	}
+	return result, err
+}
+
+func (e *TmuxFormationExecutor) executeFormationKind(ctx context.Context, req FormationExecution) (FormationExecutionResult, error) {
 	if req.Formation.Type == FormationTypeOrchestrated {
 		return e.executeOrchestratedFormation(ctx, req)
 	}
@@ -370,6 +385,11 @@ func (e *TmuxFormationExecutor) executeOrchestratedFormation(ctx context.Context
 	}
 	leaderExtra = append(leaderExtra, "Preserve the seeded run cwd, mission goal and Bead context in every worker brief. For every worker task include the run id and require the ARCHON-DONE sentinel in its final answer. Use load-buffer/paste-buffer with bracketed paste, wait for staging, then send Enter once. Never create, adopt, or kill any sessions. Finish after all worker turns complete. Worker completion is independently read from native transcripts.")
 	leaderExtra = append(leaderExtra, outputContractExtraLines(req.Formation)...)
+	// The workers' tokens count from the pointers the controller pastes.
+	for _, baseline := range baselines {
+		stop := e.watchTokens(req, baseline.seat, baseline.binding.Slot.ID, "", baseline.seat.pointer)
+		defer stop()
+	}
 	leader, leaderErr := e.executeSlot(req, controller, allowed, dispatcher, "leader-agentic", leaderExtra, owned)
 	// Observe the workers whether or not the leader finished: a leader that timed
 	// out is exactly when a hung or never-touched worker most needs evidence. The
@@ -695,6 +715,8 @@ func (e *TmuxFormationExecutor) executeBoundSlot(req FormationExecution, binding
 	var consumedOnce sync.Once
 	stopWarnings := e.warnSeat(owned.ctx, req, slot.ID, seat, consumed)
 	defer stopWarnings()
+	stopTokens := e.watchTokens(req, seat, slot.ID, lease.DispatchID, pointer)
+	defer stopTokens()
 	turn, err := e.seatClient.WaitTurn(owned.ctx, seat, e.config.Cwd, pointer, func(turn codexTranscriptTurn) error {
 		defer consumedOnce.Do(func() { close(consumed) })
 		return e.store.AppendRunEvent(req.RunID, RunEvent{Type: "seat_prompt_consumed", NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": binding.SessionName, "nativeSessionId": turn.SessionID, "dispatchId": lease.DispatchID}})
@@ -735,6 +757,59 @@ func (e *TmuxFormationExecutor) warnSeat(ctx context.Context, req FormationExecu
 	return func() {
 		cancel()
 		<-done
+	}
+}
+
+// tokenPoll is how often a dispatch's tokens are counted while it runs. Tests
+// shorten it.
+var tokenPoll = 2 * time.Second
+
+// watchTokens counts a dispatch's tokens in its native transcript while it
+// runs, into the attempt's meter, which stops the attempt at its budget. The
+// returned stop counts once more and records the dispatch's token_usage.
+// Without a budget it does nothing.
+func (e *TmuxFormationExecutor) watchTokens(req FormationExecution, seat *nativeSeat, slotID, dispatchID, pointer string) (stop func()) {
+	if req.tokens == nil || seat == nil {
+		return func() {}
+	}
+	path := ""
+	count := func() TokenUsage {
+		if path == "" {
+			if path, _ = e.seatClient.TranscriptPath(seat, e.config.Cwd, pointer); path == "" {
+				return TokenUsage{}
+			}
+		}
+		usage, _ := dispatchTokens(seat.variant.ID, path, pointer)
+		req.tokens.set(slotID+"/"+dispatchID, usage.Counted())
+		return usage
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(tokenPoll)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				count()
+			}
+		}
+	}()
+	return func() {
+		cancel()
+		<-done
+		usage := count()
+		if path == "" {
+			return
+		}
+		data := map[string]any{"tokens": usage.Counted(), "usage": usage, "harness": seat.variant.ID}
+		if dispatchID != "" {
+			data["dispatchId"] = dispatchID
+		}
+		_ = e.store.AppendRunEvent(req.RunID, RunEvent{Type: RunEventTokenUsage, NodeID: req.NodeID, SlotID: slotID, Attempt: req.Attempt, Data: data})
 	}
 }
 

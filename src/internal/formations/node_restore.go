@@ -125,7 +125,7 @@ func restoredNodeBlock(req NodeRestoreRequest) (string, string, func([]byte) []b
 		if !validToolDefinitionID(limit.ID) {
 			return "", "", nil, invalidNodeRestore("Limit card id %q is invalid", limit.ID)
 		}
-		for _, knob := range []*int{limit.Rounds, limit.Seconds, limit.WarnSeconds} {
+		for _, knob := range []*int{limit.Rounds, limit.Seconds, limit.WarnSeconds, limit.Tokens} {
 			if knob != nil && *knob <= 0 {
 				return "", "", nil, fmt.Errorf("%w: each knob must be a positive whole number", ErrInvalidLimit)
 			}

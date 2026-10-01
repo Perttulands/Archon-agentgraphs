@@ -35,8 +35,9 @@ func (f *conversingSeats) Create(_ context.Context, _, name, _, _ string, varian
 	f.created++
 	return &nativeSeat{name: name, sessionID: name, paneID: name, variant: variant}, nil
 }
-func (*conversingSeats) Ready(context.Context, string, *nativeSeat, string) error  { return nil }
-func (*conversingSeats) WaitInputClear(context.Context, string, *nativeSeat) error { return nil }
+func (*conversingSeats) Ready(context.Context, string, *nativeSeat, string) error   { return nil }
+func (*conversingSeats) WaitInputClear(context.Context, string, *nativeSeat) error  { return nil }
+func (*conversingSeats) TranscriptPath(*nativeSeat, string, string) (string, error) { return "", nil }
 func (*conversingSeats) Snapshot(context.Context, *nativeSeat, string, string) (codexTranscriptTurn, error) {
 	return codexTranscriptTurn{}, nil
 }

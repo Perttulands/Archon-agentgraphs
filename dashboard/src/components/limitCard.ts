@@ -5,10 +5,11 @@ import type { BoardDocument, FormationNode, LimitNode, MissionNode } from './for
  * Limit cards (archon-o7p.8): a run has no limits unless its mission holds one.
  * A card covers one step, or the Input card for the whole mission, and caps its
  * rounds (a step's runs, a peer step's journal messages, or every step run of
- * the mission) and its time (archon-o7p.8.2): wall time while the covered work
- * runs, never while it only waits. These are the words the canvas card, its window, the Flow view,
- * the gate answer panel and the run bar share, as internal/formations
- * limit_node.go and the CLI's run wait say them.
+ * the mission), its time (archon-o7p.8.2): wall time while the covered work
+ * runs, never while it only waits, and its tokens (archon-o7p.9), counted
+ * approximately as TOKENS_DEFINITION says. These are the words the canvas
+ * card, its window, the Flow view, the gate answer panel and the run bar share,
+ * as internal/formations limit_node.go and the CLI's run wait say them.
  */
 
 type Board = Pick<BoardDocument, 'formations'> & Partial<Pick<BoardDocument, 'inputCards' | 'limits'>>
@@ -41,6 +42,24 @@ export function limitsCovering(board: Board, nodeId: string): LimitNode[] {
 
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`
+}
+
+/** How a tokens knob counts, as internal/formations token_usage.go defines it. */
+export const TOKENS_DEFINITION = 'Tokens are approximate: input not read from the cache, cache writes included, plus output, subagents included.'
+
+/** A count with its thousands separated: "51,230". */
+function thousands(count: number): string {
+  return String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+/** A token count in words, as the server's tokenWords says it: "1 token", "50,000 tokens". */
+export function tokenWords(count: number): string {
+  return `${thousands(count)} token${count === 1 ? '' : 's'}`
+}
+
+/** Words joined as a list: "a", "a and b", "a, b and c". */
+function listWords(parts: string[]): string {
+  return parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
 }
 
 /**
@@ -113,14 +132,18 @@ export function limitWarnWords(limit: LimitNode): string {
 
 /**
  * The knobs in words for the card itself: "at most 3 rounds", "at most 30 min
- * of work", "at most 3 rounds · 30 min"; a peer step's rounds are its journal
- * messages and the mission's are its step runs.
+ * of work", "at most 3 rounds · 30 min", "at most 50,000 tokens"; a peer
+ * step's rounds are its journal messages and the mission's are its step runs.
  */
 export function limitKnobWords(board: Board, limit: LimitNode): string {
-  if (!limit.rounds && !limit.seconds) return 'sets no limit yet'
-  if (!limit.seconds) return `at most ${roundsWords(board, limit, limit.rounds!)}`
-  if (!limit.rounds) return `at most ${durationWords(limit.seconds)} of work`
-  return `at most ${roundsWords(board, limit, limit.rounds)} · ${durationWords(limit.seconds)}`
+  const parts = [
+    limit.rounds ? roundsWords(board, limit, limit.rounds) : '',
+    limit.seconds ? durationWords(limit.seconds) : '',
+    limit.tokens ? tokenWords(limit.tokens) : '',
+  ].filter(Boolean)
+  if (!parts.length) return 'sets no limit yet'
+  if (parts.length === 1 && limit.seconds) return `at most ${parts[0]} of work`
+  return `at most ${parts.join(' · ')}`
 }
 
 /** What the card covers, for its face: "Covers Review", "Covers the mission". */
@@ -146,19 +169,23 @@ export function limitCoversWords(board: Board, limit: LimitNode): string {
  */
 export function limitSummary(board: Board, limit: LimitNode): string {
   const name = limit.title || 'Limit'
-  if (!limit.rounds && !limit.seconds) return `${name}: sets no limit yet`
+  if (!limit.rounds && !limit.seconds && !limit.tokens) return `${name}: sets no limit yet`
   const warn = limitWarnWords(limit)
   const tail = warn ? `, ${warn}` : ''
   if (limitCoverage(board, limit).kind === 'mission') {
-    const knobs = [
+    const knobs = listWords([
       limit.rounds ? `make at most ${plural(limit.rounds, 'step run')}` : '',
       limit.seconds ? `work at most ${durationWords(limit.seconds)}` : '',
-    ].filter(Boolean).join(' and ')
+      limit.tokens ? `spend at most ${tokenWords(limit.tokens)}` : '',
+    ].filter(Boolean))
     return `${name}: the whole mission may ${knobs}${tail}`
   }
-  if (!limit.seconds) return `${name}: ${limitKnobWords(board, limit)}`
-  const rounds = limit.rounds ? `${roundsWords(board, limit, limit.rounds)} and ` : ''
-  return `${name}: at most ${rounds}${durationWords(limit.seconds)} of work${tail}`
+  const knobs = listWords([
+    limit.rounds ? roundsWords(board, limit, limit.rounds) : '',
+    limit.seconds ? `${durationWords(limit.seconds)} of work` : '',
+    limit.tokens ? tokenWords(limit.tokens) : '',
+  ].filter(Boolean))
+  return `${name}: at most ${knobs}${tail}`
 }
 
 /** "Limit Cap: at most 3 rounds", for a node window's connections. */
@@ -171,7 +198,7 @@ export function limitMeaning(board: Board, limit: LimitNode): string {
   const coverage = limitCoverage(board, limit)
   if (coverage.kind === 'none') return 'Wired to nothing: drag its handle onto a step, or onto the Input card for the whole mission.'
   if (coverage.kind === 'missing') return 'It covers a step that is no longer in the mission: wire it to a step, or to the Input card for the whole mission.'
-  if (!limit.rounds && !limit.seconds) return 'It sets no limit yet: give it rounds or time, or delete it.'
+  if (!limit.rounds && !limit.seconds && !limit.tokens) return 'It sets no limit yet: give it rounds, time or tokens, or delete it.'
   const sentences: string[] = []
   const step = coverage.kind === 'step' ? coverage.node.title || 'The step' : ''
   if (limit.rounds) {
@@ -196,6 +223,13 @@ export function limitMeaning(board: Board, limit: LimitNode): string {
         : `With ${durationWords(limit.warnSeconds)} left, Archon pastes a warning into its seats.`)
     }
   }
+  if (limit.tokens) {
+    const tokens = tokenWords(limit.tokens)
+    sentences.push(coverage.kind === 'mission'
+      ? `The whole mission may spend at most ${tokens}, counted over every step, judges included. When they are spent the running step stops and the run blocks until you grant ${tokens} more.`
+      : `${step} may spend at most ${tokens} over all its attempts. When they are spent the step stops and the run blocks until you grant ${tokens} more.`)
+    sentences.push(TOKENS_DEFINITION)
+  }
   return sentences.join(' ')
 }
 
@@ -205,14 +239,25 @@ export function roundsProblem(value: string): string {
   return 'Enter a positive whole number of rounds, or leave it blank for no limit.'
 }
 
+/** A typed tokens value: blank for none, else a positive whole number. */
+export function tokensProblem(value: string): string {
+  if (!value || (/^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0)) return ''
+  return 'Enter a positive whole number of tokens, or leave it blank for no limit.'
+}
+
 /**
  * "Review used 3 of 3 rounds", "The mission used 20 of 20 rounds, 1 of them
- * granted", "Review used 30 min of 30 min", as the engine's block reason.
+ * granted", "Review used 30 min of 30 min", "Review used 51,230 of 50,000
+ * tokens", as the engine's block reason.
  */
 export function limitUsePhrase(limit: RunLimitUse, who: string): string {
   if (limit.kind === 'time') {
     const granted = limit.granted ? `, ${durationWords(limit.granted)} of it granted` : ''
     return `${who} used ${durationWords(limit.used)} of ${durationWords(limit.max)}${granted}`
+  }
+  if (limit.kind === 'tokens') {
+    const granted = limit.granted ? `, ${thousands(limit.granted)} of them granted` : ''
+    return `${who} used ${thousands(limit.used)} of ${tokenWords(limit.max)}${granted}`
   }
   const granted = limit.granted ? `, ${limit.granted} of them granted` : ''
   return `${who} used ${limit.used} of ${plural(limit.max, 'round')}${granted}`
@@ -221,12 +266,14 @@ export function limitUsePhrase(limit: RunLimitUse, who: string): string {
 /** A spent card's allowance: "its only round", "all 3 of its rounds", "all 30 min of its time". */
 export function spentAllowance(limit: RunLimitUse): string {
   if (limit.kind === 'time') return `all ${durationWords(limit.max)} of its time`
+  if (limit.kind === 'tokens') return `all ${tokenWords(limit.max)} it may spend`
   return limit.max === 1 ? 'its only round' : `all ${limit.max} of its rounds`
 }
 
-/** What a grant gives a spent card: "one more round", or the card's time again, "30 min more". */
+/** What a grant gives a spent card: "one more round", or the card's time or tokens again, "30 min more". */
 export function grantWords(limit: RunLimitUse | undefined): string {
   if (limit?.kind === 'time') return `${durationWords(limit.max - (limit.granted || 0))} more`
+  if (limit?.kind === 'tokens') return `${tokenWords(limit.max - (limit.granted || 0))} more`
   return 'one more round'
 }
 

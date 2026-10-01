@@ -391,6 +391,10 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("limit", "update", "demo", "Worker cap", "--rounds", "4", "--title", "Worker rounds"))},
 		{args: with(fixed("limit", "update", "demo", "Worker rounds", "--time", "30m", "--warn", "5m"))},
 		{args: with(fixed("limit", "update", "demo", "Worker rounds", "--warn", ""))},
+		// Tokens cap what the step spends (archon-o7p.9).
+		{args: with(fixed("limit", "update", "demo", "Worker rounds", "--tokens", "50000"))},
+		{args: with(fixed("limit", "update", "demo", "Worker rounds", "--tokens", "-3")), errorOnly: true},
+		{args: with(fixed("limit", "update", "demo", "Limit", "--tokens", "200000"))},
 		{args: with(fixed("limit", "update", "demo", "Worker rounds", "--time", "90ms")), errorOnly: true},
 		{args: with(fixed("limit", "update", "demo", "Limit", "--rounds", ""))},
 		{args: with(fixed("limit", "delete", "demo", "Limit"))},

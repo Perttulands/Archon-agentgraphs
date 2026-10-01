@@ -4,7 +4,7 @@ const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/the
 
 const ports = { inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Result' }] }
 type EndNode = { id: string; title: string; outcome: 'done' | 'rejected' }
-type LimitNode = { id: string; title: string; target: string; rounds?: number; seconds?: number; warnSeconds?: number }
+type LimitNode = { id: string; title: string; target: string; rounds?: number; seconds?: number; warnSeconds?: number; tokens?: number }
 export const board: {
   id: string; slug: string; title: string; rev: number; etag: string
   missions: Array<{ id: string; title: string; goal: string; beadId: string }>
@@ -148,7 +148,8 @@ function limitFindings(current: typeof board) {
     if (warn !== undefined && warn <= 0) errors.push({ code: 'invalid_limit', nodeId: limit.id, message: `Limit ${name} holds warnSeconds = ${warn}: the warning must be a positive whole number of seconds` })
     else if (warn !== undefined && limit.seconds === undefined) errors.push({ code: 'invalid_limit', nodeId: limit.id, message: `Limit ${name} warns with ${durationWords(warn)} left but sets no time: give it time, or clear the warning` })
     else if (warn !== undefined && limit.seconds! > 0 && warn >= limit.seconds!) errors.push({ code: 'invalid_limit', nodeId: limit.id, message: `Limit ${name} warns with ${durationWords(warn)} left of ${durationWords(limit.seconds!)}, before any work: warn with less time left` })
-    if (limit.rounds === undefined && limit.seconds === undefined) warnings.push({ code: 'empty_limit', nodeId: limit.id, message: `Limit ${name} sets no limit: give it rounds or time, or delete it` })
+    if (limit.tokens !== undefined && limit.tokens <= 0) errors.push({ code: 'invalid_limit', nodeId: limit.id, message: `Limit ${name} holds tokens = ${limit.tokens}: tokens must be a positive whole number` })
+    if (limit.rounds === undefined && limit.seconds === undefined && limit.tokens === undefined) warnings.push({ code: 'empty_limit', nodeId: limit.id, message: `Limit ${name} sets no limit: give it rounds, time or tokens, or delete it` })
   }
   return { errors, warnings }
 }
@@ -195,7 +196,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
   const endsOf = () => (currentBoard.ends ||= [])
   const limitsOf = () => (currentBoard.limits ||= [])
   // Mirrors the store (checkLimitWrite): a target must be a step or the Input card, and no knob negative.
-  type Knobs = { rounds?: number; seconds?: number; warnSeconds?: number }
+  type Knobs = { rounds?: number; seconds?: number; warnSeconds?: number; tokens?: number }
   const limitRefusal = (target: string | undefined, knobs: Knobs) => {
     if (target && ![...currentBoard.inputCards, ...currentBoard.formations].some(node => node.id === target)) {
       return `"${target}" is not a step or the Input card; a Limit card covers one of them`
@@ -203,6 +204,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (knobs.rounds !== undefined && knobs.rounds < 0) return 'rounds must be a positive whole number'
     if (knobs.seconds !== undefined && knobs.seconds < 0) return 'time must be a positive whole number of seconds'
     if (knobs.warnSeconds !== undefined && knobs.warnSeconds < 0) return 'the warning must be a positive whole number of seconds'
+    if (knobs.tokens !== undefined && knobs.tokens < 0) return 'tokens must be a positive whole number'
     return ''
   }
   let seatsFetches = 0
@@ -292,10 +294,10 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
           return respond({ mission: boardState(), layout: { missionId: board.id, missionRev: currentBoard.rev, etag: `layout-${currentBoard.rev}`, nodes, edges: [] }, endId: id })
         } else if (body.createLimit) {
           // Mirrors the store (CreateLimit): titled Limit unless named; a knob of 0 sets none.
-          const { title, target = '', rounds = 0, seconds = 0, warnSeconds = 0, x, y } = body.createLimit
-          const refused = refuseLimit(target, { rounds, seconds, warnSeconds })
+          const { title, target = '', rounds = 0, seconds = 0, warnSeconds = 0, tokens = 0, x, y } = body.createLimit
+          const refused = refuseLimit(target, { rounds, seconds, warnSeconds, tokens })
           if (refused) return refused
-          const limit: LimitNode = { id: `lim_${currentBoard.rev}`, title: title || 'Limit', target, ...(rounds ? { rounds } : {}), ...(seconds ? { seconds } : {}), ...(warnSeconds ? { warnSeconds } : {}) }
+          const limit: LimitNode = { id: `lim_${currentBoard.rev}`, title: title || 'Limit', target, ...(rounds ? { rounds } : {}), ...(seconds ? { seconds } : {}), ...(warnSeconds ? { warnSeconds } : {}), ...(tokens ? { tokens } : {}) }
           limitsOf().push(limit)
           nodes = [...nodes, { id: limit.id, x, y }]
           currentBoard.rev++
@@ -310,7 +312,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
           if (refused) return refused
           if (title !== undefined) limit.title = title || 'Limit'
           if (target !== undefined) limit.target = target
-          for (const knob of ['rounds', 'seconds', 'warnSeconds'] as const) {
+          for (const knob of ['rounds', 'seconds', 'warnSeconds', 'tokens'] as const) {
             if (knobs[knob] === 0) delete limit[knob]
             else if (knobs[knob] !== undefined) limit[knob] = knobs[knob]
           }

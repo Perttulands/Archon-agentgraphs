@@ -15,7 +15,7 @@ block with `code`, `reason`, `resumeAllowed` and the `nodeIds` it names.
 | `coordinator_interrupted` | The daemon restarted with the run in flight: open dispatches it names, or between steps. | Resume; with open dispatches and no completed evidence, `--mode redispatch`. |
 | `run_work_unfinished` | Work remains that the run still owes. | Resume. |
 | `reachable_node_starved` | A formation can never receive a missing input. | Not resumable. Fix the wiring and start a new run. |
-| `limit_reached` | A Limit card is spent: "Review used 3 of 3 rounds" or "Review used 30 min of 30 min" (`resumePolicy: grant`, `limit` names the card and its `kind`). | With the operator's authority, `run resume "$ARCHON_RUN_ID" --grant --reason '<why more>'` gives one more round, or the card's time again; or `run abort`. A plain resume is refused. |
+| `limit_reached` | A Limit card is spent: "Review used 3 of 3 rounds", "Review used 30 min of 30 min" or "Review used 51,230 of 50,000 tokens" (`resumePolicy: grant`, `limit` names the card and its `kind`). | With the operator's authority, `run resume "$ARCHON_RUN_ID" --grant --reason '<why more>'` gives one more round, or the card's time or tokens again; or `run abort`. A plain resume is refused. |
 | Malformed `archon-verdict` | The judge broke the verdict contract. | Not resumable. Fix the judge brief and start a new run. |
 | `persona_snapshot_invalid` | The run's frozen staffing cannot start a seat. | Start a new run. |
 

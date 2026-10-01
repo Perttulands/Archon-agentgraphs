@@ -19,7 +19,9 @@ import (
 // messages. Time counts wall time while the covered work runs: the step's own
 // attempts, or any step of the mission; waiting on a human gate or a blocked
 // run counts nothing. A warning is pasted once into the covered seats when the
-// time left reaches the card's warnSeconds.
+// time left reaches the card's warnSeconds. Tokens count what the covered
+// seats spend, by the approximate definition in token_usage.go; crossing the
+// budget stops the working step (archon-o7p.9).
 
 // FindingInvalidLimit reports a Limit card that covers nothing, covers a node
 // it cannot, holds a value that is not a positive whole number, or shares its
@@ -34,6 +36,9 @@ const LimitKindRounds = "rounds"
 
 // LimitKindTime is the time knob, counted in whole seconds.
 const LimitKindTime = "time"
+
+// LimitKindTokens is the tokens knob.
+const LimitKindTokens = "tokens"
 
 // RunBlockLimitReached is the code of the block a spent limit records.
 const RunBlockLimitReached = "limit_reached"
@@ -55,6 +60,7 @@ type LimitNode struct {
 	Rounds      *int   `json:"rounds,omitempty"`
 	Seconds     *int   `json:"seconds,omitempty"`
 	WarnSeconds *int   `json:"warnSeconds,omitempty"`
+	Tokens      *int   `json:"tokens,omitempty"`
 }
 
 // LimitCreateRequest sets each knob that is not zero.
@@ -64,6 +70,7 @@ type LimitCreateRequest struct {
 	Rounds      int
 	Seconds     int
 	WarnSeconds int
+	Tokens      int
 	X           int
 	Y           int
 	UpdatedBy   string
@@ -84,6 +91,7 @@ type LimitUpdateRequest struct {
 	Rounds      *int
 	Seconds     *int
 	WarnSeconds *int
+	Tokens      *int
 	UpdatedBy   string
 }
 
@@ -110,7 +118,7 @@ func validLimitTarget(board *BoardDocument, nodeID string) bool {
 	return ok
 }
 
-func checkLimitWrite(board *BoardDocument, target string, rounds, seconds, warnSeconds *int) error {
+func checkLimitWrite(board *BoardDocument, target string, rounds, seconds, warnSeconds, tokens *int) error {
 	if target != "" && !validLimitTarget(board, target) {
 		return fmt.Errorf("%w: %q is not a step or the Input card; a Limit card covers one of them", ErrInvalidLimit, target)
 	}
@@ -122,6 +130,9 @@ func checkLimitWrite(board *BoardDocument, target string, rounds, seconds, warnS
 	}
 	if warnSeconds != nil && *warnSeconds < 0 {
 		return fmt.Errorf("%w: the warning must be a positive whole number of seconds", ErrInvalidLimit)
+	}
+	if tokens != nil && *tokens < 0 {
+		return fmt.Errorf("%w: tokens must be a positive whole number", ErrInvalidLimit)
 	}
 	return nil
 }
@@ -142,13 +153,13 @@ func (s *Store) CreateLimit(slug string, req LimitCreateRequest, opts WriteOptio
 		return nil, ErrPreconditionRequired
 	}
 	limit := LimitNode{ID: newPrefixedID("lim"), Title: strings.TrimSpace(req.Title), Target: strings.TrimSpace(req.Target),
-		Rounds: knob(req.Rounds), Seconds: knob(req.Seconds), WarnSeconds: knob(req.WarnSeconds)}
+		Rounds: knob(req.Rounds), Seconds: knob(req.Seconds), WarnSeconds: knob(req.WarnSeconds), Tokens: knob(req.Tokens)}
 	if limit.Title == "" {
 		limit.Title = defaultLimitTitle()
 	}
 	board, layout, err := s.createNode(slug, opts, nodeCreateCandidate{
 		prepare: func(_ []byte, current *BoardDocument) error {
-			return checkLimitWrite(current, limit.Target, limit.Rounds, limit.Seconds, limit.WarnSeconds)
+			return checkLimitWrite(current, limit.Target, limit.Rounds, limit.Seconds, limit.WarnSeconds, limit.Tokens)
 		},
 		appendBoardBlock: func(raw []byte) []byte { return appendLimitBlock(raw, limit) },
 		node:             LayoutNode{ID: limit.ID, X: req.X, Y: req.Y},
@@ -174,7 +185,7 @@ func (s *Store) UpdateLimit(slug string, req LimitUpdateRequest, opts WriteOptio
 		if req.Target != nil {
 			target = strings.TrimSpace(*req.Target)
 		}
-		if err := checkLimitWrite(current, target, req.Rounds, req.Seconds, req.WarnSeconds); err != nil {
+		if err := checkLimitWrite(current, target, req.Rounds, req.Seconds, req.WarnSeconds, req.Tokens); err != nil {
 			return nil, err
 		}
 		if req.Title != nil {
@@ -192,7 +203,7 @@ func (s *Store) UpdateLimit(slug string, req LimitUpdateRequest, opts WriteOptio
 		for _, knob := range []struct {
 			key   string
 			value *int
-		}{{"rounds", req.Rounds}, {"seconds", req.Seconds}, {"warnSeconds", req.WarnSeconds}} {
+		}{{"rounds", req.Rounds}, {"seconds", req.Seconds}, {"warnSeconds", req.WarnSeconds}, {"tokens", req.Tokens}} {
 			if knob.value == nil {
 				continue
 			}
@@ -286,6 +297,9 @@ func appendLimitBlock(raw []byte, limit LimitNode) []byte {
 	if limit.WarnSeconds != nil {
 		b.WriteString("warnSeconds = " + renderInt(*limit.WarnSeconds) + "\n")
 	}
+	if limit.Tokens != nil {
+		b.WriteString("tokens = " + renderInt(*limit.Tokens) + "\n")
+	}
 	return []byte(b.String())
 }
 
@@ -323,7 +337,7 @@ func decodeLimitNodes(document map[string]any) ([]LimitNode, error) {
 		for _, knob := range []struct {
 			key   string
 			value **int
-		}{{"rounds", &node.Rounds}, {"seconds", &node.Seconds}, {"warnSeconds", &node.WarnSeconds}} {
+		}{{"rounds", &node.Rounds}, {"seconds", &node.Seconds}, {"warnSeconds", &node.WarnSeconds}, {"tokens", &node.Tokens}} {
 			if _, present := table[knob.key]; present {
 				value, err := tomlInt(table, knob.key)
 				if err != nil {
@@ -368,7 +382,7 @@ func parseLimitNodes(raw []byte) []LimitNode {
 			current.Title = value
 		case "target":
 			current.Target = value
-		case "rounds", "seconds", "warnSeconds":
+		case "rounds", "seconds", "warnSeconds", "tokens":
 			var number int
 			if _, err := fmt.Sscanf(value, "%d", &number); err == nil {
 				switch key {
@@ -376,6 +390,8 @@ func parseLimitNodes(raw []byte) []LimitNode {
 					current.Rounds = &number
 				case "seconds":
 					current.Seconds = &number
+				case "tokens":
+					current.Tokens = &number
 				default:
 					current.WarnSeconds = &number
 				}
@@ -445,9 +461,12 @@ func limitFindings(board *BoardDocument) (errs, warnings []BoardFinding) {
 		case *limit.Seconds > 0 && *warn >= *limit.Seconds:
 			add(fmt.Sprintf("Limit %s warns with %s left of %s, before any work: warn with less time left", name, durationWords(*warn), durationWords(*limit.Seconds)))
 		}
-		if limit.Rounds == nil && limit.Seconds == nil {
+		if limit.Tokens != nil && *limit.Tokens <= 0 {
+			add(fmt.Sprintf("Limit %s holds tokens = %d: tokens must be a positive whole number", name, *limit.Tokens))
+		}
+		if limit.Rounds == nil && limit.Seconds == nil && limit.Tokens == nil {
 			warnings = append(warnings, BoardFinding{Code: FindingEmptyLimit, NodeID: limit.ID,
-				Message: fmt.Sprintf("Limit %s sets no limit: give it rounds or time, or delete it", name)})
+				Message: fmt.Sprintf("Limit %s sets no limit: give it rounds, time or tokens, or delete it", name)})
 		}
 	}
 	return errs, warnings
@@ -471,6 +490,30 @@ func durationWords(seconds int) string {
 		parts = append(parts, fmt.Sprintf("%d s", rest))
 	}
 	return strings.Join(parts, " ")
+}
+
+// tokenWords says a token count plainly, with thousands separated: "1 token",
+// "50,000 tokens".
+func tokenWords(count int) string {
+	digits := fmt.Sprint(count)
+	if count < 0 {
+		digits = digits[1:]
+	}
+	var b strings.Builder
+	for index, digit := range digits {
+		if index > 0 && (len(digits)-index)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(digit)
+	}
+	words := b.String()
+	if count < 0 {
+		words = "-" + words
+	}
+	if count == 1 {
+		return words + " token"
+	}
+	return words + " tokens"
 }
 
 func plural(count int, noun string) string {
