@@ -147,7 +147,7 @@ paths:
         '422':
           description: Unprocessable write, such as a code check naming no registered profile. A Tool write returns INVALID_TOOL_MUTATION with a message naming the invalid field or reason. An assignSlot whose harness, model or effort no seat could start with, or that leaves the harness or effort unchosen, returns INVALID_SLOT_SETTINGS with a message naming the slot and the fix, including the effort policy when the effort is missing.
         '400':
-          description: Invalid mutation. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (brief beadId). An Input card humanChannel other than notify or session returns INVALID_HUMAN_CHANNEL naming the allowed values. makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. An invalid mission slug returns BAD_REQUEST 'Invalid mission slug'.
+          description: Invalid mutation. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (brief beadId). An Input card humanChannel other than notify or session returns INVALID_HUMAN_CHANNEL naming the allowed values. A malformed or repeated input name or an unknown input kind returns INVALID_MISSION_INPUT. makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. An invalid mission slug returns BAD_REQUEST 'Invalid mission slug'.
       parameters:
       - in: header
         name: If-Match
@@ -191,7 +191,12 @@ paths:
         name: mission
         schema:
           type: string
-        description: Only runs of this mission slug
+        description: Only the runs of the mission now under this slug or ID; none for a mission that does not exist, and none of a deleted mission that had the same slug.
+      - in: query
+        name: needs
+        schema:
+          const: you
+        description: Only open runs that need the operator, waiting at a human gate or blocked.
       responses:
         '200':
           description: Canonical run projections
@@ -227,9 +232,10 @@ paths:
               oneOf:
               - required:
                 - inputCardId
-                - brief
               - required:
                 - formationId
+              description: A mission run starts from its Input card; a single step's run names the formation.
+                Both take the same run fields and the mission's inputs (archon-o7p.3).
               properties:
                 mission:
                   type: string
@@ -237,6 +243,16 @@ paths:
                 inputCardId:
                   type: string
                   description: The Input card to start from.
+                inputs:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: The values the run supplies, by input name. A mission that declares no inputs
+                    takes one required text input, brief, whose value is the Input card's output text unchanged.
+                    Admission reports a required input missing or blank (missing_input), a name the mission
+                    does not declare (unknown_input) and a file or folder value that is not the absolute path
+                    of an existing file or directory (invalid_input) as RUN_ADMISSION_FAILED findings on the
+                    Input card. Omitted means none.
                 cwd:
                   type: string
                   description: Absolute existing seat working directory; omitted or empty creates a private workspace under the configured run workspace root
@@ -245,10 +261,6 @@ paths:
                   items:
                     type: string
                   description: Absolute existing file or directory references, independent of cwd; recorded on the run and supplied to every seat for inspection. Contents are not snapshotted.
-                brief:
-                  type: string
-                  minLength: 1
-                  description: The Input card's output text for this run
                 beadId:
                   type: string
                   pattern: ^[A-Za-z0-9][A-Za-z0-9._-]*$
@@ -256,6 +268,7 @@ paths:
                   type: string
                 actor:
                   type: string
+                  description: Who drives the run, shown as its startedBy; omitted means operator:standalone.
                 expectedRev:
                   type: integer
                   minimum: 1
@@ -489,6 +502,16 @@ paths:
           description: Enveloped data.brief contains dispatchSeq, nodeId, slotId, attempt and text capped at 256 KiB. Only the path recorded by this run's slot_dispatch at that sequence, naming a direct child of the state directory's briefs, is read.
         '404':
           description: No such run, no slot_dispatch at that sequence, or no readable brief
+  /api/runs/{runId}/evidence/mission:
+    parameters:
+    - $ref: '#/components/parameters/RunID'
+    get:
+      summary: Read the mission as the run froze it at admission
+      responses:
+        '200':
+          description: Enveloped data.mission contains missionRev and text, the frozen mission TOML capped at 256 KiB; later edits never change it.
+        '404':
+          description: No such run
   /api/runs/{runId}/evidence/artifacts:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -512,7 +535,7 @@ paths:
       summary: Preview one artifact
       responses:
         '200':
-          description: Enveloped data.artifact contains name, size, modifiedAt, kind (markdown, json, text, image, pdf, binary) and, for textual kinds, text capped at 256 KiB.
+          description: Enveloped data.artifact contains name, size, modifiedAt, kind (markdown, json, text, image, pdf, binary), path (its absolute path on the daemon host) and, for textual kinds, text capped at 256 KiB.
         '404':
           description: No such run or artifact, or a name that leaves the run's artifact directory through .., a symlink or a hard link
   /api/runs/{runId}/artifacts/{name}:
@@ -1067,12 +1090,39 @@ components:
           type: array
           items:
             type: string
+        inputs:
+          type: array
+          description: The values the run supplied, in the mission's declared order.
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+              kind:
+                enum:
+                - text
+                - file
+                - folder
+              value:
+                type: string
         epoch:
           type: integer
         eventCount:
           type: integer
         resumeAllowed:
           type: boolean
+        startedBy:
+          type: string
+          description: The run's driver, the actor its start named; operator:standalone when it named none.
+        startedAt:
+          type: string
+          format: date-time
+          description: When the run started (its first ledger event).
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the run's ledger last changed; a final run ended then.
         projectionVersion:
           const: standalone-trusted-v1
         humanChannel:
@@ -1094,6 +1144,10 @@ components:
                 type: string
               requestedSeq:
                 type: integer
+              requestedAt:
+                type: string
+                format: date-time
+                description: When the gate asked.
               askedSeats:
                 type: array
                 description: Kept seats a session-channel ask was pasted into, in delivery order.
@@ -1657,6 +1711,30 @@ components:
               description: How the mission's human gates reach the operator (ADR-0019). notify, the default,
                 is stored as absent; session is stored as humanChannel. Any other value returns
                 INVALID_HUMAN_CHANNEL and saves nothing.
+            inputs:
+              type: array
+              description: Replaces the mission's declared inputs; an empty array clears them, leaving the
+                implicit required text input brief. A name is a lowercase letter followed by lowercase letters,
+                digits or underscores, unique in the mission; a blank kind is text. Anything else returns
+                INVALID_MISSION_INPUT and saves nothing. Step briefs reference an input as {name}.
+              items:
+                type: object
+                additionalProperties: false
+                required:
+                - name
+                properties:
+                  name:
+                    type: string
+                    pattern: ^[a-z][a-z0-9_]{0,63}$
+                  kind:
+                    enum:
+                    - text
+                    - file
+                    - folder
+                  required:
+                    type: boolean
+                  description:
+                    type: string
             expectedRev:
               type: integer
             updatedBy:

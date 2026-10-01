@@ -39,12 +39,16 @@ func (h *FormationsHandler) SetNeedsYouNotifier(notifier formations.NeedsYouNoti
 }
 
 type formationsRunStartRequest struct {
-	Board       string               `json:"mission"`
-	MissionID   string               `json:"inputCardId"`
-	FormationID string               `json:"formationId"`
-	Actor       string               `json:"actor"`
-	Limits      formations.RunLimits `json:"limits"`
-	ExpectedRev int                  `json:"expectedRev"`
+	Board        string               `json:"mission"`
+	MissionID    string               `json:"inputCardId"`
+	FormationID  string               `json:"formationId"`
+	Actor        string               `json:"actor"`
+	Limits       formations.RunLimits `json:"limits"`
+	ExpectedRev  int                  `json:"expectedRev"`
+	Cwd          string               `json:"cwd"`
+	ContextPaths []string             `json:"contextPaths"`
+	BeadID       string               `json:"beadId"`
+	Inputs       map[string]string    `json:"inputs"`
 }
 
 type formationsRunAbortRequest struct {
@@ -469,8 +473,10 @@ type formationsUpdateMissionRequest struct {
 	Files        *[]string `json:"files"`
 	InputHint    *string   `json:"inputHint"`
 	HumanChannel *string   `json:"humanChannel"`
-	ExpectedRev  int       `json:"expectedRev"`
-	UpdatedBy    string    `json:"updatedBy"`
+	// Inputs, when present, replace the declared inputs; an empty list clears them.
+	Inputs      *[]formations.MissionInput `json:"inputs"`
+	ExpectedRev int                        `json:"expectedRev"`
+	UpdatedBy   string                     `json:"updatedBy"`
 }
 
 // formationsUpdateGateRequest sets only the fields present in the JSON object.
@@ -617,7 +623,14 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 		writeFormationsError(w, formations.ErrConflict)
 		return
 	}
-	if err := formations.CheckRunAdmission(board, h.personas, formations.RunAdmissionScope{MissionID: request.MissionID, FormationID: request.FormationID}); err != nil {
+	if err := formations.ValidateRunLimits(request.Limits); err != nil {
+		writeFormationsError(w, err)
+		return
+	}
+	if request.Inputs == nil {
+		request.Inputs = map[string]string{}
+	}
+	if err := formations.CheckRunAdmission(board, h.personas, formations.RunAdmissionScope{MissionID: request.MissionID, FormationID: request.FormationID, Inputs: request.Inputs}); err != nil {
 		writeFormationsError(w, err)
 		return
 	}
@@ -632,9 +645,13 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		status, err := engine.RunFormation(slug, request.FormationID, formations.FormationRunRequest{
-			Actor:    request.Actor,
-			Personas: h.personas,
-			Limits:   request.Limits,
+			Actor:        request.Actor,
+			Personas:     h.personas,
+			Limits:       request.Limits,
+			Cwd:          request.Cwd,
+			ContextPaths: request.ContextPaths,
+			BeadID:       request.BeadID,
+			Inputs:       request.Inputs,
 		})
 		if err != nil {
 			writeFormationsError(w, err)
@@ -645,6 +662,10 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 	}
 	status, err := engine.RunMission(slug, formations.RunStartRequest{
 		MissionID:         request.MissionID,
+		Cwd:               request.Cwd,
+		ContextPaths:      request.ContextPaths,
+		BeadID:            request.BeadID,
+		Inputs:            request.Inputs,
 		Actor:             request.Actor,
 		ExpectedBoardETag: r.Header.Get("If-Match"),
 		ExpectedBoardRev:  expectedRev,
@@ -1404,6 +1425,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Files:        update.Files,
 			InputHint:    update.InputHint,
 			HumanChannel: update.HumanChannel,
+			Inputs:       update.Inputs,
 			UpdatedBy:    patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
@@ -1793,6 +1815,8 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusBadRequest, "INVALID_END_OUTCOME", fieldErrorMessage(err, formations.ErrInvalidEndOutcome))
 	case errors.Is(err, formations.ErrInvalidHumanChannel):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_HUMAN_CHANNEL", fieldErrorMessage(err, formations.ErrInvalidHumanChannel))
+	case errors.Is(err, formations.ErrInvalidMissionInput):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_MISSION_INPUT", fieldErrorMessage(err, formations.ErrInvalidMissionInput))
 	case errors.Is(err, formations.ErrInvalidControllerRole):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_CONTROLLER_ROLE", fieldErrorMessage(err, formations.ErrInvalidControllerRole))
 	case errors.Is(err, formations.ErrInvalidPortDirection):

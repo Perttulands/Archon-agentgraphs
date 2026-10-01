@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -64,12 +65,20 @@ type RunEngine struct {
 	needsYouBoardURL string
 }
 
+// FormationRunRequest starts one step on its own. It takes the run fields a
+// mission run takes: cwd (empty allocates a workspace), context paths, Bead
+// and the mission's inputs.
 type FormationRunRequest struct {
 	ExpectedBoardRev  int
 	ExpectedBoardETag string
 	Actor             string
 	Personas          *PersonaStore
 	Limits            RunLimits
+	Cwd               string
+	ContextPaths      []string
+	BeadID            string
+	// Inputs, when not nil, must pass the mission's input checks (archon-o7p.3).
+	Inputs map[string]string
 }
 
 type FormationExecution struct {
@@ -327,11 +336,19 @@ func (e *RunEngine) PrepareFormationRun(slug, formationID string, req FormationR
 	if err := preflightIsolatedFormationDefinition(board, formation.ID); err != nil {
 		return nil, nil, err
 	}
+	if err := ValidateRunContextPaths(req.ContextPaths); err != nil {
+		return nil, nil, err
+	}
+	if req.Inputs != nil {
+		if findings := runInputFindings(board, req.Inputs); len(findings) > 0 {
+			return nil, nil, &RunAdmissionError{Findings: findings}
+		}
+	}
 	personas := req.Personas
 	if personas == nil {
 		personas = e.personas
 	}
-	started, mission, seedInput, err := e.startFormationRun(slug, board, formation, req.Actor, personas, req.Limits)
+	started, mission, seedInput, err := e.startFormationRun(slug, board, formation, personas, req)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -888,17 +905,19 @@ func (e *RunEngine) appendOpenDispatchReattachFailure(runID string, refs []openD
 	})
 }
 
-func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formation FormationNode, actor string, personas *PersonaStore, limits RunLimits) (*RunStartResult, MissionNode, RunInputRef, error) {
+func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formation FormationNode, personas *PersonaStore, req FormationRunRequest) (*RunStartResult, MissionNode, RunInputRef, error) {
 	bindings, err := resolveRunBindings(board, personas)
 	if err != nil {
 		return nil, MissionNode{}, RunInputRef{}, err
 	}
 	goal := ""
-	beadID := ""
 	if formation.Brief != nil {
 		goal = formation.Brief.Goal
-		beadID = formation.Brief.BeadID
 	}
+	inputs := ResolveRunInputs(board, req.Inputs)
+	// The step's brief is the run's objective, with its {name} references
+	// resolved as the brief itself is at dispatch.
+	goal = SubstituteRunInputs(goal, MissionRunInputs(board), inputs)
 	mission := MissionNode{
 		ID:    "single_" + formation.ID,
 		Title: "Single formation: " + formation.Title,
@@ -927,6 +946,12 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 	if err := writeRunArtifactExclusiveAt(runDirectory, runID+".bindings.toml", bindingsRaw); err != nil {
 		return nil, MissionNode{}, RunInputRef{}, err
 	}
+	cwd := req.Cwd
+	if cwd == "" {
+		if cwd, err = e.store.allocateRunWorkspace(runID); err != nil {
+			return nil, MissionNode{}, RunInputRef{}, err
+		}
+	}
 	started := &RunStartResult{
 		RunID:                runID,
 		BoardSlug:            slug,
@@ -939,11 +964,11 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 		RunID:     runID,
 		Seq:       1,
 		Type:      RunEventStarted,
-		Actor:     defaultRunActor(actor),
+		Actor:     defaultRunActor(req.Actor),
 		BoardID:   board.ID,
 		BoardRev:  board.Rev,
 		MissionID: mission.ID,
-		BeadID:    beadID,
+		BeadID:    req.BeadID,
 		Epoch:     0,
 		Attempt:   0,
 		Data: map[string]any{
@@ -953,19 +978,31 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 			"snapshot":         snapshotPath,
 			"bindingsSnapshot": bindingsPath,
 			"inputCardId":      mission.ID,
-			"beadId":           beadID,
+			"beadId":           req.BeadID,
 			"objective":        mission.Goal,
-			"limits":           limits,
+			"cwd":              cwd,
+			"contextPaths":     req.ContextPaths,
+			"inputs":           inputs,
+			"limits":           req.Limits,
 			"mode":             "formation",
 			"formationId":      formation.ID,
 		},
 	}
 	if err := writeInitialRunEventAt(runDirectory, runID, event); err != nil {
+		if req.Cwd == "" {
+			// Remove only our newly allocated empty folder, never existing contents.
+			err = errors.Join(err, os.Remove(cwd))
+		}
 		return nil, MissionNode{}, RunInputRef{}, err
+	}
+	// The step receives the run's inputs, as a mission's first step does.
+	seed := RenderRunInputs(board, inputs)
+	if seed == "" {
+		seed = goal
 	}
 	seedInput := RunInputRef{
 		Ref:  "brief://" + formation.ID,
-		Text: goal,
+		Text: seed,
 	}
 	return started, mission, seedInput, nil
 }
@@ -1569,8 +1606,8 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 		return err
 	}
 	session := RunHumanChannel(board, events) == HumanChannelSession
-	if brief := stringFromEventData(events[0], "brief"); brief != "" {
-		missionText = brief
+	if text := RenderRunInputs(board, RunInputsFromEventData(events[0].Data["inputs"])); text != "" {
+		missionText = text
 	}
 	missionOutputs := map[string]FormationOutputPayload{
 		"out": {Text: missionText},
@@ -1738,6 +1775,14 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 	req.Cwd = stringFromEventData(events[0], "cwd")
 	req.ContextPaths = stringSliceFromAny(events[0].Data["contextPaths"])
 	req.MissionGoal = stringFromEventData(events[0], "objective")
+	// A step brief's {name} references take the run's input values.
+	if strings.Contains(req.Brief.Goal, "{") {
+		board, err := e.readRunBoard(req.RunID)
+		if err != nil {
+			return FormationExecutionResult{}, err
+		}
+		req.Brief.Goal = SubstituteRunInputs(req.Brief.Goal, MissionRunInputs(board), RunInputsFromEventData(events[0].Data["inputs"]))
+	}
 	// Kept seats are reconsidered as a formation starts dispatching (ADR-0019).
 	if err := e.reconsiderKeptSeats(req.RunID, req.NodeID); err != nil {
 		return FormationExecutionResult{}, err

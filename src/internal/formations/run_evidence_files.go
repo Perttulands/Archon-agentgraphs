@@ -26,11 +26,13 @@ type RunArtifactEntry struct {
 }
 
 type RunArtifactPreview struct {
-	Name       string        `json:"name"`
-	Size       int64         `json:"size"`
-	ModifiedAt string        `json:"modifiedAt"`
-	Kind       string        `json:"kind"`
-	Text       *EvidenceText `json:"text,omitempty"`
+	Name       string `json:"name"`
+	Size       int64  `json:"size"`
+	ModifiedAt string `json:"modifiedAt"`
+	Kind       string `json:"kind"`
+	// Path is the artifact's absolute path on the daemon host, for Copy path.
+	Path string        `json:"path"`
+	Text *EvidenceText `json:"text,omitempty"`
 }
 
 type RunBriefEvidence struct {
@@ -136,7 +138,12 @@ func (s *Store) PreviewRunArtifact(runID, name string) (*RunArtifactPreview, err
 		return nil, err
 	}
 	partial := int64(len(head)) < info.Size()
-	preview := &RunArtifactPreview{Name: name, Size: info.Size(), ModifiedAt: info.ModTime().UTC().Format(time.RFC3339), Kind: evidenceArtifactKind(name, head, partial)}
+	workspace, err := s.workspaceAbsolutePath()
+	if err != nil {
+		return nil, err
+	}
+	preview := &RunArtifactPreview{Name: name, Size: info.Size(), ModifiedAt: info.ModTime().UTC().Format(time.RFC3339), Kind: evidenceArtifactKind(name, head, partial),
+		Path: filepath.Join(workspace, ".archon", "artifacts", runID, filepath.FromSlash(name))}
 	if evidenceTextKind(preview.Kind) {
 		redacted := redactEvidenceText(string(head))
 		text, cut := CapEvidenceText(redacted, EvidenceArtifactPreviewMaxBytes)
@@ -190,6 +197,27 @@ func evidenceRawContent(name string, modifiedAt time.Time, body []byte) *RunArti
 		content.Body = []byte(redactEvidenceText(string(body)))
 	}
 	return content
+}
+
+// RunMissionEvidence is the mission a run froze at admission: its revision and
+// its TOML as it ran, which later edits never change.
+type RunMissionEvidence struct {
+	MissionRev int          `json:"missionRev"`
+	Text       EvidenceText `json:"text"`
+}
+
+// ReadRunMission reads the run's frozen mission snapshot.
+func (s *Store) ReadRunMission(runID string) (*RunMissionEvidence, error) {
+	if _, err := s.ReadRunEvents(runID); err != nil {
+		return nil, evidenceNotFound(err)
+	}
+	board, err := s.ReadRunBoard(runID)
+	if err != nil {
+		return nil, err
+	}
+	redacted := redactEvidenceText(board.TOML)
+	text, cut := CapEvidenceText(redacted, EvidenceArtifactPreviewMaxBytes)
+	return &RunMissionEvidence{MissionRev: board.Rev, Text: EvidenceText{Text: text, Bytes: len(redacted), Truncated: cut}}, nil
 }
 
 // ReadRunBrief reads the brief file a run's own slot_dispatch event recorded.

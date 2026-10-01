@@ -65,7 +65,7 @@ func post(t *testing.T, c *Coordinator, path string, body string) *httptest.Resp
 }
 func startRun(t *testing.T, c *Coordinator) string {
 	t.Helper()
-	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"run the proof", "mission":"proof","inputCardId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600}}`)
+	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"run the proof"}, "mission":"proof","inputCardId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600}}`)
 	if w.Code != 202 {
 		t.Fatalf("start %d %s", w.Code, w.Body.String())
 	}
@@ -283,7 +283,7 @@ to = "end_done:in"
 func TestAdmissionTakesARunWithoutLimits(t *testing.T) {
 	for _, body := range []string{`"limits":{},`, `"limits":{"maxDispatch":0,"maxAttempts":0,"wallClockSeconds":0},`, ``} {
 		c, e, _ := fixture(t)
-		w := post(t, c, "/api/runs", `{`+body+`"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
+		w := post(t, c, "/api/runs", `{`+body+`"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"proof"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 		if w.Code != 202 {
 			t.Fatalf("%s admission %d %s", body, w.Code, w.Body.String())
 		}
@@ -311,7 +311,7 @@ func TestAdmissionTakesARunWithoutLimits(t *testing.T) {
 	}
 	for _, limits := range []string{`{"maxDispatch":-1}`, `{"maxAttempts":-1}`, `{"wallClockSeconds":-1}`} {
 		c, _, _ := fixture(t)
-		w := post(t, c, "/api/runs", `{"limits":`+limits+`,"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
+		w := post(t, c, "/api/runs", `{"limits":`+limits+`,"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"proof"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 		if w.Code != 400 {
 			t.Fatalf("limits %s admission %d %s, want 400", limits, w.Code, w.Body.String())
 		}
@@ -328,10 +328,10 @@ func TestAdmissionGivesStepsNoDefaultDuration(t *testing.T) {
 			if mode == "formation" {
 				selector = `"formationId":"fmn_work",`
 			}
-			if w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof",`+selector+`"expectedRev":1,"limits":{"formationTimeoutSeconds":999}}`); w.Code != 400 {
+			if w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"proof"},"mission":"proof",`+selector+`"expectedRev":1,"limits":{"formationTimeoutSeconds":999}}`); w.Code != 400 {
 				t.Fatalf("a default step duration was accepted: %d %s", w.Code, w.Body.String())
 			}
-			w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","mission":"proof",`+selector+`"expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1}}`)
+			w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"proof"},"mission":"proof",`+selector+`"expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1}}`)
 			if w.Code != 202 {
 				t.Fatalf("admission %d %s", w.Code, w.Body.String())
 			}

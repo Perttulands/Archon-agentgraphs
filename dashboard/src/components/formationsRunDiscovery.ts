@@ -38,33 +38,6 @@ export function openRunsByAttention(runs: RunStatusProjection[]): RunStatusProje
     .sort((a, b) => (attentionOrder[a.status] ?? 3) - (attentionOrder[b.status] ?? 3) || (a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0))
 }
 
-/** How many finished runs the run picker offers. */
-export const RECENT_FINISHED_RUNS = 10
-
-/** A board's finished runs, newest first. Run IDs sort by creation time. */
-export function recentFinishedRuns(runs: RunStatusProjection[], limit = RECENT_FINISHED_RUNS): RunStatusProjection[] {
-  return runs
-    .filter(run => run.final)
-    .sort((a, b) => (a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0))
-    .slice(0, limit)
-}
-
-export interface RunChoices {
-  open: RunStatusProjection[]
-  finished: RunStatusProjection[]
-}
-
-/**
- * What the run picker offers: open runs by attention, then recent finished
- * runs. The shown run is always offered, with its own latest status.
- */
-export function runChoices(runs: RunStatusProjection[], shown: RunStatusProjection | null): RunChoices {
-  const all = shown ? [...runs.filter(run => run.runId !== shown.runId), shown] : runs
-  const finished = recentFinishedRuns(all)
-  if (shown?.final && !finished.includes(shown)) finished.push(shown)
-  return { open: openRunsByAttention(all), finished }
-}
-
 /**
  * Chooses the run a board shows. A run the operator chose (by link or picker)
  * stays; otherwise the open run needing attention most; otherwise the run
@@ -91,8 +64,4 @@ const runStatusLabels: Record<string, string> = {
 /** Display wording only; projection values remain unchanged. */
 export function runStatusLabel(status: string): string {
   return runStatusLabels[status] || status
-}
-
-export function runChoiceLabel(run: RunStatusProjection): string {
-  return [runStatusLabel(run.status), `…${run.runId.slice(-6)}`, run.beadId].filter(Boolean).join(' · ')
 }

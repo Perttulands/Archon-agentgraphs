@@ -52,10 +52,12 @@ const (
 )
 
 type RunStartRequest struct {
-	Cwd               string
-	ContextPaths      []string
-	BeadID            string
-	Brief             string
+	Cwd          string
+	ContextPaths []string
+	BeadID       string
+	// Inputs are the values the run supplies by input name. When not nil they
+	// must pass the mission's input checks (archon-o7p.3).
+	Inputs            map[string]string
 	MissionID         string
 	Actor             string
 	ExpectedBoardETag string
@@ -116,26 +118,37 @@ type RunEvent struct {
 }
 
 type RunStatusProjection struct {
-	Cwd           string   `json:"cwd,omitempty"`
-	ContextPaths  []string `json:"contextPaths,omitempty"`
-	RunID         string   `json:"runId"`
-	Status        string   `json:"status"`
-	Final         bool     `json:"final"`
-	BoardSlug     string   `json:"missionSlug"`
-	BoardID       string   `json:"missionId"`
-	BoardRev      int      `json:"missionRev"`
-	MissionID     string   `json:"inputCardId"`
-	BeadID        string   `json:"beadId"`
-	Epoch         int      `json:"epoch"`
-	EventCount    int      `json:"eventCount"`
-	ResumeAllowed bool     `json:"resumeAllowed"`
+	Cwd          string   `json:"cwd,omitempty"`
+	ContextPaths []string `json:"contextPaths,omitempty"`
+	// Inputs are the values the run supplied, in the mission's order.
+	Inputs        []RunInput `json:"inputs,omitempty"`
+	RunID         string     `json:"runId"`
+	Status        string     `json:"status"`
+	Final         bool       `json:"final"`
+	BoardSlug     string     `json:"missionSlug"`
+	BoardID       string     `json:"missionId"`
+	BoardRev      int        `json:"missionRev"`
+	MissionID     string     `json:"inputCardId"`
+	BeadID        string     `json:"beadId"`
+	Epoch         int        `json:"epoch"`
+	EventCount    int        `json:"eventCount"`
+	ResumeAllowed bool       `json:"resumeAllowed"`
 	// EndedBy names who failed or canceled a final run; the reason itself is
 	// run evidence (ADR-0017), since it can quote private text.
 	EndedBy string `json:"endedBy,omitempty"`
+	// StartedBy is the run's driver: the actor that started it.
+	StartedBy string `json:"startedBy,omitempty"`
+	// StartedAt and UpdatedAt are the times of the run's first and latest
+	// ledger events; a final run ended at UpdatedAt.
+	StartedAt string `json:"startedAt,omitempty"`
+	UpdatedAt string `json:"updatedAt,omitempty"`
 }
 
+// RunListFilter selects runs. MissionID lists one mission's runs by its
+// identity, so a mission created again under a deleted one's slug starts with
+// none (archon-n7u.15).
 type RunListFilter struct {
-	BoardSlug string
+	MissionID string
 }
 
 type RunNodeReport struct {
@@ -215,6 +228,11 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 	if err := preflightMissionDefinition(board, mission.ID); err != nil {
 		return nil, err
 	}
+	if req.Inputs != nil {
+		if findings := runInputFindings(board, req.Inputs); len(findings) > 0 {
+			return nil, &RunAdmissionError{Findings: findings}
+		}
+	}
 	bindings, err := resolveRunBindings(board, req.Personas)
 	if err != nil {
 		return nil, err
@@ -251,20 +269,8 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 	// workspace belongs to the run and is retained with its output artifacts.
 	automaticWorkspace := req.Cwd == ""
 	if automaticWorkspace {
-		root := s.RunWorkspaceRoot
-		if root == "" {
-			root = filepath.Join(s.workspaceRoot(), "workspaces")
-		}
-		root, err = filepath.Abs(root)
-		if err != nil {
+		if req.Cwd, err = s.allocateRunWorkspace(runID); err != nil {
 			return nil, err
-		}
-		if err := os.MkdirAll(root, 0700); err != nil {
-			return nil, fmt.Errorf("create run workspace root: %w", err)
-		}
-		req.Cwd = filepath.Join(root, runID)
-		if err := os.Mkdir(req.Cwd, 0700); err != nil {
-			return nil, fmt.Errorf("create run workspace: %w", err)
 		}
 	}
 
@@ -298,8 +304,7 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 			"objective":        mission.Goal,
 			"cwd":              req.Cwd,
 			"contextPaths":     req.ContextPaths,
-			"brief":            req.Brief,
-			"briefSha256":      etag([]byte(req.Brief)),
+			"inputs":           ResolveRunInputs(board, req.Inputs),
 			"limits":           req.Limits,
 		},
 	}
@@ -314,6 +319,27 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 		s.OnRunEvent(event)
 	}
 	return result, nil
+}
+
+// allocateRunWorkspace creates the private workspace of a run that names no
+// cwd, under the configured root or <state-dir>/workspaces.
+func (s *Store) allocateRunWorkspace(runID string) (string, error) {
+	root := s.RunWorkspaceRoot
+	if root == "" {
+		root = filepath.Join(s.workspaceRoot(), "workspaces")
+	}
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(root, 0700); err != nil {
+		return "", fmt.Errorf("create run workspace root: %w", err)
+	}
+	cwd := filepath.Join(root, runID)
+	if err := os.Mkdir(cwd, 0700); err != nil {
+		return "", fmt.Errorf("create run workspace: %w", err)
+	}
+	return cwd, nil
 }
 
 func (s *Store) AppendRunEvent(runID string, event RunEvent) error {
@@ -556,6 +582,7 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 	status := &RunStatusProjection{
 		Cwd:          stringFromEventData(events[0], "cwd"),
 		ContextPaths: stringSliceFromAny(events[0].Data["contextPaths"]),
+		Inputs:       RunInputsFromEventData(events[0].Data["inputs"]),
 		RunID:        runID,
 		Status:       RunStatusRunning,
 		BoardSlug:    stringFromEventData(events[0], "missionSlug"),
@@ -563,6 +590,8 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 		BoardRev:     events[0].BoardRev,
 		MissionID:    events[0].MissionID,
 		BeadID:       events[0].BeadID,
+		StartedBy:    events[0].Actor,
+		StartedAt:    events[0].Timestamp,
 	}
 	for i, event := range events {
 		if event.Seq != i+1 {
@@ -570,6 +599,7 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 		}
 		status.EventCount++
 		status.Epoch = event.Epoch
+		status.UpdatedAt = event.Timestamp
 		switch event.Type {
 		case RunEventStarted, RunEventResumed:
 			status.Status = RunStatusRunning
@@ -660,7 +690,7 @@ func (s *Store) ListRuns(filter RunListFilter) ([]RunStatusProjection, error) {
 		if err != nil {
 			return nil, err
 		}
-		if filter.BoardSlug != "" && status.BoardSlug != filter.BoardSlug {
+		if filter.MissionID != "" && status.BoardID != filter.MissionID {
 			continue
 		}
 		runs = append(runs, *status)

@@ -23,7 +23,8 @@ decisions; [examples](../examples/) provide reusable missions.
 | Noun | Meaning |
 | --- | --- |
 | Mission | The reusable unit: one schema-1 TOML graph file, `<slug>.mission.toml`, with a stable ID, slug and revision. |
-| Input card | The mission's entry node (`[[inputCard]]` in TOML, `inputCards` in JSON) with the mission's goal, input hint and `out` port. A run supplies its input text. A mission has one Input card. |
+| Input card | The mission's entry node (`[[inputCard]]` in TOML, `inputCards` in JSON) with the mission's goal, input hint, declared inputs and `out` port. A mission has one Input card. |
+| Input | A named value each run of the mission supplies: a name, a description, a kind (`text`, `file` or `folder`) and whether it is required. Step briefs reference it as `{name}`. A mission that declares none has one implicit required text input, `brief`. |
 | Formation | A step: the team of agents that does it. `solo` has one seat; `peer` has peer seats; `orchestrated` has a controller directing its bound workers. |
 | Slot | A position in a formation that owns what its seat runs: a harness (`claude-code` or `openai-codex`), a model (blank means the harness default) and an effort, plus an optional role (`agentId`, a persona). A slot without a role is a vanilla agent, such as `claude-code · opus · low`. A seat is the slot's runtime agent session. |
 | Persona (role) | A TOML agent card with generic role text: a summary, capabilities and kind. A new card carries no model or effort; an existing card's harness variant settings are read only by `archon agent spawn`, never by a slot. Presets remain available; local cards can override them. |
@@ -209,7 +210,9 @@ reserved for stale mission revisions or ETags in these edits.
 
 The [delivery mission](../examples/delivery.mission.toml) and its
 [notes](../examples/delivery.notes.toml) add Plan, Beads, a Beads-review judge,
-orchestrated Execution and Final review. Six `delivery-*` preset roles staff it, each slot at `medium` effort.
+orchestrated Execution and Final review. A run supplies one input, `change`,
+which every step's brief references as `{change}`; the target repository is the
+run's cwd and the owning Bead its Bead. Six `delivery-*` preset roles staff it, each slot at `medium` effort.
 Execution uses a Claude controller and three Codex workers; Final review uses
 Astra. Failed Beads review returns directly to Beads. Final review produces a
 report, with no following gate. This graph has no human gate.
@@ -245,15 +248,17 @@ staffed slots (`unstaffed_slot`) whose harness, model and effort can start a
 seat (`invalid_slot_settings`) and whose role, if named, is readable
 (`unavailable_persona`), one controller and a worker in each orchestrated
 formation, complete code checks, judge chains, runnable Tools and a wired Input
-card. Findings cover the nodes the run reaches from its Input card, or the
-selected formation. Formation types, slot counts and slot staffing are checked
-across the whole mission, because the run snapshot binds every formation.
+card, and the run's inputs (see [Mission inputs](#mission-inputs)). Findings
+cover the nodes the run reaches from its Input card, or the selected formation.
+Formation types, slot counts and slot staffing are checked across the whole
+mission, because the run snapshot binds every formation.
 Any finding rejects the start with HTTP 422, error code `RUN_ADMISSION_FAILED`
 and `error.findings` as `{code,nodeId,message}` entries; no run is recorded.
 The engine's own fail-fast checks remain behind this report. The worker continues after the
 client disconnects. A missing receipt requires checking the run list before
-starting again. Omit `cwd` (or send an empty string) to create a private workspace
-for this mission under `<state-dir>/workspaces/<runId>`. The daemon's
+starting again. A mission run and a single step's run take the same run fields:
+`cwd`, `contextPaths`, `beadId` and `inputs`. Omit `cwd` (or send an empty string) to create a private workspace
+for this run under `<state-dir>/workspaces/<runId>`. The daemon's
 `--run-workspace-root` flag can select another absolute root. Admission records
 the resolved directory in `run_started` and run status; every seat uses it.
 Optional `contextPaths` names absolute existing files or directories to inspect as
@@ -269,11 +274,68 @@ referenced projects.
 Rejected admission removes any newly allocated empty workspace. Admitted runs
 retain their workspace and outputs after completion, cancellation or failure.
 For an existing project, supply `cwd` as an absolute existing directory.
-`brief` must be nonempty. Archon reads an existing brief file or sends the argument as literal
-text. The brief becomes the Input card's output; the mission goal remains prompt
-context.
 The run's `beadId` is optional but should identify the owning task. An Input
 card has no Bead ID; a formation brief may name its own.
+
+### Mission inputs
+
+A mission declares on its Input card the named values its runs supply
+(archon-o7p.3), so an agent can start it without reading its steps:
+
+```toml
+[[inputCard]]
+id = "inp_delivery"
+title = "Deliver"
+goal = "Deliver a reviewed change"
+inputs = [
+  { name = "change", kind = "text", required = true, description = "What to deliver and why" },
+  { name = "spec", kind = "file", description = "An existing spec to follow" },
+]
+```
+
+A name is a lowercase letter followed by lowercase letters, digits or
+underscores, unique in the mission. The kind is `text` (the default), `file` or
+`folder`; an input is optional unless `required = true`. Authoring refuses
+anything else with `INVALID_MISSION_INPUT` (CLI code `invalid_mission_input`),
+and `mission validate` reports a hand-written mistake as
+`invalid_mission_input`. A mission that declares no inputs has one implicit
+required text input named `brief`, described by the Input card's input hint.
+
+A run supplies values by name: HTTP `inputs` (`{"change":"..."}`), and on the
+CLI `--input name=value` or `--input-file name=path` (the file's UTF-8 text),
+each repeated per input. `archon mission input <mission>` lists what a run
+supplies. Admission reports, on the Input card, a required input missing or
+blank (`missing_input`: "input change is required: What to deliver and why"),
+a name the mission does not declare (`unknown_input`), and a `file` or
+`folder` value that is not the absolute path of an existing regular file or
+directory (`invalid_input`). Text is kept verbatim; a path is trimmed.
+
+The Input card hands its first step the supplied values: the implicit `brief`
+unchanged, or one `name: value` line per supplied input in declared order. A
+step brief references an input as `{name}`, and each seat's brief carries the
+value in its place, or `(not supplied)` for an optional input the run left out.
+Braces around anything else stay as written. The one escape is `{{name}}`: it
+reaches the seat as a literal `{name}` and is never a reference, so a brief can
+show an agent a placeholder. A reference to a name the mission does not declare
+is the validation error `unknown_input_reference`: "Plan's brief references
+{topic}, but the mission has no input named topic; its inputs are change,
+spec". `run_started` records the supplied values as `inputs`
+(`name`, `kind`, `value`), and run status and the run list project them, so
+resume and restart substitute the same values. A single step's run takes the
+mission's inputs and the same checks, and its step receives them as the first
+step does; its objective, the step's brief, has its references resolved too.
+The mission goal remains prompt context.
+
+In the cockpit, Start mission and a formation's ▶ open one dialog
+(archon-o7p.4). It asks for each input, labelled by its name with its
+description as help: a text box for `text`, an absolute path for `file` and
+`folder`. A required input left blank blocks the start with a message under
+that field, and a refused start lists the daemon's findings in the dialog. It
+also takes the workspace, context paths and Bead. ▶ runs that step on its own
+(Run step), so it offers no human gate choice; a formation never starts without
+the mission's inputs. The Input card's window reads the declared inputs as the
+`{name}` references briefs use and edits them in place, one undo entry per
+save.
 
 Runs have no limits unless the launch sets them. `maxDispatch`, `maxAttempts`
 and `wallClockSeconds` are optional; an absent or zero limit means none, in
@@ -331,11 +393,16 @@ Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
 channel](#human-gates-on-the-session-channel)). Pending human requests appear in
 `waitingGates` with `gateId` and `requestedSeq`.
 
-The public projection includes cwd, context paths and Bead ID but excludes prompt text,
+The public projection includes cwd, context paths, inputs and Bead ID but excludes prompt text,
 artifact contents, brief paths, native session IDs and arbitrary private event
 data. Projections and SSE stay sanitized; the run evidence routes under
 [HTTP contract](#http-contract) serve a run's outputs, gate results, human
 responses, briefs and artifacts to the operator.
+Run status also carries `startedBy`, the run's driver (the `actor` the start
+named, `operator:standalone` when it named none; the cockpit's starts name
+`human:ui`, and the CLI's run starts take `--actor`, default `agent:archon`), and `startedAt` and `updatedAt`, the
+times of its first and latest ledger events; a final run ended at
+`updatedAt`. Each waiting gate carries `requestedAt`, when it asked.
 `run logs` is the same sanitized projection as `run status`. `run follow` prints
 complete enveloped projections from SSE after durable changes, waits through
 human gates and closes only at finality. Interrupting that client stops viewing,
@@ -488,14 +555,30 @@ It writes each rendered brief to `<state-dir>/briefs/lab-*.md`, as a seat would
 receive it. It proves routing, not agent work or the truth of a review.
 
 The cockpit lists a mission's runs from the daemon, so runs started by the CLI,
-an agent or another browser appear. It shows the open run that most needs the
-operator: waiting for a human, then running, then blocked, newest first. A
-picker switches between open runs and the mission's ten most recent finished
-runs; when no run is open, the run bar still offers the finished ones, and a
-reopened finished run can be put away again. `/?mission=<slug>&run=<runId>`, the link that
-notifications carry, opens that mission and keeps that run shown. The address bar
-keeps a chosen run across reloads, and an unknown linked mission or run is
-reported rather than silently replaced.
+an agent or another browser appear. A mission lists only its own runs, by its
+identity: a mission created again under a deleted one's slug starts with none,
+and a link to a run of the deleted mission is reported and not shown
+(archon-n7u.15). It shows the open run that most needs the operator: waiting
+for a human, then running, then blocked, newest first. The run bar's Runs
+button lists every run of the mission (archon-o7p.2), open runs by attention
+and then finished runs newest first, each identified without its ID: its status,
+when it started, how long it took or has run, the start of its first text
+input, and its driver. Choosing one shows it, and a finished run shown can be
+put away. The run bar says when the shown run started, how long it took and who
+drives it; a run waiting at a gate says since when; and a run that ran an
+earlier revision of the mission says so and opens the mission as it ran in a
+file window. Every run that needs the operator, waiting at a human gate or
+blocked, is counted (archon-n7u.29): on the mission picker beside each
+mission ("Scouting · 2 need you"), and in the page title for all missions
+("(3) Scouting · Archon"). When another run of any mission needs the operator,
+the run bar offers it ("1 more needs you"), the one waiting longest at a gate
+first, so after an answer or a stop the next is a click away. Waiting is the
+most visible state: the run bar's badge is filled gold, and the gate waiting
+for the answer has a gold ring and a "waiting for you" chip.
+`/?mission=<slug>&run=<runId>`, the link that notifications carry,
+opens that mission and keeps that run shown. The address bar keeps a chosen run
+across reloads, and an unknown linked mission or run is reported rather than
+silently replaced.
 
 The cockpit shows what a run produced, read from the evidence routes. Each step's
 card lists its latest output as chips: artifact files its ports name, the text
@@ -503,8 +586,8 @@ of ports that name no file, and the seat's report when it adds something. The
 run bar's Produced list leads with a finished run's final steps (those whose
 outputs feed nothing), or a running run's latest step, and a menu holds the
 rest, including artifact files no output names. A chip opens the file in a
-floating file window, rendered by kind, with Open raw and Copy path (relative to
-the state directory) for artifacts; several can be open side by side.
+floating file window, rendered by kind, with Open raw and Copy path (the
+artifact's absolute path on the daemon host); several can be open side by side.
 Node, note and file windows open in the free space nearest what opened them:
 Flow's gutters, or the canvas above and below the graph, shrinking to half
 their remembered size at most to fit. A window leaves its own card or Flow row,
@@ -818,7 +901,7 @@ Read server URL and state directory from the host runbook or environment.
 credentials, query or fragment. Host forwarding reaches the cockpit over the
 tailnet. Source, binary, UI, state, socket and transcript paths are host values,
 never mission constants. Set `ARCHON_SOURCE`, `ARCHON_BIN`, `ARCHON_STATE`, `ARCHON_LISTEN`,
-`ARCHON_SERVER`, `ARCHON_CWD`, `ARCHON_BRIEF` and `ARCHON_BEAD` accordingly. Keep runtime
+`ARCHON_SERVER`, `ARCHON_CWD`, `ARCHON_CHANGE` and `ARCHON_BEAD` accordingly. Keep runtime
 state outside the source checkout. Use Go, Node/npm, Bash, curl and jq.
 
 Build and launch a scratch lab daemon, leaving its terminal open:
@@ -908,8 +991,13 @@ Nodes keep their IDs when edited: `archon formation rename <mission> <formation>
 <title>`, `archon mission update <mission> [<input>]` with `--title`, `--goal`,
 `--file`, `--human-channel` or `--input-hint`, and `archon gate update --title` change only what
 they name, and an empty value clears a field. `<input>` names the Input card
-and may be left out when the mission has one. The Input card's input hint says
-what a run brief should contain; Start mission shows it. Its `humanChannel`
+and may be left out when the mission has one. The Input card's input hint
+describes the implicit `brief` input of a mission that declares none; Start
+mission shows it. `archon mission input <mission> <name> [--kind
+text|file|folder] [--required|--optional] [--description <text>]` declares an
+input or changes only the flags given, `--delete` removes it, and without a
+name the command lists the run's inputs; the patch is `updateInputCard` with
+`inputs`, which replaces the list. Its `humanChannel`
 (`--human-channel` on `mission create|update`) records how its runs' human gates
 reach the operator ([ADR-0019](adr/0019-human-channel-agent-session.md)):
 `notify`, the default, or `session`. `notify` and an empty value store no
@@ -923,7 +1011,7 @@ reference files, such as a gate's rubric, the way formation briefs do: `--file
 repeated for more. On update the given files replace the list, and `--file ''`
 clears it. Name each file by its absolute path. Clicking an
 Input card, formation or gate card opens its node window, where every field is
-read in full and edited in place: titles, the Input card's goal, input hint
+read in full and edited in place: titles, the Input card's goal, inputs, input hint
 and files, a formation's type, brief and staffing, and a gate's kinds,
 check, criterion, judge and files. Each save is one mission edit with undo. Ports, edges, layout and notes are
 unchanged.
@@ -967,12 +1055,13 @@ rejected. The cockpit tags incomplete nodes as drafts and highlights the nodes
 a rejected start names.
 
 For the delivery template the following starts a run without limits; add
-`--max-*` flags only when the run needs a cap. Lab briefs need the synthetic
-verdict described above. Real briefs describe the work to deliver.
+`--max-*` flags only when the run needs a cap. Its one input, `change`,
+describes the work to deliver; in a lab run it carries the synthetic verdict
+described above.
 
 ```bash
 ARCHON_START=$(archon --server "$ARCHON_SERVER" mission run delivery \
-  --brief "$ARCHON_BRIEF" --bead "$ARCHON_BEAD" --json)
+  --input change="$ARCHON_CHANGE" --bead "$ARCHON_BEAD" --json)
 ARCHON_RUN_ID=$(printf '%s\n' "$ARCHON_START" | jq -er '.data.runId')
 archon --server "$ARCHON_SERVER" run status "$ARCHON_RUN_ID" --json
 archon --server "$ARCHON_SERVER" run logs "$ARCHON_RUN_ID" --json
@@ -1135,7 +1224,8 @@ theme document described below, JSON responses use
 under `/api/missions` includes list/create/read/patch/delete, notes, layout,
 validation and change polling. A mission read or edit answers `data.mission`
 (with `layout` and the created or changed node, such as `inputCard`, where it
-applies); a run starts with `mission` and `inputCardId` (or `formationId`). The
+applies); a run starts with `mission` and `inputCardId` (or `formationId`), its
+`inputs` and the other run fields. The
 Input card patch actions are `createInputCard`, `updateInputCard` and
 `deleteInputCard`. Agent routes
 list/create/read/patch persona cards; the roster also serves `harnesses` (each
@@ -1150,7 +1240,9 @@ as it was (the same slot assignment, title, brief, type, controller, gate or
 Input card fields, or judge chain) saves nothing: it answers 200 with the
 current mission, its revision and ETag unchanged, and a stale ETag still conflicts. Tool
 and note edits still save a revision. Runtime routes start/list/read runs
-(`GET /api/runs?mission=<slug>` lists one mission's runs), read projected
+(`GET /api/runs?mission=<slug>` lists the runs of the mission now under that
+slug or ID, and none for a mission that does not exist; `needs=you` keeps the
+open runs waiting at a human gate or blocked), read projected
 events/escalations, stream SSE, abort, resume, read run evidence and record
 exact human verdicts. They all use the coordinator; no request-local executor
 exists.
@@ -1160,7 +1252,7 @@ directory and the briefs its own dispatches recorded.
 
 With `--server`, Archon runs these authoring and read commands through the
 daemon, so an open cockpit sees the edits through its change polling: `mission
-new|list|inspect|notes|note|validate|arrange|create|update|wire`, `formation
+new|list|inspect|notes|note|validate|arrange|create|update|input|wire`, `formation
 list|inspect|create|rename|set-type|assign|unassign|set-brief|add-input|add-output|wire|unwire`,
 `gate create|update|judge`, `end create|update|delete`, `tool create|update|delete|inspect` and `agent
 list|inspect|new|edit`. They take the offline flags and print the offline
@@ -1175,12 +1267,12 @@ retried up to three times. Differences from offline use:
 - Agent cards are the daemon's `--agents-dir`, with the liveness the daemon
   reports, and `agent new --from` names a path on the daemon host. `mission note
   --file` reads locally.
-- Runtime commands (`mission run`, `run`, `gate approve|reject`) print the
+- Runtime commands (`mission run`, `formation run`, `run`, `gate approve|reject`) print the
   daemon's `{success,timestamp,data}` envelope, except `run gates`, `run seats`
   and `gate request`, which require `--json` for that format, and `run wait`,
   which prints its paragraph or its own JSON (see [Waiting on a run](#waiting-on-a-run)); `mission list` and
-  `mission inspect` print offline JSON like the other reads. `formation run`,
-  `run ask` and `agent spawn|attach|retire` remain offline only.
+  `mission inspect` print offline JSON like the other reads. `run ask` and
+  `agent spawn|attach|retire` remain offline only.
 
 `GET /api/missions/{mission}/validation` returns
 `{missionRev,missionEtag,errors,warnings}` for the whole mission, the same report as
@@ -1282,8 +1374,12 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   entries or 8 directory levels. A run without artifacts lists none.
 - `/api/runs/{runId}/evidence/artifacts/{name...}` returns
   `data.artifact` (`name`, `size`, `modifiedAt`, `kind` `markdown`, `json`,
-  `text`, `image`, `pdf` or `binary`), with `text` capped at 256 KiB for textual
-  kinds. A `.pdf` file that starts with `%PDF-` is `pdf`.
+  `text`, `image`, `pdf` or `binary`, and `path`, its absolute path on the
+  daemon host), with `text` capped at 256 KiB for textual kinds. A `.pdf` file
+  that starts with `%PDF-` is `pdf`.
+- `/api/runs/{runId}/evidence/mission` returns `data.mission`
+  (`missionRev`, `text` capped at 256 KiB): the mission's TOML as the run froze
+  it at admission, which later edits never change.
 - `/api/runs/{runId}/artifacts/{name...}` returns the artifact's bytes
   up to 16 MiB; larger files return 413. Text is `text/plain; charset=utf-8`
   and redacted, PNG, JPEG, GIF and WebP keep their image type, a `pdf` is an
@@ -1332,8 +1428,8 @@ there are followed, and only regular files are read. Output and input references
 directory or `ref.external` (its absolute path, which opens in a file window) elsewhere; engine references
 such as `ledger://` name no file and are omitted. Structured fields
 never carry native session IDs, tmux session or pane IDs, `sessionRef`, socket or
-prompt digests, brief or prompt paths, seat report pointers or absolute
-artifact paths, and worker pane captures are not served. Text is served as
+prompt digests, brief or prompt paths or seat report pointers, and worker pane
+captures are not served; an artifact's preview names its absolute path. Text is served as
 recorded apart from redaction, so it can mention host paths such as the cwd.
 
 ### Referenced files

@@ -1,4 +1,5 @@
 import { StartMissionDialog, type RunInputs } from "./StartMissionDialog"
+import { inputCardOf, missionRunInputs } from "./missionInputs"
 /* FormationsCockpit — spatial board editor for Archon.
  *
  * Ported from the D7 prototype (Perttus_vision_for_agent_orchestration/03-formations.{html,js}):
@@ -29,6 +30,7 @@ import {
   fetchRunEscalations,
   fetchRunEvents,
   fetchBoardRuns,
+  fetchRunsNeedingYou,
   fetchRunStatus,
   missingLayoutForBoard,
   patchBoardNote,
@@ -47,7 +49,9 @@ import {
   runStatusFromResponse,
   upsertRunEvent,
 } from './formationsRunState'
-import { chooseBoardRun, readRunLink, runChoiceLabel, runChoices, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
+import { chooseBoardRun, readRunLink, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
+import { RunList, RunRevisionNote, RunWhen } from './RunList'
+import { missionPickLabel, otherRunsNeedingYou, pageTitle, runsOfLiveMissions } from './needsYou'
 import { chooseCurrentBoard, rememberBoardOnDevice } from './currentBoard'
 import { END_ROOM, clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
 import { END_SVG, FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, byRoleName, inSlotsWords, initials, inputFeedLabel, outputRowStatus, roleUses, rolesInUseLabel } from './formationsCockpitVisuals'
@@ -205,6 +209,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const initialRunLink = useRef(readRunLink(window.location.search)).current
   const [pinnedRun, setPinnedRun] = useState({ slug: initialRunLink.board, runId: initialRunLink.run })
   const [boardRuns, setBoardRuns] = useState<RunStatusProjection[]>([])
+  // Every mission's runs that need the operator, for the picker counts and the page title.
+  const [needsYou, setNeedsYou] = useState<RunStatusProjection[]>([])
   // Link problems outlive the board loads that clear ordinary errors.
   const [linkError, setLinkError] = useState('')
   const activeRunRef = useRef<RunStatusProjection | null>(null)
@@ -565,6 +571,41 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const timer = active ? window.setInterval(discover, 5000) : undefined
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [active, pinnedRun, selectedSlug])
+
+  // A mission created again under a deleted one's slug does not take its runs
+  // (archon-n7u.15): a linked or remembered run of the earlier mission is put away.
+  useEffect(() => {
+    if (!board?.id || !activeRun?.missionId || activeRun.missionSlug !== board.slug || activeRun.missionId === board.id) return
+    if (pinnedRun.runId === activeRun.runId) {
+      setPinnedRun({ slug: '', runId: '' })
+      setLinkError(`Run ${activeRun.runId} belongs to an earlier mission "${board.slug}" that was deleted`)
+    }
+    window.localStorage.removeItem(activeRunStorageKey(board.slug))
+    setActiveRun(null)
+    setRunEvents([])
+  }, [activeRun?.missionId, activeRun?.missionSlug, activeRun?.runId, board?.id, board?.slug, pinnedRun.runId])
+
+  // Runs of any mission that need the operator (archon-n7u.29): counted on
+  // the mission picker and in the page title, and offered from the run bar.
+  useEffect(() => {
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const runs = await fetchRunsNeedingYou()
+        if (!cancelled) setNeedsYou(runs)
+      } catch {
+        /* keep the last counts; the next poll retries */
+      }
+    }
+    void poll()
+    const timer = active ? window.setInterval(poll, 5000) : undefined
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [active, activeRun?.status, activeRun?.runId])
+
+  useEffect(() => {
+    if (!active) return
+    document.title = pageTitle(runsOfLiveMissions(needsYou, boards), board?.title || '')
+  }, [active, board?.title, boards, needsYou])
 
   // The address bar names the board and a pinned run, so a reload keeps them.
   useEffect(() => {
@@ -1261,12 +1302,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return true
   }, [patchBoard, recordUndo])
 
-  const updateMissionFields = useCallback(async (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel'>>): Promise<boolean> => {
+  const updateMissionFields = useCallback(async (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel' | 'inputs'>>): Promise<boolean> => {
     const previous = boardRef.current?.inputCards?.find(mission => mission.id === missionId)
     if (!previous) return false
     if (!await patchBoard({ updateInputCard: { id: missionId, ...fields } })) return false
     // An absent field is restored as empty, which clears it.
-    recordUndo(`the edit of Input card ${quoted(previous.title, 'untitled')}`, boardStep({ updateInputCard: { id: missionId, ...Object.fromEntries(Object.keys(fields).map(key => [key, previous[key as keyof typeof fields] ?? (key === 'files' ? [] : '')])) } }))
+    recordUndo(`the edit of Input card ${quoted(previous.title, 'untitled')}`, boardStep({ updateInputCard: { id: missionId, ...Object.fromEntries(Object.keys(fields).map(key => [key, previous[key as keyof typeof fields] ?? (key === 'files' || key === 'inputs' ? [] : '')])) } }))
     return true
   }, [patchBoard, recordUndo])
 
@@ -1474,11 +1515,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [patchBoard, recordUndo])
 
   const [startMission, setStartMission] = useState<MissionNode | null>(null)
+  // ▶ on a formation asks for the mission's inputs before running it alone (archon-o7p.4).
+  const [startStep, setStartStep] = useState<FormationNode | null>(null)
 
   const runMission = useCallback(async (mission: MissionNode, inputs: RunInputs) => {
     const current = boardRef.current
     if (!current) return
-      const result = await startRun(current.etag, { ...inputs, mission: current.slug, inputCardId: mission.id, expectedRev: current.rev, actor: 'agent:ui' })
+      const result = await startRun(current.etag, { ...inputs, mission: current.slug, inputCardId: mission.id, expectedRev: current.rev, actor: 'human:ui' })
         .catch(err => {
           if (err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
           throw err
@@ -1504,29 +1547,24 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     await runMission(mission, inputs)
   }, [runMission, updateMissionFields])
 
-  const runFormation = useCallback(async (formation: FormationNode) => {
+  const runFormation = useCallback(async (formation: FormationNode, inputs: RunInputs) => {
     const current = boardRef.current
     if (!current) return
-    try {
-      const result = await startRun(current.etag, { mission: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'agent:ui' })
-      setAdmissionFindings([])
-      const status = { ...result.status, runId: result.status.runId || result.runId }
-      const events = await fetchRunEvents(status.runId)
-      setRunEvents(events)
-      setActiveRun(status)
-      setEscalations([])
-      setPinnedRun({ slug: current.slug, runId: status.runId })
-      if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
-      else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
-      setError('')
-    } catch (err) {
-      if (err instanceof ApiRequestError && err.findings.length) {
-        setAdmissionFindings(err.findings)
-        setError('')
-        return
-      }
-      setError(err instanceof Error ? err.message : 'Failed to start run')
-    }
+    const result = await startRun(current.etag, { ...inputs, mission: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'human:ui' })
+      .catch(err => {
+        if (err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
+        throw err
+      })
+    setAdmissionFindings([])
+    const status = { ...result.status, runId: result.status.runId || result.runId }
+    const events = await fetchRunEvents(status.runId)
+    setRunEvents(events)
+    setActiveRun(status)
+    setEscalations([])
+    setPinnedRun({ slug: current.slug, runId: status.runId })
+    if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
+    else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
+    setError('')
   }, [])
 
   const refreshRunEvents = useCallback(async (runId: string) => {
@@ -2217,13 +2255,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const formationMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode) => {
     openMenu(event, 'Formation actions', [
-      { label: 'Run formation', action: () => void runFormation(formation) },
+      { label: 'Run formation', action: () => setStartStep(formation) },
       { label: 'Add input port', action: () => void addPortOp(formation, 'input') },
       { label: 'Add output port', action: () => void addPortOp(formation, 'output') },
       ...formationTypeMenuItems(formation),
       { label: 'Delete formation', destructive: true, action: () => deleteFormationOp(formation) },
     ])
-  }, [addPortOp, deleteFormationOp, formationTypeMenuItems, openMenu, runFormation])
+  }, [addPortOp, deleteFormationOp, formationTypeMenuItems, openMenu])
 
   // A slot's menu staffs it in place, empties it on purpose with undo, or makes it the controller.
   const slotMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode, slot: FormationSlot) => {
@@ -2518,7 +2556,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // Roles in use are said in words, counted across the whole mission as the Agents view counts them.
   const rolesInUse = useMemo(() => roleUses(board?.formations || []), [board?.formations])
   const runBadgeClass = activeRun ? activeRun.status : ''
-  const choices = useMemo(() => runChoices(boardRuns, activeRun), [activeRun, boardRuns])
   // Choosing a run pins it to the board; choosing none puts a finished run away.
   const chooseRun = (runId: string) => {
     setLinkError('')
@@ -2530,16 +2567,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setActiveRun(null)
     setRunEvents([])
   }
-  const runPicker = (shownRunId: string) => (
-    <select className="run-picker" aria-label="Choose run" value={shownRunId} onChange={event => chooseRun(event.target.value)}>
-      {!shownRunId ? <option value="">Recent runs…</option> : activeRun?.final ? <option value="">No run shown</option> : null}
-      {choices.open.length ? (
-        <optgroup label="Open">{choices.open.map(run => <option key={run.runId} value={run.runId}>{runChoiceLabel(run)}</option>)}</optgroup>
-      ) : null}
-      {choices.finished.length ? (
-        <optgroup label="Finished">{choices.finished.map(run => <option key={run.runId} value={run.runId}>{runChoiceLabel(run)}</option>)}</optgroup>
-      ) : null}
-    </select>
+  const runList = (
+    <RunList runs={boardRuns} shown={activeRun} missionTitle={board?.title || selectedSlug} onChoose={chooseRun} onPutAway={() => chooseRun('')} />
   )
   const pendingHumanGateId = useMemo(() => openHumanGateId(runEvents), [runEvents])
   const pendingHumanGate = useMemo(() => {
@@ -2581,8 +2610,23 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   )
   const renderRunChip = (nodeId: string) => {
     const state = nodeStates.get(nodeId)
+    // Waiting for the operator is the most visible state on the canvas (archon-n7u.29).
+    if (nodeId === pendingHumanGateId && activeRun && !activeRun.final) return <span className="run-chip waiting" data-testid={`run-chip-${nodeId}`}>waiting for you</span>
     return state === 'blocked' || state === 'failed' ? <span className={`run-chip ${state}`} data-testid={`run-chip-${nodeId}`}>{state}</span> : null
   }
+  // The next run, of any mission, that needs the operator, offered from the run bar.
+  const nextNeedingYou = otherRunsNeedingYou(needsYou, activeRun?.runId || '', boards)
+  const showNeedingYou = nextNeedingYou.length ? (
+    <button type="button" className="run-next-needs-you" data-testid="run-next-needs-you"
+      title={`Show the ${nextNeedingYou[0].status === 'waiting_human' ? 'run waiting for your answer' : 'blocked run'} in ${boards.find(mission => mission.id === nextNeedingYou[0].missionId)?.title || nextNeedingYou[0].missionSlug}`}
+      onClick={() => {
+        const next = nextNeedingYou[0]
+        setPinnedRun({ slug: next.missionSlug, runId: next.runId })
+        if (next.missionSlug !== selectedSlug) selectBoard(next.missionSlug)
+      }}>
+      {nextNeedingYou.length} {activeRun && !activeRun.final && (activeRun.status === 'waiting_human' || activeRun.status === 'blocked') ? 'more ' : ''}need{nextNeedingYou.length === 1 ? 's' : ''} you
+    </button>
+  ) : null
   // The pending human gate's answer panel: in a floating window over the canvas, or in the gate's row in Flow.
   const answerKey = activeRun && pendingHumanGate ? `${activeRun.runId}:${pendingHumanGate.requestedSeq}` : ''
   const answerWindowOpen = Boolean(answerKey) && !(answerWindow.key === answerKey && answerWindow.closed)
@@ -2671,7 +2715,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           mission
           <select aria-label="Mission" value={selectedSlug} onChange={event => selectBoard(event.target.value)} data-testid="board-picker" disabled={boards.length === 0 || Boolean(boardDialog)}>
             {boards.length === 0 ? <option value="">No missions</option> : null}
-            {boards.map(summary => <option key={summary.slug} value={summary.slug}>{summary.title || summary.slug}</option>)}
+            {boards.map(summary => <option key={summary.slug} value={summary.slug}>{missionPickLabel(summary, needsYou)}</option>)}
           </select>
           {board ? <span className="rev">rev {board.rev}</span> : null}
         </div>
@@ -2800,24 +2844,30 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 <span>run</span>
                 <span className={`badge ${runBadgeClass}`}>{runStatusLabel(activeRun.status)}</span>
                 {/* Waiting at a gate on the canvas, the phrase brings up the answer, not the gate's editor. */}
+                <RunWhen run={activeRun} />
                 <RunPoint runId={activeRun.runId} point={runPoint} title={runPointTitle}
+                  since={runPoint?.kind === 'waiting' ? activeRun.waitingGates?.find(gate => gate.gateId === runPoint.nodeId)?.requestedAt : undefined}
                   titleOf={nodeId => (board ? nodeTitle(board, nodeId) : nodeId)}
                   onLocate={!showFlow && runPoint?.kind === 'waiting' && answerKey ? showAnswer : locateAndOpenNode}
                   action={showFlow ? 'Open the step' : runPoint?.kind === 'waiting' && answerKey ? 'Show it on the canvas with your answer' : 'Show it on the canvas and open it'} />
                 <RunProduced />
-                {activeRun.final || choices.open.length + choices.finished.length > 1 ? runPicker(activeRun.runId) : null}
+                <RunRevisionNote run={activeRun} currentRev={board?.rev} missionTitle={board?.title || ''} />
+                {runList}
+                {showNeedingYou}
                 {activeRun.cwd && <span className="run-cwd" title={activeRun.cwd}>{activeRun.cwd}</span>}
                 {activeRun.beadId && <span>{activeRun.beadId}</span>}
                 <RunBarActions run={activeRun} point={runPoint} pointTitle={runPointTitle} boardTitle={board?.title || ''}
                   titleOf={nodeId => (board ? nodeTitle(board, nodeId) : nodeId)}
                   pendingGate={pendingHumanGate} onResume={() => void resumeActiveRun()} onStop={abortActiveRun} />
               </div>
-            ) : choices.finished.length ? (
-              // No run is shown, but finished runs can be reopened to read what they produced.
+            ) : boardRuns.length || nextNeedingYou.length ? (
+              // No run is shown, but the mission's runs can be reopened to read what they
+              // produced, and runs of any mission that need you are a click away.
               <div className="run-banner idle" data-testid="run-banner-idle">
                 <span>run</span>
                 <span className="run-none">no open run</span>
-                {runPicker('')}
+                {runList}
+                {showNeedingYou}
               </div>
             ) : null}
         <div className={`viewport${showFlow ? ' flow-mode' : ''}`} data-testid="formations-canvas" ref={viewportRef} onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
@@ -2903,6 +2953,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   </div>
                   {renderNodeTitle(mission.title, 'mtitle', 'Untitled mission', 'div')}
                   <div className={`mgoal${mission.goal ? '' : ' placeholder'}`}>{mission.goal || 'set the mission objective…'}</div>
+                  {mission.inputs?.length ? <div className="minputs" title="The inputs each run supplies; step briefs reference them as {name}">Inputs · {mission.inputs.map(input => input.name).join(' · ')}</div> : null}
                   <div className={`mchannel ${humanChannelOf(mission)}`} title="How this mission's human gates reach you">Human gates · {humanChannelLabel(humanChannelOf(mission))}</div>
                   <ReferencedFiles nodeId={mission.id} files={nodeFileRefs(board, mission.id)} max={2} onMore={openReferencedFilesMenu} className="card-refs" />
                   <div className="mstatus">{state ? state : ''}</div>
@@ -2981,7 +3032,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                       const rect = event.currentTarget.getBoundingClientRect()
                       setMenu({ label: 'Formation type', x: rect.left, y: rect.bottom + 4, items: formationTypeMenuItems(formation).slice(1) })
                     }} />
-                    <button className="frun" title="Run formation" onClick={() => void runFormation(formation)} data-testid={`run-formation-${formation.id}`}>{PLAY_SVG}</button>
+                    <button className="frun" title="Run formation" onClick={() => setStartStep(formation)} data-testid={`run-formation-${formation.id}`}>{PLAY_SVG}</button>
                   </div>
                   <ReferencedFiles nodeId={formation.id} files={nodeFileRefs(board, formation.id)} max={2} onMore={openReferencedFilesMenu} className="card-refs" />
                   <div className="fstatus">{state === 'running' || state === 'waiting' ? state : ''}</div>
@@ -3305,7 +3356,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         />
       ) : null}
 
-      {startMission && <StartMissionDialog title={startMission.title} inputHint={startMission.inputHint} humanChannel={humanChannelOf(startMission)} onStart={(inputs, channel) => startMissionRun(startMission, inputs, channel)} onClose={() => setStartMission(null)} />}
+      {startMission && <StartMissionDialog title={startMission.title} inputs={missionRunInputs(startMission)} humanChannel={humanChannelOf(startMission)} onStart={(inputs, channel) => startMissionRun(startMission, inputs, channel)} onClose={() => setStartMission(null)} />}
+      {startStep && <StartMissionDialog title={board?.title || 'this mission'} step={startStep.title || 'This formation'} inputs={missionRunInputs(inputCardOf(board))} onStart={inputs => runFormation(startStep, inputs)} onClose={() => setStartStep(null)} />}
 
       {deleteConfirm ? (
         <div

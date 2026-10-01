@@ -282,6 +282,12 @@ export async function fetchBoardRuns(slug: string): Promise<RunStatusProjection[
   return Array.isArray(result.data) ? result.data.filter(run => run.missionSlug === slug) : []
 }
 
+/** The open runs of every mission that need the operator: waiting at a gate or blocked (archon-n7u.29). */
+export async function fetchRunsNeedingYou(): Promise<RunStatusProjection[]> {
+  const result = await fetchApi<RunStatusProjection[]>('/api/runs?needs=you')
+  return Array.isArray(result.data) ? result.data : []
+}
+
 export async function fetchRunStatus(runId: string): Promise<RunStatusProjection | RunStatusResult> {
   const result = await fetchApi<RunStatusProjection | RunStatusResult>(`/api/runs/${encodeURIComponent(runId)}`)
   return result.data

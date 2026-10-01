@@ -1,0 +1,31 @@
+/* The mission's runs, listed from the run bar (archon-o7p.2). */
+.fmx .run-banner .run-list-button { flex-shrink: 0; }
+.run-list {
+  position: fixed; z-index: 400; display: flex; flex-direction: column; gap: 8px; width: min(640px, calc(100vw - 16px));
+  max-height: min(70vh, 640px); overflow: auto; padding: 8px; border: 1px solid var(--divider); border-radius: 5px;
+  background: var(--surface-primary); box-shadow: 0 12px 36px #0009; font: 11px var(--font-mono);
+}
+.run-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.run-row {
+  display: grid; grid-template-columns: 150px 150px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 10px; row-gap: 2px;
+  width: 100%; padding: 6px 8px; border: 1px solid transparent; border-radius: 4px; background: transparent;
+  color: var(--text-primary); font: inherit; text-align: left; cursor: pointer;
+}
+.run-row:hover, .run-row:focus-visible { border-color: var(--accent); }
+.run-row.current { background: var(--surface-secondary); border-color: var(--divider); }
+.run-row-status { grid-row: 1; text-transform: uppercase; letter-spacing: .08em; font-size: 10px; color: var(--text-secondary); }
+.run-row-status.waiting_human { color: var(--accent); font-weight: 700; }
+.run-row-status.running { color: var(--accent); }
+.run-row-status.succeeded { color: var(--color-success, #7bb35a); }
+.run-row-status.blocked { color: var(--color-warning, #d6a64a); }
+.run-row-status.failed, .run-row-status.canceled { color: var(--color-error); }
+.run-row-when { grid-row: 1; color: var(--text-secondary); white-space: nowrap; }
+.run-row-driver { grid-row: 1; grid-column: 3; justify-self: end; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.run-row-input { grid-row: 2; grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.run-row-input.none { color: var(--text-dim); font-style: italic; }
+.run-list-foot { display: flex; justify-content: flex-end; border-top: 1px solid var(--divider); padding-top: 6px; }
+.run-list-foot button {
+  border: 1px solid var(--divider); border-radius: 4px; background: var(--surface-secondary); color: var(--text-secondary);
+  padding: 4px 10px; font: 10px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer;
+}
+.run-list-foot button:hover { color: var(--text-primary); border-color: var(--accent); }

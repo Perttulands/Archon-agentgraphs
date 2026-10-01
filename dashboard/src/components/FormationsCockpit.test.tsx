@@ -2337,10 +2337,27 @@ describe('FormationsCockpit reference parity', () => {
     expect(fetch).toHaveBeenCalledWith('/api/runs', expect.objectContaining({ body: expect.stringContaining('"cwd":"/work/project"') }))
     const call = vi.mocked(fetch).mock.calls.find(([url, init]) => url === '/api/runs' && init?.method === 'POST')
     const body = JSON.parse(String(call?.[1]?.body))
-    expect(body).toMatchObject({ cwd: '/work/project', brief: 'Implement the requested change', beadId: 'form-proof' })
+    expect(body).toMatchObject({ cwd: '/work/project', inputs: { brief: 'Implement the requested change' }, beadId: 'form-proof' })
+    expect(body).not.toHaveProperty('brief')
     // The run starts without limits (archon-o7p.7).
     expect(body).not.toHaveProperty('limits')
     expect(localStorage.getItem('archon.activeRun.test-board')).toBeNull()
+  })
+
+  it("asks for the mission's inputs before ▶ runs a formation on its own", async () => {
+    patches = installFetchMock({ runStatus: { status: 'succeeded', final: true }, runEvents: [] })
+    await renderCockpit()
+    fireEvent.click(screen.getByTestId('run-formation-fmn_frame'))
+    const dialog = await screen.findByRole('dialog', { name: 'Run step' })
+    expect(vi.mocked(fetch).mock.calls.some(([url, init]) => url === '/api/runs' && init?.method === 'POST')).toBe(false)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Run step' }))
+    expect(within(dialog).getByText('Fill in brief to start.')).toBeInTheDocument()
+    expect(vi.mocked(fetch).mock.calls.some(([url, init]) => url === '/api/runs' && init?.method === 'POST')).toBe(false)
+    fireEvent.change(within(dialog).getByLabelText('Brief'), { target: { value: 'Frame the problem' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Run step' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Run step' })).toBeNull())
+    const call = vi.mocked(fetch).mock.calls.find(([url, init]) => url === '/api/runs' && init?.method === 'POST')
+    expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ formationId: 'fmn_frame', inputs: { brief: 'Frame the problem' }, cwd: '', contextPaths: [] })
   })
 
   it('fits the canvas to its cards and keeps the zoom level numeric beside a formation-kind gate', async () => {
@@ -2474,7 +2491,8 @@ describe('FormationsCockpit reference parity', () => {
     expect(within(mission).queryByRole('region', { name: 'Run' })).toBeNull()
   })
 
-  type ListedRun = { runId: string; status: string; final: boolean; missionSlug: string; inputCardId: string; eventCount: number; waitingGates?: Array<{ gateId: string; requestedSeq: number }> }
+  type ListedRun = { runId: string; status: string; final: boolean; missionSlug: string; inputCardId: string; eventCount: number; waitingGates?: Array<{ gateId: string; requestedSeq: number; requestedAt?: string }>
+    missionId?: string; missionRev?: number; startedAt?: string; updatedAt?: string; startedBy?: string }
   function installRunsMock(runs: ListedRun[], events: Record<string, TestRunEvent[]> = {}) {
     const verdicts: Array<{ url: string; body: Record<string, unknown> }> = []
     const base = globalThis.fetch
@@ -2489,6 +2507,7 @@ describe('FormationsCockpit reference parity', () => {
       })
       const listed = url.match(/^\/api\/runs\?mission=([^&]+)$/)
       if (listed) return reply(runs.filter(run => run.missionSlug === decodeURIComponent(listed[1])))
+      if (url === '/api/runs?needs=you') return reply(runs.filter(run => !run.final && (run.status === 'waiting_human' || run.status === 'blocked')))
       const runURL = url.match(/^\/api\/runs\/([^/?]+)(\/.*)?$/)
       if (runURL) {
         const run = runs.find(item => item.runId === runURL[1])
@@ -2518,7 +2537,8 @@ describe('FormationsCockpit reference parity', () => {
     const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
     await waitFor(() => expect(within(panel).getByText('Question for run_01CLI')).toBeInTheDocument())
     expect(fetch).toHaveBeenCalledWith('/api/runs?mission=test-board', expect.anything())
-    expect(screen.queryByRole('combobox', { name: 'Choose run' })).toBeNull()
+    // One run: its list holds just it.
+    expect(screen.getByRole('button', { name: 'Runs (1)' })).toBeInTheDocument()
 
     fireEvent.change(within(panel).getByLabelText('Your response'), { target: { value: 'Postgres' } })
     await act(async () => { fireEvent.click(within(panel).getByRole('button', { name: 'Approve' })) })
@@ -2544,7 +2564,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.getByTestId('run-banner').querySelector('.badge')).toHaveClass('waiting_human')
   })
 
-  it('shows the open run that needs the operator and offers a run picker', async () => {
+  it('shows the open run that needs the operator and lists the mission runs', async () => {
     installRunsMock([
       { runId: 'run_01A', status: 'waiting_human', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4 }] },
       { runId: 'run_01B', status: 'running', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 2 },
@@ -2552,15 +2572,14 @@ describe('FormationsCockpit reference parity', () => {
     ], { run_01A: waitingEvents('run_01A') })
     await renderCockpit()
 
-    const picker = await screen.findByRole('combobox', { name: 'Choose run' })
-    expect(picker).toHaveValue('run_01A')
-    expect(within(picker).getAllByRole('group').map(group => [group.getAttribute('label'), within(group).getAllByRole('option').map(option => option.getAttribute('value'))])).toEqual([
-      ['Open', ['run_01A', 'run_01B']],
-      ['Finished', ['run_01C']],
-    ])
     expect(await screen.findByRole('dialog', { name: 'Answer gate Review' })).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs (3)' }))
+    const list = screen.getByRole('dialog', { name: 'Runs of Test board' })
+    const rows = within(list).getAllByRole('button').filter(button => button.classList.contains('run-row'))
+    expect(rows.map(row => row.querySelector('.run-row-status')?.textContent)).toEqual(['Waiting for your answer', 'Running', 'Succeeded'])
+    expect(rows[0]).toHaveAttribute('aria-current', 'true')
 
-    fireEvent.change(picker, { target: { value: 'run_01B' } })
+    fireEvent.click(rows[1])
     await waitFor(() => expect(screen.getByTestId('run-banner')).toHaveTextContent('Running'))
     expect(screen.queryByRole('dialog', { name: 'Answer gate Review' })).toBeNull()
     expect(window.location.search).toBe('?mission=test-board&run=run_01B')
@@ -2578,12 +2597,56 @@ describe('FormationsCockpit reference parity', () => {
     for (let load = 0; load < 2; load++) {
       const { unmount } = await renderCockpit()
       await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveValue('second-board'))
-      expect(await screen.findByRole('combobox', { name: 'Choose run' })).toHaveValue('run_01LINK')
+      expect(await screen.findByRole('button', { name: 'Runs (2)' })).toBeInTheDocument()
       const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
       await waitFor(() => expect(within(panel).getByText('Question for run_01LINK')).toBeInTheDocument())
       expect(window.location.search).toBe('?mission=second-board&run=run_01LINK')
       unmount()
     }
+  })
+
+  it('says since when a run waits, who started it and which revision it ran', async () => {
+    const asked = new Date(Date.now() - 5 * 60_000)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    installRunsMock([{ runId: 'run_01SINCE', status: 'waiting_human', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 4,
+      missionId: 'brd_test', missionRev: 5, startedAt: new Date(Date.now() - 6 * 60_000).toISOString(), startedBy: 'agent:driver',
+      waitingGates: [{ gateId: 'gate_review', requestedSeq: 4, requestedAt: asked.toISOString() }] }], { run_01SINCE: waitingEvents('run_01SINCE') })
+    await renderCockpit()
+    const banner = await screen.findByTestId('run-banner')
+    await waitFor(() => expect(within(banner).getByTestId('run-point')).toHaveTextContent(`waiting for you at Review since ${pad(asked.getHours())}:${pad(asked.getMinutes())}`))
+    expect(banner.querySelector('.run-when')).toHaveTextContent(/^started \d\d:\d\d · for 6m( \d+s)? · agent:driver$/)
+    expect(within(banner).getByRole('button', { name: 'ran revision 5' })).toHaveAttribute('title', 'This run ran revision 5; the canvas shows revision 7. Open the mission as it ran.')
+  })
+
+  it('puts away a linked run of an earlier mission that had the same slug', async () => {
+    window.history.replaceState(null, '', '/?mission=test-board&run=run_01ARCHIVED')
+    installRunsMock([{ runId: 'run_01ARCHIVED', status: 'succeeded', final: true, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 9, missionId: 'msn_deleted' }])
+    await renderCockpit()
+    expect(await screen.findByTestId('formations-error')).toHaveTextContent('Run run_01ARCHIVED belongs to an earlier mission "test-board" that was deleted')
+    await waitFor(() => expect(screen.queryByTestId('run-banner')).toBeNull())
+    expect(window.location.search).toBe('?mission=test-board')
+  })
+
+  it('counts the runs that need you on every mission and offers the next one', async () => {
+    const second = { ...makeBoard(), id: 'brd_second', slug: 'second-board', title: 'Second board', etag: 'second-etag' }
+    patches = installFetchMock({ boards: [makeBoard(), second] })
+    installRunsMock([
+      { runId: 'run_01HERE', status: 'waiting_human', final: false, missionSlug: 'test-board', missionId: 'brd_test', inputCardId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4, requestedAt: new Date().toISOString() }] },
+      { runId: 'run_01THERE', status: 'waiting_human', final: false, missionSlug: 'second-board', missionId: 'brd_second', inputCardId: 'mis_showcase', eventCount: 4, waitingGates: [{ gateId: 'gate_review', requestedSeq: 4, requestedAt: new Date().toISOString() }] },
+    ], { run_01HERE: waitingEvents('run_01HERE'), run_01THERE: waitingEvents('run_01THERE') })
+    await renderCockpit()
+
+    const picker = screen.getByTestId('board-picker')
+    await waitFor(() => expect(within(picker).getAllByRole('option').map(option => option.textContent)).toEqual(['Test board · 1 needs you', 'Second board · 1 needs you']))
+    await waitFor(() => expect(document.title).toBe('(2) Test board · Archon'))
+    const banner = await screen.findByTestId('run-banner')
+    expect(within(banner).getByText('Waiting for your answer')).toHaveClass('badge', 'waiting_human')
+    expect(await screen.findByTestId('run-chip-gate_review')).toHaveTextContent('waiting for you')
+
+    fireEvent.click(within(banner).getByRole('button', { name: '1 more needs you' }))
+    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveValue('second-board'))
+    await waitFor(() => expect(window.location.search).toBe('?mission=second-board&run=run_01THERE'))
+    await waitFor(() => expect(document.title).toBe('(2) Second board · Archon'))
   })
 
   it('says when a linked run or board does not exist', async () => {
@@ -2806,19 +2869,19 @@ describe('FormationsCockpit reference parity', () => {
     const idle = await screen.findByTestId('run-banner-idle')
     expect(idle).toHaveTextContent('no open run')
     expect(screen.queryByTestId('run-banner')).toBeNull()
-    const picker = within(idle).getByRole('combobox', { name: 'Choose run' })
-    expect(picker).toHaveValue('')
-    expect(within(picker).getAllByRole('option').map(option => option.textContent)).toEqual(['Recent runs…', 'Succeeded · …0NEWER', 'Failed · …0OLDER'])
+    fireEvent.click(within(idle).getByRole('button', { name: 'Runs (2)' }))
+    const list = screen.getByRole('dialog', { name: 'Runs of Test board' })
+    const rows = within(list).getAllByRole('button').filter(button => button.classList.contains('run-row'))
+    expect(rows.map(row => row.querySelector('.run-row-status')?.textContent)).toEqual(['Succeeded', 'Failed'])
+    expect(within(list).queryByRole('button', { name: 'Put this run away' })).toBeNull()
 
-    fireEvent.change(picker, { target: { value: 'run_01M2B0NEWER' } })
+    fireEvent.click(rows[0])
     const banner = await screen.findByTestId('run-banner')
     expect(banner).toHaveTextContent('Succeeded')
     expect(window.location.search).toBe('?mission=test-board&run=run_01M2B0NEWER')
     await waitFor(() => expect(within(banner).getByRole('button', { name: 'frame.md' })).toBeInTheDocument())
-    const shown = within(banner).getByRole('combobox', { name: 'Choose run' })
-    expect(shown).toHaveValue('run_01M2B0NEWER')
-
-    fireEvent.change(shown, { target: { value: '' } })
+    fireEvent.click(within(banner).getByRole('button', { name: 'Runs (2)' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Runs of Test board' })).getByRole('button', { name: 'Put this run away' }))
     expect(await screen.findByTestId('run-banner-idle')).toBeInTheDocument()
     expect(screen.queryByTestId('run-banner')).toBeNull()
     expect(window.location.search).toBe('?mission=test-board')

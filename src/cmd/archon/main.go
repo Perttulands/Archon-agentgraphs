@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -256,6 +257,8 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 			return runMissionWire(store, args[2:], stdout, stderr)
 		case "update":
 			return runMissionUpdate(store, args[2:], stdout, stderr)
+		case "input":
+			return runMissionInput(store, args[2:], stdout, stderr)
 		case "run":
 			return runMissionRun(formations.NewStore(config.Workspace), args[2:], stdout, stderr)
 		default:
@@ -1181,7 +1184,7 @@ const (
 	humanChannelUsage  = "how human gates reach the operator: notify (the default) or session"
 	missionCreateUsage = "usage: archon mission create <mission> [--title <title>] [--goal <goal>] [--bead <beads-id>] [--file <path>]... [--human-channel notify|session] [--x n] [--y n] [--json]\n" +
 		"Adds the Input card to a mission that has none. To create a mission, run: archon mission new <slug>"
-	missionUpdateUsage = "usage: archon mission update <mission> [<input>] [--title text] [--goal text] [--bead beads-id] [--file path]... [--input-hint text] [--human-channel notify|session] [--json]\n" +
+	missionUpdateUsage = "usage: archon mission update <mission> [<input>] [--title text] [--goal text] [--file path]... [--input-hint text] [--human-channel notify|session] [--json]\n" +
 		"Changes the mission's Input card; <input> may be left out when there is one. Only the flags you give change it; an empty value clears that field."
 	missionWireUsage = "usage: archon mission wire <mission> [<input>] <to-node:port> [--json]\n" +
 		"Wires the mission's Input card to a step; <input> may be left out when there is one."
@@ -1310,6 +1313,9 @@ func writeMissionInspect(stdout, stderr io.Writer, board *formations.BoardDocume
 		return writeJSON(stdout, response)
 	}
 	fmt.Fprintf(stdout, "%s\t%s\t%d reachable nodes\n", mission.ID, mission.Title, len(chain))
+	for _, input := range formations.MissionRunInputs(board) {
+		fmt.Fprintln(stdout, "input\t"+missionInputLine(input))
+	}
 	return 0
 }
 
@@ -1415,20 +1421,72 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	return 0
 }
 
+// runStartFlags are the run fields a mission run and a single step's run
+// both take (archon-o7p.3).
+type runStartFlags struct {
+	cwd          *string
+	bead         *string
+	contextPaths stringList
+	inputs       runInputFlags
+	maxDispatch  *int
+	maxAttempts  *int
+	wallClock    *int
+}
+
+func registerRunStartFlags(fs *flag.FlagSet) *runStartFlags {
+	flags := &runStartFlags{}
+	flags.cwd = fs.String("cwd", "", "absolute existing directory the agents work in; omit to create a workspace for the run")
+	flags.bead = fs.String("bead", "", "the Beads issue the run belongs to")
+	fs.Var(&flags.contextPaths, "context-path", "absolute file or directory the agents inspect as context; repeat for more")
+	flags.inputs.register(fs)
+	// Runs have no limits unless the launch sets them (archon-o7p.7).
+	flags.maxDispatch = fs.Int("max-dispatch", 0, "optional cap on the run's formation starts, judges included; unset means no limit")
+	flags.maxAttempts = fs.Int("max-attempts", 0, "optional cap on each step's attempts; unset means no limit")
+	flags.wallClock = fs.Int("wall-clock-seconds", 0, "optional run wall clock in seconds; unset means no limit")
+	return flags
+}
+
+func (f *runStartFlags) limits() formations.RunLimits {
+	return formations.RunLimits{MaxDispatch: *f.maxDispatch, MaxAttempts: *f.maxAttempts, WallClockSeconds: *f.wallClock}
+}
+
+// checkCwd refuses a cwd that is not an absolute existing directory, as the
+// daemon does.
+func (f *runStartFlags) checkCwd() error {
+	if *f.cwd == "" {
+		return nil
+	}
+	info, err := os.Stat(*f.cwd)
+	if !filepath.IsAbs(*f.cwd) || err != nil || !info.IsDir() {
+		return fmt.Errorf("--cwd must be omitted or an absolute existing directory")
+	}
+	return nil
+}
+
+const (
+	missionRunUsage   = "usage: archon mission run <mission> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--max-dispatch n] [--max-attempts n] [--wall-clock-seconds n] [--json]\nList the inputs a run supplies with: archon mission input <mission>"
+	formationRunUsage = "usage: archon formation run <mission> <formation> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--json]\nA single step takes the mission's inputs, as a mission run does."
+)
+
 func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("mission run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	missionSelector := fs.String("input", "", "the Input card to start from; needed only when the mission has several")
 	actor := fs.String("actor", "agent:archon", "run actor")
-	maxDispatch := fs.Int("max-dispatch", 0, "optional cap on the run's formation starts, judges included; unset means no limit")
-	maxAttempts := fs.Int("max-attempts", 0, "optional cap on each step's attempts; unset means no limit")
-	wallClockSeconds := fs.Int("wall-clock-seconds", 0, "optional run wall clock in seconds; unset means no limit")
+	run := registerRunStartFlags(fs)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon mission run <mission> [--input <input>] [--json]")
+		fmt.Fprintln(stderr, missionRunUsage)
+		return 2
+	}
+	inputs, err := run.inputs.collect()
+	if err == nil {
+		err = run.checkCwd()
+	}
+	if err != nil {
+		fmt.Fprintln(stderr, err)
 		return 2
 	}
 	slug, err := store.ResolveBoardSelector(fs.Arg(0))
@@ -1439,32 +1497,29 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
-	missionID := *missionSelector
-	if missionID == "" {
-		if missionID, err = runInputCard(board, slug); err != nil {
-			return failJSON(stderr, err, *jsonOut, "run", "")
-		}
-	} else if resolved, err := resolveMissionSelector(board, missionID); err != nil {
-		return failSelector(stderr, err, *jsonOut, "inputCard", missionID)
-	} else {
-		missionID = resolved
+	missionID, err := runInputCard(board, slug)
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", "")
+	}
+	if err := formations.ValidateRunLimits(run.limits()); err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", "")
 	}
 	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
-	if err := formations.CheckRunAdmission(board, personas, formations.RunAdmissionScope{MissionID: missionID}); err != nil {
+	if err := formations.CheckRunAdmission(board, personas, formations.RunAdmissionScope{MissionID: missionID, Inputs: inputs}); err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", missionID)
 	}
 	engine := newArchonRunEngine(store, personas, "archon")
 	status, err := engine.RunMission(slug, formations.RunStartRequest{
 		MissionID:         missionID,
+		Cwd:               *run.cwd,
+		ContextPaths:      run.contextPaths,
+		BeadID:            *run.bead,
+		Inputs:            inputs,
 		Actor:             *actor,
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits: formations.RunLimits{
-			MaxDispatch:      *maxDispatch,
-			MaxAttempts:      *maxAttempts,
-			WallClockSeconds: *wallClockSeconds,
-		},
+		Limits:            run.limits(),
 	})
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", missionID)
@@ -1476,34 +1531,45 @@ func runFormationRun(store *formations.Store, args []string, stdout, stderr io.W
 	fs := flag.NewFlagSet("formation run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	actor := fs.String("actor", "agent:archon", "run actor")
-	maxDispatch := fs.Int("max-dispatch", 0, "optional cap on the run's formation starts, judges included; unset means no limit")
-	maxAttempts := fs.Int("max-attempts", 0, "optional cap on each step's attempts; unset means no limit")
-	wallClockSeconds := fs.Int("wall-clock-seconds", 0, "optional run wall clock in seconds; unset means no limit")
+	run := registerRunStartFlags(fs)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon formation run <mission> <formation> [--json]")
+		fmt.Fprintln(stderr, formationRunUsage)
+		return 2
+	}
+	inputs, err := run.inputs.collect()
+	if err == nil {
+		err = run.checkCwd()
+	}
+	if err != nil {
+		fmt.Fprintln(stderr, err)
 		return 2
 	}
 	slug, board, formationID, err := resolveFormationCommandTarget(store, fs.Arg(0), fs.Arg(1))
 	if err != nil {
 		return failSelector(stderr, err, *jsonOut, "formation", fs.Arg(1))
 	}
+	if err := formations.ValidateRunLimits(run.limits()); err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", "")
+	}
 	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
-	if err := formations.CheckRunAdmission(board, personas, formations.RunAdmissionScope{FormationID: formationID}); err != nil {
+	if err := formations.CheckRunAdmission(board, personas, formations.RunAdmissionScope{FormationID: formationID, Inputs: inputs}); err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", formationID)
 	}
 	engine := newArchonRunEngine(store, personas, "archon")
 	status, err := engine.RunFormation(slug, formationID, formations.FormationRunRequest{
-		Actor:    *actor,
-		Personas: personas,
-		Limits: formations.RunLimits{
-			MaxDispatch:      *maxDispatch,
-			MaxAttempts:      *maxAttempts,
-			WallClockSeconds: *wallClockSeconds,
-		},
+		Actor:             *actor,
+		Personas:          personas,
+		Limits:            run.limits(),
+		Cwd:               *run.cwd,
+		ContextPaths:      run.contextPaths,
+		BeadID:            *run.bead,
+		Inputs:            inputs,
+		ExpectedBoardETag: board.ETag,
+		ExpectedBoardRev:  board.Rev,
 	})
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", formationID)
@@ -1523,15 +1589,19 @@ func runList(store *formations.Store, args []string, stdout, stderr io.Writer) i
 		fmt.Fprintln(stderr, "usage: archon run list [--mission <mission>] [--json]")
 		return 2
 	}
-	boardSlug := ""
+	filter := formations.RunListFilter{}
 	if *boardSelector != "" {
 		resolved, err := store.ResolveBoardSelector(*boardSelector)
 		if err != nil {
 			return failSelector(stderr, err, *jsonOut, "mission", *boardSelector)
 		}
-		boardSlug = resolved
+		board, err := store.ReadBoard(resolved)
+		if err != nil {
+			return failSelector(stderr, err, *jsonOut, "mission", *boardSelector)
+		}
+		filter.MissionID = board.ID
 	}
-	runs, err := store.ListRuns(formations.RunListFilter{BoardSlug: boardSlug})
+	runs, err := store.ListRuns(filter)
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", "")
 	}
@@ -2582,7 +2652,7 @@ func failJSON(stderr io.Writer, err error, jsonOut bool, boundary, selector stri
 }
 
 func failDefinitionWrite(stderr io.Writer, err error, jsonOut bool, boundary, selector string) int {
-	if errors.Is(err, formations.ErrInvalidDefinitionSource) || errors.Is(err, formations.ErrInvalidSlotSettings) || errors.Is(err, formations.ErrInputOccupied) || errors.Is(err, formations.ErrSelfWire) || errors.Is(err, formations.ErrDuplicateConnection) || errors.Is(err, formations.ErrIncompatibleToolConnection) {
+	if errors.Is(err, formations.ErrInvalidDefinitionSource) || errors.Is(err, formations.ErrInvalidSlotSettings) || errors.Is(err, formations.ErrInvalidMissionInput) || errors.Is(err, formations.ErrInputOccupied) || errors.Is(err, formations.ErrSelfWire) || errors.Is(err, formations.ErrDuplicateConnection) || errors.Is(err, formations.ErrIncompatibleToolConnection) {
 		return failJSON(stderr, err, jsonOut, boundary, selector)
 	}
 	return fail(stderr, err)
@@ -2667,6 +2737,8 @@ func archonErrorCode(err error) string {
 		return "invalid_bead_id"
 	case errors.Is(err, formations.ErrInvalidHumanChannel):
 		return "invalid_human_channel"
+	case errors.Is(err, formations.ErrInvalidMissionInput):
+		return "invalid_mission_input"
 	case errors.Is(err, formations.ErrInvalidExecutionPolicy):
 		return "invalid_execution_policy"
 	case errors.Is(err, formations.ErrInvalidRelayedBy):

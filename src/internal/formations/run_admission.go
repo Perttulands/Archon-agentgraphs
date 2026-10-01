@@ -39,6 +39,9 @@ func (e *RunAdmissionError) Unwrap() error { return ErrRunAdmission }
 type RunAdmissionScope struct {
 	MissionID   string
 	FormationID string
+	// Inputs, when not nil, are the values the run supplies by input name;
+	// admission checks them against the mission's inputs (archon-o7p.3).
+	Inputs map[string]string
 }
 
 // ValidateRunAdmission lists every problem that would stop a run, so authoring
@@ -71,7 +74,7 @@ func ValidateRunAdmission(board *BoardDocument, personas *PersonaStore, scope Ru
 	}
 	findingInScope := func(finding BoardFinding) bool {
 		switch {
-		case selected == nil || finding.Code == FindingInvalidFormationType || finding.Code == FindingSeveralInputCards:
+		case selected == nil || finding.Code == FindingInvalidFormationType || finding.Code == FindingSeveralInputCards || finding.Code == FindingInvalidMissionInput:
 			return true
 		case scope.FormationID != "" && finding.Code == FindingRouteLeadsNowhere:
 			// A single step's run ends with that step; its routes are not taken.
@@ -100,6 +103,9 @@ func ValidateRunAdmission(board *BoardDocument, personas *PersonaStore, scope Ru
 
 	for _, formation := range board.Formations {
 		report.Errors = append(report.Errors, formationAdmissionFindings(formation, personas, inScope(formation.ID))...)
+	}
+	if scope.Inputs != nil {
+		report.Errors = append(report.Errors, runInputFindings(board, scope.Inputs)...)
 	}
 	if selected != nil {
 		for _, tool := range board.Tools {

@@ -30,10 +30,12 @@ export function FileActions({ request, preview, mode, onMode }: {
     const timer = window.setTimeout(() => setCopyState('idle'), 1500)
     return () => window.clearTimeout(timer)
   }, [copyState])
+  // The daemon's absolute path, once the file has loaded, is what Copy path copies.
+  const path = preview?.path || request.path
   const copy = async () => {
-    if (!request.path || copyState === 'copying') return
+    if (!path || copyState === 'copying') return
     setCopyState('copying')
-    setCopyState(await copyTextToClipboard(request.path) ? 'copied' : 'failed')
+    setCopyState(await copyTextToClipboard(path) ? 'copied' : 'failed')
   }
   return (
     <span className="file-actions" onPointerDown={event => event.stopPropagation()}>
@@ -45,13 +47,13 @@ export function FileActions({ request, preview, mode, onMode }: {
       ) : null}
       {request.rawUrl ? <a className="file-action" href={request.rawUrl} target="_blank" rel="noopener noreferrer">Open raw</a> : null}
       {request.rawUrl ? <a className="file-action" href={request.rawUrl} download={request.name}>Download</a> : null}
-      {request.path ? (
+      {path ? (
         <span className="file-copy">
-          <button type="button" className="file-action" title={request.path} aria-disabled={copyState === 'copying'} aria-live="polite" onClick={() => void copy()}>{copyState === 'copied' ? 'Copied' : copyState === 'copying' ? 'Copying…' : 'Copy path'}</button>
+          <button type="button" className="file-action" title={path} aria-disabled={copyState === 'copying'} aria-live="polite" onClick={() => void copy()}>{copyState === 'copied' ? 'Copied' : copyState === 'copying' ? 'Copying…' : 'Copy path'}</button>
           {copyState === 'failed' ? (
             <span className="file-copy-failure" role="status">
               The browser refused copying. Select this path and copy it manually.
-              <input aria-label="Path to copy manually" readOnly value={request.path} onFocus={event => event.currentTarget.select()} />
+              <input aria-label="Path to copy manually" readOnly value={path} onFocus={event => event.currentTarget.select()} />
             </span>
           ) : null}
         </span>
