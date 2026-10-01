@@ -316,7 +316,7 @@ function installFetchMock(options: {
       }
       if (conflictPending && body[conflictPending]) {
         conflictPending = undefined
-        return conflict('Formation definition changed; reload and retry')
+        return conflict('The mission changed since it was read; reload it and retry')
       }
       if (body.addPort && options.addPortGate) {
         const gateOpen = options.addPortGate

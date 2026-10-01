@@ -14,6 +14,7 @@ import {
   normalizeLayout,
   patchBoardDocument,
   patchBoardNote,
+  renameMission,
   startRun,
 } from './formationsApi'
 import type { LayoutDocument, ToolNode } from './formationsTypes'
@@ -332,6 +333,32 @@ describe('formations API helpers', () => {
     })
     expect(result.board.etag).toBe('board-response-etag')
     expect(result.layout?.edges).toEqual([])
+  })
+
+  it('renames a mission as it is now, after edits elsewhere, and reads it again once if another lands in between', async () => {
+    // The daemon's mission moves on: an edit elsewhere since the dialog opened, then one more mid-rename.
+    let served = { id: 'brd_1', slug: 'scouting', title: 'Scouting', rev: 7, etag: 'etag-7', ...EMPTY_LISTS }
+    let editsMidRename = 1
+    const patches: Array<{ ifMatch: string; body: Record<string, unknown> }> = []
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method !== 'PATCH') return Promise.resolve(jsonResponse({ success: true, data: { mission: served } }, { etag: served.etag }))
+      const ifMatch = (init.headers as Record<string, string>)['If-Match']
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>
+      patches.push({ ifMatch, body })
+      if (editsMidRename-- > 0) served = { ...served, rev: served.rev + 1, etag: `etag-${served.rev + 1}` }
+      if (ifMatch !== served.etag || body.expectedRev !== served.rev) {
+        return Promise.resolve(jsonResponse({ success: false, error: { code: 'CONFLICT', message: 'The mission changed since it was read; reload it and retry' } }, { ok: false, status: 409 }))
+      }
+      served = { ...served, title: String(body.title), rev: served.rev + 1, etag: `etag-${served.rev + 1}` }
+      return Promise.resolve(jsonResponse({ success: true, data: { mission: served } }, { etag: served.etag }))
+    }) as unknown as typeof fetch)
+
+    const result = await renameMission('scouting', 'Field scouting')
+    expect(result.board).toMatchObject({ title: 'Field scouting', rev: 9, etag: 'etag-9' })
+    expect(patches.map(patch => [patch.ifMatch, patch.body.expectedRev])).toEqual([['etag-7', 7], ['etag-8', 8]])
+
+    editsMidRename = 2
+    await expect(renameMission('scouting', 'Scouting again')).rejects.toThrow('Field scouting kept changing while it was renamed; press Save to rename it as it is now')
   })
 
   it('starts runs with the board ETag precondition', async () => {

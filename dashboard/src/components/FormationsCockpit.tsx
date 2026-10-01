@@ -37,6 +37,7 @@ import {
   patchBoardDocument,
   patchBoardLayout,
   recordGateVerdict,
+  renameMission,
   resumeRunRequest,
   startRun,
 } from './formationsApi'
@@ -849,7 +850,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       } else {
         const target = boardDialog.target
         if (!target) throw new Error('Mission target is missing; close and retry')
-        const result = await patchBoardDocument(target.slug, target.etag, target.rev, { title })
+        const result = await renameMission(target.slug, title)
         if (boardRef.current?.id === target.id) {
           boardRef.current = result.board
           setBoard(result.board)

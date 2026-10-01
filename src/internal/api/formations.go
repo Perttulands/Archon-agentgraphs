@@ -1804,7 +1804,7 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	case errors.Is(err, formations.ErrIncompatibleToolConnection):
 		core.WriteError(w, http.StatusUnprocessableEntity, "INCOMPATIBLE_TOOL_CONNECTION", err.Error())
 	case errors.Is(err, formations.ErrConflict):
-		core.WriteError(w, http.StatusConflict, "CONFLICT", "Formation definition changed; reload and retry")
+		core.WriteError(w, http.StatusConflict, "CONFLICT", "The mission changed since it was read; reload it and retry")
 	case errors.Is(err, formations.ErrAlreadyExists):
 		core.WriteError(w, http.StatusConflict, "MISSION_EXISTS", "A mission with that name already exists")
 	case errors.Is(err, formations.ErrAmbiguousSelector):

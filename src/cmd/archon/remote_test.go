@@ -652,7 +652,7 @@ func TestRemoteAuthoringRetriesAWriteRaceThenGivesUp(t *testing.T) {
 					patches++
 					if patches <= losses {
 						w.WriteHeader(http.StatusConflict)
-						w.Write([]byte(`{"success":false,"error":{"code":"CONFLICT","message":"Formation definition changed; reload and retry"}}`))
+						w.Write([]byte(`{"success":false,"error":{"code":"CONFLICT","message":"The mission changed since it was read; reload it and retry"}}`))
 						return
 					}
 				}

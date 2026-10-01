@@ -1210,7 +1210,11 @@ Revision and ETag checks protect edits. A mission edit that leaves the mission
 as it was (the same slot assignment, title, brief, type, controller, gate or
 Input card fields, judge chain, or a Tool's title and parameters) saves
 nothing: it answers 200 with the current mission, its revision and ETag
-unchanged, and a stale ETag still conflicts. A note edit to the text its entry
+unchanged, and a stale ETag still conflicts. A stale revision or ETag answers
+409 `CONFLICT`, "The mission changed since it was read; reload it and retry".
+The cockpit's Rename mission conflicts with no other edit, so it renames the
+mission as it is when saved, reading it again once if another edit lands in
+between, and otherwise says to press Save again (archon-n7u.16). A note edit to the text its entry
 already has saves nothing in the same way (archon-62h). Runtime routes start/list/read runs
 (`GET /api/runs?mission=<slug>` lists the runs of the mission now under that
 slug or ID, and none for a mission that does not exist; `needs=you` keeps the
