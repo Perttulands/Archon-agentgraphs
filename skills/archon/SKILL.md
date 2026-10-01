@@ -126,7 +126,8 @@ each: name, kind, required or optional, description. Names are a lowercase
 letter then lowercase letters, digits or underscores. Each seat's brief gets the
 value in place of `{name}`, or `(not supplied)` for an optional input left out;
 a reference to an undeclared name is the validation error
-`unknown_input_reference`. The first step also receives the inputs from the
+`unknown_input_reference`. To show a seat a literal `{name}`, write `{{name}}`;
+it is never a reference. The first step also receives the inputs from the
 Input card: the implicit `brief` unchanged, or one `name: value` line per
 input.
 

@@ -113,7 +113,7 @@ func TestDeletingAndRestoringAnInputCardKeepsItsInputs(t *testing.T) {
 }
 
 func TestValidationReportsUnknownInputReferencesAndBadDeclarations(t *testing.T) {
-	fixture := setWorkBriefs(inputsBoardFixture(declaredInputs), "Explore {topic} from {sketch}; keep {braces} and {\"json\": 1} as written.", "Ship {topic} in {repo}.")
+	fixture := setWorkBriefs(inputsBoardFixture(declaredInputs), "Explore {topic} from {sketch}; keep {braces} and {\"json\": 1} as written. Escaped {{braces}} and {{topic}} are no references.", "Ship {topic} in {repo}.")
 	board, err := parseBoard([]byte(fixture))
 	if err != nil {
 		t.Fatal(err)
@@ -219,7 +219,7 @@ func TestAdmissionChecksTheSuppliedInputs(t *testing.T) {
 func TestRunsRecordInputsHandThemToTheFirstStepAndSubstituteBriefs(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	createS4Persona(t, personas, "scout")
-	writeFixture(t, store.BoardPath("session-search"), setWorkBriefs(inputsBoardFixture(declaredInputs), "Explore {topic}. Sketch: {sketch}. Keep {\"port\": 1}.", "Ship {topic} into {repo}."))
+	writeFixture(t, store.BoardPath("session-search"), setWorkBriefs(inputsBoardFixture(declaredInputs), "Explore {topic}. Sketch: {sketch}. Keep {\"port\": 1}. Write {{topic}} literally, and {{{topic}}}.", "Ship {topic} into {repo}."))
 	board, err := store.ReadBoard("session-search")
 	if err != nil {
 		t.Fatal(err)
@@ -242,7 +242,7 @@ func TestRunsRecordInputsHandThemToTheFirstStepAndSubstituteBriefs(t *testing.T)
 		t.Fatalf("calls = %v, want work before the human gate", executor.nodeIDs())
 	}
 	work := executor.calls[0]
-	if work.Brief.Goal != "Explore video editing\nwith captions. Sketch: (not supplied). Keep {\"port\": 1}." {
+	if work.Brief.Goal != "Explore video editing\nwith captions. Sketch: (not supplied). Keep {\"port\": 1}. Write {topic} literally, and {{topic}}." {
 		t.Fatalf("work brief = %q", work.Brief.Goal)
 	}
 	if len(work.Inputs) != 1 || work.Inputs[0].Text != "topic: video editing\nwith captions\nrepo: "+repo {
@@ -334,6 +334,10 @@ func TestASingleStepTakesTheMissionsInputsAndRunFields(t *testing.T) {
 	if call.MissionBeadID != "archon-o7p.3" || !reflect.DeepEqual(call.ContextPaths, []string{context}) {
 		t.Fatalf("single step run fields: bead %q context %v", call.MissionBeadID, call.ContextPaths)
 	}
+	// The step's brief is the run's objective, resolved like the brief itself.
+	if call.MissionGoal != "Ship captions into (not supplied)." {
+		t.Fatalf("single step objective = %q, want its references resolved", call.MissionGoal)
+	}
 	if info, err := os.Stat(call.Cwd); err != nil || !info.IsDir() || filepath.Base(call.Cwd) != status.RunID {
 		t.Fatalf("single step cwd %q (%v), want an automatic workspace", call.Cwd, err)
 	}
@@ -345,5 +349,33 @@ func TestASingleStepTakesTheMissionsInputsAndRunFields(t *testing.T) {
 	var admission *RunAdmissionError
 	if !errors.As(err, &admission) || admission.Findings[0].Message != "input topic is required: What to explore" {
 		t.Fatalf("single step without topic = %v", err)
+	}
+}
+
+// {{name}} is the one escape: it renders a literal {name} and is never a
+// reference, so a brief can say {name} to an agent (archon-o7p.3).
+func TestEscapedBracesAreLiteralAndNeverReferences(t *testing.T) {
+	declared := []MissionInput{{Name: "topic", Kind: MissionInputText}, {Name: "notes", Kind: MissionInputText}}
+	inputs := []RunInput{{Name: "topic", Kind: MissionInputText, Value: "captions"}}
+	for text, want := range map[string]string{
+		"{topic}":                      "captions",
+		"{{topic}}":                    "{topic}",
+		"{{unknown}}":                  "{unknown}",
+		"{{topic}} is {topic}":         "{topic} is captions",
+		"{{notes}} or {notes}":         "{notes} or (not supplied)",
+		"{{{topic}}}":                  "{{topic}}",
+		"{{Topic}} and {{ topic }}":    "{{Topic}} and {{ topic }}",
+		"plain text, {\"json\": true}": "plain text, {\"json\": true}",
+	} {
+		if got := SubstituteRunInputs(text, declared, inputs); got != want {
+			t.Errorf("SubstituteRunInputs(%q) = %q, want %q", text, got, want)
+		}
+	}
+	board, err := parseBoard([]byte(setWorkBriefs(s5HumanGateBoardFixture(), "Answer {brief}; the template says {{name}} and {{brief}}.", "Ship.")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if findings := findBoardFindings(ValidateBoard(board).Errors, FindingUnknownInputReference); len(findings) != 0 {
+		t.Fatalf("escaped braces reported as references: %+v", findings)
 	}
 }

@@ -272,14 +272,17 @@ The Input card hands its first step the supplied values: the implicit `brief`
 unchanged, or one `name: value` line per supplied input in declared order. A
 step brief references an input as `{name}`, and each seat's brief carries the
 value in its place, or `(not supplied)` for an optional input the run left out.
-Braces around anything else stay as written. A reference to a name the mission
-does not declare is the validation error `unknown_input_reference`: "Plan's
-brief references {topic}, but the mission has no input named topic; its inputs
-are change, spec". `run_started` records the supplied values as `inputs`
+Braces around anything else stay as written. The one escape is `{{name}}`: it
+reaches the seat as a literal `{name}` and is never a reference, so a brief can
+show an agent a placeholder. A reference to a name the mission does not declare
+is the validation error `unknown_input_reference`: "Plan's brief references
+{topic}, but the mission has no input named topic; its inputs are change,
+spec". `run_started` records the supplied values as `inputs`
 (`name`, `kind`, `value`), and run status and the run list project them, so
 resume and restart substitute the same values. A single step's run takes the
 mission's inputs and the same checks, and its step receives them as the first
-step does. The mission goal remains prompt context.
+step does; its objective, the step's brief, has its references resolved too.
+The mission goal remains prompt context.
 
 In the cockpit, Start mission and a formation's ▶ open one dialog
 (archon-o7p.4). It asks for each input, labelled by its name with its

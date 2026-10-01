@@ -915,6 +915,9 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 		goal = formation.Brief.Goal
 	}
 	inputs := ResolveRunInputs(board, req.Inputs)
+	// The step's brief is the run's objective, with its {name} references
+	// resolved as the brief itself is at dispatch.
+	goal = SubstituteRunInputs(goal, MissionRunInputs(board), inputs)
 	mission := MissionNode{
 		ID:    "single_" + formation.ID,
 		Title: "Single formation: " + formation.Title,

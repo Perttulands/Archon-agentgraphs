@@ -53,7 +53,9 @@ type RunInput struct {
 
 var (
 	missionInputNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
-	inputReferencePattern   = regexp.MustCompile(`\{([a-z][a-z0-9_]{0,63})\}`)
+	// inputReferencePattern matches an escaped {{name}} (group 1), which stands
+	// for a literal {name}, or a reference {name} (group 2).
+	inputReferencePattern = regexp.MustCompile(`\{\{([a-z][a-z0-9_]{0,63})\}\}|\{([a-z][a-z0-9_]{0,63})\}`)
 )
 
 // NormalizeMissionInputs trims each declaration and gives a blank kind the
@@ -230,7 +232,8 @@ func RenderRunInputs(board *BoardDocument, inputs []RunInput) string {
 
 // SubstituteRunInputs replaces each {name} reference to a mission input in a
 // step brief with the run's value, or with "(not supplied)" for an optional
-// input the run left out. Other braces stay as written.
+// input the run left out. An escaped {{name}} becomes a literal {name} and is
+// never a reference. Other braces stay as written.
 func SubstituteRunInputs(text string, declared []MissionInput, inputs []RunInput) string {
 	if !strings.Contains(text, "{") {
 		return text
@@ -244,6 +247,9 @@ func SubstituteRunInputs(text string, declared []MissionInput, inputs []RunInput
 		known[input.Name] = true
 	}
 	return inputReferencePattern.ReplaceAllStringFunc(text, func(reference string) string {
+		if strings.HasPrefix(reference, "{{") {
+			return reference[1 : len(reference)-1]
+		}
 		name := reference[1 : len(reference)-1]
 		if !known[name] {
 			return reference
@@ -310,8 +316,8 @@ func missionInputFindings(board *BoardDocument) []BoardFinding {
 		}
 		reported := map[string]bool{}
 		for _, match := range inputReferencePattern.FindAllStringSubmatch(formation.Brief.Goal, -1) {
-			name := match[1]
-			if known[name] || reported[name] {
+			name := match[2]
+			if name == "" || known[name] || reported[name] {
 				continue
 			}
 			reported[name] = true
