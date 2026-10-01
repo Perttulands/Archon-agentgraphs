@@ -96,7 +96,7 @@ describe('RunPoint', () => {
   })
 
   it('says who canceled a run and why', async () => {
-    served = [{ seq: 9, type: 'run_canceled', nodeIds: ['gate_review'], reason: text('the brief was wrong'), actor: 'agent:ui' }]
+    served = [{ seq: 9, type: 'run_canceled', nodeIds: ['gate_review'], reason: text('the brief was wrong'), actor: 'human:ui' }]
     render(<RunPoint runId="run_1" point={{ kind: 'canceled', nodeId: 'gate_review', gate: true }} title="Operator review" onLocate={() => {}} />)
     expect(screen.getByTestId('run-point')).toHaveTextContent(/^canceled at Operator review$/)
     await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent('canceled at Operator review by the operator in the cockpit: the brief was wrong'))

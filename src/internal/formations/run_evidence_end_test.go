@@ -44,7 +44,7 @@ func TestRunProblemsNameTheEndOfARunAndWhoEndedIt(t *testing.T) {
 		evidenceEvent(3, RunEventNodeOutput, "fmn_draft", nil),
 		evidenceEvent(4, RunEventGateEvaluating, "gate_review", nil),
 		evidenceEvent(5, RunEventHumanInputRequested, "gate_review", nil),
-		{Seq: 6, Type: RunEventCanceled, Actor: "agent:ui", Data: map[string]any{"reason": "the brief was wrong", "requestedBy": "agent:ui", "final": true}},
+		{Seq: 6, Type: RunEventCanceled, Actor: "human:ui", Data: map[string]any{"reason": "the brief was wrong", "requestedBy": "human:ui", "final": true}},
 	}
 	problems = projectRunProblems(canceled)
 	if len(problems) != 1 {
@@ -52,13 +52,13 @@ func TestRunProblemsNameTheEndOfARunAndWhoEndedIt(t *testing.T) {
 	}
 	end = problems[0]
 	gate := projectNodeEvidence("run_1", "gate_review", "gate", canceled, true, nil, nil)
-	if end.Type != RunEventCanceled || end.Actor != "agent:ui" || end.Reason.Text != "the brief was wrong" || strings.Join(end.NodeIDs, ",") != "gate_review" || len(gate.Problems) != 1 || gate.Problems[0] != end.EvidenceProblem {
+	if end.Type != RunEventCanceled || end.Actor != "human:ui" || end.Reason.Text != "the brief was wrong" || strings.Join(end.NodeIDs, ",") != "gate_review" || len(gate.Problems) != 1 || gate.Problems[0] != end.EvidenceProblem {
 		t.Fatalf("cancel = %+v, gate problems %+v", end, gate.Problems)
 	}
 	if draft := projectNodeEvidence("run_1", "fmn_draft", "formation", canceled, true, nil, nil); len(draft.Problems) != 0 {
 		t.Fatalf("a finished step does not carry the cancel: %+v", draft.Problems)
 	}
-	if status, err := ProjectRunEvents("run_1", canceled); err != nil || status.EndedBy != "agent:ui" {
+	if status, err := ProjectRunEvents("run_1", canceled); err != nil || status.EndedBy != "human:ui" {
 		t.Fatalf("canceled projection = %+v, %v", status, err)
 	}
 }

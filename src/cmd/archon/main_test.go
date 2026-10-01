@@ -2711,7 +2711,7 @@ y = 120
 	assignRaw := requestAPI(
 		http.MethodPatch,
 		"/api/missions/poems",
-		`{"assignSlot":{"formationId":"fmn_draft","slotId":"slot_writer","agentId":"lab-poet","harness":"openai-codex","effort":"medium"},"expectedRev":3,"updatedBy":"agent:ui"}`,
+		`{"assignSlot":{"formationId":"fmn_draft","slotId":"slot_writer","agentId":"lab-poet","harness":"openai-codex","effort":"medium"},"expectedRev":3,"updatedBy":"human:ui"}`,
 		board.ETag,
 	)
 	assigned := decodeAPIBoard(t, assignRaw)
@@ -2726,7 +2726,7 @@ y = 120
 	wiredRaw := requestAPI(
 		http.MethodPatch,
 		"/api/missions/poems",
-		`{"wireConnection":{"from":"mis_poem:out","to":"fmn_draft:in"},"expectedRev":4,"updatedBy":"agent:ui"}`,
+		`{"wireConnection":{"from":"mis_poem:out","to":"fmn_draft:in"},"expectedRev":4,"updatedBy":"human:ui"}`,
 		board.ETag,
 	)
 	wired := decodeAPIBoard(t, wiredRaw)

@@ -48,7 +48,7 @@ describe('formations API helpers', () => {
       error: { code: 'RUN_ADMISSION_FAILED', message: 'The run needs 2 fixes before it can start', findings },
     }, { ok: false, status: 422 }))) as unknown as typeof fetch)
 
-    const failure = await startRun('etag', { mission: 'draft', inputCardId: 'mis_main', expectedRev: 2, actor: 'agent:ui' }).catch(err => err)
+    const failure = await startRun('etag', { mission: 'draft', inputCardId: 'mis_main', expectedRev: 2, actor: 'human:ui' }).catch(err => err)
 
     expect(failure).toBeInstanceOf(ApiRequestError)
     expect(failure).toMatchObject({ status: 422, code: 'RUN_ADMISSION_FAILED', message: 'The run needs 2 fixes before it can start', findings })
@@ -205,7 +205,7 @@ describe('formations API helpers', () => {
     })
     expect(calls[0].url).toBe('/api/missions')
     expect(calls[0].init?.method).toBe('POST')
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ title: 'Release Plan' })
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ title: 'Release Plan', updatedBy: 'human:ui' })
   })
 
   it('loads a fresh board with a synthetic empty layout when no sidecar exists yet', async () => {
@@ -328,7 +328,7 @@ describe('formations API helpers', () => {
     expect(calls[0].init?.headers).toMatchObject({ 'If-Match': 'board-etag' })
     expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
       expectedRev: 1,
-      updatedBy: 'agent:ui',
+      updatedBy: 'human:ui',
       renameFormation: { id: 'fmn_1', title: 'Next' },
     })
     expect(result.board.etag).toBe('board-response-etag')
@@ -381,12 +381,12 @@ describe('formations API helpers', () => {
       }))
     }) as unknown as typeof fetch)
 
-    await startRun('board-etag', { mission: 'session-search', inputCardId: 'mis_showcase', expectedRev: 1, actor: 'agent:ui' })
+    await startRun('board-etag', { mission: 'session-search', inputCardId: 'mis_showcase', expectedRev: 1, actor: 'human:ui' })
 
     expect(calls[0].url).toBe('/api/runs')
     expect(calls[0].init?.method).toBe('POST')
     expect(calls[0].init?.headers).toMatchObject({ 'If-Match': 'board-etag' })
     // No default limits: the run has none (archon-o7p.7).
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ mission: 'session-search', inputCardId: 'mis_showcase', expectedRev: 1, actor: 'agent:ui' })
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ mission: 'session-search', inputCardId: 'mis_showcase', expectedRev: 1, actor: 'human:ui' })
   })
 })

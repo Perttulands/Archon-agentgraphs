@@ -868,7 +868,7 @@ func (h *FormationsHandler) CreateBoard(w http.ResponseWriter, r *http.Request) 
 	}
 	updatedBy := strings.TrimSpace(request.UpdatedBy)
 	if updatedBy == "" {
-		updatedBy = "agent:ui"
+		updatedBy = "human:ui"
 	}
 	title := strings.TrimSpace(request.Title)
 	slug := strings.TrimSpace(request.Slug)

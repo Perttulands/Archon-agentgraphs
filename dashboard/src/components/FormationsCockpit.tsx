@@ -1482,7 +1482,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const abortActiveRun = useCallback(async (reason: string) => {
     if (!activeRun?.runId || activeRun.final) return false
     try {
-      const status = runStatusFromResponse(await abortRunRequest(activeRun.runId, { reason, requestedBy: 'agent:ui' }))
+      const status = runStatusFromResponse(await abortRunRequest(activeRun.runId, { reason, requestedBy: 'human:ui' }))
       setActiveRun(status)
       await refreshRunEvents(activeRun.runId)
       if (status.final && selectedSlug) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
@@ -1498,7 +1498,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!activeRun?.runId || activeRun.final || !activeRun.resumeAllowed) return
     try {
       const status = runStatusFromResponse(await resumeRunRequest(activeRun.runId, {
-        actor: 'agent:ui',
+        actor: 'human:ui',
         mode: 'reattach',
         reason: 'operator resume',
       }))
@@ -1520,7 +1520,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!activeRun?.runId || activeRun.final) return false
     try {
       const status = runStatusFromResponse(await recordGateVerdict(activeRun.runId, gateId, {
-        actor: 'agent:ui',
+        actor: 'human:ui',
         verdict,
         requestedSeq,
         reason: response,

@@ -94,7 +94,11 @@ ID, an author (`human:<name>` or `agent:<name>`), a creation time, an optional
 edit time and text. `archon mission note` appends an entry, by default as
 `agent:archon` (`--author` names another). Only an entry's author can change it:
 `--entry <id> --text` edits it and `--entry <id> --clear` deletes it. Reply
-rather than rewriting someone else's note. The cockpit writes as `human:ui`. It
+rather than rewriting someone else's note. The cockpit is the operator's own
+surface, so everything it does names `human:ui` (archon-by4a): its mission
+edits' `updatedBy`, its notes, and its run starts, verdicts, resumes and stops
+(a verdict is recorded as decided by `human:operator`, whoever sent it); run
+evidence reads that actor as "the operator in the cockpit". It
 shows notes on the canvas in their own layer above the cards, as a preview of
 each thread's latest entry, the full thread, or hidden, with the operator's and
 agents' entries styled apart. A card's note pin or sticky, or Mission notes, opens
@@ -362,8 +366,8 @@ data. Projections and SSE stay sanitized; the run evidence routes under
 [HTTP contract](#http-contract) serve a run's outputs, gate results, human
 responses, briefs and artifacts to the operator.
 Run status also carries `startedBy`, the run's driver (the `actor` the start
-named, `operator:standalone` when it named none; the cockpit's starts name
-`human:ui`, and the CLI's run starts take `--actor`, default `agent:archon`), and `startedAt` and `updatedAt`, the
+named, `operator:standalone` when it named none; the CLI's run starts take
+`--actor`, default `agent:archon`), and `startedAt` and `updatedAt`, the
 times of its first and latest ledger events; a final run ended at
 `updatedAt`. Each waiting gate carries `requestedAt`, when it asked.
 `run logs` is the same sanitized projection as `run status`. `run follow` prints

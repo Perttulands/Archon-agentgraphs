@@ -30,7 +30,7 @@ for (const [button, verdict] of [['Approve', 'pass'], ['Send back', 'fail']]) {
       }
       await panel.getByRole('button', { name: new RegExp(`^${button}`) }).click()
       await expect.poll(() => payloads.length).toBe(1)
-      expect(payloads[0]).toEqual({ actor: 'agent:ui', requestedSeq: 11, verdict, reason: expected })
+      expect(payloads[0]).toEqual({ actor: 'human:ui', requestedSeq: 11, verdict, reason: expected })
       expect(fixture.writes).toEqual([])
     })
   }

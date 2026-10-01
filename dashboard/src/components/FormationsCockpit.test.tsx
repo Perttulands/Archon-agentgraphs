@@ -2520,7 +2520,7 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.change(within(panel).getByLabelText('Your response'), { target: { value: 'Postgres' } })
     await act(async () => { fireEvent.click(within(panel).getByRole('button', { name: 'Approve' })) })
-    await waitFor(() => expect(verdicts).toEqual([{ url: '/api/runs/run_01CLI/gates/gate_review/verdict', body: { actor: 'agent:ui', verdict: 'pass', requestedSeq: 4, reason: 'Postgres' } }]))
+    await waitFor(() => expect(verdicts).toEqual([{ url: '/api/runs/run_01CLI/gates/gate_review/verdict', body: { actor: 'human:ui', verdict: 'pass', requestedSeq: 4, reason: 'Postgres' } }]))
   })
 
   it('opens truncated gate input evidence for the selected run without submitting the draft', async () => {
@@ -3037,7 +3037,7 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.change(within(panel).getByLabelText('Your response'), { target: { value: '1. Postgres.\n2. The operator.' } })
     await act(async () => { fireEvent.click(within(panel).getByRole('button', { name: 'Approve' })) })
-    await waitFor(() => expect(verdicts).toEqual([{ actor: 'agent:ui', verdict: 'pass', requestedSeq: 4, reason: '1. Postgres.\n2. The operator.' }]))
+    await waitFor(() => expect(verdicts).toEqual([{ actor: 'human:ui', verdict: 'pass', requestedSeq: 4, reason: '1. Postgres.\n2. The operator.' }]))
   })
 
   it('keeps the gate answer in a window the run bar brings back, never under the gate editor', async () => {

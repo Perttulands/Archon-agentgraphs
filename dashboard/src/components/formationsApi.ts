@@ -126,7 +126,7 @@ export async function fetchBoardWithLayout(slug: string): Promise<{ board: Board
 export async function createBoard(title: string): Promise<BoardDocument> {
   const result = await fetchApi<{ mission: BoardDocument }>('/api/missions', {
     method: 'POST',
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ title, updatedBy: 'human:ui' }),
   })
   return normalizeBoard(result.data.mission, result.etag)
 }
@@ -244,7 +244,7 @@ export async function patchBoardDocument<TExtra extends object = Record<string, 
       headers: { 'If-Match': etag },
       body: JSON.stringify({
         expectedRev: rev,
-        updatedBy: 'agent:ui',
+        updatedBy: 'human:ui',
         ...patch,
       }),
     }
