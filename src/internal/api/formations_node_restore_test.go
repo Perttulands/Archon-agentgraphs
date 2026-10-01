@@ -47,7 +47,7 @@ label = "Output"
 id = "slot_lead"
 label = "Orchestrator"
 controller = true
-agentId = "codex-planner"
+agentId = "planner"
 harness = "openai-codex"
 effort = "medium"
 [[formation.slot]]

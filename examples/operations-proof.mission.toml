@@ -27,7 +27,7 @@ label = "Report"
 [[formation.slot]]
 id = "producer"
 label = "Producer"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 controller = true
 effort = "medium"
@@ -48,10 +48,10 @@ label = "Report"
 [[formation.slot]]
 id = "reviewer"
 label = "Reviewer"
-agentId = "codex-reviewer"
+agentId = "reviewer"
 harness = "openai-codex"
 controller = true
-effort = "medium"
+effort = "xhigh"
 
 [[formation]]
 id = "fmn_integrator"
@@ -69,7 +69,7 @@ label = "Report"
 [[formation.slot]]
 id = "integrator"
 label = "Integrator"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 controller = true
 effort = "medium"

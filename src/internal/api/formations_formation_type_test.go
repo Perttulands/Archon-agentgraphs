@@ -30,13 +30,13 @@ label = "Input"
 [[formation.slot]]
 id = "slot_a"
 label = "Peer A"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 effort = "medium"
 [[formation.slot]]
 id = "slot_b"
 label = "Peer B"
-agentId = "codex-reviewer"
+agentId = "reviewer"
 harness = "openai-codex"
 effort = "medium"
 
@@ -100,12 +100,12 @@ to = "fmn_work:port_in"
 		t.Fatalf("peer->orchestrated = %+v", original)
 	}
 	solo := formation(patch(`{"setFormationType":{"id":"fmn_work","type":"solo","keepSlotId":"slot_b"}}`))
-	if solo.Type != "solo" || len(solo.Slots) != 1 || solo.Slots[0].AgentID != "codex-reviewer" {
+	if solo.Type != "solo" || len(solo.Slots) != 1 || solo.Slots[0].AgentID != "reviewer" {
 		t.Fatalf("orchestrated->solo keeping slot_b = %+v", solo)
 	}
 	slots, _ := json.Marshal(original.Slots)
 	restored := formation(patch(`{"setFormationType":{"id":"fmn_work","type":"orchestrated","slots":` + string(slots) + `}}`))
-	if restored.Type != "orchestrated" || len(restored.Slots) != 2 || restored.Slots[0].ID != "slot_a" || restored.Slots[0].AgentID != "codex-builder" || !restored.Slots[0].Controller {
+	if restored.Type != "orchestrated" || len(restored.Slots) != 2 || restored.Slots[0].ID != "slot_a" || restored.Slots[0].AgentID != "builder" || !restored.Slots[0].Controller {
 		t.Fatalf("restored = %+v, want the original orchestrated slots", restored)
 	}
 }

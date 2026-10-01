@@ -16,16 +16,7 @@ func TestS4RunStartAppendsSeq1AndSnapshots(t *testing.T) {
 	store.Now = fixedClock()
 	personas.Now = fixedClock()
 
-	card, err := personas.CreatePersona(CreatePersonaRequest{
-		ID:           "scout",
-		DisplayName:  "Scout",
-		Kind:         "specialist",
-		Capabilities: []string{"research"},
-		Harness:      "openai-codex",
-	})
-	if err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
+	card := summarizeRole(t, personas, "scout", "Explores before changes.")
 	writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
 	boardBefore := readFile(t, store.BoardPath("session-search"))
 	board, err := store.ReadBoard("session-search")
@@ -144,9 +135,7 @@ func TestS4ProjectRunStatusFromLedgerOnly(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	store.Now = fixedClock()
 	personas.Now = fixedClock()
-	if _, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Capabilities: []string{"research"}, Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
+	summarizeRole(t, personas, "scout", "Explores before changes.")
 	writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
 	board, err := store.ReadBoard("session-search")
 	if err != nil {
@@ -203,9 +192,6 @@ func TestS4RejectAppendAfterFinal(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	store.Now = fixedClock()
 	personas.Now = fixedClock()
-	if _, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Capabilities: []string{"research"}, Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
 	board, err := store.ReadBoard("session-search")
 	if err != nil {

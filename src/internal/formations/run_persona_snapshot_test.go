@@ -63,10 +63,7 @@ func TestTmuxSeatsKeepAdmittedPersonaSettingsAcrossRestart(t *testing.T) {
 	for _, harness := range []string{"openai-codex", "claude-code"} {
 		t.Run(harness, func(t *testing.T) {
 			store, personas := s4RunFixture(t)
-			card, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Summary: "admitted summary", Harness: harness})
-			if err != nil {
-				t.Fatal(err)
-			}
+			card := summarizeRole(t, personas, "scout", "admitted summary")
 			rework := strings.Replace(s5HumanGateBoardFixture(), "id = \"edge_gate_fail_rejected\"\nfrom = \"gate_review:fail\"\nto = \"end_rejected:in\"", "id = \"edge_gate_rework\"\nfrom = \"gate_review:fail\"\nto = \"fmn_work:port_work_in\"", 1)
 			writeFixture(t, store.BoardPath("session-search"), strings.ReplaceAll(rework, "openai-codex", harness))
 			cfg := tmuxTestConfig(t)
@@ -240,7 +237,7 @@ func TestPersonaSnapshotRejectsAlteredOrMismatchedBindings(t *testing.T) {
 
 func TestPersonaSnapshotPreservesUnpinnedModelAndResolvesEffort(t *testing.T) {
 	store, personas := s4RunFixture(t)
-	createS4Persona(t, personas, "scout")
+	summarizeRole(t, personas, "scout", "Explores before changes.")
 	writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
 	started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Personas: personas})
 	if err != nil {
@@ -262,10 +259,8 @@ func TestPersonaSnapshotSizeRejectedBeforeRecordingRun(t *testing.T) {
 	for _, mode := range []string{"mission", "formation"} {
 		t.Run(mode, func(t *testing.T) {
 			store, personas := s4RunFixture(t)
-			_, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Summary: strings.Repeat("x", int(runRecordMaxBytes)), Harness: "openai-codex"})
-			if err != nil {
-				t.Fatal(err)
-			}
+			summarizeRole(t, personas, "scout", strings.Repeat("x", int(runRecordMaxBytes)))
+			var err error
 			writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
 			if mode == "mission" {
 				_, err = store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Personas: personas})

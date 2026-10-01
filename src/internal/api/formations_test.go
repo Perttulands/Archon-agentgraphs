@@ -314,9 +314,6 @@ func TestFormationsHandlerS5ResumeVerdictAndEscalations(t *testing.T) {
 	store.Now = fixedFormationsAPIClock()
 	personas := formations.NewPersonaStore(t.TempDir())
 	personas.Now = fixedFormationsAPIClock()
-	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	writeFormationsAPIFixture(t, store.BoardPath("session-search"), formationsAPIS5CascadeBoardFixture())
 	handler := NewFormationsHandlerWithStores(store, personas)
 	mux := http.NewServeMux()
@@ -404,9 +401,6 @@ func TestFormationsHandlerStartsSingleFormationByID(t *testing.T) {
 	store.Now = fixedFormationsAPIClock()
 	personas := formations.NewPersonaStore(t.TempDir())
 	personas.Now = fixedFormationsAPIClock()
-	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
 	writeFormationsAPIFixture(t, store.BoardPath("session-search"), formationsAPIS5CascadeBoardFixture())
 	handler := NewFormationsHandlerWithStores(store, personas)
@@ -1285,14 +1279,6 @@ func TestFormationsHandlerS4RunLifecycleAndSSE(t *testing.T) {
 	workspace := t.TempDir()
 	store := formations.NewStore(workspace)
 	personas := formations.NewPersonaStore(t.TempDir())
-	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
-		ID:           "scout",
-		Kind:         "specialist",
-		Capabilities: []string{"research"},
-		Harness:      "openai-codex",
-	}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	writeFormationsAPIFixture(t, store.BoardPath("session-search"), s4APIBoardFixture())
 	board, err := store.ReadBoard("session-search")
 	if err != nil {
@@ -1416,9 +1402,8 @@ func TestFormationsHandlerS4ConfiguredLabExecutorRunsStaffedFormation(t *testing
 	store := formations.NewStore(workspace)
 	personas := formations.NewPersonaStore(agentsDir)
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
-		ID:      "lab-poet",
-		Kind:    "specialist",
-		Harness: "openai-codex",
+		ID:   "lab-poet",
+		Kind: "specialist",
 	}); err != nil {
 		t.Fatalf("create persona: %v", err)
 	}

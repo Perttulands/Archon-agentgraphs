@@ -178,7 +178,7 @@ describe('AgentsView', () => {
           success: true,
           data: {
             agents: [
-              agent('coder', { displayName: 'Coder', liveness: 'live', harnessDefault: 'openai-codex', kind: 'builder' }),
+              agent('coder', { displayName: 'Coder', liveness: 'live', kind: 'builder' }),
               agent('susie', { displayName: 'Susie', tags: ['design'], liveness: 'offline' }),
             ],
             count: 2,
@@ -348,7 +348,7 @@ describe('AgentsView', () => {
     let displayName = 'Susie'
     fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('susie', { displayName, harnessDefault: 'claude-code' })], count: 1 } }))
+      if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('susie', { displayName })], count: 1 } }))
       if (url === '/api/agents/susie' && init?.method === 'PATCH') {
         const body = JSON.parse(String(init.body))
         patches.push({ headers: init.headers, body })
@@ -356,7 +356,7 @@ describe('AgentsView', () => {
         return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName }) }, 200, { ETag: 'susie-etag-2' }))
       }
       if (url === '/api/agents/susie') {
-        return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName, summary: 'Designs things', harnessVariants: [{ id: 'claude-code', sessionStem: 'susie' }] }) }, 200, { ETag: 'susie-etag' }))
+        return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName, summary: 'Designs things' }) }, 200, { ETag: 'susie-etag' }))
       }
       if (url === '/api/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { missions: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
@@ -385,7 +385,7 @@ describe('AgentsView', () => {
 
     await waitFor(() => expect(patches).toHaveLength(1))
     expect(headerValue(patches[0].headers, 'If-Match')).toBe('susie-etag')
-    expect(patches[0].body).toEqual({ displayName: 'Susie Designer', kind: 'specialist', summary: 'Designs things', capabilities: [], sessionStem: 'susie' })
+    expect(patches[0].body).toEqual({ displayName: 'Susie Designer', kind: 'specialist', summary: 'Designs things', capabilities: [] })
     await waitFor(() => expect(screen.queryByTestId('persona-editor')).toBeNull())
     expect(await screen.findByRole('button', { name: /inspect Susie Designer/i })).toBeInTheDocument()
   })
@@ -396,8 +396,8 @@ describe('AgentsView', () => {
       slots: [{ id: 'reviewer', label: 'Reviewer', controller: true, agentId: 'critic', harness: 'openai-codex', model: 'gpt-6-astra', effort: 'xhigh' }] }]
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
-      if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('critic', { displayName: 'Critic', harnessDefault: 'claude-code' })], count: 1, harnesses: HARNESSES } }))
-      if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic', summary: 'Reviews the brief.', harnessVariants: [{ id: 'claude-code', sessionStem: 'critic' }] }) }, 200, { ETag: 'critic-etag' }))
+      if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('critic', { displayName: 'Critic' })], count: 1, harnesses: HARNESSES } }))
+      if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic', summary: 'Reviews the brief.' }) }, 200, { ETag: 'critic-etag' }))
       if (url === '/api/missions') return Promise.resolve(jsonResponse({ success: true, data: { missions: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
       if (url === '/api/missions/empty/layout') return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
       if (url === '/api/missions/empty') return Promise.resolve(jsonResponse({ success: true, data: { mission: board } }, 200, { ETag: 'empty-etag' }))
@@ -457,8 +457,8 @@ describe('AgentsView', () => {
           success: true,
           data: {
             agents: [
-              agent('attached-live', { displayName: 'Attached Live', liveness: 'live', attached: true, harnessDefault: 'openai-codex' }),
-              agent('ambiguous-one', { displayName: 'Ambiguous One', liveness: 'ambiguous', harnessDefault: 'claude-code' }),
+              agent('attached-live', { displayName: 'Attached Live', liveness: 'live', attached: true }),
+              agent('ambiguous-one', { displayName: 'Ambiguous One', liveness: 'ambiguous' }),
               agent('offline-one', { displayName: 'Offline One', liveness: 'offline' }),
               agent('retired-one', { displayName: 'Retired One', liveness: 'offline', assignable: false }),
               agent('floating-session', { displayName: 'floating-session', liveness: 'live', unbound: true, assignable: false }),
@@ -508,8 +508,9 @@ describe('AgentsView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /inspect floating-session/i }))
     fireEvent.click(screen.getByRole('button', { name: /create persona from this session/i }))
+    // The role is named after the session, which is then the role's own.
     expect(screen.getByLabelText('Agent id')).toHaveValue('floating-session')
-    expect(screen.getByLabelText('Session stem')).toHaveValue('floating-session')
+    expect(screen.queryByLabelText('Session stem')).toBeNull()
   })
 
   it('creates a role from role text alone', async () => {
@@ -519,7 +520,7 @@ describe('AgentsView', () => {
       const url = String(input)
       if (url === '/api/agents' && init?.method === 'POST') {
         postedBodies.push(JSON.parse(String(init.body)))
-        return Promise.resolve(jsonResponse({ success: true, data: persona('writer', { displayName: 'Writer', harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'writer' }] }) }, 201, { ETag: 'writer-etag' }))
+        return Promise.resolve(jsonResponse({ success: true, data: persona('writer', { displayName: 'Writer' }) }, 201, { ETag: 'writer-etag' }))
       }
       if (url === '/api/agents') {
         return Promise.resolve(jsonResponse({ success: true, data: { agents: [], count: 0, harnesses: HARNESSES } }))
@@ -557,10 +558,11 @@ describe('AgentsView', () => {
       id: 'writer',
       displayName: 'Writer',
       kind: 'specialist',
-      harness: 'claude-code',
       summary: 'Writes launch copy',
       capabilities: ['writing', 'voice'],
     })
+    expect(postedBodies[0]).not.toHaveProperty('harness')
+    expect(postedBodies[0]).not.toHaveProperty('sessionStem')
     expect(postedBodies[0]).not.toHaveProperty('launch')
     expect(postedBodies[0]).not.toHaveProperty('model')
     expect(postedBodies[0]).not.toHaveProperty('effort')
@@ -589,7 +591,6 @@ describe('AgentsView', () => {
             displayName: 'Susie',
             summary: 'Designs things',
             tags: ['design'],
-            harnessVariants: [{ id: 'claude-code', sessionStem: 'susie', source: '/tmp/SUSIE.toml' }],
             toml: 'CLAUDE.md contents',
           }),
         }, 200, { ETag: 'susie-etag' }))
@@ -771,8 +772,6 @@ function persona(id: string, overrides: Record<string, unknown> = {}) {
     summary: '',
     tags: [],
     status: '',
-    harnessDefault: 'claude-code',
-    harnessVariants: [{ id: 'claude-code', sessionStem: id, source: '/tmp/AGENT.toml' }],
     notes: [],
     etag: `${id}-etag`,
     ...overrides,

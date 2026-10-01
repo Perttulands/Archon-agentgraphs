@@ -20,7 +20,7 @@ export interface TalkSeat {
   slotLabel: string
   agent: string
   harness: string
-  /** Agent and harness, which tell peers on one formation apart: "Delivery Planner · Claude Code". */
+  /** Agent and harness, which tell peers on one formation apart: "Planner · Claude Code". */
   label: string
 }
 
@@ -61,7 +61,7 @@ function talkSeat(
   const slot = formation?.slots.find(item => item.id === asked.slotId)
   const persona = slot?.agentId ? agents.find(agent => agent.id === slot.agentId) : undefined
   const agent = persona?.displayName || slot?.agentId || slot?.label || asked.slotId
-  const harness = slot?.harness || persona?.harnessDefault || ''
+  const harness = slot?.harness || ''
   return {
     windowId: talkSeatWindowId(runId, asked.createdSeq),
     runId,

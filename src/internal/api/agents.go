@@ -94,9 +94,6 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		Summary      string   `json:"summary"`
 		Capabilities []string `json:"capabilities"`
 		Personality  string   `json:"personality"`
-		Harness      string   `json:"harness"`
-		SessionStem  string   `json:"sessionStem"`
-		Source       string   `json:"source"`
 	}
 	if !decodeStrictJSONBody(w, r, &req, "INVALID_AGENT_CARD", unknownAgentField) {
 		return
@@ -108,9 +105,6 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		Summary:      req.Summary,
 		Capabilities: req.Capabilities,
 		Personality:  req.Personality,
-		Harness:      req.Harness,
-		SessionStem:  req.SessionStem,
-		Source:       req.Source,
 	})
 	if err != nil {
 		writeAgentError(w, err)
@@ -125,9 +119,6 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AddCapability    string    `json:"addCapability"`
 		RemoveCapability string    `json:"removeCapability"`
-		AddHarness       string    `json:"addHarness"`
-		SessionStem      *string   `json:"sessionStem"`
-		Source           string    `json:"source"`
 		Note             string    `json:"note"`
 		Retire           bool      `json:"retire"`
 		DisplayName      *string   `json:"displayName"`
@@ -141,8 +132,6 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	edit := formations.EditPersonaRequest{
 		AddCapability:    req.AddCapability,
 		RemoveCapability: req.RemoveCapability,
-		AddHarness:       req.AddHarness,
-		Source:           req.Source,
 		Note:             req.Note,
 		Retire:           req.Retire,
 		ExpectedETag:     r.Header.Get("If-Match"),
@@ -150,13 +139,6 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		SetKind:          req.Kind,
 		SetSummary:       req.Summary,
 		SetCapabilities:  req.Capabilities,
-	}
-	if req.AddHarness != "" {
-		if req.SessionStem != nil {
-			edit.SessionStem = *req.SessionStem
-		}
-	} else {
-		edit.SetSessionStem = req.SessionStem
 	}
 	card, err := h.store.EditPersona(r.PathValue("agentId"), edit)
 	if err != nil {
@@ -176,10 +158,10 @@ func (h *AgentsHandler) liveSessions() ([]formations.LiveAgentSession, error) {
 }
 
 // unknownAgentField says why a role request cannot take a field: a role is
-// role text, so a model or effort belongs on each slot.
+// role text, so a harness, model or effort belongs on each slot.
 func unknownAgentField(field string) string {
-	if field == "model" || field == "effort" {
-		return fmt.Sprintf("agent request field %q is not one a role takes: a role carries no model or effort; state them on each slot (formation assign --model --effort)", field)
+	if field == "harness" || field == "model" || field == "effort" {
+		return fmt.Sprintf("agent request field %q is not one a role takes: a role carries no harness, model or effort; state them on each slot (formation assign --harness --model --effort)", field)
 	}
 	return fmt.Sprintf("agent request field %q is not one Archon takes", field)
 }

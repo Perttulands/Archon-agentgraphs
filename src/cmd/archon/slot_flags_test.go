@@ -27,7 +27,7 @@ controller = false
 [[formation.slot]]
 id = "slot_b"
 label = "B"
-agentId = "delivery-final-reviewer"
+agentId = "reviewer"
 harness = "openai-codex"
 controller = false
 effort = "medium"
@@ -49,10 +49,10 @@ func TestArchonFormationAssignSetsTheSlotsSettings(t *testing.T) {
 	for _, args := range [][]string{
 		{"formation", "assign", "staff", "Work", "--slot", "slot_a", "--harness", "claude-code"},
 		{"formation", "assign", "staff", "Work", "--slot", "slot_a", "--effort", "low"},
-		{"formation", "assign", "staff", "Work", "--slot", "slot_a", "--role", "delivery-worker"},
+		{"formation", "assign", "staff", "Work", "--slot", "slot_a", "--role", "builder"},
 	} {
 		_, stderr, code := archon(args...)
-		if code != 2 || !strings.Contains(stderr, "--harness <claude-code|openai-codex> --effort <effort>") || !strings.Contains(stderr, "low for errands (verifier, scout, observer, operator); medium for making things (builder, debugger); xhigh for architecture and review (reviewer, judge, architect, planner, orchestrator); max for consequential reviews, chosen by hand") {
+		if code != 2 || !strings.Contains(stderr, "--harness <claude-code|openai-codex> --effort <effort>") || !strings.Contains(stderr, "low for errands (verifier, scout); medium for making things (builder, debugger, operator); xhigh for architecture and review (reviewer, judge, architect, designer, planner, orchestrator); max for consequential reviews, chosen by hand") {
 			t.Fatalf("%v: code=%d stderr=%s, want usage with the effort policy", args, code, stderr)
 		}
 	}
@@ -67,7 +67,7 @@ func TestArchonFormationAssignSetsTheSlotsSettings(t *testing.T) {
 	if code != 0 || stdout != "slot_a is vanilla · claude-code · opus · low\n" {
 		t.Fatalf("vanilla assign: code=%d stdout=%q stderr=%s", code, stdout, stderr)
 	}
-	stdout, stderr, code = archon("formation", "assign", "staff", "Work", "--slot", "slot_b", "--role", "delivery-final-reviewer", "--harness", "openai-codex", "--effort", "max", "--json")
+	stdout, stderr, code = archon("formation", "assign", "staff", "Work", "--slot", "slot_b", "--role", "reviewer", "--harness", "openai-codex", "--effort", "max", "--json")
 	if code != 0 {
 		t.Fatalf("role assign: code=%d stderr=%s", code, stderr)
 	}
@@ -75,14 +75,14 @@ func TestArchonFormationAssignSetsTheSlotsSettings(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &board); err != nil {
 		t.Fatal(err)
 	}
-	if slot := board.Formations[0].Slots[1]; slot.AgentID != "delivery-final-reviewer" || slot.Harness != "openai-codex" || slot.Model != "" || slot.Effort != "max" {
+	if slot := board.Formations[0].Slots[1]; slot.AgentID != "reviewer" || slot.Harness != "openai-codex" || slot.Model != "" || slot.Effort != "max" {
 		t.Fatalf("role slot = %+v, want the stated settings, not the role's", slot)
 	}
 
 	stdout, stderr, code = archon("formation", "inspect", "staff", "Work")
 	want := "fmn_work\tpeer\tWork\t2/2 staffed\t0 connections\n" +
 		"slot slot_a\tA\tvanilla · claude-code · opus · low\n" +
-		"slot slot_b\tB\tdelivery-final-reviewer · openai-codex · default model · max\n"
+		"slot slot_b\tB\treviewer · openai-codex · default model · max\n"
 	if code != 0 || stdout != want {
 		t.Fatalf("inspect code=%d stdout=%q stderr=%s, want %q", code, stdout, stderr, want)
 	}

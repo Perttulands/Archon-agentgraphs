@@ -18,7 +18,8 @@ func TestArchonMissionInputsAreDeclaredListedAndSupplied(t *testing.T) {
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
-	if _, err := formations.NewPersonaStore(agentsDir).CreatePersona(formations.CreatePersonaRequest{ID: "lab-poet", Kind: "specialist", Harness: "openai-codex"}); err != nil {
+	t.Setenv("ARCHON_LAB_CWD", workspace)
+	if _, err := formations.NewPersonaStore(agentsDir).CreatePersona(formations.CreatePersonaRequest{ID: "lab-poet", Kind: "specialist"}); err != nil {
 		t.Fatal(err)
 	}
 	store := formations.NewStore(workspace)

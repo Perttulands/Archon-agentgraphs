@@ -279,15 +279,13 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path.endsWith('/changes')) return respond({ signal: { changed: false } })
     if (path === '/api/gate-profiles') return respond({ profiles: [] })
     if (path === '/api/agents') return respond(rosterAnswer([
-      { id: 'claude', displayName: 'Claude controller', summary: 'Directs the workers.', harnessDefault: 'claude-code', assignable: true, liveness: 'live', tags: [], kind: 'controller' },
-      { id: 'codex', displayName: 'Codex builder', summary: 'Builds the change.', harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' },
+      { id: 'claude', displayName: 'Claude controller', summary: 'Directs the workers.', assignable: true, liveness: 'live', tags: [], kind: 'controller' },
+      { id: 'codex', displayName: 'Codex builder', summary: 'Builds the change.', assignable: true, liveness: 'live', tags: [], kind: 'builder' },
       ...(options.roles || []).map(role => ({ ...role, summary: role.summary || '', assignable: true, liveness: 'offline', tags: [] })),
       // A large roster, as on a real host, makes long staffing menus.
-      ...Array.from({ length: options.extraAgents || 0 }, (_, index) => ({ id: `agent-${index + 1}`, displayName: `Roster agent ${index + 1}`,
-        harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' })),
+      ...Array.from({ length: options.extraAgents || 0 }, (_, index) => ({ id: `agent-${index + 1}`, displayName: `Roster agent ${index + 1}`, assignable: true, liveness: 'live', tags: [], kind: 'builder' })),
     ]))
-    if (path === '/api/agents/codex') return respond({ id: 'codex', displayName: 'Codex builder', kind: 'builder', summary: 'Builds the change.', tags: [],
-      harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'codex' }], etag: 'codex-card' })
+    if (path === '/api/agents/codex') return respond({ id: 'codex', displayName: 'Codex builder', kind: 'builder', summary: 'Builds the change.', tags: [], etag: 'codex-card' })
     if (path === '/api/runs/run_browser' && options.waitingHuman) return respond({ runId: 'run_browser', status: 'waiting_human', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 3, cwd: runCwd, waitingGates: [{ gateId: 'loose', requestedSeq: 3 }] })
     if (path === '/api/runs/run_browser' && options.succeeded) return respond({ runId: 'run_browser', status: 'succeeded', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 7, cwd: runCwd })
     if (options.succeeded && path in succeededEvidence) return respond(succeededEvidence[path])

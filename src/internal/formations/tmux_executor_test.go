@@ -1172,14 +1172,6 @@ func runTmuxFormationForTestWithConfig(t *testing.T, client *fakeTmuxHarnessClie
 	if harness == "" {
 		harness = "openai-codex"
 	}
-	if _, err := personas.CreatePersona(CreatePersonaRequest{
-		ID:           "scout",
-		Kind:         "specialist",
-		Capabilities: []string{"research"},
-		Harness:      harness,
-	}); err != nil {
-		t.Fatalf("create persona scout: %v", err)
-	}
 	if board == "" {
 		board = s4RunBoardFixture()
 	}

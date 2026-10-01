@@ -21,14 +21,15 @@ type EffortPolicyEntry struct {
 	Kinds  []string `json:"kinds,omitempty"`
 }
 
-// effortPolicy is Perttu's effort policy (2026-10-01). It guides the choice;
-// the slot still states its own effort, and any effort its harness accepts is
-// valid. max is never suggested: it is chosen by hand for consequential
-// reviews.
+// effortPolicy is Perttu's effort policy (2026-10-01), with the role kinds
+// he placed on it (archon-o7p.12.1): operators triage and integrate, which is
+// making; design counts as architecture. It guides the choice; the slot still
+// states its own effort, and any effort its harness accepts is valid. max is
+// never suggested: it is chosen by hand for consequential reviews.
 var effortPolicy = []EffortPolicyEntry{
-	{Effort: "low", Use: "errands", Kinds: []string{"verifier", "scout", "observer", "operator"}},
-	{Effort: "medium", Use: "making things", Kinds: []string{"builder", "debugger"}},
-	{Effort: "xhigh", Use: "architecture and review", Kinds: []string{"reviewer", "judge", "architect", "planner", "orchestrator"}},
+	{Effort: "low", Use: "errands", Kinds: []string{"verifier", "scout"}},
+	{Effort: "medium", Use: "making things", Kinds: []string{"builder", "debugger", "operator"}},
+	{Effort: "xhigh", Use: "architecture and review", Kinds: []string{"reviewer", "judge", "architect", "designer", "planner", "orchestrator"}},
 	{Effort: "max", Use: "consequential reviews"},
 }
 
@@ -43,8 +44,7 @@ func EffortPolicy() []EffortPolicyEntry {
 }
 
 // EffortPolicyText reads the policy as one line: "low for errands (verifier,
-// scout, observer, operator); ...; max for consequential reviews, chosen by
-// hand".
+// scout); ...; max for consequential reviews, chosen by hand".
 func EffortPolicyText() string {
 	parts := make([]string, 0, len(effortPolicy))
 	for _, entry := range effortPolicy {
@@ -72,15 +72,14 @@ type SlotSettings struct {
 	Harness string `json:"harness"`
 	Model   string `json:"model,omitempty"`
 	Effort  string `json:"effort"`
-	// SessionStem and Source are carried from the role's variant for the run
-	// record.
+	// SessionStem names the seat's session in the run record: the role, or
+	// the slot for a vanilla agent.
 	SessionStem string `json:"-"`
-	Source      string `json:"-"`
 }
 
 // Variant is the harness variant a seat for these settings starts from.
 func (s SlotSettings) Variant() HarnessVariant {
-	return HarnessVariant{ID: s.Harness, SessionStem: s.SessionStem, Model: s.Model, Effort: s.Effort, Source: s.Source}
+	return HarnessVariant{ID: s.Harness, SessionStem: s.SessionStem, Model: s.Model, Effort: s.Effort}
 }
 
 // LaunchCommand is the seat command these settings start, as HarnessVariant
@@ -113,9 +112,6 @@ func ResolveSlotSettings(slot FormationSlot, personas *PersonaStore) (SlotSettin
 	settings := SlotSettings{Role: slot.AgentID, Harness: slot.Harness, Model: slot.Model, Effort: slot.Effort, SessionStem: slot.ID}
 	if card != nil {
 		settings.SessionStem = card.ID
-		if variant, err := card.SelectHarnessVariant(slot.Harness); err == nil && variant.SessionStem != "" {
-			settings.SessionStem = variant.SessionStem
-		}
 	}
 	return settings, card, nil
 }
@@ -136,10 +132,7 @@ func ValidateSpawnSettings(agentID, harnessID, model, effort string) error {
 // validateRunSettings checks a harness, model and effort a session starts
 // with; subject names what is checked, such as `slot "Worker" (w1)`.
 func validateRunSettings(subject, harnessID, model, effort string) error {
-	harnessIDs := make([]string, 0, len(launchableHarnesses))
-	for _, harness := range launchableHarnesses {
-		harnessIDs = append(harnessIDs, harness.ID)
-	}
+	harnessIDs := LaunchableHarnessIDs()
 	if harnessID == "" {
 		return fmt.Errorf("%w: %s needs a harness: %s", ErrInvalidSlotSettings, subject, strings.Join(harnessIDs, " or "))
 	}

@@ -69,11 +69,11 @@ controller = false
 	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), `"code":"INVALID_SLOT_SETTINGS"`) || !strings.Contains(rec.Body.String(), "needs an effort; the policy is low for errands") {
 		t.Fatalf("missing effort = %d %s", rec.Code, rec.Body.String())
 	}
-	rec = patch(`{"formationId":"fmn_work","slotId":"slot_a","agentId":"delivery-lead","harness":"claude-code"}`)
+	rec = patch(`{"formationId":"fmn_work","slotId":"slot_a","agentId":"orchestrator","harness":"claude-code"}`)
 	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "needs an effort") {
 		t.Fatalf("a role without an effort = %d %s", rec.Code, rec.Body.String())
 	}
-	if got := slot(patch(`{"formationId":"fmn_work","slotId":"slot_a","agentId":"delivery-lead","harness":"claude-code","effort":"medium"}`)); got.AgentID != "delivery-lead" || got.Harness != "claude-code" || got.Model != "" || got.Effort != "medium" {
+	if got := slot(patch(`{"formationId":"fmn_work","slotId":"slot_a","agentId":"orchestrator","harness":"claude-code","effort":"medium"}`)); got.AgentID != "orchestrator" || got.Harness != "claude-code" || got.Model != "" || got.Effort != "medium" {
 		t.Fatalf("role slot = %+v", got)
 	}
 	if got := slot(patch(`{"formationId":"fmn_work","slotId":"slot_a","agentId":"","harness":""}`)); got.Staffed() {

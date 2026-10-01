@@ -34,7 +34,7 @@ label = "Output"
 [[formation.slot]]
 id = "slot_map"
 label = "Scout"
-agentId = "codex-scout"
+agentId = "scout"
 harness = "openai-codex"
 effort = "medium"
 

@@ -32,14 +32,6 @@ id = "susie"
 display_name = "Susie"
 kind = "specialist"
 tags = ["design", "react", "taste:visual"]
-
-[harness]
-default = "claude-code"
-
-[[harness.variant]]
-id = "claude-code"
-session_stem = "susie"
-source = "/tmp/CLAUDE.md"
 `)
 
 	handler := NewAgentsHandler(agentsDir, fakeAgentLiveness{live: []formations.LiveAgentSession{
@@ -64,7 +56,7 @@ source = "/tmp/CLAUDE.md"
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if !body.Success || body.Data.Count != 15 {
+	if !body.Success || body.Data.Count != 9 {
 		t.Fatalf("response = %#v", body)
 	}
 	var susie, scratch *formations.AgentProjection
@@ -76,16 +68,14 @@ source = "/tmp/CLAUDE.md"
 			scratch = &body.Data.Agents[index]
 		}
 	}
-	if susie == nil || susie.Liveness != formations.AgentLivenessLive || susie.HarnessDefault != "claude-code" {
-		t.Fatalf("susie projection = %#v, want live claude-code persona", susie)
+	if susie == nil || susie.Liveness != formations.AgentLivenessLive || susie.SessionID != "susie" {
+		t.Fatalf("susie projection = %#v, want the live session named after the role", susie)
 	}
 	if scratch == nil || !scratch.Unbound || scratch.Assignable {
 		t.Fatalf("scratch projection = %#v, want unbound session", scratch)
 	}
-	if strings.Contains(rec.Body.String(), "CLAUDE.md contents") ||
-		strings.Contains(rec.Body.String(), "/tmp/CLAUDE.md") ||
-		strings.Contains(rec.Body.String(), "harnessVariants") {
-		t.Fatalf("roster response leaked source or harness internals: %s", rec.Body.String())
+	if strings.Contains(rec.Body.String(), "harness\"") || strings.Contains(rec.Body.String(), "harnessDefault") {
+		t.Fatalf("roster gives a role a harness: %s", rec.Body.String())
 	}
 }
 
@@ -119,25 +109,9 @@ func TestAgentsHandlerFiltersAssignableAndCapability(t *testing.T) {
 	}
 }
 
-func TestAgentsHandlerInspectReturnsPointersWithoutInliningSource(t *testing.T) {
+func TestAgentsHandlerInspectServesNoRawTOML(t *testing.T) {
 	agentsDir := t.TempDir()
-	sourcePath := filepath.Join(t.TempDir(), "CLAUDE.md")
-	writeTextFile(t, sourcePath, "CLAUDE.md contents must stay out of API responses")
-	writeAgentFixture(t, agentsDir, "susie", `schema = 1
-
-[card]
-id = "susie"
-kind = "specialist"
-tags = ["react"]
-
-[harness]
-default = "claude-code"
-
-[[harness.variant]]
-id = "claude-code"
-session_stem = "susie"
-source = "`+sourcePath+`"
-`)
+	writeAgentFixture(t, agentsDir, "susie", minimalAgentFixture("susie", "specialist", []string{"react"}))
 
 	handler := NewAgentsHandler(agentsDir, fakeAgentLiveness{})
 	req := httptest.NewRequest(http.MethodGet, "/api/agents/susie", nil)
@@ -146,15 +120,11 @@ source = "`+sourcePath+`"
 
 	handler.GetAgent(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK || rec.Header().Get("ETag") == "" {
+		t.Fatalf("status = %d, want 200 with an ETag: %s", rec.Code, rec.Body.String())
 	}
-	body := rec.Body.String()
-	if !strings.Contains(body, sourcePath) {
-		t.Fatalf("inspect response missing source pointer: %s", body)
-	}
-	if strings.Contains(body, "CLAUDE.md contents") || strings.Contains(body, "toml") {
-		t.Fatalf("inspect response leaked source contents or raw TOML: %s", body)
+	if body := rec.Body.String(); !strings.Contains(body, `"id":"susie"`) || strings.Contains(body, "toml") {
+		t.Fatalf("inspect response = %s", body)
 	}
 }
 
@@ -162,7 +132,7 @@ func TestAgentsHandlerCreatesAndEditsThroughSharedWriter(t *testing.T) {
 	agentsDir := t.TempDir()
 	handler := NewAgentsHandler(agentsDir, fakeAgentLiveness{})
 
-	createReq := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"writer","kind":"specialist","harness":"claude-code","capabilities":["writing","voice"]}`))
+	createReq := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"writer","kind":"specialist","capabilities":["writing","voice"]}`))
 	createRec := httptest.NewRecorder()
 	handler.CreateAgent(createRec, createReq)
 	if createRec.Code != http.StatusCreated {
@@ -183,20 +153,20 @@ func TestAgentsHandlerCreatesAndEditsThroughSharedWriter(t *testing.T) {
 	}
 }
 
-func TestAgentsHandlerOverridesBuiltInCodexPresetThroughSharedWriter(t *testing.T) {
+func TestAgentsHandlerOverridesABuiltinRoleThroughSharedWriter(t *testing.T) {
 	agentsDir := t.TempDir()
 	handler := NewAgentsHandler(agentsDir, fakeAgentLiveness{})
 
-	getReq := httptest.NewRequest(http.MethodGet, "/api/agents/codex-planner", nil)
-	getReq.SetPathValue("agentId", "codex-planner")
+	getReq := httptest.NewRequest(http.MethodGet, "/api/agents/planner", nil)
+	getReq.SetPathValue("agentId", "planner")
 	getRec := httptest.NewRecorder()
 	handler.GetAgent(getRec, getReq)
 	if getRec.Code != http.StatusOK || getRec.Header().Get("ETag") == "" || !strings.Contains(getRec.Body.String(), `"preset":true`) {
 		t.Fatalf("get preset = %d %s", getRec.Code, getRec.Body.String())
 	}
 
-	patchReq := httptest.NewRequest(http.MethodPatch, "/api/agents/codex-planner", bytes.NewBufferString(`{"displayName":"Delivery Planner","summary":"Plans the selected delivery","capabilities":["planning","tickets"],"sessionStem":"planner-main"}`))
-	patchReq.SetPathValue("agentId", "codex-planner")
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/agents/planner", bytes.NewBufferString(`{"displayName":"Release Planner","summary":"Plans the selected release","capabilities":["planning","tickets"]}`))
+	patchReq.SetPathValue("agentId", "planner")
 	patchReq.Header.Set("If-Match", getRec.Header().Get("ETag"))
 	patchRec := httptest.NewRecorder()
 	handler.UpdateAgent(patchRec, patchReq)
@@ -209,55 +179,61 @@ func TestAgentsHandlerOverridesBuiltInCodexPresetThroughSharedWriter(t *testing.
 	if err := json.Unmarshal(patchRec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode preset override: %v", err)
 	}
-	if response.Data.DisplayName != "Delivery Planner" || !response.Data.Customized || response.Data.DefaultVariant().SessionStem != "planner-main" {
+	if response.Data.DisplayName != "Release Planner" || !response.Data.Customized {
 		t.Fatalf("preset override = %+v", response.Data)
 	}
-	if _, err := os.Stat(filepath.Join(agentsDir, "codex-planner.toml")); err != nil {
+	if _, err := os.Stat(filepath.Join(agentsDir, "planner.toml")); err != nil {
 		t.Fatalf("materialized API override: %v", err)
 	}
 }
 
 // A role is role text (ADR-0021): agent routes neither take nor serve a
-// model, an effort or a seat launch; each slot states its own.
+// harness, a model, an effort or a seat launch; each slot states its own.
 func TestAgentsHandlerServesARoleAsRoleTextOnly(t *testing.T) {
 	agentsDir := t.TempDir()
 	handler := NewAgentsHandler(agentsDir, fakeAgentLiveness{})
 	created := httptest.NewRecorder()
-	handler.CreateAgent(created, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"critic","kind":"reviewer","harness":"claude-code","summary":"Reviews against acceptance."}`)))
+	handler.CreateAgent(created, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"critic","kind":"reviewer","summary":"Reviews against acceptance."}`)))
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create = %d %s", created.Code, created.Body.String())
 	}
-	req := httptest.NewRequest(http.MethodPatch, "/api/agents/critic", bytes.NewBufferString(`{"addHarness":"openai-codex","sessionStem":"codex-critic"}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/agents/critic", bytes.NewBufferString(`{"note":"judges plans too"}`))
 	req.SetPathValue("agentId", "critic")
 	req.Header.Set("If-Match", created.Header().Get("ETag"))
 	edited := httptest.NewRecorder()
 	handler.UpdateAgent(edited, req)
 	if edited.Code != http.StatusOK {
-		t.Fatalf("add harness = %d %s", edited.Code, edited.Body.String())
+		t.Fatalf("note = %d %s", edited.Code, edited.Body.String())
 	}
 	read := httptest.NewRequest(http.MethodGet, "/api/agents/critic", nil)
 	read.SetPathValue("agentId", "critic")
 	got := httptest.NewRecorder()
 	handler.GetAgent(got, read)
 	for _, body := range []string{created.Body.String(), edited.Body.String(), got.Body.String()} {
-		for _, word := range []string{`"model"`, `"effort"`, "effectiveEffort", "seatLaunch", `"efforts"`} {
+		for _, word := range []string{`"harness`, `"model"`, `"effort"`, `"session`, "effectiveEffort", "seatLaunch", `"efforts"`} {
 			if strings.Contains(body, word) {
 				t.Fatalf("agent answer carries %s: %s", word, body)
 			}
 		}
 	}
-	if raw := readAgentFixture(t, agentsDir, "critic"); strings.Contains(raw, "model") || strings.Contains(raw, "effort") {
-		t.Fatalf("card holds a model or effort:\n%s", raw)
+	if raw := readAgentFixture(t, agentsDir, "critic"); strings.Contains(raw, "harness") || strings.Contains(raw, "model") || strings.Contains(raw, "effort") {
+		t.Fatalf("card holds a harness, model or effort:\n%s", raw)
 	}
 
-	// A model or effort sent anyway is refused by name, never dropped silently.
+	// A harness, model or effort sent anyway is refused by name, never dropped
+	// silently.
 	refusedCreate := httptest.NewRecorder()
-	handler.CreateAgent(refusedCreate, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"builder","kind":"builder","model":"opus"}`)))
+	handler.CreateAgent(refusedCreate, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"maker","kind":"builder","model":"opus"}`)))
 	if refusedCreate.Code != http.StatusUnprocessableEntity || !strings.Contains(refusedCreate.Body.String(), `"code":"INVALID_AGENT_CARD"`) || !strings.Contains(refusedCreate.Body.String(), `agent request field \"model\" is not one a role takes`) {
 		t.Fatalf("create with a model = %d %s", refusedCreate.Code, refusedCreate.Body.String())
 	}
-	if _, err := os.Stat(filepath.Join(agentsDir, "builder.toml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(agentsDir, "maker.toml")); !os.IsNotExist(err) {
 		t.Fatalf("a refused create wrote a card: %v", err)
+	}
+	refusedHarness := httptest.NewRecorder()
+	handler.CreateAgent(refusedHarness, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"maker","kind":"builder","harness":"claude-code"}`)))
+	if refusedHarness.Code != http.StatusUnprocessableEntity || !strings.Contains(refusedHarness.Body.String(), `agent request field \"harness\" is not one a role takes`) {
+		t.Fatalf("create with a harness = %d %s", refusedHarness.Code, refusedHarness.Body.String())
 	}
 	refusedEdit := httptest.NewRequest(http.MethodPatch, "/api/agents/critic", bytes.NewBufferString(`{"summary":"Reviews.","effort":"xhigh"}`))
 	refusedEdit.SetPathValue("agentId", "critic")
@@ -268,7 +244,7 @@ func TestAgentsHandlerServesARoleAsRoleTextOnly(t *testing.T) {
 		t.Fatalf("edit with an effort = %d %s", refused.Code, refused.Body.String())
 	}
 	unknown := httptest.NewRecorder()
-	handler.CreateAgent(unknown, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"builder","launch":"claude"}`)))
+	handler.CreateAgent(unknown, httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"maker","launch":"claude"}`)))
 	if unknown.Code != http.StatusUnprocessableEntity || !strings.Contains(unknown.Body.String(), `agent request field \"launch\" is not one Archon takes`) {
 		t.Fatalf("create with a launch = %d %s", unknown.Code, unknown.Body.String())
 	}
@@ -285,9 +261,9 @@ func TestAgentsHandlerServesARoleAsRoleTextOnly(t *testing.T) {
 		t.Fatalf("roster harnesses = %+v (%v) from %s", roster.Data.Harnesses, err, list.Body.String())
 	}
 	wantPolicy := []formations.EffortPolicyEntry{
-		{Effort: "low", Use: "errands", Kinds: []string{"verifier", "scout", "observer", "operator"}},
-		{Effort: "medium", Use: "making things", Kinds: []string{"builder", "debugger"}},
-		{Effort: "xhigh", Use: "architecture and review", Kinds: []string{"reviewer", "judge", "architect", "planner", "orchestrator"}},
+		{Effort: "low", Use: "errands", Kinds: []string{"verifier", "scout"}},
+		{Effort: "medium", Use: "making things", Kinds: []string{"builder", "debugger", "operator"}},
+		{Effort: "xhigh", Use: "architecture and review", Kinds: []string{"reviewer", "judge", "architect", "designer", "planner", "orchestrator"}},
 		{Effort: "max", Use: "consequential reviews"},
 	}
 	if fmt.Sprint(roster.Data.EffortPolicy) != fmt.Sprint(wantPolicy) {
@@ -346,7 +322,7 @@ func TestAgentsHandlerDuplicateCreateFailsLoud(t *testing.T) {
 	writeAgentFixture(t, agentsDir, "writer", minimalAgentFixture("writer", "specialist", nil))
 	handler := NewAgentsHandler(agentsDir, fakeAgentLiveness{})
 
-	req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"writer","kind":"specialist","harness":"claude-code"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewBufferString(`{"id":"writer","kind":"specialist"}`))
 	rec := httptest.NewRecorder()
 	handler.CreateAgent(rec, req)
 
@@ -400,13 +376,6 @@ func minimalAgentFixture(id, kind string, tags []string) string {
 id = "` + id + `"
 kind = "` + kind + `"
 tags = [` + formationsTestRenderStrings(tags) + `]
-
-[harness]
-default = "claude-code"
-
-[[harness.variant]]
-id = "claude-code"
-session_stem = "` + id + `"
 `
 }
 

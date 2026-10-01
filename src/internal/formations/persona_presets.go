@@ -8,23 +8,18 @@ type personaPreset struct {
 	Kind         string
 	Summary      string
 	Capabilities []string
-	Harness      string
 }
 
+// personaPresetCatalog holds the generic roles every Archon has. A role is
+// role text only; the slot that uses it states its harness, model and effort.
 var personaPresetCatalog = []personaPreset{
-	{ID: "codex-scout", DisplayName: "Codex Scout", Kind: "scout", Summary: "Explores a codebase, gathers evidence, and reports the terrain before changes begin.", Capabilities: []string{"research", "inspect"}},
-	{ID: "codex-planner", DisplayName: "Codex Planner", Kind: "planner", Summary: "Turns grounded requirements into an ordered implementation plan with explicit verification.", Capabilities: []string{"planning", "design"}},
-	{ID: "codex-builder", DisplayName: "Codex Builder", Kind: "builder", Summary: "Implements scoped changes, exercises them, and leaves a working artifact.", Capabilities: []string{"implement", "test"}},
-	{ID: "codex-judge", DisplayName: "Codex Judge", Kind: "judge", Summary: "Evaluates evidence against acceptance criteria and returns a clear verdict.", Capabilities: []string{"judge", "verify"}},
-	{ID: "codex-orchestrator", DisplayName: "Codex Orchestrator", Kind: "orchestrator", Summary: "Coordinates role-specialized agents, dependencies, handoffs, and completion gates.", Capabilities: []string{"orchestrate", "coordinate"}},
-	{ID: "codex-debugger", DisplayName: "Codex Debugger", Kind: "debugger", Summary: "Diagnoses failures from evidence, isolates root causes, and verifies repairs.", Capabilities: []string{"debug", "diagnose"}},
-	{ID: "codex-reviewer", DisplayName: "Codex Reviewer", Kind: "reviewer", Summary: "Reviews changes independently for correctness, regressions, and maintainability.", Capabilities: []string{"review", "audit"}},
-	{ID: "delivery-planner", DisplayName: "Delivery Planner", Kind: "planner", Summary: "Turns the supplied brief into a scoped plan with verifiable outcomes.", Capabilities: []string{"planning", "design"}, Harness: "claude-code"},
-	{ID: "delivery-beads-drafter", DisplayName: "Delivery Beads Drafter", Kind: "planner", Summary: "Drafts and revises the delivery Bead graph in the target repository's store.", Capabilities: []string{"planning", "beads"}, Harness: "claude-code"},
-	{ID: "delivery-beads-reviewer", DisplayName: "Delivery Beads Reviewer", Kind: "judge", Summary: "Checks Bead goals, parent links, dependencies and lint evidence before execution.", Capabilities: []string{"judge", "beads"}, Harness: "claude-code"},
-	{ID: "delivery-lead", DisplayName: "Delivery Lead", Kind: "orchestrator", Summary: "Directs the bound workers through reviewed Beads and verifies their delivery.", Capabilities: []string{"orchestrate", "verify"}, Harness: "claude-code"},
-	{ID: "delivery-worker", DisplayName: "Delivery Worker", Kind: "builder", Summary: "Implements only the lead's assigned Bead and commits verified work within its scope.", Capabilities: []string{"implement", "test"}, Harness: "openai-codex"},
-	{ID: "delivery-final-reviewer", DisplayName: "Delivery Final Reviewer", Kind: "reviewer", Summary: "Independently reviews the delivered diff, Bead closure evidence and plan, then writes a report.", Capabilities: []string{"review", "audit"}, Harness: "openai-codex"},
+	{ID: "scout", DisplayName: "Scout", Kind: "scout", Summary: "Explores a codebase read-only before changes begin: maps files, callers, tests, risks and unknowns, and reports the evidence.", Capabilities: []string{"research", "inspect", "read-only"}},
+	{ID: "planner", DisplayName: "Planner", Kind: "planner", Summary: "Turns grounded requirements into an ordered implementation plan with explicit verification.", Capabilities: []string{"planning", "design"}},
+	{ID: "builder", DisplayName: "Builder", Kind: "builder", Summary: "Implements scoped changes, exercises them, and leaves a working artifact.", Capabilities: []string{"implement", "test"}},
+	{ID: "judge", DisplayName: "Judge", Kind: "judge", Summary: "Judges work against its acceptance criteria, scope, safety and evidence, and returns a clear pass or fail verdict with the blocking findings.", Capabilities: []string{"judge", "verify", "review"}},
+	{ID: "orchestrator", DisplayName: "Orchestrator", Kind: "orchestrator", Summary: "Coordinates role-specialized agents, dependencies, handoffs, and completion gates.", Capabilities: []string{"orchestrate", "coordinate"}},
+	{ID: "debugger", DisplayName: "Debugger", Kind: "debugger", Summary: "Diagnoses failures from evidence, isolates root causes, and verifies repairs.", Capabilities: []string{"debug", "diagnose"}},
+	{ID: "reviewer", DisplayName: "Reviewer", Kind: "reviewer", Summary: "Reviews changes independently for correctness, regressions, and maintainability.", Capabilities: []string{"review", "audit"}},
 }
 
 func builtinPresetPersona(id string) (*PersonaCard, bool) {
@@ -32,22 +27,14 @@ func builtinPresetPersona(id string) (*PersonaCard, bool) {
 		if preset.ID != id {
 			continue
 		}
-		tags := append([]string{}, preset.Capabilities...)
-		harness := preset.Harness
-		if harness == "" {
-			harness = "openai-codex"
-		}
-		tags = append(tags, "role:"+preset.Kind, "provider:"+harness)
 		req := CreatePersonaRequest{
 			ID:           preset.ID,
 			DisplayName:  preset.DisplayName,
 			Kind:         preset.Kind,
 			Summary:      preset.Summary,
-			Capabilities: tags,
-			Harness:      harness,
-			SessionStem:  preset.ID,
+			Capabilities: preset.Capabilities,
 		}
-		raw := renderPersona(req, req.Harness, req.SessionStem, normalizeTags(req.Capabilities))
+		raw := renderPersona(req, normalizeTags(req.Capabilities))
 		card, err := parsePersonaCard(id, []byte(raw))
 		if err != nil {
 			panic("invalid built-in persona preset " + id + ": " + err.Error())

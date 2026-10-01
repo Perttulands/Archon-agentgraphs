@@ -27,7 +27,7 @@ label = "Output"
 [[formation.slot]]
 id = "slot_` + id + `"
 label = "Worker"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 effort = "medium"
 controller = true

@@ -48,18 +48,14 @@ const layouts: Record<string, Array<{ id: string; x: number; y: number }>> = {
   scouting: [{ id: 'mission', x: 100, y: 100 }, { id: 'map', x: 420, y: 100 }],
 }
 
-// A role is role text: its variants name only the harness of its own session.
-type Variant = { id: string; sessionStem: string }
-type Card = { id: string; displayName: string; kind: string; summary: string; tags: string[]; harnessDefault: string; harnessVariants: Variant[]; rev: number }
+// A role is role text: it names no harness, model or effort.
+type Card = { id: string; displayName: string; kind: string; summary: string; tags: string[]; rev: number }
 
 export async function agentsFixture(page: Page) {
   const cards: Record<string, Card> = {
-    critic: { id: 'critic', displayName: 'Brief critic', kind: 'judge', summary: 'Reviews the brief.', tags: ['review'], harnessDefault: 'claude-code', rev: 1,
-      harnessVariants: [{ id: 'claude-code', sessionStem: 'critic' }] },
-    builder: { id: 'builder', displayName: 'Builder', kind: 'builder', summary: 'Builds the change.', tags: ['implement'], harnessDefault: 'openai-codex', rev: 1,
-      harnessVariants: [{ id: 'openai-codex', sessionStem: 'builder' }, { id: 'claude-code', sessionStem: 'claude-builder' }] },
-    spawner: { id: 'spawner', displayName: 'Hermes spawner', kind: 'specialist', summary: 'Runs through hermes.', tags: [], harnessDefault: 'hermes', rev: 1,
-      harnessVariants: [{ id: 'hermes', sessionStem: 'spawner' }] },
+    critic: { id: 'critic', displayName: 'Brief critic', kind: 'judge', summary: 'Reviews the brief.', tags: ['review'], rev: 1 },
+    builder: { id: 'builder', displayName: 'Builder', kind: 'builder', summary: 'Builds the change.', tags: ['implement'], rev: 1 },
+    spawner: { id: 'spawner', displayName: 'Hermes spawner', kind: 'specialist', summary: 'Runs through hermes.', tags: [], rev: 1 },
   }
   const patches: unknown[] = []
   const boardPatches: unknown[] = []
@@ -104,7 +100,7 @@ export async function agentsFixture(page: Page) {
     if (path === '/api/runs') return respond([])
     if (path === '/api/gate-profiles') return respond({ profiles: [] })
     if (path === '/api/agents') {
-      const agents = Object.values(cards).map(card => ({ id: card.id, displayName: card.displayName, kind: card.kind, summary: card.summary, tags: card.tags, harnessDefault: card.harnessDefault, liveness: 'offline', assignable: true }))
+      const agents = Object.values(cards).map(card => ({ id: card.id, displayName: card.displayName, kind: card.kind, summary: card.summary, tags: card.tags, liveness: 'offline', assignable: true }))
       return respond(rosterAnswer(agents))
     }
     const agentMatch = path.match(/^\/api\/agents\/([^/]+)$/)
@@ -117,7 +113,6 @@ export async function agentsFixture(page: Page) {
         patches.push(body)
         const next = structuredClone(card)
         for (const key of ['displayName', 'kind', 'summary'] as const) if (typeof body[key] === 'string') next[key] = body[key]
-        if (typeof body.sessionStem === 'string') next.harnessVariants.find(variant => variant.id === next.harnessDefault)!.sessionStem = body.sessionStem
         next.rev++
         cards[card.id] = next
         return respond(read(next), `${next.id}-${next.rev}`)

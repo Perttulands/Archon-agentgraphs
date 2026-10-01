@@ -15,10 +15,6 @@ func TestArchonLocalRunsRefuseNegativeLimits(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
-	personas := formations.NewPersonaStore(agentsDir)
-	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("session-search"), archonS5CascadeBoardFixture())
 	runner := &fakeTmux{live: map[string]bool{}}

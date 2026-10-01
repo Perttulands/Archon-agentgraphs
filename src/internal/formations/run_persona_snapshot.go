@@ -75,7 +75,7 @@ func (s *Store) readRunPersonaBinding(runID, nodeID string, slot FormationSlot) 
 		card = parsed
 	}
 	// The frozen settings must be what the frozen slot states.
-	variant := HarnessVariant{ID: found.Harness, SessionStem: found.SessionStem, Model: found.Model, Effort: found.Effort, Source: found.Source}
+	variant := HarnessVariant{ID: found.Harness, SessionStem: found.SessionStem, Model: found.Model, Effort: found.Effort}
 	if found.Effort == "" || found.Harness != slot.Harness || found.Model != slot.Model || found.Effort != slot.Effort {
 		return invalid(fmt.Sprintf("frozen settings for slot %q do not match its frozen staffing", slot.ID), nil)
 	}

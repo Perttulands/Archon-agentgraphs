@@ -12,9 +12,6 @@ func TestS5ResumeAppendsRunResumedInNextEpoch(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	store.Now = fixedClock()
 	personas.Now = fixedClock()
-	if _, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Capabilities: []string{"research"}, Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
 	board, err := store.ReadBoard("session-search")
 	if err != nil {
@@ -85,9 +82,6 @@ func TestS5ResumeRejectsRunningFinalAndNotAllowedRuns(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	store.Now = fixedClock()
 	personas.Now = fixedClock()
-	if _, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Capabilities: []string{"research"}, Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
 	board, err := store.ReadBoard("session-search")
 	if err != nil {
@@ -117,9 +111,6 @@ func TestS5ResumeRejectsRunningFinalAndNotAllowedRuns(t *testing.T) {
 	finalStore, finalPersonas := s4RunFixture(t)
 	finalStore.Now = fixedClock()
 	finalPersonas.Now = fixedClock()
-	if _, err := finalPersonas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Capabilities: []string{"research"}, Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create final persona: %v", err)
-	}
 	writeFixture(t, finalStore.BoardPath("session-search"), s4RunBoardFixture())
 	finalBoard, err := finalStore.ReadBoard("session-search")
 	if err != nil {
@@ -147,9 +138,6 @@ func TestS5BlockedEpochRejectsContinuationUntilResume(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	store.Now = fixedClock()
 	personas.Now = fixedClock()
-	if _, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Capabilities: []string{"research"}, Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
 	board, err := store.ReadBoard("session-search")
 	if err != nil {

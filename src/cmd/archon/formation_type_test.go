@@ -27,14 +27,14 @@ label = "Input"
 id = "slot_lead"
 label = "Lead"
 controller = true
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 effort = "medium"
 [[formation.slot]]
 id = "slot_worker"
 label = "Worker"
 controller = false
-agentId = "codex-reviewer"
+agentId = "reviewer"
 harness = "openai-codex"
 effort = "medium"
 `)

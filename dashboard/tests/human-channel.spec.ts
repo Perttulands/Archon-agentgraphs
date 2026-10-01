@@ -58,8 +58,8 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   await expect(panel).toContainText('The 2 agents that did the work are waiting in their terminals.')
   await panel.getByRole('button', { name: 'Talk with Question peers' }).click()
 
-  const planner = page.getByRole('dialog', { name: 'Talk with Delivery Planner · Claude Code' })
-  const codex = page.getByRole('dialog', { name: 'Talk with Codex Planner · Codex' })
+  const planner = page.getByRole('dialog', { name: 'Talk with Planner · Claude Code' })
+  const codex = page.getByRole('dialog', { name: 'Talk with Planner · Codex' })
   await expect(planner).toContainText('Question peers / Peer')
   await expect(planner).toContainText('On call · waiting for you')
   await expect(planner.locator('.xterm-rows')).toContainText('seat 21: which questions should we settle first?')
@@ -147,7 +147,7 @@ test('a gate whose ask fell back says why, and a relayed decision names the seat
   await evidenceShot(page, 'talk-fallback-reason')
 
   await page.getByRole('button', { name: 'Inspect gate evidence for Framing review' }).click()
-  await expect(page.getByTestId('gate-evaluation-4')).toContainText('pass · human:operator · via codex-scout')
+  await expect(page.getByTestId('gate-evaluation-4')).toContainText('pass · human:operator · via scout')
   await evidenceShot(page, 'relayed-decision-via')
 })
 
@@ -157,7 +157,7 @@ test('a narrow Talk window exposes the end of a native-width line without resizi
   const fixture = await talkRunFixture(page, { columns: 160, terminalText: `\x1b[?1049h${'Question '.repeat(16)}${marker}\r\n> ` })
   await page.goto('/?mission=scouting')
   await page.getByRole('button', { name: 'Talk with Question peers' }).click()
-  const win = page.getByRole('dialog', { name: 'Talk with Delivery Planner · Claude Code' })
+  const win = page.getByRole('dialog', { name: 'Talk with Planner · Claude Code' })
   await expect(win).toContainText('Live · type to talk to the agent')
   await expect.poll(() => fixture.handshakes(21).at(-1)?.columns).toBe(160)
   // Below the 11px floor the native grid scrolls rather than being cut (archon-a2a).

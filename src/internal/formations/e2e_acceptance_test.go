@@ -229,7 +229,6 @@ func createCareerPersona(t *testing.T, personas *PersonaStore, id, harness, capa
 		ID:           id,
 		Kind:         "specialist",
 		Capabilities: []string{capability},
-		Harness:      harness,
 	}); err != nil {
 		t.Fatalf("create persona %s: %v", id, err)
 	}

@@ -42,7 +42,7 @@ func TestFormationsAPIUnchangedEditAnswersTheCurrentBoard(t *testing.T) {
 	}
 	worker := board.Formations[0]
 	for _, body := range []string{
-		`{"assignSlot":{"formationId":"` + worker.ID + `","slotId":"` + worker.Slots[0].ID + `","agentId":"codex-builder","harness":"openai-codex","effort":"medium"}}`,
+		`{"assignSlot":{"formationId":"` + worker.ID + `","slotId":"` + worker.Slots[0].ID + `","agentId":"builder","harness":"openai-codex","effort":"medium"}}`,
 		`{"updateFormation":{"id":"` + worker.ID + `","title":"Worker"}}`,
 		`{"title":"Same"}`,
 	} {

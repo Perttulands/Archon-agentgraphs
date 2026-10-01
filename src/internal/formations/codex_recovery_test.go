@@ -13,7 +13,7 @@ func TestCompletedNativeRecoveryValidatesBeforeResumeAndNeverRedispatches(t *tes
 	for _, kind := range []string{"valid file output", "automatic discovery", "wrong native session", "changed brief", "incomplete turn", "no unresolved dispatch", "two unresolved dispatches", "wrong model", "wrong effort"} {
 		t.Run(kind, func(t *testing.T) {
 			store, personas := s4RunFixture(t)
-			card, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "builder", Harness: "openai-codex"})
+			card, err := personas.ReadPersona("scout")
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -123,7 +123,7 @@ label = "Result"
 [[formation.slot]]
 id = "slot_work"
 label = "Worker"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 effort = "medium"
 controller = true

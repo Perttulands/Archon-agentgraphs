@@ -75,7 +75,7 @@ test('a role is role text: the inspector and editor offer no model or effort, an
   await editor.getByLabel('Agent summary').fill('Builds the change, test first.')
   await editor.getByRole('button', { name: 'Save agent override' }).click()
   await expect(editor).toHaveCount(0)
-  expect(fixture.patches.at(-1)).toEqual({ displayName: 'Builder', kind: 'builder', summary: 'Builds the change, test first.', capabilities: ['implement'], sessionStem: 'builder' })
+  expect(fixture.patches.at(-1)).toEqual({ displayName: 'Builder', kind: 'builder', summary: 'Builds the change, test first.', capabilities: ['implement'] })
 
   // A new role asks only for role text.
   await agents.getByRole('button', { name: 'New agent' }).click()

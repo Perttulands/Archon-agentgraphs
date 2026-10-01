@@ -27,8 +27,7 @@ decisions; [examples](../examples/) provide reusable missions.
 | Input | A named value each run of the mission supplies: a name, a description, a kind (`text`, `file` or `folder`) and whether it is required. Step briefs reference it as `{name}`. A mission that declares none has one implicit required text input, `brief`. |
 | Formation | A step: the team of agents that does it. `solo` has one seat; `peer` has peer seats; `orchestrated` has a controller directing its bound workers. |
 | Slot | A position in a formation that owns what its seat runs: a harness (`claude-code` or `openai-codex`), a model (blank means the harness default) and an effort, plus an optional role (`agentId`, a persona). A slot without a role is a vanilla agent, such as `claude-code · opus · low`. A seat is the slot's runtime agent session. |
-| Persona (role) | A TOML agent card with role text only: a summary, capabilities and kind. It carries no model or effort; each slot that uses it states its own. Presets remain available; local cards can override them. |
-| Harness variant | A persona card's `openai-codex` or `claude-code` entry: the session stem and source of the role's own session. |
+| Persona (role) | A TOML agent card with role text only: a display name, kind, summary, capabilities, status and notes. It carries no harness, model or effort; each slot that uses it states its own. Every Archon has seven built-in generic roles (`scout`, `planner`, `builder`, `judge`, `orchestrator`, `debugger`, `reviewer`); a card in the agents directory adds a role or overrides a built-in one. |
 | Gate | A criterion with one or more kinds: `code`, `formation`, `human`. Its ports are `in`, `pass`, `fail`, `judge`. |
 | End node | Ends a path on purpose (`[[end]]` in TOML: `id`, `title`, `outcome`). Its outcome is `done` or `rejected`. Its only port is `in`, which takes any number of routes; it leads nowhere. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
@@ -80,10 +79,10 @@ A model outside the catalog is accepted and the harness decides; the
 `assignSlot` answer then carries `warnings`, and `formation assign` prints
 them. Choose the effort by the policy the agent
 roster serves as `effortPolicy`, each line with the role kinds it suits:
-`low` for errands (`verifier`, `scout`, `observer`, `operator`), `medium` for
-making things (`builder`, `debugger`), `xhigh` for architecture and review
-(`reviewer`, `judge`, `architect`, `planner`, `orchestrator`), and `max` for
-consequential reviews, chosen by hand and never suggested. One role may staff
+`low` for errands (`verifier`, `scout`), `medium` for making things
+(`builder`, `debugger`, `operator`), `xhigh` for architecture and review
+(`reviewer`, `judge`, `architect`, `designer`, `planner`, `orchestrator`), and
+`max` for consequential reviews, chosen by hand and never suggested. One role may staff
 several slots, each with its own settings.
 
 The cockpit shows every slot as a row: its harness mark and label, then its
@@ -154,11 +153,12 @@ window's staffing words and the Agents view's slot inspector open the same
 window.
 
 A role is role text only. `archon agent new` and `archon agent edit` take no
-model or effort; `POST` and `PATCH /api/agents` refuse a `model`, an `effort`
-or any field they do not take with `INVALID_AGENT_CARD` (HTTP 422) naming it;
-persona reads carry none; and the Agents view edits a role's text, never its
-settings. `archon agent spawn <id> --effort <e> [--model <m>]` starts a role's
-own session, and refuses one already running, which keeps what it started
+harness, model or effort; `POST` and `PATCH /api/agents` refuse a `harness`,
+a `model`, an `effort` or any field they do not take with `INVALID_AGENT_CARD`
+(HTTP 422) naming it; persona reads carry none; and the Agents view edits a
+role's text, never its settings. A role's own session is the tmux session named
+after the role. `archon agent spawn <id> --harness <h> --effort <e> [--model
+<m>]` starts it, and refuses one already running, which keeps what it started
 with, naming each setting it did not apply. It states its settings as a slot does: the effort must be one the harness accepts
 (`claude-code` takes `low`, `medium`, `high`, `xhigh` or `max`; `openai-codex`
 also takes `ultra`, though a Codex model may accept fewer), a blank model means
@@ -216,7 +216,7 @@ label = "Result"
 [[formation.slot]]
 id = "slot_work"
 label = "Worker"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 model = "gpt-6-astra"
 effort = "medium"
@@ -259,9 +259,13 @@ The [delivery mission](../examples/delivery.mission.toml) and its
 [notes](../examples/delivery.notes.toml) add Plan, Beads, a Beads-review judge,
 orchestrated Execution and Final review. A run supplies one input, `change`,
 which every step's brief references as `{change}`; the target repository is the
-run's cwd and the owning Bead its Bead. Six `delivery-*` preset roles staff it, each slot at `medium` effort.
-Execution uses a Claude controller and three Codex workers; Final review uses
-Astra. Failed Beads review returns directly to Beads. Final review produces a
+run's cwd and the owning Bead its Bead. Generic roles staff it at the effort
+the policy gives them: Plan is `planner` at `xhigh`, Beads a vanilla agent at
+`medium`, the Beads reviewer `judge` at `xhigh`, the Execution controller
+`orchestrator` at `xhigh` with three `builder` workers at `medium`, and Final
+review `reviewer` at `max`, a consequential review. The briefs carry everything
+specific to delivery. Execution uses a Claude controller and three Codex
+workers; Final review uses Astra. Failed Beads review returns directly to Beads. Final review produces a
 report, with no following gate. This graph has no human gate.
 
 ## Execution
@@ -1309,9 +1313,9 @@ list/create/read/patch persona cards; the roster also serves `harnesses` (each
 with the efforts it accepts and its known `models`, `{id,efforts?}`) and
 `effortPolicy` (`{effort,use}` lines). Gate
 profiles expose the two code checks.
-With the tmux executor the agent roster marks a persona live when a session named
-by its default session stem runs on `--socket`, and lists the socket's other
-sessions as unbound. The lab executor reports every agent offline.
+With the tmux executor the agent roster marks a persona live when the session
+named after it runs on `--socket`, and lists the socket's other sessions as
+unbound. The lab executor reports every agent offline.
 Revision and ETag checks protect edits. A mission edit that leaves the mission
 as it was (the same slot assignment, title, brief, type, controller, gate or
 Input card fields, judge chain, or a Tool's title and parameters) saves
@@ -1347,8 +1351,7 @@ retried up to three times. Differences from offline use:
 - Error messages come from the daemon (`coordinator HTTP <status>: ...`). JSON
   error codes, boundaries and selectors match.
 - Agent cards are the daemon's `--agents-dir`, with the liveness the daemon
-  reports, and `agent new --from` names a path on the daemon host. `mission note
-  --file` reads locally.
+  reports. `mission note --file` reads locally.
 - Runtime commands (`mission run`, `formation run`, `run`, `gate approve|reject`) print the
   daemon's `{success,timestamp,data}` envelope, except `run gates`, `run seats`
   and `gate request`, which require `--json` for that format, and `run wait`,

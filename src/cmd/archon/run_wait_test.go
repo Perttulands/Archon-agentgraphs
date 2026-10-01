@@ -42,7 +42,7 @@ label = "Output"
 [[formation.slot]]
 id = "slot_work"
 label = "Worker"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 controller = true
 effort = "medium"
@@ -64,7 +64,7 @@ label = "Output"
 [[formation.slot]]
 id = "slot_after"
 label = "Worker"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 controller = true
 effort = "medium"

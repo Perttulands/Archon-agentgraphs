@@ -35,14 +35,14 @@ label = "Output"
 id = "slot_lead"
 label = "Lead"
 controller = false
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 effort = "medium"
 [[formation.slot]]
 id = "slot_reviewer"
 label = "Reviewer"
 controller = true
-agentId = "codex-reviewer"
+agentId = "reviewer"
 harness = "openai-codex"
 reviewNote = "keep this unknown key"
 effort = "medium"
@@ -134,23 +134,23 @@ func TestSetFormationTypeAppliesSlotRulesAndKeepsEverythingElse(t *testing.T) {
 	notes := readFile(t, store.NotesPath("types"))
 
 	peer := setType(t, store, current(), FormationTypeRequest{FormationID: "fmn_work", Type: FormationTypePeer})
-	want := []slotShape{{"slot_lead", "Lead", "codex-builder", false}, {"slot_reviewer", "Reviewer", "codex-reviewer", false}, {"slot_spare", "Spare", "", false}}
+	want := []slotShape{{"slot_lead", "Lead", "builder", false}, {"slot_reviewer", "Reviewer", "reviewer", false}, {"slot_spare", "Spare", "", false}}
 	if got := slotShapes(peer.Slots); !reflect.DeepEqual(got, want) {
 		t.Fatalf("orchestrated->peer slots = %+v, want %+v", got, want)
 	}
 
 	orchestrated := setType(t, store, current(), FormationTypeRequest{FormationID: "fmn_work", Type: FormationTypeOrchestrated})
-	want = []slotShape{{"slot_lead", "Lead", "codex-builder", true}, {"slot_reviewer", "Reviewer", "codex-reviewer", false}, {"slot_spare", "Spare", "", false}}
+	want = []slotShape{{"slot_lead", "Lead", "builder", true}, {"slot_reviewer", "Reviewer", "reviewer", false}, {"slot_spare", "Spare", "", false}}
 	if got := slotShapes(orchestrated.Slots); !reflect.DeepEqual(got, want) {
 		t.Fatalf("peer->orchestrated slots = %+v, want first slot controller %+v", got, want)
 	}
 
 	_, err := store.SetFormationType("types", FormationTypeRequest{FormationID: "fmn_work", Type: FormationTypeSolo}, current())
-	if !errors.Is(err, ErrSlotChoiceRequired) || !strings.Contains(err.Error(), "codex-builder") || !strings.Contains(err.Error(), "codex-reviewer") {
+	if !errors.Is(err, ErrSlotChoiceRequired) || !strings.Contains(err.Error(), "builder") || !strings.Contains(err.Error(), "reviewer") {
 		t.Fatalf("solo without a slot choice = %v, want both staffed slots named", err)
 	}
 	solo := setType(t, store, current(), FormationTypeRequest{FormationID: "fmn_work", Type: FormationTypeSolo, KeepSlotID: "slot_reviewer"})
-	if got := slotShapes(solo.Slots); !reflect.DeepEqual(got, []slotShape{{"slot_reviewer", "Reviewer", "codex-reviewer", false}}) {
+	if got := slotShapes(solo.Slots); !reflect.DeepEqual(got, []slotShape{{"slot_reviewer", "Reviewer", "reviewer", false}}) {
 		t.Fatalf("orchestrated->solo keeping reviewer = %+v", got)
 	}
 	if !strings.Contains(readFile(t, store.BoardPath("types")), `reviewNote = "keep this unknown key"`) {
@@ -158,15 +158,15 @@ func TestSetFormationTypeAppliesSlotRulesAndKeepsEverythingElse(t *testing.T) {
 	}
 
 	peer = setType(t, store, current(), FormationTypeRequest{FormationID: "fmn_work", Type: FormationTypePeer})
-	if got := slotShapes(peer.Slots); !reflect.DeepEqual(got, []slotShape{{"slot_reviewer", "Reviewer", "codex-reviewer", false}, {"new", "Peer", "", false}}) {
+	if got := slotShapes(peer.Slots); !reflect.DeepEqual(got, []slotShape{{"slot_reviewer", "Reviewer", "reviewer", false}, {"new", "Peer", "", false}}) {
 		t.Fatalf("solo->peer = %+v, want an added empty peer", got)
 	}
 	solo = setType(t, store, current(), FormationTypeRequest{FormationID: "fmn_work", Type: FormationTypeSolo})
-	if got := slotShapes(solo.Slots); !reflect.DeepEqual(got, []slotShape{{"slot_reviewer", "Reviewer", "codex-reviewer", false}}) {
+	if got := slotShapes(solo.Slots); !reflect.DeepEqual(got, []slotShape{{"slot_reviewer", "Reviewer", "reviewer", false}}) {
 		t.Fatalf("peer->solo with one staffed slot = %+v, want it kept without a choice", got)
 	}
 	orchestrated = setType(t, store, current(), FormationTypeRequest{FormationID: "fmn_work", Type: FormationTypeOrchestrated})
-	if got := slotShapes(orchestrated.Slots); !reflect.DeepEqual(got, []slotShape{{"slot_reviewer", "Reviewer", "codex-reviewer", true}, {"new", "Agent", "", false}}) {
+	if got := slotShapes(orchestrated.Slots); !reflect.DeepEqual(got, []slotShape{{"slot_reviewer", "Reviewer", "reviewer", true}, {"new", "Agent", "", false}}) {
 		t.Fatalf("solo->orchestrated = %+v, want controller plus an empty worker", got)
 	}
 

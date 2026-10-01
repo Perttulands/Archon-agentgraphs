@@ -9,64 +9,44 @@ import (
 	"time"
 )
 
-func TestCreatePersonaWritesOneIDSpineAndDefaultSessionStem(t *testing.T) {
+// A role is role text: the card names no harness, session, model, effort or
+// launch string, since each slot that uses it states what its seat runs.
+func TestCreatePersonaWritesRoleTextOnly(t *testing.T) {
 	store := NewPersonaStore(t.TempDir())
 	store.Now = fixedClock()
 
 	card, err := store.CreatePersona(CreatePersonaRequest{
-		ID:           "scout",
+		ID:           "researcher",
 		Kind:         "specialist",
-		Harness:      "claude-code",
 		Capabilities: []string{"research", "go"},
 		Personality:  "direct",
-		Source:       "/tmp/CLAUDE.md",
 	})
 	if err != nil {
 		t.Fatalf("create persona: %v", err)
 	}
 
-	if card.ID != "scout" {
-		t.Fatalf("card.ID = %q, want scout", card.ID)
+	if card.ID != "researcher" {
+		t.Fatalf("card.ID = %q, want researcher", card.ID)
 	}
-	if got := card.DefaultVariant().SessionStem; got != "scout" {
-		t.Fatalf("default session stem = %q, want card id", got)
-	}
-	if got := filepath.Base(store.PersonaPath("scout")); got != "scout.toml" {
-		t.Fatalf("persona path base = %q, want scout.toml", got)
+	if got := filepath.Base(store.PersonaPath("researcher")); got != "researcher.toml" {
+		t.Fatalf("persona path base = %q, want researcher.toml", got)
 	}
 	if !containsAll(card.Tags, []string{"research", "go", "personality:direct"}) {
 		t.Fatalf("tags = %#v, want capabilities and personality facet", card.Tags)
 	}
 
-	raw := readFile(t, store.PersonaPath("scout"))
-	for _, want := range []string{
-		"schema = 1",
-		`id = "scout"`,
-		`kind = "specialist"`,
-		`default = "claude-code"`,
-		`session_stem = "scout"`,
-		`source = "/tmp/CLAUDE.md"`,
-	} {
-		if !strings.Contains(raw, want) {
-			t.Fatalf("persona TOML missing %q:\n%s", want, raw)
-		}
-	}
-}
+	raw := readFile(t, store.PersonaPath("researcher"))
+	want := `schema = 1
 
-// Seats start from harness, model and effort, so a card holds no launch string.
-func TestCreatePersonaWritesNoLaunchString(t *testing.T) {
-	for _, harness := range []string{"openai-codex", "claude-code"} {
-		store := NewPersonaStore(t.TempDir())
-		card, err := store.CreatePersona(CreatePersonaRequest{ID: "worker", Kind: "specialist", Harness: harness})
-		if err != nil {
-			t.Fatalf("create %s persona: %v", harness, err)
-		}
-		if card.DefaultVariant().SessionStem != "worker" {
-			t.Fatalf("%s variant = %+v", harness, card.DefaultVariant())
-		}
-		if raw := readFile(t, store.PersonaPath("worker")); strings.Contains(raw, "launch") {
-			t.Fatalf("%s persona TOML has a launch string:\n%s", harness, raw)
-		}
+[card]
+id = "researcher"
+display_name = "researcher"
+kind = "specialist"
+tags = ["research", "go", "personality:direct"]
+status = "active"
+`
+	if raw != want {
+		t.Fatalf("persona TOML:\n%s\nwant:\n%s", raw, want)
 	}
 }
 
@@ -79,17 +59,10 @@ id = "scout"
 kind = "specialist"
 tags = ["research"]
 reviewerNotes = "keep this exact line"
-
-[harness]
-default = "claude-code"
-
-[[harness.variant]]
-id = "claude-code"
-session_stem = "scout"
 `
 	writeFixture(t, store.PersonaPath("scout"), existing)
 
-	_, err := store.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"})
+	_, err := store.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist"})
 	if !errors.Is(err, ErrAlreadyExists) {
 		t.Fatalf("create existing error = %v, want ErrAlreadyExists", err)
 	}
@@ -108,14 +81,6 @@ display_name = "Susie"
 kind = "specialist"
 tags = ["design", "react", "taste:visual"]
 reviewerNotes = "prefers tight grids"
-
-[harness]
-default = "claude-code"
-
-[[harness.variant]]
-id = "claude-code"
-session_stem = "susie"
-source = "/tmp/CLAUDE.md"
 `)
 
 	editPersonaWithFreshETag(t, store, "susie", EditPersonaRequest{AddCapability: "tailwind"})
@@ -131,50 +96,14 @@ source = "/tmp/CLAUDE.md"
 	}
 }
 
-func TestEditPersonaAddsHarnessVariantAndNote(t *testing.T) {
+func TestEditPersonaAppendsNote(t *testing.T) {
 	store := NewPersonaStore(t.TempDir())
 	store.Now = func() time.Time { return time.Date(2026, 6, 3, 18, 0, 0, 0, time.UTC) }
 	writeFixture(t, store.PersonaPath("susie"), minimalPersona("susie", "specialist", []string{"design"}))
 
-	card := editPersonaWithFreshETag(t, store, "susie", EditPersonaRequest{
-		AddHarness:  "hermes",
-		SessionStem: "hermes-susie",
-		Note:        "react quality improved over sprint 3",
-	})
-	if len(card.HarnessVariants) != 2 {
-		t.Fatalf("harness variants = %d, want 2", len(card.HarnessVariants))
-	}
-	if got := card.HarnessVariants[1].SessionStem; got != "hermes-susie" {
-		t.Fatalf("new harness session stem = %q, want hermes-susie", got)
-	}
-	if len(card.Notes) != 1 || card.Notes[0].Text != "react quality improved over sprint 3" {
+	card := editPersonaWithFreshETag(t, store, "susie", EditPersonaRequest{Note: "react quality improved over sprint 3"})
+	if len(card.Notes) != 1 || card.Notes[0].Text != "react quality improved over sprint 3" || card.Notes[0].Timestamp != "2026-06-03T18:00:00Z" {
 		t.Fatalf("notes = %#v", card.Notes)
-	}
-}
-
-// A role's harness variant names only its own session; a role carries no
-// model or effort, and a card that still holds them reads without them.
-func TestEditPersonaAddHarnessNamesOnlyItsSession(t *testing.T) {
-	store := NewPersonaStore(t.TempDir())
-	writeFixture(t, store.PersonaPath("susie"), minimalPersona("susie", "specialist", []string{"design"})+"model = \"claude-opus-5\"\neffort = \"low\"\n")
-
-	card := editPersonaWithFreshETag(t, store, "susie", EditPersonaRequest{
-		AddHarness:  "openai-codex",
-		SessionStem: "codex-susie",
-	})
-	if len(card.HarnessVariants) != 2 {
-		t.Fatalf("harness variants = %d, want 2", len(card.HarnessVariants))
-	}
-	for _, variant := range card.HarnessVariants {
-		if variant.Model != "" || variant.Effort != "" {
-			t.Fatalf("variant %+v carries a model or effort", variant)
-		}
-	}
-	if added := card.HarnessVariants[1]; added.ID != "openai-codex" || added.SessionStem != "codex-susie" {
-		t.Fatalf("added variant = %+v", added)
-	}
-	if raw := readFile(t, store.PersonaPath("susie")); strings.Count(raw, "model =") != 1 || strings.Contains(raw, "gpt") {
-		t.Fatalf("the added variant wrote a model:\n%s", raw)
 	}
 }
 
@@ -273,51 +202,27 @@ func TestAgentRosterFiltersBareCapabilitiesOnly(t *testing.T) {
 	}
 }
 
-func TestResolveAgentSessionUsesDeclaredHarnessStem(t *testing.T) {
-	card := mustParsePersonaFixture(t, "susie", multiHarnessPersona("susie"))
-	live := []LiveAgentSession{
-		{Name: "claude-susie", Status: "idle"},
-		{Name: "codex-susie", Status: "working"},
-	}
-
-	binding, err := ResolveAgentSession(card, live, "claude-code")
+// A role's own session is the one named after it.
+func TestResolveAgentSessionFindsTheSessionNamedAfterTheRole(t *testing.T) {
+	card := mustParsePersonaFixture(t, "susie", minimalPersona("susie", "specialist", []string{"design"}))
+	binding, err := ResolveAgentSession(card, []LiveAgentSession{{Name: "claude-susie"}, {Name: "susie", Status: "working"}})
 	if err != nil {
-		t.Fatalf("resolve claude-code: %v", err)
+		t.Fatalf("resolve: %v", err)
 	}
-	if binding.Harness != "claude-code" || binding.SessionStem != "claude-susie" || binding.Session.Name != "claude-susie" {
-		t.Fatalf("claude binding = %#v", binding)
-	}
-
-	binding, err = ResolveAgentSession(card, live, "openai-codex")
-	if err != nil {
-		t.Fatalf("resolve openai-codex: %v", err)
-	}
-	if binding.Harness != "openai-codex" || binding.SessionStem != "codex-susie" || binding.Session.Name != "codex-susie" {
-		t.Fatalf("codex binding = %#v", binding)
-	}
-}
-
-func TestResolveAgentSessionFailsLoudWhenHarnessIsAmbiguous(t *testing.T) {
-	card := mustParsePersonaFixture(t, "susie", multiHarnessPersona("susie"))
-
-	_, err := ResolveAgentSession(card, []LiveAgentSession{
-		{Name: "claude-susie"},
-		{Name: "codex-susie"},
-	}, "")
-	if !errors.Is(err, ErrAmbiguousAgentBinding) {
-		t.Fatalf("resolve without harness error = %v, want ErrAmbiguousAgentBinding", err)
+	if binding.AgentID != "susie" || binding.SessionStem != "susie" || binding.Session.Name != "susie" || binding.Session.Status != "working" {
+		t.Fatalf("binding = %#v", binding)
 	}
 }
 
 func TestResolveAgentSessionFailsLoudForOfflineOrDuplicateLiveMatches(t *testing.T) {
 	card := mustParsePersonaFixture(t, "scout", minimalPersona("scout", "specialist", []string{"research"}))
 
-	_, err := ResolveAgentSession(card, nil, "")
+	_, err := ResolveAgentSession(card, nil)
 	if !errors.Is(err, ErrAgentSessionOffline) {
 		t.Fatalf("offline resolve error = %v, want ErrAgentSessionOffline", err)
 	}
 
-	_, err = ResolveAgentSession(card, []LiveAgentSession{{Name: "scout"}, {Name: "scout"}}, "")
+	_, err = ResolveAgentSession(card, []LiveAgentSession{{Name: "scout"}, {Name: "scout"}})
 	if !errors.Is(err, ErrAmbiguousAgentBinding) {
 		t.Fatalf("duplicate live resolve error = %v, want ErrAmbiguousAgentBinding", err)
 	}
@@ -354,35 +259,6 @@ id = "` + id + `"
 display_name = "` + strings.Title(id) + `"
 kind = "` + kind + `"
 tags = [` + renderStringList(tags) + `]
-
-[harness]
-default = "claude-code"
-
-[[harness.variant]]
-id = "claude-code"
-session_stem = "` + id + `"
-`
-}
-
-func multiHarnessPersona(id string) string {
-	return `schema = 1
-
-[card]
-id = "` + id + `"
-display_name = "` + strings.Title(id) + `"
-kind = "specialist"
-tags = ["design", "react"]
-
-[harness]
-default = "claude-code"
-
-[[harness.variant]]
-id = "claude-code"
-session_stem = "claude-` + id + `"
-
-[[harness.variant]]
-id = "openai-codex"
-session_stem = "codex-` + id + `"
 `
 }
 
@@ -407,7 +283,7 @@ func contains(values []string, want string) bool {
 func TestPersonaPathValidationRejectsNonSlugIDs(t *testing.T) {
 	store := NewPersonaStore(t.TempDir())
 	for _, id := range []string{"", "../scout", "Scout", "scout.toml", "scout/slash", "bad id", "agent:one", "_hidden", "-bad", "bad-"} {
-		if _, err := store.CreatePersona(CreatePersonaRequest{ID: id, Kind: "specialist", Harness: "claude-code"}); !errors.Is(err, ErrInvalidSlug) {
+		if _, err := store.CreatePersona(CreatePersonaRequest{ID: id, Kind: "specialist"}); !errors.Is(err, ErrInvalidSlug) {
 			t.Fatalf("CreatePersona(%q) error = %v, want ErrInvalidSlug", id, err)
 		}
 	}

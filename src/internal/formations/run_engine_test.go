@@ -298,16 +298,34 @@ func (f *fakeRunExecutor) nodeIDs() []string {
 	return ids
 }
 
+// createS4Persona makes a role card for id; a built-in role such as scout is
+// already there.
 func createS4Persona(t *testing.T, personas *PersonaStore, id string) {
 	t.Helper()
+	if _, ok := builtinPresetPersona(id); ok {
+		return
+	}
 	if _, err := personas.CreatePersona(CreatePersonaRequest{
 		ID:           id,
 		Kind:         "specialist",
 		Capabilities: []string{"research"},
-		Harness:      "openai-codex",
 	}); err != nil {
 		t.Fatalf("create persona %s: %v", id, err)
 	}
+}
+
+// summarizeRole gives role id this summary in the agents directory.
+func summarizeRole(t *testing.T, personas *PersonaStore, id, summary string) *PersonaCard {
+	t.Helper()
+	card, err := personas.ReadPersona(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	card, err = personas.EditPersona(id, EditPersonaRequest{SetSummary: &summary, ExpectedETag: card.ETag})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return card
 }
 
 func findOnlyRunLedger(t *testing.T, store *Store, slug string) string {

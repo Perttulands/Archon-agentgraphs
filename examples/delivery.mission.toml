@@ -28,10 +28,10 @@ label = "Plan"
 [[formation.slot]]
 id = "plan"
 label = "Plan"
-agentId = "delivery-planner"
+agentId = "planner"
 harness = "claude-code"
 controller = true
-effort = "medium"
+effort = "xhigh"
 
 [[formation]]
 id = "fmn_beads"
@@ -48,7 +48,6 @@ label = "Bead graph"
 [[formation.slot]]
 id = "beads"
 label = "Beads"
-agentId = "delivery-beads-drafter"
 harness = "claude-code"
 controller = true
 effort = "medium"
@@ -68,10 +67,10 @@ label = "Verdict"
 [[formation.slot]]
 id = "beads_reviewer"
 label = "Beads reviewer"
-agentId = "delivery-beads-reviewer"
+agentId = "judge"
 harness = "claude-code"
 controller = true
-effort = "medium"
+effort = "xhigh"
 
 [[formation]]
 id = "fmn_execution"
@@ -88,28 +87,28 @@ label = "Delivery"
 [[formation.slot]]
 id = "execution"
 label = "Controller"
-agentId = "delivery-lead"
+agentId = "orchestrator"
 harness = "claude-code"
 controller = true
-effort = "medium"
+effort = "xhigh"
 [[formation.slot]]
 id = "worker_1"
 label = "Worker 1"
-agentId = "delivery-worker"
+agentId = "builder"
 harness = "openai-codex"
 controller = false
 effort = "medium"
 [[formation.slot]]
 id = "worker_2"
 label = "Worker 2"
-agentId = "delivery-worker"
+agentId = "builder"
 harness = "openai-codex"
 controller = false
 effort = "medium"
 [[formation.slot]]
 id = "worker_3"
 label = "Worker 3"
-agentId = "delivery-worker"
+agentId = "builder"
 harness = "openai-codex"
 controller = false
 effort = "medium"
@@ -129,11 +128,11 @@ label = "Report"
 [[formation.slot]]
 id = "final_review"
 label = "Final review"
-agentId = "delivery-final-reviewer"
+agentId = "reviewer"
 harness = "openai-codex"
 controller = true
 model = "gpt-6-astra"
-effort = "medium"
+effort = "max"
 
 [[gate]]
 id = "gate_beads_review"

@@ -14,9 +14,9 @@ describe('initials', () => {
 
 describe('agentRole', () => {
   it('names a role by its kind, never a harness, and an unbound session as one', () => {
-    expect(agentRole(agent({ assignable: true, harnessDefault: 'openai-codex', kind: 'reviewer' }))).toBe('reviewer')
+    expect(agentRole(agent({ assignable: true, kind: 'reviewer' }))).toBe('reviewer')
     expect(agentRole(agent({ assignable: false, unbound: true }))).toBe('unbound')
-    expect(agentRole(agent({ assignable: true, harnessDefault: 'claude-code' }))).toBe('role')
+    expect(agentRole(agent({ assignable: true }))).toBe('role')
   })
 })
 
@@ -59,8 +59,8 @@ describe('inputFeedLabel', () => {
 describe('byRoleName', () => {
   it('lists roles by name whatever their default harness', () => {
     const roster = [
-      agent({ id: 'claude-one', displayName: 'Zed', assignable: true, harnessDefault: 'claude-code' }),
-      agent({ id: 'codex-one', displayName: 'Ada', assignable: true, harnessDefault: 'openai-codex' }),
+      agent({ id: 'claude-one', displayName: 'Zed', assignable: true }),
+      agent({ id: 'codex-one', displayName: 'Ada', assignable: true }),
       agent({ id: 'bare', assignable: true }),
     ]
     expect([...roster].sort(byRoleName).map(next => next.id)).toEqual(['codex-one', 'bare', 'claude-one'])

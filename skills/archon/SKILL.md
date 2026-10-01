@@ -33,8 +33,11 @@ harness settings. Archon keeps only what is current.
   or `openai-codex`), model and effort, and may name a **role**. Its runtime
   agent session is a **seat**.
 - A **role** (persona card) is optional, generic role text such as a code
-  reviewer; it carries no model or effort. A slot without one is a **vanilla**
-  agent: `claude-code · opus · low`.
+  reviewer; it carries no harness, model or effort. Every Archon has the
+  built-in roles `scout`, `planner`, `builder`, `judge`, `orchestrator`,
+  `debugger` and `reviewer`. A slot without a role is a **vanilla** agent:
+  `claude-code · opus · low`. Put what is specific to a mission in its step
+  briefs, never in a role.
 - A **gate** has a criterion and kinds `code`, `formation` and `human`, run in
   that order and stopping at the first failure. Its ports are `in`, `pass`,
   `fail` and `judge`.
@@ -98,7 +101,7 @@ WORK=$(jq -r .formation.id <<<"$WORK_JSON")
 WORK_IN=$(jq -r '.formation.inputs[0].id' <<<"$WORK_JSON")
 WORK_OUT=$(jq -r '.formation.outputs[0].id' <<<"$WORK_JSON")
 WORK_SLOT=$(jq -r '.formation.slots[0].id' <<<"$WORK_JSON")
-archon $S formation assign "$M" "$WORK" --slot "$WORK_SLOT" --harness openai-codex --effort medium --role codex-builder --json
+archon $S formation assign "$M" "$WORK" --slot "$WORK_SLOT" --harness openai-codex --effort medium --role builder --json
 archon $S formation set-brief "$M" "$WORK" --goal "Make the change the brief asks for." --json
 archon $S mission wire "$M" "$WORK:$WORK_IN" --json
 ```
@@ -167,10 +170,10 @@ Choose effort by the step's job, with purpose. The role's kind names it:
 
 | Job | Role kinds | Effort |
 | --- | --- | --- |
-| Architecture, design and review | `reviewer`, `judge`, `architect`, `planner`, `orchestrator` | `xhigh` |
+| Architecture, design and review | `reviewer`, `judge`, `architect`, `designer`, `planner`, `orchestrator` | `xhigh` |
 | Consequential review (release gate, irreversible change) | chosen by hand | `max` |
-| Making things | `builder`, `debugger` | `medium` |
-| Errands | `verifier`, `scout`, `observer`, `operator` | `low` |
+| Making things | `builder`, `debugger`, `operator` | `medium` |
+| Errands | `verifier`, `scout` | `low` |
 
 ### Fan out and join
 

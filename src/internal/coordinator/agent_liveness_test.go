@@ -39,16 +39,16 @@ func agentRoster(t *testing.T, c *Coordinator) map[string]formations.AgentProjec
 
 func TestCoordinatorAgentRosterReportsConfiguredLiveness(t *testing.T) {
 	c, _, _ := fixture(t)
-	if agent := agentRoster(t, c)["codex-scout"]; agent.Liveness != formations.AgentLivenessOffline {
-		t.Fatalf("without a provider codex-scout = %+v, want offline", agent)
+	if agent := agentRoster(t, c)["scout"]; agent.Liveness != formations.AgentLivenessOffline {
+		t.Fatalf("without a provider scout = %+v, want offline", agent)
 	}
-	c.ConfigureAgentLiveness(fakeLiveness{{Name: "codex-scout", Status: "live", Attached: true}, {Name: "operator-notes", Status: "live"}})
+	c.ConfigureAgentLiveness(fakeLiveness{{Name: "scout", Status: "live", Attached: true}, {Name: "operator-notes", Status: "live"}})
 	roster := agentRoster(t, c)
-	if agent := roster["codex-scout"]; agent.Liveness != formations.AgentLivenessLive || agent.SessionID != "codex-scout" || !agent.Attached {
-		t.Fatalf("codex-scout = %+v, want live and attached", agent)
+	if agent := roster["scout"]; agent.Liveness != formations.AgentLivenessLive || agent.SessionID != "scout" || !agent.Attached {
+		t.Fatalf("scout = %+v, want live and attached", agent)
 	}
-	if agent := roster["codex-judge"]; agent.Liveness != formations.AgentLivenessOffline {
-		t.Fatalf("codex-judge = %+v, want offline", agent)
+	if agent := roster["judge"]; agent.Liveness != formations.AgentLivenessOffline {
+		t.Fatalf("judge = %+v, want offline", agent)
 	}
 	if agent := roster["operator-notes"]; !agent.Unbound || agent.Liveness != formations.AgentLivenessLive {
 		t.Fatalf("operator-notes = %+v, want an unbound live session", agent)
@@ -92,7 +92,7 @@ func TestTmuxSessionLivenessReadsSessionNames(t *testing.T) {
 			time.Sleep(20 * time.Millisecond)
 		}
 	})
-	for _, name := range []string{"codex-scout", "operator-notes"} {
+	for _, name := range []string{"scout", "operator-notes"} {
 		if out, err := tmux("new-session", "-d", "-s", name, "sh", "-c", "exec cat"); err != nil {
 			t.Fatalf("new-session %s: %s %v", name, out, err)
 		}
@@ -108,7 +108,7 @@ func TestTmuxSessionLivenessReadsSessionNames(t *testing.T) {
 		}
 		names = append(names, session.Name)
 	}
-	if strings.Join(names, ",") != "codex-scout,operator-notes" {
+	if strings.Join(names, ",") != "operator-notes,scout" {
 		t.Fatalf("sessions = %v", names)
 	}
 }

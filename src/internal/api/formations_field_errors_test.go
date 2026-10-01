@@ -107,32 +107,13 @@ func TestAgentsAPIReportsInvalidCardFields(t *testing.T) {
 	writeAgentFixture(t, agentsDir, "half", `schema = 1
 
 [card]
-id = "half"
 display_name = "Half"
-
-[[harness.variant]]
-id = "claude-code"
 `)
 	writeAgentFixture(t, agentsDir, "renamed", `schema = 1
 
 [card]
 id = "original"
 kind = "builder"
-
-[harness]
-default = "claude-code"
-
-[[harness.variant]]
-id = "claude-code"
-`)
-	writeAgentFixture(t, agentsDir, "novariant", `schema = 1
-
-[card]
-id = "novariant"
-kind = "builder"
-
-[harness]
-default = "claude-code"
 `)
 	mux := http.NewServeMux()
 	NewAgentsHandler(agentsDir, nil).RegisterRoutes(mux)
@@ -143,16 +124,15 @@ default = "claude-code"
 		return rec, decodeAPIError(t, rec)
 	}
 	for id, message := range map[string]string{
-		"half":      `agent card "half" is missing card.kind, harness.default`,
-		"renamed":   `agent card file "renamed" holds card.id "original"; they must match`,
-		"novariant": `agent card "novariant" needs a [[harness.variant]]`,
+		"half":    `agent card "half" is missing card.id, card.kind`,
+		"renamed": `agent card file "renamed" holds card.id "original"; they must match`,
 	} {
 		if rec, response := serve("/api/agents/" + id); rec.Code != http.StatusUnprocessableEntity || response.Error.Code != "INVALID_AGENT_CARD" || response.Error.Message != message {
 			t.Errorf("GET agent %s = %d %s, want INVALID_AGENT_CARD %q", id, rec.Code, rec.Body.String(), message)
 		}
 	}
 	// The roster still serves; each card it cannot read is named (archon-4m4j).
-	if rec, _ := serve("/api/agents"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"unreadable":[{"name":"half","reason":"invalid_agent_card: agent card \"half\" is missing card.kind, harness.default"}`) {
+	if rec, _ := serve("/api/agents"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"unreadable":[{"name":"half","reason":"invalid_agent_card: agent card \"half\" is missing card.id, card.kind"}`) {
 		t.Errorf("GET agents = %d %s, want the roster with the invalid cards named", rec.Code, rec.Body.String())
 	}
 	if rec, response := serve("/api/agents/Bad.Agent"); rec.Code != http.StatusBadRequest || response.Error.Code != "BAD_REQUEST" {

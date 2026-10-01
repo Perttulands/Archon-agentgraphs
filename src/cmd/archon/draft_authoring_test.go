@@ -126,7 +126,7 @@ func TestArchonGateCreateWithoutKindsIsARoutableHumanGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	gate := board.Gates[0]
-	archon("formation", "assign", "review", worker.ID, "--slot", worker.Slots[0].ID, "--role", "codex-builder", "--harness", "openai-codex", "--effort", "medium")
+	archon("formation", "assign", "review", worker.ID, "--slot", worker.Slots[0].ID, "--role", "builder", "--harness", "openai-codex", "--effort", "medium")
 	archon("formation", "set-brief", "review", worker.ID, "--goal", "Produce the result")
 	archon("mission", "wire", "review", "Work", worker.ID+":"+worker.Inputs[0].ID)
 	archon("formation", "wire", "review", worker.ID+":"+worker.Outputs[0].ID, gate.ID+":in")

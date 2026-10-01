@@ -52,8 +52,7 @@ export const talkRunId = 'run_talk'
 const requestedSeq = 11
 
 export const talkAgents = [
-  { id: 'delivery-planner', displayName: 'Delivery Planner', harnessDefault: 'claude-code', assignable: true, liveness: 'live', tags: [], kind: 'planner' },
-  { id: 'codex-planner', displayName: 'Codex Planner', harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'planner' },
+  { id: 'planner', displayName: 'Planner', assignable: true, liveness: 'live', tags: [], kind: 'planner' },
 ]
 
 /**

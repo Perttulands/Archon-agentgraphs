@@ -90,14 +90,14 @@ func TestAssigningASlotStatesItsSettings(t *testing.T) {
 		req  FormationSlotAssignmentRequest
 		want string
 	}{
-		{"no effort", FormationSlotAssignmentRequest{Harness: "claude-code", Model: "opus"}, "needs an effort; the policy is low for errands (verifier, scout, observer, operator); medium for making things (builder, debugger); xhigh for architecture and review (reviewer, judge, architect, planner, orchestrator); max for consequential reviews, chosen by hand"},
+		{"no effort", FormationSlotAssignmentRequest{Harness: "claude-code", Model: "opus"}, "needs an effort; the policy is low for errands (verifier, scout); medium for making things (builder, debugger, operator); xhigh for architecture and review (reviewer, judge, architect, designer, planner, orchestrator); max for consequential reviews, chosen by hand"},
 		{"no harness", FormationSlotAssignmentRequest{Effort: "low"}, "needs a harness: claude-code or openai-codex"},
 		{"ultra on claude", FormationSlotAssignmentRequest{Harness: "claude-code", Effort: "ultra"}, `effort "ultra" is not one claude-code accepts; use low, medium, high, xhigh, max`},
 		{"a harness that cannot start seats", FormationSlotAssignmentRequest{Harness: "hermes", Effort: "low"}, `harness "hermes" cannot start seats`},
 		{"a model with spaces", FormationSlotAssignmentRequest{Harness: "claude-code", Model: "opus 5", Effort: "low"}, "one model name without spaces"},
 		// A role names only role text; the slot still states what it runs.
-		{"a role alone", FormationSlotAssignmentRequest{AgentID: "delivery-final-reviewer"}, "needs a harness: claude-code or openai-codex"},
-		{"a role and a harness without an effort", FormationSlotAssignmentRequest{AgentID: "delivery-final-reviewer", Harness: "openai-codex"}, "needs an effort; the policy is"},
+		{"a role alone", FormationSlotAssignmentRequest{AgentID: "reviewer"}, "needs a harness: claude-code or openai-codex"},
+		{"a role and a harness without an effort", FormationSlotAssignmentRequest{AgentID: "reviewer", Harness: "openai-codex"}, "needs an effort; the policy is"},
 		{"a role with a model and no effort", FormationSlotAssignmentRequest{AgentID: "scout", Model: "opus"}, "needs a harness"},
 	} {
 		if _, err := assign(refused.req); !errors.Is(err, ErrInvalidSlotSettings) || !strings.Contains(err.Error(), refused.want) {
@@ -129,11 +129,11 @@ func TestAssigningASlotStatesItsSettings(t *testing.T) {
 		t.Fatalf("role slot = %+v", slot)
 	}
 	// A role carries no settings: its card's model and effort never reach the slot.
-	board, err = assign(FormationSlotAssignmentRequest{AgentID: "delivery-final-reviewer", Harness: "openai-codex", Effort: "max"})
+	board, err = assign(FormationSlotAssignmentRequest{AgentID: "reviewer", Harness: "openai-codex", Effort: "max"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slot := slotOf(board); slot.AgentID != "delivery-final-reviewer" || slot.Harness != "openai-codex" || slot.Model != "" || slot.Effort != "max" {
+	if slot := slotOf(board); slot.AgentID != "reviewer" || slot.Harness != "openai-codex" || slot.Model != "" || slot.Effort != "max" {
 		t.Fatalf("role slot = %+v, want only what the assignment stated", slot)
 	}
 	// Nothing named empties the slot.
@@ -155,7 +155,7 @@ func TestAdmissionReadsTheSlotsOwnSettings(t *testing.T) {
 		message  string
 	}{
 		{"vanilla needs no role", "harness = \"claude-code\"\neffort = \"low\"\n", "", ""},
-		{"a role adds only role text", "agentId = \"delivery-worker\"\nharness = \"claude-code\"\nmodel = \"opus\"\neffort = \"xhigh\"\n", "", ""},
+		{"a role adds only role text", "agentId = \"builder\"\nharness = \"claude-code\"\nmodel = \"opus\"\neffort = \"xhigh\"\n", "", ""},
 		{"an effort is required", "harness = \"claude-code\"\nmodel = \"opus\"\n", FindingInvalidSlotSettings, `slot "Researcher" (slot_research) needs an effort`},
 		{"the harness must accept the effort", "harness = \"claude-code\"\neffort = \"ultra\"\n", FindingInvalidSlotSettings, `effort "ultra" is not one claude-code accepts`},
 		{"a named role must exist", "agentId = \"nobody-here\"\nharness = \"claude-code\"\neffort = \"low\"\n", FindingUnavailablePersona, `names unknown role "nobody-here"`},
@@ -272,9 +272,9 @@ func TestAdmissionNamesASlotWhoseHarnessCannotStart(t *testing.T) {
 		personas *PersonaStore
 	}{
 		{"vanilla", "harness = \"hermes\"\neffort = \"low\"\n", personas},
-		{"with a role", "agentId = \"delivery-worker\"\nharness = \"hermes\"\neffort = \"low\"\n", personas},
+		{"with a role", "agentId = \"builder\"\nharness = \"hermes\"\neffort = \"low\"\n", personas},
 		{"with an unknown role", "agentId = \"nobody-here\"\nharness = \"hermes\"\neffort = \"low\"\n", personas},
-		{"without a persona store", "agentId = \"delivery-worker\"\nharness = \"hermes\"\neffort = \"low\"\n", nil},
+		{"without a persona store", "agentId = \"builder\"\nharness = \"hermes\"\neffort = \"low\"\n", nil},
 	} {
 		t.Run(check.name, func(t *testing.T) {
 			writeFixture(t, store.BoardPath("session-search"), vanillaSlotBoard(check.settings))

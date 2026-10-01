@@ -10,79 +10,63 @@ import (
 	"testing"
 )
 
-func TestCodexPersonaPresetsAreAvailableWithoutPersistedCards(t *testing.T) {
+// Every Archon has the generic roles Perttu confirmed (archon-o7p.12.1), each
+// role text only, with no mission-specific role among them.
+func TestBuiltinRolesAreTheGenericRoles(t *testing.T) {
 	store := NewPersonaStore(t.TempDir())
 	cards, err := store.ListPersonas()
 	if err != nil {
 		t.Fatalf("list presets: %v", err)
 	}
-	if len(cards) != 13 {
-		t.Fatalf("preset count = %d, want 13", len(cards))
-	}
 	gotIDs := make([]string, 0, len(cards))
 	for _, card := range cards {
-		if !strings.HasPrefix(card.ID, "codex-") {
-			continue
-		}
 		gotIDs = append(gotIDs, card.ID)
-		if !card.Preset || card.Customized || card.HarnessDefault != "openai-codex" {
+		if !card.Preset || card.Customized || card.Summary == "" || card.DisplayName == "" || card.Status != "active" {
 			t.Fatalf("preset projection = %+v", card)
 		}
-		variant := card.DefaultVariant()
-		if variant.ID != "openai-codex" || variant.SessionStem != card.ID {
-			t.Fatalf("preset harness = %+v", variant)
-		}
 	}
-	wantIDs := []string{"codex-builder", "codex-debugger", "codex-judge", "codex-orchestrator", "codex-planner", "codex-reviewer", "codex-scout"}
+	wantIDs := []string{"builder", "debugger", "judge", "orchestrator", "planner", "reviewer", "scout"}
 	if !reflect.DeepEqual(gotIDs, wantIDs) {
 		t.Fatalf("preset ids = %v, want %v", gotIDs, wantIDs)
 	}
-}
-
-// Delivery presets are role text with their own session's harness; the
-// Delivery mission's slots state what each seat runs.
-func TestDeliveryPresetsResolveTheirHarnessAndLocalOverrides(t *testing.T) {
-	store := NewPersonaStore(t.TempDir())
-	for _, id := range []string{"delivery-planner", "delivery-beads-drafter", "delivery-beads-reviewer", "delivery-lead", "delivery-worker", "delivery-final-reviewer"} {
-		card, err := store.ReadPersona(id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		harness := "claude-code"
-		if id == "delivery-worker" || id == "delivery-final-reviewer" {
-			harness = "openai-codex"
-		}
-		variant, err := card.SelectHarnessVariant(harness)
-		if err != nil || !card.Preset || card.Summary == "" || card.HarnessDefault != harness || variant.Model != "" || variant.Effort != "" {
-			t.Fatalf("delivery preset %s: card=%+v variant=%+v err=%v", id, card, variant, err)
-		}
-		name := "Local " + card.DisplayName
-		if _, err := store.EditPersona(id, EditPersonaRequest{SetDisplayName: &name, ExpectedETag: card.ETag}); err != nil {
-			t.Fatal(err)
-		}
-		local, err := store.ReadPersona(id)
-		if err != nil || !local.Customized || !local.Preset || local.DisplayName != name || !reflect.DeepEqual(local.DefaultVariant(), variant) {
-			t.Fatalf("local override lost preset settings: %+v, %v", local, err)
+	for _, id := range []string{"codex-builder", "delivery-worker", "delivery-final-reviewer"} {
+		if _, err := store.ReadPersona(id); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("ReadPersona(%q) = %v, want ErrNotFound", id, err)
 		}
 	}
 }
 
-func TestEditingCodexPresetMaterializesLocalOverride(t *testing.T) {
+// Each built-in role's kind is one the effort policy names, so staffing it
+// suggests an effort.
+func TestEveryBuiltinRoleKindIsOnTheEffortPolicy(t *testing.T) {
+	named := map[string]string{}
+	for _, entry := range EffortPolicy() {
+		for _, kind := range entry.Kinds {
+			named[kind] = entry.Effort
+		}
+	}
+	want := map[string]string{"scout": "low", "planner": "xhigh", "builder": "medium", "judge": "xhigh", "orchestrator": "xhigh", "debugger": "medium", "reviewer": "xhigh"}
+	for _, preset := range personaPresetCatalog {
+		if named[preset.Kind] != want[preset.ID] {
+			t.Fatalf("%s (%s) suggests %q, want %q", preset.ID, preset.Kind, named[preset.Kind], want[preset.ID])
+		}
+	}
+}
+
+func TestEditingABuiltinRoleMaterializesLocalOverride(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPersonaStore(dir)
-	builtin, err := store.ReadPersona("codex-builder")
+	builtin, err := store.ReadPersona("builder")
 	if err != nil {
 		t.Fatalf("read builtin: %v", err)
 	}
 	name := "Repository Builder"
 	summary := "Builds in the selected workspace"
 	capabilities := []string{"implement", "test", "refactor"}
-	stem := "codex-builder-main"
-	updated, err := store.EditPersona("codex-builder", EditPersonaRequest{
+	updated, err := store.EditPersona("builder", EditPersonaRequest{
 		SetDisplayName:  &name,
 		SetSummary:      &summary,
 		SetCapabilities: &capabilities,
-		SetSessionStem:  &stem,
 		ExpectedETag:    builtin.ETag,
 	})
 	if err != nil {
@@ -94,27 +78,23 @@ func TestEditingCodexPresetMaterializesLocalOverride(t *testing.T) {
 	if !reflect.DeepEqual(bareCapabilities(updated.Tags), capabilities) {
 		t.Fatalf("capabilities = %v, want %v", updated.Tags, capabilities)
 	}
-	variant := updated.DefaultVariant()
-	if variant.SessionStem != stem {
-		t.Fatalf("updated harness = %+v", variant)
-	}
-	if _, err := os.Stat(store.PersonaPath("codex-builder")); err != nil {
+	if _, err := os.Stat(store.PersonaPath("builder")); err != nil {
 		t.Fatalf("materialized override: %v", err)
 	}
-	reread, err := NewPersonaStore(dir).ReadPersona("codex-builder")
+	reread, err := NewPersonaStore(dir).ReadPersona("builder")
 	if err != nil || !reread.Customized || reread.ETag != updated.ETag {
 		t.Fatalf("reread override = %+v, err %v", reread, err)
 	}
 }
 
-func TestStaleCodexPresetEditDoesNotMaterializeOverride(t *testing.T) {
+func TestStaleBuiltinRoleEditDoesNotMaterializeOverride(t *testing.T) {
 	store := NewPersonaStore(t.TempDir())
 	name := "Stale"
-	_, err := store.EditPersona("codex-scout", EditPersonaRequest{SetDisplayName: &name, ExpectedETag: "stale"})
+	_, err := store.EditPersona("scout", EditPersonaRequest{SetDisplayName: &name, ExpectedETag: "stale"})
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale edit error = %v, want ErrConflict", err)
 	}
-	if _, err := os.Stat(store.PersonaPath("codex-scout")); !os.IsNotExist(err) {
+	if _, err := os.Stat(store.PersonaPath("scout")); !os.IsNotExist(err) {
 		t.Fatalf("stale edit created override: %v", err)
 	}
 }
@@ -124,33 +104,33 @@ func TestPersonaStoreFollowsSymlinkedCardsAndRefusesFIFOCards(t *testing.T) {
 	dir := t.TempDir()
 	external := filepath.Join(t.TempDir(), "external.toml")
 	externalRaw := renderPersona(CreatePersonaRequest{
-		ID:          "codex-builder",
+		ID:          "builder",
 		DisplayName: "Substituted Builder",
 		Kind:        "builder",
 		Summary:     "external secret",
-	}, "openai-codex", "codex-builder", []string{"implement"})
+	}, []string{"implement"})
 	if err := os.WriteFile(external, []byte(externalRaw), 0o600); err != nil {
 		t.Fatalf("write external file: %v", err)
 	}
-	if err := os.Symlink(external, filepath.Join(dir, "codex-builder.toml")); err != nil {
+	if err := os.Symlink(external, filepath.Join(dir, "builder.toml")); err != nil {
 		t.Fatalf("symlink card: %v", err)
 	}
 	store := NewPersonaStore(dir)
-	if card, err := store.ReadPersona("codex-builder"); err != nil || card.Summary != "external secret" {
+	if card, err := store.ReadPersona("builder"); err != nil || card.Summary != "external secret" {
 		t.Fatalf("ReadPersona through a symlinked card = %+v, %v", card, err)
 	}
 	linkedDir := filepath.Join(t.TempDir(), "agents")
 	if err := os.Symlink(dir, linkedDir); err != nil {
 		t.Fatal(err)
 	}
-	if card, err := NewPersonaStore(linkedDir).ReadPersona("codex-builder"); err != nil || card.Summary != "external secret" {
+	if card, err := NewPersonaStore(linkedDir).ReadPersona("builder"); err != nil || card.Summary != "external secret" {
 		t.Fatalf("ReadPersona through a symlinked agents directory = %+v, %v", card, err)
 	}
 
-	if err := os.Remove(filepath.Join(dir, "codex-builder.toml")); err != nil {
+	if err := os.Remove(filepath.Join(dir, "builder.toml")); err != nil {
 		t.Fatalf("remove card symlink: %v", err)
 	}
-	fifo := filepath.Join(dir, "codex-builder.toml")
+	fifo := filepath.Join(dir, "builder.toml")
 	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
 		t.Fatalf("mkfifo: %v", err)
 	}
@@ -171,7 +151,7 @@ func TestPersonaStoreFollowsSymlinkedCardsAndRefusesFIFOCards(t *testing.T) {
 	if err := fifoHandle.Close(); err != nil {
 		t.Fatalf("close FIFO writer keeper: %v", err)
 	}
-	if _, err := store.ReadPersona("codex-builder"); err == nil {
+	if _, err := store.ReadPersona("builder"); err == nil {
 		t.Fatal("ReadPersona accepted FIFO card")
 	}
 }
@@ -184,7 +164,7 @@ func TestPersonaStoreWritesASymlinkedCardThroughItsLink(t *testing.T) {
 	external := filepath.Join(repository, "builder.toml")
 	if err := os.WriteFile(external, []byte(renderPersona(CreatePersonaRequest{
 		ID: "linked-builder", DisplayName: "Builder", Kind: "builder",
-	}, "openai-codex", "linked-builder", []string{"implement"})), 0o644); err != nil {
+	}, []string{"implement"})), 0o644); err != nil {
 		t.Fatalf("write external card: %v", err)
 	}
 	link := filepath.Join(dir, "linked-builder.toml")
@@ -215,19 +195,19 @@ func TestPersonaStoreWritesASymlinkedCardThroughItsLink(t *testing.T) {
 func TestPersonaStoreRefusesAFIFOLock(t *testing.T) {
 	dir := t.TempDir()
 	store := NewPersonaStore(dir)
-	builtin, err := store.ReadPersona("codex-scout")
+	builtin, err := store.ReadPersona("scout")
 	if err != nil {
 		t.Fatalf("read builtin: %v", err)
 	}
-	lockPath := filepath.Join(dir, "codex-scout.toml.lock")
+	lockPath := filepath.Join(dir, "scout.toml.lock")
 	if err := syscall.Mkfifo(lockPath, 0o600); err != nil {
 		t.Fatalf("mkfifo lock: %v", err)
 	}
 	name := "Override"
-	if _, err := store.EditPersona("codex-scout", EditPersonaRequest{SetDisplayName: &name, ExpectedETag: builtin.ETag}); err == nil {
+	if _, err := store.EditPersona("scout", EditPersonaRequest{SetDisplayName: &name, ExpectedETag: builtin.ETag}); err == nil {
 		t.Fatal("EditPersona accepted FIFO lock")
 	}
-	if _, err := os.Stat(store.PersonaPath("codex-scout")); !os.IsNotExist(err) {
+	if _, err := os.Stat(store.PersonaPath("scout")); !os.IsNotExist(err) {
 		t.Fatalf("FIFO lock edit materialized card: %v", err)
 	}
 }

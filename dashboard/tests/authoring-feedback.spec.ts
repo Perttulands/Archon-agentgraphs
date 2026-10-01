@@ -5,8 +5,8 @@ import { authoredBoard, nodeWindowsFixture } from './node-windows-fixture'
 test('roster search matches names, IDs, kinds and tags and clears without writes', async ({ page }) => {
   const fixture = await nodeWindowsFixture(page)
   const agents = [
-    { id: 'scout-id', displayName: 'Evidence Finder', harnessDefault: 'openai-codex', tags: ['research'], kind: 'specialist', assignable: true },
-    { id: 'critic-id', displayName: 'Brief Critic', harnessDefault: 'claude-code', tags: ['review'], kind: 'judge', assignable: true },
+    { id: 'scout-id', displayName: 'Evidence Finder', tags: ['research'], kind: 'specialist', assignable: true },
+    { id: 'critic-id', displayName: 'Brief Critic', tags: ['review'], kind: 'judge', assignable: true },
   ]
   await page.route('**/api/agents', route => route.fulfill({ json: { success: true, data: rosterAnswer(agents) } }))
   await page.goto('/?mission=scouting')

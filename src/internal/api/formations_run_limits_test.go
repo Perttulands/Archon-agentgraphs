@@ -16,9 +16,6 @@ import (
 func TestFormationsHandlerRefusesNegativeRunLimits(t *testing.T) {
 	store := formations.NewStore(t.TempDir())
 	personas := formations.NewPersonaStore(t.TempDir())
-	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	writeFormationsAPIFixture(t, store.BoardPath("session-search"), formationsAPIS5CascadeBoardFixture())
 	handler := NewFormationsHandlerWithStores(store, personas)
 	mux := http.NewServeMux()

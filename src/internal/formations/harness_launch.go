@@ -41,6 +41,15 @@ func LaunchableHarnesses() []LaunchableHarness {
 	return out
 }
 
+// LaunchableHarnessIDs names the harnesses Archon can start seats for.
+func LaunchableHarnessIDs() []string {
+	ids := make([]string, 0, len(launchableHarnesses))
+	for _, harness := range launchableHarnesses {
+		ids = append(ids, harness.ID)
+	}
+	return ids
+}
+
 func launchableHarness(id string) (LaunchableHarness, bool) {
 	for _, harness := range launchableHarnesses {
 		if harness.ID == id {

@@ -105,11 +105,6 @@ func TestConfiguredWorkspaceSymlinkStillSupportsRunCreation(t *testing.T) {
 	store.Now = fixedClock()
 	personas := NewPersonaStore(filepath.Join(root, "agents"))
 	personas.Now = fixedClock()
-	if _, err := personas.CreatePersona(CreatePersonaRequest{
-		ID: "scout", Kind: "specialist", Capabilities: []string{"research"}, Harness: "openai-codex",
-	}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
 	board, err := store.ReadBoard("session-search")
 	if err != nil {

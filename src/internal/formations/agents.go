@@ -31,33 +31,32 @@ type PersonaStore struct {
 	Now       func() time.Time
 }
 
+// PersonaCard is a role: role text a slot may carry. It names no harness,
+// model or effort; each slot that uses it states those, and agent spawn states
+// them for the role's own session, which is named after the role.
 type PersonaCard struct {
-	Schema          int              `json:"schema"`
-	ID              string           `json:"id"`
-	DisplayName     string           `json:"displayName,omitempty"`
-	Kind            string           `json:"kind"`
-	Summary         string           `json:"summary,omitempty"`
-	Tags            []string         `json:"tags"`
-	Status          string           `json:"status,omitempty"`
-	HarnessDefault  string           `json:"harnessDefault"`
-	HarnessVariants []HarnessVariant `json:"harnessVariants"`
-	Notes           []PersonaNote    `json:"notes,omitempty"`
-	ETag            string           `json:"etag"`
-	TOML            string           `json:"toml,omitempty"`
-	Preset          bool             `json:"preset,omitempty"`
-	Customized      bool             `json:"customized,omitempty"`
+	Schema      int           `json:"schema"`
+	ID          string        `json:"id"`
+	DisplayName string        `json:"displayName,omitempty"`
+	Kind        string        `json:"kind"`
+	Summary     string        `json:"summary,omitempty"`
+	Tags        []string      `json:"tags"`
+	Status      string        `json:"status,omitempty"`
+	Notes       []PersonaNote `json:"notes,omitempty"`
+	ETag        string        `json:"etag"`
+	TOML        string        `json:"toml,omitempty"`
+	Preset      bool          `json:"preset,omitempty"`
+	Customized  bool          `json:"customized,omitempty"`
 }
 
-// HarnessVariant is a harness a session starts on: its session stem and
-// source, and the model and effort the session runs with. A persona card's
-// variants hold only the stem and source; the model and effort come from the
-// slot a seat staffs (SlotSettings.Variant) or from agent spawn's flags.
+// HarnessVariant is what a session starts on: the harness, the session stem
+// and the model and effort it runs with, from the slot a seat staffs
+// (SlotSettings.Variant) or from agent spawn's flags.
 type HarnessVariant struct {
 	ID          string `json:"id"`
 	SessionStem string `json:"sessionStem,omitempty"`
 	Model       string `json:"model,omitempty"`
 	Effort      string `json:"effort,omitempty"`
-	Source      string `json:"source,omitempty"`
 }
 
 type PersonaNote struct {
@@ -73,17 +72,11 @@ type CreatePersonaRequest struct {
 	Summary      string
 	Capabilities []string
 	Personality  string
-	Harness      string
-	SessionStem  string
-	Source       string
 }
 
 type EditPersonaRequest struct {
 	AddCapability    string
 	RemoveCapability string
-	AddHarness       string
-	SessionStem      string
-	Source           string
 	Note             string
 	Retire           bool
 	ExpectedETag     string
@@ -91,19 +84,6 @@ type EditPersonaRequest struct {
 	SetKind          *string
 	SetSummary       *string
 	SetCapabilities  *[]string
-	SetSessionStem   *string
-}
-
-func editedVariant(card *PersonaCard, variantID string) (HarnessVariant, error) {
-	if variantID == "" {
-		variantID = card.HarnessDefault
-	}
-	for _, variant := range card.HarnessVariants {
-		if variant.ID == variantID {
-			return variant, nil
-		}
-	}
-	return HarnessVariant{}, fmt.Errorf("%w: agent %q has no harness variant %q", ErrInvalidAgentCard, card.ID, variantID)
 }
 
 type AgentRosterFilter struct {
@@ -146,27 +126,26 @@ type AgentRoster struct {
 }
 
 type AgentProjection struct {
-	ID             string   `json:"id"`
-	DisplayName    string   `json:"displayName,omitempty"`
-	Kind           string   `json:"kind,omitempty"`
-	Summary        string   `json:"summary,omitempty"`
-	Tags           []string `json:"tags,omitempty"`
-	HarnessDefault string   `json:"harnessDefault,omitempty"`
-	Liveness       string   `json:"liveness"`
-	SessionID      string   `json:"sessionId,omitempty"`
-	Status         string   `json:"status,omitempty"`
-	ContextPct     int      `json:"contextPct,omitempty"`
-	BeadID         string   `json:"beadId,omitempty"`
-	Attached       bool     `json:"attached"`
-	Assignable     bool     `json:"assignable"`
-	Unbound        bool     `json:"unbound,omitempty"`
-	Preset         bool     `json:"preset,omitempty"`
-	Customized     bool     `json:"customized,omitempty"`
+	ID          string   `json:"id"`
+	DisplayName string   `json:"displayName,omitempty"`
+	Kind        string   `json:"kind,omitempty"`
+	Summary     string   `json:"summary,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Liveness    string   `json:"liveness"`
+	SessionID   string   `json:"sessionId,omitempty"`
+	Status      string   `json:"status,omitempty"`
+	ContextPct  int      `json:"contextPct,omitempty"`
+	BeadID      string   `json:"beadId,omitempty"`
+	Attached    bool     `json:"attached"`
+	Assignable  bool     `json:"assignable"`
+	Unbound     bool     `json:"unbound,omitempty"`
+	Preset      bool     `json:"preset,omitempty"`
+	Customized  bool     `json:"customized,omitempty"`
 }
 
+// AgentSessionBinding is a role's own live session, the one named after it.
 type AgentSessionBinding struct {
 	AgentID     string           `json:"agentId"`
-	Harness     string           `json:"harness"`
 	SessionStem string           `json:"sessionStem"`
 	Session     LiveAgentSession `json:"session"`
 }
@@ -286,22 +265,11 @@ func (s *PersonaStore) CreatePersona(req CreatePersonaRequest) (*PersonaCard, er
 		if strings.TrimSpace(req.Kind) == "" {
 			req.Kind = DefaultPersonaKind
 		}
-		harness := req.Harness
-		if harness == "" {
-			harness = inferHarness(req.Source)
-		}
-		if harness == "" {
-			harness = "claude-code"
-		}
-		sessionStem := req.SessionStem
-		if sessionStem == "" {
-			sessionStem = req.ID
-		}
 		tags := normalizeTags(req.Capabilities)
 		if req.Personality != "" {
 			tags = appendUnique(tags, "personality:"+req.Personality)
 		}
-		raw := renderPersona(req, harness, sessionStem, tags)
+		raw := renderPersona(req, tags)
 		if err := s.writePersonaAtomic(req.ID, []byte(raw)); err != nil {
 			return err
 		}
@@ -376,12 +344,6 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 			}
 			next = setSectionScalar(next, "card", "tags", "["+renderStringList(tags)+"]")
 		}
-		if req.SetSessionStem != nil {
-			next, err = setHarnessVariantScalar(next, card.HarnessDefault, "session_stem", strings.TrimSpace(*req.SetSessionStem))
-			if err != nil {
-				return err
-			}
-		}
 		if req.AddCapability != "" || req.RemoveCapability != "" {
 			tags := append([]string{}, card.Tags...)
 			if req.AddCapability != "" && isBareCapability(req.AddCapability) {
@@ -394,17 +356,6 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 		}
 		if req.Retire {
 			next = setSectionScalar(next, "card", "status", renderString("retired"))
-		}
-		if req.AddHarness != "" {
-			stem := req.SessionStem
-			if stem == "" {
-				stem = req.AddHarness + "-" + id
-			}
-			next = appendHarnessVariant(next, HarnessVariant{
-				ID:          req.AddHarness,
-				SessionStem: stem,
-				Source:      req.Source,
-			})
 		}
 		if req.Note != "" {
 			next = appendPersonaNote(next, PersonaNote{
@@ -438,71 +389,22 @@ func (s *PersonaStore) now() time.Time {
 	return s.Now().UTC()
 }
 
-func (c PersonaCard) DefaultVariant() HarnessVariant {
-	for _, variant := range c.HarnessVariants {
-		if variant.ID == c.HarnessDefault {
-			if variant.SessionStem == "" {
-				variant.SessionStem = c.ID
-			}
-			return variant
-		}
-	}
-	if len(c.HarnessVariants) == 0 {
-		return HarnessVariant{ID: c.HarnessDefault, SessionStem: c.ID}
-	}
-	variant := c.HarnessVariants[0]
-	if variant.SessionStem == "" {
-		variant.SessionStem = c.ID
-	}
-	return variant
-}
-
-func (c PersonaCard) SelectHarnessVariant(harness string) (HarnessVariant, error) {
-	if harness == "" {
-		if len(c.HarnessVariants) > 1 {
-			return HarnessVariant{}, fmt.Errorf("%w: agent %q has multiple harness variants; choose a harness", ErrAmbiguousAgentBinding, c.ID)
-		}
-		return c.DefaultVariant(), nil
-	}
-	for _, variant := range c.HarnessVariants {
-		if variant.ID != harness {
-			continue
-		}
-		if variant.SessionStem == "" && variant.ID == c.HarnessDefault {
-			variant.SessionStem = c.ID
-		}
-		return variant, nil
-	}
-	return HarnessVariant{}, fmt.Errorf("%w: agent %q has no harness variant %q", ErrNotFound, c.ID, harness)
-}
-
-func ResolveAgentSession(card PersonaCard, live []LiveAgentSession, harness string) (AgentSessionBinding, error) {
-	variant, err := card.SelectHarnessVariant(harness)
-	if err != nil {
-		return AgentSessionBinding{}, err
-	}
-	if variant.SessionStem == "" {
-		return AgentSessionBinding{}, fmt.Errorf("%w: agent %q harness %q has no session_stem", ErrAgentSessionOffline, card.ID, variant.ID)
-	}
-
+// ResolveAgentSession finds a role's own live session: the one named after
+// the role.
+func ResolveAgentSession(card PersonaCard, live []LiveAgentSession) (AgentSessionBinding, error) {
 	matches := make([]LiveAgentSession, 0, 1)
 	for _, session := range live {
-		if session.Name == variant.SessionStem {
+		if session.Name == card.ID {
 			matches = append(matches, session)
 		}
 	}
 	switch len(matches) {
 	case 0:
-		return AgentSessionBinding{}, fmt.Errorf("%w: no live session for agent %q harness %q stem %q", ErrAgentSessionOffline, card.ID, variant.ID, variant.SessionStem)
+		return AgentSessionBinding{}, fmt.Errorf("%w: no live session for agent %q", ErrAgentSessionOffline, card.ID)
 	case 1:
-		return AgentSessionBinding{
-			AgentID:     card.ID,
-			Harness:     variant.ID,
-			SessionStem: variant.SessionStem,
-			Session:     matches[0],
-		}, nil
+		return AgentSessionBinding{AgentID: card.ID, SessionStem: card.ID, Session: matches[0]}, nil
 	default:
-		return AgentSessionBinding{}, fmt.Errorf("%w: agent %q harness %q matched %d live sessions for stem %q", ErrAmbiguousAgentBinding, card.ID, variant.ID, len(matches), variant.SessionStem)
+		return AgentSessionBinding{}, fmt.Errorf("%w: agent %q matched %d live sessions", ErrAmbiguousAgentBinding, card.ID, len(matches))
 	}
 }
 
@@ -564,20 +466,18 @@ func (r AgentRoster) ByID(id string) *AgentProjection {
 
 func projectCard(card PersonaCard, live []LiveAgentSession) AgentProjection {
 	projection := AgentProjection{
-		ID:             card.ID,
-		DisplayName:    card.DisplayName,
-		Kind:           card.Kind,
-		Summary:        card.Summary,
-		Tags:           append([]string{}, card.Tags...),
-		HarnessDefault: card.HarnessDefault,
-		Liveness:       AgentLivenessOffline,
-		Assignable:     card.Status != "retired",
-		Preset:         card.Preset,
-		Customized:     card.Customized,
+		ID:          card.ID,
+		DisplayName: card.DisplayName,
+		Kind:        card.Kind,
+		Summary:     card.Summary,
+		Tags:        append([]string{}, card.Tags...),
+		Liveness:    AgentLivenessOffline,
+		Assignable:  card.Status != "retired",
+		Preset:      card.Preset,
+		Customized:  card.Customized,
 	}
-	defaultVariant := card.DefaultVariant()
 	for _, session := range live {
-		if session.Name != defaultVariant.SessionStem {
+		if session.Name != card.ID {
 			continue
 		}
 		projection.Liveness = AgentLivenessLive
@@ -598,17 +498,16 @@ func parsePersonaCard(expectedID string, raw []byte) (*PersonaCard, error) {
 		return nil, fmt.Errorf("%w: schema %d", ErrUnsupportedSchema, schema)
 	}
 	card := &PersonaCard{
-		Schema:         schema,
-		ID:             parser.card["id"],
-		DisplayName:    parser.card["display_name"],
-		Kind:           parser.card["kind"],
-		Summary:        parser.card["summary"],
-		Status:         parser.card["status"],
-		Tags:           parser.cardTags,
-		HarnessDefault: parser.harness["default"],
-		Notes:          parser.notes,
-		ETag:           etag(raw),
-		TOML:           string(raw),
+		Schema:      schema,
+		ID:          parser.card["id"],
+		DisplayName: parser.card["display_name"],
+		Kind:        parser.card["kind"],
+		Summary:     parser.card["summary"],
+		Status:      parser.card["status"],
+		Tags:        parser.cardTags,
+		Notes:       parser.notes,
+		ETag:        etag(raw),
+		TOML:        string(raw),
 	}
 	name := expectedID
 	if name == "" {
@@ -618,7 +517,7 @@ func parsePersonaCard(expectedID string, raw []byte) (*PersonaCard, error) {
 		return nil, fmt.Errorf("%w: agent card %q needs schema", ErrInvalidAgentCard, name)
 	}
 	missing := []string{}
-	for field, value := range map[string]string{"card.id": card.ID, "card.kind": card.Kind, "harness.default": card.HarnessDefault} {
+	for field, value := range map[string]string{"card.id": card.ID, "card.kind": card.Kind} {
 		if value == "" {
 			missing = append(missing, field)
 		}
@@ -630,55 +529,38 @@ func parsePersonaCard(expectedID string, raw []byte) (*PersonaCard, error) {
 	if expectedID != "" && card.ID != expectedID {
 		return nil, fmt.Errorf("%w: agent card file %q holds card.id %q; they must match", ErrInvalidAgentCard, expectedID, card.ID)
 	}
-	for _, variant := range parser.variants {
-		if variant.ID == card.HarnessDefault && variant.SessionStem == "" {
-			variant.SessionStem = card.ID
-		}
-		card.HarnessVariants = append(card.HarnessVariants, variant)
-	}
-	if len(card.HarnessVariants) == 0 {
-		return nil, fmt.Errorf("%w: agent card %q needs a [[harness.variant]]", ErrInvalidAgentCard, name)
-	}
 	return card, nil
 }
 
 type personaParser struct {
-	schema    int
-	card      map[string]string
-	cardTags  []string
-	harness   map[string]string
-	variants  []HarnessVariant
-	notes     []PersonaNote
-	section   string
-	variantIx int
-	noteIx    int
+	schema   int
+	card     map[string]string
+	cardTags []string
+	notes    []PersonaNote
+	section  string
+	noteIx   int
 }
 
+// newPersonaParser reads a card's [card] table and [[note]] entries; it keeps
+// other tables in the TOML untouched and reads nothing from them.
 func newPersonaParser(raw []byte) *personaParser {
 	p := &personaParser{
-		card:      map[string]string{},
-		harness:   map[string]string{},
-		variantIx: -1,
-		noteIx:    -1,
+		card:   map[string]string{},
+		noteIx: -1,
 	}
 	for _, line := range splitLines(raw) {
 		trimmed := strings.TrimSpace(line.body)
-		switch trimmed {
-		case "[card]":
+		switch {
+		case trimmed == "[card]":
 			p.section = "card"
 			continue
-		case "[harness]":
-			p.section = "harness"
-			continue
-		case "[[harness.variant]]":
-			p.section = "harness.variant"
-			p.variants = append(p.variants, HarnessVariant{})
-			p.variantIx = len(p.variants) - 1
-			continue
-		case "[[note]]":
+		case trimmed == "[[note]]":
 			p.section = "note"
 			p.notes = append(p.notes, PersonaNote{})
 			p.noteIx = len(p.notes) - 1
+			continue
+		case strings.HasPrefix(trimmed, "["):
+			p.section = "other"
 			continue
 		}
 		key, ok := topLevelKey(line.body)
@@ -697,12 +579,6 @@ func newPersonaParser(raw []byte) *personaParser {
 			} else {
 				p.card[key] = parseString(value)
 			}
-		case "harness":
-			p.harness[key] = parseString(value)
-		case "harness.variant":
-			if p.variantIx >= 0 {
-				setVariantField(&p.variants[p.variantIx], key, parseString(value))
-			}
 		case "note":
 			if p.noteIx >= 0 {
 				setNoteField(&p.notes[p.noteIx], key, parseString(value))
@@ -710,17 +586,6 @@ func newPersonaParser(raw []byte) *personaParser {
 		}
 	}
 	return p
-}
-
-func setVariantField(v *HarnessVariant, key, value string) {
-	switch key {
-	case "id":
-		v.ID = value
-	case "session_stem":
-		v.SessionStem = value
-	case "source":
-		v.Source = value
-	}
 }
 
 func setNoteField(n *PersonaNote, key, value string) {
@@ -734,7 +599,7 @@ func setNoteField(n *PersonaNote, key, value string) {
 	}
 }
 
-func renderPersona(req CreatePersonaRequest, harness, sessionStem string, tags []string) string {
+func renderPersona(req CreatePersonaRequest, tags []string) string {
 	displayName := req.DisplayName
 	if displayName == "" {
 		displayName = req.ID
@@ -749,27 +614,7 @@ func renderPersona(req CreatePersonaRequest, harness, sessionStem string, tags [
 		b.WriteString("summary = " + renderString(req.Summary) + "\n")
 	}
 	b.WriteString("tags = [" + renderStringList(tags) + "]\n")
-	b.WriteString("status = \"active\"\n\n")
-	b.WriteString("[harness]\n")
-	b.WriteString("default = " + renderString(harness) + "\n\n")
-	b.WriteString("[[harness.variant]]\n")
-	b.WriteString("id = " + renderString(harness) + "\n")
-	b.WriteString("session_stem = " + renderString(sessionStem) + "\n")
-	if req.Source != "" {
-		b.WriteString("source = " + renderString(req.Source) + "\n")
-	}
-	return b.String()
-}
-
-func appendHarnessVariant(raw string, variant HarnessVariant) string {
-	var b strings.Builder
-	b.WriteString(strings.TrimRight(raw, "\r\n"))
-	b.WriteString("\n\n[[harness.variant]]\n")
-	b.WriteString("id = " + renderString(variant.ID) + "\n")
-	b.WriteString("session_stem = " + renderString(variant.SessionStem) + "\n")
-	if variant.Source != "" {
-		b.WriteString("source = " + renderString(variant.Source) + "\n")
-	}
+	b.WriteString("status = \"active\"\n")
 	return b.String()
 }
 
@@ -813,53 +658,6 @@ func setSectionScalar(raw, section, key, value string) string {
 	copy(lines[insertAt+1:], lines[insertAt:])
 	lines[insertAt] = newLine
 	return renderLines(lines)
-}
-
-func setHarnessVariantScalar(raw, variantID, key, value string) (string, error) {
-	lines := splitLines([]byte(raw))
-	for start := 0; start < len(lines); start++ {
-		if strings.TrimSpace(lines[start].body) != "[[harness.variant]]" {
-			continue
-		}
-		end := len(lines)
-		for next := start + 1; next < len(lines); next++ {
-			if strings.HasPrefix(strings.TrimSpace(lines[next].body), "[") {
-				end = next
-				break
-			}
-		}
-		currentID := ""
-		fieldIndex := -1
-		insertAt := start + 1
-		for index := start + 1; index < end; index++ {
-			field, ok := topLevelKey(lines[index].body)
-			if !ok {
-				continue
-			}
-			insertAt = index + 1
-			if field == "id" {
-				currentID = parseString(valuePart(lines[index].body))
-			}
-			if field == key {
-				fieldIndex = index
-			}
-		}
-		if currentID != variantID {
-			start = end - 1
-			continue
-		}
-		rendered := renderString(value)
-		if fieldIndex >= 0 {
-			lines[fieldIndex].body = replaceScalarValue(lines[fieldIndex].body, rendered)
-			return renderLines(lines), nil
-		}
-		newLine := tomlLine{body: key + " = " + rendered, newline: "\n"}
-		lines = append(lines, tomlLine{})
-		copy(lines[insertAt+1:], lines[insertAt:])
-		lines[insertAt] = newLine
-		return renderLines(lines), nil
-	}
-	return "", fmt.Errorf("%w: harness variant %q", ErrNotFound, variantID)
 }
 
 func renderLines(lines []tomlLine) string {
@@ -971,18 +769,6 @@ func validatePersonaID(id string) error {
 		return ErrInvalidSlug
 	}
 	return nil
-}
-
-func inferHarness(source string) string {
-	source = strings.ToLower(source)
-	switch {
-	case strings.Contains(source, ".codex"):
-		return "openai-codex"
-	case strings.Contains(source, ".hermes/profiles"):
-		return "hermes"
-	default:
-		return ""
-	}
 }
 
 func shellQuote(value string) string {

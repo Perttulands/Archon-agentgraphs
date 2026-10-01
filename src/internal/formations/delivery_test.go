@@ -82,15 +82,14 @@ func TestDeliveryMissionLabPushback(t *testing.T) {
 	for _, call := range executor.calls {
 		order = append(order, call.NodeID)
 		for _, slot := range call.Formation.Slots {
-			card, err := personas.ReadPersona(slot.AgentID)
+			settings, card, err := ResolveSlotSettings(slot, personas)
 			if err != nil {
 				t.Fatal(err)
 			}
-			variant, err := card.SelectHarnessVariant(slot.Harness)
-			if err != nil {
-				t.Fatal(err)
+			if card == nil {
+				card = &PersonaCard{}
 			}
-			prompt := executor.lab.renderPrompt(call, slot, *card, variant)
+			prompt := executor.lab.renderPrompt(call, slot, *card, settings.Variant())
 			required := append([]string{card.Summary, "target repository", "mission bead: proj-42", "The change being delivered:\n\n" + change + "\n\n", "Git", "tmux", "archon-outputs", "ARCHON-DONE"}, skills[call.NodeID]...)
 			if strings.Contains(prompt, "{change}") {
 				t.Errorf("%s prompt kept the {change} reference", call.NodeID)
@@ -158,7 +157,7 @@ func TestDeliveryMissionLabPushback(t *testing.T) {
 			if !slot.Controller || slot.Harness != "claude-code" {
 				t.Fatalf("controller: %+v", slot)
 			}
-		} else if slot.Controller || slot.Harness != "openai-codex" || slot.AgentID != "delivery-worker" {
+		} else if slot.Controller || slot.Harness != "openai-codex" || slot.AgentID != "builder" {
 			t.Fatalf("worker: %+v", slot)
 		}
 	}

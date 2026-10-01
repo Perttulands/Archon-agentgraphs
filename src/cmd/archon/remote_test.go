@@ -308,10 +308,9 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 	}
 	steps := []authoringStep{
 		{args: with(fixed("mission", "new", "demo", "--title", "Demo"))},
-		{args: with(fixed("agent", "new", "scout-x", "--kind", "scout", "--harness", "openai-codex", "--capable", "research"))},
+		{args: with(fixed("agent", "new", "scout-x", "--kind", "scout", "--capable", "research"))},
 		{args: with(fixed("agent", "edit", "scout-x", "--summary", "Finds things", "--add-capability", "inspect", "--display-name", "Scout X"))},
-		{args: with(fixed("agent", "edit", "scout-x", "--add-harness", "claude-code", "--session-stem", "claude-scout-x"))},
-		{args: with(fixed("agent", "edit", "scout-x", "--session-stem", "scout-x-1"))},
+		{args: with(fixed("agent", "edit", "scout-x", "--note", "Maps before edits"))},
 		{args: with(fixed("mission", "create", "demo", "--title", "Work", "--goal", "Do it", "--file", "/work/docs/brief.md", "--human-channel", "session")), creates: "inputCard"},
 		{args: with(fixed("formation", "create", "demo", "solo", "--title", "Worker")), creates: "formation"},
 		{args: with(fixed("formation", "create", "demo", "--title", "Judge")), creates: "formation"},
@@ -325,14 +324,14 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 			return []string{"formation", "unassign", "demo", "Worker", "--slot", worker(board).Slots[0].ID}
 		})},
 		{args: with(func(board *formations.BoardDocument) []string {
-			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--role", "codex-builder", "--harness", "openai-codex", "--effort", "medium"}
+			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--role", "builder", "--harness", "openai-codex", "--effort", "medium"}
 		})},
 		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--goal", "Produce the result", "--bead", "archon-demo", "--file", "/work/src/a.go", "--link", "https://example.com/spec"))},
 		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "47"))},
 		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "0"))},
 		{args: with(fixed("formation", "set-brief", "demo", "Critic", "--goal", "Judge the result"))},
 		{args: with(func(board *formations.BoardDocument) []string {
-			return []string{"formation", "assign", "demo", "Critic", "--slot", formationTitled(t, board, "Critic").Slots[0].ID, "--role", "codex-judge", "--harness", "openai-codex", "--effort", "xhigh"}
+			return []string{"formation", "assign", "demo", "Critic", "--slot", formationTitled(t, board, "Critic").Slots[0].ID, "--role", "judge", "--harness", "openai-codex", "--effort", "xhigh"}
 		})},
 		{args: with(fixed("formation", "set-type", "demo", "Critic", "peer"))},
 		{args: with(func(board *formations.BoardDocument) []string {
@@ -694,7 +693,7 @@ type fixedLiveness []formations.LiveAgentSession
 func (f fixedLiveness) LiveAgentSessions() ([]formations.LiveAgentSession, error) { return f, nil }
 
 func TestRemoteAgentListShowsTheDaemonsLiveness(t *testing.T) {
-	sessions := []string{"codex-scout", "operator-notes"}
+	sessions := []string{"scout", "operator-notes"}
 	runner := &fakeTmux{live: map[string]bool{}}
 	live := fixedLiveness{}
 	for _, name := range sessions {
@@ -720,8 +719,8 @@ func TestRemoteAgentListShowsTheDaemonsLiveness(t *testing.T) {
 		if offlineCode != 0 || remoteCode != 0 || offline != remote {
 			t.Fatalf("agent list %v: offline %d %s%s\nremote %d %s%s", format, offlineCode, offline, offlineErr, remoteCode, remote, remoteErr)
 		}
-		if !strings.Contains(remote, "codex-scout") || !strings.Contains(remote, "live") {
-			t.Fatalf("remote agent list %v shows no live codex-scout:\n%s", format, remote)
+		if !strings.Contains(remote, "scout") || !strings.Contains(remote, "live") {
+			t.Fatalf("remote agent list %v shows no live scout:\n%s", format, remote)
 		}
 	}
 }
@@ -761,7 +760,7 @@ func TestRepeatedAuthoringEditsKeepTheRevisionOfflineAndRemote(t *testing.T) {
 		}
 		slot := board.Formations[0].Slots[0].ID
 		for _, args := range [][]string{
-			{"formation", "assign", "same", "Worker", "--slot", slot, "--role", "codex-builder", "--harness", "openai-codex", "--effort", "medium"},
+			{"formation", "assign", "same", "Worker", "--slot", slot, "--role", "builder", "--harness", "openai-codex", "--effort", "medium"},
 			{"formation", "rename", "same", "Worker", "Worker"},
 			{"formation", "set-brief", "same", "Worker", "--goal", "Produce the result"},
 			{"formation", "set-type", "same", "Worker", "solo"},

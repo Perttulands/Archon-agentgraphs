@@ -30,7 +30,7 @@ func TestOrchestratedReattachFailureRemainsResumableAndRedispatchWorks(t *testin
 	board = strings.Replace(board, "[[gate]]", `[[formation.slot]]
 id = "slot_worker"
 label = "Worker"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 effort = "medium"
 controller = false
@@ -52,7 +52,7 @@ controller = false
 			t.Fatal(err)
 		}
 	}
-	lease, err := formations.NewSlotDispatcher(c.store, nil).DispatchSlot(id, formations.SlotDispatchRequest{NodeID: "fmn_work", SlotID: "slot_work", AgentID: "codex-builder", Harness: "openai-codex", SessionRef: "tmux:old-controller", Prompt: "old brief", Attempt: 1})
+	lease, err := formations.NewSlotDispatcher(c.store, nil).DispatchSlot(id, formations.SlotDispatchRequest{NodeID: "fmn_work", SlotID: "slot_work", AgentID: "builder", Harness: "openai-codex", SessionRef: "tmux:old-controller", Prompt: "old brief", Attempt: 1})
 	if err != nil {
 		t.Fatal(err)
 	}

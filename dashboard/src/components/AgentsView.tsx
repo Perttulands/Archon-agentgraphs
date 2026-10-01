@@ -44,7 +44,6 @@ import type {
   LaunchableHarness,
   LayoutDocument,
   MissionNode,
-  PersonaHarnessVariant,
 } from './formationsTypes'
 
 interface PersonaNote {
@@ -58,7 +57,6 @@ interface RosterAgent {
   displayName?: string
   kind?: string
   tags?: string[]
-  harnessDefault?: string
   liveness?: string
   sessionId?: string
   status?: string
@@ -78,8 +76,6 @@ interface PersonaCard {
   summary?: string
   tags: string[]
   status?: string
-  harnessDefault: string
-  harnessVariants: PersonaHarnessVariant[]
   notes?: PersonaNote[]
   etag?: string
   toml?: string
@@ -116,10 +112,7 @@ type CreateDraft = {
   id: string
   displayName: string
   kind: string
-  harness: string
-  sessionStem: string
   summary: string
-  source: string
   capabilities: string
 }
 
@@ -133,10 +126,7 @@ const EMPTY_CREATE: CreateDraft = {
   id: '',
   displayName: '',
   kind: 'specialist',
-  harness: 'claude-code',
-  sessionStem: '',
   summary: '',
-  source: '',
   capabilities: '',
 }
 
@@ -521,10 +511,7 @@ export default function AgentsView() {
           id: createDraft.id.trim(),
           displayName: createDraft.displayName.trim(),
           kind: createDraft.kind.trim(),
-          harness: createDraft.harness.trim(),
-          sessionStem: createDraft.sessionStem.trim(),
           summary: createDraft.summary.trim(),
-          source: createDraft.source.trim(),
           capabilities,
         }),
       })
@@ -577,14 +564,13 @@ export default function AgentsView() {
     }
   }, [details, loadAgentDetail, loadAgents, noteDraft])
 
+  // A role's own session is the one named after it, so the session's name
+  // becomes the role's id.
   const createFromUnbound = useCallback((agent: RosterAgent) => {
-    const sessionStem = agent.sessionId || agent.id
     setCreateDraft({
       ...EMPTY_CREATE,
       id: agent.id,
       displayName: agent.displayName || agent.id,
-      harness: inferHarnessFromSession(sessionStem),
-      sessionStem,
       capabilities: (agent.tags || []).join(', '),
     })
     setCreateOpen(true)
@@ -1296,12 +1282,8 @@ function CreatePersonaPopover({
         <input id="agx-create-display" className="f" value={draft.displayName} onChange={event => set('displayName', event.target.value)} />
         <label htmlFor="agx-create-kind">Kind</label>
         <input id="agx-create-kind" className="f" value={draft.kind} onChange={event => set('kind', event.target.value)} />
-        <label htmlFor="agx-create-stem">Session stem</label>
-        <input id="agx-create-stem" className="f" value={draft.sessionStem} onChange={event => set('sessionStem', event.target.value)} />
         <label htmlFor="agx-create-summary">Summary</label>
         <input id="agx-create-summary" className="f" value={draft.summary} onChange={event => set('summary', event.target.value)} />
-        <label htmlFor="agx-create-source">Source</label>
-        <input id="agx-create-source" className="f" value={draft.source} onChange={event => set('source', event.target.value)} />
         <label htmlFor="agx-create-capabilities">Capabilities</label>
         <input id="agx-create-capabilities" className="f" value={draft.capabilities} onChange={event => set('capabilities', event.target.value)} />
         <button className="save" type="submit">Create persona</button>
@@ -1342,12 +1324,4 @@ function findSlot(board: BoardDocument | null, formationId: string, slotId: stri
 
 function splitCommaList(value: string): string[] {
   return value.split(',').map(part => part.trim()).filter(Boolean)
-}
-
-function inferHarnessFromSession(value: string): string {
-  const lower = value.toLowerCase()
-  if (lower.includes('hermes')) return 'hermes'
-  if (lower.includes('codex') || lower.includes('openai')) return 'openai-codex'
-  if (lower.includes('claude')) return 'claude-code'
-  return EMPTY_CREATE.harness
 }

@@ -142,7 +142,7 @@ label = "Output"
 [[formation.slot]]
 id = "slot_lead"
 label = "Lead"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 effort = "medium"
 [[formation.slot]]
@@ -325,10 +325,10 @@ func TestRunAdmissionRefusesAFileWithSeveralInputCards(t *testing.T) {
 func TestRunAdmissionAcceptsCompleteRunPath(t *testing.T) {
 	store := NewStore(t.TempDir())
 	raw := admissionDraftBoard
-	raw = strings.Replace(raw, "id = \"slot_plan\"\nlabel = \"Planner\"", "id = \"slot_plan\"\nlabel = \"Planner\"\nagentId = \"codex-builder\"\nharness = \"openai-codex\"\neffort = \"medium\"", 1)
+	raw = strings.Replace(raw, "id = \"slot_plan\"\nlabel = \"Planner\"", "id = \"slot_plan\"\nlabel = \"Planner\"\nagentId = \"builder\"\nharness = \"openai-codex\"\neffort = \"medium\"", 1)
 	raw = strings.Replace(raw, "checkVersion = \"1\"", "checkVersion = \"1\"\ncheckValue = \"error\"", 1)
 	raw = strings.Replace(raw, "effort = \"medium\"\n[[formation.slot]]\nid = \"slot_worker\"", "effort = \"medium\"\ncontroller = true\n[[formation.slot]]\nid = \"slot_worker\"", 1)
-	raw = strings.Replace(raw, `agentId = "nobody-here"`, "agentId = \"codex-builder\"\nharness = \"openai-codex\"\neffort = \"medium\"", 1)
+	raw = strings.Replace(raw, `agentId = "nobody-here"`, "agentId = \"builder\"\nharness = \"openai-codex\"\neffort = \"medium\"", 1)
 	raw = strings.Replace(raw, `type = "flow"`, `type = "solo"`, 1)
 	raw = strings.Replace(raw, "[[connection]]\nid = \"edge_review\"\nfrom = \"fmn_build:port_build_out\"\nto = \"gate_review:in\"\n", "", 1)
 	raw += branchingBoardEnds() +

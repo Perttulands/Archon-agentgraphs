@@ -27,7 +27,7 @@ label = "Agent"
 controller = false
 
 harness = "openai-codex"
-agentId = "codex-scout"
+agentId = "scout"
 [[formation]]
 id = "fmn_01M2N3HQ5A5W4CAD3VFN86MC31"
 type = "peer"
@@ -47,14 +47,14 @@ label = "Peer"
 controller = false
 
 harness = "claude-code"
-agentId = "delivery-planner"
+agentId = "planner"
 [[formation.slot]]
 id = "slot_01M2N3HQ5A9NRD9ZP0A16TKAP4"
 label = "Peer"
 controller = false
 
 harness = "openai-codex"
-agentId = "codex-planner"
+agentId = "planner"
 [[gate]]
 id = "gate_01M2N3KMP5CYV3BHBRNJSAGN9Q"
 title = "Framing review"
@@ -98,7 +98,7 @@ id = "slot_01M2N9N1N60FY5JJ84B9A9DNJQ"
 label = "Agent"
 controller = false
 harness = "claude-code"
-agentId = "delivery-planner"
+agentId = "planner"
 effort = "medium"
 
 [[gate]]
@@ -124,7 +124,7 @@ id = "slot_01M2N9N1PXGBQ8HRV7QSS2MD0W"
 label = "Agent"
 controller = false
 harness = "openai-codex"
-agentId = "codex-judge"
+agentId = "judge"
 effort = "medium"
 
 [[gate]]

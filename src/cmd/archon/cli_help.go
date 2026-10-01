@@ -83,10 +83,10 @@ var nounHelps = []nounHelp{
 	{noun: "agent", summary: "role cards", about: "A role card is generic role text a slot may use; the slot owns its harness, model and effort.", commands: []commandHelp{
 		{"list", "[--capable <capability>] [--assignable] [--json]", "list the roles and their liveness"},
 		{"inspect", "<id> [--json]", "print a role card"},
-		{"new", "<id> [--kind <kind>] [--harness <h>] [--capable a,b] [--personality p] [--from <path>] [--json]", "create a role card. A role carries no model or effort; each slot that uses it sets them (archon formation assign)"},
-		{"edit", "<id> [--display-name n] [--kind k] [--summary s] [--capable a,b] [--session-stem s] [--add-capability t | --remove-capability t | --add-harness h | --note text] [--json]", "change a role card"},
-		{"spawn", "<id> --effort <effort> [--model <model>] [--harness <h>]", "start the role's own session. A role carries no model or effort; the spawn states them, as a slot does"},
-		{"attach", "<id> [--harness <h>]", "attach to the role's live session"},
+		{"new", "<id> [--kind <kind>] [--capable a,b] [--personality p] [--json]", "create a role card. A role is role text; each slot that uses it states its own harness, model and effort (archon formation assign)"},
+		{"edit", "<id> [--display-name n] [--kind k] [--summary s] [--capable a,b] [--add-capability t | --remove-capability t | --note text] [--json]", "change a role card"},
+		{"spawn", "<id> --harness <h> --effort <effort> [--model <model>]", "start the role's own session. A role carries no harness, model or effort; the spawn states them, as a slot does"},
+		{"attach", "<id>", "attach to the role's live session"},
 		{"retire", "<id> [--force]", "retire a role card"},
 	}},
 	{noun: "run", summary: "runs, through the daemon", about: "A run is one start of a mission or a single step. Read and drive runs with --server.", commands: []commandHelp{

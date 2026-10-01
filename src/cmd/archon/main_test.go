@@ -101,19 +101,19 @@ func TestArchonAgentNewListInspectAndEditUsePersonaStore(t *testing.T) {
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	stdout, stderr, code := runArchon(t, runner, "agent", "new", "scout", "--kind", "specialist", "--harness", "claude-code", "--capable", "research,go", "--personality", "direct", "--json")
+	stdout, stderr, code := runArchon(t, runner, "agent", "new", "researcher", "--kind", "specialist", "--capable", "research,go", "--personality", "direct", "--json")
 	if code != 0 {
 		t.Fatalf("agent new code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
-	if !strings.Contains(stdout, `"id": "scout"`) || !strings.Contains(stdout, `"personality:direct"`) {
+	if !strings.Contains(stdout, `"id": "researcher"`) || !strings.Contains(stdout, `"personality:direct"`) {
 		t.Fatalf("new JSON missing card fields: %s", stdout)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "agent", "edit", "scout", "--add-capability", "react", "--note", "ready", "--json")
+	stdout, stderr, code = runArchon(t, runner, "agent", "edit", "researcher", "--add-capability", "react", "--note", "ready", "--json")
 	if code != 0 {
 		t.Fatalf("agent edit code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
-	raw := readArchonFile(t, filepath.Join(agentsDir, "scout.toml"))
+	raw := readArchonFile(t, filepath.Join(agentsDir, "researcher.toml"))
 	if !strings.Contains(raw, `"react"`) || !strings.Contains(raw, `text = "ready"`) {
 		t.Fatalf("edit did not persist through shared writer:\n%s", raw)
 	}
@@ -122,20 +122,20 @@ func TestArchonAgentNewListInspectAndEditUsePersonaStore(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("agent list code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
-	if !strings.Contains(stdout, `"id": "scout"`) || strings.Contains(stdout, "toml") || strings.Contains(stdout, "harnessVariants") {
+	if !strings.Contains(stdout, `"id": "researcher"`) || strings.Contains(stdout, "toml") || strings.Contains(stdout, "harness") {
 		t.Fatalf("list output wrong: %s", stdout)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "agent", "inspect", "scout", "--json")
+	stdout, stderr, code = runArchon(t, runner, "agent", "inspect", "researcher", "--json")
 	if code != 0 {
 		t.Fatalf("agent inspect code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
-	if !strings.Contains(stdout, `"harnessDefault": "claude-code"`) || strings.Contains(stdout, "toml") {
+	if !strings.Contains(stdout, `"id": "researcher"`) || strings.Contains(stdout, "harness") || strings.Contains(stdout, "toml") {
 		t.Fatalf("inspect output wrong: %s", stdout)
 	}
 }
 
-func TestArchonAgentEditOverridesBuiltInCodexPreset(t *testing.T) {
+func TestArchonAgentEditOverridesABuiltinRole(t *testing.T) {
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	runner := &fakeTmux{live: map[string]bool{}}
@@ -144,18 +144,17 @@ func TestArchonAgentEditOverridesBuiltInCodexPreset(t *testing.T) {
 	if code != 0 || stderr != "" {
 		t.Fatalf("list presets code=%d stderr=%q", code, stderr)
 	}
-	for _, id := range []string{"codex-scout", "codex-planner", "codex-builder", "codex-judge", "codex-orchestrator", "codex-debugger", "codex-reviewer"} {
+	for _, id := range []string{"scout", "planner", "builder", "judge", "orchestrator", "debugger", "reviewer"} {
 		if !strings.Contains(stdout, `"id": "`+id+`"`) {
 			t.Fatalf("preset list missing %s: %s", id, stdout)
 		}
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "agent", "edit", "codex-builder",
+	stdout, stderr, code = runArchon(t, runner, "agent", "edit", "builder",
 		"--display-name", "Repository Builder",
 		"--kind", "implementer",
 		"--summary", "Builds this repository",
 		"--capable", "implement,test,refactor",
-		"--session-stem", "builder-main",
 		"--json")
 	if code != 0 || stderr != "" {
 		t.Fatalf("override preset code=%d stderr=%q stdout=%q", code, stderr, stdout)
@@ -163,12 +162,12 @@ func TestArchonAgentEditOverridesBuiltInCodexPreset(t *testing.T) {
 	if !strings.Contains(stdout, `"displayName": "Repository Builder"`) || !strings.Contains(stdout, `"customized": true`) {
 		t.Fatalf("override output = %s", stdout)
 	}
-	raw, err := os.ReadFile(filepath.Join(agentsDir, "codex-builder.toml"))
+	raw, err := os.ReadFile(filepath.Join(agentsDir, "builder.toml"))
 	if err != nil {
 		t.Fatalf("read materialized preset: %v", err)
 	}
 	text := string(raw)
-	for _, want := range []string{`kind = "implementer"`, `summary = "Builds this repository"`, `session_stem = "builder-main"`} {
+	for _, want := range []string{`kind = "implementer"`, `summary = "Builds this repository"`} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("materialized preset missing %q:\n%s", want, text)
 		}
@@ -180,16 +179,16 @@ func TestArchonAgentNewDuplicateFailsWithoutChangingCard(t *testing.T) {
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	if _, stderr, code := runArchon(t, runner, "agent", "new", "scout", "--kind", "specialist", "--harness", "claude-code"); code != 0 {
+	if _, stderr, code := runArchon(t, runner, "agent", "new", "researcher", "--kind", "specialist"); code != 0 {
 		t.Fatalf("first create failed: %d %s", code, stderr)
 	}
-	before := readArchonFile(t, filepath.Join(agentsDir, "scout.toml"))
+	before := readArchonFile(t, filepath.Join(agentsDir, "researcher.toml"))
 
-	_, stderr, code := runArchon(t, runner, "agent", "new", "scout", "--kind", "specialist", "--harness", "openai-codex")
+	_, stderr, code := runArchon(t, runner, "agent", "new", "researcher", "--kind", "builder")
 	if code == 0 || !strings.Contains(stderr, "already exists") {
 		t.Fatalf("duplicate create code=%d stderr=%s", code, stderr)
 	}
-	after := readArchonFile(t, filepath.Join(agentsDir, "scout.toml"))
+	after := readArchonFile(t, filepath.Join(agentsDir, "researcher.toml"))
 	if after != before {
 		t.Fatalf("duplicate create changed card:\n%s", after)
 	}
@@ -201,7 +200,7 @@ func TestArchonAgentListShowsUnboundLiveSessionsButExcludesAssignable(t *testing
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	runner := &fakeTmux{live: map[string]bool{"scratch": true}}
 
-	if _, stderr, code := runArchon(t, runner, "agent", "new", "scout", "--kind", "specialist", "--harness", "claude-code"); code != 0 {
+	if _, stderr, code := runArchon(t, runner, "agent", "new", "researcher", "--kind", "specialist"); code != 0 {
 		t.Fatalf("create failed: %d %s", code, stderr)
 	}
 	stdout, stderr, code := runArchon(t, runner, "agent", "list", "--json")
@@ -221,23 +220,9 @@ func TestArchonAgentListShowsUnboundLiveSessionsButExcludesAssignable(t *testing
 	}
 }
 
-func TestArchonAgentNewFromHermesProfileRecordsItsSource(t *testing.T) {
-	agentsDir := t.TempDir()
-	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
-	source := filepath.Join(t.TempDir(), ".hermes", "profiles", "archon")
-	runner := &fakeTmux{live: map[string]bool{}}
-
-	if _, stderr, code := runArchon(t, runner, "agent", "new", "archon", "--kind", "archon", "--from", source); code != 0 {
-		t.Fatalf("create from hermes profile failed: %d %s", code, stderr)
-	}
-	raw := readArchonFile(t, filepath.Join(agentsDir, "archon.toml"))
-	if !strings.Contains(raw, `default = "hermes"`) || !strings.Contains(raw, `source = "`+source+`"`) || strings.Contains(raw, "launch") {
-		t.Fatalf("hermes card missing inferred harness/source, or has a launch string:\n%s", raw)
-	}
-}
-
-// A role carries no model or effort; agent spawn states them for the role's
-// own session and renders the harness CLI as seats do, never a launch string.
+// A role carries no harness, model or effort; agent spawn states them for the
+// role's own session and renders the harness CLI as seats do, never a launch
+// string.
 func TestArchonAgentSpawnStatesItsOwnSettings(t *testing.T) {
 	withoutArchonTmuxPrefix(t)
 	agentsDir := t.TempDir()
@@ -251,32 +236,36 @@ func TestArchonAgentSpawnStatesItsOwnSettings(t *testing.T) {
 	t.Setenv("PATH", bin)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	// A role is role text: agent new and agent edit take no model or effort.
+	// A role is role text: agent new and agent edit take no harness, model,
+	// effort, session or source.
 	for _, args := range [][]string{
-		{"agent", "new", "clauder", "--harness", "claude-code", "--effort", "low"},
+		{"agent", "new", "clauder", "--harness", "claude-code"},
+		{"agent", "new", "clauder", "--effort", "low"},
+		{"agent", "new", "clauder", "--from", "/home/me/.hermes/profiles/archon"},
 		{"agent", "edit", "clauder", "--model", "claude-opus-5"},
+		{"agent", "edit", "clauder", "--add-harness", "claude-code"},
+		{"agent", "edit", "clauder", "--session-stem", "clauder-1"},
 	} {
 		if _, stderr, code := runArchon(t, runner, args...); code != 2 || !strings.Contains(stderr, "flag provided but not defined") {
 			t.Fatalf("%v: code=%d stderr=%s, want the flag unknown", args, code, stderr)
 		}
 	}
-	if _, stderr, code := runArchon(t, runner, "agent", "new", "codexer", "--harness", "openai-codex"); code != 0 {
-		t.Fatalf("create openai-codex failed: code=%d stderr=%s", code, stderr)
-	}
-	if _, stderr, code := runArchon(t, runner, "agent", "edit", "codexer", "--add-harness", "claude-code"); code != 0 {
-		t.Fatalf("add claude variant: %d %s", code, stderr)
+	if _, stderr, code := runArchon(t, runner, "agent", "new", "codexer"); code != 0 {
+		t.Fatalf("create codexer failed: code=%d stderr=%s", code, stderr)
 	}
 	stdout, stderr, code := runArchon(t, runner, "agent", "inspect", "codexer", "--json")
-	if code != 0 || strings.Contains(stdout, `"model"`) || strings.Contains(stdout, `"effort"`) || strings.Contains(stdout, "seatLaunch") {
-		t.Fatalf("inspect: code=%d stderr=%s stdout=%s, want no model, effort or launch", code, stderr, stdout)
+	if code != 0 || strings.Contains(stdout, "harness") || strings.Contains(stdout, `"model"`) || strings.Contains(stdout, `"effort"`) || strings.Contains(stdout, "seatLaunch") {
+		t.Fatalf("inspect: code=%d stderr=%s stdout=%s, want no harness, model, effort or launch", code, stderr, stdout)
 	}
-	if raw := readArchonFile(t, filepath.Join(agentsDir, "codexer.toml")); strings.Contains(raw, "launch") || strings.Contains(raw, "model") || strings.Contains(raw, "effort") {
+	if raw := readArchonFile(t, filepath.Join(agentsDir, "codexer.toml")); strings.Contains(raw, "harness") || strings.Contains(raw, "launch") || strings.Contains(raw, "model") || strings.Contains(raw, "effort") {
 		t.Fatalf("card holds settings:\n%s", raw)
 	}
 
 	// A spawn states what the role's session runs, as a slot does.
-	if _, stderr, code := runArchon(t, runner, "agent", "spawn", "codexer"); code != 2 || !strings.Contains(stderr, "--effort <effort>") || !strings.Contains(stderr, "A role carries no model or effort") {
-		t.Fatalf("spawn without an effort: code=%d stderr=%s", code, stderr)
+	for _, args := range [][]string{{"agent", "spawn", "codexer", "--harness", "openai-codex"}, {"agent", "spawn", "codexer", "--effort", "high"}} {
+		if _, stderr, code := runArchon(t, runner, args...); code != 2 || !strings.Contains(stderr, "--harness <h> --effort <effort>") || !strings.Contains(stderr, "A role carries no harness, model or effort") {
+			t.Fatalf("%v: code=%d stderr=%s", args, code, stderr)
+		}
 	}
 	if _, stderr, code := runArchon(t, runner, "agent", "spawn", "codexer", "--harness", "claude-code", "--effort", "ultra"); code == 0 || !strings.Contains(stderr, `agent "codexer" effort "ultra" is not one claude-code accepts`) {
 		t.Fatalf("ultra on claude-code: code=%d stderr=%s", code, stderr)
@@ -315,24 +304,24 @@ func TestArchonAgentSpawnUsesFakeTmuxWithoutDuplicateSession(t *testing.T) {
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	if _, stderr, code := runArchon(t, runner, "agent", "new", "scout", "--kind", "specialist", "--harness", "claude-code"); code != 0 {
+	if _, stderr, code := runArchon(t, runner, "agent", "new", "researcher", "--kind", "specialist"); code != 0 {
 		t.Fatalf("create failed: %d %s", code, stderr)
 	}
-	stdout, stderr, code := runArchon(t, runner, "agent", "spawn", "scout", "--effort", "medium")
+	stdout, stderr, code := runArchon(t, runner, "agent", "spawn", "researcher", "--harness", "claude-code", "--effort", "medium")
 	if code != 0 {
 		t.Fatalf("spawn failed: %d stderr=%s", code, stderr)
 	}
-	if !strings.Contains(stdout, "spawned scout as scout") || len(runner.spawned) != 1 {
+	if !strings.Contains(stdout, "spawned researcher as researcher") || len(runner.spawned) != 1 {
 		t.Fatalf("spawn output=%s spawned=%#v", stdout, runner.spawned)
 	}
 	// A running session keeps what it started with: a second spawn is refused, never silently ignored,
-	// and names every setting it did not apply.
-	stdout, stderr, code = runArchon(t, runner, "agent", "spawn", "scout", "--effort", "xhigh")
-	if code != 1 || stdout != "" || !strings.Contains(stderr, "scout is already running as scout; it keeps the harness, model and effort it started with, so this spawn's --effort xhigh was not applied") || len(runner.spawned) != 1 {
+	// and names what it stated without calling a matching setting unapplied.
+	stdout, stderr, code = runArchon(t, runner, "agent", "spawn", "researcher", "--harness", "claude-code", "--effort", "xhigh")
+	if code != 1 || stdout != "" || !strings.Contains(stderr, "researcher is already running as researcher with the harness, model and effort it started with; this spawn (--harness claude-code --effort xhigh) changes none of them") || len(runner.spawned) != 1 {
 		t.Fatalf("second spawn code=%d stdout=%s stderr=%s spawned=%#v", code, stdout, stderr, runner.spawned)
 	}
-	_, stderr, code = runArchon(t, runner, "agent", "spawn", "scout", "--effort", "high", "--model", "opus", "--harness", "claude-code")
-	if code != 1 || !strings.Contains(stderr, "so this spawn's --effort high --model opus were not applied") || strings.Contains(stderr, "--harness") || len(runner.spawned) != 1 {
+	_, stderr, code = runArchon(t, runner, "agent", "spawn", "researcher", "--effort", "high", "--model", "opus", "--harness", "openai-codex")
+	if code != 1 || !strings.Contains(stderr, "this spawn (--harness openai-codex --model opus --effort high) changes none of them") || strings.Contains(stderr, "not applied") || len(runner.spawned) != 1 {
 		t.Fatalf("spawn with every flag code=%d stderr=%s", code, stderr)
 	}
 }
@@ -344,14 +333,14 @@ func TestArchonAgentSpawnListAttachUseTmuxSessionPrefix(t *testing.T) {
 	t.Setenv("ARCHON_TMUX_SESSION_PREFIX", "dogfood-")
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	if _, stderr, code := runArchon(t, runner, "agent", "new", "scout", "--kind", "specialist", "--harness", "claude-code"); code != 0 {
+	if _, stderr, code := runArchon(t, runner, "agent", "new", "researcher", "--kind", "specialist"); code != 0 {
 		t.Fatalf("create failed: %d %s", code, stderr)
 	}
-	stdout, stderr, code := runArchon(t, runner, "agent", "spawn", "scout", "--effort", "medium")
+	stdout, stderr, code := runArchon(t, runner, "agent", "spawn", "researcher", "--harness", "claude-code", "--effort", "medium")
 	if code != 0 {
 		t.Fatalf("spawn failed: %d stderr=%s", code, stderr)
 	}
-	if !strings.Contains(stdout, "spawned scout as dogfood-scout") || len(runner.spawned) != 1 || !strings.HasPrefix(runner.spawned[0], "dogfood-scout:") {
+	if !strings.Contains(stdout, "spawned researcher as dogfood-researcher") || len(runner.spawned) != 1 || !strings.HasPrefix(runner.spawned[0], "dogfood-researcher:") {
 		t.Fatalf("spawn output=%s spawned=%#v, want prefixed tmux target", stdout, runner.spawned)
 	}
 
@@ -359,55 +348,49 @@ func TestArchonAgentSpawnListAttachUseTmuxSessionPrefix(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("list failed: %d stderr=%s", code, stderr)
 	}
-	if !strings.Contains(stdout, `"id": "scout"`) || !strings.Contains(stdout, `"liveness": "live"`) || !strings.Contains(stdout, `"sessionId": "dogfood-scout"`) || strings.Contains(stdout, `"id": "dogfood-scout"`) {
-		t.Fatalf("list output=%s, want scout live on prefixed tmux target without unbound prefixed alias", stdout)
+	if !strings.Contains(stdout, `"id": "researcher"`) || !strings.Contains(stdout, `"liveness": "live"`) || !strings.Contains(stdout, `"sessionId": "dogfood-researcher"`) || strings.Contains(stdout, `"id": "dogfood-researcher"`) {
+		t.Fatalf("list output=%s, want researcher live on prefixed tmux target without unbound prefixed alias", stdout)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "agent", "attach", "scout")
+	stdout, stderr, code = runArchon(t, runner, "agent", "attach", "researcher")
 	if code != 0 {
 		t.Fatalf("attach failed: %d stderr=%s stdout=%s", code, stderr, stdout)
 	}
-	if len(runner.attach) != 1 || runner.attach[0] != "dogfood-scout" {
+	if len(runner.attach) != 1 || runner.attach[0] != "dogfood-researcher" {
 		t.Fatalf("attach calls = %#v, want prefixed tmux target", runner.attach)
 	}
 
-	_, stderr, code = runArchon(t, runner, "agent", "spawn", "scout", "--effort", "medium")
-	if code != 1 || !strings.Contains(stderr, "already running as dogfood-scout") || len(runner.spawned) != 1 {
+	_, stderr, code = runArchon(t, runner, "agent", "spawn", "researcher", "--harness", "claude-code", "--effort", "medium")
+	if code != 1 || !strings.Contains(stderr, "already running as dogfood-researcher") || len(runner.spawned) != 1 {
 		t.Fatalf("second spawn code=%d stderr=%s spawned=%#v, want prefixed liveness to refuse a duplicate", code, stderr, runner.spawned)
 	}
 }
 
-func TestArchonAgentSpawnAndAttachUseExplicitHarnessStem(t *testing.T) {
+// A role's own session is named after the role, whichever harness it runs.
+func TestArchonAgentSpawnAndAttachUseTheSessionNamedAfterTheRole(t *testing.T) {
 	withFakeHarnesses(t)
 	withoutArchonTmuxPrefix(t)
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	if _, stderr, code := runArchon(t, runner, "agent", "new", "susie", "--kind", "specialist", "--harness", "claude-code"); code != 0 {
+	if _, stderr, code := runArchon(t, runner, "agent", "new", "susie", "--kind", "specialist"); code != 0 {
 		t.Fatalf("create susie failed: %d %s", code, stderr)
 	}
-	if _, stderr, code := runArchon(t, runner, "agent", "edit", "susie", "--add-harness", "openai-codex", "--session-stem", "codex-susie"); code != 0 {
-		t.Fatalf("add harness failed: %d %s", code, stderr)
-	}
-
-	_, stderr, code := runArchon(t, runner, "agent", "spawn", "susie", "--effort", "medium")
-	if code == 0 || !strings.Contains(stderr, "ambiguous") {
-		t.Fatalf("spawn without harness code=%d stderr=%s, want ambiguity", code, stderr)
-	}
-
 	stdout, stderr, code := runArchon(t, runner, "agent", "spawn", "susie", "--harness", "openai-codex", "--effort", "medium")
 	if code != 0 {
-		t.Fatalf("spawn with harness failed: %d stderr=%s", code, stderr)
+		t.Fatalf("spawn failed: %d stderr=%s", code, stderr)
 	}
-	if !strings.Contains(stdout, "spawned susie as codex-susie") || len(runner.spawned) != 1 {
+	if !strings.Contains(stdout, "spawned susie as susie") || len(runner.spawned) != 1 || !strings.Contains(runner.spawned[0], "codex") {
 		t.Fatalf("spawn output=%s spawned=%#v", stdout, runner.spawned)
 	}
-
-	if _, stderr, code := runArchon(t, runner, "agent", "attach", "susie", "--harness", "openai-codex"); code != 0 {
-		t.Fatalf("attach with harness failed: %d stderr=%s", code, stderr)
+	if _, stderr, code := runArchon(t, runner, "agent", "attach", "susie", "--harness", "openai-codex"); code != 2 || !strings.Contains(stderr, "flag provided but not defined") {
+		t.Fatalf("attach --harness: code=%d stderr=%s, want the flag unknown", code, stderr)
 	}
-	if len(runner.attach) != 1 || runner.attach[0] != "codex-susie" {
+	if _, stderr, code := runArchon(t, runner, "agent", "attach", "susie"); code != 0 {
+		t.Fatalf("attach failed: %d stderr=%s", code, stderr)
+	}
+	if len(runner.attach) != 1 || runner.attach[0] != "susie" {
 		t.Fatalf("attach calls = %#v", runner.attach)
 	}
 }
@@ -514,7 +497,7 @@ customFuture = "keep me"
 		t.Fatalf("formation list JSON = %+v, want the board's one peer formation with its slots", listed)
 	}
 	formation := listed.Formations[0]
-	if stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "assign", "session-search", formation.ID, "--slot", formation.Slots[0].ID, "--role", "codex-builder", "--harness", "openai-codex", "--effort", "medium"); code != 0 {
+	if stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "formation", "assign", "session-search", formation.ID, "--slot", formation.Slots[0].ID, "--role", "builder", "--harness", "openai-codex", "--effort", "medium"); code != 0 {
 		t.Fatalf("formation assign code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
 	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "list", "session-search")
@@ -544,12 +527,12 @@ customFuture = "keep me"
 	if err := json.Unmarshal([]byte(stdout), &inspected); err != nil {
 		t.Fatalf("decode formation inspect: %v\n%s", err, stdout)
 	}
-	if inspected.Board.Slug != "session-search" || inspected.Formation.ID != formation.ID || inspected.Formation.Slots[0].AgentID != "codex-builder" || len(inspected.Formation.Inputs) == 0 || inspected.Connections == nil {
+	if inspected.Board.Slug != "session-search" || inspected.Formation.ID != formation.ID || inspected.Formation.Slots[0].AgentID != "builder" || len(inspected.Formation.Inputs) == 0 || inspected.Connections == nil {
 		t.Fatalf("formation inspect JSON = %+v, want the formation with its staffing, ports and connections", inspected)
 	}
 	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "inspect", "session-search", formation.ID)
 	want := formation.ID + "\tpeer\tResearch huddle\t1/" + strconv.Itoa(len(formation.Slots)) + " staffed\t0 connections\n" +
-		"slot " + formation.Slots[0].ID + "\tPeer\tcodex-builder · openai-codex · default model · medium\n" +
+		"slot " + formation.Slots[0].ID + "\tPeer\tbuilder · openai-codex · default model · medium\n" +
 		"slot " + formation.Slots[1].ID + "\tPeer\tnot staffed\n"
 	if code != 0 || stdout != want {
 		t.Fatalf("formation inspect text code=%d stdout=%q stderr=%s, want %q", code, stdout, stderr, want)
@@ -1030,7 +1013,7 @@ func TestArchonListsABrokenMissionLinkAndKeepsTheRest(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout, stderr, code = runArchon(t, runner, "agent", "list")
-	if code != 0 || !strings.Contains(stdout, "codex-builder") || !strings.Contains(stderr, "warning: role card critic is not listed: ") {
+	if code != 0 || !strings.Contains(stdout, "builder") || !strings.Contains(stderr, "warning: role card critic is not listed: ") {
 		t.Fatalf("agent list code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 }
@@ -2004,14 +1987,6 @@ func TestArchonS4MissionRunFormationRunStatusLogsFollowAbort(t *testing.T) {
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 
 	personas := formations.NewPersonaStore(agentsDir)
-	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
-		ID:           "scout",
-		Kind:         "specialist",
-		Capabilities: []string{"research"},
-		Harness:      "openai-codex",
-	}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("session-search"), archonS4BoardFixture())
 	runner := &fakeTmux{live: map[string]bool{}}
@@ -2112,13 +2087,6 @@ func TestArchonS4RunLogsFollowTailsUntilFinal(t *testing.T) {
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	personas := formations.NewPersonaStore(agentsDir)
-	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
-		ID:      "scout",
-		Kind:    "specialist",
-		Harness: "openai-codex",
-	}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("session-search"), archonS4BoardFixture())
 	board, err := store.ReadBoard("session-search")
@@ -2170,13 +2138,6 @@ func TestArchonS4RunLogsFollowJSONReturnsBlockedRun(t *testing.T) {
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	personas := formations.NewPersonaStore(agentsDir)
-	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
-		ID:      "scout",
-		Kind:    "specialist",
-		Harness: "openai-codex",
-	}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("session-search"), archonS4BoardFixture())
 	board, err := store.ReadBoard("session-search")
@@ -2237,10 +2198,6 @@ func TestArchonS5RunResumeCommandUsesEngine(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
-	personas := formations.NewPersonaStore(agentsDir)
-	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("session-search"), archonS5CascadeBoardFixture())
 	runner := &fakeTmux{live: map[string]bool{}}
@@ -2269,9 +2226,6 @@ func TestArchonS5GateApproveRoutesHumanGate(t *testing.T) {
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	personas := formations.NewPersonaStore(agentsDir)
-	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("session-search"), archonS5HumanGateBoardFixture())
 	runner := &fakeTmux{live: map[string]bool{}}
@@ -2312,9 +2266,6 @@ func TestArchonGateApproveRecordsTheResponse(t *testing.T) {
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	personas := formations.NewPersonaStore(agentsDir)
-	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("session-search"), archonS5HumanGateBoardFixture())
 	board, err := store.ReadBoard("session-search")
@@ -2368,9 +2319,8 @@ func TestArchonS4ConfiguredLabPoemMissionReachesGateAndPolishesAfterApproval(t *
 	personas := formations.NewPersonaStore(agentsDir)
 	for _, id := range []string{"lab-poet", "lab-poem-reviewer"} {
 		if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
-			ID:      id,
-			Kind:    "specialist",
-			Harness: "openai-codex",
+			ID:   id,
+			Kind: "specialist",
 		}); err != nil {
 			t.Fatalf("create persona %s: %v", id, err)
 		}
@@ -2503,7 +2453,7 @@ rev = 1
 		{id: "lab-poet", kind: "poet"},
 		{id: "lab-poem-reviewer", kind: "reviewer"},
 	} {
-		archon(workspaceArgs("agent", "new", persona.id, "--kind", persona.kind, "--harness", "openai-codex", "--json")...)
+		archon(workspaceArgs("agent", "new", persona.id, "--kind", persona.kind, "--json")...)
 	}
 
 	boardList := decodeArchonBoardList(t, archon(workspaceArgs("mission", "list", "--json")...))
@@ -2777,9 +2727,8 @@ func TestArchonConfiguredLabExecutorUsesAutomaticMissionWorkspace(t *testing.T) 
 
 	personas := formations.NewPersonaStore(agentsDir)
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
-		ID:      "lab-poet",
-		Kind:    "specialist",
-		Harness: "openai-codex",
+		ID:   "lab-poet",
+		Kind: "specialist",
 	}); err != nil {
 		t.Fatalf("create persona: %v", err)
 	}
@@ -2818,9 +2767,6 @@ func TestArchonS5RunAskSurfacesOpenEscalations(t *testing.T) {
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	personas := formations.NewPersonaStore(agentsDir)
-	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("session-search"), archonS4BoardFixture())
 	board, err := store.ReadBoard("session-search")

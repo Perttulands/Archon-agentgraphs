@@ -181,7 +181,6 @@ export async function overrideAgentCard(agentID: string, etag: string, patch: {
   kind?: string
   summary?: string
   capabilities?: string[]
-  sessionStem?: string
 }): Promise<PersonaCard> {
   const result = await fetchApi<PersonaCard>(`/api/agents/${encodeURIComponent(agentID)}`, {
     method: 'PATCH',

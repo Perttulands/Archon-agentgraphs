@@ -146,9 +146,9 @@ export interface Suggestion {
 
 /** What each kind the policy names does, so a reason cites the policy line rather than the kind. */
 const ACTIVITY: Record<string, string> = {
-  verifier: 'verifying', scout: 'scouting', observer: 'observing', operator: 'operating',
-  builder: 'building', debugger: 'debugging',
-  reviewer: 'reviewing', judge: 'judging', architect: 'designing', planner: 'planning', orchestrator: 'orchestrating',
+  verifier: 'verifying', scout: 'scouting',
+  builder: 'building', debugger: 'debugging', operator: 'operating',
+  reviewer: 'reviewing', judge: 'judging', architect: 'designing', designer: 'designing', planner: 'planning', orchestrator: 'orchestrating',
 }
 
 type Rule = { test: RegExp; effort: string }
@@ -159,8 +159,8 @@ type Rule = { test: RegExp; effort: string }
  */
 const RULES: Rule[] = [
   { test: /\b(review|reviews|reviewer|critic|judge|verdict|architect\w*|design|plan\w*|orchestrat\w*)\b/i, effort: 'xhigh' },
-  { test: /\b(build\w*|implement\w*|make|making|draft\w*|writ\w*|worker|execut\w*|integrat\w*|debug\w*|fix\w*)\b/i, effort: 'medium' },
-  { test: /\b(scout|triage|errand\w*|record\w*|runner|chore|fetch|lookup|verif\w*|observ\w*|operat\w*)\b/i, effort: 'low' },
+  { test: /\b(build\w*|implement\w*|make|making|draft\w*|writ\w*|worker|execut\w*|integrat\w*|debug\w*|fix\w*|triage|operat\w*)\b/i, effort: 'medium' },
+  { test: /\b(scout|errand\w*|record\w*|runner|chore|fetch|lookup|verif\w*|observ\w*)\b/i, effort: 'low' },
 ]
 
 /** The policy line an effort comes from, in its own words: "architecture and review". */

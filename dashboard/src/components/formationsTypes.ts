@@ -347,19 +347,11 @@ export interface AgentProjection {
   /** The role text's one-line summary. */
   summary?: string
   tags?: string[]
-  harnessDefault?: string
   assignable: boolean
   unbound?: boolean
   liveness?: string
   preset?: boolean
   customized?: boolean
-}
-
-/** The harness a role's own session starts on; a role carries no model or effort. */
-export interface PersonaHarnessVariant {
-  id: string
-  sessionStem?: string
-  source?: string
 }
 
 /** A harness whose seats Archon starts from model and effort (GET /api/agents data.harnesses). */
@@ -393,8 +385,6 @@ export interface PersonaCard {
   summary?: string
   tags: string[]
   status?: string
-  harnessDefault: string
-  harnessVariants: PersonaHarnessVariant[]
   etag: string
   preset?: boolean
   customized?: boolean

@@ -121,8 +121,8 @@ const HARNESSES = [
 const EFFORT_POLICY = [{ effort: 'low', use: 'errands' }, { effort: 'medium', use: 'making things' }, { effort: 'xhigh', use: 'architecture and review' }, { effort: 'max', use: 'consequential reviews' }]
 
 const agents: AgentProjection[] = [
-  { id: 'mason', displayName: 'Mason', harnessDefault: 'openai-codex', liveness: 'live', assignable: true, unbound: false },
-  { id: 'hazel', displayName: 'Hazel', harnessDefault: 'claude-code', liveness: 'live', assignable: true, unbound: false },
+  { id: 'mason', displayName: 'Mason', liveness: 'live', assignable: true, unbound: false },
+  { id: 'hazel', displayName: 'Hazel', liveness: 'live', assignable: true, unbound: false },
   { id: 'scratch', displayName: 'scratch', liveness: 'live', assignable: false, unbound: true },
 ]
 
@@ -259,9 +259,7 @@ function installFetchMock(options: {
       const id = decodeURIComponent(agentMatch[1])
       const agent = availableAgents.find(candidate => candidate.id === id)
       if (!agent) return reject('Agent not found')
-      const harness = agent.harnessDefault || 'claude-code'
-      // As the daemon reads a card: role text, with no launch, model or effort.
-      const defaultVariant = { id: harness, sessionStem: agent.id }
+      // As the daemon reads a card: role text, with no harness, launch, model or effort.
       if (method === 'PATCH') {
         const payload = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>
         const updated = {
@@ -275,10 +273,6 @@ function installFetchMock(options: {
         return respond({
           ...updated,
           summary: String(payload.summary || ''),
-          harnessVariants: [{
-            ...defaultVariant,
-            sessionStem: String(payload.sessionStem || defaultVariant.sessionStem),
-          }],
           etag: `${id}-etag-2`,
         }, `${id}-etag-2`)
       }
@@ -287,7 +281,6 @@ function installFetchMock(options: {
           kind: agent.kind || 'specialist',
           summary: `${agent.displayName || agent.id} summary`,
           tags: agent.tags || [],
-          harnessVariants: [defaultVariant],
           etag: `${id}-etag`,
         }, `${id}-etag`)
       return options.agentDetailGate ? options.agentDetailGate.then(respondWithAgent) : respondWithAgent()
@@ -1066,15 +1059,14 @@ describe('FormationsCockpit reference parity', () => {
     await act(async () => { releaseDetail?.(); await detailGate })
   })
 
-  it('shows Codex role presets beside Claude personas and persists UI overrides', async () => {
+  it('shows the built-in roles beside the operator\'s own and persists UI overrides', async () => {
     const presetAgents: AgentProjection[] = [
-      { id: 'claude-existing', displayName: 'Claude Existing', kind: 'builder', harnessDefault: 'claude-code', liveness: 'offline', assignable: true },
+      { id: 'claude-existing', displayName: 'Claude Existing', kind: 'builder', liveness: 'offline', assignable: true },
       ...['scout', 'planner', 'builder', 'judge', 'orchestrator', 'debugger', 'reviewer'].map(role => ({
-        id: `codex-${role}`,
-        displayName: `Codex ${role[0].toUpperCase()}${role.slice(1)}`,
+        id: role,
+        displayName: `${role[0].toUpperCase()}${role.slice(1)}`,
         kind: role,
         tags: [`role:${role}`],
-        harnessDefault: 'openai-codex',
         liveness: 'offline',
         assignable: true,
         preset: true,
@@ -1086,12 +1078,9 @@ describe('FormationsCockpit reference parity', () => {
     const roster = screen.getByLabelText('Agent roster')
     // Roles carry no harness: one list by name, not Codex and Claude groups.
     expect(roster.querySelectorAll('.roster-group-label')).toHaveLength(0)
-    expect(Array.from(roster.querySelectorAll('.ragent .n')).map(name => name.textContent)).toEqual(['Claude Existing', 'Codex Builder', 'Codex Debugger', 'Codex Judge', 'Codex Orchestrator', 'Codex Planner', 'Codex Reviewer', 'Codex Scout'])
-    for (const role of ['Scout', 'Planner', 'Builder', 'Judge', 'Orchestrator', 'Debugger', 'Reviewer']) {
-      expect(within(roster).getByText(`Codex ${role}`)).toBeInTheDocument()
-    }
+    expect(Array.from(roster.querySelectorAll('.ragent .n')).map(name => name.textContent)).toEqual(['Builder', 'Claude Existing', 'Debugger', 'Judge', 'Orchestrator', 'Planner', 'Reviewer', 'Scout'])
 
-    const editTrigger = within(roster).getByRole('button', { name: 'Edit Codex Builder' })
+    const editTrigger = within(roster).getByRole('button', { name: 'Edit Builder' })
     fireEvent.click(editTrigger)
     const dialog = await screen.findByRole('dialog', { name: 'Edit agent preset' })
     expect(dialog).toHaveAttribute('data-testid', 'persona-editor')
@@ -1102,7 +1091,7 @@ describe('FormationsCockpit reference parity', () => {
 
     await waitFor(() => expect(within(roster).getByText('Repository Builder')).toBeInTheDocument())
     await waitFor(() => expect(editTrigger).toHaveFocus())
-    expect(recordedMutations).toContainEqual({ method: 'PATCH', url: '/api/agents/codex-builder' })
+    expect(recordedMutations).toContainEqual({ method: 'PATCH', url: '/api/agents/builder' })
   })
 
   it('shows only assignable persona cards in the formation staffing roster', async () => {

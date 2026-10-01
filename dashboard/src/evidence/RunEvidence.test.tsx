@@ -53,7 +53,7 @@ const routes: Record<string, unknown> = {
       attempts: [{
         attempt: 1, startedSeq: 3, reason: 'initial',
         inputs: [{ edgeId: 'edge_start', fromNodeId: 'mis_way', fromPortId: 'out', toPortId: 'port_map_in', text: text('Weekly digest') }],
-        dispatches: [{ seq: 5, slotId: 'slot_scout', agentId: 'codex-scout', harness: 'openai-codex', brief: true, status: 'ok' }],
+        dispatches: [{ seq: 5, slotId: 'slot_scout', agentId: 'scout', harness: 'openai-codex', brief: true, status: 'ok' }],
         seatCleanups: [{ seq: 6, slotId: 'slot_scout', outcome: 'kept_on_call' }, { seq: 13, slotId: 'slot_scout', outcome: 'gone' }],
         output: {
           seq: 7, status: 'done', text: text('The territory, mapped once'),
@@ -175,9 +175,9 @@ describe('RunEvidence', () => {
     expect(screen.getByTestId('gate-evaluation-8')).toHaveTextContent('pass · human:operator · via Scout in Map the territory')
 
     cleanup()
-    const staffed = { ...board, formations: board.formations.map(formation => ({ ...formation, slots: [{ ...formation.slots[0], agentId: 'codex-scout' }] })) }
+    const staffed = { ...board, formations: board.formations.map(formation => ({ ...formation, slots: [{ ...formation.slots[0], agentId: 'scout' }] })) }
     render(<RunEvidence runId="run_1" nodeId="gate_framing" title="Framing review" state="done" board={staffed} onClose={() => {}} />)
-    expect(await screen.findByTestId('gate-evaluation-8')).toHaveTextContent('pass · human:operator · via codex-scout')
+    expect(await screen.findByTestId('gate-evaluation-8')).toHaveTextContent('pass · human:operator · via scout')
     cleanup()
     render(<RunEvidence runId="run_1" nodeId="gate_framing" title="Framing review" state="done" onClose={() => {}} />)
     expect(await screen.findByTestId('gate-evaluation-8')).toHaveTextContent('pass · human:operator · via slot_scout')

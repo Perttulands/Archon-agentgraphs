@@ -25,7 +25,7 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 			map[string]any{"edgeId": "edge_in", "fromNodeId": "mis_a", "fromPortId": "out", "toPortId": "port_in", "text": "Build it", "ref": artifacts + "/brief.md"},
 		}}),
 		{Seq: 2, Type: RunEventSlotDispatch, NodeID: "fmn_work", SlotID: "slot_work", Attempt: 1, Data: map[string]any{
-			"agentId": "codex-builder", "harness": "openai-codex", "dispatchId": "dsp_1", "briefPath": "/ws/briefs/seat-1.md",
+			"agentId": "builder", "harness": "openai-codex", "dispatchId": "dsp_1", "briefPath": "/ws/briefs/seat-1.md",
 			"sessionRef": "tmux:SESSION-REF", "promptSha256": "PROMPT-DIGEST", "promptRef": "PROMPT-REF",
 		}},
 		{Seq: 3, Type: "seat_created", NodeID: "fmn_work", SlotID: "slot_work", Data: map[string]any{"sessionId": "$TMUX-SESSION", "paneId": "%TMUX-PANE", "sessionName": "archon-run_1-slot_work"}},
@@ -57,7 +57,7 @@ func TestNodeEvidenceGroupsAttemptsAndOmitsSessionIdentity(t *testing.T) {
 	if len(first.Inputs) != 1 || first.Inputs[0].Text.Text != "Build it" || first.Inputs[0].Ref.Artifact != "brief.md" {
 		t.Fatalf("inputs = %+v", first.Inputs)
 	}
-	if len(first.Dispatches) != 1 || first.Dispatches[0] != (EvidenceDispatch{Seq: 2, SlotID: "slot_work", AgentID: "codex-builder", Harness: "openai-codex", Brief: true, ResultSeq: 5, Status: "ok"}) {
+	if len(first.Dispatches) != 1 || first.Dispatches[0] != (EvidenceDispatch{Seq: 2, SlotID: "slot_work", AgentID: "builder", Harness: "openai-codex", Brief: true, ResultSeq: 5, Status: "ok"}) {
 		t.Fatalf("dispatches = %+v", first.Dispatches)
 	}
 	if len(first.SeatCleanups) != 1 || first.SeatCleanups[0] != (EvidenceSeatCleanup{Seq: 51, SlotID: "slot_work", Outcome: "left_cleanup_failed"}) {

@@ -15,9 +15,6 @@ func TestFormationsRunProjectionParity(t *testing.T) {
 	store.Now = fixedFormationsAPIClock()
 	personas := formations.NewPersonaStore(t.TempDir())
 	personas.Now = fixedFormationsAPIClock()
-	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
-		t.Fatalf("create persona: %v", err)
-	}
 	writeFormationsAPIFixture(t, store.BoardPath("human-search"), formationsAPIS5HumanGateBoardFixture())
 	handler := NewFormationsHandlerWithStores(store, personas)
 	mux := http.NewServeMux()

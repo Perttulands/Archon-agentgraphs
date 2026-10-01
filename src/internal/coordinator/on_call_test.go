@@ -331,13 +331,13 @@ label = "Output"
 [[formation.slot]]
 id = "peer_a"
 label = "Peer A"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 effort = "medium"
 [[formation.slot]]
 id = "peer_b"
 label = "Peer B"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 effort = "medium"
 [[formation]]
@@ -353,14 +353,14 @@ label = "Output"
 [[formation.slot]]
 id = "team_lead"
 label = "Lead"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 controller = true
 effort = "medium"
 [[formation.slot]]
 id = "team_worker"
 label = "Worker"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 effort = "medium"
 [[gate]]
@@ -587,7 +587,7 @@ label = "Output"
 [[formation.slot]]
 id = "slot_work"
 label = "Worker"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 controller = true
 effort = "medium"
@@ -705,7 +705,7 @@ func TestHealthyPeerReceivesTheNextHumanGateAfterUncertainPaste(t *testing.T) {
 [[formation.slot]]
 id = "slot_other"
 label = "Other peer"
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 effort = "medium"`, 1)
 	keeper := &keeperExecutor{uncertain: map[string]bool{"slot_work": true}}

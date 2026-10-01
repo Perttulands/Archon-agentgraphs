@@ -89,9 +89,9 @@ describe('a role landing on a slot', () => {
 
   it('reads the policy from the role\'s kind, its words only when the kind is not the policy\'s, then the step, citing the policy line', () => {
     const role = (kind: string, name = 'Helper', summary = '') => ({ id: 'r', name, kind, summary })
-    for (const kind of ['verifier', 'scout', 'observer', 'operator']) expect(suggestEffort(catalog, role(kind), '')?.effort).toBe('low')
-    for (const kind of ['builder', 'debugger']) expect(suggestEffort(catalog, role(kind), '')?.effort).toBe('medium')
-    for (const kind of ['reviewer', 'judge', 'architect', 'planner', 'orchestrator']) expect(suggestEffort(catalog, role(kind), '')?.effort).toBe('xhigh')
+    for (const kind of ['verifier', 'scout']) expect(suggestEffort(catalog, role(kind), '')?.effort).toBe('low')
+    for (const kind of ['builder', 'debugger', 'operator']) expect(suggestEffort(catalog, role(kind), '')?.effort).toBe('medium')
+    for (const kind of ['reviewer', 'judge', 'architect', 'designer', 'planner', 'orchestrator']) expect(suggestEffort(catalog, role(kind), '')?.effort).toBe('xhigh')
     // The reason cites the policy line the effort comes from, never the kind back.
     expect(suggestEffort(catalog, role('planner'), '')).toEqual({ effort: 'xhigh', reason: 'planning falls under architecture and review' })
     expect(suggestEffort(catalog, role('builder'), '')).toEqual({ effort: 'medium', reason: 'building falls under making things' })
@@ -146,8 +146,8 @@ describe('typed words', () => {
   })
 
   it('shows the choices for an ambiguous role word instead of committing one', () => {
-    const parsed = parseWords({ ...catalog, roles: [...roles, { id: 'codex-reviewer', name: 'Codex Reviewer', summary: '', kind: 'reviewer' }, { id: 'final', name: 'Delivery Final Reviewer', summary: '', kind: 'reviewer' }] }, 'review', vanilla)
-    expect(parsed.ambiguous?.roles.map(role => role.id)).toEqual(['codex-reviewer', 'final'])
+    const parsed = parseWords({ ...catalog, roles: [...roles, { id: 'code-reviewer', name: 'Code Reviewer', summary: '', kind: 'reviewer' }, { id: 'final', name: 'Final Reviewer', summary: '', kind: 'reviewer' }] }, 'review', vanilla)
+    expect(parsed.ambiguous?.roles.map(role => role.id)).toEqual(['code-reviewer', 'final'])
     expect(parsed.issues[0].blocking).toBe(true)
   })
 

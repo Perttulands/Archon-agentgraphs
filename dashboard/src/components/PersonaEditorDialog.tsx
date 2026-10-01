@@ -3,13 +3,13 @@ import { fetchAgentCard, overrideAgentCard } from './formationsApi'
 
 // The one persona editor. The Agents tab opens it from the persona inspector
 // and the Boards roster opens it from an agent's ••• action; both save the same
-// persona override. A role is role text: it carries no model or effort.
+// persona override. A role is role text: it carries no harness, model or
+// effort.
 
 export interface PersonaEditorTarget {
   id: string
   displayName?: string
   kind?: string
-  harnessDefault?: string
   tags?: string[]
   preset?: boolean
   customized?: boolean
@@ -23,7 +23,6 @@ interface EditorState {
   kind: string
   summary: string
   capabilities: string
-  sessionStem: string
   etag: string
   loading: boolean
   saving: boolean
@@ -43,10 +42,9 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
     preset: Boolean(agent.preset),
     customized: Boolean(agent.customized),
     displayName: agent.displayName || agent.id,
-    kind: agent.kind || agent.harnessDefault || (agent.unbound ? 'unbound' : 'agent'),
+    kind: agent.kind || (agent.unbound ? 'unbound' : 'agent'),
     summary: '',
     capabilities: capabilityTags(agent.tags),
-    sessionStem: agent.id,
     etag: '',
     loading: true,
     saving: false,
@@ -62,7 +60,6 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
     let current = true
     fetchAgentCard(agent.id).then(card => {
       if (!current) return
-      const variant = card.harnessVariants.find(candidate => candidate.id === card.harnessDefault) || card.harnessVariants[0]
       setEditor(state => ({
         ...state,
         preset: Boolean(card.preset),
@@ -71,7 +68,6 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
         kind: card.kind,
         summary: card.summary || '',
         capabilities: capabilityTags(card.tags),
-        sessionStem: variant?.sessionStem || card.id,
         etag: card.etag,
         loading: false,
       }))
@@ -100,7 +96,6 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
         kind: editor.kind.trim(),
         summary: editor.summary.trim(),
         capabilities: editor.capabilities.split(',').map(value => value.trim()).filter(Boolean),
-        sessionStem: editor.sessionStem.trim(),
       })
       await onSaved()
       close()
@@ -109,7 +104,7 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
     }
   }
 
-  const field = (key: 'displayName' | 'kind' | 'summary' | 'capabilities' | 'sessionStem') =>
+  const field = (key: 'displayName' | 'kind' | 'summary' | 'capabilities') =>
     (event: { target: { value: string } }) => setEditor(state => ({ ...state, [key]: event.target.value }))
 
   return (
@@ -123,7 +118,7 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
     >
       <form onSubmit={event => { event.preventDefault(); void save() }}>
         <div className="phd">
-          <span>{editor.preset ? 'Codex preset override' : 'Agent override'}</span>
+          <span>{editor.preset ? 'Built-in role override' : 'Agent override'}</span>
           <button autoFocus={editor.loading} type="button" className="x" aria-label="Close agent editor" disabled={editor.saving} onClick={close}>×</button>
         </div>
         <div className="agent-dialog-id">{agent.id}{editor.customized ? ' · customized' : ' · built-in default'}</div>
@@ -144,10 +139,6 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
             <label className="wide">
               <span>Capabilities</span>
               <input aria-label="Agent capabilities" value={editor.capabilities} placeholder="implement, test, review" onChange={field('capabilities')} />
-            </label>
-            <label>
-              <span>Session stem</span>
-              <input aria-label="Agent session stem" value={editor.sessionStem} onChange={field('sessionStem')} />
             </label>
           </div>
         )}

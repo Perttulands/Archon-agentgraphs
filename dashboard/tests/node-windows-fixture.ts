@@ -34,10 +34,9 @@ export const authoredBoard = {
   gates: scouting.mission.gates.map((gate: Node) => ({ ...gate, criterion: authoredText(gate.title, 'criterion') })),
 }
 
-const agents = ['codex-scout', 'delivery-planner', 'codex-planner', 'codex-judge'].map(id => ({
+const agents = ['scout', 'planner', 'judge'].map(id => ({
   id,
   displayName: id.split('-').map(word => word[0].toUpperCase() + word.slice(1)).join(' '),
-  harnessDefault: id.startsWith('codex') ? 'openai-codex' : 'claude-code',
   assignable: true,
   liveness: 'offline',
   tags: [],
@@ -52,9 +51,8 @@ export async function nodeWindowsFixture(page: Page) {
   await page.route('**/api/missions/scouting', route => route.fulfill(respond({ mission: authoredBoard })))
   await page.route('**/api/agents', route => route.fulfill(respond(rosterAnswer(agents))))
   for (const agent of agents) {
-    const model = slotModel(agent.harnessDefault)
     await page.route(`**/api/agents/${agent.id}`, route => route.fulfill(respond({
-      ...agent, summary: '', harnessVariants: [{ id: agent.harnessDefault, model, effort: 'medium' }], etag: `${agent.id}-card`,
+      ...agent, summary: '', etag: `${agent.id}-card`,
     })))
   }
   return fixture

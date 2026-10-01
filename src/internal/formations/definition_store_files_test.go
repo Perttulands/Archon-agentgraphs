@@ -336,11 +336,10 @@ func TestStartRunSnapshotsASymlinkedMission(t *testing.T) {
 	store.Now = fixedClock()
 	personas.Now = fixedClock()
 	if _, err := personas.CreatePersona(CreatePersonaRequest{
-		ID:           "scout",
+		ID:           "explorer",
 		DisplayName:  "Scout",
 		Kind:         "specialist",
 		Capabilities: []string{"research"},
-		Harness:      "openai-codex",
 	}); err != nil {
 		t.Fatalf("create persona: %v", err)
 	}
@@ -389,7 +388,7 @@ func TestABrokenMissionLinkLeavesEveryOtherMissionWorking(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	store.Now = fixedClock()
 	personas.Now = fixedClock()
-	if _, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Capabilities: []string{"research"}, Harness: "openai-codex"}); err != nil {
+	if _, err := personas.CreatePersona(CreatePersonaRequest{ID: "explorer", Kind: "specialist", Capabilities: []string{"research"}}); err != nil {
 		t.Fatal(err)
 	}
 	writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
@@ -438,7 +437,7 @@ func TestUnreadableRoleCardsAndRunLedgersAreSkippedAndNamed(t *testing.T) {
 	root := t.TempDir()
 	agents := filepath.Join(root, "agents")
 	personas := NewPersonaStore(agents)
-	if _, err := personas.CreatePersona(CreatePersonaRequest{ID: "scout", Kind: "specialist", Harness: "openai-codex"}); err != nil {
+	if _, err := personas.CreatePersona(CreatePersonaRequest{ID: "explorer", Kind: "specialist"}); err != nil {
 		t.Fatal(err)
 	}
 	gone := filepath.Join(root, "dotfiles", "critic.toml")
@@ -450,11 +449,11 @@ func TestUnreadableRoleCardsAndRunLedgersAreSkippedAndNamed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasPersonaID(cards, "scout") || hasPersonaID(cards, "critic") || hasPersonaID(cards, "garbled") || len(unreadable) != 2 ||
+	if !hasPersonaID(cards, "explorer") || hasPersonaID(cards, "critic") || hasPersonaID(cards, "garbled") || len(unreadable) != 2 ||
 		unreadable[0].Name != "critic" || !strings.Contains(unreadable[0].Reason, "is a symlink to "+gone+", which does not exist") || unreadable[1].Name != "garbled" {
-		t.Fatalf("cards %d, unreadable %+v; want scout listed and critic and garbled named", len(cards), unreadable)
+		t.Fatalf("cards %d, unreadable %+v; want explorer listed and critic and garbled named", len(cards), unreadable)
 	}
-	if listed, err := personas.ListPersonas(); err != nil || !hasPersonaID(listed, "scout") {
+	if listed, err := personas.ListPersonas(); err != nil || !hasPersonaID(listed, "explorer") {
 		t.Fatalf("ListPersonas = %v, want the readable cards", err)
 	}
 

@@ -51,14 +51,14 @@ label = "Log"
 id = "slot_build_lead"
 label = "Orchestrator"
 controller = true
-agentId = "codex-orchestrator"
+agentId = "orchestrator"
 harness = "openai-codex"
 effort = "medium"
 [[formation.slot]]
 id = "slot_build_worker"
 label = "Worker"
 controller = false
-agentId = "codex-builder"
+agentId = "builder"
 harness = "openai-codex"
 effort = "medium"
 

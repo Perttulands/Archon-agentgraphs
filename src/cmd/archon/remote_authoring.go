@@ -1120,8 +1120,7 @@ func remoteAgentInspect(c *remoteClient, args []string, stdout, stderr io.Writer
 	return writeAgentInspect(stdout, card, *jsonOut)
 }
 
-// Agent cards are the daemon's (its --agents-dir), and --from names a path on
-// the daemon host.
+// Agent cards are the daemon's (its --agents-dir).
 func remoteAgentNew(c *remoteClient, args []string, stdout, stderr io.Writer) int {
 	fs := remoteFlags("agent new", stderr)
 	f := newAgentNewFlags(fs, stderr)
@@ -1132,7 +1131,7 @@ func remoteAgentNew(c *remoteClient, args []string, stdout, stderr io.Writer) in
 		fmt.Fprintln(stderr, agentNewUsage)
 		return 2
 	}
-	data, _, err := c.call("POST", "/api/agents", map[string]any{"id": fs.Arg(0), "kind": *f.kind, "harness": *f.harness, "capabilities": splitCSV(*f.capable), "personality": *f.personality, "source": *f.from}, "")
+	data, _, err := c.call("POST", "/api/agents", map[string]any{"id": fs.Arg(0), "kind": *f.kind, "capabilities": splitCSV(*f.capable), "personality": *f.personality}, "")
 	if err != nil {
 		return fail(stderr, err)
 	}
@@ -1150,7 +1149,7 @@ func remoteAgentEdit(c *remoteClient, args []string, stdout, stderr io.Writer) i
 		return 2
 	}
 	given := givenFlags(fs)
-	body := map[string]any{"addCapability": *f.addCapability, "removeCapability": *f.removeCapability, "addHarness": *f.addHarness, "note": *f.note}
+	body := map[string]any{"addCapability": *f.addCapability, "removeCapability": *f.removeCapability, "note": *f.note}
 	for flagName, field := range map[string]struct {
 		key   string
 		value *string
@@ -1161,9 +1160,6 @@ func remoteAgentEdit(c *remoteClient, args []string, stdout, stderr io.Writer) i
 	}
 	if given["capable"] {
 		body["capabilities"] = append([]string{}, splitCSV(*f.capable)...)
-	}
-	if *f.addHarness != "" || given["session-stem"] {
-		body["sessionStem"] = *f.sessionStem
 	}
 	path := "/api/agents/" + url.PathEscape(fs.Arg(0))
 	var data json.RawMessage

@@ -856,10 +856,11 @@ paths:
             data.harnesses, the harnesses whose seats Archon starts, each with the efforts it accepts, its
             defaultEffort and its known models ({id, efforts?}; claude-code's aliases, and the Codex models the
             daemon host's models_cache.json lists, each with the efforts that model accepts), and data.effortPolicy, the {effort,use,kinds?} lines that guide a slot's effort by the role kinds each suits (low for
-            errands: verifier, scout, observer, operator; medium for making things: builder, debugger; xhigh for
-            architecture and review: reviewer, judge, architect, planner, orchestrator; max for consequential
-            reviews, with no kinds: chosen by hand, never suggested). A card that cannot be read is left out and
-            named in data.unreadable ({name, reason}). No live-session provider is wired by the daemon.
+            errands: verifier, scout; medium for making things: builder, debugger, operator; xhigh for
+            architecture and review: reviewer, judge, architect, designer, planner, orchestrator; max for
+            consequential reviews, with no kinds: chosen by hand, never suggested). A role is live when the
+            session named after it runs. A card that cannot be read is left out and named in data.unreadable
+            ({name, reason}). No live-session provider is wired by the daemon.
         '422':
           description: INVALID_AGENT_CARD when a stored card lacks a required field; the message names the card and field
       parameters:
@@ -877,7 +878,7 @@ paths:
           description: Created persona card in data; returns ETag
         '422':
           description: INVALID_AGENT_CARD when the card would lack a required field, or the request names a field
-            the endpoint does not take, such as model or effort (a role carries neither); the message names it
+            the endpoint does not take, such as harness, model or effort (a role carries none); the message names it
       requestBody:
         required: true
         content:
@@ -894,9 +895,8 @@ paths:
     get:
       responses:
         '200':
-          description: Persona card in data; returns ETag. A role is role text; its harnessVariants name a
-            harness, session stem and source, and carry no model or effort (each slot states its own). Create and
-            patch return the same.
+          description: Persona card in data; returns ETag. A role is role text with no harness, model or
+            effort (each slot states its own). Create and patch return the same.
         '422':
           description: INVALID_AGENT_CARD when the stored card lacks a required field; the message names the card and field
     patch:
@@ -1862,24 +1862,12 @@ components:
             type: string
         personality:
           type: string
-        harness:
-          type: string
-        sessionStem:
-          type: string
-        source:
-          type: string
     AgentPatch:
       type: object
       properties:
         addCapability:
           type: string
         removeCapability:
-          type: string
-        addHarness:
-          type: string
-        sessionStem:
-          type: string
-        source:
           type: string
         note:
           type: string
@@ -1895,6 +1883,5 @@ components:
           type: array
           items:
             type: string
-      description: Persona editor fields; a role is role text, so there is no model or effort to edit (a request
-        naming either, or any field not listed here, is refused with 422 INVALID_AGENT_CARD). Source is harness
-        provenance, not replacement card content.
+      description: Persona editor fields; a role is role text, so there is no harness, model or effort to edit (a
+        request naming one, or any field not listed here, is refused with 422 INVALID_AGENT_CARD).

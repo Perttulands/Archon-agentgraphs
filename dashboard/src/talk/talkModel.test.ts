@@ -8,7 +8,7 @@ const board = {
   formations: [
     { id: 'peers', type: 'peer', title: 'Question peers', ...ports, slots: [
       { id: 'slot_a', label: 'Peer', controller: false, agentId: 'delivery-planner', harness: 'claude-code' },
-      { id: 'slot_b', label: 'Peer', controller: false, agentId: 'codex-planner', harness: 'openai-codex' },
+      { id: 'slot_b', label: 'Peer', controller: false, agentId: 'planner', harness: 'openai-codex' },
     ] },
     { id: 'draft', type: 'solo', title: 'Draft the brief', ...ports, slots: [{ id: 'slot_c', label: 'Agent', controller: true, agentId: 'delivery-planner', harness: 'claude-code' }] },
   ],
@@ -38,7 +38,7 @@ describe('talking with the agents a gate asked', () => {
     expect(talk?.fallbackReason).toBe('')
     expect(talk?.seats.map(seat => [seat.windowId, seat.label])).toEqual([
       ['talk:run_1:5', 'Delivery Planner · Claude Code'],
-      ['talk:run_1:6', 'codex-planner · Codex'],
+      ['talk:run_1:6', 'planner · Codex'],
     ])
   })
 

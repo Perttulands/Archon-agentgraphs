@@ -12,7 +12,7 @@ const roles = [
   { id: 'critic', displayName: 'Critic Judge', kind: 'reviewer', summary: 'Reviews against acceptance.' },
   { id: 'scout', displayName: 'Repo Scout', kind: 'scout', summary: 'Explores a codebase.' },
   { id: 'final', displayName: 'Final Reviewer', kind: 'reviewer' },
-  { id: 'codex-reviewer', displayName: 'Codex Reviewer', kind: 'reviewer' },
+  { id: 'code-reviewer', displayName: 'Code Reviewer', kind: 'reviewer' },
 ]
 const caption = (page: Page, testId: string) => page.getByTestId(testId).getByTestId('slot-caption')
 const assignments = (patches: Array<Record<string, unknown>>) => patches.map(patch => patch.assignSlot).filter(Boolean)
@@ -227,7 +227,7 @@ test('Esc and a click away change nothing; mistakes are named before they are wr
   await page.keyboard.type('review')
   await page.keyboard.press('Enter')
   const choices = sentence.getByRole('listbox', { name: 'Roles that match' })
-  await expect(choices.getByRole('option')).toHaveText([/^Codex Reviewer/, /^Final Reviewer/])
+  await expect(choices.getByRole('option')).toHaveText([/^Code Reviewer/, /^Final Reviewer/])
   await expect(caption(page, 'slot-execution-controller')).toHaveAttribute('data-staffing', 'Claude controller | Claude Code · opus · medium')
   await page.keyboard.press('Escape')
 

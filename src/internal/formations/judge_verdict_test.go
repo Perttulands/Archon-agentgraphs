@@ -183,15 +183,11 @@ func TestLabJudgePushbackLoop(t *testing.T) {
 				t.Fatalf("pushback feedback: %+v", feedback)
 			}
 			slot := work[1].Formation.Slots[0]
-			card, err := personas.ReadPersona(slot.AgentID)
+			settings, card, err := ResolveSlotSettings(slot, personas)
 			if err != nil {
 				t.Fatal(err)
 			}
-			variant, err := card.SelectHarnessVariant(slot.Harness)
-			if err != nil {
-				t.Fatal(err)
-			}
-			prompt := executor.lab.renderPrompt(work[1], slot, *card, variant)
+			prompt := executor.lab.renderPrompt(work[1], slot, *card, settings.Variant())
 			matchedDispatch := false
 			for _, event := range events {
 				if event.Type == RunEventSlotDispatch && event.NodeID == "fmn_work" && event.Attempt == 2 {

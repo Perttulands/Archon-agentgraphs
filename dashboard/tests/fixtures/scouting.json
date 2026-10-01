@@ -36,7 +36,7 @@
           {
             "id": "slot_01M2N3G4PQ6SY4NKE2YA3SB3S8",
             "label": "Agent",
-            "agentId": "codex-scout",
+            "agentId": "scout",
             "harness": "openai-codex",
             "effort": "medium",
             "controller": false
@@ -66,7 +66,7 @@
           {
             "id": "slot_01M2N3HQ5AJ0RNG5S3VK7J8B8T",
             "label": "Peer",
-            "agentId": "delivery-planner",
+            "agentId": "planner",
             "harness": "claude-code",
             "effort": "medium",
             "controller": false
@@ -74,7 +74,7 @@
           {
             "id": "slot_01M2N3HQ5A9NRD9ZP0A16TKAP4",
             "label": "Peer",
-            "agentId": "codex-planner",
+            "agentId": "planner",
             "harness": "openai-codex",
             "effort": "medium",
             "controller": false
@@ -104,7 +104,7 @@
           {
             "id": "slot_01M2N9N1N60FY5JJ84B9A9DNJQ",
             "label": "Agent",
-            "agentId": "delivery-planner",
+            "agentId": "planner",
             "harness": "claude-code",
             "effort": "medium",
             "controller": false
@@ -134,7 +134,7 @@
           {
             "id": "slot_01M2N9N1PXGBQ8HRV7QSS2MD0W",
             "label": "Agent",
-            "agentId": "codex-judge",
+            "agentId": "judge",
             "harness": "openai-codex",
             "effort": "medium",
             "controller": false
@@ -354,7 +354,7 @@
             "id": "nte_01M2N9Z8YC9CVGNCY5Q3NX1EMJ",
             "author": "agent:claude-scouting",
             "createdAt": "2026-09-16T14:29:44.012601978Z",
-            "text": "Built from your note: this is step 1, mapping the territory before anyone proposes a solution. codex-scout writes territory-map.md with the sketch quoted verbatim, facts that each cite evidence (file, command output or URL), constraints, prior art, stakeholders, unknowns, and 2-4 candidate framings. It must not recommend a framing; you choose at Framing review. A send-back returns here with your corrections."
+            "text": "Built from your note: this is step 1, mapping the territory before anyone proposes a solution. scout writes territory-map.md with the sketch quoted verbatim, facts that each cite evidence (file, command output or URL), constraints, prior art, stakeholders, unknowns, and 2-4 candidate framings. It must not recommend a framing; you choose at Framing review. A send-back returns here with your corrections."
           }
         ]
       },
@@ -371,7 +371,7 @@
             "id": "nte_01M2N9Z8YYX60BVB7DF5JP5R3F",
             "author": "agent:claude-scouting",
             "createdAt": "2026-09-16T14:29:44.030671034Z",
-            "text": "Built from your note: one Claude (delivery-planner) and one Codex (codex-planner). Each drafts questions independently before they compare, to avoid echo. They reconcile into at most 10 questions ranked by impact. Every question names the decision it unlocks and the default assumed if you skip it. Disagreements between the two, and any conflict between your framing and the map's evidence, are recorded, not smoothed over."
+            "text": "Built from your note: one Claude (planner) and one Codex (planner). Each drafts questions independently before they compare, to avoid echo. They reconcile into at most 10 questions ranked by impact. Every question names the decision it unlocks and the default assumed if you skip it. Disagreements between the two, and any conflict between your framing and the map's evidence, are recorded, not smoothed over."
           }
         ]
       },
@@ -382,7 +382,7 @@
             "id": "nte_01M2N9Z8ZGWE5P2P57999GVWG8",
             "author": "agent:claude-scouting",
             "createdAt": "2026-09-16T14:29:44.048264409Z",
-            "text": "New. Claude (delivery-planner) writes brief.md from the map, your framing decision and your answers: goal in your words, checkable success criteria, non-goals, constraints, options with trade-offs (including rejected framings), a recommendation tied to evidence, risks, and open assumptions, with your answers verbatim in an appendix. Contradictions between your answers and the map are called out. Review and sign-off send-backs return here."
+            "text": "New. Claude (planner) writes brief.md from the map, your framing decision and your answers: goal in your words, checkable success criteria, non-goals, constraints, options with trade-offs (including rejected framings), a recommendation tied to evidence, risks, and open assumptions, with your answers verbatim in an appendix. Contradictions between your answers and the map are called out. Review and sign-off send-backs return here."
           }
         ]
       },
@@ -415,7 +415,7 @@
             "id": "nte_01M2N9Z8ZRWKPGX9KN0X5N5P93",
             "author": "agent:claude-scouting",
             "createdAt": "2026-09-16T14:29:44.056907405Z",
-            "text": "New judge gate. Its judge, Brief critic, runs on Codex (codex-judge), the harness that did not write the draft. It spot-checks at least three claims against their evidence and fails unsupported claims, generic recommendations, goal drift, ignored answers, or missing criteria, non-goals or risks. Fail returns to Draft the brief with evidence."
+            "text": "New judge gate. Its judge, Brief critic, runs on Codex (judge), the harness that did not write the draft. It spot-checks at least three claims against their evidence and fails unsupported claims, generic recommendations, goal drift, ignored answers, or missing criteria, non-goals or risks. Fail returns to Draft the brief with evidence."
           },
           {
             "id": "nte_fixture_operator_review",

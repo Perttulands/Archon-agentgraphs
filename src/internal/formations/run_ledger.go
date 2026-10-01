@@ -174,7 +174,6 @@ type runBinding struct {
 	CardTOML    string `toml:"cardToml"`
 	Model       string `toml:"model"`
 	Effort      string `toml:"effort"`
-	Source      string `toml:"source"`
 }
 
 type RunGateBinding struct {
@@ -823,7 +822,6 @@ func resolveRunBindings(board *BoardDocument, personas *PersonaStore) ([]runBind
 				SessionStem: settings.SessionStem,
 				Model:       settings.Model,
 				Effort:      settings.Effort,
-				Source:      settings.Source,
 			}
 			if card != nil {
 				binding.CardPath = filepath.ToSlash(personas.PersonaPath(card.ID))
@@ -859,9 +857,6 @@ func renderRunBindings(runID string, board *BoardDocument, mission MissionNode, 
 		}
 		b.WriteString("model = " + renderString(binding.Model) + "\n")
 		b.WriteString("effort = " + renderString(binding.Effort) + "\n")
-		if binding.Source != "" {
-			b.WriteString("source = " + renderString(binding.Source) + "\n")
-		}
 		b.WriteString("\n")
 	}
 	for _, binding := range gateBindings {

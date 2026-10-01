@@ -9,37 +9,26 @@ import (
 	"testing"
 )
 
-// A role is role text: a new card states no model or effort, and a card that
-// still holds them reads, and serves, without them (ADR-0021).
-func TestARoleCardCarriesNoModelOrEffort(t *testing.T) {
+// A role is role text: neither a new card nor a built-in role states a
+// harness, model or effort, and the role's JSON names none.
+func TestARoleCardCarriesNoHarnessModelOrEffort(t *testing.T) {
 	s := NewPersonaStore(t.TempDir())
-	card, err := s.CreatePersona(CreatePersonaRequest{ID: "worker", Kind: "builder", Harness: "openai-codex"})
+	if _, err := s.CreatePersona(CreatePersonaRequest{ID: "worker", Kind: "builder"}); err != nil {
+		t.Fatal(err)
+	}
+	cards, err := s.ListPersonas()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if raw := readFile(t, s.PersonaPath(card.ID)); strings.Contains(raw, "model") || strings.Contains(raw, "effort") {
-		t.Fatalf("new card holds a model or effort:\n%s", raw)
-	}
-	legacy := "schema = 1\n\n[card]\nid = \"old\"\nkind = \"reviewer\"\n\n[harness]\ndefault = \"claude-code\"\n\n" +
-		"[[harness.variant]]\nid = \"claude-code\"\nsession_stem = \"old\"\nmodel = \"claude-opus-5\"\neffort = \"xhigh\"\n"
-	if err := os.WriteFile(s.PersonaPath("old"), []byte(legacy), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	old, err := s.ReadPersona("old")
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, err := json.Marshal(old.HarnessVariants)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v := old.DefaultVariant(); v.Model != "" || v.Effort != "" || strings.Contains(string(raw), "claude-opus-5") || strings.Contains(string(raw), "xhigh") {
-		t.Fatalf("legacy card read with settings: %+v\n%s", v, raw)
-	}
-	for _, preset := range personaPresetCatalog {
-		card, _ := builtinPresetPersona(preset.ID)
-		if v := card.DefaultVariant(); v.Model != "" || v.Effort != "" {
-			t.Fatalf("preset %s carries settings: %+v", preset.ID, v)
+	for _, card := range cards {
+		raw, err := json.Marshal(card)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, word := range []string{"harness", "model", "effort", "session"} {
+			if strings.Contains(card.TOML, word) || strings.Contains(string(raw), `"`+word) {
+				t.Fatalf("role %s names a %s:\n%s\n%s", card.ID, word, card.TOML, raw)
+			}
 		}
 	}
 }
