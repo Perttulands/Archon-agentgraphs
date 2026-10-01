@@ -87,7 +87,9 @@ var nounHelps = []nounHelp{
 		{"edit", "<id> [--display-name n] [--kind k] [--summary s] [--capable a,b] [--add-capability t | --remove-capability t | --note text] [--json]", "change a role card"},
 		{"spawn", "<id> --harness <h> --effort <effort> [--model <model>]", "start the role's own session. A role carries no harness, model or effort; the spawn states them, as a slot does"},
 		{"attach", "<id>", "attach to the role's live session"},
-		{"retire", "<id> [--force]", "retire a role card"},
+		{"retire", "<id> [--json]", "retire a role: it is no longer offered, and the slots that name it, which it lists, do not run until restaffed"},
+		{"restore", "<id> [--json]", "bring a retired role back"},
+		{"delete", "<id> [--json]", "delete a role's card; refused while a slot names the role, and for a built-in role"},
 	}},
 	{noun: "run", summary: "runs, through the daemon", about: "A run is one start of a mission or a single step. Read and drive runs with --server.", commands: []commandHelp{
 		{"list", "[--mission <mission>] [--json]", "list runs, or one mission's"},

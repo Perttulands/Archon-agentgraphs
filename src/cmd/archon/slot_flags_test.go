@@ -132,3 +132,39 @@ func TestArchonFormationAssignWarnsOfAModelOutsideTheCatalog(t *testing.T) {
 		t.Fatalf("usage does not name the known models:\n%s", stderr)
 	}
 }
+
+// Retiring a role names the slots it stops; deleting one a slot names is
+// refused with those slots, and a validated mission names the retired role.
+func TestArchonAgentRetireAndDeleteNameTheSlotsThatUseTheRole(t *testing.T) {
+	workspace := t.TempDir()
+	t.Setenv("ARCHON_AGENTS_DIR", t.TempDir())
+	writeArchonFile(t, formations.NewStore(workspace).BoardPath("staff"), strings.Replace(slotStaffingBoard, `agentId = "reviewer"`, `agentId = "critic"`, 1))
+	runner := &fakeTmux{live: map[string]bool{}}
+	archon := func(args ...string) (string, string, int) {
+		return runArchon(t, runner, append([]string{"--workspace", workspace}, args...)...)
+	}
+	if _, stderr, code := archon("agent", "new", "critic", "--kind", "reviewer"); code != 0 {
+		t.Fatalf("new: %d %s", code, stderr)
+	}
+	if stdout, stderr, code := archon("agent", "retire", "critic"); code != 0 || stdout != "retired critic\nthese slots do not run until they are restaffed: Staff › Work › B\n" {
+		t.Fatalf("retire: %d %q %s", code, stdout, stderr)
+	}
+	if stdout, _, code := archon("mission", "validate", "staff"); code == 0 || !strings.Contains(stdout, `uses retired role "critic"`) {
+		t.Fatalf("validate with a retired role: %d %s", code, stdout)
+	}
+	if stdout, stderr, code := archon("agent", "restore", "critic"); code != 0 || stdout != "restored critic\n" {
+		t.Fatalf("restore: %d %q %s", code, stdout, stderr)
+	}
+	if _, stderr, code := archon("agent", "delete", "critic"); code != 1 || stderr != "role_in_use: role \"critic\" staffs 1 slot: Staff › Work › B; restaff them, or retire the role instead\n" {
+		t.Fatalf("delete in use: %d %q", code, stderr)
+	}
+	if _, stderr, code := archon("formation", "unassign", "staff", "Work", "--slot", "slot_b"); code != 0 {
+		t.Fatalf("unassign: %d %s", code, stderr)
+	}
+	if stdout, stderr, code := archon("agent", "delete", "critic"); code != 0 || stdout != "deleted critic\n" {
+		t.Fatalf("delete: %d %q %s", code, stdout, stderr)
+	}
+	if _, stderr, code := archon("agent", "delete", "reviewer"); code != 1 || !strings.Contains(stderr, `"reviewer" is a built-in role with no card to delete; retire it instead`) {
+		t.Fatalf("delete a built-in role: %d %q", code, stderr)
+	}
+}

@@ -165,6 +165,15 @@ also takes `ultra`, though a Codex model may accept fewer), a blank model means
 the harness default, and a harness Archon cannot start, such as `hermes`, is
 refused. Cards hold no launch string.
 
+The Agents view shows, for a selected role, every slot in every mission that
+uses it, and offers Retire and Delete only after saying what each does to
+those slots. `archon agent retire <id>` and `archon agent restore <id>` retire
+a role and bring it back, naming the slots that use it; a retired role is no
+longer offered for staffing, and a slot that still names it stops validation
+and admission with `retired_persona` until it is restaffed or the role comes
+back. `archon agent delete <id>` removes a role's card only while no slot
+names it, so no slot ever points at a missing role.
+
 Notes are operator intent, not
 automatically executable briefs. Read mission and element notes, then translate
 them into formation briefs, staffing and edges.
@@ -297,7 +306,7 @@ mission revision (HTTP 409 otherwise). It then builds one report of every
 problem the run would hit: mission validation plus supported formation types,
 staffed slots (`unstaffed_slot`) whose harness, model and effort can start a
 seat (`invalid_slot_settings`) and whose role, if named, is readable
-(`unavailable_persona`), one controller and a worker in each orchestrated
+(`unavailable_persona`) and not retired (`retired_persona`), one controller and a worker in each orchestrated
 formation, complete code checks, judge chains, runnable Tools and a wired Input
 card, and the run's inputs (see [Mission inputs](#mission-inputs)). Findings
 cover the nodes the run reaches from its Input card, or the selected formation.
@@ -1309,7 +1318,13 @@ Input card patch actions are `createInputCard`, `updateInputCard` and
 more is refused whole with HTTP 400, "a mission patch names one operation, and
 this one names deleteInputCard and title: send them one at a time", and nothing
 changes. Agent routes
-list/create/read/patch persona cards; the roster also serves `harnesses` (each
+list/create/read/patch persona cards; `GET /api/agents/{id}/usage` lists every
+slot, in every mission, that names the role; `PATCH` with `retire` true or
+false retires the role or brings it back; and `DELETE` (with `If-Match`)
+removes a role's card, refusing with `ROLE_IN_USE` (HTTP 409) and the slots
+while any slot names the role, and with `BUILTIN_ROLE` for a built-in role,
+which has no card; deleting a card that overrides a built-in role brings the
+built-in back; the roster also serves `harnesses` (each
 with the efforts it accepts and its known `models`, `{id,efforts?}`) and
 `effortPolicy` (`{effort,use}` lines). Gate
 profiles expose the two code checks.
@@ -1341,7 +1356,7 @@ daemon, so an open cockpit sees the edits through its change polling: `mission
 new|list|inspect|notes|note|validate|arrange|create|update|input|wire`, `formation
 list|inspect|create|rename|set-type|assign|unassign|set-brief|add-input|add-output|wire|unwire`,
 `gate create|update|judge`, `end create|update|delete`, `tool create|update|delete|inspect` and `agent
-list|inspect|new|edit`. They take the offline flags and print the offline
+list|inspect|new|edit|retire|restore|delete`. They take the offline flags and print the offline
 output: unwrapped JSON without TOML, or the same text. Each command reads the
 document it changes, resolves formation, gate, mission and Tool selectors from
 that read, and writes with its ETag and mission revision; Tool writes also carry
@@ -1357,7 +1372,7 @@ retried up to three times. Differences from offline use:
   and `gate request`, which require `--json` for that format, and `run wait`,
   which prints its paragraph or its own JSON (see [Waiting on a run](#waiting-on-a-run)); `mission list` and
   `mission inspect` print offline JSON like the other reads. `run ask` and
-  `agent spawn|attach|retire` remain offline only.
+  `agent spawn|attach` remain offline only.
 
 `GET /api/missions/{mission}/validation` returns
 `{missionRev,missionEtag,errors,warnings}` for the whole mission, the same report as

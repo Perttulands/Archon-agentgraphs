@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/core"
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
@@ -16,6 +17,8 @@ type AgentLivenessProvider interface {
 type AgentsHandler struct {
 	store    *formations.PersonaStore
 	liveness AgentLivenessProvider
+	// missions answers which slots use a role, for usage and delete.
+	missions *formations.Store
 }
 
 func NewAgentsHandler(agentsDir string, liveness AgentLivenessProvider) *AgentsHandler {
@@ -35,11 +38,63 @@ func NewAgentsHandlerWithStoreAndLiveness(store *formations.PersonaStore, livene
 	return &AgentsHandler{store: store, liveness: liveness}
 }
 
+// UseMissions lets the handler say which slots use a role, and refuse to
+// delete one that a slot still names.
+func (h *AgentsHandler) UseMissions(missions *formations.Store) *AgentsHandler {
+	h.missions = missions
+	return h
+}
+
 func (h *AgentsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/agents", h.ListAgents)
 	mux.HandleFunc("POST /api/agents", h.CreateAgent)
 	mux.HandleFunc("GET /api/agents/{agentId}", h.GetAgent)
 	mux.HandleFunc("PATCH /api/agents/{agentId}", h.UpdateAgent)
+	mux.HandleFunc("DELETE /api/agents/{agentId}", h.DeleteAgent)
+	mux.HandleFunc("GET /api/agents/{agentId}/usage", h.AgentUsage)
+}
+
+// AgentUsage lists every slot, in every mission, that names the role.
+func (h *AgentsHandler) AgentUsage(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("agentId")
+	if _, err := h.store.ReadPersona(id); err != nil {
+		writeAgentError(w, err)
+		return
+	}
+	uses, err := h.usage(id)
+	if err != nil {
+		writeAgentError(w, err)
+		return
+	}
+	core.WriteSuccess(w, map[string]interface{}{"usage": uses})
+}
+
+// DeleteAgent removes a role's card once no slot names it. Deleting a card
+// that overrides a built-in role brings the built-in role back.
+func (h *AgentsHandler) DeleteAgent(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("agentId")
+	uses, err := h.usage(id)
+	if err != nil {
+		writeAgentError(w, err)
+		return
+	}
+	if len(uses) > 0 {
+		writeAgentError(w, formations.RoleInUseError(id, uses))
+		return
+	}
+	builtin, err := h.store.DeletePersona(id, r.Header.Get("If-Match"))
+	if err != nil {
+		writeAgentError(w, err)
+		return
+	}
+	core.WriteSuccess(w, map[string]interface{}{"deleted": id, "builtinRemains": builtin})
+}
+
+func (h *AgentsHandler) usage(id string) ([]formations.RoleUse, error) {
+	if h.missions == nil {
+		return nil, errors.New("this agents handler has no missions to read role usage from")
+	}
+	return h.missions.RoleUsage(id)
 }
 
 func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
@@ -120,7 +175,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		AddCapability    string    `json:"addCapability"`
 		RemoveCapability string    `json:"removeCapability"`
 		Note             string    `json:"note"`
-		Retire           bool      `json:"retire"`
+		Retire           *bool     `json:"retire"`
 		DisplayName      *string   `json:"displayName"`
 		Kind             *string   `json:"kind"`
 		Summary          *string   `json:"summary"`
@@ -133,7 +188,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		AddCapability:    req.AddCapability,
 		RemoveCapability: req.RemoveCapability,
 		Note:             req.Note,
-		Retire:           req.Retire,
+		SetRetired:       req.Retire,
 		ExpectedETag:     r.Header.Get("If-Match"),
 		SetDisplayName:   req.DisplayName,
 		SetKind:          req.Kind,
@@ -174,6 +229,10 @@ func writeAgentError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusPreconditionRequired, "PRECONDITION_REQUIRED", "If-Match precondition is required")
 	case errors.Is(err, formations.ErrAlreadyExists):
 		core.WriteError(w, http.StatusConflict, "AGENT_EXISTS", "Agent id already exists")
+	case errors.Is(err, formations.ErrRoleInUse):
+		core.WriteError(w, http.StatusConflict, "ROLE_IN_USE", strings.TrimPrefix(err.Error(), formations.ErrRoleInUse.Error()+": "))
+	case errors.Is(err, formations.ErrBuiltinRole):
+		core.WriteError(w, http.StatusConflict, "BUILTIN_ROLE", strings.TrimPrefix(err.Error(), formations.ErrBuiltinRole.Error()+": "))
 	case errors.Is(err, formations.ErrNotFound):
 		core.WriteError(w, http.StatusNotFound, "NOT_FOUND", "Agent not found")
 	case errors.Is(err, formations.ErrInvalidAgentCard):

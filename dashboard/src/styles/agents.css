@@ -107,6 +107,10 @@
 .agx .agx-identity .board-action { margin-left:auto; flex-shrink:0; }
 .agx .agx-role-slot { align-items:baseline; flex-wrap:wrap; }
 .agx .agx-role-slot-runs { color:var(--ink); font-family:var(--font-mono,monospace); white-space:nowrap; }
+.agx .agx-role-use { width:100%; font:inherit; text-align:left; cursor:pointer; }
+.agx .agx-role-use:hover,.agx .agx-role-use:focus-visible { border-color:var(--terra); }
+.agx .agx-role-confirm p { margin:0; color:var(--ink); font-size:11px; line-height:1.5; }
+.agx .agx-inspector .pop-actions .cancel:disabled { opacity:.5; cursor:default; }
 .agx .pop-head { cursor:default; }
 .agx .pop-body select.f {
   width:100%; background:var(--paper2); border:1px solid var(--line); border-radius:6px; padding:9px 11px;

@@ -81,7 +81,7 @@ describe('AgentsView', () => {
     ])
   })
 
-  it('counts judge slots in readiness and in a judge persona\'s slots on this mission', async () => {
+  it('counts judge slots in readiness and lists a judge role\'s slots in every mission', async () => {
     const board = judgedBoard()
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
@@ -89,6 +89,12 @@ describe('AgentsView', () => {
         return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('critic', { displayName: 'Critic' }), agent('builder', { displayName: 'Builder' })], count: 2 } }))
       }
       if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic' }) }, 200, { ETag: 'critic-etag' }))
+      if (url === '/api/agents/critic/usage') {
+        return Promise.resolve(jsonResponse({ success: true, data: { usage: [
+          { missionId: 'judged', missionSlug: 'judged', missionTitle: 'Judged', formationId: 'judge-a', formationTitle: 'First judge', slotId: 'agent', slotLabel: 'Agent' },
+          { missionId: 'other', missionSlug: 'other', missionTitle: 'Other', formationId: 'check', formationTitle: 'Check', slotId: 'agent', slotLabel: 'Checker' },
+        ] } }))
+      }
       if (url === '/api/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { missions: [{ id: 'judged', slug: 'judged', title: 'Judged', rev: 3, etag: 'judged-etag' }] } }))
       }
@@ -109,8 +115,8 @@ describe('AgentsView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Inspect Critic' }))
     const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
-    expect(within(inspector).getByText(/^First judge/)).toBeInTheDocument()
-    expect(within(inspector).queryByText('No slots on this mission.')).not.toBeInTheDocument()
+    const usedBy = await within(inspector).findByRole('region', { name: 'Used by' })
+    expect(Array.from(usedBy.querySelectorAll('.agx-role-use')).map(row => row.textContent)).toEqual(['Judged › First judge › AgentClaude Code · default model · medium', 'Other › Check › Checker'])
   })
 
   it('opens the shared current board and makes a board chosen here current for Boards too', async () => {
@@ -398,6 +404,7 @@ describe('AgentsView', () => {
       const url = String(input)
       if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('critic', { displayName: 'Critic' })], count: 1, harnesses: HARNESSES } }))
       if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic', summary: 'Reviews the brief.' }) }, 200, { ETag: 'critic-etag' }))
+      if (url === '/api/agents/critic/usage') return Promise.resolve(jsonResponse({ success: true, data: { usage: [{ missionId: 'empty', missionSlug: 'empty', missionTitle: 'Empty', formationId: 'review', formationTitle: 'Review', slotId: 'reviewer', slotLabel: 'Reviewer' }] } }))
       if (url === '/api/missions') return Promise.resolve(jsonResponse({ success: true, data: { missions: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
       if (url === '/api/missions/empty/layout') return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
       if (url === '/api/missions/empty') return Promise.resolve(jsonResponse({ success: true, data: { mission: board } }, 200, { ETag: 'empty-etag' }))
@@ -410,10 +417,82 @@ describe('AgentsView', () => {
     const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
     expect(await within(inspector).findByText('Reviews the brief.')).toBeInTheDocument()
     expect(within(inspector).getByText('in 1 slot')).toBeInTheDocument()
-    expect(within(inspector).getByText('Codex · gpt-6-astra · xhigh')).toBeInTheDocument()
+    expect(await within(inspector).findByText('Codex · gpt-6-astra · xhigh')).toBeInTheDocument()
     expect(within(inspector).queryByText(/harness variants|^Runs$|starts as/i)).toBeNull()
     expect(within(inspector).queryByRole('textbox', { name: /model/i })).toBeNull()
     expect(within(inspector).queryByRole('combobox', { name: /effort/i })).toBeNull()
+  })
+
+  it('retires, brings back and deletes a role only after saying what that does to the slots that use it', async () => {
+    const board = emptyBoard()
+    const cards: Record<string, Record<string, unknown>> = {
+      critic: persona('critic', { displayName: 'Critic', kind: 'reviewer' }),
+      spare: persona('spare', { displayName: 'Spare' }),
+      judge: persona('judge', { displayName: 'Judge', kind: 'judge', preset: true }),
+    }
+    const uses: Record<string, unknown[]> = {
+      critic: [{ missionId: 'other', missionSlug: 'other', missionTitle: 'Other', formationId: 'check', formationTitle: 'Check', slotId: 'agent', slotLabel: 'Checker' }],
+      spare: [],
+      judge: [],
+    }
+    const writes: Array<{ method: string; url: string; body: unknown; ifMatch: string }> = []
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method || 'GET'
+      if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: Object.values(cards).map(card => agent(String(card.id), { displayName: card.displayName })), count: 3 } }))
+      const usage = url.match(/^\/api\/agents\/([^/]+)\/usage$/)
+      if (usage) return Promise.resolve(jsonResponse({ success: true, data: { usage: uses[usage[1]] } }))
+      const role = url.match(/^\/api\/agents\/([^/]+)$/)
+      if (role) {
+        const id = role[1]
+        if (method !== 'GET') writes.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : null, ifMatch: headerValue(init?.headers, 'If-Match') || '' })
+        if (method === 'PATCH') cards[id] = { ...cards[id], status: (JSON.parse(String(init?.body)) as { retire: boolean }).retire ? 'retired' : 'active' }
+        if (method === 'DELETE') {
+          delete cards[id]
+          return Promise.resolve(jsonResponse({ success: true, data: { deleted: id, builtinRemains: false } }))
+        }
+        return Promise.resolve(jsonResponse({ success: true, data: cards[id] }, 200, { ETag: `${id}-etag` }))
+      }
+      if (url === '/api/missions') return Promise.resolve(jsonResponse({ success: true, data: { missions: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
+      if (url === '/api/missions/empty/layout') return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
+      if (url === '/api/missions/empty') return Promise.resolve(jsonResponse({ success: true, data: { mission: board } }, 200, { ETag: 'empty-etag' }))
+      return Promise.reject(new Error(`unexpected fetch ${url}`))
+    })
+
+    render(<AgentsView />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Inspect Critic' }))
+    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    expect(await within(inspector).findByRole('button', { name: 'Other › Check › Checker' })).toBeInTheDocument()
+
+    // Retire says the slot stops running, and only the confirmation writes.
+    fireEvent.click(within(inspector).getByRole('button', { name: 'Retire' }))
+    const retire = within(inspector).getByRole('group', { name: 'Retire Critic' })
+    expect(retire).toHaveTextContent('Retire Critic? The slot above stops running until it has another role or none.')
+    expect(writes).toHaveLength(0)
+    fireEvent.click(within(retire).getByRole('button', { name: 'Retire Critic' }))
+    await waitFor(() => expect(writes).toEqual([{ method: 'PATCH', url: '/api/agents/critic', body: { retire: true }, ifMatch: 'critic-etag' }]))
+    fireEvent.click(await within(inspector).findByRole('button', { name: 'Bring back' }))
+    await waitFor(() => expect(writes[1]).toEqual({ method: 'PATCH', url: '/api/agents/critic', body: { retire: false }, ifMatch: 'critic-etag' }))
+
+    // A role a slot uses is not deleted: the view says what to do instead.
+    fireEvent.click(await within(inspector).findByRole('button', { name: 'Delete' }))
+    const refused = within(inspector).getByRole('group', { name: 'Delete Critic' })
+    expect(refused).toHaveTextContent('Critic staffs the 1 slot above. Give it another role or none before deleting Critic, or retire Critic instead.')
+    expect(within(refused).queryByRole('button', { name: 'Delete Critic' })).toBeNull()
+    fireEvent.click(within(refused).getByRole('button', { name: 'Close' }))
+
+    // A built-in role offers no Delete.
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Judge' }))
+    expect(await within(inspector).findByText('No slot uses this role.')).toBeInTheDocument()
+    expect(within(inspector).queryByRole('button', { name: 'Delete' })).toBeNull()
+
+    // An unused role is deleted after one confirmation.
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Spare' }))
+    expect(await within(inspector).findByText('No slot uses this role.')).toBeInTheDocument()
+    fireEvent.click(within(inspector).getByRole('button', { name: 'Delete' }))
+    fireEvent.click(within(within(inspector).getByRole('group', { name: 'Delete Spare' })).getByRole('button', { name: 'Delete Spare' }))
+    await waitFor(() => expect(writes[writes.length - 1]).toEqual({ method: 'DELETE', url: '/api/agents/spare', body: null, ifMatch: 'spare-etag' }))
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull())
   })
 
   it('offers a board retry when the selected board fails to load', async () => {

@@ -205,6 +205,42 @@ export async function renameMission(slug: string, title: string): Promise<PatchB
   }
 }
 
+/** One slot that names a role (GET /api/agents/{id}/usage). */
+export interface RoleUse {
+  missionId: string
+  missionSlug: string
+  missionTitle: string
+  formationId: string
+  formationTitle: string
+  slotId: string
+  slotLabel: string
+}
+
+/** Every slot, in every mission, that names the role. */
+export async function fetchRoleUsage(agentID: string): Promise<RoleUse[]> {
+  const result = await fetchApi<{ usage: RoleUse[] }>(`/api/agents/${encodeURIComponent(agentID)}/usage`)
+  return result.data.usage || []
+}
+
+/** Retires a role (true) or brings it back (false). */
+export async function setRoleRetired(agentID: string, etag: string, retired: boolean): Promise<PersonaCard> {
+  const result = await fetchApi<PersonaCard>(`/api/agents/${encodeURIComponent(agentID)}`, {
+    method: 'PATCH',
+    headers: { 'If-Match': etag },
+    body: JSON.stringify({ retire: retired }),
+  })
+  return { ...result.data, etag: result.etag || result.data.etag }
+}
+
+/** Deletes a role's card; the daemon refuses one a slot names. */
+export async function deleteRole(agentID: string, etag: string): Promise<{ deleted: string; builtinRemains: boolean }> {
+  const result = await fetchApi<{ deleted: string; builtinRemains: boolean }>(`/api/agents/${encodeURIComponent(agentID)}`, {
+    method: 'DELETE',
+    headers: { 'If-Match': etag },
+  })
+  return result.data
+}
+
 export async function fetchBoardChanged(slug: string, etag: string): Promise<boolean> {
   const result = await fetchApi<{ signal: { changed?: boolean } }>(
     `/api/missions/${encodeURIComponent(slug)}/changes?etag=${encodeURIComponent(etag)}`

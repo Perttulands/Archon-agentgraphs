@@ -78,12 +78,13 @@ type EditPersonaRequest struct {
 	AddCapability    string
 	RemoveCapability string
 	Note             string
-	Retire           bool
-	ExpectedETag     string
-	SetDisplayName   *string
-	SetKind          *string
-	SetSummary       *string
-	SetCapabilities  *[]string
+	// SetRetired retires the role (true) or brings it back (false).
+	SetRetired      *bool
+	ExpectedETag    string
+	SetDisplayName  *string
+	SetKind         *string
+	SetSummary      *string
+	SetCapabilities *[]string
 }
 
 type AgentRosterFilter struct {
@@ -354,8 +355,12 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 			}
 			next = setSectionScalar(next, "card", "tags", "["+renderStringList(tags)+"]")
 		}
-		if req.Retire {
-			next = setSectionScalar(next, "card", "status", renderString("retired"))
+		if req.SetRetired != nil {
+			status := "active"
+			if *req.SetRetired {
+				status = "retired"
+			}
+			next = setSectionScalar(next, "card", "status", renderString(status))
 		}
 		if req.Note != "" {
 			next = appendPersonaNote(next, PersonaNote{

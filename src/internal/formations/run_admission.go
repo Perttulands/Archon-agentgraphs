@@ -11,6 +11,7 @@ const (
 	FindingFormationWithoutSlots    = "formation_without_slots"
 	FindingUnstaffedSlot            = "unstaffed_slot"
 	FindingUnavailablePersona       = "unavailable_persona"
+	FindingRetiredPersona           = "retired_persona"
 	FindingInvalidSlotSettings      = "invalid_slot_settings"
 	FindingOrchestratedController   = "orchestrated_controller"
 	FindingToolExecutionUnavailable = ToolExecutionUnavailableCode
@@ -170,8 +171,10 @@ func formationAdmissionFindings(formation FormationNode, personas *PersonaStore,
 		if slot.AgentID == "" || personas == nil {
 			continue
 		}
-		_, err := personas.ReadPersona(slot.AgentID)
+		card, err := personas.ReadPersona(slot.AgentID)
 		switch {
+		case err == nil && card.Status == "retired":
+			add(FindingRetiredPersona, "formation %q slot %s uses retired role %q; staff it with another role or none, or bring the role back", formation.ID, slotName(slot), slot.AgentID)
 		case err == nil:
 		case errors.Is(err, ErrNotFound):
 			add(FindingUnavailablePersona, "formation %q slot %s names unknown role %q", formation.ID, slotName(slot), slot.AgentID)

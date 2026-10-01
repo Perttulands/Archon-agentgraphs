@@ -49,7 +49,7 @@ const layouts: Record<string, Array<{ id: string; x: number; y: number }>> = {
 }
 
 // A role is role text: it names no harness, model or effort.
-type Card = { id: string; displayName: string; kind: string; summary: string; tags: string[]; rev: number }
+type Card = { id: string; displayName: string; kind: string; summary: string; tags: string[]; status?: string; preset?: boolean; rev: number }
 
 export async function agentsFixture(page: Page) {
   const cards: Record<string, Card> = {
@@ -59,6 +59,7 @@ export async function agentsFixture(page: Page) {
   }
   const patches: unknown[] = []
   const boardPatches: unknown[] = []
+  const deletions: string[] = []
   // Each test edits its own copy of the missions.
   const missions = structuredClone(boards)
   const read = (card: Card) => ({ ...card, etag: `${card.id}-${card.rev}` })
@@ -100,19 +101,34 @@ export async function agentsFixture(page: Page) {
     if (path === '/api/runs') return respond([])
     if (path === '/api/gate-profiles') return respond({ profiles: [] })
     if (path === '/api/agents') {
-      const agents = Object.values(cards).map(card => ({ id: card.id, displayName: card.displayName, kind: card.kind, summary: card.summary, tags: card.tags, liveness: 'offline', assignable: true }))
+      const agents = Object.values(cards).map(card => ({ id: card.id, displayName: card.displayName, kind: card.kind, summary: card.summary, tags: card.tags, liveness: 'offline', assignable: card.status !== 'retired', preset: card.preset }))
       return respond(rosterAnswer(agents))
     }
+    // Usage, as the daemon reads it: every slot, in every mission, naming the role.
+    const usageOf = (id: string) => Object.values(missions).flatMap(mission => mission.formations.flatMap((formation: { id: string; title: string; slots: Array<{ id: string; label: string; agentId?: string }> }) => formation.slots
+      .filter(slot => slot.agentId === id)
+      .map(slot => ({ missionId: mission.id, missionSlug: mission.slug, missionTitle: mission.title, formationId: formation.id, formationTitle: formation.title, slotId: slot.id, slotLabel: slot.label }))))
+    const usageMatch = path.match(/^\/api\/agents\/([^/]+)\/usage$/)
+    if (usageMatch) return cards[usageMatch[1]] ? respond({ usage: usageOf(usageMatch[1]) }) : fail(404, 'NOT_FOUND', 'Agent not found')
     const agentMatch = path.match(/^\/api\/agents\/([^/]+)$/)
     if (agentMatch) {
       const card = cards[agentMatch[1]]
       if (!card) return fail(404, 'NOT_FOUND', 'Agent not found')
+      if (method === 'DELETE') {
+        if (route.request().headers()['if-match'] !== `${card.id}-${card.rev}`) return fail(409, 'CONFLICT', 'Agent card changed; reload and retry')
+        const uses = usageOf(card.id)
+        if (uses.length) return fail(409, 'ROLE_IN_USE', `role "${card.id}" staffs ${uses.length} slots`)
+        deletions.push(card.id)
+        delete cards[card.id]
+        return respond({ deleted: card.id, builtinRemains: false })
+      }
       if (method === 'PATCH') {
         if (route.request().headers()['if-match'] !== `${card.id}-${card.rev}`) return fail(409, 'CONFLICT', 'Agent card changed; reload and retry')
         const body = route.request().postDataJSON()
         patches.push(body)
         const next = structuredClone(card)
         for (const key of ['displayName', 'kind', 'summary'] as const) if (typeof body[key] === 'string') next[key] = body[key]
+        if (typeof body.retire === 'boolean') next.status = body.retire ? 'retired' : 'active'
         next.rev++
         cards[card.id] = next
         return respond(read(next), `${next.id}-${next.rev}`)
@@ -121,5 +137,5 @@ export async function agentsFixture(page: Page) {
     }
     return fail(404, 'NOT_FOUND', `Fixture has no ${path}`)
   })
-  return { patches, boardPatches, cards }
+  return { patches, boardPatches, cards, deletions }
 }

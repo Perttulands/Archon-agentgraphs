@@ -37,7 +37,9 @@ harness settings. Archon keeps only what is current.
   built-in roles `scout`, `planner`, `builder`, `judge`, `orchestrator`,
   `debugger` and `reviewer`. A slot without a role is a **vanilla** agent:
   `claude-code · opus · low`. Put what is specific to a mission in its step
-  briefs, never in a role.
+  briefs, never in a role. `agent retire <id>` and `agent delete <id>` name
+  the slots that use a role; a slot with a retired role does not run, and a
+  role a slot names is not deleted.
 - A **gate** has a criterion and kinds `code`, `formation` and `human`, run in
   that order and stopping at the first failure. Its ports are `in`, `pass`,
   `fail` and `judge`.

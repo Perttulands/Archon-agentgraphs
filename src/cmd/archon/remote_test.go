@@ -326,6 +326,16 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--role", "builder", "--harness", "openai-codex", "--effort", "medium"}
 		})},
+		// A role's usage is named when it retires; one a slot names is not deleted (archon-o7p.12.3).
+		{args: with(fixed("agent", "retire", "scout-x"))},
+		{args: with(fixed("agent", "restore", "scout-x"))},
+		{args: with(fixed("agent", "retire", "builder"))},
+		{args: with(fixed("agent", "restore", "builder"))},
+		{args: with(fixed("agent", "delete", "builder")), errorOnly: true},
+		{args: with(fixed("agent", "delete", "judge")), errorOnly: true},
+		{args: with(fixed("agent", "new", "scrap-x", "--kind", "builder"))},
+		{args: with(fixed("agent", "delete", "scrap-x"))},
+		{args: with(fixed("agent", "delete", "scrap-x")), errorOnly: true},
 		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--goal", "Produce the result", "--bead", "archon-demo", "--file", "/work/src/a.go", "--link", "https://example.com/spec"))},
 		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "47"))},
 		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "0"))},

@@ -47,9 +47,50 @@ test('a mission is not ready while a slot in its judge chain is open', async ({ 
 
   await agents.getByRole('button', { name: 'Inspect Brief critic' }).click()
   const inspector = agents.getByRole('complementary', { name: 'Inspector' })
-  await expect(inspector.getByText('Slots on this mission')).toBeVisible()
-  await expect(inspector.locator('.tool-detail-row', { hasText: 'Beads reviewer' })).toBeVisible()
-  await expect(inspector.getByText('No slots on this mission.')).toHaveCount(0)
+  // Usage spans every mission: the judge slot here and the Scouting map.
+  await expect(inspector.getByRole('region', { name: 'Used by' }).locator('.agx-role-use')).toHaveText([
+    'Delivery › Beads reviewer › Beads reviewerClaude Code · default model · medium',
+    'Scouting › Map › Map',
+  ])
+})
+
+test('a role\'s usage is shown before Retire and Delete, and a use opens its slot', async ({ page }) => {
+  const fixture = await agentsFixture(page)
+  await page.goto('/?mission=delivery')
+  await page.getByRole('button', { name: 'Agents', exact: true }).click()
+  const agents = page.getByTestId('agents-view')
+  const inspector = agents.getByRole('complementary', { name: 'Inspector' })
+
+  await agents.getByRole('button', { name: 'Inspect Brief critic' }).click()
+  const used = inspector.getByRole('region', { name: 'Used by' })
+  await used.getByRole('button', { name: 'Retire' }).click()
+  await expect(used.getByRole('group', { name: 'Retire Brief critic' })).toContainText('The 2 slots above stop running until each has another role or none.')
+  await used.getByRole('button', { name: 'Retire Brief critic' }).click()
+  await expect(used.getByRole('button', { name: 'Bring back' })).toBeVisible()
+  expect(fixture.patches.at(-1)).toEqual({ retire: true })
+  await expect(agents.locator('.ragent', { hasText: 'Brief critic' })).toContainText('retired')
+  await used.getByRole('button', { name: 'Bring back' }).click()
+  await expect(used.getByRole('button', { name: 'Retire' })).toBeVisible()
+  expect(fixture.patches.at(-1)).toEqual({ retire: false })
+
+  // Delete names the slots and offers nothing that would strand them.
+  await used.getByRole('button', { name: 'Delete' }).click()
+  await expect(used.getByRole('group', { name: 'Delete Brief critic' })).toContainText('Brief critic staffs the 2 slots above. Give each another role or none before deleting Brief critic, or retire Brief critic instead.')
+  await expect(used.getByRole('button', { name: 'Delete Brief critic' })).toHaveCount(0)
+  await used.getByRole('button', { name: 'Close' }).click()
+
+  // A use opens its slot, on its own mission.
+  await used.getByRole('button', { name: 'Scouting › Map › Map' }).click()
+  await expect(agents.getByRole('combobox', { name: 'Mission' })).toHaveValue('scouting')
+  await expect(inspector.getByTestId('slot-staffing-words')).toContainText('Map (controller) is Brief critic on Claude Code')
+
+  // An unused role goes after one confirmation.
+  await agents.getByRole('button', { name: 'Inspect Hermes spawner' }).click()
+  await expect(used.getByText('No slot uses this role.')).toBeVisible()
+  await used.getByRole('button', { name: 'Delete' }).click()
+  await used.getByRole('button', { name: 'Delete Hermes spawner' }).click()
+  await expect(agents.getByRole('button', { name: 'Inspect Hermes spawner' })).toHaveCount(0)
+  expect(fixture.deletions).toEqual(['spawner'])
 })
 
 test('a role is role text: the inspector and editor offer no model or effort, and each slot says what its seat runs', async ({ page }) => {
@@ -62,8 +103,8 @@ test('a role is role text: the inspector and editor offer no model or effort, an
   const inspector = agents.getByRole('complementary', { name: 'Inspector' })
   await expect(inspector.locator('.agx-identity .n')).toHaveText('in 2 slots')
   // The settings live on the slots the role staffs, never on the role.
-  await expect(inspector.locator('.agx-role-slot > span:first-child')).toHaveText(['Build', 'Ship'])
-  await expect(inspector.locator('.agx-role-slot-runs')).toHaveText(['Codex · default model · medium', 'Codex · default model · medium'])
+  await expect(inspector.locator('.agx-role-use > span:first-child')).toHaveText(['Alpha scratch › Work › Work', 'Delivery › Build › Build', 'Delivery › Ship › Ship'])
+  await expect(inspector.locator('.agx-role-slot-runs')).toHaveText(['', 'Codex · default model · medium', 'Codex · default model · medium'])
   await expect(inspector.getByText(/harness variants|\bRuns\b|effort medium|starts as/i)).toHaveCount(0)
   await expect(inspector.getByRole('textbox', { name: /model/i })).toHaveCount(0)
   await expect(inspector.getByRole('combobox', { name: /effort/i })).toHaveCount(0)

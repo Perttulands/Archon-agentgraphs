@@ -923,6 +923,39 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/AgentPatch'
+    delete:
+      responses:
+        '200':
+          description: The card is removed; data.deleted names the role and data.builtinRemains is true when the
+            card overrode a built-in role, which comes back
+        '404':
+          description: No such role
+        '409':
+          description: ROLE_IN_USE while any slot, in any mission, names the role (the message names each slot);
+            BUILTIN_ROLE for a built-in role, which has no card to delete; CONFLICT for a stale ETag
+        '428':
+          description: Missing If-Match
+      parameters:
+      - in: header
+        name: If-Match
+        required: true
+        schema:
+          type: string
+        description: Current ETag of the role's card
+  /api/agents/{agentId}/usage:
+    parameters:
+    - in: path
+      name: agentId
+      required: true
+      schema:
+        type: string
+    get:
+      responses:
+        '200':
+          description: data.usage lists every slot, in every mission, that names the role, each as {missionId,
+            missionSlug, missionTitle, formationId, formationTitle, slotId, slotLabel}
+        '404':
+          description: No such role
 components:
   parameters:
     RunID:
@@ -1873,6 +1906,8 @@ components:
           type: string
         retire:
           type: boolean
+          description: true retires the role, false brings it back. A slot that names a retired role stops
+            validation and admission with retired_persona.
         displayName:
           type: string
         kind:

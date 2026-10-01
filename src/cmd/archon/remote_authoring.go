@@ -64,6 +64,9 @@ var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
 	"agent inspect":           remoteAgentInspect,
 	"agent new":               remoteAgentNew,
 	"agent edit":              remoteAgentEdit,
+	"agent retire":            remoteAgentRetire(false),
+	"agent restore":           remoteAgentRetire(true),
+	"agent delete":            remoteAgentDelete,
 }
 
 // remoteWriteAttempts bounds retries after losing a write race.
@@ -133,6 +136,10 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrInvalidPortDirection
 	case "INVALID_AGENT_CARD":
 		return formations.ErrInvalidAgentCard
+	case "ROLE_IN_USE":
+		return formations.ErrRoleInUse
+	case "BUILTIN_ROLE":
+		return formations.ErrBuiltinRole
 	case formations.FindingInvalidCodeGateProfile:
 		return formations.ErrInvalidCodeGateProfile
 	case "INVALID_DEFINITION_SOURCE":
@@ -1063,6 +1070,96 @@ func writeRemoteAgent(stdout, stderr io.Writer, data json.RawMessage, jsonOut bo
 	}
 	fmt.Fprintf(stdout, "%s %s\n", verb, card.ID)
 	return 0
+}
+
+// remoteAgentUsage reads which slots use a role, through the daemon.
+func remoteAgentUsage(c *remoteClient, id string) ([]formations.RoleUse, error) {
+	data, _, err := c.call("GET", "/api/agents/"+url.PathEscape(id)+"/usage", nil, "")
+	if err != nil {
+		return nil, err
+	}
+	uses, err := decodeRemote[[]formations.RoleUse](data, "usage")
+	if err != nil {
+		return nil, err
+	}
+	return *uses, nil
+}
+
+func remoteAgentRetire(restore bool) func(*remoteClient, []string, io.Writer, io.Writer) int {
+	return func(c *remoteClient, args []string, stdout, stderr io.Writer) int {
+		verb := "retire"
+		if restore {
+			verb = "restore"
+		}
+		fs := remoteFlags("agent "+verb, stderr)
+		jsonOut := fs.Bool("json", false, "write JSON")
+		if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+			return 2
+		}
+		if fs.NArg() != 1 {
+			fmt.Fprintf(stderr, "usage: archon agent %s <id> [--json]\n", verb)
+			return 2
+		}
+		id := fs.Arg(0)
+		uses, err := remoteAgentUsage(c, id)
+		if err != nil {
+			return fail(stderr, err)
+		}
+		path := "/api/agents/" + url.PathEscape(id)
+		for attempt := 1; ; attempt++ {
+			_, etag, readErr := c.call("GET", path, nil, "")
+			if readErr != nil {
+				return fail(stderr, readErr)
+			}
+			_, _, err = c.call("PATCH", path, map[string]any{"retire": !restore}, etag)
+			if !isRemoteWriteRace(err) || attempt == remoteWriteAttempts {
+				break
+			}
+		}
+		if err != nil {
+			return fail(stderr, err)
+		}
+		return writeRoleRetired(stdout, id, !restore, uses, *jsonOut)
+	}
+}
+
+// The daemon refuses to delete a role a slot names, naming those slots.
+func remoteAgentDelete(c *remoteClient, args []string, stdout, stderr io.Writer) int {
+	fs := remoteFlags("agent delete", stderr)
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(stderr, "usage: archon agent delete <id> [--json]")
+		return 2
+	}
+	id := fs.Arg(0)
+	path := "/api/agents/" + url.PathEscape(id)
+	var data json.RawMessage
+	var err error
+	for attempt := 1; ; attempt++ {
+		// Usage is the daemon's to check, so a role in use is named before its card is read.
+		_, etag, readErr := c.call("GET", path, nil, "")
+		if readErr != nil {
+			return failJSON(stderr, readErr, *jsonOut, "agent", id)
+		}
+		data, _, err = c.call("DELETE", path, nil, etag)
+		if !isRemoteWriteRace(err) || attempt == remoteWriteAttempts {
+			break
+		}
+	}
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "agent", id)
+	}
+	deleted, err := decodeRemote[struct {
+		Deleted        string `json:"deleted"`
+		BuiltinRemains bool   `json:"builtinRemains"`
+	}](data, "")
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "agent", id)
+	}
+	return writeRoleDeleted(stdout, deleted.Deleted, deleted.BuiltinRemains, *jsonOut)
 }
 
 // agent list reports the liveness the daemon sees, not the local tmux server.

@@ -395,3 +395,88 @@ func containsString(values []string, want string) bool {
 	}
 	return false
 }
+
+// The Agents view shows a role's usage before Retire and Delete: usage names
+// every slot in every mission, a role a slot names is not deleted, and a
+// retired role can be brought back.
+func TestAgentsHandlerServesUsageAndDeletesOnlyUnusedRoles(t *testing.T) {
+	agentsDir := t.TempDir()
+	workspace := t.TempDir()
+	missions := formations.NewStore(workspace)
+	writeTextFile(t, missions.BoardPath("demo"), `schema = 1
+id = "brd_demo"
+slug = "demo"
+title = "Demo"
+rev = 1
+
+[[formation]]
+id = "fmn_work"
+type = "solo"
+title = "Work"
+
+[[formation.slot]]
+id = "slot_a"
+label = "Writer"
+agentId = "writer"
+harness = "claude-code"
+controller = true
+effort = "medium"
+`)
+	writeAgentFixture(t, agentsDir, "writer", minimalAgentFixture("writer", "builder", nil))
+	writeAgentFixture(t, agentsDir, "spare", minimalAgentFixture("spare", "builder", nil))
+	mux := http.NewServeMux()
+	NewAgentsHandler(agentsDir, nil).UseMissions(missions).RegisterRoutes(mux)
+	serve := func(method, path, body, etag string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+		if etag != "" {
+			req.Header.Set("If-Match", etag)
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec
+	}
+	etagOf := func(id string) string {
+		return serve(http.MethodGet, "/api/agents/"+id, "", "").Header().Get("ETag")
+	}
+
+	usage := serve(http.MethodGet, "/api/agents/writer/usage", "", "")
+	if usage.Code != http.StatusOK || !strings.Contains(usage.Body.String(), `"usage":[{"missionId":"brd_demo","missionSlug":"demo","missionTitle":"Demo","formationId":"fmn_work","formationTitle":"Work","slotId":"slot_a","slotLabel":"Writer"}]`) {
+		t.Fatalf("usage = %d %s", usage.Code, usage.Body.String())
+	}
+	if none := serve(http.MethodGet, "/api/agents/spare/usage", "", ""); none.Code != http.StatusOK || !strings.Contains(none.Body.String(), `"usage":[]`) {
+		t.Fatalf("unused usage = %d %s", none.Code, none.Body.String())
+	}
+	if missing := serve(http.MethodGet, "/api/agents/ghost/usage", "", ""); missing.Code != http.StatusNotFound {
+		t.Fatalf("missing usage = %d %s", missing.Code, missing.Body.String())
+	}
+
+	inUse := serve(http.MethodDelete, "/api/agents/writer", "", etagOf("writer"))
+	if inUse.Code != http.StatusConflict || !strings.Contains(inUse.Body.String(), `"code":"ROLE_IN_USE"`) || !strings.Contains(inUse.Body.String(), `role \"writer\" staffs 1 slot: Demo › Work › Writer; restaff them, or retire the role instead`) {
+		t.Fatalf("delete in use = %d %s", inUse.Code, inUse.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(agentsDir, "writer.toml")); err != nil {
+		t.Fatalf("a refused delete removed the card: %v", err)
+	}
+	if builtin := serve(http.MethodDelete, "/api/agents/judge", "", etagOf("judge")); builtin.Code != http.StatusConflict || !strings.Contains(builtin.Body.String(), `"code":"BUILTIN_ROLE"`) {
+		t.Fatalf("delete a built-in role = %d %s", builtin.Code, builtin.Body.String())
+	}
+	if stale := serve(http.MethodDelete, "/api/agents/spare", "", "stale"); stale.Code != http.StatusConflict || !strings.Contains(stale.Body.String(), `"code":"CONFLICT"`) {
+		t.Fatalf("stale delete = %d %s", stale.Code, stale.Body.String())
+	}
+	deleted := serve(http.MethodDelete, "/api/agents/spare", "", etagOf("spare"))
+	if deleted.Code != http.StatusOK || !strings.Contains(deleted.Body.String(), `"data":{"builtinRemains":false,"deleted":"spare"}`) {
+		t.Fatalf("delete = %d %s", deleted.Code, deleted.Body.String())
+	}
+
+	for _, retire := range []bool{true, false} {
+		rec := serve(http.MethodPatch, "/api/agents/writer", fmt.Sprintf(`{"retire":%v}`, retire), etagOf("writer"))
+		want := `"status":"active"`
+		if retire {
+			want = `"status":"retired"`
+		}
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("retire %v = %d %s", retire, rec.Code, rec.Body.String())
+		}
+	}
+}

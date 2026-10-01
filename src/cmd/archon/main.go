@@ -191,7 +191,11 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 		case "attach":
 			return runAgentAttach(store, args[2:], stdout, stderr, runner)
 		case "retire":
-			return runAgentRetire(store, args[2:], stdout, stderr)
+			return runAgentRetire(store, formations.NewStore(config.Workspace), args[2:], stdout, stderr, false)
+		case "restore":
+			return runAgentRetire(store, formations.NewStore(config.Workspace), args[2:], stdout, stderr, true)
+		case "delete":
+			return runAgentDelete(store, formations.NewStore(config.Workspace), args[2:], stdout, stderr)
 		default:
 			return offlineUnavailable(stderr, "agent", args[1])
 		}
@@ -600,29 +604,98 @@ func runAgentAttach(store *formations.PersonaStore, args []string, stdout, stder
 	return 0
 }
 
-func runAgentRetire(store *formations.PersonaStore, args []string, stdout, stderr io.Writer) int {
-	fs := commandFlags("agent retire", stderr)
-	force := fs.Bool("force", false, "retire even if future reference scans warn")
-	if err := fs.Parse(reorderFlags(args, map[string]bool{"force": true})); err != nil {
+// runAgentRetire retires a role, or with restore brings it back, and names
+// the slots that use it: a slot staffed with a retired role does not run.
+func runAgentRetire(store *formations.PersonaStore, missions *formations.Store, args []string, stdout, stderr io.Writer, restore bool) int {
+	verb := "retire"
+	if restore {
+		verb = "restore"
+	}
+	fs := commandFlags("agent "+verb, stderr)
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, commandUsage("agent retire"))
+		fmt.Fprintln(stderr, commandUsage("agent "+verb))
 		return 2
-	}
-	if !*force {
-		fmt.Fprintln(stderr, "warning: S1 cannot scan future formation references yet; use --force to retire")
-		return 1
 	}
 	before, err := store.ReadPersona(fs.Arg(0))
 	if err != nil {
 		return fail(stderr, err)
 	}
-	card, err := store.EditPersona(fs.Arg(0), formations.EditPersonaRequest{Retire: true, ExpectedETag: before.ETag})
+	uses, err := missions.RoleUsage(before.ID)
 	if err != nil {
 		return fail(stderr, err)
 	}
-	fmt.Fprintf(stdout, "retired %s\n", card.ID)
+	retired := !restore
+	card, err := store.EditPersona(before.ID, formations.EditPersonaRequest{SetRetired: &retired, ExpectedETag: before.ETag})
+	if err != nil {
+		return fail(stderr, err)
+	}
+	return writeRoleRetired(stdout, card.ID, retired, uses, *jsonOut)
+}
+
+// writeRoleRetired says what retiring or restoring a role did, offline and
+// remote.
+func writeRoleRetired(stdout io.Writer, id string, retired bool, uses []formations.RoleUse, jsonOut bool) int {
+	status := "active"
+	if retired {
+		status = "retired"
+	}
+	if jsonOut {
+		return writeJSON(stdout, map[string]any{"id": id, "status": status, "usage": uses})
+	}
+	if !retired {
+		fmt.Fprintf(stdout, "restored %s\n", id)
+		return 0
+	}
+	fmt.Fprintf(stdout, "retired %s\n", id)
+	if len(uses) > 0 {
+		fmt.Fprintf(stdout, "these slots do not run until they are restaffed: %s\n", formations.RoleUsageWords(uses))
+	}
+	return 0
+}
+
+// runAgentDelete deletes a role's card once no slot names it.
+func runAgentDelete(store *formations.PersonaStore, missions *formations.Store, args []string, stdout, stderr io.Writer) int {
+	fs := commandFlags("agent delete", stderr)
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(stderr, commandUsage("agent delete"))
+		return 2
+	}
+	id := fs.Arg(0)
+	uses, err := missions.RoleUsage(id)
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "agent", id)
+	}
+	if len(uses) > 0 {
+		return failJSON(stderr, formations.RoleInUseError(id, uses), *jsonOut, "agent", id)
+	}
+	card, err := store.ReadPersona(id)
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "agent", id)
+	}
+	builtin, err := store.DeletePersona(id, card.ETag)
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "agent", id)
+	}
+	return writeRoleDeleted(stdout, id, builtin, *jsonOut)
+}
+
+func writeRoleDeleted(stdout io.Writer, id string, builtinRemains, jsonOut bool) int {
+	if jsonOut {
+		return writeJSON(stdout, map[string]any{"deleted": id, "builtinRemains": builtinRemains})
+	}
+	if builtinRemains {
+		fmt.Fprintf(stdout, "deleted the card for %s; the built-in role %s remains\n", id, id)
+		return 0
+	}
+	fmt.Fprintf(stdout, "deleted %s\n", id)
 	return 0
 }
 
@@ -2730,6 +2803,10 @@ func archonErrorCode(err error) string {
 		return "invalid_port_direction"
 	case errors.Is(err, formations.ErrInvalidAgentCard):
 		return "invalid_agent_card"
+	case errors.Is(err, formations.ErrRoleInUse):
+		return "role_in_use"
+	case errors.Is(err, formations.ErrBuiltinRole):
+		return "builtin_role"
 	case errors.Is(err, formations.ErrInvalidSlug):
 		return "invalid_selector"
 	case errors.Is(err, formations.ErrPreconditionRequired):

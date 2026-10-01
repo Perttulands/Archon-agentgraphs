@@ -2,12 +2,16 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type Mous
 import type { ReactNode } from 'react'
 import {
   ApiRequestError,
+  deleteRole,
   fetchAgentRoster,
   fetchApi,
   fetchBoardDocument,
   fetchBoardLayout,
   fetchBoardSummaries,
+  fetchRoleUsage,
   patchBoardDocument,
+  setRoleRetired,
+  type RoleUse,
 } from './formationsApi'
 import { judgeChain } from '../flow/flowModel'
 import { chooseCurrentBoard, openableSlugs, rememberCurrentBoard } from './currentBoard'
@@ -79,7 +83,12 @@ interface PersonaCard {
   notes?: PersonaNote[]
   etag?: string
   toml?: string
+  preset?: boolean
+  customized?: boolean
 }
+
+/** Which slots, in every mission, use a role; read when the role is inspected. */
+type RoleUsage = { uses?: RoleUse[]; error?: string }
 
 type CachedPersona = {
   card?: PersonaCard
@@ -245,6 +254,7 @@ export default function AgentsView() {
   const [layout, setLayout] = useState<LayoutDocument | null>(null)
   const [selectedMissionId, setSelectedMissionId] = useState('')
   const [details, setDetails] = useState<Record<string, CachedPersona>>({})
+  const [usage, setUsage] = useState<Record<string, RoleUsage>>({})
   const [selection, setSelection] = useState<Selection | null>(null)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -457,6 +467,57 @@ export default function AgentsView() {
       setError(err instanceof Error ? err.message : 'Agent inspect request failed')
     }
   }, [details, loadAgentDetail])
+
+  const loadUsage = useCallback(async (agentId: string) => {
+    try {
+      const uses = await fetchRoleUsage(agentId)
+      setUsage(current => ({ ...current, [agentId]: { uses } }))
+    } catch (err) {
+      setUsage(current => ({ ...current, [agentId]: { error: err instanceof Error ? err.message : 'Could not read which slots use this role' } }))
+    }
+  }, [])
+
+  // A role's usage follows the inspected role and every edit to the mission.
+  const inspectedRole = selection?.kind === 'agent' ? selection.agentId : ''
+  useEffect(() => {
+    if (inspectedRole) void loadUsage(inspectedRole)
+  }, [inspectedRole, board?.rev, loadUsage])
+
+  const retireRole = useCallback(async (agentId: string, retired: boolean) => {
+    try {
+      const cached = await loadAgentDetail(agentId, true)
+      const card = await setRoleRetired(agentId, cached.etag, retired)
+      setDetails(current => ({ ...current, [agentId]: { card, etag: card.etag || '' } }))
+      setError('')
+      await loadAgents()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Role update request failed')
+    }
+  }, [loadAgentDetail, loadAgents])
+
+  const removeRole = useCallback(async (agentId: string) => {
+    try {
+      const cached = await loadAgentDetail(agentId, true)
+      const result = await deleteRole(agentId, cached.etag)
+      setDetails(current => {
+        const next = { ...current }
+        delete next[agentId]
+        return next
+      })
+      setError('')
+      await loadAgents()
+      // Deleting a card that overrode a built-in role brings the built-in back.
+      if (result.builtinRemains) await loadAgentDetail(agentId, true)
+      else setSelection(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Role delete request failed')
+    }
+  }, [loadAgentDetail, loadAgents])
+
+  const showUse = useCallback((use: RoleUse) => {
+    setSelectedSlug(use.missionSlug)
+    setSelection({ kind: 'slot', formationId: use.formationId, slotId: use.slotId })
+  }, [])
 
   const inspectSlot = useCallback((formation: FormationNode, slot: FormationSlot) => {
     setSelection({ kind: 'slot', formationId: formation.id, slotId: slot.id })
@@ -731,6 +792,8 @@ export default function AgentsView() {
               selection={selection}
               agents={agents}
               details={details}
+              usage={usage}
+              board={board}
               assignmentsByAgent={assignmentsByAgent}
               selectedSlot={selectedSlot}
               noteDraft={noteDraft}
@@ -740,6 +803,9 @@ export default function AgentsView() {
               onEmpty={emptySlot}
               onCreateFromUnbound={createFromUnbound}
               onEditPersona={(agent, trigger) => setEditingPersona({ agent, trigger })}
+              onRetire={retireRole}
+              onDelete={removeRole}
+              onShowUse={showUse}
               onClose={() => setSelection(null)}
             />
           </aside>
@@ -1038,6 +1104,8 @@ function Inspector({
   selection,
   agents,
   details,
+  usage,
+  board,
   assignmentsByAgent,
   selectedSlot,
   noteDraft,
@@ -1047,11 +1115,16 @@ function Inspector({
   onEmpty,
   onCreateFromUnbound,
   onEditPersona,
+  onRetire,
+  onDelete,
+  onShowUse,
   onClose,
 }: {
   selection: Selection
   agents: RosterAgent[]
   details: Record<string, CachedPersona>
+  usage: Record<string, RoleUsage>
+  board: BoardDocument | null
   assignmentsByAgent: Map<string, Array<{ formation: FormationNode; slot: FormationSlot }>>
   selectedSlot: { formation: FormationNode; slot: FormationSlot } | null
   noteDraft: string
@@ -1061,6 +1134,9 @@ function Inspector({
   onEmpty: (formation: FormationNode, slot: FormationSlot) => void
   onCreateFromUnbound: (agent: RosterAgent) => void
   onEditPersona: (agent: RosterAgent, trigger: HTMLElement) => void
+  onRetire: (agentId: string, retired: boolean) => void
+  onDelete: (agentId: string) => void
+  onShowUse: (use: RoleUse) => void
   onClose: () => void
 }) {
   if (selection.kind === 'unbound') {
@@ -1117,23 +1193,16 @@ function Inspector({
           ]} />
           <TagList tags={card?.tags || agent?.tags || []} />
         </section>
-        <section className="note-section">
-          <h3>Slots on this mission</h3>
-          {assignments.length === 0 && <p className="note-empty">No slots on this mission.</p>}
-          {/* A role is role text; each slot it staffs says what that seat runs. */}
-          <div className="tool-detail-list">
-            {assignments.map(({ formation, slot }) => {
-              const staffing = staffingOf(slot)
-              const label = `${slot.label}${slot.controller && slot.label.toLowerCase() !== 'controller' && formation.type !== 'solo' ? ' · controller' : ''}`
-              return (
-                <div className="tool-detail-row agx-role-slot" key={`${formation.id}:${slot.id}`}>
-                  <span>{formation.title}{slot.label !== formation.title ? <> · <strong>{label}</strong></> : null}</span>
-                  <span className="agx-role-slot-runs">{staffing ? captionText(staffing) : ''}</span>
-                </div>
-              )
-            })}
-          </div>
-        </section>
+        <RoleUsageSection
+          key={selection.agentId}
+          name={card?.displayName || agent?.displayName || selection.agentId}
+          card={card}
+          usage={usage[selection.agentId]}
+          board={board}
+          onRetire={retired => onRetire(selection.agentId, retired)}
+          onDelete={() => onDelete(selection.agentId)}
+          onShowUse={onShowUse}
+        />
         <form
           className="note-section"
           onSubmit={event => {
@@ -1168,6 +1237,81 @@ function Inspector({
     <InspectorPanel title="Slot" meta="no longer in this mission" onClose={onClose}>
       <p className="note-empty">This slot was removed from the mission.</p>
     </InspectorPanel>
+  )
+}
+
+/**
+ * Every slot, in every mission, that uses the role, then Retire and Delete,
+ * each of which says what it does to those slots before it acts (archon-o7p.12.3).
+ */
+function RoleUsageSection({ name, card, usage, board, onRetire, onDelete, onShowUse }: {
+  name: string
+  card?: PersonaCard
+  usage?: RoleUsage
+  board: BoardDocument | null
+  onRetire: (retired: boolean) => void
+  onDelete: () => void
+  onShowUse: (use: RoleUse) => void
+}) {
+  const [confirm, setConfirm] = useState<'retire' | 'delete' | null>(null)
+  const uses = usage?.uses
+  const retired = card?.status === 'retired'
+  // A built-in role has no card to delete; a card that changes one can go.
+  const deletable = Boolean(card) && (!card?.preset || card?.customized)
+  const slots = (count: number) => `${count} ${count === 1 ? 'slot' : 'slots'}`
+  const staffingHere = (use: RoleUse) => {
+    if (!board || board.id !== use.missionId) return ''
+    const slot = board.formations.find(formation => formation.id === use.formationId)?.slots.find(next => next.id === use.slotId)
+    const staffing = slot ? staffingOf(slot) : null
+    return staffing ? captionText(staffing) : ''
+  }
+  return (
+    <section className="note-section" aria-label="Used by">
+      <h3>Used by</h3>
+      {usage?.error ? <p className="note-empty" role="alert">{usage.error}</p> : null}
+      {!usage ? <p className="note-empty">Reading which slots use this role…</p> : null}
+      {uses && uses.length === 0 ? <p className="note-empty">No slot uses this role.</p> : null}
+      {uses && uses.length > 0 ? (
+        <div className="tool-detail-list">
+          {uses.map(use => (
+            <button type="button" className="tool-detail-row agx-role-slot agx-role-use" key={`${use.missionId}:${use.formationId}:${use.slotId}`} onClick={() => onShowUse(use)}>
+              <span>{use.missionTitle} › {use.formationTitle} › <strong>{use.slotLabel || use.slotId}</strong></span>
+              <span className="agx-role-slot-runs">{staffingHere(use)}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {confirm === 'retire' ? (
+        <div className="agx-role-confirm" role="group" aria-label={`Retire ${name}`}>
+          <p>{uses?.length
+            ? `Retire ${name}? ${uses.length === 1 ? 'The slot above stops running until it has' : `The ${slots(uses.length)} above stop running until each has`} another role or none.`
+            : `Retire ${name}? It is no longer offered for slots; you can bring it back.`}</p>
+          <div className="pop-actions">
+            <button className="retire" type="button" onClick={() => { setConfirm(null); onRetire(true) }}>Retire {name}</button>
+            <button className="cancel" type="button" onClick={() => setConfirm(null)}>Cancel</button>
+          </div>
+        </div>
+      ) : confirm === 'delete' ? (
+        <div className="agx-role-confirm" role="group" aria-label={`Delete ${name}`}>
+          <p>{uses?.length
+            ? `${name} staffs the ${slots(uses.length)} above. Give ${uses.length === 1 ? 'it' : 'each'} another role or none before deleting ${name}, or retire ${name} instead.`
+            : card?.customized
+              ? `Delete your changes to ${name}? The built-in ${name} comes back.`
+              : `Delete ${name}? Its card is removed for good.`}</p>
+          <div className="pop-actions">
+            {uses?.length ? null : <button className="retire" type="button" onClick={() => { setConfirm(null); onDelete() }}>Delete {name}</button>}
+            <button className="cancel" type="button" onClick={() => setConfirm(null)}>{uses?.length ? 'Close' : 'Cancel'}</button>
+          </div>
+        </div>
+      ) : (
+        <div className="pop-actions">
+          {retired
+            ? <button className="cancel" type="button" disabled={!card} onClick={() => onRetire(false)}>Bring back</button>
+            : <button className="cancel" type="button" disabled={!card || !uses} onClick={() => setConfirm('retire')}>Retire</button>}
+          {deletable ? <button className="cancel" type="button" disabled={!uses} onClick={() => setConfirm('delete')}>{card?.customized ? 'Delete changes' : 'Delete'}</button> : null}
+        </div>
+      )}
+    </section>
   )
 }
 
