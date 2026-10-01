@@ -519,7 +519,7 @@ paths:
       summary: List the run's artifact directory
       responses:
         '200':
-          description: Enveloped data.artifacts lists name (relative), size and modifiedAt, sorted by name; data.truncated is true past 500 entries or 8 levels. Symlinks, special files and hard-linked files are omitted.
+          description: Enveloped data.artifacts lists name (relative), size and modifiedAt, sorted by name; data.truncated is true past 500 entries or 8 levels. Symlinks and hard links are followed; special files are omitted.
         '404':
           description: No such run
   /api/runs/{runId}/evidence/artifacts/{name}:

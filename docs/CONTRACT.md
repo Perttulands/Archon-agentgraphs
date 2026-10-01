@@ -738,7 +738,9 @@ before sharing them. Those same seats then converse concurrently through an
 append-only journal scoped to the run, formation and attempt. There is no fixed
 turn order, round count or facilitator. The seats use the supplied local
 `archon --workspace <state> peer` commands to read, post, wait, propose and
-acknowledge; direct file writes are outside the protocol.
+acknowledge; direct file writes are outside the protocol. The commands lock
+the attempt's directory while they read or write, so the journal is the only
+file there and the run's produced artifacts list no coordination file.
 
 Any peer can propose the full output. Every peer, including its author, must
 acknowledge that proposal; a contested proposal needs revision and fresh

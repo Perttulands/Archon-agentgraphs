@@ -205,6 +205,19 @@ func TestPeerConversationLocksAcrossProcesses(t *testing.T) {
 	if err != nil || state.LastSeq != 35 {
 		t.Fatalf("cross-process journal: %+v %v", state, err)
 	}
+	// The lock leaves nothing beside the journal, so a run's produced
+	// artifacts show the conversation and no coordination file (archon-dbk).
+	artifacts, _, err := store.ListRunArtifacts(id.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, artifact := range artifacts {
+		names = append(names, artifact.Name)
+	}
+	if strings.Join(names, ",") != peerArtifactPath(id) {
+		t.Fatalf("produced artifacts = %q, want only the conversation %q", names, peerArtifactPath(id))
+	}
 }
 
 func TestPeerConversationDeadlineCancellationAndRestart(t *testing.T) {
