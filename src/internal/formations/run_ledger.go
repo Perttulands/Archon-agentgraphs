@@ -74,11 +74,10 @@ type RunResumeRequest struct {
 }
 
 type RunLimits struct {
-	FormationTimeoutSeconds int  `json:"formationTimeoutSeconds,omitempty"`
-	MaxDispatch             int  `json:"maxDispatch"`
-	MaxAttempts             int  `json:"maxAttempts,omitempty"`
-	WallClockSeconds        int  `json:"wallClockSeconds"`
-	Redact                  bool `json:"redact"`
+	MaxDispatch      int  `json:"maxDispatch"`
+	MaxAttempts      int  `json:"maxAttempts,omitempty"`
+	WallClockSeconds int  `json:"wallClockSeconds"`
+	Redact           bool `json:"redact"`
 }
 
 // ValidateRunLimits refuses a negative limit. Limits are optional (form-o7p.7):

@@ -41,8 +41,9 @@ type PeerConversationID struct {
 type peerConversationHeader struct {
 	Schema int `json:"schema"`
 	PeerConversationID
-	StartedAt    time.Time `json:"startedAt"`
-	Deadline     time.Time `json:"deadline"`
+	StartedAt time.Time `json:"startedAt"`
+	// Deadline is the step's deadline; zero when the step has no duration.
+	Deadline     time.Time `json:"deadline,omitzero"`
 	Participants []string  `json:"participants"`
 }
 
@@ -67,7 +68,7 @@ type PeerConversation struct {
 	PeerConversationID
 	ArtifactPath string        `json:"artifactPath"`
 	StartedAt    time.Time     `json:"startedAt"`
-	Deadline     time.Time     `json:"deadline"`
+	Deadline     time.Time     `json:"deadline,omitzero"`
 	Participants []string      `json:"participants"`
 	Entries      []PeerEntry   `json:"entries"`
 	LastSeq      int           `json:"lastSeq"`
@@ -86,7 +87,9 @@ type PeerAppendRequest struct {
 
 // CreatePeerConversation publishes all independent openings together. The
 // caller collects them without sharing other participants' opening text.
-// Existing attempt journals are never replaced or given a fresh deadline.
+// Existing attempt journals are never replaced or given a fresh deadline. A
+// zero deadline means the step has no duration, so the conversation never
+// expires.
 func (s *Store) CreatePeerConversation(req FormationExecution, participants []string, openings map[string]string, deadline time.Time) (string, error) {
 	id := PeerConversationID{RunID: req.RunID, NodeID: req.NodeID, Attempt: req.Attempt}
 	now := s.now().UTC()
@@ -94,7 +97,7 @@ func (s *Store) CreatePeerConversation(req FormationExecution, participants []st
 	if err := validatePeerHeader(header, id); err != nil {
 		return "", err
 	}
-	if !now.Before(deadline) {
+	if peerDeadlinePassed(deadline, now) {
 		return "", ErrPeerDeadlineExceeded
 	}
 	if len(openings) != len(participants) {
@@ -187,9 +190,12 @@ func (s *Store) WaitPeerConversation(ctx context.Context, id PeerConversationID,
 	if err != nil {
 		return nil, err
 	}
-	remaining := state.Deadline.Sub(s.now())
-	timer := time.NewTimer(max(remaining, 0))
-	defer timer.Stop()
+	var expiry <-chan time.Time
+	if !state.Deadline.IsZero() {
+		timer := time.NewTimer(max(state.Deadline.Sub(s.now()), 0))
+		defer timer.Stop()
+		expiry = timer.C
+	}
 	for {
 		if state.Status == "expired" {
 			return state, ErrPeerDeadlineExceeded
@@ -200,7 +206,7 @@ func (s *Store) WaitPeerConversation(ctx context.Context, id PeerConversationID,
 		select {
 		case <-ctx.Done():
 			return state, ctx.Err()
-		case <-timer.C:
+		case <-expiry:
 			state, err = s.readPeerConversationAt(directory, id)
 			if err != nil {
 				return nil, err
@@ -307,7 +313,7 @@ func readPeerConversationUnlocked(directory *runArtifactDirectory, id PeerConver
 	if len(state.Entries) < len(header.Participants) {
 		return nil, fmt.Errorf("%w: incomplete independent openings", ErrPeerConversationInvalid)
 	}
-	if state.Status == "open" && !now.Before(state.Deadline) {
+	if state.Status == "open" && peerDeadlinePassed(state.Deadline, now) {
 		state.Status = "expired"
 	}
 	return state, nil
@@ -320,7 +326,7 @@ func applyPeerEntry(state *PeerConversation, entry PeerEntry) error {
 	if state.Status == "agreed" || state.Status == "closed" {
 		return ErrPeerConversationClosed
 	}
-	if entry.Kind != "closed" && !entry.At.Before(state.Deadline) {
+	if entry.Kind != "closed" && peerDeadlinePassed(state.Deadline, entry.At) {
 		return ErrPeerDeadlineExceeded
 	}
 	if entry.Kind != "closed" && !slices.Contains(state.Participants, entry.SlotID) {
@@ -371,8 +377,13 @@ func applyPeerEntry(state *PeerConversation, entry PeerEntry) error {
 	return nil
 }
 
+// peerDeadlinePassed reports whether a set deadline is at or before at.
+func peerDeadlinePassed(deadline, at time.Time) bool {
+	return !deadline.IsZero() && !at.Before(deadline)
+}
+
 func validatePeerHeader(header peerConversationHeader, expected PeerConversationID) error {
-	if header.Schema != 1 || header.PeerConversationID != expected || !validRunID(expected.RunID) || !peerPathID(expected.NodeID) || expected.Attempt < 1 || header.StartedAt.IsZero() || !header.StartedAt.Before(header.Deadline) || len(header.Participants) < 2 {
+	if header.Schema != 1 || header.PeerConversationID != expected || !validRunID(expected.RunID) || !peerPathID(expected.NodeID) || expected.Attempt < 1 || header.StartedAt.IsZero() || peerDeadlinePassed(header.Deadline, header.StartedAt) || len(header.Participants) < 2 {
 		return fmt.Errorf("%w: identity, participants or deadline", ErrPeerConversationInvalid)
 	}
 	seen := map[string]bool{}

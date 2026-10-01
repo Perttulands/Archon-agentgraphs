@@ -289,19 +289,17 @@ optional replay as recorded: their limits stay in `run_started`. The engine
 then gave a run without `maxAttempts` one attempt per node, so an attempt
 block in such a ledger names `max` 1.
 
-A formation may author `[formation.execution]` with a positive
-`timeoutSeconds`. That allocation covers the whole attempt: seat startup,
-preparation, collaboration and finalization. With no override, admission captures
-the executor default, configured by `--seat-timeout` for tmux, in
-`limits.formationTimeoutSeconds`. Later mission edits and changes to the daemon's
-default affect later runs. Each `node_started` records the selected duration and
-absolute `executionDeadline`; restarting does not give the same attempt more
-time. Explicit redispatch starts a new counted attempt. The earlier of that
-deadline and the run's remaining wall clock governs execution. Formation expiry
-blocks with `formation_timeout_exceeded`, retaining partial evidence. A downstream
-human gate waits after the formation finishes and spends no formation time.
-Older admissions without a captured default retain the legacy executor-default
-policy; that default was not frozen in their run record.
+A step has no time limit unless its formation authors `[formation.execution]`
+with a positive `timeoutSeconds`; the daemon imposes no default. That
+allocation covers the whole attempt: seat startup, preparation, collaboration
+and finalization. The run's mission snapshot freezes it, so later mission edits
+affect later runs. Each `node_started` of a step with a duration records the
+duration and absolute `executionDeadline`; restarting does not give the same
+attempt more time. Explicit redispatch starts a new counted attempt. The earlier
+of that deadline and the run's remaining wall clock governs execution. Formation
+expiry blocks with `formation_timeout_exceeded`, retaining partial evidence. A
+downstream human gate waits after the formation finishes and spends no
+formation time.
 
 The projection reports `running`, `waiting_human`, `blocked`, `succeeded`,
 `failed` or `canceled`. Always check `final` and `resumeAllowed`; a blocked run
@@ -417,7 +415,7 @@ Orchestrated controllers also get their bound workers and may direct only those
 workers. The operator may type into any live seat at any time, through the seat
 terminal or in CHROTE, and talk to the agent normally, whether it is working a
 dispatch or idle. The runtime pastes a brief only while the agent is idle and its
-input line is empty, waiting within the seat timeout, so a brief never lands
+input line is empty, waiting within the step's duration if it has one, so a brief never lands
 mid-turn or on the operator's unsent text. It submits the brief once its pointer
 shows in the input line, however the harness wraps it. Archon agents must not
 type into seats or manage their sessions.
@@ -443,7 +441,7 @@ messages and interrupts, neither complete nor fail the dispatch, and the
 completing turn may come after them. A turn that finishes without the sentinel
 fails the dispatch at once only when nobody else took a turn during it, and for
 Claude only when the agent left no background work that resumes the
-conversation; otherwise the dispatch waits within the seat timeout. The dispatch
+conversation; otherwise the dispatch waits, within the step's duration if it has one. The dispatch
 still fails loudly when the seat ends, when the model or effort changes, or when
 the harness moves to another conversation (`/clear`, `/new` or `/resume`).
 The `lab` executor creates no tmux sessions and echoes deterministic inputs.
@@ -631,8 +629,9 @@ acknowledgements. A result may accurately preserve unresolved tensions and ask
 the operator to decide. The acknowledged result still must satisfy the normal
 declared output ports. Acknowledgement of that text does not decide a human gate.
 
-The authored formation duration covers startup, openings, discussion and
-finalization. Participants receive the deadline and must leave time to finish.
+A peer formation with an authored duration spends it on startup, openings,
+discussion and finalization. Participants receive the deadline and must leave
+time to finish; without a duration the conversation runs until it agrees.
 Expiry without a completed valid result blocks visibly and retains the journal
 and completed openings. A restart does not replenish the allocation; unresolved
 multi-seat execution requires inspection. See
@@ -770,7 +769,8 @@ For real seats select `--executor tmux` and supply `--socket`, `--tmux-bin`,
 `--codex-transcripts`, `--claude-transcripts` from host configuration.
 `--cwd` is an optional daemon default for standalone formations. Missions use
 their explicit cwd or allocate an automatic workspace as described above.
-`--mission-label` is optional and `--seat-timeout` defaults to `30m`.
+`--mission-label` is optional. The daemon sets no step time limit (see the
+Execution duration field below).
 Repeat `--listen` for each trusted interface. `--agents-dir` overrides cards;
 installed daemons find `../share/archon/ui` beside their `bin` directory.
 Set `--ui-dir ''` to disable the cockpit, or an absolute path to select another
@@ -860,7 +860,7 @@ authoring, such as inline verification or a legacy script gate, asks first,
 because it cannot be undone.
 The formation window's Execution duration field sets the total seconds for one
 formation invocation, including preparation and finalization. Leave it blank
-to inherit the run's execution default. The authored field is
+for no time limit. The authored field is
 `execution.timeoutSeconds`, set with `setExecution` or `archon formation
 set-execution <board> <formation> --timeout-seconds <n>`; zero clears it. The admitted
 run freezes the effective duration, so later edits apply to new runs. Saving or

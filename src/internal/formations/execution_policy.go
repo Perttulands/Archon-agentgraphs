@@ -10,8 +10,8 @@ import (
 var ErrInvalidExecutionPolicy = errors.New("invalid formation execution policy")
 
 // FormationExecutionPolicy is authored workload policy, independent of the
-// harness and of the run's total budget. A missing policy inherits the default
-// captured when the run is admitted.
+// harness and of the run's total budget. A step without a policy has no time
+// limit.
 type FormationExecutionPolicy struct {
 	TimeoutSeconds int `json:"timeoutSeconds"`
 }
@@ -30,7 +30,7 @@ func validExecutionSeconds(seconds int) bool {
 // table, when present, always contains a positive duration.
 func (s *Store) SetFormationExecutionPolicy(slug string, req FormationExecutionPolicyRequest, opts WriteOptions) (*BoardDocument, error) {
 	if req.TimeoutSeconds != 0 && !validExecutionSeconds(req.TimeoutSeconds) {
-		return nil, fmt.Errorf("%w: timeoutSeconds must be a positive whole number of seconds, or zero to inherit", ErrInvalidExecutionPolicy)
+		return nil, fmt.Errorf("%w: timeoutSeconds must be a positive whole number of seconds, or zero for no time limit", ErrInvalidExecutionPolicy)
 	}
 	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, _ *BoardDocument) ([]byte, error) {
 		lines := splitLines(raw)
@@ -65,7 +65,7 @@ func executionPolicyFindings(board *BoardDocument) []BoardFinding {
 		}
 	}
 	// Compatibility parsing keeps older drafts readable. It must not turn a
-	// mistyped new policy into an inherited default or coerce a quoted number.
+	// mistyped new policy into no time limit or coerce a quoted number.
 	if source, err := decodeTOMLMap([]byte(board.TOML)); err == nil {
 		if tables, err := tomlTableArray(source, "formation"); err == nil {
 			for _, table := range tables {
@@ -90,7 +90,7 @@ func executionPolicyFindings(board *BoardDocument) []BoardFinding {
 	for _, node := range board.Formations {
 		if invalid[node.ID] {
 			findings = append(findings, BoardFinding{Code: "invalid_execution_policy", NodeID: node.ID,
-				Message: "formation execution.timeoutSeconds must be a positive whole number of seconds; remove the policy to inherit the run default"})
+				Message: "formation execution.timeoutSeconds must be a positive whole number of seconds; remove the policy for no time limit"})
 		}
 	}
 	return findings

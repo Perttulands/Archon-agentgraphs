@@ -9,15 +9,16 @@ import (
 	"time"
 )
 
+// unlimited is what budgetRecordingExecutor records for a step with no deadline.
+const unlimited = time.Duration(-1)
+
 type budgetRecordingExecutor struct {
 	fakeRunExecutor
-	fallback int
-	clock    *time.Time
-	left     map[string]time.Duration
-	work     time.Duration
+	clock *time.Time
+	left  map[string]time.Duration
+	work  time.Duration
 }
 
-func (e *budgetRecordingExecutor) DefaultFormationTimeoutSeconds() int { return e.fallback }
 func (e *budgetRecordingExecutor) ExecuteFormationContext(ctx context.Context, req FormationExecution) (FormationExecutionResult, error) {
 	if err := ctx.Err(); err != nil {
 		return FormationExecutionResult{}, err
@@ -25,65 +26,85 @@ func (e *budgetRecordingExecutor) ExecuteFormationContext(ctx context.Context, r
 	if e.left == nil {
 		e.left = map[string]time.Duration{}
 	}
-	e.left[req.NodeID] = req.Deadline.Sub(*e.clock)
-	if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > e.left[req.NodeID] || time.Until(deadline) < e.left[req.NodeID]-time.Second {
-		return FormationExecutionResult{}, fmt.Errorf("context deadline does not follow admitted budget")
+	deadline, ok := ctx.Deadline()
+	if req.Deadline.IsZero() {
+		if ok {
+			return FormationExecutionResult{}, fmt.Errorf("a step without a duration got a context deadline")
+		}
+		e.left[req.NodeID] = unlimited
+	} else {
+		e.left[req.NodeID] = req.Deadline.Sub(*e.clock)
+		if !ok || time.Until(deadline) > e.left[req.NodeID] || time.Until(deadline) < e.left[req.NodeID]-time.Second {
+			return FormationExecutionResult{}, fmt.Errorf("context deadline does not follow admitted budget")
+		}
 	}
 	*e.clock = e.clock.Add(e.work)
 	return e.fakeRunExecutor.ExecuteFormation(req)
 }
 
-func TestExecutionBudgetFreezesOverridesAndInheritedDefault(t *testing.T) {
+// A step runs as long as it takes unless its mission authored a duration. The
+// clock moves 31 minutes per step, past the 30-minute default archond used to
+// impose, and the steps without a duration still succeed.
+func TestExecutionBudgetFreezesAuthoredDurationsAndLeavesOthersUnlimited(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	createS4Persona(t, personas, "scout")
 	writeFixture(t, store.BoardPath("session-search"), s4CascadeBoardFixture())
-	for id, seconds := range map[string]int{"fmn_frame": 37, "fmn_research": 83} {
-		if _, err := setTestExecutionPolicy(t, store, id, seconds); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := setTestExecutionPolicy(t, store, "fmn_frame", 37*60); err != nil {
+		t.Fatal(err)
 	}
 	clock := time.Date(2026, 9, 17, 9, 0, 0, 0, time.UTC)
 	store.Now = func() time.Time { return clock }
-	executor := &budgetRecordingExecutor{fallback: 127, clock: &clock, work: time.Second}
+	executor := &budgetRecordingExecutor{clock: &clock, work: 31 * time.Minute}
 	engine := NewRunEngine(store, personas, executor)
-	started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Personas: personas, Limits: engine.AdmissionLimits(RunLimits{MaxDispatch: 5})})
+	started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Personas: personas})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Both the board and the daemon configuration change after admission.
+	// The mission changes after admission; the run keeps its snapshot.
 	if _, err := setTestExecutionPolicy(t, store, "fmn_frame", 211); err != nil {
 		t.Fatal(err)
 	}
-	executor.fallback = 419
+	if _, err := setTestExecutionPolicy(t, store, "fmn_research", 83); err != nil {
+		t.Fatal(err)
+	}
 	status, err := NewRunEngine(store, personas, executor).ExecuteStartedMission(started.RunID)
 	if err != nil || status.Status != RunStatusSucceeded {
 		t.Fatalf("old run: %+v %v", status, err)
 	}
-	for id, seconds := range map[string]int{"fmn_frame": 37, "fmn_research": 83, "fmn_ship": 127} {
-		if executor.left[id] != time.Duration(seconds)*time.Second {
-			t.Fatalf("%s got %s", id, executor.left[id])
+	for id, want := range map[string]time.Duration{"fmn_frame": 37 * time.Minute, "fmn_research": unlimited, "fmn_ship": unlimited} {
+		if executor.left[id] != want {
+			t.Fatalf("%s got %s, want %s", id, executor.left[id], want)
 		}
 	}
 	events := mustEvents(t, store, started.RunID)
-	if got := runLimitsFromEvent(events[0]).FormationTimeoutSeconds; got != 127 {
-		t.Fatalf("frozen default = %d", got)
+	limits, _ := events[0].Data["limits"].(map[string]any)
+	if _, ok := limits["formationTimeoutSeconds"]; ok {
+		t.Fatalf("run_started froze a default step duration: %v", limits)
 	}
 	for _, event := range events {
 		if event.Type != RunEventNodeStarted || stringFromEventData(event, "nodeKind") != "formation" {
 			continue
 		}
+		recorded := stringFromEventData(event, "executionDeadline")
+		if executor.left[event.NodeID] == unlimited {
+			if recorded != "" || event.Data["executionTimeoutSeconds"] != nil {
+				t.Fatalf("a step without a duration recorded a deadline: %+v", event)
+			}
+			continue
+		}
 		start, _ := time.Parse(time.RFC3339Nano, event.Timestamp)
-		deadline, err := time.Parse(time.RFC3339Nano, stringFromEventData(event, "executionDeadline"))
+		deadline, err := time.Parse(time.RFC3339Nano, recorded)
 		if err != nil || deadline.Sub(start) != executor.left[event.NodeID] {
 			t.Fatalf("durable deadline = %+v %v", event, err)
 		}
 	}
-	status, err = engine.RunMission("session-search", RunStartRequest{MissionID: "mis_showcase", Limits: RunLimits{MaxDispatch: 5}})
+	executor.work = time.Second
+	status, err = engine.RunMission("session-search", RunStartRequest{MissionID: "mis_showcase"})
 	if err != nil || status.Status != RunStatusSucceeded {
 		t.Fatalf("fresh run: %+v %v", status, err)
 	}
-	if executor.left["fmn_frame"] != 211*time.Second || executor.left["fmn_ship"] != 419*time.Second {
-		t.Fatalf("fresh defaults = %v", executor.left)
+	if executor.left["fmn_frame"] != 211*time.Second || executor.left["fmn_research"] != 83*time.Second || executor.left["fmn_ship"] != unlimited {
+		t.Fatalf("fresh durations = %v", executor.left)
 	}
 }
 
@@ -93,13 +114,15 @@ func TestIsolatedAdmissionFreezesFormationBudget(t *testing.T) {
 	writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
 	clock := time.Date(2026, 9, 17, 9, 0, 0, 0, time.UTC)
 	store.Now = func() time.Time { return clock }
-	executor := &budgetRecordingExecutor{fallback: 73, clock: &clock}
+	executor := &budgetRecordingExecutor{clock: &clock}
 	engine := NewRunEngine(store, personas, executor)
+	if _, err := setTestExecutionPolicy(t, store, "fmn_research", 73); err != nil {
+		t.Fatal(err)
+	}
 	_, execute, err := engine.PrepareFormationRun("session-search", "fmn_research", FormationRunRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	executor.fallback = 2
 	if _, err := setTestExecutionPolicy(t, store, "fmn_research", 3); err != nil {
 		t.Fatal(err)
 	}
@@ -116,11 +139,14 @@ func TestFormationBudgetUsesOriginalStartAfterRestart(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	createS4Persona(t, personas, "scout")
 	writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
+	if _, err := setTestExecutionPolicy(t, store, "fmn_research", 37); err != nil {
+		t.Fatal(err)
+	}
 	clock := time.Date(2026, 9, 17, 9, 0, 0, 0, time.UTC)
 	store.Now = func() time.Time { return clock }
-	executor := &budgetRecordingExecutor{fallback: 37, clock: &clock}
+	executor := &budgetRecordingExecutor{clock: &clock}
 	engine := NewRunEngine(store, personas, executor)
-	limits := engine.AdmissionLimits(RunLimits{MaxDispatch: 5})
+	limits := RunLimits{MaxDispatch: 5}
 	started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Personas: personas, Limits: limits})
 	if err != nil {
 		t.Fatal(err)
@@ -129,12 +155,11 @@ func TestFormationBudgetUsesOriginalStartAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	formation := board.Formations[0]
+	formation, _ := findFormation(board.Formations, "fmn_research")
 	if err := engine.startFormationExecution(started.RunID, formation, limits, RunEvent{Type: RunEventNodeStarted, NodeID: formation.ID, Attempt: 1, Data: map[string]any{"nodeKind": "formation"}}); err != nil {
 		t.Fatal(err)
 	}
 	clock = clock.Add(15 * time.Second)
-	executor.fallback = 999
 	engine = NewRunEngine(store, personas, executor)
 	req := FormationExecution{RunID: started.RunID, NodeID: formation.ID, Formation: formation, Attempt: 1}
 	if _, err := engine.executeFormation(req, runLimitsFromEvent(mustEvents(t, store, started.RunID)[0])); err != nil {
@@ -150,17 +175,16 @@ func TestFormationBudgetUsesOriginalStartAfterRestart(t *testing.T) {
 	if len(executor.calls) != 1 {
 		t.Fatal("expired allocation executed again")
 	}
-	legacy := &fakeRunExecutor{}
-	engine = NewRunEngine(store, personas, legacy)
+	direct := &fakeRunExecutor{}
+	engine = NewRunEngine(store, personas, direct)
 	engine.SetExecutionContext(func(string) context.Context { return context.Background() })
 	if _, err := engine.executeFormation(req, limits); !errors.Is(err, ErrFormationTimeoutExceeded) {
-		t.Fatalf("expired legacy execution: %v", err)
+		t.Fatalf("expired direct execution: %v", err)
 	}
-	if len(legacy.calls) != 0 {
-		t.Fatal("expired allocation invoked a coordinator-owned legacy executor")
+	if len(direct.calls) != 0 {
+		t.Fatal("expired allocation invoked a coordinator-owned executor")
 	}
 }
-
 func TestFormationBudgetComposesWithRunDeadline(t *testing.T) {
 	start := time.Date(2026, 9, 17, 9, 0, 0, 0, time.UTC)
 	events := []RunEvent{{Type: RunEventStarted, Timestamp: start.Format(time.RFC3339Nano)}, {Type: RunEventNodeStarted, NodeID: "work", Attempt: 1, Timestamp: start.Add(10 * time.Second).Format(time.RFC3339Nano)}}
@@ -183,19 +207,27 @@ func TestDirectExecutorBudgetHonorsOverrideAndExistingDeadline(t *testing.T) {
 		override int
 		deadline time.Time
 		want     int
-	}{{0, time.Time{}, 43}, {89, time.Time{}, 89}, {89, now.Add(11 * time.Second), 11}} {
+	}{{0, time.Time{}, 0}, {89, time.Time{}, 89}, {89, now.Add(11 * time.Second), 11}} {
 		req := FormationExecution{Deadline: tc.deadline}
 		if tc.override > 0 {
 			req.Formation.Execution = &FormationExecutionPolicy{TimeoutSeconds: tc.override}
 		}
-		ctx, cancel, err := withFormationDeadline(context.Background(), &req, now, 43)
+		ctx, cancel, err := withFormationDeadline(context.Background(), &req, now)
 		if err != nil {
 			t.Fatal(err)
+		}
+		deadline, ok := ctx.Deadline()
+		if tc.want == 0 {
+			// No authored duration: the step has no deadline at all.
+			if !req.Deadline.IsZero() || ok {
+				t.Fatalf("a step without a duration got deadline %v", req.Deadline)
+			}
+			cancel()
+			continue
 		}
 		if req.Deadline.Sub(now) != time.Duration(tc.want)*time.Second {
 			t.Fatalf("deadline %v", req.Deadline)
 		}
-		deadline, ok := ctx.Deadline()
 		if !ok || time.Until(deadline) > time.Duration(tc.want)*time.Second {
 			t.Fatal("wrong context deadline")
 		}
@@ -253,7 +285,6 @@ func TestTmuxReceivesAuthoredBudgetWithoutDefaultCap(t *testing.T) {
 				t.Fatal(err)
 			}
 			cfg := tmuxTestConfig(t)
-			cfg.TimeoutSeconds = 1
 			client := &budgetTmuxClient{fakeTmuxHarnessClient: &fakeTmuxHarnessClient{pane: tmuxPaneState{CurrentPath: cfg.Cwd}}}
 			executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
 			status, err := NewRunEngine(store, personas, executor).RunFormation("session-search", "fmn_research", FormationRunRequest{Limits: RunLimits{WallClockSeconds: runSeconds}})

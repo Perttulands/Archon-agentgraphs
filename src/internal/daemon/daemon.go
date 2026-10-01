@@ -44,7 +44,6 @@ func Run(args []string) error {
 	codexTranscripts := flags.String("codex-transcripts", "", "Codex native sessions directory")
 	claudeTranscripts := flags.String("claude-transcripts", "", "Claude native projects directory")
 	mission := flags.String("mission-label", "", "optional prefix before the unique run session name")
-	timeout := flags.Duration("seat-timeout", 30*time.Minute, "default formation duration when no authored override is present")
 	resume := flags.String("resume-run", "", "explicitly resume this blocked run from a completed native turn")
 	recoveryTranscript := flags.String("completed-transcript", "", "absolute native transcript for the unresolved completed dispatch")
 	recoveryBrief := flags.String("completed-brief", "", "absolute original brief file for that dispatch")
@@ -122,7 +121,7 @@ func Run(args []string) error {
 		if *executor == "lab" {
 			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex", "claude-code"}, Cwd: *state, Roots: []string{*state}})
 		}
-		return formations.NewTmuxFormationExecutor(store, personas, formations.TmuxExecutorConfig{Socket: *socket, Cwd: *cwd, Roots: roots, StateDir: *state, CodexTranscriptRoot: *codexTranscripts, ClaudeTranscriptRoot: *claudeTranscripts, Mission: *mission, SessionPrefix: "form-", Harnesses: []string{"openai-codex", "claude-code"}, TimeoutSeconds: int(timeout.Seconds()), OutputCapBytes: 1 << 20, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief, PeerCLI: bundledCLI()})
+		return formations.NewTmuxFormationExecutor(store, personas, formations.TmuxExecutorConfig{Socket: *socket, Cwd: *cwd, Roots: roots, StateDir: *state, CodexTranscriptRoot: *codexTranscripts, ClaudeTranscriptRoot: *claudeTranscripts, Mission: *mission, SessionPrefix: "form-", Harnesses: []string{"openai-codex", "claude-code"}, OutputCapBytes: 1 << 20, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief, PeerCLI: bundledCLI()})
 	})
 	if err != nil {
 		return err

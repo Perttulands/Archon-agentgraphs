@@ -33,12 +33,15 @@ func (e *TmuxFormationExecutor) executePeerFormation(parent context.Context, req
 		participants = append(participants, peer.ID)
 	}
 	openingResults, err := e.executePeerPhase(req, bindings, "peer-opening", func(binding tmuxSlotBinding) []string {
-		return []string{
+		lines := []string{
 			"Prepare your independent opening statement for this peer formation.",
 			"Explain your position, supporting evidence, assumptions and questions. Do not inspect another peer's seat, transcript or work; all openings will be shared together after everyone finishes.",
 			"This is the opening phase only. Return your statement with the normal completion sentinel; the same seat will receive the conversation next. Do not produce the formation's final output yet.",
-			"The total preparation, discussion and finalization deadline is " + req.Deadline.UTC().Format(time.RFC3339Nano) + ". Keep your opening proportionate to the remaining time.",
 		}
+		if !req.Deadline.IsZero() {
+			lines = append(lines, "The total preparation, discussion and finalization deadline is "+req.Deadline.UTC().Format(time.RFC3339Nano)+". Keep your opening proportionate to the remaining time.")
+		}
+		return lines
 	}, owned, cancel)
 	if err != nil {
 		return FormationExecutionResult{}, err
@@ -149,7 +152,9 @@ func (e *TmuxFormationExecutor) peerConversationInstructions(req FormationExecut
 		"Dissent with a proposal: " + base + "post" + identity + " --dissent --proposal <proposal-sequence> --text-file <your-reasons-file>",
 		"Any peer may propose. The proposer must also acknowledge. Every peer must acknowledge the same proposal for status agreed. If you disagree, explain why and work toward a revision. Agreement can be on an accurate account of unresolved tensions, alternatives and the decision the operator must make; do not manufacture consensus.",
 		"The proposed text must contain the ordinary declared output payloads described below, including remaining tensions. Once status is agreed, return a brief receipt and the normal completion sentinel using the conversation path as its artifact. The runtime routes the acknowledged proposal as the formation output.",
-		"The entire formation deadline is " + req.Deadline.UTC().Format(time.RFC3339Nano) + ". Preparation has already used part of this budget. Leave time to write and acknowledge the result and finish your turn. Near the deadline, stop opening new debate and preserve the result and tensions. The budget will not be extended; expiry without a valid result blocks visibly.",
+	}
+	if !req.Deadline.IsZero() {
+		lines = append(lines, "The entire formation deadline is "+req.Deadline.UTC().Format(time.RFC3339Nano)+". Preparation has already used part of this budget. Leave time to write and acknowledge the result and finish your turn. Near the deadline, stop opening new debate and preserve the result and tensions. The budget will not be extended; expiry without a valid result blocks visibly.")
 	}
 	return append(lines, outputContractExtraLines(req.Formation)...)
 }

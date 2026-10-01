@@ -292,7 +292,8 @@ func TestTmuxExecutorNeverDispatchesWhenClaudeTUIReadinessUnknown(t *testing.T) 
 		harness:         "claude-code",
 		startupCaptures: []string{"Claude Code\nstarting"},
 	}
-	status, events := runTmuxFormationForTest(t, client, "")
+	// Archon sets no default step duration, so the step authors one second.
+	status, events := runTmuxFormationForTest(t, client, withStepDuration(s4RunBoardFixture(), 1))
 	if status.Status != RunStatusBlocked || !status.ResumeAllowed {
 		t.Fatalf("status = %+v, want resumable blocked run", status)
 	}
@@ -313,7 +314,8 @@ func TestTmuxExecutorNeverDispatchesWhenClaudeTUIReadinessUnknown(t *testing.T) 
 
 func TestTmuxExecutorNeverDispatchesWhenCodexTUIReadinessUnknown(t *testing.T) {
 	client := &fakeTmuxHarnessClient{startupCaptures: []string{"OpenAI Codex\nstarting"}}
-	status, events := runTmuxFormationForTest(t, client, "")
+	// Archon sets no default step duration, so the step authors one second.
+	status, events := runTmuxFormationForTest(t, client, withStepDuration(s4RunBoardFixture(), 1))
 	if status.Status != RunStatusBlocked || !status.ResumeAllowed {
 		t.Fatalf("status = %+v, want resumable blocked run", status)
 	}
@@ -1231,7 +1233,6 @@ func tmuxTestConfig(t *testing.T) TmuxExecutorConfig {
 		Roots:          []string{root},
 		SessionPrefix:  "tmux-",
 		OutputCapBytes: defaultTmuxOutputCapBytes,
-		TimeoutSeconds: 1,
 	}
 }
 
@@ -1273,7 +1274,6 @@ func nonTempWorkspace(t *testing.T) TmuxExecutorConfig {
 		Roots:          []string{workspace},
 		SessionPrefix:  "tmux-",
 		OutputCapBytes: defaultTmuxOutputCapBytes,
-		TimeoutSeconds: 1,
 	}
 }
 
@@ -1905,3 +1905,8 @@ func TestWorkerOutcomeMappersDistinguishMissingSession(t *testing.T) {
 // A completion capture that fails for a reason other than a missing target is
 // the capture_failed defensive outcome: recorded as an anomaly on an otherwise
 // successful run, never silence and never a run failure.
+
+// withStepDuration authors execution.timeoutSeconds on the Research step.
+func withStepDuration(board string, seconds int) string {
+	return strings.Replace(board, "title = \"Research\"", fmt.Sprintf("title = \"Research\"\n\n[formation.execution]\ntimeoutSeconds = %d", seconds), 1)
+}

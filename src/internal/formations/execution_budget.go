@@ -9,32 +9,13 @@ import (
 
 var ErrFormationTimeoutExceeded = errors.New("formation execution time limit exceeded")
 
-type formationTimeoutProvider interface {
-	DefaultFormationTimeoutSeconds() int
-}
-
-// AdmissionLimits freezes the executor default before the run is recorded.
-// A formation's authored override is already frozen in the board snapshot.
-func (e *RunEngine) AdmissionLimits(limits RunLimits) RunLimits {
-	limits.FormationTimeoutSeconds = 0
-	if provider, ok := e.executor.(formationTimeoutProvider); ok {
-		limits.FormationTimeoutSeconds = provider.DefaultFormationTimeoutSeconds()
-	}
-	return limits
-}
-
-func (e *TmuxFormationExecutor) DefaultFormationTimeoutSeconds() int {
-	return e.config.TimeoutSeconds
-}
-
-func formationExecutionSeconds(formation FormationNode, fallback int) (int, error) {
-	seconds := fallback
-	if formation.Execution != nil {
-		seconds = formation.Execution.TimeoutSeconds
-	}
-	if seconds == 0 && formation.Execution == nil {
+// formationExecutionSeconds is the step's authored duration, frozen in the
+// run's mission snapshot. A step without one has no time limit.
+func formationExecutionSeconds(formation FormationNode) (int, error) {
+	if formation.Execution == nil {
 		return 0, nil
 	}
+	seconds := formation.Execution.TimeoutSeconds
 	if !validExecutionSeconds(seconds) {
 		return 0, fmt.Errorf("%w: formation duration must be positive whole seconds", ErrInvalidExecutionPolicy)
 	}
@@ -48,7 +29,7 @@ type executionBudget struct {
 
 func formationExecutionBudget(req FormationExecution, events []RunEvent, limits RunLimits, now time.Time) (executionBudget, error) {
 	var budget executionBudget
-	seconds, err := formationExecutionSeconds(req.Formation, limits.FormationTimeoutSeconds)
+	seconds, err := formationExecutionSeconds(req.Formation)
 	if err != nil {
 		return budget, err
 	}
@@ -89,12 +70,12 @@ func formationExecutionBudget(req FormationExecution, events []RunEvent, limits 
 	return budget, nil
 }
 
-// Direct legacy executor calls have no engine-provided deadline. Give those
-// calls one allocation from the configured default or authored policy. Normal
-// admitted runs arrive with their ledger-derived deadline and retain it.
-func withFormationDeadline(parent context.Context, req *FormationExecution, now time.Time, fallback int) (context.Context, context.CancelFunc, error) {
+// A direct executor call has no engine-provided deadline; it gets one
+// allocation of the step's authored duration, if it has one. Admitted runs
+// arrive with their ledger-derived deadline and retain it.
+func withFormationDeadline(parent context.Context, req *FormationExecution, now time.Time) (context.Context, context.CancelFunc, error) {
 	if req.Deadline.IsZero() {
-		seconds, err := formationExecutionSeconds(req.Formation, fallback)
+		seconds, err := formationExecutionSeconds(req.Formation)
 		if err != nil {
 			return nil, nil, err
 		}

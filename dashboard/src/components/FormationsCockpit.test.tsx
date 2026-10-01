@@ -1990,7 +1990,7 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
     const duration = () => patches.filter(patch => patch.body.setExecution).map(patch => patch.body.setExecution)
-    expect(within(frame).getByText('Inherit the run default')).toBeInTheDocument()
+    expect(within(frame).getByText('No time limit')).toBeInTheDocument()
 
     fireEvent.click(within(frame).getByRole('button', { name: 'Edit execution duration (seconds)' }))
     expect(within(frame).getByLabelText('Execution duration (seconds)')).toHaveValue('')
@@ -2002,14 +2002,14 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(within(frame).getByRole('button', { name: 'Edit execution duration (seconds)' }))
     fireEvent.change(within(frame).getByLabelText('Execution duration (seconds)'), { target: { value: '' } })
     fireEvent.click(within(frame).getByRole('button', { name: 'Save execution duration (seconds)' }))
-    await waitFor(() => expect(within(frame).getByText('Inherit the run default')).toBeInTheDocument())
+    await waitFor(() => expect(within(frame).getByText('No time limit')).toBeInTheDocument())
     expect(duration().slice(-1)[0]).toEqual({ formationId: 'fmn_frame', timeoutSeconds: 0 })
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => expect(within(frame).getByText('125 seconds')).toBeInTheDocument())
     expect(duration().slice(-1)[0]).toEqual({ formationId: 'fmn_frame', timeoutSeconds: 125 })
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
-    await waitFor(() => expect(within(frame).getByText('Inherit the run default')).toBeInTheDocument())
+    await waitFor(() => expect(within(frame).getByText('No time limit')).toBeInTheDocument())
     expect(duration().slice(-1)[0]).toEqual({ formationId: 'fmn_frame', timeoutSeconds: 0 })
   })
 

@@ -511,7 +511,6 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		reply(w, 422, map[string]string{"error": "wire the Input card to a step"})
 		return
 	}
-	req.Limits = c.engine.AdmissionLimits(req.Limits)
 	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, ContextPaths: req.ContextPaths, Brief: req.Brief, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: "operator:standalone", Personas: c.personas, Limits: req.Limits})
 	if err != nil {
 		failure(w, err)

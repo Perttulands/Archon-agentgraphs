@@ -3,6 +3,7 @@ package formations
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -383,5 +384,27 @@ func TestPeerConversationInvalidAndOversizeWritesLeaveEvidenceUntouched(t *testi
 		if _, err := store.ReadPeerConversation(bad); err == nil {
 			t.Fatalf("accepted unsafe identity: %+v", bad)
 		}
+	}
+}
+
+// A peer step without a duration converses for as long as it takes.
+func TestPeerConversationWithoutDeadlineNeverExpires(t *testing.T) {
+	store, id := peerTestStore(t)
+	now := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	store.Now = func() time.Time { return now }
+	createPeerTestConversation(t, store, id, time.Time{})
+	now = now.Add(48 * time.Hour)
+	state, err := store.AppendPeerConversation(id, PeerAppendRequest{SlotID: "slot_b", Kind: "message", Text: "two days later"})
+	if err != nil || state.Status != "open" || !state.Deadline.IsZero() {
+		t.Fatalf("append without a deadline: %+v %v", state, err)
+	}
+	raw, err := json.Marshal(state)
+	if err != nil || strings.Contains(string(raw), "deadline") {
+		t.Fatalf("a conversation without a deadline shows one: %s %v", raw, err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := store.WaitPeerConversation(ctx, id, state.LastSeq); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("wait without a deadline ended on its own: %v", err)
 	}
 }

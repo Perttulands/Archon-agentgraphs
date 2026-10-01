@@ -18,12 +18,9 @@ import (
 )
 
 type testExecutor struct {
-	formationTimeout int
-	entered          chan string
-	proceed          chan struct{}
+	entered chan string
+	proceed chan struct{}
 }
-
-func (e *testExecutor) DefaultFormationTimeoutSeconds() int { return e.formationTimeout }
 
 func (e *testExecutor) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
 	e.entered <- req.NodeID
@@ -279,16 +276,20 @@ func TestAdmissionTakesARunWithoutLimits(t *testing.T) {
 	}
 }
 
-func TestAdmissionFreezesExecutorFormationDefault(t *testing.T) {
+// Admission freezes no default step duration: a step without an authored one
+// has no deadline, and a caller cannot ask for a default either.
+func TestAdmissionGivesStepsNoDefaultDuration(t *testing.T) {
 	for _, mode := range []string{"mission", "formation"} {
 		t.Run(mode, func(t *testing.T) {
 			c, e, _ := fixture(t)
-			e.formationTimeout = 127
 			selector := `"missionId":"mis_proof",`
 			if mode == "formation" {
 				selector = `"formationId":"fmn_work",`
 			}
-			w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof",`+selector+`"expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":1000,"formationTimeoutSeconds":999}}`)
+			if w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof",`+selector+`"expectedRev":1,"limits":{"formationTimeoutSeconds":999}}`); w.Code != 400 {
+				t.Fatalf("a default step duration was accepted: %d %s", w.Code, w.Body.String())
+			}
+			w := post(t, c, "/api/formations/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"brief":"proof","board":"proof",`+selector+`"expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1}}`)
 			if w.Code != 202 {
 				t.Fatalf("admission %d %s", w.Code, w.Body.String())
 			}
@@ -310,21 +311,21 @@ func TestAdmissionFreezesExecutorFormationDefault(t *testing.T) {
 				t.Fatal(err)
 			}
 			limits, ok := events[0].Data["limits"].(map[string]any)
-			if !ok || limits["formationTimeoutSeconds"] != float64(127) {
+			if _, frozen := limits["formationTimeoutSeconds"]; !ok || frozen {
 				t.Fatalf("limits=%#v", limits)
 			}
+			started := false
 			for _, event := range events {
 				if event.Type != formations.RunEventNodeStarted || event.NodeID != "fmn_work" {
 					continue
 				}
-				started, err := time.Parse(time.RFC3339Nano, event.Timestamp)
-				if err != nil {
-					t.Fatal(err)
+				started = true
+				if event.Data["executionDeadline"] != nil || event.Data["executionTimeoutSeconds"] != nil {
+					t.Fatalf("a step without a duration got a deadline: %#v", event.Data)
 				}
-				deadline, err := time.Parse(time.RFC3339Nano, event.Data["executionDeadline"].(string))
-				if err != nil || deadline.Sub(started) != 127*time.Second {
-					t.Fatalf("deadline=%v %v", deadline, err)
-				}
+			}
+			if !started {
+				t.Fatal("the step did not start")
 			}
 		})
 	}

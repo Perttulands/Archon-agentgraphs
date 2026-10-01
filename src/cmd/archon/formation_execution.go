@@ -10,7 +10,7 @@ import (
 
 func executionFlags(args []string, stderr io.Writer) (*flag.FlagSet, *int, *string, *bool, error) {
 	fs := remoteFlags("formation set-execution", stderr)
-	seconds := fs.Int("timeout-seconds", -1, "total formation duration in seconds; zero inherits the run default")
+	seconds := fs.Int("timeout-seconds", -1, "total formation duration in seconds; zero removes it, so the step has no time limit")
 	actor := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	err := fs.Parse(reorderFlags(args, map[string]bool{"json": true}))

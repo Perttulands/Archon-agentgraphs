@@ -194,21 +194,15 @@ every `fail` somewhere.
 
 ### Step duration
 
-Archon adds no guardrails a mission did not ask for, but every step already has
-a time budget: a step without its own duration inherits the daemon's
-`--seat-timeout` (30 minutes unless the host configured another value). That
-budget covers startup, the work and finalization, and expiry blocks the run with
-`formation_timeout_exceeded`, keeping the partial evidence. So set a duration
-when a step's work differs from that default:
-
-- A long step (a large build, a deep review) needs more time, or the inherited
-  default cuts it short.
-- A peer conversation has no fixed round count; its seats talk until every seat
-  acknowledges one proposal. Give it a duration when it must stop converging by
-  a known time.
+A step has no time limit unless the mission gives it a duration; Archon adds no
+default. A duration covers startup, the work and finalization, and expiry
+blocks the run with `formation_timeout_exceeded`, keeping the partial evidence.
+Give a step a duration only when it must stop by a known time, for example a
+peer conversation, which has no fixed round count and talks until every seat
+acknowledges one proposal.
 
 `formation set-execution "$M" "$FORMATION" --timeout-seconds <n>` sets it;
-`0` returns to the daemon default. A run freezes the duration at admission.
+`0` removes it. A run freezes the duration at admission.
 A step's duration does not bound a send-back loop; see run limits below.
 
 ### Human channel

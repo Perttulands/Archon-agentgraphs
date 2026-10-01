@@ -82,7 +82,7 @@ export interface FormationVerification {
 export type FormationType = 'solo' | 'peer' | 'orchestrated'
 
 export interface FormationExecutionPolicy {
-  /** Positive seconds for the whole formation invocation; omitted policy inherits the run default. */
+  /** Positive seconds for the whole formation invocation; an omitted policy means no time limit. */
   timeoutSeconds: number
 }
 

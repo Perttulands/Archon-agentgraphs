@@ -265,7 +265,6 @@ func (e *RunEngine) RunMission(slug string, req RunStartRequest) (*RunStatusProj
 	if req.Personas == nil {
 		req.Personas = e.personas
 	}
-	req.Limits = e.AdmissionLimits(req.Limits)
 	started, err := e.store.StartRun(slug, req)
 	if err != nil {
 		return nil, err
@@ -334,7 +333,6 @@ func (e *RunEngine) PrepareFormationRun(slug, formationID string, req FormationR
 	if personas == nil {
 		personas = e.personas
 	}
-	req.Limits = e.AdmissionLimits(req.Limits)
 	started, mission, seedInput, err := e.startFormationRun(slug, board, formation, req.Actor, personas, req.Limits)
 	if err != nil {
 		return nil, nil, err
@@ -1813,7 +1811,7 @@ func (e *RunEngine) startFormationExecution(runID string, formation FormationNod
 			return errRunStopped
 		}
 	}
-	seconds, err := formationExecutionSeconds(formation, limits.FormationTimeoutSeconds)
+	seconds, err := formationExecutionSeconds(formation)
 	if err != nil {
 		return err
 	}
@@ -1853,13 +1851,7 @@ func (e *RunEngine) executeFormation(req FormationExecution, limits RunLimits) (
 		return FormationExecutionResult{}, err
 	}
 	now := e.store.now()
-	// Older admissions did not capture a default. They retain the legacy
-	// executor-default policy; new admissions always carry the frozen value.
-	budgetLimits := limits
-	if budgetLimits.FormationTimeoutSeconds == 0 {
-		budgetLimits = e.AdmissionLimits(budgetLimits)
-	}
-	budget, err := formationExecutionBudget(req, events, budgetLimits, now)
+	budget, err := formationExecutionBudget(req, events, limits, now)
 	if err != nil {
 		return FormationExecutionResult{}, err
 	}
@@ -2874,11 +2866,10 @@ func runLimitsFromEvent(event RunEvent) RunLimits {
 		return limits
 	case map[string]any:
 		return RunLimits{
-			FormationTimeoutSeconds: intFromRunEventData(limits["formationTimeoutSeconds"]),
-			MaxDispatch:             intFromRunEventData(limits["maxDispatch"]),
-			MaxAttempts:             intFromRunEventData(limits["maxAttempts"]),
-			WallClockSeconds:        intFromRunEventData(limits["wallClockSeconds"]),
-			Redact:                  boolFromAny(limits["redact"]),
+			MaxDispatch:      intFromRunEventData(limits["maxDispatch"]),
+			MaxAttempts:      intFromRunEventData(limits["maxAttempts"]),
+			WallClockSeconds: intFromRunEventData(limits["wallClockSeconds"]),
+			Redact:           boolFromAny(limits["redact"]),
 		}
 	default:
 		return RunLimits{}

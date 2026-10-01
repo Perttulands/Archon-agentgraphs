@@ -21,8 +21,9 @@ import (
 
 const (
 	defaultTmuxOutputCapBytes = 8192
-	defaultTmuxTimeoutSeconds = 30
-	peerPlaneMaxBytes         = 1 << 20
+	// tmuxServerStartTimeout bounds probing and lazy-starting the tmux server.
+	tmuxServerStartTimeout = 30 * time.Second
+	peerPlaneMaxBytes      = 1 << 20
 	// tmuxKeeperSuffix names the executor's own lazy-start "keeper" session,
 	// appended to the configured SessionPrefix. The keeper's only job is to hold
 	// a freshly lazy-started tmux server alive; it is infrastructure, never an
@@ -139,7 +140,6 @@ type TmuxExecutorConfig struct {
 	AgentUser      string
 	SessionPrefix  string
 	OutputCapBytes int
-	TimeoutSeconds int
 	// PeerCLI is the matching local CLI used by seats to append and wait safely.
 	PeerCLI string
 }
@@ -211,12 +211,6 @@ func TmuxExecutorConfigFromEnv() TmuxExecutorConfig {
 			capBytes = parsed
 		}
 	}
-	timeoutSeconds := defaultTmuxTimeoutSeconds
-	if raw := strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_TIMEOUT_SECONDS")); raw != "" {
-		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
-			timeoutSeconds = parsed
-		}
-	}
 	return TmuxExecutorConfig{
 		Harnesses:            splitLabCSV(os.Getenv("CHROTE_FORMATIONS_TMUX_HARNESSES")),
 		StateDir:             strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_STATE_DIR")),
@@ -229,7 +223,6 @@ func TmuxExecutorConfigFromEnv() TmuxExecutorConfig {
 		AgentUser:            strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_AGENT_USER")),
 		SessionPrefix:        strings.TrimSpace(os.Getenv("CHROTE_FORMATIONS_TMUX_SESSION_PREFIX")),
 		OutputCapBytes:       capBytes,
-		TimeoutSeconds:       timeoutSeconds,
 	}
 }
 
@@ -243,9 +236,6 @@ func NewTmuxFormationExecutor(store *Store, personas *PersonaStore, config TmuxE
 func newTmuxFormationExecutorWithClient(store *Store, personas *PersonaStore, config TmuxExecutorConfig, client tmuxHarnessClient) *TmuxFormationExecutor {
 	if config.OutputCapBytes <= 0 {
 		config.OutputCapBytes = defaultTmuxOutputCapBytes
-	}
-	if config.TimeoutSeconds <= 0 {
-		config.TimeoutSeconds = defaultTmuxTimeoutSeconds
 	}
 	if client == nil {
 		client = realTmuxHarnessClient{}
@@ -298,7 +288,7 @@ func (e *TmuxFormationExecutor) executeFormationContext(parent context.Context, 
 	if e == nil || e.store == nil {
 		return FormationExecutionResult{}, runExecutionError("missing_executor", "tmux executor store is not configured", "executor", ErrRunExecutorUnavailable)
 	}
-	ctx, cancel, err := withFormationDeadline(parent, &req, e.store.now(), e.config.TimeoutSeconds)
+	ctx, cancel, err := withFormationDeadline(parent, &req, e.store.now())
 	if err != nil {
 		return FormationExecutionResult{}, err
 	}
@@ -1515,7 +1505,7 @@ func (e *TmuxFormationExecutor) validateConfiguredBoundaryContext(ctx context.Co
 // server + keeper — it never issues kill-server, kill-session, attach, rename, or
 // resize — so the only-own-sessions safety invariant holds by construction.
 func (e *TmuxFormationExecutor) ensureServer(parent context.Context, expected expectedAgentUser) error {
-	ctx, cancel := context.WithTimeout(parent, time.Duration(e.config.TimeoutSeconds)*time.Second)
+	ctx, cancel := context.WithTimeout(parent, tmuxServerStartTimeout)
 	defer cancel()
 	running, err := e.client.HasServer(ctx, e.config.Socket)
 	if err != nil {

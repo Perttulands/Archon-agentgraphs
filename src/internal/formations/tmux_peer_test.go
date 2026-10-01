@@ -188,7 +188,6 @@ func peerConversationExecutorFixture(t *testing.T, mode string) (*Store, *Person
 	board := tmuxPeerBoardFixture() + "\n[[formation.slot]]\nid = \"slot_peer_c\"\nlabel = \"Peer C\"\nagentId = \"peer-c\"\nharness = \"openai-codex\"\n"
 	writeFixture(t, store.BoardPath("session-search"), board)
 	cfg := tmuxTestConfig(t)
-	cfg.TimeoutSeconds = 20
 	executor := newTmuxFormationExecutorWithClient(store, personas, cfg, &fakeTmuxHarnessClient{})
 	seats := &conversingSeats{store: store, participants: 3, mode: mode, openingBarrier: make(chan struct{})}
 	executor.seatClient = seats
