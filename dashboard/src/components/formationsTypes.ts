@@ -74,17 +74,11 @@ export interface FormationBrief {
 
 export type FormationType = 'solo' | 'peer' | 'orchestrated'
 
-export interface FormationExecutionPolicy {
-  /** Positive seconds for the whole formation invocation; an omitted policy means no time limit. */
-  timeoutSeconds: number
-}
-
 export interface FormationNode {
   id: string
   type: FormationType
   title: string
   brief?: FormationBrief
-  execution?: FormationExecutionPolicy
   inputs: FormationPort[]
   outputs: FormationPort[]
   slots: FormationSlot[]
@@ -186,15 +180,19 @@ export interface EndNode {
 }
 
 /**
- * Caps the rounds of the step it covers, or of the whole mission when it covers
- * the Input card (archon-o7p.8). It has no ports: `target` names what it covers,
- * '' while it is wired to nothing, and `rounds` is absent while it sets none.
+ * Caps the rounds and time of the step it covers, or of the whole mission when
+ * it covers the Input card (archon-o7p.8). It has no ports: `target` names what
+ * it covers, '' while it is wired to nothing. Each knob is absent while the
+ * card does not set it; `seconds` and `warnSeconds` are whole seconds, and the
+ * warning is pasted into the covered seats when that much time is left.
  */
 export interface LimitNode {
   id: string
   title: string
   target: string
   rounds?: number
+  seconds?: number
+  warnSeconds?: number
 }
 
 export interface CodeGateProfileDescriptor {

@@ -5,11 +5,13 @@ import type { RunPoint } from './formationsRunState'
 import { hasGateDraft } from './HumanGateAnswerPanel'
 import { fetchRunProblems } from '../evidence/runEvidenceApi'
 import { DEFAULT_STOP_REASON, runLimitPhrase } from './runOutcome'
+import { grantWords } from './limitCard'
+import type { RunLimitUse } from './formationsApi'
 import '../styles/formations-run.css'
 
-// The run bar's recoveries: Resume only when resuming can make progress, Grant
-// one more round in its place when the run stopped at a spent Limit card
-// (archon-o7p.8), a plain statement of why a block cannot resume
+// The run bar's recoveries: Resume only when resuming can make progress, a
+// grant in its place when the run stopped at a spent Limit card, saying what it
+// gives: one more round, or the card's time again (archon-o7p.8), a plain statement of why a block cannot resume
 // (archon-n7u.6), and Stop behind a modal confirmation that names the run and
 // what ends with it (archon-n7u.8).
 
@@ -24,26 +26,33 @@ export interface RunBarActionsProps {
   /** The human requests the run waits on; several can wait at once (archon-o7p.11). */
   waitingGates: { title: string; requestedSeq: number }[]
   onResume: () => void
-  /** Resumes a run blocked at a spent Limit card with one more round granted. */
-  onGrant: () => void
+  /** Resumes a run blocked at a spent Limit card with a grant; `gives` says what, "one more round" or "30 min more". */
+  onGrant: (gives: string) => void
   /** Resolves once the run is canceled, false when the stop failed. */
   onStop: (reason: string) => Promise<boolean>
 }
 
-/** The recorded fact of the run's latest block: its reason, else its limit. */
-function useBlockFact(runId: string, active: boolean, titleOf: (nodeId: string) => string): string {
-  const [fact, setFact] = useState<{ runId: string; limit?: Parameters<typeof runLimitPhrase>[0]; reason: string } | null>(null)
+/** The run's latest block as recorded: its reason and the Limit card it found spent. */
+function useLatestBlock(runId: string, active: boolean, eventCount: number): { reason: string; limit?: RunLimitUse } | null {
+  const [fact, setFact] = useState<{ runId: string; eventCount: number; limit?: RunLimitUse; reason: string } | null>(null)
   useEffect(() => {
     if (!active) return
     let current = true
     fetchRunProblems(runId).then(problems => {
       const block = [...problems].reverse().find(problem => problem.type === 'run_blocked')
-      if (current) setFact({ runId, limit: block?.limit, reason: block?.reason.text.trim() || '' })
-    }, () => { if (current) setFact({ runId, reason: '' }) })
+      if (current) setFact({ runId, eventCount, limit: block?.limit, reason: block?.reason.text.trim() || '' })
+    }, () => { if (current) setFact({ runId, eventCount, reason: '' }) })
     return () => { current = false }
-  }, [active, runId])
-  if (!active || fact?.runId !== runId) return ''
-  return fact.reason || (fact.limit ? runLimitPhrase(fact.limit, titleOf) : '')
+  }, [active, runId, eventCount])
+  // A later block of the same run is read again, so an earlier one's words never stand for it.
+  if (!active || fact?.runId !== runId || fact.eventCount !== eventCount) return null
+  return fact
+}
+
+/** The recorded fact of the run's latest block: its reason, else its limit. */
+function blockFact(block: { reason: string; limit?: RunLimitUse } | null, titleOf: (nodeId: string) => string): string {
+  if (!block) return ''
+  return block.reason || (block.limit ? runLimitPhrase(block.limit, titleOf) : '')
 }
 
 export default function RunBarActions({ run, points, boardTitle, titleOf, waitingGates, onResume, onGrant, onStop }: RunBarActionsProps) {
@@ -51,7 +60,12 @@ export default function RunBarActions({ run, points, boardTitle, titleOf, waitin
   const stopButton = useRef<HTMLButtonElement>(null)
   const returnFocus = useRef(false)
   const cannotResume = !run.final && run.status === 'blocked' && !run.resumeAllowed
-  const fact = useBlockFact(run.runId, cannotResume, titleOf)
+  const grants = !run.final && Boolean(run.resumeAllowed) && run.resumePolicy === 'grant'
+  const block = useLatestBlock(run.runId, cannotResume || grants, run.eventCount)
+  const fact = cannotResume ? blockFact(block, titleOf) : ''
+  // What a grant gives the spent card: one more round, or its time again;
+  // plainly "more" until the block is read.
+  const gives = block ? grantWords(block.limit) : 'more'
   // Focus goes back to Stop once the dialog is gone and the page is no longer inert.
   useEffect(() => {
     if (confirming || !returnFocus.current) return
@@ -61,9 +75,9 @@ export default function RunBarActions({ run, points, boardTitle, titleOf, waitin
   if (run.final) return null
   return (
     <>
-      {run.resumeAllowed && run.resumePolicy === 'grant' ? (
-        <button type="button" className="run-grant" onClick={onGrant}
-          title="The run stopped at a spent Limit card. Grant it one more round and the run resumes.">Grant one more round</button>
+      {grants ? (
+        <button type="button" className="run-grant" onClick={() => onGrant(gives)}
+          title={`The run stopped at a spent Limit card. Grant it ${gives} and the run resumes.`}>{`Grant ${gives}`}</button>
       ) : run.resumeAllowed ? <button type="button" onClick={onResume}>Resume run</button> : null}
       {cannotResume ? (
         <span className="run-note" role="note" data-testid="run-not-resumable" title={fact ? `This block cannot be resumed: ${fact}.` : 'This block cannot be resumed.'}>

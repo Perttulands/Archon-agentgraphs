@@ -82,19 +82,41 @@ describe('gate route words', () => {
     const words = gateRouteWords('fail', sendBack(4, { limit: cap(3) }), titleOf)
     expect(words).toEqual({
       button: 'Send back to Draft',
-      outcome: 'Send back: Draft runs again with your response, but Draft has used all 3 of its rounds, so the run blocks instead until you grant one more.',
+      outcome: 'Send back: Draft runs again with your response, but Draft has used all 3 of its rounds, so the run blocks instead until you grant one more round.',
       blocks: true,
       last: false,
     })
     const one = gateRouteWords('fail', { verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 2, rounds: cap(1, 1) }], limit: cap(1, 1) }, titleOf)
-    expect(one.outcome).toBe('Send back: Draft runs again with your response, but Draft has used its only round, so the run blocks instead until you grant one more.')
+    expect(one.outcome).toBe('Send back: Draft runs again with your response, but Draft has used its only round, so the run blocks instead until you grant one more round.')
   })
 
   it('says when the mission card is spent', () => {
     const mission = { kind: 'rounds' as const, limitId: 'lim_all', nodeId: 'mis', used: 20, max: 20 }
     const spent = gateRouteWords('pass', { ...approve, missionRounds: mission, roundsNeeded: 1, limit: mission }, titleOf)
     expect(spent.blocks).toBe(true)
-    expect(spent.outcome).toBe('Approve: Publish runs next, but the mission has used all 20 of its rounds, so the run blocks instead until you grant one more.')
+    expect(spent.outcome).toBe('Approve: Publish runs next, but the mission has used all 20 of its rounds, so the run blocks instead until you grant one more round.')
+  })
+
+  it('names the time a step and the mission have left, and a spent time card\'s grant', () => {
+    const clock = (used: number, max = 1800) => ({ kind: 'time' as const, limitId: 'lim_clock', nodeId: 'fmn_draft', used, max })
+    const missionTime = { kind: 'time' as const, limitId: 'lim_all', nodeId: 'mis', used: 600, max: 3600 }
+    const back = (extra: Partial<GateRoute> = {}): GateRoute => ({ verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 2, rounds: cap(1), time: clock(300) }], ...extra })
+    expect(gateRouteWords('fail', back(), titleOf).outcome).toBe('Send back: Draft runs again with your response (round 2 of 3, 25 min of 30 min left).')
+    expect(gateRouteWords('fail', back({ missionTime }), titleOf).outcome)
+      .toBe('Send back: Draft runs again with your response (round 2 of 3, 25 min of 30 min left); the mission has 50 min of 1 h of working time left.')
+    const spent = gateRouteWords('fail', back({ targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 2, time: clock(1800) }], limit: clock(1800) }), titleOf)
+    expect(spent.blocks).toBe(true)
+    expect(spent.outcome).toBe('Send back: Draft runs again with your response, but Draft has used all 30 min of its time, so the run blocks instead until you grant 30 min more.')
+    const missionSpent = gateRouteWords('pass', { ...approve, missionTime: { ...missionTime, used: 3600 }, limit: { ...missionTime, used: 3600 } }, titleOf)
+    expect(missionSpent.outcome).toBe('Approve: Publish runs next, but the mission has used all 1 h of its time, so the run blocks instead until you grant 1 h more.')
+    // A route that only ends its path says nothing of the mission's time.
+    expect(gateRouteWords('pass', { verdict: 'pass', targets: [{ nodeId: 'end_done', title: 'Done', kind: 'end', outcome: 'done' }], missionTime }, titleOf).outcome)
+      .toBe('Approve: this path ends (done); the run goes on with its other work.')
+  })
+
+  it('words a spent time card in a block headline', () => {
+    expect(runLimitPhrase({ kind: 'time', limitId: 'lim_clock', nodeId: 'fmn_draft', used: 1800, max: 1800 }, titleOf)).toBe('Draft used 30 min of 30 min')
+    expect(runLimitPhrase({ kind: 'time', limitId: 'lim_all', nodeId: 'mis', used: 60, max: 60, granted: 30 }, titleOf, id => id === 'mis')).toBe('the mission used 1 min of 1 min, 30 s of it granted')
   })
 
   it('says a send-back to a step that never ran runs it, not again', () => {

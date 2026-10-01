@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { BoardDocument, LimitNode } from './formationsTypes'
 import {
-  limitCoverage, limitCoversWords, limitKnobWords, limitLine, limitMeaning, limitSummary, limitUsePhrase, limitsCovering, roundsProblem, spentAllowance, tetherLine,
+  durationInput, durationWords, grantWords, leftWords, limitCoverage, limitCoversWords, limitKnobWords, limitLine, limitMeaning, limitSummary, limitUsePhrase,
+  limitWarnWords, limitsCovering, parseDuration, roundsProblem, spentAllowance, tetherLine, timeProblem, warnProblem,
 } from './limitCard'
 
 const step = (id: string, title: string, type = 'solo') => ({ id, type, title, inputs: [], outputs: [], slots: [] })
@@ -32,7 +33,7 @@ describe('Limit card words', () => {
 
   it('says what the card covers on its face', () => {
     expect(limitCoversWords(board, card('fmn_review', 3))).toBe('Covers Review')
-    expect(limitCoversWords(board, card('mis', 3))).toBe('Covers the whole mission')
+    expect(limitCoversWords(board, card('mis', 3))).toBe('Covers the mission')
     expect(limitCoversWords(board, card('', 3))).toBe('Wired to nothing yet')
     expect(limitCoversWords(board, card('fmn_gone', 3))).toBe('Covers a step that is gone')
   })
@@ -50,7 +51,7 @@ describe('Limit card words', () => {
     expect(limitMeaning(board, card('fmn_peers', 40))).toContain('Peer review may hold at most 40 journal messages over all its attempts')
     expect(limitMeaning(board, card('mis', 20))).toContain('The whole mission may make at most 20 step runs, judges included.')
     expect(limitMeaning(board, card('', 3))).toBe('Wired to nothing: drag its handle onto a step, or onto the Input card for the whole mission.')
-    expect(limitMeaning(board, card('fmn_review'))).toBe('It sets no limit yet: give it rounds, or delete it.')
+    expect(limitMeaning(board, card('fmn_review'))).toBe('It sets no limit yet: give it rounds or time, or delete it.')
   })
 
   it('accepts blank or a positive whole number of rounds', () => {
@@ -65,6 +66,73 @@ describe('Limit card words', () => {
     expect(limitUsePhrase({ ...use, used: 20, max: 20, granted: 1 }, 'The mission')).toBe('The mission used 20 of 20 rounds, 1 of them granted')
     expect(spentAllowance(use)).toBe('all 3 of its rounds')
     expect(spentAllowance({ ...use, used: 1, max: 1 })).toBe('its only round')
+  })
+
+  it('says durations as the server does', () => {
+    expect(durationWords(45)).toBe('45 s')
+    expect(durationWords(300)).toBe('5 min')
+    expect(durationWords(5400)).toBe('1 h 30 min')
+    expect(durationWords(90)).toBe('1 min 30 s')
+    expect(durationWords(7200)).toBe('2 h')
+    expect(durationWords(3661)).toBe('1 h 1 min 1 s')
+  })
+
+  it('reads a typed time in whole seconds, and writes it back', () => {
+    expect(parseDuration('')).toBe(0)
+    expect(parseDuration('30m')).toBe(1800)
+    expect(parseDuration('1h30m')).toBe(5400)
+    expect(parseDuration('45s')).toBe(45)
+    expect(parseDuration('90')).toBe(90)
+    expect(parseDuration('1 h 30 min')).toBe(5400)
+    expect(parseDuration('1.5h')).toBe(5400)
+    for (const value of ['0', '0s', '-5m', '1.5s', 'soon', '5 minutes', '30m soon', '99999999999999999999']) expect(parseDuration(value), value).toBeNull()
+    expect(durationInput(5400)).toBe('1h30m')
+    expect(durationInput(45)).toBe('45s')
+    expect(durationInput(90)).toBe('1m30s')
+    expect(durationInput(undefined)).toBe('')
+    expect(timeProblem('30m')).toBe('')
+    expect(timeProblem('')).toBe('')
+    expect(timeProblem('soon')).not.toBe('')
+    expect(warnProblem('5m', 1800)).toBe('')
+    expect(warnProblem('', undefined)).toBe('')
+    expect(warnProblem('5m', undefined)).toBe('A warning needs time: give the card time first.')
+    expect(warnProblem('30m', 1800)).toBe('Warn with less time left than the card\'s 30 min.')
+    expect(warnProblem('x', 1800)).not.toBe('')
+  })
+
+  it('states a time knob, alone or with rounds, and its warning', () => {
+    const clock = (target: string, seconds: number, extra: Partial<LimitNode> = {}): LimitNode => ({ id: 'lim_clock', title: 'Clock', target, seconds, ...extra })
+    expect(limitKnobWords(board, clock('fmn_review', 1800))).toBe('at most 30 min of work')
+    expect(limitKnobWords(board, clock('fmn_review', 1800, { rounds: 3 }))).toBe('at most 3 rounds · 30 min')
+    expect(limitKnobWords(board, clock('fmn_peers', 1800, { rounds: 40 }))).toBe('at most 40 journal messages · 30 min')
+    expect(limitKnobWords(board, clock('mis', 7200))).toBe('at most 2 h of work')
+    expect(limitWarnWords(clock('fmn_review', 1800, { warnSeconds: 300 }))).toBe('warns at 5 min left')
+    expect(limitWarnWords({ ...card('fmn_review', 3), warnSeconds: 300 })).toBe('')
+    expect(limitSummary(board, clock('fmn_review', 1800))).toBe('Clock: at most 30 min of work')
+    expect(limitSummary(board, clock('fmn_review', 1800, { rounds: 3, warnSeconds: 300 }))).toBe('Clock: at most 3 rounds and 30 min of work, warns at 5 min left')
+    expect(limitSummary(board, clock('mis', 7200))).toBe('Clock: the whole mission may work at most 2 h')
+    expect(limitLine(board, clock('mis', 7200, { rounds: 20, warnSeconds: 900 }))).toBe('Limit Clock: the whole mission may make at most 20 step runs and work at most 2 h, warns at 15 min left')
+  })
+
+  it('says what a time card does: waiting does not count and a send-back resumes with the time left', () => {
+    expect(limitMeaning(board, { id: 'lim_clock', title: 'Clock', target: 'fmn_review', seconds: 1800, warnSeconds: 300 })).toBe(
+      'Review may work at most 30 min over all its attempts, counted only while one runs. Waiting on a human gate does not count, so a send-back resumes it with the time it has left. When the time runs out the step stops and the run blocks until you grant 30 min more. With 5 min left, Archon pastes a warning into its seats.')
+    const both = limitMeaning(board, { id: 'lim_clock', title: 'Clock', target: 'fmn_review', rounds: 3, seconds: 1800 })
+    expect(both).toContain('Review may run at most 3 times')
+    expect(both).toContain('Review may work at most 30 min')
+    expect(limitMeaning(board, { id: 'lim_all', title: 'All', target: 'mis', seconds: 7200 })).toBe(
+      'The whole mission may work at most 2 h, counted while any step runs, judges included. Waiting on a human gate does not count while no other step runs, nor does a blocked run. When the time runs out the running step stops and the run blocks until you grant 2 h more.')
+  })
+
+  it('words a spent time card and its grant as the engine does', () => {
+    const use = { kind: 'time' as const, limitId: 'lim_clock', nodeId: 'fmn_review', used: 1800, max: 1800 }
+    expect(limitUsePhrase(use, 'Review')).toBe('Review used 30 min of 30 min')
+    expect(limitUsePhrase({ ...use, used: 3600, max: 3600, granted: 1800 }, 'The mission')).toBe('The mission used 1 h of 1 h, 30 min of it granted')
+    expect(spentAllowance(use)).toBe('all 30 min of its time')
+    expect(grantWords(use)).toBe('30 min more')
+    expect(grantWords({ ...use, max: 3600, granted: 1800 })).toBe('30 min more')
+    expect(grantWords({ kind: 'rounds', limitId: 'lim_cap', nodeId: 'fmn_review', used: 3, max: 3 })).toBe('one more round')
+    expect(leftWords({ ...use, used: 300 })).toBe('25 min of 30 min left')
   })
 
   it('draws the tether between the two cards\' edges', () => {

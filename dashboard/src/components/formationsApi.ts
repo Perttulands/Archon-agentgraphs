@@ -329,12 +329,13 @@ export async function resumeRunRequest(runId: string, body: { actor: string; mod
 }
 
 /**
- * A Limit card's rounds as a run used them (internal/formations RunLimitReached):
- * `used` of `max`, `max` counting the card's rounds and every grant. `nodeId`
- * is what the card covers: a step, or the Input card for the whole mission.
+ * A Limit card's rounds or time as a run used them (internal/formations
+ * RunLimitReached): `used` of `max`, `max` counting the card's allowance and
+ * every grant; time in whole seconds. `nodeId` is what the card covers: a
+ * step, or the Input card for the whole mission.
  */
 export interface RunLimitUse {
-  kind: 'rounds'
+  kind: 'rounds' | 'time'
   limitId: string
   nodeId: string
   used: number
@@ -352,6 +353,8 @@ export interface GateRouteTarget {
   attempt?: number
   /** The step's Limit card use before the route starts it; absent when no card covers the step. */
   rounds?: RunLimitUse
+  /** The step's time card use so far, in seconds; absent when no card sets its time. */
+  time?: RunLimitUse
   /** A join that receives this and still waits for another input. */
   waitsForInputs?: boolean
 }
@@ -370,6 +373,8 @@ export interface GateRoute {
   missionRounds?: RunLimitUse
   /** The step runs the route starts, judges included, when a card covers the mission. */
   roundsNeeded?: number
+  /** The mission card's time use so far, in seconds, when it sets time. */
+  missionTime?: RunLimitUse
 }
 
 export interface HumanGateRequest {

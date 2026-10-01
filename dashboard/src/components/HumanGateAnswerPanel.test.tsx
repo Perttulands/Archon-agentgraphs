@@ -44,7 +44,7 @@ describe('HumanGateAnswerPanel', () => {
     ] })
     expect(screen.getByRole('button', { name: 'Approve and end the run' })).toBeInTheDocument()
     expect(screen.getByText('Approve: this path ends (done), and with nothing else to run, the run succeeds.')).toBeInTheDocument()
-    expect(screen.getByText('Send back: Draft runs again with your response, but Draft has used all 3 of its rounds, so the run blocks instead until you grant one more.')).toHaveClass('blocks')
+    expect(screen.getByText('Send back: Draft runs again with your response, but Draft has used all 3 of its rounds, so the run blocks instead until you grant one more round.')).toHaveClass('blocks')
     expect(screen.getByRole('button', { name: 'Send back to Draft' })).toHaveClass('blocks')
   })
 

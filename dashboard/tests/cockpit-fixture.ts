@@ -4,7 +4,7 @@ const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/the
 
 const ports = { inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Result' }] }
 type EndNode = { id: string; title: string; outcome: 'done' | 'rejected' }
-type LimitNode = { id: string; title: string; target: string; rounds?: number }
+type LimitNode = { id: string; title: string; target: string; rounds?: number; seconds?: number; warnSeconds?: number }
 export const board: {
   id: string; slug: string; title: string; rev: number; etag: string
   missions: Array<{ id: string; title: string; goal: string; beadId: string }>
@@ -106,6 +106,25 @@ const blockedAtLimitEvents = [
   { seq: 9, type: 'run_blocked', nodeId: 'execution' },
 ]
 
+// Or Execution ran out of its 30 min (archon-o7p.8.2): its seat was warned with
+// 5 min left, then the step stopped. A grant gives the card's 30 min again.
+export const timeLimitReason = 'Execution used 30 min of 30 min'
+const timeLimitUse = { kind: 'time', limitId: 'lim_cap', nodeId: 'execution', used: 1800, max: 1800 }
+const blockedAtTimeEvents = [
+  { seq: 1, type: 'run_started' },
+  { seq: 2, type: 'node_started', nodeId: 'execution', attempt: 1 },
+  { seq: 3, type: 'limit_warning', nodeId: 'execution', slotId: 'worker', attempt: 1 },
+  { seq: 4, type: 'error', nodeId: 'execution' },
+  { seq: 5, type: 'run_blocked', nodeId: 'execution' },
+]
+
+/** Whole seconds in words, as the server's durationWords. */
+function durationWords(seconds: number): string {
+  if (seconds < 60) return `${seconds} s`
+  const parts = [Math.floor(seconds / 3600) && `${Math.floor(seconds / 3600)} h`, Math.floor(seconds % 3600 / 60) && `${Math.floor(seconds % 3600 / 60)} min`, seconds % 60 && `${seconds % 60} s`]
+  return parts.filter(Boolean).join(' ')
+}
+
 /**
  * Limit cards' findings as board validation reports them (limitFindings):
  * invalid_limit errors and empty_limit warnings, each on the card.
@@ -120,20 +139,32 @@ function limitFindings(current: typeof board) {
     if (!limit.target) errors.push({ code: 'invalid_limit', nodeId: limit.id, message: `Limit ${name} is wired to nothing: wire it to a step, or to the Input card for the whole mission` })
     else if (covered.has(limit.target)) errors.push({ code: 'invalid_limit', nodeId: limit.id, message: `${named(limit.target)} has two Limit cards, ${named(covered.get(limit.target)!)} and ${name}: keep one` })
     else covered.set(limit.target, limit.id)
-    if (!limit.rounds) warnings.push({ code: 'empty_limit', nodeId: limit.id, message: `Limit ${name} sets no limit: give it rounds, or delete it` })
+    if (limit.rounds !== undefined && limit.rounds <= 0) errors.push({ code: 'invalid_limit', nodeId: limit.id, message: `Limit ${name} holds rounds = ${limit.rounds}: rounds must be a positive whole number` })
+    if (limit.seconds !== undefined && limit.seconds <= 0) errors.push({ code: 'invalid_limit', nodeId: limit.id, message: `Limit ${name} holds seconds = ${limit.seconds}: time must be a positive whole number of seconds` })
+    const warn = limit.warnSeconds
+    if (warn !== undefined && warn <= 0) errors.push({ code: 'invalid_limit', nodeId: limit.id, message: `Limit ${name} holds warnSeconds = ${warn}: the warning must be a positive whole number of seconds` })
+    else if (warn !== undefined && limit.seconds === undefined) errors.push({ code: 'invalid_limit', nodeId: limit.id, message: `Limit ${name} warns with ${durationWords(warn)} left but sets no time: give it time, or clear the warning` })
+    else if (warn !== undefined && limit.seconds! > 0 && warn >= limit.seconds!) errors.push({ code: 'invalid_limit', nodeId: limit.id, message: `Limit ${name} warns with ${durationWords(warn)} left of ${durationWords(limit.seconds!)}, before any work: warn with less time left` })
+    if (limit.rounds === undefined && limit.seconds === undefined) warnings.push({ code: 'empty_limit', nodeId: limit.id, message: `Limit ${name} sets no limit: give it rounds or time, or delete it` })
   }
   return { errors, warnings }
 }
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number } = {}) {
+export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number } = {}) {
   const currentBoard = structuredClone(board)
+  // A time block is a limit block too, with a time card.
+  const timeBlock = Boolean(options.blockedAtTime)
+  if (timeBlock) options = { ...options, blockedAtLimit: true }
   if (options.blockedAtLimit) {
-    // Execution's send-back route leads back to it, and its card allows 2 rounds.
-    currentBoard.limits = [{ id: 'lim_cap', title: 'Cap', target: 'execution', rounds: 2 }]
+    // Execution's send-back route leads back to it, and its card allows 2 rounds, or 30 min warned at 5 min left.
+    currentBoard.limits = [timeBlock ? { id: 'lim_cap', title: 'Cap', target: 'execution', seconds: 1800, warnSeconds: 300 } : { id: 'lim_cap', title: 'Cap', target: 'execution', rounds: 2 }]
     currentBoard.connections = [...currentBoard.connections, { id: 'gate-fail', from: 'gate:fail', to: 'execution:in' }]
   }
   // The run resumes once the grant is recorded.
   let granted = false
+  const blockEvents = timeBlock ? blockedAtTimeEvents : blockedAtLimitEvents
+  const blockReason = timeBlock ? timeLimitReason : limitReason
+  const blockUse = timeBlock ? timeLimitUse : limitUse
   if (options.waitingHuman) {
     // The answered gate's routes lead somewhere, as admission requires (archon-o7p.10).
     currentBoard.ends = [{ id: 'end_done', title: 'Done', outcome: 'done' }, { id: 'end_rejected', title: 'Rejected', outcome: 'rejected' }]
@@ -160,12 +191,15 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
   if (options.blockedAtLimit) nodes = [...nodes, { id: 'lim_cap', x: 448, y: 476 }]
   const endsOf = () => (currentBoard.ends ||= [])
   const limitsOf = () => (currentBoard.limits ||= [])
-  // Mirrors the store (checkLimitWrite): a target must be a step or the Input card, and rounds not negative.
-  const limitRefusal = (target: string | undefined, rounds: number | undefined) => {
+  // Mirrors the store (checkLimitWrite): a target must be a step or the Input card, and no knob negative.
+  type Knobs = { rounds?: number; seconds?: number; warnSeconds?: number }
+  const limitRefusal = (target: string | undefined, knobs: Knobs) => {
     if (target && ![...currentBoard.inputCards, ...currentBoard.formations].some(node => node.id === target)) {
       return `"${target}" is not a step or the Input card; a Limit card covers one of them`
     }
-    if (rounds !== undefined && rounds < 0) return 'rounds must be a positive whole number'
+    if (knobs.rounds !== undefined && knobs.rounds < 0) return 'rounds must be a positive whole number'
+    if (knobs.seconds !== undefined && knobs.seconds < 0) return 'time must be a positive whole number of seconds'
+    if (knobs.warnSeconds !== undefined && knobs.warnSeconds < 0) return 'the warning must be a positive whole number of seconds'
     return ''
   }
   let seatsFetches = 0
@@ -182,8 +216,8 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     // cockpit fetches validation again after each one, as against the daemon.
     const etag = () => path.startsWith('/api/missions/browser') && currentBoard.limits?.length ? currentBoard.etag : 'fixture-etag'
     const respond = (data: unknown) => route.fulfill({ json: { success: true, data }, headers: { ETag: etag() } })
-    const refuseLimit = (target: string | undefined, rounds: number | undefined) => {
-      const message = limitRefusal(target, rounds)
+    const refuseLimit = (target: string | undefined, knobs: Knobs) => {
+      const message = limitRefusal(target, knobs)
       return message ? route.fulfill({ status: 400, json: { success: false, error: { code: 'INVALID_LIMIT', message } } }) : null
     }
     if (path === '/api/theme') {
@@ -254,27 +288,29 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
           currentBoard.etag = `board-${currentBoard.rev}`
           return respond({ mission: boardState(), layout: { missionId: board.id, missionRev: currentBoard.rev, etag: `layout-${currentBoard.rev}`, nodes, edges: [] }, endId: id })
         } else if (body.createLimit) {
-          // Mirrors the store (CreateLimit): titled Limit unless named; rounds 0 sets none.
-          const { title, target = '', rounds = 0, x, y } = body.createLimit
-          const refused = refuseLimit(target, rounds)
+          // Mirrors the store (CreateLimit): titled Limit unless named; a knob of 0 sets none.
+          const { title, target = '', rounds = 0, seconds = 0, warnSeconds = 0, x, y } = body.createLimit
+          const refused = refuseLimit(target, { rounds, seconds, warnSeconds })
           if (refused) return refused
-          const limit: LimitNode = { id: `lim_${currentBoard.rev}`, title: title || 'Limit', target, ...(rounds ? { rounds } : {}) }
+          const limit: LimitNode = { id: `lim_${currentBoard.rev}`, title: title || 'Limit', target, ...(rounds ? { rounds } : {}), ...(seconds ? { seconds } : {}), ...(warnSeconds ? { warnSeconds } : {}) }
           limitsOf().push(limit)
           nodes = [...nodes, { id: limit.id, x, y }]
           currentBoard.rev++
           currentBoard.etag = `board-${currentBoard.rev}`
           return respond({ mission: boardState(), layout: { missionId: board.id, missionRev: currentBoard.rev, etag: `layout-${currentBoard.rev}`, nodes, edges: [] }, limit })
         } else if (body.updateLimit) {
-          // Mirrors the store (UpdateLimit): an empty target unwires, rounds 0 clears.
-          const { id, title, target, rounds } = body.updateLimit
+          // Mirrors the store (UpdateLimit): an empty target unwires, a knob of 0 clears it.
+          const { id, title, target, ...knobs } = body.updateLimit
           const limit = limitsOf().find(item => item.id === id)
           if (!limit) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
-          const refused = refuseLimit(target, rounds)
+          const refused = refuseLimit(target, knobs)
           if (refused) return refused
           if (title !== undefined) limit.title = title || 'Limit'
           if (target !== undefined) limit.target = target
-          if (rounds === 0) delete limit.rounds
-          else if (rounds !== undefined) limit.rounds = rounds
+          for (const knob of ['rounds', 'seconds', 'warnSeconds'] as const) {
+            if (knobs[knob] === 0) delete limit[knob]
+            else if (knobs[knob] !== undefined) limit[knob] = knobs[knob]
+          }
         } else if (body.deleteLimit) {
           const id = body.deleteLimit.id
           if (!limitsOf().some(limit => limit.id === id)) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
@@ -360,19 +396,19 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (options.blockedAtLimit && path === '/api/runs/run_browser/resume' && method === 'POST') {
       // Mirrors the coordinator: a spent limit resumes only with a grant.
       const body = route.request().postDataJSON()
-      if (!body.grant) return route.fulfill({ status: 409, json: { success: false, error: { code: 'CONFLICT', message: 'this run stopped at a spent limit: resume it with --grant to give one more allowance' } } })
+      if (!body.grant) return route.fulfill({ status: 409, json: { success: false, error: { code: 'CONFLICT', message: 'this run stopped at a spent limit: resume it with --grant to give one more round or the card\'s time again' } } })
       granted = true
-      return respond({ runId: 'run_browser', status: 'running', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 11, cwd: runCwd })
+      return respond({ runId: 'run_browser', status: 'running', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: blockEvents.length + 2, cwd: runCwd })
     }
     if (path === '/api/runs/run_browser' && options.blockedAtLimit) return respond(granted
-      ? { runId: 'run_browser', status: 'running', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 11, cwd: runCwd }
-      : { runId: 'run_browser', status: 'blocked', final: false, resumeAllowed: true, resumePolicy: 'grant', missionSlug: 'browser', inputCardId: 'mission', eventCount: 9, cwd: runCwd })
+      ? { runId: 'run_browser', status: 'running', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: blockEvents.length + 2, cwd: runCwd }
+      : { runId: 'run_browser', status: 'blocked', final: false, resumeAllowed: true, resumePolicy: 'grant', missionSlug: 'browser', inputCardId: 'mission', eventCount: blockEvents.length, cwd: runCwd })
     if (path.endsWith('/events') && options.blockedAtLimit) return respond({ events: granted
-      ? [...blockedAtLimitEvents, { seq: 10, type: 'run_resumed' }, { seq: 11, type: 'node_started', nodeId: 'execution', attempt: 3 }]
-      : blockedAtLimitEvents })
+      ? [...blockEvents, { seq: blockEvents.length + 1, type: 'run_resumed' }, { seq: blockEvents.length + 2, type: 'node_started', nodeId: 'execution', attempt: timeBlock ? 2 : 3 }]
+      : blockEvents })
     if (options.blockedAtLimit && path === '/api/runs/run_browser/evidence/problems') return respond({ problems: [
-      { seq: 8, type: 'error', code: 'limit_reached', nodeIds: ['execution'], reason: { text: limitReason, bytes: limitReason.length }, limit: limitUse },
-      { seq: 9, type: 'run_blocked', code: 'limit_reached', nodeIds: ['execution'], reason: { text: limitReason, bytes: limitReason.length }, resumeAllowed: true, limit: limitUse, ...(granted ? { resumedSeq: 10 } : {}) },
+      { seq: blockEvents.length - 1, type: 'error', code: 'limit_reached', nodeIds: ['execution'], reason: { text: blockReason, bytes: blockReason.length }, limit: blockUse },
+      { seq: blockEvents.length, type: 'run_blocked', code: 'limit_reached', nodeIds: ['execution'], reason: { text: blockReason, bytes: blockReason.length }, resumeAllowed: true, limit: blockUse, ...(granted ? { resumedSeq: blockEvents.length + 1 } : {}) },
     ] })
     if (path === '/api/runs/run_browser' && options.blockedAtJudge) return respond({ runId: 'run_browser', status: 'blocked', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 8, cwd: runCwd })
     if (path === '/api/runs/run_browser') return respond({ runId: 'run_browser', status: 'running', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 2, cwd: runCwd })

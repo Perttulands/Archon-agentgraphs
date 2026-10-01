@@ -77,7 +77,7 @@ import { gateWireNeedsLabel, loopConnectionIds, routeJudgeWire, routeLoopWires, 
 import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
 import { defaultEndTitle, endOutcomeMeaning } from './endNode'
-import { LIMIT_ROOM, limitCoversWords, limitKnobWords, limitMeaning, tetherLine } from './limitCard'
+import { LIMIT_ROOM, limitCoversWords, limitKnobWords, limitMeaning, limitWarnWords, tetherLine } from './limitCard'
 import { UndoHistory, WriteTracker, boardStep, combineUndo, nodeDeleteUndo, portRemoveUndo, quoted, restoreBlocker, undoOutcomeMessage, type UndoDraft, type UndoStep } from './formationsUndo'
 import { NOTE_CARDS, NoteLayer, NOTES_MODES, noteWindowAnchor, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
 import NoteWindow, { BOARD_NOTE_TARGET, noteWindowId } from './NoteWindow'
@@ -90,7 +90,7 @@ import type { GateDraft } from './GateEditorDialog'
 import { createFormationsInteractionOwner } from './formationsInteraction'
 import type { FormationsInteractionOwner } from './formationsInteraction'
 import { WindowManagerProvider, useWindowManager } from '../windows/WindowManager'
-import type { NodeWindowOps } from '../nodeWindow/NodeWindow'
+import type { LimitChange, NodeWindowOps } from '../nodeWindow/NodeWindow'
 import { readBoardView, writeBoardView, type BoardView } from '../flow/boardView'
 import type { FlowRun } from '../flow/FlowView'
 import { cockpitWorkspace } from '../windows/cockpitWorkspace'
@@ -952,14 +952,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return true
   }, [patchBoard, recordUndo])
 
-  const saveExecution = useCallback(async (formationId: string, timeoutSeconds: number): Promise<boolean> => {
-    const previous = boardRef.current?.formations.find(formation => formation.id === formationId)?.execution?.timeoutSeconds || 0
-    const result = await patchBoard({ setExecution: { formationId, timeoutSeconds } })
-    if (!result) return false
-    recordUndo('the execution duration edit', boardStep({ setExecution: { formationId, timeoutSeconds: previous } }))
-    return true
-  }, [patchBoard, recordUndo])
-
   // Undo waits for edits in flight, then runs the newest entry. A stale
   // revision (another editor, or the poll not yet caught up) reloads the board
   // and retries once; only an undo the board truly refuses is dropped.
@@ -1079,7 +1071,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const createLimitAt = useCallback(async (worldX: number, worldY: number, target = '') => {
     const placement = placementForNewNode(worldX, worldY, LIMIT_ROOM)
     const before = boardRef.current
-    const result = await patchBoard({ createLimit: { title: 'Limit', target, rounds: 0, x: placement.x, y: placement.y } })
+    const result = await patchBoard({ createLimit: { title: 'Limit', target, rounds: 0, seconds: 0, warnSeconds: 0, x: placement.x, y: placement.y } })
     if (!before || !result) return
     const created = findAddedByID(before.limits || [], result.board.limits || [])
     if (!created) return
@@ -1087,10 +1079,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     openNodeWindow(created.id)
   }, [openNodeWindow, patchBoard, placementForNewNode, recordUndo])
 
-  // One change to a Limit card's target or rounds, with one undo entry. A
-  // refusal (INVALID_LIMIT) is returned for the field that asked, not shown in
-  // the error bar.
-  const setLimit = useCallback(async (limit: LimitNode, change: { target?: string; rounds?: number }): Promise<true | string> => {
+  // One change to a Limit card's target or one knob, with one undo entry that
+  // restores the previous value (0 clears a knob). A refusal (INVALID_LIMIT) is
+  // returned for the field that asked, not shown in the error bar.
+  const setLimit = useCallback(async (limit: LimitNode, change: LimitChange): Promise<true | string> => {
     const previous = boardRef.current?.limits?.find(item => item.id === limit.id) || limit
     try {
       await applyBoardPatch({ updateLimit: { id: limit.id, ...change } })
@@ -1098,8 +1090,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       return err instanceof Error ? err.message : 'The Limit card was not saved.'
     }
     setError('')
-    recordUndo(`the ${change.target !== undefined ? 'target' : 'rounds'} of Limit card ${quoted(previous.title, 'untitled')}`,
-      boardStep({ updateLimit: { id: limit.id, ...(change.target !== undefined ? { target: previous.target } : {}), ...(change.rounds !== undefined ? { rounds: previous.rounds || 0 } : {}) } }))
+    const restore: Record<string, unknown> = { id: limit.id }
+    if (change.target !== undefined) restore.target = previous.target
+    if (change.rounds !== undefined) restore.rounds = previous.rounds || 0
+    if (change.seconds !== undefined) restore.seconds = previous.seconds || 0
+    if (change.warnSeconds !== undefined) restore.warnSeconds = previous.warnSeconds || 0
+    const what = change.target !== undefined ? 'target' : change.rounds !== undefined ? 'rounds' : change.seconds !== undefined ? 'time' : 'warning'
+    recordUndo(`the ${what} of Limit card ${quoted(previous.title, 'untitled')}`, boardStep({ updateLimit: restore }))
     return true
   }, [applyBoardPatch, recordUndo])
 
@@ -1529,14 +1526,15 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     }
   }, [activeRun, refreshRunEvents, selectedSlug])
 
-  // A run stopped at a spent Limit card resumes only with one more round granted (archon-o7p.8).
-  const grantActiveRun = useCallback(async () => {
+  // A run stopped at a spent Limit card resumes only with a grant (archon-o7p.8):
+  // one more round, or the card's time again, as the run bar's button says.
+  const grantActiveRun = useCallback(async (gives: string) => {
     if (!activeRun?.runId || activeRun.final || activeRun.resumePolicy !== 'grant') return
     try {
       const status = runStatusFromResponse(await resumeRunRequest(activeRun.runId, {
         actor: 'agent:ui',
         mode: 'reattach',
-        reason: 'one more round granted in the cockpit',
+        reason: `${gives} granted in the cockpit`,
         grant: true,
       }))
       setActiveRun(status)
@@ -1547,7 +1545,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       }
       setError('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to grant one more round')
+      setError(err instanceof Error ? err.message : `Failed to grant ${gives}`)
     }
   }, [activeRun, refreshRunEvents, selectedSlug])
 
@@ -2644,7 +2642,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     rename: renameNode,
     updateInputCard: updateMissionFields,
     setBrief: saveBrief,
-    setExecution: saveExecution,
     changeType: changeFormationType,
     assignSlot,
     updateGate: (gate, draft) => updateGateFields(gate.id, draft),
@@ -2660,7 +2657,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
       setInspectedNodeId(nodeId)
     },
-  }), [assignSlot, attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, renameNode, saveBrief, saveExecution, setEndOutcome, setGateFiles, setLimit, updateGateFields, updateMissionFields])
+  }), [assignSlot, attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, renameNode, saveBrief, setEndOutcome, setGateFiles, setLimit, updateGateFields, updateMissionFields])
 
   const cockpit = (
     <div className="fmx" data-testid="formations-view" data-cockpit="d7">
@@ -2818,7 +2815,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 <RunBarActions run={activeRun} points={runPoints} boardTitle={board?.title || ''}
                   titleOf={nodeId => pointTitle(nodeId) || nodeId}
                   waitingGates={waitingGateIds.map(gateId => ({ title: pointTitle(gateId) || gateId, requestedSeq: requestedSeqOf(gateId) }))}
-                  onResume={() => void resumeActiveRun()} onGrant={() => void grantActiveRun()} onStop={abortActiveRun} />
+                  onResume={() => void resumeActiveRun()} onGrant={gives => void grantActiveRun(gives)} onStop={abortActiveRun} />
               </div>
             ) : choices.finished.length ? (
               // No run is shown, but finished runs can be reopened to read what they produced.
@@ -3213,7 +3210,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               return (
                 <div
                   key={limit.id}
-                  className={`limitcard${wired ? ' wired' : ''}${limit.rounds ? '' : ' empty'}${locatedNodeId === limit.id ? ' located' : ''}${noteByNode.has(limit.id) ? ' has-note' : ''}${draftClass(limit.id)}`}
+                  className={`limitcard${wired ? ' wired' : ''}${limit.rounds || limit.seconds ? '' : ' empty'}${locatedNodeId === limit.id ? ' located' : ''}${noteByNode.has(limit.id) ? ' has-note' : ''}${draftClass(limit.id)}`}
                   data-node={limit.id}
                   data-limit={limit.id}
                   data-testid={`limit-node-${limit.id}`}
@@ -3231,7 +3228,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   <span className="lmeta">
                     {/* A default title says no more than the eyebrow, so only a chosen one shows. */}
                     <span className="leyebrow">Limit{limit.title && limit.title !== 'Limit' ? <> · <span className="ltitle">{limit.title}</span></> : null}</span>
-                    <span className={`lknob${limit.rounds ? '' : ' placeholder'}`} data-testid={`limit-knob-${limit.id}`}>{board ? limitKnobWords(board, limit) : ''}</span>
+                    <span className={`lknob${limit.rounds || limit.seconds ? '' : ' placeholder'}`} data-testid={`limit-knob-${limit.id}`}>{board ? limitKnobWords(board, limit) : ''}</span>
+                    {limitWarnWords(limit) ? <span className="lwarn" data-testid={`limit-warn-${limit.id}`}>{limitWarnWords(limit)}</span> : null}
                     <span className={`lcovers${wired ? '' : ' placeholder'}`} data-testid={`limit-covers-${limit.id}`}>{covers}</span>
                   </span>
                 </div>
@@ -3311,6 +3309,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             <NodeWindow nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps} noteCount={noteByNode.get(nodeId)?.length || 0}
               anchor={nodeWindowAnchors.current.get(nodeId)}
               runState={nodeStates.has(nodeId) ? nodeStates.get(nodeId) || '' : undefined}
+              limitWarnings={runEvents.filter(event => event.type === 'limit_warning' && event.nodeId === nodeId)}
               onClose={() => setNodeWindows(current => current.filter(open => open !== nodeId))} />
           </Suspense>
         )) : null}

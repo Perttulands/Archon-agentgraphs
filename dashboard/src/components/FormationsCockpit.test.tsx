@@ -442,12 +442,6 @@ function installFetchMock(options: {
         board = { ...board, rev: board.rev + 1, formations: board.formations.map(item => item.id === formationId ? { ...item, brief } : item) as TestBoard['formations'] }
         return respond({ mission: board }, 'board-etag-2')
       }
-      if (!url.endsWith('/layout') && body.setExecution) {
-        const { formationId, timeoutSeconds } = body.setExecution as { formationId: string; timeoutSeconds: number }
-        board = { ...board, rev: board.rev + 1, formations: board.formations.map(item => item.id === formationId
-          ? { ...item, execution: timeoutSeconds ? { timeoutSeconds } : undefined } : item) as TestBoard['formations'] }
-        return respond({ mission: board }, 'board-etag-2')
-      }
       if (!url.endsWith('/layout') && body.assignSlot) {
         const { formationId, slotId, agentId, harness, model, effort } = body.assignSlot as { formationId: string; slotId: string; agentId: string; harness: string; model?: string; effort?: string }
         // Mirrors the store's role drag: a patch naming only a role (and perhaps
@@ -465,17 +459,17 @@ function installFetchMock(options: {
         return respond({ mission: board }, 'board-etag-2')
       }
       if (!url.endsWith('/layout') && body.updateLimit) {
-        // Mirrors the store (UpdateLimit): rounds 0 clears the knob, '' unwires.
-        const { id, ...change } = body.updateLimit as { id: string; title?: string; target?: string; rounds?: number }
+        // Mirrors the store (UpdateLimit): a knob of 0 clears it, '' unwires.
+        const { id, ...change } = body.updateLimit as { id: string; title?: string; target?: string; rounds?: number; seconds?: number; warnSeconds?: number }
         if (options.limitRefusal) return Promise.resolve({
           ok: false, status: 400, headers: { get: () => null },
           json: () => Promise.resolve({ success: false, error: { code: 'INVALID_LIMIT', message: options.limitRefusal } }),
           text: () => Promise.resolve(''),
         })
-        const limits = ((board as { limits?: Array<{ id: string; title: string; target: string; rounds?: number }> }).limits || []).map(item => {
+        const limits = ((board as { limits?: Array<{ id: string; title: string; target: string; rounds?: number; seconds?: number; warnSeconds?: number }> }).limits || []).map(item => {
           if (item.id !== id) return item
           const next = { ...item, ...change }
-          if (change.rounds === 0) delete next.rounds
+          for (const knob of ['rounds', 'seconds', 'warnSeconds'] as const) if (change[knob] === 0) delete next[knob]
           return next
         })
         board = { ...board, rev: board.rev + 1, limits } as TestBoard
@@ -1680,7 +1674,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(card).toHaveTextContent('Cap')
     expect(screen.getByTestId('limit-knob-lim_cap')).toHaveTextContent('at most 3 rounds')
     expect(screen.getByTestId('limit-covers-lim_cap')).toHaveTextContent('Covers Frame')
-    expect(screen.getByTestId('limit-covers-lim_all')).toHaveTextContent('Covers the whole mission')
+    expect(screen.getByTestId('limit-covers-lim_all')).toHaveTextContent('Covers the mission')
     expect(screen.getByTestId('limit-knob-lim_all')).toHaveTextContent('at most 20 step runs')
 
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
@@ -1713,7 +1707,7 @@ describe('FormationsCockpit reference parity', () => {
 
     // Covering the whole mission from the window.
     fireEvent.change(within(window).getByLabelText('Covers'), { target: { value: 'mis_showcase' } })
-    await waitFor(() => expect(screen.getByTestId('limit-covers-lim_cap')).toHaveTextContent('Covers the whole mission'))
+    await waitFor(() => expect(screen.getByTestId('limit-covers-lim_cap')).toHaveTextContent('Covers the mission'))
     expect(patches.filter(patch => patch.body.updateLimit).slice(-1)[0]?.body.updateLimit).toEqual({ id: 'lim_cap', target: 'mis_showcase' })
     // Two cards on the Input card is a finding the window names.
     expect(within(window).getByText('The Input card has another Limit card, Budget: keep one.')).toBeInTheDocument()
@@ -1734,6 +1728,56 @@ describe('FormationsCockpit reference parity', () => {
     const flow = await screen.findByTestId('flow-view')
     expect(within(flow).getByTestId('flow-step-fmn_frame')).toHaveTextContent('LimitCap: at most 3 rounds')
     expect(within(flow).getByRole('region', { name: 'Input card Showcase' })).toHaveTextContent('LimitBudget: the whole mission may make at most 20 step runs')
+  })
+
+  it('sets a Limit card\'s time and warning in its window, each with one undo, and states them on the card, the step and Flow', async () => {
+    const limited = { ...makeBoard(), limits: [{ id: 'lim_cap', title: 'Cap', target: 'fmn_frame', rounds: 3 }, { id: 'lim_all', title: 'Budget', target: 'mis_showcase', seconds: 7200 }] }
+    patches = installFetchMock({ boards: [limited] })
+    await renderCockpit()
+    expect(screen.getByTestId('limit-knob-lim_all')).toHaveTextContent('at most 2 h of work')
+    const updates = () => patches.filter(patch => patch.body.updateLimit).map(patch => patch.body.updateLimit)
+    const window = await openNodeWindow(screen.getByTestId('limit-node-lim_cap'), 'Limit card · Cap')
+    expect(within(window).getByText('No time set')).toBeInTheDocument()
+
+    // A time that is not whole seconds never leaves the window.
+    fireEvent.click(within(window).getByRole('button', { name: 'Edit time' }))
+    for (const value of ['0', '-5m', '1.5s', 'soon']) {
+      fireEvent.change(within(window).getByRole('textbox', { name: 'Time' }), { target: { value } })
+      fireEvent.click(within(window).getByRole('button', { name: 'Save time' }))
+      expect(within(window).getByRole('alert')).toHaveTextContent('Enter a time such as 45s, 30m or 1h30m (whole seconds), or leave it blank for no time limit.')
+    }
+    expect(updates()).toEqual([])
+    fireEvent.change(within(window).getByRole('textbox', { name: 'Time' }), { target: { value: '30m' } })
+    fireEvent.click(within(window).getByRole('button', { name: 'Save time' }))
+    await waitFor(() => expect(screen.getByTestId('limit-knob-lim_cap')).toHaveTextContent('at most 3 rounds · 30 min'))
+    expect(updates()).toEqual([{ id: 'lim_cap', seconds: 1800 }])
+    expect(within(window).getByText('30 min of work')).toBeInTheDocument()
+
+    // A warning must be shorter than the time.
+    fireEvent.click(within(window).getByRole('button', { name: 'Edit warning' }))
+    fireEvent.change(within(window).getByRole('textbox', { name: 'Warning' }), { target: { value: '30m' } })
+    fireEvent.click(within(window).getByRole('button', { name: 'Save warning' }))
+    expect(within(window).getByRole('alert')).toHaveTextContent('Warn with less time left than the card\'s 30 min.')
+    fireEvent.change(within(window).getByRole('textbox', { name: 'Warning' }), { target: { value: '5m' } })
+    fireEvent.click(within(window).getByRole('button', { name: 'Save warning' }))
+    await waitFor(() => expect(screen.getByTestId('limit-warn-lim_cap')).toHaveTextContent('warns at 5 min left'))
+    expect(updates().slice(-1)[0]).toEqual({ id: 'lim_cap', warnSeconds: 300 })
+    expect(within(window).getByTestId('limit-meaning-lim_cap')).toHaveTextContent('Waiting on a human gate does not count, so a send-back resumes it with the time it has left.')
+
+    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
+    expect(within(frame).getByRole('button', { name: 'Limit Cap: at most 3 rounds and 30 min of work, warns at 5 min left' })).toBeInTheDocument()
+
+    // Each change has its own undo entry, restoring the value before it (0 clears).
+    fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(screen.queryByTestId('limit-warn-lim_cap')).toBeNull())
+    expect(updates().slice(-1)[0]).toEqual({ id: 'lim_cap', warnSeconds: 0 })
+    fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(screen.getByTestId('limit-knob-lim_cap')).toHaveTextContent(/^at most 3 rounds$/))
+    expect(updates().slice(-1)[0]).toEqual({ id: 'lim_cap', seconds: 0 })
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Flow' }))
+    const flow = await screen.findByTestId('flow-view')
+    expect(within(flow).getByRole('region', { name: 'Input card Showcase' })).toHaveTextContent('LimitBudget: the whole mission may work at most 2 h')
   })
 
   it('converts a code gate to a human gate in its window and undoes it', async () => {
@@ -2033,45 +2077,6 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => expect(patches.filter(patch => patch.body.setBrief).slice(-1)[0]?.body.setBrief).toMatchObject({ files: [] }))
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => expect(patches.filter(patch => patch.body.clearBrief).slice(-1)[0]?.body.clearBrief).toEqual({ formationId: 'fmn_frame' }))
-  })
-
-  it('saves a formation duration, restores inheritance, and undoes both changes', async () => {
-    await renderCockpit()
-    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
-    const duration = () => patches.filter(patch => patch.body.setExecution).map(patch => patch.body.setExecution)
-    expect(within(frame).getByText('No time limit')).toBeInTheDocument()
-
-    fireEvent.click(within(frame).getByRole('button', { name: 'Edit execution duration (seconds)' }))
-    expect(within(frame).getByLabelText('Execution duration (seconds)')).toHaveValue('')
-    fireEvent.change(within(frame).getByLabelText('Execution duration (seconds)'), { target: { value: '125' } })
-    fireEvent.click(within(frame).getByRole('button', { name: 'Save execution duration (seconds)' }))
-    await waitFor(() => expect(within(frame).getByText('125 seconds')).toBeInTheDocument())
-    expect(duration()).toEqual([{ formationId: 'fmn_frame', timeoutSeconds: 125 }])
-
-    fireEvent.click(within(frame).getByRole('button', { name: 'Edit execution duration (seconds)' }))
-    fireEvent.change(within(frame).getByLabelText('Execution duration (seconds)'), { target: { value: '' } })
-    fireEvent.click(within(frame).getByRole('button', { name: 'Save execution duration (seconds)' }))
-    await waitFor(() => expect(within(frame).getByText('No time limit')).toBeInTheDocument())
-    expect(duration().slice(-1)[0]).toEqual({ formationId: 'fmn_frame', timeoutSeconds: 0 })
-
-    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
-    await waitFor(() => expect(within(frame).getByText('125 seconds')).toBeInTheDocument())
-    expect(duration().slice(-1)[0]).toEqual({ formationId: 'fmn_frame', timeoutSeconds: 125 })
-    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
-    await waitFor(() => expect(within(frame).getByText('No time limit')).toBeInTheDocument())
-    expect(duration().slice(-1)[0]).toEqual({ formationId: 'fmn_frame', timeoutSeconds: 0 })
-  })
-
-  it('rejects invalid formation durations without issuing a board mutation', async () => {
-    await renderCockpit()
-    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
-    fireEvent.click(within(frame).getByRole('button', { name: 'Edit execution duration (seconds)' }))
-    for (const value of ['0', '-1', '1.5', '10 minutes', 'Infinity', '9007199254740992']) {
-      fireEvent.change(within(frame).getByLabelText('Execution duration (seconds)'), { target: { value } })
-      fireEvent.click(within(frame).getByRole('button', { name: 'Save execution duration (seconds)' }))
-      expect(within(frame).getByRole('alert')).toHaveTextContent('Enter a positive whole number of seconds')
-    }
-    expect(patches.filter(patch => patch.body.setExecution)).toEqual([])
   })
 
   it('states a vanilla slot as staffed with no role, and restores a slot\'s own model and effort on undo', async () => {

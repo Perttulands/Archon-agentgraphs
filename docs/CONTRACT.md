@@ -934,15 +934,19 @@ of 5 min, before any work: warn with less time left"); it warns, as
 `empty_limit`, about a card that sets no knob. Admission refuses a run whose
 mission holds an invalid card, with the same words. On the canvas, drag the
 Limit token from the top bar onto a step or the Input card, or onto empty
-canvas, or right-click the canvas (Limit card); a new card has no rounds and
-opens its window. The card states its knob ("at most 3 rounds", "at most 40
-journal messages" on a peer step, "at most 20 step runs" for the whole mission)
-and what it covers, with a dashed tether to its target; drag its handle onto a
-step or the Input card to rewire it. Its window edits the title, target and
-rounds, its right-click menu covers the whole mission, unwires or deletes it,
-and every edit has its own undo entry. Flow and the covered node's window state
-the limit in words. A run stopped at a spent card offers Grant one more round
-in the run bar in place of Resume. `mission list` lists missions; `formation list <mission>`
+canvas, or right-click the canvas (Limit card); a new card sets no limit and
+opens its window. The card states its knobs ("at most 3 rounds", "at most 40
+journal messages" on a peer step, "at most 20 step runs" for the whole mission,
+"at most 30 min of work", "at most 3 rounds · 30 min") and its warning ("warns
+at 5 min left"), says what it covers, and has a dashed tether to its target;
+drag its handle onto a step or the Input card to rewire it. Its window edits
+the title, target, rounds, time (such as 45s, 30m or 1h30m) and warning; its
+right-click menu covers the whole mission, unwires it or deletes it; and every
+edit has its own undo entry. Flow and the covered node's window state the
+limit in words ("the whole mission may work at most 2 h"), and a step's window
+lists the time warnings its seats were given. A run stopped at a spent card
+offers a grant in place of Resume that says what it gives: Grant one more
+round, or the card's time again, Grant 30 min more. `mission list` lists missions; `formation list <mission>`
 lists its formations with their slots and staffing. `mission inspect <mission>`
 prints the whole mission, `mission inspect <mission> <input>` prints the Input
 card with its reachable chain, and `formation inspect <mission> <formation>`

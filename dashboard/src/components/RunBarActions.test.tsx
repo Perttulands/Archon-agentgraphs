@@ -137,13 +137,27 @@ describe('RunBarActions', () => {
     expect(screen.getByRole('button', { name: 'Stop run' })).toBeInTheDocument()
   })
 
-  it('offers a grant of one more round in place of Resume at a spent Limit card', () => {
+  it('offers a grant in place of Resume at a spent Limit card, saying what it gives', async () => {
+    const problems = (limit: Record<string, unknown>) => vi.fn(() => Promise.resolve({
+      ok: true, status: 200, headers: { get: () => '' },
+      json: () => Promise.resolve({ success: true, data: { problems: [
+        { seq: 9, type: 'run_blocked', code: 'limit_reached', nodeIds: ['fmn_draft'], reason: { text: 'Draft used it all', bytes: 17 }, resumeAllowed: true, limit },
+      ] } }),
+    } as unknown as Response))
+    vi.stubGlobal('fetch', problems({ kind: 'rounds', limitId: 'lim_cap', nodeId: 'fmn_draft', used: 3, max: 3 }))
     const { onGrant, onResume } = renderBar({ run: run({ status: 'blocked', resumeAllowed: true, resumePolicy: 'grant' }), waitingGates: [] })
     expect(screen.queryByRole('button', { name: 'Resume run' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Grant one more round' }))
-    expect(onGrant).toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole('button', { name: 'Grant one more round' }))
+    expect(onGrant).toHaveBeenCalledWith('one more round')
     expect(onResume).not.toHaveBeenCalled()
     expect(screen.queryByTestId('run-not-resumable')).toBeNull()
+    cleanup()
+
+    // A time card gives its time again: the card's seconds are max less what was granted.
+    vi.stubGlobal('fetch', problems({ kind: 'time', limitId: 'lim_clock', nodeId: 'fmn_draft', used: 3600, max: 3600, granted: 1800 }))
+    const time = renderBar({ run: run({ status: 'blocked', resumeAllowed: true, resumePolicy: 'grant' }), waitingGates: [] })
+    fireEvent.click(await screen.findByRole('button', { name: 'Grant 30 min more' }))
+    expect(time.onGrant).toHaveBeenCalledWith('30 min more')
   })
 
   it('names every step a stop interrupts and every gate that stops waiting (archon-o7p.11)', () => {
