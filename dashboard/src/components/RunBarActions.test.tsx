@@ -12,15 +12,16 @@ const titleOf = (nodeId: string) => ({ fmn_draft: 'Draft', gate_review: 'Operato
 function renderBar(props: Partial<Parameters<typeof RunBarActions>[0]> = {}) {
   const onStop = vi.fn(async () => true)
   const onResume = vi.fn()
+  const onGrant = vi.fn()
   render(
     <div className="fmx">
       <div className="run-banner">
         <RunBarActions run={run()} points={[{ kind: 'waiting', nodeId: 'gate_review', gate: true }]} boardTitle="Runs gate"
-          titleOf={titleOf} waitingGates={[{ title: 'Operator review', requestedSeq: 9 }]} onResume={onResume} onStop={onStop} {...props} />
+          titleOf={titleOf} waitingGates={[{ title: 'Operator review', requestedSeq: 9 }]} onResume={onResume} onGrant={onGrant} onStop={onStop} {...props} />
       </div>
     </div>,
   )
-  return { onStop, onResume }
+  return { onStop, onResume, onGrant }
 }
 
 describe('RunBarActions', () => {
@@ -120,7 +121,7 @@ describe('RunBarActions', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
       ok: true, status: 200, headers: { get: () => '' },
       json: () => Promise.resolve({ success: true, data: { problems: [
-        { seq: 20, type: 'run_blocked', code: 'resume_attempts_exhausted', nodeIds: ['fmn_draft'], reason: { text: 'resume attempts exhausted', bytes: 25 }, resumeAllowed: false, limit: { kind: 'attempts', nodeId: 'fmn_draft', used: 3, max: 3 } },
+        { seq: 20, type: 'run_blocked', code: 'invalid_judge_result', nodeIds: ['gate_review'], reason: { text: 'the judge returned no verdict', bytes: 29 }, resumeAllowed: false },
       ] } }),
     } as unknown as Response)))
     const { onResume } = renderBar({ run: run({ status: 'blocked', resumeAllowed: true }), waitingGates: [] })
@@ -131,9 +132,18 @@ describe('RunBarActions', () => {
 
     renderBar({ run: run({ status: 'blocked', resumeAllowed: false }), waitingGates: [] })
     expect(screen.queryByRole('button', { name: 'Resume run' })).toBeNull()
-    await waitFor(() => expect(screen.getByTestId('run-not-resumable')).toHaveTextContent('Can’t resume: Draft used 3 of 3 attempts.'))
+    await waitFor(() => expect(screen.getByTestId('run-not-resumable')).toHaveTextContent('Can’t resume: the judge returned no verdict.'))
     expect(screen.getByTestId('run-not-resumable')).not.toHaveTextContent(/new run/)
     expect(screen.getByRole('button', { name: 'Stop run' })).toBeInTheDocument()
+  })
+
+  it('offers a grant of one more round in place of Resume at a spent Limit card', () => {
+    const { onGrant, onResume } = renderBar({ run: run({ status: 'blocked', resumeAllowed: true, resumePolicy: 'grant' }), waitingGates: [] })
+    expect(screen.queryByRole('button', { name: 'Resume run' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Grant one more round' }))
+    expect(onGrant).toHaveBeenCalled()
+    expect(onResume).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('run-not-resumable')).toBeNull()
   })
 
   it('names every step a stop interrupts and every gate that stops waiting (archon-o7p.11)', () => {

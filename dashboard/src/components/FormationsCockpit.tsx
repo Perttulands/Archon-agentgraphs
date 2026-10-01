@@ -50,7 +50,7 @@ import {
 import { chooseBoardRun, readRunLink, runChoiceLabel, runChoices, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
 import { chooseCurrentBoard, rememberBoardOnDevice } from './currentBoard'
 import { END_ROOM, clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
-import { END_SVG, FormationSeats, GATE_SVG, PLAY_SVG, slotTooltip, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
+import { END_SVG, LIMIT_SVG, FormationSeats, GATE_SVG, PLAY_SVG, slotTooltip, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
 import { useEscapeKey } from './useEscapeKey'
 import { ROSTER_MAX_WIDTH, ROSTER_MIN_WIDTH, useRosterPanel } from './useRosterPanel'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
@@ -72,11 +72,12 @@ import { ReferencedFiles, type HiddenReferencedFile } from '../files/ReferencedF
 import { nodeFileRefs } from '../files/referencedFiles'
 import { producedNames, summarizeProduced, useRunProduced } from '../files/produced'
 import { useHumanGateUpstream } from './useHumanGateUpstream'
-import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom } from './formationsCockpitDom'
+import { connectionKind, findInputPortAt, findLimitTargetAt, findOutputPortAt, isTextEditingTarget, laneYFrom } from './formationsCockpitDom'
 import { gateWireNeedsLabel, loopConnectionIds, routeJudgeWire, routeLoopWires, routeOrthoWire, type LoopWire } from './formationsRouting'
 import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
 import { defaultEndTitle, endOutcomeMeaning } from './endNode'
+import { LIMIT_ROOM, limitCoversWords, limitKnobWords, limitMeaning, tetherLine } from './limitCard'
 import { UndoHistory, WriteTracker, boardStep, combineUndo, nodeDeleteUndo, portRemoveUndo, quoted, restoreBlocker, undoOutcomeMessage, type UndoDraft, type UndoStep } from './formationsUndo'
 import { NOTE_CARDS, NoteLayer, NOTES_MODES, noteWindowAnchor, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
 import NoteWindow, { BOARD_NOTE_TARGET, noteWindowId } from './NoteWindow'
@@ -117,6 +118,7 @@ import type {
   LayoutDocument,
   LayoutEdge,
   LayoutNode,
+  LimitNode,
   MissionNode,
   NoteEntry,
   NotePatch,
@@ -209,6 +211,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [hoverPort, setHoverPort] = useState<string | null>(null)
   const [gateGhost, setGateGhost] = useState<{ x: number; y: number } | null>(null)
   const [endGhost, setEndGhost] = useState<{ x: number; y: number } | null>(null)
+  const [limitGhost, setLimitGhost] = useState<{ x: number; y: number } | null>(null)
+  // Each Limit card's tether to what it covers, measured from the cards like wires.
+  const [tethers, setTethers] = useState<Array<{ id: string; x1: number; y1: number; x2: number; y2: number }>>([])
+  // A tether being dragged from a Limit card's handle, and the step or Input card under it.
+  const [tetherDrag, setTetherDrag] = useState<{ limitId: string; x1: number; y1: number; x2: number; y2: number } | null>(null)
+  const [limitHover, setLimitHover] = useState('')
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [missionEditor, setMissionEditor] = useState<MissionEditorState | null>(null)
   const [missionEditorSaving, setMissionEditorSaving] = useState(false)
@@ -616,7 +624,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // same commit the cards are laid out in; reading refs here would lag a frame and drop wires.
   useLayoutEffect(() => {
     const world = worldRef.current
-    if (!world || !board) { setWires([]); return }
+    if (!world || !board) { setWires([]); setTethers([]); return }
     const worldRect = world.getBoundingClientRect()
     const scale = view.scale || 1
     const cssEscape = (value: string) => value.replace(/["\\]/g, '\\$&')
@@ -697,6 +705,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         : undefined
       paths.push({ id: conn.id, d, kind, flowing, loop: loopIds.has(conn.id), label })
     }
+    // A Limit card's tether runs straight from its card to what it covers.
+    setTethers((board.limits || []).flatMap(limit => {
+      const card = cardRect(limit.id)
+      const target = limit.target ? cardRect(limit.target) : null
+      return card && target ? [{ id: limit.id, ...tetherLine(card, target) }] : []
+    }))
     const loopRoutes = routeLoopWires(loops, obstacles, { frozen: !!dragPos })
     setWires(paths.map(path => {
       const route = path.loop ? loopRoutes.get(path.id) : undefined
@@ -1060,6 +1074,35 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return true
   }, [patchBoard, recordUndo])
 
+  // A Limit card is created at once, covering the step or Input card it was
+  // dropped on, else wired to nothing; its window opens to set its rounds.
+  const createLimitAt = useCallback(async (worldX: number, worldY: number, target = '') => {
+    const placement = placementForNewNode(worldX, worldY, LIMIT_ROOM)
+    const before = boardRef.current
+    const result = await patchBoard({ createLimit: { title: 'Limit', target, rounds: 0, x: placement.x, y: placement.y } })
+    if (!before || !result) return
+    const created = findAddedByID(before.limits || [], result.board.limits || [])
+    if (!created) return
+    recordUndo(`the new Limit card ${quoted(created.title, '')}`.trim(), boardStep({ deleteLimit: { id: created.id } }))
+    openNodeWindow(created.id)
+  }, [openNodeWindow, patchBoard, placementForNewNode, recordUndo])
+
+  // One change to a Limit card's target or rounds, with one undo entry. A
+  // refusal (INVALID_LIMIT) is returned for the field that asked, not shown in
+  // the error bar.
+  const setLimit = useCallback(async (limit: LimitNode, change: { target?: string; rounds?: number }): Promise<true | string> => {
+    const previous = boardRef.current?.limits?.find(item => item.id === limit.id) || limit
+    try {
+      await applyBoardPatch({ updateLimit: { id: limit.id, ...change } })
+    } catch (err) {
+      return err instanceof Error ? err.message : 'The Limit card was not saved.'
+    }
+    setError('')
+    recordUndo(`the ${change.target !== undefined ? 'target' : 'rounds'} of Limit card ${quoted(previous.title, 'untitled')}`,
+      boardStep({ updateLimit: { id: limit.id, ...(change.target !== undefined ? { target: previous.target } : {}), ...(change.rounds !== undefined ? { rounds: previous.rounds || 0 } : {}) } }))
+    return true
+  }, [applyBoardPatch, recordUndo])
+
   const createGateAt = useCallback((worldX: number, worldY: number) => {
     setGateEditor({ initial: newGateDraft(gateProfiles), x: worldX, y: worldY, saving: false })
   }, [gateProfiles])
@@ -1149,7 +1192,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const mission = current.inputCards?.find(node => node.id === nodeId)
     const gate = current.gates?.find(node => node.id === nodeId)
     const end = current.ends?.find(node => node.id === nodeId)
-    const previous = formation?.title ?? mission?.title ?? gate?.title ?? end?.title
+    const limit = current.limits?.find(node => node.id === nodeId)
+    const previous = formation?.title ?? mission?.title ?? gate?.title ?? end?.title ?? limit?.title
     if (previous === undefined) return false
     if (previous === title) return true
     const label = `the rename of ${quoted(previous, 'an untitled node')}`
@@ -1165,6 +1209,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     } else if (end) {
       if (!await patchBoard({ updateEnd: { id: nodeId, title } })) return false
       recordUndo(label, boardStep({ updateEnd: { id: nodeId, title: previous } }))
+    } else if (limit) {
+      if (!await patchBoard({ updateLimit: { id: nodeId, title } })) return false
+      recordUndo(label, boardStep({ updateLimit: { id: nodeId, title: previous } }))
     }
     return true
   }, [patchBoard, recordUndo])
@@ -1204,8 +1251,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     // A node whose restore the server would refuse is deleted only after the operator agrees it cannot be undone.
     const blocker = restoreBlocker(before, nodeId)
     if (blocker && !confirmed) {
-      const kind = patch.deleteFormation ? 'formation' : patch.deleteGate ? 'gate' : patch.deleteEnd ? 'End node' : 'Input card'
-      const title = [...(before.inputCards || []), ...before.formations, ...(before.gates || []), ...(before.ends || [])].find(node => node.id === nodeId)?.title || ''
+      const kind = patch.deleteFormation ? 'formation' : patch.deleteGate ? 'gate' : patch.deleteEnd ? 'End node' : patch.deleteLimit ? 'Limit card' : 'Input card'
+      const title = [...(before.inputCards || []), ...before.formations, ...(before.gates || []), ...(before.ends || []), ...(before.limits || [])].find(node => node.id === nodeId)?.title || ''
       setDeleteConfirm({ title, kind, reason: blocker, patch })
       return
     }
@@ -1248,6 +1295,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const deleteEndOp = useCallback((end: EndNode) => {
     void deleteNodeOp(end.id, { deleteEnd: { id: end.id } })
+  }, [deleteNodeOp])
+
+  const deleteLimitOp = useCallback((limit: LimitNode) => {
+    void deleteNodeOp(limit.id, { deleteLimit: { id: limit.id } })
   }, [deleteNodeOp])
 
   const addPortOp = useCallback(async (formation: FormationNode, direction: FormationPortDirection) => {
@@ -1478,6 +1529,28 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     }
   }, [activeRun, refreshRunEvents, selectedSlug])
 
+  // A run stopped at a spent Limit card resumes only with one more round granted (archon-o7p.8).
+  const grantActiveRun = useCallback(async () => {
+    if (!activeRun?.runId || activeRun.final || activeRun.resumePolicy !== 'grant') return
+    try {
+      const status = runStatusFromResponse(await resumeRunRequest(activeRun.runId, {
+        actor: 'agent:ui',
+        mode: 'reattach',
+        reason: 'one more round granted in the cockpit',
+        grant: true,
+      }))
+      setActiveRun(status)
+      await refreshRunEvents(activeRun.runId)
+      if (selectedSlug) {
+        if (status.final) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
+        else window.localStorage.setItem(activeRunStorageKey(selectedSlug), status.runId)
+      }
+      setError('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to grant one more round')
+    }
+  }, [activeRun, refreshRunEvents, selectedSlug])
+
   // The response is the verdict reason: approve routes it with the gate input,
   // send back returns it as feedback.
   const recordHumanGateVerdict = useCallback(async (gateId: string, requestedSeq: number, verdict: GateDecision, response: string) => {
@@ -1518,7 +1591,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const onViewportPointerDown = useCallback((event: ReactPointerEvent) => {
     if (event.button !== 0) return
     const target = event.target as HTMLElement
-    if (target.closest('.formation,.gatecard,.missioncard,.toolcard,.endcard,.zoomctl,.run-banner')) return
+    if (target.closest('.formation,.gatecard,.missioncard,.toolcard,.endcard,.limitcard,.zoomctl,.run-banner')) return
     const pan = { startX: event.clientX, startY: event.clientY, originX: viewRef.current.x, originY: viewRef.current.y }
     interactionOwner.begin({
       kind: 'pan',
@@ -1619,7 +1692,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // The run bar's phrase centres its node, then opens the node's window beside the centred card.
   const locateAndOpenNode = useCallback((nodeId: string) => {
     const current = boardRef.current
-    const openable = Boolean(current && [...(current.inputCards || []), ...current.formations, ...(current.gates || []), ...(current.ends || [])].some(node => node.id === nodeId))
+    const openable = Boolean(current && [...(current.inputCards || []), ...current.formations, ...(current.gates || []), ...(current.ends || []), ...(current.limits || [])].some(node => node.id === nodeId))
     // In Flow, bring the step's row into view and open its window beside the row's title.
     const title = boardView === 'flow'
       ? document.querySelector<HTMLElement>(`[data-flow-node="${nodeId.replace(/["\\]/g, '\\$&')}"] .flow-title`)
@@ -1748,7 +1821,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         if (!drag.moved) {
           // A click without a drag opens the node where it can be read and edited.
           const current = boardRef.current
-          if (current && [...(current.inputCards || []), ...current.formations, ...(current.gates || []), ...(current.ends || [])].some(node => node.id === drag.id)) openNodeWindow(drag.id)
+          if (current && [...(current.inputCards || []), ...current.formations, ...(current.gates || []), ...(current.ends || []), ...(current.limits || [])].some(node => node.id === drag.id)) openNodeWindow(drag.id)
           return
         }
         const scale = viewRef.current.scale || 1
@@ -1819,7 +1892,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           } else {
             // Dropped on empty canvas inside the viewport → spawn a judge there (reference just-works).
             const rect = viewportRef.current?.getBoundingClientRect()
-            const overCard = (pointer.target as HTMLElement | null)?.closest?.('.formation,.gatecard,.missioncard,.toolcard,.endcard,.ctxmenu,.pop')
+            const overCard = (pointer.target as HTMLElement | null)?.closest?.('.formation,.gatecard,.missioncard,.toolcard,.endcard,.limitcard,.ctxmenu,.pop')
             const inView = rect && pointer.clientX > rect.left && pointer.clientX < rect.right && pointer.clientY > rect.top && pointer.clientY < rect.bottom
             if (!overCard && inView) {
               const w = screenToWorld(pointer.clientX, pointer.clientY)
@@ -2001,6 +2074,77 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setEndGhost({ x: event.clientX, y: event.clientY })
   }, [createEndAt, interactionOwner, screenToWorld])
 
+  // Dropped on a step or the Input card, the new Limit card covers it and sits
+  // below it, as Arrange places it; dropped on empty canvas it is wired to nothing.
+  const beginLimitToken = useCallback((event: ReactPointerEvent) => {
+    if (event.button !== 0) return
+    if (!boardRef.current) return
+    event.preventDefault()
+    interactionOwner.begin({
+      kind: 'gate',
+      pointerId: event.pointerId,
+      project: pointer => {
+        setLimitGhost({ x: pointer.clientX, y: pointer.clientY })
+        setLimitHover(findLimitTargetAt(pointer.clientX, pointer.clientY))
+      },
+      finalize: pointer => {
+        const rect = viewportRef.current?.getBoundingClientRect()
+        if (!rect || pointer.clientX < rect.left || pointer.clientX > rect.right || pointer.clientY < rect.top || pointer.clientY > rect.bottom) return
+        const target = findLimitTargetAt(pointer.clientX, pointer.clientY)
+        const card = target ? worldRef.current?.querySelector<HTMLElement>(`[data-node="${target.replace(/["\\]/g, '\\$&')}"]`) : null
+        const at = target ? displayLayoutRef.current.get(target) : null
+        if (card && at) {
+          // The gap leaves the target's note preview clear, as Arrange does.
+          void createLimitAt(at.x, at.y + card.offsetHeight + 112, target)
+          return
+        }
+        const w = screenToWorld(pointer.clientX, pointer.clientY)
+        void createLimitAt(w.x, w.y)
+      },
+      cancel: () => {
+        setLimitGhost(null)
+        setLimitHover('')
+      },
+    })
+    setLimitGhost({ x: event.clientX, y: event.clientY })
+  }, [createLimitAt, interactionOwner, screenToWorld])
+
+  // A Limit card's handle draws its tether, like a wire: dropped on a step or
+  // the Input card it covers that node; dropped anywhere else nothing changes.
+  const beginTetherDrag = useCallback((event: ReactPointerEvent<HTMLElement>, limit: LimitNode) => {
+    if (event.button !== 0) return
+    if (interactionOwner.projection()?.kind === 'wire') return
+    event.stopPropagation()
+    event.preventDefault()
+    const handle = event.currentTarget.getBoundingClientRect()
+    const start = screenToWorld(handle.left + handle.width / 2, handle.top + handle.height / 2)
+    const drag = { startX: event.clientX, startY: event.clientY, moved: false }
+    interactionOwner.begin({
+      kind: 'wire',
+      pointerId: event.pointerId,
+      project: pointer => {
+        if (!drag.moved && Math.abs(pointer.clientX - drag.startX) + Math.abs(pointer.clientY - drag.startY) < 4) return
+        drag.moved = true
+        const w = screenToWorld(pointer.clientX, pointer.clientY)
+        setTetherDrag({ limitId: limit.id, x1: start.x, y1: start.y, x2: w.x, y2: w.y })
+        setLimitHover(findLimitTargetAt(pointer.clientX, pointer.clientY))
+      },
+      finalize: pointer => {
+        if (!drag.moved) {
+          openNodeWindow(limit.id)
+          return
+        }
+        const target = findLimitTargetAt(pointer.clientX, pointer.clientY)
+        if (!target || target === limit.target) return
+        void setLimit(limit, { target }).then(saved => { if (saved !== true) setError(saved) })
+      },
+      cancel: () => {
+        setTetherDrag(null)
+        setLimitHover('')
+      },
+    })
+  }, [interactionOwner, openNodeWindow, screenToWorld, setLimit])
+
   const gateHasJudge = useCallback((gateId: string): boolean => {
     return (boardRef.current?.connections || []).some(connection =>
       connection.from === `${gateId}:judge` || connection.to === `${gateId}:judge`)
@@ -2095,6 +2239,17 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     ])
   }, [deleteEndOp, openMenu, setEndOutcome])
 
+  const limitMenu = useCallback((event: ReactMouseEvent<HTMLElement>, limit: LimitNode) => {
+    const inputCard = boardRef.current?.inputCards?.[0]
+    const report = (saved: true | string) => { if (saved !== true) setError(saved) }
+    openMenu(event, 'Limit card actions', [
+      { label: 'Open Limit card', action: () => openNodeWindow(limit.id) },
+      ...(inputCard && limit.target !== inputCard.id ? [{ label: 'Cover the whole mission', action: () => void setLimit(limit, { target: inputCard.id }).then(report) }] : []),
+      ...(limit.target ? [{ label: 'Unwire', action: () => void setLimit(limit, { target: '' }).then(report) }] : []),
+      { label: 'Delete Limit card', destructive: true, action: () => deleteLimitOp(limit) },
+    ])
+  }, [deleteLimitOp, openMenu, openNodeWindow, setLimit])
+
   const missionMenu = useCallback((event: ReactMouseEvent<HTMLElement>, mission: MissionNode) => {
     openMenu(event, 'Input card actions', [
       { label: 'Start mission', action: () => setStartMission(mission) },
@@ -2119,7 +2274,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   const canvasMenu = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
-    if (target.closest('.formation,.gatecard,.missioncard,.toolcard,.endcard,.ctxmenu,.pop,.run-banner,.zoomctl')) return
+    if (target.closest('.formation,.gatecard,.missioncard,.toolcard,.endcard,.limitcard,.ctxmenu,.pop,.run-banner,.zoomctl')) return
     if ((target as Element).closest?.('path')) return
     event.preventDefault()
     event.stopPropagation()
@@ -2137,9 +2292,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         { label: 'Gate', action: () => void createGateAt(w.x, w.y) },
         { label: 'End node · done', action: () => void createEndAt(w.x, w.y, 'done') },
         { label: 'End node · rejected', action: () => void createEndAt(w.x, w.y, 'rejected') },
+        { label: 'Limit card', action: () => void createLimitAt(w.x, w.y) },
       ],
     })
-  }, [createEndAt, createFormationAt, createGateAt, createMissionAt, screenToWorld])
+  }, [createEndAt, createFormationAt, createGateAt, createLimitAt, createMissionAt, screenToWorld])
 
   // ----- render helpers -----
   const renderSlot = (formation: FormationNode, slot: FormationSlot, badge?: number) => {
@@ -2186,6 +2342,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       ...(board.gates || []).map(node => ({ id: node.id, title: node.title || 'Gate', kind: 'Gate' })),
       ...(board.tools || []).map(node => ({ id: node.id, title: node.title, kind: 'Tool' })),
       ...(board.ends || []).map(node => ({ id: node.id, title: node.title, kind: 'End node' })),
+      ...(board.limits || []).map(node => ({ id: node.id, title: node.title, kind: 'Limit card' })),
     ]
   }, [board])
 
@@ -2493,6 +2650,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     updateGate: (gate, draft) => updateGateFields(gate.id, draft),
     setGateFiles: (gate, files) => setGateFiles(gate.id, files),
     setEndOutcome,
+    setLimit,
     attachJudge,
     detachJudge,
     openNode: openNodeWindow,
@@ -2502,7 +2660,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
       setInspectedNodeId(nodeId)
     },
-  }), [assignSlot, attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, renameNode, saveBrief, saveExecution, setEndOutcome, setGateFiles, updateGateFields, updateMissionFields])
+  }), [assignSlot, attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, renameNode, saveBrief, saveExecution, setEndOutcome, setGateFiles, setLimit, updateGateFields, updateMissionFields])
 
   const cockpit = (
     <div className="fmx" data-testid="formations-view" data-cockpit="d7">
@@ -2533,6 +2691,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         <div className="gatetoken endtoken" title="Drag onto the canvas to end a path on purpose" data-testid="end-token" onPointerDown={beginEndToken}>
           {END_SVG}
           End
+        </div>
+        <div className="gatetoken limittoken" title="Drag onto a step to cap its rounds, onto the Input card to cap the whole mission, or onto the canvas" data-testid="limit-token" onPointerDown={beginLimitToken}>
+          {LIMIT_SVG}
+          Limit
         </div>
         <div className="spacer" />
         <CanvasLegend />
@@ -2643,6 +2805,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                       {index ? <span className="run-point-sep" aria-hidden="true">·</span> : null}
                       <RunPoint runId={activeRun.runId} point={point} title={pointTitle(point.nodeId)}
                         titleOf={nodeId => (board ? nodeTitle(board, nodeId) : nodeId)}
+                        inputCard={nodeId => Boolean(board?.inputCards?.some(card => card.id === nodeId))}
                         onLocate={point.kind === 'waiting' ? showAnswer : locateAndOpenNode}
                         action={point.kind === 'waiting' ? (showFlow ? 'Show its answer in Flow' : 'Show it on the canvas with your answer') : showFlow ? 'Open the step' : 'Show it on the canvas and open it'} />
                     </Fragment>
@@ -2655,7 +2818,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 <RunBarActions run={activeRun} points={runPoints} boardTitle={board?.title || ''}
                   titleOf={nodeId => pointTitle(nodeId) || nodeId}
                   waitingGates={waitingGateIds.map(gateId => ({ title: pointTitle(gateId) || gateId, requestedSeq: requestedSeqOf(gateId) }))}
-                  onResume={() => void resumeActiveRun()} onStop={abortActiveRun} />
+                  onResume={() => void resumeActiveRun()} onGrant={() => void grantActiveRun()} onStop={abortActiveRun} />
               </div>
             ) : choices.finished.length ? (
               // No run is shown, but finished runs can be reopened to read what they produced.
@@ -2706,6 +2869,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   textAnchor={path.label.anchor}
                 >{path.label.text}</text>
               ) : null)}
+              {tethers.map(tether => (
+                <line key={`tether-${tether.id}`} className="limit-tether" data-testid={`limit-tether-${tether.id}`}
+                  x1={tether.x1} y1={tether.y1} x2={tether.x2} y2={tether.y2} />
+              ))}
+              {tetherDrag ? (
+                <line className="limit-tether temp" x1={tetherDrag.x1} y1={tetherDrag.y1} x2={tetherDrag.x2} y2={tetherDrag.y2} />
+              ) : null}
               {tempWire ? (
                 <path
                   className={`wire temp${tempWire.kind !== 'wire' ? ` ${tempWire.kind}` : ''}`}
@@ -2719,7 +2889,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 <div className="empty-title">No missions yet</div>
                 <div className="empty-copy">Create a mission from the top bar to start sketching it.</div>
               </div>
-            ) : (board.inputCards || []).length + board.formations.length + (board.gates || []).length + (board.tools || []).length + (board.ends || []).length === 0 ? (
+            ) : (board.inputCards || []).length + board.formations.length + (board.gates || []).length + (board.tools || []).length + (board.ends || []).length + (board.limits || []).length === 0 ? (
               <div className="empty-board" data-testid="formations-empty-board">
                 <div className="empty-title">This mission is empty</div>
                 <div className="empty-copy">Add an Input card, a formation, a Gate or a Tool to sketch the workflow.</div>
@@ -2732,7 +2902,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               return (
                 <div
                   key={mission.id}
-                  className={`missioncard${state === 'blocked' || state === 'failed' ? ` ${state}` : ''}${locatedNodeId === mission.id ? ' located' : ''}${noteByNode.has(mission.id) ? ' has-note' : ''}${draftClass(mission.id)}`}
+                  className={`missioncard${state === 'blocked' || state === 'failed' ? ` ${state}` : ''}${locatedNodeId === mission.id ? ' located' : ''}${limitHover === mission.id ? ' limithover' : ''}${noteByNode.has(mission.id) ? ' has-note' : ''}${draftClass(mission.id)}`}
                   data-node={mission.id}
                   data-testid={`mission-node-${mission.id}`}
                   style={{ left: pos.x, top: pos.y }}
@@ -2762,7 +2932,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               return (
                 <div
                   key={formation.id}
-                  className={`formation type-${formation.type}${state === 'running' || state === 'blocked' || state === 'failed' ? ` ${state}` : ''}${locatedNodeId === formation.id ? ' located' : ''}${judgeHover === formation.id ? ' judgehover' : ''}${needsYouNodeIds.has(formation.id) ? ' needs-you' : ''}${noteByNode.has(formation.id) ? ' has-note' : ''}${draftClass(formation.id)}`}
+                  className={`formation type-${formation.type}${state === 'running' || state === 'blocked' || state === 'failed' ? ` ${state}` : ''}${locatedNodeId === formation.id ? ' located' : ''}${judgeHover === formation.id ? ' judgehover' : ''}${limitHover === formation.id ? ' limithover' : ''}${needsYouNodeIds.has(formation.id) ? ' needs-you' : ''}${noteByNode.has(formation.id) ? ' has-note' : ''}${draftClass(formation.id)}`}
                   data-node={formation.id}
                   data-testid={`formation-node-${formation.id}`}
                   style={{ left: pos.x, top: pos.y }}
@@ -3026,6 +3196,43 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   <span className="emeta">
                     <span className="eeyebrow">End · {end.outcome}</span>
                     {renderNodeTitle(end.title, 'etitle', 'End', 'span')}
+                  </span>
+                </div>
+              )
+            })}
+            {(board?.limits || []).map((limit, index) => {
+              const nodeIndex = index
+                + (board?.inputCards?.length || 0)
+                + (board?.formations?.length || 0)
+                + (board?.gates?.length || 0)
+                + (board?.tools?.length || 0)
+                + (board?.ends?.length || 0)
+              const pos = positionOf(limit.id, nodeIndex)
+              const covers = board ? limitCoversWords(board, limit) : ''
+              const wired = Boolean(board && limit.target && [...(board.inputCards || []), ...board.formations].some(node => node.id === limit.target))
+              return (
+                <div
+                  key={limit.id}
+                  className={`limitcard${wired ? ' wired' : ''}${limit.rounds ? '' : ' empty'}${locatedNodeId === limit.id ? ' located' : ''}${noteByNode.has(limit.id) ? ' has-note' : ''}${draftClass(limit.id)}`}
+                  data-node={limit.id}
+                  data-limit={limit.id}
+                  data-testid={`limit-node-${limit.id}`}
+                  title={board ? limitMeaning(board, limit) : undefined}
+                  style={{ left: pos.x, top: pos.y }}
+                  onPointerDown={event => beginNodeDrag(event, limit.id, nodeIndex)}
+                  onContextMenu={event => limitMenu(event, limit)}
+                >
+                  {renderNotePin(limit.id, limit.title || 'Limit')}
+                  {renderDraftMarker(limit.id)}
+                  <span className={`limit-handle${tetherDrag?.limitId === limit.id ? ' dragging' : ''}`} data-testid={`limit-handle-${limit.id}`}
+                    role="button" aria-label={`Drag to choose what ${limit.title || 'this Limit card'} covers`}
+                    title="Drag onto a step, or onto the Input card for the whole mission" onPointerDown={event => beginTetherDrag(event, limit)} />
+                  <span className="lico">{LIMIT_SVG}</span>
+                  <span className="lmeta">
+                    {/* A default title says no more than the eyebrow, so only a chosen one shows. */}
+                    <span className="leyebrow">Limit{limit.title && limit.title !== 'Limit' ? <> · <span className="ltitle">{limit.title}</span></> : null}</span>
+                    <span className={`lknob${limit.rounds ? '' : ' placeholder'}`} data-testid={`limit-knob-${limit.id}`}>{board ? limitKnobWords(board, limit) : ''}</span>
+                    <span className={`lcovers${wired ? '' : ' placeholder'}`} data-testid={`limit-covers-${limit.id}`}>{covers}</span>
                   </span>
                 </div>
               )
@@ -3343,6 +3550,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       ) : null}
       {endGhost ? (
         <div className="gateghost endghost" style={{ left: endGhost.x, top: endGhost.y }}>{END_SVG}</div>
+      ) : null}
+      {limitGhost ? (
+        <div className="gateghost limitghost" style={{ left: limitGhost.x, top: limitGhost.y }}>{LIMIT_SVG}</div>
       ) : null}
     </div>
   )

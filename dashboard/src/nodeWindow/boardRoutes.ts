@@ -1,16 +1,18 @@
 import { endPathWords, endTitleSuffix } from '../components/endNode'
 import type { BoardDocument } from '../components/formationsTypes'
+import { limitCoverage, limitLine, limitsCovering } from '../components/limitCard'
 import { buildFlow, judgeChain } from '../flow/flowModel'
 
 export { judgeChain }
 
 /**
  * A board's routes in words: which step feeds a node, where its work goes,
- * what judges a gate, and where each path ends. Steps carry the Flow view's
- * numbers; missions, judge formations and End nodes have none.
+ * what judges a gate, where each path ends, and which Limit card covers a step
+ * or the whole mission. Steps carry the Flow view's numbers; missions, judge
+ * formations, End nodes and Limit cards have none.
  */
 
-export type RouteKind = 'starts' | 'fed-by' | 'feeds' | 'pass' | 'fail' | 'judged-by' | 'judges' | 'ended-by'
+export type RouteKind = 'starts' | 'fed-by' | 'feeds' | 'pass' | 'fail' | 'judged-by' | 'judges' | 'ended-by' | 'covers' | 'limited-by'
 
 export interface Route {
   kind: RouteKind
@@ -23,7 +25,7 @@ export interface Route {
   text: string
 }
 
-type Board = Pick<BoardDocument, 'connections' | 'formations'> & Partial<Pick<BoardDocument, 'inputCards' | 'gates' | 'tools' | 'ends'>>
+type Board = Pick<BoardDocument, 'connections' | 'formations'> & Partial<Pick<BoardDocument, 'inputCards' | 'gates' | 'tools' | 'ends' | 'limits'>>
 
 /** A route that leads nowhere, which a draft may hold until it is wired. */
 export const NOWHERE = 'leads nowhere: wire it to a step or an End node'
@@ -32,7 +34,7 @@ const nodeOf = (endpoint: string) => endpoint.split(':')[0]
 const portOf = (endpoint: string) => endpoint.split(':').slice(1).join(':')
 
 export function nodeTitle(board: Board, nodeId: string): string {
-  const node = [...(board.inputCards || []), ...board.formations, ...(board.gates || []), ...(board.tools || []), ...(board.ends || [])].find(item => item.id === nodeId)
+  const node = [...(board.inputCards || []), ...board.formations, ...(board.gates || []), ...(board.tools || []), ...(board.ends || []), ...(board.limits || [])].find(item => item.id === nodeId)
   return node?.title || nodeId
 }
 
@@ -57,6 +59,16 @@ export function nodeRoutes(board: Board, nodeId: string, steps = stepNumbers(boa
   const gate = (board.gates || []).find(node => node.id === nodeId)
   const end = endOf(nodeId)
   const outgoing = connections.filter(connection => nodeOf(connection.from) === nodeId)
+  // The Limit cards on a step or the Input card, each opening its card.
+  const limitedBy = (): Route[] => limitsCovering(board, nodeId).map(limit => ({ kind: 'limited-by', nodeId: limit.id, text: limitLine(board, limit) }))
+
+  const limit = (board.limits || []).find(node => node.id === nodeId)
+  if (limit) {
+    const coverage = limitCoverage(board, limit)
+    if (coverage.kind === 'step') return [{ kind: 'covers', nodeId: coverage.node.id, text: `Covers ${named(coverage.node.id)}` }]
+    if (coverage.kind === 'mission') return [{ kind: 'covers', nodeId: coverage.node.id, text: 'Covers the whole mission' }]
+    return [{ kind: 'covers', text: coverage.kind === 'none' ? 'Wired to nothing yet' : 'Covers a step that is gone' }]
+  }
 
   if (end) {
     for (const connection of connections.filter(item => item.to === `${nodeId}:in`)) {
@@ -75,7 +87,7 @@ export function nodeRoutes(board: Board, nodeId: string, steps = stepNumbers(boa
       routes.push({ kind: 'starts', nodeId: target, text: `Starts → ${named(target)}` })
     }
     if (!outgoing.length) routes.push({ kind: 'starts', text: 'Starts → nothing yet' })
-    return routes
+    return [...routes, ...limitedBy()]
   }
 
   const judged = new Set((board.gates || []).filter(item => judgeChain(board, item.id).includes(nodeId)).map(item => item.id))
@@ -107,7 +119,7 @@ export function nodeRoutes(board: Board, nodeId: string, steps = stepNumbers(boa
       const returnsVerdict = connections.some(item => item.from === `${nodeId}:${port.id}` && judged.has(nodeOf(item.to)) && portOf(item.to) === 'judge')
       if (!leaving.length && !returnsVerdict) routes.push({ kind: 'feeds', port: manyOutputs ? port.label : undefined, text: `${lead} ${NOWHERE}` })
     }
-    return routes
+    return [...routes, ...limitedBy()]
   }
 
   if (gate) {

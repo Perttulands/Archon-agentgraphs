@@ -55,3 +55,17 @@ export function laneYFrom(lane: string | undefined): number | null {
   const value = Number(lane.slice(2))
   return Number.isFinite(value) ? value : null
 }
+
+/**
+ * The step or Input card under the pointer, which a Limit card may cover: its
+ * node ID, or '' over anything else. Cards are hit by their whole box, so a
+ * drop anywhere on one counts.
+ */
+export function findLimitTargetAt(clientX: number, clientY: number): string {
+  const selector = '.fmx .world .formation[data-node], .fmx .world .missioncard[data-node]'
+  for (const card of Array.from(document.querySelectorAll<HTMLElement>(selector))) {
+    const rect = card.getBoundingClientRect()
+    if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) return card.dataset.node || ''
+  }
+  return ''
+}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { formationTypeChoices } from '../components/FormationTypeChip'
 import { END_OUTCOMES, defaultEndTitle, endOutcomeMeaning } from '../components/endNode'
+import { limitCoverage, limitKnobWords, limitMeaning, limitsCovering, roundsProblem } from '../components/limitCard'
 import { GateKindChips, GateKindsFields, draftFromGate, type GateDraft } from '../components/GateEditorDialog'
 import { isSafeBeadsIssueID } from '../components/formationsBeadId'
 import { splitList } from '../components/formationsCockpitDom'
@@ -16,6 +17,7 @@ import type {
   FormationSlot,
   FormationType,
   GateNode,
+  LimitNode,
   MissionNode,
   PersonaCard,
 } from '../components/formationsTypes'
@@ -37,7 +39,7 @@ import { usePersonaCards } from './usePersonaCards'
 import './nodeWindow.css'
 
 /**
- * A mission, formation or gate opened from its card: every field read in full
+ * An Input card, formation, gate, End node or Limit card opened from its card: every field read in full
  * and edited in place, its staffing and routes stated in words, and its run
  * state with a way into the evidence. Each save is one board change with its
  * own undo entry.
@@ -54,6 +56,8 @@ export interface NodeWindowOps {
   /** Sets an End node's outcome: done, or rejected, which fails the run. */
   setEndOutcome: (end: EndNode, outcome: EndOutcome) => Promise<boolean>
   setGateFiles: (gate: GateNode, files: string[]) => Promise<boolean>
+  /** Changes what a Limit card covers ('' unwires it) or its rounds (0 clears them); resolves true, or the server's refusal. */
+  setLimit: (limit: LimitNode, change: { target?: string; rounds?: number }) => Promise<true | string>
   attachJudge: (gate: GateNode, chain: string[]) => void
   detachJudge: (gate: GateNode) => void
   openNode: (nodeId: string) => void
@@ -79,8 +83,9 @@ type Located =
   | { kind: 'formation'; node: FormationNode }
   | { kind: 'gate'; node: GateNode }
   | { kind: 'end'; node: EndNode }
+  | { kind: 'limit'; node: LimitNode }
 
-export function locateNode(board: Pick<BoardDocument, 'formations'> & Partial<Pick<BoardDocument, 'inputCards' | 'gates' | 'ends'>>, nodeId: string): Located | null {
+export function locateNode(board: Pick<BoardDocument, 'formations'> & Partial<Pick<BoardDocument, 'inputCards' | 'gates' | 'ends' | 'limits'>>, nodeId: string): Located | null {
   const mission = board.inputCards?.find(node => node.id === nodeId)
   if (mission) return { kind: 'inputCard', node: mission }
   const formation = board.formations.find(node => node.id === nodeId)
@@ -89,11 +94,13 @@ export function locateNode(board: Pick<BoardDocument, 'formations'> & Partial<Pi
   if (gate) return { kind: 'gate', node: gate }
   const end = board.ends?.find(node => node.id === nodeId)
   if (end) return { kind: 'end', node: end }
+  const limit = board.limits?.find(node => node.id === nodeId)
+  if (limit) return { kind: 'limit', node: limit }
   return null
 }
 
-const KIND_WORD = { inputCard: 'Input card', formation: 'Formation', gate: 'Gate', end: 'End node' } as const
-const UNTITLED = { inputCard: 'Input', formation: 'Untitled formation', gate: 'Gate', end: 'End' } as const
+const KIND_WORD = { inputCard: 'Input card', formation: 'Formation', gate: 'Gate', end: 'End node', limit: 'Limit card' } as const
+const UNTITLED = { inputCard: 'Input', formation: 'Untitled formation', gate: 'Gate', end: 'End', limit: 'Limit' } as const
 
 /** The window's accessible name, which its close button and handles repeat. */
 export function nodeWindowLabel(located: Located): string {
@@ -146,6 +153,7 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
         {located.kind === 'formation' ? <FormationFields formation={located.node} agents={agents} ops={ops} /> : null}
         {located.kind === 'gate' ? <GateFields gate={located.node} board={board} profiles={profiles} ops={ops} /> : null}
         {located.kind === 'end' ? <EndFields end={located.node} ops={ops} /> : null}
+        {located.kind === 'limit' ? <LimitFields limit={located.node} board={board} steps={steps} ops={ops} /> : null}
         <section className="nwin-section" aria-label="Notes">
           <h3>Notes</h3>
           <div className="nwin-run">
@@ -318,6 +326,48 @@ function EndFields({ end, ops }: { end: EndNode; ops: NodeWindowOps }) {
       </div>
       <p className="nfield-note">{endOutcomeMeaning(end.outcome)}</p>
     </div>
+  )
+}
+
+/**
+ * A Limit card's target and rounds, edited in place, and what it does to a run
+ * in words. A refusal from the server reads under the field it came from.
+ */
+function LimitFields({ limit, board, steps, ops }: { limit: LimitNode; board: BoardDocument; steps: ReadonlyMap<string, number>; ops: NodeWindowOps }) {
+  const [targetError, setTargetError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const coverage = limitCoverage(board, limit)
+  const others = limit.target ? limitsCovering(board, limit.target).filter(other => other.id !== limit.id) : []
+  const stepName = (formation: FormationNode) => `${steps.has(formation.id) ? `${steps.get(formation.id)} ` : ''}${formation.title || formation.id}`
+  const changeTarget = async (target: string) => {
+    if (target === limit.target) return
+    setSaving(true)
+    const saved = await ops.setLimit(limit, { target })
+    setSaving(false)
+    setTargetError(saved === true ? '' : saved)
+  }
+  return (
+    <>
+      <div className="nfield">
+        <div className="nfield-head"><label className="nfield-label" htmlFor={`limit-target-${limit.id}`}>Covers</label></div>
+        <select id={`limit-target-${limit.id}`} className="nwin-select" aria-label="Covers" value={coverage.kind === 'none' || coverage.kind === 'missing' ? '' : limit.target}
+          disabled={saving} onChange={event => void changeTarget(event.target.value)}>
+          <option value="">{coverage.kind === 'missing' ? 'A step that is gone' : 'Nothing yet'}</option>
+          {(board.inputCards || []).map(card => <option key={card.id} value={card.id}>Input card — the whole mission</option>)}
+          {[...board.formations].sort((a, b) => (steps.get(a.id) ?? Infinity) - (steps.get(b.id) ?? Infinity)).map(formation => (
+            <option key={formation.id} value={formation.id}>{stepName(formation)}</option>
+          ))}
+        </select>
+        {targetError ? <p className="nfield-note error" role="alert">{targetError}</p> : null}
+        {others.length ? <p className="nfield-note error">{`${coverage.kind === 'mission' ? 'The Input card' : coverage.kind === 'step' ? coverage.node.title : limit.target} has another Limit card, ${others.map(other => other.title).join(', ')}: keep one.`}</p> : null}
+      </div>
+      <EditableField label="Rounds" value={limit.rounds ? String(limit.rounds) : ''} placeholder="No rounds set"
+        hint="A step's runs, a peer step's journal messages, or the whole mission's step runs. Leave it blank for no limit."
+        validate={roundsProblem} onSave={value => ops.setLimit(limit, { rounds: value ? Number(value) : 0 })}>
+        {limit.rounds ? limitKnobWords(board, limit) : undefined}
+      </EditableField>
+      <p className="nfield-note limit-meaning" data-testid={`limit-meaning-${limit.id}`}>{limitMeaning(board, limit)}</p>
+    </>
   )
 }
 

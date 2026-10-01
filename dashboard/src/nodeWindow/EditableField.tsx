@@ -15,8 +15,8 @@ export function EditableField({ label, value, multiline = false, markdown = fals
   hint?: string
   /** A reason the value cannot be saved, or '' when it can. */
   validate?: (value: string) => string
-  /** Resolves true once the change is saved. */
-  onSave: (value: string) => Promise<boolean>
+  /** Resolves true once the change is saved; false, or the reason it was refused. */
+  onSave: (value: string) => Promise<boolean | string>
   /** Drawn instead of the value while reading, for values that are not plain text. */
   children?: ReactNode
 }) {
@@ -47,11 +47,11 @@ export function EditableField({ label, value, multiline = false, markdown = fals
     setSaving(true)
     const saved = await onSave(next)
     setSaving(false)
-    if (saved) {
+    if (saved === true) {
       cancel()
       setSavedReceipt(true)
     }
-    else setError(`The ${name} was not saved.`)
+    else setError(typeof saved === 'string' && saved ? saved : `The ${name} was not saved.`)
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {

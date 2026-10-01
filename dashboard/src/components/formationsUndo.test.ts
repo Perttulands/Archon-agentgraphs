@@ -185,6 +185,15 @@ describe('delete and port undo capture', () => {
     expect(restoreBlocker(ended, 'end_no')).toBeNull()
   })
 
+  it('captures a Limit card, which has no connections, for restoreNode limit', () => {
+    const limited: BoardDocument = { ...board, limits: [{ id: 'lim_other', title: 'Other', target: '' }, { id: 'lim_cap', title: 'Cap', target: 'fmn', rounds: 3 }] }
+    expect(nodeDeleteUndo(limited, 'lim_cap', { x: 448.4, y: 504 })).toEqual({
+      label: 'the delete of Limit card “Cap”',
+      steps: [boardStep({ restoreNode: { limit: { id: 'lim_cap', title: 'Cap', target: 'fmn', rounds: 3 }, connections: [], index: 1, x: 448, y: 504 } })],
+    })
+    expect(restoreBlocker(limited, 'lim_cap')).toBeNull()
+  })
+
   it('captures a removed port with its direction, place and connections', () => {
     expect(portRemoveUndo(board, 'fmn', 'in_b')).toEqual({
       label: 'the removal of input “Rework” from “Plan”',

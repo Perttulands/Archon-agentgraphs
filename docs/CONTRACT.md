@@ -903,7 +903,17 @@ the whole mission"), a target that is not a step or the Input card, a second
 card on one target ("Review has two Limit cards, Cap and Guard: keep one") and
 a rounds value that is not a positive whole number; it warns, as
 `empty_limit`, about a card that sets no knob. Admission refuses a run whose
-mission holds an invalid card, with the same words. `mission list` lists missions; `formation list <mission>`
+mission holds an invalid card, with the same words. On the canvas, drag the
+Limit token from the top bar onto a step or the Input card, or onto empty
+canvas, or right-click the canvas (Limit card); a new card has no rounds and
+opens its window. The card states its knob ("at most 3 rounds", "at most 40
+journal messages" on a peer step, "at most 20 step runs" for the whole mission)
+and what it covers, with a dashed tether to its target; drag its handle onto a
+step or the Input card to rewire it. Its window edits the title, target and
+rounds, its right-click menu covers the whole mission, unwires or deletes it,
+and every edit has its own undo entry. Flow and the covered node's window state
+the limit in words. A run stopped at a spent card offers Grant one more round
+in the run bar in place of Resume. `mission list` lists missions; `formation list <mission>`
 lists its formations with their slots and staffing. `mission inspect <mission>`
 prints the whole mission, `mission inspect <mission> <input>` prints the Input
 card with its reachable chain, and `formation inspect <mission> <formation>`

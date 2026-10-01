@@ -152,6 +152,8 @@ function installFetchMock(options: {
   conflictOnce?: string
   /** addPort answers only once this settles, so an edit is in flight. */
   addPortGate?: Promise<void>
+  /** updateLimit answers 400 INVALID_LIMIT with this message, as the store refuses a write. */
+  limitRefusal?: string
 } = {}) {
   let conflictPending = options.conflictOnce
   const patches: RecordedPatch[] = []
@@ -461,6 +463,23 @@ function installFetchMock(options: {
           }) as TestBoard['formations'],
         }
         return respond({ mission: board }, 'board-etag-2')
+      }
+      if (!url.endsWith('/layout') && body.updateLimit) {
+        // Mirrors the store (UpdateLimit): rounds 0 clears the knob, '' unwires.
+        const { id, ...change } = body.updateLimit as { id: string; title?: string; target?: string; rounds?: number }
+        if (options.limitRefusal) return Promise.resolve({
+          ok: false, status: 400, headers: { get: () => null },
+          json: () => Promise.resolve({ success: false, error: { code: 'INVALID_LIMIT', message: options.limitRefusal } }),
+          text: () => Promise.resolve(''),
+        })
+        const limits = ((board as { limits?: Array<{ id: string; title: string; target: string; rounds?: number }> }).limits || []).map(item => {
+          if (item.id !== id) return item
+          const next = { ...item, ...change }
+          if (change.rounds === 0) delete next.rounds
+          return next
+        })
+        board = { ...board, rev: board.rev + 1, limits } as TestBoard
+        return respond({ mission: board }, `board-${board.rev}`)
       }
       if (!url.endsWith('/layout') && body.updateFormation) {
         const { id, title } = body.updateFormation as { id: string; title: string }
@@ -1328,7 +1347,7 @@ describe('FormationsCockpit reference parity', () => {
     const viewport = container.querySelector('.viewport') as HTMLElement
     fireEvent.contextMenu(viewport, { clientX: 300, clientY: 300 })
     const menu = await screen.findByRole('menu', { name: 'New' })
-    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Input card', 'Solo formation', 'Peer formation', 'Orchestrated formation', 'Gate', 'End node · done', 'End node · rejected'])
+    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Input card', 'Solo formation', 'Peer formation', 'Orchestrated formation', 'Gate', 'End node · done', 'End node · rejected', 'Limit card'])
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Input card' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Add Input card' })
@@ -1651,6 +1670,70 @@ describe('FormationsCockpit reference parity', () => {
     const frame = await screen.findByRole('dialog', { name: 'Formation · Frame' })
     expect(within(frame).getByRole('button', { name: 'Fed by Showcase' })).toBeInTheDocument()
     expect(within(frame).getByRole('button', { name: 'Feeds → 2 Review' })).toBeInTheDocument()
+  })
+
+  it('reads a Limit card on its card, its window, the step it covers and Flow, edits its rounds with undo, and shows a refusal in place', async () => {
+    const limited = { ...makeBoard(), limits: [{ id: 'lim_cap', title: 'Cap', target: 'fmn_frame', rounds: 3 }, { id: 'lim_all', title: 'Budget', target: 'mis_showcase', rounds: 20 }] }
+    patches = installFetchMock({ boards: [limited] })
+    const { unmount } = await renderCockpit()
+    const card = screen.getByTestId('limit-node-lim_cap')
+    expect(card).toHaveTextContent('Cap')
+    expect(screen.getByTestId('limit-knob-lim_cap')).toHaveTextContent('at most 3 rounds')
+    expect(screen.getByTestId('limit-covers-lim_cap')).toHaveTextContent('Covers Frame')
+    expect(screen.getByTestId('limit-covers-lim_all')).toHaveTextContent('Covers the whole mission')
+    expect(screen.getByTestId('limit-knob-lim_all')).toHaveTextContent('at most 20 step runs')
+
+    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
+    expect(within(frame).getByRole('button', { name: 'Limit Cap: at most 3 rounds' })).toBeInTheDocument()
+    const showcase = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Input card · Showcase')
+    expect(within(showcase).getByRole('button', { name: 'Limit Budget: the whole mission may make at most 20 step runs' })).toBeInTheDocument()
+
+    const window = await openNodeWindow(card, 'Limit card · Cap')
+    expect(within(window).getByLabelText('Covers')).toHaveValue('fmn_frame')
+    expect(within(window).getByRole('option', { name: 'Input card — the whole mission' })).toBeInTheDocument()
+    expect(within(window).getByTestId('limit-meaning-lim_cap')).toHaveTextContent('Frame may run at most 3 times, send-backs and resumed re-runs included.')
+    expect(within(window).getByRole('button', { name: 'Covers 1 Frame' })).toBeInTheDocument()
+
+    // A typed value that is not a positive whole number never leaves the window.
+    fireEvent.click(within(window).getByRole('button', { name: 'Edit rounds' }))
+    fireEvent.change(within(window).getByRole('textbox', { name: 'Rounds' }), { target: { value: '-2' } })
+    fireEvent.click(within(window).getByRole('button', { name: 'Save rounds' }))
+    expect(within(window).getByRole('alert')).toHaveTextContent('Enter a positive whole number of rounds, or leave it blank for no limit.')
+    expect(patches.filter(patch => patch.body.updateLimit)).toEqual([])
+
+    fireEvent.change(within(window).getByRole('textbox', { name: 'Rounds' }), { target: { value: '5' } })
+    fireEvent.click(within(window).getByRole('button', { name: 'Save rounds' }))
+    await waitFor(() => expect(screen.getByTestId('limit-knob-lim_cap')).toHaveTextContent('at most 5 rounds'))
+    expect(patches.find(patch => patch.body.updateLimit)?.body.updateLimit).toEqual({ id: 'lim_cap', rounds: 5 })
+
+    // One undo puts the old rounds back.
+    fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(screen.getByTestId('limit-knob-lim_cap')).toHaveTextContent('at most 3 rounds'))
+    expect(patches.filter(patch => patch.body.updateLimit).slice(-1)[0]?.body.updateLimit).toEqual({ id: 'lim_cap', rounds: 3 })
+
+    // Covering the whole mission from the window.
+    fireEvent.change(within(window).getByLabelText('Covers'), { target: { value: 'mis_showcase' } })
+    await waitFor(() => expect(screen.getByTestId('limit-covers-lim_cap')).toHaveTextContent('Covers the whole mission'))
+    expect(patches.filter(patch => patch.body.updateLimit).slice(-1)[0]?.body.updateLimit).toEqual({ id: 'lim_cap', target: 'mis_showcase' })
+    // Two cards on the Input card is a finding the window names.
+    expect(within(window).getByText('The Input card has another Limit card, Budget: keep one.')).toBeInTheDocument()
+    unmount()
+
+    // A refusal from the server reads under the field, not in the error bar.
+    patches = installFetchMock({ boards: [limited], limitRefusal: 'rounds must be a positive whole number' })
+    await renderCockpit()
+    const refused = await openNodeWindow(screen.getByTestId('limit-node-lim_cap'), 'Limit card · Cap')
+    fireEvent.click(within(refused).getByRole('button', { name: 'Edit rounds' }))
+    fireEvent.change(within(refused).getByRole('textbox', { name: 'Rounds' }), { target: { value: '4' } })
+    fireEvent.click(within(refused).getByRole('button', { name: 'Save rounds' }))
+    await waitFor(() => expect(within(refused).getByRole('alert')).toHaveTextContent('rounds must be a positive whole number'))
+    expect(screen.queryByTestId('formations-error')).toBeNull()
+
+    // Flow states each limit on what it covers.
+    fireEvent.click(screen.getByRole('radio', { name: 'Flow' }))
+    const flow = await screen.findByTestId('flow-view')
+    expect(within(flow).getByTestId('flow-step-fmn_frame')).toHaveTextContent('LimitCap: at most 3 rounds')
+    expect(within(flow).getByRole('region', { name: 'Input card Showcase' })).toHaveTextContent('LimitBudget: the whole mission may make at most 20 step runs')
   })
 
   it('converts a code gate to a human gate in its window and undoes it', async () => {
@@ -2067,7 +2150,7 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.contextMenu(container.querySelector('.viewport') as HTMLElement, { clientX: 300, clientY: 300 })
     const create = await screen.findByRole('menu', { name: 'New' })
-    expect(within(create).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Solo formation', 'Peer formation', 'Orchestrated formation', 'Gate', 'End node · done', 'End node · rejected'])
+    expect(within(create).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Solo formation', 'Peer formation', 'Orchestrated formation', 'Gate', 'End node · done', 'End node · rejected', 'Limit card'])
   })
 
   it('offers one solo choice per staffed slot so no agent is dropped silently', async () => {
@@ -2941,7 +3024,7 @@ describe('FormationsCockpit reference parity', () => {
       if (String(input) === '/api/runs/run_legacy/gates/gate_review/request') {
         return Promise.resolve({ ok: true, headers: { get: () => null }, text: () => Promise.resolve(''), json: () => Promise.resolve({ success: true, data: { request: {
           gateId: 'gate_review', requestedSeq: 4, criterion: 'Review the frame', input: { fromNodeId: 'fmn_frame', text: 'frame', truncated: false },
-          routes: [{ verdict: 'pass', targets: [{ nodeId: 'end_done', title: 'Done', kind: 'end', outcome: 'done' }], endsRun: true }, { verdict: 'fail', targets: [{ nodeId: 'fmn_frame', title: 'Frame', kind: 'formation', attempt: 2, maxAttempts: 2 }] }],
+          routes: [{ verdict: 'pass', targets: [{ nodeId: 'end_done', title: 'Done', kind: 'end', outcome: 'done' }], endsRun: true }, { verdict: 'fail', targets: [{ nodeId: 'fmn_frame', title: 'Frame', kind: 'formation', attempt: 2, rounds: { kind: 'rounds', limitId: 'lim_frame', nodeId: 'fmn_frame', used: 1, max: 2 } }] }],
         } } }) })
       }
       return coordinator(input, init)
@@ -2953,7 +3036,7 @@ describe('FormationsCockpit reference parity', () => {
     // A run reaching the gate does not take the keyboard from the operator.
     expect(within(answer).getByLabelText('Your response')).not.toHaveFocus()
     expect(await within(answer).findByRole('button', { name: 'Approve and end the run' })).toBeInTheDocument()
-    expect(within(answer).getByText('Send back: Frame runs again with your response (attempt 2 of 2, its last).')).toBeInTheDocument()
+    expect(within(answer).getByText('Send back: Frame runs again with your response (round 2 of 2).')).toBeInTheDocument()
 
     fireEvent.click(within(answer).getByRole('button', { name: 'Close Answer gate Review' }))
     expect(screen.queryByRole('dialog', { name: 'Answer gate Review' })).toBeNull()

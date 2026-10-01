@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { noteAuthor } from '../components/NoteThread'
 import RunPoint from '../components/RunPoint'
 import { endPathWords, endTitleSuffix } from '../components/endNode'
+import { limitSummary, limitsCovering } from '../components/limitCard'
 import type { NodeRunState, RunPoint as RunPointModel } from '../components/formationsRunState'
 import type { AgentProjection, BoardDocument, FormationNode, MissionNode, NoteEntry } from '../components/formationsTypes'
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
@@ -16,8 +17,9 @@ import './flow.css'
 
 /**
  * A board as a numbered sequence, read top to bottom: each mission's goal and
- * input, then its steps with gates inline, judges nested under their gate, and
- * with a run selected, each step's state beside it. Every step, note and file
+ * input, then its steps with gates inline, judges nested under their gate, the
+ * Limit card on a step or the whole mission in words, and with a run selected,
+ * each step's state beside it. Every step, note and file
  * opens in its floating window.
  */
 
@@ -91,7 +93,7 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
     .map(slot => staffingSentence(slot, agents.find(agent => agent.id === slot.agentId), slot.agentId ? cards.get(slot.agentId) : undefined))
     .join(' ')
 
-  const context = { flow, run, notes, answerPanel, staffing, onOpenNode, onOpenNotes }
+  const context = { board, flow, run, notes, answerPanel, staffing, onOpenNode, onOpenNotes }
   return (
     <div
       ref={root}
@@ -114,6 +116,7 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
               <p className="flow-text">{summary(section.mission.goal, 480) || <span className="placeholder">No goal yet.</span>}</p>
               <p className="flow-line"><span className="flow-label">Input</span>{section.mission.inputHint ? summary(section.mission.inputHint, 320) : 'The brief you give when you start the mission.'}</p>
               <p className="flow-line flow-channel"><span className="flow-label">Human gates</span>{humanChannelLabel(humanChannelOf(section.mission))}</p>
+              <LimitLines board={board} nodeId={section.mission.id} onOpenNode={onOpenNode} />
               <FileChips files={section.mission.files} context={section.mission.title} />
               <NoteLine nodeId={section.mission.id} notes={notes} onOpenNotes={onOpenNotes} />
               {section.start.length ? null : <p className="flow-line warn">Wire the Input card to its first step.</p>}
@@ -130,7 +133,8 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
   )
 }
 
-function FlowRow({ step, run, notes, answerPanel, staffing, onOpenNode, onOpenNotes }: {
+function FlowRow({ board, step, run, notes, answerPanel, staffing, onOpenNode, onOpenNotes }: {
+  board: BoardDocument
   step: FlowStep
   run: FlowRun | null
   notes: ReadonlyMap<string, NoteEntry[]>
@@ -154,6 +158,7 @@ function FlowRow({ step, run, notes, answerPanel, staffing, onOpenNode, onOpenNo
             <p className="flow-text">{summary(step.node.brief?.goal || '') || <span className="placeholder">No brief yet.</span>}</p>
             <p className="flow-line"><span className="flow-label">Staffing</span>{staffing(step.node) || 'No slots.'}</p>
             <Routes label="Next" targets={step.next} onOpenNode={onOpenNode} />
+            <LimitLines board={board} nodeId={step.id} onOpenNode={onOpenNode} />
             <FileChips files={step.node.brief?.files} context={title} />
           </>
         ) : null}
@@ -172,6 +177,7 @@ function FlowRow({ step, run, notes, answerPanel, staffing, onOpenNode, onOpenNo
                       <span className="flow-kicker">Judge</span> {judge.title || 'Untitled judge'}
                     </button>
                     <p className="flow-line">{staffing(judge)}</p>
+                    <LimitLines board={board} nodeId={judge.id} onOpenNode={onOpenNode} />
                   </li>
                 ))}
               </ul>
@@ -221,6 +227,24 @@ function Routes({ label, targets, onOpenNode }: { label: string; targets: FlowTa
               → {endPathWords(target.outcome)}{endTitleSuffix(target.title, target.outcome)}
             </button>
           ) : <span className="flow-nowhere">→ leads nowhere: wire it to a step or an End node</span>}
+        </span>
+      ))}
+    </p>
+  )
+}
+
+/** The Limit card on a step or the Input card, in words; it opens the card's window. */
+function LimitLines({ board, nodeId, onOpenNode }: { board: BoardDocument; nodeId: string; onOpenNode: (nodeId: string, anchor?: WindowRect) => void }) {
+  const limits = limitsCovering(board, nodeId)
+  if (!limits.length) return null
+  return (
+    <p className="flow-line flow-limit">
+      <span className="flow-label">Limit</span>
+      {limits.map((limit, index) => (
+        <span key={limit.id}>
+          {index ? ', ' : null}
+          <button type="button" className="flow-link" data-flow-limit={limit.id}
+            onClick={event => onOpenNode(limit.id, controlAnchor(event.currentTarget))}>{limitSummary(board, limit)}</button>
         </span>
       ))}
     </p>

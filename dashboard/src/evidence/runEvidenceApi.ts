@@ -119,11 +119,11 @@ export interface EvidenceProblem {
   actor?: string
   /** The run_resumed that moved the run past this block. */
   resumedSeq?: number
-  /** The run limit this block exhausted. */
+  /** The Limit card this block found spent (archon-o7p.8). */
   limit?: RunLimitUse
 }
 
-/** A block or error from anywhere in a run, with the nodes it names (none for, say, an exceeded wall clock). */
+/** A block or error from anywhere in a run, with the nodes it names (none for, say, a restart between steps). */
 export interface RunProblem extends EvidenceProblem {
   nodeIds: string[]
 }

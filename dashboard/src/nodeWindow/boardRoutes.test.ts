@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { judgeChain, nodeRoutes, stepNumbers } from './boardRoutes'
+import { judgeChain, nodeRoutes, nodeTitle, stepNumbers } from './boardRoutes'
 
 const port = (id: string, label = id) => ({ id, label })
 const formation = (id: string, title: string) => ({ id, title, type: 'solo' as const, inputs: [port('in', 'Input')], outputs: [port('out', 'Output')], slots: [] })
@@ -76,6 +76,20 @@ describe('board routes', () => {
     ])
     expect(nodeRoutes(shared, 'no').map(route => route.kind)).toEqual(['ended-by', 'ended-by'])
     expect(nodeRoutes({ ...shared, connections: [] }, 'no').map(route => route.text)).toEqual(['No route leads here yet'])
+  })
+
+  it('states a Limit card by what it covers, and the step or Input card by its card', () => {
+    const limited = { ...board, limits: [
+      { id: 'lim_cap', title: 'Cap', target: 'draft', rounds: 3 },
+      { id: 'lim_all', title: 'Budget', target: 'mission', rounds: 20 },
+      { id: 'lim_loose', title: 'Loose', target: '' },
+    ] }
+    expect(nodeRoutes(limited, 'lim_cap')).toEqual([{ kind: 'covers', nodeId: 'draft', text: 'Covers 5 Draft the brief' }])
+    expect(nodeRoutes(limited, 'lim_all')).toEqual([{ kind: 'covers', nodeId: 'mission', text: 'Covers the whole mission' }])
+    expect(nodeRoutes(limited, 'lim_loose')).toEqual([{ kind: 'covers', text: 'Wired to nothing yet' }])
+    expect(nodeRoutes(limited, 'draft').slice(-1)[0]).toEqual({ kind: 'limited-by', nodeId: 'lim_cap', text: 'Limit Cap: at most 3 rounds' })
+    expect(nodeRoutes(limited, 'mission').slice(-1)[0]).toEqual({ kind: 'limited-by', nodeId: 'lim_all', text: 'Limit Budget: the whole mission may make at most 20 step runs' })
+    expect(nodeTitle(limited, 'lim_cap')).toBe('Cap')
   })
 
   it('states formations, judges and missions in words', () => {

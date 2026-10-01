@@ -4,12 +4,14 @@ const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/the
 
 const ports = { inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Result' }] }
 type EndNode = { id: string; title: string; outcome: 'done' | 'rejected' }
+type LimitNode = { id: string; title: string; target: string; rounds?: number }
 export const board: {
   id: string; slug: string; title: string; rev: number; etag: string
   missions: Array<{ id: string; title: string; goal: string; beadId: string }>
   formations: Array<{ id: string; type: string; title: string; brief?: { goal: string }; inputs: Array<{ id: string; label: string }>; outputs: Array<{ id: string; label: string }>; slots: Array<Record<string, unknown>> }>
   gates: Array<{ id: string; title: string; kinds: string[]; criterion: string }>
   ends?: EndNode[]
+  limits?: LimitNode[]
   connections: Array<{ id: string; from: string; to: string }>
 } = {
   id: 'brd_browser', slug: 'browser', title: 'Peer and judge', rev: 1, etag: 'board-1',
@@ -88,8 +90,50 @@ const succeededEvidence: Record<string, unknown> = {
   '/api/runs/run_browser/evidence/artifacts/logs/worker.log': { artifact: { name: 'logs/worker.log', size: 40, modifiedAt: '2026-09-16T00:00:00Z', kind: 'text', text: evidenceText('worker started\nworker finished') } },
 }
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number } = {}) {
+// The run is blocked before Execution's third run: its Limit card Cap allows 2
+// rounds, both used (archon-o7p.8). It resumes only with one more round granted.
+export const limitReason = 'Execution used 2 of 2 rounds'
+const limitUse = { kind: 'rounds', limitId: 'lim_cap', nodeId: 'execution', used: 2, max: 2 }
+const blockedAtLimitEvents = [
+  { seq: 1, type: 'run_started' },
+  { seq: 2, type: 'node_started', nodeId: 'execution', attempt: 1 },
+  { seq: 3, type: 'node_output', nodeId: 'execution', status: 'done' },
+  { seq: 4, type: 'gate_verdict', nodeId: 'gate', gateId: 'gate', verdict: 'fail' },
+  { seq: 5, type: 'node_started', nodeId: 'execution', attempt: 2 },
+  { seq: 6, type: 'node_output', nodeId: 'execution', status: 'done' },
+  { seq: 7, type: 'gate_verdict', nodeId: 'gate', gateId: 'gate', verdict: 'fail' },
+  { seq: 8, type: 'error', nodeId: 'execution' },
+  { seq: 9, type: 'run_blocked', nodeId: 'execution' },
+]
+
+/**
+ * Limit cards' findings as board validation reports them (limitFindings):
+ * invalid_limit errors and empty_limit warnings, each on the card.
+ */
+function limitFindings(current: typeof board) {
+  const errors: Array<{ code: string; nodeId: string; message: string }> = []
+  const warnings: typeof errors = []
+  const named = (id: string) => [...current.inputCards, ...current.formations, ...current.gates, ...(current.limits || [])].find(node => node.id === id)?.title || id
+  const covered = new Map<string, string>()
+  for (const limit of current.limits || []) {
+    const name = named(limit.id)
+    if (!limit.target) errors.push({ code: 'invalid_limit', nodeId: limit.id, message: `Limit ${name} is wired to nothing: wire it to a step, or to the Input card for the whole mission` })
+    else if (covered.has(limit.target)) errors.push({ code: 'invalid_limit', nodeId: limit.id, message: `${named(limit.target)} has two Limit cards, ${named(covered.get(limit.target)!)} and ${name}: keep one` })
+    else covered.set(limit.target, limit.id)
+    if (!limit.rounds) warnings.push({ code: 'empty_limit', nodeId: limit.id, message: `Limit ${name} sets no limit: give it rounds, or delete it` })
+  }
+  return { errors, warnings }
+}
+
+export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number } = {}) {
   const currentBoard = structuredClone(board)
+  if (options.blockedAtLimit) {
+    // Execution's send-back route leads back to it, and its card allows 2 rounds.
+    currentBoard.limits = [{ id: 'lim_cap', title: 'Cap', target: 'execution', rounds: 2 }]
+    currentBoard.connections = [...currentBoard.connections, { id: 'gate-fail', from: 'gate:fail', to: 'execution:in' }]
+  }
+  // The run resumes once the grant is recorded.
+  let granted = false
   if (options.waitingHuman) {
     // The answered gate's routes lead somewhere, as admission requires (archon-o7p.10).
     currentBoard.ends = [{ id: 'end_done', title: 'Done', outcome: 'done' }, { id: 'end_rejected', title: 'Rejected', outcome: 'rejected' }]
@@ -113,18 +157,35 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
   if (options.join) nodes = [{ id: 'a', x: 100, y: 80 }, { id: 'b', x: 100, y: 350 }, { id: 'c', x: 100, y: 620 }, { id: 'sink', x: 650, y: 350 }]
   if (options.waitingHuman) nodes = [...nodes, { id: 'end_done', x: 504, y: 672 }, { id: 'end_rejected', x: 504, y: 784 }]
   if (options.secondGate) nodes = [...nodes, { id: 'second', x: 112, y: 920 }]
+  if (options.blockedAtLimit) nodes = [...nodes, { id: 'lim_cap', x: 448, y: 476 }]
   const endsOf = () => (currentBoard.ends ||= [])
+  const limitsOf = () => (currentBoard.limits ||= [])
+  // Mirrors the store (checkLimitWrite): a target must be a step or the Input card, and rounds not negative.
+  const limitRefusal = (target: string | undefined, rounds: number | undefined) => {
+    if (target && ![...currentBoard.inputCards, ...currentBoard.formations].some(node => node.id === target)) {
+      return `"${target}" is not a step or the Input card; a Limit card covers one of them`
+    }
+    if (rounds !== undefined && rounds < 0) return 'rounds must be a positive whole number'
+    return ''
+  }
   let seatsFetches = 0
   let themeFetches = 0
   const writes: string[] = []
-  if (options.run || options.waitingHuman) await page.addInitScript(() => localStorage.setItem('archon.activeRun.browser', 'run_browser'))
+  if (options.run || options.waitingHuman || options.blockedAtLimit) await page.addInitScript(() => localStorage.setItem('archon.activeRun.browser', 'run_browser'))
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url())
     const path = url.pathname
     if (!path.startsWith('/api/')) return route.continue()
     const method = route.request().method()
     if (method !== 'GET') writes.push(`${method} ${path}`)
-    const respond = (data: unknown) => route.fulfill({ json: { success: true, data }, headers: { ETag: 'fixture-etag' } })
+    // Once the mission holds Limit cards its writes carry its own ETag, so the
+    // cockpit fetches validation again after each one, as against the daemon.
+    const etag = () => path.startsWith('/api/missions/browser') && currentBoard.limits?.length ? currentBoard.etag : 'fixture-etag'
+    const respond = (data: unknown) => route.fulfill({ json: { success: true, data }, headers: { ETag: etag() } })
+    const refuseLimit = (target: string | undefined, rounds: number | undefined) => {
+      const message = limitRefusal(target, rounds)
+      return message ? route.fulfill({ status: 400, json: { success: false, error: { code: 'INVALID_LIMIT', message } } }) : null
+    }
     if (path === '/api/theme') {
       themeFetches++
       return route.fulfill(options.themeFailure ? { status: 500, json: { error: 'Unavailable' } } : { json: defaultTheme })
@@ -192,6 +253,36 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
           currentBoard.rev++
           currentBoard.etag = `board-${currentBoard.rev}`
           return respond({ mission: boardState(), layout: { missionId: board.id, missionRev: currentBoard.rev, etag: `layout-${currentBoard.rev}`, nodes, edges: [] }, endId: id })
+        } else if (body.createLimit) {
+          // Mirrors the store (CreateLimit): titled Limit unless named; rounds 0 sets none.
+          const { title, target = '', rounds = 0, x, y } = body.createLimit
+          const refused = refuseLimit(target, rounds)
+          if (refused) return refused
+          const limit: LimitNode = { id: `lim_${currentBoard.rev}`, title: title || 'Limit', target, ...(rounds ? { rounds } : {}) }
+          limitsOf().push(limit)
+          nodes = [...nodes, { id: limit.id, x, y }]
+          currentBoard.rev++
+          currentBoard.etag = `board-${currentBoard.rev}`
+          return respond({ mission: boardState(), layout: { missionId: board.id, missionRev: currentBoard.rev, etag: `layout-${currentBoard.rev}`, nodes, edges: [] }, limit })
+        } else if (body.updateLimit) {
+          // Mirrors the store (UpdateLimit): an empty target unwires, rounds 0 clears.
+          const { id, title, target, rounds } = body.updateLimit
+          const limit = limitsOf().find(item => item.id === id)
+          if (!limit) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
+          const refused = refuseLimit(target, rounds)
+          if (refused) return refused
+          if (title !== undefined) limit.title = title || 'Limit'
+          if (target !== undefined) limit.target = target
+          if (rounds === 0) delete limit.rounds
+          else if (rounds !== undefined) limit.rounds = rounds
+        } else if (body.deleteLimit) {
+          const id = body.deleteLimit.id
+          if (!limitsOf().some(limit => limit.id === id)) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
+          currentBoard.limits = limitsOf().filter(limit => limit.id !== id)
+          nodes = nodes.filter(node => node.id !== id)
+          currentBoard.rev++
+          currentBoard.etag = `board-${currentBoard.rev}`
+          return respond({ mission: boardState(), layout: { missionId: board.id, missionRev: currentBoard.rev, etag: `layout-${currentBoard.rev}`, nodes, edges: [] }, limitId: id })
         } else if (body.deleteFormation || body.deleteGate || body.deleteInputCard) {
           // Mirrors the store: a delete drops the node, the connections touching it and its layout node.
           const id = (body.deleteFormation || body.deleteGate || body.deleteInputCard).id
@@ -203,11 +294,12 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
           nodes = nodes.filter(node => node.id !== id)
         } else if (body.restoreNode) {
           // Mirrors the store: a node ID already in the mission refuses the whole restore.
-          const { inputCard, formation, gate, end, connections, index, x, y } = body.restoreNode
-          const node = inputCard || formation || gate || end
-          const key = inputCard ? 'inputCards' : formation ? 'formations' : gate ? 'gates' : 'ends'
+          const { inputCard, formation, gate, end, limit, connections, index, x, y } = body.restoreNode
+          const node = inputCard || formation || gate || end || limit
+          const key = inputCard ? 'inputCards' : formation ? 'formations' : gate ? 'gates' : end ? 'ends' : 'limits'
           endsOf()
-          const taken = [...currentBoard.inputCards, ...currentBoard.formations, ...currentBoard.gates, ...endsOf()].some(item => item.id === node.id)
+          limitsOf()
+          const taken = [...currentBoard.inputCards, ...currentBoard.formations, ...currentBoard.gates, ...endsOf(), ...limitsOf()].some(item => item.id === node.id)
           if (taken) return route.fulfill({ status: 409, json: { success: false, error: { code: 'INVALID_NODE_RESTORE', message: `node "${node.id}" is already in the mission` } } })
           ;(currentBoard[key] as unknown[]).splice(index ?? (currentBoard[key] as unknown[]).length, 0, node)
           currentBoard.connections = [...currentBoard.connections, ...connections]
@@ -247,6 +339,8 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
       return respond({ mission: boardState() })
     }
     if (path.endsWith('/changes')) return respond({ signal: { changed: false } })
+    // Validation is served once the mission holds Limit cards, so their findings mark them as drafts.
+    if (path.endsWith('/validation') && currentBoard.limits?.length) return respond({ missionRev: currentBoard.rev, missionEtag: currentBoard.etag, ...limitFindings(currentBoard) })
     if (path === '/api/gate-profiles') return respond({ profiles: [] })
     if (path === '/api/agents') return respond({ agents: [
       { id: 'claude', displayName: 'Claude controller', harnessDefault: 'claude-code', assignable: true, liveness: 'live', tags: [], kind: 'controller' },
@@ -263,6 +357,23 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
       waitingGates: [{ gateId: 'loose', requestedSeq: 3 }, ...(options.secondGate ? [{ gateId: 'second', requestedSeq: 4 }] : [])] })
     if (path === '/api/runs/run_browser' && options.succeeded) return respond({ runId: 'run_browser', status: 'succeeded', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 7, cwd: runCwd })
     if (options.succeeded && path in succeededEvidence) return respond(succeededEvidence[path])
+    if (options.blockedAtLimit && path === '/api/runs/run_browser/resume' && method === 'POST') {
+      // Mirrors the coordinator: a spent limit resumes only with a grant.
+      const body = route.request().postDataJSON()
+      if (!body.grant) return route.fulfill({ status: 409, json: { success: false, error: { code: 'CONFLICT', message: 'this run stopped at a spent limit: resume it with --grant to give one more allowance' } } })
+      granted = true
+      return respond({ runId: 'run_browser', status: 'running', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 11, cwd: runCwd })
+    }
+    if (path === '/api/runs/run_browser' && options.blockedAtLimit) return respond(granted
+      ? { runId: 'run_browser', status: 'running', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 11, cwd: runCwd }
+      : { runId: 'run_browser', status: 'blocked', final: false, resumeAllowed: true, resumePolicy: 'grant', missionSlug: 'browser', inputCardId: 'mission', eventCount: 9, cwd: runCwd })
+    if (path.endsWith('/events') && options.blockedAtLimit) return respond({ events: granted
+      ? [...blockedAtLimitEvents, { seq: 10, type: 'run_resumed' }, { seq: 11, type: 'node_started', nodeId: 'execution', attempt: 3 }]
+      : blockedAtLimitEvents })
+    if (options.blockedAtLimit && path === '/api/runs/run_browser/evidence/problems') return respond({ problems: [
+      { seq: 8, type: 'error', code: 'limit_reached', nodeIds: ['execution'], reason: { text: limitReason, bytes: limitReason.length }, limit: limitUse },
+      { seq: 9, type: 'run_blocked', code: 'limit_reached', nodeIds: ['execution'], reason: { text: limitReason, bytes: limitReason.length }, resumeAllowed: true, limit: limitUse, ...(granted ? { resumedSeq: 10 } : {}) },
+    ] })
     if (path === '/api/runs/run_browser' && options.blockedAtJudge) return respond({ runId: 'run_browser', status: 'blocked', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 8, cwd: runCwd })
     if (path === '/api/runs/run_browser') return respond({ runId: 'run_browser', status: 'running', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 2, cwd: runCwd })
     if (path.endsWith('/events') && options.waitingHuman) return respond({ events: [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' },

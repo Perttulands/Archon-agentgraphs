@@ -14,19 +14,21 @@ import '../styles/formations-run.css'
 interface Explanation {
   key: string
   reason: string
-  /** The limit the block exhausted. */
+  /** The Limit card the block found spent. */
   limit?: RunLimitUse
   /** The run end, for a failed or canceled run. */
   end?: RunProblem
 }
 
-export default function RunPoint({ runId, point, title, onLocate, titleOf, action = 'Show it on the canvas' }: {
+export default function RunPoint({ runId, point, title, onLocate, titleOf, inputCard, action = 'Show it on the canvas' }: {
   runId: string
   point: RunPointModel | null
   title: string
   onLocate: (nodeId: string) => void
   /** A node's title on the board, for a limit that names another node. */
   titleOf?: (nodeId: string) => string
+  /** Whether a node is the Input card, whose Limit card covers the whole mission. */
+  inputCard?: (nodeId: string) => boolean
   /** What a click does, for the tooltip. */
   action?: string
 }) {
@@ -57,7 +59,7 @@ export default function RunPoint({ runId, point, title, onLocate, titleOf, actio
   const known = explanation && explanation.key === key ? explanation : null
   const where = title || point.nodeId
   const named = (id: string) => titleOf?.(id) || (id === point.nodeId ? title : '') || id
-  const limit = known?.limit ? runLimitPhrase(known.limit, named) : ''
+  const limit = known?.limit ? runLimitPhrase(known.limit, named, inputCard) : ''
   const phrase = ended && known?.end
     ? runEndPhrase(point.kind as 'failed' | 'canceled', where, known.end)
     : runPointPhrase(point, title, limit || known?.reason)

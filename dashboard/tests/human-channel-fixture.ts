@@ -105,10 +105,10 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
     if (path === `/api/runs/${talkRunId}/gates/${answerGate.id}/request`) return route.fulfill(respond({ request: {
       gateId: answerGate.id, requestedSeq, criterion: '',
       input: { fromNodeId: peers.id, text: '1. Who reads the brief first?\n2. Which sources are off limits?\n3. What does done look like?', truncated: false },
-      // As the daemon derives them for a run admitted with 3 attempts and 20 dispatches, two of them used.
+      // As the daemon derives them for a mission without Limit cards: no rounds are counted.
       routes: [
-        { verdict: 'pass', targets: [{ nodeId: draftBrief.id, title: 'Draft the brief', kind: 'formation', attempt: 1, maxAttempts: 3 }], dispatches: { kind: 'dispatches', used: 2, max: 20 }, dispatchesNeeded: 1 },
-        { verdict: 'fail', targets: [{ nodeId: peers.id, title: 'Question peers', kind: 'formation', attempt: 2, maxAttempts: 3 }], dispatches: { kind: 'dispatches', used: 2, max: 20 }, dispatchesNeeded: 1 },
+        { verdict: 'pass', targets: [{ nodeId: draftBrief.id, title: 'Draft the brief', kind: 'formation', attempt: 1 }] },
+        { verdict: 'fail', targets: [{ nodeId: peers.id, title: 'Question peers', kind: 'formation', attempt: 2 }] },
       ],
     } }))
     if (path === `/api/runs/${talkRunId}/escalations`) return route.fulfill(respond({ escalations: [] }))

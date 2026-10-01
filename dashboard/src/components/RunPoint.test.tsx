@@ -7,10 +7,10 @@ const problems = [
   { seq: 10, type: 'error', code: 'invalid_judge_result', nodeIds: ['gate_adversarial'], reason: text('missing verdict block') },
   { seq: 11, type: 'run_blocked', nodeIds: ['gate_adversarial'], reason: text('invalid judge result: missing or unterminated archon-verdict block'), resumeAllowed: false },
   { seq: 14, type: 'run_blocked', nodeIds: ['fmn_map'], reason: text('coordinator restarted; completed-turn evidence required'), resumeAllowed: true },
-  { seq: 17, type: 'error', code: 'wall_clock_exceeded', nodeIds: [], reason: text('wall clock limit exceeded') },
-  { seq: 18, type: 'run_blocked', nodeIds: [], reason: text('wall clock limit exceeded'), resumeAllowed: true },
-  { seq: 22, type: 'run_blocked', code: 'resume_attempts_exhausted', nodeIds: ['fmn_draft'], reason: text('resume attempts exhausted'), resumeAllowed: false, limit: { kind: 'attempts', nodeId: 'fmn_draft', used: 3, max: 3 } },
-  { seq: 25, type: 'run_blocked', code: 'max_dispatch_exceeded', nodeIds: ['fmn_critic'], reason: text('max dispatch exceeded'), resumeAllowed: false, limit: { kind: 'dispatches', nodeId: 'fmn_critic', used: 8, max: 8 } },
+  { seq: 17, type: 'error', code: 'coordinator_interrupted', nodeIds: [], reason: text('the coordinator restarted between steps') },
+  { seq: 18, type: 'run_blocked', nodeIds: [], reason: text('the coordinator restarted between steps'), resumeAllowed: true },
+  { seq: 22, type: 'run_blocked', code: 'limit_reached', nodeIds: ['fmn_draft'], reason: text('Draft used 3 of 3 rounds'), resumeAllowed: true, limit: { kind: 'rounds', limitId: 'lim_cap', nodeId: 'fmn_draft', used: 3, max: 3 } },
+  { seq: 25, type: 'run_blocked', code: 'limit_reached', nodeIds: ['fmn_critic'], reason: text('The mission used 8 of 8 rounds, 1 of them granted'), resumeAllowed: true, limit: { kind: 'rounds', limitId: 'lim_all', nodeId: 'mis', used: 8, max: 8, granted: 1 } },
 ]
 const ended = (end: object) => [{ seq: 51, type: 'run_blocked', nodeIds: ['fmn_exec'], reason: text('another user message interrupted the dispatched Claude turn'), resumeAllowed: true, resumedSeq: 52 }, end]
 let served: unknown[] = problems
@@ -68,9 +68,9 @@ describe('RunPoint', () => {
     const { rerender } = render(<RunPoint runId="run_1" point={{ kind: 'blocked', nodeId: 'fmn_map', gate: false, blockSeq: 14 }} title="Map the territory" onLocate={() => {}} />)
     await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent('blocked at Map the territory: coordinator restarted; completed-turn evidence required'))
 
-    // An exceeded wall clock names no node at all.
+    // A restart between steps names no node at all.
     rerender(<RunPoint runId="run_1" point={{ kind: 'blocked', nodeId: '', gate: false, blockSeq: 18 }} title="" onLocate={() => {}} />)
-    await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent(/^blocked: wall clock limit exceeded$/))
+    await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent(/^blocked: the coordinator restarted between steps$/))
     expect(screen.getByTestId('run-point')).toBeDisabled()
   })
 
@@ -80,11 +80,11 @@ describe('RunPoint', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('names the limit a block exhausted', async () => {
+  it('names the spent Limit card a block found, a step\'s or the mission\'s', async () => {
     const { rerender } = render(<RunPoint runId="run_1" point={{ kind: 'blocked', nodeId: 'fmn_draft', gate: false, blockSeq: 22 }} title="Draft" onLocate={() => {}} />)
-    await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent(/^blocked at Draft: Draft used 3 of 3 attempts$/))
-    rerender(<RunPoint runId="run_1" point={{ kind: 'blocked', nodeId: 'fmn_critic', gate: false, blockSeq: 25 }} title="Brief critic" onLocate={() => {}} />)
-    await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent(/^blocked at Brief critic: the run used 8 of 8 dispatches$/))
+    await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent(/^blocked at Draft: Draft used 3 of 3 rounds$/))
+    rerender(<RunPoint runId="run_1" point={{ kind: 'blocked', nodeId: 'fmn_critic', gate: false, blockSeq: 25 }} title="Brief critic" inputCard={id => id === 'mis'} onLocate={() => {}} />)
+    await waitFor(() => expect(screen.getByTestId('run-point')).toHaveTextContent(/^blocked at Brief critic: the mission used 8 of 8 rounds, 1 of them granted$/))
   })
 
   it('says why a failed run ended and who ended it, not an earlier resumed block', async () => {

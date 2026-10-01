@@ -86,7 +86,7 @@ export function zoomTransform(current: ViewTransform, factor: number, cursor?: {
   }
 }
 
-export type LayoutItem = { id: string; index: number; kind: 'inputCard' | 'gate' | 'tool' | 'end' | FormationNode['type']; slots?: number }
+export type LayoutItem = { id: string; index: number; kind: 'inputCard' | 'gate' | 'tool' | 'end' | 'limit' | FormationNode['type']; slots?: number }
 
 export function fallbackNodePosition(index: number): { x: number; y: number } {
   return { x: 140 + index * 308, y: 168 + (index % 2) * 196 }
@@ -109,11 +109,14 @@ function boardLayoutItems(board: BoardDocument): LayoutItem[] {
   const gates = board.gates || []
   const tools = board.tools || []
   const ends = board.ends || []
+  const limits = board.limits || []
+  const before = missions.length + formations.length + gates.length + tools.length + ends.length
   return [
     ...missions.map((node, index) => ({ id: node.id, index, kind: 'inputCard' as const })),
     ...formations.map((node, index) => ({ id: node.id, index: missions.length + index, kind: node.type, slots: node.slots.length })),
     ...gates.map((node, index) => ({ id: node.id, index: missions.length + formations.length + index, kind: 'gate' as const })),
     ...tools.map((node, index) => ({ id: node.id, index: missions.length + formations.length + gates.length + index, kind: 'tool' as const })),
     ...ends.map((node, index) => ({ id: node.id, index: missions.length + formations.length + gates.length + tools.length + index, kind: 'end' as const })),
+    ...limits.map((node, index) => ({ id: node.id, index: before + index, kind: 'limit' as const })),
   ]
 }

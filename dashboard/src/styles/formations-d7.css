@@ -71,7 +71,7 @@
 .fmx .note-error{color:var(--terra-d);border-left:2px solid var(--terra-d);padding-left:8px;}
 
 .fmx .note-pin{position:absolute;z-index:12;right:9px;top:-9px;width:22px;height:22px;border:1px solid rgba(160,120,20,.45);background:#e6c457;color:#5d4915;display:flex;align-items:center;justify-content:center;font:700 13px/1 var(--font-mono);cursor:pointer;box-shadow:1px 2px 4px rgba(0,0,0,.18);transform:rotate(1.5deg);opacity:.22;transition:opacity .12s ease,transform .12s ease;}
-.fmx .formation:hover>.note-pin,.fmx .missioncard:hover>.note-pin,.fmx .gatecard:hover>.note-pin,.fmx .toolcard:hover>.note-pin,.fmx .endcard:hover>.note-pin,.fmx .note-pin:focus-visible,.fmx .note-pin.filled{opacity:1;}
+.fmx .formation:hover>.note-pin,.fmx .missioncard:hover>.note-pin,.fmx .gatecard:hover>.note-pin,.fmx .toolcard:hover>.note-pin,.fmx .endcard:hover>.note-pin,.fmx .limitcard:hover>.note-pin,.fmx .note-pin:focus-visible,.fmx .note-pin.filled{opacity:1;}
 .fmx .note-pin:hover{transform:rotate(0deg) scale(1.08);}
 .fmx .note-pin.filled{background:#efcf62;}
 .fmx .note-reload{width:100%;border:1px solid var(--gold);background:color-mix(in srgb,var(--bg2) 82%,var(--gold) 18%);color:var(--ink);padding:7px 9px;font:700 9px/1.35 var(--font-mono);text-transform:uppercase;cursor:pointer;}
@@ -300,6 +300,32 @@
 .fmx .endtoken:hover{border-color:var(--sage);color:var(--sage);}
 .endghost{border-color:var(--window-green);color:var(--window-green);}
 .fmx .endcard>.note-pin{right:-10px;top:-14px;}
+/* Limit card (archon-o7p.8): a small calm card in the accent blue, with no
+   ports. Its handle draws a dashed tether to the step or Input card it covers.
+   A card wired to nothing, or setting no rounds, reads dashed as a draft. */
+.fmx .limitcard{--lim:color-mix(in srgb,var(--accent) 72%,var(--ink2));position:absolute;display:flex;align-items:center;gap:10px;width:220px;height:72px;box-sizing:border-box;padding:0 12px 0 14px;background:var(--card);border:1.5px solid var(--lim);border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.35);z-index:1;cursor:grab;transition:box-shadow .16s,left .18s cubic-bezier(.2,.7,.3,1),top .18s cubic-bezier(.2,.7,.3,1);}
+.fmx .limitcard:not(.wired),.fmx .limitcard.empty{border-style:dashed;}
+.fmx .limitcard:hover{box-shadow:0 2px 8px rgba(0,0,0,.35),0 0 0 3px color-mix(in srgb,var(--lim) 28%,transparent);}
+.fmx .world.nodedrag .limitcard{transition:none;}
+.fmx .limitcard.located{animation:run-located 1.6s ease-out;}
+.fmx .limitcard .lico{width:28px;height:28px;flex-shrink:0;color:var(--lim);display:flex;align-items:center;justify-content:center;}
+.fmx .limitcard .lico svg{width:24px;height:24px;}
+.fmx .limitcard .lmeta{min-width:0;display:flex;flex-direction:column;gap:2px;}
+.fmx .limitcard .leyebrow{font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--lim);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}
+.fmx .limitcard .ltitle{font-size:12px;letter-spacing:normal;text-transform:none;font-weight:700;color:var(--ink);}
+.fmx .limitcard .ltitle.untitled{color:var(--dimmer);font-style:italic;font-weight:400;}
+.fmx .limitcard .lknob{font-size:12px;color:var(--ink);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}
+.fmx .limitcard .lcovers{font-size:11px;color:var(--ink2);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}
+.fmx .limitcard .placeholder{color:var(--dimmer);font-style:italic;}
+.fmx .limitcard .limit-handle{position:absolute;left:50%;top:-8px;width:14px;height:14px;margin-left:-7px;border-radius:50%;background:var(--card);border:2px solid var(--lim);cursor:crosshair;z-index:3;transition:transform .12s,background .12s;}
+.fmx .limitcard .limit-handle:hover,.fmx .limitcard .limit-handle.dragging{background:var(--lim);transform:scale(1.25);}
+.fmx .limitcard>.note-pin{right:-10px;top:-14px;}
+.fmx .wires line.limit-tether{stroke:var(--accent);stroke-width:1.6;stroke-dasharray:4 5;opacity:.75;pointer-events:none;}
+.fmx .wires line.limit-tether.temp{opacity:1;stroke-width:2;}
+.fmx .formation.limithover,.fmx .missioncard.limithover{box-shadow:0 0 0 2px var(--accent),0 0 20px -4px var(--accent);}
+.fmx .limittoken svg{width:14px;height:14px;}
+.fmx .limittoken:hover{border-color:var(--accent);color:var(--accent);}
+.limitghost{border-color:var(--accent);color:var(--accent);}
 .fmx .gatecard .port.pass{right:-9px;top:50%;margin-top:-21px;border-color:var(--sage);background:var(--card);}
 .fmx .gatecard .port.fail{right:-9px;top:50%;margin-top:5px;border-color:var(--terra-d);background:var(--card);}
 .fmx .gatecard .port.pass:hover{background:var(--sage);transform:scale(1.3);}

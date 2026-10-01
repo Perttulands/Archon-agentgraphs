@@ -7,9 +7,11 @@ import { fetchRunProblems } from '../evidence/runEvidenceApi'
 import { DEFAULT_STOP_REASON, runLimitPhrase } from './runOutcome'
 import '../styles/formations-run.css'
 
-// The run bar's recoveries: Resume only when resuming can make progress, a
-// plain statement of why a block cannot resume (archon-n7u.6), and Stop behind a
-// modal confirmation that names the run and what ends with it (archon-n7u.8).
+// The run bar's recoveries: Resume only when resuming can make progress, Grant
+// one more round in its place when the run stopped at a spent Limit card
+// (archon-o7p.8), a plain statement of why a block cannot resume
+// (archon-n7u.6), and Stop behind a modal confirmation that names the run and
+// what ends with it (archon-n7u.8).
 
 export { DEFAULT_STOP_REASON }
 
@@ -22,11 +24,13 @@ export interface RunBarActionsProps {
   /** The human requests the run waits on; several can wait at once (archon-o7p.11). */
   waitingGates: { title: string; requestedSeq: number }[]
   onResume: () => void
+  /** Resumes a run blocked at a spent Limit card with one more round granted. */
+  onGrant: () => void
   /** Resolves once the run is canceled, false when the stop failed. */
   onStop: (reason: string) => Promise<boolean>
 }
 
-/** The recorded fact of the run's latest block: its limit, else its reason. */
+/** The recorded fact of the run's latest block: its reason, else its limit. */
 function useBlockFact(runId: string, active: boolean, titleOf: (nodeId: string) => string): string {
   const [fact, setFact] = useState<{ runId: string; limit?: Parameters<typeof runLimitPhrase>[0]; reason: string } | null>(null)
   useEffect(() => {
@@ -39,10 +43,10 @@ function useBlockFact(runId: string, active: boolean, titleOf: (nodeId: string) 
     return () => { current = false }
   }, [active, runId])
   if (!active || fact?.runId !== runId) return ''
-  return fact.limit ? runLimitPhrase(fact.limit, titleOf) : fact.reason
+  return fact.reason || (fact.limit ? runLimitPhrase(fact.limit, titleOf) : '')
 }
 
-export default function RunBarActions({ run, points, boardTitle, titleOf, waitingGates, onResume, onStop }: RunBarActionsProps) {
+export default function RunBarActions({ run, points, boardTitle, titleOf, waitingGates, onResume, onGrant, onStop }: RunBarActionsProps) {
   const [confirming, setConfirming] = useState(false)
   const stopButton = useRef<HTMLButtonElement>(null)
   const returnFocus = useRef(false)
@@ -57,7 +61,10 @@ export default function RunBarActions({ run, points, boardTitle, titleOf, waitin
   if (run.final) return null
   return (
     <>
-      {run.resumeAllowed ? <button type="button" onClick={onResume}>Resume run</button> : null}
+      {run.resumeAllowed && run.resumePolicy === 'grant' ? (
+        <button type="button" className="run-grant" onClick={onGrant}
+          title="The run stopped at a spent Limit card. Grant it one more round and the run resumes.">Grant one more round</button>
+      ) : run.resumeAllowed ? <button type="button" onClick={onResume}>Resume run</button> : null}
       {cannotResume ? (
         <span className="run-note" role="note" data-testid="run-not-resumable" title={fact ? `This block cannot be resumed: ${fact}.` : 'This block cannot be resumed.'}>
           {fact ? `Can’t resume: ${fact}.` : 'Can’t resume.'}
@@ -140,7 +147,7 @@ function ModalLayer({ onEscape, children }: { onEscape: () => void; children: Re
   )
 }
 
-function StopRunDialog({ run, points, boardTitle, titleOf, waitingGates, onStop, onClose }: Omit<RunBarActionsProps, 'onResume'> & { onClose: () => void }) {
+function StopRunDialog({ run, points, boardTitle, titleOf, waitingGates, onStop, onClose }: Omit<RunBarActionsProps, 'onResume' | 'onGrant'> & { onClose: () => void }) {
   const [reason, setReason] = useState('')
   const [stopping, setStopping] = useState(false)
   const keepButton = useRef<HTMLButtonElement>(null)

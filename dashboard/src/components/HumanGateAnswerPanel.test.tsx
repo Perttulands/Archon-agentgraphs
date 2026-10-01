@@ -21,29 +21,30 @@ function renderPanel(onDecide = vi.fn(async () => true), upstream: Parameters<ty
 describe('HumanGateAnswerPanel', () => {
   afterEach(() => { vi.restoreAllMocks(); window.localStorage.clear() })
 
-  it('names where Approve and Send back lead, warning before the last attempt', async () => {
+  it('names where Approve and Send back lead, warning before the last round of a Limit card', async () => {
     const onDecide = vi.fn(async () => true)
     renderPanel(onDecide, { state: 'ready', from: 'Draft', text: 'draft 2', truncated: false, criterion: '', routes: [
-      { verdict: 'pass', targets: [{ nodeId: 'fmn_publish', title: 'Publish', kind: 'formation', attempt: 1, maxAttempts: 3 }] },
-      { verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 3, maxAttempts: 3 }] },
+      { verdict: 'pass', targets: [{ nodeId: 'fmn_publish', title: 'Publish', kind: 'formation', attempt: 1 }] },
+      { verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 3, rounds: { kind: 'rounds', limitId: 'lim_cap', nodeId: 'fmn_draft', used: 2, max: 3 } }] },
     ] })
     const routes = screen.getByRole('list', { name: 'Where your answer leads' })
     expect(routes).toHaveTextContent('Approve: Publish runs next.')
-    expect(screen.getByText('Send back: Draft runs again with your response (attempt 3 of 3, its last).')).toHaveClass('last')
+    expect(screen.getByText('Send back: Draft runs again with your response (round 3 of 3).')).toHaveClass('last')
     fireEvent.change(screen.getByLabelText('Your response'), { target: { value: 'Shorter.' } })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send back to Draft' })) })
     expect(onDecide).toHaveBeenCalledWith('fail', 'Shorter.')
     expect(screen.getByRole('button', { name: 'Approve → Publish' })).toHaveAttribute('title', 'Approve: Publish runs next.')
   })
 
-  it('says when approving ends the run and when a send-back would block it for good', () => {
+  it('says when approving ends the run and when a send-back would block it until a grant', () => {
+    const spent = { kind: 'rounds' as const, limitId: 'lim_cap', nodeId: 'fmn_draft', used: 3, max: 3 }
     renderPanel(undefined, { state: 'ready', from: 'Draft', text: 'draft 3', truncated: false, criterion: '', routes: [
       { verdict: 'pass', targets: [{ nodeId: 'end_done', title: 'Done', kind: 'end', outcome: 'done' }], endsRun: true },
-      { verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 4, maxAttempts: 3 }], limit: { kind: 'attempts', nodeId: 'fmn_draft', used: 3, max: 3 } },
+      { verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 4, rounds: spent }], limit: spent },
     ] })
     expect(screen.getByRole('button', { name: 'Approve and end the run' })).toBeInTheDocument()
     expect(screen.getByText('Approve: this path ends (done), and with nothing else to run, the run succeeds.')).toBeInTheDocument()
-    expect(screen.getByText('Send back blocks the run: Draft used 3 of 3 attempts. It cannot resume.')).toHaveClass('blocks')
+    expect(screen.getByText('Send back: Draft runs again with your response, but Draft has used all 3 of its rounds, so the run blocks instead until you grant one more.')).toHaveClass('blocks')
     expect(screen.getByRole('button', { name: 'Send back to Draft' })).toHaveClass('blocks')
   })
 

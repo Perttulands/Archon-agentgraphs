@@ -132,6 +132,7 @@ export interface BoardDocument {
   gates?: GateNode[]
   tools?: ToolNode[]
   ends?: EndNode[]
+  limits?: LimitNode[]
   connections: BoardConnection[]
 }
 
@@ -184,6 +185,18 @@ export interface EndNode {
   outcome: EndOutcome
 }
 
+/**
+ * Caps the rounds of the step it covers, or of the whole mission when it covers
+ * the Input card (archon-o7p.8). It has no ports: `target` names what it covers,
+ * '' while it is wired to nothing, and `rounds` is absent while it sets none.
+ */
+export interface LimitNode {
+  id: string
+  title: string
+  target: string
+  rounds?: number
+}
+
 export interface CodeGateProfileDescriptor {
   profileId: string
   profileVersion: string
@@ -203,6 +216,8 @@ export interface RunStatusProjection {
   eventCount: number
   waitingGates?: WaitingGate[]
   resumeAllowed?: boolean
+  /** grant while the run is blocked at a spent Limit card: it resumes only with one more round granted. */
+  resumePolicy?: 'grant'
   /** The channel frozen from the run's mission (ADR-0019); formation-only runs notify. */
   humanChannel?: 'notify' | 'session'
   /** Seats kept after their formation finished, to answer human gate asks. */
