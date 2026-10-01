@@ -53,8 +53,8 @@ or the `assignSlot` mission patch with `agentId`, `harness`, `model` and
 `effort`. Staffing always states the slot in full: the CLI requires
 `--harness` and `--effort`, and a patch without a harness or an effort,
 including one naming only a role, is refused with `INVALID_SLOT_SETTINGS`
-(HTTP 422, CLI code `invalid_slot_settings`). A role adds only its text; its
-card's settings never reach a slot. A patch naming none of them empties the
+(HTTP 422, CLI code `invalid_slot_settings`). A role adds only its text. A
+patch naming none of them empties the
 slot, as does `formation unassign`. The harness must be one Archon starts and must accept the effort,
 and a model is one name without spaces. The agent roster serves each
 harness's known `models`: `claude-code` runs the aliases `opus`, `sonnet`,
@@ -65,15 +65,21 @@ model narrows the slot's efforts to its own: `gpt-5.5` takes `low` to `xhigh`.
 A model outside the catalog is accepted and the harness decides; the
 `assignSlot` answer then carries `warnings`, and `formation assign` prints
 them. Choose the effort by the policy the agent
-roster serves as `effortPolicy`: `low` for errands, `medium` for making
-things, `xhigh` for architecture and review, `max` for consequential reviews.
-One role may staff several slots, each with its own settings.
+roster serves as `effortPolicy`, each line with the role kinds it suits:
+`low` for errands (`verifier`, `scout`, `observer`, `operator`), `medium` for
+making things (`builder`, `debugger`), `xhigh` for architecture and review
+(`reviewer`, `judge`, `architect`, `planner`, `orchestrator`), and `max` for
+consequential reviews, chosen by hand and never suggested. One role may staff
+several slots, each with its own settings.
 
 The cockpit shows every slot as a row: its harness mark and label, then its
-role (or `vanilla`) over `<Harness> · <model> · <effort>`, as in `Claude Code ·
-opus · low`, with a blank model reading `default` on the card and `default
-model` in sentences. A model outside the catalog is marked `model not in
-catalog`. The node window, Flow, and the Agents view's slot tiles and slot
+role (or `vanilla`) over `<Harness> · <model> · <effort>`, as in `Claude · opus
+· low`. Cards name the harness in one short word (`Claude`, `Codex`) and a
+blank model as `default`; sentences say `Claude Code` and `default model`. On a
+card only a long model gives way, never the harness or the effort, and the
+workers of an orchestrated step sit under `workers` with a solo slot's width;
+an empty slot says `open slot`. A model outside the catalog is marked `model
+not in catalog`. The node window, Flow, and the Agents view's slot tiles and slot
 inspector say the same, for example `Worker 1 is vanilla on Claude Code · opus
 · low.` Rosters list roles by name; roles carry no harness. Both rosters count
 in the same words, across every formation of the mission: `25 roles · 6 in
@@ -82,9 +88,12 @@ slots`. Clicking a role in the Missions rail opens it in a window beside the
 rail, with its role text and the slots it staffs.
 
 Staffing in the cockpit is that sentence, edited where the slot is. Clicking a
-slot, or Enter on a focused one, opens a window beside its card reading `Worker
-1 is [vanilla] on [Claude Code] · [opus] · [low]`; each word opens its own
-list, and clicking one word of a staffed slot opens only that list, where a
+slot, or Enter on a focused one, opens a window reading `Worker 1 is [vanilla]
+on [Claude Code] · [opus] · [low]`, placed as a node window is: beside the
+slot, clear of its card, the cards wired to it, the next empty slot and open
+windows. `on <harness> · <model> · <effort>` wraps as one group. Each word
+opens its own list on the slot's current value, so a reflex Enter changes
+nothing, and clicking one word of a staffed slot opens only that list, where a
 pick lands at once. An empty slot opens as vanilla on the first harness and its
 first model, at the effort the policy reads from the step's title, else `low`,
 so Enter staffs it. The first word takes typed words in any order (`cri ast`,
@@ -93,13 +102,18 @@ effort the harness or model refuses is named and blocks Enter, with one-click
 fixes. Digits 1-6 set the effort, in the window or on a focused slot. Esc or a
 click away changes nothing. N on the canvas reaches the next empty slot in Flow
 order, brings it into view and opens it. The role list shows each role's
-suggested effort, and the effort list opens on the suggestion with each
-effort's policy words. A role landing on a slot moves the effort to the policy,
-unless that effort was picked by hand in this cockpit: then it stays, and the
-slot offers `use xhigh?` until it is taken or the effort changes. A note beside
-the slot says why each landing came out as it did. Dragging a role from the
-rail onto a slot lands it by the same rule, dragging a staffed slot onto
-another moves its staffing there and swaps a staffed target's back, and a drop
+suggested effort, from its kind by the policy (its name and summary are read
+only when the policy names no effort for its kind), and the effort list tags
+the suggestion with each effort's policy words. A role landing on an empty
+slot takes the policy's effort. A role landing on a staffed slot keeps that
+slot's harness, model and effort; when the policy suggests another effort, the
+window offers `use xhigh` and the slot `use xhigh?`, one click each, until it
+is taken or the role or effort changes. Nothing remembers how an effort was
+chosen. A note beside the slot says why each landing came out as it did.
+Dragging a role from the rail onto a slot lands it by the same rule, its ghost
+waiting beside the slot so the slot's preview stays readable; dragging a
+staffed slot onto another moves its staffing there and swaps a staffed
+target's back, two slots running the same staffing are left alone, and a drop
 that reaches no slot changes nothing. The slot's menu offers Staff and Empty.
 Each staffing is one undo entry; a move is one entry for both slots. The node
 window's staffing words and the Agents view's slot inspector open the same
