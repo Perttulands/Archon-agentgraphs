@@ -353,3 +353,21 @@ func TestResumeWaitsForTheCommandThatRecordedTheEscalation(t *testing.T) {
 		t.Fatalf("resume right after the escalation: %d %s", w.Code, w.Body.String())
 	}
 }
+
+// archon-2jmx: run wait names a run's mission by the mission's title, never
+// its Input card's, which keeps the default "Input" on many missions.
+func TestRunWaitNamesTheMissionByItsTitle(t *testing.T) {
+	events := []formations.RunEvent{{Seq: 1, Type: formations.RunEventStarted, RunID: "run_x", MissionID: "inp_delivery", Data: map[string]any{"missionSlug": "delivery"}}}
+	board := &formations.BoardDocument{Slug: "delivery", Title: "Delivery", Missions: []formations.MissionNode{{ID: "inp_delivery", Title: "Input"}}}
+	got, err := projectWait("run_x", events, board, WaitUntilAnyChange, 0, true, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mission != "Delivery" {
+		t.Fatalf("mission = %q, want the mission's title", got.Mission)
+	}
+	board.Title = ""
+	if got, _ := projectWait("run_x", events, board, WaitUntilAnyChange, 0, true, time.Time{}); got.Mission != "delivery" {
+		t.Fatalf("untitled mission = %q, want its slug", got.Mission)
+	}
+}

@@ -331,13 +331,8 @@ func waitEnd(events []formations.RunEvent, board *formations.BoardDocument, stat
 }
 
 func waitMissionTitle(board *formations.BoardDocument, status *formations.RunStatusProjection) string {
-	if board != nil {
-		if title := nodeTitle(board, status.MissionID); status.MissionID != "" && title != status.MissionID {
-			return title
-		}
-		if board.Title != "" {
-			return board.Title
-		}
+	if board != nil && board.Title != "" {
+		return board.Title
 	}
 	return status.BoardSlug
 }
