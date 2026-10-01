@@ -327,7 +327,7 @@ func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
 		return boardPatchPresence{}, err
 	}
 	if delimiter, ok := opening.(json.Delim); !ok || delimiter != '{' {
-		return boardPatchPresence{}, fmt.Errorf("board patch must be a JSON object")
+		return boardPatchPresence{}, fmt.Errorf("mission patch must be a JSON object")
 	}
 	presence := boardPatchPresence{}
 	for decoder.More() {
@@ -337,7 +337,7 @@ func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
 		}
 		key, ok := keyToken.(string)
 		if !ok {
-			return boardPatchPresence{}, fmt.Errorf("board patch key must be a string")
+			return boardPatchPresence{}, fmt.Errorf("mission patch key must be a string")
 		}
 		for _, mutationKey := range boardPatchMutationKeys {
 			if strings.EqualFold(key, mutationKey) {
@@ -370,7 +370,7 @@ func inspectBoardPatchPresence(raw []byte) (boardPatchPresence, error) {
 		return boardPatchPresence{}, err
 	}
 	if delimiter, ok := closing.(json.Delim); !ok || delimiter != '}' {
-		return boardPatchPresence{}, fmt.Errorf("board patch object is not closed")
+		return boardPatchPresence{}, fmt.Errorf("mission patch object is not closed")
 	}
 	return presence, nil
 }
@@ -1687,7 +1687,7 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	case errors.Is(err, formations.ErrConflict):
 		core.WriteError(w, http.StatusConflict, "CONFLICT", "Formation definition changed; reload and retry")
 	case errors.Is(err, formations.ErrAlreadyExists):
-		core.WriteError(w, http.StatusConflict, "BOARD_EXISTS", "A mission with that name already exists")
+		core.WriteError(w, http.StatusConflict, "MISSION_EXISTS", "A mission with that name already exists")
 	case errors.Is(err, formations.ErrAmbiguousSelector):
 		core.WriteError(w, http.StatusBadRequest, "AMBIGUOUS_SELECTOR", err.Error())
 	case errors.Is(err, formations.ErrNotFound), errors.Is(err, formations.ErrNoteTargetNotFound):
@@ -1709,7 +1709,7 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 	case errors.Is(err, formations.ErrInvalidSlotSettings):
 		core.WriteError(w, http.StatusUnprocessableEntity, "INVALID_SLOT_SETTINGS", fieldErrorMessage(err, formations.ErrInvalidSlotSettings))
 	case errors.Is(err, formations.ErrInvalidSlug):
-		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid formation slug")
+		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid mission slug")
 	case errors.Is(err, formations.ErrUnsupportedSchema):
 		core.WriteError(w, http.StatusUnprocessableEntity, "UNSUPPORTED_SCHEMA", err.Error())
 	default:

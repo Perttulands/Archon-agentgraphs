@@ -96,8 +96,8 @@ func TestFormationsAPIReportsControllerRoleAndPortDirectionByField(t *testing.T)
 	}
 	for _, path := range []string{"/api/missions/bad..slug", "/api/missions/bad%2Fpath"} {
 		rec := serve(http.MethodPatch, path, board.ETag, `{"title":"x"}`)
-		if response := decodeAPIError(t, rec); rec.Code != http.StatusBadRequest || response.Error.Message != "Invalid formation slug" {
-			t.Errorf("%s = %d %s, want Invalid formation slug", path, rec.Code, rec.Body.String())
+		if response := decodeAPIError(t, rec); rec.Code != http.StatusBadRequest || response.Error.Message != "Invalid mission slug" {
+			t.Errorf("%s = %d %s, want Invalid mission slug", path, rec.Code, rec.Body.String())
 		}
 	}
 }

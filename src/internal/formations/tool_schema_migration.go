@@ -60,7 +60,7 @@ func migrateBoardToToolSchema(raw []byte) ([]byte, error) {
 		return nil, err
 	}
 	if schema == NewBoardSchema && len(board.Tools) != 0 {
-		return nil, fmt.Errorf("board schema %d cannot contain Tool definitions", schema)
+		return nil, fmt.Errorf("mission schema %d cannot contain Tool definitions", schema)
 	}
 
 	scan, err := toolSchemaMigrationScanBoard(lines)

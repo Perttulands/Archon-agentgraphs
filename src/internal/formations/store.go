@@ -278,7 +278,7 @@ func (s *Store) DeleteBoard(slug string, opts WriteOptions) (*BoardDeletion, err
 				}
 				if layoutArchive != "" {
 					if restoreErr := layoutDefinition.restoreArchived(layoutArchive); restoreErr != nil {
-						return fmt.Errorf("archive board: %v; restore layout: %w", err, restoreErr)
+						return fmt.Errorf("archive mission: %v; restore layout: %w", err, restoreErr)
 					}
 				}
 				return err
@@ -313,7 +313,7 @@ func (s *Store) BoardChangeSince(slug, previousETag string) (*BoardChangeSignal,
 	changed := previousETag != "" && previousETag != currentETag
 	signal := ""
 	if changed {
-		signal = "board.changed"
+		signal = "mission.changed"
 	}
 	return &BoardChangeSignal{
 		Board:      slug,

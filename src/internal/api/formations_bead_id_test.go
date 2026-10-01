@@ -73,8 +73,8 @@ func TestFormationsAPIReportsUnsafeBeadIDsByField(t *testing.T) {
 	}
 	for _, path := range []string{"/api/missions/bad..slug", "/api/missions/bad%2Fpath"} {
 		rec := serve(http.MethodPatch, path, before.ETag, `{"title":"x"}`)
-		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"message":"Invalid formation slug"`) {
-			t.Errorf("%s = %d %s, want Invalid formation slug", path, rec.Code, rec.Body.String())
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"message":"Invalid mission slug"`) {
+			t.Errorf("%s = %d %s, want Invalid mission slug", path, rec.Code, rec.Body.String())
 		}
 	}
 }

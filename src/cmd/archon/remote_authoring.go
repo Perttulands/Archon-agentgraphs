@@ -91,7 +91,7 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrIncompatibleToolConnection
 	case "CONFLICT":
 		return formations.ErrConflict
-	case "BOARD_EXISTS", "AGENT_EXISTS":
+	case "MISSION_EXISTS", "AGENT_EXISTS":
 		return formations.ErrAlreadyExists
 	case "AMBIGUOUS_SELECTOR":
 		return formations.ErrAmbiguousSelector

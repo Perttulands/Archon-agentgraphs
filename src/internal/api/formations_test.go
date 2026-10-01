@@ -235,7 +235,7 @@ updatedAt = "2026-06-03T16:00:00Z"
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode response: %v\n%s", err, rec.Body.String())
 	}
-	if !response.Data.Signal.Changed || response.Data.Signal.Signal != "board.changed" {
+	if !response.Data.Signal.Changed || response.Data.Signal.Signal != "mission.changed" {
 		t.Fatalf("signal = %+v, want board.changed changed signal", response.Data.Signal)
 	}
 }

@@ -58,7 +58,7 @@ func TestFormationsHandlerRejectsDuplicateDerivedBoardSlug(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	assertFormationsAPIToolError(t, rec, http.StatusConflict, "BOARD_EXISTS")
+	assertFormationsAPIToolError(t, rec, http.StatusConflict, "MISSION_EXISTS")
 }
 
 func TestFormationsHandlerDeletesBoardIntoArchive(t *testing.T) {

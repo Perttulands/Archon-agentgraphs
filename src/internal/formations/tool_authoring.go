@@ -710,7 +710,7 @@ func patchToolUpdate(raw []byte, before, after ToolNode, req ToolUpdateRequest) 
 func validateToolMutationBoardSource(raw []byte) error {
 	var document map[string]any
 	if err := toml.Unmarshal(raw, &document); err != nil {
-		return fmt.Errorf("invalid_board_source: malformed board TOML: %w", err)
+		return fmt.Errorf("invalid_mission_source: malformed mission TOML: %w", err)
 	}
 	return nil
 }
@@ -950,10 +950,10 @@ func validateToolMutationBoard(board *BoardDocument, slug string) error {
 		return fmt.Errorf("Tool mutation requires mission file schema %d", CurrentBoardSchema)
 	}
 	if !validToolDefinitionID(board.ID) {
-		return fmt.Errorf("invalid_board_id: board id %q is invalid", board.ID)
+		return fmt.Errorf("invalid_mission_id: mission id %q is invalid", board.ID)
 	}
 	if board.Slug != slug || board.Rev <= 0 {
-		return fmt.Errorf("invalid_board_identity: board slug/revision does not match mutation target")
+		return fmt.Errorf("invalid_mission_identity: board slug/revision does not match mutation target")
 	}
 
 	nodeIDs := make(map[string]string, len(board.Missions)+len(board.Formations)+len(board.Gates)+len(board.Tools))
@@ -1068,7 +1068,7 @@ func validateToolMutationLayout(raw []byte, layout *LayoutDocument, boardID stri
 		return nil, fmt.Errorf("invalid_layout_schema: Tool mutation requires layout schema %d", CurrentLayoutSchema)
 	}
 	if layout.BoardID != boardID {
-		return nil, fmt.Errorf("%w: layout board %q does not match %q", ErrConflict, layout.BoardID, boardID)
+		return nil, fmt.Errorf("%w: layout mission %q does not match %q", ErrConflict, layout.BoardID, boardID)
 	}
 	return blocks, nil
 }

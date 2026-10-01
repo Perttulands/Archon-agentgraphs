@@ -175,7 +175,7 @@ func (e *RunEngine) prepareCompletedRecovery(runID string, board *BoardDocument,
 	ref = refs[0]
 	formation, ok := findFormation(board.Formations, ref.NodeID)
 	if !ok {
-		return ref, result, errors.New("unresolved dispatch formation is absent from the frozen board")
+		return ref, result, errors.New("unresolved dispatch formation is absent from the frozen mission")
 	}
 	result, err := reader.readCompletedFormationDispatch(FormationReattachRequest{RunID: runID, DispatchID: ref.DispatchID, NodeID: ref.NodeID, SlotID: ref.SlotID, Formation: formation})
 	return ref, result, err

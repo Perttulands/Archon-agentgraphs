@@ -43,7 +43,7 @@ func (s *Store) readRunPersonaBinding(runID, nodeID string, slot FormationSlot) 
 	}
 	started := events[0]
 	if document.RunID != runID || document.BoardID != started.BoardID || document.BoardSlug != stringFromEventData(started, "missionSlug") || document.BoardRev != started.BoardRev || document.MissionID != started.MissionID {
-		return invalid("run persona snapshot belongs to a different run or board", nil)
+		return invalid("run persona snapshot belongs to a different run or mission", nil)
 	}
 	if document.Schema != 3 {
 		return invalid("unsupported run persona snapshot schema", nil)

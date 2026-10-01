@@ -636,7 +636,7 @@ func TestBoardChangeSignalDetectsExternalEdit(t *testing.T) {
 	if !signal.Changed {
 		t.Fatalf("Changed = false, want true")
 	}
-	if signal.Signal != "board.changed" {
+	if signal.Signal != "mission.changed" {
 		t.Fatalf("Signal = %q, want board.changed", signal.Signal)
 	}
 	if signal.ETag == board.ETag {

@@ -638,8 +638,8 @@ func TestUpdateToolRejectsMalformedUnknownBoardTOMLWithoutMutation(t *testing.T)
 			title := "Must not publish"
 
 			_, err = store.UpdateTool(slug, ToolUpdateRequest{ToolID: "tool_target", Title: &title}, toolAuthoringAbsentOptions(before))
-			if err == nil || !strings.Contains(err.Error(), "invalid_board_source") {
-				t.Fatalf("malformed unknown board source error = %v, want invalid_board_source", err)
+			if err == nil || !strings.Contains(err.Error(), "invalid_mission_source") {
+				t.Fatalf("malformed unknown board source error = %v, want invalid_mission_source", err)
 			}
 			assertToolAuthoringPairUnchanged(t, store, slug, boardRaw, nil)
 		})
