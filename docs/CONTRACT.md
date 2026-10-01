@@ -568,8 +568,8 @@ Real formations must emit all and only their declared output IDs in one block:
 
 A payload can also include `ref` naming a text artifact created under the
 prompt's artifact directory or another configured root. Use its full absolute
-filesystem path. Invalid, missing,
-oversized or escaped references block routing. Free-form answer text is not
+filesystem path; a relative `ref` is refused with `invalid_output_ref`. Invalid,
+missing, oversized or escaped references block routing. Free-form answer text is not
 routed. Finish with the exact run ID substituted in the sentinel:
 
 ```text
