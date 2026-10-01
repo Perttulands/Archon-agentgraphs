@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { BoardDocument, BoardFinding } from '../components/formationsTypes'
 import { judgeChain } from '../nodeWindow/boardRoutes'
+import { splitList } from '../components/formationsCockpitDom'
 
 // The files a board node references: a mission's or a gate's files and a
 // formation's brief files. A gate also shows the brief files of the formations
@@ -56,4 +57,11 @@ export const FileProblemsContext = createContext<FileProblems>(new Map())
 
 export function useFileProblems(): FileProblems {
   return useContext(FileProblemsContext)
+}
+
+/** A relative file has no base, so the daemon refuses it (RELATIVE_FILE_REFERENCE);
+ *  the node window says so where it is typed (archon-ka59). */
+export function relativeFileProblem(value: string): string {
+  const relative = splitList(value).find(file => !file.startsWith('/'))
+  return relative ? `file "${relative}" is relative: use an absolute path` : ''
 }

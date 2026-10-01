@@ -992,7 +992,8 @@ repeated for more. On update the given files replace the list, and `--file ''`
 clears it. Name each file by its absolute path: a relative path has no base, so
 authoring refuses it, on these and on `formation set-brief --file`, with
 `RELATIVE_FILE_REFERENCE` (HTTP 400, CLI code `relative_file_reference`),
-worded `file "rubric.md" is relative: use an absolute path`. Clicking an
+worded `file "rubric.md" is relative: use an absolute path`; a node window's
+Files field says the same before it saves. Clicking an
 Input card, formation or gate card opens its node window, where every field is
 read in full and edited in place: titles, the Input card's goal, inputs, input hint
 and files, a formation's type, brief and staffing, and a gate's kinds,

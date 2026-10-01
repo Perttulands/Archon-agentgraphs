@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BoardDocument } from '../components/formationsTypes'
-import { fileProblems, nodeFileRefs } from './referencedFiles'
+import { fileProblems, nodeFileRefs, relativeFileProblem } from './referencedFiles'
 
 const port = (id: string) => [{ id, label: id }]
 
@@ -51,5 +51,13 @@ describe('file problems from validation', () => {
       ['/srv/rubrics/later.md', 'does not exist'],
       ['docs/design.md', 'is relative: use an absolute path'],
     ]))
+  })
+})
+
+describe('a relative reference file', () => {
+  it('is named in the words the daemon refuses it with', () => {
+    expect(relativeFileProblem('/srv/rubrics/review.md, docs/brief.md')).toBe('file "docs/brief.md" is relative: use an absolute path')
+    expect(relativeFileProblem('/srv/rubrics/review.md, /srv/plan.md')).toBe('')
+    expect(relativeFileProblem('')).toBe('')
   })
 })

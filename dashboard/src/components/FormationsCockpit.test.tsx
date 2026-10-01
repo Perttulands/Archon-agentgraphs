@@ -2872,6 +2872,17 @@ describe('FormationsCockpit reference parity', () => {
     expect(lines.map(line => line.closest('li')?.textContent)).toEqual(['/srv/rubrics/later.mddoes not exist'])
   })
 
+  it('refuses a relative reference file in the node window, where it is typed, and sends nothing', async () => {
+    await renderCockpit()
+    const gateCard = screen.getByTestId('gate-node-gate_review')
+    const review = await openNodeWindow(within(gateCard).getByText('Review the frame'), 'Gate · Review')
+    fireEvent.click(within(review).getByRole('button', { name: 'Edit files' }))
+    fireEvent.change(within(review).getByRole('textbox', { name: 'Files' }), { target: { value: '/srv/rubrics/review.md, rubrics/scale.md' } })
+    fireEvent.click(within(review).getByRole('button', { name: 'Save files' }))
+    expect(await within(review).findByRole('alert')).toHaveTextContent('file "rubrics/scale.md" is relative: use an absolute path')
+    expect(patches.filter(patch => 'updateGate' in patch.body)).toEqual([])
+  })
+
   it('reopens a finished run from the run bar and puts it away again', async () => {
     installRunsMock([
       { runId: 'run_01M2A0OLDER', status: 'failed', final: true, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 3 },
