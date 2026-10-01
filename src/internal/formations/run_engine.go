@@ -1117,17 +1117,11 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		}
 	}
 
-	if starved := starvedFormations(formationByID, ready); len(starved) > 0 {
-		return e.appendStarvedBlock(runID, starved)
-	}
 	completionEvents, err := e.store.ReadRunEvents(runID)
 	if err != nil {
 		return err
 	}
-	if unfinished := unfinishedRunWork(board, completionEvents, ""); len(unfinished) > 0 {
-		return e.appendUnfinishedWorkBlock(runID, unfinished)
-	}
-	return e.finishRun(runID, board, completionEvents, "resume")
+	return e.endWhenNothingCanRun(runID, board, completionEvents, "resume")
 }
 
 func (e *RunEngine) resumeIncompleteGateEvaluations(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, limits RunLimits, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
@@ -1267,6 +1261,22 @@ func (e *RunEngine) gateKindResultFromEvent(runID string, gate GateNode, input R
 		return GateEvaluationResult{}, fmt.Errorf("%w: %v", ErrRunLedgerInvalid, err)
 	}
 	return result, nil
+}
+
+// endWhenNothingCanRun applies the one completion rule (runFinishState) once
+// the engine has run everything queued: work that can still run blocks the
+// run resumably; a rejected path fails it, even when its rejection starved a
+// join; formations starved with no rejection block it as a wiring gap; and
+// otherwise it succeeds.
+func (e *RunEngine) endWhenNothingCanRun(runID string, board *BoardDocument, events []RunEvent, reason string) error {
+	finish := runFinishState(board, events, "")
+	switch {
+	case len(finish.runnable) > 0:
+		return e.appendUnfinishedWorkBlock(runID, finish.runnable)
+	case finish.rejected == nil && len(finish.starved) > 0:
+		return e.appendStarvedBlock(runID, finish.starved)
+	}
+	return e.finishRun(runID, board, events, reason)
 }
 
 // RunFailurePathRejected is the run_failed code of a run whose path ended at
@@ -1681,17 +1691,11 @@ func (e *RunEngine) executeSnapshot(runID string, board *BoardDocument, mission 
 		}
 	}
 
-	if starved := starvedFormations(formationByID, ready); len(starved) > 0 {
-		return e.appendStarvedBlock(runID, starved)
-	}
 	finalEvents, err := e.store.ReadRunEvents(runID)
 	if err != nil {
 		return err
 	}
-	if unfinished := unfinishedRunWork(board, finalEvents, ""); len(unfinished) > 0 {
-		return e.appendUnfinishedWorkBlock(runID, unfinished)
-	}
-	return e.finishRun(runID, board, finalEvents, "")
+	return e.endWhenNothingCanRun(runID, board, finalEvents, "")
 }
 
 // startFormationExecution reserves one run-wide execution before the executor
@@ -2678,31 +2682,6 @@ type starvedFormation struct {
 	ID      string
 	Title   string
 	Missing []string
-}
-
-// starvedFormations returns the reachable formations that received at least one
-// input but can never become runnable because a required input was never
-// produced. A formation that completed has all its inputs filled (it only runs
-// when formationReady), so it is excluded; one that was never reached has no
-// entry in ready and is excluded too. The result is sorted by ID so the run
-// ledger is deterministic.
-func starvedFormations(formationByID map[string]FormationNode, ready map[string]map[string]RunInputRef) []starvedFormation {
-	var starved []starvedFormation
-	for id, formation := range formationByID {
-		fed := ready[id]
-		if len(fed) == 0 || formationReady(formation, fed) {
-			continue
-		}
-		missing := make([]string, 0, len(formation.Inputs))
-		for _, input := range formation.Inputs {
-			if _, ok := fed[input.ID]; !ok {
-				missing = append(missing, input.ID)
-			}
-		}
-		starved = append(starved, starvedFormation{ID: id, Title: formation.Title, Missing: missing})
-	}
-	sort.Slice(starved, func(i, j int) bool { return starved[i].ID < starved[j].ID })
-	return starved
 }
 
 // appendUnfinishedWorkBlock refuses success while unfinishedRunWork names

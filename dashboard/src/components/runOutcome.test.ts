@@ -97,7 +97,11 @@ describe('gate route words', () => {
 
   it('says a path ends at an End node while the run goes on with its other work', () => {
     expect(gateRouteWords('pass', { verdict: 'pass', targets: [done] }, titleOf)).toEqual({ button: 'Approve', outcome: 'Approve: this path ends (done); the run goes on with its other work.', blocks: false, last: false })
-    expect(gateRouteWords('fail', { verdict: 'fail', targets: [rejected] }, titleOf).outcome).toBe('Send back: this path ends (rejected); the run goes on with its other work.')
+    // A rejected End fails the run once the rest of its open work has ended.
+    expect(gateRouteWords('fail', { verdict: 'fail', targets: [rejected], runFails: true }, titleOf).outcome).toBe('Send back: this path ends (rejected), so the run fails once its other open work ends.')
+    // After a path was already rejected, a route on to a step says so too.
+    expect(gateRouteWords('pass', { verdict: 'pass', targets: [{ nodeId: 'fmn_publish', title: 'Publish', kind: 'formation', attempt: 1 }], runFails: true }, titleOf).outcome)
+      .toBe('Approve: Publish runs next; the run fails once its other open work ends.')
   })
 
   it('names a step and an End node on one route', () => {

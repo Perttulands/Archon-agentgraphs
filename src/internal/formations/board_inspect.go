@@ -383,7 +383,7 @@ func routeLeadsNowhereFindings(board *BoardDocument) []BoardFinding {
 		findings = append(findings, BoardFinding{
 			Code:    FindingRouteLeadsNowhere,
 			NodeID:  nodeID,
-			Message: fmt.Sprintf("%s's %s leads nowhere: wire it to a step or an End node", nodeName(board, nodeID), route),
+			Message: fmt.Sprintf("%s %s leads nowhere: wire it to a step or an End node", possessive(nodeName(board, nodeID)), route),
 		})
 	}
 	for _, formation := range board.Formations {
@@ -451,6 +451,14 @@ func nodeName(board *BoardDocument, nodeID string) string {
 		return title
 	}
 	return nodeID
+}
+
+// possessive is "Brief sign-off's", or "Research notes'" for a name ending in s.
+func possessive(name string) string {
+	if strings.HasSuffix(name, "s") || strings.HasSuffix(name, "S") {
+		return name + "'"
+	}
+	return name + "'s"
 }
 
 func portLabel(port FormationPort) string {

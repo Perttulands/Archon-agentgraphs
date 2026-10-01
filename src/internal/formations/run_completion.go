@@ -1,6 +1,9 @@
 package formations
 
-import "slices"
+import (
+	"slices"
+	"sort"
+)
 
 // When a run has nothing left to do, and how it ended (form-n7u.53,
 // form-o7p.10). The engine, before it finishes a run, and a human gate's
@@ -29,10 +32,12 @@ type endedPath struct {
 }
 
 // runPathState is the ledger read through the board: the formations and
-// gates owed a delivery they have not acted on, and every path that ended.
+// gates owed a delivery they have not acted on, every path that ended, and
+// the input ports of each formation that have ever received a delivery.
 type runPathState struct {
 	owed  []string
 	ended []endedPath
+	fed   map[string]map[string]bool
 }
 
 // runPaths reads which formations and gates have received a delivery in the
@@ -43,7 +48,7 @@ type runPathState struct {
 // formation that received only some of its inputs is owed too; it cannot run,
 // and the engine blocks it as starved rather than finishing.
 func runPaths(board *BoardDocument, events []RunEvent) runPathState {
-	var state runPathState
+	state := runPathState{fed: map[string]map[string]bool{}}
 	if board == nil {
 		return state
 	}
@@ -59,7 +64,14 @@ func runPaths(board *BoardDocument, events []RunEvent) runPathState {
 	for _, formation := range board.Formations {
 		isFormation[formation.ID] = true
 	}
-	deliver := func(target string, from RunEvent, gateID string) {
+	deliver := func(endpoint string, from RunEvent, gateID string) {
+		target, port := endpointParts(endpoint)
+		if isFormation[target] {
+			if state.fed[target] == nil {
+				state.fed[target] = map[string]bool{}
+			}
+			state.fed[target][port] = true
+		}
 		if end, ok := findEnd(board, target); ok {
 			path := endedPath{EndID: end.ID, Outcome: end.Outcome, Title: end.Title, GateID: gateID, Actor: from.Actor, Seq: from.Seq}
 			if gateID != "" {
@@ -92,8 +104,7 @@ func runPaths(board *BoardDocument, events []RunEvent) runPathState {
 				if _, ok := outputPayloadForPortFromEvent(event, fromPort); !ok {
 					continue
 				}
-				target, _ := endpointParts(connection.To)
-				deliver(target, event, "")
+				deliver(connection.To, event, "")
 			}
 		case RunEventGateEvaluating:
 			state.owed = slices.DeleteFunc(state.owed, func(id string) bool { return id == gateID })
@@ -108,8 +119,7 @@ func runPaths(board *BoardDocument, events []RunEvent) runPathState {
 				delete(humanActor, gateID)
 			}
 			for _, route := range gateVerdictRoutes(board, event, gateID, routePort) {
-				target, _ := endpointParts(route.To)
-				deliver(target, from, gateID)
+				deliver(route.To, from, gateID)
 			}
 		}
 	}
@@ -140,12 +150,60 @@ func unfinishedRunWork(board *BoardDocument, events []RunEvent, except string) [
 // rejectedRunPath is the first path that ended at a rejected End node, which
 // fails a finished run with its gate's reason; nil means the run succeeds.
 func rejectedRunPath(board *BoardDocument, events []RunEvent) *endedPath {
-	for _, path := range runPaths(board, events).ended {
+	return runPaths(board, events).rejected()
+}
+
+func (state runPathState) rejected() *endedPath {
+	for _, path := range state.ended {
 		if path.Outcome == EndOutcomeRejected {
 			return &path
 		}
 	}
 	return nil
+}
+
+// runFinish is how the one rule ends a run. Runnable is the work that can
+// still run: unfinishedRunWork without the formations starved of an input,
+// which received some of their inputs but can never receive the rest once
+// nothing else runs. With runnable work the run goes on. Otherwise the run
+// finishes: it fails with the first rejected path when one ended, because
+// that rejection is why the run stops, including when it starved a join
+// further on; it blocks as starved when formations wait for inputs nothing
+// can deliver and no path was rejected (a wiring gap); and it succeeds when
+// nothing waits.
+type runFinish struct {
+	runnable []string
+	starved  []starvedFormation
+	rejected *endedPath
+}
+
+func runFinishState(board *BoardDocument, events []RunEvent, except string) runFinish {
+	state := runPaths(board, events)
+	finish := runFinish{runnable: []string{}, rejected: state.rejected()}
+	starving := map[string]bool{}
+	for _, nodeID := range state.owed {
+		formation, ok := findFormation(board.Formations, nodeID)
+		if !ok {
+			continue
+		}
+		var missing []string
+		for _, input := range formation.Inputs {
+			if !state.fed[nodeID][input.ID] {
+				missing = append(missing, input.ID)
+			}
+		}
+		if len(missing) > 0 {
+			starving[nodeID] = true
+			finish.starved = append(finish.starved, starvedFormation{ID: nodeID, Title: formation.Title, Missing: missing})
+		}
+	}
+	sort.Slice(finish.starved, func(i, j int) bool { return finish.starved[i].ID < finish.starved[j].ID })
+	for _, nodeID := range unfinishedRunWork(board, events, except) {
+		if !starving[nodeID] {
+			finish.runnable = append(finish.runnable, nodeID)
+		}
+	}
+	return finish
 }
 
 // runWorkOwedTo reports whether a formation still owes the run a delivery it

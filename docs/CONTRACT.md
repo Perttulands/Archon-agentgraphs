@@ -583,10 +583,12 @@ request is still open. A delivery to an End node is not work; it ends that
 path. A formation reached only through a route no verdict took is not pending
 work. Resume first runs whatever is still owed, including a send-back a gate
 routes during that resume, and finishes the run when nothing is; the same rule
-applies on first execution and after a restart. A formation that can never
-receive a missing input blocks non-resumably with `reachable_node_starved`; any
-other work that remains blocks, resumably, with `run_work_unfinished` naming
-those nodes.
+applies on first execution and after a restart. A formation that received
+some of its inputs but can never receive the rest is starved, not work that can
+still run: once nothing else can run, a rejected path fails the run as below
+(the rejection is why the join never ran), and without one the run blocks
+non-resumably with `reachable_node_starved`. Any other work that remains blocks,
+resumably, with `run_work_unfinished` naming those nodes.
 
 A finished run succeeds unless a path ended at a rejected End node. Then it
 records `run_failed` with `code` `path_rejected`, the End node's `endId`, the
@@ -1297,8 +1299,9 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `waitsForInputs` for a join still missing another input; for an End node
   kind `end` and its `outcome`), `endsRun` when every route of the verdict
   ends its path at an End node and nothing else in the run can still run,
-  `runFails` when that finish fails the run (a rejected End node on this route,
-  or a path already rejected), `dispatches` (`used`, `max`) and `dispatchesNeeded` (judges
+  `runFails` when the run fails once it ends, at once with `endsRun` or else
+  after its other open work (a rejected End node on this route, or a path
+  already rejected), `dispatches` (`used`, `max`) and `dispatchesNeeded` (judges
   included) when the route starts formations under a dispatch limit, and
   `limit` when a limit the route needs is already spent, so taking it blocks
   the run. When the frozen mission cannot be read, `routes` is omitted. An

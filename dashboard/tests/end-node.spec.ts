@@ -1,22 +1,14 @@
 import { expect, test, type Page } from '@playwright/test'
-import { mkdirSync } from 'node:fs'
 import { cockpitFixture } from './cockpit-fixture'
 
 // End nodes end a path on purpose (form-o7p.10): created from the End token and
 // the canvas menu, wired from gate routes (several into one), switched between
 // done and rejected, deleted and restored, each step with undo.
 
-const EVIDENCE = '/srv/data/formations/verification/vision-wave2/endnode/playwright'
-
+// Screenshots go to the test's own output directory (test-results/), so the
+// spec stays host-neutral.
 async function shot(page: Page, name: string) {
-  const path = test.info().outputPath(name)
-  await page.screenshot({ path })
-  try {
-    mkdirSync(EVIDENCE, { recursive: true })
-    await page.screenshot({ path: `${EVIDENCE}/${name}` })
-  } catch {
-    // The evidence directory exists only on the lane's host.
-  }
+  await page.screenshot({ path: test.info().outputPath(name) })
 }
 
 async function center(page: Page, selector: string) {

@@ -27,10 +27,11 @@ type GateRouteTarget struct {
 // GateRoute is what one verdict does. Every route leads somewhere, so its
 // targets are never empty on an admitted mission. EndsRun marks a verdict
 // whose every route ends its path at an End node while nothing else in the
-// run can still run, so the run finishes. RunFails marks such a finish that
-// fails the run: one of those End nodes is rejected, or a rejected path
-// already ended; otherwise the run succeeds. Limit is a limit the route finds spent, so taking it blocks the
-// run. Dispatches is the run's dispatch use so far and DispatchesNeeded the
+// run can still run, so the run finishes (the engine's rule, runFinishState).
+// RunFails marks a verdict after which the run fails when it ends: one of its
+// End nodes is rejected, or a rejected path already ended. With EndsRun it
+// fails now; without, once the rest of its open work has ended. Limit is a
+// limit the route finds spent, so taking it blocks the run. Dispatches is the run's dispatch use so far and DispatchesNeeded the
 // formation starts the route makes, judges included, under a dispatch limit.
 type GateRoute struct {
 	Verdict          string            `json:"verdict"`
@@ -79,13 +80,11 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string) []G
 			}
 			route.Targets = append(route.Targets, target)
 		}
-		route.EndsRun = routeEndsRun(board, events, gateID, route.Targets)
-		if route.EndsRun {
-			route.RunFails = rejectedRunPath(board, events) != nil
-			for _, target := range route.Targets {
-				route.RunFails = route.RunFails || target.Outcome == EndOutcomeRejected
-			}
+		route.RunFails = rejectedRunPath(board, events) != nil
+		for _, target := range route.Targets {
+			route.RunFails = route.RunFails || target.Outcome == EndOutcomeRejected
 		}
+		route.EndsRun = routeEndsRun(board, events, gateID, route.Targets, route.RunFails)
 		if route.DispatchesNeeded > 0 && limits.MaxDispatch > 0 {
 			route.Dispatches = &RunLimitReached{Kind: RunLimitDispatches, Used: consumed, Max: limits.MaxDispatch}
 			if route.Limit == nil && consumed >= limits.MaxDispatch {
@@ -100,7 +99,7 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string) []G
 // routeEndsRun reports whether a verdict whose routes all lead to End nodes
 // finishes the run. It asks the engine's own rule (unfinishedRunWork), leaving
 // out this gate's pending request, so the answer panel and the engine agree.
-func routeEndsRun(board *BoardDocument, events []RunEvent, gateID string, targets []GateRouteTarget) bool {
+func routeEndsRun(board *BoardDocument, events []RunEvent, gateID string, targets []GateRouteTarget, fails bool) bool {
 	if len(targets) == 0 {
 		return false
 	}
@@ -109,7 +108,10 @@ func routeEndsRun(board *BoardDocument, events []RunEvent, gateID string, target
 			return false
 		}
 	}
-	return len(unfinishedRunWork(board, events, gateID)) == 0
+	// As the engine decides: nothing else can run, and a rejected path ends a
+	// run even when it leaves a join starved of its other input.
+	finish := runFinishState(board, events, gateID)
+	return len(finish.runnable) == 0 && (fails || len(finish.starved) == 0)
 }
 
 // formationWaitsForOtherInputs reports whether a formation, given this input

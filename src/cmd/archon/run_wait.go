@@ -403,6 +403,8 @@ func describeGateRoute(route formations.GateRoute) string {
 		where += ", and nothing else can run, so the run fails"
 	case route.EndsRun:
 		where += ", and nothing else can run, so the run succeeds"
+	case route.RunFails:
+		where += ", so the run fails once its other open work ends"
 	}
 	limit := route.Limit
 	if where == "" || limit == nil {

@@ -272,6 +272,16 @@ func TestDanglingRoutesAreRefusedAndUnreachableNodesWarned(t *testing.T) {
 	}
 }
 
+func TestRouteLeadsNowhereNamesTitlesEndingInS(t *testing.T) {
+	board, err := parseBoard([]byte(strings.Replace(routedEndBoard, `title = "Orphan"`, `title = "Research notes"`, 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasBoardFinding(ValidateBoard(board).Errors, "fmn_orphan", "Research notes' output leads nowhere: wire it to a step or an End node") {
+		t.Fatalf("errors = %+v", ValidateBoard(board).Errors)
+	}
+}
+
 func TestEndNodeOutcomesAreValidated(t *testing.T) {
 	raw := strings.Replace(routedEndBoard, `outcome = "rejected"`, `outcome = "abandoned"`, 1)
 	board, err := parseBoard([]byte(raw))

@@ -210,7 +210,8 @@ formation has produced output since its last input, every gate has evaluated
 its last input, and no human request is open. It succeeds unless a path ended
 at a `rejected` End node; then it fails (`run_failed`, code `path_rejected`)
 with the reason of the gate verdict that routed there. Other branches still
-run to their own ends first. A route that leads nowhere is a validation error,
+run to their own ends first; a join that rejection starved of an input does not
+hold the run open. A route that leads nowhere is a validation error,
 "Brief sign-off's pass route leads nowhere: wire it to a step or an End node",
 and admission refuses the run.
 
@@ -354,7 +355,7 @@ status, then take
 entry. `run gates "$FORM_RUN_ID"` lists them; `gate request "$FORM_RUN_ID"
 "$FORM_GATE_ID"` shows the question, the input and where each verdict leads:
 the targets (an End node target means "this path ends (done)" or "(rejected)",
-and `endsRun`/`runFails` say the run then ends and whether it fails), the
+`endsRun` says the run then ends, and `runFails` that it fails, now or once its other work ends), the
 attempt each would start and, only when the run set a cap, that
 cap (`maxAttempts`, `dispatches`) and a `limit` entry if taking the route would
 exceed it.

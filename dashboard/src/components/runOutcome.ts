@@ -121,6 +121,7 @@ export function gateRouteWords(verdict: 'pass' | 'fail', route: GateRoute | unde
     const ended = ends.join(' and ')
     if (route.endsRun && route.runFails) return { button: `${verb} and fail the run`, outcome: `${verb}: ${ended}, and with nothing else to run, the run fails.`, blocks: false, last: false }
     if (route.endsRun) return { button: `${verb} and end the run`, outcome: `${verb}: ${ended}, and with nothing else to run, the run succeeds.`, blocks: false, last: false }
+    if (route.runFails) return { button: verb, outcome: `${verb}: ${ended}, so the run fails once its other open work ends.`, blocks: false, last: false }
     return { button: verb, outcome: `${verb}: ${ended}; the run goes on with its other work.`, blocks: false, last: false }
   }
   const to = titles(steps)
@@ -150,5 +151,7 @@ export function gateRouteWords(verdict: 'pass' | 'fail', route: GateRoute | unde
       notes.push(`the run has ${left} of ${route.dispatches.max} dispatches left`)
     }
   }
+  // A rejected path already ended, or this route ends one: the run fails once its work ends.
+  if (route.runFails) notes.push('the run fails once its other open work ends')
   return { button, outcome: `${verb}: ${[...clauses, ...ends, ...notes].join('; ')}.`, blocks: false, last }
 }
