@@ -95,12 +95,13 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
   const narrow = Number(style.width) < NARROW
   // The tether from the slot to the window, measured as the window settles and as a list opens in it.
   type Box = { left: number; top: number; right: number; bottom: number }
-  const [tether, setTether] = useState<{ slot: Box; popover: Box } | null>(null)
+  const [tether, setTether] = useState<{ slot: Box; popover: Box; home: Box | null } | null>(null)
   useLayoutEffect(() => {
     const win = rootRef.current
     if (!placed || !win) return
     const box = (element: Element): Box => { const r = element.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom } }
-    const next = { slot: box(open.anchor), popover: box(win) }
+    const card = open.anchor.closest('.formation')
+    const next = { slot: box(open.anchor), popover: box(win), home: card ? box(card) : null }
     const same = (a: Box, b: Box) => Math.abs(a.left - b.left) + Math.abs(a.top - b.top) + Math.abs(a.right - b.right) + Math.abs(a.bottom - b.bottom) < 1
     if (!tether || !same(tether.slot, next.slot) || !same(tether.popover, next.popover)) setTether(next)
   })
@@ -360,7 +361,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
   )
   return (
     <>
-      <Tether slot={tether?.slot ?? null} popover={tether?.popover ?? null} />
+      <Tether slot={tether?.slot ?? null} popover={tether?.popover ?? null} home={tether?.home} />
       <div className={`staffing-window${narrow ? ' narrow' : ''}`} style={style} ref={rootRef} tabIndex={-1} onKeyDown={onKeyDown} role="dialog" aria-label={`Staff ${ref.label}`} data-testid="staffing-sentence">
         <div className="staffing-sent">
           <span className="staffing-lead">{ref.label} is</span>

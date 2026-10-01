@@ -45,19 +45,20 @@ const boxOf = (element: Element): Box => { const r = element.getBoundingClientRe
 function StampView({ stamp, stage }: { stamp: Stamp; stage: StaffingStage }) {
   const height = stamp.text.length > 90 ? 58 : stamp.text.length > 45 ? 42 : 28
   const [style, setStyle] = useState<CSSProperties | null>(null)
-  const [tether, setTether] = useState<{ slot: Box; popover: Box } | null>(null)
+  const [tether, setTether] = useState<{ slot: Box; popover: Box; home: Box | null } | null>(null)
   const ref = useRef<HTMLDivElement | null>(null)
   // After this render commits: a sentence that closed with the landing is out of the DOM by then.
   useLayoutEffect(() => setStyle(stampPlace(stamp, height, stage)), []) // eslint-disable-line react-hooks/exhaustive-deps
   // Once placed, a tether ties the note to its slot.
   useLayoutEffect(() => {
     const slot = stamp.key ? slotElement(stamp.key) : null
-    if (style && slot && ref.current) setTether({ slot: boxOf(slot), popover: boxOf(ref.current) })
+    const card = slot?.closest('.formation')
+    if (style && slot && ref.current) setTether({ slot: boxOf(slot), popover: boxOf(ref.current), home: card ? boxOf(card) : null })
   }, [style]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!style) return null
   return (
     <>
-      <Tether slot={tether?.slot ?? null} popover={tether?.popover ?? null} />
+      <Tether slot={tether?.slot ?? null} popover={tether?.popover ?? null} home={tether?.home} />
       <div ref={ref} className={`staffing-stamp ${stamp.tone}`} style={style} role="status" data-testid="staffing-stamp">
         <span>{stamp.text}</span>
       </div>

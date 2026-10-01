@@ -32,3 +32,21 @@ describe('the tether from a slot to its window or note', () => {
     expect(tetherPath(box(100, 100, 50, 20), box(90, 90, 200, 100))).toBeNull()
   })
 })
+
+describe('the tether around the slot\'s card', () => {
+  it('reaches a popover above the card along the card\'s side, never across its other slots', () => {
+    const card = box(1254, 429, 208, 302)
+    const slot = box(1265, 559, 187, 41)
+    const path = tetherPath(slot, box(1121, 170, 440, 250), card)!
+    // The popover reaches further left, so the tether leaves by the slot's left side.
+    expect(path.from).toEqual([1265, 579.5])
+    expect(path.d).toBe('M1265,579.5 H1248 V420')
+  })
+
+  it('reaches a popover below the card along its side, turning in under the card when it lies across', () => {
+    const card = box(272, 740, 195, 148)
+    const slot = box(279, 813, 181, 41)
+    const path = tetherPath(slot, box(279, 893, 440, 200), card)!
+    expect(path.d).toBe('M460,833.5 H473 V893')
+  })
+})
