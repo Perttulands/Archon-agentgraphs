@@ -123,8 +123,10 @@ func (f *conversingSeats) WaitTurn(ctx context.Context, seat *nativeSeat, _, _ s
 	if f.mode == "incomplete" {
 		return finish("Stopped without acknowledging a result")
 	}
-	if _, err = f.store.AppendPeerConversation(id, PeerAppendRequest{SlotID: slot, Kind: "message", Text: "First contribution from " + slot}); err != nil {
-		return turn, err
+	if f.mode != "propose" {
+		if _, err = f.store.AppendPeerConversation(id, PeerAppendRequest{SlotID: slot, Kind: "message", Text: "First contribution from " + slot}); err != nil {
+			return turn, err
+		}
 	}
 	if f.mode == "cancel" {
 		f.cancel()
@@ -153,14 +155,17 @@ func (f *conversingSeats) WaitTurn(ctx context.Context, seat *nativeSeat, _, _ s
 		}
 		return n
 	}
-	if _, err = waitUntil(func(s *PeerConversation) bool { return countMessages(s) >= f.participants }); err != nil {
-		return turn, err
-	}
-	if _, err = f.store.AppendPeerConversation(id, PeerAppendRequest{SlotID: slot, Kind: "message", Text: "Response after reading the other peers: " + slot}); err != nil {
-		return turn, err
-	}
-	if _, err = waitUntil(func(s *PeerConversation) bool { return countMessages(s) >= 2*f.participants }); err != nil {
-		return turn, err
+	// "propose" goes straight to a proposal and its acknowledgements.
+	if f.mode != "propose" {
+		if _, err = waitUntil(func(s *PeerConversation) bool { return countMessages(s) >= f.participants }); err != nil {
+			return turn, err
+		}
+		if _, err = f.store.AppendPeerConversation(id, PeerAppendRequest{SlotID: slot, Kind: "message", Text: "Response after reading the other peers: " + slot}); err != nil {
+			return turn, err
+		}
+		if _, err = waitUntil(func(s *PeerConversation) bool { return countMessages(s) >= 2*f.participants }); err != nil {
+			return turn, err
+		}
 	}
 	if slot == "slot_peer_b" {
 		text := "Evidence collected; unresolved tension: speed versus completeness. Operator should choose."
@@ -249,8 +254,9 @@ func TestTmuxPeersConverseOnSameSeatsAndRouteAcknowledgedTensions(t *testing.T) 
 
 // archon-o7p.8.1: a peer step's rounds are its journal messages. At the
 // card's count the runtime stops the conversation and the run blocks; a grant
-// allows exactly one more message.
-func TestTmuxPeerStopsAtItsJournalMessageLimitAndAGrantAllowsOneMore(t *testing.T) {
+// gives one more round of the conversation, room for a proposal and every
+// peer's acknowledgement, so the peers can agree in it.
+func TestTmuxPeerStopsAtItsJournalMessageLimitAndAGrantGivesARoundToAgreeIn(t *testing.T) {
 	store, personas, executor, seats := peerConversationExecutorFixture(t, "")
 	mission := strings.Replace(mustReadBoardTOML(t, store), "[[formation]]", `[[inputCard]]
 id = "mis_peer"
@@ -307,18 +313,22 @@ to = "end_done:in"
 			t.Fatalf("peer brief states the cap as %q", prompt)
 		}
 	}
-	seats.attempt, seats.openings, seats.openingBarrier = 2, 0, make(chan struct{})
-	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:perttu", Mode: "redispatch", Reason: "one more message", Grant: true})
-	if err != nil {
-		t.Fatal(err)
+	// Three peers: the granted round holds a proposal and three acks.
+	seats.attempt, seats.openings, seats.openingBarrier, seats.mode = 2, 0, make(chan struct{}), "propose"
+	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:perttu", Mode: "redispatch", Reason: "let them agree", Grant: true})
+	if err != nil || status.Status != RunStatusSucceeded {
+		t.Fatalf("after the grant = %+v, %v: %s", status, err, eventTypeTrail(mustEvents(t, store, status.RunID)))
 	}
-	blockedAt("Peer proof pair used 5 of 5 rounds, 1 of them granted")
+	resumed := lastEventOfType(t, mustEvents(t, store, status.RunID), RunEventResumed)
+	if grant, _ := resumed.Data["grant"].(map[string]any); grant["amount"] != float64(4) {
+		t.Fatalf("grant = %+v, want the round of 4 messages", resumed.Data["grant"])
+	}
 	second, err := store.ReadPeerConversation(PeerConversationID{RunID: status.RunID, NodeID: "fmn_peer", Attempt: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.Messages != 1 || second.MaxMessages != 1 {
-		t.Fatalf("granted conversation = %d of %d messages", second.Messages, second.MaxMessages)
+	if second.Messages != 4 || second.MaxMessages != 4 || second.Status != "agreed" {
+		t.Fatalf("granted conversation = %d of %d messages, %s", second.Messages, second.MaxMessages, second.Status)
 	}
 }
 

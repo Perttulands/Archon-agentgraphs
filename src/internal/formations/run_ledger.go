@@ -522,12 +522,13 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		if req.Grant {
 			// One more allowance of the knob the block spent, as the ledger
 			// records who gave it: one round, or the card's time or tokens
-			// again.
+			// again. A peer step's round is a proposal and every peer's
+			// acknowledgement (peerGrantRound).
 			limit := runLimitReached(lifecycle, len(lifecycle)-1)
 			if limit == nil || limit.LimitID == "" {
 				return ErrRunNothingToGrant
 			}
-			amount := 1
+			amount := peerGrantRound(runSnapshot, *limit)
 			if limit.Kind == LimitKindTime || limit.Kind == LimitKindTokens {
 				card, ok := findLimit(runSnapshot, limit.LimitID)
 				knob := card.Seconds

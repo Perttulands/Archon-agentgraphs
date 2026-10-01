@@ -400,8 +400,11 @@ journal.
 
 `archon run resume <run> --grant` (API `grant: true`) gives the stopped limit
 one more allowance and resumes: one more round, or the card's time or tokens
-again. The `run_resumed` records `grant` (`limitId`, `kind`, `amount`: 1
-round, or the card's seconds or tokens) with the actor, and the run status's `resumePolicy` says
+again. On a peer step's own card, whose rounds are journal messages, one
+round is room for a proposal and every peer's acknowledgement, one message
+more than the step has peers, so the peers can agree in it. The `run_resumed`
+records `grant` (`limitId`, `kind`, `amount`: 1 round or a peer step's round
+of messages, or the card's seconds or tokens) with the actor, and the run status's `resumePolicy` says
 `grant` while such a block waits. A resume without `--grant` at a spent limit,
 or with it at any other block, is refused with 409 and nothing is recorded.
 There is no automatic loop detection.

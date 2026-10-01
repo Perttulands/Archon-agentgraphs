@@ -257,6 +257,20 @@ func limitWarningText(board *BoardDocument, limit LimitNode, left int) string {
 		durationWords(left), whose, nodeName(board, limit.ID))
 }
 
+// peerGrantRound is how many rounds a grant gives the limit a run spent: one,
+// or for a peer step's own card, whose rounds are journal messages, one round
+// of the conversation, room for a proposal and every peer's acknowledgement,
+// so the step can agree in it (archon-o7p.8.1).
+func peerGrantRound(board *BoardDocument, limit RunLimitReached) int {
+	if limit.Kind != LimitKindRounds {
+		return 1
+	}
+	if formation, ok := findFormation(board.Formations, limit.NodeID); ok && formation.Type == FormationTypePeer {
+		return len(formation.Slots) + 1
+	}
+	return 1
+}
+
 // peerMessagesUse is a peer step's rounds, its journal messages: those its
 // earlier attempts posted, of the card's rounds and grants. Nil when no card
 // caps the step's rounds.
