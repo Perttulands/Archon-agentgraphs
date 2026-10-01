@@ -72,7 +72,7 @@ import { slotStaffed } from '../nodeWindow/staffing'
 import { CanvasSlot } from '../staffing/CanvasSlot'
 import type { Part } from '../staffing/SlotFace'
 import { StaffingKeyHint, StaffingLayer } from '../staffing/StaffingLayer'
-import type { StaffingStage } from '../staffing/SentenceWindow'
+import type { StaffingStage } from '../staffing/staffingPlacement'
 import { dropRole, moveStaffing, previewRole, staff, type StaffingHost } from '../staffing/staffingActions'
 import { captionText, roleName, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing, type StaffingCatalog } from '../staffing/staffingModel'
 import { StaffingStore, slotKey, type SlotRef } from '../staffing/staffingStore'
@@ -146,23 +146,35 @@ import type {
 
 /** A staffing drag: a role from the rail, or a slot's staffing; a press without a move on a slot opens its sentence. */
 type StaffPayload = { kind: 'role'; roleId: string } | { kind: 'slot'; from: SlotRef }
-type DragStaff = { payload: StaffPayload | null; slot?: { ref: SlotRef; part: Part | null; anchor: HTMLElement }; click?: () => void; startX: number; startY: number; moved: boolean }
-/** The slot under the pointer, looking through notes, ghosts and anything else on top. */
+type DragStaff = { payload: StaffPayload | null; slot?: { ref: SlotRef; part: Part | null; anchor: HTMLElement }; click?: () => void; startX: number; startY: number; moved: boolean; scene?: GhostScene }
+/** The canvas as a drag starts: the cards and notes a ghost keeps off, each slot's box and its card's, and the canvas. Measured once per drag. */
+type GhostScene = { cards: DOMRect[]; slots: Map<string, { box: DOMRect; card: DOMRect }>; canvas: DOMRect }
+
+function ghostScene(): GhostScene {
+  const canvas = (document.querySelector('[data-testid="formations-canvas"]') || document.documentElement).getBoundingClientRect()
+  const cards = [...document.querySelectorAll('.world .formation, .world .gatecard, .world .missioncard, .world .toolcard, .world .endcard, .world .note-sticky')]
+    .map(element => element.getBoundingClientRect())
+  const slots = new Map([...document.querySelectorAll<HTMLElement>('.world .slot[data-slot-key]')].map(slot => [slot.dataset.slotKey || '', {
+    box: slot.getBoundingClientRect(),
+    card: (slot.closest('.formation') || slot).getBoundingClientRect(),
+  }]))
+  return { cards, slots, canvas }
+}
+
 /**
  * Where a dragged staffing's ghost waits while it is over a slot: beside the
  * slot's card, level with the slot, on the side that covers the least of the
- * other cards, else just below or above the card; never on the slot, so its
- * preview stays readable.
+ * other cards and notes, else just below or above the card; never on the
+ * slot, so its preview stays readable.
  */
-function dockedGhost(slot: Element, label: string): { x: number; y: number } {
-  const box = slot.getBoundingClientRect()
-  const card = (slot.closest('.formation') || slot).getBoundingClientRect()
-  const canvas = (slot.closest('[data-testid="formations-canvas"]') || document.documentElement).getBoundingClientRect()
+function dockedGhost(scene: GhostScene, key: string, label: string): { x: number; y: number } | null {
+  const slot = scene.slots.get(key)
+  if (!slot) return null
+  const { box, card } = slot
+  const { canvas, cards } = scene
   // The ghost's size at its 12px monospace label (staffing.css .staffing-ghost).
   const width = label.length * 7.3 + 24
   const height = 28
-  const cards = [...document.querySelectorAll('.world .formation, .world .gatecard, .world .missioncard, .world .toolcard, .world .endcard, .world .note-sticky')]
-    .map(element => element.getBoundingClientRect())
   const level = box.top + box.height / 2 - height / 2
   const under = Math.min(Math.max(box.left, canvas.left + 4), canvas.right - width - 4)
   const places = [
@@ -183,6 +195,7 @@ function dockedGhost(slot: Element, label: string): { x: number; y: number } {
   return places.reduce((best, place) => (cost(place) < cost(best) ? place : best))
 }
 
+/** The slot under the pointer, looking through notes, ghosts and anything else on top. */
 function slotKeyAt(x: number, y: number): string | null {
   for (const element of document.elementsFromPoint?.(x, y) || [document.elementFromPoint(x, y)].filter(Boolean) as Element[]) {
     const slot = element.closest<HTMLElement>('.world .slot[data-slot-key]')
@@ -1883,9 +1896,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         if (!staffDrag.moved || !payload) return
         const key = slotKeyAt(pointer.clientX, pointer.clientY)
         const target = key ? refByKey(key) : null
-        const over = target ? document.querySelector(`.world .slot[data-slot-key="${CSS.escape(target.key)}"]`) : null
         const label = ghostLabel(payload)
-        setGhost(over ? { ...dockedGhost(over, label), label, docked: true } : { x: pointer.clientX, y: pointer.clientY, label, docked: false })
+        // Nothing on the canvas moves during a drag, so it is measured once, as the drag starts.
+        staffDrag.scene ??= ghostScene()
+        const docked = target ? dockedGhost(staffDrag.scene, target.key, label) : null
+        setGhost(docked ? { ...docked, label, docked: true } : { x: pointer.clientX, y: pointer.clientY, label, docked: false })
         setHoverSlot(target ? target.key : null)
         if (hovered !== target?.key) leave()
         if (!target || (payload.kind === 'slot' && payload.from.key === target.key)) return
@@ -2585,12 +2600,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const rosterAgents = useMemo(() => agents.filter(agent => agent.assignable && !agent.unbound), [agents])
   const staffingCatalog = useMemo<StaffingCatalog>(() => ({ ...staffingTerms, roles: rolesOf(agents) }), [agents, staffingTerms])
   const staffingHost = useMemo<StaffingHost>(() => ({ catalog: staffingCatalog, save: saveStaffing, move: moveStaffingOp }), [moveStaffingOp, saveStaffing, staffingCatalog])
-  // The sentence window opens as node windows do: in the canvas, clear of the slot's card, its neighbours and open windows.
+  // Staffing's popovers open in the canvas beside their slot, clear of its cards, notes, controls and open windows.
   const staffingStage = useMemo<StaffingStage>(() => ({
     workspace: windows.workspace,
     windows: () => windows.openRects(),
     scene: windows.scene,
-    keepClear: ref => nodeWindowKeepClear(ref.formationId, boardRef.current?.connections || []),
   }), [windows])
   staffingHostRef.current = staffingHost
   const filteredRosterAgents = useMemo(() => {

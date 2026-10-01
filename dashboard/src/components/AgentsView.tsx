@@ -1203,7 +1203,8 @@ function SlotInspector({
 }) {
   const staffing = staffingOf(slot)
   const roleName = roleNamer(agents as FormationAgentProjection[])
-  const open = (part: Part | null) => (event: ReactMouseEvent<HTMLElement>) => onStaff(formation, slot, part, event.currentTarget.closest('.agx-staffing-words') || event.currentTarget)
+  // The sentence window opens beside the word clicked, as a list drops from it.
+  const open = (part: Part | null) => (event: ReactMouseEvent<HTMLElement>) => onStaff(formation, slot, part, event.currentTarget)
   const word = (part: Part, text: string) => (
     <button type="button" className={`nslot-word${part === 'effort' ? ' effort' : ''}`} aria-label={`Change the ${part} of ${slot.label}: ${text}`} onClick={open(part)}>{text}</button>
   )

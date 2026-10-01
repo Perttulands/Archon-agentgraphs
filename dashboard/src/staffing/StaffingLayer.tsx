@@ -1,52 +1,44 @@
 /* The floating layer staffing draws over a view: the open sentence window and
  * the note that says why a staffing landed as it did. A note never covers a
  * slot and never takes a pointer or a drop. */
-import { useEffect, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { SentenceWindow, type StaffingStage } from './SentenceWindow'
+import { SentenceWindow } from './SentenceWindow'
+import { placeBeside, viewportStage, type StaffingStage } from './staffingPlacement'
 import type { StaffingHost } from './staffingActions'
 import type { Staffing } from './staffingModel'
 import { useStaffingVersion, type SlotRef, type Stamp, type StaffingStore } from './staffingStore'
 import './staffing.css'
 
-type Rect = { left: number; top: number; right: number; bottom: number }
-const overlaps = (a: Rect, b: Rect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
-
 export function slotElement(key: string): HTMLElement | null {
   return document.querySelector<HTMLElement>(`.slot[data-slot-key="${CSS.escape(key)}"]`)
 }
 
-/** Below the card, above it, then beside it: the first place that covers no slot and stays on screen. */
-function stampPlace(stamp: Stamp, width: number, height: number): CSSProperties | null {
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  const taken = [...document.querySelectorAll<HTMLElement>('.slot[data-slot-key], .staffing-window')].map(element => element.getBoundingClientRect())
-  const fits = (rect: Rect) => rect.left >= 4 && rect.top >= 52 && rect.right <= vw - 4 && rect.bottom <= vh - 4 && !taken.some(other => overlaps(rect, other))
-  let anchor: Rect
-  let card: Rect
+const STAMP_WIDTH = 360
+
+/**
+ * Beside the slot, the way the sentence window is placed: clear of every card,
+ * operator note, open window and the sentence itself. A note about a drop
+ * that missed sits beside the point where it was dropped.
+ */
+function stampPlace(stamp: Stamp, height: number, stage: StaffingStage): CSSProperties | null {
+  const sentence = [...document.querySelectorAll('.staffing-window')].map(element => element.getBoundingClientRect())
+    .map(box => ({ left: box.left, top: box.top, width: box.width, height: box.height }))
   if (stamp.key) {
     const slot = slotElement(stamp.key)
     if (!slot) return null
-    anchor = slot.getBoundingClientRect()
-    card = (slot.closest('.formation') || slot).getBoundingClientRect()
-  } else if (stamp.point) {
-    anchor = { left: stamp.point.x, top: stamp.point.y, right: stamp.point.x, bottom: stamp.point.y }
-    card = anchor
-  } else return null
-  const candidates: Rect[] = [
-    { left: anchor.left, top: card.bottom + 6, right: anchor.left + width, bottom: card.bottom + 6 + height },
-    { left: anchor.left, top: card.top - 6 - height, right: anchor.left + width, bottom: card.top - 6 },
-    { left: card.right + 8, top: anchor.top, right: card.right + 8 + width, bottom: anchor.top + height },
-    { left: card.left - 8 - width, top: anchor.top, right: card.left - 8, bottom: anchor.top + height },
-  ]
-  const spot = candidates.find(fits) || candidates.find(rect => rect.left >= 4 && rect.right <= vw - 4 && rect.top >= 52 && rect.bottom <= vh - 4) || candidates[0]
-  return { left: spot.left, top: spot.top, width }
+    const place = placeBeside(slot, STAMP_WIDTH, height, height, stage, sentence)
+    return { left: place.rect.left, top: place.rect.top, width: STAMP_WIDTH }
+  }
+  if (!stamp.point) return null
+  const left = Math.max(4, Math.min(stamp.point.x + 12, window.innerWidth - STAMP_WIDTH - 4))
+  const top = Math.max(52, Math.min(stamp.point.y + 12, window.innerHeight - height - 4))
+  return { left, top, width: STAMP_WIDTH }
 }
 
-function StampView({ stamp }: { stamp: Stamp }) {
-  const width = 360
+function StampView({ stamp, stage }: { stamp: Stamp; stage: StaffingStage }) {
   const height = stamp.text.length > 90 ? 58 : stamp.text.length > 45 ? 42 : 28
-  const style = stampPlace(stamp, width, height)
+  const [style] = useState(() => stampPlace(stamp, height, stage))
   if (!style) return null
   return (
     <div className={`staffing-stamp ${stamp.tone}`} style={style} role="status" data-testid="staffing-stamp">
@@ -55,7 +47,7 @@ function StampView({ stamp }: { stamp: Stamp }) {
   )
 }
 
-export function StaffingLayer({ store, host, savedOf, stage }: {
+export function StaffingLayer({ store, host, savedOf, stage = viewportStage }: {
   store: StaffingStore
   host: StaffingHost
   /** What a slot holds in the mission now. */
@@ -85,7 +77,7 @@ export function StaffingLayer({ store, host, savedOf, stage }: {
   return createPortal(
     <div className="staffing-layer">
       {open ? <SentenceWindow key={`${open.ref.key}:${open.part || ''}`} store={store} host={host} open={open} saved={savedOf(open.ref)} stage={stage} /> : null}
-      {stamp ? <StampView key={stamp.id} stamp={stamp} /> : null}
+      {stamp ? <StampView key={stamp.id} stamp={stamp} stage={stage} /> : null}
     </div>,
     document.body,
   )

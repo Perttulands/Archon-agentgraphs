@@ -6,87 +6,25 @@
  * only that word, and the pick lands at once with its reason. This is variant
  * A, "Sentence", of the archon-n7u.56 prototypes (proto/staffing VariantA.tsx),
  * on the mission's own slots (archon-o7p.17). */
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { harnessName } from '../components/harnessIcons'
-import { measureElement } from '../windows/cockpitScene'
-import type { ViewScene } from '../windows/WindowManager'
-import type { WindowRect, Workspace } from '../windows/windowGeometry'
-import { placeOpeningWindow } from '../windows/windowPlacement'
 import type { Part } from './SlotFace'
 import { staff, type StaffingHost } from './staffingActions'
 import {
   allEfforts, applyParsed, effortRefusal, effortsFor, freshStaffing, matchRoles, modelWords, modelsOf, offCatalog, parseWords,
   policyLine, policyWords, roleName, roleSuggestion, withEffort, withFreeModel, withHarness, withModel, withRole,
-  type Outcome, type Parsed, type Staffing, type Suggestion,
+  type EffortHold, type Outcome, type Parsed, type Staffing, type Suggestion,
 } from './staffingModel'
-import type { OpenSentence, SlotRef, StaffingStore } from './staffingStore'
+import { placeBeside, popoverStyle, viewportStage, type StaffingStage } from './staffingPlacement'
+import type { OpenSentence, StaffingStore } from './staffingStore'
 
-const WIDTH = 470
-/** The window's rows around its role grid: the sentence, the list's header and footer, the policy and the keys. */
-const FRAME_HEIGHT = 200
-/** One row of the two-column role grid (staffing.css). */
-const GRID_ROW = 19
-const MAX_HEIGHT = 640
-
-/** Tall enough for the role grid of the whole catalog, so it never scrolls and the window never grows once open. */
-function windowSize(roles: number) {
-  return { width: WIDTH, height: Math.min(MAX_HEIGHT, FRAME_HEIGHT + Math.ceil((roles + 1) / 2) * GRID_ROW) }
-}
-
-/**
- * Where the window may open, measured from the view that shows the slot, as
- * floating windows are placed (windowPlacement.ts): the workspace, the windows
- * already open, the view's cards, and what must stay readable beside the slot.
- */
-export interface StaffingStage {
-  workspace: () => Workspace
-  windows: () => readonly WindowRect[]
-  scene: () => ViewScene
-  /** The slot's neighbours: its card, the cards wired to it, their links. */
-  keepClear: (ref: SlotRef) => readonly WindowRect[]
-}
-
-const CARDS = '.formation, .missioncard, .gatecard, .toolcard, .endcard'
-
-/** A view that does not describe itself: the viewport below the app bar, its cards, and the slot's own card kept clear. */
-export const viewportStage: StaffingStage = {
-  workspace: () => ({ bounds: { left: 8, top: 56, width: Math.max(0, window.innerWidth - 16), height: Math.max(0, window.innerHeight - 64) }, avoid: [] }),
-  windows: () => [],
-  scene: () => ({ landmarks: [...document.querySelectorAll(CARDS)].map(card => measureElement(card)).filter((rect): rect is WindowRect => rect !== null) }),
-  keepClear: () => [],
-}
+/** The window's size: the sentence and a short list, which scrolls. */
+const WIDTH = 440
+const HEIGHT = 330
+/** The least it shortens to where the room beside its slot is tight; its list shows three rows. */
+const MIN_HEIGHT = 260
 
 interface Row { id: string; label: string; hint?: string; tag?: string; disabled?: string; apply: () => void }
-
-/** The next empty slot after this one on the canvas: the one likely to be staffed next. */
-function nextEmptySlot(key: string): Element | null {
-  const slots = [...document.querySelectorAll<HTMLElement>('.world .slot[data-slot-key]')]
-  const index = slots.findIndex(slot => slot.dataset.slotKey === key)
-  return [...slots.slice(index + 1), ...slots.slice(0, Math.max(0, index))].find(slot => slot.classList.contains('empty')) || null
-}
-
-/**
- * Placed once, as a floating window opens: beside what it staffs (the slot, or
- * the node window or inspector that holds the sentence), clear of the slot's
- * card and its neighbours, the next empty slot and the windows already open.
- */
-function placeWindow(anchor: Element, ref: SlotRef, stage: StaffingStage, roles: number): CSSProperties {
-  const beside = anchor.closest('.fwin, .agx-inspector') || anchor
-  const card = anchor.closest('.formation')
-  const next = nextEmptySlot(ref.key)
-  const keepClear = [...stage.keepClear(ref), card, next]
-    .map(item => (item instanceof Element ? measureElement(item) : item))
-    .filter((rect): rect is WindowRect => Boolean(rect))
-  const size = windowSize(roles)
-  const rect = placeOpeningWindow(size, size, {
-    workspace: stage.workspace(),
-    anchor: measureElement(beside, true),
-    keepClear,
-    windows: stage.windows(),
-    ...stage.scene(),
-  })
-  return { left: rect.left, top: rect.top, width: rect.width, maxHeight: rect.height }
-}
 
 function partValue(staffing: Staffing, part: Part): string {
   return part === 'role' ? staffing.role : staffing[part]
@@ -103,19 +41,22 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
   const { ref } = open
   const { catalog } = host
   const current = store.current(ref.key, saved)
-  // A slot that was empty takes the policy when a role lands; a staffed one keeps its settings.
-  const fresh = !current
   const quick = Boolean(current) && Boolean(open.part)
   const [tokens, setTokens] = useState<Staffing>(() => current || freshStaffing(catalog, ref))
   const [tokenNote, setTokenNote] = useState<string | null>(null)
   const [tokenOffer, setTokenOffer] = useState<Suggestion | undefined>(undefined)
+  // An effort chosen in this sentence is stated, as one typed is.
+  const [effortStated, setEffortStated] = useState(false)
+  // Whose effort a landing role keeps: one stated here, a staffed slot's own, or for an empty slot the policy's.
+  const hold: EffortHold = effortStated ? 'stated' : current ? 'slot' : 'policy'
   const [text, setText] = useState('')
   const [list, setList] = useState<Part | null>(open.part)
   const [filter, setFilter] = useState('')
   // The highlighted row; null is the slot's current value, so a reflex Enter changes nothing.
   const [hi, setHi] = useState<number | null>(null)
   const [choosing, setChoosing] = useState(false)
-  const [style] = useState(() => placeWindow(open.anchor, ref, stage, catalog.roles.length))
+  // Placed once, beside what it staffs: the window never moves while it is open.
+  const [style] = useState(() => popoverStyle(placeBeside(open.anchor, WIDTH, HEIGHT, MIN_HEIGHT, stage), open.anchor))
   const rootRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const committed = useRef(false)
@@ -123,7 +64,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
   // Free-order words typed into the first word, read against the sentence as it stands.
   const parsed: Parsed | null = useMemo(() => (text.trim() ? parseWords(catalog, text, tokens) : null), [catalog, text, tokens])
   const blocking = Boolean(parsed) && parsed!.issues.some(issue => issue.blocking)
-  const typed = useMemo(() => (parsed && !blocking ? applyParsed(catalog, ref, tokens, parsed, fresh) : null), [blocking, catalog, fresh, parsed, ref, tokens])
+  const typed = useMemo(() => (parsed && !blocking ? applyParsed(catalog, ref, tokens, parsed, hold) : null), [blocking, catalog, hold, parsed, ref, tokens])
   const draft = typed && !typed.refused ? typed.next : tokens
   const note = typed ? typed.note || null : tokenNote
   const offer = typed ? typed.offer : tokenOffer
@@ -175,8 +116,8 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
     setList(null)
   }
 
-  const pickEffort = (effort: string) => land(withEffort(catalog, draft, effort))
-  const landRole = (role: typeof roleEntry | null) => land(withRole(catalog, ref, draft, role || null, fresh))
+  const pickEffort = (effort: string) => { setEffortStated(true); land(withEffort(catalog, draft, effort)) }
+  const landRole = (role: typeof roleEntry | null) => land(withRole(catalog, ref, draft, role || null, hold))
 
   const rows = useMemo<Row[]>(() => {
     if (choosing && parsed?.ambiguous) {
@@ -184,7 +125,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
         id: `choice:${role.id}`, label: role.name, hint: role.summary, tag: roleSuggestion(catalog, ref, role)?.effort,
         apply: () => {
           const resolved = { ...parsed, ambiguous: undefined, roleTouched: true, result: { ...parsed.result, role: role.id } }
-          const outcome = applyParsed(catalog, ref, tokens, resolved, fresh)
+          const outcome = applyParsed(catalog, ref, tokens, resolved, hold)
           if (!outcome.refused) commit(outcome.next, outcome.note, outcome.offer)
         },
       }))
@@ -210,7 +151,12 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
     if (list === 'model') {
       const home = draft.harness
       const harnesses = [home, ...catalog.harnesses.map(harness => harness.id).filter(id => id !== home)]
+      // A model outside the catalog is still the slot's own: it heads its harness's rows, as the current value.
+      const own = draft.model && offCatalog(catalog, draft)
+        ? [{ id: `${home}:${draft.model}`, label: draft.model, hint: 'not in the catalog; the harness decides', tag: 'warning', apply: () => land(withFreeModel(draft, draft.model)) }]
+        : []
       const out: Row[] = harnesses.flatMap(harness => [
+        ...(harness === home ? own : []),
         ...modelsOf(catalog, harness).map(model => ({
           id: `${harness}:${model.id}`, label: model.id, hint: harness === home ? harnessName(harness) : `${harnessName(harness)} (switches harness)`,
           apply: () => land(withModel(catalog, draft, harness, model.id)),
@@ -224,7 +170,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
       const refusal = effortRefusal(catalog, draft.harness, draft.model, effort)
       return { id: effort, label: effort, hint: policyWords(catalog, effort), tag: suggestion?.effort === effort ? 'suggested' : undefined, disabled: refusal || undefined, apply: () => pickEffort(effort) }
     }).filter(row => !f || row.label.startsWith(f))
-  }, [choosing, parsed, list, filter, draft, catalog, ref, suggestion?.effort, tokens, fresh, efforts]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [choosing, parsed, list, filter, draft, catalog, ref, suggestion?.effort, tokens, hold, efforts]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /** The row that holds the slot's value now: every list opens on it. */
   const isCurrent = (row: Row): boolean => {
@@ -238,6 +184,20 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
   const active = hi ?? (currentRow >= 0 && !filter ? currentRow : firstEnabled)
 
   const openList = (part: Part) => { setChoosing(false); setList(part); setFilter(''); setHi(null) }
+
+  // A list opens with the highlighted row in its middle, and keeps it in view as arrows move it.
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const shownList = useRef<string>('')
+  useEffect(() => {
+    const listEl = listRef.current
+    const row = listEl?.querySelector<HTMLElement>('.staffing-row.hi')
+    if (!listEl || !row) return
+    const opened = shownList.current !== `${list}:${choosing}`
+    shownList.current = `${list}:${choosing}`
+    if (opened) listEl.scrollTop = row.offsetTop - (listEl.clientHeight - row.offsetHeight) / 2
+    else if (row.offsetTop < listEl.scrollTop) listEl.scrollTop = row.offsetTop - 4
+    else if (row.offsetTop + row.offsetHeight > listEl.scrollTop + listEl.clientHeight) listEl.scrollTop = row.offsetTop + row.offsetHeight - listEl.clientHeight + 4
+  }, [active, list, choosing])
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     event.stopPropagation()
@@ -322,7 +282,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
           {parsed.issues.map((issue, index) => <div key={`i${index}`} className="staffing-issue">{issue.text}{parsed.ambiguous && /could be/.test(issue.text) ? ' ↵ shows them.' : ''}</div>)}
           {parsed.alternatives.map((alternative, index) => (
             <button key={`a${index}`} type="button" className="staffing-alt" onClick={() => {
-              const outcome = applyParsed(catalog, ref, tokens, { ...alternative, result: alternative.staffing, offCatalog: undefined }, fresh)
+              const outcome = applyParsed(catalog, ref, tokens, { ...alternative, result: alternative.staffing, offCatalog: undefined }, hold)
               if (!outcome.refused) commit(outcome.next, outcome.note, outcome.offer)
             }}>instead: {alternative.label}</button>
           ))}
@@ -331,7 +291,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
       {list || choosing ? (
         <div className="staffing-list-wrap">
           <div className="staffing-list-hd">{choosing ? `“${parsed?.ambiguous?.word}” could be:` : filter ? `filter: ${filter}` : list === 'role' ? 'roles: type to filter, 1–6 effort' : list === 'effort' ? 'effort: ↵ takes the highlighted one' : 'type to filter'}</div>
-          <div className={list === 'role' && !choosing ? 'staffing-list staffing-grid' : 'staffing-list'} role="listbox" aria-label={choosing ? 'Roles that match' : `Choose ${list}`}>
+          <div ref={listRef} className={list === 'role' && !choosing ? 'staffing-list staffing-grid' : 'staffing-list'} role="listbox" aria-label={choosing ? 'Roles that match' : `Choose ${list}`}>
             {rows.map((row, index) => (
               <div
                 key={row.id}

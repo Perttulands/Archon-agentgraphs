@@ -73,11 +73,11 @@ describe('the staffing store', () => {
     // However the slot got its effort, a role landing on it keeps it: there is no memory of hand picks.
     const saved = { ...vanilla, model: 'sonnet', effort: 'high' }
     dropRole(store, host, ref, saved, 'critic-judge')
-    expect(store.stamp?.text).toBe('Claude Code · sonnet · high stays: the slot keeps its settings. Policy suggests xhigh: Critic Judge is a reviewer, so xhigh.')
+    expect(store.stamp?.text).toBe('Claude Code · sonnet · high stays: the slot keeps its settings. Policy suggests xhigh: reviewing falls under architecture and review.')
     await settle()
     const withRole = { ...saved, role: 'critic-judge' }
     expect(writes).toEqual([[ref.key, withRole]])
-    expect(store.offer(ref.key)).toEqual({ effort: 'xhigh', reason: 'Critic Judge is a reviewer, so xhigh' })
+    expect(store.offer(ref.key)).toEqual({ effort: 'xhigh', reason: 'reviewing falls under architecture and review' })
     // Taking it writes the policy's effort and drops it.
     takeOffer(store, host, ref, withRole)
     await settle()
@@ -92,12 +92,12 @@ describe('the staffing store', () => {
     dropRole(store, host, ref, null, 'critic-judge')
     await settle()
     expect(writes).toEqual([[ref.key, { role: 'critic-judge', harness: 'claude-code', model: 'opus', effort: 'xhigh' }]])
-    expect(store.stamp?.text).toBe('Effort xhigh: Critic Judge is a reviewer, so xhigh.')
+    expect(store.stamp?.text).toBe('Effort xhigh: reviewing falls under architecture and review.')
     // A role whose kind the policy does not name is read from its name.
     dropRole(store, host, other, null, 'repo-scout')
     await settle()
     expect(writes[writes.length - 1]).toEqual([other.key, { role: 'repo-scout', harness: 'claude-code', model: 'opus', effort: 'low' }])
-    expect(store.stamp?.text).toBe('Effort low: Repo Scout reads as errands, so low.')
+    expect(store.stamp?.text).toBe('Effort low: Repo Scout reads as errands.')
   })
 
   it('moves a staffing onto another slot and swaps a staffed target back, as one edit', async () => {

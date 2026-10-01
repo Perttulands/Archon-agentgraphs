@@ -55,7 +55,7 @@ export function dropRole(store: StaffingStore, host: StaffingHost, ref: SlotRef,
     store.say(ref.key, `${roleId} is not a role you can staff.`, 'refused')
     return
   }
-  const outcome = withRole(host.catalog, ref, base, role, !current)
+  const outcome = withRole(host.catalog, ref, base, role, current ? 'slot' : 'policy')
   if (current && outcome.next.role === current.role && outcome.next.effort === current.effort) return
   void staff(store, host, ref, saved, outcome.next, { note: outcome.note, offer: outcome.offer })
 }
@@ -66,7 +66,7 @@ export function previewRole(store: StaffingStore, host: StaffingHost, ref: SlotR
   const base = current || freshStaffing(host.catalog, ref)
   const role = roleId ? host.catalog.roles.find(entry => entry.id === roleId) || null : null
   if (roleId && !role) return current
-  return withRole(host.catalog, ref, base, role, !current).next
+  return withRole(host.catalog, ref, base, role, current ? 'slot' : 'policy').next
 }
 
 /** A wrong slot is fixed in one drag: the staffing moves, and a staffed target gives its own back. */

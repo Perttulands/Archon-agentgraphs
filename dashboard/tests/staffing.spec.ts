@@ -29,7 +29,7 @@ test('an empty slot staffs in two inputs, says so in place, and one Ctrl+Z empti
   // The sentence already says what Enter staffs: vanilla on the first harness and model, at the step's policy effort.
   await expect(sentence.getByRole('textbox', { name: /Role, or type/ })).toHaveAttribute('placeholder', 'vanilla')
   await expect(sentence.locator('[data-token]')).toHaveText(['', 'Claude Code', 'opus', 'medium'])
-  await expect(sentence.getByTestId('staffing-policy')).toContainText('The step “Execution” reads as making things, so medium.')
+  await expect(sentence.getByTestId('staffing-policy')).toContainText('the step “Execution” reads as making things.')
   // The slot previews the draft while it is composed.
   await expect(caption(page, 'slot-execution-worker')).toHaveAttribute('data-staffing', 'Claude Code · opus · medium')
   await expect(worker.locator('.slot-caption.pending')).toHaveCount(1)
@@ -61,7 +61,7 @@ test('the keyboard path: N reaches the empty slot, typed words fill the sentence
   await expect(caption(page, 'slot-execution-worker')).toHaveAttribute('data-staffing', 'Critic Judge | Codex · gpt-6-astra · xhigh')
   await page.keyboard.press('Enter')
   // An empty slot takes the policy for the role's kind.
-  await expect(page.getByTestId('staffing-stamp')).toHaveText('Harness is now Codex: gpt-6-astra runs there, not on Claude Code. Effort xhigh: Critic Judge is a reviewer, so xhigh.')
+  await expect(page.getByTestId('staffing-stamp')).toHaveText('Harness is now Codex: gpt-6-astra runs there, not on Claude Code. Effort xhigh: reviewing falls under architecture and review.')
   await expect.poll(() => assignments(fixture.patches)).toEqual([{ formationId: 'execution', slotId: 'worker', agentId: 'critic', harness: 'openai-codex', model: 'gpt-6-astra', effort: 'xhigh' }])
   // N on a mission with no empty slot says so.
   await page.mouse.click(1000, 950)
@@ -76,10 +76,10 @@ test('a word of a staffed slot opens only its list, on the slot\'s current value
   await reviewer.locator('[data-part=effort]').click()
   const sentence = page.getByRole('dialog', { name: 'Staff Reviewer' })
   const list = sentence.getByRole('listbox', { name: 'Choose effort' })
-  // The role's kind decides the suggestion: Codex builder is a builder, so medium.
+  // The role's kind decides the suggestion: Codex builder builds, which falls under making things.
   await expect(list.getByRole('option')).toHaveText([/^low\s*errands/, /^medium\s*suggested\s*making things/, /^high/, /^xhigh\s*architecture and review/, /^max\s*consequential reviews/, /^ultra/])
   await expect(list.getByRole('option', { selected: true })).toHaveAttribute('data-row', 'medium')
-  await expect(sentence.getByTestId('staffing-policy')).toHaveText('Policy suggests medium: Codex builder is a builder, so medium.')
+  await expect(sentence.getByTestId('staffing-policy')).toHaveText('Policy suggests medium: building falls under making things.')
   await list.locator('[data-row="xhigh"]').click()
   await expect(caption(page, 'slot-peer-peer_1')).toHaveAttribute('data-staffing', 'Codex builder | Codex · default model · xhigh')
   await expect.poll(() => assignments(fixture.patches).at(-1)).toEqual({ formationId: 'peer', slotId: 'peer_1', agentId: 'codex', harness: 'openai-codex', model: '', effort: 'xhigh' })
@@ -160,7 +160,7 @@ test('a role landing on a staffed slot keeps its harness, model and effort, and 
   await expect(grid.locator('[data-row="critic"]')).toContainText('xhigh')
   await grid.locator('[data-row="critic"]').click()
   await expect(caption(page, 'slot-judge-judge_1')).toHaveAttribute('data-staffing', 'Critic Judge | Claude Code · default model · medium')
-  await expect(page.getByTestId('staffing-stamp')).toHaveText('Claude Code · default model · medium stays: the slot keeps its settings. Policy suggests xhigh: Critic Judge is a reviewer, so xhigh.')
+  await expect(page.getByTestId('staffing-stamp')).toHaveText('Claude Code · default model · medium stays: the slot keeps its settings. Policy suggests xhigh: reviewing falls under architecture and review.')
   const offer = judge.getByTestId('staffing-offer')
   await expect(offer).toHaveText('use xhigh?')
   await page.waitForTimeout(9500)
@@ -288,7 +288,7 @@ test('a role dragged from the rail lands by the same rule, previews on the slot,
   const [ghost, preview] = [(await page.locator('.staffing-ghost').boundingBox())!, (await caption(page, 'slot-execution-worker').boundingBox())!]
   expect(ghost.x + ghost.width <= preview.x || ghost.x >= preview.x + preview.width || ghost.y + ghost.height <= preview.y || ghost.y >= preview.y + preview.height).toBe(true)
   await page.mouse.up()
-  await expect(page.getByTestId('staffing-stamp')).toHaveText('Effort low: Repo Scout is a scout, so low.')
+  await expect(page.getByTestId('staffing-stamp')).toHaveText('Effort low: scouting falls under errands.')
   await expect.poll(() => assignments(fixture.patches)).toEqual([{ formationId: 'execution', slotId: 'worker', agentId: 'scout', harness: 'claude-code', model: 'opus', effort: 'low' }])
 
   await page.mouse.move(from.x + 40, from.y + 10)
@@ -340,22 +340,104 @@ test('changing what a slot runs moves no other slot or card', async ({ page }) =
   expect(await rects()).toEqual(before)
 })
 
-test('the sentence opens as a node window does: beside its slot, clear of the slot\'s card and the cards wired to it', async ({ page }) => {
+// archon-o7p.17 revision 3: the sentence is a compact popover right beside its slot that covers no card or note.
+test('the sentence opens right beside its slot, compact, and covers no card or operator note', async ({ page }) => {
   await cockpitFixture(page, { roles })
   await page.goto('/')
-  const neighbours: Record<string, string[]> = { execution: ['execution', 'mission', 'gate'], peer: ['peer', 'gate'], judge: ['judge', 'gate'] }
-  for (const [slot, formation, label] of [['slot-execution-controller', 'execution', 'Controller'], ['slot-execution-worker', 'execution', 'Worker 1'], ['slot-peer-peer_1', 'peer', 'Reviewer'], ['slot-judge-judge_1', 'judge', 'Judge']]) {
+  for (const [slot, label] of [['slot-execution-controller', 'Controller'], ['slot-execution-worker', 'Worker 1'], ['slot-peer-peer_1', 'Reviewer'], ['slot-judge-judge_1', 'Judge']]) {
     await page.getByTestId(slot).locator('.slot-ring').click()
     const sentence = page.getByRole('dialog', { name: `Staff ${label}` })
-    await expect(sentence).toBeVisible()
-    const box = (await sentence.boundingBox())!
-    for (const node of neighbours[formation]) {
-      const card = (await page.locator(`.world [data-node="${node}"]`).first().boundingBox())!
-      const apart = box.x + box.width <= card.x || box.x >= card.x + card.width || box.y + box.height <= card.y || box.y >= card.y + card.height
-      expect(apart, `${label}'s sentence covers ${node}`).toBe(true)
-    }
+    await sentence.getByRole('textbox', { name: /Role, or type/ }).click()
+    await expect(sentence.getByRole('listbox', { name: 'Choose role' })).toBeVisible()
+    const placed = await page.evaluate(([slotId]) => {
+      const r = (el: Element) => el.getBoundingClientRect()
+      const win = r(document.querySelector('.staffing-window')!)
+      const anchor = r(document.querySelector(`[data-testid="${slotId}"]`)!)
+      const gap = Math.hypot(Math.max(0, anchor.left - win.right, win.left - anchor.right), Math.max(0, anchor.top - win.bottom, win.top - anchor.bottom))
+      const covered = [...document.querySelectorAll('.world [data-node], .note-sticky')].filter(el => {
+        const b = r(el)
+        return win.left < b.right && b.left < win.right && win.top < b.bottom && b.top < win.bottom
+      }).map(el => (el as HTMLElement).dataset.node || 'note')
+      return { gap: Math.round(gap), covered, height: Math.round(win.height) }
+    }, [slot])
+    expect(placed.covered, `${label}'s sentence covers ${placed.covered.join(', ')}`).toEqual([])
+    expect(placed.gap).toBeLessThanOrEqual(160)
+    expect(placed.height).toBeLessThanOrEqual(330)
     await page.keyboard.press('Escape')
     await expect(sentence).toHaveCount(0)
+  }
+})
+
+test('an effort chosen in the open sentence counts as stated: a role landing on an empty slot keeps it and offers the policy, as typed words do', async ({ page }) => {
+  const fixture = await cockpitFixture(page, { emptyWorker: true, roles })
+  await page.goto('/')
+  const worker = page.getByTestId('slot-execution-worker')
+  await worker.click()
+  const sentence = page.getByRole('dialog', { name: 'Staff Worker 1' })
+  await page.keyboard.press('3')
+  await expect(sentence.locator('[data-token=effort]')).toHaveText('high')
+  await sentence.getByRole('textbox', { name: /Role, or type/ }).click()
+  await sentence.locator('[data-row="critic"]').click()
+  await expect(sentence.locator('[data-token]')).toHaveText(['', 'Claude Code', 'opus', 'high'])
+  await expect(sentence.getByTestId('staffing-policy')).toContainText('high stays: you chose it. Policy suggests xhigh: reviewing falls under architecture and review.')
+  await expect(sentence.getByTestId('staffing-window-offer')).toHaveText('use xhigh')
+  await page.keyboard.press('Enter')
+  await expect(caption(page, 'slot-execution-worker')).toHaveAttribute('data-staffing', 'Critic Judge | Claude Code · opus · high')
+  await expect(worker.getByTestId('staffing-offer')).toHaveText('use xhigh?')
+
+  // Typed words state the same intent and land the same way.
+  await page.mouse.click(1000, 950)
+  await page.keyboard.press('Control+z')
+  await expect(caption(page, 'slot-execution-worker')).toHaveAttribute('data-staffing', '')
+  await worker.click()
+  await page.keyboard.type('high cri')
+  await page.keyboard.press('Enter')
+  await expect(caption(page, 'slot-execution-worker')).toHaveAttribute('data-staffing', 'Critic Judge | Claude Code · opus · high')
+  await expect(worker.getByTestId('staffing-offer')).toHaveText('use xhigh?')
+  const landed = assignments(fixture.patches).filter(patch => patch.agentId === 'critic')
+  expect(landed).toEqual([landed[0], landed[0]])
+  expect(landed[0]).toEqual({ formationId: 'execution', slotId: 'worker', agentId: 'critic', harness: 'claude-code', model: 'opus', effort: 'high' })
+})
+
+test('a model outside the catalog opens its list on itself, so a reflex Enter changes nothing', async ({ page }) => {
+  const fixture = await cockpitFixture(page, { roles, workers: [
+    { id: 'w1', label: 'Worker 1', agentId: 'codex', harness: 'openai-codex', model: 'gpt-7-nova', effort: 'medium', controller: false },
+  ] })
+  await page.goto('/')
+  const worker = page.getByTestId('slot-execution-w1')
+  await worker.locator('[data-part=model]').click()
+  const models = page.getByRole('dialog', { name: 'Staff Worker 1' }).getByRole('listbox', { name: 'Choose model' })
+  await expect(models.getByRole('option', { selected: true })).toHaveAttribute('data-row', 'openai-codex:gpt-7-nova')
+  await expect(models.locator('[aria-current="true"]')).toContainText('gpt-7-nova')
+  await page.keyboard.press('Enter')
+  await expect(caption(page, 'slot-execution-w1')).toHaveAttribute('data-staffing', 'Codex builder | Codex · gpt-7-nova · medium')
+  expect(assignments(fixture.patches)).toEqual([])
+})
+
+test('the landing note sits right beside its slot and covers no card or operator note', async ({ page }) => {
+  await cockpitFixture(page, { roles })
+  await page.goto('/')
+  // The Execution card has an operator note under it.
+  await expect(page.locator('.note-sticky')).toHaveCount(1)
+  for (const slot of ['slot-execution-controller', 'slot-execution-worker', 'slot-judge-judge_1']) {
+    await page.getByTestId(slot).locator('[data-part=role]').click()
+    await page.locator('.staffing-window [data-row="critic"]').click()
+    const stamp = page.getByTestId('staffing-stamp')
+    await expect(stamp).toBeVisible()
+    const placed = await page.evaluate(([slotId]) => {
+      const r = (el: Element) => el.getBoundingClientRect()
+      const note = r(document.querySelector('[data-testid="staffing-stamp"]')!)
+      const anchor = r(document.querySelector(`[data-testid="${slotId}"]`)!)
+      const gap = Math.hypot(Math.max(0, anchor.left - note.right, note.left - anchor.right), Math.max(0, anchor.top - note.bottom, note.top - anchor.bottom))
+      const covered = [...document.querySelectorAll('.world [data-node], .note-sticky')].filter(el => {
+        const b = r(el)
+        return note.left < b.right && b.left < note.right && note.top < b.bottom && b.top < note.bottom
+      }).map(el => (el as HTMLElement).dataset.node || 'operator note')
+      return { gap: Math.round(gap), covered }
+    }, [slot])
+    expect(placed.covered, `the note for ${slot} covers ${placed.covered.join(', ')}`).toEqual([])
+    expect(placed.gap).toBeLessThanOrEqual(160)
+    await page.mouse.click(1000, 1000)
   }
 })
 
@@ -384,8 +466,10 @@ test('the node window\'s staffing words open the same sentence beside it', async
   await staffing.getByRole('button', { name: 'Change the effort of Worker 1: medium' }).click()
   const sentence = page.getByRole('dialog', { name: 'Staff Worker 1' })
   await expect(sentence.getByRole('listbox', { name: 'Choose effort' })).toBeVisible()
-  const [frame, box] = [(await execution.boundingBox())!, (await sentence.boundingBox())!]
-  expect(box.x >= frame.x + frame.width || box.x + box.width <= frame.x).toBe(true)
+  // It drops from the word clicked, over its own window if need be, never over the word.
+  const [word, box] = [(await staffing.getByRole('button', { name: 'Change the effort of Worker 1: medium' }).boundingBox())!, (await sentence.boundingBox())!]
+  const gap = Math.hypot(Math.max(0, word.x - (box.x + box.width), box.x - (word.x + word.width)), Math.max(0, word.y - (box.y + box.height), box.y - (word.y + word.height)))
+  expect(gap).toBeLessThanOrEqual(12)
   await page.keyboard.press('1')
   await expect(staffing).toContainText('Worker 1 is Codex builder on Codex · default model · low.')
   await expect.poll(() => assignments(fixture.patches)).toEqual([{ formationId: 'execution', slotId: 'worker', agentId: 'codex', harness: 'openai-codex', model: '', effort: 'low' }])

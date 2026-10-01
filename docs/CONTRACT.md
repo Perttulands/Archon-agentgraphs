@@ -88,13 +88,15 @@ slots`. Clicking a role in the Missions rail opens it in a window beside the
 rail, with its role text and the slots it staffs.
 
 Staffing in the cockpit is that sentence, edited where the slot is. Clicking a
-slot, or Enter on a focused one, opens a window reading `Worker 1 is [vanilla]
-on [Claude Code] · [opus] · [low]`, placed as a node window is: beside the
-slot, clear of its card, the cards wired to it, the next empty slot and open
-windows. `on <harness> · <model> · <effort>` wraps as one group. Each word
-opens its own list on the slot's current value, so a reflex Enter changes
-nothing, and clicking one word of a staffed slot opens only that list, where a
-pick lands at once. An empty slot opens as vanilla on the first harness and its
+slot, or Enter on a focused one, opens a compact window reading `Worker 1 is
+[vanilla] on [Claude Code] · [opus] · [low]` right beside the slot, within
+160 px of it, covering no card, operator note, open window or control; it
+shortens, and its lists scroll, rather than move away. From a node window or
+the Agents view's slot inspector it drops from the word clicked, over that
+window if need be. `on <harness> · <model> · <effort>` wraps as one group.
+Each word opens its own list on the slot's current value, a model outside the
+catalog included, so a reflex Enter changes nothing, and clicking one word of a
+staffed slot opens only that list, where a pick lands at once. An empty slot opens as vanilla on the first harness and its
 first model, at the effort the policy reads from the step's title, else `low`,
 so Enter staffs it. The first word takes typed words in any order (`cri ast`,
 `sonnet high`), echoing how each was read; a typo, an ambiguous role or an
@@ -104,12 +106,16 @@ click away changes nothing. N on the canvas reaches the next empty slot in Flow
 order, brings it into view and opens it. The role list shows each role's
 suggested effort, from its kind by the policy (its name and summary are read
 only when the policy names no effort for its kind), and the effort list tags
-the suggestion with each effort's policy words. A role landing on an empty
-slot takes the policy's effort. A role landing on a staffed slot keeps that
-slot's harness, model and effort; when the policy suggests another effort, the
-window offers `use xhigh` and the slot `use xhigh?`, one click each, until it
-is taken or the role or effort changes. Nothing remembers how an effort was
-chosen. A note beside the slot says why each landing came out as it did.
+the suggestion with each effort's policy words. A reason cites the policy line,
+as in `planning falls under architecture and review`. A role landing on an
+empty slot takes the policy's effort. A role landing on a staffed slot keeps
+that slot's harness, model and effort, and one landing with an effort chosen
+in the open sentence (picked, typed as in `high cri`, or set by digit) keeps
+that effort; when the policy suggests another, the window offers `use xhigh`
+and the slot `use xhigh?`, one click each, until it is taken or the role or
+effort changes. Nothing outside the open sentence remembers how an effort was
+chosen. A note right beside the slot, placed as the window is and covering no
+card or operator note, says why each landing came out as it did.
 Dragging a role from the rail onto a slot lands it by the same rule, its ghost
 waiting beside the slot so the slot's preview stays readable; dragging a
 staffed slot onto another moves its staffing there and swaps a staffed
@@ -119,11 +125,13 @@ Each staffing is one undo entry; a move is one entry for both slots. The node
 window's staffing words and the Agents view's slot inspector open the same
 window.
 
-A role is role text only. `POST` and `PATCH /api/agents`, `archon agent new`
-and `archon agent edit` take no model or effort, persona reads carry none, and
-the Agents view edits a role's text, never its settings. `archon agent spawn
-<id> --effort <e> [--model <m>]` starts a role's own session and states its
-settings as a slot does: the effort must be one the harness accepts
+A role is role text only. `archon agent new` and `archon agent edit` take no
+model or effort; `POST` and `PATCH /api/agents` refuse a `model`, an `effort`
+or any field they do not take with `INVALID_AGENT_CARD` (HTTP 422) naming it;
+persona reads carry none; and the Agents view edits a role's text, never its
+settings. `archon agent spawn <id> --effort <e> [--model <m>]` starts a role's
+own session, and refuses one already running, which keeps what it started
+with. It states its settings as a slot does: the effort must be one the harness accepts
 (`claude-code` takes `low`, `medium`, `high`, `xhigh` or `max`; `openai-codex`
 also takes `ultra`, though a Codex model may accept fewer), a blank model means
 the harness default, and a harness Archon cannot start, such as `hermes`, is

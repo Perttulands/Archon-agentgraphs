@@ -61,38 +61,47 @@ describe('the slot model in the cockpit', () => {
 })
 
 describe('a role landing on a slot', () => {
-  it('gives a fresh slot the policy, and keeps a staffed slot\'s settings with the policy offered', () => {
+  it('gives a fresh slot the policy, and keeps a staffed slot\'s or a stated effort with the policy offered', () => {
     const critic = roles[0]
-    expect(withRole(catalog, context, { ...vanilla, effort: 'medium' }, critic, true)).toEqual({
-      next: { ...vanilla, role: 'critic-judge', effort: 'xhigh' }, note: 'Effort xhigh: Critic Judge is a reviewer, so xhigh.',
+    const reason = 'reviewing falls under architecture and review'
+    expect(withRole(catalog, context, { ...vanilla, effort: 'medium' }, critic, 'policy')).toEqual({
+      next: { ...vanilla, role: 'critic-judge', effort: 'xhigh' }, note: `Effort xhigh: ${reason}.`,
     })
-    expect(withRole(catalog, context, { ...vanilla, harness: 'openai-codex', model: 'gpt-5.5', effort: 'high' }, critic, false)).toEqual({
+    expect(withRole(catalog, context, { ...vanilla, harness: 'openai-codex', model: 'gpt-5.5', effort: 'high' }, critic, 'slot')).toEqual({
       next: { role: 'critic-judge', harness: 'openai-codex', model: 'gpt-5.5', effort: 'high' },
-      note: 'Codex · gpt-5.5 · high stays: the slot keeps its settings. Policy suggests xhigh: Critic Judge is a reviewer, so xhigh.',
-      offer: { effort: 'xhigh', reason: 'Critic Judge is a reviewer, so xhigh' },
+      note: `Codex · gpt-5.5 · high stays: the slot keeps its settings. Policy suggests xhigh: ${reason}.`,
+      offer: { effort: 'xhigh', reason },
     })
-    // A staffed slot already on the policy's effort needs no offer.
-    expect(withRole(catalog, context, { ...vanilla, effort: 'xhigh' }, critic, false)).toEqual({
-      next: { ...vanilla, role: 'critic-judge', effort: 'xhigh' }, note: 'Effort xhigh: Critic Judge is a reviewer, so xhigh.',
+    // An effort chosen in the open sentence is stated: an empty slot keeps it too.
+    expect(withRole(catalog, context, { ...vanilla, effort: 'high' }, critic, 'stated')).toEqual({
+      next: { ...vanilla, role: 'critic-judge', effort: 'high' },
+      note: `high stays: you chose it. Policy suggests xhigh: ${reason}.`,
+      offer: { effort: 'xhigh', reason },
     })
-    expect(withRole(catalog, context, { ...vanilla, role: 'critic-judge', effort: 'xhigh' }, null, false)).toEqual({
+    // A slot already on the policy's effort needs no offer.
+    expect(withRole(catalog, context, { ...vanilla, effort: 'xhigh' }, critic, 'slot')).toEqual({
+      next: { ...vanilla, role: 'critic-judge', effort: 'xhigh' }, note: `Effort xhigh: ${reason}.`,
+    })
+    expect(withRole(catalog, context, { ...vanilla, role: 'critic-judge', effort: 'xhigh' }, null, 'slot')).toEqual({
       next: { ...vanilla, effort: 'xhigh' }, note: 'Vanilla: no role. Claude Code · opus · xhigh stays.',
     })
   })
 
-  it('reads the policy from the role\'s kind, its words only when the kind is not the policy\'s, then the step', () => {
+  it('reads the policy from the role\'s kind, its words only when the kind is not the policy\'s, then the step, citing the policy line', () => {
     const role = (kind: string, name = 'Helper', summary = '') => ({ id: 'r', name, kind, summary })
     for (const kind of ['verifier', 'scout', 'observer', 'operator']) expect(suggestEffort(catalog, role(kind), '')?.effort).toBe('low')
     for (const kind of ['builder', 'debugger']) expect(suggestEffort(catalog, role(kind), '')?.effort).toBe('medium')
     for (const kind of ['reviewer', 'judge', 'architect', 'planner', 'orchestrator']) expect(suggestEffort(catalog, role(kind), '')?.effort).toBe('xhigh')
+    // The reason cites the policy line the effort comes from, never the kind back.
+    expect(suggestEffort(catalog, role('planner'), '')).toEqual({ effort: 'xhigh', reason: 'planning falls under architecture and review' })
+    expect(suggestEffort(catalog, role('builder'), '')).toEqual({ effort: 'medium', reason: 'building falls under making things' })
     // The kind decides over the name.
-    expect(suggestEffort(catalog, role('verifier', 'Release Gatekeeper reviewer'), '')).toEqual({ effort: 'low', reason: 'Release Gatekeeper reviewer is a verifier, so low' })
-    expect(suggestEffort(catalog, role('orchestrator', 'Lead'), '')?.reason).toBe('Lead is an orchestrator, so xhigh')
+    expect(suggestEffort(catalog, role('verifier', 'Release Gatekeeper reviewer'), '')).toEqual({ effort: 'low', reason: 'verifying falls under errands' })
     // Without a kind the policy names, the name and summary are read; never max.
-    expect(suggestEffort(catalog, roles[1], 'New formation')).toEqual({ effort: 'low', reason: 'Repo Scout reads as errands, so low' })
+    expect(suggestEffort(catalog, roles[1], 'New formation')).toEqual({ effort: 'low', reason: 'Repo Scout reads as errands' })
     expect(suggestEffort(catalog, role('specialist', 'Final release auditor', 'Audits the release.'), '')).toBeNull()
     expect(suggestEffort(catalog, role('', 'Builder'), '')?.effort).toBe('medium')
-    expect(suggestEffort(catalog, undefined, 'Final review')).toEqual({ effort: 'xhigh', reason: 'The step “Final review” reads as review or architecture work, so xhigh' })
+    expect(suggestEffort(catalog, undefined, 'Final review')).toEqual({ effort: 'xhigh', reason: 'the step “Final review” reads as architecture and review' })
     expect(suggestEffort(catalog, undefined, 'New formation')).toBeNull()
   })
 })
@@ -102,14 +111,17 @@ describe('typed words', () => {
     const parsed = parseWords(catalog, 'cri ast', vanilla)
     expect(parsed.issues).toEqual([])
     expect(parsed.read).toEqual([{ word: 'ast', as: 'model gpt-6-astra' }, { word: 'cri', as: 'role Critic Judge' }])
-    expect(applyParsed(catalog, context, vanilla, parsed, true).next).toEqual({ role: 'critic-judge', harness: 'openai-codex', model: 'gpt-6-astra', effort: 'xhigh' })
+    expect(applyParsed(catalog, context, vanilla, parsed, 'policy').next).toEqual({ role: 'critic-judge', harness: 'openai-codex', model: 'gpt-6-astra', effort: 'xhigh' })
     // On a staffed slot the role keeps the slot's effort and offers the policy's.
-    expect(applyParsed(catalog, context, vanilla, parsed, false)).toMatchObject({ next: { role: 'critic-judge', effort: 'low' }, offer: { effort: 'xhigh' } })
+    expect(applyParsed(catalog, context, vanilla, parsed, 'slot')).toMatchObject({ next: { role: 'critic-judge', effort: 'low' }, offer: { effort: 'xhigh' } })
   })
 
-  it('keeps an effort typed with a role', () => {
-    const parsed = parseWords(catalog, 'critic high', vanilla)
-    expect(applyParsed(catalog, context, vanilla, parsed, false)).toMatchObject({ next: { role: 'critic-judge', effort: 'high' }, offer: undefined })
+  it('keeps an effort typed with a role, even on an empty slot, and offers the policy, as a picked one is', () => {
+    for (const words of ['critic high', 'high cri']) {
+      expect(applyParsed(catalog, context, vanilla, parseWords(catalog, words, vanilla), 'policy')).toMatchObject({
+        next: { role: 'critic-judge', effort: 'high' }, offer: { effort: 'xhigh' }, note: 'high stays: you chose it. Policy suggests xhigh: reviewing falls under architecture and review.',
+      })
+    }
   })
 
   it('names an effort the harness does not take and offers both fixes', () => {
@@ -143,19 +155,19 @@ describe('typed words', () => {
     const parsed = parseWords(catalog, 'gpt-7-nova', { ...vanilla, harness: 'openai-codex', model: 'gpt-6-astra' })
     expect(parsed.offCatalog).toBe('gpt-7-nova')
     expect(parsed.issues).toEqual([])
-    expect(applyParsed(catalog, context, { ...vanilla, harness: 'openai-codex', model: 'gpt-6-astra' }, parsed, false)).toMatchObject({
+    expect(applyParsed(catalog, context, { ...vanilla, harness: 'openai-codex', model: 'gpt-6-astra' }, parsed, 'slot')).toMatchObject({
       next: { harness: 'openai-codex', model: 'gpt-7-nova' }, note: 'gpt-7-nova: not in the catalog; the harness decides.',
     })
   })
 
   it('drops the role on vanilla and keeps the rest', () => {
     const base = { ...vanilla, role: 'critic-judge', effort: 'xhigh' }
-    expect(applyParsed(catalog, context, base, parseWords(catalog, 'vanilla', base), false).next).toEqual({ ...vanilla, effort: 'xhigh' })
+    expect(applyParsed(catalog, context, base, parseWords(catalog, 'vanilla', base), 'slot').next).toEqual({ ...vanilla, effort: 'xhigh' })
   })
 
   it('reads a harness word as that harness and its first model', () => {
     const parsed = parseWords(catalog, 'codex', vanilla)
-    expect(applyParsed(catalog, context, vanilla, parsed, false)).toEqual({
+    expect(applyParsed(catalog, context, vanilla, parsed, 'slot')).toEqual({
       next: { ...vanilla, harness: 'openai-codex', model: 'gpt-6-astra' }, note: 'Model gpt-6-astra: the first one Codex lists.', offer: undefined, effortTyped: false,
     })
   })

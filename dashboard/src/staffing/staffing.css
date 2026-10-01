@@ -22,7 +22,8 @@
 .staffing-layer{position:fixed;inset:0;pointer-events:none;z-index:900;font-family:var(--font-mono);}
 .staffing-layer>*{pointer-events:auto;}
 .staffing-window{position:fixed;display:flex;flex-direction:column;overflow:hidden;background:var(--surface-secondary);border:1px solid var(--divider);border-radius:6px;box-shadow:0 12px 36px rgba(0,0,0,.55);color:var(--text-primary);outline:none;animation:staffing-pop .14s cubic-bezier(.2,.8,.3,1) both;transform-origin:left top;z-index:2;}
-@keyframes staffing-pop{0%{opacity:0;transform:translateX(-6px) scale(.98)}100%{opacity:1;transform:none}}
+/* A popover fades in within its own box, so even mid-animation it covers nothing beside it. */
+@keyframes staffing-pop{0%{opacity:0;transform:scale(.98)}100%{opacity:1;transform:none}}
 .staffing-sent{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 5px;padding:10px 12px 8px;font-size:13.5px;}
 .staffing-lead,.staffing-sep{color:var(--text-dim);}
 /* "on Claude Code · opus · xhigh" wraps as one group; only the model gives way. */
@@ -44,7 +45,7 @@
 .staffing-alt{font:11px var(--font-mono);color:var(--accent);background:transparent;border:1px solid var(--accent);border-radius:3px;padding:1px 6px;cursor:pointer;}
 .staffing-list-wrap{border-top:1px solid var(--divider);display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
 .staffing-list-hd{padding:6px 12px 2px;font-size:10px;color:var(--text-dim);}
-.staffing-list{padding:2px 6px 6px;min-height:0;overflow:auto;}
+.staffing-list{position:relative;padding:2px 6px 6px;min-height:0;overflow:auto;scrollbar-width:thin;}
 .staffing-row{display:grid;grid-template-columns:auto auto 1fr;align-items:baseline;gap:10px;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:13px;}
 .staffing-row .staffing-row-l{color:var(--text-primary);white-space:nowrap;}
 .staffing-row .staffing-row-h{color:var(--text-dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
@@ -56,11 +57,14 @@
 .staffing-tag{font-size:10px;padding:1px 6px;border-radius:3px;border:1px solid var(--divider);color:var(--text-secondary);}
 .staffing-tag.sugg{border-color:var(--accent);color:var(--accent);}
 .staffing-tag.warn{border-color:var(--window-orange);color:var(--window-orange);}
-/* The role list is a two-column grid of the whole catalog: every name whole, no hidden row. */
-.staffing-list.staffing-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 4px;}
-.staffing-list.staffing-grid .staffing-row{grid-template-columns:minmax(0,1fr) auto;gap:4px;padding:1px 5px;font-size:11px;line-height:17px;}
-.staffing-list.staffing-grid .staffing-tag{font-size:9.5px;line-height:15px;padding:0 4px;}
+/* The role list is a two-column grid of the whole catalog, every name whole; it scrolls, opening on the current role. */
+.staffing-list.staffing-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 2px;padding:2px 4px 6px;}
+.staffing-list.staffing-grid .staffing-row{grid-template-columns:minmax(0,1fr) auto;gap:4px;padding:1px 4px;font-size:11px;line-height:17px;}
+.staffing-list.staffing-grid .staffing-tag{font-size:9.5px;line-height:15px;padding:0 3px;}
 .staffing-list.staffing-grid .staffing-row .staffing-row-l{overflow:hidden;text-overflow:ellipsis;}
+/* In the grid the current role is marked by a bar, so its name keeps its whole width. */
+.staffing-list.staffing-grid .staffing-row.current .staffing-row-l::before{content:none;}
+.staffing-list.staffing-grid .staffing-row.current{box-shadow:inset 2px 0 0 var(--accent);}
 .staffing-list-ft{padding:4px 12px 6px;font-size:11px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid var(--divider);}
 .staffing-policy{padding:8px 12px;border-top:1px solid var(--divider);font-size:11px;color:var(--text-secondary);line-height:1.5;}
 .staffing-policy b{color:var(--accent);}

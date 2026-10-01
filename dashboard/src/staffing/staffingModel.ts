@@ -140,23 +140,33 @@ export function effortRefusal(catalog: StaffingCatalog, harness: string, model: 
 
 export interface Suggestion {
   effort: string
-  /** Why, in plain words: "Critic Judge is review or architecture work, so xhigh". */
+  /** Why, citing the policy line the effort comes from: "planning falls under architecture and review". */
   reason: string
 }
 
-type Rule = { test: RegExp; effort: string; phrase: string }
+/** What each kind the policy names does, so a reason cites the policy line rather than the kind. */
+const ACTIVITY: Record<string, string> = {
+  verifier: 'verifying', scout: 'scouting', observer: 'observing', operator: 'operating',
+  builder: 'building', debugger: 'debugging',
+  reviewer: 'reviewing', judge: 'judging', architect: 'designing', planner: 'planning', orchestrator: 'orchestrating',
+}
+
+type Rule = { test: RegExp; effort: string }
 
 /**
  * A role's words, read only when its kind is one the policy does not name.
  * max is never among them: it is chosen by hand for consequential reviews.
  */
 const RULES: Rule[] = [
-  { test: /\b(review|reviews|reviewer|critic|judge|verdict|architect\w*|design|plan\w*|orchestrat\w*)\b/i, effort: 'xhigh', phrase: 'reads as review or architecture work' },
-  { test: /\b(build\w*|implement\w*|make|making|draft\w*|writ\w*|worker|execut\w*|integrat\w*|debug\w*|fix\w*)\b/i, effort: 'medium', phrase: 'reads as making things' },
-  { test: /\b(scout|triage|errand\w*|record\w*|runner|chore|fetch|lookup|verif\w*|observ\w*|operat\w*)\b/i, effort: 'low', phrase: 'reads as errands' },
+  { test: /\b(review|reviews|reviewer|critic|judge|verdict|architect\w*|design|plan\w*|orchestrat\w*)\b/i, effort: 'xhigh' },
+  { test: /\b(build\w*|implement\w*|make|making|draft\w*|writ\w*|worker|execut\w*|integrat\w*|debug\w*|fix\w*)\b/i, effort: 'medium' },
+  { test: /\b(scout|triage|errand\w*|record\w*|runner|chore|fetch|lookup|verif\w*|observ\w*|operat\w*)\b/i, effort: 'low' },
 ]
 
-const article = (word: string) => (/^[aeiou]/i.test(word) ? 'an' : 'a')
+/** The policy line an effort comes from, in its own words: "architecture and review". */
+function policyUse(catalog: Pick<StaffingCatalog, 'policy'>, effort: string): string {
+  return catalog.policy.find(entry => entry.effort === effort)?.use || `${effort} work`
+}
 
 /** The effort the policy names for a role kind; never max, which is chosen by hand. */
 function kindEffort(catalog: Pick<StaffingCatalog, 'policy'>, kind: string): string | null {
@@ -165,24 +175,26 @@ function kindEffort(catalog: Pick<StaffingCatalog, 'policy'>, kind: string): str
   return catalog.policy.find(entry => (entry.kinds || []).includes(wanted))?.effort || null
 }
 
-function byRule(subject: string, words: string): Suggestion | null {
+function byRule(catalog: Pick<StaffingCatalog, 'policy'>, subject: string, words: string): Suggestion | null {
   const rule = RULES.find(candidate => candidate.test.test(words))
-  return rule ? { effort: rule.effort, reason: `${subject} ${rule.phrase}, so ${rule.effort}` } : null
+  return rule ? { effort: rule.effort, reason: `${subject} reads as ${policyUse(catalog, rule.effort)}` } : null
 }
 
 /**
  * The policy's suggestion for a role, from its kind (Perttu's policy,
  * 2026-10-01), else for the step it sits in. A role's name and summary are
- * read only when its kind is one the policy does not name. Never max.
+ * read only when its kind is one the policy does not name. Never max. The
+ * reason cites the policy line: "planning falls under architecture and review".
  */
 export function suggestEffort(catalog: Pick<StaffingCatalog, 'policy'>, role: RoleEntry | undefined, stepTitle: string): Suggestion | null {
   if (role) {
-    const effort = kindEffort(catalog, role.kind)
-    if (effort) return { effort, reason: `${role.name} is ${article(role.kind)} ${role.kind.trim().toLowerCase()}, so ${effort}` }
-    const read = byRule(role.name, `${role.name} ${role.kind}`) || (role.summary ? byRule(role.name, role.summary) : null)
+    const kind = role.kind.trim().toLowerCase()
+    const effort = kindEffort(catalog, kind)
+    if (effort) return { effort, reason: `${ACTIVITY[kind] || `${kind} work`} falls under ${policyUse(catalog, effort)}` }
+    const read = byRule(catalog, role.name, `${role.name} ${role.kind}`) || (role.summary ? byRule(catalog, role.name, role.summary) : null)
     if (read) return read
   }
-  return stepTitle ? byRule(`The step “${stepTitle}”`, stepTitle) : null
+  return stepTitle ? byRule(catalog, `the step “${stepTitle}”`, stepTitle) : null
 }
 
 /** "low errands · medium making things · xhigh architecture and review · max consequential reviews". */
@@ -225,21 +237,30 @@ export function roleSuggestion(catalog: StaffingCatalog, context: SlotContext, r
 }
 
 /**
- * The one rule wherever a role lands, with no memory of how the slot got its
- * settings. A fresh slot, one that was empty, takes the policy's effort. A
- * staffed slot keeps its harness, model and effort, and is offered the
- * policy's effort in one click when it differs. The note says why.
+ * Whose effort a slot keeps when a role lands: `policy` for a fresh slot,
+ * which takes the policy's effort; `slot` for a staffed slot, which keeps its
+ * settings; `stated` for an effort chosen in the open sentence (picked, typed
+ * or set by digit), which is kept as stated.
  */
-export function withRole(catalog: StaffingCatalog, context: SlotContext, base: Staffing, role: RoleEntry | null, fresh: boolean): Outcome {
+export type EffortHold = 'policy' | 'slot' | 'stated'
+
+/**
+ * The one rule wherever a role lands, with no memory beyond the open
+ * sentence. A fresh slot takes the policy's effort. A staffed slot, or an
+ * effort stated in the sentence, keeps its effort and is offered the policy's
+ * in one click when it differs. The note says why.
+ */
+export function withRole(catalog: StaffingCatalog, context: SlotContext, base: Staffing, role: RoleEntry | null, hold: EffortHold): Outcome {
   if (!role) return { next: { ...base, role: '' }, note: `Vanilla: no role. ${captionText(base)} stays.` }
   const suggestion = roleSuggestion(catalog, context, role)
   if (!suggestion) return { next: { ...base, role: role.id }, note: `${role.name}: the policy names no effort for this role, so ${base.effort} stays.` }
   const effort = clampEffort(catalog, base.harness, base.model, suggestion.effort)
   if (effort === base.effort) return { next: { ...base, role: role.id }, note: `Effort ${effort}: ${suggestion.reason}.` }
-  if (fresh) return { next: { ...base, role: role.id, effort }, note: `Effort ${effort}: ${suggestion.reason}.` }
+  if (hold === 'policy') return { next: { ...base, role: role.id, effort }, note: `Effort ${effort}: ${suggestion.reason}.` }
+  const why = hold === 'stated' ? `${base.effort} stays: you chose it.` : `${captionText(base)} stays: the slot keeps its settings.`
   return {
     next: { ...base, role: role.id },
-    note: `${captionText(base)} stays: the slot keeps its settings. Policy suggests ${effort}: ${suggestion.reason}.`,
+    note: `${why} Policy suggests ${effort}: ${suggestion.reason}.`,
     offer: { effort, reason: suggestion.reason },
   }
 }
@@ -469,7 +490,7 @@ export function parseWords(catalog: StaffingCatalog, input: string, base: Staffi
  * and harness first, then an effort typed by hand, then the role through
  * withRole, so a role lands the same way on every path.
  */
-export function applyParsed(catalog: StaffingCatalog, context: SlotContext, base: Staffing, parsed: Pick<Parsed, 'result' | 'roleTouched' | 'effortTyped' | 'harnessTyped' | 'offCatalog'>, fresh: boolean): Outcome & { effortTyped: boolean } {
+export function applyParsed(catalog: StaffingCatalog, context: SlotContext, base: Staffing, parsed: Pick<Parsed, 'result' | 'roleTouched' | 'effortTyped' | 'harnessTyped' | 'offCatalog'>, hold: EffortHold): Outcome & { effortTyped: boolean } {
   const wanted = parsed.result
   const notes: string[] = []
   let next: Staffing = { ...base }
@@ -488,15 +509,11 @@ export function applyParsed(catalog: StaffingCatalog, context: SlotContext, base
   let offer: Suggestion | undefined
   if (parsed.roleTouched) {
     const role = wanted.role ? catalog.roles.find(entry => entry.id === wanted.role) || null : null
-    if (role && parsed.effortTyped) {
-      // The effort typed with the role is the one wanted.
-      next = { ...next, role: role.id }
-    } else {
-      const outcome = withRole(catalog, context, next, role, fresh)
-      next = outcome.next
-      offer = outcome.offer
-      if (outcome.note) notes.push(outcome.note)
-    }
+    // An effort typed with the role is stated: it stays, with the policy offered.
+    const outcome = withRole(catalog, context, next, role, parsed.effortTyped ? 'stated' : hold)
+    next = outcome.next
+    offer = outcome.offer
+    if (outcome.note) notes.push(outcome.note)
   }
   return { next, note: notes.join(' ') || undefined, offer, effortTyped: parsed.effortTyped }
 }

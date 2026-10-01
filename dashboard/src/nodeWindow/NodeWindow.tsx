@@ -282,10 +282,8 @@ function SlotStaffing({ formation, slot, agents, ops }: {
 }) {
   const staffing = staffingOf(slot)
   const words = staffingSentence(slot, roleNamer(agents))
-  const open = (part: Part | null) => (event: ReactMouseEvent<HTMLElement>) => {
-    const sentence = event.currentTarget.closest('.nslot-words') || event.currentTarget
-    ops.staffSlot(formation, slot, part, sentence)
-  }
+  // The sentence window opens beside the word clicked, as a list drops from it.
+  const open = (part: Part | null) => (event: ReactMouseEvent<HTMLElement>) => ops.staffSlot(formation, slot, part, event.currentTarget)
   const word = (part: Part, text: string) => (
     <button type="button" className={`nslot-word${part === 'effort' ? ' effort' : ''}`} aria-label={`Change the ${part} of ${slot.label || slot.id}: ${text}`} onClick={open(part)}>{text}</button>
   )
