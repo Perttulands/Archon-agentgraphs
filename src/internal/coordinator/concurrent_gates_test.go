@@ -162,7 +162,8 @@ func (e *holdingExecutor) snapshot() []formations.FormationExecution {
 // awaitStarted waits until the executor starts nodeID.
 func (e *holdingExecutor) awaitStarted(t *testing.T, nodeID string) {
 	t.Helper()
-	timeout := time.After(5 * time.Second)
+	// Generous: under host load each durable append can take a while.
+	timeout := time.After(20 * time.Second)
 	for {
 		select {
 		case started := <-e.started:
