@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/api"
+	"github.com/Perttulands/Archon-agentgraphs/internal/buildinfo"
 	"github.com/Perttulands/Archon-agentgraphs/internal/core"
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 	"github.com/Perttulands/Archon-agentgraphs/internal/terminal"
@@ -266,7 +267,9 @@ func (c *Coordinator) Handler() http.Handler {
 	c.registerEvidenceRoutes(mux)
 	c.registerFileRoutes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, 200, map[string]string{"status": "ok", "runtime": "standalone-trusted-v1"})
+		// The build is how a deploy proves which source is running (archon-1ea).
+		version, commit := buildinfo.Current()
+		reply(w, 200, map[string]string{"status": "ok", "version": version, "commit": commit})
 	})
 	// Route ownership: internal/api wins both board reads and all authoring routes.
 	// Its injected runtime delegates POST runs to coordinator admission (limits,

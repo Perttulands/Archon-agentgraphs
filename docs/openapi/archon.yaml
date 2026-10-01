@@ -81,7 +81,7 @@ paths:
     get:
       responses:
         '200':
-          description: Coordinator is serving
+          description: Coordinator is serving. Enveloped data carries status ok, and the running build's version and commit.
   /api/missions:
     get:
       responses:

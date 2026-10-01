@@ -140,6 +140,9 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 	if !ok {
 		return 2
 	}
+	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") && config.Server != "" {
+		return remoteVersion(config.Server, stdout, stderr)
+	}
 	if len(args) >= 1 && args[0] == "mission" && (len(args) == 1 || isHelpArg(args[1])) {
 		fmt.Fprint(stderr, missionHelp)
 		return 2

@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Perttulands/Archon-agentgraphs/internal/buildinfo"
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
@@ -85,6 +86,32 @@ func (c *remoteClient) raw(method, path string, value any) ([]byte, error) {
 		return nil, fmt.Errorf("coordinator HTTP %d: %s", status, strings.TrimSpace(string(raw)))
 	}
 	return raw, nil
+}
+
+// remoteVersion prints this CLI's build and the daemon's, as /healthz reports
+// it (archon-1ea).
+func remoteVersion(server string, stdout, stderr io.Writer) int {
+	fmt.Fprintln(stdout, buildinfo.String())
+	client, err := newRemoteClient(server)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	raw, err := client.raw(http.MethodGet, "/healthz", nil)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	var health struct {
+		Data struct {
+			Version string `json:"version"`
+			Commit  string `json:"commit"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &health); err != nil || health.Data.Version == "" {
+		return fail(stderr, fmt.Errorf("the daemon at %s reports no build", server))
+	}
+	fmt.Fprintf(stdout, "daemon %s: Archon %s (%s)\n", server, health.Data.Version, health.Data.Commit)
+	return 0
 }
 
 // An explicit server selects HTTP for the entire command. Failure never falls

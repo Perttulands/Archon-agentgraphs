@@ -898,6 +898,11 @@ build. These are daemon flags, not model settings. Set harness, model and effort
 described at the end of this section. The cockpit opens any file a mission,
 brief or gate references by absolute path (see Referenced files).
 
+`GET /healthz` answers `{status, version, commit}`: `ok` and the running
+build's version and source commit, which a deploy checks against the commit it
+admitted (archon-1ea). `archon --server <server> version` prints the CLI's build
+and the daemon's, and the cockpit's top bar shows the daemon's.
+
 In another terminal use the compiled Archon. Import means copying mission and
 notes TOML, or symlinking them; there is no import command:
 

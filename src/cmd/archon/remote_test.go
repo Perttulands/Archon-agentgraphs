@@ -784,3 +784,19 @@ func TestRepeatedAuthoringEditsKeepTheRevisionOfflineAndRemote(t *testing.T) {
 		}
 	}
 }
+
+// With --server, version names this CLI's build and the daemon's (archon-1ea).
+func TestRemoteVersionNamesTheDaemonBuild(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/healthz" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(`{"success":true,"data":{"status":"ok","version":"0.9.0","commit":"abc1234"}}`))
+	}))
+	defer server.Close()
+	stdout, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--server", server.URL, "version")
+	if code != 0 || !strings.Contains(stdout, "daemon "+server.URL+": Archon 0.9.0 (abc1234)") || !strings.HasPrefix(stdout, "Archon ") {
+		t.Fatalf("version code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+}

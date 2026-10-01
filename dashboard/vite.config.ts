@@ -34,6 +34,6 @@ export default defineConfig({
   },
   server: {
     forwardConsole: false,
-    proxy: apiTarget ? { '/api': { target: apiTarget, changeOrigin: true, ws: true } } : undefined,
+    proxy: apiTarget ? { '/api': { target: apiTarget, changeOrigin: true, ws: true }, '/healthz': { target: apiTarget, changeOrigin: true } } : undefined,
   },
 })

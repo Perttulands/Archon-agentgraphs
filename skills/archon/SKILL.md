@@ -9,8 +9,9 @@ This skill documents the Archon contract of VERSION 0.1.0 as of 2026-10-01:
 the reusable unit is a mission, each slot owns its harness, model and effort,
 run limits are optional, drivers pull with `run wait`, and every surface uses
 current names only. It ships with that source.
-`archon --version` names the build on PATH. When that build is older, a flag or
-behaviour named here may differ: read the command's `-h` and trust the binary.
+`archon --version` names the build on PATH, and `archon --server "$ARCHON_SERVER"
+version` the daemon's too. When a build is older, a flag or behaviour named
+here may differ: read the command's `-h` and trust the binary.
 
 Archon makes chaining agents and gates easy and great, and that is all it
 does. Seats are ordinary tmux agent sessions with full access, as in CHROTE;
