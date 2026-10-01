@@ -205,7 +205,7 @@ func (e *TmuxFormationExecutor) peerConversationInstructions(req FormationExecut
 		lines = append(lines, "The step's Limit card allows this conversation "+plural(limit.Max-limit.Used, "message")+" after the openings, counting proposals, acknowledgements and dissent. When they are spent the runtime stops the conversation and the run waits for the operator, so leave room to propose and acknowledge a result.")
 	}
 	if !req.Deadline.IsZero() {
-		lines = append(lines, "The entire formation deadline is "+req.Deadline.UTC().Format(time.RFC3339Nano)+". Preparation has already used part of this budget. Leave time to write and acknowledge the result and finish your turn. Near the deadline, stop opening new debate and preserve the result and tensions. The budget will not be extended; expiry without a valid result blocks visibly.")
+		lines = append(lines, "The entire formation deadline is "+req.Deadline.UTC().Format(time.RFC3339Nano)+". Preparation has already used part of this time. Leave time to write and acknowledge the result and finish your turn. Near the deadline, stop opening new debate and preserve the result and tensions. At the deadline the step stops and the run waits for the operator, who may grant the Limit card's time again.")
 	}
 	return append(lines, outputContractExtraLines(req.Formation)...)
 }

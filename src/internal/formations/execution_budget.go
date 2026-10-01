@@ -12,11 +12,9 @@ var ErrFormationTimeoutExceeded = errors.New("formation execution time limit exc
 
 // withFormationDeadline bounds an executor's work by the engine's deadline, the
 // time the step's Limit cards leave it. A step no card times has none.
-func withFormationDeadline(parent context.Context, req *FormationExecution, now time.Time) (context.Context, context.CancelFunc, error) {
+func withFormationDeadline(parent context.Context, req *FormationExecution, now time.Time) (context.Context, context.CancelFunc) {
 	if req.Deadline.IsZero() {
-		ctx, cancel := context.WithCancel(parent)
-		return ctx, cancel, nil
+		return context.WithCancel(parent)
 	}
-	ctx, cancel := context.WithTimeoutCause(parent, req.Deadline.Sub(now), ErrFormationTimeoutExceeded)
-	return ctx, cancel, nil
+	return context.WithTimeoutCause(parent, req.Deadline.Sub(now), ErrFormationTimeoutExceeded)
 }

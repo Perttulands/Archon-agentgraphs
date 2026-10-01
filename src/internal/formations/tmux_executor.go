@@ -285,10 +285,7 @@ func (e *TmuxFormationExecutor) executeFormationContext(parent context.Context, 
 	if e == nil || e.store == nil {
 		return FormationExecutionResult{}, runExecutionError("missing_executor", "tmux executor store is not configured", "executor", ErrRunExecutorUnavailable)
 	}
-	ctx, cancel, err := withFormationDeadline(parent, &req, e.store.now())
-	if err != nil {
-		return FormationExecutionResult{}, err
-	}
+	ctx, cancel := withFormationDeadline(parent, &req, e.store.now())
 	defer cancel()
 	if err := e.validateConfiguredBoundaryContext(ctx); err != nil {
 		return FormationExecutionResult{}, err

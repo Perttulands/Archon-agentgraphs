@@ -98,6 +98,7 @@ import { WindowManagerProvider, useWindowManager } from '../windows/WindowManage
 import type { LimitChange, NodeWindowOps } from '../nodeWindow/NodeWindow'
 import { readBoardView, writeBoardView, type BoardView } from '../flow/boardView'
 import type { FlowRun } from '../flow/FlowView'
+import { judgeChain } from '../flow/flowModel'
 import { cockpitWorkspace } from '../windows/cockpitWorkspace'
 import { cockpitScene, measureElement, nodeAnchor, nodeWindowKeepClear } from '../windows/cockpitScene'
 import { humanChannelField, humanChannelLabel, humanChannelOf, type HumanChannel } from '../humanChannel/humanChannel'
@@ -1362,27 +1363,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     recordEntry(undo)
   }, [patchBoard, recordEntry])
 
-  /** Reconstruct the gate's judge chain from persisted `<gateId>:judge` edges. */
-  const judgeChainOf = useCallback((gateId: string): string[] => {
-    const connections = boardRef.current?.connections || []
-    const socket = `${gateId}:judge`
-    const send = connections.find(connection => connection.from === socket)
-    if (!send) return []
-    const start = send.to.split(':')[0]
-    const visit = (node: string, acc: string[]): string[] | null => {
-      const nextAcc = [...acc, node]
-      for (const connection of connections) {
-        if (connection.from.split(':')[0] !== node) continue
-        if (connection.to === socket) return nextAcc
-        const next = connection.to.split(':')[0]
-        if (nextAcc.includes(next)) continue
-        const found = visit(next, nextAcc)
-        if (found) return found
-      }
-      return null
-    }
-    return visit(start, []) || [start]
-  }, [])
+  /** The gate's judge chain, by the one rule the engine and Flow share (archon-n7u.51). */
+  const judgeChainOf = useCallback((gateId: string): string[] => (boardRef.current ? judgeChain(boardRef.current, gateId) : []), [])
 
   // Restores a gate as it was: its previous judge chain (or none), then its
   // fields, since attaching adds the formation kind and detaching drops it.
