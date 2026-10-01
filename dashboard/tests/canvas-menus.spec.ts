@@ -44,7 +44,8 @@ test('the canvas menu stays on screen from every corner of the canvas', async ({
 
 test('a long roster\'s role list scrolls inside the staffing window, which stays on screen, and its last role is one click away', async ({ page }) => {
   await page.addInitScript(() => localStorage.clear())
-  const fixture = await cockpitFixture(page, { extraAgents: 40 })
+  // The window grows to show a whole catalog up to 640 px; a roster this long scrolls inside it.
+  const fixture = await cockpitFixture(page, { extraAgents: 70 })
   await page.goto('/?mission=browser')
   const slot = page.getByTestId('slot-execution-worker')
   await expect(slot).toBeVisible()
@@ -52,17 +53,17 @@ test('a long roster\'s role list scrolls inside the staffing window, which stays
   const sentence = page.getByRole('dialog', { name: 'Staff Worker 1' })
   await expectOnScreen(page, sentence)
   const roles = sentence.getByRole('listbox', { name: 'Choose role' })
-  await expect(roles.getByRole('option')).toHaveCount(43)
+  await expect(roles.getByRole('option')).toHaveCount(73)
   await page.screenshot({ path: test.info().outputPath('long-role-list.png') })
 
   // The list scrolls inside the window, which stays where it opened.
   expect(await roles.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true)
-  const last = roles.getByRole('option', { name: /Roster agent 40/ })
+  const last = roles.getByRole('option', { name: /Roster agent 70/ })
   await last.scrollIntoViewIfNeeded()
   await expect(last).toBeInViewport()
   await expectOnScreen(page, sentence)
   await last.click()
   await expect(sentence).toHaveCount(0)
-  await expect(slot.getByTestId('slot-caption')).toHaveAttribute('data-staffing', 'Roster agent 40 | Codex · default model · medium')
-  expect(fixture.patches.map(patch => patch.assignSlot).filter(Boolean)).toEqual([{ formationId: 'execution', slotId: 'worker', agentId: 'agent-40', harness: 'openai-codex', model: '', effort: 'medium' }])
+  await expect(slot.getByTestId('slot-caption')).toHaveAttribute('data-staffing', 'Roster agent 70 | Codex · default model · medium')
+  expect(fixture.patches.map(patch => patch.assignSlot).filter(Boolean)).toEqual([{ formationId: 'execution', slotId: 'worker', agentId: 'agent-70', harness: 'openai-codex', model: '', effort: 'medium' }])
 })

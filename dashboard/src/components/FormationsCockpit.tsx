@@ -148,6 +148,33 @@ import type {
 type StaffPayload = { kind: 'role'; roleId: string } | { kind: 'slot'; from: SlotRef }
 type DragStaff = { payload: StaffPayload | null; slot?: { ref: SlotRef; part: Part | null; anchor: HTMLElement }; click?: () => void; startX: number; startY: number; moved: boolean }
 /** The slot under the pointer, looking through notes, ghosts and anything else on top. */
+/**
+ * Where a dragged staffing's ghost waits while it is over a slot: beside the
+ * slot's card, level with the slot, on the side that covers the least of the
+ * other cards, so the slot's preview and its neighbours stay readable.
+ */
+function dockedGhost(slot: Element, label: string): { x: number; y: number } {
+  const box = slot.getBoundingClientRect()
+  const card = (slot.closest('.formation') || slot).getBoundingClientRect()
+  // The ghost's size at its 12px monospace label (staffing.css .staffing-ghost).
+  const width = label.length * 7.3 + 24
+  const height = 28
+  const top = box.top + box.height / 2 - height / 2
+  const cards = [...document.querySelectorAll('.world .formation, .world .gatecard, .world .missioncard, .world .toolcard, .world .endcard, .world .note-sticky')]
+    .map(element => element.getBoundingClientRect())
+  const covered = (left: number) => {
+    const offScreen = left < 0 || left + width > window.innerWidth ? 1e9 : 0
+    return offScreen + cards.reduce((sum, other) => {
+      const w = Math.min(left + width, other.right) - Math.max(left, other.left)
+      const h = Math.min(top + height, other.bottom) - Math.max(top, other.top)
+      return sum + (w > 0 && h > 0 ? w * h : 0)
+    }, 0)
+  }
+  const right = card.right + 10
+  const left = card.left - 10 - width
+  return { x: covered(left) < covered(right) ? left : right, y: top }
+}
+
 function slotKeyAt(x: number, y: number): string | null {
   for (const element of document.elementsFromPoint?.(x, y) || [document.elementFromPoint(x, y)].filter(Boolean) as Element[]) {
     const slot = element.closest<HTMLElement>('.world .slot[data-slot-key]')
@@ -1848,10 +1875,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         if (!staffDrag.moved || !payload) return
         const key = slotKeyAt(pointer.clientX, pointer.clientY)
         const target = key ? refByKey(key) : null
-        const over = target ? document.querySelector(`.world .slot[data-slot-key="${CSS.escape(target.key)}"]`)?.getBoundingClientRect() : null
-        setGhost(over
-          ? { x: over.left, y: over.top + over.height / 2, label: ghostLabel(payload), docked: true }
-          : { x: pointer.clientX, y: pointer.clientY, label: ghostLabel(payload), docked: false })
+        const over = target ? document.querySelector(`.world .slot[data-slot-key="${CSS.escape(target.key)}"]`) : null
+        const label = ghostLabel(payload)
+        setGhost(over ? { ...dockedGhost(over, label), label, docked: true } : { x: pointer.clientX, y: pointer.clientY, label, docked: false })
         setHoverSlot(target ? target.key : null)
         if (hovered !== target?.key) leave()
         if (!target || (payload.kind === 'slot' && payload.from.key === target.key)) return

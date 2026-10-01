@@ -21,10 +21,17 @@ import {
 } from './staffingModel'
 import type { OpenSentence, SlotRef, StaffingStore } from './staffingStore'
 
-/** The size the window asks for: tall enough for a role grid of the whole catalog. */
-const SIZE = { width: 470, height: 520 }
-/** The least it shrinks to in a crowded view; its lists scroll. */
-const MINIMUM = { width: 470, height: 320 }
+const WIDTH = 470
+/** The window's rows around its role grid: the sentence, the list's header and footer, the policy and the keys. */
+const FRAME_HEIGHT = 200
+/** One row of the two-column role grid (staffing.css). */
+const GRID_ROW = 19
+const MAX_HEIGHT = 640
+
+/** Tall enough for the role grid of the whole catalog, so it never scrolls and the window never grows once open. */
+function windowSize(roles: number) {
+  return { width: WIDTH, height: Math.min(MAX_HEIGHT, FRAME_HEIGHT + Math.ceil((roles + 1) / 2) * GRID_ROW) }
+}
 
 /**
  * Where the window may open, measured from the view that shows the slot, as
@@ -63,14 +70,15 @@ function nextEmptySlot(key: string): Element | null {
  * the node window or inspector that holds the sentence), clear of the slot's
  * card and its neighbours, the next empty slot and the windows already open.
  */
-function placeWindow(anchor: Element, ref: SlotRef, stage: StaffingStage): CSSProperties {
+function placeWindow(anchor: Element, ref: SlotRef, stage: StaffingStage, roles: number): CSSProperties {
   const beside = anchor.closest('.fwin, .agx-inspector') || anchor
   const card = anchor.closest('.formation')
   const next = nextEmptySlot(ref.key)
   const keepClear = [...stage.keepClear(ref), card, next]
     .map(item => (item instanceof Element ? measureElement(item) : item))
     .filter((rect): rect is WindowRect => Boolean(rect))
-  const rect = placeOpeningWindow(SIZE, MINIMUM, {
+  const size = windowSize(roles)
+  const rect = placeOpeningWindow(size, size, {
     workspace: stage.workspace(),
     anchor: measureElement(beside, true),
     keepClear,
@@ -107,7 +115,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
   // The highlighted row; null is the slot's current value, so a reflex Enter changes nothing.
   const [hi, setHi] = useState<number | null>(null)
   const [choosing, setChoosing] = useState(false)
-  const [style] = useState(() => placeWindow(open.anchor, ref, stage))
+  const [style] = useState(() => placeWindow(open.anchor, ref, stage, catalog.roles.length))
   const rootRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const committed = useRef(false)
@@ -357,7 +365,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
         {offCatalog(catalog, draft) ? <div className="staffing-issue">{draft.model}: not in the catalog; the harness decides.</div> : null}
         {!effortsFor(catalog, draft.harness, draft.model).length ? <div className="staffing-issue">{harnessName(draft.harness) || draft.harness} is not a harness Archon starts.</div> : null}
       </div>
-      <div className="staffing-keys">↵ staffs · Esc leaves it as it was · 1–6 effort · type roles, models, efforts in any order</div>
+      <div className="staffing-keys">↵ staffs · Esc leaves it as it was · 1–6 effort · type words in any order</div>
     </div>
   )
 }
