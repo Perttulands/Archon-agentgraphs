@@ -850,17 +850,20 @@ function RosterGroup({
   )
 }
 
-/* Offline is the resting state, so it is not repeated on every row. */
+/* Offline is the resting state, so it is not repeated on every row. In use
+   comes first, so a narrow rail never cuts it off. */
 function StatusWords({ agent, status }: { agent: RosterAgent; status: AgentStatus }) {
+  const inUse = inSlotsWords(status.deployedSlots)
   const words = [
+    ...(inUse ? [inUse] : []),
     ...(agent.unbound ? [] : [agentRole(agent as FormationAgentProjection)]),
     ...(agent.preset ? [agent.customized ? 'custom' : 'preset'] : []),
     ...(status.liveness === 'offline' ? [] : [status.liveness]),
-    ...status.chips,
+    ...status.chips.filter(chip => chip !== inUse),
   ]
   return (
     <span className="r">
-      {words.map(word => <span key={word} className={word === status.liveness ? `is-${word}` : undefined}>{word}</span>)}
+      {words.map(word => <span key={word} className={word === status.liveness ? `is-${word}` : word === inUse ? 'in-use-words' : undefined}>{word}</span>)}
     </span>
   )
 }

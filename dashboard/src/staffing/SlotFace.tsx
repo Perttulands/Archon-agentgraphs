@@ -4,7 +4,7 @@
  * and effort read in plain words wherever a slot appears. */
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { harnessGlyph } from '../components/formationsCockpitVisuals'
-import { harnessName } from '../components/harnessIcons'
+import { harnessName, harnessShortName } from '../components/harnessIcons'
 import { captionText, type Staffing } from './staffingModel'
 
 export type Part = 'role' | 'harness' | 'model' | 'effort'
@@ -20,8 +20,9 @@ export function staffingWords(staffing: Staffing, roleName: (id: string) => stri
 
 /**
  * The caption: the role on one line ("vanilla" when there is none) and
- * "<Harness> · <model> · <effort>" on the next, effort in bold. Each line has a
- * fixed height, so a slot never changes size with its words. While a choice is
+ * "<Harness> · <model> · <effort>" on the next, effort in bold, the harness in
+ * its short name ("Claude", "Codex"). Each line has a fixed height, so a slot
+ * never changes size with its words; only the model gives way when it is long. While a choice is
  * composed it shows the draft, its changed words marked; a landing replays the
  * confirmation.
  */
@@ -38,7 +39,7 @@ export function SlotCaption({ shown, saved, drafting, landed, roleName, onPart }
   if (!shown) {
     return (
       <span className={`slot-caption empty${drafting ? ' pending' : ''}`} data-testid="slot-caption" data-staffing="">
-        <span className="slot-cap-role">&nbsp;</span>
+        <span className="slot-cap-role slot-open">open slot</span>
         <span className="slot-cap-line"><span className="slot-add">+ Agent</span></span>
       </span>
     )
@@ -62,7 +63,7 @@ export function SlotCaption({ shown, saved, drafting, landed, roleName, onPart }
     >
       <span className="slot-cap-role">{shown.role ? word('role', roleName(shown.role)) : word('role', 'vanilla', ' vanilla')}</span>
       <span className="slot-cap-line">
-        {word('harness', harnessName(shown.harness) || shown.harness || 'no harness')}
+        {word('harness', harnessShortName(shown.harness) || shown.harness || 'no harness')}
         <span className="slot-dot"> · </span>
         {/* On the card a blank model reads "default"; the sentence and tooltip say "default model". */}
         {word('model', shown.model || 'default', shown.model ? '' : ' default')}

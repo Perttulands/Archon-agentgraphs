@@ -149,7 +149,7 @@
 /* slots: each is a row of its harness mark, its label and a caption that says
    what it runs, "Critic Judge" over "Codex · gpt-6-astra · xhigh"
    (archon-vps.2). Caption lines have fixed heights, so a slot never changes
-   size with its words; the harness word gives way first, the effort never. */
+   size with its words; only the model gives way, never the harness or the effort. */
 .fmx .slot{display:flex;flex-direction:row;align-items:center;gap:8px;min-width:0;max-width:100%;padding:4px;border-radius:6px;border:1px solid transparent;text-align:left;outline:none;transition:background-color .12s,border-color .12s;}
 .fmx .slot-ring{flex:0 0 30px;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;position:relative;transition:transform .16s,box-shadow .16s;}
 .fmx .slot.empty .slot-ring{border:2px dashed var(--line);background:rgba(255,255,255,.02);}
@@ -169,25 +169,26 @@
 .fmx .slot-caption{position:relative;display:flex;flex-direction:column;min-width:0;font-size:12.5px;line-height:17px;}
 .fmx .slot-cap-role{display:block;height:17px;color:var(--ink);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .fmx .slot-cap-line{display:flex;height:17px;min-width:0;color:var(--ink2);white-space:nowrap;}
-.fmx .slot-cap-line .slot-w-harness,.fmx .slot-cap-line .slot-w-model{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;}
-.fmx .slot-cap-line .slot-w-harness{flex-shrink:40;}
-.fmx .slot-cap-line .slot-w-effort,.fmx .slot-cap-line .slot-dot{flex:none;white-space:pre;}
+.fmx .slot-cap-line .slot-w-model{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+.fmx .slot-cap-line .slot-w-harness,.fmx .slot-cap-line .slot-w-effort,.fmx .slot-cap-line .slot-dot{flex:none;white-space:pre;}
 .fmx .slot-w.vanilla,.fmx .slot-w.default{color:var(--dim);font-weight:400;}
 .fmx .slot-w-effort{color:var(--ink);font-weight:700;}
 .fmx .slot-dot{color:var(--dim);letter-spacing:-.18em;}
 .fmx .slot-add{color:var(--dim);}
+.fmx .slot-cap-role.slot-open{color:var(--dim);font-weight:400;}
 .fmx .slot-caption.landed::after{content:'';position:absolute;left:-4px;right:-4px;top:-2px;bottom:-2px;border-radius:3px;background:color-mix(in srgb,var(--terra) 26%,transparent);transform-origin:left center;pointer-events:none;animation:slot-land .5s cubic-bezier(.2,.7,.3,1) both;}
 @keyframes slot-in{0%{transform:scale(.55);opacity:.2}100%{transform:scale(1);opacity:1}}
 @keyframes slot-land{0%{transform:scaleX(0);opacity:1}45%{transform:scaleX(1);opacity:.9}100%{transform:scaleX(1);opacity:0}}
 
 /* type layouts: slots stack as rows */
 .fmx .solo-body{display:flex;flex-direction:column;align-items:stretch;gap:8px;margin:0 -10px;}
-.fmx .huddle{border:1.5px dashed var(--sage);border-radius:8px;padding:14px 6px 8px;position:relative;background:color-mix(in srgb,var(--sage) 6%,transparent);}
+/* A huddle or pool reaches into the card's padding, as solo slots do, so its slots have a solo slot's width. */
+.fmx .huddle{border:1.5px dashed var(--sage);border-radius:8px;padding:14px 4px 8px;margin:0 -10px;position:relative;background:color-mix(in srgb,var(--sage) 6%,transparent);}
 .fmx .huddle .hl{position:absolute;top:-9px;left:16px;background:var(--card);padding:0 8px;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--sage);}
 .fmx .peers-row{display:flex;flex-direction:column;align-items:stretch;gap:8px;}
 .fmx .orch{display:flex;flex-direction:column;align-items:stretch;gap:12px;}
-.fmx .orch .ctrl-wrap{display:flex;flex-direction:column;align-items:stretch;}
-.fmx .pool{border:1.5px dashed var(--line);border-radius:8px;padding:14px 4px 8px;display:flex;flex-direction:column;gap:6px;align-items:stretch;position:relative;background:rgba(255,255,255,.015);}
+.fmx .orch .ctrl-wrap{display:flex;flex-direction:column;align-items:stretch;margin:0 -10px;}
+.fmx .pool{border:1.5px dashed var(--line);border-radius:8px;padding:14px 4px 8px;margin:0 -10px;display:flex;flex-direction:column;gap:6px;align-items:stretch;position:relative;background:rgba(255,255,255,.015);}
 .fmx .pool .pl{position:absolute;top:-9px;left:14px;background:var(--card);padding:0 8px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);}
 
 /* I/O ports + rows */

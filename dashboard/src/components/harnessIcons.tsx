@@ -88,3 +88,11 @@ export function harnessName(harness: string | undefined | null): string {
   const id = harnessIdFor(harness)
   return id ? HARNESS_NAMES[id] || harness || '' : ''
 }
+
+const HARNESS_SHORT_NAMES: Partial<Record<HarnessId, string>> = { 'claude-code': 'Claude' }
+
+/** A harness in one short word for a slot card, "Claude" or "Codex", so the card never cuts it. */
+export function harnessShortName(harness: string | undefined | null): string {
+  const id = harnessIdFor(harness)
+  return (id && HARNESS_SHORT_NAMES[id]) || harnessName(harness)
+}

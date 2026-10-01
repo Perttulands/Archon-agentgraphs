@@ -132,7 +132,7 @@ export function FormationSeats({ formation, renderSlot }: {
     return (
       <div className="orch">
         <div className="ctrl-wrap">{ctrl ? seat(ctrl) : null}</div>
-        <div className="pool"><span className="pl">open slots</span>{workers.map(slot => seat(slot))}</div>
+        <div className="pool"><span className="pl">workers</span>{workers.map(slot => seat(slot))}</div>
       </div>
     )
   }
