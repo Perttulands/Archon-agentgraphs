@@ -493,7 +493,7 @@ func TestStageWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 				t.Fatalf("pastes = %v, want one per staging", pasted)
 			}
 
-			// A pane that stays busy is waited on until the seat timeout.
+			// A pane that stays busy is waited on until the caller cancels.
 			states = []string{"busy-empty"}
 			short, stop := context.WithTimeout(ctx, 100*time.Millisecond)
 			defer stop()

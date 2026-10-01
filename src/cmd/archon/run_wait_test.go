@@ -83,7 +83,6 @@ to = "fmn_after:port_after_in"
 // waitExecutor finishes each formation when the test lets it.
 type waitExecutor struct{ proceed chan struct{} }
 
-func (e *waitExecutor) DefaultFormationTimeoutSeconds() int { return 0 }
 
 func (e *waitExecutor) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
 	<-e.proceed

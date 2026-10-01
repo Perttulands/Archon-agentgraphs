@@ -134,7 +134,7 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer, runID string) (codexTr
 		}
 		// A turn that ends without the sentinel, while nobody else took a turn and
 		// no background work is still due, is the agent's final word: the caller
-		// rejects it at once rather than waiting for the seat timeout.
+		// rejects it at once rather than waiting on.
 		if stop == "end_turn" && turn.OperatorTurns == 0 && !background {
 			turn.Complete = true
 			return turn, nil
