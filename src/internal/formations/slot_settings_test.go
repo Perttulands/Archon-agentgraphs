@@ -80,7 +80,7 @@ func TestAssigningASlotStatesItsSettings(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		req.FormationID, req.SlotID, req.Personas = "fmn_research", "slot_research", personas
+		req.FormationID, req.SlotID = "fmn_research", "slot_research"
 		return store.AssignFormationSlot("session-search", req, WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	}
 	slotOf := func(board *BoardDocument) FormationSlot { return board.Formations[0].Slots[0] }
@@ -95,7 +95,9 @@ func TestAssigningASlotStatesItsSettings(t *testing.T) {
 		{"ultra on claude", FormationSlotAssignmentRequest{Harness: "claude-code", Effort: "ultra"}, `effort "ultra" is not one claude-code accepts; use low, medium, high, xhigh, max`},
 		{"a harness that cannot start seats", FormationSlotAssignmentRequest{Harness: "hermes", Effort: "low"}, `harness "hermes" cannot start seats`},
 		{"a model with spaces", FormationSlotAssignmentRequest{Harness: "claude-code", Model: "opus 5", Effort: "low"}, "one model name without spaces"},
-		{"an unknown role alone", FormationSlotAssignmentRequest{AgentID: "nobody"}, `role "nobody" is not a known persona`},
+		// A role names only role text; the slot still states what it runs.
+		{"a role alone", FormationSlotAssignmentRequest{AgentID: "delivery-final-reviewer"}, "needs a harness: claude-code or openai-codex"},
+		{"a role and a harness without an effort", FormationSlotAssignmentRequest{AgentID: "delivery-final-reviewer", Harness: "openai-codex"}, "needs an effort; the policy is"},
 		{"a role with a model and no effort", FormationSlotAssignmentRequest{AgentID: "scout", Model: "opus"}, "needs a harness"},
 	} {
 		if _, err := assign(refused.req); !errors.Is(err, ErrInvalidSlotSettings) || !strings.Contains(err.Error(), refused.want) {
@@ -126,14 +128,13 @@ func TestAssigningASlotStatesItsSettings(t *testing.T) {
 	if slot := slotOf(board); slot.AgentID != "scout" || slot.Harness != "openai-codex" || slot.Model != "" || slot.Effort != "xhigh" {
 		t.Fatalf("role slot = %+v", slot)
 	}
-	// The cockpit's role drag names only a role and harness; the role's current
-	// settings are written onto the slot.
-	board, err = assign(FormationSlotAssignmentRequest{AgentID: "delivery-final-reviewer", Harness: "openai-codex"})
+	// A role carries no settings: its card's model and effort never reach the slot.
+	board, err = assign(FormationSlotAssignmentRequest{AgentID: "delivery-final-reviewer", Harness: "openai-codex", Effort: "max"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slot := slotOf(board); slot.AgentID != "delivery-final-reviewer" || slot.Harness != "openai-codex" || slot.Model != "gpt-6-astra" || slot.Effort != "medium" {
-		t.Fatalf("role drag slot = %+v, want the preset's settings written down", slot)
+	if slot := slotOf(board); slot.AgentID != "delivery-final-reviewer" || slot.Harness != "openai-codex" || slot.Model != "" || slot.Effort != "max" {
+		t.Fatalf("role slot = %+v, want only what the assignment stated", slot)
 	}
 	// Nothing named empties the slot.
 	board, err = assign(FormationSlotAssignmentRequest{})

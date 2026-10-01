@@ -26,7 +26,7 @@ decisions; [examples](../examples/) provide reusable missions.
 | Input card | The mission's entry node (`[[inputCard]]` in TOML, `inputCards` in JSON) with the mission's goal, input hint and `out` port. A run supplies its input text. A mission has one Input card. |
 | Formation | A step: the team of agents that does it. `solo` has one seat; `peer` has peer seats; `orchestrated` has a controller directing its bound workers. |
 | Slot | A position in a formation that owns what its seat runs: a harness (`claude-code` or `openai-codex`), a model (blank means the harness default) and an effort, plus an optional role (`agentId`, a persona). A slot without a role is a vanilla agent, such as `claude-code · opus · low`. A seat is the slot's runtime agent session. |
-| Persona (role) | A TOML agent card with generic role text: a summary, capabilities and kind. A new card carries no model or effort; an existing card's harness variant settings are read by the cockpit's role drag and `archon agent spawn`. Presets remain available; local cards can override them. |
+| Persona (role) | A TOML agent card with generic role text: a summary, capabilities and kind. A new card carries no model or effort; an existing card's harness variant settings are read only by `archon agent spawn`, never by a slot. Presets remain available; local cards can override them. |
 | Harness variant | A persona card's `openai-codex` or `claude-code` settings: session stem, model and effort. Seats start from slot settings. |
 | Gate | A criterion with one or more kinds: `code`, `formation`, `human`. Its ports are `in`, `pass`, `fail`, `judge`. |
 | End node | Ends a path on purpose (`[[end]]` in TOML: `id`, `title`, `outcome`). Its outcome is `done` or `rejected`. Its only port is `in`, which takes any number of routes; it leads nowhere. |
@@ -49,13 +49,12 @@ A slot owns its harness, model and effort. Staff it with `archon formation
 assign <mission> <formation> --slot <slot> --harness <h> --effort <e>
 [--model <m>] [--role <persona>]`,
 or the `assignSlot` mission patch with `agentId`, `harness`, `model` and
-`effort`. Staffing always states its effort: the CLI requires `--harness` and
-`--effort`, and a patch without an effort is refused with
-`INVALID_SLOT_SETTINGS` (HTTP 422, CLI code `invalid_slot_settings`), except a
-patch naming only a role (and perhaps a harness), which is the cockpit's role
-drag: it writes that role's current effective harness, model and effort onto
-the slot. A patch naming none of them empties the slot, as does `formation
-unassign`. The harness must be one Archon starts and must accept the effort,
+`effort`. Staffing always states the slot in full: the CLI requires
+`--harness` and `--effort`, and a patch without a harness or an effort,
+including one naming only a role, is refused with `INVALID_SLOT_SETTINGS`
+(HTTP 422, CLI code `invalid_slot_settings`). A role adds only its text; its
+card's settings never reach a slot. A patch naming none of them empties the
+slot, as does `formation unassign`. The harness must be one Archon starts and must accept the effort,
 and a model is one name without spaces. The agent roster serves each
 harness's known `models`: `claude-code` runs the aliases `opus`, `sonnet`,
 `haiku` and `fable`, and `openai-codex` runs the models its CLI lists in
@@ -77,13 +76,37 @@ catalog`. The node window, Flow, and the Agents view's slot tiles and slot
 inspector say the same, for example `Worker 1 is vanilla on Claude Code · opus
 · low.` Rosters list roles by name; roles carry no harness.
 
+Staffing in the cockpit is that sentence, edited where the slot is. Clicking a
+slot, or Enter on a focused one, opens a window beside its card reading `Worker
+1 is [vanilla] on [Claude Code] · [opus] · [low]`; each word opens its own
+list, and clicking one word of a staffed slot opens only that list, where a
+pick lands at once. An empty slot opens as vanilla on the first harness and its
+first model, at the effort the policy reads from the step's title, else `low`,
+so Enter staffs it. The first word takes typed words in any order (`cri ast`,
+`sonnet high`), echoing how each was read; a typo, an ambiguous role or an
+effort the harness or model refuses is named and blocks Enter, with one-click
+fixes. Digits 1-6 set the effort, in the window or on a focused slot. Esc or a
+click away changes nothing. N on the canvas reaches the next empty slot in Flow
+order, brings it into view and opens it. The role list shows each role's
+suggested effort, and the effort list opens on the suggestion with each
+effort's policy words. A role landing on a slot moves the effort to the policy,
+unless that effort was picked by hand in this cockpit: then it stays, and the
+slot offers `use xhigh?` until it is taken or the effort changes. A note beside
+the slot says why each landing came out as it did. Dragging a role from the
+rail onto a slot lands it by the same rule, dragging a staffed slot onto
+another moves its staffing there and swaps a staffed target's back, and a drop
+that reaches no slot changes nothing. The slot's menu offers Staff and Empty.
+Each staffing is one undo entry; a move is one entry for both slots. The node
+window's staffing words and the Agents view's slot inspector open the same
+window.
+
 A new role carries no model or effort: `POST /api/agents` and `archon agent
 new` refuse them with `INVALID_AGENT_CARD`, and the New agent form no longer
 asks for them. An existing card's variant settings are edited per
 harness variant in the Agents view inspector and persona editor, with `model`,
 `effort` and `variant` (or a `variants` list) on `PATCH /api/agents`, or with
-`archon agent edit --model --effort` (`edit --harness` picks the variant); the
-role drag and `archon agent spawn` read them. Effort must be one the
+`archon agent edit --model --effort` (`edit --harness` picks the variant);
+`archon agent spawn` reads them. Effort must be one the
 harness accepts: `claude-code` takes `low`, `medium`, `high`, `xhigh` or `max`;
 `openai-codex` also takes `ultra`, though a Codex model may accept fewer. A
 blank model or effort clears it to the harness default model or `medium`.

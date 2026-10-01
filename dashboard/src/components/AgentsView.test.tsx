@@ -167,7 +167,7 @@ describe('AgentsView', () => {
       .toEqual(['authoring', 'human-review', 'fix-pass', 'escalate-fail'])
   })
 
-  it('loads mission staffing and preserves the board patch contract for assign and unassign', async () => {
+  it('staffs a slot through its sentence and empties one on purpose, each stating the slot in full', async () => {
     const board = missionBoard()
     const layout = missionLayout()
     const patches: Array<{ headers: HeadersInit | undefined; body: unknown }> = []
@@ -178,18 +178,14 @@ describe('AgentsView', () => {
           success: true,
           data: {
             agents: [
-              agent('coder', { displayName: 'Coder', liveness: 'live', harnessDefault: 'openai-codex' }),
+              agent('coder', { displayName: 'Coder', liveness: 'live', harnessDefault: 'openai-codex', kind: 'builder' }),
               agent('susie', { displayName: 'Susie', tags: ['design'], liveness: 'offline' }),
             ],
             count: 2,
+            harnesses: HARNESSES,
+            effortPolicy: [{ effort: 'low', use: 'errands' }, { effort: 'medium', use: 'making things' }],
           },
         }))
-      }
-      if (url === '/api/agents/coder') {
-        return Promise.resolve(jsonResponse({ success: true, data: persona('coder', { displayName: 'Coder', harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'coder' }] }) }, 200, { ETag: 'coder-etag' }))
-      }
-      if (url === '/api/agents/susie') {
-        return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName: 'Susie', harnessVariants: [{ id: 'claude-code', sessionStem: 'susie', source: '/tmp/SUSIE.toml' }] }) }, 200, { ETag: 'susie-etag' }))
       }
       if (url === '/api/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { missions: [{ id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' }] } }))
@@ -215,14 +211,20 @@ describe('AgentsView', () => {
     expect(screen.getByText('Escalate Fail')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Inspect Review: not staffed' }))
-    fireEvent.click(await screen.findByRole('button', { name: /assign coder/i }))
+    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    // No list of eligible agents: the slot says what it runs, and its words staff it.
+    expect(within(inspector).queryByText('Eligible agents')).not.toBeInTheDocument()
+    fireEvent.click(within(inspector).getByRole('button', { name: 'Staff Review' }))
+    const sentence = await screen.findByRole('dialog', { name: 'Staff Review' })
+    fireEvent.change(within(sentence).getByRole('textbox'), { target: { value: 'coder' } })
+    fireEvent.keyDown(sentence, { key: 'Enter' })
 
     await waitFor(() => expect(patches).toHaveLength(1))
     expect(headerValue(patches[0].headers, 'If-Match')).toBe('board-etag')
     expect(patches[0].body).toMatchObject({
       expectedRev: 7,
       updatedBy: 'agent:ui',
-      assignSlot: { formationId: 'authoring', slotId: 'reviewer', agentId: 'coder', harness: 'openai-codex' },
+      assignSlot: { formationId: 'authoring', slotId: 'reviewer', agentId: 'coder', harness: 'claude-code', model: 'opus', effort: 'medium' },
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'Inspect Lead (controller): Susie on Claude Code · default model · medium' }))
@@ -232,7 +234,7 @@ describe('AgentsView', () => {
     expect(patches[1].body).toMatchObject({
       expectedRev: 7,
       updatedBy: 'agent:ui',
-      assignSlot: { formationId: 'authoring', slotId: 'lead', agentId: '', harness: '' },
+      assignSlot: { formationId: 'authoring', slotId: 'lead', agentId: '', harness: '', model: '', effort: '' },
     })
   })
 
@@ -476,53 +478,6 @@ describe('AgentsView', () => {
 
     expect(await screen.findByText(/No personas yet/)).toBeInTheDocument()
     expect(screen.queryByText(/Mission load failed:/)).not.toBeInTheDocument()
-  })
-
-  it('keeps slot eligibility usable when one persona detail load fails', async () => {
-    const board = missionBoard()
-    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
-      if (url === '/api/agents') {
-        return Promise.resolve(jsonResponse({
-          success: true,
-          data: {
-            agents: [
-              agent('good', { displayName: 'Good', liveness: 'live', harnessDefault: 'openai-codex' }),
-              agent('broken', { displayName: 'Broken', liveness: 'live', harnessDefault: 'openai-codex' }),
-            ],
-            count: 2,
-          },
-        }))
-      }
-      if (url === '/api/agents/good') {
-        return Promise.resolve(jsonResponse({ success: true, data: persona('good', { displayName: 'Good', harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'good' }] }) }, 200, { ETag: 'good-etag' }))
-      }
-      if (url === '/api/agents/broken') {
-        return Promise.reject(new Error('detail failed'))
-      }
-      if (url === '/api/missions') {
-        return Promise.resolve(jsonResponse({ success: true, data: { missions: [{ id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' }] } }))
-      }
-      if (url === '/api/missions/mission-board/layout') {
-        return Promise.resolve(jsonResponse({ success: true, data: { layout: missionLayout() } }, 200, { ETag: 'layout-etag' }))
-      }
-      if (url === '/api/missions/mission-board' && init?.method === 'PATCH') {
-        return Promise.resolve(jsonResponse({ success: true, data: { mission: board } }, 200, { ETag: 'board-etag' }))
-      }
-      if (url === '/api/missions/mission-board') {
-        return Promise.resolve(jsonResponse({ success: true, data: { mission: board } }, 200, { ETag: 'board-etag' }))
-      }
-      return Promise.reject(new Error(`unexpected fetch ${url}`))
-    })
-
-    render(<AgentsView />)
-
-    // A staffed slot's harness makes each role's detail matter for eligibility.
-    fireEvent.click(await screen.findByRole('button', { name: 'Inspect Critic (controller): coder on Codex · gpt-6-astra · xhigh' }))
-
-    expect(await screen.findByRole('button', { name: /assign Good/i })).toBeEnabled()
-    expect(screen.getByText('failed detail load')).toBeInTheDocument()
-    expect(screen.queryByText('Agent eligibility request failed')).not.toBeInTheDocument()
   })
 
   it('lists roles by name, not by harness, and states only what differs from offline', async () => {
@@ -840,8 +795,8 @@ function agent(id: string, overrides: Record<string, unknown> = {}) {
 
 /** The daemon's launchable harnesses, as GET /api/agents lists them. */
 const HARNESSES = [
-  { id: 'claude-code', executable: 'claude', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium' },
-  { id: 'openai-codex', executable: 'codex', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'medium' },
+  { id: 'claude-code', executable: 'claude', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium', models: [{ id: 'opus' }, { id: 'sonnet' }] },
+  { id: 'openai-codex', executable: 'codex', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'medium', models: [{ id: 'gpt-6-astra' }] },
 ]
 
 /** A claude-code variant as the daemon reads it, with the derived seat launch. */

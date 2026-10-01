@@ -25,3 +25,22 @@ export const effortPolicy = [
 export function rosterAnswer<T>(agents: T[]) {
   return { agents, count: agents.length, harnesses, effortPolicy }
 }
+
+/** What the store's assignSlot writes, or why it refuses (formation_authoring.go assignmentSettings, slot_settings.go). */
+export function assignedSettings(slotId: string, request: { agentId?: string; harness?: string; model?: string; effort?: string }): { settings: Record<string, string> } | { refused: string } {
+  const role = (request.agentId || '').trim()
+  const harnessId = (request.harness || '').trim()
+  const model = (request.model || '').trim()
+  const effort = (request.effort || '').trim()
+  const name = `slot "${slotId}"`
+  if (!role && !harnessId && !model && !effort) return { settings: {} }
+  if (!harnessId) return { refused: `${name} needs a harness: claude-code or openai-codex` }
+  const harness = harnesses.find(entry => entry.id === harnessId)
+  if (!harness) return { refused: `${name} harness "${harnessId}" cannot start seats; use claude-code or openai-codex` }
+  if (/\s/.test(model)) return { refused: `${name} model "${model}" must be one model name without spaces` }
+  if (!effort) return { refused: `${name} needs an effort; the policy is low for errands, medium for making things, xhigh for architecture and review, max for consequential reviews` }
+  const known = (harness.models as Array<{ id: string; efforts?: string[] }>).find(entry => entry.id === model && entry.efforts)
+  const efforts = known?.efforts || harness.efforts
+  if (!efforts.includes(effort)) return { refused: `${name} effort "${effort}" is not one ${known ? model : harness.id} accepts; use ${efforts.join(', ')}` }
+  return { settings: { ...(role ? { agentId: role } : {}), harness: harnessId, ...(model ? { model } : {}), effort } }
+}

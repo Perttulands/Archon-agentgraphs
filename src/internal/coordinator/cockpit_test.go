@@ -95,7 +95,7 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 	mission := doc.Board.Missions[0].ID
 	patch("createFormation", map[string]any{"type": "solo", "title": "Work"})
 	work := doc.Board.Formations[0]
-	patch("assignSlot", map[string]any{"formationId": work.ID, "slotId": work.Slots[0].ID, "agentId": "codex-builder", "harness": "openai-codex"})
+	patch("assignSlot", map[string]any{"formationId": work.ID, "slotId": work.Slots[0].ID, "agentId": "codex-builder", "harness": "openai-codex", "effort": "medium"})
 	patch("wireConnection", map[string]any{"from": mission + ":out", "to": work.ID + ":" + work.Inputs[0].ID})
 	patch("createGate", map[string]any{"title": "Review", "kinds": []string{"human"}, "criterion": "Accept the lab result"})
 	gate := doc.Board.Gates[0].ID

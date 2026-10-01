@@ -123,7 +123,10 @@ though a known Codex model may take fewer (`gpt-5.5` stops at `xhigh`). The
 known models are in `GET /api/agents` `harnesses[].models` and the `formation
 assign` usage: `claude-code` runs `opus`, `sonnet`, `haiku` and `fable`, and
 Codex the models its CLI lists on the daemon host. Another model is staffed
-with a warning; check its name. Omit `--role` for a vanilla agent. A role adds only its text, so one step's
+with a warning; check its name. Omit `--role` for a vanilla agent. The
+operator sees and edits the same settings in the cockpit as a sentence on each
+slot (`Worker 1 is vanilla on Claude Code · opus · low`), so state each slot in
+full rather than leaving a choice to them. A role adds only its text, so one step's
 settings never change another's. `formation inspect` prints each slot's
 staffing, for example `vanilla · claude-code · opus · low`.
 

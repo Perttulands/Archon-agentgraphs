@@ -105,24 +105,6 @@ func ResolveSlotSettings(slot FormationSlot, personas *PersonaStore) (SlotSettin
 	return settings, card, nil
 }
 
-// roleSettings reads a role's current effective settings from its harness
-// variant: the variant's harness and model, and its effort or the default
-// effort. The cockpit's role drag writes them onto a slot.
-func roleSettings(card *PersonaCard, harness string) (SlotSettings, error) {
-	variant, err := card.SelectHarnessVariant(harness)
-	if err != nil {
-		return SlotSettings{}, err
-	}
-	return SlotSettings{
-		Role:        card.ID,
-		Harness:     variant.ID,
-		Model:       variant.Model,
-		Effort:      variant.effectiveEffort(),
-		SessionStem: variant.SessionStem,
-		Source:      variant.Source,
-	}, nil
-}
-
 // validateSlotSettings checks that a seat can start from these settings. The
 // effort is required, so staffing always states it.
 func validateSlotSettings(slot, harnessID, model, effort string) error {
@@ -155,8 +137,7 @@ func validateSlotSettings(slot, harnessID, model, effort string) error {
 }
 
 // RefuseRoleSettings refuses a model or effort on a new role card. Slots own
-// what their seats run; a role is only role text. Existing cards' model and
-// effort are still read for the role drag.
+// what their seats run; a role is only role text.
 func RefuseRoleSettings(model, effort string) error {
 	if strings.TrimSpace(model) == "" && strings.TrimSpace(effort) == "" {
 		return nil

@@ -1,6 +1,6 @@
 import { type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { rosterAnswer } from './roster-terms'
+import { assignedSettings, harnesses, rosterAnswer } from './roster-terms'
 const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/theme_default.json', import.meta.url), 'utf8'))
 
 const ports = { inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Result' }] }
@@ -89,12 +89,16 @@ const succeededEvidence: Record<string, unknown> = {
   '/api/runs/run_browser/evidence/artifacts/logs/worker.log': { artifact: { name: 'logs/worker.log', size: 40, modifiedAt: '2026-09-16T00:00:00Z', kind: 'text', text: evidenceText('worker started\nworker finished') } },
 }
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean } = {}) {
+type Role = { id: string; displayName: string; kind: string; summary?: string }
+
+export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[] } = {}) {
   const currentBoard = structuredClone(board)
   if (options.vanillaWorker) {
     // A slot with no role is a vanilla agent; this one runs a model the catalog names.
     currentBoard.formations[0].slots[1] = { id: 'worker', label: 'Worker 1', harness: 'claude-code', model: 'opus', effort: 'low', controller: false }
   }
+  if (options.emptyWorker) currentBoard.formations[0].slots[1] = { id: 'worker', label: 'Worker 1', controller: false }
+  const patches: Array<Record<string, unknown>> = []
   if (options.waitingHuman) {
     // The answered gate's routes lead somewhere, as admission requires (archon-o7p.10).
     currentBoard.ends = [{ id: 'end_done', title: 'Done', outcome: 'done' }, { id: 'end_rejected', title: 'Rejected', outcome: 'rejected' }]
@@ -141,6 +145,24 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path === '/api/missions/browser') {
       if (method === 'PATCH') {
         const body = route.request().postDataJSON()
+        patches.push(body)
+        if (body.assignSlot) {
+          const { formationId, slotId } = body.assignSlot
+          const formation = currentBoard.formations.find(item => item.id === formationId)
+          const index = formation?.slots.findIndex(slot => slot.id === slotId) ?? -1
+          if (!formation || index < 0) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
+          const assigned = assignedSettings(slotId, body.assignSlot)
+          if ('refused' in assigned) return route.fulfill({ status: 422, json: { success: false, error: { code: 'INVALID_SLOT_SETTINGS', message: assigned.refused } } })
+          const { id, label, controller } = formation.slots[index] as { id: string; label: string; controller: boolean }
+          formation.slots[index] = { id, label, controller, ...assigned.settings }
+          currentBoard.rev++
+          currentBoard.etag = `board-${currentBoard.rev}`
+          const harness = harnesses.find(entry => entry.id === assigned.settings.harness)
+          const model = assigned.settings.model
+          const warnings = model && harness && !harness.models.some(entry => entry.id === model)
+            ? [`slot "${label}" (${id}) model "${model}" is not in the ${harness.id} catalog; the harness decides`] : undefined
+          return respond({ mission: boardState(), ...(warnings ? { warnings } : {}) })
+        }
         const edit = body.wireConnection || body.rewireConnection
         if (edit) {
           const edges = currentBoard.connections.filter(edge => !(body.rewireConnection && edge.from === edit.from && edge.to === edit.previousTo))
@@ -249,6 +271,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path === '/api/agents') return respond(rosterAnswer([
       { id: 'claude', displayName: 'Claude controller', summary: 'Directs the workers.', harnessDefault: 'claude-code', assignable: true, liveness: 'live', tags: [], kind: 'controller' },
       { id: 'codex', displayName: 'Codex builder', summary: 'Builds the change.', harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' },
+      ...(options.roles || []).map(role => ({ ...role, summary: role.summary || '', assignable: true, liveness: 'offline', tags: [] })),
       // A large roster, as on a real host, makes long staffing menus.
       ...Array.from({ length: options.extraAgents || 0 }, (_, index) => ({ id: `agent-${index + 1}`, displayName: `Roster agent ${index + 1}`,
         harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' })),
@@ -281,5 +304,5 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path.endsWith('/seats')) { seatsFetches++; return respond({ runId: 'run_browser', available: true, seats }) }
     return route.fulfill({ status: 404, json: { success: false, error: { message: `Fixture has no ${path}` } } })
   })
-  return { writes, board: boardState, seatsFetches: () => seatsFetches, themeFetches: () => themeFetches }
+  return { writes, patches, board: boardState, seatsFetches: () => seatsFetches, themeFetches: () => themeFetches }
 }

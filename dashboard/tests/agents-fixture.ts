@@ -1,6 +1,6 @@
 import { type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { harnesses, rosterAnswer } from './roster-terms'
+import { assignedSettings, harnesses, rosterAnswer } from './roster-terms'
 const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/theme_default.json', import.meta.url), 'utf8'))
 
 // Three missions for the shared current mission and a judged mission, and two
@@ -74,6 +74,9 @@ export async function agentsFixture(page: Page) {
       harnessVariants: [{ id: 'hermes', sessionStem: 'spawner' }] },
   }
   const patches: unknown[] = []
+  const boardPatches: unknown[] = []
+  // Each test edits its own copy of the missions.
+  const missions = structuredClone(boards)
   const read = (card: Card) => ({ ...card, etag: `${card.id}-${card.rev}`, harnessVariants: card.harnessVariants.map(describe) })
 
   await page.route('**/api/**', async route => {
@@ -84,16 +87,30 @@ export async function agentsFixture(page: Page) {
     const respond = (data: unknown, etag = 'fixture-etag', status = 200) => route.fulfill({ status, json: { success: true, data }, headers: { ETag: etag } })
     const fail = (status: number, code: string, message: string) => route.fulfill({ status, json: { success: false, error: { code, message } } })
     if (path === '/api/theme') return route.fulfill({ json: defaultTheme })
-    if (path === '/api/missions') return respond({ missions: Object.values(boards) })
+    if (path === '/api/missions') return respond({ missions: Object.values(missions) })
     const boardMatch = path.match(/^\/api\/missions\/([^/]+)(\/.*)?$/)
     if (boardMatch) {
-      const board = boards[boardMatch[1] as keyof typeof boards]
+      const board = missions[boardMatch[1] as keyof typeof missions] as (typeof missions)[keyof typeof missions] & { formations: Array<{ id: string; slots: Array<Record<string, unknown> & { id: string; label: string; controller: boolean }> }> }
       if (!board) return fail(404, 'NOT_FOUND', 'Mission not found')
       const rest = boardMatch[2] || ''
       if (rest === '/layout') return respond({ layout: { missionId: board.id, missionRev: board.rev, etag: `${board.slug}-layout`, nodes: layouts[board.slug], edges: [] } })
       if (rest === '/notes') return respond({ notes: { schema: 2, missionId: board.id, rev: 1, mission: [], elements: [], updatedAt: '2026-09-29T00:00:00Z', etag: 'notes-1' } })
       if (rest === '/changes') return respond({ signal: { changed: false } })
       if (rest === '/validation') return respond({ missionRev: board.rev, missionEtag: board.etag, errors: [], warnings: [] })
+      if (rest === '' && method === 'PATCH') {
+        const body = route.request().postDataJSON()
+        boardPatches.push({ assignSlot: body.assignSlot })
+        const formation = body.assignSlot && board.formations.find((item: { id: string }) => item.id === body.assignSlot.formationId)
+        const index = formation ? formation.slots.findIndex((slot: { id: string }) => slot.id === body.assignSlot.slotId) : -1
+        if (!formation || index < 0) return fail(400, 'BAD_REQUEST', 'Unsupported fixture edit')
+        const assigned = assignedSettings(body.assignSlot.slotId, body.assignSlot)
+        if ('refused' in assigned) return fail(422, 'INVALID_SLOT_SETTINGS', assigned.refused)
+        const { id, label, controller } = formation.slots[index]
+        formation.slots[index] = { id, label, controller, ...assigned.settings }
+        board.rev++
+        board.etag = `${board.slug}-${board.rev}`
+        return respond({ mission: board }, board.etag)
+      }
       if (rest === '') return respond({ mission: board }, board.etag)
     }
     if (path === '/api/runs') return respond([])
@@ -136,5 +153,5 @@ export async function agentsFixture(page: Page) {
     }
     return fail(404, 'NOT_FOUND', `Fixture has no ${path}`)
   })
-  return { patches, cards }
+  return { patches, boardPatches, cards }
 }

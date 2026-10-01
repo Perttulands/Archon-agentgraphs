@@ -113,6 +113,13 @@ const layout = {
   edges: [],
 }
 
+/** The roster's harnesses and effort policy, as GET /api/agents serves them. */
+const HARNESSES = [
+  { id: 'claude-code', executable: 'claude', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium', models: [{ id: 'opus' }, { id: 'sonnet' }, { id: 'haiku' }, { id: 'fable' }] },
+  { id: 'openai-codex', executable: 'codex', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'medium', models: [{ id: 'gpt-6-astra', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] }] },
+]
+const EFFORT_POLICY = [{ effort: 'low', use: 'errands' }, { effort: 'medium', use: 'making things' }, { effort: 'xhigh', use: 'architecture and review' }, { effort: 'max', use: 'consequential reviews' }]
+
 const agents: AgentProjection[] = [
   { id: 'mason', displayName: 'Mason', harnessDefault: 'openai-codex', liveness: 'live', assignable: true, unbound: false },
   { id: 'hazel', displayName: 'Hazel', harnessDefault: 'claude-code', liveness: 'live', assignable: true, unbound: false },
@@ -448,10 +455,11 @@ function installFetchMock(options: {
       }
       if (!url.endsWith('/layout') && body.assignSlot) {
         const { formationId, slotId, agentId, harness, model, effort } = body.assignSlot as { formationId: string; slotId: string; agentId: string; harness: string; model?: string; effort?: string }
-        // Mirrors the store's role drag: a patch naming only a role (and perhaps
-        // a harness) takes that role card's settings, as served above.
-        const roleDrag = Boolean(agentId) && model === undefined && effort === undefined
-        const settings = roleDrag ? { model: `${agentId}-model`, effort: 'medium' } : { model: model || undefined, effort: effort || undefined }
+        // Mirrors the store: a staffing states its harness and effort in full, or empties the slot.
+        if ((agentId || harness || model) && !effort) {
+          return Promise.resolve({ ok: false, status: 422, headers: { get: () => null }, json: () => Promise.resolve({ success: false, error: { code: 'INVALID_SLOT_SETTINGS', message: `slot "${slotId}" needs an effort` } }), text: () => Promise.resolve('') })
+        }
+        const settings = { model: model || undefined, effort: effort || undefined }
         board = {
           ...board,
           rev: board.rev + 1,
@@ -602,7 +610,7 @@ function installFetchMock(options: {
         : availableBoards.find(item => url.includes(`/missions/${item.slug}`)) || board
       return respond({ mission: requested }, requested.etag)
     }
-    if (url === '/api/agents') return respond({ agents: availableAgents })
+    if (url === '/api/agents') return respond({ agents: availableAgents, harnesses: HARNESSES, effortPolicy: EFFORT_POLICY })
     return respond({})
   }) as unknown as typeof fetch
   return patches
@@ -626,6 +634,11 @@ function clickCard(target: HTMLElement) {
   const pointerId = clickPointer++
   fireEvent.pointerDown(target, { button: 0, pointerId, clientX: 300, clientY: 200 })
   fireEvent.pointerUp(window, { pointerId, clientX: 300, clientY: 200 })
+}
+
+/** Each slot's staffing sentence in a node window, as it reads. */
+function sentencesIn(region: HTMLElement): string[] {
+  return Array.from(region.querySelectorAll('.nslot-words')).map(words => words.textContent || '')
 }
 
 async function openNodeWindow(target: HTMLElement, name: string) {
@@ -730,7 +743,7 @@ describe('FormationsCockpit reference parity', () => {
   it('explains the canvas notation in a legend and staffing in slot tooltips', async () => {
     await renderCockpit()
     expect(screen.getByTestId('slot-fmn_frame-slot_lead')).toHaveAttribute('title', 'Lead (controller) is Mason on Codex · mason-model · medium.')
-    expect(screen.getByTestId('slot-fmn_frame-slot_worker')).toHaveAttribute('title', 'Worker: open slot. Drag a role here to staff it.')
+    expect(screen.getByTestId('slot-fmn_frame-slot_worker')).toHaveAttribute('title', 'Worker: open slot. Click to staff it, or drag a role here.')
 
     const toggle = screen.getByRole('button', { name: 'Legend' })
     fireEvent.click(toggle)
@@ -2001,34 +2014,37 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
     const staffing = within(frame).getByRole('region', { name: 'Staffing' })
-    expect(await within(staffing).findByText('Worker is vanilla on Claude Code · opus · low.')).toBeInTheDocument()
-    expect(within(staffing).getByRole('combobox', { name: 'Persona for Worker' })).toHaveDisplayValue('No role (vanilla)')
-    expect(within(staffing).getByText('Lead (controller) is Mason on Codex · gpt-6-astra · xhigh.')).toBeInTheDocument()
+    await waitFor(() => expect(sentencesIn(staffing)).toEqual(['Lead (controller) is Mason on Codex · gpt-6-astra · xhigh.', 'Worker is vanilla on Claude Code · opus · low.']))
 
-    fireEvent.change(within(staffing).getByRole('combobox', { name: 'Persona for Lead' }), { target: { value: 'hazel' } })
-    await waitFor(() => expect(patches.find(patch => patch.body.assignSlot)).toBeTruthy())
+    // The role word opens the role list. Hazel lands by the policy (a lead makes things, so medium),
+    // and undo restores the slot's own model and effort exactly.
+    fireEvent.click(within(staffing).getByRole('button', { name: 'Change the role of Lead: Mason' }))
+    const sentence = await screen.findByRole('dialog', { name: 'Staff Lead' })
+    fireEvent.click(within(sentence).getByText('Hazel'))
+    await waitFor(() => expect(patches.find(patch => patch.body.assignSlot)?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: 'hazel', harness: 'openai-codex', model: 'gpt-6-astra', effort: 'medium' }))
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => {
       expect(patches.filter(patch => patch.body.assignSlot).slice(-1)[0]?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: 'mason', harness: 'openai-codex', model: 'gpt-6-astra', effort: 'xhigh' })
     })
   })
 
-  it('states staffing in words and restaffs a slot from its window with undo', async () => {
+  it('states staffing in words and staffs an open slot from its window with undo', async () => {
     await renderCockpit()
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
     const staffing = within(frame).getByRole('region', { name: 'Staffing' })
-    expect(await within(staffing).findByText('Lead (controller) is Mason on Codex · mason-model · medium.')).toBeInTheDocument()
-    expect(within(staffing).getByText('Worker is not staffed.')).toBeInTheDocument()
+    await waitFor(() => expect(sentencesIn(staffing)).toEqual(['Lead (controller) is Mason on Codex · mason-model · medium.', 'Worker is not staffed. Staff it']))
 
-    fireEvent.change(within(staffing).getByRole('combobox', { name: 'Persona for Lead' }), { target: { value: 'hazel' } })
+    fireEvent.click(within(staffing).getByRole('button', { name: 'Staff Worker' }))
+    const sentence = await screen.findByRole('dialog', { name: 'Staff Worker' })
+    fireEvent.keyDown(sentence, { key: 'Enter' })
     await waitFor(() => {
-      expect(patches.find(patch => patch.body.assignSlot)?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: 'hazel', harness: 'claude-code' })
+      expect(patches.find(patch => patch.body.assignSlot)?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_worker', agentId: '', harness: 'claude-code', model: 'opus', effort: 'low' })
     })
-    expect(await within(staffing).findByText('Lead (controller) is Hazel on Claude Code · hazel-model · medium.')).toBeInTheDocument()
+    await waitFor(() => expect(sentencesIn(staffing)[1]).toBe('Worker is vanilla on Claude Code · opus · low.'))
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => {
-      expect(patches.filter(patch => patch.body.assignSlot).slice(-1)[0]?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: 'mason', harness: 'openai-codex', model: 'mason-model', effort: 'medium' })
+      expect(patches.filter(patch => patch.body.assignSlot).slice(-1)[0]?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_worker', agentId: '', harness: '', model: '', effort: '' })
     })
   })
 
@@ -2108,17 +2124,17 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => expect(screen.queryByRole('menu', { name: 'New' })).toBeNull())
   })
 
-  it('unassigns a staffed slot from its context menu', async () => {
+  it('empties a staffed slot on purpose from its context menu', async () => {
     await renderCockpit()
     fireEvent.contextMenu(screen.getByTestId('slot-fmn_frame-slot_lead'))
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Unassign mason' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Empty Lead' }))
     await waitFor(() => {
       const assignment = patches.map(patch => patch.body.assignSlot as { slotId?: string; agentId?: string } | undefined).find(Boolean)
-      expect(assignment).toEqual(expect.objectContaining({ slotId: 'slot_lead', agentId: '' }))
+      expect(assignment).toEqual({ formationId: 'fmn_frame', slotId: 'slot_lead', agentId: '', harness: '', model: '', effort: '' })
     })
   })
 
-  it('saves nothing when a staffed slot is clicked or dropped back on itself', async () => {
+  it('opens the sentence on a click, saves nothing on a drop back on itself, and moves the staffing on a drop on another slot', async () => {
     await renderCockpit()
     const lead = screen.getByTestId('slot-fmn_frame-slot_lead')
     const worker = screen.getByTestId('slot-fmn_frame-slot_worker')
@@ -2127,6 +2143,10 @@ describe('FormationsCockpit reference parity', () => {
     try {
       fireEvent.pointerDown(lead, { button: 0, pointerId: 7, clientX: 400, clientY: 200 })
       fireEvent.pointerUp(window, { pointerId: 7, clientX: 401, clientY: 201 })
+      expect(await screen.findByRole('dialog', { name: 'Staff Lead' })).toBeInTheDocument()
+      fireEvent.keyDown(screen.getByRole('dialog', { name: 'Staff Lead' }), { key: 'Escape' })
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Staff Lead' })).toBeNull())
+
       fireEvent.pointerDown(lead, { button: 0, pointerId: 8, clientX: 400, clientY: 200 })
       fireEvent.pointerMove(window, { pointerId: 8, clientX: 460, clientY: 260 })
       fireEvent.pointerUp(window, { pointerId: 8, clientX: 400, clientY: 200 })
@@ -2140,7 +2160,8 @@ describe('FormationsCockpit reference parity', () => {
       fireEvent.pointerUp(window, { pointerId: 9, clientX: 460, clientY: 260 })
       await waitFor(() => {
         expect(patches.map(patch => patch.body.assignSlot).filter(Boolean)).toEqual([
-          { formationId: 'fmn_frame', slotId: 'slot_worker', agentId: 'mason', harness: 'openai-codex' },
+          { formationId: 'fmn_frame', slotId: 'slot_worker', agentId: 'mason', harness: 'openai-codex', model: 'mason-model', effort: 'medium' },
+          { formationId: 'fmn_frame', slotId: 'slot_lead', agentId: '', harness: '', model: '', effort: '' },
         ])
       })
     } finally {

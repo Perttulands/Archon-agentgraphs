@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import type { ReactNode } from 'react'
 import {
   ApiRequestError,
@@ -24,14 +24,19 @@ import {
   rosterCountLabel,
 } from './formationsCockpitVisuals'
 import { slotStaffed, slotTitle, staffingSentence } from '../nodeWindow/staffing'
-import { SlotCaption, SlotFace } from '../staffing/SlotFace'
-import { captionText, modelWords, offCatalog, roleNamer, staffingOf } from '../staffing/staffingModel'
+import { harnessName } from './harnessIcons'
+import { SlotCaption, SlotFace, type Part } from '../staffing/SlotFace'
+import { StaffingLayer } from '../staffing/StaffingLayer'
+import { staff, type StaffingHost } from '../staffing/staffingActions'
+import { captionText, modelWords, offCatalog, roleNamer, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing } from '../staffing/staffingModel'
+import { StaffingStore, slotKey, useStaffingVersion, type SlotRef } from '../staffing/staffingStore'
 import { GateKindChips } from './GateEditorDialog'
 import PersonaEditorDialog from './PersonaEditorDialog'
 import { boardsRunHref, useMissionRun, type MissionRunState } from './useMissionRun'
 import type {
   AgentProjection as FormationAgentProjection,
   BoardDocument,
+  EffortPolicyEntry,
   BoardSummary,
   FormationNode,
   FormationSlot,
@@ -253,6 +258,7 @@ export function agentStatus(agent: RosterAgent, deployedSlots: number, details?:
 export default function AgentsView() {
   const [agents, setAgents] = useState<RosterAgent[]>([])
   const [harnesses, setHarnesses] = useState<LaunchableHarness[]>([])
+  const [effortPolicy, setEffortPolicy] = useState<EffortPolicyEntry[]>([])
   const [boards, setBoards] = useState<BoardSummary[]>([])
   const [selectedSlug, setSelectedSlug] = useState('')
   const [board, setBoard] = useState<BoardDocument | null>(null)
@@ -366,6 +372,7 @@ export default function AgentsView() {
     const roster = await fetchAgentRoster()
     setAgents(roster.agents as RosterAgent[])
     setHarnesses(roster.harnesses)
+    setEffortPolicy(roster.effortPolicy)
   }, [])
 
   const loadBoards = useCallback(async () => {
@@ -418,6 +425,7 @@ export default function AgentsView() {
         if (cancelled) return
         setAgents(roster.agents as RosterAgent[])
         setHarnesses(roster.harnesses)
+        setEffortPolicy(roster.effortPolicy)
         setBoards(nextBoards)
         // Boards and Agents share one current board: the link's, else the last used here.
         const { slug, missingLinked } = chooseCurrentBoard(nextBoards.map(next => next.slug), window.location.search)
@@ -470,64 +478,48 @@ export default function AgentsView() {
     }
   }, [details, loadAgentDetail])
 
-  const inspectSlot = useCallback(async (formation: FormationNode, slot: FormationSlot) => {
+  const inspectSlot = useCallback((formation: FormationNode, slot: FormationSlot) => {
     setSelection({ kind: 'slot', formationId: formation.id, slotId: slot.id })
-    if (!slot.harness) {
-      setError('')
-      return
-    }
-    const detailAgents = agents.filter(agent => !agent.unbound && agent.assignable)
-    const settled = await Promise.allSettled(detailAgents.map(agent => loadAgentDetail(agent.id, Boolean(details[agent.id]?.error))))
-    setDetails(current => {
-      const next = { ...current }
-      settled.forEach((result, index) => {
-        if (result.status === 'rejected') {
-          next[detailAgents[index].id] = { etag: '', error: 'failed detail load' }
-        }
-      })
-      return next
-    })
     setError('')
-  }, [agents, details, loadAgentDetail])
+  }, [])
 
-  const updateBoardWithPatch = useCallback(async (patch: Record<string, unknown>) => {
-    if (!board) return
+  // Staffing here is the canvas's sentence (archon-o7p.17): each write states the slot in full.
+  const staffingStore = useMemo(() => new StaffingStore(), [])
+  const boardRef = useRef(board)
+  boardRef.current = board
+  const savedOf = useCallback((ref: Pick<SlotRef, 'formationId' | 'slotId'>): Staffing | null => {
+    const found = findSlot(boardRef.current, ref.formationId, ref.slotId)
+    return found ? staffingOf(found.slot) : null
+  }, [])
+  const saveStaffing = useCallback(async (ref: SlotRef, next: Staffing | null): Promise<string | null> => {
+    const current = boardRef.current
+    if (!current) return 'No mission is open.'
+    if (sameStaffing(savedOf(ref), next)) return null
     try {
-      const result = await patchBoardDocument(board.slug, board.etag, board.rev, patch)
+      const result = await patchBoardDocument(current.slug, current.etag, current.rev, { assignSlot: { formationId: ref.formationId, slotId: ref.slotId, ...slotSettings(next) } })
       setBoard(result.board)
       if (result.layout) setLayout(result.layout)
       setError('')
       await loadAgents()
+      return null
     } catch (err) {
-      if (err instanceof ApiRequestError && (err.status === 409 || err.status === 428)) {
-        setError('The mission changed; reload and retry')
-        return
-      }
-      setError(err instanceof Error ? err.message : 'Mission update failed')
+      if (err instanceof ApiRequestError && (err.status === 409 || err.status === 428)) return 'The mission changed; reload and retry.'
+      return err instanceof Error ? err.message : 'Mission update failed'
     }
-  }, [board, loadAgents])
-
-  const assignSlot = useCallback(async (formation: FormationNode, slot: FormationSlot, agent: RosterAgent, harness: string) => {
-    await updateBoardWithPatch({
-      assignSlot: {
-        formationId: formation.id,
-        slotId: slot.id,
-        agentId: agent.id,
-        harness,
-      },
-    })
-  }, [updateBoardWithPatch])
-
-  const unassignSlot = useCallback(async (formation: FormationNode, slot: FormationSlot) => {
-    await updateBoardWithPatch({
-      assignSlot: {
-        formationId: formation.id,
-        slotId: slot.id,
-        agentId: '',
-        harness: '',
-      },
-    })
-  }, [updateBoardWithPatch])
+  }, [loadAgents, savedOf])
+  const staffingHost = useMemo<StaffingHost>(() => ({
+    catalog: { harnesses, policy: effortPolicy, roles: rolesOf(agents as FormationAgentProjection[]) },
+    save: saveStaffing,
+  }), [agents, effortPolicy, harnesses, saveStaffing])
+  const slotRefOf = (formation: FormationNode, slot: FormationSlot): SlotRef => ({
+    key: slotKey(formation.id, slot.id), formationId: formation.id, slotId: slot.id, label: slot.label || slot.id, step: formation.title,
+  })
+  const openStaffing = (formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => {
+    staffingStore.setOpen({ ref: slotRefOf(formation, slot), part, anchor })
+  }
+  const emptySlot = (formation: FormationNode, slot: FormationSlot) => {
+    void staff(staffingStore, staffingHost, slotRefOf(formation, slot), staffingOf(slot), null)
+  }
 
   const createPersona = useCallback(async (event: FormEvent) => {
     event.preventDefault()
@@ -771,8 +763,8 @@ export default function AgentsView() {
                     formation={board?.formations.find(formation => formation.id === item.id) || null}
                     via={reachableViaByFormation.get(item.id)}
                     viaGateTitle={(board?.gates || []).find(gate => gate.id === item.via?.gateId)?.title || item.via?.gateId || ''}
-                    agents={agents}
-                    harnesses={harnesses}
+                    store={staffingStore}
+                    host={staffingHost}
                     nodeState={nodeStates.get(item.id) || ''}
                     selectedSlot={selectedSlot}
                     onSlotClick={inspectSlot}
@@ -794,8 +786,8 @@ export default function AgentsView() {
               onNoteDraft={setNoteDraft}
               onSaveNote={saveNote}
               onSaveVariant={saveVariantSettings}
-              onAssign={assignSlot}
-              onUnassign={unassignSlot}
+              onStaff={openStaffing}
+              onEmpty={emptySlot}
               onCreateFromUnbound={createFromUnbound}
               onEditPersona={(agent, trigger) => setEditingPersona({ agent, trigger })}
               onClose={() => setSelection(null)}
@@ -816,6 +808,8 @@ export default function AgentsView() {
           }}
         />
       )}
+
+      <StaffingLayer store={staffingStore} host={staffingHost} savedOf={savedOf} />
 
       {createOpen && (
         <CreatePersonaPopover
@@ -940,8 +934,8 @@ function FormationStaffingCard({
   formation,
   via,
   viaGateTitle,
-  agents,
-  harnesses,
+  store,
+  host,
   nodeState,
   selectedSlot,
   onSlotClick,
@@ -949,8 +943,8 @@ function FormationStaffingCard({
   formation: FormationNode | null
   via?: BranchProvenance
   viaGateTitle: string
-  agents: RosterAgent[]
-  harnesses: LaunchableHarness[]
+  store: StaffingStore
+  host: StaffingHost
   nodeState: string
   selectedSlot: { formation: FormationNode; slot: FormationSlot } | null
   onSlotClick: (formation: FormationNode, slot: FormationSlot) => void
@@ -980,8 +974,8 @@ function FormationStaffingCard({
               formation={formation}
               slot={slot}
               badge={badge}
-              agents={agents}
-              harnesses={harnesses}
+              store={store}
+              host={host}
               nodeState={nodeState}
               selected={selectedSlot?.formation.id === formation.id && selectedSlot.slot.id === slot.id}
               onClick={onSlotClick}
@@ -997,8 +991,8 @@ function StaffingSeat({
   formation,
   slot,
   badge,
-  agents,
-  harnesses,
+  store,
+  host,
   nodeState,
   selected,
   onClick,
@@ -1006,14 +1000,17 @@ function StaffingSeat({
   formation: FormationNode
   slot: FormationSlot
   badge?: number
-  agents: RosterAgent[]
-  harnesses: LaunchableHarness[]
+  store: StaffingStore
+  host: StaffingHost
   nodeState: string
   selected: boolean
   onClick: (formation: FormationNode, slot: FormationSlot) => void
 }) {
-  const staffing = staffingOf(slot)
-  const roleName = roleNamer(agents as FormationAgentProjection[])
+  useStaffingVersion(store)
+  const key = slotKey(formation.id, slot.id)
+  const saved = staffingOf(slot)
+  const staffing = store.shown(key, saved)
+  const roleName = (id: string) => host.catalog.roles.find(role => role.id === id)?.name || id
   const classes = [
     'slot',
     staffing ? 'filled' : 'empty',
@@ -1028,12 +1025,13 @@ function StaffingSeat({
       className={classes.filter(Boolean).join(' ')}
       aria-label={`Inspect ${slotTitle(slot)}: ${staffing ? `${staffing.role ? roleName(staffing.role) : 'vanilla'} on ${captionText(staffing)}` : 'not staffed'}`}
       aria-pressed={selected}
+      data-slot-key={key}
       data-testid={`agents-slot-${formation.id}-${slot.id}`}
       onClick={() => onClick(formation, slot)}
     >
-      <SlotFace label={slot.label} badge={badge} staffing={staffing}
-        marks={staffing && offCatalog({ harnesses, roles: [], policy: [] }, staffing) ? <span className="slot-warn">model not in catalog</span> : null}
-        caption={<SlotCaption shown={staffing} saved={staffing} drafting={false} roleName={roleName} />} />
+      <SlotFace label={slot.label} badge={badge} staffing={staffing} landed={store.landed(key)}
+        marks={staffing && offCatalog(host.catalog, staffing) ? <span className="slot-warn">model not in catalog</span> : null}
+        caption={<SlotCaption shown={staffing} saved={store.current(key, saved)} drafting={store.drafting(key)} landed={store.landed(key)} roleName={roleName} />} />
     </button>
   )
 }
@@ -1094,8 +1092,8 @@ function Inspector({
   onNoteDraft,
   onSaveNote,
   onSaveVariant,
-  onAssign,
-  onUnassign,
+  onStaff,
+  onEmpty,
   onCreateFromUnbound,
   onEditPersona,
   onClose,
@@ -1109,8 +1107,8 @@ function Inspector({
   onNoteDraft: (value: string) => void
   onSaveNote: (agentId: string) => void
   onSaveVariant: (agentId: string, patch: VariantSettingsPatch) => Promise<string>
-  onAssign: (formation: FormationNode, slot: FormationSlot, agent: RosterAgent, harness: string) => void
-  onUnassign: (formation: FormationNode, slot: FormationSlot) => void
+  onStaff: (formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => void
+  onEmpty: (formation: FormationNode, slot: FormationSlot) => void
   onCreateFromUnbound: (agent: RosterAgent) => void
   onEditPersona: (agent: RosterAgent, trigger: HTMLElement) => void
   onClose: () => void
@@ -1220,11 +1218,10 @@ function Inspector({
     return (
       <SlotInspector
         agents={agents}
-        details={details}
         formation={selectedSlot.formation}
         slot={selectedSlot.slot}
-        onAssign={onAssign}
-        onUnassign={onUnassign}
+        onStaff={onStaff}
+        onEmpty={onEmpty}
         onClose={onClose}
       />
     )
@@ -1292,29 +1289,41 @@ function VariantEditor({ agentId, variant, isDefault, fallbackStem, onSave }: {
   )
 }
 
+/** A slot's staffing as its sentence; each word opens the staffing window beside the inspector (archon-o7p.17). */
 function SlotInspector({
   agents,
-  details,
   formation,
   slot,
-  onAssign,
-  onUnassign,
+  onStaff,
+  onEmpty,
   onClose,
 }: {
   agents: RosterAgent[]
-  details: Record<string, CachedPersona>
   formation: FormationNode
   slot: FormationSlot
-  onAssign: (formation: FormationNode, slot: FormationSlot, agent: RosterAgent, harness: string) => void
-  onUnassign: (formation: FormationNode, slot: FormationSlot) => void
+  onStaff: (formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => void
+  onEmpty: (formation: FormationNode, slot: FormationSlot) => void
   onClose: () => void
 }) {
   const staffing = staffingOf(slot)
   const roleName = roleNamer(agents as FormationAgentProjection[])
+  const open = (part: Part | null) => (event: ReactMouseEvent<HTMLElement>) => onStaff(formation, slot, part, event.currentTarget.closest('.agx-staffing-words') || event.currentTarget)
+  const word = (part: Part, text: string) => (
+    <button type="button" className={`nslot-word${part === 'effort' ? ' effort' : ''}`} aria-label={`Change the ${part} of ${slot.label}: ${text}`} onClick={open(part)}>{text}</button>
+  )
   return (
     <InspectorPanel title={slot.label} meta={`slot · ${formation.title}`} onClose={onClose}>
       <section className="note-section">
-        <p className="agx-staffing-words" data-testid="slot-staffing-words">{staffingSentence(slot, roleName)}</p>
+        {staffing ? (
+          <p className="agx-staffing-words" data-testid="slot-staffing-words">
+            {slotTitle(slot)} is {word('role', staffing.role ? roleName(staffing.role) : 'vanilla')} on{' '}
+            {word('harness', harnessName(staffing.harness) || staffing.harness || 'no harness')} · {word('model', modelWords(staffing.model))} · {word('effort', staffing.effort || 'no effort')}.
+          </p>
+        ) : (
+          <p className="agx-staffing-words" data-testid="slot-staffing-words">
+            {staffingSentence(slot, roleName)} <button type="button" className="nslot-word" aria-label={`Staff ${slot.label}`} onClick={open(null)}>Staff it</button>
+          </p>
+        )}
         <KeyValues rows={[
           ['Controller', slot.controller ? 'yes' : 'no'],
           ['Role', staffing ? (staffing.role ? roleName(staffing.role) : 'vanilla') : ''],
@@ -1324,55 +1333,14 @@ function SlotInspector({
         ]} />
         {slotStaffed(slot) && (
           <div className="pop-actions">
-            <button className="retire" type="button" onClick={() => onUnassign(formation, slot)}>
+            <button className="retire" type="button" onClick={() => onEmpty(formation, slot)}>
               Empty {slot.label}
             </button>
           </div>
         )}
       </section>
-      <section className="note-section">
-        <h3>Eligible agents</h3>
-        <div className="agx-candidates">
-          {agents.map(agent => {
-            const eligibility = slotEligibility(agent, slot, details[agent.id])
-            const name = agent.displayName || agent.id
-            return (
-              <button
-                key={agent.id}
-                type="button"
-                className="agx-candidate"
-                disabled={!eligibility.eligible}
-                aria-label={`Assign ${name}`}
-                onClick={() => eligibility.eligible && onAssign(formation, slot, agent, eligibility.harness)}
-              >
-                <span className="av">{initials(name)}</span>
-                <span className="ri">
-                  <span className="n">{name}</span>
-                  <span className="r">{eligibility.eligible ? eligibility.harness : eligibility.reason}</span>
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      </section>
     </InspectorPanel>
   )
-}
-
-function slotEligibility(agent: RosterAgent, slot: FormationSlot, detail?: CachedPersona): { eligible: true; harness: string } | { eligible: false; reason: string } {
-  if (agent.unbound) return { eligible: false, reason: 'unbound session (no persona)' }
-  if (detail?.error) return { eligible: false, reason: 'failed detail load' }
-  if (detail?.card?.status === 'retired') return { eligible: false, reason: 'retired persona' }
-  if (!agent.assignable) return { eligible: false, reason: 'not assignable' }
-  const requiredHarness = slot.harness || ''
-  if (requiredHarness) {
-    if (!detail) return { eligible: false, reason: 'loading detail' }
-    if (!detail.card) return { eligible: false, reason: 'failed detail load' }
-    const hasHarness = detail.card.harnessVariants.some(variant => variant.id === requiredHarness)
-    if (!hasHarness) return { eligible: false, reason: `missing harness variant ${requiredHarness}` }
-    return { eligible: true, harness: requiredHarness }
-  }
-  return { eligible: true, harness: detail?.card?.harnessDefault || agent.harnessDefault || 'claude-code' }
 }
 
 /* The mission's run, read-only. Start, answer, resume and stop happen on Boards. */

@@ -1145,7 +1145,6 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Harness:     assign.Harness,
 			Model:       assign.Model,
 			Effort:      assign.Effort,
-			Personas:    h.personas,
 			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, assign.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),

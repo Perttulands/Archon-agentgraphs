@@ -22,8 +22,3 @@ export function staffingSentence(slot: FormationSlot, roleName: (id: string) => 
   return `${slotTitle(slot)} is ${staffing.role ? roleName(staffing.role) : 'vanilla'} on ${captionText(staffing)}.`
 }
 
-/** A slot in words, for its tooltip: what it runs, or how to staff an open slot. */
-export function slotTooltip(slot: FormationSlot, roleName: (id: string) => string): string {
-  if (!slotStaffed(slot)) return `${slot.label}: open slot. Drag a role here to staff it.`
-  return staffingSentence(slot, roleName)
-}

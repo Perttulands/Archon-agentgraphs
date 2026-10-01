@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
@@ -128,3 +129,29 @@ func mustJSON(value string) json.RawMessage {
 }
 
 func mustJSONString(value string) string { return string(mustJSON(value)) }
+
+// The roster carries each role's one-line summary, which the staffing role
+// list shows beside the role.
+func TestAgentsRosterCarriesRoleSummaries(t *testing.T) {
+	agentsDir := t.TempDir()
+	writeAgentFixture(t, agentsDir, "critic", strings.Replace(minimalAgentFixture("critic", "reviewer", nil), "kind = \"reviewer\"\n", "kind = \"reviewer\"\nsummary = \"Reviews against acceptance.\"\n", 1))
+	rec := httptest.NewRecorder()
+	NewAgentsHandler(agentsDir, nil).ListAgents(rec, httptest.NewRequest(http.MethodGet, "/api/agents", nil))
+	var body struct {
+		Data struct {
+			Agents []formations.AgentProjection `json:"agents"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, agent := range body.Data.Agents {
+		if agent.ID == "critic" {
+			if agent.Summary != "Reviews against acceptance." {
+				t.Fatalf("critic summary = %q", agent.Summary)
+			}
+			return
+		}
+	}
+	t.Fatalf("roster has no critic: %+v", body.Data.Agents)
+}

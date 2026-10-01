@@ -222,6 +222,7 @@ type AgentProjection struct {
 	ID             string   `json:"id"`
 	DisplayName    string   `json:"displayName,omitempty"`
 	Kind           string   `json:"kind,omitempty"`
+	Summary        string   `json:"summary,omitempty"`
 	Tags           []string `json:"tags,omitempty"`
 	HarnessDefault string   `json:"harnessDefault,omitempty"`
 	Liveness       string   `json:"liveness"`
@@ -640,6 +641,7 @@ func projectCard(card PersonaCard, live []LiveAgentSession) AgentProjection {
 		ID:             card.ID,
 		DisplayName:    card.DisplayName,
 		Kind:           card.Kind,
+		Summary:        card.Summary,
 		Tags:           append([]string{}, card.Tags...),
 		HarnessDefault: card.HarnessDefault,
 		Liveness:       AgentLivenessOffline,

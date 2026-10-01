@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { formationTypeChoices } from '../components/FormationTypeChip'
 import { END_OUTCOMES, defaultEndTitle, endOutcomeMeaning } from '../components/endNode'
 import { GateKindChips, GateKindsFields, draftFromGate, type GateDraft } from '../components/GateEditorDialog'
@@ -17,7 +17,6 @@ import type {
   FormationType,
   GateNode,
   MissionNode,
-  PersonaCard,
 } from '../components/formationsTypes'
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { ProducedFiles } from '../files/ProducedFiles'
@@ -32,9 +31,10 @@ import { HumanChannelField } from '../humanChannel/HumanChannelField'
 import { humanChannelField, humanChannelOf } from '../humanChannel/humanChannel'
 import { buildFlow } from '../flow/flowModel'
 import { judgeChain, nodeRoutes, nodeTitle } from './boardRoutes'
-import { slotStaffed, staffingSentence } from './staffing'
-import { roleNamer } from '../staffing/staffingModel'
-import { usePersonaCards } from './usePersonaCards'
+import { slotTitle, staffingSentence } from './staffing'
+import { harnessName } from '../components/harnessIcons'
+import type { Part } from '../staffing/SlotFace'
+import { modelWords, roleNamer, staffingOf } from '../staffing/staffingModel'
 import './nodeWindow.css'
 
 /**
@@ -50,7 +50,8 @@ export interface NodeWindowOps {
   setBrief: (formationId: string, brief: FormationBrief) => Promise<boolean>
   setExecution: (formationId: string, timeoutSeconds: number) => Promise<boolean>
   changeType: (formation: FormationNode, type: FormationType, keepSlotId?: string) => void
-  assignSlot: (formation: FormationNode, slot: FormationSlot, agentId: string, harness: string) => void
+  /** Opens the slot's staffing sentence beside the words that were clicked; a word opens only its own list. */
+  staffSlot: (formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => void
   updateGate: (gate: GateNode, draft: GateDraft) => Promise<boolean>
   /** Sets an End node's outcome: done, or rejected, which fails the run. */
   setEndOutcome: (end: EndNode, outcome: EndOutcome) => Promise<boolean>
@@ -203,7 +204,6 @@ function FormationFields({ formation, agents, ops }: { formation: FormationNode;
     goal: brief.goal || '', beadId: brief.beadId || '', files: brief.files || [], links: brief.links || [], ...change,
   })
   const choices = formationTypeChoices(formation)
-  const cards = usePersonaCards(formation.slots.map(slot => slot.agentId || ''))
   return (
     <>
       <div className="nfield">
@@ -231,7 +231,7 @@ function FormationFields({ formation, agents, ops }: { formation: FormationNode;
       <section className="nwin-section" aria-label="Staffing">
         <h3>Staffing</h3>
         {formation.slots.length ? formation.slots.map(slot => (
-          <SlotStaffing key={slot.id} formation={formation} slot={slot} agents={agents} card={slot.agentId ? cards.get(slot.agentId) : undefined} ops={ops} />
+          <SlotStaffing key={slot.id} formation={formation} slot={slot} agents={agents} ops={ops} />
         )) : <p className="nwin-empty">This formation has no slots.</p>}
       </section>
     </>
@@ -268,37 +268,38 @@ function FileList({ files, context, label }: { files: string[]; context: string;
   )
 }
 
-function SlotStaffing({ formation, slot, agents, card, ops }: {
+/**
+ * A slot's staffing as the sentence it is: each word opens the staffing window
+ * beside the words, on that word's list (archon-o7p.17).
+ */
+function SlotStaffing({ formation, slot, agents, ops }: {
   formation: FormationNode
   slot: FormationSlot
   agents: AgentProjection[]
-  card: PersonaCard | undefined
   ops: NodeWindowOps
 }) {
-  const agent = agents.find(candidate => candidate.id === slot.agentId)
-  const choices = agents.filter(candidate => candidate.assignable || candidate.id === slot.agentId)
-  const harnesses = card?.harnessVariants.map(variant => variant.id) || []
-  const slotName = slot.label || slot.id
+  const staffing = staffingOf(slot)
+  const words = staffingSentence(slot, roleNamer(agents))
+  const open = (part: Part | null) => (event: ReactMouseEvent<HTMLElement>) => {
+    const sentence = event.currentTarget.closest('.nslot-words') || event.currentTarget
+    ops.staffSlot(formation, slot, part, sentence)
+  }
+  const word = (part: Part, text: string) => (
+    <button type="button" className={`nslot-word${part === 'effort' ? ' effort' : ''}`} aria-label={`Change the ${part} of ${slot.label || slot.id}: ${text}`} onClick={open(part)}>{text}</button>
+  )
+  if (!staffing) {
+    return (
+      <div className="nslot">
+        <p className="nslot-words">{words} <button type="button" className="nslot-word" aria-label={`Staff ${slot.label || slot.id}`} onClick={open(null)}>Staff it</button></p>
+      </div>
+    )
+  }
   return (
     <div className="nslot">
-      <p className="nslot-words">{staffingSentence(slot, roleNamer(agents))}</p>
-      <div className="nslot-controls">
-        <select aria-label={`Persona for ${slotName}`} value={slot.agentId || ''}
-          onChange={event => {
-            const chosen = agents.find(candidate => candidate.id === event.target.value)
-            ops.assignSlot(formation, slot, chosen?.id || '', chosen?.harnessDefault || '')
-          }}>
-          <option value="">{slotStaffed(slot) && !slot.agentId ? 'No role (vanilla)' : 'Not staffed'}</option>
-          {slot.agentId && !agent ? <option value={slot.agentId}>{slot.agentId}</option> : null}
-          {choices.map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.displayName || candidate.id}</option>)}
-        </select>
-        {slot.agentId && harnesses.length > 1 ? (
-          <select aria-label={`Harness for ${slotName}`} value={slot.harness || card?.harnessDefault || ''}
-            onChange={event => ops.assignSlot(formation, slot, slot.agentId as string, event.target.value)}>
-            {harnesses.map(harness => <option key={harness} value={harness}>{harness}</option>)}
-          </select>
-        ) : null}
-      </div>
+      <p className="nslot-words">
+        {slotTitle(slot)} is {word('role', staffing.role ? roleNamer(agents)(staffing.role) : 'vanilla')} on{' '}
+        {word('harness', harnessName(staffing.harness) || staffing.harness || 'no harness')} · {word('model', modelWords(staffing.model))} · {word('effort', staffing.effort || 'no effort')}.
+      </p>
     </div>
   )
 }
