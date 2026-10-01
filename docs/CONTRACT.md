@@ -858,7 +858,10 @@ route into it with `archon formation wire <mission> <node:port> <end-id>:in`.
 `archon end update <mission> <end> [--title] [--outcome]` and `archon end
 delete <mission> <end>` change or remove one. The mission patch operations are
 `createEnd` (`title`, `outcome`, `x`, `y`), `updateEnd` (`id`, `title`,
-`outcome`) and `deleteEnd` (`id`). `mission list` lists missions; `formation list <mission>`
+`outcome`) and `deleteEnd` (`id`). On the canvas, drag the End token from the
+top bar or right-click the canvas (End node · done or rejected); an End card
+takes any number of wires into its one port, its window and right-click menu
+change its outcome, and a finished run lights the End nodes its paths reached. `mission list` lists missions; `formation list <mission>`
 lists its formations with their slots and staffing. `mission inspect <mission>`
 prints the whole mission, `mission inspect <mission> <input>` prints the Input
 card with its reachable chain, and `formation inspect <mission> <formation>`
