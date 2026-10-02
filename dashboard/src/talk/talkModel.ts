@@ -1,4 +1,4 @@
-import { harnessName } from '../components/formationsCockpitVisuals'
+import { harnessName } from '../components/harnessIcons'
 import type { AgentProjection, AskedSeat, BoardDocument, RunEvent, RunStatusProjection } from '../components/formationsTypes'
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formationSummary, inputFeedLabel, agentRole, agentState, groupRosterByHarness, initials, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
+import { formationSummary, inputFeedLabel, agentRole, agentState, byRoleName, initials, inSlotsWords, outputRowStatus, roleUses, rolesInUseLabel } from './formationsCockpitVisuals'
 import type { AgentProjection, FormationNode } from './formationsTypes'
 
 const agent = (over: Partial<AgentProjection> & { assignable: boolean }): AgentProjection => ({ id: 'a', ...over })
@@ -13,10 +13,10 @@ describe('initials', () => {
 })
 
 describe('agentRole', () => {
-  it('prefers the default harness, then unbound, then a generic agent label', () => {
-    expect(agentRole(agent({ assignable: true, harnessDefault: 'openai-codex' }))).toBe('openai-codex')
+  it('names a role by its kind, never a harness, and an unbound session as one', () => {
+    expect(agentRole(agent({ assignable: true, harnessDefault: 'openai-codex', kind: 'reviewer' }))).toBe('reviewer')
     expect(agentRole(agent({ assignable: false, unbound: true }))).toBe('unbound')
-    expect(agentRole(agent({ assignable: true }))).toBe('agent')
+    expect(agentRole(agent({ assignable: true, harnessDefault: 'claude-code' }))).toBe('role')
   })
 })
 
@@ -56,20 +56,14 @@ describe('inputFeedLabel', () => {
   })
 })
 
-describe('groupRosterByHarness', () => {
-  it('lists Codex, then Claude, then other harnesses, and omits empty groups', () => {
+describe('byRoleName', () => {
+  it('lists roles by name whatever their default harness', () => {
     const roster = [
-      agent({ id: 'claude-one', assignable: true, harnessDefault: 'claude-code' }),
-      agent({ id: 'hermes-one', assignable: true, harnessDefault: 'hermes' }),
-      agent({ id: 'codex-one', assignable: true, harnessDefault: 'openai-codex' }),
+      agent({ id: 'claude-one', displayName: 'Zed', assignable: true, harnessDefault: 'claude-code' }),
+      agent({ id: 'codex-one', displayName: 'Ada', assignable: true, harnessDefault: 'openai-codex' }),
       agent({ id: 'bare', assignable: true }),
     ]
-    expect(groupRosterByHarness(roster).map(section => [section.id, section.agents.map(next => next.id)])).toEqual([
-      ['codex', ['codex-one']],
-      ['claude', ['claude-one']],
-      ['other', ['hermes-one', 'bare']],
-    ])
-    expect(groupRosterByHarness(roster.slice(0, 1)).map(section => section.label)).toEqual(['Claude'])
+    expect([...roster].sort(byRoleName).map(next => next.id)).toEqual(['codex-one', 'bare', 'claude-one'])
   })
 })
 
@@ -86,10 +80,20 @@ describe('outputRowStatus', () => {
   })
 })
 
-describe('rosterCountLabel', () => {
-  it('names the scope of the placed count so the two tabs never share one word for different facts', () => {
-    expect(rosterCountLabel(25, { placed: 6, scope: 'canvas' })).toBe('25 · 6 on canvas')
-    expect(rosterCountLabel(25, { live: 2, placed: 5, scope: 'mission' })).toBe('25 · 2 live · 5 on mission')
-    expect(rosterCountLabel('…', { live: 0, placed: 0, scope: 'mission' })).toBe('…')
+describe('rolesInUseLabel', () => {
+  it('labels every count in the same words on both rosters', () => {
+    expect(rolesInUseLabel(25, 6)).toBe('25 roles · 6 in use')
+    expect(rolesInUseLabel(25, 5, 2)).toBe('25 roles · 5 in use · 2 live')
+    expect(rolesInUseLabel(1, 0)).toBe('1 role · 0 in use')
+    expect(rolesInUseLabel('…', 0)).toBe('… roles · 0 in use')
+  })
+
+  it('counts each role\'s slots across the mission and says so in words', () => {
+    const formation = (id: string, roles: Array<string | undefined>) => ({ id, type: 'peer', title: id, inputs: [], outputs: [], slots: roles.map((agentId, index) => ({ id: `${id}-${index}`, label: 'A', controller: false, ...(agentId ? { agentId } : {}) })) }) as FormationNode
+    const uses = roleUses([formation('a', ['critic', 'builder']), formation('b', ['critic', undefined])])
+    expect([...uses]).toEqual([['critic', 2], ['builder', 1]])
+    expect(inSlotsWords(2)).toBe('in 2 slots')
+    expect(inSlotsWords(1)).toBe('in 1 slot')
+    expect(inSlotsWords(0)).toBe('')
   })
 })

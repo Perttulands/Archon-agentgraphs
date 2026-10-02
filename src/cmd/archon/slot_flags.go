@@ -15,12 +15,31 @@ import (
 // the command's usage.
 func formationAssignUsage() string {
 	efforts := []string{}
+	models := []string{}
 	for _, harness := range formations.LaunchableHarnesses() {
 		efforts = append(efforts, harness.ID+" takes "+strings.Join(harness.Efforts, ", "))
+		ids := []string{}
+		for _, model := range harness.Models {
+			ids = append(ids, model.ID)
+		}
+		if len(ids) > 0 {
+			models = append(models, harness.ID+" runs "+strings.Join(ids, ", "))
+		}
 	}
-	return commandUsage("formation assign") + "\n" +
-		"Choose the effort by the policy: " + formations.EffortPolicyText() + ". " + strings.Join(efforts, "; ") + ".\n" +
+	usage := commandUsage("formation assign") + "\n" +
+		"Choose the effort by the policy: " + formations.EffortPolicyText() + ". " + strings.Join(efforts, "; ") + "; a known Codex model may take fewer.\n" +
 		"A blank --model means the harness default model."
+	if len(models) > 0 {
+		usage += " Known models: " + strings.Join(models, "; ") + ". Another model is accepted with a warning."
+	}
+	return usage
+}
+
+// printWarnings writes what an edit accepted but its author should look at.
+func printWarnings(stderr io.Writer, warnings []string) {
+	for _, warning := range warnings {
+		fmt.Fprintln(stderr, "warning: "+warning)
+	}
 }
 
 type slotAssignFlags struct {

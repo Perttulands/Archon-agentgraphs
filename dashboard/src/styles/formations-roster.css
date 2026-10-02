@@ -28,3 +28,19 @@
   .fmx .roster.collapsed .roster-list{display:flex;}
   .fmx .roster.collapsed .roster-hd .s{display:inline;}
 }
+
+/* A role opened from the rail (RoleWindow): its role text and the slots it staffs. */
+.role-window-body{display:flex;flex-direction:column;gap:10px;padding:12px 14px;font:12px/1.5 var(--font-mono);color:var(--text-primary);overflow:auto;}
+.role-window-body p{margin:0;}
+.role-window-kind{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);}
+.role-window-summary.placeholder,.role-window-none{color:var(--text-dim);}
+.role-window-tags{color:var(--text-secondary);font-size:11px;}
+.role-window-body h3{margin:0 0 4px;font:700 9px/1 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text-secondary);}
+.role-window-uses{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;}
+.role-window-uses li{display:flex;flex-direction:column;}
+.role-window-open{padding:0;border:0;background:transparent;color:var(--text-primary);font:inherit;text-align:left;cursor:pointer;text-decoration:underline;text-decoration-color:var(--divider);text-underline-offset:3px;}
+.role-window-open:hover{color:var(--accent);text-decoration-color:var(--accent);}
+.role-window-runs{color:var(--text-secondary);font-size:11px;}
+.role-window-actions{display:flex;justify-content:flex-end;}
+.role-window-edit{border:1px solid var(--divider);background:transparent;color:var(--text-secondary);font:10px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 9px;border-radius:3px;cursor:pointer;}
+.role-window-edit:hover{color:var(--text-primary);border-color:var(--accent);}

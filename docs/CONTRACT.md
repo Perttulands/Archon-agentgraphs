@@ -27,8 +27,8 @@ decisions; [examples](../examples/) provide reusable missions.
 | Input | A named value each run of the mission supplies: a name, a description, a kind (`text`, `file` or `folder`) and whether it is required. Step briefs reference it as `{name}`. A mission that declares none has one implicit required text input, `brief`. |
 | Formation | A step: the team of agents that does it. `solo` has one seat; `peer` has peer seats; `orchestrated` has a controller directing its bound workers. |
 | Slot | A position in a formation that owns what its seat runs: a harness (`claude-code` or `openai-codex`), a model (blank means the harness default) and an effort, plus an optional role (`agentId`, a persona). A slot without a role is a vanilla agent, such as `claude-code · opus · low`. A seat is the slot's runtime agent session. |
-| Persona (role) | A TOML agent card with generic role text: a summary, capabilities and kind. A new card carries no model or effort; an existing card's harness variant settings are read by the cockpit's role drag and `archon agent spawn`. Presets remain available; local cards can override them. |
-| Harness variant | A persona card's `openai-codex` or `claude-code` settings: session stem, model and effort. Seats start from slot settings. |
+| Persona (role) | A TOML agent card with role text only: a summary, capabilities and kind. It carries no model or effort; each slot that uses it states its own. Presets remain available; local cards can override them. |
+| Harness variant | A persona card's `openai-codex` or `claude-code` entry: the session stem and source of the role's own session. |
 | Gate | A criterion with one or more kinds: `code`, `formation`, `human`. Its ports are `in`, `pass`, `fail`, `judge`. |
 | End node | Ends a path on purpose (`[[end]]` in TOML: `id`, `title`, `outcome`). Its outcome is `done` or `rejected`. Its only port is `in`, which takes any number of routes; it leads nowhere. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
@@ -68,35 +68,106 @@ A slot owns its harness, model and effort. Staff it with `archon formation
 assign <mission> <formation> --slot <slot> --harness <h> --effort <e>
 [--model <m>] [--role <persona>]`,
 or the `assignSlot` mission patch with `agentId`, `harness`, `model` and
-`effort`. Staffing always states its effort: the CLI requires `--harness` and
-`--effort`, and a patch without an effort is refused with
-`INVALID_SLOT_SETTINGS` (HTTP 422, CLI code `invalid_slot_settings`), except a
-patch naming only a role (and perhaps a harness), which is the cockpit's role
-drag: it writes that role's current effective harness, model and effort onto
-the slot. A patch naming none of them empties the slot, as does `formation
-unassign`. The harness must be one Archon starts and must accept the effort,
-and a model is one name without spaces; a model outside any catalog is
-accepted and the harness decides. Choose the effort by the policy the agent
-roster serves as `effortPolicy`: `low` for errands, `medium` for making
-things, `xhigh` for architecture and review, `max` for consequential reviews.
-One role may staff several slots, each with its own settings.
+`effort`. Staffing always states the slot in full: the CLI requires
+`--harness` and `--effort`, and a patch without a harness or an effort,
+including one naming only a role, is refused with `INVALID_SLOT_SETTINGS`
+(HTTP 422, CLI code `invalid_slot_settings`). A role adds only its text. A
+patch naming none of them empties the
+slot, as does `formation unassign`. The harness must be one Archon starts and must accept the effort,
+and a model is one name without spaces. The agent roster serves each
+harness's known `models`: `claude-code` runs the aliases `opus`, `sonnet`,
+`haiku` and `fable`, and `openai-codex` runs the models its CLI lists in
+`$CODEX_HOME/models_cache.json` (default `~/.codex`), by priority, each with
+the efforts it accepts; without that cache Codex lists none. A known Codex
+model narrows the slot's efforts to its own: `gpt-5.5` takes `low` to `xhigh`.
+A model outside the catalog is accepted and the harness decides; the
+`assignSlot` answer then carries `warnings`, and `formation assign` prints
+them. Choose the effort by the policy the agent
+roster serves as `effortPolicy`, each line with the role kinds it suits:
+`low` for errands (`verifier`, `scout`, `observer`, `operator`), `medium` for
+making things (`builder`, `debugger`), `xhigh` for architecture and review
+(`reviewer`, `judge`, `architect`, `planner`, `orchestrator`), and `max` for
+consequential reviews, chosen by hand and never suggested. One role may staff
+several slots, each with its own settings.
 
-A new role carries no model or effort: `POST /api/agents` and `archon agent
-new` refuse them with `INVALID_AGENT_CARD`, and the New agent form no longer
-asks for them. An existing card's variant settings are edited per
-harness variant in the Agents view inspector and persona editor, with `model`,
-`effort` and `variant` (or a `variants` list) on `PATCH /api/agents`, or with
-`archon agent edit --model --effort` (`edit --harness` picks the variant); the
-role drag and `archon agent spawn` read them. Effort must be one the
-harness accepts: `claude-code` takes `low`, `medium`, `high`, `xhigh` or `max`;
-`openai-codex` also takes `ultra`, though a Codex model may accept fewer. A
-blank model or effort clears it to the harness default model or `medium`.
-Persona reads carry each variant's `effectiveEffort` and `seatLaunch`, the
-command a seat with those settings runs, rendered by the seat launcher from the harness CLI on the
-reader's PATH (the daemon's for HTTP); `seatLaunchError` says why a variant
-cannot start. `archon agent spawn` runs the same command, and refuses a harness
-Archon cannot start, such as `hermes`. Cards hold no launch string. One edit
-names each variant once.
+The cockpit shows every slot as a row: its harness mark and label, then its
+role (or `vanilla`) over `<Harness> · <model> · <effort>`, as in `Claude · opus
+· low`. Cards name the harness in one short word (`Claude`, `Codex`) and a
+blank model as `default`; sentences say `Claude Code` and `default model`. On a
+card only a long model gives way, never the harness or the effort, and the
+workers of an orchestrated step sit under `workers` with a solo slot's width;
+an empty slot says `open slot`. A model outside the catalog is marked `model
+not in catalog`. The node window, Flow, and the Agents view's slot tiles and slot
+inspector say the same, for example `Worker 1 is vanilla on Claude Code · opus
+· low.` Rosters list roles by name; roles carry no harness. Both rosters count
+in the same words, across every formation of the mission: `25 roles · 6 in
+use` (the Agents view adds its live sessions), and a role in use says `in 2
+slots`. Clicking a role in the Missions rail opens it in a window beside the
+rail, with its role text and the slots it staffs.
+
+Staffing in the cockpit is that sentence, edited where the slot is. Clicking a
+slot, or Enter on a focused one, opens a compact window reading `Worker 1 is
+[vanilla] on [Claude Code] · [opus] · [low]` while the slot itself is
+outlined. It opens like a dropdown on the clicked slot's row, or on the word
+clicked in a node window (from the canvas or Flow) or the Agents view's slot
+inspector: directly below it and left-aligned with it, held inside the view
+across, or directly above it where the view cannot pan to make the room. One
+rule holds on every surface. While open it may cover sibling rows, neighbouring
+cards and the window it was opened from, never the clicked slot or word, and a
+soft shadow puts what it covers behind it; nothing stays covered once it
+closes. Where the room below a canvas slot is short, the canvas pans by exactly
+the room the opening list needs, in 120 ms (none under reduced motion), and
+the window fades in only after the pan. The window keeps one height from
+opening to closing: the sentence with about eight lines of the list it opens
+with (the role list for the whole sentence), or all of a shorter list such as
+the six efforts. Lists show and scroll only whole rows, after a wheel, a
+scrollbar drag or a press dragged inside them alike. vanilla stays above the
+scrolling role grid. `on <harness> · <model> · <effort>` wraps as one group.
+Each word opens its own list on the slot's current value, a model outside the
+catalog included, so a reflex Enter changes nothing, and clicking one word of a
+staffed slot opens only that list, where a pick lands at once. An empty slot opens as vanilla on the first harness and its
+first model, at the effort the policy reads from the step's title, else `low`,
+so Enter staffs it. The first word takes typed words in any order (`cri ast`,
+`sonnet high`), echoing how each was read; a typo, an ambiguous role or an
+effort the harness or model refuses is named and blocks Enter, with one-click
+fixes. Digits 1-6 set the effort, in the window or on a focused slot. Esc or a
+click away changes nothing. N on the canvas reaches the next empty slot in Flow
+order, brings it into view and opens it. The role list shows each role's
+suggested effort, from its kind by the policy (its name and summary are read
+only when the policy names no effort for its kind), and the effort list tags
+the suggestion with each effort's policy words. A reason cites the policy line,
+as in `planning falls under architecture and review`. A role landing on an
+empty slot takes the policy's effort. A role landing on a staffed slot keeps
+that slot's harness, model and effort, and one landing with an effort chosen
+in the open sentence (picked, typed as in `high cri`, or set by digit) keeps
+that effort; when the policy suggests another, the window offers `use xhigh`
+and the slot `use xhigh?`, one click each, until it is taken or the role or
+effort changes. Nothing outside the open sentence remembers how an effort was
+chosen. The slot takes its agent visibly, its mark dropping in with a ring
+going out from it, and for as long as it reads a note on the slot's label
+line, inside the slot, says why each landing came out as it did, or why it was
+refused; its whole text is the slot's tooltip. Under reduced motion nothing
+moves and no ring or highlight is left behind.
+Dragging a role from the rail onto a slot lands it by the same rule, its ghost
+waiting beside the slot so the slot's preview stays readable; dragging a
+staffed slot onto another moves its staffing there and swaps a staffed
+target's back, two slots running the same staffing are left alone, and a drop
+that reaches no slot changes nothing. The slot's menu offers Staff and Empty.
+Each staffing is one undo entry; a move is one entry for both slots. The node
+window's staffing words and the Agents view's slot inspector open the same
+window.
+
+A role is role text only. `archon agent new` and `archon agent edit` take no
+model or effort; `POST` and `PATCH /api/agents` refuse a `model`, an `effort`
+or any field they do not take with `INVALID_AGENT_CARD` (HTTP 422) naming it;
+persona reads carry none; and the Agents view edits a role's text, never its
+settings. `archon agent spawn <id> --effort <e> [--model <m>]` starts a role's
+own session, and refuses one already running, which keeps what it started
+with, naming each setting it did not apply. It states its settings as a slot does: the effort must be one the harness accepts
+(`claude-code` takes `low`, `medium`, `high`, `xhigh` or `max`; `openai-codex`
+also takes `ultra`, though a Codex model may accept fewer), a blank model means
+the harness default, and a harness Archon cannot start, such as `hermes`, is
+refused. Cards hold no launch string.
 
 Notes are operator intent, not
 automatically executable briefs. Read mission and element notes, then translate
@@ -1403,7 +1474,8 @@ more is refused whole with HTTP 400, "a mission patch names one operation, and
 this one names deleteInputCard and title: send them one at a time", and nothing
 changes. Agent routes
 list/create/read/patch persona cards; the roster also serves `harnesses` (each
-with the efforts it accepts) and `effortPolicy` (`{effort,use}` lines). Gate
+with the efforts it accepts and its known `models`, `{id,efforts?}`) and
+`effortPolicy` (`{effort,use}` lines). Gate
 profiles expose the two code checks.
 With the tmux executor the agent roster marks a persona live when a session named
 by its default session stem runs on `--socket`, and lists the socket's other

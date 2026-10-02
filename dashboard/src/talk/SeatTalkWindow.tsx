@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { harnessName } from '../components/formationsCockpitVisuals'
+import { harnessName } from '../components/harnessIcons'
 import { harnessIcon } from '../components/harnessIcons'
 import SeatTerminal from '../terminal/SeatTerminal'
 import { useNotice, useSeatTerminalPool } from '../terminal/seatTerminalPool'

@@ -11,8 +11,8 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// The assignSlot patch states a slot's harness, model and effort; naming only
-// a role (the cockpit's role drag) writes that role's current settings down.
+// The assignSlot patch states a slot's harness, model and effort; a role is
+// only role text, so naming a role alone states nothing to run.
 func TestAssignSlotPatchCarriesTheSlotsSettings(t *testing.T) {
 	store := formations.NewStore(t.TempDir())
 	personas := formations.NewPersonaStore(t.TempDir())
@@ -69,8 +69,12 @@ controller = false
 	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), `"code":"INVALID_SLOT_SETTINGS"`) || !strings.Contains(rec.Body.String(), "needs an effort; the policy is low for errands") {
 		t.Fatalf("missing effort = %d %s", rec.Code, rec.Body.String())
 	}
-	if got := slot(patch(`{"formationId":"fmn_work","slotId":"slot_a","agentId":"delivery-lead","harness":"claude-code"}`)); got.AgentID != "delivery-lead" || got.Harness != "claude-code" || got.Model != "" || got.Effort != "medium" {
-		t.Fatalf("role drag slot = %+v, want the role's current settings written down", got)
+	rec = patch(`{"formationId":"fmn_work","slotId":"slot_a","agentId":"delivery-lead","harness":"claude-code"}`)
+	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "needs an effort") {
+		t.Fatalf("a role without an effort = %d %s", rec.Code, rec.Body.String())
+	}
+	if got := slot(patch(`{"formationId":"fmn_work","slotId":"slot_a","agentId":"delivery-lead","harness":"claude-code","effort":"medium"}`)); got.AgentID != "delivery-lead" || got.Harness != "claude-code" || got.Model != "" || got.Effort != "medium" {
+		t.Fatalf("role slot = %+v", got)
 	}
 	if got := slot(patch(`{"formationId":"fmn_work","slotId":"slot_a","agentId":"","harness":""}`)); got.Staffed() {
 		t.Fatalf("unassigned slot = %+v", got)

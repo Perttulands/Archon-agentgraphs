@@ -312,13 +312,8 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("mission", "new", "demo", "--title", "Demo"))},
 		{args: with(fixed("agent", "new", "scout-x", "--kind", "scout", "--harness", "openai-codex", "--capable", "research"))},
 		{args: with(fixed("agent", "edit", "scout-x", "--summary", "Finds things", "--add-capability", "inspect", "--display-name", "Scout X"))},
-		{args: with(fixed("agent", "edit", "scout-x", "--model", "gpt-6-sol", "--effort", "ultra"))},
-		{args: with(fixed("agent", "edit", "scout-x", "--add-harness", "claude-code", "--effort", "max"))},
-		{args: with(fixed("agent", "edit", "scout-x", "--harness", "claude-code", "--model", "claude-opus-5", "--effort", "low"))},
-		{args: with(fixed("agent", "edit", "scout-x", "--harness", "claude-code", "--effort", "ultra")), errorOnly: true},
-		{args: with(fixed("agent", "edit", "scout-x", "--harness", "hermes", "--effort", "low")), errorOnly: true},
-		{args: with(fixed("agent", "edit", "scout-x", "--harness", "claude-code")), errorOnly: true},
-		{args: with(fixed("agent", "new", "bad-effort", "--harness", "claude-code", "--effort", "extreme")), errorOnly: true},
+		{args: with(fixed("agent", "edit", "scout-x", "--add-harness", "claude-code", "--session-stem", "claude-scout-x"))},
+		{args: with(fixed("agent", "edit", "scout-x", "--session-stem", "scout-x-1"))},
 		{args: with(fixed("mission", "create", "demo", "--title", "Work", "--goal", "Do it", "--file", "/work/docs/brief.md", "--human-channel", "session")), creates: "inputCard"},
 		{args: with(fixed("formation", "create", "demo", "solo", "--title", "Worker")), creates: "formation"},
 		{args: with(fixed("formation", "create", "demo", "--title", "Judge")), creates: "formation"},
@@ -797,6 +792,36 @@ func TestRepeatedAuthoringEditsKeepTheRevisionOfflineAndRemote(t *testing.T) {
 				t.Fatalf("%s repeated %v: code %d stdout %q (first %q) %s, rev %d -> %d", side.name, args, code, again, first, stderr, before.Rev, after.Rev)
 			}
 		}
+	}
+}
+
+// A model outside the catalog warns the same way offline and through the
+// daemon, which answers the warning with the staffed mission.
+func TestRemoteAssignWarnsOfAModelOutsideTheCatalogAsOfflineDoes(t *testing.T) {
+	offline, remote, _ := newAuthoringSides(t)
+	for _, side := range []authoringSide{offline, remote} {
+		if _, stderr, code := side.run("mission", "new", "demo"); code != 0 {
+			t.Fatalf("%s mission new: %s", side.name, stderr)
+		}
+		if _, stderr, code := side.run("formation", "create", "demo", "solo", "--title", "Worker"); code != 0 {
+			t.Fatalf("%s formation create: %s", side.name, stderr)
+		}
+	}
+	var warnings []string
+	for _, side := range []authoringSide{offline, remote} {
+		board, err := side.store.ReadBoard("demo")
+		if err != nil {
+			t.Fatal(err)
+		}
+		slot := formationTitled(t, board, "Worker").Slots[0]
+		stdout, stderr, code := side.run("formation", "assign", "demo", "Worker", "--slot", slot.ID, "--harness", "claude-code", "--model", "claude-opus-5", "--effort", "xhigh")
+		if code != 0 || !strings.Contains(stdout, "vanilla · claude-code · claude-opus-5 · xhigh") {
+			t.Fatalf("%s assign: code=%d stdout=%q stderr=%q", side.name, code, stdout, stderr)
+		}
+		warnings = append(warnings, strings.ReplaceAll(stderr, slot.ID, "<slot>"))
+	}
+	if warnings[0] != warnings[1] || !strings.Contains(warnings[0], `warning: slot "Agent" (<slot>) model "claude-opus-5" is not in the claude-code catalog; the harness decides`) {
+		t.Fatalf("warnings offline %q remote %q", warnings[0], warnings[1])
 	}
 }
 

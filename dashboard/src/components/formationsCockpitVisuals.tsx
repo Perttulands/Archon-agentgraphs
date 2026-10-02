@@ -6,7 +6,7 @@ import { Fragment } from 'react'
 import type { ReactNode } from 'react'
 import type { NodeRunState } from './formationsRunState'
 import type { AgentProjection, BoardConnection, FormationNode, FormationSlot } from './formationsTypes'
-import { harnessIcon, harnessIdFor, type HarnessId } from './harnessIcons'
+import { harnessIcon } from './harnessIcons'
 
 export function formationSummary(formation: FormationNode): string {
   return formation.brief?.goal?.replace(/\s+/g, ' ').trim() || 'Set a brief to describe this work.'
@@ -53,21 +53,6 @@ export function harnessGlyph(harness: string | undefined | null): JSX.Element | 
   return harnessIcon(harness)
 }
 
-const HARNESS_NAMES: Record<HarnessId, string> = {
-  'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi', hermes: 'Hermes', terminal: '',
-}
-
-/** A harness in words: "Claude Code" for claude-code; one without a glyph keeps its own name. */
-export function harnessName(harness: string | undefined | null): string {
-  const id = harnessIdFor(harness)
-  return id ? HARNESS_NAMES[id] || harness || '' : ''
-}
-
-/** A slot in words, for its tooltip: "delivery-planner · Claude Code", or how to staff an open slot. */
-export function slotTooltip(slot: FormationSlot): string {
-  if (!slot.agentId) return `${slot.label}: open slot. Drag a persona here to staff it.`
-  return [slot.agentId, harnessName(slot.harness) || 'no harness set'].join(' · ')
-}
 export const PLAY_SVG = (
   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z" /></svg>
 )
@@ -76,8 +61,10 @@ export function initials(id: string): string {
   const cleaned = id.replace(/[^a-zA-Z0-9]/g, '')
   return (cleaned.slice(0, 2) || '?').toUpperCase()
 }
+/** What a roster row is: an unbound session, or a role of its kind. Roles carry no harness. */
 export function agentRole(agent: AgentProjection): string {
-  return agent.harnessDefault || (agent.unbound ? 'unbound' : 'agent')
+  if (agent.unbound) return 'unbound'
+  return agent.kind || 'role'
 }
 export function agentState(agent: AgentProjection): 'on' | 'idle' {
   return agent.liveness === 'live' || agent.assignable ? 'on' : 'idle'
@@ -108,34 +95,30 @@ export function outputRowStatus(runSelected: boolean, state: NodeRunState | unde
   }
 }
 
-/* Roster header count. The Missions tab counts agents placed anywhere on the
-   canvas and the Agents tab counts agents staffed from the selected Input
-   card, so the label names its scope rather than sharing one word for both. */
-export function rosterCountLabel(total: number | string, counts: { live?: number; placed: number; scope: 'canvas' | 'mission' }): string {
-  return [
-    String(total),
-    counts.live ? `${counts.live} live` : '',
-    counts.placed ? `${counts.placed} on ${counts.scope}` : '',
-  ].filter(Boolean).join(' · ')
+/* Both rosters count roles the same way: how many there are, and how many staff
+   a slot of this mission (every formation on it), with the live sessions where
+   the view shows them. */
+export function rolesInUseLabel(roles: number | string, inUse: number, live = 0): string {
+  return [`${roles} role${roles === 1 ? '' : 's'}`, `${inUse} in use`, live ? `${live} live` : ''].filter(Boolean).join(' · ')
 }
 
-export interface RosterSection<T> {
-  id: 'codex' | 'claude' | 'other'
-  label: string
-  agents: T[]
+/** How many slots of these formations each role staffs. */
+export function roleUses(formations: FormationNode[]): Map<string, number> {
+  const uses = new Map<string, number>()
+  for (const formation of formations) {
+    for (const slot of formation.slots) if (slot.agentId) uses.set(slot.agentId, (uses.get(slot.agentId) || 0) + 1)
+  }
+  return uses
 }
 
-/* Roster sidebars list Codex agents, then Claude, then everything else. */
-export function groupRosterByHarness<T extends { harnessDefault?: string }>(agents: T[]): RosterSection<T>[] {
-  const codex = agents.filter(agent => (agent.harnessDefault || '').toLowerCase().includes('codex'))
-  const claude = agents.filter(agent => (agent.harnessDefault || '').toLowerCase().includes('claude'))
-  const other = agents.filter(agent => !codex.includes(agent) && !claude.includes(agent))
-  const sections: RosterSection<T>[] = [
-    { id: 'codex', label: 'Codex', agents: codex },
-    { id: 'claude', label: 'Claude', agents: claude },
-    { id: 'other', label: 'Other', agents: other },
-  ]
-  return sections.filter(section => section.agents.length > 0)
+/** "in 2 slots": a role in use, said in words rather than by dimming it. */
+export function inSlotsWords(count: number): string {
+  return count ? `in ${count} slot${count === 1 ? '' : 's'}` : ''
+}
+
+/* Rosters list roles by name; roles carry no harness, so nothing groups them by one. */
+export function byRoleName<T extends { id: string; displayName?: string }>(a: T, b: T): number {
+  return (a.displayName || a.id).localeCompare(b.displayName || b.id)
 }
 
 /* Seat arrangement for each formation type. Callers draw the seats: the
@@ -159,7 +142,7 @@ export function FormationSeats({ formation, renderSlot }: {
     return (
       <div className="orch">
         <div className="ctrl-wrap">{ctrl ? seat(ctrl) : null}</div>
-        <div className="pool"><span className="pl">open slots</span>{workers.map(slot => seat(slot))}</div>
+        <div className="pool"><span className="pl">workers</span>{workers.map(slot => seat(slot))}</div>
       </div>
     )
   }

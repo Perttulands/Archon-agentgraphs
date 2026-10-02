@@ -77,7 +77,7 @@ func TestFormationsAPICreateGateWithoutKindsStartsAsRoutableHumanGate(t *testing
 	}
 	mission, worker := board.Missions[0], board.Formations[0]
 	for _, body := range []string{
-		`{"assignSlot":{"formationId":"` + worker.ID + `","slotId":"` + worker.Slots[0].ID + `","agentId":"codex-builder","harness":"openai-codex"}}`,
+		`{"assignSlot":{"formationId":"` + worker.ID + `","slotId":"` + worker.Slots[0].ID + `","agentId":"codex-builder","harness":"openai-codex","effort":"medium"}}`,
 		`{"setBrief":{"formationId":"` + worker.ID + `","goal":"Produce the result"}}`,
 		`{"wireConnection":{"from":"` + mission.ID + `:out","to":"` + worker.ID + `:` + worker.Inputs[0].ID + `"}}`,
 		`{"wireConnection":{"from":"` + worker.ID + `:` + worker.Outputs[0].ID + `","to":"` + human.ID + `:in"}}`,

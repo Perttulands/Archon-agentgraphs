@@ -1,5 +1,6 @@
 import { type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { assignedSettings, harnesses, rosterAnswer } from './roster-terms'
 const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/theme_default.json', import.meta.url), 'utf8'))
 
 const ports = { inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Result' }] }
@@ -154,8 +155,17 @@ function limitFindings(current: typeof board) {
   return { errors, warnings }
 }
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number } = {}) {
+type Role = { id: string; displayName: string; kind: string; summary?: string }
+
+export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
   const currentBoard = structuredClone(board)
+  if (options.vanillaWorker) {
+    // A slot with no role is a vanilla agent; this one runs a model the catalog names.
+    currentBoard.formations[0].slots[1] = { id: 'worker', label: 'Worker 1', harness: 'claude-code', model: 'opus', effort: 'low', controller: false }
+  }
+  if (options.emptyWorker) currentBoard.formations[0].slots[1] = { id: 'worker', label: 'Worker 1', controller: false }
+  if (options.workers) currentBoard.formations[0].slots = [currentBoard.formations[0].slots[0], ...options.workers]
+  const patches: Array<Record<string, unknown>> = []
   // A time block is a limit block too, with a time card.
   const timeBlock = Boolean(options.blockedAtTime)
   if (timeBlock) options = { ...options, blockedAtLimit: true }
@@ -187,8 +197,14 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     currentBoard.gates = []
     currentBoard.connections = []
   }
+  // A row of three formations just made with New formation: solo, one empty Agent slot each, under the graph.
+  const newRow = ['new_1', 'new_2', 'new_3']
+  if (options.newRow) {
+    currentBoard.formations = [...currentBoard.formations, ...newRow.map(id => ({ id, type: 'solo', title: 'New formation', ...ports, slots: [{ id: 'agent', label: 'Agent', controller: false }] }))]
+  }
   const boardState = () => currentBoard
   let nodes = positions.map(p => ({ ...p, x: p.x + (options.far ? 1800 : 0) }))
+  if (options.newRow) nodes = [...nodes, ...newRow.map((id, index) => ({ id, x: 448 + index * 336, y: 896 }))]
   if (options.join) nodes = [{ id: 'a', x: 100, y: 80 }, { id: 'b', x: 100, y: 350 }, { id: 'c', x: 100, y: 620 }, { id: 'sink', x: 650, y: 350 }]
   if (options.waitingHuman) nodes = [...nodes, { id: 'end_done', x: 504, y: 672 }, { id: 'end_rejected', x: 504, y: 784 }]
   if (options.secondGate) nodes = [...nodes, { id: 'second', x: 112, y: 920 }]
@@ -243,6 +259,24 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path === '/api/missions/browser') {
       if (method === 'PATCH') {
         const body = route.request().postDataJSON()
+        patches.push(body)
+        if (body.assignSlot) {
+          const { formationId, slotId } = body.assignSlot
+          const formation = currentBoard.formations.find(item => item.id === formationId)
+          const index = formation?.slots.findIndex(slot => slot.id === slotId) ?? -1
+          if (!formation || index < 0) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
+          const assigned = assignedSettings(slotId, body.assignSlot)
+          if ('refused' in assigned) return route.fulfill({ status: 422, json: { success: false, error: { code: 'INVALID_SLOT_SETTINGS', message: assigned.refused } } })
+          const { id, label, controller } = formation.slots[index] as { id: string; label: string; controller: boolean }
+          formation.slots[index] = { id, label, controller, ...assigned.settings }
+          currentBoard.rev++
+          currentBoard.etag = `board-${currentBoard.rev}`
+          const harness = harnesses.find(entry => entry.id === assigned.settings.harness)
+          const model = assigned.settings.model
+          const warnings = model && harness && !harness.models.some(entry => entry.id === model)
+            ? [`slot "${label}" (${id}) model "${model}" is not in the ${harness.id} catalog; the harness decides`] : undefined
+          return respond({ mission: boardState(), ...(warnings ? { warnings } : {}) })
+        }
         const edit = body.wireConnection || body.rewireConnection
         if (edit) {
           const edges = currentBoard.connections.filter(edge => !(body.rewireConnection && edge.from === edit.from && edge.to === edit.previousTo))
@@ -383,17 +417,16 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     // Validation is served once the mission holds Limit cards, so their findings mark them as drafts.
     if (path.endsWith('/validation') && currentBoard.limits?.length) return respond({ missionRev: currentBoard.rev, missionEtag: currentBoard.etag, ...limitFindings(currentBoard) })
     if (path === '/api/gate-profiles') return respond({ profiles: [] })
-    if (path === '/api/agents') return respond({ agents: [
-      { id: 'claude', displayName: 'Claude controller', harnessDefault: 'claude-code', assignable: true, liveness: 'live', tags: [], kind: 'controller' },
-      { id: 'codex', displayName: 'Codex builder', harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' },
+    if (path === '/api/agents') return respond(rosterAnswer([
+      { id: 'claude', displayName: 'Claude controller', summary: 'Directs the workers.', harnessDefault: 'claude-code', assignable: true, liveness: 'live', tags: [], kind: 'controller' },
+      { id: 'codex', displayName: 'Codex builder', summary: 'Builds the change.', harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' },
+      ...(options.roles || []).map(role => ({ ...role, summary: role.summary || '', assignable: true, liveness: 'offline', tags: [] })),
       // A large roster, as on a real host, makes long staffing menus.
       ...Array.from({ length: options.extraAgents || 0 }, (_, index) => ({ id: `agent-${index + 1}`, displayName: `Roster agent ${index + 1}`,
         harnessDefault: 'openai-codex', assignable: true, liveness: 'live', tags: [], kind: 'builder' })),
-    ] })
+    ]))
     if (path === '/api/agents/codex') return respond({ id: 'codex', displayName: 'Codex builder', kind: 'builder', summary: 'Builds the change.', tags: [],
-      harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'codex', launch: 'codex', effectiveEffort: 'medium',
-        efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
-        seatLaunch: `exec '/usr/local/bin/codex' -c 'model_reasoning_effort="medium"' -c check_for_update_on_startup=false --dangerously-bypass-approvals-and-sandbox` }], etag: 'codex-card' })
+      harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'codex' }], etag: 'codex-card' })
     if (path === '/api/runs/run_browser' && options.waitingHuman) return respond({ runId: 'run_browser', status: 'waiting_human', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: options.secondGate ? 4 : 3, cwd: runCwd,
       waitingGates: [{ gateId: 'loose', requestedSeq: 3 }, ...(options.secondGate ? [{ gateId: 'second', requestedSeq: 4 }] : [])] })
     if (path === '/api/runs/run_browser' && options.succeeded) return respond({ runId: 'run_browser', status: 'succeeded', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 7, cwd: runCwd })
@@ -441,5 +474,5 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path.endsWith('/seats')) { seatsFetches++; return respond({ runId: 'run_browser', available: true, seats }) }
     return route.fulfill({ status: 404, json: { success: false, error: { message: `Fixture has no ${path}` } } })
   })
-  return { writes, board: boardState, seatsFetches: () => seatsFetches, themeFetches: () => themeFetches }
+  return { writes, patches, board: boardState, seatsFetches: () => seatsFetches, themeFetches: () => themeFetches }
 }

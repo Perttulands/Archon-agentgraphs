@@ -20,7 +20,7 @@ import {
   abortRunRequest,
   createBoard,
   deleteBoard,
-  fetchAgents,
+  fetchAgentRoster,
   fetchBoardChanged,
   fetchBoardNotes,
   fetchBoardSummaries,
@@ -55,7 +55,7 @@ import { RunList, RunRevisionNote, RunWhen } from './RunList'
 import { missionPickLabel, otherRunsNeedingYou, pageTitle, runsOfLiveMissions } from './needsYou'
 import { chooseCurrentBoard, openableSlugs, rememberBoardOnDevice } from './currentBoard'
 import { END_ROOM, clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
-import { END_SVG, LIMIT_SVG, FormationSeats, GATE_SVG, PLAY_SVG, slotTooltip, formationSummary, agentRole, agentState, groupRosterByHarness, harnessGlyph, initials, inputFeedLabel, outputRowStatus, rosterCountLabel } from './formationsCockpitVisuals'
+import { END_SVG, LIMIT_SVG, FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, byRoleName, inSlotsWords, initials, inputFeedLabel, outputRowStatus, roleUses, rolesInUseLabel } from './formationsCockpitVisuals'
 import { useEscapeKey } from './useEscapeKey'
 import { ROSTER_MAX_WIDTH, ROSTER_MIN_WIDTH, useRosterPanel } from './useRosterPanel'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
@@ -70,6 +70,14 @@ import RunBarActions from './RunBarActions'
 import GateAnswerWindow, { GATE_ANSWER_WINDOW_ID, cardRects } from './GateAnswerWindow'
 import { nodeTitle } from '../nodeWindow/boardRoutes'
 import { slotStaffed } from '../nodeWindow/staffing'
+import { CanvasSlot } from '../staffing/CanvasSlot'
+import type { Part } from '../staffing/SlotFace'
+import { StaffingKeyHint, StaffingLayer } from '../staffing/StaffingLayer'
+import { PAN_MS, type StaffingStage } from '../staffing/staffingPlacement'
+import { dropRole, moveStaffing, previewRole, staff, type StaffingHost } from '../staffing/staffingActions'
+import { captionText, roleName, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing, type StaffingCatalog } from '../staffing/staffingModel'
+import { StaffingStore, slotKey, type SlotRef } from '../staffing/staffingStore'
+import { buildFlow } from '../flow/flowModel'
 import CanvasLegend from './CanvasLegend'
 import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
 import { ProducedFiles, RunProduced, RunProducedProvider } from '../files/ProducedFiles'
@@ -86,6 +94,7 @@ import { LIMIT_ROOM, limitCoversWords, limitKnobWords, limitMeaning, limitWarnWo
 import { UndoHistory, WriteTracker, boardStep, combineUndo, nodeDeleteUndo, portRemoveUndo, quoted, restoreBlocker, undoOutcomeMessage, type UndoDraft, type UndoStep } from './formationsUndo'
 import { NOTE_CARDS, NoteLayer, NOTES_MODES, noteWindowAnchor, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
 import NoteWindow, { BOARD_NOTE_TARGET, noteWindowId } from './NoteWindow'
+import RoleWindow, { roleWindowId } from './RoleWindow'
 import { FormationTypeChip, formationTypeChoices } from './FormationTypeChip'
 import { MissionEditorDialog } from './MissionEditorDialog'
 import type { MissionDraft } from './MissionEditorDialog'
@@ -113,6 +122,7 @@ import type {
   BoardSummary,
   BoardValidation,
   CodeGateProfileDescriptor,
+  EffortPolicyEntry,
   EndNode,
   EndOutcome,
   FormationBrief,
@@ -121,6 +131,7 @@ import type {
   FormationSlot,
   FormationType,
   GateNode,
+  LaunchableHarness,
   LayoutDocument,
   LayoutEdge,
   LayoutNode,
@@ -137,7 +148,65 @@ import type {
 
 
 
-type DragStaff = { agentId: string; harness: string; fromSlot?: { formationId: string; slotId: string }; startX: number; startY: number; moved: boolean }
+/** A staffing drag: a role from the rail, or a slot's staffing; a press without a move on a slot opens its sentence. */
+type StaffPayload = { kind: 'role'; roleId: string } | { kind: 'slot'; from: SlotRef }
+type DragStaff = { payload: StaffPayload | null; slot?: { ref: SlotRef; part: Part | null; anchor: HTMLElement }; click?: () => void; startX: number; startY: number; moved: boolean; scene?: GhostScene; sceneView?: string }
+/** The canvas as a drag starts: the cards and notes a ghost keeps off, each slot's box and its card's, and the canvas. Measured once per drag. */
+type GhostScene = { cards: DOMRect[]; slots: Map<string, { box: DOMRect; card: DOMRect }>; canvas: DOMRect }
+
+function ghostScene(): GhostScene {
+  const canvas = (document.querySelector('[data-testid="formations-canvas"]') || document.documentElement).getBoundingClientRect()
+  const cards = [...document.querySelectorAll('.world .formation, .world .gatecard, .world .missioncard, .world .toolcard, .world .endcard, .world .note-sticky')]
+    .map(element => element.getBoundingClientRect())
+  const slots = new Map([...document.querySelectorAll<HTMLElement>('.world .slot[data-slot-key]')].map(slot => [slot.dataset.slotKey || '', {
+    box: slot.getBoundingClientRect(),
+    card: (slot.closest('.formation') || slot).getBoundingClientRect(),
+  }]))
+  return { cards, slots, canvas }
+}
+
+/**
+ * Where a dragged staffing's ghost waits while it is over a slot: beside the
+ * slot's card, level with the slot, on the side that covers the least of the
+ * other cards and notes, else just below or above the card; never on the
+ * slot, so its preview stays readable.
+ */
+function dockedGhost(scene: GhostScene, key: string, label: string): { x: number; y: number } | null {
+  const slot = scene.slots.get(key)
+  if (!slot) return null
+  const { box, card } = slot
+  const { canvas, cards } = scene
+  // The ghost's size at its 12px monospace label (staffing.css .staffing-ghost).
+  const width = label.length * 7.3 + 24
+  const height = 28
+  const level = box.top + box.height / 2 - height / 2
+  const under = Math.min(Math.max(box.left, canvas.left + 4), canvas.right - width - 4)
+  const places = [
+    { x: card.right + 10, y: level },
+    { x: card.left - 10 - width, y: level },
+    { x: under, y: card.bottom + 8 },
+    { x: under, y: card.top - 8 - height },
+  ]
+  const cost = ({ x, y }: { x: number; y: number }) => {
+    const outside = x < canvas.left || x + width > canvas.right || y < canvas.top || y + height > canvas.bottom ? 1e9 : 0
+    return outside + cards.reduce((sum, other) => {
+      const w = Math.min(x + width, other.right) - Math.max(x, other.left)
+      const h = Math.min(y + height, other.bottom) - Math.max(y, other.top)
+      return sum + (w > 0 && h > 0 ? w * h : 0)
+    }, 0)
+  }
+  // The first place that covers least: beside the card before below or above it.
+  return places.reduce((best, place) => (cost(place) < cost(best) ? place : best))
+}
+
+/** The slot under the pointer, looking through notes, ghosts and anything else on top. */
+function slotKeyAt(x: number, y: number): string | null {
+  for (const element of document.elementsFromPoint?.(x, y) || [document.elementFromPoint(x, y)].filter(Boolean) as Element[]) {
+    const slot = element.closest<HTMLElement>('.world .slot[data-slot-key]')
+    if (slot) return slot.dataset.slotKey || null
+  }
+  return null
+}
 type DragNode = { id: string; pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean }
 type WireLabel = { x: number; y: number; text: string; anchor: 'start' | 'end' }
 /** A loop is a fail wire back to an earlier step, drawn dashed in its own channel. */
@@ -181,6 +250,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [board, setBoard] = useState<BoardDocument | null>(null)
   const [layout, setLayout] = useState<LayoutDocument | null>(null)
   const [agents, setAgents] = useState<AgentProjection[]>([])
+  // The harnesses with their models and the effort policy, as the roster serves them.
+  const [staffingTerms, setStaffingTerms] = useState<{ harnesses: LaunchableHarness[]; policy: EffortPolicyEntry[] }>({ harnesses: [], policy: [] })
   const [rosterSearch, setRosterSearch] = useState('')
   const [view, setView] = useState<ViewTransform>({ x: 40, y: 40, scale: 1 })
   const [error, setError] = useState('')
@@ -210,7 +281,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [locatedNodeId, setLocatedNodeId] = useState('')
   // Missions, formations and gates open in node windows, oldest first.
   const [nodeWindows, setNodeWindows] = useState<string[]>([])
-  const [ghost, setGhost] = useState<{ x: number; y: number; agentId: string; harness?: string } | null>(null)
+  // A dragged staffing's ghost follows the pointer, and waits beside a slot it is over (docked).
+  const [ghost, setGhost] = useState<{ x: number; y: number; label: string; docked: boolean } | null>(null)
   const [hoverSlot, setHoverSlot] = useState<string | null>(null)
   const [dragPos, setDragPos] = useState<{ id: string; x: number; y: number } | null>(null)
   const [wires, setWires] = useState<WirePath[]>([])
@@ -277,6 +349,15 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const openNoteWindow = useCallback((target: string) => {
     setNoteWindows(current => current.includes(target) ? current : [...current, target])
     focusWindow(noteWindowId(target))
+  }, [focusWindow])
+  // Roles opened from the rail, each in its own window beside the row it opened from.
+  const [roleWindows, setRoleWindows] = useState<string[]>([])
+  const roleWindowAnchors = useRef(new Map<string, WindowRect>())
+  const openRoleWindow = useCallback((roleId: string, row: Element) => {
+    const rect = measureElement(row)
+    if (rect) roleWindowAnchors.current.set(roleId, rect)
+    setRoleWindows(current => current.includes(roleId) ? current : [...current, roleId])
+    focusWindow(roleWindowId(roleId))
   }, [focusWindow])
   // Where a node window opens beside, when the control that opened it says: a Flow title or route link.
   const nodeWindowAnchors = useRef(new Map<string, WindowRect>())
@@ -477,7 +558,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   useEffect(() => {
     if (!active) return
     let cancelled = false
-    const load = () => fetchAgents().then(list => !cancelled && setAgents(list)).catch(() => undefined)
+    const load = () => fetchAgentRoster().then(roster => {
+      if (cancelled) return
+      setAgents(roster.agents)
+      setStaffingTerms(current => JSON.stringify(current) === JSON.stringify({ harnesses: roster.harnesses, policy: roster.effortPolicy })
+        ? current : { harnesses: roster.harnesses, policy: roster.effortPolicy })
+    }).catch(() => undefined)
     load()
     const timer = window.setInterval(load, 8000)
     return () => { cancelled = true; window.clearInterval(timer) }
@@ -1165,21 +1251,82 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [active, closeGateEditor, gateEditor])
 
-  const assignSlot = useCallback((formation: FormationNode, slot: FormationSlot, agentId: string, harness: string) => {
-    // An unchanged assignment writes nothing, so it cannot churn the board revision.
-    if ((slot.agentId || '') === agentId && (slot.harness || '') === harness) return
-    void patchBoard({ assignSlot: { formationId: formation.id, slotId: slot.id, agentId, harness } }).then(result => {
-      if (!result) return
-      // Undo restores the slot's own settings too, so the model and effort come back exactly.
-      recordUndo(agentId ? `the staffing of ${quoted(slot.label, 'a slot')}` : `the unassignment from ${quoted(slot.label, 'a slot')}`,
-        boardStep({ assignSlot: { formationId: formation.id, slotId: slot.id, agentId: slot.agentId || '', harness: slot.harness || '', model: slot.model || '', effort: slot.effort || '' } }))
-    })
-  }, [patchBoard, recordUndo])
+  // ----- staffing (archon-o7p.17) -----
+  // What a slot shows while it is staffed lives in this store; what it runs lives in the mission.
+  const staffingStore = useMemo(() => new StaffingStore(), [])
+  const slotRefOf = useCallback((formation: FormationNode, slot: FormationSlot): SlotRef => ({
+    key: slotKey(formation.id, slot.id), formationId: formation.id, slotId: slot.id, label: slot.label || slot.id, step: formation.title,
+  }), [])
+  const slotOf = useCallback((ref: Pick<SlotRef, 'formationId' | 'slotId'>) => {
+    const formation = boardRef.current?.formations.find(item => item.id === ref.formationId)
+    const slot = formation?.slots.find(item => item.id === ref.slotId)
+    return formation && slot ? { formation, slot } : null
+  }, [])
+  const savedOf = useCallback((ref: SlotRef): Staffing | null => {
+    const found = slotOf(ref)
+    return found ? staffingOf(found.slot) : null
+  }, [slotOf])
+  const refByKey = useCallback((key: string): SlotRef | null => {
+    const [formationId, slotId] = key.split(':')
+    const found = slotOf({ formationId, slotId })
+    return found ? slotRefOf(found.formation, found.slot) : null
+  }, [slotOf, slotRefOf])
 
-  const unassignSlot = useCallback((formation: FormationNode, slot: FormationSlot) => {
+  // A staffing is written in full, so the slot runs exactly what it says; undo restores the slot's own settings.
+  const saveStaffing = useCallback(async (ref: SlotRef, next: Staffing | null, label: string): Promise<string | null> => {
+    const found = slotOf(ref)
+    if (!found) return `${ref.label} is no longer in this mission.`
+    const previous = staffingOf(found.slot)
+    // An unchanged staffing writes nothing, so it cannot churn the mission revision.
+    if (sameStaffing(previous, next)) return null
+    try {
+      await applyBoardPatch({ assignSlot: { formationId: ref.formationId, slotId: ref.slotId, ...slotSettings(next) } })
+      setError('')
+    } catch (err) {
+      return err instanceof Error ? err.message : 'The staffing was not saved.'
+    }
+    recordUndo(label, boardStep({ assignSlot: { formationId: ref.formationId, slotId: ref.slotId, ...slotSettings(previous) } }))
+    return null
+  }, [applyBoardPatch, recordUndo, slotOf])
+
+  // A move writes the target, then the source; one undo puts both back.
+  const moveStaffingOp = useCallback(async (from: SlotRef, fromNext: Staffing | null, to: SlotRef, toNext: Staffing | null): Promise<string | null> => {
+    const source = slotOf(from)
+    const target = slotOf(to)
+    if (!source || !target) return 'That slot is no longer in this mission.'
+    // Identical staffings swap to the same thing: nothing is written and no undo step is made.
+    if (sameStaffing(staffingOf(source.slot), staffingOf(target.slot)) && sameStaffing(fromNext, toNext)) return null
+    const restoreTarget = boardStep({ assignSlot: { formationId: to.formationId, slotId: to.slotId, ...slotSettings(staffingOf(target.slot)) } }, `the staffing of ${quoted(to.label, 'a slot')}`)
+    const restoreSource = boardStep({ assignSlot: { formationId: from.formationId, slotId: from.slotId, ...slotSettings(staffingOf(source.slot)) } }, `the staffing of ${quoted(from.label, 'a slot')}`)
+    try {
+      await applyBoardPatch({ assignSlot: { formationId: to.formationId, slotId: to.slotId, ...slotSettings(toNext) } })
+    } catch (err) {
+      return err instanceof Error ? err.message : 'The staffing was not moved.'
+    }
+    try {
+      await applyBoardPatch({ assignSlot: { formationId: from.formationId, slotId: from.slotId, ...slotSettings(fromNext) } })
+    } catch (err) {
+      // The target changed, so that much is undoable alone.
+      recordUndo(`the staffing of ${quoted(to.label, 'a slot')}`, restoreTarget)
+      return err instanceof Error ? err.message : 'The staffing was not moved.'
+    }
+    setError('')
+    recordUndo(`the move to ${quoted(to.label, 'a slot')}`, restoreTarget, restoreSource)
+    return null
+  }, [applyBoardPatch, recordUndo, slotOf])
+
+  const staffingHostRef = useRef<StaffingHost>({ catalog: { harnesses: [], roles: [], policy: [] }, save: saveStaffing, move: moveStaffingOp })
+
+  /** Opens a slot's sentence beside what it is shown in: the slot, or a node window's sentence. */
+  const openStaffing = useCallback((formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => {
+    staffingStore.setOpen({ ref: slotRefOf(formation, slot), part, anchor })
+  }, [slotRefOf, staffingStore])
+
+  const emptySlot = useCallback((formation: FormationNode, slot: FormationSlot) => {
     if (!slotStaffed(slot)) return
-    assignSlot(formation, slot, '', '')
-  }, [assignSlot])
+    const ref = slotRefOf(formation, slot)
+    void staff(staffingStore, staffingHostRef.current, ref, staffingOf(slot), null, { label: `the unassignment from ${quoted(slot.label, 'a slot')}` })
+  }, [slotRefOf, staffingStore])
 
   // Undo restores the exact previous slots, so it also covers a formation that had no controller.
   const makeControllerOp = useCallback((formation: FormationNode, slot: FormationSlot) => {
@@ -1781,42 +1928,156 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     }
   }, [interactionOwner])
 
-  const beginStaff = useCallback((event: ReactPointerEvent, agentId: string, harness: string, fromSlot?: DragStaff['fromSlot']) => {
+  // A drag after 6 px of movement: the slot under the pointer previews the drop,
+  // a drop on a slot staffs it, and a drop anywhere else changes nothing.
+  const beginStaff = useCallback((event: ReactPointerEvent, start: Pick<DragStaff, 'payload' | 'slot' | 'click'>) => {
     if (event.button !== 0) return
     event.stopPropagation()
-    const staff: DragStaff = { agentId, harness, fromSlot, startX: event.clientX, startY: event.clientY, moved: false }
+    const staffDrag: DragStaff = { ...start, startX: event.clientX, startY: event.clientY, moved: false }
+    const store = staffingStore
+    let hovered: string | null = null
+    const leave = () => {
+      if (hovered) store.setDraft(hovered, undefined)
+      hovered = null
+    }
+    const ghostLabel = (payload: StaffPayload) => {
+      const host = staffingHostRef.current
+      if (payload.kind === 'role') return host.catalog.roles.find(role => role.id === payload.roleId)?.name || payload.roleId
+      const moving = store.current(payload.from.key, savedOf(payload.from))
+      return moving ? `${moving.role ? `${roleName(staffingHostRef.current.catalog, moving.role)} · ` : ''}${captionText(moving)}` : payload.from.label
+    }
     interactionOwner.begin({
       kind: 'staff',
       pointerId: event.pointerId,
       project: pointer => {
-        if (!staff.moved && Math.abs(pointer.clientX - staff.startX) + Math.abs(pointer.clientY - staff.startY) >= 6) staff.moved = true
-        setGhost({ x: pointer.clientX, y: pointer.clientY, agentId: staff.agentId, harness: staff.harness })
-        const el = document.elementFromPoint(pointer.clientX, pointer.clientY) as HTMLElement | null
-        const slotEl = el?.closest<HTMLElement>('.slot')
-        setHoverSlot(slotEl ? `${slotEl.dataset.fid}:${slotEl.dataset.sid}` : null)
+        if (!staffDrag.moved && Math.abs(pointer.clientX - staffDrag.startX) + Math.abs(pointer.clientY - staffDrag.startY) >= 6) staffDrag.moved = true
+        const payload = staffDrag.payload
+        if (!staffDrag.moved || !payload) return
+        const key = slotKeyAt(pointer.clientX, pointer.clientY)
+        const target = key ? refByKey(key) : null
+        const label = ghostLabel(payload)
+        // The canvas is measured as the drag starts, and again only when the view pans or zooms under it.
+        const view = viewRef.current
+        const viewKey = `${view.x},${view.y},${view.scale}`
+        if (!staffDrag.scene || staffDrag.sceneView !== viewKey) {
+          staffDrag.scene = ghostScene()
+          staffDrag.sceneView = viewKey
+        }
+        const docked = target ? dockedGhost(staffDrag.scene, target.key, label) : null
+        setGhost(docked ? { ...docked, label, docked: true } : { x: pointer.clientX, y: pointer.clientY, label, docked: false })
+        setHoverSlot(target ? target.key : null)
+        if (hovered !== target?.key) leave()
+        if (!target || (payload.kind === 'slot' && payload.from.key === target.key)) return
+        hovered = target.key
+        const host = staffingHostRef.current
+        store.setDraft(target.key, payload.kind === 'role'
+          ? previewRole(store, host, target, savedOf(target), payload.roleId)
+          : store.current(payload.from.key, savedOf(payload.from)))
       },
       finalize: pointer => {
-        if (!staff.moved) return // a click staffs nothing
-        const el = document.elementFromPoint(pointer.clientX, pointer.clientY) as HTMLElement | null
-        const slotEl = el?.closest<HTMLElement>('.slot')
-        if (slotEl && slotEl.dataset.fid && slotEl.dataset.sid) {
-          const f = boardRef.current?.formations.find(item => item.id === slotEl.dataset.fid)
-          const s = f?.slots.find(item => item.id === slotEl.dataset.sid)
-          if (f && s) assignSlot(f, s, staff.agentId, staff.harness)
-        } else if (staff.fromSlot && staff.moved) {
-          // Dragging an agent out of its slot onto anything that isn't a slot unassigns it (reference).
-          const f = boardRef.current?.formations.find(item => item.id === staff.fromSlot?.formationId)
-          const s = f?.slots.find(item => item.id === staff.fromSlot?.slotId)
-          if (f && s) unassignSlot(f, s)
+        leave()
+        const payload = staffDrag.payload
+        if (!staffDrag.moved) {
+          // A click: a slot opens its sentence, the word clicked if it has one; a rail row opens its role.
+          if (staffDrag.slot) store.setOpen({ ref: staffDrag.slot.ref, part: staffDrag.slot.part, anchor: staffDrag.slot.anchor })
+          else staffDrag.click?.()
+          return
         }
+        if (!payload) return
+        const key = slotKeyAt(pointer.clientX, pointer.clientY)
+        const target = key ? refByKey(key) : null
+        // A drop that reaches no slot changes nothing, and says so (archon-n2w).
+        if (!target) {
+          store.say(null, 'Not on a slot, so nothing changed.', 'refused', { x: pointer.clientX, y: pointer.clientY })
+          return
+        }
+        const host = staffingHostRef.current
+        if (payload.kind === 'role') dropRole(store, host, target, savedOf(target), payload.roleId)
+        else if (payload.from.key !== target.key) void moveStaffing(store, host, payload.from, savedOf(payload.from), target, savedOf(target))
       },
       cancel: () => {
+        leave()
         setGhost(null)
         setHoverSlot(null)
       },
     })
-    setGhost({ x: event.clientX, y: event.clientY, agentId, harness })
-  }, [assignSlot, interactionOwner, unassignSlot])
+  }, [interactionOwner, refByKey, savedOf, staffingStore])
+
+  // Esc during a staffing drag lets go and changes nothing.
+  useEffect(() => {
+    if (!ghost) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      interactionOwner.cancel()
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [ghost, interactionOwner])
+
+  // N reaches the next empty slot in Flow order, brings it into view and opens its sentence;
+  // pressed again, even after Esc, it moves on to the next one.
+  useEffect(() => {
+    if (!active || boardView !== 'canvas') return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.key !== 'n' && event.key !== 'N') || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return
+      const target = event.target as Element | null
+      if (isTextEditingTarget(event.target) || target?.closest?.('.staffing-window,[role="dialog"],[role="alertdialog"],.ctxmenu')) return
+      const current = boardRef.current
+      const world = worldRef.current
+      if (!current || !world) return
+      const flow = buildFlow(current)
+      const rankOf = (formationId: string) => {
+        const number = flow.numbers.get(formationId)
+        if (number !== undefined) return number
+        const gate = flow.judgeOf.get(formationId)
+        // A judge decides right after its gate; a formation no Input card reaches comes last.
+        return gate !== undefined ? (flow.numbers.get(gate) ?? 1e6) + 0.5 : 1e6
+      }
+      const empties = [...world.querySelectorAll<HTMLElement>('.slot.empty[data-slot-key]')]
+        .map((element, index) => ({ element, index, rank: rankOf(element.dataset.fid || '') }))
+        .sort((a, b) => (a.rank - b.rank) || (a.index - b.index))
+        .map(entry => entry.element)
+      event.preventDefault()
+      if (!empties.length) {
+        const rect = viewportRef.current?.getBoundingClientRect()
+        staffingStore.say(null, 'No empty slot in this mission.', 'note', { x: (rect?.left || 0) + 24, y: (rect?.top || 0) + 24 })
+        return
+      }
+      const from = staffingStore.open?.ref.key || staffingStore.lastNext
+      const at = empties.findIndex(element => element.dataset.slotKey === from)
+      const next = empties[(at + 1) % empties.length]
+      const key = next.dataset.slotKey || ''
+      const ref = refByKey(key)
+      if (!ref) return
+      staffingStore.lastNext = key
+      // Pan so the slot sits clear of the canvas edges, then open it where it now is.
+      const canvas = viewportRef.current?.getBoundingClientRect()
+      const box = next.getBoundingClientRect()
+      if (canvas) {
+        const margin = 80
+        const inside = box.left >= canvas.left + margin && box.right <= canvas.right - margin && box.top >= canvas.top + margin && box.bottom <= canvas.bottom - 160
+        if (!inside) {
+          const dx = canvas.left + canvas.width * 0.4 - (box.left + box.width / 2)
+          const dy = canvas.top + canvas.height * 0.4 - (box.top + box.height / 2)
+          setView(view => ({ ...view, x: view.x + dx, y: view.y + dy }))
+        }
+      }
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const element = world.querySelector<HTMLElement>(`.slot[data-slot-key="${CSS.escape(key)}"]`) || next
+        element.focus({ preventScroll: true })
+        staffingStore.setOpen({ ref, part: null, anchor: element })
+      }))
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [active, boardView, refByKey, staffingStore])
+
+  const grabSlot = useCallback((event: ReactPointerEvent<HTMLElement>, ref: SlotRef, part: Part | null) => {
+    const staffed = staffingStore.current(ref.key, savedOf(ref))
+    beginStaff(event, { payload: staffed ? { kind: 'slot', from: ref } : null, slot: { ref, part: staffed ? part : null, anchor: event.currentTarget } })
+  }, [beginStaff, savedOf, staffingStore])
 
   const beginNodeDrag = useCallback((event: ReactPointerEvent, id: string, index: number) => {
     if (event.button !== 0) return
@@ -2193,25 +2454,16 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     ])
   }, [addPortOp, deleteFormationOp, formationTypeMenuItems, openMenu])
 
+  // A slot's menu staffs it in place, empties it on purpose with undo, or makes it the controller.
   const slotMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode, slot: FormationSlot) => {
-    const items: MenuItem[] = []
-    if (slot.agentId) {
-      items.push({ label: `Unassign ${slot.agentId}`, action: () => unassignSlot(formation, slot) })
-    }
+    const anchor = event.currentTarget
+    const items: MenuItem[] = [{ label: `Staff ${slot.label}…`, action: () => openStaffing(formation, slot, null, anchor) }]
+    if (slotStaffed(slot)) items.push({ label: `Empty ${slot.label}`, action: () => emptySlot(formation, slot) })
     if (formation.type === 'orchestrated' && !slot.controller) {
       items.push({ label: 'Make controller', action: () => makeControllerOp(formation, slot) })
     }
-    const assignable = agents.filter(agent => agent.id !== slot.agentId)
-    if (assignable.length) {
-      items.push({ label: 'Assign agent', head: true })
-      for (const agent of assignable) {
-        items.push({ label: agent.displayName || agent.id, action: () => assignSlot(formation, slot, agent.id, agent.harnessDefault || '') })
-      }
-    } else if (!items.length) {
-      items.push({ label: 'No agents on the socket', disabled: true })
-    }
     openMenu(event, `Slot · ${slot.label}`, items)
-  }, [agents, assignSlot, makeControllerOp, openMenu, unassignSlot])
+  }, [emptySlot, makeControllerOp, openMenu, openStaffing])
 
   const wireMenu = useCallback((event: ReactMouseEvent<SVGPathElement>, connection: BoardConnection) => {
     openMenu(event, 'Connection actions', [
@@ -2320,30 +2572,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   // ----- render helpers -----
   const renderSlot = (formation: FormationNode, slot: FormationSlot, badge?: number) => {
-    const filled = !!slot.agentId
-    const key = `${formation.id}:${slot.id}`
+    const ref = slotRefOf(formation, slot)
     const runState = nodeStates.get(formation.id)
-    const classes = ['slot', filled ? 'filled' : 'empty', slot.controller ? 'ctrl' : '', hoverSlot === key ? 'snaptarget' : '', runState === 'running' ? 'active' : '', runState === 'done' ? 'active done' : '']
     return (
-      <div
-        key={slot.id}
-        className={classes.filter(Boolean).join(' ')}
-        data-fid={formation.id}
-        data-sid={slot.id}
-        data-testid={`slot-${formation.id}-${slot.id}`}
-        title={slotTooltip(slot)}
-        onPointerDown={filled ? event => beginStaff(event, slot.agentId as string, slot.harness || '', { formationId: formation.id, slotId: slot.id }) : undefined}
-        onContextMenu={event => slotMenu(event, formation, slot)}
-      >
-        <div className="slot-ring">
-          {badge ? <span className="badge">{badge}</span> : null}
-          {filled
-            ? <span className="face">{harnessGlyph(slot.harness) ?? initials(slot.agentId as string)}</span>
-            : <span className="plus">+</span>}
-        </div>
-        <div className="slot-label">{slot.label}</div>
-        {filled ? <div className="who">{slot.agentId}</div> : null}
-      </div>
+      <CanvasSlot key={slot.id} store={staffingStore} host={staffingHost} slotRef={ref} slot={slot} saved={staffingOf(slot)} badge={badge}
+        classes={[hoverSlot === ref.key ? 'snaptarget' : '', runState === 'running' ? 'active' : '', runState === 'done' ? 'active done' : '']}
+        onGrab={grabSlot} onMenu={event => slotMenu(event, formation, slot)} />
     )
   }
 
@@ -2512,18 +2746,47 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }
 
   const rosterAgents = useMemo(() => agents.filter(agent => agent.assignable && !agent.unbound), [agents])
+  const staffingCatalog = useMemo<StaffingCatalog>(() => ({ ...staffingTerms, roles: rolesOf(agents) }), [agents, staffingTerms])
+  const staffingHost = useMemo<StaffingHost>(() => ({ catalog: staffingCatalog, save: saveStaffing, move: moveStaffingOp }), [moveStaffingOp, saveStaffing, staffingCatalog])
+  // The staffing sentence drops from its slot in the canvas; where the room below is short the canvas pans by
+  // exactly what is missing, quickly, before the sentence fades in.
+  const staffingStage = useMemo<StaffingStage>(() => ({
+    bounds: () => windows.workspace().bounds,
+    makeRoom: dy => new Promise<void>(resolve => {
+      const world = worldRef.current
+      if (!dy || !world) { resolve(); return }
+      const instant = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      let done = false
+      const finish = (event?: TransitionEvent) => {
+        if (done || (event && (event.target !== world || event.propertyName !== 'transform'))) return
+        done = true
+        world.removeEventListener('transitionend', finish)
+        world.removeEventListener('transitioncancel', finish)
+        world.classList.remove('making-room')
+        resolve()
+      }
+      // The world's transition (formations-d7.css) carries the pan; it resolves once the canvas has arrived.
+      if (!instant) {
+        world.classList.add('making-room')
+        world.addEventListener('transitionend', finish)
+        world.addEventListener('transitioncancel', finish)
+      }
+      setView(current => ({ ...current, y: current.y + dy }))
+      // A safety net, should no transition run at all.
+      window.setTimeout(() => finish(), instant ? 0 : PAN_MS + 400)
+    }),
+  }), [windows])
+  staffingHostRef.current = staffingHost
   const filteredRosterAgents = useMemo(() => {
     const needle = rosterSearch.trim().toLowerCase()
     if (!needle) return rosterAgents
     return rosterAgents.filter(agent => [
-      agent.id, agent.displayName || '', agent.kind || '', agent.harnessDefault || '', ...(agent.tags || []),
+      agent.id, agent.displayName || '', agent.kind || '', ...(agent.tags || []),
     ].some(value => value.toLowerCase().includes(needle)))
   }, [rosterAgents, rosterSearch])
-  const rosterSections = useMemo(() => groupRosterByHarness(filteredRosterAgents), [filteredRosterAgents])
-  const deployedAgentCount = useMemo(
-    () => new Set((board?.formations || []).flatMap(f => f.slots.map(s => s.agentId).filter(Boolean))).size,
-    [board?.formations],
-  )
+  const rosterRoles = useMemo(() => [...filteredRosterAgents].sort(byRoleName), [filteredRosterAgents])
+  // Roles in use are said in words, counted across the whole mission as the Agents view counts them.
+  const rolesInUse = useMemo(() => roleUses(board?.formations || []), [board?.formations])
   const runBadgeClass = activeRun ? activeRun.status : ''
   // Choosing a run pins it to the board; choosing none puts a finished run away.
   const chooseRun = (runId: string) => {
@@ -2674,7 +2937,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     updateInputCard: updateMissionFields,
     setBrief: saveBrief,
     changeType: changeFormationType,
-    assignSlot,
+    staffSlot: openStaffing,
     updateGate: (gate, draft) => updateGateFields(gate.id, draft),
     setGateFiles: (gate, files) => setGateFiles(gate.id, files),
     setEndOutcome,
@@ -2688,7 +2951,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
       setInspectedNodeId(nodeId)
     },
-  }), [assignSlot, attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, renameNode, saveBrief, setEndOutcome, setGateFiles, setLimit, updateGateFields, updateMissionFields])
+  }), [attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, openStaffing, renameNode, saveBrief, setEndOutcome, setGateFiles, setLimit, updateGateFields, updateMissionFields])
 
   const cockpit = (
     <div className="fmx" data-testid="formations-view" data-cockpit="d7">
@@ -2752,9 +3015,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           style={{ '--roster-width': `${roster.width}px` } as CSSProperties}
         >
           <div className="roster-hd">
-            <div className="t">Agents</div>
-            <span className="s" data-testid="roster-count" title={`${rosterAgents.length} catalog agents · ${deployedAgentCount} placed in this mission`}>
-              {rosterCountLabel(rosterAgents.length, { placed: deployedAgentCount, scope: 'canvas' })}
+            <div className="t">Roles</div>
+            <span className="s" data-testid="roster-count" title={`${rosterAgents.length} roles you can staff; ${rolesInUse.size} of them staff slots in this mission`}>
+              {rolesInUseLabel(rosterAgents.length, rolesInUse.size)}
             </span>
             <button type="button" className="roster-toggle" aria-expanded={!roster.collapsed}
               aria-label={roster.collapsed ? 'Expand agent roster' : 'Collapse agent roster'} onClick={roster.toggle}>
@@ -2763,11 +3026,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           </div>
           <div className="board-roster-filter">
             <div className="board-roster-filter-input">
-              <input type="search" aria-label="Filter agents" placeholder="filter agents" value={rosterSearch}
+              <input type="search" aria-label="Filter agents" placeholder="filter roles" value={rosterSearch}
                 onChange={event => setRosterSearch(event.target.value)} />
               {rosterSearch ? <button type="button" aria-label="Clear agent filter" onClick={() => setRosterSearch('')}>Clear</button> : null}
             </div>
-            {rosterSearch.trim() ? <p role="status">{filteredRosterAgents.length} of {rosterAgents.length} agents</p> : null}
+            {rosterSearch.trim() ? <p role="status">{filteredRosterAgents.length} of {rosterAgents.length} roles</p> : null}
           </div>
           <div
             className="roster-resize"
@@ -2783,25 +3046,29 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           />
           <div className="roster-list">
             {rosterAgents.length === 0
-              ? <div className="roster-empty">No assignable catalog agents. Create a persona in the Agents view to staff formations.</div>
-              : filteredRosterAgents.length === 0 ? <div className="roster-empty" role="status">No agents match this filter.</div>
-              : rosterSections.map(section => (
-                <section className="roster-group" key={section.id} data-provider={section.id}>
-                  <div className="roster-group-label">{section.label}</div>
-                  {section.agents.map(agent => {
-                    const deployed = (board?.formations || []).some(f => f.slots.some(s => s.agentId === agent.id))
+              ? <div className="roster-empty">No roles to staff with. Create one in the Agents view; a slot can also run with no role.</div>
+              : filteredRosterAgents.length === 0 ? <div className="roster-empty" role="status">No roles match this filter.</div>
+              : (
+                <section className="roster-group">
+                  {rosterRoles.map(agent => {
+                    const inUse = rolesInUse.get(agent.id) || 0
                     return (
                       <div
                         key={agent.id}
-                        className={`ragent${deployed ? ' deployed' : ''}${agent.unbound ? ' unbound' : ''}`}
+                        className={`ragent${inUse ? ' in-use' : ''}${agent.unbound ? ' unbound' : ''}`}
                         data-agent={agent.id}
                         data-testid={`roster-agent-${agent.id}`}
-                        onPointerDown={event => beginStaff(event, agent.id, agent.harnessDefault || '')}
+                        title={`${agent.displayName || agent.id}: drag onto a slot to give it this role, or click to read it`}
+                        onPointerDown={event => {
+                          const row = event.currentTarget
+                          beginStaff(event, { payload: { kind: 'role', roleId: agent.id }, click: () => openRoleWindow(agent.id, row) })
+                        }}
                       >
-                        <span className="av">{harnessGlyph(agent.harnessDefault) ?? initials(agent.id)}</span>
+                        <span className="av">{initials(agent.displayName || agent.id)}</span>
                         <div className="ri">
                           <div className="n">{agent.displayName || agent.id}</div>
-                          <div className="r">{agentRole(agent)}{agent.preset ? ` · ${agent.customized ? 'custom' : 'preset'}` : ''}{agentState(agent) === 'idle' ? ' · idle' : ''}</div>
+                          {/* In use comes first, so a narrow rail never cuts it off. */}
+                          <div className="r">{inUse ? <span className="in-use-words">{inSlotsWords(inUse)} · </span> : null}{[agentRole(agent), agent.preset ? (agent.customized ? 'custom' : 'preset') : '', agentState(agent) === 'idle' ? 'idle' : ''].filter(Boolean).join(' · ')}</div>
                         </div>
                         <button
                           type="button"
@@ -2815,7 +3082,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                     )
                   })}
                 </section>
-              ))}
+              )}
           </div>
         </aside>
 
@@ -3301,6 +3568,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             </div>
           ) : null}
 
+          {!showFlow && board?.formations.length ? <StaffingKeyHint store={staffingStore} /> : null}
           <div className="zoomlevel">{Math.round(view.scale * 100)}%</div>
           <div className="zoomctl">
             <button onClick={() => zoomBy(1.2)} title="Zoom in">+</button>
@@ -3347,6 +3615,16 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             onClose={() => setNoteWindows(current => current.filter(open => open !== target))}
           />
         )) : null}
+        {board ? roleWindows.map(roleId => {
+          const role = agents.find(agent => agent.id === roleId)
+          return role ? (
+            <RoleWindow key={`role-${roleId}`} role={role} formations={board.formations}
+              anchor={() => roleWindowAnchors.current.get(roleId) || null}
+              onOpenNode={openNodeWindow}
+              onEdit={trigger => setAgentEditor({ agent: role, trigger })}
+              onClose={() => setRoleWindows(current => current.filter(open => open !== roleId))} />
+          ) : null
+        }) : null}
         {board ? nodeWindows.map(nodeId => (
           <Suspense key={`node-${nodeId}`} fallback={null}>
             <NodeWindow nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps} noteCount={noteByNode.get(nodeId)?.length || 0}
@@ -3384,7 +3662,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           agent={agentEditor.agent}
           returnFocus={agentEditor.trigger}
           onClose={() => setAgentEditor(null)}
-          onSaved={async () => setAgents(await fetchAgents())}
+          onSaved={async () => setAgents((await fetchAgentRoster()).agents)}
         />
       ) : null}
 
@@ -3584,9 +3862,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       ) : null}
 
       {menu ? <CanvasContextMenu menu={menu} onClose={closeMenu} /> : null}
+      {active ? <StaffingLayer store={staffingStore} host={staffingHost} savedOf={savedOf} stage={staffingStage} /> : null}
 
       {ghost ? (
-        <div className="fmx-ghost" style={{ left: ghost.x, top: ghost.y }}>{harnessGlyph(ghost.harness) ?? initials(ghost.agentId)}</div>
+        <div className={`fmx-ghost staffing-ghost${ghost.docked ? ' docked' : ''}`} style={{ left: ghost.x, top: ghost.y }}>{ghost.label}</div>
       ) : null}
       {gateGhost ? (
         <div className="gateghost" style={{ left: gateGhost.x, top: gateGhost.y }}>{GATE_SVG}</div>

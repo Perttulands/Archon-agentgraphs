@@ -11,7 +11,7 @@ import { referencedFileRequest } from '../files/fileWindowModel'
 import { useFileProblems } from '../files/referencedFiles'
 import { humanChannelLabel, humanChannelOf } from '../humanChannel/humanChannel'
 import { staffingSentence } from '../nodeWindow/staffing'
-import { usePersonaCards } from '../nodeWindow/usePersonaCards'
+import { roleNamer } from '../staffing/staffingModel'
 import type { WindowRect } from '../windows/windowGeometry'
 import { buildFlow, type FlowStep, type FlowTarget, type GateDecider } from './flowModel'
 import './flow.css'
@@ -78,7 +78,6 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
   onStartMission: (mission: MissionNode) => void
 }) {
   const flow = useMemo(() => buildFlow(board), [board])
-  const cards = usePersonaCards(board.formations.flatMap(formation => formation.slots.map(slot => slot.agentId || '')))
   const root = useRef<HTMLDivElement>(null)
 
   // The canvas zooms on the wheel; in Flow the wheel scrolls the list.
@@ -90,8 +89,9 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
     return () => element.removeEventListener('wheel', keep)
   }, [])
 
+  const roleName = roleNamer(agents)
   const staffing = (formation: FormationNode) => formation.slots
-    .map(slot => staffingSentence(slot, agents.find(agent => agent.id === slot.agentId), slot.agentId ? cards.get(slot.agentId) : undefined))
+    .map(slot => staffingSentence(slot, roleName))
     .join(' ')
 
   const context = { board, flow, run, notes, answerPanel, staffing, onOpenNode, onOpenNotes }

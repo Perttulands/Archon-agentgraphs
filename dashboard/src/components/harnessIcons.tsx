@@ -78,3 +78,21 @@ export function harnessIcon(harness: string | undefined | null): JSX.Element | n
   const id = harnessIdFor(harness)
   return id ? HARNESS_ICONS[id] : null
 }
+
+const HARNESS_NAMES: Record<HarnessId, string> = {
+  'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi', hermes: 'Hermes', terminal: '',
+}
+
+/** A harness in words: "Claude Code" for claude-code; one without a glyph keeps its own name. */
+export function harnessName(harness: string | undefined | null): string {
+  const id = harnessIdFor(harness)
+  return id ? HARNESS_NAMES[id] || harness || '' : ''
+}
+
+const HARNESS_SHORT_NAMES: Partial<Record<HarnessId, string>> = { 'claude-code': 'Claude' }
+
+/** A harness in one short word for a slot card, "Claude" or "Codex", so the card never cuts it. */
+export function harnessShortName(harness: string | undefined | null): string {
+  const id = harnessIdFor(harness)
+  return (id && HARNESS_SHORT_NAMES[id]) || harnessName(harness)
+}

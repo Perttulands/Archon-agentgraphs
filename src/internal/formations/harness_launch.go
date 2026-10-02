@@ -6,21 +6,22 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"unicode"
 )
 
 // DefaultHarnessEffort is the effort a harness variant with no effort runs at.
 const DefaultHarnessEffort = "medium"
 
-// LaunchableHarness is a harness whose seats Archon starts from card settings.
+// LaunchableHarness is a harness whose seats Archon starts from slot settings.
 // Efforts lists the values its CLI accepts: `claude --effort` for Claude Code,
 // and the union of every Codex model's supported reasoning levels (Codex
 // models_cache.json) for Codex, whose `-c model_reasoning_effort` takes them.
+// Models lists the models it is known to run (HarnessModels).
 type LaunchableHarness struct {
-	ID            string   `json:"id"`
-	Executable    string   `json:"executable"`
-	Efforts       []string `json:"efforts"`
-	DefaultEffort string   `json:"defaultEffort"`
+	ID            string         `json:"id"`
+	Executable    string         `json:"executable"`
+	Efforts       []string       `json:"efforts"`
+	DefaultEffort string         `json:"defaultEffort"`
+	Models        []HarnessModel `json:"models"`
 }
 
 var launchableHarnesses = []LaunchableHarness{
@@ -28,11 +29,13 @@ var launchableHarnesses = []LaunchableHarness{
 	{ID: "openai-codex", Executable: "codex", Efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}, DefaultEffort: DefaultHarnessEffort},
 }
 
-// LaunchableHarnesses returns the harnesses Archon can start seats for.
+// LaunchableHarnesses returns the harnesses Archon can start seats for, each
+// with the models this host knows it to run.
 func LaunchableHarnesses() []LaunchableHarness {
 	out := make([]LaunchableHarness, len(launchableHarnesses))
 	for i, harness := range launchableHarnesses {
 		harness.Efforts = slices.Clone(harness.Efforts)
+		harness.Models = HarnessModels(harness.ID)
 		out[i] = harness
 	}
 	return out
@@ -45,26 +48,6 @@ func launchableHarness(id string) (LaunchableHarness, bool) {
 		}
 	}
 	return LaunchableHarness{}, false
-}
-
-// validateHarnessSettings checks a variant's model and effort before they are
-// written. Blank values mean the harness default model and the default effort.
-func validateHarnessSettings(agentID, harnessID, model, effort string) error {
-	model, effort = strings.TrimSpace(model), strings.TrimSpace(effort)
-	if model == "" && effort == "" {
-		return nil
-	}
-	harness, ok := launchableHarness(harnessID)
-	if !ok {
-		return fmt.Errorf("%w: agent %q harness %q has no model or effort setting; only claude-code and openai-codex seats take them", ErrInvalidAgentCard, agentID, harnessID)
-	}
-	if strings.IndexFunc(model, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
-		return fmt.Errorf("%w: agent %q model %q must be one model name without spaces", ErrInvalidAgentCard, agentID, model)
-	}
-	if effort != "" && !slices.Contains(harness.Efforts, effort) {
-		return fmt.Errorf("%w: agent %q effort %q is not one %s accepts; use %s", ErrInvalidAgentCard, agentID, effort, harness.ID, strings.Join(harness.Efforts, ", "))
-	}
-	return nil
 }
 
 func (v HarnessVariant) effectiveEffort() string {
@@ -128,32 +111,14 @@ func (v HarnessVariant) SeatLaunchCommand(cwd string) (string, error) {
 	return command + " -c " + shellQuote("projects={"+renderString(cwd)+"={trust_level=\"trusted\"}}"), nil
 }
 
-// SpawnCommand is what `archon agent spawn` runs: the seat command, which
-// Archon renders only for the harnesses it starts.
+// SpawnCommand is what `archon agent spawn` runs: the session command for the
+// spawn's harness, model and effort, which Archon renders only for the
+// harnesses it starts.
 func (v HarnessVariant) SpawnCommand() (string, error) {
 	if _, ok := launchableHarness(v.ID); !ok {
 		return "", fmt.Errorf("Archon cannot start harness %q; use claude-code or openai-codex", v.ID)
 	}
 	return v.LaunchCommand()
-}
-
-// DescribeLaunches fills each variant's resolved effort, the efforts its
-// harness accepts and the command its seats run, for readers; none of them is
-// stored in the card.
-func (c *PersonaCard) DescribeLaunches() {
-	for i := range c.HarnessVariants {
-		variant := &c.HarnessVariants[i]
-		variant.EffectiveEffort, variant.Efforts, variant.SeatLaunch, variant.SeatLaunchError = "", nil, "", ""
-		if harness, ok := launchableHarness(variant.ID); ok {
-			variant.EffectiveEffort = variant.effectiveEffort()
-			variant.Efforts = slices.Clone(harness.Efforts)
-		}
-		command, err := variant.LaunchCommand()
-		variant.SeatLaunch = command
-		if err != nil {
-			variant.SeatLaunchError = err.Error()
-		}
-	}
 }
 
 func (v HarnessVariant) verifyTurnSettings(turn codexTranscriptTurn) error {

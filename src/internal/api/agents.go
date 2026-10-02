@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/core"
@@ -81,7 +82,6 @@ func (h *AgentsHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	card.TOML = ""
-	card.DescribeLaunches()
 	w.Header().Set("ETag", card.ETag)
 	core.WriteSuccess(w, card)
 }
@@ -96,15 +96,9 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		Personality  string   `json:"personality"`
 		Harness      string   `json:"harness"`
 		SessionStem  string   `json:"sessionStem"`
-		Model        string   `json:"model"`
-		Effort       string   `json:"effort"`
 		Source       string   `json:"source"`
 	}
-	if !decodeJSONBody(w, r, &req) {
-		return
-	}
-	if err := formations.RefuseRoleSettings(req.Model, req.Effort); err != nil {
-		writeAgentError(w, err)
+	if !decodeStrictJSONBody(w, r, &req, "INVALID_AGENT_CARD", unknownAgentField) {
 		return
 	}
 	card, err := h.store.CreatePersona(formations.CreatePersonaRequest{
@@ -116,8 +110,6 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		Personality:  req.Personality,
 		Harness:      req.Harness,
 		SessionStem:  req.SessionStem,
-		Model:        req.Model,
-		Effort:       req.Effort,
 		Source:       req.Source,
 	})
 	if err != nil {
@@ -125,30 +117,25 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	card.TOML = ""
-	card.DescribeLaunches()
 	w.Header().Set("ETag", card.ETag)
 	core.WriteJSON(w, http.StatusCreated, core.NewSuccessResponse(card))
 }
 
 func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		AddCapability    string                       `json:"addCapability"`
-		RemoveCapability string                       `json:"removeCapability"`
-		AddHarness       string                       `json:"addHarness"`
-		SessionStem      *string                      `json:"sessionStem"`
-		Source           string                       `json:"source"`
-		Note             string                       `json:"note"`
-		Retire           bool                         `json:"retire"`
-		DisplayName      *string                      `json:"displayName"`
-		Kind             *string                      `json:"kind"`
-		Summary          *string                      `json:"summary"`
-		Capabilities     *[]string                    `json:"capabilities"`
-		Variant          string                       `json:"variant"`
-		Variants         []formations.VariantSettings `json:"variants"`
-		Model            *string                      `json:"model"`
-		Effort           *string                      `json:"effort"`
+		AddCapability    string    `json:"addCapability"`
+		RemoveCapability string    `json:"removeCapability"`
+		AddHarness       string    `json:"addHarness"`
+		SessionStem      *string   `json:"sessionStem"`
+		Source           string    `json:"source"`
+		Note             string    `json:"note"`
+		Retire           bool      `json:"retire"`
+		DisplayName      *string   `json:"displayName"`
+		Kind             *string   `json:"kind"`
+		Summary          *string   `json:"summary"`
+		Capabilities     *[]string `json:"capabilities"`
 	}
-	if !decodeJSONBody(w, r, &req) {
+	if !decodeStrictJSONBody(w, r, &req, "INVALID_AGENT_CARD", unknownAgentField) {
 		return
 	}
 	edit := formations.EditPersonaRequest{
@@ -168,18 +155,8 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		if req.SessionStem != nil {
 			edit.SessionStem = *req.SessionStem
 		}
-		if req.Model != nil {
-			edit.Model = *req.Model
-		}
-		if req.Effort != nil {
-			edit.Effort = *req.Effort
-		}
 	} else {
 		edit.SetSessionStem = req.SessionStem
-		edit.Variant = req.Variant
-		edit.SetModel = req.Model
-		edit.SetEffort = req.Effort
-		edit.SetVariants = req.Variants
 	}
 	card, err := h.store.EditPersona(r.PathValue("agentId"), edit)
 	if err != nil {
@@ -187,7 +164,6 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	card.TOML = ""
-	card.DescribeLaunches()
 	w.Header().Set("ETag", card.ETag)
 	core.WriteSuccess(w, card)
 }
@@ -197,6 +173,15 @@ func (h *AgentsHandler) liveSessions() ([]formations.LiveAgentSession, error) {
 		return nil, nil
 	}
 	return h.liveness.LiveAgentSessions()
+}
+
+// unknownAgentField says why a role request cannot take a field: a role is
+// role text, so a model or effort belongs on each slot.
+func unknownAgentField(field string) string {
+	if field == "model" || field == "effort" {
+		return fmt.Sprintf("agent request field %q is not one a role takes: a role carries no model or effort; state them on each slot (formation assign --model --effort)", field)
+	}
+	return fmt.Sprintf("agent request field %q is not one Archon takes", field)
 }
 
 func writeAgentError(w http.ResponseWriter, err error) {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { gateKindLabel } from './GateEditorDialog'
 import { HARNESS_ICONS, type HarnessId } from './harnessIcons'
-import { harnessName } from './formationsCockpitVisuals'
+import { harnessName } from './harnessIcons'
 import '../styles/formations-wires.css'
 
 // The canvas notation in words: what each wire, gate kind, run ring and harness

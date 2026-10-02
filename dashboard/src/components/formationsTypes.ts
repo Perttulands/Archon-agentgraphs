@@ -359,6 +359,8 @@ export interface AgentProjection {
   id: string
   displayName?: string
   kind?: string
+  /** The role text's one-line summary. */
+  summary?: string
   tags?: string[]
   harnessDefault?: string
   assignable: boolean
@@ -368,40 +370,35 @@ export interface AgentProjection {
   customized?: boolean
 }
 
+/** The harness a role's own session starts on; a role carries no model or effort. */
 export interface PersonaHarnessVariant {
   id: string
   sessionStem?: string
-  model?: string
-  effort?: string
   source?: string
-  /** Derived by the daemon on read: the effort seats run at (unset is medium). */
-  effectiveEffort?: string
-  /** Derived: the efforts this harness accepts; absent when Archon cannot start it. */
-  efforts?: string[]
-  /** Derived: the command a seat for this variant runs, from the seat launcher itself. */
-  seatLaunch?: string
-  seatLaunchError?: string
 }
 
 /** A harness whose seats Archon starts from model and effort (GET /api/agents data.harnesses). */
+/** A model a harness is known to run, with the efforts it accepts when the daemon host knows them. */
+export interface HarnessModel {
+  id: string
+  efforts?: string[]
+}
+
 export interface LaunchableHarness {
   id: string
   executable: string
   efforts: string[]
   defaultEffort: string
+  /** The models the daemon offers for this harness, the one a new slot takes first. */
+  models?: HarnessModel[]
 }
 
 /** One line of the effort policy the roster serves: which effort suits which work. */
+/** One line of the effort policy: the effort, its use, and the role kinds it is suggested for (none: chosen by hand). */
 export interface EffortPolicyEntry {
   effort: string
   use: string
-}
-
-/** One variant's model and effort in a persona patch; an empty string clears the setting. */
-export interface VariantSettingsPatch {
-  id: string
-  model?: string
-  effort?: string
+  kinds?: string[]
 }
 
 export interface PersonaCard {

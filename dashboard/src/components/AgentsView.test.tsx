@@ -105,11 +105,11 @@ describe('AgentsView', () => {
     expect(screen.getByText('judged by First judge → Second judge')).toBeInTheDocument()
     expect(screen.getByText('3/4 slots staffed · 1 open')).toBeInTheDocument()
     expect(screen.queryByText(/ready/)).not.toBeInTheDocument()
-    expect(within(screen.getByRole('complementary', { name: 'Agent roster' })).getByText('2 · 2 on mission')).toBeInTheDocument()
+    expect(within(screen.getByRole('complementary', { name: 'Agent roster' })).getByText('2 roles · 2 in use')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Inspect Critic' }))
     const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
-    expect(within(inspector).getByText('First judge')).toBeInTheDocument()
+    expect(within(inspector).getByText(/^First judge/)).toBeInTheDocument()
     expect(within(inspector).queryByText('No slots on this mission.')).not.toBeInTheDocument()
   })
 
@@ -167,7 +167,7 @@ describe('AgentsView', () => {
       .toEqual(['authoring', 'human-review', 'fix-pass', 'escalate-fail'])
   })
 
-  it('loads mission staffing and preserves the board patch contract for assign and unassign', async () => {
+  it('staffs a slot through its sentence and empties one on purpose, each stating the slot in full', async () => {
     const board = missionBoard()
     const layout = missionLayout()
     const patches: Array<{ headers: HeadersInit | undefined; body: unknown }> = []
@@ -178,18 +178,14 @@ describe('AgentsView', () => {
           success: true,
           data: {
             agents: [
-              agent('coder', { displayName: 'Coder', liveness: 'live', harnessDefault: 'openai-codex' }),
+              agent('coder', { displayName: 'Coder', liveness: 'live', harnessDefault: 'openai-codex', kind: 'builder' }),
               agent('susie', { displayName: 'Susie', tags: ['design'], liveness: 'offline' }),
             ],
             count: 2,
+            harnesses: HARNESSES,
+            effortPolicy: [{ effort: 'low', use: 'errands' }, { effort: 'medium', use: 'making things' }],
           },
         }))
-      }
-      if (url === '/api/agents/coder') {
-        return Promise.resolve(jsonResponse({ success: true, data: persona('coder', { displayName: 'Coder', harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'coder' }] }) }, 200, { ETag: 'coder-etag' }))
-      }
-      if (url === '/api/agents/susie') {
-        return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName: 'Susie', harnessVariants: [{ id: 'claude-code', sessionStem: 'susie', source: '/tmp/SUSIE.toml' }] }) }, 200, { ETag: 'susie-etag' }))
       }
       if (url === '/api/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { missions: [{ id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' }] } }))
@@ -211,29 +207,34 @@ describe('AgentsView', () => {
 
     expect(await screen.findByText('Authoring')).toBeInTheDocument()
     expect(screen.getByText('Fix Pass')).toBeInTheDocument()
-    expect(within(screen.getByRole('complementary', { name: 'Agent roster' })).getByText('2 · 1 live · 2 on mission')).toBeInTheDocument()
+    expect(within(screen.getByRole('complementary', { name: 'Agent roster' })).getByText('2 roles · 2 in use · 1 live')).toBeInTheDocument()
     expect(screen.getByText('Escalate Fail')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /assign Review slot/i }))
-    expect(await screen.findByText('missing harness variant openai-codex')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /assign coder/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Review: not staffed' }))
+    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    // No list of eligible agents: the slot says what it runs, and its words staff it.
+    expect(within(inspector).queryByText('Eligible agents')).not.toBeInTheDocument()
+    fireEvent.click(within(inspector).getByRole('button', { name: 'Staff Review' }))
+    const sentence = await screen.findByRole('dialog', { name: 'Staff Review' })
+    fireEvent.change(within(sentence).getByRole('textbox'), { target: { value: 'coder' } })
+    fireEvent.keyDown(sentence, { key: 'Enter' })
 
     await waitFor(() => expect(patches).toHaveLength(1))
     expect(headerValue(patches[0].headers, 'If-Match')).toBe('board-etag')
     expect(patches[0].body).toMatchObject({
       expectedRev: 7,
       updatedBy: 'human:ui',
-      assignSlot: { formationId: 'authoring', slotId: 'reviewer', agentId: 'coder', harness: 'openai-codex' },
+      assignSlot: { formationId: 'authoring', slotId: 'reviewer', agentId: 'coder', harness: 'claude-code', model: 'opus', effort: 'medium' },
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /inspect Lead slot assigned to Susie/i }))
-    fireEvent.click(await screen.findByRole('button', { name: /unassign Susie/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Lead (controller): Susie on Claude Code · default model · medium' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Empty Lead' }))
 
     await waitFor(() => expect(patches).toHaveLength(2))
     expect(patches[1].body).toMatchObject({
       expectedRev: 7,
       updatedBy: 'human:ui',
-      assignSlot: { formationId: 'authoring', slotId: 'lead', agentId: '', harness: '' },
+      assignSlot: { formationId: 'authoring', slotId: 'lead', agentId: '', harness: '', model: '', effort: '' },
     })
   })
 
@@ -355,7 +356,7 @@ describe('AgentsView', () => {
         return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName }) }, 200, { ETag: 'susie-etag-2' }))
       }
       if (url === '/api/agents/susie') {
-        return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName, summary: 'Designs things', harnessVariants: [claudeVariant({ sessionStem: 'susie', model: 'claude-opus-5' })] }) }, 200, { ETag: 'susie-etag' }))
+        return Promise.resolve(jsonResponse({ success: true, data: persona('susie', { displayName, summary: 'Designs things', harnessVariants: [{ id: 'claude-code', sessionStem: 'susie' }] }) }, 200, { ETag: 'susie-etag' }))
       }
       if (url === '/api/missions') {
         return Promise.resolve(jsonResponse({ success: true, data: { missions: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
@@ -376,40 +377,27 @@ describe('AgentsView', () => {
     const editor = await screen.findByTestId('persona-editor')
     const name = await within(editor).findByLabelText('Agent display name')
     expect(within(editor).getByLabelText('Agent summary')).toHaveValue('Designs things')
-    // No launch field: the seat command is the daemon's.
+    // A role is role text: no launch, model or effort to edit.
     expect(within(editor).queryByLabelText('Agent launch command')).toBeNull()
-    expect(within(editor).getByTestId('seat-launch-claude-code')).toHaveTextContent("exec '/usr/bin/claude' --model 'claude-opus-5' --effort 'medium'")
-    expect(within(editor).getByLabelText('claude-code model')).toHaveValue('claude-opus-5')
-    expect(within(editor).getByLabelText('claude-code effort')).toHaveDisplayValue('medium (default)')
-    expect(within(within(editor).getByLabelText('claude-code effort')).queryByRole('option', { name: 'ultra' })).toBeNull()
+    expect(within(editor).queryByText(/model|effort|harness variant/i)).toBeNull()
     fireEvent.change(name, { target: { value: 'Susie Designer' } })
-    fireEvent.change(within(editor).getByLabelText('claude-code effort'), { target: { value: 'xhigh' } })
     fireEvent.click(within(editor).getByRole('button', { name: 'Save agent override' }))
 
     await waitFor(() => expect(patches).toHaveLength(1))
     expect(headerValue(patches[0].headers, 'If-Match')).toBe('susie-etag')
-    expect(patches[0].body).toMatchObject({ displayName: 'Susie Designer', summary: 'Designs things', variants: [{ id: 'claude-code', effort: 'xhigh' }] })
-    expect(patches[0].body).not.toHaveProperty('launch')
+    expect(patches[0].body).toEqual({ displayName: 'Susie Designer', kind: 'specialist', summary: 'Designs things', capabilities: [], sessionStem: 'susie' })
     await waitFor(() => expect(screen.queryByTestId('persona-editor')).toBeNull())
     expect(await screen.findByRole('button', { name: /inspect Susie Designer/i })).toBeInTheDocument()
   })
 
-  it('shows and edits each variant\'s model and effort in the inspector, and the command seats run', async () => {
+  it('shows a role as role text, with what each slot it staffs runs', async () => {
     const board = emptyBoard()
-    const patches: unknown[] = []
-    let variant = claudeVariant({ sessionStem: 'critic' })
-    const codex = { id: 'openai-codex', sessionStem: 'codex-critic', model: 'gpt-6-sol', effort: 'ultra', effectiveEffort: 'ultra', efforts: HARNESSES[1].efforts, seatLaunch: "exec '/usr/bin/codex' --model 'gpt-6-sol' -c 'model_reasoning_effort=\"ultra\"'" }
-    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    board.formations = [{ id: 'review', type: 'solo', title: 'Review', inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Output' }],
+      slots: [{ id: 'reviewer', label: 'Reviewer', controller: true, agentId: 'critic', harness: 'openai-codex', model: 'gpt-6-astra', effort: 'xhigh' }] }]
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('critic', { displayName: 'Critic', harnessDefault: 'claude-code' })], count: 1, harnesses: HARNESSES } }))
-      if (url === '/api/agents/critic' && init?.method === 'PATCH') {
-        const body = JSON.parse(String(init.body))
-        patches.push(body)
-        if (headerValue(init.headers, 'If-Match') !== 'critic-etag') return Promise.resolve(jsonResponse({ success: false, error: { message: 'Agent card changed; reload and retry' } }, 409))
-        variant = claudeVariant({ sessionStem: 'critic', model: body.variants[0].model, effort: body.variants[0].effort })
-        return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { harnessVariants: [variant, codex] }) }, 200, { ETag: 'critic-etag-2' }))
-      }
-      if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic', harnessVariants: [variant, codex] }) }, 200, { ETag: 'critic-etag' }))
+      if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic', summary: 'Reviews the brief.', harnessVariants: [{ id: 'claude-code', sessionStem: 'critic' }] }) }, 200, { ETag: 'critic-etag' }))
       if (url === '/api/missions') return Promise.resolve(jsonResponse({ success: true, data: { missions: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
       if (url === '/api/missions/empty/layout') return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
       if (url === '/api/missions/empty') return Promise.resolve(jsonResponse({ success: true, data: { mission: board } }, 200, { ETag: 'empty-etag' }))
@@ -420,31 +408,12 @@ describe('AgentsView', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Inspect Critic' }))
     const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
-    const claude = await within(inspector).findByRole('form', { name: 'claude-code harness variant' })
-    expect(within(inspector).getByText('harness default · effort medium (default)')).toBeInTheDocument()
-    expect(within(claude).getByLabelText('claude-code model')).toHaveValue('')
-    expect(within(claude).getByLabelText('claude-code model')).toHaveAttribute('placeholder', 'harness default')
-    expect(within(claude).getByLabelText('claude-code effort')).toHaveDisplayValue('medium (default)')
-    expect(within(claude).getByTestId('seat-launch-claude-code')).toHaveTextContent("exec '/usr/bin/claude' --effort 'medium' --dangerously-skip-permissions")
-    const codexForm = within(inspector).getByRole('form', { name: 'openai-codex harness variant' })
-    expect(within(codexForm).getByLabelText('openai-codex model')).toHaveValue('gpt-6-sol')
-    expect(within(codexForm).getByLabelText('openai-codex effort')).toHaveDisplayValue('ultra')
-    expect(within(claude).getByRole('button', { name: 'Save claude-code model and effort' })).toBeDisabled()
-
-    fireEvent.change(within(claude).getByLabelText('claude-code model'), { target: { value: 'claude-opus-5' } })
-    fireEvent.change(within(claude).getByLabelText('claude-code effort'), { target: { value: 'low' } })
-    fireEvent.click(within(claude).getByRole('button', { name: 'Save claude-code model and effort' }))
-
-    await waitFor(() => expect(within(claude).getByTestId('seat-launch-claude-code')).toHaveTextContent("--model 'claude-opus-5' --effort 'low'"))
-    expect(patches).toEqual([{ variants: [{ id: 'claude-code', model: 'claude-opus-5', effort: 'low' }] }])
-    expect(within(claude).getByRole('status')).toHaveTextContent('Saved')
-    expect(within(inspector).getByText('claude-opus-5 · effort low')).toBeInTheDocument()
-
-    // A stale card is reloaded and the operator's draft is kept to save again.
-    fireEvent.change(within(claude).getByLabelText('claude-code effort'), { target: { value: 'max' } })
-    fireEvent.click(within(claude).getByRole('button', { name: 'Save claude-code model and effort' }))
-    expect(await within(claude).findByRole('alert')).toHaveTextContent('changed elsewhere and was reloaded')
-    expect(within(claude).getByLabelText('claude-code effort')).toHaveDisplayValue('max')
+    expect(await within(inspector).findByText('Reviews the brief.')).toBeInTheDocument()
+    expect(within(inspector).getByText('in 1 slot')).toBeInTheDocument()
+    expect(within(inspector).getByText('Codex · gpt-6-astra · xhigh')).toBeInTheDocument()
+    expect(within(inspector).queryByText(/harness variants|^Runs$|starts as/i)).toBeNull()
+    expect(within(inspector).queryByRole('textbox', { name: /model/i })).toBeNull()
+    expect(within(inspector).queryByRole('combobox', { name: /effort/i })).toBeNull()
   })
 
   it('offers a board retry when the selected board fails to load', async () => {
@@ -479,53 +448,7 @@ describe('AgentsView', () => {
     expect(screen.queryByText(/Mission load failed:/)).not.toBeInTheDocument()
   })
 
-  it('keeps slot eligibility usable when one persona detail load fails', async () => {
-    const board = missionBoard()
-    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
-      if (url === '/api/agents') {
-        return Promise.resolve(jsonResponse({
-          success: true,
-          data: {
-            agents: [
-              agent('good', { displayName: 'Good', liveness: 'live', harnessDefault: 'openai-codex' }),
-              agent('broken', { displayName: 'Broken', liveness: 'live', harnessDefault: 'openai-codex' }),
-            ],
-            count: 2,
-          },
-        }))
-      }
-      if (url === '/api/agents/good') {
-        return Promise.resolve(jsonResponse({ success: true, data: persona('good', { displayName: 'Good', harnessDefault: 'openai-codex', harnessVariants: [{ id: 'openai-codex', sessionStem: 'good' }] }) }, 200, { ETag: 'good-etag' }))
-      }
-      if (url === '/api/agents/broken') {
-        return Promise.reject(new Error('detail failed'))
-      }
-      if (url === '/api/missions') {
-        return Promise.resolve(jsonResponse({ success: true, data: { missions: [{ id: 'board-1', slug: 'mission-board', title: 'Mission Board', rev: 7, etag: 'board-etag' }] } }))
-      }
-      if (url === '/api/missions/mission-board/layout') {
-        return Promise.resolve(jsonResponse({ success: true, data: { layout: missionLayout() } }, 200, { ETag: 'layout-etag' }))
-      }
-      if (url === '/api/missions/mission-board' && init?.method === 'PATCH') {
-        return Promise.resolve(jsonResponse({ success: true, data: { mission: board } }, 200, { ETag: 'board-etag' }))
-      }
-      if (url === '/api/missions/mission-board') {
-        return Promise.resolve(jsonResponse({ success: true, data: { mission: board } }, 200, { ETag: 'board-etag' }))
-      }
-      return Promise.reject(new Error(`unexpected fetch ${url}`))
-    })
-
-    render(<AgentsView />)
-
-    fireEvent.click(await screen.findByRole('button', { name: /assign Review slot/i }))
-
-    expect(await screen.findByRole('button', { name: /assign Good/i })).toBeEnabled()
-    expect(screen.getByText('failed detail load')).toBeInTheDocument()
-    expect(screen.queryByText('Agent eligibility request failed')).not.toBeInTheDocument()
-  })
-
-  it('groups personas by harness with harness marks and states only what differs from offline', async () => {
+  it('lists roles by name, not by harness, and states only what differs from offline', async () => {
     const board = emptyBoard()
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
@@ -563,12 +486,12 @@ describe('AgentsView', () => {
 
     expect(await screen.findByText('Attached Live')).toBeInTheDocument()
     const roster = screen.getByRole('complementary', { name: 'Agent roster' })
-    expect(Array.from(roster.querySelectorAll('.roster-group-label')).map(label => label.textContent)).toEqual(['Codex', 'Claude', 'Other', 'Unbound'])
-
+    expect(Array.from(roster.querySelectorAll('.roster-group-label')).map(label => label.textContent)).toEqual(['Roles', 'Unbound'])
+    // Roles carry no harness: no harness mark, and alphabetical whatever the default harness.
+    expect(Array.from(roster.querySelectorAll('.roster-group:first-child .ragent .n')).map(name => name.textContent)).toEqual(['Ambiguous One', 'Attached Live', 'Offline One', 'Retired One'])
     const codexRow = within(roster).getByRole('button', { name: /inspect Attached Live/i })
-    expect(codexRow.querySelector('.av svg')).not.toBeNull()
-    expect(within(codexRow).queryByText('AT')).not.toBeInTheDocument()
-    expect(within(roster).getByRole('button', { name: /inspect Ambiguous One/i }).querySelector('.av svg')).not.toBeNull()
+    expect(codexRow.querySelector('.av svg')).toBeNull()
+    expect(within(codexRow).getByText('AT')).toBeInTheDocument()
 
     expect(within(roster).getAllByText('live')).toHaveLength(2)
     expect(within(roster).getByText('ambiguous')).toBeInTheDocument()
@@ -589,7 +512,7 @@ describe('AgentsView', () => {
     expect(screen.getByLabelText('Session stem')).toHaveValue('floating-session')
   })
 
-  it('creates a persona with canonical harness metadata instead of a legacy codex alias', async () => {
+  it('creates a role from role text alone', async () => {
     const postedBodies: unknown[] = []
     const board = emptyBoard()
     fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
@@ -616,21 +539,16 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     fireEvent.click(await screen.findByRole('button', { name: /new agent/i }))
-    expect(screen.queryByLabelText('Launch')).toBeNull()
-    fireEvent.change(screen.getByLabelText('Harness'), { target: { value: 'hermes' } })
-    expect(screen.queryByLabelText('Model')).toBeNull()
-    expect(screen.getByText(/Archon cannot start hermes seats, so it takes no model or effort/)).toBeInTheDocument()
-    // No harness takes a launch command.
-    expect(screen.queryByLabelText('Launch command (archon agent spawn)')).toBeNull()
-    expect(screen.queryByRole('option', { name: 'codex' })).toBeNull()
+    // A new role asks only for role text: no launch, harness, model or effort.
+    const form = screen.getByRole('dialog', { name: 'Create persona' })
+    expect(within(form).queryByLabelText('Launch')).toBeNull()
+    expect(within(form).queryByLabelText('Harness')).toBeNull()
+    expect(within(form).queryByLabelText('Model')).toBeNull()
+    expect(within(form).queryByLabelText('Effort')).toBeNull()
+    expect(within(form).queryByText(/model|effort/i)).toBeNull()
     fireEvent.change(screen.getByLabelText('Agent id'), { target: { value: 'writer' } })
     fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Writer' } })
-    fireEvent.change(screen.getByLabelText('Harness'), { target: { value: 'openai-codex' } })
     fireEvent.change(screen.getByLabelText('Summary'), { target: { value: 'Writes launch copy' } })
-    // A new role carries no model or effort; each slot sets them.
-    expect(screen.queryByLabelText('Model')).toBeNull()
-    expect(screen.queryByLabelText('Effort')).toBeNull()
-    expect(screen.getByText('A role carries no model or effort. Each slot that uses it sets them.')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Capabilities'), { target: { value: 'writing, voice' } })
     fireEvent.click(screen.getByRole('button', { name: /^Create persona$/i }))
 
@@ -639,7 +557,7 @@ describe('AgentsView', () => {
       id: 'writer',
       displayName: 'Writer',
       kind: 'specialist',
-      harness: 'openai-codex',
+      harness: 'claude-code',
       summary: 'Writes launch copy',
       capabilities: ['writing', 'voice'],
     })
@@ -669,6 +587,7 @@ describe('AgentsView', () => {
           success: true,
           data: persona('susie', {
             displayName: 'Susie',
+            summary: 'Designs things',
             tags: ['design'],
             harnessVariants: [{ id: 'claude-code', sessionStem: 'susie', source: '/tmp/SUSIE.toml' }],
             toml: 'CLAUDE.md contents',
@@ -690,7 +609,7 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     fireEvent.click(await screen.findByRole('button', { name: /inspect Susie/i }))
-    expect(await screen.findByText('/tmp/SUSIE.toml')).toBeInTheDocument()
+    expect(await screen.findByText('Designs things')).toBeInTheDocument()
     expect(screen.queryByText('CLAUDE.md contents')).not.toBeInTheDocument()
 
     const note = screen.getByLabelText('Add note')
@@ -725,8 +644,8 @@ function missionBoard(): BoardDocument {
         inputs: [{ id: 'in', label: 'Input' }],
         outputs: [{ id: 'out', label: 'Output' }],
         slots: [
-          { id: 'lead', label: 'Lead', controller: true, agentId: 'susie', harness: 'claude-code' },
-          { id: 'reviewer', label: 'Review', controller: false, harness: 'openai-codex' },
+          { id: 'lead', label: 'Lead', controller: true, agentId: 'susie', harness: 'claude-code', effort: 'medium' },
+          { id: 'reviewer', label: 'Review', controller: false },
         ],
       },
       {
@@ -735,7 +654,7 @@ function missionBoard(): BoardDocument {
         title: 'Fix Pass',
         inputs: [{ id: 'in', label: 'Input' }],
         outputs: [{ id: 'out', label: 'Output' }],
-        slots: [{ id: 'builder', label: 'Builder', controller: true, harness: 'openai-codex' }],
+        slots: [{ id: 'builder', label: 'Builder', controller: true }],
       },
       {
         id: 'escalate-fail',
@@ -743,7 +662,7 @@ function missionBoard(): BoardDocument {
         title: 'Escalate Fail',
         inputs: [{ id: 'in', label: 'Input' }],
         outputs: [{ id: 'out', label: 'Output' }],
-        slots: [{ id: 'critic', label: 'Critic', controller: true, agentId: 'coder', harness: 'openai-codex' }],
+        slots: [{ id: 'critic', label: 'Critic', controller: true, agentId: 'coder', harness: 'openai-codex', model: 'gpt-6-astra', effort: 'xhigh' }],
       },
     ],
     gates: [{ id: 'human-review', title: 'Human Review', kinds: ['human'], criterion: 'Approve the branch.' }],
@@ -776,7 +695,8 @@ function judgedBoard(): BoardDocument {
     id, type: 'solo' as const, title,
     inputs: [{ id: 'in', label: 'Input' }],
     outputs: [{ id: 'out', label: 'Output' }],
-    slots: [{ id: 'agent', label: 'Agent', controller: true, harness: 'claude-code', ...(agentId ? { agentId } : {}) }],
+    // A staffed slot states its harness and effort; an open slot has neither.
+    slots: [{ id: 'agent', label: 'Agent', controller: true, ...(agentId ? { agentId, harness: 'claude-code', effort: 'medium' } : {}) }],
   })
   return {
     id: 'judged', slug: 'judged', title: 'Judged', rev: 3, etag: 'judged-etag',
@@ -839,21 +759,9 @@ function agent(id: string, overrides: Record<string, unknown> = {}) {
 
 /** The daemon's launchable harnesses, as GET /api/agents lists them. */
 const HARNESSES = [
-  { id: 'claude-code', executable: 'claude', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium' },
-  { id: 'openai-codex', executable: 'codex', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'medium' },
+  { id: 'claude-code', executable: 'claude', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium', models: [{ id: 'opus' }, { id: 'sonnet' }] },
+  { id: 'openai-codex', executable: 'codex', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'medium', models: [{ id: 'gpt-6-astra' }] },
 ]
-
-/** A claude-code variant as the daemon reads it, with the derived seat launch. */
-function claudeVariant(overrides: { sessionStem?: string; launch?: string; model?: string; effort?: string } = {}) {
-  const effort = overrides.effort || 'medium'
-  return {
-    id: 'claude-code',
-    ...overrides,
-    effectiveEffort: effort,
-    efforts: HARNESSES[0].efforts,
-    seatLaunch: `exec '/usr/bin/claude'${overrides.model ? ` --model '${overrides.model}'` : ''} --effort '${effort}' --dangerously-skip-permissions`,
-  }
-}
 
 function persona(id: string, overrides: Record<string, unknown> = {}) {
   return {

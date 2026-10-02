@@ -1,0 +1,104 @@
+/* Staffing a slot: the words on the slot while a choice is composed, the
+   sentence window beside it, and the note under it. Theme tokens only;
+   JetBrains Mono comes from --font-mono. Motion uses transform and opacity so it
+   stays on the compositor. Ported from the archon-n7u.56 prototype's variant A. */
+
+/* ---------- on the slot ---------- */
+.fmx .slot.staffable{cursor:pointer;}
+.fmx .slot.staffable:hover{background:color-mix(in srgb,var(--surface-secondary) 70%,transparent);border-color:var(--line);}
+.fmx .slot.staffable:focus-visible{border-color:var(--terra);}
+.fmx .slot.staffing-open{border-color:var(--terra);background:color-mix(in srgb,var(--terra) 9%,transparent);}
+.fmx .slot.staffing-noted{border-color:var(--accent);}
+.fmx .slot.staffable:hover .slot-add{color:var(--terra);}
+.fmx .slot-w.clickable{cursor:pointer;border-radius:2px;}
+.fmx .slot-w.clickable:hover{background:color-mix(in srgb,var(--terra) 18%,transparent);color:var(--ink);}
+.fmx .slot-caption.pending .slot-w.changed{color:var(--terra);text-decoration:underline dashed;text-underline-offset:3px;}
+.fmx .slot-warn{font-size:11px;letter-spacing:0;text-transform:none;color:var(--gold);}
+.fmx .slot-offer{margin-left:auto;flex:none;font:700 12.5px var(--font-mono);letter-spacing:0;text-transform:none;color:var(--terra);background:color-mix(in srgb,var(--terra) 14%,transparent);border:1px solid var(--terra);border-radius:3px;padding:0 6px;line-height:15px;cursor:pointer;}
+.fmx .slot-offer:hover{background:color-mix(in srgb,var(--terra) 28%,transparent);}
+.fmx .staffing-keyhint{position:absolute;left:12px;bottom:12px;z-index:20;font-size:11px;color:var(--dim);background:var(--card);border:1px solid var(--line);border-radius:4px;padding:5px 9px;pointer-events:none;}
+.fmx .staffing-keyhint kbd{font:inherit;color:var(--ink);border:1px solid var(--line);border-radius:2px;padding:0 3px;}
+
+/* ---------- the sentence window ---------- */
+.staffing-layer{position:fixed;inset:0;pointer-events:none;z-index:900;font-family:var(--font-mono);}
+.staffing-layer>*{pointer-events:auto;}
+.staffing-window{position:fixed;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;background:var(--surface-secondary);border:1px solid var(--divider);border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,.28),0 14px 40px rgba(0,0,0,.42);color:var(--text-primary);outline:none;animation:staffing-pop .14s cubic-bezier(.2,.8,.3,1) both;transform-origin:left top;z-index:2;}
+/* Out of sight while it is measured and while the canvas pans to make its room; it fades in only once it is placed. */
+.staffing-window.placing{opacity:0;pointer-events:none;animation:none;}
+.staffing-window.above{transform-origin:left bottom;}
+/* A dropdown fades in within its own box, so even mid-animation it reaches no further than it will. */
+@keyframes staffing-pop{0%{opacity:0;transform:scale(.98)}100%{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.staffing-window{animation:none;}}
+.staffing-sent{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 5px;padding:10px 12px 8px;font-size:13.5px;}
+.staffing-lead,.staffing-sep{color:var(--text-dim);}
+/* "on Claude Code · opus · xhigh" wraps as one group; only the model gives way. */
+.staffing-settings{display:inline-flex;align-items:baseline;gap:5px;min-width:0;max-width:100%;white-space:nowrap;}
+.staffing-settings .staffing-token[data-token="model"]{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.staffing-settings .staffing-token[data-token="harness"],.staffing-settings .staffing-token[data-token="effort"]{flex:none;}
+.staffing-token,.staffing-first{font:13.5px var(--font-mono);color:var(--text-primary);background:transparent;border:0;border-bottom:1.5px dashed var(--text-dim);padding:1px 2px;cursor:pointer;border-radius:2px 2px 0 0;}
+.staffing-token:hover{border-bottom-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);}
+.staffing-token.open{border-bottom:1.5px solid var(--accent);background:color-mix(in srgb,var(--accent) 20%,transparent);}
+.staffing-token.changed,.staffing-first.changed::placeholder{color:var(--accent);}
+.staffing-token.warn{color:var(--window-orange);}
+.staffing-first{outline:none;min-width:0;cursor:text;}
+.staffing-first::placeholder{color:var(--text-primary);opacity:1;}
+.staffing-first:focus{border-bottom:1.5px solid var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);}
+.staffing-first.typing::placeholder{color:var(--text-dim);}
+.staffing-read{padding:0 12px 6px;font-size:11px;color:var(--text-secondary);display:flex;flex-wrap:wrap;gap:4px 12px;min-height:16px;}
+.staffing-read-w b{color:var(--text-primary);font-weight:700;}
+.staffing-issue{flex-basis:100%;color:var(--color-error,#f87171);}
+.staffing-alt{font:11px var(--font-mono);color:var(--accent);background:transparent;border:1px solid var(--accent);border-radius:3px;padding:1px 6px;cursor:pointer;}
+/* Only the list gives way when the window is short: everything else keeps its height. */
+.staffing-window>*,.staffing-list-wrap>*,.staffing-listbox>*{flex:none;}
+.staffing-window>.staffing-list-wrap{border-top:1px solid var(--divider);display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
+.staffing-list-wrap>.staffing-listbox{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
+.staffing-listbox>.staffing-list{flex:1 1 auto;}
+.staffing-list-hd{padding:6px 12px 2px;font-size:10px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* Lists have no padding along their length, so every row starts a whole pitch from the top: they show and scroll only whole rows. */
+.staffing-list{position:relative;padding:0 6px;margin:2px 0 6px;min-height:0;overflow:auto;scrollbar-width:thin;user-select:none;scroll-snap-type:y mandatory;}
+.staffing-list>.staffing-row{scroll-snap-align:start;}
+/* Every row has the same height, so a list's pitch is exact and it shows only whole rows. */
+.staffing-row{display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:10px;box-sizing:border-box;height:22px;padding:0 8px;border-radius:4px;cursor:pointer;font-size:13px;line-height:18px;overflow:hidden;}
+.staffing-row .staffing-row-l{color:var(--text-primary);white-space:nowrap;}
+.staffing-row .staffing-row-h{color:var(--text-dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.staffing-row.hi{background:color-mix(in srgb,var(--accent) 18%,transparent);}
+.staffing-row.current .staffing-row-l::before{content:'• ';color:var(--accent);}
+.staffing-row.disabled{cursor:not-allowed;}
+.staffing-row.disabled .staffing-row-l{color:var(--text-dim);text-decoration:line-through;}
+.staffing-row.disabled .staffing-row-h{color:var(--color-error,#f87171);}
+.staffing-tag{font-size:10px;line-height:14px;padding:0 6px;border-radius:3px;border:1px solid var(--divider);color:var(--text-secondary);}
+.staffing-tag.sugg{border-color:var(--accent);color:var(--accent);}
+.staffing-tag.warn{border-color:var(--window-orange);color:var(--window-orange);}
+/* The role list is a two-column grid of the whole catalog, every name whole; it scrolls, opening on the current role. */
+.staffing-list.staffing-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 2px;padding:0 4px;}
+.staffing-list.staffing-grid .staffing-row{grid-template-columns:minmax(0,1fr) auto;gap:4px;height:19px;padding:0 4px;font-size:11px;line-height:17px;}
+.staffing-list.staffing-grid .staffing-tag{font-size:9.5px;line-height:15px;padding:0 3px;}
+.staffing-list.staffing-grid .staffing-row .staffing-row-l{overflow:hidden;text-overflow:ellipsis;}
+/* vanilla sits above the scrolling grid, one click away; the grid scrolls on its own. */
+.staffing-pinned{padding:2px 4px 0;}
+.staffing-pinned .staffing-row{height:19px;padding:0 4px;font-size:11px;line-height:17px;}
+/* In the grid the current role is marked by a bar, so its name keeps its whole width. */
+.staffing-list.staffing-grid .staffing-row.current .staffing-row-l::before{content:none;}
+.staffing-list.staffing-grid .staffing-row.current{box-shadow:inset 2px 0 0 var(--accent);}
+.staffing-list-ft{padding:4px 12px 6px;font-size:11px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid var(--divider);}
+.staffing-policy{padding:8px 12px;border-top:1px solid var(--divider);font-size:11px;color:var(--text-secondary);line-height:1.5;}
+.staffing-policy.quiet{display:none;}
+.staffing-policy b{color:var(--accent);}
+.staffing-offer{margin-left:8px;font:700 11px var(--font-mono);color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);border:1px solid var(--accent);border-radius:3px;padding:0 6px;line-height:16px;cursor:pointer;}
+.staffing-offer:hover{background:color-mix(in srgb,var(--accent) 28%,transparent);}
+.staffing-note{color:var(--text-primary);}
+.staffing-keys{margin-top:auto;padding:5px 12px 7px;font-size:10px;color:var(--text-dim);border-top:1px solid var(--divider);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+/* ---------- a note at a point, where a drop missed ---------- */
+.staffing-stamp{pointer-events:none !important;position:fixed;display:flex;gap:10px;align-items:center;background:var(--surface-secondary);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--divider));border-left:3px solid var(--accent);border-radius:4px;padding:6px 10px;font-size:11.5px;color:var(--text-primary);box-shadow:0 6px 18px rgba(0,0,0,.45);animation:staffing-pop .14s ease-out both;}
+.staffing-stamp.refused{border-left-color:var(--color-error,#f87171);}
+
+/* ---------- a staffing being dragged ---------- */
+.fmx-ghost.staffing-ghost{width:auto;height:auto;border-radius:4px;padding:5px 9px;font-size:12px;white-space:nowrap;text-transform:none;border-color:var(--accent);transform:translate(14px,14px);}
+/* Over a slot the ghost waits beside its card, so the caption it previews stays in view. */
+.fmx-ghost.staffing-ghost.docked{transform:none;}
+
+/* ---------- the sentence in a node window or the Agents inspector ---------- */
+.nslot-word{font:inherit;color:var(--text-primary);background:transparent;border:0;border-bottom:1.5px dashed var(--text-dim);padding:0 2px;cursor:pointer;border-radius:2px 2px 0 0;}
+.nslot-word:hover,.nslot-word:focus-visible{border-bottom-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);outline:none;}
+.nslot-word.effort{font-weight:700;}

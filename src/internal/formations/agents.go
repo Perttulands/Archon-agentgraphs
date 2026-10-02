@@ -48,17 +48,16 @@ type PersonaCard struct {
 	Customized      bool             `json:"customized,omitempty"`
 }
 
+// HarnessVariant is a harness a session starts on: its session stem and
+// source, and the model and effort the session runs with. A persona card's
+// variants hold only the stem and source; the model and effort come from the
+// slot a seat staffs (SlotSettings.Variant) or from agent spawn's flags.
 type HarnessVariant struct {
 	ID          string `json:"id"`
 	SessionStem string `json:"sessionStem,omitempty"`
 	Model       string `json:"model,omitempty"`
 	Effort      string `json:"effort,omitempty"`
 	Source      string `json:"source,omitempty"`
-	// Derived for readers by DescribeLaunches; never stored in the card.
-	EffectiveEffort string   `json:"effectiveEffort,omitempty"`
-	Efforts         []string `json:"efforts,omitempty"`
-	SeatLaunch      string   `json:"seatLaunch,omitempty"`
-	SeatLaunchError string   `json:"seatLaunchError,omitempty"`
 }
 
 type PersonaNote struct {
@@ -76,8 +75,6 @@ type CreatePersonaRequest struct {
 	Personality  string
 	Harness      string
 	SessionStem  string
-	Model        string
-	Effort       string
 	Source       string
 }
 
@@ -86,8 +83,6 @@ type EditPersonaRequest struct {
 	RemoveCapability string
 	AddHarness       string
 	SessionStem      string
-	Model            string
-	Effort           string
 	Source           string
 	Note             string
 	Retire           bool
@@ -97,74 +92,6 @@ type EditPersonaRequest struct {
 	SetSummary       *string
 	SetCapabilities  *[]string
 	SetSessionStem   *string
-	SetModel         *string
-	SetEffort        *string
-	// Variant names the harness variant SetModel and SetEffort change; blank
-	// means the card's default harness.
-	Variant string
-	// SetVariants sets several variants' model and effort in one edit.
-	SetVariants []VariantSettings
-}
-
-// VariantSettings sets one harness variant's model and effort; a nil field is
-// left as it is and a blank one is cleared.
-type VariantSettings struct {
-	ID     string  `json:"id"`
-	Model  *string `json:"model,omitempty"`
-	Effort *string `json:"effort,omitempty"`
-}
-
-// variantEdits resolves each edit's variant and refuses one edit naming a
-// variant twice, whether in the list or also through variant/model/effort.
-func variantEdits(card *PersonaCard, req EditPersonaRequest) ([]VariantSettings, error) {
-	settings := append([]VariantSettings{}, req.SetVariants...)
-	if req.SetModel != nil || req.SetEffort != nil {
-		settings = append(settings, VariantSettings{ID: req.Variant, Model: req.SetModel, Effort: req.SetEffort})
-	}
-	named := map[string]bool{}
-	for i := range settings {
-		target, err := editedVariant(card, settings[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		if named[target.ID] {
-			return nil, fmt.Errorf("%w: agent %q harness variant %q is edited twice in one change; name each variant once", ErrInvalidAgentCard, card.ID, target.ID)
-		}
-		named[target.ID] = true
-		settings[i].ID = target.ID
-	}
-	return settings, nil
-}
-
-func applyVariantSettings(raw string, card *PersonaCard, setting VariantSettings) (string, error) {
-	target, err := editedVariant(card, setting.ID)
-	if err != nil {
-		return "", err
-	}
-	// Only the fields being changed are checked, so a hand-edited value the
-	// harness rejects does not block an edit to the other field.
-	trimmed := func(value *string) string {
-		if value == nil {
-			return ""
-		}
-		return strings.TrimSpace(*value)
-	}
-	if err := validateHarnessSettings(card.ID, target.ID, trimmed(setting.Model), trimmed(setting.Effort)); err != nil {
-		return "", err
-	}
-	// Blank removes the setting: the harness default model, the default effort.
-	for _, field := range []struct {
-		key   string
-		value *string
-	}{{"model", setting.Model}, {"effort", setting.Effort}} {
-		if field.value == nil {
-			continue
-		}
-		if raw, err = setHarnessVariantScalar(raw, target.ID, field.key, strings.TrimSpace(*field.value)); err != nil {
-			return "", err
-		}
-	}
-	return raw, nil
 }
 
 func editedVariant(card *PersonaCard, variantID string) (HarnessVariant, error) {
@@ -222,6 +149,7 @@ type AgentProjection struct {
 	ID             string   `json:"id"`
 	DisplayName    string   `json:"displayName,omitempty"`
 	Kind           string   `json:"kind,omitempty"`
+	Summary        string   `json:"summary,omitempty"`
 	Tags           []string `json:"tags,omitempty"`
 	HarnessDefault string   `json:"harnessDefault,omitempty"`
 	Liveness       string   `json:"liveness"`
@@ -365,10 +293,6 @@ func (s *PersonaStore) CreatePersona(req CreatePersonaRequest) (*PersonaCard, er
 		if harness == "" {
 			harness = "claude-code"
 		}
-		req.Model, req.Effort = strings.TrimSpace(req.Model), strings.TrimSpace(req.Effort)
-		if err := validateHarnessSettings(req.ID, harness, req.Model, req.Effort); err != nil {
-			return err
-		}
 		sessionStem := req.SessionStem
 		if sessionStem == "" {
 			sessionStem = req.ID
@@ -458,15 +382,6 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 				return err
 			}
 		}
-		settings, err := variantEdits(card, req)
-		if err != nil {
-			return err
-		}
-		for _, setting := range settings {
-			if next, err = applyVariantSettings(next, card, setting); err != nil {
-				return err
-			}
-		}
 		if req.AddCapability != "" || req.RemoveCapability != "" {
 			tags := append([]string{}, card.Tags...)
 			if req.AddCapability != "" && isBareCapability(req.AddCapability) {
@@ -481,9 +396,6 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 			next = setSectionScalar(next, "card", "status", renderString("retired"))
 		}
 		if req.AddHarness != "" {
-			if err := validateHarnessSettings(id, req.AddHarness, req.Model, req.Effort); err != nil {
-				return err
-			}
 			stem := req.SessionStem
 			if stem == "" {
 				stem = req.AddHarness + "-" + id
@@ -491,8 +403,6 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 			next = appendHarnessVariant(next, HarnessVariant{
 				ID:          req.AddHarness,
 				SessionStem: stem,
-				Model:       strings.TrimSpace(req.Model),
-				Effort:      strings.TrimSpace(req.Effort),
 				Source:      req.Source,
 			})
 		}
@@ -657,6 +567,7 @@ func projectCard(card PersonaCard, live []LiveAgentSession) AgentProjection {
 		ID:             card.ID,
 		DisplayName:    card.DisplayName,
 		Kind:           card.Kind,
+		Summary:        card.Summary,
 		Tags:           append([]string{}, card.Tags...),
 		HarnessDefault: card.HarnessDefault,
 		Liveness:       AgentLivenessOffline,
@@ -807,10 +718,6 @@ func setVariantField(v *HarnessVariant, key, value string) {
 		v.ID = value
 	case "session_stem":
 		v.SessionStem = value
-	case "model":
-		v.Model = value
-	case "effort":
-		v.Effort = value
 	case "source":
 		v.Source = value
 	}
@@ -848,12 +755,6 @@ func renderPersona(req CreatePersonaRequest, harness, sessionStem string, tags [
 	b.WriteString("[[harness.variant]]\n")
 	b.WriteString("id = " + renderString(harness) + "\n")
 	b.WriteString("session_stem = " + renderString(sessionStem) + "\n")
-	if req.Model != "" {
-		b.WriteString("model = " + renderString(req.Model) + "\n")
-	}
-	if req.Effort != "" {
-		b.WriteString("effort = " + renderString(req.Effort) + "\n")
-	}
 	if req.Source != "" {
 		b.WriteString("source = " + renderString(req.Source) + "\n")
 	}
@@ -866,12 +767,6 @@ func appendHarnessVariant(raw string, variant HarnessVariant) string {
 	b.WriteString("\n\n[[harness.variant]]\n")
 	b.WriteString("id = " + renderString(variant.ID) + "\n")
 	b.WriteString("session_stem = " + renderString(variant.SessionStem) + "\n")
-	if variant.Model != "" {
-		b.WriteString("model = " + renderString(variant.Model) + "\n")
-	}
-	if variant.Effort != "" {
-		b.WriteString("effort = " + renderString(variant.Effort) + "\n")
-	}
 	if variant.Source != "" {
 		b.WriteString("source = " + renderString(variant.Source) + "\n")
 	}
@@ -952,13 +847,6 @@ func setHarnessVariantScalar(raw, variantID, key, value string) (string, error) 
 		if currentID != variantID {
 			start = end - 1
 			continue
-		}
-		if value == "" && (key == "model" || key == "effort") {
-			// An unset model or effort is absent, so the card reads as the default.
-			if fieldIndex >= 0 {
-				lines = append(lines[:fieldIndex], lines[fieldIndex+1:]...)
-			}
-			return renderLines(lines), nil
 		}
 		rendered := renderString(value)
 		if fieldIndex >= 0 {

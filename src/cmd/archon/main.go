@@ -439,8 +439,6 @@ func runAgentInspect(store *formations.PersonaStore, args []string, stdout, stde
 	if err != nil {
 		return fail(stderr, err)
 	}
-	// Offline, the launch shown is what seats started from this host run.
-	card.DescribeLaunches()
 	return writeAgentInspect(stdout, card, *jsonOut)
 }
 
@@ -464,15 +462,10 @@ func runAgentNew(store *formations.PersonaStore, args []string, stdout, stderr i
 		fmt.Fprintln(stderr, agentNewUsage)
 		return 2
 	}
-	if f.refusedSettings(stderr) {
-		return 2
-	}
 	card, err := store.CreatePersona(formations.CreatePersonaRequest{
 		ID:           fs.Arg(0),
 		Kind:         *f.kind,
 		Harness:      *f.harness,
-		Model:        *f.model,
-		Effort:       *f.effort,
 		Capabilities: splitCSV(*f.capable),
 		Personality:  *f.personality,
 		Source:       *f.from,
@@ -482,7 +475,6 @@ func runAgentNew(store *formations.PersonaStore, args []string, stdout, stderr i
 	}
 	card.TOML = ""
 	if *f.jsonOut {
-		card.DescribeLaunches()
 		return writeJSON(stdout, card)
 	}
 	fmt.Fprintf(stdout, "created %s\n", card.ID)
@@ -497,9 +489,6 @@ func runAgentEdit(store *formations.PersonaStore, args []string, stdout, stderr 
 	}
 	if fs.NArg() != 1 {
 		fmt.Fprintln(stderr, agentEditUsage)
-		return 2
-	}
-	if !checkEditHarness(fs, f, stderr) {
 		return 2
 	}
 	before, err := store.ReadPersona(fs.Arg(0))
@@ -529,19 +518,8 @@ func runAgentEdit(store *formations.PersonaStore, args []string, stdout, stderr 
 	}
 	if *f.addHarness != "" {
 		edit.SessionStem = *f.sessionStem
-		edit.Model = *f.model
-		edit.Effort = *f.effort
-	} else {
-		if setFlags["session-stem"] {
-			edit.SetSessionStem = f.sessionStem
-		}
-		edit.Variant = *f.harness
-		if setFlags["model"] {
-			edit.SetModel = f.model
-		}
-		if setFlags["effort"] {
-			edit.SetEffort = f.effort
-		}
+	} else if setFlags["session-stem"] {
+		edit.SetSessionStem = f.sessionStem
 	}
 	card, err := store.EditPersona(fs.Arg(0), edit)
 	if err != nil {
@@ -549,7 +527,6 @@ func runAgentEdit(store *formations.PersonaStore, args []string, stdout, stderr 
 	}
 	card.TOML = ""
 	if *f.jsonOut {
-		card.DescribeLaunches()
 		return writeJSON(stdout, card)
 	}
 	fmt.Fprintf(stdout, "updated %s\n", card.ID)
@@ -559,10 +536,12 @@ func runAgentEdit(store *formations.PersonaStore, args []string, stdout, stderr 
 func runAgentSpawn(store *formations.PersonaStore, args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 	fs := commandFlags("agent spawn", stderr)
 	harness := fs.String("harness", "", "harness variant")
+	model := fs.String("model", "", "model the session runs; blank means the harness default model")
+	effort := fs.String("effort", "", "effort the session runs at; the policy is "+formations.EffortPolicyText())
 	if err := fs.Parse(reorderFlags(args, nil)); err != nil {
 		return 2
 	}
-	if fs.NArg() != 1 {
+	if fs.NArg() != 1 || *effort == "" {
 		fmt.Fprintln(stderr, commandUsage("agent spawn"))
 		return 2
 	}
@@ -574,13 +553,28 @@ func runAgentSpawn(store *formations.PersonaStore, args []string, stdout, stderr
 	if err != nil {
 		return fail(stderr, err)
 	}
+	if err := formations.ValidateSpawnSettings(card.ID, variant.ID, strings.TrimSpace(*model), strings.TrimSpace(*effort)); err != nil {
+		return fail(stderr, err)
+	}
+	variant.Model, variant.Effort = strings.TrimSpace(*model), strings.TrimSpace(*effort)
 	live, err := liveForCard(*card, runner)
 	if err != nil {
 		return fail(stderr, err)
 	}
 	if binding, err := formations.ResolveAgentSession(*card, live, *harness); err == nil {
-		fmt.Fprintf(stdout, "%s already live as %s\n", card.ID, archonTmuxTargetSessionName(binding.SessionStem))
-		return 0
+		// A running session keeps what it started with; name every setting this spawn would have changed.
+		// A --harness found that session, so it matches what runs and is not among them.
+		ignored := []string{"--effort " + variant.Effort}
+		if variant.Model != "" {
+			ignored = append(ignored, "--model "+variant.Model)
+		}
+		verb := "was"
+		if len(ignored) > 1 {
+			verb = "were"
+		}
+		fmt.Fprintf(stderr, "%s is already running as %s; it keeps the harness, model and effort it started with, so this spawn's %s %s not applied. Stop that session to spawn %s again.\n",
+			card.ID, archonTmuxTargetSessionName(binding.SessionStem), strings.Join(ignored, " "), verb, card.ID)
+		return 1
 	} else if !errors.Is(err, formations.ErrAgentSessionOffline) {
 		return fail(stderr, err)
 	}
@@ -740,6 +734,7 @@ func runFormationAssign(store *formations.Store, args []string, stdout, stderr i
 		return failDefinitionWrite(stderr, err, *f.jsonOut, "formation", fs.Arg(1))
 	}
 	result.TOML = ""
+	printWarnings(stderr, formations.SlotWarnings(result, formationID, *f.slot))
 	if *f.jsonOut {
 		return writeJSON(stdout, result)
 	}

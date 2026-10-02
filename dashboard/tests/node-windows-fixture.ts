@@ -1,4 +1,5 @@
 import { type Page } from '@playwright/test'
+import { rosterAnswer } from './roster-terms'
 import { scouting, scoutingFixture } from './scouting-fixture'
 
 /* The Scouting fixture with long authored text in place of its trimmed briefs,
@@ -49,7 +50,7 @@ export async function nodeWindowsFixture(page: Page) {
   const fixture = await scoutingFixture(page)
   const respond = (data: unknown) => ({ json: { success: true, data }, headers: { ETag: 'fixture-etag' } })
   await page.route('**/api/missions/scouting', route => route.fulfill(respond({ mission: authoredBoard })))
-  await page.route('**/api/agents', route => route.fulfill(respond({ agents, count: agents.length })))
+  await page.route('**/api/agents', route => route.fulfill(respond(rosterAnswer(agents))))
   for (const agent of agents) {
     const model = slotModel(agent.harnessDefault)
     await page.route(`**/api/agents/${agent.id}`, route => route.fulfill(respond({

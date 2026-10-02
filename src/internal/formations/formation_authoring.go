@@ -81,12 +81,10 @@ type FormationSlotAssignmentRequest struct {
 	FormationID string
 	SlotID      string
 	// AgentID is the slot's optional role (persona id).
-	AgentID string
-	Harness string
-	Model   string
-	Effort  string
-	// Personas reads a role's settings when the request names only a role.
-	Personas  *PersonaStore
+	AgentID   string
+	Harness   string
+	Model     string
+	Effort    string
 	UpdatedBy string
 }
 
@@ -795,27 +793,6 @@ func assignmentSettings(req FormationSlotAssignmentRequest) (SlotSettings, error
 		if err := validatePersonaID(role); err != nil {
 			return SlotSettings{}, fmt.Errorf("%w: slot %s role %q is not a persona id", ErrInvalidSlotSettings, name, role)
 		}
-	}
-	if effort == "" && model == "" && role != "" {
-		// The role drag: the role's current settings become the slot's.
-		if req.Personas == nil {
-			return SlotSettings{}, fmt.Errorf("%w: persona store required to read role %q", ErrNotFound, role)
-		}
-		card, err := req.Personas.ReadPersona(role)
-		if errors.Is(err, ErrNotFound) {
-			return SlotSettings{}, fmt.Errorf("%w: slot %s role %q is not a known persona", ErrInvalidSlotSettings, name, role)
-		}
-		if err != nil {
-			return SlotSettings{}, err
-		}
-		settings, err := roleSettings(card, harness)
-		if err != nil {
-			return SlotSettings{}, fmt.Errorf("%w: slot %s cannot take its settings from role %q: %v; give the slot a harness and effort", ErrInvalidSlotSettings, name, role, err)
-		}
-		if err := validateSlotSettings(name, settings.Harness, settings.Model, settings.Effort); err != nil {
-			return SlotSettings{}, err
-		}
-		return settings, nil
 	}
 	if err := validateSlotSettings(name, harness, model, effort); err != nil {
 		return SlotSettings{}, err

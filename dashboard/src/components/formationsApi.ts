@@ -18,7 +18,6 @@ import type {
   EffortPolicyEntry,
   LaunchableHarness,
   PersonaCard,
-  VariantSettingsPatch,
   RunEvent,
   RunStartResult,
   RunStatusProjection,
@@ -167,11 +166,6 @@ export async function patchBoardNote(slug: string, etag: string, patch: NotePatc
   return normalizeNotes(result.data.notes, result.etag)
 }
 
-export async function fetchAgents(): Promise<AgentProjection[]> {
-  const result = await fetchApi<{ agents: AgentProjection[] }>('/api/agents')
-  return result.data.agents || []
-}
-
 export async function fetchAgentCard(agentID: string): Promise<PersonaCard> {
   const result = await fetchApi<PersonaCard>(`/api/agents/${encodeURIComponent(agentID)}`)
   return { ...result.data, etag: result.etag || result.data.etag }
@@ -188,7 +182,6 @@ export async function overrideAgentCard(agentID: string, etag: string, patch: {
   summary?: string
   capabilities?: string[]
   sessionStem?: string
-  variants?: VariantSettingsPatch[]
 }): Promise<PersonaCard> {
   const result = await fetchApi<PersonaCard>(`/api/agents/${encodeURIComponent(agentID)}`, {
     method: 'PATCH',

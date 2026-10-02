@@ -80,7 +80,7 @@ func TestAssigningASlotStatesItsSettings(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		req.FormationID, req.SlotID, req.Personas = "fmn_research", "slot_research", personas
+		req.FormationID, req.SlotID = "fmn_research", "slot_research"
 		return store.AssignFormationSlot("session-search", req, WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	}
 	slotOf := func(board *BoardDocument) FormationSlot { return board.Formations[0].Slots[0] }
@@ -90,12 +90,14 @@ func TestAssigningASlotStatesItsSettings(t *testing.T) {
 		req  FormationSlotAssignmentRequest
 		want string
 	}{
-		{"no effort", FormationSlotAssignmentRequest{Harness: "claude-code", Model: "opus"}, "needs an effort; the policy is low for errands, medium for making things, xhigh for architecture and review, max for consequential reviews"},
+		{"no effort", FormationSlotAssignmentRequest{Harness: "claude-code", Model: "opus"}, "needs an effort; the policy is low for errands (verifier, scout, observer, operator); medium for making things (builder, debugger); xhigh for architecture and review (reviewer, judge, architect, planner, orchestrator); max for consequential reviews, chosen by hand"},
 		{"no harness", FormationSlotAssignmentRequest{Effort: "low"}, "needs a harness: claude-code or openai-codex"},
 		{"ultra on claude", FormationSlotAssignmentRequest{Harness: "claude-code", Effort: "ultra"}, `effort "ultra" is not one claude-code accepts; use low, medium, high, xhigh, max`},
 		{"a harness that cannot start seats", FormationSlotAssignmentRequest{Harness: "hermes", Effort: "low"}, `harness "hermes" cannot start seats`},
 		{"a model with spaces", FormationSlotAssignmentRequest{Harness: "claude-code", Model: "opus 5", Effort: "low"}, "one model name without spaces"},
-		{"an unknown role alone", FormationSlotAssignmentRequest{AgentID: "nobody"}, `role "nobody" is not a known persona`},
+		// A role names only role text; the slot still states what it runs.
+		{"a role alone", FormationSlotAssignmentRequest{AgentID: "delivery-final-reviewer"}, "needs a harness: claude-code or openai-codex"},
+		{"a role and a harness without an effort", FormationSlotAssignmentRequest{AgentID: "delivery-final-reviewer", Harness: "openai-codex"}, "needs an effort; the policy is"},
 		{"a role with a model and no effort", FormationSlotAssignmentRequest{AgentID: "scout", Model: "opus"}, "needs a harness"},
 	} {
 		if _, err := assign(refused.req); !errors.Is(err, ErrInvalidSlotSettings) || !strings.Contains(err.Error(), refused.want) {
@@ -126,14 +128,13 @@ func TestAssigningASlotStatesItsSettings(t *testing.T) {
 	if slot := slotOf(board); slot.AgentID != "scout" || slot.Harness != "openai-codex" || slot.Model != "" || slot.Effort != "xhigh" {
 		t.Fatalf("role slot = %+v", slot)
 	}
-	// The cockpit's role drag names only a role and harness; the role's current
-	// settings are written onto the slot.
-	board, err = assign(FormationSlotAssignmentRequest{AgentID: "delivery-final-reviewer", Harness: "openai-codex"})
+	// A role carries no settings: its card's model and effort never reach the slot.
+	board, err = assign(FormationSlotAssignmentRequest{AgentID: "delivery-final-reviewer", Harness: "openai-codex", Effort: "max"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slot := slotOf(board); slot.AgentID != "delivery-final-reviewer" || slot.Harness != "openai-codex" || slot.Model != "gpt-6-astra" || slot.Effort != "medium" {
-		t.Fatalf("role drag slot = %+v, want the preset's settings written down", slot)
+	if slot := slotOf(board); slot.AgentID != "delivery-final-reviewer" || slot.Harness != "openai-codex" || slot.Model != "" || slot.Effort != "max" {
+		t.Fatalf("role slot = %+v, want only what the assignment stated", slot)
 	}
 	// Nothing named empties the slot.
 	board, err = assign(FormationSlotAssignmentRequest{})
@@ -257,5 +258,43 @@ func TestSchemaThreeSnapshotRejectsSettingsThatDisagreeWithTheSlot(t *testing.T)
 	var executionErr *RunExecutionError
 	if _, _, err := store.readRunPersonaBinding(started.RunID, "fmn_research", slot); !errors.As(err, &executionErr) || executionErr.Code != "persona_snapshot_invalid" {
 		t.Fatalf("altered settings error = %v", err)
+	}
+}
+
+// A slot whose harness Archon cannot start is named by validation and
+// admission before dispatch, with or without a role and a persona store
+// (archon-n7u.13).
+func TestAdmissionNamesASlotWhoseHarnessCannotStart(t *testing.T) {
+	store, personas := s4RunFixture(t)
+	for _, check := range []struct {
+		name     string
+		settings string
+		personas *PersonaStore
+	}{
+		{"vanilla", "harness = \"hermes\"\neffort = \"low\"\n", personas},
+		{"with a role", "agentId = \"delivery-worker\"\nharness = \"hermes\"\neffort = \"low\"\n", personas},
+		{"with an unknown role", "agentId = \"nobody-here\"\nharness = \"hermes\"\neffort = \"low\"\n", personas},
+		{"without a persona store", "agentId = \"delivery-worker\"\nharness = \"hermes\"\neffort = \"low\"\n", nil},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			writeFixture(t, store.BoardPath("session-search"), vanillaSlotBoard(check.settings))
+			board, err := store.ReadBoard("session-search")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := `formation "fmn_research" slot "Researcher" (slot_research) harness "hermes" cannot start seats; use claude-code or openai-codex`
+			for _, report := range []BoardValidationReport{
+				ValidateRunAdmission(board, check.personas, RunAdmissionScope{}),
+				ValidateRunAdmission(board, check.personas, RunAdmissionScope{MissionID: "mis_showcase"}),
+			} {
+				if len(report.Errors) != 1 || report.Errors[0].Code != FindingInvalidSlotSettings || report.Errors[0].NodeID != "fmn_research" || report.Errors[0].Message != want {
+					t.Fatalf("findings = %+v, want one %s: %s", report.Errors, FindingInvalidSlotSettings, want)
+				}
+			}
+			var refused *RunAdmissionError
+			if err := CheckRunAdmission(board, check.personas, RunAdmissionScope{MissionID: "mis_showcase"}); !errors.As(err, &refused) || refused.Findings[0].Message != want {
+				t.Fatalf("admission = %v", err)
+			}
+		})
 	}
 }

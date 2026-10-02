@@ -1,5 +1,6 @@
 import { type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { rosterAnswer } from './roster-terms'
 
 /* The Scouting mission as the daemon serves it (tests/fixtures/scouting.json):
  * the arrange testdata's structure and Arrange layout, trimmed briefs and
@@ -35,7 +36,7 @@ export async function scoutingFixture(page: Page, options: { mission?: typeof sc
     if (path === '/api/missions/scouting/validation') return respond({ missionRev: board.rev, missionEtag: board.etag, errors: [], warnings: options.warnings || [] })
     if (path === '/api/gate-profiles') return respond({ profiles: [] })
     if (path === '/api/runs') return respond([])
-    if (path === '/api/agents') return respond({ agents: [], count: 0 })
+    if (path === '/api/agents') return respond(rosterAnswer([]))
     return route.fulfill({ status: 404, json: { success: false, error: { message: `Fixture has no ${path}` } } })
   })
   return { writes }

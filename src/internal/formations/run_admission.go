@@ -162,14 +162,18 @@ func formationAdmissionFindings(formation FormationNode, personas *PersonaStore,
 			}
 			continue
 		}
-		if personas == nil && slot.AgentID != "" {
+		// What the seat runs is checked first, so a harness Archon cannot start is
+		// named before any dispatch, whatever role the slot has.
+		if err := validateSlotSettings(slotName(slot), slot.Harness, slot.Model, slot.Effort); err != nil {
+			add(FindingInvalidSlotSettings, "formation %q %s", formation.ID, strings.TrimPrefix(err.Error(), ErrInvalidSlotSettings.Error()+": "))
 			continue
 		}
-		_, _, err := ResolveSlotSettings(slot, personas)
+		if slot.AgentID == "" || personas == nil {
+			continue
+		}
+		_, err := personas.ReadPersona(slot.AgentID)
 		switch {
 		case err == nil:
-		case errors.Is(err, ErrInvalidSlotSettings):
-			add(FindingInvalidSlotSettings, "formation %q %s", formation.ID, strings.TrimPrefix(err.Error(), ErrInvalidSlotSettings.Error()+": "))
 		case errors.Is(err, ErrNotFound):
 			add(FindingUnavailablePersona, "formation %q slot %s names unknown role %q", formation.ID, slotName(slot), slot.AgentID)
 		default:

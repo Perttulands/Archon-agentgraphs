@@ -39,22 +39,21 @@ func TestCodexPersonaPresetsAreAvailableWithoutPersistedCards(t *testing.T) {
 	}
 }
 
-func TestDeliveryPresetsResolveHarnessSettingsAndLocalOverrides(t *testing.T) {
+// Delivery presets are role text with their own session's harness; the
+// Delivery mission's slots state what each seat runs.
+func TestDeliveryPresetsResolveTheirHarnessAndLocalOverrides(t *testing.T) {
 	store := NewPersonaStore(t.TempDir())
 	for _, id := range []string{"delivery-planner", "delivery-beads-drafter", "delivery-beads-reviewer", "delivery-lead", "delivery-worker", "delivery-final-reviewer"} {
 		card, err := store.ReadPersona(id)
 		if err != nil {
 			t.Fatal(err)
 		}
-		harness, model := "claude-code", ""
+		harness := "claude-code"
 		if id == "delivery-worker" || id == "delivery-final-reviewer" {
 			harness = "openai-codex"
 		}
-		if id == "delivery-final-reviewer" {
-			model = "gpt-6-astra"
-		}
 		variant, err := card.SelectHarnessVariant(harness)
-		if err != nil || !card.Preset || card.Summary == "" || card.HarnessDefault != harness || variant.Model != model || variant.Effort != "medium" {
+		if err != nil || !card.Preset || card.Summary == "" || card.HarnessDefault != harness || variant.Model != "" || variant.Effort != "" {
 			t.Fatalf("delivery preset %s: card=%+v variant=%+v err=%v", id, card, variant, err)
 		}
 		name := "Local " + card.DisplayName

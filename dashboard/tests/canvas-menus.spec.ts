@@ -42,31 +42,32 @@ test('the canvas menu stays on screen from every corner of the canvas', async ({
   expect([...widths]).toHaveLength(1)
 })
 
-test('a long Assign agent menu fits the screen, scrolls to its last agent, and its section head matches the menu', async ({ page }) => {
+test('a long roster\'s role list scrolls inside the staffing window, which stays on screen, and its last role is one click away', async ({ page }) => {
   await page.addInitScript(() => localStorage.clear())
-  await cockpitFixture(page, { extraAgents: 40 })
+  // The window grows to show a whole catalog up to 640 px; a roster this long scrolls inside it.
+  const fixture = await cockpitFixture(page, { extraAgents: 70 })
   await page.goto('/?mission=browser')
   const slot = page.getByTestId('slot-execution-worker')
   await expect(slot).toBeVisible()
-  await slot.click({ button: 'right' })
-  const menu = page.locator('.ctxmenu')
-  await expect(menu).toBeVisible()
-  await expectOnScreen(page, menu)
-  expect(await menu.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true)
+  await slot.locator('[data-part=role]').click()
+  const sentence = page.getByRole('dialog', { name: 'Staff Worker 1' })
+  await expectOnScreen(page, sentence)
+  const roles = sentence.getByRole('listbox', { name: 'Choose role' })
+  await expect(roles.getByRole('option')).toHaveCount(73)
+  await page.screenshot({ path: test.info().outputPath('long-role-list.png') })
 
-  const head = menu.locator('.msection', { hasText: 'Assign agent' })
-  const [headStyle, titleStyle] = await Promise.all([head, menu.locator('.mhead')].map(locator => locator.evaluate(el => {
-    const style = getComputedStyle(el)
-    return { fontSize: style.fontSize, transform: style.textTransform, color: style.color, letterSpacing: style.letterSpacing }
-  })))
-  expect(headStyle).toEqual(titleStyle)
-  await page.screenshot({ path: test.info().outputPath('assign-agent-menu-top.png') })
-
-  const last = menu.getByRole('menuitem', { name: 'Roster agent 40' })
+  // The list scrolls inside the window, which stays where it opened.
+  expect(await roles.locator('.staffing-list').evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true)
+  const last = roles.getByRole('option', { name: /Roster agent 70/ })
   await last.scrollIntoViewIfNeeded()
   await expect(last).toBeInViewport()
-  await expectOnScreen(page, menu)
-  await page.screenshot({ path: test.info().outputPath('assign-agent-menu-scrolled.png') })
+  // vanilla stays above the scrolled grid, whole and one click away; no role shows above it.
+  const [grid, vanilla] = [(await roles.locator('.staffing-list').boundingBox())!, (await roles.locator('[data-row="vanilla"]').boundingBox())!]
+  expect(vanilla.y + vanilla.height).toBeLessThanOrEqual(grid.y + 1)
+  await expect(roles.locator('[data-row="vanilla"]')).toBeInViewport({ ratio: 1 })
+  await expectOnScreen(page, sentence)
   await last.click()
-  await expect(menu).toHaveCount(0)
+  await expect(sentence).toHaveCount(0)
+  await expect(slot.getByTestId('slot-caption')).toHaveAttribute('data-staffing', 'Roster agent 70 | Codex · default model · medium')
+  expect(fixture.patches.map(patch => patch.assignSlot).filter(Boolean)).toEqual([{ formationId: 'execution', slotId: 'worker', agentId: 'agent-70', harness: 'openai-codex', model: '', effort: 'medium' }])
 })

@@ -13,35 +13,50 @@ import (
 var ErrInvalidSlotSettings = errors.New("invalid slot settings")
 
 // EffortPolicyEntry is one line of the effort policy: which effort suits which
-// kind of work.
+// kind of work, and the role kinds it suggests that effort for. An entry with
+// no kinds is never suggested; it is chosen by hand.
 type EffortPolicyEntry struct {
-	Effort string `json:"effort"`
-	Use    string `json:"use"`
+	Effort string   `json:"effort"`
+	Use    string   `json:"use"`
+	Kinds  []string `json:"kinds,omitempty"`
 }
 
-// effortPolicy is Perttu's effort policy (2026-09-29). It guides the choice;
+// effortPolicy is Perttu's effort policy (2026-10-01). It guides the choice;
 // the slot still states its own effort, and any effort its harness accepts is
-// valid.
+// valid. max is never suggested: it is chosen by hand for consequential
+// reviews.
 var effortPolicy = []EffortPolicyEntry{
-	{Effort: "low", Use: "errands"},
-	{Effort: "medium", Use: "making things"},
-	{Effort: "xhigh", Use: "architecture and review"},
+	{Effort: "low", Use: "errands", Kinds: []string{"verifier", "scout", "observer", "operator"}},
+	{Effort: "medium", Use: "making things", Kinds: []string{"builder", "debugger"}},
+	{Effort: "xhigh", Use: "architecture and review", Kinds: []string{"reviewer", "judge", "architect", "planner", "orchestrator"}},
 	{Effort: "max", Use: "consequential reviews"},
 }
 
 // EffortPolicy returns the effort policy for readers such as the agents API
 // and CLI usage.
 func EffortPolicy() []EffortPolicyEntry {
-	return slices.Clone(effortPolicy)
+	policy := slices.Clone(effortPolicy)
+	for i := range policy {
+		policy[i].Kinds = slices.Clone(policy[i].Kinds)
+	}
+	return policy
 }
 
-// EffortPolicyText reads the policy as one clause: "low for errands, ...".
+// EffortPolicyText reads the policy as one line: "low for errands (verifier,
+// scout, observer, operator); ...; max for consequential reviews, chosen by
+// hand".
 func EffortPolicyText() string {
 	parts := make([]string, 0, len(effortPolicy))
 	for _, entry := range effortPolicy {
-		parts = append(parts, entry.Effort+" for "+entry.Use)
+		part := entry.Effort + " for " + entry.Use
+		if len(entry.Kinds) > 0 {
+			part += " (" + strings.Join(entry.Kinds, ", ") + ")"
+		} else {
+			part += ", chosen by hand"
+		}
+		parts = append(parts, part)
 	}
-	return strings.Join(parts, ", ")
+	return strings.Join(parts, "; ")
 }
 
 // Staffed reports whether the slot names anything to run: a harness, a model,
@@ -105,58 +120,48 @@ func ResolveSlotSettings(slot FormationSlot, personas *PersonaStore) (SlotSettin
 	return settings, card, nil
 }
 
-// roleSettings reads a role's current effective settings from its harness
-// variant: the variant's harness and model, and its effort or the default
-// effort. The cockpit's role drag writes them onto a slot.
-func roleSettings(card *PersonaCard, harness string) (SlotSettings, error) {
-	variant, err := card.SelectHarnessVariant(harness)
-	if err != nil {
-		return SlotSettings{}, err
-	}
-	return SlotSettings{
-		Role:        card.ID,
-		Harness:     variant.ID,
-		Model:       variant.Model,
-		Effort:      variant.effectiveEffort(),
-		SessionStem: variant.SessionStem,
-		Source:      variant.Source,
-	}, nil
-}
-
 // validateSlotSettings checks that a seat can start from these settings. The
 // effort is required, so staffing always states it.
 func validateSlotSettings(slot, harnessID, model, effort string) error {
+	return validateRunSettings("slot "+slot, harnessID, model, effort)
+}
+
+// ValidateSpawnSettings checks what `archon agent spawn` starts a role's
+// session with; a role card carries no model or effort, so the spawn states
+// them.
+func ValidateSpawnSettings(agentID, harnessID, model, effort string) error {
+	return validateRunSettings(fmt.Sprintf("agent %q", agentID), harnessID, model, effort)
+}
+
+// validateRunSettings checks a harness, model and effort a session starts
+// with; subject names what is checked, such as `slot "Worker" (w1)`.
+func validateRunSettings(subject, harnessID, model, effort string) error {
 	harnessIDs := make([]string, 0, len(launchableHarnesses))
 	for _, harness := range launchableHarnesses {
 		harnessIDs = append(harnessIDs, harness.ID)
 	}
 	if harnessID == "" {
-		return fmt.Errorf("%w: slot %s needs a harness: %s", ErrInvalidSlotSettings, slot, strings.Join(harnessIDs, " or "))
+		return fmt.Errorf("%w: %s needs a harness: %s", ErrInvalidSlotSettings, subject, strings.Join(harnessIDs, " or "))
 	}
 	harness, ok := launchableHarness(harnessID)
 	if !ok {
-		return fmt.Errorf("%w: slot %s harness %q cannot start seats; use %s", ErrInvalidSlotSettings, slot, harnessID, strings.Join(harnessIDs, " or "))
+		return fmt.Errorf("%w: %s harness %q cannot start seats; use %s", ErrInvalidSlotSettings, subject, harnessID, strings.Join(harnessIDs, " or "))
 	}
 	if strings.IndexFunc(model, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
-		return fmt.Errorf("%w: slot %s model %q must be one model name without spaces", ErrInvalidSlotSettings, slot, model)
+		return fmt.Errorf("%w: %s model %q must be one model name without spaces", ErrInvalidSlotSettings, subject, model)
 	}
 	if effort == "" {
-		return fmt.Errorf("%w: slot %s needs an effort; the policy is %s", ErrInvalidSlotSettings, slot, EffortPolicyText())
+		return fmt.Errorf("%w: %s needs an effort; the policy is %s", ErrInvalidSlotSettings, subject, EffortPolicyText())
 	}
-	if !slices.Contains(harness.Efforts, effort) {
-		return fmt.Errorf("%w: slot %s effort %q is not one %s accepts; use %s", ErrInvalidSlotSettings, slot, effort, harness.ID, strings.Join(harness.Efforts, ", "))
+	// A model whose levels the host knows narrows the harness's efforts.
+	efforts, accepts := harness.Efforts, harness.ID
+	if known, ok := modelEfforts(harness.ID, model); ok {
+		efforts, accepts = known, model
+	}
+	if !slices.Contains(efforts, effort) {
+		return fmt.Errorf("%w: %s effort %q is not one %s accepts; use %s", ErrInvalidSlotSettings, subject, effort, accepts, strings.Join(efforts, ", "))
 	}
 	return nil
-}
-
-// RefuseRoleSettings refuses a model or effort on a new role card. Slots own
-// what their seats run; a role is only role text. Existing cards' model and
-// effort are still read for the role drag.
-func RefuseRoleSettings(model, effort string) error {
-	if strings.TrimSpace(model) == "" && strings.TrimSpace(effort) == "" {
-		return nil
-	}
-	return fmt.Errorf("%w: a new role carries no model or effort; set them on each slot that uses it (archon formation assign ... --harness --model --effort --role)", ErrInvalidAgentCard)
 }
 
 // roleName names a seat's role in lab output: the persona id, or "vanilla"

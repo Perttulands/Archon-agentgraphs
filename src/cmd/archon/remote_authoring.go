@@ -817,6 +817,9 @@ func remoteFormationAssign(c *remoteClient, args []string, stdout, stderr io.Wri
 	if err != nil {
 		return fail(stderr, err)
 	}
+	if warnings, err := decodeRemote[[]string](data, "warnings"); err == nil {
+		printWarnings(stderr, *warnings)
+	}
 	return writeRemoteBoard(stdout, stderr, data, *f.jsonOut, assignedText(board, formationID, *f.slot))
 }
 
@@ -1129,10 +1132,7 @@ func remoteAgentNew(c *remoteClient, args []string, stdout, stderr io.Writer) in
 		fmt.Fprintln(stderr, agentNewUsage)
 		return 2
 	}
-	if f.refusedSettings(stderr) {
-		return 2
-	}
-	data, _, err := c.call("POST", "/api/agents", map[string]any{"id": fs.Arg(0), "kind": *f.kind, "harness": *f.harness, "model": *f.model, "effort": *f.effort, "capabilities": splitCSV(*f.capable), "personality": *f.personality, "source": *f.from}, "")
+	data, _, err := c.call("POST", "/api/agents", map[string]any{"id": fs.Arg(0), "kind": *f.kind, "harness": *f.harness, "capabilities": splitCSV(*f.capable), "personality": *f.personality, "source": *f.from}, "")
 	if err != nil {
 		return fail(stderr, err)
 	}
@@ -1149,15 +1149,12 @@ func remoteAgentEdit(c *remoteClient, args []string, stdout, stderr io.Writer) i
 		fmt.Fprintln(stderr, agentEditUsage)
 		return 2
 	}
-	if !checkEditHarness(fs, f, stderr) {
-		return 2
-	}
 	given := givenFlags(fs)
 	body := map[string]any{"addCapability": *f.addCapability, "removeCapability": *f.removeCapability, "addHarness": *f.addHarness, "note": *f.note}
 	for flagName, field := range map[string]struct {
 		key   string
 		value *string
-	}{"display-name": {"displayName", f.displayName}, "kind": {"kind", f.kind}, "summary": {"summary", f.summary}, "model": {"model", f.model}, "effort": {"effort", f.effort}} {
+	}{"display-name": {"displayName", f.displayName}, "kind": {"kind", f.kind}, "summary": {"summary", f.summary}} {
 		if given[flagName] {
 			body[field.key] = *field.value
 		}
@@ -1167,9 +1164,6 @@ func remoteAgentEdit(c *remoteClient, args []string, stdout, stderr io.Writer) i
 	}
 	if *f.addHarness != "" || given["session-stem"] {
 		body["sessionStem"] = *f.sessionStem
-	}
-	if *f.addHarness == "" && *f.harness != "" {
-		body["variant"] = *f.harness
 	}
 	path := "/api/agents/" + url.PathEscape(fs.Arg(0))
 	var data json.RawMessage

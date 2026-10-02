@@ -145,7 +145,7 @@ paths:
         '409':
           description: Stale revision or ETag
         '422':
-          description: Unprocessable write, such as a code check naming no registered profile. A Tool write returns INVALID_TOOL_MUTATION with a message naming the invalid field or reason. An assignSlot whose harness, model or effort no seat could start with, that leaves the effort unchosen, or that names an unknown role alone returns INVALID_SLOT_SETTINGS with a message naming the slot and the fix, including the effort policy when the effort is missing.
+          description: Unprocessable write, such as a code check naming no registered profile. A Tool write returns INVALID_TOOL_MUTATION with a message naming the invalid field or reason. An assignSlot whose harness, model or effort no seat could start with, or that leaves the harness or effort unchosen, returns INVALID_SLOT_SETTINGS with a message naming the slot and the fix, including the effort policy when the effort is missing.
         '400':
           description: Invalid mutation. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (brief beadId). An Input card humanChannel other than notify or session returns INVALID_HUMAN_CHANNEL naming the allowed values. A malformed or repeated input name or an unknown input kind returns INVALID_MISSION_INPUT. makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. A Limit card write naming a target that is not a step or the Input card, or a negative rounds value, returns INVALID_LIMIT. A relative reference file returns RELATIVE_FILE_REFERENCE. A patch naming more than one operation returns BAD_REQUEST naming them, and nothing changes. An invalid mission slug returns BAD_REQUEST 'Invalid mission slug'.
       parameters:
@@ -827,11 +827,13 @@ paths:
       responses:
         '200':
           description: Roster in data.agents and data.count, including presets and overrides, and
-            data.harnesses, the harnesses whose seats Archon starts, each with the efforts it accepts and its
-            defaultEffort, and data.effortPolicy, the {effort,use} lines that guide a slot's effort (low for
-            errands, medium for making things, xhigh for architecture and review, max for consequential
-            reviews). A card that cannot be read is left out and named in data.unreadable ({name, reason}).
-            No live-session provider is wired by the daemon.
+            data.harnesses, the harnesses whose seats Archon starts, each with the efforts it accepts, its
+            defaultEffort and its known models ({id, efforts?}; claude-code's aliases, and the Codex models the
+            daemon host's models_cache.json lists, each with the efforts that model accepts), and data.effortPolicy, the {effort,use,kinds?} lines that guide a slot's effort by the role kinds each suits (low for
+            errands: verifier, scout, observer, operator; medium for making things: builder, debugger; xhigh for
+            architecture and review: reviewer, judge, architect, planner, orchestrator; max for consequential
+            reviews, with no kinds: chosen by hand, never suggested). A card that cannot be read is left out and
+            named in data.unreadable ({name, reason}). No live-session provider is wired by the daemon.
         '422':
           description: INVALID_AGENT_CARD when a stored card lacks a required field; the message names the card and field
       parameters:
@@ -848,8 +850,8 @@ paths:
         '201':
           description: Created persona card in data; returns ETag
         '422':
-          description: INVALID_AGENT_CARD when the request gives a model or effort; a new role carries neither,
-            and each slot that uses it sets them
+          description: INVALID_AGENT_CARD when the card would lack a required field, or the request names a field
+            the endpoint does not take, such as model or effort (a role carries neither); the message names it
       requestBody:
         required: true
         content:
@@ -866,11 +868,9 @@ paths:
     get:
       responses:
         '200':
-          description: Persona card in data; returns ETag. Each harnessVariants entry has its stored model and
-            effort, effectiveEffort (medium when effort is unset), efforts (the values its harness accepts), and
-            seatLaunch, the command a seat for that variant runs, rendered by the seat launcher on the daemon's
-            PATH; seatLaunchError says why a variant cannot start (an unsupported harness, or its CLI missing
-            from PATH). Create and patch return the same.
+          description: Persona card in data; returns ETag. A role is role text; its harnessVariants name a
+            harness, session stem and source, and carry no model or effort (each slot states its own). Create and
+            patch return the same.
         '422':
           description: INVALID_AGENT_CARD when the stored card lacks a required field; the message names the card and field
     patch:
@@ -878,8 +878,8 @@ paths:
         '200':
           description: Updated persona card in data; returns ETag
         '422':
-          description: INVALID_AGENT_CARD when model or effort is not one the harness accepts, or variant names
-            no harness variant of the card
+          description: INVALID_AGENT_CARD when the edited card would lack a required field, or the request names a
+            field the endpoint does not take, such as model or effort; the message names it
         '428':
           description: Missing If-Match
         '409':
@@ -1348,10 +1348,10 @@ components:
               type: string
         assignSlot:
           type: object
-          description: Staffs a slot. With an effort, the request states the slot's harness, model and effort in
-            full, and agentId is its optional role. Without an effort it is refused with INVALID_SLOT_SETTINGS
-            (HTTP 422), except a request naming only agentId (and perhaps harness), which writes that role's
-            current effective settings onto the slot. A request naming none of them empties the slot.
+          description: Staffs a slot. The request states the slot's harness, model and effort in full, and agentId
+            is its optional role, which adds only role text. Without a harness or an effort, including a request
+            naming only agentId, it is refused with INVALID_SLOT_SETTINGS (HTTP 422). A request naming none of
+            them empties the slot.
           properties:
             formationId:
               type: string
@@ -1362,14 +1362,16 @@ components:
               description: The slot's optional role (persona id); blank for a vanilla agent.
             harness:
               type: string
-              description: Blank in a role-only request (the role's settings are copied) and when clearing the slot.
+              description: Blank only when clearing the slot.
               enum:
               - ""
               - claude-code
               - openai-codex
             model:
               type: string
-              description: One model name without spaces; blank means the harness default model.
+              description: One model name without spaces; blank means the harness default model. A model outside
+                the harness's known models is accepted, and the answer carries data.warnings naming it. A known
+                Codex model narrows the efforts to its own.
             effort:
               type: string
               description: One effort the harness accepts (claude-code low, medium, high, xhigh, max; openai-codex
@@ -1915,12 +1917,6 @@ components:
           type: string
         sessionStem:
           type: string
-        model:
-          type: string
-          description: Refused when non-empty. A new role carries no model; each slot sets its own.
-        effort:
-          type: string
-          description: Refused when non-empty. A new role carries no effort; each slot sets its own.
         source:
           type: string
     AgentPatch:
@@ -1934,31 +1930,6 @@ components:
           type: string
         sessionStem:
           type: string
-        variant:
-          type: string
-          description: Harness variant that model and effort change; defaults to the card's default harness.
-            With addHarness, model and effort set the added variant instead.
-        variants:
-          type: array
-          description: Model and effort for several variants in one edit; all apply or none do. Name each
-            variant once, and not also through variant/model/effort (422 otherwise). Only the fields given are
-            validated.
-          items:
-            type: object
-            required: [id]
-            properties:
-              id:
-                type: string
-              model:
-                type: string
-              effort:
-                type: string
-        model:
-          type: string
-          description: Model for the variant; an empty string clears it to the harness default model.
-        effort:
-          type: string
-          description: Effort the variant's harness accepts; an empty string clears it to medium.
         source:
           type: string
         note:
@@ -1975,5 +1946,6 @@ components:
           type: array
           items:
             type: string
-      description: Persona editor fields. Model and effort edit one harness variant (variant, else the
-        default harness). Source is harness provenance, not replacement card content.
+      description: Persona editor fields; a role is role text, so there is no model or effort to edit (a request
+        naming either, or any field not listed here, is refused with 422 INVALID_AGENT_CARD). Source is harness
+        provenance, not replacement card content.
