@@ -1606,7 +1606,7 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'Dismiss run findings' }))
     expect(screen.queryByTestId('admission-findings')).toBeNull()
     expect(screen.getByTestId('formation-node-fmn_frame')).not.toHaveClass('admission-blocked')
-    expect(screen.getByTestId('draft-marker-gate_review')).toHaveTextContent('draft')
+    expect(screen.getByTestId('draft-marker-gate_review')).toHaveTextContent('Draft')
   })
 
   it('creates human and judge gates from the gate editor and reloads their kinds', async () => {

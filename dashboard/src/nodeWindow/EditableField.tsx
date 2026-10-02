@@ -1,4 +1,5 @@
 import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import LinkedText from '../files/LinkedText'
 import Markdown from '../evidence/Markdown'
 
 /**
@@ -93,7 +94,7 @@ export function EditableField({ label, value, multiline = false, markdown = fals
       ) : children ? (
         <div className="nfield-value">{children}</div>
       ) : value.trim() ? (
-        markdown ? <Markdown content={value} className="nfield-value nfield-markdown" /> : <div className="nfield-value">{value}</div>
+        markdown ? <Markdown content={value} className="nfield-value nfield-markdown" /> : <div className="nfield-value"><LinkedText text={value} /></div>
       ) : (
         <div className="nfield-value placeholder">{placeholder}</div>
       )}

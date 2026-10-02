@@ -573,3 +573,5 @@
 .fmx .draft-marker{font-weight:400;}
 
 .fmx .agent-edit{min-width:32px;}
+
+.text-token{display:inline;padding:0;border:0;background:transparent;color:var(--text);font:inherit;text-decoration:underline;text-underline-offset:3px;cursor:pointer;white-space:inherit;text-align:left}

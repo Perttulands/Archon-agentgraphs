@@ -6,7 +6,10 @@
 
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { AnchorHTMLAttributes, ImgHTMLAttributes, MouseEvent as ReactMouseEvent } from 'react'
+import LinkedText from '../files/LinkedText'
+import { openPath } from '../files/textLinks'
+import { Children } from 'react'
+import type { ReactNode, AnchorHTMLAttributes, ImgHTMLAttributes, MouseEvent as ReactMouseEvent } from 'react'
 import './Markdown.css'
 
 export interface MarkdownProps {
@@ -55,8 +58,8 @@ function MarkdownLink(
   },
 ) {
   const target = (href || '').trim()
-  if (onOpenPath && isFileLink(target)) {
-    const path = resolveMarkdownPath(basePath, target)
+  if ((onOpenPath || target.startsWith('/')) && isFileLink(target)) {
+    const path = target.startsWith('/') ? target : resolveMarkdownPath(basePath, target)
     return (
       <a
         {...rest}
@@ -64,7 +67,8 @@ function MarkdownLink(
         className="archon-markdown-file-link"
         onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
           event.preventDefault()
-          onOpenPath(path)
+          if (path.startsWith('/')) openPath(path, event.currentTarget)
+          else onOpenPath?.(path)
         }}
       >
         {children}
@@ -82,6 +86,8 @@ function MarkdownImage({ src, alt, basePath, imageUrl }: ImgHTMLAttributes<HTMLI
   return <span>{alt}</span>
 }
 
+function linkChildren(children: ReactNode) { return Children.map(children, child => typeof child === 'string' ? <LinkedText text={child} /> : child) }
+
 export default function Markdown({ content, basePath = '', onOpenPath, imageUrl, className }: MarkdownProps) {
   return (
     <div className={className ? `archon-markdown ${className}` : 'archon-markdown'}>
@@ -89,6 +95,13 @@ export default function Markdown({ content, basePath = '', onOpenPath, imageUrl,
         remarkPlugins={[remarkGfm]}
         components={{
           a: props => <MarkdownLink {...props} basePath={basePath} onOpenPath={onOpenPath} />,
+          p: ({ children }) => <p>{linkChildren(children)}</p>,
+          li: ({ children }) => <li>{linkChildren(children)}</li>,
+          strong: ({ children }) => <strong>{linkChildren(children)}</strong>,
+          em: ({ children }) => <em>{linkChildren(children)}</em>,
+          td: ({ children }) => <td>{linkChildren(children)}</td>,
+          th: ({ children }) => <th>{linkChildren(children)}</th>,
+          code: ({ children, ...rest }) => <code {...rest}>{linkChildren(children)}</code>,
           img: props => <MarkdownImage {...props} basePath={basePath} imageUrl={imageUrl} />,
         }}
       >

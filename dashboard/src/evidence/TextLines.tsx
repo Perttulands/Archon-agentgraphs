@@ -2,6 +2,7 @@
 // FilePanelViewer.tsx at 48947850): the numbered line view and prettyJson.
 // The capped-view note points at the raw artifact instead of a terminal.
 
+import LinkedText from '../files/LinkedText'
 import { useRef } from 'react'
 
 /** How much of a long text the viewer draws before it says it stopped. */
@@ -33,7 +34,7 @@ export default function TextLines({ content, label }: { content: string; label: 
           onScroll={event => {
             if (gutterRef.current) gutterRef.current.scrollTop = event.currentTarget.scrollTop
           }}
-        >{shown.join('\n')}</pre>
+        ><LinkedText text={shown.join('\n')} /></pre>
       </div>
       {capped && (
         <p className="evidence-note">

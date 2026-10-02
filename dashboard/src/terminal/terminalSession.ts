@@ -8,8 +8,7 @@
 // the settled-selection copy are CHROTE's.
 //
 // Departures from CHROTE, and why:
-// - No Bead, path or URL links yet: those are archon-o7p.13.2, which ports
-//   CHROTE's beadLinks, pathLinks and WebLinksAddon onto this session.
+// - Bead IDs copy rather than opening a card, per the coordinator decision.
 // - No leader-chord key handler: Archon has no chord registry, so every key a
 //   focused terminal receives belongs to the seat (ADR-0019: the operator may
 //   always type into a seat).
@@ -25,6 +24,8 @@
 // a plain element neither reloads it nor touches the WebSocket.
 
 import { Terminal } from '@xterm/xterm'
+import { createPathLinkProvider } from './pathLinks'
+import { createBeadLinkProvider } from './beadLinks'
 import { FitAddon } from '@xterm/addon-fit'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { connectTtyd, type TtydConnection } from './ttydProtocol'
@@ -195,6 +196,8 @@ export function createTerminalSession(options: TerminalSessionOptions): Terminal
   })
   const fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)
+  terminal.registerLinkProvider(createPathLinkProvider(terminal))
+  terminal.registerLinkProvider(createBeadLinkProvider(terminal))
 
   // tmux lays the pane out with its own width table, so the browser has to
   // measure characters the same way or every character after an emoji sits a
