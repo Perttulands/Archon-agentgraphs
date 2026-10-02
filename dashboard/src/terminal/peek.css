@@ -44,3 +44,8 @@
   .peek-seats { gap: 10px; }
   .peek-foot { flex-wrap: wrap; gap: 4px; padding: 6px 8px; }
 }
+
+/* A shared control row leaves the native grid the height it needs at 1080p. */
+.peek-toolbar{display:flex;flex-direction:row-reverse;align-items:center;min-height:36px;flex-shrink:0;border-bottom:1px solid var(--divider);}
+.peek-toolbar .peek-picker{padding:2px 8px;}
+.peek-toolbar .peek-seats{flex:1;min-width:0;border-bottom:0;}

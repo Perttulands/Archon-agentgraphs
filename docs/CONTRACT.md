@@ -757,8 +757,9 @@ the seat's native grid and fits its font to its window: the largest font up to
 14px at which every row and column fits, down to an 11px floor. Below the floor
 the grid scrolls, starting at its newest rows, with Start of line and End of
 line controls when it is wider than the window. Resizing a window changes only
-its font; no size reaches the seat. Peek opens where window placement finds room
-and shrinks to the grid it drew until the operator sizes it. Peek keeps the
+its font; no size reaches the seat. Peek opens over the canvas at up to 90% of the workspace, keeping other
+windows' title bars clear, and shrinks to the grid it drew until the operator
+sizes it. Peek keeps the
 terminal, connection and frame of every seat it has shown while it is open, so
 switching seats does not reconnect. A connection lost with the seat still live,
 such as across a daemon restart, dials again once on Refresh seats (Refresh in a
