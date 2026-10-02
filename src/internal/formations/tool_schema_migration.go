@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-
 type toolSchemaMigrationPort struct {
 	end       int
 	portID    string
