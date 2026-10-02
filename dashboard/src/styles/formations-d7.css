@@ -559,3 +559,8 @@
 .fmx .action-error{z-index:400;max-width:440px;}
 
 .fmx .card-step{display:inline-flex;align-items:center;justify-content:center;min-width:20px;min-height:20px;flex-shrink:0;border:1px solid var(--line);border-radius:50%;font-size:11px;color:var(--ink2);margin-right:6px;}
+
+/* Keep mission, authoring and reading controls in adjacent groups. */
+.fmx .topbar{gap:6px;padding:5px 12px;}
+.fmx .topbar .spacer{flex:0 0 16px;}
+.fmx .topbar .newbtn{padding:6px 9px;}

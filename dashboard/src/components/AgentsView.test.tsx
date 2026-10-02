@@ -114,7 +114,7 @@ describe('AgentsView', () => {
     expect(within(screen.getByRole('complementary', { name: 'Agent roster' })).getByText('2 roles · 2 in use')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Inspect Critic' }))
-    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    const inspector = await screen.findByRole('dialog', { name: 'Inspector' })
     const usedBy = await within(inspector).findByRole('region', { name: 'Used by' })
     expect(Array.from(usedBy.querySelectorAll('.agx-role-use')).map(row => row.textContent)).toEqual(['Judged › First judge › AgentClaude Code · default model · medium', 'Other › Check › Checker'])
   })
@@ -217,7 +217,7 @@ describe('AgentsView', () => {
     expect(screen.getByText('Escalate Fail')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Inspect Review: not staffed' }))
-    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    const inspector = await screen.findByRole('dialog', { name: 'Inspector' })
     // No list of eligible agents: the slot says what it runs, and its words staff it.
     expect(within(inspector).queryByText('Eligible agents')).not.toBeInTheDocument()
     fireEvent.click(within(inspector).getByRole('button', { name: 'Staff Review' }))
@@ -414,7 +414,7 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Inspect Critic' }))
-    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    const inspector = await screen.findByRole('dialog', { name: 'Inspector' })
     expect(await within(inspector).findByText('Reviews the brief.')).toBeInTheDocument()
     expect(within(inspector).getByText('in 1 slot')).toBeInTheDocument()
     expect(await within(inspector).findByText('Codex · gpt-6-astra · xhigh')).toBeInTheDocument()
@@ -461,7 +461,7 @@ describe('AgentsView', () => {
 
     render(<AgentsView />)
     fireEvent.click(await screen.findByRole('button', { name: 'Inspect Critic' }))
-    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    const inspector = await screen.findByRole('dialog', { name: 'Inspector' })
     expect(await within(inspector).findByRole('button', { name: 'Other › Check › Checker' })).toBeInTheDocument()
 
     // Retire says the slot stops running, and only the confirmation writes.
@@ -492,7 +492,7 @@ describe('AgentsView', () => {
     fireEvent.click(within(inspector).getByRole('button', { name: 'Delete' }))
     fireEvent.click(within(within(inspector).getByRole('group', { name: 'Delete Spare' })).getByRole('button', { name: 'Delete Spare' }))
     await waitFor(() => expect(writes[writes.length - 1]).toEqual({ method: 'DELETE', url: '/api/agents/spare', body: null, ifMatch: 'spare-etag' }))
-    await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Inspector' })).toBeNull())
   })
 
   it('offers a mission retry when the selected mission fails to load', async () => {
@@ -578,10 +578,10 @@ describe('AgentsView', () => {
     expect(within(roster).getByText('attached')).toBeInTheDocument()
     expect(within(roster).getByText('not assignable')).toBeInTheDocument()
     expect(within(roster).getByText('no role')).toBeInTheDocument()
-    expect(screen.queryByRole('complementary', { name: 'Inspector' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Inspector' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /inspect Retired One/i }))
-    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    const inspector = await screen.findByRole('dialog', { name: 'Inspector' })
     await waitFor(() => expect(within(inspector).getByText('retired')).toBeInTheDocument())
     expect(within(inspector).getByText('offline')).toBeInTheDocument()
 

@@ -72,3 +72,6 @@ body,
   min-height: 0;
   min-width: 0;
 }
+
+.formations-app-nav{padding:4px 8px;align-items:center;}
+.formations-app-nav button{padding:4px 10px;}

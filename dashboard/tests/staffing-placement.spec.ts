@@ -274,7 +274,7 @@ test('the Agents inspector drops the sentence from its word by the same rule', a
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
   const agents = page.getByTestId('agents-view')
   await agents.getByTestId('agents-slot-recheck-recheck_seat').click()
-  const button = agents.getByRole('complementary', { name: 'Inspector' }).getByRole('button', { name: 'Staff Second opinion' })
+  const button = agents.getByRole('dialog', { name: 'Inspector' }).getByRole('button', { name: 'Staff Second opinion' })
   await button.click()
   await expect(page.getByRole('dialog', { name: 'Staff Second opinion' })).toBeVisible()
   expectDrop(await measure(page, button, null), 'Agents inspector')

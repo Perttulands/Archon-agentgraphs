@@ -1,3 +1,5 @@
+import FloatingWindow from '../windows/FloatingWindow'
+import { useWindowManager, WindowManagerProvider } from '../windows/WindowManager'
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import type { ReactNode } from 'react'
 import {
@@ -250,6 +252,7 @@ export function agentStatus(agent: RosterAgent, deployedSlots: number, details?:
 }
 
 export default function AgentsView() {
+  const inspectorWindows = useWindowManager()
   const [agents, setAgents] = useState<RosterAgent[]>([])
   const [harnesses, setHarnesses] = useState<LaunchableHarness[]>([])
   const [effortPolicy, setEffortPolicy] = useState<EffortPolicyEntry[]>([])
@@ -850,7 +853,9 @@ export default function AgentsView() {
         </main>
 
         {selection && (
-          <aside className="agx-inspector" aria-label="Inspector">
+          <WindowManagerProvider stack={inspectorWindows}>
+          <FloatingWindow id="agents-inspector" kind="node" title="Inspector" label="Inspector" defaultSize={{ width: 480, height: 620 }}
+            className="agx-inspector" onClose={() => setSelection(null)}>
             <Inspector
               selection={selection}
               agents={agents}
@@ -871,7 +876,8 @@ export default function AgentsView() {
               onShowUse={showUse}
               onClose={() => setSelection(null)}
             />
-          </aside>
+          </FloatingWindow>
+          </WindowManagerProvider>
         )}
       </div>
 
