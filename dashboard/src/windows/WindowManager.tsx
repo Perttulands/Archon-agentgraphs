@@ -20,7 +20,7 @@ export interface WindowStack {
   focus: (id: string) => void
   isOpen: (id: string) => boolean
   openCount: () => number
-  workspace: () => Workspace
+  workspace: (overCanvas?: boolean) => Workspace
   /** Where each open window sits now. A window reports its place with `track` and forgets it when it closes. */
   track: (id: string, rect: WindowRect) => void
   /** The open windows other than `except`, bottom to top. */
@@ -58,7 +58,7 @@ export function viewportWorkspace(): Workspace {
  * A view's window stack. `workspace` is measured when a window opens, moves or
  * resizes; null means the viewport. `scene` is measured when a window opens.
  */
-export function useWindowManager(workspace?: () => Workspace | null, scene?: () => ViewScene): WindowStack {
+export function useWindowManager(workspace?: (overCanvas?: boolean) => Workspace | null, scene?: () => ViewScene): WindowStack {
   const ids = useRef<string[]>([])
   const rects = useRef(new Map<string, WindowRect>())
   const [order, setOrder] = useState<readonly string[]>([])
@@ -88,7 +88,7 @@ export function useWindowManager(workspace?: () => Workspace | null, scene?: () 
 
   const isOpen = useCallback((id: string) => ids.current.includes(id), [])
   const openCount = useCallback(() => ids.current.length, [])
-  const measure = useCallback(() => workspaceRef.current?.() ?? viewportWorkspace(), [])
+  const measure = useCallback((overCanvas = false) => workspaceRef.current?.(overCanvas) ?? viewportWorkspace(), [])
   const track = useCallback((id: string, rect: WindowRect) => {
     if (ids.current.includes(id)) rects.current.set(id, rect)
   }, [])

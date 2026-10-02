@@ -125,7 +125,7 @@ const CONTROL = 'button,select,input,textarea,a,[role="separator"]'
 
 function openingRect(stack: WindowStack, id: string, size: FrameSize, minimum: FrameSize, anchor?: () => WindowRect | null, keepClear?: () => readonly WindowRect[], anchorKind?: 'node' | 'control', overCanvas = false): WindowRect {
   if (overCanvas) {
-    const workspace = stack.workspace()
+    const workspace = stack.workspace(true)
     const bounds = workspace.bounds
     return placeOpeningWindow({ width: Math.min(size.width, Math.floor(bounds.width * .9)), height: Math.min(size.height, Math.floor(bounds.height * .9)) }, minimum, {
       workspace, windows: stack.openRects(id).map(rect => ({ ...rect, height: Math.min(40, rect.height) })),
@@ -154,7 +154,8 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   onClose,
 }: UseFloatingWindowOptions): FloatingWindow<T> {
   const stack = useWindowStack()
-  const { register, track, workspace } = stack
+  const { register, track } = stack
+  const workspace = useCallback(() => stack.workspace(overCanvas), [stack.workspace, overCanvas])
   const stackRef = useRef(stack)
   stackRef.current = stack
   const ref = useRef<T>(null)

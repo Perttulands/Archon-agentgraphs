@@ -351,9 +351,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const notesRef = useRef<BoardNotesDocument | null>(null)
   const noteDraftsRef = useRef<Record<string, string>>({})
   const viewportRef = useRef<HTMLDivElement | null>(null)
-  const windows = useWindowManager(() => {
+  const windows = useWindowManager((overCanvas = false) => {
     const workspace = cockpitWorkspace(viewportRef.current)
-    if (workspace && viewportRef.current?.classList.contains('flow-docked')) {
+    if (!overCanvas && workspace && viewportRef.current?.classList.contains('flow-docked')) {
       const width = Math.min(600, workspace.bounds.width * .42)
       return { ...workspace, bounds: { ...workspace.bounds, left: workspace.bounds.left + workspace.bounds.width - width, width } }
     }
