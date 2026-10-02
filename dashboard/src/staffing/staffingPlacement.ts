@@ -1,65 +1,65 @@
-/* Where staffing's popovers open: the sentence window and the note that says
- * why a slot changed. Each opens right beside what it belongs to and covers
- * no card, operator note, open window or control (windows/popoverPlacement.ts). */
-import type { CSSProperties } from 'react'
-import { measureElement } from '../windows/cockpitScene'
-import { placePopover, type PopoverPlace, type PopoverSize } from '../windows/popoverPlacement'
-import type { ViewScene } from '../windows/WindowManager'
-import type { WindowRect, Workspace } from '../windows/windowGeometry'
+/* Where the staffing sentence opens: like a dropdown, on the row of the slot
+ * (or the word) that was clicked. One rule on the canvas, in a node window, in
+ * Flow's node windows and in the Agents inspector. */
+import type { WindowRect } from '../windows/windowGeometry'
 
-/** What a view tells staffing about itself: where popovers may go, the windows open over it, and what it shows. */
+/** What a view tells staffing about itself: where the sentence may go, and how to make room for it. */
 export interface StaffingStage {
-  workspace: () => Workspace
-  windows: () => readonly WindowRect[]
-  /** Cards and operator notes (landmarks) and the rest of the view (content). */
-  scene: () => ViewScene
-  /** Pans the view by (dx, dy) to make room beside a slot, resolving once it has moved; a view that cannot pan leaves it out. */
-  makeRoom?: (dx: number, dy: number) => Promise<void>
+  /** Where the sentence may open, in viewport pixels. */
+  bounds: () => WindowRect
+  /** Pans the view up (negative) or down by `dy`, resolving once it has moved; a view that cannot pan leaves it out. */
+  makeRoom?: (dy: number) => Promise<void>
 }
 
-const CARDS = '.formation, .missioncard, .gatecard, .toolcard, .endcard, .note-sticky'
-
-const measured = (elements: Iterable<Element>) => [...elements].map(element => measureElement(element)).filter((rect): rect is WindowRect => rect !== null)
-
-/** A view that does not describe itself: the viewport below the app bar, with its cards and notes. */
+/** A view that does not describe itself: the viewport below the app bar. */
 export const viewportStage: StaffingStage = {
-  workspace: () => ({ bounds: { left: 8, top: 56, width: Math.max(0, window.innerWidth - 16), height: Math.max(0, window.innerHeight - 64) }, avoid: [] }),
-  windows: () => [],
-  scene: () => ({ landmarks: measured(document.querySelectorAll(CARDS)) }),
+  bounds: () => ({ left: 8, top: 56, width: Math.max(0, window.innerWidth - 16), height: Math.max(0, window.innerHeight - 64) }),
 }
 
-const contains = (outer: WindowRect, inner: WindowRect) =>
-  inner.left >= outer.left && inner.top >= outer.top && inner.left + inner.width <= outer.left + outer.width && inner.top + inner.height <= outer.top + outer.height
+/** A pan that makes room for the sentence is over within this, before the sentence fades in. */
+export const PAN_MS = 120
+
+/** Room between the row and the sentence below or above it. */
+export const DROP_GAP = 4
+
+export interface DropPlace {
+  left: number
+  top: number
+  /** Its height: the height asked for, unless neither side has that room even after a pan. */
+  height: number
+  above: boolean
+  /** How far the view pans first, in pixels; negative moves it up. Zero when it already fits. */
+  pan: number
+}
 
 /**
- * Where a popover of `size` opens beside `anchor`: a slot (whose card is never
- * covered) or a word in a window or the inspector (which the popover may drop
- * down over, as a list does). `also` names more to keep clear, such as a
- * sentence window still open beside a note.
+ * The sentence opens directly below its anchor, left-aligned with it and held
+ * inside the bounds across. Where the room below is short, a view that can pan
+ * moves up by exactly what is missing, so long as the anchor stays in view.
+ * Otherwise it opens directly above, panning down by what is missing there if
+ * it can. Where neither side can hold it, it takes the side with more room and
+ * is that much shorter. It never covers its anchor.
  */
-export function placeBeside(anchor: Element, size: PopoverSize, stage: StaffingStage, also: readonly WindowRect[] = []): PopoverPlace {
-  const anchorRect = measureElement(anchor, true)!
-  const holder = anchor.closest('.fwin, .agx-inspector')
-  const card = holder ? null : anchor.closest('.formation, section.formation')
-  const home = measureElement(holder || card || anchor, true)
-  const workspace = stage.workspace()
-  const centre = { left: anchorRect.left + anchorRect.width / 2, top: anchorRect.top + anchorRect.height / 2, width: 0, height: 0 }
-  // The window the anchor sits in is its home, not an obstacle; cards it hides are not on screen.
-  const windows = stage.windows().filter(rect => !contains(rect, centre))
-  const landmarks = (stage.scene().landmarks || []).filter(rect => !(holder && home && contains(home, rect)))
-  return placePopover(size, {
-    bounds: workspace.bounds,
-    anchor: anchorRect,
-    home,
-    homeCovers: Boolean(holder),
-    obstacles: [...workspace.avoid, ...windows, ...landmarks, ...also],
-  })
-}
-
-/** The style that holds a placed popover within the room it was given; one above its anchor grows upward, toward it. */
-export function popoverStyle(place: PopoverPlace): CSSProperties {
-  const { rect } = place
-  return place.growsUp
-    ? { left: rect.left, bottom: window.innerHeight - (rect.top + rect.height), width: rect.width, maxHeight: rect.height }
-    : { left: rect.left, top: rect.top, width: rect.width, maxHeight: rect.height }
+export function placeDrop(anchor: WindowRect, size: { width: number; height: number }, bounds: WindowRect, canPan: boolean): DropPlace {
+  const { width, height } = size
+  const left = Math.round(Math.max(bounds.left, Math.min(anchor.left, bounds.left + bounds.width - width)))
+  const boundsBottom = bounds.top + bounds.height
+  const anchorBottom = anchor.top + anchor.height
+  const below = anchorBottom + DROP_GAP
+  const roomBelow = boundsBottom - below
+  const roomAbove = anchor.top - DROP_GAP - bounds.top
+  if (roomBelow >= height) return { left, top: Math.round(below), height, above: false, pan: 0 }
+  // The anchor may rise to the top of the bounds; the room below grows by as much.
+  if (canPan && roomBelow + (anchor.top - bounds.top) >= height) {
+    const pan = -Math.ceil(height - roomBelow)
+    return { left, top: Math.round(below + pan), height, above: false, pan }
+  }
+  if (roomAbove >= height) return { left, top: Math.round(anchor.top - DROP_GAP - height), height, above: true, pan: 0 }
+  if (canPan && roomAbove + (boundsBottom - anchorBottom) >= height) {
+    const pan = Math.ceil(height - roomAbove)
+    return { left, top: Math.round(anchor.top + pan - DROP_GAP - height), height, above: true, pan }
+  }
+  if (roomBelow >= roomAbove) return { left, top: Math.round(below), height: Math.max(0, Math.floor(roomBelow)), above: false, pan: 0 }
+  const short = Math.max(0, Math.floor(roomAbove))
+  return { left, top: Math.round(anchor.top - DROP_GAP - short), height: short, above: true, pan: 0 }
 }

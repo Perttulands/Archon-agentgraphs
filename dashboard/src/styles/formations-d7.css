@@ -117,6 +117,9 @@
     radial-gradient(circle at 1px 1px, rgba(var(--accent-rgb),.10) 1.2px, transparent 0);
   background-size:112px 112px, 112px 112px, 28px 28px;}
 .fmx .world.smooth{transition:transform .35s cubic-bezier(.2,.7,.3,1);}
+/* The pan that makes room for a staffing sentence: quick, so the slot plainly stays the one clicked (PAN_MS). */
+.fmx .world.making-room{transition:transform .12s cubic-bezier(.2,.7,.3,1);}
+@media (prefers-reduced-motion:reduce){.fmx .world.making-room{transition:none;}}
 .fmx .empty-board{position:absolute;left:120px;top:120px;width:360px;border:1px solid var(--line);border-radius:4px;background:var(--card);box-shadow:0 2px 8px rgba(0,0,0,.35);padding:18px 20px;z-index:5;}
 .fmx .empty-board .empty-title{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);}
 .fmx .empty-board .empty-copy{margin-top:8px;font-size:11px;line-height:1.55;color:var(--dim);}
@@ -168,6 +171,11 @@
 .fmx .slot-text{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;overflow:hidden;}
 .fmx .slot-label-line{display:flex;align-items:center;gap:6px;height:17px;white-space:nowrap;}
 .fmx .slot-label{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);}
+/* The landing note in the label's place: one line in the slot's own height, its whole text in the tooltip. */
+.fmx .slot-note{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:10.5px;color:var(--terra);animation:slot-note-in .14s ease-out both;}
+.fmx .slot-note.refused{color:var(--color-error,#f87171);}
+@keyframes slot-note-in{0%{opacity:0}100%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.fmx .slot-note{animation:none;}}
 .fmx .slot-caption{position:relative;display:flex;flex-direction:column;min-width:0;font-size:12.5px;line-height:17px;}
 .fmx .slot-cap-role{display:block;height:17px;color:var(--ink);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .fmx .slot-cap-line{display:flex;height:17px;min-width:0;color:var(--ink2);white-space:nowrap;}
@@ -181,7 +189,8 @@
 .fmx .slot-caption.landed::after{content:'';position:absolute;left:-4px;right:-4px;top:-2px;bottom:-2px;border-radius:3px;background:color-mix(in srgb,var(--terra) 26%,transparent);transform-origin:left center;pointer-events:none;animation:slot-land .5s cubic-bezier(.2,.7,.3,1) both;}
 @keyframes slot-in{0%{transform:scale(.55);opacity:.2}100%{transform:scale(1);opacity:1}}
 @keyframes slot-ring-out{0%{transform:scale(.9);opacity:.95}100%{transform:scale(1.6);opacity:0}}
-@media (prefers-reduced-motion:reduce){.fmx .slot-ring .face.landed,.fmx .slot-ring .face.landed::after,.fmx .slot-caption.landed::after{animation:none;}}
+/* Without motion nothing confirms by moving, and nothing is left highlighted: no ring, no wash. */
+@media (prefers-reduced-motion:reduce){.fmx .slot-ring .face.landed{animation:none;}.fmx .slot-ring .face.landed::after,.fmx .slot-caption.landed::after{content:none;animation:none;}}
 @keyframes slot-land{0%{transform:scaleX(0);opacity:1}45%{transform:scaleX(1);opacity:.9}100%{transform:scaleX(1);opacity:0}}
 
 /* type layouts: slots stack as rows */

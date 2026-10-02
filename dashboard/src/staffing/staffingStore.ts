@@ -25,7 +25,7 @@ export interface OpenSentence {
   ref: SlotRef
   /** One word's list, for a quick edit of a staffed slot; null opens the whole sentence. */
   part: Part | null
-  /** What the window opens beside: the slot on the canvas, or the sentence in a node window or inspector. */
+  /** What the window drops from: the slot on the canvas, or the word clicked in a node window or inspector. */
   anchor: Element
 }
 

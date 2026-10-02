@@ -347,34 +347,6 @@ test('changing what a slot runs moves no other slot or card', async ({ page }) =
   expect(await rects()).toEqual(before)
 })
 
-// archon-o7p.17 revision 3: the sentence is a compact popover right beside its slot that covers no card or note.
-test('the sentence opens right beside its slot, compact, and covers no card or operator note', async ({ page }) => {
-  await cockpitFixture(page, { roles })
-  await page.goto('/')
-  for (const [slot, label] of [['slot-execution-controller', 'Controller'], ['slot-execution-worker', 'Worker 1'], ['slot-peer-peer_1', 'Reviewer'], ['slot-judge-judge_1', 'Judge']]) {
-    await page.getByTestId(slot).locator('.slot-ring').click()
-    const sentence = page.getByRole('dialog', { name: `Staff ${label}` })
-    await sentence.getByRole('textbox', { name: /Role, or type/ }).click()
-    await expect(sentence.getByRole('listbox', { name: 'Choose role' })).toBeVisible()
-    const placed = await page.evaluate(([slotId]) => {
-      const r = (el: Element) => el.getBoundingClientRect()
-      const win = r(document.querySelector('.staffing-window')!)
-      const anchor = r(document.querySelector(`[data-testid="${slotId}"]`)!)
-      const gap = Math.hypot(Math.max(0, anchor.left - win.right, win.left - anchor.right), Math.max(0, anchor.top - win.bottom, win.top - anchor.bottom))
-      const covered = [...document.querySelectorAll('.world [data-node], .note-sticky')].filter(el => {
-        const b = r(el)
-        return win.left < b.right && b.left < win.right && win.top < b.bottom && b.top < win.bottom
-      }).map(el => (el as HTMLElement).dataset.node || 'note')
-      return { gap: Math.round(gap), covered, height: Math.round(win.height) }
-    }, [slot])
-    expect(placed.covered, `${label}'s sentence covers ${placed.covered.join(', ')}`).toEqual([])
-    expect(placed.gap).toBeLessThanOrEqual(160)
-    expect(placed.height).toBeLessThanOrEqual(330)
-    await page.keyboard.press('Escape')
-    await expect(sentence).toHaveCount(0)
-  }
-})
-
 test('an effort chosen in the open sentence counts as stated: a role landing on an empty slot keeps it and offers the policy, as typed words do', async ({ page }) => {
   const fixture = await cockpitFixture(page, { emptyWorker: true, roles })
   await page.goto('/')
@@ -421,62 +393,6 @@ test('a model outside the catalog opens its list on itself, so a reflex Enter ch
   expect(assignments(fixture.patches)).toEqual([])
 })
 
-// rv-slots4: the note is placed once the sentence that staffed the slot has closed, so it takes the free
-// place beside the slot that the window held, rather than avoiding a window that is gone.
-test('a note for words typed in the open sentence lands right beside the slot, where the window was', async ({ page }) => {
-  await cockpitFixture(page, { roles })
-  await page.goto('/')
-  const judge = page.getByTestId('slot-judge-judge_1')
-  await judge.locator('.slot-ring').click()
-  const sentence = page.getByRole('dialog', { name: 'Staff Judge' })
-  await page.waitForTimeout(200)
-  const window = (await sentence.boundingBox())!
-  await page.keyboard.type('gpt-7-nova')
-  await page.keyboard.press('Enter')
-  const stamp = page.getByTestId('staffing-stamp')
-  await expect(stamp).toHaveText('gpt-7-nova: not in the catalog; the harness decides.')
-  const [note, slot] = [(await stamp.boundingBox())!, (await judge.boundingBox())!]
-  const gap = Math.hypot(Math.max(0, slot.x - (note.x + note.width), note.x - (slot.x + slot.width)), Math.max(0, slot.y - (note.y + note.height), note.y - (slot.y + slot.height)))
-  expect(gap).toBeLessThanOrEqual(20)
-  const tookWindowsPlace = note.x < window.x + window.width && window.x < note.x + note.width && note.y < window.y + window.height && window.y < note.y + note.height
-  expect(tookWindowsPlace).toBe(true)
-  const covered = await stamp.evaluate(element => {
-    const n = element.getBoundingClientRect()
-    return [...document.querySelectorAll('.world [data-node], .note-sticky')].filter(card => {
-      const b = card.getBoundingClientRect()
-      return n.left < b.right && b.left < n.right && n.top < b.bottom && b.top < n.bottom
-    }).length
-  })
-  expect(covered).toBe(0)
-})
-
-test('the landing note sits right beside its slot and covers no card or operator note', async ({ page }) => {
-  await cockpitFixture(page, { roles })
-  await page.goto('/')
-  // The Execution card has an operator note under it.
-  await expect(page.locator('.note-sticky')).toHaveCount(1)
-  for (const slot of ['slot-execution-controller', 'slot-execution-worker', 'slot-judge-judge_1']) {
-    await page.getByTestId(slot).locator('[data-part=role]').click()
-    await page.locator('.staffing-window [data-row="critic"]').click()
-    const stamp = page.getByTestId('staffing-stamp')
-    await expect(stamp).toBeVisible()
-    const placed = await page.evaluate(([slotId]) => {
-      const r = (el: Element) => el.getBoundingClientRect()
-      const note = r(document.querySelector('[data-testid="staffing-stamp"]')!)
-      const anchor = r(document.querySelector(`[data-testid="${slotId}"]`)!)
-      const gap = Math.hypot(Math.max(0, anchor.left - note.right, note.left - anchor.right), Math.max(0, anchor.top - note.bottom, note.top - anchor.bottom))
-      const covered = [...document.querySelectorAll('.world [data-node], .note-sticky')].filter(el => {
-        const b = r(el)
-        return note.left < b.right && b.left < note.right && note.top < b.bottom && b.top < note.bottom
-      }).map(el => (el as HTMLElement).dataset.node || 'operator note')
-      return { gap: Math.round(gap), covered }
-    }, [slot])
-    expect(placed.covered, `the note for ${slot} covers ${placed.covered.join(', ')}`).toEqual([])
-    expect(placed.gap).toBeLessThanOrEqual(160)
-    await page.mouse.click(1000, 1000)
-  }
-})
-
 // rv-slots4, Delightful: a list shows only whole rows at every scroll position, and the six efforts are always whole.
 test('lists show only whole rows at every scroll position, and the six efforts are always whole', async ({ page }) => {
   await cockpitFixture(page, { roles, extraAgents: 30 })
@@ -521,34 +437,6 @@ test('lists show only whole rows at every scroll position, and the six efforts a
   const staffing = page.getByRole('dialog', { name: 'Formation · Execution' }).getByRole('region', { name: 'Staffing' })
   await staffing.getByRole('button', { name: 'Change the effort of Worker 1: medium' }).click()
   expect(await effortsWhole()).toEqual(efforts)
-})
-
-test('the sentence and its landing note are each tied to their slot by a tether', async ({ page }) => {
-  await cockpitFixture(page, { roles })
-  await page.goto('/')
-  const judge = page.getByTestId('slot-judge-judge_1')
-  const touches = async (popover: string) => page.evaluate(([slotId, popoverSel]) => {
-    const tether = document.querySelector('[data-testid="staffing-tether"]')
-    if (!tether) return 'no tether'
-    const [from, to] = [...tether.querySelectorAll('circle')].map(c => [Number(c.getAttribute('cx')), Number(c.getAttribute('cy'))])
-    const onEdge = (point: number[], el: Element) => {
-      const b = el.getBoundingClientRect()
-      const inside = point[0] >= b.left - 1 && point[0] <= b.right + 1 && point[1] >= b.top - 1 && point[1] <= b.bottom + 1
-      const edge = Math.min(Math.abs(point[0] - b.left), Math.abs(point[0] - b.right), Math.abs(point[1] - b.top), Math.abs(point[1] - b.bottom))
-      return inside && edge <= 1
-    }
-    return onEdge(from, document.querySelector(`[data-testid="${slotId}"]`)!) && onEdge(to, document.querySelector(popoverSel)!) ? 'tied' : 'loose'
-  }, ['slot-judge-judge_1', popover])
-  await judge.locator('.slot-ring').click()
-  await expect(page.getByRole('dialog', { name: 'Staff Judge' })).toBeVisible()
-  await expect.poll(() => touches('.staffing-window')).toBe('tied')
-  await expect(judge).toHaveClass(/staffing-open/)
-  await page.locator('.staffing-window input.staffing-first').click()
-  await page.locator('.staffing-window [data-row="critic"]').click()
-  await page.keyboard.press('Enter')
-  await expect(page.getByTestId('staffing-stamp')).toBeVisible()
-  await expect.poll(() => touches('[data-testid="staffing-stamp"]')).toBe('tied')
-  await expect(judge).toHaveClass(/staffing-noted/)
 })
 
 test('a long role sentence wraps what the slot runs as one group, so the effort stays with its model', async ({ page }) => {

@@ -1,68 +1,26 @@
 /* The floating layer staffing draws over a view: the open sentence window and
- * the note that says why a staffing landed as it did. A note never covers a
- * slot and never takes a pointer or a drop. */
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+ * the note at a point where a drop missed. A note about a slot is a line in
+ * the slot itself (SlotFace). A note never takes a pointer or a drop. */
+import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { SentenceWindow } from './SentenceWindow'
-import { placeBeside, viewportStage, type StaffingStage } from './staffingPlacement'
-import { Tether } from './Tether'
+import { viewportStage, type StaffingStage } from './staffingPlacement'
 import type { StaffingHost } from './staffingActions'
 import type { Staffing } from './staffingModel'
 import { useStaffingVersion, type SlotRef, type Stamp, type StaffingStore } from './staffingStore'
 import './staffing.css'
 
-export function slotElement(key: string): HTMLElement | null {
-  return document.querySelector<HTMLElement>(`.slot[data-slot-key="${CSS.escape(key)}"]`)
-}
-
 const STAMP_WIDTH = 360
 
-/**
- * Beside the slot, the way the sentence window is placed: clear of every card,
- * operator note, open window and a sentence still open. Measured once the
- * view has settled, so a sentence that closed as it staffed the slot is gone
- * and does not push the note away. A note about a drop that missed sits beside
- * the point where it was dropped.
- */
-function stampPlace(stamp: Stamp, height: number, stage: StaffingStage): CSSProperties | null {
-  const sentence = [...document.querySelectorAll('.staffing-window')].map(element => element.getBoundingClientRect())
-    .map(box => ({ left: box.left, top: box.top, width: box.width, height: box.height }))
-  if (stamp.key) {
-    const slot = slotElement(stamp.key)
-    if (!slot) return null
-    const place = placeBeside(slot, { width: STAMP_WIDTH, openHeight: height, height, minHeight: height }, stage, sentence)
-    return { left: place.rect.left, top: place.rect.top, width: STAMP_WIDTH }
-  }
-  if (!stamp.point) return null
-  const left = Math.max(4, Math.min(stamp.point.x + 12, window.innerWidth - STAMP_WIDTH - 4))
-  const top = Math.max(52, Math.min(stamp.point.y + 12, window.innerHeight - height - 4))
-  return { left, top, width: STAMP_WIDTH }
-}
-
-type Box = { left: number; top: number; right: number; bottom: number }
-const boxOf = (element: Element): Box => { const r = element.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom } }
-
-function StampView({ stamp, stage }: { stamp: Stamp; stage: StaffingStage }) {
-  const height = stamp.text.length > 90 ? 58 : stamp.text.length > 45 ? 42 : 28
-  const [style, setStyle] = useState<CSSProperties | null>(null)
-  const [tether, setTether] = useState<{ slot: Box; popover: Box; home: Box | null } | null>(null)
-  const ref = useRef<HTMLDivElement | null>(null)
-  // After this render commits: a sentence that closed with the landing is out of the DOM by then.
-  useLayoutEffect(() => setStyle(stampPlace(stamp, height, stage)), []) // eslint-disable-line react-hooks/exhaustive-deps
-  // Once placed, a tether ties the note to its slot.
-  useLayoutEffect(() => {
-    const slot = stamp.key ? slotElement(stamp.key) : null
-    const card = slot?.closest('.formation')
-    if (style && slot && ref.current) setTether({ slot: boxOf(slot), popover: boxOf(ref.current), home: card ? boxOf(card) : null })
-  }, [style]) // eslint-disable-line react-hooks/exhaustive-deps
-  if (!style) return null
+/** A note about a drop that missed, beside the point where it was dropped. */
+function PointStamp({ stamp, point }: { stamp: Stamp; point: { x: number; y: number } }) {
+  const height = stamp.text.length > 45 ? 42 : 28
+  const left = Math.max(4, Math.min(point.x + 12, window.innerWidth - STAMP_WIDTH - 4))
+  const top = Math.max(52, Math.min(point.y + 12, window.innerHeight - height - 4))
   return (
-    <>
-      <Tether slot={tether?.slot ?? null} popover={tether?.popover ?? null} home={tether?.home} />
-      <div ref={ref} className={`staffing-stamp ${stamp.tone}`} style={style} role="status" data-testid="staffing-stamp">
-        <span>{stamp.text}</span>
-      </div>
-    </>
+    <div className={`staffing-stamp ${stamp.tone}`} style={{ left, top, width: STAMP_WIDTH }} role="status" data-testid="staffing-stamp">
+      <span>{stamp.text}</span>
+    </div>
   )
 }
 
@@ -96,7 +54,7 @@ export function StaffingLayer({ store, host, savedOf, stage = viewportStage }: {
   return createPortal(
     <div className="staffing-layer">
       {open ? <SentenceWindow key={`${open.ref.key}:${open.part || ''}`} store={store} host={host} open={open} saved={savedOf(open.ref)} stage={stage} /> : null}
-      {stamp ? <StampView key={stamp.id} stamp={stamp} stage={stage} /> : null}
+      {stamp && !stamp.key && stamp.point ? <PointStamp key={stamp.id} stamp={stamp} point={stamp.point} /> : null}
     </div>,
     document.body,
   )

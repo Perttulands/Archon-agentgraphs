@@ -91,7 +91,7 @@ const succeededEvidence: Record<string, unknown> = {
 
 type Role = { id: string; displayName: string; kind: string; summary?: string }
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; workers?: Array<Record<string, unknown>> } = {}) {
+export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
   const currentBoard = structuredClone(board)
   if (options.vanillaWorker) {
     // A slot with no role is a vanilla agent; this one runs a model the catalog names.
@@ -112,8 +112,14 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     currentBoard.gates = []
     currentBoard.connections = []
   }
+  // A row of three formations just made with New formation: solo, one empty Agent slot each, under the graph.
+  const newRow = ['new_1', 'new_2', 'new_3']
+  if (options.newRow) {
+    currentBoard.formations = [...currentBoard.formations, ...newRow.map(id => ({ id, type: 'solo', title: 'New formation', ...ports, slots: [{ id: 'agent', label: 'Agent', controller: false }] }))]
+  }
   const boardState = () => currentBoard
   let nodes = positions.map(p => ({ ...p, x: p.x + (options.far ? 1800 : 0) }))
+  if (options.newRow) nodes = [...nodes, ...newRow.map((id, index) => ({ id, x: 448 + index * 336, y: 896 }))]
   if (options.join) nodes = [{ id: 'a', x: 100, y: 80 }, { id: 'b', x: 100, y: 350 }, { id: 'c', x: 100, y: 620 }, { id: 'sink', x: 650, y: 350 }]
   if (options.waitingHuman) nodes = [...nodes, { id: 'end_done', x: 504, y: 672 }, { id: 'end_rejected', x: 504, y: 784 }]
   const endsOf = () => (currentBoard.ends ||= [])

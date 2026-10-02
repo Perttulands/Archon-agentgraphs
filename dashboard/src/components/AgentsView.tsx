@@ -995,7 +995,7 @@ function StaffingSeat({
       data-testid={`agents-slot-${formation.id}-${slot.id}`}
       onClick={() => onClick(formation, slot)}
     >
-      <SlotFace label={slot.label} badge={badge} staffing={staffing} landed={store.landed(key)}
+      <SlotFace label={slot.label} badge={badge} staffing={staffing} landed={store.landed(key)} note={store.stamp?.key === key ? store.stamp : null}
         marks={staffing && offCatalog(host.catalog, staffing) ? <span className="slot-warn">model not in catalog</span> : null}
         caption={<SlotCaption shown={staffing} saved={store.current(key, saved)} drafting={store.drafting(key)} landed={store.landed(key)} roleName={roleName} />} />
     </button>
@@ -1185,7 +1185,7 @@ function Inspector({
   )
 }
 
-/** A slot's staffing as its sentence; each word opens the staffing window beside the inspector (archon-o7p.17). */
+/** A slot's staffing as its sentence; each word drops the staffing window from itself (archon-o7p.17). */
 function SlotInspector({
   agents,
   formation,
@@ -1203,7 +1203,7 @@ function SlotInspector({
 }) {
   const staffing = staffingOf(slot)
   const roleName = roleNamer(agents as FormationAgentProjection[])
-  // The sentence window opens beside the word clicked, as a list drops from it.
+  // The sentence window drops from the word clicked, as a dropdown does.
   const open = (part: Part | null) => (event: ReactMouseEvent<HTMLElement>) => onStaff(formation, slot, part, event.currentTarget)
   const word = (part: Part, text: string) => (
     <button type="button" className={`nslot-word${part === 'effort' ? ' effort' : ''}`} aria-label={`Change the ${part} of ${slot.label}: ${text}`} onClick={open(part)}>{text}</button>

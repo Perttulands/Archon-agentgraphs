@@ -75,7 +75,7 @@ export function SlotCaption({ shown, saved, drafting, landed, roleName, onPart }
 }
 
 /** The inside of a slot: ring with the harness mark, label line, caption. Hosts wrap it in their own element. */
-export function SlotFace({ label, badge, staffing, caption, marks, landed }: {
+export function SlotFace({ label, badge, staffing, caption, marks, landed, note }: {
   label: string
   badge?: number
   staffing: Staffing | null
@@ -83,6 +83,12 @@ export function SlotFace({ label, badge, staffing, caption, marks, landed }: {
   /** Short words beside the label: a model outside the catalog, the policy's offer. */
   marks?: ReactNode
   landed?: number
+  /**
+   * Why a staffing landed as it did, or why it was refused. For as long as it
+   * reads it takes the label's place on the label line, in the slot itself, so
+   * it moves with the slot and covers nothing.
+   */
+  note?: { text: string; tone: 'note' | 'refused' } | null
 }) {
   return (
     <>
@@ -94,7 +100,9 @@ export function SlotFace({ label, badge, staffing, caption, marks, landed }: {
       </span>
       <span className="slot-text">
         <span className="slot-label-line">
-          <span className="slot-label">{label}</span>
+          {note
+            ? <span className={`slot-note ${note.tone}`} role="status" title={note.text} data-testid="staffing-stamp">{note.text}</span>
+            : <span className="slot-label">{label}</span>}
           {marks}
         </span>
         {caption}

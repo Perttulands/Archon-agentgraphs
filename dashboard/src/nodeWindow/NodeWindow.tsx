@@ -51,7 +51,7 @@ export interface NodeWindowOps {
   setBrief: (formationId: string, brief: FormationBrief) => Promise<boolean>
   setExecution: (formationId: string, timeoutSeconds: number) => Promise<boolean>
   changeType: (formation: FormationNode, type: FormationType, keepSlotId?: string) => void
-  /** Opens the slot's staffing sentence beside the words that were clicked; a word opens only its own list. */
+  /** Opens the slot's staffing sentence dropping from the word that was clicked; a word opens only its own list. */
   staffSlot: (formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => void
   updateGate: (gate: GateNode, draft: GateDraft) => Promise<boolean>
   /** Sets an End node's outcome: done, or rejected, which fails the run. */
@@ -272,7 +272,7 @@ function FileList({ files, context, label }: { files: string[]; context: string;
 
 /**
  * A slot's staffing as the sentence it is: each word opens the staffing window
- * beside the words, on that word's list (archon-o7p.17).
+ * dropping from the word, on that word's list (archon-o7p.17).
  */
 function SlotStaffing({ formation, slot, agents, ops }: {
   formation: FormationNode
@@ -282,7 +282,7 @@ function SlotStaffing({ formation, slot, agents, ops }: {
 }) {
   const staffing = staffingOf(slot)
   const words = staffingSentence(slot, roleNamer(agents))
-  // The sentence window opens beside the word clicked, as a list drops from it.
+  // The sentence window drops from the word clicked, as a dropdown does.
   const open = (part: Part | null) => (event: ReactMouseEvent<HTMLElement>) => ops.staffSlot(formation, slot, part, event.currentTarget)
   const word = (part: Part, text: string) => (
     <button type="button" className={`nslot-word${part === 'effort' ? ' effort' : ''}`} aria-label={`Change the ${part} of ${slot.label || slot.id}: ${text}`} onClick={open(part)}>{text}</button>

@@ -72,7 +72,7 @@ import { slotStaffed } from '../nodeWindow/staffing'
 import { CanvasSlot } from '../staffing/CanvasSlot'
 import type { Part } from '../staffing/SlotFace'
 import { StaffingKeyHint, StaffingLayer } from '../staffing/StaffingLayer'
-import type { StaffingStage } from '../staffing/staffingPlacement'
+import { PAN_MS, type StaffingStage } from '../staffing/staffingPlacement'
 import { dropRole, moveStaffing, previewRole, staff, type StaffingHost } from '../staffing/staffingActions'
 import { captionText, roleName, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing, type StaffingCatalog } from '../staffing/staffingModel'
 import { StaffingStore, slotKey, type SlotRef } from '../staffing/staffingStore'
@@ -2605,25 +2605,32 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const rosterAgents = useMemo(() => agents.filter(agent => agent.assignable && !agent.unbound), [agents])
   const staffingCatalog = useMemo<StaffingCatalog>(() => ({ ...staffingTerms, roles: rolesOf(agents) }), [agents, staffingTerms])
   const staffingHost = useMemo<StaffingHost>(() => ({ catalog: staffingCatalog, save: saveStaffing, move: moveStaffingOp }), [moveStaffingOp, saveStaffing, staffingCatalog])
-  // Staffing's popovers open in the canvas beside their slot, clear of its cards, notes, controls and open windows.
+  // The staffing sentence drops from its slot in the canvas; where the room below is short the canvas pans by
+  // exactly what is missing, quickly, before the sentence fades in.
   const staffingStage = useMemo<StaffingStage>(() => ({
-    workspace: windows.workspace,
-    windows: () => windows.openRects(),
-    scene: windows.scene,
-    // A short glide, as quick as the window's own appearance, so the slot stays plainly the one clicked.
-    makeRoom: (dx, dy) => new Promise<void>(resolve => {
-      if (!dx && !dy) { resolve(); return }
+    bounds: () => windows.workspace().bounds,
+    makeRoom: dy => new Promise<void>(resolve => {
+      const world = worldRef.current
+      if (!dy || !world) { resolve(); return }
       const instant = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-      const from = viewRef.current
-      const start = performance.now()
-      const step = (now: number) => {
-        const k = instant ? 1 : Math.min(1, (now - start) / 140)
-        const eased = 1 - (1 - k) ** 3
-        setView({ ...from, x: Math.round(from.x + dx * eased), y: Math.round(from.y + dy * eased) })
-        if (k < 1) requestAnimationFrame(step)
-        else resolve()
+      let done = false
+      const finish = (event?: TransitionEvent) => {
+        if (done || (event && (event.target !== world || event.propertyName !== 'transform'))) return
+        done = true
+        world.removeEventListener('transitionend', finish)
+        world.removeEventListener('transitioncancel', finish)
+        world.classList.remove('making-room')
+        resolve()
       }
-      requestAnimationFrame(step)
+      // The world's transition (formations-d7.css) carries the pan; it resolves once the canvas has arrived.
+      if (!instant) {
+        world.classList.add('making-room')
+        world.addEventListener('transitionend', finish)
+        world.addEventListener('transitioncancel', finish)
+      }
+      setView(current => ({ ...current, y: current.y + dy }))
+      // A safety net, should no transition run at all.
+      window.setTimeout(() => finish(), instant ? 0 : PAN_MS + 400)
     }),
   }), [windows])
   staffingHostRef.current = staffingHost

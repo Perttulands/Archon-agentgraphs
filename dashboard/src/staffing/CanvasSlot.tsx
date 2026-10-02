@@ -47,7 +47,8 @@ export function CanvasSlot({ store, host, slotRef, slot, saved, badge, classes, 
     }
   }
   // While its landing note shows, the slot is marked as the one the note speaks of.
-  const noted = store.stamp?.key === key
+  const note = store.stamp?.key === key ? store.stamp : null
+  const noted = Boolean(note)
   const all = ['slot', 'staffable', shown ? 'filled' : 'empty', slot.controller ? 'ctrl' : '', open ? 'staffing-open' : '', noted ? 'staffing-noted' : '', ...classes]
   const slotWords = shown ? staffingSentence({ ...slot, agentId: shown.role, harness: shown.harness, model: shown.model, effort: shown.effort }, names) : `${slot.label}: not staffed`
   return (
@@ -68,7 +69,7 @@ export function CanvasSlot({ store, host, slotRef, slot, saved, badge, classes, 
       onKeyDown={onKeyDown}
       onContextMenu={onMenu}
     >
-      <SlotFace label={slot.label} badge={badge} staffing={shown} landed={store.landed(key)}
+      <SlotFace label={slot.label} badge={badge} staffing={shown} landed={store.landed(key)} note={note}
         marks={<>
           {shown && offCatalog(host.catalog, shown) ? <span className="slot-warn" title={`${shown.model}: not in the catalog; the harness decides.`}>model not in catalog</span> : null}
           {offer && current ? (
