@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import DismissiblePanel from './DismissiblePanel'
 
 export type MenuItem = { label: string; action?: () => void; destructive?: boolean; disabled?: boolean; head?: boolean }
-export type MenuState = { label: string; x: number; y: number; items: MenuItem[] }
+export type MenuState = { label: string; x: number; y: number; items: MenuItem[]; trigger?: Element }
 
 /** Space kept between a menu and the viewport edge. */
 export const MENU_MARGIN = 8
@@ -37,6 +37,12 @@ export function placeMenu(point: { x: number; y: number }, size: { width: number
 /** The canvas right-click menu: on screen at any click position, scrolling when long. */
 export default function CanvasContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }) {
   const ref = useRef<HTMLDivElement | null>(null)
+  const trigger = useRef(menu.trigger ?? document.activeElement)
+  const focused = useRef(false)
+  useLayoutEffect(() => () => {
+    if (trigger.current instanceof HTMLElement && trigger.current.isConnected) trigger.current.focus()
+  }, [])
+
   // Until measured, the menu renders hidden at the top left, where nothing
   // narrows it, so its natural size is what gets placed.
   const [placement, setPlacement] = useState<MenuPlacement | null>(null)
@@ -61,6 +67,13 @@ export default function CanvasContextMenu({ menu, onClose }: { menu: MenuState; 
     return () => window.removeEventListener('resize', place)
   }, [place])
 
+  useLayoutEffect(() => {
+    if (placement && !focused.current) {
+      ref.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
+      focused.current = true
+    }
+  }, [placement])
+
   return (
     <DismissiblePanel onDismiss={onClose} panelPosition="fixed">
       <div
@@ -72,6 +85,22 @@ export default function CanvasContextMenu({ menu, onClose }: { menu: MenuState; 
           ? { left: placement.left, top: placement.top, maxHeight: placement.maxHeight }
           : { left: 0, top: 0, visibility: 'hidden' }}
         onPointerDown={event => event.stopPropagation()}
+        onKeyDown={event => {
+          const items = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])
+          const current = items.indexOf(document.activeElement as HTMLButtonElement)
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+            : event.key === 'ArrowDown' ? (current + 1) % items.length
+              : event.key === 'ArrowUp' ? (current - 1 + items.length) % items.length : null
+          if (next !== null) {
+            event.preventDefault()
+            event.stopPropagation()
+            items[next]?.focus()
+          } else if (event.key === 'Escape' || event.key === 'Tab') {
+            event.preventDefault()
+            event.stopPropagation()
+            onClose()
+          }
+        }}
       >
         <div className="mhead">{menu.label}</div>
         {menu.items.map((item, itemIndex) => item.head ? (

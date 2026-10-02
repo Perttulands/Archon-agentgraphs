@@ -1076,7 +1076,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const openMenu = useCallback((event: ReactMouseEvent<Element> | ReactPointerEvent<Element>, label: string, items: MenuItem[]) => {
     event.preventDefault()
     event.stopPropagation()
-    setMenu({ label, x: event.clientX, y: event.clientY, items })
+    const trigger = event.currentTarget
+    if (trigger instanceof HTMLElement && !trigger.hasAttribute('tabindex')) trigger.tabIndex = -1
+    setMenu({ label, x: event.clientX, y: event.clientY, items, trigger })
   }, [])
 
   // A card's +N file chip lists the files that did not fit, beside the chip.
