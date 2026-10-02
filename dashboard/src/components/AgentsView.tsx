@@ -1,4 +1,6 @@
 import FloatingWindow from '../windows/FloatingWindow'
+import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
+import LinkedText from '../files/LinkedText'
 import { useWindowManager, WindowManagerProvider } from '../windows/WindowManager'
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import type { ReactNode } from 'react'
@@ -710,6 +712,8 @@ export default function AgentsView() {
   const rosterSummary = rolesInUseLabel(loading ? '…' : rosterCounts.assignable, rosterCounts.deployed, rosterCounts.live)
 
   return (
+    <WindowManagerProvider stack={inspectorWindows}>
+    <FileWindowsProvider key={selectedSlug} stack={inspectorWindows}>
     <div className="fmx agx" data-testid="agents-view">
       <div className="topbar">
         <div className="boardpick">
@@ -853,7 +857,6 @@ export default function AgentsView() {
         </main>
 
         {selection && (
-          <WindowManagerProvider stack={inspectorWindows}>
           <FloatingWindow id="agents-inspector" kind="node" title="Inspector" label="Inspector" defaultSize={{ width: 480, height: 620 }}
             className="agx-inspector" onClose={() => setSelection(null)}>
             <Inspector
@@ -877,7 +880,6 @@ export default function AgentsView() {
               onClose={() => setSelection(null)}
             />
           </FloatingWindow>
-          </WindowManagerProvider>
         )}
       </div>
 
@@ -906,7 +908,10 @@ export default function AgentsView() {
           onClose={() => { setCreateOpen(false); setCreateError('') }}
         />
       )}
+      <FileWindowsLayer />
     </div>
+    </FileWindowsProvider>
+    </WindowManagerProvider>
   )
 }
 
@@ -1296,7 +1301,7 @@ function Inspector({
                       <span className={`note-author note-author-${author.kind}`} title={note.actor}>{author.name}</span>
                       <span className="note-time">{noteTime(note.ts)}</span>
                     </div>
-                    <div className="note-entry-text">{note.text}</div>
+                    <div className="note-entry-text"><LinkedText text={note.text} /></div>
                   </li>
                 )
               })}

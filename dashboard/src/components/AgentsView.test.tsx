@@ -403,7 +403,7 @@ describe('AgentsView', () => {
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('critic', { displayName: 'Critic' })], count: 1, harnesses: HARNESSES } }))
-      if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic', summary: 'Reviews the brief.' }) }, 200, { ETag: 'critic-etag' }))
+      if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic', summary: 'Reviews the brief.', notes: [{ ts: '2026-10-02T20:00:00Z', actor: 'operator', text: 'Read /tmp/brief.md for archon-o7p.13.2' }] }) }, 200, { ETag: 'critic-etag' }))
       if (url === '/api/agents/critic/usage') return Promise.resolve(jsonResponse({ success: true, data: { usage: [{ missionId: 'empty', missionSlug: 'empty', missionTitle: 'Empty', formationId: 'review', formationTitle: 'Review', slotId: 'reviewer', slotLabel: 'Reviewer' }] } }))
       if (url === '/api/missions') return Promise.resolve(jsonResponse({ success: true, data: { missions: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
       if (url === '/api/missions/empty/layout') return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
@@ -416,6 +416,8 @@ describe('AgentsView', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Inspect Critic' }))
     const inspector = await screen.findByRole('dialog', { name: 'Inspector' })
     expect(await within(inspector).findByText('Reviews the brief.')).toBeInTheDocument()
+    expect(within(inspector).getByRole('button', { name: '/tmp/brief.md' })).toBeInTheDocument()
+    expect(within(inspector).getByRole('button', { name: 'archon-o7p.13.2' })).toBeInTheDocument()
     expect(within(inspector).getByText('in 1 slot')).toBeInTheDocument()
     expect(await within(inspector).findByText('Codex · gpt-6-astra · xhigh')).toBeInTheDocument()
     expect(within(inspector).queryByText(/harness variants|^Runs$|starts as/i)).toBeNull()
@@ -618,7 +620,8 @@ describe('AgentsView', () => {
 
     render(<AgentsView />)
 
-    fireEvent.click(await screen.findByRole('button', { name: /new role/i }))
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Mission' })).toHaveValue('empty'))
+    fireEvent.click(screen.getByRole('button', { name: /new role/i }))
     // A new role asks only for role text: no launch, harness, model or effort.
     const form = screen.getByRole('dialog', { name: 'New role' })
     expect(within(form).queryByLabelText('Launch')).toBeNull()
