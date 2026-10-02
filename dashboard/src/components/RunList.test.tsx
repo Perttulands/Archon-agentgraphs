@@ -63,8 +63,8 @@ describe('RunList', () => {
     expect(cells[0][1]).toMatch(new RegExp(`^${shortTime(at(1, 10, 0))} · for \\d`))
     cells[0][1] = 'open'
     expect(cells).toEqual([
-      ['Waiting for your answer', 'open', 'Speaker labels', 'human:ui'],
-      ['Failed', `${shortTime(at(1, 9, 0))} · took 4m`, 'Draft the importer', 'agent:archon'],
+      ['Waiting for your answer', 'open', 'Speaker labels', 'the operator in the cockpit'],
+      ['Failed', `${shortTime(at(1, 9, 0))} · took 4m`, 'Draft the importer', 'the archon CLI'],
       ['Succeeded', `${shortTime(at(1, 8, 0))} · took 30s`, 'no inputs recorded', ''],
     ])
     expect(rows[0]).toHaveAttribute('aria-current', 'true')

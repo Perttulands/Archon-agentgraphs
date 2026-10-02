@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { RunStatusProjection } from './formationsTypes'
+import { runActorLabel } from './runOutcome'
 import { runStatusLabel } from './formationsRunDiscovery'
 import { runInputExcerpt, runSpan, runsInListOrder, shortTime } from './runList'
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
@@ -11,8 +12,8 @@ import './runList.css'
 export function RunWhen({ run }: { run: RunStatusProjection }) {
   const span = runSpan(run)
   if (!run.startedAt) return null
-  return <span className="run-when" title={`Started ${new Date(run.startedAt).toLocaleString()}${run.startedBy ? ` by ${run.startedBy}` : ''}`}>
-    started {shortTime(run.startedAt)}{span ? ` · ${run.final ? 'took' : 'for'} ${span}` : ''}{run.startedBy ? ` · ${run.startedBy}` : ''}
+  return <span className="run-when" title={`Started ${new Date(run.startedAt).toLocaleString()}${run.startedBy ? ` by ${runActorLabel(run.startedBy)}` : ''}`}>
+    started {shortTime(run.startedAt)}{span ? ` · ${run.final ? 'took' : 'for'} ${span}` : ''}{run.startedBy ? ` · ${runActorLabel(run.startedBy)}` : ''}
   </span>
 }
 
@@ -107,7 +108,7 @@ export function RunList({ runs, shown, missionTitle, onChoose, onPutAway }: {
                     <span className={`run-row-status ${run.status}`}>{runStatusLabel(run.status)}</span>
                     <span className="run-row-when">{shortTime(run.startedAt, now) || 'start unknown'}{span ? ` · ${run.final ? 'took' : 'for'} ${span}` : ''}</span>
                     <span className={`run-row-input${excerpt ? '' : ' none'}`}>{excerpt || 'no inputs recorded'}</span>
-                    <span className="run-row-driver">{run.startedBy || ''}</span>
+                    <span className="run-row-driver">{runActorLabel(run.startedBy)}</span>
                   </button>
                 </li>
               )
