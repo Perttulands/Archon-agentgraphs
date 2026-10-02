@@ -176,7 +176,12 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 	case "peer":
 		return runPeerCommand(formations.NewStore(config.Workspace), args[1:], stdout, stderr)
 	case "agent":
-		store := formations.NewPersonaStore(formations.DefaultAgentsDir())
+		dir := formations.AgentsDir(config.Workspace)
+		if dir == "" {
+			fmt.Fprintf(stderr, "archon agent %s needs --workspace <state-dir>, ARCHON_AGENTS_DIR or --server <url>: there is no default role directory\n", args[1])
+			return 2
+		}
+		store := formations.NewPersonaStore(dir)
 		switch args[1] {
 		case "list":
 			return runAgentList(store, args[2:], stdout, stderr, runner)
@@ -1241,7 +1246,7 @@ func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Wr
 		fmt.Fprintln(stderr, commandUsage("gate approve"))
 		return 2
 	}
-	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
+	personas := formations.NewPersonaStore(formations.AgentsDir(store.Workspace))
 	engine := newArchonRunEngine(store, personas, "archon")
 	status, err := engine.RecordHumanGateVerdict(fs.Arg(0), formations.HumanGateVerdictRequest{
 		GateID:    fs.Arg(1),
@@ -1567,7 +1572,7 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 	if err := formations.ValidateRunLimits(run.limits()); err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", "")
 	}
-	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
+	personas := formations.NewPersonaStore(formations.AgentsDir(store.Workspace))
 	if err := formations.CheckRunAdmission(board, personas, formations.RunAdmissionScope{MissionID: missionID, Inputs: inputs}); err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", missionID)
 	}
@@ -1617,7 +1622,7 @@ func runFormationRun(store *formations.Store, args []string, stdout, stderr io.W
 	if err := formations.ValidateRunLimits(run.limits()); err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", "")
 	}
-	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
+	personas := formations.NewPersonaStore(formations.AgentsDir(store.Workspace))
 	if err := formations.CheckRunAdmission(board, personas, formations.RunAdmissionScope{FormationID: formationID, Inputs: inputs}); err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", formationID)
 	}
@@ -1829,7 +1834,7 @@ func runResume(store *formations.Store, args []string, stdout, stderr io.Writer)
 		fmt.Fprintln(stderr, commandUsage("run resume"))
 		return 2
 	}
-	personas := formations.NewPersonaStore(formations.DefaultAgentsDir())
+	personas := formations.NewPersonaStore(formations.AgentsDir(store.Workspace))
 	engine := newArchonRunEngine(store, personas, "archon")
 	status, err := engine.ResumeRun(fs.Arg(0), formations.RunResumeRequest{
 		Actor:  *actor,
@@ -2380,7 +2385,7 @@ func runBoardValidate(store *formations.Store, args []string, stdout, stderr io.
 	if err != nil {
 		return fail(stderr, err)
 	}
-	report := formations.ValidateRunAdmission(board, formations.NewPersonaStore(formations.DefaultAgentsDir()), formations.RunAdmissionScope{})
+	report := formations.ValidateRunAdmission(board, formations.NewPersonaStore(formations.AgentsDir(store.Workspace)), formations.RunAdmissionScope{})
 	if *jsonOut {
 		code := writeJSON(stdout, map[string]interface{}{
 			"mission":  identityFromBoard(board),

@@ -542,11 +542,11 @@ type formationsLayoutPatchRequest struct {
 // NewFormationsHandler constructs a schema-1 compatibility handler. Production
 // server wiring must inject a runtime-authority Store with NewFormationsHandlerWithStore.
 func NewFormationsHandler(workspace string) *FormationsHandler {
-	return NewFormationsHandlerWithStores(formations.NewStore(workspace), formations.NewPersonaStore(formations.DefaultAgentsDir()))
+	return NewFormationsHandlerWithStores(formations.NewStore(workspace), formations.NewPersonaStore(formations.AgentsDir(workspace)))
 }
 
 func NewFormationsHandlerWithStore(store *formations.Store) *FormationsHandler {
-	return NewFormationsHandlerWithStores(store, formations.NewPersonaStore(formations.DefaultAgentsDir()))
+	return NewFormationsHandlerWithStores(store, formations.NewPersonaStore(formations.AgentsDir(store.Workspace)))
 }
 
 func NewFormationsHandlerWithStores(store *formations.Store, personas *formations.PersonaStore) *FormationsHandler {

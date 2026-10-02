@@ -3726,3 +3726,26 @@ from = "gate_review:fail"
 to = "end_rejected:in"
 `
 }
+
+// Offline role commands read the cards where archond keeps them for the same
+// state directory, <workspace>/agents, unless ARCHON_AGENTS_DIR names another;
+// with neither there is no default to fall back on (archon-q7sl).
+func TestOfflineRoleCardsLiveInTheWorkspaceAsTheDaemonKeepsThem(t *testing.T) {
+	t.Setenv("ARCHON_AGENTS_DIR", "")
+	runner := &fakeTmux{live: map[string]bool{}}
+	if _, stderr, code := runArchon(t, runner, "agent", "list"); code != 2 || !strings.Contains(stderr, "archon agent list needs --workspace <state-dir>, ARCHON_AGENTS_DIR or --server <url>") {
+		t.Fatalf("agent list without a workspace code=%d stderr=%q", code, stderr)
+	}
+	workspace := t.TempDir()
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "agent", "new", "mapper", "--kind", "scout"); code != 0 {
+		t.Fatalf("agent new code=%d stderr=%s", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "agents", "mapper.toml")); err != nil {
+		t.Fatalf("card not under the workspace's agents directory: %v", err)
+	}
+	elsewhere := t.TempDir()
+	t.Setenv("ARCHON_AGENTS_DIR", elsewhere)
+	if stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "agent", "list"); code != 0 || strings.Contains(stdout, "mapper") {
+		t.Fatalf("ARCHON_AGENTS_DIR should win: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+}

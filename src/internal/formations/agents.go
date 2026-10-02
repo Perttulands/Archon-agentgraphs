@@ -160,15 +160,17 @@ func NewPersonaStore(agentsDir string) *PersonaStore {
 	}
 }
 
-func DefaultAgentsDir() string {
+// AgentsDir is where role cards live for a state directory: ARCHON_AGENTS_DIR
+// when it is set, else <workspace>/agents, as archond's --agents-dir defaults.
+// It is empty when neither names one.
+func AgentsDir(workspace string) string {
 	if dir := strings.TrimSpace(os.Getenv("ARCHON_AGENTS_DIR")); dir != "" {
 		return dir
 	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return "agents"
+	if workspace == "" {
+		return ""
 	}
-	return filepath.Join(home, "agents")
+	return filepath.Join(workspace, "agents")
 }
 
 func (s *PersonaStore) PersonaPath(id string) string {

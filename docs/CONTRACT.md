@@ -54,10 +54,12 @@ it as "cannot be read", names it under the canvas and never opens it. A role
 card or run ledger that cannot be read is skipped and named: `agent list` and
 `run list` print a `warning:` line, `GET /api/agents` lists it under
 `unreadable`, and the daemon logs a skipped ledger at startup instead of
-refusing to start. Persona cards default to `<state-dir>/agents`;
-daemon `--agents-dir` can select another absolute directory. Match offline
-persona authoring to that directory with `ARCHON_AGENTS_DIR` when using an
-override.
+refusing to start. Role cards default to `<state-dir>/agents`, for the
+daemon and offline alike: offline `archon` commands read
+`<--workspace>/agents`. Daemon `--agents-dir` can select another absolute
+directory; `ARCHON_AGENTS_DIR` points offline commands at the same one. An
+offline `archon agent` command with neither a workspace nor
+`ARCHON_AGENTS_DIR` is refused, as there is no default.
 
 A slot owns its harness, model and effort. Staff it with `archon formation
 assign <mission> <formation> --slot <slot> --harness <h> --effort <e>
