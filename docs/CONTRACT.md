@@ -89,19 +89,22 @@ rail, with its role text and the slots it staffs.
 
 Staffing in the cockpit is that sentence, edited where the slot is. Clicking a
 slot, or Enter on a focused one, opens a compact window reading `Worker 1 is
-[vanilla] on [Claude Code] · [opus] · [low]` right beside the slot, within
-160 px of it, tied to the slot by a short accent tether while the slot itself
-is outlined. It is placed by the size it opens at, in a free place that covers
-no card, operator note, open window or control, preferring places straight
-above, below or beside the slot; a list opened in it grows into the free room
-there and scrolls, rather than the window moving away. Lists show and scroll
-only whole rows, and the six efforts always show whole: where the room beside
-a canvas slot is too short for them, the canvas first glides a little to make
-it. Where 440 px finds no free place the window narrows, down to 320 px, and
-lists the roles in one column. vanilla stays above the scrolling role grid. Only when no free place of
-its opening size lies within 160 px of the slot does it open, within that
-reach, where it covers the least. From a node window or the Agents view's slot
-inspector it drops from the word clicked, over that window if need be. `on <harness> · <model> · <effort>` wraps as one group.
+[vanilla] on [Claude Code] · [opus] · [low]` while the slot itself is
+outlined. It opens like a dropdown on the clicked slot's row, or on the word
+clicked in a node window (from the canvas or Flow) or the Agents view's slot
+inspector: directly below it and left-aligned with it, held inside the view
+across, or directly above it where the view cannot pan to make the room. One
+rule holds on every surface. While open it may cover sibling rows, neighbouring
+cards and the window it was opened from, never the clicked slot or word, and a
+soft shadow puts what it covers behind it; nothing stays covered once it
+closes. Where the room below a canvas slot is short, the canvas pans by exactly
+the room the opening list needs, in 120 ms (none under reduced motion), and
+the window fades in only after the pan. The window keeps one height from
+opening to closing: the sentence with about eight lines of the list it opens
+with (the role list for the whole sentence), or all of a shorter list such as
+the six efforts. Lists show and scroll only whole rows, after a wheel, a
+scrollbar drag or a press dragged inside them alike. vanilla stays above the
+scrolling role grid. `on <harness> · <model> · <effort>` wraps as one group.
 Each word opens its own list on the slot's current value, a model outside the
 catalog included, so a reflex Enter changes nothing, and clicking one word of a
 staffed slot opens only that list, where a pick lands at once. An empty slot opens as vanilla on the first harness and its
@@ -123,8 +126,10 @@ that effort; when the policy suggests another, the window offers `use xhigh`
 and the slot `use xhigh?`, one click each, until it is taken or the role or
 effort changes. Nothing outside the open sentence remembers how an effort was
 chosen. The slot takes its agent visibly, its mark dropping in with a ring
-going out from it, and a note tethered to the slot, placed as the window is
-once the window has closed, says why each landing came out as it did.
+going out from it, and for as long as it reads a note on the slot's label
+line, inside the slot, says why each landing came out as it did, or why it was
+refused; its whole text is the slot's tooltip. Under reduced motion nothing
+moves and no ring or highlight is left behind.
 Dragging a role from the rail onto a slot lands it by the same rule, its ghost
 waiting beside the slot so the slot's preview stays readable; dragging a
 staffed slot onto another moves its staffing there and swaps a staffed
