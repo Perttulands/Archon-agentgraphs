@@ -267,6 +267,7 @@ export default function AgentsView() {
   const [error, setError] = useState('')
   const [boardError, setBoardError] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
+  const [createError, setCreateError] = useState('')
   const [createDraft, setCreateDraft] = useState<CreateDraft>(EMPTY_CREATE)
   const [noteDraft, setNoteDraft] = useState('')
   const [editingPersona, setEditingPersona] = useState<{ agent: RosterAgent; trigger: HTMLElement | null } | null>(null)
@@ -625,6 +626,10 @@ export default function AgentsView() {
 
   const createPersona = useCallback(async (event: FormEvent) => {
     event.preventDefault()
+    if (createDraft.id.trim() && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(createDraft.id.trim())) {
+      setCreateError('Use lowercase letters, digits and single hyphens for the role id, for example brief-critic.')
+      return
+    }
     const capabilities = splitCommaList(createDraft.capabilities)
     try {
       const result = await fetchApi<PersonaCard>('/api/agents', {
@@ -645,7 +650,7 @@ export default function AgentsView() {
       setError('')
       await loadAgents()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Agent create request failed')
+      setCreateError(err instanceof Error ? err.message : 'Could not create the role.')
     }
   }, [createDraft, loadAgents])
 
@@ -888,9 +893,11 @@ export default function AgentsView() {
       {createOpen && (
         <CreatePersonaPopover
           draft={createDraft}
-          onDraft={setCreateDraft}
+          error={createError}
+          onDismiss={() => setCreateError('')}
+          onDraft={draft => { setCreateDraft(draft); setCreateError('') }}
           onSubmit={createPersona}
-          onClose={() => setCreateOpen(false)}
+          onClose={() => { setCreateOpen(false); setCreateError('') }}
         />
       )}
     </div>
@@ -1481,11 +1488,14 @@ function MissionRunState({ board, missionRun }: { board: BoardDocument; missionR
 }
 
 function CreatePersonaPopover({
+  error, onDismiss,
   draft,
   onDraft,
   onSubmit,
   onClose,
 }: {
+  error: string
+  onDismiss: () => void
   draft: CreateDraft
   onDraft: (draft: CreateDraft) => void
   onSubmit: (event: FormEvent) => void
@@ -1509,6 +1519,8 @@ function CreatePersonaPopover({
         <input id="agx-create-summary" className="f" value={draft.summary} onChange={event => set('summary', event.target.value)} />
         <label htmlFor="agx-create-capabilities">Capabilities</label>
         <input id="agx-create-capabilities" className="f" value={draft.capabilities} onChange={event => set('capabilities', event.target.value)} />
+        <p className="field-note">Role id: lowercase letters, digits and hyphens, for example brief-critic.</p>
+        {error && <div className="field-note error" role="alert">{error} <button type="button" onClick={onDismiss}>Dismiss</button></div>}
         <button className="save" type="submit">Create role</button>
       </form>
     </div>

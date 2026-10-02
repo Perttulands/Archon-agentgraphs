@@ -255,6 +255,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [rosterSearch, setRosterSearch] = useState('')
   const [view, setView] = useState<ViewTransform>({ x: 40, y: 40, scale: 1 })
   const [error, setError] = useState('')
+  const errorAnchor = useRef<{ left: number; top: number } | null>(null)
   const [validation, setValidation] = useState<BoardValidation | null>(null)
   const [admissionFindings, setAdmissionFindings] = useState<BoardFinding[]>([])
   const [activeRun, setActiveRun] = useState<RunStatusProjection | null>(null)
@@ -2954,7 +2955,15 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }), [attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, openStaffing, renameNode, saveBrief, setEndOutcome, setGateFiles, setLimit, updateGateFields, updateMissionFields])
 
   const cockpit = (
-    <div className="fmx" data-testid="formations-view" data-cockpit="d7">
+    <div className="fmx" data-testid="formations-view" data-cockpit="d7" onPointerDownCapture={event => {
+      const target = (event.target as HTMLElement).closest('button, [data-node-id], .card, input, textarea') || event.target as HTMLElement
+      const rect = target.getBoundingClientRect()
+      errorAnchor.current = { left: Math.max(12, Math.min(rect.left, window.innerWidth - 460)), top: Math.max(12, Math.min(rect.bottom + 8, window.innerHeight - 120)) }
+    }} onKeyDownCapture={event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      const rect = (event.target as HTMLElement).getBoundingClientRect()
+      errorAnchor.current = { left: Math.max(12, Math.min(rect.left, window.innerWidth - 460)), top: Math.max(12, Math.min(rect.bottom + 8, window.innerHeight - 120)) }
+    }}>
       <div className="topbar">
         <div className="boardpick">
           mission
@@ -3576,7 +3585,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             <button onClick={() => void arrangeBoard()} title="Arrange cards by graph flow (persists layout, Ctrl+Z to undo)" data-testid="arrange-layout">ARRANGE</button>
             <button onClick={() => fitView({ smooth: true })} title="Fit">FIT</button>
           </div>
-          {error || linkError ? <div className="errbar" data-testid="formations-error">{error || linkError}</div>
+          {error || linkError ? <div className="errbar action-error" data-testid="formations-error" role="alert" style={errorAnchor.current ? { position: 'fixed', ...errorAnchor.current, bottom: 'auto' } : undefined}>{error || linkError} <button type="button" aria-label="Dismiss error" onClick={() => { setError(''); setLinkError('') }}>Dismiss</button></div>
             : brokenMissions.length ? (
               <div className="errbar" data-testid="broken-missions" role="status">
                 {brokenMissions.length === 1 ? 'A mission cannot be read' : `${brokenMissions.length} missions cannot be read`}: {brokenMissions.map(summary => `${summary.slug}: ${summary.broken}`).join('; ')}

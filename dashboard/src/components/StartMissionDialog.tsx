@@ -40,6 +40,7 @@ export function StartMissionDialog({ title, step, inputs = missionRunInputs(unde
 }) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [missing, setMissing] = useState<string[]>([])
+  const [fieldProblems, setFieldProblems] = useState<Record<string, string>>({})
   const [fields, setFields] = useState({ cwd: '', beadId: '' })
   const [contextPaths, setContextPaths] = useState('')
   const [workspaceMode, setWorkspaceMode] = useState('automatic')
@@ -93,7 +94,14 @@ export function StartMissionDialog({ title, step, inputs = missionRunInputs(unde
         document.getElementById(`start-input-${blank[0]}`)?.focus()
         return
       }
-      if (!event.currentTarget.reportValidity()) return
+      const problems: Record<string, string> = {}
+      for (const control of Array.from(event.currentTarget.querySelectorAll<HTMLInputElement>('input'))) {
+        if (!control.validity.valid) problems[control.id] = control.id === 'start-mission-bead'
+          ? 'Use letters, digits, dots, underscores and hyphens, starting with a letter or digit, for example archon-3yd.4.'
+          : 'Use an absolute path on the agent host, starting with /.'
+      }
+      setFieldProblems(problems)
+      if (Object.keys(problems).length) { document.getElementById(Object.keys(problems)[0])?.focus(); return }
       setSaving(true)
       setError(null)
       try {
@@ -110,7 +118,7 @@ export function StartMissionDialog({ title, step, inputs = missionRunInputs(unde
       } finally { setSaving(false) }
     }}>
       {step && <p className="field-note">{step} runs alone, with the mission&rsquo;s inputs, in {title}.</p>}
-      {inputs.map(input => <MissionInputField key={input.name} input={input} value={values[input.name] || ''} missing={missing.includes(input.name)} onChange={value => setValue(input.name, value)} />)}
+      {inputs.map(input => <MissionInputField key={input.name} input={input} value={values[input.name] || ''} missing={missing.includes(input.name)} error={fieldProblems[`start-input-${input.name}`]} onChange={value => setValue(input.name, value)} />)}
       <label htmlFor="start-mission-workspace">Workspace</label>
       <select id="start-mission-workspace" className="f" value={workspaceMode} disabled={saving}
         onChange={event => setWorkspaceMode(event.target.value)}>
@@ -121,6 +129,7 @@ export function StartMissionDialog({ title, step, inputs = missionRunInputs(unde
         <label htmlFor="start-mission-cwd">Working directory</label>
         <input id="start-mission-cwd" className="f" required value={fields.cwd} pattern="/.*" aria-describedby="start-mission-cwd-help"
           placeholder="/path/to/project" onChange={event => setFields({ ...fields, cwd: event.target.value })} />
+        {fieldProblems['start-mission-cwd'] && <p className="field-note error" role="alert">{fieldProblems['start-mission-cwd']}</p>}
         <p id="start-mission-cwd-help" className="field-note">The absolute path of the directory the agents work in.</p>
       </>}
       <label htmlFor="start-mission-context">Context paths</label>
@@ -130,6 +139,7 @@ export function StartMissionDialog({ title, step, inputs = missionRunInputs(unde
       <label htmlFor="start-mission-bead">Bead</label>
       <input id="start-mission-bead" className="f" value={fields.beadId} pattern="[A-Za-z0-9][A-Za-z0-9._-]*" aria-describedby="start-mission-bead-help"
         onChange={event => setFields({ ...fields, beadId: event.target.value })} />
+      {fieldProblems['start-mission-bead'] && <p className="field-note error" role="alert">{fieldProblems['start-mission-bead']}</p>}
       <p id="start-mission-bead-help" className="field-note">Optional. The Beads issue this run belongs to, for example archon-3yd.4.</p>
       {!step && <>
         <span className="start-mission-label" aria-hidden="true">Human gates</span>
@@ -137,7 +147,7 @@ export function StartMissionDialog({ title, step, inputs = missionRunInputs(unde
         <p id="start-mission-channel-help" className="field-note">Saved on the mission when you start. {HUMAN_CHANNEL_TIMING}</p>
       </>}
       {error && <div ref={errorRef} className="field-note error" role="alert">
-        {error.message}
+        {error.message} <button type="button" onClick={() => setError(null)}>Dismiss</button>
         {error.details.length > 0 && <ul className="start-mission-problems">{error.details.map(detail => <li key={detail}>{detail}</li>)}</ul>}
       </div>}
       <div className="pop-actions">
@@ -149,8 +159,8 @@ export function StartMissionDialog({ title, step, inputs = missionRunInputs(unde
 }
 
 /** One declared input: text in a text box, a file or folder as an absolute path. */
-function MissionInputField({ input, value, missing, onChange }: {
-  input: MissionInput; value: string; missing: boolean; onChange: (value: string) => void
+function MissionInputField({ input, value, missing, error, onChange }: {
+  input: MissionInput; value: string; missing: boolean; error?: string; onChange: (value: string) => void
 }) {
   const id = `start-input-${input.name}`
   const label = inputLabel(input.name)
@@ -167,6 +177,7 @@ function MissionInputField({ input, value, missing, onChange }: {
     {description && <div id={`${id}-help`} className="field-note">
       <Suspense fallback={description}><Markdown content={description} className="start-mission-hint" /></Suspense>
     </div>}
+    {error && <p className="field-note error" role="alert">{error}</p>}
     {pathHelp && <p id={`${id}-path`} className="field-note">{pathHelp}</p>}
     {missing && <p id={`${id}-missing`} className="field-note error">Fill in {label.toLowerCase()} to start.</p>}
   </>

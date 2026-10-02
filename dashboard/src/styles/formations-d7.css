@@ -555,3 +555,5 @@
 
 .fmx .fpeek { border: 1px solid var(--line); background: var(--paper2); color: var(--ink2); padding: 5px; border-radius: 4px; cursor: pointer; font: 10px var(--font-mono); }
 .fmx .fpeek:hover { color: var(--terra); border-color: var(--terra); }
+
+.fmx .action-error{z-index:400;max-width:440px;}
