@@ -138,7 +138,7 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
         selection.current = { node: event.target.value, slot: null }
         setSelectedNode(event.target.value)
         setSelectedSlot(null)
-        void refresh(true)
+        void refresh()
       }}>{nodes.map(([id, title]) => <option key={id} value={id}>{title}</option>)}</select> : null}
       <button onClick={() => void refresh(true)} disabled={loading}>Refresh seats</button>
       <button onClick={() => setPlaced(win.resetSize())}>Reset size</button>
@@ -148,7 +148,7 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
         title={`${seat.harness} · ${seat.state}`} onClick={() => {
           selection.current = { node: seat.nodeId, slot: seat.slotId }
           setSelectedSlot(seat.slotId)
-          void refresh(true)
+          void refresh()
         }}>
         {harnessIcon(seat.harness)}{seat.slotLabel}{seat.controller && !/controller/i.test(seat.slotLabel) ? ' · controller' : ''}
         {seat.onCall ? <span className="peek-seat-on-call" title={seatWaitsForYou(seat) ? 'On call: waiting for you' : 'On call'}>on call</span> : null}
