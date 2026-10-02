@@ -2607,6 +2607,7 @@ describe('FormationsCockpit reference parity', () => {
         const run = runs.find(item => item.runId === runURL[1])
         if (!run) return reply(null, 404)
         if (!runURL[2]) return reply({ status: run })
+        if (runURL[2] === '/evidence/mission') return reply({ mission: { graph: { ...makeBoard(), rev: run.missionRev }, missionRev: run.missionRev, text: { text: '', bytes: 0 } } })
         if (runURL[2] === '/events') return reply({ events: events[run.runId] || [] })
         if (runURL[2] === '/escalations') return reply({ escalations: [] })
         if (runURL[2].endsWith('/request')) return reply({ request: { gateId: 'gate_review', requestedSeq: 4, criterion: 'Review the frame', input: { fromNodeId: 'fmn_frame', text: 'Question for ' + run.runId, truncated: false } } })
@@ -2709,7 +2710,8 @@ describe('FormationsCockpit reference parity', () => {
     const banner = await screen.findByTestId('run-banner')
     await waitFor(() => expect(within(banner).getByTestId('run-point')).toHaveTextContent(`waiting for you at Review since ${pad(asked.getHours())}:${pad(asked.getMinutes())}`))
     expect(banner.querySelector('.run-when')).toHaveTextContent(/^started \d\d:\d\d · for 6m( \d+s)? · agent:driver$/)
-    expect(within(banner).getByRole('button', { name: 'ran revision 5' })).toHaveAttribute('title', 'This run ran revision 5; the canvas shows revision 7. Open the mission as it ran.')
+    expect(banner).toHaveTextContent('Showing revision 5 · read only')
+    expect(within(banner).getByRole('button', { name: 'Edit current mission · revision 7' })).toBeInTheDocument()
   })
 
   it('marks every waiting gate and says since when each asked', async () => {

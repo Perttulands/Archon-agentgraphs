@@ -2843,6 +2843,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const runBadgeClass = recordingAnswer ? 'running' : activeRun ? activeRun.status : ''
   // Choosing a run pins it to the board; choosing none puts a finished run away.
   const chooseRun = (runId: string) => {
+    setEditingCurrentRun('')
     setLinkError('')
     if (runId) {
       setPinnedRun({ slug: selectedSlug, runId })
