@@ -11,6 +11,7 @@ import (
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/core"
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
+	"github.com/gorilla/websocket"
 )
 
 func TestSeatProjectionPinsRunAttemptAndFrozenLabels(t *testing.T) {
@@ -100,30 +101,36 @@ func TestSeatProjectionPinsRunAttemptAndFrozenLabels(t *testing.T) {
 	if got := list().Seats[0]; got.State != "missing" || got.TerminalURL != "" {
 		t.Fatal(got)
 	}
-	w := httptest.NewRecorder()
-	c.Handler().ServeHTTP(w, httptest.NewRequest("GET", oldURL, nil))
-	if w.Code != 409 {
-		t.Fatalf("stale attempt %d %s", w.Code, w.Body.String())
+	server := httptest.NewServer(c.Handler())
+	defer server.Close()
+	refusal := func(url, reason string) {
+		t.Helper()
+		dialer := websocket.Dialer{Subprotocols: []string{"tty"}}
+		conn, _, err := dialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+url, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"columns":160,"rows":48}`)); err != nil {
+			t.Fatal(err)
+		}
+		_, frame, err := conn.ReadMessage()
+		if err != nil || !strings.Contains(string(frame), reason) {
+			t.Fatalf("refusal %q: %v", frame, err)
+		}
 	}
+	refusal(oldURL, "a newer seat attempt replaced this terminal")
 	addSeat("$20", "")
 	if got := list().Seats[0]; got.State != "unavailable" || got.TerminalURL != "" {
 		t.Fatal(got)
 	}
-	w = httptest.NewRecorder()
-	c.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/api/runs/"+id+"/seats/999/terminal", nil))
-	if w.Code != 404 {
-		t.Fatal(w.Code)
-	}
+	refusal("/api/runs/"+id+"/seats/999/terminal", "no such seat in this run")
 	// A different run cannot borrow an event sequence from this run.
 	other, err := c.store.StartRun("proof", formations.RunStartRequest{MissionID: "mis_proof", ExpectedBoardRev: 1, Personas: c.personas})
 	if err != nil {
 		t.Fatal(err)
 	}
-	w = httptest.NewRecorder()
-	c.Handler().ServeHTTP(w, httptest.NewRequest("GET", strings.Replace(oldURL, id, other.RunID, 1), nil))
-	if w.Code != 404 {
-		t.Fatalf("foreign run seat %d", w.Code)
-	}
+	refusal(strings.Replace(oldURL, id, other.RunID, 1), "no such seat in this run")
 	c.terminalObserver = nil
 	if got := list(); got.Available || got.Reason == "" {
 		t.Fatal(got)

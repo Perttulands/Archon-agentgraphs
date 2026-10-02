@@ -276,3 +276,27 @@ func waitFor(t *testing.T, done func() bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+func TestRefusalUpgradesAndExplainsInPane(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Refuse(w, r, "a newer seat attempt replaced this terminal")
+	}))
+	defer server.Close()
+	dialer := websocket.Dialer{Subprotocols: []string{"tty"}}
+	conn, _, err := dialer.Dial("ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"columns":160,"rows":48}`)); err != nil {
+		t.Fatal(err)
+	}
+	_, raw, err := conn.ReadMessage()
+	if err != nil || string(raw) != "0Archon: a newer seat attempt replaced this terminal\r\n" {
+		t.Fatalf("refusal %q: %v", raw, err)
+	}
+	_, _, err = conn.ReadMessage()
+	if !websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+		t.Fatalf("close: %v", err)
+	}
+}

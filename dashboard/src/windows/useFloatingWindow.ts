@@ -18,6 +18,7 @@ import { RESIZE_KEYBOARD_STEP, capturePointerDrag } from './resizeGesture'
 import {
   FLOATING_WINDOW_MINIMUM,
   readFloatingWindowSize,
+  clearFloatingWindowSize,
   writeFloatingWindowSize,
   type FloatingWindowKind,
   type FrameSize,
@@ -116,6 +117,7 @@ export interface FloatingWindow<T extends HTMLElement> {
   fitTo: (size: FrameSize) => void
   /** Whether the operator has sized a window of this kind, now or before it opened. */
   sizedByOperator: boolean
+  resetSize: () => FrameSize
 }
 
 // A press on a control in the title bar uses the control, not the window.
@@ -358,5 +360,13 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
     onMoveKeyDown,
     fitTo,
     sizedByOperator,
+    resetSize: () => {
+      clearFloatingWindowSize(kind)
+      sized.current = false
+      setSizedByOperator(false)
+      const next = openingRect(stackRef.current, id, defaultSize, minimum, anchor, keepClear, anchorKind, overCanvas)
+      setRect(next)
+      return { width: next.width, height: next.height }
+    },
   }
 }

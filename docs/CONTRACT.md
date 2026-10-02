@@ -761,10 +761,12 @@ its font; no size reaches the seat. Peek opens over the canvas at up to 90% of t
 windows' title bars clear, and shrinks to the grid it drew until the operator
 sizes it. Peek keeps the
 terminal, connection and frame of every seat it has shown while it is open, so
-switching seats does not reconnect. A connection lost with the seat still live,
-such as across a daemon restart, dials again once on Refresh seats (Refresh in a
+switching seats preserves a healthy connection. Reset size clears the remembered
+size and wraps the grid again. A connection lost with the seat still live,
+such as across a daemon restart, dials again once when its tab is selected, on Refresh seats (Refresh in a
 Talk window) or when the page becomes visible again; nothing retries on its
-own. A refused attach prints its reason in the terminal. Painting a selection
+own. Every refused attach, including a stale or unknown seat, prints its reason in the terminal;
+attach failure details are logged by the daemon. Painting a selection
 copies it and the footer says whether it reached the clipboard. A seat kept on call
 for a human gate is marked on call, and
 waiting for you while it holds a pending ask. On a session-channel run the
