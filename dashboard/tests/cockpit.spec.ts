@@ -371,6 +371,14 @@ test('refresh follows the selected worker across attempts and never reconnects i
   await expect(page.getByText('Disconnected. Refresh seats to reconnect.')).toBeVisible()
   await page.getByRole('button', { name: 'Worker 1', exact: true }).click()
   await expect(page.getByText('Disconnected. Refresh seats to reconnect.')).toBeVisible()
+  await expect.poll(() => sockets.length).toBe(2)
+  // Re-selecting either dropped terminal makes exactly one new connection.
+  await page.getByRole('button', { name: 'Controller', exact: true }).click()
+  await expect.poll(() => sockets.length).toBe(3)
+  await expect(page.getByText('Disconnected. Refresh seats to reconnect.')).toBeVisible()
+  await page.getByRole('button', { name: 'Worker 1', exact: true }).click()
+  await expect.poll(() => sockets.length).toBe(4)
+  await expect(page.getByText('Disconnected. Refresh seats to reconnect.')).toBeVisible()
   const count = sockets.length
   await page.waitForTimeout(200)
   expect(sockets).toHaveLength(count)
