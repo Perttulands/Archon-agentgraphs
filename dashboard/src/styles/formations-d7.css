@@ -557,3 +557,5 @@
 .fmx .fpeek:hover { color: var(--terra); border-color: var(--terra); }
 
 .fmx .action-error{z-index:400;max-width:440px;}
+
+.fmx .card-step{display:inline-flex;align-items:center;justify-content:center;min-width:20px;min-height:20px;flex-shrink:0;border:1px solid var(--line);border-radius:50%;font-size:11px;color:var(--ink2);margin-right:6px;}

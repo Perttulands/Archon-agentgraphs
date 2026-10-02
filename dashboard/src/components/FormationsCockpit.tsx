@@ -2864,6 +2864,17 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const renderDraftMarker = (nodeId: string) => (
     <DraftMarker nodeId={nodeId} findings={blockedFindings.get(nodeId) ?? draftFindings.get(nodeId)} blocked={blockedFindings.has(nodeId)} />
   )
+  const flowNumbers = useMemo(() => board ? buildFlow(board).numbers : new Map<string, number>(), [board])
+  const stepNumber = (nodeId: string) => flowNumbers.has(nodeId) ? <span className="card-step" title="Step number in Flow">{flowNumbers.get(nodeId)}</span> : null
+  const gateRouteTitle = (gateId: string, port: string) => {
+    const routes = board?.connections.filter(route => route.from === `${gateId}:${port}`) || []
+    if (!routes.length) return `${port === 'pass' ? 'Pass' : 'Fail'}: not wired; connect a step or an End node`
+    return `${port === 'pass' ? 'Pass' : 'Fail'}: ${routes.map(route => {
+      const id = route.to.split(':')[0]
+      const end = board?.ends?.find(node => node.id === id)
+      return end ? `this path ends at ${end.title || 'End'} (${end.outcome})` : `${flowNumbers.get(id) || ''} ${board ? nodeTitle(board, id) : id}`.trim()
+    }).join(', ')}`
+  }
   const renderRunChip = (nodeId: string) => {
     const state = nodeStates.get(nodeId)
     // Waiting for the operator is the most visible state on the canvas (archon-n7u.29).
@@ -3296,7 +3307,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   })}
                   <div className="fhead" onPointerDown={event => beginNodeDrag(event, formation.id, index)}>
                     <div className="ft">
-                      {renderNodeTitle(formation.title, 'tt', 'Untitled formation', 'div')}
+                      {stepNumber(formation.id)}{renderNodeTitle(formation.title, 'tt', 'Untitled formation', 'div')}
                       <div className={`tg${formation.brief?.goal?.trim() ? '' : ' placeholder'}`} title={formationSummary(formation)}>{formationSummary(formation)}</div>
                       {/* Run tools get their own row so the title keeps the header's width. */}
                       {activeRun || nodeStates.has(formation.id) ? (
@@ -3384,7 +3395,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                     onPointerDown={event => beginJudgeDrag(event, gate)}
                   />
                   <span className="gico" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{GATE_SVG}</span>
-                  <span className="gmeta" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{renderNodeTitle(gate.title, 'gt', 'Gate', 'span')}<GateKindChips gateId={gate.id} kinds={gate.kinds} /><span className={`gs${gate.criterion ? '' : ' placeholder'}`}>{gate.criterion || 'No criterion yet.'}</span><ReferencedFiles nodeId={gate.id} files={nodeFileRefs(board, gate.id)} max={1} onMore={openReferencedFilesMenu} className="card-refs" /></span>
+                  <span className="gmeta" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{stepNumber(gate.id)}{renderNodeTitle(gate.title, 'gt', 'Gate', 'span')}<GateKindChips gateId={gate.id} kinds={gate.kinds} /><span className={`gs${gate.criterion ? '' : ' placeholder'}`}>{gate.criterion || 'No criterion yet.'}</span><ReferencedFiles nodeId={gate.id} files={nodeFileRefs(board, gate.id)} max={1} onMore={openReferencedFilesMenu} className="card-refs" /></span>
                   {nodeStates.has(gate.id) ? (
                     <button
                       type="button"
@@ -3398,8 +3409,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   ) : null}
                   <span className="glabel pass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M4 12l5 5L20 6" /></svg>pass</span>
                   <span className="glabel fail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M6 6l12 12M18 6L6 18" /></svg>fail</span>
-                  <span className={`port pass${hoverPort === `${gate.id}:pass` ? ' snaptarget' : ''}`} data-port-out={`${gate.id}:pass`} title="On PASS → drag to the next step" onPointerDown={event => beginWire(event, `${gate.id}:pass`, 'pass')} />
-                  <span className={`port fail${hoverPort === `${gate.id}:fail` ? ' snaptarget' : ''}`} data-port-out={`${gate.id}:fail`} title="On FAIL → drag to a fallback" onPointerDown={event => beginWire(event, `${gate.id}:fail`, 'fail')} />
+                  <span className={`port pass${hoverPort === `${gate.id}:pass` ? ' snaptarget' : ''}`} data-port-out={`${gate.id}:pass`} title={gateRouteTitle(gate.id, 'pass')} onPointerDown={event => beginWire(event, `${gate.id}:pass`, 'pass')} />
+                  <span className={`port fail${hoverPort === `${gate.id}:fail` ? ' snaptarget' : ''}`} data-port-out={`${gate.id}:fail`} title={gateRouteTitle(gate.id, 'fail')} onPointerDown={event => beginWire(event, `${gate.id}:fail`, 'fail')} />
                 </div>
               )
             })}
@@ -3426,7 +3437,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   <div className="tool-head">
                     <div className="tool-heading">
                       <span className="tool-kind">Tool</span>
-                      <span className="tool-title">{tool.title}</span>
+                      <span className="tool-title">{stepNumber(tool.id)}{tool.title}</span>
                     </div>
                     <button
                       type="button"
