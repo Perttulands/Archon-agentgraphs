@@ -46,13 +46,15 @@ export function EditableField({ label, value, multiline = false, markdown = fals
       return
     }
     setSaving(true)
-    const saved = await onSave(next)
-    setSaving(false)
+    let saved: boolean | string
+    try { saved = await onSave(next) }
+    catch (reason) { saved = reason instanceof Error ? reason.message : String(reason) }
+    finally { setSaving(false) }
     if (saved === true) {
       cancel()
       setSavedReceipt(true)
     }
-    else setError(typeof saved === 'string' && saved ? saved : `The ${name} was not saved.`)
+    else setError(typeof saved === 'string' && saved ? saved : `Could not save ${name}.`)
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {

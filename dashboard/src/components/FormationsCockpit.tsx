@@ -1089,7 +1089,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // Node windows save one field at a time; each save is one undo entry.
   const saveBrief = useCallback(async (formationId: string, brief: FormationBrief): Promise<boolean> => {
     const previous = boardRef.current?.formations.find(formation => formation.id === formationId)?.brief
-    const result = await patchBoard({
+    const result = await applyBoardPatch({
       setBrief: { formationId, goal: brief.goal || '', beadId: brief.beadId || '', files: brief.files || [], links: brief.links || [] },
     })
     if (!result) return false
@@ -1097,7 +1097,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       ? { setBrief: { formationId, goal: previous.goal || '', beadId: previous.beadId || '', files: previous.files || [], links: previous.links || [] } }
       : { clearBrief: { formationId } }))
     return true
-  }, [patchBoard, recordUndo])
+  }, [applyBoardPatch, recordUndo])
 
   // Undo waits for edits in flight, then runs the newest entry. A stale
   // revision (another editor, or the poll not yet caught up) reloads the board
@@ -1404,32 +1404,32 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (previous === title) return true
     const label = `the rename of ${quoted(previous, 'an untitled node')}`
     if (formation) {
-      if (!await patchBoard({ updateFormation: { id: nodeId, title } })) return false
+      if (!await applyBoardPatch({ updateFormation: { id: nodeId, title } })) return false
       recordUndo(label, boardStep({ updateFormation: { id: nodeId, title: previous } }))
     } else if (mission) {
-      if (!await patchBoard({ updateInputCard: { id: nodeId, title } })) return false
+      if (!await applyBoardPatch({ updateInputCard: { id: nodeId, title } })) return false
       recordUndo(label, boardStep({ updateInputCard: { id: nodeId, title: previous } }))
     } else if (gate) {
-      if (!await patchBoard({ updateGate: { id: nodeId, title } })) return false
+      if (!await applyBoardPatch({ updateGate: { id: nodeId, title } })) return false
       recordUndo(label, boardStep({ updateGate: { id: nodeId, title: previous } }))
     } else if (end) {
-      if (!await patchBoard({ updateEnd: { id: nodeId, title } })) return false
+      if (!await applyBoardPatch({ updateEnd: { id: nodeId, title } })) return false
       recordUndo(label, boardStep({ updateEnd: { id: nodeId, title: previous } }))
     } else if (limit) {
-      if (!await patchBoard({ updateLimit: { id: nodeId, title } })) return false
+      if (!await applyBoardPatch({ updateLimit: { id: nodeId, title } })) return false
       recordUndo(label, boardStep({ updateLimit: { id: nodeId, title: previous } }))
     }
     return true
-  }, [patchBoard, recordUndo])
+  }, [applyBoardPatch, recordUndo])
 
   const updateMissionFields = useCallback(async (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel' | 'inputs'>>): Promise<boolean> => {
     const previous = boardRef.current?.inputCards?.find(mission => mission.id === missionId)
     if (!previous) return false
-    if (!await patchBoard({ updateInputCard: { id: missionId, ...fields } })) return false
+    if (!await applyBoardPatch({ updateInputCard: { id: missionId, ...fields } })) return false
     // An absent field is restored as empty, which clears it.
     recordUndo(`the edit of Input card ${quoted(previous.title, 'untitled')}`, boardStep({ updateInputCard: { id: missionId, ...Object.fromEntries(Object.keys(fields).map(key => [key, previous[key as keyof typeof fields] ?? (key === 'files' || key === 'inputs' ? [] : '')])) } }))
     return true
-  }, [patchBoard, recordUndo])
+  }, [applyBoardPatch, recordUndo])
 
   const renderNodeTitle = (title: string, className: string, fallback: string, Tag: 'div' | 'span') => (
     <Tag className={`${className}${title ? '' : ' untitled'}`}>{title || fallback}</Tag>
@@ -1590,10 +1590,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const setGateFiles = useCallback(async (gateId: string, files: string[]): Promise<boolean> => {
     const previous = boardRef.current?.gates?.find(gate => gate.id === gateId)
     if (!previous) return false
-    if (!await patchBoard({ updateGate: { id: gateId, files } })) return false
+    if (!await applyBoardPatch({ updateGate: { id: gateId, files } })) return false
     recordUndo(`the files of gate ${quoted(previous.title, 'untitled')}`, boardStep({ updateGate: { id: gateId, files: previous.files || [] } }))
     return true
-  }, [patchBoard, recordUndo])
+  }, [applyBoardPatch, recordUndo])
 
   // Dropping the judge kind detaches the chain, so undo restores the chain after the fields.
   const updateGateFields = useCallback(async (gateId: string, draft: GateDraft): Promise<boolean> => {
@@ -1601,12 +1601,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!previous) return false
     const { kinds, ...rest } = gateFieldsFromDraft(draft)
     const chain = previous.kinds.includes('formation') && !kinds.includes('formation') ? judgeChainOf(previous.id) : []
-    if (!await patchBoard({ updateGate: { id: previous.id, ...rest, ...(kinds.length ? { kinds } : {}) } })) return false
+    if (!await applyBoardPatch({ updateGate: { id: previous.id, ...rest, ...(kinds.length ? { kinds } : {}) } })) return false
     recordUndo(`the edit of gate ${quoted(previous.title, 'untitled')}`,
       boardStep({ updateGate: { id: previous.id, ...gateFieldsFromGate(previous) } }, 'the gate settings'),
       ...(chain.length ? [boardStep({ setGateJudge: { gateId: previous.id, chain } }, 'the judge')] : []))
     return true
-  }, [judgeChainOf, patchBoard, recordUndo])
+  }, [judgeChainOf, applyBoardPatch, recordUndo])
 
   const rewireSource = useCallback(async (connection: BoardConnection, newFrom: string) => {
     if (!newFrom || newFrom === connection.from || newFrom.split(':')[0] === connection.to.split(':')[0]) return
