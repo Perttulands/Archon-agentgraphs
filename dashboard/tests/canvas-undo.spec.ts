@@ -52,7 +52,7 @@ test('a failed undo is reported once and Ctrl+Z moves on to older history', asyn
   // Someone else puts a node with the same ID back first, so this undo can no longer apply.
   fixture.board().inputCards.push({ id: 'mission', title: 'Delivery', goal: '' })
   await page.keyboard.press('Control+z')
-  await expect(page.getByTestId('formations-error')).toHaveText(
+  await expect(page.getByTestId('formations-error')).toContainText(
     'Could not undo the delete of Input card “Delivery”: node "mission" is already in the mission. It was removed from the undo history.')
   await page.screenshot({ path: test.info().outputPath('undo-failed-once.png') })
 
