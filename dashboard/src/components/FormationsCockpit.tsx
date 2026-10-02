@@ -1,3 +1,5 @@
+import { AnsweredDraftNotice } from './AnsweredDraftNotice'
+import { hasGateDraft } from './HumanGateAnswerPanel'
 import { StartMissionDialog, type RunInputs } from "./StartMissionDialog"
 import { inputCardOf, missionRunInputs } from "./missionInputs"
 /* FormationsCockpit — spatial board editor for Archon.
@@ -255,6 +257,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [rosterSearch, setRosterSearch] = useState('')
   const [view, setView] = useState<ViewTransform>({ x: 40, y: 40, scale: 1 })
   const [error, setError] = useState('')
+  const [submittedHere, setSubmittedHere] = useState<ReadonlySet<string>>(new Set())
   const errorAnchor = useRef<{ left: number; top: number } | null>(null)
   const [validation, setValidation] = useState<BoardValidation | null>(null)
   const [admissionFindings, setAdmissionFindings] = useState<BoardFinding[]>([])
@@ -1734,6 +1737,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // send back returns it as feedback.
   const recordHumanGateVerdict = useCallback(async (gateId: string, requestedSeq: number, verdict: GateDecision, response: string) => {
     if (!activeRun?.runId || activeRun.final) return false
+    setSubmittedHere(current => new Set([...current, `${activeRun.runId}:${requestedSeq}`]))
     try {
       const status = runStatusFromResponse(await recordGateVerdict(activeRun.runId, gateId, {
         actor: 'human:ui',
@@ -3595,6 +3599,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             <button onClick={() => void arrangeBoard()} title="Arrange cards by graph flow (persists layout, Ctrl+Z to undo)" data-testid="arrange-layout">ARRANGE</button>
             <button onClick={() => fitView({ smooth: true })} title="Fit">FIT</button>
           </div>
+          {activeRun && runEvents.filter(event => event.type === 'human_verdict_recorded'
+            && !submittedHere.has(`${activeRun.runId}:${Number(event.data?.requestedSeq)}`)
+            && hasGateDraft(activeRun.runId, Number(event.data?.requestedSeq))).map(event =>
+            <AnsweredDraftNotice key={`${activeRun.runId}:${event.seq}`} runId={activeRun.runId} gateId={event.gateId || event.nodeId || ''}
+              requestedSeq={Number(event.data?.requestedSeq)} title={pointTitle(event.gateId || event.nodeId)}
+              onEvidence={() => setInspectedNodeId(event.gateId || event.nodeId || '')} />)}
           {error || linkError ? <div className="errbar action-error" data-testid="formations-error" role="alert" style={errorAnchor.current ? { position: 'fixed', ...errorAnchor.current, bottom: 'auto' } : undefined}>{error || linkError} <button type="button" aria-label="Dismiss error" onClick={() => { setError(''); setLinkError('') }}>Dismiss</button></div>
             : brokenMissions.length ? (
               <div className="errbar" data-testid="broken-missions" role="status">

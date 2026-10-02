@@ -39,3 +39,9 @@
 .fmx .stop-run-what{margin:0 0 10px;color:var(--ink2);font-size:12px;line-height:1.5;overflow-wrap:anywhere;}
 .fmx .stop-run-what strong{color:var(--ink);}
 .fmx .stop-run-consequences{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;color:var(--ink2);font-size:12px;line-height:1.5;}
+
+.fmx .answered-draft{position:absolute;left:16px;bottom:16px;max-width:560px;width:calc(100% - 32px);z-index:220;background:var(--card);border:1px solid var(--gold);padding:12px;font-size:12px;box-shadow:0 4px 20px #0008;}
+.fmx .answered-draft textarea{width:100%;min-height:90px;max-height:180px;resize:vertical;background:var(--paper);color:var(--ink);font:inherit;border:1px solid var(--line);}
+.fmx .answered-draft p{margin:0 0 8px;}
+.fmx .answered-draft blockquote{margin:8px 0;white-space:pre-wrap;max-height:120px;overflow:auto;}
+.fmx .answered-draft button{margin:8px 8px 0 0;}

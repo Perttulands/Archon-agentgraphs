@@ -216,3 +216,7 @@ function HumanGateAnswerPanel({ runId, gateId, requestedSeq, gateTitle, criterio
 }
 
 export default HumanGateAnswerPanel
+
+export function readGateDraft(runId: string, requestedSeq: number): string {
+  return readDraft(draftKey(runId, requestedSeq)).text
+}
