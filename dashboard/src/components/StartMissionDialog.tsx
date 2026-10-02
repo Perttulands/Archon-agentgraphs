@@ -1,3 +1,4 @@
+import PathPicker from '../files/PathPicker'
 import { Suspense, lazy, useLayoutEffect, useRef, useState } from 'react'
 import { useEscapeKey } from './useEscapeKey'
 import { HumanChannelChoice } from '../humanChannel/HumanChannelChoice'
@@ -162,6 +163,7 @@ export function StartMissionDialog({ title, step, inputs = missionRunInputs(unde
 function MissionInputField({ input, value, missing, error, onChange }: {
   input: MissionInput; value: string; missing: boolean; error?: string; onChange: (value: string) => void
 }) {
+  const [browsing, setBrowsing] = useState(false)
   const id = `start-input-${input.name}`
   const label = inputLabel(input.name)
   const description = (input.description || '').trim() || (input.name === 'brief' && input.kind === 'text' ? DEFAULT_BRIEF_HINT : '')
@@ -174,6 +176,8 @@ function MissionInputField({ input, value, missing, error, onChange }: {
         onChange={event => onChange(event.target.value)} />
       : <input id={id} className="f" value={value} pattern="\s*/.*" aria-required={input.required || undefined} aria-invalid={missing || undefined} aria-describedby={describedBy}
         placeholder={input.kind === 'folder' ? '/path/to/directory' : '/path/to/file'} onChange={event => onChange(event.target.value)} />}
+    {input.kind !== 'text' ? <button type="button" onClick={() => setBrowsing(!browsing)} aria-expanded={browsing}>Browse for {label.toLowerCase()}</button> : null}
+    {browsing && input.kind !== 'text' ? <PathPicker kind={input.kind} value={value} onPick={path=>{onChange(path);setBrowsing(false)}} onClose={()=>setBrowsing(false)} /> : null}
     {description && <div id={`${id}-help`} className="field-note">
       <Suspense fallback={description}><Markdown content={description} className="start-mission-hint" /></Suspense>
     </div>}

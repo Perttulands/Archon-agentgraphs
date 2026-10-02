@@ -6,6 +6,8 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
+	"sort"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
@@ -16,6 +18,7 @@ import (
 func (c *Coordinator) registerFileRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/files/preview", c.filePreview)
 	mux.HandleFunc("GET /api/files/raw", c.fileRaw)
+	mux.HandleFunc("GET /api/files/directory", c.fileDirectory)
 }
 
 func (c *Coordinator) filePreview(w http.ResponseWriter, r *http.Request) {
@@ -62,4 +65,44 @@ func fileFailure(w http.ResponseWriter, err error) {
 	default:
 		reply(w, http.StatusInternalServerError, map[string]string{"error": "file unavailable"})
 	}
+}
+
+// Adapted from CHROTE api/files.go confinedDirectoryItems: enumerate, follow
+// symlinks, skip unreadable entries and sort. ADR-0021 removes root confinement;
+// the picker reads the agent host's absolute paths and never edits files.
+func (c *Coordinator) fileDirectory(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if !filepath.IsAbs(path) {
+		fileFailure(w, formations.ErrRelativeFileRef)
+		return
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		fileFailure(w, err)
+		return
+	}
+	type item struct {
+		Name  string `json:"name"`
+		Path  string `json:"path"`
+		IsDir bool   `json:"isDir"`
+	}
+	items := make([]item, 0, len(entries))
+	for _, entry := range entries {
+		full := filepath.Join(path, entry.Name())
+		info, err := os.Stat(full)
+		if err != nil {
+			continue
+		}
+		if !info.IsDir() && !info.Mode().IsRegular() {
+			continue
+		}
+		items = append(items, item{entry.Name(), full, info.IsDir()})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].IsDir != items[j].IsDir {
+			return items[i].IsDir
+		}
+		return items[i].Name < items[j].Name
+	})
+	reply(w, http.StatusOK, map[string]any{"path": filepath.Clean(path), "items": items})
 }
