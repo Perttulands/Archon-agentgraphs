@@ -62,7 +62,7 @@ describe('CanvasContextMenu', () => {
   })
 })
 
-it('focuses and navigates enabled items, activates Enter and restores the trigger on close', () => {
+it('focuses and navigates enabled items and restores the trigger on close', () => {
   const trigger = document.createElement('button')
   document.body.append(trigger)
   trigger.focus()
