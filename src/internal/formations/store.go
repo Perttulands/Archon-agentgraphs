@@ -30,7 +30,6 @@ var (
 	ErrConflict                   = errors.New("archon conflict")
 	ErrAmbiguousSelector          = errors.New("ambiguous archon selector")
 	ErrInvalidSlug                = errors.New("invalid archon slug")
-	ErrInvalidRunLimits           = errors.New("limits must be positive when set; omit a limit to run without it")
 	ErrNotFound                   = errors.New("archon file not found")
 	ErrPreconditionRequired       = errors.New("archon write precondition required")
 	ErrUnsupportedSchema          = errors.New("unsupported archon schema")
@@ -56,6 +55,9 @@ type Store struct {
 	// OnRunEvent is called after a durable append. It must not block or read the store.
 	OnRunEvent func(RunEvent)
 
+	// ledgers keeps parsed run ledgers so reads parse only new lines.
+	ledgers ledgerCache
+
 	newToolDefinitionID                  func(string) string
 	deleteBoardAfterLayoutArchiveForTest func()
 	archiveDirectorySyncForTest          func() error
@@ -74,6 +76,7 @@ type BoardDocument struct {
 	Gates       []GateNode        `json:"gates"`
 	Tools       []ToolNode        `json:"tools"`
 	Ends        []EndNode         `json:"ends"`
+	Limits      []LimitNode       `json:"limits"`
 	Connections []BoardConnection `json:"connections"`
 	ETag        string            `json:"etag"`
 	TOML        string            `json:"toml,omitempty"`
@@ -246,7 +249,7 @@ func (s *Store) DeleteBoard(slug string, opts WriteOptions) (*BoardDeletion, err
 		if err != nil {
 			return err
 		}
-		board, err := parseBoardForWrite(raw)
+		board, err := parseBoard(raw)
 		if err != nil {
 			return err
 		}
@@ -339,7 +342,7 @@ func (s *Store) UpdateBoardMetadata(slug string, patch BoardMetadataPatch, opts 
 		if err != nil {
 			return err
 		}
-		current, err := parseBoardForWrite(raw)
+		current, err := parseBoard(raw)
 		if err != nil {
 			return err
 		}
@@ -369,7 +372,7 @@ func (s *Store) UpdateBoardMetadata(slug string, patch BoardMetadataPatch, opts 
 		if err := definition.writeAtomic(nextRaw); err != nil {
 			return err
 		}
-		next, err = parseBoardForWrite(nextRaw)
+		next, err = parseBoard(nextRaw)
 		return err
 	})
 	if err != nil {
@@ -398,7 +401,7 @@ func (s *Store) UpdateLayoutMetadata(slug string, patch LayoutMetadataPatch, opt
 		if err != nil {
 			return err
 		}
-		current, err := parseLayoutForWrite(raw)
+		current, err := parseLayout(raw)
 		if err != nil {
 			return err
 		}
@@ -420,7 +423,7 @@ func (s *Store) UpdateLayoutMetadata(slug string, patch LayoutMetadataPatch, opt
 		if err := definition.writeAtomic(nextRaw); err != nil {
 			return err
 		}
-		next, err = parseLayoutForWrite(nextRaw)
+		next, err = parseLayout(nextRaw)
 		return err
 	})
 	if err != nil {
@@ -428,6 +431,9 @@ func (s *Store) UpdateLayoutMetadata(slug string, patch LayoutMetadataPatch, opt
 	}
 	return next, nil
 }
+
+// CurrentTime is the store's clock, the one its ledger timestamps use.
+func (s *Store) CurrentTime() time.Time { return s.now() }
 
 func (s *Store) now() time.Time {
 	if s.Now == nil {
@@ -459,7 +465,7 @@ func (s *Store) readBoardDefinitionForWrite(slug string) (*BoardDocument, error)
 	if err != nil {
 		return nil, err
 	}
-	return parseBoardForWrite(raw)
+	return parseBoard(raw)
 }
 
 func (s *Store) readLayoutDefinition(slug string) (*LayoutDocument, error) {
@@ -485,18 +491,10 @@ func (s *Store) readLayoutDefinitionForWrite(slug string) (*LayoutDocument, erro
 	if err != nil {
 		return nil, err
 	}
-	return parseLayoutForWrite(raw)
+	return parseLayout(raw)
 }
 
 func parseBoard(raw []byte) (*BoardDocument, error) {
-	source, err := decodeBoardTOML(raw)
-	if err != nil {
-		return parseBoardCompatibility(raw)
-	}
-	return boardFromTOMLSource(raw, source)
-}
-
-func parseBoardForWrite(raw []byte) (*BoardDocument, error) {
 	source, err := decodeBoardTOML(raw)
 	if err != nil {
 		return nil, err
@@ -525,6 +523,7 @@ func boardFromTOMLSource(raw []byte, source boardTOMLSource) (*BoardDocument, er
 		Gates:       source.Gates,
 		Tools:       tools,
 		Ends:        source.Ends,
+		Limits:      source.Limits,
 		Connections: source.Connections,
 		ETag:        etag(raw),
 		TOML:        string(raw),
@@ -532,45 +531,7 @@ func boardFromTOMLSource(raw []byte, source boardTOMLSource) (*BoardDocument, er
 	return board, nil
 }
 
-func parseBoardCompatibility(raw []byte) (*BoardDocument, error) {
-	doc := parseTOMLDocument(raw)
-	schema := doc.intValue("schema")
-	if schema > CurrentBoardSchema {
-		return nil, fmt.Errorf("%w: schema %d", ErrUnsupportedSchema, schema)
-	}
-	tools, err := parseToolNodes(raw)
-	if err != nil {
-		return nil, err
-	}
-	board := &BoardDocument{
-		Schema:      schema,
-		ID:          doc.stringValue("id"),
-		Slug:        doc.stringValue("slug"),
-		Title:       doc.stringValue("title"),
-		Rev:         doc.intValue("rev"),
-		UpdatedBy:   doc.stringValue("updatedBy"),
-		UpdatedAt:   doc.stringValue("updatedAt"),
-		Missions:    parseMissionNodes(raw),
-		Formations:  parseFormationNodes(raw),
-		Gates:       parseGateNodes(raw),
-		Tools:       tools,
-		Ends:        parseEndNodes(raw),
-		Connections: parseBoardConnections(raw),
-		ETag:        etag(raw),
-		TOML:        string(raw),
-	}
-	return board, nil
-}
-
 func parseLayout(raw []byte) (*LayoutDocument, error) {
-	source, err := decodeLayoutTOML(raw)
-	if err != nil {
-		return parseLayoutCompatibility(raw)
-	}
-	return layoutFromTOMLSource(raw, source)
-}
-
-func parseLayoutForWrite(raw []byte) (*LayoutDocument, error) {
 	source, err := decodeLayoutTOML(raw)
 	if err != nil {
 		return nil, err
@@ -589,24 +550,6 @@ func layoutFromTOMLSource(raw []byte, source layoutTOMLSource) (*LayoutDocument,
 		UpdatedAt: source.UpdatedAt,
 		Nodes:     source.Nodes,
 		Edges:     source.Edges,
-		ETag:      etag(raw),
-		TOML:      string(raw),
-	}, nil
-}
-
-func parseLayoutCompatibility(raw []byte) (*LayoutDocument, error) {
-	doc := parseTOMLDocument(raw)
-	schema := doc.intValue("schema")
-	if schema > CurrentLayoutSchema {
-		return nil, fmt.Errorf("%w: schema %d", ErrUnsupportedSchema, schema)
-	}
-	return &LayoutDocument{
-		Schema:    schema,
-		BoardID:   doc.stringValue("missionId"),
-		BoardRev:  doc.intValue("missionRev"),
-		UpdatedAt: doc.stringValue("updatedAt"),
-		Nodes:     parseLayoutNodes(raw),
-		Edges:     parseLayoutEdges(raw),
 		ETag:      etag(raw),
 		TOML:      string(raw),
 	}, nil

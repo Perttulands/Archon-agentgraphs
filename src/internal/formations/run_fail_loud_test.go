@@ -25,7 +25,6 @@ func TestRunEngineMissingExecutorRecordsBlockedRun(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 10, WallClockSeconds: 60},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -65,7 +64,6 @@ func TestRunEngineMissingGateEvaluatorBlocksInsteadOfPassing(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -83,45 +81,6 @@ func TestRunEngineMissingGateEvaluatorBlocksInsteadOfPassing(t *testing.T) {
 	}
 	if eventsContainType(events, RunEventGateVerdict) {
 		t.Fatalf("events include gate verdict despite missing evaluator: %#v", events)
-	}
-	if events[len(events)-1].Type != RunEventBlocked {
-		t.Fatalf("last event = %s, want run_blocked", events[len(events)-1].Type)
-	}
-}
-
-func TestRunEngineWallClockLimitBlocksSlowExecutor(t *testing.T) {
-	store, personas := s4RunFixture(t)
-	store.Now = fixedClock()
-	personas.Now = fixedClock()
-	createS4Persona(t, personas, "scout")
-	writeFixture(t, store.BoardPath("session-search"), s4CascadeBoardFixture())
-	board, err := store.ReadBoard("session-search")
-	if err != nil {
-		t.Fatalf("read board: %v", err)
-	}
-	executor := &slowRunExecutor{delay: 1500 * time.Millisecond}
-	engine := NewRunEngine(store, personas, executor)
-
-	status, err := engine.RunMission("session-search", RunStartRequest{
-		MissionID:         "mis_showcase",
-		Actor:             "agent:test",
-		ExpectedBoardETag: board.ETag,
-		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2, WallClockSeconds: 1},
-	})
-	if err != nil {
-		t.Fatalf("run mission: %v", err)
-	}
-	if status.Status != RunStatusBlocked {
-		t.Fatalf("status = %+v, want blocked by wall-clock timeout", status)
-	}
-	if got, want := executor.nodeIDs(), []string{"fmn_frame"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("executor nodes = %v, want only timed-out first dispatch", got)
-	}
-	events := readRunEvents(t, findOnlyRunLedger(t, store, "session-search"))
-	errEvent := eventOfType(t, events, RunEventError)
-	if errEvent.Data["code"] != "wall_clock_exceeded" {
-		t.Fatalf("run_error data = %#v, want wall_clock_exceeded", errEvent.Data)
 	}
 	if events[len(events)-1].Type != RunEventBlocked {
 		t.Fatalf("last event = %s, want run_blocked", events[len(events)-1].Type)

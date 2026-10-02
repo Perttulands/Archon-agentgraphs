@@ -17,25 +17,34 @@ var (
 	ErrRunLedgerInvalid    = errors.New("archon run ledger invalid")
 	ErrRunResumeNotAllowed = errors.New("archon run resume is not allowed")
 	ErrRunEpochBlocked     = errors.New("archon run epoch is blocked")
+	// ErrRunGrantRequired refuses a resume without --grant at a spent limit.
+	ErrRunGrantRequired = errors.New("this run stopped at a spent limit: resume it with --grant to give one more round or the card's time or tokens again")
+	// ErrRunNothingToGrant refuses --grant on a block no limit recorded.
+	ErrRunNothingToGrant = errors.New("this block is not a spent limit, so there is nothing to grant: resume without --grant")
+	// ErrHumanRequestNotPending refuses a verdict on a request that was
+	// answered, or replaced by a newer request on the same gate.
+	ErrHumanRequestNotPending = errors.New("human gate request is no longer pending")
 )
 
 const (
-	RunEventStarted              = "run_started"
-	RunEventResumed              = "run_resumed"
-	RunEventNodeWaiting          = "node_waiting"
-	RunEventNodeStarted          = "node_started"
-	RunEventOrchestrationTeam    = "orchestration_team"
-	RunEventWorkerObservation    = "worker_observation"
-	RunEventPeerPlane            = "peer_plane"
-	RunEventSlotDispatch         = "slot_dispatch"
-	RunEventAdapterSend          = "adapter_send"
-	RunEventSlotResult           = "slot_result"
-	RunEventNodeOutput           = "node_output"
-	RunEventGateEvaluating       = "gate_evaluating"
-	RunEventJudgeAttemptFailed   = "judge_attempt_failed"
-	RunEventGateKindResult       = "gate_kind_result"
-	RunEventGateVerdict          = "gate_verdict"
-	RunEventEscalationRaised     = "escalation_raised"
+	RunEventStarted            = "run_started"
+	RunEventResumed            = "run_resumed"
+	RunEventNodeWaiting        = "node_waiting"
+	RunEventNodeStarted        = "node_started"
+	RunEventOrchestrationTeam  = "orchestration_team"
+	RunEventWorkerObservation  = "worker_observation"
+	RunEventPeerPlane          = "peer_plane"
+	RunEventSlotDispatch       = "slot_dispatch"
+	RunEventAdapterSend        = "adapter_send"
+	RunEventSlotResult         = "slot_result"
+	RunEventNodeOutput         = "node_output"
+	RunEventGateEvaluating     = "gate_evaluating"
+	RunEventJudgeAttemptFailed = "judge_attempt_failed"
+	RunEventGateKindResult     = "gate_kind_result"
+	RunEventGateVerdict        = "gate_verdict"
+	RunEventEscalationRaised   = "escalation_raised"
+	// RunEventLimitWarning records a time card's warning pasted into a seat.
+	RunEventLimitWarning         = "limit_warning"
 	RunEventHumanInputRequested  = "human_input_requested"
 	RunEventHumanVerdictRecorded = "human_verdict_recorded"
 	RunEventError                = "error"
@@ -63,31 +72,17 @@ type RunStartRequest struct {
 	ExpectedBoardETag string
 	ExpectedBoardRev  int
 	Personas          *PersonaStore
-	Limits            RunLimits
 }
 
 type RunResumeRequest struct {
 	Actor  string
 	Mode   string
 	Reason string
+	// Grant gives the Limit card a spent limit stopped one more allowance;
+	// a block at a spent limit resumes only with it (archon-o7p.8).
+	Grant bool
 	// Set only after explicit completed-turn evidence validation by the engine.
 	CompletedDispatchID string
-}
-
-type RunLimits struct {
-	MaxDispatch      int `json:"maxDispatch"`
-	MaxAttempts      int `json:"maxAttempts,omitempty"`
-	WallClockSeconds int `json:"wallClockSeconds"`
-}
-
-// ValidateRunLimits refuses a negative limit. Limits are optional (archon-o7p.7):
-// an absent or zero limit means none. Every run start calls this, locally and
-// through the daemon, so each refuses -1 with the same message.
-func ValidateRunLimits(limits RunLimits) error {
-	if limits.MaxDispatch < 0 || limits.MaxAttempts < 0 || limits.WallClockSeconds < 0 {
-		return ErrInvalidRunLimits
-	}
-	return nil
 }
 
 type RunStartResult struct {
@@ -133,6 +128,9 @@ type RunStatusProjection struct {
 	Epoch         int        `json:"epoch"`
 	EventCount    int        `json:"eventCount"`
 	ResumeAllowed bool       `json:"resumeAllowed"`
+	// ResumePolicy is how a blocked run resumes: grant at a spent limit,
+	// which resumes only with run resume --grant (archon-o7p.8).
+	ResumePolicy string `json:"resumePolicy,omitempty"`
 	// EndedBy names who failed or canceled a final run; the reason itself is
 	// run evidence (ADR-0017), since it can quote private text.
 	EndedBy string `json:"endedBy,omitempty"`
@@ -304,7 +302,6 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 			"cwd":              req.Cwd,
 			"contextPaths":     req.ContextPaths,
 			"inputs":           ResolveRunInputs(board, req.Inputs),
-			"limits":           req.Limits,
 		},
 	}
 	if err := writeInitialRunEventAt(runDirectory, runID, event); err != nil {
@@ -342,19 +339,35 @@ func (s *Store) allocateRunWorkspace(runID string) (string, error) {
 }
 
 func (s *Store) AppendRunEvent(runID string, event RunEvent) error {
-	_, err := s.appendRunEventWithSnapshot(runID, event)
+	_, _, err := s.appendRunEventWithSnapshot(runID, event, nil)
 	return err
 }
 
-func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*BoardDocument, error) {
+// appendRunEventSeq appends the event and returns its sequence. Other writers
+// append concurrently (archon-o7p.11), so the last event read afterwards need
+// not be this one.
+func (s *Store) appendRunEventSeq(runID string, event RunEvent) (int, error) {
+	_, seq, err := s.appendRunEventWithSnapshot(runID, event, nil)
+	return seq, err
+}
+
+// appendRunEventIf appends the event only when check accepts the ledger as it
+// stands under the append lock, so a decision read from the ledger and the
+// event recording it cannot be split by another writer.
+func (s *Store) appendRunEventIf(runID string, event RunEvent, check func([]RunEvent) error) error {
+	_, _, err := s.appendRunEventWithSnapshot(runID, event, check)
+	return err
+}
+
+func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent, check func([]RunEvent) error) (*BoardDocument, int, error) {
 	ledger, err := s.openRunLedger(runID, true)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer ledger.close()
 	var snapshot *BoardDocument
 	err = ledger.withLock(func() error {
-		events, err := readRunEventsFrom(ledger.file, runID)
+		events, err := s.readLedger(ledger, runID, true)
 		if err != nil {
 			return err
 		}
@@ -363,6 +376,11 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 		}
 		if isFinalRunEvent(events[len(events)-1].Type) {
 			return ErrRunFinal
+		}
+		if check != nil {
+			if err := check(events); err != nil {
+				return err
+			}
 		}
 		first := events[0]
 		tail := events[len(events)-1]
@@ -385,9 +403,10 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 			}
 		}
 		if last.Type == RunEventBlocked {
-			// After a block only a resume, cancel or failure, or the kept seats'
-			// cleanup recorded just before one (ADR-0019), may follow.
-			if event.Type != RunEventResumed && event.Type != RunEventCanceled && event.Type != RunEventFailed && event.Type != RunEventSeatCleanup {
+			// After a block only a resume, cancel or failure, the kept seats'
+			// cleanup recorded just before one (ADR-0019), or a human verdict,
+			// which the run routes once it resumes (archon-o7p.11), may follow.
+			if event.Type != RunEventResumed && event.Type != RunEventCanceled && event.Type != RunEventFailed && event.Type != RunEventSeatCleanup && event.Type != RunEventHumanVerdictRecorded {
 				return ErrRunEpochBlocked
 			}
 			if event.Type == RunEventResumed {
@@ -431,12 +450,12 @@ func (s *Store) appendRunEventWithSnapshot(runID string, event RunEvent) (*Board
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if s.OnRunEvent != nil {
 		s.OnRunEvent(event)
 	}
-	return snapshot, nil
+	return snapshot, event.Seq, nil
 }
 
 func (s *Store) ResumeRun(runID string, req RunResumeRequest) (*RunStatusProjection, error) {
@@ -452,7 +471,7 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 	defer ledger.close()
 	var snapshot *BoardDocument
 	if err := ledger.withLock(func() error {
-		events, err := readRunEventsFrom(ledger.file, runID)
+		events, err := s.readLedger(ledger, runID, true)
 		if err != nil {
 			return err
 		}
@@ -479,6 +498,13 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		if last.Type != RunEventBlocked || !runBlockResumeAllowed(lifecycle, len(lifecycle)-1) {
 			return ErrRunResumeNotAllowed
 		}
+		needsGrant := runBlockNeedsGrant(lifecycle, len(lifecycle)-1)
+		switch {
+		case needsGrant && !req.Grant:
+			return ErrRunGrantRequired
+		case req.Grant && !needsGrant:
+			return ErrRunNothingToGrant
+		}
 		actor := defaultRunActor(req.Actor)
 		mode := strings.TrimSpace(req.Mode)
 		if mode == "" {
@@ -491,6 +517,29 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		}
 		if reason := strings.TrimSpace(req.Reason); reason != "" {
 			data["reason"] = reason
+		}
+		if req.Grant {
+			// One more allowance of the knob the block spent, as the ledger
+			// records who gave it: one round, or the card's time or tokens
+			// again. A peer step's round is a proposal and every peer's
+			// acknowledgement (peerGrantRound).
+			limit := runLimitReached(lifecycle, len(lifecycle)-1)
+			if limit == nil || limit.LimitID == "" {
+				return ErrRunNothingToGrant
+			}
+			amount := peerGrantRound(runSnapshot, *limit)
+			if limit.Kind == LimitKindTime || limit.Kind == LimitKindTokens {
+				card, ok := findLimit(runSnapshot, limit.LimitID)
+				knob := card.Seconds
+				if limit.Kind == LimitKindTokens {
+					knob = card.Tokens
+				}
+				if !ok || knob == nil || *knob <= 0 {
+					return ErrRunNothingToGrant
+				}
+				amount = *knob
+			}
+			data["grant"] = RunLimitGrant{LimitID: limit.LimitID, Kind: limit.Kind, Amount: amount}
 		}
 		if openDispatches, ok := last.Data["openDispatches"]; ok {
 			data["openDispatches"] = openDispatches
@@ -604,10 +653,15 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 			status.Status = RunStatusRunning
 			status.Final = false
 			status.ResumeAllowed = false
+			status.ResumePolicy = ""
 		case RunEventBlocked:
 			status.Status = RunStatusBlocked
 			status.Final = false
 			status.ResumeAllowed = runBlockResumeAllowed(events, i)
+			status.ResumePolicy = ""
+			if runBlockNeedsGrant(events, i) {
+				status.ResumePolicy = ResumePolicyGrant
+			}
 		case RunEventCanceled:
 			status.Status = RunStatusCanceled
 			status.Final = true
@@ -623,6 +677,9 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 			status.Final = true
 			status.ResumeAllowed = false
 		}
+	}
+	if status.Final {
+		status.ResumePolicy = ""
 	}
 	// Honesty safety net: a run can only project succeeded when every reachable
 	// required node reached a terminal state. If the ledger still shows a node
@@ -672,7 +729,7 @@ func (s *Store) ReadRunEvents(runID string) ([]RunEvent, error) {
 	var events []RunEvent
 	err = ledger.withLock(func() error {
 		var readErr error
-		events, readErr = readRunEventsFrom(ledger.file, runID)
+		events, readErr = s.readLedger(ledger, runID, true)
 		return readErr
 	})
 	return events, err
@@ -925,7 +982,7 @@ func (s *Store) readRunGateBinding(runID, gateID string) (*RunGateBinding, error
 		return nil, fmt.Errorf("%w: open run ledger: %v", ErrRunLedgerInvalid, err)
 	}
 	defer ledger.close()
-	events, err := readRunEventsFrom(ledger.file, runID)
+	events, err := s.readLedger(ledger, runID, false)
 	if err != nil {
 		return nil, err
 	}
@@ -984,14 +1041,15 @@ func defaultRunActor(actor string) string {
 }
 
 // lifecycleLedger returns the ledger through its last lifecycle event, without
-// the seat cleanups that follow it. After run_blocked the ledger also accepts a
-// kept seat's seat_cleanup, recorded just before the cancel or failure that
-// ends the run (ADR-0019). A crash can leave such cleanups last, and the run is
-// still blocked, so every check that asks whether the last event is a block,
-// or reads the events just before it, reads through this one helper.
+// the seat cleanups and human verdicts that follow it. After run_blocked the
+// ledger also accepts a kept seat's seat_cleanup, recorded just before the
+// cancel or failure that ends the run (ADR-0019), and a human verdict, which
+// the run routes once it resumes. Either can come last while the run is still
+// blocked, so every check that asks whether the last event is a block, or
+// reads the events just before it, reads through this one helper.
 func lifecycleLedger(events []RunEvent) []RunEvent {
 	end := len(events)
-	for end > 0 && events[end-1].Type == RunEventSeatCleanup {
+	for end > 0 && (events[end-1].Type == RunEventSeatCleanup || events[end-1].Type == RunEventHumanVerdictRecorded) {
 		end--
 	}
 	return events[:end]

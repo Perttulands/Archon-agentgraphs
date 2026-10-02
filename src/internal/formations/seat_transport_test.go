@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -55,17 +56,22 @@ func TestSeatAdaptersReadinessStagingCompletionAndImmutableCleanup(t *testing.T)
 						}
 						return "0", nil
 					case "capture-pane":
-						if phase == "staged" {
-							return loaded, nil
+						banner, prompt := "OpenAI Codex", "›"
+						if h == "claude-code" {
+							banner, prompt = "Claude Code", "❯"
+						}
+						switch phase {
+						case "staged":
+							// The pasted pointer sits in the input line under the cursor.
+							return banner + "\n" + prompt + " " + loaded, nil
+						case "sent":
+							return banner + "\n" + prompt, nil
 						}
 						captures++
 						if captures == 1 {
 							return "starting", nil
 						}
-						if h == "claude-code" {
-							return "Claude Code\n❯", nil
-						}
-						return "OpenAI Codex\n›", nil
+						return banner + "\n" + prompt, nil
 					case "load-buffer":
 						b, _ := io.ReadAll(input)
 						loaded = string(b)
@@ -75,6 +81,7 @@ func TestSeatAdaptersReadinessStagingCompletionAndImmutableCleanup(t *testing.T)
 						return "", nil
 					case "send-keys":
 						submits++
+						phase = "sent"
 						final := "answer\n<<<ARCHON-DONE run-id=run_test status=ok artifact=report>>>"
 						return "", os.WriteFile(filepath.Join(root, "native.jsonl"), []byte(nativeFixture(h, root, loaded, final)), 0600)
 					case "kill-session":
@@ -109,6 +116,11 @@ func TestSeatAdaptersReadinessStagingCompletionAndImmutableCleanup(t *testing.T)
 			}
 			if !strings.Contains(createdLaunch, "medium") {
 				t.Fatalf("launch=%s", createdLaunch)
+			}
+			// A Codex seat's folder is trusted for its launch only (archon-m1yg).
+			trusted := shellQuote(`projects={"` + root + `"={trust_level="trusted"}}`)
+			if strings.Contains(createdLaunch, trusted) != (h == "openai-codex") {
+				t.Fatalf("launch=%s, trust override %s", createdLaunch, trusted)
 			}
 			if err := transport.End(ctx, "socket", seat); err != nil {
 				t.Fatal(err)
@@ -365,8 +377,9 @@ func TestCodexReadinessWaitsForCurrentModelPanel(t *testing.T) {
 }
 
 // paneFixture reads a pane captured with capture-pane -p -e from a real seat
-// (Claude Code 2.1.274 and codex-cli 0.154.0 in tmux 3.6a, synthetic prompts,
-// paths redacted). Its first line holds the cursor position.
+// (Claude Code 2.1.274 and 2.1.287, codex-cli 0.154.0 and, as codex-0159-*,
+// 0.159.3, in tmux 3.6a, synthetic prompts, paths redacted). Its first line
+// holds the cursor position.
 func paneFixture(t *testing.T, name string) (string, int, int) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("testdata", "panes", name+".txt"))
@@ -427,6 +440,274 @@ func TestSeatInputClearReadsCapturedPanes(t *testing.T) {
 	}
 }
 
+func TestSeatTypedTextReadsTheInputLine(t *testing.T) {
+	codex := renderedText(seatPointer("/work/w1/brief.md"))
+	claude := renderedText(seatPointer("/work/c1/brief.md"))
+	for _, tc := range []struct {
+		fixture, harness, want string
+		found                  bool
+	}{
+		{"codex-0159-ready-before-trust-dialog", "openai-codex", "", true},
+		{"codex-0159-staged-behind-dialog", "openai-codex", codex, true},
+		{"codex-0159-staged-with-operator-text", "openai-codex", codex + "andsayhi", true},
+		{"codex-0159-sent-working", "openai-codex", "", true},
+		{"codex-0159-trust-dialog-over-paste", "openai-codex", "", false},
+		{"codex-idle-animation-1", "openai-codex", "", true},
+		{"codex-staged-wrapped-pointer", "openai-codex", renderedText(seatPointer("/home/operator/archon/state-dirs/a-state-directory-with-a-long-path-so-the-codex-input-line-wraps-inside-the-brief-pat/state/briefs/seat-644037887.md")), true},
+		{"claude-idle-empty", "claude-code", "", true},
+		{"claude-idle-suggestion", "claude-code", "", true},
+		{"claude-staged-pointer", "claude-code", claude, true},
+		{"claude-staged-with-operator-text", "claude-code", claude + "andsayhi", true},
+		{"claude-sent-working", "claude-code", "", true},
+	} {
+		screen, x, y := paneFixture(t, tc.fixture)
+		if typed, found := seatTypedText(tc.harness, screen, x, y); typed != tc.want || found != tc.found {
+			t.Errorf("%s: typed %q found %t, want %q %t", tc.fixture, typed, found, tc.want, tc.found)
+		}
+	}
+	// Codex 0.159 draws a ready prompt, then its trust dialog over it.
+	ready, _, _ := paneFixture(t, "codex-0159-ready-before-trust-dialog")
+	dialog, _, _ := paneFixture(t, "codex-0159-trust-dialog-over-paste")
+	if plain := ansiSGR.ReplaceAllString(dialog, ""); !seatTrustDialog("openai-codex", plain) || seatTrustDialog("claude-code", plain) || tmuxPaneShowsHarnessReady("openai-codex", plain) {
+		t.Error("the Codex 0.159 trust dialog was not told apart")
+	}
+	if plain := ansiSGR.ReplaceAllString(ready, ""); seatTrustDialog("openai-codex", plain) || !tmuxPaneShowsHarnessReady("openai-codex", plain) {
+		t.Error("the ready prompt before the dialog was not read as ready")
+	}
+}
+
+// stagingPane plays a seat's screens for Stage from real captures: each
+// command that changes the pane moves to the next screen, and tmux reports it.
+// The test plays the operator from its own goroutine.
+type stagingPane struct {
+	t       *testing.T
+	harness string
+	mu      sync.Mutex
+	screens map[string][]string
+	screen  string
+	events  chan struct{}
+	keys    []string
+}
+
+func (p *stagingPane) show(screen string) {
+	p.mu.Lock()
+	p.screen = screen
+	p.mu.Unlock()
+	select {
+	case p.events <- struct{}{}:
+	default:
+	}
+}
+
+func (p *stagingPane) current() (string, []string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.screen, slices.Clone(p.keys)
+}
+
+func (p *stagingPane) command(_ context.Context, _ string, _ *strings.Reader, args ...string) (string, error) {
+	current, _ := p.current()
+	screen, x, y := paneFixture(p.t, current)
+	switch args[0] {
+	case "display-message":
+		return fmt.Sprintf("%d %d 0", x, y), nil
+	case "capture-pane":
+		if !slices.Contains(args, "-e") {
+			screen = ansiSGR.ReplaceAllString(screen, "")
+		}
+		return screen, nil
+	case "load-buffer":
+		return "", nil
+	case "paste-buffer", "send-keys":
+		key := "paste"
+		p.mu.Lock()
+		if args[0] == "send-keys" {
+			key = args[len(args)-1]
+			p.keys = append(p.keys, key)
+		}
+		next := p.screens[current+" "+key]
+		if len(next) > 0 {
+			p.screens[current+" "+key] = next[1:]
+		}
+		p.mu.Unlock()
+		if len(next) > 0 {
+			p.show(next[0])
+		}
+		return "", nil
+	}
+	return "", fmt.Errorf("unexpected command %v", args)
+}
+
+func TestStageSendsThePastedBriefUntilTheHarnessTakesIt(t *testing.T) {
+	retry := seatSubmitRetry
+	seatSubmitRetry = 50 * time.Millisecond
+	t.Cleanup(func() { seatSubmitRetry = retry })
+	for _, tc := range []struct {
+		name, harness, brief, ready string
+		screens                     map[string][]string
+		operator                    func(*stagingPane)
+		keys                        string
+	}{{
+		// Codex 0.159 draws its trust dialog over the pasted pointer; the first
+		// Enter answers it and the pointer stays unsent until Enter again.
+		name: "codex trust dialog drawn after the paste", harness: "openai-codex", brief: "/work/w1/brief.md", ready: "codex-0159-ready-before-trust-dialog",
+		screens: map[string][]string{
+			"codex-0159-ready-before-trust-dialog paste": {"codex-0159-trust-dialog-over-paste"},
+			"codex-0159-trust-dialog-over-paste Enter":   {"codex-0159-staged-behind-dialog"},
+			"codex-0159-staged-behind-dialog Enter":      {"codex-0159-sent-working"},
+		},
+		keys: "Enter,Enter",
+	}, {
+		// The dialog draws between the paste and the first Enter, which it eats.
+		name: "codex trust dialog drawn before Enter", harness: "openai-codex", brief: "/work/w1/brief.md", ready: "codex-0159-ready-before-trust-dialog",
+		screens: map[string][]string{
+			"codex-0159-ready-before-trust-dialog paste": {"codex-0159-staged-behind-dialog"},
+			"codex-0159-staged-behind-dialog Enter":      {"codex-0159-trust-dialog-over-paste", "codex-0159-sent-working"},
+			"codex-0159-trust-dialog-over-paste Enter":   {"codex-0159-staged-behind-dialog"},
+		},
+		keys: "Enter,Enter,Enter",
+	}, {
+		// The harness swallows the first Enter; the pasted text stays alone in
+		// the input line, so Enter is pressed again.
+		name: "codex swallows the first Enter", harness: "openai-codex", brief: "/work/w1/brief.md", ready: "codex-0159-ready-before-trust-dialog",
+		screens: map[string][]string{
+			"codex-0159-ready-before-trust-dialog paste": {"codex-0159-staged-behind-dialog"},
+			"codex-0159-staged-behind-dialog Enter":      {"codex-0159-staged-behind-dialog", "codex-0159-sent-working"},
+		},
+		keys: "Enter,Enter",
+	}, {
+		name: "claude takes the first Enter", harness: "claude-code", brief: "/work/c1/brief.md", ready: "claude-idle-empty",
+		screens: map[string][]string{
+			"claude-idle-empty paste":     {"claude-staged-pointer"},
+			"claude-staged-pointer Enter": {"claude-sent-working"},
+		},
+		keys: "Enter",
+	}, {
+		// The operator adds to the pasted brief before it is sent: Enter waits
+		// until they take their text away again.
+		name: "claude operator text", harness: "claude-code", brief: "/work/c1/brief.md", ready: "claude-idle-empty",
+		screens: map[string][]string{
+			"claude-idle-empty paste":     {"claude-staged-with-operator-text"},
+			"claude-staged-pointer Enter": {"claude-sent-working"},
+		},
+		operator: func(p *stagingPane) { p.show("claude-staged-pointer") },
+		keys:     "Enter",
+	}, {
+		// The operator sends the brief with their text themselves.
+		name: "codex operator sends", harness: "openai-codex", brief: "/work/w1/brief.md", ready: "codex-0159-ready-before-trust-dialog",
+		screens: map[string][]string{
+			"codex-0159-ready-before-trust-dialog paste": {"codex-0159-staged-with-operator-text"},
+		},
+		operator: func(p *stagingPane) { p.show("codex-0159-sent-working") },
+		keys:     "",
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), testPatience)
+			defer cancel()
+			pane := &stagingPane{t: t, harness: tc.harness, screens: tc.screens, screen: tc.ready, events: make(chan struct{}, 1)}
+			transport := realSeatTransport{
+				control: func(context.Context, string, string) (*seatControl, error) {
+					return &seatControl{events: pane.events}, nil
+				},
+				command: pane.command,
+			}
+			seat := &nativeSeat{name: "archon-proof-worker", sessionID: "$42", paneID: "%23", variant: HarnessVariant{ID: tc.harness}, brief: tc.brief}
+			staged := make(chan error, 1)
+			go func() { staged <- transport.Stage(ctx, "socket", seat, "dispatch", seatPointer(tc.brief)) }()
+			if tc.operator != nil {
+				// No Enter while the operator's text is in the input line, and
+				// the seat says the brief is not taken.
+				for state, _ := seat.waiting(); state != SeatStateBriefNotTaken; state, _ = seat.waiting() {
+					if ctx.Err() != nil {
+						t.Fatal("the seat never said its brief is not taken")
+					}
+					time.Sleep(time.Millisecond)
+				}
+				time.Sleep(4 * seatSubmitRetry)
+				if _, keys := pane.current(); len(keys) != 0 {
+					t.Fatalf("pressed %v on the operator's text", keys)
+				}
+				tc.operator(pane)
+			}
+			if err := <-staged; err != nil {
+				t.Fatal(err)
+			}
+			if _, keys := pane.current(); strings.Join(keys, ",") != tc.keys {
+				t.Fatalf("keys %q, want %q", strings.Join(keys, ","), tc.keys)
+			}
+			if state, _ := seat.waiting(); state != "" {
+				t.Fatalf("seat still says %s", state)
+			}
+		})
+	}
+}
+
+// A working seat whose screen quotes the trust dialog's words, with the
+// operator's unsent draft in its input line: waiting to paste or sending never
+// presses a key into the draft (rv-engine3's probe, archon-4ve5).
+func TestTrustWordsOnScreenNeverSendTheOperatorsDraft(t *testing.T) {
+	for _, tc := range []struct{ harness, fixture string }{
+		{"claude-code", "claude-typed-under-quoted-trust"},
+		{"openai-codex", "codex-typed-under-quoted-trust"},
+	} {
+		for _, sent := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s sent %v", tc.harness, sent), func(t *testing.T) {
+				// Long enough for a trust answer's settle delay to pass.
+				ctx, cancel := context.WithTimeout(context.Background(), 2*tmuxPasteSettleDelay)
+				defer cancel()
+				pane := &stagingPane{t: t, harness: tc.harness, screen: tc.fixture, events: make(chan struct{}, 1), screens: map[string][]string{}}
+				transport := realSeatTransport{
+					control: func(context.Context, string, string) (*seatControl, error) {
+						return &seatControl{events: pane.events}, nil
+					},
+					command: pane.command,
+				}
+				seat := &nativeSeat{name: "archon-proof-worker", sessionID: "$42", paneID: "%23", variant: HarnessVariant{ID: tc.harness}, sent: sent}
+				if err := transport.WaitInputClear(ctx, "socket", seat); !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("waited with %v", err)
+				}
+				sending, stop := context.WithTimeout(context.Background(), 2*tmuxPasteSettleDelay)
+				defer stop()
+				if err := transport.submitStaged(sending, "socket", seat, "unrelated text"); !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("sent with %v", err)
+				}
+				if _, keys := pane.current(); len(keys) > 0 {
+					t.Fatalf("pressed %s into the operator's draft", strings.Join(keys, ","))
+				}
+			})
+		}
+	}
+}
+
+// Codex 0.159 asks "Trust this folder?" in a new wording, sometimes after it
+// first drew its ready prompt; readiness and the wait to paste both answer it.
+func TestCodex0159TrustDialogIsAnswered(t *testing.T) {
+	for _, wait := range []string{"Ready", "WaitInputClear"} {
+		t.Run(wait, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), testPatience)
+			defer cancel()
+			pane := &stagingPane{t: t, harness: "openai-codex", screen: "codex-0159-trust-dialog-over-paste", events: make(chan struct{}, 1),
+				screens: map[string][]string{"codex-0159-trust-dialog-over-paste Enter": {"codex-0159-ready-before-trust-dialog"}}}
+			transport := realSeatTransport{
+				control: func(context.Context, string, string) (*seatControl, error) {
+					return &seatControl{events: pane.events}, nil
+				},
+				command: pane.command,
+			}
+			seat := &nativeSeat{name: "archon-proof-worker", sessionID: "$42", paneID: "%23", variant: HarnessVariant{ID: "openai-codex"}}
+			var err error
+			if wait == "Ready" {
+				err = transport.Ready(ctx, "socket", seat, "openai-codex")
+			} else {
+				err = transport.WaitInputClear(ctx, "socket", seat)
+			}
+			if screen, keys := pane.current(); err != nil || strings.Join(keys, ",") != "Enter" || screen != "codex-0159-ready-before-trust-dialog" {
+				t.Fatalf("err %v, keys %v, screen %s", err, keys, screen)
+			}
+		})
+	}
+}
+
 func TestStageWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 	for _, harness := range []struct{ id, name string }{{"claude-code", "claude"}, {"openai-codex", "codex"}} {
 		t.Run(harness.name, func(t *testing.T) {
@@ -435,7 +716,7 @@ func TestStageWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 			events := make(chan struct{}, 64)
 			var states []string
 			var shown, pasted []string
-			loaded, afterPaste := "", false
+			loaded, phase := "", "waiting"
 			transport := realSeatTransport{
 				control: func(context.Context, string, string) (*seatControl, error) { return &seatControl{events: events}, nil },
 				command: func(_ context.Context, _ string, input *strings.Reader, args ...string) (string, error) {
@@ -443,10 +724,17 @@ func TestStageWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 					screen, x, y := paneFixture(t, harness.name+"-"+state)
 					switch args[0] {
 					case "display-message":
+						if phase == "staged" {
+							return "2 0 0", nil
+						}
 						return fmt.Sprintf("%d %d 0", x, y), nil
 					case "capture-pane":
-						if afterPaste {
-							return screen + "\n" + loaded, nil
+						switch phase {
+						case "staged":
+							// The pasted pointer sits in the input line under the cursor.
+							return seatInputPrompt[harness.id] + " " + loaded, nil
+						case "sent":
+							return screen, nil
 						}
 						shown = append(shown, state)
 						if len(states) > 1 {
@@ -461,10 +749,10 @@ func TestStageWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 						return "", nil
 					case "paste-buffer":
 						pasted = append(pasted, state)
-						afterPaste = true
+						phase = "staged"
 						return "", nil
 					case "send-keys":
-						afterPaste = false
+						phase = "sent"
 						return "", nil
 					}
 					return "", fmt.Errorf("unexpected command %v", args)
@@ -478,7 +766,7 @@ func TestStageWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 				{"first-brief", []string{"busy-empty", "idle-typed", "idle-empty"}},
 				{"peer-facilitator", []string{"busy-typed", "idle-typed", "idle-after-turn"}},
 			} {
-				states, shown = paste.states, nil
+				states, shown, phase = paste.states, nil, "waiting"
 				if err := transport.Stage(ctx, "socket", seat, paste.dispatch, seatPointer(seat.brief)); err != nil {
 					t.Fatalf("%s: %v", paste.dispatch, err)
 				}
@@ -495,7 +783,7 @@ func TestStageWaitsForAnIdleAgentWithAnEmptyInputLine(t *testing.T) {
 
 			// A pane that stays busy is waited on until the caller cancels, and
 			// the seat says what it waits on meanwhile, for seat_state events.
-			states = []string{"busy-empty"}
+			states, phase = []string{"busy-empty"}, "waiting"
 			short, stop := context.WithTimeout(ctx, 300*time.Millisecond)
 			defer stop()
 			staged := make(chan error, 1)
@@ -537,6 +825,9 @@ func TestStageFindsThePointerAHarnessWrappedAmongCodexStars(t *testing.T) {
 				screen, x, y := paneFixture(t, "codex-idle-animation-1")
 				if afterPaste {
 					screen, x, y = paneFixture(t, "codex-staged-wrapped-pointer")
+				}
+				if entered {
+					screen, x, y = paneFixture(t, "codex-idle-after-turn")
 				}
 				switch args[0] {
 				case "display-message":

@@ -83,7 +83,7 @@ func TestShutdownPreservesOrchestratedSeatsAndAbortEndsThem(t *testing.T) {
 			engine.SetExecutionContext(func(string) context.Context { return ctx })
 			done := make(chan error, 1)
 			go func() {
-				_, err := engine.RunFormation("session-search", "fmn_orch", FormationRunRequest{Actor: "agent:test", Limits: RunLimits{MaxDispatch: 6, MaxAttempts: 2}})
+				_, err := engine.RunFormation("session-search", "fmn_orch", FormationRunRequest{Actor: "agent:test"})
 				done <- err
 			}()
 			select {

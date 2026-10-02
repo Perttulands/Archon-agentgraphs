@@ -39,9 +39,12 @@ describe('run outcome words', () => {
     expect(runEndProblem(problems.slice(0, 1))).toBeUndefined()
   })
 
-  it('names the limit a block hit', () => {
-    expect(runLimitPhrase({ kind: 'attempts', nodeId: 'fmn_draft', used: 3, max: 3 }, titleOf)).toBe('Draft used 3 of 3 attempts')
-    expect(runLimitPhrase({ kind: 'dispatches', nodeId: 'fmn_draft', used: 8, max: 8 }, titleOf)).toBe('the run used 8 of 8 dispatches')
+  it('names the Limit card a block found spent', () => {
+    expect(runLimitPhrase({ kind: 'rounds', limitId: 'lim_cap', nodeId: 'fmn_draft', used: 3, max: 3 }, titleOf)).toBe('Draft used 3 of 3 rounds')
+    // The card on the Input card covers the whole mission.
+    expect(runLimitPhrase({ kind: 'rounds', limitId: 'lim_all', nodeId: 'mis', used: 20, max: 20, granted: 1 }, titleOf, id => id === 'mis'))
+      .toBe('the mission used 20 of 20 rounds, 1 of them granted')
+    expect(runLimitPhrase({ kind: 'rounds', limitId: 'lim_one', nodeId: 'fmn_draft', used: 1, max: 1 }, titleOf)).toBe('Draft used 1 of 1 round')
   })
 
   it('marks in evidence a block the run resumed past and the run end', () => {
@@ -50,45 +53,79 @@ describe('run outcome words', () => {
     expect(problemHeadline({ seq: 53, type: 'run_failed', code: 'coordinator_execution_failed', reason: text(''), actor: 'archond' }, names))
       .toBe('#53 · run failed · ended by Archon · coordinator_execution_failed')
     expect(problemHeadline({ seq: 9, type: 'run_canceled', reason: text(''), actor: 'human:ui' }, names)).toBe('#9 · run canceled by the operator in the cockpit')
-    expect(problemHeadline({ seq: 20, type: 'run_blocked', code: 'resume_attempts_exhausted', reason: text(''), resumeAllowed: false, limit: { kind: 'attempts', nodeId: 'fmn_draft', used: 3, max: 3 } }, names))
-      .toBe('#20 · blocked · resume_attempts_exhausted · Draft used 3 of 3 attempts · not resumable')
+    expect(problemHeadline({ seq: 20, type: 'run_blocked', code: 'limit_reached', reason: text('Draft used 3 of 3 rounds'), resumeAllowed: true, limit: { kind: 'rounds', limitId: 'lim_cap', nodeId: 'fmn_draft', used: 3, max: 3 } }, names))
+      .toBe('#20 · blocked · limit_reached · Draft used 3 of 3 rounds · resumable')
   })
 })
 
 describe('gate route words', () => {
-  const approve: GateRoute = { verdict: 'pass', targets: [{ nodeId: 'fmn_publish', title: 'Publish', kind: 'formation', attempt: 1, maxAttempts: 3 }], dispatches: { kind: 'dispatches', used: 2, max: 20 } }
+  const cap = (used: number, max = 3) => ({ kind: 'rounds' as const, limitId: 'lim_cap', nodeId: 'fmn_draft', used, max })
+  const approve: GateRoute = { verdict: 'pass', targets: [{ nodeId: 'fmn_publish', title: 'Publish', kind: 'formation', attempt: 1 }] }
   const sendBack = (attempt: number, extra: Partial<GateRoute> = {}): GateRoute => ({
-    verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt, maxAttempts: 3 }], dispatches: { kind: 'dispatches', used: 2, max: 20 }, ...extra,
+    verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt, rounds: cap(attempt - 1) }], ...extra,
   })
 
-  it('names where Approve and Send back lead', () => {
+  it('names where Approve and Send back lead, with the round a Limit card allows', () => {
     expect(gateRouteWords('pass', approve, titleOf)).toEqual({ button: 'Approve → Publish', outcome: 'Approve: Publish runs next.', blocks: false, last: false })
     expect(gateRouteWords('fail', sendBack(2), titleOf)).toEqual({
-      button: 'Send back to Draft', outcome: 'Send back: Draft runs again with your response (attempt 2 of 3).', blocks: false, last: false,
+      button: 'Send back to Draft', outcome: 'Send back: Draft runs again with your response (round 2 of 3).', blocks: false, last: false,
     })
   })
 
-  it('warns when a send-back takes the last attempt', () => {
+  it('warns when a send-back takes the last round', () => {
     const words = gateRouteWords('fail', sendBack(3), titleOf)
     expect(words.last).toBe(true)
-    expect(words.outcome).toBe('Send back: Draft runs again with your response (attempt 3 of 3, its last).')
+    expect(words.outcome).toBe('Send back: Draft runs again with your response (round 3 of 3).')
   })
 
-  it('says a send-back past the limit blocks the run for good', () => {
-    const words = gateRouteWords('fail', sendBack(4, { limit: { kind: 'attempts', nodeId: 'fmn_draft', used: 3, max: 3 } }), titleOf)
-    expect(words).toEqual({ button: 'Send back to Draft', outcome: 'Send back blocks the run: Draft used 3 of 3 attempts. It cannot resume.', blocks: true, last: false })
-    const spent = gateRouteWords('pass', { ...approve, limit: { kind: 'dispatches', used: 20, max: 20 } }, titleOf)
+  it('says a send-back to a spent card blocks the run until a grant', () => {
+    const words = gateRouteWords('fail', sendBack(4, { limit: cap(3) }), titleOf)
+    expect(words).toEqual({
+      button: 'Send back to Draft',
+      outcome: 'Send back: Draft runs again with your response, but Draft has used all 3 of its rounds, so the run blocks instead until you grant one more round.',
+      blocks: true,
+      last: false,
+    })
+    const one = gateRouteWords('fail', { verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 2, rounds: cap(1, 1) }], limit: cap(1, 1) }, titleOf)
+    expect(one.outcome).toBe('Send back: Draft runs again with your response, but Draft has used its only round, so the run blocks instead until you grant one more round.')
+  })
+
+  it('says when the mission card is spent', () => {
+    const mission = { kind: 'rounds' as const, limitId: 'lim_all', nodeId: 'mis', used: 20, max: 20 }
+    const spent = gateRouteWords('pass', { ...approve, missionRounds: mission, roundsNeeded: 1, limit: mission }, titleOf)
     expect(spent.blocks).toBe(true)
-    expect(spent.outcome).toBe('Approve blocks the run: the run used 20 of 20 dispatches. It cannot resume.')
+    expect(spent.outcome).toBe('Approve: Publish runs next, but the mission has used all 20 of its rounds, so the run blocks instead until you grant one more round.')
+  })
+
+  it('names the time a step and the mission have left, and a spent time card\'s grant', () => {
+    const clock = (used: number, max = 1800) => ({ kind: 'time' as const, limitId: 'lim_clock', nodeId: 'fmn_draft', used, max })
+    const missionTime = { kind: 'time' as const, limitId: 'lim_all', nodeId: 'mis', used: 600, max: 3600 }
+    const back = (extra: Partial<GateRoute> = {}): GateRoute => ({ verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 2, rounds: cap(1), time: clock(300) }], ...extra })
+    expect(gateRouteWords('fail', back(), titleOf).outcome).toBe('Send back: Draft runs again with your response (round 2 of 3, 25 min of 30 min left).')
+    expect(gateRouteWords('fail', back({ missionTime }), titleOf).outcome)
+      .toBe('Send back: Draft runs again with your response (round 2 of 3, 25 min of 30 min left); the mission has 50 min of 1 h of working time left.')
+    const spent = gateRouteWords('fail', back({ targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 2, time: clock(1800) }], limit: clock(1800) }), titleOf)
+    expect(spent.blocks).toBe(true)
+    expect(spent.outcome).toBe('Send back: Draft runs again with your response, but Draft has used all 30 min of its time, so the run blocks instead until you grant 30 min more.')
+    const missionSpent = gateRouteWords('pass', { ...approve, missionTime: { ...missionTime, used: 3600 }, limit: { ...missionTime, used: 3600 } }, titleOf)
+    expect(missionSpent.outcome).toBe('Approve: Publish runs next, but the mission has used all 1 h of its time, so the run blocks instead until you grant 1 h more.')
+    // A route that only ends its path says nothing of the mission's time.
+    expect(gateRouteWords('pass', { verdict: 'pass', targets: [{ nodeId: 'end_done', title: 'Done', kind: 'end', outcome: 'done' }], missionTime }, titleOf).outcome)
+      .toBe('Approve: this path ends (done); the run goes on with its other work.')
+  })
+
+  it('words a spent time card in a block headline', () => {
+    expect(runLimitPhrase({ kind: 'time', limitId: 'lim_clock', nodeId: 'fmn_draft', used: 1800, max: 1800 }, titleOf)).toBe('Draft used 30 min of 30 min')
+    expect(runLimitPhrase({ kind: 'time', limitId: 'lim_all', nodeId: 'mis', used: 60, max: 60, granted: 30 }, titleOf, id => id === 'mis')).toBe('the mission used 1 min of 1 min, 30 s of it granted')
   })
 
   it('says a send-back to a step that never ran runs it, not again', () => {
-    expect(gateRouteWords('fail', { verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 1, maxAttempts: 3 }] }, titleOf).outcome)
+    expect(gateRouteWords('fail', { verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 1 }] }, titleOf).outcome)
       .toBe('Send back: Draft runs with your response.')
   })
 
   it('says a join receives the approval and waits for its other inputs', () => {
-    expect(gateRouteWords('pass', { verdict: 'pass', targets: [{ nodeId: 'fmn_publish', title: 'Publish', kind: 'formation', attempt: 1, maxAttempts: 3, waitsForInputs: true }] }, titleOf).outcome)
+    expect(gateRouteWords('pass', { verdict: 'pass', targets: [{ nodeId: 'fmn_publish', title: 'Publish', kind: 'formation', attempt: 1, waitsForInputs: true }] }, titleOf).outcome)
       .toBe('Approve: Publish receives this and waits for its other inputs.')
   })
 
@@ -109,20 +146,17 @@ describe('gate route words', () => {
     expect(words).toEqual({ button: 'Approve → Publish', outcome: 'Approve: Publish runs next; this path ends (done).', blocks: false, last: false })
   })
 
-  it('counts the judge dispatch of a judge gate', () => {
-    const words = gateRouteWords('pass', { verdict: 'pass', targets: [{ nodeId: 'gate_judged', title: 'Judged', kind: 'gate' }], dispatches: { kind: 'dispatches', used: 19, max: 20 }, dispatchesNeeded: 1 }, titleOf)
-    expect(words).toEqual({ button: 'Approve → Judged', outcome: 'Approve: Judged receives it next; the run has 1 of 20 dispatches left.', blocks: false, last: true })
+  it('counts the judge run of a judge gate against the mission card', () => {
+    const missionRounds = { kind: 'rounds' as const, limitId: 'lim_all', nodeId: 'mis', used: 19, max: 20 }
+    const words = gateRouteWords('pass', { verdict: 'pass', targets: [{ nodeId: 'gate_judged', title: 'Judged', kind: 'gate' }], missionRounds, roundsNeeded: 1 }, titleOf)
+    expect(words).toEqual({ button: 'Approve → Judged', outcome: 'Approve: Judged receives it next; the mission has 1 of 20 rounds left.', blocks: false, last: true })
+    // With rounds to spare, the mission card goes unmentioned.
+    expect(gateRouteWords('pass', { ...approve, missionRounds: { ...missionRounds, used: 2 }, roundsNeeded: 1 }, titleOf).outcome).toBe('Approve: Publish runs next.')
   })
 
-  it('gives no attempt warning without an attempt limit', () => {
+  it('gives no round without a Limit card', () => {
     const words = gateRouteWords('fail', { verdict: 'fail', targets: [{ nodeId: 'fmn_draft', title: 'Draft', kind: 'formation', attempt: 4 }] }, titleOf)
     expect(words).toEqual({ button: 'Send back to Draft', outcome: 'Send back: Draft runs again with your response.', blocks: false, last: false })
-  })
-
-  it('warns when a route takes the last dispatch', () => {
-    const words = gateRouteWords('pass', { ...approve, dispatches: { kind: 'dispatches', used: 19, max: 20 } }, titleOf)
-    expect(words.last).toBe(true)
-    expect(words.outcome).toBe('Approve: Publish runs next; the run has 1 of 20 dispatches left.')
   })
 
   it('says when a verdict ends the run, and whether the run then succeeds or fails', () => {

@@ -48,7 +48,7 @@ func runEndCreate(store *formations.Store, args []string, stdout, stderr io.Writ
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	createX, createY, err := resolveCreateCoordinates(store, slug, fs, *x, *y)
 	if err != nil {
@@ -91,7 +91,7 @@ func runEndUpdate(store *formations.Store, args []string, stdout, stderr io.Writ
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	endID, err := resolveEndSelector(board, fs.Arg(1))
 	if err != nil {
@@ -134,7 +134,7 @@ func runEndDelete(store *formations.Store, args []string, stdout, stderr io.Writ
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	endID, err := resolveEndSelector(board, fs.Arg(1))
 	if err != nil {

@@ -25,6 +25,8 @@ type conversingSeats struct {
 	mode           string
 	openingBarrier chan struct{}
 	cancel         context.CancelFunc
+	// attempt is the step attempt the seats converse in; zero means the first.
+	attempt int
 }
 
 func (f *conversingSeats) Create(_ context.Context, _, name, _, _ string, variant HarnessVariant) (*nativeSeat, error) {
@@ -33,8 +35,9 @@ func (f *conversingSeats) Create(_ context.Context, _, name, _, _ string, varian
 	f.created++
 	return &nativeSeat{name: name, sessionID: name, paneID: name, variant: variant}, nil
 }
-func (*conversingSeats) Ready(context.Context, string, *nativeSeat, string) error  { return nil }
-func (*conversingSeats) WaitInputClear(context.Context, string, *nativeSeat) error { return nil }
+func (*conversingSeats) Ready(context.Context, string, *nativeSeat, string) error   { return nil }
+func (*conversingSeats) WaitInputClear(context.Context, string, *nativeSeat) error  { return nil }
+func (*conversingSeats) TranscriptPath(*nativeSeat, string, string) (string, error) { return "", nil }
 func (*conversingSeats) Snapshot(context.Context, *nativeSeat, string, string) (codexTranscriptTurn, error) {
 	return codexTranscriptTurn{}, nil
 }
@@ -74,7 +77,7 @@ func (f *conversingSeats) WaitTurn(ctx context.Context, seat *nativeSeat, _, _ s
 		return turn, err
 	}
 	runID, slot := runIDFromPrompt(prompt), peerPromptField(prompt, "slot")
-	id := PeerConversationID{RunID: runID, NodeID: "fmn_peer", Attempt: 1}
+	id := PeerConversationID{RunID: runID, NodeID: "fmn_peer", Attempt: max(f.attempt, 1)}
 	finish := func(text string) (codexTranscriptTurn, error) {
 		turn.Complete = true
 		turn.Text = text + "\n<<<ARCHON-DONE run-id=" + runID + " status=ok artifact=peer-proof>>>"
@@ -120,8 +123,10 @@ func (f *conversingSeats) WaitTurn(ctx context.Context, seat *nativeSeat, _, _ s
 	if f.mode == "incomplete" {
 		return finish("Stopped without acknowledging a result")
 	}
-	if _, err = f.store.AppendPeerConversation(id, PeerAppendRequest{SlotID: slot, Kind: "message", Text: "First contribution from " + slot}); err != nil {
-		return turn, err
+	if f.mode != "propose" {
+		if _, err = f.store.AppendPeerConversation(id, PeerAppendRequest{SlotID: slot, Kind: "message", Text: "First contribution from " + slot}); err != nil {
+			return turn, err
+		}
 	}
 	if f.mode == "cancel" {
 		f.cancel()
@@ -150,14 +155,17 @@ func (f *conversingSeats) WaitTurn(ctx context.Context, seat *nativeSeat, _, _ s
 		}
 		return n
 	}
-	if _, err = waitUntil(func(s *PeerConversation) bool { return countMessages(s) >= f.participants }); err != nil {
-		return turn, err
-	}
-	if _, err = f.store.AppendPeerConversation(id, PeerAppendRequest{SlotID: slot, Kind: "message", Text: "Response after reading the other peers: " + slot}); err != nil {
-		return turn, err
-	}
-	if _, err = waitUntil(func(s *PeerConversation) bool { return countMessages(s) >= 2*f.participants }); err != nil {
-		return turn, err
+	// "propose" goes straight to a proposal and its acknowledgements.
+	if f.mode != "propose" {
+		if _, err = waitUntil(func(s *PeerConversation) bool { return countMessages(s) >= f.participants }); err != nil {
+			return turn, err
+		}
+		if _, err = f.store.AppendPeerConversation(id, PeerAppendRequest{SlotID: slot, Kind: "message", Text: "Response after reading the other peers: " + slot}); err != nil {
+			return turn, err
+		}
+		if _, err = waitUntil(func(s *PeerConversation) bool { return countMessages(s) >= 2*f.participants }); err != nil {
+			return turn, err
+		}
 	}
 	if slot == "slot_peer_b" {
 		text := "Evidence collected; unresolved tension: speed versus completeness. Operator should choose."
@@ -197,7 +205,7 @@ func peerConversationExecutorFixture(t *testing.T, mode string) (*Store, *Person
 func TestTmuxPeersConverseOnSameSeatsAndRouteAcknowledgedTensions(t *testing.T) {
 	store, personas, executor, seats := peerConversationExecutorFixture(t, "")
 	engine := NewRunEngine(store, personas, executor)
-	status, err := engine.RunFormation("session-search", "fmn_peer", FormationRunRequest{Actor: "agent:test", Limits: RunLimits{MaxDispatch: 1, MaxAttempts: 1}})
+	status, err := engine.RunFormation("session-search", "fmn_peer", FormationRunRequest{Actor: "agent:test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,9 +252,106 @@ func TestTmuxPeersConverseOnSameSeatsAndRouteAcknowledgedTensions(t *testing.T) 
 	}
 }
 
+// archon-o7p.8.1: a peer step's rounds are its journal messages. At the
+// card's count the runtime stops the conversation and the run blocks; a grant
+// gives one more round of the conversation, room for a proposal and every
+// peer's acknowledgement, so the peers can agree in it.
+func TestTmuxPeerStopsAtItsJournalMessageLimitAndAGrantGivesARoundToAgreeIn(t *testing.T) {
+	store, personas, executor, seats := peerConversationExecutorFixture(t, "")
+	mission := strings.Replace(mustReadBoardTOML(t, store), "[[formation]]", `[[inputCard]]
+id = "mis_peer"
+title = "Peer mission"
+goal = "Converse"
+
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[connection]]
+id = "edge_mission_peer"
+from = "mis_peer:out"
+to = "fmn_peer:port_peer_in"
+
+[[connection]]
+id = "edge_peer_done"
+from = "fmn_peer:port_peer_out"
+to = "end_done:in"
+
+[[formation]]`, 1)
+	writeFixture(t, store.BoardPath("session-search"), mission)
+	addLimit(t, store, "fmn_peer", 4)
+	engine := NewRunEngine(store, personas, executor)
+	status, err := engine.RunMission("session-search", RunStartRequest{MissionID: "mis_peer", Actor: "agent:test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockedAt := func(want string) {
+		t.Helper()
+		events := mustEvents(t, store, status.RunID)
+		if status.Status != RunStatusBlocked || status.ResumePolicy != ResumePolicyGrant {
+			t.Fatalf("status = %+v: %s", status, eventTypeTrail(events))
+		}
+		block := events[len(events)-1]
+		if block.Type != RunEventBlocked || stringFromEventData(block, "code") != RunBlockLimitReached || stringFromEventData(block, "reason") != want {
+			t.Fatalf("block = %+v, want %q", block, want)
+		}
+	}
+	blockedAt("Peer proof pair used 4 of 4 rounds")
+	first, err := store.ReadPeerConversation(PeerConversationID{RunID: status.RunID, NodeID: "fmn_peer", Attempt: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Messages != 4 || first.MaxMessages != 4 || first.Status == "agreed" {
+		t.Fatalf("first conversation = %d of %d messages, %s", first.Messages, first.MaxMessages, first.Status)
+	}
+	if seats.ended != seats.created {
+		t.Fatalf("seats: %d created, %d ended", seats.created, seats.ended)
+	}
+	for prompt := range strings.SplitSeq(strings.Join(mapValues(seats.prompts), "\n"), "\n") {
+		if strings.Contains(prompt, "allows this conversation") && !strings.Contains(prompt, "4 messages after the openings") {
+			t.Fatalf("peer brief states the cap as %q", prompt)
+		}
+	}
+	// Three peers: the granted round holds a proposal and three acks.
+	seats.attempt, seats.openings, seats.openingBarrier, seats.mode = 2, 0, make(chan struct{}), "propose"
+	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:perttu", Mode: "redispatch", Reason: "let them agree", Grant: true})
+	if err != nil || status.Status != RunStatusSucceeded {
+		t.Fatalf("after the grant = %+v, %v: %s", status, err, eventTypeTrail(mustEvents(t, store, status.RunID)))
+	}
+	resumed := lastEventOfType(t, mustEvents(t, store, status.RunID), RunEventResumed)
+	if grant, _ := resumed.Data["grant"].(map[string]any); grant["amount"] != float64(4) {
+		t.Fatalf("grant = %+v, want the round of 4 messages", resumed.Data["grant"])
+	}
+	second, err := store.ReadPeerConversation(PeerConversationID{RunID: status.RunID, NodeID: "fmn_peer", Attempt: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Messages != 4 || second.MaxMessages != 4 || second.Status != "agreed" {
+		t.Fatalf("granted conversation = %d of %d messages, %s", second.Messages, second.MaxMessages, second.Status)
+	}
+}
+
+func mustReadBoardTOML(t *testing.T, store *Store) string {
+	t.Helper()
+	board, err := store.ReadBoard("session-search")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return board.TOML
+}
+
+func mapValues[K comparable, V any](m map[K]V) []V {
+	values := make([]V, 0, len(m))
+	for _, value := range m {
+		values = append(values, value)
+	}
+	return values
+}
+
 func TestTmuxPeerIncompleteResultBlocksAndRetainsOpenings(t *testing.T) {
 	store, personas, executor, seats := peerConversationExecutorFixture(t, "incomplete")
-	status, err := NewRunEngine(store, personas, executor).RunFormation("session-search", "fmn_peer", FormationRunRequest{Actor: "agent:test", Limits: RunLimits{MaxDispatch: 1, MaxAttempts: 1}})
+	status, err := NewRunEngine(store, personas, executor).RunFormation("session-search", "fmn_peer", FormationRunRequest{Actor: "agent:test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +377,7 @@ func TestTmuxPeerCancellationRetainsConversationAndEndsOwnedSeats(t *testing.T) 
 	seats.cancel = cancel
 	engine := NewRunEngine(store, personas, executor)
 	engine.SetExecutionContext(func(string) context.Context { return ctx })
-	status, err := engine.RunFormation("session-search", "fmn_peer", FormationRunRequest{Actor: "agent:test", Limits: RunLimits{MaxDispatch: 1, MaxAttempts: 1}})
+	status, err := engine.RunFormation("session-search", "fmn_peer", FormationRunRequest{Actor: "agent:test"})
 	if err != nil {
 		t.Fatal(err)
 	}

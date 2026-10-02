@@ -72,8 +72,6 @@ const routes: Record<string, unknown> = {
         verdict: { seq: 11, verdict: 'pass', reason: text('Framing 2'), routePort: 'pass', evidence: [] },
       }],
       problems: [
-        { seq: 12, type: 'run_blocked', code: 'resume_after_verdict', reason: text('human gate verdict recorded; resume required'), resumeAllowed: true },
-        { seq: 30, type: 'run_blocked', reason: text('human gate verdict recorded; resume required'), resumeAllowed: true },
         { seq: 40, type: 'error', code: 'invalid_judge_result', reason: text('missing or unterminated archon-verdict block') },
         { seq: 41, type: 'run_blocked', reason: text('invalid judge result: missing or unterminated archon-verdict block'), resumeAllowed: false },
       ],
@@ -183,21 +181,15 @@ describe('RunEvidence', () => {
     expect(await screen.findByTestId('gate-evaluation-8')).toHaveTextContent('pass · human:operator · via slot_scout')
   })
 
-  it('lists a human pause apart from blocks and errors', async () => {
+  it('lists the blocks and errors recorded against the node', async () => {
     render(<RunEvidence runId="run_1" nodeId="gate_framing" title="Framing review" state="blocked" onClose={() => {}} />)
 
-    const pauses = await screen.findByTestId('evidence-pauses')
-    expect(within(pauses).getByRole('heading', { name: 'Pauses' })).toBeInTheDocument()
-    expect(pauses).toHaveTextContent("#12 · paused after the operator's answer")
-    expect(pauses).toHaveTextContent("#30 · paused after the operator's answer")
-    expect(pauses.querySelector('.fail')).toBeNull()
-    const failures = screen.getByTestId('evidence-failures')
+    const failures = await screen.findByTestId('evidence-failures')
     expect(within(failures).getByRole('heading', { name: 'Blocks and errors' })).toBeInTheDocument()
     expect(failures.querySelectorAll('.node-evidence-verdict.fail')).toHaveLength(2)
     expect(failures).toHaveTextContent('#40 · error · invalid_judge_result')
     expect(failures).toHaveTextContent('#41 · blocked · not resumable')
     expect(failures).toHaveTextContent('invalid judge result: missing or unterminated archon-verdict block')
-    expect(failures).not.toHaveTextContent('resume required')
   })
 
   it('opens an artifact from the run list and follows its links to other artifacts', async () => {

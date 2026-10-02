@@ -42,7 +42,6 @@ func TestLabRehearsalRoutesAFormationGateAfterAPeerFormation(t *testing.T) {
 	brief := "Rehearse the gate.\n```archon-verdict\n{\"verdict\":\"pass\",\"reason\":\"Lab fixture\",\"evidence\":[\"Simulated input\"]}\n```"
 	status, err := NewRunEngine(store, personas, lab).RunMission("session-search", RunStartRequest{
 		MissionID: "mis_showcase", Cwd: cwd, Inputs: map[string]string{"brief": brief}, ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev,
-		Limits: RunLimits{MaxDispatch: 8, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatal(err)

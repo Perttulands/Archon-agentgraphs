@@ -31,9 +31,10 @@ decisions; [examples](../examples/) provide reusable missions.
 | Gate | A criterion with one or more kinds: `code`, `formation`, `human`. Its ports are `in`, `pass`, `fail`, `judge`. |
 | End node | Ends a path on purpose (`[[end]]` in TOML: `id`, `title`, `outcome`). Its outcome is `done` or `rejected`. Its only port is `in`, which takes any number of routes; it leads nowhere. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
-| Judge chain | Formations wired from a gate's `judge` port and back to that same port. The final judge result decides the formation kind. |
-| Pushback edge | A gate's `fail` connection back to work, delivering feedback and starting the next attempt, capped only when the run set `maxAttempts`. There is no `retry_control` port. |
-| Run | One admitted mission or isolated formation, with definition and persona snapshots, inputs and any limits the launch set. Later edits affect later runs. |
+| Judge chain | Formations wired from a gate's `judge` port and back to that same port: from the step the port feeds, each step returns to the port, which completes the chain, or hands on to the first step it feeds. A chain that leaves the steps (through a Tool or gate), loops or never returns is no chain, so validation names the gate incomplete; the engine and the cockpit share this rule. The final judge result decides the formation kind. |
+| Limit card | Caps the rounds, time and tokens of the step it covers, or of the whole mission when it covers the Input card (`[[limit]]` in TOML, `limits` in JSON: `id`, `title`, `target`, `rounds`, `seconds`, `warnSeconds`, `tokens`). A run has no limits without one. |
+| Pushback edge | A gate's `fail` connection back to work, delivering feedback and starting the next attempt, capped only by a Limit card. There is no `retry_control` port. |
+| Run | One admitted mission or isolated formation, with definition and persona snapshots and inputs. Later edits affect later runs. |
 | Ledger | Private append-only NDJSON events, ordered by sequence. It records dispatch, results, routing and recovery evidence. |
 | Projection | A sanitized view derived from the ledger, shared by HTTP, Archon and the cockpit. |
 
@@ -50,7 +51,10 @@ link lost its target (or that does not parse) is listed with `broken`, "<link>
 is a symlink to <target>, which does not exist", and every other mission still
 lists, opens and runs; reading or starting the broken one answers the same
 words (HTTP 422 `BROKEN_LINK`, CLI code `broken_link`), and the cockpit lists
-it as "cannot be read", names it under the canvas and never opens it. A role
+it as "cannot be read", names it under the canvas and never opens it. A
+mission or layout file is read only as strict TOML of its schema: one that is
+not, such as a hand edit that repeats a key, is refused with
+`invalid_definition_source` naming the fault, never read leniently. A role
 card or run ledger that cannot be read is skipped and named: `agent list` and
 `run list` print a `warning:` line, `GET /api/agents` lists it under
 `unreadable`, and the daemon logs a skipped ledger at startup instead of
@@ -407,49 +411,113 @@ the mission's inputs. The Input card's window reads the declared inputs as the
 `{name}` references briefs use and edits them in place, one undo entry per
 save.
 
-Runs have no limits unless the launch sets them. `maxDispatch`, `maxAttempts`
-and `wallClockSeconds` are optional; an absent or zero limit means none, in
-admission and in the engine. A negative limit is rejected.
-Neither `archon mission run` nor the cockpit's Start mission dialog supplies a
-limit: a run started without one loops through send-backs until a gate passes
-or its driver stops it. Set `--max-dispatch`, `--max-attempts` or
-`--wall-clock-seconds` to cap a run; each set limit is enforced and named when
-it blocks the run, as below. Dispatch
-limits bound formation execution steps, including judge steps. Each durable
-formation start consumes one dispatch before any seat launches, including failed
-or interrupted execution. Human approval, resume, restart and redispatch do not
-replenish that run-wide allowance; reattaching completed evidence consumes no
-new dispatch. Attempts bound revisits to a node. The wall clock bounds agent
-work. Every formation dispatch must finish within `wallClockSeconds` of the run's start, not counting time the
-run spent waiting for the operator. A wait runs from a human gate's
-`human_input_requested` to the `human_verdict_recorded` for that gate, and time
-while several requests wait counts once. The waits come from the ledger's
-timestamps, so they survive restarts, and a request still waiting never runs
-the clock out. A dispatch that exceeds it blocks the run with
-`wall_clock_exceeded`. Formation allocations also bound real agent execution.
-Limit exhaustion and unresolved execution leave visible blocks rather than
-claiming success. A block that exhausts attempts or dispatches
-(`resume_attempts_exhausted`, `revise_loop_exhausted`,
-`max_dispatch_exceeded`) records `resumeAllowed: false` and `resumePolicy:
-limit_exhausted`, because resuming could only block again; its run evidence
-names the limit as `limit` (`kind` `attempts` or `dispatches`, `nodeId`,
-`used`, `max`).
+### Limit cards
 
-A step has no time limit unless its formation authors `[formation.execution]`
-with a positive `timeoutSeconds`; the daemon imposes no default. That
-allocation covers the whole attempt: seat startup, preparation, collaboration
-and finalization. The run's mission snapshot freezes it, so later mission edits
-affect later runs. Each `node_started` of a step with a duration records the
-duration and absolute `executionDeadline`; restarting does not give the same
-attempt more time. Explicit redispatch starts a new counted attempt. The earlier
-of that deadline and the run's remaining wall clock governs execution. Formation
-expiry blocks with `formation_timeout_exceeded`, retaining partial evidence. A
-downstream human gate waits after the formation finishes and spends no
-formation time.
+Runs have no limits unless the mission holds a Limit card (archon-o7p.8). A
+run without one loops through send-backs until a gate passes or its driver
+stops it; neither a launch nor the daemon sets a limit. A Limit card covers one
+target: a step (a formation), or the Input card for the whole mission. Each
+knob it sets is enforced; all are optional. Its `rounds` knob counts, from
+the ledger:
+
+- on a step, how many times the step may run, send-backs and resumed re-runs
+  included;
+- on a peer step, how many journal messages its conversation may hold after
+  the openings, proposals, acknowledgements and dissent included, summed over
+  its attempts;
+- on the Input card, how many step runs the whole mission may make, judges
+  included.
+
+A start the coordinator cut short before its output, by a crash or by a
+shutdown such as a deploy (whose block has `code` `coordinator_shutdown`), is
+not a round; the step's re-run is, so a run reaches the same limits wherever a
+restart falls.
+
+Its `seconds` knob (the time knob) counts wall time, in whole seconds, from the
+ledger's timestamps, never time spent waiting:
+
+- on a step, while one of the step's attempts runs: from its `node_started`
+  to its output, its own error, its abandonment or the run's end. It does not
+  count while the step's path waits on a human gate, so a send-back resumes
+  the step with the time it has left;
+- on the Input card, while any step of the run is running, judges included.
+  It keeps counting while another path works during a gate's wait and pauses
+  while every open path only waits on a human gate.
+
+Neither counts while the run is blocked, nor while the daemon was down after
+a crash: the time from the last event before the restart's interruption to the
+interruption counts nothing. An attempt still open when the run resumes counts
+on. The whole attempt counts: seat startup, preparation,
+collaboration and finalization. When a step is dispatched, the time its cards
+have left becomes its deadline, recomputed from the ledger, so a restart never
+gives an attempt more time. At the deadline the step's seats stop, keeping
+partial evidence. With `warnSeconds` set, the covered seats get a warning
+pasted once when that much time is left, like an operator's message: "Archon:
+5 min left of this step's working time (Limit card Clock). When it runs out
+the step stops and the run waits for the operator. Finish your output now." A
+step's card warns each seat Archon dispatched in the attempt (a solo seat,
+every peer, an orchestrated step's controller) once per attempt, at once when
+the attempt starts with less time left; the mission's card warns only the
+seats working when it fires, once in the run. Each warning is recorded as
+`limit_warning` (`limitId`, `nodeId`, `slotId`, `attempt`, `text`); the lab
+executor records them without seats.
+
+Its `tokens` knob (archon-o7p.9) counts what the covered seats spend: on a
+step, every dispatch of its attempts, and on the Input card, every dispatch of
+the run, judges included. The count is approximate and the same for both
+harnesses: input the model did not read from its cache, writing to the cache
+included, plus every output token, reasoning included, subagents included,
+counted for each dispatch from its pointer. For Claude Code that is
+`input_tokens + cache_creation_input_tokens + output_tokens` of each assistant
+message after the pointer, once per message id, in the session file and the
+subagent files beside it; for Codex it is how much the session's
+`total_token_usage` grew from its last count before the pointer,
+`input_tokens - cached_input_tokens + output_tokens`. An orchestrated step's
+workers count from the pointers its controller pastes. When a dispatch ends
+or is stopped the executor records `token_usage` (`nodeId`, `slotId`,
+`attempt`, `dispatchId`, `tokens`, `usage` with `input`, `cacheWrite`,
+`cacheRead` and `output`), and the knob counts those records, so replay and
+later attempts read the ledger, not transcripts; only a run whose step a
+tokens knob covers records them. While a step works, its seats' transcripts
+are counted every two seconds, and when the attempt reaches what its cards
+have left the step's seats stop, so a count can pass the budget by what the
+seats spent in between. A lab step whose brief holds `archon-lab-tokens: N`
+spends N tokens.
+
+A step covered by its own card and the mission's card stops at whichever is
+spent first. Before a step starts, the engine checks its card and then the
+mission's, rounds before time before tokens; at a spent limit the step does
+not start, and when time or tokens run out the running step stops. The run
+blocks with `code` `limit_reached`, the plain reason ("Review used 3 of 3
+rounds", "The mission used 20 of 20 rounds, 1 of them granted", "Review used
+30 min of 30 min", "Review used 51,230 of 50,000 tokens"), `resumePolicy`
+`grant` and the limit as `limit` (`kind` `rounds`, `time` or `tokens`,
+`limitId`, `nodeId` the card's target, `used`, `max` counting grants,
+`granted`; time in seconds). A peer conversation that reaches
+its message count without an agreed result is stopped: its seats are told the
+cap in their brief, posts past it are refused with "the peers have used every
+round their Limit card allows", and the run blocks the same way, keeping the
+journal.
+
+`archon run resume <run> --grant` (API `grant: true`) gives the stopped limit
+one more allowance and resumes: one more round, or the card's time or tokens
+again. On a peer step's own card, whose rounds are journal messages, one
+round is room for a proposal and every peer's acknowledgement, one message
+more than the step has peers, so the peers can agree in it. The `run_resumed`
+records `grant` (`limitId`, `kind`, `amount`: 1 round or a peer step's round
+of messages, or the card's seconds or tokens) with the actor, and the run status's `resumePolicy` says
+`grant` while such a block waits. A resume without `--grant` at a spent limit,
+or with it at any other block, is refused with 409 and nothing is recorded.
+There is no automatic loop detection.
+
+A step has no time limit unless a Limit card's time covers it; the daemon
+imposes no default. A downstream human gate waits after the formation finishes
+and spends no step time.
 
 The projection reports `running`, `waiting_human`, `blocked`, `succeeded`,
-`failed` or `canceled`. Always check `final` and `resumeAllowed`; a blocked run
-is not a completed delivery. A failed or canceled run names who ended it in
+`failed` or `canceled`. `waiting_human` means at least one human gate waits,
+even while other steps still run; the events say what runs. Always check
+`final` and `resumeAllowed`; a blocked run is not a completed delivery. A failed or canceled run names who ended it in
 `endedBy`; why is in its run evidence problems. Events expose node, slot and gate identities,
 attempt, status/verdict, session display name and cleanup outcome where
 applicable. `run_succeeded` and `run_failed` list in `endIds` the End nodes the
@@ -461,7 +529,7 @@ Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
 `judge_attempt_failed`. Session-channel runs add `human_ask_delivered` and
 `human_ask_fallback` (see [Human gates on the session
 channel](#human-gates-on-the-session-channel)). Pending human requests appear in
-`waitingGates` with `gateId` and `requestedSeq`.
+`waitingGates` with `gateId` and `requestedSeq`; several can wait at once.
 
 The public projection includes cwd, context paths, inputs and Bead ID but excludes prompt text,
 artifact contents, brief paths, native session IDs and arbitrary private event
@@ -493,8 +561,8 @@ archon --server "$ARCHON_SERVER" run wait "$ARCHON_RUN_ID" --until needs-you
 `--until` takes `needs-you` (the default), `final` or `any-change`:
 
 - `needs-you` returns when a human gate asks for a verdict, a blocking
-  escalation is raised, or the run blocks with no gate or escalation to explain
-  it. The paragraph names the gate or step, the gate's criterion, the start of
+  escalation is raised, or the run blocks with no blocking escalation to
+  explain it. A waiting gate explains no block: it holds up only its own path. The paragraph names the gate or step, the gate's criterion, the start of
   its input (the whole input is `gate request`), where each verdict leads, and
   the exact `gate approve`/`gate reject` commands with `--requested-seq`, or
   the `run resume` or `run abort` command a block needs.
@@ -511,15 +579,16 @@ an ask counts as new only after `since`, so a driver that loops sees each ask
 once and misses nothing between calls. Without `--since` every open ask is new.
 Other open asks are still listed as reported earlier.
 
-A bare block counts only once the daemon has settled the run, since a verdict
-records one on its way to the automatic resume. Until then the run reads as
-`running`, and in every mode the cursor stops below the block and an answer
-reports only the events before it; with nothing else new the wait keeps
-holding. Once the run settles, a real block is a new ask in every mode.
+A bare block counts only once the daemon has settled the run, since the
+command that recorded it can still end the run, as a stop does. Until then the
+run reads as `running`, and in every mode the cursor stops below the block and
+an answer reports only the events before it; with nothing else new the wait
+keeps holding. Once the run settles, a real block is a new ask in every mode.
 
-A verdict or resume sent while the command that recorded the ask is still
-settling the run waits for that command, up to five seconds, instead of
-answering 409, so a driver can answer the moment a wait returns.
+A verdict never waits: the daemon records it at once, even while other steps
+run (see [Human verdicts](#human-verdicts)). A resume sent while the run's
+command is still settling waits for that command, up to five seconds, instead
+of answering 409, so a driver can answer the moment a wait returns.
 
 `--json` prints the daemon's answer (`runId`, `missionSlug`, `missionTitle`, `until`, `outcome`,
 `since`, `seq`, `status`, `final`, `resumeAllowed`, `settled`, `end`, `asks`,
@@ -569,11 +638,21 @@ Orchestrated controllers also get their bound workers and may direct only those
 workers. The operator may type into any live seat at any time, through the seat
 terminal or in CHROTE, and talk to the agent normally, whether it is working a
 dispatch or idle. The runtime pastes a brief only while the agent is idle and its
-input line is empty, waiting within the step's duration if it has one (a long wait is
+input line is empty, waiting within the step's time limit if it has one (a long wait is
 recorded as `waiting_for_idle_input`, below), so a brief never lands
 mid-turn or on the operator's unsent text. It submits the brief once its pointer
-shows in the input line, however the harness wraps it. Archon agents must not
-type into seats or manage their sessions.
+shows in the input line, however the harness wraps it, and confirms the harness
+took it: the input line no longer holds the pointer. While the input line still
+holds exactly the pointer, Enter is pressed again after a moment, up to five
+presses; Enter is never pressed while the input line holds anything else, such
+as text the operator added (recorded as `brief_not_taken`, below). A Codex
+seat starts with its folder trusted for its launch only (`-c
+'projects={"<cwd>"={trust_level="trusted"}}'`), so it shows no trust dialog
+and Archon never writes the operator's `~/.codex/config.toml`. Should a
+first-use trust dialog show anyway, it is answered while the seat has taken no
+brief and its cursor is in no input line, as on the dialog; words on screen
+that only quote it never are. Archon agents must not type into seats or manage
+their sessions.
 
 Sessions are named `archon-<run>-<slot>`, with the `--mission-label` value
 before the run ID when it is set.
@@ -582,7 +661,9 @@ configured guarded wrapper. The daemon's launch environment must include any
 host-required cleanup override and reason. Wrapper path alone is insufficient.
 Check every `seat_cleanup` outcome: `ended`, `left_socket_changed` or
 `left_cleanup_failed`. Shutdown records `left_shutdown` when it detaches from
-an owned seat without ending it. Success does not erase a cleanup failure.
+an owned seat without ending it, so the restarted daemon can reattach. The run
+still owns that seat: its step's next attempt (cause `new_attempt`) or the
+run's end, cancel included (cause `run_final`), ends it at once. Success does not erase a cleanup failure.
 On a session-channel run `kept_on_call` leaves a finished formation's seat
 running for its human gate. That seat's later cleanup records `ended`, `gone`,
 `left_socket_changed` or `left_cleanup_failed`, and the ledger keeps the
@@ -597,11 +678,11 @@ messages and interrupts, neither complete nor fail the dispatch, and the
 completing turn may come after them. A turn that finishes without the sentinel
 fails the dispatch at once only when nobody else took a turn during it, and for
 Claude only when the agent left no background work that resumes the
-conversation; otherwise the dispatch waits, within the step's duration if it has one. The dispatch
+conversation; otherwise the dispatch waits, within the step's time limit if it has one. The dispatch
 still fails loudly when the seat ends, when the model or effort changes, or when
 the harness moves to another conversation (`/clear`, `/new` or `/resume`).
 
-A step without a duration never times out, so a seat that waits on something
+A step without a time limit never times out, so a seat that waits on something
 Archon cannot end on its own is recorded instead, never blocked or failed.
 Once such a wait has lasted a minute, the ledger records `seat_state` (`nodeId`,
 `slotId`, `data.state`, `data.detail`, `data.since` and `data.dispatchId` once
@@ -610,6 +691,8 @@ dispatched), and records it again with state `working` when the wait ends:
 - `seat_not_ready`: the harness has not reached its ready prompt;
 - `waiting_for_idle_input`: the brief waits to be pasted because the agent is
   busy or the input line holds text the operator has not sent;
+- `brief_not_taken`: the brief is pasted but not sent, because Enter did not
+  send it or the input line also holds text Archon does not send;
 - `turn_ended_without_sentinel`: after an operator turn, the agent ended a
   turn without this run's sentinel;
 - `background_work_pending`: Claude ended its turn with background work that
@@ -735,7 +818,10 @@ A judge must emit exactly one fenced block with exactly these keys:
 `verdict` is `pass` or `fail`, `reason` a string, and `evidence` an array of
 strings. Missing, duplicate, extra or malformed fields/blocks block the run
 with `resumeAllowed: false`; neither branch runs. A judge also emits its ordinary
-output block, without embedding a second verdict block in it.
+output block, without embedding a second verdict block in it. A chain's judges
+run in order, each judging the one before; resuming a chain a crash or a lost
+seat interrupted runs only the judges that have not yet answered the gate's
+current evaluation.
 
 A fail edge delivers typed feedback containing gate ID, gate attempt, verdict,
 reason, evidence and original input text/reference. The next prompt renders
@@ -788,7 +874,9 @@ rule.
 ### Human verdicts
 
 A human kind waits for an explicit verdict naming the exact pending sequence;
-stale or duplicate decisions return HTTP 409. There is no default verdict.
+stale or duplicate decisions return HTTP 409. There is no default verdict. A
+gate that evaluates a newer input while its request waits replaces that
+request, and a verdict naming the old one answers 409.
 The verdict's `reason` is the operator's response, preserved verbatim including
 leading/trailing whitespace and newlines. On pass, a nonempty response
 travels on every pass route together with the gate's original input. It is typed
@@ -796,12 +884,37 @@ with gate ID, gate attempt, requested sequence, deciding actor and text, and
 the next prompt renders it as a human-response section after that input. An
 empty response routes the input unchanged. On fail the response becomes the
 feedback reason. Resume rebuilds the response from the verdict recorded for
-that exact request, so it survives restart. Recording the verdict blocks the run
-with code `resume_after_verdict` until the coordinator resumes it; that block is
-a pause, not a failure. Currently, while a human request waits, no other work
-is dispatched; branches not behind the gate run after the verdict, and a
-verdict that ends its path ends the run only once they have run. The
-cockpit shows a pending human gate's input with a response box, Approve and Send back.
+that exact request, so it survives restart.
+
+A human gate blocks only the work it gates (archon-o7p.11). While its request
+waits, the run keeps dispatching every step not behind it, one step at a time,
+and several requests can wait at once, each answered on its own and in any
+order. The daemon records a verdict at once, while other seats work, and the
+run routes it between steps: once the step running when it arrived has
+recorded its output and that output has moved on. A step's output moves on
+along its connections one at a time, and a code or judge gate it reaches is
+evaluated right there, its verdict routed before the output's later
+connections. Replay after a restart makes every delivery in that same order
+and writes nothing to the ledger, except that it finishes a gate evaluation
+the restart cut short, at the point the run would have; a verdict recorded
+while a step worked waits for that step's output even when a restart cut the
+step short and it runs again, so a run reaches the same end, each step on the
+same inputs and the same steps in the same order, wherever a restart falls. A send-back to a step still
+working its first attempt runs that step again once the attempt ends. When two
+deliveries reach one port before its step runs, nothing is lost: the newest
+work is the input, a send-back that meets unread work keeps that work as the
+input, and every gate feedback and human response the step has not run on
+travels with it, newest first (`feedback.earlier`, `response.earlier`); the
+prompt shows the work and each of them. A run
+whose only open work is waiting gates waits, with no block, and a verdict that
+ends its path ends the run only once every other path has ended. A verdict is
+also accepted on a blocked run, which routes it when it resumes, and a blocked
+run resumes while its gates keep waiting.
+
+The cockpit shows a pending human gate's input with a response box, Approve and
+Send back. The run bar names every gate that waits and every step that runs
+("waiting for you at Review · running Draft"); choosing a waiting gate there
+opens its answer.
 A verdict may carry `relayedBy`, the slot ID of the seat that typed the
 operator's confirmed decision (the slot ID rule: a letter or digit, then up to
 63 letters, digits, underscores or hyphens): `archon gate approve|reject ... --relayed-by <slot-id>`.
@@ -843,7 +956,8 @@ will block at a formation gate.
 A peer formation collects one independent opening from every configured seat
 before sharing them. Those same seats then converse concurrently through an
 append-only journal scoped to the run, formation and attempt. There is no fixed
-turn order, round count or facilitator. The seats use the supplied local
+turn order or facilitator, and no message count unless a Limit card covers the
+step (see Execution). The seats use the supplied local
 `archon --workspace <state> peer` commands to read, post, wait, propose and
 acknowledge; direct file writes are outside the protocol. The commands lock
 the attempt's directory while they read or write, so the journal is the only
@@ -855,12 +969,12 @@ acknowledgements. A result may accurately preserve unresolved tensions and ask
 the operator to decide. The acknowledged result still must satisfy the normal
 declared output ports. Acknowledgement of that text does not decide a human gate.
 
-A peer formation with an authored duration spends it on startup, openings,
-discussion and finalization. Participants receive the deadline and must leave
-time to finish; without a duration the conversation runs until it agrees.
-Expiry without a completed valid result blocks visibly and retains the journal
-and completed openings. A restart does not replenish the allocation; unresolved
-multi-seat execution requires inspection. See
+A peer step under a time card spends it on startup, openings, discussion and
+finalization. Participants receive the deadline and must leave time to finish;
+without a time card the conversation runs until it agrees. Running out of time
+without a completed valid result blocks visibly at the card and retains the
+journal and completed openings. A restart does not replenish the time;
+unresolved multi-seat execution requires inspection. See
 [ADR-0020](adr/0020-peer-conversations.md) for boundaries and lifecycle.
 
 ### Human gates on the session channel
@@ -904,19 +1018,20 @@ approval or send-back. If the agent drafts or paraphrases the response, or the
 verdict, response or intended gate is ambiguous, it shows the proposed verdict
 and exact response together and waits for confirmation. It must not infer a
 verdict from discussion or invent missing response text. The instructions also
-say to run the same command again a few seconds after a 409
-`coordinator is executing`, and to tell the operator that another
-seat or the cockpit decided first after a 409 `human gate request is no longer
-pending`. The formation brief's limits still apply, except for that command.
+say to run the same command again a few seconds after a 503 while the daemon
+restarts, and to tell the operator that another seat or the cockpit decided
+first after a 409 `human gate request is no longer pending`. The formation brief's limits still apply, except for that command.
 
 Each pasted ask is recorded as `human_ask_delivered` with the request sequence,
 gate, asking formation, slot, the seat's created sequence, session name and
 brief path. An ask falls back once, recorded as `human_ask_fallback` with a code
 and reason, when no kept seat can receive it (`lab_executor`,
 `no_asking_formation`, `no_receivable_seat`) or when every seat that received it
-is gone while the request waits (`asked_seats_gone`). If a paste may have
-changed a seat's input but submission fails or cannot be verified, the ask
-falls back with `delivery_uncertain`. Automatic delivery stops for that
+is gone while the request waits (`asked_seats_gone`). An ask is sent as a
+brief is: Enter again while the input line holds only the ask, never while it
+holds anything else. If a paste may have changed a seat's input but the ask is
+not seen leaving the input line in time, or a tmux command fails, the ask
+falls back with `delivery_uncertain`. Automatic delivery then stops for that
 request without clearing the input or pressing Enter again. The operator can
 answer in the cockpit or inspect the seat. The fallback records the affected
 seat's immutable `seatCreatedSeq`. Later asks also skip that seat, including
@@ -925,14 +1040,16 @@ and replacement seats remain eligible. A verdict arriving during the failed
 paste does not discard that seat identity. An agent that is merely busy, or
 unsent operator text found before a paste, still waits without a fallback.
 Only after a fallback does the notify command, if configured, get its
-`human_gate` notification. Both events are
-appended under the run's command reservation, so a verdict sent in that moment
-waits for it (the busy 409 comes only after five seconds), and replay ignores
+`human_gate` notification. Asks are delivered as soon as the gate asks, while
+other steps still run. Each delivery or fallback is recorded only while its
+request still waits and its seat is still kept, checked as it is appended, so
+it never lands after the verdict or seat end it raced with, and replay ignores
 them.
 
 Kept seats are reconsidered when the run settles and before a formation is
-dispatched. A kept seat ends when it has received an ask and no open request
-names its formation (cause `ask_answered`), when its formation starts a new
+dispatched. A kept seat ends when it has received an ask and neither an open
+request nor a verdict the run has yet to route names its formation (cause
+`ask_answered`), when its formation starts a new
 attempt (`new_attempt`), or when the run is about to succeed, fail or be
 canceled, including an abort of a waiting run (`run_final`). Ending waits up to
 60 seconds for the agent to go idle with an empty input line, the check every
@@ -997,8 +1114,8 @@ The daemon has no default working directory: every run, a mission's or a
 single step's, works in the cwd its start names or an automatic workspace, as
 described above, and records it in `run_started`; completed-turn recovery
 checks the native turn against that recorded cwd. `--mission-label` is
-optional. The daemon sets no step time limit (see the
-Execution duration field below).
+optional. The daemon sets no step time limit; a Limit card
+does.
 Repeat `--listen` for each trusted interface. `--agents-dir` overrides cards;
 installed daemons find `../share/archon/ui` beside their `bin` directory.
 Set `--ui-dir ''` to disable the cockpit, or an absolute path to select another
@@ -1064,7 +1181,46 @@ delete <mission> <end>` change or remove one. The mission patch operations are
 `outcome`) and `deleteEnd` (`id`). On the canvas, drag the End token from the
 top bar or right-click the canvas (End node · done or rejected); an End card
 takes any number of wires into its one port, its window and right-click menu
-change its outcome, and a finished run lights the End nodes its paths reached. `mission list` lists missions; `formation list <mission>`
+change its outcome, and a finished run lights the End nodes its paths reached.
+`archon limit create <mission> --target <step|input> [--rounds <n>] [--time
+<duration>] [--warn <duration>] [--tokens <n>] [--title <title>]` adds a Limit card covering a step, named by ID or title, or the Input
+card (`input`, or its ID) for the whole mission; it prints `created <id>`, or
+with `--json` `{mission, layout, limit}`. `archon limit update <mission>
+<limit> [--target] [--rounds] [--time] [--warn] [--tokens] [--title]` changes only what
+it names (an empty `--rounds`, `--time`, `--warn` or `--tokens` clears that knob, `--target
+''` unwires the card) and `archon limit delete <mission> <limit>` removes it. The patch
+operations are `createLimit` (`title`, `target`, `rounds`, `seconds`,
+`warnSeconds`, `tokens`, `x`, `y`), `updateLimit` (`id`, and any of `title`, `target`,
+`rounds`, `seconds`, `warnSeconds`, `tokens`; an empty target unwires the card and a knob
+of 0 clears it) and `deleteLimit` (`id`). `--time` and `--warn` take whole
+seconds as a duration such as `45s`, `30m` or `1h30m`. A write naming a target
+that is not a step or the Input card, or a negative knob, is refused with
+`INVALID_LIMIT` (HTTP 400); an unwired card saves as a draft.
+Validation reports, as the error `invalid_limit`, a card wired to nothing
+("Limit Cap is wired to nothing: wire it to a step, or to the Input card for
+the whole mission"), a target that is not a step or the Input card, a second
+card on one target ("Review has two Limit cards, Cap and Guard: keep one"),
+a rounds, seconds or tokens value that is not a positive whole number, and a warning
+without time or not shorter than the time ("Limit Clock warns with 5 min left
+of 5 min, before any work: warn with less time left"); it warns, as
+`empty_limit`, about a card that sets no knob. Admission refuses a run whose
+mission holds an invalid card, with the same words. On the canvas, drag the
+Limit token from the top bar onto a step or the Input card, or onto empty
+canvas, or right-click the canvas (Limit card); a new card sets no limit and
+opens its window. The card states its knobs ("at most 3 rounds", "at most 40
+journal messages" on a peer step, "at most 20 step runs" for the whole mission,
+"at most 30 min of work", "at most 3 rounds · 30 min", "at most 50,000
+tokens") and its warning ("warns at 5 min left"), says what it covers, and has
+a dashed tether to its target; drag its handle onto a step or the Input card to
+rewire it. Its window edits the title, target, rounds, time (such as 45s, 30m
+or 1h30m), warning and tokens, and says how tokens count and that the count is
+approximate; its
+right-click menu covers the whole mission, unwires it or deletes it; and every
+edit has its own undo entry. Flow and the covered node's window state the
+limit in words ("the whole mission may work at most 2 h"), and a step's window
+lists the time warnings its seats were given. A run stopped at a spent card
+offers a grant in place of Resume that says what it gives: Grant one more
+round, or the card's time or tokens again, Grant 30 min more. `mission list` lists missions; `formation list <mission>`
 lists its formations with their slots and staffing. `mission inspect <mission>`
 prints the whole mission, `mission inspect <mission> <input>` prints the Input
 card with its reachable chain, and `formation inspect <mission> <formation>`
@@ -1104,20 +1260,13 @@ check, criterion, judge and files. Each save is one mission edit with undo. Port
 unchanged.
 Every canvas edit that changes the mission is one undo entry, and Ctrl+Z undoes
 the newest. Deleting an Input card, formation, gate or End node is undone by HTTP
-`restoreNode` (with `inputCard`, `formation`, `gate` or `end`), which puts the node back with its IDs, fields, staffing, ports,
+`restoreNode` (with `inputCard`, `formation`, `gate`, `end` or `limit`), which puts the node back with its IDs, fields, staffing, ports,
 connections and position in one revision; its notes and wire lanes, kept by
 ID, apply again. Removing a port is undone by `restorePort`, which puts it back
 in its place with its connections. Undo waits for edits still being saved. When
 another editor changed the mission first, undo reloads it and tries once more.
 An undo the mission no longer allows is reported once and dropped from the
 history, so older entries stay reachable.
-The formation window's Execution duration field sets the total seconds for one
-formation invocation, including preparation and finalization. Leave it blank
-for no time limit. The authored field is
-`execution.timeoutSeconds`, set with `setExecution` or `archon formation
-set-execution <mission> <formation> --timeout-seconds <n>`; zero clears it. The admitted
-run freezes the effective duration, so later edits apply to new runs. Saving or
-clearing a duration has its own undo entry.
 `archon formation set-type <mission> <formation> <solo|peer|orchestrated>` and the
 type chip on a formation card change its type in place. Solo keeps one slot,
 peer has at least two slots with no controller, and orchestrated has one
@@ -1148,8 +1297,8 @@ error.
 rejected. The cockpit tags incomplete nodes as drafts and highlights the nodes
 a rejected start names.
 
-For the delivery template the following starts a run without limits; add
-`--max-*` flags only when the run needs a cap. Its one input, `change`,
+For the delivery template the following starts a run; a Limit card on the
+mission caps its loops when it needs one. Its one input, `change`,
 describes the work to deliver; in a lab run it carries the synthetic verdict
 described above.
 
@@ -1164,7 +1313,9 @@ archon --server "$ARCHON_SERVER" run wait "$ARCHON_RUN_ID" --until needs-you
 archon --server "$ARCHON_SERVER" run list --json
 ```
 
-This allocates a workspace automatically. Add `--cwd "$ARCHON_CWD"` to work in
+`run list` prints one line per run, newest first: its ID, mission, status,
+Bead (`-` when none), start and last change, tab-separated; `--json` prints
+each run's full projection. This allocates a workspace automatically. Add `--cwd "$ARCHON_CWD"` to work in
 an existing project. For a session gate, inspect the asking seats before typing:
 
 ```bash
@@ -1210,13 +1361,15 @@ immediately. Active turns have five
 seconds to finish, then the daemon cancels observation and detaches from its
 seats without ending them. HTTP draining and execution share a ten-second total
 shutdown budget. Open dispatch identities remain in a resumable block for
-startup recovery; an idle human request remains answerable. Abort runs explicitly
+startup recovery; a waiting human request remains answerable, on the blocked run
+too. Abort runs explicitly
 when seat cancellation is intended.
 
 The ledger accepts nothing after a final event. After `run_blocked` it accepts
-only a resume, a cancel, a failure, or the `seat_cleanup` of seats kept on call,
-which the runtime records just before the cancel or failure that ends the run.
-Those cleanups leave the run blocked. A ledger ending in them, as a crash
+only a resume, a cancel, a failure, a human verdict (routed once the run
+resumes), or the `seat_cleanup` of seats kept on call, which the runtime
+records just before the cancel or failure that ends the run. Those verdicts and
+cleanups leave the run blocked. A ledger ending in them, as a crash
 between the cleanup and the cancel leaves it, projects the block's status,
 `resumeAllowed` and needs-you asks, is recovered at startup as that block, and
 still accepts a resume, cancel or failure.
@@ -1233,8 +1386,13 @@ Inspect list/status after restart. For a resumable block whose cause is resolved
 archon --server "$ARCHON_SERVER" run resume "$ARCHON_RUN_ID" --reason "Recovery evidence inspected" --json
 ```
 
-An idle human request with no unresolved dispatch survives restart with its
-original `requestedSeq`. Approve or reject using the same exact request sequence after restart.
+A run that only waits on its gates survives restart waiting, with each
+request's original `requestedSeq`; approve or reject using the same exact
+request sequence after restart. A run that was between steps, with work still
+owed, a recorded verdict not yet routed, or a gate that received a newer input
+than the one it asked about, is blocked at startup ("coordinator restarted
+between steps; resume to continue"), and resuming continues it while its gates
+keep waiting.
 
 When a seat died mid-turn and its completed evidence cannot be found, abandon
 the open dispatch and run the node again as a fresh bounded attempt:
@@ -1244,9 +1402,13 @@ archon --server "$ARCHON_SERVER" run resume "$ARCHON_RUN_ID" --mode redispatch -
 ```
 
 The abandoned dispatch is recorded as a `slot_result` with status `abandoned`;
-the node's next attempt counts against `maxAttempts` when the run set one. A failed reattach never
+the node's next attempt is one more round for a Limit card that covers it. A failed reattach never
 finishes the run: it records `dispatch_reattach_failed` with the reason and
 leaves the run blocked and resumable.
+
+A single step's run resumes as a mission run does, a Limit card grant
+included: once its step's latest attempt has its output the run succeeds,
+otherwise the step runs again as its next attempt on the run's inputs.
 
 Resume does not manufacture missing completion or resend an uncertain task.
 An unresolved dispatch can block again. For explicitly selected completed native
@@ -1254,7 +1416,12 @@ evidence, restart with `--resume-run`, `--completed-transcript` and
 `--completed-brief` together, naming the blocked resumable run, absolute native
 transcript and original brief. Validation checks the original digest, pointer,
 cwd, session, model/effort and completed turn before continuation. Keep original
-artifacts intact. Do not run offline runtime mutations alongside the daemon.
+artifacts intact. Do not run offline runtime mutations alongside the daemon:
+an offline `mission run`, `formation run`, `run resume`, `run abort` and `gate
+approve|reject` start, continue or stop a run as the daemon's worker does, so
+each takes the state directory's coordinator lock and refuses while a daemon
+owns it ("a daemon owns this state directory: run this through it with
+--server").
 
 ### Needs-you notifications
 
@@ -1280,14 +1447,15 @@ A notification carries `runId`, `missionSlug`, `missionTitle`, `seq`, `kind`,
   the gate's input text capped at 64 KiB, the cockpit link, and exact
   `gate approve` and `gate reject` commands with `--requested-seq`.
 - `escalation`, keyed by a blocking escalation's sequence.
-- `blocked`, keyed by the `run_blocked` sequence when no open gate or escalation
-  already explains the block. The body gives the reason and, when resumable,
+- `blocked`, keyed by the `run_blocked` sequence when no blocking escalation
+  already explains the block. A waiting gate explains none. The body gives the reason and, when resumable,
   the `run resume` command.
 - `final`, keyed by the terminal event sequence.
 
-Only settled runs are announced: the run's command worker has exited. A block
-recorded inside a command, such as a human verdict awaiting its automatic
-resume, is never sent. Each ask is sent once and recorded in the run's
+A human gate's ask and a blocking escalation are sent as soon as the ledger
+records them, while other steps still run. Blocks and final outcomes are sent
+only once the run has settled: its command worker has exited, so a block that
+same command follows with a cancel is never sent. Each ask is sent once and recorded in the run's
 `.needs-you.json` artifact, so restarts send no duplicates. A failed send stays
 unrecorded and is retried at the run's next settle, at startup and every five
 minutes. Sends never delay runs or shutdown. At startup the daemon reconciles
@@ -1465,13 +1633,13 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   every block and error of the run and the `run_failed` or `run_canceled` that
   ended it, oldest first: `seq`, `type`, `code`, `reason`, `resumeAllowed` and
   `nodeIds`, the nodes it names (its node or gate, the blocked node or gate,
-  and nodes with open dispatches). A block that names no node, such as an
-  exceeded wall clock, has empty `nodeIds` and its reason. A run end that names
+  and nodes with open dispatches). A block that names no node, such as a
+  coordinator restart between steps, has empty `nodeIds` and its reason. A run end that names
   no node lists the nodes it stopped: formations without output and gates
   without a verdict. A run end carries `actor`, who ended it (`archond` for a
   coordinator failure, whose cause is its `reason` and code its `code`). A
-  block the run later resumed carries `resumedSeq`; a limit block carries
-  `limit`. Node evidence `problems` include the same run end for the nodes it
+  block the run later resumed carries `resumedSeq`; a spent Limit card's
+  block carries `limit`. Node evidence `problems` include the same run end for the nodes it
   stopped. The 2 MiB budget is spent on the latest first.
 - `/api/runs/{runId}/evidence/briefs/{dispatchSeq}` returns
   `data.brief` (`dispatchSeq`, `nodeId`, `slotId`, `attempt`, `text` capped at
@@ -1504,18 +1672,19 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `criterion` and the routed input: `fromNodeId`, `fromPortId`, `text` capped at
   64 KiB, and `truncated`. `routes` says where each verdict leads on the
   run's frozen mission: `verdict` (`pass`, `fail`), `targets` (`nodeId`,
-  `title`, `kind`, and for a formation the `attempt` it would start, the
-  run's `maxAttempts` (omitted when the run set none, so attempts are
-  unlimited; the engine applies the same rule) and
+  `title`, `kind`, and for a formation the `attempt` it would start, its
+  Limit card's `rounds` and `time` so far (`used`, `max`; omitted without a
+  card, by the engine's own rule) and
   `waitsForInputs` for a join still missing another input; for an End node
   kind `end` and its `outcome`), `endsRun` when every route of the verdict
   ends its path at an End node and nothing else in the run can still run,
   `runFails` when the run fails once it ends, at once with `endsRun` or else
   after its other open work (a rejected End node on this route, or a path
-  already rejected), `dispatches` (`used`, `max`) and `dispatchesNeeded` (judges
-  included) when the route starts formations under a dispatch limit, and
-  `limit` when a limit the route needs is already spent, so taking it blocks
-  the run. When the frozen mission cannot be read, `routes` is omitted. An
+  already rejected), `missionRounds` (the mission card's use) and
+  `roundsNeeded` (the step runs the route starts, judges included) when a
+  Limit card covers the mission's rounds, `missionTime` when it sets time, and
+  `limit` when a card the route needs is already spent, so taking it blocks
+  the run until a grant. When the frozen mission cannot be read, `routes` is omitted. An
   unknown run or gate returns 404; a decided request
   returns 409. After the verdict, the gate's node evidence holds the same input
   with the response.
@@ -1531,6 +1700,10 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   text, so it is served verbatim, as `gate request` serves it. `end` carries `status`, `seq`, `code`, `reason`, `endedBy` and the
   `stopped` steps. A bad `until`, `since` or `hold`, or a `since` past the
   run's last event, returns 400, an unknown run 404, and a stopping daemon 503.
+  Waits and streams read the daemon's parsed ledger, which parses only what
+  each append added, so fifty waiters on a large ledger answer within a
+  second of an event without holding up the run's appends; an unknown run
+  answers 404 before anything is kept for it.
 
 Artifact names are relative to the run's artifact directory, and a name with
 `..` or an empty component returns 404. Symlinks and hard links an agent left

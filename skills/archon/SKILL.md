@@ -7,7 +7,7 @@ description: Author Archon missions and drive their runs through the archond dae
 
 This skill documents the Archon contract of VERSION 0.1.0 as of 2026-10-01:
 the reusable unit is a mission, each slot owns its harness, model and effort,
-run limits are optional, drivers pull with `run wait`, and every surface uses
+a Limit card is the only run limit, drivers pull with `run wait`, and every surface uses
 current names only. It ships with that source.
 `archon --version` names the build on PATH, and `archon --server "$ARCHON_SERVER"
 version` the daemon's too. When a build is older, a flag or behaviour named
@@ -45,9 +45,12 @@ harness settings. Archon keeps only what is current.
   `fail` and `judge`.
 - An **End node** ends a path on purpose, with outcome `done` or `rejected`.
   Its only port is `in`; any number of routes may lead into it.
-- A **judge chain** is the formations wired from a gate's `judge` port back to it.
+- A **Limit card** caps the rounds, time and tokens of the step it covers, or
+  of the whole mission when it covers the Input card. It is the only run limit.
+- A **judge chain** is the formations wired from a gate's `judge` port back to it,
+  step to step; a Tool or gate inside it, or no way back, makes it no chain.
   A **pushback edge** is a gate's `fail` wired back to work; it carries the
-  verdict as feedback and starts a bounded next attempt.
+  verdict as feedback and starts the next attempt, capped only by a Limit card.
 - A **run** snapshots the mission, its slots and any roles at admission. Later edits affect
   later runs only.
 
@@ -210,6 +213,8 @@ Gate and Tool inputs stay single-feed.
   "$M" "$GATE" --chain "$JUDGE"` wires both ends. `--detach` removes it; a
   judge-only gate then becomes a human gate.
 - **Human** waits for an explicit operator verdict. There is no default verdict.
+  It holds up only its own path: other branches keep running while it waits,
+  and several human gates can wait at once.
 
 Wire work into the gate and route both verdicts:
 
@@ -260,20 +265,44 @@ hold the run open. A route that leads nowhere is a validation error,
 "Brief sign-off's pass route leads nowhere: wire it to a step or an End node",
 and admission refuses the run.
 
-### Step duration
+### Limit cards
 
-A step has no time limit unless the mission gives it a duration; Archon adds no
-default. A duration covers startup, the work and finalization, and expiry
-blocks the run with `formation_timeout_exceeded`, keeping the partial evidence.
-Give a step a duration only when it must stop by a known time, for example a
-peer conversation, which has no fixed round count and talks until every seat
-acknowledges one proposal.
+A run has no limits unless the mission holds a **Limit card**, and nothing adds
+one for you: without a card a send-back loop continues until its gate passes or
+you stop the run, and a step works as long as it takes. Add a card only when a
+loop or a step needs a guard. It covers one target, a step or the Input card
+(the whole mission), with three optional knobs:
 
-`formation set-execution "$M" "$FORMATION" --timeout-seconds <n>` sets it;
-`0` removes it. A run freezes the duration at admission.
+- `--rounds` counts how many times the step may run, send-backs and resumed
+  re-runs included (for a peer step, how many journal messages its
+  conversation may hold), or how many step runs the whole mission may make,
+  judges included.
+- `--time` (whole seconds as `45s`, `30m`, `1h30m`) counts wall time while the
+  step works, or while any step of the mission works. Waiting on a human gate
+  or a blocked run counts nothing, so a send-back resumes a step with the time
+  it has left. `--warn 5m` pastes a warning into the covered seats once when
+  that much time is left.
+- `--tokens` counts what the covered seats spend, approximately: input not
+  read from the cache, cache writes included, plus output, subagents
+  included, per dispatch. At the budget the working step stops; a count can
+  pass it by what the seats spent in the last two seconds.
+
+```bash
+archon $S limit create "$M" --target "$WORK" --rounds 3 --json
+archon $S limit create "$M" --target input --rounds 20 --time 2h --warn 10m --title "Mission cap" --json
+```
+
+`limit update "$M" "$LIMIT" --rounds <n>|--time <d>|--warn <d>|--tokens
+<n>|--target <t>|--title <t>` changes a card (an empty `--rounds`, `--time`,
+`--warn` or `--tokens` clears that knob) and `limit delete "$M" "$LIMIT"` removes it. Validation
+rejects a card wired to nothing, a second card on one target, a value that is
+not a positive whole number and a warning without time or not shorter than it
+(`invalid_limit`). At a spent limit the step does not start, or stops when its
+time runs out, and the run blocks with `limit_reached` and a plain reason,
+"Review used 3 of 3 rounds", "Review used 30 min of 30 min" or "Review used
+51,230 of 50,000 tokens"; see Recover.
 When a step runs long, check `run seats` (a seat's `waiting` says what it waits
 on) or open the seat; `run wait --until any-change` reports each `seat_state`.
-A step's duration does not bound a send-back loop; see run limits below.
 
 ### Human channel
 
@@ -328,16 +357,9 @@ archon $S run status "$ARCHON_RUN_ID" --json
 - `--context-path` names absolute existing files or directories the seats must
   inspect as prior art. They are read-only references, frozen as paths; repeat
   the flag for more.
-- A run has no limits unless the launch sets them, and nothing supplies them
-  for you. Without limits a send-back loop continues until its gate passes or
-  you stop the run with `run abort`.
-- Add a cap only when the mission needs one: `--max-attempts <n>` bounds
-  revisits to any one node, `--max-dispatch <n>` bounds formation starts across
-  the run (judges included; resume never refills them), and
-  `--wall-clock-seconds <n>` bounds agent work from the run's start, excluding
-  time waiting at human gates. Each must be positive; omitting it means none. A
-  spent cap blocks the run naming the limit (for example the attempts used of
-  the maximum), and that block is not resumable.
+- A run's only limits are the mission's Limit cards (above); a launch sets
+  none. Without a card a send-back loop continues until its gate passes or you
+  stop the run with `run abort`.
 - `--actor <you>` names the run's driver (default `agent:archon`); run status
   and the cockpit's run list show it as `startedBy`.
 - A lost receipt: check `run list --mission "$M" --json` before starting again.
@@ -375,8 +397,9 @@ written for you, and exits. Act on the exit code:
   blocking escalations, blocks and the end. `--until final` returns only at
   the end. `--until any-change` returns at every ledger event for step-by-step
   oversight, and still answers 3 when an event opens an ask.
-- Answer the moment a wait returns: a verdict or resume sent while the run's
-  command is still settling waits for it on the daemon.
+- Answer the moment a wait returns: the daemon records a verdict at once, even
+  while other steps run, and a resume sent while the run's command is still
+  settling waits for it on the daemon.
 - `--json` prints the same answer for machines: `outcome`, `seq`, `status`,
   `asks`, `end`, `changes` and `next` (the next command, with `--json`).
 - `run status "$ARCHON_RUN_ID" --json` returns one projection at once, and
@@ -387,8 +410,9 @@ written for you, and exits. Act on the exit code:
 
 Read `status` (`running`, `waiting_human`, `blocked`, `succeeded`, `failed`,
 `canceled`), `final`, `resumeAllowed` and `waitingGates`. `waiting_human` means
-the run needs the operator: each `waitingGates` entry has `gateId` and
-`requestedSeq`. `blocked` is never a delivery. Runtime JSON is wrapped in
+the run needs the operator, even while other steps still run: each
+`waitingGates` entry has `gateId` and `requestedSeq`, and several gates can
+wait at once; answer each. `blocked` is never a delivery. Runtime JSON is wrapped in
 `.data`; authoring JSON is not.
 
 Outputs: declared artifacts live under
@@ -410,9 +434,10 @@ entry. `run gates "$ARCHON_RUN_ID"` lists them; `gate request "$ARCHON_RUN_ID"
 "$ARCHON_GATE_ID"` shows the question, the input and where each verdict leads:
 the targets (an End node target means "this path ends (done)" or "(rejected)",
 `endsRun` says the run then ends, and `runFails` that it fails, now or once its other work ends), the
-attempt each would start and, only when the run set a cap, that
-cap (`maxAttempts`, `dispatches`) and a `limit` entry if taking the route would
-exceed it.
+attempt each would start and, only when a Limit card covers it, the step's
+`rounds` (`used`, `max`), the mission's `missionRounds` and `roundsNeeded`, and
+a `limit` entry when taking the route would find a card spent, so the run
+blocks until you grant one more.
 
 ```bash
 archon $S gate approve "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" --requested-seq "$ARCHON_REQUESTED_SEQ" --response "$ARCHON_RESPONSE" --json
@@ -421,8 +446,9 @@ archon $S gate reject  "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" --requested-seq "$ARCH
 
 Run exactly one. On approve, a nonempty response travels with the gate's input
 to the next step; on reject it becomes the feedback reason. `--response-file
-<utf8-file>` records a long answer verbatim. A brief `resume_after_verdict`
-block right after a verdict is the normal handoff; the coordinator resumes.
+<utf8-file>` records a long answer verbatim. The daemon records the verdict at
+once and the run routes it between steps; nothing blocks or resumes. A blocked
+run takes a verdict too, and routes it once resumed.
 
 ## Stop and recover
 

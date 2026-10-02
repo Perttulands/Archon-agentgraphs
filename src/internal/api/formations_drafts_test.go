@@ -105,7 +105,7 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 	}
 
 	board, _ = store.ReadBoard("untitled-mission")
-	rec := serve(http.MethodPost, "/api/runs", board.ETag, `{"inputs":{"brief":"sketch"},"mission":"untitled-mission","inputCardId":"`+mission.ID+`","expectedRev":`+jsonInt(board.Rev)+`,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":60}}`)
+	rec := serve(http.MethodPost, "/api/runs", board.ETag, `{"inputs":{"brief":"sketch"},"mission":"untitled-mission","inputCardId":"`+mission.ID+`","expectedRev":`+jsonInt(board.Rev)+`}`)
 	var failure struct {
 		Error struct {
 			Code     string                    `json:"code"`

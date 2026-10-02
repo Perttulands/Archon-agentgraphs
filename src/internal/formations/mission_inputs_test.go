@@ -62,10 +62,6 @@ func TestMissionInputsRoundTripThroughTOMLAndAuthoring(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(reread.Missions[0].Inputs, want) {
 		t.Fatalf("reread inputs = %+v (%v)", reread.Missions[0].Inputs, err)
 	}
-	// The line reader of a file strict decoding refuses reads them too.
-	if got := parseMissionNodes([]byte(updated.TOML))[0].Inputs; !reflect.DeepEqual(got, want) {
-		t.Fatalf("line reader inputs = %+v, want %+v", got, want)
-	}
 
 	for _, bad := range [][]MissionInput{
 		{{Name: "Topic"}},
@@ -249,13 +245,13 @@ func TestRunsRecordInputsHandThemToTheFirstStepAndSubstituteBriefs(t *testing.T)
 		t.Fatalf("work input = %+v, want the Input card's name: value lines", work.Inputs)
 	}
 
-	// The step behind the human gate runs after a verdict and resume, from the
-	// ledger, and still receives the values.
+	// The step behind the human gate runs after the verdict, from the ledger,
+	// and still receives the values.
 	executor.calls = nil
 	if _, err := engine.RecordHumanGateVerdict(status.RunID, HumanGateVerdictRequest{GateID: "gate_review", Verdict: "pass", Actor: "human:operator"}); err != nil {
 		t.Fatal(err)
 	}
-	resumed, err := NewRunEngine(store, personas, executor).ResumeRun(status.RunID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "approved"})
+	resumed, err := NewRunEngine(store, personas, executor).ContinueRun(status.RunID)
 	if err != nil {
 		t.Fatal(err)
 	}

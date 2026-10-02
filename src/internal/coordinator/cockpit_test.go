@@ -146,7 +146,7 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 	}
 	start := func() string {
 		t.Helper()
-		client.request("POST", "/api/runs", etag, map[string]any{"cwd": c.store.Workspace, "inputs": map[string]string{"brief": "run the proof"}, "mission": board.Slug, "inputCardId": mission, "expectedRev": board.Rev, "limits": formations.RunLimits{MaxDispatch: 6, MaxAttempts: 2, WallClockSeconds: 30}}, 202, &receipt)
+		client.request("POST", "/api/runs", etag, map[string]any{"cwd": c.store.Workspace, "inputs": map[string]string{"brief": "run the proof"}, "mission": board.Slug, "inputCardId": mission, "expectedRev": board.Rev}, 202, &receipt)
 		return receipt.RunID
 	}
 	id := start()
@@ -214,7 +214,7 @@ func TestMountedCockpitLabWorkflow(t *testing.T) {
 		t.Fatal(canceled)
 	}
 	// The isolated-formation button uses the same admission and snapshot ETag.
-	isolated := map[string]any{"mission": board.Slug, "formationId": work.ID, "expectedRev": board.Rev, "inputs": map[string]string{"brief": "run the step"}, "limits": formations.RunLimits{MaxDispatch: 6, MaxAttempts: 2, WallClockSeconds: 30}}
+	isolated := map[string]any{"mission": board.Slug, "formationId": work.ID, "expectedRev": board.Rev, "inputs": map[string]string{"brief": "run the step"}}
 	client.request("POST", "/api/runs", "stale-etag", isolated, 409, nil)
 	client.request("POST", "/api/runs", etag, isolated, 202, &receipt)
 	awaitState(t, c, receipt.RunID, "succeeded")

@@ -30,7 +30,6 @@ func TestS4ReachableJoinWithUnavailableInputDoesNotFalselySucceed(t *testing.T) 
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 10, WallClockSeconds: 60},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)

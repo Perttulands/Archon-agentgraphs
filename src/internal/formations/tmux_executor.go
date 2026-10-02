@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -284,10 +285,7 @@ func (e *TmuxFormationExecutor) executeFormationContext(parent context.Context, 
 	if e == nil || e.store == nil {
 		return FormationExecutionResult{}, runExecutionError("missing_executor", "tmux executor store is not configured", "executor", ErrRunExecutorUnavailable)
 	}
-	ctx, cancel, err := withFormationDeadline(parent, &req, e.store.now())
-	if err != nil {
-		return FormationExecutionResult{}, err
-	}
+	ctx, cancel := withFormationDeadline(parent, &req, e.store.now())
 	defer cancel()
 	if err := e.validateConfiguredBoundaryContext(ctx); err != nil {
 		return FormationExecutionResult{}, err
@@ -295,6 +293,21 @@ func (e *TmuxFormationExecutor) executeFormationContext(parent context.Context, 
 	if len(req.Formation.Slots) == 0 {
 		return FormationExecutionResult{}, runExecutionError("missing_slot", fmt.Sprintf("formation %q has no slots to dispatch", req.NodeID), "executor", nil)
 	}
+	if req.TokenBudget <= 0 {
+		return e.executeFormationKind(ctx, req)
+	}
+	// The attempt's seats stop once their tokens reach its budget (archon-o7p.9).
+	ctx, stopTokens := context.WithCancelCause(ctx)
+	defer stopTokens(nil)
+	req.tokens = newTokenMeter(req.TokenBudget, func() { stopTokens(ErrTokenBudgetSpent) })
+	result, err := e.executeFormationKind(ctx, req)
+	if errors.Is(context.Cause(ctx), ErrTokenBudgetSpent) {
+		return FormationExecutionResult{}, ErrTokenBudgetSpent
+	}
+	return result, err
+}
+
+func (e *TmuxFormationExecutor) executeFormationKind(ctx context.Context, req FormationExecution) (FormationExecutionResult, error) {
 	if req.Formation.Type == FormationTypeOrchestrated {
 		return e.executeOrchestratedFormation(ctx, req)
 	}
@@ -369,6 +382,11 @@ func (e *TmuxFormationExecutor) executeOrchestratedFormation(ctx context.Context
 	}
 	leaderExtra = append(leaderExtra, "Preserve the seeded run cwd, mission goal and Bead context in every worker brief. For every worker task include the run id and require the ARCHON-DONE sentinel in its final answer. Use load-buffer/paste-buffer with bracketed paste, wait for staging, then send Enter once. Never create, adopt, or kill any sessions. Finish after all worker turns complete. Worker completion is independently read from native transcripts.")
 	leaderExtra = append(leaderExtra, outputContractExtraLines(req.Formation)...)
+	// The workers' tokens count from the pointers the controller pastes.
+	for _, baseline := range baselines {
+		stop := e.watchTokens(req, baseline.seat, baseline.binding.Slot.ID, "", baseline.seat.pointer)
+		defer stop()
+	}
 	leader, leaderErr := e.executeSlot(req, controller, allowed, dispatcher, "leader-agentic", leaderExtra, owned)
 	// Observe the workers whether or not the leader finished: a leader that timed
 	// out is exactly when a hung or never-touched worker most needs evidence. The
@@ -690,7 +708,14 @@ func (e *TmuxFormationExecutor) executeBoundSlot(req FormationExecution, binding
 	if err := e.appendAdapterSend(req.RunID, req.NodeID, slot.ID, lease.DispatchID, binding.SessionName, prompt, phase); err != nil {
 		return tmuxSlotOutput{}, err
 	}
+	consumed := make(chan struct{})
+	var consumedOnce sync.Once
+	stopWarnings := e.warnSeat(owned.ctx, req, slot.ID, seat, consumed)
+	defer stopWarnings()
+	stopTokens := e.watchTokens(req, seat, slot.ID, lease.DispatchID, pointer)
+	defer stopTokens()
 	turn, err := e.seatClient.WaitTurn(owned.ctx, seat, e.config.Cwd, pointer, func(turn codexTranscriptTurn) error {
+		defer consumedOnce.Do(func() { close(consumed) })
 		return e.store.AppendRunEvent(req.RunID, RunEvent{Type: "seat_prompt_consumed", NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": binding.SessionName, "nativeSessionId": turn.SessionID, "dispatchId": lease.DispatchID}})
 	})
 	if err != nil {
@@ -707,6 +732,82 @@ func (e *TmuxFormationExecutor) executeBoundSlot(req FormationExecution, binding
 	}
 	sentinel, _ := ParseCompletionSentinel(turn.Text, req.RunID)
 	return tmuxSlotOutput{SlotID: slot.ID, AgentID: slot.AgentID, Harness: binding.Variant.ID, SessionRef: "tmux:" + binding.SessionName, Artifact: sentinel.Artifact, Phase: phase, Text: extractCapturedSlotText(turn.Text, "", req.RunID)}, nil
+}
+
+// warnSeat pastes each time card's warning into the seat once its turn has
+// started, at the warning's time, as an operator's message would arrive
+// (archon-o7p.8). The ledger keeps each warning to once per seat.
+func (e *TmuxFormationExecutor) warnSeat(ctx context.Context, req FormationExecution, slotID string, seat *nativeSeat, started <-chan struct{}) func() {
+	if len(req.Warnings) == 0 {
+		return func() {}
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		awaitLimitWarnings(ctx, req.Warnings, started, func(warning LimitWarning) {
+			if e.store.claimLimitWarning(req, slotID, warning) {
+				_ = e.seatClient.Stage(ctx, e.config.Socket, seat, "warn-"+warning.LimitID+"-"+slotID, warning.Text)
+			}
+		})
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
+}
+
+// tokenPoll is how often a dispatch's tokens are counted while it runs. Tests
+// shorten it.
+var tokenPoll = 2 * time.Second
+
+// watchTokens counts a dispatch's tokens in its native transcript while it
+// runs, into the attempt's meter, which stops the attempt at its budget. The
+// returned stop counts once more and records the dispatch's token_usage.
+// Without a budget it does nothing.
+func (e *TmuxFormationExecutor) watchTokens(req FormationExecution, seat *nativeSeat, slotID, dispatchID, pointer string) (stop func()) {
+	if req.tokens == nil || seat == nil {
+		return func() {}
+	}
+	path := ""
+	count := func() TokenUsage {
+		if path == "" {
+			if path, _ = e.seatClient.TranscriptPath(seat, e.config.Cwd, pointer); path == "" {
+				return TokenUsage{}
+			}
+		}
+		usage, _ := dispatchTokens(seat.variant.ID, path, pointer)
+		req.tokens.set(slotID+"/"+dispatchID, usage.Counted())
+		return usage
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(tokenPoll)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				count()
+			}
+		}
+	}()
+	return func() {
+		cancel()
+		<-done
+		usage := count()
+		if path == "" {
+			return
+		}
+		data := map[string]any{"tokens": usage.Counted(), "usage": usage, "harness": seat.variant.ID}
+		if dispatchID != "" {
+			data["dispatchId"] = dispatchID
+		}
+		_ = e.store.AppendRunEvent(req.RunID, RunEvent{Type: RunEventTokenUsage, NodeID: req.NodeID, SlotID: slotID, Attempt: req.Attempt, Data: data})
+	}
 }
 
 func (e *TmuxFormationExecutor) resolveSlotBinding(ctx context.Context, req FormationExecution, slot FormationSlot, allowed map[string]bool, owned *ownedSessions) (tmuxSlotBinding, error) {
@@ -844,7 +945,7 @@ func tmuxPaneShowsHarnessReady(harnessID, captured string) bool {
 		line = strings.TrimSpace(line)
 		switch harnessID {
 		case "openai-codex":
-			if strings.Contains(tail, "Do you trust") || strings.Contains(tail, "Yes, continue") || strings.Contains(tail, "loading") {
+			if seatTrustDialog(harnessID, tail) || strings.Contains(tail, "Do you trust") || strings.Contains(tail, "Yes, continue") || strings.Contains(tail, "loading") {
 				return false
 			}
 			if strings.Contains(captured, "OpenAI Codex") && strings.HasPrefix(line, "›") {
@@ -872,7 +973,7 @@ func (e *TmuxFormationExecutor) teardownOwnedSessions(owned *ownedSessions) {
 	for slot, seat := range owned.seats {
 		if shutdownRequested(owned.ctx) && !errors.Is(context.Cause(owned.ctx), context.Canceled) {
 			seat.close()
-			_ = e.store.AppendRunEvent(owned.req.RunID, RunEvent{Type: "seat_cleanup", NodeID: owned.req.NodeID, SlotID: slot, Data: map[string]any{"sessionName": seat.name, "outcome": "left_shutdown"}})
+			_ = e.store.AppendRunEvent(owned.req.RunID, RunEvent{Type: "seat_cleanup", NodeID: owned.req.NodeID, SlotID: slot, Data: map[string]any{"sessionName": seat.name, "outcome": SeatOutcomeLeftShutdown}})
 			continue
 		}
 		if owned.keepOnCall && (owned.req.Formation.Type != FormationTypeOrchestrated || slotIsController(owned.req.Formation, slot)) {

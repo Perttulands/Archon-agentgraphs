@@ -27,7 +27,7 @@ func TestContextExecutorDeadlineJoinsCleanup(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	createS4Persona(t, personas, "scout")
 	writeFixture(t, store.BoardPath("session-search"), s4CascadeBoardFixture())
-	started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Personas: personas, Limits: RunLimits{MaxDispatch: 3, WallClockSeconds: 60}})
+	started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Personas: personas})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,11 +35,11 @@ func TestContextExecutorDeadlineJoinsCleanup(t *testing.T) {
 	// after entry, so the engine must join native cleanup before returning.
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	executor := &cleanupExecutor{onEnter: func() { cancel(ErrRunWallClockExceeded) }}
+	executor := &cleanupExecutor{onEnter: func() { cancel(ErrFormationTimeoutExceeded) }}
 	engine := NewRunEngine(store, personas, executor)
 	engine.SetExecutionContext(func(string) context.Context { return ctx })
-	_, err = engine.executeFormation(FormationExecution{RunID: started.RunID}, RunLimits{WallClockSeconds: 60})
-	if !errors.Is(err, ErrRunWallClockExceeded) || !executor.cleanupDone {
+	_, err = engine.executeFormation(FormationExecution{RunID: started.RunID})
+	if !errors.Is(err, ErrFormationTimeoutExceeded) || !executor.cleanupDone {
 		t.Fatalf("deadline returned before cleanup: err %v done %t", err, executor.cleanupDone)
 	}
 }

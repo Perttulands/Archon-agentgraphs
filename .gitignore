@@ -16,6 +16,9 @@ dashboard/playwright-report/
 /archon
 /src/archon
 /src/archond
+# go build in a command's own directory
+/src/cmd/*/archon
+/src/cmd/*/archond
 /dist/
 
 /.beads/interactions.jsonl

@@ -11,7 +11,7 @@ import (
 // run the node again, and a failed reattach must leave the run resumable
 // rather than finishing it.
 func TestResumeRedispatchAbandonsOpenDispatchAndReattachFailureBlocks(t *testing.T) {
-	for _, kind := range []string{"redispatch", "reattach failure", "redispatch budget exhausted"} {
+	for _, kind := range []string{"redispatch", "reattach failure", "redispatch budget exhausted", "redispatch with an event after the resume"} {
 		t.Run(kind, func(t *testing.T) {
 			store, personas := s4RunFixture(t)
 			// Lab now honors the same execution deadline as real seats. Keep
@@ -20,17 +20,17 @@ func TestResumeRedispatchAbandonsOpenDispatchAndReattachFailureBlocks(t *testing
 			personas.Now = time.Now
 			createS4Persona(t, personas, "scout")
 			writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
+			if kind == "redispatch budget exhausted" {
+				// The step may run once; the redispatch would be its second round.
+				addLimit(t, store, "fmn_research", 1)
+			}
 			board, err := store.ReadBoard("session-search")
 			if err != nil {
 				t.Fatal(err)
 			}
-			limit := 10
-			if kind == "redispatch budget exhausted" {
-				limit = 1
-			}
 			started, err := store.StartRun("session-search", RunStartRequest{
 				MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev,
-				Personas: personas, Limits: RunLimits{MaxDispatch: limit, MaxAttempts: 3, WallClockSeconds: 600},
+				Personas: personas,
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -80,6 +80,15 @@ func TestResumeRedispatchAbandonsOpenDispatchAndReattachFailureBlocks(t *testing
 				}
 				return
 			}
+			if kind == "redispatch with an event after the resume" {
+				// Another writer, such as a seat watcher, appends right after the
+				// resume; the resume still acts on its own run_resumed.
+				store.OnRunEvent = func(event RunEvent) {
+					if event.Type == RunEventResumed {
+						_ = store.AppendRunEvent(started.RunID, RunEvent{Type: RunEventSeatState, NodeID: "fmn_research", SlotID: "slot_research", Data: map[string]any{"state": SeatStateWorking}})
+					}
+				}
+			}
 			lab := NewLabFormationExecutor(store, personas, LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: store.Workspace})
 			status, err := NewRunEngine(store, personas, lab).ResumeRun(started.RunID, RunResumeRequest{Mode: "redispatch", Actor: "agent:test", Reason: "seat died; run the node again"})
 			if err != nil {
@@ -99,7 +108,7 @@ func TestResumeRedispatchAbandonsOpenDispatchAndReattachFailureBlocks(t *testing
 				if len(unresolvedDispatches(events)) != 0 {
 					t.Fatal("original dispatch must still be abandoned")
 				}
-				if got := lastEventOfType(t, events, RunEventError).Data["code"]; got != "max_dispatch_exceeded" {
+				if got := lastEventOfType(t, events, RunEventError).Data["code"]; got != RunBlockLimitReached {
 					t.Fatalf("error = %v", got)
 				}
 				return

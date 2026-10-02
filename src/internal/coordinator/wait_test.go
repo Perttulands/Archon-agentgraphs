@@ -3,6 +3,7 @@ package coordinator
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -200,7 +201,7 @@ func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 		{RunID: "run_x", Seq: 2, Type: formations.RunEventNodeStarted, NodeID: "fmn_work"},
 		{RunID: "run_x", Seq: 3, Type: formations.RunEventBlocked, NodeID: "fmn_work", Data: map[string]any{"reason": "seat lost", "code": "seat_lost", "resumeAllowed": true}},
 	}
-	busy, err := projectWait("run_x", events, nil, WaitUntilNeedsYou, 1, false)
+	busy, err := projectWait("run_x", events, nil, WaitUntilNeedsYou, 1, false, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +210,7 @@ func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 	}
 	// Any change reports the events below the block and stops there, and the
 	// run reads as still running, never as blocked, until it settles.
-	changed, err := projectWait("run_x", events, nil, WaitUntilAnyChange, 1, false)
+	changed, err := projectWait("run_x", events, nil, WaitUntilAnyChange, 1, false, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +218,7 @@ func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 		t.Fatalf("changed = %+v", changed)
 	}
 	// With nothing new below the block, any change stays pending.
-	held, err := projectWait("run_x", events, nil, WaitUntilAnyChange, 2, false)
+	held, err := projectWait("run_x", events, nil, WaitUntilAnyChange, 2, false, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +227,7 @@ func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 	}
 	// Once settled, the same cursor reports the block as a new ask in every mode.
 	for _, until := range []string{WaitUntilAnyChange, WaitUntilNeedsYou} {
-		got, err := projectWait("run_x", events, nil, until, 2, true)
+		got, err := projectWait("run_x", events, nil, until, 2, true, time.Time{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -234,7 +235,7 @@ func TestWaitCountsABlockOnlyOnceSettled(t *testing.T) {
 			t.Fatalf("%s settled = %+v", until, got)
 		}
 	}
-	settled, err := projectWait("run_x", events, nil, WaitUntilNeedsYou, 1, true)
+	settled, err := projectWait("run_x", events, nil, WaitUntilNeedsYou, 1, true, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +259,7 @@ func TestWaitServesGateTextVerbatimAndCapsTheInput(t *testing.T) {
 			"inputRef": map[string]any{"fromNodeId": "fmn_work", "text": "token: abc123\n" + long},
 		}},
 	}
-	got, err := projectWait("run_x", events, nil, WaitUntilNeedsYou, 0, true)
+	got, err := projectWait("run_x", events, nil, WaitUntilNeedsYou, 0, true, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,13 +270,19 @@ func TestWaitServesGateTextVerbatimAndCapsTheInput(t *testing.T) {
 }
 
 // The reviewer's probe: a driver looping any-change waits over a run that a
-// gate approval pushes into its dispatch limit. Every loop must end with the
-// block as a new ask, never a changed answer that skips it and then hangs,
-// and a verdict sent the moment the gate is reported must be accepted.
+// gate approval pushes into the mission's Limit card. Every loop must end
+// with the block as a new ask, never a changed answer that skips it and then
+// hangs, and a verdict sent the moment the gate is reported must be accepted.
 func TestAnyChangeLoopReportsALimitBlockAndItsGateVerdictIsAccepted(t *testing.T) {
 	for round := 0; round < 5; round++ {
 		c, e, _ := fixture(t)
-		w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"probe"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":1,"maxAttempts":1,"wallClockSeconds":600}}`)
+		// The mission may run one step: Work. Approving starts After, which
+		// finds the mission's rounds spent.
+		limited := testBoard + "[[limit]]\nid = \"lim_mission\"\ntitle = \"Cap\"\ntarget = \"mis_proof\"\nrounds = 1\n"
+		if err := os.WriteFile(c.store.BoardPath("proof"), []byte(limited), 0600); err != nil {
+			t.Fatal(err)
+		}
+		w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"probe"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 		if w.Code != 202 {
 			t.Fatalf("start %d %s", w.Code, w.Body.String())
 		}
@@ -326,7 +333,7 @@ func TestAnyChangeLoopReportsALimitBlockAndItsGateVerdictIsAccepted(t *testing.T
 // command that recorded it instead of answering 409.
 func TestResumeWaitsForTheCommandThatRecordedTheEscalation(t *testing.T) {
 	c, _, _ := fixture(t)
-	started, err := c.store.StartRun("proof", formations.RunStartRequest{MissionID: "mis_proof", ExpectedBoardRev: 1, Personas: c.personas, Limits: formations.RunLimits{MaxDispatch: 3, MaxAttempts: 1, WallClockSeconds: 600}})
+	started, err := c.store.StartRun("proof", formations.RunStartRequest{MissionID: "mis_proof", ExpectedBoardRev: 1, Personas: c.personas})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,5 +351,79 @@ func TestResumeWaitsForTheCommandThatRecordedTheEscalation(t *testing.T) {
 	go func() { time.Sleep(200 * time.Millisecond); c.release(id) }()
 	if w := post(t, c, "/api/runs/"+id+"/resume", `{"reason":"credentials added"}`); w.Code != 202 {
 		t.Fatalf("resume right after the escalation: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// archon-2jmx: run wait names a run's mission by the mission's title, never
+// its Input card's, which keeps the default "Input" on many missions.
+func TestRunWaitNamesTheMissionByItsTitle(t *testing.T) {
+	events := []formations.RunEvent{{Seq: 1, Type: formations.RunEventStarted, RunID: "run_x", MissionID: "inp_delivery", Data: map[string]any{"missionSlug": "delivery"}}}
+	board := &formations.BoardDocument{Slug: "delivery", Title: "Delivery", Missions: []formations.MissionNode{{ID: "inp_delivery", Title: "Input"}}}
+	got, err := projectWait("run_x", events, board, WaitUntilAnyChange, 0, true, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mission != "Delivery" {
+		t.Fatalf("mission = %q, want the mission's title", got.Mission)
+	}
+	board.Title = ""
+	if got, _ := projectWait("run_x", events, board, WaitUntilAnyChange, 0, true, time.Time{}); got.Mission != "delivery" {
+		t.Fatalf("untitled mission = %q, want its slug", got.Mission)
+	}
+}
+
+// failingStep fails one step's dispatch, as a lost seat does, and runs the
+// others through a holding executor.
+type failingStep struct {
+	node  string
+	inner *holdingExecutor
+}
+
+func (e failingStep) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
+	if req.NodeID == e.node {
+		return formations.FormationExecutionResult{}, &formations.RunExecutionError{Code: "native_turn_failed", Message: "seat died", Boundary: "executor", NodeID: req.NodeID}
+	}
+	return e.inner.ExecuteFormation(req)
+}
+
+// A block the run's command recorded beside a waiting gate is announced once
+// the run settles: until then any-change stops its cursor below the block, so
+// the next wait reports the block as new (archon-o7p.11 review).
+func TestAnUnsettledBlockBesideAWaitingGateStaysNewForTheNextWait(t *testing.T) {
+	c := openGateLab(t, oneGateBesideABranch(), failingStep{node: "fmn_b", inner: newHoldingExecutor()})
+	id := startProof(t, c)
+	awaitSettled(t, c, id)
+	events := eventsOf(t, c, id)
+	asked, block := 0, 0
+	for _, event := range events {
+		switch event.Type {
+		case formations.RunEventHumanInputRequested:
+			asked = event.Seq
+		case formations.RunEventBlocked:
+			block = event.Seq
+		}
+	}
+	if asked == 0 || block <= asked {
+		t.Fatalf("want a gate asked, then B's block:\n%s", fullTrail(events))
+	}
+	board, _ := c.store.ReadRunBoard(id)
+	// The wait wakes on the run_blocked append, before the worker settles.
+	unsettled, err := projectWait(id, events, board, WaitUntilAnyChange, asked, false, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unsettled.Seq >= block || unsettled.Status == formations.RunStatusBlocked {
+		t.Fatalf("unsettled wait = seq %d status %s, want the cursor below the block at %d", unsettled.Seq, unsettled.Status, block)
+	}
+	settled, err := projectWait(id, events, board, WaitUntilNeedsYou, unsettled.Seq, true, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	announced := false
+	for _, ask := range settled.Asks {
+		announced = announced || ask.Kind == formations.NeedsYouKindBlocked && ask.New
+	}
+	if settled.Outcome != WaitOutcomeNeedsYou || !announced {
+		t.Fatalf("settled wait = %+v, want the block as a new ask", settled)
 	}
 }

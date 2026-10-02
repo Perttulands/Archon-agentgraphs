@@ -99,11 +99,37 @@ test('the answer window moves, names where the answer leads, and comes back from
 
   await answer.getByRole('button', { name: 'Close Answer gate Disconnected gate' }).click()
   await expect(answer).toHaveCount(0)
-  await page.getByTestId('run-point').click()
+  // The gate waits while Execution still runs, and the run bar says both (archon-o7p.11).
+  await expect(page.getByTestId('run-points')).toHaveText('waiting for you at Disconnected gate·running Execution')
+  await page.getByRole('button', { name: 'waiting for you at Disconnected gate' }).click()
   await expect(answer).toBeVisible()
   await expect(answer.getByLabel('Your response')).toBeFocused()
   await page.waitForTimeout(600)
   await expect(page.locator('[data-window-id="node:loose"]')).toHaveCount(0)
+})
+
+test('two gates wait at once: the run bar names both and each opens its own answer (archon-o7p.11)', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await cockpitFixture(page, { waitingHuman: true, secondGate: true })
+  const verdicts: Array<{ path: string; body: unknown }> = []
+  await page.route('**/api/runs/run_browser/gates/*/verdict', route => {
+    verdicts.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() })
+    return route.fulfill({ status: 202, json: { success: true, data: { runId: 'run_browser' } } })
+  })
+  await page.goto('/')
+  await expect(page.getByTestId('run-points')).toHaveText('waiting for you at Disconnected gate·waiting for you at Second look·running Execution')
+  // The oldest waiting gate's answer opens first.
+  const first = page.getByRole('dialog', { name: 'Answer gate Disconnected gate' })
+  await expect(first).toBeVisible()
+  await page.getByRole('button', { name: 'waiting for you at Second look' }).click()
+  const second = page.getByRole('dialog', { name: 'Answer gate Second look' })
+  await expect(second).toBeVisible()
+  await expect(first).toHaveCount(0)
+  await expect(second.getByRole('list', { name: 'Where your answer leads' })).toContainText('Approve: this path ends (done)')
+  await second.getByLabel('Your response').fill('looks right')
+  await second.getByRole('button', { name: 'Approve', exact: true }).click()
+  await expect.poll(() => verdicts).toEqual([{ path: '/api/runs/run_browser/gates/second/verdict', body: expect.objectContaining({ requestedSeq: 4, verdict: 'pass', reason: 'looks right' }) }])
+  await page.screenshot({ path: test.info().outputPath('two-gates-run-bar.png') })
 })
 
 test('a block that cannot resume offers no Resume and says so', async ({ page }) => {

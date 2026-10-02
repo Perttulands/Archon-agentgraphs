@@ -16,7 +16,6 @@ import {
   fetchRunArtifacts,
   fetchRunBrief,
   formatBytes,
-  isHumanVerdictPause,
   type EvidenceAttempt,
   type EvidenceEvaluation,
   type EvidenceInput,
@@ -87,8 +86,7 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
     preview.then(preview => setOpenDocument({ kind: 'artifact', preview }), reason => setDocumentError(`${name}: ${errorText(reason)}`))
   }, [files, runId, title])
 
-  const pauses = (evidence?.problems || []).filter(isHumanVerdictPause)
-  const failures = (evidence?.problems || []).filter(problem => !isHumanVerdictPause(problem))
+  const failures = evidence?.problems || []
 
   const openBrief = useCallback((seq: number, label: string) => {
     setDocumentError('')
@@ -128,16 +126,6 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
           <Attempts runId={runId} nodeId={nodeId} attempts={evidence.attempts || []} names={names} onOpenArtifact={openArtifact} onOpenBrief={openBrief} />
         ) : null}
 
-        {pauses.length ? (
-          <section className="node-evidence-section" data-testid="evidence-pauses">
-            <h3>Pauses</h3>
-            {pauses.map(problem => (
-              <div className="evidence-block evidence-pause" key={problem.seq}>
-                <div className="node-verdict-line">#{problem.seq} · paused after the operator's answer until the run resumes</div>
-              </div>
-            ))}
-          </section>
-        ) : null}
         {failures.length ? (
           <section className="node-evidence-section" data-testid="evidence-failures">
             <h3>Blocks and errors</h3>

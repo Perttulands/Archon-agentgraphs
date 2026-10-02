@@ -3,7 +3,6 @@ package formations
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 )
 
@@ -12,7 +11,7 @@ import (
 // is malformed.
 var ErrInvalidNodeRestore = errors.New("invalid_node_restore")
 
-// NodeRestoreRequest puts back one deleted mission, formation, gate or End node with its
+// NodeRestoreRequest puts back one deleted mission, formation, gate, End node or Limit card with its
 // own IDs, fields, connections and layout position, as the board document
 // showed it before the delete. It is how the cockpit undoes a node delete.
 // Notes are keyed by node ID and survive the delete, so the restored node
@@ -22,6 +21,7 @@ type NodeRestoreRequest struct {
 	Formation   *FormationNode
 	Gate        *GateNode
 	End         *EndNode
+	Limit       *LimitNode
 	Connections []BoardConnection
 	// Index, when set, is the node's place among the board's nodes of its
 	// kind, so the definition reads in its old order; nil appends it.
@@ -111,15 +111,29 @@ func insertNodeBlock(raw []byte, section string, index int, block []byte, append
 // and editing that kind of node.
 func restoredNodeBlock(req NodeRestoreRequest) (string, string, func([]byte) []byte, error) {
 	count := 0
-	for _, present := range []bool{req.Mission != nil, req.Formation != nil, req.Gate != nil, req.End != nil} {
+	for _, present := range []bool{req.Mission != nil, req.Formation != nil, req.Gate != nil, req.End != nil, req.Limit != nil} {
 		if present {
 			count++
 		}
 	}
 	if count != 1 {
-		return "", "", nil, invalidNodeRestore("name exactly one Input card, formation, gate or End node")
+		return "", "", nil, invalidNodeRestore("name exactly one Input card, formation, gate, End node or Limit card")
 	}
 	switch {
+	case req.Limit != nil:
+		limit := *req.Limit
+		if !validToolDefinitionID(limit.ID) {
+			return "", "", nil, invalidNodeRestore("Limit card id %q is invalid", limit.ID)
+		}
+		for _, knob := range []*int{limit.Rounds, limit.Seconds, limit.WarnSeconds, limit.Tokens} {
+			if knob != nil && *knob <= 0 {
+				return "", "", nil, fmt.Errorf("%w: each knob must be a positive whole number", ErrInvalidLimit)
+			}
+		}
+		if strings.TrimSpace(limit.Title) == "" {
+			limit.Title = defaultLimitTitle()
+		}
+		return limit.ID, "limit", func(raw []byte) []byte { return appendLimitBlock(raw, limit) }, nil
 	case req.End != nil:
 		end := *req.End
 		if !validToolDefinitionID(end.ID) {
@@ -192,9 +206,6 @@ func validateRestoredFormation(formation FormationNode) error {
 	if formation.Brief != nil && formation.Brief.BeadID != "" && !isSafeBeadsIssueID(formation.Brief.BeadID) {
 		return invalidBeadID("brief beadId", formation.Brief.BeadID)
 	}
-	if formation.Execution != nil && !validExecutionSeconds(formation.Execution.TimeoutSeconds) {
-		return fmt.Errorf("%w: timeoutSeconds must be a positive whole number of seconds", ErrInvalidExecutionPolicy)
-	}
 	ports := map[string]bool{}
 	for _, port := range append(append([]FormationPort(nil), formation.Inputs...), formation.Outputs...) {
 		if !validToolDefinitionID(port.ID) || ports[port.ID] {
@@ -209,7 +220,7 @@ func validateRestoredFormation(formation FormationNode) error {
 }
 
 // appendRestoredFormationBlock writes the ports and slots as creation does,
-// then the brief and execution sections as setBrief and setExecution do.
+// then the brief section as setBrief does.
 func appendRestoredFormationBlock(raw []byte, formation FormationNode) []byte {
 	next := appendFormationBlock(raw, formation)
 	var sections []tomlLine
@@ -220,12 +231,6 @@ func appendRestoredFormationBlock(raw []byte, formation FormationNode) []byte {
 			Files:  formation.Brief.Files,
 			Links:  formation.Brief.Links,
 		})...)
-	}
-	if formation.Execution != nil {
-		sections = append(sections,
-			tomlLine{body: "[formation.execution]", newline: "\n"},
-			tomlLine{body: "timeoutSeconds = " + strconv.Itoa(formation.Execution.TimeoutSeconds), newline: "\n"},
-		)
 	}
 	if len(sections) == 0 {
 		return next
@@ -261,7 +266,7 @@ func planRestoredConnections(raw []byte, current *BoardDocument, nodeID string, 
 // once the restored node or port is in withTarget. Each must touch the target
 // and still fit; a connection ID already in use gets a fresh one.
 func planRestoredWires(withTarget []byte, current *BoardDocument, requested []BoardConnection, touches func(from, to string) bool, target string) ([]BoardConnection, error) {
-	board, err := parseBoardForWrite(withTarget)
+	board, err := parseBoard(withTarget)
 	if err != nil {
 		return nil, err
 	}
@@ -405,6 +410,11 @@ func nodeIDTaken(board *BoardDocument, id string) bool {
 	}
 	for _, end := range board.Ends {
 		if end.ID == id {
+			return true
+		}
+	}
+	for _, limit := range board.Limits {
+		if limit.ID == id {
 			return true
 		}
 	}

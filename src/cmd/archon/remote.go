@@ -137,7 +137,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	fs := commandFlags(name, stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	var responseFile, missionFilter string
-	mode, reason, relayedBy, seq := new(string), new(string), new(string), new(int)
+	mode, reason, relayedBy, seq, grant := new(string), new(string), new(string), new(int), new(bool)
 	switch {
 	case verdict:
 		fs.StringVar(reason, "response", "", "the response: approve delivers it downstream with the gate input, reject sends it back as feedback")
@@ -147,12 +147,13 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	case name == "run resume":
 		fs.StringVar(mode, "mode", "reattach", "resume mode: reattach or redispatch")
 		fs.StringVar(reason, "reason", "", "operator reason")
+		fs.BoolVar(grant, "grant", false, grantUsage)
 	case name == "run abort":
 		fs.StringVar(reason, "reason", "", "operator reason")
 	case name == "run list":
 		fs.StringVar(&missionFilter, "mission", "", "the mission whose runs to list")
 	}
-	if err := fs.Parse(reorderFlags(args[2:], map[string]bool{"json": true})); err != nil {
+	if err := fs.Parse(reorderFlags(args[2:], map[string]bool{"json": true, "grant": true})); err != nil {
 		return 2
 	}
 	pos := fs.Args()
@@ -169,7 +170,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		if args[1] == "abort" {
 			body = map[string]any{"reason": *reason, "requestedBy": "operator:archon"}
 		} else {
-			body = map[string]any{"reason": *reason, "actor": "operator:archon", "mode": *mode}
+			body = map[string]any{"reason": *reason, "actor": "operator:archon", "mode": *mode, "grant": *grant}
 		}
 	case "run list":
 		path += "/runs"
@@ -255,6 +256,9 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	if args[0]+" "+args[1] == "run gates" || args[0]+" "+args[1] == "run seats" || args[0]+" "+args[1] == "gate request" {
 		return printRemoteRunRead(args[0]+" "+args[1], raw, *jsonOut, stdout, stderr)
 	}
+	if args[0]+" "+args[1] == "run list" && !*jsonOut {
+		return writeRemoteRunList(raw, stdout, stderr)
+	}
 	fmt.Fprint(stdout, string(raw))
 	return 0
 }
@@ -316,13 +320,6 @@ func remoteRunStart(client *remoteClient, noun string, args []string, stdout, st
 	if len(run.contextPaths) > 0 {
 		fields["contextPaths"] = run.contextPaths
 	}
-	limits := map[string]any{}
-	for key, value := range map[string]int{"maxDispatch": *run.maxDispatch, "maxAttempts": *run.maxAttempts, "wallClockSeconds": *run.wallClock} {
-		if value != 0 {
-			limits[key] = value
-		}
-	}
-	fields["limits"] = limits
 	raw, err = client.raw("POST", "/api/runs", fields)
 	if err != nil {
 		return fail(stderr, err)

@@ -1008,6 +1008,11 @@ func validateToolMutationBoard(board *BoardDocument, slug string) error {
 			return err
 		}
 	}
+	for _, limit := range board.Limits {
+		if err := addNode(limit.ID, "Limit"); err != nil {
+			return err
+		}
+	}
 	for _, tool := range board.Tools {
 		if err := addNode(tool.ID, "Tool"); err != nil {
 			return err
@@ -1412,6 +1417,11 @@ func toolBoardPositions(board *BoardDocument, blocks []toolLayoutOwnedBlock) (ma
 			return nil, err
 		}
 	}
+	for _, limit := range board.Limits {
+		if err := add(limit.ID); err != nil {
+			return nil, err
+		}
+	}
 	for _, tool := range board.Tools {
 		if err := add(tool.ID); err != nil {
 			return nil, err
@@ -1601,6 +1611,9 @@ func toolBoardAuthorityIDs(board *BoardDocument) (map[string]bool, map[string]bo
 	}
 	for _, end := range board.Ends {
 		nodes[end.ID] = true
+	}
+	for _, limit := range board.Limits {
+		nodes[limit.ID] = true
 	}
 	for _, tool := range board.Tools {
 		nodes[tool.ID] = true

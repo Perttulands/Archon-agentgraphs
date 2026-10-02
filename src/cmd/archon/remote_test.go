@@ -40,16 +40,16 @@ func TestRemoteStartUsesBoardRevisionAndNeverFallsBack(t *testing.T) {
 	if code := runRemote(server.URL, []string{"mission", "run", "proof", "--input", "brief=prove it", "--json"}, &out, &stderr); code != 0 {
 		t.Fatalf("%d %s", code, stderr.String())
 	}
-	// No limit flags sends no limits (archon-o7p.7).
-	if !strings.Contains(received, `"limits":{}`) || !strings.Contains(received, `"expectedRev":9`) || !strings.Contains(out.String(), "run_proof") {
+	// A start sends no limits: they live on the mission's Limit cards (archon-o7p.8).
+	if strings.Contains(received, `"limits"`) || !strings.Contains(received, `"expectedRev":9`) || !strings.Contains(out.String(), "run_proof") {
 		t.Fatalf("request %s output %s", received, out.String())
 	}
-	out.Reset()
-	if code := runRemote(server.URL, []string{"mission", "run", "proof", "--input", "brief=prove it", "--max-attempts", "4", "--max-dispatch", "9", "--wall-clock-seconds", "600", "--json"}, &out, &stderr); code != 0 {
-		t.Fatalf("%d %s", code, stderr.String())
-	}
-	if !strings.Contains(received, `"limits":{"maxAttempts":4,"maxDispatch":9,"wallClockSeconds":600}`) {
-		t.Fatalf("explicit limits request %s", received)
+	for _, flag := range []string{"--max-attempts", "--max-dispatch", "--wall-clock-seconds"} {
+		out.Reset()
+		stderr.Reset()
+		if code := runRemote(server.URL, []string{"mission", "run", "proof", "--input", "brief=prove it", flag, "4", "--json"}, &out, &stderr); code != 2 || !strings.Contains(stderr.String(), "flag provided but not defined") {
+			t.Fatalf("%s: code %d stderr %s", flag, code, stderr.String())
+		}
 	}
 	server.Close()
 	out.Reset()
@@ -236,6 +236,8 @@ func assertCreatedOutput(t *testing.T, side string, kind string, stdout string, 
 		id = board.Tools[len(board.Tools)-1].ID
 	case "end":
 		id = board.Ends[len(board.Ends)-1].ID
+	case "limit":
+		id = board.Limits[len(board.Limits)-1].ID
 	}
 	if !jsonOut {
 		if stdout != "created "+id+"\n" {
@@ -337,8 +339,6 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("agent", "delete", "scrap-x"))},
 		{args: with(fixed("agent", "delete", "scrap-x")), errorOnly: true},
 		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--goal", "Produce the result", "--bead", "archon-demo", "--file", "/work/src/a.go", "--link", "https://example.com/spec"))},
-		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "47"))},
-		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "0"))},
 		{args: with(fixed("formation", "set-brief", "demo", "Critic", "--goal", "Judge the result"))},
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"formation", "assign", "demo", "Critic", "--slot", formationTitled(t, board, "Critic").Slots[0].ID, "--role", "judge", "--harness", "openai-codex", "--effort", "xhigh"}
@@ -389,6 +389,22 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"formation", "wire", "demo", nodeIDTitled(board, "Default") + ":fail", nodeIDTitled(board, "Sent back") + ":in"}
 		})},
+		// A Limit card caps a step or the whole mission (archon-o7p.8).
+		{args: with(fixed("limit", "create", "demo", "--target", "Worker", "--rounds", "3", "--title", "Worker cap")), creates: "limit"},
+		{args: with(fixed("limit", "create", "demo", "--target", "input", "--rounds", "12")), creates: "limit"},
+		{args: with(fixed("limit", "update", "demo", "Worker cap", "--rounds", "4", "--title", "Worker rounds"))},
+		{args: with(fixed("limit", "update", "demo", "Worker rounds", "--time", "30m", "--warn", "5m"))},
+		{args: with(fixed("limit", "update", "demo", "Worker rounds", "--warn", ""))},
+		// Tokens cap what the step spends (archon-o7p.9).
+		{args: with(fixed("limit", "update", "demo", "Worker rounds", "--tokens", "50000"))},
+		{args: with(fixed("limit", "update", "demo", "Worker rounds", "--tokens", "-3")), errorOnly: true},
+		{args: with(fixed("limit", "update", "demo", "Limit", "--tokens", "200000"))},
+		{args: with(fixed("limit", "update", "demo", "Worker rounds", "--time", "90ms")), errorOnly: true},
+		{args: with(fixed("limit", "update", "demo", "Limit", "--rounds", ""))},
+		{args: with(fixed("limit", "delete", "demo", "Limit"))},
+		{args: with(fixed("limit", "create", "demo", "--target", "Review", "--rounds", "2")), errorOnly: true},
+		{args: with(fixed("limit", "create", "demo", "--target", "Worker", "--rounds", "0")), errorOnly: true},
+		{args: with(fixed("limit", "update", "demo", "Nobody", "--rounds", "2")), errorOnly: true},
 		{args: with(fixed("end", "create", "demo", "--outcome", "maybe")), errorOnly: true},
 		{args: with(fixed("end", "update", "demo", "Nobody", "--title", "Ghost")), errorOnly: true},
 		{args: with(fixed("end", "update", "demo", "Done", "--outcome", "later")), errorOnly: true},
@@ -682,13 +698,12 @@ func TestRemoteAuthoringRetriesAWriteRaceThenGivesUp(t *testing.T) {
 
 func TestRemoteFieldErrorsKeepOfflineCodes(t *testing.T) {
 	for code, sentinel := range map[string]error{
-		"INVALID_BEAD_ID":          formations.ErrInvalidBeadID,
-		"INVALID_HUMAN_CHANNEL":    formations.ErrInvalidHumanChannel,
-		"INVALID_EXECUTION_POLICY": formations.ErrInvalidExecutionPolicy,
-		"INVALID_CONTROLLER_ROLE":  formations.ErrInvalidControllerRole,
-		"INVALID_PORT_DIRECTION":   formations.ErrInvalidPortDirection,
-		"INVALID_AGENT_CARD":       formations.ErrInvalidAgentCard,
-		"RELATIVE_FILE_REFERENCE":  formations.ErrRelativeFileRef,
+		"INVALID_BEAD_ID":         formations.ErrInvalidBeadID,
+		"INVALID_HUMAN_CHANNEL":   formations.ErrInvalidHumanChannel,
+		"INVALID_CONTROLLER_ROLE": formations.ErrInvalidControllerRole,
+		"INVALID_PORT_DIRECTION":  formations.ErrInvalidPortDirection,
+		"INVALID_AGENT_CARD":      formations.ErrInvalidAgentCard,
+		"RELATIVE_FILE_REFERENCE": formations.ErrRelativeFileRef,
 	} {
 		offline := archonErrorCode(fmt.Errorf("%w: field", sentinel))
 		remote := archonErrorCode(&remoteHTTPError{Status: 400, Code: code, Message: "field"})

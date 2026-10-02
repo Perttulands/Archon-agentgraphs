@@ -3,6 +3,7 @@ package formations
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 // End nodes end paths on purpose (archon-o7p.10). A run finishes when every path
@@ -32,12 +33,12 @@ func requireRunFailedWithReason(t *testing.T, store *Store, runID, endID, gateID
 	}
 }
 
-func rejectAndResume(t *testing.T, engine *RunEngine, runID, gateID, reason string) *RunStatusProjection {
+func rejectAndContinue(t *testing.T, engine *RunEngine, runID, gateID, reason string) *RunStatusProjection {
 	t.Helper()
 	if _, err := engine.RecordHumanGateVerdict(runID, HumanGateVerdictRequest{GateID: gateID, Verdict: "fail", Reason: reason, Actor: "human:operator"}); err != nil {
 		t.Fatal(err)
 	}
-	status, err := engine.ResumeRun(runID, RunResumeRequest{Actor: "coordinator", Mode: "reattach", Reason: "human verdict recorded"})
+	status, err := engine.ContinueRun(runID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +89,8 @@ func TestRejectingAGateWhoseFailEndsRejectedFailsTheRunWithItsReason(t *testing.
 		after  []string
 	}{
 		{name: "linear", board: linearGateBoardFixture(), before: []string{"fmn_w"}, after: []string{}},
-		{name: "branching", board: branchingGateBoardFixture(), before: []string{"fmn_a"}, after: []string{"fmn_b", "fmn_c"}},
+		// The other branch ran while the gate waited (archon-o7p.11).
+		{name: "branching", board: branchingGateBoardFixture(), before: []string{"fmn_a", "fmn_b", "fmn_c"}, after: []string{}},
 	} {
 		for _, restart := range []bool{false, true} {
 			t.Run(tc.name+map[bool]string{false: "", true: " after a restart"}[restart], func(t *testing.T) {
@@ -106,15 +108,15 @@ func TestRejectingAGateWhoseFailEndsRejectedFailsTheRunWithItsReason(t *testing.
 					t.Fatal(err)
 				}
 				gate := pendingHumanGates(t, store, status.RunID)[0]
-				reject := HumanGateRoutes(frozen, events, gate)[1]
-				if reject.EndsRun != (tc.name == "linear") || len(reject.Targets) != 1 || reject.Targets[0].Outcome != EndOutcomeRejected {
+				reject := HumanGateRoutes(frozen, events, gate, time.Time{})[1]
+				if !reject.EndsRun || len(reject.Targets) != 1 || reject.Targets[0].Outcome != EndOutcomeRejected {
 					t.Fatalf("reject route = %+v", reject)
 				}
 				if restart {
 					engine = NewRunEngine(store, personas, executor)
 				}
 				executor.calls = nil
-				status = rejectAndResume(t, engine, status.RunID, gate, "the brief misses the audience")
+				status = rejectAndContinue(t, engine, status.RunID, gate, "the brief misses the audience")
 				if got := executor.nodeIDs(); !reflect.DeepEqual(append([]string{}, got...), tc.after) {
 					t.Fatalf("nodes after the rejection = %v, want %v", got, tc.after)
 				}
@@ -133,7 +135,7 @@ func TestRejectingAGateWhoseFailEndsRejectedFailsTheRunWithItsReason(t *testing.
 func TestARejectedPathFailsTheRunOnlyAfterEveryOtherPathHasEnded(t *testing.T) {
 	executor := &fakeRunExecutor{}
 	store, personas, engine, status := startBranchingRun(t, twoTerminalGatesBoardFixture(), executor)
-	status = rejectAndResume(t, engine, status.RunID, "gate_one", "A is wrong")
+	status = rejectAndContinue(t, engine, status.RunID, "gate_one", "A is wrong")
 	if got := pendingHumanGates(t, store, status.RunID); status.Final || !reflect.DeepEqual(got, []string{"gate_two"}) {
 		t.Fatalf("status = %+v, pending %v, want the run waiting at gate_two", status, got)
 	}
@@ -146,11 +148,11 @@ func TestARejectedPathFailsTheRunOnlyAfterEveryOtherPathHasEnded(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Approving gate_two ends the last path; the run fails for gate_one.
-	if approve := HumanGateRoutes(frozen, events, "gate_two")[0]; !approve.EndsRun || !approve.RunFails {
+	if approve := HumanGateRoutes(frozen, events, "gate_two", time.Time{})[0]; !approve.EndsRun || !approve.RunFails {
 		t.Fatalf("approve gate_two = %+v, want it to end the run, which fails", approve)
 	}
 	engine = NewRunEngine(store, personas, executor)
-	status = approveAndResume(t, engine, status.RunID, "gate_two")
+	status = approveAndContinue(t, engine, status.RunID, "gate_two")
 	if status.Status != RunStatusFailed {
 		t.Fatalf("status = %+v, want failed", status)
 	}
@@ -162,21 +164,13 @@ func TestARejectedPathFailsTheRunOnlyAfterEveryOtherPathHasEnded(t *testing.T) {
 func TestAResumeAfterEveryPathEndedDoneSucceedsWithoutRunningAnything(t *testing.T) {
 	executor := &fakeRunExecutor{}
 	store, personas, engine, status := startBranchingRun(t, branchingGateBoardFixture(), executor)
+	// B and C ran and ended Done while the gate waited; the operator approves
+	// and the coordinator dies before routing the approval.
 	if _, err := engine.RecordHumanGateVerdict(status.RunID, HumanGateVerdictRequest{GateID: "gate_review", Verdict: "pass", Actor: "human:operator"}); err != nil {
 		t.Fatal(err)
 	}
-	// B and C run and end Done; the coordinator dies before the run ends.
-	for _, event := range []RunEvent{
-		{Type: RunEventResumed, Data: map[string]any{"mode": "reattach", "reason": "human verdict recorded"}},
-		{Type: RunEventNodeStarted, NodeID: "fmn_b", Attempt: 1, Data: map[string]any{"nodeKind": "formation"}},
-		{Type: RunEventNodeOutput, NodeID: "fmn_b", Data: branchOutputData("port_fmn_b_out")},
-		{Type: RunEventNodeStarted, NodeID: "fmn_c", Attempt: 1, Data: map[string]any{"nodeKind": "formation"}},
-		{Type: RunEventNodeOutput, NodeID: "fmn_c", Data: branchOutputData("port_fmn_c_out")},
-		{Type: RunEventBlocked, Data: map[string]any{"reason": "coordinator stopped", "resumeAllowed": true, "resumePolicy": "explicit"}},
-	} {
-		if err := store.AppendRunEvent(status.RunID, event); err != nil {
-			t.Fatalf("append %s: %v", event.Type, err)
-		}
+	if err := engine.BlockInterruptedRun(status.RunID); err != nil {
+		t.Fatal(err)
 	}
 	executor.calls = nil
 	status, err := NewRunEngine(store, personas, executor).ResumeRun(status.RunID, RunResumeRequest{Actor: "coordinator", Mode: "reattach", Reason: "restart"})

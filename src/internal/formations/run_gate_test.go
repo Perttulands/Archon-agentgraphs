@@ -25,7 +25,6 @@ func TestS4GateRoutesPassAndAFailEndingRejectedFailsTheRun(t *testing.T) {
 			Actor:             "agent:test",
 			ExpectedBoardETag: board.ETag,
 			ExpectedBoardRev:  board.Rev,
-			Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 		})
 		if err != nil {
 			t.Fatalf("run mission: %v", err)
@@ -62,7 +61,6 @@ func TestS4GateRoutesPassAndAFailEndingRejectedFailsTheRun(t *testing.T) {
 			Actor:             "agent:test",
 			ExpectedBoardETag: board.ETag,
 			ExpectedBoardRev:  board.Rev,
-			Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 		})
 		if err != nil {
 			t.Fatalf("run mission: %v", err)
@@ -85,12 +83,13 @@ func TestS4GateRoutesPassAndAFailEndingRejectedFailsTheRun(t *testing.T) {
 	})
 }
 
-func TestS4GateFailWirePushesBackWithAttemptLimit(t *testing.T) {
+func TestS4GateFailWirePushesBackUntilItsStepsRoundsAreSpent(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	store.Now = fixedClock()
 	personas.Now = fixedClock()
 	createS4Persona(t, personas, "scout")
 	writeFixture(t, store.BoardPath("session-search"), s4GateBoardFixture(true))
+	addLimit(t, store, "fmn_work", 2)
 	board, err := store.ReadBoard("session-search")
 	if err != nil {
 		t.Fatalf("read board: %v", err)
@@ -104,64 +103,22 @@ func TestS4GateFailWirePushesBackWithAttemptLimit(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
 	}
 	if status.Status != RunStatusBlocked {
-		t.Fatalf("status = %+v, want blocked after revise exhaustion", status)
+		t.Fatalf("status = %+v, want blocked once Work's rounds are spent", status)
 	}
 	if got, want := executor.nodeIDs(), []string{"fmn_work", "fmn_work"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("executor nodes = %v, want two work attempts", got)
 	}
 	events := readRunEvents(t, findOnlyRunLedger(t, store, "session-search"))
-	attempts := nodeStartedAttempts(events, "fmn_work")
-	if !reflect.DeepEqual(attempts, []int{1, 2}) {
+	if attempts := nodeStartedAttempts(events, "fmn_work"); !reflect.DeepEqual(attempts, []int{1, 2}) {
 		t.Fatalf("work attempts = %v, want [1 2]", attempts)
 	}
-	errEvent := eventOfType(t, events, RunEventError)
-	if errEvent.Data["reason"] != "revise loop exhausted" {
-		t.Fatalf("error data = %#v, want revise loop exhausted", errEvent.Data)
-	}
-}
-
-func TestS4RunLimitsRecordAndStop(t *testing.T) {
-	store, personas := s4RunFixture(t)
-	store.Now = fixedClock()
-	personas.Now = fixedClock()
-	createS4Persona(t, personas, "scout")
-	writeFixture(t, store.BoardPath("session-search"), s4CascadeBoardFixture())
-	board, err := store.ReadBoard("session-search")
-	if err != nil {
-		t.Fatalf("read board: %v", err)
-	}
-	executor := &fakeRunExecutor{}
-	engine := NewRunEngine(store, personas, executor)
-
-	status, err := engine.RunMission("session-search", RunStartRequest{
-		MissionID:         "mis_showcase",
-		Actor:             "agent:test",
-		ExpectedBoardETag: board.ETag,
-		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 1},
-	})
-	if err != nil {
-		t.Fatalf("run mission: %v", err)
-	}
-	if status.Status != RunStatusBlocked {
-		t.Fatalf("status = %+v, want blocked when max dispatch is exceeded", status)
-	}
-	if got, want := executor.nodeIDs(), []string{"fmn_frame"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("executor nodes = %v, want only first dispatch before limit", got)
-	}
-	events := readRunEvents(t, findOnlyRunLedger(t, store, "session-search"))
-	errEvent := eventOfType(t, events, RunEventError)
-	if errEvent.Data["code"] != "max_dispatch_exceeded" {
-		t.Fatalf("error data = %#v, want max_dispatch_exceeded", errEvent.Data)
-	}
-	if events[len(events)-1].Type != RunEventBlocked {
-		t.Fatalf("last event = %s, want run_blocked", events[len(events)-1].Type)
+	if errEvent := eventOfType(t, events, RunEventError); errEvent.Data["reason"] != "Work used 2 of 2 rounds" {
+		t.Fatalf("error data = %#v, want Work used 2 of 2 rounds", errEvent.Data)
 	}
 }
 

@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Archon
-  version: standalone-trusted-v1
-  description: Trusted-network coordinator and authoring API. JSON uses the success/timestamp/data envelope except for the raw theme document,
+  version: "1"
+  description: Archon's coordinator and authoring API. JSON uses the success/timestamp/data envelope except for the raw theme document,
     with error details on failure. No authentication. Static cockpit serving is optional. Authoring request
     details follow internal/api.go and agents.go; run projections are sanitized, and run evidence routes serve
     capped, confined content (ADR-0017).
@@ -139,7 +139,7 @@ paths:
     patch:
       responses:
         '200':
-          description: Updated mission or compound authoring result; createFormation, createGate, createEnd and createInputCard return {mission, layout, formation|gate|end|inputCard}; deleteEnd returns {mission, layout, endId}. Returns ETag. An edit that changes nothing returns the current mission with its revision and ETag unchanged.
+          description: Updated mission or compound authoring result; createFormation, createGate, createEnd, createLimit and createInputCard return {mission, layout, formation|gate|end|limit|inputCard}; deleteEnd returns {mission, layout, endId} and deleteLimit {mission, layout, limitId}. Returns ETag. An edit that changes nothing returns the current mission with its revision and ETag unchanged.
         '428':
           description: Missing preconditions
         '409':
@@ -147,7 +147,7 @@ paths:
         '422':
           description: Unprocessable write, such as a code check naming no registered profile. A Tool write returns INVALID_TOOL_MUTATION with a message naming the invalid field or reason. An assignSlot whose harness, model or effort no seat could start with, or that leaves the harness or effort unchosen, returns INVALID_SLOT_SETTINGS with a message naming the slot and the fix, including the effort policy when the effort is missing.
         '400':
-          description: Invalid mutation. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (brief beadId). An Input card humanChannel other than notify or session returns INVALID_HUMAN_CHANNEL naming the allowed values. A malformed or repeated input name or an unknown input kind returns INVALID_MISSION_INPUT. makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. A relative reference file returns RELATIVE_FILE_REFERENCE. A patch naming more than one operation returns BAD_REQUEST naming them, and nothing changes. An invalid mission slug returns BAD_REQUEST 'Invalid mission slug'.
+          description: Invalid mutation. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (brief beadId). An Input card humanChannel other than notify or session returns INVALID_HUMAN_CHANNEL naming the allowed values. A malformed or repeated input name or an unknown input kind returns INVALID_MISSION_INPUT. makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. A Limit card write naming a target that is not a step or the Input card, or a negative rounds value, returns INVALID_LIMIT. A relative reference file returns RELATIVE_FILE_REFERENCE. A patch naming more than one operation returns BAD_REQUEST naming them, and nothing changes. An invalid mission slug returns BAD_REQUEST 'Invalid mission slug'.
       parameters:
       - in: header
         name: If-Match
@@ -272,36 +272,6 @@ paths:
                 expectedRev:
                   type: integer
                   minimum: 1
-                limits:
-                  type: object
-                  additionalProperties: false
-                  description: Optional. A run has no limits unless the launch sets them; an absent or zero
-                    limit means none, and a negative limit is rejected.
-                  properties:
-                    maxDispatch:
-                      type: integer
-                      minimum: 0
-                      description: Cap on the run's formation starts, judges included. Absent or 0 means no limit.
-                    maxAttempts:
-                      type: integer
-                      minimum: 0
-                      description: Cap on each step's attempts. Absent or 0 means no limit.
-                    wallClockSeconds:
-                      type: integer
-                      minimum: 0
-                      description: Time the run's agent work may take from its start. Waits at human gates, from
-                        each request to its verdict, do not count. Absent or 0 means no limit.
-                    formationTimeoutSeconds:
-                      type: integer
-                      minimum: 1
-                      maximum: 9223372036
-                      readOnly: true
-                      description: Server-owned execution default for formations without an authored duration.
-                        Resolved at admission and frozen with the run; clients need not supply it.
-                    redact:
-                      type: boolean
-                      const: false
-                      default: false
       responses:
         '202':
           description: Admitted and durable; execution continues independently of HTTP
@@ -393,6 +363,11 @@ paths:
                   type: string
                 reason:
                   type: string
+                grant:
+                  type: boolean
+                  description: Gives the spent Limit card that blocked the run one more round, or its time or
+                    tokens again, recorded on the run_resumed as grant {limitId, kind, amount}. Required while the
+                    run's resumePolicy is grant, refused otherwise.
       responses:
         '202':
           description: Continuation admitted for this run
@@ -401,9 +376,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProjectionEnvelope'
         '409':
-          description: Run still executing after a five-second wait for its command
-          final: null
-          or not resumable: null
+          description: Run still executing after a five-second wait for its command, final, not
+            resumable, stopped at a spent limit without grant, or given a grant at any other block
   /api/runs/{runId}/wait:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -434,7 +408,7 @@ paths:
           default: 30
       responses:
         '200':
-          description: Enveloped data contains runId, missionSlug, missionTitle, until, outcome (final, needs-you, changed, pending), since, seq (the next since), status, final, resumeAllowed, settled, end (status, seq, code, reason, reasonTruncated, endedBy, stopped), asks (kind, seq, new, gateId, nodeId, title, criterion, reason, code, severity, resumeAllowed, input with fromNodeId, fromTitle, fromPortId, text capped at 4 KiB, bytes and truncated, routes) and changes (seq, type, nodeId, gateId, title, attempt, status, verdict; the latest 50, with changesOmitted). Texts are redacted like run evidence.
+          description: Enveloped data contains runId, missionSlug, missionTitle, until, outcome (final, needs-you, changed, pending), since, seq (the next since), status, final, resumeAllowed, settled, end (status, seq, code, reason, reasonTruncated, endedBy, stopped), asks (kind, seq, new, gateId, nodeId, title, criterion, reason, code, severity, resumeAllowed, limit (a blocked ask's spent Limit card), input with fromNodeId, fromTitle, fromPortId, text capped at 4 KiB, bytes and truncated, routes) and changes (seq, type, nodeId, gateId, title, attempt, status, verdict; the latest 50, with changesOmitted). Texts are redacted like run evidence.
         '400':
           description: Bad until, since or hold, or since past the run's last event
         '404':
@@ -483,7 +457,7 @@ paths:
       description: Oldest first, with texts capped at 64 KiB each and 2 MiB per response, spent on the latest first, and secret patterns redacted.
       responses:
         '200':
-          description: Enveloped data.problems lists seq, type, code, reason, resumeAllowed and nodeIds (the node or gate, blocked node or gate and open dispatch nodes it names; empty for a block that names none, such as an exceeded wall clock).
+          description: Enveloped data.problems lists seq, type, code, reason, resumeAllowed and nodeIds (the node or gate, blocked node or gate and open dispatch nodes it names; empty for a block that names none, such as a coordinator restart between steps).
         '404':
           description: No such run
   /api/runs/{runId}/evidence/briefs/{dispatchSeq}:
@@ -965,18 +939,6 @@ components:
       schema:
         type: string
   schemas:
-    FormationExecutionPolicy:
-      type: object
-      required: [timeoutSeconds]
-      properties:
-        timeoutSeconds:
-          type: integer
-          minimum: 1
-          maximum: 9223372036
-          description: Total duration in seconds for one formation invocation, including preparation,
-            discussion and finalization. An absent execution policy inherits the execution default
-            resolved and frozen at run admission. Human-gate waiting is outside this duration;
-            the remaining run deadline can shorten the invocation.
     EndNode:
       type: object
       description: Ends a path on purpose. A run whose path ends at a rejected End node fails with
@@ -990,10 +952,44 @@ components:
         outcome:
           type: string
           enum: [done, rejected]
+    LimitNode:
+      type: object
+      description: A Limit card. It covers one target, a step or the Input card (the whole mission), and
+        caps its rounds, time and tokens; a run blocks with code limit_reached at a spent card until run
+        resume --grant.
+      required: [id, title, target]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        target:
+          type: string
+          description: The step or Input card the card covers; empty while unwired.
+        rounds:
+          type: integer
+          minimum: 1
+          description: Step runs the target may make (journal messages for a peer step, every step run
+            for the Input card). Omitted sets no rounds.
+        seconds:
+          type: integer
+          minimum: 1
+          description: Wall time the target may work, in seconds, counted while the step (or any step,
+            for the Input card) runs and the run is not blocked. Omitted sets no time.
+        warnSeconds:
+          type: integer
+          minimum: 1
+          description: Time left when the covered seats get a warning pasted once. Needs seconds and is
+            shorter than it.
+        tokens:
+          type: integer
+          minimum: 1
+          description: Tokens the target may spend, counted approximately per dispatch from its pointer
+            as input not read from the cache (cache writes included) plus output, subagents included, for
+            the step (or every step, for the Input card). Omitted sets no tokens.
     FormationNode:
       type: object
-      description: An authored formation. Execution policy is optional; all other formation fields
-        retain their existing authoring semantics.
+      description: An authored formation. A Limit card, not the formation, caps its rounds, time and tokens.
       properties:
         id:
           type: string
@@ -1001,8 +997,6 @@ components:
           type: string
         title:
           type: string
-        execution:
-          $ref: '#/components/schemas/FormationExecutionPolicy'
     MissionFinding:
       type: object
       required:
@@ -1096,7 +1090,6 @@ components:
       - epoch
       - eventCount
       - resumeAllowed
-      - projectionVersion
       - humanChannel
       - waitingGates
       - onCallSeats
@@ -1152,6 +1145,10 @@ components:
           type: integer
         resumeAllowed:
           type: boolean
+        resumePolicy:
+          type: string
+          enum: [grant]
+          description: grant while the run waits at a spent Limit card, which resumes only with grant.
         startedBy:
           type: string
           description: The run's driver, the actor its start named; operator:standalone when it named none.
@@ -1163,8 +1160,6 @@ components:
           type: string
           format: date-time
           description: When the run's ledger last changed; a final run ended then.
-        projectionVersion:
-          const: standalone-trusted-v1
         humanChannel:
           enum:
           - notify
@@ -1343,7 +1338,7 @@ components:
               type: string
         restoreNode:
           type: object
-          description: Undo a node delete. Name exactly one of inputCard, formation, gate or end, as the mission
+          description: Undo a node delete. Name exactly one of inputCard, formation, gate, end or limit, as the mission
             document showed it before the delete, with the connections that touched it and its layout
             position. The node, its connections and its layout placement publish together or not at
             all, keeping every ID, so its notes and wire lanes apply again. A node ID already in the
@@ -1359,6 +1354,8 @@ components:
               type: object
             end:
               $ref: '#/components/schemas/EndNode'
+            limit:
+              $ref: '#/components/schemas/LimitNode'
             connections:
               type: array
               items:
@@ -1445,22 +1442,6 @@ components:
               type: array
               items:
                 type: string
-            expectedRev:
-              type: integer
-            updatedBy:
-              type: string
-        setExecution:
-          type: object
-          required: [formationId, timeoutSeconds]
-          description: Set a formation's total execution duration. Zero removes its override and
-            restores inheritance from the run default. Applies only to new runs.
-          properties:
-            formationId:
-              type: string
-            timeoutSeconds:
-              type: integer
-              minimum: 0
-              maximum: 9223372036
             expectedRev:
               type: integer
             updatedBy:
@@ -1615,6 +1596,76 @@ components:
             outcome:
               type: string
               enum: [done, rejected]
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        createLimit:
+          type: object
+          description: Adds a Limit card. An empty target leaves it unwired, a draft that validation reports.
+          properties:
+            title:
+              type: string
+              description: Omitted or blank is Limit.
+            target:
+              type: string
+            rounds:
+              type: integer
+              minimum: 0
+              description: Omitted or 0 sets no rounds.
+            seconds:
+              type: integer
+              minimum: 0
+              description: Omitted or 0 sets no time.
+            warnSeconds:
+              type: integer
+              minimum: 0
+              description: Omitted or 0 sets no warning.
+            tokens:
+              type: integer
+              minimum: 0
+              description: Omitted or 0 sets no tokens.
+            x:
+              type: integer
+            y:
+              type: integer
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        updateLimit:
+          type: object
+          description: Changes only the fields given. An empty target unwires the card and a knob of 0
+            clears it.
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+            target:
+              type: string
+            rounds:
+              type: integer
+              minimum: 0
+            seconds:
+              type: integer
+              minimum: 0
+            warnSeconds:
+              type: integer
+              minimum: 0
+            tokens:
+              type: integer
+              minimum: 0
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        deleteLimit:
+          type: object
+          description: Deletes a Limit card; restoreNode with limit undoes it.
+          properties:
+            id:
+              type: string
             expectedRev:
               type: integer
             updatedBy:

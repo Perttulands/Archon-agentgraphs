@@ -100,15 +100,22 @@ function projectRun(events: RunEvent[]): RunProjection {
     states.set(nodeId, state)
     changedAt.set(nodeId, seq)
   }
-  // A block holds the node only until the run resumes. Recording a human verdict
-  // blocks on its gate and resumes at once, so the gate returns to its verdict.
+  // A block holds the node only until the run resumes.
   const beforeBlock = new Map<string, NodeRunState>()
+  // A gate answered while the run is blocked keeps waiting until the resume
+  // routes the answer.
+  let blocked = false
+  const answeredWhileBlocked = new Set<string>()
   for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
     if (event.type === 'run_resumed') {
       for (const [blockedId, prior] of beforeBlock) set(blockedId, prior, event.seq)
       beforeBlock.clear()
+      for (const gateId of answeredWhileBlocked) set(gateId, 'running', event.seq)
+      answeredWhileBlocked.clear()
+      blocked = false
       continue
     }
+    if (event.type === 'run_blocked') blocked = true
     // A finished run names the End nodes its paths reached (archon-o7p.10); the
     // rejected one a failure names turns failed below.
     if (event.type === 'run_succeeded' || event.type === 'run_failed') {
@@ -138,6 +145,12 @@ function projectRun(events: RunEvent[]): RunProjection {
       case 'human_input_requested':
       case 'node_waiting':
         set(nodeId, 'waiting', event.seq)
+        break
+      // The operator answered; the run routes the verdict between steps, or
+      // once it resumes.
+      case 'human_verdict_recorded':
+        if (blocked) answeredWhileBlocked.add(nodeId)
+        else set(nodeId, 'running', event.seq)
         break
       case 'node_output': {
         const status = typeof event.data?.status === 'string' ? event.data.status : 'done'
@@ -175,7 +188,7 @@ export function projectNodeAttempts(events: RunEvent[]): Map<string, number> {
 
 export type RunPointKind = 'waiting' | 'running' | 'blocked' | 'failed' | 'canceled'
 
-/** Where a run is now: the node it waits at, runs, or stopped on. */
+/** Where a run is now: a node it waits at, runs or stopped on. */
 export interface RunPoint {
   kind: RunPointKind
   /** Empty when the ledger names no node. */
@@ -185,11 +198,21 @@ export interface RunPoint {
   attempt?: number
   /** The run_blocked event whose recorded reason explains a block. */
   blockSeq?: number
+  /** A running gate whose operator verdict the run is about to route. */
+  answered?: boolean
 }
 
-export function runCurrentPoint(events: RunEvent[], run: RunStatusProjection | null): RunPoint | null {
-  if (!run) return null
+/**
+ * Every place a run is now, the one that most needs the operator first: each
+ * gate waiting for them, then each step and gate running, as several can be
+ * at once while a gate waits (archon-o7p.11). A blocked run names its block
+ * first and the gates still waiting after it; a failed or canceled run names
+ * where it stopped.
+ */
+export function runCurrentPoints(events: RunEvent[], run: RunStatusProjection | null): RunPoint[] {
+  if (!run) return []
   const { states, changedAt, attempts, gates } = projectRun(events)
+  const sorted = [...events].sort((a, b) => a.seq - b.seq)
   // The node most recently put into this state is where the run is.
   const latest = (state: NodeRunState) => {
     let found = ''
@@ -198,45 +221,61 @@ export function runCurrentPoint(events: RunEvent[], run: RunStatusProjection | n
     }
     return found
   }
-  if (run.status === 'waiting_human') {
-    const gateId = run.waitingGates?.[0]?.gateId || openHumanGateId(events)
-    return gateId ? { kind: 'waiting', nodeId: gateId, gate: true } : null
+  const waitingIds = run.waitingGates?.length ? run.waitingGates.map(gate => gate.gateId) : openHumanGateIds(sorted)
+  const waiting = waitingIds.map((nodeId): RunPoint => ({ kind: 'waiting', nodeId, gate: true }))
+  const answered = new Set<string>()
+  for (const event of sorted) {
+    const gateId = event.gateId || event.nodeId || ''
+    if (event.type === 'human_verdict_recorded') answered.add(gateId)
+    if (event.type === 'gate_verdict' || event.type === 'gate_evaluating') answered.delete(gateId)
   }
-  if (run.status === 'blocked') {
-    const block = [...events].sort((a, b) => b.seq - a.seq).find(event => event.type === 'run_blocked')
-    const nodeId = block?.gateId || block?.nodeId || latest('blocked')
-    return { kind: 'blocked', nodeId, gate: gates.has(nodeId), blockSeq: block?.seq }
+  const running = [...states]
+    .filter(([nodeId, state]) => state === 'running' && !waitingIds.includes(nodeId))
+    .sort(([a], [b]) => (changedAt.get(a) || 0) - (changedAt.get(b) || 0))
+    .map(([nodeId]): RunPoint => {
+      const point: RunPoint = { kind: 'running', nodeId, gate: gates.has(nodeId), attempt: attempts.get(nodeId) }
+      if (answered.has(nodeId)) point.answered = true
+      return point
+    })
+  switch (run.status) {
+    case 'waiting_human':
+    case 'running':
+      return [...waiting, ...running]
+    case 'blocked': {
+      const block = [...sorted].reverse().find(event => event.type === 'run_blocked')
+      const nodeId = block?.gateId || block?.nodeId || latest('blocked')
+      return [{ kind: 'blocked', nodeId, gate: gates.has(nodeId), blockSeq: block?.seq }, ...waiting.filter(point => point.nodeId !== nodeId)]
+    }
+    case 'failed': {
+      const nodeId = latest('failed')
+      return [{ kind: 'failed', nodeId, gate: gates.has(nodeId) }]
+    }
+    case 'canceled': {
+      // A cancel names no node: it stopped the gate waiting for an answer, else the node in flight.
+      const nodeId = openHumanGateIds(sorted.filter(event => event.type !== 'run_canceled'))[0] || latest('running') || latest('blocked')
+      return [{ kind: 'canceled', nodeId, gate: gates.has(nodeId) }]
+    }
+    default:
+      return []
   }
-  if (run.status === 'failed') {
-    const nodeId = latest('failed')
-    return { kind: 'failed', nodeId, gate: gates.has(nodeId) }
-  }
-  if (run.status === 'canceled') {
-    // A cancel names no node: it stopped the gate waiting for an answer, else the node in flight.
-    const nodeId = openHumanGateId(events.filter(event => event.type !== 'run_canceled')) || latest('running') || latest('blocked')
-    return { kind: 'canceled', nodeId, gate: gates.has(nodeId) }
-  }
-  if (run.status === 'running') {
-    const nodeId = latest('running')
-    return nodeId ? { kind: 'running', nodeId, gate: gates.has(nodeId), attempt: attempts.get(nodeId) } : null
-  }
-  return null
 }
 
-/**
- * The run bar's words for a run point. `reason` is the block's recorded reason;
- * a pause is the block that follows the operator's answer until the run resumes.
- */
-export function runPointPhrase(point: RunPoint, title: string, reason = '', pause = false): string {
+/** The one place that most needs the operator now (see runCurrentPoints). */
+export function runCurrentPoint(events: RunEvent[], run: RunStatusProjection | null): RunPoint | null {
+  return runCurrentPoints(events, run)[0] ?? null
+}
+
+/** The run bar's words for a run point. `reason` is the block's recorded reason. */
+export function runPointPhrase(point: RunPoint, title: string, reason = ''): string {
   const where = title || point.nodeId
   switch (point.kind) {
     case 'waiting':
       return `waiting for you at ${where}`
     case 'running':
+      if (point.answered) return `routing your answer at ${where}`
       if (point.gate) return `evaluating ${where}`
       return `running ${where}${point.attempt && point.attempt > 1 ? ` (attempt ${point.attempt})` : ''}`
     case 'blocked':
-      if (pause) return `paused at ${where} after your answer`
       return `${where ? `blocked at ${where}` : 'blocked'}${reason ? `: ${reason}` : ''}`
     case 'failed':
       return where ? `failed at ${where}` : ''
@@ -245,19 +284,34 @@ export function runPointPhrase(point: RunPoint, title: string, reason = '', paus
   }
 }
 
-export function openHumanGateId(events: RunEvent[]): string {
-  let openGateId = ''
+/**
+ * The gates waiting for a verdict, oldest first, by the daemon's rule: a
+ * request waits until a verdict on its gate, a newer evaluation of that gate,
+ * or the run's end. Several can wait at once.
+ */
+export function openHumanGateIds(events: RunEvent[]): string[] {
+  const open: { gateId: string; seq: number }[] = []
   for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
-    if (event.type === 'human_input_requested' && event.gateId) {
-      openGateId = event.gateId
-      continue
-    }
-    if ((event.type === 'human_verdict_recorded' || event.type === 'gate_verdict') && event.gateId === openGateId) {
-      openGateId = ''
-    }
-    if (event.type === 'run_succeeded' || event.type === 'run_failed' || event.type === 'run_canceled') {
-      openGateId = ''
+    const gateId = event.gateId || event.nodeId || ''
+    switch (event.type) {
+      case 'human_input_requested': {
+        const existing = open.findIndex(item => item.gateId === gateId)
+        if (existing >= 0) open.splice(existing, 1)
+        open.push({ gateId, seq: event.seq })
+        break
+      }
+      case 'human_verdict_recorded':
+      case 'gate_evaluating': {
+        const existing = open.findIndex(item => item.gateId === gateId)
+        if (existing >= 0) open.splice(existing, 1)
+        break
+      }
+      case 'run_succeeded':
+      case 'run_failed':
+      case 'run_canceled':
+        open.length = 0
+        break
     }
   }
-  return openGateId
+  return open.map(item => item.gateId)
 }

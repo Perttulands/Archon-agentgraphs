@@ -101,7 +101,7 @@ func TestEvidenceRouteServesBlocksThatNameNoNode(t *testing.T) {
 	executor.proceed <- struct{}{}
 	awaitState(t, c, id, "waiting_human")
 	for _, event := range []formations.RunEvent{
-		{Type: formations.RunEventError, Data: map[string]any{"code": "wall_clock_exceeded", "message": "wall clock limit exceeded"}},
+		{Type: formations.RunEventError, Data: map[string]any{"code": "seat_exited", "message": "the seat exited before its output"}},
 		{Type: formations.RunEventBlocked, Data: map[string]any{"reason": "wall clock limit exceeded", "resumeAllowed": true}},
 	} {
 		if err := c.store.AppendRunEvent(id, event); err != nil {

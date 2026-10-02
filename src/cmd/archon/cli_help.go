@@ -43,7 +43,7 @@ var nounHelps = []nounHelp{
 		{"update", "<mission> [<input>] [--title text] [--goal text] [--file path]... [--input-hint text] [--human-channel notify|session] [--json]", "change the Input card. Only the flags you give change it, and an empty value clears that field"},
 		{"input", "<mission> [<name>] [--kind text|file|folder] [--required | --optional] [--description <text>] [--delete] [--json]", "list the inputs a run supplies, or with a name declare, change or --delete that input. A mission that declares none takes one required text input, brief. A new input is optional text unless the flags say otherwise, and only the flags you give change an existing one; step briefs reference it as {name}"},
 		{"wire", "<mission> [<input>] <to-node:port> [--json]", "wire the Input card to a step"},
-		{"run", "<mission> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--max-dispatch n] [--max-attempts n] [--wall-clock-seconds n] [--actor actor] [--json]", "start a run. Required: <mission>, and an --input or --input-file for each input the mission requires (archon mission input <mission> lists them); every other flag is optional, and a run with no --max-* flag has no limits"},
+		{"run", "<mission> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--actor actor] [--json]", "start a run. Required: <mission>, and an --input or --input-file for each input the mission requires (archon mission input <mission> lists them); every other flag is optional. The mission's Limit cards set its limits; it has none without one"},
 	}, note: "<input> may be left out when the mission has one Input card."},
 	{noun: "formation", summary: "steps: the agents that do the work", about: "A formation is a step: the team of agents that does it, solo, peer or orchestrated.", commands: []commandHelp{
 		{"create", "<mission> [solo|peer|orchestrated] [--title <title>] [--x n] [--y n] [--json]", "add a step. It is solo unless you name another type"},
@@ -51,7 +51,6 @@ var nounHelps = []nounHelp{
 		{"inspect", "<mission> <formation> [--json]", "print one step with its slots, ports, brief and connections"},
 		{"assign", "<mission> <formation> --slot <slot> --harness <claude-code|openai-codex> --effort <effort> [--model <model>] [--role <persona>] [--json]", "staff a slot. A slot owns its harness, model and effort; --role adds optional role text, and a slot without one is a vanilla agent"},
 		{"unassign", "<mission> <formation> --slot <slot> [--json]", "empty a slot"},
-		{"set-execution", "<mission> <formation> --timeout-seconds <seconds|0> [--json]", "set the step's time limit. 0 clears it"},
 		{"set-brief", "<mission> <formation> --goal <goal> [--bead <beads-id>] [--file <path>]... [--link <url>]... [--json]", "write the step's brief"},
 		{"rename", "<mission> <formation> <title> [--json]", "change the step's title"},
 		{"set-type", "<mission> <formation> <solo|peer|orchestrated> [--keep-slot <slot>] [--json]", "change the step's type. --keep-slot names the slot a change to solo keeps"},
@@ -59,7 +58,7 @@ var nounHelps = []nounHelp{
 		{"add-output", "<mission> <formation> --label <label> [--json]", "add an output port"},
 		{"wire", "<mission> <from-node:port> <to-node:port> [--join] [--json]", "connect two ports. --join adds an input when the target is already fed"},
 		{"unwire", "<mission> <from-node:port> <to-node:port> [--json]", "remove a connection"},
-		{"run", "<mission> <formation> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--max-dispatch n] [--max-attempts n] [--wall-clock-seconds n] [--actor actor] [--json]", "run one step on its own. It takes the mission's inputs, as a mission run does"},
+		{"run", "<mission> <formation> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--actor actor] [--json]", "run one step on its own. It takes the mission's inputs, as a mission run does"},
 	}},
 	{noun: "gate", summary: "checks between steps, and human verdicts", about: "A gate checks work between steps with code, a judge formation or a human, and routes it on pass or fail.", commands: []commandHelp{
 		{"create", "<mission> [--kinds code,formation,human] [--title text] [--criterion text] [--check id --check-version version --check-value value] [--file path]... [--x n] [--y n] [--json]", "add a gate. It is human unless --kinds says otherwise"},
@@ -73,6 +72,11 @@ var nounHelps = []nounHelp{
 		{"create", "<mission> [--outcome done|rejected] [--title text] [--x n] [--y n] [--json]", "add an End node. Wire a route into it with archon formation wire <mission> <node:port> <end-id>:in"},
 		{"update", "<mission> <end> [--outcome done|rejected] [--title text] [--json]", "change an End node's title or outcome"},
 		{"delete", "<mission> <end> [--json]", "remove an End node"},
+	}},
+	{noun: "limit", summary: "Limit cards, which cap a step or the whole mission", about: "A Limit card caps the step it covers, or the whole mission when it covers the Input card. At the limit the run blocks until run resume --grant.", commands: []commandHelp{
+		{"create", "<mission> --target <step|input> [--rounds n] [--time 30m] [--warn 5m] [--tokens n] [--title text] [--x n] [--y n] [--json]", "add a Limit card. At the limit the run blocks; run resume --grant gives one more round, or the card's time or tokens again. Tokens are approximate: input not read from the cache, cache writes included, plus output, subagents included"},
+		{"update", "<mission> <limit> [--target <step|input>] [--rounds n] [--time 30m] [--warn 5m] [--tokens n] [--title text] [--json]", "change a Limit card. Only the flags you give change; an empty --rounds, --time, --warn or --tokens clears that knob and an empty --target unwires the card"},
+		{"delete", "<mission> <limit> [--json]", "remove a Limit card"},
 	}},
 	{noun: "tool", summary: "Tool nodes", about: "A Tool node runs a registered profile on its input.", commands: []commandHelp{
 		{"create", "<mission> --profile-id <id> --profile-version <version> --title <title> --params-json <object> [--x n --y n | --predecessor-node-id <id> | --successor-node-id <id>] [--json]", "add a Tool"},
@@ -92,14 +96,14 @@ var nounHelps = []nounHelp{
 		{"delete", "<id> [--json]", "delete a role's card; refused while a slot names the role, and for a built-in role"},
 	}},
 	{noun: "run", summary: "runs, through the daemon", about: "A run is one start of a mission or a single step. Read and drive runs with --server.", commands: []commandHelp{
-		{"list", "[--mission <mission>] [--json]", "list runs, or one mission's"},
+		{"list", "[--mission <mission>] [--json]", "list runs, or one mission's, newest first: one line per run with its ID, mission, status, Bead, start and last change. --json prints each run's full projection"},
 		{"status", "<runId> [--json]", "print a run's status"},
 		{"logs", "<runId> [--node <id>] [--follow] [--json]", "print a run's projection"},
 		{"follow", "<runId> [--since <seq>] [--node <id>] [--json]", "print the run as it changes until it is final"},
 		{"wait", "<runId> [--until needs-you|final|any-change] [--since <seq>] [--timeout <duration>] [--reconnect <duration>] [--json]", "block until the run needs you, ends or changes. Needs --server"},
 		{"gates", "<runId> [--json]", "list a run's waiting gates and the seats they asked. Needs --server"},
 		{"seats", "<runId> [--json]", "list a run's seats, their session names and what each waits on. Needs --server"},
-		{"resume", "<runId> [--mode reattach|redispatch] [--reason text] [--actor actor] [--json]", "resume a blocked run"},
+		{"resume", "<runId> [--mode reattach|redispatch] [--grant] [--reason text] [--actor actor] [--json]", "resume a blocked run. --grant gives a step its spent Limit card stopped one more round, or the card's time or tokens again"},
 		{"abort", "<runId> [--reason <reason>] [--requested-by <actor>] [--json]", "stop a run"},
 		{"ask", "<runId> [question] [--json]", "summarize what a run has done, offline"},
 	}},
@@ -112,7 +116,7 @@ var nounHelps = []nounHelp{
 	}},
 }
 
-const archonHelp = `usage: archon [--workspace <state-dir> | --server <url>] <mission|formation|gate|end|tool|agent|run|peer> <command> [arguments]
+const archonHelp = `usage: archon [--workspace <state-dir> | --server <url>] <mission|formation|gate|end|limit|tool|agent|run|peer> <command> [arguments]
        archon [--server <url>] version
 
 Archon chains agents and gates. Name the state directory with --workspace to

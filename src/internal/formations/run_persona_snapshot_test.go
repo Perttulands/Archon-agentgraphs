@@ -26,7 +26,7 @@ func TestLabPersonaSnapshotSurvivesEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	engine := NewRunEngine(store, personas, &fakeRunExecutor{})
-	status, err := engine.RunMission("session-search", RunStartRequest{MissionID: "mis_showcase", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev, Limits: RunLimits{MaxDispatch: 5, MaxAttempts: 3}})
+	status, err := engine.RunMission("session-search", RunStartRequest{MissionID: "mis_showcase", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestLabPersonaSnapshotSurvivesEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	lab := NewLabFormationExecutor(store, personas, LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: store.Workspace})
-	status, err = NewRunEngine(store, personas, lab).ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach", Reason: "approved"})
+	status, err = NewRunEngine(store, personas, lab).ContinueRun(status.RunID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestTmuxSeatsKeepAdmittedPersonaSettingsAcrossRestart(t *testing.T) {
 			client := &fakeTmuxHarnessClient{harness: harness, pane: tmuxPaneState{CurrentPath: cfg.Cwd}}
 			executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
 			engine := NewRunEngine(store, personas, executor)
-			status, err := engine.RunMission("session-search", RunStartRequest{MissionID: "mis_showcase", Limits: RunLimits{MaxDispatch: 5, MaxAttempts: 3}})
+			status, err := engine.RunMission("session-search", RunStartRequest{MissionID: "mis_showcase"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -89,7 +89,7 @@ func TestTmuxSeatsKeepAdmittedPersonaSettingsAcrossRestart(t *testing.T) {
 			}
 			// The replacement executor cannot access the persona store at all.
 			executor = newTmuxFormationExecutorWithClient(store, nil, cfg, client)
-			status, err = NewRunEngine(store, nil, executor).ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach", Reason: "approved after restart"})
+			status, err = NewRunEngine(store, nil, executor).ContinueRun(status.RunID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -103,7 +103,7 @@ func TestTmuxSeatsKeepAdmittedPersonaSettingsAcrossRestart(t *testing.T) {
 			if _, err := engine.RecordHumanGateVerdict(status.RunID, HumanGateVerdictRequest{GateID: "gate_review", Verdict: "pass", Reason: "approved", Actor: "human:operator"}); err != nil {
 				t.Fatal(err)
 			}
-			status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach", Reason: "approved rework"})
+			status, err = engine.ContinueRun(status.RunID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -124,7 +124,7 @@ func TestTmuxSeatsKeepAdmittedPersonaSettingsAcrossRestart(t *testing.T) {
 
 			// An independently admitted run gets the edit.
 			executor = newTmuxFormationExecutorWithClient(store, personas, cfg, client)
-			fresh, err := NewRunEngine(store, personas, executor).RunFormation("session-search", "fmn_ship", FormationRunRequest{Limits: RunLimits{MaxDispatch: 1}})
+			fresh, err := NewRunEngine(store, personas, executor).RunFormation("session-search", "fmn_ship", FormationRunRequest{})
 			if err != nil {
 				t.Fatal(err)
 			}

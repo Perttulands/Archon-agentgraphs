@@ -155,7 +155,7 @@ func (s *Store) DeleteEnd(slug string, req EndDeleteRequest, opts WriteOptions) 
 		if err != nil {
 			return err
 		}
-		current, err := parseBoardForWrite(raw)
+		current, err := parseBoard(raw)
 		if err != nil {
 			return err
 		}
@@ -179,7 +179,7 @@ func (s *Store) DeleteEnd(slug string, req EndDeleteRequest, opts WriteOptions) 
 		if err := definition.writeAtomic(nextRaw); err != nil {
 			return err
 		}
-		board, err := parseBoardForWrite(nextRaw)
+		board, err := parseBoard(nextRaw)
 		if err != nil {
 			return err
 		}
@@ -247,42 +247,6 @@ func decodeEndNodes(document map[string]any) ([]EndNode, error) {
 		nodes = append(nodes, node)
 	}
 	return nodes, nil
-}
-
-func parseEndNodes(raw []byte) []EndNode {
-	var ends []EndNode
-	var current *EndNode
-	active := false
-	for _, line := range splitLines(raw) {
-		trimmed := strings.TrimSpace(line.body)
-		section, isSection := tomlLineSectionName(line)
-		switch {
-		case isSection && strings.HasPrefix(trimmed, "[[") && section == "end":
-			ends = append(ends, EndNode{})
-			current = &ends[len(ends)-1]
-			active = true
-			continue
-		case isTOMLHeader(line):
-			active = false
-			continue
-		}
-		if line.valueContinuation || !active || current == nil {
-			continue
-		}
-		key, value, ok := tomlKeyValue(line.body)
-		if !ok {
-			continue
-		}
-		switch key {
-		case "id":
-			current.ID = value
-		case "title":
-			current.Title = value
-		case "outcome":
-			current.Outcome = value
-		}
-	}
-	return ends
 }
 
 func findEnd(board *BoardDocument, endID string) (EndNode, bool) {

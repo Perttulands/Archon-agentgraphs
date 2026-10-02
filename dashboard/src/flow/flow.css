@@ -87,3 +87,4 @@
 
 /* The pending human gate's answer panel sits in its row instead of over the canvas. */
 .fmx .flow-answer .gate-answer { position: static; width: auto; max-height: none; margin-top: 8px; box-shadow: none; }
+.fmx .flow-limit .flow-link { color: var(--accent); }

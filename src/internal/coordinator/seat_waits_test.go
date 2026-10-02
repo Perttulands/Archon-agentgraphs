@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
@@ -28,7 +29,7 @@ func TestSeatWaitsLastUntilTheSeatMovesOn(t *testing.T) {
 		t.Fatalf("slot_b wait = %+v", got)
 	}
 
-	got, err := projectWait("run_x", events, nil, WaitUntilAnyChange, 4, true)
+	got, err := projectWait("run_x", events, nil, WaitUntilAnyChange, 4, true, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}

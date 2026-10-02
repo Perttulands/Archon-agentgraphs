@@ -136,7 +136,7 @@ func runMissionInput(store *formations.Store, args []string, stdout, stderr io.W
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	if fs.NArg() == 1 {
 		return writeMissionInputs(stdout, board, *jsonOut)

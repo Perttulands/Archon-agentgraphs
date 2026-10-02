@@ -26,6 +26,10 @@ const (
 	SeatOutcomeGone              = "gone"
 	SeatOutcomeLeftSocketChanged = "left_socket_changed"
 	SeatOutcomeLeftCleanupFailed = "left_cleanup_failed"
+	// SeatOutcomeLeftShutdown leaves a working seat running across a daemon
+	// shutdown, for the restarted daemon to reattach. The run still owns it:
+	// its step's next attempt or the run's end ends it (archon-itk).
+	SeatOutcomeLeftShutdown = "left_shutdown"
 
 	// Why a kept seat ended.
 	SeatCauseAskAnswered = "ask_answered"
@@ -66,7 +70,7 @@ func AskFallbackReason(code string) string {
 // ledger; the keeper only acts on one recorded seat at a time.
 type SeatKeeper interface {
 	// EndKeptSeat waits up to a minute for the agent to go idle, then ends the
-	// seat by its recorded identity. It returns the seat_cleanup outcome and a
+	// seat by its recorded identity; a seat left at shutdown ends at once. It returns the seat_cleanup outcome and a
 	// detail for anything other than ended.
 	EndKeptSeat(ctx context.Context, seat KeptSeat) (outcome, detail string)
 	// ProbeKeptSeat reports whether the seat still runs on the server it was
@@ -90,6 +94,9 @@ type KeptSeat struct {
 	PaneID         string `json:"paneId"`
 	SocketIdentity string `json:"socketIdentity,omitempty"`
 	Harness        string `json:"harness,omitempty"`
+	// Left marks a seat left running at a daemon shutdown rather than kept on
+	// call; it takes no asks and ends without waiting for idle.
+	Left bool `json:"left,omitempty"`
 }
 
 // RunHumanChannel is the channel of a run's frozen mission: session or notify.
@@ -197,6 +204,31 @@ func latestGateEvaluationBefore(events []RunEvent, gateID string, before int) (R
 
 // KeptSeats lists the run's seats kept on call and not ended since, oldest first.
 func KeptSeats(events []RunEvent) []KeptSeat {
+	var kept []KeptSeat
+	for _, seat := range ownedSeats(events) {
+		if !seat.Left {
+			kept = append(kept, seat)
+		}
+	}
+	return kept
+}
+
+// LeftSeats lists the seats a daemon shutdown left running whose run has not
+// ended them since, oldest first.
+func LeftSeats(events []RunEvent) []KeptSeat {
+	var left []KeptSeat
+	for _, seat := range ownedSeats(events) {
+		if seat.Left {
+			left = append(left, seat)
+		}
+	}
+	return left
+}
+
+// ownedSeats lists the run's seats still running outside an execution: kept
+// on call, or left at a daemon shutdown (Left). A later cleanup of a seat
+// replaces what an earlier one recorded.
+func ownedSeats(events []RunEvent) []KeptSeat {
 	seats := map[int]KeptSeat{}
 	ended := map[int]bool{}
 	for _, event := range events {
@@ -221,11 +253,16 @@ func KeptSeats(events []RunEvent) []KeptSeat {
 			if match == 0 {
 				continue
 			}
-			if stringFromEventData(event, "outcome") == SeatOutcomeKeptOnCall {
+			switch stringFromEventData(event, "outcome") {
+			case SeatOutcomeKeptOnCall:
 				seat := seats[match]
-				seat.KeptSeq = event.Seq
+				seat.KeptSeq, seat.Left = event.Seq, false
 				seats[match] = seat
-			} else {
+			case SeatOutcomeLeftShutdown:
+				seat := seats[match]
+				seat.KeptSeq, seat.Left = event.Seq, true
+				seats[match] = seat
+			default:
 				ended[match] = true
 			}
 		}
@@ -240,24 +277,29 @@ func KeptSeats(events []RunEvent) []KeptSeat {
 	return kept
 }
 
-// OpenHumanRequests lists the human requests still waiting for a verdict.
+// OpenHumanRequests lists the human requests still waiting for a verdict,
+// oldest first. It is the one rule every reader uses (archon-o7p.11): a
+// request waits from its human_input_requested until a verdict is recorded on
+// its gate, the gate starts evaluating a newer input, which replaces the
+// request, or the run ends. Several gates may wait at once.
 func OpenHumanRequests(events []RunEvent) []RunEvent {
+	open := map[string]RunEvent{}
 	for _, event := range events {
-		if isFinalRunEvent(event.Type) {
+		gateID := event.GateID
+		if gateID == "" {
+			gateID = event.NodeID
+		}
+		switch event.Type {
+		case RunEventHumanInputRequested:
+			open[gateID] = event
+		case RunEventHumanVerdictRecorded, RunEventGateEvaluating:
+			delete(open, gateID)
+		case RunEventSucceeded, RunEventFailed, RunEventCanceled:
 			return nil
 		}
 	}
-	latest := map[string]RunEvent{}
-	for _, event := range events {
-		switch event.Type {
-		case RunEventHumanInputRequested:
-			latest[event.GateID] = event
-		case RunEventHumanVerdictRecorded:
-			delete(latest, event.GateID)
-		}
-	}
-	requests := make([]RunEvent, 0, len(latest))
-	for _, request := range latest {
+	requests := make([]RunEvent, 0, len(open))
+	for _, request := range open {
 		requests = append(requests, request)
 	}
 	sort.Slice(requests, func(i, j int) bool { return requests[i].Seq < requests[j].Seq })
@@ -327,8 +369,9 @@ func HumanAskUncertainSeats(events []RunEvent) map[int]bool {
 type OnCallPlan struct {
 	// Gone lists kept seats no longer present, with the outcome to record.
 	Gone []GoneKeptSeat
-	// Answered lists kept seats that received an ask while no open request
-	// names their formation as the asker.
+	// Answered lists kept seats that received an ask while no open request,
+	// and no verdict the run has yet to route, names their formation as the
+	// asker.
 	Answered    []KeptSeat
 	Deliveries  []HumanAskDelivery
 	Fallbacks   []HumanAskFallback
@@ -347,15 +390,16 @@ type SeatProbe func(KeptSeat) (bool, string)
 
 // PlanOnCall decides, from the ledger and a probe of the kept seats, which seats
 // to record gone or release and where each open ask goes. It plans nothing for a
-// notify-channel, blocked or final run: a blocked run keeps its seats and owes
-// its asks until it resumes.
+// notify-channel, blocked, final or ending run: a blocked run keeps its seats and
+// owes its asks until it resumes, and an ending run's seats ended for its final
+// event, which follows.
 func PlanOnCall(board *BoardDocument, events []RunEvent, keeper bool, probe SeatProbe) OnCallPlan {
 	var plan OnCallPlan
 	if len(events) == 0 || RunHumanChannel(board, events) != HumanChannelSession {
 		return plan
 	}
 	status, err := ProjectRunEvents(events[0].RunID, events)
-	if err != nil || status.Final || status.Status == RunStatusBlocked {
+	if err != nil || status.Final || status.Status == RunStatusBlocked || runEnding(events) {
 		return plan
 	}
 	present := map[int]KeptSeat{}
@@ -376,6 +420,13 @@ func PlanOnCall(board *BoardDocument, events []RunEvent, keeper bool, probe Seat
 	askers := map[string]bool{}
 	for _, request := range requests {
 		askers[AskingFormation(board, events, request)] = true
+	}
+	// A verdict the run has not routed yet still holds its asker's seats: the
+	// gate's next ask may follow it (archon-o7p.11).
+	for _, verdict := range unroutedHumanVerdicts(events) {
+		if seq := intFromRunEventData(verdict.Data["requestedSeq"]); seq > 0 && seq <= len(events) {
+			askers[AskingFormation(board, events, events[seq-1])] = true
+		}
 	}
 	for _, seat := range present {
 		if askers[seat.NodeID] {
@@ -443,6 +494,22 @@ func PlanOnCall(board *BoardDocument, events []RunEvent, keeper bool, probe Seat
 		}
 	}
 	return plan
+}
+
+// runEnding reports whether the run's kept seats ended for its end since it last
+// resumed: its final event comes next, so a seat that ended then is not gone.
+func runEnding(events []RunEvent) bool {
+	for index := len(events) - 1; index >= 0; index-- {
+		switch event := events[index]; event.Type {
+		case RunEventResumed:
+			return false
+		case RunEventSeatCleanup:
+			if stringFromEventData(event, "cause") == SeatCauseRunFinal {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // askReceivers are the present kept seats of the asking formation's latest

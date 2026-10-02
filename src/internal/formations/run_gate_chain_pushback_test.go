@@ -150,7 +150,6 @@ func startGateChainRun(t *testing.T, signoffKinds string, executor *chainScriptE
 	}
 	status, err := NewRunEngine(store, personas, executor).RunMission("session-search", RunStartRequest{
 		MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev,
-		Limits: RunLimits{MaxDispatch: 20, MaxAttempts: 5},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -207,7 +206,7 @@ func TestHumanSendBackOnGateFedByGateRedispatchesTheWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	sentBack := lastSeq(t, store, runID)
-	status, err := NewRunEngine(store, personas, executor).ResumeRun(runID, RunResumeRequest{Actor: "coordinator", Mode: "reattach", Reason: "human verdict recorded"})
+	status, err := NewRunEngine(store, personas, executor).ContinueRun(runID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +226,7 @@ func TestHumanSendBackOnGateFedByGateRedispatchesTheWork(t *testing.T) {
 	if _, err := NewRunEngine(store, personas, executor).RecordHumanGateVerdict(runID, HumanGateVerdictRequest{GateID: "gate_signoff", Verdict: "pass", Reason: "Signed off.", Actor: "human:operator"}); err != nil {
 		t.Fatal(err)
 	}
-	status, err = NewRunEngine(store, personas, executor).ResumeRun(runID, RunResumeRequest{Actor: "coordinator", Mode: "reattach", Reason: "human verdict recorded"})
+	status, err = NewRunEngine(store, personas, executor).ContinueRun(runID)
 	if err != nil {
 		t.Fatal(err)
 	}

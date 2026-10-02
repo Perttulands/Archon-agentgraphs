@@ -33,8 +33,6 @@ goal = "Build the widget"
 beadId = "archon-abc.2"
 files = ["src/widget.go", "docs/widget.md"]
 links = ["https://example.test/spec"]
-[formation.execution]
-timeoutSeconds = 900
 [[formation.input]]
 id = "port_build_in"
 label = "Plan"

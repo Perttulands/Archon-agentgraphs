@@ -319,7 +319,7 @@ func TestFormationsHandlerS5ResumeVerdictAndEscalations(t *testing.T) {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"inputs":{"brief":"run it"},"mission":"session-search","inputCardId":"mis_showcase","limits":{"maxDispatch":1}}`))
+	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"inputs":{"brief":"run it"},"mission":"session-search","inputCardId":"mis_showcase"}`))
 	startRec := httptest.NewRecorder()
 	mux.ServeHTTP(startRec, startReq)
 	if startRec.Code != http.StatusOK {
@@ -354,7 +354,6 @@ func TestFormationsHandlerS5ResumeVerdictAndEscalations(t *testing.T) {
 		ExpectedBoardETag: humanBoard.ETag,
 		ExpectedBoardRev:  humanBoard.Rev,
 		Personas:          personas,
-		Limits:            formations.RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("start human waiting run: %v", err)
@@ -407,7 +406,7 @@ func TestFormationsHandlerStartsSingleFormationByID(t *testing.T) {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"inputs":{"brief":"run it"},"mission":"session-search","formationId":"fmn_work","actor":"agent:test","limits":{"maxDispatch":1,"maxAttempts":1}}`))
+	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"inputs":{"brief":"run it"},"mission":"session-search","formationId":"fmn_work","actor":"agent:test"}`))
 	startRec := httptest.NewRecorder()
 	mux.ServeHTTP(startRec, startReq)
 	if startRec.Code != http.StatusOK {
@@ -1289,7 +1288,7 @@ func TestFormationsHandlerS4RunLifecycleAndSSE(t *testing.T) {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"inputs":{"brief":"run it"},"mission":"session-search","inputCardId":"mis_showcase","actor":"agent:test","limits":{"maxDispatch":4,"maxAttempts":2}}`))
+	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"inputs":{"brief":"run it"},"mission":"session-search","inputCardId":"mis_showcase","actor":"agent:test"}`))
 	startReq.Header.Set("If-Match", board.ETag)
 	startRec := httptest.NewRecorder()
 	mux.ServeHTTP(startRec, startReq)
@@ -1414,7 +1413,7 @@ func TestFormationsHandlerS4ConfiguredLabExecutorRunsStaffedFormation(t *testing
 	}
 
 	handler := NewFormationsHandlerWithStores(store, personas)
-	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"inputs":{"brief":"run it"},"mission":"poems","inputCardId":"mis_poem","actor":"agent:test","limits":{"maxDispatch":3,"maxAttempts":1}}`))
+	startReq := httptest.NewRequest(http.MethodPost, "/api/runs", bytes.NewBufferString(`{"inputs":{"brief":"run it"},"mission":"poems","inputCardId":"mis_poem","actor":"agent:test"}`))
 	startReq.Header.Set("If-Match", board.ETag)
 	startRec := httptest.NewRecorder()
 	handler.StartRun(startRec, startReq)

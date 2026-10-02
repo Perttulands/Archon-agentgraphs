@@ -285,8 +285,8 @@ func TestTmuxExecutorNeverDispatchesWhenClaudeTUIReadinessUnknown(t *testing.T) 
 		harness:         "claude-code",
 		startupCaptures: []string{"Claude Code\nstarting"},
 	}
-	// Archon sets no default step duration, so the step authors one second.
-	status, events := runTmuxFormationForTest(t, client, withStepDuration(s4RunBoardFixture(), 1))
+	// Archon sets no default step duration, so a Limit card gives the step one second.
+	status, events := runTmuxFormationForTest(t, client, withStepTimeLimit(s4RunBoardFixture(), 1))
 	if status.Status != RunStatusBlocked || !status.ResumeAllowed {
 		t.Fatalf("status = %+v, want resumable blocked run", status)
 	}
@@ -297,8 +297,8 @@ func TestTmuxExecutorNeverDispatchesWhenClaudeTUIReadinessUnknown(t *testing.T) 
 		t.Fatalf("events = %v, want no slot_dispatch or adapter_send before readiness", eventTypes(events))
 	}
 	errEvent := eventOfType(t, events, RunEventError)
-	if errEvent.Data["code"] != "formation_timeout_exceeded" || errEvent.Data["boundary"] != "limits" {
-		t.Fatalf("error data = %#v, want formation_timeout_exceeded at limits boundary", errEvent.Data)
+	if errEvent.Data["code"] != RunBlockLimitReached || errEvent.Data["boundary"] != "limits" || errEvent.Data["reason"] != "Research used 1 s of 1 s" {
+		t.Fatalf("error data = %#v, want the time card spent at the limits boundary", errEvent.Data)
 	}
 	if len(client.created) != 1 || fmt.Sprint(client.killed) != fmt.Sprint(client.created) {
 		t.Fatalf("created=%v killed=%v, want exact owned-session cleanup", client.created, client.killed)
@@ -307,8 +307,8 @@ func TestTmuxExecutorNeverDispatchesWhenClaudeTUIReadinessUnknown(t *testing.T) 
 
 func TestTmuxExecutorNeverDispatchesWhenCodexTUIReadinessUnknown(t *testing.T) {
 	client := &fakeTmuxHarnessClient{startupCaptures: []string{"OpenAI Codex\nstarting"}}
-	// Archon sets no default step duration, so the step authors one second.
-	status, events := runTmuxFormationForTest(t, client, withStepDuration(s4RunBoardFixture(), 1))
+	// Archon sets no default step duration, so a Limit card gives the step one second.
+	status, events := runTmuxFormationForTest(t, client, withStepTimeLimit(s4RunBoardFixture(), 1))
 	if status.Status != RunStatusBlocked || !status.ResumeAllowed {
 		t.Fatalf("status = %+v, want resumable blocked run", status)
 	}
@@ -319,8 +319,8 @@ func TestTmuxExecutorNeverDispatchesWhenCodexTUIReadinessUnknown(t *testing.T) {
 		t.Fatalf("events = %v, want no slot_dispatch or adapter_send before readiness", eventTypes(events))
 	}
 	errEvent := eventOfType(t, events, RunEventError)
-	if errEvent.Data["code"] != "formation_timeout_exceeded" || errEvent.Data["boundary"] != "limits" {
-		t.Fatalf("error data = %#v, want formation_timeout_exceeded at limits boundary", errEvent.Data)
+	if errEvent.Data["code"] != RunBlockLimitReached || errEvent.Data["boundary"] != "limits" || errEvent.Data["reason"] != "Research used 1 s of 1 s" {
+		t.Fatalf("error data = %#v, want the time card spent at the limits boundary", errEvent.Data)
 	}
 	if len(client.created) != 1 || fmt.Sprint(client.killed) != fmt.Sprint(client.created) {
 		t.Fatalf("created=%v killed=%v, want exact owned-session cleanup", client.created, client.killed)
@@ -632,7 +632,6 @@ func TestTmuxExecutorParsesNamedOutputPayloadBlockForPortRouting(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 1},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -723,7 +722,6 @@ func testTmuxOutputRefRouting(t *testing.T, location string) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 1},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -813,7 +811,6 @@ func TestTmuxExecutorBlocksInvalidOutputRefArtifacts(t *testing.T) {
 				Actor:             "agent:test",
 				ExpectedBoardETag: board.ETag,
 				ExpectedBoardRev:  board.Rev,
-				Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 1},
 			})
 			if err != nil {
 				t.Fatalf("run mission: %v", err)
@@ -861,8 +858,7 @@ func TestTmuxOrchestratedFormationGivesLeaderToolPacketWithoutPreDispatchingWork
 	executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
 	engine := NewRunEngine(store, personas, executor)
 	status, err := engine.RunFormation("session-search", "fmn_orch", FormationRunRequest{
-		Actor:  "agent:test",
-		Limits: RunLimits{MaxDispatch: 6, MaxAttempts: 1},
+		Actor: "agent:test",
 	})
 	if err != nil {
 		t.Fatalf("run orchestrated formation: %v", err)
@@ -968,8 +964,7 @@ func TestTmuxOrchestratedFormationRejectsInvalidSlotShapeBeforeDispatch(t *testi
 			executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
 			engine := NewRunEngine(store, personas, executor)
 			status, err := engine.RunFormation("session-search", "fmn_orch", FormationRunRequest{
-				Actor:  "agent:test",
-				Limits: RunLimits{MaxDispatch: 6, MaxAttempts: 1},
+				Actor: "agent:test",
 			})
 			if err != nil {
 				t.Fatalf("run orchestrated formation: %v", err)
@@ -1186,8 +1181,7 @@ func runTmuxFormationForTestWithConfig(t *testing.T, client *fakeTmuxHarnessClie
 	executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
 	engine := NewRunEngine(store, personas, executor)
 	status, err := engine.RunFormation("session-search", "fmn_research", FormationRunRequest{
-		Actor:  "agent:test",
-		Limits: RunLimits{MaxDispatch: 5, MaxAttempts: 1},
+		Actor: "agent:test",
 	})
 	if err != nil {
 		t.Fatalf("run tmux formation: %v", err)
@@ -1886,9 +1880,9 @@ func TestWorkerOutcomeMappersDistinguishMissingSession(t *testing.T) {
 // A completion capture that fails for a reason other than a missing target is
 // the capture_failed defensive outcome: recorded as an anomaly on an otherwise
 // successful run, never silence and never a run failure.
-// withStepDuration authors execution.timeoutSeconds on the Research step.
-func withStepDuration(board string, seconds int) string {
-	return strings.Replace(board, "title = \"Research\"", fmt.Sprintf("title = \"Research\"\n\n[formation.execution]\ntimeoutSeconds = %d", seconds), 1)
+// withStepTimeLimit caps the Research step's time with a Limit card.
+func withStepTimeLimit(board string, seconds int) string {
+	return board + fmt.Sprintf("\n[[limit]]\nid = \"lim_research\"\ntitle = \"Research time\"\ntarget = \"fmn_research\"\nseconds = %d\n", seconds)
 }
 
 // An output ref names an absolute path; a relative one is refused rather than

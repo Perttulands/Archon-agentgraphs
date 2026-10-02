@@ -19,7 +19,6 @@
 .fmx .canvas-legend .legend-ring.waiting{box-shadow:0 0 0 1.5px var(--gold);}
 .fmx .canvas-legend .legend-ring.blocked{border-color:var(--terra-d);box-shadow:0 0 0 1.5px var(--terra-d);}
 .fmx .canvas-legend .legend-ring .run-chip{right:auto;left:52px;top:1px;}
-.fmx .canvas-legend .legend-pause{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);}
 .fmx .canvas-legend .legend-harnesses{grid-template-columns:repeat(2,1fr);}
 .fmx .canvas-legend .legend-harnesses li{grid-template-columns:24px 1fr;}
 .fmx .canvas-legend .legend-glyph{display:flex;width:20px;height:20px;color:var(--ink2);}

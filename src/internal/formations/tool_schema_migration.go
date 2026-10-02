@@ -5,8 +5,6 @@ import (
 	"strings"
 )
 
-const legacyJudgeChannelMigrationCode = "legacy_judge_channel_requires_migration"
-
 type toolSchemaMigrationPort struct {
 	end       int
 	portID    string
@@ -447,9 +445,9 @@ func toolSchemaMigrationGateKinds(literals []string) ([]string, bool, bool) {
 
 func toolSchemaMigrationJudgeError(gateID, detail string) error {
 	if gateID == "" {
-		return fmt.Errorf("%s: %s", legacyJudgeChannelMigrationCode, detail)
+		return fmt.Errorf("%s: %s", FindingInvalidJudgeRelationship, detail)
 	}
-	return fmt.Errorf("%s: gate %q: %s", legacyJudgeChannelMigrationCode, gateID, detail)
+	return fmt.Errorf("%s: gate %q: %s", FindingInvalidJudgeRelationship, gateID, detail)
 }
 
 func toolSchemaMigrationValidatePort(lines []tomlLine, schema int, port toolSchemaMigrationPort, insertions map[int][]tomlLine) error {

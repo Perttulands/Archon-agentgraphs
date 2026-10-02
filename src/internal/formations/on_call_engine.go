@@ -2,6 +2,7 @@ package formations
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -44,7 +45,38 @@ func (e *RunEngine) endKeptSeats(runID, cause string, selected func(KeptSeat) bo
 			seats = append(seats, seat)
 		}
 	}
+	if selected == nil {
+		// The run's end also ends the seats a daemon shutdown left running.
+		seats = append(seats, LeftSeats(events)...)
+	}
 	return e.EndKeptSeatsNow(runID, seats, cause, keeper)
+}
+
+// KeptSeatIdler waits for a kept seat's agent to go idle, so a caller can wait
+// before it takes anything a verdict or resume needs.
+type KeptSeatIdler interface {
+	AwaitKeptSeatIdle(ctx context.Context, seat KeptSeat)
+}
+
+// AwaitKeptSeatsIdle waits, up to EndKeptSeat's own idle wait, for the given
+// seats' agents to go idle, in parallel. EndKeptSeat then finds them idle at
+// once, so a caller holding the run's command meanwhile holds it briefly.
+func (e *RunEngine) AwaitKeptSeatsIdle(seats []KeptSeat, keeper SeatKeeper) {
+	idler, ok := keeper.(KeptSeatIdler)
+	if !ok {
+		return
+	}
+	var wg sync.WaitGroup
+	for _, seat := range seats {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), keptSeatIdleWait+15*time.Second)
+			defer cancel()
+			idler.AwaitKeptSeatIdle(ctx, seat)
+		}()
+	}
+	wg.Wait()
 }
 
 // EndKeptSeatsNow ends the given seats and records seat_cleanup for each.
@@ -79,20 +111,14 @@ func (e *RunEngine) EndKeptSeatsNow(runID string, seats []KeptSeat, cause string
 	return nil
 }
 
+// errNothingToRecord ends a conditional append that the ledger already makes
+// unnecessary.
+var errNothingToRecord = errors.New("nothing to record")
+
 // RecordKeptSeatCleanup records one kept seat's end, unless the ledger already
-// shows it ended.
+// shows it ended. The check holds the append lock: the run's worker and the
+// session dispatcher may end the same seat at once (archon-o7p.11).
 func (e *RunEngine) RecordKeptSeatCleanup(runID string, seat KeptSeat, outcome, cause, detail string) error {
-	events, err := e.store.ReadRunEvents(runID)
-	if err != nil {
-		return err
-	}
-	still := false
-	for _, kept := range KeptSeats(events) {
-		still = still || kept.CreatedSeq == seat.CreatedSeq
-	}
-	if !still {
-		return nil
-	}
 	data := map[string]any{"sessionName": seat.SessionName, "outcome": outcome}
 	if cause != "" {
 		data["cause"] = cause
@@ -100,13 +126,22 @@ func (e *RunEngine) RecordKeptSeatCleanup(runID string, seat KeptSeat, outcome, 
 	if detail != "" {
 		data["detail"] = detail
 	}
-	return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventSeatCleanup, NodeID: seat.NodeID, SlotID: seat.SlotID, Data: data})
+	err := e.store.appendRunEventIf(runID, RunEvent{Type: RunEventSeatCleanup, NodeID: seat.NodeID, SlotID: seat.SlotID, Data: data}, func(events []RunEvent) error {
+		if !seatStillKept(events, seat) {
+			return errNothingToRecord
+		}
+		return nil
+	})
+	if errors.Is(err, errNothingToRecord) {
+		return nil
+	}
+	return err
 }
 
 // reconsiderKeptSeats runs when a formation is about to dispatch. The
-// formation's own kept seats end before its new attempt creates seats with the
-// same names; seats whose asks were all answered end too, and seats found gone
-// are recorded.
+// formation's own kept seats, and those a daemon shutdown left running, end
+// before its new attempt creates seats with the same names; seats whose asks
+// were all answered end too, and seats found gone are recorded.
 func (e *RunEngine) reconsiderKeptSeats(runID, dispatching string) error {
 	plan, err := e.PlanRunOnCall(context.Background(), runID)
 	if err != nil || plan.Keeper == nil {
@@ -120,6 +155,15 @@ func (e *RunEngine) reconsiderKeptSeats(runID, dispatching string) error {
 	var attempt []KeptSeat
 	for _, seat := range plan.Kept {
 		if seat.NodeID == dispatching && !plan.isGone(seat) {
+			attempt = append(attempt, seat)
+		}
+	}
+	events, err := e.store.ReadRunEvents(runID)
+	if err != nil {
+		return err
+	}
+	for _, seat := range LeftSeats(events) {
+		if seat.NodeID == dispatching {
 			attempt = append(attempt, seat)
 		}
 	}
@@ -286,7 +330,7 @@ func renderHumanAskBrief(runID string, board *BoardDocument, events []RunEvent, 
 	fmt.Fprintf(&b, "      %s --server %s gate approve %s %s --requested-seq %d --relayed-by %s --response-file FILE\n", cli, server, runID, request.GateID, request.Seq, slot)
 	fmt.Fprintf(&b, "      %s --server %s gate reject %s %s --requested-seq %d --relayed-by %s --response-file FILE\n\n", cli, server, runID, request.GateID, request.Seq, slot)
 	b.WriteString("- Approve sends the response to the next step with the gate's input. Reject sends the work back, and the next attempt reads only the response, so it must carry what the conversation settled.\n")
-	b.WriteString("- A 409 saying the coordinator is executing means the run is busy for a moment: wait a few seconds and run the same command again.\n")
+	b.WriteString("- A 503 means the daemon is restarting: wait a few seconds and run the same command again.\n")
 	b.WriteString("- A 409 saying the human gate request is no longer pending means another seat or the cockpit decided first: tell the operator.\n")
 	b.WriteString("- Your formation brief's limits still apply. Running the gate command above is the one exception to its bans.\n")
 	return b.String()
@@ -294,38 +338,31 @@ func renderHumanAskBrief(runID string, board *BoardDocument, events []RunEvent, 
 
 // RecordHumanAskDelivered records that a seat received a pending ask, unless the
 // request stopped waiting, the seat ended or the delivery is already recorded.
+// The check holds the append lock, so the record never lands after the verdict
+// or the seat's end it raced with.
 func (e *RunEngine) RecordHumanAskDelivered(runID string, delivery HumanAskDelivery, briefPath string) (bool, error) {
-	events, err := e.store.ReadRunEvents(runID)
-	if err != nil {
-		return false, err
-	}
-	if !requestStillOpen(events, delivery.Request) || !seatStillKept(events, delivery.Seat) {
-		return false, nil
-	}
-	if record := HumanAskRecords(events)[delivery.Request.Seq]; record != nil && record.Delivered[delivery.Seat.CreatedSeq].Type != "" {
-		return false, nil
-	}
-	return true, e.store.AppendRunEvent(runID, RunEvent{
+	err := e.store.appendRunEventIf(runID, RunEvent{
 		Type: RunEventHumanAskDelivered, GateID: delivery.Request.GateID, NodeID: delivery.AskingNodeID, SlotID: delivery.Seat.SlotID,
 		Data: map[string]any{"requestedSeq": delivery.Request.Seq, "gateId": delivery.Request.GateID, "seatCreatedSeq": delivery.Seat.CreatedSeq, "sessionName": delivery.Seat.SessionName, "brief": briefPath},
+	}, func(events []RunEvent) error {
+		if !requestStillOpen(events, delivery.Request) || !seatStillKept(events, delivery.Seat) {
+			return errNothingToRecord
+		}
+		if record := HumanAskRecords(events)[delivery.Request.Seq]; record != nil && record.Delivered[delivery.Seat.CreatedSeq].Type != "" {
+			return errNothingToRecord
+		}
+		return nil
 	})
+	if errors.Is(err, errNothingToRecord) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // RecordHumanAskFallback records, once, why an ask falls back. An uncertain
 // paste is also recorded after its request was answered, while its seat is
 // still kept: a verdict must not lose the identity of input we cannot touch.
 func (e *RunEngine) RecordHumanAskFallback(runID string, fallback HumanAskFallback) (bool, error) {
-	events, err := e.store.ReadRunEvents(runID)
-	if err != nil {
-		return false, err
-	}
-	uncertainSeat := fallback.Code == AskFallbackDeliveryUncertain && fallback.Seat.CreatedSeq > 0 && seatStillKept(events, fallback.Seat)
-	if !requestStillOpen(events, fallback.Request) && !uncertainSeat {
-		return false, nil
-	}
-	if record := HumanAskRecords(events)[fallback.Request.Seq]; record != nil && record.Fallback != nil {
-		return false, nil
-	}
 	event := RunEvent{
 		Type: RunEventHumanAskFallback, GateID: fallback.Request.GateID,
 		Data: map[string]any{"requestedSeq": fallback.Request.Seq, "gateId": fallback.Request.GateID, "code": fallback.Code, "reason": AskFallbackReason(fallback.Code)},
@@ -335,7 +372,20 @@ func (e *RunEngine) RecordHumanAskFallback(runID string, fallback HumanAskFallba
 		event.Data["seatCreatedSeq"] = fallback.Seat.CreatedSeq
 		event.Data["sessionName"] = fallback.Seat.SessionName
 	}
-	return true, e.store.AppendRunEvent(runID, event)
+	err := e.store.appendRunEventIf(runID, event, func(events []RunEvent) error {
+		uncertainSeat := fallback.Code == AskFallbackDeliveryUncertain && fallback.Seat.CreatedSeq > 0 && seatStillKept(events, fallback.Seat)
+		if !requestStillOpen(events, fallback.Request) && !uncertainSeat {
+			return errNothingToRecord
+		}
+		if record := HumanAskRecords(events)[fallback.Request.Seq]; record != nil && record.Fallback != nil {
+			return errNothingToRecord
+		}
+		return nil
+	})
+	if errors.Is(err, errNothingToRecord) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func requestStillOpen(events []RunEvent, request RunEvent) bool {
@@ -352,7 +402,7 @@ func requestStillOpen(events []RunEvent, request RunEvent) bool {
 }
 
 func seatStillKept(events []RunEvent, seat KeptSeat) bool {
-	for _, kept := range KeptSeats(events) {
+	for _, kept := range ownedSeats(events) {
 		if kept.CreatedSeq == seat.CreatedSeq {
 			return true
 		}

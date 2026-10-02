@@ -11,6 +11,8 @@ export interface EvidenceNames {
   relayer: (slotId: string) => string
   /** Where a routed input came from: the step, and its port when it has several. */
   source: (nodeId?: string, portId?: string) => string
+  /** Whether a node is the Input card, whose Limit card covers the whole mission. */
+  inputCard?: (nodeId: string) => boolean
 }
 
 export function evidenceNamesForBoard(board: BoardDocument | null | undefined): EvidenceNames {
@@ -35,6 +37,7 @@ export function evidenceNamesForBoard(board: BoardDocument | null | undefined): 
   return {
     node,
     port,
+    inputCard: nodeId => Boolean(board?.inputCards?.some(card => card.id === nodeId)),
     slot: (nodeId, slotId) => slots.get(nodeId)?.get(slotId) || slotId,
     relayer: slotId => relayers.get(slotId) || slotId,
     source: (nodeId, portId) => {

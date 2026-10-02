@@ -190,8 +190,13 @@ func TestRunListNeedsYouKeepsWaitingAndBlockedRuns(t *testing.T) {
 	if got := ids("/api/runs?needs=you"); len(got) != 0 {
 		t.Fatalf("a canceled run still needs you: %v", got)
 	}
-	// A run blocked on a spent limit needs the operator too.
-	w := post(t, c, "/api/runs", `{"inputs":{"brief":"one step only"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":1}}`)
+	// A run blocked on a spent limit needs the operator too: the mission may
+	// run one step, so approving finds its rounds spent.
+	limited := testBoard + "[[limit]]\nid = \"lim_mission\"\ntitle = \"Cap\"\ntarget = \"mis_proof\"\nrounds = 1\n"
+	if err := os.WriteFile(c.store.BoardPath("proof"), []byte(limited), 0600); err != nil {
+		t.Fatal(err)
+	}
+	w := post(t, c, "/api/runs", `{"inputs":{"brief":"one step only"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 	var receipt struct {
 		Data struct {
 			RunID string `json:"runId"`

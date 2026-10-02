@@ -2202,7 +2202,7 @@ func TestArchonS5RunResumeCommandUsesEngine(t *testing.T) {
 	writeArchonFile(t, store.BoardPath("session-search"), archonS5CascadeBoardFixture())
 	runner := &fakeTmux{live: map[string]bool{}}
 
-	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "run", "session-search", "--input", "brief=Search the sessions", "--max-dispatch", "1", "--json")
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "run", "session-search", "--input", "brief=Search the sessions", "--json")
 	if code != 0 {
 		t.Fatalf("mission run code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -2242,7 +2242,6 @@ func TestArchonS5GateApproveRoutesHumanGate(t *testing.T) {
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            formations.RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("start human waiting run: %v", err)
@@ -2251,6 +2250,24 @@ func TestArchonS5GateApproveRoutesHumanGate(t *testing.T) {
 		t.Fatalf("waiting run = %+v, want non-final human wait", waiting)
 	}
 
+	// A daemon owning the state answers the verdict itself; the offline
+	// command, which would route it beside the daemon's worker, refuses.
+	release, err := holdStateLock(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"gate", "approve", waiting.RunID, "gate_review", "--response", "direction is right"},
+		{"run", "resume", waiting.RunID},
+		{"run", "abort", waiting.RunID},
+		{"mission", "run", "session-search", "--input", "brief=again"},
+	} {
+		args = append([]string{"--workspace", workspace}, append(args, "--json")...)
+		if _, stderr, code := runArchon(t, runner, args...); code == 0 || !strings.Contains(stderr, "a daemon owns this state directory") {
+			t.Fatalf("%v beside a daemon: code=%d stderr=%s", args, code, stderr)
+		}
+	}
+	release()
 	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "gate", "approve", waiting.RunID, "gate_review", "--response", "direction is right", "--json")
 	if code != 0 {
 		t.Fatalf("gate approve code=%d stderr=%s stdout=%s", code, stderr, stdout)
@@ -2275,7 +2292,7 @@ func TestArchonGateApproveRecordsTheResponse(t *testing.T) {
 	engine := formations.NewRunEngine(store, personas, archonTestRunExecutor{})
 	waiting, err := engine.RunMission("session-search", formations.RunStartRequest{
 		MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev,
-		Personas: personas, Limits: formations.RunLimits{MaxDispatch: 5, MaxAttempts: 2},
+		Personas: personas,
 	})
 	if err != nil {
 		t.Fatalf("start human waiting run: %v", err)
@@ -2375,27 +2392,10 @@ func TestArchonS4ConfiguredLabPoemMissionReachesGateAndPolishesAfterApproval(t *
 	if code != 0 {
 		t.Fatalf("gate approve code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
+	// Offline, the approval routes itself and runs what follows (archon-o7p.11).
 	approved := decodeArchonStatus(t, stdout)
-	if approved.Status != formations.RunStatusBlocked || approved.Final || !approved.ResumeAllowed {
-		t.Fatalf("approved status = %+v, want resumable block before polish dispatch", approved)
-	}
-	events, err = store.ReadRunEvents(started.RunID)
-	if err != nil {
-		t.Fatalf("read approved events: %v", err)
-	}
-	if eventsContain(events, formations.RunEventNodeStarted, "fmn_polish") ||
-		eventsContain(events, formations.RunEventSlotDispatch, "fmn_polish") ||
-		eventsContain(events, formations.RunEventSucceeded, "") {
-		t.Fatalf("approve dispatched or finalized before resume: %s", archonEventTypes(events))
-	}
-
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "run", "resume", started.RunID, "--reason", "gate approved", "--json")
-	if code != 0 {
-		t.Fatalf("run resume code=%d stderr=%s stdout=%s", code, stderr, stdout)
-	}
-	resumed := decodeArchonStatus(t, stdout)
-	if resumed.Status != formations.RunStatusSucceeded || !resumed.Final {
-		t.Fatalf("resumed status = %+v, want final succeeded after polish", resumed)
+	if approved.Status != formations.RunStatusSucceeded || !approved.Final {
+		t.Fatalf("approved status = %+v, want final succeeded after polish", approved)
 	}
 	events, err = store.ReadRunEvents(started.RunID)
 	if err != nil {
@@ -2407,7 +2407,6 @@ func TestArchonS4ConfiguredLabPoemMissionReachesGateAndPolishesAfterApproval(t *
 	}{
 		{formations.RunEventHumanVerdictRecorded, "gate_review"},
 		{formations.RunEventGateVerdict, "gate_review"},
-		{formations.RunEventResumed, ""},
 		{formations.RunEventNodeStarted, "fmn_polish"},
 		{formations.RunEventSlotDispatch, "fmn_polish"},
 		{formations.RunEventSlotResult, "fmn_polish"},
@@ -2534,12 +2533,8 @@ rev = 1
 	}
 
 	approved := decodeArchonStatus(t, archon(workspaceArgs("gate", "approve", started.RunID, gate.ID, "--response", "draft approved", "--json")...))
-	if approved.Status != formations.RunStatusBlocked || approved.Final || !approved.ResumeAllowed {
-		t.Fatalf("approved status = %+v, want resumable block before explicit resume", approved)
-	}
-	resumed := decodeArchonStatus(t, archon(workspaceArgs("run", "resume", started.RunID, "--reason", "gate approved", "--json")...))
-	if resumed.Status != formations.RunStatusSucceeded || !resumed.Final {
-		t.Fatalf("resumed status = %+v, want final success", resumed)
+	if approved.Status != formations.RunStatusSucceeded || !approved.Final {
+		t.Fatalf("approved status = %+v, want final success", approved)
 	}
 	finalStatus := decodeArchonStatus(t, archon(workspaceArgs("run", "status", started.RunID, "--json")...))
 	if finalStatus.RunID != started.RunID || finalStatus.BoardSlug != "poems" || finalStatus.MissionID != mission.ID || finalStatus.Status != formations.RunStatusSucceeded {
@@ -2831,6 +2826,13 @@ func TestArchonRunListJSONListsDurableRunsAndFiltersBoard(t *testing.T) {
 	}
 	if byRunID[betaRun.RunID].BoardSlug != "beta" || byRunID[betaRun.RunID].Status != formations.RunStatusBlocked || !byRunID[betaRun.RunID].ResumeAllowed {
 		t.Fatalf("beta run projection = %+v, want durable blocked run", byRunID[betaRun.RunID])
+	}
+
+	// Without --json each run is one line: run, mission, status, Bead,
+	// started, updated.
+	stdout, stderr, code = runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "run", "list")
+	if lines := strings.Split(strings.TrimSpace(stdout), "\n"); code != 0 || len(lines) != 2 || len(strings.Split(lines[0], "\t")) != 6 || !strings.Contains(stdout, alphaRun.RunID+"\talpha\tsucceeded\t") {
+		t.Fatalf("run list code=%d stderr=%s:\n%s", code, stderr, stdout)
 	}
 
 	stdout, stderr, code = runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "run", "list", "--mission", "brd_alpha", "--json")

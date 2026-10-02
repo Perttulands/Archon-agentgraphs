@@ -147,6 +147,23 @@ func unfinishedRunWork(board *BoardDocument, events []RunEvent, except string) [
 	return unfinished
 }
 
+// openHumanDecisions lists the gates that wait on the operator: each gate with
+// a request still waiting for a verdict, or with a recorded verdict the run
+// has not routed yet. A run whose only open work is these waits rather than
+// blocks, and every other branch keeps running meanwhile (archon-o7p.11).
+func openHumanDecisions(events []RunEvent) []string {
+	gates := []string{}
+	for _, request := range OpenHumanRequests(events) {
+		gates = append(gates, request.GateID)
+	}
+	for _, verdict := range unroutedHumanVerdicts(events) {
+		if !slices.Contains(gates, verdict.GateID) {
+			gates = append(gates, verdict.GateID)
+		}
+	}
+	return gates
+}
+
 // rejectedRunPath is the first path that ended at a rejected End node, which
 // fails a finished run with its gate's reason; nil means the run succeeds.
 func rejectedRunPath(board *BoardDocument, events []RunEvent) *endedPath {

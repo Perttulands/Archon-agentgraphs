@@ -432,6 +432,11 @@ func boardHasNoteTarget(board *BoardDocument, target string) bool {
 			return true
 		}
 	}
+	for _, limit := range board.Limits {
+		if limit.ID == target {
+			return true
+		}
+	}
 	for _, tool := range board.Tools {
 		if tool.ID == target {
 			return true

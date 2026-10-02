@@ -2,7 +2,9 @@ package formations
 
 import (
 	"reflect"
+	"slices"
 	"testing"
+	"time"
 )
 
 func branchingBoardJudgeGate(id, judgeID string) string {
@@ -92,43 +94,44 @@ func judgeFailsThenPasses() *scriptedBranchExecutor {
 	}}
 }
 
-func approveAndResume(t *testing.T, engine *RunEngine, runID, gateID string) *RunStatusProjection {
+func approveAndContinue(t *testing.T, engine *RunEngine, runID, gateID string) *RunStatusProjection {
 	t.Helper()
 	if _, err := engine.RecordHumanGateVerdict(runID, HumanGateVerdictRequest{GateID: gateID, Verdict: "pass", Actor: "human:operator"}); err != nil {
 		t.Fatal(err)
 	}
-	status, err := engine.ResumeRun(runID, RunResumeRequest{Actor: "coordinator", Mode: "reattach", Reason: "human verdict recorded"})
+	status, err := engine.ContinueRun(runID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return status
 }
 
-// A send-back a judge gate routes during the resume after an approval runs
-// the work again, and the pass after it reaches ship, before success.
-func TestASendBackRoutedDuringTheResumeAfterApprovalRunsTheWorkAgain(t *testing.T) {
+// A send-back a judge gate routes on another branch runs while the human gate
+// waits (archon-o7p.11): the work runs again with the judge's feedback and the
+// pass after it reaches ship, and approving then ends the run.
+func TestAJudgeSendBackOnAnotherBranchRunsWhileAGateWaits(t *testing.T) {
 	for _, restart := range []bool{false, true} {
 		t.Run(map[bool]string{false: "same engine", true: "restarted engine"}[restart], func(t *testing.T) {
 			executor := judgeFailsThenPasses()
 			store, personas, engine, status := startBranchingRun(t, pushbackAfterApproveBoardFixture(), executor)
-			if got, want := executor.nodeIDs(), []string{"fmn_a"}; !reflect.DeepEqual(got, want) {
+			if got, want := executor.nodeIDs(), []string{"fmn_a", "fmn_work", "fmn_judge", "fmn_work", "fmn_judge", "fmn_ship"}; !reflect.DeepEqual(got, want) {
 				t.Fatalf("nodes before the verdict = %v, want %v", got, want)
+			}
+			if feedback := executor.calls[3].Inputs[0].Feedback; feedback == nil || feedback.Verdict != "fail" || feedback.Reason != "add the missing test" {
+				t.Fatalf("second work attempt feedback = %+v", feedback)
 			}
 			if restart {
 				engine = NewRunEngine(store, personas, executor)
 			}
 			executor.calls = nil
-			status = approveAndResume(t, engine, status.RunID, "gate_review")
-			if got, want := executor.nodeIDs(), []string{"fmn_work", "fmn_judge", "fmn_work", "fmn_judge", "fmn_ship"}; !reflect.DeepEqual(got, want) {
-				t.Fatalf("nodes after approval = %v, want %v", got, want)
+			status = approveAndContinue(t, engine, status.RunID, "gate_review")
+			if got := executor.nodeIDs(); len(got) != 0 {
+				t.Fatalf("nodes after approval = %v, want none", got)
 			}
 			if status.Status != RunStatusSucceeded {
 				t.Fatalf("status = %+v, want succeeded", status)
 			}
 			requireSucceededAfterOutputs(t, store, status.RunID, "fmn_a", "fmn_work", "fmn_ship")
-			if feedback := executor.calls[2].Inputs[0].Feedback; feedback == nil || feedback.Verdict != "fail" || feedback.Reason != "add the missing test" {
-				t.Fatalf("second work attempt feedback = %+v", feedback)
-			}
 		})
 	}
 }
@@ -147,10 +150,11 @@ func TestApprovalRoutesAndTheEngineAgreeWhetherTheRunEnds(t *testing.T) {
 		{name: "linear", board: linear, gate: "gate_review", endsRun: true},
 		{name: "send-back loop, pass ends done", board: loop, gate: "gate_review", endsRun: true},
 		{name: "fail-only route to R", board: failOnlyRouteBoardFixture(), gate: "gate_review", endsRun: true},
-		{name: "other branch B then C", board: branchingGateBoardFixture(), gate: "gate_review", endsRun: false},
-		{name: "other branch with a judge send-back", board: pushbackAfterApproveBoardFixture(), gate: "gate_review", endsRun: false,
+		// The other branches ran while the gate waited (archon-o7p.11).
+		{name: "other branch B then C", board: branchingGateBoardFixture(), gate: "gate_review", endsRun: true},
+		{name: "other branch with a judge send-back", board: pushbackAfterApproveBoardFixture(), gate: "gate_review", endsRun: true,
 			executor: func() FormationExecutor { return judgeFailsThenPasses() }},
-		{name: "another terminal gate still to come", board: twoTerminalGatesBoardFixture(), gate: "gate_one", endsRun: false},
+		{name: "another terminal gate also waiting", board: twoTerminalGatesBoardFixture(), gate: "gate_one", endsRun: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var executor FormationExecutor = &fakeRunExecutor{}
@@ -158,8 +162,8 @@ func TestApprovalRoutesAndTheEngineAgreeWhetherTheRunEnds(t *testing.T) {
 				executor = tc.executor()
 			}
 			store, _, engine, status := startBranchingRun(t, tc.board, executor)
-			if got := pendingHumanGates(t, store, status.RunID); !reflect.DeepEqual(got, []string{tc.gate}) {
-				t.Fatalf("pending gates = %v, want %s", got, tc.gate)
+			if got := pendingHumanGates(t, store, status.RunID); !slices.Contains(got, tc.gate) {
+				t.Fatalf("pending gates = %v, want %s among them", got, tc.gate)
 			}
 			board, err := store.ReadRunBoard(status.RunID)
 			if err != nil {
@@ -169,12 +173,12 @@ func TestApprovalRoutesAndTheEngineAgreeWhetherTheRunEnds(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			approve := HumanGateRoutes(board, events, tc.gate)[0]
+			approve := HumanGateRoutes(board, events, tc.gate, time.Time{})[0]
 			if approve.EndsRun != tc.endsRun || approve.RunFails {
 				t.Fatalf("routes say approve = %+v, want endsRun %v", approve, tc.endsRun)
 			}
 			before := len(events)
-			status = approveAndResume(t, engine, status.RunID, tc.gate)
+			status = approveAndContinue(t, engine, status.RunID, tc.gate)
 			after, err := store.ReadRunEvents(status.RunID)
 			if err != nil {
 				t.Fatal(err)
@@ -205,7 +209,7 @@ func TestUnfinishedRunWorkReadsDeliveriesAndOpenNodesFromTheLedger(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: source.ETag, ExpectedBoardRev: source.Rev, Personas: personas, Limits: RunLimits{MaxDispatch: 10, MaxAttempts: 3}})
+	started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: source.ETag, ExpectedBoardRev: source.Rev, Personas: personas})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +233,8 @@ func TestUnfinishedRunWorkReadsDeliveriesAndOpenNodesFromTheLedger(t *testing.T)
 		{RunEvent{Type: RunEventNodeOutput, NodeID: "fmn_a", Data: branchOutputData("port_fmn_a_out")}, "", []string{"fmn_work", "gate_review"}},
 		{RunEvent{Type: RunEventGateEvaluating, GateID: "gate_review", NodeID: "gate_review"}, "", []string{"fmn_work", "gate_review"}},
 		{RunEvent{Type: RunEventHumanInputRequested, GateID: "gate_review", NodeID: "gate_review"}, "gate_review", []string{"fmn_work"}},
-		{RunEvent{Type: RunEventHumanVerdictRecorded, GateID: "gate_review", NodeID: "gate_review"}, "", []string{"fmn_work"}},
+		// A recorded verdict holds its gate open until the run routes it.
+		{RunEvent{Type: RunEventHumanVerdictRecorded, GateID: "gate_review", NodeID: "gate_review"}, "", []string{"fmn_work", "gate_review"}},
 		{verdict("gate_review", "pass"), "", []string{"fmn_work"}},
 		{RunEvent{Type: RunEventNodeStarted, NodeID: "fmn_work", Attempt: 1}, "", []string{"fmn_work"}},
 		{RunEvent{Type: RunEventNodeOutput, NodeID: "fmn_work", Data: branchOutputData("port_fmn_work_out")}, "", []string{"gate_judge"}},
@@ -254,8 +259,9 @@ func TestUnfinishedRunWorkReadsDeliveriesAndOpenNodesFromTheLedger(t *testing.T)
 
 // A resume reached while a human request is still open (here an unrelated
 // resumable block after the request, resumed at engine level) never records
-// success: the open gate is unfinished work, so the run blocks naming it.
-func TestAResumeWithAHumanRequestStillOpenDoesNotSucceed(t *testing.T) {
+// success, and blocks nothing either: the open gate holds up only its own
+// path, so the run waits for the verdict (archon-o7p.11).
+func TestAResumeWithAHumanRequestStillOpenWaitsForTheVerdict(t *testing.T) {
 	linear := linearGateBoardFixture()
 	executor := &fakeRunExecutor{}
 	store, _, engine, status := startBranchingRun(t, linear, executor)
@@ -271,11 +277,13 @@ func TestAResumeWithAHumanRequestStillOpenDoesNotSucceed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Status == RunStatusSucceeded || len(executor.calls) != 0 {
+	if status.Status != RunStatusRunning || len(executor.calls) != 0 {
 		t.Fatalf("status = %s after %v: %s", status.Status, executor.nodeIDs(), eventTypeTrail(events))
 	}
-	failure := events[len(events)-2]
-	if failure.Type != RunEventError || failure.Data["code"] != "run_work_unfinished" || failure.NodeID != "gate_review" {
-		t.Fatalf("want run_work_unfinished naming gate_review: %+v (%s)", failure, eventTypeTrail(events))
+	if last := events[len(events)-1]; last.Type != RunEventResumed {
+		t.Fatalf("want the resume last, waiting for the verdict: %s", eventTypeTrail(events))
+	}
+	if got := pendingHumanGates(t, store, status.RunID); !reflect.DeepEqual(got, []string{"gate_review"}) {
+		t.Fatalf("pending gates = %v, want gate_review", got)
 	}
 }

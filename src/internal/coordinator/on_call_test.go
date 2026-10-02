@@ -32,9 +32,28 @@ type keeperExecutor struct {
 	askCalls []int
 	gone     map[string]bool
 	// fail makes a node's next executions fail before any seat is created.
-	fail   map[string]int
+	fail map[string]int
+	// holds makes a node's first execution wait until its channel closes.
+	holds  map[string]chan struct{}
 	pastes []string
 	ended  []string
+	// idle, when set, holds AwaitKeptSeatIdle until it closes, as an agent
+	// still finishing its turn; idling hears each wait begin.
+	idle, idling chan struct{}
+}
+
+func (k *keeperExecutor) AwaitKeptSeatIdle(ctx context.Context, _ formations.KeptSeat) {
+	if k.idle == nil {
+		return
+	}
+	select {
+	case k.idling <- struct{}{}:
+	default:
+	}
+	select {
+	case <-k.idle:
+	case <-ctx.Done():
+	}
 }
 
 func (k *keeperExecutor) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
@@ -43,7 +62,12 @@ func (k *keeperExecutor) ExecuteFormation(req formations.FormationExecution) (fo
 	if failing {
 		k.fail[req.NodeID]--
 	}
+	hold := k.holds[req.NodeID]
+	delete(k.holds, req.NodeID)
 	k.mu.Unlock()
+	if hold != nil {
+		<-hold
+	}
 	if failing {
 		return formations.FormationExecutionResult{}, errors.New("formation crashed")
 	}
@@ -150,7 +174,7 @@ humanChannel = "session"`, 1)
 
 func startProof(t *testing.T, c *Coordinator) string {
 	t.Helper()
-	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"run the proof"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":10,"maxAttempts":3,"wallClockSeconds":600}}`)
+	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"run the proof"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 	if w.Code != 202 {
 		t.Fatalf("start %d %s", w.Code, w.Body.String())
 	}
@@ -283,7 +307,7 @@ func TestSessionAskReachesTheKeptWorkSeatWithoutANotifyCommand(t *testing.T) {
 		"'Send back. Response: Add the missing constraints.'",
 		"If you draft or paraphrase any response, or the verdict, response, or intended gate is ambiguous, show the proposed verdict and exact response together and wait for the operator's confirmation before recording.",
 		"Do not infer a verdict from discussion or invent missing response text.",
-		"A 409 saying the coordinator is executing means the run is busy for a moment: wait a few seconds and run the same command again.",
+		"A 503 means the daemon is restarting: wait a few seconds and run the same command again.",
 		"A 409 saying the human gate request is no longer pending means another seat or the cockpit decided first",
 	} {
 		if !strings.Contains(string(raw), want) {
@@ -298,7 +322,7 @@ func TestSessionAskReachesTheKeptWorkSeatWithoutANotifyCommand(t *testing.T) {
 
 	verdict(t, c, id, "gate_review", gate.RequestedSeq, true, "slot_work")
 	awaitState(t, c, id, "succeeded")
-	want := "created slot_work, kept_on_call slot_work, ask gate_review, delivered slot_work, run_blocked, run_resumed, ended slot_work ask_answered, created slot_after, ended slot_after, run_succeeded"
+	want := "created slot_work, kept_on_call slot_work, ask gate_review, delivered slot_work, ended slot_work ask_answered, created slot_after, ended slot_after, run_succeeded"
 	if got := ledgerTrail(eventsOf(t, c, id)); got != want {
 		t.Fatalf("trail = %s\nwant    %s", got, want)
 	}
@@ -439,7 +463,7 @@ func TestSessionAskReachesEveryPeerSeatWithARetryAndOnlyTheOrchestratedControlle
 		t.Fatalf("team ask reached %+v", team.AskedSeats)
 	}
 	trail := ledgerTrail(eventsOf(t, c, id))
-	want := "created peer_a, created peer_b, kept_on_call peer_a, kept_on_call peer_b, ask gate_peers, delivered peer_a, delivered peer_b, run_blocked, run_resumed, ended peer_a ask_answered, ended peer_b ask_answered, created team_lead, created team_worker, kept_on_call team_lead, ended team_worker, ask gate_team, delivered team_lead"
+	want := "created peer_a, created peer_b, kept_on_call peer_a, kept_on_call peer_b, ask gate_peers, delivered peer_a, delivered peer_b, ended peer_a ask_answered, ended peer_b ask_answered, created team_lead, created team_worker, kept_on_call team_lead, ended team_worker, ask gate_team, delivered team_lead"
 	if trail != want {
 		t.Fatalf("trail = %s\nwant    %s", trail, want)
 	}
@@ -641,7 +665,7 @@ func TestSessionSeatStaysForTheNextHumanGateAndEndsBeforeTheRunSucceeds(t *testi
 	}
 	verdict(t, c, id, "gate_two", second.WaitingGates[0].RequestedSeq, true, "slot_work")
 	awaitState(t, c, id, "succeeded")
-	want := "created slot_work, kept_on_call slot_work, ask gate_one, delivered slot_work, run_blocked, run_resumed, ask gate_two, delivered slot_work, run_blocked, run_resumed, ended slot_work run_final, run_succeeded"
+	want := "created slot_work, kept_on_call slot_work, ask gate_one, delivered slot_work, ask gate_two, delivered slot_work, ended slot_work run_final, run_succeeded"
 	if got := ledgerTrail(eventsOf(t, c, id)); got != want {
 		t.Fatalf("trail = %s\nwant    %s", got, want)
 	}
@@ -665,7 +689,7 @@ func TestUncertainSeatFallsBackForTheNextHumanGateAfterRestart(t *testing.T) {
 	})
 	d := &needsYouDispatcher{c: next, config: NeedsYouConfig{Notifier: notifier}, watching: map[string]bool{}}
 	for range 3 {
-		if retry := d.deliverSession(context.Background(), id); retry {
+		if retry := d.deliverSession(context.Background(), id, true); retry {
 			t.Fatal("the next ask retries against known retained input")
 		}
 		d.deliver(context.Background(), id, true)
@@ -721,7 +745,7 @@ effort = "medium"`, 1)
 		return len(p.WaitingGates) == 1 && p.WaitingGates[0].GateID == "gate_two"
 	})
 	d := &needsYouDispatcher{c: next, watching: map[string]bool{}}
-	if retry := d.deliverSession(context.Background(), id); retry {
+	if retry := d.deliverSession(context.Background(), id, true); retry {
 		t.Fatal("healthy peer delivery should settle")
 	}
 	p, err := next.Project(id)
@@ -738,8 +762,8 @@ effort = "medium"`, 1)
 }
 
 func TestPendingUncertainSeatIsRecordedWhenVerdictAdvancedItsAsk(t *testing.T) {
-	// The dispatcher can lose the run reservation to an operator verdict
-	// between PasteAsk returning an uncertain error and recording its fallback.
+	// An operator verdict can land between PasteAsk returning an uncertain
+	// error and the dispatcher recording its fallback.
 	keeper := &keeperExecutor{refuse: map[string]int{"slot_work": 1000}}
 	c, root := onCallFixture(t, twoGateBoard, keeper, nil)
 	id := startProof(t, c)
@@ -758,7 +782,7 @@ func TestPendingUncertainSeatIsRecordedWhenVerdictAdvancedItsAsk(t *testing.T) {
 	d := &needsYouDispatcher{c: next, watching: map[string]bool{}, askFailures: map[humanAskKey]formations.HumanAskFallback{
 		{runID: id, seq: delivery.Request.Seq}: {Request: delivery.Request, Code: formations.AskFallbackDeliveryUncertain, Seat: delivery.Seat},
 	}}
-	if retry := d.deliverSession(context.Background(), id); retry || len(d.askFailures) != 0 {
+	if retry := d.deliverSession(context.Background(), id, true); retry || len(d.askFailures) != 0 {
 		t.Fatalf("pending seat identity was not recorded before replanning: retry %v, pending %+v", retry, d.askFailures)
 	}
 	events := eventsOf(t, next, id)
@@ -914,5 +938,40 @@ func TestNotifyChannelAsksStillReachTheNotifyCommand(t *testing.T) {
 	}
 	if pastes, _ := keeper.snapshot(); len(pastes) != 0 || !strings.Contains(ledgerTrail(eventsOf(t, c, id)), "created slot_work, ended slot_work, ask gate_review") {
 		t.Fatalf("notify run pasted %v, trail %s", pastes, ledgerTrail(eventsOf(t, c, id)))
+	}
+}
+
+// Ending an answered seat waits for its agent to go idle before it takes the
+// run's command, so an abort meanwhile answers at once instead of 409.
+func TestAbortAnswersWhileAnAnsweredSeatGoesIdle(t *testing.T) {
+	keeper := &keeperExecutor{idle: make(chan struct{}), idling: make(chan struct{}, 1)}
+	board := strings.Replace(twoGatesBesideABranch(), `goal = "Concurrent gates"`, "goal = \"Concurrent gates\"\nhumanChannel = \"session\"", 1)
+	c, _ := onCallFixture(t, board, keeper, nil)
+	// The agent finishes before the daemon closes.
+	t.Cleanup(func() { close(keeper.idle) })
+	id := startProof(t, c)
+	p := awaitProjection(t, c, id, func(p *Projection) bool {
+		if len(p.WaitingGates) != 2 {
+			return false
+		}
+		for _, gate := range p.WaitingGates {
+			if len(gate.AskedSeats) != 1 {
+				return false
+			}
+		}
+		return true
+	})
+	for _, gate := range p.WaitingGates {
+		if gate.GateID == "gate_one" {
+			verdict(t, c, id, "gate_one", gate.RequestedSeq, true, "")
+		}
+	}
+	select {
+	case <-keeper.idling:
+	case <-time.After(testPatience):
+		t.Fatal("the answered seat was never waited on")
+	}
+	if w := post(t, c, "/api/runs/"+id+"/abort", `{"reason":"operator stop","requestedBy":"operator"}`); w.Code != 200 {
+		t.Fatalf("abort while the answered seat goes idle: %d %s", w.Code, w.Body.String())
 	}
 }

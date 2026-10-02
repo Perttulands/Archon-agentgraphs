@@ -12,13 +12,15 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// Needs-you notifications tell the operator when a settled run needs them. The
-// coordinator decides when a run has settled: its command worker has exited,
-// so a block recorded mid-command (a human verdict awaiting its automatic
-// resume) is never announced. Each ask is sent once and marked in the run's
-// .needs-you.json artifact; a failed send stays unmarked and is retried. On a
-// session-channel run a human gate's ask goes to the seats that asked instead
-// (on_call.go), and reaches the notify command only when it falls back.
+// Needs-you notifications tell the operator when a run needs them. A human
+// gate's ask and a blocking escalation go out as soon as the ledger records
+// them, while other branches still run (archon-o7p.11). Blocks and final
+// outcomes go out only once the run has settled: its command worker has
+// exited, so a block the same command follows with a cancel is never
+// announced. Each ask is sent once and marked in the run's .needs-you.json
+// artifact; a failed send stays unmarked and is retried. On a session-channel
+// run a human gate's ask goes to the seats that asked instead (on_call.go), and
+// reaches the notify command only when it falls back.
 
 const defaultNeedsYouRetryInterval = 5 * time.Minute
 
@@ -94,8 +96,16 @@ func (c *Coordinator) EnableNeedsYou(config NeedsYouConfig) {
 // settled queues a run whose command worker has just exited.
 func (d *needsYouDispatcher) settled(runID string) {
 	d.mu.Lock()
-	d.pending[runID] = true
 	d.live[runID] = true
+	d.mu.Unlock()
+	d.queue(runID)
+}
+
+// queue asks the dispatcher to look at a run soon, such as when a gate asks
+// while the run's worker still executes other steps.
+func (d *needsYouDispatcher) queue(runID string) {
+	d.mu.Lock()
+	d.pending[runID] = true
 	d.mu.Unlock()
 	select {
 	case d.wake <- struct{}{}:
@@ -176,18 +186,16 @@ func (d *needsYouDispatcher) drain(ctx context.Context) {
 	}
 }
 
-// deliver sends the settled run's undelivered asks. It reports whether the run
-// still owes a message, so a live run stays eligible for retry.
+// deliver sends the run's undelivered asks: human gates and escalations at
+// once, blocks and final outcomes once the run has settled. It reports whether
+// the run still owes a message, so a live run stays eligible for retry.
 func (d *needsYouDispatcher) deliver(ctx context.Context, runID string, live bool) bool {
 	c := d.c
 	c.mu.Lock()
 	state := c.state(runID)
 	busy, changed := state.busy, state.changed
 	c.mu.Unlock()
-	if busy {
-		return false // the command's release queues the run again
-	}
-	if d.deliverSession(ctx, runID) {
+	if d.deliverSession(ctx, runID, !busy) {
 		d.retrySoon(runID)
 	}
 	events, err := c.store.ReadRunEvents(runID)
@@ -221,6 +229,9 @@ func (d *needsYouDispatcher) deliver(ctx context.Context, runID string, live boo
 		if notified[ask.Seq] || ask.Kind == formations.NeedsYouKindFinal && !live {
 			continue
 		}
+		if busy && ask.Kind != formations.NeedsYouKindHumanGate && ask.Kind != formations.NeedsYouKindEscalation {
+			continue // the command's release queues the run again
+		}
 		if session && ask.Kind == formations.NeedsYouKindHumanGate && !humanGateFellBack(events, ask.Seq) {
 			continue // the seats that asked receive it
 		}
@@ -229,7 +240,12 @@ func (d *needsYouDispatcher) deliver(ctx context.Context, runID string, live boo
 		}
 		select {
 		case <-changed:
-			return true // the run moved on; its next settle or retry decides again
+			// The run moved on; its next settle or retry decides again. A run
+			// still working settles later, so look again soon for its asks.
+			if busy {
+				d.retrySoon(runID)
+			}
+			return true
 		default:
 		}
 		notification := renderNeedsYou(d.config, ask, events, runStatus, board)
@@ -303,7 +319,11 @@ func renderNeedsYou(config NeedsYouConfig, ask formations.NeedsYouAsk, events []
 			reason = "not recorded"
 		}
 		fmt.Fprintf(&body, "Run %s on %s is blocked.\n\nReason: %s\n\n", ask.RunID, n.BoardTitle, reason)
-		if ask.ResumeAllowed {
+		if ask.ResumePolicy == formations.ResumePolicyGrant && ask.Limit != nil {
+			fmt.Fprintf(&body, "Give it %s if the work deserves it, or stop it:\n", formations.GrantWords(*ask.Limit))
+			fmt.Fprintf(&body, "archon --server %s run resume %s --grant --reason 'why one more'\n", server, ask.RunID)
+			fmt.Fprintf(&body, "archon --server %s run abort %s --reason 'why'\n", server, ask.RunID)
+		} else if ask.ResumeAllowed {
 			body.WriteString("Resume it after resolving the cause:\n")
 			fmt.Fprintf(&body, "archon --server %s run resume %s --reason 'what you resolved'\n", server, ask.RunID)
 		} else {

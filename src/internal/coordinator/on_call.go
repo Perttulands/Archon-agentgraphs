@@ -9,18 +9,20 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// Session-channel delivery (ADR-0019). When a run's command settles, its human
-// gates' asks are pasted into the kept seats of the formation that asked, and
-// the ledger records each delivery or the fallback to the notify command. Seats
-// found gone are recorded, and seats whose asks were all answered end. Ledger
-// writes happen under the run's command reservation, so a seat's gate command
-// in that moment gets "coordinator is executing" and retries; pasting happens
-// outside it, so an operator typing into a seat never holds up a verdict.
+// Session-channel delivery (ADR-0019). As soon as a human gate asks, even while
+// the run's worker executes other steps (archon-o7p.11), its ask is pasted into
+// the kept seats of the formation that asked, and the ledger records each
+// delivery or the fallback to the notify command. Each record checks, under the
+// ledger's append lock, that its request still waits and its seat is still
+// kept, so it never lands after the verdict or seat end it raced with. Once the
+// run settles, seats found gone are recorded and seats whose asks were all
+// answered end; while a worker executes, it ends kept seats itself. Pasting
+// never holds anything a verdict needs, so an operator typing into a seat
+// never holds up a verdict.
 
 const (
 	defaultSessionRetryInterval = 3 * time.Second
 	defaultSessionProbeInterval = 15 * time.Second
-	sessionCommandWait          = 5 * time.Second
 	sessionPasteBudget          = 30 * time.Second
 )
 
@@ -29,46 +31,17 @@ type humanAskKey struct {
 	seq   int
 }
 
-// withRunCommand runs fn holding the run's command reservation. It waits
-// briefly for a busy run and reports false if the reservation never came. The
-// release does not announce a settle: the dispatcher decides its own retries.
-func (c *Coordinator) withRunCommand(ctx context.Context, runID string, fn func()) bool {
-	deadline := time.Now().Add(sessionCommandWait)
-	for !c.acquire(runID) {
-		c.mu.Lock()
-		closed := c.closed
-		c.mu.Unlock()
-		if closed || time.Now().After(deadline) || ctx.Err() != nil {
-			return false
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	defer c.releaseQuietly(runID)
-	fn()
-	return true
-}
-
-// releaseQuietly ends a reservation like release, without queueing a settle.
-func (c *Coordinator) releaseQuietly(id string) {
-	c.mu.Lock()
-	state := c.state(id)
-	state.cancel()
-	state.busy = false
-	close(state.done)
-	close(state.changed)
-	state.changed = make(chan struct{})
-	c.mu.Unlock()
-	c.workers.Done()
-}
-
-// deliverSession applies a settled session-channel run's plan. It reports
-// whether some seat was not reached and the run should be tried again soon.
-func (d *needsYouDispatcher) deliverSession(ctx context.Context, runID string) (retry bool) {
+// deliverSession applies a session-channel run's plan. Seats found gone are
+// recorded and asks and their fallbacks go out whether or not the run has
+// settled; answered seats end only once it has, because while a worker
+// executes it ends kept seats itself. It reports whether some seat was not
+// reached and the run should be tried again soon.
+func (d *needsYouDispatcher) deliverSession(ctx context.Context, runID string, settled bool) (retry bool) {
 	c := d.c
-	// A verdict can advance to another gate while PasteAsk is outside the run
-	// reservation. Persist the affected seat before planning any later ask.
+	// A verdict can advance to another gate while PasteAsk runs. Persist the
+	// affected seat before planning any later ask.
 	for key, fallback := range d.askFailures {
-		if key.runID == runID && !d.recordAskFailure(ctx, key, fallback) {
+		if key.runID == runID && !d.recordAskFailure(key, fallback) {
 			return true
 		}
 	}
@@ -78,30 +51,17 @@ func (d *needsYouDispatcher) deliverSession(ctx context.Context, runID string) (
 		return false
 	}
 	d.watch(runID, len(plan.Kept) > 0 || plan.OpenAsks > 0)
-	if len(plan.Gone)+len(plan.Answered)+len(plan.Fallbacks) > 0 {
-		if !c.withRunCommand(ctx, runID, func() {
-			// Plan again under the reservation, so nothing recorded is stale.
-			fresh, err := c.engine.PlanRunOnCall(ctx, runID)
-			if err != nil {
-				log.Printf("session channel: run %s: %v", runID, err)
-				return
-			}
-			for _, gone := range fresh.Gone {
-				if err := c.engine.RecordKeptSeatCleanup(runID, gone.Seat, gone.Outcome, "", ""); err != nil {
-					log.Printf("session channel: run %s seat %s: %v", runID, gone.Seat.SlotID, err)
-				}
-			}
-			if err := c.engine.EndKeptSeatsNow(runID, fresh.Answered, formations.SeatCauseAskAnswered, fresh.Keeper); err != nil {
-				log.Printf("session channel: run %s: ending answered seats: %v", runID, err)
-			}
-			for _, fallback := range fresh.Fallbacks {
-				if _, err := c.engine.RecordHumanAskFallback(runID, fallback); err != nil {
-					log.Printf("session channel: run %s ask %d: %v", runID, fallback.Request.Seq, err)
-				}
-			}
-			plan = fresh
-		}) {
-			return true
+	for _, gone := range plan.Gone {
+		if err := c.engine.RecordKeptSeatCleanup(runID, gone.Seat, gone.Outcome, "", ""); err != nil {
+			log.Printf("session channel: run %s seat %s: %v", runID, gone.Seat.SlotID, err)
+		}
+	}
+	if settled && len(plan.Answered) > 0 {
+		d.endAnsweredSeats(ctx, runID)
+	}
+	for _, fallback := range plan.Fallbacks {
+		if _, err := c.engine.RecordHumanAskFallback(runID, fallback); err != nil {
+			log.Printf("session channel: run %s ask %d: %v", runID, fallback.Request.Seq, err)
 		}
 	}
 	for _, delivery := range plan.Deliveries {
@@ -119,13 +79,39 @@ func (d *needsYouDispatcher) deliverSession(ctx context.Context, runID string) (
 	return retry
 }
 
+// endAnsweredSeats ends the seats whose asks were all answered. It first
+// waits for their agents to go idle, holding nothing, then ends them holding
+// the run's command reservation as a worker does, so no worker starts on the
+// run while they end, while abort and resume wait only briefly. A run that
+// turned busy meanwhile ends them itself.
+func (d *needsYouDispatcher) endAnsweredSeats(ctx context.Context, runID string) {
+	c := d.c
+	plan, err := c.engine.PlanRunOnCall(ctx, runID)
+	if err != nil {
+		log.Printf("session channel: run %s: %v", runID, err)
+		return
+	}
+	c.engine.AwaitKeptSeatsIdle(plan.Answered, plan.Keeper)
+	if !c.acquire(runID) {
+		return
+	}
+	defer c.releaseQuietly(runID)
+	if plan, err = c.engine.PlanRunOnCall(ctx, runID); err != nil {
+		log.Printf("session channel: run %s: %v", runID, err)
+		return
+	}
+	if err := c.engine.EndKeptSeatsNow(runID, plan.Answered, formations.SeatCauseAskAnswered, plan.Keeper); err != nil {
+		log.Printf("session channel: run %s: ending answered seats: %v", runID, err)
+	}
+}
+
 // deliverAsk writes one seat's brief, pastes its pointer and records the
 // delivery. It reports whether the seat was reached and recorded.
 func (d *needsYouDispatcher) deliverAsk(ctx context.Context, runID string, plan formations.RunOnCallPlan, delivery formations.HumanAskDelivery) bool {
 	c := d.c
 	key := humanAskKey{runID: runID, seq: delivery.Request.Seq}
 	if fallback, ok := d.askFailures[key]; ok {
-		return d.recordAskFailure(ctx, key, fallback)
+		return d.recordAskFailure(key, fallback)
 	}
 	// An earlier seat in this same plan may already have fallen back. Do not
 	// continue pasting the stale plan into its other seats.
@@ -155,36 +141,25 @@ func (d *needsYouDispatcher) deliverAsk(ctx context.Context, runID string, plan 
 			}
 			fallback := formations.HumanAskFallback{Request: delivery.Request, Code: formations.AskFallbackDeliveryUncertain, Seat: delivery.Seat}
 			d.askFailures[key] = fallback
-			return d.recordAskFailure(ctx, key, fallback)
+			return d.recordAskFailure(key, fallback)
 		}
 		log.Printf("session channel: run %s ask %d not yet pasted into %s: %v", runID, delivery.Request.Seq, delivery.Seat.SlotID, err)
 		return false
 	}
-	recorded := false
-	if !c.withRunCommand(ctx, runID, func() {
-		_, err := c.engine.RecordHumanAskDelivered(runID, delivery, brief)
-		recorded = err == nil
-		if err != nil {
-			log.Printf("session channel: run %s ask %d delivered to %s but not recorded: %v", runID, delivery.Request.Seq, delivery.Seat.SlotID, err)
-		}
-	}) {
+	if _, err := c.engine.RecordHumanAskDelivered(runID, delivery, brief); err != nil {
+		log.Printf("session channel: run %s ask %d delivered to %s but not recorded: %v", runID, delivery.Request.Seq, delivery.Seat.SlotID, err)
 		return false
 	}
-	return recorded
+	return true
 }
 
-func (d *needsYouDispatcher) recordAskFailure(ctx context.Context, key humanAskKey, fallback formations.HumanAskFallback) bool {
-	recorded := false
-	d.c.withRunCommand(ctx, key.runID, func() {
-		_, err := d.c.engine.RecordHumanAskFallback(key.runID, fallback)
-		if err != nil {
-			log.Printf("session channel: run %s ask %d fallback: %v", key.runID, key.seq, err)
-			return
-		}
-		delete(d.askFailures, key)
-		recorded = true
-	})
-	return recorded
+func (d *needsYouDispatcher) recordAskFailure(key humanAskKey, fallback formations.HumanAskFallback) bool {
+	if _, err := d.c.engine.RecordHumanAskFallback(key.runID, fallback); err != nil {
+		log.Printf("session channel: run %s ask %d fallback: %v", key.runID, key.seq, err)
+		return false
+	}
+	delete(d.askFailures, key)
+	return true
 }
 
 // watch keeps a run on the periodic probe while it has kept seats or open

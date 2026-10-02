@@ -75,7 +75,8 @@ func ValidateRunAdmission(board *BoardDocument, personas *PersonaStore, scope Ru
 	}
 	findingInScope := func(finding BoardFinding) bool {
 		switch {
-		case selected == nil || finding.Code == FindingInvalidFormationType || finding.Code == FindingSeveralInputCards || finding.Code == FindingInvalidMissionInput:
+		case selected == nil || finding.Code == FindingInvalidFormationType || finding.Code == FindingSeveralInputCards || finding.Code == FindingInvalidMissionInput || finding.Code == FindingInvalidLimit:
+			// A Limit card's problem stops every run: its limit would go unenforced.
 			return true
 		case scope.FormationID != "" && finding.Code == FindingRouteLeadsNowhere:
 			// A single step's run ends with that step; its routes are not taken.

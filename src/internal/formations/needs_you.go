@@ -47,6 +47,10 @@ type NeedsYouAsk struct {
 	// Status is the run status a blocked or final ask reports.
 	Status        string
 	ResumeAllowed bool
+	// ResumePolicy is grant when the block is a spent limit (archon-o7p.8),
+	// and Limit that limit.
+	ResumePolicy string
+	Limit        *RunLimitReached
 }
 
 // NeedsYouNotification is the message contract handed to a notifier. Subject
@@ -81,8 +85,7 @@ type NeedsYouNotifier interface {
 // from the run ledger. It never guesses from live state: an ask is open only
 // while the ledger says so.
 //
-//   - A human gate (a verdict needed) is open from human_input_requested until a
-//     human_verdict_recorded for that gate clears it.
+//   - A human gate (a verdict needed) is open while OpenHumanRequests lists it.
 //   - A blocking escalation is open until a later run_resumed supersedes it.
 //   - A run that reached a terminal event has no open asks.
 func projectOpenNeedsYouAsks(events []RunEvent) []NeedsYouAsk {
@@ -102,27 +105,18 @@ func projectOpenNeedsYouAsks(events []RunEvent) []NeedsYouAsk {
 
 	asks := make([]NeedsYouAsk, 0)
 
-	// Human gates: latest request per gate, cleared by a recorded verdict.
-	openHuman := map[string]NeedsYouAsk{}
-	for _, event := range events {
-		switch event.Type {
-		case RunEventHumanInputRequested:
-			openHuman[event.GateID] = NeedsYouAsk{
-				RunID:    event.RunID,
-				Seq:      event.Seq,
-				Kind:     NeedsYouKindHumanGate,
-				GateID:   event.GateID,
-				NodeID:   needsYouNodeID(event),
-				Ask:      stringFromEventData(event, "prompt"),
-				Severity: "verdict",
-				Blocks:   true,
-			}
-		case RunEventHumanVerdictRecorded:
-			delete(openHuman, event.GateID)
-		}
-	}
-	for _, ask := range openHuman {
-		asks = append(asks, ask)
+	// Human gates: every request still waiting for a verdict.
+	for _, event := range OpenHumanRequests(events) {
+		asks = append(asks, NeedsYouAsk{
+			RunID:    event.RunID,
+			Seq:      event.Seq,
+			Kind:     NeedsYouKindHumanGate,
+			GateID:   event.GateID,
+			NodeID:   needsYouNodeID(event),
+			Ask:      stringFromEventData(event, "prompt"),
+			Severity: "verdict",
+			Blocks:   true,
+		})
 	}
 
 	// Blocking escalations not yet superseded by a resume.
@@ -150,10 +144,11 @@ func projectOpenNeedsYouAsks(events []RunEvent) []NeedsYouAsk {
 }
 
 // ProjectSettledNeedsYouAsks adds blocked and final asks to the open asks.
-// Call it only for a settled run: a block recorded inside a command, such as a
-// human verdict awaiting its automatic resume, is not yet an ask. A blocked ask
-// is keyed by its run_blocked seq and a final ask by its terminal event seq. A
-// block that an open human gate or escalation already explains adds no ask.
+// Call it only for a settled run: a block recorded inside a command, which the
+// same command may follow with a cancel, is not yet an ask. A blocked ask is
+// keyed by its run_blocked seq and a final ask by its terminal event seq. A
+// block that an open escalation already explains adds no ask; a human gate
+// explains none, since it holds up only its own path (archon-o7p.11).
 func ProjectSettledNeedsYouAsks(events []RunEvent) ([]NeedsYouAsk, error) {
 	if len(events) == 0 {
 		return nil, ErrRunLedgerInvalid
@@ -176,11 +171,17 @@ func ProjectSettledNeedsYouAsks(events []RunEvent) ([]NeedsYouAsk, error) {
 		}}, nil
 	}
 	asks := projectOpenNeedsYouAsks(events)
-	if status.Status == RunStatusBlocked && len(asks) == 0 && last.Seq > 0 && last.Type != RunEventResumed {
+	explained := false
+	for _, ask := range asks {
+		explained = explained || ask.Kind == NeedsYouKindEscalation
+	}
+	if status.Status == RunStatusBlocked && !explained && last.Seq > 0 && last.Type != RunEventResumed {
 		asks = append(asks, NeedsYouAsk{
 			RunID: status.RunID, Seq: last.Seq, Kind: NeedsYouKindBlocked, NodeID: needsYouNodeID(last), GateID: last.GateID,
-			Ask: stringFromEventData(last, "reason"), Blocks: true, Status: status.Status, ResumeAllowed: status.ResumeAllowed,
+			Ask: stringFromEventData(last, "reason"), Blocks: true, Status: status.Status, ResumeAllowed: status.ResumeAllowed, ResumePolicy: status.ResumePolicy,
+			Limit: runLimitReached(events, last.Seq-1),
 		})
+		sort.Slice(asks, func(i, j int) bool { return asks[i].Seq < asks[j].Seq })
 	}
 	return asks, nil
 }

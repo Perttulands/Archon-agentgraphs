@@ -52,11 +52,10 @@ archon --server "$ARCHON_SERVER" gate reject  "$RUN" "$GATE" --requested-seq "$S
 
 The record keeps `decidedBy: human:operator` and stores your slot in
 `relayedBy`. For a long answer the operator names a UTF-8 file; use
-`--response-file FILE` in place of `--response`, never both. After a 409
-`coordinator is executing` (the run stayed busy for the five seconds the daemon
-waits), run the same command again a few seconds later;
-after a 409 `human gate request is no longer pending`, tell the operator that
-another seat or the cockpit decided first.
+`--response-file FILE` in place of `--response`, never both. After a 503 while
+the daemon restarts, run the same command again a few seconds later; after a
+409 `human gate request is no longer pending`, tell the operator that another
+seat or the cockpit decided first.
 
 Kept seats end when their ask is answered, when their formation starts a new
 attempt, or when the run finishes.

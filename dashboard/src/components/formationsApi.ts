@@ -301,7 +301,7 @@ export async function startRun(etag: string, body: { mission: string; inputCardI
   const result = await fetchApi<{ runId: string }>('/api/runs', {
     method: 'POST',
     headers: { 'If-Match': etag },
-    // The cockpit starts runs without limits (archon-o7p.7).
+    // A run's limits are its mission's Limit cards (archon-o7p.8); a start sets none.
     body: JSON.stringify(body),
   })
   return { runId: result.data.runId, status: runStatusFromResponse(await fetchRunStatus(result.data.runId)) }
@@ -348,7 +348,7 @@ export async function abortRunRequest(runId: string, body: { reason: string; req
   return result.data
 }
 
-export async function resumeRunRequest(runId: string, body: { actor: string; mode: string; reason: string }): Promise<RunStatusProjection | RunStatusResult> {
+export async function resumeRunRequest(runId: string, body: { actor: string; mode: string; reason: string; grant?: boolean }): Promise<RunStatusProjection | RunStatusResult> {
   const result = await fetchApi<RunStatusProjection | RunStatusResult>(
     `/api/runs/${encodeURIComponent(runId)}/resume`,
     {
@@ -359,12 +359,19 @@ export async function resumeRunRequest(runId: string, body: { actor: string; mod
   return result.data
 }
 
-/** A limit a run used: one node's attempts or the run's formation dispatches. */
+/**
+ * A Limit card's rounds, time or tokens as a run used them (internal/formations
+ * RunLimitReached): `used` of `max`, `max` counting the card's allowance and
+ * every grant; time in whole seconds. `nodeId` is what the card covers: a
+ * step, or the Input card for the whole mission.
+ */
 export interface RunLimitUse {
-  kind: 'attempts' | 'dispatches'
-  nodeId?: string
+  kind: 'rounds' | 'time' | 'tokens'
+  limitId: string
+  nodeId: string
   used: number
   max: number
+  granted?: number
 }
 
 /** A step, gate or End node a gate verdict delivers to; a formation says which attempt it starts. */
@@ -374,10 +381,11 @@ export interface GateRouteTarget {
   kind: string
   /** An End node's outcome: the path ends there, done or rejected. */
   outcome?: 'done' | 'rejected'
-
   attempt?: number
-  /** The run's attempt limit; absent when the run set none and attempts are unlimited (archon-o7p.7). */
-  maxAttempts?: number
+  /** The step's Limit card use before the route starts it; absent when no card covers the step. */
+  rounds?: RunLimitUse
+  /** The step's time card use so far, in seconds; absent when no card sets its time. */
+  time?: RunLimitUse
   /** A join that receives this and still waits for another input. */
   waitsForInputs?: boolean
 }
@@ -390,11 +398,14 @@ export interface GateRoute {
   endsRun?: boolean
   /** That finish fails the run: a rejected End node on this route, or a path already rejected. */
   runFails?: boolean
-  /** A limit the route needs is spent, so taking it blocks the run. */
+  /** A Limit card the route needs is spent, so taking it blocks the run until a grant. */
   limit?: RunLimitUse
-  dispatches?: RunLimitUse
-  /** Formation starts the route makes, judges included. */
-  dispatchesNeeded?: number
+  /** The mission's Limit card use so far, when a card covers the Input card. */
+  missionRounds?: RunLimitUse
+  /** The step runs the route starts, judges included, when a card covers the mission. */
+  roundsNeeded?: number
+  /** The mission card's time use so far, in seconds, when it sets time. */
+  missionTime?: RunLimitUse
 }
 
 export interface HumanGateRequest {

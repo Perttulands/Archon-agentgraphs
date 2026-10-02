@@ -18,6 +18,7 @@ type boardTOMLSource struct {
 	Formations  []FormationNode
 	Gates       []GateNode
 	Ends        []EndNode
+	Limits      []LimitNode
 	Connections []BoardConnection
 }
 
@@ -67,6 +68,9 @@ func decodeBoardTOML(raw []byte) (boardTOMLSource, error) {
 		return boardTOMLSource{}, err
 	}
 	if source.Ends, err = decodeEndNodes(document); err != nil {
+		return boardTOMLSource{}, err
+	}
+	if source.Limits, err = decodeLimitNodes(document); err != nil {
 		return boardTOMLSource{}, err
 	}
 	if source.Connections, err = decodeBoardConnections(document); err != nil {
@@ -322,17 +326,6 @@ func decodeFormationNodes(document map[string]any) ([]FormationNode, error) {
 		}
 		if node.Title, err = tomlString(table, "title"); err != nil {
 			return nil, err
-		}
-		if value, present := table["execution"]; present {
-			policy, ok := value.(map[string]any)
-			if !ok {
-				return nil, unsupportedTOMLField("execution", value)
-			}
-			seconds, err := tomlInt(policy, "timeoutSeconds")
-			if err != nil {
-				return nil, err
-			}
-			node.Execution = &FormationExecutionPolicy{TimeoutSeconds: seconds}
 		}
 		if node.Inputs, err = decodeFormationPorts(table, "input"); err != nil {
 			return nil, err

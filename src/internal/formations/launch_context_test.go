@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestLaunchContextSurvivesAdmissionAndResumeIntoEverySeatPrompt(t *testing.T) {
+func TestLaunchContextSurvivesAdmissionAndAVerdictIntoEverySeatPrompt(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	createS4Persona(t, personas, "scout")
 	writeFixture(t, store.BoardPath("session-search"), s5HumanGateBoardFixture())
@@ -17,7 +17,7 @@ func TestLaunchContextSurvivesAdmissionAndResumeIntoEverySeatPrompt(t *testing.T
 		t.Fatal(err)
 	}
 	first := &fakeRunExecutor{}
-	status, err := NewRunEngine(store, personas, first).RunMission("session-search", RunStartRequest{MissionID: "mis_showcase", ContextPaths: paths, Limits: RunLimits{MaxDispatch: 5, MaxAttempts: 2}})
+	status, err := NewRunEngine(store, personas, first).RunMission("session-search", RunStartRequest{MissionID: "mis_showcase", ContextPaths: paths})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestLaunchContextSurvivesAdmissionAndResumeIntoEverySeatPrompt(t *testing.T
 		t.Fatal(err)
 	}
 	second := &fakeRunExecutor{}
-	if _, err := NewRunEngine(store, personas, second).ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach"}); err != nil {
+	if _, err := NewRunEngine(store, personas, second).ContinueRun(status.RunID); err != nil {
 		t.Fatal(err)
 	}
 	calls := append(first.calls, second.calls...)

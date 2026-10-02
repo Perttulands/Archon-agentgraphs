@@ -37,6 +37,16 @@ export const END_SVG = (
   </svg>
 )
 
+/** A Limit card's mark: a gauge whose needle stops at a mark. */
+export const LIMIT_SVG = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+    <path d="M4.5 16.5a7.5 7.5 0 1 1 15 0" />
+    <path d="M19.5 16.5h-2.2" />
+    <path d="M12 16.5l4.2-4.6" />
+    <circle cx="12" cy="16.5" r="1.4" fill="currentColor" stroke="none" />
+  </svg>
+)
+
 /* Harness product marks live in the shared library; this wrapper keeps the
    cockpit's call sites stable. */
 export function harnessGlyph(harness: string | undefined | null): JSX.Element | null {

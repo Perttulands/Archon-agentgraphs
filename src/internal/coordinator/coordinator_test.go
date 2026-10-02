@@ -22,9 +22,20 @@ type testExecutor struct {
 	proceed chan struct{}
 	// outputText replaces the default routed output text when set.
 	outputText string
+	mu         sync.Mutex
+	deadline   time.Time
+}
+
+func (e *testExecutor) lastDeadline() time.Time {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.deadline
 }
 
 func (e *testExecutor) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
+	e.mu.Lock()
+	e.deadline = req.Deadline
+	e.mu.Unlock()
 	e.entered <- req.NodeID
 	<-e.proceed
 	outputs := map[string]formations.FormationOutputPayload{}
@@ -65,7 +76,7 @@ func post(t *testing.T, c *Coordinator, path string, body string) *httptest.Resp
 }
 func startRun(t *testing.T, c *Coordinator) string {
 	t.Helper()
-	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"run the proof"}, "mission":"proof","inputCardId":"mis_proof","expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1,"wallClockSeconds":600}}`)
+	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"run the proof"}, "mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 	if w.Code != 202 {
 		t.Fatalf("start %d %s", w.Code, w.Body.String())
 	}
@@ -278,38 +289,36 @@ from = "fmn_after:port_after_out"
 to = "end_done:in"
 `
 
-// Limits are optional (archon-o7p.7): a start without limits is admitted and its
-// ledger records none, and a negative limit is refused.
-func TestAdmissionTakesARunWithoutLimits(t *testing.T) {
-	for _, body := range []string{`"limits":{},`, `"limits":{"maxDispatch":0,"maxAttempts":0,"wallClockSeconds":0},`, ``} {
-		c, e, _ := fixture(t)
-		w := post(t, c, "/api/runs", `{`+body+`"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"proof"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
-		if w.Code != 202 {
-			t.Fatalf("%s admission %d %s", body, w.Code, w.Body.String())
-		}
-		var receipt struct {
-			Data struct {
-				RunID string `json:"runId"`
-			} `json:"data"`
-		}
-		if err := json.Unmarshal(w.Body.Bytes(), &receipt); err != nil {
-			t.Fatal(err)
-		}
-		select {
-		case <-e.entered:
-		case <-time.After(testPatience):
-			t.Fatal("execution did not start")
-		}
-		events, err := c.store.ReadRunEvents(receipt.Data.RunID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		limits, _ := events[0].Data["limits"].(map[string]any)
-		if limits["maxDispatch"] != float64(0) || limits["maxAttempts"] != nil || limits["wallClockSeconds"] != float64(0) {
-			t.Fatalf("%s recorded limits = %#v, want none", body, limits)
-		}
+// A run has no limits unless its mission holds a Limit card (archon-o7p.8): a
+// start records none, and a start naming launch limits is refused, since the
+// request has no such field.
+func TestAdmissionRecordsNoLimitsAndRefusesLaunchLimits(t *testing.T) {
+	c, e, _ := fixture(t)
+	w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"proof"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
+	if w.Code != 202 {
+		t.Fatalf("admission %d %s", w.Code, w.Body.String())
 	}
-	for _, limits := range []string{`{"maxDispatch":-1}`, `{"maxAttempts":-1}`, `{"wallClockSeconds":-1}`} {
+	var receipt struct {
+		Data struct {
+			RunID string `json:"runId"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-e.entered:
+	case <-time.After(testPatience):
+		t.Fatal("execution did not start")
+	}
+	events, err := c.store.ReadRunEvents(receipt.Data.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, recorded := events[0].Data["limits"]; recorded {
+		t.Fatalf("recorded limits = %#v, want none", events[0].Data["limits"])
+	}
+	for _, limits := range []string{`{}`, `{"maxDispatch":3}`, `{"wallClockSeconds":60}`} {
 		c, _, _ := fixture(t)
 		w := post(t, c, "/api/runs", `{"limits":`+limits+`,"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"proof"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1}`)
 		if w.Code != 400 {
@@ -318,8 +327,8 @@ func TestAdmissionTakesARunWithoutLimits(t *testing.T) {
 	}
 }
 
-// Admission freezes no default step duration: a step without an authored one
-// has no deadline, and a caller cannot ask for a default either.
+// A step no Limit card times runs without a deadline, and a caller cannot ask
+// for a default either (archon-o7p.8).
 func TestAdmissionGivesStepsNoDefaultDuration(t *testing.T) {
 	for _, mode := range []string{"mission", "formation"} {
 		t.Run(mode, func(t *testing.T) {
@@ -331,7 +340,7 @@ func TestAdmissionGivesStepsNoDefaultDuration(t *testing.T) {
 			if w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"proof"},"mission":"proof",`+selector+`"expectedRev":1,"limits":{"formationTimeoutSeconds":999}}`); w.Code != 400 {
 				t.Fatalf("a default step duration was accepted: %d %s", w.Code, w.Body.String())
 			}
-			w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"proof"},"mission":"proof",`+selector+`"expectedRev":1,"limits":{"maxDispatch":3,"maxAttempts":1}}`)
+			w := post(t, c, "/api/runs", `{"cwd":`+strconv.Quote(c.store.Workspace)+`,"inputs":{"brief":"proof"},"mission":"proof",`+selector+`"expectedRev":1}`)
 			if w.Code != 202 {
 				t.Fatalf("admission %d %s", w.Code, w.Body.String())
 			}
@@ -352,22 +361,11 @@ func TestAdmissionGivesStepsNoDefaultDuration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			limits, ok := events[0].Data["limits"].(map[string]any)
-			if _, frozen := limits["formationTimeoutSeconds"]; !ok || frozen {
-				t.Fatalf("limits=%#v", limits)
+			if _, recorded := events[0].Data["limits"]; recorded {
+				t.Fatalf("run_started recorded limits: %#v", events[0].Data["limits"])
 			}
-			started := false
-			for _, event := range events {
-				if event.Type != formations.RunEventNodeStarted || event.NodeID != "fmn_work" {
-					continue
-				}
-				started = true
-				if event.Data["executionDeadline"] != nil || event.Data["executionTimeoutSeconds"] != nil {
-					t.Fatalf("a step without a duration got a deadline: %#v", event.Data)
-				}
-			}
-			if !started {
-				t.Fatal("the step did not start")
+			if deadline := e.lastDeadline(); !deadline.IsZero() {
+				t.Fatalf("a step no time card covers got deadline %v", deadline)
 			}
 		})
 	}

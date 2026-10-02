@@ -1,6 +1,7 @@
 import { useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { formationTypeChoices } from '../components/FormationTypeChip'
 import { END_OUTCOMES, defaultEndTitle, endOutcomeMeaning } from '../components/endNode'
+import { TOKENS_DEFINITION, durationInput, durationWords, limitCoverage, limitKnobWords, limitMeaning, limitsCovering, parseDuration, roundsProblem, timeProblem, tokenWords, tokensProblem, warnProblem } from '../components/limitCard'
 import { GateKindChips, GateKindsFields, draftFromGate, type GateDraft } from '../components/GateEditorDialog'
 import { isSafeBeadsIssueID } from '../components/formationsBeadId'
 import { splitList } from '../components/formationsCockpitDom'
@@ -16,7 +17,9 @@ import type {
   FormationSlot,
   FormationType,
   GateNode,
+  LimitNode,
   MissionNode,
+  RunEvent,
 } from '../components/formationsTypes'
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { ProducedFiles } from '../files/ProducedFiles'
@@ -27,7 +30,6 @@ import { nodeAnchor, nodeWindowKeepClear } from '../windows/cockpitScene'
 import type { WindowRect } from '../windows/windowGeometry'
 import { EditableField } from './EditableField'
 import { MissionInputsField } from './MissionInputsField'
-import { FormationDurationField } from './FormationDurationField'
 import { HumanChannelField } from '../humanChannel/HumanChannelField'
 import { humanChannelField, humanChannelOf } from '../humanChannel/humanChannel'
 import { buildFlow } from '../flow/flowModel'
@@ -39,7 +41,7 @@ import { modelWords, roleNamer, staffingOf } from '../staffing/staffingModel'
 import './nodeWindow.css'
 
 /**
- * A mission, formation or gate opened from its card: every field read in full
+ * An Input card, formation, gate, End node or Limit card opened from its card: every field read in full
  * and edited in place, its staffing and routes stated in words, and its run
  * state with a way into the evidence. Each save is one board change with its
  * own undo entry.
@@ -49,7 +51,6 @@ export interface NodeWindowOps {
   rename: (nodeId: string, title: string) => Promise<boolean>
   updateInputCard: (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel' | 'inputs'>>) => Promise<boolean>
   setBrief: (formationId: string, brief: FormationBrief) => Promise<boolean>
-  setExecution: (formationId: string, timeoutSeconds: number) => Promise<boolean>
   changeType: (formation: FormationNode, type: FormationType, keepSlotId?: string) => void
   /** Opens the slot's staffing sentence dropping from the word that was clicked; a word opens only its own list. */
   staffSlot: (formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => void
@@ -57,6 +58,8 @@ export interface NodeWindowOps {
   /** Sets an End node's outcome: done, or rejected, which fails the run. */
   setEndOutcome: (end: EndNode, outcome: EndOutcome) => Promise<boolean>
   setGateFiles: (gate: GateNode, files: string[]) => Promise<boolean>
+  /** Changes what a Limit card covers ('' unwires it) or one knob (0 clears it); resolves true, or the server's refusal. */
+  setLimit: (limit: LimitNode, change: LimitChange) => Promise<true | string>
   attachJudge: (gate: GateNode, chain: string[]) => void
   detachJudge: (gate: GateNode) => void
   openNode: (nodeId: string) => void
@@ -64,6 +67,9 @@ export interface NodeWindowOps {
   openNotes: (nodeId: string) => void
   inspectEvidence: (nodeId: string) => void
 }
+
+/** One change to a Limit card: its target, or one knob in whole seconds or rounds. */
+export type LimitChange = { target?: string; rounds?: number; seconds?: number; warnSeconds?: number; tokens?: number }
 
 const BEAD_HINT = 'A Beads issue ID such as ctx-ug7.25, or blank.'
 const beadProblem = (value: string) => (value && !isSafeBeadsIssueID(value) ? `Enter a Beads issue ID such as ctx-ug7.25, or leave it blank.` : '')
@@ -82,8 +88,9 @@ type Located =
   | { kind: 'formation'; node: FormationNode }
   | { kind: 'gate'; node: GateNode }
   | { kind: 'end'; node: EndNode }
+  | { kind: 'limit'; node: LimitNode }
 
-export function locateNode(board: Pick<BoardDocument, 'formations'> & Partial<Pick<BoardDocument, 'inputCards' | 'gates' | 'ends'>>, nodeId: string): Located | null {
+export function locateNode(board: Pick<BoardDocument, 'formations'> & Partial<Pick<BoardDocument, 'inputCards' | 'gates' | 'ends' | 'limits'>>, nodeId: string): Located | null {
   const mission = board.inputCards?.find(node => node.id === nodeId)
   if (mission) return { kind: 'inputCard', node: mission }
   const formation = board.formations.find(node => node.id === nodeId)
@@ -92,18 +99,26 @@ export function locateNode(board: Pick<BoardDocument, 'formations'> & Partial<Pi
   if (gate) return { kind: 'gate', node: gate }
   const end = board.ends?.find(node => node.id === nodeId)
   if (end) return { kind: 'end', node: end }
+  const limit = board.limits?.find(node => node.id === nodeId)
+  if (limit) return { kind: 'limit', node: limit }
   return null
 }
 
-const KIND_WORD = { inputCard: 'Input card', formation: 'Formation', gate: 'Gate', end: 'End node' } as const
-const UNTITLED = { inputCard: 'Input', formation: 'Untitled formation', gate: 'Gate', end: 'End' } as const
+const KIND_WORD = { inputCard: 'Input card', formation: 'Formation', gate: 'Gate', end: 'End node', limit: 'Limit card' } as const
+const UNTITLED = { inputCard: 'Input', formation: 'Untitled formation', gate: 'Gate', end: 'End', limit: 'Limit' } as const
+
+/** A time card's warning in a node's run: "#14 · attempt 2 · time warning pasted into Worker", naming the seat by its slot. */
+export function limitWarningLine(event: RunEvent, slotName: (slotId: string) => string = slotId => slotId): string {
+  const slot = typeof event.data?.slotId === 'string' ? event.data.slotId : ''
+  return [`#${event.seq}`, event.attempt ? `attempt ${event.attempt}` : '', slot ? `time warning pasted into ${slotName(slot) || slot}` : 'time warning recorded'].filter(Boolean).join(' · ')
+}
 
 /** The window's accessible name, which its close button and handles repeat. */
 export function nodeWindowLabel(located: Located): string {
   return `${KIND_WORD[located.kind]} · ${located.node.title || UNTITLED[located.kind]}`
 }
 
-export default function NodeWindow({ nodeId, board, agents, profiles, noteCount, anchor, runState, onClose, ops }: {
+export default function NodeWindow({ nodeId, board, agents, profiles, noteCount, anchor, runState, limitWarnings = [], onClose, ops }: {
   nodeId: string
   /** What the window opens beside; without it, the node's Flow row or card. */
   anchor?: WindowRect
@@ -114,6 +129,8 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
   noteCount: number
   /** The node's state in the run on the canvas; undefined when the run has not reached it. */
   runState: NodeRunState | undefined
+  /** The run's limit_warning events on this node: a time card's warning pasted into a seat. */
+  limitWarnings?: RunEvent[]
   onClose: () => void
   ops: NodeWindowOps
 }) {
@@ -149,6 +166,7 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
         {located.kind === 'formation' ? <FormationFields formation={located.node} agents={agents} ops={ops} /> : null}
         {located.kind === 'gate' ? <GateFields gate={located.node} board={board} profiles={profiles} ops={ops} /> : null}
         {located.kind === 'end' ? <EndFields end={located.node} ops={ops} /> : null}
+        {located.kind === 'limit' ? <LimitFields limit={located.node} board={board} steps={steps} ops={ops} /> : null}
         <section className="nwin-section" aria-label="Notes">
           <h3>Notes</h3>
           <div className="nwin-run">
@@ -175,6 +193,11 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
               <span className={`nwin-state state-${runState || 'idle'}`}>{RUN_STATE_WORDS[runState]}</span>
               <button type="button" className="nwin-action" onClick={() => ops.inspectEvidence(nodeId)}>Open run evidence</button>
             </div>
+            {limitWarnings.length ? (
+              <ul className="nwin-list nwin-limit-warnings" data-testid={`limit-warnings-${nodeId}`}>
+                {limitWarnings.map(event => <li key={event.seq}>{limitWarningLine(event, slotId => (located.kind === 'formation' ? located.node.slots.find(slot => slot.id === slotId)?.label || '' : ''))}</li>)}
+              </ul>
+            ) : null}
             <ProducedFiles nodeId={nodeId} className="nwin-produced" />
           </section>
         ) : null}
@@ -221,8 +244,6 @@ function FormationFields({ formation, agents, ops }: { formation: FormationNode;
       </div>
       <EditableField label="Brief" value={brief.goal || ''} multiline markdown placeholder="No brief yet. Say what this step does and what it returns."
         onSave={goal => saveBrief({ goal })} />
-      <FormationDurationField timeoutSeconds={formation.execution?.timeoutSeconds}
-        onSave={timeoutSeconds => ops.setExecution(formation.id, timeoutSeconds)} />
       <EditableField label="Bead" value={brief.beadId || ''} placeholder="No Bead" hint={BEAD_HINT} validate={beadProblem}
         onSave={beadId => saveBrief({ beadId })} />
       <FilesField files={brief.files} context={formation.title} onSave={files => saveBrief({ files })} />
@@ -322,6 +343,63 @@ function EndFields({ end, ops }: { end: EndNode; ops: NodeWindowOps }) {
       </div>
       <p className="nfield-note">{endOutcomeMeaning(end.outcome)}</p>
     </div>
+  )
+}
+
+/**
+ * A Limit card's target, rounds, time and warning, edited in place, and what it does to a run
+ * in words. A refusal from the server reads under the field it came from.
+ */
+function LimitFields({ limit, board, steps, ops }: { limit: LimitNode; board: BoardDocument; steps: ReadonlyMap<string, number>; ops: NodeWindowOps }) {
+  const [targetError, setTargetError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const coverage = limitCoverage(board, limit)
+  const others = limit.target ? limitsCovering(board, limit.target).filter(other => other.id !== limit.id) : []
+  const stepName = (formation: FormationNode) => `${steps.has(formation.id) ? `${steps.get(formation.id)} ` : ''}${formation.title || formation.id}`
+  const changeTarget = async (target: string) => {
+    if (target === limit.target) return
+    setSaving(true)
+    const saved = await ops.setLimit(limit, { target })
+    setSaving(false)
+    setTargetError(saved === true ? '' : saved)
+  }
+  return (
+    <>
+      <div className="nfield">
+        <div className="nfield-head"><label className="nfield-label" htmlFor={`limit-target-${limit.id}`}>Covers</label></div>
+        <select id={`limit-target-${limit.id}`} className="nwin-select" aria-label="Covers" value={coverage.kind === 'none' || coverage.kind === 'missing' ? '' : limit.target}
+          disabled={saving} onChange={event => void changeTarget(event.target.value)}>
+          <option value="">{coverage.kind === 'missing' ? 'A step that is gone' : 'Nothing yet'}</option>
+          {(board.inputCards || []).map(card => <option key={card.id} value={card.id}>Input card — the whole mission</option>)}
+          {[...board.formations].sort((a, b) => (steps.get(a.id) ?? Infinity) - (steps.get(b.id) ?? Infinity)).map(formation => (
+            <option key={formation.id} value={formation.id}>{stepName(formation)}</option>
+          ))}
+        </select>
+        {targetError ? <p className="nfield-note error" role="alert">{targetError}</p> : null}
+        {others.length ? <p className="nfield-note error">{`${coverage.kind === 'mission' ? 'The Input card' : coverage.kind === 'step' ? coverage.node.title : limit.target} has another Limit card, ${others.map(other => other.title).join(', ')}: keep one.`}</p> : null}
+      </div>
+      <EditableField label="Rounds" value={limit.rounds ? String(limit.rounds) : ''} placeholder="No rounds set"
+        hint="A step's runs, a peer step's journal messages, or the whole mission's step runs. Leave it blank for no limit."
+        validate={roundsProblem} onSave={value => ops.setLimit(limit, { rounds: value ? Number(value) : 0 })}>
+        {limit.rounds ? limitKnobWords(board, { ...limit, seconds: undefined, tokens: undefined }) : undefined}
+      </EditableField>
+      <EditableField label="Time" value={durationInput(limit.seconds)} placeholder="No time set"
+        hint="How long the work may run, such as 45s, 30m or 1h30m. Waiting on a human gate does not count. Leave it blank for no time limit."
+        validate={timeProblem} onSave={value => ops.setLimit(limit, { seconds: parseDuration(value) || 0 })}>
+        {limit.seconds ? `${durationWords(limit.seconds)} of work` : undefined}
+      </EditableField>
+      <EditableField label="Warning" value={durationInput(limit.warnSeconds)} placeholder={limit.seconds ? 'No warning' : 'No warning; it needs time'}
+        hint="How much time is left when Archon pastes a warning into the seats, such as 5m. It must be shorter than the time. Leave it blank for no warning."
+        validate={value => warnProblem(value, limit.seconds)} onSave={value => ops.setLimit(limit, { warnSeconds: parseDuration(value) || 0 })}>
+        {limit.warnSeconds ? `warns at ${durationWords(limit.warnSeconds)} left` : undefined}
+      </EditableField>
+      <EditableField label="Tokens" value={limit.tokens ? String(limit.tokens) : ''} placeholder="No tokens set"
+        hint={`How many tokens the work may spend. ${TOKENS_DEFINITION} Leave it blank for no limit.`}
+        validate={tokensProblem} onSave={value => ops.setLimit(limit, { tokens: value ? Number(value) : 0 })}>
+        {limit.tokens ? tokenWords(limit.tokens) : undefined}
+      </EditableField>
+      <p className="nfield-note limit-meaning" data-testid={`limit-meaning-${limit.id}`}>{limitMeaning(board, limit)}</p>
+    </>
   )
 }
 

@@ -81,7 +81,6 @@ type Event struct {
 }
 type Projection struct {
 	*formations.RunStatusProjection
-	ProjectionVersion string `json:"projectionVersion"`
 	// HumanChannel is the run's frozen mission channel: notify or session.
 	HumanChannel string        `json:"humanChannel"`
 	WaitingGates []GateRequest `json:"waitingGates"`
@@ -118,11 +117,14 @@ type executionState struct {
 	executing bool
 	busy      bool
 	settling  bool
-	ctx       context.Context
-	cancel    context.CancelFunc
-	done      chan struct{}
-	changed   chan struct{}
-	abort     *formations.RunEvent
+	// kicked asks the executing worker to continue once more before it
+	// settles: a verdict was recorded while it ran (archon-o7p.11).
+	kicked  bool
+	ctx     context.Context
+	cancel  context.CancelFunc
+	done    chan struct{}
+	changed chan struct{}
+	abort   *formations.RunEvent
 }
 
 // Open takes one kernel lock for the lifetime of the coordinator. StateDir is
@@ -152,7 +154,13 @@ func Open(stateDir string, personas *formations.PersonaStore, makeExecutor func(
 		state := c.state(event.RunID)
 		close(state.changed)
 		state.changed = make(chan struct{})
+		notify := c.needsYou
 		c.mu.Unlock()
+		// A gate asks while other branches run, so its ask goes out now rather
+		// than when the run's worker settles (archon-o7p.11).
+		if notify != nil && (event.Type == formations.RunEventHumanInputRequested || event.Type == formations.RunEventEscalationRaised) {
+			notify.queue(event.RunID)
+		}
 	}
 	c.engine = formations.NewRunEngine(store, personas, makeExecutor(store))
 	c.engine.SetExecutionContext(func(runID string) context.Context {
@@ -423,6 +431,21 @@ func (c *Coordinator) release(id string) {
 	}
 	c.workers.Done()
 }
+
+// releaseQuietly releases a reservation taken for bookkeeping, not to run the
+// run: nothing settled, so needs-you is not asked to look again.
+func (c *Coordinator) releaseQuietly(id string) {
+	c.mu.Lock()
+	state := c.state(id)
+	state.cancel()
+	state.busy = false
+	close(state.done)
+	close(state.changed)
+	state.changed = make(chan struct{})
+	c.mu.Unlock()
+	c.workers.Done()
+}
+
 func (c *Coordinator) nextChange(id string) <-chan struct{} {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -431,27 +454,21 @@ func (c *Coordinator) nextChange(id string) <-chan struct{} {
 
 func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Cwd          string               `json:"cwd"`
-		ContextPaths []string             `json:"contextPaths"`
-		Inputs       map[string]string    `json:"inputs"`
-		BeadID       string               `json:"beadId"`
-		Actor        string               `json:"actor"`
-		FormationID  string               `json:"formationId"`
-		Board        string               `json:"mission"`
-		MissionID    string               `json:"inputCardId"`
-		ExpectedRev  int                  `json:"expectedRev"`
-		Limits       formations.RunLimits `json:"limits"`
+		Cwd          string            `json:"cwd"`
+		ContextPaths []string          `json:"contextPaths"`
+		Inputs       map[string]string `json:"inputs"`
+		BeadID       string            `json:"beadId"`
+		Actor        string            `json:"actor"`
+		FormationID  string            `json:"formationId"`
+		Board        string            `json:"mission"`
+		MissionID    string            `json:"inputCardId"`
+		ExpectedRev  int               `json:"expectedRev"`
 	}
 	if !decode(w, r, &req) {
 		return
 	}
 	if req.Board == "" || (req.MissionID == "") == (req.FormationID == "") || req.ExpectedRev <= 0 {
 		reply(w, 400, map[string]string{"error": "mission, inputCardId and expectedRev required"})
-		return
-	}
-	// Limits are optional (archon-o7p.7): an absent or zero limit means none.
-	if err := formations.ValidateRunLimits(req.Limits); err != nil {
-		reply(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
 	// A single step takes the same run fields as a mission (archon-o7p.3).
@@ -513,7 +530,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.FormationID != "" {
-		started, execute, err := c.engine.PrepareFormationRun(req.Board, req.FormationID, formations.FormationRunRequest{Actor: runActor(req.Actor), Personas: c.personas, Limits: req.Limits, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Cwd: req.Cwd, ContextPaths: req.ContextPaths, BeadID: req.BeadID, Inputs: req.Inputs})
+		started, execute, err := c.engine.PrepareFormationRun(req.Board, req.FormationID, formations.FormationRunRequest{Actor: runActor(req.Actor), Personas: c.personas, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Cwd: req.Cwd, ContextPaths: req.ContextPaths, BeadID: req.BeadID, Inputs: req.Inputs})
 		if err != nil {
 			failure(w, err)
 			return
@@ -536,7 +553,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		reply(w, 422, map[string]string{"error": "wire the Input card to a step"})
 		return
 	}
-	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, ContextPaths: req.ContextPaths, Inputs: req.Inputs, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: runActor(req.Actor), Personas: c.personas, Limits: req.Limits})
+	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, ContextPaths: req.ContextPaths, Inputs: req.Inputs, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: runActor(req.Actor), Personas: c.personas})
 	if err != nil {
 		failure(w, err)
 		return
@@ -615,15 +632,8 @@ func (c *Coordinator) runHumanChannel(runID string, events []formations.RunEvent
 }
 
 func project(status *formations.RunStatusProjection, events []formations.RunEvent) *Projection {
-	p := &Projection{RunStatusProjection: status, ProjectionVersion: "standalone-trusted-v1", HumanChannel: formations.HumanChannelNotify, WaitingGates: []GateRequest{}, OnCallSeats: []OnCallSeat{}, Events: []Event{}}
-	waiting := map[string]int{}
+	p := &Projection{RunStatusProjection: status, HumanChannel: formations.HumanChannelNotify, WaitingGates: []GateRequest{}, OnCallSeats: []OnCallSeat{}, Events: []Event{}}
 	for _, raw := range events {
-		if raw.Type == formations.RunEventHumanInputRequested {
-			waiting[raw.GateID] = raw.Seq
-		}
-		if raw.Type == formations.RunEventHumanVerdictRecorded {
-			delete(waiting, raw.GateID)
-		}
 		e := Event{Seq: raw.Seq, Type: raw.Type, NodeID: raw.NodeID, SlotID: raw.SlotID, GateID: raw.GateID, Attempt: raw.Attempt}
 		e.Status, _ = raw.Data["status"].(string)
 		e.Verdict, _ = raw.Data["verdict"].(string)
@@ -649,10 +659,7 @@ func project(status *formations.RunStatusProjection, events []formations.RunEven
 	}
 	asks := formations.HumanAskRecords(events)
 	if !status.Final {
-		for _, event := range events {
-			if waiting[event.GateID] != event.Seq {
-				continue
-			}
+		for _, event := range formations.OpenHumanRequests(events) {
 			gate := GateRequest{GateID: event.GateID, RequestedSeq: event.Seq, RequestedAt: event.Timestamp, AskedSeats: []AskedSeat{}}
 			if record := asks[event.Seq]; record != nil {
 				for createdSeq, delivered := range record.Delivered {
@@ -701,6 +708,11 @@ func (c *Coordinator) get(w http.ResponseWriter, r *http.Request) {
 	}
 	reply(w, 200, p)
 }
+
+// verdict records the operator's verdict on a pending request. It needs no
+// run command: a verdict is accepted while other seats work, and the run's
+// worker routes it (archon-o7p.11). On a blocked run the verdict waits for
+// the resume.
 func (c *Coordinator) verdict(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Actor        string `json:"actor"`
@@ -721,16 +733,6 @@ func (c *Coordinator) verdict(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	runID, gateID := r.PathValue("runId"), r.PathValue("gateId")
-	if !c.acquireSoon(r.Context(), runID) {
-		reply(w, 409, map[string]string{"error": "coordinator is executing"})
-		return
-	}
-	startedWorker := false
-	defer func() {
-		if !startedWorker {
-			c.release(runID)
-		}
-	}()
 	p, err := c.Project(runID)
 	if err != nil {
 		failure(w, err)
@@ -746,20 +748,68 @@ func (c *Coordinator) verdict(w http.ResponseWriter, r *http.Request) {
 		reply(w, 409, map[string]string{"error": "human gate request is no longer pending"})
 		return
 	}
-	status, err := c.engine.RecordHumanGateVerdict(runID, formations.HumanGateVerdictRequest{GateID: gateID, Verdict: req.Verdict, Reason: req.Reason, Actor: "human:operator", RelayedBy: req.RelayedBy})
+	_, err = c.engine.RecordHumanGateVerdict(runID, formations.HumanGateVerdictRequest{GateID: gateID, RequestedSeq: req.RequestedSeq, Verdict: req.Verdict, Reason: req.Reason, Actor: "human:operator", RelayedBy: req.RelayedBy})
+	if errors.Is(err, formations.ErrHumanRequestNotPending) || errors.Is(err, formations.ErrRunFinal) {
+		reply(w, 409, map[string]string{"error": "human gate request is no longer pending"})
+		return
+	}
 	if err != nil {
 		failure(w, err)
 		return
 	}
-	if status.ResumeAllowed {
-		// Verdict and continuation are one operator action. Execution outlives HTTP.
-		startedWorker = true
+	c.continueAfterVerdict(runID)
+	reply(w, 202, map[string]string{"runId": runID})
+}
+
+// continueAfterVerdict makes sure a recorded verdict is routed. A worker
+// still executing the run continues once more before it settles; otherwise a
+// new worker continues the run as soon as the run's command is free. A
+// blocked or final run continues nothing: a blocked run routes the verdict
+// when it resumes.
+func (c *Coordinator) continueAfterVerdict(runID string) {
+	kick := func() bool {
+		state := c.state(runID)
+		if state.busy && state.executing && !state.settling && state.abort == nil {
+			state.kicked = true
+			return true
+		}
+		return false
+	}
+	c.mu.Lock()
+	kicked := kick()
+	c.mu.Unlock()
+	if kicked {
+		return
+	}
+	continueRun := func() {
 		c.launch(runID, func() error {
-			_, err := c.engine.ResumeRun(runID, formations.RunResumeRequest{Actor: "coordinator", Mode: "reattach", Reason: "human verdict recorded"})
+			_, err := c.engine.ContinueRun(runID)
 			return err
 		})
 	}
-	reply(w, 202, map[string]string{"runId": runID})
+	if c.acquire(runID) {
+		continueRun()
+		return
+	}
+	// A worker is settling or another command holds the run: continue once
+	// it is free.
+	go func() {
+		for !c.acquire(runID) {
+			c.mu.Lock()
+			closed, done := c.closed, c.state(runID).done
+			kicked := !closed && kick()
+			c.mu.Unlock()
+			if closed || kicked {
+				return
+			}
+			select {
+			case <-done:
+			case <-c.stopping:
+				return
+			}
+		}
+		continueRun()
+	}()
 }
 
 func (c *Coordinator) stream(w http.ResponseWriter, r *http.Request) {
@@ -776,6 +826,11 @@ func (c *Coordinator) stream(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		since = n
+	}
+	// An unknown run answers before it is subscribed to, so it allocates nothing.
+	if _, err := c.store.ReadRunEvents(r.PathValue("runId")); err != nil {
+		failure(w, err)
+		return
 	}
 	sent := false
 	for {

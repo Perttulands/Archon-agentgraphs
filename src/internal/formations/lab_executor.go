@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const defaultLabOutputCapBytes = 8192
@@ -101,6 +103,12 @@ func (e *LabFormationExecutor) executeFormation(ctx context.Context, req Formati
 		return FormationExecutionResult{}, runExecutionError("missing_slot", fmt.Sprintf("formation %q has no slots to dispatch", req.NodeID), "executor", nil)
 	}
 
+	if err := e.work(ctx, req); err != nil {
+		return FormationExecutionResult{}, err
+	}
+	if err := e.spendTokens(req); err != nil {
+		return FormationExecutionResult{}, err
+	}
 	allowed := e.allowedHarnesses()
 	dispatcher := NewSlotDispatcher(e.store, nil)
 	outputs := make([]string, 0, len(req.Formation.Slots))
@@ -158,6 +166,77 @@ func (e *LabFormationExecutor) executeFormation(ctx context.Context, req Formati
 		Text:      text,
 		Outputs:   labOutputPayloads(req.Formation, text),
 	}, nil
+}
+
+// labWorkPattern is how a lab brief makes a step take time: a line
+// "archon-lab-work: 20s" in the step's brief goal.
+var labWorkPattern = regexp.MustCompile(`archon-lab-work:\s*(\S+)`)
+
+// work spends the step's lab work time, so time limits and their warnings can
+// be rehearsed: it records each due warning for every seat, as a real seat
+// would get it pasted, and stops when the step's time runs out.
+func (e *LabFormationExecutor) work(ctx context.Context, req FormationExecution) error {
+	match := labWorkPattern.FindStringSubmatch(req.Brief.Goal)
+	if match == nil {
+		return nil
+	}
+	duration, err := time.ParseDuration(match[1])
+	if err != nil || duration <= 0 {
+		return runExecutionError("invalid_lab_work", fmt.Sprintf("lab work %q is not a positive duration such as 20s", match[1]), "executor", err)
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	started := make(chan struct{})
+	close(started)
+	warned := make(chan struct{})
+	go func() {
+		defer close(warned)
+		awaitLimitWarnings(ctx, req.Warnings, started, func(warning LimitWarning) {
+			for _, slot := range req.Formation.Slots {
+				e.store.claimLimitWarning(req, slot.ID, warning)
+			}
+		})
+	}()
+	defer func() { cancel(); <-warned }()
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return context.Cause(ctx)
+	case <-timer.C:
+		return nil
+	}
+}
+
+// labTokensPattern is how a lab brief makes a step spend tokens: a line
+// "archon-lab-tokens: 40000" in the step's brief goal.
+var labTokensPattern = regexp.MustCompile(`archon-lab-tokens:\s*(\S+)`)
+
+// spendTokens records the step's lab tokens when a Limit card's tokens cover
+// it, as a seat's transcript would count them, and stops the step when they
+// reach its budget.
+func (e *LabFormationExecutor) spendTokens(req FormationExecution) error {
+	match := labTokensPattern.FindStringSubmatch(req.Brief.Goal)
+	if match == nil || req.TokenBudget <= 0 {
+		return nil
+	}
+	tokens, err := strconv.Atoi(match[1])
+	if err != nil || tokens <= 0 {
+		return runExecutionError("invalid_lab_tokens", fmt.Sprintf("lab tokens %q is not a positive whole number", match[1]), "executor", err)
+	}
+	slotID := ""
+	if len(req.Formation.Slots) > 0 {
+		slotID = req.Formation.Slots[0].ID
+	}
+	if err := e.store.AppendRunEvent(req.RunID, RunEvent{Type: RunEventTokenUsage, NodeID: req.NodeID, SlotID: slotID, Attempt: req.Attempt, Data: map[string]any{
+		"tokens": tokens, "usage": TokenUsage{Input: tokens},
+	}}); err != nil {
+		return err
+	}
+	if tokens >= req.TokenBudget {
+		return ErrTokenBudgetSpent
+	}
+	return nil
 }
 
 func (e *LabFormationExecutor) validateConfiguredBoundary() error {

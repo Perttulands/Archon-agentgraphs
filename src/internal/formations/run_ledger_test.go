@@ -31,7 +31,6 @@ func TestS4RunStartAppendsSeq1AndSnapshots(t *testing.T) {
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            RunLimits{MaxDispatch: 3, WallClockSeconds: 120},
 	})
 	if err != nil {
 		t.Fatalf("start run: %v", err)
@@ -78,9 +77,10 @@ func TestS4RunStartAppendsSeq1AndSnapshots(t *testing.T) {
 	if got := event.Data["snapshot"]; got != started.SnapshotPath {
 		t.Fatalf("run_started snapshot data = %#v, want %q", got, started.SnapshotPath)
 	}
-	limits, ok := event.Data["limits"].(map[string]any)
-	if !ok || limits["maxDispatch"] != float64(3) || limits["wallClockSeconds"] != float64(120) {
-		t.Fatalf("run_started limits = %#v, want maxDispatch and wallClockSeconds", event.Data["limits"])
+	// Limits live on the mission's Limit cards, frozen in the snapshot; a run
+	// start records none (archon-o7p.8).
+	if _, recorded := event.Data["limits"]; recorded {
+		t.Fatalf("run_started recorded limits: %#v", event.Data["limits"])
 	}
 }
 
@@ -147,7 +147,6 @@ func TestS4ProjectRunStatusFromLedgerOnly(t *testing.T) {
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            RunLimits{MaxDispatch: 1, WallClockSeconds: 30},
 	})
 	if err != nil {
 		t.Fatalf("start run: %v", err)

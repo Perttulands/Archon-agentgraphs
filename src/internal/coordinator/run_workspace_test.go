@@ -35,7 +35,7 @@ func TestMissionAdmissionWithoutCwdExecutesInItsProjectedWorkspace(t *testing.T)
 		t.Fatal(err)
 	}
 	for _, cwd := range []any{nil, ""} {
-		body := map[string]any{"mission": "proof", "inputCardId": "mis_proof", "expectedRev": 1, "inputs": map[string]string{"brief": "work in an automatic workspace"}, "contextPaths": contextPaths, "limits": formations.RunLimits{MaxDispatch: 3, MaxAttempts: 1, WallClockSeconds: 60}}
+		body := map[string]any{"mission": "proof", "inputCardId": "mis_proof", "expectedRev": 1, "inputs": map[string]string{"brief": "work in an automatic workspace"}, "contextPaths": contextPaths}
 		if cwd != nil {
 			body["cwd"] = cwd
 		}

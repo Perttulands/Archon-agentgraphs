@@ -91,11 +91,8 @@ humanChannel = "email"
 	if err != nil {
 		t.Fatal(err)
 	}
-	compat := parseMissionNodes([]byte(raw))
-	for label, missions := range map[string][]MissionNode{"decoder": board.Missions, "compatibility parser": compat} {
-		if len(missions) != 2 || missions[0].HumanChannel != "" || missions[1].HumanChannel != "email" {
-			t.Fatalf("%s: channels %+v, want notify stored as empty and email kept for validation", label, missions)
-		}
+	if missions := board.Missions; len(missions) != 2 || missions[0].HumanChannel != "" || missions[1].HumanChannel != "email" {
+		t.Fatalf("channels %+v, want notify stored as empty and email kept for validation", missions)
 	}
 	var found []BoardFinding
 	for _, finding := range ValidateBoard(board).Errors {
@@ -125,7 +122,6 @@ func TestRunFreezesTheMissionHumanChannel(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -141,23 +137,5 @@ func TestRunFreezesTheMissionHumanChannel(t *testing.T) {
 	draft, _ := store.ReadBoard("session-search")
 	if frozen.Missions[0].HumanChannel != HumanChannelSession || draft.Missions[0].HumanChannel != "" {
 		t.Fatalf("frozen channel %q, draft channel %q; want the run to keep session", frozen.Missions[0].HumanChannel, draft.Missions[0].HumanChannel)
-	}
-}
-
-func TestFallbackBoardParserKeepsMissionInputHintAndHumanChannel(t *testing.T) {
-	// A repeated key fails the TOML decoder, so the board is read by the fallback parser.
-	raw := s4MissionOnlyBoardFixture() + `inputHint = "Paste the operator's sketch"
-humanChannel = "session"
-title = "Showcase again"
-`
-	if _, err := decodeBoardTOML([]byte(raw)); err == nil {
-		t.Fatal("fixture decodes cleanly; it must exercise the fallback parser")
-	}
-	board, err := parseBoard([]byte(raw))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(board.Missions) != 1 || board.Missions[0].InputHint != "Paste the operator's sketch" || board.Missions[0].HumanChannel != HumanChannelSession {
-		t.Fatalf("fallback missions = %+v, want the input hint and session channel kept", board.Missions)
 	}
 }

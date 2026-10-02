@@ -216,15 +216,6 @@ func TestMissionAndGateFileReferencesRoundTrip(t *testing.T) {
 		if !equalStrings(gotMission.Files, missionFiles) || !equalStrings(gotGate.Files, gateFiles) || len(gotBare.Files) != 0 {
 			t.Fatalf("%s: mission files %q, gate files %q, plain gate files %q; want %q and %q", label, gotMission.Files, gotGate.Files, gotBare.Files, missionFiles, gateFiles)
 		}
-		compat, err := parseBoardCompatibility([]byte(readFile(t, store.BoardPath("refs"))))
-		if err != nil {
-			t.Fatal(err)
-		}
-		compatMission, _ := findMission(compat, mission.Mission.ID)
-		compatGate, _ := findGate(compat.Gates, gate.Gate.ID)
-		if !equalStrings(compatMission.Files, missionFiles) || !equalStrings(compatGate.Files, gateFiles) {
-			t.Fatalf("%s: compatibility parse lost file references: %q %q", label, compatMission.Files, compatGate.Files)
-		}
 	}
 	check("created", []string{"/work/docs/brief.md", "/srv/project/plan.md"}, []string{"/work/rubrics/quality.md"})
 

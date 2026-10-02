@@ -86,7 +86,6 @@ export default function CanvasLegend() {
                 <span>{state.text}</span>
               </li>
             ))}
-            <li><span className="legend-mark legend-pause">paused</span><span>A pause after your answer, before the run resumes</span></li>
           </ul>
           <h3>Harnesses</h3>
           <ul className="legend-harnesses">

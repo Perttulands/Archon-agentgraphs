@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/buildinfo"
@@ -129,7 +130,7 @@ func main() {
 }
 
 // archonNouns are the nouns the CLI knows, offline and with --server.
-var archonNouns = map[string]bool{"mission": true, "formation": true, "gate": true, "end": true, "tool": true, "agent": true, "run": true, "peer": true}
+var archonNouns = map[string]bool{"mission": true, "formation": true, "gate": true, "end": true, "limit": true, "tool": true, "agent": true, "run": true, "peer": true}
 
 func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
@@ -217,8 +218,6 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 			return runFormationAssign(store, args[2:], stdout, stderr)
 		case "unassign":
 			return runFormationUnassign(store, args[2:], stdout, stderr)
-		case "set-execution":
-			return runFormationSetExecution(store, args[2:], stdout, stderr)
 		case "set-brief":
 			return runFormationSetBrief(store, args[2:], stdout, stderr)
 		case "rename":
@@ -256,6 +255,8 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 		}
 	case "end":
 		return runEndCommand(formations.NewStore(config.Workspace), args[1], args[2:], stdout, stderr)
+	case "limit":
+		return runLimitCommand(formations.NewStore(config.Workspace), args[1], args[2:], stdout, stderr)
 	case "mission":
 		store := formations.NewStore(config.Workspace)
 		switch args[1] {
@@ -724,7 +725,7 @@ func runFormationCreate(store *formations.Store, args []string, stdout, stderr i
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	createX, createY, err := resolveCreateCoordinates(store, slug, fs, *x, *y)
 	if err != nil {
@@ -1072,7 +1073,7 @@ func runGateCreate(store *formations.Store, args []string, stdout, stderr io.Wri
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	createX, createY, err := resolveCreateCoordinates(store, slug, fs, *x, *y)
 	if err != nil {
@@ -1127,7 +1128,7 @@ func runGateUpdate(store *formations.Store, args []string, stdout, stderr io.Wri
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	gateID, err := resolveGateSelector(board, fs.Arg(1))
 	if err != nil {
@@ -1226,6 +1227,9 @@ func runGateJudge(store *formations.Store, args []string, stdout, stderr io.Writ
 	return 0
 }
 
+// grantUsage describes run resume --grant, offline and remote (archon-o7p.8).
+const grantUsage = "give the step a spent Limit card stopped one more allowance (one more round, or the card's time or tokens again); the ledger records the grant and who gave it"
+
 // relayedByUsage describes gate approve|reject --relayed-by, offline and remote.
 const relayedByUsage = "slot ID of the seat that typed the operator's confirmed decision; the decider stays human:operator"
 
@@ -1246,15 +1250,27 @@ func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Wr
 		fmt.Fprintln(stderr, commandUsage("gate approve"))
 		return 2
 	}
+	// Offline, this command is the run's worker, so no daemon may own the
+	// state meanwhile: its worker would route the same verdict.
+	release, err := holdStateLock(store.Workspace)
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))
+	}
+	defer release()
 	personas := formations.NewPersonaStore(formations.AgentsDir(store.Workspace))
 	engine := newArchonRunEngine(store, personas, "archon")
-	status, err := engine.RecordHumanGateVerdict(fs.Arg(0), formations.HumanGateVerdictRequest{
+	if _, err := engine.RecordHumanGateVerdict(fs.Arg(0), formations.HumanGateVerdictRequest{
 		GateID:    fs.Arg(1),
 		Verdict:   verdict,
 		Reason:    *reason,
 		Actor:     *actor,
 		RelayedBy: *relayedBy,
-	})
+	}); err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))
+	}
+	// With no daemon this command is the run's worker: it routes the verdict
+	// and runs what follows, as the daemon does after a verdict.
+	status, err := engine.ContinueRun(fs.Arg(0))
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))
 	}
@@ -1263,6 +1279,28 @@ func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Wr
 	}
 	fmt.Fprintf(stdout, "%s\t%s\n", status.RunID, status.Status)
 	return 0
+}
+
+// errDaemonOwnsState refuses an offline command a running daemon would race.
+var errDaemonOwnsState = errors.New("a daemon owns this state directory: run this through it with --server")
+
+// holdStateLock takes the state directory's coordinator lock, as archond does,
+// for an offline command that starts, continues or stops a run: mission run,
+// formation run, run resume, run abort and gate approve or reject. It fails
+// while a daemon holds the lock.
+func holdStateLock(workspace string) (func(), error) {
+	lock, err := os.OpenFile(filepath.Join(workspace, "coordinator.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		lock.Close()
+		return nil, errDaemonOwnsState
+	}
+	return func() {
+		_ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+		lock.Close()
+	}, nil
 }
 
 const humanChannelUsage = "how human gates reach the operator: notify (the default) or session"
@@ -1301,7 +1339,7 @@ func runMissionCreate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	if err := secondInputCard(board, fs.Arg(0)); err != nil {
 		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
@@ -1358,7 +1396,7 @@ func runMissionInspect(store *formations.Store, args []string, stdout, stderr io
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeMissionInspect(stdout, stderr, board, fs.Arg(1), *jsonOut)
 }
@@ -1411,7 +1449,7 @@ func runMissionWire(store *formations.Store, args []string, stdout, stderr io.Wr
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	missionID, rest, err := inputCardArgs(board, fs.Arg(0), fs.Args()[1:], 2)
 	if err != nil {
@@ -1459,7 +1497,7 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	missionID, _, err := inputCardArgs(board, fs.Arg(0), fs.Args()[1:], 1)
 	if err != nil {
@@ -1502,9 +1540,6 @@ type runStartFlags struct {
 	bead         *string
 	contextPaths stringList
 	inputs       runInputFlags
-	maxDispatch  *int
-	maxAttempts  *int
-	wallClock    *int
 }
 
 func registerRunStartFlags(fs *flag.FlagSet) *runStartFlags {
@@ -1513,15 +1548,7 @@ func registerRunStartFlags(fs *flag.FlagSet) *runStartFlags {
 	flags.bead = fs.String("bead", "", "the Beads issue the run belongs to")
 	fs.Var(&flags.contextPaths, "context-path", "absolute file or directory the agents inspect as context; repeat for more")
 	flags.inputs.register(fs)
-	// Runs have no limits unless the launch sets them (archon-o7p.7).
-	flags.maxDispatch = fs.Int("max-dispatch", 0, "optional cap on the run's formation starts, judges included; unset means no limit")
-	flags.maxAttempts = fs.Int("max-attempts", 0, "optional cap on each step's attempts; unset means no limit")
-	flags.wallClock = fs.Int("wall-clock-seconds", 0, "optional run wall clock in seconds; unset means no limit")
 	return flags
-}
-
-func (f *runStartFlags) limits() formations.RunLimits {
-	return formations.RunLimits{MaxDispatch: *f.maxDispatch, MaxAttempts: *f.maxAttempts, WallClockSeconds: *f.wallClock}
 }
 
 // checkCwd refuses a cwd that is not an absolute existing directory, as the
@@ -1569,13 +1596,15 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", "")
 	}
-	if err := formations.ValidateRunLimits(run.limits()); err != nil {
-		return failJSON(stderr, err, *jsonOut, "run", "")
-	}
 	personas := formations.NewPersonaStore(formations.AgentsDir(store.Workspace))
 	if err := formations.CheckRunAdmission(board, personas, formations.RunAdmissionScope{MissionID: missionID, Inputs: inputs}); err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", missionID)
 	}
+	release, err := holdStateLock(store.Workspace)
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", missionID)
+	}
+	defer release()
 	engine := newArchonRunEngine(store, personas, "archon")
 	status, err := engine.RunMission(slug, formations.RunStartRequest{
 		MissionID:         missionID,
@@ -1587,7 +1616,6 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
-		Limits:            run.limits(),
 	})
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", missionID)
@@ -1619,18 +1647,19 @@ func runFormationRun(store *formations.Store, args []string, stdout, stderr io.W
 	if err != nil {
 		return failSelector(stderr, err, *jsonOut, "formation", fs.Arg(1))
 	}
-	if err := formations.ValidateRunLimits(run.limits()); err != nil {
-		return failJSON(stderr, err, *jsonOut, "run", "")
-	}
 	personas := formations.NewPersonaStore(formations.AgentsDir(store.Workspace))
 	if err := formations.CheckRunAdmission(board, personas, formations.RunAdmissionScope{FormationID: formationID, Inputs: inputs}); err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", formationID)
 	}
+	release, err := holdStateLock(store.Workspace)
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", formationID)
+	}
+	defer release()
 	engine := newArchonRunEngine(store, personas, "archon")
 	status, err := engine.RunFormation(slug, formationID, formations.FormationRunRequest{
 		Actor:             *actor,
 		Personas:          personas,
-		Limits:            run.limits(),
 		Cwd:               *run.cwd,
 		ContextPaths:      run.contextPaths,
 		BeadID:            *run.bead,
@@ -1675,9 +1704,7 @@ func runList(store *formations.Store, args []string, stdout, stderr io.Writer) i
 	if *jsonOut {
 		return writeJSON(stdout, map[string]any{"runs": runs})
 	}
-	for _, run := range runs {
-		fmt.Fprintf(stdout, "%s\t%s\t%s\t%d events\n", run.RunID, run.Status, run.BoardSlug, run.EventCount)
-	}
+	writeRunList(stdout, runListLines(runs))
 	return 0
 }
 
@@ -1826,20 +1853,27 @@ func runResume(store *formations.Store, args []string, stdout, stderr io.Writer)
 	actor := fs.String("actor", "agent:archon", "resume actor")
 	mode := fs.String("mode", "reattach", "resume mode")
 	reason := fs.String("reason", "", "resume reason")
+	grant := fs.Bool("grant", false, grantUsage)
 	jsonOut := fs.Bool("json", false, "write JSON")
-	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true, "grant": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
 		fmt.Fprintln(stderr, commandUsage("run resume"))
 		return 2
 	}
+	release, err := holdStateLock(store.Workspace)
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))
+	}
+	defer release()
 	personas := formations.NewPersonaStore(formations.AgentsDir(store.Workspace))
 	engine := newArchonRunEngine(store, personas, "archon")
 	status, err := engine.ResumeRun(fs.Arg(0), formations.RunResumeRequest{
 		Actor:  *actor,
 		Mode:   *mode,
 		Reason: *reason,
+		Grant:  *grant,
 	})
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))
@@ -1864,6 +1898,11 @@ func runAbort(store *formations.Store, args []string, stdout, stderr io.Writer) 
 		return 2
 	}
 	runID := fs.Arg(0)
+	release, err := holdStateLock(store.Workspace)
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", runID)
+	}
+	defer release()
 	if err := store.AppendRunEvent(runID, formations.RunEvent{
 		Type:  formations.RunEventCanceled,
 		Actor: *requestedBy,
@@ -2199,7 +2238,7 @@ func runBoardInspect(store *formations.Store, args []string, stdout, stderr io.W
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeBoardInspect(stdout, board, *jsonOut)
 }
@@ -2383,7 +2422,7 @@ func runBoardValidate(store *formations.Store, args []string, stdout, stderr io.
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	report := formations.ValidateRunAdmission(board, formations.NewPersonaStore(formations.AgentsDir(store.Workspace)), formations.RunAdmissionScope{})
 	if *jsonOut {
@@ -2454,7 +2493,7 @@ func runFormationList(store *formations.Store, args []string, stdout, stderr io.
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeFormationList(stdout, board, *jsonOut)
 }
@@ -2502,7 +2541,7 @@ func runFormationInspect(store *formations.Store, args []string, stdout, stderr 
 	}
 	board, err := store.ReadBoard(slug)
 	if err != nil {
-		return fail(stderr, err)
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
 	return writeFormationInspect(stdout, stderr, board, fs.Arg(1), *jsonOut)
 }
@@ -2798,8 +2837,6 @@ func archonErrorCode(err error) string {
 		return "relative_file_reference"
 	case errors.Is(err, formations.ErrBrokenLink):
 		return "broken_link"
-	case errors.Is(err, formations.ErrInvalidExecutionPolicy):
-		return "invalid_execution_policy"
 	case errors.Is(err, formations.ErrInvalidRelayedBy):
 		return "invalid_relayed_by"
 	case errors.Is(err, formations.ErrInvalidControllerRole):

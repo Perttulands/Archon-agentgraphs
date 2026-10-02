@@ -20,6 +20,7 @@ func (b BoardDocument) MarshalJSON() ([]byte, error) {
 	out.Gates = emptyIfNil(out.Gates)
 	out.Tools = emptyIfNil(out.Tools)
 	out.Ends = emptyIfNil(out.Ends)
+	out.Limits = emptyIfNil(out.Limits)
 	out.Connections = emptyIfNil(out.Connections)
 	return json.Marshal(out)
 }

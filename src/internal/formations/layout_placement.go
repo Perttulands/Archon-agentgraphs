@@ -72,6 +72,9 @@ func FreeLayoutPosition(board *BoardDocument, layout *LayoutDocument, desiredX, 
 	for _, end := range board.Ends {
 		appendPosition(end.ID)
 	}
+	for _, limit := range board.Limits {
+		appendPosition(limit.ID)
+	}
 
 	x := maxInt(layoutPlacementMin, snapLayoutPosition(desiredX))
 	y := maxInt(layoutPlacementMin, snapLayoutPosition(desiredY))

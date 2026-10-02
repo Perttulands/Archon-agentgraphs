@@ -80,7 +80,7 @@ func (f *keptSeatFake) PasteSeat(_ context.Context, _, paneID, _, text string) e
 	return nil
 }
 
-func (f *keptSeatFake) SubmitSeat(context.Context, string, string) error {
+func (f *keptSeatFake) SubmitStaged(context.Context, string, *nativeSeat, string) error {
 	f.events = append(f.events, "submit")
 	return nil
 }
@@ -111,7 +111,7 @@ func runKeptFormation(t *testing.T, board, formationID string, personas []string
 	cfg := tmuxTestConfig(t)
 	client.pane = tmuxPaneState{CurrentPath: cfg.Cwd}
 	executor := newTmuxFormationExecutorWithClient(store, personaStore, cfg, &keptSeatFake{fakeTmuxHarnessClient: client, frames: map[string][]string{}})
-	started, _, err := NewRunEngine(store, personaStore, executor).PrepareFormationRun("session-search", formationID, FormationRunRequest{Actor: "agent:test", Limits: RunLimits{MaxDispatch: 5, MaxAttempts: 1}})
+	started, _, err := NewRunEngine(store, personaStore, executor).PrepareFormationRun("session-search", formationID, FormationRunRequest{Actor: "agent:test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,6 +252,10 @@ func TestKeptSeatAskTransportDistinguishesBusyFromUncertainDelivery(t *testing.T
 						pasted, pane = true, "Claude Code\n❯ "+loaded
 					case "send-keys":
 						writes = append(writes, strings.Join(args, " "))
+						// The harness takes the pasted ask, unless the key never arrived.
+						if failure != "send-keys" {
+							pane = "Claude Code\n❯ "
+						}
 					default:
 						t.Fatalf("unexpected tmux command: %v", args)
 					}
@@ -286,6 +290,67 @@ func TestKeptSeatAskTransportDistinguishesBusyFromUncertainDelivery(t *testing.T
 			}
 			if !slices.Equal(writes, want) {
 				t.Fatalf("writes = %v, want %v", writes, want)
+			}
+		})
+	}
+}
+
+// A kept seat's ask is sent as a brief is (archon-sw75): an Enter the harness
+// swallows is pressed again while the ask alone stays in the input line, and
+// one the operator added to is never sent and is uncertain.
+func TestKeptSeatAskIsSentUntilTheHarnessTakesIt(t *testing.T) {
+	retry := seatSubmitRetry
+	seatSubmitRetry = 20 * time.Millisecond
+	t.Cleanup(func() { seatSubmitRetry = retry })
+	for _, tc := range []struct {
+		name     string
+		swallow  int
+		operator bool
+		enters   int
+	}{
+		{name: "taken at once", enters: 1},
+		{name: "first Enter swallowed", swallow: 1, enters: 2},
+		{name: "operator adds text", operator: true, enters: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			quickKeptSeatWaits(t)
+			const pointer = "Read the file /state/briefs/gate-run-9-slot_work.md and follow it."
+			pane, enters := "Claude Code\n❯ ", 0
+			transport := realSeatTransport{
+				control: func(context.Context, string, string) (*seatControl, error) {
+					return &seatControl{events: make(chan struct{})}, nil
+				},
+				command: func(_ context.Context, _ string, input *strings.Reader, args ...string) (string, error) {
+					switch args[0] {
+					case "display-message":
+						if strings.Contains(args[len(args)-1], "cursor_x") {
+							return "2 1 0", nil
+						}
+						return "$1\t0", nil
+					case "capture-pane":
+						return pane, nil
+					case "load-buffer":
+						raw, _ := io.ReadAll(input)
+						pane = "Claude Code\n❯ " + string(raw)
+						if tc.operator {
+							pane += " and also this"
+						}
+					case "send-keys":
+						enters++
+						if enters > tc.swallow {
+							pane = "Claude Code\n❯ "
+						}
+					}
+					return "", nil
+				},
+			}
+			executor := newTmuxFormationExecutorWithClient(nil, nil, tmuxTestConfig(t), nil)
+			executor.seatClient = transport
+			ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+			defer cancel()
+			err := executor.PasteAsk(ctx, KeptSeat{SlotID: "slot_work", SessionID: "$1", PaneID: "%1", Harness: "claude-code"}, pointer)
+			if enters != tc.enters || (err == nil) == tc.operator || tc.operator && !errors.Is(err, ErrHumanAskDeliveryUncertain) {
+				t.Fatalf("enters %d, err %v; want %d enters", enters, err, tc.enters)
 			}
 		})
 	}

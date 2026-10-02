@@ -3,6 +3,7 @@ package coordinator
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -112,8 +113,9 @@ func formationOrder(events []formations.RunEvent, eventType string) []string {
 }
 
 // requireBranchesRanBeforeSuccess checks the run succeeded once, last, after
-// A, B and C each produced output, with no error on the way.
-func requireBranchesRanBeforeSuccess(t *testing.T, events []formations.RunEvent) {
+// A, B and C each produced output, with no error on the way but the codes
+// allowed.
+func requireBranchesRanBeforeSuccess(t *testing.T, events []formations.RunEvent, allowed ...string) {
 	t.Helper()
 	if got := strings.Join(formationOrder(events, formations.RunEventNodeOutput), ","); got != "fmn_a,fmn_b,fmn_c" {
 		t.Fatalf("formation outputs = %s, want fmn_a,fmn_b,fmn_c: %s", got, ledgerTrail(events))
@@ -124,7 +126,9 @@ func requireBranchesRanBeforeSuccess(t *testing.T, events []formations.RunEvent)
 		case formations.RunEventSucceeded:
 			succeeded++
 		case formations.RunEventError:
-			t.Fatalf("run recorded an error: %+v", event.Data)
+			if code, _ := event.Data["code"].(string); !slices.Contains(allowed, code) {
+				t.Fatalf("run recorded an error: %+v", event.Data)
+			}
 		}
 	}
 	if succeeded != 1 || events[len(events)-1].Type != formations.RunEventSucceeded {
@@ -132,13 +136,13 @@ func requireBranchesRanBeforeSuccess(t *testing.T, events []formations.RunEvent)
 	}
 }
 
-// A daemon restart while a terminal human gate waits keeps the other branch
-// pending; approving afterwards runs B and C before the run succeeds.
-func TestRestartWhileATerminalGateWaitsStillRunsTheOtherBranchAfterApproval(t *testing.T) {
+// The other branch runs while a terminal human gate waits (archon-o7p.11); a
+// daemon restart keeps the wait, and approving afterwards ends the run.
+func TestBranchesRunWhileAGateWaitsAndARestartKeepsTheWait(t *testing.T) {
 	c, root, id := startBranchingLab(t)
 	request := awaitState(t, c, id, "waiting_human").WaitingGates[0]
-	if got := strings.Join(formationOrder(eventsOf(t, c, id), formations.RunEventNodeStarted), ","); got != "fmn_a" {
-		t.Fatalf("formations started while waiting = %s, want fmn_a", got)
+	if got := strings.Join(formationOrder(eventsOf(t, c, id), formations.RunEventNodeOutput), ","); got != "fmn_a,fmn_b,fmn_c" {
+		t.Fatalf("formations done while waiting = %s, want fmn_a,fmn_b,fmn_c", got)
 	}
 	next := restartBranchingLab(t, c, root)
 	t.Cleanup(func() { next.Close() })
@@ -150,27 +154,33 @@ func TestRestartWhileATerminalGateWaitsStillRunsTheOtherBranchAfterApproval(t *t
 	requireBranchesRanBeforeSuccess(t, eventsOf(t, next, id))
 }
 
-// A restart between recording the approval and resuming leaves a resumable
-// pause, never a success; resuming then runs B and C before success.
-func TestRestartBetweenApprovalAndResumeRunsTheOtherBranchOnResume(t *testing.T) {
+// A restart between recording an approval and routing it leaves a resumable
+// block, never a success; resuming routes the approval and ends the run.
+func TestRestartBetweenApprovalAndRoutingItBlocksUntilResumed(t *testing.T) {
 	c, root, id := startBranchingLab(t)
-	awaitState(t, c, id, "waiting_human")
-	// Record the verdict the way the verdict route does, without its resume.
-	if _, err := c.engine.RecordHumanGateVerdict(id, formations.HumanGateVerdictRequest{GateID: "gate_review", Verdict: "pass", Actor: "human:operator"}); err != nil {
+	request := awaitState(t, c, id, "waiting_human").WaitingGates[0]
+	// Record the verdict the way the verdict route does, without continuing.
+	if _, err := c.engine.RecordHumanGateVerdict(id, formations.HumanGateVerdictRequest{GateID: "gate_review", RequestedSeq: request.RequestedSeq, Verdict: "pass", Actor: "human:operator"}); err != nil {
 		t.Fatal(err)
 	}
 	next := restartBranchingLab(t, c, root)
 	t.Cleanup(func() { next.Close() })
 	p := awaitState(t, next, id, "blocked")
 	if p.Final || !p.ResumeAllowed {
-		t.Fatalf("after restart = %+v, want the resumable verdict pause", p)
+		t.Fatalf("after restart = %+v, want a resumable block", p)
 	}
-	if got := strings.Join(formationOrder(eventsOf(t, next, id), formations.RunEventNodeStarted), ","); got != "fmn_a" {
-		t.Fatalf("formations started before resume = %s, want fmn_a", got)
+	events := eventsOf(t, next, id)
+	if got := strings.Join(formationOrder(events, formations.RunEventNodeStarted), ","); got != "fmn_a,fmn_b,fmn_c" {
+		t.Fatalf("formations started before resume = %s, want fmn_a,fmn_b,fmn_c", got)
+	}
+	for _, event := range events {
+		if event.Type == formations.RunEventGateVerdict {
+			t.Fatalf("the approval was routed before the resume: %s", ledgerTrail(events))
+		}
 	}
 	if w := post(t, next, "/api/runs/"+id+"/resume", `{"mode":"reattach","reason":"continue after the approval"}`); w.Code != 202 {
 		t.Fatalf("resume %d %s", w.Code, w.Body.String())
 	}
 	awaitState(t, next, id, "succeeded")
-	requireBranchesRanBeforeSuccess(t, eventsOf(t, next, id))
+	requireBranchesRanBeforeSuccess(t, eventsOf(t, next, id), "coordinator_interrupted")
 }

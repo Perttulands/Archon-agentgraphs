@@ -35,7 +35,8 @@ to the drafting step.
 - Use a solo agent, peer agents, or a controller with assigned workers.
 - Give each step its own brief, input and output ports, and agent settings.
 - Add code checks, agent reviews and human approval gates. Route failures back
-  for another attempt, within the run's limits.
+  for another attempt, and cap a step's or the mission's rounds, time and
+  tokens with a Limit card when a loop needs one.
 - Keep several missions running with separate briefs, working directories,
   cancellation and histories.
 - Click a mission, formation or gate to open it in a floating window. Read its
@@ -123,7 +124,7 @@ and authenticate those CLIs. Start the daemon with `--executor tmux` and your
 absolute paths for `--socket`, `--tmux-bin`, `--codex-transcripts` and
 `--claude-transcripts`. The daemon creates seats on demand when a formation
 runs. See the [operator procedure](docs/CONTRACT.md#operator-procedure) for
-configuration, execution limits, approvals and recovery.
+configuration, Limit cards, approvals and recovery.
 
 The delivery example also expects Beads and the shared skills named in its
 briefs. Those tools and skills are not bundled here; only Archon's own skill is. Read and adapt the

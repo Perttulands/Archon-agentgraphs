@@ -32,7 +32,7 @@ func (s *Store) ArrangeLayout(slug string, opts WriteOptions) (*LayoutDocument, 
 		if err != nil {
 			return err
 		}
-		board, err := parseBoardForWrite(raw)
+		board, err := parseBoard(raw)
 		if err != nil {
 			return err
 		}
@@ -85,6 +85,9 @@ func arrangedLayoutNodes(board *BoardDocument) []LayoutNode {
 	for _, end := range board.Ends {
 		items[end.ID] = arrangementItem{id: end.ID, kind: "end"}
 	}
+	for _, limit := range board.Limits {
+		items[limit.ID] = arrangementItem{id: limit.ID, kind: "limit"}
+	}
 	if len(items) == 0 {
 		return nil
 	}
@@ -106,6 +109,14 @@ func arrangedLayoutNodes(board *BoardDocument) []LayoutNode {
 			}
 			judgeOf[judge.ID] = gateID
 			judgesBelow[gateID] = append(judgesBelow[gateID], judge.ID)
+		}
+	}
+	// A Limit card sits below the step or Input card it covers, as a judge
+	// sits below its gate; an unwired one follows the main path.
+	for _, limit := range board.Limits {
+		if validLimitTarget(board, limit.Target) {
+			judgeOf[limit.ID] = limit.Target
+			judgesBelow[limit.Target] = append(judgesBelow[limit.Target], limit.ID)
 		}
 	}
 
@@ -228,7 +239,7 @@ func arrangedLayoutNodes(board *BoardDocument) []LayoutNode {
 		y := formationLayoutGrid * 4
 		width := 0
 		for _, id := range columns[depth] {
-			for _, placed := range append([]string{id}, judgesBelow[id]...) {
+			for _, placed := range stackedBelow(id, judgesBelow) {
 				item := items[placed]
 				itemWidth, itemHeight := arrangementItemSize(item)
 				nodes = append(nodes, LayoutNode{ID: placed, X: x, Y: y})
@@ -241,6 +252,16 @@ func arrangedLayoutNodes(board *BoardDocument) []LayoutNode {
 		x = snapLayoutUp(x + width + 84)
 	}
 	return nodes
+}
+
+// stackedBelow is a card followed by the cards attached below it, each with its
+// own: a gate's judges, and the Limit cards of the gate's judges and of steps.
+func stackedBelow(id string, below map[string][]string) []string {
+	stack := []string{id}
+	for _, attached := range below[id] {
+		stack = append(stack, stackedBelow(attached, below)...)
+	}
+	return stack
 }
 
 // arrangementRowGap leaves room under each card for its note preview.
@@ -340,6 +361,8 @@ func arrangementItemSize(item arrangementItem) (int, int) {
 		width, height = 300, 124
 	case "end":
 		width, height = 148, 64
+	case "limit":
+		width, height = 220, 72
 	case FormationTypePeer:
 		width, height = 330, 340
 	case FormationTypeOrchestrated:

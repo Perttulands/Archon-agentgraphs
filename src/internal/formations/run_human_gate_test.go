@@ -28,7 +28,6 @@ func TestS5HumanGateRequestsInputAndWaits(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -54,7 +53,7 @@ func TestS5HumanGateRequestsInputAndWaits(t *testing.T) {
 	}
 }
 
-func TestS5HumanGateVerdictRequiresResumeToDispatchPassWire(t *testing.T) {
+func TestS5HumanGateVerdictIsRoutedWhenTheRunContinues(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	store.Now = fixedClock()
 	personas.Now = fixedClock()
@@ -73,7 +72,6 @@ func TestS5HumanGateVerdictRequiresResumeToDispatchPassWire(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -88,29 +86,28 @@ func TestS5HumanGateVerdictRequiresResumeToDispatchPassWire(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record human verdict: %v", err)
 	}
-	if status.Status != RunStatusBlocked || status.Final || !status.ResumeAllowed {
-		t.Fatalf("status = %+v, want resumable block after pass verdict", status)
+	// Recording the verdict routes nothing and blocks nothing; the run's
+	// worker routes it when the run continues (archon-o7p.11).
+	if status.Status != RunStatusRunning || status.Final {
+		t.Fatalf("status = %+v, want running after the pass verdict", status)
 	}
 	if got := executor.nodeIDs(); len(got) != 0 {
-		t.Fatalf("executor nodes after verdict = %v, want no downstream dispatch before resume", got)
+		t.Fatalf("executor nodes after verdict = %v, want no downstream dispatch yet", got)
 	}
-	pause := lastEventOfType(t, readRunEvents(t, findOnlyRunLedger(t, store, "session-search")), RunEventBlocked)
-	if pause.GateID != "gate_review" || pause.Data["code"] != RunBlockResumeAfterVerdict {
-		t.Fatalf("block after verdict = %+v, want the %s pause at gate_review", pause, RunBlockResumeAfterVerdict)
+	for _, event := range readRunEvents(t, findOnlyRunLedger(t, store, "session-search")) {
+		if event.Type == RunEventGateVerdict || event.Type == RunEventBlocked {
+			t.Fatalf("recording the verdict appended %s", event.Type)
+		}
 	}
-	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{
-		Actor:  "agent:test",
-		Mode:   "reattach",
-		Reason: "human gate approved",
-	})
+	status, err = engine.ContinueRun(status.RunID)
 	if err != nil {
-		t.Fatalf("resume after human verdict: %v", err)
+		t.Fatalf("continue after human verdict: %v", err)
 	}
 	if status.Status != RunStatusSucceeded || !status.Final {
-		t.Fatalf("status = %+v, want succeeded after resume dispatches pass wire", status)
+		t.Fatalf("status = %+v, want succeeded after the pass wire runs", status)
 	}
 	if got, want := executor.nodeIDs(), []string{"fmn_ship"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("executor nodes after resume = %v, want only downstream ship", got)
+		t.Fatalf("executor nodes after the verdict = %v, want only downstream ship", got)
 	}
 	events := readRunEvents(t, findOnlyRunLedger(t, store, "session-search"))
 	verdict := eventOfType(t, events, RunEventHumanVerdictRecorded)
@@ -121,8 +118,8 @@ func TestS5HumanGateVerdictRequiresResumeToDispatchPassWire(t *testing.T) {
 	if gateVerdict.Data["verdict"] != "pass" || gateVerdict.Data["routePort"] != "pass" {
 		t.Fatalf("gate verdict = %+v, want human pass routed through pass wire", gateVerdict)
 	}
-	if !eventsContainType(events, RunEventResumed) {
-		t.Fatalf("events = %v, want run_resumed before downstream dispatch", eventTypes(events))
+	if eventsContainType(events, RunEventResumed) || eventsContainType(events, RunEventBlocked) {
+		t.Fatalf("events = %v, want no block or resume around the verdict", eventTypes(events))
 	}
 }
 
@@ -143,7 +140,6 @@ func TestS5HumanGatePassToUnderfedJoinBlocksWithoutFinalSuccess(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -157,13 +153,9 @@ func TestS5HumanGatePassToUnderfedJoinBlocksWithoutFinalSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record human verdict: %v", err)
 	}
-	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{
-		Actor:  "agent:test",
-		Mode:   "reattach",
-		Reason: "human gate approved",
-	})
+	status, err = engine.ContinueRun(status.RunID)
 	if err != nil {
-		t.Fatalf("resume after human verdict: %v", err)
+		t.Fatalf("continue after human verdict: %v", err)
 	}
 	if status.Status != RunStatusBlocked || status.Final {
 		t.Fatalf("status = %+v, want blocked non-final for underfed join", status)
@@ -412,7 +404,7 @@ to = "end_done:in"
 ` + branchingBoardEnds()
 }
 
-func TestS5HumanGateFailPushbackResumeReDispatchesWork(t *testing.T) {
+func TestS5HumanGateFailPushbackReDispatchesWork(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	store.Now = fixedClock()
 	personas.Now = fixedClock()
@@ -430,7 +422,6 @@ func TestS5HumanGateFailPushbackResumeReDispatchesWork(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 3},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -451,14 +442,14 @@ func TestS5HumanGateFailPushbackResumeReDispatchesWork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record fail verdict: %v", err)
 	}
-	if status.Status != RunStatusBlocked || !status.ResumeAllowed {
-		t.Fatalf("status = %+v, want resumable block after fail verdict", status)
+	if status.Status != RunStatusRunning || status.Final {
+		t.Fatalf("status = %+v, want running after the fail verdict", status)
 	}
 
 	executor.calls = nil
-	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "revise"})
+	status, err = engine.ContinueRun(status.RunID)
 	if err != nil {
-		t.Fatalf("resume after fail pushback: %v", err)
+		t.Fatalf("continue after fail pushback: %v", err)
 	}
 	events := readRunEvents(t, findOnlyRunLedger(t, store, "session-search"))
 	for _, ev := range events {
@@ -485,15 +476,15 @@ func TestS5HumanGateFailPushbackResumeReDispatchesWork(t *testing.T) {
 		t.Fatalf("record pass verdict: %v", err)
 	}
 	executor.calls = nil
-	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "approved"})
+	status, err = engine.ContinueRun(status.RunID)
 	if err != nil {
-		t.Fatalf("resume after pass: %v", err)
+		t.Fatalf("continue after pass: %v", err)
 	}
 	if status.Status != RunStatusSucceeded || !status.Final {
 		t.Fatalf("status = %+v, want succeeded after revise->approve->ship", status)
 	}
 	if got, want := executor.nodeIDs(), []string{"fmn_ship"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("executor nodes after approve resume = %v, want ship", got)
+		t.Fatalf("executor nodes after the approval = %v, want ship", got)
 	}
 }
 
@@ -528,7 +519,6 @@ func startHumanGateRun(t *testing.T) (*Store, *PersonaStore, string) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 8, MaxAttempts: 3},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)
@@ -544,6 +534,16 @@ func TestHumanGatePassResponseReachesDownstreamPromptAcrossRestarts(t *testing.T
 	}); err != nil {
 		t.Fatalf("record pass verdict: %v", err)
 	}
+	// Each step uses a fresh engine, as a daemon restart would. The first
+	// dispatch of Ship loses its seat; the resume replays the ledger again.
+	first := &seatLossOnceExecutor{failNodeID: "fmn_ship"}
+	status, err := NewRunEngine(store, personas, first).ContinueRun(runID)
+	if err != nil {
+		t.Fatalf("continue: %v", err)
+	}
+	if status.Status != RunStatusBlocked || !status.ResumeAllowed {
+		t.Fatalf("status after seat loss = %+v, want resumable block", status)
+	}
 	events, err := store.ReadRunEvents(runID)
 	if err != nil {
 		t.Fatal(err)
@@ -551,17 +551,6 @@ func TestHumanGatePassResponseReachesDownstreamPromptAcrossRestarts(t *testing.T
 	request := eventOfType(t, events, RunEventHumanInputRequested)
 	if got := intFromRunEventData(lastEventOfType(t, events, RunEventGateVerdict).Data["requestedSeq"]); got != request.Seq {
 		t.Fatalf("gate verdict requestedSeq = %d, want %d", got, request.Seq)
-	}
-
-	// Each resume uses a fresh engine, as a daemon restart would. The first
-	// dispatch of Ship loses its seat; the next resume replays the ledger again.
-	first := &seatLossOnceExecutor{failNodeID: "fmn_ship"}
-	status, err := NewRunEngine(store, personas, first).ResumeRun(runID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "approved"})
-	if err != nil {
-		t.Fatalf("first resume: %v", err)
-	}
-	if status.Status != RunStatusBlocked || !status.ResumeAllowed {
-		t.Fatalf("status after seat loss = %+v, want resumable block", status)
 	}
 	second := &fakeRunExecutor{}
 	status, err = NewRunEngine(store, personas, second).ResumeRun(runID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "seat replaced"})
@@ -630,8 +619,8 @@ func TestHumanGateEmptyPassResponseRoutesInputUnchanged(t *testing.T) {
 	want := runInputRefFromAny(eventOfType(t, events, RunEventHumanInputRequested).Data["inputRef"])
 	want.ToPortID = "port_ship_in"
 	executor := &fakeRunExecutor{}
-	if _, err := NewRunEngine(store, personas, executor).ResumeRun(runID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "approved"}); err != nil {
-		t.Fatalf("resume: %v", err)
+	if _, err := NewRunEngine(store, personas, executor).ContinueRun(runID); err != nil {
+		t.Fatalf("continue: %v", err)
 	}
 	if len(executor.calls) != 1 || !reflect.DeepEqual(executor.calls[0].Inputs, []RunInputRef{want}) {
 		t.Fatalf("Ship inputs = %+v, want unchanged gate input %+v", executor.calls, want)
@@ -651,8 +640,8 @@ func TestHumanGateFailResponseStaysFeedback(t *testing.T) {
 		t.Fatalf("record fail verdict: %v", err)
 	}
 	executor := &fakeRunExecutor{}
-	if _, err := NewRunEngine(store, personas, executor).ResumeRun(runID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "revise"}); err != nil {
-		t.Fatalf("resume: %v", err)
+	if _, err := NewRunEngine(store, personas, executor).ContinueRun(runID); err != nil {
+		t.Fatalf("continue: %v", err)
 	}
 	if len(executor.calls) != 1 || executor.calls[0].NodeID != "fmn_work" {
 		t.Fatalf("calls = %+v, want Work pushback", executor.calls)
@@ -669,6 +658,9 @@ func TestHumanGatePassResponseRequiresMatchingLedgerVerdict(t *testing.T) {
 		GateID: "gate_review", Verdict: "pass", Reason: "ship it", Actor: "human:operator",
 	}); err != nil {
 		t.Fatalf("record pass verdict: %v", err)
+	}
+	if _, err := NewRunEngine(store, personas, &fakeRunExecutor{}).ContinueRun(runID); err != nil {
+		t.Fatalf("route pass verdict: %v", err)
 	}
 	events, err := store.ReadRunEvents(runID)
 	if err != nil {
@@ -738,9 +730,9 @@ func TestLabBriefCarriesHumanGateResponse(t *testing.T) {
 		t.Fatalf("record pass verdict: %v", err)
 	}
 	lab := NewLabFormationExecutor(store, personas, LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: store.Workspace})
-	status, err := NewRunEngine(store, personas, lab).ResumeRun(runID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "approved"})
+	status, err := NewRunEngine(store, personas, lab).ContinueRun(runID)
 	if err != nil {
-		t.Fatalf("resume: %v", err)
+		t.Fatalf("continue: %v", err)
 	}
 	if status.Status != RunStatusSucceeded {
 		t.Fatalf("status = %+v, want succeeded", status)
@@ -782,7 +774,6 @@ func TestHumanGateVerdictRecordsWhoRelayedIt(t *testing.T) {
 		Actor:             "agent:test",
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
-		Limits:            RunLimits{MaxDispatch: 5, MaxAttempts: 2},
 	})
 	if err != nil {
 		t.Fatalf("run mission: %v", err)

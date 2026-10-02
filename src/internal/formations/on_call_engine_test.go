@@ -89,7 +89,6 @@ func startKeepingRun(t *testing.T, board string, executor *keepingExecutor) (*Ru
 	engine := NewRunEngine(store, personas, executor)
 	status, err := engine.RunMission("session-search", RunStartRequest{
 		MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: document.ETag, ExpectedBoardRev: document.Rev,
-		Limits: RunLimits{MaxDispatch: 20, MaxAttempts: 5},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -133,11 +132,11 @@ func TestSessionChannelKeepsTheWorkSeatAndEndsItBeforeTheRunSucceeds(t *testing.
 	if _, err := engine.RecordHumanGateVerdict(runID, HumanGateVerdictRequest{GateID: "gate_review", Verdict: "pass", Actor: "human:operator", RelayedBy: "slot_work"}); err != nil {
 		t.Fatal(err)
 	}
-	if status, err := engine.ResumeRun(runID, RunResumeRequest{Actor: "coordinator", Mode: "reattach", Reason: "human verdict recorded"}); err != nil || status.Status != RunStatusSucceeded {
-		t.Fatalf("resume = %+v, %v", status, err)
+	if status, err := engine.ContinueRun(runID); err != nil || status.Status != RunStatusSucceeded {
+		t.Fatalf("continue = %+v, %v", status, err)
 	}
 	want := []string{
-		"created slot_work", "kept_on_call slot_work", "ask gate_review", "run_blocked", "run_resumed",
+		"created slot_work", "kept_on_call slot_work", "ask gate_review",
 		"created slot_ship", "ended slot_ship", "ended slot_work run_final", "run_succeeded",
 	}
 	if got := seatTrail(t, store, runID); fmt.Sprint(got) != fmt.Sprint(want) {
@@ -178,7 +177,7 @@ func TestJudgeGateBeforeHumanGateKeepsTheWorkSeatAndASendBackEndsItFirst(t *test
 	if _, err := engine.RecordHumanGateVerdict(runID, HumanGateVerdictRequest{GateID: "gate_signoff", Verdict: "fail", Reason: "tighten it", Actor: "human:operator"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := engine.ResumeRun(runID, RunResumeRequest{Actor: "coordinator", Mode: "reattach", Reason: "human verdict recorded"}); err != nil {
+	if _, err := engine.ContinueRun(runID); err != nil {
 		t.Fatal(err)
 	}
 	var after []string
@@ -205,7 +204,7 @@ func blockedKeepingRun(t *testing.T) (*RunEngine, *Store, string, *keepingExecut
 	if _, err := engine.RecordHumanGateVerdict(runID, HumanGateVerdictRequest{GateID: "gate_review", Verdict: "pass", Actor: "human:operator"}); err != nil {
 		t.Fatal(err)
 	}
-	status, err := engine.ResumeRun(runID, RunResumeRequest{Actor: "coordinator", Mode: "reattach", Reason: "human verdict recorded"})
+	status, err := engine.ContinueRun(runID)
 	if err != nil || status.Status != RunStatusBlocked {
 		t.Fatalf("status = %+v, %v; want blocked by the lost ship seat", status, err)
 	}

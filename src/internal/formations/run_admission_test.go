@@ -328,7 +328,7 @@ func TestRunAdmissionAcceptsCompleteRunPath(t *testing.T) {
 	raw = strings.Replace(raw, "id = \"slot_plan\"\nlabel = \"Planner\"", "id = \"slot_plan\"\nlabel = \"Planner\"\nagentId = \"builder\"\nharness = \"openai-codex\"\neffort = \"medium\"", 1)
 	raw = strings.Replace(raw, "checkVersion = \"1\"", "checkVersion = \"1\"\ncheckValue = \"error\"", 1)
 	raw = strings.Replace(raw, "effort = \"medium\"\n[[formation.slot]]\nid = \"slot_worker\"", "effort = \"medium\"\ncontroller = true\n[[formation.slot]]\nid = \"slot_worker\"", 1)
-	raw = strings.Replace(raw, `agentId = "nobody-here"`, "agentId = \"builder\"\nharness = \"openai-codex\"\neffort = \"medium\"", 1)
+	raw = strings.Replace(raw, "agentId = \"nobody-here\"\nharness = \"claude-code\"", "agentId = \"builder\"\nharness = \"openai-codex\"", 1)
 	raw = strings.Replace(raw, `type = "flow"`, `type = "solo"`, 1)
 	raw = strings.Replace(raw, "[[connection]]\nid = \"edge_review\"\nfrom = \"fmn_build:port_build_out\"\nto = \"gate_review:in\"\n", "", 1)
 	raw += branchingBoardEnds() +

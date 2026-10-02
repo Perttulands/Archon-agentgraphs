@@ -7,7 +7,9 @@ import {
   runStatusFromResponse,
   statusFromRunEvent,
   projectNodeStates,
+  openHumanGateIds,
   runCurrentPoint,
+  runCurrentPoints,
   runPointPhrase,
   upsertRunEvent,
 } from './formationsRunState'
@@ -61,12 +63,23 @@ describe('formations run-state helpers', () => {
     expect(failed.get('end_rejected')).toBe('failed')
   })
 
+  it('keeps a gate answered while the run is blocked waiting until the resume', () => {
+    const events: RunEvent[] = [
+      { runId: 'run_1', seq: 1, type: 'human_input_requested', gateId: 'gate_review', nodeId: 'gate_review' },
+      { runId: 'run_1', seq: 2, type: 'run_blocked', nodeId: 'fmn_b', data: { reason: 'seat died' } },
+      { runId: 'run_1', seq: 3, type: 'human_verdict_recorded', gateId: 'gate_review', nodeId: 'gate_review' },
+    ]
+    expect(projectNodeStates(events, null).get('gate_review')).toBe('waiting')
+    const resumed = projectNodeStates([...events, { runId: 'run_1', seq: 4, type: 'run_resumed', data: { resumeMode: 'reattach' } }], null)
+    expect(resumed.get('gate_review')).toBe('running')
+  })
+
   it('returns a blocked node to its prior state once the run resumes', () => {
     const answered: RunEvent[] = [
       { runId: 'run_1', seq: 1, type: 'human_input_requested', gateId: 'gate_review', nodeId: 'gate_review' },
       { runId: 'run_1', seq: 2, type: 'human_verdict_recorded', gateId: 'gate_review', nodeId: 'gate_review' },
       { runId: 'run_1', seq: 3, type: 'gate_verdict', gateId: 'gate_review', nodeId: 'gate_review', data: { verdict: 'pass' } },
-      { runId: 'run_1', seq: 4, type: 'run_blocked', gateId: 'gate_review', data: { reason: 'human gate verdict recorded; resume required' } },
+      { runId: 'run_1', seq: 4, type: 'run_blocked', gateId: 'gate_review', data: { reason: 'coordinator restarted between steps; resume to continue' } },
     ]
     expect(projectNodeStates(answered, null).get('gate_review')).toBe('blocked')
 
@@ -135,7 +148,6 @@ describe('formations run-state helpers', () => {
     expect(projectNodeStates(events).get('gate_adversarial')).toBe('blocked')
     expect(runPointPhrase(point!, 'Adversarial review', 'invalid judge result')).toBe('blocked at Adversarial review: invalid judge result')
     expect(runPointPhrase(point!, 'Adversarial review')).toBe('blocked at Adversarial review')
-    expect(runPointPhrase(point!, 'Framing review', 'human gate verdict recorded; resume required', true)).toBe('paused at Framing review after your answer')
 
     // A restart block names no node: the node in flight is where the run stopped.
     const restarted: RunEvent[] = [
@@ -191,6 +203,46 @@ describe('formations run-state helpers', () => {
     ]
     expect(runCurrentPoint(inFlight, run('canceled'))).toEqual({ kind: 'canceled', nodeId: 'fmn_draft', gate: false })
     expect(runPointPhrase({ kind: 'canceled', nodeId: '', gate: false }, '')).toBe('')
+  })
+
+  it('names every gate waiting and every step running at once (archon-o7p.11)', () => {
+    const events: RunEvent[] = [
+      { runId: 'run_1', seq: 1, type: 'node_started', nodeId: 'fmn_a', attempt: 1 },
+      { runId: 'run_1', seq: 2, type: 'node_output', nodeId: 'fmn_a', data: { status: 'done' } },
+      { runId: 'run_1', seq: 3, type: 'gate_evaluating', nodeId: 'gate_one', gateId: 'gate_one' },
+      { runId: 'run_1', seq: 4, type: 'human_input_requested', nodeId: 'gate_one', gateId: 'gate_one' },
+      { runId: 'run_1', seq: 5, type: 'node_started', nodeId: 'fmn_b', attempt: 1 },
+      { runId: 'run_1', seq: 6, type: 'node_output', nodeId: 'fmn_b', data: { status: 'done' } },
+      { runId: 'run_1', seq: 7, type: 'gate_evaluating', nodeId: 'gate_two', gateId: 'gate_two' },
+      { runId: 'run_1', seq: 8, type: 'human_input_requested', nodeId: 'gate_two', gateId: 'gate_two' },
+      { runId: 'run_1', seq: 9, type: 'node_started', nodeId: 'fmn_c', attempt: 2 },
+    ]
+    const waiting = run('waiting_human', { waitingGates: [{ gateId: 'gate_one', requestedSeq: 4 }, { gateId: 'gate_two', requestedSeq: 8 }] })
+    expect(runCurrentPoints(events, waiting)).toEqual([
+      { kind: 'waiting', nodeId: 'gate_one', gate: true },
+      { kind: 'waiting', nodeId: 'gate_two', gate: true },
+      { kind: 'running', nodeId: 'fmn_c', gate: false, attempt: 2 },
+    ])
+    expect(runCurrentPoint(events, waiting)).toEqual({ kind: 'waiting', nodeId: 'gate_one', gate: true })
+    expect(openHumanGateIds(events)).toEqual(['gate_one', 'gate_two'])
+
+    // The operator answered gate_one while C works: the run routes it after C.
+    const answered = [...events, { runId: 'run_1', seq: 10, type: 'human_verdict_recorded', nodeId: 'gate_one', gateId: 'gate_one' } as RunEvent]
+    expect(openHumanGateIds(answered)).toEqual(['gate_two'])
+    const points = runCurrentPoints(answered, run('waiting_human', { waitingGates: [{ gateId: 'gate_two', requestedSeq: 8 }] }))
+    expect(points.map(point => runPointPhrase(point, point.nodeId))).toEqual(['waiting for you at gate_two', 'running fmn_c (attempt 2)', 'routing your answer at gate_one'])
+    expect(projectNodeStates(answered).get('gate_one')).toBe('running')
+
+    // A gate evaluating a newer input replaces its waiting request.
+    expect(openHumanGateIds([...events, { runId: 'run_1', seq: 10, type: 'gate_evaluating', nodeId: 'gate_two', gateId: 'gate_two' }])).toEqual(['gate_one'])
+
+    // A blocked run names its block first and the gates still waiting after it.
+    const blocked = [...events, { runId: 'run_1', seq: 10, type: 'run_blocked', nodeId: 'fmn_c' } as RunEvent]
+    expect(runCurrentPoints(blocked, run('blocked', { resumeAllowed: true, waitingGates: [{ gateId: 'gate_one', requestedSeq: 4 }, { gateId: 'gate_two', requestedSeq: 8 }] }))).toEqual([
+      { kind: 'blocked', nodeId: 'fmn_c', gate: false, blockSeq: 10 },
+      { kind: 'waiting', nodeId: 'gate_one', gate: true },
+      { kind: 'waiting', nodeId: 'gate_two', gate: true },
+    ])
   })
 
   it('extracts run text, report references, and resume affordance from events', () => {
