@@ -521,13 +521,11 @@ func runAgentSpawn(store *formations.PersonaStore, args []string, stdout, stderr
 		return fail(stderr, err)
 	}
 	if binding, err := formations.ResolveAgentSession(*card, live, *harness); err == nil {
-		// A running session keeps what it started with; name every setting this spawn would have stated.
+		// A running session keeps what it started with; name every setting this spawn would have changed.
+		// A --harness found that session, so it matches what runs and is not among them.
 		ignored := []string{"--effort " + variant.Effort}
 		if variant.Model != "" {
 			ignored = append(ignored, "--model "+variant.Model)
-		}
-		if *harness != "" {
-			ignored = append(ignored, "--harness "+*harness)
 		}
 		verb := "was"
 		if len(ignored) > 1 {

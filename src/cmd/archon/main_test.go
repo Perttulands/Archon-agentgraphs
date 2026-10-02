@@ -332,7 +332,7 @@ func TestArchonAgentSpawnUsesFakeTmuxWithoutDuplicateSession(t *testing.T) {
 		t.Fatalf("second spawn code=%d stdout=%s stderr=%s spawned=%#v", code, stdout, stderr, runner.spawned)
 	}
 	_, stderr, code = runArchon(t, runner, "agent", "spawn", "scout", "--effort", "high", "--model", "opus", "--harness", "claude-code")
-	if code != 1 || !strings.Contains(stderr, "so this spawn's --effort high --model opus --harness claude-code were not applied") || len(runner.spawned) != 1 {
+	if code != 1 || !strings.Contains(stderr, "so this spawn's --effort high --model opus were not applied") || strings.Contains(stderr, "--harness") || len(runner.spawned) != 1 {
 		t.Fatalf("spawn with every flag code=%d stderr=%s", code, stderr)
 	}
 }
