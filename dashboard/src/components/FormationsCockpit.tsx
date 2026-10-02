@@ -1,3 +1,4 @@
+import { fetchRunMission } from '../evidence/runEvidenceApi'
 import { AnsweredDraftNotice } from './AnsweredDraftNotice'
 import { hasGateDraft } from './HumanGateAnswerPanel'
 import { StartMissionDialog, type RunInputs } from "./StartMissionDialog"
@@ -249,8 +250,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setBoardView(view)
     writeBoardView(selectedSlug, view)
   }, [selectedSlug])
-  const [board, setBoard] = useState<BoardDocument | null>(null)
-  const [layout, setLayout] = useState<LayoutDocument | null>(null)
+  const [currentBoard, setBoard] = useState<BoardDocument | null>(null)
+  const [currentLayout, setLayout] = useState<LayoutDocument | null>(null)
   const [agents, setAgents] = useState<AgentProjection[]>([])
   // The harnesses with their models and the effort policy, as the roster serves them.
   const [staffingTerms, setStaffingTerms] = useState<{ harnesses: LaunchableHarness[]; policy: EffortPolicyEntry[] }>({ harnesses: [], policy: [] })
@@ -263,6 +264,22 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [validation, setValidation] = useState<BoardValidation | null>(null)
   const [admissionFindings, setAdmissionFindings] = useState<BoardFinding[]>([])
   const [activeRun, setActiveRun] = useState<RunStatusProjection | null>(null)
+  const [frozen, setFrozen] = useState<{ runId: string; graph: BoardDocument } | null>(null)
+  const [editingCurrentRun, setEditingCurrentRun] = useState('')
+  const historical = Boolean(activeRun?.missionRev && currentBoard && activeRun.missionRev !== currentBoard.rev && editingCurrentRun !== activeRun.runId)
+  const historicalRef = useRef(historical)
+  historicalRef.current = historical
+  const board = historical ? (frozen && frozen.runId === activeRun?.runId ? frozen.graph : null) : currentBoard
+  const layout = useMemo(() => historical && board ? { ...missingLayoutForBoard(board), nodes: missingLayoutForBoard(board).nodes.map(node => currentLayout?.nodes.find(current => current.id === node.id) ?? node) } : currentLayout, [historical, board, currentLayout])
+  useEffect(() => {
+    if (!historical || !activeRun) return
+    let cancelled = false
+    fetchRunMission(activeRun.runId).then(mission => {
+      if (!cancelled) setFrozen({ runId: activeRun.runId, graph: mission.graph })
+    }).catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not read the run mission') })
+    return () => { cancelled = true }
+  }, [historical, activeRun?.runId])
+  const editCurrentMission = () => { setEditingCurrentRun(activeRun?.runId ?? ''); setNodeWindows([]); setMenu(null) }
   // A link's ?mission=&run= and the run picker pin a run to its mission.
   const initialRunLink = useRef(readRunLink(window.location.search)).current
   const [pinnedRun, setPinnedRun] = useState({ slug: initialRunLink.board, runId: initialRunLink.run })
@@ -416,8 +433,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [])
 
   viewRef.current = view
-  useEffect(() => { boardRef.current = board }, [board])
-  useEffect(() => { layoutRef.current = layout }, [layout])
+  useEffect(() => { boardRef.current = currentBoard }, [currentBoard])
+  useEffect(() => { layoutRef.current = currentLayout }, [currentLayout])
   useEffect(() => { notesRef.current = notes }, [notes])
   useEffect(() => { judgeHoverRef.current = judgeHover }, [judgeHover])
 
@@ -881,6 +898,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // ----- mutations -----
   // Writes one board edit and adopts the result; a failure throws.
   const applyBoardPatch = useCallback(async (patch: Record<string, unknown>): Promise<{ board: BoardDocument; layout: LayoutDocument | null }> => {
+    if (historicalRef.current) throw new Error('This run shows a frozen mission. Choose Edit current mission first.')
     const current = boardRef.current
     if (!current) throw new Error('No mission is open')
     const result = await writes.track(patchBoardDocument(current.slug, current.etag, current.rev, patch))
@@ -1028,6 +1046,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   // Writes one layout edit and adopts the result; a failure throws.
   const applyLayoutPatch = useCallback(async (patch: { nodes?: LayoutNode[]; edges?: LayoutEdge[]; arrange?: boolean }) => {
+    if (historicalRef.current) throw new Error('Choose Edit current mission before arranging it.')
     const currentBoard = boardRef.current
     const currentLayout = layoutRef.current
     if (!currentBoard || !currentLayout) throw new Error('No mission layout is open')
@@ -1074,6 +1093,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const closeMenu = useCallback(() => setMenu(null), [])
 
   const openMenu = useCallback((event: ReactMouseEvent<Element> | ReactPointerEvent<Element>, label: string, items: MenuItem[]) => {
+    if (historicalRef.current) return
     event.preventDefault()
     event.stopPropagation()
     const trigger = event.currentTarget
@@ -1336,6 +1356,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   /** Opens a slot's sentence beside what it is shown in: the slot, or a node window's sentence. */
   const openStaffing = useCallback((formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => {
+    if (historicalRef.current) return
     staffingStore.setOpen({ ref: slotRefOf(formation, slot), part, anchor })
   }, [slotRefOf, staffingStore])
 
@@ -1950,6 +1971,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // A drag after 6 px of movement: the slot under the pointer previews the drop,
   // a drop on a slot staffs it, and a drop anywhere else changes nothing.
   const beginStaff = useCallback((event: ReactPointerEvent, start: Pick<DragStaff, 'payload' | 'slot' | 'click'>) => {
+    if (historicalRef.current) return
     if (event.button !== 0) return
     event.stopPropagation()
     const staffDrag: DragStaff = { ...start, startX: event.clientX, startY: event.clientY, moved: false }
@@ -2038,7 +2060,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // N reaches the next empty slot in Flow order, brings it into view and opens its sentence;
   // pressed again, even after Esc, it moves on to the next one.
   useEffect(() => {
-    if (!active || boardView !== 'canvas') return
+    if (!active || boardView !== 'canvas' || historical) return
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.key !== 'n' && event.key !== 'N') || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return
       const target = event.target as Element | null
@@ -2099,6 +2121,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [beginStaff, savedOf, staffingStore])
 
   const beginNodeDrag = useCallback((event: ReactPointerEvent, id: string, index: number) => {
+    if (historicalRef.current) return
     if (event.button !== 0) return
     const target = event.target as HTMLElement
     if (target.closest('.port,.frun,.mrun,.note-pin')) return
@@ -2238,6 +2261,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [attachJudge, attachJudgeOp, createJudgeFor, interactionOwner, patchBoard, recordEntry, rewireSource, rewireTarget, screenToWorld, wire])
 
   const beginWire = useCallback((event: ReactPointerEvent, endpoint: string, kind: WirePath['kind']) => {
+    if (historicalRef.current) return
     if (event.button !== 0) return
     event.stopPropagation()
     ownWireDrag(event, { kind: 'new', from: endpoint, wireKind: kind })
@@ -2247,6 +2271,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [ownWireDrag, portWorldCenter, screenToWorld])
 
   const beginReconnect = useCallback((event: ReactPointerEvent<HTMLElement> | ReactMouseEvent<HTMLElement>, connection: BoardConnection) => {
+    if (historicalRef.current) return
     if (event.button !== 0) return
     if (interactionOwner.projection()?.kind === 'wire') return
     event.stopPropagation()
@@ -2261,6 +2286,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [endpointWorldCenter, interactionOwner, ownWireDrag, screenToWorld])
 
   const beginReconnectSource = useCallback((event: ReactPointerEvent<Element> | ReactMouseEvent<Element>, connection: BoardConnection) => {
+    if (historicalRef.current) return
     if (event.button !== 0) return
     if (interactionOwner.projection()?.kind === 'wire') return
     event.stopPropagation()
@@ -2275,6 +2301,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [endpointWorldCenter, interactionOwner, ownWireDrag, screenToWorld])
 
   const beginJudgeDrag = useCallback((event: ReactPointerEvent<HTMLElement>, gate: GateNode) => {
+    if (historicalRef.current) return
     if (event.button !== 0) return
     if (interactionOwner.projection()?.kind === 'wire') return
     event.stopPropagation()
@@ -2288,6 +2315,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [endpointWorldCenter, interactionOwner, ownWireDrag, screenToWorld])
 
   const captureConnectedInputDrag = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (historicalRef.current) return
     const target = event.target as HTMLElement
     const port = target.closest<HTMLElement>('[data-port-in]')
     const endpoint = port?.dataset.portIn
@@ -2302,6 +2330,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   /** Grab a committed wire: near an ENDPOINT reconnects that end; the MIDDLE hand-routes its lane (reference startWireDrag). */
   const beginWireDrag = useCallback((event: ReactPointerEvent<SVGPathElement>, connection: BoardConnection) => {
+    if (historicalRef.current) return
     if (event.button !== 0) return
     const activeKind = interactionOwner.projection()?.kind
     if (activeKind === 'wire' || activeKind === 'lane') return
@@ -2336,6 +2365,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [beginReconnect, beginReconnectSource, endpointWorldCenter, interactionOwner, screenToWorld, setWireLane])
 
   const beginGateToken = useCallback((event: ReactPointerEvent) => {
+    if (historicalRef.current) return
     if (event.button !== 0) return
     if (!boardRef.current) return
     event.preventDefault()
@@ -2356,6 +2386,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [createGateAt, interactionOwner, screenToWorld])
 
   const beginEndToken = useCallback((event: ReactPointerEvent) => {
+    if (historicalRef.current) return
     if (event.button !== 0) return
     if (!boardRef.current) return
     event.preventDefault()
@@ -2378,6 +2409,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // Dropped on a step or the Input card, the new Limit card covers it and sits
   // below it, as Arrange places it; dropped on empty canvas it is wired to nothing.
   const beginLimitToken = useCallback((event: ReactPointerEvent) => {
+    if (historicalRef.current) return
     if (event.button !== 0) return
     if (!boardRef.current) return
     event.preventDefault()
@@ -2413,6 +2445,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // A Limit card's handle draws its tether, like a wire: dropped on a step or
   // the Input card it covers that node; dropped anywhere else nothing changes.
   const beginTetherDrag = useCallback((event: ReactPointerEvent<HTMLElement>, limit: LimitNode) => {
+    if (historicalRef.current) return
     if (event.button !== 0) return
     if (interactionOwner.projection()?.kind === 'wire') return
     event.stopPropagation()
@@ -2565,6 +2598,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [addPortOp, openMenu, removePortOp])
 
   const canvasMenu = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    if (historicalRef.current) return
     const target = event.target as HTMLElement
     if (target.closest('.formation,.gatecard,.missioncard,.toolcard,.endcard,.limitcard,.ctxmenu,.pop,.run-banner,.zoomctl')) return
     if ((target as Element).closest?.('path')) return
@@ -2984,7 +3018,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }), [attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, openStaffing, renameNode, saveBrief, setEndOutcome, setGateFiles, setLimit, updateGateFields, updateMissionFields])
 
   const cockpit = (
-    <div className="fmx" data-testid="formations-view" data-cockpit="d7" onPointerDownCapture={event => {
+    <div className="fmx" data-testid="formations-view" data-cockpit="d7" onClickCapture={event => {
+      if (historical && (event.target as Element).closest('.nfield-edit,.nslot-word,.nwin-outcome,.nwin-type,.agent-edit')) { event.preventDefault(); event.stopPropagation() }
+    }} onPointerDownCapture={event => {
       const target = (event.target as HTMLElement).closest('button, [data-node-id], .card, input, textarea') || event.target as HTMLElement
       const rect = target.getBoundingClientRect()
       errorAnchor.current = { left: Math.max(12, Math.min(rect.left, window.innerWidth - 460)), top: Math.max(12, Math.min(rect.bottom + 8, window.innerHeight - 120)) }
@@ -3006,10 +3042,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
           New mission
         </button>
-        <button className="board-action" type="button" aria-label="Rename mission" disabled={!board || Boolean(boardDialog)} onClick={event => openRenameBoard(event.currentTarget)}>Rename</button>
-        <button className="board-action danger" type="button" aria-label="Delete mission" disabled={!board || Boolean(boardDialog)} onClick={event => openDeleteBoard(event.currentTarget)}>Delete</button>
+        <button className="board-action" type="button" aria-label="Rename mission" disabled={historical || !board || Boolean(boardDialog)} onClick={event => openRenameBoard(event.currentTarget)}>Rename</button>
+        <button className="board-action danger" type="button" aria-label="Delete mission" disabled={historical || !board || Boolean(boardDialog)} onClick={event => openDeleteBoard(event.currentTarget)}>Delete</button>
         <div className="sep" />
-        <button className="newbtn" onClick={createSolo} data-testid="new-formation" disabled={!board}>
+        <button className="newbtn" onClick={createSolo} data-testid="new-formation" disabled={historical || !board}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
           New formation
         </button>
@@ -3147,7 +3183,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   ))}
                 </span>
                 <RunProduced />
-                <RunRevisionNote run={activeRun} currentRev={board?.rev} missionTitle={board?.title || ''} />
+                {historical ? <span className="run-revision" role="status">Showing revision {activeRun.missionRev} · read only <button type="button" onClick={editCurrentMission}>Edit current mission · revision {currentBoard?.rev}</button></span> : <RunRevisionNote run={activeRun} currentRev={currentBoard?.rev} missionTitle={currentBoard?.title || ''} />}
                 {runList}
                 {showNeedingYou}
                 {activeRun.cwd && <span className="run-cwd" title={activeRun.cwd}>{activeRun.cwd}</span>}
@@ -3671,7 +3707,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         }) : null}
         {board ? nodeWindows.map(nodeId => (
           <Suspense key={`node-${nodeId}`} fallback={null}>
-            <NodeWindow findings={draftFindings.get(nodeId)} nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps} noteCount={noteByNode.get(nodeId)?.length || 0}
+            <NodeWindow readOnly={historical} findings={draftFindings.get(nodeId)} nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps} noteCount={noteByNode.get(nodeId)?.length || 0}
               anchor={nodeWindowAnchors.current.get(nodeId)}
               runState={nodeStates.has(nodeId) ? nodeStates.get(nodeId) || '' : undefined}
               limitWarnings={runEvents.filter(event => event.type === 'limit_warning' && event.nodeId === nodeId)}

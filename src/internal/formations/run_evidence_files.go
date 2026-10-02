@@ -202,8 +202,9 @@ func evidenceRawContent(name string, modifiedAt time.Time, body []byte) *RunArti
 // RunMissionEvidence is the mission a run froze at admission: its revision and
 // its TOML as it ran, which later edits never change.
 type RunMissionEvidence struct {
-	MissionRev int          `json:"missionRev"`
-	Text       EvidenceText `json:"text"`
+	Graph      *BoardDocument `json:"graph"`
+	MissionRev int            `json:"missionRev"`
+	Text       EvidenceText   `json:"text"`
 }
 
 // ReadRunMission reads the run's frozen mission snapshot.
@@ -217,7 +218,7 @@ func (s *Store) ReadRunMission(runID string) (*RunMissionEvidence, error) {
 	}
 	redacted := redactEvidenceText(board.TOML)
 	text, cut := CapEvidenceText(redacted, EvidenceArtifactPreviewMaxBytes)
-	return &RunMissionEvidence{MissionRev: board.Rev, Text: EvidenceText{Text: text, Bytes: len(redacted), Truncated: cut}}, nil
+	return &RunMissionEvidence{Graph: board, MissionRev: board.Rev, Text: EvidenceText{Text: text, Bytes: len(redacted), Truncated: cut}}, nil
 }
 
 // ReadRunBrief reads the brief file a run's own slot_dispatch event recorded.
