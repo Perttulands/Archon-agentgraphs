@@ -422,6 +422,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   useEffect(() => {
     setInspectedToolId(null)
     setInspectedNodeId(null)
+    setNodeWindows([])
     setEscalations([])
     setValidation(null)
     setAdmissionFindings([])
@@ -3888,7 +3889,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     </div>
   )
   return (
-    <FileWindowsProvider stack={windows}>
+    <FileWindowsProvider key={selectedSlug} stack={windows}>
       <FileProblemsContext.Provider value={referencedFileProblems}>
         <RunProducedProvider value={producedValue}>{cockpit}</RunProducedProvider>
       </FileProblemsContext.Provider>
