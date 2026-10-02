@@ -175,6 +175,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		AddCapability    string    `json:"addCapability"`
 		RemoveCapability string    `json:"removeCapability"`
 		Note             string    `json:"note"`
+		UpdatedBy        string    `json:"updatedBy"`
 		Retire           *bool     `json:"retire"`
 		DisplayName      *string   `json:"displayName"`
 		Kind             *string   `json:"kind"`
@@ -188,6 +189,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		AddCapability:    req.AddCapability,
 		RemoveCapability: req.RemoveCapability,
 		Note:             req.Note,
+		NoteBy:           req.UpdatedBy,
 		SetRetired:       req.Retire,
 		ExpectedETag:     r.Header.Get("If-Match"),
 		SetDisplayName:   req.DisplayName,

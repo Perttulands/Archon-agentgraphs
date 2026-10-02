@@ -100,7 +100,7 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
       await onSaved()
       close()
     } catch (err) {
-      setEditor(state => ({ ...state, saving: false, error: err instanceof Error ? err.message : 'Failed to save agent override' }))
+      setEditor(state => ({ ...state, saving: false, error: err instanceof Error ? err.message : 'The role was not saved' }))
     }
   }
 
@@ -112,41 +112,41 @@ export default function PersonaEditorDialog({ agent, returnFocus, onClose, onSav
       className="pop agent-dialog"
       role="dialog"
       aria-modal="true"
-      aria-label={editor.preset ? 'Edit agent preset' : 'Edit agent'}
+      aria-label={`Edit role ${agent.displayName || agent.id}`}
       data-testid="persona-editor"
       onPointerDown={event => event.stopPropagation()}
     >
       <form onSubmit={event => { event.preventDefault(); void save() }}>
         <div className="phd">
-          <span>{editor.preset ? 'Built-in role override' : 'Agent override'}</span>
-          <button autoFocus={editor.loading} type="button" className="x" aria-label="Close agent editor" disabled={editor.saving} onClick={close}>×</button>
+          <span>Edit role</span>
+          <button autoFocus={editor.loading} type="button" className="x" aria-label="Close role editor" disabled={editor.saving} onClick={close}>×</button>
         </div>
-        <div className="agent-dialog-id">{agent.id}{editor.customized ? ' · customized' : ' · built-in default'}</div>
-        {editor.loading ? <div className="agent-dialog-loading">Loading persona card…</div> : (
+        <div className="agent-dialog-id">{agent.id}{editor.preset ? (editor.customized ? ' · your version of a built-in role' : ' · built-in role') : ''}</div>
+        {editor.loading ? <div className="agent-dialog-loading">Reading the role…</div> : (
           <div className="agent-dialog-fields">
             <label>
               <span>Display name</span>
-              <input autoFocus aria-label="Agent display name" value={editor.displayName} onChange={field('displayName')} />
+              <input autoFocus aria-label="Role display name" value={editor.displayName} onChange={field('displayName')} />
             </label>
             <label>
-              <span>Role</span>
-              <input aria-label="Agent role" value={editor.kind} onChange={field('kind')} />
+              <span>Kind</span>
+              <input aria-label="Role kind" value={editor.kind} onChange={field('kind')} />
             </label>
             <label className="wide">
               <span>Summary</span>
-              <textarea aria-label="Agent summary" value={editor.summary} onChange={field('summary')} />
+              <textarea aria-label="Role summary" value={editor.summary} onChange={field('summary')} />
             </label>
             <label className="wide">
               <span>Capabilities</span>
-              <input aria-label="Agent capabilities" value={editor.capabilities} placeholder="implement, test, review" onChange={field('capabilities')} />
+              <input aria-label="Role capabilities" value={editor.capabilities} placeholder="implement, test, review" onChange={field('capabilities')} />
             </label>
           </div>
         )}
-        {editor.preset ? <div className="agent-dialog-note">Saving materializes a local persona TOML override; the built-in default remains the fallback.</div> : null}
+        {editor.preset ? <div className="agent-dialog-note">Saving keeps your version of this built-in role; Delete changes in its inspector brings the built-in back.</div> : null}
         {editor.error ? <div className="dialog-error" role="alert">{editor.error}</div> : null}
         <div className="board-dialog-actions">
           <button type="button" disabled={editor.saving} onClick={close}>Cancel</button>
-          <button className="primary" type="submit" aria-label="Save agent override" disabled={editor.loading || editor.saving || !editor.etag}>{editor.saving ? 'Saving…' : 'Save override'}</button>
+          <button className="primary" type="submit" aria-label="Save role" disabled={editor.loading || editor.saving || !editor.etag}>{editor.saving ? 'Saving…' : 'Save role'}</button>
         </div>
       </form>
     </div>

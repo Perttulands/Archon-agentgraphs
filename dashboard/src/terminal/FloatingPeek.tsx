@@ -30,7 +30,7 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
   const [selectedNode, setSelectedNode] = useState(initialNodeId || '')
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
   const [notice, announce] = useNotice()
-  const win = useFloatingWindow<HTMLElement>({ id: windowId, kind: 'peek', label: 'terminal Peek', defaultSize: { width: 760, height: 430 }, onClose })
+  const win = useFloatingWindow<HTMLElement>({ id: windowId, kind: 'peek', label: 'terminal', defaultSize: { width: 760, height: 430 }, onClose })
   const closeButton = useRef<HTMLButtonElement>(null)
   const request = useRef(0)
   const selection = useRef({ node: selectedNode, slot: selectedSlot })
@@ -125,14 +125,14 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
     })
   }, [box, capsRoom?.width, capsRoom?.height]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <section {...win.rootProps} className={`floating-peek${win.focused ? ' focused' : ''}`} role="dialog" aria-label="Formation terminal Peek"
+  return <section {...win.rootProps} className={`floating-peek${win.focused ? ' focused' : ''}`} role="dialog" aria-label="Terminal"
     data-window-id={windowId} data-window-kind="peek">
     <header className="peek-head" {...win.moveProps}>
       <span className="peek-icon">{harnessIcon(selected?.harness)}</span>
       <span className="peek-title" tabIndex={0} aria-label="Move terminal with arrow keys"
-        onKeyDown={win.onMoveKeyDown}>{selected ? `${selected.nodeTitle} / ${selected.slotLabel}` : 'Terminal Peek'}</span>
+        onKeyDown={win.onMoveKeyDown}>{selected ? `${selected.nodeTitle} / ${selected.slotLabel}` : 'Terminal'}</span>
       {selected?.onCall ? <span className="peek-on-call">{seatWaitsForYou(selected) ? 'On call · waiting for you' : 'On call'}</span> : null}
-      <button ref={closeButton} onClick={onClose} aria-label="Close terminal Peek">Close ×</button>
+      <button ref={closeButton} onClick={onClose} aria-label="Close terminal">Close ×</button>
     </header>
     <div className="peek-picker">
       {nodes.length > 1 ? <select aria-label="Terminal formation" value={selectedNode} onChange={event => {

@@ -78,6 +78,9 @@ type EditPersonaRequest struct {
 	AddCapability    string
 	RemoveCapability string
 	Note             string
+	// NoteBy is who wrote Note, such as human:ui for the cockpit's operator;
+	// agent:archon when it is empty.
+	NoteBy string
 	// SetRetired retires the role (true) or brings it back (false).
 	SetRetired      *bool
 	ExpectedETag    string
@@ -171,6 +174,13 @@ func AgentsDir(workspace string) string {
 		return ""
 	}
 	return filepath.Join(workspace, "agents")
+}
+
+func noteActor(by string) string {
+	if by = strings.TrimSpace(by); by != "" {
+		return by
+	}
+	return "agent:archon"
 }
 
 func (s *PersonaStore) PersonaPath(id string) string {
@@ -367,7 +377,7 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 		if req.Note != "" {
 			next = appendPersonaNote(next, PersonaNote{
 				Timestamp: s.now().Format(time.RFC3339),
-				Actor:     "agent:archon",
+				Actor:     noteActor(req.NoteBy),
 				Text:      req.Note,
 			})
 		}

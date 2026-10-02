@@ -49,11 +49,12 @@ const layouts: Record<string, Array<{ id: string; x: number; y: number }>> = {
 }
 
 // A role is role text: it names no harness, model or effort.
-type Card = { id: string; displayName: string; kind: string; summary: string; tags: string[]; status?: string; preset?: boolean; rev: number }
+type Card = { id: string; displayName: string; kind: string; summary: string; tags: string[]; status?: string; preset?: boolean; notes?: Array<{ ts: string; actor: string; text: string }>; rev: number }
 
 export async function agentsFixture(page: Page) {
   const cards: Record<string, Card> = {
-    critic: { id: 'critic', displayName: 'Brief critic', kind: 'judge', summary: 'Reviews the brief.', tags: ['review'], rev: 1 },
+    critic: { id: 'critic', displayName: 'Brief critic', kind: 'judge', summary: 'Reviews the brief.', tags: ['review'], rev: 1,
+      notes: [{ ts: '2026-09-28T10:15:00Z', actor: 'agent:archon', text: 'Seeded from the catalog cleanup.' }] },
     builder: { id: 'builder', displayName: 'Builder', kind: 'builder', summary: 'Builds the change.', tags: ['implement'], rev: 1 },
     spawner: { id: 'spawner', displayName: 'Hermes spawner', kind: 'specialist', summary: 'Runs through hermes.', tags: [], rev: 1 },
   }
@@ -80,7 +81,7 @@ export async function agentsFixture(page: Page) {
       const rest = boardMatch[2] || ''
       if (rest === '/layout') return respond({ layout: { missionId: board.id, missionRev: board.rev, etag: `${board.slug}-layout`, nodes: layouts[board.slug], edges: [] } })
       if (rest === '/notes') return respond({ notes: { schema: 2, missionId: board.id, rev: 1, mission: [], elements: [], updatedAt: '2026-09-29T00:00:00Z', etag: 'notes-1' } })
-      if (rest === '/changes') return respond({ signal: { changed: false } })
+      if (rest === '/changes') return respond({ signal: { changed: url.searchParams.get('etag') !== board.etag } })
       if (rest === '/validation') return respond({ missionRev: board.rev, missionEtag: board.etag, errors: [], warnings: [] })
       if (rest === '' && method === 'PATCH') {
         const body = route.request().postDataJSON()
@@ -129,6 +130,7 @@ export async function agentsFixture(page: Page) {
         const next = structuredClone(card)
         for (const key of ['displayName', 'kind', 'summary'] as const) if (typeof body[key] === 'string') next[key] = body[key]
         if (typeof body.retire === 'boolean') next.status = body.retire ? 'retired' : 'active'
+        if (typeof body.note === 'string' && body.note) next.notes = [...(next.notes || []), { ts: '2026-10-02T09:00:00Z', actor: body.updatedBy || 'agent:archon', text: body.note }]
         next.rev++
         cards[card.id] = next
         return respond(read(next), `${next.id}-${next.rev}`)
@@ -137,5 +139,5 @@ export async function agentsFixture(page: Page) {
     }
     return fail(404, 'NOT_FOUND', `Fixture has no ${path}`)
   })
-  return { patches, boardPatches, cards, deletions }
+  return { patches, boardPatches, cards, deletions, missions }
 }

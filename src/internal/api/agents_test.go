@@ -148,8 +148,18 @@ func TestAgentsHandlerCreatesAndEditsThroughSharedWriter(t *testing.T) {
 		t.Fatalf("patch status = %d, want 200: %s", patchRec.Code, patchRec.Body.String())
 	}
 	raw := readAgentFixture(t, agentsDir, "writer")
-	if !strings.Contains(raw, `"react"`) || !strings.Contains(raw, `text = "ready for UI copy"`) {
+	if !strings.Contains(raw, `"react"`) || !strings.Contains(raw, `text = "ready for UI copy"`) || !strings.Contains(raw, `actor = "agent:archon"`) {
 		t.Fatalf("shared writer did not persist edit:\n%s", raw)
+	}
+
+	// A note the cockpit's operator writes is theirs (archon-n7u.14).
+	noteReq := httptest.NewRequest(http.MethodPatch, "/api/agents/writer", bytes.NewBufferString(`{"note":"keep it short","updatedBy":"human:ui"}`))
+	noteReq.SetPathValue("agentId", "writer")
+	noteReq.Header.Set("If-Match", patchRec.Header().Get("ETag"))
+	noteRec := httptest.NewRecorder()
+	handler.UpdateAgent(noteRec, noteReq)
+	if noteRec.Code != http.StatusOK || !strings.Contains(noteRec.Body.String(), `{"ts":`) || !strings.Contains(noteRec.Body.String(), `"actor":"human:ui","text":"keep it short"`) {
+		t.Fatalf("operator note = %d %s", noteRec.Code, noteRec.Body.String())
 	}
 }
 

@@ -379,15 +379,15 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     fireEvent.click(await screen.findByRole('button', { name: /inspect Susie/i }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit persona' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit role' }))
     const editor = await screen.findByTestId('persona-editor')
-    const name = await within(editor).findByLabelText('Agent display name')
-    expect(within(editor).getByLabelText('Agent summary')).toHaveValue('Designs things')
+    const name = await within(editor).findByLabelText('Role display name')
+    expect(within(editor).getByLabelText('Role summary')).toHaveValue('Designs things')
     // A role is role text: no launch, model or effort to edit.
     expect(within(editor).queryByLabelText('Agent launch command')).toBeNull()
     expect(within(editor).queryByText(/model|effort|harness variant/i)).toBeNull()
     fireEvent.change(name, { target: { value: 'Susie Designer' } })
-    fireEvent.click(within(editor).getByRole('button', { name: 'Save agent override' }))
+    fireEvent.click(within(editor).getByRole('button', { name: 'Save role' }))
 
     await waitFor(() => expect(patches).toHaveLength(1))
     expect(headerValue(patches[0].headers, 'If-Match')).toBe('susie-etag')
@@ -495,7 +495,7 @@ describe('AgentsView', () => {
     await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull())
   })
 
-  it('offers a board retry when the selected board fails to load', async () => {
+  it('offers a mission retry when the selected mission fails to load', async () => {
     const board = emptyBoard()
     let failBoard = true
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
@@ -521,9 +521,9 @@ describe('AgentsView', () => {
 
     expect(await screen.findByText(/Mission load failed:/)).toBeInTheDocument()
     failBoard = false
-    fireEvent.click(screen.getByRole('button', { name: /retry board/i }))
+    fireEvent.click(screen.getByRole('button', { name: /retry mission/i }))
 
-    expect(await screen.findByText(/No personas yet/)).toBeInTheDocument()
+    expect(await screen.findByText(/No roles yet/)).toBeInTheDocument()
     expect(screen.queryByText(/Mission load failed:/)).not.toBeInTheDocument()
   })
 
@@ -577,7 +577,7 @@ describe('AgentsView', () => {
     expect(within(roster).queryByText('offline')).not.toBeInTheDocument()
     expect(within(roster).getByText('attached')).toBeInTheDocument()
     expect(within(roster).getByText('not assignable')).toBeInTheDocument()
-    expect(within(roster).getByText('no persona')).toBeInTheDocument()
+    expect(within(roster).getByText('no role')).toBeInTheDocument()
     expect(screen.queryByRole('complementary', { name: 'Inspector' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /inspect Retired One/i }))
@@ -586,9 +586,9 @@ describe('AgentsView', () => {
     expect(within(inspector).getByText('offline')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /inspect floating-session/i }))
-    fireEvent.click(screen.getByRole('button', { name: /create persona from this session/i }))
+    fireEvent.click(screen.getByRole('button', { name: /make a role from this session/i }))
     // The role is named after the session, which is then the role's own.
-    expect(screen.getByLabelText('Agent id')).toHaveValue('floating-session')
+    expect(screen.getByLabelText('Role id')).toHaveValue('floating-session')
     expect(screen.queryByLabelText('Session stem')).toBeNull()
   })
 
@@ -618,19 +618,19 @@ describe('AgentsView', () => {
 
     render(<AgentsView />)
 
-    fireEvent.click(await screen.findByRole('button', { name: /new agent/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /new role/i }))
     // A new role asks only for role text: no launch, harness, model or effort.
-    const form = screen.getByRole('dialog', { name: 'Create persona' })
+    const form = screen.getByRole('dialog', { name: 'New role' })
     expect(within(form).queryByLabelText('Launch')).toBeNull()
     expect(within(form).queryByLabelText('Harness')).toBeNull()
     expect(within(form).queryByLabelText('Model')).toBeNull()
     expect(within(form).queryByLabelText('Effort')).toBeNull()
     expect(within(form).queryByText(/model|effort/i)).toBeNull()
-    fireEvent.change(screen.getByLabelText('Agent id'), { target: { value: 'writer' } })
+    fireEvent.change(screen.getByLabelText('Role id'), { target: { value: 'writer' } })
     fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Writer' } })
     fireEvent.change(screen.getByLabelText('Summary'), { target: { value: 'Writes launch copy' } })
     fireEvent.change(screen.getByLabelText('Capabilities'), { target: { value: 'writing, voice' } })
-    fireEvent.click(screen.getByRole('button', { name: /^Create persona$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^Create role$/i }))
 
     await waitFor(() => expect(postedBodies).toHaveLength(1))
     expect(postedBodies[0]).toMatchObject({

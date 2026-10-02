@@ -152,7 +152,10 @@ target's back, two slots running the same staffing are left alone, and a drop
 that reaches no slot changes nothing. The slot's menu offers Staff and Empty.
 Each staffing is one undo entry; a move is one entry for both slots. The node
 window's staffing words and the Agents view's slot inspector open the same
-window.
+window, and a staffing or emptying in the Agents view is one Ctrl+Z step there
+too, restoring the slot's own settings. The Agents view follows the mission as
+it changes elsewhere, as the canvas does, so its actions start from the current
+revision; when another edit still lands first, it shows the latest and says so.
 
 A role is role text only. `archon agent new` and `archon agent edit` take no
 harness, model or effort; `POST` and `PATCH /api/agents` refuse a `harness`,
@@ -161,7 +164,7 @@ a `model`, an `effort` or any field they do not take with `INVALID_AGENT_CARD`
 role's text, never its settings. A role's own session is the tmux session named
 after the role. `archon agent spawn <id> --harness <h> --effort <e> [--model
 <m>]` starts it, and refuses one already running, which keeps what it started
-with, naming each setting it did not apply. It states its settings as a slot does: the effort must be one the harness accepts
+with: it names what the spawn stated and says it changes none of it. It states its settings as a slot does: the effort must be one the harness accepts
 (`claude-code` takes `low`, `medium`, `high`, `xhigh` or `max`; `openai-codex`
 also takes `ultra`, though a Codex model may accept fewer), a blank model means
 the harness default, and a harness Archon cannot start, such as `hermes`, is
@@ -174,7 +177,12 @@ a role and bring it back, naming the slots that use it; a retired role is no
 longer offered for staffing, and a slot that still names it stops validation
 and admission with `retired_persona` until it is restaffed or the role comes
 back. `archon agent delete <id>` removes a role's card only while no slot
-names it, so no slot ever points at a missing role.
+names it, so no slot ever points at a missing role. The inspector lists a
+role's notes, oldest first, each with its author and time; a note written there
+is the operator's (`human:ui`), sent as `updatedBy` on `PATCH /api/agents/{id}`,
+and other writers' notes default to `agent:archon`. The cockpit calls the card
+a role everywhere: New role, Edit role, Kind, and the terminal window is the
+terminal.
 
 Notes are operator intent, not
 automatically executable briefs. Read mission and element notes, then translate

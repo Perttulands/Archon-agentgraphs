@@ -66,7 +66,7 @@ export interface UseFloatingWindowOptions {
   /** Stable while the window is open; opening the same id again reuses its place in the stack. */
   id: string
   kind: FloatingWindowKind
-  /** What the window is called in its handles' labels: "terminal Peek". */
+  /** What the window is called in its handles' labels: "terminal". */
   label: string
   defaultSize: FrameSize
   minimum?: FrameSize

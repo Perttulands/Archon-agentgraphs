@@ -378,6 +378,13 @@ export interface EffortPolicyEntry {
   kinds?: string[]
 }
 
+/** A note on a role card: who wrote it (human:ui for the operator), when, and what. */
+export interface PersonaNote {
+  ts: string
+  actor: string
+  text: string
+}
+
 export interface PersonaCard {
   id: string
   displayName?: string
@@ -385,6 +392,7 @@ export interface PersonaCard {
   summary?: string
   tags: string[]
   status?: string
+  notes?: PersonaNote[]
   etag: string
   preset?: boolean
   customized?: boolean

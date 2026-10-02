@@ -112,10 +112,10 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
 
   // Peek marks the kept seats as on call and waiting.
   await page.getByRole('button', { name: 'Open terminal' }).click()
-  const peek = page.getByRole('dialog', { name: 'Formation terminal Peek' })
+  const peek = page.getByRole('dialog', { name: 'Terminal' })
   await expect(peek.getByRole('navigation', { name: 'Run seats' }).getByText('on call')).toHaveCount(peers.slots!.length)
   await expect(peek.locator('.peek-on-call')).toHaveText('On call · waiting for you')
-  await peek.getByRole('button', { name: 'Close terminal Peek' }).click()
+  await peek.getByRole('button', { name: 'Close terminal' }).click()
 
   // Once a seat records the decision, the open windows say so and stay, still taking typing.
   await expect(planner.getByRole('status').filter({ hasText: 'Decision recorded' })).toHaveCount(0)

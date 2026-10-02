@@ -5,6 +5,7 @@ import {
   deleteRole,
   fetchAgentRoster,
   fetchApi,
+  fetchBoardChanged,
   fetchBoardDocument,
   fetchBoardLayout,
   fetchBoardSummaries,
@@ -31,6 +32,9 @@ import { slotStaffed, slotTitle, staffingSentence } from '../nodeWindow/staffing
 import { harnessName } from './harnessIcons'
 import { SlotCaption, SlotFace, type Part } from '../staffing/SlotFace'
 import { RoleTrouble } from '../staffing/CanvasSlot'
+import { COCKPIT_NOTE_AUTHOR, noteAuthor, noteTime } from './NoteThread'
+import { isTextEditingTarget } from './formationsCockpitDom'
+import { UndoHistory, WriteTracker, boardStep, undoOutcomeMessage } from './formationsUndo'
 import { StaffingLayer } from '../staffing/StaffingLayer'
 import { staff, type StaffingHost } from '../staffing/staffingActions'
 import { captionText, modelWords, offCatalog, retiredRolesOf, roleName as catalogRoleName, roleNamer, roleTrouble, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing } from '../staffing/staffingModel'
@@ -237,7 +241,7 @@ function endpointNode(endpoint: string): string {
 export function agentStatus(agent: RosterAgent, deployedSlots: number, details?: CachedPersona): AgentStatus {
   const rawLiveness = agent.liveness === 'live' || agent.liveness === 'ambiguous' ? agent.liveness : 'offline'
   const chips: string[] = []
-  if (agent.unbound) chips.push('no persona')
+  if (agent.unbound) chips.push('no role')
   if (!agent.unbound && details?.card?.status === 'retired') chips.push('retired')
   if (!agent.unbound && !agent.assignable && details?.card?.status !== 'retired') chips.push('not assignable')
   if (deployedSlots > 0) chips.push(inSlotsWords(deployedSlots))
@@ -394,18 +398,6 @@ export default function AgentsView() {
     }
   }, [])
 
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    try {
-      await Promise.all([loadAgents(), loadBoards()])
-      if (selectedSlug) await loadBoard(selectedSlug)
-      setError('')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Agents request failed')
-    } finally {
-      setLoading(false)
-    }
-  }, [loadAgents, loadBoard, loadBoards, selectedSlug])
 
   useEffect(() => {
     let cancelled = false
@@ -441,6 +433,36 @@ export default function AgentsView() {
     rememberCurrentBoard(selectedSlug)
     void loadBoard(selectedSlug)
   }, [loadBoard, selectedSlug])
+
+  // The view follows the mission as it changes elsewhere (the canvas, the CLI, an agent), as Missions does,
+  // so every action here starts from the current revision (archon-n7u.12).
+  useEffect(() => {
+    if (!selectedSlug || !board?.etag) return
+    let cancelled = false
+    const checkChanges = async () => {
+      try {
+        if (!(await fetchBoardChanged(selectedSlug, board.etag)) || cancelled) return
+        const [nextBoard, nextLayout] = await Promise.all([fetchBoardDocument(selectedSlug), fetchBoardLayout(selectedSlug)])
+        if (cancelled) return
+        setBoard(nextBoard)
+        setLayout(nextLayout)
+        setBoardError('')
+      } catch (err) {
+        if (!cancelled) setBoardError(err instanceof Error ? err.message : 'Failed to check mission changes')
+      }
+    }
+    const timer = window.setInterval(() => { void checkChanges() }, 600)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [board?.etag, selectedSlug])
+
+  // Roles follow too: new, edited, retired or deleted roles, sessions coming and going, and the missions list.
+  useEffect(() => {
+    let cancelled = false
+    const timer = window.setInterval(() => {
+      if (!cancelled) void Promise.all([loadAgents(), loadBoards()]).catch(() => undefined)
+    }, 5000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [loadAgents, loadBoards])
 
   const loadAgentDetail = useCallback(async (agentId: string, force = false): Promise<CachedPersona> => {
     if (!force && details[agentId]) return details[agentId]
@@ -533,22 +555,60 @@ export default function AgentsView() {
     const found = findSlot(boardRef.current, ref.formationId, ref.slotId)
     return found ? staffingOf(found.slot) : null
   }, [])
-  const saveStaffing = useCallback(async (ref: SlotRef, next: Staffing | null): Promise<string | null> => {
+  // Each staffing written here is one Ctrl+Z step here, as on the canvas (archon-7e4t). Undo belongs to the
+  // mission it was recorded on, waits for writes in flight, and restores the slot's own settings.
+  const undoHistory = useMemo(() => new UndoHistory(), [])
+  const writes = useMemo(() => new WriteTracker(), [])
+  useEffect(() => undoHistory.setBoard(board?.slug || ''), [board?.slug, undoHistory])
+  const writeBoard = useCallback(async (patch: Record<string, unknown>) => {
+    const current = boardRef.current
+    if (!current) throw new Error('No mission is open.')
+    const result = await writes.track(patchBoardDocument(current.slug, current.etag, current.rev, patch))
+    boardRef.current = result.board
+    setBoard(result.board)
+    if (result.layout) setLayout(result.layout)
+  }, [writes])
+  const saveStaffing = useCallback(async (ref: SlotRef, next: Staffing | null, label: string): Promise<string | null> => {
     const current = boardRef.current
     if (!current) return 'No mission is open.'
-    if (sameStaffing(savedOf(ref), next)) return null
+    const previous = savedOf(ref)
+    if (sameStaffing(previous, next)) return null
     try {
-      const result = await patchBoardDocument(current.slug, current.etag, current.rev, { assignSlot: { formationId: ref.formationId, slotId: ref.slotId, ...slotSettings(next) } })
-      setBoard(result.board)
-      if (result.layout) setLayout(result.layout)
+      await writeBoard({ assignSlot: { formationId: ref.formationId, slotId: ref.slotId, ...slotSettings(next) } })
+      undoHistory.record({ board: current.slug, label, steps: [boardStep({ assignSlot: { formationId: ref.formationId, slotId: ref.slotId, ...slotSettings(previous) } })] })
       setError('')
       await loadAgents()
       return null
     } catch (err) {
-      if (err instanceof ApiRequestError && (err.status === 409 || err.status === 428)) return 'The mission changed; reload and retry.'
+      if (err instanceof ApiRequestError && (err.status === 409 || err.status === 428)) {
+        // Another edit landed first: show the mission as it is now, so the next try starts from it.
+        await loadBoard(current.slug)
+        return 'The mission changed elsewhere; it now shows the latest. Staff the slot again if it still needs it.'
+      }
       return err instanceof Error ? err.message : 'Mission update failed'
     }
-  }, [loadAgents, savedOf])
+  }, [loadAgents, loadBoard, savedOf, undoHistory, writeBoard])
+  const performUndo = useCallback(async () => {
+    const outcome = await undoHistory.undo({
+      board: () => boardRef.current?.slug || '',
+      idle: () => writes.idle(),
+      apply: async step => { if ('board' in step) await writeBoard(step.board) },
+      isConflict: err => err instanceof ApiRequestError && err.code === 'CONFLICT',
+      reload: async () => { if (boardRef.current) await loadBoard(boardRef.current.slug) },
+    })
+    if (outcome.status === 'failed' || outcome.status === 'busy') setError(undoOutcomeMessage(outcome))
+    else if (outcome.status === 'undone') { setError(''); void loadAgents() }
+  }, [loadAgents, loadBoard, undoHistory, writeBoard, writes])
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== 'z') return
+      if (isTextEditingTarget(event.target) || (event.target as Element | null)?.closest?.('.staffing-window')) return
+      event.preventDefault()
+      void performUndo()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [performUndo])
   const staffingHost = useMemo<StaffingHost>(() => ({
     catalog: { harnesses, policy: effortPolicy, roles: rolesOf(agents as FormationAgentProjection[]), retired: retiredRolesOf(agents as FormationAgentProjection[]) },
     save: saveStaffing,
@@ -560,7 +620,7 @@ export default function AgentsView() {
     staffingStore.setOpen({ ref: slotRefOf(formation, slot), part, anchor })
   }
   const emptySlot = (formation: FormationNode, slot: FormationSlot) => {
-    void staff(staffingStore, staffingHost, slotRefOf(formation, slot), staffingOf(slot), null)
+    void staff(staffingStore, staffingHost, slotRefOf(formation, slot), staffingOf(slot), null, { label: `the unassignment from “${slot.label || slot.id}”` })
   }
 
   const createPersona = useCallback(async (event: FormEvent) => {
@@ -601,7 +661,7 @@ export default function AgentsView() {
       const result = await fetchApi<PersonaCard>(`/api/agents/${encodeURIComponent(agentId)}`, {
         method: 'PATCH',
         headers: { 'If-Match': cached.etag },
-        body: JSON.stringify({ note }),
+        body: JSON.stringify({ note, updatedBy: COCKPIT_NOTE_AUTHOR }),
       })
       setDetails(current => ({
         ...current,
@@ -670,12 +730,9 @@ export default function AgentsView() {
           </select>
         </div>
         <div className="spacer" />
-        <button className="board-action" type="button" onClick={refresh} disabled={loading || boardLoading}>
-          Refresh
-        </button>
         <button className="newbtn" type="button" onClick={() => setCreateOpen(true)}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-          New agent
+          New role
         </button>
       </div>
 
@@ -702,7 +759,7 @@ export default function AgentsView() {
           <div className="roster-list">
             {!loading && personas.length === 0 && (
               <div className="roster-empty">
-                {search.trim() ? 'No personas match this filter.' : 'No personas yet. Use New agent to create one.'}
+                {search.trim() ? 'No roles match this filter.' : 'No roles yet. Use New role to make one.'}
               </div>
             )}
             {personas.length > 0 && (
@@ -735,7 +792,7 @@ export default function AgentsView() {
             <div className="agx-alert agx-board-alert" role="alert">
               <span>Mission load failed: {boardError}</span>
               <button className="board-action" type="button" onClick={() => selectedSlug && loadBoard(selectedSlug)}>
-                Retry board
+                Retry mission
               </button>
             </div>
           )}
@@ -1148,7 +1205,7 @@ function Inspector({
     return (
       <InspectorPanel title={agent?.displayName || selection.agentId} meta="unbound session" onClose={onClose}>
         <section className="note-section">
-          <p className="note-empty">This live session has no persona card. It cannot be assigned until a persona exists.</p>
+          <p className="note-empty">This live session has no role. A slot can use it once a role exists for it.</p>
           <KeyValues rows={[
             ['Liveness', agent?.liveness || 'live'],
             ['Session', agent?.sessionId || agent?.id || selection.agentId],
@@ -1156,7 +1213,7 @@ function Inspector({
           {agent && (
             <div className="board-dialog-actions">
               <button className="primary" type="button" onClick={() => onCreateFromUnbound(agent)}>
-                Create persona from this session
+                Make a role from this session
               </button>
             </div>
           )}
@@ -1186,7 +1243,7 @@ function Inspector({
               <span className="r">{states.map(state => <span key={state} className={`is-${state}`}>{state}</span>)}</span>
             </span>
             {agent ? (
-              <button className="board-action" type="button" onClick={event => onEditPersona(agent, event.currentTarget)}>Edit persona</button>
+              <button className="board-action" type="button" onClick={event => onEditPersona(agent, event.currentTarget)}>Edit role</button>
             ) : null}
           </div>
           {card?.summary && <p className="agx-summary">{card.summary}</p>}
@@ -1209,11 +1266,29 @@ function Inspector({
         />
         <form
           className="note-section"
+          aria-label="Notes"
           onSubmit={event => {
             event.preventDefault()
             onSaveNote(selection.agentId)
           }}
         >
+          <h3>Notes</h3>
+          {card?.notes?.length ? (
+            <ol className="note-thread" aria-label={`Notes on ${card.displayName || selection.agentId}`}>
+              {card.notes.map((note, index) => {
+                const author = noteAuthor(note.actor)
+                return (
+                  <li key={`${note.ts}:${index}`} className={`note-entry note-entry-${author.kind}`}>
+                    <div className="note-entry-head">
+                      <span className={`note-author note-author-${author.kind}`} title={note.actor}>{author.name}</span>
+                      <span className="note-time">{noteTime(note.ts)}</span>
+                    </div>
+                    <div className="note-entry-text">{note.text}</div>
+                  </li>
+                )
+              })}
+            </ol>
+          ) : <p className="note-empty">{card ? 'No notes on this role yet.' : 'Reading the role…'}</p>}
           <label htmlFor="agx-note">Add note</label>
           <textarea id="agx-note" value={noteDraft} onChange={event => onNoteDraft(event.target.value)} />
           <div className="board-dialog-actions">
@@ -1418,13 +1493,13 @@ function CreatePersonaPopover({
 }) {
   const set = (key: keyof CreateDraft, value: string) => onDraft({ ...draft, [key]: value })
   return (
-    <div className="pop agx-pop" role="dialog" aria-label="Create persona">
+    <div className="pop agx-pop" role="dialog" aria-label="New role">
       <div className="pop-head">
-        <span className="pt">Create persona</span>
+        <span className="pt">New role</span>
         <button className="x" type="button" onClick={onClose} aria-label="Close">×</button>
       </div>
       <form className="pop-body" onSubmit={onSubmit}>
-        <label htmlFor="agx-create-id">Agent id</label>
+        <label htmlFor="agx-create-id">Role id</label>
         <input id="agx-create-id" className="f" value={draft.id} onChange={event => set('id', event.target.value)} />
         <label htmlFor="agx-create-display">Display name</label>
         <input id="agx-create-display" className="f" value={draft.displayName} onChange={event => set('displayName', event.target.value)} />
@@ -1434,7 +1509,7 @@ function CreatePersonaPopover({
         <input id="agx-create-summary" className="f" value={draft.summary} onChange={event => set('summary', event.target.value)} />
         <label htmlFor="agx-create-capabilities">Capabilities</label>
         <input id="agx-create-capabilities" className="f" value={draft.capabilities} onChange={event => set('capabilities', event.target.value)} />
-        <button className="save" type="submit">Create persona</button>
+        <button className="save" type="submit">Create role</button>
       </form>
     </div>
   )

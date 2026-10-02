@@ -111,18 +111,90 @@ test('a role is role text: the inspector and editor offer no model or effort, an
   await expect(inspector.getByRole('textbox', { name: /model/i })).toHaveCount(0)
   await expect(inspector.getByRole('combobox', { name: /effort/i })).toHaveCount(0)
 
-  await inspector.getByRole('button', { name: 'Edit persona' }).click()
+  await inspector.getByRole('button', { name: 'Edit role' }).click()
   const editor = page.getByTestId('persona-editor')
-  await expect(editor.getByLabel('Agent display name')).toHaveValue('Builder')
+  await expect(editor.getByLabel('Role display name')).toHaveValue('Builder')
   await expect(editor.getByText(/model|effort|harness variant/i)).toHaveCount(0)
-  await editor.getByLabel('Agent summary').fill('Builds the change, test first.')
-  await editor.getByRole('button', { name: 'Save agent override' }).click()
+  await editor.getByLabel('Role summary').fill('Builds the change, test first.')
+  await editor.getByRole('button', { name: 'Save role' }).click()
   await expect(editor).toHaveCount(0)
   expect(fixture.patches.at(-1)).toEqual({ displayName: 'Builder', kind: 'builder', summary: 'Builds the change, test first.', capabilities: ['implement'] })
 
   // A new role asks only for role text.
-  await agents.getByRole('button', { name: 'New agent' }).click()
-  const create = page.getByRole('dialog', { name: 'Create persona' })
+  await agents.getByRole('button', { name: 'New role' }).click()
+  const create = page.getByRole('dialog', { name: 'New role' })
   await expect(create.getByText(/model|effort/i)).toHaveCount(0)
   await expect(create.getByLabel('Harness')).toHaveCount(0)
+})
+
+// archon-7e4t: a staffing in the Agents view is one Ctrl+Z step there.
+test('a staffing or emptying in the Agents view is one Ctrl+Z step there', async ({ page }) => {
+  const fixture = await agentsFixture(page)
+  await page.goto('/?mission=delivery')
+  await page.getByRole('button', { name: 'Agents', exact: true }).click()
+  const agents = page.getByTestId('agents-view')
+  const seat = agents.getByTestId('agents-slot-recheck-recheck_seat')
+  await seat.click()
+  await agents.getByRole('complementary', { name: 'Inspector' }).getByRole('button', { name: 'Staff Second opinion' }).click()
+  await page.keyboard.type('critic')
+  await page.keyboard.press('Enter')
+  await expect(seat.getByTestId('slot-caption')).toHaveAttribute('data-staffing', 'Brief critic | Claude Code · opus · xhigh')
+  await page.mouse.click(1000, 1000)
+  await page.keyboard.press('Control+z')
+  await expect(seat.getByTestId('slot-caption')).toHaveAttribute('data-staffing', '')
+  expect(fixture.boardPatches.at(-1)).toEqual({ assignSlot: { formationId: 'recheck', slotId: 'recheck_seat', agentId: '', harness: '', model: '', effort: '' } })
+
+  // Emptying a slot is undone the same way, back to its own settings.
+  const build = agents.getByTestId('agents-slot-build-build_seat')
+  await build.click()
+  await agents.getByRole('complementary', { name: 'Inspector' }).getByRole('button', { name: 'Empty Build' }).click()
+  await expect(build.getByTestId('slot-caption')).toHaveAttribute('data-staffing', '')
+  await page.mouse.click(1000, 1000)
+  await page.keyboard.press('Control+z')
+  await expect(build.getByTestId('slot-caption')).toHaveAttribute('data-staffing', 'Builder | Codex · default model · medium')
+  expect(fixture.boardPatches.at(-1)).toEqual({ assignSlot: { formationId: 'build', slotId: 'build_seat', agentId: 'builder', harness: 'openai-codex', model: '', effort: 'medium' } })
+})
+
+// archon-n7u.12: the Agents view follows the mission as it changes elsewhere, and acts on the current revision.
+test('the Agents view follows a mission changed elsewhere and staffs on its current revision', async ({ page }) => {
+  const fixture = await agentsFixture(page)
+  await page.goto('/?mission=delivery')
+  await page.getByRole('button', { name: 'Agents', exact: true }).click()
+  const agents = page.getByTestId('agents-view')
+  const build = agents.getByTestId('agents-slot-build-build_seat')
+  await expect(build.getByTestId('slot-caption')).toHaveAttribute('data-staffing', /Builder/)
+  await expect(agents.getByRole('button', { name: 'Refresh' })).toHaveCount(0)
+  // An unassignment made outside this view, by the CLI or the canvas.
+  const delivery = fixture.missions.delivery as { rev: number; etag: string; formations: Array<{ id: string; slots: Array<Record<string, unknown>> }> }
+  delivery.formations[0].slots[0] = { id: 'build_seat', label: 'Build', controller: true }
+  delivery.rev++
+  delivery.etag = `delivery-${delivery.rev}`
+  await expect(build.getByTestId('slot-caption')).toHaveAttribute('data-staffing', '')
+  await expect(agents.locator('.rev')).toHaveText(`rev ${delivery.rev}`)
+  // The next action starts from that revision and succeeds.
+  await build.click()
+  await agents.getByRole('complementary', { name: 'Inspector' }).getByRole('button', { name: 'Staff Build' }).click()
+  await page.keyboard.press('Enter')
+  await expect(build.getByTestId('slot-caption')).not.toHaveAttribute('data-staffing', '')
+  await expect(agents.getByRole('alert')).toHaveCount(0)
+})
+
+// archon-n7u.14: a role's notes are listed in the inspector, and a note written here is the operator's.
+test('the role inspector lists its notes and a note written here is the operator\'s', async ({ page }) => {
+  const fixture = await agentsFixture(page)
+  await page.goto('/?mission=delivery')
+  await page.getByRole('button', { name: 'Agents', exact: true }).click()
+  const agents = page.getByTestId('agents-view')
+  await agents.locator('.ragent', { hasText: 'Brief critic' }).click()
+  const notes = agents.getByRole('list', { name: 'Notes on Brief critic' })
+  await expect(notes.locator('.note-entry')).toHaveCount(1)
+  await expect(notes.locator('.note-entry').first()).toContainText('archon')
+  await expect(notes.locator('.note-entry').first()).toContainText('Seeded from the catalog cleanup.')
+  await agents.getByLabel('Add note').fill('Prefers short verdicts.')
+  await agents.getByRole('button', { name: 'Save note' }).click()
+  await expect(notes.locator('.note-entry')).toHaveCount(2)
+  await expect(notes.locator('.note-entry').last().locator('.note-author')).toHaveText('operator')
+  await expect(notes.locator('.note-entry').last()).toContainText('Prefers short verdicts.')
+  await expect(agents.getByLabel('Add note')).toHaveValue('')
+  expect(fixture.patches.at(-1)).toEqual({ note: 'Prefers short verdicts.', updatedBy: 'human:ui' })
 })

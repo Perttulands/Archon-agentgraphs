@@ -268,7 +268,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [runEvents, setRunEvents] = useState<RunEvent[]>([])
   const [escalations, setEscalations] = useState<OpenEscalation[]>([])
   const [inspectedNodeId, setInspectedNodeId] = useState<string | null>(null)
-  // Formations whose terminal Peek is open; '' is the run-wide Peek.
+  // Formations whose terminal is open; '' is the run-wide one.
   const [peeks, setPeeks] = useState<string[]>([])
   // The gate answer window, per pending request: closed by the operator, or reopened from the run bar with focus.
   const [answerWindow, setAnswerWindow] = useState<{ key: string; closed: boolean; focus: number }>({ key: '', closed: false, focus: 0 })
@@ -2351,8 +2351,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const items: MenuItem[] = [
       { label: 'Judge with a NEW formation', head: true },
       { label: 'Solo · 1 agent', action: () => void createJudgeFor(gate, 'solo', 'Judge', gateX, gateY - 200) },
-      { label: 'Peer · 2 equals', action: () => void createJudgeFor(gate, 'peer', 'Judge panel', gateX, gateY - 200) },
-      { label: 'Orchestrated · controller', action: () => void createJudgeFor(gate, 'orchestrated', 'Judge desk', gateX, gateY - 200) },
+      { label: 'Peer · 2 equals', action: () => void createJudgeFor(gate, 'peer', 'Judge', gateX, gateY - 200) },
+      { label: 'Orchestrated · controller', action: () => void createJudgeFor(gate, 'orchestrated', 'Judge', gateX, gateY - 200) },
     ]
     const formations = boardRef.current?.formations || []
     if (formations.length) {
@@ -2421,8 +2421,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         // One mission per file: the Input card is offered only while the mission has none.
         ...(boardRef.current?.inputCards?.length ? [] : [{ label: 'Input card', action: () => createMissionAt(w.x, w.y) }]),
         { label: 'Solo formation', action: () => void createFormationAt('solo', 'New formation', w.x, w.y) },
-        { label: 'Peer formation', action: () => void createFormationAt('peer', 'New peers', w.x, w.y) },
-        { label: 'Orchestrated formation', action: () => void createFormationAt('orchestrated', 'New desk', w.x, w.y) },
+        { label: 'Peer formation', action: () => void createFormationAt('peer', 'New formation', w.x, w.y) },
+        { label: 'Orchestrated formation', action: () => void createFormationAt('orchestrated', 'New formation', w.x, w.y) },
         { label: 'Gate', action: () => void createGateAt(w.x, w.y) },
         { label: 'End node · done', action: () => void createEndAt(w.x, w.y, 'done') },
         { label: 'End node · rejected', action: () => void createEndAt(w.x, w.y, 'rejected') },
@@ -2918,7 +2918,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                           type="button"
                           className="agent-edit"
                           aria-label={`Edit ${agent.displayName || agent.id}`}
-                          title="Edit persona override"
+                          title="Edit role"
                           onPointerDown={event => event.stopPropagation()}
                           onClick={event => { event.stopPropagation(); setAgentEditor({ agent, trigger: event.currentTarget }) }}
                         >•••</button>

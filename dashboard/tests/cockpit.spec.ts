@@ -43,7 +43,7 @@ for (const width of [1440, 390]) test(`floating Peek shows the seat's whole grid
   await expect(page.locator('.xterm-screen')).toBeVisible()
   const rows = page.locator('.xterm-rows')
   await expect(rows).toContainText('line 44')
-  const peek = page.getByRole('dialog', { name: 'Formation terminal Peek' })
+  const peek = page.getByRole('dialog', { name: 'Terminal' })
   const room = peek.getByTestId('seat-terminal-room')
   // Peek opens where its placement leaves room, beside the graph. There the
   // seat's grid is drawn at the 11px floor and scrolls rather than being cut,
@@ -68,7 +68,7 @@ for (const width of [1440, 390]) test(`floating Peek shows the seat's whole grid
   await page.keyboard.press('Enter')
   await page.keyboard.press('Escape')
   await expect.poll(typed).toBe('hello seat\r\x1b')
-  await expect(page.getByRole('dialog', { name: 'Formation terminal Peek' })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Terminal' })).toBeVisible()
 
   if (width === 1440) {
     // Sizing the window larger fits a larger font until the whole grid shows;
@@ -119,7 +119,7 @@ for (const width of [1440, 390]) test(`floating Peek shows the seat's whole grid
   const rect = (await head.boundingBox())!
   await page.mouse.move(rect.x + rect.width / 2, rect.y + 15)
   await page.mouse.down(); await page.mouse.move(width + 100, 950); await page.mouse.up()
-  const close = page.getByRole('button', { name: 'Close terminal Peek' })
+  const close = page.getByRole('button', { name: 'Close terminal' })
   const closeRect = await settledBox(page, close)
   expect(closeRect.x + closeRect.width).toBeLessThanOrEqual(width)
   await close.click()
@@ -366,7 +366,7 @@ for (const width of [1440, 390]) test(`the persona editor stays inside the viewp
   await page.goto('/')
   await page.getByRole('button', { name: 'Edit Codex builder' }).click()
   const editor = page.getByTestId('persona-editor')
-  await expect(editor.getByLabel('Agent display name')).toHaveValue('Codex builder')
+  await expect(editor.getByLabel('Role display name')).toHaveValue('Codex builder')
   const box = (await editor.boundingBox())!
   expect(box.x).toBeGreaterThanOrEqual(0)
   expect(box.x + box.width).toBeLessThanOrEqual(width)
