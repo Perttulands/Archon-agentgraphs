@@ -2178,6 +2178,16 @@ func runBoardNew(store *formations.Store, args []string, stdout, stderr io.Write
 		fmt.Fprintln(stderr, commandUsage("mission new"))
 		return 2
 	}
+	info, err := os.Stat(store.Workspace)
+	if errors.Is(err, os.ErrNotExist) {
+		return failJSON(stderr, fmt.Errorf("workspace directory %q does not exist; mission new does not create it: create the directory first", store.Workspace), *jsonOut, "mission", fs.Arg(0))
+	}
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
+	}
+	if !info.IsDir() {
+		return failJSON(stderr, fmt.Errorf("workspace path %q is not a directory", store.Workspace), *jsonOut, "mission", fs.Arg(0))
+	}
 	board, err := store.CreateBoard(formations.BoardCreateRequest{
 		Slug:      fs.Arg(0),
 		Title:     *title,

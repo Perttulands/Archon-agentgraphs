@@ -3755,3 +3755,15 @@ func TestOfflineRoleCardsLiveInTheWorkspaceAsTheDaemonKeepsThem(t *testing.T) {
 		t.Fatalf("ARCHON_AGENTS_DIR should win: code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 }
+
+func TestMissionNewNamesMissingWorkspaceAndDoesNotCreateIt(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing")
+	runner := &fakeTmux{live: map[string]bool{}}
+	_, stderr, code := runArchon(t, runner, "--workspace", missing, "mission", "new", "proof")
+	if code == 0 || !strings.Contains(stderr, "workspace directory") || !strings.Contains(stderr, "does not exist") || !strings.Contains(stderr, "does not create it") {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	if _, err := os.Stat(missing); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("workspace created: %v", err)
+	}
+}
