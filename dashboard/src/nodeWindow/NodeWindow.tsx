@@ -461,8 +461,10 @@ function GateKindsEditor({ gate, profiles, hasJudgeChain, ops }: { gate: GateNod
   const save = async () => {
     if (!draft) return
     setSaving(true)
-    const saved = await ops.updateGate(gate, { ...draftFromGate(gate), kinds: draft.kinds, profileKey: draft.profileKey, checkValue: draft.checkValue })
-    setSaving(false)
+    let saved: boolean
+    try { saved = await ops.updateGate(gate, { ...draftFromGate(gate), kinds: draft.kinds, profileKey: draft.profileKey, checkValue: draft.checkValue }) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); return }
+    finally { setSaving(false) }
     if (saved) { setDraft(null); setError('') } else setError('The kinds were not saved.')
   }
   return (
