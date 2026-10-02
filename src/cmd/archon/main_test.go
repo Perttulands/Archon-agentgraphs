@@ -2835,6 +2835,10 @@ func TestArchonRunListJSONListsDurableRunsAndFiltersBoard(t *testing.T) {
 		t.Fatalf("run list code=%d stderr=%s:\n%s", code, stderr, stdout)
 	}
 
+	if first := strings.Split(stdout, "\n")[0]; !strings.HasPrefix(first, betaRun.RunID+"\t") {
+		t.Fatalf("offline run list first line = %q, want newest run %s", first, betaRun.RunID)
+	}
+
 	stdout, stderr, code = runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "run", "list", "--mission", "brd_alpha", "--json")
 	if code != 0 {
 		t.Fatalf("run list --board --json code=%d stderr=%s stdout=%s", code, stderr, stdout)
