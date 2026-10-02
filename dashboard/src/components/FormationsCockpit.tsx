@@ -330,8 +330,17 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const notesRef = useRef<BoardNotesDocument | null>(null)
   const noteDraftsRef = useRef<Record<string, string>>({})
   const viewportRef = useRef<HTMLDivElement | null>(null)
-  const windows = useWindowManager(() => cockpitWorkspace(viewportRef.current), () => cockpitScene(viewportRef.current || document))
+  const windows = useWindowManager(() => {
+    const workspace = cockpitWorkspace(viewportRef.current)
+    if (workspace && viewportRef.current?.classList.contains('flow-docked')) {
+      const width = Math.min(600, workspace.bounds.width * .42)
+      return { ...workspace, bounds: { ...workspace.bounds, left: workspace.bounds.left + workspace.bounds.width - width, width } }
+    }
+    return workspace
+  }, () => cockpitScene(viewportRef.current || document))
   const { focus: focusWindow, reflow: reflowWindows } = windows
+  const flowDocked = boardView === 'flow' && windows.order.some(id => !id.startsWith('peek'))
+  useEffect(() => { reflowWindows() }, [flowDocked, reflowWindows])
   // The canvas changes size when the run bar appears or the roster collapses;
   // open windows move back inside it, so none is left over the run bar.
   useEffect(() => {
@@ -3139,7 +3148,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 {showNeedingYou}
               </div>
             ) : null}
-        <div className={`viewport${showFlow ? ' flow-mode' : ''}`} data-testid="formations-canvas" ref={viewportRef} onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
+        <div className={`viewport${showFlow ? ' flow-mode' : ''}${flowDocked ? ' flow-docked' : ''}`} data-testid="formations-canvas" ref={viewportRef} onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
           {showFlow && board ? (
             <Suspense fallback={null}>
               <FlowView board={board} agents={agents} notes={noteByNode} run={flowRun}

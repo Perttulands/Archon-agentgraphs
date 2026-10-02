@@ -88,3 +88,7 @@
 /* The pending human gate's answer panel sits in its row instead of over the canvas. */
 .fmx .flow-answer .gate-answer { position: static; width: auto; max-height: none; margin-top: 8px; box-shadow: none; }
 .fmx .flow-limit .flow-link { color: var(--accent); }
+
+/* Windows occupy their own shelf, so every row remains readable beside them. */
+.fmx .viewport.flow-docked .flow{right:min(616px,43%);padding-inline:20px;}
+.fmx .viewport.flow-docked .flow.with-run .flow-step{grid-template-columns:minmax(0,1fr);}
