@@ -257,6 +257,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [rosterSearch, setRosterSearch] = useState('')
   const [view, setView] = useState<ViewTransform>({ x: 40, y: 40, scale: 1 })
   const [error, setError] = useState('')
+  const [recordingAnswer, setRecordingAnswer] = useState(false)
   const [submittedHere, setSubmittedHere] = useState<ReadonlySet<string>>(new Set())
   const errorAnchor = useRef<{ left: number; top: number } | null>(null)
   const [validation, setValidation] = useState<BoardValidation | null>(null)
@@ -1737,6 +1738,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // send back returns it as feedback.
   const recordHumanGateVerdict = useCallback(async (gateId: string, requestedSeq: number, verdict: GateDecision, response: string) => {
     if (!activeRun?.runId || activeRun.final) return false
+    setRecordingAnswer(true)
     setSubmittedHere(current => new Set([...current, `${activeRun.runId}:${requestedSeq}`]))
     try {
       const status = runStatusFromResponse(await recordGateVerdict(activeRun.runId, gateId, {
@@ -1756,7 +1758,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record human verdict')
       return false
-    }
+    } finally { setRecordingAnswer(false) }
   }, [activeRun, refreshRunEvents, selectedSlug])
 
   const createSolo = useCallback(() => {
@@ -2802,7 +2804,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const rosterRoles = useMemo(() => [...filteredRosterAgents].sort(byRoleName), [filteredRosterAgents])
   // Roles in use are said in words, counted across the whole mission as the Agents view counts them.
   const rolesInUse = useMemo(() => roleUses(board?.formations || []), [board?.formations])
-  const runBadgeClass = activeRun ? activeRun.status : ''
+  const runBadgeClass = recordingAnswer ? 'running' : activeRun ? activeRun.status : ''
   // Choosing a run pins it to the board; choosing none puts a finished run away.
   const chooseRun = (runId: string) => {
     setLinkError('')
@@ -3114,12 +3116,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             {activeRun ? (
               <div className="run-banner" data-testid="run-banner">
                 <span>run</span>
-                <span className={`badge ${runBadgeClass}`}>{runStatusLabel(activeRun.status)}</span>
+                <span className={`badge ${runBadgeClass}`}>{recordingAnswer ? 'Recording answer…' : activeRun.status === 'running' && !runPoints.length ? 'Continuing' : runStatusLabel(activeRun.status)}</span>
                 {/* Every gate waiting and step running, at once (archon-o7p.11). A waiting
                     gate's phrase brings up its answer, not the gate's editor. */}
                 <RunWhen run={activeRun} />
                 <span className="run-points" data-testid="run-points">
-                  {runPoints.map((point, index) => (
+                  {(recordingAnswer ? [] : runPoints).map((point, index) => (
                     <Fragment key={`${point.kind}:${point.nodeId}`}>
                       {index ? <span className="run-point-sep" aria-hidden="true">·</span> : null}
                       <RunPoint runId={activeRun.runId} point={point} title={pointTitle(point.nodeId)}
@@ -3137,7 +3139,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 {showNeedingYou}
                 {activeRun.cwd && <span className="run-cwd" title={activeRun.cwd}>{activeRun.cwd}</span>}
                 {activeRun.beadId && <span>{activeRun.beadId}</span>}
-                <RunBarActions run={activeRun} points={runPoints} boardTitle={board?.title || ''}
+                <RunBarActions run={recordingAnswer ? { ...activeRun, status: 'running', resumeAllowed: false, resumePolicy: undefined } : activeRun} points={runPoints} boardTitle={board?.title || ''}
                   titleOf={nodeId => pointTitle(nodeId) || nodeId}
                   waitingGates={waitingGateIds.map(gateId => ({ title: pointTitle(gateId) || gateId, requestedSeq: requestedSeqOf(gateId) }))}
                   onResume={() => void resumeActiveRun()} onGrant={gives => void grantActiveRun(gives)} onStop={abortActiveRun} />
