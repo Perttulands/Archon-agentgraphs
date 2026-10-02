@@ -34,45 +34,82 @@ func validPathComponent(name string) bool {
 	return name != "" && name != "." && name != ".." && !strings.ContainsRune(name, 0) && !strings.ContainsRune(name, filepath.Separator)
 }
 
-// openAbsoluteDirectory opens an absolute clean directory path one component
-// at a time from the filesystem root.
+// openAbsoluteDirectory opens an absolute clean directory path. Symlinks along
+// it are followed: any state directory may live elsewhere behind a link.
 func openAbsoluteDirectory(root string) (*os.File, error) {
 	if root == "" || !filepath.IsAbs(root) || filepath.Clean(root) != root {
 		return nil, fmt.Errorf("directory %q must be an absolute clean path", root)
 	}
-	fd, err := syscall.Open(string(filepath.Separator), syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_DIRECTORY, 0)
-	if err != nil {
-		return nil, &os.PathError{Op: "open", Path: string(filepath.Separator), Err: err}
-	}
-	current := os.NewFile(uintptr(fd), string(filepath.Separator))
-	if current == nil {
-		_ = syscall.Close(fd)
-		return nil, errors.New("could not open the filesystem root")
-	}
-	trimmed := strings.TrimPrefix(root, string(filepath.Separator))
-	if trimmed == "" {
-		return current, nil
-	}
-	openedPath := string(filepath.Separator)
-	for _, component := range strings.Split(trimmed, string(filepath.Separator)) {
-		next, err := openDirectoryAt(current, component)
-		if err != nil {
-			current.Close()
-			return nil, &os.PathError{Op: "open", Path: filepath.Join(openedPath, component), Err: err}
-		}
-		current.Close()
-		current = next
-		openedPath = filepath.Join(openedPath, component)
-	}
-	return current, nil
+	return openDirectory(root)
 }
 
-// openDirectoryAt opens one child directory of parent.
+// openDirectory opens a directory path, following symlinks.
+func openDirectory(path string) (*os.File, error) {
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NONBLOCK|syscall.O_DIRECTORY, 0)
+	if err != nil {
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
+	}
+	directory := os.NewFile(uintptr(fd), path)
+	if directory == nil {
+		_ = syscall.Close(fd)
+		return nil, errors.New("could not open directory")
+	}
+	return directory, nil
+}
+
+// ErrBrokenLink marks a symlink whose target cannot be opened.
+var ErrBrokenLink = errors.New("broken_link")
+
+// BrokenLinkError names a symlink, where it points and what is wrong there,
+// such as a mission linked from a repository whose file has moved.
+type BrokenLinkError struct {
+	Path, Target, Problem string
+}
+
+func (e *BrokenLinkError) Error() string {
+	return fmt.Sprintf("%s is a symlink to %s, which %s", e.Path, e.Target, e.Problem)
+}
+
+func (e *BrokenLinkError) Unwrap() error { return ErrBrokenLink }
+
+// Unreadable is an entry a listing skipped, and why, so one bad file never
+// hides the rest (archon-4m4j).
+type Unreadable struct {
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
+}
+
+// followLink returns the file a symlink at path ends at, and whether path is a
+// symlink. A missing path, or one that is not a link, is returned as is; a link
+// whose target cannot be reached is a *BrokenLinkError.
+func followLink(path string) (string, bool, error) {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		return path, false, nil
+	}
+	target, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		named, _ := os.Readlink(path)
+		problem := "cannot be reached: " + err.Error()
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			problem = "does not exist"
+		case errors.Is(err, syscall.ELOOP):
+			problem = "loops back on itself"
+		case errors.Is(err, os.ErrPermission):
+			problem = "the daemon's user may not reach"
+		}
+		return "", true, &BrokenLinkError{Path: path, Target: named, Problem: problem}
+	}
+	return target, true, nil
+}
+
+// openDirectoryAt opens one child directory of parent, following a symlink.
 func openDirectoryAt(parent *os.File, name string) (*os.File, error) {
 	if parent == nil || !validPathComponent(name) {
 		return nil, &os.PathError{Op: "openat", Path: name, Err: syscall.EINVAL}
 	}
-	fd, err := syscall.Openat(int(parent.Fd()), name, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_DIRECTORY, 0)
+	fd, err := syscall.Openat(int(parent.Fd()), name, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NONBLOCK|syscall.O_DIRECTORY, 0)
 	if err != nil {
 		return nil, &os.PathError{Op: "openat", Path: name, Err: err}
 	}

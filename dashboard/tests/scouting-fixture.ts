@@ -10,8 +10,11 @@ import { rosterAnswer } from './roster-terms'
 const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/theme_default.json', import.meta.url), 'utf8'))
 export const scouting = JSON.parse(readFileSync(new URL('./fixtures/scouting.json', import.meta.url), 'utf8'))
 
-/** `mission` replaces the served mission, for a test that needs a variation of it. */
-export async function scoutingFixture(page: Page, options: { mission?: typeof scouting.mission } = {}) {
+type Finding = { code: string; nodeId: string; message: string; path?: string }
+
+/** `mission` replaces the served mission, for a test that needs a variation of
+ *  it, and `warnings` are what the daemon's validation reports for it. */
+export async function scoutingFixture(page: Page, options: { mission?: typeof scouting.mission; warnings?: Finding[] } = {}) {
   const board = options.mission || scouting.mission
   const writes: string[] = []
   await page.route('**/api/**', async route => {
@@ -30,7 +33,7 @@ export async function scoutingFixture(page: Page, options: { mission?: typeof sc
     if (path === '/api/missions/scouting/layout') return respond({ layout: scouting.layout }, scouting.layout.etag)
     if (path === '/api/missions/scouting/notes') return respond({ notes: scouting.notes }, scouting.notes.etag)
     if (path === '/api/missions/scouting/changes') return respond({ signal: { changed: false } })
-    if (path === '/api/missions/scouting/validation') return respond({ missionRev: board.rev, missionEtag: board.etag, errors: [], warnings: [] })
+    if (path === '/api/missions/scouting/validation') return respond({ missionRev: board.rev, missionEtag: board.etag, errors: [], warnings: options.warnings || [] })
     if (path === '/api/gate-profiles') return respond({ profiles: [] })
     if (path === '/api/runs') return respond([])
     if (path === '/api/agents') return respond(rosterAnswer([]))

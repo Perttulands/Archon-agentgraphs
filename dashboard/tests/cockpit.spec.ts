@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { settledBox } from './settled'
 import { cockpitFixture, judgeBlockReason, runCwd, seats } from './cockpit-fixture'
 
 test('theme fallback, local font, notes and harness icons survive', async ({ page }) => {
@@ -49,7 +50,7 @@ for (const width of [1440, 390]) test(`floating Peek shows the seat's whole grid
   // newest rows in view.
   await expect.poll(() => room.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
   await expect(peek.getByRole('button', { name: 'End of line' })).toBeVisible()
-  expect(await room.evaluate(el => el.scrollTop + el.clientHeight >= el.scrollHeight - 1)).toBe(true)
+  await expect.poll(() => room.evaluate(el => el.scrollTop + el.clientHeight >= el.scrollHeight - 1)).toBe(true)
   // Painting a selection copies it, and Peek says so.
   const grid = (await page.locator('.xterm-screen').boundingBox())!
   await page.mouse.move(grid.x + 4, grid.y + grid.height - 8)
@@ -94,8 +95,7 @@ for (const width of [1440, 390]) test(`floating Peek shows the seat's whole grid
       expect(sizes[i].width, `width shrank mid-drag at step ${i}`).toBeGreaterThanOrEqual(sizes[i - 1].width - 1)
       expect(sizes[i].height, `height shrank mid-drag at step ${i}`).toBeGreaterThanOrEqual(sizes[i - 1].height - 1)
     }
-    await page.waitForTimeout(300)
-    const dragged = (await peek.boundingBox())!
+    const dragged = await settledBox(page, peek)
     // The drag grew the window both ways (the workspace edge may clamp it), and
     // what is remembered is the size the window really has.
     expect(dragged.width).toBeGreaterThan(peekBox.width + 100)
@@ -120,7 +120,7 @@ for (const width of [1440, 390]) test(`floating Peek shows the seat's whole grid
   await page.mouse.move(rect.x + rect.width / 2, rect.y + 15)
   await page.mouse.down(); await page.mouse.move(width + 100, 950); await page.mouse.up()
   const close = page.getByRole('button', { name: 'Close terminal Peek' })
-  const closeRect = (await close.boundingBox())!
+  const closeRect = await settledBox(page, close)
   expect(closeRect.x + closeRect.width).toBeLessThanOrEqual(width)
   await close.click()
   expect(await world.getAttribute('style')).toBe(transform)
@@ -148,16 +148,11 @@ test('two floating windows open, resize, stack and stay off the zoom column', as
   await expect(run).toBeVisible()
   // The run window wraps its seat's grid once its font is fitted; measure it after that.
   await expect(run.locator('.seat-terminal-grid.fitted')).toBeVisible()
-  await expect.poll(async () => {
-    const first = await run.boundingBox()
-    await page.waitForTimeout(100)
-    return JSON.stringify(first) === JSON.stringify(await run.boundingBox())
-  }).toBe(true)
   const z = (win: typeof run) => win.evaluate(el => Number(getComputedStyle(el).zIndex))
-  expect(await z(run)).toBeGreaterThan(await z(peer))
-  const before = (await run.boundingBox())!
+  await expect.poll(async () => await z(run) > await z(peer)).toBe(true)
+  const before = await settledBox(page, run)
   // The run window opens clear of the peer window's title bar, so both can still be grabbed.
-  const peerHead = (await peer.locator('.peek-head').boundingBox())!
+  const peerHead = await settledBox(page, peer.locator('.peek-head'))
   expect(before.y >= peerHead.y + peerHead.height || before.y + before.height <= peerHead.y
     || before.x >= peerHead.x + peerHead.width || before.x + before.width <= peerHead.x).toBe(true)
 
@@ -168,24 +163,24 @@ test('two floating windows open, resize, stack and stay off the zoom column', as
   await page.mouse.down()
   await page.mouse.move(room.left, room.top, { steps: 8 })
   await page.mouse.up()
-  const after = (await run.boundingBox())!
+  const after = await settledBox(page, run)
   expect(after.x + after.width).toBeCloseTo(before.x + before.width, 0)
   expect(after.y + after.height).toBeCloseTo(before.y + before.height, 0)
   expect(after.width * after.height).toBeGreaterThan(before.width * before.height)
 
   // The peer's header stays uncovered even after the run window grew.
-  const head = (await peer.locator('.peek-head').boundingBox())!
+  const head = await settledBox(page, peer.locator('.peek-head'))
   await page.mouse.move(head.x + 8, head.y + 8)
   await page.mouse.down()
   await page.mouse.move(1600, 1100, { steps: 8 })
   await page.mouse.up()
-  expect(await z(peer)).toBeGreaterThan(await z(run))
+  await expect.poll(async () => await z(peer) > await z(run)).toBe(true)
 
   const canvas = (await page.getByTestId('formations-canvas').boundingBox())!
   for (const zone of [page.locator('.zoomctl'), page.locator('.zoomlevel')]) {
     const box = (await zone.boundingBox())!
     for (const win of [run, peer]) {
-      const rect = (await win.boundingBox())!
+      const rect = await settledBox(page, win)
       const overlaps = rect.x < box.x + box.width && rect.x + rect.width > box.x && rect.y < box.y + box.height && rect.y + rect.height > box.y
       expect(overlaps).toBe(false)
       expect(rect.x).toBeGreaterThanOrEqual(canvas.x)

@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/filewatch"
 )
@@ -287,7 +286,7 @@ func TestWaitTurnFailsWhenTheSeatEnds(t *testing.T) {
 	transport := realSeatTransport{command: func(context.Context, string, *strings.Reader, ...string) (string, error) {
 		return "", errors.New("no tmux")
 	}}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 	defer cancel()
 	consumed := 0
 	_, err = transport.WaitTurn(ctx, seat, "/work", fixturePointer("chat"), func(codexTranscriptTurn) error { consumed++; return nil })

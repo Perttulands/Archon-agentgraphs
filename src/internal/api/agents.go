@@ -43,7 +43,7 @@ func (h *AgentsHandler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
-	cards, err := h.store.ListPersonas()
+	cards, unreadable, err := h.store.ListPersonasSkipping()
 	if err != nil {
 		writeAgentError(w, err)
 		return
@@ -61,13 +61,18 @@ func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 		writeAgentError(w, err)
 		return
 	}
-	core.WriteSuccess(w, map[string]interface{}{
+	data := map[string]interface{}{
 		"agents":    roster.Agents,
 		"count":     len(roster.Agents),
 		"harnesses": formations.LaunchableHarnesses(),
 		// The effort policy guides the effort a slot is staffed with.
 		"effortPolicy": formations.EffortPolicy(),
-	})
+	}
+	if len(unreadable) > 0 {
+		// Cards that cannot be read are named; the rest of the roster stands.
+		data["unreadable"] = unreadable
+	}
+	core.WriteSuccess(w, data)
 }
 
 func (h *AgentsHandler) GetAgent(w http.ResponseWriter, r *http.Request) {

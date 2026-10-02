@@ -23,16 +23,69 @@ var (
 	notesDefinitionKind  = definitionKind{directory: "notes", suffix: ".notes.toml"}
 )
 
+// definitionFile is one mission, layout or notes file. A definition may be a
+// symlink, for example to a mission kept in a repository: directory and name
+// then locate the file the link ends at, so reads and atomic writes go through
+// the link rather than replacing it with a copy, while linkDirectory and
+// linkName keep the link itself, beside which its lock and archive live.
 type definitionFile struct {
-	directory *os.File
-	name      string
-	path      string
+	directory     *os.File
+	name          string
+	path          string
+	linkDirectory *os.File
+	linkName      string
 }
 
 func (f *definitionFile) close() {
-	if f != nil && f.directory != nil {
+	if f == nil {
+		return
+	}
+	if f.directory != nil {
 		_ = f.directory.Close()
 	}
+	if f.linkDirectory != nil {
+		_ = f.linkDirectory.Close()
+	}
+}
+
+// entry is the directory and name of the definition as listed under .archon:
+// the link when the definition is a symlink, else the file itself.
+func (f *definitionFile) entry() (*os.File, string) {
+	if f.linkDirectory != nil {
+		return f.linkDirectory, f.linkName
+	}
+	return f.directory, f.name
+}
+
+// newDefinitionFile takes ownership of directory, the .archon directory that
+// lists the definition name at path, and follows the definition when it is a
+// symlink.
+func newDefinitionFile(directory *os.File, name, path string) (*definitionFile, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		_ = directory.Close()
+		return nil, err
+	}
+	target, linked, err := followLink(absolute)
+	if err != nil {
+		_ = directory.Close()
+		return nil, err
+	}
+	if !linked {
+		return &definitionFile{directory: directory, name: name, path: path}, nil
+	}
+	targetDirectory, err := openDirectory(filepath.Dir(target))
+	if err != nil {
+		_ = directory.Close()
+		return nil, err
+	}
+	return &definitionFile{
+		directory:     targetDirectory,
+		name:          filepath.Base(target),
+		path:          path,
+		linkDirectory: directory,
+		linkName:      name,
+	}, nil
 }
 
 func (s *Store) openBoardDefinition(slug string, createDirectory bool) (*definitionFile, error) {
@@ -77,11 +130,11 @@ func (s *Store) openDefinition(kind definitionKind, slug string, createDirectory
 		return nil, definitionPathError(err)
 	}
 	name := slug + kind.suffix
-	return &definitionFile{
-		directory: directory,
-		name:      name,
-		path:      filepath.Join(s.workspaceRoot(), ".archon", kind.directory, name),
-	}, nil
+	definition, err := newDefinitionFile(directory, name, filepath.Join(s.workspaceRoot(), ".archon", kind.directory, name))
+	if err != nil {
+		return nil, definitionPathError(err)
+	}
+	return definition, nil
 }
 
 func (s *Store) openDefinitionDirectory(kind definitionKind, create bool) (*os.File, error) {
@@ -195,7 +248,8 @@ func (f *definitionFile) read() ([]byte, os.FileInfo, error) {
 		return nil, nil, definitionPathError(err)
 	}
 	defer file.Close()
-	if err := ensureDefinitionDirectoryMode(f.directory, filepath.Dir(f.path)); err != nil {
+	entryDirectory, _ := f.entry()
+	if err := ensureDefinitionDirectoryMode(entryDirectory, filepath.Dir(f.path)); err != nil {
 		return nil, nil, definitionPathError(err)
 	}
 	info, err := file.Stat()
@@ -226,15 +280,16 @@ func (f *definitionFile) exists() (bool, error) {
 }
 
 func (f *definitionFile) withLock(fn func(*definitionFile) error) error {
-	lockName := f.name + ".lock"
+	entryDirectory, entryName := f.entry()
+	lockName := entryName + ".lock"
 	mutex := mutexFor(f.path + ".lock")
 	mutex.Lock()
 	defer mutex.Unlock()
-	if err := ensureDefinitionDirectoryMode(f.directory, filepath.Dir(f.path)); err != nil {
+	if err := ensureDefinitionDirectoryMode(entryDirectory, filepath.Dir(f.path)); err != nil {
 		return definitionPathError(err)
 	}
 
-	lockFile, err := openDefinitionLockAt(f.directory, lockName)
+	lockFile, err := openDefinitionLockAt(entryDirectory, lockName)
 	if err != nil {
 		return definitionPathError(err)
 	}
@@ -276,7 +331,7 @@ func openDefinitionRegularFileAt(directory *os.File, name string, flags int, cre
 	if directory == nil || !validPathComponent(name) {
 		return nil, &os.PathError{Op: "openat", Path: name, Err: syscall.EINVAL}
 	}
-	flags |= syscall.O_CLOEXEC | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
+	flags |= syscall.O_CLOEXEC | syscall.O_NONBLOCK
 	if createExclusive {
 		flags |= syscall.O_CREAT | syscall.O_EXCL
 	}
@@ -294,10 +349,9 @@ func openDefinitionRegularFileAt(directory *os.File, name string, flags int, cre
 		_ = file.Close()
 		return nil, err
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !info.Mode().IsRegular() || !ok || stat.Nlink != 1 {
+	if !info.Mode().IsRegular() {
 		_ = file.Close()
-		return nil, errors.New("archon definition must be a regular single-link file")
+		return nil, fmt.Errorf("archon definition %s is not a regular file", name)
 	}
 	if createExclusive {
 		if err := syscall.Fchmod(fd, uint32(sharedFileMode.Perm())); err != nil {
@@ -361,6 +415,8 @@ func (f *definitionFile) archive(marker string) (string, error) {
 	return f.archiveWithSync(marker, nil)
 }
 
+// archiveWithSync moves the definition's entry aside: a symlinked definition
+// archives its link and leaves the file it points at alone.
 func (f *definitionFile) archiveWithSync(marker string, syncDirectory func() error) (string, error) {
 	file, err := openDefinitionRegularFileAt(f.directory, f.name, syscall.O_RDONLY, false)
 	if err != nil {
@@ -369,20 +425,18 @@ func (f *definitionFile) archiveWithSync(marker string, syncDirectory func() err
 	if err := file.Close(); err != nil {
 		return "", definitionPathError(err)
 	}
-	archiveName := f.name + ".deleted-" + marker
-	archive, err := openDefinitionRegularFileAt(f.directory, archiveName, syscall.O_RDONLY, false)
-	if err == nil {
-		_ = archive.Close()
+	entryDirectory, entryName := f.entry()
+	archiveName := entryName + ".deleted-" + marker
+	if _, err := os.Lstat(filepath.Join(filepath.Dir(f.path), archiveName)); err == nil {
 		return "", ErrAlreadyExists
-	}
-	if !errors.Is(err, os.ErrNotExist) {
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", definitionPathError(err)
 	}
-	if err := syscall.Renameat(int(f.directory.Fd()), f.name, int(f.directory.Fd()), archiveName); err != nil {
-		return "", definitionPathError(&os.PathError{Op: "renameat", Path: f.name, Err: err})
+	if err := syscall.Renameat(int(entryDirectory.Fd()), entryName, int(entryDirectory.Fd()), archiveName); err != nil {
+		return "", definitionPathError(&os.PathError{Op: "renameat", Path: entryName, Err: err})
 	}
 	if syncDirectory == nil {
-		syncDirectory = f.directory.Sync
+		syncDirectory = entryDirectory.Sync
 	}
 	if err := syncDirectory(); err != nil {
 		return archiveName, fmt.Errorf("%w: archive %q directory sync failed: %v", ErrDefinitionPublicationUncertain, f.name, definitionPathError(err))
@@ -391,23 +445,23 @@ func (f *definitionFile) archiveWithSync(marker string, syncDirectory func() err
 }
 
 func (f *definitionFile) restoreArchived(archiveName string) error {
-	archive, err := openDefinitionRegularFileAt(f.directory, archiveName, syscall.O_RDONLY, false)
-	if err != nil {
+	entryDirectory, entryName := f.entry()
+	if _, err := os.Lstat(filepath.Join(filepath.Dir(f.path), archiveName)); err != nil {
 		return definitionPathError(err)
 	}
-	if err := archive.Close(); err != nil {
-		return definitionPathError(err)
+	if err := syscall.Renameat(int(entryDirectory.Fd()), archiveName, int(entryDirectory.Fd()), entryName); err != nil {
+		return definitionPathError(&os.PathError{Op: "renameat", Path: entryName, Err: err})
 	}
-	if err := syscall.Renameat(int(f.directory.Fd()), archiveName, int(f.directory.Fd()), f.name); err != nil {
-		return definitionPathError(&os.PathError{Op: "renameat", Path: f.name, Err: err})
-	}
-	if err := f.directory.Sync(); err != nil {
+	if err := entryDirectory.Sync(); err != nil {
 		return definitionPathError(err)
 	}
 	return nil
 }
 
 func definitionPathError(err error) error {
+	if errors.Is(err, ErrBrokenLink) {
+		return err
+	}
 	if errors.Is(err, os.ErrNotExist) {
 		return ErrNotFound
 	}

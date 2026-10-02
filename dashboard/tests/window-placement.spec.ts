@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { cockpitFixture } from './cockpit-fixture'
 import { scouting, scoutingFixture } from './scouting-fixture'
+import { transitionsSettled } from './settled'
 
 // Floating windows open clear of the step being read, its neighbours and each
 // other (archon-n7u.4), on the canvas and in Flow, at 1920 and 2560 wide.
@@ -60,7 +61,7 @@ for (const [width, height] of [[1920, 1080], [2560, 1440]]) {
     await page.goto('/?mission=scouting')
     await expect(page.locator('.formation').first()).toBeVisible()
     await page.getByTitle('Fit', { exact: true }).click()
-    await page.waitForTimeout(400)
+    await transitionsSettled(page)
 
     for (const title of ['Map the territory', 'Draft the brief', 'Brief sign-off']) {
       const nodeId = idOf(title)

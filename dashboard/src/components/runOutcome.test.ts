@@ -8,7 +8,7 @@ const titleOf = (nodeId: string) => titles[nodeId] || ''
 
 describe('run outcome words', () => {
   it('names who ended a run in the operator\'s words', () => {
-    expect(runActorLabel('agent:ui')).toBe('the operator in the cockpit')
+    expect(runActorLabel('human:ui')).toBe('the operator in the cockpit')
     expect(runActorLabel('agent:archon')).toBe('the archon CLI')
     expect(runActorLabel('archond')).toBe('Archon')
     // Inherited from the run's start, so it names the recorder, not who asked.
@@ -21,9 +21,9 @@ describe('run outcome words', () => {
     expect(runEndPhrase('failed', 'Execution', { code: 'coordinator_execution_failed', reason: text('completed recovery requires a single-slot formation'), actor: 'archond' }))
       .toBe('failed at Execution: completed recovery requires a single-slot formation · ended by Archon')
     // The default reason adds nothing to who stopped it.
-    expect(runEndPhrase('canceled', 'Operator review', { reason: text('operator stop'), actor: 'agent:ui' }))
+    expect(runEndPhrase('canceled', 'Operator review', { reason: text('operator stop'), actor: 'human:ui' }))
       .toBe('canceled at Operator review by the operator in the cockpit')
-    expect(runEndPhrase('canceled', 'Draft', { reason: text('the brief was wrong'), actor: 'agent:ui' }))
+    expect(runEndPhrase('canceled', 'Draft', { reason: text('the brief was wrong'), actor: 'human:ui' }))
       .toBe('canceled at Draft by the operator in the cockpit: the brief was wrong')
     // A failure with only a code still says something.
     expect(runEndPhrase('failed', '', { code: 'coordinator_execution_failed', reason: text('') })).toBe('failed: coordinator_execution_failed')
@@ -49,7 +49,7 @@ describe('run outcome words', () => {
     expect(problemHeadline({ seq: 51, type: 'run_blocked', reason: text(''), resumeAllowed: true, resumedSeq: 52 }, names)).toBe('#51 · blocked · resumed at #52')
     expect(problemHeadline({ seq: 53, type: 'run_failed', code: 'coordinator_execution_failed', reason: text(''), actor: 'archond' }, names))
       .toBe('#53 · run failed · ended by Archon · coordinator_execution_failed')
-    expect(problemHeadline({ seq: 9, type: 'run_canceled', reason: text(''), actor: 'agent:ui' }, names)).toBe('#9 · run canceled by the operator in the cockpit')
+    expect(problemHeadline({ seq: 9, type: 'run_canceled', reason: text(''), actor: 'human:ui' }, names)).toBe('#9 · run canceled by the operator in the cockpit')
     expect(problemHeadline({ seq: 20, type: 'run_blocked', code: 'resume_attempts_exhausted', reason: text(''), resumeAllowed: false, limit: { kind: 'attempts', nodeId: 'fmn_draft', used: 3, max: 3 } }, names))
       .toBe('#20 · blocked · resume_attempts_exhausted · Draft used 3 of 3 attempts · not resumable')
   })

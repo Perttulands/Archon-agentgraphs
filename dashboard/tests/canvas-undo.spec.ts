@@ -73,7 +73,7 @@ test('Ctrl+Z during an edit in flight undoes that edit, and a stale revision is 
     if (body?.addPort) await addHeld
     if (body?.restoreNode && staleOnce) {
       staleOnce = false
-      return route.fulfill({ status: 409, json: { success: false, error: { code: 'CONFLICT', message: 'Formation definition changed; reload and retry' } } })
+      return route.fulfill({ status: 409, json: { success: false, error: { code: 'CONFLICT', message: 'The mission changed since it was read; reload it and retry' } } })
     }
     return route.fallback()
   })

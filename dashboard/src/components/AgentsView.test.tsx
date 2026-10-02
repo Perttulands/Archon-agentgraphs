@@ -223,7 +223,7 @@ describe('AgentsView', () => {
     expect(headerValue(patches[0].headers, 'If-Match')).toBe('board-etag')
     expect(patches[0].body).toMatchObject({
       expectedRev: 7,
-      updatedBy: 'agent:ui',
+      updatedBy: 'human:ui',
       assignSlot: { formationId: 'authoring', slotId: 'reviewer', agentId: 'coder', harness: 'claude-code', model: 'opus', effort: 'medium' },
     })
 
@@ -233,7 +233,7 @@ describe('AgentsView', () => {
     await waitFor(() => expect(patches).toHaveLength(2))
     expect(patches[1].body).toMatchObject({
       expectedRev: 7,
-      updatedBy: 'agent:ui',
+      updatedBy: 'human:ui',
       assignSlot: { formationId: 'authoring', slotId: 'lead', agentId: '', harness: '', model: '', effort: '' },
     })
   })

@@ -75,7 +75,7 @@ func TestFormationsHandlerToolCRUDPublishesCanonicalPairs(t *testing.T) {
 						t.Fatalf("exact create moved retained node %q: got %#v found=%t want %#v", retained.ID, got, retainedFound, retained)
 					}
 				}
-				if !reflect.DeepEqual(response.Data.Board.Connections, harness.board.Connections) {
+				if !sameList(response.Data.Board.Connections, harness.board.Connections) {
 					t.Fatalf("create implicitly wired Tool: %#v", response.Data.Board.Connections)
 				}
 			},
@@ -89,7 +89,7 @@ func TestFormationsHandlerToolCRUDPublishesCanonicalPairs(t *testing.T) {
 				if response.Data.Tool.ID == "" || len(response.Data.Layout.Nodes) != 1 || response.Data.Layout.Nodes[0].ID != response.Data.Tool.ID {
 					t.Fatalf("absent-layout create result = tool %#v layout %#v", response.Data.Tool, response.Data.Layout)
 				}
-				if !reflect.DeepEqual(response.Data.Board.Connections, harness.board.Connections) {
+				if !sameList(response.Data.Board.Connections, harness.board.Connections) {
 					t.Fatalf("heuristic create implicitly wired Tool: %#v", response.Data.Board.Connections)
 				}
 			},
@@ -142,13 +142,13 @@ func TestFormationsHandlerToolCRUDPublishesCanonicalPairs(t *testing.T) {
 			},
 		},
 		{
-			name:               "absent params-only update",
-			operation:          `"updateTool":{"id":"tool_normalize","params":{"mode":"strict"}}`,
+			name:               "absent title and params update",
+			operation:          `"updateTool":{"id":"tool_normalize","title":"Renamed while absent","params":{"mode":"strict"}}`,
 			wantTool:           true,
 			wantNullLayoutJSON: true,
 			assertResult: func(t *testing.T, _ *formationsAPIToolAuthoringHarness, response formationsAPIToolMutationEnvelope) {
-				if response.Data.Tool.Title != "Normalize report" || response.Data.Tool.Params["mode"] != "strict" {
-					t.Fatalf("params-only update = %#v", response.Data.Tool)
+				if response.Data.Tool.Title != "Renamed while absent" || response.Data.Tool.Params["mode"] != "strict" {
+					t.Fatalf("title and params update = %#v", response.Data.Tool)
 				}
 			},
 		},
@@ -217,10 +217,10 @@ func assertFormationsAPIToolHintPlacement(wantX, wantY int) func(*testing.T, *fo
 				t.Fatalf("hint create moved retained node %q: got %#v found=%t want %#v", retained.ID, got, retainedFound, retained)
 			}
 		}
-		if !reflect.DeepEqual(response.Data.Layout.Edges, harness.layout.Edges) {
+		if !sameList(response.Data.Layout.Edges, harness.layout.Edges) {
 			t.Fatalf("hint create changed retained layout edges: got %#v want %#v", response.Data.Layout.Edges, harness.layout.Edges)
 		}
-		if !reflect.DeepEqual(response.Data.Board.Connections, harness.board.Connections) {
+		if !sameList(response.Data.Board.Connections, harness.board.Connections) {
 			t.Fatalf("hint create implicitly wired Tool: %#v", response.Data.Board.Connections)
 		}
 	}
@@ -1678,4 +1678,13 @@ func formationsAPIToolLayoutNode(layout *formations.LayoutDocument, id string) (
 		}
 	}
 	return formations.LayoutNode{}, false
+}
+
+// sameList compares lists as JSON carries them: an empty list is served as []
+// whether or not the document held one (archon-n7u.49).
+func sameList[T any](got, want []T) bool {
+	if len(got) == 0 && len(want) == 0 {
+		return true
+	}
+	return reflect.DeepEqual(got, want)
 }

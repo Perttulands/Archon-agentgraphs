@@ -151,8 +151,9 @@ default = "claude-code"
 			t.Errorf("GET agent %s = %d %s, want INVALID_AGENT_CARD %q", id, rec.Code, rec.Body.String(), message)
 		}
 	}
-	if rec, response := serve("/api/agents"); rec.Code != http.StatusUnprocessableEntity || response.Error.Code != "INVALID_AGENT_CARD" {
-		t.Errorf("GET agents = %d %s, want INVALID_AGENT_CARD", rec.Code, rec.Body.String())
+	// The roster still serves; each card it cannot read is named (archon-4m4j).
+	if rec, _ := serve("/api/agents"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"unreadable":[{"name":"half","reason":"invalid_agent_card: agent card \"half\" is missing card.kind, harness.default"}`) {
+		t.Errorf("GET agents = %d %s, want the roster with the invalid cards named", rec.Code, rec.Body.String())
 	}
 	if rec, response := serve("/api/agents/Bad.Agent"); rec.Code != http.StatusBadRequest || response.Error.Code != "BAD_REQUEST" {
 		t.Errorf("GET invalid agent id = %d %s, want BAD_REQUEST", rec.Code, rec.Body.String())

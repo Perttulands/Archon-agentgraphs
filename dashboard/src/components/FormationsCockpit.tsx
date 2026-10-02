@@ -37,6 +37,7 @@ import {
   patchBoardDocument,
   patchBoardLayout,
   recordGateVerdict,
+  renameMission,
   resumeRunRequest,
   startRun,
 } from './formationsApi'
@@ -52,7 +53,7 @@ import {
 import { chooseBoardRun, readRunLink, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
 import { RunList, RunRevisionNote, RunWhen } from './RunList'
 import { missionPickLabel, otherRunsNeedingYou, pageTitle, runsOfLiveMissions } from './needsYou'
-import { chooseCurrentBoard, rememberBoardOnDevice } from './currentBoard'
+import { chooseCurrentBoard, openableSlugs, rememberBoardOnDevice } from './currentBoard'
 import { END_ROOM, clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
 import { END_SVG, FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, byRoleName, inSlotsWords, initials, inputFeedLabel, outputRowStatus, roleUses, rolesInUseLabel } from './formationsCockpitVisuals'
 import { useEscapeKey } from './useEscapeKey'
@@ -81,7 +82,7 @@ import CanvasLegend from './CanvasLegend'
 import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
 import { ProducedFiles, RunProduced, RunProducedProvider } from '../files/ProducedFiles'
 import { ReferencedFiles, type HiddenReferencedFile } from '../files/ReferencedFiles'
-import { nodeFileRefs } from '../files/referencedFiles'
+import { FileProblemsContext, fileProblems, nodeFileRefs } from '../files/referencedFiles'
 import { producedNames, summarizeProduced, useRunProduced } from '../files/produced'
 import { useHumanGateUpstream } from './useHumanGateUpstream'
 import { connectionKind, findInputPortAt, findOutputPortAt, isTextEditingTarget, laneYFrom } from './formationsCockpitDom'
@@ -422,9 +423,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         if (cancelled) return
         setBoards(list)
         if (list[0]) {
-          const { slug, missingLinked } = chooseCurrentBoard(list.map(item => item.slug), window.location.search)
+          const { slug, missingLinked } = chooseCurrentBoard(openableSlugs(list), window.location.search)
           if (missingLinked) {
-            setLinkError(`Mission "${missingLinked}" from the link was not found`)
+            const broken = list.find(item => item.slug === missingLinked)?.broken
+            setLinkError(broken ? `Mission "${missingLinked}" from the link cannot be read: ${broken}` : `Mission "${missingLinked}" from the link was not found`)
             setPinnedRun({ slug: '', runId: '' })
           }
           setSelectedSlug(current => current || slug)
@@ -935,7 +937,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       } else {
         const target = boardDialog.target
         if (!target) throw new Error('Mission target is missing; close and retry')
-        const result = await patchBoardDocument(target.slug, target.etag, target.rev, { title })
+        const result = await renameMission(target.slug, title)
         if (boardRef.current?.id === target.id) {
           boardRef.current = result.board
           setBoard(result.board)
@@ -1628,7 +1630,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const abortActiveRun = useCallback(async (reason: string) => {
     if (!activeRun?.runId || activeRun.final) return false
     try {
-      const status = runStatusFromResponse(await abortRunRequest(activeRun.runId, { reason, requestedBy: 'agent:ui' }))
+      const status = runStatusFromResponse(await abortRunRequest(activeRun.runId, { reason, requestedBy: 'human:ui' }))
       setActiveRun(status)
       await refreshRunEvents(activeRun.runId)
       if (status.final && selectedSlug) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
@@ -1644,7 +1646,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!activeRun?.runId || activeRun.final || !activeRun.resumeAllowed) return
     try {
       const status = runStatusFromResponse(await resumeRunRequest(activeRun.runId, {
-        actor: 'agent:ui',
+        actor: 'human:ui',
         mode: 'reattach',
         reason: 'operator resume',
       }))
@@ -1666,7 +1668,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!activeRun?.runId || activeRun.final) return false
     try {
       const status = runStatusFromResponse(await recordGateVerdict(activeRun.runId, gateId, {
-        actor: 'agent:ui',
+        actor: 'human:ui',
         verdict,
         requestedSeq,
         reason: response,
@@ -2692,6 +2694,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     () => findingsByNode(board, validation ? [...validation.errors, ...validation.warnings] : []),
     [board, validation],
   )
+  const referencedFileProblems = useMemo(() => fileProblems(validation?.warnings ?? []), [validation])
+  const brokenMissions = useMemo(() => boards.filter(summary => summary.broken), [boards])
   const blockedFindings = useMemo(() => findingsByNode(board, admissionFindings), [board, admissionFindings])
   const draftClass = (nodeId: string) => `${draftFindings.has(nodeId) ? ' is-draft' : ''}${blockedFindings.has(nodeId) ? ' admission-blocked' : ''}`
   const renderDraftMarker = (nodeId: string) => (
@@ -2804,7 +2808,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           mission
           <select aria-label="Mission" value={selectedSlug} onChange={event => selectBoard(event.target.value)} data-testid="board-picker" disabled={boards.length === 0 || Boolean(boardDialog)}>
             {boards.length === 0 ? <option value="">No missions</option> : null}
-            {boards.map(summary => <option key={summary.slug} value={summary.slug}>{missionPickLabel(summary, needsYou)}</option>)}
+            {boards.map(summary => <option key={summary.slug} value={summary.slug} disabled={Boolean(summary.broken)} title={summary.broken}>{missionPickLabel(summary, needsYou)}</option>)}
           </select>
           {board ? <span className="rev">rev {board.rev}</span> : null}
         </div>
@@ -3361,7 +3365,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             <button onClick={() => void arrangeBoard()} title="Arrange cards by graph flow (persists layout, Ctrl+Z to undo)" data-testid="arrange-layout">ARRANGE</button>
             <button onClick={() => fitView({ smooth: true })} title="Fit">FIT</button>
           </div>
-          {error || linkError ? <div className="errbar" data-testid="formations-error">{error || linkError}</div> : null}
+          {error || linkError ? <div className="errbar" data-testid="formations-error">{error || linkError}</div>
+            : brokenMissions.length ? (
+              <div className="errbar" data-testid="broken-missions" role="status">
+                {brokenMissions.length === 1 ? 'A mission cannot be read' : `${brokenMissions.length} missions cannot be read`}: {brokenMissions.map(summary => `${summary.slug}: ${summary.broken}`).join('; ')}
+              </div>
+            ) : null}
           <AdmissionFindingsPanel
             findings={admissionFindings}
             titleOf={nodeId => noteElements.find(element => element.id === nodeId)?.title || nodeId}
@@ -3656,7 +3665,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   )
   return (
     <FileWindowsProvider stack={windows}>
-      <RunProducedProvider value={producedValue}>{cockpit}</RunProducedProvider>
+      <FileProblemsContext.Provider value={referencedFileProblems}>
+        <RunProducedProvider value={producedValue}>{cockpit}</RunProducedProvider>
+      </FileProblemsContext.Provider>
     </FileWindowsProvider>
   )
 }

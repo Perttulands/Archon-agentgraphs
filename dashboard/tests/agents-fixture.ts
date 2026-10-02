@@ -17,7 +17,7 @@ const mission = (goal: string) => ({ id: 'mission', title: 'Deliver', goal })
 const boards = {
   alpha: {
     id: 'brd_alpha', slug: 'alpha', title: 'Alpha scratch', rev: 1, etag: 'alpha-1',
-    inputCards: [mission('Scratch work')], formations: [solo('work', 'Work', 'builder', 'openai-codex')], gates: [],
+    inputCards: [mission('Scratch work')], formations: [solo('work', 'Work', 'builder', 'openai-codex')], gates: [], tools: [], ends: [],
     connections: [{ id: 'a1', from: 'mission:out', to: 'work:in' }],
   },
   delivery: {
@@ -25,6 +25,7 @@ const boards = {
     inputCards: [mission('Ship the brief')],
     formations: [solo('build', 'Build', 'builder', 'openai-codex'), solo('judge', 'Beads reviewer', 'critic'), solo('recheck', 'Second opinion'), solo('ship', 'Ship', 'builder', 'openai-codex')],
     gates: [{ id: 'review', title: 'Beads review', kinds: ['formation'], criterion: 'The Beads pass lint.' }],
+    tools: [], ends: [],
     connections: [
       { id: 'd1', from: 'mission:out', to: 'build:in' },
       { id: 'd2', from: 'build:out', to: 'review:in' },
@@ -36,7 +37,7 @@ const boards = {
   },
   scouting: {
     id: 'brd_scouting', slug: 'scouting', title: 'Scouting', rev: 2, etag: 'scouting-2',
-    inputCards: [mission('Map the terrain')], formations: [solo('map', 'Map', 'critic')], gates: [],
+    inputCards: [mission('Map the terrain')], formations: [solo('map', 'Map', 'critic')], gates: [], tools: [], ends: [],
     connections: [{ id: 'w1', from: 'mission:out', to: 'map:in' }],
   },
 }

@@ -914,6 +914,127 @@ func TestArchonBoardNewRequiresSlugAndDefaultsTitle(t *testing.T) {
 	}
 }
 
+func TestArchonOfflineCommandsNeedAWorkspaceOrServer(t *testing.T) {
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	runner := &fakeTmux{live: map[string]bool{}}
+
+	for _, args := range [][]string{
+		{"mission", "new", "poems"},
+		{"mission", "list"},
+		{"formation", "list", "poems"},
+		{"gate", "create", "poems"},
+		{"end", "create", "poems"},
+		{"tool", "inspect", "poems", "tool"},
+		{"run", "list"},
+	} {
+		_, stderr, code := runArchon(t, runner, args...)
+		want := "archon " + args[0] + " " + args[1] + " needs --workspace <state-dir> or --server <url>: there is no default workspace"
+		if code != 2 || !strings.Contains(stderr, want) {
+			t.Fatalf("%v code=%d stderr=%q, want %q", args, code, stderr, want)
+		}
+	}
+	if entries, err := os.ReadDir(cwd); err != nil || len(entries) != 0 {
+		t.Fatalf("offline commands without a workspace wrote %v (%v) into the working directory", entries, err)
+	}
+
+	// Peer commands only work offline, so they name only --workspace.
+	if _, stderr, code := runArchon(t, runner, "peer", "read"); code != 2 || stderr != "archon peer read needs --workspace <state-dir>: there is no default workspace\n" {
+		t.Fatalf("peer read without a workspace code=%d stderr=%q", code, stderr)
+	}
+	_, stderr, code := runArchon(t, runner, "--workspace", "", "mission", "list")
+	if code != 2 || !strings.Contains(stderr, "there is no default workspace") {
+		t.Fatalf("empty --workspace code=%d stderr=%q", code, stderr)
+	}
+	_, stderr, code = runArchon(t, runner, "run", "wait", "run_x")
+	if code != 2 || !strings.Contains(stderr, "run wait needs --server") {
+		t.Fatalf("run wait without server code=%d stderr=%q", code, stderr)
+	}
+}
+
+func TestArchonRefusesARelativeReferenceFile(t *testing.T) {
+	workspace := t.TempDir()
+	runner := &fakeTmux{live: map[string]bool{}}
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "new", "refs"); code != 0 {
+		t.Fatalf("mission new: %s", stderr)
+	}
+	_, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "create", "refs", "--title", "Work", "--file", "docs/brief.md", "--json")
+	if code == 0 || !strings.Contains(stderr, `"code": "relative_file_reference"`) || !strings.Contains(stderr, `is relative: use an absolute path`) {
+		t.Fatalf("relative --file code=%d stderr=%s, want relative_file_reference", code, stderr)
+	}
+	_, stderr, code = runArchon(t, runner, "--workspace", workspace, "gate", "create", "refs", "--title", "Review", "--file", "rubric.md")
+	if code == 0 || !strings.Contains(stderr, `file "rubric.md" is relative: use an absolute path`) {
+		t.Fatalf("relative gate --file code=%d stderr=%s", code, stderr)
+	}
+}
+
+func TestArchonWarnsAboutAReferenceFileThatDoesNotExist(t *testing.T) {
+	workspace := t.TempDir()
+	present := filepath.Join(t.TempDir(), "rubric.md")
+	if err := os.WriteFile(present, []byte("# Rubric\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(t.TempDir(), "later.md")
+	runner := &fakeTmux{live: map[string]bool{}}
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "new", "refs"); code != 0 {
+		t.Fatalf("mission new: %s", stderr)
+	}
+	_, stderr, code := runArchon(t, runner, "--workspace", workspace, "gate", "create", "refs", "--title", "Review", "--file", present, "--file", missing)
+	if code != 0 || strings.Contains(stderr, present) || !strings.Contains(stderr, "warning: file "+missing+" does not exist") {
+		t.Fatalf("gate create code=%d stderr=%q, want a warning for the missing file only", code, stderr)
+	}
+	board, err := formations.NewStore(workspace).ReadBoard("refs")
+	if err != nil || len(board.Gates) != 1 || len(board.Gates[0].Files) != 2 {
+		t.Fatalf("board = %+v (%v), want the gate saved with both files", board, err)
+	}
+	stdout, _, _ := runArchon(t, runner, "--workspace", workspace, "mission", "validate", "refs")
+	if !strings.Contains(stdout, "Review's file "+missing+" does not exist") {
+		t.Fatalf("validate = %q, want the missing file named", stdout)
+	}
+}
+
+// A mission whose symlink lost its target is listed as broken, and the other
+// missions still list and open; a lost role card is named beside the roster
+// (archon-4m4j review).
+func TestArchonListsABrokenMissionLinkAndKeepsTheRest(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "state")
+	agents := filepath.Join(root, "agents")
+	t.Setenv("ARCHON_AGENTS_DIR", agents)
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeTmux{live: map[string]bool{}}
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "new", "intact"); code != 0 {
+		t.Fatalf("mission new: %s", stderr)
+	}
+	link := formations.NewStore(workspace).BoardPath("moved")
+	gone := filepath.Join(root, "repository", "moved.mission.toml")
+	if err := os.Symlink(gone, link); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "list")
+	if code != 0 || !strings.Contains(stdout, "intact\tintact\t1") || !strings.Contains(stdout, "moved\tbroken: "+link+" is a symlink to "+gone+", which does not exist") {
+		t.Fatalf("mission list code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "inspect", "intact", "--json"); code != 0 {
+		t.Fatalf("inspect the intact mission code=%d stderr=%s", code, stderr)
+	}
+	if _, stderr, code := runArchon(t, runner, "--workspace", workspace, "mission", "inspect", "moved"); code == 0 || !strings.Contains(stderr, link+" is a symlink to "+gone+", which does not exist") {
+		t.Fatalf("inspect the broken mission code=%d stderr=%s", code, stderr)
+	}
+	if err := os.MkdirAll(agents, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "dotfiles", "critic.toml"), filepath.Join(agents, "critic.toml")); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, code = runArchon(t, runner, "agent", "list")
+	if code != 0 || !strings.Contains(stdout, "codex-builder") || !strings.Contains(stderr, "warning: role card critic is not listed: ") {
+		t.Fatalf("agent list code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+}
+
 func TestArchonBoardInspectFailsLoudOnAmbiguousSelector(t *testing.T) {
 	workspace := t.TempDir()
 	store := formations.NewStore(workspace)
@@ -1550,7 +1671,7 @@ controller = false
 		t.Fatalf("assign persisted runtime session data:\n%s", raw)
 	}
 
-	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "set-brief", "session-search", "fmn_frame", "--goal", "Frame the goal", "--bead", "home-7kc4.5", "--file", "src/SessionPanel.tsx", "--link", "https://example.com/spec", "--json")
+	stdout, stderr, code = runArchon(t, runner, "--workspace", workspace, "formation", "set-brief", "session-search", "fmn_frame", "--goal", "Frame the goal", "--bead", "home-7kc4.5", "--file", "/work/src/SessionPanel.tsx", "--link", "https://example.com/spec", "--json")
 	if code != 0 {
 		t.Fatalf("formation set-brief code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -1558,7 +1679,7 @@ controller = false
 	for _, want := range []string{
 		`goal = "Frame the goal"`,
 		`beadId = "home-7kc4.5"`,
-		`files = ["src/SessionPanel.tsx"]`,
+		`files = ["/work/src/SessionPanel.tsx"]`,
 		`links = ["https://example.com/spec"]`,
 	} {
 		if !strings.Contains(raw, want) {
@@ -2243,7 +2364,6 @@ func TestArchonS4ConfiguredLabPoemMissionReachesGateAndPolishesAfterApproval(t *
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
-	t.Setenv("ARCHON_LAB_CWD", workspace)
 
 	personas := formations.NewPersonaStore(agentsDir)
 	for _, id := range []string{"lab-poet", "lab-poem-reviewer"} {
@@ -2355,7 +2475,6 @@ func TestArchonPoemMissionRoundTripsThroughCLIAPIFileAndLedger(t *testing.T) {
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
-	t.Setenv("ARCHON_LAB_CWD", workspace)
 
 	store := formations.NewStore(workspace)
 	writeArchonFile(t, store.BoardPath("poems"), `schema = 1
@@ -2593,7 +2712,7 @@ y = 120
 	assignRaw := requestAPI(
 		http.MethodPatch,
 		"/api/missions/poems",
-		`{"assignSlot":{"formationId":"fmn_draft","slotId":"slot_writer","agentId":"lab-poet","harness":"openai-codex","effort":"medium"},"expectedRev":3,"updatedBy":"agent:ui"}`,
+		`{"assignSlot":{"formationId":"fmn_draft","slotId":"slot_writer","agentId":"lab-poet","harness":"openai-codex","effort":"medium"},"expectedRev":3,"updatedBy":"human:ui"}`,
 		board.ETag,
 	)
 	assigned := decodeAPIBoard(t, assignRaw)
@@ -2608,7 +2727,7 @@ y = 120
 	wiredRaw := requestAPI(
 		http.MethodPatch,
 		"/api/missions/poems",
-		`{"wireConnection":{"from":"mis_poem:out","to":"fmn_draft:in"},"expectedRev":4,"updatedBy":"agent:ui"}`,
+		`{"wireConnection":{"from":"mis_poem:out","to":"fmn_draft:in"},"expectedRev":4,"updatedBy":"human:ui"}`,
 		board.ETag,
 	)
 	wired := decodeAPIBoard(t, wiredRaw)
@@ -2655,7 +2774,6 @@ func TestArchonConfiguredLabExecutorUsesAutomaticMissionWorkspace(t *testing.T) 
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
-	t.Setenv("ARCHON_LAB_CWD", workspace)
 
 	personas := formations.NewPersonaStore(agentsDir)
 	if _, err := personas.CreatePersona(formations.CreatePersonaRequest{
@@ -2805,7 +2923,7 @@ func TestArchonRunFollowJSONEmitsNDJSONUntilFinal(t *testing.T) {
 	var result runResult
 	select {
 	case result = <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("run follow --json did not terminate after final ledger event")
 	}
 	if result.code != 0 {

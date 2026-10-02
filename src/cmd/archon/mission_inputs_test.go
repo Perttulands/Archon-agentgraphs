@@ -18,7 +18,6 @@ func TestArchonMissionInputsAreDeclaredListedAndSupplied(t *testing.T) {
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
 	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
-	t.Setenv("ARCHON_LAB_CWD", workspace)
 	if _, err := formations.NewPersonaStore(agentsDir).CreatePersona(formations.CreatePersonaRequest{ID: "lab-poet", Kind: "specialist", Harness: "openai-codex"}); err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +99,7 @@ func TestArchonMissionInputsAreDeclaredListedAndSupplied(t *testing.T) {
 		t.Fatalf("delete notes = %d %s (%v)", code, stdout, err)
 	}
 	// The brief still references {notes}, so validation names it.
-	if out, _, code := archon("mission", "validate", "poems"); code != 1 || !strings.Contains(out, "ERROR\tunknown_input_reference\tfmn_draft\tDraft poem's brief references {notes}, but the mission has no input named notes; its inputs are subject") {
+	if out, _, code := archon("mission", "validate", "poems"); code != 1 || !strings.Contains(out, "ERROR\tunknown_input_reference\tDraft poem (fmn_draft)\tDraft poem's brief references {notes}, but the mission has no input named notes; its inputs are subject") {
 		t.Fatalf("validate after delete = %d\n%s", code, out)
 	}
 }

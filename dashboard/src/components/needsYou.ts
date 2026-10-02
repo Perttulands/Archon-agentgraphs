@@ -10,6 +10,7 @@ export function needsYouCount(runs: RunStatusProjection[], missionId: string): n
 
 /** The mission picker's label: its title, and how many of its runs need you. */
 export function missionPickLabel(summary: BoardSummary, runs: RunStatusProjection[]): string {
+  if (summary.broken) return `${summary.slug} · cannot be read`
   const count = needsYouCount(runs, summary.id)
   const title = summary.title || summary.slug
   return count ? `${title} · ${count} need${count === 1 ? 's' : ''} you` : title

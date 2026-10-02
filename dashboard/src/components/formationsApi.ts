@@ -60,31 +60,14 @@ export async function fetchApi<T>(endpoint: string, init?: RequestInit): Promise
   return { data: result.data, etag: response.headers.get('ETag') || '' }
 }
 
+// The daemon always sends a mission's and a layout's lists as arrays, empty or
+// not (archon-n7u.49); a document only takes the ETag its response carried.
 export function normalizeBoard(board: BoardDocument, etag = ''): BoardDocument {
-  return {
-    ...board,
-    etag: etag || board.etag,
-    inputCards: board.inputCards || [],
-    // The server sends null for an empty port or slot list, as after removing a formation's only input.
-    formations: (board.formations || []).map(formation => ({
-      ...formation,
-      inputs: formation.inputs || [],
-      outputs: formation.outputs || [],
-      slots: formation.slots || [],
-    })),
-    gates: board.gates || [],
-    tools: board.tools || [],
-    connections: board.connections || [],
-  }
+  return { ...board, etag: etag || board.etag }
 }
 
 export function normalizeLayout(layout: LayoutDocument, etag = ''): LayoutDocument {
-  return {
-    ...layout,
-    etag: etag || layout.etag,
-    nodes: layout.nodes || [],
-    edges: layout.edges || [],
-  }
+  return { ...layout, etag: etag || layout.etag }
 }
 
 export function missingLayoutForBoard(board: BoardDocument): LayoutDocument {
@@ -142,7 +125,7 @@ export async function fetchBoardWithLayout(slug: string): Promise<{ board: Board
 export async function createBoard(title: string): Promise<BoardDocument> {
   const result = await fetchApi<{ mission: BoardDocument }>('/api/missions', {
     method: 'POST',
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ title, updatedBy: 'human:ui' }),
   })
   return normalizeBoard(result.data.mission, result.etag)
 }
@@ -208,6 +191,21 @@ export async function overrideAgentCard(agentID: string, etag: string, patch: {
   return { ...result.data, etag: result.etag || result.data.etag }
 }
 
+/** Renames a mission as it is now. A title change conflicts with no other
+ *  edit, so it is written to the latest revision, read again once if another
+ *  edit lands in between (archon-n7u.16). */
+export async function renameMission(slug: string, title: string): Promise<PatchBoardResponse<Record<string, never>>> {
+  for (let attempt = 1; ; attempt++) {
+    const latest = await fetchBoardDocument(slug)
+    try {
+      return await patchBoardDocument(slug, latest.etag, latest.rev, { title })
+    } catch (err) {
+      if (!(err instanceof ApiRequestError) || err.code !== 'CONFLICT') throw err
+      if (attempt === 2) throw new Error(`${latest.title || slug} kept changing while it was renamed; press Save to rename it as it is now`)
+    }
+  }
+}
+
 export async function fetchBoardChanged(slug: string, etag: string): Promise<boolean> {
   const result = await fetchApi<{ signal: { changed?: boolean } }>(
     `/api/missions/${encodeURIComponent(slug)}/changes?etag=${encodeURIComponent(etag)}`
@@ -239,7 +237,7 @@ export async function patchBoardDocument<TExtra extends object = Record<string, 
       headers: { 'If-Match': etag },
       body: JSON.stringify({
         expectedRev: rev,
-        updatedBy: 'agent:ui',
+        updatedBy: 'human:ui',
         ...patch,
       }),
     }

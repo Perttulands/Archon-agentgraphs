@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import AgentsView from './components/AgentsView'
 import FormationsCockpit from './components/FormationsCockpit'
+import { buildLabel, useDaemonBuild } from './components/daemonBuild'
 import { useTheme } from './theme/ThemeContext'
 
 type View = 'formations' | 'agents'
@@ -8,6 +9,7 @@ type View = 'formations' | 'agents'
 export default function App() {
   const [view, setView] = useState<View>('formations')
   const { error } = useTheme()
+  const build = useDaemonBuild()
 
   return (
     <main className="formations-app">
@@ -19,6 +21,7 @@ export default function App() {
         <button type="button" onClick={() => setView('agents')} aria-pressed={view === 'agents'}>
           Agents
         </button>
+        {build ? <span className="archon-build" title={`The daemon runs Archon ${build.version} (${build.commit})`}>{buildLabel(build)}</span> : null}
       </nav>
       {error ? <div className="theme-error" role="status">{error}</div> : null}
       <section className="formations-app-content">

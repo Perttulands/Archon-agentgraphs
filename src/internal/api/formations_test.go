@@ -408,7 +408,6 @@ func TestFormationsHandlerStartsSingleFormationByID(t *testing.T) {
 		t.Fatalf("create persona: %v", err)
 	}
 	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
-	t.Setenv("ARCHON_LAB_CWD", store.Workspace)
 	writeFormationsAPIFixture(t, store.BoardPath("session-search"), formationsAPIS5CascadeBoardFixture())
 	handler := NewFormationsHandlerWithStores(store, personas)
 	mux := http.NewServeMux()
@@ -1413,7 +1412,6 @@ func TestFormationsHandlerS4ConfiguredLabExecutorRunsStaffedFormation(t *testing
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_LAB_HARNESSES", "openai-codex")
-	t.Setenv("ARCHON_LAB_CWD", workspace)
 
 	store := formations.NewStore(workspace)
 	personas := formations.NewPersonaStore(agentsDir)

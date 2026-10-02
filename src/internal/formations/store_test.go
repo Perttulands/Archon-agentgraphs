@@ -1207,7 +1207,7 @@ y = 100
 	}()
 
 	boardLock := mutexFor(store.BoardPath("arrange-serial") + ".lock")
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	for {
 		if !boardLock.TryLock() {
 			break
@@ -1713,7 +1713,7 @@ title = "Ship"
 		FormationID: "fmn_ship",
 		Goal:        "Ship the change",
 		BeadID:      "srv-abc.2",
-		Files:       []string{"src/SessionPanel.tsx"},
+		Files:       []string{"/work/src/SessionPanel.tsx"},
 		Links:       []string{"https://example.com/spec"},
 		UpdatedBy:   "agent:test",
 	}, WriteOptions{ExpectedETag: before.ETag, ExpectedRev: before.Rev})
@@ -1733,7 +1733,7 @@ title = "Ship"
 		`customFuture = "keep me"`,
 		`[formation.brief]`,
 		`beadId = "srv-abc.2"`,
-		`files = ["src/SessionPanel.tsx"]`,
+		`files = ["/work/src/SessionPanel.tsx"]`,
 		`links = ["https://example.com/spec"]`,
 	} {
 		if !strings.Contains(raw, want) {
@@ -2062,7 +2062,7 @@ func TestCreateGateHoldsBoardLockUntilCoherentLayoutResult(t *testing.T) {
 	// not advance -- so a reader can never observe a board node before its
 	// layout placement is durable.
 	boardLock := mutexFor(store.BoardPath("session-search") + ".lock")
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	boardLockHeld := false
 	for {
 		if !boardLock.TryLock() {

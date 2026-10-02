@@ -18,9 +18,11 @@ type MarkdownMode = 'preview' | 'source'
 
 const byteLength = (text: string) => new TextEncoder().encode(text).length
 
-export function FileActions({ request, preview, mode, onMode }: {
+export function FileActions({ request, preview, error, mode, onMode }: {
   request: FileRequest
   preview: FilePreview | null
+  /** Why the file could not be read; a file nobody can read offers no raw view or download. */
+  error?: string
   mode: MarkdownMode
   onMode: (mode: MarkdownMode) => void
 }) {
@@ -45,8 +47,8 @@ export function FileActions({ request, preview, mode, onMode }: {
           <button type="button" className="file-action" aria-pressed={mode === 'source'} onClick={() => onMode('source')}>Source</button>
         </>
       ) : null}
-      {request.rawUrl ? <a className="file-action" href={request.rawUrl} target="_blank" rel="noopener noreferrer">Open raw</a> : null}
-      {request.rawUrl ? <a className="file-action" href={request.rawUrl} download={request.name}>Download</a> : null}
+      {request.rawUrl && !error ? <a className="file-action" href={request.rawUrl} target="_blank" rel="noopener noreferrer">Open raw</a> : null}
+      {request.rawUrl && !error ? <a className="file-action" href={request.rawUrl} download={request.name}>Download</a> : null}
       {path ? (
         <span className="file-copy">
           <button type="button" className="file-action" title={path} aria-disabled={copyState === 'copying'} aria-live="polite" onClick={() => void copy()}>{copyState === 'copied' ? 'Copied' : copyState === 'copying' ? 'Copying…' : 'Copy path'}</button>

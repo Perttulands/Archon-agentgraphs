@@ -181,7 +181,7 @@ func (c *terminalClient) send(frame []byte) {
 func (c *terminalClient) readUntil(want string) stampedFrame {
 	c.t.Helper()
 	collected := &strings.Builder{}
-	timeout := time.After(15 * time.Second)
+	timeout := time.After(testPatience)
 	for {
 		select {
 		case frame, open := <-c.frames:
@@ -194,6 +194,28 @@ func (c *terminalClient) readUntil(want string) stampedFrame {
 			}
 		case <-timeout:
 			c.t.Fatalf("timed out waiting for %q; got %q", want, collected.String())
+		}
+	}
+}
+
+// readUntilWithin collects output until want appears or the wait ends, and
+// returns what arrived.
+func (c *terminalClient) readUntilWithin(want string, wait time.Duration) string {
+	c.t.Helper()
+	collected := &strings.Builder{}
+	timeout := time.After(wait)
+	for {
+		select {
+		case frame, open := <-c.frames:
+			if !open {
+				c.t.Fatalf("terminal closed before %q arrived; got %q", want, collected.String())
+			}
+			collected.WriteString(frame.text)
+			if strings.Contains(collected.String(), want) {
+				return collected.String()
+			}
+		case <-timeout:
+			return collected.String()
 		}
 	}
 }
@@ -218,7 +240,7 @@ func (c *terminalClient) received() string {
 // closeCode reports the WebSocket close code the server sent.
 func (c *terminalClient) closeCode() int {
 	c.t.Helper()
-	timeout := time.After(15 * time.Second)
+	timeout := time.After(testPatience)
 	for {
 		select {
 		case <-c.frames:
@@ -442,7 +464,7 @@ func TestTerminal_ClientDisconnectEndsTheAttach(t *testing.T) {
 
 	client.conn.Close()
 
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	for time.Now().Before(deadline) {
 		// Kill(0) still succeeds on a zombie, so this also proves the exit was
 		// reaped rather than merely signalled.
@@ -456,41 +478,50 @@ func TestTerminal_ClientDisconnectEndsTheAttach(t *testing.T) {
 
 // Flow control is the client's: while it says stop, no further pty read is
 // issued, and what the seat wrote meanwhile arrives on resume. One read can
-// already be outstanding when the pause lands, so the guarantee is about the
-// next read. Every step waits for an event rather than for a duration; see
-// CHROTE's TestTerminal_HonoursClientFlowControl for the full argument.
+// already be outstanding when the pause lands, or none when the pause reaches
+// the reader before it reads again, which a loaded host makes likely. Every
+// step waits for an event; see CHROTE's TestTerminal_HonoursClientFlowControl
+// for the full argument (archon-miz).
 func TestTerminal_HonoursClientFlowControl(t *testing.T) {
 	harness := newTerminalHarness(t)
-	writingDone := filepath.Join(t.TempDir(), "writing-done")
+	scratch := t.TempDir()
+	inFlightWritten := filepath.Join(scratch, "in-flight-written")
+	writingDone := filepath.Join(scratch, "writing-done")
 	t.Setenv("FAKE_TMUX_ATTACH", harness.attachScript(fmt.Sprintf(`
 stty -echo
 printf 'ready\n'
 read -r _
 printf 'in-flight\n'
+: > %q
 read -r _
 printf 'held-back\n'
 printf 'end-of-writing\n'
 : > %q
-sleep 10`, writingDone)))
+sleep 10`, inFlightWritten, writingDone)))
 
 	client := harness.dial(80, 24)
 	client.readUntil("ready")
 
 	client.send([]byte{clientPause})
 	client.send(append([]byte{clientInput}, []byte("release the outstanding read\r")...))
-	client.readUntil("in-flight")
+	waitForFile(t, inFlightWritten)
+	// A read issued before the pause returns in-flight; without one it waits
+	// for the resume. The short wait only lets an outstanding read finish
+	// before the seat writes again; nothing is decided by when frames come.
+	early := client.readUntilWithin("in-flight", 5*time.Second)
 
 	client.send(append([]byte{clientInput}, []byte("write behind the pause\r")...))
 	waitForFile(t, writingDone)
-	if withheld := client.received(); strings.Contains(withheld, "held-back") {
-		t.Fatalf("another pty read was issued while the client had paused it; got %q", withheld)
+	withheld := client.received()
+	if strings.Contains(early+withheld, "held-back") {
+		t.Fatalf("a pty read was issued while the client had paused it; got %q", early+withheld)
 	}
 
 	resumedAt := time.Now()
 	client.send([]byte{clientResume})
 	released := client.readUntil("end-of-writing")
-	if !strings.Contains(released.text, "held-back") {
-		t.Fatalf("the resumed stream skipped what the seat wrote behind the pause; got %q", released.text)
+	if !strings.Contains(released.text, "held-back") || !strings.Contains(early+withheld+released.text, "in-flight") {
+		t.Fatalf("the resumed stream skipped what the seat wrote; got %q", early+withheld+released.text)
 	}
 	if released.at.Before(resumedAt) {
 		t.Fatal("output written behind the pause reached the client before it resumed the stream")
@@ -499,7 +530,7 @@ sleep 10`, writingDone)))
 
 func waitForFile(t *testing.T, path string) {
 	t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(path); err == nil {
 			return

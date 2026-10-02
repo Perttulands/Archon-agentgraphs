@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { cockpitFixture } from './cockpit-fixture'
+import { transitionsSettled } from './settled'
 
 test('Arrange followed immediately by Fit keeps the disconnected gate accessible', async ({ page }) => {
   await cockpitFixture(page, { far: true })
@@ -10,7 +11,7 @@ test('Arrange followed immediately by Fit keeps the disconnected gate accessible
   // Deliberately press during Arrange's animation, without Playwright waiting
   // for the moving target to settle. This is the reported operator sequence.
   await page.getByTitle('Fit', { exact: true }).evaluate((el: HTMLButtonElement) => el.click())
-  await page.waitForTimeout(550)
+  await transitionsSettled(page)
   const bounds = await page.locator('[data-node="loose"]').evaluate(el => {
     const card = el.getBoundingClientRect()
     const viewport = document.querySelector('.fmx .viewport')!.getBoundingClientRect()

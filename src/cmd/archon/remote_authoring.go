@@ -115,6 +115,10 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrInvalidHumanChannel
 	case "INVALID_MISSION_INPUT":
 		return formations.ErrInvalidMissionInput
+	case "RELATIVE_FILE_REFERENCE":
+		return formations.ErrRelativeFileRef
+	case "BROKEN_LINK":
+		return formations.ErrBrokenLink
 	case "INVALID_EXECUTION_POLICY":
 		return formations.ErrInvalidExecutionPolicy
 	case "INVALID_TOOL_MUTATION":
@@ -267,8 +271,7 @@ func (c *remoteClient) freePosition(board *formations.BoardDocument, fs *flag.Fl
 }
 
 func remoteFlags(name string, stderr io.Writer) *flag.FlagSet {
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags(name, stderr)
 	return fs
 }
 
@@ -309,7 +312,7 @@ func remoteBoardNew(c *remoteClient, args []string, stdout, stderr io.Writer) in
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon mission new <slug> [--title <title>] [--json]")
+		fmt.Fprintln(stderr, commandUsage("mission new"))
 		return 2
 	}
 	data, _, err := c.call("POST", "/api/missions", map[string]any{"slug": fs.Arg(0), "title": *title, "updatedBy": *updatedBy}, "")
@@ -352,7 +355,7 @@ func remoteFormationList(c *remoteClient, args []string, stdout, stderr io.Write
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon formation list <mission> [--json]")
+		fmt.Fprintln(stderr, commandUsage("formation list"))
 		return 2
 	}
 	board, err := c.readBoard(fs.Arg(0))
@@ -369,7 +372,7 @@ func remoteBoardInspect(c *remoteClient, args []string, stdout, stderr io.Writer
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon mission inspect <mission> [--json]")
+		fmt.Fprintln(stderr, commandUsage("mission inspect"))
 		return 2
 	}
 	board, err := c.readBoard(fs.Arg(0))
@@ -386,7 +389,7 @@ func remoteFormationInspect(c *remoteClient, args []string, stdout, stderr io.Wr
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon formation inspect <mission> <formation> [--json]")
+		fmt.Fprintln(stderr, commandUsage("formation inspect"))
 		return 2
 	}
 	board, err := c.readBoard(fs.Arg(0))
@@ -403,7 +406,7 @@ func remoteBoardNotes(c *remoteClient, args []string, stdout, stderr io.Writer) 
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon mission notes <mission> [--json]")
+		fmt.Fprintln(stderr, commandUsage("mission notes"))
 		return 2
 	}
 	board, err := c.readBoard(fs.Arg(0))
@@ -462,7 +465,7 @@ func remoteBoardValidate(c *remoteClient, args []string, stdout, stderr io.Write
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon mission validate <mission> [--json]")
+		fmt.Fprintln(stderr, commandUsage("mission validate"))
 		return 2
 	}
 	board, err := c.readBoard(fs.Arg(0))
@@ -494,8 +497,8 @@ func remoteBoardValidate(c *remoteClient, args []string, stdout, stderr io.Write
 		}
 	} else {
 		fmt.Fprintf(stdout, "%s\t%d errors\t%d warnings\n", slug, len(report.Errors), len(report.Warnings))
-		writeFindingsText(stdout, "ERROR", report.Errors)
-		writeFindingsText(stdout, "WARN", report.Warnings)
+		writeFindingsText(stdout, "ERROR", report.Errors, board)
+		writeFindingsText(stdout, "WARN", report.Warnings, board)
 	}
 	if len(report.Errors) > 0 {
 		return 1
@@ -510,7 +513,7 @@ func remoteBoardArrange(c *remoteClient, args []string, stdout, stderr io.Writer
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon mission arrange <mission> [--json]")
+		fmt.Fprintln(stderr, commandUsage("mission arrange"))
 		return 2
 	}
 	board, err := c.readBoard(fs.Arg(0))
@@ -552,7 +555,7 @@ func remoteMissionList(c *remoteClient, args []string, stdout, stderr io.Writer)
 	if fs.NArg() == 0 {
 		return remoteBoardList(c, args, stdout, stderr)
 	}
-	fmt.Fprintln(stderr, "usage: archon mission list [--json]")
+	fmt.Fprintln(stderr, commandUsage("mission list"))
 	return 2
 }
 
@@ -566,7 +569,7 @@ func remoteMissionInspect(c *remoteClient, args []string, stdout, stderr io.Writ
 		return remoteBoardInspect(c, args, stdout, stderr)
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, missionInspectUsage)
+		fmt.Fprintln(stderr, commandUsage("mission inspect"))
 		return 2
 	}
 	board, err := c.readBoard(fs.Arg(0))
@@ -591,7 +594,7 @@ func remoteMissionCreate(c *remoteClient, args []string, stdout, stderr io.Write
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, missionCreateUsage)
+		fmt.Fprintln(stderr, commandUsage("mission create"))
 		return 2
 	}
 	data, _, err := c.patchBoard(fs.Arg(0), *updatedBy, func(board *formations.BoardDocument) (string, map[string]any, error) {
@@ -604,6 +607,7 @@ func remoteMissionCreate(c *remoteClient, args []string, stdout, stderr io.Write
 	if err != nil {
 		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
+	warnFileRefs(stderr, files)
 	result, err := decodeRemote[formations.MissionCreateResult](data, "")
 	if err != nil || result.Board == nil || result.Layout == nil {
 		return fail(stderr, fmt.Errorf("coordinator response has no created mission"))
@@ -626,7 +630,7 @@ func remoteMissionUpdate(c *remoteClient, args []string, stdout, stderr io.Write
 	}
 	given := givenFlags(fs)
 	if (fs.NArg() != 1 && fs.NArg() != 2) || !missionUpdateGiven(given) {
-		fmt.Fprintln(stderr, missionUpdateUsage)
+		fmt.Fprintln(stderr, commandUsage("mission update"))
 		return 2
 	}
 	missionID := ""
@@ -653,6 +657,7 @@ func remoteMissionUpdate(c *remoteClient, args []string, stdout, stderr io.Write
 	if err != nil {
 		return remoteFail(stderr, err, *jsonOut, "inputCard", fs.Arg(1))
 	}
+	warnFileRefs(stderr, files)
 	return writeRemoteBoard(stdout, stderr, data, *jsonOut, fmt.Sprintf("updated Input card %s", missionID))
 }
 
@@ -664,7 +669,7 @@ func remoteMissionWire(c *remoteClient, args []string, stdout, stderr io.Writer)
 		return 2
 	}
 	if fs.NArg() != 2 && fs.NArg() != 3 {
-		fmt.Fprintln(stderr, missionWireUsage)
+		fmt.Fprintln(stderr, commandUsage("mission wire"))
 		return 2
 	}
 	missionID, target := "", fs.Arg(fs.NArg()-1)
@@ -693,7 +698,7 @@ func remoteFormationCreate(c *remoteClient, args []string, stdout, stderr io.Wri
 		return 2
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		fmt.Fprintln(stderr, "usage: archon formation create <mission> [solo|peer|orchestrated] [--title <title>] [--json]")
+		fmt.Fprintln(stderr, commandUsage("formation create"))
 		return 2
 	}
 	data, _, err := c.patchBoard(fs.Arg(0), *updatedBy, func(board *formations.BoardDocument) (string, map[string]any, error) {
@@ -733,7 +738,7 @@ func remoteFormationRename(c *remoteClient, args []string, stdout, stderr io.Wri
 		return 2
 	}
 	if fs.NArg() != 3 {
-		fmt.Fprintln(stderr, "usage: archon formation rename <mission> <formation> <title> [--json]")
+		fmt.Fprintln(stderr, commandUsage("formation rename"))
 		fmt.Fprintln(stderr, "An empty title clears it. The ID, ports, slots, brief, edges, layout and notes stay unchanged.")
 		return 2
 	}
@@ -755,7 +760,7 @@ func remoteFormationSetType(c *remoteClient, args []string, stdout, stderr io.Wr
 		return 2
 	}
 	if fs.NArg() != 3 {
-		fmt.Fprintln(stderr, "usage: archon formation set-type <mission> <formation> <solo|peer|orchestrated> [--keep-slot <slot>] [--json]")
+		fmt.Fprintln(stderr, commandUsage("formation set-type"))
 		fmt.Fprintln(stderr, "solo keeps one slot, peer has at least two, orchestrated has one controller and a worker; added slots are empty. Changing to solo with several staffed slots needs --keep-slot.")
 		return 2
 	}
@@ -827,7 +832,7 @@ func remoteFormationUnassign(c *remoteClient, args []string, stdout, stderr io.W
 		return 2
 	}
 	if fs.NArg() != 2 || *slotID == "" {
-		fmt.Fprintln(stderr, "usage: archon formation unassign <mission> <formation> --slot <slot> [--json]")
+		fmt.Fprintln(stderr, commandUsage("formation unassign"))
 		return 2
 	}
 	data, formationID, err := c.patchFormation(fs.Arg(0), fs.Arg(1), *updatedBy, func(id string) (string, map[string]any) {
@@ -853,7 +858,7 @@ func remoteFormationSetBrief(c *remoteClient, args []string, stdout, stderr io.W
 		return 2
 	}
 	if fs.NArg() != 2 {
-		fmt.Fprintln(stderr, "usage: archon formation set-brief <mission> <formation> --goal <goal> [--bead <beads-id>] [--file <path>] [--link <url>] [--json]")
+		fmt.Fprintln(stderr, commandUsage("formation set-brief"))
 		return 2
 	}
 	data, formationID, err := c.patchFormation(fs.Arg(0), fs.Arg(1), *updatedBy, func(id string) (string, map[string]any) {
@@ -862,6 +867,7 @@ func remoteFormationSetBrief(c *remoteClient, args []string, stdout, stderr io.W
 	if err != nil {
 		return remoteFail(stderr, err, *jsonOut, "formation", fs.Arg(1))
 	}
+	warnFileRefs(stderr, files)
 	return writeRemoteBoard(stdout, stderr, data, *jsonOut, fmt.Sprintf("updated brief for %s", formationID))
 }
 
@@ -879,7 +885,7 @@ func remoteFormationAddPort(direction string) remoteAuthoringCommand {
 			return 2
 		}
 		if fs.NArg() != 2 {
-			fmt.Fprintf(stderr, "usage: archon %s <mission> <formation> --label <label> [--json]\n", name)
+			fmt.Fprintln(stderr, commandUsage(name))
 			return 2
 		}
 		data, formationID, err := c.patchFormation(fs.Arg(0), fs.Arg(1), *updatedBy, func(id string) (string, map[string]any) {
@@ -909,7 +915,7 @@ func remoteFormationWire(remove bool) remoteAuthoringCommand {
 			return 2
 		}
 		if fs.NArg() != 3 {
-			fmt.Fprintf(stderr, "usage: archon %s <mission> <from-node:port> <to-node:port> [--json]\n", name)
+			fmt.Fprintln(stderr, commandUsage(name))
 			return 2
 		}
 		data, _, err := c.patchBoard(fs.Arg(0), *updatedBy, func(*formations.BoardDocument) (string, map[string]any, error) {
@@ -944,7 +950,7 @@ func remoteGateCreate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon gate create <mission> [--kinds code,formation,human] [--title text] [--criterion text] [--check id --check-version version --check-value value] [--file path]... [--x n] [--y n] [--json]")
+		fmt.Fprintln(stderr, commandUsage("gate create"))
 		return 2
 	}
 	data, _, err := c.patchBoard(fs.Arg(0), *updatedBy, func(board *formations.BoardDocument) (string, map[string]any, error) {
@@ -955,6 +961,7 @@ func remoteGateCreate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 	if err != nil {
 		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
+	warnFileRefs(stderr, files)
 	result, err := decodeRemote[formations.GateCreateResult](data, "")
 	if err != nil || result.Board == nil || result.Layout == nil {
 		return fail(stderr, fmt.Errorf("coordinator response has no created gate"))
@@ -980,7 +987,7 @@ func remoteGateUpdate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 	}
 	given := givenFlags(fs)
 	if fs.NArg() != 2 || *clearCheck && (given["check"] || given["check-version"] || given["check-value"]) {
-		fmt.Fprintln(stderr, "usage: archon gate update <mission> <gate> [--title text] [--kinds code,formation,human] [--criterion text] [--check id] [--check-version version] [--check-value value | --clear-check] [--file path]... [--json]")
+		fmt.Fprintln(stderr, commandUsage("gate update"))
 		fmt.Fprintln(stderr, "Only the flags you give change the gate; an empty value clears that field. Dropping formation detaches the judge chain and dropping code clears the check.")
 		return 2
 	}
@@ -1009,6 +1016,7 @@ func remoteGateUpdate(c *remoteClient, args []string, stdout, stderr io.Writer) 
 	if err != nil {
 		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
+	warnFileRefs(stderr, files)
 	return writeRemoteBoard(stdout, stderr, data, *jsonOut, "updated gate")
 }
 
@@ -1022,7 +1030,7 @@ func remoteGateJudge(c *remoteClient, args []string, stdout, stderr io.Writer) i
 		return 2
 	}
 	if fs.NArg() != 2 || (!*detach && *chain == "") {
-		fmt.Fprintln(stderr, "usage: archon gate judge <mission> <gate> --chain f1,f2 | --detach [--json]")
+		fmt.Fprintln(stderr, commandUsage("gate judge"))
 		return 2
 	}
 	gateID := ""
@@ -1085,6 +1093,9 @@ func remoteAgentList(c *remoteClient, args []string, stdout, stderr io.Writer) i
 	if err != nil {
 		return fail(stderr, err)
 	}
+	if unreadable, err := decodeRemote[[]formations.Unreadable](data, "unreadable"); err == nil {
+		warnUnreadable(stderr, "role card", *unreadable)
+	}
 	return writeAgentList(stdout, formations.AgentRoster{Agents: *agents}, *jsonOut)
 }
 
@@ -1095,7 +1106,7 @@ func remoteAgentInspect(c *remoteClient, args []string, stdout, stderr io.Writer
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: archon agent inspect <id> [--json]")
+		fmt.Fprintln(stderr, commandUsage("agent inspect"))
 		return 2
 	}
 	data, _, err := c.call("GET", "/api/agents/"+url.PathEscape(fs.Arg(0)), nil, "")

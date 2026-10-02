@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { scouting, scoutingFixture } from './scouting-fixture'
+import { transitionsSettled } from './settled'
 
 type Point = { x: number; y: number }
 type Segment = [Point, Point]
@@ -45,7 +46,7 @@ test('Scouting loops are labelled back-references and no two share a channel seg
   await expect(page.getByTestId(`wire-label-${judge.id}`)).toHaveText('judges Adversarial review')
 
   await page.getByTitle('Fit', { exact: true }).click()
-  await page.waitForTimeout(500)
+  await transitionsSettled(page)
   const routes = await Promise.all(loops.map(async loop => ({ id: loop.id, points: corners((await page.getByTestId(`formation-wire-${loop.id}`).getAttribute('d'))!) })))
   for (const route of routes) expect(route.points.length, `${route.id} corners`).toBe(6)
   for (let i = 0; i < routes.length; i += 1) {

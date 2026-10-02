@@ -196,22 +196,36 @@ func (s *PersonaStore) PersonaPath(id string) string {
 }
 
 func (s *PersonaStore) ListPersonas() ([]PersonaCard, error) {
+	cards, _, err := s.ListPersonasSkipping()
+	return cards, err
+}
+
+// ListPersonasSkipping lists every card it can read and names the ones it
+// could not, such as a card symlinked from a repository whose file has moved,
+// so one bad card never hides the roster (archon-4m4j).
+func (s *PersonaStore) ListPersonasSkipping() ([]PersonaCard, []Unreadable, error) {
 	cardsByID := make(map[string]PersonaCard, len(personaPresetCatalog))
 	for _, card := range builtinPresetPersonas() {
 		cardsByID[card.ID] = card
 	}
 	entries, err := s.listPersonaEntries()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	var unreadable []Unreadable
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".toml") {
 			continue
 		}
 		id := strings.TrimSuffix(entry.Name(), ".toml")
+		if _, linked, err := followLink(filepath.Join(s.AgentsDir, entry.Name())); linked && err != nil {
+			unreadable = append(unreadable, Unreadable{Name: id, Reason: err.Error()})
+			continue
+		}
 		card, err := s.ReadPersona(id)
 		if err != nil {
-			return nil, err
+			unreadable = append(unreadable, Unreadable{Name: id, Reason: err.Error()})
+			continue
 		}
 		cardsByID[id] = *card
 	}
@@ -222,7 +236,10 @@ func (s *PersonaStore) ListPersonas() ([]PersonaCard, error) {
 	sort.Slice(cards, func(i, j int) bool {
 		return cards[i].ID < cards[j].ID
 	})
-	return cards, nil
+	sort.Slice(unreadable, func(i, j int) bool {
+		return unreadable[i].Name < unreadable[j].Name
+	})
+	return cards, unreadable, nil
 }
 
 func (s *PersonaStore) ReadPersona(id string) (*PersonaCard, error) {

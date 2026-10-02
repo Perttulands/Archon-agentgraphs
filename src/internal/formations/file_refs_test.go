@@ -111,6 +111,69 @@ func TestReferencedFilesOpenAnyAbsolutePath(t *testing.T) {
 	}
 }
 
+// A relative reference file has no base, so authoring refuses it where it is
+// written and saves nothing (archon-ka59).
+func TestAuthoringRefusesRelativeFileReferences(t *testing.T) {
+	store := NewStore(t.TempDir())
+	store.Now = fixedClock()
+	if _, err := store.CreateBoard(BoardCreateRequest{Slug: "refs", Title: "Refs"}); err != nil {
+		t.Fatal(err)
+	}
+	current := func() WriteOptions {
+		t.Helper()
+		board, err := store.ReadBoard("refs")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev}
+	}
+	mission, err := store.CreateMission("refs", MissionCreateRequest{Title: "Work"}, current())
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate, err := store.CreateGate("refs", GateCreateRequest{Title: "Review"}, current())
+	if err != nil {
+		t.Fatal(err)
+	}
+	formation, err := store.CreateFormation("refs", FormationCreateRequest{Type: FormationTypeSolo, Title: "Draft"}, current())
+	if err != nil {
+		t.Fatal(err)
+	}
+	relative := []string{"/work/plan.md", "docs/rubric.md"}
+	before := readFile(t, store.BoardPath("refs"))
+	writes := map[string]func() error{
+		"mission create": func() error {
+			_, err := store.CreateMission("refs", MissionCreateRequest{Title: "Second", Files: relative}, current())
+			return err
+		},
+		"mission update": func() error {
+			_, err := store.UpdateMission("refs", MissionUpdateRequest{MissionID: mission.Mission.ID, Files: &relative}, current())
+			return err
+		},
+		"gate create": func() error {
+			_, err := store.CreateGate("refs", GateCreateRequest{Title: "Other", Files: relative}, current())
+			return err
+		},
+		"gate update": func() error {
+			_, err := store.UpdateGate("refs", GateUpdateRequest{GateID: gate.Gate.ID, Files: &relative}, current())
+			return err
+		},
+		"formation brief": func() error {
+			_, err := store.SetFormationBrief("refs", FormationBriefRequest{FormationID: formation.Formation.ID, Goal: "Draft it", Files: relative}, current())
+			return err
+		},
+	}
+	for name, write := range writes {
+		err := write()
+		if !errors.Is(err, ErrRelativeFileRef) || !strings.Contains(err.Error(), `file "docs/rubric.md" is relative: use an absolute path`) {
+			t.Fatalf("%s with a relative file = %v, want the refusal", name, err)
+		}
+		if got := readFile(t, store.BoardPath("refs")); got != before {
+			t.Fatalf("%s saved a refused write:\n%s", name, got)
+		}
+	}
+}
+
 func TestMissionAndGateFileReferencesRoundTrip(t *testing.T) {
 	store := NewStore(t.TempDir())
 	store.Now = fixedClock()
@@ -125,11 +188,11 @@ func TestMissionAndGateFileReferencesRoundTrip(t *testing.T) {
 		}
 		return WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev}
 	}
-	mission, err := store.CreateMission("refs", MissionCreateRequest{Title: "Work", Files: []string{" docs/brief.md ", "", "/srv/project/plan.md"}}, current())
+	mission, err := store.CreateMission("refs", MissionCreateRequest{Title: "Work", Files: []string{" /work/docs/brief.md ", "", "/srv/project/plan.md"}}, current())
 	if err != nil {
 		t.Fatal(err)
 	}
-	gate, err := store.CreateGate("refs", GateCreateRequest{Title: "Review", Files: []string{"rubrics/quality.md"}}, current())
+	gate, err := store.CreateGate("refs", GateCreateRequest{Title: "Review", Files: []string{"/work/rubrics/quality.md"}}, current())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,13 +226,13 @@ func TestMissionAndGateFileReferencesRoundTrip(t *testing.T) {
 			t.Fatalf("%s: compatibility parse lost file references: %q %q", label, compatMission.Files, compatGate.Files)
 		}
 	}
-	check("created", []string{"docs/brief.md", "/srv/project/plan.md"}, []string{"rubrics/quality.md"})
+	check("created", []string{"/work/docs/brief.md", "/srv/project/plan.md"}, []string{"/work/rubrics/quality.md"})
 
-	replaced := []string{"docs/next.md"}
+	replaced := []string{"/work/docs/next.md"}
 	if _, err := store.UpdateMission("refs", MissionUpdateRequest{MissionID: mission.Mission.ID, Files: &replaced}, current()); err != nil {
 		t.Fatal(err)
 	}
-	gateFiles := []string{"rubrics/quality.md", "rubrics/style.md"}
+	gateFiles := []string{"/work/rubrics/quality.md", "/work/rubrics/style.md"}
 	if _, err := store.UpdateGate("refs", GateUpdateRequest{GateID: gate.Gate.ID, Files: &gateFiles}, current()); err != nil {
 		t.Fatal(err)
 	}
@@ -191,5 +254,67 @@ func TestMissionAndGateFileReferencesRoundTrip(t *testing.T) {
 	check("cleared", nil, nil)
 	if strings.Contains(readFile(t, store.BoardPath("refs")), "files = ") {
 		t.Fatalf("cleared references left a files key:\n%s", readFile(t, store.BoardPath("refs")))
+	}
+}
+
+// Validation warns about each reference file that names nothing Archon can
+// open, with its path, so the cockpit can flag that file's chip
+// (archon-n7u.26). An existing file raises nothing.
+func TestValidationFlagsMissingAndRelativeFileReferences(t *testing.T) {
+	root := t.TempDir()
+	present := filepath.Join(root, "brief.md")
+	writeFixture(t, present, "# Brief\n")
+	missing := filepath.Join(root, "rubric.md")
+	store := NewStore(filepath.Join(root, "state"))
+	writeFixture(t, store.BoardPath("refs"), `schema = 1
+id = "brd_refs"
+slug = "refs"
+title = "Refs"
+rev = 1
+
+[[inputCard]]
+id = "inp_refs"
+title = "Deliver"
+files = ["`+present+`"]
+
+[[formation]]
+id = "fmn_draft"
+type = "solo"
+title = "Draft"
+[formation.brief]
+goal = "Draft it"
+files = ["notes/plan.md"]
+
+[[gate]]
+id = "gte_review"
+title = "Review"
+kinds = ["human"]
+files = ["`+missing+`"]
+`)
+	board, err := store.ReadBoard("refs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []BoardFinding
+	for _, finding := range ValidateBoard(board).Warnings {
+		if finding.Path != "" {
+			got = append(got, finding)
+		}
+	}
+	want := []BoardFinding{
+		{Code: FindingRelativeFile, NodeID: "fmn_draft", Path: "notes/plan.md", Message: "Draft's file notes/plan.md is relative: use an absolute path"},
+		{Code: FindingMissingFile, NodeID: "gte_review", Path: missing, Message: "Review's file " + missing + " does not exist"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("file findings = %+v, want %+v", got, want)
+	}
+	for _, finding := range want {
+		found := false
+		for _, candidate := range got {
+			found = found || candidate == finding
+		}
+		if !found {
+			t.Fatalf("file findings = %+v, want %+v among them", got, finding)
+		}
 	}
 }

@@ -205,6 +205,19 @@ func TestPeerConversationLocksAcrossProcesses(t *testing.T) {
 	if err != nil || state.LastSeq != 35 {
 		t.Fatalf("cross-process journal: %+v %v", state, err)
 	}
+	// The lock leaves nothing beside the journal, so a run's produced
+	// artifacts show the conversation and no coordination file (archon-dbk).
+	artifacts, _, err := store.ListRunArtifacts(id.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, artifact := range artifacts {
+		names = append(names, artifact.Name)
+	}
+	if strings.Join(names, ",") != peerArtifactPath(id) {
+		t.Fatalf("produced artifacts = %q, want only the conversation %q", names, peerArtifactPath(id))
+	}
 }
 
 func TestPeerConversationDeadlineCancellationAndRestart(t *testing.T) {
@@ -244,7 +257,7 @@ func TestPeerConversationDeadlineCancellationAndRestart(t *testing.T) {
 func TestPeerConversationWaitWakesForAppendAndCanBeCanceled(t *testing.T) {
 	store, id := peerTestStore(t)
 	createPeerTestConversation(t, store, id, store.now().Add(time.Minute))
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 	defer cancel()
 	type result struct {
 		state *PeerConversation
@@ -283,7 +296,7 @@ func TestPeerConversationWaitWakesForAppendAndCanBeCanceled(t *testing.T) {
 	}
 }
 
-func TestPeerConversationPinnedDirectoryAndUnsafeFileSubstitution(t *testing.T) {
+func TestPeerConversationWritesStayInTheOpenedDirectory(t *testing.T) {
 	store, id := peerTestStore(t)
 	path := createPeerTestConversation(t, store, id, store.now().Add(time.Minute))
 	directory, err := store.openPeerDirectory(id, false)
@@ -304,43 +317,44 @@ func TestPeerConversationPinnedDirectoryAndUnsafeFileSubstitution(t *testing.T) 
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(outside, peerConversationFile)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("escaped into replacement directory: %v", err)
+		t.Fatalf("an append through an opened directory reached its replacement: %v", err)
 	}
-	if _, err := store.AppendPeerConversation(id, PeerAppendRequest{SlotID: "slot_b", Kind: "message", Text: "unsafe"}); err == nil {
-		t.Fatal("followed a substituted directory symlink")
-	}
+}
 
+// A journal behind a symlink or hard link is read and appended through it
+// (archon-4m4j).
+func TestPeerConversationFollowsLinkedJournals(t *testing.T) {
 	for _, mode := range []string{"symlink", "hardlink"} {
 		t.Run(mode, func(t *testing.T) {
-			otherStore, otherID := peerTestStore(t)
-			otherPath := createPeerTestConversation(t, otherStore, otherID, otherStore.now().Add(time.Minute))
-			raw, err := os.ReadFile(otherPath)
+			store, id := peerTestStore(t)
+			path := createPeerTestConversation(t, store, id, store.now().Add(time.Minute))
+			raw, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
 			}
-			outsideFile := filepath.Join(t.TempDir(), "outside")
-			if err := os.WriteFile(outsideFile, raw, 0600); err != nil {
+			elsewhere := filepath.Join(t.TempDir(), "conversation.ndjson")
+			if err := os.WriteFile(elsewhere, raw, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Remove(otherPath); err != nil {
+			if err := os.Remove(path); err != nil {
 				t.Fatal(err)
 			}
 			link := os.Symlink
 			if mode == "hardlink" {
 				link = os.Link
 			}
-			if err := link(outsideFile, otherPath); err != nil {
+			if err := link(elsewhere, path); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := otherStore.ReadPeerConversation(otherID); err == nil {
-				t.Fatal("read unsafe file")
+			if _, err := store.ReadPeerConversation(id); err != nil {
+				t.Fatalf("read linked journal: %v", err)
 			}
-			if _, err := otherStore.AppendPeerConversation(otherID, PeerAppendRequest{SlotID: "slot_b", Kind: "message", Text: "unsafe"}); err == nil {
-				t.Fatal("appended unsafe file")
+			if _, err := store.AppendPeerConversation(id, PeerAppendRequest{SlotID: "slot_b", Kind: "message", Text: "through the link"}); err != nil {
+				t.Fatalf("append linked journal: %v", err)
 			}
-			after, _ := os.ReadFile(outsideFile)
-			if !bytes.Equal(raw, after) {
-				t.Fatal("outside file modified")
+			after, err := os.ReadFile(elsewhere)
+			if err != nil || !bytes.Contains(after, []byte("through the link")) {
+				t.Fatalf("linked journal = %q (%v), want the append", after, err)
 			}
 		})
 	}

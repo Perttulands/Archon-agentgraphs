@@ -4,6 +4,8 @@ export interface BoardSummary {
   title: string
   rev: number
   etag: string
+  /** Why the mission file cannot be read, such as a symlink whose target moved. */
+  broken?: string
 }
 
 export interface BoardDeletion {
@@ -142,6 +144,8 @@ export interface BoardFinding {
   code: string
   nodeId: string
   message: string
+  /** The reference file a missing_file or relative_file finding names. */
+  path?: string
 }
 
 export interface BoardValidation {

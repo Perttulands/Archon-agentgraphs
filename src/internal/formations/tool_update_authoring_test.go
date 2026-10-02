@@ -331,12 +331,13 @@ func TestUpdateToolPresenceAwareTitleAndCompleteParamsKeepAbsentLayoutAbsent(t *
 			wantParamSource: `mode = "\u0073trict" # preserve parameter comment`,
 		},
 		{
-			name: "params only preserves omitted title",
+			name: "title with complete params",
 			request: func() ToolUpdateRequest {
+				title := "Title and params"
 				params := map[string]any{"mode": "strict"}
-				return ToolUpdateRequest{ToolID: "tool_target", Params: &params, UpdatedBy: "agent:update-test"}
+				return ToolUpdateRequest{ToolID: "tool_target", Title: &title, Params: &params, UpdatedBy: "agent:update-test"}
 			},
-			wantTitle:       "Original target",
+			wantTitle:       "Title and params",
 			wantParamSource: `mode = "\u0073trict" # preserve parameter comment`,
 		},
 	}
@@ -771,5 +772,44 @@ func assertToolUpdatePersistedResult(t *testing.T, store *Store, slug string, re
 	}
 	if persistedLayout.TOML != result.Layout.TOML || persistedLayout.ETag != result.Layout.ETag {
 		t.Fatalf("returned Tool update layout is not canonical:\n returned %#v\npersisted %#v", result.Layout, persistedLayout)
+	}
+}
+
+// An update that leaves the Tool as it was, the same title and parameters,
+// saves nothing: the revision, ETag and file bytes stay put, and a stale ETag
+// still conflicts (archon-62h).
+func TestUpdateToolThatChangesNothingSavesNothing(t *testing.T) {
+	store := newToolAuthoringStore(t)
+	slug := "tool-update-unchanged"
+	writeFixture(t, store.BoardPath(slug), toolAuthoringBoardFixture(slug, 4, true, toolUpdateTargetBlock()))
+	before, err := store.ReadBoard(slug)
+	if err != nil {
+		t.Fatalf("read update source: %v", err)
+	}
+	raw := readFile(t, store.BoardPath(slug))
+	title := "Original target"
+	params := map[string]any{"mode": "strict"}
+	for name, request := range map[string]ToolUpdateRequest{
+		"same params":           {ToolID: "tool_target", Params: &params, UpdatedBy: "agent:update-test"},
+		"same title and params": {ToolID: "tool_target", Title: &title, Params: &params, UpdatedBy: "agent:update-test"},
+	} {
+		result, err := store.UpdateTool(slug, request, toolAuthoringAbsentOptions(before))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if result.Board.Rev != before.Rev || result.Board.ETag != before.ETag || result.Tool.Title != title {
+			t.Fatalf("%s saved a revision: rev %d etag %s, want rev %d etag %s", name, result.Board.Rev, result.Board.ETag, before.Rev, before.ETag)
+		}
+		if got := readFile(t, store.BoardPath(slug)); got != raw {
+			t.Fatalf("%s rewrote the mission:\n%s", name, got)
+		}
+		if _, err := os.Lstat(store.LayoutPath(slug)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("%s materialized a layout: %v", name, err)
+		}
+	}
+	stale := toolAuthoringAbsentOptions(before)
+	stale.Board.ExpectedETag = "stale"
+	if _, err := store.UpdateTool(slug, ToolUpdateRequest{ToolID: "tool_target", Params: &params, UpdatedBy: "agent:update-test"}, stale); !errors.Is(err, ErrConflict) {
+		t.Fatalf("unchanged update with a stale ETag = %v, want ErrConflict", err)
 	}
 }

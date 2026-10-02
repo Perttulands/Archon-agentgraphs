@@ -36,7 +36,7 @@ func TestShutdownCancelsWorkerSnapshotsBeforeNextWorker(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Fatal(err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("worker snapshot ignored detach")
 	}
 	if transport.calls != 1 {
@@ -90,7 +90,7 @@ func TestShutdownPreservesOrchestratedSeatsAndAbortEndsThem(t *testing.T) {
 			case <-transport.entered:
 			case err := <-done:
 				t.Fatalf("executor failed before wait: %v", err)
-			case <-time.After(time.Second):
+			case <-time.After(testPatience):
 				t.Fatal("seat did not start")
 			}
 			if shutdown {
@@ -104,7 +104,7 @@ func TestShutdownPreservesOrchestratedSeatsAndAbortEndsThem(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-			case <-time.After(time.Second):
+			case <-time.After(testPatience):
 				t.Fatal("seat observation did not stop")
 			}
 			if len(client.created) != 3 {

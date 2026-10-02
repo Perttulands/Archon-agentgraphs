@@ -9,8 +9,9 @@ This skill documents the Archon contract of VERSION 0.1.0 as of 2026-10-01:
 the reusable unit is a mission, each slot owns its harness, model and effort,
 run limits are optional, drivers pull with `run wait`, and every surface uses
 current names only. It ships with that source.
-`archon --version` names the build on PATH. When that build is older, a flag or
-behaviour named here may differ: read the command's `-h` and trust the binary.
+`archon --version` names the build on PATH, and `archon --server "$ARCHON_SERVER"
+version` the daemon's too. When a build is older, a flag or behaviour named
+here may differ: read the command's `-h` and trust the binary.
 
 Archon makes chaining agents and gates easy and great, and that is all it
 does. Seats are ordinary tmux agent sessions with full access, as in CHROTE;
@@ -57,9 +58,11 @@ Keep runtime state outside any checkout.
 - Authoring takes `--server` too, so an open cockpit shows each edit live.
   `--workspace "$ARCHON_STATE"` authors the same files offline, for a state
   directory no daemon serves; runtime commands never run offline beside a
-  daemon.
+  daemon. There is no default: a command with neither flag says so and stops.
 - A `--server` failure is final; nothing falls back to a local runtime.
-- Read leaf help with `-h`, adding `--server` for the daemon's form.
+- `archon -h` lists the nouns, `archon <noun> -h` a noun's commands and
+  `archon <noun> <command> -h` a command's usage and flags; add `--server` for
+  the daemon's form.
 
 ## Author a mission
 
@@ -137,8 +140,10 @@ Write what a step does in its formation brief (`formation set-brief --goal`,
 `--file` for reference files). A role is reusable and generic; mission-specific
 instructions stay in the step's brief, never in a role. Missions and gates take reference files too:
 repeat `--file <path>` on `mission create|update` and `gate create|update`; on
-update the list is replaced and `--file ''` clears it. Use absolute paths: the
-cockpit opens any file by absolute path, and a relative one has no base there.
+update the list is replaced and `--file ''` clears it. Use absolute paths:
+authoring refuses a relative one (`relative_file_reference`), since it has no
+base for the cockpit or a seat. A file that does not exist yet is saved with a
+`warning:` line, and `mission validate` warns `missing_file` until it exists.
 
 ### Harness, model and effort
 

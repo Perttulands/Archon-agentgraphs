@@ -43,19 +43,28 @@ func TestFormationsAPIMissionAndGateFileReferences(t *testing.T) {
 		return board.Missions[0].Files, board.Gates[0].Files
 	}
 
-	patch(`{"createInputCard":{"title":"Work","files":["docs/brief.md"]}}`)
-	patch(`{"createGate":{"title":"Review","files":["rubrics/quality.md","rubrics/style.md"]}}`)
-	if mission, gate := files(); strings.Join(mission, ",") != "docs/brief.md" || strings.Join(gate, ",") != "rubrics/quality.md,rubrics/style.md" {
+	patch(`{"createInputCard":{"title":"Work","files":["/work/docs/brief.md"]}}`)
+	patch(`{"createGate":{"title":"Review","files":["/work/rubrics/quality.md","/work/rubrics/style.md"]}}`)
+	if mission, gate := files(); strings.Join(mission, ",") != "/work/docs/brief.md" || strings.Join(gate, ",") != "/work/rubrics/quality.md,/work/rubrics/style.md" {
 		t.Fatalf("created files: mission %q gate %q", mission, gate)
 	}
 	board, _ := store.ReadBoard("refs")
 	missionID, gateID := board.Missions[0].ID, board.Gates[0].ID
 
-	patch(`{"updateInputCard":{"id":"` + missionID + `","files":["docs/next.md"]}}`)
+	patch(`{"updateInputCard":{"id":"` + missionID + `","files":["/work/docs/next.md"]}}`)
 	patch(`{"updateGate":{"id":"` + gateID + `","criterion":"Scores at least 3"}}`)
-	if mission, gate := files(); strings.Join(mission, ",") != "docs/next.md" || strings.Join(gate, ",") != "rubrics/quality.md,rubrics/style.md" {
+	if mission, gate := files(); strings.Join(mission, ",") != "/work/docs/next.md" || strings.Join(gate, ",") != "/work/rubrics/quality.md,/work/rubrics/style.md" {
 		t.Fatalf("after replacing mission files and an unrelated gate edit: mission %q gate %q", mission, gate)
 	}
+	board, _ = store.ReadBoard("refs")
+	refused := httptest.NewRequest(http.MethodPatch, "/api/missions/refs", bytes.NewBufferString(`{"expectedRev":`+jsonInt(board.Rev)+`,"updateGate":{"id":"`+gateID+`","files":["rubrics/quality.md"]}}`))
+	refused.Header.Set("If-Match", board.ETag)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, refused)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"code":"RELATIVE_FILE_REFERENCE"`) || !strings.Contains(rec.Body.String(), `is relative: use an absolute path`) {
+		t.Fatalf("relative gate file = %d %s, want 400 RELATIVE_FILE_REFERENCE", rec.Code, rec.Body.String())
+	}
+
 	patch(`{"updateInputCard":{"id":"` + missionID + `","files":[]}}`)
 	patch(`{"updateGate":{"id":"` + gateID + `","files":[]}}`)
 	if mission, gate := files(); len(mission) != 0 || len(gate) != 0 {

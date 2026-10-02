@@ -132,7 +132,7 @@ type TestBoard = ReturnType<typeof makeBoard>
 type TestRunEvent = { runId: string; seq: number; type: string; nodeId?: string; gateId?: string; attempt?: number; data?: Record<string, unknown>; slotId?: string; status?: string; verdict?: string; sessionName?: string; outcome?: string }
 type TestEscalation = { runId: string; seq: number; nodeId?: string; gateId?: string; severity: string; reason: string; source: string; trigger: string; blocks: boolean }
 type TestRunStatus = { status?: string; final?: boolean; resumeAllowed?: boolean }
-type TestFinding = { code: string; nodeId: string; message: string }
+type TestFinding = { code: string; nodeId: string; message: string; path?: string }
 type TestNoteEntry = { id: string; author: string; createdAt: string; editedAt?: string; text: string }
 const noteEntry = (id: string, author: string, text: string): TestNoteEntry => ({ id, author, createdAt: '2026-09-16T12:00:00Z', text })
 let recordedMutations: RecordedMutation[] = []
@@ -159,6 +159,8 @@ function installFetchMock(options: {
   conflictOnce?: string
   /** addPort answers only once this settles, so an edit is in flight. */
   addPortGate?: Promise<void>
+  /** Missions the daemon lists as broken, after the readable ones. */
+  brokenMissions?: Array<{ slug: string; broken: string }>
 } = {}) {
   let conflictPending = options.conflictOnce
   const patches: RecordedPatch[] = []
@@ -315,7 +317,7 @@ function installFetchMock(options: {
       }
       if (conflictPending && body[conflictPending]) {
         conflictPending = undefined
-        return conflict('Formation definition changed; reload and retry')
+        return conflict('The mission changed since it was read; reload it and retry')
       }
       if (body.addPort && options.addPortGate) {
         const gateOpen = options.addPortGate
@@ -577,7 +579,7 @@ function installFetchMock(options: {
         },
       ] })
     }
-    if (url === '/api/missions') return respond({ missions: availableBoards.map(item => ({ id: item.id, slug: item.slug, title: item.title, rev: item.rev, etag: item.etag })) })
+    if (url === '/api/missions') return respond({ missions: [...availableBoards.map(item => ({ id: item.id, slug: item.slug, title: item.title, rev: item.rev, etag: item.etag })), ...(options.brokenMissions || []).map(item => ({ id: '', slug: item.slug, title: '', rev: 0, etag: '', broken: item.broken }))] })
     if (url.includes('/changes')) {
       const refreshedBoard = options.sameBoardRefreshes?.shift()
       if (!refreshedBoard) return respond({ signal: { changed: false } })
@@ -797,6 +799,29 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.getByTestId('board-picker')).toHaveTextContent('Release Plan')
     expect(screen.getByTestId('formations-empty-board')).toHaveTextContent('This mission is empty')
     expect(recordedMutations).toContainEqual({ method: 'POST', url: '/api/missions' })
+  })
+
+  it('lists a mission that cannot be read as broken, says why, and opens the others', async () => {
+    const reason = '/state/.archon/missions/moved.mission.toml is a symlink to /repo/moved.mission.toml, which does not exist'
+    window.history.replaceState(null, '', '/?mission=moved')
+    patches = installFetchMock({ brokenMissions: [{ slug: 'moved', broken: reason }] })
+    render(<FormationsCockpit />)
+    await screen.findByTestId('formation-node-fmn_frame')
+    const picker = screen.getByTestId('board-picker')
+    expect(picker).toHaveValue('test-board')
+    const option = within(picker).getByRole('option', { name: 'moved · cannot be read' })
+    expect(option).toBeDisabled()
+    expect(option).toHaveAttribute('title', reason)
+    expect(screen.getByTestId('formations-error')).toHaveTextContent(`Mission "moved" from the link cannot be read: ${reason}`)
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('names every broken mission while nothing else is wrong', async () => {
+    const reason = '/state/.archon/missions/moved.mission.toml is a symlink to /repo/moved.mission.toml, which does not exist'
+    patches = installFetchMock({ brokenMissions: [{ slug: 'moved', broken: reason }] })
+    render(<FormationsCockpit />)
+    await screen.findByTestId('formation-node-fmn_frame')
+    expect(screen.getByTestId('broken-missions')).toHaveTextContent(`A mission cannot be read: moved: ${reason}`)
   })
 
   it('renames the selected board through the top-bar board controls', async () => {
@@ -1891,16 +1916,16 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
     const mission = await openNodeWindow(screen.getByTestId('mission-node-mis_showcase'), 'Input card · Showcase')
     fireEvent.click(within(mission).getByRole('button', { name: 'Edit files' }))
-    fireEvent.change(within(mission).getByRole('textbox', { name: 'Files' }), { target: { value: 'docs/sketch.md, docs/copy.md' } })
+    fireEvent.change(within(mission).getByRole('textbox', { name: 'Files' }), { target: { value: '/work/docs/sketch.md, /work/docs/copy.md' } })
     fireEvent.click(within(mission).getByRole('button', { name: 'Save files' }))
-    await waitFor(() => expect(patches.find(patch => patch.body.updateInputCard)?.body.updateInputCard).toEqual({ id: 'mis_showcase', files: ['docs/sketch.md', 'docs/copy.md'] }))
-    expect(await within(mission).findByRole('button', { name: 'Open file docs/copy.md' })).toBeInTheDocument()
+    await waitFor(() => expect(patches.find(patch => patch.body.updateInputCard)?.body.updateInputCard).toEqual({ id: 'mis_showcase', files: ['/work/docs/sketch.md', '/work/docs/copy.md'] }))
+    expect(await within(mission).findByRole('button', { name: 'Open file /work/docs/copy.md' })).toBeInTheDocument()
 
     const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
     fireEvent.click(within(review).getByRole('button', { name: 'Edit files' }))
-    fireEvent.change(within(review).getByRole('textbox', { name: 'Files' }), { target: { value: 'rubrics/review.md' } })
+    fireEvent.change(within(review).getByRole('textbox', { name: 'Files' }), { target: { value: '/work/rubrics/review.md' } })
     fireEvent.click(within(review).getByRole('button', { name: 'Save files' }))
-    await waitFor(() => expect(patches.find(patch => patch.body.updateGate)?.body.updateGate).toEqual({ id: 'gate_review', files: ['rubrics/review.md'] }))
+    await waitFor(() => expect(patches.find(patch => patch.body.updateGate)?.body.updateGate).toEqual({ id: 'gate_review', files: ['/work/rubrics/review.md'] }))
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => expect(patches.filter(patch => patch.body.updateGate).slice(-1)[0]?.body.updateGate).toEqual({ id: 'gate_review', files: [] }))
@@ -1946,10 +1971,10 @@ describe('FormationsCockpit reference parity', () => {
     expect((await within(frame).findByText('Unknowns')).tagName).toBe('LI')
 
     fireEvent.click(within(frame).getByRole('button', { name: 'Edit files' }))
-    fireEvent.change(within(frame).getByRole('textbox', { name: 'Files' }), { target: { value: 'docs/a.md, docs/b.md' } })
+    fireEvent.change(within(frame).getByRole('textbox', { name: 'Files' }), { target: { value: '/work/docs/a.md, /work/docs/b.md' } })
     fireEvent.click(within(frame).getByRole('button', { name: 'Save files' }))
     await waitFor(() => {
-      expect(patches.filter(patch => patch.body.setBrief).slice(-1)[0]?.body.setBrief).toEqual({ formationId: 'fmn_frame', goal: 'Map the territory.\n\n- Known facts\n- Unknowns', beadId: '', files: ['docs/a.md', 'docs/b.md'], links: [] })
+      expect(patches.filter(patch => patch.body.setBrief).slice(-1)[0]?.body.setBrief).toEqual({ formationId: 'fmn_frame', goal: 'Map the territory.\n\n- Known facts\n- Unknowns', beadId: '', files: ['/work/docs/a.md', '/work/docs/b.md'], links: [] })
     })
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
@@ -2534,7 +2559,7 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.change(within(panel).getByLabelText('Your response'), { target: { value: 'Postgres' } })
     await act(async () => { fireEvent.click(within(panel).getByRole('button', { name: 'Approve' })) })
-    await waitFor(() => expect(verdicts).toEqual([{ url: '/api/runs/run_01CLI/gates/gate_review/verdict', body: { actor: 'agent:ui', verdict: 'pass', requestedSeq: 4, reason: 'Postgres' } }]))
+    await waitFor(() => expect(verdicts).toEqual([{ url: '/api/runs/run_01CLI/gates/gate_review/verdict', body: { actor: 'human:ui', verdict: 'pass', requestedSeq: 4, reason: 'Postgres' } }]))
   })
 
   it('opens truncated gate input evidence for the selected run without submitting the draft', async () => {
@@ -2798,7 +2823,7 @@ describe('FormationsCockpit reference parity', () => {
         status: relative ? 400 : 200,
         headers: { get: () => null },
         json: () => Promise.resolve(relative
-          ? { success: false, error: { code: 'Bad Request', message: 'a relative file reference has no base here; name the file by its absolute path' } }
+          ? { success: false, error: { code: 'Bad Request', message: 'a relative file reference has no base: use an absolute path' } }
           : { success: true, data: { file: { path: '/srv/rubrics/review.md', name: 'review.md', size: 16, modifiedAt: '', kind: 'markdown', text: { text: '# Review rubric', bytes: 15 } } } }),
       } as unknown as Response)
     }) as typeof fetch
@@ -2821,7 +2846,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(within(more).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['/srv/rubrics/scale.md', 'judge.md · judge Judge'])
     fireEvent.click(within(more).getByRole('menuitem', { name: 'judge.md · judge Judge' }))
     const unresolved = await screen.findByRole('dialog', { name: 'file judge.md' })
-    expect(await within(unresolved).findByRole('alert')).toHaveTextContent('Cannot read judge.md: a relative file reference has no base here')
+    expect(await within(unresolved).findByRole('alert')).toHaveTextContent('Cannot read judge.md: a relative file reference has no base')
     expect(unresolved).toHaveTextContent('Judge (judge) · judge.md')
     expect(previews).toEqual(['/api/files/preview?path=%2Fsrv%2Frubrics%2Freview.md', '/api/files/preview?path=judge.md'])
 
@@ -2833,6 +2858,68 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(within(judgeFiles).getByRole('button', { name: 'Open file judge.md' }))
     expect(await screen.findByRole('dialog', { name: 'file judge.md' })).toHaveTextContent('Judge (judge) · judge.md')
     expect(recordedMutations).toEqual([])
+  })
+
+  it('flags a referenced file that does not exist on its chip and in its node window, and offers no raw view of it', async () => {
+    const withFiles = makeBoard()
+    withFiles.gates = [{ ...gate, files: ['/srv/rubrics/review.md', '/srv/rubrics/later.md'] }]
+    const relativeMission = { ...mission, files: ['plans/brief.md'] }
+    withFiles.inputCards = [relativeMission]
+    patches = installFetchMock({
+      boards: [withFiles],
+      validation: {
+        errors: [],
+        warnings: [
+          { code: 'missing_file', nodeId: 'gate_review', path: '/srv/rubrics/later.md', message: "Review the frame's file /srv/rubrics/later.md does not exist" },
+          { code: 'relative_file', nodeId: 'mis_showcase', path: 'plans/brief.md', message: "Showcase's file plans/brief.md is relative: use an absolute path" },
+        ],
+      },
+    })
+    const coordinator = globalThis.fetch
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (!url.startsWith('/api/files/preview')) return coordinator(input, init)
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        headers: { get: () => null },
+        json: () => Promise.resolve({ success: false, error: { code: 'Not Found', message: 'file not found' } }),
+      } as unknown as Response)
+    }) as typeof fetch
+    await renderCockpit()
+
+    const gateCard = screen.getByTestId('gate-node-gate_review')
+    const gateRefs = within(gateCard).getByRole('group', { name: 'Referenced files' })
+    await waitFor(() => expect(within(gateRefs).getByRole('button', { name: '1 more referenced file' })).toHaveClass('missing'))
+    expect(within(gateRefs).getByRole('button', { name: 'Open /srv/rubrics/review.md' })).not.toHaveClass('missing')
+    const relative = within(screen.getByTestId('mission-node-mis_showcase')).getByRole('button', { name: 'Open plans/brief.md, which is relative: use an absolute path' })
+    expect(relative).toHaveClass('missing')
+    expect(relative).toHaveTextContent('!brief.md')
+    fireEvent.click(within(gateRefs).getByRole('button', { name: '1 more referenced file' }))
+    const more = await screen.findByRole('menu', { name: 'Referenced files' })
+    expect(within(more).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['/srv/rubrics/later.md · does not exist'])
+
+    fireEvent.click(within(more).getByRole('menuitem', { name: '/srv/rubrics/later.md · does not exist' }))
+    const missing = await screen.findByRole('dialog', { name: 'file later.md' })
+    expect(await within(missing).findByRole('alert')).toHaveTextContent('Cannot read later.md: file not found')
+    expect(within(missing).queryByRole('link', { name: 'Open raw' })).toBeNull()
+    expect(within(missing).queryByRole('link', { name: 'Download' })).toBeNull()
+    expect(within(missing).getByRole('button', { name: 'Copy path' })).toBeInTheDocument()
+
+    const review = await openNodeWindow(within(gateCard).getByText('Review the frame'), 'Gate · Review')
+    const lines = [...review.querySelectorAll('.nwin-file-problem')]
+    expect(lines.map(line => line.closest('li')?.textContent)).toEqual(['/srv/rubrics/later.mddoes not exist'])
+  })
+
+  it('refuses a relative reference file in the node window, where it is typed, and sends nothing', async () => {
+    await renderCockpit()
+    const gateCard = screen.getByTestId('gate-node-gate_review')
+    const review = await openNodeWindow(within(gateCard).getByText('Review the frame'), 'Gate · Review')
+    fireEvent.click(within(review).getByRole('button', { name: 'Edit files' }))
+    fireEvent.change(within(review).getByRole('textbox', { name: 'Files' }), { target: { value: '/srv/rubrics/review.md, rubrics/scale.md' } })
+    fireEvent.click(within(review).getByRole('button', { name: 'Save files' }))
+    expect(await within(review).findByRole('alert')).toHaveTextContent('file "rubrics/scale.md" is relative: use an absolute path')
+    expect(patches.filter(patch => 'updateGate' in patch.body)).toEqual([])
   })
 
   it('reopens a finished run from the run bar and puts it away again', async () => {
@@ -3001,7 +3088,7 @@ describe('FormationsCockpit reference parity', () => {
 
     fireEvent.change(within(panel).getByLabelText('Your response'), { target: { value: '1. Postgres.\n2. The operator.' } })
     await act(async () => { fireEvent.click(within(panel).getByRole('button', { name: 'Approve' })) })
-    await waitFor(() => expect(verdicts).toEqual([{ actor: 'agent:ui', verdict: 'pass', requestedSeq: 4, reason: '1. Postgres.\n2. The operator.' }]))
+    await waitFor(() => expect(verdicts).toEqual([{ actor: 'human:ui', verdict: 'pass', requestedSeq: 4, reason: '1. Postgres.\n2. The operator.' }]))
   })
 
   it('keeps the gate answer in a window the run bar brings back, never under the gate editor', async () => {

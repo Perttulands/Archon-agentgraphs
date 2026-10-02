@@ -680,22 +680,31 @@ func (s *Store) ReadRunEvents(runID string) ([]RunEvent, error) {
 }
 
 func (s *Store) ListRuns(filter RunListFilter) ([]RunStatusProjection, error) {
-	runIDs, err := s.listRunIDs()
+	runs, _, err := s.ListRunsSkipping(filter)
+	return runs, err
+}
+
+// ListRunsSkipping lists every run it can read and names the ledgers it could
+// not, such as a symlink whose target is gone, so one bad ledger never hides
+// the other runs or stops the daemon starting.
+func (s *Store) ListRunsSkipping(filter RunListFilter) ([]RunStatusProjection, []Unreadable, error) {
+	runIDs, unreadable, err := s.listRunIDs()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	runs := make([]RunStatusProjection, 0, len(runIDs))
 	for _, runID := range runIDs {
 		status, err := s.ProjectRun(runID)
 		if err != nil {
-			return nil, err
+			unreadable = append(unreadable, Unreadable{Name: runID, Reason: err.Error()})
+			continue
 		}
 		if filter.MissionID != "" && status.BoardID != filter.MissionID {
 			continue
 		}
 		runs = append(runs, *status)
 	}
-	return runs, nil
+	return runs, unreadable, nil
 }
 
 func (s *Store) ProjectRunNodeReport(runID, nodeID string) (*RunNodeReport, error) {

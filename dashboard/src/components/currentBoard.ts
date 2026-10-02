@@ -26,6 +26,11 @@ export function rememberBoardOnDevice(slug: string): void {
   }
 }
 
+/** The slugs of the missions that can be opened: a broken one is listed, never chosen. */
+export function openableSlugs(summaries: readonly { slug: string; broken?: string }[]): string[] {
+  return summaries.filter(summary => !summary.broken).map(summary => summary.slug)
+}
+
 /**
  * Chooses the mission to open: the address bar's mission, then the remembered
  * mission, then the first one. `missingLinked` names an address-bar mission

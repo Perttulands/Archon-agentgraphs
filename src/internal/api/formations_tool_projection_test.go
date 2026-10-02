@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"testing"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
@@ -187,8 +186,8 @@ func TestFormationsHandlerUsesExistingBoardWireAndArrangeSurfacesForTools(t *tes
 	}
 	if arrangeResponse.Data.Layout.BoardID != arranged.BoardID ||
 		arrangeResponse.Data.Layout.BoardRev != arranged.BoardRev ||
-		!reflect.DeepEqual(arrangeResponse.Data.Layout.Nodes, arranged.Nodes) ||
-		!reflect.DeepEqual(arrangeResponse.Data.Layout.Edges, arranged.Edges) {
+		!sameList(arrangeResponse.Data.Layout.Nodes, arranged.Nodes) ||
+		!sameList(arrangeResponse.Data.Layout.Edges, arranged.Edges) {
 		t.Fatalf("Tool arrange response does not match persisted layout: response=%+v persisted=%+v", arrangeResponse.Data.Layout, arranged)
 	}
 	positions := make(map[string]formations.LayoutNode, len(arranged.Nodes))

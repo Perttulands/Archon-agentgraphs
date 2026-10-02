@@ -1263,10 +1263,8 @@ func clearExecutorEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
 		"ARCHON_LAB_HARNESSES",
-		"ARCHON_LAB_CWD",
 		"ARCHON_TMUX_HARNESSES",
 		"ARCHON_TMUX_SOCKET",
-		"ARCHON_TMUX_CWD",
 		"ARCHON_TMUX_SESSION_PREFIX",
 		"ARCHON_TMUX_PROD_SMOKE",
 		"ARCHON_TMUX_DEDICATED",

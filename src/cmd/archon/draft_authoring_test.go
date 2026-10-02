@@ -58,9 +58,11 @@ func TestArchonDraftAuthoringSavesAndAdmissionListsEveryProblem(t *testing.T) {
 	}
 
 	stdout, _, code = archon("mission", "validate", "sketch")
-	if code != 1 || !strings.Contains(stdout, "ERROR\tunstaffed_slot\t"+formation.ID) || !strings.Contains(stdout, "ERROR\tgate_not_routable\t"+gate.ID+"\tgate \""+gate.ID+"\" needs forbidden text") ||
-		!strings.Contains(stdout, "ERROR\troute_leads_nowhere\t"+gate.ID+"\tReview gate's pass route leads nowhere: wire it to a step or an End node") ||
-		!strings.Contains(stdout, "ERROR\troute_leads_nowhere\t"+gate.ID+"\tReview gate's fail route leads nowhere: wire it to a step or an End node") {
+	// Each finding names its node by title and ID (archon-n7u.33).
+	formationWhere, gateWhere := formation.Title+" ("+formation.ID+")", "Review gate ("+gate.ID+")"
+	if code != 1 || !strings.Contains(stdout, "ERROR\tunstaffed_slot\t"+formationWhere) || !strings.Contains(stdout, "ERROR\tgate_not_routable\t"+gateWhere+"\tgate \""+gate.ID+"\" needs forbidden text") ||
+		!strings.Contains(stdout, "ERROR\troute_leads_nowhere\t"+gateWhere+"\tReview gate's pass route leads nowhere: wire it to a step or an End node") ||
+		!strings.Contains(stdout, "ERROR\troute_leads_nowhere\t"+gateWhere+"\tReview gate's fail route leads nowhere: wire it to a step or an End node") {
 		t.Fatalf("board validate %d:\n%s", code, stdout)
 	}
 

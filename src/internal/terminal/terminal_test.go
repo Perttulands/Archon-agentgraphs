@@ -25,7 +25,7 @@ func scratchSeat(t *testing.T) (*Observer, Target, func(...string) string) {
 	socket := filepath.Join(root, "socket")
 	run := func(args ...string) string {
 		t.Helper()
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, bin, append([]string{"-S", socket}, args...)...)
 		cmd.Env = attachEnv()
@@ -40,7 +40,7 @@ func scratchSeat(t *testing.T) (*Observer, Target, func(...string) string) {
 	// before the server starts, so a failed setup cannot leak it either.
 	t.Cleanup(func() {
 		tmux := func(args ...string) string {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), testPatience)
 			defer cancel()
 			out, _ := exec.CommandContext(ctx, bin, append([]string{"-S", socket}, args...)...).Output()
 			return string(out)
@@ -49,7 +49,7 @@ func scratchSeat(t *testing.T) (*Observer, Target, func(...string) string) {
 			tmux("kill-session", "-t", session)
 		}
 		// No scratch server may outlive its test.
-		deadline := time.Now().Add(3 * time.Second)
+		deadline := time.Now().Add(testPatience)
 		for {
 			conn, err := net.Dial("unix", socket)
 			if err != nil {
@@ -79,7 +79,7 @@ func scratchSeat(t *testing.T) (*Observer, Target, func(...string) string) {
 
 func readProof(t *testing.T, conn *websocket.Conn) {
 	t.Helper()
-	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(testPatience))
 	var output strings.Builder
 	for !strings.Contains(output.String(), "NATIVE_TERMINAL_PROOF") {
 		kind, frame, err := conn.ReadMessage()
@@ -268,7 +268,7 @@ func TestSeatProbeRejectsMissingOrReplacedIdentity(t *testing.T) {
 
 func waitFor(t *testing.T, done func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(testPatience)
 	for !done() {
 		if time.Now().After(deadline) {
 			t.Fatal("condition not reached")

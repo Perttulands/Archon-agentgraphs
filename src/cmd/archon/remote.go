@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Perttulands/Archon-agentgraphs/internal/buildinfo"
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
@@ -87,6 +87,32 @@ func (c *remoteClient) raw(method, path string, value any) ([]byte, error) {
 	return raw, nil
 }
 
+// remoteVersion prints this CLI's build and the daemon's, as /healthz reports
+// it (archon-1ea).
+func remoteVersion(server string, stdout, stderr io.Writer) int {
+	fmt.Fprintln(stdout, buildinfo.String())
+	client, err := newRemoteClient(server)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	raw, err := client.raw(http.MethodGet, "/healthz", nil)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	var health struct {
+		Data struct {
+			Version string `json:"version"`
+			Commit  string `json:"commit"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &health); err != nil || health.Data.Version == "" {
+		return fail(stderr, fmt.Errorf("the daemon at %s reports no build", server))
+	}
+	fmt.Fprintf(stdout, "daemon %s: Archon %s (%s)\n", server, health.Data.Version, health.Data.Commit)
+	return 0
+}
+
 // An explicit server selects HTTP for the entire command. Failure never falls
 // through to an offline engine or a local ledger.
 func runRemote(server string, args []string, stdout, stderr io.Writer) int {
@@ -105,26 +131,27 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		return remoteRunStart(client, args[0], args[2:], stdout, stderr)
 	}
 	request := client.raw
-	fs := flag.NewFlagSet(args[0]+" "+args[1], flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	name := args[0] + " " + args[1]
+	verdict := name == "gate approve" || name == "gate reject"
+	// Each command defines only the flags it reads, so -h lists what applies.
+	fs := commandFlags(name, stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
-	var responseFile string
-	if args[0] == "gate" && (args[1] == "approve" || args[1] == "reject") {
+	var responseFile, missionFilter string
+	mode, reason, relayedBy, seq := new(string), new(string), new(string), new(int)
+	switch {
+	case verdict:
+		fs.StringVar(reason, "response", "", "the response: approve delivers it downstream with the gate input, reject sends it back as feedback")
 		fs.StringVar(&responseFile, "response-file", "", "local UTF-8 file containing the complete verbatim response")
-	}
-	mode := fs.String("mode", "reattach", "resume mode")
-	var missionFilter string
-	if args[0]+" "+args[1] == "run list" {
+		fs.IntVar(seq, "requested-seq", 0, "exact pending human request sequence")
+		fs.StringVar(relayedBy, "relayed-by", "", relayedByUsage)
+	case name == "run resume":
+		fs.StringVar(mode, "mode", "reattach", "resume mode: reattach or redispatch")
+		fs.StringVar(reason, "reason", "", "operator reason")
+	case name == "run abort":
+		fs.StringVar(reason, "reason", "", "operator reason")
+	case name == "run list":
 		fs.StringVar(&missionFilter, "mission", "", "the mission whose runs to list")
 	}
-	reason := new(string)
-	if args[0] == "gate" && (args[1] == "approve" || args[1] == "reject") {
-		fs.StringVar(reason, "response", "", "the response: approve delivers it downstream with the gate input, reject sends it back as feedback")
-	} else {
-		fs.StringVar(reason, "reason", "", "operator reason")
-	}
-	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
-	relayedBy := fs.String("relayed-by", "", relayedByUsage)
 	if err := fs.Parse(reorderFlags(args[2:], map[string]bool{"json": true})); err != nil {
 		return 2
 	}
@@ -135,7 +162,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	switch args[0] + " " + args[1] {
 	case "run abort", "run resume":
 		if len(pos) != 1 {
-			return remoteUsage(stderr)
+			return remoteUsage(stderr, args[0]+" "+args[1])
 		}
 		path += "/runs/" + url.PathEscape(pos[0]) + "/" + args[1]
 		method = "POST"
@@ -151,7 +178,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 	case "run status", "run logs", "run gates", "run seats":
 		if len(pos) != 1 {
-			return remoteUsage(stderr)
+			return remoteUsage(stderr, args[0]+" "+args[1])
 		}
 		path += "/runs/" + url.PathEscape(pos[0])
 		if args[1] == "seats" {
@@ -159,12 +186,12 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 	case "gate request":
 		if len(pos) != 2 {
-			return remoteUsage(stderr)
+			return remoteUsage(stderr, args[0]+" "+args[1])
 		}
 		path += "/runs/" + url.PathEscape(pos[0]) + "/gates/" + url.PathEscape(pos[1]) + "/request"
 	case "run follow":
 		if len(pos) != 1 {
-			return remoteUsage(stderr)
+			return remoteUsage(stderr, args[0]+" "+args[1])
 		}
 		response, err := client.http.Get(server + path + "/runs/" + url.PathEscape(pos[0]) + "/stream")
 		if err != nil {
@@ -187,7 +214,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "gate approve", "gate reject":
 		if len(pos) != 2 || *seq <= 0 {
-			return remoteUsage(stderr)
+			return remoteUsage(stderr, args[0]+" "+args[1])
 		}
 		given := givenFlags(fs)
 		if given["response-file"] {
@@ -215,8 +242,11 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		body = fields
 	default:
-		fmt.Fprintln(stderr, "command unavailable through the standalone coordinator")
-		return 2
+		if _, ok := helpForCommand(args[0] + " " + args[1]); ok {
+			fmt.Fprintf(stderr, "archon %s %s works offline only: run it with --workspace <state-dir>\n", args[0], args[1])
+			return 2
+		}
+		return unknownCommand(stderr, args[0], args[1])
 	}
 	raw, err := request(method, path, body)
 	if err != nil {
@@ -228,25 +258,24 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	fmt.Fprint(stdout, string(raw))
 	return 0
 }
-func remoteUsage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "use mission, formation, gate and agent authoring and read commands, mission run <mission> or formation run <mission> <formation> [--input name=value]..., run status|logs|follow|wait|seats|gates <run>, gate request <run> <gate>, or gate approve|reject <run> <gate> --requested-seq <n> [--response text | --response-file path] [--relayed-by slot-id]")
+func remoteUsage(stderr io.Writer, name string) int {
+	fmt.Fprintln(stderr, commandUsage(name))
 	return 2
 }
 
 // remoteRunStart starts a mission run or a single step's run through the
 // daemon. Both take the same run fields and the mission's inputs.
 func remoteRunStart(client *remoteClient, noun string, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet(noun+" run", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := commandFlags(noun+" run", stderr)
 	actor := fs.String("actor", "agent:archon", "who drives the run; the run list shows it")
 	run := registerRunStartFlags(fs)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
-	usage, positionals := missionRunUsage, 1
+	usage, positionals := commandUsage("mission run"), 1
 	if noun == "formation" {
-		usage, positionals = formationRunUsage, 2
+		usage, positionals = commandUsage("formation run"), 2
 	}
 	if fs.NArg() != positionals {
 		fmt.Fprintln(stderr, usage)

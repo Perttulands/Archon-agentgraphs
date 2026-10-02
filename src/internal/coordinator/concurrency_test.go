@@ -76,7 +76,7 @@ func TestConcurrentLabAdmissionInputsAndPerRunAbort(t *testing.T) {
 			if req.Cwd != cwd || req.MissionBeadID != bead || req.MissionGoal != "PRIVATE-OBJECTIVE" || req.Inputs[0].Text != "brief for "+bead {
 				t.Fatalf("seat inputs: %+v", req)
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(testPatience):
 			t.Fatal("run did not enter lab")
 		}
 		p, err := c.Project(receipt.Data.RunID)
@@ -118,7 +118,7 @@ func TestConcurrentLabAdmissionInputsAndPerRunAbort(t *testing.T) {
 	e.finish <- struct{}{}
 	select {
 	case <-e.entered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("second seat not dispatched")
 	}
 	e.finish <- struct{}{}

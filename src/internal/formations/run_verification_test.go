@@ -132,22 +132,6 @@ func TestRunSnapshotReadRejectsLedgerControlledIdentityBeforeMutation(t *testing
 			},
 		},
 		{
-			name: "snapshot symlink",
-			setup: func(t *testing.T, store *Store, requestedRunID string) RunEvent {
-				t.Helper()
-				outside := filepath.Join(filepath.Dir(store.Workspace), "outside.snapshot.toml")
-				writeFixture(t, outside, s4MissionOnlyBoardFixture())
-				snapshot := runArtifactPath("session-search", requestedRunID, ".snapshot.toml")
-				if err := os.MkdirAll(filepath.Dir(filepath.Join(store.Workspace, snapshot)), 0o755); err != nil {
-					t.Fatalf("create snapshot directory: %v", err)
-				}
-				if err := os.Symlink(outside, filepath.Join(store.Workspace, snapshot)); err != nil {
-					t.Fatalf("symlink snapshot: %v", err)
-				}
-				return runStartedFixture(requestedRunID, "session-search", snapshot)
-			},
-		},
-		{
 			name:       "snapshot board slug differs from canonical run directory",
 			ledgerSlug: "other-board",
 			setup: func(t *testing.T, store *Store, requestedRunID string) RunEvent {

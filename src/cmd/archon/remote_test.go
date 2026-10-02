@@ -312,7 +312,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("agent", "edit", "scout-x", "--summary", "Finds things", "--add-capability", "inspect", "--display-name", "Scout X"))},
 		{args: with(fixed("agent", "edit", "scout-x", "--add-harness", "claude-code", "--session-stem", "claude-scout-x"))},
 		{args: with(fixed("agent", "edit", "scout-x", "--session-stem", "scout-x-1"))},
-		{args: with(fixed("mission", "create", "demo", "--title", "Work", "--goal", "Do it", "--file", "docs/brief.md", "--human-channel", "session")), creates: "inputCard"},
+		{args: with(fixed("mission", "create", "demo", "--title", "Work", "--goal", "Do it", "--file", "/work/docs/brief.md", "--human-channel", "session")), creates: "inputCard"},
 		{args: with(fixed("formation", "create", "demo", "solo", "--title", "Worker")), creates: "formation"},
 		{args: with(fixed("formation", "create", "demo", "--title", "Judge")), creates: "formation"},
 		{args: with(fixed("formation", "rename", "demo", "Judge", "Critic"))},
@@ -327,7 +327,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--role", "codex-builder", "--harness", "openai-codex", "--effort", "medium"}
 		})},
-		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--goal", "Produce the result", "--bead", "archon-demo", "--file", "src/a.go", "--link", "https://example.com/spec"))},
+		{args: with(fixed("formation", "set-brief", "demo", "Worker", "--goal", "Produce the result", "--bead", "archon-demo", "--file", "/work/src/a.go", "--link", "https://example.com/spec"))},
 		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "47"))},
 		{args: with(fixed("formation", "set-execution", "demo", "Worker", "--timeout-seconds", "0"))},
 		{args: with(fixed("formation", "set-brief", "demo", "Critic", "--goal", "Judge the result"))},
@@ -360,7 +360,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"formation", "wire", "demo", worker(board).ID + ":" + worker(board).Outputs[0].ID, gateTitled(t, board, "Review").ID + ":in"}
 		})},
-		{args: with(fixed("gate", "create", "demo", "--kinds", "human", "--title", "Signoff", "--criterion", "Operator signs off", "--file", "rubrics/signoff.md")), creates: "gate"},
+		{args: with(fixed("gate", "create", "demo", "--kinds", "human", "--title", "Signoff", "--criterion", "Operator signs off", "--file", "/work/rubrics/signoff.md")), creates: "gate"},
 		{args: with(fixed("gate", "update", "demo", "Signoff", "--title", "Sign-off", "--kinds", "human,code", "--check", "output_contains", "--check-version", "1", "--check-value", "done"))},
 		{args: with(fixed("gate", "update", "demo", "Sign-off", "--clear-check", "--kinds", "human"))},
 		{args: with(fixed("gate", "create", "demo", "--title", "Default")), creates: "gate"},
@@ -386,7 +386,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("end", "delete", "demo", "Nobody")), errorOnly: true},
 		{args: with(fixed("mission", "update", "demo", "Work", "--goal", "Do it"))},
 		{args: with(fixed("mission", "update", "demo", "--goal", "Do it well"))},
-		{args: with(fixed("mission", "update", "demo", "Work", "--file", "docs/brief.md", "--file", "docs/context.md"))},
+		{args: with(fixed("mission", "update", "demo", "Work", "--file", "/work/docs/brief.md", "--file", "/work/docs/context.md"))},
 		{args: with(fixed("mission", "update", "demo", "Work", "--human-channel", "notify"))},
 		{args: with(fixed("mission", "update", "demo", "Work", "--human-channel", "session"))},
 		{args: with(fixed("mission", "update", "demo", "Work", "--human-channel", "email")), errorOnly: true},
@@ -400,7 +400,7 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("mission", "input", "demo", "Bad-Name")), errorOnly: true},
 		{args: with(fixed("mission", "input", "demo", "nothing", "--delete")), errorOnly: true},
 		{args: with(fixed("mission", "input", "demo", "sketch", "--delete"))},
-		{args: with(fixed("gate", "update", "demo", "Review", "--file", "rubrics/quality.md"))},
+		{args: with(fixed("gate", "update", "demo", "Review", "--file", "/work/rubrics/quality.md"))},
 		{args: with(fixed("gate", "update", "demo", "Sign-off", "--file", ""))},
 		{args: with(fixed("tool", "create", "demo", "--profile-id", "json.normalize", "--profile-version", "1", "--title", "Normalize", "--params-json", `{"mode":"strict"}`)), creates: "tool"},
 		{args: with(func(board *formations.BoardDocument) []string {
@@ -553,10 +553,10 @@ func TestRemoteAuthoringMatchesOfflineCommands(t *testing.T) {
 			if into != 2 {
 				t.Fatalf("routes into Sent back = %d, want 2: %+v", into, board.Connections)
 			}
-			if mission := board.Missions[0]; strings.Join(mission.Files, ",") != "docs/brief.md,docs/context.md" || mission.HumanChannel != formations.HumanChannelSession {
+			if mission := board.Missions[0]; strings.Join(mission.Files, ",") != "/work/docs/brief.md,/work/docs/context.md" || mission.HumanChannel != formations.HumanChannelSession {
 				t.Fatalf("remote mission files = %q, human channel = %q", mission.Files, mission.HumanChannel)
 			}
-			if review, signoff := gateTitled(t, board, "Review"), gateTitled(t, board, "Sign-off"); strings.Join(review.Files, ",") != "rubrics/quality.md" || len(signoff.Files) != 0 {
+			if review, signoff := gateTitled(t, board, "Review"), gateTitled(t, board, "Sign-off"); strings.Join(review.Files, ",") != "/work/rubrics/quality.md" || len(signoff.Files) != 0 {
 				t.Fatalf("remote gate files: Review %q, Sign-off %q", review.Files, signoff.Files)
 			}
 			if len(board.Tools) != 1 || board.Tools[0].Title != "Normalize report" {
@@ -647,7 +647,7 @@ func TestRemoteAuthoringRetriesAWriteRaceThenGivesUp(t *testing.T) {
 					patches++
 					if patches <= losses {
 						w.WriteHeader(http.StatusConflict)
-						w.Write([]byte(`{"success":false,"error":{"code":"CONFLICT","message":"Formation definition changed; reload and retry"}}`))
+						w.Write([]byte(`{"success":false,"error":{"code":"CONFLICT","message":"The mission changed since it was read; reload it and retry"}}`))
 						return
 					}
 				}
@@ -679,6 +679,7 @@ func TestRemoteFieldErrorsKeepOfflineCodes(t *testing.T) {
 		"INVALID_CONTROLLER_ROLE":  formations.ErrInvalidControllerRole,
 		"INVALID_PORT_DIRECTION":   formations.ErrInvalidPortDirection,
 		"INVALID_AGENT_CARD":       formations.ErrInvalidAgentCard,
+		"RELATIVE_FILE_REFERENCE":  formations.ErrRelativeFileRef,
 	} {
 		offline := archonErrorCode(fmt.Errorf("%w: field", sentinel))
 		remote := archonErrorCode(&remoteHTTPError{Status: 400, Code: code, Message: "field"})
@@ -806,5 +807,21 @@ func TestRemoteAssignWarnsOfAModelOutsideTheCatalogAsOfflineDoes(t *testing.T) {
 	}
 	if warnings[0] != warnings[1] || !strings.Contains(warnings[0], `warning: slot "Agent" (<slot>) model "claude-opus-5" is not in the claude-code catalog; the harness decides`) {
 		t.Fatalf("warnings offline %q remote %q", warnings[0], warnings[1])
+	}
+}
+
+// With --server, version names this CLI's build and the daemon's (archon-1ea).
+func TestRemoteVersionNamesTheDaemonBuild(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/healthz" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(`{"success":true,"data":{"status":"ok","version":"0.9.0","commit":"abc1234"}}`))
+	}))
+	defer server.Close()
+	stdout, stderr, code := runArchon(t, &fakeTmux{live: map[string]bool{}}, "--server", server.URL, "version")
+	if code != 0 || !strings.Contains(stdout, "daemon "+server.URL+": Archon 0.9.0 (abc1234)") || !strings.HasPrefix(stdout, "Archon ") {
+		t.Fatalf("version code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 }

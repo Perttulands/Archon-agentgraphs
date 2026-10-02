@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { answerGate, evidenceShot, humanChannelFixture, inputCardId, peers, talkRunFixture } from './human-channel-fixture'
+import { settledBox } from './settled'
 
 test('a mission human channel is chosen in its window and Start mission, saved with undo, and shown on the canvas and in Flow', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -96,8 +97,7 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2 + (growUp ? -180 : 180), { steps: 8 })
   await page.mouse.up()
   // A taller room can only keep or grow the font a narrow window's width allows; the seat is told nothing.
-  await page.waitForTimeout(300)
-  expect((await codex.locator('.xterm-screen').boundingBox())!.height).toBeGreaterThanOrEqual(gridBefore.height)
+  expect((await settledBox(page, codex.locator('.xterm-screen'))).height).toBeGreaterThanOrEqual(gridBefore.height)
   expect(fixture.resizes(22)).toEqual([])
   expect(fixture.resizes(21)).toEqual([])
   expect(fixture.handshakes(22)).toEqual([{ AuthToken: '', columns: 100, rows: 30 }])

@@ -103,7 +103,7 @@ func TestDefinitionPairBuilderReadsPostWaitPairWithBothPeerProcessFlocksHeld(t *
 		if err != nil {
 			t.Fatalf("publish builder-derived post-wait pair: %v", err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(testPatience):
 		t.Fatal("timed out waiting for post-wait builder publication")
 	}
 	assertPairFilesForTest(t, store, slug, newBoard, pairPresentContentForTest(newLayout))

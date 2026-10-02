@@ -7,6 +7,7 @@ import type { AgentProjection, BoardDocument, FormationNode, MissionNode, NoteEn
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { ProducedFiles } from '../files/ProducedFiles'
 import { referencedFileRequest } from '../files/fileWindowModel'
+import { useFileProblems } from '../files/referencedFiles'
 import { humanChannelLabel, humanChannelOf } from '../humanChannel/humanChannel'
 import { staffingSentence } from '../nodeWindow/staffing'
 import { roleNamer } from '../staffing/staffingModel'
@@ -241,13 +242,18 @@ function NoteLine({ nodeId, notes, onOpenNotes }: { nodeId: string; notes: Reado
 
 function FileChips({ files, context }: { files: string[] | undefined; context: string }) {
   const fileWindows = useFileWindows()
+  const problems = useFileProblems()
   if (!files?.length) return null
   return (
     <p className="flow-line">
       <span className="flow-label">Files</span>
-      {files.map(file => fileWindows
-        ? <button key={file} type="button" className="flow-file" onClick={event => fileWindows.open(referencedFileRequest(file, context), fileAnchor(event.currentTarget))}>{file.split('/').pop() || file}</button>
-        : <span key={file} className="flow-file">{file}</span>)}
+      {files.map(file => {
+        const problem = problems.get(file)
+        const className = `flow-file${problem ? ' missing' : ''}`
+        return fileWindows
+          ? <button key={file} type="button" className={className} title={problem ? `${file} ${problem}` : file} onClick={event => fileWindows.open(referencedFileRequest(file, context), fileAnchor(event.currentTarget))}>{file.split('/').pop() || file}{problem ? <span className="flow-file-problem"> · {problem}</span> : null}</button>
+          : <span key={file} className={className}>{file}{problem ? ` · ${problem}` : ''}</span>
+      })}
     </p>
   )
 }

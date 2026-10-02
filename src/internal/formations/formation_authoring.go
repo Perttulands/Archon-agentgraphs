@@ -334,7 +334,7 @@ func (s *Store) ResolveBoardSelector(selector string) (string, error) {
 	}
 	matches := []BoardSummary{}
 	for _, board := range boards {
-		if board.ID == selector || board.Slug == selector {
+		if board.ID != "" && board.ID == selector || board.Slug == selector {
 			matches = append(matches, board)
 		}
 	}
@@ -839,6 +839,9 @@ func (s *Store) SetFormationBrief(slug string, req FormationBriefRequest, opts W
 	if req.FormationID == "" {
 		return nil, ErrNotFound
 	}
+	if err := checkFileRefs(req.Files); err != nil {
+		return nil, err
+	}
 	if req.BeadID != "" && !isSafeBeadsIssueID(req.BeadID) {
 		return nil, invalidBeadID("brief beadId", req.BeadID)
 	}
@@ -905,6 +908,9 @@ func (s *Store) createGate(slug string, req GateCreateRequest, opts WriteOptions
 	if err := validateCodeGateAuthoring(req.Check, req.CheckVersion); err != nil {
 		return nil, err
 	}
+	if err := checkFileRefs(req.Files); err != nil {
+		return nil, err
+	}
 	if opts.ExpectedETag == "" || opts.ExpectedRev == 0 {
 		return nil, ErrPreconditionRequired
 	}
@@ -955,6 +961,11 @@ func (s *Store) createGate(slug string, req GateCreateRequest, opts WriteOptions
 func (s *Store) UpdateGate(slug string, req GateUpdateRequest, opts WriteOptions) (*BoardDocument, error) {
 	if req.GateID == "" {
 		return nil, ErrNotFound
+	}
+	if req.Files != nil {
+		if err := checkFileRefs(*req.Files); err != nil {
+			return nil, err
+		}
 	}
 	var kinds []string
 	if req.Kinds != nil {
@@ -1193,7 +1204,7 @@ func validateRestoredSlots(slots []FormationSlot) error {
 func firstBadSlotID(slots []FormationSlot) (string, bool) {
 	seen := make(map[string]bool, len(slots))
 	for _, slot := range slots {
-		if !validToolDefinitionID(slot.ID) || seen[slot.ID] {
+		if !ValidSlotID(slot.ID) || seen[slot.ID] {
 			return slot.ID, true
 		}
 		seen[slot.ID] = true
@@ -1308,6 +1319,11 @@ func renderSlotBlock(slot FormationSlot) []tomlLine {
 func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteOptions) (*BoardDocument, error) {
 	if req.MissionID == "" {
 		return nil, ErrNotFound
+	}
+	if req.Files != nil {
+		if err := checkFileRefs(*req.Files); err != nil {
+			return nil, err
+		}
 	}
 	var humanChannel string
 	if req.HumanChannel != nil {
@@ -1505,6 +1521,9 @@ func (s *Store) CreateMission(slug string, req MissionCreateRequest, opts WriteO
 func (s *Store) createMission(slug string, req MissionCreateRequest, opts WriteOptions, fault func(string) error) (*MissionCreateResult, error) {
 	humanChannel, err := NormalizeHumanChannel(req.HumanChannel)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkFileRefs(req.Files); err != nil {
 		return nil, err
 	}
 	if err := validateSlug(slug); err != nil {

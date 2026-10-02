@@ -176,42 +176,54 @@ func TestPersonaStoreFollowsSymlinkedCardsAndRefusesFIFOCards(t *testing.T) {
 	}
 }
 
-func TestPersonaStoreRejectsSymlinkLockWithoutChangingExternalMode(t *testing.T) {
+// Editing a role card symlinked from elsewhere, such as a dotfiles
+// repository, writes through the link and keeps it (archon-4m4j).
+func TestPersonaStoreWritesASymlinkedCardThroughItsLink(t *testing.T) {
 	dir := t.TempDir()
-	external := filepath.Join(t.TempDir(), "external-lock")
-	if err := os.WriteFile(external, []byte("lock sentinel"), 0o600); err != nil {
-		t.Fatalf("write external lock: %v", err)
+	repository := t.TempDir()
+	external := filepath.Join(repository, "builder.toml")
+	if err := os.WriteFile(external, []byte(renderPersona(CreatePersonaRequest{
+		ID: "linked-builder", DisplayName: "Builder", Kind: "builder",
+	}, "openai-codex", "linked-builder", []string{"implement"})), 0o644); err != nil {
+		t.Fatalf("write external card: %v", err)
 	}
-	if err := os.Symlink(external, filepath.Join(dir, "codex-scout.toml.lock")); err != nil {
-		t.Fatalf("symlink lock: %v", err)
+	link := filepath.Join(dir, "linked-builder.toml")
+	if err := os.Symlink(external, link); err != nil {
+		t.Fatalf("symlink card: %v", err)
 	}
+	store := NewPersonaStore(dir)
+	card, err := store.ReadPersona("linked-builder")
+	if err != nil {
+		t.Fatalf("read linked card: %v", err)
+	}
+	name := "Linked Builder"
+	if _, err := store.EditPersona("linked-builder", EditPersonaRequest{SetDisplayName: &name, ExpectedETag: card.ETag}); err != nil {
+		t.Fatalf("edit linked card: %v", err)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("card after edit: %v %v, want the link kept", info, err)
+	}
+	raw, err := os.ReadFile(external)
+	if err != nil || !strings.Contains(string(raw), `display_name = "Linked Builder"`) {
+		t.Fatalf("external card = %q (%v), want the edit written through the link", raw, err)
+	}
+	if entries, err := os.ReadDir(repository); err != nil || len(entries) != 1 {
+		t.Fatalf("repository holds %v (%v), want only the card", entries, err)
+	}
+}
+
+func TestPersonaStoreRefusesAFIFOLock(t *testing.T) {
+	dir := t.TempDir()
 	store := NewPersonaStore(dir)
 	builtin, err := store.ReadPersona("codex-scout")
 	if err != nil {
 		t.Fatalf("read builtin: %v", err)
 	}
-	name := "Unsafe override"
-	if _, err := store.EditPersona("codex-scout", EditPersonaRequest{SetDisplayName: &name, ExpectedETag: builtin.ETag}); err == nil {
-		t.Fatal("EditPersona followed substituted lock symlink")
-	}
-	info, err := os.Stat(external)
-	if err != nil {
-		t.Fatalf("stat external lock: %v", err)
-	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("external lock mode = %o, want 600", info.Mode().Perm())
-	}
-	if _, err := os.Stat(store.PersonaPath("codex-scout")); !os.IsNotExist(err) {
-		t.Fatalf("unsafe edit materialized card: %v", err)
-	}
-
 	lockPath := filepath.Join(dir, "codex-scout.toml.lock")
-	if err := os.Remove(lockPath); err != nil {
-		t.Fatalf("remove lock symlink: %v", err)
-	}
 	if err := syscall.Mkfifo(lockPath, 0o600); err != nil {
 		t.Fatalf("mkfifo lock: %v", err)
 	}
+	name := "Override"
 	if _, err := store.EditPersona("codex-scout", EditPersonaRequest{SetDisplayName: &name, ExpectedETag: builtin.ETag}); err == nil {
 		t.Fatal("EditPersona accepted FIFO lock")
 	}
