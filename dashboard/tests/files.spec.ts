@@ -45,7 +45,7 @@ const servePreview = (route: import('@playwright/test').Route) => {
 // src/internal/formations/layout_arrange.go), with its file chip row.
 const FILE_ROW = 30
 const reserved = (node: Node, kind: 'inputCard' | 'gate' | 'formation') =>
-  (kind === 'inputCard' ? 144 : kind === 'gate' ? 124 : node.type === 'peer' ? 340 : node.type === 'orchestrated' ? 440 : 310) + FILE_ROW
+  (kind === 'inputCard' ? 144 : kind === 'gate' ? 124 : node.type === 'peer' ? 340 : node.type === 'orchestrated' ? 440 : 310) + FILE_ROW + 112
 
 // What the daemon's validation says of boardWithFiles: the sketch's path is
 // relative (FindingRelativeFile in src/internal/formations/board_inspect.go).

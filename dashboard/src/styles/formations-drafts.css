@@ -17,3 +17,7 @@
 .fmx .gatecard:has(.draft-marker){flex-wrap:wrap;}
 .fmx .gatecard>.draft-marker{flex-basis:100%;order:99;margin:4px 0 0;}
 .fmx .node-problems{font-size:11px;line-height:1.5;color:var(--ink2);border-left:2px solid var(--gold);padding:6px 10px;}
+
+/* Match the 112px admission allowance used by Arrange. Long reasons remain
+   readable by scrolling, with the same complete list in Flow and the node. */
+.fmx .draft-marker{box-sizing:border-box;max-height:96px;overflow:auto;}
