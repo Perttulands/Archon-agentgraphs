@@ -148,7 +148,9 @@ function FlowRow({ board, step, run, notes, findings, answerPanel, staffing, onO
   onOpenNode: (nodeId: string, anchor?: WindowRect) => void
   onOpenNotes: (nodeId: string) => void
 }) {
-  const state = run ? run.states.get(step.id) ?? '' : undefined
+  const judgeIds = step.kind === 'gate' ? step.judges.map(judge => judge.id) : []
+  const blockedJudge = run && judgeIds.find(id => ['blocked', 'failed', 'waiting'].includes(run.states.get(id) || ''))
+  const state = run ? run.states.get(blockedJudge || step.id) ?? '' : undefined
   const title = step.node.title || (step.kind === 'gate' ? 'Gate' : 'Untitled step')
   return (
     <li className={`flow-step flow-${step.kind}${state ? ` state-${state}` : ''}`} data-flow-node={step.id} data-testid={`flow-step-${step.id}`}>
@@ -205,8 +207,8 @@ function FlowRow({ board, step, run, notes, findings, answerPanel, staffing, onO
         <div className="flow-status" aria-label={`Run state of ${title}`}>
           <span className={`flow-state state-${state || 'idle'}`}>{STATE_WORDS[state || '']}</span>
           {(run.attempts.get(step.id) || 0) > 1 ? <span className="flow-attempt">attempt {run.attempts.get(step.id)}</span> : null}
-          {run.points.filter(point => point.nodeId === step.id && point.kind !== 'running').map(point => (
-            <RunPoint key={point.kind} runId={run.runId} point={point} title={title}
+          {run.points.filter(point => (point.nodeId === step.id || judgeIds.includes(point.nodeId)) && point.kind !== 'running').map(point => (
+            <RunPoint key={`${point.nodeId}:${point.kind}`} runId={run.runId} point={point} title={step.kind === 'gate' ? step.judges.find(judge => judge.id === point.nodeId)?.title || title : title}
               action={point.kind === 'waiting' && run.onAnswer ? 'Answer it here' : 'Open the step'}
               onLocate={point.kind === 'waiting' && run.onAnswer ? run.onAnswer
                 : nodeId => onOpenNode(nodeId, controlAnchor(document.querySelector(`[data-flow-node="${step.id}"] .flow-status [data-testid="run-point"]`) || document.body))} />
