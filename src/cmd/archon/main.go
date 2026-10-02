@@ -457,12 +457,12 @@ func writeAgentInspect(stdout io.Writer, card *formations.PersonaCard, jsonOut b
 
 func runAgentNew(store *formations.PersonaStore, args []string, stdout, stderr io.Writer) int {
 	fs := commandFlags("agent new", stderr)
-	f := newAgentNewFlags(fs, stderr)
+	f := newAgentNewFlags(fs)
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, agentNewUsage)
+		fmt.Fprintln(stderr, commandUsage("agent new"))
 		return 2
 	}
 	card, err := store.CreatePersona(formations.CreatePersonaRequest{
@@ -484,12 +484,12 @@ func runAgentNew(store *formations.PersonaStore, args []string, stdout, stderr i
 
 func runAgentEdit(store *formations.PersonaStore, args []string, stdout, stderr io.Writer) int {
 	fs := commandFlags("agent edit", stderr)
-	f := newAgentEditFlags(fs, stderr)
+	f := newAgentEditFlags(fs)
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, agentEditUsage)
+		fmt.Fprintln(stderr, commandUsage("agent edit"))
 		return 2
 	}
 	before, err := store.ReadPersona(fs.Arg(0))

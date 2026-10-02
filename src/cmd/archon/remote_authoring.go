@@ -1220,12 +1220,12 @@ func remoteAgentInspect(c *remoteClient, args []string, stdout, stderr io.Writer
 // Agent cards are the daemon's (its --agents-dir).
 func remoteAgentNew(c *remoteClient, args []string, stdout, stderr io.Writer) int {
 	fs := remoteFlags("agent new", stderr)
-	f := newAgentNewFlags(fs, stderr)
+	f := newAgentNewFlags(fs)
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, agentNewUsage)
+		fmt.Fprintln(stderr, commandUsage("agent new"))
 		return 2
 	}
 	data, _, err := c.call("POST", "/api/agents", map[string]any{"id": fs.Arg(0), "kind": *f.kind, "capabilities": splitCSV(*f.capable), "personality": *f.personality}, "")
@@ -1237,12 +1237,12 @@ func remoteAgentNew(c *remoteClient, args []string, stdout, stderr io.Writer) in
 
 func remoteAgentEdit(c *remoteClient, args []string, stdout, stderr io.Writer) int {
 	fs := remoteFlags("agent edit", stderr)
-	f := newAgentEditFlags(fs, stderr)
+	f := newAgentEditFlags(fs)
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, agentEditUsage)
+		fmt.Fprintln(stderr, commandUsage("agent edit"))
 		return 2
 	}
 	given := givenFlags(fs)

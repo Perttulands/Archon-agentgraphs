@@ -2,30 +2,23 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"io"
 )
 
-// agent new and agent edit take the same flags offline and with --server.
-
-const (
-	agentNewUsage  = "usage: archon agent new <id> [--kind <kind>] [--capable a,b] [--personality p] [--json]\nA role is role text; each slot that uses it states its own harness, model and effort (archon formation assign)."
-	agentEditUsage = "usage: archon agent edit <id> [--display-name n] [--kind k] [--summary s] [--capable a,b] [--add-capability t|--remove-capability t|--note text] [--json]"
-)
+// agent new and agent edit take the same flags offline and with --server; their
+// usage is the CLI help table's, as every other command's is.
 
 type agentNewFlags struct {
 	kind, capable, personality *string
 	jsonOut                    *bool
 }
 
-func newAgentNewFlags(fs *flag.FlagSet, stderr io.Writer) agentNewFlags {
+func newAgentNewFlags(fs *flag.FlagSet) agentNewFlags {
 	flags := agentNewFlags{
 		kind:        fs.String("kind", "", "role kind (default specialist)"),
 		capable:     fs.String("capable", "", "comma-separated bare capabilities"),
 		personality: fs.String("personality", "", "personality facet"),
 		jsonOut:     fs.Bool("json", false, "write JSON"),
 	}
-	agentUsage(fs, stderr, agentNewUsage)
 	return flags
 }
 
@@ -35,7 +28,7 @@ type agentEditFlags struct {
 	jsonOut                                   *bool
 }
 
-func newAgentEditFlags(fs *flag.FlagSet, stderr io.Writer) agentEditFlags {
+func newAgentEditFlags(fs *flag.FlagSet) agentEditFlags {
 	flags := agentEditFlags{
 		addCapability:    fs.String("add-capability", "", "add bare capability"),
 		removeCapability: fs.String("remove-capability", "", "remove bare capability"),
@@ -46,13 +39,5 @@ func newAgentEditFlags(fs *flag.FlagSet, stderr io.Writer) agentEditFlags {
 		note:             fs.String("note", "", "append note"),
 		jsonOut:          fs.Bool("json", false, "write JSON"),
 	}
-	agentUsage(fs, stderr, agentEditUsage)
 	return flags
-}
-
-func agentUsage(fs *flag.FlagSet, stderr io.Writer, usage string) {
-	fs.Usage = func() {
-		fmt.Fprintln(stderr, usage)
-		fs.PrintDefaults()
-	}
 }

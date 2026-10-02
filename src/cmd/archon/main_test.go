@@ -279,7 +279,7 @@ func TestArchonAgentSpawnStatesItsOwnSettings(t *testing.T) {
 		t.Fatalf("spawned=%#v, want %q", runner.spawned, wantLaunch)
 	}
 	_, help, _ := runArchon(t, runner, "agent", "edit", "-h")
-	if strings.Contains(help, "-model") || strings.Contains(help, "-effort") || !strings.Contains(help, agentEditUsage) {
+	if strings.Contains(help, "-model") || strings.Contains(help, "-effort") || !strings.Contains(help, commandUsage("agent edit")) {
 		t.Fatalf("agent edit -h:\n%s", help)
 	}
 }

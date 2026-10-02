@@ -40,8 +40,7 @@ func TestEveryNounAndCommandHasHelp(t *testing.T) {
 				args := append(append(append([]string{}, global...), strings.Fields(name)...), "-h")
 				_, stderr, code := runArchon(t, runner, args...)
 				// agent new and edit print their own usage (agent_flags.go).
-				ownUsage := name == "agent new" || name == "agent edit"
-				if code != 2 || strings.Contains(stderr, "unknown") || !strings.Contains(stderr, "usage: archon "+name+" ") || !ownUsage && !strings.Contains(stderr, upperFirst(command.summary)) {
+				if code != 2 || strings.Contains(stderr, "unknown") || !strings.Contains(stderr, "usage: archon "+name+" ") || !strings.Contains(stderr, upperFirst(command.summary)) {
 					t.Fatalf("archon %v = %d:\n%s", args, code, stderr)
 				}
 				if global[0] == "--server" && strings.Contains(command.args, "--json") && !strings.Contains(stderr, "-json") {
