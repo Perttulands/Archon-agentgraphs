@@ -748,7 +748,7 @@ describe('FormationsCockpit reference parity', () => {
     const toggle = screen.getByRole('button', { name: 'Legend' })
     fireEvent.click(toggle)
     const legend = screen.getByRole('dialog', { name: 'Canvas legend' })
-    for (const words of ['A gate sends work back to an earlier step', 'A judge chain: the gate asks a formation to decide', 'You decide', 'Waiting for your answer', 'Blocked or failed; the run bar says why', 'Claude Code', 'Codex', 'Hermes']) {
+    for (const words of ['A gate sends work back to an earlier step', 'A judge chain: the gate asks a formation to decide', 'You decide', 'Waiting for your answer', 'Blocked or failed; the run bar says why', 'Claude Code', 'Codex', 'Produced chips', 'Drag a role']) {
       expect(legend).toHaveTextContent(words)
     }
     expect(legend.querySelector('path.wire.fail.loop')).not.toBeNull()
@@ -1570,7 +1570,7 @@ describe('FormationsCockpit reference parity', () => {
     })
     await renderCockpit()
     const judgeMarker = await screen.findByTestId('draft-marker-fmn_judge')
-    expect(judgeMarker).toHaveTextContent('draft')
+    expect(judgeMarker).toHaveTextContent('Draft')
     expect(judgeMarker).toHaveAttribute('title', 'slot "Judge" (slot_judge) needs an agent')
     expect(screen.getByTestId('formation-node-fmn_judge')).toHaveClass('is-draft')
     expect(screen.getByTestId('draft-marker-mis_showcase')).toBeInTheDocument()
@@ -1600,7 +1600,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(panel).toHaveTextContent('needs forbidden text')
     expect(screen.getByTestId('formation-node-fmn_frame')).toHaveClass('admission-blocked')
     expect(screen.getByTestId('gate-node-gate_review')).toHaveClass('admission-blocked')
-    expect(screen.getByTestId('draft-marker-gate_review')).toHaveTextContent('needs fix')
+    expect(screen.getByTestId('draft-marker-gate_review')).toHaveTextContent('Run needs')
     expect(screen.getByTestId('mission-node-mis_showcase')).not.toHaveClass('admission-blocked')
 
     fireEvent.click(within(panel).getByRole('button', { name: 'Dismiss run findings' }))
@@ -2674,7 +2674,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(rows[0]).toHaveAttribute('aria-current', 'true')
 
     fireEvent.click(rows[1])
-    await waitFor(() => expect(screen.getByTestId('run-banner')).toHaveTextContent('Running'))
+    await waitFor(() => expect(screen.getByTestId('run-banner')).toHaveTextContent('Continuing'))
     expect(screen.queryByRole('dialog', { name: 'Answer gate Review' })).toBeNull()
     expect(window.location.search).toBe('?mission=test-board&run=run_01B')
   })
@@ -2767,7 +2767,7 @@ describe('FormationsCockpit reference parity', () => {
     installRunsMock([{ runId: 'run_01OPEN', status: 'running', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 2 }])
     const { unmount } = await renderCockpit()
     expect(await screen.findByTestId('formations-error')).toHaveTextContent('Run run_01GONE from the link was not found')
-    await waitFor(() => expect(screen.getByTestId('run-banner')).toHaveTextContent('Running'))
+    await waitFor(() => expect(screen.getByTestId('run-banner')).toHaveTextContent('Continuing'))
     expect(window.location.search).toBe('?mission=test-board')
     unmount()
 
