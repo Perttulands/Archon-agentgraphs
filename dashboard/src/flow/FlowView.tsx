@@ -154,10 +154,11 @@ function FlowRow({ board, step, run, notes, findings, answerPanel, staffing, onO
     <li className={`flow-step flow-${step.kind}${state ? ` state-${state}` : ''}`} data-flow-node={step.id} data-testid={`flow-step-${step.id}`}>
       <div className="flow-body">
         <div className="flow-step-head">
-          <span className="flow-number" aria-hidden="true">{step.number}</span>
+          <span className="flow-number" aria-hidden="true">{step.number}{step.parallel ? ' ∥' : ''}</span>
           <button type="button" className="flow-title" aria-label={`${step.number} ${title}`} onClick={event => onOpenNode(step.id, controlAnchor(event.currentTarget))}>{title}</button>
           <span className="flow-kind">{step.kind === 'formation' ? step.node.type : step.kind === 'gate' ? 'gate' : 'tool'}</span>
         </div>
+        {step.parallel && <p className="flow-line">Parallel with {step.parallel.filter(id => id !== step.id).map(id => board.formations.find(node => node.id === id)?.title || board.gates?.find(node => node.id === id)?.title || id).join(', ')}</p>}
         <NodeProblems findings={findings.get(step.id)} />
         {step.kind === 'formation' ? (
           <>

@@ -104,3 +104,21 @@ test('Flow opens windows beside the clicked title or route link, and its run poi
   expect(await beside(steps.nth(5).getByRole('button', { name: '6 Adversarial review' }), review), 'and the gate title').toBe(true)
   expect(fixture.writes).toEqual([])
 })
+
+test('Flow labels fan-out siblings as parallel with a shared step number', async ({ page }) => {
+  await scoutingFixture(page)
+  const board = structuredClone(scouting.mission)
+  const first = board.formations[0]
+  const sibling = { ...first, id: 'fmn_parallel', title: 'Parallel work' }
+  board.formations.push(sibling)
+  const feed = board.connections.find((route: { to: string }) => route.to.startsWith(first.id + ':'))!
+  board.connections.push({ id: 'edge_parallel', from: feed.from, to: `${sibling.id}:${first.inputs[0].id}` })
+  await page.route('**/api/missions/scouting', route => route.fulfill({ json: { success: true, data: { mission: board } }, headers: { ETag: 'fanout' } }))
+  await page.goto('/?mission=scouting')
+  await page.getByRole('radio', { name: 'Flow', exact: true }).click()
+  for (const id of [first.id, sibling.id]) {
+    const row = page.getByTestId(`flow-step-${id}`)
+    await expect(row.locator('.flow-number')).toHaveText('1 ∥')
+    await expect(row).toContainText('Parallel with')
+  }
+})
