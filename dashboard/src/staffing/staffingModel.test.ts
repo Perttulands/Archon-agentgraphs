@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { catalog, roles } from '../test/staffingCatalog'
 import {
   allEfforts, applyParsed, captionText, clampEffort, effortRefusal, effortsFor, freshStaffing, offCatalog, parseWords,
-  rolesOf, staffingOf, suggestEffort, withEffort, withHarness, withModel, withRole,
+  retiredRolesOf, roleName, roleTrouble, rolesOf, staffingOf, suggestEffort, withEffort, withHarness, withModel, withRole,
   type Staffing,
 } from './staffingModel'
 
@@ -103,6 +103,18 @@ describe('a role landing on a slot', () => {
     expect(suggestEffort(catalog, role('', 'Builder'), '')?.effort).toBe('medium')
     expect(suggestEffort(catalog, undefined, 'Final review')).toEqual({ effort: 'xhigh', reason: 'the step “Final review” reads as architecture and review' })
     expect(suggestEffort(catalog, undefined, 'New formation')).toBeNull()
+  })
+})
+
+describe('a role a slot names', () => {
+  it('is named and flagged when it is retired or gone', () => {
+    const withRetired = { ...catalog, retired: [{ id: 'old', name: 'Old Critic', kind: 'reviewer', summary: '' }] }
+    expect(roleTrouble(withRetired, 'critic-judge')).toBeNull()
+    expect(roleTrouble(withRetired, '')).toBeNull()
+    expect(roleTrouble(withRetired, 'old')).toBe('retired')
+    expect(roleTrouble(withRetired, 'ghost')).toBe('missing')
+    expect(roleName(withRetired, 'old')).toBe('Old Critic')
+    expect(retiredRolesOf([{ id: 'old', displayName: 'Old Critic', kind: 'reviewer', assignable: false }, { id: 'live', assignable: true }, { id: 'tmux', assignable: false, unbound: true }]).map(role => role.id)).toEqual(['old'])
   })
 })
 

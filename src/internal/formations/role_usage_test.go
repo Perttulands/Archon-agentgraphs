@@ -80,6 +80,28 @@ func TestDeletePersonaRemovesTheCardAndKeepsBuiltinRoles(t *testing.T) {
 	}
 }
 
+// Retiring a built-in role writes a card for it; bringing it back leaves the
+// role as it ships, with no card.
+func TestBringingBackABuiltinRoleLeavesNoCard(t *testing.T) {
+	store := NewPersonaStore(t.TempDir())
+	for _, retired := range []bool{true, false} {
+		card, err := store.ReadPersona("builder")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if card, err = store.EditPersona("builder", EditPersonaRequest{SetRetired: &retired, ExpectedETag: card.ETag}); err != nil || (card.Status == "retired") != retired || card.Customized != retired {
+			t.Fatalf("retired %v: %+v, %v", retired, card, err)
+		}
+		if _, err := os.Stat(store.PersonaPath("builder")); os.IsNotExist(err) == retired {
+			t.Fatalf("retired %v: card file stat = %v", retired, err)
+		}
+	}
+	builtin, _ := builtinPresetPersona("builder")
+	if card, err := store.ReadPersona("builder"); err != nil || card.ETag != builtin.ETag || card.Customized {
+		t.Fatalf("builder after bringing it back = %+v, %v", card, err)
+	}
+}
+
 // Retiring a role keeps it readable and stops it staffing a run until it is
 // brought back; validation and admission name the slot and the role.
 func TestARetiredRoleStopsItsSlotsUntilBroughtBack(t *testing.T) {

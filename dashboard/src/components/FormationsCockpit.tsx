@@ -75,7 +75,7 @@ import type { Part } from '../staffing/SlotFace'
 import { StaffingKeyHint, StaffingLayer } from '../staffing/StaffingLayer'
 import { PAN_MS, type StaffingStage } from '../staffing/staffingPlacement'
 import { dropRole, moveStaffing, previewRole, staff, type StaffingHost } from '../staffing/staffingActions'
-import { captionText, roleName, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing, type StaffingCatalog } from '../staffing/staffingModel'
+import { captionText, retiredRolesOf, roleName, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing, type StaffingCatalog } from '../staffing/staffingModel'
 import { StaffingStore, slotKey, type SlotRef } from '../staffing/staffingStore'
 import { buildFlow } from '../flow/flowModel'
 import CanvasLegend from './CanvasLegend'
@@ -2605,7 +2605,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }
 
   const rosterAgents = useMemo(() => agents.filter(agent => agent.assignable && !agent.unbound), [agents])
-  const staffingCatalog = useMemo<StaffingCatalog>(() => ({ ...staffingTerms, roles: rolesOf(agents) }), [agents, staffingTerms])
+  const staffingCatalog = useMemo<StaffingCatalog>(() => ({ ...staffingTerms, roles: rolesOf(agents), retired: retiredRolesOf(agents) }), [agents, staffingTerms])
   const staffingHost = useMemo<StaffingHost>(() => ({ catalog: staffingCatalog, save: saveStaffing, move: moveStaffingOp }), [moveStaffingOp, saveStaffing, staffingCatalog])
   // The staffing sentence drops from its slot in the canvas; where the room below is short the canvas pans by
   // exactly what is missing, quickly, before the sentence fades in.

@@ -369,6 +369,17 @@ func (s *PersonaStore) EditPersona(id string, req EditPersonaRequest) (*PersonaC
 				Text:      req.Note,
 			})
 		}
+		// An edit that leaves a built-in role as it ships, such as bringing back
+		// one that was retired, keeps no card of its own.
+		if builtin, ok := builtinPresetPersona(id); ok && next == builtin.TOML {
+			if !preset {
+				if err := s.removePersonaFile(id); err != nil {
+					return err
+				}
+			}
+			updated = builtin
+			return nil
+		}
 		if err := s.writePersonaAtomic(id, []byte(next)); err != nil {
 			return err
 		}

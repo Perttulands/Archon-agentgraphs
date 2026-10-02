@@ -7,8 +7,17 @@ import type { FormationSlot } from '../components/formationsTypes'
 import { staffingSentence } from '../nodeWindow/staffing'
 import { SlotCaption, SlotFace, type Part } from './SlotFace'
 import { setEffort, takeOffer, type StaffingHost } from './staffingActions'
-import { allEfforts, offCatalog, roleName, type Staffing } from './staffingModel'
+import { allEfforts, offCatalog, roleName, roleTrouble, type Staffing } from './staffingModel'
 import { useStaffingVersion, type SlotRef, type StaffingStore } from './staffingStore'
+
+/** A slot whose role is retired or gone does not run until it has another role or none. */
+export function RoleTrouble({ role, trouble }: { role: string; trouble: 'retired' | 'missing' }) {
+  return (
+    <span className="slot-warn" title={`${role} is ${trouble === 'retired' ? 'retired' : 'no longer a role'}: this slot does not run until it has another role or none.`}>
+      {trouble === 'retired' ? 'role retired' : 'role missing'}
+    </span>
+  )
+}
 
 export function CanvasSlot({ store, host, slotRef, slot, saved, badge, classes, onGrab, onMenu }: {
   store: StaffingStore
@@ -72,6 +81,7 @@ export function CanvasSlot({ store, host, slotRef, slot, saved, badge, classes, 
       <SlotFace label={slot.label} badge={badge} staffing={shown} landed={store.landed(key)} note={note}
         marks={<>
           {shown && offCatalog(host.catalog, shown) ? <span className="slot-warn" title={`${shown.model}: not in the catalog; the harness decides.`}>model not in catalog</span> : null}
+          {shown && roleTrouble(host.catalog, shown.role) ? <RoleTrouble role={names(shown.role)} trouble={roleTrouble(host.catalog, shown.role)!} /> : null}
           {offer && current ? (
             <button
               type="button"

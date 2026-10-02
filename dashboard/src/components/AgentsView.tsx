@@ -30,9 +30,10 @@ import {
 import { slotStaffed, slotTitle, staffingSentence } from '../nodeWindow/staffing'
 import { harnessName } from './harnessIcons'
 import { SlotCaption, SlotFace, type Part } from '../staffing/SlotFace'
+import { RoleTrouble } from '../staffing/CanvasSlot'
 import { StaffingLayer } from '../staffing/StaffingLayer'
 import { staff, type StaffingHost } from '../staffing/staffingActions'
-import { captionText, modelWords, offCatalog, roleNamer, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing } from '../staffing/staffingModel'
+import { captionText, modelWords, offCatalog, retiredRolesOf, roleName as catalogRoleName, roleNamer, roleTrouble, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing } from '../staffing/staffingModel'
 import { StaffingStore, slotKey, useStaffingVersion, type SlotRef } from '../staffing/staffingStore'
 import { GateKindChips } from './GateEditorDialog'
 import PersonaEditorDialog from './PersonaEditorDialog'
@@ -549,7 +550,7 @@ export default function AgentsView() {
     }
   }, [loadAgents, savedOf])
   const staffingHost = useMemo<StaffingHost>(() => ({
-    catalog: { harnesses, policy: effortPolicy, roles: rolesOf(agents as FormationAgentProjection[]) },
+    catalog: { harnesses, policy: effortPolicy, roles: rolesOf(agents as FormationAgentProjection[]), retired: retiredRolesOf(agents as FormationAgentProjection[]) },
     save: saveStaffing,
   }), [agents, effortPolicy, harnesses, saveStaffing])
   const slotRefOf = (formation: FormationNode, slot: FormationSlot): SlotRef => ({
@@ -1028,7 +1029,7 @@ function StaffingSeat({
   const key = slotKey(formation.id, slot.id)
   const saved = staffingOf(slot)
   const staffing = store.shown(key, saved)
-  const roleName = (id: string) => host.catalog.roles.find(role => role.id === id)?.name || id
+  const roleName = (id: string) => catalogRoleName(host.catalog, id)
   const classes = [
     'slot',
     staffing ? 'filled' : 'empty',
@@ -1048,7 +1049,10 @@ function StaffingSeat({
       onClick={() => onClick(formation, slot)}
     >
       <SlotFace label={slot.label} badge={badge} staffing={staffing} landed={store.landed(key)} note={store.stamp?.key === key ? store.stamp : null}
-        marks={staffing && offCatalog(host.catalog, staffing) ? <span className="slot-warn">model not in catalog</span> : null}
+        marks={staffing ? <>
+          {offCatalog(host.catalog, staffing) ? <span className="slot-warn">model not in catalog</span> : null}
+          {roleTrouble(host.catalog, staffing.role) ? <RoleTrouble role={roleName(staffing.role)} trouble={roleTrouble(host.catalog, staffing.role)!} /> : null}
+        </> : null}
         caption={<SlotCaption shown={staffing} saved={store.current(key, saved)} drafting={store.drafting(key)} landed={store.landed(key)} roleName={roleName} />} />
     </button>
   )

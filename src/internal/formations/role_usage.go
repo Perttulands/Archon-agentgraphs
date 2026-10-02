@@ -106,17 +106,22 @@ func (s *PersonaStore) DeletePersona(id, expectedETag string) (builtin bool, err
 		if expectedETag != etag(raw) {
 			return ErrConflict
 		}
-		directory, err := s.openPersonaDirectory(false)
-		if err != nil {
-			return err
-		}
-		defer directory.Close()
-		if err := syscall.Unlinkat(int(directory.Fd()), id+".toml"); err != nil {
-			return err
-		}
-		// The lock is held through its open descriptor; its name goes with the card.
-		_ = syscall.Unlinkat(int(directory.Fd()), id+".toml.lock")
-		return directory.Sync()
+		return s.removePersonaFile(id)
 	})
 	return builtin, err
+}
+
+// removePersonaFile unlinks a role's card and its lock; the caller holds the
+// lock through its open descriptor.
+func (s *PersonaStore) removePersonaFile(id string) error {
+	directory, err := s.openPersonaDirectory(false)
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	if err := syscall.Unlinkat(int(directory.Fd()), id+".toml"); err != nil {
+		return err
+	}
+	_ = syscall.Unlinkat(int(directory.Fd()), id+".toml.lock")
+	return directory.Sync()
 }

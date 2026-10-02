@@ -26,6 +26,8 @@ export interface RoleEntry {
 export interface StaffingCatalog {
   harnesses: LaunchableHarness[]
   roles: RoleEntry[]
+  /** Roles that exist but are retired: never offered, still named on the slots that use them. */
+  retired?: RoleEntry[]
   policy: EffortPolicyEntry[]
 }
 
@@ -39,6 +41,19 @@ export function rolesOf(agents: AgentProjection[]): RoleEntry[] {
     .filter(agent => agent.assignable && !agent.unbound)
     .map(agent => ({ id: agent.id, name: agent.displayName || agent.id, kind: agent.kind || '', summary: agent.summary || '' }))
     .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** The retired roles of a roster, which slots may still name. */
+export function retiredRolesOf(agents: AgentProjection[]): RoleEntry[] {
+  return agents
+    .filter(agent => !agent.assignable && !agent.unbound)
+    .map(agent => ({ id: agent.id, name: agent.displayName || agent.id, kind: agent.kind || '', summary: agent.summary || '' }))
+}
+
+/** Why a slot's role cannot run: retired, or gone from the roster. */
+export function roleTrouble(catalog: Pick<StaffingCatalog, 'roles' | 'retired'>, role: string): 'retired' | 'missing' | null {
+  if (!role || catalog.roles.some(entry => entry.id === role)) return null
+  return catalog.retired?.some(entry => entry.id === role) ? 'retired' : 'missing'
 }
 
 /** A role's name as the roster gives it, else its id. */
@@ -73,9 +88,9 @@ export function captionText(staffing: Staffing): string {
   return `${harnessName(staffing.harness) || staffing.harness || 'no harness'} · ${modelWords(staffing.model)} · ${staffing.effort || 'no effort'}`
 }
 
-export function roleName(catalog: Pick<StaffingCatalog, 'roles'>, role: string): string {
+export function roleName(catalog: Pick<StaffingCatalog, 'roles' | 'retired'>, role: string): string {
   if (!role) return 'vanilla'
-  return catalog.roles.find(entry => entry.id === role)?.name || role
+  return catalog.roles.find(entry => entry.id === role)?.name || catalog.retired?.find(entry => entry.id === role)?.name || role
 }
 
 // ---------- the catalog ----------

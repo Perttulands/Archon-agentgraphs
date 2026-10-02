@@ -69,6 +69,8 @@ test('a role\'s usage is shown before Retire and Delete, and a use opens its slo
   await expect(used.getByRole('button', { name: 'Bring back' })).toBeVisible()
   expect(fixture.patches.at(-1)).toEqual({ retire: true })
   await expect(agents.locator('.ragent', { hasText: 'Brief critic' })).toContainText('retired')
+  // The slot it staffs says why it will not run.
+  await expect(agents.getByTestId('agents-slot-judge-judge_seat').locator('.slot-warn')).toHaveText('role retired')
   await used.getByRole('button', { name: 'Bring back' }).click()
   await expect(used.getByRole('button', { name: 'Retire' })).toBeVisible()
   expect(fixture.patches.at(-1)).toEqual({ retire: false })
