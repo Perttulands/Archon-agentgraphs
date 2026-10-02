@@ -12,7 +12,7 @@
 .floating-frame-handle:hover,
 .floating-frame-handle:focus-visible,
 .floating-frame-handle.dragging {
-  background-color: var(--text-dim);
+  background-color: var(--text-secondary);
 }
 
 .floating-frame-handle[data-handle='n'],

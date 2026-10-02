@@ -10,7 +10,7 @@
 .fmx .note-author{border-radius:3px;padding:0 6px;font:700 11px/1.6 var(--font-mono);letter-spacing:.06em;text-transform:uppercase;}
 .fmx .note-author.note-author-human{background:#6b5412;color:#fff3cc;}
 .fmx .note-author.note-author-agent{background:#244a6e;color:#e6f2fc;}
-.fmx .note-time{font:10.5px var(--font-mono);color:var(--ink2);flex:1;min-width:0;}
+.fmx .note-time{font:11px var(--font-mono);color:var(--ink2);flex:1;min-width:0;}
 .fmx .note-entry-actions{display:flex;gap:4px;}
 .fmx .note-entry-actions button{border:0;background:transparent;color:var(--ink2);padding:0 3px;font:11px var(--font-mono);cursor:pointer;}
 .fmx .note-entry-actions button:hover:not(:disabled){color:var(--terra);}
@@ -57,6 +57,6 @@
 
 /* The notes switch and the board notes button in the top bar. */
 .fmx .notes-switch{display:flex;border:1px solid var(--line);border-radius:3px;overflow:hidden;}
-.fmx .notes-switch button{border:0;border-right:1px solid var(--line);background:transparent;color:var(--ink2);padding:6px 9px;font:700 10px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;cursor:pointer;}
+.fmx .notes-switch button{border:0;border-right:1px solid var(--line);background:transparent;color:var(--ink2);padding:6px 9px;font:700 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;cursor:pointer;}
 .fmx .notes-switch button:last-child{border-right:0;}
 .fmx .notes-switch button.on{background:color-mix(in srgb,#d2a927 28%,transparent);color:var(--ink);}

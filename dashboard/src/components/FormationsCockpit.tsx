@@ -3202,7 +3202,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   className={`wire-label ${path.kind}${path.loop ? ' loop' : ''}`}
                   data-testid={`wire-label-${path.id}`}
                   x={path.label.x}
-                  y={path.label.y}
+                  y={path.label.y - 8}
                   textAnchor={path.label.anchor}
                 >{path.label.text}</text>
               ) : null)}

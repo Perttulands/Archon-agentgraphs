@@ -10,7 +10,7 @@
 .fmx .formation.blocked:not(.needs-you),.fmx .formation.failed:not(.needs-you),
 .fmx .gatecard.blocked:not(.needs-you),.fmx .gatecard.failed:not(.needs-you),
 .fmx .missioncard.blocked,.fmx .missioncard.failed{border-color:var(--terra-d);box-shadow:0 0 0 1.5px var(--terra-d),0 0 16px -6px color-mix(in srgb,var(--terra-d) 55%,transparent);}
-.fmx .run-chip{position:absolute;z-index:12;right:38px;top:-9px;padding:1px 7px;border:1px solid var(--terra-d);border-radius:3px;background:var(--card);color:var(--terra-d);font:700 8.5px/1.5 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;pointer-events:none;}
+.fmx .run-chip{position:absolute;z-index:12;right:38px;top:-9px;padding:1px 7px;border:1px solid var(--terra-d);border-radius:3px;background:var(--card);color:var(--terra-d);font:700 11px/1.5 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;pointer-events:none;}
 
 .fmx .formation.located,.fmx .missioncard.located,.fmx .gatecard.located{animation:run-located 1.6s ease-out;}
 @keyframes run-located{0%,45%{outline:2px solid var(--terra);outline-offset:7px;}100%{outline:2px solid transparent;outline-offset:2px;}}

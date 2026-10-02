@@ -59,7 +59,7 @@
 .agx .missioncard .mstatus.is-open { color:var(--gold); }
 .agx .gatecard { padding-right:14px; }
 .agx .gmeta .gt,.agx .gmeta .gs { max-width:none; }
-.agx-branches { display:flex; flex-wrap:wrap; gap:3px 10px; margin-top:5px; font-size:9px; letter-spacing:.08em; text-transform:uppercase; }
+.agx-branches { display:flex; flex-wrap:wrap; gap:3px 10px; margin-top:5px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
 .agx-branches .pass { color:var(--sage); }
 .agx-branches .fail { color:var(--terra-d); }
 .agx-branches .judge { color:var(--gold); }
@@ -76,14 +76,14 @@
 .agx-inspector { width:320px; flex:0 0 auto; min-height:0; display:flex; flex-direction:column; border-left:1px solid var(--line); background:var(--card); }
 .agx-inspector-heading { min-width:0; }
 .agx-inspector .board-notes-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.agx-inspector .note-section h3 { margin:0; font:700 9px/1 var(--font-mono); letter-spacing:.1em; text-transform:uppercase; color:var(--ink2); }
+.agx-inspector .note-section h3 { margin:0; font:700 11px/1 var(--font-mono); letter-spacing:.1em; text-transform:uppercase; color:var(--ink2); }
 .agx-inspector .note-section textarea { min-height:84px; }
 .agx-inspector .note-empty { margin:0; }
 .agx-inspector .board-dialog-actions,.agx-inspector .pop-actions { margin-top:2px; }
 .agx-identity { display:flex; align-items:center; gap:8px; }
 .agx-summary { margin:0; color:var(--ink2); font-size:11px; line-height:1.5; }
 .agx-tags { display:flex; flex-wrap:wrap; gap:5px; }
-.agx-tags span { border:1px solid var(--line); border-radius:4px; padding:1px 6px; color:var(--dim); font-size:9.5px; }
+.agx-tags span { border:1px solid var(--line); border-radius:4px; padding:1px 6px; color:var(--dim); font-size:11px; }
 .agx-candidates { display:grid; gap:5px; }
 .agx-candidate {
   display:flex; align-items:center; gap:8px; width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:4px;
@@ -93,16 +93,16 @@
 .agx-candidate:disabled { opacity:.5; cursor:not-allowed; }
 .agx-identity .ri,.agx-candidate .ri { min-width:0; flex:1; }
 .agx-identity .ri .n,.agx-candidate .ri .n { overflow:hidden; color:var(--ink); font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
-.agx-identity .ri .r,.agx-candidate .ri .r { margin-top:2px; color:var(--dim); font-size:9px; letter-spacing:.08em; text-transform:uppercase; }
+.agx-identity .ri .r,.agx-candidate .ri .r { margin-top:2px; color:var(--dim); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
 
 /* ===== RUN BANNER + CREATE POPOVER ===== */
 .agx .run-banner { position:sticky; top:0; flex-wrap:wrap; margin:0 0 14px; border:1px solid var(--line); border-radius:4px; }
 /* Read-only run state: the link is the only action and it opens Boards. */
 .agx .run-banner .badge.waiting_human { color:var(--gold); background:color-mix(in srgb,var(--gold) 16%,transparent); }
-.agx .agx-run-label { color:var(--dim); text-transform:uppercase; letter-spacing:.08em; font-size:10px; }
+.agx .agx-run-label { color:var(--dim); text-transform:uppercase; letter-spacing:.08em; font-size:11px; }
 .agx .agx-run-none, .agx .agx-run-id { color:var(--dim); }
 .agx .agx-run-reason { max-width:min(520px, 100%); overflow:hidden; text-overflow:ellipsis; color:var(--gold); }
-.agx .agx-run-link { margin-left:auto; border:1px solid var(--line); border-radius:5px; padding:5px 10px; background:var(--paper2); color:var(--ink2); font-size:10px; letter-spacing:.06em; text-decoration:none; text-transform:uppercase; }
+.agx .agx-run-link { margin-left:auto; border:1px solid var(--line); border-radius:5px; padding:5px 10px; background:var(--paper2); color:var(--ink2); font-size:11px; letter-spacing:.06em; text-decoration:none; text-transform:uppercase; }
 .agx .agx-run-link:hover { border-color:var(--terra); color:var(--terra); }
 .agx .agx-identity .board-action { margin-left:auto; flex-shrink:0; }
 .agx .agx-role-slot { align-items:baseline; flex-wrap:wrap; }

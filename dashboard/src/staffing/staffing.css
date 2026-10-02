@@ -30,12 +30,12 @@
 @keyframes staffing-pop{0%{opacity:0;transform:scale(.98)}100%{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.staffing-window{animation:none;}}
 .staffing-sent{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 5px;padding:10px 12px 8px;font-size:13.5px;}
-.staffing-lead,.staffing-sep{color:var(--text-dim);}
+.staffing-lead,.staffing-sep{color:var(--text-secondary);}
 /* "on Claude Code · opus · xhigh" wraps as one group; only the model gives way. */
 .staffing-settings{display:inline-flex;align-items:baseline;gap:5px;min-width:0;max-width:100%;white-space:nowrap;}
 .staffing-settings .staffing-token[data-token="model"]{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .staffing-settings .staffing-token[data-token="harness"],.staffing-settings .staffing-token[data-token="effort"]{flex:none;}
-.staffing-token,.staffing-first{font:13.5px var(--font-mono);color:var(--text-primary);background:transparent;border:0;border-bottom:1.5px dashed var(--text-dim);padding:1px 2px;cursor:pointer;border-radius:2px 2px 0 0;}
+.staffing-token,.staffing-first{font:13.5px var(--font-mono);color:var(--text-primary);background:transparent;border:0;border-bottom:1.5px dashed var(--text-secondary);padding:1px 2px;cursor:pointer;border-radius:2px 2px 0 0;}
 .staffing-token:hover{border-bottom-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);}
 .staffing-token.open{border-bottom:1.5px solid var(--accent);background:color-mix(in srgb,var(--accent) 20%,transparent);}
 .staffing-token.changed,.staffing-first.changed::placeholder{color:var(--accent);}
@@ -43,7 +43,7 @@
 .staffing-first{outline:none;min-width:0;cursor:text;}
 .staffing-first::placeholder{color:var(--text-primary);opacity:1;}
 .staffing-first:focus{border-bottom:1.5px solid var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);}
-.staffing-first.typing::placeholder{color:var(--text-dim);}
+.staffing-first.typing::placeholder{color:var(--text-secondary);}
 .staffing-read{padding:0 12px 6px;font-size:11px;color:var(--text-secondary);display:flex;flex-wrap:wrap;gap:4px 12px;min-height:16px;}
 .staffing-read-w b{color:var(--text-primary);font-weight:700;}
 .staffing-issue{flex-basis:100%;color:var(--color-error,#f87171);}
@@ -53,26 +53,26 @@
 .staffing-window>.staffing-list-wrap{border-top:1px solid var(--divider);display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
 .staffing-list-wrap>.staffing-listbox{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
 .staffing-listbox>.staffing-list{flex:1 1 auto;}
-.staffing-list-hd{padding:6px 12px 2px;font-size:10px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.staffing-list-hd{padding:6px 12px 2px;font-size:11px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 /* Lists have no padding along their length, so every row starts a whole pitch from the top: they show and scroll only whole rows. */
 .staffing-list{position:relative;padding:0 6px;margin:2px 0 6px;min-height:0;overflow:auto;scrollbar-width:thin;user-select:none;scroll-snap-type:y mandatory;}
 .staffing-list>.staffing-row{scroll-snap-align:start;}
 /* Every row has the same height, so a list's pitch is exact and it shows only whole rows. */
 .staffing-row{display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:10px;box-sizing:border-box;height:22px;padding:0 8px;border-radius:4px;cursor:pointer;font-size:13px;line-height:18px;overflow:hidden;}
 .staffing-row .staffing-row-l{color:var(--text-primary);white-space:nowrap;}
-.staffing-row .staffing-row-h{color:var(--text-dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.staffing-row .staffing-row-h{color:var(--text-secondary);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
 .staffing-row.hi{background:color-mix(in srgb,var(--accent) 18%,transparent);}
 .staffing-row.current .staffing-row-l::before{content:'• ';color:var(--accent);}
 .staffing-row.disabled{cursor:not-allowed;}
-.staffing-row.disabled .staffing-row-l{color:var(--text-dim);text-decoration:line-through;}
+.staffing-row.disabled .staffing-row-l{color:var(--text-secondary);text-decoration:line-through;}
 .staffing-row.disabled .staffing-row-h{color:var(--color-error,#f87171);}
-.staffing-tag{font-size:10px;line-height:14px;padding:0 6px;border-radius:3px;border:1px solid var(--divider);color:var(--text-secondary);}
+.staffing-tag{font-size:11px;line-height:14px;padding:0 6px;border-radius:3px;border:1px solid var(--divider);color:var(--text-secondary);}
 .staffing-tag.sugg{border-color:var(--accent);color:var(--accent);}
 .staffing-tag.warn{border-color:var(--window-orange);color:var(--window-orange);}
 /* The role list is a two-column grid of the whole catalog, every name whole; it scrolls, opening on the current role. */
 .staffing-list.staffing-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 2px;padding:0 4px;}
 .staffing-list.staffing-grid .staffing-row{grid-template-columns:minmax(0,1fr) auto;gap:4px;height:19px;padding:0 4px;font-size:11px;line-height:17px;}
-.staffing-list.staffing-grid .staffing-tag{font-size:9.5px;line-height:15px;padding:0 3px;}
+.staffing-list.staffing-grid .staffing-tag{font-size:11px;line-height:15px;padding:0 3px;}
 .staffing-list.staffing-grid .staffing-row .staffing-row-l{overflow:hidden;text-overflow:ellipsis;}
 /* vanilla sits above the scrolling grid, one click away; the grid scrolls on its own. */
 .staffing-pinned{padding:2px 4px 0;}
@@ -87,7 +87,7 @@
 .staffing-offer{margin-left:8px;font:700 11px var(--font-mono);color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);border:1px solid var(--accent);border-radius:3px;padding:0 6px;line-height:16px;cursor:pointer;}
 .staffing-offer:hover{background:color-mix(in srgb,var(--accent) 28%,transparent);}
 .staffing-note{color:var(--text-primary);}
-.staffing-keys{margin-top:auto;padding:5px 12px 7px;font-size:10px;color:var(--text-dim);border-top:1px solid var(--divider);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.staffing-keys{margin-top:auto;padding:5px 12px 7px;font-size:11px;color:var(--text-secondary);border-top:1px solid var(--divider);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
 /* ---------- a note at a point, where a drop missed ---------- */
 .staffing-stamp{pointer-events:none !important;position:fixed;display:flex;gap:10px;align-items:center;background:var(--surface-secondary);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--divider));border-left:3px solid var(--accent);border-radius:4px;padding:6px 10px;font-size:11.5px;color:var(--text-primary);box-shadow:0 6px 18px rgba(0,0,0,.45);animation:staffing-pop .14s ease-out both;}
@@ -99,6 +99,6 @@
 .fmx-ghost.staffing-ghost.docked{transform:none;}
 
 /* ---------- the sentence in a node window or the Agents inspector ---------- */
-.nslot-word{font:inherit;color:var(--text-primary);background:transparent;border:0;border-bottom:1.5px dashed var(--text-dim);padding:0 2px;cursor:pointer;border-radius:2px 2px 0 0;}
+.nslot-word{font:inherit;color:var(--text-primary);background:transparent;border:0;border-bottom:1.5px dashed var(--text-secondary);padding:0 2px;cursor:pointer;border-radius:2px 2px 0 0;}
 .nslot-word:hover,.nslot-word:focus-visible{border-bottom-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);outline:none;}
 .nslot-word.effort{font-weight:700;}

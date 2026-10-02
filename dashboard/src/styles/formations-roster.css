@@ -4,8 +4,8 @@
 .fmx .board-roster-filter-input{display:flex;align-items:center;gap:4px;}
 .fmx .board-roster-filter input{width:100%;min-width:0;border:1px solid var(--line);border-radius:4px;background:var(--paper2);color:var(--ink);padding:7px 8px;font:11px var(--font-mono);}
 .fmx .board-roster-filter input:focus{outline:1px solid var(--terra);}
-.fmx .board-roster-filter button{border:0;background:transparent;color:var(--ink2);font:10px var(--font-mono);cursor:pointer;padding:4px;}
-.fmx .board-roster-filter p{margin:6px 0 0;color:var(--ink2);font:10px var(--font-mono);}
+.fmx .board-roster-filter button{border:0;background:transparent;color:var(--ink2);font:11px var(--font-mono);cursor:pointer;padding:4px;}
+.fmx .board-roster-filter p{margin:6px 0 0;color:var(--ink2);font:11px var(--font-mono);}
 .fmx .roster.collapsed .board-roster-filter{display:none;}
 .fmx .roster-toggle{flex:0 0 auto;width:24px;height:24px;border:1px solid var(--line);border-radius:4px;background:var(--paper2);color:var(--ink2);font:700 13px/1 var(--font-mono);cursor:pointer;}
 .fmx .roster-toggle:hover{border-color:var(--terra);color:var(--terra);}
@@ -32,15 +32,15 @@
 /* A role opened from the rail (RoleWindow): its role text and the slots it staffs. */
 .role-window-body{display:flex;flex-direction:column;gap:10px;padding:12px 14px;font:12px/1.5 var(--font-mono);color:var(--text-primary);overflow:auto;}
 .role-window-body p{margin:0;}
-.role-window-kind{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);}
-.role-window-summary.placeholder,.role-window-none{color:var(--text-dim);}
+.role-window-kind{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-secondary);}
+.role-window-summary.placeholder,.role-window-none{color:var(--text-secondary);}
 .role-window-tags{color:var(--text-secondary);font-size:11px;}
-.role-window-body h3{margin:0 0 4px;font:700 9px/1 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text-secondary);}
+.role-window-body h3{margin:0 0 4px;font:700 11px/1 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text-secondary);}
 .role-window-uses{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;}
 .role-window-uses li{display:flex;flex-direction:column;}
 .role-window-open{padding:0;border:0;background:transparent;color:var(--text-primary);font:inherit;text-align:left;cursor:pointer;text-decoration:underline;text-decoration-color:var(--divider);text-underline-offset:3px;}
 .role-window-open:hover{color:var(--accent);text-decoration-color:var(--accent);}
 .role-window-runs{color:var(--text-secondary);font-size:11px;}
 .role-window-actions{display:flex;justify-content:flex-end;}
-.role-window-edit{border:1px solid var(--divider);background:transparent;color:var(--text-secondary);font:10px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 9px;border-radius:3px;cursor:pointer;}
+.role-window-edit{border:1px solid var(--divider);background:transparent;color:var(--text-secondary);font:11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 9px;border-radius:3px;cursor:pointer;}
 .role-window-edit:hover{color:var(--text-primary);border-color:var(--accent);}
