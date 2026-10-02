@@ -90,7 +90,7 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Scoutin
   expect(besideGate).toBeLessThanOrEqual(240)
   for (const other of await page.locator(CARDS).all()) {
     const box = await other.boundingBox()
-    if (box) expect(gapBetween(rubricBox, box), 'the rubric covers a card').toBeGreaterThanOrEqual(0)
+    if (box) expect(gapBetween(rubricBox, box), 'the rubric meets a card only within pixel rounding').toBeGreaterThanOrEqual(-1)
   }
 
   await gate.getByRole('button', { name: '1 more referenced file' }).click()

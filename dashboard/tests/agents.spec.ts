@@ -173,7 +173,6 @@ test('the Agents view follows a mission changed elsewhere and staffs on its curr
   await expect(build.getByTestId('slot-caption')).toHaveAttribute('data-staffing', '')
   await expect(agents.locator('.rev')).toHaveText(`rev ${delivery.rev}`)
   // The next action starts from that revision and succeeds.
-  await agents.getByRole('dialog', { name: 'Inspector' }).getByRole('button', { name: 'Close Inspector', exact: true }).click()
   await build.click()
   await agents.getByRole('dialog', { name: 'Inspector' }).getByRole('button', { name: 'Staff Build' }).click()
   await page.keyboard.press('Enter')
