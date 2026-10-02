@@ -719,8 +719,8 @@ when it started, how long it took or has run, the start of its first text
 input, and its driver. Choosing one shows it, and a finished run shown can be
 put away. The run bar says when the shown run started, how long it took and who
 drives it; a run waiting at a gate says since when; and a run that ran an
-earlier revision of the mission says so and opens the mission as it ran in a
-file window. Every run that needs the operator, waiting at a human gate or
+earlier revision draws its frozen graph and run states on Canvas and Flow,
+read only. Edit current mission returns to the current revision for authoring. Every run that needs the operator, waiting at a human gate or
 blocked, is counted (archon-n7u.29): on the mission picker beside each
 mission ("Scouting · 2 need you"), and in the page title for all missions
 ("(3) Scouting · Archon"). When another run of any mission needs the operator,
@@ -1610,6 +1610,13 @@ sanitized ledger projection. The same trusted-network access boundary applies.
 
 ### Run evidence
 
+Absolute paths in terminals, file text, briefs, outputs and notes open read-only
+file windows beside their source. Bead IDs copy on click (tooltip: "Bead ID,
+copied on click"); Archon has no Beads catalog or card API. File and folder
+inputs in the start dialog may browse the agent host through
+`GET /api/files/directory?path=<absolute-directory>` or accept a typed path.
+
+
 [ADR-0017](adr/0017-run-evidence-api.md) records this API. Every route is a
 `GET` for one run; an unknown run returns 404. Served text is an object
 `{text,bytes,truncated}`: `bytes` is the full size, `truncated` marks a cut on
@@ -1659,7 +1666,8 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   daemon host), with `text` capped at 256 KiB for textual kinds. A `.pdf` file
   that starts with `%PDF-` is `pdf`.
 - `/api/runs/{runId}/evidence/mission` returns `data.mission`
-  (`missionRev`, `text` capped at 256 KiB): the mission's TOML as the run froze
+  (`missionRev`, `graph`, `text` capped at 256 KiB): the structured graph and
+  mission's TOML as the run froze
   it at admission, which later edits never change.
 - `/api/runs/{runId}/artifacts/{name...}` returns the artifact's bytes
   up to 16 MiB; larger files return 413. Text is `text/plain; charset=utf-8`
