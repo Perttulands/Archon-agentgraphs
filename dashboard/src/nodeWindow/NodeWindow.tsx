@@ -1,3 +1,5 @@
+import { NodeProblems } from '../components/formationsDrafts'
+import type { BoardFinding } from '../components/formationsTypes'
 import { useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { formationTypeChoices } from '../components/FormationTypeChip'
 import { END_OUTCOMES, defaultEndTitle, endOutcomeMeaning } from '../components/endNode'
@@ -118,8 +120,9 @@ export function nodeWindowLabel(located: Located): string {
   return `${KIND_WORD[located.kind]} · ${located.node.title || UNTITLED[located.kind]}`
 }
 
-export default function NodeWindow({ nodeId, board, agents, profiles, noteCount, anchor, runState, limitWarnings = [], onClose, ops }: {
+export default function NodeWindow({ nodeId, board, agents, profiles, noteCount, findings, anchor, runState, limitWarnings = [], onClose, ops }: {
   nodeId: string
+  findings?: BoardFinding[]
   /** What the window opens beside; without it, the node's Flow row or card. */
   anchor?: WindowRect
   board: BoardDocument
@@ -161,6 +164,7 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
     >
       <div className="nwin" data-testid={`node-window-${nodeId}`}>
         <div className="nwin-eyebrow">{eyebrow}</div>
+        <NodeProblems findings={findings} />
         <EditableField label="Title" value={located.node.title} placeholder={UNTITLED[located.kind]} onSave={title => ops.rename(nodeId, title)} />
         {located.kind === 'inputCard' ? <MissionFields mission={located.node} ops={ops} /> : null}
         {located.kind === 'formation' ? <FormationFields formation={located.node} agents={agents} ops={ops} /> : null}

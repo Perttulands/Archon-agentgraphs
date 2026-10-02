@@ -3143,7 +3143,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             <Suspense fallback={null}>
               <FlowView board={board} agents={agents} notes={noteByNode} run={flowRun}
                 answerPanel={pendingHumanGate && answerPanel ? { gateId: pendingHumanGate.gateId, panel: answerPanel } : null}
-                onOpenNode={openNodeWindow} onOpenNotes={openNoteWindow} onStartMission={setStartMission} />
+                findings={draftFindings} onOpenNode={openNodeWindow} onOpenNotes={openNoteWindow} onStartMission={setStartMission} />
             </Suspense>
           ) : null}
           <div className="world" data-testid="formations-world" ref={worldRef} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
@@ -3368,7 +3368,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                     onPointerDown={event => beginJudgeDrag(event, gate)}
                   />
                   <span className="gico" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{GATE_SVG}</span>
-                  <span className="gmeta" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{renderNodeTitle(gate.title, 'gt', 'Gate', 'span')}<GateKindChips gateId={gate.id} kinds={gate.kinds} /><span className={`gs${gate.criterion ? '' : ' placeholder'}`}>{gate.criterion || 'work is accepted before it proceeds'}</span><ReferencedFiles nodeId={gate.id} files={nodeFileRefs(board, gate.id)} max={1} onMore={openReferencedFilesMenu} className="card-refs" /></span>
+                  <span className="gmeta" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{renderNodeTitle(gate.title, 'gt', 'Gate', 'span')}<GateKindChips gateId={gate.id} kinds={gate.kinds} /><span className={`gs${gate.criterion ? '' : ' placeholder'}`}>{gate.criterion || 'No criterion yet.'}</span><ReferencedFiles nodeId={gate.id} files={nodeFileRefs(board, gate.id)} max={1} onMore={openReferencedFilesMenu} className="card-refs" /></span>
                   {nodeStates.has(gate.id) ? (
                     <button
                       type="button"
@@ -3636,7 +3636,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         }) : null}
         {board ? nodeWindows.map(nodeId => (
           <Suspense key={`node-${nodeId}`} fallback={null}>
-            <NodeWindow nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps} noteCount={noteByNode.get(nodeId)?.length || 0}
+            <NodeWindow findings={draftFindings.get(nodeId)} nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps} noteCount={noteByNode.get(nodeId)?.length || 0}
               anchor={nodeWindowAnchors.current.get(nodeId)}
               runState={nodeStates.has(nodeId) ? nodeStates.get(nodeId) || '' : undefined}
               limitWarnings={runEvents.filter(event => event.type === 'limit_warning' && event.nodeId === nodeId)}

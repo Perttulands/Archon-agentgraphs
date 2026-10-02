@@ -11,3 +11,9 @@
 .fmx .admission-findings li{display:flex;gap:9px;align-items:baseline;line-height:1.4;overflow-wrap:anywhere;}
 .fmx .admission-findings-where{flex-shrink:0;color:var(--ink);font-weight:700;}
 @media (max-width:760px){.fmx .admission-findings{left:10px;right:10px;max-width:none;}}
+
+.fmx .draft-marker{position:static;display:block;margin:8px 10px;padding:6px 8px;font-size:11px;letter-spacing:normal;text-transform:none;color:var(--ink2);opacity:1;cursor:default;}
+.fmx .draft-marker ul,.fmx .node-problems ul{margin:4px 0 0;padding-left:16px;overflow-wrap:anywhere;}
+.fmx .gatecard:has(.draft-marker){flex-wrap:wrap;}
+.fmx .gatecard>.draft-marker{flex-basis:100%;order:99;margin:4px 0 0;}
+.fmx .node-problems{font-size:11px;line-height:1.5;color:var(--ink2);border-left:2px solid var(--gold);padding:6px 10px;}

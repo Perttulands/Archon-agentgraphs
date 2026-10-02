@@ -47,15 +47,13 @@ export function DraftMarker({ nodeId, findings, blocked }: { nodeId: string; fin
   // A connection finding shown on its endpoint keeps its own reference.
   const summary = findings.map(finding => finding.nodeId === nodeId ? findingText(finding) : finding.message).join('\n')
   return (
-    <span
-      className={`draft-marker${blocked ? ' blocked' : ''}`}
-      data-testid={`draft-marker-${nodeId}`}
-      role="note"
-      aria-label={blocked ? `Run needs: ${summary}` : `Draft: ${summary}`}
-      title={summary}
-    >
-      {blocked ? 'needs fix' : 'draft'}
-    </span>
+    <div className={`draft-marker${blocked ? ' blocked' : ''}`} data-testid={`draft-marker-${nodeId}`} role="note"
+      aria-label={blocked ? `Run needs: ${summary}` : `Draft: ${summary}`} title={summary}>
+      <strong>{blocked ? 'Run needs' : 'Draft'}</strong>
+      <ul>{findings.map(finding => <li key={`${finding.code}:${finding.nodeId}:${finding.message}`}>
+        {finding.nodeId === nodeId ? findingText(finding) : finding.message}
+      </li>)}</ul>
+    </div>
   )
 }
 
@@ -85,4 +83,11 @@ export function AdmissionFindingsPanel({ findings, titleOf, onDismiss }: {
       </ul>
     </div>
   )
+}
+
+/** The same admission reasons on Flow rows and node windows. */
+export function NodeProblems({ findings = [] }: { findings?: BoardFinding[] }) {
+  if (!findings.length) return null
+  return <div className="node-problems" role="note"><strong>Run needs</strong><ul>{findings.map(finding =>
+    <li key={`${finding.code}:${finding.nodeId}:${finding.message}`}>{findingText(finding)}</li>)}</ul></div>
 }

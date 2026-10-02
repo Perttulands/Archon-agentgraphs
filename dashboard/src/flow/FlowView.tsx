@@ -1,3 +1,4 @@
+import { NodeProblems, type NodeFindings } from '../components/formationsDrafts'
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { noteAuthor } from '../components/NoteThread'
 import RunPoint from '../components/RunPoint'
@@ -65,7 +66,8 @@ export function controlAnchor(control: Element): WindowRect {
   return { left, top, width, height }
 }
 
-export default function FlowView({ board, agents, notes, run, answerPanel, onOpenNode, onOpenNotes, onStartMission }: {
+export default function FlowView({ board, agents, notes, run, findings = new Map(), answerPanel, onOpenNode, onOpenNotes, onStartMission }: {
+  findings?: NodeFindings
   board: BoardDocument
   agents: AgentProjection[]
   /** Each node's note thread. */
@@ -94,7 +96,7 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
     .map(slot => staffingSentence(slot, roleName))
     .join(' ')
 
-  const context = { board, flow, run, notes, answerPanel, staffing, onOpenNode, onOpenNotes }
+  const context = { board, flow, run, notes, findings, answerPanel, staffing, onOpenNode, onOpenNotes }
   return (
     <div
       ref={root}
@@ -108,6 +110,7 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
         <section key={section.mission?.id || 'unreached'} className="flow-section" aria-label={section.mission ? `Input card ${section.mission.title}` : 'Steps the Input card does not reach'}>
           {section.mission ? (
             <header className="flow-mission" data-flow-node={section.mission.id}>
+              <NodeProblems findings={findings.get(section.mission.id)} />
               <div className="flow-mission-head">
                 <button type="button" className="flow-title" onClick={event => onOpenNode(section.mission!.id, controlAnchor(event.currentTarget))}>
                   <span className="flow-kicker">◆ Input</span> {section.mission.title || 'Input'}
@@ -134,9 +137,10 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
   )
 }
 
-function FlowRow({ board, step, run, notes, answerPanel, staffing, onOpenNode, onOpenNotes }: {
+function FlowRow({ board, step, run, notes, findings, answerPanel, staffing, onOpenNode, onOpenNotes }: {
   board: BoardDocument
   step: FlowStep
+  findings: NodeFindings
   run: FlowRun | null
   notes: ReadonlyMap<string, NoteEntry[]>
   answerPanel: { gateId: string; panel: ReactNode } | null
@@ -154,6 +158,7 @@ function FlowRow({ board, step, run, notes, answerPanel, staffing, onOpenNode, o
           <button type="button" className="flow-title" aria-label={`${step.number} ${title}`} onClick={event => onOpenNode(step.id, controlAnchor(event.currentTarget))}>{title}</button>
           <span className="flow-kind">{step.kind === 'formation' ? step.node.type : step.kind === 'gate' ? 'gate' : 'tool'}</span>
         </div>
+        <NodeProblems findings={findings.get(step.id)} />
         {step.kind === 'formation' ? (
           <>
             <p className="flow-text">{summary(step.node.brief?.goal || '') || <span className="placeholder">No brief yet.</span>}</p>
@@ -165,7 +170,7 @@ function FlowRow({ board, step, run, notes, answerPanel, staffing, onOpenNode, o
         ) : null}
         {step.kind === 'gate' ? (
           <>
-            <p className="flow-line"><span className="flow-label">Decider</span>{deciderWords(step.deciders)}</p>
+            <p className="flow-line"><span className="flow-label">Decider</span>{deciderWords(step.deciders.filter(decider => decider !== 'judge' || step.judges.length > 0))}{step.deciders.includes('judge') && !step.judges.length ? ' · No judge chain wired' : ''}</p>
             <p className="flow-text">{summary(step.node.criterion) || <span className="placeholder">No criterion yet.</span>}</p>
             <Routes label="Pass" targets={step.pass} onOpenNode={onOpenNode} />
             <Routes label="Fail" targets={step.fail} onOpenNode={onOpenNode} />
@@ -178,6 +183,7 @@ function FlowRow({ board, step, run, notes, answerPanel, staffing, onOpenNode, o
                       <span className="flow-kicker">Judge</span> {judge.title || 'Untitled judge'}
                     </button>
                     <p className="flow-line">{staffing(judge)}</p>
+                    <NodeProblems findings={findings.get(judge.id)} />
                     <LimitLines board={board} nodeId={judge.id} onOpenNode={onOpenNode} />
                   </li>
                 ))}

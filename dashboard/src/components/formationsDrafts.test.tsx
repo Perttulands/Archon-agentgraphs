@@ -41,12 +41,13 @@ describe('draft findings', () => {
     expect(findingText({ code: 'custom', nodeId: 'fmn_a', message: 'uses 3 "fmn_a" digits' })).toBe('uses 3 "fmn_a" digits')
   })
 
-  it('renders nothing for a complete node and a quiet tag for a draft', () => {
+  it('renders nothing for a complete node and visible reasons for a draft', () => {
     const { container, rerender } = render(<DraftMarker nodeId="fmn_plan" findings={[]} blocked={false} />)
     expect(container).toBeEmptyDOMElement()
 
     rerender(<DraftMarker nodeId="fmn_plan" findings={[{ code: 'unstaffed_slot', nodeId: 'fmn_plan', message: 'needs an agent' }]} blocked={false} />)
-    expect(screen.getByTestId('draft-marker-fmn_plan')).toHaveTextContent('draft')
+    expect(screen.getByTestId('draft-marker-fmn_plan')).toHaveTextContent('Draft')
     expect(screen.getByRole('note', { name: 'Draft: needs an agent' })).toBeInTheDocument()
+    expect(screen.getByRole('listitem')).toHaveTextContent('needs an agent')
   })
 })
