@@ -2,6 +2,7 @@ package formations
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -218,7 +219,101 @@ func (s *Store) ReadRunMission(runID string) (*RunMissionEvidence, error) {
 	}
 	redacted := redactEvidenceText(board.TOML)
 	text, cut := CapEvidenceText(redacted, EvidenceArtifactPreviewMaxBytes)
-	return &RunMissionEvidence{Graph: board, MissionRev: board.Rev, Text: EvidenceText{Text: text, Bytes: len(redacted), Truncated: cut}}, nil
+	graph, err := projectRunEvidenceGraph(board)
+	if err != nil {
+		return nil, err
+	}
+	return &RunMissionEvidence{Graph: graph, MissionRev: board.Rev, Text: EvidenceText{Text: text, Bytes: len(redacted), Truncated: cut}}, nil
+}
+
+// The graph is display evidence, never the execution snapshot. Redact its
+// authored text without changing IDs or routing, and serve TOML only through
+// the bounded, redacted Text field above.
+func projectRunEvidenceGraph(board *BoardDocument) (*BoardDocument, error) {
+	copy := *board
+	copy.TOML = ""
+	raw, err := json.Marshal(copy)
+	if err != nil {
+		return nil, err
+	}
+	var graph BoardDocument
+	if err := json.Unmarshal(raw, &graph); err != nil {
+		return nil, err
+	}
+	graph.Title = redactEvidenceText(graph.Title)
+	for i := range graph.Missions {
+		node := &graph.Missions[i]
+		node.Title, node.Goal, node.InputHint = redactEvidenceText(node.Title), redactEvidenceText(node.Goal), redactEvidenceText(node.InputHint)
+		redactEvidenceStrings(node.Files)
+		for j := range node.Inputs {
+			node.Inputs[j].Description = redactEvidenceText(node.Inputs[j].Description)
+		}
+	}
+	for i := range graph.Formations {
+		node := &graph.Formations[i]
+		node.Title = redactEvidenceText(node.Title)
+		if node.Brief != nil {
+			node.Brief.Goal = redactEvidenceText(node.Brief.Goal)
+			redactEvidenceStrings(node.Brief.Files)
+			redactEvidenceStrings(node.Brief.Links)
+		}
+		for j := range node.Inputs {
+			node.Inputs[j].Label = redactEvidenceText(node.Inputs[j].Label)
+		}
+		for j := range node.Outputs {
+			node.Outputs[j].Label = redactEvidenceText(node.Outputs[j].Label)
+		}
+		for j := range node.Slots {
+			node.Slots[j].Label = redactEvidenceText(node.Slots[j].Label)
+		}
+	}
+	for i := range graph.Gates {
+		node := &graph.Gates[i]
+		node.Title, node.Criterion, node.CheckValue = redactEvidenceText(node.Title), redactEvidenceText(node.Criterion), redactEvidenceText(node.CheckValue)
+		redactEvidenceStrings(node.Files)
+	}
+	for i := range graph.Tools {
+		node := &graph.Tools[i]
+		node.Title = redactEvidenceText(node.Title)
+		for key, value := range node.Params {
+			node.Params[key] = redactEvidenceValue(value)
+		}
+		for j := range node.Inputs {
+			node.Inputs[j].Label = redactEvidenceText(node.Inputs[j].Label)
+		}
+		for j := range node.Outputs {
+			node.Outputs[j].Label = redactEvidenceText(node.Outputs[j].Label)
+		}
+	}
+	for i := range graph.Ends {
+		graph.Ends[i].Title = redactEvidenceText(graph.Ends[i].Title)
+	}
+	for i := range graph.Limits {
+		graph.Limits[i].Title = redactEvidenceText(graph.Limits[i].Title)
+	}
+	return &graph, nil
+}
+
+func redactEvidenceStrings(values []string) {
+	for i := range values {
+		values[i] = redactEvidenceText(values[i])
+	}
+}
+
+func redactEvidenceValue(value any) any {
+	switch value := value.(type) {
+	case string:
+		return redactEvidenceText(value)
+	case []any:
+		for i := range value {
+			value[i] = redactEvidenceValue(value[i])
+		}
+	case map[string]any:
+		for key, item := range value {
+			value[key] = redactEvidenceValue(item)
+		}
+	}
+	return value
 }
 
 // ReadRunBrief reads the brief file a run's own slot_dispatch event recorded.

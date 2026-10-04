@@ -1,6 +1,37 @@
 import { expect, test } from '@playwright/test'
-import { answerGate, evidenceShot, humanChannelFixture, inputCardId, peers, talkRunFixture } from './human-channel-fixture'
+import { answerGate, evidenceShot, humanChannelFixture, inputCardId, peers, talkRunFixture, talkRunId } from './human-channel-fixture'
 import { settledBox } from './settled'
+
+for (const failure of [409, 500]) test(`an external answer keeps the draft visible after a refused browser submission (${failure})`, async ({ page }) => {
+  const fixture = await talkRunFixture(page)
+  let answered = false
+  const text = (value: string) => ({ text: value, bytes: value.length })
+  await page.route(`**/api/runs/${talkRunId}/events`, route => answered
+    ? route.fulfill({ json: { success: true, data: { events: [
+      { seq: 11, type: 'human_input_requested', nodeId: answerGate.id, gateId: answerGate.id },
+      { seq: 14, type: 'human_verdict_recorded', nodeId: answerGate.id, gateId: answerGate.id, requestedSeq: 11 },
+    ] } } }) : route.fallback())
+  await page.route(`**/api/runs/${talkRunId}/evidence/nodes/${answerGate.id}`, route => route.fulfill({ json: { success: true, data: { evidence: {
+    runId: talkRunId, nodeId: answerGate.id, kind: 'gate', evaluations: [{ seq: 11, kinds: ['human'], criterion: text('Answer questions'), kindResults: [],
+      humanRequests: [{ seq: 11, pending: false, decision: { seq: 14, verdict: 'pass', decidedBy: 'agent:archon', response: text('The CLI answer wins.') } }],
+    }],
+  } } } }))
+  const answerElsewhere = () => { answered = true; fixture.decide() }
+  await page.route('**/gates/*/verdict', async route => {
+    if (failure === 409) answerElsewhere()
+    await route.fulfill({ status: failure, json: { success: false, error: { message: 'Browser answer was not recorded.' } } })
+  })
+  await page.goto('/?mission=scouting')
+  const panel = page.getByRole('dialog', { name: 'Answer gate Answer questions' })
+  await panel.getByLabel('Your response').fill('Keep my unsubmitted words.')
+  await panel.getByRole('button', { name: /^Approve/ }).click()
+  await expect(page.getByTestId('formations-error')).toContainText('Browser answer was not recorded.')
+  if (failure === 500) answerElsewhere()
+  const notice = page.locator('.answered-draft')
+  await expect(notice).toContainText('was answered elsewhere by the archon CLI: approved')
+  await expect(notice).toContainText('The CLI answer wins.')
+  await expect(notice.getByLabel('Kept draft for Answer questions')).toHaveValue('Keep my unsubmitted words.')
+})
 
 test('a mission human channel is chosen in its window and Start mission, saved with undo, and shown on the canvas and in Flow', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })

@@ -670,15 +670,15 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // A mission created again under a deleted one's slug does not take its runs
   // (archon-n7u.15): a linked or remembered run of the earlier mission is put away.
   useEffect(() => {
-    if (!board?.id || !activeRun?.missionId || activeRun.missionSlug !== board.slug || activeRun.missionId === board.id) return
+    if (!currentBoard?.id || !activeRun?.missionId || activeRun.missionSlug !== currentBoard.slug || activeRun.missionId === currentBoard.id) return
     if (pinnedRun.runId === activeRun.runId) {
       setPinnedRun({ slug: '', runId: '' })
-      setLinkError(`Run ${activeRun.runId} belongs to an earlier mission "${board.slug}" that was deleted`)
+      setLinkError(`Run ${activeRun.runId} belongs to an earlier mission "${currentBoard.slug}" that was deleted`)
     }
-    window.localStorage.removeItem(activeRunStorageKey(board.slug))
+    window.localStorage.removeItem(activeRunStorageKey(currentBoard.slug))
     setActiveRun(null)
     setRunEvents([])
-  }, [activeRun?.missionId, activeRun?.missionSlug, activeRun?.runId, board?.id, board?.slug, pinnedRun.runId])
+  }, [activeRun?.missionId, activeRun?.missionSlug, activeRun?.runId, currentBoard?.id, currentBoard?.slug, pinnedRun.runId])
 
   // Runs of any mission that need the operator (archon-n7u.29): counted on
   // the mission picker and in the page title, and offered from the run bar.
@@ -1645,6 +1645,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [startStep, setStartStep] = useState<FormationNode | null>(null)
 
   const runMission = useCallback(async (mission: MissionNode, inputs: RunInputs) => {
+    if (historicalRef.current) throw new Error('Choose Edit current mission before starting a new run.')
     const current = boardRef.current
     if (!current) return
       const result = await startRun(current.etag, { ...inputs, mission: current.slug, inputCardId: mission.id, expectedRev: current.rev, actor: 'human:ui' })
@@ -1674,6 +1675,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [runMission, updateMissionFields])
 
   const runFormation = useCallback(async (formation: FormationNode, inputs: RunInputs) => {
+    if (historicalRef.current) throw new Error('Choose Edit current mission before running a formation.')
     const current = boardRef.current
     if (!current) return
     const result = await startRun(current.etag, { ...inputs, mission: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'human:ui' })
@@ -1761,8 +1763,10 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // send back returns it as feedback.
   const recordHumanGateVerdict = useCallback(async (gateId: string, requestedSeq: number, verdict: GateDecision, response: string) => {
     if (!activeRun?.runId || activeRun.final) return false
+    const submittedKey = `${activeRun.runId}:${requestedSeq}`
+    let recorded = false
     setRecordingAnswer(true)
-    setSubmittedHere(current => new Set([...current, `${activeRun.runId}:${requestedSeq}`]))
+    setSubmittedHere(current => new Set([...current, submittedKey]))
     try {
       const status = runStatusFromResponse(await recordGateVerdict(activeRun.runId, gateId, {
         actor: 'human:ui',
@@ -1770,6 +1774,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         requestedSeq,
         reason: response,
       }))
+      recorded = true
       setActiveRun(status)
       await refreshRunEvents(activeRun.runId)
       if (selectedSlug) {
@@ -1779,6 +1784,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       setError('')
       return true
     } catch (err) {
+      if (!recorded) setSubmittedHere(current => {
+        const remaining = new Set(current)
+        remaining.delete(submittedKey)
+        return remaining
+      })
       setError(err instanceof Error ? err.message : 'Failed to record human verdict')
       return false
     } finally { setRecordingAnswer(false) }
@@ -2670,6 +2680,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // A write that races another author reloads the notes and tries once more:
   // appends and entry-addressed edits are safe to repeat on the new revision.
   const submitNotePatch = useCallback(async (patch: NotePatch) => {
+    if (historicalRef.current) throw new Error('Choose Edit current mission before changing its notes.')
     const currentBoard = boardRef.current
     const currentNotes = notesRef.current
     if (!currentBoard || !currentNotes) return null
@@ -3209,7 +3220,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             <Suspense fallback={null}>
               <FlowView board={board} agents={agents} notes={noteByNode} run={flowRun}
                 answerPanel={pendingHumanGate && answerPanel ? { gateId: pendingHumanGate.gateId, panel: answerPanel } : null}
-                findings={draftFindings} onOpenNode={openNodeWindow} onOpenNotes={openNoteWindow} onStartMission={setStartMission} />
+                findings={draftFindings} onOpenNode={openNodeWindow} onOpenNotes={openNoteWindow} onStartMission={historical ? undefined : setStartMission} />
             </Suspense>
           ) : null}
           <div className="world" data-testid="formations-world" ref={worldRef} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
@@ -3290,7 +3301,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   {renderRunChip(mission.id)}
                   <div className="mhd">
                     <span className="meyebrow">◆ Input</span>
-                    <button className="mrun" title="Start mission" onClick={() => setStartMission(mission)} data-testid={`run-mission-${mission.id}`}>{PLAY_SVG}</button>
+                    <button className="mrun" title="Start mission" disabled={historical} onClick={() => setStartMission(mission)} data-testid={`run-mission-${mission.id}`}>{PLAY_SVG}</button>
                   </div>
                   {renderNodeTitle(mission.title, 'mtitle', 'Untitled mission', 'div')}
                   <div className={`mgoal${mission.goal ? '' : ' placeholder'}`}>{mission.goal || 'set the mission objective…'}</div>
@@ -3373,7 +3384,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                       const rect = event.currentTarget.getBoundingClientRect()
                       setMenu({ label: 'Formation type', x: rect.left, y: rect.bottom + 4, items: formationTypeMenuItems(formation).slice(1) })
                     }} />
-                    <button className="frun" title="Run formation" onClick={() => setStartStep(formation)} data-testid={`run-formation-${formation.id}`}>{PLAY_SVG}</button>
+                    <button className="frun" title="Run formation" disabled={historical} onClick={() => setStartStep(formation)} data-testid={`run-formation-${formation.id}`}>{PLAY_SVG}</button>
                   </div>
                   <ReferencedFiles nodeId={formation.id} files={nodeFileRefs(board, formation.id)} max={2} onMore={openReferencedFilesMenu} className="card-refs" />
                   <div className="fstatus">{state === 'running' || state === 'waiting' ? state : ''}</div>
@@ -3676,6 +3687,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       <WindowManagerProvider stack={windows}>
         {board ? noteWindows.map(target => (
           <NoteWindow
+            readOnly={historical}
             key={target}
             target={target}
             title={noteTitleOf(target)}

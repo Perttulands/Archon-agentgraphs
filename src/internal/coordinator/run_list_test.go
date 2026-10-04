@@ -147,6 +147,28 @@ func TestRunsSayWhoStartedThemWhenAndWhatTheyRan(t *testing.T) {
 	}
 }
 
+func TestFrozenRunGraphRedactsAuthoredTextAndOmitsDuplicateSource(t *testing.T) {
+	c, _, _ := fixture(t)
+	source := strings.ReplaceAll(testBoard, "PRIVATE-OBJECTIVE", "password=hunter2")
+	source = strings.ReplaceAll(source, "PRIVATE-CRITERION", "api_key=sk-abcdefghijklmnop")
+	if err := os.WriteFile(c.store.BoardPath("proof"), []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	id := startRun(t, c)
+	w := getEvidence(c, "/api/runs/"+id+"/evidence/mission")
+	if strings.Contains(w.Body.String(), "hunter2") || strings.Contains(w.Body.String(), "sk-abcdefghijklmnop") {
+		t.Fatalf("frozen graph bypassed evidence redaction: %s", w.Body.String())
+	}
+	ran := decodeEvidence[formations.RunMissionEvidence](t, w, "mission")
+	if ran.Graph.TOML != "" || ran.Graph.ID != "brd_proof" || ran.Graph.Missions[0].Goal != "password=[REDACTED]" || len(ran.Graph.Connections) == 0 {
+		t.Fatalf("graph lost identity/routing or included duplicate source: %+v", ran.Graph)
+	}
+	original, err := os.ReadFile(c.store.BoardPath("proof"))
+	if err != nil || string(original) != source {
+		t.Fatalf("evidence read changed authored source: %v", err)
+	}
+}
+
 func listRuns(t *testing.T, c *Coordinator, path string) []Projection {
 	t.Helper()
 	w := httptest.NewRecorder()

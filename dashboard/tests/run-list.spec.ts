@@ -64,9 +64,19 @@ for (const entry of ['list', 'link'] as const) {
     // The board has moved on: both views use the frozen graph and disable edits.
     await expect(banner).toContainText('Showing revision 2 · read only')
     await expect(page.getByTestId('new-formation')).toBeDisabled()
+    await expect(page.getByTitle('Start mission', { exact: true }).first()).toBeDisabled()
+    await expect(page.getByTitle('Run formation', { exact: true }).first()).toBeDisabled()
     await expect(page.locator('.formation').first()).toContainText('Frozen')
+    // Notes opened through the toolbar also respect the historical boundary.
+    await page.getByRole('button', { name: 'Mission notes', exact: true }).click()
+    const notes = page.getByRole('dialog', { name: 'mission notes', exact: true })
+    await expect(notes.getByRole('textbox')).toHaveAttribute('readonly', '')
+    await expect(notes.locator('.note-reply-actions button').last()).toBeDisabled()
+    for (const control of await notes.locator('.note-entry-actions button').all()) await expect(control).toBeDisabled()
+    await notes.getByRole('button', { name: /Close/ }).click()
     await page.getByRole('radio', { name: 'Flow', exact: true }).click()
     await expect(page.getByTestId('flow-view')).toContainText('Frozen')
+    await expect(page.getByTestId('flow-view').getByRole('button', { name: 'Start mission', exact: true })).toBeDisabled()
     await page.screenshot({ path: test.info().outputPath('frozen-flow.png') })
 
     // A produced file is one click from the run, and Copy path gives its absolute path.
@@ -82,6 +92,24 @@ for (const entry of ['list', 'link'] as const) {
     await expect(page.getByTestId('flow-view')).not.toContainText('Frozen')
   })
 }
+
+test('an old run link is rejected when its slug now belongs to a recreated mission', async ({ page }) => {
+  const fixture = await cockpitFixture(page, { succeeded: true })
+  const frozen = structuredClone(fixture.board())
+  frozen.rev = 2
+  fixture.board().id = 'brd_recreated'
+  fixture.board().rev = 3
+  await page.route('**/api/runs**', route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/runs/run_browser') return route.fulfill({ json: { success: true, data: { ...runs[0], missionRev: 2 } } })
+    if (path === '/api/runs/run_browser/evidence/mission') return route.fulfill({ json: { success: true, data: { mission: { missionRev: 2, graph: frozen, text: { text: '', bytes: 0 } } } } })
+    return route.fallback()
+  })
+  await page.goto('/?mission=browser&run=run_browser')
+  await expect(page.getByTestId('formations-error')).toContainText('belongs to an earlier mission "browser" that was deleted')
+  await expect(page.getByTestId('run-banner')).toHaveCount(0)
+  await expect(page.getByTestId('new-formation')).toBeEnabled()
+})
 
 // Every run that needs the operator is counted on the mission picker and in
 // the page title, and waiting is the most visible state (archon-n7u.29).

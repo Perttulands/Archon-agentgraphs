@@ -77,7 +77,7 @@ export default function FlowView({ board, agents, notes, run, findings = new Map
   answerPanel: { gateId: string; panel: ReactNode } | null
   onOpenNode: (nodeId: string, anchor?: WindowRect) => void
   onOpenNotes: (nodeId: string) => void
-  onStartMission: (mission: MissionNode) => void
+  onStartMission?: (mission: MissionNode) => void
 }) {
   const flow = useMemo(() => buildFlow(board), [board])
   const root = useRef<HTMLDivElement>(null)
@@ -115,7 +115,7 @@ export default function FlowView({ board, agents, notes, run, findings = new Map
                 <button type="button" className="flow-title" onClick={event => onOpenNode(section.mission!.id, controlAnchor(event.currentTarget))}>
                   <span className="flow-kicker">◆ Input</span> {section.mission.title || 'Input'}
                 </button>
-                <button type="button" className="flow-action" onClick={() => onStartMission(section.mission!)}>Start mission</button>
+                <button type="button" className="flow-action" disabled={!onStartMission} onClick={() => onStartMission?.(section.mission!)}>Start mission</button>
               </div>
               <p className="flow-text">{summary(section.mission.goal, 480) || <span className="placeholder">No goal yet.</span>}</p>
               <p className="flow-line"><span className="flow-label">Input</span>{section.mission.inputHint ? summary(section.mission.inputHint, 320) : 'The brief you give when you start the mission.'}</p>
