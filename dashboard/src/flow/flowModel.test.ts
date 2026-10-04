@@ -90,3 +90,14 @@ describe('the flow model', () => {
     expect([...flow.numbers.keys()]).toEqual(['work', 'check'])
   })
 })
+
+it('gives siblings from one output the same number and a parallel label', () => {
+  const board = structuredClone(delivery.mission) as unknown as BoardDocument
+  const first = board.formations[0]
+  const other = { ...first, id: 'parallel_work', title: 'Parallel work' }
+  board.formations.push(other)
+  board.connections.push({ id: 'fanout', from: board.connections.find(route => route.to.startsWith(first.id + ':'))!.from, to: other.id + ':' + first.inputs[0].id })
+  const flow = buildFlow(board)
+  expect(flow.numbers.get(first.id)).toBe(flow.numbers.get(other.id))
+  expect(flow.sections[0].steps.find(step => step.id === first.id)?.parallel).toEqual([first.id, other.id])
+})

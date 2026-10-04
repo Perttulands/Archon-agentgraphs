@@ -61,3 +61,28 @@ describe('CanvasContextMenu', () => {
     expect(action).toHaveBeenCalled()
   })
 })
+
+it('focuses and navigates enabled items and restores the trigger on close', () => {
+  const trigger = document.createElement('button')
+  document.body.append(trigger)
+  trigger.focus()
+  const action = vi.fn()
+  const onClose = vi.fn()
+  const view = render(<CanvasContextMenu menu={{ label: 'Keys', x: 10, y: 10, trigger, items: [
+    { label: 'Disabled', disabled: true }, { label: 'First' }, { label: 'Last', action },
+  ] }} onClose={onClose} />)
+  expect(screen.getByRole('menuitem', { name: 'First' })).toHaveFocus()
+  fireEvent.keyDown(document.activeElement!, { key: 'End' })
+  expect(screen.getByRole('menuitem', { name: 'Last' })).toHaveFocus()
+  fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' })
+  expect(screen.getByRole('menuitem', { name: 'First' })).toHaveFocus()
+  fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' })
+  expect(screen.getByRole('menuitem', { name: 'Last' })).toHaveFocus()
+  fireEvent.keyDown(document.activeElement!, { key: 'Home' })
+  expect(screen.getByRole('menuitem', { name: 'First' })).toHaveFocus()
+  fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+  expect(onClose).toHaveBeenCalled()
+  view.unmount()
+  expect(trigger).toHaveFocus()
+  trigger.remove()
+})

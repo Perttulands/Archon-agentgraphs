@@ -1,4 +1,7 @@
-import { useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { AuthoringReadOnly } from './EditableField'
+import { NodeProblems } from '../components/formationsDrafts'
+import type { BoardFinding } from '../components/formationsTypes'
+import { useContext, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { formationTypeChoices } from '../components/FormationTypeChip'
 import { END_OUTCOMES, defaultEndTitle, endOutcomeMeaning } from '../components/endNode'
 import { TOKENS_DEFINITION, durationInput, durationWords, limitCoverage, limitKnobWords, limitMeaning, limitsCovering, parseDuration, roundsProblem, timeProblem, tokenWords, tokensProblem, warnProblem } from '../components/limitCard'
@@ -118,8 +121,10 @@ export function nodeWindowLabel(located: Located): string {
   return `${KIND_WORD[located.kind]} · ${located.node.title || UNTITLED[located.kind]}`
 }
 
-export default function NodeWindow({ nodeId, board, agents, profiles, noteCount, anchor, runState, limitWarnings = [], onClose, ops }: {
+export default function NodeWindow({ readOnly = false, nodeId, board, agents, profiles, noteCount, findings, anchor, runState, limitWarnings = [], onClose, ops }: {
+  readOnly?: boolean
   nodeId: string
+  findings?: BoardFinding[]
   /** What the window opens beside; without it, the node's Flow row or card. */
   anchor?: WindowRect
   board: BoardDocument
@@ -149,6 +154,7 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
       : judged ? `Judge of ${steps.has(judged) ? `${steps.get(judged)} ` : ''}${nodeTitle(board, judged)} · ${detail}`
         : `${KIND_WORD[located.kind]}${detail ? ` · ${detail}` : ''}`
   return (
+    <AuthoringReadOnly.Provider value={readOnly}>
     <FloatingWindow
       id={`node:${nodeId}`}
       kind="node"
@@ -161,6 +167,7 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
     >
       <div className="nwin" data-testid={`node-window-${nodeId}`}>
         <div className="nwin-eyebrow">{eyebrow}</div>
+        <NodeProblems findings={findings} />
         <EditableField label="Title" value={located.node.title} placeholder={UNTITLED[located.kind]} onSave={title => ops.rename(nodeId, title)} />
         {located.kind === 'inputCard' ? <MissionFields mission={located.node} ops={ops} /> : null}
         {located.kind === 'formation' ? <FormationFields formation={located.node} agents={agents} ops={ops} /> : null}
@@ -171,7 +178,7 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
           <h3>Notes</h3>
           <div className="nwin-run">
             <span className="nwin-notes">{noteCount ? `${noteCount} ${noteCount === 1 ? 'entry' : 'entries'} in the thread` : 'No notes yet'}</span>
-            <button type="button" className="nwin-action" onClick={() => ops.openNotes(nodeId)}>{noteCount ? 'Open notes' : 'Add a note'}</button>
+            <button type="button" className="nwin-action" disabled={readOnly} onClick={() => ops.openNotes(nodeId)}>{noteCount ? 'Open notes' : 'Add a note'}</button>
           </div>
         </section>
         <section className="nwin-section" aria-label="Connections">
@@ -203,6 +210,7 @@ export default function NodeWindow({ nodeId, board, agents, profiles, noteCount,
         ) : null}
       </div>
     </FloatingWindow>
+    </AuthoringReadOnly.Provider>
   )
 }
 
@@ -225,6 +233,7 @@ function MissionFields({ mission, ops }: { mission: MissionNode; ops: NodeWindow
 
 function FormationFields({ formation, agents, ops }: { formation: FormationNode; agents: AgentProjection[]; ops: NodeWindowOps }) {
   const brief = formation.brief || {}
+  const readOnly = useContext(AuthoringReadOnly)
   const saveBrief = (change: FormationBrief) => ops.setBrief(formation.id, {
     goal: brief.goal || '', beadId: brief.beadId || '', files: brief.files || [], links: brief.links || [], ...change,
   })
@@ -233,7 +242,7 @@ function FormationFields({ formation, agents, ops }: { formation: FormationNode;
     <>
       <div className="nfield">
         <div className="nfield-head"><label className="nfield-label" htmlFor={`type-${formation.id}`}>Type</label></div>
-        <select id={`type-${formation.id}`} className="nwin-select" aria-label="Formation type" value=""
+        <select disabled={readOnly} id={`type-${formation.id}`} className="nwin-select" aria-label="Formation type" value=""
           onChange={event => {
             const choice = choices[Number(event.target.value)]
             if (choice) ops.changeType(formation, choice.type, choice.keepSlotId)
@@ -303,17 +312,18 @@ function SlotStaffing({ formation, slot, agents, ops }: {
   agents: AgentProjection[]
   ops: NodeWindowOps
 }) {
+  const readOnly = useContext(AuthoringReadOnly)
   const staffing = staffingOf(slot)
   const words = staffingSentence(slot, roleNamer(agents))
   // The sentence window drops from the word clicked, as a dropdown does.
   const open = (part: Part | null) => (event: ReactMouseEvent<HTMLElement>) => ops.staffSlot(formation, slot, part, event.currentTarget)
   const word = (part: Part, text: string) => (
-    <button type="button" className={`nslot-word${part === 'effort' ? ' effort' : ''}`} aria-label={`Change the ${part} of ${slot.label || slot.id}: ${text}`} onClick={open(part)}>{text}</button>
+    <button type="button" disabled={readOnly} className={`nslot-word${part === 'effort' ? ' effort' : ''}`} aria-label={`Change the ${part} of ${slot.label || slot.id}: ${text}`} onClick={open(part)}>{text}</button>
   )
   if (!staffing) {
     return (
       <div className="nslot">
-        <p className="nslot-words">{words} <button type="button" className="nslot-word" aria-label={`Staff ${slot.label || slot.id}`} onClick={open(null)}>Staff it</button></p>
+        <p className="nslot-words">{words} <button type="button" disabled={readOnly} className="nslot-word" aria-label={`Staff ${slot.label || slot.id}`} onClick={open(null)}>Staff it</button></p>
       </div>
     )
   }
@@ -329,12 +339,13 @@ function SlotStaffing({ formation, slot, agents, ops }: {
 
 /** An End node's outcome, chosen in place, and what it means for the run. */
 function EndFields({ end, ops }: { end: EndNode; ops: NodeWindowOps }) {
+  const readOnly = useContext(AuthoringReadOnly)
   return (
     <div className="nfield">
       <div className="nfield-head"><span className="nfield-label" id={`outcome-${end.id}`}>Outcome</span></div>
       <div className="nwin-outcomes" role="radiogroup" aria-labelledby={`outcome-${end.id}`}>
         {END_OUTCOMES.map(outcome => (
-          <button key={outcome} type="button" role="radio" aria-checked={end.outcome === outcome}
+          <button key={outcome} type="button" disabled={readOnly} role="radio" aria-checked={end.outcome === outcome}
             className={`nwin-outcome end-${outcome}${end.outcome === outcome ? ' on' : ''}`}
             onClick={() => { if (end.outcome !== outcome) void ops.setEndOutcome(end, outcome) }}>
             {defaultEndTitle(outcome)}
@@ -404,6 +415,7 @@ function LimitFields({ limit, board, steps, ops }: { limit: LimitNode; board: Bo
 }
 
 function GateFields({ gate, board, profiles, ops }: { gate: GateNode; board: BoardDocument; profiles: CodeGateProfileDescriptor[]; ops: NodeWindowOps }) {
+  const readOnly = useContext(AuthoringReadOnly)
   const chain = judgeChain(board, gate.id)
   const judged = gate.kinds.includes('formation') || chain.length > 0
   // A judge's brief files show on the gate too, unless the gate names them itself.
@@ -419,12 +431,12 @@ function GateFields({ gate, board, profiles, ops }: { gate: GateNode; board: Boa
         <div className="nfield">
           <div className="nfield-head"><label className="nfield-label" htmlFor={`judge-${gate.id}`}>Judge</label></div>
           <div className="nslot-controls">
-            <select id={`judge-${gate.id}`} aria-label="Judge formation" value={chain.length === 1 ? chain[0] : ''}
+            <select disabled={readOnly} id={`judge-${gate.id}`} aria-label="Judge formation" value={chain.length === 1 ? chain[0] : ''}
               onChange={event => { if (event.target.value) ops.attachJudge(gate, [event.target.value]) }}>
               <option value="">{chain.length > 1 ? `A chain of ${chain.length} formations` : 'Choose a judge formation'}</option>
               {board.formations.map(formation => <option key={formation.id} value={formation.id}>{formation.title || formation.id}</option>)}
             </select>
-            {chain.length ? <button type="button" className="nwin-action" onClick={() => ops.detachJudge(gate)}>Detach judge</button> : null}
+            {chain.length ? <button type="button" className="nwin-action" disabled={readOnly} onClick={() => ops.detachJudge(gate)}>Detach judge</button> : null}
           </div>
           {judges.map(judge => (
             <div key={judge} className="nwin-judge-files">
@@ -439,6 +451,7 @@ function GateFields({ gate, board, profiles, ops }: { gate: GateNode; board: Boa
 }
 
 function GateKindsEditor({ gate, profiles, hasJudgeChain, ops }: { gate: GateNode; profiles: CodeGateProfileDescriptor[]; hasJudgeChain: boolean; ops: NodeWindowOps }) {
+  const readOnly = useContext(AuthoringReadOnly)
   const [draft, setDraft] = useState<GateDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -448,15 +461,17 @@ function GateKindsEditor({ gate, profiles, hasJudgeChain, ops }: { gate: GateNod
   const save = async () => {
     if (!draft) return
     setSaving(true)
-    const saved = await ops.updateGate(gate, { ...draftFromGate(gate), kinds: draft.kinds, profileKey: draft.profileKey, checkValue: draft.checkValue })
-    setSaving(false)
+    let saved: boolean
+    try { saved = await ops.updateGate(gate, { ...draftFromGate(gate), kinds: draft.kinds, profileKey: draft.profileKey, checkValue: draft.checkValue }) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); return }
+    finally { setSaving(false) }
     if (saved) { setDraft(null); setError('') } else setError('The kinds were not saved.')
   }
   return (
     <div className={`nfield${draft ? ' editing' : ''}`}>
       <div className="nfield-head">
         <span className="nfield-label">Kinds</span>
-        {draft ? null : <button type="button" className="nfield-edit" aria-label="Edit kinds" onClick={() => setDraft(draftFromGate(gate))}>Edit</button>}
+        {draft ? null : <button type="button" className="nfield-edit" disabled={readOnly} aria-label="Edit kinds" onClick={() => setDraft(draftFromGate(gate))}>Edit</button>}
       </div>
       {draft ? (
         <form className="nfield-form gate-editor" onSubmit={event => { event.preventDefault(); void save() }}

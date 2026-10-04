@@ -30,7 +30,7 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
   const [selectedNode, setSelectedNode] = useState(initialNodeId || '')
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
   const [notice, announce] = useNotice()
-  const win = useFloatingWindow<HTMLElement>({ id: windowId, kind: 'peek', label: 'terminal', defaultSize: { width: 760, height: 430 }, onClose })
+  const win = useFloatingWindow<HTMLElement>({ id: windowId, kind: 'peek', label: 'terminal', defaultSize: { width: 1600, height: 1000 }, overCanvas: true, onClose })
   const closeButton = useRef<HTMLButtonElement>(null)
   const request = useRef(0)
   const selection = useRef({ node: selectedNode, slot: selectedSlot })
@@ -110,10 +110,8 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
     setChrome(previous => previous && previous.width === next.width && previous.height === next.height ? previous : next)
   }, [root])
   const { fitTo, sizedByOperator, rect } = win
-  // Peek opens where its placement finds room beside the graph, and never
-  // grows past what it was given there, so it never covers what its placement
-  // keeps clear (windowPlacement.ts). CHROTE's Peek is centred over the
-  // workspace at up to 90% of it instead.
+  // Ported from CHROTE Peek.tsx peekSize: give font-fit up to 90% of the
+  // workspace, over the canvas, preserving other windows' title bars.
   const [placed, setPlaced] = useState<FrameSize | null>(null)
   if (chrome && !placed) setPlaced({ width: rect.width, height: rect.height })
   const capsRoom = !sizedByOperator && chrome && placed ? { width: placed.width - chrome.width, height: placed.height - chrome.height } : null
@@ -134,6 +132,7 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
       {selected?.onCall ? <span className="peek-on-call">{seatWaitsForYou(selected) ? 'On call · waiting for you' : 'On call'}</span> : null}
       <button ref={closeButton} onClick={onClose} aria-label="Close terminal">Close ×</button>
     </header>
+    <div className="peek-toolbar">
     <div className="peek-picker">
       {nodes.length > 1 ? <select aria-label="Terminal formation" value={selectedNode} onChange={event => {
         selection.current = { node: event.target.value, slot: null }
@@ -142,6 +141,7 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
         void refresh()
       }}>{nodes.map(([id, title]) => <option key={id} value={id}>{title}</option>)}</select> : null}
       <button onClick={() => void refresh(true)} disabled={loading}>Refresh seats</button>
+      <button onClick={() => setPlaced(win.resetSize())}>Reset size</button>
     </div>
     <nav className="peek-seats" aria-label="Run seats">
       {seats.map(seat => <button key={seat.createdSeq} aria-pressed={selectedSlot === seat.slotId}
@@ -154,6 +154,7 @@ export default function FloatingPeek({ windowId = 'peek', runId, initialNodeId, 
         {seat.onCall ? <span className="peek-seat-on-call" title={seatWaitsForYou(seat) ? 'On call: waiting for you' : 'On call'}>on call</span> : null}
       </button>)}
     </nav>
+    </div>
     {!projection && loading ? <p className="peek-message" role="status">Loading run seats…</p>
       : error ? <p className="peek-message" role="alert">{error}</p>
       : url && selected ? <SeatTerminal session={terminal} columns={selected.columns!} rows={selected.rows!} box={box} room={capsRoom} onMeasure={measureChrome} />

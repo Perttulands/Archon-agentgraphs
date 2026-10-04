@@ -8,10 +8,10 @@
 }
 .produced-chip:hover, .produced-chip:focus-visible { border-color: var(--accent); color: var(--accent); }
 .produced-chip.output { color: var(--text-secondary); }
-.produced-glyph { flex-shrink: 0; color: var(--text-dim); }
+.produced-glyph { flex-shrink: 0; color: var(--text-secondary); }
 
 .fmx .run-banner .run-produced { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.fmx .run-banner .run-produced-label { color: var(--dim); letter-spacing: .08em; text-transform: uppercase; font-size: 10px; }
+.fmx .run-banner .run-produced-label { color: var(--dim); letter-spacing: .08em; text-transform: uppercase; font-size: 11px; }
 .fmx .run-banner .run-produced .produced-chip { max-width: 220px; padding: 3px 8px; font-size: 11px; text-transform: none; letter-spacing: .01em; background: var(--paper2); }
 .fmx .run-banner .run-produced-more { padding: 3px 8px; }
 
@@ -21,4 +21,4 @@
   background: var(--surface-primary); box-shadow: 0 12px 36px #0009; font: 11px var(--font-mono);
 }
 .run-produced-group { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-.run-produced-group-title { font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
+.run-produced-group-title { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-secondary); }

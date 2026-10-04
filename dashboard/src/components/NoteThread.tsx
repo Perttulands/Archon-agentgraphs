@@ -1,3 +1,4 @@
+import LinkedText from '../files/LinkedText'
 /* Note threads — board and element notes are ordered entries by human and
  * agent authors. The cockpit writes as COCKPIT_NOTE_AUTHOR and may edit or
  * delete only those entries; agents' entries are replied to, never changed. */
@@ -46,7 +47,7 @@ export function NoteThread({ label, entries, editingEntryId, busy, onEdit, onDel
                 </span>
               ) : null}
             </div>
-            <div className="note-entry-text">{entry.text}</div>
+            <div className="note-entry-text"><LinkedText text={entry.text} /></div>
           </li>
         )
       })}

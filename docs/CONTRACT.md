@@ -719,8 +719,8 @@ when it started, how long it took or has run, the start of its first text
 input, and its driver. Choosing one shows it, and a finished run shown can be
 put away. The run bar says when the shown run started, how long it took and who
 drives it; a run waiting at a gate says since when; and a run that ran an
-earlier revision of the mission says so and opens the mission as it ran in a
-file window. Every run that needs the operator, waiting at a human gate or
+earlier revision draws its frozen graph and run states on Canvas and Flow,
+read only. Edit current mission returns to the current revision for authoring. Every run that needs the operator, waiting at a human gate or
 blocked, is counted (archon-n7u.29): on the mission picker beside each
 mission ("Scouting · 2 need you"), and in the page title for all missions
 ("(3) Scouting · Archon"). When another run of any mission needs the operator,
@@ -757,13 +757,16 @@ the seat's native grid and fits its font to its window: the largest font up to
 14px at which every row and column fits, down to an 11px floor. Below the floor
 the grid scrolls, starting at its newest rows, with Start of line and End of
 line controls when it is wider than the window. Resizing a window changes only
-its font; no size reaches the seat. Peek opens where window placement finds room
-and shrinks to the grid it drew until the operator sizes it. Peek keeps the
+its font; no size reaches the seat. Peek opens over the canvas at up to 90% of the workspace, keeping other
+windows' title bars clear, and shrinks to the grid it drew until the operator
+sizes it. Peek keeps the
 terminal, connection and frame of every seat it has shown while it is open, so
-switching seats does not reconnect. A connection lost with the seat still live,
-such as across a daemon restart, dials again once on Refresh seats (Refresh in a
+switching seats preserves a healthy connection. Reset size clears the remembered
+size and wraps the grid again. A connection lost with the seat still live,
+such as across a daemon restart, dials again once when its tab is selected, on Refresh seats (Refresh in a
 Talk window) or when the page becomes visible again; nothing retries on its
-own. A refused attach prints its reason in the terminal. Painting a selection
+own. Every refused attach, including a stale or unknown seat, prints its reason in the terminal;
+attach failure details are logged by the daemon. Painting a selection
 copies it and the footer says whether it reached the clipboard. A seat kept on call
 for a human gate is marked on call, and
 waiting for you while it holds a pending ask. On a session-channel run the
@@ -1607,6 +1610,13 @@ sanitized ledger projection. The same trusted-network access boundary applies.
 
 ### Run evidence
 
+Absolute paths in terminals, file text, briefs, outputs and notes open read-only
+file windows beside their source. Bead IDs copy on click (tooltip: "Bead ID,
+copied on click"); Archon has no Beads catalog or card API. File and folder
+inputs in the start dialog may browse the agent host through
+`GET /api/files/directory?path=<absolute-directory>` or accept a typed path.
+
+
 [ADR-0017](adr/0017-run-evidence-api.md) records this API. Every route is a
 `GET` for one run; an unknown run returns 404. Served text is an object
 `{text,bytes,truncated}`: `bytes` is the full size, `truncated` marks a cut on
@@ -1656,7 +1666,8 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   daemon host), with `text` capped at 256 KiB for textual kinds. A `.pdf` file
   that starts with `%PDF-` is `pdf`.
 - `/api/runs/{runId}/evidence/mission` returns `data.mission`
-  (`missionRev`, `text` capped at 256 KiB): the mission's TOML as the run froze
+  (`missionRev`, `graph`, `text` capped at 256 KiB): the structured graph and
+  mission's TOML as the run froze
   it at admission, which later edits never change.
 - `/api/runs/{runId}/artifacts/{name...}` returns the artifact's bytes
   up to 16 MiB; larger files return 413. Text is `text/plain; charset=utf-8`

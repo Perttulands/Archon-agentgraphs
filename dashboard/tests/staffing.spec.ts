@@ -480,7 +480,7 @@ test('the Agents view slot inspector staffs through the same sentence', async ({
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
   const agents = page.getByTestId('agents-view')
   await agents.getByTestId('agents-slot-recheck-recheck_seat').click()
-  const inspector = agents.getByRole('complementary', { name: 'Inspector' })
+  const inspector = agents.getByRole('dialog', { name: 'Inspector' })
   await inspector.getByRole('button', { name: 'Staff Second opinion' }).click()
   const sentence = page.getByRole('dialog', { name: 'Staff Second opinion' })
   await expect(sentence.locator('[data-token]')).toHaveText(['', 'Claude Code', 'opus', 'low'])

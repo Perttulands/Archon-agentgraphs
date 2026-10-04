@@ -46,7 +46,7 @@ test('a mission is not ready while a slot in its judge chain is open', async ({ 
   await expect(agents.getByRole('complementary', { name: 'Agent roster' }).locator('.roster-hd .s')).toHaveText('3 roles · 2 in use')
 
   await agents.getByRole('button', { name: 'Inspect Brief critic' }).click()
-  const inspector = agents.getByRole('complementary', { name: 'Inspector' })
+  const inspector = agents.getByRole('dialog', { name: 'Inspector' })
   // Usage spans every mission: the judge slot here and the Scouting map.
   await expect(inspector.getByRole('region', { name: 'Used by' }).locator('.agx-role-use')).toHaveText([
     'Delivery › Beads reviewer › Beads reviewerClaude Code · default model · medium',
@@ -59,7 +59,7 @@ test('a role\'s usage is shown before Retire and Delete, and a use opens its slo
   await page.goto('/?mission=delivery')
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
   const agents = page.getByTestId('agents-view')
-  const inspector = agents.getByRole('complementary', { name: 'Inspector' })
+  const inspector = agents.getByRole('dialog', { name: 'Inspector' })
 
   await agents.getByRole('button', { name: 'Inspect Brief critic' }).click()
   const used = inspector.getByRole('region', { name: 'Used by' })
@@ -102,7 +102,7 @@ test('a role is role text: the inspector and editor offer no model or effort, an
   const agents = page.getByTestId('agents-view')
 
   await agents.getByRole('button', { name: 'Inspect Builder' }).click()
-  const inspector = agents.getByRole('complementary', { name: 'Inspector' })
+  const inspector = agents.getByRole('dialog', { name: 'Inspector' })
   await expect(inspector.locator('.agx-identity .n')).toHaveText('in 2 slots')
   // The settings live on the slots the role staffs, never on the role.
   await expect(inspector.locator('.agx-role-use > span:first-child')).toHaveText(['Alpha scratch › Work › Work', 'Delivery › Build › Build', 'Delivery › Ship › Ship'])
@@ -135,7 +135,7 @@ test('a staffing or emptying in the Agents view is one Ctrl+Z step there', async
   const agents = page.getByTestId('agents-view')
   const seat = agents.getByTestId('agents-slot-recheck-recheck_seat')
   await seat.click()
-  await agents.getByRole('complementary', { name: 'Inspector' }).getByRole('button', { name: 'Staff Second opinion' }).click()
+  await agents.getByRole('dialog', { name: 'Inspector' }).getByRole('button', { name: 'Staff Second opinion' }).click()
   await page.keyboard.type('critic')
   await page.keyboard.press('Enter')
   await expect(seat.getByTestId('slot-caption')).toHaveAttribute('data-staffing', 'Brief critic | Claude Code · opus · xhigh')
@@ -146,8 +146,9 @@ test('a staffing or emptying in the Agents view is one Ctrl+Z step there', async
 
   // Emptying a slot is undone the same way, back to its own settings.
   const build = agents.getByTestId('agents-slot-build-build_seat')
+  await agents.getByRole('dialog', { name: 'Inspector' }).getByRole('button', { name: 'Close Inspector', exact: true }).click()
   await build.click()
-  await agents.getByRole('complementary', { name: 'Inspector' }).getByRole('button', { name: 'Empty Build' }).click()
+  await agents.getByRole('dialog', { name: 'Inspector' }).getByRole('button', { name: 'Empty Build' }).click()
   await expect(build.getByTestId('slot-caption')).toHaveAttribute('data-staffing', '')
   await page.mouse.click(1000, 1000)
   await page.keyboard.press('Control+z')
@@ -173,7 +174,7 @@ test('the Agents view follows a mission changed elsewhere and staffs on its curr
   await expect(agents.locator('.rev')).toHaveText(`rev ${delivery.rev}`)
   // The next action starts from that revision and succeeds.
   await build.click()
-  await agents.getByRole('complementary', { name: 'Inspector' }).getByRole('button', { name: 'Staff Build' }).click()
+  await agents.getByRole('dialog', { name: 'Inspector' }).getByRole('button', { name: 'Staff Build' }).click()
   await page.keyboard.press('Enter')
   await expect(build.getByTestId('slot-caption')).not.toHaveAttribute('data-staffing', '')
   await expect(agents.getByRole('alert')).toHaveCount(0)

@@ -1,8 +1,8 @@
-import { Suspense, createContext, lazy, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Suspense, useEffect, createContext, lazy, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { WindowStack } from '../windows/WindowManager'
 import type { WindowRect } from '../windows/windowGeometry'
 import { measureElement, nodeBoxes } from '../windows/cockpitScene'
-import type { FileRequest } from './fileWindowModel'
+import { referencedFileRequest, type FileRequest } from './fileWindowModel'
 
 // The cockpit's open file windows. Anything under the provider opens a file
 // with useFileWindows()?.open(request, fileAnchor(event.currentTarget)); the
@@ -71,6 +71,14 @@ export function FileWindowsProvider({ stack, children }: { stack: WindowStack; c
       : [...current, { request: fresh, place: place || null }])
     stackRef.current.focus(request.id)
   }, [])
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const { path, anchor } = (event as CustomEvent<{ path: string; anchor?: Element }>).detail
+      open(referencedFileRequest(path), anchor ? fileAnchor(anchor) : null)
+    }
+    document.addEventListener('archon-open-path', receive)
+    return () => document.removeEventListener('archon-open-path', receive)
+  }, [open])
   const close = useCallback((id: string) => setFiles(current => current.filter(file => file.request.id !== id)), [])
   const value = useMemo(() => ({ files, open, close }), [close, files, open])
   return <FileWindowsContext.Provider value={value}>{children}</FileWindowsContext.Provider>

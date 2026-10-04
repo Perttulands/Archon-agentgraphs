@@ -18,7 +18,7 @@
 .fmx .flow-mission-head .flow-title { flex: 1; font-size: 15px; }
 .fmx .flow-action {
   flex-shrink: 0; border: 1px solid var(--line); border-radius: 3px; background: var(--paper2); color: var(--ink2);
-  padding: 5px 10px; font: 700 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer;
+  padding: 5px 10px; font: 700 11px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer;
 }
 .fmx .flow-action:hover { border-color: var(--terra); color: var(--ink); }
 
@@ -44,15 +44,15 @@
   font: 700 13px/1.35 var(--font-mono); overflow-wrap: anywhere;
 }
 .fmx .flow-title:hover { color: var(--terra); }
-.fmx .flow-kicker { color: var(--dim); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
-.fmx .flow-kind { margin-left: auto; flex-shrink: 0; color: var(--dim); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+.fmx .flow-kicker { color: var(--dim); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+.fmx .flow-kind { margin-left: auto; flex-shrink: 0; color: var(--dim); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
 .fmx .flow-text { margin: 0; color: var(--ink2); overflow-wrap: anywhere; }
 .fmx .flow-text .placeholder { color: var(--dim); font-style: italic; }
 .fmx .flow-line { margin: 0; color: var(--ink2); overflow-wrap: anywhere; }
 .fmx .flow-line.warn { color: var(--gold); }
 .fmx .flow-label {
   display: inline-block; min-width: 72px; margin-right: 8px; color: var(--dim);
-  font-size: 9.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
 }
 .fmx .flow-routes.route-pass .flow-route { color: var(--sage); }
 .fmx .flow-routes.route-fail .flow-route { color: var(--terra-d); }
@@ -73,7 +73,7 @@
 .fmx .flow-judge { display: flex; flex-direction: column; gap: 2px; }
 
 .fmx .flow-status { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; padding-left: 14px; border-left: 1px solid var(--line); }
-.fmx .flow-state { font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: 10.5px; color: var(--dim); }
+.fmx .flow-state { font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: 11px; color: var(--dim); }
 .fmx .flow-state.state-running { color: var(--terra); }
 .fmx .flow-state.state-done { color: var(--sage); }
 .fmx .flow-state.state-waiting, .fmx .flow-state.state-blocked { color: var(--gold); }
@@ -88,3 +88,7 @@
 /* The pending human gate's answer panel sits in its row instead of over the canvas. */
 .fmx .flow-answer .gate-answer { position: static; width: auto; max-height: none; margin-top: 8px; box-shadow: none; }
 .fmx .flow-limit .flow-link { color: var(--accent); }
+
+/* Windows occupy their own shelf, so every row remains readable beside them. */
+.fmx .viewport.flow-docked .flow{right:min(616px,43%);padding-inline:20px;}
+.fmx .viewport.flow-docked .flow.with-run .flow-step{grid-template-columns:minmax(0,1fr);}

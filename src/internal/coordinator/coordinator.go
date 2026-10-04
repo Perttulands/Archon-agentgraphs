@@ -641,7 +641,7 @@ func project(status *formations.RunStatusProjection, events []formations.RunEven
 		e.Outcome, _ = raw.Data["outcome"].(string)
 		e.Blocks, _ = raw.Data["blocks"].(bool)
 		switch raw.Type {
-		case formations.RunEventHumanAskDelivered:
+		case formations.RunEventHumanAskDelivered, formations.RunEventHumanVerdictRecorded:
 			e.RequestedSeq = intFromData(raw.Data["requestedSeq"])
 		case formations.RunEventHumanAskFallback:
 			e.RequestedSeq = intFromData(raw.Data["requestedSeq"])

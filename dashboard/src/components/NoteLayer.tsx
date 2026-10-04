@@ -1,3 +1,4 @@
+import LinkedText from '../files/LinkedText'
 /* Notes on the canvas. Each noted node gets a sticky in a layer above the
  * cards, so no card covers it. Preview shows the latest entry and who wrote
  * it; full shows the whole thread. A sticky opens the node's note window. */
@@ -117,13 +118,13 @@ export function NoteLayer({ mode, anchors, notes, onOpen }: {
               >open</button>
             </div>
             {mode === 'preview' ? (
-              <div className="note-sticky-text">{latest.text}</div>
+              <div className="note-sticky-text"><LinkedText text={latest.text} /></div>
             ) : (
               <ol className="note-sticky-thread">
                 {entries.map(entry => (
                   <li key={entry.id} className={`note-sticky-entry note-entry-${noteAuthor(entry.author).kind}`}>
                     <div className="note-sticky-entry-head"><AuthorChip author={entry.author} /><span className="note-time">{noteTime(entry.createdAt)}</span></div>
-                    <div className="note-sticky-text">{entry.text}</div>
+                    <div className="note-sticky-text"><LinkedText text={entry.text} /></div>
                   </li>
                 ))}
               </ol>

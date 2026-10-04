@@ -368,6 +368,9 @@ func arrangementItemSize(item arrangementItem) (int, int) {
 	case FormationTypeOrchestrated:
 		width, height = 320, 440
 	}
+	// A later admission finding may appear without editing the graph. Reserve
+	// the bounded 96px reasons panel and its margins on every node.
+	height += 112
 	if item.files {
 		height += arrangementFileRow
 	}

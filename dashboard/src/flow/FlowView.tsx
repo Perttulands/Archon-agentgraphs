@@ -1,3 +1,4 @@
+import { NodeProblems, type NodeFindings } from '../components/formationsDrafts'
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { noteAuthor } from '../components/NoteThread'
 import RunPoint from '../components/RunPoint'
@@ -65,7 +66,8 @@ export function controlAnchor(control: Element): WindowRect {
   return { left, top, width, height }
 }
 
-export default function FlowView({ board, agents, notes, run, answerPanel, onOpenNode, onOpenNotes, onStartMission }: {
+export default function FlowView({ board, agents, notes, run, findings = new Map(), answerPanel, onOpenNode, onOpenNotes, onStartMission }: {
+  findings?: NodeFindings
   board: BoardDocument
   agents: AgentProjection[]
   /** Each node's note thread. */
@@ -94,7 +96,7 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
     .map(slot => staffingSentence(slot, roleName))
     .join(' ')
 
-  const context = { board, flow, run, notes, answerPanel, staffing, onOpenNode, onOpenNotes }
+  const context = { board, flow, run, notes, findings, answerPanel, staffing, onOpenNode, onOpenNotes }
   return (
     <div
       ref={root}
@@ -108,6 +110,7 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
         <section key={section.mission?.id || 'unreached'} className="flow-section" aria-label={section.mission ? `Input card ${section.mission.title}` : 'Steps the Input card does not reach'}>
           {section.mission ? (
             <header className="flow-mission" data-flow-node={section.mission.id}>
+              <NodeProblems findings={findings.get(section.mission.id)} />
               <div className="flow-mission-head">
                 <button type="button" className="flow-title" onClick={event => onOpenNode(section.mission!.id, controlAnchor(event.currentTarget))}>
                   <span className="flow-kicker">◆ Input</span> {section.mission.title || 'Input'}
@@ -134,9 +137,10 @@ export default function FlowView({ board, agents, notes, run, answerPanel, onOpe
   )
 }
 
-function FlowRow({ board, step, run, notes, answerPanel, staffing, onOpenNode, onOpenNotes }: {
+function FlowRow({ board, step, run, notes, findings, answerPanel, staffing, onOpenNode, onOpenNotes }: {
   board: BoardDocument
   step: FlowStep
+  findings: NodeFindings
   run: FlowRun | null
   notes: ReadonlyMap<string, NoteEntry[]>
   answerPanel: { gateId: string; panel: ReactNode } | null
@@ -144,16 +148,20 @@ function FlowRow({ board, step, run, notes, answerPanel, staffing, onOpenNode, o
   onOpenNode: (nodeId: string, anchor?: WindowRect) => void
   onOpenNotes: (nodeId: string) => void
 }) {
-  const state = run ? run.states.get(step.id) ?? '' : undefined
+  const judgeIds = step.kind === 'gate' ? step.judges.map(judge => judge.id) : []
+  const blockedJudge = run && judgeIds.find(id => ['blocked', 'failed', 'waiting'].includes(run.states.get(id) || ''))
+  const state = run ? run.states.get(blockedJudge || step.id) ?? '' : undefined
   const title = step.node.title || (step.kind === 'gate' ? 'Gate' : 'Untitled step')
   return (
     <li className={`flow-step flow-${step.kind}${state ? ` state-${state}` : ''}`} data-flow-node={step.id} data-testid={`flow-step-${step.id}`}>
       <div className="flow-body">
         <div className="flow-step-head">
-          <span className="flow-number" aria-hidden="true">{step.number}</span>
+          <span className="flow-number" aria-hidden="true">{step.number}{step.parallel ? ' ∥' : ''}</span>
           <button type="button" className="flow-title" aria-label={`${step.number} ${title}`} onClick={event => onOpenNode(step.id, controlAnchor(event.currentTarget))}>{title}</button>
           <span className="flow-kind">{step.kind === 'formation' ? step.node.type : step.kind === 'gate' ? 'gate' : 'tool'}</span>
         </div>
+        {step.parallel && <p className="flow-line">Parallel with {step.parallel.filter(id => id !== step.id).map(id => board.formations.find(node => node.id === id)?.title || board.gates?.find(node => node.id === id)?.title || id).join(', ')}</p>}
+        <NodeProblems findings={findings.get(step.id)} />
         {step.kind === 'formation' ? (
           <>
             <p className="flow-text">{summary(step.node.brief?.goal || '') || <span className="placeholder">No brief yet.</span>}</p>
@@ -165,7 +173,7 @@ function FlowRow({ board, step, run, notes, answerPanel, staffing, onOpenNode, o
         ) : null}
         {step.kind === 'gate' ? (
           <>
-            <p className="flow-line"><span className="flow-label">Decider</span>{deciderWords(step.deciders)}</p>
+            <p className="flow-line"><span className="flow-label">Decider</span>{deciderWords(step.deciders.filter(decider => decider !== 'judge' || step.judges.length > 0))}{step.deciders.includes('judge') && !step.judges.length ? ' · No judge chain wired' : ''}</p>
             <p className="flow-text">{summary(step.node.criterion) || <span className="placeholder">No criterion yet.</span>}</p>
             <Routes label="Pass" targets={step.pass} onOpenNode={onOpenNode} />
             <Routes label="Fail" targets={step.fail} onOpenNode={onOpenNode} />
@@ -178,6 +186,7 @@ function FlowRow({ board, step, run, notes, answerPanel, staffing, onOpenNode, o
                       <span className="flow-kicker">Judge</span> {judge.title || 'Untitled judge'}
                     </button>
                     <p className="flow-line">{staffing(judge)}</p>
+                    <NodeProblems findings={findings.get(judge.id)} />
                     <LimitLines board={board} nodeId={judge.id} onOpenNode={onOpenNode} />
                   </li>
                 ))}
@@ -198,8 +207,8 @@ function FlowRow({ board, step, run, notes, answerPanel, staffing, onOpenNode, o
         <div className="flow-status" aria-label={`Run state of ${title}`}>
           <span className={`flow-state state-${state || 'idle'}`}>{STATE_WORDS[state || '']}</span>
           {(run.attempts.get(step.id) || 0) > 1 ? <span className="flow-attempt">attempt {run.attempts.get(step.id)}</span> : null}
-          {run.points.filter(point => point.nodeId === step.id && point.kind !== 'running').map(point => (
-            <RunPoint key={point.kind} runId={run.runId} point={point} title={title}
+          {run.points.filter(point => (point.nodeId === step.id || judgeIds.includes(point.nodeId)) && point.kind !== 'running').map(point => (
+            <RunPoint key={`${point.nodeId}:${point.kind}`} runId={run.runId} point={point} title={step.kind === 'gate' ? step.judges.find(judge => judge.id === point.nodeId)?.title || title : title}
               action={point.kind === 'waiting' && run.onAnswer ? 'Answer it here' : 'Open the step'}
               onLocate={point.kind === 'waiting' && run.onAnswer ? run.onAnswer
                 : nodeId => onOpenNode(nodeId, controlAnchor(document.querySelector(`[data-flow-node="${step.id}"] .flow-status [data-testid="run-point"]`) || document.body))} />

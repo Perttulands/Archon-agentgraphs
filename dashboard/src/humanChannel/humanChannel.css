@@ -10,4 +10,4 @@
 .channel-option input { margin: 2px 0 0; accent-color: var(--accent); }
 .channel-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .channel-label { color: var(--text-primary); font-size: 12px; font-weight: 700; }
-.channel-detail { color: var(--text-dim); font-size: 10.5px; line-height: 1.4; }
+.channel-detail { color: var(--text-secondary); font-size: 11px; line-height: 1.4; }

@@ -22,7 +22,7 @@ export type FlowTarget =
 
 export type GateDecider = 'you' | 'judge' | 'code'
 
-interface StepBase { id: string; number: number }
+interface StepBase { id: string; number: number; parallel?: string[] }
 
 export type FlowStep =
   | StepBase & { kind: 'formation'; node: FormationNode; next: FlowTarget[] }
@@ -96,7 +96,18 @@ export function buildFlow(board: Board): FlowModel {
     nodeOf(connection.from) === nodeId && portOf(connection.from) !== 'judge' && portOf(connection.to) !== 'judge')
   const isStep = (id: string) => !judgeOf.has(id) && (formationById.has(id) || gateById.has(id) || toolById.has(id))
 
+  // One output dispatches its siblings together. They share one step number.
+  const siblings = new Map<string, string[]>()
+  const byOutput = new Map<string, string[]>()
+  for (const route of connections) {
+    if (portOf(route.from) === 'judge' || portOf(route.to) === 'judge' || !isStep(nodeOf(route.to))) continue
+    const list = byOutput.get(route.from) || []
+    if (!list.includes(nodeOf(route.to))) list.push(nodeOf(route.to))
+    byOutput.set(route.from, list)
+  }
+  for (const list of byOutput.values()) if (list.length > 1) for (const id of list) siblings.set(id, list)
   const numbers = new Map<string, number>()
+  let nextNumber = 0
   const order: string[][] = []
   const walk = (starts: string[]) => {
     const reached: string[] = []
@@ -104,7 +115,7 @@ export function buildFlow(board: Board): FlowModel {
     while (queue.length) {
       const id = queue.shift() as string
       if (numbers.has(id) || !isStep(id)) continue
-      numbers.set(id, numbers.size + 1)
+      numbers.set(id, siblings.get(id)?.map(sibling => numbers.get(sibling)).find(number => number !== undefined) ?? ++nextNumber)
       reached.push(id)
       const routes = workRoutes(id)
       const onward = [...routes.filter(route => portOf(route.from) !== 'fail'), ...routes.filter(route => portOf(route.from) === 'fail')]
@@ -132,7 +143,7 @@ export function buildFlow(board: Board): FlowModel {
       const pass = targets(number, routes.filter(route => portOf(route.from) === 'pass'))
       const fail = targets(number, routes.filter(route => portOf(route.from) === 'fail'))
       return {
-        kind: 'gate', id, number, node: gate,
+        kind: 'gate', id, number, parallel: siblings.get(id), node: gate,
         deciders: DECIDERS.filter(([kind]) => gate.kinds.includes(kind)).map(([, decider]) => decider),
         judges: judgeChain(board, id).map(judge => formationById.get(judge)).filter((node): node is FormationNode => Boolean(node)),
         pass: pass.length ? pass : [{ kind: 'nowhere' }],
@@ -141,8 +152,8 @@ export function buildFlow(board: Board): FlowModel {
     }
     const next = targets(number, workRoutes(id))
     const formation = formationById.get(id)
-    if (formation) return { kind: 'formation', id, number, node: formation, next: next.length ? next : [{ kind: 'nowhere' }] }
-    return { kind: 'tool', id, number, node: toolById.get(id) as ToolNode, next: next.length ? next : [{ kind: 'nowhere' }] }
+    if (formation) return { kind: 'formation', id, number, parallel: siblings.get(id), node: formation, next: next.length ? next : [{ kind: 'nowhere' }] }
+    return { kind: 'tool', id, number, parallel: siblings.get(id), node: toolById.get(id) as ToolNode, next: next.length ? next : [{ kind: 'nowhere' }] }
   }
 
   const sections: FlowSection[] = missions.map((mission, index) => ({

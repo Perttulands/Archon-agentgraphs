@@ -87,7 +87,7 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   await page.keyboard.type('agreed')
   await expect.poll(() => fixture.typed(22)).toBe('agreed')
   expect(fixture.typed(21)).toBe('Settle 1 and 3 first\r\x1b')
-  const gridBefore = (await codex.locator('.xterm-screen').boundingBox())!
+  const roomBefore = (await codex.locator('.seat-terminal-room').boundingBox())!
   // Grow the window taller towards whichever edge has room; windows open in free space, sometimes at the canvas's foot.
   const codexNow = (await codex.boundingBox())!
   const growUp = codexNow.y + codexNow.height + 186 > 1080 - 8
@@ -96,8 +96,8 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   await page.mouse.down()
   await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2 + (growUp ? -180 : 180), { steps: 8 })
   await page.mouse.up()
-  // A taller room can only keep or grow the font a narrow window's width allows; the seat is told nothing.
-  expect((await settledBox(page, codex.locator('.xterm-screen'))).height).toBeGreaterThanOrEqual(gridBefore.height)
+  // Prove the resize changed the actual room; width may still cap the font.
+  expect((await settledBox(page, codex.locator('.seat-terminal-room'))).height).toBeGreaterThan(roomBefore.height + 100)
   expect(fixture.resizes(22)).toEqual([])
   expect(fixture.resizes(21)).toEqual([])
   expect(fixture.handshakes(22)).toEqual([{ AuthToken: '', columns: 100, rows: 30 }])

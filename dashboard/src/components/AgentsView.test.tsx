@@ -114,7 +114,7 @@ describe('AgentsView', () => {
     expect(within(screen.getByRole('complementary', { name: 'Agent roster' })).getByText('2 roles · 2 in use')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Inspect Critic' }))
-    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    const inspector = await screen.findByRole('dialog', { name: 'Inspector' })
     const usedBy = await within(inspector).findByRole('region', { name: 'Used by' })
     expect(Array.from(usedBy.querySelectorAll('.agx-role-use')).map(row => row.textContent)).toEqual(['Judged › First judge › AgentClaude Code · default model · medium', 'Other › Check › Checker'])
   })
@@ -217,7 +217,7 @@ describe('AgentsView', () => {
     expect(screen.getByText('Escalate Fail')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Inspect Review: not staffed' }))
-    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    const inspector = await screen.findByRole('dialog', { name: 'Inspector' })
     // No list of eligible agents: the slot says what it runs, and its words staff it.
     expect(within(inspector).queryByText('Eligible agents')).not.toBeInTheDocument()
     fireEvent.click(within(inspector).getByRole('button', { name: 'Staff Review' }))
@@ -403,7 +403,7 @@ describe('AgentsView', () => {
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('critic', { displayName: 'Critic' })], count: 1, harnesses: HARNESSES } }))
-      if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic', summary: 'Reviews the brief.' }) }, 200, { ETag: 'critic-etag' }))
+      if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic', summary: 'Reviews the brief.', notes: [{ ts: '2026-10-02T20:00:00Z', actor: 'operator', text: 'Read /tmp/brief.md for archon-o7p.13.2' }] }) }, 200, { ETag: 'critic-etag' }))
       if (url === '/api/agents/critic/usage') return Promise.resolve(jsonResponse({ success: true, data: { usage: [{ missionId: 'empty', missionSlug: 'empty', missionTitle: 'Empty', formationId: 'review', formationTitle: 'Review', slotId: 'reviewer', slotLabel: 'Reviewer' }] } }))
       if (url === '/api/missions') return Promise.resolve(jsonResponse({ success: true, data: { missions: [{ id: 'empty', slug: 'empty', title: 'Empty', rev: 1, etag: 'empty-etag' }] } }))
       if (url === '/api/missions/empty/layout') return Promise.resolve(jsonResponse({ success: true, data: { layout: emptyLayout() } }, 200, { ETag: 'layout-etag' }))
@@ -414,8 +414,10 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Inspect Critic' }))
-    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    const inspector = await screen.findByRole('dialog', { name: 'Inspector' })
     expect(await within(inspector).findByText('Reviews the brief.')).toBeInTheDocument()
+    expect(within(inspector).getByRole('button', { name: '/tmp/brief.md' })).toBeInTheDocument()
+    expect(within(inspector).getByRole('button', { name: 'archon-o7p.13.2' })).toBeInTheDocument()
     expect(within(inspector).getByText('in 1 slot')).toBeInTheDocument()
     expect(await within(inspector).findByText('Codex · gpt-6-astra · xhigh')).toBeInTheDocument()
     expect(within(inspector).queryByText(/harness variants|^Runs$|starts as/i)).toBeNull()
@@ -461,7 +463,7 @@ describe('AgentsView', () => {
 
     render(<AgentsView />)
     fireEvent.click(await screen.findByRole('button', { name: 'Inspect Critic' }))
-    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    const inspector = await screen.findByRole('dialog', { name: 'Inspector' })
     expect(await within(inspector).findByRole('button', { name: 'Other › Check › Checker' })).toBeInTheDocument()
 
     // Retire says the slot stops running, and only the confirmation writes.
@@ -492,7 +494,7 @@ describe('AgentsView', () => {
     fireEvent.click(within(inspector).getByRole('button', { name: 'Delete' }))
     fireEvent.click(within(within(inspector).getByRole('group', { name: 'Delete Spare' })).getByRole('button', { name: 'Delete Spare' }))
     await waitFor(() => expect(writes[writes.length - 1]).toEqual({ method: 'DELETE', url: '/api/agents/spare', body: null, ifMatch: 'spare-etag' }))
-    await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Inspector' })).toBeNull())
   })
 
   it('offers a mission retry when the selected mission fails to load', async () => {
@@ -578,10 +580,10 @@ describe('AgentsView', () => {
     expect(within(roster).getByText('attached')).toBeInTheDocument()
     expect(within(roster).getByText('not assignable')).toBeInTheDocument()
     expect(within(roster).getByText('no role')).toBeInTheDocument()
-    expect(screen.queryByRole('complementary', { name: 'Inspector' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Inspector' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /inspect Retired One/i }))
-    const inspector = await screen.findByRole('complementary', { name: 'Inspector' })
+    const inspector = await screen.findByRole('dialog', { name: 'Inspector' })
     await waitFor(() => expect(within(inspector).getByText('retired')).toBeInTheDocument())
     expect(within(inspector).getByText('offline')).toBeInTheDocument()
 
@@ -618,7 +620,8 @@ describe('AgentsView', () => {
 
     render(<AgentsView />)
 
-    fireEvent.click(await screen.findByRole('button', { name: /new role/i }))
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Mission' })).toHaveValue('empty'))
+    fireEvent.click(screen.getByRole('button', { name: /new role/i }))
     // A new role asks only for role text: no launch, harness, model or effort.
     const form = screen.getByRole('dialog', { name: 'New role' })
     expect(within(form).queryByLabelText('Launch')).toBeNull()
@@ -626,6 +629,12 @@ describe('AgentsView', () => {
     expect(within(form).queryByLabelText('Model')).toBeNull()
     expect(within(form).queryByLabelText('Effort')).toBeNull()
     expect(within(form).queryByText(/model|effort/i)).toBeNull()
+    fireEvent.change(screen.getByLabelText('Role id'), { target: { value: 'INVALID ROLE' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Create role' }))
+    expect(within(form).getByRole('alert')).toHaveTextContent('Use lowercase letters')
+    expect(postedBodies).toHaveLength(0)
+    fireEvent.click(within(form).getByRole('button', { name: 'Dismiss' }))
+    expect(within(form).queryByRole('alert')).toBeNull()
     fireEvent.change(screen.getByLabelText('Role id'), { target: { value: 'writer' } })
     fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Writer' } })
     fireEvent.change(screen.getByLabelText('Summary'), { target: { value: 'Writes launch copy' } })

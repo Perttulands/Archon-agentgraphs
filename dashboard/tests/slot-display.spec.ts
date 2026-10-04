@@ -66,7 +66,7 @@ test('the Agents view slot tiles and slot inspector show harness, model, effort 
   await expect(agents.getByTestId('agents-slot-recheck-recheck_seat')).toContainText('+ Agent')
 
   await build.click()
-  const inspector = agents.getByRole('complementary', { name: 'Inspector' })
+  const inspector = agents.getByRole('dialog', { name: 'Inspector' })
   await expect(inspector.getByTestId('slot-staffing-words')).toHaveText('Build (controller) is Builder on Codex · default model · medium.')
   for (const [term, value] of [['Role', 'Builder'], ['Harness', 'Codex'], ['Model', 'default model'], ['Effort', 'medium']]) {
     await expect(inspector.locator('.tool-detail-identity div', { hasText: term }).locator('dd')).toHaveText(value)

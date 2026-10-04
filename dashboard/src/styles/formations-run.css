@@ -10,7 +10,7 @@
 .fmx .formation.blocked:not(.needs-you),.fmx .formation.failed:not(.needs-you),
 .fmx .gatecard.blocked:not(.needs-you),.fmx .gatecard.failed:not(.needs-you),
 .fmx .missioncard.blocked,.fmx .missioncard.failed{border-color:var(--terra-d);box-shadow:0 0 0 1.5px var(--terra-d),0 0 16px -6px color-mix(in srgb,var(--terra-d) 55%,transparent);}
-.fmx .run-chip{position:absolute;z-index:12;right:38px;top:-9px;padding:1px 7px;border:1px solid var(--terra-d);border-radius:3px;background:var(--card);color:var(--terra-d);font:700 8.5px/1.5 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;pointer-events:none;}
+.fmx .run-chip{position:absolute;z-index:12;right:38px;top:-9px;padding:1px 7px;border:1px solid var(--terra-d);border-radius:3px;background:var(--card);color:var(--terra-d);font:700 11px/1.5 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;pointer-events:none;}
 
 .fmx .formation.located,.fmx .missioncard.located,.fmx .gatecard.located{animation:run-located 1.6s ease-out;}
 @keyframes run-located{0%,45%{outline:2px solid var(--terra);outline-offset:7px;}100%{outline:2px solid transparent;outline-offset:2px;}}
@@ -39,3 +39,9 @@
 .fmx .stop-run-what{margin:0 0 10px;color:var(--ink2);font-size:12px;line-height:1.5;overflow-wrap:anywhere;}
 .fmx .stop-run-what strong{color:var(--ink);}
 .fmx .stop-run-consequences{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;color:var(--ink2);font-size:12px;line-height:1.5;}
+
+.fmx .answered-draft{position:absolute;left:16px;bottom:16px;max-width:560px;width:calc(100% - 32px);z-index:220;background:var(--card);border:1px solid var(--gold);padding:12px;font-size:12px;box-shadow:0 4px 20px #0008;}
+.fmx .answered-draft textarea{width:100%;min-height:90px;max-height:180px;resize:vertical;background:var(--paper);color:var(--ink);font:inherit;border:1px solid var(--line);}
+.fmx .answered-draft p{margin:0 0 8px;}
+.fmx .answered-draft blockquote{margin:8px 0;white-space:pre-wrap;max-height:120px;overflow:auto;}
+.fmx .answered-draft button{margin:8px 8px 0 0;}

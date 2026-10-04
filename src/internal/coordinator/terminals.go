@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/Perttulands/Archon-agentgraphs/internal/core"
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 	"github.com/Perttulands/Archon-agentgraphs/internal/terminal"
 )
@@ -193,18 +192,18 @@ func (c *Coordinator) viewTerminal(w http.ResponseWriter, r *http.Request) {
 	// HTTP shutdown does not close hijacked sockets. Count every observer and
 	// close it on the immediate fence before the writer lock can be released.
 	if !c.acquire("") {
-		core.WriteError(w, 503, "TERMINAL_UNAVAILABLE", "coordinator shutting down")
+		terminal.Refuse(w, r, "coordinator is shutting down")
 		return
 	}
 	defer c.release("")
 	seq, err := strconv.Atoi(r.PathValue("createdSeq"))
 	if err != nil || seq < 1 {
-		core.WriteError(w, 400, "INVALID_SEAT", "positive createdSeq required")
+		terminal.Refuse(w, r, "this terminal has no valid seat identity")
 		return
 	}
 	records, sequences, err := c.seatRecords(r.PathValue("runId"))
 	if err != nil {
-		failure(w, err)
+		terminal.Refuse(w, r, "this run is no longer available")
 		return
 	}
 	var selected *seatRecord
@@ -216,9 +215,9 @@ func (c *Coordinator) viewTerminal(w http.ResponseWriter, r *http.Request) {
 	}
 	if selected == nil {
 		if sequences[seq] {
-			core.WriteError(w, 409, "STALE_SEAT", "a newer seat attempt replaced this terminal")
+			terminal.Refuse(w, r, "a newer seat attempt replaced this terminal")
 		} else {
-			core.WriteError(w, 404, "SEAT_NOT_FOUND", "no such seat in this run")
+			terminal.Refuse(w, r, "no such seat in this run")
 		}
 		return
 	}
@@ -233,11 +232,7 @@ func (c *Coordinator) viewTerminal(w http.ResponseWriter, r *http.Request) {
 	}()
 	seat := c.projectSeat(ctx, *selected)
 	if seat.State != "live" {
-		code := 409
-		if seat.State == "unavailable" {
-			code = 503
-		}
-		core.WriteError(w, code, "TERMINAL_UNAVAILABLE", seat.Reason)
+		terminal.Refuse(w, r, seat.Reason)
 		return
 	}
 	c.terminalObserver.Serve(ctx, w, r, selected.target)

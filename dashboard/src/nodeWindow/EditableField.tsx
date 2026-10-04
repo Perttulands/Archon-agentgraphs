@@ -1,5 +1,8 @@
-import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { createContext, useContext, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import LinkedText from '../files/LinkedText'
 import Markdown from '../evidence/Markdown'
+
+export const AuthoringReadOnly = createContext(false)
 
 /**
  * One field of a node, read and edited in the same place. It reads as text, or
@@ -20,6 +23,7 @@ export function EditableField({ label, value, multiline = false, markdown = fals
   /** Drawn instead of the value while reading, for values that are not plain text. */
   children?: ReactNode
 }) {
+  const readOnly = useContext(AuthoringReadOnly)
   const [draft, setDraft] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -45,13 +49,15 @@ export function EditableField({ label, value, multiline = false, markdown = fals
       return
     }
     setSaving(true)
-    const saved = await onSave(next)
-    setSaving(false)
+    let saved: boolean | string
+    try { saved = await onSave(next) }
+    catch (reason) { saved = reason instanceof Error ? reason.message : String(reason) }
+    finally { setSaving(false) }
     if (saved === true) {
       cancel()
       setSavedReceipt(true)
     }
-    else setError(typeof saved === 'string' && saved ? saved : `The ${name} was not saved.`)
+    else setError(typeof saved === 'string' && saved ? saved : `Could not save ${name}.`)
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -69,7 +75,7 @@ export function EditableField({ label, value, multiline = false, markdown = fals
     <div className={`nfield${draft !== null ? ' editing' : ''}`}>
       <div className="nfield-head">
         <span className="nfield-label">{label}</span>
-        {draft === null ? (
+        {draft === null && !readOnly ? (
           <button type="button" className="nfield-edit" aria-label={`Edit ${name}`} onClick={() => { setSavedReceipt(false); setDraft(value) }}>Edit</button>
         ) : null}
       </div>
@@ -93,7 +99,7 @@ export function EditableField({ label, value, multiline = false, markdown = fals
       ) : children ? (
         <div className="nfield-value">{children}</div>
       ) : value.trim() ? (
-        markdown ? <Markdown content={value} className="nfield-value nfield-markdown" /> : <div className="nfield-value">{value}</div>
+        markdown ? <Markdown content={value} className="nfield-value nfield-markdown" /> : <div className="nfield-value"><LinkedText text={value} /></div>
       ) : (
         <div className="nfield-value placeholder">{placeholder}</div>
       )}

@@ -29,7 +29,7 @@ const RUN_STATES: Array<{ className: string; text: string; chip?: string }> = [
   { className: 'blocked', text: 'Blocked or failed; the run bar says why', chip: 'blocked' },
 ]
 
-const HARNESSES: HarnessId[] = ['claude-code', 'codex', 'opencode', 'pi', 'hermes', 'terminal']
+const HARNESSES: HarnessId[] = ['claude-code', 'codex']
 
 export default function CanvasLegend() {
   const [open, setOpen] = useState(false)
@@ -86,6 +86,27 @@ export default function CanvasLegend() {
                 <span>{state.text}</span>
               </li>
             ))}
+          </ul>
+          <h3>Marks</h3>
+          <ul className="legend-words">
+            <li>◆ Input starts the mission. End nodes finish one path, done or rejected. A Limit card caps its target.</li>
+            <li>Step numbers match Flow. ∥ and “Parallel with” name siblings dispatched together.</li>
+            <li>Draft lists what a run still needs; needs fix marks a refused start.</li>
+            <li>“judges X” names the gate that a formation decides; its judge socket attaches that chain.</li>
+            <li>File chips open referenced files. Produced chips open files from the selected run.</li>
+            <li>A note pin opens the thread. Operator notes and agent notes have distinct author labels and styling; Preview shows the latest entry, Full notes the thread.</li>
+            <li>A dimmed role in the rail is already in use; its words count the slots. Open slot is empty; harness, model and effort describe staffed slots.</li>
+            <li>IN and OUT label input and output ports. Filled input ports have a feed; a highlighted port is the current drop target.</li>
+          </ul>
+          <h3>Gestures</h3>
+          <ul className="legend-words">
+            <li>Click a card to open its node window. Click a wire to select it. Right-click a card, slot, port, wire or canvas for its menu.</li>
+            <li>Drag cards to move them. Drag output ports to wire them; drag a fed input or wire endpoint to reconnect it.</li>
+            <li>Drag a role onto a slot to staff it. Drag a staffed slot onto another to move or swap its staffing.</li>
+            <li>Click staffing words to edit them. N reaches the next empty slot; digits 1–6 set effort.</li>
+            <li>Delete or Backspace removes the canvas selection. Ctrl+Z undoes, Ctrl+Shift+Z redoes. Text fields keep these keys for typing.</li>
+            <li>Drag empty canvas to pan; wheel zooms. Flow scrolls. Fit brings the graph into view; Arrange lays out its cards.</li>
+            <li>Drag a window title to move it and its edges to resize it; focused titles and handles take arrow keys. Esc closes the topmost surface.</li>
           </ul>
           <h3>Harnesses</h3>
           <ul className="legend-harnesses">

@@ -7,7 +7,7 @@
 }
 .ref-chip:hover, .ref-chip:focus-visible { border-color: var(--accent); color: var(--accent); }
 .ref-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ref-glyph { flex-shrink: 0; color: var(--text-dim); }
+.ref-glyph { flex-shrink: 0; color: var(--text-secondary); }
 .ref-chip.judge .ref-glyph { color: var(--accent); }
 .ref-chip.more { flex-shrink: 0; color: var(--text-secondary); }
 .ref-chip.missing { border-style: dashed; border-color: var(--color-error); color: var(--color-error); }

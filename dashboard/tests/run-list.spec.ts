@@ -34,7 +34,7 @@ for (const entry of ['list', 'link'] as const) {
       if (url.pathname === '/api/runs/run_browser') return respond(missionRuns[0])
       if (url.pathname === '/api/runs/run_browser/evidence/artifacts/review.md') return respond({ artifact: { name: 'review.md', size: reviewMarkdown.length,
         modifiedAt: '2026-09-16T00:00:00Z', kind: 'markdown', path: `${artifactRoot}/review.md`, text: { text: reviewMarkdown, bytes: reviewMarkdown.length } } })
-      if (url.pathname === '/api/runs/run_browser/evidence/mission') return respond({ mission: { missionRev: 2, text: { text: 'schema = 1\nslug = "browser"\nrev = 2\n', bytes: 36 } } })
+      if (url.pathname === '/api/runs/run_browser/evidence/mission') return respond({ mission: { missionRev: 2, graph: { ...fixture.board(), rev: 2, formations: fixture.board().formations.map(node => ({...node, title: 'Frozen '+node.title})) }, text: { text: 'schema = 1\nslug = "browser"\nrev = 2\n', bytes: 36 } } })
       return route.fallback()
     })
     await page.goto(entry === 'list' ? '/?mission=browser' : '/?mission=browser&run=run_browser')
@@ -61,10 +61,13 @@ for (const entry of ['list', 'link'] as const) {
     await expect(banner.locator('.run-when')).toContainText('took 4m · agent:driver')
     await expect(page).toHaveURL(/\?mission=browser&run=run_browser$/)
 
-    // The board has moved on since; the run opens the mission as it ran.
-    await banner.getByRole('button', { name: 'ran revision 2' }).click()
-    const ran = page.getByRole('dialog', { name: /Peer and judge as run .*rowser ran it/ })
-    await expect(ran).toContainText('rev = 2')
+    // The board has moved on: both views use the frozen graph and disable edits.
+    await expect(banner).toContainText('Showing revision 2 · read only')
+    await expect(page.getByTestId('new-formation')).toBeDisabled()
+    await expect(page.locator('.formation').first()).toContainText('Frozen')
+    await page.getByRole('radio', { name: 'Flow', exact: true }).click()
+    await expect(page.getByTestId('flow-view')).toContainText('Frozen')
+    await page.screenshot({ path: test.info().outputPath('frozen-flow.png') })
 
     // A produced file is one click from the run, and Copy path gives its absolute path.
     await banner.getByRole('button', { name: 'review.md' }).click()
@@ -74,6 +77,9 @@ for (const entry of ['list', 'link'] as const) {
     await expect(review.getByRole('button', { name: 'Copied' })).toBeVisible()
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${artifactRoot}/review.md`)
     expect(fixture.writes).toEqual([])
+    await banner.getByRole('button', { name: /Edit current mission/ }).click()
+    await expect(page.getByTestId('new-formation')).toBeEnabled()
+    await expect(page.getByTestId('flow-view')).not.toContainText('Frozen')
   })
 }
 

@@ -26,7 +26,7 @@ describe('field save feedback', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit brief' }))
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Updated' } })
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save brief' })))
-    expect(screen.getByRole('alert')).toHaveTextContent('The brief was not saved.')
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not save brief.')
     expect(screen.getByRole('textbox')).toHaveValue('Updated')
     expect(screen.queryByRole('status')).toBeNull()
   })
@@ -38,4 +38,14 @@ describe('field save feedback', () => {
     expect(onSave).not.toHaveBeenCalled()
     expect(screen.queryByRole('status')).toBeNull()
   })
+})
+
+it('keeps a rejected edit and puts the daemon reason beside it', async () => {
+ render(<EditableField label="Files" value="/tmp/old" placeholder="Files" onSave={async () => { throw new Error('mission revision changed; reload before saving') }} />)
+ fireEvent.click(screen.getByRole('button', { name: 'Edit files' }))
+ fireEvent.change(screen.getByRole('textbox'), { target: { value: '/tmp/new' } })
+ await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save files' })))
+ expect(screen.getByRole('alert')).toHaveTextContent('mission revision changed; reload before saving')
+ expect(screen.getByRole('textbox')).toHaveValue('/tmp/new')
+ expect(screen.getByRole('button', { name: 'Save files' })).not.toBeDisabled()
 })

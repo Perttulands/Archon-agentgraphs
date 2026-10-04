@@ -1,3 +1,7 @@
+import FloatingWindow from '../windows/FloatingWindow'
+import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
+import LinkedText from '../files/LinkedText'
+import { useWindowManager, WindowManagerProvider } from '../windows/WindowManager'
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import type { ReactNode } from 'react'
 import {
@@ -250,6 +254,7 @@ export function agentStatus(agent: RosterAgent, deployedSlots: number, details?:
 }
 
 export default function AgentsView() {
+  const inspectorWindows = useWindowManager()
   const [agents, setAgents] = useState<RosterAgent[]>([])
   const [harnesses, setHarnesses] = useState<LaunchableHarness[]>([])
   const [effortPolicy, setEffortPolicy] = useState<EffortPolicyEntry[]>([])
@@ -267,6 +272,7 @@ export default function AgentsView() {
   const [error, setError] = useState('')
   const [boardError, setBoardError] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
+  const [createError, setCreateError] = useState('')
   const [createDraft, setCreateDraft] = useState<CreateDraft>(EMPTY_CREATE)
   const [noteDraft, setNoteDraft] = useState('')
   const [editingPersona, setEditingPersona] = useState<{ agent: RosterAgent; trigger: HTMLElement | null } | null>(null)
@@ -625,6 +631,10 @@ export default function AgentsView() {
 
   const createPersona = useCallback(async (event: FormEvent) => {
     event.preventDefault()
+    if (createDraft.id.trim() && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(createDraft.id.trim())) {
+      setCreateError('Use lowercase letters, digits and single hyphens for the role id, for example brief-critic.')
+      return
+    }
     const capabilities = splitCommaList(createDraft.capabilities)
     try {
       const result = await fetchApi<PersonaCard>('/api/agents', {
@@ -645,7 +655,7 @@ export default function AgentsView() {
       setError('')
       await loadAgents()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Agent create request failed')
+      setCreateError(err instanceof Error ? err.message : 'Could not create the role.')
     }
   }, [createDraft, loadAgents])
 
@@ -702,6 +712,8 @@ export default function AgentsView() {
   const rosterSummary = rolesInUseLabel(loading ? '…' : rosterCounts.assignable, rosterCounts.deployed, rosterCounts.live)
 
   return (
+    <WindowManagerProvider stack={inspectorWindows}>
+    <FileWindowsProvider key={selectedSlug} stack={inspectorWindows}>
     <div className="fmx agx" data-testid="agents-view">
       <div className="topbar">
         <div className="boardpick">
@@ -845,7 +857,8 @@ export default function AgentsView() {
         </main>
 
         {selection && (
-          <aside className="agx-inspector" aria-label="Inspector">
+          <FloatingWindow id="agents-inspector" kind="node" title="Inspector" label="Inspector" defaultSize={{ width: 480, height: 620 }}
+            className="agx-inspector" onClose={() => setSelection(null)}>
             <Inspector
               selection={selection}
               agents={agents}
@@ -866,7 +879,7 @@ export default function AgentsView() {
               onShowUse={showUse}
               onClose={() => setSelection(null)}
             />
-          </aside>
+          </FloatingWindow>
         )}
       </div>
 
@@ -888,12 +901,17 @@ export default function AgentsView() {
       {createOpen && (
         <CreatePersonaPopover
           draft={createDraft}
-          onDraft={setCreateDraft}
+          error={createError}
+          onDismiss={() => setCreateError('')}
+          onDraft={draft => { setCreateDraft(draft); setCreateError('') }}
           onSubmit={createPersona}
-          onClose={() => setCreateOpen(false)}
+          onClose={() => { setCreateOpen(false); setCreateError('') }}
         />
       )}
+      <FileWindowsLayer />
     </div>
+    </FileWindowsProvider>
+    </WindowManagerProvider>
   )
 }
 
@@ -1283,7 +1301,7 @@ function Inspector({
                       <span className={`note-author note-author-${author.kind}`} title={note.actor}>{author.name}</span>
                       <span className="note-time">{noteTime(note.ts)}</span>
                     </div>
-                    <div className="note-entry-text">{note.text}</div>
+                    <div className="note-entry-text"><LinkedText text={note.text} /></div>
                   </li>
                 )
               })}
@@ -1481,11 +1499,14 @@ function MissionRunState({ board, missionRun }: { board: BoardDocument; missionR
 }
 
 function CreatePersonaPopover({
+  error, onDismiss,
   draft,
   onDraft,
   onSubmit,
   onClose,
 }: {
+  error: string
+  onDismiss: () => void
   draft: CreateDraft
   onDraft: (draft: CreateDraft) => void
   onSubmit: (event: FormEvent) => void
@@ -1509,6 +1530,8 @@ function CreatePersonaPopover({
         <input id="agx-create-summary" className="f" value={draft.summary} onChange={event => set('summary', event.target.value)} />
         <label htmlFor="agx-create-capabilities">Capabilities</label>
         <input id="agx-create-capabilities" className="f" value={draft.capabilities} onChange={event => set('capabilities', event.target.value)} />
+        <p className="field-note">Role id: lowercase letters, digits and hyphens, for example brief-critic.</p>
+        {error && <div className="field-note error" role="alert">{error} <button type="button" onClick={onDismiss}>Dismiss</button></div>}
         <button className="save" type="submit">Create role</button>
       </form>
     </div>

@@ -31,6 +31,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -208,8 +209,27 @@ func (o *Observer) Serve(ctx context.Context, w http.ResponseWriter, r *http.Req
 		return
 	}
 	if err := o.attach(ctx, conn, target, status, finish); err != nil {
-		refuse(conn, finish, "terminal attach unavailable: "+err.Error())
+		log.Printf("terminal attach failed: %v", err)
+		refuse(conn, finish, "terminal attach is unavailable; refresh seats to try again")
 	}
+}
+
+// Refuse upgrades a valid terminal request so the reason is visible in its pane.
+func Refuse(w http.ResponseWriter, r *http.Request, reason string) {
+	log.Printf("terminal refused: %s", reason)
+	upgrader := websocket.Upgrader{Subprotocols: []string{"tty"}}
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, _, err := conn.ReadMessage(); err != nil {
+		return
+	}
+	refuse(conn, func(code int, message string) {
+		_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(code, message), time.Now().Add(time.Second))
+	}, reason)
 }
 
 // refuse reports a refusal in the terminal itself, then closes with a close
@@ -217,6 +237,7 @@ func (o *Observer) Serve(ctx context.Context, w http.ResponseWriter, r *http.Req
 // blank terminal sees the reason, and a refusal is an answer, not a lost
 // connection, so the browser must not read it as one and dial it again.
 func refuse(conn *websocket.Conn, finish func(int, string), reason string) {
+	log.Printf("terminal refused: %s", reason)
 	_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
 	_ = conn.WriteMessage(websocket.BinaryMessage, append([]byte{serverOutput}, "Archon: "+reason+"\r\n"...))
 	finish(websocket.CloseNormalClosure, "attach refused")

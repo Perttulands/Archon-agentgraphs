@@ -1,3 +1,4 @@
+import type { BoardDocument } from '../components/formationsTypes'
 import { fetchApi, type RunLimitUse } from '../components/formationsApi'
 
 // Read models for the run evidence routes (ADR-0017). They mirror the Go
@@ -200,6 +201,7 @@ export async function fetchArtifactPreview(runId: string, name: string): Promise
 
 /** The mission a run froze at admission, as TOML (archon-o7p.2). */
 export interface RunMissionEvidence {
+  graph: BoardDocument
   missionRev: number
   text: EvidenceText
 }

@@ -325,10 +325,10 @@ export async function fetchRunStatus(runId: string): Promise<RunStatusProjection
 }
 
 export async function fetchRunEvents(runId: string): Promise<RunEvent[]> {
-  const result = await fetchApi<{ events: Array<{ seq: number; type: string; nodeId?: string; slotId?: string; gateId?: string; attempt?: number; status?: string; verdict?: string; sessionName?: string; outcome?: string; endIds?: string[] }> }>(`/api/runs/${encodeURIComponent(runId)}/events`)
+  const result = await fetchApi<{ events: Array<{ seq: number; type: string; nodeId?: string; slotId?: string; gateId?: string; attempt?: number; requestedSeq?: number; status?: string; verdict?: string; sessionName?: string; outcome?: string; endIds?: string[] }> }>(`/api/runs/${encodeURIComponent(runId)}/events`)
   return (result.data.events || []).map(event => ({
     seq: event.seq, type: event.type, runId, nodeId: event.nodeId, gateId: event.gateId, attempt: event.attempt,
-    data: { slotId: event.slotId, status: event.status, verdict: event.verdict, sessionRef: event.sessionName, reason: event.outcome, ...(event.endIds ? { endIds: event.endIds } : {}) },
+    data: { requestedSeq: event.requestedSeq, slotId: event.slotId, status: event.status, verdict: event.verdict, sessionRef: event.sessionName, reason: event.outcome, ...(event.endIds ? { endIds: event.endIds } : {}) },
   })).sort((a, b) => a.seq - b.seq)
 }
 

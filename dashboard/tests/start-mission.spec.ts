@@ -198,3 +198,29 @@ for (const entry of ['Start mission', 'Run formation'] as const) {
     expect(fixture.writes).toEqual([])
   })
 }
+
+test('file and folder inputs browse host paths and preserve typed values', async ({ page }) => {
+  await scoutingFixture(page)
+  const mission = { ...scouting.mission, inputCards: scouting.mission.inputCards.map(input => ({ ...input, inputs: [
+    { name: 'source', kind: 'file', required: true }, { name: 'folder', kind: 'folder', required: true },
+  ] })) }
+  await page.route('**/api/missions/scouting', route => route.fulfill({ json: { success: true, data: { mission } }, headers: { ETag: 'fixture-etag' } }))
+  await page.route('**/api/files/directory?**', route => {
+    const path = new URL(route.request().url()).searchParams.get('path')
+    return route.fulfill({ json: { success: true, data: { path, items: [
+      { name: 'folder', path: '/host/folder', isDir: true }, { name: 'source.md', path: '/host/source.md', isDir: false },
+    ] } } })
+  })
+  await page.goto('/?mission=scouting')
+  await page.getByTitle('Start mission', { exact: true }).first().click()
+  const dialog = page.getByRole('dialog', { name: 'Start mission', exact: true })
+  await dialog.getByRole('button', { name: 'Browse for source' }).click()
+  await dialog.getByRole('button', { name: 'FILE · source.md' }).click()
+  await expect(dialog.getByLabel('Source', { exact: true })).toHaveValue('/host/source.md')
+  await dialog.getByRole('button', { name: 'Browse for folder' }).click()
+  await dialog.getByRole('button', { name: 'DIR · folder' }).click()
+  await dialog.getByRole('button', { name: 'Use this folder' }).click()
+  await expect(dialog.getByLabel('Folder', { exact: true })).toHaveValue('/host/folder')
+  await dialog.getByLabel('Source', { exact: true }).fill('/host/typed.md')
+  await expect(dialog.getByLabel('Source', { exact: true })).toHaveValue('/host/typed.md')
+})

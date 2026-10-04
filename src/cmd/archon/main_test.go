@@ -2835,6 +2835,10 @@ func TestArchonRunListJSONListsDurableRunsAndFiltersBoard(t *testing.T) {
 		t.Fatalf("run list code=%d stderr=%s:\n%s", code, stderr, stdout)
 	}
 
+	if first := strings.Split(stdout, "\n")[0]; !strings.HasPrefix(first, betaRun.RunID+"\t") {
+		t.Fatalf("offline run list first line = %q, want newest run %s", first, betaRun.RunID)
+	}
+
 	stdout, stderr, code = runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "run", "list", "--mission", "brd_alpha", "--json")
 	if code != 0 {
 		t.Fatalf("run list --board --json code=%d stderr=%s stdout=%s", code, stderr, stdout)
@@ -3749,5 +3753,17 @@ func TestOfflineRoleCardsLiveInTheWorkspaceAsTheDaemonKeepsThem(t *testing.T) {
 	t.Setenv("ARCHON_AGENTS_DIR", elsewhere)
 	if stdout, stderr, code := runArchon(t, runner, "--workspace", workspace, "agent", "list"); code != 0 || strings.Contains(stdout, "mapper") {
 		t.Fatalf("ARCHON_AGENTS_DIR should win: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+}
+
+func TestMissionNewNamesMissingWorkspaceAndDoesNotCreateIt(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing")
+	runner := &fakeTmux{live: map[string]bool{}}
+	_, stderr, code := runArchon(t, runner, "--workspace", missing, "mission", "new", "proof")
+	if code == 0 || !strings.Contains(stderr, "workspace directory") || !strings.Contains(stderr, "does not exist") || !strings.Contains(stderr, "does not create it") {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	if _, err := os.Stat(missing); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("workspace created: %v", err)
 	}
 }
