@@ -35,9 +35,9 @@ Archon makes chaining agents and gates easy and great; that is all it does
 ## Reuse CHROTE's proven code
 
 CHROTE has working, hard-won implementations for file browsing and viewing,
-browser terminals, and tmux integration. Before implementing or changing these
-areas, inspect the CHROTE repository's code and tests and repurpose them for
-Archon. Prefer adapting that code over building a parallel implementation.
+browser terminals, and tmux integration. When changing these areas, inspect the CHROTE repository's code and tests as
+starting points. Adapt what fits Archon's contracts; justify a different design
+when it is simpler or better suited to the intended outcome.
 
 Start with these paths in the CHROTE repository:
 
@@ -51,19 +51,15 @@ necessary departure from the CHROTE implementation.
 
 ## Work state
 
-Use this repository's `archon-` Beads store. Execute the active Bead and record
-unrelated findings separately. Host deployment and forwarding live outside this
+Use this repository's `archon-` Beads store. Host deployment and forwarding live outside this
 repository; CHROTE integration and SRV deployment require Beads in their owning
 stores. Keep tracked files host-neutral. Supply host paths, sockets, users and
 listen addresses through flags or environment, with placeholders in examples.
 
-## Validation
+## Verification
 
-```bash
-cd src && go test ./... && go build ./cmd/archon && go build ./cmd/archond
-cd ../dashboard && npm ci && npm run test:unit && npm run build && npm run lint
-```
-
-Keep main clean and current. Do ordinary verified work directly there with small
-commits. Use a branch when isolation helps, then merge and remove it within the
-assigned integration authority. Lane briefs may reserve integration to an owner.
+For runtime and CLI changes, `go test ./...` from `src/` exercises Go behavior;
+`go build ./cmd/archon` and `go build ./cmd/archond` check the executable targets.
+For dashboard changes, its `package.json` exposes unit tests, build and lint.
+Use the checks relevant to the affected contract. Current integration ownership
+belongs to the owning Bead or lane brief.
