@@ -1072,6 +1072,9 @@ id = "fmn_work" # stable Formation id
 type = "solo"
 title = "Worker"
 
+[[formation.slot]]
+id = "slot_work"
+
 [[formation.input]]
 id = "port_work_in" # stable input id
 label = "Work input"
@@ -1086,6 +1089,9 @@ id = "fmn_feedback"
 type = "solo"
 title = "Unwired legacy target"
 
+[[formation.slot]]
+id = "slot_feedback"
+
 [[formation.input]]
 id = "port_feedback_in"
 label = "Feedback candidate"
@@ -1099,6 +1105,9 @@ id = "fmn_judge_a"
 type = "solo"
 title = "Judge A"
 
+[[formation.slot]]
+id = "slot_judge_a"
+
 [[formation.input]]
 id = "port_judge_a_in"
 label = "Judge A input"
@@ -1111,6 +1120,9 @@ label = "Judge A output"
 id = "fmn_judge_b"
 type = "solo"
 title = "Judge B"
+
+[[formation.slot]]
+id = "slot_judge_b"
 
 [[formation.input]]
 id = "port_judge_b_in"
@@ -1201,6 +1213,9 @@ id = "fmn_work"
 type = "solo"
 title = "Worker"
 
+[[formation.slot]]
+id = "slot_work"
+
 [[formation.input]]
 id = "port_work_in"
 label = "Work input"
@@ -1262,6 +1277,9 @@ beadId = "ctx-test"
 id = "fmn_judge"
 type = "solo"
 title = "Judge"
+
+[[formation.slot]]
+id = "slot_judge"
 
 [[formation.input]]
 id = "port_judge_in"

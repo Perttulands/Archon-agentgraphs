@@ -1058,6 +1058,9 @@ id = "fmn_judge"
 type = "solo"
 title = "Judge"
 
+[[formation.slot]]
+id = "slot_judge"
+
 [[formation.input]]
 id = "port_judge_in"
 label = "Input"
@@ -1070,6 +1073,9 @@ label = "Output"
 id = "fmn_feedback"
 type = "solo"
 title = "Feedback receiver"
+
+[[formation.slot]]
+id = "slot_feedback"
 
 [[formation.input]]
 id = "port_feedback_in"
