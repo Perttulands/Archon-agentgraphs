@@ -115,6 +115,7 @@ func gateResponseFromAny(value any) *GateResponse {
 		GateID: stringFromAny(fields["gateId"]), GateAttempt: intFromRunEventData(fields["gateAttempt"]),
 		RequestedSeq: intFromRunEventData(fields["requestedSeq"]),
 		DecidedBy:    stringFromAny(fields["decidedBy"]), Text: stringFromAny(fields["text"]),
+		OriginalRef: stringFromAny(fields["originalRef"]), OriginalText: stringFromAny(fields["originalText"]),
 		Earlier: gateResponseFromAny(fields["earlier"]),
 	}
 }

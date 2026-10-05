@@ -883,10 +883,12 @@ request, and a verdict naming the old one answers 409.
 The verdict's `reason` is the operator's response, preserved verbatim including
 leading/trailing whitespace and newlines. On pass, a nonempty response
 travels on every pass route together with the gate's original input. It is typed
-with gate ID, gate attempt, requested sequence, deciding actor and text, and
-the next prompt renders it as a human-response section after that input. An
-empty response routes the input unchanged. On fail the response becomes the
-feedback reason. Resume rebuilds the response from the verdict recorded for
+with gate ID, gate attempt, requested sequence, deciding actor and text,
+along with the approved input's reference and text. The next prompt renders
+these as a human-response section naming the approved input, even when newer
+unread work has reached the same port or earlier responses travel with it
+(archon-qtq1). An empty response routes the input unchanged. On fail the response
+becomes the feedback reason. Resume rebuilds the response from the verdict recorded for
 that exact request, so it survives restart.
 
 A human gate blocks only the work it gates (archon-o7p.11). While its request

@@ -50,7 +50,9 @@ func renderBriefAndInputs(b *strings.Builder, req FormationExecution, card Perso
 			b.WriteString("original input: " + feedback.OriginalText + "\n\n")
 		}
 		for response := input.Response; response != nil; response = response.Earlier {
-			fmt.Fprintf(b, "\nhuman response from %s, attempt %d:\nverdict: pass\ndecided by: %s\nresponse:\n%s\n\n", response.GateID, response.GateAttempt, response.DecidedBy, response.Text)
+			fmt.Fprintf(b, "\nhuman response from %s, attempt %d:\nverdict: pass\ndecided by: %s\nresponse:\n%s\n", response.GateID, response.GateAttempt, response.DecidedBy, response.Text)
+			b.WriteString("approved input ref: " + response.OriginalRef + "\n")
+			b.WriteString("approved input: " + response.OriginalText + "\n\n")
 		}
 	}
 }

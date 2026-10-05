@@ -561,7 +561,8 @@ func TestHumanGatePassResponseReachesDownstreamPromptAcrossRestarts(t *testing.T
 		t.Fatalf("status after second resume = %+v, want succeeded", status)
 	}
 
-	want := GateResponse{GateID: "gate_review", GateAttempt: 1, RequestedSeq: request.Seq, DecidedBy: "human:operator", Text: answer}
+	original := runInputRefFromAny(request.Data["inputRef"])
+	want := GateResponse{GateID: "gate_review", GateAttempt: 1, RequestedSeq: request.Seq, DecidedBy: "human:operator", Text: answer, OriginalRef: original.Ref, OriginalText: original.Text}
 	for name, calls := range map[string][]FormationExecution{"first": first.calls, "replayed": second.calls} {
 		if len(calls) != 1 || calls[0].NodeID != "fmn_ship" || len(calls[0].Inputs) != 1 {
 			t.Fatalf("%s calls = %+v, want one Ship dispatch", name, calls)

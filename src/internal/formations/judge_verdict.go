@@ -107,6 +107,10 @@ type GateResponse struct {
 	RequestedSeq int    `json:"requestedSeq"`
 	DecidedBy    string `json:"decidedBy"`
 	Text         string `json:"text"`
+	// The port may hold newer unread work when this response is delivered.
+	// Preserve what the operator actually approved (archon-qtq1).
+	OriginalRef  string `json:"originalRef"`
+	OriginalText string `json:"originalText"`
 	// Earlier is a response that reached the same port before this, which the
 	// formation had not run on yet (archon-o7p.11).
 	Earlier *GateResponse `json:"earlier,omitempty"`
@@ -144,6 +148,7 @@ func gatePassInput(events []RunEvent, verdictEvent RunEvent, gateID string, inpu
 		next.Response = &GateResponse{
 			GateID: gateID, GateAttempt: verdictEvent.Attempt, RequestedSeq: requestedSeq,
 			DecidedBy: stringFromEventData(event, "decidedBy"), Text: text,
+			OriginalRef: input.Ref, OriginalText: input.Text,
 		}
 		return next, nil
 	}
