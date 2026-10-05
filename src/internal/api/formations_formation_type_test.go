@@ -108,4 +108,16 @@ to = "fmn_work:port_in"
 	if restored.Type != "orchestrated" || len(restored.Slots) != 2 || restored.Slots[0].ID != "slot_a" || restored.Slots[0].AgentID != "builder" || !restored.Slots[0].Controller {
 		t.Fatalf("restored = %+v, want the original orchestrated slots", restored)
 	}
+	soloSlots, _ := json.Marshal(solo.Slots)
+	before = readFormationsAPIFile(t, store.BoardPath("types"))
+	for keep, want := range map[string]string{"": `"code":"SLOT_CHOICE_REQUIRED"`, ",\"keepSlotId\":\"slot_a\"": `"code":"INVALID_TYPE_CHANGE"`} {
+		rec := patch(`{"setFormationType":{"id":"fmn_work","type":"solo","slots":` + string(soloSlots) + keep + `}}`)
+		if rec.Code < 400 || !strings.Contains(rec.Body.String(), want) || readFormationsAPIFile(t, store.BoardPath("types")) != before {
+			t.Fatalf("supplied solo removal = %d %s, want unchanged mission and %s", rec.Code, rec.Body.String(), want)
+		}
+	}
+	chosen := formation(patch(`{"setFormationType":{"id":"fmn_work","type":"solo","slots":` + string(soloSlots) + `,"keepSlotId":"slot_b"}}`))
+	if len(chosen.Slots) != 1 || chosen.Slots[0].ID != "slot_b" || chosen.Slots[0].AgentID != "reviewer" {
+		t.Fatalf("explicit supplied solo choice = %+v", chosen)
+	}
 }

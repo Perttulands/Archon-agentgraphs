@@ -1366,7 +1366,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     void staff(staffingStore, staffingHostRef.current, ref, staffingOf(slot), null, { label: `the unassignment from ${quoted(slot.label, 'a slot')}` })
   }, [slotRefOf, staffingStore])
 
-  // Undo restores the exact previous slots, so it also covers a formation that had no controller.
+  // Undo restores the exact previous slots when their type shape is valid.
   const makeControllerOp = useCallback((formation: FormationNode, slot: FormationSlot) => {
     const previous = boardRef.current?.formations.find(item => item.id === formation.id) || formation
     void patchBoard({ makeController: { formationId: formation.id, slotId: slot.id } }).then(result => {

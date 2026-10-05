@@ -1277,7 +1277,14 @@ controller (the existing one, else the first slot) and a worker. Added slots
 are empty and bound agents stay on the slots that remain. Changing to solo with
 more than one staffed slot is refused until `--keep-slot` (API `keepSlotId`)
 names the slot to keep; the cockpit offers one choice per staffed slot. Undo
-restores the previous slots exactly.
+restores the previous slots exactly when they fit the type. Supplied slot
+snapshots and restored nodes must have exactly one solo slot, at least two peer
+slots with no controller, or an orchestrated controller and at least one worker.
+A solo snapshot's controller flag is allowed. A snapshot may remove empty slots;
+omitting a staffed slot requires `keepSlotId` naming the sole retained current
+slot for solo, or emptying the omitted slots first. Validation and admission
+report imported shapes that break these rules, including formations outside the
+selected run path.
 
 Solo, peer and orchestrated are the only formation types. Creating or changing
 to any other type fails with `UNSUPPORTED_FORMATION_TYPE`, listing the three.

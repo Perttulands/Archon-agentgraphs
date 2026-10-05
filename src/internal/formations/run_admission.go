@@ -75,8 +75,8 @@ func ValidateRunAdmission(board *BoardDocument, personas *PersonaStore, scope Ru
 	}
 	findingInScope := func(finding BoardFinding) bool {
 		switch {
-		case selected == nil || finding.Code == FindingInvalidFormationType || finding.Code == FindingSeveralInputCards || finding.Code == FindingInvalidMissionInput || finding.Code == FindingInvalidLimit:
-			// A Limit card's problem stops every run: its limit would go unenforced.
+		case selected == nil || finding.Code == FindingInvalidFormationType || finding.Code == FindingInvalidFormationShape || finding.Code == FindingFormationWithoutSlots || finding.Code == FindingOrchestratedController || finding.Code == FindingSeveralInputCards || finding.Code == FindingInvalidMissionInput || finding.Code == FindingInvalidLimit:
+			// Every formation is bound in the snapshot, and Limits apply to every run.
 			return true
 		case scope.FormationID != "" && finding.Code == FindingRouteLeadsNowhere:
 			// A single step's run ends with that step; its routes are not taken.
@@ -149,14 +149,7 @@ func formationAdmissionFindings(formation FormationNode, personas *PersonaStore,
 	add := func(code, format string, args ...any) {
 		findings = append(findings, BoardFinding{Code: code, NodeID: formation.ID, Message: fmt.Sprintf(format, args...)})
 	}
-	if len(formation.Slots) == 0 {
-		add(FindingFormationWithoutSlots, "formation %q has no slots; add a slot and staff it", formation.ID)
-	}
-	controllers := 0
 	for _, slot := range formation.Slots {
-		if slot.Controller {
-			controllers++
-		}
 		if !slot.Staffed() {
 			if reached {
 				add(FindingUnstaffedSlot, "formation %q slot %s needs a harness and effort, and optionally a role", formation.ID, slotName(slot))
@@ -181,14 +174,6 @@ func formationAdmissionFindings(formation FormationNode, personas *PersonaStore,
 			add(FindingUnavailablePersona, "formation %q slot %s names unknown role %q", formation.ID, slotName(slot), slot.AgentID)
 		default:
 			add(FindingUnavailablePersona, "formation %q slot %s cannot read role %q: %v", formation.ID, slotName(slot), slot.AgentID, err)
-		}
-	}
-	if reached && formation.Type == FormationTypeOrchestrated && len(formation.Slots) > 0 {
-		switch {
-		case controllers != 1:
-			add(FindingOrchestratedController, "orchestrated formation %q needs exactly one controller slot; it has %d", formation.ID, controllers)
-		case len(formation.Slots) == 1:
-			add(FindingOrchestratedController, "orchestrated formation %q needs a worker slot beside its controller", formation.ID)
 		}
 	}
 	return findings

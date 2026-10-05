@@ -13,6 +13,7 @@ const (
 	FindingGateNotRoutable          = "gate_not_routable"
 	FindingInvalidCodeGateProfile   = "invalid_code_gate_profile"
 	FindingInvalidFormationType     = "invalid_formation_type"
+	FindingInvalidFormationShape    = "invalid_formation_shape"
 	FindingInvalidHumanChannel      = "invalid_human_channel"
 	FindingMissionCount             = "mission_count"
 	FindingSeveralInputCards        = "several_input_cards"
@@ -113,6 +114,8 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 				NodeID:  formation.ID,
 				Message: fmt.Sprintf("formation %q has unsupported type %q; change it to solo, peer or orchestrated with formation set-type, or delete it", formation.ID, formation.Type),
 			})
+		} else if finding := formationSlotShapeFinding(formation); finding != nil {
+			report.Errors = append(report.Errors, *finding)
 		}
 	}
 

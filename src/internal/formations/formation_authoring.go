@@ -177,10 +177,11 @@ type FormationTypeRequest struct {
 	FormationID string
 	Type        string
 	// KeepSlotID names the slot a change to solo keeps. It is required when
-	// more than one slot is staffed, so no bound agent is dropped silently.
+	// more than one slot is staffed, or a supplied solo snapshot omits a
+	// staffed slot, so no bound agent is dropped silently.
 	KeepSlotID string
 	// Slots, when set, is the exact slot list to leave behind, such as the
-	// slots an undo restores. Slot rules for the type are not applied.
+	// slots an undo restores. Type shape is validated without changing the slots.
 	Slots     []FormationSlot
 	UpdatedBy string
 }
@@ -1088,7 +1089,7 @@ func (s *Store) SetFormationType(slug string, req FormationTypeRequest, opts Wri
 	if err := validateFormationType(req.Type); err != nil {
 		return nil, err
 	}
-	if req.KeepSlotID != "" && (req.Type != FormationTypeSolo || req.Slots != nil) {
+	if req.KeepSlotID != "" && req.Type != FormationTypeSolo {
 		return nil, fmt.Errorf("%w: keepSlotId applies only to a change to solo", ErrInvalidTypeChange)
 	}
 	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, board *BoardDocument) ([]byte, error) {
@@ -1106,6 +1107,19 @@ func (s *Store) SetFormationType(slug string, req FormationTypeRequest, opts Wri
 		} else if err := validateRestoredSlots(slots); err != nil {
 			return nil, err
 		} else {
+			if finding := formationSlotShapeFinding(FormationNode{ID: formation.ID, Type: req.Type, Slots: slots}); finding != nil {
+				return nil, fmt.Errorf("%w: %s", ErrInvalidTypeChange, finding.Message)
+			}
+			if req.KeepSlotID != "" {
+				if _, exists := findSlot(formation.Slots, req.KeepSlotID); !exists || slots[0].ID != req.KeepSlotID {
+					return nil, fmt.Errorf("%w: keepSlotId must name the current slot retained by the solo snapshot", ErrInvalidTypeChange)
+				}
+			}
+			for _, slot := range formation.Slots {
+				if _, retained := findSlot(slots, slot.ID); !retained && slot.Staffed() && req.KeepSlotID == "" {
+					return nil, fmt.Errorf("%w: restoring formation %q would remove staffed slot %s (%s); name the solo slot to keep, or empty the removed slot first", ErrSlotChoiceRequired, formation.ID, slotName(slot), slot.StaffingSummary())
+				}
+			}
 			// Restored slots keep their IDs, which no other formation may hold.
 			for _, other := range board.Formations {
 				for _, slot := range slots {

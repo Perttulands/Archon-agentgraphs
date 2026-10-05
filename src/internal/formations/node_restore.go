@@ -216,6 +216,9 @@ func validateRestoredFormation(formation FormationNode) error {
 	if id, bad := firstBadSlotID(formation.Slots); bad {
 		return invalidNodeRestore("formation %q slot id %q is missing, invalid or repeated", formation.ID, id)
 	}
+	if finding := formationSlotShapeFinding(formation); finding != nil {
+		return invalidNodeRestore("%s", finding.Message)
+	}
 	return nil
 }
 
