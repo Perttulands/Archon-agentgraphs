@@ -656,6 +656,7 @@ describe('FormationsCockpit reference parity', () => {
 
   afterEach(() => {
     cleanup()
+    vi.useRealTimers()
     vi.restoreAllMocks()
     window.history.replaceState(null, '', '/')
   })
@@ -2700,25 +2701,30 @@ describe('FormationsCockpit reference parity', () => {
     }
   })
 
-  it('says since when a run waits, who started it and which revision it ran', async () => {
-    const asked = new Date(Date.now() - 5 * 60_000)
-    const pad = (n: number) => String(n).padStart(2, '0')
+  it.each([
+    { when: 'during the day', now: new Date(2026, 9, 3, 12, 0), asked: new Date(2026, 9, 3, 11, 55), started: new Date(2026, 9, 3, 11, 54), askedLabel: '11:55', startedLabel: '11:54' },
+    { when: 'just after midnight', now: new Date(2026, 9, 3, 0, 2), asked: new Date(2026, 9, 2, 23, 57), started: new Date(2026, 9, 2, 23, 56), askedLabel: '2 Oct 23:57', startedLabel: '2 Oct 23:56' },
+  ])('says since when a run waits, who started it and which revision it ran $when', async ({ now, asked, started, askedLabel, startedLabel }) => {
+    // Freeze Date alone so polling and Testing Library's waits still use real timers.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(now)
     installRunsMock([{ runId: 'run_01SINCE', status: 'waiting_human', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 4,
-      missionId: 'brd_test', missionRev: 5, startedAt: new Date(Date.now() - 6 * 60_000).toISOString(), startedBy: 'agent:driver',
+      missionId: 'brd_test', missionRev: 5, startedAt: started.toISOString(), startedBy: 'agent:driver',
       waitingGates: [{ gateId: 'gate_review', requestedSeq: 4, requestedAt: asked.toISOString() }] }], { run_01SINCE: waitingEvents('run_01SINCE') })
     await renderCockpit()
     const banner = await screen.findByTestId('run-banner')
-    await waitFor(() => expect(within(banner).getByTestId('run-point')).toHaveTextContent(`waiting for you at Review since ${pad(asked.getHours())}:${pad(asked.getMinutes())}`))
-    expect(banner.querySelector('.run-when')).toHaveTextContent(/^started \d\d:\d\d · for 6m( \d+s)? · agent:driver$/)
+    await waitFor(() => expect(within(banner).getByTestId('run-point')).toHaveTextContent(`waiting for you at Review since ${askedLabel}`))
+    expect(banner.querySelector('.run-when')?.textContent).toBe(`started ${startedLabel} · for 6m · agent:driver`)
     expect(banner).toHaveTextContent('Showing revision 5 · read only')
     expect(within(banner).getByRole('button', { name: 'Edit current mission · revision 7' })).toBeInTheDocument()
   })
 
-  it('marks every waiting gate and says since when each asked', async () => {
-    const pad = (n: number) => `${String(n).padStart(2, '0')}`
-    const clock = (at: Date) => `${pad(at.getHours())}:${pad(at.getMinutes())}`
-    const reviewAsked = new Date(Date.now() - 9 * 60_000)
-    const shipAsked = new Date(Date.now() - 2 * 60_000)
+  it.each([
+    { when: 'during the day', now: new Date(2026, 9, 3, 12, 0), reviewAsked: new Date(2026, 9, 3, 11, 51), shipAsked: new Date(2026, 9, 3, 11, 58), reviewLabel: '11:51', shipLabel: '11:58' },
+    { when: 'just after midnight', now: new Date(2026, 9, 3, 0, 5), reviewAsked: new Date(2026, 9, 2, 23, 56), shipAsked: new Date(2026, 9, 3, 0, 3), reviewLabel: '2 Oct 23:56', shipLabel: '00:03' },
+  ])('marks every waiting gate and says since when each asked $when', async ({ now, reviewAsked, shipAsked, reviewLabel, shipLabel }) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(now)
     patches = installFetchMock({ boards: [{ ...makeBoard(), gates: [gate, { ...gate, id: 'gate_ship', title: 'Ship' }] }] })
     installRunsMock([{ runId: 'run_01TWO', status: 'waiting_human', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 5,
       waitingGates: [{ gateId: 'gate_review', requestedSeq: 4, requestedAt: reviewAsked.toISOString() }, { gateId: 'gate_ship', requestedSeq: 5, requestedAt: shipAsked.toISOString() }] }],
@@ -2728,8 +2734,8 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.getByTestId('run-chip-gate_ship')).toHaveTextContent('waiting for you')
     const banner = await screen.findByTestId('run-banner')
     await waitFor(() => expect(within(banner).getAllByTestId('run-point').map(point => point.textContent)).toEqual([
-      `waiting for you at Review since ${clock(reviewAsked)}`,
-      `waiting for you at Ship since ${clock(shipAsked)}`,
+      `waiting for you at Review since ${reviewLabel}`,
+      `waiting for you at Ship since ${shipLabel}`,
     ]))
   })
 
