@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BoardDocument } from '../components/formationsTypes'
 import RunEvidence from './RunEvidence'
@@ -6,12 +6,12 @@ import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
 import { WindowManagerProvider, useWindowManager } from '../windows/WindowManager'
 import { artifactRawUrl } from './runEvidenceApi'
 
-function respond(data: unknown, status = 200) {
+function respond(data: unknown, status = 200, message = 'run evidence not found') {
   return Promise.resolve({
     ok: status < 400,
     status,
     headers: { get: () => '' },
-    json: () => Promise.resolve(status < 400 ? { success: true, data } : { success: false, error: { code: 'NOT_FOUND', message: 'run evidence not found' } }),
+    json: () => Promise.resolve(status < 400 ? { success: true, data } : { success: false, error: { code: 'NOT_FOUND', message } }),
   } as unknown as Response)
 }
 
@@ -256,5 +256,84 @@ describe('RunEvidence', () => {
   it('says when evidence is unavailable', async () => {
     render(<RunEvidence runId="run_1" nodeId="fmn_missing" title="Missing" state="" onClose={() => {}} />)
     expect(await screen.findByRole('alert')).toHaveTextContent('Evidence unavailable: run evidence not found')
+  })
+
+  it.each([
+    ['fmn_plan', 'Plan', 'node-output', 'written'],
+    ['gate_review', 'Review', 'node-gate-verdict', 'Judge and operator agree'],
+  ])('shows the artifact cause beside healthy %s evidence and retries only artifacts', async (nodeId, title, evidenceId, healthyText) => {
+    const artifactPath = '/api/runs/run_1/evidence/artifacts'
+    let attempts = 0
+    const fetch = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === artifactPath && ++attempts === 1) return respond(null, 500, 'artifact directory could not be read')
+      return respond(routes[url])
+    })
+    vi.stubGlobal('fetch', fetch)
+    render(<RunEvidence runId="run_1" nodeId={nodeId} title={title} state="done" onClose={() => {}} />)
+    const healthy = await screen.findByTestId(evidenceId)
+    expect(healthy).toHaveTextContent(healthyText)
+    const error = await screen.findByRole('alert')
+    expect(error).toHaveTextContent('Artifacts unavailable: artifact directory could not be read')
+    expect(screen.queryByText('This run has no artifacts.')).toBeNull()
+    // An artifact retry also keeps the document the operator is reading.
+    if (nodeId === 'fmn_plan') {
+      fireEvent.click(within(screen.getByTestId('node-attempt-1')).getByRole('button', { name: 'brief' }))
+      await screen.findByTestId('evidence-document')
+    }
+    fireEvent.click(within(error).getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByTestId('run-artifacts')).toHaveTextContent('plan.md')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByTestId(evidenceId)).toBe(healthy)
+    expect(healthy).toHaveTextContent(healthyText)
+    expect(screen.getByRole('dialog', { name: `Run evidence · ${title}` })).toBeInTheDocument()
+    if (nodeId === 'fmn_plan') expect(screen.getByTestId('evidence-document')).toHaveTextContent('Brief · plan attempt 1')
+    expect(fetch.mock.calls.filter(([url]) => url === artifactPath)).toHaveLength(2)
+    expect(fetch.mock.calls.filter(([url]) => url === `/api/runs/run_1/evidence/nodes/${nodeId}`)).toHaveLength(1)
+  })
+
+  it('shows Loading until a successful empty artifact list arrives', async () => {
+    let resolve!: (response: Response) => void
+    const pending = new Promise<Response>(done => { resolve = done })
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => String(input).endsWith('/evidence/artifacts') ? pending : respond(routes[String(input)])))
+    render(<RunEvidence runId="run_1" nodeId="fmn_plan" title="Plan" state="done" onClose={() => {}} />)
+    await screen.findByTestId('node-output')
+    expect(screen.getByText('Loading artifacts…')).toBeInTheDocument()
+    expect(screen.queryByText('This run has no artifacts.')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    await act(async () => { resolve(await respond({ artifacts: [], truncated: false })) })
+    expect(await screen.findByText('This run has no artifacts.')).toBeInTheDocument()
+    expect(screen.queryByText('Loading artifacts…')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it.each(['run', 'state', 'close'] as const)('ignores an obsolete artifact response after %s changes', async change => {
+    let resolve!: (response: Response) => void
+    const pending = new Promise<Response>(done => { resolve = done })
+    let artifactReads = 0
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/evidence/artifacts')) {
+        if (++artifactReads === 1) return pending
+        return respond({ artifacts: [{ name: 'current.md', size: 7, modifiedAt: '' }], truncated: false })
+      }
+      return respond(routes[url.replace('/run_2/', '/run_1/')])
+    }))
+    const original = render(<RunEvidence runId="run_1" nodeId="fmn_plan" title="Plan" state="running" onClose={() => {}} />)
+    await screen.findByTestId('node-output')
+    if (change === 'close') {
+      original.unmount()
+      render(<RunEvidence runId="run_1" nodeId="fmn_plan" title="Plan" state="running" onClose={() => {}} />)
+    } else {
+      original.rerender(<RunEvidence runId={change === 'run' ? 'run_2' : 'run_1'} nodeId="fmn_plan" title="Plan" state={change === 'state' ? 'done' : 'running'} onClose={() => {}} />)
+    }
+    expect(await screen.findByTestId('run-artifacts')).toHaveTextContent('current.md')
+    await act(async () => {
+      resolve(await (change === 'state' ? respond(null, 500, 'obsolete artifact failure') : respond({ artifacts: [{ name: 'obsolete.md', size: 3, modifiedAt: '' }], truncated: false })))
+    })
+    expect(screen.getByTestId('run-artifacts')).toHaveTextContent('current.md')
+    expect(screen.queryByText('obsolete.md')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(artifactReads).toBe(2)
   })
 })

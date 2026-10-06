@@ -59,6 +59,8 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   const [evidence, setEvidence] = useState<NodeEvidence | null>(null)
   const [error, setError] = useState('')
   const [artifacts, setArtifacts] = useState<{ artifacts: RunArtifactEntry[]; truncated: boolean } | null>(null)
+  const [artifactError, setArtifactError] = useState('')
+  const [artifactRetry, setArtifactRetry] = useState(0)
   const [openDocument, setOpenDocument] = useState<OpenDocument | null>(null)
   // Escape closes an open document first, then the evidence dialog.
   useEscapeKey(true, () => (openDocument ? setOpenDocument(null) : onClose()))
@@ -68,9 +70,18 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
     let current = true
     setError('')
     fetchNodeEvidence(runId, nodeId).then(next => { if (current) setEvidence(next) }, reason => { if (current) setError(errorText(reason)) })
-    fetchRunArtifacts(runId).then(next => { if (current) setArtifacts(next) }, () => { if (current) setArtifacts(null) })
     return () => { current = false }
   }, [runId, nodeId, state])
+
+  // Retrying the artifact list leaves the healthy node and open document alone.
+  // Each read owns its lifetime, including a changed run/state or closed view.
+  useEffect(() => {
+    let current = true
+    setArtifacts(null)
+    setArtifactError('')
+    fetchRunArtifacts(runId).then(next => { if (current) setArtifacts(next) }, reason => { if (current) setArtifactError(errorText(reason)) })
+    return () => { current = false }
+  }, [runId, nodeId, state, artifactRetry])
 
   // In the cockpit an artifact opens in its own file window; elsewhere it opens in place.
   // A name with a leading slash is a ref outside the artifact directory, by absolute path.
@@ -140,7 +151,9 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
 
         <section className="node-evidence-section">
           <h3>Run artifacts</h3>
-          {!artifacts ? <div className="node-evidence-empty">No artifact list.</div> : artifacts.artifacts.length === 0 ? (
+          {artifactError ? (
+            <div className="note-error" role="alert">Artifacts unavailable: {artifactError} <button type="button" className="evidence-link" onClick={() => setArtifactRetry(retry => retry + 1)}>Retry</button></div>
+          ) : !artifacts ? <div className="node-evidence-empty" role="status">Loading artifacts…</div> : artifacts.artifacts.length === 0 ? (
             <div className="node-evidence-empty">This run has no artifacts.</div>
           ) : (
             <ul className="evidence-artifacts" data-testid="run-artifacts">
