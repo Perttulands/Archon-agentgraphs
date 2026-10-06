@@ -2250,7 +2250,15 @@ func runBoardInspect(store *formations.Store, args []string, stdout, stderr io.W
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
-	return writeBoardInspect(stdout, board, *jsonOut)
+	if *jsonOut {
+		return writeBoardInspect(stdout, board, true)
+	}
+	notes, err := store.ReadBoardNotes(slug)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	report := formations.ValidateRunAdmission(board, formations.NewPersonaStore(formations.AgentsDir(store.Workspace)), formations.RunAdmissionScope{})
+	return writeMissionRead(stdout, stderr, board, notes, report)
 }
 
 // writeBoardInspect prints one board for board inspect, offline and remote.

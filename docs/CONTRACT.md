@@ -1578,6 +1578,20 @@ retried up to three times. Differences from offline use:
 `{missionRev,missionEtag,errors,warnings}` for the whole mission, the same report as
 `mission validate`.
 
+Plain `mission inspect <mission>` is the agent's read-only hand-over: it shows
+the graph's goals, inputs, complete node configuration, briefs, staffing and
+routes with their action IDs, chronological attributed notes beside their
+objects, orphan threads, and the current validation findings. It keeps all note
+words, including partial answers and contradictions; it infers no question or
+answer state. Drafts with findings remain readable, and larger reads are never
+truncated. The graph outline is not a run trace. Its captured mission and notes
+revisions describe separately collected documents, not an atomic snapshot.
+The server read checks notes' mission identity and the validation report's
+mission revision/ETag against the displayed graph; a failed component or identity
+mismatch reports an error before printing the hand-over. `--json` still returns
+the graph alone, and `mission inspect <mission> <input>` retains its selected
+Input-card inspection.
+
 One mission per file, with one Input card. A file holding several Input cards
 loads and stays editable, but validation reports one `several_input_cards`
 error that names each Input card and says how to split the file: copy it beside

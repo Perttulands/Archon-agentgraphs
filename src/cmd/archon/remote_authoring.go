@@ -386,7 +386,34 @@ func remoteBoardInspect(c *remoteClient, args []string, stdout, stderr io.Writer
 	if err != nil {
 		return remoteFail(stderr, err, *jsonOut, "mission", fs.Arg(0))
 	}
-	return writeBoardInspect(stdout, board, *jsonOut)
+	if *jsonOut {
+		return writeBoardInspect(stdout, board, true)
+	}
+	data, _, err := c.call("GET", boardPath(board.Slug, "notes"), nil, "")
+	if err != nil {
+		return fail(stderr, err)
+	}
+	notes, err := decodeRemote[formations.BoardNotesDocument](data, "notes")
+	if err != nil {
+		return fail(stderr, err)
+	}
+	data, _, err = c.call("GET", boardPath(board.Slug, "validation"), nil, "")
+	if err != nil {
+		return fail(stderr, err)
+	}
+	report, err := decodeRemote[struct {
+		MissionRev  int                       `json:"missionRev"`
+		MissionETag string                    `json:"missionEtag"`
+		Errors      []formations.BoardFinding `json:"errors"`
+		Warnings    []formations.BoardFinding `json:"warnings"`
+	}](data, "")
+	if err != nil {
+		return fail(stderr, err)
+	}
+	if report.MissionRev != board.Rev || report.MissionETag != board.ETag {
+		return fail(stderr, fmt.Errorf("mission changed before its validation was read; retry inspection"))
+	}
+	return writeMissionRead(stdout, stderr, board, notes, formations.BoardValidationReport{Errors: report.Errors, Warnings: report.Warnings})
 }
 
 func remoteFormationInspect(c *remoteClient, args []string, stdout, stderr io.Writer) int {
