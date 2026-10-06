@@ -51,11 +51,11 @@ id = "nte_delivery_beads_review"
 target = "gate_beads_review"
 author = "agent:archon"
 createdAt = "2026-09-09T00:00:00Z"
-text = "The judge checks the graph. Fail returns its reason and evidence to Beads; pass sends the approved graph to Execution. Change the criterion or judge role; a launch may cap attempts to bound revisions."
+text = "The judge checks the graph. Fail returns its reason and evidence to Beads; pass sends the approved graph to Execution. Change the criterion or judge role. If a bound is needed, add an optional Limit card to the Beads step or the Input card. A Beads-step rounds card counts drafting attempts; an Input-card rounds card counts every step run, judges included."
 
 [[entry]]
 id = "nte_delivery_delivery"
 target = "mis_delivery"
 author = "agent:archon"
 createdAt = "2026-09-09T00:00:00Z"
-text = "Run this template with the change to deliver, the target repository as cwd and the owning Bead. The workflow ends with a report, not another gate. Runs have no limits unless the launch sets them; if you cap attempts, allow at least two for pushback."
+text = "Run this template with the change to deliver, the target repository as cwd and the owning Bead. The workflow ends with a report, not another gate. Runs have no limits unless the mission has a Limit card. A Beads-step rounds card counts drafting attempts; an Input-card rounds card counts every step run, judges included. Leave room for pushback when choosing either."
