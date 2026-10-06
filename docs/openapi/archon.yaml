@@ -1524,6 +1524,9 @@ components:
         wireConnection:
           type: object
           properties:
+            id:
+              type: string
+              description: An unused wire id to restore on undo. Omit to allocate a new wire identity.
             from:
               type: string
             to:

@@ -167,7 +167,7 @@ export function GateEditorDialog({ initial, profiles, saving, onSave, onClose }:
       </div>
       <form className="pop-body" onSubmit={event => { event.preventDefault(); onSave(draft) }}>
         <label htmlFor="cockpit-gate-title">Title</label>
-        <input id="cockpit-gate-title" className="f" aria-label="Gate title" value={draft.title} disabled={saving}
+        <input id="cockpit-gate-title" autoFocus onFocus={event => { if (!event.currentTarget.dataset.caretReady) { event.currentTarget.select(); event.currentTarget.dataset.caretReady="1" } }} className="f" aria-label="Gate title" value={draft.title} disabled={saving}
           onChange={event => setDraft(current => ({ ...current, title: event.target.value }))} />
 
         <GateKindsFields draft={draft} onChange={setDraft} profiles={profiles} hasJudgeChain={false} disabled={saving} />

@@ -121,8 +121,10 @@ export function nodeWindowLabel(located: Located): string {
   return `${KIND_WORD[located.kind]} · ${located.node.title || UNTITLED[located.kind]}`
 }
 
-export default function NodeWindow({ readOnly = false, nodeId, board, agents, profiles, noteCount, findings, anchor, runState, limitWarnings = [], onClose, ops }: {
+export default function NodeWindow({ readOnly = false, nodeId, board, agents, profiles, noteCount, findings, anchor, runState, limitWarnings = [], onClose, ops, initiallyEditTitle = false, creating = false }: {
   readOnly?: boolean
+  initiallyEditTitle?: boolean
+  creating?: boolean
   nodeId: string
   findings?: BoardFinding[]
   /** What the window opens beside; without it, the node's Flow row or card. */
@@ -158,6 +160,7 @@ export default function NodeWindow({ readOnly = false, nodeId, board, agents, pr
     <FloatingWindow
       id={`node:${nodeId}`}
       kind="node"
+      takeFocus={initiallyEditTitle}
       label={label}
       title={<><span className="nwin-kind">{KIND_WORD[located.kind]}</span> {located.node.title || UNTITLED[located.kind]}</>}
       defaultSize={{ width: 540, height: 620 }}
@@ -168,12 +171,13 @@ export default function NodeWindow({ readOnly = false, nodeId, board, agents, pr
       <div className="nwin" data-testid={`node-window-${nodeId}`}>
         <div className="nwin-eyebrow">{eyebrow}</div>
         <NodeProblems findings={findings} />
-        <EditableField label="Title" value={located.node.title} placeholder={UNTITLED[located.kind]} onSave={title => ops.rename(nodeId, title)} />
+        <EditableField initiallyEditing={initiallyEditTitle} label="Title" value={located.node.title} placeholder={UNTITLED[located.kind]} onSave={title => ops.rename(nodeId, title)} />
         {located.kind === 'inputCard' ? <MissionFields mission={located.node} ops={ops} /> : null}
-        {located.kind === 'formation' ? <FormationFields formation={located.node} agents={agents} ops={ops} /> : null}
+        {!creating && located.kind === 'formation' ? <FormationFields formation={located.node} agents={agents} ops={ops} /> : null}
         {located.kind === 'gate' ? <GateFields gate={located.node} board={board} profiles={profiles} ops={ops} /> : null}
         {located.kind === 'end' ? <EndFields end={located.node} ops={ops} /> : null}
         {located.kind === 'limit' ? <LimitFields limit={located.node} board={board} steps={steps} ops={ops} /> : null}
+        {!creating ? <>
         <section className="nwin-section" aria-label="Notes">
           <h3>Notes</h3>
           <div className="nwin-run">
@@ -193,6 +197,7 @@ export default function NodeWindow({ readOnly = false, nodeId, board, agents, pr
             ))}
           </ul>
         </section>
+        </> : <p className="nfield-note" role="status">Creating formation…</p>}
         {runState !== undefined ? (
           <section className="nwin-section" aria-label="Run">
             <h3>Run</h3>

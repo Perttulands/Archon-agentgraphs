@@ -2,6 +2,7 @@ package formations
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -94,5 +95,56 @@ func TestValidateBoardAcceptsGateFailPushbackTopology(t *testing.T) {
 	report := ValidateBoard(mustParseValidateBoardFixture(t, s5HumanGatePushbackBoardFixture()))
 	if len(report.Errors) != 0 {
 		t.Fatalf("pushback board produced errors: %+v", report.Errors)
+	}
+}
+
+func TestWireRestoreIdentityAndCollision(t *testing.T) {
+	store := NewStore(t.TempDir())
+	writeFixture(t, store.BoardPath("session-search"), s3ConnectionsBoardFixture())
+	board, err := store.ReadBoard("session-search")
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := func() WriteOptions { return WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev} }
+	req := FormationWireRequest{ID: "edge_restored", From: "fmn_frame:port_frame_out", To: "fmn_ship:port_ship_in"}
+	board, err = store.WireFormationPorts(board.Slug, req, opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if board.Connections[0].ID != req.ID {
+		t.Fatalf("restored identity = %q", board.Connections[0].ID)
+	}
+	writeFixture(t, store.LayoutPath(board.Slug), fmt.Sprintf("schema = 1\nmissionId = %q\nmissionRev = %d\n[[edge]]\nid = %q\nlane = \"y:40\"\n", board.ID, board.Rev, req.ID))
+	before := board
+	// Even a joining request cannot publish a new port if its wire identity is taken.
+	_, err = store.WireFormationPorts(board.Slug, FormationWireRequest{ID: req.ID, From: "fmn_research:port_research_out", To: req.To, JoinIfOccupied: true}, opts())
+	if !errors.Is(err, ErrAlreadyExists) {
+		t.Fatalf("collision = %v", err)
+	}
+	after, err := store.ReadBoard(board.Slug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.ETag != before.ETag {
+		t.Fatal("rejected collision changed graph")
+	}
+	board, err = store.UnwireFormationPorts(board.Slug, req, opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	board, err = store.WireFormationPorts(board.Slug, req, opts())
+	if err != nil || board.Connections[0].ID != req.ID {
+		t.Fatalf("remove/restore identity: %+v %v", board, err)
+	}
+	layout, err := store.ReadLayout(board.Slug)
+	if err != nil || len(layout.Edges) != 1 || layout.Edges[0].ID != req.ID || layout.Edges[0].Lane != "y:40" {
+		t.Fatalf("restored wire lane: %+v %v", layout, err)
+	}
+	board, err = store.WireFormationPorts(board.Slug, FormationWireRequest{From: "fmn_research:port_research_out", To: "fmn_frame:port_frame_in"}, opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if board.Connections[1].ID == "" || board.Connections[1].ID == req.ID {
+		t.Fatal("ordinary wire did not allocate a distinct identity")
 	}
 }

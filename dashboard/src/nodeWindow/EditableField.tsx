@@ -9,7 +9,8 @@ export const AuthoringReadOnly = createContext(false)
  * as Markdown for the long fields, until Edit turns it into an input. Saving
  * sends one change; Escape or Cancel puts the text back.
  */
-export function EditableField({ label, value, multiline = false, markdown = false, placeholder, hint, validate, onSave, children }: {
+export function EditableField({ label, value, multiline = false, markdown = false, placeholder, hint, validate, onSave, children, initiallyEditing = false }: {
+  initiallyEditing?: boolean
   label: string
   value: string
   multiline?: boolean
@@ -24,7 +25,7 @@ export function EditableField({ label, value, multiline = false, markdown = fals
   children?: ReactNode
 }) {
   const readOnly = useContext(AuthoringReadOnly)
-  const [draft, setDraft] = useState<string | null>(null)
+  const [draft, setDraft] = useState<string | null>(() => initiallyEditing && !readOnly ? value : null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [savedReceipt, setSavedReceipt] = useState(false)
@@ -83,10 +84,10 @@ export function EditableField({ label, value, multiline = false, markdown = fals
       {draft !== null ? (
         <form className="nfield-form" onSubmit={event => void save(event)}>
           {multiline ? (
-            <textarea aria-label={label} value={draft} autoFocus disabled={saving} rows={Math.min(18, Math.max(4, draft.split('\n').length + 1))}
+            <textarea aria-label={label} value={draft} autoFocus onFocus={event => { if (!event.currentTarget.dataset.caretReady) {event.currentTarget.select(); event.currentTarget.dataset.caretReady="1"} }} disabled={saving} rows={Math.min(18, Math.max(4, draft.split('\n').length + 1))}
               onChange={event => setDraft(event.target.value)} onKeyDown={onKeyDown} />
           ) : (
-            <input aria-label={label} value={draft} autoFocus disabled={saving} spellCheck={!validate}
+            <input aria-label={label} value={draft} autoFocus onFocus={event => { if (!event.currentTarget.dataset.caretReady) {event.currentTarget.select(); event.currentTarget.dataset.caretReady="1"} }} disabled={saving} spellCheck={!validate}
               onChange={event => { setDraft(event.target.value); setError('') }} onKeyDown={onKeyDown} />
           )}
           {error ? <p className="nfield-note error" role="alert">{error}</p> : hint ? <p className="nfield-note">{hint}</p> : null}

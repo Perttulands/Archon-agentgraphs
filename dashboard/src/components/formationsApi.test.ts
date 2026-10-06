@@ -355,6 +355,7 @@ describe('formations API helpers', () => {
 
     const result = await renameMission('scouting', 'Field scouting')
     expect(result.board).toMatchObject({ title: 'Field scouting', rev: 9, etag: 'etag-9' })
+    expect(result.previousTitle).toBe('Scouting')
     expect(patches.map(patch => [patch.ifMatch, patch.body.expectedRev])).toEqual([['etag-7', 7], ['etag-8', 8]])
 
     editsMidRename = 2

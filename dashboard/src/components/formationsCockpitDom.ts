@@ -69,3 +69,8 @@ export function findLimitTargetAt(clientX: number, clientY: number): string {
   }
   return ''
 }
+
+/** Whole-card targeting for drops, without extending empty-canvas semantics. */
+export function findCardAt(clientX: number, clientY: number): HTMLElement | null {
+  return (document.elementFromPoint(clientX, clientY) as HTMLElement | null)?.closest<HTMLElement>('.fmx .world [data-node]') || null
+}

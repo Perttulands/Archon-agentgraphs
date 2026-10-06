@@ -122,6 +122,7 @@ type FormationPortRemovalRequest struct {
 }
 
 type FormationWireRequest struct {
+	ID             string // Restore the same wire identity on undo; blank allocates a new wire.
 	JoinIfOccupied bool
 	From           string
 	To             string
@@ -1637,7 +1638,19 @@ func (s *Store) WireFormationPorts(slug string, req FormationWireRequest, opts W
 			return nil, err
 		}
 		candidate := BoardConnection{From: req.From, To: to}
-		candidate.ID = newPrefixedID("edge")
+		candidate.ID = req.ID
+		if candidate.ID == "" {
+			candidate.ID = newPrefixedID("edge")
+		} else {
+			if !validPathComponent(candidate.ID) {
+				return nil, ErrNotFound
+			}
+			for _, connection := range current.Connections {
+				if connection.ID == candidate.ID {
+					return nil, ErrAlreadyExists
+				}
+			}
+		}
 		return appendConnectionBlock(raw, candidate), nil
 	})
 }
@@ -1744,7 +1757,12 @@ func (s *Store) RewireFormationTarget(slug string, req FormationRewireRequest, o
 			}
 			nextRaw = renderTOMLLines(append(lines[:start], lines[end:]...))
 		}
-		candidate.ID = newPrefixedID("edge")
+		for _, connection := range current.Connections {
+			if connection.From == req.From && connection.To == req.PreviousTo {
+				candidate.ID = connection.ID
+				break
+			}
+		}
 		return appendConnectionBlock(nextRaw, candidate), nil
 	})
 }

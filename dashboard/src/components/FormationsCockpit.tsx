@@ -1,3 +1,4 @@
+import { flushSync } from 'react-dom'
 import { fetchRunMission } from '../evidence/runEvidenceApi'
 import { AnsweredDraftNotice } from './AnsweredDraftNotice'
 import { hasGateDraft } from './HumanGateAnswerPanel'
@@ -17,7 +18,7 @@ import { inputCardOf, missionRunInputs } from "./missionInputs"
  * context menus, on-canvas editors/terminals, and undo are tracked for follow passes
  * (bead home-f7as).
  */
-import { type CSSProperties, Fragment, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, Fragment, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
   ApiRequestError,
   abortRunRequest,
@@ -63,7 +64,7 @@ import { useEscapeKey } from './useEscapeKey'
 import { ROSTER_MAX_WIDTH, ROSTER_MIN_WIDTH, useRosterPanel } from './useRosterPanel'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
 const RunEvidence = lazy(() => import('../evidence/RunEvidence'))
-const NodeWindow = lazy(() => import('../nodeWindow/NodeWindow'))
+import NodeWindow from '../nodeWindow/NodeWindow'
 const FlowView = lazy(() => import('../flow/FlowView'))
 import CanvasContextMenu, { type MenuItem, type MenuState } from './CanvasContextMenu'
 import PersonaEditorDialog from './PersonaEditorDialog'
@@ -88,12 +89,13 @@ import { ReferencedFiles, type HiddenReferencedFile } from '../files/ReferencedF
 import { FileProblemsContext, fileProblems, nodeFileRefs } from '../files/referencedFiles'
 import { producedNames, summarizeProduced, useRunProduced } from '../files/produced'
 import { useHumanGateUpstream } from './useHumanGateUpstream'
-import { connectionKind, findInputPortAt, findLimitTargetAt, findOutputPortAt, isTextEditingTarget, laneYFrom } from './formationsCockpitDom'
+import { connectionKind, findCardAt, findInputPortAt, findLimitTargetAt, findOutputPortAt, isTextEditingTarget, laneYFrom } from './formationsCockpitDom'
 import { gateWireNeedsLabel, loopConnectionIds, routeJudgeWire, routeLoopWires, routeOrthoWire, type LoopWire } from './formationsRouting'
 import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
 import { defaultEndTitle, endOutcomeMeaning } from './endNode'
 import { LIMIT_ROOM, limitCoversWords, limitKnobWords, limitMeaning, limitWarnWords, tetherLine } from './limitCard'
+import { inverseUndoStep } from './formationsRedo'
 import { UndoHistory, WriteTracker, boardStep, combineUndo, nodeDeleteUndo, portRemoveUndo, quoted, restoreBlocker, undoOutcomeMessage, type UndoDraft, type UndoStep } from './formationsUndo'
 import { NOTE_CARDS, NoteLayer, NOTES_MODES, noteWindowAnchor, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
 import NoteWindow, { BOARD_NOTE_TARGET, noteWindowId } from './NoteWindow'
@@ -303,6 +305,15 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [locatedNodeId, setLocatedNodeId] = useState('')
   // Missions, formations and gates open in node windows, oldest first.
   const [nodeWindows, setNodeWindows] = useState<string[]>([])
+  const [creationWindow, setCreationWindow] = useState<{ key: string; id: string; view: string; node: FormationNode; anchor: WindowRect; ready: Promise<string> } | null>(null)
+  const creationView = `${selectedSlug}:${activeRun?.runId || ''}:${historical}`
+  const creationViewRef = useRef(creationView)
+  creationViewRef.current = creationView
+  const creationWindowRef = useRef(creationWindow)
+  creationWindowRef.current = creationWindow
+
+  const [selection, setSelection] = useState<{kind: 'node' | 'wire'; id: string} | null>(null)
+  useEffect(() => { setSelection(null); setCreationWindow(null) }, [creationView])
   // A dragged staffing's ghost follows the pointer, and waits beside a slot it is over (docked).
   const [ghost, setGhost] = useState<{ x: number; y: number; label: string; docked: boolean } | null>(null)
   const [hoverSlot, setHoverSlot] = useState<string | null>(null)
@@ -407,6 +418,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const undoHistoryRef = useRef<UndoHistory | null>(null)
   if (!undoHistoryRef.current) undoHistoryRef.current = new UndoHistory()
   const undoHistory = undoHistoryRef.current
+  useSyncExternalStore(undoHistory.subscribe, undoHistory.getVersion)
   // Board and layout writes in flight; undo waits for them.
   const writesRef = useRef<WriteTracker | null>(null)
   if (!writesRef.current) writesRef.current = new WriteTracker()
@@ -907,6 +919,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (boardRef.current?.slug !== current.slug) return { board: result.board, layout: result.layout ?? null }
     boardRef.current = result.board
     setBoard(result.board)
+    if ('title' in patch) setBoards(items => items.map(item => item.id === result.board.id ? {
+      ...item, title: result.board.title, rev: result.board.rev, etag: result.board.etag,
+    } : item))
     if (result.layout) {
       layoutRef.current = result.layout
       setLayout(result.layout)
@@ -942,7 +957,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const openCreateBoard = useCallback((trigger?: HTMLElement) => {
     if (blockBoardExitForDirtyNotes()) return
     boardDialogReturnFocusRef.current = trigger || null
-    setBoardDialog({ mode: 'create', title: '', saving: false, error: '' })
+    flushSync(() => setBoardDialog({ mode: 'create', title: '', saving: false, error: '' }))
   }, [blockBoardExitForDirtyNotes])
 
   const openRenameBoard = useCallback((trigger?: HTMLElement) => {
@@ -988,7 +1003,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       } else {
         const target = boardDialog.target
         if (!target) throw new Error('Mission target is missing; close and retry')
-        const result = await renameMission(target.slug, title)
+        const result = await writes.track(renameMission(target.slug, title))
+        lastWriteBoardRef.current = target.slug
+        recordUndo('the mission name', boardStep({ title: result.previousTitle }))
         if (boardRef.current?.id === target.id) {
           boardRef.current = result.board
           setBoard(result.board)
@@ -1009,7 +1026,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         error: err instanceof Error ? err.message : 'Mission update failed',
       } : current)
     }
-  }, [blockBoardExitForDirtyNotes, boardDialog, closeBoardDialog])
+  }, [blockBoardExitForDirtyNotes, boardDialog, closeBoardDialog, recordUndo, writes])
 
   const archiveSelectedBoard = useCallback(async () => {
     const target = boardDialog?.target
@@ -1125,9 +1142,13 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const undoRunner = useMemo(() => ({
     board: () => boardRef.current?.slug || '',
     idle: () => writes.idle(),
+    canEdit: () => !historicalRef.current,
     apply: async (step: UndoStep) => {
+      if (!boardRef.current || !layoutRef.current) throw new Error('No mission open.')
+      const inverse = inverseUndoStep(boardRef.current, layoutRef.current, step)
       if ('board' in step) await applyBoardPatch(step.board)
       else await applyLayoutPatch(step.layout)
+      return inverse
     },
     isConflict: (err: unknown) => err instanceof ApiRequestError && err.code === 'CONFLICT',
     reload: async () => {
@@ -1143,22 +1164,28 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }), [applyBoardPatch, applyLayoutPatch, writes])
 
   const performUndo = useCallback(async () => {
+    if (historicalRef.current) return
     const outcome = await undoHistory.undo(undoRunner)
     if (outcome.status === 'failed' || outcome.status === 'busy') setError(undoOutcomeMessage(outcome))
     else if (outcome.status === 'undone') setError('')
   }, [undoHistory, undoRunner])
 
+  const performRedo = useCallback(async () => {
+    if (historicalRef.current) return
+    const outcome = await undoHistory.redo(undoRunner)
+    if (outcome.status === 'failed' || outcome.status === 'busy') setError(undoOutcomeMessage(outcome, 'redo'))
+    else if (outcome.status === 'redone') setError('')
+  }, [undoHistory, undoRunner])
   useEffect(() => {
     if (!active) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== 'z') return
-      if (isTextEditingTarget(event.target)) return
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z' || isTextEditingTarget(event.target)) return
       event.preventDefault()
-      void performUndo()
+      void (event.shiftKey ? performRedo() : performUndo())
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [active, performUndo])
+  }, [active, performUndo, performRedo])
 
   // Context menus dismiss on outside click, Escape, or scroll (reference behavior).
   useEffect(() => {
@@ -1202,14 +1229,14 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!previous) return
     const result = await patchBoard({ rewireConnection: { from: connection.from, previousTo: connection.to, to, joinIfOccupied: true } })
     if (!result) return
-    const added = result.board.connections.find(edge => edge.from === connection.from && !previous.connections.some(old => old.id === edge.id))
+    const added = result.board.connections.find(edge => edge.id === connection.id)
     if (!added) return
     recordUndo('the reconnection', boardStep({ rewireConnection: { from: connection.from, previousTo: added.to, to: connection.to, ...(added.to !== to ? { removePreviousInput: true } : {}) } }))
   }, [patchBoard, recordUndo])
 
   const removeWire = useCallback(async (connection: BoardConnection): Promise<boolean> => {
     if (!await patchBoard({ unwireConnection: { from: connection.from, to: connection.to } })) return false
-    recordUndo('the connection removal', boardStep({ wireConnection: { from: connection.from, to: connection.to } }))
+    recordUndo('the connection removal', boardStep({ wireConnection: { id: connection.id, from: connection.from, to: connection.to } }))
     return true
   }, [patchBoard, recordUndo])
 
@@ -1269,7 +1296,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   }, [applyBoardPatch, recordUndo])
 
   const createGateAt = useCallback((worldX: number, worldY: number) => {
-    setGateEditor({ initial: newGateDraft(gateProfiles), x: worldX, y: worldY, saving: false })
+    flushSync(() => setGateEditor({ initial: newGateDraft(gateProfiles), x: worldX, y: worldY, saving: false }))
   }, [gateProfiles])
 
   const closeGateEditor = useCallback(() => {
@@ -1378,16 +1405,38 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   // `record: false` leaves the undo entry to a caller that combines this with more edits.
   const createFormationAt = useCallback(async (type: FormationType, title: string, x: number, y: number, record = true): Promise<FormationNode | null> => {
     const placement = placementForNewNode(x, y)
+    let resolve: (id: string) => void = () => undefined
+    let tempId = ''
+    if (record) {
+      tempId = `creating-${Date.now()}`
+      const ready = new Promise<string>(done => { resolve = done })
+      const rect = viewportRef.current?.getBoundingClientRect()
+      const view = viewRef.current
+      const node: FormationNode = { id: tempId, title, type, inputs: [], outputs: [], slots: [] }
+      // Use the same title field before and after the server assigns identity.
+      // Its caret and draft never remount when the create response arrives.
+      flushSync(() => setCreationWindow({ key: tempId, id: tempId, view: creationViewRef.current, node, ready, anchor: {
+        left: (rect?.left || 0) + view.x + placement.x * view.scale,
+        top: (rect?.top || 0) + view.y + placement.y * view.scale,
+        width: 300, height: 150,
+      } }))
+    }
     const before = boardRef.current
     const result = await patchBoard({ createFormation: { type, title, x: placement.x, y: placement.y } })
-    if (!before || !result) return null
+    if (!before || !result) {
+      resolve('')
+      if (tempId) setCreationWindow(current => current?.key === tempId ? null : current)
+      return null
+    }
     const created = findAddedByID(before.formations || [], result.board.formations || [])
+    resolve(created?.id || '')
+    if (tempId) setCreationWindow(current => current?.key === tempId ? (created ? { ...current, id: created.id, node: created } : null) : current)
     if (created && record) recordUndo(`the new formation ${quoted(created.title, '')}`.trim(), boardStep({ deleteFormation: { id: created.id } }))
     return created ?? null
   }, [patchBoard, placementForNewNode, recordUndo])
 
   const createMissionAt = useCallback((x: number, y: number) => {
-    setMissionEditor({ initial: { title: boardRef.current?.title || 'Input', goal: '' }, x, y })
+    flushSync(() => setMissionEditor({ initial: { title: boardRef.current?.title || 'Input', goal: '' }, x, y }))
     setMissionEditorSaving(false)
   }, [])
 
@@ -1553,6 +1602,31 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
 
   // Restores a gate as it was: its previous judge chain (or none), then its
   // fields, since attaching adds the formation kind and detaching drops it.
+  useEffect(() => {
+    if (!active || boardView !== 'canvas') return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (historicalRef.current || !selection || !['Delete', 'Backspace'].includes(event.key) || isTextEditingTarget(event.target) || document.activeElement !== viewportRef.current) return
+      event.preventDefault()
+      const current = boardRef.current
+      if (!current) return
+      if (selection.kind === 'wire') {
+        const connection = current.connections.find(connection => connection.id === selection.id)
+        if (connection) void removeWire(connection)
+      } else {
+        const kinds = [['Formation', current.formations], ['InputCard', current.inputCards || []], ['Gate', current.gates || []], ['End', current.ends || []], ['Limit', current.limits || []]] as const
+        const found = kinds.find(([,nodes]) => nodes.some(node => node.id === selection.id))
+        if (found) void deleteNodeOp(selection.id, { [`delete${found[0]}`]: { id: selection.id } })
+      }
+      setSelection(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [active, boardView, deleteNodeOp, removeWire, selection])
+
+  useLayoutEffect(() => {
+    worldRef.current?.querySelectorAll<HTMLElement>('[data-node]').forEach(card => card.classList.toggle('selected', selection?.kind==='node' && card.dataset.node===selection.id))
+  }, [board, selection])
+
   const gateRestoreSteps = useCallback((gate: GateNode): UndoStep[] => {
     const previous = boardRef.current?.gates?.find(item => item.id === gate.id) || gate
     const chain = judgeChainOf(gate.id)
@@ -1633,8 +1707,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (!newFrom || newFrom === connection.from || newFrom.split(':')[0] === connection.to.split(':')[0]) return
     const removed = await patchBoard({ unwireConnection: { from: connection.from, to: connection.to } })
     if (!removed) return
-    const restoreOld = boardStep({ wireConnection: { from: connection.from, to: connection.to } }, 'the old wire')
-    const added = await patchBoard({ wireConnection: { from: newFrom, to: connection.to } })
+    const restoreOld = boardStep({ wireConnection: { id: connection.id, from: connection.from, to: connection.to } }, 'the old wire')
+    const added = await patchBoard({ wireConnection: { id: connection.id, from: newFrom, to: connection.to } })
     // If the new wire fails, the removal still changed the board, so it is undoable alone.
     if (!added) recordUndo('the connection removal', restoreOld)
     else recordUndo('the reconnection', boardStep({ unwireConnection: { from: newFrom, to: connection.to } }, 'the new wire'), restoreOld)
@@ -1802,7 +1876,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const center = rect
       ? { x: (rect.width / 2 - v.x) / (v.scale || 1) - 150, y: (rect.height / 2 - v.y) / (v.scale || 1) - 120 }
       : { x: 200, y: 200 }
-    void createFormationAt('solo', 'New formation', center.x, center.y)
+    void createFormationAt('solo','New formation',center.x,center.y)
   }, [createFormationAt])
 
   // ----- pan + zoom -----
@@ -1810,6 +1884,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (event.button !== 0) return
     const target = event.target as HTMLElement
     if (target.closest('.formation,.gatecard,.missioncard,.toolcard,.endcard,.limitcard,.zoomctl,.run-banner')) return
+    setSelection(null)
+    viewportRef.current?.focus({preventScroll:true})
     const pan = { startX: event.clientX, startY: event.clientY, originX: viewRef.current.x, originY: viewRef.current.y }
     interactionOwner.begin({
       kind: 'pan',
@@ -1978,6 +2054,22 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     }
   }, [interactionOwner])
 
+  const staffTargetAt = useCallback((x: number, y: number) => {
+    const direct = slotKeyAt(x,y)
+    if (direct) return refByKey(direct)
+    const card = findCardAt(x,y)
+    const formation = boardRef.current?.formations.find(node => node.id===card?.dataset.node)
+    const empty = formation?.slots.find(slot => {const ref=slotRefOf(formation,slot);return !staffingStore.current(ref.key,savedOf(ref))})
+    return formation && empty ? slotRefOf(formation,empty) : null
+  }, [refByKey, slotRefOf, staffingStore, savedOf])
+  const cardInputAt = useCallback((x: number, y: number): HTMLElement | null => {
+    const card = findCardAt(x,y)
+    if (!card) return null
+    const current=boardRef.current
+    const ports=Array.from(card.querySelectorAll<HTMLElement>('[data-port-in]'))
+    return ports.find(port => !current?.connections.some(wire => wire.to===port.dataset.portIn)) || null
+  }, [])
+
   // A drag after 6 px of movement: the slot under the pointer previews the drop,
   // a drop on a slot staffs it, and a drop anywhere else changes nothing.
   const beginStaff = useCallback((event: ReactPointerEvent, start: Pick<DragStaff, 'payload' | 'slot' | 'click'>) => {
@@ -2004,8 +2096,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         if (!staffDrag.moved && Math.abs(pointer.clientX - staffDrag.startX) + Math.abs(pointer.clientY - staffDrag.startY) >= 6) staffDrag.moved = true
         const payload = staffDrag.payload
         if (!staffDrag.moved || !payload) return
-        const key = slotKeyAt(pointer.clientX, pointer.clientY)
-        const target = key ? refByKey(key) : null
+        const target = staffTargetAt(pointer.clientX,pointer.clientY)
         const label = ghostLabel(payload)
         // The canvas is measured as the drag starts, and again only when the view pans or zooms under it.
         const view = viewRef.current
@@ -2035,11 +2126,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
           return
         }
         if (!payload) return
-        const key = slotKeyAt(pointer.clientX, pointer.clientY)
-        const target = key ? refByKey(key) : null
+        const target = staffTargetAt(pointer.clientX,pointer.clientY)
         // A drop that reaches no slot changes nothing, and says so (archon-n2w).
         if (!target) {
-          store.say(null, 'Not on a slot, so nothing changed.', 'refused', { x: pointer.clientX, y: pointer.clientY })
+          const card=findCardAt(pointer.clientX,pointer.clientY)
+          store.say(null, card ? (boardRef.current?.formations.some(node=>node.id===card.dataset.node) ? 'No empty slot in this formation.' : 'This card has no agent slot.') : 'Not on a slot, so nothing changed.', 'refused', { x: pointer.clientX, y: pointer.clientY })
           return
         }
         const host = staffingHostRef.current
@@ -2052,7 +2143,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         setHoverSlot(null)
       },
     })
-  }, [interactionOwner, refByKey, savedOf, staffingStore])
+  }, [interactionOwner, staffTargetAt, savedOf, staffingStore])
 
   // Esc during a staffing drag lets go and changes nothing.
   useEffect(() => {
@@ -2136,6 +2227,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const target = event.target as HTMLElement
     if (target.closest('.port,.frun,.mrun,.note-pin')) return
     event.stopPropagation()
+    setSelection({kind:'node',id})
+    viewportRef.current?.focus({preventScroll:true})
     const pos = positionOf(id, index)
     const drag: DragNode = { id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: pos.x, originY: pos.y, moved: false }
     interactionOwner.begin({
@@ -2192,6 +2285,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const portWorldCenter = useCallback((endpoint: string) => endpointWorldCenter(endpoint, 'out'), [endpointWorldCenter])
 
   const ownWireDrag = useCallback((event: ReactPointerEvent<Element> | ReactMouseEvent<Element>, active: WireDrag) => {
+    const startX=event.clientX, startY=event.clientY
     const pointerId = 'pointerId' in event ? event.pointerId : 1
     interactionOwner.begin({
       kind: 'wire',
@@ -2216,6 +2310,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         }
       },
       finalize: pointer => {
+        if (active.kind.startsWith('reconnect') && Math.abs(pointer.clientX-startX)+Math.abs(pointer.clientY-startY)<3) return
         const hoveredJudge = judgeHoverRef.current
         if (active.kind === 'judge') {
           const gate = active.gate
@@ -2228,16 +2323,20 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             const rect = viewportRef.current?.getBoundingClientRect()
             const overCard = (pointer.target as HTMLElement | null)?.closest?.('.formation,.gatecard,.missioncard,.toolcard,.endcard,.limitcard,.ctxmenu,.pop')
             const inView = rect && pointer.clientX > rect.left && pointer.clientX < rect.right && pointer.clientY > rect.top && pointer.clientY < rect.bottom
+            if (overCard) staffingStore.say(null,'Drop the judge on a formation.','refused',{x:pointer.clientX,y:pointer.clientY})
             if (!overCard && inView) {
               const w = screenToWorld(pointer.clientX, pointer.clientY)
               void createJudgeFor(gate, 'solo', 'Judge', w.x - 100, w.y - 58)
             }
           }
         } else if (active.kind === 'reconnect-source') {
-          const outPort = findOutputPortAt(pointer.clientX, pointer.clientY)
+          const card = findCardAt(pointer.clientX, pointer.clientY)
+          const outputs = card?.querySelectorAll<HTMLElement>('[data-port-out]')
+          const outPort = findOutputPortAt(pointer.clientX, pointer.clientY) || (outputs?.length===1 ? outputs[0] : null)
           if (outPort?.dataset.portOut) void rewireSource(active.connection, outPort.dataset.portOut)
+          else if (card) staffingStore.say(null,outputs?.length ? 'Choose an output on this card.' : 'This card has no output.','refused',{x:pointer.clientX,y:pointer.clientY})
         } else {
-          const target = findInputPortAt(pointer.clientX, pointer.clientY)
+          const target = findInputPortAt(pointer.clientX, pointer.clientY) || cardInputAt(pointer.clientX,pointer.clientY)
           const judgeGateId = target?.dataset.gateJudgeSocket
           if (judgeGateId) {
             // Dropping an output onto a gate's judge socket makes it the judge (reference setJudgeReturn).
@@ -2251,13 +2350,17 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               void (async () => {
                 if (moved && !await patchBoard({ unwireConnection: { from: moved.from, to: moved.to } })) return
                 const attached = await attachJudge(gate, [fromNodeId])
-                const unwired: UndoDraft | null = moved ? { label: '', steps: [boardStep({ wireConnection: { from: moved.from, to: moved.to } }, 'the moved wire')] } : null
+                const unwired: UndoDraft | null = moved ? { label: '', steps: [boardStep({ wireConnection: { id: moved.id, from: moved.from, to: moved.to } }, 'the moved wire')] } : null
                 recordEntry(combineUndo(`the judge of ${quoted(gate.title, 'the gate')}`, unwired, attached))
               })()
-            }
+            } else staffingStore.say(null,'Only a formation can judge a gate.','refused',{x:pointer.clientX,y:pointer.clientY})
           } else if (target?.dataset.portIn) {
-            if (active.kind === 'new') wire(active.from, target.dataset.portIn)
-            else rewireTarget(active.connection, target.dataset.portIn)
+            const from=active.kind==='new' ? active.from : active.connection.from
+            if (from.split(':')[0]===target.dataset.portIn.split(':')[0]) staffingStore.say(null,'A card cannot connect to itself.','refused',{x:pointer.clientX,y:pointer.clientY})
+            else if (active.kind === 'new') void wire(active.from, target.dataset.portIn)
+            else void rewireTarget(active.connection, target.dataset.portIn)
+          } else if(findCardAt(pointer.clientX,pointer.clientY)) {
+            staffingStore.say(null,'This card has no free input.','refused',{x:pointer.clientX,y:pointer.clientY})
           }
         }
       },
@@ -2268,7 +2371,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         setJudgeHover(null)
       },
     })
-  }, [attachJudge, attachJudgeOp, createJudgeFor, interactionOwner, patchBoard, recordEntry, rewireSource, rewireTarget, screenToWorld, wire])
+  }, [attachJudge, attachJudgeOp, cardInputAt, createJudgeFor, interactionOwner, patchBoard, recordEntry, rewireSource, rewireTarget, screenToWorld, staffingStore, wire])
 
   const beginWire = useCallback((event: ReactPointerEvent, endpoint: string, kind: WirePath['kind']) => {
     if (historicalRef.current) return
@@ -2345,6 +2448,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     const activeKind = interactionOwner.projection()?.kind
     if (activeKind === 'wire' || activeKind === 'lane') return
     event.stopPropagation()
+    setSelection({kind:'wire',id:connection.id})
+    viewportRef.current?.focus({preventScroll:true})
     const a = endpointWorldCenter(connection.from, 'out')
     const b = endpointWorldCenter(connection.to, 'in')
     const w = screenToWorld(event.clientX, event.clientY)
@@ -3057,7 +3162,9 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         <button className="board-action" type="button" aria-label="Rename mission" disabled={historical || !board || Boolean(boardDialog)} onClick={event => openRenameBoard(event.currentTarget)}>Rename</button>
         <button className="board-action danger" type="button" aria-label="Delete mission" disabled={historical || !board || Boolean(boardDialog)} onClick={event => openDeleteBoard(event.currentTarget)}>Delete</button>
         <div className="sep" />
-        <button className="newbtn" onClick={createSolo} data-testid="new-formation" disabled={historical || !board}>
+        <button type="button" className="board-action" disabled={historical || !undoHistory.size} onClick={() => void performUndo()} title="Undo · Ctrl+Z">Undo <span className="chord">Ctrl+Z</span></button>
+        <button type="button" className="board-action" disabled={historical || !undoHistory.redoSize} onClick={() => void performRedo()} title="Redo · Ctrl+Shift+Z">Redo <span className="chord">Ctrl+Shift+Z</span></button>
+        <button className="newbtn" onClick={createSolo} data-testid="new-formation" disabled={historical || !board || Boolean(creationWindow)}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
           New formation
         </button>
@@ -3215,7 +3322,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                 {showNeedingYou}
               </div>
             ) : null}
-        <div className={`viewport${showFlow ? ' flow-mode' : ''}${flowDocked ? ' flow-docked' : ''}`} data-testid="formations-canvas" ref={viewportRef} onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
+        <div className={`viewport${showFlow ? ' flow-mode' : ''}${flowDocked ? ' flow-docked' : ''}`} data-testid="formations-canvas" ref={viewportRef} tabIndex={0} aria-label="Mission canvas" onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
           {showFlow && board ? (
             <Suspense fallback={null}>
               <FlowView board={board} agents={agents} notes={noteByNode} run={flowRun}
@@ -3237,7 +3344,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                       onContextMenu={event => wireMenu(event, connection)}
                     />
                     <path
-                      className={`wire ${path.kind}${path.loop ? ' loop' : ''}${path.flowing ? ' flowing' : ''}`}
+                      className={`wire ${selection?.kind==='wire' && selection.id===path.id ? 'selected ' : ''}${path.kind}${path.loop ? ' loop' : ''}${path.flowing ? ' flowing' : ''}`}
                       data-testid={`formation-wire-${path.id}`}
                       d={path.d}
                       onPointerDown={event => beginWireDrag(event, connection)}
@@ -3718,6 +3825,18 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               onClose={() => setRoleWindows(current => current.filter(open => open !== roleId))} />
           ) : null
         }) : null}
+        {board && creationWindow ? <NodeWindow key={creationWindow.key} nodeId={creationWindow.id}
+          board={creationWindow.id===creationWindow.key ? {...board,formations:[...board.formations,creationWindow.node]} : board}
+          agents={agents} profiles={gateProfiles} noteCount={0} runState={undefined} anchor={creationWindow.anchor}
+          initiallyEditTitle creating={creationWindow.id===creationWindow.key}
+          ops={{ ...nodeWindowOps, rename: async (_id, title) => {
+            const id = await creationWindow.ready
+            if (!id || creationViewRef.current !== creationWindow.view || creationWindowRef.current?.key !== creationWindow.key) return false
+            const saved = await renameNode(id, title)
+            if (saved && creationViewRef.current === creationWindow.view && creationWindowRef.current?.key === creationWindow.key) { setCreationWindow(null); openNodeWindow(id) }
+            return saved
+          } }}
+          onClose={() => setCreationWindow(null)} /> : null}
         {board ? nodeWindows.map(nodeId => (
           <Suspense key={`node-${nodeId}`} fallback={null}>
             <NodeWindow readOnly={historical} findings={draftFindings.get(nodeId)} nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps} noteCount={noteByNode.get(nodeId)?.length || 0}

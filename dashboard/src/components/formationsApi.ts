@@ -193,11 +193,11 @@ export async function overrideAgentCard(agentID: string, etag: string, patch: {
 /** Renames a mission as it is now. A title change conflicts with no other
  *  edit, so it is written to the latest revision, read again once if another
  *  edit lands in between (archon-n7u.16). */
-export async function renameMission(slug: string, title: string): Promise<PatchBoardResponse<Record<string, never>>> {
+export async function renameMission(slug: string, title: string): Promise<PatchBoardResponse<{ previousTitle: string }>> {
   for (let attempt = 1; ; attempt++) {
     const latest = await fetchBoardDocument(slug)
     try {
-      return await patchBoardDocument(slug, latest.etag, latest.rev, { title })
+      return { ...await patchBoardDocument(slug, latest.etag, latest.rev, { title }), previousTitle: latest.title }
     } catch (err) {
       if (!(err instanceof ApiRequestError) || err.code !== 'CONFLICT') throw err
       if (attempt === 2) throw new Error(`${latest.title || slug} kept changing while it was renamed; press Save to rename it as it is now`)

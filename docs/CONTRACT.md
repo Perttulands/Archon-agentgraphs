@@ -272,6 +272,9 @@ For CLI authoring, `archon formation wire <mission> <from-node:port>
 <to-node:port> --join` enables the same join, both offline and with `--server`.
 Without `--join`, an occupied exact input returns an occupied-input error.
 HTTP `wireConnection` and `rewireConnection` accept `joinIfOccupied: true`.
+`wireConnection` may name an unused `id` to restore a deleted wire's identity;
+without it a new identity is allocated. A target rewire retains the wire's
+identity, so its routing stays attached.
 To undo a target join atomically, `rewireConnection` also accepts
 `removePreviousInput: true`: it removes the old formation input only if no
 other connection uses it. Wiring errors use `INPUT_OCCUPIED`, `SELF_WIRE`,
@@ -1263,8 +1266,18 @@ read in full and edited in place: titles, the Input card's goal, inputs, input h
 and files, a formation's type, brief and staffing, and a gate's kinds,
 check, criterion, judge and files. Each save is one mission edit with undo. Ports, edges, layout and notes are
 unchanged.
-Every canvas edit that changes the mission is one undo entry, and Ctrl+Z undoes
-the newest. Deleting an Input card, formation, gate or End node is undone by HTTP
+Undo and Redo are visible toolbar words with Ctrl+Z and Ctrl+Shift+Z.
+Every canvas edit that changes the mission is one undo entry. Undo reverses
+the newest; Redo restores the fields and identities Undo reversed. A new edit
+clears Redo, and switching missions clears both histories. A card or wire click
+selects it; Delete or Backspace on the focused canvas removes the selection
+through the same undoable delete, never from a text field.
+A wire dropped on a card body reaches its free input; a role reaches its first
+empty slot. A card without a matching target explains at the drop point.
+Creation dialogs focus their title field with the default selected. Formation
+creation opens its title editor before the create response, retaining the same
+draft and input while the persisted identity arrives. End and Limit cards keep
+their instant defaults; an opened title editor selects the default for typing. Deleting an Input card, formation, gate or End node is undone by HTTP
 `restoreNode` (with `inputCard`, `formation`, `gate`, `end` or `limit`), which puts the node back with its IDs, fields, staffing, ports,
 connections and position in one revision; its notes and wire lanes, kept by
 ID, apply again. Removing a port is undone by `restorePort`, which puts it back

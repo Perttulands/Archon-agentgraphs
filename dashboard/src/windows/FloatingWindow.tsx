@@ -9,7 +9,8 @@ import './floatingWindows.css'
  * A floating window with the standard chrome: a title bar to drag, a close
  * button, and handles on every edge and corner. What it holds is the caller's.
  */
-export default function FloatingWindow({ id, kind, title, label, defaultSize, anchor, keepClear, anchorKind, actions, className, onClose, children }: {
+export default function FloatingWindow({ id, kind, title, label, defaultSize, anchor, keepClear, anchorKind, actions, className, onClose, children, takeFocus = true }: {
+  takeFocus?: boolean
   id: string
   kind: FloatingWindowKind
   title: ReactNode
@@ -34,11 +35,11 @@ export default function FloatingWindow({ id, kind, title, label, defaultSize, an
   // Opening a window takes keyboard focus; closing it gives focus back.
   useEffect(() => {
     const trigger = document.activeElement as HTMLElement | null
-    ref.current?.focus({ preventScroll: true })
+    if (takeFocus && !ref.current?.contains(document.activeElement)) ref.current?.focus({ preventScroll: true })
     return () => {
       if (trigger?.isConnected) trigger.focus({ preventScroll: true })
     }
-  }, [ref])
+  }, [ref, takeFocus])
 
   return (
     <section

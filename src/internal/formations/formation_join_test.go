@@ -33,6 +33,7 @@ func TestFormationJoinAtomicAndRewireUndo(t *testing.T) {
 		t.Fatalf("join: %+v", board)
 	}
 	joined := board.Connections[1]
+	originalID := joined.ID
 	if joined.To == "fmn_ship:port_ship_in" {
 		t.Fatal("join reused occupied input")
 	}
@@ -57,6 +58,9 @@ func TestFormationJoinAtomicAndRewireUndo(t *testing.T) {
 	if len(board.Formations[2].Inputs) != 1 {
 		t.Fatal("join undo left its input")
 	}
+	if board.Connections[1].ID != originalID {
+		t.Fatalf("reconnect identity = %q, want %q", board.Connections[1].ID, originalID)
+	}
 	before = board
 	board, err = store.RewireFormationTarget(board.Slug, FormationRewireRequest{From: joined.From, PreviousTo: "fmn_frame:port_frame_in", To: "fmn_ship:port_ship_in", JoinIfOccupied: true}, opts())
 	if err != nil {
@@ -66,6 +70,9 @@ func TestFormationJoinAtomicAndRewireUndo(t *testing.T) {
 		t.Fatal("target join not atomic")
 	}
 	joined = board.Connections[1]
+	if joined.ID != originalID {
+		t.Fatalf("rejoin identity = %q, want %q", joined.ID, originalID)
+	}
 	before = board
 	board, err = store.RewireFormationTarget(board.Slug, FormationRewireRequest{From: joined.From, PreviousTo: joined.To, To: "fmn_frame:port_frame_in", RemovePreviousInput: true}, opts())
 	if err != nil {
@@ -73,6 +80,9 @@ func TestFormationJoinAtomicAndRewireUndo(t *testing.T) {
 	}
 	if board.Rev != before.Rev+1 || len(board.Formations[2].Inputs) != 1 || len(board.Connections) != 2 {
 		t.Fatal("target join undo not atomic")
+	}
+	if board.Connections[1].ID != originalID {
+		t.Fatalf("join undo identity = %q, want %q", board.Connections[1].ID, originalID)
 	}
 }
 

@@ -292,7 +292,8 @@ function installFetchMock(options: {
       patches.push({ url, body })
       if (body.wireConnection || body.rewireConnection) {
         if (options.wireFailure) return reject('Input already has a feed')
-        const edit = (body.wireConnection || body.rewireConnection) as { from: string; to: string; previousTo?: string; joinIfOccupied?: boolean; removePreviousInput?: boolean }
+        const edit = (body.wireConnection || body.rewireConnection) as { id?: string; from: string; to: string; previousTo?: string; joinIfOccupied?: boolean; removePreviousInput?: boolean }
+        const previousWire = edit.previousTo ? board.connections.find(edge => edge.from === edit.from && edge.to === edit.previousTo) : undefined
         const connections = board.connections.filter(edge => !(edit.previousTo && edge.from === edit.from && edge.to === edit.previousTo))
         let to = edit.to
         let formations = structuredClone(board.formations)
@@ -307,7 +308,7 @@ function installFetchMock(options: {
           const [nodeId, portId] = edit.previousTo!.split(':')
           formations = formations.map(item => item.id === nodeId ? { ...item, inputs: item.inputs.filter(port => port.id !== portId) } : item)
         }
-        board = { ...board, formations, rev: board.rev + 1, connections: [...connections, { id: `edge_${board.rev}`, from: edit.from, to }] }
+        board = { ...board, formations, rev: board.rev + 1, connections: [...connections, { id: previousWire?.id || edit.id || `edge_${board.rev}`, from: edit.from, to }] }
         return respond({ mission: board }, `board-${board.rev}`)
       }
       if (conflictPending && body[conflictPending]) {
@@ -416,6 +417,10 @@ function installFetchMock(options: {
       if (!url.endsWith('/layout') && body.setFormationType) {
         type Slot = { id: string; label: string; controller?: boolean; agentId?: string; harness?: string }
         const { id, type, keepSlotId, slots } = body.setFormationType as { id: string; type: string; keepSlotId?: string; slots?: Slot[] }
+        const previous = board.formations.find(item => item.id === id)
+        if (slots && !keepSlotId && (previous?.slots as Slot[] | undefined)?.some(slot => (slot.agentId || slot.harness) && !slots.some(restored => restored.id === slot.id))) {
+          return reject('A restored solo snapshot must name the staffed slot to keep')
+        }
         board = {
           ...board,
           rev: board.rev + 1,
@@ -647,6 +652,62 @@ async function openNodeWindow(target: HTMLElement, name: string) {
 }
 
 describe('FormationsCockpit reference parity', () => {
+  it('exposes Undo and Redo and restores a selected deleted card with exact fields', async () => {
+    const { container } = await renderCockpit()
+    const undo = screen.getByRole('button', { name: 'Undo Ctrl+Z' })
+    const redo = screen.getByRole('button', { name: 'Redo Ctrl+Shift+Z' })
+    expect(undo).toBeDisabled()
+    expect(redo).toBeDisabled()
+    fireEvent.pointerDown(screen.getByTestId('formation-node-fmn_frame').querySelector('.fhead')!, { clientX: 430, clientY: 115, button: 0 })
+    fireEvent.pointerUp(window, { clientX: 430, clientY: 115, button: 0 })
+    const canvas = container.querySelector('.viewport') as HTMLElement
+    expect(canvas).toHaveFocus()
+    fireEvent.keyDown(canvas, { key: 'Delete' })
+    await waitFor(() => expect(screen.queryByTestId('formation-node-fmn_frame')).toBeNull())
+    fireEvent.click(undo)
+    await waitFor(() => expect(screen.getByTestId('formation-node-fmn_frame')).toBeInTheDocument())
+    expect(patches.find(patch => patch.body.restoreNode)?.body.restoreNode).toEqual(expect.objectContaining({ formation }))
+    const nodeWindow = screen.getByRole('dialog', { name: 'Formation · Frame' })
+    fireEvent.click(within(nodeWindow).getByRole('button', { name: 'Edit title' }))
+    const title = within(nodeWindow).getByRole('textbox', { name: 'Title' })
+    title.focus()
+    const beforeTextKey = patches.length
+    fireEvent.keyDown(title, { key: 'Backspace' })
+    fireEvent.keyDown(title, { key: 'z', ctrlKey: true })
+    expect(patches).toHaveLength(beforeTextKey)
+    expect(screen.getByTestId('formation-node-fmn_frame')).toBeInTheDocument()
+    fireEvent.click(within(nodeWindow).getByRole('button', { name: 'Cancel' }))
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey: true })
+    await waitFor(() => expect(screen.queryByTestId('formation-node-fmn_frame')).toBeNull())
+  })
+
+  it('keeps undo history while viewing a frozen run and allows it after Edit current mission', async () => {
+    window.history.replaceState(null, '', '/?mission=test-board&run=run_01FROZEN')
+    installRunsMock([{ runId: 'run_01FROZEN', status: 'succeeded', final: true, missionSlug: 'test-board', missionId: 'brd_test', missionRev: 5, inputCardId: 'mis_showcase', eventCount: 0 }])
+    const { container } = await renderCockpit()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit current mission · revision 7' }))
+    fireEvent.click(screen.getByTestId('formation-type-fmn_frame'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Peer' }))
+    const undo = screen.getByRole('button', { name: 'Undo Ctrl+Z' })
+    await waitFor(() => expect(undo).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Runs (1)' }))
+    fireEvent.click(document.querySelector('.run-row')!)
+    await waitFor(() => expect(undo).toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Redo Ctrl+Shift+Z' })).toBeDisabled()
+    const before = patches.length
+    const canvas = container.querySelector('.viewport') as HTMLElement
+    canvas.focus()
+    fireEvent.keyDown(canvas, { key: 'Delete' })
+    fireEvent.keyDown(canvas, { key: 'z', ctrlKey: true })
+    fireEvent.keyDown(canvas, { key: 'z', ctrlKey: true, shiftKey: true })
+    expect(patches).toHaveLength(before)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit current mission · revision 8' }))
+    await waitFor(() => expect(undo).toBeEnabled())
+    fireEvent.click(undo)
+    await waitFor(() => expect(screen.getByTestId('formation-type-fmn_frame')).toHaveTextContent('orchestrated'))
+    expect(patches).toHaveLength(before + 1)
+  })
+
   let patches: RecordedPatch[]
 
   beforeEach(() => {
@@ -843,6 +904,10 @@ describe('FormationsCockpit reference parity', () => {
 
     await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveTextContent('Delivery map'))
     expect(patches.some(patch => patch.body.title === 'Delivery map')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Undo Ctrl+Z' }))
+    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveTextContent('Test board'))
+    fireEvent.click(screen.getByRole('button', { name: 'Redo Ctrl+Shift+Z' }))
+    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveTextContent('Delivery map'))
   })
 
   it('archives a board only after explicit confirmation', async () => {
@@ -2202,6 +2267,14 @@ describe('FormationsCockpit reference parity', () => {
     })
     await waitFor(() => expect(screen.getByTestId('slot-fmn_frame-slot_worker')).toBeInTheDocument())
     expect(screen.queryByTestId('slot-fmn_frame-slot_lead')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Undo Ctrl+Z' }))
+    await waitFor(() => expect(screen.getByTestId('slot-fmn_frame-slot_lead')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Redo Ctrl+Shift+Z' }))
+    await waitFor(() => expect(screen.queryByTestId('slot-fmn_frame-slot_lead')).toBeNull())
+    expect(patches.filter(patch => patch.body.setFormationType).slice(-1)[0].body.setFormationType).toEqual({
+      id: 'fmn_frame', type: 'solo', keepSlotId: 'slot_worker',
+      slots: [{ ...staffedBoard.formations[0].slots[1], controller: false }],
+    })
   })
 
   it('dismisses context menus on Escape and outside pointerdown', async () => {

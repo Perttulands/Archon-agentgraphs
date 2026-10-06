@@ -29,7 +29,7 @@ export function MissionEditorDialog({ initial, saving, onSave, onClose }: {
         }}
       >
         <label htmlFor="cockpit-mission-title">Title</label>
-        <input id="cockpit-mission-title" className="f" aria-label="Input card title" value={draft.title}
+        <input id="cockpit-mission-title" autoFocus onFocus={event => { if (!event.currentTarget.dataset.caretReady) { event.currentTarget.select(); event.currentTarget.dataset.caretReady="1" } }} className="f" aria-label="Input card title" value={draft.title}
           onChange={event => setDraft(current => ({ ...current, title: event.target.value }))} />
         <label htmlFor="cockpit-mission-goal">Goal</label>
         <textarea id="cockpit-mission-goal" aria-label="Mission goal" value={draft.goal}

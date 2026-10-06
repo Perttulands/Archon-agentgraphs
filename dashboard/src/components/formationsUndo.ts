@@ -26,7 +26,7 @@ export type UndoDraft = Omit<CockpitUndo, 'board'>
 
 export type UndoOutcome =
   | { status: 'empty' }
-  | { status: 'undone'; entry: CockpitUndo }
+  | { status: 'undone' | 'redone'; entry: CockpitUndo }
   /** The board no longer allows it: dropped. `done` steps were applied first. */
   | { status: 'failed'; entry: CockpitUndo; message: string; done: UndoStep[]; remaining: UndoStep[] }
   /** Another write kept winning after one reload: the remaining steps stay on the history. */
@@ -38,7 +38,9 @@ export interface UndoRunner {
   board(): string
   /** Resolves once no edit is still being saved, so undo sees its entry and its board revision. */
   idle(): Promise<void>
-  apply(step: UndoStep): Promise<void>
+  /** A frozen run may be entered while waiting for writes; leave both histories intact. */
+  canEdit?(): boolean
+  apply(step: UndoStep): Promise<void | UndoStep[]>
   /** A stale board revision or ETag: the step was not applied and may succeed after a reload. */
   isConflict(err: unknown): boolean
   reload(): Promise<void>
@@ -55,38 +57,57 @@ export class UndoHistory {
   private entries: CockpitUndo[] = []
   private queue: Promise<unknown> = Promise.resolve()
   private currentBoard = ''
+  private redos: CockpitUndo[] = []
+  private listeners = new Set<() => void>()
+  private version = 0
+  subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
+  getVersion = () => this.version
+  private emit() { this.version++; this.listeners.forEach(listener => listener()) }
+  get redoSize() { return this.redos.length }
+
 
   /** Switching boards empties the history: undo belongs to the board it was recorded on. */
   setBoard(slug: string) {
     if (slug === this.currentBoard) return
     this.currentBoard = slug
     this.entries = []
+    this.redos = []
+    this.emit()
   }
 
   /** Keeps an entry only if it belongs to the current board, so a late edit cannot land on another. */
   record(entry: CockpitUndo | null | undefined) {
-    if (entry && entry.steps.length && entry.board === this.currentBoard) this.entries.push(entry)
+    if (entry && entry.steps.length && entry.board === this.currentBoard) { this.entries.push(entry); this.redos = []; this.emit() }
   }
 
   clear() {
     this.entries = []
+    this.redos = []
+    this.emit()
   }
 
   get size() {
     return this.entries.length
   }
 
-  undo(runner: UndoRunner): Promise<UndoOutcome> {
+  undo(runner: UndoRunner): Promise<UndoOutcome> { return this.run(runner, false) }
+  redo(runner: UndoRunner): Promise<UndoOutcome> { return this.run(runner, true) }
+  private run(runner: UndoRunner, redo: boolean): Promise<UndoOutcome> {
     const run = this.queue.then(async (): Promise<UndoOutcome> => {
       await runner.idle()
-      let entry = this.entries.pop()
-      while (entry && (entry.board !== this.currentBoard || entry.board !== runner.board())) entry = this.entries.pop()
+      if (runner.canEdit?.() === false) return { status: 'empty' }
+      const source = redo ? this.redos : this.entries
+      const destination = redo ? this.entries : this.redos
+      const inverse: UndoStep[] = []
+      let entry = source.pop()
+      while (entry && (entry.board !== this.currentBoard || entry.board !== runner.board())) entry = source.pop()
       if (!entry) return { status: 'empty' }
       let index = 0
       let reloaded = false
       while (index < entry.steps.length) {
         try {
-          await runner.apply(entry.steps[index])
+          const reverse = await runner.apply(entry.steps[index])
+          if (reverse) inverse.unshift(...reverse)
           index++
         } catch (err) {
           const done = entry.steps.slice(0, index)
@@ -97,15 +118,17 @@ export class UndoHistory {
               await runner.reload().catch(() => undefined)
               continue
             }
-            this.entries.push({ ...entry, steps: remaining })
+            source.push({ ...entry, steps: remaining })
             return { status: 'busy', entry, done, remaining }
           }
           return { status: 'failed', entry, message: err instanceof Error ? err.message : String(err), done, remaining }
         }
       }
-      return { status: 'undone', entry }
+      if (inverse.length && entry.board === this.currentBoard && entry.board === runner.board()) destination.push({ ...entry, steps: inverse })
+      return { status: redo ? 'redone' : 'undone', entry }
     })
     this.queue = run.catch(() => undefined)
+    void run.finally(() => this.emit()).catch(() => undefined)
     return run
   }
 }
@@ -145,17 +168,20 @@ function describeSteps(steps: UndoStep[], total: number): string {
 }
 
 /** The status line after an undo, or '' when it fully worked or there was nothing to undo. */
-export function undoOutcomeMessage(outcome: UndoOutcome): string {
+export function undoOutcomeMessage(outcome: UndoOutcome, action: 'undo' | 'redo' = 'undo'): string {
+  const past = action === 'redo' ? 'redid' : 'undid'
+  const doneWord = action === 'redo' ? 'redone' : 'undone'
+  const chord = action === 'redo' ? 'Ctrl+Shift+Z' : 'Ctrl+Z'
   if (outcome.status === 'failed') {
     const total = outcome.entry.steps.length
-    if (!outcome.done.length) return `Could not undo ${outcome.entry.label}: ${outcome.message}. It was removed from the undo history.`
-    return `Partly undid ${outcome.entry.label}: ${describeSteps(outcome.done, total)} ${outcome.done.length === 1 ? 'was' : 'were'} undone, but ${describeSteps(outcome.remaining, total)} could not be: ${outcome.message}. It was removed from the undo history.`
+    if (!outcome.done.length) return `Could not ${action} ${outcome.entry.label}: ${outcome.message}. It was removed from the ${action} history.`
+    return `Partly ${past} ${outcome.entry.label}: ${describeSteps(outcome.done, total)} ${outcome.done.length === 1 ? 'was' : 'were'} ${doneWord}, but ${describeSteps(outcome.remaining, total)} could not be: ${outcome.message}. It was removed from the ${action} history.`
   }
   if (outcome.status === 'busy') {
     const total = outcome.entry.steps.length
     const done = describeSteps(outcome.done, total)
-    const partly = outcome.done.length ? ` ${done.charAt(0).toUpperCase()}${done.slice(1)} ${outcome.done.length === 1 ? 'was' : 'were'} undone.` : ''
-    return `The mission kept changing while undoing ${outcome.entry.label}.${partly} The rest is still on the undo history; press Ctrl+Z to try again.`
+    const partly = outcome.done.length ? ` ${done.charAt(0).toUpperCase()}${done.slice(1)} ${outcome.done.length === 1 ? 'was' : 'were'} ${doneWord}.` : ''
+    return `The mission kept changing while ${action}ing ${outcome.entry.label}.${partly} The rest is still on the ${action} history; press ${chord} to try again.`
   }
   return ''
 }

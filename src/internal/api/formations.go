@@ -324,6 +324,7 @@ type formationsRestorePortRequest struct {
 }
 
 type formationsWireConnectionRequest struct {
+	ID             string `json:"id"`
 	JoinIfOccupied bool   `json:"joinIfOccupied"`
 	From           string `json:"from"`
 	To             string `json:"to"`
@@ -1324,6 +1325,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 	if request.WireConnection != nil {
 		wire := request.WireConnection
 		board, err := h.store.WireFormationPorts(slug, formations.FormationWireRequest{
+			ID:             wire.ID,
 			JoinIfOccupied: wire.JoinIfOccupied,
 			From:           wire.From,
 			To:             wire.To,

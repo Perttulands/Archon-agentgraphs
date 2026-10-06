@@ -1521,7 +1521,7 @@ function CreatePersonaPopover({
       </div>
       <form className="pop-body" onSubmit={onSubmit}>
         <label htmlFor="agx-create-id">Role id</label>
-        <input id="agx-create-id" className="f" value={draft.id} onChange={event => set('id', event.target.value)} />
+        <input autoFocus id="agx-create-id" className="f" value={draft.id} onChange={event => set('id', event.target.value)} />
         <label htmlFor="agx-create-display">Display name</label>
         <input id="agx-create-display" className="f" value={draft.displayName} onChange={event => set('displayName', event.target.value)} />
         <label htmlFor="agx-create-kind">Kind</label>

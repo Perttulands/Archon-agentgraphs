@@ -21,3 +21,7 @@
 /* Match the 112px admission allowance used by Arrange. Long reasons remain
    readable by scrolling, with the same complete list in Flow and the node. */
 .fmx .draft-marker{box-sizing:border-box;max-height:96px;overflow:auto;}
+/* The selected object remains visible while its read window is open. */
+.world [data-node].selected { outline: 2px solid var(--terra); outline-offset: 3px; }
+.world .wire.selected { stroke-width: 4px; filter: drop-shadow(0 0 3px var(--terra)); }
+.board-action .chord { font-size: 9px; opacity: .6; margin-left: 4px; }
