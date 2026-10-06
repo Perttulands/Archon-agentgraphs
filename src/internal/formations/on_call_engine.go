@@ -36,13 +36,25 @@ const RunBlockFinalizationInterrupted = "run_finalization_interrupted"
 // The caller must hold the settled run's command reservation: the same cleanup
 // is normal while its worker is still finalizing. The conditional append also
 // preserves a block/final outcome or resume recorded since the first read.
+// True also identifies an existing finalization block, so later startups keep
+// requiring an explicit resume even when completed native evidence is available.
 func (e *RunEngine) BlockStrandedRunEnd(runID string) (bool, error) {
+	finalizationBlocked := false
 	check := func(events []RunEvent) error {
 		status, err := ProjectRunEvents(runID, events)
 		if err != nil {
 			return err
 		}
-		if status.Final || status.Status == RunStatusBlocked || !runEnding(events) {
+		if status.Status == RunStatusBlocked {
+			for i := len(events) - 1; i >= 0; i-- {
+				if events[i].Type == RunEventBlocked {
+					finalizationBlocked = stringFromEventData(events[i], "code") == RunBlockFinalizationInterrupted
+					break
+				}
+			}
+			return errNothingToRecord
+		}
+		if status.Final || !runEnding(events) {
 			return errNothingToRecord
 		}
 		return nil
@@ -52,7 +64,7 @@ func (e *RunEngine) BlockStrandedRunEnd(runID string) (bool, error) {
 		err = check(events)
 	}
 	if errors.Is(err, errNothingToRecord) {
-		return false, nil
+		return finalizationBlocked, nil
 	}
 	if err != nil {
 		return false, err
@@ -61,7 +73,7 @@ func (e *RunEngine) BlockStrandedRunEnd(runID string) (bool, error) {
 		"code": RunBlockFinalizationInterrupted, "reason": "run ended its seats but did not record a final outcome; resume to continue", "resumeAllowed": true,
 	}}, check)
 	if errors.Is(err, errNothingToRecord) {
-		return false, nil
+		return finalizationBlocked, nil
 	}
 	return err == nil, err
 }

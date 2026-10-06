@@ -3,9 +3,12 @@ package coordinator
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -267,5 +270,121 @@ func TestStrandedPendingGateIsBlockedAtStartup(t *testing.T) {
 	awaitState(t, next, id, "failed")
 	if pastes, ended := keeper.snapshot(); len(pastes) != 1 || len(ended) != 1 {
 		t.Fatalf("resume repeated completed work: pastes %v, ended %v", pastes, ended)
+	}
+}
+
+// Actual worker/storage fault: a concurrent native turn completes,
+// but its result and error block cannot be written. recordFailure can still read
+// the ledger and attempts final cleanup of a separate gate's kept seat. The
+// keeper restores storage before cleanup; the existing cleanup callback cuts
+// writes off again before final failure. No ledger events are fabricated.
+type completedThenFinalWriteFault struct {
+	*keeperExecutor
+	ledger, brief, transcript string
+}
+
+func (e *completedThenFinalWriteFault) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
+	if req.NodeID != "fmn_b" {
+		return e.keeperExecutor.ExecuteFormation(req)
+	}
+	e.ledger = filepath.Join(e.store.Workspace, ".archon", "runs", "proof", req.RunID+".ndjson")
+	e.brief = filepath.Join(e.store.Workspace, "briefs", "native-brief.md")
+	e.transcript = filepath.Join(e.store.Workspace, "native.jsonl")
+	if err := os.MkdirAll(filepath.Dir(e.brief), 0700); err != nil {
+		return formations.FormationExecutionResult{}, err
+	}
+	if err := os.WriteFile(e.brief, []byte("Do the concurrent work"), 0600); err != nil {
+		return formations.FormationExecutionResult{}, err
+	}
+	slot := req.Formation.Slots[0]
+	lease, err := formations.NewSlotDispatcher(e.store, nil).DispatchSlot(req.RunID, formations.SlotDispatchRequest{NodeID: req.NodeID, SlotID: slot.ID, AgentID: slot.AgentID, Harness: slot.Harness, Prompt: "Do the concurrent work", BriefPath: e.brief, Attempt: req.Attempt})
+	if err != nil {
+		return formations.FormationExecutionResult{}, err
+	}
+	if err = e.store.AppendRunEvent(req.RunID, formations.RunEvent{Type: "seat_prompt_consumed", NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{"dispatchId": lease.DispatchID, "nativeSessionId": "review-native-one"}}); err != nil {
+		return formations.FormationExecutionResult{}, err
+	}
+	final := "```archon-outputs\n{\"port_out\":{\"text\":\"completed concurrent output\"}}\n```\n<<<ARCHON-DONE run-id=" + req.RunID + " status=ok artifact=guide.md>>>"
+	pointer := "Read the file " + e.brief + " and execute it exactly; it is your whole brief."
+	transcript := fmt.Sprintf(`{"type":"session_meta","payload":{"id":"review-native-one","cwd":%q}}
+{"type":"turn_context","payload":{"turn_id":"turn-one","model":"gpt-6-astra","effort":"medium"}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":%q}]}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","phase":"final_answer","content":[{"text":%q}]}}
+{"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-one"}}
+`, e.store.Workspace, pointer, final)
+	if err = os.WriteFile(e.transcript, []byte(transcript), 0600); err != nil {
+		return formations.FormationExecutionResult{}, err
+	}
+	if err = os.Chmod(e.ledger, 0400); err != nil {
+		return formations.FormationExecutionResult{}, err
+	}
+	return formations.FormationExecutionResult{}, errors.New("native turn completed but ledger result storage unavailable")
+}
+func (e *completedThenFinalWriteFault) EndKeptSeat(ctx context.Context, seat formations.KeptSeat) (string, string) {
+	if err := os.Chmod(e.ledger, 0600); err != nil {
+		return formations.SeatOutcomeEnded, err.Error()
+	}
+	return e.keeperExecutor.EndKeptSeat(ctx, seat)
+}
+func TestStrandedFinalizationBlockSurvivesRestartWithCompletedNativeEvidence(t *testing.T) {
+	root := t.TempDir()
+	personas := formations.NewPersonaStore(filepath.Join(root, "agents"))
+	executor := &completedThenFinalWriteFault{keeperExecutor: &keeperExecutor{}}
+	c, err := Open(root, personas, func(store *formations.Store) formations.FormationExecutor { executor.store = store; return executor })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	if err = os.MkdirAll(filepath.Dir(c.store.BoardPath("proof")), 0700); err != nil {
+		t.Fatal(err)
+	}
+	board := strings.Replace(oneGateBesideABranch(), `goal = "Concurrent gates"`, `goal = "Concurrent gates"
+humanChannel = "session"`, 1)
+	if err = os.WriteFile(c.store.BoardPath("proof"), []byte(board), 0600); err != nil {
+		t.Fatal(err)
+	}
+	awaitCleanup, release, awaitFault, restore := holdFinalWriteFailure(t, c)
+	id := startProof(t, c)
+	awaitCleanup()
+	release()
+	awaitFault()
+	awaitRunReleased(t, c, id)
+	stranded := eventsOf(t, c, id)
+	if stranded[len(stranded)-1].Data["cause"] != formations.SeatCauseRunFinal {
+		t.Fatalf("wrong failure cut: %s", ledgerTrail(stranded))
+	}
+	if err = c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	restore()
+	c, err = Open(root, personas, func(store *formations.Store) formations.FormationExecutor {
+		return formations.NewTmuxFormationExecutor(store, personas, formations.TmuxExecutorConfig{StateDir: root, OutputCapBytes: 1 << 20, RecoveryBrief: executor.brief, RecoveryTranscript: executor.transcript})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	if err = c.RecoverInterruptedRuns(); err != nil {
+		t.Fatal(err)
+	}
+	first := eventsOf(t, c, id)
+	if last := first[len(first)-1]; last.Type != formations.RunEventBlocked || last.Data["code"] != formations.RunBlockFinalizationInterrupted {
+		t.Fatalf("initial startup did not block: %s", ledgerTrail(first))
+	}
+	if err = c.engine.ValidateCompletedRecovery(id); err != nil {
+		t.Fatalf("fault cut must preserve exact valid completed evidence: %v", err)
+	}
+	if err = c.RecoverInterruptedRuns(); err != nil {
+		t.Fatal(err)
+	}
+	awaitRunReleased(t, c, id)
+	after := eventsOf(t, c, id)
+	if !reflect.DeepEqual(first, after) {
+		t.Logf("before second startup: %s", ledgerTrail(first))
+		t.Logf("after second startup: %s", ledgerTrail(after))
+		for _, event := range after[len(first):] {
+			t.Logf("unexpected event: %+v", event)
+		}
+		t.Fatal("startup resumed finalization-interrupted diagnostic without explicit resume")
 	}
 }
