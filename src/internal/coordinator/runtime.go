@@ -200,6 +200,11 @@ func (c *Coordinator) RecoverInterruptedRuns() error {
 		if run.Final || run.Status == formations.RunStatusBlocked && !run.ResumeAllowed {
 			continue
 		}
+		if blocked, err := c.reconcileRunEnd(run.RunID); err != nil {
+			return err
+		} else if blocked {
+			continue // only an explicit resume decides what follows a lost final write
+		}
 		waiting, err := c.engine.PreservePendingHumanGate(run.RunID)
 		if err != nil {
 			return err
@@ -223,4 +228,15 @@ func (c *Coordinator) RecoverInterruptedRuns() error {
 		}
 	}
 	return nil
+}
+
+// reconcileRunEnd only considers a settled run, under the same admission that
+// serializes its workers, resumes and aborts. A final cleanup can be observed
+// during active finalization; it must not be mistaken for a stranded ending.
+func (c *Coordinator) reconcileRunEnd(runID string) (bool, error) {
+	if !c.acquire(runID) {
+		return false, nil
+	}
+	defer c.releaseQuietly(runID)
+	return c.engine.BlockStrandedRunEnd(runID)
 }

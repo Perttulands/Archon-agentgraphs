@@ -191,6 +191,10 @@ func (d *needsYouDispatcher) drain(ctx context.Context) {
 // the run still owes a message, so a live run stays eligible for retry.
 func (d *needsYouDispatcher) deliver(ctx context.Context, runID string, live bool) bool {
 	c := d.c
+	if _, err := c.reconcileRunEnd(runID); err != nil {
+		log.Printf("needs-you: run %s: final outcome recovery: %v", runID, err)
+		d.retrySoon(runID) // storage may recover even when cleanup left no seats or asks
+	}
 	c.mu.Lock()
 	state := c.state(runID)
 	busy, changed := state.busy, state.changed

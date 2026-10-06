@@ -1386,6 +1386,16 @@ between the cleanup and the cancel leaves it, projects the block's status,
 `resumeAllowed` and needs-you asks, is recovered at startup as that block, and
 still accepts a resume, cancel or failure.
 
+If final seat cleanup was recorded but no final outcome could be written, the
+settled run is blocked resumably with `run_finalization_interrupted` when ledger
+writes work again. This also covers a failed coordinator failure record.
+The existing needs-you retries reconcile it under the run's command reservation;
+startup applies the same rule, including a run with a human request still open.
+An active finalization is left alone, and an existing block or final outcome is
+preserved. Cleanup does not establish success, rejection or cancellation: an
+explicit resume follows the recorded inputs and verdicts to decide what runs or
+ends next.
+
 The writer lock is retained until all admitted execution and authoring writes
 settle. If a worker ignores cancellation, shutdown returns an error at the
 deadline and retains that lock until the worker or process exits. The host's

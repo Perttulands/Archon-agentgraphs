@@ -28,6 +28,44 @@ func (e *RunEngine) EndKeptSeats(runID string) error {
 	return e.endKeptSeats(runID, SeatCauseRunFinal, nil)
 }
 
+// RunBlockFinalizationInterrupted names a run whose final cleanup landed but
+// whose final outcome did not. Cleanup alone cannot establish that outcome.
+const RunBlockFinalizationInterrupted = "run_finalization_interrupted"
+
+// BlockStrandedRunEnd makes a missing final outcome visible and resumable.
+// The caller must hold the settled run's command reservation: the same cleanup
+// is normal while its worker is still finalizing. The conditional append also
+// preserves a block/final outcome or resume recorded since the first read.
+func (e *RunEngine) BlockStrandedRunEnd(runID string) (bool, error) {
+	check := func(events []RunEvent) error {
+		status, err := ProjectRunEvents(runID, events)
+		if err != nil {
+			return err
+		}
+		if status.Final || status.Status == RunStatusBlocked || !runEnding(events) {
+			return errNothingToRecord
+		}
+		return nil
+	}
+	events, err := e.store.ReadRunEvents(runID)
+	if err == nil {
+		err = check(events)
+	}
+	if errors.Is(err, errNothingToRecord) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	err = e.store.appendRunEventIf(runID, RunEvent{Type: RunEventBlocked, Data: map[string]any{
+		"code": RunBlockFinalizationInterrupted, "reason": "run ended its seats but did not record a final outcome; resume to continue", "resumeAllowed": true,
+	}}, check)
+	if errors.Is(err, errNothingToRecord) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // endKeptSeats ends the selected kept seats (all when selected is nil) in
 // parallel, each after its own idle wait, then records their cleanup in order.
 func (e *RunEngine) endKeptSeats(runID, cause string, selected func(KeptSeat) bool) error {
