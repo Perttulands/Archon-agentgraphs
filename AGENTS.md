@@ -21,6 +21,24 @@ Archon makes chaining agents and gates easy and great; that is all it does
 - The `archon` skill is a sensible current version, iterated later, with no
   eval harness, tests or CI around it.
 
+Archon is agent-facing first. Agents author, run and chain missions; the UI
+exists so the operator and the agent share an understanding of what a mission
+is for and can iterate on it together. A mission carries everything a run
+needs (agents, chaining, gates, what a failed gate does, any limits) and works
+like a skill: it can be sent off inside other work and chained by agents. The
+driving agent oversees its run directly and pulls progress (`run follow`);
+Archon pushes nothing into outside sessions. Limits are an opt-in card, not a
+default. A persona is generic; mission-specific instructions go in the step
+brief, and model and effort stay visible on the mission. Rank work by whether
+it helps an agent build, understand, invoke or chain a mission without human
+configuration, and whether it helps the operator understand and steer it.
+
+Product direction (scope, the trust or visibility model, supported formation
+types, UX direction) belongs to the operator. Present such questions as `--type decision`
+Beads labelled `product-decision`, with options, evidence and a
+recommendation. Record platform shortcomings found during work as Beads
+labelled `platform-gap`, linked `discovered-from` the work that revealed them.
+
 ## Project map
 
 - `src/internal/formations/` owns the model, persistence and run engine.
@@ -61,5 +79,13 @@ listen addresses through flags or environment, with placeholders in examples.
 For runtime and CLI changes, `go test ./...` from `src/` exercises Go behavior;
 `go build ./cmd/archon` and `go build ./cmd/archond` check the executable targets.
 For dashboard changes, its `package.json` exposes unit tests, build and lint.
+Changes to dashboard UI, or to API shapes that `dashboard/tests/cockpit-fixture.ts`
+mimics, also run the browser suite (`npm run test:browser` with
+`ARCHON_BROWSER_PORT` set to a free loopback port) and update that fixture.
+Type-check through `npm run build`; `npx tsc -b` writes build output into
+`dashboard/` and breaks lint. CI has no `claude` or `codex` binary, so tests
+that resolve a harness can pass here and fail there; before pushing Go changes
+also run `env PATH=/usr/bin:/bin:$(dirname "$(command -v go)") go test ./...`
+from `src/`.
 Use the checks relevant to the affected contract. Current integration ownership
 belongs to the owning Bead or lane brief.
