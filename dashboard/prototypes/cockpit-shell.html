@@ -1,0 +1,634 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway (Bead archon-fh5c.2). Not production code, not part of the build.
+  Question: what should the Archon cockpit shell look like after the 2026-10-13 grilling?
+  One page, in-memory state, content taken from the blocked Build-to-a-target run.
+  Switchable from the magenta panel (bottom right) and reload-stable through the URL:
+    style=a|b   card=1|2|3   palette=left|bottom   sessions=on|off
+    run=r1|r2   mode=run|edit   view=canvas|flow
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Archon cockpit shell · prototype</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+@font-face{font-family:"JetBrains Mono";src:url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");font-weight:400}
+@font-face{font-family:"JetBrains Mono";src:url("/fonts/JetBrainsMono-Bold.woff2") format("woff2");font-weight:700}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:var(--fs)/1.45 var(--font);color:var(--ink);background:var(--bg);overflow:hidden;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:left}
+h1,h2,h3,p{margin:0}
+
+/* ---------- Style A: Console. Dark, monospace, square, hairlines. ---------- */
+body[data-style="a"]{
+  --font:"JetBrains Mono",ui-monospace,Menlo,monospace;--fs:13px;--fs-s:12px;--fs-l:15px;
+  --bg:#0c0d0f;--panel:#121417;--card:#181b1f;--card2:#1f2328;--line:#2c3138;--line2:#3d444d;
+  --ink:#e8eaed;--ink2:#a9b0ba;--ink3:#7b838e;
+  --accent:#7aa2ff;--done:#7fd069;--run:#6fa8ff;--block:#ff6b6b;--wait:#f0b84a;--idle:#6f7782;
+  --done-bg:#16301a;--run-bg:#14243f;--block-bg:#3a1719;--wait-bg:#3a2c10;--idle-bg:#20242a;
+  --r:3px;--r2:4px;--shadow:0 10px 30px rgba(0,0,0,.55);--cardshadow:none;--grid:#191c20;
+  --head-weight:700;--label-case:uppercase;--label-space:.06em;
+}
+/* ---------- Style B: Paper. Light, sans, rounded, soft depth. ---------- */
+body[data-style="b"]{
+  --font:Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;--fs:14px;--fs-s:12.5px;--fs-l:16px;
+  --bg:#f3f1ec;--panel:#fbfaf7;--card:#ffffff;--card2:#f6f4ef;--line:#e2ded5;--line2:#cbc5b8;
+  --ink:#1d1c1a;--ink2:#55524c;--ink3:#827d74;
+  --accent:#3257d6;--done:#2c8a3f;--run:#2f62d9;--block:#cf3030;--wait:#b27408;--idle:#8a857c;
+  --done-bg:#e3f3e5;--run-bg:#e2eafc;--block-bg:#fbe4e2;--wait-bg:#fbeed2;--idle-bg:#eeebe4;
+  --r:10px;--r2:14px;--shadow:0 14px 40px rgba(40,34,20,.18);--cardshadow:0 1px 2px rgba(40,34,20,.08),0 4px 14px rgba(40,34,20,.06);--grid:#e6e2d9;
+  --head-weight:650;--label-case:none;--label-space:0;
+}
+.label{font-size:var(--fs-s);color:var(--ink3);text-transform:var(--label-case);letter-spacing:var(--label-space)}
+.muted{color:var(--ink2)}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+
+/* ---------- shell ---------- */
+#app{display:grid;grid-template:44px 1fr / 264px 1fr;height:100%}
+#top{grid-column:1/3;display:flex;align-items:center;gap:14px;padding:0 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+#top .brand{font-weight:700;letter-spacing:.14em}
+#top .mission{font-size:var(--fs-l);font-weight:var(--head-weight)}
+#top .spacer{flex:1}
+.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line2);border-radius:var(--r);background:var(--card);white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+body[data-style="a"] .btn.primary{color:#0c0d0f}
+.btn.danger{border-color:var(--block);color:var(--block)}
+.btn.ghost{border-color:transparent;background:none;color:var(--ink2)}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:var(--r);overflow:hidden}
+.seg button{height:28px;padding:0 12px;color:var(--ink2)}
+.seg button.on{background:var(--ink);color:var(--bg);font-weight:600}
+
+/* ---------- navigator ---------- */
+#nav{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:10px 0 80px}
+#nav h3{font-size:var(--fs-s);font-weight:600;color:var(--ink3);text-transform:var(--label-case);letter-spacing:var(--label-space);padding:14px 14px 6px;display:flex;justify-content:space-between}
+#nav .sect+.sect{border-top:1px solid var(--line);margin-top:8px}
+.row{display:grid;grid-template-columns:10px 1fr auto;gap:2px 9px;align-items:center;width:100%;padding:7px 14px;border-left:3px solid transparent}
+.row:hover{background:var(--card2)}
+.row.sel{background:var(--card2);border-left-color:var(--accent)}
+.row .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .s{grid-column:2/4;font-size:var(--fs-s);color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .when{font-size:var(--fs-s);color:var(--ink3)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--idle)}
+.dot.done{background:var(--done)}.dot.running{background:var(--run);animation:pulse 1.4s infinite}.dot.blocked{background:var(--block)}.dot.waiting{background:var(--wait)}.dot.canceled{background:none;border:2px solid var(--idle)}
+@keyframes pulse{50%{opacity:.35}}
+.mrow{display:flex;align-items:center;justify-content:space-between;width:100%;padding:6px 14px;font-weight:var(--head-weight)}
+.mrow:hover{background:var(--card2)}
+.more{padding:4px 14px 4px 36px;font-size:var(--fs-s);color:var(--ink3)}
+
+/* ---------- main ---------- */
+#main{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0}
+#strip{display:flex;align-items:center;gap:12px;height:46px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--panel);min-width:0}
+#strip .why{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:var(--fs-l)}
+#strip .why:hover{text-decoration:underline;text-decoration-color:var(--line2)}
+.pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;font-size:var(--fs-s);font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+body[data-style="a"] .pill{border-radius:2px}
+.pill.done{background:var(--done-bg);color:var(--done)}.pill.running{background:var(--run-bg);color:var(--run)}.pill.blocked{background:var(--block-bg);color:var(--block)}.pill.waiting{background:var(--wait-bg);color:var(--wait)}.pill.idle,.pill.canceled{background:var(--idle-bg);color:var(--idle)}
+#scroll{flex:1;overflow:auto;position:relative;background:
+  radial-gradient(var(--grid) 1.2px,transparent 1.2px) 0 0/22px 22px,var(--bg);cursor:grab}
+#scroll.locked{box-shadow:inset 0 0 0 2px var(--line2)}
+#sizer{position:relative}
+#stage{position:absolute;left:0;top:0;transform-origin:0 0}
+#wires{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.wire{fill:none;stroke:var(--line2);stroke-width:2}
+.wire.pass{stroke:var(--done)}.wire.fail{stroke:var(--block);stroke-dasharray:7 5}.wire.aux{stroke:var(--ink3);stroke-dasharray:2 5}.wire.live{stroke:var(--run);stroke-dasharray:6 6;animation:dash 1s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-12}}
+.wlabel{position:absolute;font-size:var(--fs-s);padding:1px 7px;border-radius:999px;background:var(--bg);white-space:nowrap;transform:translate(-50%,-50%)}
+.lockbar{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:8px 8px 8px 16px;background:var(--card);border:1px solid var(--line2);border-radius:999px;box-shadow:var(--shadow);z-index:20;white-space:nowrap}
+body[data-style="a"] .lockbar{border-radius:var(--r2)}
+.lockbar .btn{border-radius:999px}
+body[data-style="a"] .lockbar .btn{border-radius:var(--r)}
+#zoom{position:absolute;right:14px;top:60px;display:flex;align-items:center;gap:2px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--cardshadow);z-index:15}
+#zoom button{width:30px;height:28px;text-align:center}
+#zoom span{min-width:46px;text-align:center;font-size:var(--fs-s);color:var(--ink2)}
+
+/* ---------- palette ---------- */
+#palette{position:absolute;z-index:16;display:flex;gap:4px;padding:6px;background:var(--card);border:1px solid var(--line2);border-radius:var(--r2);box-shadow:var(--shadow)}
+body[data-palette="left"] #palette{left:14px;top:50%;transform:translateY(-50%);flex-direction:column}
+body[data-palette="bottom"] #palette{left:50%;bottom:18px;transform:translateX(-50%)}
+#palette .tool{width:44px;height:44px;display:grid;place-items:center;border-radius:var(--r);position:relative;cursor:grab}
+#palette .tool:hover{background:var(--card2)}
+#palette .tool svg{width:22px;height:22px;stroke:var(--ink);fill:none;stroke-width:1.7}
+#palette .tool::after{content:attr(data-tip);position:absolute;white-space:nowrap;background:var(--ink);color:var(--bg);font-size:var(--fs-s);padding:3px 8px;border-radius:4px;opacity:0;pointer-events:none;transition:opacity .1s}
+body[data-palette="left"] #palette .tool::after{left:52px}
+body[data-palette="bottom"] #palette .tool::after{bottom:52px;left:50%;transform:translateX(-50%)}
+#palette .tool:hover::after{opacity:1}
+#palette .sep{background:var(--line);align-self:stretch;min-width:1px;min-height:1px;margin:3px}
+#cast{position:absolute;z-index:17;background:var(--card);border:1px solid var(--line2);border-radius:var(--r2);box-shadow:var(--shadow);padding:10px;width:270px;display:none}
+#cast.open{display:block}
+body[data-palette="left"] #cast{left:78px;top:50%;transform:translateY(-50%)}
+body[data-palette="bottom"] #cast{left:50%;bottom:84px;transform:translateX(-50%)}
+
+/* ---------- nodes ---------- */
+.node{position:absolute;background:var(--card);border:1px solid var(--line2);border-radius:var(--r2);box-shadow:var(--cardshadow);cursor:default}
+.node [data-open]{cursor:pointer}
+.node.s-blocked{border-color:var(--block);box-shadow:0 0 0 3px var(--block-bg),var(--cardshadow)}
+.node.s-running{border-color:var(--run);box-shadow:0 0 0 3px var(--run-bg),var(--cardshadow)}
+.node.s-waiting{border-color:var(--wait)}
+.node.s-idle{opacity:.72}
+.node.open{outline:2px solid var(--accent);outline-offset:3px}
+.node .hd{display:flex;align-items:flex-start;gap:9px;padding:12px 14px 6px}
+.node .num{flex:none;width:22px;height:22px;border-radius:50%;border:1px solid var(--line2);display:grid;place-items:center;font-size:var(--fs-s);color:var(--ink2)}
+.node .title{flex:1;font-size:var(--fs-l);font-weight:var(--head-weight);line-height:1.25}
+.node .brief{margin:0 14px 12px;color:var(--ink2);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+.node .brief:hover,.node .title:hover{color:var(--accent)}
+.agent{display:flex;align-items:center;gap:10px;padding:9px 14px;border-top:1px solid var(--line)}
+.agent:hover{background:var(--card2)}
+.agent .who{min-width:0}
+.agent .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agent .cfg{font-size:var(--fs-s);color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agent.drop{outline:2px dashed var(--accent);outline-offset:-3px}
+.av{position:relative;flex:none;width:34px;height:34px}
+.av svg{width:100%;height:100%;display:block;border-radius:9px}
+body[data-style="a"] .av svg{border-radius:3px}
+.hmark{position:absolute;right:-5px;bottom:-5px;width:17px;height:17px;border-radius:50%;display:grid;place-items:center;font:700 10px/1 "JetBrains Mono",monospace;color:#fff;border:2px solid var(--card)}
+.hmark.claude{background:#d97757}.hmark.codex{background:#1f8f6d}.hmark.pi{background:#7a55d6}
+.outbar{display:flex;align-items:center;gap:8px;width:100%;padding:8px 14px;border-top:1px solid var(--line);border-radius:0 0 var(--r2) var(--r2);font-size:var(--fs-s);font-weight:600}
+.outbar.done{background:var(--done-bg);color:var(--done)}
+.outbar.running{background:var(--run-bg);color:var(--run)}
+.outbar.blocked{background:var(--block-bg);color:var(--block)}
+.outbar.idle{color:var(--ink3)}
+.outbar .files{display:flex;gap:6px;margin-left:auto;min-width:0}
+.chip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:var(--r);background:var(--card);border:1px solid currentColor;color:inherit;font-weight:600;white-space:nowrap}
+.chip:hover{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+/* card 1: compact, no brief */
+body[data-card="1"] .node .brief{display:none}
+body[data-card="1"] .node .hd{padding-bottom:10px}
+/* card 3: poster, character first, state as a spine */
+body[data-card="3"] .node.formation{border-left-width:6px}
+body[data-card="3"] .node.formation.s-done{border-left-color:var(--done)}
+body[data-card="3"] .node.formation.s-idle{border-left-color:var(--idle)}
+body[data-card="3"] .node.formation .agent{order:-1;border-top:0;border-bottom:1px solid var(--line);padding:12px 14px}
+body[data-card="3"] .node.formation .av{width:46px;height:46px}
+body[data-card="3"] .node.formation{display:flex;flex-direction:column}
+body[data-card="3"] .node .brief{-webkit-line-clamp:2}
+/* small nodes */
+.node.input{border-color:var(--accent)}
+.node.end{border-radius:999px;border-color:var(--done)}
+.node.end .hd,.node.limit .hd{padding-bottom:12px;align-items:center}
+.node.limit{border-style:dashed}
+.node.gate .crit{margin:0 14px 12px;color:var(--ink2);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+body[data-card="1"] .node.gate .crit{display:none}
+.routes{display:grid;grid-template-columns:auto 1fr;gap:3px 9px;padding:9px 14px;border-top:1px solid var(--line);font-size:var(--fs-s)}
+.routes .p{color:var(--done);font-weight:700}.routes .f{color:var(--block);font-weight:700}
+.kind{font-size:var(--fs-s);color:var(--ink3);text-transform:uppercase;letter-spacing:.06em}
+
+/* ---------- flow ---------- */
+#flow{max-width:980px;margin:0 auto;padding:26px 24px 120px;cursor:default}
+.frow{display:grid;grid-template-columns:34px 1fr 250px;gap:0 16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r2);box-shadow:var(--cardshadow);padding:16px 18px;margin-bottom:12px}
+.frow.s-blocked{border-color:var(--block)}.frow.s-running{border-color:var(--run)}.frow.s-idle{opacity:.72}
+.frow .title{font-size:var(--fs-l);font-weight:var(--head-weight)}
+.frow .brief{color:var(--ink2);margin:4px 0 10px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;cursor:pointer}
+.frow .side{border-left:1px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.frow .agent{border:1px solid var(--line);border-radius:var(--r);padding:6px 10px;display:inline-flex}
+.frow .sub{margin-top:10px;padding-left:12px;border-left:2px dotted var(--line2)}
+
+/* ---------- windows ---------- */
+.win{position:fixed;z-index:50;width:460px;max-width:calc(100vw - 24px);max-height:min(640px,calc(100vh - 70px));display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line2);border-radius:var(--r2);box-shadow:var(--shadow)}
+.win.wide{width:600px}
+.win header{display:flex;align-items:center;gap:8px;padding:10px 10px 10px 16px;border-bottom:1px solid var(--line);cursor:move;user-select:none}
+.win header .wt{flex:1;font-weight:var(--head-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.win header button{width:28px;height:28px;display:grid;place-items:center;border-radius:var(--r);color:var(--ink2)}
+.win header button:hover{background:var(--card2)}
+.win header button.on{background:var(--accent);color:#fff}
+.win .body{padding:14px 16px 18px;overflow:auto}
+.win .body>*+*{margin-top:12px}
+.win h4{margin:0;font-size:var(--fs-s);font-weight:600;color:var(--ink3);text-transform:var(--label-case);letter-spacing:var(--label-space)}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:5px 12px}
+.kv dt{color:var(--ink3)}.kv dd{margin:0}
+.prose{line-height:1.6}
+.prose p+p,.prose ul,.prose ol{margin:9px 0 0}
+.prose ul,.prose ol{padding-left:20px}
+.prose li+li{margin-top:5px}
+.prose h2{font-size:var(--fs-l);margin:14px 0 4px}
+.prose code{font:12px "JetBrains Mono",monospace;background:var(--card2);padding:1px 5px;border-radius:3px}
+.box{background:var(--card2);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}
+.box.bad{border-color:var(--block);background:var(--block-bg)}
+.term{background:#0b0c0e;color:#cfd6df;font:12.5px/1.55 "JetBrains Mono",monospace;padding:12px 14px;border-radius:var(--r);height:300px;overflow:auto;white-space:pre-wrap}
+.term .dim{color:#77808c}.term .ok{color:#7fd069}.term .cur{display:inline-block;width:8px;height:15px;background:#cfd6df;vertical-align:-2px;animation:pulse 1s steps(1) infinite}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:-4px 0 0}
+.tabs button{padding:6px 10px;color:var(--ink2);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button.on{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+.castgrid{display:grid;gap:6px}
+.char{display:flex;align-items:center;gap:11px;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--card)}
+.char:hover{border-color:var(--accent)}
+.char.on{border-color:var(--accent);background:var(--card2)}
+.char .d{font-size:var(--fs-s);color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.char .who{min-width:0;flex:1}
+select{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line2);border-radius:var(--r);height:30px;padding:0 8px}
+textarea{font:inherit;color:var(--ink);background:var(--card2);border:1px solid var(--line2);border-radius:var(--r);width:100%;min-height:150px;padding:10px;line-height:1.5}
+
+/* ---------- agents view ---------- */
+#agents{position:absolute;inset:0;background:var(--bg);z-index:30;overflow:auto;padding:28px 32px 120px;display:none}
+#agents.open{display:block}
+#agents h2{font-size:22px;font-weight:var(--head-weight)}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-top:16px}
+.profile{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);box-shadow:var(--cardshadow);padding:16px;display:flex;flex-direction:column;gap:10px}
+.profile .av{width:64px;height:64px}
+.profile .hmark{width:24px;height:24px;font-size:13px}
+.profile .n{font-size:var(--fs-l);font-weight:var(--head-weight)}
+
+/* ---------- prototype panel: deliberately not part of the design ---------- */
+#proto{position:fixed;right:12px;bottom:12px;z-index:99;background:#c2187a;color:#fff;font:12px/1.3 system-ui,sans-serif;border-radius:10px;padding:9px 11px;box-shadow:0 8px 24px rgba(0,0,0,.35);display:grid;gap:6px}
+#proto b{letter-spacing:.08em}
+#proto .l{display:flex;align-items:center;gap:6px;justify-content:space-between}
+#proto .o{display:inline-flex;border:1px solid rgba(255,255,255,.6);border-radius:6px;overflow:hidden}
+#proto .o button{padding:3px 8px;color:#fff}
+#proto .o button.on{background:#fff;color:#c2187a;font-weight:700}
+#toast{position:fixed;left:50%;top:60px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;z-index:98;opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.on{opacity:1}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top"></div>
+  <nav id="nav"></nav>
+  <div id="main">
+    <div id="strip"></div>
+    <div id="scroll"><div id="sizer"><div id="stage"><svg id="wires"></svg></div></div></div>
+    <div id="zoom"></div>
+    <div id="palette"></div>
+    <div id="cast"></div>
+    <div id="lock"></div>
+    <div id="agents"></div>
+  </div>
+</div>
+<div id="wins"></div>
+<div id="toast"></div>
+<div id="proto"></div>
+
+<script>
+// ---------------------------------------------------------------- state
+const q = new URLSearchParams(location.search);
+const S = {
+  style: q.get('style') || 'a', card: q.get('card') || '2', palette: q.get('palette') || 'left',
+  sessions: q.get('sessions') || 'on', run: q.get('run') || 'r1', mode: q.get('mode') || 'run',
+  view: q.get('view') || 'canvas', zoom: null, agentsOpen: false,
+};
+function set(k, v) {
+  S[k] = v;
+  const p = new URLSearchParams();
+  for (const key of ['style','card','palette','sessions','run','mode','view']) p.set(key, S[key]);
+  history.replaceState(null, '', '?' + p);
+  render();
+}
+
+// ---------------------------------------------------------------- data
+const HARNESS = { claude: ['Claude', 'C'], codex: ['Codex', 'X'], pi: ['Pi', 'π'] };
+// Saved configurations are stamps: role + harness + model + effort under a name and a face.
+const CAST = {
+  brick: { name: 'Brick', role: 'Builder', harness: 'codex', model: 'gpt-6-astra', effort: 'medium', hue: 22, face: 0, d: 'Builds in short rounds and captures what it made.' },
+  lens:  { name: 'Lens', role: 'Judge', harness: 'codex', model: 'gpt-6-luna', effort: 'medium', hue: 265, face: 1, d: 'Blind reviewer. Reads the checklist and the images, nothing else.' },
+  wren:  { name: 'Wren', role: 'Scout', harness: 'codex', model: 'gpt-6-luna', effort: 'medium', hue: 150, face: 2, d: 'Finds the gaps before anyone builds.' },
+  page:  { name: 'Page', role: 'vanilla', harness: 'codex', model: 'gpt-6-luna', effort: 'low', hue: 200, face: 3, d: 'No role. Small clerical steps: labels, comments, side-by-sides.' },
+  odile: { name: 'Odile', role: 'Architect', harness: 'claude', model: 'opus', effort: 'high', hue: 340, face: 1, d: 'Shapes the plan and names the risky part.' },
+  mako:  { name: 'Mako', role: 'Reviewer', harness: 'claude', model: 'sonnet', effort: 'medium', hue: 48, face: 2, d: 'Reads the diff against the Bead and the house rules.' },
+  pim:   { name: 'Pim', role: 'Debugger', harness: 'pi', model: 'default', effort: 'medium', hue: 95, face: 0, d: 'Reproduces first, then narrows.' },
+};
+const BRIEF_HEAD = 'AgentQuest, /srv/games/agentquest. Read AGENTS.md there and the aqg-cookbook skill. Subject: {subject}. Owning bead: {bead}. Target: {target}. The run folder is /srv/games/agentquest-work/evidence/{bead}-to-target/, with round-0/, round-1/ … for captures. ';
+const NODES = [
+  { id: 'input', kind: 'input', col: 0, row: 0, title: 'Subject and target',
+    brief: 'Make one AgentQuest subject (a hand, a body, a zone screen, an animation) more like a target image WisQi picked: find the gaps, then build in short rounds, each checked by a fresh blind reviewer against a checklist, then put it on the review page for WisQi’s look.' },
+  { id: 'gap', kind: 'formation', num: 1, col: 1, row: 0, title: 'Gap analysis', slot: 'wren',
+    brief: BRIEF_HEAD + 'Find what the builder should change. If round-0/ is empty, capture the subject as it is today. Then compare round-0 with the target images, blind. Take the cookbook’s checklist for this kind of subject and answer each item yes / no / can’t tell, naming the image. List the gaps largest first, under 300 words. Write gaps-0.md and output its path.' },
+  { id: 'attempt', kind: 'formation', num: 2, col: 2, row: 0, title: 'Attempt', slot: 'brick',
+    brief: BRIEF_HEAD + 'Build one round. Your input is the gap analysis, or the reviewer’s findings on your last round. Fix the largest gaps first; a round is a short step, not a finished job. Don’t merge to main: push your branches. Capture the result at round-0’s framings into the next round-N/ folder, look at every capture yourself. Write round-N/NOTES.md in five lines or fewer.' },
+  { id: 'limit', kind: 'limit', col: 2, row: 1, title: 'At most 5 rounds', brief: 'Covers Attempt. When the fifth round fails review the run stops and asks you.' },
+  { id: 'gate', kind: 'gate', num: 3, col: 3, row: 0, title: 'Review against the target',
+    brief: 'Beside the target at the same framing, no checklist item is clearly wrong and nothing else is clearly worse.' },
+  { id: 'judge', kind: 'formation', col: 3, row: 1, title: 'Rubric judge', slot: 'lens', judges: 'gate',
+    brief: 'You are a fresh, blind reviewer. Read only the checklist at the top of gaps-0.md and look at the target images and the newest round-N/ images. Do not read NOTES.md, bead comments or any builder’s claims. Answer every checklist item. Pass only if no checklist item is clearly wrong and nothing else is clearly worse than the target; otherwise fail, with the findings as the reason and evidence. Write review-N.md. Return exactly one archon-verdict block.' },
+  { id: 'show', kind: 'formation', num: 4, col: 4, row: 0, title: 'Show WisQi', slot: 'page',
+    brief: 'Put the passing round in front of WisQi. Make one side-by-side image per framing: target left, round-0 middle, the passing round right, captioned. On the bead add the label needs-wisqi and set the notes to one line. Comment on the bead in three lines.' },
+  { id: 'end', kind: 'end', col: 5, row: 0, title: 'Done' },
+];
+const FILES = {
+  'gaps-0.md': `<h2>Checklist: hand</h2><ul><li><b>Fist side and arm match</b>: can’t tell, <code>fist_studio_play-angle.png</code></li><li><b>Fingers wrap, thumb closes from the opposite side</b>: no</li><li><b>Five digits in order</b>: can’t tell</li><li><b>No fused fingers</b>: no</li><li><b>Wrist meets cuff without a seam</b>: no</li></ul><h2>Gaps, largest first</h2><ol><li>The fist is a blunt closed mass; no finger reads as curling round the hilt.</li><li>The thumb does not oppose the fingers.</li><li>Both wrist-to-cuff joins show a dark gap.</li><li>Skin colour is mottled beside the target’s even surface.</li></ol>`,
+  'round-1.md': `<h2>Builder round 1</h2><p>Round folder: <code>…/aqg-0gy.72.2-to-target/round-1/</code>. Gap analysis: <code>gaps-0.md</code>.</p><p>Code branch <code>aqg-0gy.72.2-round1</code> (57b8f01), pushed to origin. Content branch <code>aqg-0gy.72.2-round1-content</code> (0412228), pushed. Nothing merged; bead aqg-0gy.72.2 remains open.</p><p>Smoothed the decimated fist and rest hand before remeshing. The thumb-opposition experiment damaged the generated surface and was discarded; the final candidate retains the source grip pose. Finger separation, cuff joins and mottled colour remain short of take A.</p><p>Rebuilt, imported, inspected all 30 final PNG captures, and passed shoot_hero_looks in Lanternwick: 15 checks, 0 failures.</p><p><b>Next:</b> blind reviewer against the hand checklist. This round is not taste acceptance.</p>`,
+  'report': `<p>Round 1 captured at round-0’s framings. Branches pushed, nothing merged. Still short: finger separation, cuff joins, colour.</p>`,
+  'review-1.md': `<h2>Blind review, round 1</h2><ul><li><b>Fist side and arm match</b>: can’t tell. <code>fist_studio_play-angle.png</code> places the fist on the sword arm, but does not establish handedness.</li><li><b>Fingers wrap, thumb closes from the opposite side</b>: no. The fist still reads as a blunt closed mass at the hilt.</li><li><b>Five digits in order</b>: can’t tell. Only two fingertips show clearly.</li><li><b>No fused fingers</b>: no. Folded fingers blend into a broad, faceted mass.</li><li><b>Wrist meets cuff without a seam</b>: no. Uneven wrist edge and dark gaps beneath the cuff.</li><li><b>Rest hand has five digits in order</b>: yes.</li></ul><h2>Other findings, most severe first</h2><ol><li>The fist remains conspicuously low-poly beside the target.</li><li>Skin texture is mottled and patchy.</li><li>In the game-framed idle, the hands remain small and visually rough.</li></ol><p><b>Verdict: fail.</b> The fist grip, digit separation and both cuff joins remain clearly wrong.</p>`,
+  'verdict': `<pre class="mono" style="margin:0;white-space:pre-wrap">{"verdict":"fail","reason":"The fist grip and finger separation remain clearly wrong, and both wrist-to-cuff joins show visible gaps. Findings and image evidence are in review-1.md."}</pre>`,
+};
+const TERM = {
+  ended: `<span class="dim">$ codex --model gpt-6-luna --effort medium</span>\nRead gaps-0.md (checklist only)\nViewed target/fist_target_grip.png\nViewed round-1/fist_studio_outside.png … 9 more\nWrote round-1/review-1.md\n<span class="ok">archon-verdict</span> {"verdict":"fail","reason":"…"}\n<span class="dim">— seat ended 00:31 · last 6 of 212 lines · open full transcript —</span>`,
+  live: [`<span class="dim">$ codex --model gpt-6-astra --effort medium</span>`, `Reading review-1.md findings (3 clearly wrong)`, `Plan: separate index and middle finger loops, close the cuff gap`, `blender --background fist_remesh.py`, `  remesh 1/4 … 2/4 … 3/4 … 4/4`, `Imported SK_Hero_Fist_r2`, `Capturing fist_studio_outside.png`, `Capturing fist_studio_front.png`, `Looking at round-2/fist_studio_outside.png`, `Finger gaps now read at 7 m; thumb still short`, `Adjusting thumb opposition, pass 2`],
+};
+// Per-run state of each step.
+const RUNS = {
+  r1: { state: 'blocked', mission: 'btt', rev: 28, bead: 'aqg-0gy.72.2', when: '12 Oct 22:46', dur: '1h 48m', by: 'claude-lead', cwd: '/srv/games/agentquest',
+    title: 'Warrior’s hands: fist on the longsword', why: 'Review against the target stopped: the judge’s verdict has no <b>evidence</b> field.', failing: 'gate', round: 1,
+    steps: { input: 'done', gap: 'done', attempt: 'done', judge: 'done', gate: 'blocked', show: 'idle', end: 'idle', limit: 'idle' },
+    outs: { gap: ['gaps-0.md'], attempt: ['round-1.md', 'report'], judge: ['review-1.md', 'verdict'] } },
+  r2: { state: 'running', mission: 'btt', rev: 34, bead: 'aqg-0gy.72.4', when: '12 Oct 23:35', dur: '58m', by: 'claude-lead', cwd: '/srv/games/agentquest',
+    title: 'Warrior’s two hands, second take', why: '<b>Attempt</b> is building round 2 of 5. Round 1 failed review and went back.', failing: 'attempt', round: 2,
+    steps: { input: 'done', gap: 'done', attempt: 'running', judge: 'idle', gate: 'idle', show: 'idle', end: 'idle', limit: 'idle' },
+    outs: { gap: ['gaps-0.md'], attempt: ['round-1.md'] } },
+};
+const NAV = {
+  active: [
+    { run: null, state: 'waiting', t: 'Delivery', s: 'Needs you: approve the release plan', when: '14m' },
+    { run: 'r2', state: 'running', t: 'Build to a target', s: 'aqg-0gy.72.4 · Attempt, round 2 of 5', when: '58m' },
+    { run: null, state: 'running', t: 'Build to a target', s: 'aqg-0gy.72.5 · Gap analysis', when: '38m' },
+    { run: 'r1', state: 'blocked', t: 'Build to a target', s: 'aqg-0gy.72.2 · judge verdict invalid', when: '1h 48m' },
+  ],
+  missions: [
+    { id: 'btt', name: 'Build to a target', runs: [
+      { run: null, state: 'running', t: 'aqg-0gy.72.5', s: 'The mage, Silas Wray, rebuilt on a MakeHuman base', when: '23:55' },
+      { run: 'r2', state: 'running', t: 'aqg-0gy.72.4', s: 'Warrior’s two hands, second take', when: '23:35' },
+      { run: 'r1', state: 'blocked', t: 'aqg-0gy.72.2', s: 'Warrior’s hands: fist on the longsword', when: '22:46' },
+      { run: null, state: 'canceled', t: 'aqg-0gy.72.2', s: 'Canceled by you after 54s', when: '22:17' } ] },
+    { id: 'delivery', name: 'Delivery', runs: [
+      { run: null, state: 'waiting', t: 'archon-9zp', s: 'Choose which asking agent to talk with', when: '23:02' },
+      { run: null, state: 'done', t: 'archon-jkxq', s: 'Recover judge verdicts', when: '11 Oct' },
+      { run: null, state: 'done', t: 'archon-3uiq', s: 'Surface artifact read errors', when: '10 Oct' } ], more: 12 },
+    { id: 'tree', name: 'Tree-based solution exploration', runs: [] },
+  ],
+  sessions: [['chrote-keeper', 'Claude · idle'], ['claude-agentquest', 'Claude · working'], ['claude-agentquest-2', 'Claude · working'], ['athena-beads-delivery', 'Codex · idle']],
+};
+const slots = Object.fromEntries(NODES.filter(n => n.slot).map(n => [n.id, { ...CAST[n.slot], char: n.slot }]));
+let extra = []; // nodes dragged in from the palette, edit mode only
+
+// ---------------------------------------------------------------- helpers
+const $ = (s, r = document) => r.querySelector(s);
+const h = (s) => { const t = document.createElement('template'); t.innerHTML = s.trim(); return t.content.firstElementChild; };
+const run = () => RUNS[S.run];
+const locked = () => S.mode === 'run';
+const stateOf = (id) => locked() ? (run().steps[id] || 'idle') : 'edit';
+const WORD = { done: 'Done', running: 'Running', blocked: 'Blocked', waiting: 'Needs you', idle: 'Not reached', canceled: 'Canceled' };
+function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 1800); }
+function avatar(c) {
+  const bg = `hsl(${c.hue} 55% 46%)`, fg = `hsl(${c.hue} 60% 88%)`, dk = `hsl(${c.hue} 50% 18%)`;
+  const heads = [`<rect x="9" y="11" width="22" height="20" rx="6" fill="${fg}"/>`, `<circle cx="20" cy="21" r="11.5" fill="${fg}"/>`, `<path d="M8 30 L20 8 L32 30 Z" fill="${fg}"/>`, `<rect x="8" y="13" width="24" height="17" rx="2" fill="${fg}"/>`];
+  const eyes = [`<circle cx="15.5" cy="20" r="2" fill="${dk}"/><circle cx="24.5" cy="20" r="2" fill="${dk}"/>`, `<rect x="13" y="18.5" width="5" height="2.4" rx="1" fill="${dk}"/><rect x="22" y="18.5" width="5" height="2.4" rx="1" fill="${dk}"/>`, `<circle cx="17" cy="23" r="1.8" fill="${dk}"/><circle cx="23" cy="23" r="1.8" fill="${dk}"/>`, `<circle cx="15" cy="21" r="2.6" fill="none" stroke="${dk}" stroke-width="1.6"/><circle cx="25" cy="21" r="2.6" fill="none" stroke="${dk}" stroke-width="1.6"/>`];
+  const [, mark] = HARNESS[c.harness];
+  return `<span class="av" title="${c.name} · ${HARNESS[c.harness][0]}"><svg viewBox="0 0 40 40"><rect width="40" height="40" fill="${bg}"/>${heads[c.face]}${eyes[c.face]}</svg><span class="hmark ${c.harness}">${mark}</span></span>`;
+}
+const cfg = (c) => `${HARNESS[c.harness][0]} · ${c.model} · <b>${c.effort}</b>`;
+function agentRow(id) {
+  const c = slots[id];
+  return `<div class="agent" data-open="agent:${id}" data-slot="${id}">${avatar(c)}<div class="who"><div class="name">${c.name} <span class="muted" style="font-weight:400">${c.role}</span></div><div class="cfg">${cfg(c)}</div></div></div>`;
+}
+function outBar(id) {
+  if (!locked()) return '';
+  const st = stateOf(id), files = run().outs[id] || [];
+  const text = { done: 'Output ready', running: `Working · round ${run().round}`, idle: 'Not reached', blocked: 'Blocked' }[st];
+  return `<div class="outbar ${st}" ${st === 'running' ? `data-open="term:${id}"` : files.length ? `data-open="file:${id}:0"` : ''}><span>${text}</span><span class="files">${files.map((f, i) => `<button class="chip" data-open="file:${id}:${i}">${f}</button>`).join('')}</span></div>`;
+}
+
+// ---------------------------------------------------------------- chrome
+function renderTop() {
+  $('#top').innerHTML = `<span class="brand">ARCHON</span>
+    <span class="mission">Build to a target</span><span class="muted">revision ${locked() ? run().rev : 34}${locked() ? ' · locked' : ''}</span>
+    ${locked() ? '' : '<button class="btn ghost" data-act="toast:Undo">↶ Undo</button><button class="btn ghost" data-act="toast:Redo">↷ Redo</button>'}
+    <span class="spacer"></span>
+    <span class="seg"><button class="${S.view === 'canvas' ? 'on' : ''}" data-set="view:canvas">Canvas</button><button class="${S.view === 'flow' ? 'on' : ''}" data-set="view:flow">Flow</button></span>
+    <button class="btn" data-act="agents">${S.agentsOpen ? '← Back to mission' : 'Agents'}</button>`;
+}
+function renderNav() {
+  const row = (r) => `<button class="row ${locked() && r.run === S.run ? 'sel' : ''}" data-run="${r.run || ''}"><span class="dot ${r.state}"></span><span class="t">${r.t}</span><span class="when">${r.when}</span><span class="s">${r.s}</span></button>`;
+  $('#nav').innerHTML = `<div class="sect"><h3>Active <span>${NAV.active.length}</span></h3>${NAV.active.map(row).join('')}</div>` +
+    NAV.missions.map(m => `<div class="sect"><button class="mrow" data-mission="${m.id}"><span>${m.name}</span><span class="muted" style="font-weight:400">${m.id === 'btt' && !locked() ? 'editing' : ''}</span></button>${m.runs.map(row).join('') || '<div class="more">No runs yet</div>'}${m.more ? `<div class="more">${m.more} earlier runs</div>` : ''}</div>`).join('') +
+    `<div class="sect"><button class="mrow muted" data-act="toast:New mission">+ New mission</button></div>` +
+    (S.sessions === 'on' ? `<div class="sect"><h3>Sessions outside runs <span>${NAV.sessions.length}</span></h3>${NAV.sessions.map(([n, s]) => `<button class="row" data-act="toast:Opens this session’s terminal"><span class="dot ${s.includes('working') ? 'running' : ''}"></span><span class="t" style="font-weight:400">${n}</span><span></span><span class="s">${s}</span></button>`).join('')}</div>` : '');
+}
+function renderStrip() {
+  const el = $('#strip');
+  if (!locked()) { el.innerHTML = `<span class="pill idle">Editing</span><span class="why" style="cursor:default">Revision 34. Drag steps in from the palette, click anything to change it.</span><button class="btn primary" data-act="toast:Opens the start window">▶ Start a run</button>`; return; }
+  const r = run();
+  el.innerHTML = `<span class="pill ${r.state}">${WORD[r.state]}</span>
+    <button class="why" data-open="run">${r.why}</button>
+    <button class="btn" data-open="${r.state === 'blocked' ? 'node' : 'term'}:${r.failing}">${r.state === 'blocked' ? 'Open the failing step' : 'Watch it work'}</button>
+    <button class="btn danger" data-act="toast:Asks to confirm, then stops the run">Stop run</button>`;
+}
+function renderLock() {
+  $('#lock').innerHTML = locked() ? `<div class="lockbar"><span>🔒 <b>Run view</b> <span class="muted">· revision ${run().rev}, read only</span></span><button class="btn primary" data-set="mode:edit">Edit this mission · revision 34</button></div>` : '';
+  $('#scroll').classList.toggle('locked', locked());
+}
+const ICON = {
+  formation: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="12" r="2.2"/><path d="M14 10.5h4M14 13.5h3"/>',
+  gate: '<path d="M12 3 21 12 12 21 3 12Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
+  end: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/>',
+  limit: '<path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-6"/>',
+  cast: '<circle cx="9" cy="9" r="3.5"/><path d="M2.5 20c.6-3.6 3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><circle cx="17.5" cy="8" r="2.5"/><path d="M17 13.5c2.5.2 4 1.8 4.5 4.5"/>',
+};
+function renderPalette() {
+  const pal = $('#palette');
+  pal.style.display = locked() || S.view === 'flow' ? 'none' : 'flex';
+  if (locked()) $('#cast').classList.remove('open');
+  pal.innerHTML = [['formation', 'Formation: agents doing a step'], ['gate', 'Gate: a check that routes the work'], ['end', 'End'], ['limit', 'Limit: caps a loop']]
+    .map(([k, tip]) => `<div class="tool" draggable="true" data-new="${k}" data-tip="${tip} · drag onto the canvas"><svg viewBox="0 0 24 24">${ICON[k]}</svg></div>`).join('') +
+    `<div class="sep"></div><div class="tool" data-act="cast" data-tip="Agents: drag one onto a slot"><svg viewBox="0 0 24 24">${ICON.cast}</svg></div>`;
+  $('#cast').innerHTML = `<h4 class="label" style="margin:0 0 8px">Drag onto a slot</h4><div class="castgrid">${Object.entries(CAST).map(([k, c]) => charRow(k, c, true)).join('')}</div>`;
+}
+const charRow = (k, c, drag, on) => `<button class="char ${on ? 'on' : ''}" ${drag ? `draggable="true" data-char="${k}"` : `data-pick="${k}"`}>${avatar(c)}<span class="who"><b>${c.name}</b> <span class="muted">${c.role}</span><div class="d">${cfg(c)}</div></span></button>`;
+
+// ---------------------------------------------------------------- canvas
+const DIM = { '1': { w: 232, h: 132, gx: 64, gy: 70 }, '2': { w: 304, h: 214, gx: 72, gy: 78 }, '3': { w: 290, h: 226, gx: 72, gy: 78 } };
+const SMALL = { input: 1, end: .62, limit: .86, gate: .92 };
+function nodeHTML(n) {
+  const st = stateOf(n.id), w = Math.round(DIM[S.card].w * (SMALL[n.kind] || 1));
+  const num = n.num ? `<span class="num">${n.num}</span>` : '';
+  let inner = '';
+  if (n.kind === 'formation') inner = `<div class="hd">${num}<div class="title" data-open="node:${n.id}">${n.title}</div>${n.judges ? '<span class="kind">judge</span>' : ''}</div><div class="brief" data-open="node:${n.id}">${n.brief}</div>${agentRow(n.id)}${outBar(n.id)}`;
+  else if (n.kind === 'gate') inner = `<div class="hd">${num}<div class="title" data-open="node:gate">${n.title}</div><span class="kind">gate</span></div><div class="crit" data-open="node:gate">${n.brief}</div>
+    <div class="routes" data-open="node:gate"><span class="p">Pass</span><span>→ 4 Show WisQi</span><span class="f">Fail</span><span>↺ back to 2 Attempt</span></div>
+    ${st === 'blocked' ? `<button class="outbar blocked" data-open="node:gate"><span>Blocked · verdict has no evidence</span></button>` : locked() ? `<div class="outbar ${st === 'idle' ? 'idle' : st}"><span>${S.run === 'r2' ? 'Round 1 failed · sent back' : WORD[st]}</span></div>` : ''}`;
+  else if (n.kind === 'input') inner = `<div class="hd"><div><div class="kind" style="color:var(--accent)">Input</div><div class="title" data-open="node:input">${n.title}</div></div></div><div class="brief" data-open="node:input">${n.brief}</div>`;
+  else if (n.kind === 'end') inner = `<div class="hd"><span class="dot ${st === 'done' ? 'done' : ''}" style="width:14px;height:14px"></span><div class="title">${n.title}</div></div>`;
+  else if (n.kind === 'limit') inner = `<div class="hd" data-open="node:limit"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7">${ICON.limit}</svg><div><div class="title">${n.title}</div>${locked() ? `<div class="muted" style="font-size:var(--fs-s)">round ${run().round} of 5 used</div>` : ''}</div></div>`;
+  return `<div class="node ${n.kind} s-${st}" id="n-${n.id}" style="width:${w}px">${inner}</div>`;
+}
+function renderCanvas() {
+  const sc = $('#scroll');
+  if (S.view === 'flow') { $('#sizer').style.cssText = ''; $('#stage').style.cssText = 'position:static;transform:none'; $('#stage').innerHTML = flowHTML(); $('#zoom').style.display = 'none'; sc.style.cursor = 'default'; return; }
+  sc.style.cursor = 'grab'; $('#zoom').style.display = 'flex';
+  const d = DIM[S.card], padX = S.palette === 'left' && !locked() ? 96 : 48, top = 96;
+  const stage = $('#stage');
+  stage.innerHTML = '<svg id="wires"></svg>' + NODES.concat(extra).map(nodeHTML).join('');
+  let maxX = 0, maxY = 0; const box = {};
+  for (const n of NODES.concat(extra)) {
+    const el = $('#n-' + n.id), w = el.offsetWidth, hgt = el.offsetHeight;
+    const x = n.x ?? padX + n.col * (d.w + d.gx) + (d.w - w) / 2, y = n.y ?? top + n.row * (d.h + d.gy) + (n.row === 0 ? (d.h - hgt) / 2 : 0);
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    box[n.id] = { x, y, w, h: hgt, cx: x + w / 2, cy: y + hgt / 2, r: x + w, b: y + hgt };
+    maxX = Math.max(maxX, x + w); maxY = Math.max(maxY, y + hgt);
+  }
+  const W = maxX + 64, H = maxY + 150;
+  const fit = Math.min(1, (sc.clientWidth - 8) / W);
+  if (S.zoom == null) S.zoom = Math.max(.8, fit);
+  stage.style.cssText = `width:${W}px;height:${H}px;transform:scale(${S.zoom})`;
+  $('#sizer').style.cssText = `width:${W * S.zoom}px;height:${H * S.zoom}px`;
+  drawWires(box, W, H);
+  $('#zoom').innerHTML = `<button data-zoom="-">−</button><span>${Math.round(S.zoom * 100)}%</span><button data-zoom="+">+</button><button data-zoom="fit" style="width:auto;padding:0 10px">Fit</button>`;
+}
+function drawWires(b, W, H) {
+  const svg = $('#wires'); svg.setAttribute('width', W); svg.setAttribute('height', H);
+  const st = (id) => stateOf(id), hz = (a, c) => { const m = (b[a].r + b[c].x) / 2; return `M${b[a].r} ${b[a].cy} C${m} ${b[a].cy} ${m} ${b[c].cy} ${b[c].x} ${b[c].cy}`; };
+  const cls = (from, to) => !locked() ? '' : st(to) === 'running' ? 'live' : st(from) === 'done' && st(to) !== 'idle' ? 'pass' : '';
+  let p = '', labels = '';
+  for (const [a, c] of [['input', 'gap'], ['gap', 'attempt'], ['attempt', 'gate']]) p += `<path class="wire ${cls(a, c)}" d="${hz(a, c)}"/>`;
+  p += `<path class="wire pass" style="opacity:${locked() && st('show') === 'idle' ? .45 : 1}" d="${hz('gate', 'show')}"/><path class="wire ${cls('show', 'end')}" d="${hz('show', 'end')}"/>`;
+  const up = Math.min(b.gate.y, b.attempt.y) - 44, gx = b.gate.cx, ax = b.attempt.cx;
+  p += `<path class="wire fail" d="M${gx} ${b.gate.y} V${up + 12} Q${gx} ${up} ${gx - 12} ${up} H${ax + 12} Q${ax} ${up} ${ax} ${up + 12} V${b.attempt.y - 4}"/><path d="M${ax - 6} ${b.attempt.y - 10} L${ax} ${b.attempt.y - 1} L${ax + 6} ${b.attempt.y - 10}" class="wire fail" style="stroke-dasharray:none"/>`;
+  p += `<path class="wire aux" d="M${b.gate.cx} ${b.gate.b} V${b.judge.y}"/><path class="wire aux" d="M${b.attempt.cx} ${b.attempt.b} V${b.limit.y}"/>`;
+  svg.innerHTML = p;
+  const lab = (x, y, t, c) => $('#stage').appendChild(h(`<div class="wlabel" style="left:${x}px;top:${y}px;color:var(--${c})">${t}</div>`));
+  lab((gx + ax) / 2, up, 'fail · back to Attempt', 'block');
+  lab((b.gate.r + b.show.x) / 2, b.gate.cy, 'pass', 'done');
+  lab(b.gate.cx, (b.gate.b + b.judge.y) / 2, 'judged by', 'ink3');
+  lab(b.attempt.cx, (b.attempt.b + b.limit.y) / 2, 'capped by', 'ink3');
+}
+function flowHTML() {
+  const order = ['input', 'gap', 'attempt', 'gate', 'show'], byId = Object.fromEntries(NODES.map(n => [n.id, n]));
+  return `<div id="flow">${order.map(id => {
+    const n = byId[id], st = stateOf(id), files = locked() ? (run().outs[id] || []) : [];
+    const side = !locked() ? '' : `<span class="pill ${st}">${WORD[st] || ''}</span>${id === 'gate' && st === 'blocked' ? `<button class="chip" style="color:var(--block)" data-open="node:gate">Why it stopped</button>` : ''}${st === 'running' ? `<button class="chip" style="color:var(--run)" data-open="term:${id}">Watch it work</button>` : ''}${files.map((f, i) => `<button class="chip" data-open="file:${id}:${i}">${f}</button>`).join('')}`;
+    const sub = id === 'gate' ? `<div class="sub"><div class="label">Judged by</div><div class="title" style="font-size:var(--fs)" data-open="node:judge">Rubric judge</div>${agentRow('judge')}${locked() ? (run().outs.judge || []).map((f, i) => ` <button class="chip" data-open="file:judge:${i}">${f}</button>`).join('') : ''}</div><p class="muted" style="margin-top:8px"><span style="color:var(--done)">Pass</span> → 4 Show WisQi &nbsp; <span style="color:var(--block)">Fail</span> ↺ back to 2 Attempt, at most 5 rounds</p>` : '';
+    return `<div class="frow s-${st}"><span class="num" style="width:28px;height:28px;border:1px solid var(--line2);border-radius:50%;display:grid;place-items:center">${n.num || '◆'}</span><div><div class="title" data-open="node:${id}">${n.title}</div><div class="brief" data-open="node:${id}">${n.brief}</div>${n.slot ? agentRow(id) : ''}${sub}</div><div class="side">${side}</div></div>`;
+  }).join('')}</div>`;
+}
+
+// ---------------------------------------------------------------- windows
+// One window beside the thing clicked. The next click replaces it unless it is pinned.
+let wins = [], termTimer = null;
+function openWin(key, anchor) {
+  const [type, id, idx] = key.split(':');
+  const found = wins.find(w => w.key === key); if (found) { found.el.style.zIndex = 60; return; }
+  // From the run strip, open beside the step itself. Measure before the old window goes away.
+  if (anchor?.closest?.('#strip') && $('#n-' + id)) { anchor = $('#n-' + id); anchor.scrollIntoView({ block: 'nearest', inline: 'center' }); }
+  const rect = (anchor?.closest?.('.node,.frow,.win') || anchor)?.getBoundingClientRect?.();
+  wins.filter(w => !w.pinned).forEach(closeWin);
+  const { title, body, wide } = content(type, id, +idx || 0);
+  const el = h(`<div class="win ${wide ? 'wide' : ''}"><header><span class="wt">${title}</span><button title="Keep open" data-pin>📌</button><button title="Close" data-close>✕</button></header><div class="body">${body}</div></div>`);
+  $('#wins').appendChild(el);
+  const w = { key, el, pinned: false }; wins.push(w);
+  place(el, rect);
+  document.querySelectorAll('.node.open').forEach(n => n.classList.remove('open'));
+  anchor?.closest?.('.node')?.classList.add('open');
+  if (type === 'term' && stateOf(id) === 'running') liveTerm(el);
+}
+function closeWin(w) { w.el.remove(); wins = wins.filter(x => x !== w); if (!wins.length) document.querySelectorAll('.node.open').forEach(n => n.classList.remove('open')); }
+function place(el, a) {
+  a = a || { left: innerWidth / 2, right: innerWidth / 2, top: 120, bottom: 120 };
+  const w = el.offsetWidth, hh = el.offsetHeight, gap = 14;
+  let x = a.right + gap; if (x + w > innerWidth - 12) x = a.left - gap - w;
+  let y = Math.max(56, Math.min(a.top, innerHeight - hh - 12));
+  if (x < 276) { x = Math.max(276, Math.min(a.left, innerWidth - w - 12)); y = a.bottom + gap; if (y + hh > innerHeight - 12) y = Math.max(56, a.top - gap - hh); }
+  el.style.left = x + 'px'; el.style.top = y + 'px';
+}
+function liveTerm(el) {
+  const t = $('.term', el); let i = 3;
+  clearInterval(termTimer);
+  termTimer = setInterval(() => { if (!document.body.contains(t)) return clearInterval(termTimer); t.innerHTML = TERM.live.slice(0, i).join('\n') + '\n<span class="cur"></span>'; t.scrollTop = 1e6; i = i >= TERM.live.length ? 3 : i + 1; }, 1100);
+}
+function fileBody(name) { return `<div class="prose">${FILES[name] || '<p class="muted">Not captured in this prototype.</p>'}</div>`; }
+function content(type, id, idx) {
+  const n = NODES.find(x => x.id === id) || extra.find(x => x.id === id), r = run(), st = stateOf(id);
+  if (type === 'file') { const f = r.outs[id][idx]; return { wide: true, title: `${f} · from ${n.title}`, body: `<p class="label mono">${r.cwd}-work/evidence/${r.bead}-to-target/${f}</p>${fileBody(f)}` }; }
+  if (type === 'term') return { wide: true, title: `${n.title} · ${slots[id].name}’s terminal`, body: `<div class="term">${st === 'running' ? '' : TERM.ended}</div><p class="muted">${st === 'running' ? 'Live. Type to talk to the agent.' : 'This seat has ended. Its last lines are kept with the run.'}</p>` };
+  if (type === 'run') return { title: 'This run', body: `<div class="box ${r.state === 'blocked' ? 'bad' : ''}">${r.why}</div><dl class="kv"><dt>Subject</dt><dd>${r.title}</dd><dt>Bead</dt><dd class="mono">${r.bead}</dd><dt>Started</dt><dd>${r.when}, running for ${r.dur}</dd><dt>Started by</dt><dd>${r.by}</dd><dt>Revision</dt><dd>${r.rev} (mission is now at 34)</dd><dt>Works in</dt><dd class="mono">${r.cwd}</dd><dt>Loop</dt><dd>round ${r.round} of 5</dd></dl><h4>Produced so far</h4><div style="display:flex;gap:6px;flex-wrap:wrap">${Object.entries(r.outs).flatMap(([nid, fs]) => fs.map((f, i) => `<button class="chip" data-open="file:${nid}:${i}">${f}</button>`)).join('')}</div>` };
+  if (type === 'agent') {
+    const c = slots[id], ro = locked();
+    return { title: `${n.title} · who does this step`, body: ro
+      ? `<div class="char on">${avatar(c)}<span class="who"><b>${c.name}</b> <span class="muted">${c.role}</span><div class="d">${c.d}</div></span></div><dl class="kv"><dt>Harness</dt><dd>${HARNESS[c.harness][0]}</dd><dt>Model</dt><dd>${c.model}</dd><dt>Effort</dt><dd>${c.effort}</dd><dt>Role</dt><dd>${c.role} (instructions only)</dd></dl><button class="btn" data-open="term:${id}">${st === 'running' ? 'Watch it work' : 'See its terminal'}</button>`
+      : `<h4>Pick a character</h4><div class="castgrid" data-slotpick="${id}">${Object.entries(CAST).map(([k, x]) => charRow(k, x, false, k === c.char)).join('')}</div><h4>Or adjust this slot only</h4><div style="display:flex;gap:8px;flex-wrap:wrap"><select data-tweak="${id}:harness">${Object.keys(HARNESS).map(k => `<option ${k === c.harness ? 'selected' : ''} value="${k}">${HARNESS[k][0]}</option>`).join('')}</select><select data-tweak="${id}:model">${[c.model, 'gpt-6-astra', 'gpt-6-luna', 'opus', 'sonnet'].filter((v, i, a) => a.indexOf(v) === i).map(m => `<option>${m}</option>`).join('')}</select><select data-tweak="${id}:effort">${['low', 'medium', 'high', 'xhigh'].map(e => `<option ${e === c.effort ? 'selected' : ''}>${e}</option>`).join('')}</select></div><p class="muted">Changes stay on this slot. The saved character is not touched.</p>` };
+  }
+  // node windows
+  if (id === 'gate') {
+    const blocked = st === 'blocked';
+    return { wide: blocked, title: 'Gate · Review against the target', body:
+      (blocked ? `<div class="box bad"><b>Why it stopped.</b> A judge’s verdict needs three fields: verdict, reason and evidence. Lens returned the first two and left out <b>evidence</b>, so the gate could not pass or fail the round.</div><h4>What the judge returned</h4><div class="box">${FILES.verdict}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-act="toast:Re-runs the judge on round 1">Ask the judge again</button><button class="btn" data-act="toast:Records fail and sends round 1 back to Attempt">Take it as a fail</button><button class="btn" data-open="file:judge:0">Read review-1.md</button></div>` : '') +
+      `<h4>Passes when</h4><p>${n.brief}</p><dl class="kv"><dt>Decided by</dt><dd>a judge formation: <button class="chip" data-open="node:judge">Rubric judge</button></dd><dt>On pass</dt><dd style="color:var(--done)">→ 4 Show WisQi</dd><dt>On fail</dt><dd style="color:var(--block)">↺ back to 2 Attempt</dd><dt>Loop</dt><dd>${locked() ? `round ${r.round} of 5` : 'at most 5 rounds'}</dd></dl>` };
+  }
+  if (id === 'limit') return { title: 'Limit', body: `<p>${n.brief}</p><dl class="kv"><dt>Covers</dt><dd>2 Attempt</dd><dt>At most</dt><dd>5 rounds</dd>${locked() ? `<dt>Used</dt><dd>${r.round}</dd>` : ''}</dl>` };
+  if (id === 'input') return { title: 'Input · Subject and target', body: `<p>${n.brief}</p><dl class="kv"><dt>Inputs</dt><dd>subject, target, bead, capture</dd><dt>Human gates</dt><dd>Notify me</dd>${locked() ? `<dt>bead</dt><dd class="mono">${r.bead}</dd><dt>subject</dt><dd>${r.title}</dd>` : ''}</dl>` };
+  if (!locked()) return { wide: true, title: `${n.title} · brief`, body: `<h4>Brief</h4><textarea>${n.brief || ''}</textarea><h4>Who does it</h4>${n.slot ? agentRow(id) : '<p class="muted">Empty slot. Click it on the card or drag a character onto it.</p>'}` };
+  const files = r.outs[id] || [];
+  return { wide: true, title: `${n.num ? n.num + ' · ' : ''}${n.title}`, body: `<div style="display:flex;align-items:center;gap:10px"><span class="pill ${st}">${WORD[st]}</span>${agentRow(id)}</div>
+    ${st === 'running' ? `<h4>Terminal</h4><div class="term" style="height:200px"></div>` : ''}
+    ${files.length ? `<h4>Output</h4><div style="display:flex;gap:6px">${files.map((f, i) => `<button class="chip" data-open="file:${id}:${i}">${f}</button>`).join('')}</div>${fileBody(files[0])}` : ''}
+    <h4>Brief</h4><p class="muted">${n.brief}</p>
+    ${st !== 'idle' && st !== 'running' ? `<button class="btn" data-open="term:${id}">See its terminal</button>` : ''}` };
+}
+
+// ---------------------------------------------------------------- agents view
+function renderAgents() {
+  const el = $('#agents'); el.classList.toggle('open', S.agentsOpen);
+  if (!S.agentsOpen) return;
+  el.innerHTML = `<h2>Agents</h2><p class="muted" style="max-width:640px;margin-top:6px">A character is a saved choice of role, harness, model and effort with a name and a face. Picking one fills a slot; the slot then keeps its own settings, so editing a character never changes a mission.</p>
+    <div class="gallery">${Object.values(CAST).map(c => `<div class="profile"><div style="display:flex;gap:14px;align-items:center">${avatar(c)}<div><div class="n">${c.name}</div><div class="muted">${c.role}</div></div></div><div>${c.d}</div><div class="label">${cfg(c)}</div><div style="display:flex;gap:8px"><button class="btn" data-act="toast:Edit name, face, role and settings">Edit</button><button class="btn ghost" data-act="toast:Duplicate">Duplicate</button></div></div>`).join('')}
+      <button class="profile" style="border-style:dashed;align-items:center;justify-content:center;color:var(--ink2)" data-act="toast:New character">+ New character</button></div>
+    <h2 style="margin-top:34px;font-size:var(--fs-l)">Roles</h2><p class="muted" style="margin-top:4px">Instructions only. A role carries no harness, model or effort.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${['Architect', 'Backend builder', 'Beads triage', 'Builder', 'Debugger', 'Frontend builder', 'Judge', 'Orchestrator', 'Planner', 'Release integrator', 'Reviewer', 'Safety reviewer', 'Scout', 'UX designer', 'Verifier'].map(r => `<button class="btn" data-act="toast:Opens the role’s instructions">${r}</button>`).join('')}</div>`;
+}
+function renderProto() {
+  const o = (k, vals) => `<span class="o">${vals.map(([v, l]) => `<button class="${S[k] === v ? 'on' : ''}" data-set="${k}:${v}">${l}</button>`).join('')}</span>`;
+  $('#proto').innerHTML = `<b>PROTOTYPE</b>
+    <div class="l">Style ${o('style', [['a', 'Console'], ['b', 'Paper']])}</div>
+    <div class="l">Cards ${o('card', [['1', 'Compact'], ['2', 'Brief'], ['3', 'Character']])}</div>
+    <div class="l">Palette ${o('palette', [['left', 'Left'], ['bottom', 'Bottom']])}</div>
+    <div class="l">Sessions ${o('sessions', [['on', 'Shown'], ['off', 'Hidden']])}</div>
+    <div class="l">Run ${o('run', [['r1', 'Blocked'], ['r2', 'Running']])}</div>`;
+}
+function render() {
+  document.body.dataset.style = S.style; document.body.dataset.card = S.card; document.body.dataset.palette = S.palette;
+  renderTop(); renderNav(); renderStrip(); renderLock(); renderPalette(); renderCanvas(); renderAgents(); renderProto();
+}
+
+// ---------------------------------------------------------------- events
+document.addEventListener('click', (e) => {
+  const t = e.target;
+  const pin = t.closest('[data-pin]'), close = t.closest('[data-close]');
+  if (pin) { const w = wins.find(x => x.el.contains(pin)); w.pinned = !w.pinned; pin.classList.toggle('on', w.pinned); return; }
+  if (close) return closeWin(wins.find(x => x.el.contains(close)));
+  const pick = t.closest('[data-pick]');
+  if (pick) { const id = pick.closest('[data-slotpick]').dataset.slotpick; slots[id] = { ...CAST[pick.dataset.pick], char: pick.dataset.pick }; wins.slice().forEach(closeWin); renderCanvas(); return toast(`${slots[id].name} now does this step`); }
+  const s = t.closest('[data-set]');
+  if (s) { const [k, v] = s.dataset.set.split(':'); if (['card', 'palette', 'view', 'mode', 'run'].includes(k)) { S.zoom = null; wins.slice().forEach(closeWin); } if (k === 'run') S.mode = 'run'; return set(k, v); }
+  const z = t.closest('[data-zoom]');
+  if (z) { const d = z.dataset.zoom; S.zoom = d === 'fit' ? Math.min(1, ($('#scroll').clientWidth - 8) / $('#stage').offsetWidth) : Math.max(.4, Math.min(1.5, S.zoom + (d === '+' ? .1 : -.1))); return renderCanvas(); }
+  const r = t.closest('[data-run]');
+  if (r) { if (!r.dataset.run) return toast('Not loaded in this prototype'); S.mode = 'run'; S.zoom = null; S.agentsOpen = false; wins.slice().forEach(closeWin); return set('run', r.dataset.run); }
+  const m = t.closest('[data-mission]');
+  if (m) { if (m.dataset.mission !== 'btt') return toast('Not loaded in this prototype'); S.agentsOpen = false; wins.slice().forEach(closeWin); return set('mode', 'edit'); }
+  const a = t.closest('[data-act]');
+  if (a) { const [act, arg] = a.dataset.act.split(':'); if (act === 'toast') return toast(arg); if (act === 'agents') { S.agentsOpen = !S.agentsOpen; wins.slice().forEach(closeWin); return render(); } if (act === 'cast') return $('#cast').classList.toggle('open'); }
+  const o = t.closest('[data-open]');
+  if (o) { e.stopPropagation(); return openWin(o.dataset.open, o); }
+});
+document.addEventListener('change', (e) => { const t = e.target.closest('[data-tweak]'); if (!t) return; const [id, k] = t.dataset.tweak.split(':'); slots[id][k] = t.value; renderCanvas(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') wins.filter(w => !w.pinned).forEach(closeWin); });
+// drag: palette tools onto the canvas, characters onto slots
+document.addEventListener('dragstart', (e) => { const n = e.target.closest('[data-new]'), c = e.target.closest('[data-char]'); if (n) e.dataTransfer.setData('text/plain', 'new:' + n.dataset.new); if (c) e.dataTransfer.setData('text/plain', 'char:' + c.dataset.char); });
+document.addEventListener('dragover', (e) => { if (locked()) return; e.preventDefault(); document.querySelectorAll('.agent.drop').forEach(x => x.classList.remove('drop')); e.target.closest?.('[data-slot]')?.classList.add('drop'); });
+document.addEventListener('drop', (e) => {
+  if (locked()) return; e.preventDefault();
+  const [kind, v] = (e.dataTransfer.getData('text/plain') || '').split(':'), slot = e.target.closest('[data-slot]');
+  if (kind === 'char' && slot) { slots[slot.dataset.slot] = { ...CAST[v], char: v }; renderCanvas(); return toast(`${CAST[v].name} now does this step`); }
+  if (kind === 'new' && e.target.closest('#scroll')) {
+    const r = $('#stage').getBoundingClientRect(), id = 'x' + (extra.length + 1);
+    extra.push({ id, kind: v === 'formation' ? 'formation' : v, title: { formation: 'New step', gate: 'New gate', end: 'End', limit: 'New limit' }[v], brief: v === 'formation' ? 'Click to write what this step should do.' : '', x: (e.clientX - r.left) / S.zoom - 100, y: (e.clientY - r.top) / S.zoom - 30 });
+    if (v === 'formation') slots[id] = { ...CAST.page, char: 'page' };
+    renderCanvas();
+  }
+});
+// pan the canvas by dragging its background; move windows by their header
+let drag = null;
+document.addEventListener('mousedown', (e) => {
+  const hd = e.target.closest('.win header');
+  if (hd && !e.target.closest('button')) { const el = hd.parentElement; drag = { el, dx: e.clientX - el.offsetLeft, dy: e.clientY - el.offsetTop }; return; }
+  const sc = $('#scroll');
+  if (S.view === 'canvas' && sc.contains(e.target) && !e.target.closest('.node')) drag = { sc, x: e.clientX + sc.scrollLeft, y: e.clientY + sc.scrollTop };
+});
+document.addEventListener('mousemove', (e) => { if (!drag) return; if (drag.el) { drag.el.style.left = e.clientX - drag.dx + 'px'; drag.el.style.top = Math.max(0, e.clientY - drag.dy) + 'px'; } else { drag.sc.scrollLeft = drag.x - e.clientX; drag.sc.scrollTop = drag.y - e.clientY; } });
+document.addEventListener('mouseup', () => drag = null);
+addEventListener('resize', () => { S.zoom = null; renderCanvas(); });
+
+render();
+// Open at the place that matters: bring the step that stopped or is working into view.
+if (locked() && S.view === 'canvas') $('#n-' + run().failing)?.scrollIntoView({ block: 'center', inline: 'center' });
+</script>
+</body>
+</html>
