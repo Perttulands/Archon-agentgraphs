@@ -80,7 +80,21 @@ func (e *TmuxFormationExecutor) executePeerFormation(parent context.Context, req
 	if conversation.Status != "agreed" || strings.TrimSpace(conversation.FinalText) == "" {
 		return FormationExecutionResult{}, runExecutionError("peer_result_incomplete", "peers ended without an acknowledged result; inspect the retained conversation", "peer", nil)
 	}
-	return owned.finish(e.formationResultFromText(req, path, conversation.FinalText))
+
+	text := conversation.FinalText
+	if req.FinalJudge {
+		for _, binding := range bindings {
+			if conversation.Proposal != nil && binding.Slot.ID == conversation.Proposal.SlotID {
+				output, err := e.correctJudgeOutput(req, binding, NewSlotDispatcher(e.store, nil), tmuxSlotOutput{Text: text}, owned)
+				if err != nil {
+					return FormationExecutionResult{}, err
+				}
+				text = output.Text
+				break
+			}
+		}
+	}
+	return owned.finish(e.formationResultFromText(req, path, text))
 }
 
 // watchPeerRounds ends the conversation phase once the journal holds every

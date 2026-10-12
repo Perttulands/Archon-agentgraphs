@@ -6,6 +6,9 @@ import (
 )
 
 func renderBriefAndInputs(b *strings.Builder, req FormationExecution, card PersonaCard) {
+	if req.JudgeGateID != "" {
+		b.WriteString(judgeContract)
+	}
 	if req.Cwd != "" {
 		b.WriteString("run cwd: " + req.Cwd + "\n")
 	}

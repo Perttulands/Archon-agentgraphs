@@ -678,7 +678,31 @@ func (e *TmuxFormationExecutor) executeSlot(req FormationExecution, slot Formati
 
 // executeBoundSlot operates only on a previously provisioned seat. Peer phases
 // may call it concurrently for distinct slots; the owned maps remain immutable.
+// A correction is a fresh dispatch to the same owned seat, before cleanup.
 func (e *TmuxFormationExecutor) executeBoundSlot(req FormationExecution, binding tmuxSlotBinding, dispatcher *SlotDispatcher, phase string, extraLines []string, owned *ownedSessions) (tmuxSlotOutput, error) {
+	output, err := e.executeBoundSlotTurn(req, binding, dispatcher, phase, extraLines, owned)
+	if err != nil || !req.FinalJudge || strings.HasPrefix(phase, "peer-") {
+		return output, err
+	}
+	return e.correctJudgeOutput(req, binding, dispatcher, output, owned)
+}
+
+func (e *TmuxFormationExecutor) correctJudgeOutput(req FormationExecution, binding tmuxSlotBinding, dispatcher *SlotDispatcher, output tmuxSlotOutput, owned *ownedSessions) (tmuxSlotOutput, error) {
+	if !req.FinalJudge {
+		return output, nil
+	}
+	_, parseErr := parseJudgeVerdict(output.Text)
+	if parseErr == nil {
+		return output, nil
+	}
+	if err := e.store.AppendRunEvent(req.RunID, RunEvent{Type: RunEventJudgeAttemptFailed, GateID: req.JudgeGateID, NodeID: req.NodeID, SlotID: binding.Slot.ID, Attempt: req.Attempt, Data: map[string]any{"code": "invalid_judge_result", "reason": parseErr.Error(), "correction": true}}); err != nil {
+		return tmuxSlotOutput{}, err
+	}
+	extra := append(outputContractExtraLines(req.Formation), "Your previous judge result was rejected: "+parseErr.Error(), "Correct the format of your previous verdict now, preserving its verdict, reason and evidence. This correction instruction supersedes any brief instruction to omit fields. Emit a fresh complete response with both archon-verdict and archon-outputs and the completion sentinel. Do not repeat the invalid block.", judgeContract)
+	return e.executeBoundSlotTurn(req, binding, dispatcher, "judge-correction", extra, owned)
+}
+
+func (e *TmuxFormationExecutor) executeBoundSlotTurn(req FormationExecution, binding tmuxSlotBinding, dispatcher *SlotDispatcher, phase string, extraLines []string, owned *ownedSessions) (tmuxSlotOutput, error) {
 	slot := binding.Slot
 	seat := owned.seats[slot.ID]
 	prompt := e.renderPromptWithContext(req, slot, *binding.Card, binding.Variant, phase, extraLines)

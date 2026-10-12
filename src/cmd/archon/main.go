@@ -208,6 +208,8 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 	case "formation":
 		store := formations.NewStore(config.Workspace)
 		switch args[1] {
+		case "delete":
+			return runNodeDelete(store, "formation", args[2:], stdout, stderr)
 		case "create":
 			return runFormationCreate(store, args[2:], stdout, stderr)
 		case "list":
@@ -240,6 +242,8 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 	case "gate":
 		store := formations.NewStore(config.Workspace)
 		switch args[1] {
+		case "delete":
+			return runNodeDelete(store, "gate", args[2:], stdout, stderr)
 		case "create":
 			return runGateCreate(store, args[2:], stdout, stderr)
 		case "update":
@@ -260,6 +264,8 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 	case "mission":
 		store := formations.NewStore(config.Workspace)
 		switch args[1] {
+		case "delete":
+			return runMissionDelete(store, args[2:], stdout, stderr)
 		case "new":
 			return runBoardNew(store, args[2:], stdout, stderr)
 		case "notes":

@@ -573,6 +573,13 @@ func (s *Store) DeleteFormation(slug string, req FormationDeleteRequest, opts Wr
 		if !deleted {
 			return ErrNotFound
 		}
+		// A Limit card belongs to its target step and is removed with it.
+		for _, limit := range current.Limits {
+			if limit.Target == req.ID {
+				nextRaw, _ = deleteTopLevelBlockByID(nextRaw, "limit", limit.ID)
+				deletedIDs[limit.ID] = true
+			}
+		}
 		nextRaw = deleteConnectionsTouchingNodes(nextRaw, deletedIDs)
 		if err := definition.writeAtomic(nextRaw); err != nil {
 			return err

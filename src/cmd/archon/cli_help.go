@@ -32,6 +32,7 @@ type nounHelp struct {
 
 var nounHelps = []nounHelp{
 	{noun: "mission", summary: "missions: the reusable unit", about: "A mission is the reusable unit: one .mission.toml file whose Input card starts each run.", commands: []commandHelp{
+		{"delete", "<mission> [--json]", "remove the whole mission and its layout; run history remains"},
 		{"new", "<slug> [--title <title>] [--json]", "create an empty mission"},
 		{"list", "[--json]", "list the missions"},
 		{"inspect", "<mission> [<input>] [--json]", "print the whole mission, or an Input card and the steps it reaches"},
@@ -46,6 +47,7 @@ var nounHelps = []nounHelp{
 		{"run", "<mission> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--actor actor] [--json]", "start a run. Required: <mission>, and an --input or --input-file for each input the mission requires (archon mission input <mission> lists them); every other flag is optional. The mission's Limit cards set its limits; it has none without one"},
 	}, note: "<input> may be left out when the mission has one Input card."},
 	{noun: "formation", summary: "steps: the agents that do the work", about: "A formation is a step: the team of agents that does it, solo, peer or orchestrated.", commands: []commandHelp{
+		{"delete", "<mission> <formation> [--json]", "remove a step, its connections and its Limit cards"},
 		{"create", "<mission> [solo|peer|orchestrated] [--title <title>] [--x n] [--y n] [--json]", "add a step. It is solo unless you name another type"},
 		{"list", "<mission> [--json]", "list the steps with their slots and staffing"},
 		{"inspect", "<mission> <formation> [--json]", "print one step with its slots, ports, brief and connections"},
@@ -61,6 +63,7 @@ var nounHelps = []nounHelp{
 		{"run", "<mission> <formation> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--actor actor] [--json]", "run one step on its own. It takes the mission's inputs, as a mission run does"},
 	}},
 	{noun: "gate", summary: "checks between steps, and human verdicts", about: "A gate checks work between steps with code, a judge formation or a human, and routes it on pass or fail.", commands: []commandHelp{
+		{"delete", "<mission> <gate> [--json]", "remove a gate and its routes, including its judge attachment; judge formations remain"},
 		{"create", "<mission> [--kinds code,formation,human] [--title text] [--criterion text] [--check id --check-version version --check-value value] [--file path]... [--x n] [--y n] [--json]", "add a gate. It is human unless --kinds says otherwise"},
 		{"update", "<mission> <gate> [--title text] [--kinds code,formation,human] [--criterion text] [--check id] [--check-version version] [--check-value value | --clear-check] [--file path]... [--json]", "change a gate. Only the fields given change, and an empty value clears one"},
 		{"judge", "<mission> <gate> --chain f1,f2 | --detach [--json]", "attach a judge chain of formations, or detach it"},

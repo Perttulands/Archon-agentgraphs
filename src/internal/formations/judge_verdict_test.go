@@ -2,7 +2,6 @@ package formations
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -153,21 +152,26 @@ func TestLabJudgePushbackLoop(t *testing.T) {
 				}
 			}
 			if malformed {
-				if status.Status != RunStatusBlocked || status.ResumeAllowed {
+				if status.Status != RunStatusBlocked || !status.ResumeAllowed {
 					t.Fatalf("invalid output status: %+v", status)
 				}
 				failed := eventOfType(t, events, RunEventJudgeAttemptFailed)
 				if failed.Data["code"] != "invalid_judge_result" || failed.Attempt != 1 || failed.Data["reason"] == "" {
 					t.Fatalf("failure event: %+v", failed)
 				}
-				if _, err := engine.ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach"}); !errors.Is(err, ErrRunResumeNotAllowed) {
-					t.Fatalf("resume invalid verdict: %v", err)
-				}
 				if got := eventNodeOrder(events, RunEventGateVerdict); len(got) != 0 {
 					t.Fatalf("malformed verdict routed: %v", got)
 				}
 				if len(executor.calls) != 3 {
 					t.Fatalf("invalid output dispatched beyond judge: %+v", executor.calls)
+				}
+
+				resumed, err := engine.ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach"})
+				if err != nil || resumed.Status != RunStatusSucceeded {
+					t.Fatalf("resume: %+v %v", resumed, err)
+				}
+				if len(executor.calls) != 5 || executor.calls[3].NodeID != "fmn_j2" || executor.calls[3].Attempt != 2 {
+					t.Fatalf("resume must rerun only invalid judge: %+v", executor.calls)
 				}
 				return
 			}
@@ -212,6 +216,85 @@ func TestLabJudgePushbackLoop(t *testing.T) {
 			for _, text := range []string{"gate feedback from gate_review, attempt 1:", "reason: add the missing test", "evidence: coverage report: retry untested", "original input: draft one"} {
 				if !strings.Contains(prompt, text) {
 					t.Errorf("second dispatched lab prompt missing %q: %s", text, prompt)
+				}
+			}
+		})
+	}
+}
+
+func TestTmuxJudgeCorrectsMissingEvidenceOnSameSeat(t *testing.T) {
+	for _, correctionFails := range []bool{false, true} {
+		t.Run(fmt.Sprintf("correctionFails=%t", correctionFails), func(t *testing.T) {
+			store, personas := s4RunFixture(t)
+			createS4Persona(t, personas, "scout")
+			fixture := strings.Replace(s4JudgeChainRunBoardFixture(), `kinds = ["code", "formation"]`, `kinds = ["formation"]`, 1)
+			fixture = strings.Replace(fixture, "to = \"end_rejected:in\"", "to = \"fmn_work:port_work_in\"", 1)
+			writeFixture(t, store.BoardPath("session-search"), fixture)
+			board, err := store.ReadBoard("session-search")
+			if err != nil {
+				t.Fatal(err)
+			}
+			invalid := "```archon-verdict\n{\"verdict\":\"fail\",\"reason\":\"add coverage\"}\n```"
+			correction := judgeBlock("fail", "add coverage")
+			if correctionFails {
+				correction = invalid
+			}
+			texts := []string{"draft", "first review", invalid, correction}
+			if !correctionFails {
+				texts = append(texts, "revised", "second review", judgeBlock("pass", "covered"), "shipped")
+			}
+			captures := make([]string, len(texts))
+			for i, text := range texts {
+				ports := []string{"port_work_out", "port_j1_out", "port_j2_out", "port_j2_out", "port_work_out", "port_j1_out", "port_j2_out", "port_ship_out"}
+				captures[i] = text + "\n```archon-outputs\n{\"" + ports[i] + "\":{\"text\":\"summary\"}}\n```\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=none>>>"
+			}
+			cfg := tmuxTestConfig(t)
+			client := &fakeTmuxHarnessClient{pane: tmuxPaneState{CurrentPath: cfg.Cwd}, captures: captures}
+			engine := NewRunEngine(store, personas, newTmuxFormationExecutorWithClient(store, personas, cfg, client))
+			status, err := engine.RunMission("session-search", RunStartRequest{Cwd: cfg.Cwd, MissionID: "mis_showcase", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if client.sendTargets[2] != client.sendTargets[3] {
+				t.Fatal("correction created a different seat")
+			}
+			if !strings.Contains(client.sentPrompts[3], "requires exactly verdict, reason and evidence") {
+				t.Fatal("parse error not in correction prompt")
+			}
+			for _, prompt := range client.sentPrompts[1:4] {
+				if !strings.Contains(prompt, judgeContract) {
+					t.Fatal("judge contract missing")
+				}
+			}
+			if correctionFails {
+				if status.Status != RunStatusBlocked || !status.ResumeAllowed || len(client.sentPrompts) != 4 {
+					t.Fatalf("status=%+v sends=%d", status, len(client.sentPrompts))
+				}
+				client.captures = []string{judgeBlock("pass", "fixed") + "\n```archon-outputs\n{\"port_j2_out\":{\"text\":\"fixed\"}}\n```\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=none>>>", "shipped\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=none>>>"}
+				resumed, err := engine.ResumeRun(status.RunID, RunResumeRequest{Mode: "reattach"})
+				if err != nil || resumed.Status != RunStatusSucceeded {
+					ev, _ := store.ReadRunEvents(status.RunID)
+					t.Logf("last=%+v", ev[len(ev)-1])
+					t.Fatalf("resume=%+v err=%v", resumed, err)
+				}
+				if !strings.Contains(client.sentPrompts[4], "node: fmn_j2") || len(client.created) != 5 {
+					t.Fatal("resume did not rerun failed judge as new attempt")
+				}
+				return
+			}
+			if status.Status != RunStatusSucceeded {
+				t.Fatalf("status=%+v", status)
+			}
+			if !strings.Contains(client.sentPrompts[4], "gate feedback from gate_review") {
+				t.Fatal("corrected fail did not route back to work")
+			}
+			events, err := store.ReadRunEvents(status.RunID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, event := range events {
+				if event.Type == RunEventBlocked {
+					t.Fatal("correction blocked run")
 				}
 			}
 		})

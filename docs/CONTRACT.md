@@ -815,15 +815,19 @@ gate is `archon gate update <mission> <gate> --kinds human`; `--clear-check`
 clears the check while keeping the code kind. It does not run arbitrary shell commands.
 Use a judge formation to execute checks such as Beads lint or code review.
 
-A judge must emit exactly one fenced block with exactly these keys:
+The runtime appends the verdict contract to every judge seat's prompt alongside
+the output contract. A judge must emit exactly one fenced block with exactly these keys:
 
 ```archon-verdict
 {"verdict":"pass","reason":"Required checks passed","evidence":["check report reference"]}
 ```
 
 `verdict` is `pass` or `fail`, `reason` a string, and `evidence` an array of
-strings. Missing, duplicate, extra or malformed fields/blocks block the run
-with `resumeAllowed: false`; neither branch runs. A judge also emits its ordinary
+strings. On a missing, duplicate, extra or malformed field/block, the runtime
+re-prompts the same live judge seat once with the parse error to correct its
+response. If the correction is still invalid, the run blocks with
+`resumeAllowed: true`; neither branch runs. Resume reruns the failed final
+judge in a new attempt, retaining earlier judges' completed reviews. A judge also emits its ordinary
 output block, without embedding a second verdict block in it. A chain's judges
 run in order, each judging the one before; resuming a chain a crash or a lost
 seat interrupted runs only the judges that have not yet answered the gate's
@@ -1566,9 +1570,9 @@ directory and the briefs its own dispatches recorded.
 
 With `--server`, Archon runs these authoring and read commands through the
 daemon, so an open cockpit sees the edits through its change polling: `mission
-new|list|inspect|notes|note|validate|arrange|create|update|input|wire`, `formation
-list|inspect|create|rename|set-type|assign|unassign|set-brief|add-input|add-output|wire|unwire`,
-`gate create|update|judge`, `end create|update|delete`, `tool create|update|delete|inspect` and `agent
+new|list|inspect|notes|note|validate|arrange|create|update|delete|input|wire`, `formation
+list|inspect|create|rename|set-type|assign|unassign|set-brief|add-input|add-output|wire|unwire|delete`,
+`gate create|update|judge|delete`, `end create|update|delete`, `tool create|update|delete|inspect` and `agent
 list|inspect|new|edit|retire|restore|delete`. They take the offline flags and print the offline
 output: unwrapped JSON without TOML, or the same text. Each command reads the
 document it changes, resolves formation, gate, mission and Tool selectors from
@@ -1604,6 +1608,17 @@ mission revision/ETag against the displayed graph; a failed component or identit
 mismatch reports an error before printing the hand-over. `--json` still returns
 the graph alone, and `mission inspect <mission> <input>` retains its selected
 Input-card inspection.
+
+### CLI deletion
+
+`archon mission delete <mission>` removes the mission and its layout; run
+history remains. `archon formation delete <mission> <formation>` removes the
+step, every connection touching it, its layout node and its Limit cards.
+`archon gate delete <mission> <gate>` removes the gate, its layout node and
+every route touching it, including its judge attachment. Judge formations
+remain. These commands work offline and through `--server`, with the same
+revision checks as other authoring edits.
+
 
 One mission per file, with one Input card. A file holding several Input cards
 loads and stays editable, but validation reports one `several_input_cards`

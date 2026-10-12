@@ -118,6 +118,11 @@ set-type <solo|peer|orchestrated>` (to solo with several staffed slots, add
 flags given. `--input-hint` describes the implicit `brief` input of a mission
 that declares no inputs.
 
+`mission delete "$M"` removes the mission and its layout, retaining run history.
+`formation delete "$M" "$WORK"` removes the step, its connections and Limit
+cards. `gate delete "$M" "$GATE"` removes the gate and its routes, including
+its judge attachment; the judge formations remain.
+
 ### Inputs
 
 Declare what a run must supply instead of baking run specifics into briefs, and
@@ -229,10 +234,12 @@ archon $S formation wire "$M" "$GATE:pass" "$NEXT:$NEXT_IN" --json
 Every `pass` and `fail` must lead somewhere: to work, another gate or an End
 node (next section).
 
-A judge's brief must require exactly one fenced `archon-verdict` block with
+The runtime supplies every judge seat with the `archon-verdict` contract:
 exactly `verdict` (`pass` or `fail`), `reason` (string) and `evidence` (array of
-strings), besides its normal `archon-outputs` block. A missing, duplicate or
-malformed verdict blocks the run without resume.
+strings), in one fenced block separate from `archon-outputs`. For a missing or
+malformed verdict it re-prompts the same live seat once with the parse error.
+If that correction fails, the run blocks resumably; `run resume` reruns the
+failed final judge while retaining earlier completed reviews.
 
 Dropping a kind drops its configuration: `gate update "$M" "$GATE" --kinds
 human` turns a code gate into a human gate; `--clear-check` clears the check and

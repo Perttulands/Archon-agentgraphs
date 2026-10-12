@@ -79,6 +79,9 @@ type FormationRunRequest struct {
 }
 
 type FormationExecution struct {
+	// JudgeGateID adds the verdict contract; FinalJudge validates the chain result.
+	JudgeGateID string
+	FinalJudge  bool
 	// Deadline uses the ledger clock and covers the entire formation attempt.
 	Deadline      time.Time
 	Cwd           string
@@ -2661,14 +2664,18 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 	}
 	answered := map[string]RunEvent{}
 	for _, event := range events[evaluating:] {
-		if _, seen := answered[event.NodeID]; event.Type == RunEventNodeOutput && !seen {
+		if event.Type == RunEventNodeOutput {
 			answered[event.NodeID] = event
+		}
+		// Preserve earlier reviews but discard the rejected final answer on resume.
+		if event.Type == RunEventBlocked && event.GateID == req.GateID && stringFromEventData(event, "code") == "invalid_judge_result" {
+			delete(answered, chain[len(chain)-1].ID)
 		}
 	}
 	input := req.Input
 	var finalText string
 	replaying := true
-	for _, formation := range chain {
+	for index, formation := range chain {
 		if len(formation.Outputs) == 0 {
 			return "", fmt.Errorf("%w: judge formation %q has no output port", ErrConflict, formation.ID)
 		}
@@ -2679,10 +2686,24 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 			payload, _ = outputPayloadForPortFromEvent(output, fromPortID)
 		} else {
 			replaying = false
+			nodeAttempt := attempt
+			for _, event := range events {
+				if event.Type == RunEventNodeStarted && event.NodeID == formation.ID {
+					if event.Seq > evaluating {
+						// A restart before dispatch continues this same attempt.
+						nodeAttempt = event.Attempt
+					} else if event.Attempt >= nodeAttempt {
+						nodeAttempt = event.Attempt + 1
+					}
+				}
+				if event.Seq > evaluating && index == len(chain)-1 && event.Type == RunEventBlocked && event.GateID == req.GateID && stringFromEventData(event, "code") == "invalid_judge_result" {
+					nodeAttempt++
+				}
+			}
 			if err := e.startFormationExecution(req.RunID, board, formation, RunEvent{
 				Type:    RunEventNodeStarted,
 				NodeID:  formation.ID,
-				Attempt: attempt,
+				Attempt: nodeAttempt,
 				Data: map[string]any{
 					"nodeKind":  "formation",
 					"inputRefs": []RunInputRef{input},
@@ -2693,13 +2714,15 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 				return "", err
 			}
 			result, err := e.executeFormation(FormationExecution{
-				RunID:     req.RunID,
-				NodeID:    formation.ID,
-				Title:     formation.Title,
-				Formation: formation,
-				Brief:     formationBriefValue(formation),
-				Inputs:    []RunInputRef{input},
-				Attempt:   attempt,
+				JudgeGateID: req.GateID,
+				FinalJudge:  index == len(chain)-1,
+				RunID:       req.RunID,
+				NodeID:      formation.ID,
+				Title:       formation.Title,
+				Formation:   formation,
+				Brief:       formationBriefValue(formation),
+				Inputs:      []RunInputRef{input},
+				Attempt:     nodeAttempt,
 			})
 			if err != nil {
 				if blockErr := e.appendExecutionFailureAndBlock(req.RunID, formation.ID, err); blockErr != nil {

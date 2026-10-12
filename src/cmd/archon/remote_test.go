@@ -490,6 +490,16 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("tool", "inspect", "missing-board", "Normalize report")), errorOnly: true},
 		{args: with(fixed("mission", "inspect", "demo", "Nobody")), errorOnly: true},
 		{args: with(fixed("agent", "inspect", "nobody-here")), errorOnly: true},
+		{args: with(fixed("formation", "create", "demo", "--title", "Scrap step")), creates: "formation"},
+		{args: with(fixed("limit", "create", "demo", "--target", "Scrap step", "--rounds", "2")), creates: "limit"},
+		{args: with(fixed("formation", "delete", "demo", "Scrap step"))},
+		{args: with(fixed("formation", "delete", "demo", "Nobody")), errorOnly: true},
+		{args: with(fixed("gate", "create", "demo", "--title", "Scrap gate")), creates: "gate"},
+		{args: with(fixed("gate", "delete", "demo", "Scrap gate"))},
+		{args: with(fixed("gate", "delete", "demo", "Nobody")), errorOnly: true},
+		{args: with(fixed("mission", "new", "scrap-mission", "--title", "Scrap mission"))},
+		{args: with(fixed("mission", "delete", "scrap-mission"))},
+		{args: with(fixed("mission", "delete", "scrap-mission")), errorOnly: true},
 	}
 	return steps
 }

@@ -26,6 +26,9 @@ import (
 type remoteAuthoringCommand func(c *remoteClient, args []string, stdout, stderr io.Writer) int
 
 var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
+	"mission delete":       remoteMissionDelete,
+	"formation delete":     remoteNodeDelete("formation"),
+	"gate delete":          remoteNodeDelete("gate"),
 	"mission new":          remoteBoardNew,
 	"mission notes":        remoteBoardNotes,
 	"mission note":         remoteBoardNote,
