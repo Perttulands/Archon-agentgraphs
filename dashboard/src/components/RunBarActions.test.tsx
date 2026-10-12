@@ -141,7 +141,9 @@ describe('RunBarActions', () => {
 
     renderBar({ run: run({ status: 'blocked', resumeAllowed: false }), waitingGates: [] })
     expect(screen.queryByRole('button', { name: 'Resume run' })).toBeNull()
-    await waitFor(() => expect(screen.getByTestId('run-not-resumable')).toHaveTextContent('Can’t resume: the judge returned no verdict.'))
+    // The run point beside it shows the reason; the note keeps it in its tooltip.
+    expect(screen.getByTestId('run-not-resumable')).toHaveTextContent(/^Can’t resume\.$/)
+    await waitFor(() => expect(screen.getByTestId('run-not-resumable')).toHaveAttribute('title', 'This block cannot be resumed: the judge returned no verdict.'))
     expect(screen.getByTestId('run-not-resumable')).not.toHaveTextContent(/new run/)
     expect(screen.getByRole('button', { name: 'Stop run' })).toBeInTheDocument()
   })

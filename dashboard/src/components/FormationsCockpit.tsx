@@ -244,6 +244,8 @@ function boardNotesAnchor(): WindowRect | null {
 
 export default function FormationsCockpit({ active = true }: { active?: boolean } = {}) {
   const [boards, setBoards] = useState<BoardSummary[]>([])
+  // False until the mission list has answered, so a fresh mount never reads as "no missions".
+  const [missionsLoaded, setMissionsLoaded] = useState(false)
   const [selectedSlug, setSelectedSlug] = useState('')
   // Canvas or Flow, remembered per board.
   const [boardView, setBoardView] = useState<BoardView>('canvas')
@@ -477,6 +479,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       .then(list => {
         if (cancelled) return
         setBoards(list)
+        setMissionsLoaded(true)
         if (list[0]) {
           const { slug, missingLinked } = chooseCurrentBoard(openableSlugs(list), window.location.search)
           if (missingLinked) {
@@ -497,7 +500,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         setRunEvents([])
         setEscalations([])
       })
-      .catch(err => !cancelled && setError(err instanceof Error ? err.message : 'Failed to load missions'))
+      .catch(err => {
+        if (cancelled) return
+        setMissionsLoaded(true)
+        setError(err instanceof Error ? err.message : 'Failed to load missions')
+      })
     return () => { cancelled = true }
   }, [])
 
@@ -2956,6 +2963,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const rosterRoles = useMemo(() => [...filteredRosterAgents].sort(byRoleName), [filteredRosterAgents])
   // Roles in use are said in words, counted across the whole mission as the Agents view counts them.
   const rolesInUse = useMemo(() => roleUses(board?.formations || []), [board?.formations])
+  // The mission list, or the chosen mission, has not answered yet: neither "no missions" nor "0 in use" is known.
+  const loadingMission = !board && (!missionsLoaded || (Boolean(selectedSlug) && !error))
   const runBadgeClass = recordingAnswer ? 'running' : activeRun ? activeRun.status : ''
   // Choosing a run pins it to the board; choosing none puts a finished run away.
   const chooseRun = (runId: string) => {
@@ -3150,7 +3159,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         <div className="boardpick">
           mission
           <select aria-label="Mission" value={selectedSlug} onChange={event => selectBoard(event.target.value)} data-testid="board-picker" disabled={boards.length === 0 || Boolean(boardDialog)}>
-            {boards.length === 0 ? <option value="">No missions</option> : null}
+            {boards.length === 0 ? <option value="">{missionsLoaded ? 'No missions' : 'Loading…'}</option> : null}
             {boards.map(summary => <option key={summary.slug} value={summary.slug} disabled={Boolean(summary.broken)} title={summary.broken}>{missionPickLabel(summary, needsYou)}</option>)}
           </select>
           {board ? <span className="rev">rev {board.rev}</span> : null}
@@ -3209,9 +3218,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
         >
           <div className="roster-hd">
             <div className="t">Roles</div>
-            <span className="s" data-testid="roster-count" title={`${rosterAgents.length} roles you can staff; ${rolesInUse.size} of them staff slots in this mission`}>
-              {rolesInUseLabel(rosterAgents.length, rolesInUse.size)}
-            </span>
+            {loadingMission ? <span className="s" data-testid="roster-count">Loading…</span> : (
+              <span className="s" data-testid="roster-count" title={`${rosterAgents.length} roles you can staff; ${rolesInUse.size} of them staff slots in this mission`}>
+                {rolesInUseLabel(rosterAgents.length, rolesInUse.size)}
+              </span>
+            )}
             <button type="button" className="roster-toggle" aria-expanded={!roster.collapsed}
               aria-label={roster.collapsed ? 'Expand agent roster' : 'Collapse agent roster'} onClick={roster.toggle}>
               {roster.collapsed ? '›' : '‹'}
@@ -3378,7 +3389,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
               ) : null}
             </svg>
 
-            {!board ? (
+            {loadingMission ? (
+              <div className="empty-board" role="status" data-testid="formations-loading">
+                <div className="empty-title">Loading missions…</div>
+              </div>
+            ) : !board ? (
               <div className="empty-board" data-testid="formations-empty-board">
                 <div className="empty-title">No missions yet</div>
                 <div className="empty-copy">Create a mission from the top bar to start sketching it.</div>

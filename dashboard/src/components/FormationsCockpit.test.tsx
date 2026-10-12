@@ -845,12 +845,35 @@ describe('FormationsCockpit reference parity', () => {
   it('does not fabricate a starter board when no real boards exist', async () => {
     patches = installFetchMock({ emptyBoards: true })
     render(<FormationsCockpit />)
+    // Until the list answers, an empty cockpit is loading, not empty.
+    expect(screen.getByTestId('formations-loading')).toHaveTextContent('Loading missions…')
+    expect(screen.queryByTestId('formations-empty-board')).toBeNull()
     expect(await screen.findByTestId('formations-empty-board')).toHaveTextContent('No missions yet')
+    expect(screen.queryByTestId('formations-loading')).toBeNull()
     expect(screen.getByTestId('board-picker')).toHaveTextContent('No missions')
     expect(screen.queryByText('Improve session search')).toBeNull()
     expect(screen.getByTestId('new-board')).toBeEnabled()
     expect(screen.getByTestId('new-formation')).toBeDisabled()
     expect(patches).toEqual([])
+  })
+
+  it('shows a loading state, never the empty one, while its missions load', async () => {
+    patches = installFetchMock()
+    render(<FormationsCockpit />)
+    const sawEmpty = vi.fn()
+    const observer = new MutationObserver(() => {
+      const counted = /in use/.test(screen.getByTestId('roster-count').textContent || '')
+      if (screen.queryByTestId('formations-empty-board') || (counted && screen.queryByTestId('formations-loading'))) sawEmpty()
+    })
+    expect(screen.getByTestId('formations-loading')).toBeInTheDocument()
+    expect(screen.getByTestId('roster-count')).toHaveTextContent('Loading…')
+    expect(screen.getByTestId('board-picker')).toHaveTextContent('Loading…')
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true })
+    await waitFor(() => expect(screen.queryByTestId('formations-loading')).toBeNull())
+    observer.disconnect()
+    expect(screen.getByTestId('roster-count')).toHaveTextContent(/in use/)
+    expect(screen.queryByTestId('formations-empty-board')).toBeNull()
+    expect(sawEmpty).not.toHaveBeenCalled()
   })
 
   it('creates and selects a named blank mission from the top bar', async () => {

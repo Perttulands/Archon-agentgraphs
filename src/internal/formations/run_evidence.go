@@ -80,6 +80,8 @@ type EvidenceDispatch struct {
 	Brief     bool   `json:"brief"`
 	ResultSeq int    `json:"resultSeq,omitempty"`
 	Status    string `json:"status,omitempty"`
+	// Rejected is why the gate refused the judge verdict this dispatch returned.
+	Rejected string `json:"rejected,omitempty"`
 }
 
 // EvidenceSeatCleanup is how the runtime left a seat: ended, or one of the
@@ -118,6 +120,8 @@ type EvidenceJudgeFailure struct {
 	Seq    int          `json:"seq"`
 	Code   string       `json:"code,omitempty"`
 	Reason EvidenceText `json:"reason"`
+	// Returned is the verdict block the judge wrote, when it wrote one.
+	Returned *EvidenceText `json:"returned,omitempty"`
 }
 
 type EvidenceHumanDecision struct {
@@ -343,7 +347,17 @@ func projectNodeEvidence(runID, nodeID, kind string, events []RunEvent, final bo
 		}
 	}
 	dispatchByID := map[string][2]int{}
+	// A gate's rejected verdict is its final judge's output: remember each
+	// gate's chain and each node's latest output to join the two.
+	judgeChains := map[string][]string{}
+	latestOutputs := map[string]RunEvent{}
 	for index, event := range events {
+		switch event.Type {
+		case RunEventGateEvaluating:
+			judgeChains[event.GateID] = stringsFromEventData(event.Data["judgeChain"])
+		case RunEventNodeOutput:
+			latestOutputs[event.NodeID] = event
+		}
 		switch event.Type {
 		case RunEventNodeStarted:
 			if event.NodeID != nodeID {
@@ -432,11 +446,32 @@ func projectNodeEvidence(runID, nodeID, kind string, events []RunEvent, final bo
 			result.Evidence, result.EvidenceOmitted = evidenceItems(event.Data["evidence"], capper)
 			evaluation.KindResults = append(evaluation.KindResults, result)
 		case RunEventJudgeAttemptFailed:
+			// A correction names the judge it was sent to; the failure that
+			// blocks the gate names the gate, whose judge is its chain's last.
+			judgeID := event.NodeID
+			if chain := judgeChains[event.GateID]; judgeID == event.GateID && len(chain) > 0 {
+				judgeID = chain[len(chain)-1]
+			}
+			if judgeID == nodeID && event.GateID != nodeID && len(evidence.Attempts) > 0 {
+				attempt := &evidence.Attempts[len(evidence.Attempts)-1]
+				if len(attempt.Dispatches) > 0 {
+					attempt.Dispatches[len(attempt.Dispatches)-1].Rejected = capper.text(stringFromEventData(event, "reason")).Text
+				}
+			}
 			if event.GateID != nodeID {
 				continue
 			}
 			evaluation := currentEvidenceEvaluation(evidence, event)
-			evaluation.JudgeFailures = append(evaluation.JudgeFailures, EvidenceJudgeFailure{Seq: event.Seq, Code: stringFromEventData(event, "code"), Reason: capper.text(stringFromEventData(event, "reason"))})
+			failure := EvidenceJudgeFailure{Seq: event.Seq, Code: stringFromEventData(event, "code"), Reason: capper.text(stringFromEventData(event, "reason"))}
+			returned := stringFromEventData(event, "returned")
+			if output, ok := latestOutputs[judgeID]; ok && event.NodeID == event.GateID && output.Seq > evaluation.Seq {
+				returned = judgeVerdictReturned(stringFromEventData(output, "text"))
+			}
+			if returned != "" {
+				text := capper.text(returned)
+				failure.Returned = &text
+			}
+			evaluation.JudgeFailures = append(evaluation.JudgeFailures, failure)
 		case RunEventHumanInputRequested:
 			if event.GateID != nodeID {
 				continue

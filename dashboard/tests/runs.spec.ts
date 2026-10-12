@@ -138,6 +138,38 @@ test('a block that cannot resume offers no Resume and says so', async ({ page })
   await page.goto('/')
   await expect(page.getByTestId('run-point')).toContainText('blocked at Review gate')
   await expect(page.getByRole('button', { name: 'Resume run' })).toHaveCount(0)
-  await expect(page.getByTestId('run-not-resumable')).toHaveText(/^Can’t resume: .+\.$/)
-  await expect(page.getByTestId('run-not-resumable')).not.toContainText('new run')
+  await expect(page.getByTestId('run-not-resumable')).toHaveText('Can’t resume.')
+  await expect(page.getByTestId('run-not-resumable')).toHaveAttribute('title', /^This block cannot be resumed: .+\.$/)
+})
+
+test('a long block reason stays readable and Stop stays in view without sideways scrolling', async ({ page }) => {
+  const reason = `invalid judge result: ${'the judge compared the wrist-to-cuff seam against the target and '.repeat(12)}stopped`
+  await cockpitFixture(page, { run: true, blockedAtJudge: true })
+  await page.route('**/api/runs/run_browser/evidence/problems', route => route.fulfill({ json: { success: true, data: { problems: [
+    { seq: 8, type: 'run_blocked', nodeIds: ['gate'], reason: { text: reason, bytes: reason.length }, resumeAllowed: false },
+  ] } } }))
+  for (const width of [1366, 1920, 2327]) {
+    await page.setViewportSize({ width, height: 768 })
+    await page.goto('/')
+    const point = page.getByTestId('run-point')
+    await expect(point).toContainText('the judge compared')
+    await expect(point).toHaveAttribute('title', new RegExp(`${reason}\\.`))
+    const layout = await page.getByTestId('run-banner').evaluate(banner => {
+      const stop = banner.querySelector('.run-stop')!.getBoundingClientRect()
+      return {
+        scrolls: banner.scrollWidth > banner.clientWidth,
+        point: banner.querySelector('.run-point')!.getBoundingClientRect().width,
+        cwd: banner.querySelector('.run-cwd')!.getBoundingClientRect().width,
+        stopInView: stop.left >= 0 && stop.right <= window.innerWidth,
+        stopPinned: banner.getBoundingClientRect().right - stop.right,
+      }
+    })
+    expect(layout.scrolls, `at ${width}px`).toBe(false)
+    expect(layout.point, `at ${width}px`).toBeGreaterThan(300)
+    expect(layout.cwd, `at ${width}px`).toBeGreaterThan(40)
+    expect(layout.stopInView, `at ${width}px`).toBe(true)
+    expect(layout.stopPinned, `at ${width}px`).toBeLessThan(20)
+    await expect(page.getByRole('button', { name: 'Stop run' })).toBeInViewport()
+    if (width === 1366) await page.screenshot({ path: test.info().outputPath('run-banner-1366.png') })
+  }
 })

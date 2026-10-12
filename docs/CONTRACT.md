@@ -826,7 +826,9 @@ the output contract. A judge must emit exactly one fenced block with exactly the
 strings. On a missing, duplicate, extra or malformed field/block, the runtime
 re-prompts the same live judge seat once with the parse error to correct its
 response. If the correction is still invalid, the run blocks with
-`resumeAllowed: true`; neither branch runs. Resume reruns the failed final
+`resumeAllowed: true`; neither branch runs. The parse error names the missing,
+extra or repeated key, and the gate's evidence shows each rejected verdict
+block as the judge wrote it. Resume reruns the failed final
 judge in a new attempt, retaining earlier judges' completed reviews. A judge also emits its ordinary
 output block, without embedding a second verdict block in it. A chain's judges
 run in order, each judging the one before; resuming a chain a crash or a lost

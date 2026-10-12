@@ -231,7 +231,9 @@ function Attempts({ runId, nodeId, attempts, names, onOpenArtifact, onOpenBrief 
                   <span className="node-dispatch-slot">{slot}</span>
                   <span className="node-dispatch-agent">{[dispatch.agentId, dispatch.harness].filter(Boolean).join(' · ') || 'agent not recorded'}</span>
                   {dispatch.phase ? <span className="node-dispatch-phase">{dispatch.phase}</span> : null}
-                  <span className="node-dispatch-phase">{dispatch.status || 'no result yet'}</span>
+                  {dispatch.rejected
+                    ? <span className="node-dispatch-phase node-dispatch-rejected" title={dispatch.rejected}>verdict rejected</span>
+                    : <span className="node-dispatch-phase">{dispatch.status || 'no result yet'}</span>}
                   {dispatch.brief ? (
                     <button type="button" className="evidence-link" onClick={() => onOpenBrief(dispatch.seq, `${slot} attempt ${attempt.attempt}`)}>brief</button>
                   ) : null}
@@ -282,7 +284,7 @@ function GateEvaluations({ runId, evaluations, names, onOpenArtifact }: {
                 </div>
               ) : null}
             </div>
-          ) : <div className="node-evidence-empty">No verdict yet.</div>}
+          ) : <div className="node-evidence-empty">{evaluation.judgeFailures?.length ? 'No verdict: the judge’s verdict was rejected.' : 'No verdict yet.'}</div>}
 
           {evaluation.humanRequests?.map(request => (
             <div className="evidence-block" key={request.seq}>
@@ -314,6 +316,12 @@ function GateEvaluations({ runId, evaluations, names, onOpenArtifact }: {
             <div className="node-evidence-verdict fail" key={failure.seq}>
               <div className="node-verdict-line">judge failed{failure.code ? ` · ${failure.code}` : ''}</div>
               <EvidenceTextView value={failure.reason} format="text" label="Judge failure" />
+              {failure.returned ? (
+                <div data-testid={`judge-returned-${failure.seq}`}>
+                  <div className="evidence-label">The judge returned</div>
+                  <EvidenceTextView value={failure.returned} format="text" label="Rejected verdict" />
+                </div>
+              ) : null}
             </div>
           ))}
 

@@ -17,7 +17,9 @@
 @media (prefers-reduced-motion:reduce){.fmx .formation.located,.fmx .missioncard.located,.fmx .gatecard.located{animation:none;outline:2px solid var(--terra);outline-offset:7px;}}
 
 /* Every gate waiting and step running at once (archon-o7p.11), each its own phrase. */
-.fmx .run-banner .run-points{display:flex;align-items:center;gap:2px;min-width:0;flex:0 1 auto;}
+/* The bar wraps instead of scrolling sideways: a phrase too long for its row
+   takes the next one and ends in an ellipsis, never a sliver (archon-fh5c.1). */
+.fmx .run-banner .run-points{display:flex;flex-wrap:wrap;align-items:center;gap:2px;min-width:0;max-width:100%;flex:0 1 auto;}
 .fmx .run-banner .run-point-sep{color:var(--dim);flex-shrink:0;}
 .fmx .run-banner button.run-point{flex:0 1 auto;min-width:0;max-width:min(640px,50vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;text-transform:none;letter-spacing:.02em;font-size:11px;color:var(--ink);background:transparent;border-color:transparent;padding:4px 8px;}
 .fmx .run-banner button.run-point:hover:not(:disabled){border-color:var(--terra);}
@@ -28,8 +30,9 @@
 
 .fmx .run-banner .run-none{color:var(--dim);}
 
-/* A block that cannot resume says so beside the run point (archon-n7u.6). */
-.fmx .run-banner .run-stop{flex-shrink:0;white-space:nowrap;}
+/* A block that cannot resume says so beside the run point (archon-n7u.6); the
+   point holds the reason. Stop keeps the right end of its row. */
+.fmx .run-banner .run-stop{flex-shrink:0;margin-left:auto;white-space:nowrap;}
 .fmx .run-banner .run-note{flex-shrink:0;color:var(--ink2);font-size:11px;letter-spacing:.02em;white-space:nowrap;}
 
 /* Stop asks first (archon-n7u.8), in a modal layer over the whole page. */

@@ -48,6 +48,8 @@ export interface EvidenceDispatch {
   brief: boolean
   resultSeq?: number
   status?: string
+  /** Why the gate refused the judge verdict this dispatch returned. */
+  rejected?: string
 }
 
 export interface EvidenceAttempt {
@@ -78,6 +80,8 @@ export interface EvidenceJudgeFailure {
   seq: number
   code?: string
   reason: EvidenceText
+  /** The verdict block the judge wrote, when it wrote one. */
+  returned?: EvidenceText
 }
 
 export interface EvidenceHumanRequest {

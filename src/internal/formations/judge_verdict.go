@@ -10,6 +10,28 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/jsonstrict"
 )
 
+const judgeVerdictKeys = "requires exactly verdict, reason and evidence"
+
+// judgeVerdictReturned is what a judge wrote in its first archon-verdict block,
+// read leniently so a rejected verdict can be shown beside why it was rejected.
+// A reply without a block returns nothing.
+func judgeVerdictReturned(text string) string {
+	var body []string
+	inside := false
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !inside {
+			inside = strings.HasPrefix(trimmed, "```archon-verdict")
+			continue
+		}
+		if trimmed == "```" {
+			break
+		}
+		body = append(body, line)
+	}
+	return strings.TrimSpace(strings.Join(body, "\n"))
+}
+
 // parseJudgeVerdict accepts one explicitly fenced result, never prose as a verdict.
 func parseJudgeVerdict(text string) (GateEvaluationResult, error) {
 	var body strings.Builder
@@ -50,8 +72,11 @@ func parseJudgeVerdict(text string) (GateEvaluationResult, error) {
 			return GateEvaluationResult{}, fmt.Errorf("invalid judge verdict key: %w", err)
 		}
 		name, ok := key.(string)
-		if !ok || (name != "verdict" && name != "reason" && name != "evidence") || fields[name] != nil {
-			return GateEvaluationResult{}, fmt.Errorf("unknown or duplicate judge verdict key %q", key)
+		if !ok || (name != "verdict" && name != "reason" && name != "evidence") {
+			return GateEvaluationResult{}, fmt.Errorf("judge verdict has extra key %q; it %s", key, judgeVerdictKeys)
+		}
+		if fields[name] != nil {
+			return GateEvaluationResult{}, fmt.Errorf("judge verdict repeats key %q; it %s", name, judgeVerdictKeys)
 		}
 		var value json.RawMessage
 		if err := decoder.Decode(&value); err != nil {
@@ -59,8 +84,17 @@ func parseJudgeVerdict(text string) (GateEvaluationResult, error) {
 		}
 		fields[name] = value
 	}
-	if end, err := decoder.Token(); err != nil || end != json.Delim('}') || len(fields) != 3 {
-		return GateEvaluationResult{}, fmt.Errorf("judge verdict requires exactly verdict, reason and evidence")
+	if end, err := decoder.Token(); err != nil || end != json.Delim('}') {
+		return GateEvaluationResult{}, fmt.Errorf("judge verdict must be a JSON object")
+	}
+	var missing []string
+	for _, name := range []string{"verdict", "reason", "evidence"} {
+		if fields[name] == nil {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		return GateEvaluationResult{}, fmt.Errorf("judge verdict is missing %s; it %s", strings.Join(missing, " and "), judgeVerdictKeys)
 	}
 	if _, err := decoder.Token(); err != io.EOF {
 		return GateEvaluationResult{}, fmt.Errorf("trailing data in judge verdict")

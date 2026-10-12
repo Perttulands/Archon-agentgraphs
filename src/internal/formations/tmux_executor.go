@@ -695,7 +695,10 @@ func (e *TmuxFormationExecutor) correctJudgeOutput(req FormationExecution, bindi
 	if parseErr == nil {
 		return output, nil
 	}
-	if err := e.store.AppendRunEvent(req.RunID, RunEvent{Type: RunEventJudgeAttemptFailed, GateID: req.JudgeGateID, NodeID: req.NodeID, SlotID: binding.Slot.ID, Attempt: req.Attempt, Data: map[string]any{"code": "invalid_judge_result", "reason": parseErr.Error(), "correction": true}}); err != nil {
+	// The corrected reply replaces this one as the node's output, so the
+	// rejected verdict is kept on the failure itself.
+	returned, _ := CapEvidenceText(redactLedgerText(judgeVerdictReturned(output.Text)), EvidenceTextMaxBytes)
+	if err := e.store.AppendRunEvent(req.RunID, RunEvent{Type: RunEventJudgeAttemptFailed, GateID: req.JudgeGateID, NodeID: req.NodeID, SlotID: binding.Slot.ID, Attempt: req.Attempt, Data: map[string]any{"code": "invalid_judge_result", "reason": parseErr.Error(), "correction": true, "returned": returned}}); err != nil {
 		return tmuxSlotOutput{}, err
 	}
 	extra := append(outputContractExtraLines(req.Formation), "Your previous judge result was rejected: "+parseErr.Error(), "Correct the format of your previous verdict now, preserving its verdict, reason and evidence. This correction instruction supersedes any brief instruction to omit fields. Emit a fresh complete response with both archon-verdict and archon-outputs and the completion sentinel. Do not repeat the invalid block.", judgeContract)
