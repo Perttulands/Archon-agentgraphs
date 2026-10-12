@@ -77,6 +77,24 @@ const routes: Record<string, unknown> = {
       ],
     },
   },
+  '/api/runs/run_1/evidence/nodes/gate_rubric': {
+    evidence: {
+      runId: 'run_1', nodeId: 'gate_rubric', kind: 'gate',
+      evaluations: [{
+        seq: 30, attempt: 1, kinds: ['formation'], criterion: text('Beside the target'), judgeChain: ['fmn_rubric'], kindResults: [],
+        judgeFailures: [{ seq: 36, code: 'invalid_judge_result', reason: text('judge verdict is missing evidence; it requires exactly verdict, reason and evidence'), returned: text('{"verdict":"fail","reason":"seams show"}') }],
+      }],
+    },
+  },
+  '/api/runs/run_1/evidence/nodes/fmn_rubric': {
+    evidence: {
+      runId: 'run_1', nodeId: 'fmn_rubric', kind: 'formation',
+      attempts: [{
+        attempt: 1, startedSeq: 31, reason: 'judge', inputs: [],
+        dispatches: [{ seq: 32, slotId: 'judge', agentId: 'rubric-judge', harness: 'openai-codex', brief: false, resultSeq: 33, status: 'ok', rejected: 'judge verdict is missing evidence; it requires exactly verdict, reason and evidence' }],
+      }],
+    },
+  },
   '/api/runs/run_1/evidence/artifacts': { artifacts: [{ name: 'plan.md', size: 4606, modifiedAt: '2026-09-09T01:21:00Z' }, { name: 'logs/run.json', size: 9, modifiedAt: '2026-09-09T01:22:00Z' }], truncated: false },
   '/api/runs/run_1/evidence/artifacts/plan.md': { artifact: { name: 'plan.md', size: 4606, modifiedAt: '2026-09-09T01:21:00Z', kind: 'markdown', text: text('# Plan: stamp the build\n\nSee [the log](logs/run.json).') } },
   '/api/runs/run_1/evidence/artifacts/logs/run.json': { artifact: { name: 'logs/run.json', size: 9, modifiedAt: '2026-09-09T01:22:00Z', kind: 'json', text: text('{"ok":true}') } },
@@ -110,6 +128,24 @@ describe('RunEvidence', () => {
     const brief = await screen.findByTestId('evidence-document')
     expect(brief).toHaveTextContent('Brief · plan attempt 1')
     expect(within(brief).getByLabelText('Brief · plan attempt 1', { selector: 'pre' })).toHaveTextContent('brief: plan the change')
+  })
+
+  it('shows the verdict a judge returned beside why the gate rejected it', async () => {
+    render(<RunEvidence runId="run_1" nodeId="gate_rubric" title="Rubric gate" state="blocked" onClose={() => {}} />)
+
+    const evaluation = await screen.findByTestId('gate-evaluation-30')
+    expect(evaluation).toHaveTextContent('judge verdict is missing evidence')
+    expect(within(evaluation).getByTestId('judge-returned-36')).toHaveTextContent('The judge returned{"verdict":"fail","reason":"seams show"}')
+    expect(evaluation).toHaveTextContent('No verdict: the judge’s verdict was rejected.')
+    expect(evaluation).not.toHaveTextContent('No verdict yet')
+  })
+
+  it('does not call a judge attempt ok when its verdict was rejected', async () => {
+    render(<RunEvidence runId="run_1" nodeId="fmn_rubric" title="Rubric judge" state="done" onClose={() => {}} />)
+
+    const attempt = await screen.findByTestId('node-attempt-1')
+    expect(within(attempt).getByText('verdict rejected')).toHaveAttribute('title', expect.stringContaining('missing evidence'))
+    expect(attempt).not.toHaveTextContent(/\bok\b/)
   })
 
   it('renders a gate verdict reason with judge evidence and the operator response', async () => {

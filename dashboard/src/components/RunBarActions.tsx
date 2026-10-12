@@ -81,7 +81,7 @@ export default function RunBarActions({ run, points, boardTitle, titleOf, waitin
       ) : run.resumeAllowed ? <button type="button" onClick={onResume}>Resume run</button> : null}
       {cannotResume ? (
         <span className="run-note" role="note" data-testid="run-not-resumable" title={fact ? `This block cannot be resumed: ${fact}.` : 'This block cannot be resumed.'}>
-          {fact ? `Can’t resume: ${fact}.` : 'Can’t resume.'}
+          Can’t resume.
         </span>
       ) : null}
       <button type="button" ref={stopButton} className="run-stop" aria-haspopup="dialog" onClick={() => setConfirming(true)}>Stop run</button>
