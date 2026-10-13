@@ -1,5 +1,4 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { agentsFixture } from './agents-fixture'
 import { cockpitFixture } from './cockpit-fixture'
 
 /* Where the staffing sentence opens (archon-o7p.17, the placement rethink after

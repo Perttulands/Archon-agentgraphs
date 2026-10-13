@@ -1,5 +1,4 @@
 import { expect, test, type Page } from '@playwright/test'
-import { agentsFixture } from './agents-fixture'
 import { cockpitFixture } from './cockpit-fixture'
 
 /* Staffing a slot is a sentence at the slot (archon-o7p.17, variant A of
