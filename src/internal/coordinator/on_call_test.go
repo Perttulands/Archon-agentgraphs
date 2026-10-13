@@ -813,7 +813,13 @@ func TestKeptSeatsEndBeforeAWaitingRunIsCanceledOrFails(t *testing.T) {
 		c, _ := onCallFixture(t, sessionBoard(testBoard), keeper, nil)
 		id := startProof(t, c)
 		awaitProjection(t, c, id, func(p *Projection) bool { return len(p.WaitingGates) == 1 && len(p.WaitingGates[0].AskedSeats) == 1 })
+		// A failure is recorded by the run's worker, under the run's admission;
+		// without it reconcileRunEnd can take the ended seats for a stranded ending.
+		if !c.acquire(id) {
+			t.Fatal("the waiting run was not free to take a worker")
+		}
 		c.recordFailure(id, errors.New("coordinator lost its executor"))
+		c.releaseQuietly(id)
 		if got := ledgerTrail(eventsOf(t, c, id)); !strings.HasSuffix(got, "delivered slot_work, ended slot_work run_final, run_failed") {
 			t.Fatalf("trail = %s", got)
 		}
