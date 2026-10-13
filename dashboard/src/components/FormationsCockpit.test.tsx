@@ -650,8 +650,9 @@ function clickCard(target: HTMLElement) {
 
 /** Each slot's staffing sentence in a node window, as it reads. */
 /** Each slot's staffing row as words: who, then its role, harness, model and effort. */
+/** Each slot row's staffing in words; the character pick is not part of the sentence. */
 function sentencesIn(region: HTMLElement): string[] {
-  return [...region.querySelectorAll('.nslot')].map(row => [...row.children].map(part => [...part.childNodes].filter(node => node.nodeName !== 'SMALL').map(node => node.textContent).join('')).join(' · '))
+  return [...region.querySelectorAll('.nslot')].map(row => [...row.children].filter(part => !part.classList.contains('stamp')).map(part => [...part.childNodes].filter(node => node.nodeName !== 'SMALL').map(node => node.textContent).join('')).join(' · '))
 }
 
 async function openNodeWindow(target: HTMLElement, name: string) {

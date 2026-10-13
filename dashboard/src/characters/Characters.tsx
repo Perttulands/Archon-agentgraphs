@@ -62,14 +62,16 @@ const blankDraft = (catalog: StaffingCatalog): CharacterDraft => {
 }
 
 /** Makes a character, or edits the one given. Saving changes no mission. */
-export function CharacterEditorDialog({ character, catalog, returnFocus, onClose, onSaved }: {
+export function CharacterEditorDialog({ character, staffing, catalog, returnFocus, onClose, onSaved }: {
   character: Character | null
+  /** What a new character starts from, such as a slot's staffing; the name is still to give. */
+  staffing?: Pick<Character, 'agentId' | 'harness' | 'model' | 'effort'>
   catalog: StaffingCatalog
   returnFocus?: HTMLElement | null
   onClose: () => void
   onSaved: () => Promise<void> | void
 }) {
-  const [draft, setDraft] = useState<CharacterDraft>(() => character ? { ...character } : blankDraft(catalog))
+  const [draft, setDraft] = useState<CharacterDraft>(() => character ? { ...character } : { ...blankDraft(catalog), ...staffing })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const fileInput = useRef<HTMLInputElement | null>(null)

@@ -358,7 +358,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   const [boardDialog, setBoardDialog] = useState<BoardDialogState | null>(null)
   const [agentEditor, setAgentEditor] = useState<{ agent: AgentProjection; trigger: HTMLElement | null } | null>(null)
   const { characters, reload: reloadCharacters } = useCharacters()
-  const [characterEditor, setCharacterEditor] = useState<{ character: Character | null; trigger: HTMLElement | null } | null>(null)
+  const [characterEditor, setCharacterEditor] = useState<{ character: Character | null; staffing?: Staffing; trigger: HTMLElement | null } | null>(null)
   const [notesMode, setNotesMode] = useState<NotesMode>(() => readNotesMode())
   const [notes, setNotes] = useState<BoardNotesDocument | null>(null)
   // Open note windows by thread target (a node ID or the board), in opening order.
@@ -3216,6 +3216,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     settleJudge: takeFail => resumeActiveRun(takeFail),
     staffSlot: openStaffing,
     stampSlot: (formation, slot, character) => stampCharacter(slotRefOf(formation, slot), character),
+    saveSlotAsCharacter: (slot, trigger) => setCharacterEditor({ character: null, staffing: staffingOf(slot) || undefined, trigger }),
     updateGate: (gate, draft) => updateGateFields(gate.id, draft),
     setGateFiles: (gate, files) => setGateFiles(gate.id, files),
     setEndOutcome,
@@ -3947,6 +3948,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
         <CharacterEditorDialog
           key={characterEditor.character?.id || 'new'}
           character={characterEditor.character}
+          staffing={characterEditor.staffing ? { agentId: characterEditor.staffing.role, harness: characterEditor.staffing.harness, model: characterEditor.staffing.model, effort: characterEditor.staffing.effort } : undefined}
           catalog={staffingCatalog}
           returnFocus={characterEditor.trigger}
           onClose={() => setCharacterEditor(null)}

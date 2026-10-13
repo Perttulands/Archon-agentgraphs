@@ -64,6 +64,8 @@ export interface NodeWindowOps {
   staffSlot: (formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => void
   /** Stamps a saved character onto the slot: its role, harness, model and effort, with no link kept. */
   stampSlot: (formation: FormationNode, slot: FormationSlot, character: Character) => void
+  /** Opens the character editor on the slot's staffing, to save it under a name. */
+  saveSlotAsCharacter: (slot: FormationSlot, trigger: HTMLElement) => void
   updateGate: (gate: GateNode, draft: GateDraft) => Promise<boolean>
   /** Sets an End node's outcome: done, or rejected, which fails the run. */
   setEndOutcome: (end: EndNode, outcome: EndOutcome) => Promise<boolean>
@@ -299,6 +301,8 @@ function FormationFields({ formation, ops }: { formation: FormationNode; ops: No
 
 /** Who does the step, first in its window: each slot with its role, harness, model and effort, each opening its own list. */
 const NO_CHARACTERS: Character[] = []
+/** The stamp pick's last entry; no character id holds a space. */
+const SAVE_AS_CHARACTER = 'save as character'
 
 function FormationSetup({ formation, agents, characters, ops }: { formation: FormationNode; agents: AgentProjection[]; characters: Character[]; ops: NodeWindowOps }) {
   return (
@@ -364,14 +368,16 @@ function SlotStaffing({ formation, slot, agents, characters, ops }: {
     </button>
   )
   // A character fills the whole row in one pick; the slot keeps no link to it.
-  const stamp = characters.length ? (
+  const stamp = characters.length || staffing ? (
     <select className="npick stamp" disabled={readOnly} aria-label={`Staff ${slot.label || slot.id} as a character`} value=""
       onChange={event => {
+        if (event.target.value === SAVE_AS_CHARACTER) return ops.saveSlotAsCharacter(slot, event.currentTarget)
         const character = characters.find(entry => entry.id === event.target.value)
         if (character) ops.stampSlot(formation, slot, character)
       }}>
       <option value="">character</option>
       {characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}
+      {staffing ? <option value={SAVE_AS_CHARACTER}>Save as character…</option> : null}
     </select>
   ) : null
   if (!staffing) {
