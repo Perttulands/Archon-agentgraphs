@@ -131,15 +131,16 @@
 .fmx .zoomlevel{position:absolute;bottom:18px;right:106px;z-index:80;background:var(--card);border:1px solid var(--line);border-radius:2px;padding:8px 11px;font-size:11px;color:var(--dim);}
 
 /* ===== FORMATION CARD ===== */
-.fmx .formation{position:absolute;background:var(--card);border:1px solid var(--line);border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.35);width:300px;min-width:200px;max-width:420px;z-index:1;transition:left .18s cubic-bezier(.2,.7,.3,1),top .18s cubic-bezier(.2,.7,.3,1);}
-.fmx .formation.type-peer{width:330px;}
-.fmx .formation.type-orchestrated{width:320px;}
+.fmx .formation{position:absolute;background:var(--card);border:1px solid var(--line);border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.35);width:320px;min-width:200px;max-width:420px;z-index:1;transition:left .18s cubic-bezier(.2,.7,.3,1),top .18s cubic-bezier(.2,.7,.3,1);}
+.fmx .formation.type-peer{width:336px;}
+.fmx .formation.type-orchestrated{width:336px;}
 .fmx .formation.running{box-shadow:0 0 0 1.5px var(--terra),0 0 16px -6px rgba(var(--accent-rgb),.35);}
 .fmx .fhead{display:flex;align-items:center;gap:10px;padding:13px 15px 12px;border-bottom:1px solid var(--line2);cursor:grab;touch-action:none;}
 .fmx .fhead:active{cursor:grabbing;}
 .fmx .fhead .ft{flex:1;min-width:0;}
-.fmx .fhead .ft .tt{font-weight:700;font-size:14px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.fmx .fhead .ft .tg{font-size:11px;color:var(--ink2);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fmx .fhead .ft .tt{font-weight:700;font-size:16px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* The brief reads on two lines (archon-fh5c.8): one line cut most briefs at their preamble. */
+.fmx .fhead .ft .tg{font-size:12px;line-height:1.35;color:var(--ink2);margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;}
 .fmx .fhead .ft .tg.placeholder{color:var(--dimmer);font-style:italic;}
 .fmx .fhead .fruntools{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;}
 .fmx .frun{width:30px;height:30px;border-radius:6px;border:1px solid var(--line);background:var(--paper2);color:var(--terra);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .14s;}
@@ -218,7 +219,7 @@
 .fmx .fio.out{border-top:1px solid var(--line2);}
 .fmx .fio .glyph{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);flex-shrink:0;}
 .fmx .fio.in:hover,.fmx .fio.out:hover{background:rgba(var(--accent-rgb),.08);}
-.fmx .io-text{flex:1;min-width:0;max-width:240px;font-size:11px;color:var(--ink2);line-height:1.32;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.fmx .io-text{flex:1;min-width:0;max-width:260px;font-size:12px;color:var(--ink2);line-height:1.32;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .fmx .io-text.placeholder{color:var(--dimmer);font-style:italic;}
 .fmx .io-bead{font-size:11px;color:var(--steel);background:color-mix(in srgb,var(--steel) 16%,transparent);border:1px solid color-mix(in srgb,var(--steel) 40%,transparent);border-radius:4px;padding:1px 7px;flex-shrink:0;}
 .fmx .io-status{font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:2px 9px;border-radius:4px;flex-shrink:0;}
@@ -277,35 +278,36 @@
 @keyframes fmx-dash{to{stroke-dashoffset:-28;}}
 
 /* Keep the workflow entry point operable when authored coordinates overlap. */
-.fmx .missioncard{position:absolute;width:236px;background:var(--card);border:1px solid var(--terra);border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.35);z-index:2;cursor:grab;transition:left .18s cubic-bezier(.2,.7,.3,1),top .18s cubic-bezier(.2,.7,.3,1);}
+.fmx .missioncard{position:absolute;width:260px;background:var(--card);border:1px solid var(--terra);border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.35);z-index:2;cursor:grab;transition:left .18s cubic-bezier(.2,.7,.3,1),top .18s cubic-bezier(.2,.7,.3,1);}
 .fmx .missioncard:active{cursor:grabbing;}
 .fmx .missioncard .mhd{display:flex;align-items:center;gap:10px;padding:12px 14px 6px;cursor:grab;}
 .fmx .missioncard .meyebrow{flex:1;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--terra);}
 .fmx .missioncard .mrun{width:30px;height:30px;border-radius:6px;border:none;background:var(--terra);color:var(--background);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .12s,background .15s,box-shadow .15s;}
 .fmx .missioncard .mrun:hover{background:color-mix(in srgb,var(--terra) 75%,#fff);}
 .fmx .missioncard .mrun svg{width:12px;height:12px;margin-left:1px;}
-.fmx .missioncard .mtitle{font-weight:700;font-size:15px;padding:0 14px;line-height:1.15;}
-.fmx .missioncard .mgoal{font-size:11.5px;color:var(--ink2);padding:6px 14px 0;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.fmx .missioncard .mtitle{font-weight:700;font-size:16px;padding:0 14px;line-height:1.15;}
+.fmx .missioncard .mgoal{font-size:12.5px;color:var(--ink2);padding:6px 14px 0;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .fmx .missioncard .mgoal.placeholder{font-style:italic;color:var(--dimmer);}
-.fmx .missioncard .mchannel{font-size:11px;color:var(--dim);padding:6px 14px 0;letter-spacing:.03em;line-height:1.35;}
+.fmx .missioncard .mchannel{font-size:12px;color:var(--dim);padding:6px 14px 0;letter-spacing:.03em;line-height:1.35;}
 .fmx .missioncard .mchannel.session{color:var(--ink2);}
-.fmx .missioncard .minputs{font-size:11px;color:var(--ink2);padding:6px 14px 0;letter-spacing:.03em;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fmx .missioncard .minputs{font-size:12px;color:var(--ink2);padding:6px 14px 0;letter-spacing:.03em;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .fmx .missioncard .mstatus{font-size:11px;color:var(--terra);padding:8px 14px 12px;letter-spacing:.03em;}
 .fmx .missioncard .mstatus:empty{padding:0 0 14px;}
 .fmx .missioncard .port.pout{right:-9px;top:50%;margin-top:-8px;border-color:var(--terra);}
 .fmx .missioncard .port.pout:hover{background:var(--terra);}
 
 /* gate card */
-.fmx .gatecard{position:absolute;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:11px 62px 11px 11px;box-shadow:0 2px 8px rgba(0,0,0,.35);min-width:150px;max-width:300px;min-height:76px;z-index:1;cursor:grab;transition:box-shadow .16s,left .18s cubic-bezier(.2,.7,.3,1),top .18s cubic-bezier(.2,.7,.3,1);}
+.fmx .gatecard{position:absolute;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:11px 62px 11px 11px;box-shadow:0 2px 8px rgba(0,0,0,.35);min-width:150px;max-width:332px;min-height:76px;z-index:1;cursor:grab;transition:box-shadow .16s,left .18s cubic-bezier(.2,.7,.3,1),top .18s cubic-bezier(.2,.7,.3,1);}
 /* While a card is being hand-dragged, position must track the pointer 1:1. */
 .fmx .world.nodedrag .formation,.fmx .world.nodedrag .missioncard,.fmx .world.nodedrag .gatecard,.fmx .world.nodedrag .toolcard{transition:none;}
 .fmx .gatecard:hover{box-shadow:0 2px 8px rgba(0,0,0,.35),0 0 0 1px var(--terra);}
 .fmx .gico{width:46px;height:46px;border-radius:50%;background:var(--paper2);border:2px solid var(--dim);display:flex;align-items:center;justify-content:center;color:var(--ink2);position:relative;flex-shrink:0;transition:transform .16s,border-color .16s,background .16s,color .16s;}
 .fmx .gico svg{width:23px;height:23px;}
 .fmx .gatecard:hover .gico{border-color:var(--terra);color:var(--terra);}
-.fmx .gmeta{min-width:0;display:flex;flex-direction:column;gap:2px;}
-.fmx .gmeta .gt{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;}
-.fmx .gmeta .gs{font-size:11px;color:var(--ink2);line-height:1.32;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;max-width:150px;}
+.fmx .gmeta{min-width:110px;display:flex;flex-direction:column;gap:2px;}
+/* A gate's title reads as a title, on up to two lines (archon-fh5c.8). */
+.fmx .gmeta .gt{font-size:13px;font-weight:700;line-height:1.25;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:180px;}
+.fmx .gmeta .gs{font-size:11px;color:var(--ink2);line-height:1.32;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;max-width:180px;}
 .fmx .gmeta .gs.placeholder{color:var(--dimmer);font-style:italic;}
 /* End node (archon-o7p.10): a small terminal stadium with an input port only. Its
    outcome colours the ring and mark: done in sage, rejected in the error red. */
@@ -560,7 +562,7 @@
 .fmx :is(button,select,input,textarea,a,[tabindex]):focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 .fmx .zoomctl button{width:auto;min-width:76px;padding-inline:9px;}
 .fmx .gmeta .gt{font-size:12px;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;max-width:none;}
-.fmx .gmeta{min-width:0;}
+.fmx .gmeta{min-width:110px;}
 .fmx .ragent .r{white-space:normal;overflow-wrap:anywhere;}
 .fmx .draft-marker{font-weight:400;}
 

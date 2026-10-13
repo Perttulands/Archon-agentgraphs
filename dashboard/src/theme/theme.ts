@@ -1,12 +1,12 @@
 import canonicalDefault from '../../../src/internal/api/theme_default.json'
 
-// The interface's one theme, served by the host.
+// The interface's theme, served by the host.
 //
-// Archon uses a single active theme, authored on the host and served by
-// GET /api/theme. The dashboard never picks one: there is no theme setting and
-// no picker, so everything below is a read of what the server says, applied
-// once. DEFAULT_THEME is the same JSON the server embeds, so first paint from
-// the generated first-paint style and a failed fetch both land on exactly these values.
+// Archon's default look is a single theme, authored on the host and served by
+// GET /api/theme. DEFAULT_THEME is the same JSON the server embeds, so first
+// paint from the generated first-paint style and a failed fetch both land on
+// exactly these values. The operator may choose a built-in style instead on
+// their own device (styles.ts); the host's theme stays the default.
 
 /** Chrome colours. Every entry maps to one CSS custom property on :root. */
 export interface ThemeUi {

@@ -169,7 +169,10 @@ for (const entry of ['Start mission', 'Run formation'] as const) {
     await page.goto('/?mission=scouting')
     const draft = scouting.mission.formations.find((formation: { title: string }) => formation.title === 'Draft the brief')
     if (entry === 'Start mission') await page.getByTitle('Start mission', { exact: true }).first().click()
-    else await page.getByTestId(`run-formation-${draft.id}`).click()
+    else {
+      await page.getByTitle('Fit', { exact: true }).click()
+      await page.getByTestId(`run-formation-${draft.id}`).click()
+    }
     const dialog = page.getByRole('dialog', { name: entry === 'Start mission' ? 'Start mission' : 'Run step', exact: true })
     const action = dialog.getByRole('button', { name: entry === 'Start mission' ? 'Start mission' : 'Run step', exact: true })
     await expect(dialog.getByLabel('Brief', { exact: true })).toHaveCount(0)

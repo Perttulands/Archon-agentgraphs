@@ -156,6 +156,8 @@ import type {
 
 
 /** A staffing drag: a role from the rail, or a slot's staffing; a press without a move on a slot opens its sentence. */
+/** The smallest scale a mission opens at: below it card text is too small to read. */
+const LEGIBLE_SCALE = 0.8
 type StaffPayload = { kind: 'role'; roleId: string } | { kind: 'slot'; from: SlotRef }
 type DragStaff = { payload: StaffPayload | null; slot?: { ref: SlotRef; part: Part | null; anchor: HTMLElement }; click?: () => void; startX: number; startY: number; moved: boolean; scene?: GhostScene; sceneView?: string }
 /** The canvas as a drag starts: the cards and notes a ghost keeps off, each slot's box and its card's, and the canvas. Measured once per drag. */
@@ -297,6 +299,10 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   putAwayRef.current = putAway
   // A session chosen in the navigator opens its terminal once its run is shown.
   const pendingNode = useRef<{ runId: string; nodeId: string } | null>(null)
+  /** The card the run on the canvas is at, which a legible fit centres. */
+  const fitFocusRef = useRef('')
+  const focusedRunRef = useRef('')
+  const fitViewRef = useRef<(() => void) | null>(null)
   // Every mission's runs that need the operator, for the picker counts and the page title.
   const [needsYou, setNeedsYou] = useState<RunStatusProjection[]>([])
   // Link problems outlive the board loads that clear ordinary errors.
@@ -803,6 +809,20 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   const nodeStates = useMemo(() => projectNodeStates(runEvents, activeRun), [runEvents, activeRun])
   // Every gate waiting and step running now; the first most needs the operator.
   const runPoints = useMemo(() => runCurrentPoints(runEvents, activeRun), [runEvents, activeRun])
+  fitFocusRef.current = runPoints.find(point => point.nodeId)?.nodeId || ''
+  // Once a run's point is known, the opening view moves to it, once a run.
+  const fitFocus = fitFocusRef.current
+  useEffect(() => {
+    const runId = activeRun?.runId
+    if (!fitFocus || !runId || !board || focusedRunRef.current === runId) return
+    // After the run's graph has drawn: a frozen graph arrives later than the run does.
+    const frame = window.requestAnimationFrame(() => {
+      if (![...(worldRef.current?.querySelectorAll<HTMLElement>('[data-node]') || [])].some(card => card.dataset.node === fitFocus)) return
+      focusedRunRef.current = runId
+      fitViewRef.current?.()
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [fitFocus, activeRun?.runId, board])
   const outputNodeIds = useMemo(() => new Set(runEvents.filter(event => event.type === 'node_output' && event.nodeId).map(event => event.nodeId)), [runEvents])
   // What the run's steps produced, for their cards, node windows and the run bar.
   const runProduced = useRunProduced(activeRun?.runId || '', runEvents, Boolean(activeRun?.final))
@@ -1947,7 +1967,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     setView(current => zoomTransform(current, factor, cursor))
   }, [])
 
-  const fitView = useCallback((options?: { smooth?: boolean }) => {
+  const fitView = useCallback((options?: { smooth?: boolean; whole?: boolean }) => {
     const currentBoard = boardRef.current
     const rect = viewportRef.current?.getBoundingClientRect()
     const world = worldRef.current
@@ -1971,12 +1991,31 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     const fittedScale = clampScale(Math.min(rect.width / (maxX - minX + pad * 2), rect.height / (maxY - minY + pad * 2)), 1)
     // Narrow screens are a readable pan/zoom surface, not a miniature overview.
     // Keep cards at authored size and focus the leading edge of the saved board.
-    const next = narrow ? 1 : fittedScale
+    // Opening a mission keeps its cards readable (archon-fh5c.8): a graph too wide for that shows the
+    // part the run is at, or its start, and the FIT button still shows the whole of it.
+    const legible = !narrow && !options?.whole && fittedScale < LEGIBLE_SCALE
+    const next = narrow ? 1 : legible ? LEGIBLE_SCALE : fittedScale
     // The FIT button glides via the .world.smooth transition (reference feel);
     // the initial auto-fit on board load snaps so geometry is stable immediately.
     if (options?.smooth) {
       world.classList.add('smooth')
       window.setTimeout(() => world.classList.remove('smooth'), 420)
+    }
+    if (legible) {
+      const focus = cards.find(({ card }) => card.dataset.node === fitFocusRef.current)
+      // Centre the card the run is at; hold the view inside the graph, which starts at its left edge.
+      const along = (lo: number, hi: number, room: number, centre: number | null) => {
+        const span = (hi - lo) * next + pad * 2
+        if (span <= room) return (room - (hi - lo) * next) / 2 - lo * next
+        const wanted = centre === null ? pad - lo * next : room / 2 - centre * next
+        return Math.min(pad - lo * next, Math.max(room - pad - hi * next, wanted))
+      }
+      setView({
+        scale: next,
+        x: along(minX, maxX, rect.width, focus ? focus.x + focus.card.offsetWidth / 2 : null),
+        y: along(minY, maxY, rect.height, focus ? focus.y + focus.card.offsetHeight / 2 : null),
+      })
+      return
     }
     setView({
       scale: next,
@@ -1984,6 +2023,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       y: narrow ? pad - minY * next : (rect.height - (maxY - minY) * next) / 2 - minY * next,
     })
   }, [])
+  fitViewRef.current = fitView
 
   // Centre a card in the viewport at the current zoom and mark it briefly.
   const locateNode = useCallback((nodeId: string) => {
@@ -3701,7 +3741,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
             <button onClick={() => zoomBy(1.2)} title="Zoom in">+</button>
             <button onClick={() => zoomBy(1 / 1.2)} title="Zoom out">−</button>
             <button onClick={() => void arrangeBoard()} title="Arrange cards by graph flow (persists layout, Ctrl+Z to undo)" data-testid="arrange-layout">ARRANGE</button>
-            <button onClick={() => fitView({ smooth: true })} title="Fit">FIT</button>
+            <button onClick={() => fitView({ smooth: true, whole: true })} title="Fit">FIT</button>
           </div>
           <aside className="roster floating" data-window-avoid data-testid="agent-roster" aria-label="Agent roster" hidden={!rosterOpen || historical} onPointerDown={event => event.stopPropagation()}>
             <div className="roster-hd">

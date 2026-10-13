@@ -754,6 +754,10 @@ its neighbours, its next links and the title bars of open windows visible and
 clickable, and cascades when no free space is left. Menus opened from the run
 bar render above every window.
 
+A mission opens at a scale its card text can be read at: the whole graph when
+that fits at 80% or more, else 80% from the graph's leading edge, and a run
+opens centred on the card it has reached. Fit always shows the whole graph.
+
 A step's window (archon-fh5c.6) opens on the first click of its card with the
 step's staffing in one row a slot (role, harness, model, effort, each opening
 its own list) and, once the run has seated the step, the seat's terminal filling
@@ -1646,8 +1650,12 @@ for the server and dashboard first paint. A configured missing/unreadable file
 returns HTTP 500 `THEME_UNREADABLE`; malformed JSON or schema returns HTTP 500
 `INVALID_THEME` naming the offending field. These errors do not disable mission
 execution. The dashboard keeps its complete default palette and reports a failed
-theme request; it applies the theme once per page load. No theme-art routes,
-picker or polling are provided. Host paths and deployment belong to the host.
+theme request; it applies the theme once per page load. No theme-art routes
+or polling are provided. Host paths and deployment belong to the host.
+
+The app bar's Style control chooses what the dashboard draws in this browser:
+Console is the host theme above; Paper is a built-in light palette. The choice
+is kept per browser and never changes what `GET /api/theme` serves.
 
 `GET /api/runs/{runId}/seats` returns an enveloped
 `{runId,available,reason?,seats}`. Each latest seat per node/slot includes

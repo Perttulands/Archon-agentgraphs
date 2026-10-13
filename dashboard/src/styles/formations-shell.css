@@ -5,6 +5,8 @@
 .app-topbar-slot{flex:1;min-width:0;display:flex;align-items:center;}
 .fmx.fmx-bar{position:static;inset:auto;flex:1;min-width:0;display:block;background:transparent;overflow:visible;}
 .fmx.fmx-bar .topbar{padding:0 0 0 8px;border:0;background:transparent;}
+/* A narrow window shortens the mission title; no control's label wraps. */
+.fmx.fmx-bar .topbar button{white-space:nowrap;flex-shrink:0;}
 .fmx .topbar .mission-title{display:flex;align-items:baseline;gap:10px;min-width:0;margin-right:6px;}
 .fmx .topbar .mission-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:700;color:var(--ink);}
 .fmx .topbar .mission-title .rev{flex:0 0 auto;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);}

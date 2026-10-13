@@ -3,12 +3,13 @@ import AgentsView from './components/AgentsView'
 import FormationsCockpit from './components/FormationsCockpit'
 import { buildLabel, useDaemonBuild } from './components/daemonBuild'
 import { useTheme } from './theme/ThemeContext'
+import { STYLES, type StyleId } from './theme/styles'
 
 type View = 'formations' | 'agents'
 
 export default function App() {
   const [view, setView] = useState<View>('formations')
-  const { error } = useTheme()
+  const { error, style, setStyle } = useTheme()
   const build = useDaemonBuild()
   const [topbarSlot, setTopbarSlot] = useState<HTMLElement | null>(null)
 
@@ -23,6 +24,9 @@ export default function App() {
           Agents
         </button>
         <div className="app-topbar-slot" ref={setTopbarSlot} />
+        <select className="archon-style" aria-label="Style" value={style} onChange={event => setStyle(event.target.value as StyleId)}>
+          {STYLES.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+        </select>
         {build ? <span className="archon-build" title={`The daemon runs Archon ${build.version} (${build.commit})`}>{buildLabel(build)}</span> : null}
       </nav>
       {error ? <div className="theme-error" role="status">{error}</div> : null}

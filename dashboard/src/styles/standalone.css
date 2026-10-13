@@ -53,8 +53,15 @@ body,
   font-size: 12px; font-weight: 700; letter-spacing: 0.16em;
 }
 
+.archon-style {
+  align-self: center; margin-left: auto; height: 26px; padding: 0 6px; border: 1px solid var(--divider); border-radius: 3px;
+  background: transparent; color: var(--text-secondary); font: 11px/1 var(--font-mono); cursor: pointer;
+}
+.archon-style:hover { color: var(--text-primary); border-color: var(--accent); }
+.archon-style option { background: var(--surface-primary); color: var(--text-primary); }
+
 .archon-build {
-  align-self: center; margin-left: auto; padding: 0 6px; color: var(--text-secondary);
+  align-self: center; padding: 0 6px; color: var(--text-secondary);
   font: 11px/1 var(--font-mono); letter-spacing: 0.02em;
 }
 

@@ -348,25 +348,25 @@ func arrangementDiscoveryOrder(roots []string, forward map[string][]string, dept
 	return order
 }
 
-// arrangementItemSize is the room a card takes on the canvas. Heights are the
-// cockpit's rendered heights (archon-ged.10 card text, measured on Scouting and
-// Delivery) plus a run-tools row and, when the card has referenced files, their
+// arrangementItemSize is the room a card takes on the canvas. Sizes are the
+// cockpit's rendered sizes (archon-fh5c.8 card text, measured on the host's
+// missions) plus a run-tools row and, when the card has referenced files, their
 // chip row, so stacked cards never overlap.
 func arrangementItemSize(item arrangementItem) (int, int) {
-	width, height := 300, 310
+	width, height := 320, 320
 	switch item.kind {
 	case "inputCard":
-		width, height = 236, 144
+		width, height = 260, 168
 	case "gate":
-		width, height = 300, 124
+		width, height = 332, 132
 	case "end":
-		width, height = 148, 64
+		width, height = 200, 64
 	case "limit":
 		width, height = 220, 72
 	case FormationTypePeer:
-		width, height = 330, 340
+		width, height = 336, 360
 	case FormationTypeOrchestrated:
-		width, height = 320, 440
+		width, height = 336, 460
 	}
 	// A later admission finding may appear without editing the graph. Reserve
 	// the bounded 96px reasons panel and its margins on every node.

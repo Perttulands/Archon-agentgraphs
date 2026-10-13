@@ -62,6 +62,8 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Scoutin
   await page.goto('/?mission=scouting')
   // The notes, and the draft marker the sketch's warning puts on the Input card.
   await expect(page.getByRole('note')).toHaveCount(scouting.notes.elements.length + 1)
+  // The opening view keeps cards readable; Fit brings the whole graph in reach.
+  await page.getByTitle('Fit', { exact: true }).click()
 
   const cards: Array<[Node, 'inputCard' | 'gate' | 'formation']> = [
     [board.inputCards[0], 'inputCard'],
@@ -159,6 +161,7 @@ test('refused copying leaves a selectable path beside the file download action',
     path: RUBRIC, name: 'adversarial-review.md', size: text.length, kind: 'markdown', text: { text, bytes: text.length },
   } } } }))
   await page.goto('/?mission=scouting')
+  await page.getByTitle('Fit', { exact: true }).click()
   await page.getByRole('button', { name: `Open ${RUBRIC}`, exact: true }).click()
   const file = page.getByRole('dialog', { name: 'file adversarial-review.md' })
   await expect(file.getByRole('link', { name: 'Download', exact: true })).toHaveAttribute('download', 'adversarial-review.md')
