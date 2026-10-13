@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import AgentsView from './components/AgentsView'
 import FormationsCockpit from './components/FormationsCockpit'
+import { rememberCurrentBoard } from './components/currentBoard'
 import { buildLabel, useDaemonBuild } from './components/daemonBuild'
 import { useTheme } from './theme/ThemeContext'
 import { STYLES, type StyleId } from './theme/styles'
@@ -31,7 +32,7 @@ export default function App() {
       </nav>
       {error ? <div className="theme-error" role="status">{error}</div> : null}
       <section className="formations-app-content">
-        {view === 'formations' ? <FormationsCockpit topbarSlot={topbarSlot} /> : <AgentsView />}
+        {view === 'formations' ? <FormationsCockpit topbarSlot={topbarSlot} /> : <AgentsView onOpenMission={slug => { rememberCurrentBoard(slug); setView('formations') }} />}
       </section>
     </main>
   )

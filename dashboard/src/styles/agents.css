@@ -1,9 +1,8 @@
 /* Agents view. Its root also carries .fmx, so the Boards chrome in
    formations-d7.css draws this view too: top bar, roster, card headers,
    seats, gate icon, empty states and popovers. This file holds only what
-   differs here. Board cards flow in a list rather than sitting at canvas
-   coordinates, roster rows and seats are buttons rather than drag handles,
-   and the inspector opens beside the list when something is selected. */
+   differs here: roster rows are buttons rather than drag handles, and the
+   role picked fills the page beside them. */
 
 .agx { user-select:text; }
 
@@ -41,45 +40,19 @@
 .agx .ri .r .is-live { color:var(--sage); }
 .agx .ri .r .is-ambiguous,.agx .ri .r .is-retired { color:var(--gold); }
 
-/* ===== STAFFING LIST ===== */
-.agx-staffing { flex:1; min-width:0; min-height:0; overflow:auto; padding:18px; background:var(--paper); }
-.agx-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; align-items:start; }
-.agx .agx-cards .missioncard,
-.agx .agx-cards .formation,
-.agx .agx-cards .gatecard,
-.agx .agx-cards .empty-board {
-  position:relative; left:auto; top:auto; z-index:auto; width:auto; min-width:0; max-width:none; cursor:default;
-}
-.agx .agx-cards .empty-board { grid-column:1/-1; max-width:420px; }
-.agx .fhead,.agx .fbody,.agx .missioncard .mhd { cursor:default; }
-.agx .fhead { align-items:flex-start; }
-.agx .fhead .tool-kind { margin-bottom:5px; }
-.agx .fbody { overflow-x:auto; }
-.agx .fstatus.agx-fallback { padding-top:10px; color:var(--gold); letter-spacing:.08em; text-transform:uppercase; }
-.agx .missioncard .mstatus.is-open { color:var(--gold); }
-.agx .gatecard { padding-right:14px; }
-.agx .gmeta .gt,.agx .gmeta .gs { max-width:none; }
-.agx-branches { display:flex; flex-wrap:wrap; gap:3px 10px; margin-top:5px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
-.agx-branches .pass { color:var(--sage); }
-.agx-branches .fail { color:var(--terra-d); }
-.agx-branches .judge { color:var(--gold); }
-.agx .formation.state-waiting,.agx .formation.state-blocked,
-.agx .gatecard.state-waiting,.agx .gatecard.state-blocked { box-shadow:0 0 0 1.5px var(--gold); }
-.agx .formation.state-failed,.agx .gatecard.state-failed { box-shadow:0 0 0 1.5px var(--terra-d); }
-.agx .gatecard.state-running { box-shadow:0 0 0 1.5px var(--terra); }
+/* Roles are made from their group's heading, as characters are from theirs. */
+.agx .roster-group-label { display:flex; align-items:center; justify-content:space-between; }
+.agx .roster-group-label .characters-new svg { display:block; width:10px; height:10px; margin:auto; }
 
-.agx .slot { width:100%; background:transparent; color:inherit; font:inherit; cursor:pointer; }
-.agx .slot:hover { background:color-mix(in srgb,var(--surface-secondary) 70%,transparent); border-color:var(--line); }
-.agx .slot.selected { border-color:var(--terra); background:color-mix(in srgb,var(--terra) 9%,transparent); }
-
-/* ===== INSPECTOR ===== */
-.agx-inspector { width:320px; flex:0 0 auto; min-height:0; display:flex; flex-direction:column; border-left:1px solid var(--line); background:var(--card); }
+/* ===== ROLE ===== */
+.agx-detail { flex:1; min-width:0; min-height:0; overflow:auto; background:var(--paper); }
+.agx-detail>* { max-width:760px; }
 .agx-inspector-heading { min-width:0; }
-.agx-inspector .board-notes-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.agx-inspector .note-section h3 { margin:0; font:700 11px/1 var(--font-mono); letter-spacing:.1em; text-transform:uppercase; color:var(--ink2); }
-.agx-inspector .note-section textarea { min-height:84px; }
-.agx-inspector .note-empty { margin:0; }
-.agx-inspector .board-dialog-actions,.agx-inspector .pop-actions { margin-top:2px; }
+.agx-detail .board-notes-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.agx-detail .note-section h3 { margin:0; font:700 11px/1 var(--font-mono); letter-spacing:.1em; text-transform:uppercase; color:var(--ink2); }
+.agx-detail .note-section textarea { min-height:84px; }
+.agx-detail .note-empty { margin:0; }
+.agx-detail .board-dialog-actions,.agx-detail .pop-actions { margin-top:2px; }
 .agx-identity { display:flex; align-items:center; gap:8px; }
 .agx-summary { margin:0; color:var(--ink2); font-size:11px; line-height:1.5; }
 .agx-tags { display:flex; flex-wrap:wrap; gap:5px; }
@@ -95,22 +68,13 @@
 .agx-identity .ri .n,.agx-candidate .ri .n { overflow:hidden; color:var(--ink); font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
 .agx-identity .ri .r,.agx-candidate .ri .r { margin-top:2px; color:var(--dim); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
 
-/* ===== RUN BANNER + CREATE POPOVER ===== */
-.agx .run-banner { position:sticky; top:0; flex-wrap:wrap; margin:0 0 14px; border:1px solid var(--line); border-radius:4px; }
-/* Read-only run state: the link is the only action and it opens Boards. */
-.agx .run-banner .badge.waiting_human { color:var(--gold); background:color-mix(in srgb,var(--gold) 16%,transparent); }
-.agx .agx-run-label { color:var(--dim); text-transform:uppercase; letter-spacing:.08em; font-size:11px; }
-.agx .agx-run-none, .agx .agx-run-id { color:var(--dim); }
-.agx .agx-run-reason { max-width:min(520px, 100%); overflow:hidden; text-overflow:ellipsis; color:var(--gold); }
-.agx .agx-run-link { margin-left:auto; border:1px solid var(--line); border-radius:5px; padding:5px 10px; background:var(--paper2); color:var(--ink2); font-size:11px; letter-spacing:.06em; text-decoration:none; text-transform:uppercase; }
-.agx .agx-run-link:hover { border-color:var(--terra); color:var(--terra); }
+/* ===== ROLE USE + CREATE POPOVER ===== */
 .agx .agx-identity .board-action { margin-left:auto; flex-shrink:0; }
 .agx .agx-role-slot { align-items:baseline; flex-wrap:wrap; }
-.agx .agx-role-slot-runs { color:var(--ink); font-family:var(--font-mono,monospace); white-space:nowrap; }
 .agx .agx-role-use { width:100%; font-family:inherit; font-size:11px; text-align:left; cursor:pointer; }
 .agx .agx-role-use:hover,.agx .agx-role-use:focus-visible { border-color:var(--terra); }
 .agx .agx-role-confirm p { margin:0; color:var(--ink); font-size:11px; line-height:1.5; }
-.agx .agx-inspector .pop-actions .cancel:disabled { opacity:.5; cursor:default; }
+.agx .agx-detail .pop-actions .cancel:disabled { opacity:.5; cursor:default; }
 .agx .pop-head { cursor:default; }
 .agx .pop-body select.f {
   width:100%; background:var(--paper2); border:1px solid var(--line); border-radius:6px; padding:9px 11px;
@@ -118,20 +82,8 @@
 }
 .agx .pop-body select.f:focus { border-color:var(--terra); }
 
-@media (max-width: 1023px) {
-  .agx-inspector { position:absolute; top:0; right:0; bottom:0; z-index:40; width:min(340px,100%); box-shadow:0 4px 16px rgba(0,0,0,.4); }
-}
-
 @media (max-width: 768px) {
-  /* The Boards narrow model applies: the roster becomes a rail under the top
-     bar. The list then fills the width and the inspector docks below it. */
+  /* The Missions narrow model applies: the roster becomes a rail under the top bar. */
   .agx .agx-filter { flex:0 0 118px; width:118px; min-width:0; align-self:center; margin:0 4px 0 8px; }
   .agx .ragent .ri .r { display:none; }
-  .agx-staffing { padding:12px; }
-  .agx-cards { grid-template-columns:minmax(0,1fr); }
-  .agx-inspector { position:relative; width:100%; max-height:55%; border-left:0; border-top:1px solid var(--line); box-shadow:none; }
 }
-
-.agx .fwin.agx-inspector{border:1px solid var(--line);border-radius:4px;box-shadow:0 12px 36px #0008;}
-.agx .agx-inspector .fwin-body{min-height:0;display:flex;flex-direction:column;}
-.agx .agx-inspector .board-notes-body{overflow:auto;}

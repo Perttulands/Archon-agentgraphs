@@ -267,19 +267,6 @@ test('a node window opened from Flow drops the sentence from its word by the sam
   }
 })
 
-test('the Agents inspector drops the sentence from its word by the same rule', async ({ page }) => {
-  await page.setViewportSize({ width: 1920, height: 1080 })
-  await agentsFixture(page)
-  await page.goto('/?mission=delivery')
-  await page.getByRole('button', { name: 'Agents', exact: true }).click()
-  const agents = page.getByTestId('agents-view')
-  await agents.getByTestId('agents-slot-recheck-recheck_seat').click()
-  const button = agents.getByRole('dialog', { name: 'Inspector' }).getByRole('button', { name: 'Staff Second opinion' })
-  await button.click()
-  await expect(page.getByRole('dialog', { name: 'Staff Second opinion' })).toBeVisible()
-  expectDrop(await measure(page, button, null), 'Agents inspector')
-})
-
 test('the landing note is a line in the slot itself: it moves with the slot and covers nothing', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await cockpitFixture(page, { roles })

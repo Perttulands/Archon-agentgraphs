@@ -45,11 +45,11 @@ to the drafting step.
   talk with the agent, even while it works, and select, copy and scroll its
   output. Move, resize and stack the windows over the canvas.
 
-The Agents view keeps reusable personas beside the mission's staffing. Inspect
-and edit a persona and see which slots use it. It shows the mission's current
-run read-only and links to Missions, where runs start and gates are answered.
+The Agents view is the library of roles and saved characters. Inspect and edit
+a role and see which slots, in every mission, use it; a use opens its mission
+on Missions, where slots are staffed, runs start and gates are answered.
 
-![Agents view with delivery personas, staffed execution slots and the controller inspector](docs/images/agents.png)
+![Agents view with the roster of roles and a role's page](docs/images/agents.png)
 
 ## Install
 

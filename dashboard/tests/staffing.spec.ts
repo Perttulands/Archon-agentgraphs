@@ -475,23 +475,6 @@ test('the node window\'s staffing words open the same sentence beside it', async
   await expect.poll(() => assignments(fixture.patches)).toEqual([{ formationId: 'execution', slotId: 'worker', agentId: 'codex', harness: 'openai-codex', model: '', effort: 'low' }])
 })
 
-test('the Agents view slot inspector staffs through the same sentence', async ({ page }) => {
-  const fixture = await agentsFixture(page)
-  await page.goto('/?mission=delivery')
-  await page.getByRole('button', { name: 'Agents', exact: true }).click()
-  const agents = page.getByTestId('agents-view')
-  await agents.getByTestId('agents-slot-recheck-recheck_seat').click()
-  const inspector = agents.getByRole('dialog', { name: 'Inspector' })
-  await inspector.getByRole('button', { name: 'Staff Second opinion' }).click()
-  const sentence = page.getByRole('dialog', { name: 'Staff Second opinion' })
-  await expect(sentence.locator('[data-token]')).toHaveText(['', 'Claude Code', 'opus', 'low'])
-  await page.keyboard.type('critic')
-  await page.keyboard.press('Enter')
-  await expect(agents.getByTestId('agents-slot-recheck-recheck_seat').getByTestId('slot-caption')).toHaveAttribute('data-staffing', 'Brief critic | Claude Code · opus · xhigh')
-  await expect(inspector.getByTestId('slot-staffing-words')).toHaveText('Second opinion (controller) is Brief critic on Claude Code · opus · xhigh.')
-  expect(fixture.boardPatches).toEqual([{ assignSlot: { formationId: 'recheck', slotId: 'recheck_seat', agentId: 'critic', harness: 'claude-code', model: 'opus', effort: 'xhigh' } }])
-})
-
 // archon-n7u.38: the rail says which roles are in use, labels every count in the
 // Agents view's words, and opens a role in place.
 test('the rail states in words which roles are in use and opens a role in a window beside it', async ({ page }) => {
@@ -529,19 +512,3 @@ test('the rail states in words which roles are in use and opens a role in a wind
   await expect(roster).toBeVisible()
 })
 
-test('the Agents view counts roles in use in the rail\'s words', async ({ page }) => {
-  await agentsFixture(page)
-  await page.goto('/?mission=delivery')
-  await expect(page.getByTestId('roster-count')).toHaveText('3 roles · 2 in use')
-  await page.getByRole('button', { name: 'Agents', exact: true }).click()
-  const roster = page.getByTestId('agents-view').getByRole('complementary', { name: 'Agent roster' })
-  await expect(roster.locator('.roster-hd .s')).toHaveText('3 roles · 2 in use')
-  // In use leads the row's words and is never cut off.
-  const words = roster.getByRole('button', { name: /Inspect Builder/ }).locator('.r')
-  await expect(words.locator('span').first()).toHaveText('in 2 slots')
-  expect(await words.evaluate(element => {
-    const line = element.getBoundingClientRect()
-    const inUse = element.querySelector('.in-use-words')!.getBoundingClientRect()
-    return inUse.right <= line.right && inUse.left >= line.left
-  })).toBe(true)
-})

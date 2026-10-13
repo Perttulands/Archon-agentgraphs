@@ -55,23 +55,11 @@ test('the canvas, Flow and the node window show every slot\'s harness, model and
   expect(fixture.writes).toEqual([])
 })
 
-test('the Agents view slot tiles and slot inspector show harness, model, effort and role', async ({ page }) => {
+test('the Agents view lists roles by name, without grouping them by harness', async ({ page }) => {
   await agentsFixture(page)
   await page.goto('/?mission=delivery')
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
   const agents = page.getByTestId('agents-view')
-  const build = agents.getByTestId('agents-slot-build-build_seat')
-  await expect(build.getByTestId('slot-caption')).toHaveAttribute('data-staffing', 'Builder | Codex · default model · medium')
-  await expect(agents.getByTestId('agents-slot-recheck-recheck_seat').getByTestId('slot-caption')).toHaveAttribute('data-staffing', '')
-  await expect(agents.getByTestId('agents-slot-recheck-recheck_seat')).toContainText('+ Agent')
-
-  await build.click()
-  const inspector = agents.getByRole('dialog', { name: 'Inspector' })
-  await expect(inspector.getByTestId('slot-staffing-words')).toHaveText('Build (controller) is Builder on Codex · default model · medium.')
-  for (const [term, value] of [['Role', 'Builder'], ['Harness', 'Codex'], ['Model', 'default model'], ['Effort', 'medium']]) {
-    await expect(inspector.locator('.tool-detail-identity div', { hasText: term }).locator('dd')).toHaveText(value)
-  }
-  // The roster lists roles without grouping them by harness.
   const roster = agents.getByRole('complementary', { name: 'Agent roster' })
   await expect(roster.locator('.roster-group-label')).toHaveText(['Roles'])
   await expect(roster.locator('.ragent .n')).toHaveText(['Brief critic', 'Builder', 'Hermes spawner'])

@@ -101,6 +101,7 @@ export async function agentsFixture(page: Page) {
     }
     if (path === '/api/runs') return respond([])
     if (path === '/api/gate-profiles') return respond({ profiles: [] })
+    if (path === '/api/characters') return respond({ characters: [] })
     if (path === '/api/agents') {
       const agents = Object.values(cards).map(card => ({ id: card.id, displayName: card.displayName, kind: card.kind, summary: card.summary, tags: card.tags, liveness: 'offline', assignable: card.status !== 'retired', preset: card.preset }))
       return respond(rosterAnswer(agents))

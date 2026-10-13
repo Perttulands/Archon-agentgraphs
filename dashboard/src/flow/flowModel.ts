@@ -5,8 +5,7 @@ import type { BoardDocument, EndOutcome, FormationNode, GateNode, MissionNode, T
  * run meets them, gates inline with their deciders and routes, judges nested
  * under their gate, and loops as references back to earlier steps.
  *
- * The walk extends the Agents tab's reachable ordering (AgentsView
- * reachableMissionItems) with judge ports and back edges: it goes breadth
+ * The walk follows judge ports and back edges: it goes breadth
  * first from the mission along outputs and passes before fails, never enters a
  * judge chain as a step, and numbers a node once, where it is first reached.
  */

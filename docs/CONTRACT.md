@@ -99,20 +99,17 @@ blank model as `default`; sentences say `Claude Code` and `default model`. On a
 card only a long model gives way, never the harness or the effort, and the
 workers of an orchestrated step sit under `workers` with a solo slot's width;
 an empty slot says `open slot`. A model outside the catalog is marked `model
-not in catalog`. The node window, Flow, and the Agents view's slot tiles and slot
-inspector say the same, for example `Worker 1 is vanilla on Claude Code · opus
-· low.` Rosters list roles by name; roles carry no harness. Both rosters count
-in the same words, across every formation of the mission: `25 roles · 6 in
-use` (the Agents view adds its live sessions), and a role in use says `in 2
-slots`. Clicking a role in the Missions rail opens it in a window beside the
+not in catalog`. The node window and Flow say the same, for example `Worker 1
+is vanilla on Claude Code · opus · low.` Rosters list roles by name; roles
+carry no harness. The Missions rail counts across every formation of the
+mission: `25 roles · 6 in use`, and a role in use says `in 2 slots`. Clicking a role in the Missions rail opens it in a window beside the
 rail, with its role text and the slots it staffs.
 
 Staffing in the cockpit is that sentence, edited where the slot is. Clicking a
 slot, or Enter on a focused one, opens a compact window reading `Worker 1 is
 [vanilla] on [Claude Code] · [opus] · [low]` while the slot itself is
 outlined. It opens like a dropdown on the clicked slot's row, or on the word
-clicked in a node window (from the canvas or Flow) or the Agents view's slot
-inspector: directly below it and left-aligned with it, held inside the view
+clicked in a node window (from the canvas or Flow): directly below it and left-aligned with it, held inside the view
 across, or directly above it where the view cannot pan to make the room. One
 rule holds on every surface. While open it may cover sibling rows, neighbouring
 cards and the window it was opened from, never the clicked slot or word, and a
@@ -156,11 +153,7 @@ staffed slot onto another moves its staffing there and swaps a staffed
 target's back, two slots running the same staffing are left alone, and a drop
 that reaches no slot changes nothing. The slot's menu offers Staff and Empty.
 Each staffing is one undo entry; a move is one entry for both slots. The node
-window's staffing words and the Agents view's slot inspector open the same
-window, and a staffing or emptying in the Agents view is one Ctrl+Z step there
-too, restoring the slot's own settings. The Agents view follows the mission as
-it changes elsewhere, as the canvas does, so its actions start from the current
-revision; when another edit still lands first, it shows the latest and says so.
+window's staffing words open the same window.
 
 A role is role text only. `archon agent new` and `archon agent edit` take no
 harness, model or effort; `POST` and `PATCH /api/agents` refuse a `harness`,
@@ -175,8 +168,10 @@ also takes `ultra`, though a Codex model may accept fewer), a blank model means
 the harness default, and a harness Archon cannot start, such as `hermes`, is
 refused. Cards hold no launch string.
 
-The Agents view shows, for a selected role, every slot in every mission that
-uses it, and offers Retire and Delete only after saying what each does to
+The Agents view is the library of roles and characters and draws no mission:
+slots are staffed on Missions. It opens on a role and shows, for the role
+picked, every slot in every mission that uses it; a use opens its mission on
+Missions. It offers Retire and Delete only after saying what each does to
 those slots. `archon agent retire <id>` and `archon agent restore <id>` retire
 a role and bring it back, naming the slots that use it; a retired role is no
 longer offered for staffing, and a slot that still names it stops validation

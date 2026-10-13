@@ -1,65 +1,24 @@
-import FloatingWindow from '../windows/FloatingWindow'
 import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
 import LinkedText from '../files/LinkedText'
 import { useWindowManager, WindowManagerProvider } from '../windows/WindowManager'
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   ApiRequestError,
   deleteRole,
   fetchAgentRoster,
   fetchApi,
-  fetchBoardChanged,
-  fetchBoardDocument,
-  fetchBoardLayout,
-  fetchBoardSummaries,
   fetchRoleUsage,
-  patchBoardDocument,
   setRoleRetired,
   type RoleUse,
 } from './formationsApi'
-import { judgeChain } from '../flow/flowModel'
-import { chooseCurrentBoard, openableSlugs, rememberCurrentBoard } from './currentBoard'
-import { runStatusLabel } from './formationsRunDiscovery'
-import { projectNodeStates } from './formationsRunState'
-import {
-  FormationSeats,
-  GATE_SVG,
-  agentRole,
-  byRoleName,
-  formationSummary,
-  inSlotsWords,
-  initials,
-  rolesInUseLabel,
-} from './formationsCockpitVisuals'
-import { slotStaffed, slotTitle, staffingSentence } from '../nodeWindow/staffing'
-import { harnessName } from './harnessIcons'
-import { SlotCaption, SlotFace, type Part } from '../staffing/SlotFace'
-import { RoleTrouble } from '../staffing/CanvasSlot'
+import { agentRole, byRoleName, inSlotsWords, initials } from './formationsCockpitVisuals'
 import { COCKPIT_NOTE_AUTHOR, noteAuthor, noteTime } from './NoteThread'
-import { isTextEditingTarget } from './formationsCockpitDom'
-import { UndoHistory, WriteTracker, boardStep, undoOutcomeMessage } from './formationsUndo'
-import { StaffingLayer } from '../staffing/StaffingLayer'
-import { staff, type StaffingHost } from '../staffing/staffingActions'
 import { CharacterEditorDialog, CharactersGroup } from '../characters/Characters'
 import { useCharacters, type Character } from '../characters/charactersApi'
-import { captionText, modelWords, offCatalog, retiredRolesOf, roleName as catalogRoleName, roleNamer, roleTrouble, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing } from '../staffing/staffingModel'
-import { StaffingStore, slotKey, useStaffingVersion, type SlotRef } from '../staffing/staffingStore'
-import { GateKindChips } from './GateEditorDialog'
+import { retiredRolesOf, roleNamer, rolesOf } from '../staffing/staffingModel'
 import PersonaEditorDialog from './PersonaEditorDialog'
-import { boardsRunHref, useMissionRun, type MissionRunState } from './useMissionRun'
-import type {
-  AgentProjection as FormationAgentProjection,
-  BoardDocument,
-  EffortPolicyEntry,
-  BoardSummary,
-  FormationNode,
-  FormationSlot,
-  GateNode,
-  LaunchableHarness,
-  LayoutDocument,
-  MissionNode,
-} from './formationsTypes'
+import type { AgentProjection as FormationAgentProjection, EffortPolicyEntry, LaunchableHarness } from './formationsTypes'
 
 interface PersonaNote {
   ts: string
@@ -110,23 +69,6 @@ type CachedPersona = {
 type Selection =
   | { kind: 'agent'; agentId: string }
   | { kind: 'unbound'; agentId: string }
-  | { kind: 'slot'; formationId: string; slotId: string }
-
-export type ReachableMissionItem = {
-  kind: 'formation' | 'gate'
-  id: string
-  /** Steps from the mission along the wiring, counted at first discovery. */
-  depth: number
-  via?: BranchProvenance
-}
-
-type BranchLabels = { pass: string[]; fail: string[]; judge: string[] }
-
-type BranchProvenance = {
-  gateId: string
-  /** `judge` marks a formation in the gate's judge chain. */
-  branch: 'pass' | 'fail' | 'judge'
-}
 
 type CreateDraft = {
   id: string
@@ -139,7 +81,6 @@ type CreateDraft = {
 type AgentStatus = {
   liveness: 'live' | 'ambiguous' | 'offline'
   chips: string[]
-  deployedSlots: number
 }
 
 const EMPTY_CREATE: CreateDraft = {
@@ -150,129 +91,30 @@ const EMPTY_CREATE: CreateDraft = {
   capabilities: '',
 }
 
-/**
- * Everything a run of the mission can reach: formations and gates along
- * outputs and pass/fail routes, the judge chain of every reached gate, and the
- * work behind Tools (which have no slots, so they are walked, not listed).
- */
-export function reachableMissionItems(board: BoardDocument, missionId: string): ReachableMissionItem[] {
-  const formationIds = new Set(board.formations.map(formation => formation.id))
-  const gateIds = new Set((board.gates || []).map(gate => gate.id))
-  const formationById = new Map(board.formations.map(formation => [formation.id, formation]))
-  const toolById = new Map((board.tools || []).map(tool => [tool.id, tool]))
-  const outgoing = new Map<string, string[]>()
-  for (const connection of board.connections || []) {
-    const list = outgoing.get(connection.from) || []
-    list.push(connection.to)
-    outgoing.set(connection.from, list)
-  }
-
-  const queue: Array<{ endpoint: string; depth: number; via?: BranchProvenance }> = [{ endpoint: `${missionId}:out`, depth: 0 }]
-  const seenEndpoints = new Set<string>()
-  const result: ReachableMissionItem[] = []
-  const seenNodes = new Map<string, ReachableMissionItem>()
-
-  const recordNode = (kind: ReachableMissionItem['kind'], id: string, depth: number, via?: BranchProvenance) => {
-    const key = `${kind}:${id}`
-    const existing = seenNodes.get(key)
-    if (!existing) {
-      const item = via ? { kind, id, depth, via } : { kind, id, depth }
-      seenNodes.set(key, item)
-      result.push(item)
-      return false
-    }
-    if (!sameProvenance(existing.via, via)) {
-      delete existing.via
-    }
-    return true
-  }
-
-  while (queue.length > 0) {
-    const nextEndpoint = queue.shift()
-    if (!nextEndpoint) continue
-    const endpointKey = `${nextEndpoint.endpoint}|${provenanceKey(nextEndpoint.via)}`
-    if (seenEndpoints.has(endpointKey)) continue
-    seenEndpoints.add(endpointKey)
-
-    for (const next of outgoing.get(nextEndpoint.endpoint) || []) {
-      const nodeId = endpointNode(next)
-      const depth = nextEndpoint.depth + 1
-      if (formationIds.has(nodeId)) {
-        recordNode('formation', nodeId, depth, nextEndpoint.via)
-        const formation = formationById.get(nodeId)
-        const outputs = formation?.outputs?.length ? formation.outputs : [{ id: 'out' }]
-        outputs.forEach(output => queue.push({ endpoint: `${nodeId}:${output.id}`, depth, via: nextEndpoint.via }))
-        continue
-      }
-      if (gateIds.has(nodeId)) {
-        // A judge chain returns to its gate's judge port; that is not a new arrival.
-        if (next === `${nodeId}:judge`) continue
-        const seenBefore = recordNode('gate', nodeId, depth, nextEndpoint.via)
-        if (!seenBefore) {
-          // Judges decide before either branch runs: one step past the gate, kept in chain order.
-          judgeChain(board, nodeId)
-            .filter(judgeId => formationIds.has(judgeId))
-            .forEach(judgeId => recordNode('formation', judgeId, depth + 1, { gateId: nodeId, branch: 'judge' }))
-        }
-        queue.push(
-          { endpoint: `${nodeId}:pass`, depth, via: { gateId: nodeId, branch: 'pass' } },
-          { endpoint: `${nodeId}:fail`, depth, via: { gateId: nodeId, branch: 'fail' } },
-        )
-        continue
-      }
-      const tool = toolById.get(nodeId)
-      if (tool) {
-        const outputs = tool.outputs?.length ? tool.outputs : [{ id: 'out' }]
-        outputs.forEach(output => queue.push({ endpoint: `${nodeId}:${output.id}`, depth, via: nextEndpoint.via }))
-      }
-    }
-  }
-
-  return result
-}
-
-function provenanceKey(via?: BranchProvenance): string {
-  return via ? `${via.gateId}:${via.branch}` : 'main'
-}
-
-function sameProvenance(a?: BranchProvenance, b?: BranchProvenance): boolean {
-  if (!a && !b) return true
-  return Boolean(a && b && a.gateId === b.gateId && a.branch === b.branch)
-}
-
-function endpointNode(endpoint: string): string {
-  return endpoint.split(':')[0] || endpoint
-}
-
-export function agentStatus(agent: RosterAgent, deployedSlots: number, details?: CachedPersona): AgentStatus {
+export function agentStatus(agent: RosterAgent, details?: CachedPersona): AgentStatus {
   const rawLiveness = agent.liveness === 'live' || agent.liveness === 'ambiguous' ? agent.liveness : 'offline'
   const chips: string[] = []
   if (agent.unbound) chips.push('no role')
   if (!agent.unbound && details?.card?.status === 'retired') chips.push('retired')
   if (!agent.unbound && !agent.assignable && details?.card?.status !== 'retired') chips.push('not assignable')
-  if (deployedSlots > 0) chips.push(inSlotsWords(deployedSlots))
   if (agent.attached) chips.push('attached')
-  return { liveness: rawLiveness, chips, deployedSlots }
+  return { liveness: rawLiveness, chips }
 }
 
-export default function AgentsView() {
-  const inspectorWindows = useWindowManager()
+export default function AgentsView({ onOpenMission }: {
+  /** Opens a mission on the Missions tab; a role's use is read there. */
+  onOpenMission?: (slug: string) => void
+}) {
+  const fileWindows = useWindowManager()
   const [agents, setAgents] = useState<RosterAgent[]>([])
   const [harnesses, setHarnesses] = useState<LaunchableHarness[]>([])
   const [effortPolicy, setEffortPolicy] = useState<EffortPolicyEntry[]>([])
-  const [boards, setBoards] = useState<BoardSummary[]>([])
-  const [selectedSlug, setSelectedSlug] = useState('')
-  const [board, setBoard] = useState<BoardDocument | null>(null)
-  const [layout, setLayout] = useState<LayoutDocument | null>(null)
-  const [selectedMissionId, setSelectedMissionId] = useState('')
   const [details, setDetails] = useState<Record<string, CachedPersona>>({})
   const [usage, setUsage] = useState<Record<string, RoleUsage>>({})
   const [selection, setSelection] = useState<Selection | null>(null)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
-  const [boardLoading, setBoardLoading] = useState(false)
   const [error, setError] = useState('')
-  const [boardError, setBoardError] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [createError, setCreateError] = useState('')
   const [createDraft, setCreateDraft] = useState<CreateDraft>(EMPTY_CREATE)
@@ -281,78 +123,10 @@ export default function AgentsView() {
   const { characters, reload: reloadCharacters } = useCharacters()
   const [characterEditor, setCharacterEditor] = useState<{ character: Character | null; trigger: HTMLElement | null } | null>(null)
 
-  const selectedMission = board?.inputCards?.find(mission => mission.id === selectedMissionId) || null
-  // Boards is the run console; this tab only reports the mission's run.
-  const missionRun = useMissionRun(board?.slug || '', selectedMission?.id || '')
-  const nodeStates = useMemo(() => projectNodeStates(missionRun.events, missionRun.run), [missionRun.events, missionRun.run])
-
-  const reachableItems = useMemo(() => {
-    if (!board || !selectedMissionId) return []
-    return orderReachableItems(reachableMissionItems(board, selectedMissionId), layout)
-  }, [board, layout, selectedMissionId])
-
-  const reachableViaByFormation = useMemo(() => {
-    const map = new Map<string, BranchProvenance>()
-    for (const item of reachableItems) {
-      if (item.kind === 'formation' && item.via) map.set(item.id, item.via)
-    }
-    return map
-  }, [reachableItems])
-
-  const gateBranchLabels = useMemo(() => {
-    const map = new Map<string, BranchLabels>()
-    if (!board) return map
-    const formationTitles = new Map(board.formations.map(formation => [formation.id, formation.title]))
-    for (const item of reachableItems) {
-      if (item.kind !== 'formation' || !item.via) continue
-      const labels = map.get(item.via.gateId) || { pass: [], fail: [], judge: [] }
-      labels[item.via.branch].push(formationTitles.get(item.id) || item.id)
-      map.set(item.via.gateId, labels)
-    }
-    return map
-  }, [board, reachableItems])
-
-  const reachableFormations = useMemo(() => {
-    if (!board) return []
-    const byId = new Map(board.formations.map(formation => [formation.id, formation]))
-    return reachableItems
-      .filter(item => item.kind === 'formation')
-      .map(item => byId.get(item.id))
-      .filter((formation): formation is FormationNode => Boolean(formation))
-  }, [board, reachableItems])
-
-  // Roles in use are counted across the whole mission, as the Missions rail counts them.
-  const assignmentsByAgent = useMemo(() => {
-    const map = new Map<string, Array<{ formation: FormationNode; slot: FormationSlot }>>()
-    for (const formation of board?.formations || []) {
-      for (const slot of formation.slots || []) {
-        if (!slot.agentId) continue
-        const list = map.get(slot.agentId) || []
-        list.push({ formation, slot })
-        map.set(slot.agentId, list)
-      }
-    }
-    return map
-  }, [board?.formations])
-
-  const slotCounts = useMemo(() => {
-    let total = 0
-    let staffed = 0
-    for (const formation of reachableFormations) {
-      for (const slot of formation.slots || []) {
-        total += 1
-        if (slotStaffed(slot)) staffed += 1
-      }
-    }
-    return { total, staffed, open: Math.max(total - staffed, 0) }
-  }, [reachableFormations])
-
   const rosterCounts = useMemo(() => ({
-    total: agents.length,
     live: agents.filter(agent => agent.liveness === 'live').length,
     assignable: agents.filter(agent => !agent.unbound && agent.assignable).length,
-    deployed: assignmentsByAgent.size,
-  }), [agents, assignmentsByAgent])
+  }), [agents])
 
   const filteredAgents = useMemo(() => {
     const needle = search.trim().toLowerCase()
@@ -368,11 +142,6 @@ export default function AgentsView() {
   const personas = filteredAgents.filter(agent => !agent.unbound).sort(byRoleName)
   const unbound = filteredAgents.filter(agent => agent.unbound)
 
-  const selectedSlot = useMemo(() => {
-    if (selection?.kind !== 'slot') return null
-    return findSlot(board, selection.formationId, selection.slotId)
-  }, [board, selection])
-
   const loadAgents = useCallback(async () => {
     const roster = await fetchAgentRoster()
     setAgents(roster.agents as RosterAgent[])
@@ -380,99 +149,14 @@ export default function AgentsView() {
     setEffortPolicy(roster.effortPolicy)
   }, [])
 
-  const loadBoards = useCallback(async () => {
-    const nextBoards = await fetchBoardSummaries()
-    setBoards(nextBoards)
-    setSelectedSlug(current => nextBoards.some(next => next.slug === current) ? current : chooseCurrentBoard(openableSlugs(nextBoards), window.location.search).slug)
-  }, [])
-
-  const loadBoard = useCallback(async (slug: string) => {
-    setBoardLoading(true)
-    try {
-      const [nextBoard, nextLayout] = await Promise.all([
-        fetchBoardDocument(slug),
-        fetchBoardLayout(slug),
-      ])
-      setBoard(nextBoard)
-      setLayout(nextLayout)
-      setSelectedMissionId(current => {
-        if (current && nextBoard.inputCards?.some(mission => mission.id === current)) return current
-        return nextBoard.inputCards?.[0]?.id || ''
-      })
-      setBoardError('')
-      setError('')
-    } catch (err) {
-      setBoardError(err instanceof Error ? err.message : 'Failed to load mission')
-    } finally {
-      setBoardLoading(false)
-    }
-  }, [])
-
-
   useEffect(() => {
     let cancelled = false
-    const load = async () => {
-      setLoading(true)
-      try {
-        const [roster, nextBoards] = await Promise.all([fetchAgentRoster(), fetchBoardSummaries()])
-        if (cancelled) return
-        setAgents(roster.agents as RosterAgent[])
-        setHarnesses(roster.harnesses)
-        setEffortPolicy(roster.effortPolicy)
-        setBoards(nextBoards)
-        // Boards and Agents share one current board: the link's, else the last used here.
-        const { slug, missingLinked } = chooseCurrentBoard(openableSlugs(nextBoards), window.location.search)
-        setSelectedSlug(current => current || slug)
-        setError(missingLinked && nextBoards.length ? `Mission "${missingLinked}" from the link was not found` : '')
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Agents request failed')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    void load()
+    void loadAgents()
+      .then(() => { if (!cancelled) setError('') })
+      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Agents request failed') })
+      .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [])
-
-  useEffect(() => {
-    if (!selectedSlug) {
-      setBoard(null)
-      setLayout(null)
-      return
-    }
-    rememberCurrentBoard(selectedSlug)
-    void loadBoard(selectedSlug)
-  }, [loadBoard, selectedSlug])
-
-  // The view follows the mission as it changes elsewhere (the canvas, the CLI, an agent), as Missions does,
-  // so every action here starts from the current revision (archon-n7u.12).
-  useEffect(() => {
-    if (!selectedSlug || !board?.etag) return
-    let cancelled = false
-    const checkChanges = async () => {
-      try {
-        if (!(await fetchBoardChanged(selectedSlug, board.etag)) || cancelled) return
-        const [nextBoard, nextLayout] = await Promise.all([fetchBoardDocument(selectedSlug), fetchBoardLayout(selectedSlug)])
-        if (cancelled) return
-        setBoard(nextBoard)
-        setLayout(nextLayout)
-        setBoardError('')
-      } catch (err) {
-        if (!cancelled) setBoardError(err instanceof Error ? err.message : 'Failed to check mission changes')
-      }
-    }
-    const timer = window.setInterval(() => { void checkChanges() }, 600)
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [board?.etag, selectedSlug])
-
-  // Roles follow too: new, edited, retired or deleted roles, sessions coming and going, and the missions list.
-  useEffect(() => {
-    let cancelled = false
-    const timer = window.setInterval(() => {
-      if (!cancelled) void Promise.all([loadAgents(), loadBoards()]).catch(() => undefined)
-    }, 5000)
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [loadAgents, loadBoards])
+  }, [loadAgents])
 
   const loadAgentDetail = useCallback(async (agentId: string, force = false): Promise<CachedPersona> => {
     if (!force && details[agentId]) return details[agentId]
@@ -501,6 +185,13 @@ export default function AgentsView() {
     }
   }, [details, loadAgentDetail])
 
+  // The view opens on a role, so its right side is never an empty page.
+  useEffect(() => {
+    if (loading || selection) return
+    const first = agents.filter(agent => !agent.unbound).sort(byRoleName)[0]
+    if (first) void inspectAgent(first)
+  }, [agents, inspectAgent, loading, selection])
+
   const loadUsage = useCallback(async (agentId: string) => {
     try {
       const uses = await fetchRoleUsage(agentId)
@@ -510,11 +201,19 @@ export default function AgentsView() {
     }
   }, [])
 
-  // A role's usage follows the inspected role and every edit to the mission.
+  // Roles follow what changes elsewhere: new, edited, retired or deleted roles, sessions coming and going,
+  // and the slots that use the role shown.
   const inspectedRole = selection?.kind === 'agent' ? selection.agentId : ''
   useEffect(() => {
     if (inspectedRole) void loadUsage(inspectedRole)
-  }, [inspectedRole, board?.rev, loadUsage])
+    let cancelled = false
+    const timer = window.setInterval(() => {
+      if (cancelled) return
+      void loadAgents().catch(() => undefined)
+      if (inspectedRole) void loadUsage(inspectedRole)
+    }, 5000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [inspectedRole, loadAgents, loadUsage])
 
   const retireRole = useCallback(async (agentId: string, retired: boolean) => {
     try {
@@ -547,91 +246,9 @@ export default function AgentsView() {
     }
   }, [loadAgentDetail, loadAgents])
 
-  const showUse = useCallback((use: RoleUse) => {
-    setSelectedSlug(use.missionSlug)
-    setSelection({ kind: 'slot', formationId: use.formationId, slotId: use.slotId })
-  }, [])
-
-  const inspectSlot = useCallback((formation: FormationNode, slot: FormationSlot) => {
-    setSelection({ kind: 'slot', formationId: formation.id, slotId: slot.id })
-    setError('')
-  }, [])
-
-  // Staffing here is the canvas's sentence (archon-o7p.17): each write states the slot in full.
-  const staffingStore = useMemo(() => new StaffingStore(), [])
-  const boardRef = useRef(board)
-  boardRef.current = board
-  const savedOf = useCallback((ref: Pick<SlotRef, 'formationId' | 'slotId'>): Staffing | null => {
-    const found = findSlot(boardRef.current, ref.formationId, ref.slotId)
-    return found ? staffingOf(found.slot) : null
-  }, [])
-  // Each staffing written here is one Ctrl+Z step here, as on the canvas (archon-7e4t). Undo belongs to the
-  // mission it was recorded on, waits for writes in flight, and restores the slot's own settings.
-  const undoHistory = useMemo(() => new UndoHistory(), [])
-  const writes = useMemo(() => new WriteTracker(), [])
-  useEffect(() => undoHistory.setBoard(board?.slug || ''), [board?.slug, undoHistory])
-  const writeBoard = useCallback(async (patch: Record<string, unknown>) => {
-    const current = boardRef.current
-    if (!current) throw new Error('No mission is open.')
-    const result = await writes.track(patchBoardDocument(current.slug, current.etag, current.rev, patch))
-    boardRef.current = result.board
-    setBoard(result.board)
-    if (result.layout) setLayout(result.layout)
-  }, [writes])
-  const saveStaffing = useCallback(async (ref: SlotRef, next: Staffing | null, label: string): Promise<string | null> => {
-    const current = boardRef.current
-    if (!current) return 'No mission is open.'
-    const previous = savedOf(ref)
-    if (sameStaffing(previous, next)) return null
-    try {
-      await writeBoard({ assignSlot: { formationId: ref.formationId, slotId: ref.slotId, ...slotSettings(next) } })
-      undoHistory.record({ board: current.slug, label, steps: [boardStep({ assignSlot: { formationId: ref.formationId, slotId: ref.slotId, ...slotSettings(previous) } })] })
-      setError('')
-      await loadAgents()
-      return null
-    } catch (err) {
-      if (err instanceof ApiRequestError && (err.status === 409 || err.status === 428)) {
-        // Another edit landed first: show the mission as it is now, so the next try starts from it.
-        await loadBoard(current.slug)
-        return 'The mission changed elsewhere; it now shows the latest. Staff the slot again if it still needs it.'
-      }
-      return err instanceof Error ? err.message : 'Mission update failed'
-    }
-  }, [loadAgents, loadBoard, savedOf, undoHistory, writeBoard])
-  const performUndo = useCallback(async () => {
-    const outcome = await undoHistory.undo({
-      board: () => boardRef.current?.slug || '',
-      idle: () => writes.idle(),
-      apply: async step => { if ('board' in step) await writeBoard(step.board) },
-      isConflict: err => err instanceof ApiRequestError && err.code === 'CONFLICT',
-      reload: async () => { if (boardRef.current) await loadBoard(boardRef.current.slug) },
-    })
-    if (outcome.status === 'failed' || outcome.status === 'busy') setError(undoOutcomeMessage(outcome))
-    else if (outcome.status === 'undone') { setError(''); void loadAgents() }
-  }, [loadAgents, loadBoard, undoHistory, writeBoard, writes])
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== 'z') return
-      if (isTextEditingTarget(event.target) || (event.target as Element | null)?.closest?.('.staffing-window')) return
-      event.preventDefault()
-      void performUndo()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [performUndo])
-  const staffingHost = useMemo<StaffingHost>(() => ({
-    catalog: { harnesses, policy: effortPolicy, roles: rolesOf(agents as FormationAgentProjection[]), retired: retiredRolesOf(agents as FormationAgentProjection[]) },
-    save: saveStaffing,
-  }), [agents, effortPolicy, harnesses, saveStaffing])
-  const slotRefOf = (formation: FormationNode, slot: FormationSlot): SlotRef => ({
-    key: slotKey(formation.id, slot.id), formationId: formation.id, slotId: slot.id, label: slot.label || slot.id, step: formation.title,
-  })
-  const openStaffing = (formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => {
-    staffingStore.setOpen({ ref: slotRefOf(formation, slot), part, anchor })
-  }
-  const emptySlot = (formation: FormationNode, slot: FormationSlot) => {
-    void staff(staffingStore, staffingHost, slotRefOf(formation, slot), staffingOf(slot), null, { label: `the unassignment from “${slot.label || slot.id}”` })
-  }
+  const catalog = useMemo(() => ({
+    harnesses, policy: effortPolicy, roles: rolesOf(agents as FormationAgentProjection[]), retired: retiredRolesOf(agents as FormationAgentProjection[]),
+  }), [agents, effortPolicy, harnesses])
 
   const createPersona = useCallback(async (event: FormEvent) => {
     event.preventDefault()
@@ -713,57 +330,19 @@ export default function AgentsView() {
   }, [])
 
   const selectedAgentId = selection?.kind === 'agent' || selection?.kind === 'unbound' ? selection.agentId : ''
-  const rosterSummary = rolesInUseLabel(loading ? '…' : rosterCounts.assignable, rosterCounts.deployed, rosterCounts.live)
+  const rosterSummary = [`${loading ? '…' : rosterCounts.assignable} role${rosterCounts.assignable === 1 ? '' : 's'}`, rosterCounts.live ? `${rosterCounts.live} live` : ''].filter(Boolean).join(' · ')
 
   return (
-    <WindowManagerProvider stack={inspectorWindows}>
-    <FileWindowsProvider key={selectedSlug} stack={inspectorWindows}>
+    <WindowManagerProvider stack={fileWindows}>
+    <FileWindowsProvider stack={fileWindows}>
     <div className="fmx agx" data-testid="agents-view">
-      <div className="topbar">
-        <div className="boardpick">
-          mission
-          <select aria-label="Mission" value={selectedSlug} onChange={event => setSelectedSlug(event.target.value)} disabled={loading || boards.length === 0}>
-            {boards.length === 0 && <option value="">No missions</option>}
-            {boards.map(next => (
-              <option key={next.slug} value={next.slug}>{next.title || next.slug}</option>
-            ))}
-          </select>
-          {board ? <span className="rev">rev {board.rev}</span> : null}
-        </div>
-        <div className="sep" />
-        <div className="boardpick">
-          input
-          <select
-            aria-label="Input card"
-            value={selectedMissionId}
-            onChange={event => setSelectedMissionId(event.target.value)}
-            disabled={boardLoading || !board?.inputCards?.length}
-          >
-            {!board?.inputCards?.length && <option value="">No Input card</option>}
-            {(board?.inputCards || []).map(mission => (
-              <option key={mission.id} value={mission.id}>{mission.title}</option>
-            ))}
-          </select>
-        </div>
-        <div className="spacer" />
-        <button className="newbtn" type="button" onClick={() => setCreateOpen(true)}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-          New role
-        </button>
-      </div>
-
       {error && <div className="agx-alert" role="alert">{error}</div>}
 
       <div className="main">
         <aside className="roster" aria-label="Agent roster">
           <div className="roster-hd">
             <div className="t">Agents</div>
-            <span
-              className="s"
-              title={`${rosterCounts.assignable} roles you can staff; ${rosterCounts.deployed} of them staff slots in this mission; ${rosterCounts.live} live sessions`}
-            >
-              {rosterSummary}
-            </span>
+            <span className="s" title={`${rosterCounts.assignable} roles you can staff; ${rosterCounts.live} live sessions`}>{rosterSummary}</span>
           </div>
           <input
             className="agx-filter"
@@ -781,118 +360,34 @@ export default function AgentsView() {
               onNew={trigger => setCharacterEditor({ character: null, trigger })}
               onPick={(character, trigger) => setCharacterEditor({ character, trigger })}
             />
+            <RosterGroup id="roles" label="Roles" agents={personas} details={details} selectedAgentId={selectedAgentId} onInspect={inspectAgent} onNew={() => setCreateOpen(true)} />
             {!loading && personas.length === 0 && (
-              <div className="roster-empty">
-                {search.trim() ? 'No roles match this filter.' : 'No roles yet. Use New role to make one.'}
-              </div>
-            )}
-            {personas.length > 0 && (
-              <RosterGroup
-                id="roles"
-                label="Roles"
-                agents={personas}
-                details={details}
-                assignmentsByAgent={assignmentsByAgent}
-                selectedAgentId={selectedAgentId}
-                onInspect={inspectAgent}
-              />
+              <div className="roster-empty">{search.trim() ? 'No roles match this filter.' : 'No roles yet.'}</div>
             )}
             {unbound.length > 0 && (
-              <RosterGroup
-                id="unbound"
-                label="Unbound"
-                agents={unbound}
-                details={details}
-                assignmentsByAgent={assignmentsByAgent}
-                selectedAgentId={selectedAgentId}
-                onInspect={inspectAgent}
-              />
+              <RosterGroup id="unbound" label="Unbound" agents={unbound} details={details} selectedAgentId={selectedAgentId} onInspect={inspectAgent} />
             )}
           </div>
         </aside>
 
-        <main className="agx-staffing" aria-label="Mission staffing">
-          {boardError && (
-            <div className="agx-alert agx-board-alert" role="alert">
-              <span>Mission load failed: {boardError}</span>
-              <button className="board-action" type="button" onClick={() => selectedSlug && loadBoard(selectedSlug)}>
-                Retry mission
-              </button>
-            </div>
-          )}
-          {board && selectedMission && (
-            <MissionRunState board={board} missionRun={missionRun} />
-          )}
-          <div className="agx-cards">
-            {!loading && !boardLoading && !selectedMission && (
-              <StaffingEmpty
-                title={boards.length === 0 ? 'No missions' : 'This mission has no Input card'}
-                copy={boards.length === 0
-                  ? 'Create a mission on the Missions tab to staff it.'
-                  : 'Add an Input card on the Missions tab and wire it to a formation.'}
-              />
-            )}
-            {selectedMission && (
-              <MissionCard mission={selectedMission} slotCounts={slotCounts} />
-            )}
-            {selectedMission && reachableItems.length === 0 && (
-              <StaffingEmpty
-                title="Nothing wired to this mission"
-                copy="Wire the Input card to a formation on the Missions tab to staff it here."
-              />
-            )}
-            {selectedMission && reachableItems.map(item => (
-              item.kind === 'gate'
-                ? (
-                  <GateRow
-                    key={item.id}
-                    gate={(board?.gates || []).find(gate => gate.id === item.id) || null}
-                    state={nodeStates.get(item.id) || ''}
-                    branchLabels={gateBranchLabels.get(item.id)}
-                  />
-                )
-                : (
-                  <FormationStaffingCard
-                    key={item.id}
-                    formation={board?.formations.find(formation => formation.id === item.id) || null}
-                    via={reachableViaByFormation.get(item.id)}
-                    viaGateTitle={(board?.gates || []).find(gate => gate.id === item.via?.gateId)?.title || item.via?.gateId || ''}
-                    store={staffingStore}
-                    host={staffingHost}
-                    nodeState={nodeStates.get(item.id) || ''}
-                    selectedSlot={selectedSlot}
-                    onSlotClick={inspectSlot}
-                  />
-                )
-            ))}
-          </div>
-        </main>
-
-        {selection && (
-          <FloatingWindow id="agents-inspector" kind="node" title="Inspector" label="Inspector" defaultSize={{ width: 480, height: 620 }}
-            className="agx-inspector" onClose={() => setSelection(null)}>
+        <main className="agx-detail" aria-label="Role">
+          {selection && (
             <Inspector
               selection={selection}
               agents={agents}
               details={details}
               usage={usage}
-              board={board}
-              assignmentsByAgent={assignmentsByAgent}
-              selectedSlot={selectedSlot}
               noteDraft={noteDraft}
               onNoteDraft={setNoteDraft}
               onSaveNote={saveNote}
-              onStaff={openStaffing}
-              onEmpty={emptySlot}
               onCreateFromUnbound={createFromUnbound}
               onEditPersona={(agent, trigger) => setEditingPersona({ agent, trigger })}
               onRetire={retireRole}
               onDelete={removeRole}
-              onShowUse={showUse}
-              onClose={() => setSelection(null)}
+              onShowUse={onOpenMission ? use => onOpenMission(use.missionSlug) : undefined}
             />
-          </FloatingWindow>
-        )}
+          )}
+        </main>
       </div>
 
       {editingPersona && (
@@ -912,14 +407,12 @@ export default function AgentsView() {
         <CharacterEditorDialog
           key={characterEditor.character?.id || 'new'}
           character={characterEditor.character}
-          catalog={staffingHost.catalog}
+          catalog={catalog}
           returnFocus={characterEditor.trigger}
           onClose={() => setCharacterEditor(null)}
           onSaved={reloadCharacters}
         />
       )}
-
-      <StaffingLayer store={staffingStore} host={staffingHost} savedOf={savedOf} />
 
       {createOpen && (
         <CreatePersonaPopover
@@ -938,53 +431,34 @@ export default function AgentsView() {
   )
 }
 
-/** Wiring order from the mission; canvas position only orders parallel branches at the same depth. */
-export function orderReachableItems(items: ReachableMissionItem[], layout: LayoutDocument | null): ReachableMissionItem[] {
-  const position = new Map((layout?.nodes || []).map(node => [node.id, node]))
-  return [...items].sort((a, b) => {
-    if (a.depth !== b.depth) return a.depth - b.depth
-    // A gate's judges decide before its branches run.
-    const aJudge = a.via?.branch === 'judge'
-    if (aJudge !== (b.via?.branch === 'judge')) return aJudge ? -1 : 1
-    if (aJudge && a.via?.gateId === b.via?.gateId) return items.indexOf(a) - items.indexOf(b)
-    const ap = position.get(a.id)
-    const bp = position.get(b.id)
-    if (ap && bp && (ap.y !== bp.y || ap.x !== bp.x)) return ap.y === bp.y ? ap.x - bp.x : ap.y - bp.y
-    if (ap && !bp) return -1
-    if (!ap && bp) return 1
-    return items.indexOf(a) - items.indexOf(b)
-  })
-}
-
-function RosterGroup({
-  id,
-  label,
-  agents,
-  details,
-  assignmentsByAgent,
-  selectedAgentId,
-  onInspect,
-}: {
+function RosterGroup({ id, label, agents, details, selectedAgentId, onInspect, onNew }: {
   id: string
   label: string
   agents: RosterAgent[]
   details: Record<string, CachedPersona>
-  assignmentsByAgent: Map<string, Array<{ formation: FormationNode; slot: FormationSlot }>>
   selectedAgentId: string
   onInspect: (agent: RosterAgent) => void
+  onNew?: () => void
 }) {
   return (
     <section className="roster-group" data-provider={id}>
-      <div className="roster-group-label">{label}</div>
+      <div className="roster-group-label">
+        {label}
+        {onNew ? (
+          <button type="button" className="characters-new" aria-label="New role" title="New role" onClick={onNew}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          </button>
+        ) : null}
+      </div>
       {agents.map(agent => {
-        const status = agentStatus(agent, assignmentsByAgent.get(agent.id)?.length || 0, details[agent.id])
+        const status = agentStatus(agent, details[agent.id])
         const name = agent.displayName || agent.id
         const selected = selectedAgentId === agent.id
         return (
           <button
             key={agent.id}
             type="button"
-            className={`ragent${status.deployedSlots > 0 ? ' deployed' : ''}${agent.unbound ? ' unbound' : ''}${selected ? ' selected' : ''}`}
+            className={`ragent${agent.unbound ? ' unbound' : ''}${selected ? ' selected' : ''}`}
             aria-label={`Inspect ${name}`}
             aria-pressed={selected}
             onClick={() => onInspect(agent)}
@@ -1001,193 +475,22 @@ function RosterGroup({
   )
 }
 
-/* Offline is the resting state, so it is not repeated on every row. In use
-   comes first, so a narrow rail never cuts it off. */
+/* Offline is the resting state, so it is not repeated on every row. */
 function StatusWords({ agent, status }: { agent: RosterAgent; status: AgentStatus }) {
-  const inUse = inSlotsWords(status.deployedSlots)
   const words = [
-    ...(inUse ? [inUse] : []),
     ...(agent.unbound ? [] : [agentRole(agent as FormationAgentProjection)]),
     ...(agent.preset ? [agent.customized ? 'custom' : 'preset'] : []),
     ...(status.liveness === 'offline' ? [] : [status.liveness]),
-    ...status.chips.filter(chip => chip !== inUse),
+    ...status.chips,
   ]
   return (
     <span className="r">
-      {words.map(word => <span key={word} className={word === status.liveness ? `is-${word}` : word === inUse ? 'in-use-words' : undefined}>{word}</span>)}
+      {words.map(word => <span key={word} className={word === status.liveness ? `is-${word}` : undefined}>{word}</span>)}
     </span>
   )
 }
 
-function MissionCard({ mission, slotCounts }: {
-  mission: MissionNode
-  slotCounts: { total: number; staffed: number; open: number }
-}) {
-  const readiness = slotCounts.total === 0
-    ? 'no slots on this mission'
-    : `${slotCounts.staffed}/${slotCounts.total} slots staffed · ${slotCounts.open > 0 ? `${slotCounts.open} open` : 'ready'}`
-  return (
-    <section className="missioncard">
-      <div className="mhd">
-        <span className="meyebrow">◆ Input</span>
-      </div>
-      <div className="mtitle">{mission.title}</div>
-      <div className={`mgoal${mission.goal ? '' : ' placeholder'}`}>{mission.goal || 'set the mission objective…'}</div>
-      <div className={`mstatus${slotCounts.open > 0 || slotCounts.total === 0 ? ' is-open' : ''}`}>{readiness}</div>
-    </section>
-  )
-}
-
-function StaffingEmpty({ title, copy }: { title: string; copy: string }) {
-  return (
-    <div className="empty-board">
-      <div className="empty-title">{title}</div>
-      <div className="empty-copy">{copy}</div>
-    </div>
-  )
-}
-
-function FormationStaffingCard({
-  formation,
-  via,
-  viaGateTitle,
-  store,
-  host,
-  nodeState,
-  selectedSlot,
-  onSlotClick,
-}: {
-  formation: FormationNode | null
-  via?: BranchProvenance
-  viaGateTitle: string
-  store: StaffingStore
-  host: StaffingHost
-  nodeState: string
-  selectedSlot: { formation: FormationNode; slot: FormationSlot } | null
-  onSlotClick: (formation: FormationNode, slot: FormationSlot) => void
-}) {
-  if (!formation) return null
-  const open = formation.slots.filter(slot => !slotStaffed(slot)).length
-  const fallbackLabel = via?.branch === 'fail'
-    ? `fallback on ${viaGateTitle || via.gateId} fail`
-    : via?.branch === 'judge' ? `judges ${viaGateTitle || via.gateId}` : ''
-  const summary = formationSummary(formation)
-  return (
-    <section className={`formation type-${formation.type}${nodeState === 'running' ? ' running' : ''}${nodeState ? ` state-${nodeState}` : ''}`}>
-      <div className="fhead">
-        <div className="ft">
-          <div className="tool-kind">{formation.type}</div>
-          <div className="tt">{formation.title}</div>
-          <div className="tg" title={summary}>{summary}</div>
-        </div>
-        <span className={`io-status ${open > 0 ? 'review' : 'done'}`}>{open > 0 ? `${open} open` : 'staffed'}</span>
-      </div>
-      {fallbackLabel && <div className="fstatus agx-fallback">{fallbackLabel}</div>}
-      <div className="fbody">
-        <FormationSeats
-          formation={formation}
-          renderSlot={(slot, badge) => (
-            <StaffingSeat
-              formation={formation}
-              slot={slot}
-              badge={badge}
-              store={store}
-              host={host}
-              nodeState={nodeState}
-              selected={selectedSlot?.formation.id === formation.id && selectedSlot.slot.id === slot.id}
-              onClick={onSlotClick}
-            />
-          )}
-        />
-      </div>
-    </section>
-  )
-}
-
-function StaffingSeat({
-  formation,
-  slot,
-  badge,
-  store,
-  host,
-  nodeState,
-  selected,
-  onClick,
-}: {
-  formation: FormationNode
-  slot: FormationSlot
-  badge?: number
-  store: StaffingStore
-  host: StaffingHost
-  nodeState: string
-  selected: boolean
-  onClick: (formation: FormationNode, slot: FormationSlot) => void
-}) {
-  useStaffingVersion(store)
-  const key = slotKey(formation.id, slot.id)
-  const saved = staffingOf(slot)
-  const staffing = store.shown(key, saved)
-  const roleName = (id: string) => catalogRoleName(host.catalog, id)
-  const classes = [
-    'slot',
-    staffing ? 'filled' : 'empty',
-    slot.controller ? 'ctrl' : '',
-    nodeState === 'running' ? 'active' : '',
-    nodeState === 'done' ? 'active done' : '',
-    selected ? 'selected' : '',
-  ]
-  return (
-    <button
-      type="button"
-      className={classes.filter(Boolean).join(' ')}
-      aria-label={`Inspect ${slotTitle(slot)}: ${staffing ? `${staffing.role ? roleName(staffing.role) : 'vanilla'} on ${captionText(staffing)}` : 'not staffed'}`}
-      aria-pressed={selected}
-      data-slot-key={key}
-      data-testid={`agents-slot-${formation.id}-${slot.id}`}
-      onClick={() => onClick(formation, slot)}
-    >
-      <SlotFace label={slot.label} badge={badge} staffing={staffing} landed={store.landed(key)} note={store.stamp?.key === key ? store.stamp : null}
-        marks={staffing ? <>
-          {offCatalog(host.catalog, staffing) ? <span className="slot-warn">model not in catalog</span> : null}
-          {roleTrouble(host.catalog, staffing.role) ? <RoleTrouble role={roleName(staffing.role)} trouble={roleTrouble(host.catalog, staffing.role)!} /> : null}
-        </> : null}
-        caption={<SlotCaption shown={staffing} saved={store.current(key, saved)} drafting={store.drafting(key)} landed={store.landed(key)} roleName={roleName} />} />
-    </button>
-  )
-}
-
-function GateRow({
-  gate,
-  state,
-  branchLabels,
-}: {
-  gate: GateNode | null
-  state: string
-  branchLabels?: BranchLabels
-}) {
-  if (!gate) return null
-  const title = gate.title || 'Gate'
-  const criterion = gate.criterion || 'work is accepted before it proceeds'
-  return (
-    <section className={`gatecard${state ? ` state-${state}` : ''}`} data-gate={gate.id}>
-      <span className="gico">{GATE_SVG}</span>
-      <span className="gmeta">
-        <span className="gt">{title}</span>
-        <GateKindChips gateId={gate.id} kinds={gate.kinds} />
-        <span className="gs" title={criterion}>{criterion}</span>
-        {Boolean(branchLabels?.pass.length || branchLabels?.fail.length || branchLabels?.judge.length) && (
-          <span className="agx-branches" aria-label={`${title} branch targets`}>
-            {branchLabels?.judge.length ? <span className="judge">judged by {branchLabels.judge.join(' → ')}</span> : null}
-            {branchLabels?.pass.length ? <span className="pass">pass → {branchLabels.pass.join(', ')}</span> : null}
-            {branchLabels?.fail.length ? <span className="fail">fail → {branchLabels.fail.join(', ')}</span> : null}
-          </span>
-        )}
-      </span>
-    </section>
-  )
-}
-
-function InspectorPanel({ title, meta, onClose, children }: { title: string; meta: string; onClose: () => void; children: ReactNode }) {
+function InspectorPanel({ title, meta, children }: { title: string; meta: string; children: ReactNode }) {
   return (
     <>
       <div className="board-notes-head">
@@ -1195,56 +498,30 @@ function InspectorPanel({ title, meta, onClose, children }: { title: string; met
           <div className="board-notes-title">{title}</div>
           <div className="board-notes-meta">{meta}</div>
         </div>
-        <button className="board-notes-toggle" type="button" aria-label="Close inspector" onClick={onClose}>×</button>
       </div>
       <div className="board-notes-body">{children}</div>
     </>
   )
 }
 
-function Inspector({
-  selection,
-  agents,
-  details,
-  usage,
-  board,
-  assignmentsByAgent,
-  selectedSlot,
-  noteDraft,
-  onNoteDraft,
-  onSaveNote,
-  onStaff,
-  onEmpty,
-  onCreateFromUnbound,
-  onEditPersona,
-  onRetire,
-  onDelete,
-  onShowUse,
-  onClose,
-}: {
+function Inspector({ selection, agents, details, usage, noteDraft, onNoteDraft, onSaveNote, onCreateFromUnbound, onEditPersona, onRetire, onDelete, onShowUse }: {
   selection: Selection
   agents: RosterAgent[]
   details: Record<string, CachedPersona>
   usage: Record<string, RoleUsage>
-  board: BoardDocument | null
-  assignmentsByAgent: Map<string, Array<{ formation: FormationNode; slot: FormationSlot }>>
-  selectedSlot: { formation: FormationNode; slot: FormationSlot } | null
   noteDraft: string
   onNoteDraft: (value: string) => void
   onSaveNote: (agentId: string) => void
-  onStaff: (formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => void
-  onEmpty: (formation: FormationNode, slot: FormationSlot) => void
   onCreateFromUnbound: (agent: RosterAgent) => void
   onEditPersona: (agent: RosterAgent, trigger: HTMLElement) => void
   onRetire: (agentId: string, retired: boolean) => void
   onDelete: (agentId: string) => void
-  onShowUse: (use: RoleUse) => void
-  onClose: () => void
+  onShowUse?: (use: RoleUse) => void
 }) {
   if (selection.kind === 'unbound') {
     const agent = agents.find(next => next.id === selection.agentId)
     return (
-      <InspectorPanel title={agent?.displayName || selection.agentId} meta="unbound session" onClose={onClose}>
+      <InspectorPanel title={agent?.displayName || selection.agentId} meta="unbound session">
         <section className="note-section">
           <p className="note-empty">This live session has no role. A slot can use it once a role exists for it.</p>
           <KeyValues rows={[
@@ -1263,11 +540,11 @@ function Inspector({
     )
   }
 
-  if (selection.kind === 'agent') {
+  {
     const agent = agents.find(next => next.id === selection.agentId)
     const detail = details[selection.agentId]
     const card = detail?.card
-    const assignments = assignmentsByAgent.get(selection.agentId) || []
+    const uses = usage[selection.agentId]?.uses
     const states = [
       agent?.liveness || 'offline',
       card?.status || '',
@@ -1275,12 +552,12 @@ function Inspector({
       !agent?.assignable && !card?.status ? 'not assignable' : '',
     ].filter(Boolean)
     return (
-      <InspectorPanel title={card?.displayName || agent?.displayName || selection.agentId} meta={card?.kind || agent?.kind || 'agent'} onClose={onClose}>
+      <InspectorPanel title={card?.displayName || agent?.displayName || selection.agentId} meta={card?.kind || agent?.kind || 'agent'}>
         <section className="note-section">
           <div className="agx-identity">
             <span className="av">{initials(card?.displayName || agent?.displayName || selection.agentId)}</span>
             <span className="ri">
-              <span className="n">{inSlotsWords(assignments.length) || 'in no slot on this mission'}</span>
+              <span className="n">{uses ? inSlotsWords(uses.length) || 'in no slot' : ''}</span>
               <span className="r">{states.map(state => <span key={state} className={`is-${state}`}>{state}</span>)}</span>
             </span>
             {agent ? (
@@ -1300,7 +577,6 @@ function Inspector({
           name={card?.displayName || agent?.displayName || selection.agentId}
           card={card}
           usage={usage[selection.agentId]}
-          board={board}
           onRetire={retired => onRetire(selection.agentId, retired)}
           onDelete={() => onDelete(selection.agentId)}
           onShowUse={onShowUse}
@@ -1339,39 +615,19 @@ function Inspector({
       </InspectorPanel>
     )
   }
-
-  if (selectedSlot) {
-    return (
-      <SlotInspector
-        agents={agents}
-        formation={selectedSlot.formation}
-        slot={selectedSlot.slot}
-        onStaff={onStaff}
-        onEmpty={onEmpty}
-        onClose={onClose}
-      />
-    )
-  }
-
-  return (
-    <InspectorPanel title="Slot" meta="no longer in this mission" onClose={onClose}>
-      <p className="note-empty">This slot was removed from the mission.</p>
-    </InspectorPanel>
-  )
 }
 
 /**
  * Every slot, in every mission, that uses the role, then Retire and Delete,
  * each of which says what it does to those slots before it acts (archon-o7p.12.3).
  */
-function RoleUsageSection({ name, card, usage, board, onRetire, onDelete, onShowUse }: {
+function RoleUsageSection({ name, card, usage, onRetire, onDelete, onShowUse }: {
   name: string
   card?: PersonaCard
   usage?: RoleUsage
-  board: BoardDocument | null
   onRetire: (retired: boolean) => void
   onDelete: () => void
-  onShowUse: (use: RoleUse) => void
+  onShowUse?: (use: RoleUse) => void
 }) {
   const [confirm, setConfirm] = useState<'retire' | 'delete' | null>(null)
   const uses = usage?.uses
@@ -1379,12 +635,6 @@ function RoleUsageSection({ name, card, usage, board, onRetire, onDelete, onShow
   // A built-in role has no card to delete; a card that changes one can go.
   const deletable = Boolean(card) && (!card?.preset || card?.customized)
   const slots = (count: number) => `${count} ${count === 1 ? 'slot' : 'slots'}`
-  const staffingHere = (use: RoleUse) => {
-    if (!board || board.id !== use.missionId) return ''
-    const slot = board.formations.find(formation => formation.id === use.formationId)?.slots.find(next => next.id === use.slotId)
-    const staffing = slot ? staffingOf(slot) : null
-    return staffing ? captionText(staffing) : ''
-  }
   return (
     <section className="note-section" aria-label="Used by">
       <h3>Used by</h3>
@@ -1394,9 +644,8 @@ function RoleUsageSection({ name, card, usage, board, onRetire, onDelete, onShow
       {uses && uses.length > 0 ? (
         <div className="tool-detail-list">
           {uses.map(use => (
-            <button type="button" className="tool-detail-row agx-role-slot agx-role-use" key={`${use.missionId}:${use.formationId}:${use.slotId}`} onClick={() => onShowUse(use)}>
+            <button type="button" className="tool-detail-row agx-role-slot agx-role-use" key={`${use.missionId}:${use.formationId}:${use.slotId}`} title={`Open ${use.missionTitle} on Missions`} onClick={() => onShowUse?.(use)}>
               <span>{use.missionTitle} › {use.formationTitle} › <strong>{use.slotLabel || use.slotId}</strong></span>
-              <span className="agx-role-slot-runs">{staffingHere(use)}</span>
             </button>
           ))}
         </div>
@@ -1431,92 +680,6 @@ function RoleUsageSection({ name, card, usage, board, onRetire, onDelete, onShow
           {deletable ? <button className="cancel" type="button" disabled={!uses} onClick={() => setConfirm('delete')}>{card?.customized ? 'Delete changes' : 'Delete'}</button> : null}
         </div>
       )}
-    </section>
-  )
-}
-
-/** A slot's staffing as its sentence; each word drops the staffing window from itself (archon-o7p.17). */
-function SlotInspector({
-  agents,
-  formation,
-  slot,
-  onStaff,
-  onEmpty,
-  onClose,
-}: {
-  agents: RosterAgent[]
-  formation: FormationNode
-  slot: FormationSlot
-  onStaff: (formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => void
-  onEmpty: (formation: FormationNode, slot: FormationSlot) => void
-  onClose: () => void
-}) {
-  const staffing = staffingOf(slot)
-  const roleName = roleNamer(agents as FormationAgentProjection[])
-  // The sentence window drops from the word clicked, as a dropdown does.
-  const open = (part: Part | null) => (event: ReactMouseEvent<HTMLElement>) => onStaff(formation, slot, part, event.currentTarget)
-  const word = (part: Part, text: string) => (
-    <button type="button" className={`nslot-word${part === 'effort' ? ' effort' : ''}`} aria-label={`Change the ${part} of ${slot.label}: ${text}`} onClick={open(part)}>{text}</button>
-  )
-  return (
-    <InspectorPanel title={slot.label} meta={`slot · ${formation.title}`} onClose={onClose}>
-      <section className="note-section">
-        {staffing ? (
-          <p className="agx-staffing-words" data-testid="slot-staffing-words">
-            {slotTitle(slot)} is {word('role', staffing.role ? roleName(staffing.role) : 'vanilla')} on{' '}
-            {word('harness', harnessName(staffing.harness) || staffing.harness || 'no harness')} · {word('model', modelWords(staffing.model))} · {word('effort', staffing.effort || 'no effort')}.
-          </p>
-        ) : (
-          <p className="agx-staffing-words" data-testid="slot-staffing-words">
-            {staffingSentence(slot, roleName)} <button type="button" className="nslot-word" aria-label={`Staff ${slot.label}`} onClick={open(null)}>Staff it</button>
-          </p>
-        )}
-        <KeyValues rows={[
-          ['Controller', slot.controller ? 'yes' : 'no'],
-          ['Role', staffing ? (staffing.role ? roleName(staffing.role) : 'vanilla') : ''],
-          ['Harness', staffing ? captionText(staffing).split(' · ')[0] : ''],
-          ['Model', staffing ? modelWords(staffing.model) : ''],
-          ['Effort', staffing ? staffing.effort || 'no effort' : ''],
-        ]} />
-        {slotStaffed(slot) && (
-          <div className="pop-actions">
-            <button className="retire" type="button" onClick={() => onEmpty(formation, slot)}>
-              Empty {slot.label}
-            </button>
-          </div>
-        )}
-      </section>
-    </InspectorPanel>
-  )
-}
-
-/* The mission's run, read-only. Start, answer, resume and stop happen on Boards. */
-function MissionRunState({ board, missionRun }: { board: BoardDocument; missionRun: MissionRunState }) {
-  const { run, openCount, blockReason } = missionRun
-  if (!run) {
-    return (
-      <section className="run-banner agx-run-banner" data-testid="mission-run" aria-label="Mission run">
-        <span className="agx-run-label">run</span>
-        <span className="agx-run-none">No run for this mission yet.</span>
-        <a className="agx-run-link" href={boardsRunHref(board.slug, '')}>Start it on Missions</a>
-      </section>
-    )
-  }
-  const gateTitle = (gateId: string) => (board.gates || []).find(gate => gate.id === gateId)?.title || gateId
-  const waiting = (run.waitingGates || []).map(gate => gateTitle(gate.gateId))
-  return (
-    <section className="run-banner agx-run-banner" data-testid="mission-run" aria-label="Mission run">
-      <span className="agx-run-label">run</span>
-      <span className={`badge ${run.status}`}>{runStatusLabel(run.status)}</span>
-      <span className="agx-run-id" title={run.runId}>…{run.runId.slice(-6)}</span>
-      {waiting.length ? <span>waiting on {waiting.join(', ')}</span> : null}
-      {run.status === 'blocked' ? (
-        <span className="agx-run-reason" title={blockReason || undefined}>
-          {blockReason ? `blocked: ${blockReason}` : 'blocked'}{run.resumeAllowed ? ' · resumable' : ''}
-        </span>
-      ) : null}
-      {openCount > 1 ? <span>{openCount} open runs</span> : null}
-      <a className="agx-run-link" href={boardsRunHref(board.slug, run.runId)}>Open on Missions</a>
     </section>
   )
 }
@@ -1583,12 +746,6 @@ function TagList({ tags }: { tags: string[] }) {
       {tags.map(tag => <span key={tag}>{tag}</span>)}
     </div>
   )
-}
-
-function findSlot(board: BoardDocument | null, formationId: string, slotId: string): { formation: FormationNode; slot: FormationSlot } | null {
-  const formation = board?.formations.find(next => next.id === formationId)
-  const slot = formation?.slots.find(next => next.id === slotId)
-  return formation && slot ? { formation, slot } : null
 }
 
 function splitCommaList(value: string): string[] {
