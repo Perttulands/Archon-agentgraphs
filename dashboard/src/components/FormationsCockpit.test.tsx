@@ -2060,7 +2060,8 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.change(within(win).getByRole('textbox', { name: 'Input hint' }), { target: { value: 'Paste the page sketch and its copy deck.' } })
     fireEvent.click(within(win).getByRole('button', { name: 'Save input hint' }))
     await waitFor(() => expect(patches.find(patch => patch.body.updateInputCard)?.body.updateInputCard).toEqual({ id: 'mis_showcase', inputHint: 'Paste the page sketch and its copy deck.' }))
-    expect(await within(win).findByText('Paste the page sketch and its copy deck.')).toBeInTheDocument()
+    // The field redraws once the saved mission lands, so the text is read again until it stays.
+    await waitFor(() => expect(within(win).getByText('Paste the page sketch and its copy deck.')).toBeInTheDocument())
 
     fireEvent.click(screen.getByTestId('run-mission-mis_showcase'))
     const start = await screen.findByRole('dialog', { name: 'Start mission' })
