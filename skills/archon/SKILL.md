@@ -163,7 +163,10 @@ base for the cockpit or a seat. A file that does not exist yet is saved with a
 Each slot sets its own harness, model and effort, in the mission, where the
 operator can see them: `formation assign "$M" <formation> --slot <slot>
 --harness <h> --effort <e> [--model <m>] [--role <role>]`. `--effort` is
-required; a blank `--model` means the harness default. `claude-code` takes
+required; a blank `--model` means the harness default. The operator may have
+saved characters, named staffings listed by `agent characters`:
+`--character <id>` stamps one's role, harness, model and effort onto the slot,
+and any of those flags given beside it wins. `claude-code` takes
 `low`, `medium`, `high`, `xhigh` or `max`; `openai-codex` also takes `ultra`,
 though a known Codex model may take fewer (`gpt-5.5` stops at `xhigh`). The
 known models are in `GET /api/agents` `harnesses[].models` and the `formation

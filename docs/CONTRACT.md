@@ -1598,7 +1598,10 @@ one in full; `DELETE /api/characters/{id}` removes it. A harness, model or
 effort a slot could not take is refused with HTTP 422 `INVALID_CHARACTER`. No
 route changes a mission: the dashboard stamps a slot with the ordinary
 `assignSlot` edit, from the slot's row in the step window or by dragging the
-character from the roster. Characters are made and edited in the Agents view.
+character from the roster. Characters are made and edited in the Agents view. On
+the CLI, `agent characters` lists them and `formation assign --character <id>`
+stamps one, each of `--role`, `--harness`, `--model` and `--effort` given
+beside it replacing that value.
 
 With `--server`, Archon runs these authoring and read commands through the
 daemon, so an open cockpit sees the edits through its change polling: `mission

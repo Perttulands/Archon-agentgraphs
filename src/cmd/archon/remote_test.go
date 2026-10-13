@@ -185,6 +185,12 @@ func newAuthoringSides(t *testing.T) (offline, remote authoringSide, server *htt
 		handler.ServeHTTP(w, r)
 	}))
 	t.Cleanup(func() { server.Close(); c.Close() })
+	// Both sides hold the same saved character, for agent characters and formation assign --character.
+	for _, root := range []string{offlineRoot, remoteRoot} {
+		if _, err := formations.NewCharacterStore(filepath.Join(root, "agents")).Create(formations.Character{Name: "Careful builder", AgentID: "builder", Harness: "openai-codex", Effort: "medium", Picture: "data:image/png;base64,AAAA"}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	remote = authoringSide{name: "remote", store: formations.NewStore(remoteRoot), run: func(args ...string) (string, string, int) {
 		return runArchon(t, runner, append([]string{"--server", server.URL}, args...)...)
 	}}
@@ -325,6 +331,17 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"formation", "unassign", "demo", "Worker", "--slot", worker(board).Slots[0].ID}
 		})},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--role", "builder", "--harness", "openai-codex", "--effort", "medium"}
+		})},
+		// A character stamps its staffing; a flag given beside it wins (archon-u1mc).
+		{args: with(fixed("agent", "characters"))},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--character", "careful-builder", "--effort", "high"}
+		})},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--character", "nobody"}
+		}), errorOnly: true},
 		{args: with(func(board *formations.BoardDocument) []string {
 			return []string{"formation", "assign", "demo", "Worker", "--slot", worker(board).Slots[0].ID, "--role", "builder", "--harness", "openai-codex", "--effort", "medium"}
 		})},

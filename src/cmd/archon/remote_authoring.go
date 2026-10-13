@@ -67,6 +67,7 @@ var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
 	"tool inspect":         remoteToolInspect,
 	"agent list":           remoteAgentList,
 	"agent inspect":        remoteAgentInspect,
+	"agent characters":     remoteAgentCharacters,
 	"agent new":            remoteAgentNew,
 	"agent edit":           remoteAgentEdit,
 	"agent retire":         remoteAgentRetire(false),
@@ -840,6 +841,9 @@ func remoteFormationAssign(c *remoteClient, args []string, stdout, stderr io.Wri
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
 	}
+	if err := f.stamp(fs, c.characters); err != nil {
+		return failJSON(stderr, err, *f.jsonOut, "character", *f.character)
+	}
 	role, ok := f.resolve(fs, stderr)
 	if !ok {
 		return 2
@@ -1193,6 +1197,32 @@ func remoteAgentDelete(c *remoteClient, args []string, stdout, stderr io.Writer)
 }
 
 // agent list reports the liveness the daemon sees, not the local tmux server.
+// characters reads the daemon's saved characters.
+func (c *remoteClient) characters() ([]formations.Character, error) {
+	data, _, err := c.call("GET", "/api/characters", nil, "")
+	if err != nil {
+		return nil, err
+	}
+	characters, err := decodeRemote[[]formations.Character](data, "characters")
+	if err != nil {
+		return nil, err
+	}
+	return *characters, nil
+}
+
+func remoteAgentCharacters(c *remoteClient, args []string, stdout, stderr io.Writer) int {
+	fs := remoteFlags("agent characters", stderr)
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	characters, err := c.characters()
+	if err != nil {
+		return fail(stderr, err)
+	}
+	return listCharacters(stdout, characters, *jsonOut)
+}
+
 func remoteAgentList(c *remoteClient, args []string, stdout, stderr io.Writer) int {
 	fs := remoteFlags("agent list", stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")

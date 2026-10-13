@@ -51,7 +51,7 @@ var nounHelps = []nounHelp{
 		{"create", "<mission> [solo|peer|orchestrated] [--title <title>] [--x n] [--y n] [--json]", "add a step. It is solo unless you name another type"},
 		{"list", "<mission> [--json]", "list the steps with their slots and staffing"},
 		{"inspect", "<mission> <formation> [--json]", "print one step with its slots, ports, brief and connections"},
-		{"assign", "<mission> <formation> --slot <slot> --harness <claude-code|openai-codex> --effort <effort> [--model <model>] [--role <persona>] [--json]", "staff a slot. A slot owns its harness, model and effort; --role adds optional role text, and a slot without one is a vanilla agent"},
+		{"assign", "<mission> <formation> --slot <slot> (--character <id> | --harness <claude-code|openai-codex> --effort <effort>) [--model <model>] [--role <persona>] [--json]", "staff a slot. A slot owns its harness, model and effort; --role adds optional role text, and a slot without one is a vanilla agent. --character stamps a saved character's role, harness, model and effort, each replaced by its own flag when given; the slot keeps no link to it"},
 		{"unassign", "<mission> <formation> --slot <slot> [--json]", "empty a slot"},
 		{"set-brief", "<mission> <formation> --goal <goal> [--bead <beads-id>] [--file <path>]... [--link <url>]... [--json]", "write the step's brief"},
 		{"rename", "<mission> <formation> <title> [--json]", "change the step's title"},
@@ -90,6 +90,7 @@ var nounHelps = []nounHelp{
 	{noun: "agent", summary: "role cards", about: "A role card is generic role text a slot may use; the slot owns its harness, model and effort.", commands: []commandHelp{
 		{"list", "[--capable <capability>] [--assignable] [--json]", "list the roles and their liveness"},
 		{"inspect", "<id> [--json]", "print a role card"},
+		{"characters", "[--json]", "list the saved characters: named staffings formation assign --character stamps onto a slot"},
 		{"new", "<id> [--kind <kind>] [--capable a,b] [--personality p] [--json]", "create a role card. A role is role text; each slot that uses it states its own harness, model and effort (archon formation assign)"},
 		{"edit", "<id> [--display-name n] [--kind k] [--summary s] [--capable a,b] [--add-capability t | --remove-capability t | --note text] [--json]", "change a role card"},
 		{"spawn", "<id> --harness <h> --effort <effort> [--model <model>]", "start the role's own session. A role carries no harness, model or effort; the spawn states them, as a slot does"},

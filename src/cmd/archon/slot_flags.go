@@ -44,6 +44,7 @@ func printWarnings(stderr io.Writer, warnings []string) {
 
 type slotAssignFlags struct {
 	slot, role, harness, model, effort, updatedBy *string
+	character                                     *string
 	jsonOut                                       *bool
 }
 
@@ -54,6 +55,7 @@ func newSlotAssignFlags(fs *flag.FlagSet, stderr io.Writer) slotAssignFlags {
 		harness:   fs.String("harness", "", "harness the seat runs: claude-code or openai-codex"),
 		model:     fs.String("model", "", "model the seat runs; blank means the harness default model"),
 		effort:    fs.String("effort", "", "reasoning effort; policy: "+formations.EffortPolicyText()),
+		character: fs.String("character", "", "saved character (agent characters) to staff the slot as: its role, harness, model and effort, each replaced by its own flag when given"),
 		updatedBy: fs.String("updated-by", "agent:archon", "update actor"),
 		jsonOut:   fs.Bool("json", false, "write JSON"),
 	}
@@ -62,6 +64,64 @@ func newSlotAssignFlags(fs *flag.FlagSet, stderr io.Writer) slotAssignFlags {
 		fs.PrintDefaults()
 	}
 	return flags
+}
+
+// stamp fills the staffing flags left unset from the --character named, if
+// any. The slot keeps the values and no link to the character.
+func (f slotAssignFlags) stamp(fs *flag.FlagSet, list func() ([]formations.Character, error)) error {
+	if *f.character == "" {
+		return nil
+	}
+	characters, err := list()
+	if err != nil {
+		return err
+	}
+	given := map[string]bool{}
+	fs.Visit(func(current *flag.Flag) { given[current.Name] = true })
+	for _, character := range characters {
+		if character.ID != *f.character {
+			continue
+		}
+		for name, value := range map[string]struct {
+			flag *string
+			from string
+		}{"role": {f.role, character.AgentID}, "harness": {f.harness, character.Harness}, "model": {f.model, character.Model}, "effort": {f.effort, character.Effort}} {
+			if !given[name] {
+				*value.flag = value.from
+			}
+		}
+		return nil
+	}
+	ids := []string{}
+	for _, character := range characters {
+		ids = append(ids, character.ID)
+	}
+	if len(ids) == 0 {
+		return fmt.Errorf("no character %q: no characters are saved; make one in the Agents view", *f.character)
+	}
+	return fmt.Errorf("no character %q; the saved characters are %s", *f.character, strings.Join(ids, ", "))
+}
+
+// listCharacters prints the saved characters for agent characters, offline and
+// remote; a picture is a data URL no reader of this list needs.
+func listCharacters(stdout io.Writer, characters []formations.Character, jsonOut bool) int {
+	for i := range characters {
+		characters[i].Picture = ""
+	}
+	if jsonOut {
+		return writeJSON(stdout, map[string]any{"characters": characters})
+	}
+	for _, character := range characters {
+		role, model := character.AgentID, character.Model
+		if role == "" {
+			role = "vanilla"
+		}
+		if model == "" {
+			model = "default model"
+		}
+		fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\t%s\t%s\n", character.ID, character.Name, role, character.Harness, model, character.Effort)
+	}
+	return 0
 }
 
 // resolve checks the parsed flags: a slot, a harness and an effort are

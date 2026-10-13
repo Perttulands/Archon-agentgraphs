@@ -188,6 +188,17 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 			return runAgentList(store, args[2:], stdout, stderr, runner)
 		case "inspect":
 			return runAgentInspect(store, args[2:], stdout, stderr)
+		case "characters":
+			fs := commandFlags("agent characters", stderr)
+			jsonOut := fs.Bool("json", false, "write JSON")
+			if err := fs.Parse(args[2:]); err != nil {
+				return 2
+			}
+			characters, err := formations.NewCharacterStore(dir).List()
+			if err != nil {
+				return fail(stderr, err)
+			}
+			return listCharacters(stdout, characters, *jsonOut)
 		case "new":
 			return runAgentNew(store, args[2:], stdout, stderr)
 		case "edit":
@@ -784,6 +795,9 @@ func runFormationAssign(store *formations.Store, args []string, stdout, stderr i
 	f := newSlotAssignFlags(fs, stderr)
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
 		return 2
+	}
+	if err := f.stamp(fs, formations.NewCharacterStore(formations.AgentsDir(store.Workspace)).List); err != nil {
+		return failJSON(stderr, err, *f.jsonOut, "character", *f.character)
 	}
 	role, ok := f.resolve(fs, stderr)
 	if !ok {
