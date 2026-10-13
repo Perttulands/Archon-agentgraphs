@@ -274,7 +274,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const historicalRef = useRef(historical)
   historicalRef.current = historical
   const board = historical ? (frozen && frozen.runId === activeRun?.runId ? frozen.graph : null) : currentBoard
-  const layout = useMemo(() => historical && board ? { ...missingLayoutForBoard(board), nodes: missingLayoutForBoard(board).nodes.map(node => currentLayout?.nodes.find(current => current.id === node.id) ?? node) } : currentLayout, [historical, board, currentLayout])
+  // A frozen run keeps the positions its cards have on the current mission; node IDs survive revisions.
+  const layout = useMemo(() => historical && board ? { ...missingLayoutForBoard(board), nodes: currentLayout?.nodes ?? [] } : currentLayout, [historical, board, currentLayout])
   useEffect(() => {
     if (!historical || !activeRun) return
     let cancelled = false
@@ -571,11 +572,11 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   useEffect(() => {
     // Paused while the tab is hidden (keep-alive); reactivation re-runs this
     // effect and refreshes immediately via the leading checkChanges() call.
-    if (!active || !selectedSlug || !board?.etag) return
+    if (!active || !selectedSlug || !currentBoard?.etag) return
     let cancelled = false
     const checkChanges = async () => {
       try {
-        const changed = await fetchBoardChanged(selectedSlug, board.etag)
+        const changed = await fetchBoardChanged(selectedSlug, currentBoard.etag)
         if (cancelled || !changed) return
         const { board: nextBoard, layout: nextLayout } = await fetchBoardWithLayout(selectedSlug)
         if (cancelled) return
@@ -589,7 +590,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     void checkChanges()
     const timer = window.setInterval(() => { void checkChanges() }, 600)
     return () => { cancelled = true; window.clearInterval(timer) }
-  }, [active, board?.etag, selectedSlug])
+  }, [active, currentBoard?.etag, selectedSlug])
 
   useEffect(() => {
     // Draft markers follow each board revision. A rejected run keeps its nodes

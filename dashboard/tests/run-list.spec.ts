@@ -67,6 +67,11 @@ for (const entry of ['list', 'link'] as const) {
     await expect(page.getByTitle('Start mission', { exact: true }).first()).toBeDisabled()
     await expect(page.getByTitle('Run formation', { exact: true }).first()).toBeDisabled()
     await expect(page.locator('.formation').first()).toContainText('Frozen')
+    // The frozen cards stay where the mission's layout puts them, not on fallback positions.
+    const first = page.locator('.formation').first()
+    const saved = await page.evaluate(async id => (await (await fetch('/api/missions/browser/layout')).json()).data.layout.nodes.find((node: { id: string }) => node.id === id), await first.getAttribute('data-node'))
+    await expect(first).toHaveCSS('left', `${saved.x}px`)
+    await expect(first).toHaveCSS('top', `${saved.y}px`)
     // Notes opened through the toolbar also respect the historical boundary.
     await page.getByRole('button', { name: 'Mission notes', exact: true }).click()
     const notes = page.getByRole('dialog', { name: 'mission notes', exact: true })
