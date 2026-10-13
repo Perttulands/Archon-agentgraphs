@@ -241,6 +241,8 @@ export interface RunStatusProjection {
   resumeAllowed?: boolean
   /** grant while the run is blocked at a spent Limit card: it resumes only with one more round granted. */
   resumePolicy?: 'grant'
+  /** The code of the block a run rests at, such as invalid_judge_result. */
+  blockCode?: string
   /** The channel frozen from the run's mission (ADR-0019); formation-only runs notify. */
   humanChannel?: 'notify' | 'session'
   /** Seats kept after their formation finished, to answer human gate asks. */

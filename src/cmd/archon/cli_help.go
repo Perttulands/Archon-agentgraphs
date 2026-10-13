@@ -106,7 +106,7 @@ var nounHelps = []nounHelp{
 		{"wait", "<runId> [--until needs-you|final|any-change] [--since <seq>] [--timeout <duration>] [--reconnect <duration>] [--json]", "block until the run needs you, ends or changes. Needs --server"},
 		{"gates", "<runId> [--json]", "list a run's waiting gates and the seats they asked. Needs --server"},
 		{"seats", "<runId> [--json]", "list a run's seats, their session names and what each waits on. Needs --server"},
-		{"resume", "<runId> [--mode reattach|redispatch] [--grant] [--reason text] [--actor actor] [--json]", "resume a blocked run. --grant gives a step its spent Limit card stopped one more round, or the card's time or tokens again"},
+		{"resume", "<runId> [--mode reattach|redispatch] [--grant] [--take-fail] [--reason text] [--actor actor] [--json]", "resume a blocked run. --grant gives a step its spent Limit card stopped one more round, or the card's time or tokens again. At a judge verdict Archon rejected, resume asks the judge again and --take-fail fails the gate instead"},
 		{"abort", "<runId> [--reason <reason>] [--requested-by <actor>] [--json]", "stop a run"},
 		{"ask", "<runId> [question] [--json]", "summarize what a run has done, offline"},
 	}},

@@ -1234,6 +1234,8 @@ func runGateJudge(store *formations.Store, args []string, stdout, stderr io.Writ
 }
 
 // grantUsage describes run resume --grant, offline and remote (archon-o7p.8).
+const takeFailUsage = "settle a gate blocked on a judge verdict Archon rejected as a fail: the gate fails and routes, and the judge is not asked again; without it, resume asks the judge again"
+
 const grantUsage = "give the step a spent Limit card stopped one more allowance (one more round, or the card's time or tokens again); the ledger records the grant and who gave it"
 
 // relayedByUsage describes gate approve|reject --relayed-by, offline and remote.
@@ -1860,8 +1862,9 @@ func runResume(store *formations.Store, args []string, stdout, stderr io.Writer)
 	mode := fs.String("mode", "reattach", "resume mode")
 	reason := fs.String("reason", "", "resume reason")
 	grant := fs.Bool("grant", false, grantUsage)
+	takeFail := fs.Bool("take-fail", false, takeFailUsage)
 	jsonOut := fs.Bool("json", false, "write JSON")
-	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true, "grant": true})); err != nil {
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true, "grant": true, "take-fail": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
@@ -1876,10 +1879,11 @@ func runResume(store *formations.Store, args []string, stdout, stderr io.Writer)
 	personas := formations.NewPersonaStore(formations.AgentsDir(store.Workspace))
 	engine := newArchonRunEngine(store, personas, "archon")
 	status, err := engine.ResumeRun(fs.Arg(0), formations.RunResumeRequest{
-		Actor:  *actor,
-		Mode:   *mode,
-		Reason: *reason,
-		Grant:  *grant,
+		Actor:    *actor,
+		Mode:     *mode,
+		Reason:   *reason,
+		Grant:    *grant,
+		TakeFail: *takeFail,
 	})
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))

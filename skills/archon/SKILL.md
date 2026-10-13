@@ -239,7 +239,8 @@ exactly `verdict` (`pass` or `fail`), `reason` (string) and `evidence` (array of
 strings), in one fenced block separate from `archon-outputs`. For a missing or
 malformed verdict it re-prompts the same live seat once with the parse error.
 If that correction fails, the run blocks resumably; `run resume` reruns the
-failed final judge while retaining earlier completed reviews.
+failed final judge while retaining earlier completed reviews. `run resume
+--take-fail` settles the gate as a fail instead, without asking the judge again.
 
 Dropping a kind drops its configuration: `gate update "$M" "$GATE" --kinds
 human` turns a code gate into a human gate; `--clear-check` clears the check and

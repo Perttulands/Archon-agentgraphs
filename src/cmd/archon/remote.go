@@ -138,6 +138,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	jsonOut := fs.Bool("json", false, "write JSON")
 	var responseFile, missionFilter string
 	mode, reason, relayedBy, seq, grant := new(string), new(string), new(string), new(int), new(bool)
+	takeFail := new(bool)
 	switch {
 	case verdict:
 		fs.StringVar(reason, "response", "", "the response: approve delivers it downstream with the gate input, reject sends it back as feedback")
@@ -148,12 +149,13 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		fs.StringVar(mode, "mode", "reattach", "resume mode: reattach or redispatch")
 		fs.StringVar(reason, "reason", "", "operator reason")
 		fs.BoolVar(grant, "grant", false, grantUsage)
+		fs.BoolVar(takeFail, "take-fail", false, takeFailUsage)
 	case name == "run abort":
 		fs.StringVar(reason, "reason", "", "operator reason")
 	case name == "run list":
 		fs.StringVar(&missionFilter, "mission", "", "the mission whose runs to list")
 	}
-	if err := fs.Parse(reorderFlags(args[2:], map[string]bool{"json": true, "grant": true})); err != nil {
+	if err := fs.Parse(reorderFlags(args[2:], map[string]bool{"json": true, "grant": true, "take-fail": true})); err != nil {
 		return 2
 	}
 	pos := fs.Args()
@@ -170,7 +172,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		if args[1] == "abort" {
 			body = map[string]any{"reason": *reason, "requestedBy": "operator:archon"}
 		} else {
-			body = map[string]any{"reason": *reason, "actor": "operator:archon", "mode": *mode, "grant": *grant}
+			body = map[string]any{"reason": *reason, "actor": "operator:archon", "mode": *mode, "grant": *grant, "takeFail": *takeFail}
 		}
 	case "run list":
 		path += "/runs"

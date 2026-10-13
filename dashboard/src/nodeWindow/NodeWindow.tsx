@@ -59,6 +59,8 @@ export interface NodeWindowOps {
   setBrief: (formationId: string, brief: FormationBrief) => Promise<boolean>
   changeType: (formation: FormationNode, type: FormationType, keepSlotId?: string) => void
   /** Opens the slot's staffing sentence dropping from the word that was clicked; a word opens only its own list. */
+  /** Moves the run past a judge verdict Archon rejected: asks the judge again, or takes the verdict as a fail. */
+  settleJudge: (takeFail: boolean) => Promise<void>
   staffSlot: (formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => void
   /** Stamps a saved character onto the slot: its role, harness, model and effort, with no link kept. */
   stampSlot: (formation: FormationNode, slot: FormationSlot, character: Character) => void
@@ -194,7 +196,7 @@ export default function NodeWindow({ readOnly = false, runId, nodeId, board, age
         ) : null}
         {!withTerminal || details ? <div className="nwin-fields">
         <div className="nwin-eyebrow">{eyebrow}</div>
-        {located.kind === 'gate' && runId && runState !== undefined ? <GateRunFacts runId={runId} gateId={nodeId} /> : null}
+        {located.kind === 'gate' && runId && runState !== undefined ? <GateRunFacts runId={runId} gateId={nodeId} onSettle={ops.settleJudge} /> : null}
         <NodeProblems findings={findings} />
         <EditableField initiallyEditing={initiallyEditTitle} label="Title" value={located.node.title} placeholder={UNTITLED[located.kind]} onSave={title => ops.rename(nodeId, title)} />
         {located.kind === 'inputCard' ? <MissionFields mission={located.node} ops={ops} /> : null}

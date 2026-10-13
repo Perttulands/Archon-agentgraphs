@@ -2,6 +2,7 @@ package formations
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -2672,6 +2673,9 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 			delete(answered, chain[len(chain)-1].ID)
 		}
 	}
+	if text, ok := takenJudgeFail(events[evaluating:], req.GateID); ok {
+		return text, nil
+	}
 	input := req.Input
 	var finalText string
 	replaying := true
@@ -2761,6 +2765,30 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 		}
 	}
 	return finalText, nil
+}
+
+// takenJudgeFail answers for the judge when the gate's latest block on a
+// rejected verdict was resumed with the verdict taken as a fail: a verdict in
+// the judge's own form, naming who took it and what was rejected.
+func takenJudgeFail(events []RunEvent, gateID string) (string, bool) {
+	rejected, text := "", ""
+	for _, event := range events {
+		switch {
+		case event.Type == RunEventBlocked:
+			rejected, text = "", ""
+			if event.GateID == gateID && stringFromEventData(event, "code") == "invalid_judge_result" {
+				rejected = stringFromEventData(event, "reason")
+			}
+		case event.Type == RunEventResumed && rejected != "" && stringFromEventData(event, "judgeVerdict") == "fail":
+			reason := "taken as a fail by " + stringFromEventData(event, "resumedBy") + ": the judge's verdict was rejected (" + rejected + ")"
+			if why := stringFromEventData(event, "reason"); why != "" {
+				reason += "; " + why
+			}
+			raw, _ := json.Marshal(map[string]any{"verdict": "fail", "reason": reason, "evidence": []string{}})
+			text = "```archon-verdict\n" + string(raw) + "\n```\n"
+		}
+	}
+	return text, text != ""
 }
 
 func (e *RunEngine) appendErrorAndBlock(runID, code, message, boundary, nodeID, blockReason string) error {

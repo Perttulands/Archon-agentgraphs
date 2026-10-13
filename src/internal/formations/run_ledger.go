@@ -21,6 +21,9 @@ var (
 	ErrRunGrantRequired = errors.New("this run stopped at a spent limit: resume it with --grant to give one more round or the card's time or tokens again")
 	// ErrRunNothingToGrant refuses --grant on a block no limit recorded.
 	ErrRunNothingToGrant = errors.New("this block is not a spent limit, so there is nothing to grant: resume without --grant")
+	// ErrRunNoVerdictToTake refuses --take-fail on a block that is not a
+	// rejected judge verdict.
+	ErrRunNoVerdictToTake = errors.New("this block is not a rejected judge verdict, so there is no verdict to take as a fail: resume without --take-fail")
 	// ErrHumanRequestNotPending refuses a verdict on a request that was
 	// answered, or replaced by a newer request on the same gate.
 	ErrHumanRequestNotPending = errors.New("human gate request is no longer pending")
@@ -81,6 +84,9 @@ type RunResumeRequest struct {
 	// Grant gives the Limit card a spent limit stopped one more allowance;
 	// a block at a spent limit resumes only with it (archon-o7p.8).
 	Grant bool
+	// TakeFail settles a gate blocked on a judge verdict Archon rejected: the
+	// gate fails and routes, and the judge is not asked again (archon-lrbd).
+	TakeFail bool
 	// Set only after explicit completed-turn evidence validation by the engine.
 	CompletedDispatchID string
 }
@@ -131,6 +137,9 @@ type RunStatusProjection struct {
 	// ResumePolicy is how a blocked run resumes: grant at a spent limit,
 	// which resumes only with run resume --grant (archon-o7p.8).
 	ResumePolicy string `json:"resumePolicy,omitempty"`
+	// BlockCode is the code of the block a run rests at, such as
+	// invalid_judge_result, which run resume --take-fail settles.
+	BlockCode string `json:"blockCode,omitempty"`
 	// EndedBy names who failed or canceled a final run; the reason itself is
 	// run evidence (ADR-0017), since it can quote private text.
 	EndedBy string `json:"endedBy,omitempty"`
@@ -518,6 +527,12 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		if reason := strings.TrimSpace(req.Reason); reason != "" {
 			data["reason"] = reason
 		}
+		if req.TakeFail {
+			if runBlockCode(lifecycle, len(lifecycle)-1) != "invalid_judge_result" {
+				return ErrRunNoVerdictToTake
+			}
+			data["judgeVerdict"] = "fail"
+		}
 		if req.Grant {
 			// One more allowance of the knob the block spent, as the ledger
 			// records who gave it: one round, or the card's time or tokens
@@ -659,6 +674,7 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 			status.Final = false
 			status.ResumeAllowed = runBlockResumeAllowed(events, i)
 			status.ResumePolicy = ""
+			status.BlockCode = runBlockCode(events, i)
 			if runBlockNeedsGrant(events, i) {
 				status.ResumePolicy = ResumePolicyGrant
 			}
@@ -677,6 +693,9 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 			status.Final = true
 			status.ResumeAllowed = false
 		}
+	}
+	if status.Final || status.Status != RunStatusBlocked {
+		status.BlockCode = ""
 	}
 	if status.Final {
 		status.ResumePolicy = ""

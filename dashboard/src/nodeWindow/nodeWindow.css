@@ -113,3 +113,7 @@ button.nwin-route:hover { color: var(--accent); text-decoration-color: var(--acc
   .fwin.nwin-terminal-window .floating-frame-handle { display: none; }
   .nwin.with-terminal:not(.details) .nsetup { display: none; }
 }
+.ngate-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ngate-actions button { height: 28px; padding: 0 12px; border: 1px solid var(--divider); border-radius: 4px; background: var(--surface-secondary); color: var(--text-primary); font: inherit; cursor: pointer; }
+.ngate-actions button:hover:not(:disabled) { border-color: var(--accent); }
+.ngate-actions button:disabled { opacity: .5; cursor: default; }

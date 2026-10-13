@@ -8,8 +8,14 @@ const POLL_MS = 5000
  * latest verdict with its reason, or why there is none and the verdict the
  * judge returned. Earlier evaluations stay in the run evidence.
  */
-export function GateRunFacts({ runId, gateId }: { runId: string; gateId: string }) {
+export function GateRunFacts({ runId, gateId, onSettle }: {
+  runId: string
+  gateId: string
+  /** Moves the run past a rejected judge verdict: false asks the judge again, true takes the verdict as a fail. */
+  onSettle?: (takeFail: boolean) => Promise<void>
+}) {
   const [evidence, setEvidence] = useState<NodeEvidence | null>(null)
+  const [settling, setSettling] = useState(false)
   useEffect(() => {
     let current = true
     const load = () => fetchNodeEvidence(runId, gateId).then(result => { if (current) setEvidence(result) }, () => {})
@@ -17,6 +23,11 @@ export function GateRunFacts({ runId, gateId }: { runId: string; gateId: string 
     const timer = window.setInterval(load, POLL_MS)
     return () => { current = false; window.clearInterval(timer) }
   }, [runId, gateId])
+  const settle = (takeFail: boolean) => {
+    if (!onSettle) return
+    setSettling(true)
+    void onSettle(takeFail).finally(() => setSettling(false))
+  }
   if (!evidence || evidence.runId !== runId || evidence.nodeId !== gateId) return null
   const evaluation = evidence.evaluations?.[evidence.evaluations.length - 1]
   const block = [...(evidence.problems || [])].reverse().find(problem => !problem.resumedSeq)
@@ -34,6 +45,12 @@ export function GateRunFacts({ runId, gateId }: { runId: string; gateId: string 
       ) : null}
       {why && (!verdict || block) ? <div className="ngate-why">{why}</div> : null}
       {failure?.returned?.text ? <pre className="ngate-returned" aria-label="The judge returned">{failure.returned.text}</pre> : null}
+      {onSettle && block?.code === 'invalid_judge_result' && block.resumeAllowed ? (
+        <div className="ngate-actions">
+          <button type="button" disabled={settling} onClick={() => settle(false)}>Ask the judge again</button>
+          <button type="button" disabled={settling} onClick={() => settle(true)}>Take it as a fail</button>
+        </div>
+      ) : null}
     </section>
   )
 }

@@ -60,6 +60,8 @@ type formationsRunResumeRequest struct {
 	Mode   string `json:"mode"`
 	Reason string `json:"reason"`
 	Grant  bool   `json:"grant"`
+	// TakeFail settles a gate blocked on a rejected judge verdict as a fail.
+	TakeFail bool `json:"takeFail"`
 }
 
 type formationsHumanGateVerdictRequest struct {
@@ -829,10 +831,11 @@ func (h *FormationsHandler) ResumeRun(w http.ResponseWriter, r *http.Request) {
 	}
 	engine := h.newRunEngine("api")
 	status, err := engine.ResumeRun(r.PathValue("runId"), formations.RunResumeRequest{
-		Actor:  request.Actor,
-		Mode:   request.Mode,
-		Reason: request.Reason,
-		Grant:  request.Grant,
+		Actor:    request.Actor,
+		Mode:     request.Mode,
+		Reason:   request.Reason,
+		Grant:    request.Grant,
+		TakeFail: request.TakeFail,
 	})
 	if err != nil {
 		writeFormationsError(w, err)

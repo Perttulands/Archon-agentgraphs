@@ -354,7 +354,7 @@ export async function abortRunRequest(runId: string, body: { reason: string; req
   return result.data
 }
 
-export async function resumeRunRequest(runId: string, body: { actor: string; mode: string; reason: string; grant?: boolean }): Promise<RunStatusProjection | RunStatusResult> {
+export async function resumeRunRequest(runId: string, body: { actor: string; mode: string; reason: string; grant?: boolean; takeFail?: boolean }): Promise<RunStatusProjection | RunStatusResult> {
   const result = await fetchApi<RunStatusProjection | RunStatusResult>(
     `/api/runs/${encodeURIComponent(runId)}/resume`,
     {

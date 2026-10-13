@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NodeEvidence } from '../evidence/runEvidenceApi'
 import { GateRunFacts } from './GateRunFacts'
@@ -22,6 +22,25 @@ describe('GateRunFacts', () => {
     const facts = await screen.findByTestId('gate-run-gate')
     expect(facts).toHaveTextContent('invalid judge result: judge verdict requires evidence')
     expect(screen.getByLabelText('The judge returned')).toHaveTextContent('{"verdict":"fail"}')
+  })
+
+  it('offers asking the judge again or taking a fail only at a rejected verdict the run can resume from', async () => {
+    const blocked = (resumeAllowed: boolean) => gate({
+      evaluations: [{ seq: 4, kinds: ['formation'], criterion: text('ok'), kindResults: [], judgeFailures: [{ seq: 5, reason: text('no evidence') }] }],
+      problems: [{ seq: 6, type: 'run_blocked', code: 'invalid_judge_result', resumeAllowed, reason: text('invalid judge result: no evidence') }],
+    })
+    const settled: boolean[] = []
+    const onSettle = (takeFail: boolean) => { settled.push(takeFail); return Promise.resolve() }
+    evidence.current = blocked(false)
+    const first = render(<GateRunFacts runId="run_1" gateId="gate" onSettle={onSettle} />)
+    await screen.findByTestId('gate-run-gate')
+    expect(screen.queryByRole('button', { name: 'Take it as a fail' })).toBeNull()
+    first.unmount()
+
+    evidence.current = blocked(true)
+    render(<GateRunFacts runId="run_1" gateId="gate" onSettle={onSettle} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Take it as a fail' }))
+    expect(settled).toEqual([true])
   })
 
   it('states the latest verdict with its reason and round', async () => {

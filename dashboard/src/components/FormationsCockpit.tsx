@@ -1852,13 +1852,15 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     }
   }, [activeRun, refreshRunEvents, selectedSlug])
 
-  const resumeActiveRun = useCallback(async () => {
+  // At a judge verdict Archon rejected, a resume asks the judge again, and takeFail fails the gate instead (archon-lrbd).
+  const resumeActiveRun = useCallback(async (takeFail = false) => {
     if (!activeRun?.runId || activeRun.final || !activeRun.resumeAllowed) return
     try {
       const status = runStatusFromResponse(await resumeRunRequest(activeRun.runId, {
         actor: 'human:ui',
         mode: 'reattach',
-        reason: 'operator resume',
+        reason: takeFail ? 'rejected judge verdict taken as a fail in the cockpit' : 'operator resume',
+        ...(takeFail ? { takeFail: true } : {}),
       }))
       setActiveRun(status)
       await refreshRunEvents(activeRun.runId)
@@ -3211,6 +3213,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     updateInputCard: updateMissionFields,
     setBrief: saveBrief,
     changeType: changeFormationType,
+    settleJudge: takeFail => resumeActiveRun(takeFail),
     staffSlot: openStaffing,
     stampSlot: (formation, slot, character) => stampCharacter(slotRefOf(formation, slot), character),
     updateGate: (gate, draft) => updateGateFields(gate.id, draft),
@@ -3226,7 +3229,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
       setInspectedNodeId(nodeId)
     },
-  }), [attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, openStaffing, renameNode, saveBrief, setEndOutcome, setGateFiles, setLimit, updateGateFields, updateMissionFields, stampCharacter, slotRefOf])
+  }), [attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, openStaffing, renameNode, saveBrief, setEndOutcome, setGateFiles, setLimit, updateGateFields, updateMissionFields, stampCharacter, slotRefOf, resumeActiveRun])
 
   const cockpit = (
     <div className="fmx" data-testid="formations-view" data-cockpit="d7" onClickCapture={event => {

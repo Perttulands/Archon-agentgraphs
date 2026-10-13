@@ -842,7 +842,13 @@ response. If the correction is still invalid, the run blocks with
 `resumeAllowed: true`; neither branch runs. The parse error names the missing,
 extra or repeated key, and the gate's evidence shows each rejected verdict
 block as the judge wrote it. Resume reruns the failed final
-judge in a new attempt, retaining earlier judges' completed reviews. A judge also emits its ordinary
+judge in a new attempt, retaining earlier judges' completed reviews. `run resume
+--take-fail` (`takeFail` on the resume request) settles the gate as a fail
+instead, with no further judge run: the verdict's reason names who took it and
+what was rejected, and the fail routes as any other. It is refused at any other
+block. A blocked run's projection carries the block's `blockCode`, here
+`invalid_judge_result`, and the gate's window offers both as Ask the judge
+again and Take it as a fail. A judge also emits its ordinary
 output block, without embedding a second verdict block in it. A chain's judges
 run in order, each judging the one before; resuming a chain a crash or a lost
 seat interrupted runs only the judges that have not yet answered the gate's

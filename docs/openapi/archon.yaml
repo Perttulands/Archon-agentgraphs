@@ -368,6 +368,11 @@ paths:
                   description: Gives the spent Limit card that blocked the run one more round, or its time or
                     tokens again, recorded on the run_resumed as grant {limitId, kind, amount}. Required while the
                     run's resumePolicy is grant, refused otherwise.
+                takeFail:
+                  type: boolean
+                  description: Settles a gate blocked on a judge verdict Archon rejected (blockCode
+                    invalid_judge_result) as a fail, without asking the judge again; without it the resume
+                    reruns the final judge. Refused at any other block.
       responses:
         '202':
           description: Continuation admitted for this run
@@ -377,7 +382,8 @@ paths:
                 $ref: '#/components/schemas/ProjectionEnvelope'
         '409':
           description: Run still executing after a five-second wait for its command, final, not
-            resumable, stopped at a spent limit without grant, or given a grant at any other block
+            resumable, stopped at a spent limit without grant, given a grant at any other block, or given takeFail at
+            a block that is not a rejected judge verdict
   /api/runs/{runId}/wait:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -1187,6 +1193,10 @@ components:
           type: string
           enum: [grant]
           description: grant while the run waits at a spent Limit card, which resumes only with grant.
+        blockCode:
+          type: string
+          description: The code of the block a run rests at, such as invalid_judge_result; absent when the
+            block records none or the run is not blocked.
         startedBy:
           type: string
           description: The run's driver, the actor its start named; operator:standalone when it named none.

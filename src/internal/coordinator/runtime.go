@@ -145,6 +145,8 @@ func (c *Coordinator) resume(w http.ResponseWriter, r *http.Request) {
 		Mode   string `json:"mode"`
 		Reason string `json:"reason"`
 		Grant  bool   `json:"grant"`
+		// TakeFail settles a gate blocked on a rejected judge verdict as a fail.
+		TakeFail bool `json:"takeFail"`
 	}
 	if !decode(w, r, &req) {
 		return
@@ -177,8 +179,13 @@ func (c *Coordinator) resume(w http.ResponseWriter, r *http.Request) {
 		reply(w, 409, map[string]string{"error": message})
 		return
 	}
+	if req.TakeFail && p.BlockCode != "invalid_judge_result" {
+		c.release(id)
+		reply(w, 409, map[string]string{"error": formations.ErrRunNoVerdictToTake.Error()})
+		return
+	}
 	c.launch(id, func() error {
-		_, err := c.engine.ResumeRun(id, formations.RunResumeRequest{Actor: req.Actor, Mode: req.Mode, Reason: req.Reason, Grant: req.Grant})
+		_, err := c.engine.ResumeRun(id, formations.RunResumeRequest{Actor: req.Actor, Mode: req.Mode, Reason: req.Reason, Grant: req.Grant, TakeFail: req.TakeFail})
 		return err
 	})
 	reply(w, 202, p)

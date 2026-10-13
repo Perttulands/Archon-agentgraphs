@@ -222,6 +222,55 @@ func TestLabJudgePushbackLoop(t *testing.T) {
 	}
 }
 
+func TestResumeTakesARejectedJudgeVerdictAsAFail(t *testing.T) {
+	store, personas := s4RunFixture(t)
+	createS4Persona(t, personas, "scout")
+	fixture := strings.Replace(s4JudgeChainRunBoardFixture(), `kinds = ["code", "formation"]`, `kinds = ["formation"]`, 1)
+	fixture = strings.Replace(fixture, "id = \"edge_gate_fail_rejected\"\nfrom = \"gate_review:fail\"\nto = \"end_rejected:in\"", "id = \"edge_gate_fail_work\"\nfrom = \"gate_review:fail\"\nto = \"fmn_work:port_work_in\"", 1)
+	writeFixture(t, store.BoardPath("session-search"), fixture)
+	board, err := store.ReadBoard("session-search")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cwd := t.TempDir()
+	executor := &scriptedLabExecutor{lab: NewLabFormationExecutor(store, personas, LabExecutorConfig{Cwd: cwd, Harnesses: []string{"openai-codex"}}), responses: map[string]map[int]string{
+		"fmn_work": {1: "draft one", 2: "draft two with tests"},
+		"fmn_j1":   {1: "first review", 2: "second review"},
+		"fmn_j2":   {1: "```archon-verdict\n{invalid JSON}\n```", 2: judgeBlock("pass", "tests cover retry", "test report: green")},
+		"fmn_ship": {1: "shipped"},
+	}}
+	engine := NewRunEngine(store, personas, executor)
+	status, err := engine.RunMission("session-search", RunStartRequest{Cwd: cwd, MissionID: "mis_showcase", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Status != RunStatusBlocked || !status.ResumeAllowed || status.BlockCode != "invalid_judge_result" {
+		t.Fatalf("status after the rejected verdict: %+v", status)
+	}
+
+	resumed, err := engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "operator:test", TakeFail: true, Reason: "the draft has no tests"})
+	if err != nil || resumed.Status != RunStatusSucceeded || resumed.BlockCode != "" {
+		t.Fatalf("resume taking the fail: %+v %v", resumed, err)
+	}
+	// The rejected judge is not asked again: the fail routes back to the work, which is judged afresh.
+	nodes := []string{}
+	for _, call := range executor.calls {
+		nodes = append(nodes, fmt.Sprintf("%s#%d", call.NodeID, call.Attempt))
+	}
+	if want := []string{"fmn_work#1", "fmn_j1#1", "fmn_j2#1", "fmn_work#2", "fmn_j1#2", "fmn_j2#2", "fmn_ship#1"}; !reflect.DeepEqual(nodes, want) {
+		t.Fatalf("dispatches = %v, want %v", nodes, want)
+	}
+	feedback := callsByNode(executor.calls)["fmn_work"][1].Inputs[0].Feedback
+	if feedback == nil || feedback.Verdict != "fail" || !strings.Contains(feedback.Reason, "taken as a fail by operator:test") || !strings.Contains(feedback.Reason, "the draft has no tests") {
+		t.Fatalf("feedback of the taken fail: %+v", feedback)
+	}
+
+	// Only a rejected judge verdict has a verdict to take.
+	if _, err := engine.ResumeRun(status.RunID, RunResumeRequest{TakeFail: true}); err == nil {
+		t.Fatal("take-fail on a finished run was accepted")
+	}
+}
+
 func TestTmuxJudgeCorrectsMissingEvidenceOnSameSeat(t *testing.T) {
 	for _, correctionFails := range []bool{false, true} {
 		t.Run(fmt.Sprintf("correctionFails=%t", correctionFails), func(t *testing.T) {
