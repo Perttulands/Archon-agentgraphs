@@ -6,7 +6,7 @@ test.use({ viewport: { width: 1920, height: 1080 } })
 test('Missions and Agents share one current mission across view switches, reloads and fresh opens', async ({ page }) => {
   await agentsFixture(page)
   await page.goto('/?mission=scouting')
-  await expect(page.getByTestId('board-picker')).toHaveValue('scouting')
+  await expect(page.getByTestId('mission-title')).toHaveAttribute('data-mission', 'scouting')
   // No tab, label, button or accessible name calls the unit a board.
   const boardWords = () => page.evaluate(() => [document.body.innerText, ...[...document.querySelectorAll('[aria-label],[title],[placeholder]')]
     .flatMap(element => ['aria-label', 'title', 'placeholder'].map(name => element.getAttribute(name) || ''))].join('\n').match(/\bboards?\b/gi) || [])
@@ -21,14 +21,14 @@ test('Missions and Agents share one current mission across view switches, reload
   await agents.getByRole('combobox', { name: 'Mission' }).selectOption('delivery')
   await expect(page).toHaveURL(/\?mission=delivery$/)
   await page.getByRole('button', { name: 'Missions', exact: true }).click()
-  await expect(page.getByTestId('board-picker')).toHaveValue('delivery')
+  await expect(page.getByTestId('mission-title')).toHaveAttribute('data-mission', 'delivery')
 
   await page.reload()
-  await expect(page.getByTestId('board-picker')).toHaveValue('delivery')
+  await expect(page.getByTestId('mission-title')).toHaveAttribute('data-mission', 'delivery')
 
   // A fresh open with no query lands on the last used board, not the first by name.
   await page.goto('/')
-  await expect(page.getByTestId('board-picker')).toHaveValue('delivery')
+  await expect(page.getByTestId('mission-title')).toHaveAttribute('data-mission', 'delivery')
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
   await expect(agents.getByRole('combobox', { name: 'Mission' })).toHaveValue('delivery')
 })

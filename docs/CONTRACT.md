@@ -715,20 +715,23 @@ an agent or another browser appear. A mission lists only its own runs, by its
 identity: a mission created again under a deleted one's slug starts with none,
 and a link to a run of the deleted mission is reported and not shown
 (archon-n7u.15). It shows the open run that most needs the operator: waiting
-for a human, then running, then blocked, newest first. The run bar's Runs
-button lists every run of the mission (archon-o7p.2), open runs by attention
-and then finished runs newest first, each identified without its ID: its status,
-when it started, how long it took or has run, the start of its first text
-input, and its driver. Choosing one shows it, and a finished run shown can be
-put away. The run bar says when the shown run started, how long it took and who
-drives it; a run waiting at a gate says since when; and a run that ran an
+for a human, then running, then blocked, newest first. The navigator on the
+left lists every mission with its runs (archon-o7p.2, archon-fh5c.4), open runs
+by attention and then finished runs newest first, the first five shown and the
+rest behind "N earlier runs". A run is named by its Bead, or by when it started
+when it has none, with its state as a word and the start of its first text
+input. Choosing one shows it; a mission's Edit mission row puts the shown run
+away and returns to the current revision for authoring. The run bar says when
+the shown run started, how long it took and who drives it; a run waiting at a
+gate says since when; and a run that ran an
 earlier revision draws its frozen graph and run states on Canvas and Flow,
-read only. Edit current mission returns to the current revision for authoring. Every run that needs the operator, waiting at a human gate or
-blocked, is counted (archon-n7u.29): on the mission picker beside each
-mission ("Scouting · 2 need you"), and in the page title for all missions
-("(3) Scouting · Archon"). When another run of any mission needs the operator,
-the run bar offers it ("1 more needs you"), the one waiting longest at a gate
-first, so after an answer or a stop the next is a click away. Waiting is the
+read only, with its cards where the current mission has them, and the dock
+names the revision shown and offers Edit current mission. Every run that needs
+the operator, waiting at a human gate or blocked, is counted (archon-n7u.29):
+in the navigator's Needs you group, above the missions and across all of them,
+and in the page title ("(3) Scouting · Archon"). The navigator's Sessions group
+lists the sessions of open runs, and only those; choosing one shows its run and
+opens that step's terminal. Waiting is the
 most visible state: the run bar's badge is filled gold, and the gate waiting
 for the answer has a gold ring and a "waiting for you" chip.
 `/?mission=<slug>&run=<runId>`, the link that notifications carry,
@@ -1193,7 +1196,7 @@ route into it with `archon formation wire <mission> <node:port> <end-id>:in`.
 delete <mission> <end>` change or remove one. The mission patch operations are
 `createEnd` (`title`, `outcome`, `x`, `y`), `updateEnd` (`id`, `title`,
 `outcome`) and `deleteEnd` (`id`). On the canvas, drag the End token from the
-top bar or right-click the canvas (End node · done or rejected); an End card
+canvas dock or right-click the canvas (End node · done or rejected); an End card
 takes any number of wires into its one port, its window and right-click menu
 change its outcome, and a finished run lights the End nodes its paths reached.
 `archon limit create <mission> --target <step|input> [--rounds <n>] [--time
@@ -1219,7 +1222,7 @@ without time or not shorter than the time ("Limit Clock warns with 5 min left
 of 5 min, before any work: warn with less time left"); it warns, as
 `empty_limit`, about a card that sets no knob. Admission refuses a run whose
 mission holds an invalid card, with the same words. On the canvas, drag the
-Limit token from the top bar onto a step or the Input card, or onto empty
+Limit token from the canvas dock onto a step or the Input card, or onto empty
 canvas, or right-click the canvas (Limit card); a new card sets no limit and
 opens its window. The card states its knobs ("at most 3 rounds", "at most 40
 journal messages" on a peer step, "at most 20 step runs" for the whole mission,

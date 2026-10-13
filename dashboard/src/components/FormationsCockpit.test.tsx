@@ -627,6 +627,13 @@ function missionlessBoard() {
   return { ...board, inputCards: [], connections: board.connections.filter(edge => !edge.from.startsWith(`${mission.id}:`)) }
 }
 
+/** Chooses a mission's Edit row in the navigator, opening its group first. */
+function pickMission(slug: string) {
+  const group = screen.getByTestId(`nav-group-${slug}`)
+  if (!within(group).queryByTestId(`nav-mission-${slug}`)) fireEvent.click(within(group).getAllByRole('button')[0])
+  fireEvent.click(screen.getByTestId(`nav-mission-${slug}`))
+}
+
 async function renderCockpit() {
   const utils = render(<FormationsCockpit />)
   await screen.findByTestId('formation-node-fmn_frame')
@@ -654,8 +661,8 @@ async function openNodeWindow(target: HTMLElement, name: string) {
 describe('FormationsCockpit reference parity', () => {
   it('exposes Undo and Redo and restores a selected deleted card with exact fields', async () => {
     const { container } = await renderCockpit()
-    const undo = screen.getByRole('button', { name: 'Undo Ctrl+Z' })
-    const redo = screen.getByRole('button', { name: 'Redo Ctrl+Shift+Z' })
+    const undo = screen.getByRole('button', { name: 'Undo' })
+    const redo = screen.getByRole('button', { name: 'Redo' })
     expect(undo).toBeDisabled()
     expect(redo).toBeDisabled()
     fireEvent.pointerDown(screen.getByTestId('formation-node-fmn_frame').querySelector('.fhead')!, { clientX: 430, clientY: 115, button: 0 })
@@ -688,12 +695,11 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Edit current mission · revision 7' }))
     fireEvent.click(screen.getByTestId('formation-type-fmn_frame'))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Peer' }))
-    const undo = screen.getByRole('button', { name: 'Undo Ctrl+Z' })
-    await waitFor(() => expect(undo).toBeEnabled())
-    fireEvent.click(screen.getByRole('button', { name: 'Runs (1)' }))
-    fireEvent.click(document.querySelector('.run-row')!)
-    await waitFor(() => expect(undo).toBeDisabled())
-    expect(screen.getByRole('button', { name: 'Redo Ctrl+Shift+Z' })).toBeDisabled()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled())
+    fireEvent.click(screen.getByTestId('nav-run-run_01FROZEN'))
+    // A frozen run offers no undo; the history waits for the mission to be edited again.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull())
+    expect(screen.queryByRole('button', { name: 'Redo' })).toBeNull()
     const before = patches.length
     const canvas = container.querySelector('.viewport') as HTMLElement
     canvas.focus()
@@ -702,8 +708,8 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.keyDown(canvas, { key: 'z', ctrlKey: true, shiftKey: true })
     expect(patches).toHaveLength(before)
     fireEvent.click(screen.getByRole('button', { name: 'Edit current mission · revision 8' }))
-    await waitFor(() => expect(undo).toBeEnabled())
-    fireEvent.click(undo)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
     await waitFor(() => expect(screen.getByTestId('formation-type-fmn_frame')).toHaveTextContent('orchestrated'))
     expect(patches).toHaveLength(before + 1)
   })
@@ -828,8 +834,8 @@ describe('FormationsCockpit reference parity', () => {
     const { container } = await renderCockpit()
     const accessibleText = () => [container.textContent || '', ...[...container.querySelectorAll('[aria-label],[title],[placeholder]')]
       .flatMap(element => ['aria-label', 'title', 'placeholder'].map(name => element.getAttribute(name) || ''))].join('\n')
-    expect(screen.getByRole('combobox', { name: 'Mission' })).toHaveValue('test-board')
-    expect(screen.getByTestId('new-board')).toHaveTextContent('New mission')
+    expect(screen.getByTestId('mission-title')).toHaveAttribute('data-mission', 'test-board')
+    expect(screen.getByTestId('new-board')).toHaveAccessibleName('New mission')
     expect(screen.getByRole('button', { name: 'Mission notes' })).toBeInTheDocument()
     expect(screen.getByTestId(`mission-node-${mission.id}`)).toHaveTextContent('◆ Input')
     fireEvent.contextMenu(screen.getByTestId(`mission-node-${mission.id}`))
@@ -850,7 +856,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.queryByTestId('formations-empty-board')).toBeNull()
     expect(await screen.findByTestId('formations-empty-board')).toHaveTextContent('No missions yet')
     expect(screen.queryByTestId('formations-loading')).toBeNull()
-    expect(screen.getByTestId('board-picker')).toHaveTextContent('No missions')
+    expect(screen.getByTestId('mission-title')).toHaveTextContent('No missions')
     expect(screen.queryByText('Improve session search')).toBeNull()
     expect(screen.getByTestId('new-board')).toBeEnabled()
     expect(screen.getByTestId('new-formation')).toBeDisabled()
@@ -867,7 +873,7 @@ describe('FormationsCockpit reference parity', () => {
     })
     expect(screen.getByTestId('formations-loading')).toBeInTheDocument()
     expect(screen.getByTestId('roster-count')).toHaveTextContent('Loading…')
-    expect(screen.getByTestId('board-picker')).toHaveTextContent('Loading…')
+    expect(screen.getByTestId('mission-title')).toHaveTextContent('Loading…')
     observer.observe(document.body, { childList: true, subtree: true, characterData: true })
     await waitFor(() => expect(screen.queryByTestId('formations-loading')).toBeNull())
     observer.disconnect()
@@ -886,8 +892,8 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.change(within(dialog).getByLabelText('Mission name'), { target: { value: 'Release Plan' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create mission' }))
 
-    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveValue('release-plan'))
-    expect(screen.getByTestId('board-picker')).toHaveTextContent('Release Plan')
+    await waitFor(() => expect(screen.getByTestId('mission-title')).toHaveAttribute('data-mission', 'release-plan'))
+    expect(screen.getByTestId('mission-title')).toHaveTextContent('Release Plan')
     expect(screen.getByTestId('formations-empty-board')).toHaveTextContent('This mission is empty')
     expect(recordedMutations).toContainEqual({ method: 'POST', url: '/api/missions' })
   })
@@ -898,11 +904,10 @@ describe('FormationsCockpit reference parity', () => {
     patches = installFetchMock({ brokenMissions: [{ slug: 'moved', broken: reason }] })
     render(<FormationsCockpit />)
     await screen.findByTestId('formation-node-fmn_frame')
-    const picker = screen.getByTestId('board-picker')
-    expect(picker).toHaveValue('test-board')
-    const option = within(picker).getByRole('option', { name: 'moved · cannot be read' })
-    expect(option).toBeDisabled()
-    expect(option).toHaveAttribute('title', reason)
+    expect(screen.getByTestId('mission-title')).toHaveAttribute('data-mission', 'test-board')
+    const broken = within(screen.getByTestId('nav-group-moved')).getByRole('button', { name: 'moved · cannot be read' })
+    expect(broken).toBeDisabled()
+    expect(broken).toHaveAttribute('title', reason)
     expect(screen.getByTestId('formations-error')).toHaveTextContent(`Mission "moved" from the link cannot be read: ${reason}`)
     window.history.replaceState(null, '', '/')
   })
@@ -919,18 +924,18 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
     fireEvent.click(screen.getByRole('button', { name: 'Rename mission' }))
     const dialog = await screen.findByRole('dialog', { name: 'Rename mission' })
-    expect(screen.getByTestId('board-picker')).toBeDisabled()
+    expect(screen.getByTestId('new-board')).toBeDisabled()
     const input = within(dialog).getByLabelText('Mission name')
     expect(input).toHaveValue('Test board')
     fireEvent.change(input, { target: { value: 'Delivery map' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save mission name' }))
 
-    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveTextContent('Delivery map'))
+    await waitFor(() => expect(screen.getByTestId('mission-title')).toHaveTextContent('Delivery map'))
     expect(patches.some(patch => patch.body.title === 'Delivery map')).toBe(true)
-    fireEvent.click(screen.getByRole('button', { name: 'Undo Ctrl+Z' }))
-    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveTextContent('Test board'))
-    fireEvent.click(screen.getByRole('button', { name: 'Redo Ctrl+Shift+Z' }))
-    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveTextContent('Delivery map'))
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(screen.getByTestId('mission-title')).toHaveTextContent('Test board'))
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
+    await waitFor(() => expect(screen.getByTestId('mission-title')).toHaveTextContent('Delivery map'))
   })
 
   it('archives a board only after explicit confirmation', async () => {
@@ -943,7 +948,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(recordedMutations.some(mutation => mutation.method === 'DELETE')).toBe(false)
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Archive mission' }))
-    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveTextContent('No missions'))
+    await waitFor(() => expect(screen.getByTestId('mission-title')).toHaveTextContent('No missions'))
     expect(recordedMutations).toContainEqual({ method: 'DELETE', url: '/api/missions/test-board' })
   })
 
@@ -1134,9 +1139,9 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.change(boardNote, { target: { value: 'Unsaved local context' } })
     fireEvent.click(screen.getByRole('button', { name: 'Close mission notes' }))
     expect(screen.queryByRole('dialog', { name: 'mission notes' })).toBeNull()
-    fireEvent.change(screen.getByTestId('board-picker'), { target: { value: 'second-board' } })
+    pickMission('second-board')
 
-    expect(screen.getByTestId('board-picker')).toHaveValue('test-board')
+    expect(screen.getByTestId('mission-title')).toHaveAttribute('data-mission', 'test-board')
     const reopened = await screen.findByRole('dialog', { name: 'mission notes' })
     expect(within(reopened).getByRole('alert')).toHaveTextContent('Save the current notes before leaving this mission')
     expect(within(reopened).getByRole('textbox', { name: 'Note for the mission' })).toHaveValue('Unsaved local context')
@@ -1151,6 +1156,7 @@ describe('FormationsCockpit reference parity', () => {
     const detailGate = new Promise<void>(resolve => { releaseDetail = resolve })
     patches = installFetchMock({ agentDetailGate: detailGate })
     await renderCockpit()
+    fireEvent.click(screen.getByTestId('roles-toggle'))
     const trigger = screen.getByRole('button', { name: 'Edit Mason' })
     fireEvent.click(trigger)
     const dialog = await screen.findByRole('dialog', { name: /^Edit role / })
@@ -1176,6 +1182,7 @@ describe('FormationsCockpit reference parity', () => {
     ]
     patches = installFetchMock({ agents: presetAgents })
     await renderCockpit()
+    fireEvent.click(screen.getByTestId('roles-toggle'))
 
     const roster = screen.getByLabelText('Agent roster')
     // Roles carry no harness: one list by name, not Codex and Claude groups.
@@ -2290,9 +2297,9 @@ describe('FormationsCockpit reference parity', () => {
     })
     await waitFor(() => expect(screen.getByTestId('slot-fmn_frame-slot_worker')).toBeInTheDocument())
     expect(screen.queryByTestId('slot-fmn_frame-slot_lead')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Undo Ctrl+Z' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
     await waitFor(() => expect(screen.getByTestId('slot-fmn_frame-slot_lead')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: 'Redo Ctrl+Shift+Z' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
     await waitFor(() => expect(screen.queryByTestId('slot-fmn_frame-slot_lead')).toBeNull())
     expect(patches.filter(patch => patch.body.setFormationType).slice(-1)[0].body.setFormationType).toEqual({
       id: 'fmn_frame', type: 'solo', keepSlotId: 'slot_worker',
@@ -2729,8 +2736,8 @@ describe('FormationsCockpit reference parity', () => {
     const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
     await waitFor(() => expect(within(panel).getByText('Question for run_01CLI')).toBeInTheDocument())
     expect(fetch).toHaveBeenCalledWith('/api/runs?mission=test-board', expect.anything())
-    // One run: its list holds just it.
-    expect(screen.getByRole('button', { name: 'Runs (1)' })).toBeInTheDocument()
+    // The navigator lists it under its mission.
+    expect(screen.getByTestId('nav-run-run_01CLI')).toHaveTextContent('your answer')
 
     fireEvent.change(within(panel).getByLabelText('Your response'), { target: { value: 'Postgres' } })
     await act(async () => { fireEvent.click(within(panel).getByRole('button', { name: 'Approve' })) })
@@ -2765,10 +2772,11 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
 
     expect(await screen.findByRole('dialog', { name: 'Answer gate Review' })).toBeInTheDocument()
-    fireEvent.click(await screen.findByRole('button', { name: 'Runs (3)' }))
-    const list = screen.getByRole('dialog', { name: 'Runs of Test board' })
-    const rows = within(list).getAllByRole('button').filter(button => button.classList.contains('run-row'))
-    expect(rows.map(row => row.querySelector('.run-row-status')?.textContent)).toEqual(['Waiting for your answer', 'Running', 'Succeeded'])
+    const rows = await waitFor(() => {
+      const found = [...screen.getByTestId('nav-group-test-board').querySelectorAll<HTMLElement>('[data-testid^="nav-run-"]')]
+      expect(found.map(row => row.querySelector('.nav-state')?.textContent)).toEqual(['your answer', 'running', 'succeeded'])
+      return found
+    })
     expect(rows[0]).toHaveAttribute('aria-current', 'true')
 
     fireEvent.click(rows[1])
@@ -2788,8 +2796,8 @@ describe('FormationsCockpit reference parity', () => {
 
     for (let load = 0; load < 2; load++) {
       const { unmount } = await renderCockpit()
-      await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveValue('second-board'))
-      expect(await screen.findByRole('button', { name: 'Runs (2)' })).toBeInTheDocument()
+      await waitFor(() => expect(screen.getByTestId('mission-title')).toHaveAttribute('data-mission', 'second-board'))
+      expect(await screen.findByTestId('nav-run-run_01NEWER')).toBeInTheDocument()
       const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
       await waitFor(() => expect(within(panel).getByText('Question for run_01LINK')).toBeInTheDocument())
       expect(window.location.search).toBe('?mission=second-board&run=run_01LINK')
@@ -2811,8 +2819,9 @@ describe('FormationsCockpit reference parity', () => {
     const banner = await screen.findByTestId('run-banner')
     await waitFor(() => expect(within(banner).getByTestId('run-point')).toHaveTextContent(`waiting for you at Review since ${askedLabel}`))
     expect(banner.querySelector('.run-when')?.textContent).toBe(`started ${startedLabel} · for 6m · agent:driver`)
-    expect(banner).toHaveTextContent('Showing revision 5 · read only')
-    expect(within(banner).getByRole('button', { name: 'Edit current mission · revision 7' })).toBeInTheDocument()
+    const dock = screen.getByTestId('canvas-dock')
+    expect(dock).toHaveTextContent('Showing revision 5 · read only')
+    expect(within(dock).getByRole('button', { name: 'Edit current mission · revision 7' })).toBeInTheDocument()
   })
 
   it.each([
@@ -2844,7 +2853,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(window.location.search).toBe('?mission=test-board')
   })
 
-  it('counts the runs that need you on every mission and offers the next one', async () => {
+  it('lists the runs that need you from every mission first and opens one', async () => {
     const second = { ...makeBoard(), id: 'brd_second', slug: 'second-board', title: 'Second board', etag: 'second-etag' }
     patches = installFetchMock({ boards: [makeBoard(), second] })
     installRunsMock([
@@ -2853,15 +2862,15 @@ describe('FormationsCockpit reference parity', () => {
     ], { run_01HERE: waitingEvents('run_01HERE'), run_01THERE: waitingEvents('run_01THERE') })
     await renderCockpit()
 
-    const picker = screen.getByTestId('board-picker')
-    await waitFor(() => expect(within(picker).getAllByRole('option').map(option => option.textContent)).toEqual(['Test board · 1 needs you', 'Second board · 1 needs you']))
+    const needing = await screen.findByTestId('nav-group-needs-you')
+    await waitFor(() => expect([...needing.querySelectorAll('.nav-row-sub')].map(row => row.textContent)).toEqual(['Second board', 'Test board']))
     await waitFor(() => expect(document.title).toBe('(2) Test board · Archon'))
     const banner = await screen.findByTestId('run-banner')
     expect(within(banner).getByText('Waiting for your answer')).toHaveClass('badge', 'waiting_human')
     expect(await screen.findByTestId('run-chip-gate_review')).toHaveTextContent('waiting for you')
 
-    fireEvent.click(within(banner).getByRole('button', { name: '1 more needs you' }))
-    await waitFor(() => expect(screen.getByTestId('board-picker')).toHaveValue('second-board'))
+    fireEvent.click(screen.getByTestId('nav-needs-run_01THERE'))
+    await waitFor(() => expect(screen.getByTestId('mission-title')).toHaveAttribute('data-mission', 'second-board'))
     await waitFor(() => expect(window.location.search).toBe('?mission=second-board&run=run_01THERE'))
     await waitFor(() => expect(document.title).toBe('(2) Second board · Archon'))
   })
@@ -2878,7 +2887,7 @@ describe('FormationsCockpit reference parity', () => {
     window.history.replaceState(null, '', '/?mission=no-such-board&run=run_01OPEN')
     await renderCockpit()
     expect(await screen.findByTestId('formations-error')).toHaveTextContent('Mission "no-such-board" from the link was not found')
-    expect(screen.getByTestId('board-picker')).toHaveValue('test-board')
+    expect(screen.getByTestId('mission-title')).toHaveAttribute('data-mission', 'test-board')
   })
 
   it('names where a blocked run stopped, rings that gate and locates it from the run bar', async () => {
@@ -3122,7 +3131,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(patches.filter(patch => 'updateGate' in patch.body)).toEqual([])
   })
 
-  it('reopens a finished run from the run bar and puts it away again', async () => {
+  it('reopens a finished run from the navigator and puts it away again', async () => {
     installRunsMock([
       { runId: 'run_01M2A0OLDER', status: 'failed', final: true, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 3 },
       { runId: 'run_01M2B0NEWER', status: 'succeeded', final: true, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 2 },
@@ -3145,24 +3154,22 @@ describe('FormationsCockpit reference parity', () => {
       : projection(input, init)) as typeof fetch
     await renderCockpit()
 
-    const idle = await screen.findByTestId('run-banner-idle')
-    expect(idle).toHaveTextContent('no open run')
+    // No run is shown: the mission's Edit row is current and its finished runs are listed below it.
+    const rows = await waitFor(() => {
+      const found = [...screen.getByTestId('nav-group-test-board').querySelectorAll<HTMLElement>('[data-testid^="nav-run-"]')]
+      expect(found.map(row => row.querySelector('.nav-state')?.textContent)).toEqual(['succeeded', 'failed'])
+      return found
+    })
     expect(screen.queryByTestId('run-banner')).toBeNull()
-    fireEvent.click(within(idle).getByRole('button', { name: 'Runs (2)' }))
-    const list = screen.getByRole('dialog', { name: 'Runs of Test board' })
-    const rows = within(list).getAllByRole('button').filter(button => button.classList.contains('run-row'))
-    expect(rows.map(row => row.querySelector('.run-row-status')?.textContent)).toEqual(['Succeeded', 'Failed'])
-    expect(within(list).queryByRole('button', { name: 'Put this run away' })).toBeNull()
+    expect(screen.getByTestId('nav-mission-test-board')).toHaveAttribute('aria-current', 'true')
 
     fireEvent.click(rows[0])
     const banner = await screen.findByTestId('run-banner')
     expect(banner).toHaveTextContent('Succeeded')
     expect(window.location.search).toBe('?mission=test-board&run=run_01M2B0NEWER')
     await waitFor(() => expect(within(banner).getByRole('button', { name: 'frame.md' })).toBeInTheDocument())
-    fireEvent.click(within(banner).getByRole('button', { name: 'Runs (2)' }))
-    fireEvent.click(within(screen.getByRole('dialog', { name: 'Runs of Test board' })).getByRole('button', { name: 'Put this run away' }))
-    expect(await screen.findByTestId('run-banner-idle')).toBeInTheDocument()
-    expect(screen.queryByTestId('run-banner')).toBeNull()
+    fireEvent.click(screen.getByTestId('nav-mission-test-board'))
+    await waitFor(() => expect(screen.queryByTestId('run-banner')).toBeNull())
     expect(window.location.search).toBe('?mission=test-board')
   })
 
@@ -3405,38 +3412,6 @@ describe('FormationsCockpit reference parity', () => {
     expect(judge.querySelector('.fio.in .io-text')).toHaveTextContent(/^from Review \(judge\)$/)
     expect(judge.querySelector('.tg')).toHaveClass('placeholder')
     expect(screen.getByTestId('gate-node-gate_review').querySelector('.gs')).not.toHaveClass('placeholder')
-  })
-
-  it('collapses the roster and remembers the width it was resized to', async () => {
-    const { unmount } = await renderCockpit()
-    let roster = screen.getByTestId('agent-roster')
-    const handle = screen.getByRole('separator', { name: 'Resize agent roster' })
-    expect(roster.style.getPropertyValue('--roster-width')).toBe('236px')
-
-    fireEvent.pointerDown(handle, { button: 0, clientX: 236 })
-    fireEvent.pointerMove(window, { clientX: 336 })
-    expect(roster.style.getPropertyValue('--roster-width')).toBe('336px')
-    fireEvent.pointerUp(window, { clientX: 336 })
-    expect(localStorage.getItem('archon.rosterWidth')).toBe('336')
-    fireEvent.keyDown(handle, { key: 'ArrowLeft' })
-    expect(handle).toHaveAttribute('aria-valuenow', '320')
-    fireEvent.pointerDown(handle, { button: 0, clientX: 320 })
-    fireEvent.pointerUp(window, { clientX: 2000 })
-    expect(roster.style.getPropertyValue('--roster-width')).toBe('480px')
-
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse agent roster' }))
-    expect(roster).toHaveClass('collapsed')
-    expect(screen.getByRole('button', { name: 'Expand agent roster' })).toHaveAttribute('aria-expanded', 'false')
-    expect(localStorage.getItem('archon.rosterCollapsed')).toBe('true')
-
-    unmount()
-    await renderCockpit()
-    roster = screen.getByTestId('agent-roster')
-    expect(roster).toHaveClass('collapsed')
-    expect(roster.style.getPropertyValue('--roster-width')).toBe('480px')
-    fireEvent.click(screen.getByRole('button', { name: 'Expand agent roster' }))
-    expect(roster).not.toHaveClass('collapsed')
-    expect(localStorage.getItem('archon.rosterCollapsed')).toBe('false')
   })
 
   it('closes a node window and the Tool dialog on Escape', async () => {

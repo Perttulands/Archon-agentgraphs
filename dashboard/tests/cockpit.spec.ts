@@ -173,7 +173,7 @@ test('a ?mission=&run= link opens that mission and run and keeps the link', asyn
   const requests: string[] = []
   page.on('request', request => requests.push(new URL(request.url()).pathname + new URL(request.url()).search))
   await page.goto('/?mission=browser&run=run_browser&theme=dark')
-  await expect(page.getByTestId('board-picker')).toHaveValue('browser')
+  await expect(page.getByTestId('mission-title')).toHaveAttribute('data-mission', 'browser')
   await expect(page.getByTestId('run-produced').getByRole('button')).toHaveText(['▤review.md', '+3'])
   await expect(page).toHaveURL(/\/\?mission=browser&run=run_browser&theme=dark$/)
   expect(requests.some(path => path.startsWith('/api/missions/browser'))).toBe(true)
@@ -278,9 +278,8 @@ test('the run banner docks above the canvas and never covers a card', async ({ p
     const box = (await head.boundingBox())!
     expect(box.y).toBeGreaterThanOrEqual(bannerBox.y + bannerBox.height)
   }
-  const cwd = banner.locator('.run-cwd')
-  await expect(cwd).toHaveAttribute('title', runCwd)
-  expect(await cwd.evaluate(el => el.scrollWidth > el.clientWidth && el.clientWidth <= 260)).toBe(true)
+  // The working directory is said on hover, so a long path never widens the strip.
+  await expect(banner.locator('.run-meta')).toHaveAttribute('title', `Runs in ${runCwd}`)
 })
 
 test('a run blocked at its judge rings the gate and names it with the reason in the run bar', async ({ page }) => {
@@ -315,25 +314,11 @@ test('a run blocked at its judge rings the gate and names it with the reason in 
   await expect.poll(offCentre).toBeLessThan(3)
 })
 
-test('the phone roster count stays inside its header column', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
-  await cockpitFixture(page, { run: true })
-  await page.goto('/')
-  const count = page.getByTestId('roster-count')
-  await expect(count).toHaveText(/roles · \d+ in use/)
-  await expect(page.getByTestId('agent-roster').locator('.roster-hd')).toBeVisible()
-  const header = (await page.getByTestId('agent-roster').locator('.roster-hd').boundingBox())!
-  const pill = (await count.boundingBox())!
-  const firstRole = (await page.locator('.ragent').first().boundingBox())!
-  expect(pill.x + pill.width).toBeLessThanOrEqual(header.x + header.width)
-  expect(pill.x + pill.width).toBeLessThanOrEqual(firstRole.x)
-  expect(await count.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
-})
-
 for (const width of [1440, 390]) test(`the persona editor stays inside the viewport at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 844 })
   await cockpitFixture(page)
   await page.goto('/')
+  await page.getByTestId('roles-toggle').click()
   await page.getByRole('button', { name: 'Edit Codex builder' }).click()
   const editor = page.getByTestId('persona-editor')
   await expect(editor.getByLabel('Role display name')).toHaveValue('Codex builder')

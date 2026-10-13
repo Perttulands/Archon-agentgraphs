@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { missionPickLabel, needsYouCount, otherRunsNeedingYou, pageTitle, runsOfLiveMissions } from './needsYou'
+import { needsYouCount, pageTitle, runsOfLiveMissions } from './needsYou'
 import type { BoardSummary, RunStatusProjection } from './formationsTypes'
 
 const mission = (id: string, slug: string, title: string): BoardSummary => ({ id, slug, title, rev: 1, etag: '' })
@@ -17,19 +17,12 @@ describe('runs that need you', () => {
     run('run_01D', 'msn_deleted', 'waiting_human', '2026-10-01T09:00:00Z'),
   ]
 
-  it('counts them per mission, by identity, on the mission picker', () => {
+  it('counts them per mission, by identity', () => {
     expect(needsYouCount(runs, 'msn_scouting')).toBe(2)
-    expect(missions.map(item => missionPickLabel(item, runs))).toEqual(['Scouting · 2 need you', 'Delivery · 1 needs you'])
-    expect(missionPickLabel(mission('msn_quiet', 'quiet', ''), runs)).toBe('quiet')
   })
 
   it('counts them all in the page title, leaving out deleted missions', () => {
     expect(pageTitle(runsOfLiveMissions(runs, missions), 'Scouting')).toBe('(3) Scouting · Archon')
     expect(pageTitle([], '')).toBe('Archon')
-  })
-
-  it('offers the others, waiting before blocked and the longest waiting first, skipping deleted missions', () => {
-    expect(otherRunsNeedingYou(runs, '', missions).map(item => item.runId)).toEqual(['run_01C', 'run_01B', 'run_01A'])
-    expect(otherRunsNeedingYou(runs, 'run_01C', missions).map(item => item.runId)).toEqual(['run_01B', 'run_01A'])
   })
 })

@@ -10,6 +10,7 @@ export default function App() {
   const [view, setView] = useState<View>('formations')
   const { error } = useTheme()
   const build = useDaemonBuild()
+  const [topbarSlot, setTopbarSlot] = useState<HTMLElement | null>(null)
 
   return (
     <main className="formations-app">
@@ -21,11 +22,12 @@ export default function App() {
         <button type="button" onClick={() => setView('agents')} aria-pressed={view === 'agents'}>
           Agents
         </button>
+        <div className="app-topbar-slot" ref={setTopbarSlot} />
         {build ? <span className="archon-build" title={`The daemon runs Archon ${build.version} (${build.commit})`}>{buildLabel(build)}</span> : null}
       </nav>
       {error ? <div className="theme-error" role="status">{error}</div> : null}
       <section className="formations-app-content">
-        {view === 'formations' ? <FormationsCockpit /> : <AgentsView />}
+        {view === 'formations' ? <FormationsCockpit topbarSlot={topbarSlot} /> : <AgentsView />}
       </section>
     </main>
   )

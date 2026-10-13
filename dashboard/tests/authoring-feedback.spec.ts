@@ -10,6 +10,7 @@ test('roster search matches names, IDs, kinds and tags and clears without writes
   ]
   await page.route('**/api/agents', route => route.fulfill({ json: { success: true, data: rosterAnswer(agents) } }))
   await page.goto('/?mission=scouting')
+  await page.getByTestId('roles-toggle').click()
   const roster = page.getByTestId('agent-roster')
   await expect(roster.locator('.ragent')).toHaveCount(2)
   const filter = roster.getByRole('searchbox', { name: 'Filter agents' })

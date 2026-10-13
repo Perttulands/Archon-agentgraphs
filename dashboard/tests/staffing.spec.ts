@@ -275,6 +275,7 @@ test('a wrong slot is fixed in one drag that swaps, one Ctrl+Z puts both back, a
 test('a role dragged from the rail lands by the same rule, previews on the slot, and a missed drop says so', async ({ page }) => {
   const fixture = await cockpitFixture(page, { emptyWorker: true, roles })
   await page.goto('/')
+  await page.getByTestId('roles-toggle').click()
   const scout = page.getByTestId('roster-agent-scout')
   const worker = page.getByTestId('slot-execution-worker')
   const from = (await scout.boundingBox())!
@@ -496,6 +497,7 @@ test('the Agents view slot inspector staffs through the same sentence', async ({
 test('the rail states in words which roles are in use and opens a role in a window beside it', async ({ page }) => {
   await cockpitFixture(page, { roles })
   await page.goto('/')
+  await page.getByTestId('roles-toggle').click()
   const roster = page.getByTestId('agent-roster')
   await expect(page.getByTestId('roster-count')).toHaveText('6 roles · 2 in use')
   const codex = page.getByTestId('roster-agent-codex')
@@ -514,7 +516,8 @@ test('the rail states in words which roles are in use and opens a role in a wind
     'Peer review · ReviewerCodex · default model · medium',
   ])
   const [row, window] = [(await codex.boundingBox())!, (await role.boundingBox())!]
-  expect(window.x).toBeGreaterThanOrEqual(row.x + row.width - 1)
+  // Beside the row, never over it.
+  expect(window.x >= row.x + row.width - 1 || window.x + window.width <= row.x + 1 || window.y >= row.y + row.height - 1 || window.y + window.height <= row.y + 1).toBe(true)
   await role.getByRole('button', { name: 'Open Peer review' }).click()
   await expect(page.getByRole('dialog', { name: 'Formation · Peer review' })).toBeVisible()
   await role.getByRole('button', { name: 'Edit role' }).click()

@@ -40,18 +40,13 @@ for (const entry of ['list', 'link'] as const) {
     await page.goto(entry === 'list' ? '/?mission=browser' : '/?mission=browser&run=run_browser')
 
     if (entry === 'list') {
-      // No run is open, so the mission's finished runs are one click away, each named without its ID.
-      const idle = page.getByTestId('run-banner-idle')
-      await idle.getByRole('button', { name: 'Runs (2)' }).click()
-      const list = page.getByRole('dialog', { name: 'Runs of Peer and judge' })
-      const rows = list.locator('.run-row')
+      // No run is open: the navigator lists the mission's finished runs, each named without its ID.
+      const rows = page.getByTestId('nav-group-browser').locator('[data-testid^="nav-run-"]')
       await expect(rows).toHaveCount(2)
-      await expect(rows.nth(0)).toContainText('Succeeded')
-      await expect(rows.nth(0)).toContainText('took 4m')
+      await expect(rows.nth(0)).toContainText('succeeded')
       await expect(rows.nth(0)).toContainText('Verify the retry budget and log the second failure')
-      await expect(rows.nth(0)).toContainText('agent:driver')
       await expect(rows.nth(0)).not.toContainText('run_browser')
-      await expect(rows.nth(1)).toContainText('Failed')
+      await expect(rows.nth(1)).toContainText('failed')
       await expect(rows.nth(1)).toContainText('First attempt at the review')
       await page.screenshot({ path: test.info().outputPath('run-list.png') })
       await rows.nth(0).click()
@@ -62,8 +57,8 @@ for (const entry of ['list', 'link'] as const) {
     await expect(page).toHaveURL(/\?mission=browser&run=run_browser$/)
 
     // The board has moved on: both views use the frozen graph and disable edits.
-    await expect(banner).toContainText('Showing revision 2 · read only')
-    await expect(page.getByTestId('new-formation')).toBeDisabled()
+    await expect(page.getByTestId('canvas-dock')).toContainText('Showing revision 2 · read only')
+    await expect(page.getByTestId('new-formation')).toHaveCount(0)
     await expect(page.getByTitle('Start mission', { exact: true }).first()).toBeDisabled()
     await expect(page.getByTitle('Run formation', { exact: true }).first()).toBeDisabled()
     await expect(page.locator('.formation').first()).toContainText('Frozen')
@@ -92,7 +87,7 @@ for (const entry of ['list', 'link'] as const) {
     await expect(review.getByRole('button', { name: 'Copied' })).toBeVisible()
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${artifactRoot}/review.md`)
     expect(fixture.writes).toEqual([])
-    await banner.getByRole('button', { name: /Edit current mission/ }).click()
+    await page.getByTestId('canvas-dock').getByRole('button', { name: /Edit current mission/ }).click()
     await expect(page.getByTestId('new-formation')).toBeEnabled()
     await expect(page.getByTestId('flow-view')).not.toContainText('Frozen')
   })
@@ -125,7 +120,7 @@ test('a run waiting for you is counted and stands out on the bar and the canvas'
     waitingGates: [{ gateId: 'loose', requestedSeq: 3, requestedAt: ago(10), askedSeats: [] }] })
   await page.route('**/api/runs?needs=you', route => route.fulfill({ json: { success: true, data: [waiting] } }))
   await page.goto('/?mission=browser')
-  await expect(page.getByTestId('board-picker').locator('option')).toHaveText(['Peer and judge · 1 needs you'])
+  await expect(page.getByTestId('nav-group-needs-you').locator('.nav-row-sub')).toContainText(['Peer and judge'])
   await expect(page).toHaveTitle('(1) Peer and judge · Archon')
   const badge = page.getByTestId('run-banner').locator('.badge')
   await expect(badge).toHaveText('Waiting for your answer')
@@ -133,7 +128,5 @@ test('a run waiting for you is counted and stands out on the bar and the canvas'
   expect(badgeBackground).not.toBe('rgba(0, 0, 0, 0)')
   expect(badgeColor).not.toBe(badgeBackground)
   await expect(page.getByTestId('run-chip-loose')).toHaveText('waiting for you')
-  // The only run that needs you is the one shown, so nothing else is offered.
-  await expect(page.getByTestId('run-next-needs-you')).toHaveCount(0)
   await page.screenshot({ path: test.info().outputPath('waiting.png') })
 })

@@ -1,4 +1,4 @@
-import { flushSync } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import { fetchRunMission } from '../evidence/runEvidenceApi'
 import { AnsweredDraftNotice } from './AnsweredDraftNotice'
 import { hasGateDraft } from './HumanGateAnswerPanel'
@@ -18,7 +18,7 @@ import { inputCardOf, missionRunInputs } from "./missionInputs"
  * context menus, on-canvas editors/terminals, and undo are tracked for follow passes
  * (bead home-f7as).
  */
-import { type CSSProperties, Fragment, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { Fragment, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
   ApiRequestError,
   abortRunRequest,
@@ -33,6 +33,7 @@ import {
   fetchCodeGateProfiles,
   fetchRunEscalations,
   fetchRunEvents,
+  fetchAllRuns,
   fetchBoardRuns,
   fetchRunsNeedingYou,
   fetchRunStatus,
@@ -55,13 +56,15 @@ import {
   upsertRunEvent,
 } from './formationsRunState'
 import { chooseBoardRun, readRunLink, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
-import { RunList, RunRevisionNote, RunWhen } from './RunList'
-import { missionPickLabel, otherRunsNeedingYou, pageTitle, runsOfLiveMissions } from './needsYou'
+import { RunRevisionNote, RunWhen } from './RunList'
+import { pageTitle, runsOfLiveMissions } from './needsYou'
 import { chooseCurrentBoard, openableSlugs, rememberBoardOnDevice } from './currentBoard'
 import { END_ROOM, clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
-import { END_SVG, LIMIT_SVG, FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, byRoleName, inSlotsWords, initials, inputFeedLabel, outputRowStatus, roleUses, rolesInUseLabel } from './formationsCockpitVisuals'
+import { END_SVG, FORMATION_SVG, LIMIT_SVG, LOCK_SVG, ROLES_SVG, FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, byRoleName, inSlotsWords, initials, inputFeedLabel, outputRowStatus, roleUses, rolesInUseLabel } from './formationsCockpitVisuals'
 import { useEscapeKey } from './useEscapeKey'
-import { ROSTER_MAX_WIDTH, ROSTER_MIN_WIDTH, useRosterPanel } from './useRosterPanel'
+import MissionNavigator, { type ListedRun } from './MissionNavigator'
+import '../styles/formations-roster.css'
+import '../styles/formations-shell.css'
 const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
 const RunEvidence = lazy(() => import('../evidence/RunEvidence'))
 import NodeWindow from '../nodeWindow/NodeWindow'
@@ -242,7 +245,7 @@ function boardNotesAnchor(): WindowRect | null {
   return button ? measureElement(button) : null
 }
 
-export default function FormationsCockpit({ active = true }: { active?: boolean } = {}) {
+export default function FormationsCockpit({ active = true, topbarSlot = null }: { active?: boolean; /** Where the app's one top bar takes the mission controls. */ topbarSlot?: HTMLElement | null } = {}) {
   const [boards, setBoards] = useState<BoardSummary[]>([])
   // False until the mission list has answered, so a fresh mount never reads as "no missions".
   const [missionsLoaded, setMissionsLoaded] = useState(false)
@@ -269,8 +272,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [admissionFindings, setAdmissionFindings] = useState<BoardFinding[]>([])
   const [activeRun, setActiveRun] = useState<RunStatusProjection | null>(null)
   const [frozen, setFrozen] = useState<{ runId: string; graph: BoardDocument } | null>(null)
-  const [editingCurrentRun, setEditingCurrentRun] = useState('')
-  const historical = Boolean(activeRun?.missionRev && currentBoard && activeRun.missionRev !== currentBoard.rev && editingCurrentRun !== activeRun.runId)
+  const historical = Boolean(activeRun?.missionRev && currentBoard && activeRun.missionRev !== currentBoard.rev)
   const historicalRef = useRef(historical)
   historicalRef.current = historical
   const board = historical ? (frozen && frozen.runId === activeRun?.runId ? frozen.graph : null) : currentBoard
@@ -284,11 +286,18 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     }).catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not read the run mission') })
     return () => { cancelled = true }
   }, [historical, activeRun?.runId])
-  const editCurrentMission = () => { setEditingCurrentRun(activeRun?.runId ?? ''); setNodeWindows([]); setMenu(null) }
   // A link's ?mission=&run= and the run picker pin a run to its mission.
   const initialRunLink = useRef(readRunLink(window.location.search)).current
   const [pinnedRun, setPinnedRun] = useState({ slug: initialRunLink.board, runId: initialRunLink.run })
   const [boardRuns, setBoardRuns] = useState<RunStatusProjection[]>([])
+  // Every mission's runs, for the navigator.
+  const [allRuns, setAllRuns] = useState<ListedRun[]>([])
+  // The mission the operator chose to edit: its open runs stay in the navigator instead of taking the canvas.
+  const [putAway, setPutAway] = useState('')
+  const putAwayRef = useRef(putAway)
+  putAwayRef.current = putAway
+  // A session chosen in the navigator opens its terminal once its run is shown.
+  const pendingPeek = useRef<{ runId: string; nodeId: string } | null>(null)
   // Every mission's runs that need the operator, for the picker counts and the page title.
   const [needsYou, setNeedsYou] = useState<RunStatusProjection[]>([])
   // Link problems outlive the board loads that clear ordinary errors.
@@ -338,7 +347,8 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const [missionEditorSaving, setMissionEditorSaving] = useState(false)
   const [gateProfiles, setGateProfiles] = useState<CodeGateProfileDescriptor[]>([])
   const [gateEditor, setGateEditor] = useState<GateEditorState | null>(null)
-  const roster = useRosterPanel()
+  // Roles float over the canvas, opened from the dock, so the left edge belongs to the navigator.
+  const [rosterOpen, setRosterOpen] = useState(false)
   const [boardDialog, setBoardDialog] = useState<BoardDialogState | null>(null)
   const [agentEditor, setAgentEditor] = useState<{ agent: AgentProjection; trigger: HTMLElement | null } | null>(null)
   const [notesMode, setNotesMode] = useState<NotesMode>(() => readNotesMode())
@@ -390,6 +400,12 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     setPeeks(current => current.includes(nodeId) ? current : [...current, nodeId])
     focusWindow(`peek:${nodeId}`)
   }, [focusWindow])
+  useEffect(() => {
+    const pending = pendingPeek.current
+    if (!pending || activeRun?.runId !== pending.runId) return
+    pendingPeek.current = null
+    openPeek(pending.nodeId)
+  }, [activeRun?.runId, openPeek])
   // Each note thread opens in its own window; opening one already open raises it.
   const openNoteWindow = useCallback((target: string) => {
     setNoteWindows(current => current.includes(target) ? current : [...current, target])
@@ -642,6 +658,7 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       }
       if (cancelled) return
       setBoardRuns(runs)
+      if (!pinnedRunId && putAwayRef.current === selectedSlug) return
       const stored = window.localStorage.getItem(activeRunStorageKey(selectedSlug)) || ''
       const runId = chooseBoardRun({ slug: selectedSlug, runs, pinnedRunId, current: activeRunRef.current }) || stored
       if (!runId || runId === activeRunRef.current?.runId) return
@@ -685,7 +702,15 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     void discover()
     const timer = active ? window.setInterval(discover, 5000) : undefined
     return () => { cancelled = true; window.clearInterval(timer) }
-  }, [active, pinnedRun, selectedSlug])
+  }, [active, pinnedRun, putAway, selectedSlug])
+
+  useEffect(() => {
+    let cancelled = false
+    const poll = () => fetchAllRuns().then(runs => { if (!cancelled) setAllRuns(runs) }).catch(() => undefined)
+    void poll()
+    const timer = active ? window.setInterval(poll, 5000) : undefined
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [active, activeRun?.runId, activeRun?.status])
 
   // A mission created again under a deleted one's slug does not take its runs
   // (archon-n7u.15): a linked or remembered run of the earlier mission is put away.
@@ -2968,20 +2993,34 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
   const loadingMission = !board && (!missionsLoaded || (Boolean(selectedSlug) && !error))
   const runBadgeClass = recordingAnswer ? 'running' : activeRun ? activeRun.status : ''
   // Choosing a run pins it to the board; choosing none puts a finished run away.
-  const chooseRun = (runId: string) => {
-    setEditingCurrentRun('')
+  const chooseRun = (runId: string, slug = selectedSlug) => {
     setLinkError('')
     if (runId) {
-      setPinnedRun({ slug: selectedSlug, runId })
+      setPutAway('')
+      setPinnedRun({ slug, runId })
+      if (slug !== selectedSlug) selectBoard(slug)
       return
     }
+    setPutAway(slug)
     setPinnedRun({ slug: '', runId: '' })
+    if (slug !== selectedSlug) { selectBoard(slug); return }
     setActiveRun(null)
     setRunEvents([])
+    setNodeWindows([])
+    setMenu(null)
   }
-  const runList = (
-    <RunList runs={boardRuns} shown={activeRun} missionTitle={board?.title || selectedSlug} onChoose={chooseRun} onPutAway={() => chooseRun('')} />
-  )
+  const editMission = () => chooseRun('')
+  const navigatorRuns = useMemo(() => {
+    const known = new Map<string, ListedRun>()
+    for (const run of runsOfLiveMissions([...needsYou, ...boardRuns, ...allRuns], boards)) known.set(run.runId, run)
+    if (activeRun) known.set(activeRun.runId, { ...known.get(activeRun.runId), ...activeRun })
+    return [...known.values()]
+  }, [activeRun, allRuns, boardRuns, boards, needsYou])
+  const openSession = (slug: string, runId: string, nodeId: string) => {
+    if (activeRun?.runId === runId) { openPeek(nodeId); return }
+    pendingPeek.current = { runId, nodeId }
+    chooseRun(runId, slug)
+  }
   // Several gates can wait at once; the answer shows the chosen one, else the oldest.
   const waitingGateIds = useMemo(() => (activeRun?.waitingGates?.length
     ? activeRun.waitingGates.map(gate => gate.gateId)
@@ -3044,19 +3083,6 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
     if (waitingGateIds.includes(nodeId) && activeRun && !activeRun.final) return <span className="run-chip waiting" data-testid={`run-chip-${nodeId}`}>waiting for you</span>
     return state === 'blocked' || state === 'failed' ? <span className={`run-chip ${state}`} data-testid={`run-chip-${nodeId}`}>{state}</span> : null
   }
-  // The next run, of any mission, that needs the operator, offered from the run bar.
-  const nextNeedingYou = otherRunsNeedingYou(needsYou, activeRun?.runId || '', boards)
-  const showNeedingYou = nextNeedingYou.length ? (
-    <button type="button" className="run-next-needs-you" data-testid="run-next-needs-you"
-      title={`Show the ${nextNeedingYou[0].status === 'waiting_human' ? 'run waiting for your answer' : 'blocked run'} in ${boards.find(mission => mission.id === nextNeedingYou[0].missionId)?.title || nextNeedingYou[0].missionSlug}`}
-      onClick={() => {
-        const next = nextNeedingYou[0]
-        setPinnedRun({ slug: next.missionSlug, runId: next.runId })
-        if (next.missionSlug !== selectedSlug) selectBoard(next.missionSlug)
-      }}>
-      {nextNeedingYou.length} {activeRun && !activeRun.final && (activeRun.status === 'waiting_human' || activeRun.status === 'blocked') ? 'more ' : ''}need{nextNeedingYou.length === 1 ? 's' : ''} you
-    </button>
-  ) : null
   // The pending human gate's answer panel: in a floating window over the canvas, or in the gate's row in Flow.
   const answerKey = activeRun && pendingHumanGate ? `${activeRun.runId}:${pendingHumanGate.requestedSeq}` : ''
   const answerWindowOpen = Boolean(answerKey) && !(answerWindow.key === answerKey && answerWindow.closed)
@@ -3156,150 +3182,55 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
       const rect = (event.target as HTMLElement).getBoundingClientRect()
       errorAnchor.current = { left: Math.max(12, Math.min(rect.left, window.innerWidth - 460)), top: Math.max(12, Math.min(rect.bottom + 8, window.innerHeight - 120)) }
     }}>
-      <div className="topbar">
-        <div className="boardpick">
-          mission
-          <select aria-label="Mission" value={selectedSlug} onChange={event => selectBoard(event.target.value)} data-testid="board-picker" disabled={boards.length === 0 || Boolean(boardDialog)}>
-            {boards.length === 0 ? <option value="">{missionsLoaded ? 'No missions' : 'Loading…'}</option> : null}
-            {boards.map(summary => <option key={summary.slug} value={summary.slug} disabled={Boolean(summary.broken)} title={summary.broken}>{missionPickLabel(summary, needsYou)}</option>)}
-          </select>
-          {board ? <span className="rev">rev {board.rev}</span> : null}
-        </div>
-        <button className="newbtn board-new" type="button" onClick={event => openCreateBoard(event.currentTarget)} data-testid="new-board" disabled={Boolean(boardDialog)}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
-          New mission
-        </button>
-        <button className="board-action" type="button" aria-label="Rename mission" disabled={historical || !board || Boolean(boardDialog)} onClick={event => openRenameBoard(event.currentTarget)}>Rename</button>
-        <button className="board-action danger" type="button" aria-label="Delete mission" disabled={historical || !board || Boolean(boardDialog)} onClick={event => openDeleteBoard(event.currentTarget)}>Delete</button>
-        <div className="sep" />
-        <button type="button" className="board-action" disabled={historical || !undoHistory.size} onClick={() => void performUndo()} title="Undo · Ctrl+Z">Undo <span className="chord">Ctrl+Z</span></button>
-        <button type="button" className="board-action" disabled={historical || !undoHistory.redoSize} onClick={() => void performRedo()} title="Redo · Ctrl+Shift+Z">Redo <span className="chord">Ctrl+Shift+Z</span></button>
-        <button className="newbtn" onClick={createSolo} data-testid="new-formation" disabled={historical || !board || Boolean(creationWindow)}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
-          New formation
-        </button>
-        <div className="gatetoken" title="Drag onto the canvas to drop a gate" data-testid="gate-token" onPointerDown={beginGateToken}>
-          {GATE_SVG}
-          Gate
-        </div>
-        <div className="gatetoken endtoken" title="Drag onto the canvas to end a path on purpose" data-testid="end-token" onPointerDown={beginEndToken}>
-          {END_SVG}
-          End
-        </div>
-        <div className="gatetoken limittoken" title="Drag onto a step to cap its rounds, onto the Input card to cap the whole mission, or onto the canvas" data-testid="limit-token" onPointerDown={beginLimitToken}>
-          {LIMIT_SVG}
-          Limit
-        </div>
-        <div className="spacer" />
-        <CanvasLegend />
-        <div className="notes-switch view-switch" role="radiogroup" aria-label="Mission view">
-          {(['canvas', 'flow'] as const).map(view => (
-            <button key={view} type="button" role="radio" aria-checked={boardView === view} className={boardView === view ? 'on' : ''}
-              disabled={!board} onClick={() => changeBoardView(view)}>{view === 'canvas' ? 'Canvas' : 'Flow'}</button>
-          ))}
-        </div>
-        <div className="notes-switch" role="radiogroup" aria-label="Notes on the canvas">
-          {NOTES_MODES.map(mode => (
-            <button key={mode} type="button" role="radio" aria-checked={notesMode === mode} className={notesMode === mode ? 'on' : ''}
-              onClick={() => changeNotesMode(mode)}>{mode === 'hidden' ? 'Hide notes' : mode === 'preview' ? 'Preview' : 'Full notes'}</button>
-          ))}
-        </div>
-        <button type="button" className="newbtn board-notes-button" disabled={!board} onClick={() => openNoteWindow(BOARD_NOTE_TARGET)}>Mission notes</button>
-        <button type="button" className="newbtn" disabled={!activeRun}
-          title={activeRun ? 'Observe run seats' : 'Start a run to observe its seats'}
-          onClick={() => openPeek('')}>Open terminal</button>
-      </div>
+      {(() => {
+        const bar = (
+          <div className="topbar">
+            <div className="mission-title" data-testid="mission-title" data-mission={selectedSlug}>
+              <span className="mission-name">{board?.title || currentBoard?.title || (missionsLoaded ? (boards.length ? '' : 'No missions') : 'Loading…')}</span>
+              {board ? <span className="rev">rev {board.rev}</span> : null}
+              {historical ? <span className="rev">run view</span> : null}
+            </div>
+            {historical ? null : (
+              <>
+                <button type="button" className="board-action" disabled={!undoHistory.size} onClick={() => void performUndo()} title="Undo · Ctrl+Z">Undo</button>
+                <button type="button" className="board-action" disabled={!undoHistory.redoSize} onClick={() => void performRedo()} title="Redo · Ctrl+Shift+Z">Redo</button>
+              </>
+            )}
+            <div className="spacer" />
+            <CanvasLegend />
+            <div className="notes-switch view-switch" role="radiogroup" aria-label="Mission view">
+              {(['canvas', 'flow'] as const).map(view => (
+                <button key={view} type="button" role="radio" aria-checked={boardView === view} className={boardView === view ? 'on' : ''}
+                  disabled={!board} onClick={() => changeBoardView(view)}>{view === 'canvas' ? 'Canvas' : 'Flow'}</button>
+              ))}
+            </div>
+            <div className="notes-switch" role="radiogroup" aria-label="Notes on the canvas">
+              {NOTES_MODES.map(mode => (
+                <button key={mode} type="button" role="radio" aria-checked={notesMode === mode} className={notesMode === mode ? 'on' : ''}
+                  onClick={() => changeNotesMode(mode)}>{mode === 'hidden' ? 'Hide notes' : mode === 'preview' ? 'Preview' : 'Full notes'}</button>
+              ))}
+            </div>
+            <button type="button" className="newbtn board-notes-button" disabled={!board} onClick={() => openNoteWindow(BOARD_NOTE_TARGET)}>Mission notes</button>
+          </div>
+        )
+        // The app's top bar takes these controls; without it (tests, embeds) they sit above the canvas.
+        return topbarSlot ? createPortal(<div className="fmx fmx-bar">{bar}</div>, topbarSlot) : bar
+      })()}
 
       <div className="main">
-        <aside
-          className={`roster${roster.collapsed ? ' collapsed' : ''}`}
-          data-testid="agent-roster"
-          aria-label="Agent roster"
-          style={{ '--roster-width': `${roster.width}px` } as CSSProperties}
-        >
-          <div className="roster-hd">
-            <div className="t">Roles</div>
-            {loadingMission ? <span className="s" data-testid="roster-count">Loading…</span> : (
-              <span className="s" data-testid="roster-count" title={`${rosterAgents.length} roles you can staff; ${rolesInUse.size} of them staff slots in this mission`}>
-                {rolesInUseLabel(rosterAgents.length, rolesInUse.size)}
-              </span>
-            )}
-            <button type="button" className="roster-toggle" aria-expanded={!roster.collapsed}
-              aria-label={roster.collapsed ? 'Expand agent roster' : 'Collapse agent roster'} onClick={roster.toggle}>
-              {roster.collapsed ? '›' : '‹'}
-            </button>
-          </div>
-          <div className="board-roster-filter">
-            <div className="board-roster-filter-input">
-              <input type="search" aria-label="Filter agents" placeholder="filter roles" value={rosterSearch}
-                onChange={event => setRosterSearch(event.target.value)} />
-              {rosterSearch ? <button type="button" aria-label="Clear agent filter" onClick={() => setRosterSearch('')}>Clear</button> : null}
-            </div>
-            {rosterSearch.trim() ? <p role="status">{filteredRosterAgents.length} of {rosterAgents.length} roles</p> : null}
-          </div>
-          <div
-            className="roster-resize"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize agent roster"
-            aria-valuemin={ROSTER_MIN_WIDTH}
-            aria-valuemax={ROSTER_MAX_WIDTH}
-            aria-valuenow={roster.width}
-            tabIndex={0}
-            onPointerDown={roster.beginResize}
-            onKeyDown={roster.resizeByKey}
-          />
-          <div className="roster-list">
-            {rosterAgents.length === 0
-              ? <div className="roster-empty">No roles to staff with. Create one in the Agents view; a slot can also run with no role.</div>
-              : filteredRosterAgents.length === 0 ? <div className="roster-empty" role="status">No roles match this filter.</div>
-              : (
-                <section className="roster-group">
-                  {rosterRoles.map(agent => {
-                    const inUse = rolesInUse.get(agent.id) || 0
-                    return (
-                      <div
-                        key={agent.id}
-                        className={`ragent${inUse ? ' in-use' : ''}${agent.unbound ? ' unbound' : ''}`}
-                        data-agent={agent.id}
-                        data-testid={`roster-agent-${agent.id}`}
-                        title={`${agent.displayName || agent.id}: drag onto a slot to give it this role, or click to read it`}
-                        onPointerDown={event => {
-                          const row = event.currentTarget
-                          beginStaff(event, { payload: { kind: 'role', roleId: agent.id }, click: () => openRoleWindow(agent.id, row) })
-                        }}
-                      >
-                        <span className="av">{initials(agent.displayName || agent.id)}</span>
-                        <div className="ri">
-                          <div className="n">{agent.displayName || agent.id}</div>
-                          {/* In use comes first, so a narrow rail never cuts it off. */}
-                          <div className="r">{inUse ? <span className="in-use-words">{inSlotsWords(inUse)} · </span> : null}{[agentRole(agent), agent.preset ? (agent.customized ? 'custom' : 'preset') : '', agentState(agent) === 'idle' ? 'idle' : ''].filter(Boolean).join(' · ')}</div>
-                        </div>
-                        <button
-                          type="button"
-                          className="agent-edit"
-                          aria-label={`Edit ${agent.displayName || agent.id}`}
-                          title="Edit role"
-                          onPointerDown={event => event.stopPropagation()}
-                          onClick={event => { event.stopPropagation(); setAgentEditor({ agent, trigger: event.currentTarget }) }}
-                        >•••</button>
-                      </div>
-                    )
-                  })}
-                </section>
-              )}
-          </div>
-        </aside>
+        <MissionNavigator missions={boards} loaded={missionsLoaded} runs={navigatorRuns} selectedSlug={selectedSlug} shownRunId={activeRun?.runId || ''}
+          busy={Boolean(boardDialog)} readOnly={historical || !board}
+          onEdit={slug => chooseRun('', slug)} onRun={(slug, runId) => chooseRun(runId, slug)} onSession={openSession}
+          stepTitle={(slug, nodeId) => (slug === selectedSlug && board ? nodeTitle(board, nodeId) : '')}
+          onNew={openCreateBoard} onRename={openRenameBoard} onDelete={openDeleteBoard} />
 
         {/* The run banner docks above the canvas so it never covers cards. */}
         <div className="canvas-column">
             {activeRun ? (
               <div className="run-banner" data-testid="run-banner">
-                <span>run</span>
                 <span className={`badge ${runBadgeClass}`}>{recordingAnswer ? 'Recording answer…' : activeRun.status === 'running' && !runPoints.length ? 'Continuing' : runStatusLabel(activeRun.status)}</span>
                 {/* Every gate waiting and step running, at once (archon-o7p.11). A waiting
                     gate's phrase brings up its answer, not the gate's editor. */}
-                <RunWhen run={activeRun} />
                 <span className="run-points" data-testid="run-points">
                   {(recordingAnswer ? [] : runPoints).map((point, index) => (
                     <Fragment key={`${point.kind}:${point.nodeId}`}>
@@ -3314,27 +3245,19 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
                   ))}
                 </span>
                 <RunProduced />
-                {historical ? <span className="run-revision" role="status">Showing revision {activeRun.missionRev} · read only <button type="button" onClick={editCurrentMission}>Edit current mission · revision {currentBoard?.rev}</button></span> : <RunRevisionNote run={activeRun} currentRev={currentBoard?.rev} missionTitle={currentBoard?.title || ''} />}
-                {runList}
-                {showNeedingYou}
-                {activeRun.cwd && <span className="run-cwd" title={activeRun.cwd}>{activeRun.cwd}</span>}
-                {activeRun.beadId && <span>{activeRun.beadId}</span>}
+                {historical ? null : <RunRevisionNote run={activeRun} currentRev={currentBoard?.rev} missionTitle={currentBoard?.title || ''} />}
+                <span className="run-meta" title={activeRun.cwd ? `Runs in ${activeRun.cwd}` : undefined}>
+                  <RunWhen run={activeRun} />
+                  {activeRun.beadId && <span>{activeRun.beadId}</span>}
+                </span>
+                <button type="button" className="run-terminal" title="Observe run seats" onClick={() => openPeek('')}>Open terminal</button>
                 <RunBarActions run={recordingAnswer ? { ...activeRun, status: 'running', resumeAllowed: false, resumePolicy: undefined } : activeRun} points={runPoints} boardTitle={board?.title || ''}
                   titleOf={nodeId => pointTitle(nodeId) || nodeId}
                   waitingGates={waitingGateIds.map(gateId => ({ title: pointTitle(gateId) || gateId, requestedSeq: requestedSeqOf(gateId) }))}
                   onResume={() => void resumeActiveRun()} onGrant={gives => void grantActiveRun(gives)} onStop={abortActiveRun} />
               </div>
-            ) : boardRuns.length || nextNeedingYou.length ? (
-              // No run is shown, but the mission's runs can be reopened to read what they
-              // produced, and runs of any mission that need you are a click away.
-              <div className="run-banner idle" data-testid="run-banner-idle">
-                <span>run</span>
-                <span className="run-none">no open run</span>
-                {runList}
-                {showNeedingYou}
-              </div>
             ) : null}
-        <div className={`viewport${showFlow ? ' flow-mode' : ''}${flowDocked ? ' flow-docked' : ''}`} data-testid="formations-canvas" ref={viewportRef} tabIndex={0} aria-label="Mission canvas" onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
+        <div className={`viewport${showFlow ? ' flow-mode' : ''}${flowDocked ? ' flow-docked' : ''}${historical ? ' locked' : ''}`} data-testid="formations-canvas" ref={viewportRef} tabIndex={0} aria-label="Mission canvas" onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
           {showFlow && board ? (
             <Suspense fallback={null}>
               <FlowView board={board} agents={agents} notes={noteByNode} run={flowRun}
@@ -3777,13 +3700,89 @@ export default function FormationsCockpit({ active = true }: { active?: boolean 
             </div>
           ) : null}
 
-          {!showFlow && board?.formations.length ? <StaffingKeyHint store={staffingStore} /> : null}
+          {!showFlow && !historical && board?.formations.length ? <StaffingKeyHint store={staffingStore} /> : null}
           <div className="zoomlevel">{Math.round(view.scale * 100)}%</div>
           <div className="zoomctl">
             <button onClick={() => zoomBy(1.2)} title="Zoom in">+</button>
             <button onClick={() => zoomBy(1 / 1.2)} title="Zoom out">−</button>
             <button onClick={() => void arrangeBoard()} title="Arrange cards by graph flow (persists layout, Ctrl+Z to undo)" data-testid="arrange-layout">ARRANGE</button>
             <button onClick={() => fitView({ smooth: true })} title="Fit">FIT</button>
+          </div>
+          <aside className="roster floating" data-window-avoid data-testid="agent-roster" aria-label="Agent roster" hidden={!rosterOpen || historical} onPointerDown={event => event.stopPropagation()}>
+            <div className="roster-hd">
+              <div className="t">Roles</div>
+              {loadingMission ? <span className="s" data-testid="roster-count">Loading…</span> : (
+                <span className="s" data-testid="roster-count" title={`${rosterAgents.length} roles you can staff; ${rolesInUse.size} of them staff slots in this mission`}>
+                  {rolesInUseLabel(rosterAgents.length, rolesInUse.size)}
+                </span>
+              )}
+              <button type="button" className="roster-toggle" aria-label="Close roles" onClick={() => setRosterOpen(false)}>×</button>
+            </div>
+          <div className="board-roster-filter">
+            <div className="board-roster-filter-input">
+              <input type="search" aria-label="Filter agents" placeholder="filter roles" value={rosterSearch}
+                onChange={event => setRosterSearch(event.target.value)} />
+              {rosterSearch ? <button type="button" aria-label="Clear agent filter" onClick={() => setRosterSearch('')}>Clear</button> : null}
+            </div>
+            {rosterSearch.trim() ? <p role="status">{filteredRosterAgents.length} of {rosterAgents.length} roles</p> : null}
+          </div>
+          <div className="roster-list">
+            {rosterAgents.length === 0
+              ? <div className="roster-empty">No roles to staff with. Create one in the Agents view; a slot can also run with no role.</div>
+              : filteredRosterAgents.length === 0 ? <div className="roster-empty" role="status">No roles match this filter.</div>
+              : (
+                <section className="roster-group">
+                  {rosterRoles.map(agent => {
+                    const inUse = rolesInUse.get(agent.id) || 0
+                    return (
+                      <div
+                        key={agent.id}
+                        className={`ragent${inUse ? ' in-use' : ''}${agent.unbound ? ' unbound' : ''}`}
+                        data-agent={agent.id}
+                        data-testid={`roster-agent-${agent.id}`}
+                        title={`${agent.displayName || agent.id}: drag onto a slot to give it this role, or click to read it`}
+                        onPointerDown={event => {
+                          const row = event.currentTarget
+                          beginStaff(event, { payload: { kind: 'role', roleId: agent.id }, click: () => openRoleWindow(agent.id, row) })
+                        }}
+                      >
+                        <span className="av">{initials(agent.displayName || agent.id)}</span>
+                        <div className="ri">
+                          <div className="n">{agent.displayName || agent.id}</div>
+                          {/* In use comes first, so a narrow rail never cuts it off. */}
+                          <div className="r">{inUse ? <span className="in-use-words">{inSlotsWords(inUse)} · </span> : null}{[agentRole(agent), agent.preset ? (agent.customized ? 'custom' : 'preset') : '', agentState(agent) === 'idle' ? 'idle' : ''].filter(Boolean).join(' · ')}</div>
+                        </div>
+                        <button
+                          type="button"
+                          className="agent-edit"
+                          aria-label={`Edit ${agent.displayName || agent.id}`}
+                          title="Edit role"
+                          onPointerDown={event => event.stopPropagation()}
+                          onClick={event => { event.stopPropagation(); setAgentEditor({ agent, trigger: event.currentTarget }) }}
+                        >•••</button>
+                      </div>
+                    )
+                  })}
+                </section>
+              )}
+          </div>
+          </aside>
+          <div className={`dock${historical ? ' locked' : ''}`} data-testid="canvas-dock" onPointerDown={event => event.stopPropagation()}>
+            {historical && activeRun ? (
+              <>
+                <span className="dock-lock" role="status">{LOCK_SVG}Showing revision {activeRun.missionRev} · read only</span>
+                <button type="button" className="dock-edit" onClick={editMission}>Edit current mission · revision {currentBoard?.rev}</button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="docktool" aria-label="New formation" title="New formation" onClick={createSolo} data-testid="new-formation" disabled={!board || Boolean(creationWindow)}>{FORMATION_SVG}</button>
+                <div className="docktool gatetoken" role="button" aria-label="Gate" title="Gate: drag onto the canvas" data-testid="gate-token" onPointerDown={beginGateToken}>{GATE_SVG}</div>
+                <div className="docktool gatetoken endtoken" role="button" aria-label="End" title="End: drag onto the canvas to end a path on purpose" data-testid="end-token" onPointerDown={beginEndToken}>{END_SVG}</div>
+                <div className="docktool gatetoken limittoken" role="button" aria-label="Limit" title="Limit: drag onto a step to cap its rounds, onto the Input card to cap the whole mission, or onto the canvas" data-testid="limit-token" onPointerDown={beginLimitToken}>{LIMIT_SVG}</div>
+                <span className="dock-sep" />
+                <button type="button" className="docktool" aria-label="Roles" title="Roles: drag one onto a slot" aria-pressed={rosterOpen} data-testid="roles-toggle" onClick={() => setRosterOpen(open => !open)}>{ROLES_SVG}</button>
+              </>
+            )}
           </div>
           {activeRun && runEvents.filter(event => event.type === 'human_verdict_recorded'
             && !submittedHere.has(`${activeRun.runId}:${Number(event.data?.requestedSeq)}`)

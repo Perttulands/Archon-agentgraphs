@@ -159,14 +159,12 @@ test('a long block reason stays readable and Stop stays in view without sideways
       return {
         scrolls: banner.scrollWidth > banner.clientWidth,
         point: banner.querySelector('.run-point')!.getBoundingClientRect().width,
-        cwd: banner.querySelector('.run-cwd')!.getBoundingClientRect().width,
         stopInView: stop.left >= 0 && stop.right <= window.innerWidth,
         stopPinned: banner.getBoundingClientRect().right - stop.right,
       }
     })
     expect(layout.scrolls, `at ${width}px`).toBe(false)
     expect(layout.point, `at ${width}px`).toBeGreaterThan(300)
-    expect(layout.cwd, `at ${width}px`).toBeGreaterThan(40)
     expect(layout.stopInView, `at ${width}px`).toBe(true)
     expect(layout.stopPinned, `at ${width}px`).toBeLessThan(20)
     await expect(page.getByRole('button', { name: 'Stop run' })).toBeInViewport()

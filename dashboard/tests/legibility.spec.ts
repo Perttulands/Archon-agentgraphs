@@ -78,29 +78,3 @@ test('Escape closes the cockpit dialogs', async ({ page }) => {
   await expect(page.getByRole('dialog', { name: 'Run evidence · Execution' })).toHaveCount(0)
 })
 
-test('the roster resizes, remembers its width and collapses to a rail', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
-  await cockpitFixture(page)
-  await page.goto('/')
-  const roster = page.getByTestId('agent-roster')
-  await expect(roster).toBeVisible()
-  expect((await roster.boundingBox())!.width).toBe(236)
-
-  const handle = page.getByRole('separator', { name: 'Resize agent roster' })
-  const box = (await handle.boundingBox())!
-  await page.mouse.move(box.x + box.width / 2, box.y + 300)
-  await page.mouse.down()
-  await page.mouse.move(box.x + box.width / 2 + 120, box.y + 300, { steps: 5 })
-  await page.mouse.up()
-  expect((await roster.boundingBox())!.width).toBe(356)
-  await page.reload()
-  await expect(roster).toBeVisible()
-  expect((await roster.boundingBox())!.width).toBe(356)
-
-  const canvasBefore = (await page.getByTestId('formations-canvas').boundingBox())!.width
-  await page.getByRole('button', { name: 'Collapse agent roster' }).click()
-  expect((await roster.boundingBox())!.width).toBe(40)
-  expect((await page.getByTestId('formations-canvas').boundingBox())!.width).toBe(canvasBefore + 316)
-  await page.getByRole('button', { name: 'Expand agent roster' }).click()
-  expect((await roster.boundingBox())!.width).toBe(356)
-})

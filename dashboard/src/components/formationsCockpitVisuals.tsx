@@ -30,6 +30,30 @@ export const GATE_SVG = (
 )
 
 /** An End node's mark: the final-state bullseye, a ring around a filled stop. */
+export const FORMATION_SVG = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <circle cx="8.5" cy="12" r="2" />
+    <path d="M13 10.5h5M13 13.5h3.5" />
+  </svg>
+)
+
+export const LOCK_SVG = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="5" y="11" width="14" height="9" rx="1.5" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+  </svg>
+)
+
+export const ROLES_SVG = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="9" cy="9" r="3" />
+    <path d="M3.5 19c.6-3 2.7-4.5 5.5-4.5s4.900 1.500 5.500 4.500" />
+    <circle cx="17" cy="8" r="2.300" />
+    <path d="M16 14.200c2.400 0 4 1.300 4.500 3.800" />
+  </svg>
+)
+
 export const END_SVG = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
     <circle cx="12" cy="12" r="8.5" />

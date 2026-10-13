@@ -313,6 +313,12 @@ export async function fetchBoardRuns(slug: string): Promise<RunStatusProjection[
   return Array.isArray(result.data) ? result.data.filter(run => run.missionSlug === slug) : []
 }
 
+/** Every mission's runs, each with its ledger events. */
+export async function fetchAllRuns(): Promise<RunStatusProjection[]> {
+  const result = await fetchApi<RunStatusProjection[]>('/api/runs')
+  return Array.isArray(result.data) ? result.data : []
+}
+
 /** The open runs of every mission that need the operator: waiting at a gate or blocked (archon-n7u.29). */
 export async function fetchRunsNeedingYou(): Promise<RunStatusProjection[]> {
   const result = await fetchApi<RunStatusProjection[]>('/api/runs?needs=you')
