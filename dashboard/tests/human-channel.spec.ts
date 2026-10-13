@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { answerGate, evidenceShot, humanChannelFixture, inputCardId, peers, talkRunFixture, talkRunId } from './human-channel-fixture'
+import { answerGate, evidenceShot, humanChannelFixture, inputCardId, talkRunFixture, talkRunId } from './human-channel-fixture'
 import { settledBox } from './settled'
 
 for (const failure of [409, 500]) test(`an external answer keeps the draft visible after a refused browser submission (${failure})`, async ({ page }) => {
@@ -140,13 +140,6 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   const row = page.getByTestId(`flow-step-${answerGate.id}`)
   await expect(row.getByRole('button', { name: 'Talk with Question peers' })).toBeVisible()
   await expect(page.locator('[data-window-id^="talk:"]')).toHaveCount(2)
-
-  // Peek marks the kept seats as on call and waiting.
-  await page.getByRole('button', { name: 'Open terminal' }).click()
-  const peek = page.getByRole('dialog', { name: 'Terminal' })
-  await expect(peek.getByRole('navigation', { name: 'Run seats' }).getByText('on call')).toHaveCount(peers.slots!.length)
-  await expect(peek.locator('.peek-on-call')).toHaveText('On call · waiting for you')
-  await peek.getByRole('button', { name: 'Close terminal' }).click()
 
   // Once a seat records the decision, the open windows say so and stay, still taking typing.
   await expect(planner.getByRole('status').filter({ hasText: 'Decision recorded' })).toHaveCount(0)

@@ -144,6 +144,8 @@ test('a step\'s Limit card reads in Flow and in the step\'s window', async ({ pa
   await expect(page.getByTestId('limit-node-lim_cap')).toContainText('Covers Execution')
   await page.getByTestId('formation-node-execution').getByText('Execution', { exact: true }).click()
   const execution = page.getByRole('dialog', { name: 'Formation · Execution' })
+  // The run seated this step, so its window is its terminal; the brief line opens the step's fields.
+  await execution.locator('.nwin-briefline').click()
   await expect(execution.getByRole('button', { name: 'Limit Cap: at most 2 rounds' })).toBeVisible()
   await execution.getByRole('button', { name: /close/i }).first().click()
   await page.getByRole('radio', { name: 'Flow' }).click()
@@ -289,6 +291,7 @@ test('a run blocked at a spent time card offers the card\'s time again, which po
   // The step's window lists the warning its seat was given.
   await page.getByTestId('formation-node-execution').getByText('Execution', { exact: true }).click()
   const execution = page.getByRole('dialog', { name: 'Formation · Execution' })
+  await execution.locator('.nwin-briefline').click()
   await expect(execution.getByTestId('limit-warnings-execution')).toHaveText('#3 · attempt 1 · time warning pasted into Worker 1')
   await shot(page, 'limit-run-blocked-time.png')
   await execution.getByRole('button', { name: /close/i }).first().click()

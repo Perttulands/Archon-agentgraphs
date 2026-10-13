@@ -65,7 +65,6 @@ import { useEscapeKey } from './useEscapeKey'
 import MissionNavigator, { type ListedRun } from './MissionNavigator'
 import '../styles/formations-roster.css'
 import '../styles/formations-shell.css'
-const FloatingPeek = lazy(() => import('../terminal/FloatingPeek'))
 const RunEvidence = lazy(() => import('../evidence/RunEvidence'))
 import NodeWindow from '../nodeWindow/NodeWindow'
 const FlowView = lazy(() => import('../flow/FlowView'))
@@ -297,7 +296,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   const putAwayRef = useRef(putAway)
   putAwayRef.current = putAway
   // A session chosen in the navigator opens its terminal once its run is shown.
-  const pendingPeek = useRef<{ runId: string; nodeId: string } | null>(null)
+  const pendingNode = useRef<{ runId: string; nodeId: string } | null>(null)
   // Every mission's runs that need the operator, for the picker counts and the page title.
   const [needsYou, setNeedsYou] = useState<RunStatusProjection[]>([])
   // Link problems outlive the board loads that clear ordinary errors.
@@ -308,7 +307,6 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   const [escalations, setEscalations] = useState<OpenEscalation[]>([])
   const [inspectedNodeId, setInspectedNodeId] = useState<string | null>(null)
   // Formations whose terminal is open; '' is the run-wide one.
-  const [peeks, setPeeks] = useState<string[]>([])
   // The gate answer window, per pending request: closed by the operator, or reopened from the run bar with focus.
   const [answerWindow, setAnswerWindow] = useState<{ key: string; closed: boolean; focus: number }>({ key: '', closed: false, focus: 0 })
   // The waiting gate the operator chose to answer; the oldest waiting gate otherwise (archon-o7p.11).
@@ -395,17 +393,6 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     observer.observe(canvas)
     return () => observer.disconnect()
   }, [reflowWindows])
-  // Each Peek is its own window; asking for one already open raises it.
-  const openPeek = useCallback((nodeId: string) => {
-    setPeeks(current => current.includes(nodeId) ? current : [...current, nodeId])
-    focusWindow(`peek:${nodeId}`)
-  }, [focusWindow])
-  useEffect(() => {
-    const pending = pendingPeek.current
-    if (!pending || activeRun?.runId !== pending.runId) return
-    pendingPeek.current = null
-    openPeek(pending.nodeId)
-  }, [activeRun?.runId, openPeek])
   // Each note thread opens in its own window; opening one already open raises it.
   const openNoteWindow = useCallback((target: string) => {
     setNoteWindows(current => current.includes(target) ? current : [...current, target])
@@ -428,6 +415,13 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     setNodeWindows(current => current.includes(nodeId) ? current : [...current, nodeId])
     focusWindow(`node:${nodeId}`)
   }, [focusWindow])
+  // A session chosen in the navigator opens its step's window once its run is on the canvas.
+  useEffect(() => {
+    const pending = pendingNode.current
+    if (!pending || activeRun?.runId !== pending.runId) return
+    pendingNode.current = null
+    openNodeWindow(pending.nodeId)
+  }, [activeRun?.runId, openNodeWindow])
   const worldRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<ViewTransform>(view)
   const interactionOwnerRef = useRef<FormationsInteractionOwner | null>(null)
@@ -2255,10 +2249,15 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   }, [beginStaff, savedOf, staffingStore])
 
   const beginNodeDrag = useCallback((event: ReactPointerEvent, id: string, index: number) => {
-    if (historicalRef.current) return
     if (event.button !== 0) return
     const target = event.target as HTMLElement
     if (target.closest('.port,.frun,.mrun,.note-pin')) return
+    // A frozen run's cards do not move; a click still opens the card's window.
+    if (historicalRef.current) {
+      // Opened on release, as a click on an editable card is, so the window keeps the focus it takes.
+      if (!target.closest('button,a,input,select,textarea')) { event.stopPropagation(); setSelection({ kind: 'node', id }); window.addEventListener('pointerup', () => openNodeWindow(id), { once: true }) }
+      return
+    }
     event.stopPropagation()
     setSelection({kind:'node',id})
     viewportRef.current?.focus({preventScroll:true})
@@ -3017,8 +3016,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     return [...known.values()]
   }, [activeRun, allRuns, boardRuns, boards, needsYou])
   const openSession = (slug: string, runId: string, nodeId: string) => {
-    if (activeRun?.runId === runId) { openPeek(nodeId); return }
-    pendingPeek.current = { runId, nodeId }
+    if (activeRun?.runId === runId) { openNodeWindow(nodeId); return }
+    pendingNode.current = { runId, nodeId }
     chooseRun(runId, slug)
   }
   // Several gates can wait at once; the answer shows the chosen one, else the oldest.
@@ -3250,7 +3249,6 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                   <RunWhen run={activeRun} />
                   {activeRun.beadId && <span>{activeRun.beadId}</span>}
                 </span>
-                <button type="button" className="run-terminal" title="Observe run seats" onClick={() => openPeek('')}>Open terminal</button>
                 <RunBarActions run={recordingAnswer ? { ...activeRun, status: 'running', resumeAllowed: false, resumePolicy: undefined } : activeRun} points={runPoints} boardTitle={board?.title || ''}
                   titleOf={nodeId => pointTitle(nodeId) || nodeId}
                   waitingGates={waitingGateIds.map(gateId => ({ title: pointTitle(gateId) || gateId, requestedSeq: requestedSeqOf(gateId) }))}
@@ -3406,11 +3404,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                       {stepNumber(formation.id)}{renderNodeTitle(formation.title, 'tt', 'Untitled formation', 'div')}
                       <div className={`tg${formation.brief?.goal?.trim() ? '' : ' placeholder'}`} title={formationSummary(formation)}>{formationSummary(formation)}</div>
                       {/* Run tools get their own row so the title keeps the header's width. */}
-                      {activeRun || nodeStates.has(formation.id) ? (
+                      {nodeStates.has(formation.id) ? (
                         <div className="fruntools" data-testid={`run-tools-${formation.id}`}>
-                          {activeRun ? <button type="button" className="fpeek" aria-label={`Peek at ${formation.title}`}
-                            onPointerDown={event => event.stopPropagation()}
-                            onClick={() => openPeek(formation.id)}>Peek</button> : null}
                           {nodeStates.has(formation.id) ? (
                             <button
                               type="button"
@@ -3854,17 +3849,11 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
           onClose={() => setCreationWindow(null)} /> : null}
         {board ? nodeWindows.map(nodeId => (
           <Suspense key={`node-${nodeId}`} fallback={null}>
-            <NodeWindow readOnly={historical} findings={draftFindings.get(nodeId)} nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps} noteCount={noteByNode.get(nodeId)?.length || 0}
+            <NodeWindow readOnly={historical} runId={activeRun?.runId} findings={draftFindings.get(nodeId)} nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps} noteCount={noteByNode.get(nodeId)?.length || 0}
               anchor={nodeWindowAnchors.current.get(nodeId)}
               runState={nodeStates.has(nodeId) ? nodeStates.get(nodeId) || '' : undefined}
               limitWarnings={runEvents.filter(event => event.type === 'limit_warning' && event.nodeId === nodeId)}
               onClose={() => setNodeWindows(current => current.filter(open => open !== nodeId))} />
-          </Suspense>
-        )) : null}
-        {activeRun ? peeks.map(nodeId => (
-          <Suspense key={`${activeRun.runId}-${nodeId}`} fallback={<div role="status">Loading terminal…</div>}>
-            <FloatingPeek windowId={`peek:${nodeId}`} runId={activeRun.runId} initialNodeId={nodeId || undefined}
-              onClose={() => setPeeks(current => current.filter(open => open !== nodeId))} />
           </Suspense>
         )) : null}
         {gateTalk.windows}

@@ -18,7 +18,7 @@ test('theme fallback, local font, notes and harness icons survive', async ({ pag
   expect(fixture.themeFetches()).toBe(1)
 })
 
-for (const width of [1440, 390]) test(`floating Peek shows the seat's whole grid, sends typing to a working seat, never resizes it, and keeps the graph stable at ${width}px`, async ({ page, context }) => {
+for (const width of [1440, 390]) test(`a seated step's window shows the seat's whole grid, sends typing to a working seat, never resizes it, and keeps the graph stable at ${width}px`, async ({ page, context }) => {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 })
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   const fixture = await cockpitFixture(page, { run: true })
@@ -33,71 +33,64 @@ for (const width of [1440, 390]) test(`floating Peek shows the seat's whole grid
   const typed = () => frames.filter(frame => frame.startsWith('0')).map(frame => frame.slice(1)).join('')
   const resizes = () => frames.filter(frame => frame.startsWith('1')).map(frame => JSON.parse(frame.slice(1)) as { columns: number; rows: number })
   await page.goto('/')
-  await expect(page.getByRole('button', { name: 'Open terminal' })).toBeEnabled()
   const world = page.locator('.world')
+  const card = page.getByTestId('formation-node-execution')
+  await expect(card).toBeVisible()
   const transform = await world.getAttribute('style')
-  await page.getByRole('button', { name: 'Open terminal' }).click()
-  await expect(page.getByText('Live · type to talk to the agent', { exact: true })).toBeVisible()
+  // The card's first click is the step itself: its staffing and its terminal, no button between.
+  await card.locator('.tt').click()
+  const step = page.getByRole('dialog', { name: 'Formation · Execution' })
+  // A phone keeps the room for the terminal; staffing shows with the brief line's fields.
+  await expect(step.getByRole('region', { name: 'Staffing' })).toBeVisible({ visible: width !== 390 })
+  await expect(step.locator('.xterm-screen')).toBeVisible()
   // A seat working a dispatch takes typing too; it is not on call.
-  await expect(page.locator('.peek-on-call, .peek-seat-on-call')).toHaveCount(0)
-  await expect(page.locator('.xterm-screen')).toBeVisible()
-  const rows = page.locator('.xterm-rows')
-  await expect(rows).toContainText('line 44')
-  const peek = page.getByRole('dialog', { name: 'Terminal' })
-  const room = peek.getByTestId('seat-terminal-room')
-  // Peek opens over the graph with enough room for its grid on a big screen;
-  // a narrow viewport still scrolls rather than cutting off the seat.
-  await expect.poll(() => room.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(width === 390)
-  if (width === 390) await expect(peek.getByRole('button', { name: 'End of line' })).toBeVisible()
+  await expect(step.locator('.peek-seat-on-call')).toHaveCount(0)
+  await expect(step.locator('.xterm-rows')).toContainText('line 44')
+  const room = step.getByTestId('seat-terminal-room')
+  // A narrow viewport scrolls the grid rather than cutting off the seat.
+  if (width === 390) await expect(step.getByRole('button', { name: 'End of line' })).toBeVisible()
   await expect.poll(() => room.evaluate(el => el.scrollTop + el.clientHeight >= el.scrollHeight - 1)).toBe(true)
-  // Painting a selection copies it, and Peek says so.
-  const grid = (await page.locator('.xterm-screen').boundingBox())!
+  // Painting a selection copies it, and the window says so.
+  const grid = (await step.locator('.xterm-screen').boundingBox())!
   await page.mouse.move(grid.x + 4, grid.y + grid.height - 8)
   await page.mouse.down()
   await page.mouse.move(grid.x + 60, grid.y + grid.height - 8, { steps: 8 })
   await page.mouse.up()
-  await expect(page.locator('.xterm-selection div').first()).toBeVisible()
-  await expect(peek.locator('.peek-foot')).toContainText('Copied selection')
+  await expect(step.locator('.xterm-selection div').first()).toBeVisible()
+  await expect(step.locator('.peek-foot')).toContainText('Copied selection')
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('ine 4')
   expect(await world.getAttribute('style')).toBe(transform)
 
   // Typing reaches the seat; Escape goes to the agent and leaves the window open.
-  await page.locator('.terminal-surface-host').click()
+  await step.locator('.terminal-surface-host').click()
   await page.keyboard.type('hello seat')
   await page.keyboard.press('Enter')
   await page.keyboard.press('Escape')
   await expect.poll(typed).toBe('hello seat\r\x1b')
-  await expect(page.getByRole('dialog', { name: 'Terminal' })).toBeVisible()
+  await expect(step).toBeVisible()
 
-  if (width === 1440) {
-    // A deliberate resize takes precedence, then Reset size wraps the grid again.
-    const before = (await peek.boundingBox())!
-    await peek.locator('[data-handle="e"]').focus()
-    for (let step = 0; step < 15; step++) await page.keyboard.press('ArrowLeft')
-    await expect.poll(async () => (await peek.boundingBox())!.width).toBeLessThan(before.width - 100)
-    await peek.getByRole('button', { name: 'Reset size' }).click()
-    await expect.poll(async () => (await peek.boundingBox())!.width).toBeGreaterThan(before.width - 50)
-    await expect.poll(() => room.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true)
-    expect(resizes()).toEqual([])
+  // The step's other seat is one tab away, on its own connection.
+  await step.getByRole('button', { name: 'Worker 1', exact: true }).click()
+  await expect(step.getByRole('button', { name: 'Worker 1', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(step.locator('.xterm-screen')).toBeVisible()
+  // The brief line opens the rest of the step's fields above the terminal.
+  await step.locator('.nwin-briefline').click()
+  await expect(step.getByText('Brief', { exact: true })).toBeVisible()
+  await step.locator('.nwin-briefline').click()
+
+  if (width !== 390) {
+    // The window drags by its title bar and stays inside the page.
+    const head = step.locator('.fwin-head')
+    const rect = (await head.boundingBox())!
+    await page.mouse.move(rect.x + rect.width / 3, rect.y + 15)
+    await page.mouse.down(); await page.mouse.move(width + 100, 950); await page.mouse.up()
   }
-  expect(resizes()).toEqual([])
-
-  const before = fixture.seatsFetches()
-  await page.getByRole('button', { name: 'Worker 1', exact: true }).click()
-  await expect(page.getByText('Live · type to talk to the agent', { exact: true })).toBeVisible()
-  expect(fixture.seatsFetches()).toBeGreaterThan(before)
-  const head = page.locator('.peek-head')
-  const rect = (await head.boundingBox())!
-  await page.mouse.move(rect.x + rect.width / 2, rect.y + 15)
-  await page.mouse.down(); await page.mouse.move(width + 100, 950); await page.mouse.up()
-  const close = page.getByRole('button', { name: 'Close terminal' })
+  const close = page.getByRole('button', { name: 'Close Formation · Execution' })
   const closeRect = await settledBox(page, close)
   expect(closeRect.x + closeRect.width).toBeLessThanOrEqual(width)
   await close.click()
   expect(await world.getAttribute('style')).toBe(transform)
-  await page.getByRole('button', { name: 'Open terminal' }).click()
-  await expect(page.getByText('Live · type to talk to the agent', { exact: true })).toBeVisible()
-  expect(await world.getAttribute('style')).toBe(transform)
+  expect(resizes()).toEqual([])
   expect(fixture.writes).toEqual([])
   // Each connection opens with the seat's native grid, then speaks only input and flow control.
   const handshakes = frames.filter(frame => frame.startsWith('{'))
@@ -106,42 +99,39 @@ for (const width of [1440, 390]) test(`floating Peek shows the seat's whole grid
   for (const frame of frames) expect(frame[0]).toMatch(/[{0123]/)
 })
 
-test('two floating windows open, resize, stack and stay off the zoom column', async ({ page }) => {
+test('two step windows open, resize, stack and stay off the zoom column', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await cockpitFixture(page, { run: true })
   await page.routeWebSocket('**/seats/*/terminal', () => {})
   await page.goto('/')
-  await page.getByRole('button', { name: 'Peek at Peer review', exact: true }).click()
-  await page.getByRole('button', { name: 'Open terminal' }).click()
-  const peer = page.locator('[data-window-id="peek:peer"]')
-  const run = page.locator('[data-window-id="peek:"]')
+  await page.getByTestId('formation-node-peer').locator('.tt').click()
+  await page.getByTestId('formation-node-execution').locator('.tt').click()
+  const peer = page.locator('[data-window-id="node:peer"]')
+  const run = page.locator('[data-window-id="node:execution"]')
   await expect(peer).toBeVisible()
-  await expect(run).toBeVisible()
-  // The run window wraps its seat's grid once its font is fitted; measure it after that.
-  await expect(run.locator('.seat-terminal-grid.fitted')).toBeVisible()
+  await expect(run.getByTestId('seat-pane')).toBeVisible()
   const z = (win: typeof run) => win.evaluate(el => Number(getComputedStyle(el).zIndex))
   await expect.poll(async () => await z(run) > await z(peer)).toBe(true)
   const before = await settledBox(page, run)
-  // The run window opens clear of the peer window's title bar, so both can still be grabbed.
-  const peerHead = await settledBox(page, peer.locator('.peek-head'))
+  // The second window opens clear of the first one's title bar, so both can still be grabbed.
+  const peerHead = await settledBox(page, peer.locator('.fwin-head'))
   expect(before.y >= peerHead.y + peerHead.height || before.y + before.height <= peerHead.y
     || before.x >= peerHead.x + peerHead.width || before.x + before.width <= peerHead.x).toBe(true)
 
-  // Grow it from the corner that has room: its opposite corner stays put.
-  const room = { left: before.x - 300, top: before.y - 200 }
+  // Shrink it from a corner: its opposite corner stays put.
   const corner = (await run.locator('[data-handle="nw"]').boundingBox())!
   await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2)
   await page.mouse.down()
-  await page.mouse.move(room.left, room.top, { steps: 8 })
+  await page.mouse.move(before.x + 120, before.y + 100, { steps: 8 })
   await page.mouse.up()
   const after = await settledBox(page, run)
   expect(after.x + after.width).toBeCloseTo(before.x + before.width, 0)
   expect(after.y + after.height).toBeCloseTo(before.y + before.height, 0)
-  expect(after.width * after.height).toBeGreaterThan(before.width * before.height)
+  expect(after.width * after.height).toBeLessThan(before.width * before.height)
 
   // Once the operator deliberately overlaps windows, a title remains a
   // keyboard handle as well as a pointer handle. Move and raise the peer.
-  await peer.locator('.peek-title').focus()
+  await peer.locator('.fwin-title').focus()
   await page.keyboard.press('ArrowRight')
   await expect.poll(async () => await z(peer) > await z(run)).toBe(true)
 
@@ -161,7 +151,7 @@ test('two floating windows open, resize, stack and stay off the zoom column', as
   // The zoom column stays usable with both windows pressed against it.
   await page.getByRole('button', { name: 'FIT' }).click()
 
-  await peer.locator('.peek-title').focus()
+  await peer.locator('.fwin-title').focus()
   await page.keyboard.press('Escape')
   await expect(peer).toHaveCount(0)
   await expect(run).toBeVisible()
@@ -251,15 +241,13 @@ test('formation titles stay readable beside the type chip and run controls', asy
   await page.setViewportSize({ width: 1400, height: 850 })
   await cockpitFixture(page, { run: true })
   await page.goto('/')
-  await expect(page.getByRole('button', { name: 'Open terminal' })).toBeEnabled()
-  await expect(page.getByRole('button', { name: 'Peek at Peer review' })).toBeVisible()
   const titles = page.locator('.formation .fhead .tt')
   await expect(titles).toHaveCount(3)
   for (const title of await titles.all()) {
     expect(await title.evaluate(el => el.scrollWidth <= el.clientWidth), await title.innerText()).toBe(true)
   }
   const card = page.getByTestId('formation-node-peer')
-  for (const control of [card.locator('.ftype'), card.getByRole('button', { name: 'Peek at Peer review' }), card.getByRole('button', { name: 'Run formation' })]) {
+  for (const control of [card.locator('.ftype'), card.getByRole('button', { name: 'Run formation' })]) {
     await expect(control).toBeVisible()
   }
 })
@@ -327,17 +315,19 @@ for (const width of [1440, 390]) test(`the persona editor stays inside the viewp
   expect(box.x + box.width).toBeLessThanOrEqual(width)
 })
 
-test('a formation without seats never opens a different formation', async ({ page }) => {
+test('a formation without seats shows its fields and never opens a different formation\'s terminal', async ({ page }) => {
   await cockpitFixture(page, { run: true })
   const sockets: string[] = []
   await page.routeWebSocket('**/seats/*/terminal', socket => { sockets.push(socket.url()) })
   await page.goto('/')
-  await page.getByRole('button', { name: 'Peek at Peer review', exact: true }).click()
-  await expect(page.getByText('No terminal seats have been created for this formation.')).toBeVisible()
+  await page.getByTestId('formation-node-peer').locator('.tt').click()
+  const step = page.getByRole('dialog', { name: 'Formation · Peer review' })
+  await expect(step.getByText('Brief', { exact: true })).toBeVisible()
+  await expect(step.getByTestId('seat-pane')).toHaveCount(0)
   expect(sockets).toEqual([])
 })
 
-test('refresh follows the selected worker across attempts and never reconnects in the background', async ({ page }) => {
+test('a step window follows its worker across attempts, reconnects only when asked, and says when the seat ended', async ({ page }) => {
   const fixture = await cockpitFixture(page, { run: true })
   let current = seats.map(s => ({ ...s }))
   await page.route('**/runs/run_browser/seats', route => route.fulfill({ json: {
@@ -352,30 +342,25 @@ test('refresh follows the selected worker across attempts and never reconnects i
     })
   })
   await page.goto('/')
-  await page.getByRole('button', { name: 'Open terminal' }).click()
-  await expect(page.getByText('Disconnected. Refresh seats to reconnect.')).toBeVisible()
-  await page.getByRole('button', { name: 'Worker 1', exact: true }).click()
-  await expect(page.getByText('Disconnected. Refresh seats to reconnect.')).toBeVisible()
+  await page.getByTestId('formation-node-execution').locator('.tt').click()
+  const step = page.getByRole('dialog', { name: 'Formation · Execution' })
+  await expect(step.getByText('Disconnected')).toBeVisible()
+  await step.getByRole('button', { name: 'Worker 1', exact: true }).click()
+  await expect(step.getByText('Disconnected')).toBeVisible()
   await expect.poll(() => sockets.length).toBe(2)
-  // Re-selecting either dropped terminal makes exactly one new connection.
-  await page.getByRole('button', { name: 'Controller', exact: true }).click()
-  await expect.poll(() => sockets.length).toBe(3)
-  await expect(page.getByText('Disconnected. Refresh seats to reconnect.')).toBeVisible()
-  await page.getByRole('button', { name: 'Worker 1', exact: true }).click()
-  await expect.poll(() => sockets.length).toBe(4)
-  await expect(page.getByText('Disconnected. Refresh seats to reconnect.')).toBeVisible()
+  // A dropped terminal never dials again in the background; Reconnect makes exactly one new connection.
   const count = sockets.length
-  await page.waitForTimeout(200)
+  await page.waitForTimeout(300)
   expect(sockets).toHaveLength(count)
+  await step.getByRole('button', { name: 'Reconnect' }).click()
+  await expect.poll(() => sockets.length).toBe(count + 1)
+  // A new attempt's seat gets its own terminal once the next read of the seats arrives.
   current = current.map(s => s.slotId === 'worker' ? { ...s, createdSeq: 28, terminalUrl: '/api/runs/run_browser/seats/28/terminal' } : s)
-  // Refresh keeps the terminal on screen until the new projection arrives; the new attempt then gets its own.
-  await page.getByRole('button', { name: 'Refresh seats' }).click()
-  await expect.poll(() => sockets.at(-1)).toContain('/seats/28/terminal')
-  await expect(page.getByText('Disconnected. Refresh seats to reconnect.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Worker 1', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(() => sockets.at(-1), { timeout: 15000 }).toContain('/seats/28/terminal')
+  await expect(step.getByRole('button', { name: 'Worker 1', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  // Once every seat has ended the window is the step's fields again.
   current = current.map(s => ({ ...s, state: 'ended', terminalUrl: '' }))
-  await page.getByRole('button', { name: 'Refresh seats' }).click()
-  await expect(page.getByText('Seat ended.')).toBeVisible()
-  expect(sockets).toHaveLength(count + 1)
+  await expect(step.getByTestId('seat-pane')).toHaveCount(0, { timeout: 15000 })
+  await expect(step.getByText('Brief', { exact: true })).toBeVisible()
   expect(fixture.writes).toEqual([])
 })

@@ -38,12 +38,41 @@
 .nwin-section h3 { margin: 0; color: var(--text-secondary); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .nwin-empty { margin: 0; color: var(--text-secondary); }
 
-.nslot { display: flex; flex-direction: column; gap: 5px; padding: 8px 0; }
-.nslot + .nslot { border-top: 1px dashed var(--divider); }
-.nslot-words { margin: 0; color: var(--text-primary); }
-.nslot-controls { display: flex; gap: 6px; align-items: center; }
-.nslot-controls select { flex: 1; min-width: 0; }
-.nslot-controls .nwin-action { flex-shrink: 0; }
+.nwin-fields { display: flex; flex-direction: column; gap: 14px; }
+/* Staffing, first in a formation's window: one row a slot, a pick for each of its four words. */
+.nsetup { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--divider); }
+.nslot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.nslot-who { margin-right: 4px; font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.npick { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; border: 1px solid var(--divider); border-radius: 4px;
+  background: var(--surface-secondary); color: var(--text-primary); font: 12px var(--font-mono); white-space: nowrap; cursor: pointer; }
+.npick small { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-secondary); }
+.npick:hover:not(:disabled) { border-color: var(--accent); }
+.npick:disabled { background: transparent; cursor: default; }
+.npick.effort { font-weight: 700; }
+
+/* A step the run seated: staffing, the brief on one line, then its terminal filling the window. */
+.fwin.nwin-terminal-window .fwin-body { display: flex; flex-direction: column; overflow: hidden; }
+.nwin.with-terminal { flex: 1; min-height: 0; gap: 0; padding: 0; }
+.nwin.with-terminal .nsetup { padding: 10px 14px; flex-shrink: 0; }
+.nwin.with-terminal .nwin-fields { flex: 0 1 auto; max-height: 50%; overflow: auto; padding: 12px 16px; border-bottom: 1px solid var(--divider); }
+.nwin-briefline { display: flex; flex-shrink: 0; padding: 8px 14px; border: 0; border-bottom: 1px solid var(--divider); background: transparent;
+  color: var(--text-secondary); font: 12px var(--font-mono); text-align: left; cursor: pointer; }
+.nwin-briefline span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nwin-briefline:hover, .nwin-briefline[aria-expanded="true"] { color: var(--text-primary); }
+.seat-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 8px 8px; background: var(--terminal-background); }
+.seat-pane button { font: 11px var(--font-mono); color: var(--text-secondary); background: transparent; border: 1px solid var(--divider); border-radius: 3px; padding: 4px 8px; cursor: pointer; }
+.seat-pane .peek-seats button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; }
+.nwin-head-produced { flex-shrink: 1; min-width: 0; }
+
+/* What the run did at a gate, first in the gate's window. */
+.ngate-run { display: flex; flex-direction: column; gap: 10px; }
+.ngate-why { padding: 10px 12px; border-left: 3px solid var(--color-error); border-radius: 0 4px 4px 0; background: var(--color-error-light); color: var(--text-primary); overflow-wrap: anywhere; }
+.ngate-verdict { padding: 10px 12px; border-left: 3px solid var(--window-green); border-radius: 0 4px 4px 0; background: var(--surface-secondary); }
+.ngate-verdict.fail { border-left-color: var(--color-error); }
+.ngate-verdict strong { text-transform: uppercase; letter-spacing: .08em; }
+.ngate-verdict p { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ngate-returned { margin: 0; padding: 10px 12px; border: 1px solid var(--divider); border-radius: 4px; background: var(--terminal-background); color: var(--terminal-foreground);
+  font: 12px/1.5 var(--font-mono); white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; }
 
 .nwin-routes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
 .nwin-route { display: inline-block; padding: 3px 0; border: 0; background: transparent; color: var(--text-primary); font: 12px/1.45 var(--font-mono); text-align: left; }
@@ -77,3 +106,10 @@ button.nwin-route:hover { color: var(--accent); text-decoration-color: var(--acc
 .ninput-required { display: flex; align-items: center; gap: 4px; color: var(--text-secondary); font-size: 11px; white-space: nowrap; }
 .ninput-required input { width: auto; }
 .nfield-actions.ninput-add { justify-content: flex-start; }
+
+/* A phone gives a seated step's window the screen under the top bar; staffing waits behind the brief line. */
+@media (max-width: 800px) {
+  .fwin.nwin-terminal-window { left: 8px !important; right: 8px; top: 56px !important; bottom: 12px; width: auto !important; height: auto !important; }
+  .fwin.nwin-terminal-window .floating-frame-handle { display: none; }
+  .nwin.with-terminal:not(.details) .nsetup { display: none; }
+}

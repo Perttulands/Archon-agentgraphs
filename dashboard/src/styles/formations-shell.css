@@ -14,7 +14,6 @@
 .fmx .run-banner .run-points{flex:1 1 auto;flex-wrap:nowrap;overflow:hidden;}
 .fmx .run-banner .run-meta{flex:0 1 auto;min-width:0;display:flex;align-items:center;gap:12px;margin-left:auto;overflow:hidden;color:var(--dim);font-size:11px;white-space:nowrap;}
 .fmx .run-banner .run-meta > *{overflow:hidden;text-overflow:ellipsis;}
-.fmx .run-banner .run-terminal{flex-shrink:0;}
 .fmx .run-banner .run-stop{margin-left:0;}
 @media (max-width:1100px){.fmx .run-banner{flex-wrap:wrap;}}
 

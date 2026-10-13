@@ -41,15 +41,9 @@ to the drafting step.
   cancellation and histories.
 - Click a mission, formation or gate to open it in a floating window. Read its
   full text, staffing and routes, and edit any field in place, with undo.
-- Open a floating terminal Peek to talk with a seat's agent, even while it
-  works, and to select, copy and scroll its output. The terminal follows the
-  window's size. Open one per formation, then move, resize and stack the
-  windows over the canvas.
-
-![Floating terminal Peek with controller and worker tabs](docs/images/terminal-peek.png)
-
-This capture uses a real tmux shell running CLI help. It is labelled as a demo;
-no model is running in it.
+- Click a step the run has seated and its window is the agent's terminal:
+  talk with the agent, even while it works, and select, copy and scroll its
+  output. Move, resize and stack the windows over the canvas.
 
 The Agents view keeps reusable personas beside the mission's staffing. Inspect
 and edit a persona and see which slots use it. It shows the mission's current
@@ -207,7 +201,7 @@ For Vite development, set `ARCHON_API_URL` to the daemon URL and run
 | `src/internal/api/` | Authoring HTTP and local adapters. |
 | `src/internal/daemon/` | `archond` flags, executor wiring and startup. |
 | `src/cmd/archon/`, `src/cmd/archond/` | CLI and daemon entrypoints. |
-| `dashboard/` | Mission editor, agent staffing and terminal Peek. |
+| `dashboard/` | Mission editor, agent staffing and seat terminals. |
 
 Read the [runtime contract](docs/CONTRACT.md),
 [daily-capability decisions](docs/adr/0016-daily-capability.md) and

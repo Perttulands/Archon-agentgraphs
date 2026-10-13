@@ -649,8 +649,9 @@ function clickCard(target: HTMLElement) {
 }
 
 /** Each slot's staffing sentence in a node window, as it reads. */
+/** Each slot's staffing row as words: who, then its role, harness, model and effort. */
 function sentencesIn(region: HTMLElement): string[] {
-  return Array.from(region.querySelectorAll('.nslot-words')).map(words => words.textContent || '')
+  return [...region.querySelectorAll('.nslot')].map(row => [...row.children].map(part => [...part.childNodes].filter(node => node.nodeName !== 'SMALL').map(node => node.textContent).join('')).join(' · '))
 }
 
 async function openNodeWindow(target: HTMLElement, name: string) {
@@ -2204,7 +2205,7 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
     const staffing = within(frame).getByRole('region', { name: 'Staffing' })
-    await waitFor(() => expect(sentencesIn(staffing)).toEqual(['Lead (controller) is Mason on Codex · gpt-6-astra · xhigh.', 'Worker is vanilla on Claude Code · opus · low.']))
+    await waitFor(() => expect(sentencesIn(staffing)).toEqual(['Lead (controller) · Mason · Codex · gpt-6-astra · xhigh', 'Worker · vanilla · Claude Code · opus · low']))
 
     // The role word opens the role list. Hazel lands on a staffed slot, so the slot keeps its own
     // harness, model and effort; undo restores the slot exactly.
@@ -2222,7 +2223,7 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
     const staffing = within(frame).getByRole('region', { name: 'Staffing' })
-    await waitFor(() => expect(sentencesIn(staffing)).toEqual(['Lead (controller) is Mason on Codex · mason-model · medium.', 'Worker is not staffed. Staff it']))
+    await waitFor(() => expect(sentencesIn(staffing)).toEqual(['Lead (controller) · Mason · Codex · mason-model · medium', 'Worker is not staffed. · Staff it']))
 
     fireEvent.click(within(staffing).getByRole('button', { name: 'Staff Worker' }))
     const sentence = await screen.findByRole('dialog', { name: 'Staff Worker' })
@@ -2230,7 +2231,7 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => {
       expect(patches.find(patch => patch.body.assignSlot)?.body.assignSlot).toEqual({ formationId: 'fmn_frame', slotId: 'slot_worker', agentId: '', harness: 'claude-code', model: 'opus', effort: 'low' })
     })
-    await waitFor(() => expect(sentencesIn(staffing)[1]).toBe('Worker is vanilla on Claude Code · opus · low.'))
+    await waitFor(() => expect(sentencesIn(staffing)[1]).toBe('Worker · vanilla · Claude Code · opus · low'))
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => {
@@ -2960,7 +2961,7 @@ describe('FormationsCockpit reference parity', () => {
 
     // The step's node window carries the same chips.
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
-    expect(within(within(frame).getByRole('region', { name: 'Run' })).getByRole('button', { name: 'frame.md' })).toBeInTheDocument()
+    expect(within(frame).getByRole('button', { name: 'frame.md' })).toBeInTheDocument()
   })
 
   it.each(['deletion', 'rename', 'rewiring'])('reopens historical produced outputs using frozen names and topology after board %s', async edit => {

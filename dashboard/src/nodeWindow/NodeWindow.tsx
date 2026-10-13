@@ -41,6 +41,8 @@ import { slotTitle, staffingSentence } from './staffing'
 import { harnessName } from '../components/harnessIcons'
 import type { Part } from '../staffing/SlotFace'
 import { modelWords, roleNamer, staffingOf } from '../staffing/staffingModel'
+import SeatPane, { hasLiveSeat, useNodeSeats } from '../terminal/SeatPane'
+import { GateRunFacts } from './GateRunFacts'
 import './nodeWindow.css'
 
 /**
@@ -121,8 +123,10 @@ export function nodeWindowLabel(located: Located): string {
   return `${KIND_WORD[located.kind]} · ${located.node.title || UNTITLED[located.kind]}`
 }
 
-export default function NodeWindow({ readOnly = false, nodeId, board, agents, profiles, noteCount, findings, anchor, runState, limitWarnings = [], onClose, ops, initiallyEditTitle = false, creating = false }: {
+export default function NodeWindow({ readOnly = false, runId, nodeId, board, agents, profiles, noteCount, findings, anchor, runState, limitWarnings = [], onClose, ops, initiallyEditTitle = false, creating = false }: {
   readOnly?: boolean
+  /** The run on the canvas; a step it seated shows its terminal, a gate what the run did there. */
+  runId?: string
   initiallyEditTitle?: boolean
   creating?: boolean
   nodeId: string
@@ -142,7 +146,12 @@ export default function NodeWindow({ readOnly = false, nodeId, board, agents, pr
   ops: NodeWindowOps
 }) {
   const located = locateNode(board, nodeId)
+  const seats = useNodeSeats(located?.kind === 'formation' ? runId : undefined, nodeId)
+  const [details, setDetails] = useState(false)
   if (!located) return null
+  const withTerminal = hasLiveSeat(seats)
+  // A step the run reached opens with a terminal's room, over the canvas; any other window opens beside its card.
+  const seated = located.kind === 'formation' && Boolean(runId) && Boolean(runState)
   const flow = buildFlow(board)
   const steps = flow.numbers
   const label = nodeWindowLabel(located)
@@ -163,17 +172,28 @@ export default function NodeWindow({ readOnly = false, nodeId, board, agents, pr
       takeFocus={initiallyEditTitle}
       label={label}
       title={<><span className="nwin-kind">{KIND_WORD[located.kind]}</span> {located.node.title || UNTITLED[located.kind]}</>}
-      defaultSize={{ width: 540, height: 620 }}
+      defaultSize={seated ? { width: 860, height: 680 } : { width: 540, height: 620 }}
+      overCanvas={seated}
+      className={withTerminal ? 'nwin-terminal-window' : undefined}
+      actions={runState !== undefined ? <ProducedFiles nodeId={nodeId} className="nwin-head-produced" /> : undefined}
       anchor={() => anchor || nodeAnchor(nodeId)}
       keepClear={() => nodeWindowKeepClear(nodeId, board.connections)}
       onClose={onClose}
     >
-      <div className="nwin" data-testid={`node-window-${nodeId}`}>
+      <div className={`nwin${withTerminal ? ' with-terminal' : ''}${details ? ' details' : ''}`} data-testid={`node-window-${nodeId}`}>
+        {!creating && located.kind === 'formation' ? <FormationSetup formation={located.node} agents={agents} ops={ops} /> : null}
+        {withTerminal ? (
+          <button type="button" className="nwin-briefline" aria-expanded={details} onClick={() => setDetails(open => !open)}>
+            <span>{(located.kind === 'formation' && located.node.brief?.goal || '').split('\n').find(line => line.trim()) || 'No brief'}</span>
+          </button>
+        ) : null}
+        {!withTerminal || details ? <div className="nwin-fields">
         <div className="nwin-eyebrow">{eyebrow}</div>
+        {located.kind === 'gate' && runId && runState !== undefined ? <GateRunFacts runId={runId} gateId={nodeId} /> : null}
         <NodeProblems findings={findings} />
         <EditableField initiallyEditing={initiallyEditTitle} label="Title" value={located.node.title} placeholder={UNTITLED[located.kind]} onSave={title => ops.rename(nodeId, title)} />
         {located.kind === 'inputCard' ? <MissionFields mission={located.node} ops={ops} /> : null}
-        {!creating && located.kind === 'formation' ? <FormationFields formation={located.node} agents={agents} ops={ops} /> : null}
+        {!creating && located.kind === 'formation' ? <FormationFields formation={located.node} ops={ops} /> : null}
         {located.kind === 'gate' ? <GateFields gate={located.node} board={board} profiles={profiles} ops={ops} /> : null}
         {located.kind === 'end' ? <EndFields end={located.node} ops={ops} /> : null}
         {located.kind === 'limit' ? <LimitFields limit={located.node} board={board} steps={steps} ops={ops} /> : null}
@@ -210,9 +230,10 @@ export default function NodeWindow({ readOnly = false, nodeId, board, agents, pr
                 {limitWarnings.map(event => <li key={event.seq}>{limitWarningLine(event, slotId => (located.kind === 'formation' ? located.node.slots.find(slot => slot.id === slotId)?.label || '' : ''))}</li>)}
               </ul>
             ) : null}
-            <ProducedFiles nodeId={nodeId} className="nwin-produced" />
           </section>
         ) : null}
+        </div> : null}
+        {withTerminal && seats ? <SeatPane seats={seats} /> : null}
       </div>
     </FloatingWindow>
     </AuthoringReadOnly.Provider>
@@ -236,7 +257,7 @@ function MissionFields({ mission, ops }: { mission: MissionNode; ops: NodeWindow
   )
 }
 
-function FormationFields({ formation, agents, ops }: { formation: FormationNode; agents: AgentProjection[]; ops: NodeWindowOps }) {
+function FormationFields({ formation, ops }: { formation: FormationNode; ops: NodeWindowOps }) {
   const brief = formation.brief || {}
   const readOnly = useContext(AuthoringReadOnly)
   const saveBrief = (change: FormationBrief) => ops.setBrief(formation.id, {
@@ -265,13 +286,18 @@ function FormationFields({ formation, agents, ops }: { formation: FormationNode;
         onSave={links => saveBrief({ links: splitList(links) })}>
         {brief.links?.length ? <ul className="nwin-list">{brief.links.map(link => <li key={link}>{link}</li>)}</ul> : null}
       </EditableField>
-      <section className="nwin-section" aria-label="Staffing">
-        <h3>Staffing</h3>
-        {formation.slots.length ? formation.slots.map(slot => (
-          <SlotStaffing key={slot.id} formation={formation} slot={slot} agents={agents} ops={ops} />
-        )) : <p className="nwin-empty">This formation has no slots.</p>}
-      </section>
     </>
+  )
+}
+
+/** Who does the step, first in its window: each slot with its role, harness, model and effort, each opening its own list. */
+function FormationSetup({ formation, agents, ops }: { formation: FormationNode; agents: AgentProjection[]; ops: NodeWindowOps }) {
+  return (
+    <section className="nsetup" aria-label="Staffing">
+      {formation.slots.length ? formation.slots.map(slot => (
+        <SlotStaffing key={slot.id} formation={formation} slot={slot} agents={agents} ops={ops} />
+      )) : <p className="nwin-empty">This formation has no slots.</p>}
+    </section>
   )
 }
 
@@ -308,8 +334,8 @@ function FileList({ files, context, label }: { files: string[]; context: string;
 }
 
 /**
- * A slot's staffing as the sentence it is: each word opens the staffing window
- * dropping from the word, on that word's list (archon-o7p.17).
+ * A slot's staffing in one row: each pick opens the staffing window dropping
+ * from it, on that pick's list (archon-o7p.17).
  */
 function SlotStaffing({ formation, slot, agents, ops }: {
   formation: FormationNode
@@ -322,22 +348,26 @@ function SlotStaffing({ formation, slot, agents, ops }: {
   const words = staffingSentence(slot, roleNamer(agents))
   // The sentence window drops from the word clicked, as a dropdown does.
   const open = (part: Part | null) => (event: ReactMouseEvent<HTMLElement>) => ops.staffSlot(formation, slot, part, event.currentTarget)
-  const word = (part: Part, text: string) => (
-    <button type="button" disabled={readOnly} className={`nslot-word${part === 'effort' ? ' effort' : ''}`} aria-label={`Change the ${part} of ${slot.label || slot.id}: ${text}`} onClick={open(part)}>{text}</button>
+  const pick = (part: Part, text: string) => (
+    <button type="button" disabled={readOnly} className={`npick${part === 'effort' ? ' effort' : ''}`} aria-label={`Change the ${part} of ${slot.label || slot.id}: ${text}`} onClick={open(part)}>
+      <small>{part}</small>{text}
+    </button>
   )
   if (!staffing) {
     return (
       <div className="nslot">
-        <p className="nslot-words">{words} <button type="button" disabled={readOnly} className="nslot-word" aria-label={`Staff ${slot.label || slot.id}`} onClick={open(null)}>Staff it</button></p>
+        <span className="nslot-who">{words}</span>
+        <button type="button" disabled={readOnly} className="npick" aria-label={`Staff ${slot.label || slot.id}`} onClick={open(null)}>Staff it</button>
       </div>
     )
   }
   return (
     <div className="nslot">
-      <p className="nslot-words">
-        {slotTitle(slot)} is {word('role', staffing.role ? roleNamer(agents)(staffing.role) : 'vanilla')} on{' '}
-        {word('harness', harnessName(staffing.harness) || staffing.harness || 'no harness')} · {word('model', modelWords(staffing.model))} · {word('effort', staffing.effort || 'no effort')}.
-      </p>
+      <span className="nslot-who">{slotTitle(slot)}</span>
+      {pick('role', staffing.role ? roleNamer(agents)(staffing.role) : 'vanilla')}
+      {pick('harness', harnessName(staffing.harness) || staffing.harness || 'no harness')}
+      {pick('model', modelWords(staffing.model))}
+      {pick('effort', staffing.effort || 'no effort')}
     </div>
   )
 }

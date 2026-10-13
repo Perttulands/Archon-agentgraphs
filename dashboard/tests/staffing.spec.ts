@@ -471,7 +471,7 @@ test('the node window\'s staffing words open the same sentence beside it', async
   const gap = Math.hypot(Math.max(0, word.x - (box.x + box.width), box.x - (word.x + word.width)), Math.max(0, word.y - (box.y + box.height), box.y - (word.y + word.height)))
   expect(gap).toBeLessThanOrEqual(12)
   await page.keyboard.press('1')
-  await expect(staffing).toContainText('Worker 1 is Codex builder on Codex · default model · low.')
+  await expect(staffing).toContainText('Worker 1roleCodex builderharnessCodexmodeldefault modeleffortlow')
   await expect.poll(() => assignments(fixture.patches)).toEqual([{ formationId: 'execution', slotId: 'worker', agentId: 'codex', harness: 'openai-codex', model: '', effort: 'low' }])
 })
 

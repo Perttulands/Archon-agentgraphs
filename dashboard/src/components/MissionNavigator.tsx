@@ -9,7 +9,7 @@ import { runInputExcerpt, runsInListOrder, shortTime } from './runList'
 import './missionNavigator.css'
 
 /** A run as the run list returns it: the projection plus its ledger events. */
-export type ListedRun = RunStatusProjection & { events?: Array<{ type: string; nodeId?: string; slotId?: string; sessionName?: string }> }
+export type ListedRun = RunStatusProjection & { events?: Array<{ type: string; nodeId?: string; slotId?: string; sessionName?: string; outcome?: string }> }
 
 const RUNS_SHOWN = 5
 
@@ -29,11 +29,12 @@ export function runRowLabel(run: RunStatusProjection, now = new Date()): string 
 
 const needsOperator = (run: RunStatusProjection) => !run.final && (run.status === 'waiting_human' || run.status === 'blocked')
 
-/** The sessions of a run's seats, one per seat, in the order they were created. */
+/** The sessions a run still holds, in the order they were created: a seat's cleanup ends its session unless it is kept on call. */
 export function runSessions(run: ListedRun): Array<{ sessionName: string; nodeId: string; slotId: string }> {
   const seen = new Map<string, { sessionName: string; nodeId: string; slotId: string }>()
   for (const event of run.events || []) {
     if (event.type === 'seat_created' && event.sessionName && event.nodeId) seen.set(event.sessionName, { sessionName: event.sessionName, nodeId: event.nodeId, slotId: event.slotId || '' })
+    else if (event.type === 'seat_cleanup' && event.sessionName && event.outcome !== 'kept_on_call') seen.delete(event.sessionName)
   }
   return [...seen.values()]
 }

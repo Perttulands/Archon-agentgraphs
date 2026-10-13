@@ -67,6 +67,13 @@ for (const entry of ['list', 'link'] as const) {
     const saved = await page.evaluate(async id => (await (await fetch('/api/missions/browser/layout')).json()).data.layout.nodes.find((node: { id: string }) => node.id === id), await first.getAttribute('data-node'))
     await expect(first).toHaveCSS('left', `${saved.x}px`)
     await expect(first).toHaveCSS('top', `${saved.y}px`)
+    // A frozen card does not move, and a click on it still opens its window, read only.
+    await first.locator('.tt').click()
+    const frozenStep = page.getByRole('dialog', { name: /^Formation · / })
+    await expect(frozenStep).toBeVisible()
+    await expect(frozenStep.getByRole('button', { name: /^Change the role of / }).first()).toBeDisabled()
+    await frozenStep.getByRole('button', { name: /^Close Formation · / }).click()
+    await expect(frozenStep).toHaveCount(0)
     // Notes opened through the toolbar also respect the historical boundary.
     await page.getByRole('button', { name: 'Mission notes', exact: true }).click()
     const notes = page.getByRole('dialog', { name: 'mission notes', exact: true })

@@ -27,7 +27,6 @@ It shows the delivery mission and delivery presets, not an operator run.
 | --- | --- |
 | `workflow.png` | The delivery mission after Arrange and Fit, at 1440 × 850. |
 | `agents.png` | The Agents view filtered to delivery personas, with Delivery Lead selected and every staffing card, including the execution slots, visible, at 1440 × 900. |
-| `terminal-peek.png` | The floating Peek panel, captured directly from the browser after scrolling to earlier output, at 760 × 430. |
 
 The terminal capture uses a seeded run with four bound demo shell sessions on
 a private tmux socket. The controller shell prints a demo label and runs

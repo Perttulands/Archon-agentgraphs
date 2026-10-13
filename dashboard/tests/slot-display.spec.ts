@@ -44,8 +44,8 @@ test('the canvas, Flow and the node window show every slot\'s harness, model and
   await page.getByTestId('formation-node-execution').locator('.fhead .tt').click()
   const execution = page.getByRole('dialog', { name: 'Formation · Execution' })
   const staffing = execution.getByRole('region', { name: 'Staffing' })
-  await expect(staffing).toContainText('Controller is Claude controller on Claude Code · default model · medium.')
-  await expect(staffing).toContainText('Worker 1 is vanilla on Claude Code · opus · low.')
+  await expect(staffing).toContainText('ControllerroleClaude controllerharnessClaude Codemodeldefault modeleffortmedium')
+  await expect(staffing).toContainText('Worker 1rolevanillaharnessClaude Codemodelopuseffortlow')
   await page.keyboard.press('Escape')
 
   await page.getByRole('radio', { name: 'Flow' }).click()

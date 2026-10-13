@@ -754,7 +754,13 @@ its neighbours, its next links and the title bars of open windows visible and
 clickable, and cascades when no free space is left. Menus opened from the run
 bar render above every window.
 
-The cockpit's floating Peek attaches to an owned live seat and sends typing
+A step's window (archon-fh5c.6) opens on the first click of its card with the
+step's staffing in one row a slot (role, harness, model, effort, each opening
+its own list) and, once the run has seated the step, the seat's terminal filling
+the rest of the window, one tab a seat; the brief line between them opens the
+step's other fields. A gate's window states first what the run did there: the
+latest verdict with its reason, or why there is none and the verdict the judge
+returned. The terminal attaches to an owned live seat and sends typing
 through the seat terminal WebSocket below. Its resizes change only the viewer's
 own view; the seat keeps its pinned size. The
 operator types to the agent whether it is working a dispatch, on call or idle.
@@ -763,23 +769,22 @@ the seat's native grid and fits its font to its window: the largest font up to
 14px at which every row and column fits, down to an 11px floor. Below the floor
 the grid scrolls, starting at its newest rows, with Start of line and End of
 line controls when it is wider than the window. Resizing a window changes only
-its font; no size reaches the seat. Peek opens over the canvas at up to 90% of the workspace, keeping other
-windows' title bars clear, and shrinks to the grid it drew until the operator
-sizes it. Peek keeps the
+its font; no size reaches the seat. A seated step's window opens over the canvas at up to 90% of the workspace, keeping other
+windows' title bars clear. It keeps the
 terminal, connection and frame of every seat it has shown while it is open, so
-switching seats preserves a healthy connection. Reset size clears the remembered
-size and wraps the grid again. A connection lost with the seat still live,
-such as across a daemon restart, dials again once when its tab is selected, on Refresh seats (Refresh in a
+switching seats preserves a healthy connection, and reads the step's seats again
+every few seconds, so a new attempt's seat gets its terminal. A connection lost with the seat still live,
+such as across a daemon restart, dials again once on Reconnect (Refresh in a
 Talk window) or when the page becomes visible again; nothing retries on its
 own. Every refused attach, including a stale or unknown seat, prints its reason in the terminal;
 attach failure details are logged by the daemon. Painting a selection
-copies it and the footer says whether it reached the clipboard. A seat kept on call
+copies it and the window says whether it reached the clipboard. A seat kept on call
 for a human gate is marked on call, and
 waiting for you while it holds a pending ask. On a session-channel run the
 waiting gate's answer panel offers Talk with the asking formation, which opens
 each asked seat's terminal in its own window beside the panel; a window says
-when the decision is recorded. Peek does not enter tmux copy mode, resize the
-seat window, or end sessions. Closing Peek disconnects only its own clients. Labels and controller/worker roles come from the run's frozen
+when the decision is recorded. The terminal does not enter tmux copy mode, resize the
+seat window, or end sessions. Closing the window disconnects only its own clients. Labels and controller/worker roles come from the run's frozen
 graph; a new attempt has a new terminal URL. Scroll and selection happen in the
 browser; the stream shows the native current screen and subsequent output,
 without an API for reading old transcripts or entering historical tmux copy
@@ -789,8 +794,8 @@ Each new `seat_created` records its immutable tmux session/pane IDs and a privat
 socket/server identity. Linux socket peer credentials, process start time and
 boot identity distinguish the original server from a replacement, even when
 session IDs are reused. A seat without that proof is unavailable for
-Peek. A renamed session is still identified by its recorded immutable ID.
-Missing, ended and unavailable seats remain visible with their actual state.
+a terminal. A renamed session is still identified by its recorded immutable ID.
+A step whose seats have all ended, gone missing or become unavailable shows its fields without a terminal.
 A seat whose tmux server has exited is unavailable, because the original server
 can no longer be proven.
 Terminal support uses the daemon's existing `--socket` and `--tmux-bin`; the lab
