@@ -41,6 +41,8 @@ import { isTextEditingTarget } from './formationsCockpitDom'
 import { UndoHistory, WriteTracker, boardStep, undoOutcomeMessage } from './formationsUndo'
 import { StaffingLayer } from '../staffing/StaffingLayer'
 import { staff, type StaffingHost } from '../staffing/staffingActions'
+import { CharacterEditorDialog, CharactersGroup } from '../characters/Characters'
+import { useCharacters, type Character } from '../characters/charactersApi'
 import { captionText, modelWords, offCatalog, retiredRolesOf, roleName as catalogRoleName, roleNamer, roleTrouble, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing } from '../staffing/staffingModel'
 import { StaffingStore, slotKey, useStaffingVersion, type SlotRef } from '../staffing/staffingStore'
 import { GateKindChips } from './GateEditorDialog'
@@ -276,6 +278,8 @@ export default function AgentsView() {
   const [createDraft, setCreateDraft] = useState<CreateDraft>(EMPTY_CREATE)
   const [noteDraft, setNoteDraft] = useState('')
   const [editingPersona, setEditingPersona] = useState<{ agent: RosterAgent; trigger: HTMLElement | null } | null>(null)
+  const { characters, reload: reloadCharacters } = useCharacters()
+  const [characterEditor, setCharacterEditor] = useState<{ character: Character | null; trigger: HTMLElement | null } | null>(null)
 
   const selectedMission = board?.inputCards?.find(mission => mission.id === selectedMissionId) || null
   // Boards is the run console; this tab only reports the mission's run.
@@ -769,6 +773,14 @@ export default function AgentsView() {
             placeholder="filter agents"
           />
           <div className="roster-list">
+            <CharactersGroup
+              characters={characters.filter(character => !search.trim() || character.name.toLowerCase().includes(search.trim().toLowerCase()))}
+              roleName={roleNamer(agents as FormationAgentProjection[])}
+              selectedId={characterEditor?.character?.id}
+              title={character => `${character.name}${character.description ? `: ${character.description}` : ''}`}
+              onNew={trigger => setCharacterEditor({ character: null, trigger })}
+              onPick={(character, trigger) => setCharacterEditor({ character, trigger })}
+            />
             {!loading && personas.length === 0 && (
               <div className="roster-empty">
                 {search.trim() ? 'No roles match this filter.' : 'No roles yet. Use New role to make one.'}
@@ -893,6 +905,17 @@ export default function AgentsView() {
             await loadAgents()
             await loadAgentDetail(editingPersona.agent.id, true)
           }}
+        />
+      )}
+
+      {characterEditor && (
+        <CharacterEditorDialog
+          key={characterEditor.character?.id || 'new'}
+          character={characterEditor.character}
+          catalog={staffingHost.catalog}
+          returnFocus={characterEditor.trigger}
+          onClose={() => setCharacterEditor(null)}
+          onSaved={reloadCharacters}
         />
       )}
 

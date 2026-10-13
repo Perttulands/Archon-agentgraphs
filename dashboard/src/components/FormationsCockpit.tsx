@@ -70,6 +70,8 @@ import NodeWindow from '../nodeWindow/NodeWindow'
 const FlowView = lazy(() => import('../flow/FlowView'))
 import CanvasContextMenu, { type MenuItem, type MenuState } from './CanvasContextMenu'
 import PersonaEditorDialog from './PersonaEditorDialog'
+import { CharacterEditorDialog, CharactersGroup } from '../characters/Characters'
+import { characterStaffing, useCharacters, type Character } from '../characters/charactersApi'
 import HumanGateAnswerPanel, { type GateDecision } from './HumanGateAnswerPanel'
 import RunPoint from './RunPoint'
 import RunBarActions from './RunBarActions'
@@ -81,7 +83,7 @@ import type { Part } from '../staffing/SlotFace'
 import { StaffingKeyHint, StaffingLayer } from '../staffing/StaffingLayer'
 import { PAN_MS, type StaffingStage } from '../staffing/staffingPlacement'
 import { dropRole, moveStaffing, previewRole, staff, type StaffingHost } from '../staffing/staffingActions'
-import { captionText, retiredRolesOf, roleName, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing, type StaffingCatalog } from '../staffing/staffingModel'
+import { captionText, retiredRolesOf, roleName, roleNamer, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing, type StaffingCatalog } from '../staffing/staffingModel'
 import { StaffingStore, slotKey, type SlotRef } from '../staffing/staffingStore'
 import { buildFlow } from '../flow/flowModel'
 import CanvasLegend from './CanvasLegend'
@@ -158,7 +160,7 @@ import type {
 /** A staffing drag: a role from the rail, or a slot's staffing; a press without a move on a slot opens its sentence. */
 /** The smallest scale a mission opens at: below it card text is too small to read. */
 const LEGIBLE_SCALE = 0.8
-type StaffPayload = { kind: 'role'; roleId: string } | { kind: 'slot'; from: SlotRef }
+type StaffPayload = { kind: 'role'; roleId: string } | { kind: 'character'; character: Character } | { kind: 'slot'; from: SlotRef }
 type DragStaff = { payload: StaffPayload | null; slot?: { ref: SlotRef; part: Part | null; anchor: HTMLElement }; click?: () => void; startX: number; startY: number; moved: boolean; scene?: GhostScene; sceneView?: string }
 /** The canvas as a drag starts: the cards and notes a ghost keeps off, each slot's box and its card's, and the canvas. Measured once per drag. */
 type GhostScene = { cards: DOMRect[]; slots: Map<string, { box: DOMRect; card: DOMRect }>; canvas: DOMRect }
@@ -355,6 +357,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   const [rosterOpen, setRosterOpen] = useState(false)
   const [boardDialog, setBoardDialog] = useState<BoardDialogState | null>(null)
   const [agentEditor, setAgentEditor] = useState<{ agent: AgentProjection; trigger: HTMLElement | null } | null>(null)
+  const { characters, reload: reloadCharacters } = useCharacters()
+  const [characterEditor, setCharacterEditor] = useState<{ character: Character | null; trigger: HTMLElement | null } | null>(null)
   const [notesMode, setNotesMode] = useState<NotesMode>(() => readNotesMode())
   const [notes, setNotes] = useState<BoardNotesDocument | null>(null)
   // Open note windows by thread target (a node ID or the board), in opening order.
@@ -1440,6 +1444,17 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     void staff(staffingStore, staffingHostRef.current, ref, staffingOf(slot), null, { label: `the unassignment from ${quoted(slot.label, 'a slot')}` })
   }, [slotRefOf, staffingStore])
 
+  // A character is a stamp: the slot takes its role, harness, model and effort and keeps no link to it.
+  const stampCharacter = useCallback((ref: SlotRef, character: Character) => {
+    if (historicalRef.current) return
+    const saved = savedOf(ref)
+    const next = characterStaffing(character)
+    if (sameStaffing(staffingStore.current(ref.key, saved), next)) return
+    void staff(staffingStore, staffingHostRef.current, ref, saved, next, { note: `Staffed as ${character.name}.` })
+  }, [savedOf, staffingStore])
+  const stampCharacterRef = useRef(stampCharacter)
+  stampCharacterRef.current = stampCharacter
+
   // Undo restores the exact previous slots when their type shape is valid.
   const makeControllerOp = useCallback((formation: FormationNode, slot: FormationSlot) => {
     const previous = boardRef.current?.formations.find(item => item.id === formation.id) || formation
@@ -2153,6 +2168,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     const ghostLabel = (payload: StaffPayload) => {
       const host = staffingHostRef.current
       if (payload.kind === 'role') return host.catalog.roles.find(role => role.id === payload.roleId)?.name || payload.roleId
+      if (payload.kind === 'character') return payload.character.name
       const moving = store.current(payload.from.key, savedOf(payload.from))
       return moving ? `${moving.role ? `${roleName(staffingHostRef.current.catalog, moving.role)} · ` : ''}${captionText(moving)}` : payload.from.label
     }
@@ -2181,6 +2197,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
         const host = staffingHostRef.current
         store.setDraft(target.key, payload.kind === 'role'
           ? previewRole(store, host, target, savedOf(target), payload.roleId)
+          : payload.kind === 'character' ? characterStaffing(payload.character)
           : store.current(payload.from.key, savedOf(payload.from)))
       },
       finalize: pointer => {
@@ -2202,6 +2219,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
         }
         const host = staffingHostRef.current
         if (payload.kind === 'role') dropRole(store, host, target, savedOf(target), payload.roleId)
+        else if (payload.kind === 'character') stampCharacterRef.current(target, payload.character)
         else if (payload.from.key !== target.key) void moveStaffing(store, host, payload.from, savedOf(payload.from), target, savedOf(target))
       },
       cancel: () => {
@@ -3194,6 +3212,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     setBrief: saveBrief,
     changeType: changeFormationType,
     staffSlot: openStaffing,
+    stampSlot: (formation, slot, character) => stampCharacter(slotRefOf(formation, slot), character),
     updateGate: (gate, draft) => updateGateFields(gate.id, draft),
     setGateFiles: (gate, files) => setGateFiles(gate.id, files),
     setEndOutcome,
@@ -3207,7 +3226,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
       setInspectedNodeId(nodeId)
     },
-  }), [attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, openStaffing, renameNode, saveBrief, setEndOutcome, setGateFiles, setLimit, updateGateFields, updateMissionFields])
+  }), [attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, openStaffing, renameNode, saveBrief, setEndOutcome, setGateFiles, setLimit, updateGateFields, updateMissionFields, stampCharacter, slotRefOf])
 
   const cockpit = (
     <div className="fmx" data-testid="formations-view" data-cockpit="d7" onClickCapture={event => {
@@ -3762,6 +3781,15 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
             {rosterSearch.trim() ? <p role="status">{filteredRosterAgents.length} of {rosterAgents.length} roles</p> : null}
           </div>
           <div className="roster-list">
+            <CharactersGroup
+              characters={characters.filter(character => !rosterSearch.trim() || character.name.toLowerCase().includes(rosterSearch.trim().toLowerCase()))}
+              roleName={roleNamer(agents)}
+              title={character => `${character.name}: drag onto a slot to staff it as this character, or click to edit it`}
+              onPointerDown={(event, character) => {
+                const row = event.currentTarget
+                beginStaff(event, { payload: { kind: 'character', character }, click: () => setCharacterEditor({ character, trigger: row }) })
+              }}
+            />
             {rosterAgents.length === 0
               ? <div className="roster-empty">No roles to staff with. Create one in the Agents view; a slot can also run with no role.</div>
               : filteredRosterAgents.length === 0 ? <div className="roster-empty" role="status">No roles match this filter.</div>
@@ -3889,7 +3917,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
           onClose={() => setCreationWindow(null)} /> : null}
         {board ? nodeWindows.map(nodeId => (
           <Suspense key={`node-${nodeId}`} fallback={null}>
-            <NodeWindow readOnly={historical} runId={activeRun?.runId} findings={draftFindings.get(nodeId)} nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps} noteCount={noteByNode.get(nodeId)?.length || 0}
+            <NodeWindow readOnly={historical} runId={activeRun?.runId} characters={characters} findings={draftFindings.get(nodeId)} nodeId={nodeId} board={board} agents={agents} profiles={gateProfiles} ops={nodeWindowOps} noteCount={noteByNode.get(nodeId)?.length || 0}
               anchor={nodeWindowAnchors.current.get(nodeId)}
               runState={nodeStates.has(nodeId) ? nodeStates.get(nodeId) || '' : undefined}
               limitWarnings={runEvents.filter(event => event.type === 'limit_warning' && event.nodeId === nodeId)}
@@ -3911,6 +3939,17 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
         ) : null}
         <FileWindowsLayer />
       </WindowManagerProvider>
+
+      {characterEditor ? (
+        <CharacterEditorDialog
+          key={characterEditor.character?.id || 'new'}
+          character={characterEditor.character}
+          catalog={staffingCatalog}
+          returnFocus={characterEditor.trigger}
+          onClose={() => setCharacterEditor(null)}
+          onSaved={reloadCharacters}
+        />
+      ) : null}
 
       {agentEditor ? (
         <PersonaEditorDialog

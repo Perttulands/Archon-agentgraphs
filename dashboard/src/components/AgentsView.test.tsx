@@ -569,7 +569,7 @@ describe('AgentsView', () => {
     const roster = screen.getByRole('complementary', { name: 'Agent roster' })
     expect(Array.from(roster.querySelectorAll('.roster-group-label')).map(label => label.textContent)).toEqual(['Roles', 'Unbound'])
     // Roles carry no harness: no harness mark, and alphabetical whatever the default harness.
-    expect(Array.from(roster.querySelectorAll('.roster-group:first-child .ragent .n')).map(name => name.textContent)).toEqual(['Ambiguous One', 'Attached Live', 'Offline One', 'Retired One'])
+    expect(Array.from(roster.querySelectorAll('.roster-group[data-provider="roles"] .ragent .n')).map(name => name.textContent)).toEqual(['Ambiguous One', 'Attached Live', 'Offline One', 'Retired One'])
     const codexRow = within(roster).getByRole('button', { name: /inspect Attached Live/i })
     expect(codexRow.querySelector('.av svg')).toBeNull()
     expect(within(codexRow).getByText('AT')).toBeInTheDocument()

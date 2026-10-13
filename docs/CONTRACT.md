@@ -28,6 +28,7 @@ decisions; [examples](../examples/) provide reusable missions.
 | Formation | A step: the team of agents that does it. `solo` has one seat; `peer` has peer seats; `orchestrated` has a controller directing its bound workers. |
 | Slot | A position in a formation that owns what its seat runs: a harness (`claude-code` or `openai-codex`), a model (blank means the harness default) and an effort, plus an optional role (`agentId`, a persona). A slot without a role is a vanilla agent, such as `claude-code · opus · low`. A seat is the slot's runtime agent session. |
 | Persona (role) | A TOML agent card with role text only: a display name, kind, summary, capabilities, status and notes. It carries no harness, model or effort; each slot that uses it states its own. Every Archon has seven built-in generic roles (`scout`, `planner`, `builder`, `judge`, `orchestrator`, `debugger`, `reviewer`); a card in the agents directory adds a role or overrides a built-in one. |
+| Character | A saved staffing: a name, an optional description and picture, and a role, harness, model and effort. It is a stamp: stamping a slot writes those four values to the slot and keeps no link, so editing or deleting a character changes no mission. Characters live in `characters.json` beside the role cards. |
 | Gate | A criterion with one or more kinds: `code`, `formation`, `human`. Its ports are `in`, `pass`, `fail`, `judge`. |
 | End node | Ends a path on purpose (`[[end]]` in TOML: `id`, `title`, `outcome`). Its outcome is `done` or `rejected`. Its only port is `in`, which takes any number of routes; it leads nowhere. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
@@ -1581,6 +1582,17 @@ exists.
 There is no generic file reader, transcript endpoint, mission import endpoint or
 authentication layer. Run evidence reads only one run's ledger, its artifact
 directory and the briefs its own dispatches recorded.
+
+`GET /api/characters` lists the saved characters; `POST /api/characters` saves
+a new one (`name`, `harness` and `effort` required; `id` defaults to the name
+in lowercase with dashes; optional `description`, `agentId`, `model`, and
+`picture` as a PNG, JPEG or WebP data URL of at most 96 KB) and refuses an id
+that exists with HTTP 409 `CHARACTER_EXISTS`; `PUT /api/characters/{id}` states
+one in full; `DELETE /api/characters/{id}` removes it. A harness, model or
+effort a slot could not take is refused with HTTP 422 `INVALID_CHARACTER`. No
+route changes a mission: the dashboard stamps a slot with the ordinary
+`assignSlot` edit, from the slot's row in the step window or by dragging the
+character from the roster. Characters are made and edited in the Agents view.
 
 With `--server`, Archon runs these authoring and read commands through the
 daemon, so an open cockpit sees the edits through its change polling: `mission

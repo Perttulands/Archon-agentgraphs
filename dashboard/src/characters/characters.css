@@ -1,0 +1,21 @@
+/* Characters in a roster and their editor. Rows, fields and buttons take the
+ * roster's and the role editor's styles (formations-d7.css). */
+.fmx .chface{position:relative;flex:0 0 30px;width:30px;height:30px;}
+.fmx .chface img,.fmx .chface-initials{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid var(--line);border-radius:4px;object-fit:cover;background:var(--paper2);color:var(--ink2);font:700 11px/1 var(--font-mono);}
+.fmx .chface-harness{position:absolute;right:-5px;bottom:-5px;display:flex;align-items:center;justify-content:center;width:16px;height:16px;border:1px solid var(--line);border-radius:50%;background:var(--card);color:var(--ink);}
+.fmx .chface-harness svg{width:10px;height:10px;}
+.fmx button.ragent.character{width:100%;border:0;background:transparent;color:inherit;font:inherit;text-align:left;}
+.fmx button.ragent.character:hover,.fmx button.ragent.character.selected{background:var(--accent-light);}
+.fmx .ragent.character .ri .n,.fmx .ragent.character .ri .r{display:block;}
+.fmx .ragent.character .ri .r{letter-spacing:.04em;text-transform:none;}
+.fmx .characters-label{display:flex;align-items:center;justify-content:space-between;min-height:28px;padding:4px 12px;font:700 11px/1 var(--font-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dimmer);}
+.fmx .characters-new{width:20px;height:20px;padding:0;border:1px solid var(--line);background:transparent;color:var(--dim);font:700 13px/1 var(--font-mono);cursor:pointer;}
+.fmx .characters-new:hover{color:var(--ink);border-color:var(--terra);}
+.fmx .character-dialog-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+.fmx .character-dialog-head .chface,.fmx .character-dialog-head .chface img,.fmx .character-dialog-head .chface-initials{width:56px;height:56px;flex-basis:56px;font-size:16px;}
+.fmx .character-dialog-head button{padding:6px 10px;border:1px solid var(--line);background:transparent;color:var(--ink2);font:11px var(--font-mono);cursor:pointer;}
+.fmx .character-dialog-head button:hover{border-color:var(--terra);color:var(--ink);}
+.fmx .agent-dialog-fields select{width:100%;border:1px solid var(--line);background:var(--paper2);color:var(--ink);padding:7px 9px;font:11px/1.4 var(--font-mono);outline:none;}
+.fmx .agent-dialog-fields select:focus{border-color:var(--terra);}
+.fmx .character-dialog .board-dialog-actions .danger{margin-right:auto;}
+.npick.stamp{width:auto;max-width:132px;padding-right:6px;font:inherit;color:var(--text-secondary);cursor:pointer;}

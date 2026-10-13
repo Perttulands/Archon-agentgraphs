@@ -916,6 +916,44 @@ paths:
         schema:
           type: string
         description: Current ETag of the role's card
+  /api/characters:
+    get:
+      responses:
+        '200':
+          description: data.characters lists the saved characters by name, each {id, name, description?,
+            picture?, agentId?, harness, model?, effort}. A character is a stamp that fills a slot; no
+            mission links to one.
+    post:
+      responses:
+        '201':
+          description: The saved character in data; its id defaults to the name in lowercase with dashes
+        '409':
+          description: CHARACTER_EXISTS when a character has that id
+        '422':
+          description: INVALID_CHARACTER when the name is missing, the harness, model or effort is one a
+            slot could not take, the picture is not a PNG, JPEG or WebP data URL of at most 96 KB, or the
+            request names a field the endpoint does not take
+  /api/characters/{characterId}:
+    parameters:
+    - in: path
+      name: characterId
+      required: true
+      schema:
+        type: string
+    put:
+      responses:
+        '200':
+          description: The character, stated in full, in data
+        '404':
+          description: No character has that id
+        '422':
+          description: INVALID_CHARACTER, as for POST
+    delete:
+      responses:
+        '200':
+          description: data.deleted names the removed character; missions it stamped keep their staffing
+        '404':
+          description: No character has that id
   /api/agents/{agentId}/usage:
     parameters:
     - in: path

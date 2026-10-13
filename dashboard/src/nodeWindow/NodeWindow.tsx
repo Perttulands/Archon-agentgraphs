@@ -40,6 +40,7 @@ import { judgeChain, nodeRoutes, nodeTitle } from './boardRoutes'
 import { slotTitle, staffingSentence } from './staffing'
 import { harnessName } from '../components/harnessIcons'
 import type { Part } from '../staffing/SlotFace'
+import type { Character } from '../characters/charactersApi'
 import { modelWords, roleNamer, staffingOf } from '../staffing/staffingModel'
 import SeatPane, { hasLiveSeat, useNodeSeats } from '../terminal/SeatPane'
 import { GateRunFacts } from './GateRunFacts'
@@ -59,6 +60,8 @@ export interface NodeWindowOps {
   changeType: (formation: FormationNode, type: FormationType, keepSlotId?: string) => void
   /** Opens the slot's staffing sentence dropping from the word that was clicked; a word opens only its own list. */
   staffSlot: (formation: FormationNode, slot: FormationSlot, part: Part | null, anchor: Element) => void
+  /** Stamps a saved character onto the slot: its role, harness, model and effort, with no link kept. */
+  stampSlot: (formation: FormationNode, slot: FormationSlot, character: Character) => void
   updateGate: (gate: GateNode, draft: GateDraft) => Promise<boolean>
   /** Sets an End node's outcome: done, or rejected, which fails the run. */
   setEndOutcome: (end: EndNode, outcome: EndOutcome) => Promise<boolean>
@@ -123,7 +126,7 @@ export function nodeWindowLabel(located: Located): string {
   return `${KIND_WORD[located.kind]} · ${located.node.title || UNTITLED[located.kind]}`
 }
 
-export default function NodeWindow({ readOnly = false, runId, nodeId, board, agents, profiles, noteCount, findings, anchor, runState, limitWarnings = [], onClose, ops, initiallyEditTitle = false, creating = false }: {
+export default function NodeWindow({ readOnly = false, runId, nodeId, board, agents, characters, profiles, noteCount, findings, anchor, runState, limitWarnings = [], onClose, ops, initiallyEditTitle = false, creating = false }: {
   readOnly?: boolean
   /** The run on the canvas; a step it seated shows its terminal, a gate what the run did there. */
   runId?: string
@@ -135,6 +138,8 @@ export default function NodeWindow({ readOnly = false, runId, nodeId, board, age
   anchor?: WindowRect
   board: BoardDocument
   agents: AgentProjection[]
+  /** The saved characters a slot can be stamped with. */
+  characters?: Character[]
   profiles: CodeGateProfileDescriptor[]
   /** Entries in the node's note thread. */
   noteCount: number
@@ -181,7 +186,7 @@ export default function NodeWindow({ readOnly = false, runId, nodeId, board, age
       onClose={onClose}
     >
       <div className={`nwin${withTerminal ? ' with-terminal' : ''}${details ? ' details' : ''}`} data-testid={`node-window-${nodeId}`}>
-        {!creating && located.kind === 'formation' ? <FormationSetup formation={located.node} agents={agents} ops={ops} /> : null}
+        {!creating && located.kind === 'formation' ? <FormationSetup formation={located.node} agents={agents} characters={characters || NO_CHARACTERS} ops={ops} /> : null}
         {withTerminal ? (
           <button type="button" className="nwin-briefline" aria-expanded={details} onClick={() => setDetails(open => !open)}>
             <span>{(located.kind === 'formation' && located.node.brief?.goal || '').split('\n').find(line => line.trim()) || 'No brief'}</span>
@@ -291,11 +296,13 @@ function FormationFields({ formation, ops }: { formation: FormationNode; ops: No
 }
 
 /** Who does the step, first in its window: each slot with its role, harness, model and effort, each opening its own list. */
-function FormationSetup({ formation, agents, ops }: { formation: FormationNode; agents: AgentProjection[]; ops: NodeWindowOps }) {
+const NO_CHARACTERS: Character[] = []
+
+function FormationSetup({ formation, agents, characters, ops }: { formation: FormationNode; agents: AgentProjection[]; characters: Character[]; ops: NodeWindowOps }) {
   return (
     <section className="nsetup" aria-label="Staffing">
       {formation.slots.length ? formation.slots.map(slot => (
-        <SlotStaffing key={slot.id} formation={formation} slot={slot} agents={agents} ops={ops} />
+        <SlotStaffing key={slot.id} formation={formation} slot={slot} agents={agents} characters={characters} ops={ops} />
       )) : <p className="nwin-empty">This formation has no slots.</p>}
     </section>
   )
@@ -337,10 +344,11 @@ function FileList({ files, context, label }: { files: string[]; context: string;
  * A slot's staffing in one row: each pick opens the staffing window dropping
  * from it, on that pick's list (archon-o7p.17).
  */
-function SlotStaffing({ formation, slot, agents, ops }: {
+function SlotStaffing({ formation, slot, agents, characters, ops }: {
   formation: FormationNode
   slot: FormationSlot
   agents: AgentProjection[]
+  characters: Character[]
   ops: NodeWindowOps
 }) {
   const readOnly = useContext(AuthoringReadOnly)
@@ -353,11 +361,23 @@ function SlotStaffing({ formation, slot, agents, ops }: {
       <small>{part}</small>{text}
     </button>
   )
+  // A character fills the whole row in one pick; the slot keeps no link to it.
+  const stamp = characters.length ? (
+    <select className="npick stamp" disabled={readOnly} aria-label={`Staff ${slot.label || slot.id} as a character`} value=""
+      onChange={event => {
+        const character = characters.find(entry => entry.id === event.target.value)
+        if (character) ops.stampSlot(formation, slot, character)
+      }}>
+      <option value="">character</option>
+      {characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}
+    </select>
+  ) : null
   if (!staffing) {
     return (
       <div className="nslot">
         <span className="nslot-who">{words}</span>
         <button type="button" disabled={readOnly} className="npick" aria-label={`Staff ${slot.label || slot.id}`} onClick={open(null)}>Staff it</button>
+        {stamp}
       </div>
     )
   }
@@ -368,6 +388,7 @@ function SlotStaffing({ formation, slot, agents, ops }: {
       {pick('harness', harnessName(staffing.harness) || staffing.harness || 'no harness')}
       {pick('model', modelWords(staffing.model))}
       {pick('effort', staffing.effort || 'no effort')}
+      {stamp}
     </div>
   )
 }

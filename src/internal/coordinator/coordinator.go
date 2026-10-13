@@ -291,6 +291,7 @@ func (c *Coordinator) Handler() http.Handler {
 	liveness := c.agentLiveness
 	c.mu.Unlock()
 	api.NewAgentsHandlerWithStoreAndLiveness(c.personas, liveness).UseMissions(c.store).RegisterRoutes(mux)
+	api.NewCharactersHandler(formations.NewCharacterStore(c.personas.AgentsDir)).RegisterRoutes(mux)
 	mux.HandleFunc("GET /api/runs", func(w http.ResponseWriter, r *http.Request) {
 		// An optional ?mission= filter lets a cockpit poll only its mission's
 		// runs: those of the mission now under that slug or ID, not of a

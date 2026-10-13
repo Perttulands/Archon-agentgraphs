@@ -157,7 +157,7 @@ function limitFindings(current: typeof board) {
 
 type Role = { id: string; displayName: string; kind: string; summary?: string }
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
+export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
   const currentBoard = structuredClone(board)
   if (options.vanillaWorker) {
     // A slot with no role is a vanilla agent; this one runs a model the catalog names.
@@ -166,6 +166,8 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
   if (options.emptyWorker) currentBoard.formations[0].slots[1] = { id: 'worker', label: 'Worker 1', controller: false }
   if (options.workers) currentBoard.formations[0].slots = [currentBoard.formations[0].slots[0], ...options.workers]
   const patches: Array<Record<string, unknown>> = []
+  let characters = structuredClone(options.characters || [])
+  const characterWrites: Array<{ method: string; id: string; body: Record<string, unknown> }> = []
   // A time block is a limit block too, with a time card.
   const timeBlock = Boolean(options.blockedAtTime)
   if (timeBlock) options = { ...options, blockedAtLimit: true }
@@ -417,6 +419,16 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     // Validation is served once the mission holds Limit cards, so their findings mark them as drafts.
     if (path.endsWith('/validation') && currentBoard.limits?.length) return respond({ missionRev: currentBoard.rev, missionEtag: currentBoard.etag, ...limitFindings(currentBoard) })
     if (path === '/api/gate-profiles') return respond({ profiles: [] })
+    if (path === '/api/characters' && method === 'GET') return respond({ characters })
+    if (path.startsWith('/api/characters')) {
+      const id = decodeURIComponent(path.slice('/api/characters/'.length))
+      const body = method === 'DELETE' ? {} : route.request().postDataJSON()
+      characterWrites.push({ method, id, body })
+      if (method === 'DELETE') characters = characters.filter(character => character.id !== id)
+      else if (method === 'PUT') characters = characters.map(character => character.id === id ? { ...body, id } : character)
+      else characters = [...characters, { ...body, id: String(body.name).toLowerCase().replace(/[^a-z0-9]+/g, '-') }]
+      return respond(method === 'DELETE' ? { deleted: id } : characters.find(character => character.id === id) || characters.at(-1))
+    }
     if (path === '/api/agents') return respond(rosterAnswer([
       { id: 'claude', displayName: 'Claude controller', summary: 'Directs the workers.', assignable: true, liveness: 'live', tags: [], kind: 'controller' },
       { id: 'codex', displayName: 'Codex builder', summary: 'Builds the change.', assignable: true, liveness: 'live', tags: [], kind: 'builder' },
@@ -472,5 +484,5 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path.endsWith('/seats')) { seatsFetches++; return respond({ runId: 'run_browser', available: true, seats }) }
     return route.fulfill({ status: 404, json: { success: false, error: { message: `Fixture has no ${path}` } } })
   })
-  return { writes, patches, board: boardState, seatsFetches: () => seatsFetches, themeFetches: () => themeFetches }
+  return { writes, patches, characterWrites, board: boardState, seatsFetches: () => seatsFetches, themeFetches: () => themeFetches }
 }
