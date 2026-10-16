@@ -55,7 +55,7 @@ func (c *Coordinator) runAttempts(w http.ResponseWriter, r *http.Request) {
 		evidenceFailure(w, err)
 		return
 	}
-	reply(w, http.StatusOK, attempts)
+	reply(w, http.StatusOK, map[string]any{"attempts": attempts})
 }
 
 func (c *Coordinator) briefEvidence(w http.ResponseWriter, r *http.Request) {

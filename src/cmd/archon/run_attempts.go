@@ -59,12 +59,14 @@ func remoteRunAttempts(c *remoteClient, args []string, stdout, stderr io.Writer)
 		return 0
 	}
 	var envelope struct {
-		Data formations.RunAttemptsEvidence `json:"data"`
+		Data struct {
+			Attempts formations.RunAttemptsEvidence `json:"attempts"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return fail(stderr, err)
 	}
-	writeRunAttempts(stdout, &envelope.Data)
+	writeRunAttempts(stdout, &envelope.Data.Attempts)
 	return 0
 }
 

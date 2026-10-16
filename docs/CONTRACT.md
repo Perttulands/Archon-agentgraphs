@@ -1863,7 +1863,7 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   (`name`, `size`, `modifiedAt`), sorted by name relative to
   `<state-dir>/.archon/artifacts/<runId>`, and `data.truncated` past 500
   entries or 16 directory levels. A run without artifacts lists none.
-- `/api/runs/{runId}/evidence/attempts` returns `data` `{runId, steps}`:
+- `/api/runs/{runId}/evidence/attempts` returns `data.attempts`, `{runId, steps}`:
   every step that ran, in the order it first ran, or with `?node=<id>` only
   that step (an unknown step returns 404). A step has `nodeId`, `title`,
   `judgeOf` (the gates it judged for, when it is a judge), `outputs` (its

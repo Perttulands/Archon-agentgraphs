@@ -516,14 +516,17 @@ paths:
       description: Steps in the order they first ran, attempts oldest first. Texts share the node evidence caps (64 KiB each, 2 MiB per response) and redaction. File bytes come from /api/runs/{runId}/artifacts/{name} by a file's name or an output's artifact.
       responses:
         '200':
-          description: Enveloped run attempts.
+          description: Enveloped data.attempts.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: '#/components/schemas/RunAttempts'
+                    type: object
+                    properties:
+                      attempts:
+                        $ref: '#/components/schemas/RunAttempts'
         '404':
           description: No such run, or ?node names no step of the run's frozen mission
   /api/runs/{runId}/evidence/artifacts/{name}:
