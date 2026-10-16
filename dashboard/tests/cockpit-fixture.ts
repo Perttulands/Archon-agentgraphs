@@ -4,12 +4,14 @@ import { assignedSettings, harnesses, rosterAnswer } from './roster-terms'
 const defaultTheme = JSON.parse(readFileSync(new URL('../../src/internal/api/theme_default.json', import.meta.url), 'utf8'))
 
 const ports = { inputs: [{ id: 'in', label: 'Input' }], outputs: [{ id: 'out', label: 'Result' }] }
+type Port = { id: string; label: string; kind?: string }
+type MissionOutput = { name: string; kind: string; description?: string; required?: boolean; from?: string }
 type EndNode = { id: string; title: string; outcome: 'done' | 'rejected' }
 type LimitNode = { id: string; title: string; target: string; rounds?: number; seconds?: number; warnSeconds?: number; tokens?: number }
 export const board: {
   id: string; slug: string; title: string; rev: number; etag: string
-  missions: Array<{ id: string; title: string; goal: string; beadId: string }>
-  formations: Array<{ id: string; type: string; title: string; brief?: { goal: string }; inputs: Array<{ id: string; label: string }>; outputs: Array<{ id: string; label: string }>; slots: Array<Record<string, unknown>> }>
+  inputCards: Array<{ id: string; title: string; goal: string; outputs?: MissionOutput[] } & Record<string, unknown>>
+  formations: Array<{ id: string; type: string; title: string; brief?: { goal: string }; inputs: Port[]; outputs: Port[]; slots: Array<Record<string, unknown>> }>
   gates: Array<{ id: string; title: string; kinds: string[]; criterion: string }>
   tools: unknown[]
   ends?: EndNode[]
@@ -79,6 +81,23 @@ const succeededEvents = [
   { seq: 7, type: 'run_succeeded' },
 ]
 const evidenceText = (text: string) => ({ text, bytes: text.length })
+// Where a succeeded run snapshots a file or folder output (.archon/artifacts/<run>/<node>/<attempt>/...).
+export const runArtifacts = '/srv/state/.archon/artifacts/run_browser'
+const OUTPUT_NAME = /^[a-z][a-z0-9_]{0,63}$/
+/**
+ * A succeeded run's outputs as the daemon projects them: each declared output
+ * bound to a port, its value the port's text or the absolute path of its snapshot.
+ */
+function runOutputs(current: typeof board) {
+  return (current.inputCards[0]?.outputs || []).filter(output => output.from).map(output => {
+    const [nodeId, portId] = output.from!.split(':')
+    const value = output.kind === 'file' ? `${runArtifacts}/${nodeId}/1/review.md`
+      : output.kind === 'folder' ? `${runArtifacts}/${nodeId}/1/site` : 'Implemented the reviewed plan.\n\nAll tests pass.'
+    return { name: output.name, kind: output.kind, value, nodeId, portId, attempt: 1 }
+  })
+}
+// The snapshot files the file routes read for those outputs, by file name.
+const snapshotText = (name: string): string | undefined => ({ 'review.md': reviewMarkdown, 'index.html': '<h1>Site</h1>' } as Record<string, string>)[name]
 export const reviewMarkdown = '# Peer review\n\nVerdict: **revise**. The design and the implementation disagree on retries.\n\n- Keep the retry budget\n- Log the second failure'
 const succeededEvidence: Record<string, unknown> = {
   '/api/runs/run_browser/evidence/nodes/execution': { evidence: { runId: 'run_browser', nodeId: 'execution', kind: 'formation',
@@ -389,9 +408,44 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
           }
           const formation = currentBoard.formations.find(item => item.id === formationId)
           if (!formation) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
-          const port = { id: `port_${currentBoard.rev}`, label: label || (direction === 'input' ? 'Input' : 'Output') }
+          // An output port may carry a file or folder; text is the default and is not stored.
+          const { kind } = body.addPort
+          if (kind !== undefined && (direction === 'input' || !['text', 'file', 'folder'].includes(kind))) {
+            return route.fulfill({ status: 400, json: { success: false, error: { code: 'INVALID_PORT', message: `port kind "${kind}" must be text, file or folder, on an output port` } } })
+          }
+          const port: Port = { id: `port_${currentBoard.rev}`, label: label || (direction === 'input' ? 'Input' : 'Output'), ...(kind && kind !== 'text' ? { kind } : {}) }
           if (direction === 'input') formation.inputs = [...formation.inputs, port]
           else formation.outputs = [...formation.outputs, port]
+        } else if (body.updatePort) {
+          // Mirrors the store (UpdateFormationPort): only fields present change; text clears an output's kind.
+          const { formationId, portId, label, kind } = body.updatePort
+          const formation = currentBoard.formations.find(item => item.id === formationId)
+          const input = formation?.inputs.find(port => port.id === portId)
+          const port = input || formation?.outputs.find(port => port.id === portId)
+          if (!port) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
+          const refuse = (message: string) => route.fulfill({ status: 400, json: { success: false, error: { code: 'INVALID_PORT', message } } })
+          if (label !== undefined && !String(label).trim()) return refuse('a port label cannot be blank')
+          if (kind !== undefined && (input || !['text', 'file', 'folder'].includes(kind))) return refuse(`port kind "${kind}" must be text, file or folder, on an output port`)
+          if (label !== undefined) port.label = label
+          if (kind === 'text') delete port.kind
+          else if (kind !== undefined) port.kind = kind
+        } else if (body.updateInputCard) {
+          // Mirrors the store (UpdateInputCard): only fields present change; outputs replace the declared ones.
+          const { id, ...fields } = body.updateInputCard
+          const card = currentBoard.inputCards.find(item => item.id === id)
+          if (!card) return route.fulfill({ status: 404, json: { success: false, error: { code: 'NOT_FOUND', message: 'Formation resource not found' } } })
+          const outputs: MissionOutput[] | undefined = fields.outputs
+          const names = new Set<string>()
+          for (const output of outputs || []) {
+            const bad = !OUTPUT_NAME.test(output.name) ? `output name "${output.name}" must start with a lowercase letter`
+              : names.has(output.name) ? `two outputs are named ${output.name}`
+                : !['text', 'file', 'folder'].includes(output.kind) ? `output kind "${output.kind}" must be text, file or folder`
+                  : output.from && !/^[^:]+:[^:]+$/.test(output.from) ? `output from "${output.from}" must be <step-id>:<port-id>` : ''
+            if (bad) return route.fulfill({ status: 400, json: { success: false, error: { code: 'INVALID_MISSION_OUTPUT', message: bad } } })
+            names.add(output.name)
+          }
+          Object.assign(card, fields)
+          if (outputs && !outputs.length) delete card.outputs
         } else if (body.removePort) {
           const { formationId, portId } = body.removePort
           const formation = currentBoard.formations.find(item => item.id === formationId)
@@ -439,7 +493,22 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path === '/api/agents/codex') return respond({ id: 'codex', displayName: 'Codex builder', kind: 'builder', summary: 'Builds the change.', tags: [], etag: 'codex-card' })
     if (path === '/api/runs/run_browser' && options.waitingHuman) return respond({ runId: 'run_browser', status: 'waiting_human', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: options.secondGate ? 4 : 3, cwd: runCwd,
       waitingGates: [{ gateId: 'loose', requestedSeq: 3 }, ...(options.secondGate ? [{ gateId: 'second', requestedSeq: 4 }] : [])] })
-    if (path === '/api/runs/run_browser' && options.succeeded) return respond({ runId: 'run_browser', status: 'succeeded', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 7, cwd: runCwd })
+    if (path === '/api/runs/run_browser' && options.succeeded) {
+      const outputs = runOutputs(currentBoard)
+      return respond({ runId: 'run_browser', status: 'succeeded', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 7, cwd: runCwd, ...(outputs.length ? { outputs } : {}) })
+    }
+    // The file routes read a succeeded run's output snapshots by absolute path.
+    if (options.succeeded && path === '/api/files/directory') {
+      const folder = url.searchParams.get('path') || ''
+      if (!folder.startsWith(runArtifacts)) return route.fulfill({ status: 404, json: { success: false, error: { message: 'directory not found' } } })
+      return respond({ items: [{ name: 'assets', path: `${folder}/assets`, isDir: true }, { name: 'index.html', path: `${folder}/index.html`, isDir: false }] })
+    }
+    if (options.succeeded && path === '/api/files/preview') {
+      const file = url.searchParams.get('path') || ''
+      const text = file.startsWith(runArtifacts) ? snapshotText(file.split('/').pop() || '') : undefined
+      if (text === undefined) return route.fulfill({ status: 404, json: { success: false, error: { message: 'file not found' } } })
+      return respond({ file: { path: file, name: file.split('/').pop(), size: text.length, modifiedAt: '', kind: file.endsWith('.md') ? 'markdown' : 'text', text: evidenceText(text) } })
+    }
     if (options.succeeded && path in succeededEvidence) return respond(succeededEvidence[path])
     if (options.blockedAtLimit && path === '/api/runs/run_browser/resume' && method === 'POST') {
       // Mirrors the coordinator: a spent limit resumes only with a grant.

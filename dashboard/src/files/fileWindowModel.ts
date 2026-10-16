@@ -98,6 +98,39 @@ export function runMissionFileRequest(runId: string, missionRev: number, mission
 
 const filePath = (ref: string) => `?path=${encodeURIComponent(ref)}`
 
+/** A text value a run delivered, read as Markdown like a step's output. */
+export function textValueRequest(id: string, name: string, text: string, context?: string): FileRequest {
+  return {
+    id,
+    name,
+    context,
+    load: async () => ({ kind: 'markdown', text: { text, bytes: new TextEncoder().encode(text).length } }),
+  }
+}
+
+const markdownLabel = (text: string) => text.replace(/([\\[\]*_`])/g, '\\$1')
+
+/**
+ * A folder by absolute path, listed in a file window: each file opens in its
+ * own window, subfolders are named. The listing is the daemon's directory route.
+ */
+export function folderFileRequest(path: string, context?: string): FileRequest {
+  const name = path.split('/').filter(Boolean).pop() || path
+  return {
+    id: `folder:${path}`,
+    name: `${name}/`,
+    context: context ? `${context} · ${path}` : path,
+    path,
+    load: async () => {
+      const { data } = await fetchApi<{ items?: Array<{ name: string; path: string; isDir: boolean }> }>(`/api/files/directory${filePath(path)}`)
+      const items = data.items || []
+      const lines = items.map(item => item.isDir ? `- ${markdownLabel(item.name)}/` : `- [${markdownLabel(item.name)}](<${item.path}>)`)
+      const text = lines.length ? lines.join('\n') : '_This folder is empty._'
+      return { kind: 'markdown', text: { text, bytes: new TextEncoder().encode(text).length }, path }
+    },
+  }
+}
+
 /**
  * A file a mission, brief or gate references. The daemon reads any absolute
  * path (ADR-0021); a relative one has no base and fails with the daemon's reason.

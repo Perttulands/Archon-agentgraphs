@@ -379,6 +379,20 @@ function installFetchMock(options: {
         }
         return respond({ mission: board }, `board-${board.rev}`)
       }
+      if (body.updatePort) {
+        // Mirrors the store (UpdateFormationPort): text clears an output's kind.
+        const { formationId, portId, label, kind } = body.updatePort as { formationId: string; portId: string; label?: string; kind?: string }
+        const update = (port: { id: string; label: string; kind?: string }) => {
+          if (port.id !== portId) return port
+          const { kind: _previous, ...rest } = port
+          const next = kind === undefined ? port.kind : kind === 'text' ? undefined : kind
+          return { ...rest, ...(label !== undefined ? { label } : {}), ...(next ? { kind: next } : {}) }
+        }
+        board = { ...board, rev: board.rev + 1,
+          formations: board.formations.map(item => item.id === formationId ? { ...item, inputs: item.inputs.map(update), outputs: item.outputs.map(update) } : item),
+        }
+        return respond({ mission: board }, `board-${board.rev}`)
+      }
       if (body.removePort) {
         const { formationId, portId } = body.removePort as { formationId: string; portId: string }
         board = { ...board, rev: board.rev + 1,
@@ -2479,6 +2493,24 @@ describe('FormationsCockpit reference parity', () => {
       formationId: 'fmn_judge', direction: 'input', port: { id: 'port_judge_in', label: 'Input' }, index: 0,
       connections: [{ id: 'edge_judge_send', from: 'gate_review:judge', to: 'fmn_judge:port_judge_in' }],
     })
+  })
+
+  it('sets what an output port carries from its row menu, shows it on the row, and undoes and redoes it', async () => {
+    await renderCockpit()
+    const row = () => document.querySelector<HTMLElement>('[data-port-out="fmn_frame:port_frame_out"]')!.closest<HTMLElement>('.fio')!
+    fireEvent.contextMenu(row())
+    expect(await screen.findByText('Carries text')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Carry a file instead' }))
+    expect(await screen.findByTestId('port-kind-fmn_frame:port_frame_out')).toHaveTextContent('file')
+    expect(patches.map(patch => patch.body.updatePort).filter(Boolean)).toEqual([{ formationId: 'fmn_frame', portId: 'port_frame_out', kind: 'file' }])
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(screen.queryByTestId('port-kind-fmn_frame:port_frame_out')).toBeNull())
+    expect(patches.map(patch => patch.body.updatePort).filter(Boolean)[1]).toEqual({ formationId: 'fmn_frame', portId: 'port_frame_out', kind: 'text' })
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey: true })
+    expect(await screen.findByTestId('port-kind-fmn_frame:port_frame_out')).toHaveTextContent('file')
+    expect(screen.queryByTestId('formations-error')).toBeNull()
   })
 
   it('records one undo for a toolbar New formation', async () => {

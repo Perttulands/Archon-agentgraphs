@@ -89,6 +89,7 @@ import { buildFlow } from '../flow/flowModel'
 import CanvasLegend from './CanvasLegend'
 import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
 import { ProducedFiles, RunProduced, RunProducedProvider } from '../files/ProducedFiles'
+import RunOutputs from '../files/RunOutputs'
 import { ReferencedFiles, type HiddenReferencedFile } from '../files/ReferencedFiles'
 import { FileProblemsContext, fileProblems, nodeFileRefs } from '../files/referencedFiles'
 import { producedNames, summarizeProduced, useRunProduced } from '../files/produced'
@@ -100,7 +101,8 @@ import { findAddedByID } from './formationsBoardModel'
 import { defaultEndTitle, endOutcomeMeaning } from './endNode'
 import { LIMIT_ROOM, limitCoversWords, limitKnobWords, limitMeaning, limitWarnWords, tetherLine } from './limitCard'
 import { inverseUndoStep } from './formationsRedo'
-import { UndoHistory, WriteTracker, boardStep, combineUndo, nodeDeleteUndo, portRemoveUndo, quoted, restoreBlocker, undoOutcomeMessage, type UndoDraft, type UndoStep } from './formationsUndo'
+import { portKindMenuItems } from './portKind'
+import { UndoHistory, WriteTracker, boardStep, combineUndo, nodeDeleteUndo, portRemoveUndo, portUpdateUndo, quoted, restoreBlocker, undoOutcomeMessage, type UndoDraft, type UndoStep } from './formationsUndo'
 import { NOTE_CARDS, NoteLayer, NOTES_MODES, noteWindowAnchor, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
 import NoteWindow, { BOARD_NOTE_TARGET, noteWindowId } from './NoteWindow'
 import RoleWindow, { roleWindowId } from './RoleWindow'
@@ -136,6 +138,7 @@ import type {
   EndOutcome,
   FormationBrief,
   FormationNode,
+  FormationPort,
   FormationPortDirection,
   FormationSlot,
   FormationType,
@@ -149,6 +152,7 @@ import type {
   NoteEntry,
   NotePatch,
   OpenEscalation,
+  PortKind,
   RunEvent,
   RunStatusProjection,
   ViewTransform,
@@ -1554,12 +1558,12 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     return true
   }, [applyBoardPatch, recordUndo])
 
-  const updateMissionFields = useCallback(async (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel' | 'inputs'>>): Promise<boolean> => {
+  const updateMissionFields = useCallback(async (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel' | 'inputs' | 'outputs'>>): Promise<boolean> => {
     const previous = boardRef.current?.inputCards?.find(mission => mission.id === missionId)
     if (!previous) return false
     if (!await applyBoardPatch({ updateInputCard: { id: missionId, ...fields } })) return false
     // An absent field is restored as empty, which clears it.
-    recordUndo(`the edit of Input card ${quoted(previous.title, 'untitled')}`, boardStep({ updateInputCard: { id: missionId, ...Object.fromEntries(Object.keys(fields).map(key => [key, previous[key as keyof typeof fields] ?? (key === 'files' || key === 'inputs' ? [] : '')])) } }))
+    recordUndo(`the edit of Input card ${quoted(previous.title, 'untitled')}`, boardStep({ updateInputCard: { id: missionId, ...Object.fromEntries(Object.keys(fields).map(key => [key, previous[key as keyof typeof fields] ?? (key === 'files' || key === 'inputs' || key === 'outputs' ? [] : '')])) } }))
     return true
   }, [applyBoardPatch, recordUndo])
 
@@ -1658,6 +1662,15 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     if (!await patchBoard({ removePort: { formationId: formation.id, portId } })) return
     recordEntry(undo)
   }, [patchBoard, recordEntry])
+
+  const setPortKindOp = useCallback(async (formation: FormationNode, port: FormationPort, kind: PortKind) => {
+    const before = boardRef.current
+    if (!before) return
+    const change = { formationId: formation.id, portId: port.id, kind }
+    const undo = portUpdateUndo(before, change)
+    if (!await patchBoard({ updatePort: change }) || !undo) return
+    recordUndo(`the kind of output “${port.label || port.id}” on ${quoted(formation.title, 'the formation')}`, boardStep(undo))
+  }, [patchBoard, recordUndo])
 
   /** The gate's judge chain, by the one rule the engine and Flow share (archon-n7u.51). */
   const judgeChainOf = useCallback((gateId: string): string[] => (boardRef.current ? judgeChain(boardRef.current, gateId) : []), [])
@@ -2797,12 +2810,13 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     ])
   }, [addPortOp, openMenu, removePortOp, removeWire])
 
-  const outputRowMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode, portId: string) => {
+  const outputRowMenu = useCallback((event: ReactMouseEvent<HTMLElement>, formation: FormationNode, port: FormationPort) => {
     openMenu(event, 'Output port', [
+      ...portKindMenuItems(port, kind => void setPortKindOp(formation, port, kind)),
       { label: 'Add output port', action: () => void addPortOp(formation, 'output') },
-      { label: 'Remove this output', destructive: true, action: () => void removePortOp(formation, portId) },
+      { label: 'Remove this output', destructive: true, action: () => void removePortOp(formation, port.id) },
     ])
-  }, [addPortOp, openMenu, removePortOp])
+  }, [addPortOp, openMenu, removePortOp, setPortKindOp])
 
   const canvasMenu = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     if (historicalRef.current) return
@@ -3306,6 +3320,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                     </Fragment>
                   ))}
                 </span>
+                <RunOutputs runId={activeRun.runId} outputs={activeRun.outputs} />
                 <RunProduced />
                 {historical ? null : <RunRevisionNote run={activeRun} currentRev={currentBoard?.rev} missionTitle={currentBoard?.title || ''} />}
                 <span className="run-meta" title={activeRun.cwd ? `Runs in ${activeRun.cwd}` : undefined}>
@@ -3413,6 +3428,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                   {renderNodeTitle(mission.title, 'mtitle', 'Untitled mission', 'div')}
                   <div className={`mgoal${mission.goal ? '' : ' placeholder'}`}>{mission.goal || 'set the mission objective…'}</div>
                   {mission.inputs?.length ? <div className="minputs" title="The inputs each run supplies; step briefs reference them as {name}">Inputs · {mission.inputs.map(input => input.name).join(' · ')}</div> : null}
+                  {mission.outputs?.length ? <div className="minputs moutputs" data-testid={`mission-outputs-${mission.id}`} title="What a succeeded run delivers">Outputs · {mission.outputs.map(output => output.name).join(' · ')}</div> : null}
                   <div className={`mchannel ${humanChannelOf(mission)}`} title="How this mission's human gates reach you">Human gates · {humanChannelLabel(humanChannelOf(mission))}</div>
                   <ReferencedFiles nodeId={mission.id} files={nodeFileRefs(board, mission.id)} max={2} onMore={openReferencedFilesMenu} className="card-refs" />
                   <div className="mstatus">{state ? state : ''}</div>
@@ -3497,12 +3513,13 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                   {formation.outputs.map((port, portIndex) => {
                     const endpoint = `${formation.id}:${port.id}`
                     return (
-                      <div className="fio out" key={port.id} onContextMenu={event => outputRowMenu(event, formation, port.id)}>
+                      <div className="fio out" key={port.id} onContextMenu={event => outputRowMenu(event, formation, port)}>
                         <span className="glyph">out</span>
                         {portIndex === 0 ? (() => {
                           const output = outputRowStatus(Boolean(activeRun), nodeStates.get(formation.id), outputNodeIds.has(formation.id))
                           return <span className={`io-status ${output.tone}`} data-testid={`output-status-${formation.id}`}>{output.label}</span>
                         })() : <span className="io-status idle">{port.label.toLowerCase()}</span>}
+                        {port.kind ? <span className="io-kind" data-testid={`port-kind-${endpoint}`}>{port.kind}</span> : null}
                         <span className={`port pout ready${hoverPort === endpoint ? ' snaptarget' : ''}`} data-port-out={endpoint} title="Drag to a downstream input" onPointerDown={event => beginWire(event, endpoint, 'wire')} />
                       </div>
                     )

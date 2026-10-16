@@ -33,6 +33,7 @@ import { nodeAnchor, nodeWindowKeepClear } from '../windows/cockpitScene'
 import type { WindowRect } from '../windows/windowGeometry'
 import { EditableField } from './EditableField'
 import { MissionInputsField } from './MissionInputsField'
+import { MissionOutputsField, outputPortChoices } from './MissionOutputsField'
 import { HumanChannelField } from '../humanChannel/HumanChannelField'
 import { humanChannelField, humanChannelOf } from '../humanChannel/humanChannel'
 import { buildFlow } from '../flow/flowModel'
@@ -55,7 +56,7 @@ import './nodeWindow.css'
 
 export interface NodeWindowOps {
   rename: (nodeId: string, title: string) => Promise<boolean>
-  updateInputCard: (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel' | 'inputs'>>) => Promise<boolean>
+  updateInputCard: (missionId: string, fields: Partial<Pick<MissionNode, 'goal' | 'inputHint' | 'files' | 'humanChannel' | 'inputs' | 'outputs'>>) => Promise<boolean>
   setBrief: (formationId: string, brief: FormationBrief) => Promise<boolean>
   changeType: (formation: FormationNode, type: FormationType, keepSlotId?: string) => void
   /** Opens the slot's staffing sentence dropping from the word that was clicked; a word opens only its own list. */
@@ -201,7 +202,7 @@ export default function NodeWindow({ readOnly = false, runId, nodeId, board, age
         {located.kind === 'gate' && runId && runState !== undefined ? <GateRunFacts runId={runId} gateId={nodeId} onSettle={ops.settleJudge} /> : null}
         <NodeProblems findings={findings} />
         <EditableField initiallyEditing={initiallyEditTitle} label="Title" value={located.node.title} placeholder={UNTITLED[located.kind]} onSave={title => ops.rename(nodeId, title)} />
-        {located.kind === 'inputCard' ? <MissionFields mission={located.node} ops={ops} /> : null}
+        {located.kind === 'inputCard' ? <MissionFields mission={located.node} board={board} ops={ops} /> : null}
         {!creating && located.kind === 'formation' ? <FormationFields formation={located.node} ops={ops} /> : null}
         {located.kind === 'gate' ? <GateFields gate={located.node} board={board} profiles={profiles} ops={ops} /> : null}
         {located.kind === 'end' ? <EndFields end={located.node} ops={ops} /> : null}
@@ -249,12 +250,13 @@ export default function NodeWindow({ readOnly = false, runId, nodeId, board, age
   )
 }
 
-function MissionFields({ mission, ops }: { mission: MissionNode; ops: NodeWindowOps }) {
+function MissionFields({ mission, board, ops }: { mission: MissionNode; board: BoardDocument; ops: NodeWindowOps }) {
   return (
     <>
       <EditableField label="Goal" value={mission.goal} multiline markdown placeholder="No goal yet. Say what the mission should achieve."
         onSave={goal => ops.updateInputCard(mission.id, { goal })} />
       <MissionInputsField inputs={mission.inputs} onSave={inputs => ops.updateInputCard(mission.id, { inputs })} />
+      <MissionOutputsField outputs={mission.outputs} ports={outputPortChoices(board)} onSave={outputs => ops.updateInputCard(mission.id, { outputs })} />
       <EditableField label="Input hint" value={mission.inputHint || ''} multiline markdown
         placeholder="No input hint. Start mission explains what a brief is."
         hint="What a run's brief should contain, when the mission declares no inputs. Start mission shows it beside the brief."

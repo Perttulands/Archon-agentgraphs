@@ -1,4 +1,4 @@
-import type { BoardDocument } from '../components/formationsTypes'
+import type { BoardDocument, FormationPort, PortKind } from '../components/formationsTypes'
 import { fetchApi, type RunLimitUse } from '../components/formationsApi'
 
 // Read models for the run evidence routes (ADR-0017). They mirror the Go
@@ -201,6 +201,87 @@ export async function fetchArtifactPreview(runId: string, name: string): Promise
   const { data } = await fetchApi<{ artifact?: RunArtifactPreview }>(`${runPath(runId)}/evidence/artifacts/${artifactPath(name)}`)
   if (!data.artifact) throw new Error('the daemon returned no artifact')
   return data.artifact
+}
+
+/** An attempt's artifact directory: its name under the run's artifact directory, and its absolute path. */
+export interface AttemptDirectory {
+  name: string
+  path: string
+}
+
+/**
+ * One output port's accepted payload. `path` is the file or folder the output
+ * is (its snapshot), or a text output's ref; `artifact` names it for the
+ * artifact routes.
+ */
+export interface AttemptOutput {
+  portId: string
+  label?: string
+  kind: PortKind
+  text: EvidenceText
+  path?: string
+  artifact?: string
+  size?: number
+  /** As the artifact preview classifies the path, or folder. */
+  fileKind?: ArtifactKind | 'folder'
+}
+
+/** One gate evaluation of the attempt's output, or a pending one. */
+export interface AttemptVerdict {
+  gateId: string
+  gateTitle?: string
+  evaluationSeq: number
+  seq?: number
+  verdict?: string
+  pending?: boolean
+  reason: EvidenceText
+  evidence: EvidenceItem[]
+  evidenceOmitted?: number
+  decidedBy?: string
+}
+
+/** One regular file in an attempt's artifact directory; `name` is what the artifact routes take. */
+export interface AttemptFile {
+  name: string
+  path: string
+  size: number
+  modifiedAt: string
+  kind: string
+}
+
+export interface StepAttempt {
+  attempt: number
+  status: 'running' | 'done' | 'stopped'
+  startedSeq: number
+  startedAt?: string
+  endedAt?: string
+  outputSeq?: number
+  directory?: AttemptDirectory
+  outputs: AttemptOutput[]
+  verdicts: AttemptVerdict[]
+  files: AttemptFile[]
+  filesTruncated?: boolean
+}
+
+/** One step and its attempts, oldest first. Its ports carry their kind, text included. */
+export interface StepAttempts {
+  nodeId: string
+  title: string
+  /** The gates this step judges for, when it is a judge. */
+  judgeOf?: string[]
+  outputs: Array<Omit<FormationPort, 'kind'> & { kind: PortKind }>
+  attempts: StepAttempt[]
+}
+
+export interface RunAttemptsEvidence {
+  runId: string
+  steps: StepAttempts[]
+}
+
+/** Every attempt of every step of a run, or of one step. */
+export async function fetchRunAttempts(runId: string, nodeId?: string): Promise<RunAttemptsEvidence> {
+  const { data } = await fetchApi<{ attempts?: Partial<RunAttemptsEvidence> }>(`${runPath(runId)}/evidence/attempts${nodeId ? `?node=${encodeURIComponent(nodeId)}` : ''}`)
+  return { runId: data.attempts?.runId || runId, steps: data.attempts?.steps || [] }
 }
 
 /** The mission a run froze at admission, as TOML (archon-o7p.2). */

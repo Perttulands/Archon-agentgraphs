@@ -228,6 +228,8 @@
 .fmx .io-status.blocked{color:var(--terra-d);background:var(--color-error-light);}
 .fmx .io-status.idle{color:var(--dimmer);background:rgba(255,255,255,.05);}
 .fmx .io-status.running{color:var(--terra);background:rgba(var(--accent-rgb),.14);}
+/* What a file or folder output carries; a text output shows nothing. */
+.fmx .io-kind{margin-left:auto;margin-right:6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);flex-shrink:0;}
 
 /* Tool card: definition projection only; runtime execution is deliberately unavailable. */
 .fmx .toolcard{position:absolute;width:300px;background:var(--card);border:1px solid var(--steel);border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.35);z-index:1;cursor:grab;transition:left .18s cubic-bezier(.2,.7,.3,1),top .18s cubic-bezier(.2,.7,.3,1);}

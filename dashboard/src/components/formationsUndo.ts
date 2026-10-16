@@ -258,6 +258,21 @@ export function portRemoveUndo(board: BoardDocument, formationId: string, portId
   const connections = touching(board.connections || [], candidate => candidate === endpoint)
   return {
     label: `the removal of ${direction} “${port.label || port.id}” from ${quoted(formation.title, 'the formation')}`,
-    steps: [boardStep({ restorePort: { formationId, direction, port: { id: port.id, label: port.label }, index, connections } })],
+    steps: [boardStep({ restorePort: { formationId, direction, port: { id: port.id, label: port.label, ...(port.kind ? { kind: port.kind } : {}) }, index, connections } })],
   }
+}
+
+/**
+ * The updatePort that puts back what an updatePort patch changes: the port's
+ * previous label and kind, text when it carried none. Null when the port is gone.
+ */
+export function portUpdateUndo(board: BoardDocument, patch: { formationId: string; portId: string; label?: string; kind?: string }): Record<string, unknown> | null {
+  const formation = board.formations.find(item => item.id === patch.formationId)
+  const port = formation && [...formation.inputs, ...formation.outputs].find(item => item.id === patch.portId)
+  if (!port) return null
+  return { updatePort: {
+    formationId: patch.formationId, portId: patch.portId,
+    ...(patch.label !== undefined ? { label: port.label } : {}),
+    ...(patch.kind !== undefined ? { kind: port.kind || 'text' } : {}),
+  } }
 }

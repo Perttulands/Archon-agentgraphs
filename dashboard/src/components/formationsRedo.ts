@@ -1,5 +1,5 @@
 import type { BoardDocument, LayoutDocument } from './formationsTypes'
-import { boardStep, nodeDeleteUndo, portRemoveUndo, type UndoStep } from './formationsUndo'
+import { boardStep, nodeDeleteUndo, portRemoveUndo, portUpdateUndo, type UndoStep } from './formationsUndo'
 import { judgeChain } from '../flow/flowModel'
 
 /** Capture the inverse of the exact fields an undo will write, before writing
@@ -19,12 +19,17 @@ export function inverseUndoStep(board: BoardDocument, layout: LayoutDocument, st
     if (!kind) throw new Error('The restored node has no kind.')
     return [boardStep({ [`delete${kind[0].toUpperCase()}${kind.slice(1)}`]: { id: (patch[kind] as { id: string }).id } })]
   }
+  if (op === 'updatePort') {
+    const undo = portUpdateUndo(board, patch as { formationId: string; portId: string; label?: string; kind?: string })
+    if (!undo) throw new Error('The port no longer exists.')
+    return [boardStep(undo)]
+  }
   if (op.startsWith('update')) {
     const nodes = [...board.formations, ...(board.inputCards || []), ...(board.gates || []), ...(board.ends || []), ...(board.limits || [])]
     const previous = nodes.find(node => node.id === id) as unknown as Record<string, unknown> | undefined
     if (!previous) throw new Error('The edited card no longer exists.')
     const fields: Record<string, unknown> = { id }
-    for (const key of Object.keys(patch).filter(key => key !== 'id')) fields[key] = previous[key] ?? (['files','inputs','kinds'].includes(key) ? [] : ['rounds','seconds','warnSeconds','tokens'].includes(key) ? 0 : '')
+    for (const key of Object.keys(patch).filter(key => key !== 'id')) fields[key] = previous[key] ?? (['files','inputs','outputs','kinds'].includes(key) ? [] : ['rounds','seconds','warnSeconds','tokens'].includes(key) ? 0 : '')
     return [boardStep({ [op]: fields })]
   }
   if (op === 'setBrief' || op === 'clearBrief') {

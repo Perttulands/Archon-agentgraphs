@@ -47,9 +47,14 @@ export type NotePatch =
   | { target: string; action: 'edit'; entryId: string; text: string }
   | { target: string; action: 'delete'; entryId: string }
 
+/** What a step output port carries; absent on the board means text. */
+export type PortKind = 'text' | 'file' | 'folder'
+
 export interface FormationPort {
   id: string
   label: string
+  /** file or folder on an output port that carries a path; absent for text. Input ports never carry one. */
+  kind?: Exclude<PortKind, 'text'>
 }
 
 /** The `addPort` direction, in the server's vocabulary (FormationPortInput/Output). */
@@ -165,6 +170,28 @@ export interface RunInput {
   value: string
 }
 
+/**
+ * A named value a succeeded run delivers. `from` is the step output port it
+ * is bound to, "<step-id>:<port-id>"; a blank one is a draft validation reports.
+ */
+export interface MissionOutput {
+  name: string
+  description?: string
+  kind: PortKind
+  required?: boolean
+  from?: string
+}
+
+/** One value a succeeded run delivered: text, or the absolute path of its snapshot of a file or folder. */
+export interface RunOutput {
+  name: string
+  kind: PortKind
+  value: string
+  nodeId: string
+  portId: string
+  attempt: number
+}
+
 export interface MissionNode {
   id: string
   title: string
@@ -173,6 +200,8 @@ export interface MissionNode {
   inputHint?: string
   /** The inputs each run supplies; none declared means one required text input, brief. */
   inputs?: MissionInput[]
+  /** What a succeeded run delivers, each bound to a step output port. */
+  outputs?: MissionOutput[]
   /** Reference file paths; the cockpit opens absolute ones. */
   files?: string[]
   /** How its human gates reach the operator (ADR-0019): absent or notify notifies, session asks the agents. A patch sends '' to clear it. */
@@ -231,6 +260,8 @@ export interface RunStatusProjection {
   beadId?: string
   /** The values the run supplied, in the mission's declared order. */
   inputs?: RunInput[]
+  /** What the run delivered, on a succeeded run that reached a done End. */
+  outputs?: RunOutput[]
   runId: string
   status: string
   final: boolean
