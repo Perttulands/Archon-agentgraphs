@@ -112,6 +112,19 @@ type FormationPortRequest struct {
 	FormationID string
 	Direction   string
 	Label       string
+	// Kind is an output port's kind: text (the default, also when blank), file
+	// or folder. An input port takes none.
+	Kind      string
+	UpdatedBy string
+}
+
+// FormationPortUpdateRequest changes only the fields it sets on one port. A
+// blank label is refused; a kind applies only to an output port.
+type FormationPortUpdateRequest struct {
+	FormationID string
+	PortID      string
+	Label       *string
+	Kind        *string
 	UpdatedBy   string
 }
 
@@ -197,7 +210,8 @@ type MissionUpdateRequest struct {
 	Files        *[]string // replaces the file references; empty clears them
 	InputHint    *string
 	HumanChannel *string
-	Inputs       *[]MissionInput // replaces the declared inputs; empty clears them
+	Inputs       *[]MissionInput  // replaces the declared inputs; empty clears them
+	Outputs      *[]MissionOutput // replaces the declared outputs; empty clears them
 	UpdatedBy    string
 }
 
@@ -230,6 +244,10 @@ type FormationNode struct {
 type FormationPort struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
+	// Kind is what an output port carries (archon-5tg1): text, stored as
+	// absent, or file or folder, whose ref is the absolute path of the file or
+	// directory the step produced. Input ports carry no kind.
+	Kind string `json:"kind,omitempty"`
 }
 
 type FormationSlot struct {
@@ -289,6 +307,9 @@ type MissionNode struct {
 	// Inputs are the named values each run supplies (archon-o7p.3). None
 	// declared means one implicit required text input, brief.
 	Inputs []MissionInput `json:"inputs,omitempty"`
+	// Outputs are the named results a successful run promises (archon-5tg1),
+	// each bound to a step output port. None declared means none promised.
+	Outputs []MissionOutput `json:"outputs,omitempty"`
 	// HumanChannel is how the mission's runs reach the operator: empty for the
 	// default notify channel, or session (ADR-0019).
 	HumanChannel string `json:"humanChannel,omitempty"`
@@ -1362,6 +1383,14 @@ func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteO
 		}
 		inputs = normalized
 	}
+	var outputs []MissionOutput
+	if req.Outputs != nil {
+		normalized, err := NormalizeMissionOutputs(*req.Outputs)
+		if err != nil {
+			return nil, err
+		}
+		outputs = normalized
+	}
 	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, _ *BoardDocument) ([]byte, error) {
 		lines := splitLines(raw)
 		for _, field := range []struct {
@@ -1410,6 +1439,14 @@ func (s *Store) UpdateMission(slug string, req MissionUpdateRequest, opts WriteO
 				lines = removeScalarInLineRange(lines, start+1, end, "inputs")
 			} else {
 				lines = setScalarInLineRange(lines, start+1, end, "inputs", renderMissionInputs(inputs))
+			}
+		}
+		if req.Outputs != nil {
+			start, end, _ = findMissionBlockByID(lines, req.MissionID)
+			if len(outputs) == 0 {
+				lines = removeScalarInLineRange(lines, start+1, end, "outputs")
+			} else {
+				lines = setScalarInLineRange(lines, start+1, end, "outputs", renderMissionOutputs(outputs))
 			}
 		}
 		return renderTOMLLines(lines), nil
@@ -1595,9 +1632,13 @@ func (s *Store) AddFormationPort(slug string, req FormationPortRequest, opts Wri
 			label = "Output"
 		}
 	}
+	kind, err := authoredPortKind(req.Direction, req.Kind)
+	if err != nil {
+		return nil, err
+	}
 	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, _ *BoardDocument) ([]byte, error) {
 		lines := splitLines(raw)
-		formationStart, formationEnd, ok := findFormationBlockByID(lines, req.FormationID)
+		_, formationEnd, ok := findFormationBlockByID(lines, req.FormationID)
 		if !ok {
 			return nil, ErrNotFound
 		}
@@ -1605,12 +1646,88 @@ func (s *Store) AddFormationPort(slug string, req FormationPortRequest, opts Wri
 		if req.Direction == FormationPortOutput {
 			section = "formation.output"
 		}
-		lines = insertTomLLines(lines, formationEnd, []tomlLine{
+		block := []tomlLine{
 			{body: "[[" + section + "]]", newline: "\n"},
 			{body: "id = " + renderString(newPrefixedID("port")), newline: "\n"},
 			{body: "label = " + renderString(label), newline: "\n"},
-		})
-		_ = formationStart
+		}
+		if kind != "" {
+			block = append(block, tomlLine{body: "kind = " + renderString(kind), newline: "\n"})
+		}
+		lines = insertTomLLines(lines, formationEnd, block)
+		return renderTOMLLines(lines), nil
+	})
+}
+
+// authoredPortKind is the stored kind of a port being authored: an output's
+// file or folder, or "" for text. An input port takes no kind but text.
+func authoredPortKind(direction, kind string) (string, error) {
+	normalized, err := NormalizePortKind(kind)
+	if err != nil {
+		return "", err
+	}
+	if direction == FormationPortInput && normalized != "" {
+		return "", fmt.Errorf("%w: input ports carry no kind; set file or folder on an output port", ErrInvalidPort)
+	}
+	return normalized, nil
+}
+
+// UpdateFormationPort relabels a port or changes an output port's kind.
+func (s *Store) UpdateFormationPort(slug string, req FormationPortUpdateRequest, opts WriteOptions) (*BoardDocument, error) {
+	if req.FormationID == "" || req.PortID == "" {
+		return nil, ErrNotFound
+	}
+	if req.Label != nil && strings.TrimSpace(*req.Label) == "" {
+		return nil, fmt.Errorf("%w: a port needs a label", ErrInvalidPort)
+	}
+	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, current *BoardDocument) ([]byte, error) {
+		formation, ok := findFormation(current.Formations, req.FormationID)
+		if !ok {
+			return nil, ErrNotFound
+		}
+		direction := ""
+		for _, port := range formation.Inputs {
+			if port.ID == req.PortID {
+				direction = FormationPortInput
+			}
+		}
+		for _, port := range formation.Outputs {
+			if port.ID == req.PortID {
+				direction = FormationPortOutput
+			}
+		}
+		if direction == "" {
+			return nil, ErrNotFound
+		}
+		lines := splitLines(raw)
+		formationStart, formationEnd, ok := findFormationBlockByID(lines, req.FormationID)
+		if !ok {
+			return nil, ErrNotFound
+		}
+		portStart, portEnd, ok := findFormationPortBlock(lines, formationStart, formationEnd, req.PortID)
+		if !ok {
+			return nil, ErrNotFound
+		}
+		if req.Label != nil {
+			lines = setScalarInLineRange(lines, portStart+1, portEnd, "label", renderString(strings.TrimSpace(*req.Label)))
+			formationStart, formationEnd, _ = findFormationBlockByID(lines, req.FormationID)
+			portStart, portEnd, _ = findFormationPortBlock(lines, formationStart, formationEnd, req.PortID)
+		}
+		if req.Kind != nil {
+			kind, err := authoredPortKind(direction, *req.Kind)
+			if err != nil {
+				return nil, err
+			}
+			switch {
+			case kind == "" && current.Schema == CurrentBoardSchema:
+				// The Tool schema keeps its work kind on a text port.
+				lines = setScalarInLineRange(lines, portStart+1, portEnd, "kind", renderString(toolPayloadWork))
+			case kind == "":
+				lines = removeScalarInLineRange(lines, portStart+1, portEnd, "kind")
+			default:
+				lines = setScalarInLineRange(lines, portStart+1, portEnd, "kind", renderString(kind))
+			}
+		}
 		return renderTOMLLines(lines), nil
 	})
 }
@@ -2036,7 +2153,11 @@ func appendFormationBlock(raw []byte, formation FormationNode) []byte {
 	for _, output := range formation.Outputs {
 		b.WriteString("[[formation.output]]\n")
 		b.WriteString("id = " + renderString(output.ID) + "\n")
-		b.WriteString("label = " + renderString(output.Label) + "\n\n")
+		b.WriteString("label = " + renderString(output.Label) + "\n")
+		if output.Kind != "" {
+			b.WriteString("kind = " + renderString(output.Kind) + "\n")
+		}
+		b.WriteString("\n")
 	}
 	for i, slot := range formation.Slots {
 		b.WriteString("[[formation.slot]]\n")
@@ -2253,7 +2374,32 @@ func appendMissionBlock(raw []byte, mission MissionNode) []byte {
 	if len(mission.Inputs) > 0 {
 		b.WriteString("inputs = " + renderMissionInputs(mission.Inputs) + "\n")
 	}
+	if len(mission.Outputs) > 0 {
+		b.WriteString("outputs = " + renderMissionOutputs(mission.Outputs) + "\n")
+	}
 	return []byte(b.String())
+}
+
+// renderMissionOutputs is the TOML array of an Input card's declared outputs,
+// one inline table per line.
+func renderMissionOutputs(outputs []MissionOutput) string {
+	var b strings.Builder
+	b.WriteString("[\n")
+	for _, output := range outputs {
+		b.WriteString("  { name = " + renderString(output.Name) + ", kind = " + renderString(output.Kind))
+		if output.From != "" {
+			b.WriteString(", from = " + renderString(output.From))
+		}
+		if output.Required {
+			b.WriteString(", required = true")
+		}
+		if output.Description != "" {
+			b.WriteString(", description = " + renderString(output.Description))
+		}
+		b.WriteString(" },\n")
+	}
+	b.WriteString("]")
+	return b.String()
 }
 
 // renderMissionInputs is the TOML array of an Input card's declared inputs,
@@ -3088,6 +3234,11 @@ func setScalarInLineRange(lines []tomlLine, start, end int, key, renderedValue s
 			valueEnd := tomlValueLineEnd(lines, i, end)
 			return append(lines[:i+1], lines[valueEnd:]...)
 		}
+	}
+	// A new key goes after the table's last field, not after the blank lines
+	// that separate it from the next table.
+	for end > start && strings.TrimSpace(lines[end-1].body) == "" {
+		end--
 	}
 	newLine := tomlLine{body: key + " = " + renderedValue, newline: "\n"}
 	lines = append(lines, tomlLine{})

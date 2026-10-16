@@ -122,18 +122,22 @@ type RunStatusProjection struct {
 	Cwd          string   `json:"cwd,omitempty"`
 	ContextPaths []string `json:"contextPaths,omitempty"`
 	// Inputs are the values the run supplied, in the mission's order.
-	Inputs        []RunInput `json:"inputs,omitempty"`
-	RunID         string     `json:"runId"`
-	Status        string     `json:"status"`
-	Final         bool       `json:"final"`
-	BoardSlug     string     `json:"missionSlug"`
-	BoardID       string     `json:"missionId"`
-	BoardRev      int        `json:"missionRev"`
-	MissionID     string     `json:"inputCardId"`
-	BeadID        string     `json:"beadId"`
-	Epoch         int        `json:"epoch"`
-	EventCount    int        `json:"eventCount"`
-	ResumeAllowed bool       `json:"resumeAllowed"`
+	Inputs []RunInput `json:"inputs,omitempty"`
+	// Outputs are the mission outputs a succeeded run delivered, in the
+	// mission's order (archon-5tg1); a file or folder value is the path of
+	// the accepted snapshot.
+	Outputs       []RunOutput `json:"outputs,omitempty"`
+	RunID         string      `json:"runId"`
+	Status        string      `json:"status"`
+	Final         bool        `json:"final"`
+	BoardSlug     string      `json:"missionSlug"`
+	BoardID       string      `json:"missionId"`
+	BoardRev      int         `json:"missionRev"`
+	MissionID     string      `json:"inputCardId"`
+	BeadID        string      `json:"beadId"`
+	Epoch         int         `json:"epoch"`
+	EventCount    int         `json:"eventCount"`
+	ResumeAllowed bool        `json:"resumeAllowed"`
 	// ResumePolicy is how a blocked run resumes: grant at a spent limit,
 	// which resumes only with run resume --grant (archon-o7p.8).
 	ResumePolicy string `json:"resumePolicy,omitempty"`
@@ -692,6 +696,7 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 			status.Status = RunStatusSucceeded
 			status.Final = true
 			status.ResumeAllowed = false
+			status.Outputs = RunOutputsFromEventData(event.Data["outputs"])
 		}
 	}
 	if status.Final || status.Status != RunStatusBlocked {
@@ -710,6 +715,7 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 			status.Status = RunStatusBlocked
 			status.Final = false
 			status.ResumeAllowed = false
+			status.Outputs = nil
 		}
 	}
 	return status, nil

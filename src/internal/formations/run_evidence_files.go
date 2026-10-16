@@ -248,6 +248,9 @@ func projectRunEvidenceGraph(board *BoardDocument) (*BoardDocument, error) {
 		for j := range node.Inputs {
 			node.Inputs[j].Description = redactEvidenceText(node.Inputs[j].Description)
 		}
+		for j := range node.Outputs {
+			node.Outputs[j].Description = redactEvidenceText(node.Outputs[j].Description)
+		}
 	}
 	for i := range graph.Formations {
 		node := &graph.Formations[i]

@@ -19,6 +19,7 @@ import (
 func (c *Coordinator) registerEvidenceRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/runs/{runId}/evidence/nodes/{nodeId}", c.nodeEvidence)
 	mux.HandleFunc("GET /api/runs/{runId}/evidence/problems", c.runProblems)
+	mux.HandleFunc("GET /api/runs/{runId}/evidence/attempts", c.runAttempts)
 	mux.HandleFunc("GET /api/runs/{runId}/evidence/briefs/{dispatchSeq}", c.briefEvidence)
 	mux.HandleFunc("GET /api/runs/{runId}/evidence/mission", c.missionEvidence)
 	mux.HandleFunc("GET /api/runs/{runId}/evidence/artifacts", c.artifactList)
@@ -44,6 +45,17 @@ func (c *Coordinator) runProblems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, http.StatusOK, map[string]any{"problems": problems})
+}
+
+// runAttempts serves every attempt of every step, or of the step ?node=
+// names: its outputs, the verdicts that judged them and its directory's files.
+func (c *Coordinator) runAttempts(w http.ResponseWriter, r *http.Request) {
+	attempts, err := c.store.ProjectRunAttempts(r.PathValue("runId"), r.URL.Query().Get("node"))
+	if err != nil {
+		evidenceFailure(w, err)
+		return
+	}
+	reply(w, http.StatusOK, attempts)
 }
 
 func (c *Coordinator) briefEvidence(w http.ResponseWriter, r *http.Request) {

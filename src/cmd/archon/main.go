@@ -241,6 +241,8 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 			return runFormationAddPort(store, args[2:], stdout, stderr, formations.FormationPortInput)
 		case "add-output":
 			return runFormationAddPort(store, args[2:], stdout, stderr, formations.FormationPortOutput)
+		case "set-port":
+			return runFormationSetPort(store, args[2:], stdout, stderr)
 		case "wire":
 			return runFormationWire(store, args[2:], stdout, stderr, false)
 		case "unwire":
@@ -299,6 +301,8 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 			return runMissionUpdate(store, args[2:], stdout, stderr)
 		case "input":
 			return runMissionInput(store, args[2:], stdout, stderr)
+		case "output":
+			return runMissionOutput(store, args[2:], stdout, stderr)
 		case "run":
 			return runMissionRun(formations.NewStore(config.Workspace), args[2:], stdout, stderr)
 		default:
@@ -337,6 +341,8 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 			return runAbort(formations.NewStore(config.Workspace), args[2:], stdout, stderr)
 		case "ask":
 			return runAsk(store, args[2:], stdout, stderr)
+		case "attempts":
+			return runAttempts(store, args[2:], stdout, stderr)
 		default:
 			return offlineUnavailable(stderr, "run", args[1])
 		}
@@ -982,6 +988,10 @@ func runFormationAddPort(store *formations.Store, args []string, stdout, stderr 
 	}
 	fs := commandFlags(name, stderr)
 	label := fs.String("label", "", "port label")
+	kind := new(string)
+	if direction == formations.FormationPortOutput {
+		kind = fs.String("kind", "", "what the port carries: text (the default), file or folder")
+	}
 	updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -999,6 +1009,7 @@ func runFormationAddPort(store *formations.Store, args []string, stdout, stderr 
 		FormationID: formationID,
 		Direction:   direction,
 		Label:       *label,
+		Kind:        *kind,
 		UpdatedBy:   *updatedBy,
 	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
@@ -1747,8 +1758,17 @@ func runStatus(store *formations.Store, args []string, stdout, stderr io.Writer)
 	if *jsonOut {
 		return writeJSON(stdout, status)
 	}
-	fmt.Fprintf(stdout, "%s\t%s\t%s\t%d events\n", status.RunID, status.Status, status.BoardSlug, status.EventCount)
+	writeRunStatusLines(stdout, status)
 	return 0
+}
+
+// writeRunStatusLines prints a run's status line, then one line per mission
+// output a succeeded run delivered.
+func writeRunStatusLines(stdout io.Writer, status *formations.RunStatusProjection) {
+	fmt.Fprintf(stdout, "%s\t%s\t%s\t%d events\n", status.RunID, status.Status, status.BoardSlug, status.EventCount)
+	for _, output := range status.Outputs {
+		fmt.Fprintln(stdout, runOutputLine(output))
+	}
 }
 
 func runLogs(store *formations.Store, args []string, stdout, stderr io.Writer) int {
@@ -2788,7 +2808,7 @@ func failJSON(stderr io.Writer, err error, jsonOut bool, boundary, selector stri
 }
 
 func failDefinitionWrite(stderr io.Writer, err error, jsonOut bool, boundary, selector string) int {
-	if errors.Is(err, formations.ErrInvalidDefinitionSource) || errors.Is(err, formations.ErrInvalidSlotSettings) || errors.Is(err, formations.ErrInvalidMissionInput) || errors.Is(err, formations.ErrRelativeFileRef) || errors.Is(err, formations.ErrInputOccupied) || errors.Is(err, formations.ErrSelfWire) || errors.Is(err, formations.ErrDuplicateConnection) || errors.Is(err, formations.ErrIncompatibleToolConnection) {
+	if errors.Is(err, formations.ErrInvalidDefinitionSource) || errors.Is(err, formations.ErrInvalidSlotSettings) || errors.Is(err, formations.ErrInvalidMissionInput) || errors.Is(err, formations.ErrInvalidMissionOutput) || errors.Is(err, formations.ErrInvalidPort) || errors.Is(err, formations.ErrRelativeFileRef) || errors.Is(err, formations.ErrInputOccupied) || errors.Is(err, formations.ErrSelfWire) || errors.Is(err, formations.ErrDuplicateConnection) || errors.Is(err, formations.ErrIncompatibleToolConnection) {
 		return failJSON(stderr, err, jsonOut, boundary, selector)
 	}
 	return fail(stderr, err)
@@ -2875,6 +2895,10 @@ func archonErrorCode(err error) string {
 		return "invalid_human_channel"
 	case errors.Is(err, formations.ErrInvalidMissionInput):
 		return "invalid_mission_input"
+	case errors.Is(err, formations.ErrInvalidMissionOutput):
+		return "invalid_mission_output"
+	case errors.Is(err, formations.ErrInvalidPort):
+		return "invalid_port"
 	case errors.Is(err, formations.ErrRelativeFileRef):
 		return "relative_file_reference"
 	case errors.Is(err, formations.ErrBrokenLink):

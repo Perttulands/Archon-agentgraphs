@@ -23,8 +23,11 @@ decisions; [examples](../examples/) provide reusable missions.
 | Noun | Meaning |
 | --- | --- |
 | Mission | The reusable unit: one schema-1 TOML graph file, `<slug>.mission.toml`, with a stable ID, slug and revision. |
-| Input card | The mission's entry node (`[[inputCard]]` in TOML, `inputCards` in JSON) with the mission's goal, input hint, declared inputs and `out` port. A mission has one Input card. |
+| Input card | The mission's entry node (`[[inputCard]]` in TOML, `inputCards` in JSON) with the mission's goal, input hint, declared inputs and outputs, and `out` port. A mission has one Input card. |
 | Input | A named value each run of the mission supplies: a name, a description, a kind (`text`, `file` or `folder`) and whether it is required. Step briefs reference it as `{name}`. A mission that declares none has one implicit required text input, `brief`. |
+| Output | A named result a successful run of the mission promises: a name, a description, a kind (`text`, `file` or `folder`), whether it is required, and `from`, the one step output port it comes from. A mission that declares none promises nothing. |
+| Output port | What a step emits on one route. Its kind is `text` (the default), `file` or `folder`; a file or folder output's `ref` is the absolute path of what the step produced, and Archon keeps a copy of it as each attempt produced it. Input ports carry no kind. |
+| Attempt directory | `<state-dir>/.archon/artifacts/<runId>/<nodeId>/<attempt>/`, created when each attempt of a step, judges included, is dispatched. The seat writes the files it produces there; it belongs to that attempt alone and is kept with the run. |
 | Formation | A step: the team of agents that does it. `solo` has one seat; `peer` has peer seats; `orchestrated` has a controller directing its bound workers. |
 | Slot | A position in a formation that owns what its seat runs: a harness (`claude-code` or `openai-codex`), a model (blank means the harness default) and an effort, plus an optional role (`agentId`, a persona). A slot without a role is a vanilla agent, such as `claude-code · opus · low`. A seat is the slot's runtime agent session. |
 | Persona (role) | A TOML agent card with role text only: a display name, kind, summary, capabilities, status and notes. It carries no harness, model or effort; each slot that uses it states its own. Every Archon has seven built-in generic roles (`scout`, `planner`, `builder`, `judge`, `orchestrator`, `debugger`, `reviewer`); a card in the agents directory adds a role or overrides a built-in one. |
@@ -410,6 +413,77 @@ the mission's inputs. The Input card's window reads the declared inputs as the
 `{name}` references briefs use and edits them in place, one undo entry per
 save.
 
+### Mission outputs
+
+A mission declares on its Input card the named results a successful run
+promises (archon-5tg1), so an agent can chain it without reading its steps.
+Each output is bound to one step output port by `from = "<step-id>:<port-id>"`:
+
+```toml
+[[inputCard]]
+id = "inp_delivery"
+title = "Deliver"
+goal = "Deliver a reviewed change"
+outputs = [
+  { name = "report", kind = "file", from = "fmn_write:port_report", required = true, description = "The reviewed report" },
+  { name = "summary", from = "fmn_write:port_out" },
+]
+```
+
+The binding is explicit because generated port IDs (`port_` and uppercase
+letters) cannot follow the output naming rule, and a gated step reaches its End
+only through its gate. Names follow the input rule; the kind is `text` (the
+default), `file` or `folder`; an output is optional unless `required = true`.
+Authoring refuses a bad name, a bad kind, a repeated name or a `from` that is
+not `<step-id>:<port-id>` with `INVALID_MISSION_OUTPUT` (CLI code
+`invalid_mission_output`). A blank `from` saves as a draft. Validation reports,
+on the Input card, `invalid_mission_output` for a hand-written mistake,
+`unbound_mission_output` for an output with no `from` or a `from` that names no
+step output port, and `mission_output_kind_mismatch` for an output whose kind is
+not its port's kind, such as a `file` output bound to a text port. Admission
+refuses a mission run with any of them; a single step's run ignores the
+mission's outputs.
+
+Output ports have a kind: `[[formation.output]]` takes `kind = "file"` or
+`kind = "folder"`, and text is written as no kind. A kind on an input port, or
+any other kind, is the validation error `invalid_port_kind`. The authoring
+surfaces are `addPort` with `kind`, the `updatePort` mission patch
+(`formationId`, `portId`, and `label` or `kind`, each optional; a text kind
+clears it), `archon formation add-output --kind`, `archon formation set-port
+<mission> <formation> <port> [--label] [--kind]`, and the output row's menu in
+the cockpit. A port edit that names an input port's kind, an unknown kind or a
+blank label is refused with `INVALID_PORT` (CLI code `invalid_port`).
+
+`archon mission output <mission>` lists the declared outputs (name, kind,
+required or optional, `from` or `unbound`, description); `archon mission output
+<mission> <name> [--kind] [--from <step-id>:<port-id>] [--required |
+--optional] [--description] [--delete]` declares, changes or removes one, and
+only the flags given change an existing one. `updateInputCard` takes `outputs`,
+which replaces the declared outputs; an empty list clears them. The Input
+card's window edits them beside the inputs, each bound by choosing a step
+output port.
+
+When a run finishes at a done End, each declared output is the latest accepted
+payload of its bound port and the attempt that produced it: the text for a
+text output, the snapshot path for a file or folder. A required output whose
+port never produced anything (its step did not run on the path taken, or its
+text was blank) fails the run with `run_failed` code `missing_output`, actor
+`archond`, and a reason naming the output and its `from`. So does a file or
+folder output, required or not, whose path no longer exists or is no longer of
+its kind when the run ends. An optional output the run did not produce is left
+out. A run that fails at a rejected End promises nothing: it fails with
+`path_rejected` and lists no outputs.
+
+`run_succeeded` records the outputs as `outputs` (`name`, `kind`, `value`,
+`nodeId`, `portId`, `attempt`), and run status, the run list, `run wait`'s
+`end` and the cockpit project them. Plain `run status` prints one line per
+output after the status line, `output<TAB><name><TAB><kind><TAB><value>`, and
+the final `run wait` paragraph does the same; a text value of several lines
+shows its first line and ` [...]`, and `--json` holds every value whole. A
+driver passes a value straight to the next mission: `archon mission run next
+--input report=<value>`. The
+cockpit lists a succeeded run's outputs; a path opens in the file viewer.
+
 ### Limit cards
 
 Runs have no limits unless the mission holds a Limit card (archon-o7p.8). A
@@ -632,7 +706,7 @@ adapters. It resolves authenticated harness executables from its environment.
 Each fresh seat gets a pointer to a file under `<state-dir>/briefs`. The file
 contains run/node/slot identity, the role (`agent: vanilla (no role)` for a slot without one), cwd, mission goal, Bead, role summary,
 formation brief, file/link references, routed inputs, gate feedback, human
-responses, output ports, artifact directory and completion instructions.
+responses, output ports and their kinds, the attempt directory and completion instructions.
 Orchestrated controllers also get their bound workers and may direct only those
 workers. The operator may type into any live seat at any time, through the seat
 terminal or in CHROTE, and talk to the agent normally, whether it is working a
@@ -958,10 +1032,30 @@ Real formations must emit all and only their declared output IDs in one block:
 {"port_out":{"text":"Short result"}}
 ```
 
-A payload can also include `ref` naming a text file anywhere on disk,
-preferably under the prompt's artifact directory. Use its full absolute
+A text payload can also include `ref` naming a text file anywhere on disk,
+preferably under the prompt's attempt directory. Use its full absolute
 filesystem path; a relative `ref` is refused with `invalid_output_ref`. A
-missing, unreadable, non-text or oversized reference blocks routing. Routed
+missing, unreadable, non-text or oversized reference blocks routing.
+
+The prompt names the attempt directory, `attempt artifact directory:
+<state-dir>/.archon/artifacts/<runId>/<nodeId>/<attempt>`, which Archon
+creates before dispatch for every attempt, judges included, and tells the seat
+to write the files it produces there. It also says what each output port
+carries. On a `file` or `folder` port, `ref` is required and is the absolute
+path of the file (any type) or directory the output is, and `text` is a one-line
+summary. A blank, relative or missing path, or one that is not a regular file
+or a directory as the kind says, blocks the step with `invalid_output_ref` or
+`unavailable_output_ref`, and the output is not recorded. When the output is
+accepted, a path outside the attempt directory is copied into it, to
+`outputs/<port-id>/<base name>`: a copy-on-write clone (`FICLONE`) where the
+file system supports one, otherwise an ordinary copy, never a hard link. A
+directory's symlinks are copied as links, its special files are left out, and
+the run's artifact directory inside it is not copied. The copy's path is what
+the ledger records, the next step receives and run evidence shows, so a later
+attempt that rewrites the same workspace file in place leaves every earlier
+attempt's output as it was. A path already inside the attempt directory is
+recorded as it is. Snapshots are always taken and live with the run's
+artifacts; a large folder output is copied in full. Routed
 data is never redacted: inline payload text, a ref file's text, controller
 plans and peer openings reach the next step exactly as the seat wrote them.
 Redaction applies only to text Archon displays to a person (run evidence, file
@@ -1361,7 +1455,20 @@ archon --server "$ARCHON_SERVER" run list --json
 `run list` prints one line per run, newest first: its ID, mission, status,
 Bead (`-` when none), start and last change, tab-separated; `--json` prints
 each run's full projection. This allocates a workspace automatically. Add `--cwd "$ARCHON_CWD"` to work in
-an existing project. For a session gate, inspect the asking seats before typing:
+an existing project.
+
+To chain a mission that declares outputs into the next, read the succeeded
+run's `outputs` and pass a value as the next run's input; `run attempts` shows
+what every attempt produced and how it was judged:
+
+```bash
+ARCHON_REPORT=$(archon --server "$ARCHON_SERVER" run status "$ARCHON_RUN_ID" --json |
+  jq -er '.data.outputs[] | select(.name == "report") | .value')
+archon --server "$ARCHON_SERVER" mission run publish --input report="$ARCHON_REPORT" --json
+archon --server "$ARCHON_SERVER" run attempts "$ARCHON_RUN_ID" --node "$ARCHON_NODE_ID"
+```
+
+For a session gate, inspect the asking seats before typing:
 
 ```bash
 archon --server "$ARCHON_SERVER" run gates "$ARCHON_RUN_ID"
@@ -1600,8 +1707,8 @@ beside it replacing that value.
 
 With `--server`, Archon runs these authoring and read commands through the
 daemon, so an open cockpit sees the edits through its change polling: `mission
-new|list|inspect|notes|note|validate|arrange|create|update|delete|input|wire`, `formation
-list|inspect|create|rename|set-type|assign|unassign|set-brief|add-input|add-output|wire|unwire|delete`,
+new|list|inspect|notes|note|validate|arrange|create|update|delete|input|output|wire`, `formation
+list|inspect|create|rename|set-type|assign|unassign|set-brief|add-input|add-output|set-port|wire|unwire|delete`,
 `gate create|update|judge|delete`, `end create|update|delete`, `tool create|update|delete|inspect` and `agent
 list|inspect|new|edit|retire|restore|delete`. They take the offline flags and print the offline
 output: unwrapped JSON without TOML, or the same text. Each command reads the
@@ -1615,8 +1722,9 @@ retried up to three times. Differences from offline use:
 - Agent cards are the daemon's `--agents-dir`, with the liveness the daemon
   reports. `mission note --file` reads locally.
 - Runtime commands (`mission run`, `formation run`, `run`, `gate approve|reject`) print the
-  daemon's `{success,timestamp,data}` envelope, except `run gates`, `run seats`
-  and `gate request`, which require `--json` for that format, and `run wait`,
+  daemon's `{success,timestamp,data}` envelope, except `run status`, `run
+  gates`, `run seats`, `run attempts` and `gate request`, which require
+  `--json` for that format and otherwise print the offline text, and `run wait`,
   which prints its paragraph or its own JSON (see [Waiting on a run](#waiting-on-a-run)); `mission list` and
   `mission inspect` print offline JSON like the other reads. `run ask` and
   `agent spawn|attach` remain offline only.
@@ -1754,7 +1862,27 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
 - `/api/runs/{runId}/evidence/artifacts` returns `data.artifacts`
   (`name`, `size`, `modifiedAt`), sorted by name relative to
   `<state-dir>/.archon/artifacts/<runId>`, and `data.truncated` past 500
-  entries or 8 directory levels. A run without artifacts lists none.
+  entries or 16 directory levels. A run without artifacts lists none.
+- `/api/runs/{runId}/evidence/attempts` returns `data` `{runId, steps}`:
+  every step that ran, in the order it first ran, or with `?node=<id>` only
+  that step (an unknown step returns 404). A step has `nodeId`, `title`,
+  `judgeOf` (the gates it judged for, when it is a judge), `outputs` (its
+  output ports from the frozen mission: `id`, `label`, `kind`) and `attempts`,
+  oldest first. An attempt has `attempt`, `status` (`running`, `done` or
+  `stopped`), `startedSeq`, `startedAt`, `endedAt`, `outputSeq`, `directory`
+  (`name` relative to the run's artifact directory and absolute `path`, when
+  it exists), `outputs` (`portId`, `label`, `kind`, `text`, and for a path
+  `path`, `artifact` for the artifact routes, `size` and `fileKind`: `image`,
+  `pdf`, `markdown`, `json`, `text`, `binary` or `folder`), `verdicts`, each
+  gate evaluation of that attempt's output (`gateId`, `gateTitle`,
+  `evaluationSeq`, and once decided `seq`, `verdict`, `reason`, `evidence`,
+  `evidenceOmitted` and `decidedBy`, or `pending` while it waits), and `files`,
+  the regular files in its directory (`name`, `path`, `size`, `modifiedAt`,
+  `kind`), with `filesTruncated` past the artifact list's limits. Bytes come
+  from `/api/runs/{runId}/artifacts/{name...}` by a file's `name` or an
+  output's `artifact`. Texts share the node evidence caps. `archon run attempts
+  <runId> [--node <id>] [--json]` prints the same, offline or through
+  `--server`.
 - `/api/runs/{runId}/evidence/artifacts/{name...}` returns
   `data.artifact` (`name`, `size`, `modifiedAt`, `kind` `markdown`, `json`,
   `text`, `image`, `pdf` or `binary`, and `path`, its absolute path on the
@@ -1803,8 +1931,8 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   their gate or step `title`, a human gate's `criterion`, `input` (the start of
   the text, capped at 4 KiB, with `bytes` and `truncated`) and `routes`, and a
   block's `reason`, `code` and `resumeAllowed`. A driver agent consumes this
-  text, so it is served verbatim, as `gate request` serves it. `end` carries `status`, `seq`, `code`, `reason`, `endedBy` and the
-  `stopped` steps. A bad `until`, `since` or `hold`, or a `since` past the
+  text, so it is served verbatim, as `gate request` serves it. `end` carries `status`, `seq`, `code`, `reason`, `endedBy`, the
+  `stopped` steps and a succeeded run's mission `outputs`. A bad `until`, `since` or `hold`, or a `since` past the
   run's last event, returns 400, an unknown run 404, and a stopping daemon 503.
   Waits and streams read the daemon's parsed ledger, which parses only what
   each append added, so fifty waiters on a large ledger answer within a

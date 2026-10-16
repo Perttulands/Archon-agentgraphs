@@ -38,7 +38,7 @@ func TestContextExecutorDeadlineJoinsCleanup(t *testing.T) {
 	executor := &cleanupExecutor{onEnter: func() { cancel(ErrFormationTimeoutExceeded) }}
 	engine := NewRunEngine(store, personas, executor)
 	engine.SetExecutionContext(func(string) context.Context { return ctx })
-	_, err = engine.executeFormation(FormationExecution{RunID: started.RunID})
+	_, err = engine.executeFormation(FormationExecution{RunID: started.RunID, NodeID: "fmn_scout", Attempt: 1})
 	if !errors.Is(err, ErrFormationTimeoutExceeded) || !executor.cleanupDone {
 		t.Fatalf("deadline returned before cleanup: err %v done %t", err, executor.cleanupDone)
 	}

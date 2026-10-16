@@ -192,6 +192,9 @@ func restoredNodeBlock(req NodeRestoreRequest) (string, string, func([]byte) []b
 		if mission.Inputs, err = NormalizeMissionInputs(mission.Inputs); err != nil {
 			return "", "", nil, err
 		}
+		if mission.Outputs, err = NormalizeMissionOutputs(mission.Outputs); err != nil {
+			return "", "", nil, err
+		}
 		return mission.ID, "inputCard", func(raw []byte) []byte { return appendMissionBlock(raw, mission) }, nil
 	}
 }
@@ -212,6 +215,16 @@ func validateRestoredFormation(formation FormationNode) error {
 			return invalidNodeRestore("formation %q port id %q is missing, invalid or repeated", formation.ID, port.ID)
 		}
 		ports[port.ID] = true
+	}
+	for _, port := range formation.Inputs {
+		if _, err := authoredPortKind(FormationPortInput, port.Kind); err != nil {
+			return err
+		}
+	}
+	for _, port := range formation.Outputs {
+		if _, err := authoredPortKind(FormationPortOutput, port.Kind); err != nil {
+			return err
+		}
 	}
 	if id, bad := firstBadSlotID(formation.Slots); bad {
 		return invalidNodeRestore("formation %q slot id %q is missing, invalid or repeated", formation.ID, id)
@@ -345,6 +358,10 @@ func (s *Store) RestoreFormationPort(slug string, req PortRestoreRequest, opts W
 	if req.Index < 0 {
 		return nil, invalidNodeRestore("port index %d is negative", req.Index)
 	}
+	kind, err := authoredPortKind(req.Direction, req.Port.Kind)
+	if err != nil {
+		return nil, err
+	}
 	return s.updateBoardDefinition(slug, req.UpdatedBy, opts, func(raw []byte, current *BoardDocument) ([]byte, error) {
 		lines := splitLines(raw)
 		formationStart, formationEnd, ok := findFormationBlockByID(lines, req.FormationID)
@@ -372,6 +389,9 @@ func (s *Store) RestoreFormationPort(slug string, req PortRestoreRequest, opts W
 			{body: "[[" + section + "]]", newline: "\n"},
 			{body: "id = " + renderString(req.Port.ID), newline: "\n"},
 			{body: "label = " + renderString(req.Port.Label), newline: "\n"},
+		}
+		if kind != "" {
+			block = append(block, tomlLine{body: "kind = " + renderString(kind), newline: "\n"})
 		}
 		if insertAt < formationEnd {
 			block = append(block, tomlLine{body: "", newline: "\n"})

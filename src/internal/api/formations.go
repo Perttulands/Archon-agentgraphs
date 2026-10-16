@@ -88,6 +88,7 @@ type formationsBoardPatchRequest struct {
 	SetBrief                     *formationsSetBriefRequest              `json:"setBrief"`
 	ClearBrief                   *formationsClearBriefRequest            `json:"clearBrief"`
 	AddPort                      *formationsAddPortRequest               `json:"addPort"`
+	UpdatePort                   *formationsUpdatePortRequest            `json:"updatePort"`
 	RemovePort                   *formationsRemovePortRequest            `json:"removePort"`
 	RestorePort                  *formationsRestorePortRequest           `json:"restorePort"`
 	WireConnection               *formationsWireConnectionRequest        `json:"wireConnection"`
@@ -302,8 +303,21 @@ type formationsAddPortRequest struct {
 	FormationID string `json:"formationId"`
 	Direction   string `json:"direction"`
 	Label       string `json:"label"`
+	// Kind is an output port's kind: text (default), file or folder.
+	Kind        string `json:"kind"`
 	ExpectedRev int    `json:"expectedRev"`
 	UpdatedBy   string `json:"updatedBy"`
+}
+
+// formationsUpdatePortRequest relabels a port or sets an output port's kind;
+// only the fields present change.
+type formationsUpdatePortRequest struct {
+	FormationID string  `json:"formationId"`
+	PortID      string  `json:"portId"`
+	Label       *string `json:"label"`
+	Kind        *string `json:"kind"`
+	ExpectedRev int     `json:"expectedRev"`
+	UpdatedBy   string  `json:"updatedBy"`
 }
 
 type formationsRemovePortRequest struct {
@@ -377,6 +391,7 @@ var boardPatchMutationKeys = []string{
 	"setBrief",
 	"clearBrief",
 	"addPort",
+	"updatePort",
 	"removePort",
 	"restorePort",
 	"wireConnection",
@@ -514,9 +529,11 @@ type formationsUpdateMissionRequest struct {
 	InputHint    *string   `json:"inputHint"`
 	HumanChannel *string   `json:"humanChannel"`
 	// Inputs, when present, replace the declared inputs; an empty list clears them.
-	Inputs      *[]formations.MissionInput `json:"inputs"`
-	ExpectedRev int                        `json:"expectedRev"`
-	UpdatedBy   string                     `json:"updatedBy"`
+	Inputs *[]formations.MissionInput `json:"inputs"`
+	// Outputs, when present, replace the declared outputs; an empty list clears them.
+	Outputs     *[]formations.MissionOutput `json:"outputs"`
+	ExpectedRev int                         `json:"expectedRev"`
+	UpdatedBy   string                      `json:"updatedBy"`
 }
 
 // formationsUpdateGateRequest sets only the fields present in the JSON object.
@@ -1294,10 +1311,31 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			FormationID: addPort.FormationID,
 			Direction:   addPort.Direction,
 			Label:       addPort.Label,
+			Kind:        addPort.Kind,
 			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, addPort.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
 			ExpectedRev:  patchExpectedRev(request.ExpectedRev, addPort.ExpectedRev),
+		})
+		if err != nil {
+			writeFormationsError(w, err)
+			return
+		}
+		w.Header().Set("ETag", board.ETag)
+		core.WriteSuccess(w, map[string]interface{}{"mission": board})
+		return
+	}
+	if request.UpdatePort != nil {
+		update := request.UpdatePort
+		board, err := h.store.UpdateFormationPort(slug, formations.FormationPortUpdateRequest{
+			FormationID: update.FormationID,
+			PortID:      update.PortID,
+			Label:       update.Label,
+			Kind:        update.Kind,
+			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
+		}, formations.WriteOptions{
+			ExpectedETag: r.Header.Get("If-Match"),
+			ExpectedRev:  patchExpectedRev(request.ExpectedRev, update.ExpectedRev),
 		})
 		if err != nil {
 			writeFormationsError(w, err)
@@ -1457,6 +1495,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			InputHint:    update.InputHint,
 			HumanChannel: update.HumanChannel,
 			Inputs:       update.Inputs,
+			Outputs:      update.Outputs,
 			UpdatedBy:    patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
@@ -1910,6 +1949,10 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusBadRequest, "INVALID_HUMAN_CHANNEL", fieldErrorMessage(err, formations.ErrInvalidHumanChannel))
 	case errors.Is(err, formations.ErrInvalidMissionInput):
 		core.WriteError(w, http.StatusBadRequest, "INVALID_MISSION_INPUT", fieldErrorMessage(err, formations.ErrInvalidMissionInput))
+	case errors.Is(err, formations.ErrInvalidMissionOutput):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_MISSION_OUTPUT", fieldErrorMessage(err, formations.ErrInvalidMissionOutput))
+	case errors.Is(err, formations.ErrInvalidPort):
+		core.WriteError(w, http.StatusBadRequest, "INVALID_PORT", fieldErrorMessage(err, formations.ErrInvalidPort))
 	case errors.Is(err, formations.ErrBrokenLink):
 		core.WriteError(w, http.StatusUnprocessableEntity, "BROKEN_LINK", err.Error())
 	case errors.Is(err, formations.ErrRelativeFileRef):

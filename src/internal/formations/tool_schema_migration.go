@@ -456,6 +456,13 @@ func toolSchemaMigrationValidatePort(lines []tomlLine, schema int, port toolSche
 		{key: "kind", rendered: renderString("work"), want: "work"},
 		{key: "acceptedMediaTypes", rendered: renderStringArray(allToolWorkMediaTypes())},
 	}
+	// A file or folder output port (archon-5tg1) states its own kind; to a
+	// Tool it carries work like any formation port.
+	if values := port.fields["kind"]; port.direction == FormationPortOutput && len(values) == 1 {
+		if value, err := parseToolString(values[0]); err == nil && (value == PortKindFile || value == PortKindFolder) {
+			defaults = append(defaults[:1], defaults[2:]...)
+		}
+	}
 	if port.direction == FormationPortInput {
 		defaults = append(defaults,
 			toolSchemaMigrationFieldDefault{key: "required", rendered: "true", want: "true"},

@@ -68,6 +68,8 @@ type WaitEnd struct {
 	ReasonTruncated bool       `json:"reasonTruncated,omitempty"`
 	EndedBy         string     `json:"endedBy,omitempty"`
 	Stopped         []WaitNode `json:"stopped,omitempty"`
+	// Outputs are the mission outputs a succeeded run delivered.
+	Outputs []formations.RunOutput `json:"outputs,omitempty"`
 }
 
 type WaitNode struct {
@@ -323,7 +325,7 @@ func waitAsk(ask formations.NeedsYouAsk, events []formations.RunEvent, board *fo
 }
 
 func waitEnd(events []formations.RunEvent, board *formations.BoardDocument, status *formations.RunStatusProjection) *WaitEnd {
-	end := &WaitEnd{Status: status.Status, Seq: len(events), EndedBy: status.EndedBy}
+	end := &WaitEnd{Status: status.Status, Seq: len(events), EndedBy: status.EndedBy, Outputs: status.Outputs}
 	problem := formations.RunEndProblem(events)
 	if problem == nil {
 		return end

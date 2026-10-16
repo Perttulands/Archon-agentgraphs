@@ -96,6 +96,9 @@ type FormationExecution struct {
 	Brief         FormationBrief
 	Inputs        []RunInputRef
 	Attempt       int
+	// ArtifactDir is the attempt's own artifact directory, absolute and
+	// created before dispatch: .archon/artifacts/<run>/<node>/<attempt>.
+	ArtifactDir string
 	// KeepSeatsOnCall keeps the formation's seats running when it finishes,
 	// because its work reaches a human gate on a session-channel run.
 	KeepSeatsOnCall bool
@@ -135,6 +138,9 @@ type FormationOutputPayload struct {
 	Text        string `json:"text,omitempty"`
 	ReportRef   string `json:"reportRef,omitempty"`
 	ArtifactRef string `json:"artifactRef,omitempty"`
+	// Kind is file or folder for a file or folder port, whose Ref is then the
+	// accepted snapshot's path; blank for text.
+	Kind string `json:"kind,omitempty"`
 }
 
 type GateEvaluation struct {
@@ -214,6 +220,8 @@ type RunInputRef struct {
 	Text        string        `json:"text,omitempty"`
 	ReportRef   string        `json:"reportRef,omitempty"`
 	ArtifactRef string        `json:"artifactRef,omitempty"`
+	// Kind is file or folder when Ref is the path of a file or folder output.
+	Kind string `json:"kind,omitempty"`
 	// unread marks a delivery in a formation's port that the formation has
 	// not yet run on (deliverToPort); it never leaves the engine.
 	unread bool
@@ -549,6 +557,14 @@ func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusPro
 		}
 		if err := e.store.AppendRunEvent(runID, RunEvent{Type: "seat_result_recovered", NodeID: recoveredRef.NodeID, SlotID: recoveredRef.SlotID, Data: map[string]any{"dispatchId": recoveredRef.DispatchID}}); err != nil {
 			return nil, err
+		}
+		if formation, ok := findFormation(board.Formations, recoveredRef.NodeID); ok {
+			if err := e.store.acceptAttemptOutputs(runID, formation, latestNodeAttempt(events, formation.ID), recovered.Outputs); err != nil {
+				if blockErr := e.appendExecutionFailureAndBlock(runID, formation.ID, err); blockErr != nil {
+					return nil, blockErr
+				}
+				return e.projectAndNotify(runID)
+			}
 		}
 		if err := e.store.AppendRunEvent(runID, RunEvent{Type: RunEventNodeOutput, NodeID: recoveredRef.NodeID, Data: formationOutputEventData(*recovered)}); err != nil {
 			return nil, err
@@ -966,6 +982,13 @@ func (e *RunEngine) reattachOpenDispatches(runID string, board *BoardDocument, r
 	}
 	if result.Status == "" {
 		result.Status = "done"
+	}
+	events, err := e.store.ReadRunEvents(runID)
+	if err != nil {
+		return true, err
+	}
+	if err := e.store.acceptAttemptOutputs(runID, formation, latestNodeAttempt(events, formation.ID), result.Outputs); err != nil {
+		return true, err
 	}
 	if err := e.ensureFormationOutputPayloads(runID, formation, result); err != nil {
 		return true, err
@@ -1423,12 +1446,30 @@ func (e *RunEngine) finishRun(runID string, board *BoardDocument, events []RunEv
 			},
 		})
 	}
+	// A run that reached a done End delivers the mission's declared outputs; a
+	// required one it did not produce fails it (archon-5tg1).
+	outputs, missing := resolveMissionOutputs(board, events)
+	if missing != "" {
+		return e.store.AppendRunEvent(runID, RunEvent{
+			Type:  RunEventFailed,
+			Actor: RunFailureActor,
+			Data: map[string]any{
+				"code":   RunFailureMissingOutput,
+				"reason": missing,
+				"endIds": endIDs,
+				"final":  true,
+			},
+		})
+	}
 	data := map[string]any{
 		"summaryRef":   "",
 		"outputRefs":   []string{},
 		"artifactRefs": []string{},
 		"endIds":       endIDs,
 		"final":        true,
+	}
+	if len(outputs) > 0 {
+		data["outputs"] = outputs
 	}
 	if reason != "" {
 		data["reason"] = reason
@@ -1868,10 +1909,28 @@ func (e *RunEngine) startFormationExecution(runID string, board *BoardDocument, 
 	return e.store.AppendRunEvent(runID, event)
 }
 
+// executeFormation runs one attempt in its own artifact directory and accepts
+// its output: file and folder outputs are checked and snapshotted there.
 func (e *RunEngine) executeFormation(req FormationExecution) (FormationExecutionResult, error) {
 	if e.executor == nil {
 		return FormationExecutionResult{}, ErrRunExecutorUnavailable
 	}
+	dir, err := e.store.createAttemptArtifactDir(req.RunID, req.NodeID, req.Attempt)
+	if err != nil {
+		return FormationExecutionResult{}, err
+	}
+	req.ArtifactDir = dir
+	result, err := e.dispatchFormation(req)
+	if err != nil {
+		return result, err
+	}
+	if err := e.store.acceptAttemptOutputs(req.RunID, req.Formation, req.Attempt, result.Outputs); err != nil {
+		return FormationExecutionResult{}, err
+	}
+	return result, nil
+}
+
+func (e *RunEngine) dispatchFormation(req FormationExecution) (FormationExecutionResult, error) {
 	ctx := context.Background()
 	if e.executionContext != nil {
 		ctx = e.executionContext(req.RunID)
@@ -2057,6 +2116,7 @@ func runInputRefForConnection(runID string, connection BoardConnection, payload 
 		Text:        payload.Text,
 		ReportRef:   payload.ReportRef,
 		ArtifactRef: payload.ArtifactRef,
+		Kind:        payload.Kind,
 	}
 }
 
@@ -2108,6 +2168,7 @@ func outputPayloadFromAny(value any) FormationOutputPayload {
 			Text:        stringFromAny(raw["text"]),
 			ReportRef:   stringFromAny(raw["reportRef"]),
 			ArtifactRef: stringFromAny(raw["artifactRef"]),
+			Kind:        stringFromAny(raw["kind"]),
 		}
 	default:
 		return FormationOutputPayload{}
@@ -2759,6 +2820,7 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 			Text:        payload.Text,
 			ReportRef:   payload.ReportRef,
 			ArtifactRef: payload.ArtifactRef,
+			Kind:        payload.Kind,
 		}
 		if input.Ref == "" {
 			input.Ref = fmt.Sprintf("ledger://%s/%s", req.RunID, formation.ID)
@@ -3032,6 +3094,7 @@ func runInputRefFromAny(value any) RunInputRef {
 		Text:        stringFromAny(raw["text"]),
 		ReportRef:   stringFromAny(raw["reportRef"]),
 		ArtifactRef: stringFromAny(raw["artifactRef"]),
+		Kind:        stringFromAny(raw["kind"]),
 	}
 }
 

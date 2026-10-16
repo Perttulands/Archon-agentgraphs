@@ -130,6 +130,9 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	if args[0]+" "+args[1] == "mission run" || args[0]+" "+args[1] == "formation run" {
 		return remoteRunStart(client, args[0], args[2:], stdout, stderr)
 	}
+	if args[0]+" "+args[1] == "run attempts" {
+		return remoteRunAttempts(client, args[2:], stdout, stderr)
+	}
 	request := client.raw
 	name := args[0] + " " + args[1]
 	verdict := name == "gate approve" || name == "gate reject"
@@ -260,6 +263,16 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	}
 	if args[0]+" "+args[1] == "run list" && !*jsonOut {
 		return writeRemoteRunList(raw, stdout, stderr)
+	}
+	if args[0]+" "+args[1] == "run status" && !*jsonOut {
+		var envelope struct {
+			Data formations.RunStatusProjection `json:"data"`
+		}
+		if err := json.Unmarshal(raw, &envelope); err != nil {
+			return fail(stderr, err)
+		}
+		writeRunStatusLines(stdout, &envelope.Data)
+		return 0
 	}
 	fmt.Fprint(stdout, string(raw))
 	return 0

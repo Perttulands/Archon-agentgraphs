@@ -147,6 +147,39 @@ it is never a reference. The first step also receives the inputs from the
 Input card: the implicit `brief` unchanged, or one `name: value` line per
 input.
 
+### Outputs
+
+A step output port carries `text` (the default), a `file` or a `folder`. A
+file or folder port's payload is the absolute path the seat made; when Archon
+accepts it, it keeps a copy of that attempt's version and routes the copy's
+path, so a send-back loop that rewrites one project file keeps every version.
+Set the kind when you add the port or later, by port ID or label:
+
+```bash
+archon $S formation add-output "$M" "$WORK" --label site --kind folder --json
+archon $S formation set-port "$M" "$WORK" "$WORK_OUT" --kind file --json
+```
+
+Declare what a successful run promises its driver as **mission outputs** on
+the Input card, each bound with `--from <step-id>:<port-id>` to one step output
+port of the same kind:
+
+```bash
+archon $S mission output "$M" report --kind file --from "$WORK:$WORK_OUT" --required --description "The final report" --json
+archon $S mission output "$M"
+```
+
+`mission output "$M" <name>` declares an output or changes only the flags
+given (`--kind`, `--from`, `--required` or `--optional`, `--description`);
+`--delete` removes it, and without a name it lists them. Names follow the input
+rule. When the run ends at a `done` End, each output is the latest accepted
+payload of its port. A required output its path never produced, or a file or
+folder no longer there, fails the run (`run_failed`, code `missing_output`); a
+run that ends at a `rejected` End promises nothing. Validation reports
+`unbound_mission_output` (no `--from`, or no such step port),
+`mission_output_kind_mismatch` and `invalid_port_kind`, and admission refuses
+the run on them.
+
 ### Briefs belong to steps
 
 Write what a step does in its formation brief (`formation set-brief --goal`,
@@ -426,10 +459,22 @@ the run needs the operator, even while other steps still run: each
 wait at once; answer each. `blocked` is never a delivery. Runtime JSON is wrapped in
 `.data`; authoring JSON is not.
 
-Outputs: declared artifacts live under
-`$ARCHON_STATE/.archon/artifacts/<runId>/`, and the cockpit's Produced list
-opens them. Check each `seat_cleanup` outcome (`ended`, `left_socket_changed`,
-`left_cleanup_failed`).
+Results: a succeeded run's `run status` lists its mission outputs, one `output`
+line each with name, kind and value (`outputs` in JSON, each with `name`,
+`kind`, `value`, `nodeId`, `portId` and `attempt`); the final `run wait`
+answer carries them too. Chain a mission by passing a value on:
+
+```bash
+REPORT=$(archon $S run status "$ARCHON_RUN_ID" --json | jq -er '.data.outputs[] | select(.name == "report") | .value')
+archon $S mission run "$NEXT_MISSION" --input spec="$REPORT" --json
+```
+
+Every attempt of every step, judges included, has its own directory under
+`$ARCHON_STATE/.archon/artifacts/<runId>/<nodeId>/<attempt>/`.
+`run attempts "$ARCHON_RUN_ID" [--node <id>] [--json]` lists each attempt in
+order: when it ran, its outputs, the gate verdicts on them with reason and
+evidence, and its files. The cockpit's Produced list opens them. Check each
+`seat_cleanup` outcome (`ended`, `left_socket_changed`, `left_cleanup_failed`).
 
 The runtime writes the brief each seat receives, including its output contract;
 you author only the formation brief. When a seat's output did not route, or you

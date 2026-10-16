@@ -160,12 +160,47 @@ func (e *LabFormationExecutor) executeFormation(ctx context.Context, req Formati
 	if len(text) > e.config.OutputCapBytes {
 		text = text[:e.config.OutputCapBytes]
 	}
+	payloads, err := labPathOutputs(req, labOutputPayloads(req.Formation, text))
+	if err != nil {
+		return FormationExecutionResult{}, err
+	}
 	return FormationExecutionResult{
 		Status:    "done",
 		ReportRef: fmt.Sprintf("lab://%s/%s/report.md", req.RunID, req.NodeID),
 		Text:      text,
-		Outputs:   labOutputPayloads(req.Formation, text),
+		Outputs:   payloads,
 	}, nil
+}
+
+// labPathOutputs gives each file or folder output what a seat would produce:
+// a file, or a folder holding one, in the attempt's artifact directory, named
+// as the output's ref.
+func labPathOutputs(req FormationExecution, outputs map[string]FormationOutputPayload) (map[string]FormationOutputPayload, error) {
+	if req.ArtifactDir == "" {
+		return outputs, nil
+	}
+	for _, port := range req.Formation.Outputs {
+		kind := PortKind(port)
+		if kind == PortKindText {
+			continue
+		}
+		payload := outputs[port.ID]
+		path := filepath.Join(req.ArtifactDir, "lab-"+port.ID+".md")
+		file := path
+		if kind == PortKindFolder {
+			path = filepath.Join(req.ArtifactDir, "lab-"+port.ID)
+			file = filepath.Join(path, "index.md")
+			if err := os.MkdirAll(path, 0o770); err != nil {
+				return nil, runExecutionError("output_write_failed", "lab executor could not write a folder output", "executor", err)
+			}
+		}
+		if err := os.WriteFile(file, []byte(payload.Text+"\n"), 0o660); err != nil {
+			return nil, runExecutionError("output_write_failed", "lab executor could not write a file output", "executor", err)
+		}
+		payload.Ref = path
+		outputs[port.ID] = payload
+	}
+	return outputs, nil
 }
 
 // labWorkPattern is how a lab brief makes a step take time: a line

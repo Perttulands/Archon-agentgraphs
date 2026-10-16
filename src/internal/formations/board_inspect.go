@@ -166,6 +166,8 @@ func ValidateBoard(board *BoardDocument) BoardValidationReport {
 	report.Warnings = append(report.Warnings, limitWarnings...)
 	report.Errors = append(report.Errors, routeLeadsNowhereFindings(board)...)
 	report.Errors = append(report.Errors, missionInputFindings(board)...)
+	report.Errors = append(report.Errors, portKindFindings(board)...)
+	report.Errors = append(report.Errors, missionOutputFindings(board)...)
 	report.Warnings = append(report.Warnings, unreachableNodeFindings(board)...)
 	report.Warnings = append(report.Warnings, fileReferenceFindings(board)...)
 

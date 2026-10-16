@@ -195,6 +195,8 @@ func gateFailInput(runID string, route BoardConnection, gateID string, attempt i
 	next.FromNodeID = gateID
 	next.FromPortID = "fail"
 	next.Ref = fmt.Sprintf("ledger://%s/%s", runID, route.ID)
+	// The judged file or folder travels as the feedback's original ref.
+	next.Kind = ""
 	next.Feedback = &GateFeedback{
 		GateID: gateID, GateAttempt: attempt, Verdict: "fail", Reason: reason,
 		Evidence: append([]GateEvidenceRef(nil), evidence...), OriginalRef: input.Ref, OriginalText: input.Text,

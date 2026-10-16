@@ -24,7 +24,7 @@ const (
 	EvidenceArtifactPreviewMaxBytes = 256 << 10
 	EvidenceArtifactRawMaxBytes     = 16 << 20
 	EvidenceArtifactListMax         = 500
-	EvidenceArtifactListDepth       = 8
+	EvidenceArtifactListDepth       = 16
 )
 
 // ErrEvidenceTooLarge marks an artifact beyond the raw read cap.

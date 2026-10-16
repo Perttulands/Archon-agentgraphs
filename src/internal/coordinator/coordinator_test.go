@@ -22,8 +22,10 @@ type testExecutor struct {
 	proceed chan struct{}
 	// outputText replaces the default routed output text when set.
 	outputText string
-	mu         sync.Mutex
-	deadline   time.Time
+	// note, when set, is written to notes.md in the attempt's directory.
+	note     string
+	mu       sync.Mutex
+	deadline time.Time
 }
 
 func (e *testExecutor) lastDeadline() time.Time {
@@ -38,6 +40,11 @@ func (e *testExecutor) ExecuteFormation(req formations.FormationExecution) (form
 	e.mu.Unlock()
 	e.entered <- req.NodeID
 	<-e.proceed
+	if e.note != "" {
+		if err := os.WriteFile(filepath.Join(req.ArtifactDir, "notes.md"), []byte(e.note), 0o600); err != nil {
+			return formations.FormationExecutionResult{}, err
+		}
+	}
 	outputs := map[string]formations.FormationOutputPayload{}
 	for _, port := range req.Formation.Outputs {
 		text := "PRIVATE-OUTPUT"

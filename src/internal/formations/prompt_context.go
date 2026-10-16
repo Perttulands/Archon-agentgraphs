@@ -44,6 +44,10 @@ func renderBriefAndInputs(b *strings.Builder, req FormationExecution, card Perso
 		if input.Text != "" && (input.Feedback == nil || input.Text != input.Feedback.OriginalText) {
 			b.WriteString("input: " + input.Text + "\n")
 		}
+		// A file or folder output arrives as the path of its accepted copy.
+		if (input.Kind == PortKindFile || input.Kind == PortKindFolder) && input.Ref != "" {
+			b.WriteString("input " + input.Kind + ": " + input.Ref + "\n")
+		}
 		for feedback := input.Feedback; feedback != nil; feedback = feedback.Earlier {
 			fmt.Fprintf(b, "\ngate feedback from %s, attempt %d:\nverdict: %s\nreason: %s\n", feedback.GateID, feedback.GateAttempt, feedback.Verdict, feedback.Reason)
 			for _, evidence := range feedback.Evidence {

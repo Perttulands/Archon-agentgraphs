@@ -39,6 +39,7 @@ var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
 	"mission create":       remoteMissionCreate,
 	"mission update":       remoteMissionUpdate,
 	"mission input":        remoteMissionInput,
+	"mission output":       remoteMissionOutput,
 	"mission wire":         remoteMissionWire,
 	"formation list":       remoteFormationList,
 	"formation inspect":    remoteFormationInspect,
@@ -50,6 +51,7 @@ var remoteAuthoringCommands = map[string]remoteAuthoringCommand{
 	"formation set-brief":  remoteFormationSetBrief,
 	"formation add-input":  remoteFormationAddPort(formations.FormationPortInput),
 	"formation add-output": remoteFormationAddPort(formations.FormationPortOutput),
+	"formation set-port":   remoteFormationSetPort,
 	"formation wire":       remoteFormationWire(false),
 	"formation unwire":     remoteFormationWire(true),
 	"gate create":          remoteGateCreate,
@@ -124,6 +126,10 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrInvalidHumanChannel
 	case "INVALID_MISSION_INPUT":
 		return formations.ErrInvalidMissionInput
+	case "INVALID_MISSION_OUTPUT":
+		return formations.ErrInvalidMissionOutput
+	case "INVALID_PORT":
+		return formations.ErrInvalidPort
 	case "RELATIVE_FILE_REFERENCE":
 		return formations.ErrRelativeFileRef
 	case "BROKEN_LINK":
@@ -920,6 +926,10 @@ func remoteFormationAddPort(direction string) remoteAuthoringCommand {
 		}
 		fs := remoteFlags(name, stderr)
 		label := fs.String("label", "", "port label")
+		kind := new(string)
+		if direction == formations.FormationPortOutput {
+			kind = fs.String("kind", "", "what the port carries: text (the default), file or folder")
+		}
 		updatedBy := fs.String("updated-by", "agent:archon", "update actor")
 		jsonOut := fs.Bool("json", false, "write JSON")
 		if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -930,7 +940,11 @@ func remoteFormationAddPort(direction string) remoteAuthoringCommand {
 			return 2
 		}
 		data, formationID, err := c.patchFormation(fs.Arg(0), fs.Arg(1), *updatedBy, func(id string) (string, map[string]any) {
-			return "addPort", map[string]any{"formationId": id, "direction": direction, "label": *label}
+			fields := map[string]any{"formationId": id, "direction": direction, "label": *label}
+			if *kind != "" {
+				fields["kind"] = *kind
+			}
+			return "addPort", fields
 		})
 		if err != nil {
 			return remoteFail(stderr, err, *jsonOut, "formation", fs.Arg(1))

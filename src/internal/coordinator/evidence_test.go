@@ -301,3 +301,71 @@ func TestEvidenceRoutesCapBriefsArtifactsAndNodeText(t *testing.T) {
 		}
 	}
 }
+
+// The attempts route lists each step's attempts with the verdicts that judged
+// them and the files in their directories, whose bytes the artifact route
+// serves; a run that ends done reports its mission outputs in its projection
+// and its final wait (archon-5tg1).
+func TestAttemptsRouteListsEachAttemptWithItsVerdictsAndFiles(t *testing.T) {
+	c, executor, _ := fixture(t)
+	board := strings.Replace(testBoard, `beadId = "archon-2fb"`, `beadId = "archon-2fb"
+outputs = [{ name = "result", from = "fmn_after:port_after_out", required = true }]`, 1)
+	if err := os.WriteFile(c.store.BoardPath("proof"), []byte(board), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	executor.note = "# notes"
+	id := startRun(t, c)
+	<-executor.entered
+	executor.proceed <- struct{}{}
+	seq := awaitState(t, c, id, "waiting_human").WaitingGates[0].RequestedSeq
+	if w := post(t, c, "/api/runs/"+id+"/gates/gate_review/verdict", `{"requestedSeq":`+strconv.Itoa(seq)+`,"verdict":"pass","reason":"ship it"}`); w.Code != 202 {
+		t.Fatalf("verdict: %d %s", w.Code, w.Body.String())
+	}
+	<-executor.entered
+	executor.proceed <- struct{}{}
+	p := awaitState(t, c, id, "succeeded")
+	want := []formations.RunOutput{{Name: "result", Kind: "text", Value: "PRIVATE-OUTPUT", NodeID: "fmn_after", PortID: "port_after_out", Attempt: 1}}
+	if !reflect.DeepEqual(p.Outputs, want) {
+		t.Fatalf("projected outputs = %+v, want %+v", p.Outputs, want)
+	}
+	if end := waitRequest(t, c, id, "until=final").result.End; end == nil || !reflect.DeepEqual(end.Outputs, want) {
+		t.Fatalf("final wait end = %+v, want outputs %+v", end, want)
+	}
+
+	w := getEvidence(c, "/api/runs/"+id+"/evidence/attempts")
+	if w.Code != 200 {
+		t.Fatalf("attempts: %d %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Data formations.RunAttemptsEvidence `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	steps := body.Data.Steps
+	if body.Data.RunID != id || len(steps) != 2 || steps[0].NodeID != "fmn_work" || steps[1].NodeID != "fmn_after" {
+		t.Fatalf("attempts = %s", w.Body.String())
+	}
+	work := steps[0].Attempts
+	if len(work) != 1 || work[0].Status != formations.AttemptDone || work[0].Directory == nil || work[0].Directory.Name != "fmn_work/1" {
+		t.Fatalf("work attempts = %s", w.Body.String())
+	}
+	if verdicts := work[0].Verdicts; len(verdicts) != 1 || verdicts[0].GateID != "gate_review" || verdicts[0].Verdict != "pass" || verdicts[0].Reason.Text != "ship it" || verdicts[0].DecidedBy != "human:operator" {
+		t.Fatalf("work verdicts = %s", w.Body.String())
+	}
+	if files := work[0].Files; len(files) != 1 || files[0].Name != "fmn_work/1/notes.md" || files[0].Kind != "markdown" || files[0].Size != int64(len("# notes")) {
+		t.Fatalf("work files = %s", w.Body.String())
+	}
+	if raw := getEvidence(c, "/api/runs/"+id+"/artifacts/"+work[0].Files[0].Name); raw.Code != 200 || raw.Body.String() != "# notes" {
+		t.Fatalf("artifact: %d %s", raw.Code, raw.Body.String())
+	}
+	only := getEvidence(c, "/api/runs/"+id+"/evidence/attempts?node=fmn_after")
+	if !strings.Contains(only.Body.String(), `"nodeId":"fmn_after"`) || strings.Contains(only.Body.String(), `"nodeId":"fmn_work"`) {
+		t.Fatalf("one step's attempts = %s", only.Body.String())
+	}
+	for _, missing := range []string{"/api/runs/" + id + "/evidence/attempts?node=fmn_missing", "/api/runs/run_missing/evidence/attempts", "/api/runs/not-a-run/evidence/attempts"} {
+		if w := getEvidence(c, missing); w.Code != 404 {
+			t.Fatalf("%s: %d %s", missing, w.Code, w.Body.String())
+		}
+	}
+}

@@ -275,6 +275,9 @@ func writeWaitEnd(b *strings.Builder, name string, r coordinator.RunWait) {
 		fmt.Fprintf(b, " Ended by %s.", waitActor(end.EndedBy))
 	}
 	b.WriteString("\n")
+	for _, output := range end.Outputs {
+		b.WriteString(runOutputLine(output) + "\n")
+	}
 }
 
 // endSentence ends a sentence that may close on quoted text ending in its own

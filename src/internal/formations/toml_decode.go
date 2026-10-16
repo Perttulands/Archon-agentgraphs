@@ -258,6 +258,9 @@ func decodeMissionNodes(document map[string]any) ([]MissionNode, error) {
 		if node.Inputs, err = decodeMissionInputs(table); err != nil {
 			return nil, err
 		}
+		if node.Outputs, err = decodeMissionOutputs(table); err != nil {
+			return nil, err
+		}
 		nodes = append(nodes, node)
 	}
 	return nodes, nil
@@ -291,6 +294,39 @@ func decodeMissionInputs(table map[string]any) ([]MissionInput, error) {
 		inputs = append(inputs, input)
 	}
 	return inputs, nil
+}
+
+// decodeMissionOutputs reads an Input card's declared outputs as written;
+// mission validation reports a bad name, kind, binding or duplicate.
+func decodeMissionOutputs(table map[string]any) ([]MissionOutput, error) {
+	tables, err := tomlTableArray(table, "outputs")
+	if err != nil || tables == nil {
+		return nil, err
+	}
+	outputs := make([]MissionOutput, 0, len(tables))
+	for _, item := range tables {
+		var output MissionOutput
+		if output.Name, err = tomlString(item, "name"); err != nil {
+			return nil, err
+		}
+		if output.Kind, err = tomlString(item, "kind"); err != nil {
+			return nil, err
+		}
+		if output.Required, err = tomlBool(item, "required"); err != nil {
+			return nil, err
+		}
+		if output.Description, err = tomlString(item, "description"); err != nil {
+			return nil, err
+		}
+		if output.From, err = tomlString(item, "from"); err != nil {
+			return nil, err
+		}
+		if output.Kind == "" {
+			output.Kind = MissionInputText
+		}
+		outputs = append(outputs, output)
+	}
+	return outputs, nil
 }
 
 // decodedMissionInputsInLineRange reads the inputs assignment spanning lines
@@ -367,6 +403,17 @@ func decodeFormationPorts(table map[string]any, key string) ([]FormationPort, er
 		}
 		if port.Label, err = tomlString(table, "label"); err != nil {
 			return nil, err
+		}
+		// A kind is read as written and text is stored as absent; validation
+		// reports an unknown kind, or file or folder on an input port. The Tool
+		// schema's payload kinds on formation ports, work and gate_feedback,
+		// carry text.
+		if port.Kind, err = tomlString(table, "kind"); err != nil {
+			return nil, err
+		}
+		switch port.Kind {
+		case PortKindText, toolPayloadWork, toolPayloadGateFeedback:
+			port.Kind = ""
 		}
 		ports = append(ports, port)
 	}

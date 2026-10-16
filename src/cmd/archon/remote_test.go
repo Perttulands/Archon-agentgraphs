@@ -300,6 +300,17 @@ func nodeIDTitled(board *formations.BoardDocument, title string) string {
 	return "missing_" + title
 }
 
+// portLabelled finds a port by label, or names a missing one, so script steps
+// also build their arguments on the coverage test's stub board.
+func portLabelled(ports []formations.FormationPort, label string) string {
+	for _, port := range ports {
+		if port.Label == label {
+			return port.ID
+		}
+	}
+	return "missing_" + label
+}
+
 // authoringScript uses every remote authoring command, including failures.
 func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 	worker := func(board *formations.BoardDocument) formations.FormationNode {
@@ -442,6 +453,26 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 		{args: with(fixed("mission", "input", "demo", "Bad-Name")), errorOnly: true},
 		{args: with(fixed("mission", "input", "demo", "nothing", "--delete")), errorOnly: true},
 		{args: with(fixed("mission", "input", "demo", "sketch", "--delete"))},
+		// Typed output ports and the outputs a successful run promises (archon-5tg1).
+		{args: with(fixed("formation", "add-output", "demo", "Worker", "--label", "Site", "--kind", "folder"))},
+		{args: with(fixed("formation", "set-port", "demo", "Worker", "Report", "--kind", "file"))},
+		{args: with(fixed("formation", "set-port", "demo", "Worker", "Site", "--label", "Site folder"))},
+		{args: with(fixed("formation", "set-port", "demo", "Worker", "Extra", "--kind", "file")), errorOnly: true},
+		{args: with(fixed("formation", "set-port", "demo", "Worker", "Report", "--kind", "video")), errorOnly: true},
+		{args: with(fixed("formation", "set-port", "demo", "Worker", "Nobody", "--label", "Ghost")), errorOnly: true},
+		{args: with(fixed("mission", "output", "demo"))},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"mission", "output", "demo", "report", "--kind", "file", "--from", worker(board).ID + ":" + portLabelled(worker(board).Outputs, "Report"), "--required", "--description", "The written report"}
+		})},
+		{args: with(func(board *formations.BoardDocument) []string {
+			return []string{"mission", "output", "demo", "site", "--kind", "folder", "--from", worker(board).ID + ":" + portLabelled(worker(board).Outputs, "Site folder")}
+		})},
+		{args: with(fixed("mission", "output", "demo", "summary"))},
+		{args: with(fixed("mission", "output", "demo"))},
+		{args: with(fixed("mission", "output", "demo", "Bad-Name")), errorOnly: true},
+		{args: with(fixed("mission", "output", "demo", "summary", "--from", "no-colon")), errorOnly: true},
+		{args: with(fixed("mission", "output", "demo", "nothing", "--delete")), errorOnly: true},
+		{args: with(fixed("mission", "output", "demo", "summary", "--delete"))},
 		{args: with(fixed("gate", "update", "demo", "Review", "--file", "/work/rubrics/quality.md"))},
 		{args: with(fixed("gate", "update", "demo", "Sign-off", "--file", ""))},
 		{args: with(fixed("tool", "create", "demo", "--profile-id", "json.normalize", "--profile-version", "1", "--title", "Normalize", "--params-json", `{"mode":"strict"}`)), creates: "tool"},
@@ -607,6 +638,20 @@ func TestRemoteAuthoringMatchesOfflineCommands(t *testing.T) {
 			}
 			if mission := board.Missions[0]; strings.Join(mission.Files, ",") != "/work/docs/brief.md,/work/docs/context.md" || mission.HumanChannel != formations.HumanChannelSession {
 				t.Fatalf("remote mission files = %q, human channel = %q", mission.Files, mission.HumanChannel)
+			}
+			worker := formationTitled(t, board, "Worker")
+			report, site := portLabelled(worker.Outputs, "Report"), portLabelled(worker.Outputs, "Site folder")
+			kinds := map[string]string{}
+			for _, port := range worker.Outputs {
+				kinds[port.ID] = port.Kind
+			}
+			if kinds[report] != "file" || kinds[site] != "folder" {
+				t.Fatalf("remote output port kinds = %+v", worker.Outputs)
+			}
+			if outputs := board.Missions[0].Outputs; len(outputs) != 2 ||
+				outputs[0] != (formations.MissionOutput{Name: "report", Kind: "file", Required: true, Description: "The written report", From: worker.ID + ":" + report}) ||
+				outputs[1] != (formations.MissionOutput{Name: "site", Kind: "folder", From: worker.ID + ":" + site}) {
+				t.Fatalf("remote mission outputs = %+v", outputs)
 			}
 			if review, signoff := gateTitled(t, board, "Review"), gateTitled(t, board, "Sign-off"); strings.Join(review.Files, ",") != "/work/rubrics/quality.md" || len(signoff.Files) != 0 {
 				t.Fatalf("remote gate files: Review %q, Sign-off %q", review.Files, signoff.Files)

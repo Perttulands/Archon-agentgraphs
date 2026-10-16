@@ -425,7 +425,7 @@ func (e *TmuxFormationExecutor) formationResultFromText(req FormationExecution, 
 			return FormationExecutionResult{}, runExecutionError("invalid_output_payloads", fmt.Sprintf("formation %q emitted unknown output port %q", req.NodeID, portID), "executor", nil)
 		}
 	}
-	if err := e.materializeOutputRefs(namedOutputs); err != nil {
+	if err := e.materializeOutputRefs(req.Formation, namedOutputs); err != nil {
 		return FormationExecutionResult{}, err
 	}
 	if len(cleanText) > e.config.OutputCapBytes {
@@ -439,13 +439,19 @@ func (e *TmuxFormationExecutor) formationResultFromText(req FormationExecution, 
 	}, nil
 }
 
-func (e *TmuxFormationExecutor) materializeOutputRefs(outputs map[string]FormationOutputPayload) error {
+// materializeOutputRefs reads each text output's ref into its text. A file or
+// folder output's ref is a path the engine checks and snapshots instead.
+func (e *TmuxFormationExecutor) materializeOutputRefs(formation FormationNode, outputs map[string]FormationOutputPayload) error {
 	if len(outputs) == 0 {
 		return nil
 	}
+	pathPorts := map[string]bool{}
+	for _, port := range formation.Outputs {
+		pathPorts[port.ID] = PortKind(port) != PortKindText
+	}
 	for portID, payload := range outputs {
 		ref := strings.TrimSpace(payload.Ref)
-		if ref == "" {
+		if ref == "" || pathPorts[portID] {
 			continue
 		}
 		body, err := e.readOutputRefArtifact(ref)
@@ -522,23 +528,47 @@ func outputContractExtraLines(formation FormationNode) []string {
 		"```archon-outputs",
 		"{",
 	}
+	var textPorts, filePorts, folderPorts []string
 	for i, output := range formation.Outputs {
 		comma := ","
 		if i == len(formation.Outputs)-1 {
 			comma = ""
 		}
-		lines = append(lines, fmt.Sprintf("  %q: {\"text\": \"one-line summary\", \"ref\": \"/absolute/path/to/artifact.md\"}%s", output.ID, comma))
+		example := "/absolute/path/to/artifact.md"
+		switch PortKind(output) {
+		case PortKindFile:
+			example = "/absolute/path/to/the-file"
+			filePorts = append(filePorts, output.ID)
+		case PortKindFolder:
+			example = "/absolute/path/to/the-folder"
+			folderPorts = append(folderPorts, output.ID)
+		default:
+			textPorts = append(textPorts, output.ID)
+		}
+		lines = append(lines, fmt.Sprintf("  %q: {\"text\": \"one-line summary\", \"ref\": %q}%s", output.ID, example, comma))
 	}
 	lines = append(lines,
 		"}",
 		"```",
 		"Use all and only the exact output port ids in that skeleton.",
-	)
-	lines = append(lines,
 		"Do not rely on free-form answer text for routing; it is display-only. Missing or unknown output ids block the run.",
-		"Use text for a short, non-secret routed payload or summary.",
-		"For longer payloads, create a text artifact under the artifact directory shown below and put its full absolute filesystem path in ref; CHROTE reads that file for routing. A bare filename does not resolve against the run artifact directory. Omit ref for a text-only payload.",
-		"A missing, unreadable, non-text or oversized ref blocks the run.",
+	)
+	if len(textPorts) > 0 {
+		lines = append(lines,
+			"Text outputs ("+strings.Join(textPorts, ", ")+"): use text for a short, non-secret routed payload or summary. For a longer payload, write a text file in the attempt artifact directory shown below and put its full absolute path in ref; Archon reads that file as the routed text. A bare filename does not resolve. Omit ref for a text-only payload. A missing, unreadable, non-text or oversized ref blocks the run.",
+		)
+	}
+	if len(filePorts) > 0 {
+		lines = append(lines,
+			"File outputs ("+strings.Join(filePorts, ", ")+"): ref is required and is the absolute path of the file this output is, of any type; text is a one-line summary. Archon keeps a copy of the file as this attempt produced it and routes the copy's path. A missing ref, or a path that is not an existing file, blocks the run.",
+		)
+	}
+	if len(folderPorts) > 0 {
+		lines = append(lines,
+			"Folder outputs ("+strings.Join(folderPorts, ", ")+"): ref is required and is the absolute path of the directory this output is; text is a one-line summary. Archon keeps a copy of the directory as this attempt produced it and routes the copy's path. A missing ref, or a path that is not an existing directory, blocks the run.",
+		)
+	}
+	lines = append(lines,
 		"Before the ARCHON-DONE sentinel, you MUST emit a fresh ```archon-outputs fenced JSON block for this run. Do not omit the fence.",
 	)
 	return lines
@@ -1669,10 +1699,9 @@ func (e *TmuxFormationExecutor) renderPromptWithContext(req FormationExecution, 
 			b.WriteString(line + "\n")
 		}
 	}
-	if len(req.Formation.Outputs) > 0 && e.store != nil {
-		artifactDir := filepath.Join(e.store.workspaceRoot(), ".archon", "artifacts", req.RunID)
-		b.WriteString("artifact directory for long routed outputs: " + artifactDir + "\n")
-		b.WriteString("If you use ref in archon-outputs, create the file first, preferably under that artifact directory.\n")
+	if req.ArtifactDir != "" {
+		b.WriteString("attempt artifact directory: " + req.ArtifactDir + "\n")
+		b.WriteString("Write the files this attempt produces there: long outputs, reports, images and folders. It belongs to this attempt alone; create a file before naming it as a ref in archon-outputs.\n")
 	}
 	b.WriteString("When complete, emit exactly one sentinel line using the run value above: <<<ARCHON-DONE run-id=<the-run-value-above> status=ok artifact=<path-or-ref>>>\n")
 	return b.String()

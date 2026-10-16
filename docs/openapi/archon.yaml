@@ -147,7 +147,7 @@ paths:
         '422':
           description: Unprocessable write, such as a code check naming no registered profile. A Tool write returns INVALID_TOOL_MUTATION with a message naming the invalid field or reason. An assignSlot whose harness, model or effort no seat could start with, or that leaves the harness or effort unchosen, returns INVALID_SLOT_SETTINGS with a message naming the slot and the fix, including the effort policy when the effort is missing.
         '400':
-          description: Invalid mutation. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (brief beadId). An Input card humanChannel other than notify or session returns INVALID_HUMAN_CHANNEL naming the allowed values. A malformed or repeated input name or an unknown input kind returns INVALID_MISSION_INPUT. makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION. A Limit card write naming a target that is not a step or the Input card, or a negative rounds value, returns INVALID_LIMIT. A relative reference file returns RELATIVE_FILE_REFERENCE. A patch naming more than one operation returns BAD_REQUEST naming them, and nothing changes. An invalid mission slug returns BAD_REQUEST 'Invalid mission slug'.
+          description: Invalid mutation. An unsafe Bead ID returns INVALID_BEAD_ID with a message naming the field (brief beadId). An Input card humanChannel other than notify or session returns INVALID_HUMAN_CHANNEL naming the allowed values. A malformed or repeated input name or an unknown input kind returns INVALID_MISSION_INPUT, and a malformed, repeated or wrongly bound mission output returns INVALID_MISSION_OUTPUT. makeController on a formation that is not orchestrated returns INVALID_CONTROLLER_ROLE naming its type, and an addPort direction other than input or output returns INVALID_PORT_DIRECTION; an output kind other than text, file or folder, a kind on an input port or a blank port label returns INVALID_PORT. A Limit card write naming a target that is not a step or the Input card, or a negative rounds value, returns INVALID_LIMIT. A relative reference file returns RELATIVE_FILE_REFERENCE. A patch naming more than one operation returns BAD_REQUEST naming them, and nothing changes. An invalid mission slug returns BAD_REQUEST 'Invalid mission slug'.
       parameters:
       - in: header
         name: If-Match
@@ -499,9 +499,33 @@ paths:
       summary: List the run's artifact directory
       responses:
         '200':
-          description: Enveloped data.artifacts lists name (relative), size and modifiedAt, sorted by name; data.truncated is true past 500 entries or 8 levels. Symlinks and hard links are followed; special files are omitted.
+          description: Enveloped data.artifacts lists name (relative), size and modifiedAt, sorted by name; data.truncated is true past 500 entries or 16 levels. Symlinks and hard links are followed; special files are omitted.
         '404':
           description: No such run
+  /api/runs/{runId}/evidence/attempts:
+    parameters:
+    - $ref: '#/components/parameters/RunID'
+    - in: query
+      name: node
+      required: false
+      description: Only this step's attempts.
+      schema:
+        type: string
+    get:
+      summary: List every attempt of every step, with its outputs, verdicts and files (archon-5tg1)
+      description: Steps in the order they first ran, attempts oldest first. Texts share the node evidence caps (64 KiB each, 2 MiB per response) and redaction. File bytes come from /api/runs/{runId}/artifacts/{name} by a file's name or an output's artifact.
+      responses:
+        '200':
+          description: Enveloped run attempts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/RunAttempts'
+        '404':
+          description: No such run, or ?node names no step of the run's frozen mission
   /api/runs/{runId}/evidence/artifacts/{name}:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -1031,6 +1055,213 @@ components:
           description: Tokens the target may spend, counted approximately per dispatch from its pointer
             as input not read from the cache (cache writes included) plus output, subagents included, for
             the step (or every step, for the Input card). Omitted sets no tokens.
+    FormationPort:
+      type: object
+      description: A formation port. Only an output port carries a kind, and only file or folder; text is absent.
+      required:
+      - id
+      - label
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        kind:
+          type: string
+          enum:
+          - file
+          - folder
+    MissionOutput:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+        kind:
+          enum:
+          - text
+          - file
+          - folder
+        required:
+          type: boolean
+        description:
+          type: string
+        from:
+          type: string
+          description: The bound step output port, <step-id>:<port-id>.
+    RunOutput:
+      type: object
+      required:
+      - name
+      - kind
+      - value
+      - nodeId
+      - portId
+      - attempt
+      properties:
+        name:
+          type: string
+        kind:
+          enum:
+          - text
+          - file
+          - folder
+        value:
+          type: string
+          description: The text, or the absolute snapshot path of a file or folder.
+        nodeId:
+          type: string
+        portId:
+          type: string
+        attempt:
+          type: integer
+    RunAttempts:
+      type: object
+      properties:
+        runId:
+          type: string
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              nodeId:
+                type: string
+              title:
+                type: string
+              judgeOf:
+                type: array
+                description: The gates this step judged for, when it is a judge.
+                items:
+                  type: string
+              outputs:
+                type: array
+                description: The step's output ports on the run's frozen mission, each with its kind (text included).
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    label:
+                      type: string
+                    kind:
+                      type: string
+              attempts:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    attempt:
+                      type: integer
+                    status:
+                      enum:
+                      - running
+                      - done
+                      - stopped
+                    startedSeq:
+                      type: integer
+                    startedAt:
+                      type: string
+                    endedAt:
+                      type: string
+                    outputSeq:
+                      type: integer
+                    directory:
+                      type: object
+                      description: The attempt directory, when it exists; name is relative to the run's artifact directory.
+                      properties:
+                        name:
+                          type: string
+                        path:
+                          type: string
+                    outputs:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          portId:
+                            type: string
+                          label:
+                            type: string
+                          kind:
+                            type: string
+                          text:
+                            $ref: '#/components/schemas/EvidenceText'
+                          path:
+                            type: string
+                          artifact:
+                            type: string
+                            description: The path's name for the artifact routes, when it lies in the run's artifact directory.
+                          size:
+                            type: integer
+                          fileKind:
+                            enum:
+                            - image
+                            - pdf
+                            - markdown
+                            - json
+                            - text
+                            - binary
+                            - folder
+                    verdicts:
+                      type: array
+                      description: Each gate evaluation of this attempt's output.
+                      items:
+                        type: object
+                        properties:
+                          gateId:
+                            type: string
+                          gateTitle:
+                            type: string
+                          evaluationSeq:
+                            type: integer
+                          seq:
+                            type: integer
+                          verdict:
+                            enum:
+                            - pass
+                            - fail
+                          pending:
+                            type: boolean
+                          reason:
+                            $ref: '#/components/schemas/EvidenceText'
+                          evidence:
+                            type: array
+                            items:
+                              type: object
+                          evidenceOmitted:
+                            type: integer
+                          decidedBy:
+                            type: string
+                    files:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          path:
+                            type: string
+                          size:
+                            type: integer
+                          modifiedAt:
+                            type: string
+                          kind:
+                            type: string
+                    filesTruncated:
+                      type: boolean
+    EvidenceText:
+      type: object
+      properties:
+        text:
+          type: string
+        bytes:
+          type: integer
+        truncated:
+          type: boolean
     FormationNode:
       type: object
       description: An authored formation. A Limit card, not the formation, caps its rounds, time and tokens.
@@ -1183,6 +1414,11 @@ components:
                 - folder
               value:
                 type: string
+        outputs:
+          type: array
+          description: The mission outputs a run that reached a done End delivered, in the mission's declared order; absent otherwise. A file or folder value is the snapshot path in the producing attempt's directory.
+          items:
+            $ref: '#/components/schemas/RunOutput'
         epoch:
           type: integer
         eventCount:
@@ -1515,6 +1751,38 @@ components:
                 - output
             label:
               type: string
+            kind:
+              type: string
+              enum:
+                - text
+                - file
+                - folder
+              description: An output port's kind; text, the default, is stored as absent. A kind on an input port returns INVALID_PORT.
+            expectedRev:
+              type: integer
+            updatedBy:
+              type: string
+        updatePort:
+          type: object
+          required:
+          - formationId
+          - portId
+          description: Relabels a port or sets an output port's kind; only the fields present change. A blank
+            label, an unknown kind or a kind on an input port returns INVALID_PORT and saves nothing.
+          properties:
+            formationId:
+              type: string
+            portId:
+              type: string
+            label:
+              type: string
+            kind:
+              type: string
+              enum:
+                - text
+                - file
+                - folder
+              description: text clears the kind.
             expectedRev:
               type: integer
             updatedBy:
@@ -1878,6 +2146,14 @@ components:
                     type: boolean
                   description:
                     type: string
+            outputs:
+              type: array
+              description: Replaces the mission's declared outputs, the results a successful run promises;
+                an empty array clears them. Names follow the input rule and are unique; a blank kind is text;
+                from, when set, is <step-id>:<port-id>. Anything else returns INVALID_MISSION_OUTPUT and saves
+                nothing. A blank from saves as a draft that validation reports as unbound_mission_output.
+              items:
+                $ref: '#/components/schemas/MissionOutput'
             expectedRev:
               type: integer
             updatedBy:
